@@ -1,0 +1,3 @@
+# c-06-auth-rbac-keycloak
+
+Autenticacion federada y autorizacion contextual (dep C-05, governance CRITICO). Federacion Keycloak (OAuth2/OIDC/SAML) con JIT provisioning del Usuario al primer login federado. Validacion local de JWT contra JWKS cacheado; access 15-60 min; refresh rotativo; POST /api/v1/auth/refresh. RBAC con permisos contextuales (proctor solo examenes asignados; revisor solo su jurisdiccion) sobre 7 roles. MFA obligatorio para roles con acceso a evidencia/administracion (TOTP min., WebAuthn recomendado). Validacion de handshake WS/SSE con JWT + revalidacion periodica. Rate limiting (Keycloak+Nginx). Rutas publicas.

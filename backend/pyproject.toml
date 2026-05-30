@@ -1,0 +1,48 @@
+[project]
+name = "proctoring-backend"
+version = "0.1.0"
+description = "Backend de la plataforma de proctoring (FastAPI/ASGI, Clean/Hexagonal)."
+requires-python = ">=3.12"
+
+# Dependencias pinneadas por version (reproducibilidad). El stack del MVP sigue
+# la hipotesis A4: ni Redis ni RabbitMQ/Celery se incluyen por defecto (DD-19);
+# se agregan solo si la PoC C-03 los promueve por metrica.
+dependencies = [
+    "fastapi==0.115.6",
+    "uvicorn[standard]==0.34.0",
+    "pydantic==2.10.4",
+    "pydantic-settings==2.7.1",
+    "sqlalchemy==2.0.36",
+    "asyncpg==0.30.0",
+    "alembic==1.14.0",
+    # Auth/JWT (C-06): validacion LOCAL de JWT RS256 contra el JWKS de Keycloak.
+    # 'crypto' trae el backend de claves publicas (cryptography) para RS256.
+    "pyjwt[crypto]==2.10.1",
+    # Observabilidad (DD-12)
+    "prometheus-client==0.21.1",
+    "opentelemetry-sdk==1.29.0",
+    "opentelemetry-exporter-otlp-proto-grpc==1.29.0",
+    "opentelemetry-instrumentation-fastapi==0.50b0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==8.3.4",
+    "httpx==0.28.1",          # TestClient de FastAPI
+    "psycopg[binary]==3.2.3", # smoke de conectividad a Postgres
+    "requests==2.32.3",       # smoke de conectividad MinIO/Keycloak
+    "ruff==0.8.4",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+# snake_case obligatorio (regla dura de codigo) — pep8-naming + pyflakes.
+select = ["E", "F", "N", "I", "UP"]

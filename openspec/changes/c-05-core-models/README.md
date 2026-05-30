@@ -1,0 +1,3 @@
+# c-05-core-models
+
+Entidades base del dominio y la base de datos (dep C-04, governance CRITICO). Modela Usuario, Examen, Sesion (enum iniciada/activa/finalizada/flaggeada/cerrada), Asignacion proctor-examen, Consentimiento (inmutable), Embedding (cifrado), Evidencia y Caso disciplinario. Audit log append-only con trigger que rechaza UPDATE/DELETE + hash encadenado (hash_prev). Evento como hypertable TimescaleDB con indices (session_id,timestamp) y (exam_id,timestamp), compresion (7d sin comprimir, >7d comprimido) y continuous aggregates base. Migracion 002. Repositorios genericos (puertos) por dominio.

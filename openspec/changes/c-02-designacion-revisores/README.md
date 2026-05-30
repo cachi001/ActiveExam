@@ -1,0 +1,3 @@
+# c-02-designacion-revisores
+
+Gate organizacional de Fase 0 (governance CRITICO, no-codigo): designacion y capacitacion de revisores academicos y coordinacion operativa antes de Fase 1. Es la dependencia mas subestimada del proyecto (SU-03 / O-003). Estima la carga de revision (5-15% de las sesiones), dimensiona el equipo humano contra el volumen objetivo (1.000 concurrentes / ~2.100 pico), define el plan de capacitacion por rol (proctor, revisor, coordinador, on-call) y el mecanismo de monitoreo de backlog. Co-bloqueante del camino critico: sin este equipo humano, C-16 (cola de revision) no cumple su proposito aunque el codigo exista (L2.5: la decision final es siempre humana). Corre en paralelo a C-01.

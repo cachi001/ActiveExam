@@ -1,0 +1,30 @@
+# Entorno y secretos — NUNCA versionar (DD-5)
+.env
+*.env.local
+
+# Certificados / claves privadas TLS (local) — solo el README se versiona
+infra/nginx/tls/*.key
+infra/nginx/tls/*.crt
+infra/nginx/tls/*.pem
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# Node / frontend
+node_modules/
+dist/
+.vite/
+
+# Datos de contenedores
+postgres_data/
+minio_data/
+
+# Estado de herramientas de scaffolding local — no es parte del proyecto
+*-state.json
+.claude/

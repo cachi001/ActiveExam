@@ -1,0 +1,21 @@
+# Grafana — datasources de los tres pilares (DD-12), provisionados al arrancar.
+# Metricas (Prometheus), logs (Loki) y trazas (Tempo) visibles sin configuracion
+# manual. La correlacion logs<->trazas usa el trace_id que la API emite.
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+
+  - name: Loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+
+  - name: Tempo
+    type: tempo
+    access: proxy
+    url: http://tempo:3200

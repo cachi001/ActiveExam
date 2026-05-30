@@ -1,0 +1,3 @@
+# c-04-foundation-setup
+
+Bootstrap del monorepo y la infraestructura base (Fase 0/1, governance MEDIO). Scaffolding backend/ (Clean/Hexagonal: domain/application/infrastructure/presentation/workers/observability) + frontend/ (features/shared/vision/proctoring/transport/pages) + infra/. docker-compose inicial con PostgreSQL/TimescaleDB, MinIO/S3, Keycloak, Nginx (TLS 1.3) y observabilidad base (Prometheus/Loki/Tempo/Grafana, DD-12). Alembic con migraciones destructivas en dos pasos; migracion 001 = extension TimescaleDB + esquema vacio. Config twelve-factor (.env via Vault/tmpfs) y FastAPI mono-hilo escalado horizontal (DD-10, DD-11). Depende del veredicto de C-03.

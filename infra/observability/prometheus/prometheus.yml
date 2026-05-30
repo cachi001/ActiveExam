@@ -1,0 +1,17 @@
+# Prometheus — scraping del stack (DD-12).
+# Scrapea las metricas que la API FastAPI expone en /metrics (prometheus-client).
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # Instancias FastAPI. Con escalado horizontal (`--scale api=N`), Docker DNS
+  # resuelve `api` a las replicas; ajustar a service discovery en K8s mas adelante.
+  - job_name: proctoring-api
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["api:8000"]
