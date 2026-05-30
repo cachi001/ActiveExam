@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+
+<html class="light" lang="es"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>ActiveExam - Proctor Portal</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "outline-variant": "#c7c4d6",
+                    "on-error": "#ffffff",
+                    "error": "#ba1a1a",
+                    "surface-container-low": "#f3f3f7",
+                    "outline": "#777585",
+                    "on-background": "#1a1c1f",
+                    "tertiary-container": "#696880",
+                    "secondary-fixed": "#e5deff",
+                    "on-tertiary-container": "#ece9ff",
+                    "on-tertiary": "#ffffff",
+                    "on-secondary-fixed": "#180065",
+                    "on-error-container": "#93000a",
+                    "surface-container-high": "#e8e8ec",
+                    "error-container": "#ffdad6",
+                    "tertiary": "#515067",
+                    "secondary": "#5845ca",
+                    "primary-container": "#5b5bd6",
+                    "on-primary-container": "#edeaff",
+                    "on-primary": "#ffffff",
+                    "surface-container-highest": "#e2e2e6",
+                    "on-secondary": "#ffffff",
+                    "secondary-fixed-dim": "#c7bfff",
+                    "surface-container-lowest": "#ffffff",
+                    "secondary-container": "#7260e5",
+                    "inverse-surface": "#2e3034",
+                    "inverse-on-surface": "#f0f0f4",
+                    "on-primary-fixed-variant": "#3533b0",
+                    "tertiary-fixed-dim": "#c6c4df",
+                    "primary-fixed": "#e2dfff",
+                    "tertiary-fixed": "#e2e0fc",
+                    "surface-tint": "#4e4ec9",
+                    "surface-container": "#ededf1",
+                    "surface": "#f9f9fd",
+                    "on-surface": "#1a1c1f",
+                    "on-surface-variant": "#464553",
+                    "on-primary-fixed": "#0a006b",
+                    "on-secondary-container": "#fffbff",
+                    "surface-bright": "#f9f9fd",
+                    "on-tertiary-fixed-variant": "#45455b",
+                    "primary-fixed-dim": "#c1c1ff",
+                    "on-secondary-fixed-variant": "#432bb4",
+                    "on-tertiary-fixed": "#1a1a2e",
+                    "surface-variant": "#e2e2e6",
+                    "primary": "#4241bc",
+                    "background": "#f9f9fd",
+                    "surface-dim": "#d9dade",
+                    "inverse-primary": "#c1c1ff"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.25rem",
+                    "lg": "0.5rem",
+                    "xl": "0.75rem",
+                    "full": "9999px"
+            },
+            "spacing": {
+                    "xs": "8px",
+                    "sidebar-width": "260px",
+                    "container-max": "1280px",
+                    "gutter": "24px",
+                    "xl": "32px",
+                    "base": "4px",
+                    "lg": "24px",
+                    "xxl": "48px",
+                    "sm": "12px",
+                    "md": "16px"
+            },
+            "fontFamily": {
+                    "title-lg": ["Plus Jakarta Sans"],
+                    "label-md": ["Inter"],
+                    "label-sm": ["Inter"],
+                    "body-lg": ["Inter"],
+                    "body-md": ["Inter"],
+                    "headline-md": ["Plus Jakarta Sans"],
+                    "headline-lg": ["Plus Jakarta Sans"],
+                    "display-lg": ["Plus Jakarta Sans"]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        body { background-color: #F7F7FB; }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .status-pulse {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: .5; }
+        }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e2ec; border-radius: 10px; }
+    </style>
+</head>
+<body class="font-body-md text-on-surface">
+<!-- SideNavBar -->
+<aside class="fixed left-0 top-0 bottom-0 flex flex-col w-sidebar-width z-40 bg-surface border-r border-outline-variant shadow-sm">
+<div class="px-lg py-xl flex flex-col gap-base">
+<h1 class="font-headline-md text-headline-md font-bold text-primary">ActiveExam</h1>
+<p class="font-label-sm text-on-surface-variant opacity-70">Proctor Portal</p>
+</div>
+<nav class="flex-1 mt-md">
+<!-- Active: Dashboard -->
+<a class="bg-primary/10 text-primary border-l-4 border-primary rounded-r-full my-1 mx-xs px-md py-3 flex items-center gap-md transition-all" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+<span class="font-label-md">Dashboard</span>
+</a>
+<a class="text-on-surface-variant flex items-center px-md py-3 my-1 mx-xs gap-md hover:bg-surface-container-high transition-all hover:translate-x-1" href="#">
+<span class="material-symbols-outlined">videocam</span>
+<span class="font-label-md">Active Exams</span>
+</a>
+<a class="text-on-surface-variant flex items-center px-md py-3 my-1 mx-xs gap-md hover:bg-surface-container-high transition-all hover:translate-x-1" href="#">
+<span class="material-symbols-outlined">groups</span>
+<span class="font-label-md">Students</span>
+</a>
+<a class="text-on-surface-variant flex items-center px-md py-3 my-1 mx-xs gap-md hover:bg-surface-container-high transition-all hover:translate-x-1" href="#">
+<span class="material-symbols-outlined">timeline</span>
+<span class="font-label-md">Event Logs</span>
+</a>
+<a class="text-on-surface-variant flex items-center px-md py-3 my-1 mx-xs gap-md hover:bg-surface-container-high transition-all hover:translate-x-1" href="#">
+<span class="material-symbols-outlined">warning</span>
+<span class="font-label-md">Risk Reports</span>
+</a>
+</nav>
+<div class="p-md mb-lg">
+<div class="bg-surface-container-low p-sm rounded-xl border border-outline-variant flex items-center gap-sm">
+<div class="w-2 h-2 rounded-full bg-emerald-500 status-pulse"></div>
+<span class="text-[12px] font-bold text-on-surface-variant">System Status: Active</span>
+</div>
+</div>
+<div class="border-t border-outline-variant pt-md pb-xl">
+<a class="text-on-surface-variant flex items-center px-md py-3 mx-xs gap-md hover:bg-surface-container-high transition-all" href="#">
+<span class="material-symbols-outlined">contact_support</span>
+<span class="font-label-md">Support</span>
+</a>
+<a class="text-on-surface-variant flex items-center px-md py-3 mx-xs gap-md hover:bg-surface-container-high transition-all" href="#">
+<span class="material-symbols-outlined">logout</span>
+<span class="font-label-md">Sign Out</span>
+</a>
+</div>
+</aside>
+<!-- Main Content Area -->
+<main class="ml-sidebar-width min-h-screen flex flex-col">
+<!-- TopNavBar -->
+<header class="flex justify-between items-center px-lg h-16 w-full sticky top-0 z-50 bg-surface border-b border-outline-variant shadow-sm">
+<div class="flex items-center gap-md">
+<span class="material-symbols-outlined text-primary">analytics</span>
+<h2 class="font-title-lg text-title-lg text-on-surface">Final Architecture Examination - Spring 2024</h2>
+</div>
+<div class="flex items-center gap-lg">
+<div class="relative hidden md:block">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant scale-90">search</span>
+<input class="bg-surface-container-low border border-outline-variant rounded-xl pl-10 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all w-64" placeholder="Search students..." type="text"/>
+</div>
+<div class="flex items-center gap-sm">
+<button class="p-2 rounded-full hover:bg-surface-container-high transition-colors active:scale-95">
+<span class="material-symbols-outlined text-on-surface-variant">notifications</span>
+</button>
+<button class="p-2 rounded-full hover:bg-surface-container-high transition-colors active:scale-95">
+<span class="material-symbols-outlined text-on-surface-variant">help</span>
+</button>
+<div class="h-8 w-px bg-outline-variant mx-1"></div>
+<img alt="Administrator Profile" class="h-9 w-9 rounded-full object-cover border border-outline-variant" data-alt="A professional headshot of a middle-aged male administrator with a clean-cut look, wearing a tailored navy blazer and a white shirt. The background is a soft-focus modern office environment with warm minimalist lighting and a color palette of soft indigos and grays to match the UI brand identity." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDpYNZ7HdMWSsqShewfQ4z187y9uvrVtj6bMbf1qapdWV8LMbZdI5a2LhfkGtJkXPGo3XQhE-1B0h9Pq3a2hN7VDx-quRmYm66sNaZ-8w2De2l6nx8lxvtJWwvdT0GBHBHoDSkkm0fhOXGTUCIoRuwRHWr8dTOsfeGCgwYTQpsIjsul--dummfXxkNnuLtBP9nc9Qmey2wJLO1OJVPUbTCzYKkmmOxAF82hM-5EgxicOZmVO2WFj08hhH7Oq7mTQRtX8lITUeAs0IQ"/>
+</div>
+</div>
+</header>
+<!-- Dashboard Content -->
+<div class="flex-1 p-lg max-w-[1280px] mx-auto w-full">
+<!-- Metrics Bar -->
+<section class="grid grid-cols-1 md:grid-cols-3 gap-lg mb-xl">
+<div class="bg-surface p-lg rounded-xl border border-outline-variant shadow-sm flex items-center justify-between">
+<div>
+<p class="font-label-sm text-on-surface-variant uppercase tracking-wider">Activos</p>
+<h3 class="font-display-lg text-display-lg text-primary mt-1">487</h3>
+</div>
+<div class="p-4 bg-primary/10 rounded-full">
+<span class="material-symbols-outlined text-primary scale-125">person_play</span>
+</div>
+</div>
+<div class="bg-surface p-lg rounded-xl border-b-4 border-amber-400 shadow-sm flex items-center justify-between relative overflow-hidden">
+<div class="absolute top-0 right-0 p-2 opacity-5">
+<span class="material-symbols-outlined text-9xl">priority_high</span>
+</div>
+<div>
+<p class="font-label-sm text-on-surface-variant uppercase tracking-wider">Atención</p>
+<h3 class="font-display-lg text-display-lg text-amber-600 mt-1">12</h3>
+</div>
+<div class="p-4 bg-amber-50 rounded-full">
+<span class="material-symbols-outlined text-amber-500 scale-125">error</span>
+</div>
+</div>
+<div class="bg-surface p-lg rounded-xl border-b-4 border-error shadow-sm flex items-center justify-between relative overflow-hidden">
+<div class="absolute top-0 right-0 p-2 opacity-5">
+<span class="material-symbols-outlined text-9xl">dangerous</span>
+</div>
+<div>
+<p class="font-label-sm text-on-surface-variant uppercase tracking-wider">Críticos</p>
+<h3 class="font-display-lg text-display-lg text-error mt-1">3</h3>
+</div>
+<div class="p-4 bg-error-container rounded-full">
+<span class="material-symbols-outlined text-error scale-125">gpp_maybe</span>
+</div>
+</div>
+</section>
+<!-- Filters and Grid -->
+<section class="flex flex-col gap-lg">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-xs p-1 bg-surface-container-high rounded-xl">
+<button class="px-6 py-2 rounded-lg bg-surface shadow-sm text-primary font-bold text-sm transition-all">Todos</button>
+<button class="px-6 py-2 rounded-lg hover:bg-surface-container-low text-on-surface-variant text-sm transition-all">En alerta</button>
+<button class="px-6 py-2 rounded-lg hover:bg-surface-container-low text-on-surface-variant text-sm transition-all">Críticos</button>
+</div>
+<div class="flex items-center gap-sm">
+<button class="flex items-center gap-xs px-4 py-2 border border-outline-variant rounded-xl bg-surface text-sm font-semibold hover:bg-surface-container-low transition-colors">
+<span class="material-symbols-outlined text-base">filter_list</span>
+                            Filtrar por Grupo
+                        </button>
+<button class="flex items-center gap-xs px-4 py-2 bg-primary text-on-primary rounded-xl text-sm font-bold shadow-md hover:opacity-90 active:scale-95 transition-all">
+<span class="material-symbols-outlined text-base">refresh</span>
+                            Actualizar Vista
+                        </button>
+</div>
+</div>
+<!-- Bento Grid of Session Cards -->
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-lg">
+<!-- Card 1: Critical -->
+<div class="group bg-surface rounded-xl border border-outline-variant shadow-sm overflow-hidden hover:shadow-md transition-all border-t-4 border-t-error">
+<div class="relative aspect-video">
+<img class="w-full h-full object-cover" data-alt="A focused high-angle view of a university student taking an online exam in a dimly lit room. The laptop screen displays complex diagrams. The lighting is cold, suggesting late night work, with a soft indigo glow reflecting off the student's face. The composition emphasizes a high-stakes, monitored academic atmosphere." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAsO1jUjxiZnR2w4V4zGRjrjnBZjYLMIBTEV5uZEhk_BsIlGJXRxxunLFDr7W_ukJ2G3mq_SWvD6GCdW3MyIZcBt0tUheYdG2gwlz6NLfvwujk_CQlMcycza_PfpOswbZNGiGvS4b3vy-dLdyYnjtSyGnWF9RTEOFnxpD77mI1n0IVu8Y1Dm8lHlVy3QLq7dBtnvOp-nHvu4hdgzZ9OoGETeJuSNYZjwRVUlrhBmmFbmS9LuDJNEOMNJnophIw9cMTn0UQya34QLZU"/>
+<div class="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-md">
+<button class="w-full py-2 bg-white/20 backdrop-blur-md text-white rounded-lg text-xs font-bold border border-white/30 hover:bg-white/40 transition-all">Ver Stream en Vivo</button>
+</div>
+<div class="absolute top-2 left-2 flex items-center gap-xs bg-black/40 backdrop-blur-sm px-2 py-1 rounded-full border border-white/20">
+<div class="w-2 h-2 bg-emerald-400 rounded-full status-pulse"></div>
+<span class="text-[10px] text-white font-bold tracking-tight uppercase">Live 1080p</span>
+</div>
+</div>
+<div class="p-md">
+<div class="flex justify-between items-start mb-sm">
+<div>
+<h4 class="font-title-lg text-sm text-on-surface line-clamp-1">Alejandro G. Mendoza</h4>
+<p class="text-[11px] text-on-surface-variant">ID: #4492-ST</p>
+</div>
+<div class="relative flex items-center justify-center w-10 h-10">
+<svg class="w-full h-full transform -rotate-90">
+<circle class="text-surface-container-highest" cx="20" cy="20" fill="transparent" r="16" stroke="currentColor" stroke-width="3"></circle>
+<circle class="text-error" cx="20" cy="20" fill="transparent" r="16" stroke="currentColor" stroke-dasharray="100" stroke-dashoffset="12" stroke-width="3"></circle>
+</svg>
+<span class="absolute text-[10px] font-bold text-error">88</span>
+</div>
+</div>
+<div class="space-y-2">
+<div class="flex items-center gap-xs text-[12px] text-error font-medium">
+<span class="material-symbols-outlined text-sm">visibility_off</span>
+                                    Falta de contacto visual (3m)
+                                </div>
+<div class="flex items-center gap-xs text-[12px] text-on-surface-variant">
+<span class="material-symbols-outlined text-sm">wifi</span>
+                                    Latencia: 42ms (Estable)
+                                </div>
+</div>
+</div>
+</div>
+<!-- Card 2: Warning -->
+<div class="group bg-surface rounded-xl border border-outline-variant shadow-sm overflow-hidden hover:shadow-md transition-all border-t-4 border-t-amber-400">
+<div class="relative aspect-video">
+<img class="w-full h-full object-cover" data-alt="A side-profile shot of a young student working intently at a white minimalist desk with a clean background. The aesthetic is bright and modern, utilizing soft daylight filtering through a window. The color scheme features subtle warm tones, whites, and light grays, reflecting a calm but focused study environment." src="https://lh3.googleusercontent.com/aida-public/AB6AXuB9zgJm2a2p4H5wI5rZha3vq5G23-7Z6S32nfme8Hhm-g66NPJvefn33sDDSadD38cc0nSI9xhZ-KbULMmkQ5S6c4vTMv6KRJWCLAIy5R_DkJkbchCpt9Vk-4800ozoe9nUvtQuFwWVv_-q8jYrqR1o6cXvjnZ0uK4lmflf0gL6Z4q8VLap4QhYZu-O-LTHy2zRIj0S5FT8Y0XT6INFRk9b5iXp4R6uwfbIz-FUW7zza4zISGmzPhiD5Lj8HjSZnqz6tfXCaBp_bNI"/>
+<div class="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-md">
+<button class="w-full py-2 bg-white/20 backdrop-blur-md text-white rounded-lg text-xs font-bold border border-white/30">Ver Stream en Vivo</button>
+</div>
+<div class="absolute top-2 left-2 flex items-center gap-xs bg-black/40 backdrop-blur-sm px-2 py-1 rounded-full border border-white/20">
+<div class="w-2 h-2 bg-emerald-400 rounded-full status-pulse"></div>
+<span class="text-[10px] text-white font-bold">Live 720p</span>
+</div>
+</div>
+<div class="p-md">
+<div class="flex justify-between items-start mb-sm">
+<div>
+<h4 class="font-title-lg text-sm text-on-surface line-clamp-1">Valentina Rojas</h4>
+<p class="text-[11px] text-on-surface-variant">ID: #5512-ST</p>
+</div>
+<div class="relative flex items-center justify-center w-10 h-10">
+<svg class="w-full h-full transform -rotate-90">
+<circle class="text-surface-container-highest" cx="20" cy="20" fill="transparent" r="16" stroke="currentColor" stroke-width="3"></circle>
+<circle class="text-amber-500" cx="20" cy="20" fill="transparent" r="16" stroke="currentColor" stroke-dasharray="100" stroke-dashoffset="65" stroke-width="3"></circle>
+</svg>
+<span class="absolute text-[10px] font-bold text-amber-600">35</span>
+</div>
+</div>
+<div class="space-y-2">
+<div class="flex items-center gap-xs text-[12px] text-amber-600 font-medium">
+<span class="material-symbols-outlined text-sm">volume_up</span>
+                                    Audio ambiente detectado
+                                </div>
+<div class="flex items-center gap-xs text-[12px] text-on-surface-variant">
+<span class="material-symbols-outlined text-sm">wifi</span>
+                                    Latencia: 120ms (Inestable)
+                                </div>
+</div>
+</div>
+</div>
+<!-- Card 3: Healthy -->
+<div class="group bg-surface rounded-xl border border-outline-variant shadow-sm overflow-hidden hover:shadow-md transition-all border-t-4 border-t-emerald-400">
+<div class="relative aspect-video">
+<img class="w-full h-full object-cover" data-alt="A professional young woman looking directly into a webcam during a remote session. Her expression is neutral and attentive. The room is modern and airy with light-colored walls and soft, high-key lighting that eliminates harsh shadows. The overall mood is transparent, professional, and trustworthy." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAhSgcmfEFUUGIOwR6ebnWL6BLo1qL0LJwHx3PTM_y3jaLQYwvCrb3p4ugjPFBRHK-f-e9UBS_oTI9FTfMgSe2r65letNPPqUC80yrOgSqvzuko3f7Nv51rvM0oYW6Ik8FFaoTbQMQvaPIlJN-S4e0AQVSgKCeBd4EE7QKTpbtOOBCUSvdctdJcevJH4N2uOJOTUmDNfs_nJarT4VLCoU5Ba23_M_lcxgI0Y-rVqiQ49Tzj6PEPpltzmaHn77vH3aDMJhTZwdN67ys"/>
+<div class="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-md">
+<button class="w-full py-2 bg-white/20 backdrop-blur-md text-white rounded-lg text-xs font-bold border border-white/30">Ver Stream en Vivo</button>
+</div>
+<div class="absolute top-2 left-2 flex items-center gap-xs bg-black/40 backdrop-blur-sm px-2 py-1 rounded-full border border-white/20">
+<div class="w-2 h-2 bg-emerald-400 rounded-full status-pulse"></div>
+<span class="text-[10px] text-white font-bold">Live 1080p</span>
+</div>
+</div>
+<div class="p-md">
+<div class="flex justify-between items-start mb-sm">
+<div>
+<h4 class="font-title-lg text-sm text-on-surface line-clamp-1">Sofia Hernandez</h4>
+<p class="text-[11px] text-on-surface-variant">ID: #9901-ST</p>
+</div>
+<div class="relative flex items-center justify-center w-10 h-10">
+<svg class="w-full h-full transform -rotate-90">
+<circle class="text-surface-container-highest" cx="20" cy="20" fill="transparent" r="16" stroke="currentColor" stroke-width="3"></circle>
+<circle class="text-emerald-500" cx="20" cy="20" fill="transparent" r="16" stroke="currentColor" stroke-dasharray="100" stroke-dashoffset="95" stroke-width="3"></circle>
+</svg>
+<span class="absolute text-[10px] font-bold text-emerald-600">05</span>
+</div>
+</div>
+<div class="space-y-2">
+<div class="flex items-center gap-xs text-[12px] text-emerald-600 font-medium">
+<span class="material-symbols-outlined text-sm">check_circle</span>
+                                    Sin incidencias
+                                </div>
+<div class="flex items-center gap-xs text-[12px] text-on-surface-variant">
+<span class="material-symbols-outlined text-sm">wifi</span>
+                                    Latencia: 15ms (Óptima)
+                                </div>
+</div>
+</div>
+</div>
+<!-- Card 4: Healthy -->
+<div class="group bg-surface rounded-xl border border-outline-variant shadow-sm overflow-hidden hover:shadow-md transition-all border-t-4 border-t-emerald-400">
+<div class="relative aspect-video">
+<img class="w-full h-full object-cover" data-alt="A portrait of a male student working on a laptop in a bright, modern library setting. The background shows blurred bookshelves and soft architectural lines. The lighting is natural and diffuse, creating a serene and intellectual atmosphere. The color palette is composed of soft whites, wood tones, and cool blues." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAmwn2CvEIX1EsWZZi439IyU6lb1EPbTO2x0q0oLmII5fqLypPSMVyC_FDAZVmGt8ooKEBaFaUGVb2Hnq7i0S4PadXJSTuwVaClB4VBcODgWbiQ6U1c8jYo8sYMYmd-QyteF2lNknzFmOF_qvu5zGH0xiVKVpVhuJtV73WjZAS8h6HZro7tBlpa6h0J5It-9MmpF4iPUAGR0BVTlW2vmaHu0K2uvmb7TUh1GoPQdLVc4q0zCcx8O_TWZQNK9cZYSYMde_Ny0UOFJnc"/>
+<div class="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-md">
+<button class="w-full py-2 bg-white/20 backdrop-blur-md text-white rounded-lg text-xs font-bold border border-white/30">Ver Stream en Vivo</button>
+</div>
+<div class="absolute top-2 left-2 flex items-center gap-xs bg-black/40 backdrop-blur-sm px-2 py-1 rounded-full border border-white/20">
+<div class="w-2 h-2 bg-emerald-400 rounded-full status-pulse"></div>
+<span class="text-[10px] text-white font-bold">Live 1080p</span>
+</div>
+</div>
+<div class="p-md">
+<div class="flex justify-between items-start mb-sm">
+<div>
+<h4 class="font-title-lg text-sm text-on-surface line-clamp-1">Diego Torres</h4>
+<p class="text-[11px] text-on-surface-variant">ID: #2234-ST</p>
+</div>
+<div class="relative flex items-center justify-center w-10 h-10">
+<svg class="w-full h-full transform -rotate-90">
+<circle class="text-surface-container-highest" cx="20" cy="20" fill="transparent" r="16" stroke="currentColor" stroke-width="3"></circle>
+<circle class="text-emerald-500" cx="20" cy="20" fill="transparent" r="16" stroke="currentColor" stroke-dasharray="100" stroke-dashoffset="92" stroke-width="3"></circle>
+</svg>
+<span class="absolute text-[10px] font-bold text-emerald-600">08</span>
+</div>
+</div>
+<div class="space-y-2">
+<div class="flex items-center gap-xs text-[12px] text-emerald-600 font-medium">
+<span class="material-symbols-outlined text-sm">check_circle</span>
+                                    Sin incidencias
+                                </div>
+<div class="flex items-center gap-xs text-[12px] text-on-surface-variant">
+<span class="material-symbols-outlined text-sm">wifi</span>
+                                    Latencia: 28ms (Estable)
+                                </div>
+</div>
+</div>
+</div>
+<!-- Additional Mock Cards for Grid Density -->
+<div class="bg-surface rounded-xl border border-outline-variant shadow-sm p-md flex items-center justify-center border-dashed opacity-60">
+<div class="text-center">
+<span class="material-symbols-outlined text-3xl text-on-surface-variant/40">more_horiz</span>
+<p class="text-xs font-medium text-on-surface-variant">Cargando 483 sesiones más...</p>
+</div>
+</div>
+</div>
+</section>
+</div>
+<!-- Float FAB for Bulk Action (Contextual) -->
+<div class="fixed bottom-lg right-lg flex flex-col gap-sm">
+<button class="w-14 h-14 bg-primary text-on-primary rounded-full shadow-lg flex items-center justify-center hover:scale-110 active:scale-90 transition-transform group">
+<span class="material-symbols-outlined">chat_bubble</span>
+<span class="absolute right-16 bg-inverse-surface text-inverse-on-surface text-[12px] px-3 py-1 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">Broadcast Message</span>
+</button>
+<button class="w-14 h-14 bg-error text-on-error rounded-full shadow-lg flex items-center justify-center hover:scale-110 active:scale-90 transition-transform group">
+<span class="material-symbols-outlined">lock_reset</span>
+<span class="absolute right-16 bg-inverse-surface text-inverse-on-surface text-[12px] px-3 py-1 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">Emergency Lockdown</span>
+</button>
+</div>
+</main>
+<script>
+        // Simple micro-interaction for filter buttons
+        const filterButtons = document.querySelectorAll('.flex.items-center.gap-xs.p-1 button');
+        filterButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                filterButtons.forEach(b => {
+                    b.classList.remove('bg-surface', 'shadow-sm', 'text-primary', 'font-bold');
+                    b.classList.add('hover:bg-surface-container-low', 'text-on-surface-variant');
+                });
+                btn.classList.add('bg-surface', 'shadow-sm', 'text-primary', 'font-bold');
+                btn.classList.remove('hover:bg-surface-container-low', 'text-on-surface-variant');
+            });
+        });
+
+        // Simulating live risk score changes
+        setInterval(() => {
+            const scores = document.querySelectorAll('.font-bold.text-emerald-600, .font-bold.text-amber-600, .font-bold.text-error');
+            scores.forEach(score => {
+                if(Math.random() > 0.8) {
+                    const current = parseInt(score.innerText);
+                    const change = Math.floor(Math.random() * 3) - 1;
+                    const newValue = Math.max(0, Math.min(100, current + change));
+                    score.innerText = newValue.toString().padStart(2, '0');
+                }
+            });
+        }, 3000);
+    </script>
+</body></html>

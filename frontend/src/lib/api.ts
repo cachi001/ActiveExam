@@ -1,0 +1,259 @@
+// Capa de API del MVP. Por defecto funciona en MODO DEMO (datos en memoria, sin
+// backend) para poder probar el flujo completo standalone. Si se define
+// VITE_API_BASE + VITE_USE_REAL_BACKEND=1, las llamadas marcadas como reales
+// (consentimiento, biometría) pasan por fetch al FastAPI real.
+//
+// Los esquemas y enums coinciden con app/presentation/api/v1/* del backend.
+
+import type {
+  Principal, Rol, ConsentTextResponse, ConsentResponse, Examen,
+  VerifyIdentityResponse, SesionEnVivo, SesionRevision, ResumenReportes,
+  EventoSesion, DesafioActivo, Severidad, TipoEvento,
+} from './types';
+
+export const API_BASE = (import.meta.env.VITE_API_BASE as string) || '/api/v1';
+export const USE_REAL_BACKEND = import.meta.env.VITE_USE_REAL_BACKEND === '1';
+
+const delay = (ms = 350) => new Promise((r) => setTimeout(r, ms));
+
+// ---------------------------------------------------------------------------
+// Datos demo (en memoria)
+// ---------------------------------------------------------------------------
+
+const FOTOS = {
+  julian: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=200&auto=format&fit=crop&q=80',
+  martina: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200&auto=format&fit=crop&q=80',
+  tomas: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&auto=format&fit=crop&q=80',
+  sofia: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=200&auto=format&fit=crop&q=80',
+};
+
+export const PRINCIPALES: Record<Rol, Principal> = {
+  estudiante: {
+    id_institucional: 'UBA-23.491.002', nombre: 'Emiliano Cáceres',
+    email: 'ecaceres@estudiante.uba.ar', roles: ['estudiante'],
+    mfa_satisfecho: true, jurisdiccion: 'AR',
+  },
+  proctor: {
+    id_institucional: 'UBA-DOC-1182', nombre: 'Dra. Carolina Ferreyra',
+    email: 'cferreyra@uba.ar', roles: ['proctor'], mfa_satisfecho: true, jurisdiccion: 'AR',
+  },
+  revisor: {
+    id_institucional: 'UBA-DOC-0934', nombre: 'Prof. Martín Acuña',
+    email: 'macuna@uba.ar', roles: ['revisor'], mfa_satisfecho: true, jurisdiccion: 'AR',
+  },
+  admin_examenes: {
+    id_institucional: 'UBA-ADM-0021', nombre: 'Lucía Mendoza',
+    email: 'lmendoza@uba.ar', roles: ['admin_examenes'], mfa_satisfecho: true, jurisdiccion: 'AR',
+  },
+  coordinador: {
+    id_institucional: 'UBA-CRD-0007', nombre: 'Coordinación Académica',
+    email: 'coordinacion@uba.ar', roles: ['coordinador'], mfa_satisfecho: true, jurisdiccion: 'AR',
+  },
+};
+
+const DETECTORES_DEFAULT: TipoEvento[] = [
+  'rostro_ausente', 'multiples_rostros', 'mirada_desviada_sostenida',
+  'perdida_de_foco', 'monitor_adicional',
+];
+
+let EXAMENES: Examen[] = [
+  {
+    id: 'EX-UBA-ANAT-I', nombre: 'Examen Final — Anatomía I', catedra: 'Cátedra B',
+    estado: 'en_curso', inicio: '2026-05-30T14:00:00', duracion_min: 90,
+    umbral_score: 70, detectores: DETECTORES_DEFAULT, retencion_dias: 30,
+    inscriptos: 48, rindiendo: 4,
+  },
+  {
+    id: 'EX-UBA-FISIO-II', nombre: 'Parcial — Fisiología II', catedra: 'Cátedra A',
+    estado: 'programado', inicio: '2026-06-02T09:00:00', duracion_min: 60,
+    umbral_score: 65, detectores: DETECTORES_DEFAULT, retencion_dias: 30,
+    inscriptos: 72, rindiendo: 0,
+  },
+  {
+    id: 'EX-UBA-QUIM-ORG', nombre: 'Recuperatorio — Química Orgánica', catedra: 'Cátedra C',
+    estado: 'finalizado', inicio: '2026-05-28T16:00:00', duracion_min: 120,
+    umbral_score: 75, detectores: DETECTORES_DEFAULT, retencion_dias: 30,
+    inscriptos: 35, rindiendo: 0,
+  },
+  {
+    id: 'EX-UBA-HISTO', nombre: 'Examen — Histología', catedra: 'Cátedra B',
+    estado: 'borrador', inicio: '2026-06-10T11:00:00', duracion_min: 75,
+    umbral_score: 70, detectores: DETECTORES_DEFAULT, retencion_dias: 30,
+    inscriptos: 0, rindiendo: 0,
+  },
+];
+
+export const DESAFIOS: DesafioActivo[] = [
+  { id: 'girar_izquierda', label: 'Girar a la izquierda' },
+  { id: 'girar_derecha', label: 'Girar a la derecha' },
+  { id: 'parpadear', label: 'Parpadear' },
+  { id: 'acercarse', label: 'Acercarse a la cámara' },
+  { id: 'sonreir', label: 'Sonreír' },
+];
+
+const SESIONES_VIVO: SesionEnVivo[] = [
+  { id: 'SESS-00392', estudiante: 'Emiliano Cáceres', legajo: '23.491.002', estado: 'rindiendo', score: 0, anomalias: 0, ultima_senal: 'Foco activo', foto: FOTOS.julian, es_propia: true },
+  { id: 'SESS-00393', estudiante: 'Martina Rossi', legajo: '25.102.894', estado: 'rindiendo', score: 72, anomalias: 4, ultima_senal: 'Mirada desviada', foto: FOTOS.martina },
+  { id: 'SESS-00394', estudiante: 'Tomás Galdámez', legajo: '24.894.201', estado: 'escalado', score: 94, anomalias: 6, ultima_senal: 'Múltiples rostros', foto: FOTOS.tomas },
+  { id: 'SESS-00395', estudiante: 'Sofía Álvarez', legajo: '23.951.302', estado: 'rindiendo', score: 15, anomalias: 1, ultima_senal: 'Pérdida de foco', foto: FOTOS.sofia },
+];
+
+const DESC_EVENTO: Record<TipoEvento, string> = {
+  rostro_ausente: 'No se detectó rostro en el encuadre por más de 3 segundos.',
+  multiples_rostros: 'Se detectaron múltiples rostros simultáneos en cámara.',
+  mirada_desviada_sostenida: 'Patrón de mirada sostenido hacia un punto fijo fuera de pantalla.',
+  perdida_de_foco: 'El estudiante minimizó la ventana o cambió de pestaña.',
+  monitor_adicional: 'Se detectó un segundo monitor conectado al equipo.',
+  corte_conectividad_prolongado: 'Corte de conectividad prolongado (> 5 min) con el canal de eventos.',
+};
+
+export function descripcionEvento(t: TipoEvento): string { return DESC_EVENTO[t]; }
+
+const COLA_REVISION: SesionRevision[] = [
+  {
+    id: 'S-93041', estudiante: 'Tomás Galdámez', legajo: '24.894.201', examen: 'Anatomía I',
+    catedra: 'Cátedra B', score: 94, fecha: '30/05/2026', duracion: '42 min', foto: FOTOS.tomas,
+    decision: 'pendiente',
+    eventos: [
+      { id: 'EV-1', tipo: 'multiples_rostros', severidad: 'alta', ts_backend: '2026-05-30T16:12:04', descripcion: DESC_EVENTO.multiples_rostros, tiene_evidencia: true, evidencia_object_key: 'clip_tomas_01.webm' },
+      { id: 'EV-2', tipo: 'monitor_adicional', severidad: 'alta', ts_backend: '2026-05-30T16:15:22', descripcion: DESC_EVENTO.monitor_adicional, tiene_evidencia: true, evidencia_object_key: 'clip_tomas_02.webm' },
+      { id: 'EV-3', tipo: 'perdida_de_foco', severidad: 'baja', ts_backend: '2026-05-30T16:21:40', descripcion: DESC_EVENTO.perdida_de_foco, tiene_evidencia: false },
+    ],
+    cadena_custodia: { hash_cliente: 'c892fa3e…', rehash_backend: 'c892fa3e…', coincide: true, firma_maestra: 'a07f…ed25', algoritmo_firma: 'Ed25519' },
+  },
+  {
+    id: 'S-92891', estudiante: 'Martina Rossi', legajo: '25.102.894', examen: 'Anatomía I',
+    catedra: 'Cátedra B', score: 72, fecha: '30/05/2026', duracion: '58 min', foto: FOTOS.martina,
+    decision: 'pendiente',
+    eventos: [
+      { id: 'EV-4', tipo: 'mirada_desviada_sostenida', severidad: 'media', ts_backend: '2026-05-30T15:44:12', descripcion: DESC_EVENTO.mirada_desviada_sostenida, tiene_evidencia: true, evidencia_object_key: 'clip_martina_01.webm' },
+      { id: 'EV-5', tipo: 'rostro_ausente', severidad: 'media', ts_backend: '2026-05-30T15:58:30', descripcion: DESC_EVENTO.rostro_ausente, tiene_evidencia: true, evidencia_object_key: 'clip_martina_02.webm' },
+    ],
+    cadena_custodia: { hash_cliente: 'f41b09…', rehash_backend: 'f41b09…', coincide: true, firma_maestra: 'b13c…ed25', algoritmo_firma: 'Ed25519' },
+  },
+];
+
+const REPORTES: ResumenReportes = {
+  examenes_totales: 24, sesiones_totales: 1284, tasa_flag: 12.4, falsos_positivos: 31.2,
+  tiempo_medio_revision: '4 min 12 s',
+  distribucion_severidad: [
+    { severidad: 'baja', cantidad: 612 }, { severidad: 'media', cantidad: 184 },
+    { severidad: 'alta', cantidad: 73 }, { severidad: 'critica', cantidad: 18 },
+  ],
+  tendencia_semanal: [
+    { semana: 'Sem 1', flaggeadas: 28, revisadas: 25 },
+    { semana: 'Sem 2', flaggeadas: 41, revisadas: 39 },
+    { semana: 'Sem 3', flaggeadas: 33, revisadas: 33 },
+    { semana: 'Sem 4', flaggeadas: 52, revisadas: 47 },
+  ],
+};
+
+const CONSENT_TEXT: ConsentTextResponse = {
+  version: '2026.1',
+  hash_texto: 'sha256:9f2b…a31',
+  bloques: [
+    { icono: 'help', titulo: '¿Qué datos recolectamos?', cuerpo: 'Video de tu cámara y captura de pantalla durante el examen, y un embedding facial para verificar tu identidad. El embedding se trata como dato sensible bajo la Ley 25.326.' },
+    { icono: 'memory', titulo: '¿Cómo se procesan?', cuerpo: 'El análisis de visión corre localmente en tu navegador (Web Worker). Solo se envían señales discretas firmadas y, ante incidencias graves, clips cortos de evidencia. El backend re-infiere y firma toda la evidencia.' },
+    { icono: 'dns', titulo: '¿Dónde se almacenan?', cuerpo: 'En infraestructura self-hosted de la universidad, cifrada en reposo, con cadena de custodia criptográfica. Soberanía de datos completa.' },
+    { icono: 'schedule', titulo: '¿Cuánto tiempo?', cuerpo: 'La evidencia se conserva 30 días y luego se elimina automáticamente. El embedding biométrico se elimina al egreso, salvo apelación o hold disciplinario.' },
+    { icono: 'gavel', titulo: 'Tus derechos', cuerpo: 'El sistema nunca sanciona automáticamente (nivel L2.5): solo prioriza para revisión humana. Podés acceder, rectificar y solicitar la eliminación de tus datos ante la AAIP.' },
+  ],
+};
+
+// ---------------------------------------------------------------------------
+// API pública (modo demo). Cada método simula latencia de red.
+// ---------------------------------------------------------------------------
+
+async function realFetch<T>(path: string, init: RequestInit, token: string): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    ...init,
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, ...(init.headers || {}) },
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json() as Promise<T>;
+}
+
+export const api = {
+  modoDemo: !USE_REAL_BACKEND,
+
+  async login(rol: Rol): Promise<Principal> {
+    await delay(450);
+    return PRINCIPALES[rol];
+  },
+
+  async getConsentText(token = 'demo'): Promise<ConsentTextResponse> {
+    if (USE_REAL_BACKEND) {
+      try { return await realFetch<ConsentTextResponse>('/consent/text', { method: 'GET' }, token); }
+      catch { /* fallback demo */ }
+    }
+    await delay(300);
+    return CONSENT_TEXT;
+  },
+
+  async recordConsent(examId: string, token = 'demo'): Promise<ConsentResponse> {
+    if (USE_REAL_BACKEND) {
+      try {
+        return await realFetch<ConsentResponse>('/consent', {
+          method: 'POST',
+          body: JSON.stringify({ exam_id: examId, version_texto: CONSENT_TEXT.version, affirmative_action: true }),
+        }, token);
+      } catch { /* fallback */ }
+    }
+    await delay(400);
+    return {
+      id: `CONS-${Math.floor(Math.random() * 1e6).toString(36)}`,
+      user_id: PRINCIPALES.estudiante.id_institucional, exam_id: examId,
+      version_texto: CONSENT_TEXT.version, timestamp: new Date().toISOString(),
+      hash: 'sha256:' + Math.random().toString(16).slice(2, 10),
+    };
+  },
+
+  async verifyIdentity(_sessionId: string, distancia = 0.31): Promise<VerifyIdentityResponse> {
+    await delay(900);
+    const ok = distancia < 0.5;
+    return {
+      veredicto: ok ? 'verificado' : 'reintento',
+      distancia, reintentos_restantes: ok ? 0 : 2,
+      clave_sesion_emitida: ok, escalado_a_proctor: false,
+    };
+  },
+
+  async listExams(): Promise<Examen[]> { await delay(300); return [...EXAMENES]; },
+  async getExam(id: string): Promise<Examen | undefined> { await delay(200); return EXAMENES.find((e) => e.id === id); },
+  async saveExam(exam: Examen): Promise<Examen> {
+    await delay(400);
+    const i = EXAMENES.findIndex((e) => e.id === exam.id);
+    if (i >= 0) EXAMENES[i] = exam; else EXAMENES = [exam, ...EXAMENES];
+    return exam;
+  },
+
+  async liveSessions(): Promise<SesionEnVivo[]> { await delay(250); return SESIONES_VIVO.map((s) => ({ ...s })); },
+
+  async reviewQueue(): Promise<SesionRevision[]> {
+    await delay(300);
+    return COLA_REVISION.filter((s) => s.decision === 'pendiente').map((s) => ({ ...s }));
+  },
+  async resolveReview(id: string, decision: SesionRevision['decision']): Promise<void> {
+    await delay(300);
+    const s = COLA_REVISION.find((x) => x.id === id);
+    if (s) s.decision = decision;
+  },
+
+  async reportes(): Promise<ResumenReportes> { await delay(350); return REPORTES; },
+};
+
+// Helpers de presentación
+export const SEVERIDAD_LABEL: Record<Severidad, string> = {
+  baseline: 'Base', baja: 'Baja', media: 'Media', alta: 'Alta', critica: 'Crítica',
+};
+
+export const TIPO_EVENTO_LABEL: Record<TipoEvento, string> = {
+  rostro_ausente: 'Rostro ausente',
+  multiples_rostros: 'Múltiples rostros',
+  mirada_desviada_sostenida: 'Mirada desviada sostenida',
+  perdida_de_foco: 'Pérdida de foco',
+  monitor_adicional: 'Monitor adicional',
+  corte_conectividad_prolongado: 'Corte de conectividad',
+};
+
+export type { EventoSesion };

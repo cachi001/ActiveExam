@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+
+<html class="light" lang="es"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>ProctorPro - Reportes y Analítica</title>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Google Fonts -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Theme Configuration -->
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "outline-variant": "#c7c4d6",
+                    "on-background": "#1a1c1f",
+                    "on-surface": "#1a1c1f",
+                    "secondary-container": "#7260e5",
+                    "surface-card": "#FFFFFF",
+                    "background": "#f9f9fd",
+                    "on-secondary-fixed-variant": "#432bb4",
+                    "on-tertiary-container": "#edeaff",
+                    "primary-fixed": "#e2dfff",
+                    "surface-bright": "#f9f9fd",
+                    "primary": "#4241bc",
+                    "success": "#15803D",
+                    "on-surface-variant": "#464553",
+                    "secondary": "#5845ca",
+                    "surface-container-low": "#f3f3f7",
+                    "on-primary-container": "#edeaff",
+                    "secondary-fixed-dim": "#c7bfff",
+                    "error-container": "#ffdad6",
+                    "tertiary-container": "#696880",
+                    "primary-container": "#5b5bd6",
+                    "success-container": "#DCFCE7",
+                    "surface-container-high": "#e8e8ec",
+                    "surface-variant": "#e2e2e6",
+                    "surface": "#f9f9fd",
+                    "surface-container-lowest": "#ffffff",
+                    "on-tertiary-fixed-variant": "#45455b",
+                    "tertiary": "#515067",
+                    "on-primary-fixed": "#0a006b",
+                    "surface-dim": "#d9dade",
+                    "primary-fixed-dim": "#c1c1ff",
+                    "surface-container": "#ededf1",
+                    "on-secondary-container": "#fffbff",
+                    "error": "#BA1A1A",
+                    "warning-container": "#FEF3C7",
+                    "on-error": "#ffffff",
+                    "inverse-on-surface": "#f0f0f4",
+                    "on-primary-fixed-variant": "#3533b0",
+                    "surface-container-highest": "#e2e2e6",
+                    "on-error-container": "#93000a",
+                    "outline": "#E2E2EC",
+                    "tertiary-fixed-dim": "#c6c4df",
+                    "surface-tint": "#4e4ec9",
+                    "secondary-fixed": "#e5deff",
+                    "warning": "#B45309",
+                    "on-primary": "#ffffff",
+                    "on-tertiary-fixed": "#1a192e",
+                    "inverse-surface": "#2e3034",
+                    "tertiary-fixed": "#e3dffc",
+                    "inverse-primary": "#c1c1ff",
+                    "on-secondary": "#ffffff",
+                    "surface-canvas": "#F7F7FB",
+                    "on-secondary-fixed": "#180065",
+                    "on-tertiary": "#ffffff"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.25rem",
+                    "lg": "0.5rem",
+                    "xl": "0.75rem",
+                    "full": "9999px"
+            },
+            "spacing": {
+                    "gutter": "24px",
+                    "sidebar-width": "260px",
+                    "xl": "32px",
+                    "container-max": "1280px",
+                    "sm": "12px",
+                    "xs": "8px",
+                    "md": "16px",
+                    "base": "4px",
+                    "xxl": "48px",
+                    "lg": "24px"
+            },
+            "fontFamily": {
+                    "headline-md": ["Plus Jakarta Sans"],
+                    "title-lg": ["Plus Jakarta Sans"],
+                    "label-sm": ["Inter"],
+                    "display-lg": ["Plus Jakarta Sans"],
+                    "body-md": ["Inter"],
+                    "headline-lg": ["Plus Jakarta Sans"],
+                    "body-lg": ["Inter"],
+                    "label-md": ["Inter"],
+                    "headline-lg-mobile": ["Plus Jakarta Sans"]
+            },
+            "fontSize": {
+                    "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                    "title-lg": ["20px", {"lineHeight": "28px", "fontWeight": "600"}],
+                    "label-sm": ["12px", {"lineHeight": "16px", "fontWeight": "500"}],
+                    "display-lg": ["48px", {"lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                    "body-md": ["15px", {"lineHeight": "22px", "fontWeight": "400"}],
+                    "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                    "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                    "label-md": ["14px", {"lineHeight": "20px", "letterSpacing": "0.01em", "fontWeight": "600"}],
+                    "headline-lg-mobile": ["24px", {"lineHeight": "32px", "fontWeight": "600"}]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        body { font-family: 'Inter', sans-serif; background-color: #F7F7FB; }
+        .glass-card {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .nav-active {
+            background: rgba(66, 65, 188, 0.1);
+            border-left: 4px solid #4241bc;
+            color: #4241bc;
+            font-weight: 700;
+        }
+        .chart-bar { transition: height 1s ease-out; }
+    </style>
+</head>
+<body class="text-on-surface antialiased">
+<!-- SideNavBar Shell -->
+<aside class="w-[260px] h-screen fixed left-0 top-0 bg-surface-container-lowest border-r border-outline shadow-[0_10px_40px_-10px_rgba(26,28,31,0.05)] z-50 flex flex-col py-lg px-md">
+<div class="mb-xxl px-sm">
+<h1 class="font-headline-md text-headline-md font-bold text-primary">ProctorPro</h1>
+<p class="font-label-md text-label-md text-on-surface-variant/70">Academic Suite</p>
+</div>
+<nav class="flex-1 space-y-base">
+<a class="flex items-center gap-md px-md py-sm rounded-lg text-on-surface-variant hover:bg-surface-container-low transition-colors duration-200" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+<span class="font-label-md">Dashboard</span>
+</a>
+<a class="flex items-center gap-md px-md py-sm rounded-lg text-on-surface-variant hover:bg-surface-container-low transition-colors duration-200" href="#">
+<span class="material-symbols-outlined">quiz</span>
+<span class="font-label-md">Exams</span>
+</a>
+<a class="flex items-center gap-md px-md py-sm rounded-lg text-on-surface-variant hover:bg-surface-container-low transition-colors duration-200" href="#">
+<span class="material-symbols-outlined">rate_review</span>
+<span class="font-label-md">Review Queue</span>
+</a>
+<a class="flex items-center gap-md px-md py-sm rounded-lg nav-active" href="#">
+<span class="material-symbols-outlined">assessment</span>
+<span class="font-label-md">Reports</span>
+</a>
+</nav>
+<div class="mt-auto pt-lg border-t border-outline">
+<button class="w-full mb-lg py-sm px-md bg-primary-container text-on-primary rounded-xl font-label-md flex items-center justify-center gap-sm active:scale-[0.98] transition-all">
+<span class="material-symbols-outlined">add</span>
+                Create Exam
+            </button>
+<div class="space-y-base">
+<a class="flex items-center gap-md px-md py-sm rounded-lg text-on-surface-variant hover:bg-surface-container-low transition-colors" href="#">
+<span class="material-symbols-outlined">settings</span>
+<span class="font-label-md">Settings</span>
+</a>
+<a class="flex items-center gap-md px-md py-sm rounded-lg text-on-surface-variant hover:bg-surface-container-low transition-colors" href="#">
+<span class="material-symbols-outlined">help_outline</span>
+<span class="font-label-md">Help Center</span>
+</a>
+</div>
+</div>
+</aside>
+<!-- TopAppBar Shell -->
+<header class="fixed top-0 right-0 w-[calc(100%-260px)] h-16 bg-surface/80 backdrop-blur-md border-b border-outline z-40 flex justify-between items-center px-xl">
+<div class="flex items-center gap-md w-1/2">
+<div class="relative w-full max-w-md">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant">search</span>
+<input class="w-full pl-10 pr-4 py-2 bg-surface-container-low border-none rounded-full text-body-md focus:ring-2 focus:ring-primary/15 transition-all" placeholder="Buscar reportes o alumnos..." type="text"/>
+</div>
+</div>
+<div class="flex items-center gap-lg">
+<button class="p-2 hover:bg-surface-container-high rounded-full transition-all relative">
+<span class="material-symbols-outlined text-on-surface-variant">notifications</span>
+<span class="absolute top-2 right-2 w-2 h-2 bg-error rounded-full"></span>
+</button>
+<button class="p-2 hover:bg-surface-container-high rounded-full transition-all">
+<span class="material-symbols-outlined text-on-surface-variant">settings</span>
+</button>
+<div class="h-8 w-[1px] bg-outline mx-2"></div>
+<div class="flex items-center gap-sm">
+<img alt="User" class="w-8 h-8 rounded-full border border-outline" data-alt="A professional headshot of a middle-aged academic administrator with a warm and confident expression, wearing a navy blue blazer. The background is a brightly lit, clean office environment with soft focus on a bookshelf. The lighting is natural and high-key, aligning with a premium, trust-oriented digital platform aesthetic." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDufWQj4-4c1fPBsjVUhIo2BlwcJ_qo9wN8pRnymihhS1KX1XbfLClEZmIdmKy6TA09VglqRvUepXUbBliliVRmUugr6CxqZE67UkiO2jkWZOSAE7v2Nqw9p8ZLOUaLOK_pQBX9Xk5-dY_6ED5cLFohbBqdaylvdBQ2IfCnOUZnkv848YijlD85nI5qqZF2in1M9Eay3RbNuNG8sApwymJ9rl4HSv2E8QyJyepCboVjPGmrO9dlpp0xz1c9Bhxk0vrNn8XxXnA35KI"/>
+<span class="font-label-md text-on-surface">Dr. Aristhone</span>
+</div>
+</div>
+</header>
+<!-- Main Content Canvas -->
+<main class="ml-[260px] pt-16 min-h-screen bg-surface-canvas p-xl">
+<!-- Header Section -->
+<div class="mb-xl flex justify-between items-end">
+<div>
+<h2 class="font-headline-lg text-headline-lg text-on-background">Reportes y Analítica</h2>
+<p class="font-body-md text-on-surface-variant mt-1">Análisis detallado de integridad académica: Examen Final de Psicología Cognitiva</p>
+</div>
+<div class="flex gap-md">
+<button class="px-lg py-sm border border-outline rounded-xl font-label-md text-primary flex items-center gap-xs hover:bg-surface-container-low transition-all">
+<span class="material-symbols-outlined text-[20px]">download</span>
+                    Exportar PDF
+                </button>
+<button class="px-lg py-sm bg-primary text-on-primary rounded-xl font-label-md flex items-center gap-xs hover:shadow-lg active:scale-95 transition-all">
+<span class="material-symbols-outlined text-[20px]">calendar_today</span>
+                    Últimos 30 días
+                </button>
+</div>
+</div>
+<!-- KPI Cards Grid -->
+<div class="grid grid-cols-1 md:grid-cols-4 gap-lg mb-xl">
+<div class="bg-surface-card p-lg rounded-xl border border-outline shadow-[0_10px_40px_-10px_rgba(26,28,31,0.05)]">
+<div class="flex justify-between items-start mb-md">
+<div class="p-base bg-primary/10 rounded-lg">
+<span class="material-symbols-outlined text-primary">groups</span>
+</div>
+<span class="text-success font-label-sm flex items-center">+12% vs prev</span>
+</div>
+<h3 class="font-label-md text-on-surface-variant">Total Sesiones</h3>
+<p class="font-headline-md text-headline-md text-on-surface mt-base">1,284</p>
+</div>
+<div class="bg-surface-card p-lg rounded-xl border border-outline shadow-[0_10px_40px_-10px_rgba(26,28,31,0.05)]">
+<div class="flex justify-between items-start mb-md">
+<div class="p-base bg-success-container/30 rounded-lg">
+<span class="material-symbols-outlined text-success">check_circle</span>
+</div>
+<span class="text-success font-label-sm">Estable</span>
+</div>
+<h3 class="font-label-md text-on-surface-variant">% Normales</h3>
+<p class="font-headline-md text-headline-md text-on-surface mt-base">94.2%</p>
+</div>
+<div class="bg-surface-card p-lg rounded-xl border border-outline shadow-[0_10px_40px_-10px_rgba(26,28,31,0.05)]">
+<div class="flex justify-between items-start mb-md">
+<div class="p-base bg-error-container/30 rounded-lg">
+<span class="material-symbols-outlined text-error">flag</span>
+</div>
+<span class="text-error font-label-sm flex items-center">-2% mejora</span>
+</div>
+<h3 class="font-label-md text-on-surface-variant">% Flaggeadas</h3>
+<p class="font-headline-md text-headline-md text-on-surface mt-base">5.8%</p>
+</div>
+<div class="bg-surface-card p-lg rounded-xl border border-outline shadow-[0_10px_40px_-10px_rgba(26,28,31,0.05)]">
+<div class="flex justify-between items-start mb-md">
+<div class="p-base bg-warning-container/30 rounded-lg">
+<span class="material-symbols-outlined text-warning">verified_user</span>
+</div>
+<span class="text-on-surface-variant font-label-sm">Revisado</span>
+</div>
+<h3 class="font-label-md text-on-surface-variant">Falsos Positivos</h3>
+<p class="font-headline-md text-headline-md text-on-surface mt-base">0.4%</p>
+</div>
+</div>
+<!-- Charts Bento Grid -->
+<div class="grid grid-cols-12 gap-lg mb-xl">
+<!-- Tendencia (Línea) -->
+<div class="col-span-12 lg:col-span-8 bg-surface-card p-xl rounded-xl border border-outline shadow-sm">
+<div class="flex justify-between items-center mb-xl">
+<h3 class="font-title-lg text-title-lg">Tendencia de Actividad</h3>
+<div class="flex gap-md">
+<div class="flex items-center gap-xs">
+<span class="w-3 h-3 rounded-full bg-primary"></span>
+<span class="font-label-sm text-on-surface-variant">Sesiones</span>
+</div>
+<div class="flex items-center gap-xs">
+<span class="w-3 h-3 rounded-full bg-error"></span>
+<span class="font-label-sm text-on-surface-variant">Alertas</span>
+</div>
+</div>
+</div>
+<!-- Visual Mock of Line Chart -->
+<div class="h-[280px] w-full flex items-end gap-x-2 relative group overflow-hidden">
+<svg class="absolute inset-0 w-full h-full overflow-visible" viewbox="0 0 800 200">
+<path class="drop-shadow-lg" d="M0,150 Q100,140 200,80 T400,100 T600,60 T800,20" fill="none" stroke="#4241bc" stroke-linecap="round" stroke-width="4"></path>
+<path d="M0,180 Q100,175 200,165 T400,170 T600,160 T800,155" fill="none" stroke="#BA1A1A" stroke-dasharray="8 4" stroke-linecap="round" stroke-width="2"></path>
+</svg>
+<!-- Y-Axis labels -->
+<div class="absolute left-0 h-full flex flex-col justify-between text-[10px] text-on-surface-variant/40 py-2">
+<span>2k</span><span>1.5k</span><span>1k</span><span>500</span><span>0</span>
+</div>
+</div>
+<div class="flex justify-between mt-md text-label-sm text-on-surface-variant px-md">
+<span>Lun</span><span>Mar</span><span>Mié</span><span>Jue</span><span>Vie</span><span>Sáb</span><span>Dom</span>
+</div>
+</div>
+<!-- Estados (Donut) -->
+<div class="col-span-12 lg:col-span-4 bg-surface-card p-xl rounded-xl border border-outline shadow-sm flex flex-col items-center">
+<h3 class="font-title-lg text-title-lg w-full mb-xl text-left">Estado de Revisiones</h3>
+<div class="relative w-48 h-48 mb-xl">
+<svg class="w-full h-full rotate-[-90deg]" viewbox="0 0 36 36">
+<circle cx="18" cy="18" fill="transparent" r="15.915" stroke="#e8e8ec" stroke-width="4"></circle>
+<circle cx="18" cy="18" fill="transparent" r="15.915" stroke="#15803D" stroke-dasharray="75 25" stroke-dashoffset="0" stroke-width="4"></circle>
+<circle cx="18" cy="18" fill="transparent" r="15.915" stroke="#BA1A1A" stroke-dasharray="15 85" stroke-dashoffset="-75" stroke-width="4"></circle>
+<circle cx="18" cy="18" fill="transparent" r="15.915" stroke="#B45309" stroke-dasharray="10 90" stroke-dashoffset="-90" stroke-width="4"></circle>
+</svg>
+<div class="absolute inset-0 flex flex-col items-center justify-center">
+<span class="font-headline-md text-on-surface">1.2k</span>
+<span class="text-label-sm text-on-surface-variant">Auditado</span>
+</div>
+</div>
+<div class="w-full space-y-sm">
+<div class="flex justify-between items-center px-md py-xs bg-surface-container-low rounded-lg">
+<div class="flex items-center gap-sm">
+<span class="w-2 h-2 rounded-full bg-success"></span>
+<span class="font-label-md">Limpios</span>
+</div>
+<span class="font-body-md font-bold">960</span>
+</div>
+<div class="flex justify-between items-center px-md py-xs bg-surface-container-low rounded-lg">
+<div class="flex items-center gap-sm">
+<span class="w-2 h-2 rounded-full bg-error"></span>
+<span class="font-label-md">Críticos</span>
+</div>
+<span class="font-body-md font-bold">184</span>
+</div>
+<div class="flex justify-between items-center px-md py-xs bg-surface-container-low rounded-lg">
+<div class="flex items-center gap-sm">
+<span class="w-2 h-2 rounded-full bg-warning"></span>
+<span class="font-label-md">Dudosos</span>
+</div>
+<span class="font-body-md font-bold">140</span>
+</div>
+</div>
+</div>
+<!-- Histograma de Riesgo -->
+<div class="col-span-12 lg:col-span-6 bg-surface-card p-xl rounded-xl border border-outline shadow-sm">
+<h3 class="font-title-lg text-title-lg mb-xl">Distribución de Puntuación de Riesgo</h3>
+<div class="flex items-end justify-between h-48 gap-xs px-md">
+<div class="flex-1 bg-primary/10 hover:bg-primary transition-all chart-bar rounded-t" style="height: 20%;"></div>
+<div class="flex-1 bg-primary/10 hover:bg-primary transition-all chart-bar rounded-t" style="height: 35%;"></div>
+<div class="flex-1 bg-primary/10 hover:bg-primary transition-all chart-bar rounded-t" style="height: 80%;"></div>
+<div class="flex-1 bg-primary/10 hover:bg-primary transition-all chart-bar rounded-t" style="height: 95%;"></div>
+<div class="flex-1 bg-primary/10 hover:bg-primary transition-all chart-bar rounded-t" style="height: 60%;"></div>
+<div class="flex-1 bg-primary/10 hover:bg-primary transition-all chart-bar rounded-t" style="height: 30%;"></div>
+<div class="flex-1 bg-primary/10 hover:bg-primary transition-all chart-bar rounded-t" style="height: 15%;"></div>
+<div class="flex-1 bg-primary/10 hover:bg-primary transition-all chart-bar rounded-t" style="height: 5%;"></div>
+</div>
+<div class="flex justify-between mt-md text-label-sm text-on-surface-variant px-md border-t border-outline pt-sm">
+<span>0-10</span><span>20-30</span><span>40-50</span><span>60-70</span><span>80-90</span><span>100</span>
+</div>
+<p class="text-center text-label-sm text-on-surface-variant mt-md italic">La mayoría de los estudiantes se encuentran en el rango seguro (30-50 pts).</p>
+</div>
+<!-- Tipos de Eventos (Barras Horizontales) -->
+<div class="col-span-12 lg:col-span-6 bg-surface-card p-xl rounded-xl border border-outline shadow-sm">
+<h3 class="font-title-lg text-title-lg mb-xl">Eventos de Integridad Detectados</h3>
+<div class="space-y-lg">
+<div>
+<div class="flex justify-between mb-xs">
+<span class="font-label-md">Uso de Navegador Externo</span>
+<span class="font-body-md font-bold">428</span>
+</div>
+<div class="w-full h-2 bg-surface-container-high rounded-full overflow-hidden">
+<div class="h-full bg-secondary transition-all" style="width: 75%"></div>
+</div>
+</div>
+<div>
+<div class="flex justify-between mb-xs">
+<span class="font-label-md">Ausencia de Rostro</span>
+<span class="font-body-md font-bold">212</span>
+</div>
+<div class="w-full h-2 bg-surface-container-high rounded-full overflow-hidden">
+<div class="h-full bg-secondary transition-all" style="width: 45%"></div>
+</div>
+</div>
+<div>
+<div class="flex justify-between mb-xs">
+<span class="font-label-md">Voz Detectada</span>
+<span class="font-body-md font-bold">145</span>
+</div>
+<div class="w-full h-2 bg-surface-container-high rounded-full overflow-hidden">
+<div class="h-full bg-secondary transition-all" style="width: 32%"></div>
+</div>
+</div>
+<div>
+<div class="flex justify-between mb-xs">
+<span class="font-label-md">Múltiples Rostros</span>
+<span class="font-body-md font-bold">28</span>
+</div>
+<div class="w-full h-2 bg-surface-container-high rounded-full overflow-hidden">
+<div class="h-full bg-secondary transition-all" style="width: 12%"></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Table / Recent Alerts -->
+<div class="bg-surface-card rounded-xl border border-outline shadow-sm overflow-hidden">
+<div class="p-xl border-b border-outline flex justify-between items-center">
+<h3 class="font-title-lg text-title-lg">Últimas Sesiones con Alerta</h3>
+<button class="text-primary font-label-md hover:underline">Ver todas</button>
+</div>
+<table class="w-full text-left">
+<thead class="bg-surface-container-low text-on-surface-variant font-label-sm uppercase tracking-wider">
+<tr>
+<th class="px-xl py-md">Estudiante</th>
+<th class="px-xl py-md">Tipo de Alerta</th>
+<th class="px-xl py-md">Riesgo</th>
+<th class="px-xl py-md">Estado</th>
+<th class="px-xl py-md text-right">Acción</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-outline">
+<tr class="hover:bg-surface-container-lowest transition-colors">
+<td class="px-xl py-lg flex items-center gap-md">
+<div class="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center font-bold text-primary">MS</div>
+<div>
+<p class="font-label-md text-on-surface">Martín Sánchez</p>
+<p class="text-label-sm text-on-surface-variant">msanchez@universidad.edu</p>
+</div>
+</td>
+<td class="px-xl py-lg">
+<div class="flex flex-col gap-base">
+<span class="font-body-md">Objeto no permitido</span>
+<span class="text-[11px] text-on-surface-variant flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">smartphone</span> Teléfono móvil detectado
+                                </span>
+</div>
+</td>
+<td class="px-xl py-lg">
+<div class="flex items-center gap-xs">
+<div class="w-16 h-1.5 bg-surface-container-high rounded-full overflow-hidden">
+<div class="h-full bg-error" style="width: 85%"></div>
+</div>
+<span class="text-label-sm font-bold text-error">85%</span>
+</div>
+</td>
+<td class="px-xl py-lg">
+<span class="px-sm py-base bg-error-container text-error rounded-full text-label-sm">Pendiente</span>
+</td>
+<td class="px-xl py-lg text-right">
+<button class="p-2 hover:bg-surface-container-high rounded-lg text-primary transition-all">
+<span class="material-symbols-outlined">visibility</span>
+</button>
+</td>
+</tr>
+<tr class="hover:bg-surface-container-lowest transition-colors">
+<td class="px-xl py-lg flex items-center gap-md">
+<div class="w-10 h-10 rounded-full bg-secondary/20 flex items-center justify-center font-bold text-secondary">LV</div>
+<div>
+<p class="font-label-md text-on-surface">Lucía Valdés</p>
+<p class="text-label-sm text-on-surface-variant">lvaldes@universidad.edu</p>
+</div>
+</td>
+<td class="px-xl py-lg">
+<div class="flex flex-col gap-base">
+<span class="font-body-md">Cambio de pestaña</span>
+<span class="text-[11px] text-on-surface-variant flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">open_in_new</span> Navegador externo (3 veces)
+                                </span>
+</div>
+</td>
+<td class="px-xl py-lg">
+<div class="flex items-center gap-xs">
+<div class="w-16 h-1.5 bg-surface-container-high rounded-full overflow-hidden">
+<div class="h-full bg-warning" style="width: 42%"></div>
+</div>
+<span class="text-label-sm font-bold text-warning">42%</span>
+</div>
+</td>
+<td class="px-xl py-lg">
+<span class="px-sm py-base bg-success-container text-success rounded-full text-label-sm">Validado</span>
+</td>
+<td class="px-xl py-lg text-right">
+<button class="p-2 hover:bg-surface-container-high rounded-lg text-primary transition-all">
+<span class="material-symbols-outlined">visibility</span>
+</button>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</main>
+<script>
+        // Micro-interactions and subtle effects
+        document.querySelectorAll('.chart-bar').forEach(bar => {
+            bar.addEventListener('mouseenter', () => {
+                bar.style.filter = 'brightness(1.1)';
+            });
+            bar.addEventListener('mouseleave', () => {
+                bar.style.filter = 'none';
+            });
+        });
+
+        // Initialize bars after load
+        window.addEventListener('DOMContentLoaded', () => {
+            const bars = document.querySelectorAll('.chart-bar');
+            bars.forEach((bar, index) => {
+                const targetHeight = bar.style.height;
+                bar.style.height = '0%';
+                setTimeout(() => {
+                    bar.style.height = targetHeight;
+                }, 100 * index);
+            });
+        });
+    </script>
+</body></html>
