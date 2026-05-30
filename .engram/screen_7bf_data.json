@@ -1,0 +1,28 @@
+﻿{
+    "id":  6,
+    "jsonrpc":  "2.0",
+    "result":  {
+                   "content":  [
+                                   {
+                                       "text":  "{\"name\":\"projects/17749589604578059898/screens/7bf73aec765244e582d3c464f01297a4\",\"title\":\"RUAJ - Landing Page Perfeccionada\",\"screenshot\":{\"name\":\"projects/17749589604578059898/files/72b48042f9434090a469845bb6eea955\",\"downloadUrl\":\"https://lh3.googleusercontent.com/aida/ADBb0ugQ9yIdWN3NpK3lJRaKNQomVmLM9BRm790gTfa89VZlfvgSJVKQnrYm4B7whp8GxTPOdc78xG1Ewm4iJNZ_3xPBycZYeibMU-lMLcOrYPR4naIiPeoY-zU6q_04garcFdICQgpMHWCe0G6GVG9EftwAp64tMor7VcZaKExp5t_tVXxquVyF_KgMxaIGUxWXocmbQL2wrfbeTnFnZl5nyox80PZhgonCLn9NNCQjvVjZk2m7nLzlk6jVAPPf\"},\"htmlCode\":{\"name\":\"projects/17749589604578059898/files/b0744a2fb2824116a94c71e205cbc776\",\"downloadUrl\":\"https://contribution.usercontent.google.com/download?c=CgthaWRhX2NvZGVmeBJ8Eh1hcHBfY29tcGFuaW9uX2dlbmVyYXRlZF9maWxlcxpbCiVodG1sX2ZlN2IyM2YwYWQyZTRlMDc5N2QwMWY1NGM2M2JhMDc2EgsSBxDF3NatywsYAZIBJAoKcHJvamVjdF9pZBIWQhQxNzc0OTU4OTYwNDU3ODA1OTg5OA\u0026filename=\u0026opi=89354086\",\"mimeType\":\"text/html\"},\"width\":\"2560\",\"height\":\"13170\",\"deviceType\":\"DESKTOP\"}",
+                                       "type":  "text"
+                                   }
+                               ],
+                   "structuredContent":  {
+                                             "deviceType":  "DESKTOP",
+                                             "height":  "13170",
+                                             "htmlCode":  {
+                                                              "downloadUrl":  "https://contribution.usercontent.google.com/download?c=CgthaWRhX2NvZGVmeBJ8Eh1hcHBfY29tcGFuaW9uX2dlbmVyYXRlZF9maWxlcxpbCiVodG1sX2ZlN2IyM2YwYWQyZTRlMDc5N2QwMWY1NGM2M2JhMDc2EgsSBxDF3NatywsYAZIBJAoKcHJvamVjdF9pZBIWQhQxNzc0OTU4OTYwNDU3ODA1OTg5OA\u0026filename=\u0026opi=89354086",
+                                                              "mimeType":  "text/html",
+                                                              "name":  "projects/17749589604578059898/files/b0744a2fb2824116a94c71e205cbc776"
+                                                          },
+                                             "name":  "projects/17749589604578059898/screens/7bf73aec765244e582d3c464f01297a4",
+                                             "screenshot":  {
+                                                                "downloadUrl":  "https://lh3.googleusercontent.com/aida/ADBb0ugQ9yIdWN3NpK3lJRaKNQomVmLM9BRm790gTfa89VZlfvgSJVKQnrYm4B7whp8GxTPOdc78xG1Ewm4iJNZ_3xPBycZYeibMU-lMLcOrYPR4naIiPeoY-zU6q_04garcFdICQgpMHWCe0G6GVG9EftwAp64tMor7VcZaKExp5t_tVXxquVyF_KgMxaIGUxWXocmbQL2wrfbeTnFnZl5nyox80PZhgonCLn9NNCQjvVjZk2m7nLzlk6jVAPPf",
+                                                                "name":  "projects/17749589604578059898/files/72b48042f9434090a469845bb6eea955"
+                                                            },
+                                             "title":  "RUAJ - Landing Page Perfeccionada",
+                                             "width":  "2560"
+                                         }
+               }
+}

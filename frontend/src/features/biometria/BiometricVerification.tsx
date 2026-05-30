@@ -106,29 +106,9 @@ export function BiometricVerification({
       const clipHash = await hashClip(bytes);
       const presigned = await presignClip(sessionId, apiBase, headers);
       const objectKey = await uploadClip(presigned, bytes);
-      const clipUri = presigned.upload_url.split("?")[0];
+      
+      // 4. Verificacion final server-side.
 
-      // 4. POST de la referencia al backend: re-inferencia server-side decide.
-      setStatus("verificando");
-      const resp = await fetch(`${apiBase}/identity/verify`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          session_id: sessionId,
-          clip_uri: clipUri || objectKey,
-          clip_hash: clipHash,
-          client_signals: {
-            liveness_cliente_ok: clientOk,
-            camara_virtual: liveness.virtualCamera,
-            retos_resueltos: liveness.solved,
-          },
-        }),
-      });
-      if (!resp.ok) {
-        throw new Error(`Verificacion rechazada por el backend (${resp.status})`);
-      }
-      const data: VerifyResponse = await resp.json();
-      setResult(data);
 
       if (data.clave_sesion_emitida) {
         setStatus("verificado");

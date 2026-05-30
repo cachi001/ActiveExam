@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+
+<html class="light" lang="es"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>ActiveExam | Sesión Finalizada</title>
+<!-- Fonts -->
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "outline-variant": "#c7c4d6",
+                    "on-error": "#ffffff",
+                    "error": "#ba1a1a",
+                    "surface-container-low": "#f3f3f7",
+                    "outline": "#777585",
+                    "on-background": "#1a1c1f",
+                    "tertiary-container": "#696880",
+                    "secondary-fixed": "#e5deff",
+                    "on-tertiary-container": "#ece9ff",
+                    "on-tertiary": "#ffffff",
+                    "on-secondary-fixed": "#180065",
+                    "on-error-container": "#93000a",
+                    "surface-container-high": "#e8e8ec",
+                    "error-container": "#ffdad6",
+                    "tertiary": "#515067",
+                    "secondary": "#5845ca",
+                    "primary-container": "#5b5bd6",
+                    "on-primary-container": "#edeaff",
+                    "on-primary": "#ffffff",
+                    "surface-container-highest": "#e2e2e6",
+                    "on-secondary": "#ffffff",
+                    "secondary-fixed-dim": "#c7bfff",
+                    "surface-container-lowest": "#ffffff",
+                    "secondary-container": "#7260e5",
+                    "inverse-surface": "#2e3034",
+                    "inverse-on-surface": "#f0f0f4",
+                    "on-primary-fixed-variant": "#3533b0",
+                    "tertiary-fixed-dim": "#c6c4df",
+                    "primary-fixed": "#e2dfff",
+                    "tertiary-fixed": "#e2e0fc",
+                    "surface-tint": "#4e4ec9",
+                    "surface-container": "#ededf1",
+                    "surface": "#f9f9fd",
+                    "on-surface": "#1a1c1f",
+                    "on-surface-variant": "#464553",
+                    "on-primary-fixed": "#0a006b",
+                    "on-secondary-container": "#fffbff",
+                    "surface-bright": "#f9f9fd",
+                    "on-tertiary-fixed-variant": "#45455b",
+                    "primary-fixed-dim": "#c1c1ff",
+                    "on-secondary-fixed-variant": "#432bb4",
+                    "on-tertiary-fixed": "#1a1a2e",
+                    "surface-variant": "#e2e2e6",
+                    "primary": "#4241bc",
+                    "background": "#f9f9fd",
+                    "surface-dim": "#d9dade",
+                    "inverse-primary": "#c1c1ff"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.25rem",
+                    "lg": "0.5rem",
+                    "xl": "0.75rem",
+                    "full": "9999px"
+            },
+            "spacing": {
+                    "xs": "8px",
+                    "sidebar-width": "260px",
+                    "container-max": "1280px",
+                    "gutter": "24px",
+                    "xl": "32px",
+                    "base": "4px",
+                    "lg": "24px",
+                    "xxl": "48px",
+                    "sm": "12px",
+                    "md": "16px"
+            },
+            "fontFamily": {
+                    "title-lg": ["Plus Jakarta Sans"],
+                    "label-md": ["Inter"],
+                    "label-sm": ["Inter"],
+                    "body-lg": ["Inter"],
+                    "body-md": ["Inter"],
+                    "headline-md": ["Plus Jakarta Sans"],
+                    "headline-lg": ["Plus Jakarta Sans"],
+                    "display-lg": ["Plus Jakarta Sans"]
+            },
+            "fontSize": {
+                    "title-lg": ["20px", {"lineHeight": "28px", "fontWeight": "600"}],
+                    "label-md": ["14px", {"lineHeight": "20px", "letterSpacing": "0.01em", "fontWeight": "600"}],
+                    "label-sm": ["12px", {"lineHeight": "16px", "fontWeight": "500"}],
+                    "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                    "body-md": ["15px", {"lineHeight": "22px", "fontWeight": "400"}],
+                    "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                    "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                    "display-lg": ["48px", {"lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700"}]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .success-glow {
+            box-shadow: 0 0 40px -10px rgba(91, 91, 214, 0.15);
+        }
+        .bento-pattern {
+            background-image: radial-gradient(circle at 2px 2px, #E2E2EC 1px, transparent 0);
+            background-size: 24px 24px;
+        }
+    </style>
+</head>
+<body class="bg-surface font-body-md text-on-surface min-h-screen flex flex-col">
+<!-- TopNavBar (Simplified for focused flow) -->
+<header class="bg-surface border-b border-outline-variant flex justify-between items-center px-lg h-16 w-full sticky top-0 z-50">
+<div class="flex items-center gap-xs">
+<span class="font-headline-md text-headline-md font-bold text-primary">ActiveExam</span>
+</div>
+<div class="flex items-center gap-md">
+<div class="hidden md:flex flex-col items-end">
+<span class="font-label-md text-label-md text-on-surface">ID de Sesión: 8829-X</span>
+<span class="text-[11px] uppercase tracking-wider text-on-surface-variant font-bold">Procesado de forma segura</span>
+</div>
+</div>
+</header>
+<!-- Main Canvas -->
+<main class="flex-grow flex items-center justify-center p-gutter bento-pattern">
+<div class="w-full max-w-[640px] animate-in fade-in zoom-in duration-700">
+<!-- Success Card -->
+<div class="bg-surface-container-lowest border border-outline-variant rounded-[16px] p-xxl shadow-sm success-glow text-center relative overflow-hidden">
+<!-- Top Accent Line -->
+<div class="absolute top-0 left-0 right-0 h-1.5 bg-primary-container"></div>
+<!-- Large Check Icon -->
+<div class="mb-xl inline-flex items-center justify-center w-24 h-24 rounded-full bg-green-50 text-green-600">
+<span class="material-symbols-outlined !text-[56px]" data-icon="check_circle" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+</div>
+<!-- Content -->
+<h1 class="font-headline-lg text-headline-lg text-on-surface mb-xs">
+                    ¡Listo! Tu examen fue enviado.
+                </h1>
+<p class="font-body-lg text-body-lg text-on-surface-variant mb-xl">
+                    Recibimos tus respuestas correctamente.
+                </p>
+<!-- Summary Panel -->
+<div class="bg-surface-container-low rounded-xl p-lg mb-xl flex flex-col md:flex-row items-center justify-between gap-md border border-outline-variant/50">
+<div class="flex flex-col items-center md:items-start">
+<span class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-widest mb-1">Hora de envío</span>
+<span class="font-title-lg text-title-lg text-on-surface">14:45 PM</span>
+</div>
+<div class="h-px w-full md:h-12 md:w-px bg-outline-variant"></div>
+<div class="flex flex-col items-center md:items-start">
+<span class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-widest mb-1">Estado actual</span>
+<span class="inline-flex items-center px-md py-1 rounded-full bg-primary/10 text-primary font-label-md text-label-md">
+                            Sesión finalizada
+                        </span>
+</div>
+</div>
+<!-- Legal/Privacy Reminder -->
+<div class="flex items-start gap-md p-md bg-surface-container-high/30 rounded-lg text-left mb-xxl border border-dashed border-outline-variant">
+<span class="material-symbols-outlined text-on-surface-variant" data-icon="gavel">gavel</span>
+<p class="font-label-sm text-label-sm text-on-surface-variant leading-relaxed">
+                        Tus datos han sido encriptados y almacenados conforme a nuestra política de protección de derechos estudiantiles. No se retendrá acceso a tu cámara o micrófono tras el cierre de esta ventana.
+                    </p>
+</div>
+<!-- Action Button -->
+<button class="w-full md:w-auto min-w-[200px] bg-primary-container text-on-primary font-bold py-md px-xxl rounded-xl hover:opacity-90 active:scale-95 transition-all duration-150 flex items-center justify-center gap-xs mx-auto">
+<span>Salir de la plataforma</span>
+<span class="material-symbols-outlined" data-icon="logout">logout</span>
+</button>
+</div>
+<!-- Contextual Help -->
+<div class="mt-xl text-center">
+<p class="font-label-md text-label-md text-on-surface-variant">
+                    ¿Necesitas un comprobante? 
+                    <a class="text-primary font-bold hover:underline ml-1" href="#">Descargar recibo de envío (PDF)</a>
+</p>
+</div>
+</div>
+</main>
+<!-- Global Footer Branding -->
+<footer class="h-16 flex items-center justify-center px-lg border-t border-outline-variant bg-surface">
+<div class="flex items-center gap-xs grayscale opacity-50">
+<span class="material-symbols-outlined !text-[18px]" data-icon="shield_with_heart">shield_with_heart</span>
+<span class="font-label-sm text-label-sm uppercase tracking-tighter">Powered by ActiveExam Security Protocols</span>
+</div>
+</footer>
+<!-- Atmosphere/Micro-interactions -->
+<script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const button = document.querySelector('button');
+            button.addEventListener('mouseenter', () => {
+                button.style.boxShadow = '0 10px 25px -5px rgba(91, 91, 214, 0.4)';
+            });
+            button.addEventListener('mouseleave', () => {
+                button.style.boxShadow = 'none';
+            });
+
+            // Simulate slight card tilt
+            const card = document.querySelector('.success-glow');
+            document.addEventListener('mousemove', (e) => {
+                const xAxis = (window.innerWidth / 2 - e.pageX) / 50;
+                const yAxis = (window.innerHeight / 2 - e.pageY) / 50;
+                card.style.transform = `rotateY(${xAxis}deg) rotateX(${yAxis}deg)`;
+            });
+        });
+    </script>
+</body></html>

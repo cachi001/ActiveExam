@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+
+<html class="light" lang="es"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>ProctorPro - Revisión de Sesión</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "outline-variant": "#c7c4d6",
+                    "on-background": "#1a1c1f",
+                    "on-surface": "#1a1c1f",
+                    "secondary-container": "#7260e5",
+                    "surface-card": "#FFFFFF",
+                    "background": "#f9f9fd",
+                    "on-secondary-fixed-variant": "#432bb4",
+                    "on-tertiary-container": "#edeaff",
+                    "primary-fixed": "#e2dfff",
+                    "surface-bright": "#f9f9fd",
+                    "primary": "#4241bc",
+                    "success": "#15803D",
+                    "on-surface-variant": "#464553",
+                    "secondary": "#5845ca",
+                    "surface-container-low": "#f3f3f7",
+                    "on-primary-container": "#edeaff",
+                    "secondary-fixed-dim": "#c7bfff",
+                    "error-container": "#ffdad6",
+                    "tertiary-container": "#696880",
+                    "primary-container": "#5b5bd6",
+                    "success-container": "#DCFCE7",
+                    "surface-container-high": "#e8e8ec",
+                    "surface-variant": "#e2e2e6",
+                    "surface": "#f9f9fd",
+                    "surface-container-lowest": "#ffffff",
+                    "on-tertiary-fixed-variant": "#45455b",
+                    "tertiary": "#515067",
+                    "on-primary-fixed": "#0a006b",
+                    "surface-dim": "#d9dade",
+                    "primary-fixed-dim": "#c1c1ff",
+                    "surface-container": "#ededf1",
+                    "on-secondary-container": "#fffbff",
+                    "error": "#BA1A1A",
+                    "warning-container": "#FEF3C7",
+                    "on-error": "#ffffff",
+                    "inverse-on-surface": "#f0f0f4",
+                    "on-primary-fixed-variant": "#3533b0",
+                    "surface-container-highest": "#e2e2e6",
+                    "on-error-container": "#93000a",
+                    "outline": "#E2E2EC",
+                    "tertiary-fixed-dim": "#c6c4df",
+                    "surface-tint": "#4e4ec9",
+                    "secondary-fixed": "#e5deff",
+                    "warning": "#B45309",
+                    "on-primary": "#ffffff",
+                    "on-tertiary-fixed": "#1a192e",
+                    "inverse-surface": "#2e3034",
+                    "tertiary-fixed": "#e3dffc",
+                    "inverse-primary": "#c1c1ff",
+                    "on-secondary": "#ffffff",
+                    "surface-canvas": "#F7F7FB",
+                    "on-secondary-fixed": "#180065",
+                    "on-tertiary": "#ffffff"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.25rem",
+                    "lg": "0.5rem",
+                    "xl": "0.75rem",
+                    "full": "9999px"
+            },
+            "spacing": {
+                    "gutter": "24px",
+                    "sidebar-width": "260px",
+                    "xl": "32px",
+                    "container-max": "1280px",
+                    "sm": "12px",
+                    "xs": "8px",
+                    "md": "16px",
+                    "base": "4px",
+                    "xxl": "48px",
+                    "lg": "24px"
+            },
+            "fontFamily": {
+                    "headline-md": ["Plus Jakarta Sans"],
+                    "title-lg": ["Plus Jakarta Sans"],
+                    "label-sm": ["Inter"],
+                    "display-lg": ["Plus Jakarta Sans"],
+                    "body-md": ["Inter"],
+                    "headline-lg": ["Plus Jakarta Sans"],
+                    "body-lg": ["Inter"],
+                    "label-md": ["Inter"],
+                    "headline-lg-mobile": ["Plus Jakarta Sans"]
+            },
+            "fontSize": {
+                    "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                    "title-lg": ["20px", {"lineHeight": "28px", "fontWeight": "600"}],
+                    "label-sm": ["12px", {"lineHeight": "16px", "fontWeight": "500"}],
+                    "display-lg": ["48px", {"lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                    "body-md": ["15px", {"lineHeight": "22px", "fontWeight": "400"}],
+                    "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                    "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                    "label-md": ["14px", {"lineHeight": "20px", "letterSpacing": "0.01em", "fontWeight": "600"}],
+                    "headline-lg-mobile": ["24px", {"lineHeight": "32px", "fontWeight": "600"}]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        .glass-card {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(12px);
+            border: 1px solid #E2E2EC;
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #E2E2EC;
+            border-radius: 10px;
+        }
+        .risk-ring {
+            transition: stroke-dashoffset 1s ease-out;
+        }
+    </style>
+</head>
+<body class="bg-surface-canvas text-on-surface font-body-md min-h-screen">
+<!-- SideNavBar -->
+<aside class="w-[260px] h-screen fixed left-0 top-0 bg-surface-container-lowest border-r border-outline shadow-md flex flex-col py-lg px-md z-50">
+<div class="mb-xxl">
+<h1 class="font-headline-md text-headline-md font-bold text-primary">ProctorPro</h1>
+<p class="font-label-md text-label-md text-on-surface-variant opacity-70">Academic Suite</p>
+</div>
+<nav class="flex-1 space-y-base">
+<a class="flex items-center gap-sm px-md py-sm rounded-lg text-on-surface-variant hover:bg-surface-container-low transition-colors duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+<span class="font-label-md">Dashboard</span>
+</a>
+<a class="flex items-center gap-sm px-md py-sm rounded-lg bg-primary/10 border-l-4 border-primary text-primary font-bold" href="#">
+<span class="material-symbols-outlined" data-icon="quiz">quiz</span>
+<span class="font-label-md">Exams</span>
+</a>
+<a class="flex items-center gap-sm px-md py-sm rounded-lg text-on-surface-variant hover:bg-surface-container-low transition-colors duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="rate_review">rate_review</span>
+<span class="font-label-md">Review Queue</span>
+</a>
+<a class="flex items-center gap-sm px-md py-sm rounded-lg text-on-surface-variant hover:bg-surface-container-low transition-colors duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="assessment">assessment</span>
+<span class="font-label-md">Reports</span>
+</a>
+</nav>
+<button class="mt-lg mb-xxl py-sm px-md bg-primary-container text-on-primary rounded-lg font-label-md active:scale-[0.98] transition-transform duration-200">
+            Create Exam
+        </button>
+<div class="space-y-base pt-lg border-t border-outline">
+<a class="flex items-center gap-sm px-md py-sm rounded-lg text-on-surface-variant hover:bg-surface-container-low transition-colors duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+<span class="font-label-md">Settings</span>
+</a>
+<a class="flex items-center gap-sm px-md py-sm rounded-lg text-on-surface-variant hover:bg-surface-container-low transition-colors duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="help_outline">help_outline</span>
+<span class="font-label-md">Help Center</span>
+</a>
+</div>
+</aside>
+<!-- TopAppBar -->
+<header class="fixed top-0 right-0 w-[calc(100%-260px)] h-16 bg-surface/80 backdrop-blur-md border-b border-outline flex justify-between items-center px-xl z-40">
+<div class="flex items-center gap-md">
+<span class="material-symbols-outlined text-on-surface-variant" data-icon="arrow_back">arrow_back</span>
+<h2 class="font-title-lg text-title-lg text-primary">Detalle de Revisión: Cálculo Multivariable - Final</h2>
+</div>
+<div class="flex items-center gap-lg">
+<div class="flex items-center gap-md">
+<span class="material-symbols-outlined text-on-surface-variant cursor-pointer hover:bg-surface-container-high p-2 rounded-full transition-all" data-icon="notifications">notifications</span>
+<span class="material-symbols-outlined text-on-surface-variant cursor-pointer hover:bg-surface-container-high p-2 rounded-full transition-all" data-icon="settings">settings</span>
+</div>
+<div class="w-10 h-10 rounded-full bg-surface-container-high overflow-hidden border border-outline shadow-sm">
+<img alt="User Profile" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBXtxOPvhikStXRu-W-GYFuwofpgeDQkcibnvzgI6l6RghNZJHgwu2q_2_vkKW-cHYAmQlvAvNR01ucQndWVbvMVc8RBcf76ZLP4KfOLdOFhYgyl3cm80ynrkZP_UqJIh5VZbj3REy_U-cwbPYP_GPG-6_bqC43c79WE1CUUjOuBzp1juJTQgyFWD-ABqmMFjPJI1eDRL4uBXsKrZNWrP1edS-F6AKjc5l1Jrm1Wrn1tQaCzIFhfoR_uWhcPc-U4gOowT6-RiBHKYI"/>
+</div>
+</div>
+</header>
+<!-- Main Content Canvas -->
+<main class="ml-[260px] pt-16 h-screen overflow-hidden grid grid-cols-12 gap-gutter p-lg">
+<!-- PANEL IZQUIERDO: Datos y Riesgo -->
+<section class="col-span-3 flex flex-col gap-gutter h-[calc(100vh-120px)] overflow-y-auto custom-scrollbar">
+<!-- Student Profile Card -->
+<div class="bg-surface-container-lowest rounded-xl p-lg shadow-[0_10px_40px_-10px_rgba(26,28,31,0.05)] border border-outline">
+<div class="flex flex-col items-center text-center mb-lg">
+<div class="w-24 h-24 rounded-full border-4 border-surface-container mb-md overflow-hidden">
+<img alt="Student Photo" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA8w4wzZWE79oaIfh0x7VMiIy9SfJfQnZBy9WY5ToNCXOx-MJQaiEn5fZOPBwm92FeKE0yYOc0WK9lgxn4CNfJHAc_ZN_wjJZT-98jwyypfeC36uKq5v_-kdeeMw5FR_5ScAKsJj7cUycTj73Qx8zjwB9hHhMyDYFKyaqp7-_q9TZon6YpwIJBiEbsh2P8rqfhQFw3T3xXQcvMyoZjTN_X5VHHd2QVVV4fiOqfUSWShLSjf-RdTuBU5g_jdh0-7WIshKZLVyOsC-KA"/>
+</div>
+<h3 class="font-title-lg text-on-surface">Martina G. Rossi</h3>
+<p class="font-label-md text-on-surface-variant">Legajo: #ALU-98234</p>
+</div>
+<div class="grid grid-cols-2 gap-sm mb-lg">
+<div class="flex flex-col">
+<span class="text-label-sm text-on-surface-variant uppercase tracking-wider mb-xs">Ref. ID</span>
+<div class="h-24 bg-surface-container rounded-lg overflow-hidden border border-outline relative">
+<img class="w-full h-full object-cover opacity-80" data-alt="A clean, professional headshot photo taken for academic identification purposes in a brightly lit studio environment. The subject is centered and clear, used as a gold standard reference for facial recognition software during a remote examination process." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDTK0HT-glCeoUKhuCfvDGpt8aCCBvBLRhyE6TkpugwuRYrLnbtbtikADx5E-KUPIrpHxPl_KfU7n3rs657pLVuWLoRCCqCOqcDfhv5lxrOLF7GfJaSy8ix5Tb0PPbWdkpOL5p0FuwNlX1nBTOPtSo0UrMzRKlYr7GReb5y6QCufnBKjMr9LFqs6za1Nn_F8gbgij5APHxVw9ZVOUClRI2aN_CDIOj4mj1Dsm5QwWP72d4MESf5UH8YVawcTpE9cvJIPVzOI6VyHEI"/>
+<span class="absolute bottom-1 right-1 bg-success text-white text-[10px] px-1 rounded">MATCH</span>
+</div>
+</div>
+<div class="flex flex-col">
+<span class="text-label-sm text-on-surface-variant uppercase tracking-wider mb-xs">Frame Actual</span>
+<div class="h-24 bg-surface-container rounded-lg overflow-hidden border border-outline ring-2 ring-error/30">
+<img class="w-full h-full object-cover" data-alt="A grainy, slightly dark webcam capture of a student during an online exam, lit primarily by the glow of the computer monitor. The student is looking away from the screen, and the background shows a dim room with blurred domestic elements. The image has a surveillance-style aesthetic." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCm5NkU2M0AFehKooYUkHXUaAxFhzdtOoQAB4M7Sc8IExuG_i8OPGVgLQmTaXgBB8NSZJbfl5YCLAu-0nkqtDZLbk5k-ACkNCfSi-FjBmM_niJB5UCmbcLwQbywHHF2DPKrq-kcBF-TDDj_v8pL5RNTnMVKWW0I6S1vQ8ip8cKCV58U8MT_aTb_rIG6PSJNKOI-twRPXsUA2l1tPKOPtZJ19bBoI61X00K5GuiyTVwpLwdySNbp5YnLH-lv4xHOXvSxCoLaSf5WC2M"/>
+</div>
+</div>
+</div>
+<!-- Final Risk Score -->
+<div class="relative flex flex-col items-center py-lg bg-error-container/20 rounded-xl">
+<svg class="w-32 h-32 transform -rotate-90">
+<circle class="text-outline-variant/30" cx="64" cy="64" fill="transparent" r="56" stroke="currentColor" stroke-width="8"></circle>
+<circle class="text-error risk-ring" cx="64" cy="64" fill="transparent" r="56" stroke="currentColor" stroke-dasharray="351.85" stroke-dashoffset="77" stroke-width="8" style="stroke-linecap: round;"></circle>
+</svg>
+<div class="absolute inset-0 flex flex-col items-center justify-center pt-4">
+<span class="font-display-lg text-headline-lg text-error">78</span>
+<span class="text-label-sm text-error/80 -mt-2">Riesgo</span>
+</div>
+<p class="mt-md font-label-md text-error font-bold">ALTA PRIORIDAD</p>
+</div>
+</div>
+<!-- Severity Summary -->
+<div class="bg-surface-container-lowest rounded-xl p-lg shadow-[0_10px_40px_-10px_rgba(26,28,31,0.05)] border border-outline">
+<h4 class="font-label-md text-on-surface mb-md">Resumen de Eventos</h4>
+<div class="space-y-md">
+<div>
+<div class="flex justify-between text-label-sm mb-1">
+<span class="text-on-surface-variant">Severidad Crítica</span>
+<span class="font-bold text-error">12</span>
+</div>
+<div class="h-2 bg-surface-container rounded-full overflow-hidden">
+<div class="h-full bg-error w-[85%]"></div>
+</div>
+</div>
+<div>
+<div class="flex justify-between text-label-sm mb-1">
+<span class="text-on-surface-variant">Severidad Media</span>
+<span class="font-bold text-warning">08</span>
+</div>
+<div class="h-2 bg-surface-container rounded-full overflow-hidden">
+<div class="h-full bg-warning w-[40%]"></div>
+</div>
+</div>
+<div>
+<div class="flex justify-between text-label-sm mb-1">
+<span class="text-on-surface-variant">Informativo</span>
+<span class="font-bold text-primary">04</span>
+</div>
+<div class="h-2 bg-surface-container rounded-full overflow-hidden">
+<div class="h-full bg-primary w-[20%]"></div>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- PANEL CENTRAL: Evidencia -->
+<section class="col-span-6 flex flex-col gap-gutter h-[calc(100vh-120px)] overflow-hidden">
+<!-- Video Player -->
+<div class="bg-black rounded-xl overflow-hidden shadow-xl aspect-video relative group">
+<img class="w-full h-full object-cover opacity-60" data-alt="A wide angle view of a student's workspace during a proctored exam, showing the desk, monitor, and keyboard. The lighting is cold and clinical, focused on the evidence-gathering aspect of the software. The UI overlays digital markers for motion detection and eye tracking." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBrWZqiugflNB7yaFuVUW5-lEMtRIi6YzTIJxJgQ714tCwADznh0j5XfbKBXgggnerkDd8hkx_5yK_z-uYSbPxX_A_fh4-zdaoI85rZ2yK-b5WJcUcZRE3Jlyq87WvbfYjjFbQGCpZENkvncM-2ZRYxDALZuM6A32FPzSjZAMtHu04U-unsKt-cKgNLITfHVzp35ZFDvwDix848IM55INrDJRsAgl9MNbfWBHH6jO7wBa-VQznKicNK_teeT_2pIXiSqx38rLw5lmI"/>
+<!-- Video Controls Overlay -->
+<div class="absolute inset-0 flex items-center justify-center">
+<button class="w-16 h-16 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center hover:scale-110 transition-transform">
+<span class="material-symbols-outlined text-white text-4xl" data-icon="play_arrow" data-weight="fill">play_arrow</span>
+</button>
+</div>
+<div class="absolute bottom-0 w-full p-md bg-gradient-to-t from-black/80 to-transparent">
+<div class="flex items-center justify-between text-white text-label-sm">
+<div class="flex items-center gap-md">
+<span class="material-symbols-outlined cursor-pointer" data-icon="replay_10">replay_10</span>
+<span class="material-symbols-outlined cursor-pointer" data-icon="forward_10">forward_10</span>
+<span>00:45:12 / 02:00:00</span>
+</div>
+<div class="flex items-center gap-md">
+<span class="material-symbols-outlined cursor-pointer" data-icon="hd">hd</span>
+<span class="material-symbols-outlined cursor-pointer" data-icon="fullscreen">fullscreen</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Timeline -->
+<div class="bg-surface-container-lowest rounded-xl p-lg shadow-sm border border-outline">
+<div class="flex justify-between items-center mb-md">
+<h4 class="font-label-md text-on-surface">Línea de Tiempo Interactiva</h4>
+<div class="flex gap-sm">
+<div class="flex items-center gap-1"><div class="w-2 h-2 rounded-full bg-error"></div> <span class="text-[10px] text-on-surface-variant">Crítico</span></div>
+<div class="flex items-center gap-1"><div class="w-2 h-2 rounded-full bg-warning"></div> <span class="text-[10px] text-on-surface-variant">Medio</span></div>
+</div>
+</div>
+<div class="relative h-16 bg-surface-container rounded-lg border border-outline-variant/30 flex items-center px-4 overflow-hidden">
+<div class="absolute h-full w-1 bg-primary left-[40%] z-10 shadow-lg shadow-primary/50"></div>
+<!-- Markers -->
+<div class="absolute h-10 w-1.5 bg-error rounded-full left-[10%] top-3 cursor-pointer hover:scale-125 transition-all"></div>
+<div class="absolute h-10 w-1.5 bg-error rounded-full left-[40%] top-3 cursor-pointer hover:scale-125 transition-all"></div>
+<div class="absolute h-10 w-1.5 bg-warning rounded-full left-[45%] top-3 cursor-pointer hover:scale-125 transition-all"></div>
+<div class="absolute h-10 w-1.5 bg-error rounded-full left-[65%] top-3 cursor-pointer hover:scale-125 transition-all"></div>
+<div class="absolute h-10 w-1.5 bg-primary rounded-full left-[80%] top-3 cursor-pointer hover:scale-125 transition-all"></div>
+<div class="w-full flex justify-between pt-8 text-[10px] text-on-surface-variant/50 font-mono">
+<span>00:00</span><span>00:30</span><span>01:00</span><span>01:30</span><span>02:00</span>
+</div>
+</div>
+</div>
+<!-- Event List -->
+<div class="flex-1 overflow-y-auto custom-scrollbar bg-surface-container-lowest rounded-xl border border-outline">
+<table class="w-full text-left">
+<thead class="sticky top-0 bg-surface-container-low border-b border-outline z-20">
+<tr>
+<th class="p-md text-label-sm text-on-surface-variant uppercase">Tiempo</th>
+<th class="p-md text-label-sm text-on-surface-variant uppercase">Evento</th>
+<th class="p-md text-label-sm text-on-surface-variant uppercase">Confianza</th>
+<th class="p-md text-label-sm text-on-surface-variant uppercase text-right">Acción</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-outline">
+<tr class="bg-error/5 hover:bg-error/10 transition-colors">
+<td class="p-md font-mono text-error font-bold">00:45:12</td>
+<td class="p-md">
+<div class="flex items-center gap-sm">
+<span class="material-symbols-outlined text-error" data-icon="visibility_off">visibility_off</span>
+<span class="text-on-surface font-medium">Ausencia de rostro detectada</span>
+</div>
+</td>
+<td class="p-md text-on-surface-variant">98.2%</td>
+<td class="p-md text-right"><span class="material-symbols-outlined cursor-pointer text-primary" data-icon="videocam">videocam</span></td>
+</tr>
+<tr class="bg-surface-container-lowest hover:bg-surface-container-low transition-colors">
+<td class="p-md font-mono text-on-surface-variant">00:46:05</td>
+<td class="p-md">
+<div class="flex items-center gap-sm">
+<span class="material-symbols-outlined text-warning" data-icon="person_search">person_search</span>
+<span class="text-on-surface">Múltiples rostros detectados</span>
+</div>
+</td>
+<td class="p-md text-on-surface-variant">72.5%</td>
+<td class="p-md text-right"><span class="material-symbols-outlined cursor-pointer text-on-surface-variant" data-icon="videocam">videocam</span></td>
+</tr>
+<tr class="bg-error/5 hover:bg-error/10 transition-colors">
+<td class="p-md font-mono text-error font-bold">00:48:33</td>
+<td class="p-md">
+<div class="flex items-center gap-sm">
+<span class="material-symbols-outlined text-error" data-icon="tab">tab</span>
+<span class="text-on-surface font-medium">Cambio de pestaña no permitido</span>
+</div>
+</td>
+<td class="p-md text-on-surface-variant">100%</td>
+<td class="p-md text-right"><span class="material-symbols-outlined cursor-pointer text-primary" data-icon="videocam">videocam</span></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<!-- PANEL DERECHO: Análisis y Decisión -->
+<section class="col-span-3 flex flex-col gap-gutter h-[calc(100vh-120px)] overflow-y-auto custom-scrollbar">
+<!-- Server Analysis -->
+<div class="bg-surface-container-lowest rounded-xl p-lg shadow-sm border border-outline">
+<div class="flex items-center gap-sm mb-md text-on-surface-variant">
+<span class="material-symbols-outlined" data-icon="memory">memory</span>
+<h4 class="font-label-md">Análisis Automático</h4>
+</div>
+<p class="text-body-md text-on-surface-variant leading-relaxed italic">
+                    "La sesión presenta patrones de comportamiento atípicos recurrentes entre el minuto 40 y 55. Se detectó una inconsistencia de iluminación que sugiere el uso de pantallas secundarias."
+                </p>
+</div>
+<!-- Proctor Live Notes -->
+<div class="bg-surface-container-lowest rounded-xl p-lg shadow-sm border border-outline">
+<div class="flex items-center justify-between mb-md">
+<div class="flex items-center gap-sm text-on-surface-variant">
+<span class="material-symbols-outlined" data-icon="edit_note">edit_note</span>
+<h4 class="font-label-md">Notas del Proctor (Vivo)</h4>
+</div>
+</div>
+<div class="space-y-sm">
+<div class="p-sm bg-surface-container-low rounded-lg text-body-md">
+<span class="text-[10px] block text-on-surface-variant mb-1">10:12 AM - Roberto M.</span>
+                        "Le advertí por chat que mantuviera la mirada en cámara. Ignoró la alerta."
+                    </div>
+</div>
+</div>
+<!-- Audit Log (Accordion) -->
+<details class="bg-surface-container-lowest rounded-xl shadow-sm border border-outline group overflow-hidden">
+<summary class="p-lg flex justify-between items-center cursor-pointer list-none hover:bg-surface-container-low transition-colors">
+<div class="flex items-center gap-sm text-on-surface-variant">
+<span class="material-symbols-outlined" data-icon="history">history</span>
+<h4 class="font-label-md">Log de Auditoría</h4>
+</div>
+<span class="material-symbols-outlined transition-transform group-open:rotate-180" data-icon="expand_more">expand_more</span>
+</summary>
+<div class="px-lg pb-lg space-y-sm">
+<div class="flex justify-between text-[11px] py-1 border-b border-outline">
+<span class="text-on-surface-variant">Inicio de Sesión</span>
+<span class="font-mono">09:00:12</span>
+</div>
+<div class="flex justify-between text-[11px] py-1 border-b border-outline">
+<span class="text-on-surface-variant">Verificación Biométrica</span>
+<span class="text-success">EXITOSA</span>
+</div>
+<div class="flex justify-between text-[11px] py-1 border-b border-outline">
+<span class="text-on-surface-variant">Escaneo de Entorno</span>
+<span class="text-warning">OMITIDO</span>
+</div>
+</div>
+</details>
+<!-- DECISION BLOCK -->
+<div class="bg-white rounded-xl p-lg shadow-lg border-2 border-primary/20 sticky bottom-0">
+<h4 class="font-title-lg text-on-surface mb-lg text-center">Decisión Final</h4>
+<div class="grid grid-cols-3 gap-sm mb-lg">
+<button class="flex flex-col items-center gap-xs p-md border border-outline rounded-xl hover:border-success hover:bg-success/5 transition-all group">
+<div class="w-10 h-10 rounded-full bg-surface-container-high group-hover:bg-success/20 flex items-center justify-center text-on-surface-variant group-hover:text-success">
+<span class="material-symbols-outlined" data-icon="check_circle">check_circle</span>
+</div>
+<span class="text-[10px] font-bold text-on-surface-variant group-hover:text-success">DESCARTAR</span>
+</button>
+<button class="flex flex-col items-center gap-xs p-md border-2 border-warning bg-warning/5 rounded-xl transition-all group">
+<div class="w-10 h-10 rounded-full bg-warning/20 flex items-center justify-center text-warning">
+<span class="material-symbols-outlined" data-icon="report">report</span>
+</div>
+<span class="text-[10px] font-bold text-warning">ESCALAR</span>
+</button>
+<button class="flex flex-col items-center gap-xs p-md border border-outline rounded-xl hover:border-error hover:bg-error/5 transition-all group">
+<div class="w-10 h-10 rounded-full bg-surface-container-high group-hover:bg-error/20 flex items-center justify-center text-on-surface-variant group-hover:text-error">
+<span class="material-symbols-outlined" data-icon="gavel">gavel</span>
+</div>
+<span class="text-[10px] font-bold text-on-surface-variant group-hover:text-error">DISCIPLINARIO</span>
+</button>
+</div>
+<div class="space-y-sm">
+<label class="text-label-sm text-on-surface-variant">Fundamentá tu decisión *</label>
+<textarea class="w-full rounded-lg border-outline focus:ring-primary/15 focus:border-primary p-md text-body-md h-24 placeholder:text-on-surface-variant/40" placeholder="Ej: Se observa uso de material no permitido claramente..."></textarea>
+</div>
+<button class="w-full mt-lg py-md bg-primary text-on-primary rounded-xl font-label-md shadow-md active:scale-95 transition-all hover:bg-primary-container">
+                    Guardar decisión
+                </button>
+</div>
+</section>
+</main>
+<script>
+        // Simple interaction for the decisions
+        document.querySelectorAll('button.group').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('button.group').forEach(b => {
+                    b.classList.remove('border-primary', 'border-2');
+                    b.classList.add('border-outline');
+                });
+                btn.classList.remove('border-outline');
+                btn.classList.add('border-2', 'border-primary');
+            });
+        });
+
+        // Simulating risk ring animation
+        setTimeout(() => {
+            document.querySelector('.risk-ring').style.strokeDashoffset = '77';
+        }, 100);
+    </script>
+</body></html>

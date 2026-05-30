@@ -1,0 +1,94 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body, #root {
+    height: 100%;
+  }
+  body {
+    @apply bg-surface text-on-surface font-sans antialiased;
+  }
+  .material-symbols-outlined {
+    font-family: 'Material Symbols Outlined';
+    font-weight: normal;
+    font-style: normal;
+    line-height: 1;
+    letter-spacing: normal;
+    text-transform: none;
+    display: inline-block;
+    white-space: nowrap;
+    word-wrap: normal;
+    direction: ltr;
+    font-feature-settings: 'liga';
+    -webkit-font-smoothing: antialiased;
+    font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+    user-select: none;
+  }
+  .ms-fill {
+    font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+  }
+}
+
+@layer components {
+  .glass-panel {
+    background: rgba(255, 255, 255, 0.72);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(199, 196, 214, 0.4);
+  }
+  .card {
+    @apply bg-surface-container-lowest rounded-xl border border-outline-variant/40 shadow-card;
+  }
+  .input {
+    @apply bg-surface-container-low border border-outline-variant rounded-xl px-sm py-base text-label-md text-on-surface outline-none transition-colors;
+  }
+  .input:focus {
+    @apply border-primary-container;
+  }
+}
+
+/* ----- scrollbars sutiles (estilo Stitch) ----- */
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background: #E2E2EC; border-radius: 10px; }
+*::-webkit-scrollbar-thumb:hover { background: #c7c4d6; }
+
+/* ----- glow atmosférico de la pantalla de login ----- */
+.glass-glow {
+  background: radial-gradient(circle at 100% 0%, rgba(91, 91, 214, 0.08) 0%, transparent 40%);
+}
+
+/* ----- animaciones (shim de tailwindcss-animate usado por Stitch) ----- */
+@keyframes ae-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ae-slide-up { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes ae-zoom-in { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: scale(1); } }
+
+.animate-in { animation-duration: 500ms; animation-fill-mode: both; animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1); }
+.fade-in { animation-name: ae-fade-in; }
+.slide-in-from-bottom-4 { animation-name: ae-slide-up; }
+.zoom-in { animation-name: ae-zoom-in; }
+.duration-500 { animation-duration: 500ms; }
+.duration-700 { animation-duration: 700ms; }
+
+/* ----- pulso del anillo de escaneo biométrico ----- */
+@keyframes pulse-ring {
+  0%, 100% { transform: scale(1); opacity: 0.3; }
+  50% { transform: scale(1.04); opacity: 0.7; }
+}
+.scanning-ring { animation: pulse-ring 2s infinite ease-in-out; }
+
+/* ----- shimmer de carga ----- */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.shimmer {
+  background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.35) 50%, rgba(255,255,255,0) 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+/* ----- spin (equipment check) ----- */
+@keyframes ae-spin { to { transform: rotate(360deg); } }
+.ae-spin { animation: ae-spin 1s linear infinite; }
