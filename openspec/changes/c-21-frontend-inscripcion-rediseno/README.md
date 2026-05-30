@@ -1,0 +1,3 @@
+# c-21-frontend-inscripcion-rediseno
+
+Refinamiento del frontend de demo (sobre la capa API mock, [[frontend-demo-mock-layer]]): inscripción del estudiante a un examen con **consentimiento en el momento de inscribirse**, wizard pre-examen que **solo verifica** (requisitos + biometría, sin re-pedir consentimiento), rediseño minimalista UI/UX, fix del build (`tsc`/vitest/bug `data`), rebrand institucional **UBA → UTN Regional Mendoza**, y enriquecimiento de datos de demo para un panorama completo. Governance MEDIO (capa de presentación demo). Dep c-07, c-08, c-09 (specs). No-código de dominio nuevo: reordena el flujo ya modelado.
