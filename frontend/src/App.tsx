@@ -19,7 +19,8 @@ import AuditPrivacy from './screens/AuditPrivacy';
 import AlumnoDashboard from './screens/AlumnoDashboard';
 import AlumnoMaterias from './screens/AlumnoMaterias';
 import AlumnoMisExamenes from './screens/AlumnoMisExamenes';
-import AlumnoPerfil from './screens/AlumnoPerfil';
+// C-22: StudentProfile reemplaza AlumnoPerfil con el flujo real de enrollment
+import StudentProfile from './screens/StudentProfile';
 
 export default function App() {
   const routes = {
@@ -43,7 +44,7 @@ export default function App() {
     '/alumno/dashboard': <AlumnoDashboard />,
     '/alumno/materias': <AlumnoMaterias />,
     '/alumno/mis-examenes': <AlumnoMisExamenes />,
-    '/alumno/perfil': <AlumnoPerfil />,
+    '/alumno/perfil': <StudentProfile />,
   };
 
   return (
