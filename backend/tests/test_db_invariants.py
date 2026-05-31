@@ -124,6 +124,13 @@ def test_audit_log_delete_rechazado_por_el_trigger() -> None:
 def test_audit_log_cadena_de_hash_consistente() -> None:
     genesis = "0" * 64
     with _connect() as conn, conn.cursor() as cur:
+        # Aislamiento: la cadena se valida desde el genesis sobre un audit_log
+        # pristino. El audit_log PERSISTE entre tests; sin truncar, filas de otros
+        # tests rompen el supuesto del genesis (hash_prev = 0*64) en la suite
+        # completa. El trigger append-only es BEFORE UPDATE/DELETE a nivel fila,
+        # no afecta a TRUNCATE (que es lo que permite re-aislar en el test).
+        cur.execute("TRUNCATE audit_log")
+        conn.commit()
         _insert_audit(cur, "a1", "login")
         _insert_audit(cur, "a2", "ver_evidencia")
         _insert_audit(cur, "a3", "exportar")
