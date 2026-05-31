@@ -25,7 +25,10 @@ export class MediaPipeVisionEngine implements VisionEngine {
 
   // El runner concreto (FaceLandmarker de @mediapipe/tasks-vision) se inyecta en
   // el deploy. Se mantiene opaco para no atar el contrato a la libreria (DD-17).
-  constructor(private readonly runner?: unknown) {}
+  // El parametro se recibe para forward-compatibility; el cableado real ocurre en
+  // el Worker del deploy (DD-17). Se ignora hasta entonces.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  constructor(_runner?: unknown) {}
 
   async init(): Promise<void> {
     // En produccion: cargar WASM + modelo Face Mesh y crear el FaceLandmarker.
