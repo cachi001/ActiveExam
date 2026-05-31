@@ -21,6 +21,8 @@ import AlumnoMaterias from './screens/AlumnoMaterias';
 import AlumnoMisExamenes from './screens/AlumnoMisExamenes';
 // C-22: StudentProfile reemplaza AlumnoPerfil con el flujo real de enrollment
 import StudentProfile from './screens/StudentProfile';
+// C-23: Harness de diagnóstico de detección para administradores
+import AdminDetectionHarness from './screens/AdminDetectionHarness';
 
 export default function App() {
   const routes = {
@@ -45,6 +47,8 @@ export default function App() {
     '/alumno/materias': <AlumnoMaterias />,
     '/alumno/mis-examenes': <AlumnoMisExamenes />,
     '/alumno/perfil': <StudentProfile />,
+    // C-23: Harness diagnóstico de detección para roles admin_examenes | coordinador
+    '/admin/detection-test': <AdminDetectionHarness />,
   };
 
   return (
