@@ -10,6 +10,7 @@ import type {
   VerifyIdentityResponse, SesionEnVivo, SesionRevision, ResumenReportes,
   EventoSesion, DesafioActivo, Severidad, TipoEvento,
   Materia, Comision, Inscripcion, EstadoInscripcion,
+  EstadoEnrollment, AcuseConsentimiento, ReferenciasBiometrica, EscaneDNI, VigenciaReferencia,
 } from './types';
 
 export const API_BASE = (import.meta.env.VITE_API_BASE as string) || '/api/v1';
@@ -148,8 +149,67 @@ let MIS_INSCRIPCIONES: Inscripcion[] = [
   },
 ];
 
-// 2.6 Estado in-memory del perfil del alumno
-let perfilAlumno = { consentimiento_ok: false, biometria_ok: false };
+// ---------------------------------------------------------------------------
+// Enrollment biométrico del perfil — C-22
+// ---------------------------------------------------------------------------
+
+/**
+ * Vigencia de la referencia en meses (configurable, NO hardcode).
+ * En producción vendría de una variable de entorno / config del servidor.
+ */
+export const BIOMETRIC_VALIDITY_MONTHS: number =
+  Number(import.meta.env.VITE_BIOMETRIC_VALIDITY_MONTHS) || 24;
+
+/** Feature flag para habilitar el escaneo de DNI (opcional, fase posterior). */
+export const ENABLE_DNI_SCAN: boolean =
+  import.meta.env.VITE_ENABLE_DNI_SCAN === '1';
+
+/** Versión del motor de visión (para metadatos de la referencia). */
+const VISION_ENGINE_VERSION = 'mediapipe-face-mesh-v1';
+
+/** Calcula la fecha de expiración dado la fecha de captura y los meses de vigencia. */
+function calcularExpiracion(fechaCaptura: string, meses: number): string {
+  const d = new Date(fechaCaptura);
+  d.setMonth(d.getMonth() + meses);
+  return d.toISOString();
+}
+
+/** Calcula el estado de vigencia de una referencia biométrica. */
+function calcularVigencia(fechaExpiracion: string, renovacionAnticipada: boolean): VigenciaReferencia {
+  if (renovacionAnticipada) return 'renovacion_requerida';
+  const ahora = new Date();
+  const expira = new Date(fechaExpiracion);
+  const diasRestantes = (expira.getTime() - ahora.getTime()) / (1000 * 60 * 60 * 24);
+  if (diasRestantes <= 0) return 'caducada';
+  if (diasRestantes <= 90) return 'por_vencer'; // aviso 3 meses antes
+  return 'vigente';
+}
+
+/**
+ * Estado in-memory del enrollment del alumno (C-22).
+ * Reemplaza el antiguo `perfilAlumno = { consentimiento_ok, biometria_ok }`.
+ */
+let enrollmentAlumno: EstadoEnrollment = {
+  consentimiento: null,
+  biometria: null,
+  dni: null,
+  perfil_completo: false,
+};
+
+/** Recalcula `perfil_completo` según las reglas del gate. */
+function recalcularPerfilCompleto(e: EstadoEnrollment): EstadoEnrollment {
+  const consentimientoValido =
+    e.consentimiento !== null &&
+    (e.consentimiento.via_alternativa || e.consentimiento.version === CONSENT_TEXT.version);
+
+  const biometriaVigente =
+    e.consentimiento?.via_alternativa === true ||
+    (e.biometria !== null &&
+      e.biometria.captura_completada &&
+      e.biometria.vigencia !== 'caducada');
+
+  return { ...e, perfil_completo: consentimientoValido && biometriaVigente };
+}
 
 export const DESAFIOS: DesafioActivo[] = [
   { id: 'girar_izquierda', label: 'Girar a la izquierda' },
@@ -359,30 +419,155 @@ export const api = {
     return [...MIS_INSCRIPCIONES];
   },
 
-  /** 2.12 Gate: el alumno puede rendir solo si tiene consentimiento y biometría completos. */
-  async puedeRendir(): Promise<{ puede: boolean; razon?: string }> {
+  // -------------------------------------------------------------------------
+  // Enrollment biométrico del perfil — C-22
+  // -------------------------------------------------------------------------
+
+  /**
+   * Gate real: el alumno puede rendir si el perfil está completo.
+   * Ya no parsea strings: usa el estado tipado de `enrollmentAlumno`.
+   * "Perfil completo" = (consentimiento válido OR vía alternativa) AND referencia vigente.
+   * La referencia caducada bloquea rendir hasta renovar (spec biometric-reference-renewal).
+   */
+  async puedeRendir(_examenId?: string): Promise<{ puede: boolean; razon?: string; codigo?: string }> {
     await delay(200);
-    if (perfilAlumno.consentimiento_ok && perfilAlumno.biometria_ok) {
-      return { puede: true };
-    }
+    const e = recalcularPerfilCompleto(enrollmentAlumno);
+    enrollmentAlumno = e;
+
+    if (e.perfil_completo) return { puede: true };
+
     const faltantes: string[] = [];
-    if (!perfilAlumno.consentimiento_ok) faltantes.push('consentimiento informado');
-    if (!perfilAlumno.biometria_ok) faltantes.push('verificación biométrica');
+    let codigo = 'perfil_incompleto';
+
+    if (!e.consentimiento) {
+      faltantes.push('consentimiento informado');
+    } else if (!e.consentimiento.via_alternativa && e.consentimiento.version !== CONSENT_TEXT.version) {
+      faltantes.push('renovación del consentimiento (nueva versión disponible)');
+      codigo = 'consentimiento_version_desactualizada';
+    }
+
+    if (!e.consentimiento?.via_alternativa) {
+      if (!e.biometria) {
+        faltantes.push('captura biométrica de referencia');
+      } else if (e.biometria.vigencia === 'caducada') {
+        faltantes.push('renovación de la referencia biométrica (caducada)');
+        codigo = 'biometria_caducada';
+      } else if (e.biometria.vigencia === 'renovacion_requerida') {
+        faltantes.push('renovación de la referencia biométrica (requerida por deriva)');
+        codigo = 'biometria_renovacion_requerida';
+      }
+    }
+
     return {
       puede: false,
-      razon: `Perfil incompleto: falta ${faltantes.join(' y ')}.`,
+      codigo,
+      razon: faltantes.length > 0
+        ? `Perfil incompleto: falta ${faltantes.join(' y ')}.`
+        : 'Perfil incompleto.',
     };
   },
 
-  /** 2.13 Controles demo para simular completitud del perfil (no hay flujo real en C-21). */
-  async simularConsentimientoOk(): Promise<void> {
-    await delay(150);
-    perfilAlumno = { ...perfilAlumno, consentimiento_ok: true };
+  /** Retorna el estado de enrollment completo del perfil (C-22). */
+  async getEnrollment(): Promise<EstadoEnrollment> {
+    await delay(250);
+    enrollmentAlumno = recalcularPerfilCompleto(enrollmentAlumno);
+    return { ...enrollmentAlumno };
   },
 
-  async simularBiometriaOk(): Promise<void> {
+  /**
+   * Registra el acuse de consentimiento en el perfil (C-22).
+   * Acción afirmativa explícita; nunca pre-marcado (RN-CO-02).
+   * El acuse referencia la versión exacta del texto mostrado (RN-CO-01).
+   *
+   * Demo: hash simulado. Server-side: SHA-256 firmado por clave maestra (C-12).
+   */
+  async registrarConsentimientoPerfil(versionTexto: string, viaAlternativa = false): Promise<AcuseConsentimiento> {
+    await delay(400);
+    const acuse: AcuseConsentimiento = {
+      version: versionTexto,
+      timestamp: new Date().toISOString(),
+      // Demo: hash simulado. Server-side: SHA-256 del contenido firmado server-side.
+      hash: 'sha256:' + Math.random().toString(16).slice(2, 18),
+      via_alternativa: viaAlternativa,
+    };
+    enrollmentAlumno = recalcularPerfilCompleto({ ...enrollmentAlumno, consentimiento: acuse });
+    return acuse;
+  },
+
+  /**
+   * Persiste la referencia biométrica capturada en el enrollment del perfil (C-22).
+   *
+   * DATOS SENSIBLES (Ley 25.326):
+   * - `imagen`: cifrada at-rest server-side; en demo se guarda dataURL con metadatos.
+   *   Finalidad acotada a verificación de identidad y revisión humana.
+   *   Eliminada al egreso del estudiante; holds legales difieren la eliminación.
+   * - `embedding`: cifrado at-rest server-side; en demo se guarda el vector simulado.
+   *   Finalidad acotada a verificación de identidad 1:1.
+   *   Marcado para eliminación al egreso; holds legales difieren.
+   * El cliente es SENSOR NO CONFIABLE: el backend re-infiere y firma (C-12).
+   */
+  async guardarReferenciaBiometrica(params: {
+    imagen: string | null;
+    embedding: number[] | null;
+  }): Promise<ReferenciasBiometrica> {
+    await delay(600);
+    const ahora = new Date().toISOString();
+    const expiracion = calcularExpiracion(ahora, BIOMETRIC_VALIDITY_MONTHS);
+    const ref: ReferenciasBiometrica = {
+      captura_completada: true,
+      imagen: params.imagen,
+      embedding: params.embedding,
+      fecha_captura: ahora,
+      fecha_expiracion: expiracion,
+      vigencia_meses: BIOMETRIC_VALIDITY_MONTHS,
+      version_motor: VISION_ENGINE_VERSION,
+      vigencia: calcularVigencia(expiracion, false),
+      renovacion_anticipada_requerida: false,
+    };
+    enrollmentAlumno = recalcularPerfilCompleto({ ...enrollmentAlumno, biometria: ref });
+    return ref;
+  },
+
+  /**
+   * Guarda el escaneo de DNI como dato sensible (demo) — C-22.
+   * Solo activo si ENABLE_DNI_SCAN === true. No bloquea el perfil completo.
+   *
+   * DATO SENSIBLE (Ley 25.326):
+   * Server-side: cifrado AES-256-GCM, finalidad acotada a verificación de identidad,
+   * eliminado al egreso, holds legales difieren la eliminación.
+   */
+  async guardarEscaneDNI(imagen: string): Promise<EscaneDNI> {
+    await delay(400);
+    const escan: EscaneDNI = {
+      captura_completada: true,
+      imagen,
+      fecha_captura: new Date().toISOString(),
+    };
+    enrollmentAlumno = recalcularPerfilCompleto({ ...enrollmentAlumno, dni: escan });
+    return escan;
+  },
+
+  /**
+   * Simula la deriva del embedding y marca la referencia para renovación anticipada.
+   * En producción este flag lo setea el backend tras detectar deriva sostenida en la
+   * verificación silenciosa continua. La deriva NO sanciona ni invalida la rendición
+   * en curso (L2.5 — decisión disciplinaria siempre humana).
+   */
+  async simularDerivaEmbedding(): Promise<void> {
+    await delay(200);
+    if (!enrollmentAlumno.biometria) return;
+    const bioActualizada: ReferenciasBiometrica = {
+      ...enrollmentAlumno.biometria,
+      renovacion_anticipada_requerida: true,
+      vigencia: 'renovacion_requerida',
+    };
+    enrollmentAlumno = recalcularPerfilCompleto({ ...enrollmentAlumno, biometria: bioActualizada });
+  },
+
+  /** Elimina la referencia biométrica para forzar renovación (demo / testing). */
+  async resetearReferenciaBiometrica(): Promise<void> {
     await delay(150);
-    perfilAlumno = { ...perfilAlumno, biometria_ok: true };
+    enrollmentAlumno = recalcularPerfilCompleto({ ...enrollmentAlumno, biometria: null });
   },
 };
 
@@ -400,4 +585,7 @@ export const TIPO_EVENTO_LABEL: Record<TipoEvento, string> = {
   corte_conectividad_prolongado: 'Corte de conectividad',
 };
 
-export type { EventoSesion, Materia, Comision, Inscripcion, EstadoInscripcion };
+export type {
+  EventoSesion, Materia, Comision, Inscripcion, EstadoInscripcion,
+  EstadoEnrollment, AcuseConsentimiento, ReferenciasBiometrica, EscaneDNI, VigenciaReferencia,
+};

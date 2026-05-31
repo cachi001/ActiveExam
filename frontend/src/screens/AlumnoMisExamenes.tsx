@@ -1,33 +1,45 @@
 // Portal del alumno — Mis inscripciones a exámenes (C-21)
+// C-22: puedeRendir usa estado tipado real (sin parseo por substring).
 import { useEffect, useState } from 'react';
 import { Card, Badge, Button, Icon } from '../ui/components';
 import { StudentShell } from '../ui/shells';
 import { useNavigate } from '../lib/router';
+import { useApp } from '../lib/store';
 import { api } from '../lib/api';
 import type { Inscripcion } from '../lib/types';
 
 export default function AlumnoMisExamenes() {
   const navigate = useNavigate();
+  const setEnrollmentStatus = useApp((s) => s.setEnrollmentStatus);
   const [inscripciones, setInscripciones] = useState<Inscripcion[]>([]);
   const [puedeRendir, setPuedeRendir] = useState<boolean | null>(null);
   const [razonBloqueo, setRazonBloqueo] = useState<string | undefined>();
+  const [codigoBloqueo, setCodigoBloqueo] = useState<string | undefined>();
   const [cargando, setCargando] = useState(true);
   const [verificandoId, setVerificandoId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelado = false;
     (async () => {
-      const [insc, gate] = await Promise.all([api.misInscripciones(), api.puedeRendir()]);
+      const [insc, gate, enrollment] = await Promise.all([
+        api.misInscripciones(),
+        api.puedeRendir(),
+        api.getEnrollment(),
+      ]);
       if (cancelado) return;
       setInscripciones(insc);
       setPuedeRendir(gate.puede);
       setRazonBloqueo(gate.razon);
+      setCodigoBloqueo(gate.codigo);
+      setEnrollmentStatus(enrollment); // sincroniza store con estado real (C-22)
       setCargando(false);
     })();
     return () => { cancelado = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Verificar gate y navegar a rendir
+  // Verificar gate y navegar a rendir.
+  // C-22: usa estado tipado de puedeRendir (código semántico, no substring).
   const handleRendir = async (inscripcionId: string) => {
     setVerificandoId(inscripcionId);
     const gate = await api.puedeRendir();
@@ -37,6 +49,7 @@ export default function AlumnoMisExamenes() {
     } else {
       setPuedeRendir(false);
       setRazonBloqueo(gate.razon);
+      setCodigoBloqueo(gate.codigo);
     }
   };
 
@@ -61,16 +74,37 @@ export default function AlumnoMisExamenes() {
           </p>
         </header>
 
-        {/* Banner de perfil incompleto (visible cuando hay exámenes habilitados y perfil incompleto) */}
+        {/* Banner de perfil incompleto / biometría caducada (C-22: usa código semántico, no substring) */}
         {puedeRendir === false && inscripciones.some((i) => i.estado === 'habilitado') && (
-          <div className="flex items-start gap-md bg-warning-container border border-warning/30 rounded-xl p-md">
-            <Icon name="warning" className="text-warning text-[22px] shrink-0 mt-base" fill />
+          <div className={`flex items-start gap-md border rounded-xl p-md ${
+            codigoBloqueo === 'biometria_caducada'
+              ? 'bg-error-container border-error/30'
+              : 'bg-warning-container border-warning/30'
+          }`}>
+            <Icon
+              name={codigoBloqueo === 'biometria_caducada' ? 'cancel' : 'warning'}
+              className={`text-[22px] shrink-0 mt-base ${codigoBloqueo === 'biometria_caducada' ? 'text-error' : 'text-warning'}`}
+              fill
+            />
             <div className="flex-1 min-w-0">
-              <p className="text-label-md font-semibold text-on-surface">Tu perfil está incompleto</p>
+              <p className="text-label-md font-semibold text-on-surface">
+                {codigoBloqueo === 'biometria_caducada'
+                  ? 'Referencia biométrica caducada'
+                  : codigoBloqueo === 'biometria_renovacion_requerida'
+                    ? 'Renovación biométrica requerida'
+                    : codigoBloqueo === 'consentimiento_version_desactualizada'
+                      ? 'Consentimiento desactualizado'
+                      : 'Tu perfil está incompleto'}
+              </p>
               <p className="text-label-sm text-on-surface-variant mt-base">{razonBloqueo}</p>
             </div>
-            <Button variant="outline" onClick={() => navigate('/alumno/perfil')} className="shrink-0 h-9 px-md text-label-sm">
-              Completar perfil
+            <Button
+              variant={codigoBloqueo === 'biometria_caducada' ? 'danger' : 'outline'}
+              onClick={() => navigate('/alumno/perfil')}
+              className="shrink-0 h-9 px-md text-label-sm"
+              icon="manage_accounts"
+            >
+              {codigoBloqueo === 'biometria_caducada' ? 'Renovar' : 'Completar perfil'}
             </Button>
           </div>
         )}
