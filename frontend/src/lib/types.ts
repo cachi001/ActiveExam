@@ -252,6 +252,36 @@ export interface EstadoEnrollment {
   perfil_completo: boolean;
 }
 
+// ---------------------------------------------------------------------------
+// Acuse por-examen — C-26
+// ---------------------------------------------------------------------------
+
+/**
+ * Acuse LIVIANO y ESPECÍFICO por (estudiante, examen).
+ * Da finalidad/propósito concreto a la instancia de tratamiento (Ley 25.326).
+ * NO captura ni re-procesa biometría: referencia el acuse de perfil vigente (C-22).
+ *
+ * Demo: hash simulado.
+ * Server-side: SHA-256 sobre (estudiante, examen, version, alcance_monitoreo, timestamp),
+ * firmado por clave maestra (C-12). El cliente es SENSOR NO CONFIABLE.
+ */
+export interface AcuseExamen {
+  /** ID del examen para el que se otorga el acuse. */
+  examen_id: string;
+  /** Versión del texto de acuse por-examen al momento de la acción afirmativa. */
+  version: string;
+  /** ISO 8601: momento de la acción afirmativa. */
+  timestamp: string;
+  /**
+   * Hash del acuse (demo: simulado sobre examen_id + version + timestamp).
+   * Server-side: SHA-256 firmado por clave maestra (C-12). El sellado definitivo
+   * es siempre server-side; el cliente solo genera un placeholder de demo.
+   */
+  hash: string;
+  /** true si el alumno confirmó afirmativamente ESA instancia de tratamiento. */
+  afirmativo: boolean;
+}
+
 /** Materia/asignatura de la currícula. */
 export interface Materia {
   id: string;

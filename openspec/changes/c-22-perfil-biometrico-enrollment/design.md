@@ -42,5 +42,9 @@ Todo lo capturado en el cliente (clip, embedding, imagen, DNI) se re-hashea, re-
 
 ## Open Questions
 
-- **¿Hace falta un acuse de consentimiento por-examen además del de perfil?** El enrollment registra el consentimiento una vez en el perfil. Falta confirmar con legal si la Ley 25.326 / la institución exigen **además** un acuse específico por rendición (p. ej. reconfirmar finalidad concreta de ese examen) o si el acuse de perfil —versionado e inmutable— alcanza como base de licitud para todas las rendiciones bajo esa versión de texto. Hipótesis de trabajo: el de perfil alcanza mientras la versión de texto no cambie; un cambio de versión re-dispara consentimiento. **Pendiente de validar antes de cerrar el gate legal.**
+- ~~**¿Hace falta un acuse de consentimiento por-examen además del de perfil?**~~ **RESUELTA — C-26.** El usuario decidió un modelo de **consentimiento EN CAPAS** (implementado en C-26):
+  - **Capa de perfil (C-22, esta)**: acuse PESADO del dato biométrico/sensible. Texto versionado, acción afirmativa, acuse inmutable, vía alternativa. Es la **base de licitud** del tratamiento (Ley 25.326).
+  - **Capa por-examen (C-26)**: acuse LIVIANO y ESPECÍFICO por (estudiante, examen). Da **finalidad/propósito concreto** (art. 4, Ley 25.326) para ESA instancia de tratamiento — cátedra, fecha/hora, duración, alcance de monitoreo. NO re-captura biometría ni re-presenta el texto pesado: **referencia** el acuse de perfil vigente.
+  - El gate de rendir pasa a ser EN CAPAS: `puedeRendir(examenId)` evalúa (1) perfil completo → (2) acuse por-examen afirmativo para ESE examen. Si falta (2) retorna `{ codigo: 'acuse_examen_faltante' }` y deriva a completarlo (nunca sanciona — L2.5).
+  - Ver detalles completos: `openspec/changes/c-26-acuse-consentimiento-por-examen/design.md`.
 - **Umbral y ventana de deriva** para gatillar renovación anticipada: a definir con datos de la verificación silenciosa continua (no bloquea esta demo).

@@ -23,6 +23,8 @@ import AlumnoMisExamenes from './screens/AlumnoMisExamenes';
 import StudentProfile from './screens/StudentProfile';
 // C-23: Harness de diagnóstico de detección para administradores
 import AdminDetectionHarness from './screens/AdminDetectionHarness';
+// C-26: AcuseExamen es un paso inline (no tiene ruta directa; requiere examenId como prop).
+// Se embebe desde AlumnoMaterias (inscripción) y AlumnoMisExamenes (completar acuse).
 
 export default function App() {
   const routes = {
