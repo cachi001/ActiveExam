@@ -554,6 +554,16 @@ C-01 → C-03 → C-04 → C-05 → C-06 → C-07 → C-08 → C-09 → C-10 →
   - **engram** `activeexam/refinamiento-frontend-v2`
   - `knowledge-base/11_ia_y_vision.md`, `05_reglas_de_negocio.md` §RN-EV
 
+### [C-26] `acuse-consentimiento-por-examen`
+- **Estado**: `[ ]` propuesto (validate --strict OK)
+- **Scope**: **Consentimiento EN CAPAS** — resuelve la pregunta legal abierta de C-22. Agrega un **acuse liviano por-examen** al inscribirse a un examen concreto: muestra el examen + qué se monitorea, con una acción afirmativa que da **finalidad específica** a esa instancia de tratamiento (Ley 25.326), **referenciando** el consentimiento de perfil de C-22 (no re-pide biometría ni el texto pesado). Acuse inmutable por `(estudiante, examen)` (versión+timestamp+hash, demo). Gate de habilitación = perfil completo (C-22) **Y** acuse por-examen (código nuevo `acuse_examen_faltante`). Caps NEW: per-exam-consent-acknowledgment. **MODIFICA** (deltas dentro del change): `exam-enrollment` (C-21), `consent-gate` (C-22).
+- **Dependencias**: `C-21` (inscripción), `C-22` (consentimiento de perfil + gate)
+- **Governance**: ALTO
+- **Leer antes**:
+  - `openspec/changes/c-26-acuse-consentimiento-por-examen/`
+  - **engram** `activeexam/refinamiento-frontend-v2`
+  - `knowledge-base/13_legal_y_cumplimiento_argentina.md`, `05_reglas_de_negocio.md` §RN-CO
+
 ---
 
 ## Resumen
@@ -563,12 +573,12 @@ C-01 → C-03 → C-04 → C-05 → C-06 → C-07 → C-08 → C-09 → C-10 →
 | **0 — Fundaciones** | C-01, C-02, C-03 | 3× CRITICO (C-03 ★ Tier 1 BLOQUEANTE) |
 | **1 — MVP** | C-04…C-19 | 6 CRITICO, 8 ALTO, 2 MEDIO |
 | **2 — Refinamiento** | C-20 | 1 MEDIO |
-| **Refinamiento post-fundación** | C-21, C-22, C-23, C-24, C-25 | 3 ALTO, 2 MEDIO |
+| **Refinamiento post-fundación** | C-21, C-22, C-23, C-24, C-25, C-26 | 4 ALTO, 2 MEDIO |
 
-- **Total**: **25 changes** — 20 de la fundación (3 fases) + 5 post-fundación (capa frontend/demo, captura de actividad y decisiones de producto, ver sección dedicada arriba).
+- **Total**: **26 changes** — 20 de la fundación (3 fases) + 6 post-fundación (capa frontend/demo, captura de actividad, consentimiento en capas y decisiones de producto, ver sección dedicada arriba).
 - **Camino crítico**: 11 changes (`C-01 → C-03 → C-04 → C-05 → C-06 → C-07 → C-08 → C-09 → C-10 → C-15 → C-16`). C-21…C-24 quedan **fuera** del camino crítico (refinamiento de demo, no MVP backend).
 - **Gates de paralelismo**: 13 (GATE 0…GATE 12). Forks grandes en GATE 5, GATE 6 y GATE 9.
 - **Primer change recomendado**: `C-01` (acuerdo-proctoring-dpia) — gate legal que junto a `C-02` bloquea todo el desarrollo. El primer change de **código** es `C-03` (poc-carga-mensajeria, Tier 1, BLOQUEANTE).
-- **Post-fundación**: el detalle y el porqué viven también en **engram** (`activeexam/refinamiento-frontend-v2`). Orden de aplicación sugerido: **C-21 → C-22** (perfil cuelga del portal); **C-23 → C-25** (C-25 extiende el harness y cablea los detectores de navegador); C-24 independiente.
+- **Post-fundación**: el detalle y el porqué viven también en **engram** (`activeexam/refinamiento-frontend-v2`). Orden de aplicación sugerido: **C-21 → C-22 → C-26** (perfil cuelga del portal; el acuse por-examen de C-26 cuelga de la inscripción de C-21 + el consentimiento de C-22); **C-23 → C-25** (C-25 extiende el harness y cablea los detectores de navegador); C-24 independiente.
 
 Para arrancar: `/opsx:propose C-01-acuerdo-proctoring-dpia`
