@@ -35,6 +35,17 @@ import {
 } from '../proctoring/stateTransitionRules';
 import type { EventoSesion, TipoEvento } from '../lib/types';
 
+// C-25: detectores de contexto reales (no valores fijos)
+import {
+  FocusDetector,
+  FullscreenDetector,
+  ClipboardDetector,
+  detectExtraMonitor,
+} from '../proctoring/contextDetectors';
+
+// C-25: catálogo canónico para el checklist de cobertura integral
+import { SUSPICIOUS_ACTIVITY_CATALOG } from '../proctoring/suspiciousActivityCatalog';
+
 // ---------------------------------------------------------------------------
 // Constantes
 // ---------------------------------------------------------------------------
@@ -57,6 +68,19 @@ interface RawSignals {
   faceMesh: FaceMeshSignal | null;
   poseAvailable: boolean;
   frameTs: number;
+}
+
+/**
+ * C-25: señales de entorno de navegador en vivo (actualizadas por detectores reales).
+ * null = no determinable (API ausente/denegada).
+ */
+interface EnvSignals {
+  focusLost: boolean;
+  tabChanged: boolean;
+  fullscreenExited: boolean;
+  clipboardAction: 'copy' | 'paste' | null;
+  /** null = API no disponible o denegada (no determinable). */
+  extraMonitor: boolean | null;
 }
 
 /** Entrada del log de eventos del harness con estado del sink. */
@@ -184,10 +208,32 @@ export default function AdminDetectionHarness() {
     frameTs: 0,
   });
 
+  // ------ C-25: Señales de entorno (detectores reales) ------
+  const [envSignals, setEnvSignals] = useState<EnvSignals>({
+    focusLost: false,
+    tabChanged: false,
+    fullscreenExited: false,
+    clipboardAction: null,
+    extraMonitor: null,
+  });
+  // Refs para consumir en el loop de frames (evita stale closure)
+  const envFocusLostRef = useRef(false);
+  const envTabChangedRef = useRef(false);
+  const envFullscreenExitedRef = useRef(false);
+  const envClipboardRef = useRef<'copy' | 'paste' | null>(null);
+  const envExtraMonitorRef = useRef<boolean | null>(null);
+
   // ------ Log de eventos ------
   const [logEntries, setLogEntries] = useState<HarnessLogEntry[]>([]);
   const [logTruncated, setLogTruncated] = useState(false);
   const logSeqRef = useRef(0);
+
+  // ------ C-25: Checklist de cobertura integral ------
+  // Mapea tipo → { capturedAt: timestamp, clipMonitorNA: bool }
+  type CoverageEntry = { capturedAt: number; severidad: string };
+  const [coverage, setCoverage] = useState<Partial<Record<string, CoverageEntry>>>({});
+  // true si la API de monitores no está disponible (no testeable en este browser)
+  const [monitorApiUnavailable, setMonitorApiUnavailable] = useState(false);
 
   // ------ Filtros y UI ------
   const [severityFilter, setSeverityFilter] = useState<Set<Severidad>>(new Set(SEVERITY_ORDER));
@@ -227,6 +273,75 @@ export default function AdminDetectionHarness() {
     return () => clearInterval(t);
   }, [harnessState]);
 
+  // ------ C-25: Detectores de contexto reales (se montan al iniciar, se desmontan al detener) ------
+  useEffect(() => {
+    if (harnessState !== 'running') return;
+
+    // Foco de ventana + cambio de pestaña
+    const fd = new FocusDetector((sig) => {
+      if (sig.focus_lost !== undefined) {
+        envFocusLostRef.current = sig.focus_lost;
+        setEnvSignals((prev) => ({ ...prev, focusLost: sig.focus_lost! }));
+      }
+      if (sig.tab_changed !== undefined) {
+        envTabChangedRef.current = sig.tab_changed;
+        setEnvSignals((prev) => ({ ...prev, tabChanged: sig.tab_changed! }));
+      }
+    });
+    fd.start();
+
+    // Salida de pantalla completa
+    const fsd = new FullscreenDetector((sig) => {
+      if (sig.fullscreen_exited !== undefined) {
+        envFullscreenExitedRef.current = sig.fullscreen_exited;
+        setEnvSignals((prev) => ({ ...prev, fullscreenExited: sig.fullscreen_exited! }));
+      }
+    });
+    fsd.start();
+
+    // Clipboard (copy/paste sin leer contenido)
+    const cd = new ClipboardDetector((sig) => {
+      if (sig.clipboard_action) {
+        envClipboardRef.current = sig.clipboard_action;
+        setEnvSignals((prev) => ({ ...prev, clipboardAction: sig.clipboard_action! }));
+        // Reset del label después de 3 s para que no quede "pegado"
+        setTimeout(() => {
+          envClipboardRef.current = null;
+          setEnvSignals((prev) => ({ ...prev, clipboardAction: null }));
+        }, 3000);
+      }
+    });
+    cd.start();
+
+    // Monitor adicional — polling cada 5 s (degrada a null si API ausente)
+    let monitorPollActive = true;
+    const pollMonitor = async () => {
+      const provider = typeof window !== 'undefined' && 'getScreenDetails' in window
+        ? () => (window as unknown as { getScreenDetails: () => Promise<{ screens: unknown[] }> }).getScreenDetails()
+        : undefined;
+      const sig = await detectExtraMonitor(provider);
+      const val = sig?.extra_monitor ?? null;
+      envExtraMonitorRef.current = val;
+      setEnvSignals((prev) => ({ ...prev, extraMonitor: val }));
+      if (monitorPollActive) setTimeout(pollMonitor, 5000);
+    };
+    pollMonitor();
+
+    return () => {
+      fd.stop();
+      fsd.stop();
+      cd.stop();
+      monitorPollActive = false;
+      // Resetear señales al detener
+      setEnvSignals({ focusLost: false, tabChanged: false, fullscreenExited: false, clipboardAction: null, extraMonitor: null });
+      envFocusLostRef.current = false;
+      envTabChangedRef.current = false;
+      envFullscreenExitedRef.current = false;
+      envClipboardRef.current = null;
+      envExtraMonitorRef.current = null;
+    };
+  }, [harnessState]);
+
   // ------ Crear sink (referencia estable, captura callback) ------
   const createSink = useCallback(
     (onEvent: SinkEventCallback) => new LocalHarnessEventSink(onEvent),
@@ -259,6 +374,12 @@ export default function AdminDetectionHarness() {
       tiene_evidencia: !!(rawEvent.payload?.['trigger_evidence']),
     };
     pushAnomalia(ev);
+
+    // C-25: actualizar checklist de cobertura (primer evento de cada tipo)
+    setCoverage((prev) => {
+      if (prev[rawEvent.tipo]) return prev; // ya capturado
+      return { ...prev, [rawEvent.tipo]: { capturedAt: Date.now(), severidad: rawEvent.severidad } };
+    });
 
     // Registrar en log local
     const seqId = String(logSeqRef.current++);
@@ -296,6 +417,10 @@ export default function AdminDetectionHarness() {
     setLogTruncated(false);
     setElapsed(0);
     logSeqRef.current = 0;
+    // C-25: resetear cobertura al inicio de sesión
+    setCoverage({});
+    // Detectar si la API de monitores está disponible en este navegador
+    setMonitorApiUnavailable(!(typeof window !== 'undefined' && 'getScreenDetails' in window));
 
     try {
       // Solicitar cámara
@@ -365,6 +490,18 @@ export default function AdminDetectionHarness() {
           // Actualizar panel de señales crudas (task 4.2)
           setRawSignals({ faceDetection: fd, faceMesh: mesh, poseAvailable, frameTs: Date.now() });
 
+          // C-25: consumir señales de contexto reales de los refs (no valores fijos)
+          const snapFocus = envFocusLostRef.current;
+          const snapTab = envTabChangedRef.current;
+          const snapFullscreen = envFullscreenExitedRef.current;
+          const snapClipboard = envClipboardRef.current;
+          // Nota: focus_lost y tab_changed se resetean tras consumo para evitar re-emisión
+          // hasta que el detector emita de nuevo; fullscreen se resetea desde las reglas.
+          envFocusLostRef.current = false;
+          envTabChangedRef.current = false;
+          envFullscreenExitedRef.current = false;
+          envClipboardRef.current = null;
+
           // Ejecutar pipeline (onFrame llama detectFaces/detectFaceMesh internamente).
           // Como ya los llamamos arriba para el panel de señales, usamos onSignals para evitar
           // doble inferencia: pasamos las señales ya extraídas. (task 3.3 / D-3)
@@ -372,8 +509,11 @@ export default function AdminDetectionHarness() {
             ts_ms: Date.now(),
             face_count: fd.face_count,
             gaze: mesh?.gaze,
-            focus_lost: false,
-            extra_monitor: false,
+            focus_lost: snapFocus,
+            extra_monitor: envExtraMonitorRef.current === true,
+            tab_changed: snapTab,
+            fullscreen_exited: snapFullscreen,
+            clipboard_action: snapClipboard ?? undefined,
           });
         } catch (err) {
           // Error en el frame no debe crashear el loop
@@ -624,6 +764,97 @@ export default function AdminDetectionHarness() {
               )}
             </Card>
 
+            {/* C-25: Panel de señales de entorno en vivo (task 5.2) */}
+            <Card className="space-y-md">
+              <SectionTitle sub="Detectores de contexto reales del navegador">Señales de entorno</SectionTitle>
+
+              {harnessState !== 'running' ? (
+                <div className="text-center py-md text-on-surface-variant space-y-base">
+                  <Icon name="sensors_off" className="text-[32px]" />
+                  <p className="text-label-sm">Inicia la cámara para activar los detectores de entorno.</p>
+                </div>
+              ) : (
+                <div className="space-y-base">
+                  {/* Foco de ventana */}
+                  <div className={`flex items-center justify-between p-sm rounded-xl border text-label-sm ${
+                    envSignals.focusLost
+                      ? 'bg-warning-container/60 border-warning/40 text-warning'
+                      : 'bg-surface-container-low border-outline-variant/40 text-on-surface-variant'
+                  }`}>
+                    <div className="flex items-center gap-base">
+                      <Icon name={envSignals.focusLost ? 'visibility_off' : 'visibility'} className="text-[16px]" />
+                      <span className="font-semibold">Foco de ventana</span>
+                    </div>
+                    <span>{envSignals.focusLost ? 'PERDIDO' : 'activo'}</span>
+                  </div>
+
+                  {/* Cambio de pestaña */}
+                  <div className={`flex items-center justify-between p-sm rounded-xl border text-label-sm ${
+                    envSignals.tabChanged
+                      ? 'bg-warning-container/60 border-warning/40 text-warning'
+                      : 'bg-surface-container-low border-outline-variant/40 text-on-surface-variant'
+                  }`}>
+                    <div className="flex items-center gap-base">
+                      <Icon name="tab" className="text-[16px]" />
+                      <span className="font-semibold">Pestaña visible</span>
+                    </div>
+                    <span>{envSignals.tabChanged ? 'OCULTA (cambio de pestaña)' : 'visible'}</span>
+                  </div>
+
+                  {/* Pantalla completa */}
+                  <div className={`flex items-center justify-between p-sm rounded-xl border text-label-sm ${
+                    envSignals.fullscreenExited
+                      ? 'bg-warning-container/60 border-warning/40 text-warning'
+                      : 'bg-surface-container-low border-outline-variant/40 text-on-surface-variant'
+                  }`}>
+                    <div className="flex items-center gap-base">
+                      <Icon name={envSignals.fullscreenExited ? 'fullscreen_exit' : 'fullscreen'} className="text-[16px]" />
+                      <span className="font-semibold">Pantalla completa</span>
+                    </div>
+                    <span>{envSignals.fullscreenExited ? 'SALIDA detectada' : 'activa o no usada'}</span>
+                  </div>
+
+                  {/* Último clipboard */}
+                  <div className={`flex items-center justify-between p-sm rounded-xl border text-label-sm ${
+                    envSignals.clipboardAction
+                      ? 'bg-error-container/60 border-error/40 text-on-error-container'
+                      : 'bg-surface-container-low border-outline-variant/40 text-on-surface-variant'
+                  }`}>
+                    <div className="flex items-center gap-base">
+                      <Icon name="content_paste" className="text-[16px]" />
+                      <span className="font-semibold">Clipboard</span>
+                    </div>
+                    <span>
+                      {envSignals.clipboardAction
+                        ? `DETECTADO: ${envSignals.clipboardAction.toUpperCase()}`
+                        : 'sin actividad'}
+                    </span>
+                  </div>
+
+                  {/* Monitores */}
+                  <div className={`flex items-center justify-between p-sm rounded-xl border text-label-sm ${
+                    envSignals.extraMonitor === true
+                      ? 'bg-error-container/60 border-error/40 text-on-error-container'
+                      : envSignals.extraMonitor === null
+                      ? 'bg-surface-container-low border-outline-variant/40 text-on-surface-variant'
+                      : 'bg-surface-container-low border-outline-variant/40 text-on-surface-variant'
+                  }`}>
+                    <div className="flex items-center gap-base">
+                      <Icon name="desktop_windows" className="text-[16px]" />
+                      <span className="font-semibold">Monitores</span>
+                    </div>
+                    <span>
+                      {envSignals.extraMonitor === true
+                        ? 'MONITOR ADICIONAL detectado'
+                        : envSignals.extraMonitor === false
+                        ? 'solo un monitor'
+                        : 'no determinable (API ausente)'}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </Card>
+
             {/* Panel de configuración de umbrales (tasks 5.1, 5.2, 5.3) */}
             <Card className="space-y-md">
               <SectionTitle sub="Cambios aplican al siguiente frame sin reiniciar el motor">
@@ -860,6 +1091,99 @@ export default function AdminDetectionHarness() {
             </Card>
           </div>
         </div>
+
+        {/* ================================================================
+            C-25: CHECKLIST DE COBERTURA INTEGRAL (6.1, 6.2, 6.3, 6.4)
+        ================================================================ */}
+        <Card className="space-y-md">
+          <div className="flex items-start justify-between gap-md flex-wrap">
+            <SectionTitle sub="Ejercitá cada tipo en esta sesión para confirmar captura y registro">
+              Cobertura integral de actividad sospechosa
+            </SectionTitle>
+            {(() => {
+              const testableCatalog = SUSPICIOUS_ACTIVITY_CATALOG.filter(
+                (e) => !(e.requiereApiOpcional && monitorApiUnavailable),
+              );
+              const captured = testableCatalog.filter((e) => coverage[e.tipo]);
+              const allDone = testableCatalog.length > 0 && captured.length === testableCatalog.length;
+              return allDone ? (
+                <span className="inline-flex items-center gap-base px-md py-sm rounded-xl bg-success-container text-success font-bold text-label-md border border-success/30">
+                  <Icon name="verified" className="text-[18px]" fill />
+                  Cobertura completa
+                </span>
+              ) : (
+                <span className="text-label-sm text-on-surface-variant font-mono">
+                  {captured.length}/{testableCatalog.length} tipos cubiertos
+                </span>
+              );
+            })()}
+          </div>
+
+          <div className="space-y-base">
+            {SUSPICIOUS_ACTIVITY_CATALOG.map((entry) => {
+              const cap = coverage[entry.tipo];
+              const isUntestable = entry.requiereApiOpcional && monitorApiUnavailable;
+              return (
+                <div
+                  key={entry.tipo}
+                  className={`flex items-start justify-between gap-sm p-sm rounded-xl border text-label-sm ${
+                    isUntestable
+                      ? 'bg-surface-container border-outline-variant/40 opacity-60'
+                      : cap
+                      ? 'bg-success-container/30 border-success/30'
+                      : 'bg-surface-container-low border-outline-variant/40'
+                  }`}
+                >
+                  <div className="flex items-start gap-sm">
+                    <Icon
+                      name={isUntestable ? 'info' : cap ? 'check_circle' : 'radio_button_unchecked'}
+                      className={`text-[18px] shrink-0 mt-px ${
+                        isUntestable
+                          ? 'text-on-surface-variant'
+                          : cap
+                          ? 'text-success'
+                          : 'text-on-surface-variant'
+                      }`}
+                      fill={!isUntestable && !!cap}
+                    />
+                    <div className="space-y-px">
+                      <div className="flex items-center gap-sm flex-wrap">
+                        <span className={`font-semibold ${cap ? 'text-on-surface' : 'text-on-surface-variant'}`}>
+                          {entry.label}
+                        </span>
+                        <span className={`text-[10px] uppercase tracking-wide px-base py-px rounded-full font-bold ${
+                          entry.categoria === 'vision'
+                            ? 'bg-primary-fixed/60 text-primary'
+                            : 'bg-secondary-container text-on-secondary-container'
+                        }`}>
+                          {entry.categoria === 'vision' ? 'Visión' : 'Navegador'}
+                        </span>
+                        <span className="text-[10px] text-on-surface-variant uppercase">sev: {entry.severidad}</span>
+                      </div>
+                      <p className="text-[11px] text-on-surface-variant">{entry.descripcion}</p>
+                    </div>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    {isUntestable ? (
+                      <span className="text-[10px] text-on-surface-variant italic">no testeable en este navegador</span>
+                    ) : cap ? (
+                      <span className="text-[10px] text-success font-semibold font-mono">
+                        +{((cap.capturedAt - sessionStart) / 1000).toFixed(1)}s
+                      </span>
+                    ) : (
+                      <span className="text-[10px] text-on-surface-variant">pendiente</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="flex items-center gap-base p-sm rounded-lg bg-surface-container border border-outline-variant/40 text-label-sm text-on-surface-variant">
+            <Icon name="lock" className="text-[14px] shrink-0" fill />
+            Aislamiento D-4: todos los eventos de esta sesión permanecen en el sink local. Ninguno se envía al backend de producción.
+          </div>
+        </Card>
 
         {/* ================================================================
             AVISO LEGAL L2.5
