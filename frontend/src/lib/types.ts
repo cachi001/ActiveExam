@@ -128,3 +128,39 @@ export interface ResumenReportes {
   distribucion_severidad: { severidad: Severidad; cantidad: number }[];
   tendencia_semanal: { semana: string; flaggeadas: number; revisadas: number }[];
 }
+
+// ---------------------------------------------------------------------------
+// Portal del alumno — C-21
+// ---------------------------------------------------------------------------
+
+/** Estado de inscripción de un alumno a un examen. */
+export type EstadoInscripcion = 'inscripto' | 'pendiente' | 'habilitado' | 'rendido';
+
+/** Materia/asignatura de la currícula. */
+export interface Materia {
+  id: string;
+  nombre: string;
+  codigo: string;
+  descripcion: string;
+}
+
+/** Comisión: instancia de cursado de una Materia con docente y horario. */
+export interface Comision {
+  id: string;
+  materia_id: string;
+  nombre: string;
+  docente: string;
+  horario: string;
+}
+
+/** Inscripción de un alumno a un examen puntual. */
+export interface Inscripcion {
+  id: string;
+  examen_id: string;
+  comision_id: string;
+  materia_id: string;
+  nombre_examen: string;
+  nombre_materia: string;
+  fecha: string;
+  estado: EstadoInscripcion;
+}

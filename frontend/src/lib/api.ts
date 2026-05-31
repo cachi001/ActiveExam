@@ -9,6 +9,7 @@ import type {
   Principal, Rol, ConsentTextResponse, ConsentResponse, Examen,
   VerifyIdentityResponse, SesionEnVivo, SesionRevision, ResumenReportes,
   EventoSesion, DesafioActivo, Severidad, TipoEvento,
+  Materia, Comision, Inscripcion, EstadoInscripcion,
 } from './types';
 
 export const API_BASE = (import.meta.env.VITE_API_BASE as string) || '/api/v1';
@@ -29,9 +30,9 @@ const FOTOS = {
 
 export const PRINCIPALES: Record<Rol, Principal> = {
   estudiante: {
-    id_institucional: 'UBA-23.491.002', nombre: 'Emiliano Cáceres',
-    email: 'ecaceres@estudiante.uba.ar', roles: ['estudiante'],
-    mfa_satisfecho: true, jurisdiccion: 'AR',
+    id_institucional: 'FRM-23-4912', nombre: 'Emiliano Cáceres',
+    email: 'ecaceres@frm.utn.edu.ar', roles: ['estudiante'],
+    mfa_satisfecho: true, jurisdiccion: 'AR-MZA',
   },
   proctor: {
     id_institucional: 'UBA-DOC-1182', nombre: 'Dra. Carolina Ferreyra',
@@ -56,32 +57,99 @@ const DETECTORES_DEFAULT: TipoEvento[] = [
   'perdida_de_foco', 'monitor_adicional',
 ];
 
-let EXAMENES: Examen[] = [
+type ExamenConComision = Examen & { comision_id?: string };
+
+let EXAMENES: ExamenConComision[] = [
   {
     id: 'EX-UBA-ANAT-I', nombre: 'Examen Final — Anatomía I', catedra: 'Cátedra B',
     estado: 'en_curso', inicio: '2026-05-30T14:00:00', duracion_min: 90,
     umbral_score: 70, detectores: DETECTORES_DEFAULT, retencion_dias: 30,
-    inscriptos: 48, rindiendo: 4,
+    inscriptos: 48, rindiendo: 4, comision_id: 'COM-AMAT-1A',
   },
   {
     id: 'EX-UBA-FISIO-II', nombre: 'Parcial — Fisiología II', catedra: 'Cátedra A',
     estado: 'programado', inicio: '2026-06-02T09:00:00', duracion_min: 60,
     umbral_score: 65, detectores: DETECTORES_DEFAULT, retencion_dias: 30,
-    inscriptos: 72, rindiendo: 0,
+    inscriptos: 72, rindiendo: 0, comision_id: 'COM-FIS1-2B',
   },
   {
     id: 'EX-UBA-QUIM-ORG', nombre: 'Recuperatorio — Química Orgánica', catedra: 'Cátedra C',
     estado: 'finalizado', inicio: '2026-05-28T16:00:00', duracion_min: 120,
     umbral_score: 75, detectores: DETECTORES_DEFAULT, retencion_dias: 30,
-    inscriptos: 35, rindiendo: 0,
+    inscriptos: 35, rindiendo: 0, comision_id: 'COM-PROG-1A',
   },
   {
     id: 'EX-UBA-HISTO', nombre: 'Examen — Histología', catedra: 'Cátedra B',
     estado: 'borrador', inicio: '2026-06-10T11:00:00', duracion_min: 75,
     umbral_score: 70, detectores: DETECTORES_DEFAULT, retencion_dias: 30,
-    inscriptos: 0, rindiendo: 0,
+    inscriptos: 0, rindiendo: 0, comision_id: 'COM-AMAT-1B',
+  },
+  // Exámenes UTN FRM adicionales para el portal del alumno
+  {
+    id: 'EX-FRM-AMAT-FINAL', nombre: 'Final — Análisis Matemático I', catedra: 'Dept. Ciencias Básicas',
+    estado: 'programado', inicio: '2026-06-15T09:00:00', duracion_min: 120,
+    umbral_score: 60, detectores: DETECTORES_DEFAULT, retencion_dias: 30,
+    inscriptos: 120, rindiendo: 0, comision_id: 'COM-AMAT-1A',
+  },
+  {
+    id: 'EX-FRM-FIS1-PARCIAL', nombre: 'Segundo Parcial — Física I', catedra: 'Dept. Ciencias Básicas',
+    estado: 'programado', inicio: '2026-06-18T14:00:00', duracion_min: 90,
+    umbral_score: 60, detectores: DETECTORES_DEFAULT, retencion_dias: 30,
+    inscriptos: 85, rindiendo: 0, comision_id: 'COM-FIS1-2B',
+  },
+  {
+    id: 'EX-FRM-PROG-RECUP', nombre: 'Recuperatorio — Programación I', catedra: 'Dept. Sistemas',
+    estado: 'programado', inicio: '2026-06-20T10:00:00', duracion_min: 90,
+    umbral_score: 60, detectores: DETECTORES_DEFAULT, retencion_dias: 30,
+    inscriptos: 42, rindiendo: 0, comision_id: 'COM-PROG-1A',
   },
 ];
+
+// ---------------------------------------------------------------------------
+// Portal del alumno — datos demo (C-21)
+// ---------------------------------------------------------------------------
+
+// 2.2 Materias UTN FRM
+const MATERIAS: Materia[] = [
+  { id: 'MAT-AMAT', nombre: 'Análisis Matemático I', codigo: 'CB101', descripcion: 'Funciones, límites, derivadas e integrales. Fundamentos del cálculo diferencial e integral.' },
+  { id: 'MAT-FIS1', nombre: 'Física I', codigo: 'CB102', descripcion: 'Mecánica clásica, cinemática, dinámica y termodinámica básica.' },
+  { id: 'MAT-PROG', nombre: 'Programación I', codigo: 'SIS101', descripcion: 'Introducción a la programación estructurada. Algoritmos, estructuras de datos básicas.' },
+];
+
+// 2.3 Comisiones (≥2 por materia)
+const COMISIONES: Comision[] = [
+  { id: 'COM-AMAT-1A', materia_id: 'MAT-AMAT', nombre: 'Comisión 1A', docente: 'Dr. Roberto Fernández', horario: 'Lunes y Miércoles 08:00–10:00' },
+  { id: 'COM-AMAT-1B', materia_id: 'MAT-AMAT', nombre: 'Comisión 1B', docente: 'Dra. Laura Giménez', horario: 'Martes y Jueves 10:00–12:00' },
+  { id: 'COM-FIS1-2A', materia_id: 'MAT-FIS1', nombre: 'Comisión 2A', docente: 'Ing. Carlos Pérez', horario: 'Lunes y Viernes 14:00–16:00' },
+  { id: 'COM-FIS1-2B', materia_id: 'MAT-FIS1', nombre: 'Comisión 2B', docente: 'Dr. Alejandro Torres', horario: 'Miércoles y Viernes 08:00–10:00' },
+  { id: 'COM-PROG-1A', materia_id: 'MAT-PROG', nombre: 'Comisión 1A', docente: 'Ing. Valeria Romero', horario: 'Martes y Jueves 16:00–18:00' },
+  { id: 'COM-PROG-1B', materia_id: 'MAT-PROG', nombre: 'Comisión 1B', docente: 'Lic. Sebastián Díaz', horario: 'Lunes y Miércoles 18:00–20:00' },
+];
+
+// 2.5 Inscripciones demo del alumno en distintos estados
+let MIS_INSCRIPCIONES: Inscripcion[] = [
+  {
+    id: 'INS-001', examen_id: 'EX-FRM-AMAT-FINAL', comision_id: 'COM-AMAT-1A',
+    materia_id: 'MAT-AMAT', nombre_examen: 'Final — Análisis Matemático I',
+    nombre_materia: 'Análisis Matemático I', fecha: '2026-06-15T09:00:00',
+    estado: 'inscripto',
+  },
+  {
+    id: 'INS-002', examen_id: 'EX-FRM-FIS1-PARCIAL', comision_id: 'COM-FIS1-2B',
+    materia_id: 'MAT-FIS1', nombre_examen: 'Segundo Parcial — Física I',
+    nombre_materia: 'Física I', fecha: '2026-06-18T14:00:00',
+    estado: 'habilitado',
+  },
+  {
+    id: 'INS-003', examen_id: 'EX-UBA-QUIM-ORG', comision_id: 'COM-PROG-1A',
+    materia_id: 'MAT-PROG', nombre_examen: 'Recuperatorio — Química Orgánica',
+    nombre_materia: 'Programación I', fecha: '2026-05-28T16:00:00',
+    estado: 'rendido',
+  },
+];
+
+// 2.6 Estado in-memory del perfil del alumno
+let perfilAlumno = { consentimiento_ok: false, biometria_ok: false };
 
 export const DESAFIOS: DesafioActivo[] = [
   { id: 'girar_izquierda', label: 'Girar a la izquierda' },
@@ -240,6 +308,82 @@ export const api = {
   },
 
   async reportes(): Promise<ResumenReportes> { await delay(350); return REPORTES; },
+
+  // -------------------------------------------------------------------------
+  // Portal del alumno — API mock (C-21)
+  // -------------------------------------------------------------------------
+
+  /** 2.7 Retorna las materias disponibles para inscripción. */
+  async materiasDisponibles(): Promise<Materia[]> {
+    await delay(300);
+    return [...MATERIAS];
+  },
+
+  /** 2.8 Retorna las comisiones de una materia dada. */
+  async comisionesDeMateria(materiaId: string): Promise<Comision[]> {
+    await delay(250);
+    return COMISIONES.filter((c) => c.materia_id === materiaId);
+  },
+
+  /** 2.9 Retorna los exámenes asociados a una comisión. */
+  async examenesDeComision(comisionId: string): Promise<Examen[]> {
+    await delay(250);
+    return EXAMENES.filter((e) => e.comision_id === comisionId);
+  },
+
+  /** 2.10 Inscribe al alumno a un examen. Idempotente: retorna la inscripción existente si ya existe. */
+  async inscribir(examenId: string): Promise<Inscripcion> {
+    await delay(400);
+    const existente = MIS_INSCRIPCIONES.find((i) => i.examen_id === examenId);
+    if (existente) return { ...existente };
+    const examen = EXAMENES.find((e) => e.id === examenId);
+    const comision = examen?.comision_id ? COMISIONES.find((c) => c.id === examen.comision_id) : undefined;
+    const materia = comision ? MATERIAS.find((m) => m.id === comision.materia_id) : undefined;
+    const nueva: Inscripcion = {
+      id: `INS-${Date.now().toString(36)}`,
+      examen_id: examenId,
+      comision_id: comision?.id ?? '',
+      materia_id: materia?.id ?? '',
+      nombre_examen: examen?.nombre ?? examenId,
+      nombre_materia: materia?.nombre ?? '',
+      fecha: examen?.inicio ?? '',
+      estado: 'inscripto',
+    };
+    MIS_INSCRIPCIONES = [nueva, ...MIS_INSCRIPCIONES];
+    return { ...nueva };
+  },
+
+  /** 2.11 Retorna las inscripciones del alumno. */
+  async misInscripciones(): Promise<Inscripcion[]> {
+    await delay(250);
+    return [...MIS_INSCRIPCIONES];
+  },
+
+  /** 2.12 Gate: el alumno puede rendir solo si tiene consentimiento y biometría completos. */
+  async puedeRendir(): Promise<{ puede: boolean; razon?: string }> {
+    await delay(200);
+    if (perfilAlumno.consentimiento_ok && perfilAlumno.biometria_ok) {
+      return { puede: true };
+    }
+    const faltantes: string[] = [];
+    if (!perfilAlumno.consentimiento_ok) faltantes.push('consentimiento informado');
+    if (!perfilAlumno.biometria_ok) faltantes.push('verificación biométrica');
+    return {
+      puede: false,
+      razon: `Perfil incompleto: falta ${faltantes.join(' y ')}.`,
+    };
+  },
+
+  /** 2.13 Controles demo para simular completitud del perfil (no hay flujo real en C-21). */
+  async simularConsentimientoOk(): Promise<void> {
+    await delay(150);
+    perfilAlumno = { ...perfilAlumno, consentimiento_ok: true };
+  },
+
+  async simularBiometriaOk(): Promise<void> {
+    await delay(150);
+    perfilAlumno = { ...perfilAlumno, biometria_ok: true };
+  },
 };
 
 // Helpers de presentación
@@ -256,4 +400,4 @@ export const TIPO_EVENTO_LABEL: Record<TipoEvento, string> = {
   corte_conectividad_prolongado: 'Corte de conectividad',
 };
 
-export type { EventoSesion };
+export type { EventoSesion, Materia, Comision, Inscripcion, EstadoInscripcion };

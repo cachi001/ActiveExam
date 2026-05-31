@@ -17,7 +17,7 @@ export default function Login() {
     const examenes = await api.listExams();
     setExamenActivo(examenes.find((e) => e.estado === 'en_curso') ?? examenes[0]);
     setCargando(false);
-    navigate('/requisitos');
+    navigate('/alumno/dashboard');
   };
 
   return (
