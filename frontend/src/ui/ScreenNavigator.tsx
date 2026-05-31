@@ -14,6 +14,12 @@ const GRUPOS: Group[] = [
   {
     titulo: 'Estudiante', icon: 'school', items: [
       { to: '/login', label: 'Ingreso', rol: 'estudiante' },
+      // Portal del alumno — C-21
+      { to: '/alumno/dashboard', label: 'Dashboard del alumno' },
+      { to: '/alumno/materias', label: 'Materias e inscripción' },
+      { to: '/alumno/mis-examenes', label: 'Mis exámenes' },
+      { to: '/alumno/perfil', label: 'Perfil del alumno' },
+      // Flujo de examen
       { to: '/requisitos', label: 'Chequeo de requisitos' },
       { to: '/consentimiento', label: 'Consentimiento informado' },
       { to: '/biometria', label: 'Verificación biométrica' },

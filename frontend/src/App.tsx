@@ -15,6 +15,11 @@ import ExamList from './screens/ExamList';
 import ConfigureExam from './screens/ConfigureExam';
 import Reports from './screens/Reports';
 import AuditPrivacy from './screens/AuditPrivacy';
+// Portal del alumno — C-21
+import AlumnoDashboard from './screens/AlumnoDashboard';
+import AlumnoMaterias from './screens/AlumnoMaterias';
+import AlumnoMisExamenes from './screens/AlumnoMisExamenes';
+import AlumnoPerfil from './screens/AlumnoPerfil';
 
 export default function App() {
   const routes = {
@@ -34,6 +39,11 @@ export default function App() {
     '/admin/configurar': <ConfigureExam />,
     '/admin/reportes': <Reports />,
     '/admin/auditoria': <AuditPrivacy />,
+    // Portal del alumno — C-21
+    '/alumno/dashboard': <AlumnoDashboard />,
+    '/alumno/materias': <AlumnoMaterias />,
+    '/alumno/mis-examenes': <AlumnoMisExamenes />,
+    '/alumno/perfil': <AlumnoPerfil />,
   };
 
   return (
