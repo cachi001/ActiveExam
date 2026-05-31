@@ -9,4 +9,5 @@ export const STAFF_NAV = [
   { to: '/revisor/detalle', icon: 'description', label: 'Detalle de sesión' },
   { to: '/admin/reportes', icon: 'analytics', label: 'Reportes y analítica' },
   { to: '/admin/auditoria', icon: 'policy', label: 'Auditoría y privacidad' },
+  { to: '/admin/detection-test', icon: 'bug_report', label: 'Test de detección' },
 ];
