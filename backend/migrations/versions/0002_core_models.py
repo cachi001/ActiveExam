@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from alembic import op
 import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import INET, JSONB, TIMESTAMP, UUID
+from sqlalchemy.dialects.postgresql import ENUM, INET, JSONB, TIMESTAMP, UUID
 
 # revision identifiers, used by Alembic.
 revision = "0002"
@@ -48,7 +48,11 @@ def upgrade() -> None:
         "('iniciada', 'activa', 'finalizada', 'flaggeada', 'cerrada')"
     )
 
-    estado_sesion = sa.Enum(*_ESTADOS_SESION, name="estado_sesion", create_type=False)
+    # postgresql.ENUM (no sa.Enum): create_type=False solo lo honra el tipo del
+    # dialecto PG. Con sa.Enum generico el flag se ignora y op.create_table
+    # re-emite "CREATE TYPE estado_sesion" -> DuplicateObject (el tipo ya lo crea
+    # el op.execute de arriba). Asi la tabla referencia el tipo sin recrearlo.
+    estado_sesion = ENUM(*_ESTADOS_SESION, name="estado_sesion", create_type=False)
 
     # --- Tablas transaccionales (cardinalidades del ERD, `04`) -------------
     op.create_table(
