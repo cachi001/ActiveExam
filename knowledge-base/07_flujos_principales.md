@@ -18,8 +18,9 @@ Cada flujo se documenta extremo a extremo mostrando interacciones entre componen
        │                                                                                       ▼
 [SCORING]        backend valida firma → persiste en TimescaleDB → calcula score incremental → fan-out a paneles
        │
-[EVIDENCIA]      evento severo → clip 5-10s → hash+firma cliente → upload directo a storage (URL firmada)
-       │                            → re-hash+firma backend → re-inferencia server-side → firma maestra
+[EVIDENCIA]      evento severo | heartbeat periódico → screenshot (frame único) → hash+firma cliente → upload directo a storage (URL firmada)
+       │                            → re-hash+firma backend → re-inferencia ESTÁTICA server-side (sobre el frame) → firma maestra
+       │          [C-24, DD-24-01/02/03: screenshot reemplaza al clip 5-10s; tradeoff L2.5 aceptado — sin re-inferencia temporal]
        ▼
 [POST-EXAMEN]    cierre de sesión → score final → cola de revisión (si supera umbral) → liberación de clave
        │
