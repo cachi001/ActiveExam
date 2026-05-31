@@ -544,6 +544,16 @@ C-01 → C-03 → C-04 → C-05 → C-06 → C-07 → C-08 → C-09 → C-10 →
   - **engram** `activeexam/refinamiento-frontend-v2`
   - `knowledge-base/05_reglas_de_negocio.md` §RN-CC, `11_ia_y_vision.md`, `14_observabilidad_y_devops.md`
 
+### [C-25] `captura-actividad-integral`
+- **Estado**: `[ ]` propuesto (validate --strict OK)
+- **Scope**: ⭐ **Base funcional** — captura y registro de TODA la actividad sospechosa (**visión + navegador/entorno**) + **página de validación end-to-end** para probarlo con la propia persona. Implementa los detectores de navegador que faltan (**cambio/apertura de pestaña**, **salida de pantalla completa**, **copy/paste**), **cablea el detector de monitores múltiples** (hoy hardcodeado `false` en `Examen.tsx:77` y `AdminDetectionHarness.tsx:376`), y **extiende la página de testeo de C-23** para validar también lo de navegador, con checklist de cobertura. Reusa el pipeline existente (`stateTransitionRules` → `EventSink`); el sistema no sanciona automático, cliente = sensor no confiable. Caps NEW: browser-activity-detectors, suspicious-activity-catalog, integral-activity-validation. **MODIFICA** (deltas dentro del change): `state-transition-rules`, `browser-context-detectors` (C-11), `admin-detection-test-harness` (C-23).
+- **Dependencias**: `C-10` (event-schema-contract), `C-11` (vision-engine-detectores), `C-23` (harness)
+- **Governance**: ALTO
+- **Leer antes**:
+  - `openspec/changes/c-25-captura-actividad-integral/` (proposal, design con inventario existe/falta, tasks, specs)
+  - **engram** `activeexam/refinamiento-frontend-v2`
+  - `knowledge-base/11_ia_y_vision.md`, `05_reglas_de_negocio.md` §RN-EV
+
 ---
 
 ## Resumen
@@ -553,12 +563,12 @@ C-01 → C-03 → C-04 → C-05 → C-06 → C-07 → C-08 → C-09 → C-10 →
 | **0 — Fundaciones** | C-01, C-02, C-03 | 3× CRITICO (C-03 ★ Tier 1 BLOQUEANTE) |
 | **1 — MVP** | C-04…C-19 | 6 CRITICO, 8 ALTO, 2 MEDIO |
 | **2 — Refinamiento** | C-20 | 1 MEDIO |
-| **Refinamiento post-fundación** | C-21, C-22, C-23, C-24 | 2 ALTO, 2 MEDIO |
+| **Refinamiento post-fundación** | C-21, C-22, C-23, C-24, C-25 | 3 ALTO, 2 MEDIO |
 
-- **Total**: **24 changes** — 20 de la fundación (3 fases) + 4 post-fundación (capa frontend/demo y decisiones de producto, ver sección dedicada arriba).
+- **Total**: **25 changes** — 20 de la fundación (3 fases) + 5 post-fundación (capa frontend/demo, captura de actividad y decisiones de producto, ver sección dedicada arriba).
 - **Camino crítico**: 11 changes (`C-01 → C-03 → C-04 → C-05 → C-06 → C-07 → C-08 → C-09 → C-10 → C-15 → C-16`). C-21…C-24 quedan **fuera** del camino crítico (refinamiento de demo, no MVP backend).
 - **Gates de paralelismo**: 13 (GATE 0…GATE 12). Forks grandes en GATE 5, GATE 6 y GATE 9.
 - **Primer change recomendado**: `C-01` (acuerdo-proctoring-dpia) — gate legal que junto a `C-02` bloquea todo el desarrollo. El primer change de **código** es `C-03` (poc-carga-mensajeria, Tier 1, BLOQUEANTE).
-- **Post-fundación**: el detalle y el porqué viven también en **engram** (`activeexam/refinamiento-frontend-v2`). Orden de aplicación sugerido: **C-21 → C-22** (perfil cuelga del portal); C-23 y C-24 son independientes.
+- **Post-fundación**: el detalle y el porqué viven también en **engram** (`activeexam/refinamiento-frontend-v2`). Orden de aplicación sugerido: **C-21 → C-22** (perfil cuelga del portal); **C-23 → C-25** (C-25 extiende el harness y cablea los detectores de navegador); C-24 independiente.
 
 Para arrancar: `/opsx:propose C-01-acuerdo-proctoring-dpia`
