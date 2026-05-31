@@ -11,12 +11,16 @@ export type Rol =
 export type Severidad = 'baseline' | 'baja' | 'media' | 'alta' | 'critica';
 
 // tipos de evento discreto emitidos por el pipeline de visión (stateTransitionRules.ts)
+// C-25: agregados cambio_pestana, salida_pantalla_completa, copiar_pegar (compatibles con C-10)
 export type TipoEvento =
   | 'rostro_ausente'
   | 'multiples_rostros'
   | 'mirada_desviada_sostenida'
   | 'perdida_de_foco'
+  | 'cambio_pestana'
   | 'monitor_adicional'
+  | 'salida_pantalla_completa'
+  | 'copiar_pegar'
   | 'corte_conectividad_prolongado';
 
 export interface Principal {
