@@ -11,6 +11,7 @@ import type {
   EventoSesion, DesafioActivo, Severidad, TipoEvento,
   Materia, Comision, Inscripcion, EstadoInscripcion,
   EstadoEnrollment, AcuseConsentimiento, ReferenciasBiometrica, EscaneDNI, VigenciaReferencia,
+  AcuseExamen,
 } from './types';
 
 export const API_BASE = (import.meta.env.VITE_API_BASE as string) || '/api/v1';
@@ -211,6 +212,32 @@ function recalcularPerfilCompleto(e: EstadoEnrollment): EstadoEnrollment {
 
   return { ...e, perfil_completo: consentimientoValido && biometriaVigente };
 }
+
+// ---------------------------------------------------------------------------
+// Acuses por-examen — C-26
+// ---------------------------------------------------------------------------
+
+/**
+ * Versión del texto del acuse por-examen (independiente de la versión de perfil).
+ * Un cambio en este valor re-dispara el acuse para los exámenes afectados.
+ */
+export const ACUSE_EXAMEN_VERSION = '2026.1';
+
+/**
+ * Alcance de monitoreo que se muestra al alumno en el paso de acuse por-examen.
+ * En producción vendría de la configuración del examen (C-07).
+ */
+export const ALCANCE_MONITOREO: { icono: string; label: string; descripcion: string }[] = [
+  { icono: 'videocam', label: 'Cámara web', descripcion: 'Video continuo para verificación de identidad y detección de presencia.' },
+  { icono: 'monitor', label: 'Pantalla y foco', descripcion: 'Captura de pantalla y detección de pérdida de foco de la ventana del examen.' },
+  { icono: 'tab', label: 'Pestañas del navegador', descripcion: 'Detección de cambio o apertura de nuevas pestañas durante la rendición.' },
+];
+
+/**
+ * Estado en memoria de los acuses por examen del alumno.
+ * Clave: examen_id. Valor: AcuseExamen inmutable (idempotente por par estudiante/examen).
+ */
+let ACUSES_POR_EXAMEN: Map<string, AcuseExamen> = new Map();
 
 export const DESAFIOS: DesafioActivo[] = [
   { id: 'girar_izquierda', label: 'Girar a la izquierda' },
@@ -428,47 +455,102 @@ export const api = {
   // -------------------------------------------------------------------------
 
   /**
-   * Gate real: el alumno puede rendir si el perfil está completo.
-   * Ya no parsea strings: usa el estado tipado de `enrollmentAlumno`.
-   * "Perfil completo" = (consentimiento válido OR vía alternativa) AND referencia vigente.
-   * La referencia caducada bloquea rendir hasta renovar (spec biometric-reference-renewal).
+   * Gate EN CAPAS (C-26): el alumno puede rendir si:
+   * 1. Perfil completo (consentimiento de perfil vigente o vía alternativa + biometría vigente) — C-22.
+   * 2. Acuse por-examen presente y afirmativo para ESE examenId — C-26.
+   *
+   * Los códigos de C-22 se preservan intactos. El nuevo código `acuse_examen_faltante`
+   * solo aparece cuando (1) pasa pero falta (2). El gate NUNCA sanciona: deriva/flaggea (L2.5).
    */
-  async puedeRendir(_examenId?: string): Promise<{ puede: boolean; razon?: string; codigo?: string }> {
+  async puedeRendir(examenId?: string): Promise<{ puede: boolean; razon?: string; codigo?: string }> {
     await delay(200);
     const e = recalcularPerfilCompleto(enrollmentAlumno);
     enrollmentAlumno = e;
 
-    if (e.perfil_completo) return { puede: true };
+    // Capa 1: perfil completo (C-22)
+    if (!e.perfil_completo) {
+      const faltantes: string[] = [];
+      let codigo = 'perfil_incompleto';
 
-    const faltantes: string[] = [];
-    let codigo = 'perfil_incompleto';
+      if (!e.consentimiento) {
+        faltantes.push('consentimiento informado');
+      } else if (!e.consentimiento.via_alternativa && e.consentimiento.version !== CONSENT_TEXT.version) {
+        faltantes.push('renovación del consentimiento (nueva versión disponible)');
+        codigo = 'consentimiento_version_desactualizada';
+      }
 
-    if (!e.consentimiento) {
-      faltantes.push('consentimiento informado');
-    } else if (!e.consentimiento.via_alternativa && e.consentimiento.version !== CONSENT_TEXT.version) {
-      faltantes.push('renovación del consentimiento (nueva versión disponible)');
-      codigo = 'consentimiento_version_desactualizada';
+      if (!e.consentimiento?.via_alternativa) {
+        if (!e.biometria) {
+          faltantes.push('captura biométrica de referencia');
+        } else if (e.biometria.vigencia === 'caducada') {
+          faltantes.push('renovación de la referencia biométrica (caducada)');
+          codigo = 'biometria_caducada';
+        } else if (e.biometria.vigencia === 'renovacion_requerida') {
+          faltantes.push('renovación de la referencia biométrica (requerida por deriva)');
+          codigo = 'biometria_renovacion_requerida';
+        }
+      }
+
+      return {
+        puede: false,
+        codigo,
+        razon: faltantes.length > 0
+          ? `Perfil incompleto: falta ${faltantes.join(' y ')}.`
+          : 'Perfil incompleto.',
+      };
     }
 
-    if (!e.consentimiento?.via_alternativa) {
-      if (!e.biometria) {
-        faltantes.push('captura biométrica de referencia');
-      } else if (e.biometria.vigencia === 'caducada') {
-        faltantes.push('renovación de la referencia biométrica (caducada)');
-        codigo = 'biometria_caducada';
-      } else if (e.biometria.vigencia === 'renovacion_requerida') {
-        faltantes.push('renovación de la referencia biométrica (requerida por deriva)');
-        codigo = 'biometria_renovacion_requerida';
+    // Capa 2: acuse por-examen (C-26) — solo se evalúa si el perfil está completo
+    if (examenId) {
+      const acuse = ACUSES_POR_EXAMEN.get(examenId);
+      if (!acuse || !acuse.afirmativo) {
+        return {
+          puede: false,
+          codigo: 'acuse_examen_faltante',
+          razon: 'Falta el acuse de consentimiento para este examen. Confirmá tu participación antes de rendir.',
+        };
       }
     }
 
-    return {
-      puede: false,
-      codigo,
-      razon: faltantes.length > 0
-        ? `Perfil incompleto: falta ${faltantes.join(' y ')}.`
-        : 'Perfil incompleto.',
+    return { puede: true };
+  },
+
+  /**
+   * Registra el acuse por-examen (C-26). Idempotente por (estudiante, examen):
+   * si ya existe un acuse afirmativo para ese examenId, retorna el existente sin duplicar.
+   * El acuse NO captura biometría ni re-presenta el consentimiento de perfil.
+   *
+   * Demo: hash simulado sobre (examen_id + version + timestamp).
+   * Server-side: SHA-256 firmado por clave maestra (C-12) — el cliente es sensor no confiable.
+   */
+  async registrarAcuseExamen(examenId: string, params: { afirmativo: boolean }): Promise<AcuseExamen> {
+    await delay(350);
+    // Idempotente: retorna el existente si ya hay un acuse afirmativo
+    const existente = ACUSES_POR_EXAMEN.get(examenId);
+    if (existente && existente.afirmativo) return { ...existente };
+
+    const timestamp = new Date().toISOString();
+    // Demo: hash simulado. Server-side: SHA-256 sobre (estudiante, examen, version,
+    // alcance_monitoreo, timestamp) firmado por clave maestra (C-12).
+    const hash = 'sha256:' + Math.random().toString(16).slice(2, 18);
+    const acuse: AcuseExamen = {
+      examen_id: examenId,
+      version: ACUSE_EXAMEN_VERSION,
+      timestamp,
+      hash,
+      afirmativo: params.afirmativo,
     };
+    ACUSES_POR_EXAMEN.set(examenId, acuse);
+    return { ...acuse };
+  },
+
+  /**
+   * Retorna el acuse por-examen existente para ese examenId, o null si no hay.
+   * Permite que las pantallas consulten el estado del acuse sin llamar a puedeRendir.
+   */
+  async getAcuseExamen(examenId: string): Promise<AcuseExamen | null> {
+    await delay(150);
+    return ACUSES_POR_EXAMEN.get(examenId) ?? null;
   },
 
   /** Retorna el estado de enrollment completo del perfil (C-22). */
@@ -595,4 +677,5 @@ export const TIPO_EVENTO_LABEL: Record<TipoEvento, string> = {
 export type {
   EventoSesion, Materia, Comision, Inscripcion, EstadoInscripcion,
   EstadoEnrollment, AcuseConsentimiento, ReferenciasBiometrica, EscaneDNI, VigenciaReferencia,
+  AcuseExamen,
 };

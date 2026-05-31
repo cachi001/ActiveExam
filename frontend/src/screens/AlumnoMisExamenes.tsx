@@ -1,37 +1,55 @@
 // Portal del alumno — Mis inscripciones a exámenes (C-21)
 // C-22: puedeRendir usa estado tipado real (sin parseo por substring).
+// C-26: gate en capas — muestra "Completar acuse del examen" cuando falta el acuse por-examen.
 import { useEffect, useState } from 'react';
 import { Card, Badge, Button, Icon } from '../ui/components';
 import { StudentShell } from '../ui/shells';
 import { useNavigate } from '../lib/router';
 import { useApp } from '../lib/store';
 import { api } from '../lib/api';
+import AcuseExamen from './AcuseExamen';
 import type { Inscripcion } from '../lib/types';
+
+/** Resultado del gate por-examen. */
+interface GatePorExamen {
+  puede: boolean;
+  codigo?: string;
+  razon?: string;
+}
 
 export default function AlumnoMisExamenes() {
   const navigate = useNavigate();
   const setEnrollmentStatus = useApp((s) => s.setEnrollmentStatus);
   const [inscripciones, setInscripciones] = useState<Inscripcion[]>([]);
-  const [puedeRendir, setPuedeRendir] = useState<boolean | null>(null);
-  const [razonBloqueo, setRazonBloqueo] = useState<string | undefined>();
-  const [codigoBloqueo, setCodigoBloqueo] = useState<string | undefined>();
   const [cargando, setCargando] = useState(true);
   const [verificandoId, setVerificandoId] = useState<string | null>(null);
+
+  // C-26: resultado del gate EN CAPAS por examen_id (perfil + acuse)
+  const [gatesPorExamen, setGatesPorExamen] = useState<Record<string, GatePorExamen>>({});
+
+  // C-26: examen_id para el que se está completando el acuse desde Mis Exámenes
+  const [examenCompletandoAcuse, setExamenCompletandoAcuse] = useState<string | null>(null);
+
+  /** Evalúa el gate en capas para todas las inscripciones habilitadas. */
+  const evaluarGates = async (insc: Inscripcion[]) => {
+    const habilitadas = insc.filter((i) => i.estado === 'habilitado');
+    const resultados = await Promise.all(
+      habilitadas.map((i) => api.puedeRendir(i.examen_id).then((g) => [i.examen_id, g] as const))
+    );
+    setGatesPorExamen(Object.fromEntries(resultados));
+  };
 
   useEffect(() => {
     let cancelado = false;
     (async () => {
-      const [insc, gate, enrollment] = await Promise.all([
+      const [insc, enrollment] = await Promise.all([
         api.misInscripciones(),
-        api.puedeRendir(),
         api.getEnrollment(),
       ]);
       if (cancelado) return;
       setInscripciones(insc);
-      setPuedeRendir(gate.puede);
-      setRazonBloqueo(gate.razon);
-      setCodigoBloqueo(gate.codigo);
       setEnrollmentStatus(enrollment); // sincroniza store con estado real (C-22)
+      await evaluarGates(insc);
       setCargando(false);
     })();
     return () => { cancelado = true; };
@@ -39,18 +57,28 @@ export default function AlumnoMisExamenes() {
   }, []);
 
   // Verificar gate y navegar a rendir.
-  // C-22: usa estado tipado de puedeRendir (código semántico, no substring).
-  const handleRendir = async (inscripcionId: string) => {
-    setVerificandoId(inscripcionId);
-    const gate = await api.puedeRendir();
+  // C-26: pasa el examenId para evaluar gate en capas (perfil + acuse por-examen).
+  const handleRendir = async (inscripcion: Inscripcion) => {
+    setVerificandoId(inscripcion.id);
+    const gate = await api.puedeRendir(inscripcion.examen_id);
     setVerificandoId(null);
     if (gate.puede) {
       navigate('/requisitos');
     } else {
-      setPuedeRendir(false);
-      setRazonBloqueo(gate.razon);
-      setCodigoBloqueo(gate.codigo);
+      // Actualizar el gate de este examen en el estado local
+      setGatesPorExamen((prev) => ({ ...prev, [inscripcion.examen_id]: gate }));
+      // Si falta el acuse, el banner inline se mostrará (acuse_examen_faltante)
     }
+  };
+
+  /** Llamado cuando el alumno completa el acuse desde Mis Exámenes. */
+  const handleAcuseCompletado = async () => {
+    if (!examenCompletandoAcuse) return;
+    const examenId = examenCompletandoAcuse;
+    setExamenCompletandoAcuse(null);
+    // Re-evaluar el gate para este examen
+    const gate = await api.puedeRendir(examenId);
+    setGatesPorExamen((prev) => ({ ...prev, [examenId]: gate }));
   };
 
   const ESTADO_CONFIG: Record<Inscripcion['estado'], {
@@ -64,6 +92,17 @@ export default function AlumnoMisExamenes() {
     rendido: { label: 'Rendido', tone: 'neutral', icon: 'assignment_turned_in' },
   };
 
+  // C-26: Si el alumno está completando el acuse para un examen desde aquí, mostrar la pantalla de acuse.
+  if (examenCompletandoAcuse) {
+    return (
+      <AcuseExamen
+        examenId={examenCompletandoAcuse}
+        onConfirmado={handleAcuseCompletado}
+        onCancelar={() => setExamenCompletandoAcuse(null)}
+      />
+    );
+  }
+
   return (
     <StudentShell>
       <div className="max-w-2xl mx-auto space-y-xl">
@@ -73,41 +112,6 @@ export default function AlumnoMisExamenes() {
             Registro de tus inscripciones con estado y acción siguiente.
           </p>
         </header>
-
-        {/* Banner de perfil incompleto / biometría caducada (C-22: usa código semántico, no substring) */}
-        {puedeRendir === false && inscripciones.some((i) => i.estado === 'habilitado') && (
-          <div className={`flex items-start gap-md border rounded-xl p-md ${
-            codigoBloqueo === 'biometria_caducada'
-              ? 'bg-error-container border-error/30'
-              : 'bg-warning-container border-warning/30'
-          }`}>
-            <Icon
-              name={codigoBloqueo === 'biometria_caducada' ? 'cancel' : 'warning'}
-              className={`text-[22px] shrink-0 mt-base ${codigoBloqueo === 'biometria_caducada' ? 'text-error' : 'text-warning'}`}
-              fill
-            />
-            <div className="flex-1 min-w-0">
-              <p className="text-label-md font-semibold text-on-surface">
-                {codigoBloqueo === 'biometria_caducada'
-                  ? 'Referencia biométrica caducada'
-                  : codigoBloqueo === 'biometria_renovacion_requerida'
-                    ? 'Renovación biométrica requerida'
-                    : codigoBloqueo === 'consentimiento_version_desactualizada'
-                      ? 'Consentimiento desactualizado'
-                      : 'Tu perfil está incompleto'}
-              </p>
-              <p className="text-label-sm text-on-surface-variant mt-base">{razonBloqueo}</p>
-            </div>
-            <Button
-              variant={codigoBloqueo === 'biometria_caducada' ? 'danger' : 'outline'}
-              onClick={() => navigate('/alumno/perfil')}
-              className="shrink-0 h-9 px-md text-label-sm"
-              icon="manage_accounts"
-            >
-              {codigoBloqueo === 'biometria_caducada' ? 'Renovar' : 'Completar perfil'}
-            </Button>
-          </div>
-        )}
 
         {/* Lista de inscripciones */}
         {cargando ? (
@@ -132,6 +136,10 @@ export default function AlumnoMisExamenes() {
               const config = ESTADO_CONFIG[insc.estado];
               const verificando = verificandoId === insc.id;
               const fecha = new Date(insc.fecha);
+              // C-26: gate en capas por examen
+              const gate = gatesPorExamen[insc.examen_id];
+              const puedeRendirEsteExamen = gate?.puede ?? false;
+              const codigoGate = gate?.codigo;
 
               return (
                 <Card key={insc.id} className="space-y-md">
@@ -148,12 +156,13 @@ export default function AlumnoMisExamenes() {
                     <Badge tone={config.tone} dot>{config.label}</Badge>
                   </div>
 
-                  {/* Acción siguiente según estado */}
+                  {/* Acción siguiente según estado — gate en capas C-26 */}
                   {insc.estado === 'habilitado' && (
                     <div className="flex items-center gap-sm pt-sm border-t border-outline-variant/40">
-                      {puedeRendir ? (
+                      {puedeRendirEsteExamen ? (
+                        // Gate completo: puede rendir
                         <Button
-                          onClick={() => handleRendir(insc.id)}
+                          onClick={() => handleRendir(insc)}
                           disabled={verificando}
                           icon={verificando ? undefined : 'play_arrow'}
                           className="h-10"
@@ -165,16 +174,40 @@ export default function AlumnoMisExamenes() {
                             </span>
                           ) : 'Rendir'}
                         </Button>
-                      ) : (
+                      ) : codigoGate === 'acuse_examen_faltante' ? (
+                        // Capa 2 bloqueada: falta acuse por-examen → derivar a completarlo (no sancionar)
                         <>
-                          <p className="text-label-sm text-on-surface-variant flex-1">Completá tu perfil para poder rendir.</p>
+                          <p className="text-label-sm text-on-surface-variant flex-1">
+                            Falta el acuse de consentimiento para este examen.
+                          </p>
                           <Button
-                            variant="outline"
+                            variant="secondary"
+                            onClick={() => setExamenCompletandoAcuse(insc.examen_id)}
+                            icon="assignment_turned_in"
+                            className="h-10 shrink-0"
+                          >
+                            Completar acuse del examen
+                          </Button>
+                        </>
+                      ) : (
+                        // Capa 1 bloqueada: perfil incompleto (códigos de C-22)
+                        <>
+                          <p className="text-label-sm text-on-surface-variant flex-1">
+                            {codigoGate === 'biometria_caducada'
+                              ? 'Tu referencia biométrica caducó. Renovála para poder rendir.'
+                              : codigoGate === 'biometria_renovacion_requerida'
+                                ? 'Se requiere renovación de biometría. Actualizá tu perfil.'
+                                : codigoGate === 'consentimiento_version_desactualizada'
+                                  ? 'Hay una nueva versión del consentimiento. Actualizá tu perfil.'
+                                  : 'Completá tu perfil para poder rendir.'}
+                          </p>
+                          <Button
+                            variant={codigoGate === 'biometria_caducada' ? 'danger' : 'outline'}
                             onClick={() => navigate('/alumno/perfil')}
                             icon="manage_accounts"
-                            className="h-10"
+                            className="h-10 shrink-0"
                           >
-                            Completar perfil
+                            {codigoGate === 'biometria_caducada' ? 'Renovar biometría' : 'Completar perfil'}
                           </Button>
                         </>
                       )}

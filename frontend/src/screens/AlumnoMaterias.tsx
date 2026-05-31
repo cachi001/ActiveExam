@@ -1,8 +1,10 @@
 // Portal del alumno — Exploración Materia → Comisión → Examen (C-21)
+// C-26: flujo de inscripción incluye paso de acuse por-examen antes de inscribir.
 import { useEffect, useState } from 'react';
 import { Card, Badge, Button, Icon } from '../ui/components';
 import { StudentShell } from '../ui/shells';
 import { api } from '../lib/api';
+import AcuseExamen from './AcuseExamen';
 import type { Materia, Comision, Examen, Inscripcion } from '../lib/types';
 
 export default function AlumnoMaterias() {
@@ -18,6 +20,9 @@ export default function AlumnoMaterias() {
   const [cargandoComisiones, setCargandoComisiones] = useState(false);
   const [cargandoExamenes, setCargandoExamenes] = useState(false);
   const [inscribiendoId, setInscribiendoId] = useState<string | null>(null);
+
+  // C-26: ID del examen pendiente de acuse antes de inscribir
+  const [examenPendienteAcuse, setExamenPendienteAcuse] = useState<string | null>(null);
 
   // Carga inicial
   useEffect(() => {
@@ -64,8 +69,17 @@ export default function AlumnoMaterias() {
     setCargandoExamenes(false);
   };
 
-  // Inscribir al alumno a un examen
-  const inscribir = async (examenId: string) => {
+  // C-26: Iniciar inscripción muestra el paso de acuse por-examen primero.
+  // Solo tras el acuse afirmativo se ejecuta api.inscribir().
+  const iniciarInscripcion = (examenId: string) => {
+    setExamenPendienteAcuse(examenId);
+  };
+
+  // Llamado tras el acuse afirmativo confirmado en AcuseExamen.
+  const completarInscripcionTrasAcuse = async () => {
+    if (!examenPendienteAcuse) return;
+    const examenId = examenPendienteAcuse;
+    setExamenPendienteAcuse(null);
     setInscribiendoId(examenId);
     const nueva = await api.inscribir(examenId);
     setInscripciones((prev) => {
@@ -73,6 +87,10 @@ export default function AlumnoMaterias() {
       return [nueva, ...sin];
     });
     setInscribiendoId(null);
+  };
+
+  const cancelarAcuse = () => {
+    setExamenPendienteAcuse(null);
   };
 
   const estaInscripto = (examenId: string) =>
@@ -91,6 +109,17 @@ export default function AlumnoMaterias() {
     en_curso: 'success',
     finalizado: 'neutral',
   };
+
+  // C-26: Si hay un examen pendiente de acuse, mostrar el paso de acuse en lugar de la lista.
+  if (examenPendienteAcuse) {
+    return (
+      <AcuseExamen
+        examenId={examenPendienteAcuse}
+        onConfirmado={completarInscripcionTrasAcuse}
+        onCancelar={cancelarAcuse}
+      />
+    );
+  }
 
   return (
     <StudentShell>
@@ -196,9 +225,10 @@ export default function AlumnoMaterias() {
                                             {inscripto ? (
                                               <Badge tone="success" dot>Inscripto</Badge>
                                             ) : puedeInscribirse ? (
+                                              // C-26: onClick ahora abre el paso de acuse antes de inscribir
                                               <Button
                                                 variant="secondary"
-                                                onClick={() => inscribir(examen.id)}
+                                                onClick={() => iniciarInscripcion(examen.id)}
                                                 disabled={inscribiendo}
                                                 className="h-9 px-md text-label-sm"
                                               >
