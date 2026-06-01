@@ -564,6 +564,26 @@ C-01 → C-03 → C-04 → C-05 → C-06 → C-07 → C-08 → C-09 → C-10 →
   - **engram** `activeexam/refinamiento-frontend-v2`
   - `knowledge-base/13_legal_y_cumplimiento_argentina.md`, `05_reglas_de_negocio.md` §RN-CO
 
+### [C-27] `branding-utn-frm`
+- **Estado**: `[ ]` propuesto (validate --strict OK — 17 tasks)
+- **Scope**: **Corrección de identidad institucional** — elimina las 13 referencias hardcodeadas a "UBA" / "Universidad de Buenos Aires" y crea un **módulo central de configuración** `frontend/src/config/institution.ts` desde el cual toda la UI y los mocks leen la identidad de UTN Regional Mendoza (FRM). Reemplaza además materias de Medicina (Anatomía, Fisiología, etc.) por materias canónicas del CBU de Ingeniería UTN. Soporte de override por `VITE_INSTITUTION_*` para futura multi-tenancy. Caps NEW: `institution-config`.
+- **Dependencias**: ninguna (solo strings y datos mock del frontend; independiente de todos los changes de backend)
+- **Governance**: BAJO
+- **Leer antes**:
+  - `openspec/changes/c-27-branding-utn-frm/` (proposal, design, specs/institution-config/spec.md, tasks)
+  - `knowledge-base/03_actores_y_roles.md` §Actores (institución/roles)
+
+### [C-28] `lenguaje-claro-glosario`
+- **Estado**: `[ ]` propuesto (validate --strict OK — 38 tasks)
+- **Scope**: **Inteligibilidad de la UI** — la interfaz repite 19× "L2.5", 4× "embedding", y múltiples "WORM", "liveness", "cadena de custodia", "Face Mesh" sin explicación. C-28 agrega **definiciones en lenguaje claro accesibles en contexto** (tooltips + panel de glosario), SIN eliminar la terminología técnica (necesaria legal y técnicamente). Crea el diccionario central `frontend/src/config/glossary.ts` (mismo patrón que `institution.ts` de C-27) y el componente átomo `<Term>` (tooltip accesible, responsive, sin dependencias externas). Caps NEW: `glossary-config`, `term-tooltip-component`, `glossary-panel`. Cap MODIFIED (delta): `institution-config` (formaliza la convención de la carpeta `config/`).
+- **Dependencias**: ninguna (100 % capa de presentación; independiente de todos los changes de backend; puede correr en cualquier momento como C-27)
+- **Governance**: MEDIO
+- **Leer antes**:
+  - `openspec/changes/c-28-lenguaje-claro-glosario/` (proposal, design, specs/, tasks)
+  - `knowledge-base/13_legal_y_cumplimiento_argentina.md` §embedding §dato sensible §Ley 25.326
+  - `knowledge-base/05_reglas_de_negocio.md` §RN-CO (consentimiento informado con lenguaje claro)
+  - **engram** `activeexam/refinamiento-frontend-v2`
+
 ---
 
 ## Resumen
@@ -573,12 +593,12 @@ C-01 → C-03 → C-04 → C-05 → C-06 → C-07 → C-08 → C-09 → C-10 →
 | **0 — Fundaciones** | C-01, C-02, C-03 | 3× CRITICO (C-03 ★ Tier 1 BLOQUEANTE) |
 | **1 — MVP** | C-04…C-19 | 6 CRITICO, 8 ALTO, 2 MEDIO |
 | **2 — Refinamiento** | C-20 | 1 MEDIO |
-| **Refinamiento post-fundación** | C-21, C-22, C-23, C-24, C-25, C-26 | 4 ALTO, 2 MEDIO |
+| **Refinamiento post-fundación** | C-21, C-22, C-23, C-24, C-25, C-26, C-27, C-28 | 4 ALTO, 3 MEDIO, 1 BAJO |
 
-- **Total**: **26 changes** — 20 de la fundación (3 fases) + 6 post-fundación (capa frontend/demo, captura de actividad, consentimiento en capas y decisiones de producto, ver sección dedicada arriba).
-- **Camino crítico**: 11 changes (`C-01 → C-03 → C-04 → C-05 → C-06 → C-07 → C-08 → C-09 → C-10 → C-15 → C-16`). C-21…C-24 quedan **fuera** del camino crítico (refinamiento de demo, no MVP backend).
+- **Total**: **28 changes** — 20 de la fundación (3 fases) + 8 post-fundación (capa frontend/demo, captura de actividad, consentimiento en capas, decisiones de producto, identidad institucional y lenguaje claro/glosario, ver sección dedicada arriba).
+- **Camino crítico**: 11 changes (`C-01 → C-03 → C-04 → C-05 → C-06 → C-07 → C-08 → C-09 → C-10 → C-15 → C-16`). C-21…C-28 quedan **fuera** del camino crítico (refinamiento de demo, no MVP backend).
 - **Gates de paralelismo**: 13 (GATE 0…GATE 12). Forks grandes en GATE 5, GATE 6 y GATE 9.
 - **Primer change recomendado**: `C-01` (acuerdo-proctoring-dpia) — gate legal que junto a `C-02` bloquea todo el desarrollo. El primer change de **código** es `C-03` (poc-carga-mensajeria, Tier 1, BLOQUEANTE).
-- **Post-fundación**: el detalle y el porqué viven también en **engram** (`activeexam/refinamiento-frontend-v2`). Orden de aplicación sugerido: **C-21 → C-22 → C-26** (perfil cuelga del portal; el acuse por-examen de C-26 cuelga de la inscripción de C-21 + el consentimiento de C-22); **C-23 → C-25** (C-25 extiende el harness y cablea los detectores de navegador); C-24 independiente.
+- **Post-fundación**: el detalle y el porqué viven también en **engram** (`activeexam/refinamiento-frontend-v2`). Orden de aplicación sugerido: **C-21 → C-22 → C-26** (perfil cuelga del portal; el acuse por-examen de C-26 cuelga de la inscripción de C-21 + el consentimiento de C-22); **C-23 → C-25** (C-25 extiende el harness y cablea los detectores de navegador); C-24 independiente; **C-27 y C-28 pueden correr en cualquier momento** (sin dependencias de backend; C-28 complementa C-27 al agregar inteligibilidad a la UI).
 
 Para arrancar: `/opsx:propose C-01-acuerdo-proctoring-dpia`

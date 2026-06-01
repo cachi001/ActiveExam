@@ -5,6 +5,7 @@ import { api, TIPO_EVENTO_LABEL } from '../lib/api';
 import { useApp } from '../lib/store';
 import { useNavigate } from '../lib/router';
 import { STAFF_NAV } from '../ui/nav';
+import { Term } from '../ui/Term';
 import type { SesionRevision } from '../lib/types';
 import { INSTITUTION } from '../config/institution';
 
@@ -97,7 +98,7 @@ export default function Revisor() {
                 </div>
 
                 <div className="space-y-sm">
-                  <h3 className="text-label-sm uppercase tracking-wide text-on-surface-variant border-b border-outline-variant/40 pb-base">Evidencia y cadena de custodia</h3>
+                  <h3 className="text-label-sm uppercase tracking-wide text-on-surface-variant border-b border-outline-variant/40 pb-base">Evidencia y <Term termKey="cadena_de_custodia">cadena de custodia</Term></h3>
                   <div className="relative aspect-video bg-inverse-surface rounded-xl overflow-hidden flex items-center justify-center">
                     <img src={sel.foto} alt="evidencia" className="absolute inset-0 w-full h-full object-cover opacity-30 blur-[2px]" />
                     <button className="relative z-10 w-12 h-12 rounded-full bg-white/15 backdrop-blur ring-2 ring-white/30 flex items-center justify-center text-white hover:bg-white/25">
@@ -117,7 +118,7 @@ export default function Revisor() {
 
               <div className="bg-surface-container-low rounded-xl p-md space-y-md border border-outline-variant/40">
                 <div>
-                  <h3 className="font-headline text-title-lg text-on-surface">Resolución de auditoría humana (L2.5)</h3>
+                  <h3 className="font-headline text-title-lg text-on-surface">Resolución de auditoría humana (<Term termKey="l2_5" />)</h3>
                   <p className="text-label-sm text-on-surface-variant mt-base">El software no sanciona automáticamente. Tu decisión es obligatoria y queda en el audit log inmutable.</p>
                 </div>
                 <div className="flex flex-col sm:flex-row gap-sm">
