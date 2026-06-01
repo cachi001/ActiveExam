@@ -72,6 +72,14 @@
       "sessions": 0,
       "memories": 3,
       "prompts": 0
+    },
+    {
+      "id": "58430073",
+      "created_by": "Emiliano",
+      "created_at": "2026-06-01T23:18:32Z",
+      "sessions": 0,
+      "memories": 1,
+      "prompts": 0
     }
   ]
 }
