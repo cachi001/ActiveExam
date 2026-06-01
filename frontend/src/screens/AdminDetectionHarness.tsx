@@ -22,10 +22,13 @@ import { useApp } from '../lib/store';
 import { SEVERIDAD_LABEL, TIPO_EVENTO_LABEL } from '../lib/api';
 import { Term } from '../ui/Term';
 import type { Severidad } from '../lib/types';
+import VisionOverlay from '../ui/VisionOverlay';
 
 // Visión — reutilizar sin duplicar (C-11, DD-17)
 import { MediaPipeVisionEngine } from '../vision/MediaPipeVisionEngine';
-import type { VisionEngine, FaceDetectionSignal, FaceMeshSignal } from '../vision/VisionEngine';
+import type { VisionEngine, FaceDetectionSignal, FaceMeshSignal, PoseSignal } from '../vision/VisionEngine';
+// C-30: loader lazy del motor real (dynamic import — no entra al bundle inicial)
+import { loadRealEngine } from '../vision/harnessEngineLoader';
 import type { EventSink } from '../proctoring/visionPipeline';
 import { VisionPipeline } from '../proctoring/visionPipeline';
 import {
@@ -63,11 +66,22 @@ const FRAME_INTERVAL_MS = 200; // ~5 fps — suficiente para diagnóstico
 
 type HarnessState = 'idle' | 'initializing' | 'running' | 'stopped';
 
+/**
+ * C-30: estado del motor de visión en el harness.
+ * - simulated: estado inicial, motor stub (C-29)
+ * - loading: se está cargando el motor real MediaPipe
+ * - real-active: motor real inicializado y procesando frames
+ * - load-error: init() falló (WebGL ausente, modelo faltante, etc.)
+ */
+type EngineMode = 'simulated' | 'loading' | 'real-active' | 'load-error';
+
 /** Señales crudas del frame actual (actualizadas por cada frame). */
 interface RawSignals {
   faceDetection: FaceDetectionSignal | null;
   faceMesh: FaceMeshSignal | null;
   poseAvailable: boolean;
+  /** C-30: señal de pose para el overlay del canvas. */
+  poseSignal?: PoseSignal | null;
   frameTs: number;
 }
 
@@ -200,6 +214,14 @@ export default function AdminDetectionHarness() {
   const [harnessState, setHarnessState] = useState<HarnessState>('idle');
   const [sessionStart, setSessionStart] = useState<number>(0);
   const [elapsed, setElapsed] = useState(0); // segundos desde inicio (para "Sin eventos aún")
+
+  // ------ C-30: Estado del motor de visión ------
+  const [engineMode, setEngineMode] = useState<EngineMode>('simulated');
+  const [engineError, setEngineError] = useState<string | null>(null);
+
+  // ------ C-30: Toggles del overlay ------
+  const [showPose, setShowPose] = useState(false);
+  const [showFullMesh, setShowFullMesh] = useState(false);
 
   // ------ Señales crudas ------
   const [rawSignals, setRawSignals] = useState<RawSignals>({
@@ -432,9 +454,22 @@ export default function AdminDetectionHarness() {
         await videoRef.current.play().catch(() => {});
       }
 
-      // Instanciar motor (task 3.1)
-      const engine = new MediaPipeVisionEngine();
-      await engine.init();
+      // C-30: intentar cargar el motor real MediaPipe (lazy, chunk separado)
+      // Si falla, el harness queda en load-error — no cae a simulación (D-6)
+      setEngineMode('loading');
+      let engine: VisionEngine;
+      try {
+        engine = await loadRealEngine();
+        setEngineMode('real-active');
+      } catch (realEngineErr) {
+        const errMsg = realEngineErr instanceof Error ? realEngineErr.message : String(realEngineErr);
+        setEngineMode('load-error');
+        setEngineError(errMsg);
+        // Fallback honesto: usar stub para que el harness siga corriendo (señales de navegador siguen siendo reales)
+        // pero el banner mostrará el error claramente. El stub sigue usándose para no bloquear el pipeline.
+        engine = new MediaPipeVisionEngine();
+        await engine.init();
+      }
       engineRef.current = engine;
 
       // Crear sink con referencia estable que delega al onSinkEvent.current (task 3.2)
@@ -459,37 +494,47 @@ export default function AdminDetectionHarness() {
           // Capturar frame como ImageBitmap (task 2.2)
           const frame = await createImageBitmap(video);
 
-          // Extraer señales crudas (task 4.1)
+          // C-30: Extraer señales crudas del motor actual (real o stub)
+          // Si el motor real falla durante la detección, el error se propaga al estado load-error.
+          // No hay swallowing silencioso — D-6 / fallback honesto.
           let fd: FaceDetectionSignal;
           let mesh: FaceMeshSignal | null = null;
           let poseAvailable = false;
+          let poseSignal: PoseSignal | null = null;
 
           try {
             fd = await engine_.detectFaces(frame);
-          } catch {
-            // Motor MediaPipe real no cableado — simular señal para demo
-            fd = { face_count: 1, faces: [{ x: 0.25, y: 0.1, width: 0.5, height: 0.6, confidence: 0.92 }] };
+          } catch (err) {
+            // Si el motor real lanzó durante inferencia (no durante init), reportar
+            const msg = err instanceof Error ? err.message : String(err);
+            setEngineMode('load-error');
+            setEngineError(`Error en detectFaces: ${msg}`);
+            // Señal vacía para que el pipeline no crashee
+            fd = { face_count: 0, faces: [] };
           }
 
           if (fd.face_count >= 1) {
             try {
               mesh = await engine_.detectFaceMesh(frame);
-            } catch {
-              mesh = { gaze: { x: 0.03, y: 0.01 }, embedding: [], landmarks: [] };
+            } catch (err) {
+              // Error en face mesh no interrumpe el frame
+              console.warn('[AdminDetectionHarness] detectFaceMesh error:', err);
+              mesh = null;
             }
           }
 
           try {
-            await engine_.detectPose(frame);
-            poseAvailable = true;
+            poseSignal = await engine_.detectPose(frame);
+            poseAvailable = poseSignal.keypoints.length > 0;
           } catch {
             poseAvailable = false;
+            poseSignal = null;
           }
 
           frame.close();
 
-          // Actualizar panel de señales crudas (task 4.2)
-          setRawSignals({ faceDetection: fd, faceMesh: mesh, poseAvailable, frameTs: Date.now() });
+          // Actualizar panel de señales crudas (task 4.2) + C-30: incluir poseSignal para overlay
+          setRawSignals({ faceDetection: fd, faceMesh: mesh, poseAvailable, poseSignal, frameTs: Date.now() });
 
           // C-25: consumir señales de contexto reales de los refs (no valores fijos)
           const snapFocus = envFocusLostRef.current;
@@ -542,7 +587,10 @@ export default function AdminDetectionHarness() {
     pipelineRef.current = null;
     sinkRef.current = null;
     setHarnessState('stopped');
-    setRawSignals({ faceDetection: null, faceMesh: null, poseAvailable: false, frameTs: 0 });
+    setRawSignals({ faceDetection: null, faceMesh: null, poseAvailable: false, poseSignal: null, frameTs: 0 });
+    // C-30: reset engine mode al detener
+    setEngineMode('simulated');
+    setEngineError(null);
   }, []);
 
   // Cleanup al desmontar
@@ -629,18 +677,58 @@ export default function AdminDetectionHarness() {
       <div className="space-y-lg animate-in fade-in duration-300">
 
         {/* ================================================================
-            BANNER DE SIMULACIÓN — siempre visible (DD-29-01, tasks 3.1–3.4)
+            C-30: BANNER CONDICIONAL DEL MOTOR — 4 estados (D-5, harness-legibility-layer)
         ================================================================ */}
-        <div className="flex items-start gap-sm p-md rounded-xl bg-warning-container border-2 border-warning/50 text-on-warning-container" role="alert" aria-live="polite">
-          <Icon name="warning" className="text-[22px] shrink-0 mt-px text-warning" fill />
-          <div className="min-w-0">
-            <p className="font-bold text-label-md">SEÑALES DE VISIÓN SIMULADAS</p>
-            <p className="text-label-sm mt-base">
-              El <Term termKey="motor_stub">motor MediaPipe</Term> está en modo demo y devuelve valores fijos.
-              Las señales de navegador (pestaña, pantalla completa, portapapeles) <strong>SÍ son reales</strong>.
-            </p>
+        {engineMode === 'simulated' && (
+          <div className="flex items-start gap-sm p-md rounded-xl bg-warning-container border-2 border-warning/50 text-on-warning-container" role="alert" aria-live="polite">
+            <Icon name="warning" className="text-[22px] shrink-0 mt-px text-warning" fill />
+            <div className="min-w-0">
+              <p className="font-bold text-label-md">SEÑALES DE VISIÓN SIMULADAS</p>
+              <p className="text-label-sm mt-base">
+                El <Term termKey="motor_stub">motor MediaPipe</Term> está en modo stub y devuelve valores fijos.
+                Presioná <strong>Iniciar</strong> para activar el motor real.
+                Las señales de navegador (pestaña, pantalla completa, portapapeles) <strong>SÍ son reales</strong>.
+              </p>
+            </div>
           </div>
-        </div>
+        )}
+        {engineMode === 'loading' && (
+          <div className="flex items-start gap-sm p-md rounded-xl bg-primary-container border-2 border-primary/30 text-on-primary-container" role="status" aria-live="polite">
+            <Icon name="hourglass_top" className="text-[22px] shrink-0 mt-px text-primary animate-spin" />
+            <div className="min-w-0">
+              <p className="font-bold text-label-md">CARGANDO MOTOR MEDIAPIPE…</p>
+              <p className="text-label-sm mt-base">
+                Descargando modelos y compilando WASM (~25–50 MB, solo la primera vez). Esto puede tardar unos segundos.
+              </p>
+            </div>
+          </div>
+        )}
+        {engineMode === 'real-active' && (
+          <div className="flex items-start gap-sm p-md rounded-xl bg-success-container border-2 border-success/40 text-on-primary-container" role="status" aria-live="polite">
+            <Icon name="sensors" className="text-[22px] shrink-0 mt-px text-success" fill />
+            <div className="min-w-0">
+              <p className="font-bold text-label-md text-success">VISIÓN REAL (MediaPipe)</p>
+              <p className="text-label-sm mt-base text-on-surface-variant">
+                <Term termKey="motor_stub">Motor MediaPipe</Term> real activo —{' '}
+                <strong>FaceDetector + FaceLandmarker + PoseLandmarker</strong> procesando frames reales de la cámara.
+              </p>
+            </div>
+          </div>
+        )}
+        {engineMode === 'load-error' && (
+          <div className="flex items-start gap-sm p-md rounded-xl bg-error-container border-2 border-error/50 text-on-error-container" role="alert" aria-live="assertive">
+            <Icon name="error" className="text-[22px] shrink-0 mt-px text-error" fill />
+            <div className="min-w-0">
+              <p className="font-bold text-label-md">ERROR AL CARGAR EL MOTOR MEDIAPIPE</p>
+              <p className="text-label-sm mt-base font-mono break-all">{engineError}</p>
+              <p className="text-label-sm mt-sm">
+                Las señales de visión siguen siendo del stub. Verificá que ejecutaste{' '}
+                <code className="bg-error/10 px-base rounded font-mono text-[11px]">scripts/download-mediapipe-models.sh</code>{' '}
+                (o <code className="bg-error/10 px-base rounded font-mono text-[11px]">.ps1</code> en Windows) y que WebGL está habilitado.
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* ================================================================
             PANEL DE PROPÓSITO — colapsable (DD-29-04, tasks 4.1–4.4)
@@ -689,6 +777,15 @@ export default function AdminDetectionHarness() {
         {/* ================================================================
             HEADER DIAGNÓSTICO — badge prominente (task 2.1 / D-4)
         ================================================================ */}
+        {/* C-30 / C-29: Advertencia de herramienta diagnóstica siempre visible (admin-detection-test-harness spec) */}
+        <div className="flex items-center gap-base p-sm rounded-lg bg-surface-container border border-outline-variant/40 text-label-sm text-on-surface-variant">
+          <Icon name="admin_panel_settings" className="text-[16px] shrink-0 text-primary" fill />
+          <span>
+            <strong className="text-on-surface">Esta es una herramienta diagnóstica admin.</strong>{' '}
+            No genera evidencia de examen ni emite eventos al backend de producción.
+          </span>
+        </div>
+
         <div className="flex items-center justify-between flex-wrap gap-md">
           <div className="flex items-center gap-sm">
             <div className="inline-flex items-center gap-sm px-md py-sm rounded-xl bg-error-container text-on-error-container font-bold text-label-md border border-error/30">
@@ -723,10 +820,19 @@ export default function AdminDetectionHarness() {
           {/* ---- Columna izquierda: cámara + señales crudas + config ---- */}
           <div className="space-y-lg">
 
-            {/* Cámara (task 2.2) */}
+            {/* Cámara + VisionOverlay (C-30: canvas superpuesto) */}
             <Card padded={false} className="overflow-hidden">
-              <div className="relative aspect-video bg-inverse-surface">
+              <div className="relative aspect-video bg-inverse-surface" style={{ position: 'relative' }}>
                 <video ref={videoRef} muted playsInline className="w-full h-full object-cover" />
+                {/* C-30: canvas overlay — solo visible cuando el motor real está activo */}
+                {engineMode === 'real-active' && (
+                  <VisionOverlay
+                    rawSignals={rawSignals.faceDetection ? rawSignals : null}
+                    videoRef={videoRef}
+                    showFullMesh={showFullMesh}
+                    showPose={showPose}
+                  />
+                )}
                 {harnessState === 'idle' || harnessState === 'stopped' ? (
                   <div className="absolute inset-0 flex flex-col items-center justify-center text-on-surface-variant gap-sm">
                     <Icon name="videocam_off" className="text-[40px]" />
@@ -742,9 +848,58 @@ export default function AdminDetectionHarness() {
               </div>
             </Card>
 
-            {/* Panel de señales de visión — interpretación en lenguaje claro (DD-29-03, tasks 5.1–5.7) */}
+            {/* C-30: Toggles del overlay — visibles cuando el motor real está activo */}
+            {engineMode === 'real-active' && (
+              <Card className="space-y-sm">
+                <p className="text-label-sm font-semibold text-on-surface">Overlay de visión</p>
+                <div className="flex items-center gap-md flex-wrap">
+                  <label className="flex items-center gap-sm cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={showPose}
+                      onChange={(e) => setShowPose(e.target.checked)}
+                      className="w-4 h-4 accent-primary rounded"
+                    />
+                    <span className="text-label-sm text-on-surface">
+                      <Icon name="accessibility_new" className="text-[14px] inline mr-base" />
+                      Pose (keypoints corporales)
+                    </span>
+                  </label>
+                  <label className="flex items-center gap-sm cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={showFullMesh}
+                      onChange={(e) => setShowFullMesh(e.target.checked)}
+                      className="w-4 h-4 accent-primary rounded"
+                    />
+                    <span className="text-label-sm text-on-surface">
+                      <Icon name="face" className="text-[14px] inline mr-base" />
+                      Mesh completo (468 pts)
+                    </span>
+                  </label>
+                </div>
+              </Card>
+            )}
+
+            {/* C-30: Panel de señales de visión — interpretación en lenguaje claro (DD-29-03, tasks 5.1–5.7) */}
             <Card className="space-y-md">
-              <SectionTitle sub="Valores generados por el motor en modo demo">Señales de visión [SIMULADAS]</SectionTitle>
+              <div className="flex items-start justify-between gap-sm flex-wrap">
+                <SectionTitle sub={engineMode === 'real-active' ? 'Valores reales del motor MediaPipe' : 'Valores generados por el motor stub'}>
+                  Señales de visión
+                </SectionTitle>
+                {/* C-30: badge REAL / SIM */}
+                {engineMode === 'real-active' ? (
+                  <span className="inline-flex items-center gap-base px-sm py-base rounded-full bg-success-container text-success text-label-sm font-bold border border-success/30 shrink-0">
+                    <Icon name="sensors" className="text-[14px]" />
+                    REAL
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-base px-sm py-base rounded-full bg-warning-container text-warning text-label-sm font-bold border border-warning/30 shrink-0">
+                    <Icon name="science" className="text-[14px]" />
+                    SIM
+                  </span>
+                )}
+              </div>
 
               {rawSignals.faceDetection === null ? (
                 <div className="text-center py-md text-on-surface-variant space-y-base">
@@ -778,7 +933,7 @@ export default function AdminDetectionHarness() {
                         ? 'No se detectó ninguna persona'
                         : `Se detectaron ${rawSignals.faceDetection.face_count} personas`}
                     </span>
-                    <span className="ml-auto text-[10px] uppercase font-bold text-on-surface-variant opacity-60">[SIMULADO]</span>
+                    <span className={`ml-auto text-[10px] uppercase font-bold opacity-80 ${engineMode === 'real-active' ? 'text-success' : 'text-warning'}`}>{engineMode === 'real-active' ? '[REAL]' : '[SIM]'}</span>
                   </div>
 
                   {/* Tarjeta: Mirada (task 5.3) */}
@@ -792,7 +947,7 @@ export default function AdminDetectionHarness() {
                         <span className="text-label-md font-semibold text-on-surface">
                           {gazeOk ? 'Mirando hacia el frente' : 'Mirando hacia un lado'}
                         </span>
-                        <span className="ml-auto text-[10px] uppercase font-bold text-on-surface-variant opacity-60">[SIMULADO]</span>
+                        <span className={`ml-auto text-[10px] uppercase font-bold opacity-80 ${engineMode === 'real-active' ? 'text-success' : 'text-warning'}`}>{engineMode === 'real-active' ? '[REAL]' : '[SIM]'}</span>
                       </div>
                     );
                   })() : rawSignals.faceDetection.face_count === 0 ? (
@@ -814,7 +969,7 @@ export default function AdminDetectionHarness() {
                     <span className="text-label-md font-semibold text-on-surface">
                       {rawSignals.poseAvailable ? 'Cuerpo presente' : 'Cuerpo no detectado'}
                     </span>
-                    <span className="ml-auto text-[10px] uppercase font-bold text-on-surface-variant opacity-60">[SIMULADO]</span>
+                    <span className={`ml-auto text-[10px] uppercase font-bold opacity-80 ${engineMode === 'real-active' ? 'text-success' : 'text-warning'}`}>{engineMode === 'real-active' ? '[REAL]' : '[SIM]'}</span>
                   </div>
 
                   {/* ---- Accordion de datos técnicos crudos (DD-29-02, tasks 5.5–5.7) ---- */}
@@ -872,7 +1027,7 @@ export default function AdminDetectionHarness() {
                       <div className="p-sm rounded-lg bg-surface-container-low border border-outline-variant/40 text-label-sm flex items-center gap-sm">
                         <Icon name={rawSignals.poseAvailable ? 'accessibility_new' : 'do_not_disturb'} className={`text-[18px] ${rawSignals.poseAvailable ? 'text-success' : 'text-on-surface-variant'}`} />
                         <span className="text-on-surface">
-                          <Term termKey="pose_keypoints">Pose keypoints</Term>: {rawSignals.poseAvailable ? 'disponibles' : 'no disponibles (motor en stub)'}
+                          <Term termKey="pose_keypoints">Pose keypoints</Term>: {rawSignals.poseAvailable ? 'disponibles' : engineMode === 'real-active' ? 'no detectados en este frame' : 'no disponibles (motor en stub)'}
                         </span>
                       </div>
                     </div>

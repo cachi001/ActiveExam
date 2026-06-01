@@ -21,6 +21,12 @@ node_modules/
 dist/
 .vite/
 
+# MediaPipe models y WASM — grandes (~25-50 MB), se descargan con scripts/download-mediapipe-models.sh
+# Los archivos WASM se copian desde node_modules (ya instalados via npm install)
+frontend/public/mediapipe/*.task
+frontend/public/mediapipe/*.wasm
+frontend/public/mediapipe/wasm/
+
 # Datos de contenedores
 postgres_data/
 minio_data/
