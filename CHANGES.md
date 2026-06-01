@@ -703,6 +703,20 @@ C-01 → C-03 → C-04 → C-05 → C-06 → C-07 → C-08 → C-09 → C-10 →
   - `frontend/src/lib/api.ts` (guardarEscaneDNI + ENABLE_DNI_SCAN)
   - `knowledge-base/13_legal_y_cumplimiento_argentina.md` §Dato sensible §Ley 25.326
 
+### [C-39] `c-39-analisis-validacion-dni`
+- **Estado**: `[ ]` propuesto (validate --strict OK — 26 tasks)
+- **Scope**: **Interfaz de análisis/validación indicativa del DNI (mock client-side con UX realista)** — tras capturar frente+dorso (C-38), mostrar un panel que simule cómo se corrobora que el DNI es real y está bien. (1) Nuevo tipo `AnalisisDNI` en `types.ts` con checks booleanos (`documento_detectado`, `imagen_legible`, `tipo_documento`, `pdf417_leido`), datos OCR mock coherentes con el alumno demo (Emiliano Cáceres, FRM-23-4912), `concordancia_facial` (0..1, rango 0.88–0.96) y `estado: 'preliminar_ok' | 'requiere_revision'` (NUNCA 'aprobado'/'rechazado' — L2.5). (2) Extender `EscaneDNI` con campo opcional `analisis?: AnalisisDNI`. (3) Nuevo mock `api.analizarDNI()` con delay ~1.8s, sin llamadas de red. (4) En `EnrollmentDniStep`: nuevas fases `'analizando'` (spinner) y `'resultado'` (panel con 4 secciones: checks, datos OCR, concordancia facial, estado + disclaimer L2.5 inamovible). (5) En `StudentProfile` sección DNI: mostrar badge de estado del análisis cuando existe (`'preliminar_ok'` → success / `'requiere_revision'` → warning) + nota "Pendiente de revisión humana". Disclaimer: "Análisis indicativo (demo). La validación oficial es server-side. El cliente es sensor no confiable (RN-GLB-01). Decisión final siempre humana (L2.5)." Caps NEW: `dni-analysis-panel`. Caps MODIFIED (delta): `dni-scanner-dual-side` (C-38 — nuevas fases + analisis adjunto), `student-profile-shell` (C-38/C-37 — resumen con análisis).
+- **Dependencias**: `C-38` (escaneo frente+dorso implementado, `EscaneDNI` y `api.guardarEscaneDNI` a extender), `C-22` (`ReferenciasBiometrica` para concordancia facial mock)
+- **Governance**: MEDIO
+- **Leer antes**:
+  - `openspec/changes/c-39-analisis-validacion-dni/` (proposal, design, specs/, tasks)
+  - `frontend/src/screens/enrollment/EnrollmentDniStep.tsx` (flujo de fases a extender)
+  - `frontend/src/lib/types.ts` (EscaneDNI a extender con AnalisisDNI)
+  - `frontend/src/lib/api.ts` (guardarEscaneDNI + nuevo analizarDNI)
+  - `frontend/src/screens/StudentProfile.tsx` (sección DNI a actualizar)
+  - `knowledge-base/13_legal_y_cumplimiento_argentina.md` §Dato sensible §Ley 25.326
+  - `knowledge-base/12_biometria_y_liveness.md` §Concordancia facial §embedding
+
 ---
 
 ## Resumen
@@ -712,12 +726,12 @@ C-01 → C-03 → C-04 → C-05 → C-06 → C-07 → C-08 → C-09 → C-10 →
 | **0 — Fundaciones** | C-01, C-02, C-03 | 3× CRITICO (C-03 ★ Tier 1 BLOQUEANTE) |
 | **1 — MVP** | C-04…C-19 | 6 CRITICO, 8 ALTO, 2 MEDIO |
 | **2 — Refinamiento** | C-20 | 1 MEDIO |
-| **Refinamiento post-fundación** | C-21, C-22, C-23, C-24, C-25, C-26, C-27, C-28, C-29, C-30, C-31, C-32, C-33, C-34, C-35, C-36, C-37, C-38 | 6 ALTO, 7 MEDIO, 5 BAJO |
+| **Refinamiento post-fundación** | C-21, C-22, C-23, C-24, C-25, C-26, C-27, C-28, C-29, C-30, C-31, C-32, C-33, C-34, C-35, C-36, C-37, C-38, C-39 | 6 ALTO, 8 MEDIO, 5 BAJO |
 
-- **Total**: **38 changes** — 20 de la fundación (3 fases) + 18 post-fundación (capa frontend/demo, captura de actividad, consentimiento en capas, decisiones de producto, identidad institucional, lenguaje claro/glosario, UX/legibilidad del harness, motor de visión real en el harness, quick-fixes de presentación, harness cache UX, medidor de riesgo en harness, biometría perfil funcional, fixes detección cámara/mirada, verificación biométrica inmersiva, foto de perfil en enrollment, escaneo DNI frente+dorso, ver sección dedicada arriba).
-- **Camino crítico**: 11 changes (`C-01 → C-03 → C-04 → C-05 → C-06 → C-07 → C-08 → C-09 → C-10 → C-15 → C-16`). C-21…C-38 quedan **fuera** del camino crítico (refinamiento de demo, no MVP backend).
+- **Total**: **39 changes** — 20 de la fundación (3 fases) + 19 post-fundación (capa frontend/demo, captura de actividad, consentimiento en capas, decisiones de producto, identidad institucional, lenguaje claro/glosario, UX/legibilidad del harness, motor de visión real en el harness, quick-fixes de presentación, harness cache UX, medidor de riesgo en harness, biometría perfil funcional, fixes detección cámara/mirada, verificación biométrica inmersiva, foto de perfil en enrollment, escaneo DNI frente+dorso, análisis/validación indicativa DNI, ver sección dedicada arriba).
+- **Camino crítico**: 11 changes (`C-01 → C-03 → C-04 → C-05 → C-06 → C-07 → C-08 → C-09 → C-10 → C-15 → C-16`). C-21…C-39 quedan **fuera** del camino crítico (refinamiento de demo, no MVP backend).
 - **Gates de paralelismo**: 13 (GATE 0…GATE 12). Forks grandes en GATE 5, GATE 6 y GATE 9.
 - **Primer change recomendado**: `C-01` (acuerdo-proctoring-dpia) — gate legal que junto a `C-02` bloquea todo el desarrollo. El primer change de **código** es `C-03` (poc-carga-mensajeria, Tier 1, BLOQUEANTE).
-- **Post-fundación**: el detalle y el porqué viven también en **engram** (`activeexam/refinamiento-frontend-v2`). Orden de aplicación sugerido: **C-21 → C-22 → C-26** (perfil cuelga del portal; el acuse por-examen de C-26 cuelga de la inscripción de C-21 + el consentimiento de C-22); **C-23 → C-25** (C-25 extiende el harness y cablea los detectores de navegador); C-24 independiente; **C-27 → C-28 → C-29 → C-30 → C-32 → C-33 → C-34 → C-35 → C-36 → C-37 → C-38 pueden correr en secuencia** (C-28 inteligibilidad; C-29 legibilidad/banner; C-30 motor real en el harness con overlay canvas; C-32 cache + UX amigable del harness; C-33 medidor de riesgo en harness; C-34 biometría perfil funcional; C-35 fixes bugs detección cámara + mirada; C-36 verificación biométrica inmersiva con componente compartido; C-37 foto de perfil en enrollment con componente snapshot reutilizable; C-38 escaneo DNI frente+dorso con marco escáner ID-1).
+- **Post-fundación**: el detalle y el porqué viven también en **engram** (`activeexam/refinamiento-frontend-v2`). Orden de aplicación sugerido: **C-21 → C-22 → C-26** (perfil cuelga del portal; el acuse por-examen de C-26 cuelga de la inscripción de C-21 + el consentimiento de C-22); **C-23 → C-25** (C-25 extiende el harness y cablea los detectores de navegador); C-24 independiente; **C-27 → C-28 → C-29 → C-30 → C-32 → C-33 → C-34 → C-35 → C-36 → C-37 → C-38 → C-39 pueden correr en secuencia** (C-28 inteligibilidad; C-29 legibilidad/banner; C-30 motor real en el harness con overlay canvas; C-32 cache + UX amigable del harness; C-33 medidor de riesgo en harness; C-34 biometría perfil funcional; C-35 fixes bugs detección cámara + mirada; C-36 verificación biométrica inmersiva con componente compartido; C-37 foto de perfil en enrollment con componente snapshot reutilizable; C-38 escaneo DNI frente+dorso con marco escáner ID-1; C-39 análisis indicativo DNI con panel de resultados mock).
 
 Para arrancar: `/opsx:propose C-01-acuerdo-proctoring-dpia`
