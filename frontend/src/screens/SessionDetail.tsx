@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { StaffShell } from '../ui/shells';
 import { Icon, Card, Avatar, Badge, SeverityBadge, Button, Stat } from '../ui/components';
 import { REVISOR_NAV } from './Revisor';
@@ -59,16 +60,28 @@ export default function SessionDetail() {
             ))}
           </Card>
 
+          {/* task 7.1: cadena de custodia colapsable; task 7.2: abierta en desktop, cerrada en mobile */}
           <Card className="space-y-sm">
-            <h3 className="text-label-sm uppercase tracking-wide text-on-surface-variant border-b border-outline-variant/40 pb-base"><Term termKey="cadena_de_custodia">Cadena de custodia criptográfica</Term></h3>
-            <CadenaPaso n={1} titulo="Cliente (navegador)" desc={`Hash del clip: ${sel.cadena_custodia.hash_cliente}`} icon="laptop" />
-            <CadenaPaso n={2} titulo="Backend (FastAPI)" desc={`Re-hash: ${sel.cadena_custodia.rehash_backend} · ${sel.cadena_custodia.coincide ? 'coincide' : 'divergencia'}`} icon="dns" ok={sel.cadena_custodia.coincide} />
-            <CadenaPaso n={3} titulo="Worker / clave maestra" desc={`Firma ${sel.cadena_custodia.algoritmo_firma}: ${sel.cadena_custodia.firma_maestra}`} icon="key" ok />
-            <CadenaPaso n={4} titulo="Re-inferencia server-side" desc="Señales re-evaluadas sobre la evidencia exacta." icon="neurology" ok />
-            <div className="bg-primary-fixed/40 rounded-xl p-sm text-label-sm text-on-primary-fixed-variant flex items-start gap-base">
-              <Icon name="info" className="text-[18px]" fill />
-              <span>El cliente es un sensor no confiable: toda evidencia se re-hashea, re-infiere y firma del lado del servidor.</span>
-            </div>
+            {/* La clase `ae-cadena-open` se usa como anchor; el open por defecto en ≥1024px
+                se logra con el atributo HTML en un wrapper details que aplica lg:open via CSS */}
+            <details className="ae-cadena-details" {...{} as React.DetailsHTMLAttributes<HTMLElement>}>
+              <summary className="cursor-pointer select-none list-none flex items-center justify-between gap-sm border-b border-outline-variant/40 pb-base">
+                <h3 className="text-label-sm uppercase tracking-wide text-on-surface-variant">
+                  <Term termKey="cadena_de_custodia">Cadena de custodia criptográfica</Term>
+                </h3>
+                <Icon name="expand_more" className="text-on-surface-variant text-[18px] ae-cadena-chevron" />
+              </summary>
+              <div className="space-y-sm pt-sm">
+                <CadenaPaso n={1} titulo="Cliente (navegador)" desc={`Hash del clip: ${sel.cadena_custodia.hash_cliente}`} icon="laptop" />
+                <CadenaPaso n={2} titulo="Backend (FastAPI)" desc={`Re-hash: ${sel.cadena_custodia.rehash_backend} · ${sel.cadena_custodia.coincide ? 'coincide' : 'divergencia'}`} icon="dns" ok={sel.cadena_custodia.coincide} />
+                <CadenaPaso n={3} titulo="Worker / clave maestra" desc={`Firma ${sel.cadena_custodia.algoritmo_firma}: ${sel.cadena_custodia.firma_maestra}`} icon="key" ok />
+                <CadenaPaso n={4} titulo="Re-inferencia server-side" desc="Señales re-evaluadas sobre la evidencia exacta." icon="neurology" ok />
+                <div className="bg-primary-fixed/40 rounded-xl p-sm text-label-sm text-on-primary-fixed-variant flex items-start gap-base">
+                  <Icon name="info" className="text-[18px]" fill />
+                  <span>El cliente es un sensor no confiable: toda evidencia se re-hashea, re-infiere y firma del lado del servidor.</span>
+                </div>
+              </div>
+            </details>
           </Card>
         </div>
 
@@ -81,7 +94,37 @@ export default function SessionDetail() {
   );
 }
 
+/** task 7.3: trunca el primer hash largo encontrado en `desc` a 12 caracteres + toggle. */
 function CadenaPaso({ n, titulo, desc, icon, ok }: { n: number; titulo: string; desc: string; icon: string; ok?: boolean }) {
+  const [hashExpanded, setHashExpanded] = useState(false);
+
+  // Detecta si desc contiene un hash largo (más de 20 chars seguidos sin espacio)
+  // y lo trunca mostrando solo los primeros 12 caracteres + "..." + botón "ver completo".
+  const HASH_RE = /([a-f0-9A-F+/=]{20,})/;
+  const match = desc.match(HASH_RE);
+  let displayDesc: React.ReactNode = desc;
+  if (match) {
+    const full = match[1];
+    const truncated = full.slice(0, 12) + '…';
+    const before = desc.slice(0, desc.indexOf(full));
+    const after = desc.slice(desc.indexOf(full) + full.length);
+    displayDesc = (
+      <>
+        {before}
+        <span className="font-mono">{hashExpanded ? full : truncated}</span>
+        {' '}
+        <button
+          type="button"
+          onClick={() => setHashExpanded((v) => !v)}
+          className="text-primary hover:underline text-[11px]"
+        >
+          {hashExpanded ? 'ocultar' : 'ver completo'}
+        </button>
+        {after}
+      </>
+    );
+  }
+
   return (
     <div className="flex items-start gap-sm p-sm rounded-xl bg-surface-container-low border border-outline-variant/40">
       <div className="w-8 h-8 rounded-full bg-primary text-on-primary flex items-center justify-center text-label-sm font-bold shrink-0">{n}</div>
@@ -91,7 +134,7 @@ function CadenaPaso({ n, titulo, desc, icon, ok }: { n: number; titulo: string; 
           <span className="text-label-md font-semibold text-on-surface">{titulo}</span>
           {ok && <Icon name="check_circle" className="text-success text-[16px]" fill />}
         </div>
-        <p className="text-label-sm text-on-surface-variant mt-base font-mono break-all">{desc}</p>
+        <p className="text-label-sm text-on-surface-variant mt-base break-all">{displayDesc}</p>
       </div>
     </div>
   );
