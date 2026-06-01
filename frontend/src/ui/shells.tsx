@@ -1,8 +1,10 @@
+import { useState } from 'react';
 import type { ReactNode } from 'react';
 import { Icon } from './components';
 import { Link, useRouter, useNavigate } from '../lib/router';
 import { useApp } from '../lib/store';
 import { INSTITUTION } from '../config/institution';
+import { GlossaryPanel } from './GlossaryPanel';
 
 const LOGO = (
   <div className="flex items-center gap-sm">
@@ -19,6 +21,7 @@ const LOGO = (
 export function StudentShell({ children, step }: { children: ReactNode; step?: number }) {
   const principal = useApp((s) => s.principal);
   const navigate = useNavigate();
+  const [glossaryOpen, setGlossaryOpen] = useState(false);
   const pasos = ['Ingreso', 'Requisitos', 'Privacidad', 'Biometría', 'Sala', 'Examen', 'Cierre'];
   return (
     <div className="min-h-screen flex flex-col bg-surface">
@@ -58,7 +61,8 @@ export function StudentShell({ children, step }: { children: ReactNode; step?: n
         )}
       </header>
       <main className="flex-1 w-full max-w-container-max mx-auto px-lg py-xl">{children}</main>
-      <SharedFooter />
+      <SharedFooter onGlossaryOpen={() => setGlossaryOpen(true)} />
+      <GlossaryPanel isOpen={glossaryOpen} onClose={() => setGlossaryOpen(false)} />
     </div>
   );
 }
@@ -118,7 +122,7 @@ export function StaffShell({ children, nav, title }: { children: ReactNode; nav:
   );
 }
 
-function SharedFooter() {
+function SharedFooter({ onGlossaryOpen }: { onGlossaryOpen: () => void }) {
   return (
     <footer className="border-t border-outline-variant/50 bg-surface-container-lowest py-lg">
       <div className="max-w-container-max mx-auto px-lg flex flex-col sm:flex-row items-center justify-between gap-sm text-label-sm text-on-surface-variant">
@@ -127,6 +131,14 @@ function SharedFooter() {
           <a className="hover:text-primary" href="#/">Retención (30 días)</a>
           <a className="hover:text-primary" href="#/">{INSTITUTION.soporteLabel}</a>
           <a className="hover:text-primary" href="#/">Ley 25.326</a>
+          <button
+            type="button"
+            onClick={onGlossaryOpen}
+            aria-label="Abrir glosario de términos"
+            className="hover:text-primary inline-flex items-center gap-[2px] focus:outline-none focus:underline"
+          >
+            Glosario
+          </button>
         </div>
       </div>
     </footer>
