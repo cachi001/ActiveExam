@@ -57,8 +57,6 @@ export default function Login() {
           </section>
 
           <nav className="flex justify-center items-center gap-lg border-t border-outline-variant/60 pt-lg">
-            <a className="text-label-md text-primary hover:underline" href="#/requisitos">Requisitos técnicos</a>
-            <span className="w-1 h-1 bg-outline-variant rounded-full" />
             <a className="text-label-md text-primary hover:underline" href="#/">Necesito ayuda</a>
           </nav>
         </div>
