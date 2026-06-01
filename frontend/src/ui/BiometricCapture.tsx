@@ -405,8 +405,12 @@ export function BiometricCapture({
       )}
 
       {/* Óvalo con la cámara — ancho EXPLÍCITO para que no colapse */}
-      <div className="relative" style={{ width: 'min(80vw, 300px)' }}>
-        <div className="relative w-full aspect-[3/4] overflow-hidden rounded-[50%] bg-neutral-100 shadow-xl">
+      <div className="relative" style={{ width: 'min(80vw, 300px)', filter: 'drop-shadow(0 10px 24px rgba(0,0,0,0.15))' }}>
+        {/* clip-path ellipse recorta el video a la forma del óvalo (esquinas transparentes → fondo blanco) */}
+        <div
+          className="relative w-full aspect-[3/4] overflow-hidden bg-neutral-100"
+          style={{ clipPath: 'ellipse(50% 50% at 50% 50%)' }}
+        >
           {/* Video de cámara */}
           <video
             ref={videoRef}
