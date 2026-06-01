@@ -584,6 +584,17 @@ C-01 → C-03 → C-04 → C-05 → C-06 → C-07 → C-08 → C-09 → C-10 →
   - `knowledge-base/05_reglas_de_negocio.md` §RN-CO (consentimiento informado con lenguaje claro)
   - **engram** `activeexam/refinamiento-frontend-v2`
 
+### [C-29] `ux-admin-harness-legible`
+- **Estado**: `[ ]` propuesto (validate --strict OK — 30 tasks)
+- **Scope**: **Densidad visual y honestidad del harness** — mejora de experiencia y claridad en las pantallas más técnicas/densas, sin cambiar funcionalidad. (1) Banner prominente en el harness de diagnóstico admin que advierte que las **señales de visión son SIMULADAS** (motor MediaPipe en stub); (2) panel de propósito del harness en lenguaje no técnico; (3) tarjetas de interpretación por señal con accordion de datos técnicos crudos colapsable; (4) descripción contextual por cada señal de entorno; (5) respiro visual en la tabla de eventos de Revisor + agrupación de eventos repetidos; (6) cadena de custodia colapsable en SessionDetail con hashes truncados; (7) **reframe del copy de Login** como portal del alumno (headline "Portal del alumno"). Caps NEW: `harness-legibility-layer`, `login-portal-reframe`. Caps MODIFIED (delta): `admin-detection-test-harness` (C-23), `glossary-config` (C-28 — 4 términos nuevos: `bounding_box`, `gaze_vector`, `pose_keypoints`, `motor_stub`).
+- **Dependencias**: `C-27` (INSTITUTION), `C-28` (Term, glossary.ts). Independiente de backend.
+- **Governance**: BAJO
+- **Leer antes**:
+  - `openspec/changes/c-29-ux-admin-harness-legible/` (proposal, design, specs/, tasks)
+  - `openspec/changes/c-28-lenguaje-claro-glosario/` (patrón Term + glossary.ts)
+  - `knowledge-base/11_ia_y_vision.md` §Motor abstraído §stub MediaPipe
+  - **engram** `activeexam/refinamiento-frontend-v2`
+
 ---
 
 ## Resumen
@@ -593,12 +604,12 @@ C-01 → C-03 → C-04 → C-05 → C-06 → C-07 → C-08 → C-09 → C-10 →
 | **0 — Fundaciones** | C-01, C-02, C-03 | 3× CRITICO (C-03 ★ Tier 1 BLOQUEANTE) |
 | **1 — MVP** | C-04…C-19 | 6 CRITICO, 8 ALTO, 2 MEDIO |
 | **2 — Refinamiento** | C-20 | 1 MEDIO |
-| **Refinamiento post-fundación** | C-21, C-22, C-23, C-24, C-25, C-26, C-27, C-28 | 4 ALTO, 3 MEDIO, 1 BAJO |
+| **Refinamiento post-fundación** | C-21, C-22, C-23, C-24, C-25, C-26, C-27, C-28, C-29 | 4 ALTO, 3 MEDIO, 2 BAJO |
 
-- **Total**: **28 changes** — 20 de la fundación (3 fases) + 8 post-fundación (capa frontend/demo, captura de actividad, consentimiento en capas, decisiones de producto, identidad institucional y lenguaje claro/glosario, ver sección dedicada arriba).
-- **Camino crítico**: 11 changes (`C-01 → C-03 → C-04 → C-05 → C-06 → C-07 → C-08 → C-09 → C-10 → C-15 → C-16`). C-21…C-28 quedan **fuera** del camino crítico (refinamiento de demo, no MVP backend).
+- **Total**: **29 changes** — 20 de la fundación (3 fases) + 9 post-fundación (capa frontend/demo, captura de actividad, consentimiento en capas, decisiones de producto, identidad institucional, lenguaje claro/glosario, y UX/legibilidad del harness, ver sección dedicada arriba).
+- **Camino crítico**: 11 changes (`C-01 → C-03 → C-04 → C-05 → C-06 → C-07 → C-08 → C-09 → C-10 → C-15 → C-16`). C-21…C-29 quedan **fuera** del camino crítico (refinamiento de demo, no MVP backend).
 - **Gates de paralelismo**: 13 (GATE 0…GATE 12). Forks grandes en GATE 5, GATE 6 y GATE 9.
 - **Primer change recomendado**: `C-01` (acuerdo-proctoring-dpia) — gate legal que junto a `C-02` bloquea todo el desarrollo. El primer change de **código** es `C-03` (poc-carga-mensajeria, Tier 1, BLOQUEANTE).
-- **Post-fundación**: el detalle y el porqué viven también en **engram** (`activeexam/refinamiento-frontend-v2`). Orden de aplicación sugerido: **C-21 → C-22 → C-26** (perfil cuelga del portal; el acuse por-examen de C-26 cuelga de la inscripción de C-21 + el consentimiento de C-22); **C-23 → C-25** (C-25 extiende el harness y cablea los detectores de navegador); C-24 independiente; **C-27 y C-28 pueden correr en cualquier momento** (sin dependencias de backend; C-28 complementa C-27 al agregar inteligibilidad a la UI).
+- **Post-fundación**: el detalle y el porqué viven también en **engram** (`activeexam/refinamiento-frontend-v2`). Orden de aplicación sugerido: **C-21 → C-22 → C-26** (perfil cuelga del portal; el acuse por-examen de C-26 cuelga de la inscripción de C-21 + el consentimiento de C-22); **C-23 → C-25** (C-25 extiende el harness y cablea los detectores de navegador); C-24 independiente; **C-27 → C-28 → C-29 pueden correr en secuencia** (sin dependencias de backend; C-28 agrega inteligibilidad; C-29 agrega legibilidad del harness y reframe Login).
 
 Para arrancar: `/opsx:propose C-01-acuerdo-proctoring-dpia`
