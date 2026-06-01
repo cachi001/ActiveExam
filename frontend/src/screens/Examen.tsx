@@ -12,6 +12,7 @@ import {
 } from '../proctoring/contextDetectors';
 import { StateTransitionRules } from '../proctoring/stateTransitionRules';
 import type { EventoSesion, Severidad, TipoEvento } from '../lib/types';
+import { PESO_SCORE } from '../proctoring/riskWeights';
 
 const PREGUNTA = {
   numero: 'Pregunta 1 de 5',
@@ -23,8 +24,6 @@ const PREGUNTA = {
     'Estructura ósea conectora interna del manubrio esternal.',
   ],
 };
-
-const PESO_SCORE: Record<Severidad, number> = { baseline: 0, baja: 5, media: 12, alta: 22, critica: 30 };
 
 export default function Examen() {
   const navigate = useNavigate();
