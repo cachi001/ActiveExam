@@ -757,19 +757,7 @@ export default function AdminDetectionHarness() {
         {/* ================================================================
             C-30: BANNER CONDICIONAL DEL MOTOR — 4 estados (D-5, harness-legibility-layer)
         ================================================================ */}
-        {engineMode === 'simulated' && (
-          <div className="flex items-start gap-sm p-md rounded-xl bg-warning-container border-2 border-warning/50 text-on-warning-container" role="alert" aria-live="polite">
-            <Icon name="warning" className="text-[22px] shrink-0 mt-px text-warning" fill />
-            <div className="min-w-0">
-              <p className="font-bold text-label-md">SEÑALES DE VISIÓN SIMULADAS</p>
-              <p className="text-label-sm mt-base">
-                El <Term termKey="motor_stub">motor MediaPipe</Term> está en modo stub y devuelve valores fijos.
-                Presioná <strong>Iniciar</strong> para activar el motor real.
-                Las señales de navegador (pestaña, pantalla completa, portapapeles) <strong>SÍ son reales</strong>.
-              </p>
-            </div>
-          </div>
-        )}
+        {/* Estado 'simulated' (idle): sin banner — al iniciar la cámara se activa el motor real (MediaPipe). */}
         {/* C-32 Tasks 3.1–3.4: spinner amigable, sin jerga técnica */}
         {engineMode === 'loading' && (
           <div className="flex items-start gap-sm p-md rounded-xl bg-primary-container border-2 border-primary/30 text-on-primary-container" role="status" aria-live="polite">
@@ -791,7 +779,7 @@ export default function AdminDetectionHarness() {
             <div className="min-w-0">
               <p className="font-bold text-label-md text-success">VISIÓN REAL (MediaPipe)</p>
               <p className="text-label-sm mt-base text-on-surface-variant">
-                <Term termKey="motor_stub">Motor MediaPipe</Term> real activo —{' '}
+                Motor MediaPipe real activo —{' '}
                 <strong>FaceDetector + FaceLandmarker + PoseLandmarker</strong> procesando frames reales de la cámara.
               </p>
             </div>
@@ -859,8 +847,8 @@ export default function AdminDetectionHarness() {
             <div className="px-md pb-md pt-sm space-y-sm border-t border-outline-variant/40 text-label-sm text-on-surface-variant">
               <p>
                 Esta herramienta verifica que el sistema detecta señales correctamente antes de un examen real.
-                El <Term termKey="motor_stub">motor de detección</Term> está en modo demo: las señales de visión son
-                valores fijos generados por un <Term termKey="motor_stub">motor stub</Term>, no por MediaPipe real.
+                Al iniciar la cámara, el motor de visión (MediaPipe) procesa los frames en vivo: rostros, mirada y
+                postura. Las señales del navegador (pestaña, pantalla completa, portapapeles) también son reales.
               </p>
               <div>
                 <p className="font-semibold text-on-surface mb-base">Acciones sugeridas para probar:</p>
@@ -875,7 +863,7 @@ export default function AdminDetectionHarness() {
               <div className="flex items-start gap-base p-sm rounded-lg bg-surface-container border border-outline-variant/40">
                 <Icon name="info" className="text-[16px] shrink-0 mt-px text-primary" fill />
                 <span>
-                  <strong className="text-on-surface">Señales de visión</strong> (rostros, <Term termKey="gaze_vector">mirada</Term>, <Term termKey="pose_keypoints">cuerpo</Term>): <em>simuladas</em> por el motor stub. &nbsp;
+                  <strong className="text-on-surface">Señales de visión</strong> (rostros, <Term termKey="gaze_vector">mirada</Term>, <Term termKey="pose_keypoints">cuerpo</Term>): del motor MediaPipe procesando la cámara en vivo. &nbsp;
                   <strong className="text-on-surface">Señales de navegador</strong> (pestaña, pantalla completa, portapapeles): <em>reales</em>.
                 </span>
               </div>
@@ -993,7 +981,7 @@ export default function AdminDetectionHarness() {
             {/* C-30: Panel de señales de visión — interpretación en lenguaje claro (DD-29-03, tasks 5.1–5.7) */}
             <Card className="space-y-md">
               <div className="flex items-start justify-between gap-sm flex-wrap">
-                <SectionTitle sub={engineMode === 'real-active' ? 'Valores reales del motor MediaPipe' : 'Valores generados por el motor stub'}>
+                <SectionTitle sub={engineMode === 'real-active' ? 'Valores reales del motor MediaPipe' : 'Iniciá la cámara para ver valores reales'}>
                   Señales de visión
                 </SectionTitle>
                 {/* C-30: badge REAL / SIM */}
@@ -1003,9 +991,9 @@ export default function AdminDetectionHarness() {
                     REAL
                   </span>
                 ) : (
-                  <span className="inline-flex items-center gap-base px-sm py-base rounded-full bg-warning-container text-warning text-label-sm font-bold border border-warning/30 shrink-0">
-                    <Icon name="science" className="text-[14px]" />
-                    SIM
+                  <span className="inline-flex items-center gap-base px-sm py-base rounded-full bg-surface-container text-on-surface-variant text-label-sm font-bold border border-outline-variant/40 shrink-0">
+                    <Icon name="videocam_off" className="text-[14px]" />
+                    EN ESPERA
                   </span>
                 )}
               </div>
@@ -1136,7 +1124,7 @@ export default function AdminDetectionHarness() {
                       <div className="p-sm rounded-lg bg-surface-container-low border border-outline-variant/40 text-label-sm flex items-center gap-sm">
                         <Icon name={rawSignals.poseAvailable ? 'accessibility_new' : 'do_not_disturb'} className={`text-[18px] ${rawSignals.poseAvailable ? 'text-success' : 'text-on-surface-variant'}`} />
                         <span className="text-on-surface">
-                          <Term termKey="pose_keypoints">Pose keypoints</Term>: {rawSignals.poseAvailable ? 'disponibles' : engineMode === 'real-active' ? 'no detectados en este frame' : 'no disponibles (motor en stub)'}
+                          <Term termKey="pose_keypoints">Pose keypoints</Term>: {rawSignals.poseAvailable ? 'disponibles' : engineMode === 'real-active' ? 'no detectados en este frame' : 'no disponibles (iniciá la cámara)'}
                         </span>
                       </div>
                     </div>
@@ -1372,15 +1360,13 @@ export default function AdminDetectionHarness() {
                     hint: 'Variación permitida en la dirección de la mirada para considerarla sostenida en el mismo punto',
                   },
                 ] as { field: keyof TransitionConfig; clearLabel: string; label: string; unit: string; hint: string }[]
-              ).map(({ field, clearLabel, label, unit, hint }) => (
+              ).map(({ field, clearLabel, unit, hint }) => (
                 <div key={field} className="space-y-base">
                   <label>
                     {/* Task 4.2: nombre claro como etiqueta principal */}
                     <span className="text-label-sm font-semibold text-on-surface block">
                       {clearLabel} <span className="text-on-surface-variant font-normal">({unit})</span>
                     </span>
-                    {/* Task 4.2: clave técnica como texto secundario en font-mono pequeño */}
-                    <span className="text-[11px] text-on-surface-variant font-mono">{label}</span>
                   </label>
                   {/* Task 4.3: hint con redacción clara, sin jerga */}
                   <p className="text-[11px] text-on-surface-variant">{hint}</p>

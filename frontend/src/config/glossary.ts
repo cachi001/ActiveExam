@@ -14,8 +14,7 @@ export type TermKey =
   | 'datos_biometricos'
   | 'bounding_box'
   | 'gaze_vector'
-  | 'pose_keypoints'
-  | 'motor_stub';
+  | 'pose_keypoints';
 
 export interface GlossaryEntry {
   /** Texto del término tal como aparece en la UI (ej. "L2.5") */
@@ -78,10 +77,5 @@ export const GLOSSARY: Record<TermKey, GlossaryEntry> = {
     label: 'pose keypoints',
     definition:
       'Puntos de referencia del cuerpo de una persona (hombros, codos, manos, etc.) detectados por un modelo de visión artificial. Su presencia confirma que hay una persona entera visible, no solo el rostro.',
-  },
-  motor_stub: {
-    label: 'motor stub',
-    definition:
-      'Implementación provisional del motor de visión que devuelve valores fijos (hardcodeados) en lugar de analizar la cámara real. Se usa mientras el motor MediaPipe real no está disponible en el entorno de demo.',
   },
 };
