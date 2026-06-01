@@ -342,7 +342,7 @@ export default function StudentProfile() {
               Verificación documental
             </h1>
             <p className="text-body-md text-on-surface-variant mt-xs">
-              Paso 3 de 3 — Opcional. El DNI refuerza la verificación pero no bloquea el perfil completo.
+              Paso 4 de 4 — Opcional. El escaneo del DNI (frente y dorso) refuerza la verificación pero no bloquea el perfil completo.
             </p>
           </header>
           <EnrollmentDniStep
@@ -626,7 +626,7 @@ export default function StudentProfile() {
           {dniOk && enrollment?.dni ? (
             <div className="space-y-xs text-label-sm">
               <p className="text-on-surface-variant">
-                DNI registrado el {new Date(enrollment.dni.fecha_captura).toLocaleDateString('es-AR', {
+                DNI registrado (frente y dorso) el {new Date(enrollment.dni.fecha_captura).toLocaleDateString('es-AR', {
                   day: '2-digit', month: 'long', year: 'numeric',
                 })}.
               </p>
