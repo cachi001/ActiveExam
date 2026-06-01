@@ -3,6 +3,7 @@ import { StudentShell } from '../ui/shells';
 import { Icon, Button, Card } from '../ui/components';
 import { useNavigate } from '../lib/router';
 import { useApp } from '../lib/store';
+import { Term } from '../ui/Term';
 
 export default function Cierre() {
   const navigate = useNavigate();
@@ -23,7 +24,7 @@ export default function Cierre() {
         <div className="space-y-base">
           <h2 className="font-headline text-headline-lg text-on-surface">¡Examen finalizado!</h2>
           <p className="text-body-md text-on-surface-variant">
-            Tu sesión se cerró con cadena de custodia criptográfica server-side. La consolidación del score corre de forma asíncrona.
+            Tu sesión se cerró con <Term termKey="cadena_de_custodia">cadena de custodia criptográfica</Term> server-side. La consolidación del score corre de forma asíncrona.
           </p>
         </div>
 
@@ -41,7 +42,8 @@ export default function Cierre() {
             <Icon name={irARevision ? 'gavel' : 'verified_user'} className={irARevision ? 'text-warning' : 'text-success'} fill />
             <p className="text-label-md text-on-surface">
               {irARevision
-                ? `Tu sesión superó el umbral (${examen?.umbral_score}%) y entra a la cola de revisión académica. Recordá: el sistema no sanciona — la decisión es siempre humana (L2.5).`
+                ? <>Tu sesión superó el umbral ({examen?.umbral_score}%) y entra a la cola de revisión académica. Recordá: el sistema no sanciona — la decisión es siempre humana (<Term termKey="l2_5" />).</>
+
                 : 'Tu sesión no presenta incidencias relevantes. No se requiere revisión adicional.'}
             </p>
           </div>
