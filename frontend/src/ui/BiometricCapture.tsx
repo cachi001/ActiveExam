@@ -26,6 +26,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Icon } from './components';
 import { loadEnrollmentEngine, disposeEnrollmentEngine } from '../vision/enrollmentEngineLoader';
 import { evaluateChallenge, framesMinForChallenge } from '../vision/enrollmentChallengeDetector';
@@ -361,8 +362,8 @@ export function BiometricCapture({
 
   // Task 6.9: estado de error de cámara
   if (fase === 'error') {
-    return (
-      // Task 6.1: contenedor raíz del overlay
+    return createPortal(
+      // Task 6.1: contenedor raíz del overlay (portal a body — escapa el stacking context del shell)
       <div ref={containerRef} className="fixed inset-0 z-50 bg-neutral-950 flex flex-col items-center justify-center">
         {/* Task 6.2: botón cancelar discreto */}
         <button
@@ -379,12 +380,13 @@ export function BiometricCapture({
             Habilitá el permiso de cámara en tu navegador y volvé a intentarlo.
           </p>
         </div>
-      </div>
+      </div>,
+      document.body,
     );
   }
 
-  return (
-    // Task 6.1: contenedor raíz del overlay — fixed inset-0 z-50
+  return createPortal(
+    // Task 6.1: contenedor raíz del overlay — fixed inset-0 z-50 (portal a body — escapa el stacking context del shell)
     <div
       ref={containerRef}
       className="fixed inset-0 z-50 bg-neutral-950 flex flex-col items-center justify-center"
@@ -505,6 +507,7 @@ export function BiometricCapture({
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
