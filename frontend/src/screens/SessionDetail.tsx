@@ -4,6 +4,7 @@ import { REVISOR_NAV } from './Revisor';
 import { useApp } from '../lib/store';
 import { useNavigate } from '../lib/router';
 import { TIPO_EVENTO_LABEL } from '../lib/api';
+import { Term } from '../ui/Term';
 
 export default function SessionDetail() {
   const sel = useApp((s) => s.revisionSeleccionada);
@@ -59,7 +60,7 @@ export default function SessionDetail() {
           </Card>
 
           <Card className="space-y-sm">
-            <h3 className="text-label-sm uppercase tracking-wide text-on-surface-variant border-b border-outline-variant/40 pb-base">Cadena de custodia criptográfica</h3>
+            <h3 className="text-label-sm uppercase tracking-wide text-on-surface-variant border-b border-outline-variant/40 pb-base"><Term termKey="cadena_de_custodia">Cadena de custodia criptográfica</Term></h3>
             <CadenaPaso n={1} titulo="Cliente (navegador)" desc={`Hash del clip: ${sel.cadena_custodia.hash_cliente}`} icon="laptop" />
             <CadenaPaso n={2} titulo="Backend (FastAPI)" desc={`Re-hash: ${sel.cadena_custodia.rehash_backend} · ${sel.cadena_custodia.coincide ? 'coincide' : 'divergencia'}`} icon="dns" ok={sel.cadena_custodia.coincide} />
             <CadenaPaso n={3} titulo="Worker / clave maestra" desc={`Firma ${sel.cadena_custodia.algoritmo_firma}: ${sel.cadena_custodia.firma_maestra}`} icon="key" ok />

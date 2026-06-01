@@ -4,6 +4,7 @@ import { Icon, Button, Card } from '../ui/components';
 import { useNavigate } from '../lib/router';
 import { useApp } from '../lib/store';
 import { api } from '../lib/api';
+import { Term } from '../ui/Term';
 import type { ConsentTextResponse } from '../lib/types';
 
 export default function Consent() {
@@ -63,7 +64,7 @@ export default function Consent() {
               className="mt-base w-5 h-5 accent-[#4241bc] rounded" />
             <span className="text-body-md text-on-surface">
               Presto mi <strong>consentimiento libre, expreso e informado</strong> para el tratamiento de mis datos
-              (incluido el embedding biométrico, tratado como dato sensible) con la única finalidad de supervisar esta evaluación.
+              (incluido el <Term termKey="embedding">embedding biométrico</Term>, tratado como dato sensible) con la única finalidad de supervisar esta evaluación.
               Entiendo que <strong>el sistema nunca sanciona automáticamente</strong> y que toda decisión es humana.
             </span>
           </label>

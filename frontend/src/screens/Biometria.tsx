@@ -5,6 +5,7 @@ import { useNavigate } from '../lib/router';
 import { useApp } from '../lib/store';
 import { api, DESAFIOS } from '../lib/api';
 import { pickActiveChallenges } from '../vision/liveness';
+import { Term } from '../ui/Term';
 import type { DesafioActivo } from '../lib/types';
 
 type Fase = 'preparar' | 'capturando' | 'verificando' | 'verificado' | 'reintento';
@@ -58,7 +59,7 @@ export default function Biometria() {
           </div>
           <h2 className="font-headline text-headline-lg text-on-surface">Verificación biométrica de identidad</h2>
           <p className="text-body-md text-on-surface-variant">
-            Verificación 1:1 contra tu foto institucional con liveness híbrido (ISO 30107-3). El backend re-infiere y firma el resultado.
+            Verificación 1:1 contra tu foto institucional con <Term termKey="liveness">liveness híbrido</Term> (ISO 30107-3). El backend re-infiere y firma el resultado.
           </p>
         </div>
 

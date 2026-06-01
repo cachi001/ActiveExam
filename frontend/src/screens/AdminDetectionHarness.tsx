@@ -20,6 +20,7 @@ import { Icon, Card, Button, Badge, SeverityBadge, SectionTitle } from '../ui/co
 import { STAFF_NAV } from '../ui/nav';
 import { useApp } from '../lib/store';
 import { SEVERIDAD_LABEL, TIPO_EVENTO_LABEL } from '../lib/api';
+import { Term } from '../ui/Term';
 import type { Severidad } from '../lib/types';
 
 // Visión — reutilizar sin duplicar (C-11, DD-17)
@@ -1191,7 +1192,7 @@ export default function AdminDetectionHarness() {
         <div className="bg-primary-fixed/40 rounded-xl p-sm text-label-sm text-on-primary-fixed-variant flex items-start gap-base">
           <Icon name="shield" className="text-[18px] shrink-0" fill />
           <span>
-            Herramienta diagnóstica — sin examen real, sin sesión de alumno, sin sanción automática (L2.5).
+            Herramienta diagnóstica — sin examen real, sin sesión de alumno, sin sanción automática (<Term termKey="l2_5" />).
             El sistema nunca toma decisiones disciplinarias: prioriza señales para revisión humana.
             Los eventos generados aquí NO se almacenan en el backend de producción.
           </span>
