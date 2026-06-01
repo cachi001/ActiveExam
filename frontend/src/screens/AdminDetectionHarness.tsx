@@ -28,7 +28,8 @@ import VisionOverlay from '../ui/VisionOverlay';
 import { MediaPipeVisionEngine } from '../vision/MediaPipeVisionEngine';
 import type { VisionEngine, FaceDetectionSignal, FaceMeshSignal, PoseSignal } from '../vision/VisionEngine';
 // C-30: loader lazy del motor real (dynamic import — no entra al bundle inicial)
-import { loadRealEngine } from '../vision/harnessEngineLoader';
+// C-32: importar también disposeRealEngine para el cache singleton
+import { loadRealEngine, disposeRealEngine } from '../vision/harnessEngineLoader';
 import type { EventSink } from '../proctoring/visionPipeline';
 import { VisionPipeline } from '../proctoring/visionPipeline';
 import {
@@ -40,12 +41,15 @@ import {
 import type { EventoSesion, TipoEvento } from '../lib/types';
 
 // C-25: detectores de contexto reales (no valores fijos)
+// C-32: también importar requestAndDetectExtraMonitor y ScreenPermissionResult
 import {
   FocusDetector,
   FullscreenDetector,
   ClipboardDetector,
   detectExtraMonitor,
+  requestAndDetectExtraMonitor,
 } from '../proctoring/contextDetectors';
+import type { ScreenPermissionResult } from '../proctoring/contextDetectors';
 
 // C-25: catálogo canónico para el checklist de cobertura integral
 import { SUSPICIOUS_ACTIVITY_CATALOG } from '../proctoring/suspiciousActivityCatalog';
@@ -218,6 +222,9 @@ export default function AdminDetectionHarness() {
   // ------ C-30: Estado del motor de visión ------
   const [engineMode, setEngineMode] = useState<EngineMode>('simulated');
   const [engineError, setEngineError] = useState<string | null>(null);
+  // C-32 Task 3.3: true si el motor nunca fue cacheado en esta sesión de página
+  // (para mostrar el subtítulo "primera vez" solo en la primera carga).
+  const [isFirstEngineLoad, setIsFirstEngineLoad] = useState(true);
 
   // ------ C-30: Toggles del overlay ------
   const [showPose, setShowPose] = useState(false);
@@ -255,8 +262,11 @@ export default function AdminDetectionHarness() {
   // Mapea tipo → { capturedAt: timestamp, clipMonitorNA: bool }
   type CoverageEntry = { capturedAt: number; severidad: string };
   const [coverage, setCoverage] = useState<Partial<Record<string, CoverageEntry>>>({});
-  // true si la API de monitores no está disponible (no testeable en este browser)
-  const [monitorApiUnavailable, setMonitorApiUnavailable] = useState(false);
+  // C-32 Task 6.1: estado del permiso de monitores (reemplaza monitorApiUnavailable)
+  // Inicializado según soporte del navegador al montar
+  const [monitorPermission, setMonitorPermission] = useState<
+    'idle' | 'requesting' | 'granted' | 'denied' | 'unsupported'
+  >(typeof window !== 'undefined' && 'getScreenDetails' in window ? 'idle' : 'unsupported');
 
   // ------ Filtros y UI ------
   const [severityFilter, setSeverityFilter] = useState<Set<Severidad>>(new Set(SEVERITY_ORDER));
@@ -336,25 +346,15 @@ export default function AdminDetectionHarness() {
     });
     cd.start();
 
-    // Monitor adicional — polling cada 5 s (degrada a null si API ausente)
-    let monitorPollActive = true;
-    const pollMonitor = async () => {
-      const provider = typeof window !== 'undefined' && 'getScreenDetails' in window
-        ? () => (window as unknown as { getScreenDetails: () => Promise<{ screens: unknown[] }> }).getScreenDetails()
-        : undefined;
-      const sig = await detectExtraMonitor(provider);
-      const val = sig?.extra_monitor ?? null;
-      envExtraMonitorRef.current = val;
-      setEnvSignals((prev) => ({ ...prev, extraMonitor: val }));
-      if (monitorPollActive) setTimeout(pollMonitor, 5000);
-    };
-    pollMonitor();
+    // C-32: el polling de monitor ya NO se inicia automáticamente aquí.
+    // Solo se inicia cuando el usuario concede el permiso mediante
+    // el botón "Detectar pantallas" (monitorPermission === 'granted').
+    // Ver useEffect de pollMonitor abajo.
 
     return () => {
       fd.stop();
       fsd.stop();
       cd.stop();
-      monitorPollActive = false;
       // Resetear señales al detener
       setEnvSignals({ focusLost: false, tabChanged: false, fullscreenExited: false, clipboardAction: null, extraMonitor: null });
       envFocusLostRef.current = false;
@@ -364,6 +364,24 @@ export default function AdminDetectionHarness() {
       envExtraMonitorRef.current = null;
     };
   }, [harnessState]);
+
+  // C-32 Task 6.4: polling pasivo de monitor — se activa solo cuando el permiso fue concedido
+  useEffect(() => {
+    if (harnessState !== 'running' || monitorPermission !== 'granted') return;
+
+    let pollActive = true;
+    const pollMonitor = async () => {
+      const provider = () => (window as unknown as { getScreenDetails: () => Promise<{ screens: unknown[] }> }).getScreenDetails();
+      const sig = await detectExtraMonitor(provider);
+      const val = sig?.extra_monitor ?? null;
+      envExtraMonitorRef.current = val;
+      setEnvSignals((prev) => ({ ...prev, extraMonitor: val }));
+      if (pollActive) setTimeout(pollMonitor, 5000);
+    };
+    pollMonitor();
+
+    return () => { pollActive = false; };
+  }, [harnessState, monitorPermission]);
 
   // ------ Crear sink (referencia estable, captura callback) ------
   const createSink = useCallback(
@@ -442,8 +460,10 @@ export default function AdminDetectionHarness() {
     logSeqRef.current = 0;
     // C-25: resetear cobertura al inicio de sesión
     setCoverage({});
-    // Detectar si la API de monitores está disponible en este navegador
-    setMonitorApiUnavailable(!(typeof window !== 'undefined' && 'getScreenDetails' in window));
+    // C-32 Task 6.2: detectar disponibilidad de la API y setear estado de permiso
+    setMonitorPermission(
+      typeof window !== 'undefined' && 'getScreenDetails' in window ? 'idle' : 'unsupported'
+    );
 
     try {
       // Solicitar cámara
@@ -461,6 +481,8 @@ export default function AdminDetectionHarness() {
       try {
         engine = await loadRealEngine();
         setEngineMode('real-active');
+        // C-32 Task 3.3: marcar que la primera carga ya ocurrió
+        setIsFirstEngineLoad(false);
       } catch (realEngineErr) {
         const errMsg = realEngineErr instanceof Error ? realEngineErr.message : String(realEngineErr);
         setEngineMode('load-error');
@@ -581,8 +603,9 @@ export default function AdminDetectionHarness() {
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
     if (videoRef.current) { videoRef.current.srcObject = null; }
-    // dispose del motor (task 3.1)
-    await engineRef.current?.dispose().catch(() => {});
+    // C-32 Task 2.1: NO llamar dispose() aquí — el motor WASM permanece vivo en
+    // cache entre ciclos Iniciar/Detener dentro de la misma sesión de página.
+    // disposeRealEngine() solo se llama al desmontar el componente (useEffect cleanup).
     engineRef.current = null;
     pipelineRef.current = null;
     sinkRef.current = null;
@@ -594,12 +617,15 @@ export default function AdminDetectionHarness() {
   }, []);
 
   // Cleanup al desmontar
+  // C-32 Task 2.2: llamar disposeRealEngine() en lugar de engineRef.current?.dispose()
+  // para liberar GPU/WASM al navegar fuera del harness (cleanup de ruta SPA).
   useEffect(() => {
     return () => {
       if (frameLoopRef.current) clearInterval(frameLoopRef.current);
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
       streamRef.current?.getTracks().forEach((t) => t.stop());
-      engineRef.current?.dispose().catch(() => {});
+      // Liberar el singleton de módulo al desmontar
+      disposeRealEngine().catch(() => {});
     };
   }, []);
 
@@ -630,6 +656,25 @@ export default function AdminDetectionHarness() {
       pipelineRef.current = createPipeline(engineRef.current, sinkRef.current, config);
     }
   }, [config, createPipeline]);
+
+  // ------ C-32 Task 6.4: handler del botón "Detectar pantallas" ------
+  const handleRequestMonitorPermission = useCallback(async () => {
+    setMonitorPermission('requesting');
+    const result: ScreenPermissionResult = await requestAndDetectExtraMonitor();
+    if (result.status === 'granted') {
+      // Actualizar señal inmediatamente con el resultado obtenido
+      const val = result.extra_monitor;
+      envExtraMonitorRef.current = val;
+      setEnvSignals((prev) => ({ ...prev, extraMonitor: val }));
+      // Setear estado 'granted' → el useEffect del polling pasivo tomará el relevo
+      setMonitorPermission('granted');
+    } else if (result.status === 'denied') {
+      setMonitorPermission('denied');
+    } else {
+      // unsupported (no debería ocurrir si el botón solo aparece con 'idle')
+      setMonitorPermission('unsupported');
+    }
+  }, []);
 
   // ------ Filtro por severidad (task 8.1) ------
   const toggleSeverityFilter = useCallback((sev: Severidad) => {
@@ -692,14 +737,18 @@ export default function AdminDetectionHarness() {
             </div>
           </div>
         )}
+        {/* C-32 Tasks 3.1–3.4: spinner amigable, sin jerga técnica */}
         {engineMode === 'loading' && (
           <div className="flex items-start gap-sm p-md rounded-xl bg-primary-container border-2 border-primary/30 text-on-primary-container" role="status" aria-live="polite">
-            <Icon name="hourglass_top" className="text-[22px] shrink-0 mt-px text-primary animate-spin" />
+            <Icon name="progress_activity" className="text-[22px] shrink-0 mt-px text-primary animate-spin" />
             <div className="min-w-0">
-              <p className="font-bold text-label-md">CARGANDO MOTOR MEDIAPIPE…</p>
-              <p className="text-label-sm mt-base">
-                Descargando modelos y compilando WASM (~25–50 MB, solo la primera vez). Esto puede tardar unos segundos.
-              </p>
+              <p className="font-bold text-label-md">Preparando la cámara…</p>
+              {/* Task 3.3: subtítulo solo en la primera carga */}
+              {isFirstEngineLoad && (
+                <p className="text-label-sm mt-base">
+                  Esto puede tardar unos segundos la primera vez.
+                </p>
+              )}
             </div>
           </div>
         )}
@@ -718,7 +767,7 @@ export default function AdminDetectionHarness() {
         {engineMode === 'load-error' && (
           <div className="flex items-start gap-sm p-md rounded-xl bg-error-container border-2 border-error/50 text-on-error-container" role="alert" aria-live="assertive">
             <Icon name="error" className="text-[22px] shrink-0 mt-px text-error" fill />
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <p className="font-bold text-label-md">ERROR AL CARGAR EL MOTOR MEDIAPIPE</p>
               <p className="text-label-sm mt-base font-mono break-all">{engineError}</p>
               <p className="text-label-sm mt-sm">
@@ -726,6 +775,33 @@ export default function AdminDetectionHarness() {
                 <code className="bg-error/10 px-base rounded font-mono text-[11px]">scripts/download-mediapipe-models.sh</code>{' '}
                 (o <code className="bg-error/10 px-base rounded font-mono text-[11px]">.ps1</code> en Windows) y que WebGL está habilitado.
               </p>
+              {/* C-32 Task 2.3: botón Reintentar llama disposeRealEngine() antes de re-invocar loadRealEngine() */}
+              {harnessState === 'running' && (
+                <button
+                  type="button"
+                  className="mt-sm inline-flex items-center gap-base px-sm py-base rounded-lg bg-error text-on-error text-label-sm font-semibold hover:opacity-90 transition-opacity"
+                  onClick={async () => {
+                    setEngineMode('loading');
+                    setEngineError(null);
+                    await disposeRealEngine();
+                    try {
+                      const engine = await loadRealEngine();
+                      engineRef.current = engine;
+                      if (sinkRef.current) {
+                        pipelineRef.current = createPipeline(engine, sinkRef.current, config);
+                      }
+                      setEngineMode('real-active');
+                    } catch (err) {
+                      const msg = err instanceof Error ? err.message : String(err);
+                      setEngineMode('load-error');
+                      setEngineError(msg);
+                    }
+                  }}
+                >
+                  <Icon name="refresh" className="text-[16px]" />
+                  Reintentar
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -1122,27 +1198,98 @@ export default function AdminDetectionHarness() {
                     </span>
                   </div>
 
-                  {/* Monitores */}
-                  <div className={`flex items-start justify-between p-sm rounded-xl border text-label-sm ${
-                    envSignals.extraMonitor === true
-                      ? 'bg-error-container/60 border-error/40 text-on-error-container'
-                      : 'bg-surface-container-low border-outline-variant/40 text-on-surface-variant'
-                  }`}>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-base">
-                        <Icon name="desktop_windows" className="text-[16px]" />
-                        <span className="font-semibold">Monitor adicional</span>
+                  {/* C-32 Task 6.3: tarjeta de monitores con flujo de permiso */}
+                  {monitorPermission === 'unsupported' && (
+                    <div className="flex items-start gap-sm p-sm rounded-xl border text-label-sm bg-surface-container-low border-outline-variant/40 text-on-surface-variant">
+                      <Icon name="info" className="text-[16px] shrink-0 mt-px text-primary" fill />
+                      <div className="min-w-0">
+                        <span className="font-semibold block">Monitor adicional</span>
+                        <p className="text-[11px] mt-px opacity-80">
+                          La detección de pantallas adicionales no está disponible en este navegador.
+                          Requiere Chrome o Edge sobre HTTPS.
+                        </p>
                       </div>
-                      <p className="text-[11px] mt-px ml-[22px] opacity-80">Detecta si hay más de una pantalla conectada.</p>
                     </div>
-                    <span className="shrink-0 ml-sm">
-                      {envSignals.extraMonitor === true
-                        ? 'MONITOR ADICIONAL detectado'
-                        : envSignals.extraMonitor === false
-                        ? 'solo un monitor'
-                        : 'no determinable (API ausente)'}
-                    </span>
-                  </div>
+                  )}
+
+                  {monitorPermission === 'idle' && (
+                    <div className="flex items-start gap-sm p-sm rounded-xl border text-label-sm bg-surface-container-low border-outline-variant/40 text-on-surface-variant">
+                      <Icon name="monitor" className="text-[16px] shrink-0 mt-px" />
+                      <div className="min-w-0 flex-1">
+                        <span className="font-semibold block">Monitor adicional</span>
+                        <p className="text-[11px] mt-px opacity-80">
+                          Para detectar si hay más de un monitor conectado, el navegador necesita tu permiso.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={handleRequestMonitorPermission}
+                          className="mt-sm inline-flex items-center gap-base px-sm py-base rounded-lg bg-primary text-on-primary text-label-sm font-semibold hover:opacity-90 transition-opacity"
+                        >
+                          <Icon name="monitor" className="text-[14px]" />
+                          Detectar pantallas
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {monitorPermission === 'requesting' && (
+                    <div className="flex items-start gap-sm p-sm rounded-xl border text-label-sm bg-primary-container/40 border-primary/30 text-on-primary-container">
+                      <Icon name="progress_activity" className="text-[16px] shrink-0 mt-px text-primary animate-spin" />
+                      <div className="min-w-0">
+                        <span className="font-semibold block">Monitor adicional</span>
+                        <p className="text-[11px] mt-px opacity-80">Solicitando permiso al navegador…</p>
+                        <button
+                          type="button"
+                          disabled
+                          className="mt-sm inline-flex items-center gap-base px-sm py-base rounded-lg bg-primary/50 text-on-primary text-label-sm font-semibold opacity-60 cursor-not-allowed"
+                        >
+                          <Icon name="progress_activity" className="text-[14px] animate-spin" />
+                          Detectar pantallas
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {monitorPermission === 'denied' && (
+                    <div className="flex items-start gap-sm p-sm rounded-xl border text-label-sm bg-warning-container/40 border-warning/40 text-warning">
+                      <Icon name="block" className="text-[16px] shrink-0 mt-px" />
+                      <div className="min-w-0 flex-1">
+                        <span className="font-semibold block">Monitor adicional</span>
+                        <p className="text-[11px] mt-px opacity-80">Permiso denegado. Podés intentarlo de nuevo.</p>
+                        <button
+                          type="button"
+                          onClick={handleRequestMonitorPermission}
+                          className="mt-sm inline-flex items-center gap-base px-sm py-base rounded-lg bg-warning text-white text-label-sm font-semibold hover:opacity-90 transition-opacity"
+                        >
+                          <Icon name="refresh" className="text-[14px]" />
+                          Reintentar
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {monitorPermission === 'granted' && (
+                    <div className={`flex items-start justify-between p-sm rounded-xl border text-label-sm ${
+                      envSignals.extraMonitor === true
+                        ? 'bg-error-container/60 border-error/40 text-on-error-container'
+                        : 'bg-surface-container-low border-outline-variant/40 text-on-surface-variant'
+                    }`}>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-base">
+                          <Icon name="desktop_windows" className="text-[16px]" />
+                          <span className="font-semibold">Monitor adicional</span>
+                        </div>
+                        <p className="text-[11px] mt-px ml-[22px] opacity-80">Detecta si hay más de una pantalla conectada.</p>
+                      </div>
+                      <span className="shrink-0 ml-sm">
+                        {envSignals.extraMonitor === true
+                          ? 'MONITOR ADICIONAL detectado'
+                          : envSignals.extraMonitor === false
+                          ? 'solo un monitor'
+                          : 'determinando…'}
+                      </span>
+                    </div>
+                  )}
                 </div>
               )}
             </Card>
@@ -1153,19 +1300,56 @@ export default function AdminDetectionHarness() {
                 Configuración de umbrales
               </SectionTitle>
 
+              {/* C-32 Tasks 4.1–4.3: clearLabel como etiqueta principal; clave técnica como texto secundario */}
               {(
                 [
-                  { field: 'face_absent_ms' as const, label: 'face_absent_ms', unit: 'ms', hint: 'Tiempo de rostro ausente para emitir evento' },
-                  { field: 'multiple_faces_frames' as const, label: 'multiple_faces_frames', unit: 'frames', hint: 'Frames consecutivos con múltiples rostros' },
-                  { field: 'gaze_deviation_threshold' as const, label: 'gaze_deviation_threshold', unit: '0..1', hint: 'Magnitud de mirada para considerar desviada' },
-                  { field: 'gaze_sustained_ms' as const, label: 'gaze_sustained_ms', unit: 'ms', hint: 'Tiempo de mirada desviada para emitir evento' },
-                  { field: 'gaze_fixation_tolerance' as const, label: 'gaze_fixation_tolerance', unit: '0..1', hint: 'Tolerancia de variación para fijación sostenida' },
-                ] as { field: keyof TransitionConfig; label: string; unit: string; hint: string }[]
-              ).map(({ field, label, unit, hint }) => (
+                  {
+                    field: 'face_absent_ms' as const,
+                    clearLabel: 'Segundos sin rostro para alertar',
+                    label: 'face_absent_ms',
+                    unit: 'ms',
+                    hint: 'Tiempo sin detectar un rostro antes de emitir una alerta (en milisegundos)',
+                  },
+                  {
+                    field: 'multiple_faces_frames' as const,
+                    clearLabel: 'Fotogramas con varios rostros para alertar',
+                    label: 'multiple_faces_frames',
+                    unit: 'frames',
+                    hint: 'Cantidad de fotogramas consecutivos con más de un rostro para emitir una alerta',
+                  },
+                  {
+                    field: 'gaze_deviation_threshold' as const,
+                    clearLabel: 'Sensibilidad de mirada desviada',
+                    label: 'gaze_deviation_threshold',
+                    unit: '0..1',
+                    hint: 'Cuán lejos del centro puede mirar el alumno antes de que se considere desviado (0 = muy sensible, 1 = tolerante)',
+                  },
+                  {
+                    field: 'gaze_sustained_ms' as const,
+                    clearLabel: 'Tiempo de mirada desviada para alertar',
+                    label: 'gaze_sustained_ms',
+                    unit: 'ms',
+                    hint: 'Tiempo continuo mirando hacia un lado antes de emitir una alerta (en milisegundos)',
+                  },
+                  {
+                    field: 'gaze_fixation_tolerance' as const,
+                    clearLabel: 'Tolerancia de fijación de mirada',
+                    label: 'gaze_fixation_tolerance',
+                    unit: '0..1',
+                    hint: 'Variación permitida en la dirección de la mirada para considerarla sostenida en el mismo punto',
+                  },
+                ] as { field: keyof TransitionConfig; clearLabel: string; label: string; unit: string; hint: string }[]
+              ).map(({ field, clearLabel, label, unit, hint }) => (
                 <div key={field} className="space-y-base">
-                  <label className="text-label-sm font-semibold text-on-surface">
-                    {label} <span className="text-on-surface-variant font-normal">({unit})</span>
+                  <label>
+                    {/* Task 4.2: nombre claro como etiqueta principal */}
+                    <span className="text-label-sm font-semibold text-on-surface block">
+                      {clearLabel} <span className="text-on-surface-variant font-normal">({unit})</span>
+                    </span>
+                    {/* Task 4.2: clave técnica como texto secundario en font-mono pequeño */}
+                    <span className="text-[11px] text-on-surface-variant font-mono">{label}</span>
                   </label>
+                  {/* Task 4.3: hint con redacción clara, sin jerga */}
                   <p className="text-[11px] text-on-surface-variant">{hint}</p>
                   <input
                     type="number"
@@ -1393,8 +1577,9 @@ export default function AdminDetectionHarness() {
               Cobertura integral de actividad sospechosa
             </SectionTitle>
             {(() => {
+              // C-32 Task 6.5: monitorApiUnavailable reemplazado por monitorPermission === 'unsupported'
               const testableCatalog = SUSPICIOUS_ACTIVITY_CATALOG.filter(
-                (e) => !(e.requiereApiOpcional && monitorApiUnavailable),
+                (e) => !(e.requiereApiOpcional && monitorPermission === 'unsupported'),
               );
               const captured = testableCatalog.filter((e) => coverage[e.tipo]);
               const allDone = testableCatalog.length > 0 && captured.length === testableCatalog.length;
@@ -1414,7 +1599,8 @@ export default function AdminDetectionHarness() {
           <div className="space-y-base">
             {SUSPICIOUS_ACTIVITY_CATALOG.map((entry) => {
               const cap = coverage[entry.tipo];
-              const isUntestable = entry.requiereApiOpcional && monitorApiUnavailable;
+              // C-32 Task 6.5: reemplazado por monitorPermission === 'unsupported'
+              const isUntestable = entry.requiereApiOpcional && monitorPermission === 'unsupported';
               return (
                 <div
                   key={entry.tipo}
