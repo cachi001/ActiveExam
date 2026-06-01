@@ -499,6 +499,17 @@ export default function AdminDetectionHarness() {
     );
 
     try {
+      // C-35 Task 1.1: Limpiar el <video> ANTES de solicitar el nuevo stream.
+      // Si el componente fue desmontado y re-montado (navegacion SPA ida/vuelta),
+      // el elemento <video> puede retener el frame congelado de la sesion anterior.
+      // Llamar srcObject = null + load() fuerza al decoder HTML5 a descartar
+      // cualquier buffer anterior e ir al estado "vacio" (fondo negro) antes de
+      // que el nuevo stream llegue — el usuario no ve ningun frame residual.
+      if (videoRef.current) {
+        videoRef.current.srcObject = null;
+        videoRef.current.load();
+      }
+
       // Solicitar cámara
       const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
       streamRef.current = stream;
@@ -591,6 +602,41 @@ export default function AdminDetectionHarness() {
           // Actualizar panel de señales crudas (task 4.2) + C-30: incluir poseSignal para overlay
           setRawSignals({ faceDetection: fd, faceMesh: mesh, poseAvailable, poseSignal, frameTs: Date.now() });
 
+          // C-35 Task 5.1: Estimar head_yaw_deg aproximado a partir de PoseSignal.
+          // Usamos los landmarks de hombros (indices 11 = izquierdo, 12 = derecho en
+          // BlazePose/MediaPipe PoseLandmarker) y la diferencia de altura Y para aproximar
+          // el yaw de cabeza: cuando la persona rota, un hombro sube y el otro baja.
+          //
+          // Formula: yaw_rad ≈ asin(clamp(deltaY / shoulderDist, -1, 1))
+          //   donde deltaY = y_shoulder_right - y_shoulder_left (coordenadas normalizadas 0..1)
+          //   y shoulderDist es la distancia euclidiana entre ambos hombros.
+          //
+          // Esta es una aproximacion — no es yaw preciso de cabeza (para eso se necesitarian
+          // los facialTransformationMatrixes de FaceLandmarker), pero es suficiente como senal
+          // complementaria para el harness. Si PoseSignal no esta disponible o los landmarks
+          // de hombros no estan detectados, head_yaw_deg = undefined (sin efecto en evalGaze).
+          let head_yaw_deg: number | undefined;
+          if (poseSignal && poseSignal.keypoints.length > 12) {
+            const shoulderLeft = poseSignal.keypoints[11];
+            const shoulderRight = poseSignal.keypoints[12];
+            // Usar los hombros solo si ambos tienen visibilidad razonable (> 0.3)
+            if (
+              shoulderLeft && shoulderRight &&
+              (shoulderLeft.visibility ?? 0) > 0.3 &&
+              (shoulderRight.visibility ?? 0) > 0.3
+            ) {
+              const dx = shoulderRight.x - shoulderLeft.x;
+              const dy = shoulderRight.y - shoulderLeft.y;
+              const shoulderDist = Math.hypot(dx, dy);
+              if (shoulderDist > 0.01) {
+                // Un hombro mas alto que el otro indica rotacion. Escalamos a grados:
+                // |deltaY / dist| = sin(yaw_approx). Positivo = rotacion a la derecha.
+                const sinYaw = Math.max(-1, Math.min(1, dy / shoulderDist));
+                head_yaw_deg = (Math.asin(sinYaw) * 180) / Math.PI;
+              }
+            }
+          }
+
           // C-25: consumir señales de contexto reales de los refs (no valores fijos)
           const snapFocus = envFocusLostRef.current;
           const snapTab = envTabChangedRef.current;
@@ -606,6 +652,7 @@ export default function AdminDetectionHarness() {
           // Ejecutar pipeline (onFrame llama detectFaces/detectFaceMesh internamente).
           // Como ya los llamamos arriba para el panel de señales, usamos onSignals para evitar
           // doble inferencia: pasamos las señales ya extraídas. (task 3.3 / D-3)
+          // C-35 Task 5.2: agregar head_yaw_deg al objeto de señales (campo opcional).
           await pipeline_.onSignals({
             ts_ms: Date.now(),
             face_count: fd.face_count,
@@ -615,6 +662,7 @@ export default function AdminDetectionHarness() {
             tab_changed: snapTab,
             fullscreen_exited: snapFullscreen,
             clipboard_action: snapClipboard ?? undefined,
+            head_yaw_deg,
           });
         } catch (err) {
           // Error en el frame no debe crashear el loop
@@ -635,7 +683,14 @@ export default function AdminDetectionHarness() {
     if (animFrameRef.current) { cancelAnimationFrame(animFrameRef.current); animFrameRef.current = null; }
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
-    if (videoRef.current) { videoRef.current.srcObject = null; }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+      // C-35 Task 1.3: llamar load() despues de limpiar srcObject para que el
+      // decoder HTML5 descarte el buffer interno y el elemento quede en estado vacio.
+      // Esto asegura que si el harness se reinicia (Iniciar de nuevo sin navegar),
+      // no haya frame residual entre el stop y el proximo startHarness().
+      videoRef.current.load();
+    }
     // C-32 Task 2.1: NO llamar dispose() aquí — el motor WASM permanece vivo en
     // cache entre ciclos Iniciar/Detener dentro de la misma sesión de página.
     // disposeRealEngine() solo se llama al desmontar el componente (useEffect cleanup).
@@ -652,11 +707,24 @@ export default function AdminDetectionHarness() {
   // Cleanup al desmontar
   // C-32 Task 2.2: llamar disposeRealEngine() en lugar de engineRef.current?.dispose()
   // para liberar GPU/WASM al navegar fuera del harness (cleanup de ruta SPA).
+  // C-35 Task 1.2: agregar limpieza de srcObject + load() en el cleanup para el caso
+  // en que el usuario navega fuera SIN pasar por stopHarness() (ruta SPA directa).
+  // Al desmontar, React puede ejecutar el cleanup ANTES de que el nuevo mount haya
+  // iniciado. El <video> element ya no esta en el DOM al desmontar, pero si se vuelve
+  // a montar con el mismo videoRef (rerenders rapidos) el buffer puede persistir.
+  // La doble garantia (stop + cleanup) cubre ambos escenarios.
   useEffect(() => {
     return () => {
       if (frameLoopRef.current) clearInterval(frameLoopRef.current);
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
       streamRef.current?.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+      // C-35 Task 1.2: limpiar srcObject + load() al desmontar para que el <video>
+      // quede en estado vacio. Cubre la navegacion SPA rapida (sin pasar por stop).
+      if (videoRef.current) {
+        videoRef.current.srcObject = null;
+        videoRef.current.load();
+      }
       // Liberar el singleton de módulo al desmontar
       disposeRealEngine().catch(() => {});
     };
