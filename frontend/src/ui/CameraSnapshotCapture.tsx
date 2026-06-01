@@ -126,6 +126,12 @@ export function CameraSnapshotCapture({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    // Cámara frontal: el preview va espejado (scaleX-1); espejamos el canvas para que
+    // la imagen GUARDADA coincida con lo que ve el usuario.
+    if (facingMode === 'user') {
+      ctx.translate(canvas.width, 0);
+      ctx.scale(-1, 1);
+    }
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     const dataUrl = canvas.toDataURL('image/jpeg', jpegQuality);
     setPreviewDataUrl(dataUrl);
@@ -224,6 +230,7 @@ export function CameraSnapshotCapture({
                 muted
                 playsInline
                 className="absolute inset-0 w-full h-full object-cover"
+                style={{ transform: facingMode === 'user' ? 'scaleX(-1)' : undefined }}
                 aria-label="Vista de cámara para foto de perfil"
               />
             )}
@@ -249,6 +256,7 @@ export function CameraSnapshotCapture({
               muted
               playsInline
               className="absolute inset-0 w-full h-full object-cover"
+              style={{ transform: facingMode === 'user' ? 'scaleX(-1)' : undefined }}
               aria-label="Vista de cámara para escaneo de documento"
             />
           )}
