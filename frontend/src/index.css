@@ -92,3 +92,17 @@
 /* ----- spin (equipment check) ----- */
 @keyframes ae-spin { to { transform: rotate(360deg); } }
 .ae-spin { animation: ae-spin 1s linear infinite; }
+
+/* ----- cadena de custodia: abierta por defecto en desktop, cerrada en mobile (task 7.2) ----- */
+@media (min-width: 1024px) {
+  .ae-cadena-details {
+    /* Simular open por defecto en desktop sin JS: el contenido es visible siempre en lg */
+  }
+  .ae-cadena-details > summary ~ * { display: block; }
+  .ae-cadena-details .ae-cadena-chevron { transform: rotate(180deg); }
+}
+@media (max-width: 1023px) {
+  .ae-cadena-details > summary ~ * { display: none; }
+  .ae-cadena-details[open] > summary ~ * { display: block; }
+  .ae-cadena-details[open] .ae-cadena-chevron { transform: rotate(180deg); }
+}

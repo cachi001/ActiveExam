@@ -620,10 +620,71 @@ export default function AdminDetectionHarness() {
   const filteredEntries = logEntries.filter((e) => severityFilter.has(e.event.severidad as Severidad));
   const isFilterActive = severityFilter.size !== SEVERITY_ORDER.length;
 
+  // ------ Estado del panel de propósito (task 4.4) ------
+  const [propositoPanelOpen, setPropositoPanelOpen] = useState(false);
+
   // ------ Render ------
   return (
     <StaffShell nav={STAFF_NAV} title="Test de detección">
       <div className="space-y-lg animate-in fade-in duration-300">
+
+        {/* ================================================================
+            BANNER DE SIMULACIÓN — siempre visible (DD-29-01, tasks 3.1–3.4)
+        ================================================================ */}
+        <div className="flex items-start gap-sm p-md rounded-xl bg-warning-container border-2 border-warning/50 text-on-warning-container" role="alert" aria-live="polite">
+          <Icon name="warning" className="text-[22px] shrink-0 mt-px text-warning" fill />
+          <div className="min-w-0">
+            <p className="font-bold text-label-md">SEÑALES DE VISIÓN SIMULADAS</p>
+            <p className="text-label-sm mt-base">
+              El <Term termKey="motor_stub">motor MediaPipe</Term> está en modo demo y devuelve valores fijos.
+              Las señales de navegador (pestaña, pantalla completa, portapapeles) <strong>SÍ son reales</strong>.
+            </p>
+          </div>
+        </div>
+
+        {/* ================================================================
+            PANEL DE PROPÓSITO — colapsable (DD-29-04, tasks 4.1–4.4)
+        ================================================================ */}
+        <div className="rounded-xl border border-outline-variant/60 bg-surface-container-lowest overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setPropositoPanelOpen((v) => !v)}
+            className="w-full flex items-center justify-between gap-sm px-md py-sm text-left hover:bg-surface-container-low transition-colors"
+            aria-expanded={propositoPanelOpen}
+          >
+            <div className="flex items-center gap-sm">
+              <Icon name="help_outline" className="text-primary text-[20px] shrink-0" />
+              <span className="font-semibold text-label-md text-on-surface">¿Para qué sirve esta prueba?</span>
+            </div>
+            <Icon name={propositoPanelOpen ? 'expand_less' : 'expand_more'} className="text-on-surface-variant text-[20px] shrink-0" />
+          </button>
+          {propositoPanelOpen && (
+            <div className="px-md pb-md pt-sm space-y-sm border-t border-outline-variant/40 text-label-sm text-on-surface-variant">
+              <p>
+                Esta herramienta verifica que el sistema detecta señales correctamente antes de un examen real.
+                El <Term termKey="motor_stub">motor de detección</Term> está en modo demo: las señales de visión son
+                valores fijos generados por un <Term termKey="motor_stub">motor stub</Term>, no por MediaPipe real.
+              </p>
+              <div>
+                <p className="font-semibold text-on-surface mb-base">Acciones sugeridas para probar:</p>
+                <ul className="list-disc list-inside space-y-base ml-sm">
+                  <li>Moverse frente a la cámara o alejarse</li>
+                  <li>Tapar la cámara con la mano</li>
+                  <li>Cambiar de pestaña o abrir otra aplicación</li>
+                  <li>Copiar o pegar texto en cualquier campo</li>
+                  <li>Salir de la vista de pantalla completa (si aplica)</li>
+                </ul>
+              </div>
+              <div className="flex items-start gap-base p-sm rounded-lg bg-surface-container border border-outline-variant/40">
+                <Icon name="info" className="text-[16px] shrink-0 mt-px text-primary" fill />
+                <span>
+                  <strong className="text-on-surface">Señales de visión</strong> (rostros, <Term termKey="gaze_vector">mirada</Term>, <Term termKey="pose_keypoints">cuerpo</Term>): <em>simuladas</em> por el motor stub. &nbsp;
+                  <strong className="text-on-surface">Señales de navegador</strong> (pestaña, pantalla completa, portapapeles): <em>reales</em>.
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* ================================================================
             HEADER DIAGNÓSTICO — badge prominente (task 2.1 / D-4)
@@ -681,9 +742,9 @@ export default function AdminDetectionHarness() {
               </div>
             </Card>
 
-            {/* Panel de señales crudas (tasks 4.1, 4.2, 4.3) */}
+            {/* Panel de señales de visión — interpretación en lenguaje claro (DD-29-03, tasks 5.1–5.7) */}
             <Card className="space-y-md">
-              <SectionTitle sub="Actualizado por frame">Señales crudas</SectionTitle>
+              <SectionTitle sub="Valores generados por el motor en modo demo">Señales de visión [SIMULADAS]</SectionTitle>
 
               {rawSignals.faceDetection === null ? (
                 <div className="text-center py-md text-on-surface-variant space-y-base">
@@ -692,82 +753,144 @@ export default function AdminDetectionHarness() {
                 </div>
               ) : (
                 <div className="space-y-sm">
-                  {/* Conteo de rostros */}
-                  <div className={`flex items-center justify-between p-sm rounded-xl border ${
+                  {/* ---- Tarjetas de interpretación en lenguaje claro (tasks 5.2–5.4) ---- */}
+                  {/* Tarjeta: Rostros */}
+                  <div className={`flex items-center gap-sm p-sm rounded-xl border ${
                     rawSignals.faceDetection.face_count === 0
                       ? 'bg-warning-container/40 border-warning/30'
                       : rawSignals.faceDetection.face_count >= 2
                       ? 'bg-error-container/40 border-error/30'
                       : 'bg-success-container/40 border-success/30'
                   }`}>
-                    <span className="text-label-md font-semibold text-on-surface">Rostros detectados</span>
-                    <div className="flex items-center gap-base">
-                      <span className="font-mono text-title-lg font-bold text-on-surface">
-                        {rawSignals.faceDetection.face_count}
-                      </span>
-                      {rawSignals.faceDetection.face_count === 0 && (
-                        <Badge tone="warning">Sin rostro detectado</Badge>
-                      )}
-                      {rawSignals.faceDetection.face_count >= 2 && (
-                        <Badge tone="error">Múltiples rostros</Badge>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Bounding boxes */}
-                  {rawSignals.faceDetection.faces.length > 0 ? (
-                    <div>
-                      <p className="text-label-sm text-on-surface-variant mb-base font-semibold uppercase tracking-wide">Bounding boxes</p>
-                      <div className="space-y-base">
-                        {rawSignals.faceDetection.faces.map((face, i) => (
-                          <div key={i} className={`p-sm rounded-lg bg-surface-container-low border text-label-sm font-mono space-y-base ${
-                            rawSignals.faceDetection!.face_count >= 2 ? 'border-error/40' : 'border-outline-variant/40'
-                          }`}>
-                            <div className="flex items-center justify-between">
-                              <span className="text-on-surface-variant text-[10px] uppercase">Rostro {i + 1}</span>
-                              <span className="text-success font-semibold">{(face.confidence * 100).toFixed(1)}% conf.</span>
-                            </div>
-                            <div className="grid grid-cols-2 gap-base">
-                              <span><span className="text-on-surface-variant">x:</span> {face.x.toFixed(3)}</span>
-                              <span><span className="text-on-surface-variant">y:</span> {face.y.toFixed(3)}</span>
-                              <span><span className="text-on-surface-variant">w:</span> {face.width.toFixed(3)}</span>
-                              <span><span className="text-on-surface-variant">h:</span> {face.height.toFixed(3)}</span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
-
-                  {/* Gaze */}
-                  {rawSignals.faceMesh ? (
-                    <div className="p-sm rounded-lg bg-surface-container-low border border-outline-variant/40 text-label-sm font-mono space-y-base">
-                      <p className="text-on-surface-variant text-[10px] uppercase font-semibold tracking-wide">Vector gaze</p>
-                      <div className="grid grid-cols-2 gap-base">
-                        <span><span className="text-on-surface-variant">x:</span> {rawSignals.faceMesh.gaze.x.toFixed(4)}</span>
-                        <span><span className="text-on-surface-variant">y:</span> {rawSignals.faceMesh.gaze.y.toFixed(4)}</span>
-                      </div>
-                    </div>
-                  ) : rawSignals.faceDetection.face_count === 0 ? (
-                    <div className="p-sm rounded-lg bg-surface-container-low border border-outline-variant/40 text-label-sm text-on-surface-variant">
-                      Gaze: sin rostro detectado
-                    </div>
-                  ) : null}
-
-                  {/* Pose */}
-                  <div className="p-sm rounded-lg bg-surface-container-low border border-outline-variant/40 text-label-sm flex items-center gap-sm">
-                    <Icon name={rawSignals.poseAvailable ? 'accessibility_new' : 'do_not_disturb'} className={`text-[18px] ${rawSignals.poseAvailable ? 'text-success' : 'text-on-surface-variant'}`} />
-                    <span className="text-on-surface">
-                      Pose keypoints: {rawSignals.poseAvailable ? 'disponibles' : 'no disponibles (motor en stub)'}
+                    <Icon
+                      name={rawSignals.faceDetection.face_count === 1 ? 'person' : rawSignals.faceDetection.face_count === 0 ? 'person_off' : 'group'}
+                      className={`text-[20px] shrink-0 ${
+                        rawSignals.faceDetection.face_count === 1 ? 'text-success'
+                        : rawSignals.faceDetection.face_count === 0 ? 'text-warning'
+                        : 'text-error'
+                      }`}
+                      fill
+                    />
+                    <span className="text-label-md font-semibold text-on-surface">
+                      {rawSignals.faceDetection.face_count === 1
+                        ? 'Se detectó 1 persona frente a la cámara'
+                        : rawSignals.faceDetection.face_count === 0
+                        ? 'No se detectó ninguna persona'
+                        : `Se detectaron ${rawSignals.faceDetection.face_count} personas`}
                     </span>
+                    <span className="ml-auto text-[10px] uppercase font-bold text-on-surface-variant opacity-60">[SIMULADO]</span>
                   </div>
+
+                  {/* Tarjeta: Mirada (task 5.3) */}
+                  {rawSignals.faceMesh ? (() => {
+                    const gazeOk = Math.abs(rawSignals.faceMesh.gaze.x) < 0.15 && Math.abs(rawSignals.faceMesh.gaze.y) < 0.15;
+                    return (
+                      <div className={`flex items-center gap-sm p-sm rounded-xl border ${
+                        gazeOk ? 'bg-success-container/40 border-success/30' : 'bg-warning-container/40 border-warning/30'
+                      }`}>
+                        <Icon name={gazeOk ? 'visibility' : 'remove_red_eye'} className={`text-[20px] shrink-0 ${gazeOk ? 'text-success' : 'text-warning'}`} fill />
+                        <span className="text-label-md font-semibold text-on-surface">
+                          {gazeOk ? 'Mirando hacia el frente' : 'Mirando hacia un lado'}
+                        </span>
+                        <span className="ml-auto text-[10px] uppercase font-bold text-on-surface-variant opacity-60">[SIMULADO]</span>
+                      </div>
+                    );
+                  })() : rawSignals.faceDetection.face_count === 0 ? (
+                    <div className="flex items-center gap-sm p-sm rounded-xl border bg-surface-container-low border-outline-variant/40">
+                      <Icon name="visibility_off" className="text-[20px] text-on-surface-variant shrink-0" />
+                      <span className="text-label-sm text-on-surface-variant">Mirada: sin rostro detectado</span>
+                    </div>
+                  ) : null}
+
+                  {/* Tarjeta: Cuerpo (task 5.4) */}
+                  <div className={`flex items-center gap-sm p-sm rounded-xl border ${
+                    rawSignals.poseAvailable ? 'bg-success-container/40 border-success/30' : 'bg-surface-container-low border-outline-variant/40'
+                  }`}>
+                    <Icon
+                      name={rawSignals.poseAvailable ? 'accessibility_new' : 'do_not_disturb'}
+                      className={`text-[20px] shrink-0 ${rawSignals.poseAvailable ? 'text-success' : 'text-on-surface-variant'}`}
+                      fill={rawSignals.poseAvailable}
+                    />
+                    <span className="text-label-md font-semibold text-on-surface">
+                      {rawSignals.poseAvailable ? 'Cuerpo presente' : 'Cuerpo no detectado'}
+                    </span>
+                    <span className="ml-auto text-[10px] uppercase font-bold text-on-surface-variant opacity-60">[SIMULADO]</span>
+                  </div>
+
+                  {/* ---- Accordion de datos técnicos crudos (DD-29-02, tasks 5.5–5.7) ---- */}
+                  <details open={harnessState === 'running' && rawSignals.faceDetection.face_count !== 1 ? true : undefined}>
+                    <summary className="cursor-pointer select-none text-label-sm text-on-surface-variant hover:text-primary flex items-center gap-base py-base">
+                      <Icon name="expand_more" className="text-[16px]" />
+                      Ver detalle técnico (coordenadas)
+                    </summary>
+                    <div className="space-y-sm mt-sm">
+                      {/* Bounding boxes */}
+                      {rawSignals.faceDetection.faces.length > 0 ? (
+                        <div>
+                          <p className="text-label-sm text-on-surface-variant mb-base font-semibold uppercase tracking-wide">
+                            <Term termKey="bounding_box">Bounding boxes</Term>
+                          </p>
+                          <div className="space-y-base">
+                            {rawSignals.faceDetection.faces.map((face, i) => (
+                              <div key={i} className={`p-sm rounded-lg bg-surface-container-low border text-label-sm font-mono space-y-base ${
+                                rawSignals.faceDetection!.face_count >= 2 ? 'border-error/40' : 'border-outline-variant/40'
+                              }`}>
+                                <div className="flex items-center justify-between">
+                                  <span className="text-on-surface-variant text-[10px] uppercase">Rostro {i + 1}</span>
+                                  <span className="text-success font-semibold">{(face.confidence * 100).toFixed(1)}% conf.</span>
+                                </div>
+                                <div className="grid grid-cols-2 gap-base">
+                                  <span><span className="text-on-surface-variant">x:</span> {face.x.toFixed(3)}</span>
+                                  <span><span className="text-on-surface-variant">y:</span> {face.y.toFixed(3)}</span>
+                                  <span><span className="text-on-surface-variant">w:</span> {face.width.toFixed(3)}</span>
+                                  <span><span className="text-on-surface-variant">h:</span> {face.height.toFixed(3)}</span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+
+                      {/* Gaze numérico */}
+                      {rawSignals.faceMesh ? (
+                        <div className="p-sm rounded-lg bg-surface-container-low border border-outline-variant/40 text-label-sm font-mono space-y-base">
+                          <p className="text-on-surface-variant text-[10px] uppercase font-semibold tracking-wide">
+                            <Term termKey="gaze_vector">Vector gaze</Term>
+                          </p>
+                          <div className="grid grid-cols-2 gap-base">
+                            <span><span className="text-on-surface-variant">x:</span> {rawSignals.faceMesh.gaze.x.toFixed(4)}</span>
+                            <span><span className="text-on-surface-variant">y:</span> {rawSignals.faceMesh.gaze.y.toFixed(4)}</span>
+                          </div>
+                        </div>
+                      ) : rawSignals.faceDetection.face_count === 0 ? (
+                        <div className="p-sm rounded-lg bg-surface-container-low border border-outline-variant/40 text-label-sm text-on-surface-variant">
+                          Gaze: sin rostro detectado
+                        </div>
+                      ) : null}
+
+                      {/* Pose keypoints */}
+                      <div className="p-sm rounded-lg bg-surface-container-low border border-outline-variant/40 text-label-sm flex items-center gap-sm">
+                        <Icon name={rawSignals.poseAvailable ? 'accessibility_new' : 'do_not_disturb'} className={`text-[18px] ${rawSignals.poseAvailable ? 'text-success' : 'text-on-surface-variant'}`} />
+                        <span className="text-on-surface">
+                          <Term termKey="pose_keypoints">Pose keypoints</Term>: {rawSignals.poseAvailable ? 'disponibles' : 'no disponibles (motor en stub)'}
+                        </span>
+                      </div>
+                    </div>
+                  </details>
                 </div>
               )}
             </Card>
 
-            {/* C-25: Panel de señales de entorno en vivo (task 5.2) */}
+            {/* C-25: Panel de señales de entorno en vivo (tasks 6.1, 6.2) */}
             <Card className="space-y-md">
-              <SectionTitle sub="Detectores de contexto reales del navegador">Señales de entorno</SectionTitle>
+              <div className="flex items-start justify-between gap-sm flex-wrap">
+                <SectionTitle sub="Detectores de contexto reales del navegador">Señales de entorno</SectionTitle>
+                {/* task 6.2: badge "Señal REAL" */}
+                <span className="inline-flex items-center gap-base px-sm py-base rounded-full bg-success-container text-success text-label-sm font-bold border border-success/30 shrink-0">
+                  <Icon name="sensors" className="text-[14px]" />
+                  Señal REAL
+                </span>
+              </div>
 
               {harnessState !== 'running' ? (
                 <div className="text-center py-md text-on-surface-variant space-y-base">
@@ -777,55 +900,67 @@ export default function AdminDetectionHarness() {
               ) : (
                 <div className="space-y-base">
                   {/* Foco de ventana */}
-                  <div className={`flex items-center justify-between p-sm rounded-xl border text-label-sm ${
+                  <div className={`flex items-start justify-between p-sm rounded-xl border text-label-sm ${
                     envSignals.focusLost
                       ? 'bg-warning-container/60 border-warning/40 text-warning'
                       : 'bg-surface-container-low border-outline-variant/40 text-on-surface-variant'
                   }`}>
-                    <div className="flex items-center gap-base">
-                      <Icon name={envSignals.focusLost ? 'visibility_off' : 'visibility'} className="text-[16px]" />
-                      <span className="font-semibold">Foco de ventana</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-base">
+                        <Icon name={envSignals.focusLost ? 'visibility_off' : 'visibility'} className="text-[16px]" />
+                        <span className="font-semibold">Foco de ventana</span>
+                      </div>
+                      <p className="text-[11px] mt-px ml-[22px] opacity-80">Detecta si el alumno abandonó la ventana del examen.</p>
                     </div>
-                    <span>{envSignals.focusLost ? 'PERDIDO' : 'activo'}</span>
+                    <span className="shrink-0 ml-sm">{envSignals.focusLost ? 'PERDIDO' : 'activo'}</span>
                   </div>
 
                   {/* Cambio de pestaña */}
-                  <div className={`flex items-center justify-between p-sm rounded-xl border text-label-sm ${
+                  <div className={`flex items-start justify-between p-sm rounded-xl border text-label-sm ${
                     envSignals.tabChanged
                       ? 'bg-warning-container/60 border-warning/40 text-warning'
                       : 'bg-surface-container-low border-outline-variant/40 text-on-surface-variant'
                   }`}>
-                    <div className="flex items-center gap-base">
-                      <Icon name="tab" className="text-[16px]" />
-                      <span className="font-semibold">Pestaña visible</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-base">
+                        <Icon name="tab" className="text-[16px]" />
+                        <span className="font-semibold">Cambio de pestaña</span>
+                      </div>
+                      <p className="text-[11px] mt-px ml-[22px] opacity-80">Detecta si el alumno abrió otro sitio o aplicación.</p>
                     </div>
-                    <span>{envSignals.tabChanged ? 'OCULTA (cambio de pestaña)' : 'visible'}</span>
+                    <span className="shrink-0 ml-sm">{envSignals.tabChanged ? 'OCULTA' : 'visible'}</span>
                   </div>
 
                   {/* Pantalla completa */}
-                  <div className={`flex items-center justify-between p-sm rounded-xl border text-label-sm ${
+                  <div className={`flex items-start justify-between p-sm rounded-xl border text-label-sm ${
                     envSignals.fullscreenExited
                       ? 'bg-warning-container/60 border-warning/40 text-warning'
                       : 'bg-surface-container-low border-outline-variant/40 text-on-surface-variant'
                   }`}>
-                    <div className="flex items-center gap-base">
-                      <Icon name={envSignals.fullscreenExited ? 'fullscreen_exit' : 'fullscreen'} className="text-[16px]" />
-                      <span className="font-semibold">Pantalla completa</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-base">
+                        <Icon name={envSignals.fullscreenExited ? 'fullscreen_exit' : 'fullscreen'} className="text-[16px]" />
+                        <span className="font-semibold">Pantalla completa</span>
+                      </div>
+                      <p className="text-[11px] mt-px ml-[22px] opacity-80">Detecta si el alumno salió de la vista de examen completa.</p>
                     </div>
-                    <span>{envSignals.fullscreenExited ? 'SALIDA detectada' : 'activa o no usada'}</span>
+                    <span className="shrink-0 ml-sm">{envSignals.fullscreenExited ? 'SALIDA detectada' : 'activa o no usada'}</span>
                   </div>
 
-                  {/* Último clipboard */}
-                  <div className={`flex items-center justify-between p-sm rounded-xl border text-label-sm ${
+                  {/* Clipboard */}
+                  <div className={`flex items-start justify-between p-sm rounded-xl border text-label-sm ${
                     envSignals.clipboardAction
                       ? 'bg-error-container/60 border-error/40 text-on-error-container'
                       : 'bg-surface-container-low border-outline-variant/40 text-on-surface-variant'
                   }`}>
-                    <div className="flex items-center gap-base">
-                      <Icon name="content_paste" className="text-[16px]" />
-                      <span className="font-semibold">Clipboard</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-base">
+                        <Icon name="content_paste" className="text-[16px]" />
+                        <span className="font-semibold">Portapapeles</span>
+                      </div>
+                      <p className="text-[11px] mt-px ml-[22px] opacity-80">Detecta si el alumno intentó copiar o pegar contenido.</p>
                     </div>
-                    <span>
+                    <span className="shrink-0 ml-sm">
                       {envSignals.clipboardAction
                         ? `DETECTADO: ${envSignals.clipboardAction.toUpperCase()}`
                         : 'sin actividad'}
@@ -833,18 +968,19 @@ export default function AdminDetectionHarness() {
                   </div>
 
                   {/* Monitores */}
-                  <div className={`flex items-center justify-between p-sm rounded-xl border text-label-sm ${
+                  <div className={`flex items-start justify-between p-sm rounded-xl border text-label-sm ${
                     envSignals.extraMonitor === true
                       ? 'bg-error-container/60 border-error/40 text-on-error-container'
-                      : envSignals.extraMonitor === null
-                      ? 'bg-surface-container-low border-outline-variant/40 text-on-surface-variant'
                       : 'bg-surface-container-low border-outline-variant/40 text-on-surface-variant'
                   }`}>
-                    <div className="flex items-center gap-base">
-                      <Icon name="desktop_windows" className="text-[16px]" />
-                      <span className="font-semibold">Monitores</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-base">
+                        <Icon name="desktop_windows" className="text-[16px]" />
+                        <span className="font-semibold">Monitor adicional</span>
+                      </div>
+                      <p className="text-[11px] mt-px ml-[22px] opacity-80">Detecta si hay más de una pantalla conectada.</p>
                     </div>
-                    <span>
+                    <span className="shrink-0 ml-sm">
                       {envSignals.extraMonitor === true
                         ? 'MONITOR ADICIONAL detectado'
                         : envSignals.extraMonitor === false
