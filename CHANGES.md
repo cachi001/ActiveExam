@@ -653,6 +653,32 @@ C-01 → C-03 → C-04 → C-05 → C-06 → C-07 → C-08 → C-09 → C-10 →
   - `frontend/src/vision/harnessEngineLoader.ts` (patrón de singleton a replicar)
   - `knowledge-base/12_biometria_y_liveness.md` (liveness híbrido, thresholds, ISO 30107-3)
 
+### [C-35] `fixes-deteccion-camara-mirada`
+- **Estado**: `[ ]` propuesto (validate --strict OK — 18 tasks)
+- **Scope**: **2 bugs del harness `/admin/detection-test`** — (1) **Bug 1 — Cámara trabada al volver a la página**: al navegar fuera y volver, el `<video>` muestra un frame congelado de la sesión anterior. Fix: en `startHarness()` limpiar `srcObject = null` + `load()` ANTES de asignar el nuevo stream; en el `useEffect` cleanup también limpiar `srcObject`. (2) **Bug 2 — Mirada sostenida floja / riesgo no sube**: `gaze_deviation_threshold: 0.6` es inalcanzable para el vector iris (rango real ~0.15–0.35) y `gaze_fixation_tolerance: 0.15` reinicia el ancla por movimiento natural. Fix: recalibrar `DEFAULT_CONFIG` a `gaze_deviation_threshold: 0.25`, `gaze_sustained_ms: 2500`, `gaze_fixation_tolerance: 0.25`; promediar ambos iris en `detectFaceMesh()`; agregar `head_yaw_deg?` en `FrameSignals` para usar head pose (PoseSignal) como señal complementaria. Caps MODIFIED (deltas): `admin-detection-test-harness`, `state-transition-rules`, `real-vision-engine-harness`.
+- **Dependencias**: `C-23` (harness base), `C-25` (pipeline + FrameSignals), `C-30` (motor real + RealMediaPipeVisionEngine), `C-32` (cache motor + disposeRealEngine), `C-33` (medidor de riesgo que se beneficia del fix Bug 2)
+- **Governance**: MEDIO
+- **Leer antes**:
+  - `openspec/changes/c-35-fixes-deteccion-camara-mirada/` (proposal, design, specs/, tasks)
+  - `frontend/src/screens/AdminDetectionHarness.tsx` (~502–507 startHarness cámara; ~632–663 stopHarness + cleanup)
+  - `frontend/src/proctoring/stateTransitionRules.ts` (~76–82 DEFAULT_CONFIG; ~169–203 evalGaze)
+  - `frontend/src/vision/RealMediaPipeVisionEngine.ts` (~243–278 detectFaceMesh + gazeFromIris)
+  - `frontend/src/ui/VisionOverlay.tsx` (canvas + clearRect)
+
+### [C-36] `c-36-verificacion-biometrica-inmersiva`
+- **Estado**: `[ ]` propuesto (validate --strict OK — 36 tasks)
+- **Scope**: **Componente compartido de captura biométrica inmersiva** para el examen (pre-rendición) y el perfil (enrollment). Elimina el mock de botones de `Biometria.tsx` y la duplicación de UI/loop con `EnrollmentBiometricStep.tsx`. (1) **`BiometricCapture` nuevo** (`frontend/src/ui/BiometricCapture.tsx`): encapsula cámara (getUserMedia), loop RAF real (`evaluateChallenge`, `framesMinForChallenge`), motor lazy (`loadEnrollmentEngine`/`disposeEnrollmentEngine`), UI inmersiva (`fixed inset-0 z-50`, óvalo dominante, paso actual abajo, progreso de retos), fallback manual, `requestFullscreen()` best-effort. (2) **Refactor `Biometria.tsx`**: reemplaza mock de botones por `<BiometricCapture>` en fase `capturando`; detección real de liveness; `handleComplete(landmarks)` calcula embedding y llama `verificar()`. (3) **Refactor `EnrollmentBiometricStep.tsx`**: delega la captura a `<BiometricCapture>`; elimina `startDetectionLoop`, `engineRef`, `challengeCountsRef` y UI inline de retos; mantiene encabezado contextual, nota de privacidad Ley 25.326 y callback `onCapturada`. Caps: NEW `biometric-capture-component`; MODIFIED `exam-enrollment`, `student-profile-shell`.
+- **Dependencias**: `C-34` (motor lazy singleton, evaluador de retos, fallback manual, loop RAF — reutilizados sin cambio)
+- **Governance**: MEDIO
+- **Leer antes**:
+  - `openspec/changes/c-36-verificacion-biometrica-inmersiva/` (proposal, design, specs/, tasks)
+  - `frontend/src/screens/Biometria.tsx` (mock a reemplazar)
+  - `frontend/src/screens/enrollment/EnrollmentBiometricStep.tsx` (loop RAF + fullscreen a extraer)
+  - `frontend/src/vision/enrollmentEngineLoader.ts` (reutilizar sin cambio)
+  - `frontend/src/vision/enrollmentChallengeDetector.ts` (reutilizar sin cambio)
+  - `frontend/src/vision/liveness.ts` (ACTIVE_CHALLENGES, pickActiveChallenges)
+  - `knowledge-base/12_biometria_y_liveness.md` (liveness híbrido, thresholds, ISO 30107-3)
+
 ---
 
 ## Resumen
@@ -662,12 +688,12 @@ C-01 → C-03 → C-04 → C-05 → C-06 → C-07 → C-08 → C-09 → C-10 →
 | **0 — Fundaciones** | C-01, C-02, C-03 | 3× CRITICO (C-03 ★ Tier 1 BLOQUEANTE) |
 | **1 — MVP** | C-04…C-19 | 6 CRITICO, 8 ALTO, 2 MEDIO |
 | **2 — Refinamiento** | C-20 | 1 MEDIO |
-| **Refinamiento post-fundación** | C-21, C-22, C-23, C-24, C-25, C-26, C-27, C-28, C-29, C-30, C-31, C-32, C-33, C-34 | 6 ALTO, 4 MEDIO, 4 BAJO |
+| **Refinamiento post-fundación** | C-21, C-22, C-23, C-24, C-25, C-26, C-27, C-28, C-29, C-30, C-31, C-32, C-33, C-34, C-35, C-36 | 6 ALTO, 6 MEDIO, 4 BAJO |
 
-- **Total**: **34 changes** — 20 de la fundación (3 fases) + 14 post-fundación (capa frontend/demo, captura de actividad, consentimiento en capas, decisiones de producto, identidad institucional, lenguaje claro/glosario, UX/legibilidad del harness, motor de visión real en el harness, quick-fixes de presentación, harness cache UX, medidor de riesgo en harness, biometría perfil funcional, ver sección dedicada arriba).
-- **Camino crítico**: 11 changes (`C-01 → C-03 → C-04 → C-05 → C-06 → C-07 → C-08 → C-09 → C-10 → C-15 → C-16`). C-21…C-34 quedan **fuera** del camino crítico (refinamiento de demo, no MVP backend).
+- **Total**: **36 changes** — 20 de la fundación (3 fases) + 16 post-fundación (capa frontend/demo, captura de actividad, consentimiento en capas, decisiones de producto, identidad institucional, lenguaje claro/glosario, UX/legibilidad del harness, motor de visión real en el harness, quick-fixes de presentación, harness cache UX, medidor de riesgo en harness, biometría perfil funcional, fixes detección cámara/mirada, verificación biométrica inmersiva, ver sección dedicada arriba).
+- **Camino crítico**: 11 changes (`C-01 → C-03 → C-04 → C-05 → C-06 → C-07 → C-08 → C-09 → C-10 → C-15 → C-16`). C-21…C-36 quedan **fuera** del camino crítico (refinamiento de demo, no MVP backend).
 - **Gates de paralelismo**: 13 (GATE 0…GATE 12). Forks grandes en GATE 5, GATE 6 y GATE 9.
 - **Primer change recomendado**: `C-01` (acuerdo-proctoring-dpia) — gate legal que junto a `C-02` bloquea todo el desarrollo. El primer change de **código** es `C-03` (poc-carga-mensajeria, Tier 1, BLOQUEANTE).
-- **Post-fundación**: el detalle y el porqué viven también en **engram** (`activeexam/refinamiento-frontend-v2`). Orden de aplicación sugerido: **C-21 → C-22 → C-26** (perfil cuelga del portal; el acuse por-examen de C-26 cuelga de la inscripción de C-21 + el consentimiento de C-22); **C-23 → C-25** (C-25 extiende el harness y cablea los detectores de navegador); C-24 independiente; **C-27 → C-28 → C-29 → C-30 → C-32 → C-33 → C-34 pueden correr en secuencia** (C-28 inteligibilidad; C-29 legibilidad/banner; C-30 motor real en el harness con overlay canvas; C-32 cache + UX amigable del harness; C-33 medidor de riesgo en harness; C-34 biometría perfil funcional).
+- **Post-fundación**: el detalle y el porqué viven también en **engram** (`activeexam/refinamiento-frontend-v2`). Orden de aplicación sugerido: **C-21 → C-22 → C-26** (perfil cuelga del portal; el acuse por-examen de C-26 cuelga de la inscripción de C-21 + el consentimiento de C-22); **C-23 → C-25** (C-25 extiende el harness y cablea los detectores de navegador); C-24 independiente; **C-27 → C-28 → C-29 → C-30 → C-32 → C-33 → C-34 → C-35 → C-36 pueden correr en secuencia** (C-28 inteligibilidad; C-29 legibilidad/banner; C-30 motor real en el harness con overlay canvas; C-32 cache + UX amigable del harness; C-33 medidor de riesgo en harness; C-34 biometría perfil funcional; C-35 fixes bugs detección cámara + mirada; C-36 verificación biométrica inmersiva con componente compartido).
 
 Para arrancar: `/opsx:propose C-01-acuerdo-proctoring-dpia`
