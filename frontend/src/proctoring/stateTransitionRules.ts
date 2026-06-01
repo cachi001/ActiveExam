@@ -40,6 +40,13 @@ export interface FrameSignals {
   fullscreen_exited?: boolean;
   /** C-25: accion de portapapeles detectada ('copy' | 'paste'). SIN contenido. */
   clipboard_action?: 'copy' | 'paste';
+  /**
+   * C-35: Yaw de cabeza en grados (0 = frontal, + = derecha, - = izquierda).
+   * Opcional; si undefined, se ignora en evalGaze().
+   * Extraido de PoseSignal en el harness (aproximado via landmarks de hombros).
+   * Retrocompatible: Examen.tsx no lo pasa y el comportamiento no cambia.
+   */
+  head_yaw_deg?: number;
 }
 
 /** Evento discreto producido por las reglas (conforme al contrato de C-10). */
@@ -73,12 +80,36 @@ export interface TransitionConfig {
   gaze_fixation_tolerance: number;
 }
 
+/**
+ * C-35: Umbral de yaw de cabeza para activar la condicion de mirada desviada.
+ * Si |head_yaw_deg| supera este valor, evalGaze() lo considera desviacion aunque
+ * el iris no supere gaze_deviation_threshold. 20 grados es conservador — un giro
+ * leve de cabeza (nod, ajuste de postura) no dispara; un giro lateral visible si.
+ * Puede promoverse a TransitionConfig en un change posterior si se requiere configurabilidad
+ * por institucion.
+ */
+const HEAD_YAW_THRESHOLD_DEG = 20;
+
 export const DEFAULT_CONFIG: TransitionConfig = {
   face_absent_ms: 3000,
   multiple_faces_frames: 5,
-  gaze_deviation_threshold: 0.6,
-  gaze_sustained_ms: 4000,
-  gaze_fixation_tolerance: 0.15,
+  // C-35: Recalibrado de 0.6 a 0.25.
+  // gazeFromIris() escala el desplazamiento del iris por el semi-ancho del ojo:
+  //   gx = (irisCenter.x - cx) / halfWidth
+  // Rango practico para una desviacion lateral visible: ~0.15–0.35.
+  // 0.6 era inalcanzable en la practica (nunca emitia). 0.25 captura
+  // desviaciones de ~30% del semi-ancho, filtrando micro-movimientos (<0.15).
+  gaze_deviation_threshold: 0.25,
+  // C-35: Recalibrado de 4000 ms a 2500 ms.
+  // Mantener la mirada sostenida 2.5 s es suficiente senal; 4 s era demasiado
+  // largo para un escenario de diagnostico practico.
+  gaze_sustained_ms: 2500,
+  // C-35: Recalibrado de 0.15 a 0.25.
+  // El movimiento natural de cabeza produce drifts del vector de ~0.15–0.20.
+  // Con tolerancia 0.15 el ancla se reseteaba continuamente por movimiento natural,
+  // impidiendo que el contador de tiempo sostenido llegara a gaze_sustained_ms.
+  // 0.25 absorbe el ruido natural sin perder la senal de mirada desviada.
+  gaze_fixation_tolerance: 0.25,
 };
 
 interface AbsentState {
@@ -169,21 +200,36 @@ export class StateTransitionRules {
   private evalGaze(s: FrameSignals, out: DiscreteEvent[]): void {
     const g = s.gaze;
     const magnitude = g ? Math.hypot(g.x, g.y) : 0;
-    const deviated = g !== undefined && magnitude >= this.cfg.gaze_deviation_threshold;
-    if (deviated && g) {
+    // C-35: la condicion "desviado" combina dos fuentes de senal:
+    //   1. Vector iris: magnitud >= gaze_deviation_threshold (senal principal).
+    //   2. Head yaw (opcional): |head_yaw_deg| > HEAD_YAW_THRESHOLD_DEG (senal complementaria).
+    //      Cubre el caso en que el alumno gira la cabeza sin mover los ojos.
+    //      Si head_yaw_deg no esta definido (undefined), se ignora — retrocompatible.
+    // El ancla y la logica de fijacion sostenida siguen operando sobre el vector iris (g),
+    // no sobre head_yaw_deg — mide si la mirada permanece en "esa direccion general".
+    const irisDeviated = g !== undefined && magnitude >= this.cfg.gaze_deviation_threshold;
+    const yawDeviated = s.head_yaw_deg !== undefined && Math.abs(s.head_yaw_deg) > HEAD_YAW_THRESHOLD_DEG;
+    const deviated = irisDeviated || yawDeviated;
+    if (deviated) {
+      // Cuando el iris esta disponible, usarlo para ancla y deteccion de fijacion sostenida.
+      // Cuando solo el yaw dispara (g ausente), se usa un vector neutro (0,0) como ancla —
+      // el fijacion tolerance no aplica de forma significativa (el drift es siempre 0 en ese caso).
+      const effectiveGaze = g ?? { x: 0, y: 0 };
       if (this.gaze.since_ms === null) {
         this.gaze.since_ms = s.ts_ms;
-        this.gaze.anchor = { x: g.x, y: g.y };
+        this.gaze.anchor = { x: effectiveGaze.x, y: effectiveGaze.y };
       }
       // Solo cuenta como patron sostenido si la mirada se mantiene hacia un PUNTO FIJO
       // (dentro de la tolerancia del ancla). Mirar al techo y volver no fija un punto.
+      // Nota: la logica de ancla opera sobre el vector iris (g) para evitar reiniciar
+      // el contador cuando el alumno mantiene la mirada pero mueve la cabeza levemente.
       const drift = this.gaze.anchor
-        ? Math.hypot(g.x - this.gaze.anchor.x, g.y - this.gaze.anchor.y)
+        ? Math.hypot(effectiveGaze.x - this.gaze.anchor.x, effectiveGaze.y - this.gaze.anchor.y)
         : Infinity;
       if (drift > this.cfg.gaze_fixation_tolerance) {
         // Se desvio a otro punto: reinicia el ancla (no es fijacion sostenida).
         this.gaze.since_ms = s.ts_ms;
-        this.gaze.anchor = { x: g.x, y: g.y };
+        this.gaze.anchor = { x: effectiveGaze.x, y: effectiveGaze.y };
         this.gaze.emitted = false;
       }
       const elapsed = s.ts_ms - (this.gaze.since_ms ?? s.ts_ms);
@@ -193,7 +239,7 @@ export class StateTransitionRules {
           tipo: "mirada_desviada_sostenida",
           severidad: "media",
           ts_ms: s.ts_ms,
-          payload: { sostenido_ms: elapsed, gaze: g },
+          payload: { sostenido_ms: elapsed, gaze: g ?? effectiveGaze },
           trigger_evidence: false,
         });
       }

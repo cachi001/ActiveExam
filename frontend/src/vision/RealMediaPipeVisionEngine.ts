@@ -254,23 +254,55 @@ export class RealMediaPipeVisionEngine implements VisionEngine {
       z: lm.z ?? 0,
     }));
 
-    // Calcular gaze usando iris landmarks (índices 468+ en FaceLandmarker)
+    // C-35: Calcular gaze promediando AMBOS iris cuando estan disponibles.
+    // Promediar izquierdo y derecho aumenta la cobertura de senal (si un ojo esta
+    // parcialmente ocluido el otro compensa) y reduce el ruido (promedio de dos
+    // mediciones independientes). El contrato de FaceMeshSignal.gaze no cambia — sigue
+    // siendo { x, y }.
+    //
+    // Indices de landmarks (FaceLandmarker con outputFaceBlendshapes = false):
+    //   Iris izquierdo centro : 468  |  corners del ojo: 33 (outer) y 133 (inner)
+    //   Iris derecho  centro  : 473  |  corners del ojo: 362 (inner) y 263 (outer)
     let gaze = { x: 0, y: 0 };
-    if (faceLandmarks.length > IRIS_LEFT_CENTER) {
-      const irisCenter = faceLandmarks[IRIS_LEFT_CENTER];
-      const eyeLeft = faceLandmarks[EYE_LEFT_OUTER];
-      const eyeRight = faceLandmarks[EYE_LEFT_INNER];
-      if (irisCenter && eyeLeft && eyeRight) {
-        gaze = gazeFromIris(irisCenter, eyeLeft, eyeRight);
-      }
-    } else if (faceLandmarks.length > EYE_RIGHT_OUTER) {
-      // Fallback: usar ojo derecho si iris izquierdo no disponible
-      const irisCenter = faceLandmarks[IRIS_RIGHT_CENTER] ?? faceLandmarks[EYE_RIGHT_INNER];
-      const eyeLeft = faceLandmarks[EYE_RIGHT_INNER];
-      const eyeRight = faceLandmarks[EYE_RIGHT_OUTER];
-      if (irisCenter && eyeLeft && eyeRight) {
-        gaze = gazeFromIris(irisCenter, eyeLeft, eyeRight);
-      }
+    const leftIrisAvailable = faceLandmarks.length > IRIS_LEFT_CENTER
+      && faceLandmarks[IRIS_LEFT_CENTER]
+      && faceLandmarks[EYE_LEFT_OUTER]
+      && faceLandmarks[EYE_LEFT_INNER];
+    const rightIrisAvailable = faceLandmarks.length > IRIS_RIGHT_CENTER
+      && faceLandmarks[IRIS_RIGHT_CENTER]
+      && faceLandmarks[EYE_RIGHT_INNER]
+      && faceLandmarks[EYE_RIGHT_OUTER];
+
+    if (leftIrisAvailable && rightIrisAvailable) {
+      // Caso optimo: promediar ambos iris para mayor precision y cobertura.
+      const gazeLeft = gazeFromIris(
+        faceLandmarks[IRIS_LEFT_CENTER],
+        faceLandmarks[EYE_LEFT_OUTER],
+        faceLandmarks[EYE_LEFT_INNER],
+      );
+      const gazeRight = gazeFromIris(
+        faceLandmarks[IRIS_RIGHT_CENTER],
+        faceLandmarks[EYE_RIGHT_INNER],
+        faceLandmarks[EYE_RIGHT_OUTER],
+      );
+      gaze = {
+        x: (gazeLeft.x + gazeRight.x) / 2,
+        y: (gazeLeft.y + gazeRight.y) / 2,
+      };
+    } else if (leftIrisAvailable) {
+      // Fallback: solo iris izquierdo disponible (ojo derecho ocluido o fuera de frame).
+      gaze = gazeFromIris(
+        faceLandmarks[IRIS_LEFT_CENTER],
+        faceLandmarks[EYE_LEFT_OUTER],
+        faceLandmarks[EYE_LEFT_INNER],
+      );
+    } else if (rightIrisAvailable) {
+      // Fallback: solo iris derecho disponible (ojo izquierdo ocluido o fuera de frame).
+      gaze = gazeFromIris(
+        faceLandmarks[IRIS_RIGHT_CENTER],
+        faceLandmarks[EYE_RIGHT_INNER],
+        faceLandmarks[EYE_RIGHT_OUTER],
+      );
     }
 
     const embedding = embeddingFromLandmarks(landmarks);
