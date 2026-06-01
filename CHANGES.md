@@ -630,6 +630,29 @@ C-01 → C-03 → C-04 → C-05 → C-06 → C-07 → C-08 → C-09 → C-10 →
   - `frontend/src/proctoring/contextDetectors.ts` (detectExtraMonitor a extender)
   - `frontend/src/ui/Term.tsx` (componente Term de C-28, reutilizable para claves técnicas)
 
+### [C-33] `medidor-riesgo-harness`
+- **Estado**: `[ ]` propuesto (validate --strict OK — 20 tasks)
+- **Scope**: **Medidor de riesgo en vivo en el harness de diagnóstico** — (1) **Medidor/gauge de riesgo**: barra de progreso con color escalado (verde→amarillo→rojo) que muestra el % de riesgo acumulado en tiempo real, sumando el peso (`PESO_SCORE`) de cada evento emitido durante la sesión de diagnóstico. (2) **Botón RESET del medidor**: resetea el score acumulado a 0 sin interrumpir cámara ni motor. (3) **Umbral configurable**: input numérico (1–100 %) que, cuando es superado, muestra un banner "Superaría el umbral — priorizaría para revisión humana" (semántica L2.5 — prioriza, no sanciona). (4) **Extracción de `PESO_SCORE` a módulo compartido**: `frontend/src/proctoring/riskWeights.ts` elimina la duplicación entre `Examen.tsx` y `AdminDetectionHarness.tsx` (valores sin cambio). El acumulador de riesgo vive en estado local del componente, aislado del `store.scorePropio` del alumno real. Caps NEW: `harness-risk-meter`. Caps MODIFIED (delta): `admin-detection-test-harness` (C-23).
+- **Dependencias**: `C-23` (harness base), `C-25` (pipeline de eventos y `PESO_SCORE` existente en Examen), `C-32` (estado actual del harness)
+- **Governance**: BAJO
+- **Leer antes**:
+  - `openspec/changes/c-33-medidor-riesgo-harness/` (proposal, design, specs/, tasks)
+  - `frontend/src/screens/Examen.tsx` (línea 27: `PESO_SCORE` a extraer)
+  - `frontend/src/screens/AdminDetectionHarness.tsx` (sink callback, estado local, layout)
+  - `frontend/src/lib/store.ts` (scorePropio — no se toca, solo referencia)
+
+### [C-34] `biometria-perfil-funcional`
+- **Estado**: `[ ]` propuesto (validate --strict OK — 37 tasks)
+- **Scope**: **Captura biométrica del perfil FUNCIONAL para test** — hace que el enrollment biométrico del alumno deje de ser mock y pase a usar detección real: (1) **Retos de liveness detectados de verdad** con el motor MediaPipe real (`RealMediaPipeVisionEngine`) frame-a-frame: girar izquierda/derecha (gaze), parpadear (cierre ocular), acercarse (bounding box), sonreír (comisuras de boca). (2) **Embedding REAL** derivado con `embeddingFromLandmarks(landmarks)` (determinista, no `Math.random`). (3) **Fullscreen en móvil** al tomar la cámara: `requestFullscreen()` sobre el contenedor, con fallback CSS `fixed inset-0` para iOS Safari. (4) **Loader lazy con singleton** `enrollmentEngineLoader.ts` — mismo patrón que `harnessEngineLoader.ts` pero con ciclo de vida independiente; motor WASM sigue fuera del bundle inicial. Fallback manual (modo botón) visible solo cuando el motor no puede cargar. Cliente sigue siendo SENSOR NO CONFIABLE (RN-GLB-01); la verificación real es server-side (C-12). Caps NEW: `enrollment-liveness-detection`, `enrollment-fullscreen-mobile`. Caps MODIFIED (delta): `harness-model-loader` (C-30/C-32 — nuevo loader paralelo).
+- **Dependencias**: `C-22` (paso biométrico del perfil que se hace funcional), `C-30` (motor real y helpers `embeddingFromLandmarks`, `gazeFromIris` disponibles), `C-32` (patrón de loader lazy singleton ya establecido en `harnessEngineLoader.ts`)
+- **Governance**: ALTO
+- **Leer antes**:
+  - `openspec/changes/c-34-biometria-perfil-funcional/` (proposal, design, specs/, tasks)
+  - `frontend/src/screens/enrollment/EnrollmentBiometricStep.tsx` (componente a refactorizar)
+  - `frontend/src/vision/liveness.ts` (lógica pura de retos a reusar)
+  - `frontend/src/vision/harnessEngineLoader.ts` (patrón de singleton a replicar)
+  - `knowledge-base/12_biometria_y_liveness.md` (liveness híbrido, thresholds, ISO 30107-3)
+
 ---
 
 ## Resumen
@@ -639,12 +662,12 @@ C-01 → C-03 → C-04 → C-05 → C-06 → C-07 → C-08 → C-09 → C-10 →
 | **0 — Fundaciones** | C-01, C-02, C-03 | 3× CRITICO (C-03 ★ Tier 1 BLOQUEANTE) |
 | **1 — MVP** | C-04…C-19 | 6 CRITICO, 8 ALTO, 2 MEDIO |
 | **2 — Refinamiento** | C-20 | 1 MEDIO |
-| **Refinamiento post-fundación** | C-21, C-22, C-23, C-24, C-25, C-26, C-27, C-28, C-29, C-30, C-31, C-32 | 5 ALTO, 4 MEDIO, 3 BAJO |
+| **Refinamiento post-fundación** | C-21, C-22, C-23, C-24, C-25, C-26, C-27, C-28, C-29, C-30, C-31, C-32, C-33, C-34 | 6 ALTO, 4 MEDIO, 4 BAJO |
 
-- **Total**: **32 changes** — 20 de la fundación (3 fases) + 12 post-fundación (capa frontend/demo, captura de actividad, consentimiento en capas, decisiones de producto, identidad institucional, lenguaje claro/glosario, UX/legibilidad del harness, motor de visión real en el harness, quick-fixes de presentación, harness cache UX, ver sección dedicada arriba).
-- **Camino crítico**: 11 changes (`C-01 → C-03 → C-04 → C-05 → C-06 → C-07 → C-08 → C-09 → C-10 → C-15 → C-16`). C-21…C-32 quedan **fuera** del camino crítico (refinamiento de demo, no MVP backend).
+- **Total**: **34 changes** — 20 de la fundación (3 fases) + 14 post-fundación (capa frontend/demo, captura de actividad, consentimiento en capas, decisiones de producto, identidad institucional, lenguaje claro/glosario, UX/legibilidad del harness, motor de visión real en el harness, quick-fixes de presentación, harness cache UX, medidor de riesgo en harness, biometría perfil funcional, ver sección dedicada arriba).
+- **Camino crítico**: 11 changes (`C-01 → C-03 → C-04 → C-05 → C-06 → C-07 → C-08 → C-09 → C-10 → C-15 → C-16`). C-21…C-34 quedan **fuera** del camino crítico (refinamiento de demo, no MVP backend).
 - **Gates de paralelismo**: 13 (GATE 0…GATE 12). Forks grandes en GATE 5, GATE 6 y GATE 9.
 - **Primer change recomendado**: `C-01` (acuerdo-proctoring-dpia) — gate legal que junto a `C-02` bloquea todo el desarrollo. El primer change de **código** es `C-03` (poc-carga-mensajeria, Tier 1, BLOQUEANTE).
-- **Post-fundación**: el detalle y el porqué viven también en **engram** (`activeexam/refinamiento-frontend-v2`). Orden de aplicación sugerido: **C-21 → C-22 → C-26** (perfil cuelga del portal; el acuse por-examen de C-26 cuelga de la inscripción de C-21 + el consentimiento de C-22); **C-23 → C-25** (C-25 extiende el harness y cablea los detectores de navegador); C-24 independiente; **C-27 → C-28 → C-29 → C-30 → C-32 pueden correr en secuencia** (C-28 inteligibilidad; C-29 legibilidad/banner; C-30 motor real en el harness con overlay canvas; C-32 cache + UX amigable del harness).
+- **Post-fundación**: el detalle y el porqué viven también en **engram** (`activeexam/refinamiento-frontend-v2`). Orden de aplicación sugerido: **C-21 → C-22 → C-26** (perfil cuelga del portal; el acuse por-examen de C-26 cuelga de la inscripción de C-21 + el consentimiento de C-22); **C-23 → C-25** (C-25 extiende el harness y cablea los detectores de navegador); C-24 independiente; **C-27 → C-28 → C-29 → C-30 → C-32 → C-33 → C-34 pueden correr en secuencia** (C-28 inteligibilidad; C-29 legibilidad/banner; C-30 motor real en el harness con overlay canvas; C-32 cache + UX amigable del harness; C-33 medidor de riesgo en harness; C-34 biometría perfil funcional).
 
 Para arrancar: `/opsx:propose C-01-acuerdo-proctoring-dpia`
