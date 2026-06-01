@@ -656,6 +656,19 @@ export const api = {
     await delay(150);
     enrollmentAlumno = recalcularPerfilCompleto({ ...enrollmentAlumno, biometria: null });
   },
+
+  /**
+   * Persiste la foto de perfil del alumno (mock, C-37).
+   *
+   * DATO PERSONAL (Ley 25.326): finalidad acotada (avatar en la UI).
+   * En producción: cifrado AES-256-GCM at-rest, eliminado al egreso del estudiante.
+   * Demo: solo en memoria de la sesión.
+   */
+  async guardarFotoPerfil(dataUrl: string): Promise<void> {
+    await delay(300);
+    // Actualiza el registro in-memory del principal de estudiante
+    PRINCIPALES.estudiante = { ...PRINCIPALES.estudiante, foto_perfil: dataUrl };
+  },
 };
 
 // Helpers de presentación

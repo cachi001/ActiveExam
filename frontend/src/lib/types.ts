@@ -30,6 +30,12 @@ export interface Principal {
   roles: Rol[];
   mfa_satisfecho: boolean;
   jurisdiccion: string;
+  /**
+   * dataURL JPEG de la foto de perfil (dato personal, Ley 25.326).
+   * Finalidad acotada: avatar en la UI. Eliminado al egreso.
+   * Demo: en memoria de la sesión. Server-side: cifrado AES-256-GCM.
+   */
+  foto_perfil?: string;
 }
 
 export interface BloqueConsentimiento {
