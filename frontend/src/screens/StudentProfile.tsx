@@ -27,6 +27,7 @@ import { EnrollmentConsentStep } from './enrollment/EnrollmentConsentStep';
 import { EnrollmentBiometricStep } from './enrollment/EnrollmentBiometricStep';
 import { EnrollmentDniStep } from './enrollment/EnrollmentDniStep';
 import { BiometricRenewalStatus } from './enrollment/BiometricRenewalStatus';
+import { Term } from '../ui/Term';
 import type { EstadoEnrollment, AcuseConsentimiento, ReferenciasBiometrica, EscaneDNI } from '../lib/types';
 
 /**
@@ -377,8 +378,8 @@ export default function StudentProfile() {
                 Renovación biométrica requerida
               </p>
               <p className="text-label-sm text-on-surface-variant mt-base">
-                Las verificaciones silenciosas detectaron deriva del embedding. Se requiere renovar la referencia.
-                Las rendiciones en curso no se ven afectadas (decisión disciplinaria siempre humana — L2.5).
+                Las verificaciones silenciosas detectaron deriva del <Term termKey="embedding" />. Se requiere renovar la referencia.
+                Las rendiciones en curso no se ven afectadas (decisión disciplinaria siempre humana — <Term termKey="l2_5" />).
               </p>
             </div>
             <Button variant="outline" onClick={handleRenovarBiometria} className="shrink-0 h-9 px-md text-label-sm" icon="refresh">
@@ -487,10 +488,10 @@ export default function StudentProfile() {
 
                 {/* Nota de privacidad */}
                 <div className="text-label-sm text-on-surface-variant bg-surface-container-low rounded-xl p-sm border border-outline-variant/30">
-                  <span className="font-semibold">Privacidad (Ley 25.326):</span> La imagen y el embedding
+                  <span className="font-semibold">Privacidad (Ley 25.326):</span> La imagen y el <Term termKey="embedding" />
                   biométrico son <strong>datos sensibles</strong>: cifrados at-rest, con finalidad acotada
                   a la verificación de identidad. Se eliminan al egreso (salvo hold disciplinario).
-                  El sistema nunca sanciona automáticamente — solo prioriza para revisión humana (L2.5).
+                  El sistema nunca sanciona automáticamente — solo prioriza para revisión humana (<Term termKey="l2_5" />).
                 </div>
 
                 <Button

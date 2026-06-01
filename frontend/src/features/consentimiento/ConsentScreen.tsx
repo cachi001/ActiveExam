@@ -16,6 +16,7 @@
  */
 
 import { useEffect, useState } from "react";
+import { Term } from "../../ui/Term";
 
 interface ConsentText {
   version: string;
@@ -162,7 +163,7 @@ export function ConsentScreen({
           onChange={(e) => setAffirmative(e.target.checked)}
         />
         Leí y entiendo la información, y consiento de forma libre y expresa el
-        tratamiento de mis datos biométricos para este examen.
+        tratamiento de mis <Term termKey="datos_biometricos">datos biométricos</Term> para este examen.
       </label>
 
       {error && <div role="alert">Error: {error}</div>}

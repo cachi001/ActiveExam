@@ -21,6 +21,10 @@ node_modules/
 dist/
 .vite/
 
+# MediaPipe models y WASM (~42 MB) — COMMITEADOS al repo para que Vercel los sirva
+# como assets estáticos (self-hosted, sin CDN en runtime). Regenerables con
+# scripts/download-mediapipe-models.sh si hiciera falta.
+
 # Datos de contenedores
 postgres_data/
 minio_data/

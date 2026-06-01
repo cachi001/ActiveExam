@@ -11,6 +11,7 @@
 import { useEffect, useState } from 'react';
 import { Icon, Button, Card } from '../../ui/components';
 import { api } from '../../lib/api';
+import { Term } from '../../ui/Term';
 import type { ConsentTextResponse } from '../../lib/types';
 import type { AcuseConsentimiento } from '../../lib/types';
 
@@ -120,7 +121,7 @@ export function EnrollmentConsentStep({ acuseActual, onConsentido }: Props) {
           />
           <span className="text-body-md text-on-surface">
             Presto mi <strong>consentimiento libre, expreso e informado</strong> para el tratamiento de mis datos
-            (incluido el embedding biométrico y la imagen de referencia, tratados como datos sensibles bajo la{' '}
+            (incluido el <Term termKey="embedding">embedding biométrico</Term> y la imagen de referencia, tratados como datos sensibles bajo la{' '}
             <strong>Ley 25.326</strong>) con la única finalidad de supervisar mis evaluaciones académicas.
             Entiendo que <strong>el sistema nunca sanciona automáticamente</strong> y que toda decisión disciplinaria
             es humana. El acuse queda registrado con la versión {texto?.version} del texto.

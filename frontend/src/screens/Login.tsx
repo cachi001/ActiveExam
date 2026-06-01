@@ -3,6 +3,7 @@ import { Icon, Button } from '../ui/components';
 import { useNavigate } from '../lib/router';
 import { useApp } from '../lib/store';
 import { api } from '../lib/api';
+import { INSTITUTION } from '../config/institution';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -28,11 +29,11 @@ export default function Login() {
         <div className="bg-surface-container-lowest rounded-xl p-xl flex flex-col gap-xl shadow-card-lg border border-outline-variant/50 animate-in fade-in slide-in-from-bottom-4 duration-700">
           <header className="flex flex-col items-center gap-md text-center">
             <div className="w-14 h-14 rounded-2xl bg-primary text-on-primary flex items-center justify-center shadow-sm">
-              <Icon name="verified_user" className="text-[28px]" fill />
+              <Icon name="school" className="text-[28px]" fill />
             </div>
             <div>
-              <h1 className="font-headline text-headline-md text-on-surface tracking-tight">Acceso a tu evaluación</h1>
-              <p className="text-body-md text-on-surface-variant mt-xs">Ingresá con tu cuenta institucional federada para continuar.</p>
+              <h1 className="font-headline text-headline-md text-on-surface tracking-tight">Portal del alumno</h1>
+              <p className="text-body-md text-on-surface-variant mt-xs">Accedé para ver tus materias, inscribirte a exámenes y gestionar tu perfil académico.</p>
             </div>
           </header>
 
@@ -41,14 +42,14 @@ export default function Login() {
               <label className="text-label-sm uppercase tracking-wide text-on-surface-variant font-semibold">Institución</label>
               <div className="flex items-center gap-sm bg-surface-container-low border border-outline-variant rounded-xl px-md py-sm">
                 <Icon name="account_balance" className="text-on-surface-variant text-[20px]" />
-                <span className="text-body-md font-semibold text-on-surface">Universidad de Buenos Aires — UBA</span>
+                <span className="text-body-md font-semibold text-on-surface">{INSTITUTION.nombre} — {INSTITUTION.facultad}</span>
               </div>
             </div>
 
             <Button onClick={ingresar} disabled={cargando} icon={cargando ? undefined : 'login'} iconRight={cargando ? undefined : 'arrow_forward'} className="w-full h-14">
               {cargando ? (
                 <span className="inline-flex items-center gap-xs"><Icon name="progress_activity" className="ae-spin text-[20px]" /> Conectando con Keycloak…</span>
-              ) : 'Ingresar con UBA ID'}
+              ) : `Ingresar con ${INSTITUTION.loginLabel}`}
             </Button>
             <p className="text-label-sm text-on-surface-variant text-center px-md">
               Usás las mismas credenciales del campus (OAuth2 / OIDC con MFA).
