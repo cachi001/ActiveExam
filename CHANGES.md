@@ -608,6 +608,16 @@ C-01 → C-03 → C-04 → C-05 → C-06 → C-07 → C-08 → C-09 → C-10 →
   - `knowledge-base/13_legal_y_cumplimiento_argentina.md` §Soberanía de datos
   - `knowledge-base/09_decisiones_y_supuestos.md` §DD-17
 
+### [C-31] `quick-fixes-header-login`
+- **Estado**: `[x]` aplicado (9/9 tasks, tsc --noEmit 0 errores)
+- **Scope**: **2 quick-fixes de presentación** — (1) Elimina el badge "Self-hosted · {institución}" del header de la shell de staff (`shells.tsx`): era jerga de infraestructura irrelevante para el usuario final; el nombre institucional ya aparece en la sidebar. (2) Elimina el link "Requisitos técnicos" del nav del login (`Login.tsx`): la ruta `/requisitos` lleva al flujo demo de EquipmentCheck, causando confusión al alumno que intenta autenticarse. Se elimina también el separador visual (`<span>` bullet) que quedaba huérfano. La ruta `#/requisitos` permanece definida en `App.tsx` para uso futuro. Caps MODIFIED (delta): `staff-shell-header`, `login-screen`.
+- **Dependencias**: ninguna (solo JSX estático de presentación)
+- **Governance**: BAJO
+- **Leer antes**:
+  - `openspec/changes/c-31-quick-fixes-header-login/` (proposal, design, specs/, tasks)
+  - `frontend/src/ui/shells.tsx` (header de staff)
+  - `frontend/src/screens/Login.tsx` (nav del login)
+
 ---
 
 ## Resumen
@@ -617,10 +627,10 @@ C-01 → C-03 → C-04 → C-05 → C-06 → C-07 → C-08 → C-09 → C-10 →
 | **0 — Fundaciones** | C-01, C-02, C-03 | 3× CRITICO (C-03 ★ Tier 1 BLOQUEANTE) |
 | **1 — MVP** | C-04…C-19 | 6 CRITICO, 8 ALTO, 2 MEDIO |
 | **2 — Refinamiento** | C-20 | 1 MEDIO |
-| **Refinamiento post-fundación** | C-21, C-22, C-23, C-24, C-25, C-26, C-27, C-28, C-29, C-30 | 5 ALTO, 3 MEDIO, 2 BAJO |
+| **Refinamiento post-fundación** | C-21, C-22, C-23, C-24, C-25, C-26, C-27, C-28, C-29, C-30, C-31 | 5 ALTO, 3 MEDIO, 3 BAJO |
 
-- **Total**: **30 changes** — 20 de la fundación (3 fases) + 10 post-fundación (capa frontend/demo, captura de actividad, consentimiento en capas, decisiones de producto, identidad institucional, lenguaje claro/glosario, UX/legibilidad del harness, y motor de visión real en el harness, ver sección dedicada arriba).
-- **Camino crítico**: 11 changes (`C-01 → C-03 → C-04 → C-05 → C-06 → C-07 → C-08 → C-09 → C-10 → C-15 → C-16`). C-21…C-30 quedan **fuera** del camino crítico (refinamiento de demo, no MVP backend).
+- **Total**: **31 changes** — 20 de la fundación (3 fases) + 11 post-fundación (capa frontend/demo, captura de actividad, consentimiento en capas, decisiones de producto, identidad institucional, lenguaje claro/glosario, UX/legibilidad del harness, motor de visión real en el harness, quick-fixes de presentación, ver sección dedicada arriba).
+- **Camino crítico**: 11 changes (`C-01 → C-03 → C-04 → C-05 → C-06 → C-07 → C-08 → C-09 → C-10 → C-15 → C-16`). C-21…C-31 quedan **fuera** del camino crítico (refinamiento de demo, no MVP backend).
 - **Gates de paralelismo**: 13 (GATE 0…GATE 12). Forks grandes en GATE 5, GATE 6 y GATE 9.
 - **Primer change recomendado**: `C-01` (acuerdo-proctoring-dpia) — gate legal que junto a `C-02` bloquea todo el desarrollo. El primer change de **código** es `C-03` (poc-carga-mensajeria, Tier 1, BLOQUEANTE).
 - **Post-fundación**: el detalle y el porqué viven también en **engram** (`activeexam/refinamiento-frontend-v2`). Orden de aplicación sugerido: **C-21 → C-22 → C-26** (perfil cuelga del portal; el acuse por-examen de C-26 cuelga de la inscripción de C-21 + el consentimiento de C-22); **C-23 → C-25** (C-25 extiende el harness y cablea los detectores de navegador); C-24 independiente; **C-27 → C-28 → C-29 → C-30 pueden correr en secuencia** (C-28 inteligibilidad; C-29 legibilidad/banner; C-30 motor real en el harness con overlay canvas).
