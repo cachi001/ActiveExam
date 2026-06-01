@@ -6,6 +6,7 @@ import { useApp } from '../lib/store';
 import { useNavigate } from '../lib/router';
 import { STAFF_NAV } from '../ui/nav';
 import type { SesionRevision } from '../lib/types';
+import { INSTITUTION } from '../config/institution';
 
 export const REVISOR_NAV = STAFF_NAV;
 
@@ -68,7 +69,7 @@ export default function Revisor() {
                   <Avatar src={sel.foto} alt={sel.estudiante} size={56} />
                   <div>
                     <h2 className="font-headline text-headline-md text-on-surface">{sel.estudiante}</h2>
-                    <p className="text-label-sm text-on-surface-variant">UBA Medicina · {sel.examen} · {sel.duracion}</p>
+                    <p className="text-label-sm text-on-surface-variant">{INSTITUTION.nombreCorto} · {sel.examen} · {sel.duracion}</p>
                   </div>
                 </div>
                 <div className="text-right">
