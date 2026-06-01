@@ -46,7 +46,7 @@ const GRUPOS: Group[] = [
       { to: '/admin/configurar', label: 'Configurar examen' },
       { to: '/admin/reportes', label: 'Reportes y analítica' },
       { to: '/admin/auditoria', label: 'Auditoría y privacidad' },
-      { to: '/admin/detection-test', label: 'Test de detección (C-23)', rol: 'admin_examenes' },
+      { to: '/admin/detection-test', label: 'Test de detección', rol: 'admin_examenes' },
     ],
   },
 ];
