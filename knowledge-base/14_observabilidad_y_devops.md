@@ -58,7 +58,7 @@ Ciclo: detección → declaración → mitigación → resolución → postmorte
 - **1.000 concurrentes** sostenido (objetivo operacional confirmado); **~2.100** en pico multi-examen.
 - Heartbeats (cada 5 s) → ~200 inserts/s sostenido; eventos normales → ~1.000 inserts/s sostenido (**Suposición**: escala ~lineal desde los ~700/s estimados a 700 concurrentes); **picos hasta ~5.000 inserts/s** en ventana multi-examen.
 - Un examen de 1 h produce 4–5 millones de filas → ~100–200 MB con compresión TimescaleDB.
-- WebSockets: decenas a centenas de KB/s. Subidas de evidencia: ~2,8 GB por examen (4 clips/estudiante).
+- WebSockets: decenas a centenas de KB/s. Subidas de evidencia: **~2–5 MB por examen** (C-24, DD-24-01): screenshots PNG de ~100–300 KB c/u, 4–6 event-driven + heartbeats cada 2 min en examen de 1 h (~30 heartbeats) → orden de magnitud **~100–1.000× menor** que el modelo anterior (~2,8 GB con 4 clips de video/estudiante). El SLI de "subidas de evidencia pesadas" deja de ser cuello de botella.
 - Pico de autenticación al inicio: ~47 auth/min (cómodo para Keycloak en hardware modesto).
 
 ### Cuellos de botella y abordaje
@@ -68,7 +68,7 @@ Ciclo: detección → declaración → mitigación → resolución → postmorte
 | Inserts en la base de eventos | Hypertable TimescaleDB + compresión + agregados continuos |
 | Pico de autenticación | Dentro de capacidad de Keycloak; biometría en cliente |
 | Conexiones WS por instancia | Sticky sessions 200–250 WS/instancia + monitoreo de distribución |
-| Subidas de evidencia pesadas | URLs firmadas: cliente sube directo al storage |
+| Subidas de evidencia pesadas | URLs firmadas: cliente sube directo al storage. **C-24**: evidencia = screenshots (KB), no clips (GB) → cuello de botella eliminado. |
 
 ## CI/CD y entornos
 
