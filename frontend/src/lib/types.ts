@@ -30,6 +30,12 @@ export interface Principal {
   roles: Rol[];
   mfa_satisfecho: boolean;
   jurisdiccion: string;
+  /**
+   * dataURL JPEG de la foto de perfil (dato personal, Ley 25.326).
+   * Finalidad acotada: avatar en la UI. Eliminado al egreso.
+   * Demo: en memoria de la sesión. Server-side: cifrado AES-256-GCM.
+   */
+  foto_perfil?: string;
 }
 
 export interface BloqueConsentimiento {
@@ -225,10 +231,12 @@ export interface EscaneDNI {
   /** true cuando el escaneo fue completado. */
   captura_completada: boolean;
   /**
-   * dataURL/base64 del DNI capturado (demo).
-   * Server-side: cifrado, finalidad acotada, eliminado al egreso, holds difieren.
+   * dataURL/base64 del FRENTE del DNI (demo). DATO SENSIBLE (Ley 25.326):
+   * server-side cifrado AES-256-GCM, finalidad acotada, eliminado al egreso.
    */
-  imagen: string | null;
+  imagen_frente: string | null;
+  /** dataURL/base64 del DORSO del DNI (demo). Mismo tratamiento sensible que el frente. */
+  imagen_dorso: string | null;
   /** ISO 8601: momento de la captura. */
   fecha_captura: string;
 }

@@ -27,17 +27,20 @@ import { EnrollmentConsentStep } from './enrollment/EnrollmentConsentStep';
 import { EnrollmentBiometricStep } from './enrollment/EnrollmentBiometricStep';
 import { EnrollmentDniStep } from './enrollment/EnrollmentDniStep';
 import { BiometricRenewalStatus } from './enrollment/BiometricRenewalStatus';
+import { CameraSnapshotCapture } from '../ui/CameraSnapshotCapture';
 import { Term } from '../ui/Term';
 import type { EstadoEnrollment, AcuseConsentimiento, ReferenciasBiometrica, EscaneDNI } from '../lib/types';
 
 /**
  * Pasos del flujo de enrollment.
  * 'perfil' = vista del perfil (enrollment ya completado o estado actual).
+ * 'foto_perfil' = captura de foto de perfil (C-37) — entre consentimiento y biometria.
  */
 type PasoEnrollment =
   | 'cargando'
   | 'perfil'
   | 'consentimiento'
+  | 'foto_perfil'
   | 'biometria'
   | 'dni'
   | 'renovar_biometria';
@@ -46,6 +49,7 @@ export default function StudentProfile() {
   const navigate = useNavigate();
   const principal = useApp((s) => s.principal);
   const setEnrollmentStatus = useApp((s) => s.setEnrollmentStatus);
+  const setFotoPerfil = useApp((s) => s.setFotoPerfil);
 
   const [enrollment, setEnrollment] = useState<EstadoEnrollment | null>(null);
   const [paso, setPaso] = useState<PasoEnrollment>('cargando');
@@ -91,12 +95,33 @@ export default function StudentProfile() {
     if (acuse.via_alternativa) {
       // Vía alternativa: el perfil puede estar completo sin biometría
       setPaso('perfil');
+    } else if (!principal?.foto_perfil) {
+      // Task 7.5: sin foto de perfil → paso foto_perfil (C-37)
+      setPaso('foto_perfil');
     } else if (!estado.biometria?.captura_completada) {
-      // Continúa al paso de biometría
+      // Tiene foto pero no biometría → paso biometría
       setPaso('biometria');
     } else {
       setPaso('perfil');
     }
+  };
+
+  /**
+   * Task 7.3 — Handler al confirmar la foto de perfil (C-37).
+   * Guarda via api mock, actualiza el store, y avanza al paso de biometría.
+   */
+  const handleFotoCapturada = async (dataUrl: string) => {
+    await api.guardarFotoPerfil(dataUrl);
+    setFotoPerfil(dataUrl);
+    setPaso('biometria');
+  };
+
+  /**
+   * Task 7.4 — Handler al cancelar la foto de perfil (C-37).
+   * El paso NO bloquea el enrollment: si cancela, avanza a biometría igualmente.
+   */
+  const handleFotoCancelada = () => {
+    setPaso('biometria');
   };
 
   const handleBiometriaCapturada = async (_ref: ReferenciasBiometrica) => {
@@ -116,8 +141,12 @@ export default function StudentProfile() {
   };
 
   const handleIniciarEnrollment = () => {
+    // Task 7.6: navegar al paso correcto según estado actual
     if (!enrollment?.consentimiento) {
       setPaso('consentimiento');
+    } else if (!principal?.foto_perfil && !enrollment.consentimiento.via_alternativa) {
+      // Tiene consentimiento pero no foto → foto_perfil (C-37)
+      setPaso('foto_perfil');
     } else if (!enrollment.biometria?.captura_completada && !enrollment.consentimiento.via_alternativa) {
       setPaso('biometria');
     } else {
@@ -182,13 +211,56 @@ export default function StudentProfile() {
             <h1 className="font-headline text-headline-md text-on-surface tracking-tight">
               Consentimiento informado
             </h1>
+            {/* Task 7.8: foto suma un paso al total */}
             <p className="text-body-md text-on-surface-variant mt-xs">
-              Paso 1 de {ENABLE_DNI_SCAN ? '3' : '2'} — Leé y aceptá el uso de tus datos biométricos.
+              Paso 1 de {ENABLE_DNI_SCAN ? '4' : '3'} — Leé y aceptá el uso de tus datos biométricos.
             </p>
           </header>
           <EnrollmentConsentStep
             acuseActual={enrollment?.consentimiento ?? null}
             onConsentido={handleConsentido}
+          />
+        </div>
+      </StudentShell>
+    );
+  }
+
+  // Task 7.7: Paso foto de perfil (C-37) — entre consentimiento y biometría
+  if (paso === 'foto_perfil') {
+    return (
+      <StudentShell>
+        <div className="max-w-2xl mx-auto space-y-xl">
+          <header>
+            <button
+              onClick={() => setPaso('perfil')}
+              className="inline-flex items-center gap-xs text-label-md text-on-surface-variant hover:text-primary mb-md"
+            >
+              <Icon name="arrow_back" className="text-[18px]" />
+              Volver al perfil
+            </button>
+            <h1 className="font-headline text-headline-md text-on-surface tracking-tight">
+              Foto de perfil
+            </h1>
+            {/* Task 7.8: contador de pasos actualizado */}
+            <p className="text-body-md text-on-surface-variant mt-xs">
+              Paso 2 de {ENABLE_DNI_SCAN ? '4' : '3'} — Tu foto será usada como avatar en la plataforma.
+            </p>
+          </header>
+
+          {/* Nota de privacidad Ley 25.326 (D-8) */}
+          <div className="text-label-sm text-on-surface-variant bg-surface-container-low rounded-xl p-sm border border-outline-variant/30">
+            <span className="font-semibold">Privacidad (Ley 25.326):</span> La foto de perfil es
+            un dato personal con finalidad acotada (avatar en la UI). En esta demo se guarda solo
+            en memoria de la sesión. Server-side sería cifrada at-rest y eliminada al egreso.
+          </div>
+
+          {/* CameraSnapshotCapture para foto de perfil (oval) */}
+          <CameraSnapshotCapture
+            shape="oval"
+            instruction="Posicioná tu cara dentro del óvalo y presioná Capturar"
+            contextLabel="Foto de perfil"
+            onCapture={handleFotoCapturada}
+            onCancel={handleFotoCancelada}
           />
         </div>
       </StudentShell>
@@ -210,8 +282,9 @@ export default function StudentProfile() {
             <h1 className="font-headline text-headline-md text-on-surface tracking-tight">
               Captura biométrica de referencia
             </h1>
+            {/* Task 7.9: contador de pasos actualizado (foto suma un paso) */}
             <p className="text-body-md text-on-surface-variant mt-xs">
-              Paso 2 de {ENABLE_DNI_SCAN ? '3' : '2'} — Se realiza UNA sola vez. La referencia es reutilizable en todos tus exámenes.
+              Paso 3 de {ENABLE_DNI_SCAN ? '4' : '3'} — Se realiza UNA sola vez. La referencia es reutilizable en todos tus exámenes.
             </p>
           </header>
           <EnrollmentBiometricStep
@@ -269,7 +342,7 @@ export default function StudentProfile() {
               Verificación documental
             </h1>
             <p className="text-body-md text-on-surface-variant mt-xs">
-              Paso 3 de 3 — Opcional. El DNI refuerza la verificación pero no bloquea el perfil completo.
+              Paso 4 de 4 — Opcional. El escaneo del DNI (frente y dorso) refuerza la verificación pero no bloquea el perfil completo.
             </p>
           </header>
           <EnrollmentDniStep
@@ -299,9 +372,18 @@ export default function StudentProfile() {
         {/* Datos personales */}
         <Card>
           <div className="flex items-center gap-md mb-lg">
-            <div className="w-14 h-14 rounded-full bg-secondary-container text-on-secondary flex items-center justify-center font-headline text-headline-sm shrink-0">
-              {principal?.nombre.charAt(0) ?? '?'}
-            </div>
+            {/* Task 8.1: avatar condicional — foto circular si disponible, inicial si no */}
+            {principal?.foto_perfil ? (
+              <img
+                src={principal.foto_perfil}
+                className="w-14 h-14 rounded-full object-cover shrink-0"
+                alt={`Foto de perfil de ${principal.nombre}`}
+              />
+            ) : (
+              <div className="w-14 h-14 rounded-full bg-secondary-container text-on-secondary flex items-center justify-center font-headline text-headline-sm shrink-0">
+                {principal?.nombre.charAt(0) ?? '?'}
+              </div>
+            )}
             <div className="min-w-0">
               <p className="text-label-lg font-semibold text-on-surface">{principal?.nombre ?? '—'}</p>
               <p className="text-label-sm text-on-surface-variant">{principal?.roles.join(', ')}</p>
@@ -544,7 +626,7 @@ export default function StudentProfile() {
           {dniOk && enrollment?.dni ? (
             <div className="space-y-xs text-label-sm">
               <p className="text-on-surface-variant">
-                DNI registrado el {new Date(enrollment.dni.fecha_captura).toLocaleDateString('es-AR', {
+                DNI registrado (frente y dorso) el {new Date(enrollment.dni.fecha_captura).toLocaleDateString('es-AR', {
                   day: '2-digit', month: 'long', year: 'numeric',
                 })}.
               </p>
