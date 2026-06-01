@@ -679,6 +679,30 @@ C-01 → C-03 → C-04 → C-05 → C-06 → C-07 → C-08 → C-09 → C-10 →
   - `frontend/src/vision/liveness.ts` (ACTIVE_CHALLENGES, pickActiveChallenges)
   - `knowledge-base/12_biometria_y_liveness.md` (liveness híbrido, thresholds, ISO 30107-3)
 
+### [C-37] `foto-perfil-enrollment`
+- **Estado**: `[ ]` propuesto (validate --strict OK — 37 tasks)
+- **Scope**: **Foto de perfil como paso del enrollment del alumno** — (1) Componente compartido `CameraSnapshotCapture` (`frontend/src/ui/CameraSnapshotCapture.tsx`): overlay full-screen (portal a `document.body`, fondo blanco, estilo banco), `getUserMedia` + `canvas.drawImage` + `toDataURL`, marco-guía parametrizable (`shape: 'oval' | 'rect'` + `aspectRatio`), flujo capturar → preview → "Usar"/"Repetir", SIN MediaPipe, SIN RAF. Reutilizable por C-38 (DNI) con `shape='rect'` sin modificar el componente. (2) `Principal.foto_perfil?: string` en `types.ts`. (3) `api.guardarFotoPerfil(dataUrl)` mock + `setFotoPerfil` en el store Zustand. (4) Paso `'foto_perfil'` en `StudentProfile.tsx` ANTES de `'biometria'`, DESPUÉS de `'consentimiento'`. Paso NO bloqueante: cancelar avanza a biometría. (5) Avatar condicional en `StudentProfile` encabezado y `StaffShell` sidebar: foto circular si `foto_perfil` existe, inicial si no. Caps NEW: `camera-snapshot-capture`, `profile-photo-enrollment`. Caps MODIFIED (delta): `student-profile-shell` (nuevo paso, avatar, contadores de pasos).
+- **Dependencias**: `C-22` (perfil shell + paso de enrollment); `C-36` (patrón visual de overlay — referencia, no dependencia técnica)
+- **Governance**: MEDIO
+- **Leer antes**:
+  - `openspec/changes/c-37-foto-perfil-enrollment/` (proposal, design, specs/, tasks)
+  - `frontend/src/ui/BiometricCapture.tsx` (referencia visual del overlay — C-36)
+  - `knowledge-base/13_legal_y_cumplimiento_argentina.md` §Dato sensible §Ley 25.326
+  - `knowledge-base/05_reglas_de_negocio.md` §RN-CO
+
+### [C-38] `c-38-dni-frente-dorso-escaner`
+- **Estado**: `[ ]` propuesto (validate --strict OK — 33 tasks)
+- **Scope**: **Escaneo del DNI argentino FRENTE + DORSO con marco estilo escáner ID-1** — (1) Activar `ENABLE_DNI_SCAN` por defecto (`!== '0'`) para que el paso sea accesible en la demo sin configuración extra. (2) Refactorizar `EnrollmentDniStep` para reusar `CameraSnapshotCapture` (`shape='rect'`, `scannerCorners=true`, `aspectRatio=85.6/54`) con flujo secuencial frente → dorso; eliminar el `getUserMedia` propio. (3) Extender `EscaneDNI` (`types.ts`): campo `imagen` → `imagen_frente` + `imagen_dorso`. (4) Actualizar `api.guardarEscaneDNI(frente, dorso)` con la nueva firma de dos parámetros. (5) Agregar prop opcional `scannerCorners?: boolean` y `facingMode?: ConstrainDOMString` a `CameraSnapshotCapture` (compatible hacia atrás con C-37). (6) Actualizar contadores de pasos en `StudentProfile` (4 de 4 con DNI activo). DNI sigue OPCIONAL — no bloquea `perfil_completo`. Dato sensible (Ley 25.326): cifrado at-rest, finalidad acotada, eliminado al egreso. Caps NEW: `dni-scanner-dual-side`. Caps MODIFIED (delta): `exam-enrollment`, `camera-snapshot-capture`, `student-profile-shell`.
+- **Dependencias**: `C-22` (paso DNI base a refactorizar), `C-37` (`CameraSnapshotCapture` con `shape='rect'` a extender)
+- **Governance**: MEDIO
+- **Leer antes**:
+  - `openspec/changes/c-38-dni-frente-dorso-escaner/` (proposal, design, specs/, tasks)
+  - `frontend/src/screens/enrollment/EnrollmentDniStep.tsx` (paso DNI a refactorizar)
+  - `frontend/src/ui/CameraSnapshotCapture.tsx` (componente base C-37 a extender con scannerCorners + facingMode)
+  - `frontend/src/lib/types.ts` (EscaneDNI a extender)
+  - `frontend/src/lib/api.ts` (guardarEscaneDNI + ENABLE_DNI_SCAN)
+  - `knowledge-base/13_legal_y_cumplimiento_argentina.md` §Dato sensible §Ley 25.326
+
 ---
 
 ## Resumen
@@ -688,12 +712,12 @@ C-01 → C-03 → C-04 → C-05 → C-06 → C-07 → C-08 → C-09 → C-10 →
 | **0 — Fundaciones** | C-01, C-02, C-03 | 3× CRITICO (C-03 ★ Tier 1 BLOQUEANTE) |
 | **1 — MVP** | C-04…C-19 | 6 CRITICO, 8 ALTO, 2 MEDIO |
 | **2 — Refinamiento** | C-20 | 1 MEDIO |
-| **Refinamiento post-fundación** | C-21, C-22, C-23, C-24, C-25, C-26, C-27, C-28, C-29, C-30, C-31, C-32, C-33, C-34, C-35, C-36 | 6 ALTO, 6 MEDIO, 4 BAJO |
+| **Refinamiento post-fundación** | C-21, C-22, C-23, C-24, C-25, C-26, C-27, C-28, C-29, C-30, C-31, C-32, C-33, C-34, C-35, C-36, C-37, C-38 | 6 ALTO, 7 MEDIO, 5 BAJO |
 
-- **Total**: **36 changes** — 20 de la fundación (3 fases) + 16 post-fundación (capa frontend/demo, captura de actividad, consentimiento en capas, decisiones de producto, identidad institucional, lenguaje claro/glosario, UX/legibilidad del harness, motor de visión real en el harness, quick-fixes de presentación, harness cache UX, medidor de riesgo en harness, biometría perfil funcional, fixes detección cámara/mirada, verificación biométrica inmersiva, ver sección dedicada arriba).
-- **Camino crítico**: 11 changes (`C-01 → C-03 → C-04 → C-05 → C-06 → C-07 → C-08 → C-09 → C-10 → C-15 → C-16`). C-21…C-36 quedan **fuera** del camino crítico (refinamiento de demo, no MVP backend).
+- **Total**: **38 changes** — 20 de la fundación (3 fases) + 18 post-fundación (capa frontend/demo, captura de actividad, consentimiento en capas, decisiones de producto, identidad institucional, lenguaje claro/glosario, UX/legibilidad del harness, motor de visión real en el harness, quick-fixes de presentación, harness cache UX, medidor de riesgo en harness, biometría perfil funcional, fixes detección cámara/mirada, verificación biométrica inmersiva, foto de perfil en enrollment, escaneo DNI frente+dorso, ver sección dedicada arriba).
+- **Camino crítico**: 11 changes (`C-01 → C-03 → C-04 → C-05 → C-06 → C-07 → C-08 → C-09 → C-10 → C-15 → C-16`). C-21…C-38 quedan **fuera** del camino crítico (refinamiento de demo, no MVP backend).
 - **Gates de paralelismo**: 13 (GATE 0…GATE 12). Forks grandes en GATE 5, GATE 6 y GATE 9.
 - **Primer change recomendado**: `C-01` (acuerdo-proctoring-dpia) — gate legal que junto a `C-02` bloquea todo el desarrollo. El primer change de **código** es `C-03` (poc-carga-mensajeria, Tier 1, BLOQUEANTE).
-- **Post-fundación**: el detalle y el porqué viven también en **engram** (`activeexam/refinamiento-frontend-v2`). Orden de aplicación sugerido: **C-21 → C-22 → C-26** (perfil cuelga del portal; el acuse por-examen de C-26 cuelga de la inscripción de C-21 + el consentimiento de C-22); **C-23 → C-25** (C-25 extiende el harness y cablea los detectores de navegador); C-24 independiente; **C-27 → C-28 → C-29 → C-30 → C-32 → C-33 → C-34 → C-35 → C-36 pueden correr en secuencia** (C-28 inteligibilidad; C-29 legibilidad/banner; C-30 motor real en el harness con overlay canvas; C-32 cache + UX amigable del harness; C-33 medidor de riesgo en harness; C-34 biometría perfil funcional; C-35 fixes bugs detección cámara + mirada; C-36 verificación biométrica inmersiva con componente compartido).
+- **Post-fundación**: el detalle y el porqué viven también en **engram** (`activeexam/refinamiento-frontend-v2`). Orden de aplicación sugerido: **C-21 → C-22 → C-26** (perfil cuelga del portal; el acuse por-examen de C-26 cuelga de la inscripción de C-21 + el consentimiento de C-22); **C-23 → C-25** (C-25 extiende el harness y cablea los detectores de navegador); C-24 independiente; **C-27 → C-28 → C-29 → C-30 → C-32 → C-33 → C-34 → C-35 → C-36 → C-37 → C-38 pueden correr en secuencia** (C-28 inteligibilidad; C-29 legibilidad/banner; C-30 motor real en el harness con overlay canvas; C-32 cache + UX amigable del harness; C-33 medidor de riesgo en harness; C-34 biometría perfil funcional; C-35 fixes bugs detección cámara + mirada; C-36 verificación biométrica inmersiva con componente compartido; C-37 foto de perfil en enrollment con componente snapshot reutilizable; C-38 escaneo DNI frente+dorso con marco escáner ID-1).
 
 Para arrancar: `/opsx:propose C-01-acuerdo-proctoring-dpia`

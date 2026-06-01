@@ -33,6 +33,11 @@ interface AppState {
   resetSesion: () => void;
   /** Actualiza el estado de enrollment en el store (llamar tras cada api.getEnrollment()). */
   setEnrollmentStatus: (e: EstadoEnrollment) => void;
+  /**
+   * Actualiza la foto de perfil del principal en el store (C-37).
+   * Sin error si principal es null.
+   */
+  setFotoPerfil: (dataUrl: string) => void;
 }
 
 export const useApp = create<AppState>((set) => ({
@@ -52,4 +57,7 @@ export const useApp = create<AppState>((set) => ({
   addScore: (delta) => set((s) => ({ scorePropio: Math.min(100, s.scorePropio + delta) })),
   resetSesion: () => set({ anomaliasVivo: [], scorePropio: 0, examenActivo: null }),
   setEnrollmentStatus: (e) => set({ enrollmentStatus: e, isProfileComplete: e.perfil_completo }),
+  setFotoPerfil: (dataUrl) => set((s) => ({
+    principal: s.principal ? { ...s.principal, foto_perfil: dataUrl } : s.principal,
+  })),
 }));

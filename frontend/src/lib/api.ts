@@ -163,9 +163,9 @@ let MIS_INSCRIPCIONES: Inscripcion[] = [
 export const BIOMETRIC_VALIDITY_MONTHS: number =
   Number(import.meta.env.VITE_BIOMETRIC_VALIDITY_MONTHS) || 24;
 
-/** Feature flag para habilitar el escaneo de DNI (opcional, fase posterior). */
+/** Feature flag para el escaneo de DNI (opcional). Default ACTIVO; se desactiva con VITE_ENABLE_DNI_SCAN=0. */
 export const ENABLE_DNI_SCAN: boolean =
-  import.meta.env.VITE_ENABLE_DNI_SCAN === '1';
+  import.meta.env.VITE_ENABLE_DNI_SCAN !== '0';
 
 /** Versión del motor de visión (para metadatos de la referencia). */
 const VISION_ENGINE_VERSION = 'mediapipe-face-mesh-v1';
@@ -623,11 +623,12 @@ export const api = {
    * Server-side: cifrado AES-256-GCM, finalidad acotada a verificación de identidad,
    * eliminado al egreso, holds legales difieren la eliminación.
    */
-  async guardarEscaneDNI(imagen: string): Promise<EscaneDNI> {
+  async guardarEscaneDNI(frente: string, dorso: string): Promise<EscaneDNI> {
     await delay(400);
     const escan: EscaneDNI = {
       captura_completada: true,
-      imagen,
+      imagen_frente: frente,
+      imagen_dorso: dorso,
       fecha_captura: new Date().toISOString(),
     };
     enrollmentAlumno = recalcularPerfilCompleto({ ...enrollmentAlumno, dni: escan });
@@ -655,6 +656,19 @@ export const api = {
   async resetearReferenciaBiometrica(): Promise<void> {
     await delay(150);
     enrollmentAlumno = recalcularPerfilCompleto({ ...enrollmentAlumno, biometria: null });
+  },
+
+  /**
+   * Persiste la foto de perfil del alumno (mock, C-37).
+   *
+   * DATO PERSONAL (Ley 25.326): finalidad acotada (avatar en la UI).
+   * En producción: cifrado AES-256-GCM at-rest, eliminado al egreso del estudiante.
+   * Demo: solo en memoria de la sesión.
+   */
+  async guardarFotoPerfil(dataUrl: string): Promise<void> {
+    await delay(300);
+    // Actualiza el registro in-memory del principal de estudiante
+    PRINCIPALES.estudiante = { ...PRINCIPALES.estudiante, foto_perfil: dataUrl };
   },
 };
 

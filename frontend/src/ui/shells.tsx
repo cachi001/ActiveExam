@@ -94,9 +94,18 @@ export function StaffShell({ children, nav, title }: { children: ReactNode; nav:
         </nav>
         <div className="p-md border-t border-outline-variant/40">
           <div className="flex items-center gap-sm px-sm py-sm rounded-xl bg-surface-container">
-            <div className="w-9 h-9 rounded-full bg-secondary-container text-on-secondary flex items-center justify-center font-semibold">
-              {principal?.nombre.charAt(0) ?? '?'}
-            </div>
+            {/* Task 9.1: avatar condicional — foto circular si foto_perfil existe, inicial si no */}
+            {principal?.foto_perfil ? (
+              <img
+                src={principal.foto_perfil}
+                className="w-9 h-9 rounded-full object-cover"
+                alt={`Foto de ${principal?.nombre}`}
+              />
+            ) : (
+              <div className="w-9 h-9 rounded-full bg-secondary-container text-on-secondary flex items-center justify-center font-semibold">
+                {principal?.nombre.charAt(0) ?? '?'}
+              </div>
+            )}
             <div className="min-w-0 flex-1">
               <div className="text-label-md text-on-surface font-semibold truncate">{principal?.nombre ?? 'Invitado'}</div>
               <div className="text-label-sm text-on-surface-variant truncate">{principal?.roles.join(', ')}</div>
