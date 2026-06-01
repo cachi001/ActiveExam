@@ -595,6 +595,19 @@ C-01 → C-03 → C-04 → C-05 → C-06 → C-07 → C-08 → C-09 → C-10 →
   - `knowledge-base/11_ia_y_vision.md` §Motor abstraído §stub MediaPipe
   - **engram** `activeexam/refinamiento-frontend-v2`
 
+### [C-30] `vision-real-harness`
+- **Estado**: `[ ]` propuesto (validate --strict OK — 34 tasks)
+- **Scope**: **Motor de visión MediaPipe REAL en el harness de diagnóstico** — cablea `@mediapipe/tasks-vision` Tasks API (FaceDetector + FaceLandmarker 468 landmarks/iris + PoseLandmarker) **únicamente en el harness** `/admin/detection-test`, para que el admin vea detecciones reales: múltiples rostros, gaze real, pose real. El flujo de examen sigue con señales simuladas, sin cambios. Agrega **overlay canvas** sobre el video con bounding boxes y landmarks para visualizar en tiempo real qué detecta la cámara. Los modelos `.task` se sirven **localmente** (`frontend/public/mediapipe/`) nunca desde CDN externo (soberanía de datos). Cargados con **import dinámico (lazy)** para no inflar el bundle inicial. **Actualiza el banner de C-29** haciéndolo condicional: `SIMULADO` / `CARGANDO` / `VISIÓN REAL (MediaPipe)` / `ERROR DE CARGA`. Fallback honesto: error explícito en UI si los modelos no cargan. Caps NEW: `real-vision-engine-harness`, `vision-overlay-canvas`, `harness-model-loader`. Caps MODIFIED (delta): `harness-legibility-layer` (C-29 — banner condicional), `admin-detection-test-harness` (C-23 — señales reales).
+- **Dependencias**: `C-23` (harness base), `C-25` (pipeline completo con detectores de entorno), `C-29` (banner legibilidad)
+- **Governance**: ALTO
+- **Leer antes**:
+  - `openspec/changes/c-30-vision-real-harness/` (proposal, design, specs/, tasks)
+  - `openspec/changes/c-23-admin-mediapipe-test-harness/` (harness base)
+  - `openspec/changes/c-29-ux-admin-harness-legible/` (banner que se modifica)
+  - `knowledge-base/11_ia_y_vision.md` §Detectores §Ejecución y optimización §DD-17
+  - `knowledge-base/13_legal_y_cumplimiento_argentina.md` §Soberanía de datos
+  - `knowledge-base/09_decisiones_y_supuestos.md` §DD-17
+
 ---
 
 ## Resumen
@@ -604,12 +617,12 @@ C-01 → C-03 → C-04 → C-05 → C-06 → C-07 → C-08 → C-09 → C-10 →
 | **0 — Fundaciones** | C-01, C-02, C-03 | 3× CRITICO (C-03 ★ Tier 1 BLOQUEANTE) |
 | **1 — MVP** | C-04…C-19 | 6 CRITICO, 8 ALTO, 2 MEDIO |
 | **2 — Refinamiento** | C-20 | 1 MEDIO |
-| **Refinamiento post-fundación** | C-21, C-22, C-23, C-24, C-25, C-26, C-27, C-28, C-29 | 4 ALTO, 3 MEDIO, 2 BAJO |
+| **Refinamiento post-fundación** | C-21, C-22, C-23, C-24, C-25, C-26, C-27, C-28, C-29, C-30 | 5 ALTO, 3 MEDIO, 2 BAJO |
 
-- **Total**: **29 changes** — 20 de la fundación (3 fases) + 9 post-fundación (capa frontend/demo, captura de actividad, consentimiento en capas, decisiones de producto, identidad institucional, lenguaje claro/glosario, y UX/legibilidad del harness, ver sección dedicada arriba).
-- **Camino crítico**: 11 changes (`C-01 → C-03 → C-04 → C-05 → C-06 → C-07 → C-08 → C-09 → C-10 → C-15 → C-16`). C-21…C-29 quedan **fuera** del camino crítico (refinamiento de demo, no MVP backend).
+- **Total**: **30 changes** — 20 de la fundación (3 fases) + 10 post-fundación (capa frontend/demo, captura de actividad, consentimiento en capas, decisiones de producto, identidad institucional, lenguaje claro/glosario, UX/legibilidad del harness, y motor de visión real en el harness, ver sección dedicada arriba).
+- **Camino crítico**: 11 changes (`C-01 → C-03 → C-04 → C-05 → C-06 → C-07 → C-08 → C-09 → C-10 → C-15 → C-16`). C-21…C-30 quedan **fuera** del camino crítico (refinamiento de demo, no MVP backend).
 - **Gates de paralelismo**: 13 (GATE 0…GATE 12). Forks grandes en GATE 5, GATE 6 y GATE 9.
 - **Primer change recomendado**: `C-01` (acuerdo-proctoring-dpia) — gate legal que junto a `C-02` bloquea todo el desarrollo. El primer change de **código** es `C-03` (poc-carga-mensajeria, Tier 1, BLOQUEANTE).
-- **Post-fundación**: el detalle y el porqué viven también en **engram** (`activeexam/refinamiento-frontend-v2`). Orden de aplicación sugerido: **C-21 → C-22 → C-26** (perfil cuelga del portal; el acuse por-examen de C-26 cuelga de la inscripción de C-21 + el consentimiento de C-22); **C-23 → C-25** (C-25 extiende el harness y cablea los detectores de navegador); C-24 independiente; **C-27 → C-28 → C-29 pueden correr en secuencia** (sin dependencias de backend; C-28 agrega inteligibilidad; C-29 agrega legibilidad del harness y reframe Login).
+- **Post-fundación**: el detalle y el porqué viven también en **engram** (`activeexam/refinamiento-frontend-v2`). Orden de aplicación sugerido: **C-21 → C-22 → C-26** (perfil cuelga del portal; el acuse por-examen de C-26 cuelga de la inscripción de C-21 + el consentimiento de C-22); **C-23 → C-25** (C-25 extiende el harness y cablea los detectores de navegador); C-24 independiente; **C-27 → C-28 → C-29 → C-30 pueden correr en secuencia** (C-28 inteligibilidad; C-29 legibilidad/banner; C-30 motor real en el harness con overlay canvas).
 
 Para arrancar: `/opsx:propose C-01-acuerdo-proctoring-dpia`
