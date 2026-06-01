@@ -618,6 +618,18 @@ C-01 → C-03 → C-04 → C-05 → C-06 → C-07 → C-08 → C-09 → C-10 →
   - `frontend/src/ui/shells.tsx` (header de staff)
   - `frontend/src/screens/Login.tsx` (nav del login)
 
+### [C-32] `harness-motor-cache-ux`
+- **Estado**: `[ ]` propuesto (validate --strict OK — 29 tasks)
+- **Scope**: **4 mejoras al harness `/admin/detection-test`** — (1) **Cache del motor WASM**: `harnessEngineLoader.ts` cachea la instancia de `RealMediaPipeVisionEngine` ya inicializada a nivel módulo; los ciclos Iniciar/Detener posteriores reutilizan el motor sin recargar WASM (~25–50 MB). Nuevo export `disposeRealEngine()` para limpieza explícita al navegar fuera. (2) **Spinner amigable**: el banner de estado `'loading'` reemplaza la jerga técnica ("WASM", "MediaPipe", "MB") por spinner animado + "Preparando la cámara…" para personal no técnico. (3) **Labels de umbrales en lenguaje claro**: los 5 campos de configuración (`face_absent_ms`, `multiple_faces_frames`, `gaze_deviation_threshold`, `gaze_sustained_ms`, `gaze_fixation_tolerance`) muestran nombres en español comprensible con la clave técnica como referencia secundaria. (4) **Flujo de permiso Window Management**: botón "Detectar pantallas" que solicita el permiso `window-management` con gesto del usuario, con mensajería clara para los casos `unsupported`, `denied` y `granted`. Caps NEW: `harness-engine-cache`, `harness-loading-ux`, `harness-threshold-labels`, `window-management-permission-flow`. Caps MODIFIED (delta): `harness-model-loader` (C-30), `admin-detection-test-harness` (C-23), `browser-context-detectors` (C-25).
+- **Dependencias**: `C-23` (harness base), `C-25` (detectores de contexto), `C-29` (banner legibilidad), `C-30` (motor real + loader)
+- **Governance**: MEDIO
+- **Leer antes**:
+  - `openspec/changes/c-32-harness-motor-cache-ux/` (proposal, design, specs/, tasks)
+  - `frontend/src/vision/harnessEngineLoader.ts` (loader actual a modificar)
+  - `frontend/src/screens/AdminDetectionHarness.tsx` (harness: banner ~695, umbrales ~1158, monitor polling ~340)
+  - `frontend/src/proctoring/contextDetectors.ts` (detectExtraMonitor a extender)
+  - `frontend/src/ui/Term.tsx` (componente Term de C-28, reutilizable para claves técnicas)
+
 ---
 
 ## Resumen
@@ -627,12 +639,12 @@ C-01 → C-03 → C-04 → C-05 → C-06 → C-07 → C-08 → C-09 → C-10 →
 | **0 — Fundaciones** | C-01, C-02, C-03 | 3× CRITICO (C-03 ★ Tier 1 BLOQUEANTE) |
 | **1 — MVP** | C-04…C-19 | 6 CRITICO, 8 ALTO, 2 MEDIO |
 | **2 — Refinamiento** | C-20 | 1 MEDIO |
-| **Refinamiento post-fundación** | C-21, C-22, C-23, C-24, C-25, C-26, C-27, C-28, C-29, C-30, C-31 | 5 ALTO, 3 MEDIO, 3 BAJO |
+| **Refinamiento post-fundación** | C-21, C-22, C-23, C-24, C-25, C-26, C-27, C-28, C-29, C-30, C-31, C-32 | 5 ALTO, 4 MEDIO, 3 BAJO |
 
-- **Total**: **31 changes** — 20 de la fundación (3 fases) + 11 post-fundación (capa frontend/demo, captura de actividad, consentimiento en capas, decisiones de producto, identidad institucional, lenguaje claro/glosario, UX/legibilidad del harness, motor de visión real en el harness, quick-fixes de presentación, ver sección dedicada arriba).
-- **Camino crítico**: 11 changes (`C-01 → C-03 → C-04 → C-05 → C-06 → C-07 → C-08 → C-09 → C-10 → C-15 → C-16`). C-21…C-31 quedan **fuera** del camino crítico (refinamiento de demo, no MVP backend).
+- **Total**: **32 changes** — 20 de la fundación (3 fases) + 12 post-fundación (capa frontend/demo, captura de actividad, consentimiento en capas, decisiones de producto, identidad institucional, lenguaje claro/glosario, UX/legibilidad del harness, motor de visión real en el harness, quick-fixes de presentación, harness cache UX, ver sección dedicada arriba).
+- **Camino crítico**: 11 changes (`C-01 → C-03 → C-04 → C-05 → C-06 → C-07 → C-08 → C-09 → C-10 → C-15 → C-16`). C-21…C-32 quedan **fuera** del camino crítico (refinamiento de demo, no MVP backend).
 - **Gates de paralelismo**: 13 (GATE 0…GATE 12). Forks grandes en GATE 5, GATE 6 y GATE 9.
 - **Primer change recomendado**: `C-01` (acuerdo-proctoring-dpia) — gate legal que junto a `C-02` bloquea todo el desarrollo. El primer change de **código** es `C-03` (poc-carga-mensajeria, Tier 1, BLOQUEANTE).
-- **Post-fundación**: el detalle y el porqué viven también en **engram** (`activeexam/refinamiento-frontend-v2`). Orden de aplicación sugerido: **C-21 → C-22 → C-26** (perfil cuelga del portal; el acuse por-examen de C-26 cuelga de la inscripción de C-21 + el consentimiento de C-22); **C-23 → C-25** (C-25 extiende el harness y cablea los detectores de navegador); C-24 independiente; **C-27 → C-28 → C-29 → C-30 pueden correr en secuencia** (C-28 inteligibilidad; C-29 legibilidad/banner; C-30 motor real en el harness con overlay canvas).
+- **Post-fundación**: el detalle y el porqué viven también en **engram** (`activeexam/refinamiento-frontend-v2`). Orden de aplicación sugerido: **C-21 → C-22 → C-26** (perfil cuelga del portal; el acuse por-examen de C-26 cuelga de la inscripción de C-21 + el consentimiento de C-22); **C-23 → C-25** (C-25 extiende el harness y cablea los detectores de navegador); C-24 independiente; **C-27 → C-28 → C-29 → C-30 → C-32 pueden correr en secuencia** (C-28 inteligibilidad; C-29 legibilidad/banner; C-30 motor real en el harness con overlay canvas; C-32 cache + UX amigable del harness).
 
 Para arrancar: `/opsx:propose C-01-acuerdo-proctoring-dpia`
