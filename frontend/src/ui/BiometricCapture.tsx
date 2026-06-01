@@ -418,6 +418,7 @@ export function BiometricCapture({
             muted
             playsInline
             className="absolute inset-0 w-full h-full object-cover"
+            style={{ transform: 'scaleX(-1)' }}
             aria-label="Vista de cámara para captura biométrica"
           />
 
