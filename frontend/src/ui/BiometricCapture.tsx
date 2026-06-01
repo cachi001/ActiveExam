@@ -364,19 +364,19 @@ export function BiometricCapture({
   if (fase === 'error') {
     return createPortal(
       // Task 6.1: contenedor raíz del overlay (portal a body — escapa el stacking context del shell)
-      <div ref={containerRef} className="fixed inset-0 z-50 bg-neutral-950 flex flex-col items-center justify-center">
-        {/* Task 6.2: botón cancelar discreto */}
+      <div ref={containerRef} className="fixed inset-0 z-[60] bg-white flex flex-col items-center justify-center px-6">
+        {/* Cancelar discreto */}
         <button
           onClick={handleCancel}
-          className="absolute top-4 right-4 text-sm text-white/60 hover:text-white/90 transition-colors px-3 py-1"
+          className="absolute top-4 right-4 inline-flex items-center gap-1 text-sm text-neutral-500 hover:text-neutral-900 transition-colors px-3 py-1.5 rounded-full"
         >
-          Cancelar ×
+          Cancelar <Icon name="close" className="text-[18px]" />
         </button>
-        <div className="text-center space-y-md px-lg">
+        <div className="text-center space-y-md px-lg max-w-xs">
           <Icon name="videocam_off" className="text-error text-[48px]" fill />
-          <p className="font-headline text-title-lg text-white">Sin acceso a la cámara</p>
-          <p className="text-body-sm text-white/70">{errorMsg}</p>
-          <p className="text-label-sm text-white/60">
+          <p className="font-headline text-title-lg text-neutral-900">Sin acceso a la cámara</p>
+          <p className="text-body-sm text-neutral-600">{errorMsg}</p>
+          <p className="text-label-sm text-neutral-500">
             Habilitá el permiso de cámara en tu navegador y volvé a intentarlo.
           </p>
         </div>
@@ -386,121 +386,112 @@ export function BiometricCapture({
   }
 
   return createPortal(
-    // Task 6.1: contenedor raíz del overlay — fixed inset-0 z-50 (portal a body — escapa el stacking context del shell)
+    // Overlay full-screen, fondo claro estilo app de banco (portal a body — escapa el stacking context del shell)
     <div
       ref={containerRef}
-      className="fixed inset-0 z-50 bg-neutral-950 flex flex-col items-center justify-center"
+      className="fixed inset-0 z-[60] bg-white flex flex-col items-center justify-center px-6"
     >
-      {/* Task 6.2: botón cancelar discreto — absolute top-4 right-4 */}
+      {/* Cancelar — discreto, arriba a la derecha */}
       <button
         onClick={handleCancel}
-        className="absolute top-4 right-4 text-sm text-white/60 hover:text-white/90 transition-colors px-3 py-1"
+        className="absolute top-4 right-4 inline-flex items-center gap-1 text-sm text-neutral-500 hover:text-neutral-900 transition-colors px-3 py-1.5 rounded-full"
       >
-        Cancelar ×
+        Cancelar <Icon name="close" className="text-[18px]" />
       </button>
 
-      {/* Task 6.8: etiqueta contextual opcional */}
+      {/* Etiqueta contextual opcional */}
       {contextLabel && (
-        <p className="text-label-sm text-white/60 mb-md text-center px-lg">{contextLabel}</p>
+        <p className="text-sm text-neutral-500 mb-6 text-center max-w-xs">{contextLabel}</p>
       )}
 
-      {/* Task 6.3 + 6.4 + 6.5 + 6.6: óvalo con video */}
-      <div className="relative flex items-center justify-center">
-        {/* Óvalo: aspect-[3/4], max-w-xs, max-h-[70vh] */}
-        <div
-          className={`relative aspect-[3/4] w-full max-w-xs overflow-hidden rounded-full bg-neutral-800`}
-          style={{ maxHeight: '70vh' }}
-        >
+      {/* Óvalo con la cámara — ancho EXPLÍCITO para que no colapse */}
+      <div className="relative" style={{ width: 'min(80vw, 300px)' }}>
+        <div className="relative w-full aspect-[3/4] overflow-hidden rounded-[50%] bg-neutral-100 shadow-xl">
           {/* Video de cámara */}
           <video
             ref={videoRef}
+            autoPlay
             muted
             playsInline
             className="absolute inset-0 w-full h-full object-cover"
             aria-label="Vista de cámara para captura biométrica"
           />
 
-          {/* Task 6.5: spinner de carga del motor */}
+          {/* Spinner de carga del motor */}
           {!motorListo && !motorError && !fallbackManual && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60">
-              <Icon name="progress_activity" className="ae-spin text-white text-[32px]" />
-              <span className="text-label-sm text-white/80 mt-sm">Preparando verificación…</span>
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/75 backdrop-blur-sm">
+              <Icon name="progress_activity" className="ae-spin text-primary text-[32px]" />
+              <span className="text-sm text-neutral-600 mt-2">Preparando verificación…</span>
             </div>
           )}
+
         </div>
 
-        {/* Task 6.4: anillo del óvalo con estado visual */}
+        {/* Anillo de estado del óvalo */}
         <div
-          className={`absolute inset-0 rounded-full border-2 pointer-events-none ${
+          className={`absolute inset-0 rounded-[50%] border-4 pointer-events-none ${
             todosResueltos
-              ? 'border-green-400'
+              ? 'border-green-500'
               : motorListo && !fallbackManual
-                ? 'border-blue-400 scanning-ring'
-                : 'border-dashed border-white/30'
+                ? 'border-blue-500 scanning-ring'
+                : 'border-dashed border-neutral-300'
           }`}
         />
-
-        {/* Task 6.6: indicador "CÁMARA EN VIVO" */}
-        <div className="absolute bottom-3 left-3 inline-flex items-center gap-base bg-error text-on-error text-label-sm font-bold px-sm py-base rounded-full z-10">
-          <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
-          CÁMARA EN VIVO
-        </div>
       </div>
 
-      {/* Task 6.10: banner de fallback manual */}
+      {/* Banner de fallback manual */}
       {fallbackManual && (
-        <div className="mt-md mx-lg w-full max-w-xs bg-amber-900/50 border border-amber-600/30 rounded-xl px-sm py-xs text-center">
-          <p className="text-label-sm text-amber-200">
+        <div className="mt-4 w-full max-w-xs bg-amber-50 border border-amber-300 rounded-xl px-3 py-2 text-center">
+          <p className="text-sm text-amber-800">
             Motor de visión no disponible — <strong>modo de prueba manual</strong>
           </p>
         </div>
       )}
 
-      {/* Task 6.7: sección inferior — paso actual + dots de progreso */}
-      <div className="mt-lg text-center space-y-sm px-lg w-full max-w-xs">
+      {/* Sección inferior — paso actual + progreso */}
+      <div className="mt-8 text-center space-y-3 w-full max-w-xs">
         {/* Texto del paso actual */}
         <p className={`font-headline text-2xl font-bold ${
-          todosResueltos ? 'text-green-400' : 'text-white'
+          todosResueltos ? 'text-green-600' : 'text-neutral-900'
         }`}>
           {todosResueltos ? '¡Listo!' : retoActualLabel}
         </p>
 
         {/* Dots de progreso + contador */}
         {totalDesafios > 0 && (
-          <div className="flex items-center justify-center gap-sm">
+          <div className="flex items-center justify-center gap-2">
             {desafios.map((id) => (
               <span
                 key={id}
-                className={`text-lg ${resueltos.includes(id) ? 'text-green-400' : 'text-white/40'}`}
+                className={`text-lg ${resueltos.includes(id) ? 'text-green-600' : 'text-neutral-300'}`}
               >
                 {resueltos.includes(id) ? '●' : '○'}
               </span>
             ))}
-            <span className="text-label-sm text-white/60 ml-xs">
+            <span className="text-sm text-neutral-500 ml-1">
               {totalResueltos} / {totalDesafios}
             </span>
           </div>
         )}
 
-        {/* Task 6.11: grilla de botones de retos en fallback manual */}
+        {/* Grilla de botones de retos en fallback manual */}
         {fallbackManual && totalDesafios > 0 && (
-          <div className="grid grid-cols-1 gap-sm mt-sm">
+          <div className="grid grid-cols-1 gap-2 mt-2">
             {desafios.map((id) => {
               const hecho = resueltos.includes(id);
               return (
-                // Task 5.2: botones habilitados y clicables en fallback
                 <button
                   key={id}
                   disabled={hecho}
                   onClick={() => resolverRetoManual(id)}
-                  className={`flex items-center gap-sm p-sm rounded-xl border transition-all ${
+                  className={`flex items-center gap-2 p-2 rounded-xl border transition-all ${
                     hecho
-                      ? 'bg-green-900/50 border-green-600/30 text-green-400 cursor-default'
-                      : 'bg-white/10 border-white/20 text-white hover:bg-white/20 cursor-pointer'
+                      ? 'bg-green-50 border-green-300 text-green-700 cursor-default'
+                      : 'bg-neutral-50 border-neutral-300 text-neutral-800 hover:bg-neutral-100 cursor-pointer'
                   }`}
                 >
                   <Icon name={hecho ? 'check_circle' : 'gesture'} fill={hecho} />
-                  <span className="text-label-md font-semibold">{getLabelForChallenge(id)}</span>
+                  <span className="text-sm font-semibold">{getLabelForChallenge(id)}</span>
                 </button>
               );
             })}
