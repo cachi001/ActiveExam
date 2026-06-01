@@ -22,6 +22,7 @@ import { useApp } from '../lib/store';
 import { SEVERIDAD_LABEL, TIPO_EVENTO_LABEL } from '../lib/api';
 import { Term } from '../ui/Term';
 import type { Severidad } from '../lib/types';
+import { PESO_SCORE } from '../proctoring/riskWeights';
 import VisionOverlay from '../ui/VisionOverlay';
 
 // Visión — reutilizar sin duplicar (C-11, DD-17)
@@ -206,6 +207,31 @@ const SEVERITY_BADGE_COLORS: Record<Severidad, string> = {
 };
 
 // ---------------------------------------------------------------------------
+// C-33: Helpers de color del gauge de riesgo
+// ---------------------------------------------------------------------------
+
+/**
+ * Devuelve la clase Tailwind de fondo para la barra de progreso del gauge.
+ * - score >= threshold → rojo (bg-error)
+ * - score >= threshold * 0.7 → amarillo (bg-warning)
+ * - por defecto → verde (bg-success)
+ */
+function gaugeColor(score: number, threshold: number): string {
+  if (score >= threshold) return 'bg-error';
+  if (score >= threshold * 0.7) return 'bg-warning';
+  return 'bg-success';
+}
+
+/**
+ * Devuelve la clase Tailwind de color de texto para el porcentaje del gauge.
+ */
+function gaugeTextColor(score: number, threshold: number): string {
+  if (score >= threshold) return 'text-error';
+  if (score >= threshold * 0.7) return 'text-warning';
+  return 'text-success';
+}
+
+// ---------------------------------------------------------------------------
 // Componente principal
 // ---------------------------------------------------------------------------
 
@@ -218,6 +244,10 @@ export default function AdminDetectionHarness() {
   const [harnessState, setHarnessState] = useState<HarnessState>('idle');
   const [sessionStart, setSessionStart] = useState<number>(0);
   const [elapsed, setElapsed] = useState(0); // segundos desde inicio (para "Sin eventos aún")
+
+  // ------ C-33: Medidor de riesgo ------
+  const [harnessScore, setHarnessScore] = useState(0);
+  const [riskThreshold, setRiskThreshold] = useState(60);
 
   // ------ C-30: Estado del motor de visión ------
   const [engineMode, setEngineMode] = useState<EngineMode>('simulated');
@@ -421,6 +451,9 @@ export default function AdminDetectionHarness() {
       if (prev[rawEvent.tipo]) return prev; // ya capturado
       return { ...prev, [rawEvent.tipo]: { capturedAt: Date.now(), severidad: rawEvent.severidad } };
     });
+
+    // C-33: acumular score de riesgo diagnóstico (setter funcional — sin stale closure)
+    setHarnessScore((prev) => Math.min(100, prev + (PESO_SCORE[rawEvent.severidad as Severidad] ?? 0)));
 
     // Registrar en log local
     const seqId = String(logSeqRef.current++);
@@ -1389,6 +1422,84 @@ export default function AdminDetectionHarness() {
                   title="Restaurar valores por defecto"
                 >
                   Default
+                </Button>
+              </div>
+            </Card>
+
+            {/* ================================================================
+                C-33: MEDIDOR DE RIESGO DIAGNÓSTICO
+                Estado local — no modifica store.scorePropio (D-1).
+                Semántica L2.5: prioriza para revisión humana, NUNCA sanciona.
+            ================================================================ */}
+            <Card className="space-y-md">
+              <SectionTitle sub="Score acumulado de esta sesión de diagnóstico">
+                Medidor de riesgo
+              </SectionTitle>
+
+              {/* Gauge — barra de progreso */}
+              <div className="space-y-sm">
+                <div className="flex items-center justify-between gap-sm">
+                  <span className="text-label-sm text-on-surface-variant">Score acumulado</span>
+                  <span className={`font-headline text-headline-sm font-bold ${gaugeTextColor(harnessScore, riskThreshold)}`}>
+                    {harnessScore}%
+                  </span>
+                </div>
+                <div className="bg-surface-container-high rounded-full h-3 overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-300 ${gaugeColor(harnessScore, riskThreshold)}`}
+                    style={{ width: `${harnessScore}%` }}
+                    role="progressbar"
+                    aria-valuenow={harnessScore}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-label="Score de riesgo acumulado"
+                  />
+                </div>
+              </div>
+
+              {/* Banner de umbral superado — semántica L2.5 explícita */}
+              {harnessScore >= riskThreshold && (
+                <div className="flex items-start gap-sm p-sm rounded-xl bg-error-container text-on-error-container border border-error/30" role="alert">
+                  <Icon name="flag" className="text-[18px] shrink-0 mt-px text-error" fill />
+                  <span className="text-label-sm font-semibold">
+                    Superaría el umbral — priorizaría para revisión humana
+                  </span>
+                </div>
+              )}
+
+              {/* Input de umbral configurable */}
+              <div className="space-y-base">
+                <label>
+                  <span className="text-label-sm font-semibold text-on-surface block">
+                    Umbral de riesgo (%)
+                  </span>
+                  <span className="text-[11px] text-on-surface-variant">
+                    Cuando el score supera este valor, la sesión priorizaría revisión humana.
+                  </span>
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={riskThreshold}
+                  onChange={(e) => {
+                    const raw = parseInt(e.target.value, 10);
+                    const clamped = isNaN(raw) ? 1 : Math.max(1, Math.min(100, raw));
+                    setRiskThreshold(clamped);
+                  }}
+                  className="w-full px-sm py-base text-label-md rounded-xl border border-outline-variant bg-surface-container-lowest outline-none font-mono focus:border-primary-container"
+                />
+              </div>
+
+              {/* Botón Resetear riesgo — independiente del pipeline */}
+              <div className="pt-sm border-t border-outline-variant/40">
+                <Button
+                  variant="outline"
+                  icon="restart_alt"
+                  onClick={() => setHarnessScore(0)}
+                  className="w-full"
+                >
+                  Resetear riesgo
                 </Button>
               </div>
             </Card>
