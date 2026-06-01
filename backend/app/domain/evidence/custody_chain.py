@@ -1,11 +1,21 @@
 """Cadena de custodia de 4 etapas acumulativas (PURO, RN-CC-02/03, DD-07).
 
-Materializa el Flujo 4 como logica de dominio pura (stdlib): hash SHA-256 del clip,
-verificacion del hash en cada handoff (etapa 2 backend, etapa 3 worker) y el
-ensamblaje ACUMULATIVO de la ``Evidencia`` (las firmas se ENCADENAN, no se
-reemplazan). La divergencia de hash en CUALQUIER etapa levanta
+Materializa el Flujo 4 como logica de dominio pura (stdlib): hash SHA-256 del
+artefacto de evidencia, verificacion del hash en cada handoff (etapa 2 backend,
+etapa 3 worker) y el ensamblaje ACUMULATIVO de la ``Evidencia`` (las firmas se
+ENCADENAN, no se reemplazan). La divergencia de hash en CUALQUIER etapa levanta
 ``ManipulacionDetectada`` para que la aplicacion emita el evento critico
 "evidencia corrupta o manipulada" (RN-CC-03) y NUNCA la descarte en silencio.
+
+CAMBIO C-24 (DD-24-01, DD-24-03): el artefacto de evidencia pasa de CLIP de
+video (5-10 s) a SCREENSHOT (frame unico PNG/JPEG). El contrato de la cadena NO
+cambia: hash SHA-256 del binario de imagen en cliente (etapa 1), re-hash en
+backend (etapa 2) y re-hash + firma maestra en worker (etapa 3). Lo que SI cambia
+es la re-inferencia (etapa 4): pasa de un pipeline TEMPORAL (sobre el clip) a
+una inferencia ESTATICA sobre el frame (deteccion de rostros/objetos en la imagen,
+sin secuencia temporal). Tradeoff L2.5 aceptado explicitamente: se pierde
+re-verificacion de liveness/movimiento; se gana minimizacion de datos
+(Ley 25.326, proporcionalidad). Ver design.md de c-24-evidencia-screenshots.
 
 La firma maestra ASIMETRICA (RSA-2048/Ed25519) y la re-inferencia server-side son
 operaciones de infraestructura: aqui solo viven sus PUERTOS abstractos. El dominio
@@ -61,16 +71,33 @@ class MasterSignerPort(ABC):
 class ServerInferencePort(ABC):
     """Puerto de re-inferencia server-side (la version CONFIABLE del analisis).
 
-    Corre el modelo sobre el clip EXACTO. El motor concreto (DD-17) vive en infra; el
-    dominio solo ve el contrato (bytes del clip -> dict de salida del modelo)."""
+    CAMBIO C-24 (DD-24-01, DD-24-03): la re-inferencia pasa de un pipeline TEMPORAL
+    (sobre el clip de video) a una inferencia ESTATICA sobre el FRAME (imagen PNG/JPEG).
+    El worker ejecuta deteccion de rostros y objetos sobre el frame exacto (sin
+    secuencia temporal). Esta es la etapa 4 de la cadena de custodia sobre el nuevo
+    binario imagen.
+
+    Tradeoff L2.5 aceptado (design.md c-24): no hay re-verificacion de liveness ni
+    contexto temporal; la evidencia es suficiente y proporcional para revision humana.
+
+    El motor concreto (DD-17) vive en infra; el dominio solo ve el contrato
+    (bytes del artefacto -> dict de salida del modelo)."""
 
     @abstractmethod
-    def inferir(self, clip_bytes: bytes) -> dict[str, str]:
-        """Ejecuta la re-inferencia server-side sobre el clip y devuelve el output."""
+    def inferir(self, artefacto_bytes: bytes) -> dict[str, str]:
+        """Ejecuta la re-inferencia server-side sobre el artefacto (frame PNG/JPEG
+        en C-24, o clip en versiones anteriores) y devuelve el output del modelo.
+
+        El output DEBE incluir al menos las claves 'labels' y 'confidences' (como
+        JSON serializable) para que pueda compararse con lo reportado por el cliente
+        en la notificacion de evidencia (tarea 3.3, senal forense de discrepancia).
+        """
 
 
 def hash_clip(clip_bytes: bytes) -> str:
-    """SHA-256 (hex) del binario del clip: ancla de cada handoff de la cadena."""
+    """SHA-256 (hex) del binario del artefacto (screenshot desde C-24, clip antes).
+
+    El nombre se mantiene por retrocompatibilidad; el algoritmo es identico."""
     return hashlib.sha256(clip_bytes).hexdigest()
 
 
@@ -130,15 +157,38 @@ def aplicar_reinferencia(
     inferencia: ServerInferencePort,
     signer: MasterSignerPort,
 ) -> Evidencia:
-    """Etapa 4: re-inferencia server-side sobre el clip exacto + firma del output.
+    """Etapa 4 (C-24 DD-24-03): re-inferencia server-side ESTATICA sobre el frame +
+    firma del output + comparacion con lo reportado por el cliente (senal forense).
+
+    CAMBIO C-24: la inferencia opera sobre un FRAME UNICO (imagen PNG/JPEG), no sobre
+    un clip temporal. El output del modelo (labels, confidences) se compara con los
+    labels reportados por el cliente en la notificacion de evidencia. Una discrepancia
+    es una SENAL FORENSE de posible tampering: se registra firmada junto al output.
+    NO dispara sancion automatica (L2.5 — la decision es siempre humana).
 
     El output firmado es la VERSION CONFIABLE del analisis (no la del cliente,
     RN-GLB-01). Se persiste como ``output_reinferencia`` con su firma, de forma
-    acumulativa (sin tocar las etapas previas)."""
+    acumulativa (sin tocar las etapas previas).
+    """
     salida = inferencia.inferir(clip_bytes)
+
+    # Comparar con los labels reportados por el cliente (si existen en meta, tarea 3.3).
+    # La discrepancia se registra como senal forense firmada; NO causa sancion (L2.5).
+    labels_cliente = evidencia.meta.get("labels_cliente") if evidencia.meta else None
+    discrepancia: dict[str, object] = {}
+    if labels_cliente is not None:
+        labels_servidor = salida.get("labels", "")
+        if labels_cliente != labels_servidor:
+            discrepancia = {
+                "discrepancia_labels": True,
+                "labels_cliente": labels_cliente,
+                "labels_servidor": labels_servidor,
+                # Nota: discrepancia es senal forense, NO implica sancion automatica (L2.5).
+            }
+
     payload = _canonico_output(salida)
     firma_output = signer.firmar(payload.encode("utf-8"))
-    output = {**salida, "firma_output": firma_output}
+    output: dict[str, object] = {**salida, "firma_output": firma_output, **discrepancia}
     return replace(evidencia, output_reinferencia=output)
 
 

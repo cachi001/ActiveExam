@@ -27,10 +27,19 @@ export interface FrameSignals {
   face_count: number;
   /** Direccion de la mirada normalizada (-1..1); ausente si no hay rostro. */
   gaze?: { x: number; y: number };
-  /** Senal de contexto: la ventana/pestana perdio el foco. */
+  /** Senal de contexto: la VENTANA perdio el foco del SO (blur). */
   focus_lost?: boolean;
   /** Senal de contexto: se detecto un monitor adicional. */
   extra_monitor?: boolean;
+  /**
+   * C-25: la PESTANA del examen dejo de estar visible (visibilitychange).
+   * Distinto de focus_lost (blur de ventana OS).
+   */
+  tab_changed?: boolean;
+  /** C-25: el documento salio del modo pantalla completa (fullscreenchange). */
+  fullscreen_exited?: boolean;
+  /** C-25: accion de portapapeles detectada ('copy' | 'paste'). SIN contenido. */
+  clipboard_action?: 'copy' | 'paste';
 }
 
 /** Evento discreto producido por las reglas (conforme al contrato de C-10). */
@@ -93,6 +102,12 @@ export class StateTransitionRules {
   private gaze: GazeState = { since_ms: null, anchor: null, emitted: false };
   private multiFaceFrames = 0;
   private multiFaceEmitted = false;
+
+  // C-25: estado de de-duplicacion para senales de navegador instantaneas.
+  // Previene re-emision mientras la senal persiste; se resetea cuando la senal se limpia.
+  private tabChangedEmitted = false;
+  private fullscreenExitedEmitted = false;
+  // clipboard_action es stateless (cada evento copy/paste es discreto); no necesita de-dupe.
 
   constructor(config: Partial<TransitionConfig> = {}) {
     this.cfg = { ...DEFAULT_CONFIG, ...config };
@@ -189,6 +204,7 @@ export class StateTransitionRules {
   }
 
   private evalContext(s: FrameSignals, out: DiscreteEvent[]): void {
+    // --- Senales existentes (retrocompat) ---
     if (s.focus_lost) {
       out.push({
         tipo: "perdida_de_foco",
@@ -204,6 +220,51 @@ export class StateTransitionRules {
         severidad: "alta",
         ts_ms: s.ts_ms,
         payload: {},
+        trigger_evidence: false,
+      });
+    }
+
+    // --- C-25: cambio_pestana (de-dup: un evento por transicion hidden->visible) ---
+    if (s.tab_changed) {
+      if (!this.tabChangedEmitted) {
+        this.tabChangedEmitted = true;
+        out.push({
+          tipo: "cambio_pestana",
+          severidad: "media",
+          ts_ms: s.ts_ms,
+          payload: {},
+          trigger_evidence: false,
+        });
+      }
+    } else {
+      // Pestana visible de nuevo: resetea de-dupe para la proxima salida.
+      this.tabChangedEmitted = false;
+    }
+
+    // --- C-25: salida_pantalla_completa (de-dup: un evento por salida hasta volver a entrar) ---
+    if (s.fullscreen_exited) {
+      if (!this.fullscreenExitedEmitted) {
+        this.fullscreenExitedEmitted = true;
+        out.push({
+          tipo: "salida_pantalla_completa",
+          severidad: "media",
+          ts_ms: s.ts_ms,
+          payload: {},
+          trigger_evidence: false,
+        });
+      }
+    } else {
+      // Volvio a fullscreen: resetea de-dupe para la proxima salida.
+      this.fullscreenExitedEmitted = false;
+    }
+
+    // --- C-25: copiar_pegar (cada accion es discreta; sin de-dup, sin contenido) ---
+    if (s.clipboard_action) {
+      out.push({
+        tipo: "copiar_pegar",
+        severidad: "media",
+        ts_ms: s.ts_ms,
+        payload: { accion: s.clipboard_action },
         trigger_evidence: false,
       });
     }

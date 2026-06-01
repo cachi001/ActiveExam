@@ -4,7 +4,12 @@ import { Icon, Button, Card, SeverityBadge } from '../ui/components';
 import { useNavigate } from '../lib/router';
 import { useApp } from '../lib/store';
 import { descripcionEvento, TIPO_EVENTO_LABEL } from '../lib/api';
-import { FocusDetector } from '../proctoring/contextDetectors';
+import {
+  FocusDetector,
+  FullscreenDetector,
+  ClipboardDetector,
+  detectExtraMonitor,
+} from '../proctoring/contextDetectors';
 import { StateTransitionRules } from '../proctoring/stateTransitionRules';
 import type { EventoSesion, Severidad, TipoEvento } from '../lib/types';
 
@@ -30,7 +35,15 @@ export default function Examen() {
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+
+  // Señales de contexto — acumuladas en refs para consumir en el siguiente tick del motor
   const focusLost = useRef(false);
+  const tabChanged = useRef(false);
+  const fullscreenExited = useRef(false);
+  const clipboardAction = useRef<'copy' | 'paste' | null>(null);
+  // null = no determinable (API ausente/denegada); false = sin monitor adicional; true = con monitor adicional
+  const extraMonitor = useRef<boolean | null>(null);
+
   const rules = useRef(new StateTransitionRules());
 
   const [segRestantes, setSegRestantes] = useState((examen?.duracion_min ?? 90) * 60);
@@ -51,11 +64,46 @@ export default function Examen() {
     return () => streamRef.current?.getTracks().forEach((t) => t.stop());
   }, []);
 
-  // detección de foco REAL (proctoring/contextDetectors.ts)
+  // Detectores de contexto REALES — C-25 (proctoring/contextDetectors.ts)
   useEffect(() => {
-    const fd = new FocusDetector((sig) => { if (sig.focus_lost) focusLost.current = true; });
+    // Foco de ventana (blur/focus OS) + cambio de pestaña (visibilitychange)
+    const fd = new FocusDetector((sig) => {
+      if (sig.focus_lost !== undefined) focusLost.current = sig.focus_lost;
+      if (sig.tab_changed !== undefined) tabChanged.current = sig.tab_changed;
+    });
     fd.start();
-    return () => fd.stop();
+
+    // Salida de pantalla completa (fullscreenchange)
+    const fsd = new FullscreenDetector((sig) => {
+      if (sig.fullscreen_exited) fullscreenExited.current = true;
+    });
+    fsd.start();
+
+    // Clipboard (copy/paste sin leer contenido)
+    const cd = new ClipboardDetector((sig) => {
+      if (sig.clipboard_action) clipboardAction.current = sig.clipboard_action;
+    });
+    cd.start();
+
+    // Monitor adicional — polling cada 5 s; degrada a null si la API no está disponible
+    let monitorPollActive = true;
+    const pollMonitor = async () => {
+      // Proveedor nativo donde esté disponible (Window Management API)
+      const provider = typeof window !== 'undefined' && 'getScreenDetails' in window
+        ? () => (window as unknown as { getScreenDetails: () => Promise<{ screens: unknown[] }> }).getScreenDetails()
+        : undefined;
+      const sig = await detectExtraMonitor(provider);
+      extraMonitor.current = sig?.extra_monitor ?? null;
+      if (monitorPollActive) setTimeout(pollMonitor, 5000);
+    };
+    pollMonitor();
+
+    return () => {
+      fd.stop();
+      fsd.stop();
+      cd.stop();
+      monitorPollActive = false;
+    };
   }, []);
 
   // temporizador
@@ -64,19 +112,33 @@ export default function Examen() {
     return () => clearInterval(t);
   }, []);
 
-  // motor de señales: combina foco real + señales simuladas y evalúa reglas reales
+  // motor de señales: combina señales reales de navegador + señales simuladas de visión y evalúa reglas
   useEffect(() => {
     const t = setInterval(() => {
       const ahora = Date.now();
       const roll = Math.random();
+
+      // Consumir señales acumuladas en refs y resetear (excepto extraMonitor que se actualiza por polling)
+      const snapFocusLost = focusLost.current;
+      const snapTabChanged = tabChanged.current;
+      const snapFullscreenExited = fullscreenExited.current;
+      const snapClipboard = clipboardAction.current;
+      focusLost.current = false;
+      tabChanged.current = false;
+      fullscreenExited.current = false;
+      clipboardAction.current = null;
+
       const signals = {
         ts_ms: ahora,
         face_count: roll < 0.04 ? 2 : roll < 0.07 ? 0 : 1,
         gaze: roll > 0.85 ? { x: 0.7, y: 0.2 } : { x: 0.05, y: 0.02 },
-        focus_lost: focusLost.current,
-        extra_monitor: false,
+        focus_lost: snapFocusLost,
+        // extra_monitor: null = no determinable; false = sin monitor; true = con monitor adicional
+        extra_monitor: extraMonitor.current === true,
+        tab_changed: snapTabChanged,
+        fullscreen_exited: snapFullscreenExited,
+        clipboard_action: snapClipboard ?? undefined,
       };
-      focusLost.current = false;
       let discretos = rules.current.process(signals);
       // segunda pasada para que la mirada sostenida supere la ventana temporal
       if (signals.gaze.x > 0.6) discretos = discretos.concat(rules.current.process({ ...signals, ts_ms: ahora + 4200 }));

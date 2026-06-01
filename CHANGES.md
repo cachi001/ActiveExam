@@ -495,6 +495,77 @@ C-01 → C-03 → C-04 → C-05 → C-06 → C-07 → C-08 → C-09 → C-10 →
 
 ---
 
+## Refinamiento post-fundación — capa frontend/demo y decisiones de producto
+
+> Estos changes (**C-21…C-24**) NO salen del discovery original: se agregaron **después de la fundación**, sobre la capa de presentación de demo (mock en `frontend/src/lib/api.ts`) y como decisiones de producto. Por eso no figuran en el árbol de dependencias de arriba (que es de la fundación).
+>
+> **Fuente de lectura doble — leé AMBAS:** este índice **y** engram. El detalle completo y el porqué de cada decisión vive en engram → proyecto `activeexam`, topic `activeexam/refinamiento-frontend-v2` (y relacionados `activeexam/fundacion`, `activeexam/frontend`). Si este índice y engram divergen, engram tiene el contexto fino; sincronizá.
+>
+> ⚠️ **Orden de archive**: los deltas `## MODIFIED Requirements` de C-22 y C-24 modifican specs de C-08/C-09/C-12, que están **aplicados pero NO archivados** (no existe aún el spec canónico en `openspec/specs/`). Antes de `/opsx:archive` de C-21…C-24, **archivá primero C-08/C-09/C-12** para que el MODIFIED resuelva contra la base. (No se archiva nada hasta testear.)
+
+### [C-21] `portal-alumno-materias-inscripcion`
+- **Estado**: `[ ]` propuesto (validate --strict OK — 43 tasks)
+- **Scope**: Side del alumno sobre la capa de demo (sin backend). Login → **dashboard del alumno**; modela **Materia→Comisión→Examen** (hoy solo existe `catedra:string`); **inscripción** a exámenes + "Mis exámenes" (registro con estado y acción siguiente); pantalla de **perfil (shell)** con el gate `puedeRendir`. Caps NEW: student-dashboard-landing, student-portal-navigation, exam-enrollment, student-profile-shell.
+- **Dependencias**: `C-07` (exámenes contra los que inscribirse); el contenido del perfil (consentimiento+biometría) lo completa `C-22`
+- **Governance**: MEDIO
+- **Leer antes**:
+  - `openspec/changes/c-21-portal-alumno-materias-inscripcion/` (proposal, design, tasks, specs)
+  - **engram** `activeexam/refinamiento-frontend-v2`
+  - `knowledge-base/06_funcionalidades.md` §US-001 §US-003
+
+### [C-22] `perfil-biometrico-enrollment`
+- **Estado**: `[ ]` propuesto (validate --strict OK — 21 tasks)
+- **Scope**: **Enrollment único en el perfil** (reutilizable, con renovación): consentimiento informado (**reorden desde C-08** — se da en el perfil, no antes de rendir) + **escaneo biométrico de referencia** + imagen de referencia guardada + **escaneo DNI opcional/flaggeado** + **renovación cada 24 meses** (configurable), con la verificación silenciosa continua gatillando renovación anticipada por deriva del embedding. Caps NEW: student-profile-enrollment, biometric-reference-renewal, optional-dni-scan. **MODIFICA** (deltas dentro del change): `consent-gate`, `informed-consent-presentation` (C-08), `embedding-computation`, `biometric-custody-encryption` (C-09).
+- **Dependencias**: `C-21` (perfil shell + gate), `C-08`, `C-09` (specs que modifica)
+- **Governance**: ALTO
+- **Pregunta abierta (legal)**: ¿se necesita acuse de consentimiento **por-examen** además del de perfil? Hipótesis: el de perfil alcanza mientras la versión de texto no cambie. Validar con legal antes de cerrar el gate. (Detalle en el design del change.)
+- **Leer antes**:
+  - `openspec/changes/c-22-perfil-biometrico-enrollment/` (incl. la pregunta abierta en design.md)
+  - **engram** `activeexam/refinamiento-frontend-v2`
+  - `knowledge-base/12_biometria_y_liveness.md`, `13_legal_y_cumplimiento_argentina.md`, `05_reglas_de_negocio.md` §RN-CO
+
+### [C-23] `admin-mediapipe-test-harness`
+- **Estado**: `[ ]` propuesto (validate --strict OK — 30 tasks)
+- **Scope**: **Página admin diagnóstica** que corre el pipeline de visión del cliente **end-to-end como alumno de prueba** (VisionEngine/MediaPipe + visionPipeline + stateTransitionRules + EventSink) y **verifica que se registran** las detecciones y eventos. Reusa el cableado de C-11; corre con la cámara del propio admin, sin examen real ni sanción. Caps NEW: admin-detection-test-harness, detection-event-verification.
+- **Dependencias**: `C-11` (vision-engine), `C-10` (event-transport)
+- **Governance**: MEDIO
+- **Leer antes**:
+  - `openspec/changes/c-23-admin-mediapipe-test-harness/`
+  - **engram** `activeexam/refinamiento-frontend-v2`
+  - `knowledge-base/11_ia_y_vision.md`
+
+### [C-24] `evidencia-screenshots`
+- **Estado**: `[ ]` propuesto (validate --strict OK — 15 tasks)
+- **Scope**: ⚠️ **Decisión de arquitectura** — la evidencia pasa de **CLIPS (5–10s) a SCREENSHOTS** (captura **event-driven + heartbeat** de baja frecuencia), por costo y proporcionalidad L2.5. El DD documenta el tradeoff honesto: una foto fija **no permite re-inferencia temporal ni re-verificación de liveness/movimiento**; cadena de custodia **intacta** (hash+firma cliente → re-firma server-side → WORM). Caps NEW: screenshot-evidence-capture, evidence-capture-cadence. **MODIFICA** `evidence-capture` (C-12) y `RN-CC-01`; impacta el modelo de costo (`14`) y la re-inferencia (`11`).
+- **Dependencias**: `C-12` (evidencia-cadena-custodia)
+- **Governance**: ALTO
+- **Leer antes**:
+  - `openspec/changes/c-24-evidencia-screenshots/` (DD-24-01/02/03)
+  - **engram** `activeexam/refinamiento-frontend-v2`
+  - `knowledge-base/05_reglas_de_negocio.md` §RN-CC, `11_ia_y_vision.md`, `14_observabilidad_y_devops.md`
+
+### [C-25] `captura-actividad-integral`
+- **Estado**: `[ ]` propuesto (validate --strict OK)
+- **Scope**: ⭐ **Base funcional** — captura y registro de TODA la actividad sospechosa (**visión + navegador/entorno**) + **página de validación end-to-end** para probarlo con la propia persona. Implementa los detectores de navegador que faltan (**cambio/apertura de pestaña**, **salida de pantalla completa**, **copy/paste**), **cablea el detector de monitores múltiples** (hoy hardcodeado `false` en `Examen.tsx:77` y `AdminDetectionHarness.tsx:376`), y **extiende la página de testeo de C-23** para validar también lo de navegador, con checklist de cobertura. Reusa el pipeline existente (`stateTransitionRules` → `EventSink`); el sistema no sanciona automático, cliente = sensor no confiable. Caps NEW: browser-activity-detectors, suspicious-activity-catalog, integral-activity-validation. **MODIFICA** (deltas dentro del change): `state-transition-rules`, `browser-context-detectors` (C-11), `admin-detection-test-harness` (C-23).
+- **Dependencias**: `C-10` (event-schema-contract), `C-11` (vision-engine-detectores), `C-23` (harness)
+- **Governance**: ALTO
+- **Leer antes**:
+  - `openspec/changes/c-25-captura-actividad-integral/` (proposal, design con inventario existe/falta, tasks, specs)
+  - **engram** `activeexam/refinamiento-frontend-v2`
+  - `knowledge-base/11_ia_y_vision.md`, `05_reglas_de_negocio.md` §RN-EV
+
+### [C-26] `acuse-consentimiento-por-examen`
+- **Estado**: `[ ]` propuesto (validate --strict OK)
+- **Scope**: **Consentimiento EN CAPAS** — resuelve la pregunta legal abierta de C-22. Agrega un **acuse liviano por-examen** al inscribirse a un examen concreto: muestra el examen + qué se monitorea, con una acción afirmativa que da **finalidad específica** a esa instancia de tratamiento (Ley 25.326), **referenciando** el consentimiento de perfil de C-22 (no re-pide biometría ni el texto pesado). Acuse inmutable por `(estudiante, examen)` (versión+timestamp+hash, demo). Gate de habilitación = perfil completo (C-22) **Y** acuse por-examen (código nuevo `acuse_examen_faltante`). Caps NEW: per-exam-consent-acknowledgment. **MODIFICA** (deltas dentro del change): `exam-enrollment` (C-21), `consent-gate` (C-22).
+- **Dependencias**: `C-21` (inscripción), `C-22` (consentimiento de perfil + gate)
+- **Governance**: ALTO
+- **Leer antes**:
+  - `openspec/changes/c-26-acuse-consentimiento-por-examen/`
+  - **engram** `activeexam/refinamiento-frontend-v2`
+  - `knowledge-base/13_legal_y_cumplimiento_argentina.md`, `05_reglas_de_negocio.md` §RN-CO
+
+---
+
 ## Resumen
 
 | Fase | Changes | Governance |
@@ -502,10 +573,12 @@ C-01 → C-03 → C-04 → C-05 → C-06 → C-07 → C-08 → C-09 → C-10 →
 | **0 — Fundaciones** | C-01, C-02, C-03 | 3× CRITICO (C-03 ★ Tier 1 BLOQUEANTE) |
 | **1 — MVP** | C-04…C-19 | 6 CRITICO, 8 ALTO, 2 MEDIO |
 | **2 — Refinamiento** | C-20 | 1 MEDIO |
+| **Refinamiento post-fundación** | C-21, C-22, C-23, C-24, C-25, C-26 | 4 ALTO, 2 MEDIO |
 
-- **Total**: 20 changes en 3 fases.
-- **Camino crítico**: 11 changes (`C-01 → C-03 → C-04 → C-05 → C-06 → C-07 → C-08 → C-09 → C-10 → C-15 → C-16`).
+- **Total**: **26 changes** — 20 de la fundación (3 fases) + 6 post-fundación (capa frontend/demo, captura de actividad, consentimiento en capas y decisiones de producto, ver sección dedicada arriba).
+- **Camino crítico**: 11 changes (`C-01 → C-03 → C-04 → C-05 → C-06 → C-07 → C-08 → C-09 → C-10 → C-15 → C-16`). C-21…C-24 quedan **fuera** del camino crítico (refinamiento de demo, no MVP backend).
 - **Gates de paralelismo**: 13 (GATE 0…GATE 12). Forks grandes en GATE 5, GATE 6 y GATE 9.
 - **Primer change recomendado**: `C-01` (acuerdo-proctoring-dpia) — gate legal que junto a `C-02` bloquea todo el desarrollo. El primer change de **código** es `C-03` (poc-carga-mensajeria, Tier 1, BLOQUEANTE).
+- **Post-fundación**: el detalle y el porqué viven también en **engram** (`activeexam/refinamiento-frontend-v2`). Orden de aplicación sugerido: **C-21 → C-22 → C-26** (perfil cuelga del portal; el acuse por-examen de C-26 cuelga de la inscripción de C-21 + el consentimiento de C-22); **C-23 → C-25** (C-25 extiende el harness y cablea los detectores de navegador); C-24 independiente.
 
 Para arrancar: `/opsx:propose C-01-acuerdo-proctoring-dpia`

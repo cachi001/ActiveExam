@@ -1,7 +1,7 @@
 // Estado de sesión de la demo, compartido entre pantallas (rol activo, examen
 // seleccionado, anomalías generadas durante el examen que el panel del proctor refleja).
 import { create } from 'zustand';
-import type { Principal, Rol, EventoSesion, Examen, SesionRevision } from './types';
+import type { Principal, Rol, EventoSesion, Examen, SesionRevision, EstadoEnrollment } from './types';
 
 interface AppState {
   principal: Principal | null;
@@ -12,12 +12,27 @@ interface AppState {
   scorePropio: number;
   revisionSeleccionada: SesionRevision | null;
 
+  // ---------------------------------------------------------------------------
+  // Enrollment biométrico del perfil — C-22
+  // ---------------------------------------------------------------------------
+  /**
+   * Estado de enrollment cacheado en el store para evitar re-fetch innecesario.
+   * Fuente de verdad: api.getEnrollment(). El store refleja el último estado leído.
+   * `isProfileComplete` es el derivado que usan las pantallas.
+   */
+  enrollmentStatus: EstadoEnrollment | null;
+
+  /** Derivado: true si el perfil está completo y el alumno puede rendir. */
+  isProfileComplete: boolean;
+
   setPrincipal: (p: Principal | null, rol: Rol | null) => void;
   setExamenActivo: (e: Examen | null) => void;
   setRevisionSeleccionada: (s: SesionRevision | null) => void;
   pushAnomalia: (e: EventoSesion) => void;
   addScore: (delta: number) => void;
   resetSesion: () => void;
+  /** Actualiza el estado de enrollment en el store (llamar tras cada api.getEnrollment()). */
+  setEnrollmentStatus: (e: EstadoEnrollment) => void;
 }
 
 export const useApp = create<AppState>((set) => ({
@@ -27,6 +42,8 @@ export const useApp = create<AppState>((set) => ({
   anomaliasVivo: [],
   scorePropio: 0,
   revisionSeleccionada: null,
+  enrollmentStatus: null,
+  isProfileComplete: false,
 
   setPrincipal: (principal, rol) => set({ principal, rol }),
   setExamenActivo: (examenActivo) => set({ examenActivo }),
@@ -34,4 +51,5 @@ export const useApp = create<AppState>((set) => ({
   pushAnomalia: (e) => set((s) => ({ anomaliasVivo: [e, ...s.anomaliasVivo].slice(0, 50) })),
   addScore: (delta) => set((s) => ({ scorePropio: Math.min(100, s.scorePropio + delta) })),
   resetSesion: () => set({ anomaliasVivo: [], scorePropio: 0, examenActivo: null }),
+  setEnrollmentStatus: (e) => set({ enrollmentStatus: e, isProfileComplete: e.perfil_completo }),
 }));
