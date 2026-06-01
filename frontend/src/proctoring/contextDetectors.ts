@@ -159,6 +159,8 @@ export type ScreenDetailsProvider = () => Promise<{ screens: unknown[] }>;
  * la senal ``extra_monitor: true`` si hay mas de una pantalla. Si la API no esta
  * disponible (provider undefined), devuelve ``null`` (no se puede determinar) sin
  * abortar: el navegador puede no permitirlo.
+ *
+ * C-32 Task 5.3: firma y comportamiento sin cambios (retrocompatibilidad C-25).
  */
 export async function detectExtraMonitor(
   provider?: ScreenDetailsProvider,
@@ -170,5 +172,51 @@ export async function detectExtraMonitor(
   } catch {
     // Permiso denegado o API ausente: no se puede determinar, sin abortar.
     return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// C-32: requestAndDetectExtraMonitor — solicita permiso window-management
+// ---------------------------------------------------------------------------
+
+/**
+ * C-32 Task 5.1: tipo discriminado con las tres variantes posibles del flujo
+ * de permiso window-management. Exportado para uso en el harness y tests.
+ */
+export type ScreenPermissionResult =
+  | { status: 'unsupported' }
+  | { status: 'denied' }
+  | { status: 'granted'; extra_monitor: boolean };
+
+/**
+ * C-32 Task 5.2: solicita explícitamente el permiso `window-management` al
+ * usuario mediante `getScreenDetails()` (requiere gesto del usuario = click en
+ * un botón). Detecta soporte del navegador y captura los errores de permiso
+ * sin lanzar al caller.
+ *
+ * - Si `window.getScreenDetails` no existe → `{ status: 'unsupported' }`
+ * - Si el usuario deniega (NotAllowedError u otro error) → `{ status: 'denied' }`
+ * - Si el usuario acepta → `{ status: 'granted', extra_monitor: boolean }`
+ *
+ * La función `detectExtraMonitor(provider?)` existente (polling pasivo) permanece
+ * sin cambios (Task 5.3).
+ */
+export async function requestAndDetectExtraMonitor(): Promise<ScreenPermissionResult> {
+  // Detectar si la API existe en el navegador actual
+  if (typeof window === 'undefined' || !('getScreenDetails' in window)) {
+    return { status: 'unsupported' };
+  }
+
+  try {
+    const getScreenDetails = (window as unknown as {
+      getScreenDetails: () => Promise<{ screens: unknown[] }>;
+    }).getScreenDetails;
+
+    const details = await getScreenDetails();
+    const extra_monitor = details.screens.length > 1;
+    return { status: 'granted', extra_monitor };
+  } catch {
+    // NotAllowedError (usuario denegó) u otro error (API no disponible bajo HTTP, etc.)
+    return { status: 'denied' };
   }
 }

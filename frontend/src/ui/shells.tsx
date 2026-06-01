@@ -108,13 +108,8 @@ export function StaffShell({ children, nav, title }: { children: ReactNode; nav:
         </div>
       </aside>
       <div className="flex-1 min-w-0 flex flex-col">
-        <header className="sticky top-0 z-30 bg-surface/80 backdrop-blur border-b border-outline-variant/40 px-lg h-16 flex items-center justify-between">
+        <header className="sticky top-0 z-30 bg-surface/80 backdrop-blur border-b border-outline-variant/40 px-lg h-16 flex items-center">
           <h1 className="font-headline text-title-lg text-on-surface">{title}</h1>
-          <div className="flex items-center gap-sm">
-            <span className="inline-flex items-center gap-base text-label-sm text-on-surface-variant bg-surface-container px-sm py-base rounded-full">
-              <Icon name="dns" className="text-[16px]" /> Self-hosted · {INSTITUTION.nombreCorto}
-            </span>
-          </div>
         </header>
         <main className="flex-1 p-lg">{children}</main>
       </div>

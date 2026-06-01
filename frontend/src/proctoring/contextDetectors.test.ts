@@ -1,12 +1,13 @@
 /**
- * Tests de los detectores de contexto del navegador (C-11). Formato Vitest.
+ * Tests de los detectores de contexto del navegador (C-11, C-32). Formato Vitest.
  *
- * FocusDetector con doc/win fake; detectExtraMonitor con provider inyectado.
+ * FocusDetector con doc/win fake; detectExtraMonitor con provider inyectado;
+ * requestAndDetectExtraMonitor con mock de window.getScreenDetails (C-32 Task 5.4).
  */
 
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 
-import { detectExtraMonitor, FocusDetector } from "./contextDetectors";
+import { detectExtraMonitor, FocusDetector, requestAndDetectExtraMonitor } from "./contextDetectors";
 
 class FakeTarget {
   handlers: Record<string, () => void> = {};
@@ -69,5 +70,81 @@ describe("detectExtraMonitor", () => {
   it("devuelve null sin abortar si el permiso es denegado", async () => {
     const provider = vi.fn().mockRejectedValue(new Error("denied"));
     expect(await detectExtraMonitor(provider)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// C-32 Task 5.4: requestAndDetectExtraMonitor
+// ---------------------------------------------------------------------------
+
+describe("requestAndDetectExtraMonitor", () => {
+  // Guardar descriptor original de window.getScreenDetails para restaurarlo
+  let originalDescriptor: PropertyDescriptor | undefined;
+
+  beforeEach(() => {
+    originalDescriptor = Object.getOwnPropertyDescriptor(window, "getScreenDetails");
+  });
+
+  afterEach(() => {
+    // Restaurar el estado original de la propiedad
+    if (originalDescriptor) {
+      Object.defineProperty(window, "getScreenDetails", originalDescriptor);
+    } else {
+      // Si no existía, eliminarla
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        delete (window as any).getScreenDetails;
+      } catch {
+        // En algunos entornos la propiedad no se puede eliminar; ignorar
+      }
+    }
+  });
+
+  it("devuelve unsupported cuando getScreenDetails no existe en window", async () => {
+    // Asegurar que la propiedad no existe
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      delete (window as any).getScreenDetails;
+    } catch {
+      // JSDOM puede no permitir delete; definir como undefined
+      Object.defineProperty(window, "getScreenDetails", {
+        value: undefined,
+        writable: true,
+        configurable: true,
+      });
+    }
+    const result = await requestAndDetectExtraMonitor();
+    expect(result).toEqual({ status: "unsupported" });
+  });
+
+  it("devuelve denied cuando getScreenDetails lanza NotAllowedError", async () => {
+    const notAllowed = new DOMException("Permission denied", "NotAllowedError");
+    Object.defineProperty(window, "getScreenDetails", {
+      value: vi.fn().mockRejectedValue(notAllowed),
+      writable: true,
+      configurable: true,
+    });
+    const result = await requestAndDetectExtraMonitor();
+    expect(result).toEqual({ status: "denied" });
+  });
+
+  it("devuelve granted con extra_monitor false cuando hay una sola pantalla", async () => {
+    Object.defineProperty(window, "getScreenDetails", {
+      value: vi.fn().mockResolvedValue({ screens: [{}] }),
+      writable: true,
+      configurable: true,
+    });
+    const result = await requestAndDetectExtraMonitor();
+    expect(result).toEqual({ status: "granted", extra_monitor: false });
+  });
+
+  it("devuelve granted con extra_monitor true cuando hay dos o mas pantallas", async () => {
+    Object.defineProperty(window, "getScreenDetails", {
+      value: vi.fn().mockResolvedValue({ screens: [{}, {}] }),
+      writable: true,
+      configurable: true,
+    });
+    const result = await requestAndDetectExtraMonitor();
+    expect(result).toEqual({ status: "granted", extra_monitor: true });
   });
 });
