@@ -3,6 +3,7 @@ import { Icon, Button } from '../ui/components';
 import { useNavigate } from '../lib/router';
 import { useApp } from '../lib/store';
 import { api } from '../lib/api';
+import { INSTITUTION } from '../config/institution';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -41,14 +42,14 @@ export default function Login() {
               <label className="text-label-sm uppercase tracking-wide text-on-surface-variant font-semibold">Institución</label>
               <div className="flex items-center gap-sm bg-surface-container-low border border-outline-variant rounded-xl px-md py-sm">
                 <Icon name="account_balance" className="text-on-surface-variant text-[20px]" />
-                <span className="text-body-md font-semibold text-on-surface">Universidad de Buenos Aires — UBA</span>
+                <span className="text-body-md font-semibold text-on-surface">{INSTITUTION.nombre} — {INSTITUTION.facultad}</span>
               </div>
             </div>
 
             <Button onClick={ingresar} disabled={cargando} icon={cargando ? undefined : 'login'} iconRight={cargando ? undefined : 'arrow_forward'} className="w-full h-14">
               {cargando ? (
                 <span className="inline-flex items-center gap-xs"><Icon name="progress_activity" className="ae-spin text-[20px]" /> Conectando con Keycloak…</span>
-              ) : 'Ingresar con UBA ID'}
+              ) : `Ingresar con ${INSTITUTION.loginLabel}`}
             </Button>
             <p className="text-label-sm text-on-surface-variant text-center px-md">
               Usás las mismas credenciales del campus (OAuth2 / OIDC con MFA).

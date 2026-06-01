@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { Icon } from './components';
 import { Link, useRouter, useNavigate } from '../lib/router';
 import { useApp } from '../lib/store';
+import { INSTITUTION } from '../config/institution';
 
 const LOGO = (
   <div className="flex items-center gap-sm">
@@ -107,7 +108,7 @@ export function StaffShell({ children, nav, title }: { children: ReactNode; nav:
           <h1 className="font-headline text-title-lg text-on-surface">{title}</h1>
           <div className="flex items-center gap-sm">
             <span className="inline-flex items-center gap-base text-label-sm text-on-surface-variant bg-surface-container px-sm py-base rounded-full">
-              <Icon name="dns" className="text-[16px]" /> Self-hosted · UBA
+              <Icon name="dns" className="text-[16px]" /> Self-hosted · {INSTITUTION.nombreCorto}
             </span>
           </div>
         </header>
@@ -124,7 +125,7 @@ function SharedFooter() {
         <span><span className="font-semibold text-primary">ActiveExam</span> · Transparencia radical en integridad académica.</span>
         <div className="flex gap-md">
           <a className="hover:text-primary" href="#/">Retención (30 días)</a>
-          <a className="hover:text-primary" href="#/">Soporte UBA</a>
+          <a className="hover:text-primary" href="#/">{INSTITUTION.soporteLabel}</a>
           <a className="hover:text-primary" href="#/">Ley 25.326</a>
         </div>
       </div>
