@@ -9,6 +9,7 @@
  * - La renovación anticipada por deriva NO sanciona ni invalida la rendición en curso (L2.5).
  */
 import { Icon, Button, Badge } from '../../ui/components';
+import { Term } from '../../ui/Term';
 import type { ReferenciasBiometrica, VigenciaReferencia } from '../../lib/types';
 
 interface Props {
@@ -96,8 +97,8 @@ export function BiometricRenewalStatus({ referencia, onRenovar }: Props) {
         <div className="flex items-start gap-sm bg-warning-container/60 rounded-xl p-sm border border-warning/20">
           <Icon name="info" className="text-warning text-[16px] shrink-0 mt-px" />
           <p className="text-label-sm text-on-surface">
-            La verificación silenciosa detectó <strong>deriva del embedding</strong> respecto de la
-            referencia actual. La renovación no afecta ni sanciona rendiciones en curso (L2.5 —
+            La verificación silenciosa detectó <strong>deriva del <Term termKey="embedding">embedding</Term></strong> respecto de la
+            referencia actual. La renovación no afecta ni sanciona rendiciones en curso (<Term termKey="l2_5" /> —
             decisión disciplinaria siempre humana).
           </p>
         </div>

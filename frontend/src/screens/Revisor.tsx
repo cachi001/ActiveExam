@@ -5,7 +5,9 @@ import { api, TIPO_EVENTO_LABEL } from '../lib/api';
 import { useApp } from '../lib/store';
 import { useNavigate } from '../lib/router';
 import { STAFF_NAV } from '../ui/nav';
+import { Term } from '../ui/Term';
 import type { SesionRevision } from '../lib/types';
+import { INSTITUTION } from '../config/institution';
 
 export const REVISOR_NAV = STAFF_NAV;
 
@@ -68,7 +70,7 @@ export default function Revisor() {
                   <Avatar src={sel.foto} alt={sel.estudiante} size={56} />
                   <div>
                     <h2 className="font-headline text-headline-md text-on-surface">{sel.estudiante}</h2>
-                    <p className="text-label-sm text-on-surface-variant">UBA Medicina · {sel.examen} · {sel.duracion}</p>
+                    <p className="text-label-sm text-on-surface-variant">{INSTITUTION.nombreCorto} · {sel.examen} · {sel.duracion}</p>
                   </div>
                 </div>
                 <div className="text-right">
@@ -80,23 +82,35 @@ export default function Revisor() {
               <div className="grid md:grid-cols-2 gap-lg">
                 <div className="space-y-sm">
                   <h3 className="text-label-sm uppercase tracking-wide text-on-surface-variant border-b border-outline-variant/40 pb-base">Línea de tiempo de anomalías</h3>
-                  {sel.eventos.map((ev) => (
-                    <div key={ev.id} className="flex gap-sm p-sm rounded-xl bg-surface-container-low border border-outline-variant/40">
-                      <Icon name="warning" className="text-warning shrink-0 text-[18px]" fill />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center justify-between gap-base">
-                          <span className="text-label-md font-semibold text-on-surface">{TIPO_EVENTO_LABEL[ev.tipo]}</span>
-                          <SeverityBadge severidad={ev.severidad} />
+                  {/* task 8.1: p-md en cada item; tasks 8.2–8.3: agrupación de ≥5 consecutivos del mismo tipo */}
+                  {groupConsecutiveEvents(sel.eventos).map((group) => {
+                    const ev = group.first;
+                    const isGrouped = group.count >= 5;
+                    return (
+                      <div key={ev.id} className="flex gap-sm p-md rounded-xl bg-surface-container-low border border-outline-variant/40">
+                        <Icon name="warning" className="text-warning shrink-0 text-[18px]" fill />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center justify-between gap-base flex-wrap">
+                            <div className="flex items-center gap-sm flex-wrap">
+                              <span className="text-label-md font-semibold text-on-surface">{TIPO_EVENTO_LABEL[ev.tipo]}</span>
+                              {isGrouped && (
+                                <span className="inline-flex items-center gap-base px-sm py-base rounded-full bg-warning-container text-warning text-label-sm font-bold border border-warning/30">
+                                  {group.count} veces
+                                </span>
+                              )}
+                            </div>
+                            <SeverityBadge severidad={ev.severidad} />
+                          </div>
+                          <p className="text-label-sm text-on-surface-variant mt-base">{new Date(ev.ts_backend).toLocaleTimeString('es-AR')}</p>
+                          {ev.tiene_evidencia && <code className="text-[10px] font-mono text-primary bg-primary-fixed px-base rounded">{ev.evidencia_object_key}</code>}
                         </div>
-                        <p className="text-label-sm text-on-surface-variant mt-base">{new Date(ev.ts_backend).toLocaleTimeString('es-AR')}</p>
-                        {ev.tiene_evidencia && <code className="text-[10px] font-mono text-primary bg-primary-fixed px-base rounded">{ev.evidencia_object_key}</code>}
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
 
                 <div className="space-y-sm">
-                  <h3 className="text-label-sm uppercase tracking-wide text-on-surface-variant border-b border-outline-variant/40 pb-base">Evidencia y cadena de custodia</h3>
+                  <h3 className="text-label-sm uppercase tracking-wide text-on-surface-variant border-b border-outline-variant/40 pb-base">Evidencia y <Term termKey="cadena_de_custodia">cadena de custodia</Term></h3>
                   <div className="relative aspect-video bg-inverse-surface rounded-xl overflow-hidden flex items-center justify-center">
                     <img src={sel.foto} alt="evidencia" className="absolute inset-0 w-full h-full object-cover opacity-30 blur-[2px]" />
                     <button className="relative z-10 w-12 h-12 rounded-full bg-white/15 backdrop-blur ring-2 ring-white/30 flex items-center justify-center text-white hover:bg-white/25">
@@ -116,7 +130,7 @@ export default function Revisor() {
 
               <div className="bg-surface-container-low rounded-xl p-md space-y-md border border-outline-variant/40">
                 <div>
-                  <h3 className="font-headline text-title-lg text-on-surface">Resolución de auditoría humana (L2.5)</h3>
+                  <h3 className="font-headline text-title-lg text-on-surface">Resolución de auditoría humana (<Term termKey="l2_5" />)</h3>
                   <p className="text-label-sm text-on-surface-variant mt-base">El software no sanciona automáticamente. Tu decisión es obligatoria y queda en el audit log inmutable.</p>
                 </div>
                 <div className="flex flex-col sm:flex-row gap-sm">
@@ -151,4 +165,30 @@ function Custodia({ label, value, ok }: { label: string; value: string; ok: bool
       </span>
     </div>
   );
+}
+
+/**
+ * task 8.2–8.3: Agrupa eventos CONSECUTIVOS del mismo tipo cuando hay ≥5 seguidos.
+ * Solo agrupa consecutivos, no todos los del mismo tipo en la sesión.
+ */
+interface EventGroup {
+  first: SesionRevision['eventos'][number];
+  count: number;
+}
+
+function groupConsecutiveEvents(eventos: SesionRevision['eventos']): EventGroup[] {
+  if (eventos.length === 0) return [];
+  const groups: EventGroup[] = [];
+  let current: EventGroup = { first: eventos[0], count: 1 };
+
+  for (let i = 1; i < eventos.length; i++) {
+    if (eventos[i].tipo === current.first.tipo) {
+      current.count++;
+    } else {
+      groups.push(current);
+      current = { first: eventos[i], count: 1 };
+    }
+  }
+  groups.push(current);
+  return groups;
 }

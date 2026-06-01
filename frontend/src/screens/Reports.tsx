@@ -3,6 +3,7 @@ import { StaffShell } from '../ui/shells';
 import { Icon, Card, Stat, SectionTitle, SeverityBadge } from '../ui/components';
 import { ADMIN_NAV } from './AdminDashboard';
 import { api } from '../lib/api';
+import { Term } from '../ui/Term';
 import type { ResumenReportes } from '../lib/types';
 
 export default function Reports() {
@@ -65,7 +66,7 @@ export default function Reports() {
             <Icon name="insights" className="text-primary" fill />
             <p className="text-label-md text-on-primary-fixed-variant">
               Tiempo medio de revisión humana: <strong>{r.tiempo_medio_revision}</strong>. La alta tasa de falsos positivos ({r.falsos_positivos}%)
-              confirma el enfoque L2.5: el sistema prioriza, pero la decisión final siempre es de un revisor.
+              confirma el enfoque <Term termKey="l2_5" />: el sistema prioriza, pero la decisión final siempre es de un revisor.
             </p>
           </div>
         </Card>

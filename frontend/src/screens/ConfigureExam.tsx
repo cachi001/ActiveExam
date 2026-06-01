@@ -6,6 +6,7 @@ import { TIPO_EVENTO_LABEL, api } from '../lib/api';
 import { useApp } from '../lib/store';
 import { useNavigate } from '../lib/router';
 import type { Examen, TipoEvento } from '../lib/types';
+import { INSTITUTION } from '../config/institution';
 
 const DETECTORES: TipoEvento[] = ['rostro_ausente', 'multiples_rostros', 'mirada_desviada_sostenida', 'perdida_de_foco', 'monitor_adicional'];
 
@@ -14,7 +15,7 @@ export default function ConfigureExam() {
   const navigate = useNavigate();
 
   const [form, setForm] = useState<Examen>(() => editando ?? {
-    id: `EX-UBA-${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
+    id: `EX-${INSTITUTION.idPrefix}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
     nombre: '', catedra: '', estado: 'borrador', inicio: new Date().toISOString().slice(0, 16),
     duracion_min: 90, umbral_score: 70, detectores: [...DETECTORES], retencion_dias: 30, inscriptos: 0, rindiendo: 0,
   });

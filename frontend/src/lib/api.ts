@@ -13,6 +13,7 @@ import type {
   EstadoEnrollment, AcuseConsentimiento, ReferenciasBiometrica, EscaneDNI, VigenciaReferencia,
   AcuseExamen,
 } from './types';
+import { INSTITUTION } from '../config/institution';
 
 export const API_BASE = (import.meta.env.VITE_API_BASE as string) || '/api/v1';
 export const USE_REAL_BACKEND = import.meta.env.VITE_USE_REAL_BACKEND === '1';
@@ -37,20 +38,20 @@ export const PRINCIPALES: Record<Rol, Principal> = {
     mfa_satisfecho: true, jurisdiccion: 'AR-MZA',
   },
   proctor: {
-    id_institucional: 'UBA-DOC-1182', nombre: 'Dra. Carolina Ferreyra',
-    email: 'cferreyra@uba.ar', roles: ['proctor'], mfa_satisfecho: true, jurisdiccion: 'AR',
+    id_institucional: `${INSTITUTION.idPrefix}-DOC-1182`, nombre: 'Dra. Carolina Ferreyra',
+    email: `cferreyra@${INSTITUTION.dominioEmail}`, roles: ['proctor'], mfa_satisfecho: true, jurisdiccion: 'AR',
   },
   revisor: {
-    id_institucional: 'UBA-DOC-0934', nombre: 'Prof. Martín Acuña',
-    email: 'macuna@uba.ar', roles: ['revisor'], mfa_satisfecho: true, jurisdiccion: 'AR',
+    id_institucional: `${INSTITUTION.idPrefix}-DOC-0934`, nombre: 'Prof. Martín Acuña',
+    email: `macuna@${INSTITUTION.dominioEmail}`, roles: ['revisor'], mfa_satisfecho: true, jurisdiccion: 'AR',
   },
   admin_examenes: {
-    id_institucional: 'UBA-ADM-0021', nombre: 'Lucía Mendoza',
-    email: 'lmendoza@uba.ar', roles: ['admin_examenes'], mfa_satisfecho: true, jurisdiccion: 'AR',
+    id_institucional: `${INSTITUTION.idPrefix}-ADM-0021`, nombre: 'Lucía Mendoza',
+    email: `lmendoza@${INSTITUTION.dominioEmail}`, roles: ['admin_examenes'], mfa_satisfecho: true, jurisdiccion: 'AR',
   },
   coordinador: {
-    id_institucional: 'UBA-CRD-0007', nombre: 'Coordinación Académica',
-    email: 'coordinacion@uba.ar', roles: ['coordinador'], mfa_satisfecho: true, jurisdiccion: 'AR',
+    id_institucional: `${INSTITUTION.idPrefix}-CRD-0007`, nombre: 'Coordinación Académica',
+    email: `coordinacion@${INSTITUTION.dominioEmail}`, roles: ['coordinador'], mfa_satisfecho: true, jurisdiccion: 'AR',
   },
 };
 
@@ -64,25 +65,25 @@ type ExamenConComision = Examen & { comision_id?: string };
 
 let EXAMENES: ExamenConComision[] = [
   {
-    id: 'EX-UBA-ANAT-I', nombre: 'Examen Final — Anatomía I', catedra: 'Cátedra B',
+    id: `EX-${INSTITUTION.idPrefix}-AMAT-I`, nombre: 'Examen Final — Análisis Matemático I', catedra: 'Cátedra B',
     estado: 'en_curso', inicio: '2026-05-30T14:00:00', duracion_min: 90,
     umbral_score: 70, detectores: DETECTORES_DEFAULT, retencion_dias: 30,
     inscriptos: 48, rindiendo: 4, comision_id: 'COM-AMAT-1A',
   },
   {
-    id: 'EX-UBA-FISIO-II', nombre: 'Parcial — Fisiología II', catedra: 'Cátedra A',
+    id: `EX-${INSTITUTION.idPrefix}-FIS-I`, nombre: 'Parcial — Física I', catedra: 'Cátedra A',
     estado: 'programado', inicio: '2026-06-02T09:00:00', duracion_min: 60,
     umbral_score: 65, detectores: DETECTORES_DEFAULT, retencion_dias: 30,
     inscriptos: 72, rindiendo: 0, comision_id: 'COM-FIS1-2B',
   },
   {
-    id: 'EX-UBA-QUIM-ORG', nombre: 'Recuperatorio — Química Orgánica', catedra: 'Cátedra C',
+    id: `EX-${INSTITUTION.idPrefix}-ALG-I`, nombre: 'Recuperatorio — Algoritmos y Estructuras de Datos I', catedra: 'Cátedra C',
     estado: 'finalizado', inicio: '2026-05-28T16:00:00', duracion_min: 120,
     umbral_score: 75, detectores: DETECTORES_DEFAULT, retencion_dias: 30,
     inscriptos: 35, rindiendo: 0, comision_id: 'COM-PROG-1A',
   },
   {
-    id: 'EX-UBA-HISTO', nombre: 'Examen — Histología', catedra: 'Cátedra B',
+    id: `EX-${INSTITUTION.idPrefix}-SIS-REP`, nombre: 'Examen — Sistemas de Representación', catedra: 'Cátedra B',
     estado: 'borrador', inicio: '2026-06-10T11:00:00', duracion_min: 75,
     umbral_score: 70, detectores: DETECTORES_DEFAULT, retencion_dias: 30,
     inscriptos: 0, rindiendo: 0, comision_id: 'COM-AMAT-1B',
@@ -144,8 +145,8 @@ let MIS_INSCRIPCIONES: Inscripcion[] = [
     estado: 'habilitado',
   },
   {
-    id: 'INS-003', examen_id: 'EX-UBA-QUIM-ORG', comision_id: 'COM-PROG-1A',
-    materia_id: 'MAT-PROG', nombre_examen: 'Recuperatorio — Química Orgánica',
+    id: 'INS-003', examen_id: `EX-${INSTITUTION.idPrefix}-ALG-I`, comision_id: 'COM-PROG-1A',
+    materia_id: 'MAT-PROG', nombre_examen: 'Recuperatorio — Algoritmos y Estructuras de Datos I',
     nombre_materia: 'Programación I', fecha: '2026-05-28T16:00:00',
     estado: 'rendido',
   },

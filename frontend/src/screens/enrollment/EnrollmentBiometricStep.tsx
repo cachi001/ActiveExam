@@ -17,6 +17,7 @@ import { Icon, Button, Card } from '../../ui/components';
 import { api, BIOMETRIC_VALIDITY_MONTHS } from '../../lib/api';
 import { pickActiveChallenges } from '../../vision/liveness';
 import { DESAFIOS } from '../../lib/api';
+import { Term } from '../../ui/Term';
 import type { ReferenciasBiometrica } from '../../lib/types';
 import type { DesafioActivo } from '../../lib/types';
 
@@ -139,7 +140,7 @@ export function EnrollmentBiometricStep({ referenciaActual, onCapturada, esRenov
             {esRenovacion ? 'Renovar referencia biométrica' : 'Captura de referencia biométrica'}
           </h3>
           <p className="text-label-sm text-on-surface-variant">
-            Vigencia {BIOMETRIC_VALIDITY_MONTHS} meses · Face Mesh + liveness híbrido
+            Vigencia {BIOMETRIC_VALIDITY_MONTHS} meses · <Term termKey="face_mesh" /> + <Term termKey="liveness">liveness híbrido</Term>
           </p>
         </div>
       </div>
@@ -248,7 +249,7 @@ export function EnrollmentBiometricStep({ referenciaActual, onCapturada, esRenov
           <div className="text-center space-y-sm text-on-surface-variant">
             <Icon name="progress_activity" className="ae-spin text-primary text-[32px]" />
             <p className="text-body-md">
-              Calculando embedding de referencia con Face Mesh…
+              Calculando <Term termKey="embedding">embedding</Term> de referencia con <Term termKey="face_mesh" />…
             </p>
             <p className="text-label-sm">Re-inferencia server-side y firma (C-12)</p>
           </div>
@@ -285,10 +286,10 @@ export function EnrollmentBiometricStep({ referenciaActual, onCapturada, esRenov
           Privacidad y custodia de datos (Ley 25.326)
         </p>
         <p>
-          La imagen de referencia y el embedding se tratan como <strong>datos sensibles</strong>:
+          La imagen de referencia y el <Term termKey="embedding">embedding</Term> se tratan como <strong>datos sensibles</strong>:
           cifrados at-rest, con finalidad acotada exclusivamente a la verificación de tu identidad
           y la revisión humana. Se eliminan al egreso de la institución (salvo hold disciplinario vigente).
-          <strong> El sistema nunca sanciona automáticamente</strong> — solo prioriza para revisión humana (L2.5).
+          <strong> El sistema nunca sanciona automáticamente</strong> — solo prioriza para revisión humana (<Term termKey="l2_5" />).
           El cliente es sensor no confiable: el backend re-infiere y firma toda evidencia.
         </p>
       </div>
