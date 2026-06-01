@@ -38,6 +38,10 @@ export interface CameraSnapshotCaptureProps {
   onCapture: (dataUrl: string) => void;
   /** Callback al cancelar. */
   onCancel: () => void;
+  /** Mostrar esquinas tipo escáner (solo aplica a shape='rect', e.g. DNI). Default: false. */
+  scannerCorners?: boolean;
+  /** facingMode de la cámara: 'user' (frontal) o 'environment' (trasera, para DNI en móvil). Default: 'user'. */
+  facingMode?: ConstrainDOMString;
 }
 
 // ---------------------------------------------------------------------------
@@ -56,6 +60,8 @@ export function CameraSnapshotCapture({
   instruction,
   contextLabel,
   jpegQuality = 0.85,
+  scannerCorners = false,
+  facingMode = 'user',
   onCapture,
   onCancel,
 }: CameraSnapshotCaptureProps) {
@@ -76,7 +82,7 @@ export function CameraSnapshotCapture({
   useEffect(() => {
     let cancelado = false;
 
-    navigator.mediaDevices?.getUserMedia({ video: { facingMode: 'user' } })
+    navigator.mediaDevices?.getUserMedia({ video: { facingMode } })
       .then((stream) => {
         if (cancelado) { stream.getTracks().forEach((t) => t.stop()); return; }
         streamRef.current = stream;
@@ -253,6 +259,7 @@ export function CameraSnapshotCapture({
               alt="Vista previa del documento capturado"
             />
           )}
+          {scannerCorners && <ScannerCorners />}
         </div>
       )}
 
@@ -303,5 +310,18 @@ export function CameraSnapshotCapture({
       </div>
     </div>,
     document.body,
+  );
+}
+
+/** Esquinas tipo escáner (4 ángulos en L) para el marco rectangular del DNI. */
+function ScannerCorners() {
+  const base = 'absolute w-7 h-7 border-white/90';
+  return (
+    <div className="absolute inset-0 pointer-events-none" aria-hidden>
+      <span className={`${base} top-2 left-2 border-t-[3px] border-l-[3px] rounded-tl-md`} />
+      <span className={`${base} top-2 right-2 border-t-[3px] border-r-[3px] rounded-tr-md`} />
+      <span className={`${base} bottom-2 left-2 border-b-[3px] border-l-[3px] rounded-bl-md`} />
+      <span className={`${base} bottom-2 right-2 border-b-[3px] border-r-[3px] rounded-br-md`} />
+    </div>
   );
 }

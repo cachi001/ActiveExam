@@ -231,10 +231,12 @@ export interface EscaneDNI {
   /** true cuando el escaneo fue completado. */
   captura_completada: boolean;
   /**
-   * dataURL/base64 del DNI capturado (demo).
-   * Server-side: cifrado, finalidad acotada, eliminado al egreso, holds difieren.
+   * dataURL/base64 del FRENTE del DNI (demo). DATO SENSIBLE (Ley 25.326):
+   * server-side cifrado AES-256-GCM, finalidad acotada, eliminado al egreso.
    */
-  imagen: string | null;
+  imagen_frente: string | null;
+  /** dataURL/base64 del DORSO del DNI (demo). Mismo tratamiento sensible que el frente. */
+  imagen_dorso: string | null;
   /** ISO 8601: momento de la captura. */
   fecha_captura: string;
 }
