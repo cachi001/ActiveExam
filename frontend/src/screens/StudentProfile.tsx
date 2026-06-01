@@ -29,7 +29,7 @@ import { EnrollmentDniStep } from './enrollment/EnrollmentDniStep';
 import { BiometricRenewalStatus } from './enrollment/BiometricRenewalStatus';
 import { CameraSnapshotCapture } from '../ui/CameraSnapshotCapture';
 import { Term } from '../ui/Term';
-import type { EstadoEnrollment, AcuseConsentimiento, ReferenciasBiometrica, EscaneDNI } from '../lib/types';
+import type { EstadoEnrollment, AcuseConsentimiento, ReferenciasBiometrica, EscaneDNI, AnalisisDNI } from '../lib/types';
 
 /**
  * Pasos del flujo de enrollment.
@@ -624,16 +624,50 @@ export default function StudentProfile() {
           </div>
 
           {dniOk && enrollment?.dni ? (
-            <div className="space-y-xs text-label-sm">
-              <p className="text-on-surface-variant">
-                DNI registrado (frente y dorso) el {new Date(enrollment.dni.fecha_captura).toLocaleDateString('es-AR', {
-                  day: '2-digit', month: 'long', year: 'numeric',
-                })}.
-              </p>
-              <p className="text-on-surface-variant">
-                Tratado como dato sensible (Ley 25.326): cifrado, finalidad acotada, eliminado al egreso.
-              </p>
-            </div>
+            /* Task 4.2–4.4: mostrar badge de análisis si existe; fallback al texto estático */
+            (() => {
+              const analisisDni: AnalisisDNI | undefined = enrollment.dni.analisis;
+              if (analisisDni) {
+                // Task 4.2: badge de estado del análisis
+                // Task 4.3: nota "Pendiente de revisión humana" (L2.5)
+                return (
+                  <div className="space-y-sm">
+                    <div className="flex flex-wrap items-center gap-sm">
+                      <Badge
+                        tone={analisisDni.estado === 'preliminar_ok' ? 'success' : 'warning'}
+                        dot
+                      >
+                        {analisisDni.estado === 'preliminar_ok'
+                          ? 'Análisis preliminar OK'
+                          : 'Análisis — Requiere revisión'}
+                      </Badge>
+                      <span className="text-label-sm text-on-surface-variant">
+                        · Pendiente de revisión humana
+                      </span>
+                    </div>
+                    <p className="text-label-sm text-on-surface-variant">
+                      Analizado el {new Date(analisisDni.timestamp_analisis).toLocaleDateString('es-AR', {
+                        day: '2-digit', month: 'long', year: 'numeric',
+                      })}.{' '}
+                      Tratado como dato sensible (Ley 25.326): cifrado, finalidad acotada, eliminado al egreso.
+                    </p>
+                  </div>
+                );
+              }
+              // Task 4.4: fallback cuando dniOk pero sin análisis
+              return (
+                <div className="space-y-xs text-label-sm">
+                  <p className="text-on-surface-variant">
+                    Frente y dorso registrados el {new Date(enrollment.dni.fecha_captura).toLocaleDateString('es-AR', {
+                      day: '2-digit', month: 'long', year: 'numeric',
+                    })}.
+                  </p>
+                  <p className="text-on-surface-variant">
+                    Tratado como dato sensible (Ley 25.326): cifrado, finalidad acotada, eliminado al egreso.
+                  </p>
+                </div>
+              );
+            })()
           ) : ENABLE_DNI_SCAN ? (
             <div className="space-y-md">
               <p className="text-label-sm text-on-surface-variant">
