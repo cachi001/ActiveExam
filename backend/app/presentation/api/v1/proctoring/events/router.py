@@ -9,8 +9,6 @@ L2.5: la respuesta incluye el veredicto 'coincide'/'discrepancia'/'no_evaluado'
 pero NUNCA sanciona — es informacion para el revisor humano.
 """
 
-from __future__ import annotations
-
 from typing import Annotated
 
 from fastapi import APIRouter, Depends

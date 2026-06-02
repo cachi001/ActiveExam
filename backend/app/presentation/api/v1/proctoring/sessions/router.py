@@ -8,8 +8,6 @@ Sin auth (D7 — alcance demo). La session_factory y el db_dependency se
 inyectan desde el router padre para evitar acoplar este router a SlimSettings.
 """
 
-from __future__ import annotations
-
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
