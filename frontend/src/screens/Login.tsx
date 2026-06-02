@@ -27,12 +27,13 @@ export default function Login() {
 
       <main className="w-full max-w-md z-10">
         <div className="bg-surface-container-lowest rounded-xl p-xl flex flex-col gap-xl shadow-card-lg border border-outline-variant/50 animate-in fade-in slide-in-from-bottom-4 duration-700">
-          <header className="flex flex-col items-center gap-md text-center">
+          <header className="flex flex-col items-center gap-lg text-center">
             <div className="w-14 h-14 rounded-2xl bg-primary text-on-primary flex items-center justify-center shadow-sm">
               <Icon name="school" className="text-[28px]" fill />
             </div>
             <div>
               <h1 className="font-headline text-headline-md text-on-surface tracking-tight">Portal del alumno</h1>
+              <p className="text-label-md text-on-surface-variant mt-xs">{INSTITUTION.nombreCorto}</p>
               <p className="text-body-md text-on-surface-variant mt-xs">Accedé para ver tus materias, inscribirte a exámenes y gestionar tu perfil académico.</p>
             </div>
           </header>
