@@ -47,9 +47,18 @@ ENV MEDIAPIPE_MODEL_DIR=/app/models
 # Sin buffering: que los logs de Alembic/uvicorn salgan en vivo (si no, un crash
 # al arrancar no imprime nada y solo se ve "Starting Container"). Critico para debug.
 ENV PYTHONUNBUFFERED=1
+# lock_timeout: si la migracion no consigue el lock de DDL en 15s, FALLA con error
+# claro en vez de colgarse hasta el timeout del healthcheck (caso tipico: dos
+# contenedores migrando a la vez en un rolling deploy). statement_timeout corta
+# cualquier sentencia >120s. Solo afecta a psycopg2 (Alembic); asyncpg (la app)
+# ignora PGOPTIONS, asi que el runtime no queda con timeouts agresivos.
+ENV PGOPTIONS="-c lock_timeout=15000 -c statement_timeout=120000"
 
-# CMD: primero migrar (branch slim, sin TimescaleDB), luego servir
-# alembic upgrade slim@head crea proctoring_session, proctoring_event, proctoring_biometria
-# uvicorn levanta en $PORT (Railway lo inyecta; default 8000 si no esta seteado)
-CMD alembic -c alembic.ini upgrade slim@head && \
+# CMD: primero migrar (branch slim, sin TimescaleDB), luego servir.
+# Marcadores [1/2]/[2/2] para ver EXACTAMENTE donde se queda si algo falla:
+# si ves [1/2] pero no [2/2], el problema es la migracion; si ves [2/2] pero
+# no "Uvicorn running", el problema es el arranque del server.
+CMD echo ">>> [1/2] migrando DB (alembic slim@head)..." && \
+    alembic -c alembic.ini upgrade slim@head && \
+    echo ">>> [2/2] migracion OK -> levantando uvicorn en ${PORT:-8000}" && \
     uvicorn app.main_slim:app --host 0.0.0.0 --port ${PORT:-8000}
