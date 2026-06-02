@@ -74,14 +74,6 @@ const FRAME_INTERVAL_MS = 200; // ~5 fps — suficiente para diagnóstico
 type HarnessState = 'idle' | 'initializing' | 'running' | 'stopped';
 
 /**
- * C-46: Modo de grabación del harness.
- * - idle: harness corriendo en modo diagnóstico puro (sin red, air-gapped)
- * - recording: sesión creada en el backend slim; cada evento se envía con screenshot
- * - stopped: grabación detenida (harness puede seguir corriendo)
- */
-type RecordMode = 'idle' | 'recording' | 'stopped';
-
-/**
  * C-30: estado del motor de visión en el harness.
  * - simulated: estado inicial, motor stub (C-29)
  * - loading: se está cargando el motor real MediaPipe
@@ -126,7 +118,7 @@ interface HarnessLogEntry {
   loggedAt: number;
   /** true si el store estaba lleno (50) al llegar este evento. */
   storeOverflow: boolean;
-  /** C-46: estado del envío al backend slim ('ok' | 'net-error' | undefined=no grabando) */
+  /** C-46: estado del envío al backend slim ('ok' | 'net-error' | undefined=sin envío) */
   networkBadge?: 'ok' | 'net-error';
   /** C-46: veredicto de re-inferencia del servidor (si networkBadge === 'ok') */
   verdictServer?: string | null;
@@ -255,6 +247,7 @@ export default function AdminDetectionHarness() {
   // ------ Store ------
   const anomaliasVivo = useApp((s) => s.anomaliasVivo);
   const pushAnomalia = useApp((s) => s.pushAnomalia);
+  const setProctoringSessionId = useApp((s) => s.setProctoringSessionId);
 
   // ------ Estado del harness ------
   const [harnessState, setHarnessState] = useState<HarnessState>('idle');
@@ -326,14 +319,19 @@ export default function AdminDetectionHarness() {
   // ------ Toast ------
   const [toast, setToast] = useState<string | null>(null);
 
-  // ------ C-46: Modo grabación ------
-  const [recordMode, setRecordMode] = useState<RecordMode>('idle');
-  const [recordedEventCount, setRecordedEventCount] = useState(0);
+  // ------ Sesión automática (lifecycle atado a la detección) ------
   /**
    * sessionIdRef: ref estable para que el callback del sink siempre lea el
    * valor actual del sessionId sin recrear el sink (D3 del design.md).
    */
   const sessionIdRef = useRef<string | null>(null);
+  /**
+   * sessionPromiseRef: permite que onSinkEvent espere a que la sesión esté
+   * lista incluso si el primer evento llega antes de que crearSesionProctoring resuelva.
+   */
+  const sessionPromiseRef = useRef<Promise<string | null> | null>(null);
+  // Contador de eventos enviados al backend (real-time — no requiere modo grabación)
+  const [eventosEnviados, setEventosEnviados] = useState(0);
 
   // ------ Refs del motor y pipeline ------
   const engineRef = useRef<VisionEngine | null>(null);
@@ -353,24 +351,6 @@ export default function AdminDetectionHarness() {
     setToast(msg);
     setTimeout(() => setToast(null), 3500);
   }, []);
-
-  // ------ C-46: startRecording / stopRecording ------
-  const startRecording = useCallback(async () => {
-    try {
-      const sesion = await api.crearSesionProctoring('diagnostico', 'Harness diagnóstico');
-      sessionIdRef.current = sesion.id;
-      setRecordMode('recording');
-      setRecordedEventCount(0);
-    } catch {
-      showToast('Error al iniciar la grabación — el harness sigue en modo diagnóstico.');
-    }
-  }, [showToast]);
-
-  const stopRecording = useCallback((count: number) => {
-    setRecordMode('stopped');
-    sessionIdRef.current = null;
-    showToast(`Grabación detenida — ${count} evento${count !== 1 ? 's' : ''} enviados.`);
-  }, [showToast]);
 
   // ------ Elapsado para "Sin eventos aún" ------
   useEffect(() => {
@@ -525,16 +505,19 @@ export default function AdminDetectionHarness() {
       return next;
     });
 
-    // C-46: si hay sesión activa, capturar screenshot y enviar al backend (fire-and-forget)
-    // D4: el envío es asíncrono y no bloquea el loop. Si falla → badge "sin red" en el log.
-    const currentSessionId = sessionIdRef.current;
-    if (currentSessionId && recordMode === 'recording') {
+    // Captura y envío real-time al backend — cada evento discreto emitido por el pipeline
+    // dispara un screenshot + POST al instante. Fire-and-forget; degradación silenciosa si
+    // no hay red o el backend está en mock (USE_REAL_BACKEND=0).
+    // D4: no bloquea el loop. Si falla → badge "⚠ sin red" en el log.
+    void (async () => {
+      const sid = sessionIdRef.current ?? (sessionPromiseRef.current ? await sessionPromiseRef.current : null);
+      if (!sid) return; // detección no iniciada / sesión no lista todavía
       const screenshot = videoRef.current ? captureVideoFrame(videoRef.current, 0.7) : null;
       const faceCountCliente = rawEvent.payload?.face_count != null
         ? Number(rawEvent.payload.face_count)
         : undefined;
 
-      void api.enviarEventoProctoring(currentSessionId, {
+      void api.enviarEventoProctoring(sid, {
         tipo: rawEvent.tipo,
         severidad: rawEvent.severidad,
         ts_cliente: new Date().toISOString(),
@@ -542,8 +525,8 @@ export default function AdminDetectionHarness() {
         screenshot_base64: screenshot,
         face_count_cliente: faceCountCliente,
       }).then((resp) => {
-        // Incrementar contador y actualizar badge en el log (setter funcional)
-        setRecordedEventCount((c) => c + 1);
+        // Incrementar contador de eventos enviados y actualizar badge en el log
+        setEventosEnviados((c) => c + 1);
         setLogEntries((prev) =>
           prev.map((e) =>
             e.id === seqId
@@ -557,7 +540,7 @@ export default function AdminDetectionHarness() {
           ),
         );
       });
-    }
+    })();
   };
 
   // ------ Iniciar harness ------
@@ -624,6 +607,12 @@ export default function AdminDetectionHarness() {
 
       const start = Date.now();
       setSessionStart(start);
+      setEventosEnviados(0);
+      // Crear sesión en el backend automáticamente al arrancar la detección (fire-and-forget).
+      // sessionPromiseRef permite que onSinkEvent espere la sesión si llega antes de que resuelva.
+      sessionPromiseRef.current = api.crearSesionProctoring('diagnostico', 'Detección test')
+        .then((s) => { sessionIdRef.current = s.id; setProctoringSessionId(s.id); return s.id; })
+        .catch(() => null);
       setHarnessState('running');
 
       // Bucle de frames (task 2.2): setInterval a FRAME_INTERVAL_MS para captura estable
@@ -756,10 +745,10 @@ export default function AdminDetectionHarness() {
 
   // ------ Detener harness ------
   const stopHarness = useCallback(async () => {
-    // C-46: si estaba grabando, detener grabación primero
-    if (recordMode === 'recording') {
-      stopRecording(recordedEventCount);
-    }
+    // Limpiar sesión automática al detener
+    sessionIdRef.current = null;
+    sessionPromiseRef.current = null;
+    setProctoringSessionId(null);
     if (frameLoopRef.current) { clearInterval(frameLoopRef.current); frameLoopRef.current = null; }
     if (animFrameRef.current) { cancelAnimationFrame(animFrameRef.current); animFrameRef.current = null; }
     streamRef.current?.getTracks().forEach((t) => t.stop());
@@ -783,9 +772,7 @@ export default function AdminDetectionHarness() {
     // C-30: reset engine mode al detener
     setEngineMode('simulated');
     setEngineError(null);
-    // C-46: resetear modo grabación al detener el harness
-    setRecordMode('idle');
-  }, [recordMode, recordedEventCount, stopRecording]);
+  }, [setProctoringSessionId]);
 
   // Cleanup al desmontar
   // C-32 Task 2.2: llamar disposeRealEngine() en lugar de engineRef.current?.dispose()
@@ -1054,32 +1041,12 @@ export default function AdminDetectionHarness() {
             {harnessState === 'initializing' && (
               <Button icon="hourglass_empty" disabled>Inicializando…</Button>
             )}
-            {/* C-46: Botón "Grabar sesión" — solo cuando corriendo y no grabando */}
-            {harnessState === 'running' && recordMode === 'idle' && (
-              <Button icon="fiber_manual_record" onClick={() => { void startRecording(); }}>
-                Grabar sesión
-              </Button>
-            )}
-            {/* C-46: Badge GRABANDO + contador + Detener grabación */}
-            {harnessState === 'running' && recordMode === 'recording' && (
-              <>
-                <span className="inline-flex items-center gap-base text-label-sm text-on-error-container bg-error-container px-sm py-base rounded-full font-bold border border-error/30">
-                  <span className="w-2 h-2 rounded-full bg-error animate-pulse" />
-                  GRABANDO · {recordedEventCount} evento{recordedEventCount !== 1 ? 's' : ''}
-                  {sessionIdRef.current && (
-                    <span className="font-mono font-normal opacity-70 ml-base">
-                      {sessionIdRef.current.slice(0, 12)}…
-                    </span>
-                  )}
-                </span>
-                <Button
-                  variant="danger"
-                  icon="stop"
-                  onClick={() => stopRecording(recordedEventCount)}
-                >
-                  Detener grabación
-                </Button>
-              </>
+            {/* Indicador en vivo — visible solo mientras la detección está corriendo */}
+            {harnessState === 'running' && (
+              <span className="inline-flex items-center gap-base text-label-sm text-primary bg-primary-container px-sm py-base rounded-full font-semibold border border-primary/20">
+                <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+                Transmitiendo en vivo · {eventosEnviados} evento{eventosEnviados !== 1 ? 's' : ''} enviado{eventosEnviados !== 1 ? 's' : ''}
+              </span>
             )}
             {harnessState === 'running' && (
               <Button variant="danger" icon="stop_circle" onClick={stopHarness}>Detener</Button>
