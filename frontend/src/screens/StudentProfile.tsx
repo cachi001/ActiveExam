@@ -478,7 +478,6 @@ export default function StudentProfile() {
                   <span className="font-semibold">Privacidad (Ley 25.326):</span> La imagen y el <Term termKey="embedding" />
                   biométrico son <strong>datos sensibles</strong>: cifrados at-rest, con finalidad acotada
                   a la verificación de identidad. Se eliminan al egreso (salvo hold disciplinario).
-                  El sistema nunca sanciona automáticamente — solo prioriza para revisión humana (<Term termKey="l2_5" />).
                 </div>
 
                 <Button

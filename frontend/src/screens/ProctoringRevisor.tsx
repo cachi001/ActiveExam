@@ -78,7 +78,7 @@ export default function ProctoringRevisor() {
           </div>
           <div className="flex items-center gap-base p-sm rounded-lg bg-primary-fixed/40 border border-primary/20 text-label-sm text-on-primary-fixed-variant">
             <Icon name="shield" className="text-[16px] shrink-0" fill />
-            <span>L2.5 — decisión siempre humana</span>
+            <span>L2.5</span>
           </div>
         </div>
 
