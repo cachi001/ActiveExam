@@ -10,4 +10,6 @@ export const STAFF_NAV = [
   { to: '/admin/reportes', icon: 'analytics', label: 'Reportes y analítica' },
   { to: '/admin/auditoria', icon: 'policy', label: 'Auditoría y privacidad' },
   { to: '/admin/detection-test', icon: 'bug_report', label: 'Test de detección' },
+  // C-46: Sesiones grabadas del backend slim de proctoring
+  { to: '/admin/proctoring-sessions', icon: 'video_library', label: 'Sesiones grabadas' },
 ];

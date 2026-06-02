@@ -761,6 +761,40 @@ C-01 → C-03 → C-04 → C-05 → C-06 → C-07 → C-08 → C-09 → C-10 →
   - `frontend/src/screens/alumno/components/` (patrón de colocalización de C-41)
   - `frontend/src/ui/components.tsx` (primitivas: Card, Badge, Button, Icon, Term)
 
+### [C-44] `c-44-proctoring-screen-ui`
+- **Estado**: `[x]` aplicado (validate --strict OK)
+- **Scope**: Pantalla de proctoring del alumno durante el examen (captura de cámara, eventos de detección, UI de tiempo real). Ver artefactos en `openspec/changes/c-44-proctoring-screen-ui/`.
+- **Dependencias**: `C-40`, `C-41`, `C-42`
+- **Governance**: MEDIO
+
+### [C-45] `c-45-backend-proctoring-slim`
+- **Estado**: `[ ]` propuesto (validate --strict OK — 29 tasks)
+- **Scope**: **Backend slim de proctoring sin auth, deployable en Railway (FastAPI + Postgres administrado).** Módulo aditivo nuevo — NO modifica el backend de producción existente. (1) `app/config_slim.py` con `SlimSettings` (solo `DATABASE_URL`, `FRONTEND_ORIGIN`, `PORT`). (2) `app/main_slim.py` con `create_slim_app()` sin Keycloak/Vault/MinIO/OTLP; CORS parametrizable. (3) Router slim bajo `/api/v1/proctoring`: `POST /sessions`, `POST /sessions/{id}/events` (con screenshot base64), `POST /sessions/{id}/biometria`, `GET /sessions`, `GET /sessions/{id}`, `GET /health`. (4) 3 tablas Postgres nuevas: `proctoring_session`, `proctoring_event`, `proctoring_biometria` — migración Alembic `branch_labels=("slim",)`, sin TimescaleDB. (5) Score calculado server-side (pesos `{bajo:5, medio:20, alto:50, critico:100}`) alineado con `riskWeights` del frontend. (6) `Dockerfile.slim`: `alembic upgrade slim@head && uvicorn app.main_slim:app --port $PORT`. L2.5: el backend NUNCA sanciona; screenshots = dato sensible Ley 25.326. Caps NEW: `proctoring-session-api`, `proctoring-event-ingestion`, `proctoring-history`, `railway-deploy-config`.
+- **Dependencias**: ninguna (módulo slim aditivo, independiente del camino crítico de producción)
+- **Governance**: MEDIO
+- **Leer antes**:
+  - `openspec/changes/c-45-backend-proctoring-slim/` (proposal, design, specs/, tasks)
+  - `backend/app/config.py` (Settings de producción — NO modificar)
+  - `backend/app/main.py` (app factory de producción — NO modificar)
+  - `backend/migrations/versions/` (convención de migrations Alembic)
+  - `knowledge-base/13_legal_y_cumplimiento_argentina.md` §Dato sensible §Ley 25.326
+  - `knowledge-base/05_reglas_de_negocio.md` §L2.5 (nunca sancionar automáticamente)
+
+### [C-46] `c-46-frontend-proctoring-integracion`
+- **Estado**: `[ ]` propuesto (validate --strict OK — 46 tasks)
+- **Scope**: **Cableado del frontend al backend slim C-45 — flujo completo detectar → grabar → revisar.** (1) Cinco métodos duales (`crearSesionProctoring`, `enviarEventoProctoring`, `enviarBiometriaProctoring`, `listarSesionesProctoring`, `getSesionProctoring`) en `api.ts` con tipos TypeScript calcados del backend C-45 y fallback mock cuando `USE_REAL_BACKEND=0`. (2) Modo "Grabar sesión" en `AdminDetectionHarness`: crea sesión en backend → captura screenshot por evento (frame del `<video>` a canvas base64) → envía al backend → estado grabando + contador; degradación silenciosa si la red falla. (3) Helper puro `captureVideoFrame` en `videoFrameCapture.ts` (sin React, reutilizable). (4) Envío de biometría al backend atado al `sessionId` de la sesión activa. (5) Vista `ProctoringRevisor` + `ProctoringSessionDetail`: lista de sesiones + detalle con screenshots, veredictos de re-inferencia, comparación face_count cliente/servidor, biometría y score; disclaimer L2.5 inamovible. (6) Ajuste fino de `DEFAULT_CONFIG` en `stateTransitionRules.ts` (`gaze_deviation_threshold` 0.15→0.20, `face_absent_ms` 2000→3000ms) para reducir falsos positivos. Caps NEW: `proctoring-api-client`, `harness-record-mode`, `video-frame-capture`, `proctoring-revisor-real`. Caps MODIFIED (delta): `admin-detection-test-harness`, `state-transition-rules`.
+- **Dependencias**: `C-45` (backend slim — endpoints REST disponibles en Railway)
+- **Governance**: MEDIO
+- **Leer antes**:
+  - `openspec/changes/c-46-frontend-proctoring-integracion/` (proposal, design, specs/, tasks)
+  - `frontend/src/lib/api.ts` (patrón dual-mode USE_REAL_BACKEND, realFetch)
+  - `frontend/src/screens/AdminDetectionHarness.tsx` (harness a extender con modo grabar)
+  - `frontend/src/ui/CameraSnapshotCapture.tsx` (patrón canvas + toDataURL a reusar)
+  - `frontend/src/screens/Revisor.tsx`, `SessionDetail.tsx` (patrón visual a reusar)
+  - `frontend/src/proctoring/riskWeights.ts` (pesos alineados con backend C-45)
+  - `knowledge-base/13_legal_y_cumplimiento_argentina.md` §Dato sensible §Ley 25.326
+  - `knowledge-base/05_reglas_de_negocio.md` §L2.5 (nunca sancionar automáticamente)
+
 ### [C-43] `c-43-admin-ui`
 - **Estado**: `[ ]` propuesto (validate --strict OK — 35 tasks)
 - **Scope**: **Rediseño minimalista uniforme + componentización del área admin/staff** — 7 pantallas: AdminDashboard, ExamList, Reports, Revisor, SessionDetail, Proctor, AuditPrivacy. (1) **AdminDashboard**: `SectionTitle` en acciones rápidas, botones `size="sm"` en el card de sidebar, jerarquía visual clara en tabla. (2) **ExamList**: `Button size="sm" variant="ghost"` en acción "Configurar" inline (reemplaza `<button>` raw con clases manuales). (3) **Reports**: barra de distribución de severidad con tono semántico correcto por nivel (baja→success, media→warning, alta→error). (4) **Revisor**: extrae `ReviewQueueItem` + `ReviewDecisionPanel` a `screens/admin/components/`; espaciado `space-y-base` entre ítems; `SectionTitle` en encabezados internos; disclaimer L2.5 inamovible. (5) **SessionDetail**: `SectionTitle` en "Eventos discretos" con sub de conteo. (6) **Proctor**: extrae `StudentFeedCard` (tile de video) + `ProctorControls` (umbral + retos + mensaje) a `screens/admin/components/`; usa `RangeInput` de C-40 para el slider de umbral; `accent-primary` en checkboxes; `SectionTitle` en encabezados. (7) **AuditPrivacy**: extrae `AuditLogItem` + `DsrCard`; `SectionTitle` con sub legal en "Derechos del titular". NO toca AdminDetectionHarness (change propio). Caps NEW: `admin-dashboard-ui`, `proctor-live-panel`, `reviewer-queue-panel`, `audit-privacy-ui`. Caps MODIFIED (delta): `student-profile-shell` (SessionDetail con SectionTitle).
@@ -781,10 +815,10 @@ C-01 → C-03 → C-04 → C-05 → C-06 → C-07 → C-08 → C-09 → C-10 →
 | **0 — Fundaciones** | C-01, C-02, C-03 | 3× CRITICO (C-03 ★ Tier 1 BLOQUEANTE) |
 | **1 — MVP** | C-04…C-19 | 6 CRITICO, 8 ALTO, 2 MEDIO |
 | **2 — Refinamiento** | C-20 | 1 MEDIO |
-| **Refinamiento post-fundación** | C-21, C-22, C-23, C-24, C-25, C-26, C-27, C-28, C-29, C-30, C-31, C-32, C-33, C-34, C-35, C-36, C-37, C-38, C-39, C-40, C-41, C-42, C-43 | 6 ALTO, 8 MEDIO, 9 BAJO |
+| **Refinamiento post-fundación** | C-21, C-22, C-23, C-24, C-25, C-26, C-27, C-28, C-29, C-30, C-31, C-32, C-33, C-34, C-35, C-36, C-37, C-38, C-39, C-40, C-41, C-42, C-43, C-44, C-45, C-46 | 6 ALTO, 10 MEDIO, 10 BAJO |
 
-- **Total**: **43 changes** — 20 de la fundación (3 fases) + 23 post-fundación (capa frontend/demo, captura de actividad, consentimiento en capas, decisiones de producto, identidad institucional, lenguaje claro/glosario, UX/legibilidad del harness, motor de visión real en el harness, quick-fixes de presentación, harness cache UX, medidor de riesgo en harness, biometría perfil funcional, fixes detección cámara/mirada, verificación biométrica inmersiva, foto de perfil en enrollment, escaneo DNI frente+dorso, análisis/validación indicativa DNI, UI base limpieza, rediseño portal alumno, rediseño perfil alumno, rediseño admin/staff — ver sección dedicada arriba).
-- **Camino crítico**: 11 changes (`C-01 → C-03 → C-04 → C-05 → C-06 → C-07 → C-08 → C-09 → C-10 → C-15 → C-16`). C-21…C-43 quedan **fuera** del camino crítico (refinamiento de demo, no MVP backend).
+- **Total**: **46 changes** — 20 de la fundación (3 fases) + 26 post-fundación (capa frontend/demo, captura de actividad, consentimiento en capas, decisiones de producto, identidad institucional, lenguaje claro/glosario, UX/legibilidad del harness, motor de visión real en el harness, quick-fixes de presentación, harness cache UX, medidor de riesgo en harness, biometría perfil funcional, fixes detección cámara/mirada, verificación biométrica inmersiva, foto de perfil en enrollment, escaneo DNI frente+dorso, análisis/validación indicativa DNI, UI base limpieza, rediseño portal alumno, rediseño perfil alumno, rediseño admin/staff, pantalla de proctoring UI, backend proctoring slim Railway, integración frontend-proctoring E2E — ver sección dedicada arriba).
+- **Camino crítico**: 11 changes (`C-01 → C-03 → C-04 → C-05 → C-06 → C-07 → C-08 → C-09 → C-10 → C-15 → C-16`). C-21…C-46 quedan **fuera** del camino crítico (refinamiento de demo, no MVP backend).
 - **Gates de paralelismo**: 13 (GATE 0…GATE 12). Forks grandes en GATE 5, GATE 6 y GATE 9.
 - **Primer change recomendado**: `C-01` (acuerdo-proctoring-dpia) — gate legal que junto a `C-02` bloquea todo el desarrollo. El primer change de **código** es `C-03` (poc-carga-mensajeria, Tier 1, BLOQUEANTE).
 - **Post-fundación**: el detalle y el porqué viven también en **engram** (`activeexam/refinamiento-frontend-v2`). Orden de aplicación sugerido: **C-21 → C-22 → C-26** (perfil cuelga del portal; el acuse por-examen de C-26 cuelga de la inscripción de C-21 + el consentimiento de C-22); **C-23 → C-25** (C-25 extiende el harness y cablea los detectores de navegador); C-24 independiente; **C-27 → C-28 → C-29 → C-30 → C-32 → C-33 → C-34 → C-35 → C-36 → C-37 → C-38 → C-39 pueden correr en secuencia** (C-28 inteligibilidad; C-29 legibilidad/banner; C-30 motor real en el harness con overlay canvas; C-32 cache + UX amigable del harness; C-33 medidor de riesgo en harness; C-34 biometría perfil funcional; C-35 fixes bugs detección cámara + mirada; C-36 verificación biométrica inmersiva con componente compartido; C-37 foto de perfil en enrollment con componente snapshot reutilizable; C-38 escaneo DNI frente+dorso con marco escáner ID-1; C-39 análisis indicativo DNI con panel de resultados mock). **C-40** (UI base limpieza) es independiente y puede correr antes de la tanda de rediseño. **C-41 → C-42 → C-43** (rediseño portal alumno → rediseño perfil alumno → rediseño admin/staff) corren en secuencia, todos BAJO governance.

@@ -14,6 +14,8 @@ type Fase = 'preparar' | 'capturando' | 'verificando' | 'verificado' | 'reintent
 export default function Biometria() {
   const navigate = useNavigate();
   const examen = useApp((s) => s.examenActivo);
+  // C-46: leer sessionId de proctoring activa para envío biométrico (D6)
+  const proctoringSessionId = useApp((s) => s.proctoringSessionId);
   const [fase, setFase] = useState<Fase>('preparar');
   const [resultado, setResultado] = useState<{ distancia: number; reintentos: number } | null>(null);
 
@@ -34,9 +36,23 @@ export default function Biometria() {
     // Con C-09 real, se pasará el embedding calculado en handleComplete.
     const r = await api.verifyIdentity(examen?.id ?? 'SESS-DEMO', 0.31);
     setResultado({ distancia: r.distancia, reintentos: r.reintentos_restantes });
-    setFase(r.veredicto === 'verificado' ? 'verificado' : 'reintento');
+    const verificado = r.veredicto === 'verificado';
+    setFase(verificado ? 'verificado' : 'reintento');
+
+    // C-46: envío biométrico al backend slim (fire-and-forget, D6)
+    // Solo si hay una sesión de proctoring activa. Error silencioso — no bloquea el flujo.
+    if (verificado && proctoringSessionId) {
+      void api.enviarBiometriaProctoring(proctoringSessionId, {
+        liveness_ok: true,
+        retos_resueltos: [], // liveness híbrido real en C-09
+        resultado: r.veredicto,
+      }).catch(() => {
+        // Error silencioso: la biometría real no debe bloquear el flujo de examen
+      });
+    }
+
     // Task 7.7: navegación a /sala-espera tras verificado
-    if (r.veredicto === 'verificado') setTimeout(() => navigate('/sala-espera'), 1400);
+    if (verificado) setTimeout(() => navigate('/sala-espera'), 1400);
   };
 
   // Task 7.4: handleCancel — vuelve a la fase preparar
