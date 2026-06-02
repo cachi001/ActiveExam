@@ -904,6 +904,26 @@ export const api = {
       },
     };
   },
+
+  /**
+   * Elimina una sesión de proctoring (C-46). Real: DELETE /proctoring/sessions/{id} (204).
+   * Mock o fallo: retorna { ok:false } sin romper.
+   */
+  async eliminarSesionProctoring(id: string): Promise<{ ok: boolean }> {
+    if (USE_REAL_BACKEND) {
+      try {
+        const res = await fetch(`${API_BASE}/proctoring/sessions/${id}`, {
+          method: 'DELETE',
+          headers: { Authorization: 'Bearer demo' },
+        });
+        return { ok: res.ok };
+      } catch {
+        return { ok: false };
+      }
+    }
+    await delay(200);
+    return { ok: true }; // mock: simula éxito
+  },
 };
 
 // Helpers de presentación

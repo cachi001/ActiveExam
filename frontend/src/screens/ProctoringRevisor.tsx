@@ -11,7 +11,7 @@
 
 import { useEffect, useState } from 'react';
 import { StaffShell } from '../ui/shells';
-import { Icon, Card, Badge, SectionTitle } from '../ui/components';
+import { Icon, Card, Badge, SectionTitle, Button } from '../ui/components';
 import { STAFF_NAV } from '../ui/nav';
 import { useNavigate } from '../lib/router';
 import { useApp } from '../lib/store';
@@ -64,6 +64,17 @@ export default function ProctoringRevisor() {
     navigate(PROCTORING_DETAIL_ROUTE);
   };
 
+  const handleEliminar = async (sesion: SesionProctoringResumen) => {
+    // eslint-disable-next-line no-alert -- herramienta admin: confirm directo es aceptable
+    if (!window.confirm('¿Eliminar esta sesión grabada? Esta acción no se puede deshacer.')) return;
+    const { ok } = await api.eliminarSesionProctoring(sesion.id);
+    if (ok) {
+      // Quitar la sesión eliminada del estado local sin recargar todo
+      setSesiones((prev) => prev.filter((s) => s.id !== sesion.id));
+    }
+    // Si ok=false: dejamos la lista como está (degradación silenciosa).
+  };
+
   return (
     <StaffShell nav={STAFF_NAV} title="Sesiones grabadas">
       <div className="space-y-lg animate-in fade-in duration-300">
@@ -108,51 +119,69 @@ export default function ProctoringRevisor() {
           {!cargando && sesiones.length > 0 && (
             <div className="space-y-sm">
               {sesiones.map((s) => (
-                <button
+                <div
                   key={s.id}
-                  type="button"
-                  onClick={() => handleSeleccionar(s)}
-                  className="w-full text-left rounded-xl border border-outline-variant/40 bg-surface-container-low hover:bg-surface-container hover:border-primary/30 transition-all p-md space-y-sm group"
+                  className="relative rounded-xl border border-outline-variant/40 bg-surface-container-low hover:bg-surface-container hover:border-primary/30 transition-all group"
                 >
-                  {/* Fila 1: ID + modo + etiqueta */}
-                  <div className="flex items-center gap-sm flex-wrap">
-                    <span className="font-mono text-label-sm text-on-surface-variant">
-                      {s.id.slice(0, 20)}…
-                    </span>
-                    <Badge tone={modoBadgeTone(s.modo)}>
-                      {s.modo}
-                    </Badge>
-                    {s.etiqueta && (
-                      <span className="text-label-sm text-on-surface font-semibold">{s.etiqueta}</span>
-                    )}
-                  </div>
-
-                  {/* Fila 2: métricas */}
-                  <div className="flex items-center gap-md flex-wrap text-label-sm">
-                    <span className="text-on-surface-variant">
-                      <Icon name="calendar_today" className="text-[14px] inline mr-base" />
-                      {formatFecha(s.creada_en)}
-                    </span>
-                    <span className="text-on-surface">
-                      <Icon name="notifications" className="text-[14px] inline mr-base" />
-                      {s.total_eventos} eventos
-                    </span>
-                    {s.total_discrepancias > 0 && (
-                      <span className="text-error font-semibold">
-                        <Icon name="warning" className="text-[14px] inline mr-base" fill />
-                        {s.total_discrepancias} discrepancias
+                  <button
+                    type="button"
+                    onClick={() => handleSeleccionar(s)}
+                    className="w-full text-left p-md pr-12 space-y-sm rounded-xl"
+                  >
+                    {/* Fila 1: ID + modo + etiqueta */}
+                    <div className="flex items-center gap-sm flex-wrap">
+                      <span className="font-mono text-label-sm text-on-surface-variant">
+                        {s.id.slice(0, 20)}…
                       </span>
-                    )}
-                    <span className={`font-bold ${scoreColor(s.score)}`}>
-                      Score: {s.score}
-                    </span>
-                  </div>
+                      <Badge tone={modoBadgeTone(s.modo)}>
+                        {s.modo}
+                      </Badge>
+                      {s.etiqueta && (
+                        <span className="text-label-sm text-on-surface font-semibold">{s.etiqueta}</span>
+                      )}
+                    </div>
 
-                  {/* Flecha */}
-                  <div className="flex justify-end">
-                    <Icon name="arrow_forward" className="text-[18px] text-primary opacity-0 group-hover:opacity-100 transition-opacity" />
-                  </div>
-                </button>
+                    {/* Fila 2: métricas */}
+                    <div className="flex items-center gap-md flex-wrap text-label-sm">
+                      <span className="text-on-surface-variant">
+                        <Icon name="calendar_today" className="text-[14px] inline mr-base" />
+                        {formatFecha(s.creada_en)}
+                      </span>
+                      <span className="text-on-surface">
+                        <Icon name="notifications" className="text-[14px] inline mr-base" />
+                        {s.total_eventos} eventos
+                      </span>
+                      {s.total_discrepancias > 0 && (
+                        <span className="text-error font-semibold">
+                          <Icon name="warning" className="text-[14px] inline mr-base" fill />
+                          {s.total_discrepancias} discrepancias
+                        </span>
+                      )}
+                      <span className={`font-bold ${scoreColor(s.score)}`}>
+                        Score: {s.score}
+                      </span>
+                    </div>
+
+                    {/* Flecha */}
+                    <div className="flex justify-end">
+                      <Icon name="arrow_forward" className="text-[18px] text-primary opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </div>
+                  </button>
+
+                  {/* Eliminar sesión (no dispara la navegación al detalle) */}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    icon="delete"
+                    aria-label="Eliminar sesión"
+                    title="Eliminar sesión"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void handleEliminar(s);
+                    }}
+                    className="absolute top-sm right-sm text-on-surface-variant hover:text-error"
+                  />
+                </div>
               ))}
             </div>
           )}
