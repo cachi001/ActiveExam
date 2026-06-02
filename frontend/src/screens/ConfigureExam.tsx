@@ -47,7 +47,10 @@ export default function ConfigureExam() {
     }
     const inicioDate = new Date(form.inicio);
     const ahora = new Date();
-    if (!form.inicio || isNaN(inicioDate.getTime()) || inicioDate.getTime() <= ahora.getTime() + 5 * 60 * 1000) {
+    if (!form.inicio || isNaN(inicioDate.getTime())) {
+      e.inicio = 'Ingresá una fecha y hora de inicio válida';
+    } else if (!editando && inicioDate.getTime() <= ahora.getTime() + 5 * 60 * 1000) {
+      // La regla de "futuro" solo aplica al CREAR un examen nuevo; al editar uno existente se respeta su fecha.
       e.inicio = 'El inicio debe ser en el futuro';
     }
     if (form.duracion_min < 30 || form.duracion_min > 180) {
@@ -61,7 +64,7 @@ export default function ConfigureExam() {
     }
 
     return e;
-  }, [form]);
+  }, [form, editando]);
 
   const hayErrores = Object.keys(errors).length > 0;
 
