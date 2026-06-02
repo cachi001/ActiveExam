@@ -6,8 +6,6 @@ Sin auth (D7 — alcance demo).
 Ley 25.326: el embedding se trata como dato sensible en toda la capa.
 """
 
-from __future__ import annotations
-
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
