@@ -22,13 +22,20 @@ const VARIANTS: Record<Variant, string> = {
   danger: 'bg-error text-on-error hover:brightness-110 shadow-sm',
 };
 
-export function Button({ variant = 'primary', icon, iconRight, children, className = '', ...rest }: {
-  variant?: Variant; icon?: string; iconRight?: string; children?: ReactNode;
+type Size = 'sm' | 'md' | 'lg';
+const SIZE_CLASSES: Record<Size, string> = {
+  sm: 'h-9 px-md',
+  md: 'h-12 px-lg',
+  lg: 'h-14 px-xl',
+};
+
+export function Button({ variant = 'primary', size = 'md', icon, iconRight, children, className = '', ...rest }: {
+  variant?: Variant; size?: Size; icon?: string; iconRight?: string; children?: ReactNode;
 } & ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
     <button
       {...rest}
-      className={`inline-flex items-center justify-center gap-xs h-12 px-lg rounded-xl font-label-md text-label-md
+      className={`inline-flex items-center justify-center gap-xs ${SIZE_CLASSES[size]} rounded-xl font-label-md text-label-md
         transition-all duration-200 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none ${VARIANTS[variant]} ${className}`}
     >
       {icon && <Icon name={icon} className="text-[20px]" />}
@@ -129,4 +136,54 @@ export function ProgressBar({ value, tone = 'primary' }: { value: number; tone?:
 export function ScoreChip({ score, umbral }: { score: number; umbral: number }) {
   const tone = score >= umbral ? 'bg-error text-on-error' : score >= umbral * 0.6 ? 'bg-warning-container text-warning' : 'bg-success-container text-success';
   return <span className={`px-sm py-base rounded-full text-label-sm font-bold ${tone}`}>Riesgo {score}%</span>;
+}
+
+// ── Primitivas de formulario ──────────────────────────────────────────────────
+
+interface FormFieldProps {
+  label: string;
+  hint?: string;
+  error?: string;
+  children: ReactNode;
+  className?: string;
+}
+
+export function FormField({ label, hint, error, children, className = '' }: FormFieldProps) {
+  return (
+    <div className={`space-y-base ${className}`}>
+      <label className="text-label-sm uppercase tracking-wide text-on-surface-variant font-semibold">
+        {label}
+      </label>
+      {children}
+      {hint && !error && <p className="text-label-sm text-on-surface-variant">{hint}</p>}
+      {error && <p className="text-label-sm text-error">{error}</p>}
+    </div>
+  );
+}
+
+interface RangeInputProps {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step?: number;
+  unit?: string;
+  hint?: string;
+  onChange: (v: number) => void;
+}
+
+export function RangeInput({ label, value, min, max, step = 1, unit = '', hint, onChange }: RangeInputProps) {
+  return (
+    <FormField label={`${label}: ${value}${unit ? ' ' + unit : ''}`} hint={hint}>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="w-full accent-primary"
+      />
+    </FormField>
+  );
 }

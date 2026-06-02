@@ -11,7 +11,7 @@ import type {
   EventoSesion, DesafioActivo, Severidad, TipoEvento,
   Materia, Comision, Inscripcion, EstadoInscripcion,
   EstadoEnrollment, AcuseConsentimiento, ReferenciasBiometrica, EscaneDNI, VigenciaReferencia,
-  AcuseExamen, AnalisisDNI,
+  AcuseExamen,
 } from './types';
 import { INSTITUTION } from '../config/institution';
 
@@ -636,63 +636,6 @@ export const api = {
   },
 
   /**
-   * Simula el análisis indicativo del DNI (C-39).
-   *
-   * MOCK CLIENT-SIDE — sin llamadas de red. Todo generado en memoria de sesión.
-   *
-   * RESTRICCIÓN ARQUITECTÓNICA (RN-GLB-01): el cliente es sensor no confiable.
-   * El análisis REAL (RENAPER, MRZ, autenticidad, PDF417 completo, OCR real)
-   * es siempre server-side. Este mock es únicamente para demostración.
-   *
-   * RESTRICCIÓN L2.5: el estado es SIEMPRE 'preliminar_ok' o 'requiere_revision'.
-   * NUNCA 'aprobado' ni 'rechazado'. La decisión disciplinaria es siempre humana.
-   *
-   * Los datos OCR son coherentes con el alumno demo "Emiliano Cáceres" (FRM-23-4912).
-   * La concordancia_facial tiene variación cosmética (rango 0.88–0.96) para realismo.
-   */
-  async analizarDNI(): Promise<AnalisisDNI> {
-    // Delay de ~1.8s para simular procesamiento server-side realista
-    await delay(1800);
-
-    // Variación cosmética: base determinista + seno del timestamp para que no sea
-    // siempre idéntica entre corridas, pero siempre en rango 0.88–0.96.
-    const concordancia_facial = Math.min(
-      0.96,
-      Math.max(0.88, 0.92 + Math.sin(Date.now() / 1e8) * 0.04),
-    );
-
-    const analisis: AnalisisDNI = {
-      // Checks de integridad (todos pasan en el mock demo)
-      documento_detectado: true,
-      imagen_legible: true,
-      tipo_documento: 'dni_argentino',
-      pdf417_leido: true,
-
-      // Datos OCR coherentes con el alumno demo Emiliano Cáceres (FRM-23-4912)
-      datos_extraidos: {
-        numero_documento: '23.456.789',
-        apellido: 'CÁCERES',
-        nombre: 'EMILIANO GASTÓN',
-        fecha_nacimiento: '15/08/1995',
-        fecha_vencimiento: '15/08/2031',
-        sexo: 'M',
-        cuil: '20-23456789-4',
-      },
-
-      concordancia_facial,
-
-      // Estado: 'preliminar_ok' cuando todos los checks pasan y concordancia >= 0.85
-      // NUNCA 'aprobado' ni 'rechazado' (L2.5)
-      estado: concordancia_facial >= 0.85 ? 'preliminar_ok' : 'requiere_revision',
-
-      timestamp_analisis: new Date().toISOString(),
-      version_analisis: 'mock-v1',
-    };
-
-    return analisis;
-  },
-
-  /**
    * Simula la deriva del embedding y marca la referencia para renovación anticipada.
    * En producción este flag lo setea el backend tras detectar deriva sostenida en la
    * verificación silenciosa continua. La deriva NO sanciona ni invalida la rendición
@@ -749,5 +692,5 @@ export const TIPO_EVENTO_LABEL: Record<TipoEvento, string> = {
 export type {
   EventoSesion, Materia, Comision, Inscripcion, EstadoInscripcion,
   EstadoEnrollment, AcuseConsentimiento, ReferenciasBiometrica, EscaneDNI, VigenciaReferencia,
-  AcuseExamen, AnalisisDNI,
+  AcuseExamen,
 };

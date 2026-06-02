@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { StaffShell } from '../ui/shells';
-import { Icon, Card, Avatar, Badge, SeverityBadge, Button, Stat } from '../ui/components';
+import { Icon, Card, Avatar, Badge, SeverityBadge, Button, Stat, SectionTitle } from '../ui/components';
 import { REVISOR_NAV } from './Revisor';
 import { useApp } from '../lib/store';
 import { useNavigate } from '../lib/router';
@@ -45,7 +45,7 @@ export default function SessionDetail() {
 
         <div className="grid lg:grid-cols-2 gap-lg">
           <Card className="space-y-sm">
-            <h3 className="text-label-sm uppercase tracking-wide text-on-surface-variant border-b border-outline-variant/40 pb-base">Eventos discretos</h3>
+            <SectionTitle sub={`${sel.eventos.length} evento${sel.eventos.length !== 1 ? 's' : ''}`}>Eventos discretos</SectionTitle>
             {sel.eventos.map((ev) => (
               <div key={ev.id} className="flex items-center justify-between gap-sm p-sm rounded-xl bg-surface-container-low border border-outline-variant/40">
                 <div className="flex items-center gap-sm">

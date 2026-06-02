@@ -104,7 +104,7 @@ export default function EquipmentCheck() {
           <div className="text-label-md text-on-surface-variant">
             {enCurso ? 'Verificando equipo…'
               : listo ? <span className="text-success font-semibold inline-flex items-center gap-base"><Icon name="check_circle" className="text-[18px]" fill /> Todo en orden</span>
-              : <span className="text-warning font-semibold inline-flex items-center gap-base"><Icon name="warning" className="text-[18px]" fill /> {fallas} requisito(s) con observaciones — podés continuar igual (modo demo)</span>}
+              : <span className="text-warning font-semibold inline-flex items-center gap-base"><Icon name="warning" className="text-[18px]" fill /> {fallas} requisito(s) con observaciones — podés continuar</span>}
           </div>
           <div className="flex gap-sm">
             <Button variant="outline" icon="refresh" onClick={correr}>Reintentar</Button>
