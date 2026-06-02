@@ -731,6 +731,13 @@ export const api = {
     face_count_servidor: number;
     screenshot_sha256: string;
   } | null> {
+    // El backend usa severidad en masculino (bajo|medio|alto|critico); el frontend
+    // la maneja en femenino (baja|media|alta|critica) + baseline. Sin este mapeo el
+    // POST da 422 y el evento se pierde en silencio (parece "sin red"/mock).
+    const SEVERIDAD_BACKEND: Record<string, string> = {
+      baseline: 'bajo', baja: 'bajo', media: 'medio', alta: 'alto', critica: 'critico',
+    };
+    const body = { ...payload, severidad: SEVERIDAD_BACKEND[payload.severidad] ?? payload.severidad };
     if (USE_REAL_BACKEND) {
       try {
         return await realFetch<{
@@ -740,7 +747,7 @@ export const api = {
           screenshot_sha256: string;
         }>(
           `/proctoring/sessions/${sessionId}/events`,
-          { method: 'POST', body: JSON.stringify(payload) },
+          { method: 'POST', body: JSON.stringify(body) },
           'demo',
         );
       } catch {
