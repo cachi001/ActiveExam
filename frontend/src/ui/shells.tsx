@@ -69,56 +69,84 @@ export function StudentShell({ children, step }: { children: ReactNode; step?: n
 
 interface NavItem { to: string; icon: string; label: string; }
 
-/** Shell para staff (proctor / revisor / admin): sidebar + contenido. */
+/** Shell para staff (proctor / revisor / admin): sidebar (desktop) + drawer (mobile) + contenido. */
 export function StaffShell({ children, nav, title }: { children: ReactNode; nav: NavItem[]; title: string }) {
   const { path } = useRouter();
   const principal = useApp((s) => s.principal);
   const navigate = useNavigate();
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+
+  const navList = (onItemClick?: () => void) => (
+    <nav className="flex-1 p-md space-y-base overflow-y-auto">
+      {nav.map((item) => {
+        const active = path === item.to;
+        return (
+          <Link key={item.to} to={item.to} onClick={onItemClick}
+            className={`flex items-center gap-sm px-sm py-sm rounded-xl text-label-md font-semibold transition-colors ${
+              active ? 'bg-primary-fixed text-on-primary-fixed-variant' : 'text-on-surface-variant hover:bg-surface-container'
+            }`}>
+            <Icon name={item.icon} className="text-[22px]" fill={active} />
+            {item.label}
+          </Link>
+        );
+      })}
+    </nav>
+  );
+
+  const userBlock = (
+    <div className="p-md border-t border-outline-variant/40">
+      <div className="flex items-center gap-sm px-sm py-sm rounded-xl bg-surface-container">
+        {principal?.foto_perfil ? (
+          <img src={principal.foto_perfil} className="w-9 h-9 rounded-full object-cover" alt={`Foto de ${principal?.nombre}`} />
+        ) : (
+          <div className="w-9 h-9 rounded-full bg-secondary-container text-on-secondary flex items-center justify-center font-semibold">
+            {principal?.nombre.charAt(0) ?? '?'}
+          </div>
+        )}
+        <div className="min-w-0 flex-1">
+          <div className="text-label-md text-on-surface font-semibold truncate">{principal?.nombre ?? 'Invitado'}</div>
+          <div className="text-label-sm text-on-surface-variant truncate">{principal?.roles.join(', ')}</div>
+        </div>
+        <button onClick={() => navigate('/login')} title="Salir" className="text-on-surface-variant hover:text-error">
+          <Icon name="logout" className="text-[20px]" />
+        </button>
+      </div>
+    </div>
+  );
+
   return (
     <div className="min-h-screen flex bg-surface">
+      {/* Sidebar fija (desktop ≥ lg) */}
       <aside className="w-sidebar-width shrink-0 bg-surface-container-lowest border-r border-outline-variant/50 flex-col hidden lg:flex sticky top-0 h-screen">
         <div className="px-lg h-16 flex items-center border-b border-outline-variant/40">{LOGO}</div>
-        <nav className="flex-1 p-md space-y-base overflow-y-auto">
-          {nav.map((item) => {
-            const active = path === item.to;
-            return (
-              <Link key={item.to} to={item.to}
-                className={`flex items-center gap-sm px-sm py-sm rounded-xl text-label-md font-semibold transition-colors ${
-                  active ? 'bg-primary-fixed text-on-primary-fixed-variant' : 'text-on-surface-variant hover:bg-surface-container'
-                }`}>
-                <Icon name={item.icon} className="text-[22px]" fill={active} />
-                {item.label}
-              </Link>
-            );
-          })}
-        </nav>
-        <div className="p-md border-t border-outline-variant/40">
-          <div className="flex items-center gap-sm px-sm py-sm rounded-xl bg-surface-container">
-            {/* Task 9.1: avatar condicional — foto circular si foto_perfil existe, inicial si no */}
-            {principal?.foto_perfil ? (
-              <img
-                src={principal.foto_perfil}
-                className="w-9 h-9 rounded-full object-cover"
-                alt={`Foto de ${principal?.nombre}`}
-              />
-            ) : (
-              <div className="w-9 h-9 rounded-full bg-secondary-container text-on-secondary flex items-center justify-center font-semibold">
-                {principal?.nombre.charAt(0) ?? '?'}
-              </div>
-            )}
-            <div className="min-w-0 flex-1">
-              <div className="text-label-md text-on-surface font-semibold truncate">{principal?.nombre ?? 'Invitado'}</div>
-              <div className="text-label-sm text-on-surface-variant truncate">{principal?.roles.join(', ')}</div>
-            </div>
-            <button onClick={() => navigate('/login')} title="Salir" className="text-on-surface-variant hover:text-error">
-              <Icon name="logout" className="text-[20px]" />
-            </button>
-          </div>
-        </div>
+        {navList()}
+        {userBlock}
       </aside>
+
+      {/* Drawer (mobile < lg) */}
+      {mobileNavOpen && (
+        <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true">
+          <div className="absolute inset-0 bg-black/40 animate-in fade-in duration-150" onClick={() => setMobileNavOpen(false)} />
+          <aside className="absolute left-0 top-0 h-full w-[80vw] max-w-xs bg-surface-container-lowest border-r border-outline-variant/50 flex flex-col shadow-card-lg animate-in fade-in duration-200">
+            <div className="px-lg h-16 flex items-center justify-between border-b border-outline-variant/40">
+              {LOGO}
+              <button onClick={() => setMobileNavOpen(false)} aria-label="Cerrar menú" className="w-9 h-9 rounded-full hover:bg-surface-container flex items-center justify-center text-on-surface-variant">
+                <Icon name="close" className="text-[22px]" />
+              </button>
+            </div>
+            {navList(() => setMobileNavOpen(false))}
+            {userBlock}
+          </aside>
+        </div>
+      )}
+
       <div className="flex-1 min-w-0 flex flex-col">
-        <header className="sticky top-0 z-30 bg-surface/80 backdrop-blur border-b border-outline-variant/40 px-lg h-16 flex items-center">
-          <h1 className="font-headline text-title-lg text-on-surface">{title}</h1>
+        <header className="sticky top-0 z-30 bg-surface/80 backdrop-blur border-b border-outline-variant/40 px-lg h-16 flex items-center gap-sm">
+          {/* Hamburguesa: solo mobile */}
+          <button onClick={() => setMobileNavOpen(true)} aria-label="Abrir menú" className="lg:hidden -ml-1 w-10 h-10 rounded-full hover:bg-surface-container flex items-center justify-center text-on-surface-variant shrink-0">
+            <Icon name="menu" className="text-[24px]" />
+          </button>
+          <h1 className="font-headline text-title-lg text-on-surface truncate">{title}</h1>
         </header>
         <main className="flex-1 p-lg">{children}</main>
       </div>
