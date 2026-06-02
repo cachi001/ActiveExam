@@ -131,7 +131,7 @@ export function EnrollmentDniStep({ escanActual, onEscaneado, onOmitir }: Props)
         {/* Sección 2: Datos OCR extraídos */}
         <div className="space-y-sm">
           <p className="text-label-sm font-semibold text-on-surface-variant uppercase tracking-wide">
-            Datos extraídos por OCR <span className="normal-case font-normal">(demo)</span>
+            Datos extraídos por OCR
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-sm">
             <div>
@@ -202,7 +202,7 @@ export function EnrollmentDniStep({ escanActual, onEscaneado, onOmitir }: Props)
             <Icon name="info" className="text-[20px] text-on-surface-variant shrink-0 mt-px" />
             <div className="space-y-xs">
               <p className="text-label-sm font-semibold text-on-surface">
-                Análisis indicativo (demo)
+                Análisis indicativo
               </p>
               <p className="text-label-sm text-on-surface-variant leading-relaxed">
                 Este resultado es <strong>preliminar y orientativo</strong>, generado localmente

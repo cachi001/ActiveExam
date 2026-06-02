@@ -1,6 +1,6 @@
-import { useState, type ReactNode } from 'react';
+import { useState } from 'react';
 import { StaffShell } from '../ui/shells';
-import { Icon, Card, Button, SectionTitle } from '../ui/components';
+import { Icon, Card, Button, SectionTitle, FormField, RangeInput } from '../ui/components';
 import { ADMIN_NAV } from './AdminDashboard';
 import { TIPO_EVENTO_LABEL, api } from '../lib/api';
 import { useApp } from '../lib/store';
@@ -37,48 +37,50 @@ export default function ConfigureExam() {
       <div className="max-w-3xl space-y-lg">
         <Card className="space-y-md">
           <SectionTitle sub="Datos generales">Información del examen</SectionTitle>
-          <Field label="Nombre del examen">
-            <input value={form.nombre} onChange={(e) => set('nombre', e.target.value)} placeholder="Ej: Examen Final — Anatomía I"
+          <FormField label="Nombre del examen">
+            <input value={form.nombre} onChange={(e) => set('nombre', e.target.value)} placeholder="Nombre del examen"
               className="w-full input" />
-          </Field>
+          </FormField>
           <div className="grid sm:grid-cols-2 gap-md">
-            <Field label="Cátedra">
-              <input value={form.catedra} onChange={(e) => set('catedra', e.target.value)} placeholder="Ej: Cátedra B" className="w-full input" />
-            </Field>
-            <Field label="Inicio">
+            <FormField label="Cátedra">
+              <input value={form.catedra} onChange={(e) => set('catedra', e.target.value)} placeholder="Nombre de la cátedra" className="w-full input" />
+            </FormField>
+            <FormField label="Inicio">
               <input type="datetime-local" value={form.inicio.slice(0, 16)} onChange={(e) => set('inicio', e.target.value)} className="w-full input" />
-            </Field>
+            </FormField>
           </div>
-          <Field label={`Duración: ${form.duracion_min} minutos`}>
-            <input type="range" min={30} max={180} step={5} value={form.duracion_min} onChange={(e) => set('duracion_min', Number(e.target.value))} className="w-full accent-[#5b5bd6]" />
-          </Field>
+          <RangeInput label="Duración" unit="minutos" min={30} max={180} step={5} value={form.duracion_min} onChange={(v) => set('duracion_min', v)} />
         </Card>
 
         <Card className="space-y-md">
           <SectionTitle sub="Política de priorización y privacidad">Parámetros de proctoring</SectionTitle>
-          <Field label={`Umbral de cola de revisión: ${form.umbral_score}%`}>
-            <input type="range" min={30} max={90} value={form.umbral_score} onChange={(e) => set('umbral_score', Number(e.target.value))} className="w-full accent-[#5b5bd6]" />
-            <p className="text-label-sm text-on-surface-variant mt-base">Sesiones que superen este score al finalizar entran a revisión humana.</p>
-          </Field>
+          <RangeInput
+            label="Umbral de cola de revisión"
+            unit="%"
+            min={30}
+            max={90}
+            value={form.umbral_score}
+            onChange={(v) => set('umbral_score', v)}
+            hint="Sesiones que superen este score al finalizar entran a revisión humana."
+          />
 
-          <Field label="Detectores activos">
+          <FormField label="Detectores activos">
             <div className="grid sm:grid-cols-2 gap-base">
               {DETECTORES.map((d) => {
                 const on = form.detectores.includes(d);
                 return (
                   <label key={d} className={`flex items-center gap-base p-sm rounded-xl border cursor-pointer ${on ? 'bg-primary-fixed/40 border-primary-container' : 'bg-surface-container-low border-outline-variant/40'}`}>
-                    <input type="checkbox" checked={on} onChange={() => toggleDet(d)} className="accent-[#5b5bd6] w-4 h-4" />
+                    <input type="checkbox" checked={on} onChange={() => toggleDet(d)} className="accent-primary w-4 h-4" />
                     <span className="text-label-md font-semibold text-on-surface">{TIPO_EVENTO_LABEL[d]}</span>
                   </label>
                 );
               })}
             </div>
-          </Field>
+          </FormField>
 
-          <Field label="Retención de evidencia (días)">
+          <FormField label="Retención de evidencia (días)" hint="Por defecto 30 días (Ley 25.326). Luego se elimina automáticamente.">
             <input type="number" min={7} max={90} value={form.retencion_dias} onChange={(e) => set('retencion_dias', Number(e.target.value))} className="w-32 input" />
-            <p className="text-label-sm text-on-surface-variant mt-base">Por defecto 30 días (Ley 25.326). Luego se elimina automáticamente.</p>
-          </Field>
+          </FormField>
         </Card>
 
         <div className="flex gap-sm">
@@ -92,11 +94,3 @@ export default function ConfigureExam() {
   );
 }
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="space-y-base">
-      <label className="text-label-sm uppercase tracking-wide text-on-surface-variant font-semibold">{label}</label>
-      {children}
-    </div>
-  );
-}

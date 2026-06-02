@@ -67,7 +67,7 @@ export function ScreenNavigator() {
       <button
         onClick={() => setOpen((v) => !v)}
         className="fixed bottom-5 right-5 z-[100] w-12 h-12 rounded-full bg-primary text-on-primary shadow-card-lg flex items-center justify-center hover:bg-primary-container transition-colors"
-        title="Navegador de pantallas (demo)"
+        title="Navegador de pantallas"
       >
         <Icon name={open ? 'close' : 'apps'} />
       </button>
@@ -76,7 +76,7 @@ export function ScreenNavigator() {
         <div className="fixed bottom-20 right-5 z-[100] w-80 max-h-[70vh] overflow-y-auto rounded-xl bg-surface-container-lowest border border-outline-variant/60 shadow-card-lg p-md animate-in fade-in slide-in-from-bottom-4">
           <div className="flex items-center justify-between mb-sm px-base">
             <span className="font-headline text-title-lg text-on-surface">Pantallas</span>
-            <span className="text-label-sm text-on-surface-variant">{api.modoDemo ? 'Modo demo' : 'Backend real'}</span>
+            <span className="text-label-sm text-on-surface-variant">{api.modoDemo ? 'Modo simulación' : 'Backend real'}</span>
           </div>
           {GRUPOS.map((g) => (
             <div key={g.titulo} className="mb-sm">

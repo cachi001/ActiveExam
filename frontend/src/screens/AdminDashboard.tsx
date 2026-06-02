@@ -54,9 +54,11 @@ export default function AdminDashboard() {
 
           <Card className="space-y-md">
             <h3 className="font-headline text-title-lg text-on-surface">Acciones rápidas</h3>
-            <Link to="/admin/configurar"><Button icon="add" className="w-full">Crear examen</Button></Link>
-            <Link to="/admin/reportes"><Button variant="outline" icon="analytics" className="w-full">Ver reportes</Button></Link>
-            <Link to="/admin/auditoria"><Button variant="outline" icon="policy" className="w-full">Auditoría</Button></Link>
+            <div className="flex flex-col gap-sm">
+              <Link to="/admin/configurar"><Button icon="add" className="w-full">Crear examen</Button></Link>
+              <Link to="/admin/reportes"><Button variant="outline" icon="analytics" className="w-full">Ver reportes</Button></Link>
+              <Link to="/admin/auditoria"><Button variant="outline" icon="policy" className="w-full">Auditoría</Button></Link>
+            </div>
             <div className="bg-primary-fixed/40 rounded-xl p-sm text-label-sm text-on-primary-fixed-variant flex items-start gap-base mt-md">
               <Icon name="shield" className="text-[18px]" fill />
               <span>Nivel <Term termKey="l2_5" />: el sistema prioriza para revisión humana. Nunca sanciona automáticamente.</span>
