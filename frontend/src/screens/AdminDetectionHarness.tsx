@@ -333,6 +333,12 @@ export default function AdminDetectionHarness() {
    * lista incluso si el primer evento llega antes de que crearSesionProctoring resuelva.
    */
   const sessionPromiseRef = useRef<Promise<string | null> | null>(null);
+  /**
+   * faceCountRef: último conteo de caras en vivo (fd.face_count) del loop de
+   * frames. Sirve de fallback para que TODO evento mande face_count_cliente al
+   * backend, aunque el payload del evento no lo incluya explícitamente.
+   */
+  const faceCountRef = useRef(0);
   // Contador de eventos enviados al backend (real-time — no requiere modo grabación)
   const [eventosEnviados, setEventosEnviados] = useState(0);
 
@@ -518,7 +524,7 @@ export default function AdminDetectionHarness() {
       const screenshot = videoRef.current ? captureVideoFrame(videoRef.current, 0.7) : null;
       const faceCountCliente = rawEvent.payload?.face_count != null
         ? Number(rawEvent.payload.face_count)
-        : undefined;
+        : faceCountRef.current;
 
       void api.enviarEventoProctoring(sid, {
         tipo: rawEvent.tipo,
@@ -676,6 +682,7 @@ export default function AdminDetectionHarness() {
           frame.close();
 
           // Actualizar panel de señales crudas (task 4.2) + C-30: incluir poseSignal para overlay
+          faceCountRef.current = fd.face_count;
           setRawSignals({ faceDetection: fd, faceMesh: mesh, poseAvailable, poseSignal, frameTs: Date.now() });
 
           // C-35 Task 5.1: Estimar head_yaw_deg aproximado a partir de PoseSignal.
