@@ -18,7 +18,8 @@
  *       + optional-dni-scan (C-22)
  */
 import { useEffect, useState } from 'react';
-import { Card, Badge, Button, Icon } from '../ui/components';
+import { Badge, Button, Icon } from '../ui/components';
+import { Term } from '../ui/Term';
 import { StudentShell } from '../ui/shells';
 import { useNavigate } from '../lib/router';
 import { useApp } from '../lib/store';
@@ -29,7 +30,9 @@ import { EnrollmentBiometricStep } from './enrollment/EnrollmentBiometricStep';
 import { EnrollmentDniStep } from './enrollment/EnrollmentDniStep';
 import { BiometricRenewalStatus } from './enrollment/BiometricRenewalStatus';
 import { CameraSnapshotCapture } from '../ui/CameraSnapshotCapture';
-import { Term } from '../ui/Term';
+import { PerfilHeaderCard } from './alumno/components/PerfilHeaderCard';
+import { RequisitoCard } from './alumno/components/RequisitoCard';
+import { PerfilBannerEstado } from './alumno/components/PerfilBannerEstado';
 import type { EstadoEnrollment, AcuseConsentimiento, ReferenciasBiometrica, EscaneDNI, AnalisisDNI } from '../lib/types';
 
 /**
@@ -370,119 +373,28 @@ export default function StudentProfile() {
           </p>
         </header>
 
-        {/* Datos personales */}
-        <Card>
-          <div className="flex items-center gap-md mb-lg">
-            {/* Task 8.1: avatar condicional — foto circular si disponible, inicial si no */}
-            {principal?.foto_perfil ? (
-              <img
-                src={principal.foto_perfil}
-                className="w-14 h-14 rounded-full object-cover shrink-0"
-                alt={`Foto de perfil de ${principal.nombre}`}
-              />
-            ) : (
-              <div className="w-14 h-14 rounded-full bg-secondary-container text-on-secondary flex items-center justify-center font-headline text-headline-sm shrink-0">
-                {principal?.nombre.charAt(0) ?? '?'}
-              </div>
-            )}
-            <div className="min-w-0">
-              <p className="text-label-lg font-semibold text-on-surface">{principal?.nombre ?? '—'}</p>
-              <p className="text-label-sm text-on-surface-variant">{principal?.roles.join(', ')}</p>
-            </div>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-md">
-            <div>
-              <p className="text-label-sm text-on-surface-variant uppercase tracking-wide mb-base">Legajo</p>
-              <p className="text-label-md text-on-surface font-semibold">{principal?.id_institucional ?? '—'}</p>
-            </div>
-            <div>
-              <p className="text-label-sm text-on-surface-variant uppercase tracking-wide mb-base">Email institucional</p>
-              <p className="text-label-md text-on-surface font-semibold">{principal?.email ?? '—'}</p>
-            </div>
-            <div>
-              <p className="text-label-sm text-on-surface-variant uppercase tracking-wide mb-base">Institución</p>
-              <p className="text-label-md text-on-surface font-semibold">UTN Regional Mendoza</p>
-            </div>
-            <div>
-              <p className="text-label-sm text-on-surface-variant uppercase tracking-wide mb-base">Jurisdicción</p>
-              <p className="text-label-md text-on-surface font-semibold">{principal?.jurisdiccion ?? '—'}</p>
-            </div>
-          </div>
-        </Card>
+        {/* Encabezado: avatar + datos personales */}
+        <PerfilHeaderCard principal={principal} />
 
-        {/* Banner: perfil completo */}
-        {perfilCompleto && !biometriaCaducada && !biometriaRenovacionRequerida && (
-          <div className="flex items-center gap-md bg-success-container border border-success/30 rounded-xl p-md">
-            <Icon name="verified" className="text-success text-[24px] shrink-0" fill />
-            <div className="flex-1">
-              <p className="text-label-md font-semibold text-on-surface">
-                Perfil completo — podés rendir tus exámenes
-              </p>
-              <p className="text-label-sm text-on-surface-variant mt-base">
-                {viaAlternativa
-                  ? 'Elegiste la vía alternativa. Un proctor supervisará tu verificación de identidad.'
-                  : 'Consentimiento y referencia biométrica vigentes.'}
-              </p>
-            </div>
-            <Button
-              variant="secondary"
-              onClick={() => navigate('/alumno/mis-examenes')}
-              className="shrink-0 h-9 px-md text-label-sm"
-            >
-              Mis exámenes
-            </Button>
-          </div>
-        )}
-
-        {/* Banner: referencia caducada — bloqueo */}
-        {biometriaCaducada && (
-          <div className="flex items-start gap-md bg-error-container border border-error/30 rounded-xl p-md">
-            <Icon name="cancel" className="text-error text-[22px] shrink-0 mt-base" fill />
-            <div className="flex-1">
-              <p className="text-label-md font-semibold text-on-surface">
-                Referencia biométrica caducada — no podés rendir
-              </p>
-              <p className="text-label-sm text-on-surface-variant mt-base">
-                Tu referencia biométrica venció. Renovála para volver a poder rendir tus exámenes.
-              </p>
-            </div>
-            <Button variant="danger" size="sm" onClick={handleRenovarBiometria} className="shrink-0 text-label-sm" icon="refresh">
-              Renovar
-            </Button>
-          </div>
-        )}
-
-        {/* Banner: renovación requerida por deriva */}
-        {biometriaRenovacionRequerida && !biometriaCaducada && (
-          <div className="flex items-start gap-md bg-warning-container border border-warning/30 rounded-xl p-md">
-            <Icon name="refresh" className="text-warning text-[22px] shrink-0 mt-base" />
-            <div className="flex-1">
-              <p className="text-label-md font-semibold text-on-surface">
-                Renovación biométrica requerida
-              </p>
-              <p className="text-label-sm text-on-surface-variant mt-base">
-                Las verificaciones silenciosas detectaron deriva del <Term termKey="embedding" />. Se requiere renovar la referencia.
-                Las rendiciones en curso no se ven afectadas (decisión disciplinaria siempre humana — <Term termKey="l2_5" />).
-              </p>
-            </div>
-            <Button variant="outline" size="sm" onClick={handleRenovarBiometria} className="shrink-0 text-label-sm" icon="refresh">
-              Renovar
-            </Button>
-          </div>
-        )}
+        {/* Banners contextuales del estado del perfil */}
+        <PerfilBannerEstado
+          perfilCompleto={perfilCompleto}
+          biometriaCaducada={biometriaCaducada}
+          biometriaRenovacionRequerida={biometriaRenovacionRequerida}
+          viaAlternativa={viaAlternativa}
+          onIrAExamenes={() => navigate('/alumno/mis-examenes')}
+          onRenovarBiometria={handleRenovarBiometria}
+        />
 
         {/* ── Sección: Consentimiento informado ───────────────────────────────── */}
-        <Card className="space-y-md">
-          <div className="flex items-center justify-between gap-md">
-            <div className="flex items-center gap-sm">
-              <Icon name="gavel" className="text-[22px] text-on-surface-variant" />
-              <h2 className="font-headline text-title-md text-on-surface">Consentimiento informado</h2>
-            </div>
-            <Badge tone={consentimientoOk ? 'success' : 'warning'} dot>
-              {consentimientoOk ? (viaAlternativa ? 'Vía alternativa' : 'Completado') : 'Pendiente'}
-            </Badge>
-          </div>
-
+        <RequisitoCard
+          icon="gavel"
+          title="Consentimiento informado"
+          badge={{
+            tone: consentimientoOk ? 'success' : 'warning',
+            label: consentimientoOk ? (viaAlternativa ? 'Vía alternativa' : 'Completado') : 'Pendiente',
+          }}
+        >
           {consentimientoOk && enrollment?.consentimiento ? (
             /* Acuse existente */
             <div className="space-y-sm">
@@ -526,34 +438,26 @@ export default function StudentProfile() {
               </Button>
             </div>
           )}
-        </Card>
+        </RequisitoCard>
 
         {/* ── Sección: Referencia biométrica ──────────────────────────────────── */}
         {!viaAlternativa && (
-          <Card className="space-y-md">
-            <div className="flex items-center justify-between gap-md">
-              <div className="flex items-center gap-sm">
-                <Icon name="face" className="text-[22px] text-on-surface-variant" />
-                <h2 className="font-headline text-title-md text-on-surface">Referencia biométrica</h2>
-              </div>
-              <Badge
-                tone={
-                  !biometriaOk ? 'warning' :
-                  biometriaCaducada ? 'error' :
-                  enrollment?.biometria?.vigencia === 'por_vencer' ? 'warning' :
-                  biometriaRenovacionRequerida ? 'warning' :
-                  'success'
-                }
-                dot
-              >
-                {!biometriaOk ? 'Pendiente' :
-                 biometriaCaducada ? 'Caducada' :
-                 enrollment?.biometria?.vigencia === 'por_vencer' ? 'Por vencer' :
-                 biometriaRenovacionRequerida ? 'Renovación requerida' :
-                 'Vigente'}
-              </Badge>
-            </div>
-
+          <RequisitoCard
+            icon="face"
+            title="Referencia biométrica"
+            badge={{
+              tone: !biometriaOk ? 'warning' :
+                    biometriaCaducada ? 'error' :
+                    enrollment?.biometria?.vigencia === 'por_vencer' ? 'warning' :
+                    biometriaRenovacionRequerida ? 'warning' :
+                    'success',
+              label: !biometriaOk ? 'Pendiente' :
+                     biometriaCaducada ? 'Caducada' :
+                     enrollment?.biometria?.vigencia === 'por_vencer' ? 'Por vencer' :
+                     biometriaRenovacionRequerida ? 'Renovación requerida' :
+                     'Vigente',
+            }}
+          >
             {biometriaOk && enrollment?.biometria ? (
               /* Referencia existente con estado de vigencia */
               <BiometricRenewalStatus
@@ -569,7 +473,7 @@ export default function StudentProfile() {
                   <strong>{enrollment?.biometria?.vigencia_meses ?? 24} meses</strong>.
                 </p>
 
-                {/* Nota de privacidad */}
+                {/* Nota de privacidad (Ley 25.326) */}
                 <div className="text-label-sm text-on-surface-variant bg-surface-container-low rounded-xl p-sm border border-outline-variant/30">
                   <span className="font-semibold">Privacidad (Ley 25.326):</span> La imagen y el <Term termKey="embedding" />
                   biométrico son <strong>datos sensibles</strong>: cifrados at-rest, con finalidad acotada
@@ -605,33 +509,30 @@ export default function StudentProfile() {
                 </Button>
               </div>
             )}
-          </Card>
+          </RequisitoCard>
         )}
 
         {/* ── Sección: DNI (opcional / flaggeado) ────────────────────────────── */}
-        <Card className="space-y-md">
-          <div className="flex items-center justify-between gap-md">
-            <div className="flex items-center gap-sm">
-              <Icon name="badge" className="text-[22px] text-on-surface-variant" />
-              <h2 className="font-headline text-title-md text-on-surface">
-                Verificación documental
-                <span className="ml-sm text-label-sm font-normal text-on-surface-variant bg-surface-container px-sm py-base rounded-full">
-                  Opcional
-                </span>
-              </h2>
-            </div>
-            <Badge tone={dniOk ? 'success' : 'neutral'} dot>
-              {dniOk ? 'Registrado' : (ENABLE_DNI_SCAN ? 'Pendiente' : 'No disponible')}
-            </Badge>
-          </div>
-
+        <RequisitoCard
+          icon="badge"
+          title={
+            <>
+              Verificación documental
+              <span className="ml-sm text-label-sm font-normal text-on-surface-variant bg-surface-container px-sm py-base rounded-full">
+                Opcional
+              </span>
+            </>
+          }
+          badge={{
+            tone: dniOk ? 'success' : 'neutral',
+            label: dniOk ? 'Registrado' : (ENABLE_DNI_SCAN ? 'Pendiente' : 'No disponible'),
+          }}
+        >
           {dniOk && enrollment?.dni ? (
-            /* Task 4.2–4.4: mostrar badge de análisis si existe; fallback al texto estático */
+            /* Mostrar badge de análisis si existe; fallback al texto estático */
             (() => {
               const analisisDni: AnalisisDNI | undefined = enrollment.dni.analisis;
               if (analisisDni) {
-                // Task 4.2: badge de estado del análisis
-                // Task 4.3: nota "Pendiente de revisión humana" (L2.5)
                 return (
                   <div className="space-y-sm">
                     <div className="flex flex-wrap items-center gap-sm">
@@ -656,7 +557,7 @@ export default function StudentProfile() {
                   </div>
                 );
               }
-              // Task 4.4: fallback cuando dniOk pero sin análisis
+              /* Fallback cuando dniOk pero sin análisis */
               return (
                 <div className="space-y-xs text-label-sm">
                   <p className="text-on-surface-variant">
@@ -692,9 +593,9 @@ export default function StudentProfile() {
               será tratado como dato sensible (Ley 25.326): cifrado, finalidad acotada, eliminado al egreso.
             </p>
           )}
-        </Card>
+        </RequisitoCard>
 
-        {/* CTA de navegación */}
+        {/* CTA de navegación — debajo de todas las cards */}
         {perfilCompleto && (
           <div className="text-center">
             <Button onClick={() => navigate('/alumno/mis-examenes')} icon="assignment" iconRight="arrow_forward">
