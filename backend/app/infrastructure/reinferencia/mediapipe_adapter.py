@@ -112,8 +112,19 @@ class MediaPipeReinferencia:
     """
 
     def __init__(self) -> None:
-        # Singleton del detector. None indica degradacion elegante.
-        self._detector = _inicializar_detector()
+        # LAZY: el detector se inicializa en el PRIMER evaluar(), NO al construir la
+        # app. Asi uvicorn liga el puerto y pasa el healthcheck de inmediato; la carga
+        # de MediaPipe (pesada en RAM, riesgo de OOM al arranque) ocurre recien cuando
+        # llega el primer evento con screenshot. None = degradacion elegante.
+        self._detector: object | None = None
+        self._inicializado = False
+
+    def _obtener_detector(self) -> object | None:
+        """Inicializa el detector una sola vez (lazy singleton)."""
+        if not self._inicializado:
+            self._inicializado = True
+            self._detector = _inicializar_detector()
+        return self._detector
 
     def evaluar(
         self,
@@ -129,7 +140,7 @@ class MediaPipeReinferencia:
 
         Nunca levanta excepcion (degradacion elegante, RN-GLB-02).
         """
-        if self._detector is None:
+        if self._obtener_detector() is None:
             return _NO_EVALUADO
 
         if not screenshot_b64:
