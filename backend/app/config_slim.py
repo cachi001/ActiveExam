@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -31,6 +32,24 @@ class SlimSettings(BaseSettings):
 
     # --- Servidor ---
     port: int = 8000  # Railway inyecta PORT automaticamente
+
+    @field_validator("database_url")
+    @classmethod
+    def _normalizar_a_asyncpg(cls, valor: str) -> str:
+        """Normaliza la URL al driver async (asyncpg) que exige create_async_engine.
+
+        Railway inyecta DATABASE_URL como ``postgresql://...`` (o el viejo
+        ``postgres://...``), sin sufijo de driver. El engine async de SQLAlchemy
+        REQUIERE un driver async; con ``postgresql://`` levanta psycopg2 (sync) y
+        falla con "The asyncio extension requires an async driver". Aca lo forzamos
+        a ``postgresql+asyncpg://``. Alembic corre aparte (migrations/env.py) y vuelve
+        a derivar el driver sync, asi que esta normalizacion no le afecta.
+        """
+        if valor.startswith("postgres://"):
+            valor = "postgresql://" + valor[len("postgres://"):]
+        if valor.startswith("postgresql://"):
+            valor = "postgresql+asyncpg://" + valor[len("postgresql://"):]
+        return valor
 
 
 @lru_cache
