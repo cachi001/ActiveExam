@@ -18,13 +18,17 @@ FROM python:3.12-slim
 # Directorio de trabajo dentro del contenedor
 WORKDIR /app
 
-# mediapipe (y su dependencia opencv-contrib-python) requieren libGL y glib en
-# runtime. En Debian bookworm (base de python:3.12-slim) el paquete es 'libgl1'
-# — NO 'libgl1-mesa-glx', que fue removido en bookworm. Sin estas libs,
-# "import mediapipe" falla con "libGL.so.1: cannot open shared object file" y la
-# re-inferencia degrada a 'no_evaluado' (justo el motor real que queremos probar).
+# mediapipe (y su dependencia opencv-contrib-python) requieren varias libs GL en
+# runtime. En Debian bookworm (base de python:3.12-slim):
+#   - libgl1        -> libGL.so.1     (import mediapipe / opencv)
+#   - libglib2.0-0  -> libglib        (opencv)
+#   - libgles2      -> libGLESv2.so.2 (FaceDetector.create_from_options usa GL ES)
+#   - libegl1       -> libEGL.so.1    (par de GLES)
+# OJO: 'libgl1-mesa-glx' NO existe en bookworm (removido). Sin libgles2/libegl1,
+# "import mediapipe" anda pero al CREAR el FaceDetector revienta con
+# "libGLESv2.so.2: cannot open shared object file" -> re-inferencia 'no_evaluado'.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libgl1 libglib2.0-0 \
+    && apt-get install -y --no-install-recommends libgl1 libglib2.0-0 libegl1 libgles2 \
     && rm -rf /var/lib/apt/lists/*
 
 # Instalar dependencias Python (incluye mediapipe para re-inferencia server-side, D8)
