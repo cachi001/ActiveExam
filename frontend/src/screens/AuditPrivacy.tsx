@@ -1,6 +1,8 @@
 import { StaffShell } from '../ui/shells';
-import { Icon, Card, Badge, SectionTitle, Button, Stat } from '../ui/components';
+import { Icon, Card, SectionTitle, Button, Stat } from '../ui/components';
 import { ADMIN_NAV } from './AdminDashboard';
+import { AuditLogItem } from './admin/components/AuditLogItem';
+import { DsrCard } from './admin/components/DsrCard';
 
 const AUDITORIA = [
   { ts: '2026-05-30 16:42:10', actor: 'Prof. Martín Acuña', accion: 'Resolución de revisión', detalle: 'Sesión S-93041 derivada a disciplina', tono: 'error' as const },
@@ -33,19 +35,7 @@ export default function AuditPrivacy() {
               <SectionTitle sub="Registro inmutable de acciones (audit log)">Auditoría</SectionTitle>
               <div className="space-y-base">
                 {AUDITORIA.map((a, i) => (
-                  <div key={i} className="flex items-start gap-sm p-sm rounded-xl bg-surface-container-low border border-outline-variant/30">
-                    <div className="w-9 h-9 rounded-full bg-surface-container flex items-center justify-center text-on-surface-variant shrink-0">
-                      <Icon name="history" className="text-[18px]" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-base">
-                        <span className="text-label-md font-semibold text-on-surface">{a.accion}</span>
-                        <Badge tone={a.tono}>{a.actor}</Badge>
-                      </div>
-                      <p className="text-label-sm text-on-surface-variant mt-base">{a.detalle}</p>
-                      <p className="text-label-sm text-on-surface-variant font-mono mt-base">{a.ts}</p>
-                    </div>
-                  </div>
+                  <AuditLogItem key={i} entrada={a} />
                 ))}
               </div>
             </Card>
@@ -53,16 +43,9 @@ export default function AuditPrivacy() {
 
           <div className="space-y-lg">
             <Card className="space-y-sm">
-              <h3 className="font-headline text-title-lg text-on-surface">Derechos del titular</h3>
-              <p className="text-label-sm text-on-surface-variant">Ley 25.326 · AAIP</p>
+              <SectionTitle sub="Ley 25.326 · AAIP">Derechos del titular</SectionTitle>
               {DSR.map((d) => (
-                <div key={d.titulo} className="flex items-start gap-sm p-base rounded-xl bg-surface-container-low border border-outline-variant/30">
-                  <Icon name={d.icon} className="text-primary text-[20px]" />
-                  <div>
-                    <p className="text-label-md font-semibold text-on-surface">{d.titulo}</p>
-                    <p className="text-label-sm text-on-surface-variant">{d.desc}</p>
-                  </div>
-                </div>
+                <DsrCard key={d.titulo} derecho={d} />
               ))}
               <Button variant="outline" icon="download" className="w-full">Exportar registro de tratamiento</Button>
             </Card>
