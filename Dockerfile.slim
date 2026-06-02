@@ -44,6 +44,9 @@ COPY frontend/public/mediapipe/face_detector_short_range.task /app/models/face_d
 # Variables de entorno del contenedor
 ENV PYTHONPATH=/app
 ENV MEDIAPIPE_MODEL_DIR=/app/models
+# Sin buffering: que los logs de Alembic/uvicorn salgan en vivo (si no, un crash
+# al arrancar no imprime nada y solo se ve "Starting Container"). Critico para debug.
+ENV PYTHONUNBUFFERED=1
 
 # CMD: primero migrar (branch slim, sin TimescaleDB), luego servir
 # alembic upgrade slim@head crea proctoring_session, proctoring_event, proctoring_biometria
