@@ -25,6 +25,17 @@ interface AppState {
   /** Derivado: true si el perfil está completo y el alumno puede rendir. */
   isProfileComplete: boolean;
 
+  // ---------------------------------------------------------------------------
+  // Sesión activa de proctoring — C-46
+  // ---------------------------------------------------------------------------
+  /**
+   * ID de la sesión de proctoring activa en el backend slim (C-45).
+   * Null cuando no hay sesión activa (modo mock / sin grabar / sin examen).
+   * Se usa para acoplamiento entre Biometria.tsx (envío biométrico) y el harness.
+   * D6 del design.md: Zustand evita prop drilling entre componentes no relacionados.
+   */
+  proctoringSessionId: string | null;
+
   setPrincipal: (p: Principal | null, rol: Rol | null) => void;
   setExamenActivo: (e: Examen | null) => void;
   setRevisionSeleccionada: (s: SesionRevision | null) => void;
@@ -38,6 +49,8 @@ interface AppState {
    * Sin error si principal es null.
    */
   setFotoPerfil: (dataUrl: string) => void;
+  /** C-46: setea el ID de la sesión de proctoring activa (o null para limpiarla). */
+  setProctoringSessionId: (id: string | null) => void;
 }
 
 export const useApp = create<AppState>((set) => ({
@@ -49,6 +62,7 @@ export const useApp = create<AppState>((set) => ({
   revisionSeleccionada: null,
   enrollmentStatus: null,
   isProfileComplete: false,
+  proctoringSessionId: null,
 
   setPrincipal: (principal, rol) => set({ principal, rol }),
   setExamenActivo: (examenActivo) => set({ examenActivo }),
@@ -60,4 +74,5 @@ export const useApp = create<AppState>((set) => ({
   setFotoPerfil: (dataUrl) => set((s) => ({
     principal: s.principal ? { ...s.principal, foto_perfil: dataUrl } : s.principal,
   })),
+  setProctoringSessionId: (id) => set({ proctoringSessionId: id }),
 }));
