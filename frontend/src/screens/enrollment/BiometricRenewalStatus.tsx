@@ -98,8 +98,7 @@ export function BiometricRenewalStatus({ referencia, onRenovar }: Props) {
           <Icon name="info" className="text-warning text-[16px] shrink-0 mt-px" />
           <p className="text-label-sm text-on-surface">
             La verificación silenciosa detectó <strong>deriva del <Term termKey="embedding">embedding</Term></strong> respecto de la
-            referencia actual. La renovación no afecta ni sanciona rendiciones en curso (<Term termKey="l2_5" /> —
-            decisión disciplinaria siempre humana).
+            referencia actual. La renovación no afecta ni sanciona rendiciones en curso (<Term termKey="l2_5" />).
           </p>
         </div>
       )}

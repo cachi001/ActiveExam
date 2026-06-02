@@ -257,7 +257,7 @@ export default function ProctoringSessionDetail() {
                   />
                 </div>
                 <p className="text-[11px] text-on-surface-variant">
-                  Score acumulativo de priorización — NO determina sanción (L2.5).
+                  Score acumulativo de priorización.
                 </p>
               </div>
             </Card>

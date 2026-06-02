@@ -1964,7 +1964,6 @@ export default function AdminDetectionHarness() {
           <Icon name="shield" className="text-[18px] shrink-0" fill />
           <span>
             Herramienta diagnóstica — sin examen real, sin sesión de alumno, sin sanción automática (<Term termKey="l2_5" />).
-            El sistema nunca toma decisiones disciplinarias: prioriza señales para revisión humana.
             Los eventos generados aquí NO se almacenan en el backend de producción.
           </span>
         </div>

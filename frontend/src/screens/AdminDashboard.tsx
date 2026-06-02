@@ -61,7 +61,7 @@ export default function AdminDashboard() {
             </div>
             <div className="bg-primary-fixed/40 rounded-xl p-sm text-label-sm text-on-primary-fixed-variant flex items-start gap-base mt-md">
               <Icon name="shield" className="text-[18px]" fill />
-              <span>Nivel <Term termKey="l2_5" />: el sistema prioriza para revisión humana. Nunca sanciona automáticamente.</span>
+              <span>Nivel <Term termKey="l2_5" /></span>
             </div>
           </Card>
         </div>
