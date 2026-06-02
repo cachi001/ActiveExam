@@ -1,0 +1,24 @@
+# requirements.txt — modulo slim (Railway deploy)
+# Generado desde pyproject.toml + mediapipe para re-inferencia server-side.
+# PRODUCCION: usar pip-compile o poetry export para pins reproducibles.
+
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+pydantic-settings==2.7.1
+sqlalchemy==2.0.36
+asyncpg==0.30.0
+# Driver SYNC para Alembic: migrations/env.py corre sincrono y deriva el driver
+# sync de DATABASE_URL (queda postgresql://). Sin esto, "alembic upgrade slim@head"
+# falla con ModuleNotFoundError: psycopg2. La app usa asyncpg; Alembic usa psycopg2.
+psycopg2-binary==2.9.10
+alembic==1.14.0
+pyjwt[crypto]==2.10.1
+# Pillow: decodifica el screenshot (base64 -> RGB) para la re-inferencia MediaPipe.
+# No es dependencia de mediapipe; el adapter la prefiere antes que opencv.
+Pillow==11.0.0
+
+# Re-inferencia server-side con MediaPipe (mismo motor que el cliente, D8).
+# Tradeoff: imagen Docker mas grande / cold start mas lento que opencv-python-headless,
+# pero necesario para comparacion apples-to-apples cliente-vs-servidor (D8).
+mediapipe>=0.10.14

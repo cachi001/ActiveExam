@@ -12,6 +12,8 @@ import type {
   Materia, Comision, Inscripcion, EstadoInscripcion,
   EstadoEnrollment, AcuseConsentimiento, ReferenciasBiometrica, EscaneDNI, VigenciaReferencia,
   AcuseExamen,
+  SesionProctoringResumen, SesionProctoringDetalle, EventoProctoringDetalle,
+  BiometriaDetalle, VeredictoReinferencia,
 } from './types';
 import { INSTITUTION } from '../config/institution';
 
@@ -670,6 +672,231 @@ export const api = {
     // Actualiza el registro in-memory del principal de estudiante
     PRINCIPALES.estudiante = { ...PRINCIPALES.estudiante, foto_perfil: dataUrl };
   },
+
+  // -------------------------------------------------------------------------
+  // Backend slim de proctoring — C-46 (dual real/mock)
+  // Todos los métodos: con USE_REAL_BACKEND=1 llaman al backend slim C-45;
+  // con USE_REAL_BACKEND=0 (default Vercel) retornan datos mock sin HTTP.
+  // -------------------------------------------------------------------------
+
+  /**
+   * Crea una sesión de proctoring en el backend slim (C-46).
+   * Real: POST /proctoring/sessions
+   * Mock: objeto simulado con delay 200ms
+   */
+  async crearSesionProctoring(
+    modo: string,
+    etiqueta?: string,
+    examId?: string,
+  ): Promise<{ id: string; creada_en: string }> {
+    if (USE_REAL_BACKEND) {
+      try {
+        return await realFetch<{ id: string; creada_en: string }>(
+          '/proctoring/sessions',
+          {
+            method: 'POST',
+            body: JSON.stringify({ modo, etiqueta, exam_id: examId }),
+          },
+          'demo',
+        );
+      } catch {
+        /* fallback mock */
+      }
+    }
+    await delay(200);
+    return { id: 'mock-session-' + Date.now(), creada_en: new Date().toISOString() };
+  },
+
+  /**
+   * Envía un evento con screenshot al backend slim (C-46).
+   * Real: POST /proctoring/sessions/{sessionId}/events
+   * Mock o fallo: retorna null sin propagar (fire-and-forget seguro)
+   *
+   * DATO SENSIBLE (Ley 25.326): screenshot_base64 — se transmite solo al backend;
+   * nunca se loguea ni se persiste en almacenamiento local.
+   */
+  async enviarEventoProctoring(
+    sessionId: string,
+    payload: {
+      tipo: string;
+      severidad: string;
+      ts_cliente: string;
+      payload?: Record<string, unknown>;
+      screenshot_base64?: string | null;
+      face_count_cliente?: number | null;
+    },
+  ): Promise<{
+    evento_id: string;
+    veredicto_reinferencia: VeredictoReinferencia;
+    face_count_servidor: number;
+    screenshot_sha256: string;
+  } | null> {
+    if (USE_REAL_BACKEND) {
+      try {
+        return await realFetch<{
+          evento_id: string;
+          veredicto_reinferencia: VeredictoReinferencia;
+          face_count_servidor: number;
+          screenshot_sha256: string;
+        }>(
+          `/proctoring/sessions/${sessionId}/events`,
+          { method: 'POST', body: JSON.stringify(payload) },
+          'demo',
+        );
+      } catch {
+        return null;
+      }
+    }
+    // Mock: retorna null (no simula veredicto — el harness lo muestra como "sin red")
+    return null;
+  },
+
+  /**
+   * Envía el resultado de la verificación biométrica al backend slim (C-46).
+   * Real: POST /proctoring/sessions/{sessionId}/biometria
+   * Mock o fallo: retorna { ok: true } con delay 150ms (fire-and-forget)
+   */
+  async enviarBiometriaProctoring(
+    sessionId: string,
+    bio: {
+      liveness_ok: boolean;
+      retos_resueltos: string[];
+      embedding?: number[];
+      resultado: string;
+    },
+  ): Promise<{ ok: boolean }> {
+    if (USE_REAL_BACKEND) {
+      try {
+        return await realFetch<{ ok: boolean }>(
+          `/proctoring/sessions/${sessionId}/biometria`,
+          { method: 'POST', body: JSON.stringify(bio) },
+          'demo',
+        );
+      } catch {
+        return { ok: true };
+      }
+    }
+    await delay(150);
+    return { ok: true };
+  },
+
+  /**
+   * Lista todas las sesiones de proctoring del backend slim (C-46).
+   * Real: GET /proctoring/sessions
+   * Mock: dos sesiones de ejemplo con datos plausibles
+   */
+  async listarSesionesProctoring(): Promise<SesionProctoringResumen[]> {
+    if (USE_REAL_BACKEND) {
+      try {
+        return await realFetch<SesionProctoringResumen[]>(
+          '/proctoring/sessions',
+          { method: 'GET' },
+          'demo',
+        );
+      } catch {
+        /* fallback mock */
+      }
+    }
+    await delay(300);
+    const ahora = new Date();
+    const hace1h = new Date(ahora.getTime() - 3600 * 1000).toISOString();
+    const hace30m = new Date(ahora.getTime() - 1800 * 1000).toISOString();
+    return [
+      {
+        id: 'mock-session-diagnostico-001',
+        modo: 'diagnostico',
+        etiqueta: 'Harness diagnóstico',
+        creada_en: hace1h,
+        total_eventos: 7,
+        total_discrepancias: 2,
+        score: 38,
+      },
+      {
+        id: 'mock-session-examen-002',
+        modo: 'examen',
+        etiqueta: 'Examen Final — Análisis Matemático I',
+        creada_en: hace30m,
+        total_eventos: 3,
+        total_discrepancias: 0,
+        score: 12,
+      },
+    ];
+  },
+
+  /**
+   * Obtiene el detalle completo de una sesión de proctoring (C-46).
+   * Real: GET /proctoring/sessions/{id}
+   * Mock: sesión con eventos variados, veredictos y biometría simulada
+   *
+   * DATO SENSIBLE (Ley 25.326): screenshot_base64 en los eventos — no loguear.
+   */
+  async getSesionProctoring(id: string): Promise<SesionProctoringDetalle> {
+    if (USE_REAL_BACKEND) {
+      try {
+        return await realFetch<SesionProctoringDetalle>(
+          `/proctoring/sessions/${id}`,
+          { method: 'GET' },
+          'demo',
+        );
+      } catch {
+        /* fallback mock */
+      }
+    }
+    await delay(300);
+    const ahora = new Date();
+    return {
+      id,
+      modo: 'diagnostico',
+      etiqueta: 'Harness diagnóstico',
+      creada_en: new Date(ahora.getTime() - 3600 * 1000).toISOString(),
+      total_eventos: 3,
+      total_discrepancias: 1,
+      score: 38,
+      eventos: [
+        {
+          evento_id: 'ev-mock-001',
+          tipo: 'multiples_rostros',
+          severidad: 'alta',
+          ts_cliente: new Date(ahora.getTime() - 3000 * 1000).toISOString(),
+          payload: { face_count: 2 },
+          screenshot_base64: null, // mock no incluye imagen real
+          screenshot_sha256: null,
+          face_count_cliente: 2,
+          veredicto_reinferencia: 'coincide',
+          face_count_servidor: 2,
+        },
+        {
+          evento_id: 'ev-mock-002',
+          tipo: 'mirada_desviada_sostenida',
+          severidad: 'media',
+          ts_cliente: new Date(ahora.getTime() - 2500 * 1000).toISOString(),
+          payload: { sostenido_ms: 2600 },
+          screenshot_base64: null,
+          screenshot_sha256: null,
+          face_count_cliente: 1,
+          veredicto_reinferencia: 'discrepancia',
+          face_count_servidor: 0,
+        },
+        {
+          evento_id: 'ev-mock-003',
+          tipo: 'rostro_ausente',
+          severidad: 'media',
+          ts_cliente: new Date(ahora.getTime() - 1800 * 1000).toISOString(),
+          payload: { sostenido_ms: 3200 },
+          screenshot_base64: null,
+          screenshot_sha256: null,
+          face_count_cliente: 0,
+          veredicto_reinferencia: 'sin_referencia',
+          face_count_servidor: 0,
+        },
+      ],
+      biometria: {
+        liveness_ok: true,
+        retos_resueltos: ['parpadear', 'girar_izquierda'],
+        resultado: 'verificado',
+      },
+    };
+  },
 };
 
 // Helpers de presentación
@@ -693,4 +920,7 @@ export type {
   EventoSesion, Materia, Comision, Inscripcion, EstadoInscripcion,
   EstadoEnrollment, AcuseConsentimiento, ReferenciasBiometrica, EscaneDNI, VigenciaReferencia,
   AcuseExamen,
+  // C-46: tipos de proctoring (re-export desde types.ts)
+  SesionProctoringResumen, SesionProctoringDetalle, EventoProctoringDetalle,
+  BiometriaDetalle, VeredictoReinferencia,
 };

@@ -26,6 +26,9 @@ import StudentProfile from './screens/StudentProfile';
 import AdminDetectionHarness from './screens/AdminDetectionHarness';
 // C-26: AcuseExamen es un paso inline (no tiene ruta directa; requiere examenId como prop).
 // Se embebe desde AlumnoMaterias (inscripción) y AlumnoMisExamenes (completar acuse).
+// C-46: Revisión de sesiones del backend slim de proctoring
+import ProctoringRevisor from './screens/ProctoringRevisor';
+import ProctoringSessionDetail from './screens/ProctoringSessionDetail';
 
 export default function App() {
   const routes = {
@@ -52,6 +55,11 @@ export default function App() {
     '/alumno/perfil': <StudentProfile />,
     // C-23: Harness diagnóstico de detección para roles admin_examenes | coordinador
     '/admin/detection-test': <AdminDetectionHarness />,
+    // C-46: Revisión de sesiones del backend slim de proctoring
+    // Roles: admin_examenes | coordinador | revisor (misma protección que STAFF_NAV)
+    '/admin/proctoring-sessions': <ProctoringRevisor />,
+    // Detalle por ID: el ID viene del store.proctoringSessionId (router hash sin params dinámicos)
+    '/admin/proctoring-session-detail': <ProctoringSessionDetail />,
   };
 
   return (

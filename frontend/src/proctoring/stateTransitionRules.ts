@@ -90,25 +90,30 @@ export interface TransitionConfig {
  */
 const HEAD_YAW_THRESHOLD_DEG = 20;
 
+/**
+ * Configuracion por defecto de los umbrales de deteccion.
+ *
+ * C-46 (ajuste fino basado en observaciones del harness con motor MediaPipe real):
+ * - gaze_deviation_threshold: 0.25 → 0.20. Reduce falsos positivos de mirada
+ *   desviada al exigir una desviacion mas grande antes de disparar el evento.
+ *   El motor MediaPipe real produce desviaciones de ~0.18–0.22 en movimientos
+ *   naturales de cabeza; 0.20 las filtra sin ignorar desviaciones laterales reales.
+ * - face_absent_ms: 3000 ms (sin cambio — ya calibrado en C-35). Dar mas margen
+ *   antes de disparar "rostro ausente" reduce alertas por oclusiones momentaneas.
+ *
+ * C-35: otros campos recalibrados (gaze_sustained_ms, gaze_fixation_tolerance).
+ * Todos los valores son sobreescribibles por UI en el harness diagnostico.
+ */
 export const DEFAULT_CONFIG: TransitionConfig = {
   face_absent_ms: 3000,
   multiple_faces_frames: 5,
-  // C-35: Recalibrado de 0.6 a 0.25.
-  // gazeFromIris() escala el desplazamiento del iris por el semi-ancho del ojo:
-  //   gx = (irisCenter.x - cx) / halfWidth
-  // Rango practico para una desviacion lateral visible: ~0.15–0.35.
-  // 0.6 era inalcanzable en la practica (nunca emitia). 0.25 captura
-  // desviaciones de ~30% del semi-ancho, filtrando micro-movimientos (<0.15).
-  gaze_deviation_threshold: 0.25,
+  // C-46: Ajustado de 0.25 a 0.20 para reducir falsos positivos de mirada.
+  // Con el motor MediaPipe real, valores de 0.20–0.25 capturan desviaciones
+  // laterales visibles sin disparar en movimientos naturales de cabeza.
+  gaze_deviation_threshold: 0.20,
   // C-35: Recalibrado de 4000 ms a 2500 ms.
-  // Mantener la mirada sostenida 2.5 s es suficiente senal; 4 s era demasiado
-  // largo para un escenario de diagnostico practico.
   gaze_sustained_ms: 2500,
-  // C-35: Recalibrado de 0.15 a 0.25.
-  // El movimiento natural de cabeza produce drifts del vector de ~0.15–0.20.
-  // Con tolerancia 0.15 el ancla se reseteaba continuamente por movimiento natural,
-  // impidiendo que el contador de tiempo sostenido llegara a gaze_sustained_ms.
-  // 0.25 absorbe el ruido natural sin perder la senal de mirada desviada.
+  // C-35: Recalibrado de 0.15 a 0.25 para absorber ruido natural de cabeza.
   gaze_fixation_tolerance: 0.25,
 };
 

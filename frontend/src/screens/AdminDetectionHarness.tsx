@@ -19,9 +19,11 @@ import { StaffShell } from '../ui/shells';
 import { Icon, Card, Button, Badge, SeverityBadge, SectionTitle } from '../ui/components';
 import { STAFF_NAV } from '../ui/nav';
 import { useApp } from '../lib/store';
-import { SEVERIDAD_LABEL, TIPO_EVENTO_LABEL } from '../lib/api';
+import { SEVERIDAD_LABEL, TIPO_EVENTO_LABEL, api } from '../lib/api';
 import { Term } from '../ui/Term';
 import type { Severidad } from '../lib/types';
+// C-46: helper de captura de frame
+import { captureVideoFrame } from '../lib/videoFrameCapture';
 import { PESO_SCORE } from '../proctoring/riskWeights';
 import VisionOverlay from '../ui/VisionOverlay';
 
@@ -72,6 +74,14 @@ const FRAME_INTERVAL_MS = 200; // ~5 fps — suficiente para diagnóstico
 type HarnessState = 'idle' | 'initializing' | 'running' | 'stopped';
 
 /**
+ * C-46: Modo de grabación del harness.
+ * - idle: harness corriendo en modo diagnóstico puro (sin red, air-gapped)
+ * - recording: sesión creada en el backend slim; cada evento se envía con screenshot
+ * - stopped: grabación detenida (harness puede seguir corriendo)
+ */
+type RecordMode = 'idle' | 'recording' | 'stopped';
+
+/**
  * C-30: estado del motor de visión en el harness.
  * - simulated: estado inicial, motor stub (C-29)
  * - loading: se está cargando el motor real MediaPipe
@@ -116,6 +126,12 @@ interface HarnessLogEntry {
   loggedAt: number;
   /** true si el store estaba lleno (50) al llegar este evento. */
   storeOverflow: boolean;
+  /** C-46: estado del envío al backend slim ('ok' | 'net-error' | undefined=no grabando) */
+  networkBadge?: 'ok' | 'net-error';
+  /** C-46: veredicto de re-inferencia del servidor (si networkBadge === 'ok') */
+  verdictServer?: string | null;
+  /** C-46: face_count reportado por el servidor */
+  faceCountServer?: number | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -310,6 +326,15 @@ export default function AdminDetectionHarness() {
   // ------ Toast ------
   const [toast, setToast] = useState<string | null>(null);
 
+  // ------ C-46: Modo grabación ------
+  const [recordMode, setRecordMode] = useState<RecordMode>('idle');
+  const [recordedEventCount, setRecordedEventCount] = useState(0);
+  /**
+   * sessionIdRef: ref estable para que el callback del sink siempre lea el
+   * valor actual del sessionId sin recrear el sink (D3 del design.md).
+   */
+  const sessionIdRef = useRef<string | null>(null);
+
   // ------ Refs del motor y pipeline ------
   const engineRef = useRef<VisionEngine | null>(null);
   const pipelineRef = useRef<VisionPipeline | null>(null);
@@ -328,6 +353,24 @@ export default function AdminDetectionHarness() {
     setToast(msg);
     setTimeout(() => setToast(null), 3500);
   }, []);
+
+  // ------ C-46: startRecording / stopRecording ------
+  const startRecording = useCallback(async () => {
+    try {
+      const sesion = await api.crearSesionProctoring('diagnostico', 'Harness diagnóstico');
+      sessionIdRef.current = sesion.id;
+      setRecordMode('recording');
+      setRecordedEventCount(0);
+    } catch {
+      showToast('Error al iniciar la grabación — el harness sigue en modo diagnóstico.');
+    }
+  }, [showToast]);
+
+  const stopRecording = useCallback((count: number) => {
+    setRecordMode('stopped');
+    sessionIdRef.current = null;
+    showToast(`Grabación detenida — ${count} evento${count !== 1 ? 's' : ''} enviados.`);
+  }, [showToast]);
 
   // ------ Elapsado para "Sin eventos aún" ------
   useEffect(() => {
@@ -481,6 +524,40 @@ export default function AdminDetectionHarness() {
       }
       return next;
     });
+
+    // C-46: si hay sesión activa, capturar screenshot y enviar al backend (fire-and-forget)
+    // D4: el envío es asíncrono y no bloquea el loop. Si falla → badge "sin red" en el log.
+    const currentSessionId = sessionIdRef.current;
+    if (currentSessionId && recordMode === 'recording') {
+      const screenshot = videoRef.current ? captureVideoFrame(videoRef.current, 0.7) : null;
+      const faceCountCliente = rawEvent.payload?.face_count != null
+        ? Number(rawEvent.payload.face_count)
+        : undefined;
+
+      void api.enviarEventoProctoring(currentSessionId, {
+        tipo: rawEvent.tipo,
+        severidad: rawEvent.severidad,
+        ts_cliente: new Date().toISOString(),
+        payload: rawEvent.payload,
+        screenshot_base64: screenshot,
+        face_count_cliente: faceCountCliente,
+      }).then((resp) => {
+        // Incrementar contador y actualizar badge en el log (setter funcional)
+        setRecordedEventCount((c) => c + 1);
+        setLogEntries((prev) =>
+          prev.map((e) =>
+            e.id === seqId
+              ? {
+                  ...e,
+                  networkBadge: resp !== null ? 'ok' : 'net-error',
+                  verdictServer: resp?.veredicto_reinferencia ?? null,
+                  faceCountServer: resp?.face_count_servidor ?? null,
+                }
+              : e,
+          ),
+        );
+      });
+    }
   };
 
   // ------ Iniciar harness ------
@@ -679,6 +756,10 @@ export default function AdminDetectionHarness() {
 
   // ------ Detener harness ------
   const stopHarness = useCallback(async () => {
+    // C-46: si estaba grabando, detener grabación primero
+    if (recordMode === 'recording') {
+      stopRecording(recordedEventCount);
+    }
     if (frameLoopRef.current) { clearInterval(frameLoopRef.current); frameLoopRef.current = null; }
     if (animFrameRef.current) { cancelAnimationFrame(animFrameRef.current); animFrameRef.current = null; }
     streamRef.current?.getTracks().forEach((t) => t.stop());
@@ -702,7 +783,9 @@ export default function AdminDetectionHarness() {
     // C-30: reset engine mode al detener
     setEngineMode('simulated');
     setEngineError(null);
-  }, []);
+    // C-46: resetear modo grabación al detener el harness
+    setRecordMode('idle');
+  }, [recordMode, recordedEventCount, stopRecording]);
 
   // Cleanup al desmontar
   // C-32 Task 2.2: llamar disposeRealEngine() en lugar de engineRef.current?.dispose()
@@ -958,7 +1041,7 @@ export default function AdminDetectionHarness() {
               MODO DIAGNÓSTICO — sin examen real
             </div>
           </div>
-          <div className="flex items-center gap-sm">
+          <div className="flex items-center gap-sm flex-wrap">
             {harnessState === 'running' && (
               <span className="inline-flex items-center gap-base text-label-sm text-success bg-success-container px-sm py-base rounded-full font-semibold">
                 <span className="w-2 h-2 rounded-full bg-success animate-pulse" />
@@ -970,6 +1053,33 @@ export default function AdminDetectionHarness() {
             )}
             {harnessState === 'initializing' && (
               <Button icon="hourglass_empty" disabled>Inicializando…</Button>
+            )}
+            {/* C-46: Botón "Grabar sesión" — solo cuando corriendo y no grabando */}
+            {harnessState === 'running' && recordMode === 'idle' && (
+              <Button icon="fiber_manual_record" onClick={() => { void startRecording(); }}>
+                Grabar sesión
+              </Button>
+            )}
+            {/* C-46: Badge GRABANDO + contador + Detener grabación */}
+            {harnessState === 'running' && recordMode === 'recording' && (
+              <>
+                <span className="inline-flex items-center gap-base text-label-sm text-on-error-container bg-error-container px-sm py-base rounded-full font-bold border border-error/30">
+                  <span className="w-2 h-2 rounded-full bg-error animate-pulse" />
+                  GRABANDO · {recordedEventCount} evento{recordedEventCount !== 1 ? 's' : ''}
+                  {sessionIdRef.current && (
+                    <span className="font-mono font-normal opacity-70 ml-base">
+                      {sessionIdRef.current.slice(0, 12)}…
+                    </span>
+                  )}
+                </span>
+                <Button
+                  variant="danger"
+                  icon="stop"
+                  onClick={() => stopRecording(recordedEventCount)}
+                >
+                  Detener grabación
+                </Button>
+              </>
             )}
             {harnessState === 'running' && (
               <Button variant="danger" icon="stop_circle" onClick={stopHarness}>Detener</Button>
@@ -1697,6 +1807,25 @@ export default function AdminDetectionHarness() {
                           ) : (
                             <span className="inline-flex items-center gap-base text-label-sm text-on-surface-variant">
                               <Icon name="inventory_2" className="text-[14px]" /> no en store
+                            </span>
+                          )}
+                          {/* C-46: badge de red (grabación) */}
+                          {entry.networkBadge === 'ok' && (
+                            <span className="inline-flex items-center gap-base text-label-sm text-success">
+                              <Icon name="cloud_done" className="text-[14px]" fill />
+                              grabado
+                              {entry.verdictServer && (
+                                <span className="text-[10px] font-mono opacity-80 ml-base">{entry.verdictServer}</span>
+                              )}
+                              {entry.faceCountServer != null && (
+                                <span className="text-[10px] opacity-70 ml-base">srv:{entry.faceCountServer}</span>
+                              )}
+                            </span>
+                          )}
+                          {entry.networkBadge === 'net-error' && (
+                            <span className="inline-flex items-center gap-base text-label-sm text-warning">
+                              <Icon name="cloud_off" className="text-[14px]" />
+                              ⚠ sin red
                             </span>
                           )}
                         </div>

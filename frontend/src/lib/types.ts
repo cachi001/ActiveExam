@@ -290,6 +290,65 @@ export interface AcuseExamen {
   afirmativo: boolean;
 }
 
+// ---------------------------------------------------------------------------
+// Proctoring backend slim — C-46
+// Tipos calcados del contrato del backend C-45 (OpenAPI).
+// ---------------------------------------------------------------------------
+
+/**
+ * Veredicto de re-inferencia del servidor sobre un evento con screenshot.
+ * El servidor es la fuente de verdad (cliente = sensor no confiable, L2.5).
+ */
+export type VeredictoReinferencia = 'coincide' | 'discrepancia' | 'sin_referencia' | 'error';
+
+/**
+ * Detalle completo de un evento de proctoring enviado al backend slim.
+ * Incluye el veredicto de re-inferencia server-side y face_count del servidor.
+ *
+ * DATO SENSIBLE (Ley 25.326): screenshot_base64 es dato biométrico/personal;
+ * no se loguea en consola ni se persiste en localStorage.
+ */
+export interface EventoProctoringDetalle {
+  evento_id: string;
+  tipo: string;
+  severidad: string;
+  ts_cliente: string; // ISO 8601
+  payload?: Record<string, unknown>;
+  /** Base64 JPEG del frame capturado en el momento del evento. DATO SENSIBLE. */
+  screenshot_base64?: string | null;
+  screenshot_sha256?: string | null;
+  face_count_cliente?: number | null;
+  veredicto_reinferencia?: VeredictoReinferencia | null;
+  face_count_servidor?: number | null;
+}
+
+/** Resultado de la verificación biométrica de liveness híbrido. */
+export interface BiometriaDetalle {
+  liveness_ok: boolean;
+  retos_resueltos: string[];
+  resultado: string;
+}
+
+/** Resumen de una sesión de proctoring (para la lista). */
+export interface SesionProctoringResumen {
+  id: string;
+  modo: string; // 'diagnostico' | 'examen' | ...
+  etiqueta?: string | null;
+  creada_en: string; // ISO 8601
+  total_eventos: number;
+  total_discrepancias: number;
+  score: number;
+}
+
+/**
+ * Detalle completo de una sesión de proctoring (para la vista de revisión).
+ * Extiende SesionProctoringResumen con la lista de eventos y biometría.
+ */
+export interface SesionProctoringDetalle extends SesionProctoringResumen {
+  eventos: EventoProctoringDetalle[];
+  biometria: BiometriaDetalle | null;
+}
+
 /** Materia/asignatura de la currícula. */
 export interface Materia {
   id: string;
