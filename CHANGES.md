@@ -740,6 +740,27 @@ C-01 → C-03 → C-04 → C-05 → C-06 → C-07 → C-08 → C-09 → C-10 →
   - `knowledge-base/13_legal_y_cumplimiento_argentina.md` §Dato sensible §Ley 25.326
   - `knowledge-base/12_biometria_y_liveness.md` §Concordancia facial §embedding
 
+### [C-41] `c-41-login-portal-alumno-ui`
+- **Estado**: `[x]` aplicado (validate --strict OK — 63 tasks)
+- **Scope**: **Rediseño minimalista + componentización del portal del alumno** — Login, AlumnoDashboard, AlumnoMaterias y AlumnoMisExamenes (4 pantallas monolíticas de 168–264 líneas). Crea 6 componentes de presentación pura en `frontend/src/screens/alumno/components/` (`QuickAccessCard`, `ExamenProximoCard`, `ExamenCard`, `InscripcionCard`, `ComisionRow`, `MateriaCard`), refactoriza las 3 pantallas del portal del alumno para usarlos, y refina el Login con el diseño visual del portal. Caps NEW: `student-dashboard-landing`, `student-portal-navigation`. Caps MODIFIED (delta): `login-portal-reframe`, `exam-enrollment`.
+- **Dependencias**: `C-40` (sistema de tamaños de Button; design system base limpio)
+- **Governance**: BAJO
+- **Leer antes**:
+  - `openspec/changes/c-41-login-portal-alumno-ui/` (proposal, design, specs/, tasks)
+  - `frontend/src/screens/alumno/` (pantallas del portal)
+  - `frontend/src/screens/alumno/components/` (componentes creados en este change)
+
+### [C-42] `c-42-perfil-alumno-ui`
+- **Estado**: `[ ]` propuesto (validate --strict OK — 37 tasks)
+- **Scope**: **Rediseño minimalista + componentización del Perfil del alumno** — `StudentProfile.tsx` (~700 líneas, pantalla más grande del proyecto). Extrae la vista `paso==='perfil'` en 3 componentes de presentación pura en `frontend/src/screens/alumno/components/`: `PerfilHeaderCard` (avatar condicional + datos personales), `RequisitoCard` (patrón genérico parametrizable para los 4 requisitos de enrollment: consentimiento/biometría/foto/DNI), `PerfilBannerEstado` (banners contextuales: completo/caducada/renovación requerida). `StudentProfile` queda como orquestador delgado: handlers, máquina de fases `PasoEnrollment` y gate `perfil_completo` intactos. Caps NEW: `profile-requisito-cards`, `profile-header-card`, `profile-banner-estado`. Caps MODIFIED (delta): `student-profile-shell`.
+- **Dependencias**: `C-40` (design system base limpio, DEV_TOOLS_ENABLED — herramientas demo ya detrás del flag), `C-41` (patrón de componentización en `alumno/components/`)
+- **Governance**: BAJO
+- **Leer antes**:
+  - `openspec/changes/c-42-perfil-alumno-ui/` (proposal, design, specs/, tasks)
+  - `frontend/src/screens/StudentProfile.tsx` (pantalla a refactorizar — solo vista paso==='perfil')
+  - `frontend/src/screens/alumno/components/` (patrón de colocalización de C-41)
+  - `frontend/src/ui/components.tsx` (primitivas: Card, Badge, Button, Icon, Term)
+
 ---
 
 ## Resumen
@@ -749,12 +770,12 @@ C-01 → C-03 → C-04 → C-05 → C-06 → C-07 → C-08 → C-09 → C-10 →
 | **0 — Fundaciones** | C-01, C-02, C-03 | 3× CRITICO (C-03 ★ Tier 1 BLOQUEANTE) |
 | **1 — MVP** | C-04…C-19 | 6 CRITICO, 8 ALTO, 2 MEDIO |
 | **2 — Refinamiento** | C-20 | 1 MEDIO |
-| **Refinamiento post-fundación** | C-21, C-22, C-23, C-24, C-25, C-26, C-27, C-28, C-29, C-30, C-31, C-32, C-33, C-34, C-35, C-36, C-37, C-38, C-39, C-40 | 6 ALTO, 8 MEDIO, 6 BAJO |
+| **Refinamiento post-fundación** | C-21, C-22, C-23, C-24, C-25, C-26, C-27, C-28, C-29, C-30, C-31, C-32, C-33, C-34, C-35, C-36, C-37, C-38, C-39, C-40, C-41, C-42 | 6 ALTO, 8 MEDIO, 8 BAJO |
 
-- **Total**: **40 changes** — 20 de la fundación (3 fases) + 20 post-fundación (capa frontend/demo, captura de actividad, consentimiento en capas, decisiones de producto, identidad institucional, lenguaje claro/glosario, UX/legibilidad del harness, motor de visión real en el harness, quick-fixes de presentación, harness cache UX, medidor de riesgo en harness, biometría perfil funcional, fixes detección cámara/mirada, verificación biométrica inmersiva, foto de perfil en enrollment, escaneo DNI frente+dorso, análisis/validación indicativa DNI, UI base limpieza — ver sección dedicada arriba).
-- **Camino crítico**: 11 changes (`C-01 → C-03 → C-04 → C-05 → C-06 → C-07 → C-08 → C-09 → C-10 → C-15 → C-16`). C-21…C-39 quedan **fuera** del camino crítico (refinamiento de demo, no MVP backend).
+- **Total**: **42 changes** — 20 de la fundación (3 fases) + 22 post-fundación (capa frontend/demo, captura de actividad, consentimiento en capas, decisiones de producto, identidad institucional, lenguaje claro/glosario, UX/legibilidad del harness, motor de visión real en el harness, quick-fixes de presentación, harness cache UX, medidor de riesgo en harness, biometría perfil funcional, fixes detección cámara/mirada, verificación biométrica inmersiva, foto de perfil en enrollment, escaneo DNI frente+dorso, análisis/validación indicativa DNI, UI base limpieza, rediseño portal alumno, rediseño perfil alumno — ver sección dedicada arriba).
+- **Camino crítico**: 11 changes (`C-01 → C-03 → C-04 → C-05 → C-06 → C-07 → C-08 → C-09 → C-10 → C-15 → C-16`). C-21…C-42 quedan **fuera** del camino crítico (refinamiento de demo, no MVP backend).
 - **Gates de paralelismo**: 13 (GATE 0…GATE 12). Forks grandes en GATE 5, GATE 6 y GATE 9.
 - **Primer change recomendado**: `C-01` (acuerdo-proctoring-dpia) — gate legal que junto a `C-02` bloquea todo el desarrollo. El primer change de **código** es `C-03` (poc-carga-mensajeria, Tier 1, BLOQUEANTE).
-- **Post-fundación**: el detalle y el porqué viven también en **engram** (`activeexam/refinamiento-frontend-v2`). Orden de aplicación sugerido: **C-21 → C-22 → C-26** (perfil cuelga del portal; el acuse por-examen de C-26 cuelga de la inscripción de C-21 + el consentimiento de C-22); **C-23 → C-25** (C-25 extiende el harness y cablea los detectores de navegador); C-24 independiente; **C-27 → C-28 → C-29 → C-30 → C-32 → C-33 → C-34 → C-35 → C-36 → C-37 → C-38 → C-39 pueden correr en secuencia** (C-28 inteligibilidad; C-29 legibilidad/banner; C-30 motor real en el harness con overlay canvas; C-32 cache + UX amigable del harness; C-33 medidor de riesgo en harness; C-34 biometría perfil funcional; C-35 fixes bugs detección cámara + mirada; C-36 verificación biométrica inmersiva con componente compartido; C-37 foto de perfil en enrollment con componente snapshot reutilizable; C-38 escaneo DNI frente+dorso con marco escáner ID-1; C-39 análisis indicativo DNI con panel de resultados mock). **C-40** (UI base limpieza) es independiente de todos y puede correr antes de la tanda de rediseño específico por pantalla.
+- **Post-fundación**: el detalle y el porqué viven también en **engram** (`activeexam/refinamiento-frontend-v2`). Orden de aplicación sugerido: **C-21 → C-22 → C-26** (perfil cuelga del portal; el acuse por-examen de C-26 cuelga de la inscripción de C-21 + el consentimiento de C-22); **C-23 → C-25** (C-25 extiende el harness y cablea los detectores de navegador); C-24 independiente; **C-27 → C-28 → C-29 → C-30 → C-32 → C-33 → C-34 → C-35 → C-36 → C-37 → C-38 → C-39 pueden correr en secuencia** (C-28 inteligibilidad; C-29 legibilidad/banner; C-30 motor real en el harness con overlay canvas; C-32 cache + UX amigable del harness; C-33 medidor de riesgo en harness; C-34 biometría perfil funcional; C-35 fixes bugs detección cámara + mirada; C-36 verificación biométrica inmersiva con componente compartido; C-37 foto de perfil en enrollment con componente snapshot reutilizable; C-38 escaneo DNI frente+dorso con marco escáner ID-1; C-39 análisis indicativo DNI con panel de resultados mock). **C-40** (UI base limpieza) es independiente y puede correr antes de la tanda de rediseño. **C-41 → C-42** (rediseño portal alumno → rediseño perfil alumno) corren en secuencia, ambos BAJO governance.
 
 Para arrancar: `/opsx:propose C-01-acuerdo-proctoring-dpia`
