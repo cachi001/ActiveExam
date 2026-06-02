@@ -40,3 +40,9 @@ async def detalle_sesion(
     """Obtiene el detalle completo de una sesion (con eventos y biometria)."""
     repo = ProctoringRepository(db)
     return await repo.obtener_sesion(session_id)
+
+
+async def eliminar_sesion(db: AsyncSession, session_id: str) -> bool:
+    """Elimina una sesion por ID. Devuelve True si existia, False si no."""
+    repo = ProctoringRepository(db)
+    return await repo.eliminar_sesion(session_id)

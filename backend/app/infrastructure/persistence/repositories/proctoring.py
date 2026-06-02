@@ -159,6 +159,18 @@ class ProctoringRepository:
             for s in sesiones
         ]
 
+    async def eliminar_sesion(self, session_id: str) -> bool:
+        """Elimina una sesion por ID. Los eventos y biometria se borran por FK CASCADE.
+
+        Devuelve True si existia y se elimino, False si no existia.
+        """
+        sesion = await self._db.get(ProctoringSessionModel, session_id)
+        if sesion is None:
+            return False
+        await self._db.delete(sesion)
+        await self._db.commit()
+        return True
+
     # -------------------------------------------------------------------------
     # Events
     # -------------------------------------------------------------------------

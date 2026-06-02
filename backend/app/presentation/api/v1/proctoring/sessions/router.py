@@ -129,4 +129,21 @@ def create_sessions_router(get_db) -> APIRouter:
             biometria=biometria,
         )
 
+    @router.delete(
+        "/sessions/{session_id}",
+        status_code=http_status.HTTP_204_NO_CONTENT,
+        summary="Eliminar sesion",
+    )
+    async def eliminar_sesion(
+        session_id: str,
+        db: Annotated[AsyncSession, Depends(get_db)],
+    ) -> None:
+        """Elimina una sesion y sus eventos/biometria asociados (CASCADE)."""
+        ok = await session_service.eliminar_sesion(db, session_id)
+        if not ok:
+            raise HTTPException(
+                status_code=http_status.HTTP_404_NOT_FOUND,
+                detail=f"Sesion {session_id!r} no encontrada",
+            )
+
     return router
