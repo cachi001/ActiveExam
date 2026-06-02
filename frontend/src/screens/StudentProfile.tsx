@@ -23,6 +23,7 @@ import { StudentShell } from '../ui/shells';
 import { useNavigate } from '../lib/router';
 import { useApp } from '../lib/store';
 import { api, ENABLE_DNI_SCAN } from '../lib/api';
+import { DEV_TOOLS_ENABLED } from '../lib/devConfig';
 import { EnrollmentConsentStep } from './enrollment/EnrollmentConsentStep';
 import { EnrollmentBiometricStep } from './enrollment/EnrollmentBiometricStep';
 import { EnrollmentDniStep } from './enrollment/EnrollmentDniStep';
@@ -250,8 +251,8 @@ export default function StudentProfile() {
           {/* Nota de privacidad Ley 25.326 (D-8) */}
           <div className="text-label-sm text-on-surface-variant bg-surface-container-low rounded-xl p-sm border border-outline-variant/30">
             <span className="font-semibold">Privacidad (Ley 25.326):</span> La foto de perfil es
-            un dato personal con finalidad acotada (avatar en la UI). En esta demo se guarda solo
-            en memoria de la sesión. Server-side sería cifrada at-rest y eliminada al egreso.
+            un dato personal con finalidad acotada (avatar en la UI). En el cliente se almacena en memoria de sesión.
+            Server-side es cifrada at-rest y eliminada al egreso (Ley 25.326).
           </div>
 
           {/* CameraSnapshotCapture para foto de perfil (oval) */}
@@ -445,7 +446,7 @@ export default function StudentProfile() {
                 Tu referencia biométrica venció. Renovála para volver a poder rendir tus exámenes.
               </p>
             </div>
-            <Button variant="danger" onClick={handleRenovarBiometria} className="shrink-0 h-9 px-md text-label-sm" icon="refresh">
+            <Button variant="danger" size="sm" onClick={handleRenovarBiometria} className="shrink-0 text-label-sm" icon="refresh">
               Renovar
             </Button>
           </div>
@@ -464,7 +465,7 @@ export default function StudentProfile() {
                 Las rendiciones en curso no se ven afectadas (decisión disciplinaria siempre humana — <Term termKey="l2_5" />).
               </p>
             </div>
-            <Button variant="outline" onClick={handleRenovarBiometria} className="shrink-0 h-9 px-md text-label-sm" icon="refresh">
+            <Button variant="outline" size="sm" onClick={handleRenovarBiometria} className="shrink-0 text-label-sm" icon="refresh">
               Renovar
             </Button>
           </div>
@@ -587,19 +588,20 @@ export default function StudentProfile() {
               </div>
             )}
 
-            {/* Tool de demo: simular deriva del embedding */}
-            {biometriaOk && !biometriaCaducada && !biometriaRenovacionRequerida && (
+            {/* Tool de dev: simular deriva del embedding — solo visible con VITE_DEV_TOOLS=1 */}
+            {DEV_TOOLS_ENABLED && biometriaOk && !biometriaCaducada && !biometriaRenovacionRequerida && (
               <div className="flex items-center justify-between gap-md pt-sm border-t border-outline-variant/40">
                 <div className="flex items-center gap-xs text-on-surface-variant">
                   <Icon name="science" className="text-[16px]" />
-                  <span className="text-label-sm">Control de demostración</span>
+                  <span className="text-label-sm">Herramientas de desarrollo</span>
                 </div>
                 <Button
                   variant="ghost"
+                  size="sm"
                   onClick={handleSimularDeriva}
-                  className="h-9 px-md text-label-sm text-on-surface-variant"
+                  className="text-label-sm text-on-surface-variant"
                 >
-                  Demo: simular deriva embedding
+                  Simular deriva embedding
                 </Button>
               </div>
             )}
@@ -619,7 +621,7 @@ export default function StudentProfile() {
               </h2>
             </div>
             <Badge tone={dniOk ? 'success' : 'neutral'} dot>
-              {dniOk ? 'Registrado' : (ENABLE_DNI_SCAN ? 'Pendiente' : 'Próximamente')}
+              {dniOk ? 'Registrado' : (ENABLE_DNI_SCAN ? 'Pendiente' : 'No disponible')}
             </Badge>
           </div>
 
@@ -676,16 +678,17 @@ export default function StudentProfile() {
               </p>
               <Button
                 variant="outline"
+                size="sm"
                 onClick={() => setPaso('dni')}
                 icon="badge"
-                className="h-9 px-md text-label-sm"
+                className="text-label-sm"
               >
                 Escanear DNI (opcional)
               </Button>
             </div>
           ) : (
             <p className="text-label-sm text-on-surface-variant">
-              Disponible próximamente. No bloquea el perfil completo. Cuando esté activo, el DNI
+              No disponible en esta versión. No bloquea el perfil completo. Cuando esté activo, el DNI
               será tratado como dato sensible (Ley 25.326): cifrado, finalidad acotada, eliminado al egreso.
             </p>
           )}

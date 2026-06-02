@@ -1,5 +1,6 @@
 import { RouterProvider, Routes } from './lib/router';
 import { ScreenNavigator } from './ui/ScreenNavigator';
+import { DEV_TOOLS_ENABLED } from './lib/devConfig';
 import Login from './screens/Login';
 import EquipmentCheck from './screens/EquipmentCheck';
 import Consent from './screens/Consent';
@@ -56,7 +57,7 @@ export default function App() {
   return (
     <RouterProvider>
       <Routes routes={routes} fallback={<Login />} />
-      <ScreenNavigator />
+      {DEV_TOOLS_ENABLED && <ScreenNavigator />}
     </RouterProvider>
   );
 }

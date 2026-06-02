@@ -101,7 +101,7 @@ export default function Proctor() {
                 className="w-full text-label-md bg-surface-container-low border border-outline-variant rounded-xl px-sm py-base font-semibold outline-none">
                 {lista.map((s) => <option key={s.id} value={s.estudiante}>{s.estudiante} (Riesgo {s.score}%)</option>)}
               </select>
-              <textarea rows={3} value={mensaje} onChange={(e) => setMensaje(e.target.value)} placeholder="Ej: «Por favor, mantené tu mirada centrada en la pantalla»…"
+              <textarea rows={3} value={mensaje} onChange={(e) => setMensaje(e.target.value)} placeholder="Escribí un mensaje para el estudiante…"
                 className="w-full text-label-md bg-surface-container-low border border-outline-variant rounded-xl px-sm py-base outline-none focus:border-primary-container" />
               <Button variant="secondary" icon="shield" onClick={enviar} className="w-full">Enviar advertencia cifrada</Button>
             </Card>

@@ -46,7 +46,7 @@ export default function Login() {
               </div>
             </div>
 
-            <Button onClick={ingresar} disabled={cargando} icon={cargando ? undefined : 'login'} iconRight={cargando ? undefined : 'arrow_forward'} className="w-full h-14">
+            <Button onClick={ingresar} disabled={cargando} size="lg" icon={cargando ? undefined : 'login'} iconRight={cargando ? undefined : 'arrow_forward'} className="w-full">
               {cargando ? (
                 <span className="inline-flex items-center gap-xs"><Icon name="progress_activity" className="ae-spin text-[20px]" /> Conectando con Keycloak…</span>
               ) : `Ingresar con ${INSTITUTION.loginLabel}`}
