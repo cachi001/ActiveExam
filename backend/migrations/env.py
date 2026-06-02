@@ -32,6 +32,10 @@ def _database_url() -> str:
             "DATABASE_URL no esta seteada. Alembic carga la conexion por entorno "
             "(twelve-factor); inyectala via Vault/tmpfs antes de migrar."
         )
+    # Algunos proveedores (Railway/Heroku) inyectan el esquema viejo 'postgres://',
+    # que SQLAlchemy 2.0 ya no reconoce. Normalizar a 'postgresql://'.
+    if url.startswith("postgres://"):
+        url = "postgresql://" + url[len("postgres://"):]
     # Alembic corre sincrono: el driver async no aplica aqui.
     return url.replace("+asyncpg", "").replace("+psycopg_async", "+psycopg")
 
