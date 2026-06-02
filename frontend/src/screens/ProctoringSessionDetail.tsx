@@ -12,7 +12,7 @@
 
 import { useEffect, useState } from 'react';
 import { StaffShell } from '../ui/shells';
-import { Icon, Card, Badge, SeverityBadge, SectionTitle } from '../ui/components';
+import { Icon, Card, Badge, SeverityBadge, SectionTitle, Button } from '../ui/components';
 import { STAFF_NAV } from '../ui/nav';
 import { useNavigate } from '../lib/router';
 import { useApp } from '../lib/store';
@@ -151,6 +151,15 @@ export default function ProctoringSessionDetail() {
       .finally(() => { setCargando(false); });
   }, [sessionId]);
 
+  const handleEliminar = async () => {
+    if (!sessionId) return;
+    // eslint-disable-next-line no-alert -- herramienta admin: confirm directo es aceptable
+    if (!window.confirm('¿Eliminar esta sesión grabada? Esta acción no se puede deshacer.')) return;
+    await api.eliminarSesionProctoring(sessionId);
+    // Volvemos a la lista independientemente del resultado (la lista recargará).
+    navigate('/admin/proctoring-sessions');
+  };
+
   return (
     <StaffShell nav={STAFF_NAV} title="Detalle de sesión">
       <div className="space-y-lg animate-in fade-in duration-300">
@@ -174,8 +183,8 @@ export default function ProctoringSessionDetail() {
           </div>
         </div>
 
-        {/* Botón volver */}
-        <div>
+        {/* Acciones: volver + eliminar */}
+        <div className="flex items-center justify-between gap-md flex-wrap">
           <button
             type="button"
             onClick={() => navigate('/admin/proctoring-sessions')}
@@ -184,6 +193,16 @@ export default function ProctoringSessionDetail() {
             <Icon name="arrow_back" className="text-[16px]" />
             Volver a la lista de sesiones
           </button>
+          {sessionId && (
+            <Button
+              variant="danger"
+              size="sm"
+              icon="delete"
+              onClick={() => void handleEliminar()}
+            >
+              Eliminar sesión
+            </Button>
+          )}
         </div>
 
         {/* Estado de carga / error */}
