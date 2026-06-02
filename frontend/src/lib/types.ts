@@ -219,77 +219,6 @@ export interface ReferenciasBiometrica {
   renovacion_anticipada_requerida: boolean;
 }
 
-// ---------------------------------------------------------------------------
-// Análisis indicativo del DNI — C-39
-// ---------------------------------------------------------------------------
-
-/**
- * Estado del análisis indicativo del DNI (L2.5).
- * NUNCA 'aprobado' ni 'rechazado' — la decisión final es siempre humana.
- * - 'preliminar_ok': todos los checks básicos pasan y concordancia >= 0.85.
- * - 'requiere_revision': algún check falla o concordancia < 0.85.
- */
-export type EstadoAnalisisDNI = 'preliminar_ok' | 'requiere_revision';
-
-/**
- * Datos extraídos por OCR (mock) del DNI.
- * Coherentes con el alumno demo "Emiliano Cáceres" (FRM-23-4912).
- * En producción: extraídos server-side, nunca por el cliente (RN-GLB-01).
- */
-export interface DatosOCRMock {
-  numero_documento: string;
-  apellido: string;
-  nombre: string;
-  fecha_nacimiento: string;
-  fecha_vencimiento: string;
-  sexo: 'M' | 'F' | 'X';
-  cuil: string;
-}
-
-/**
- * Resultado indicativo del análisis del DNI (C-39).
- *
- * RESTRICCIÓN ARQUITECTÓNICA (RN-GLB-01): el cliente es sensor no confiable.
- * Este análisis es un MOCK client-side con fines de demostración únicamente.
- * La validación REAL (RENAPER, MRZ, autenticidad del chip, PDF417 completo,
- * OCR real) es siempre server-side.
- *
- * RESTRICCIÓN L2.5: nunca 'aprobado' ni 'rechazado' — solo 'preliminar_ok' o
- * 'requiere_revision'. La decisión disciplinaria es siempre humana.
- */
-export interface AnalisisDNI {
-  // Checks de integridad documental (simulados client-side)
-  /** true si la imagen no está vacía y tiene dimensiones mínimas. */
-  documento_detectado: boolean;
-  /** true si el contraste y nitidez simulados son suficientes. */
-  imagen_legible: boolean;
-  /** Tipo de documento detectado — siempre 'dni_argentino' en esta demo. */
-  tipo_documento: 'dni_argentino';
-  /** true si el código de barras PDF417 del dorso fue leído (mock). */
-  pdf417_leido: boolean;
-
-  // Datos OCR mock (coherentes con el alumno demo)
-  datos_extraidos: DatosOCRMock;
-
-  /**
-   * Score de concordancia facial (0..1) entre el frente del DNI y la
-   * referencia biométrica del perfil (C-22). Mock client-side con variación
-   * cosmética para realismo. Rango demo: 0.88–0.96.
-   */
-  concordancia_facial: number;
-
-  /**
-   * Estado general del análisis indicativo.
-   * NUNCA 'aprobado' ni 'rechazado' (L2.5).
-   */
-  estado: EstadoAnalisisDNI;
-
-  /** ISO 8601: momento del análisis. */
-  timestamp_analisis: string;
-  /** Versión del motor de análisis — 'mock-v1' en demo. */
-  version_analisis: string;
-}
-
 /**
  * Escaneo de DNI del perfil (opcional, detrás de feature flag ENABLE_DNI_SCAN).
  *
@@ -310,12 +239,6 @@ export interface EscaneDNI {
   imagen_dorso: string | null;
   /** ISO 8601: momento de la captura. */
   fecha_captura: string;
-  /**
-   * Resultado del análisis indicativo del DNI (C-39).
-   * Campo opcional — undefined hasta que api.analizarDNI() completa.
-   * Compatible hacia atrás con C-38.
-   */
-  analisis?: AnalisisDNI;
 }
 
 /**

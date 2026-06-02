@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { StaffShell } from '../ui/shells';
-import { Icon, Button, Card, Avatar, Badge, SeverityBadge } from '../ui/components';
+import { Icon, Card, Avatar, Badge, SeverityBadge, SectionTitle } from '../ui/components';
 import { api, TIPO_EVENTO_LABEL } from '../lib/api';
 import { useApp } from '../lib/store';
 import { useNavigate } from '../lib/router';
@@ -8,6 +8,8 @@ import { STAFF_NAV } from '../ui/nav';
 import { Term } from '../ui/Term';
 import type { SesionRevision } from '../lib/types';
 import { INSTITUTION } from '../config/institution';
+import { ReviewQueueItem } from './admin/components/ReviewQueueItem';
+import { ReviewDecisionPanel } from './admin/components/ReviewDecisionPanel';
 
 export const REVISOR_NAV = STAFF_NAV;
 
@@ -32,11 +34,8 @@ export default function Revisor() {
     <StaffShell nav={REVISOR_NAV} title="Revisión académica">
       <div className="grid lg:grid-cols-3 gap-lg">
         {/* Cola */}
-        <Card className="space-y-sm">
-          <div className="flex items-center justify-between border-b border-outline-variant/40 pb-base">
-            <h2 className="font-headline text-title-lg text-on-surface">Cola de sesiones</h2>
-            <Badge tone="error" dot>{cola.length} pendientes</Badge>
-          </div>
+        <Card className="space-y-base">
+          <SectionTitle action={<Badge tone="error" dot>{cola.length} pendientes</Badge>}>Cola de sesiones</SectionTitle>
           {cola.length === 0 && (
             <div className="text-center py-xl text-on-surface-variant space-y-base">
               <Icon name="inbox" className="text-[40px]" />
@@ -44,20 +43,7 @@ export default function Revisor() {
             </div>
           )}
           {cola.map((s) => (
-            <button key={s.id} onClick={() => setSel(s)}
-              className={`w-full text-left p-sm rounded-xl border transition-all ${sel?.id === s.id ? 'bg-primary-fixed/40 border-primary-container' : 'border-outline-variant/40 hover:bg-surface-container-low'}`}>
-              <div className="flex gap-sm items-center">
-                <Avatar src={s.foto} alt={s.estudiante} />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between gap-base">
-                    <span className="text-label-md font-semibold text-on-surface truncate">{s.estudiante}</span>
-                    <Badge tone="error">Score {s.score}%</Badge>
-                  </div>
-                  <p className="text-label-sm text-on-surface-variant">{s.examen} · {s.fecha}</p>
-                  <p className="text-label-sm text-on-surface-variant mt-base">{s.id} · {s.eventos.length} incidencias</p>
-                </div>
-              </div>
-            </button>
+            <ReviewQueueItem key={s.id} sesion={s} selected={sel?.id === s.id} onClick={() => setSel(s)} />
           ))}
         </Card>
 
@@ -81,7 +67,7 @@ export default function Revisor() {
 
               <div className="grid md:grid-cols-2 gap-lg">
                 <div className="space-y-sm">
-                  <h3 className="text-label-sm uppercase tracking-wide text-on-surface-variant border-b border-outline-variant/40 pb-base">Línea de tiempo de anomalías</h3>
+                  <SectionTitle sub={`${sel.eventos.length} incidencias`}>Línea de tiempo de anomalías</SectionTitle>
                   {/* task 8.1: p-md en cada item; tasks 8.2–8.3: agrupación de ≥5 consecutivos del mismo tipo */}
                   {groupConsecutiveEvents(sel.eventos).map((group) => {
                     const ev = group.first;
@@ -110,7 +96,7 @@ export default function Revisor() {
                 </div>
 
                 <div className="space-y-sm">
-                  <h3 className="text-label-sm uppercase tracking-wide text-on-surface-variant border-b border-outline-variant/40 pb-base">Evidencia y <Term termKey="cadena_de_custodia">cadena de custodia</Term></h3>
+                  <SectionTitle>Evidencia y <Term termKey="cadena_de_custodia">cadena de custodia</Term></SectionTitle>
                   <div className="relative aspect-video bg-inverse-surface rounded-xl overflow-hidden flex items-center justify-center">
                     <img src={sel.foto} alt="evidencia" className="absolute inset-0 w-full h-full object-cover opacity-30 blur-[2px]" />
                     <button className="relative z-10 w-12 h-12 rounded-full bg-white/15 backdrop-blur ring-2 ring-white/30 flex items-center justify-center text-white hover:bg-white/25">
@@ -128,20 +114,7 @@ export default function Revisor() {
                 </div>
               </div>
 
-              <div className="bg-surface-container-low rounded-xl p-md space-y-md border border-outline-variant/40">
-                <div>
-                  <h3 className="font-headline text-title-lg text-on-surface">Resolución de auditoría humana (<Term termKey="l2_5" />)</h3>
-                  <p className="text-label-sm text-on-surface-variant mt-base">El software no sanciona automáticamente. Tu decisión es obligatoria y queda en el audit log inmutable.</p>
-                </div>
-                <div className="flex flex-col sm:flex-row gap-sm">
-                  <Button variant="outline" className="flex-1" icon="thumb_up" onClick={() => resolver('descartada', 'descartada como falso positivo')}>Descartar (falso positivo)</Button>
-                  <Button variant="outline" className="flex-1 text-warning border-warning/40" icon="search" onClick={() => resolver('escalada', 'escalada para investigación')}>Escalar (investigar)</Button>
-                  <Button variant="danger" className="flex-1" icon="gavel" onClick={() => resolver('derivada', 'derivada a disciplina')}>Derivar a disciplina</Button>
-                </div>
-                <button onClick={() => { setRevision(sel); navigate('/revisor/detalle'); }} className="text-label-md text-primary hover:underline inline-flex items-center gap-base">
-                  <Icon name="open_in_full" className="text-[18px]" /> Ver detalle forense completo
-                </button>
-              </div>
+              <ReviewDecisionPanel sesion={sel} onResolver={resolver} onVerDetalle={() => { setRevision(sel); navigate('/revisor/detalle'); }} />
             </Card>
           ) : (
             <Card className="text-center py-xl space-y-base">

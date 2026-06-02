@@ -860,7 +860,7 @@ export default function AdminDetectionHarness() {
               <p className="font-bold text-label-md">ERROR AL CARGAR EL MOTOR MEDIAPIPE</p>
               <p className="text-label-sm mt-base font-mono break-all">{engineError}</p>
               <p className="text-label-sm mt-sm">
-                Las señales de visión siguen siendo del stub. Verificá que ejecutaste{' '}
+                Las señales de visión corresponden al motor de respaldo (sin MediaPipe). Verificá que ejecutaste{' '}
                 <code className="bg-error/10 px-base rounded font-mono text-[11px]">scripts/download-mediapipe-models.sh</code>{' '}
                 (o <code className="bg-error/10 px-base rounded font-mono text-[11px]">.ps1</code> en Windows) y que WebGL está habilitado.
               </p>
@@ -1591,7 +1591,7 @@ export default function AdminDetectionHarness() {
                   Log de eventos
                 </SectionTitle>
                 <div className="flex items-center gap-sm flex-wrap">
-                  <Button variant="outline" icon="download" onClick={exportLog} className="h-9 px-md text-label-sm">
+                  <Button variant="outline" size="sm" icon="download" onClick={exportLog} className="text-label-sm">
                     Exportar log
                   </Button>
                 </div>
