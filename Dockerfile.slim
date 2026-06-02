@@ -1,0 +1,47 @@
+# Dockerfile.slim — modulo slim de proctoring para Railway
+#
+# Build desde la RAIZ del repo (para acceder a frontend/public/mediapipe/):
+#   docker build -f Dockerfile.slim .
+#
+# Railway inyecta automaticamente: DATABASE_URL, FRONTEND_ORIGIN, PORT
+# Variables de entorno requeridas:
+#   DATABASE_URL       Requerida. Ej: postgresql+asyncpg://user:pass@host:5432/db
+#   FRONTEND_ORIGIN    Requerida. Ej: https://activeexam.vercel.app
+#   PORT               Auto (Railway). Default: 8000
+#   MEDIAPIPE_MODEL_DIR  Opcional. Default: /app/models
+#
+# El CMD corre primero la migracion slim (branch independiente, sin TimescaleDB)
+# y luego levanta uvicorn en $PORT.
+
+FROM python:3.12-slim
+
+# Directorio de trabajo dentro del contenedor
+WORKDIR /app
+
+# mediapipe puede requerir libstdc++ (ya incluida en python:3.12-slim via libgcc-s1)
+# y libGL. Si hay error de libGL, descomentar:
+# RUN apt-get update && apt-get install -y libgl1-mesa-glx && rm -rf /var/lib/apt/lists/*
+
+# Instalar dependencias Python (incluye mediapipe para re-inferencia server-side, D8)
+COPY backend/requirements.txt ./requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copiar el codigo del backend
+COPY backend/ .
+
+# Reusar el MISMO modelo .task que el cliente (D8, D8b):
+# - garantiza comparacion apples-to-apples cliente-vs-servidor
+# - el .task ya esta versionado en el repo (frontend/public/mediapipe/)
+# - viaja dentro de la imagen (sin descarga en runtime)
+# PRODUCCION: si el modelo cambia de version, actualizar tambien en el cliente
+COPY frontend/public/mediapipe/face_detector_short_range.task /app/models/face_detector_short_range.task
+
+# Variables de entorno del contenedor
+ENV PYTHONPATH=/app
+ENV MEDIAPIPE_MODEL_DIR=/app/models
+
+# CMD: primero migrar (branch slim, sin TimescaleDB), luego servir
+# alembic upgrade slim@head crea proctoring_session, proctoring_event, proctoring_biometria
+# uvicorn levanta en $PORT (Railway lo inyecta; default 8000 si no esta seteado)
+CMD alembic -c alembic.ini upgrade slim@head && \
+    uvicorn app.main_slim:app --host 0.0.0.0 --port ${PORT:-8000}
