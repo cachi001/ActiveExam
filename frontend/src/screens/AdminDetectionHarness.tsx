@@ -319,6 +319,9 @@ export default function AdminDetectionHarness() {
   // ------ Toast ------
   const [toast, setToast] = useState<string | null>(null);
 
+  // ------ Modo sesión vs modo test ------
+  const [modoSesion, setModoSesion] = useState(false);
+
   // ------ Sesión automática (lifecycle atado a la detección) ------
   /**
    * sessionIdRef: ref estable para que el callback del sink siempre lea el
@@ -544,8 +547,9 @@ export default function AdminDetectionHarness() {
   };
 
   // ------ Iniciar harness ------
-  const startHarness = useCallback(async () => {
+  const startHarness = useCallback(async (conSesion: boolean) => {
     if (harnessState !== 'idle' && harnessState !== 'stopped') return;
+    setModoSesion(conSesion);
     setHarnessState('initializing');
     setLogEntries([]);
     setLogTruncated(false);
@@ -608,11 +612,17 @@ export default function AdminDetectionHarness() {
       const start = Date.now();
       setSessionStart(start);
       setEventosEnviados(0);
-      // Crear sesión en el backend automáticamente al arrancar la detección (fire-and-forget).
-      // sessionPromiseRef permite que onSinkEvent espere la sesión si llega antes de que resuelva.
-      sessionPromiseRef.current = api.crearSesionProctoring('diagnostico', 'Detección test')
-        .then((s) => { sessionIdRef.current = s.id; setProctoringSessionId(s.id); return s.id; })
-        .catch(() => null);
+      if (conSesion) {
+        // Crear sesión en el backend automáticamente al arrancar la detección (fire-and-forget).
+        // sessionPromiseRef permite que onSinkEvent espere la sesión si llega antes de que resuelva.
+        sessionPromiseRef.current = api.crearSesionProctoring('diagnostico', 'Detección test')
+          .then((s) => { sessionIdRef.current = s.id; setProctoringSessionId(s.id); return s.id; })
+          .catch(() => null);
+      } else {
+        // Modo test local puro: sessionIdRef queda null, onSinkEvent no enviará nada al backend.
+        sessionIdRef.current = null;
+        sessionPromiseRef.current = null;
+      }
       setHarnessState('running');
 
       // Bucle de frames (task 2.2): setInterval a FRAME_INTERVAL_MS para captura estable
@@ -1016,8 +1026,10 @@ export default function AdminDetectionHarness() {
         <div className="flex items-center gap-base p-sm rounded-lg bg-surface-container border border-outline-variant/40 text-label-sm text-on-surface-variant">
           <Icon name="admin_panel_settings" className="text-[16px] shrink-0 text-primary" fill />
           <span>
-            <strong className="text-on-surface">Esta es una herramienta diagnóstica admin.</strong>{' '}
-            No genera evidencia de examen ni emite eventos al backend de producción.
+            <strong className="text-on-surface">Herramienta diagnóstica admin.</strong>{' '}
+            En <strong className="text-on-surface">modo test</strong> la detección corre solo localmente.
+            En <strong className="text-on-surface">modo sesión</strong> los eventos se registran en el backend de proctoring para revisión —{' '}
+            <em>NO es evidencia de un examen real</em>.
           </span>
         </div>
 
@@ -1036,16 +1048,25 @@ export default function AdminDetectionHarness() {
               </span>
             )}
             {(harnessState === 'idle' || harnessState === 'stopped') && (
-              <Button icon="videocam" onClick={startHarness}>Iniciar cámara</Button>
+              <>
+                <Button icon="sensors" onClick={() => startHarness(true)}>Iniciar sesión</Button>
+                <Button variant="outline" icon="science" onClick={() => startHarness(false)}>Probar (local)</Button>
+              </>
             )}
             {harnessState === 'initializing' && (
               <Button icon="hourglass_empty" disabled>Inicializando…</Button>
             )}
             {/* Indicador en vivo — visible solo mientras la detección está corriendo */}
-            {harnessState === 'running' && (
+            {harnessState === 'running' && modoSesion && (
               <span className="inline-flex items-center gap-base text-label-sm text-primary bg-primary-container px-sm py-base rounded-full font-semibold border border-primary/20">
                 <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
                 Transmitiendo en vivo · {eventosEnviados} evento{eventosEnviados !== 1 ? 's' : ''} enviado{eventosEnviados !== 1 ? 's' : ''}
+              </span>
+            )}
+            {harnessState === 'running' && !modoSesion && (
+              <span className="inline-flex items-center gap-base text-label-sm text-on-surface-variant bg-surface-container px-sm py-base rounded-full font-semibold border border-outline-variant/40">
+                <span className="w-2 h-2 rounded-full bg-on-surface-variant animate-pulse" />
+                Modo test (local, sin registro)
               </span>
             )}
             {harnessState === 'running' && (
@@ -1557,6 +1578,11 @@ export default function AdminDetectionHarness() {
               </div>
             </Card>
 
+          </div>
+
+          {/* ---- Columna derecha (2 cols): medidor de riesgo + store counter + log de eventos + cobertura ---- */}
+          <div className="lg:col-span-2 space-y-lg">
+
             {/* ================================================================
                 C-33: MEDIDOR DE RIESGO DIAGNÓSTICO
                 Estado local — no modifica store.scorePropio (D-1).
@@ -1634,10 +1660,6 @@ export default function AdminDetectionHarness() {
                 </Button>
               </div>
             </Card>
-          </div>
-
-          {/* ---- Columna derecha (2 cols): log de eventos + store counter ---- */}
-          <div className="lg:col-span-2 space-y-lg">
 
             {/* Contador del store (tasks 7.1, 7.2) */}
             <Card className="flex items-center justify-between gap-md flex-wrap">
@@ -1826,103 +1848,103 @@ export default function AdminDetectionHarness() {
                 )}
               </div>
             </Card>
+
+            {/* ================================================================
+                C-25: CHECKLIST DE COBERTURA INTEGRAL (6.1, 6.2, 6.3, 6.4)
+            ================================================================ */}
+            <Card className="space-y-md">
+              <div className="flex items-start justify-between gap-md flex-wrap">
+                <SectionTitle sub="Ejercitá cada tipo en esta sesión para confirmar captura y registro">
+                  Cobertura integral de actividad sospechosa
+                </SectionTitle>
+                {(() => {
+                  // C-32 Task 6.5: monitorApiUnavailable reemplazado por monitorPermission === 'unsupported'
+                  const testableCatalog = SUSPICIOUS_ACTIVITY_CATALOG.filter(
+                    (e) => !(e.requiereApiOpcional && monitorPermission === 'unsupported'),
+                  );
+                  const captured = testableCatalog.filter((e) => coverage[e.tipo]);
+                  const allDone = testableCatalog.length > 0 && captured.length === testableCatalog.length;
+                  return allDone ? (
+                    <span className="inline-flex items-center gap-base px-md py-sm rounded-xl bg-success-container text-success font-bold text-label-md border border-success/30">
+                      <Icon name="verified" className="text-[18px]" fill />
+                      Cobertura completa
+                    </span>
+                  ) : (
+                    <span className="text-label-sm text-on-surface-variant font-mono">
+                      {captured.length}/{testableCatalog.length} tipos cubiertos
+                    </span>
+                  );
+                })()}
+              </div>
+
+              <div className="space-y-base">
+                {SUSPICIOUS_ACTIVITY_CATALOG.map((entry) => {
+                  const cap = coverage[entry.tipo];
+                  // C-32 Task 6.5: reemplazado por monitorPermission === 'unsupported'
+                  const isUntestable = entry.requiereApiOpcional && monitorPermission === 'unsupported';
+                  return (
+                    <div
+                      key={entry.tipo}
+                      className={`flex items-start justify-between gap-sm p-sm rounded-xl border text-label-sm ${
+                        isUntestable
+                          ? 'bg-surface-container border-outline-variant/40 opacity-60'
+                          : cap
+                          ? 'bg-success-container/30 border-success/30'
+                          : 'bg-surface-container-low border-outline-variant/40'
+                      }`}
+                    >
+                      <div className="flex items-start gap-sm">
+                        <Icon
+                          name={isUntestable ? 'info' : cap ? 'check_circle' : 'radio_button_unchecked'}
+                          className={`text-[18px] shrink-0 mt-px ${
+                            isUntestable
+                              ? 'text-on-surface-variant'
+                              : cap
+                              ? 'text-success'
+                              : 'text-on-surface-variant'
+                          }`}
+                          fill={!isUntestable && !!cap}
+                        />
+                        <div className="space-y-px">
+                          <div className="flex items-center gap-sm flex-wrap">
+                            <span className={`font-semibold ${cap ? 'text-on-surface' : 'text-on-surface-variant'}`}>
+                              {entry.label}
+                            </span>
+                            <span className={`text-[10px] uppercase tracking-wide px-base py-px rounded-full font-bold ${
+                              entry.categoria === 'vision'
+                                ? 'bg-primary-fixed/60 text-primary'
+                                : 'bg-secondary-container text-on-secondary-container'
+                            }`}>
+                              {entry.categoria === 'vision' ? 'Visión' : 'Navegador'}
+                            </span>
+                            <span className="text-[10px] text-on-surface-variant uppercase">sev: {entry.severidad}</span>
+                          </div>
+                          <p className="text-[11px] text-on-surface-variant">{entry.descripcion}</p>
+                        </div>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        {isUntestable ? (
+                          <span className="text-[10px] text-on-surface-variant italic">no testeable en este navegador</span>
+                        ) : cap ? (
+                          <span className="text-[10px] text-success font-semibold font-mono">
+                            +{((cap.capturedAt - sessionStart) / 1000).toFixed(1)}s
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-on-surface-variant">pendiente</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="flex items-center gap-base p-sm rounded-lg bg-surface-container border border-outline-variant/40 text-label-sm text-on-surface-variant">
+                <Icon name="lock" className="text-[14px] shrink-0" fill />
+                Aislamiento D-4: todos los eventos de esta sesión permanecen en el sink local. Ninguno se envía al backend de producción.
+              </div>
+            </Card>
           </div>
         </div>
-
-        {/* ================================================================
-            C-25: CHECKLIST DE COBERTURA INTEGRAL (6.1, 6.2, 6.3, 6.4)
-        ================================================================ */}
-        <Card className="space-y-md">
-          <div className="flex items-start justify-between gap-md flex-wrap">
-            <SectionTitle sub="Ejercitá cada tipo en esta sesión para confirmar captura y registro">
-              Cobertura integral de actividad sospechosa
-            </SectionTitle>
-            {(() => {
-              // C-32 Task 6.5: monitorApiUnavailable reemplazado por monitorPermission === 'unsupported'
-              const testableCatalog = SUSPICIOUS_ACTIVITY_CATALOG.filter(
-                (e) => !(e.requiereApiOpcional && monitorPermission === 'unsupported'),
-              );
-              const captured = testableCatalog.filter((e) => coverage[e.tipo]);
-              const allDone = testableCatalog.length > 0 && captured.length === testableCatalog.length;
-              return allDone ? (
-                <span className="inline-flex items-center gap-base px-md py-sm rounded-xl bg-success-container text-success font-bold text-label-md border border-success/30">
-                  <Icon name="verified" className="text-[18px]" fill />
-                  Cobertura completa
-                </span>
-              ) : (
-                <span className="text-label-sm text-on-surface-variant font-mono">
-                  {captured.length}/{testableCatalog.length} tipos cubiertos
-                </span>
-              );
-            })()}
-          </div>
-
-          <div className="space-y-base">
-            {SUSPICIOUS_ACTIVITY_CATALOG.map((entry) => {
-              const cap = coverage[entry.tipo];
-              // C-32 Task 6.5: reemplazado por monitorPermission === 'unsupported'
-              const isUntestable = entry.requiereApiOpcional && monitorPermission === 'unsupported';
-              return (
-                <div
-                  key={entry.tipo}
-                  className={`flex items-start justify-between gap-sm p-sm rounded-xl border text-label-sm ${
-                    isUntestable
-                      ? 'bg-surface-container border-outline-variant/40 opacity-60'
-                      : cap
-                      ? 'bg-success-container/30 border-success/30'
-                      : 'bg-surface-container-low border-outline-variant/40'
-                  }`}
-                >
-                  <div className="flex items-start gap-sm">
-                    <Icon
-                      name={isUntestable ? 'info' : cap ? 'check_circle' : 'radio_button_unchecked'}
-                      className={`text-[18px] shrink-0 mt-px ${
-                        isUntestable
-                          ? 'text-on-surface-variant'
-                          : cap
-                          ? 'text-success'
-                          : 'text-on-surface-variant'
-                      }`}
-                      fill={!isUntestable && !!cap}
-                    />
-                    <div className="space-y-px">
-                      <div className="flex items-center gap-sm flex-wrap">
-                        <span className={`font-semibold ${cap ? 'text-on-surface' : 'text-on-surface-variant'}`}>
-                          {entry.label}
-                        </span>
-                        <span className={`text-[10px] uppercase tracking-wide px-base py-px rounded-full font-bold ${
-                          entry.categoria === 'vision'
-                            ? 'bg-primary-fixed/60 text-primary'
-                            : 'bg-secondary-container text-on-secondary-container'
-                        }`}>
-                          {entry.categoria === 'vision' ? 'Visión' : 'Navegador'}
-                        </span>
-                        <span className="text-[10px] text-on-surface-variant uppercase">sev: {entry.severidad}</span>
-                      </div>
-                      <p className="text-[11px] text-on-surface-variant">{entry.descripcion}</p>
-                    </div>
-                  </div>
-                  <div className="shrink-0 text-right">
-                    {isUntestable ? (
-                      <span className="text-[10px] text-on-surface-variant italic">no testeable en este navegador</span>
-                    ) : cap ? (
-                      <span className="text-[10px] text-success font-semibold font-mono">
-                        +{((cap.capturedAt - sessionStart) / 1000).toFixed(1)}s
-                      </span>
-                    ) : (
-                      <span className="text-[10px] text-on-surface-variant">pendiente</span>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          <div className="flex items-center gap-base p-sm rounded-lg bg-surface-container border border-outline-variant/40 text-label-sm text-on-surface-variant">
-            <Icon name="lock" className="text-[14px] shrink-0" fill />
-            Aislamiento D-4: todos los eventos de esta sesión permanecen en el sink local. Ninguno se envía al backend de producción.
-          </div>
-        </Card>
 
         {/* ================================================================
             AVISO LEGAL L2.5
