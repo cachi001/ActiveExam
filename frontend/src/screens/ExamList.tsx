@@ -59,9 +59,7 @@ export default function ExamList() {
                   <td className="py-sm pr-md text-label-md text-on-surface">{e.umbral_score}%</td>
                   <td className="py-sm pr-md text-label-md text-on-surface">{e.inscriptos}</td>
                   <td className="py-sm text-right">
-                    <button onClick={() => editar(e)} className="text-primary hover:underline text-label-md inline-flex items-center gap-base">
-                      <Icon name="edit" className="text-[18px]" /> Configurar
-                    </button>
+                    <Button size="sm" variant="ghost" icon="edit" onClick={() => editar(e)}>Configurar</Button>
                   </td>
                 </tr>
               ))}

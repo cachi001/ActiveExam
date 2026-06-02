@@ -6,6 +6,14 @@ import { api } from '../lib/api';
 import { Term } from '../ui/Term';
 import type { ResumenReportes } from '../lib/types';
 
+const SEV_TONE: Record<string, 'primary' | 'success' | 'warning' | 'error'> = {
+  baseline: 'primary',
+  baja: 'success',
+  media: 'warning',
+  alta: 'error',
+  critica: 'error',
+};
+
 export default function Reports() {
   const [r, setR] = useState<ResumenReportes | null>(null);
   useEffect(() => { api.reportes().then(setR); }, []);
@@ -33,8 +41,15 @@ export default function Reports() {
                 <div key={d.severidad} className="flex items-center gap-sm">
                   <div className="w-20 shrink-0"><SeverityBadge severidad={d.severidad} /></div>
                   <div className="flex-1 h-6 rounded-full bg-surface-container-high overflow-hidden">
-                    <div className="h-full bg-primary-container rounded-full flex items-center justify-end pr-base text-on-primary text-label-sm font-semibold"
-                      style={{ width: `${Math.max(8, (d.cantidad / maxSev) * 100)}%` }}>{d.cantidad}</div>
+                    <div
+                      className={`h-full rounded-full flex items-center justify-end pr-base text-label-sm font-semibold ${
+                        SEV_TONE[d.severidad] === 'primary' ? 'bg-primary-container text-on-primary' :
+                        SEV_TONE[d.severidad] === 'success' ? 'bg-success-container text-success' :
+                        SEV_TONE[d.severidad] === 'warning' ? 'bg-warning-container text-warning' :
+                        'bg-error-container text-on-error-container'
+                      }`}
+                      style={{ width: `${Math.max(8, (d.cantidad / maxSev) * 100)}%` }}
+                    >{d.cantidad}</div>
                   </div>
                 </div>
               ))}
