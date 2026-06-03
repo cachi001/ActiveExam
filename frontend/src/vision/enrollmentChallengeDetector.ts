@@ -13,13 +13,13 @@
  *
  * D-2 — Tabla de mapeo reto → métrica:
  * ┌──────────────────┬────────────────────────────────────────────────┬───────────┐
- * │ Reto             │ Métrica                                        │ Frames    │
+ * │ Reto             │ Métrica (eje X invertido por espejo selfie)    │ Frames    │
  * ├──────────────────┼────────────────────────────────────────────────┼───────────┤
- * │ girar_izquierda  │ gaze.x < -0.25                                 │ 3         │
- * │ girar_derecha    │ gaze.x > +0.25                                 │ 3         │
- * │ parpadear        │ |lm[159].y - lm[145].y| < 0.015               │ 2         │
- * │ acercarse        │ bbox.width > 0.55 (normalizado al frame)       │ 3         │
- * │ sonreír          │ |lm[291].x - lm[61].x| > 0.12 (normalizado)   │ 3         │
+ * │ girar_izquierda  │ gaze.x > +0.18  (coherente con el óvalo espejado)│ 2       │
+ * │ girar_derecha    │ gaze.x < -0.18  (coherente con el óvalo espejado)│ 2       │
+ * │ parpadear        │ |lm[159].y - lm[145].y| < 0.018               │ 1         │
+ * │ acercarse        │ bbox.width > 0.48 (normalizado al frame)       │ 2         │
+ * │ sonreír          │ |lm[291].x - lm[61].x| > 0.10 (normalizado)   │ 2         │
  * └──────────────────┴────────────────────────────────────────────────┴───────────┘
  *
  * Índices de landmarks usados:
@@ -35,33 +35,41 @@ import type { ActiveChallenge } from "./liveness";
 // Constantes de threshold (C-34 Task 2.1) — exportadas para ajuste externo
 // ---------------------------------------------------------------------------
 
-/** Desplazamiento mínimo del iris respecto al centro del ojo para detectar giro. */
-export const GAZE_TURN_THRESHOLD = 0.25;
+/**
+ * Desplazamiento mínimo del iris respecto al centro del ojo para detectar giro.
+ * Bajado de 0.25 → 0.18 para que un giro de cabeza normal lo registre sin exigir
+ * un giro exagerado. Sigue requiriendo un gesto claro (no ruido), pero es usable.
+ */
+export const GAZE_TURN_THRESHOLD = 0.18;
 
 /**
  * Apertura máxima del ojo (distancia vertical entre landmark superior e inferior)
  * para considerar que el ojo está cerrado (parpadeo).
  * Coordenadas normalizadas de FaceLandmarker (0..1 relativo al frame).
  */
-export const BLINK_CLOSE_THRESHOLD = 0.015;
+export const BLINK_CLOSE_THRESHOLD = 0.018;
 
 /**
  * Ancho mínimo del bounding box del rostro (normalizado al ancho del frame)
  * para considerar que el alumno se acercó lo suficiente.
  */
-export const FACE_APPROACH_THRESHOLD = 0.55;
+export const FACE_APPROACH_THRESHOLD = 0.48;
 
 /**
  * Ancho mínimo de la boca (distancia horizontal entre comisuras, normalizada)
  * para detectar sonrisa.
  */
-export const SMILE_WIDTH_THRESHOLD = 0.12;
+export const SMILE_WIDTH_THRESHOLD = 0.10;
 
-// Frames consecutivos mínimos para confirmar cada reto (D-2)
-export const FRAMES_MIN_TURN = 3;
-export const FRAMES_MIN_BLINK = 2;
-export const FRAMES_MIN_APPROACH = 3;
-export const FRAMES_MIN_SMILE = 3;
+// Frames consecutivos mínimos para confirmar cada reto.
+// Reducidos respecto al original (3/2/3/3) para que un gesto natural lo registre
+// sin tener que sostenerlo de forma antinatural. Siguen exigiendo varios frames
+// consecutivos → el liveness sigue requiriendo el gesto (no se dispara con un
+// frame espurio), pero la captura es usable.
+export const FRAMES_MIN_TURN = 2;
+export const FRAMES_MIN_BLINK = 1;
+export const FRAMES_MIN_APPROACH = 2;
+export const FRAMES_MIN_SMILE = 2;
 
 /** Devuelve el número mínimo de frames consecutivos requeridos para el reto dado. */
 export function framesMinForChallenge(challenge: ActiveChallenge): number {
@@ -99,13 +107,21 @@ export function evaluateChallenge(
   bbox: { width: number } | null,
 ): boolean {
   switch (challenge) {
-    // C-34 Task 2.3: girar_izquierda — gaze.x negativo supera el threshold
+    // girar_izquierda / girar_derecha — coherencia con el ESPEJO.
+    //
+    // El <video> se muestra espejado (CSS `transform: scaleX(-1)`, vista selfie),
+    // pero los landmarks de MediaPipe vienen del frame REAL (sin espejar): en el
+    // frame crudo, cuando el usuario gira hacia SU izquierda, sus rasgos se
+    // desplazan hacia la DERECHA de la imagen → gaze.x > 0. El usuario, en cambio,
+    // ve el óvalo espejado (como un espejo real), así que el label "Girar a la
+    // izquierda" debe matchear el movimiento que él PERCIBE. Para que el reto sea
+    // coherente con lo que ve en pantalla, invertimos el eje X respecto del frame
+    // crudo: "izquierda" (lo que el usuario percibe) ⇒ gaze.x > +threshold en crudo.
     case "girar_izquierda":
-      return gaze.x < -GAZE_TURN_THRESHOLD;
-
-    // C-34 Task 2.4: girar_derecha — gaze.x positivo supera el threshold
-    case "girar_derecha":
       return gaze.x > GAZE_TURN_THRESHOLD;
+
+    case "girar_derecha":
+      return gaze.x < -GAZE_TURN_THRESHOLD;
 
     // C-34 Task 2.5: parpadear — ojo cerrado (landmark superior e inferior del ojo izquierdo)
     // Landmark 159: párpado superior; 145: párpado inferior.

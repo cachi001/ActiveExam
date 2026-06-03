@@ -8,7 +8,7 @@
  * - La referencia caducada bloquea rendir hasta renovar.
  * - La renovación anticipada por deriva NO sanciona ni invalida la rendición en curso (L2.5).
  */
-import { Icon, Button, Badge } from '../../ui/components';
+import { Icon, Button } from '../../ui/components';
 import { Term } from '../../ui/Term';
 import type { ReferenciasBiometrica, VigenciaReferencia } from '../../lib/types';
 
@@ -62,17 +62,16 @@ export function BiometricRenewalStatus({ referencia, onRenovar }: Props) {
 
   return (
     <div className="space-y-md">
-      <div className="flex items-center justify-between gap-md flex-wrap">
-        <div className="flex items-center gap-sm">
-          <Icon name={config.icon} className={`text-[20px] ${
-            config.tone === 'success' ? 'text-success' :
-            config.tone === 'warning' ? 'text-warning' :
-            config.tone === 'error' ? 'text-error' :
-            'text-on-surface-variant'
-          }`} fill={config.tone === 'success'} />
-          <span className="text-label-md text-on-surface font-semibold">Estado de vigencia</span>
-        </div>
-        <Badge tone={config.tone} dot>{config.label}</Badge>
+      {/* El badge de estado (Vigente / Caducada / …) lo muestra el RequisitoCard
+          contenedor; aquí NO se repite para no duplicarlo en pantalla. */}
+      <div className="flex items-center gap-sm">
+        <Icon name={config.icon} className={`text-[20px] ${
+          config.tone === 'success' ? 'text-success' :
+          config.tone === 'warning' ? 'text-warning' :
+          config.tone === 'error' ? 'text-error' :
+          'text-on-surface-variant'
+        }`} fill={config.tone === 'success'} />
+        <span className="text-label-md text-on-surface font-semibold">Estado de vigencia</span>
       </div>
 
       <p className="text-label-sm text-on-surface-variant">{config.descripcion}</p>
