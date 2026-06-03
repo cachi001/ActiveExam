@@ -56,10 +56,13 @@ export const CaptureOval = forwardRef<HTMLVideoElement, CaptureOvalProps>(
             aria-label="Vista de cámara para captura biométrica"
           />
 
-          {/* Bug 3: capa de éxito sobre el óvalo — check grande sobre velo verde */}
+          {/* Éxito: se mantiene VISIBLE la imagen de la cámara en el óvalo (tinte
+              verde translúcido, NO opaco) + check grande + "Verificado". El usuario
+              ve su propia imagen en verde ~1.6s antes de que el overlay cierre. */}
           {enExito && (
-            <div className="absolute inset-0 flex items-center justify-center bg-green-500/15 animate-in fade-in duration-300">
-              <Icon name="check_circle" className="text-green-500 text-[72px]" fill />
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-green-500/20 animate-in fade-in duration-300">
+              <Icon name="check_circle" className="text-green-500 text-[72px] drop-shadow-md" fill />
+              <span className="text-sm font-semibold text-white drop-shadow-md tracking-wide">Verificado</span>
             </div>
           )}
         </div>

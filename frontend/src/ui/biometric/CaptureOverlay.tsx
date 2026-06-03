@@ -64,19 +64,22 @@ export const CaptureOverlay = forwardRef<HTMLDivElement, CaptureOverlayProps>(
         className="fixed inset-0 z-[60] bg-white flex flex-col items-center justify-center px-6"
       >
         {/* Barra superior: etiqueta a la izquierda + Cancelar a la derecha.
-            Layout flex justify-between → NUNCA se solapan (antes el texto chocaba
-            con el botón absoluto). La etiqueta se oculta durante la carga. */}
-        <div className="absolute top-0 inset-x-0 flex items-center justify-between gap-3 px-5 py-4">
-          <p className="text-sm text-neutral-500 truncate min-w-0">
-            {listoParaMostrar ? (contextLabel ?? '') : ''}
-          </p>
-          <button
-            onClick={onCancel}
-            className="shrink-0 inline-flex items-center gap-1 text-sm text-neutral-500 hover:text-neutral-900 transition-colors px-3 py-1.5 rounded-full"
-          >
-            Cancelar <Icon name="close" className="text-[18px]" />
-          </button>
-        </div>
+            Solo se muestra cuando el óvalo ya cargó (listoParaMostrar). Durante el
+            spinner de carga NO hay barra ni Cancelar: pantalla limpia con el spinner
+            centrado. El fallback manual entra en listoParaMostrar y conserva su barra. */}
+        {listoParaMostrar && (
+          <div className="absolute top-0 inset-x-0 flex items-center justify-between gap-3 px-5 py-4">
+            <p className="text-sm text-neutral-500 truncate min-w-0">
+              {contextLabel ?? ''}
+            </p>
+            <button
+              onClick={onCancel}
+              className="shrink-0 inline-flex items-center gap-1 text-sm text-neutral-500 hover:text-neutral-900 transition-colors px-3 py-1.5 rounded-full"
+            >
+              Cancelar <Icon name="close" className="text-[18px]" />
+            </button>
+          </div>
+        )}
 
         {/* Bug 1: estado de carga LIMPIO — solo un spinner centrado, sin óvalo,
             sin frame de cámara, sin jerga técnica. El <video> sigue montado abajo
