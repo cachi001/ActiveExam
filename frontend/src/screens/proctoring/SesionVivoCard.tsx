@@ -20,14 +20,17 @@ import {
   modoBadgeTone,
   modoLabel,
   nivelRiesgo,
+  type ExamInfo,
 } from './helpers';
 
 export function SesionVivoCard({
   sesion,
   onAbrir,
+  examInfo,
 }: {
   sesion: SesionProctoringResumen;
   onAbrir: (sesion: SesionProctoringResumen) => void;
+  examInfo?: ExamInfo | null;
 }) {
   const riesgoAlto = nivelRiesgo(sesion.score) === 'alto';
 
@@ -63,6 +66,12 @@ export function SesionVivoCard({
               </Badge>
             )}
           </div>
+          {examInfo && (
+            <p className="flex items-center gap-base text-label-sm text-on-surface-variant mt-base truncate">
+              <Icon name="menu_book" className="text-[15px]" />
+              {examInfo.materiaNombre} · {examInfo.docente}
+            </p>
+          )}
           <p
             className="flex items-center gap-base text-label-sm text-on-surface-variant mt-base"
             title={formatFecha(sesion.creada_en, true)}

@@ -69,7 +69,9 @@ type ExamenConComision = Examen & { comision_id?: string };
 // `estado: 'en_curso'` → es el que Login.tsx selecciona como `examenActivo`.
 const EXAMEN_RENDIBLE_ID = `EX-${INSTITUTION.idPrefix}-AMAT-I`;
 
-let EXAMENES: ExamenConComision[] = [
+// Exportados para que el catálogo académico pueda joinearse desde la UI
+// (joinExamInfo en screens/proctoring/helpers.ts). Lectura pura, sin mutación externa.
+export let EXAMENES: ExamenConComision[] = [
   {
     id: EXAMEN_RENDIBLE_ID, nombre: 'Examen Final — Análisis Matemático I', catedra: 'Cátedra B',
     estado: 'en_curso', inicio: '2026-05-30T14:00:00', duracion_min: 90,
@@ -83,14 +85,14 @@ let EXAMENES: ExamenConComision[] = [
 // ---------------------------------------------------------------------------
 
 // 2.2 Materias UTN FRM
-const MATERIAS: Materia[] = [
+export const MATERIAS: Materia[] = [
   { id: 'MAT-AMAT', nombre: 'Análisis Matemático I', codigo: 'CB101', descripcion: 'Funciones, límites, derivadas e integrales. Fundamentos del cálculo diferencial e integral.' },
   { id: 'MAT-FIS1', nombre: 'Física I', codigo: 'CB102', descripcion: 'Mecánica clásica, cinemática, dinámica y termodinámica básica.' },
   { id: 'MAT-PROG', nombre: 'Programación I', codigo: 'SIS101', descripcion: 'Introducción a la programación estructurada. Algoritmos, estructuras de datos básicas.' },
 ];
 
 // 2.3 Comisiones (≥2 por materia)
-const COMISIONES: Comision[] = [
+export const COMISIONES: Comision[] = [
   { id: 'COM-AMAT-1A', materia_id: 'MAT-AMAT', nombre: 'Comisión 1A', docente: 'Dr. Roberto Fernández', horario: 'Lunes y Miércoles 08:00–10:00' },
   { id: 'COM-AMAT-1B', materia_id: 'MAT-AMAT', nombre: 'Comisión 1B', docente: 'Dra. Laura Giménez', horario: 'Martes y Jueves 10:00–12:00' },
   { id: 'COM-FIS1-2A', materia_id: 'MAT-FIS1', nombre: 'Comisión 2A', docente: 'Ing. Carlos Pérez', horario: 'Lunes y Viernes 14:00–16:00' },
@@ -831,7 +833,20 @@ export const api = {
     const ahora = new Date();
     const hace1h = new Date(ahora.getTime() - 3600 * 1000).toISOString();
     const hace30m = new Date(ahora.getTime() - 1800 * 1000).toISOString();
+    const hace10m = new Date(ahora.getTime() - 600 * 1000).toISOString();
     return [
+      {
+        // Sesión de alto riesgo (score ≥ umbral de cola): la cola de revisión la prioriza.
+        // exam_id apunta al examen real del catálogo para que el join muestre materia/comisión.
+        id: 'mock-session-examen-altoriesgo-003',
+        modo: 'examen',
+        etiqueta: 'Final AMAT — Comisión 1A',
+        creada_en: hace10m,
+        total_eventos: 5,
+        total_discrepancias: 2,
+        score: 72,
+        exam_id: EXAMEN_RENDIBLE_ID,
+      },
       {
         id: 'mock-session-diagnostico-001',
         modo: 'diagnostico',
@@ -849,6 +864,7 @@ export const api = {
         total_eventos: 3,
         total_discrepancias: 0,
         score: 12,
+        exam_id: EXAMEN_RENDIBLE_ID,
       },
     ];
   },

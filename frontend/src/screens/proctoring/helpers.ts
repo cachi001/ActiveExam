@@ -6,6 +6,7 @@
  * de líneas. NADA de hardcodear umbrales en cada tarjeta: la fuente es este archivo.
  */
 import type { VeredictoReinferencia } from '../../lib/types';
+import { EXAMENES, COMISIONES, MATERIAS } from '../../lib/api';
 
 /** Umbral de score a partir del cual una sesión se considera de riesgo alto. */
 export const SCORE_UMBRAL_ALTO = 60;
@@ -121,4 +122,46 @@ export function verdictLabel(v: VeredictoReinferencia | null | undefined): strin
     error: 'Error',
   };
   return map[v] ?? v;
+}
+
+// --- Join del catálogo académico: enriquece una sesión con su contexto ---
+
+/**
+ * Contexto académico de una sesión, derivado del `exam_id` contra el catálogo local.
+ * Reutilizable por las tres pantallas de proctoring (cola, grabadas, en vivo).
+ */
+export interface ExamInfo {
+  examNombre: string;
+  materiaNombre: string;
+  comisionNombre: string;
+  docente: string;
+}
+
+/**
+ * Joinea un `exam_id` con el catálogo académico local (examen → comisión → materia).
+ *
+ * Función PURA: opera sobre los arrays importados de `api.ts`, sin llamadas HTTP,
+ * sin hooks, sin acceso al store. Retorna null si el id es falsy o si cualquier
+ * eslabón del lookup no existe (sesión de harness sin examen real).
+ */
+export function joinExamInfo(examId: string | null | undefined): ExamInfo | null {
+  if (!examId) return null;
+  try {
+    const examen = EXAMENES.find((e) => e.id === examId);
+    if (!examen) return null;
+    const comision = examen.comision_id
+      ? COMISIONES.find((c) => c.id === examen.comision_id)
+      : undefined;
+    if (!comision) return null;
+    const materia = MATERIAS.find((m) => m.id === comision.materia_id);
+    if (!materia) return null;
+    return {
+      examNombre: examen.nombre,
+      materiaNombre: materia.nombre,
+      comisionNombre: comision.nombre,
+      docente: comision.docente,
+    };
+  } catch {
+    return null;
+  }
 }
