@@ -82,7 +82,17 @@ export default function ConfigureExam() {
 
   return (
     <StaffShell nav={ADMIN_NAV} title={editando ? 'Configurar examen' : 'Crear examen'}>
-      <div className="max-w-3xl space-y-lg">
+      <div className="max-w-3xl space-y-lg animate-in fade-in duration-500">
+
+        {/* Header */}
+        <div>
+          <h1 className="font-headline text-headline-md text-on-surface tracking-tight">
+            {editando ? 'Configurar examen' : 'Crear examen'}
+          </h1>
+          <p className="text-body-md text-on-surface-variant mt-base">
+            Definí los datos generales, la política de proctoring y la retención de evidencia.
+          </p>
+        </div>
 
         {/* Sección 1: Información del examen */}
         <Card className="space-y-md">

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { StaffShell } from '../ui/shells';
-import { Icon, Card, Stat, Badge, Button, SectionTitle } from '../ui/components';
+import { Icon, Card, Badge, Button, SectionTitle } from '../ui/components';
+import { StatCard } from './proctoring/StatCard';
 import { Link } from '../lib/router';
 import { api } from '../lib/api';
 import { STAFF_NAV } from '../ui/nav';
@@ -19,12 +20,29 @@ export default function AdminDashboard() {
 
   return (
     <StaffShell nav={ADMIN_NAV} title="Panel de administración">
-      <div className="space-y-lg">
-        <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-lg">
-          <Stat icon="quiz" label="Exámenes" value={rep?.examenes_totales ?? '—'} sub="este cuatrimestre" />
-          <Stat icon="groups" label="Sesiones" value={rep?.sesiones_totales ?? '—'} sub="supervisadas" />
-          <Stat icon="flag" label="Tasa de flag" value={`${rep?.tasa_flag ?? 0}%`} sub="entran a revisión" />
-          <Stat icon="schedule" label="Revisión media" value={rep?.tiempo_medio_revision ?? '—'} sub="por sesión" />
+      <div className="space-y-lg animate-in fade-in duration-500">
+        {/* Header */}
+        <div className="flex items-start justify-between gap-md flex-wrap">
+          <div>
+            <h1 className="font-headline text-headline-md text-on-surface tracking-tight">
+              Resumen de actividad
+            </h1>
+            <p className="text-body-md text-on-surface-variant mt-base">
+              Estado de exámenes, sesiones supervisadas y cola de revisión del cuatrimestre.
+            </p>
+          </div>
+          <div className="flex items-center gap-base px-sm py-base rounded-lg bg-primary-fixed/50
+            border border-primary/20 text-label-sm text-on-primary-fixed-variant">
+            <Icon name="shield" className="text-[16px] shrink-0" fill />
+            <span>Decisión humana</span>
+          </div>
+        </div>
+
+        <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-md">
+          <StatCard icon="quiz" label="Exámenes" value={rep?.examenes_totales ?? '—'} sub="este cuatrimestre" tono="primary" />
+          <StatCard icon="groups" label="Sesiones" value={rep?.sesiones_totales ?? '—'} sub="supervisadas" tono="neutral" />
+          <StatCard icon="flag" label="Tasa de flag" value={`${rep?.tasa_flag ?? 0}%`} sub="entran a revisión" tono="warning" />
+          <StatCard icon="schedule" label="Revisión media" value={rep?.tiempo_medio_revision ?? '—'} sub="por sesión" tono="neutral" />
         </div>
 
         <div className="grid lg:grid-cols-3 gap-lg">
@@ -35,8 +53,14 @@ export default function AdminDashboard() {
                 Exámenes
               </SectionTitle>
               <div className="space-y-base">
+                {examenes.length === 0 && (
+                  <div className="text-center py-lg text-on-surface-variant space-y-base">
+                    <Icon name="quiz" className="text-[36px] text-outline" />
+                    <p className="text-label-md">Todavía no hay exámenes cargados.</p>
+                  </div>
+                )}
                 {examenes.map((e) => (
-                  <Link key={e.id} to="/admin/examenes" className="flex items-center justify-between gap-md p-sm rounded-xl hover:bg-surface-container-low border border-outline-variant/30">
+                  <Link key={e.id} to="/admin/examenes" className="flex items-center justify-between gap-md p-sm rounded-xl hover:bg-surface-container-low transition-colors border border-outline-variant/30">
                     <div className="flex items-center gap-sm">
                       <div className="w-10 h-10 rounded-xl bg-primary-fixed text-primary flex items-center justify-center"><Icon name="description" /></div>
                       <div>

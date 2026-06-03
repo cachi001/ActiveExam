@@ -5,10 +5,12 @@ import { useNavigate } from '../lib/router';
 import { useApp } from '../lib/store';
 import { api } from '../lib/api';
 import { Term } from '../ui/Term';
+import { useToast } from '../ui/toast';
 import type { ConsentTextResponse } from '../lib/types';
 
 export default function Consent() {
   const navigate = useNavigate();
+  const toast = useToast();
   const examen = useApp((s) => s.examenActivo);
   const [texto, setTexto] = useState<ConsentTextResponse | null>(null);
   const [acepto, setAcepto] = useState(false); // RN-CO-02: nunca pre-marcado
@@ -25,7 +27,7 @@ export default function Consent() {
   };
 
   const alternativa = () => {
-    alert('Se escala tu caso a un proctor. Se te asignará una vía alternativa sin biometría para rendir.');
+    toast.info('Tu caso se escala a un proctor — se te asignará una vía alternativa sin biometría.');
     navigate('/sala-espera');
   };
 

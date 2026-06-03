@@ -23,19 +23,43 @@ export default function ExamList() {
 
   return (
     <StaffShell nav={ADMIN_NAV} title="Listado de exámenes">
-      <Card>
-        <SectionTitle sub={`${examenes.length} exámenes`}
-          action={<Button icon="add" onClick={() => { setExamenActivo(null); navigate('/admin/configurar'); }}>Crear examen</Button>}>
-          Exámenes
-        </SectionTitle>
-
-        <div className="flex items-center gap-base bg-surface-container-low border border-outline-variant rounded-xl px-sm py-base mb-md">
-          <Icon name="search" className="text-on-surface-variant" />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar por nombre o cátedra…"
-            className="flex-1 bg-transparent outline-none text-label-md" />
+      <div className="space-y-lg animate-in fade-in duration-500">
+        {/* Header */}
+        <div className="flex items-start justify-between gap-md flex-wrap">
+          <div>
+            <h1 className="font-headline text-headline-md text-on-surface tracking-tight">
+              Exámenes
+            </h1>
+            <p className="text-body-md text-on-surface-variant mt-base">
+              Gestioná las evaluaciones supervisadas: estado, umbral de revisión e inscriptos.
+            </p>
+          </div>
+          <Button icon="add" onClick={() => { setExamenActivo(null); navigate('/admin/configurar'); }}>Crear examen</Button>
         </div>
 
-        <div className="overflow-x-auto">
+        <Card>
+          <SectionTitle sub={`${examenes.length} examen${examenes.length !== 1 ? 'es' : ''}`}>
+            Listado
+          </SectionTitle>
+
+          <div className="flex items-center gap-base bg-surface-container-low border border-outline-variant rounded-xl px-sm py-base mb-md
+            focus-within:border-primary transition-colors">
+            <Icon name="search" className="text-on-surface-variant" />
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar por nombre o cátedra…"
+              className="flex-1 bg-transparent outline-none text-label-md" />
+          </div>
+
+          {filtrados.length === 0 && (
+            <div className="text-center py-xl text-on-surface-variant space-y-base">
+              <Icon name="search_off" className="text-[40px] text-outline" />
+              <p className="text-label-md">
+                {q ? 'Ningún examen coincide con la búsqueda.' : 'Todavía no hay exámenes cargados.'}
+              </p>
+            </div>
+          )}
+
+          {filtrados.length > 0 && (
+          <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead>
               <tr className="text-label-sm uppercase tracking-wide text-on-surface-variant border-b border-outline-variant/40">
@@ -65,8 +89,10 @@ export default function ExamList() {
               ))}
             </tbody>
           </table>
-        </div>
-      </Card>
+          </div>
+          )}
+        </Card>
+      </div>
     </StaffShell>
   );
 }

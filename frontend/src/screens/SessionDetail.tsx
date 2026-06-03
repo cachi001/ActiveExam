@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { StaffShell } from '../ui/shells';
-import { Icon, Card, Avatar, Badge, SeverityBadge, Button, Stat, SectionTitle } from '../ui/components';
+import { Icon, Card, Avatar, Badge, SeverityBadge, Button, SectionTitle } from '../ui/components';
+import { StatCard } from './proctoring/StatCard';
 import { REVISOR_NAV } from './Revisor';
 import { useApp } from '../lib/store';
 import { useNavigate } from '../lib/router';
@@ -25,7 +26,7 @@ export default function SessionDetail() {
 
   return (
     <StaffShell nav={REVISOR_NAV} title={`Detalle de sesión · ${sel.id}`}>
-      <div className="space-y-lg">
+      <div className="space-y-lg animate-in fade-in duration-500">
         <Card className="flex flex-wrap items-center justify-between gap-md">
           <div className="flex items-center gap-md">
             <Avatar src={sel.foto} alt={sel.estudiante} size={64} />
@@ -37,10 +38,10 @@ export default function SessionDetail() {
           <Badge tone="error" dot>Score de prioridad {sel.score}%</Badge>
         </Card>
 
-        <div className="grid sm:grid-cols-3 gap-lg">
-          <Stat icon="schedule" label="Duración" value={sel.duracion} />
-          <Stat icon="event" label="Fecha" value={sel.fecha} />
-          <Stat icon="warning" label="Incidencias" value={sel.eventos.length} sub={`${sel.eventos.filter((e) => e.tiene_evidencia).length} con evidencia`} />
+        <div className="grid sm:grid-cols-3 gap-md">
+          <StatCard icon="schedule" label="Duración" value={sel.duracion} tono="neutral" />
+          <StatCard icon="event" label="Fecha" value={sel.fecha} tono="neutral" />
+          <StatCard icon="warning" label="Incidencias" value={sel.eventos.length} sub={`${sel.eventos.filter((e) => e.tiene_evidencia).length} con evidencia`} tono="warning" />
         </div>
 
         <div className="grid lg:grid-cols-2 gap-lg">
