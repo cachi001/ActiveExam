@@ -224,7 +224,7 @@ export function EnrollmentBiometricStep({ referenciaActual, onCapturada, esRenov
           <p>
             La imagen de referencia y el <Term termKey="embedding">embedding</Term> se tratan como <strong>datos sensibles</strong>:
             cifrados at-rest, con finalidad acotada exclusivamente a la verificación de tu identidad
-            y la revisión humana (<Term termKey="l2_5" />). Se eliminan al egreso de la institución (salvo hold disciplinario vigente).
+            y la revisión humana (la decisión es siempre humana). Se eliminan al egreso de la institución (salvo hold disciplinario vigente).
             El cliente es sensor no confiable: el backend re-infiere y firma toda evidencia.
           </p>
         </div>

@@ -42,7 +42,7 @@ export default function Cierre() {
             <Icon name={irARevision ? 'gavel' : 'verified_user'} className={irARevision ? 'text-warning' : 'text-success'} fill />
             <p className="text-label-md text-on-surface">
               {irARevision
-                ? <>Tu sesión superó el umbral ({examen?.umbral_score}%) y entra a la cola de revisión académica. Recordá: el sistema no sanciona — la decisión es siempre humana (<Term termKey="l2_5" />).</>
+                ? <>Tu sesión superó el umbral ({examen?.umbral_score}%) y entra a la cola de revisión académica. Recordá: el sistema no sanciona — la decisión es siempre humana.</>
 
                 : 'Tu sesión no presenta incidencias relevantes. No se requiere revisión adicional.'}
             </p>

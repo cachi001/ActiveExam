@@ -8,7 +8,6 @@ import { StudentShell } from '../ui/shells';
 import { useNavigate } from '../lib/router';
 import { useApp } from '../lib/store';
 import { api, ALCANCE_MONITOREO, ACUSE_EXAMEN_VERSION } from '../lib/api';
-import { Term } from '../ui/Term';
 import type { Examen } from '../lib/types';
 
 interface Props {
@@ -213,7 +212,7 @@ export default function AcuseExamen({ examenId, onConfirmado, onCancelar }: Prop
           </p>
           <p>
             Este acuse da <strong>finalidad específica</strong> al tratamiento de datos para esta instancia de examen concreta,
-            conforme al art. 4 de la Ley 25.326. El sistema no sancionará automáticamente (nivel <Term termKey="l2_5" />):
+            conforme al art. 4 de la Ley 25.326. El sistema no sancionará automáticamente:
             cualquier anomalía detectada se deriva a revisión humana.
           </p>
           <p className="text-on-surface-variant/70">

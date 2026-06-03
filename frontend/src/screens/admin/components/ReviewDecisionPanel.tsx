@@ -1,5 +1,4 @@
 import { Button, Icon } from '../../../ui/components';
-import { Term } from '../../../ui/Term';
 import type { SesionRevision } from '../../../lib/types';
 
 interface ReviewDecisionPanelProps {
@@ -12,7 +11,7 @@ export function ReviewDecisionPanel({ sesion: _sesion, onResolver, onVerDetalle 
   return (
     <div className="bg-surface-container-low rounded-xl p-md space-y-md border border-outline-variant/40">
       <div>
-        <h3 className="font-headline text-title-lg text-on-surface">Resolución de auditoría humana (<Term termKey="l2_5" />)</h3>
+        <h3 className="font-headline text-title-lg text-on-surface">Resolución de auditoría humana</h3>
         <p className="text-label-sm text-on-surface-variant mt-base">El software no sanciona automáticamente. Tu decisión es obligatoria y queda en el audit log inmutable.</p>
       </div>
       <div className="flex flex-col sm:flex-row gap-sm">
