@@ -54,3 +54,20 @@ export function ListaVacia() {
     </div>
   );
 }
+
+/** Estado vacío de la vista EN VIVO: no hay sesiones activas en este momento. */
+export function ListaVaciaVivo() {
+  return (
+    <div className="flex flex-col items-center text-center py-xxl gap-sm">
+      <div className="w-16 h-16 rounded-2xl bg-surface-container-high text-on-surface-variant
+        flex items-center justify-center mb-base">
+        <Icon name="sensors_off" className="text-[32px]" />
+      </div>
+      <p className="font-headline text-title-lg text-on-surface">No hay sesiones activas</p>
+      <p className="text-body-md text-on-surface-variant max-w-sm">
+        En cuanto un estudiante inicie una rendición monitoreada, su sesión va a aparecer acá
+        automáticamente. El panel se actualiza solo.
+      </p>
+    </div>
+  );
+}
