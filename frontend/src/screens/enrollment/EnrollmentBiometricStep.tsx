@@ -191,7 +191,7 @@ export function EnrollmentBiometricStep({ referenciaActual, onCapturada, esRenov
             <p className="text-body-md">
               Calculando <Term termKey="embedding">embedding</Term> de referencia (descriptor facial de 128 dimensiones)…
             </p>
-            <p className="text-label-sm">Re-inferencia server-side y firma (C-12)</p>
+            <p className="text-label-sm">Re-inferencia y firma del lado del servidor</p>
           </div>
         )}
 

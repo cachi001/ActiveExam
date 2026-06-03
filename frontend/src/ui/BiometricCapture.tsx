@@ -58,7 +58,9 @@ export interface BiometricCaptureProps {
 }
 
 // Task 1.3: Fase interna del componente
-type Fase = 'capturando' | 'error';
+// 'exito' = todos los retos resueltos → se muestra el estado de verificación
+// completada ~1.6s ANTES de invocar onComplete (mejor feedback de cierre).
+type Fase = 'capturando' | 'exito' | 'error';
 
 // ---------------------------------------------------------------------------
 // Helpers — labels de retos desde DESAFIOS
@@ -98,6 +100,9 @@ export function BiometricCapture({
   const [desafios, setDesafios]       = useState<ActiveChallenge[]>([]);
   const [resueltos, setResueltos]     = useState<string[]>([]);
   const [motorListo, setMotorListo]   = useState(false);
+  // true cuando el <video> ya tiene stream con dimensiones reales (frame visible).
+  // El óvalo + cámara solo se revelan cuando motorListo && camaraLista.
+  const [camaraLista, setCamaraLista] = useState(false);
   const [motorError, setMotorError]   = useState<string | null>(null);
   const [fallbackManual, setFallbackManual] = useState(false);
   const [errorMsg, setErrorMsg]       = useState<string | null>(null);
@@ -176,6 +181,17 @@ export function BiometricCapture({
     procesarCompletadoRef.current = procesarCompletado;
   }, [procesarCompletado]);
 
+  // Bug 3: al entrar en fase 'exito', mostrar "Verificación completada" un instante
+  // (~1.6s) para que el usuario lo lea, y RECIÉN ahí invocar onComplete/cerrar.
+  // El frame se captura dentro de procesarCompletado (el RAF ya se detiene solo).
+  useEffect(() => {
+    if (fase !== 'exito') return;
+    const t = setTimeout(() => {
+      procesarCompletadoRef.current?.();
+    }, 1600);
+    return () => clearTimeout(t);
+  }, [fase]);
+
   // ---------------------------------------------------------------------------
   // Task 4.4: handleCancel — cancelar RAF, dispose, salir fullscreen, detener stream
   // ---------------------------------------------------------------------------
@@ -200,12 +216,9 @@ export function BiometricCapture({
       if (prev.includes(id)) return prev;
       const next = [...prev, id];
       if (desafiosRef.current.length > 0 && next.length >= desafiosRef.current.length) {
-        // Defer para no mutar estado dentro de otro setter
-        setTimeout(() => {
-          if (procesarCompletadoRef.current) {
-            procesarCompletadoRef.current();
-          }
-        }, 0);
+        // Bug 3: en vez de cerrar al instante, entrar en fase 'exito' (un effect
+        // dedicado muestra "Verificación completada" ~1.6s y recién ahí completa).
+        setFase('exito');
       }
       return next;
     });
@@ -301,8 +314,18 @@ export function BiometricCapture({
       if (cancelado) { stream.getTracks().forEach((t) => t.stop()); return; }
       streamRef.current = stream;
       if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.play().catch(() => {});
+        const video = videoRef.current;
+        video.srcObject = stream;
+        // Marcar la cámara como lista cuando haya datos reales del frame, para
+        // revelar el óvalo recién entonces (Bug 1: nada de óvalo durante la carga).
+        const marcarLista = () => {
+          if (!cancelado && video.videoWidth > 0 && video.videoHeight > 0) {
+            setCamaraLista(true);
+          }
+        };
+        video.addEventListener('loadeddata', marcarLista);
+        video.addEventListener('playing', marcarLista);
+        video.play().then(marcarLista).catch(() => {});
       }
     }).catch((err) => {
       if (!cancelado) {
@@ -360,13 +383,10 @@ export function BiometricCapture({
     setResueltos((prev) => {
       if (prev.includes(id)) return prev;
       const next = [...prev, id];
-      // Task 5.3: al completar todos en fallback, llamar onComplete
+      // Task 5.3: al completar todos en fallback, mostrar el estado de éxito y
+      // recién después completar (mismo flujo que el modo automático — Bug 3).
       if (desafiosRef.current.length > 0 && next.length >= desafiosRef.current.length) {
-        setTimeout(() => {
-          if (procesarCompletadoRef.current) {
-            procesarCompletadoRef.current();
-          }
-        }, 0);
+        setFase('exito');
       }
       return next;
     });
@@ -380,6 +400,10 @@ export function BiometricCapture({
   const totalResueltos = resueltos.length;
   const totalDesafios  = desafios.length;
   const todosResueltos = totalDesafios > 0 && totalResueltos >= totalDesafios;
+  const enExito        = fase === 'exito' || todosResueltos;
+  // El óvalo + cámara solo se revelan cuando el motor y la cámara están listos
+  // (o en fallback manual). Mientras tanto se muestra un spinner limpio (Bug 1).
+  const listoParaMostrar = (motorListo && camaraLista) || fallbackManual;
 
   // ---------------------------------------------------------------------------
   // Render — Task 6.1 al 6.11
@@ -424,13 +448,31 @@ export function BiometricCapture({
         Cancelar <Icon name="close" className="text-[18px]" />
       </button>
 
-      {/* Etiqueta contextual opcional */}
-      {contextLabel && (
+      {/* Etiqueta contextual opcional — oculta durante la carga para no competir con el spinner */}
+      {contextLabel && listoParaMostrar && (
         <p className="text-sm text-neutral-500 mb-6 text-center max-w-xs">{contextLabel}</p>
       )}
 
-      {/* Óvalo con la cámara — ancho EXPLÍCITO para que no colapse */}
-      <div className="relative" style={{ width: 'min(80vw, 300px)', filter: 'drop-shadow(0 10px 24px rgba(0,0,0,0.15))' }}>
+      {/* Bug 1: estado de carga LIMPIO — solo un spinner centrado, sin óvalo,
+          sin frame de cámara, sin jerga técnica. El <video> sigue montado abajo
+          (opacity-0) para que el stream se inicialice, pero no se ve. */}
+      {!listoParaMostrar && !motorError && (
+        <div className="flex flex-col items-center justify-center gap-3">
+          <Icon name="progress_activity" className="ae-spin text-primary text-[40px]" />
+          <span className="text-sm text-neutral-500">Preparando cámara…</span>
+        </div>
+      )}
+
+      {/* Óvalo con la cámara — ancho EXPLÍCITO para que no colapse.
+          Fade-in: invisible y sin ocupar layout mientras la cámara/motor cargan;
+          se revela (opacity + scale) cuando listoParaMostrar (Bug 1). */}
+      <div
+        className={`relative transition-all duration-500 ease-out ${
+          listoParaMostrar ? 'opacity-100 scale-100' : 'opacity-0 scale-95 absolute pointer-events-none'
+        }`}
+        style={{ width: 'min(80vw, 300px)', filter: 'drop-shadow(0 10px 24px rgba(0,0,0,0.15))' }}
+        aria-hidden={!listoParaMostrar}
+      >
         {/* clip-path ellipse recorta el video a la forma del óvalo (esquinas transparentes → fondo blanco) */}
         <div
           className="relative w-full aspect-[3/4] overflow-hidden bg-neutral-100"
@@ -447,23 +489,18 @@ export function BiometricCapture({
             aria-label="Vista de cámara para captura biométrica"
           />
 
-          {/* Spinner de carga del motor — refleja la etapa real: cargando el
-              modelo de detección/visión vs listo para buscar el rostro. */}
-          {!motorListo && !motorError && !fallbackManual && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/75 backdrop-blur-sm">
-              <Icon name="progress_activity" className="ae-spin text-primary text-[32px]" />
-              <span className="text-sm text-neutral-600 mt-2 text-center px-3">
-                Cargando modelo de reconocimiento…
-              </span>
+          {/* Bug 3: capa de éxito sobre el óvalo — check grande sobre velo verde */}
+          {enExito && (
+            <div className="absolute inset-0 flex items-center justify-center bg-green-500/15 animate-in fade-in duration-300">
+              <Icon name="check_circle" className="text-green-500 text-[72px]" fill />
             </div>
           )}
-
         </div>
 
         {/* Anillo de estado del óvalo */}
         <div
           className={`absolute inset-0 rounded-[50%] border-4 pointer-events-none ${
-            todosResueltos
+            enExito
               ? 'border-green-500'
               : motorListo && !fallbackManual
                 ? 'border-blue-500 scanning-ring'
@@ -473,7 +510,7 @@ export function BiometricCapture({
       </div>
 
       {/* Banner de fallback manual */}
-      {fallbackManual && (
+      {fallbackManual && !enExito && (
         <div className="mt-4 w-full max-w-xs bg-amber-50 border border-amber-300 rounded-xl px-3 py-2 text-center">
           <p className="text-sm text-amber-800">
             Motor de visión no disponible — <strong>modo de prueba manual</strong>
@@ -481,27 +518,23 @@ export function BiometricCapture({
         </div>
       )}
 
-      {/* Sección inferior — paso actual + progreso */}
+      {/* Sección inferior — paso actual + progreso. Oculta durante la carga. */}
+      {listoParaMostrar && (
       <div className="mt-8 text-center space-y-3 w-full max-w-xs">
-        {/* Texto del paso actual — refleja la etapa real:
-            modelo cargando → detección lista → reto actual. */}
+        {/* Texto del paso actual: éxito → reto actual. */}
         <p className={`font-headline text-2xl font-bold ${
-          todosResueltos ? 'text-green-600' : 'text-neutral-900'
+          enExito ? 'text-green-600' : 'text-neutral-900'
         }`}>
-          {!motorListo && !fallbackManual
-            ? 'Cargando modelo de reconocimiento…'
-            : todosResueltos
-              ? '¡Listo!'
-              : retoActualLabel}
+          {enExito ? 'Verificación completada' : retoActualLabel}
         </p>
 
         {/* Subtítulo de encuadre mientras el motor está listo pero aún sin completar */}
-        {motorListo && !todosResueltos && !fallbackManual && (
+        {!enExito && !fallbackManual && (
           <p className="text-sm text-neutral-500">Buscá tu rostro en el óvalo y seguí las indicaciones.</p>
         )}
 
         {/* Dots de progreso + contador */}
-        {totalDesafios > 0 && (
+        {!enExito && totalDesafios > 0 && (
           <div className="flex items-center justify-center gap-2">
             {desafios.map((id) => (
               <span
@@ -518,7 +551,7 @@ export function BiometricCapture({
         )}
 
         {/* Grilla de botones de retos en fallback manual */}
-        {fallbackManual && totalDesafios > 0 && (
+        {!enExito && fallbackManual && totalDesafios > 0 && (
           <div className="grid grid-cols-1 gap-2 mt-2">
             {desafios.map((id) => {
               const hecho = resueltos.includes(id);
@@ -541,6 +574,7 @@ export function BiometricCapture({
           </div>
         )}
       </div>
+      )}
     </div>,
     document.body,
   );
