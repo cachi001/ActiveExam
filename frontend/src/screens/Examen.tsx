@@ -3,16 +3,9 @@ import { StudentShell } from '../ui/shells';
 import { Icon, Button, Card, SeverityBadge } from '../ui/components';
 import { useNavigate } from '../lib/router';
 import { useApp } from '../lib/store';
-import { descripcionEvento, TIPO_EVENTO_LABEL } from '../lib/api';
-import {
-  FocusDetector,
-  FullscreenDetector,
-  ClipboardDetector,
-  detectExtraMonitor,
-} from '../proctoring/contextDetectors';
-import { StateTransitionRules } from '../proctoring/stateTransitionRules';
-import type { EventoSesion, Severidad, TipoEvento } from '../lib/types';
-import { PESO_SCORE } from '../proctoring/riskWeights';
+import { TIPO_EVENTO_LABEL } from '../lib/api';
+import { useExamProctoring } from '../proctoring/useExamProctoring';
+import type { EventoSesion } from '../lib/types';
 
 const PREGUNTA = {
   numero: 'Pregunta 1 de 5',
@@ -28,25 +21,11 @@ const PREGUNTA = {
 export default function Examen() {
   const navigate = useNavigate();
   const examen = useApp((s) => s.examenActivo);
-  const pushAnomalia = useApp((s) => s.pushAnomalia);
-  const addScore = useApp((s) => s.addScore);
-  const scorePropio = useApp((s) => s.scorePropio);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
-  // Señales de contexto — acumuladas en refs para consumir en el siguiente tick del motor
-  const focusLost = useRef(false);
-  const tabChanged = useRef(false);
-  const fullscreenExited = useRef(false);
-  const clipboardAction = useRef<'copy' | 'paste' | null>(null);
-  // null = no determinable (API ausente/denegada); false = sin monitor adicional; true = con monitor adicional
-  const extraMonitor = useRef<boolean | null>(null);
-
-  const rules = useRef(new StateTransitionRules());
-
   const [segRestantes, setSegRestantes] = useState((examen?.duracion_min ?? 90) * 60);
-  const [eventos, setEventos] = useState<EventoSesion[]>([]);
   const [alerta, setAlerta] = useState<EventoSesion | null>(null);
   const [opcion, setOpcion] = useState<number | null>(null);
   const [mensajes, setMensajes] = useState<{ de: string; texto: string; hora: string }[]>([
@@ -54,7 +33,11 @@ export default function Examen() {
   ]);
   const [borrador, setBorrador] = useState('');
 
-  // cámara
+  // Proctoring REAL de fondo: motor MediaPipe + detectores de contexto + streaming
+  // al backend (sesión modo:'examen'). Expone score/eventos/eventCount y detener().
+  const { score, eventCount, activo, eventos, detener } = useExamProctoring(videoRef, examen);
+
+  // cámara (preview en línea; el hook de proctoring consume este mismo <video>)
   useEffect(() => {
     navigator.mediaDevices?.getUserMedia({ video: true }).then((s) => {
       streamRef.current = s;
@@ -63,102 +46,27 @@ export default function Examen() {
     return () => streamRef.current?.getTracks().forEach((t) => t.stop());
   }, []);
 
-  // Detectores de contexto REALES — C-25 (proctoring/contextDetectors.ts)
-  useEffect(() => {
-    // Foco de ventana (blur/focus OS) + cambio de pestaña (visibilitychange)
-    const fd = new FocusDetector((sig) => {
-      if (sig.focus_lost !== undefined) focusLost.current = sig.focus_lost;
-      if (sig.tab_changed !== undefined) tabChanged.current = sig.tab_changed;
-    });
-    fd.start();
-
-    // Salida de pantalla completa (fullscreenchange)
-    const fsd = new FullscreenDetector((sig) => {
-      if (sig.fullscreen_exited) fullscreenExited.current = true;
-    });
-    fsd.start();
-
-    // Clipboard (copy/paste sin leer contenido)
-    const cd = new ClipboardDetector((sig) => {
-      if (sig.clipboard_action) clipboardAction.current = sig.clipboard_action;
-    });
-    cd.start();
-
-    // Monitor adicional — polling cada 5 s; degrada a null si la API no está disponible
-    let monitorPollActive = true;
-    const pollMonitor = async () => {
-      // Proveedor nativo donde esté disponible (Window Management API)
-      const provider = typeof window !== 'undefined' && 'getScreenDetails' in window
-        ? () => (window as unknown as { getScreenDetails: () => Promise<{ screens: unknown[] }> }).getScreenDetails()
-        : undefined;
-      const sig = await detectExtraMonitor(provider);
-      extraMonitor.current = sig?.extra_monitor ?? null;
-      if (monitorPollActive) setTimeout(pollMonitor, 5000);
-    };
-    pollMonitor();
-
-    return () => {
-      fd.stop();
-      fsd.stop();
-      cd.stop();
-      monitorPollActive = false;
-    };
-  }, []);
-
   // temporizador
   useEffect(() => {
     const t = setInterval(() => setSegRestantes((s) => (s <= 0 ? 0 : s - 1)), 1000);
     return () => clearInterval(t);
   }, []);
 
-  // motor de señales: combina señales reales de navegador + señales simuladas de visión y evalúa reglas
+  // Alerta sobria ante eventos de alta/crítica detectados realmente.
+  const lastAlertaId = useRef<string | null>(null);
   useEffect(() => {
-    const t = setInterval(() => {
-      const ahora = Date.now();
-      const roll = Math.random();
+    const critico = eventos.find((e) => e.severidad === 'alta' || e.severidad === 'critica');
+    if (critico && critico.id !== lastAlertaId.current) {
+      lastAlertaId.current = critico.id;
+      setAlerta(critico);
+    }
+  }, [eventos]);
 
-      // Consumir señales acumuladas en refs y resetear (excepto extraMonitor que se actualiza por polling)
-      const snapFocusLost = focusLost.current;
-      const snapTabChanged = tabChanged.current;
-      const snapFullscreenExited = fullscreenExited.current;
-      const snapClipboard = clipboardAction.current;
-      focusLost.current = false;
-      tabChanged.current = false;
-      fullscreenExited.current = false;
-      clipboardAction.current = null;
-
-      const signals = {
-        ts_ms: ahora,
-        face_count: roll < 0.04 ? 2 : roll < 0.07 ? 0 : 1,
-        gaze: roll > 0.85 ? { x: 0.7, y: 0.2 } : { x: 0.05, y: 0.02 },
-        focus_lost: snapFocusLost,
-        // extra_monitor: null = no determinable; false = sin monitor; true = con monitor adicional
-        extra_monitor: extraMonitor.current === true,
-        tab_changed: snapTabChanged,
-        fullscreen_exited: snapFullscreenExited,
-        clipboard_action: snapClipboard ?? undefined,
-      };
-      let discretos = rules.current.process(signals);
-      // segunda pasada para que la mirada sostenida supere la ventana temporal
-      if (signals.gaze.x > 0.6) discretos = discretos.concat(rules.current.process({ ...signals, ts_ms: ahora + 4200 }));
-
-      for (const d of discretos) {
-        const ev: EventoSesion = {
-          id: `${ahora}-${d.tipo}`,
-          tipo: d.tipo as TipoEvento,
-          severidad: d.severidad as Severidad,
-          ts_backend: new Date().toISOString(),
-          descripcion: descripcionEvento(d.tipo as TipoEvento),
-          tiene_evidencia: d.trigger_evidence,
-        };
-        setEventos((prev) => [ev, ...prev].slice(0, 30));
-        pushAnomalia(ev);
-        addScore(PESO_SCORE[ev.severidad]);
-        if (ev.severidad === 'alta' || ev.severidad === 'critica') setAlerta(ev);
-      }
-    }, 3500);
-    return () => clearInterval(t);
-  }, [pushAnomalia, addScore]);
+  // Cierre prolijo: cortar el proctoring antes de navegar (eventos ya persistidos).
+  const finalizar = () => {
+    detener();
+    navigate('/cierre');
+  };
 
   const mm = String(Math.floor(segRestantes / 60)).padStart(2, '0');
   const ss = String(segRestantes % 60).padStart(2, '0');
@@ -196,7 +104,7 @@ export default function Examen() {
             </div>
             <div className="flex justify-between pt-md border-t border-outline-variant/40">
               <Button variant="outline" icon="arrow_back">Anterior</Button>
-              <Button icon="check_circle" onClick={() => navigate('/cierre')}>Finalizar y entregar</Button>
+              <Button icon="check_circle" onClick={finalizar}>Finalizar y entregar</Button>
             </div>
           </Card>
         </div>
@@ -212,13 +120,18 @@ export default function Examen() {
               <div className="absolute top-3 left-3 inline-flex items-center gap-base bg-primary-container text-on-primary text-[9px] font-bold px-sm py-base rounded-full uppercase">
                 <Icon name="videocam" className="text-[12px]" /> Proctor activo
               </div>
+              {/* Indicador discreto de supervisión real en vivo */}
+              <div className="absolute bottom-3 left-3 inline-flex items-center gap-base bg-inverse-surface/70 text-inverse-on-surface text-[9px] font-semibold px-sm py-base rounded-full">
+                <span className={`w-1.5 h-1.5 rounded-full ${activo ? 'bg-success animate-pulse' : 'bg-on-surface-variant'}`} />
+                Supervisión activa · {eventCount} eventos
+              </div>
             </div>
           </Card>
 
           <Card className="space-y-sm">
             <div className="flex items-center justify-between border-b border-outline-variant/40 pb-base">
-              <h3 className="text-label-md font-bold text-on-surface">Señales de integridad (local)</h3>
-              <span className="text-label-sm text-on-surface-variant">Riesgo {scorePropio}%</span>
+              <h3 className="text-label-md font-bold text-on-surface">Señales de integridad (en vivo)</h3>
+              <span className="text-label-sm text-on-surface-variant">Riesgo {score}%</span>
             </div>
             <div className="space-y-base max-h-[220px] overflow-y-auto">
               {eventos.length === 0 ? (
