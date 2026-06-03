@@ -834,17 +834,41 @@ export const api = {
     const hace1h = new Date(ahora.getTime() - 3600 * 1000).toISOString();
     const hace30m = new Date(ahora.getTime() - 1800 * 1000).toISOString();
     const hace10m = new Date(ahora.getTime() - 600 * 1000).toISOString();
+    const hace5m = new Date(ahora.getTime() - 300 * 1000).toISOString();
+    const hace20m = new Date(ahora.getTime() - 1200 * 1000).toISOString();
     return [
       {
         // Sesión de alto riesgo (score ≥ umbral de cola): la cola de revisión la prioriza.
         // exam_id apunta al examen real del catálogo para que el join muestre materia/comisión.
         id: 'mock-session-examen-altoriesgo-003',
         modo: 'examen',
-        etiqueta: 'Final AMAT — Comisión 1A',
+        etiqueta: 'Persona en banca 12',
         creada_en: hace10m,
         total_eventos: 5,
         total_discrepancias: 2,
         score: 72,
+        exam_id: EXAMEN_RENDIBLE_ID,
+      },
+      {
+        // Segunda persona de alto riesgo en el mismo examen (puebla el nivel "Personas").
+        id: 'mock-session-examen-altoriesgo-004',
+        modo: 'examen',
+        etiqueta: 'Persona en banca 04',
+        creada_en: hace5m,
+        total_eventos: 9,
+        total_discrepancias: 4,
+        score: 84,
+        exam_id: EXAMEN_RENDIBLE_ID,
+      },
+      {
+        // Tercera persona de alto riesgo en el mismo examen.
+        id: 'mock-session-examen-altoriesgo-005',
+        modo: 'examen',
+        etiqueta: 'Persona en banca 21',
+        creada_en: hace20m,
+        total_eventos: 4,
+        total_discrepancias: 1,
+        score: 67,
         exam_id: EXAMEN_RENDIBLE_ID,
       },
       {
