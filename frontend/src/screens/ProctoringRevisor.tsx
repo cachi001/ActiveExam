@@ -13,6 +13,7 @@ import { useEffect, useState } from 'react';
 import { StaffShell } from '../ui/shells';
 import { Icon, Card, Badge, SectionTitle, Button } from '../ui/components';
 import { STAFF_NAV } from '../ui/nav';
+import { useToast } from '../ui/toast';
 import { useNavigate } from '../lib/router';
 import { useApp } from '../lib/store';
 import { api } from '../lib/api';
@@ -46,6 +47,7 @@ function modoBadgeTone(modo: string): 'primary' | 'neutral' | 'warning' {
 
 export default function ProctoringRevisor() {
   const navigate = useNavigate();
+  const toast = useToast();
   const setProctoringSessionId = useApp((s) => s.setProctoringSessionId);
   const [sesiones, setSesiones] = useState<SesionProctoringResumen[]>([]);
   const [cargando, setCargando] = useState(true);
@@ -71,8 +73,10 @@ export default function ProctoringRevisor() {
     if (ok) {
       // Quitar la sesión eliminada del estado local sin recargar todo
       setSesiones((prev) => prev.filter((s) => s.id !== sesion.id));
+      toast.success('Sesión eliminada');
+    } else {
+      toast.error('No se pudo eliminar la sesión');
     }
-    // Si ok=false: dejamos la lista como está (degradación silenciosa).
   };
 
   return (

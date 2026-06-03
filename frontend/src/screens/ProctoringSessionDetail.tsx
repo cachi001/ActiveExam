@@ -14,6 +14,7 @@ import { useEffect, useState } from 'react';
 import { StaffShell } from '../ui/shells';
 import { Icon, Card, Badge, SeverityBadge, SectionTitle, Button } from '../ui/components';
 import { STAFF_NAV } from '../ui/nav';
+import { useToast } from '../ui/toast';
 import { useNavigate } from '../lib/router';
 import { useApp } from '../lib/store';
 import { api, TIPO_EVENTO_LABEL } from '../lib/api';
@@ -132,6 +133,7 @@ function ScreenshotMiniatura({ base64 }: { base64: string | null | undefined }) 
 
 export default function ProctoringSessionDetail() {
   const navigate = useNavigate();
+  const toast = useToast();
   const sessionId = useApp((s) => s.proctoringSessionId);
   const [detalle, setDetalle] = useState<SesionProctoringDetalle | null>(null);
   const [cargando, setCargando] = useState(true);
@@ -155,9 +157,13 @@ export default function ProctoringSessionDetail() {
     if (!sessionId) return;
     // eslint-disable-next-line no-alert -- herramienta admin: confirm directo es aceptable
     if (!window.confirm('¿Eliminar esta sesión grabada? Esta acción no se puede deshacer.')) return;
-    await api.eliminarSesionProctoring(sessionId);
-    // Volvemos a la lista independientemente del resultado (la lista recargará).
-    navigate('/admin/proctoring-sessions');
+    const { ok } = await api.eliminarSesionProctoring(sessionId);
+    if (ok) {
+      toast.success('Sesión eliminada');
+      navigate('/admin/proctoring-sessions');
+    } else {
+      toast.error('No se pudo eliminar la sesión');
+    }
   };
 
   return (
