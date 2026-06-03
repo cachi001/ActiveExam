@@ -12,10 +12,10 @@
 import { Icon } from '../components';
 
 export function CaptureLoading() {
+  // Solo el spinner, sin texto (pedido del usuario): el óvalo aparece al cargar.
   return (
-    <div className="flex flex-col items-center justify-center gap-3">
-      <Icon name="progress_activity" className="ae-spin text-primary text-[40px]" />
-      <span className="text-sm text-neutral-500">Preparando cámara…</span>
+    <div className="flex items-center justify-center">
+      <Icon name="progress_activity" className="ae-spin text-primary text-[44px]" />
     </div>
   );
 }
