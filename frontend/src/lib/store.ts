@@ -3,6 +3,21 @@
 import { create } from 'zustand';
 import type { Principal, Rol, EventoSesion, Examen, SesionRevision, EstadoEnrollment } from './types';
 
+/** Clave de localStorage para la referencia biométrica 128-d (demo). */
+const BIO_REF_KEY = 'activeexam_bio_ref';
+
+/** Lee la referencia biométrica persistida (demo). Robusto ante JSON inválido. */
+function leerReferenciaBiometrica(): number[] | null {
+  try {
+    const raw = localStorage.getItem(BIO_REF_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) && parsed.every((n) => typeof n === 'number') ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 interface AppState {
   principal: Principal | null;
   rol: Rol | null;
@@ -36,6 +51,23 @@ interface AppState {
    */
   proctoringSessionId: string | null;
 
+  // ---------------------------------------------------------------------------
+  // Referencia biométrica REAL para verificación 1:1 — face-api 128-d
+  // ---------------------------------------------------------------------------
+  /**
+   * Descriptor facial de 128 dimensiones capturado en el enrollment, usado como
+   * REFERENCIA en la verificación 1:1 (Biometria.tsx lo compara contra el
+   * descriptor "vivo" via api.verificarBiometria).
+   *
+   * Fuente de verdad efímera de la demo: store + localStorage (clave
+   * `activeexam_bio_ref`). Null si el alumno aún no capturó referencia.
+   *
+   * DATO SENSIBLE (Ley 25.326): es dato biométrico. En producción vive cifrado
+   * at-rest server-side; acá se mantiene solo para la comparación 1:1 de la demo.
+   * NUNCA loguear este vector.
+   */
+  biometriaReferencia: number[] | null;
+
   setPrincipal: (p: Principal | null, rol: Rol | null) => void;
   setExamenActivo: (e: Examen | null) => void;
   setRevisionSeleccionada: (s: SesionRevision | null) => void;
@@ -51,6 +83,8 @@ interface AppState {
   setFotoPerfil: (dataUrl: string) => void;
   /** C-46: setea el ID de la sesión de proctoring activa (o null para limpiarla). */
   setProctoringSessionId: (id: string | null) => void;
+  /** Setea el descriptor 128-d de referencia para la verificación 1:1 (face-api). */
+  setBiometriaReferencia: (embedding: number[] | null) => void;
 }
 
 export const useApp = create<AppState>((set) => ({
@@ -63,6 +97,7 @@ export const useApp = create<AppState>((set) => ({
   enrollmentStatus: null,
   isProfileComplete: false,
   proctoringSessionId: null,
+  biometriaReferencia: leerReferenciaBiometrica(),
 
   setPrincipal: (principal, rol) => set({ principal, rol }),
   setExamenActivo: (examenActivo) => set({ examenActivo }),
@@ -75,4 +110,16 @@ export const useApp = create<AppState>((set) => ({
     principal: s.principal ? { ...s.principal, foto_perfil: dataUrl } : s.principal,
   })),
   setProctoringSessionId: (id) => set({ proctoringSessionId: id }),
+  setBiometriaReferencia: (embedding) => {
+    try {
+      if (embedding && embedding.length > 0) {
+        localStorage.setItem(BIO_REF_KEY, JSON.stringify(embedding));
+      } else {
+        localStorage.removeItem(BIO_REF_KEY);
+      }
+    } catch {
+      // localStorage no disponible (modo privado / cuota) → solo en memoria.
+    }
+    set({ biometriaReferencia: embedding });
+  },
 }));
