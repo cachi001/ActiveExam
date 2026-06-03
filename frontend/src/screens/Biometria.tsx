@@ -29,8 +29,18 @@ export default function Biometria() {
   // ---------------------------------------------------------------------------
   // handleComplete — descriptor "vivo" REAL (face-api) sobre el frame capturado,
   // comparado contra la referencia del enrollment via api.verificarBiometria.
+  //
+  // D3 (C-49): firma ampliada — recibe liveness pasivo real, retos resueltos reales
+  // y flag de cámara virtual. Reemplaza liveness_ok: true y retos_resueltos: []
+  // hardcodeados por los valores propagados desde BiometricCapture.
   // ---------------------------------------------------------------------------
-  const handleComplete = async (_landmarks: FaceLandmark[], frame: HTMLCanvasElement | null) => {
+  const handleComplete = async (
+    _landmarks: FaceLandmark[],
+    frame: HTMLCanvasElement | null,
+    passiveOk: boolean,
+    retosResueltos: string[],
+    virtualCameraDetected: boolean,
+  ) => {
     // Gate de enrolamiento: sin referencia no hay nada contra qué comparar.
     if (!biometriaReferencia || biometriaReferencia.length === 0) {
       setFase('no_enrolado');
@@ -70,13 +80,14 @@ export default function Biometria() {
     }
 
     // Envío biométrico al backend slim (fire-and-forget, C-46 D6). Solo si hay sesión.
+    // C-49: liveness_ok y retos_resueltos ahora son REALES (no hardcodeados).
     if (verificado && proctoringSessionId) {
       void api.enviarBiometriaProctoring(proctoringSessionId, {
-        liveness_ok: true,
-        retos_resueltos: [],
+        liveness_ok: passiveOk,
+        retos_resueltos: retosResueltos,
         // El embedding viaja al backend slim para su re-inferencia/firma (C-12).
         embedding: vivo,
-        resultado: 'verificado',
+        resultado: virtualCameraDetected ? 'camara_virtual_detectada' : 'verificado',
       }).catch(() => {
         // Error silencioso: la biometría no debe bloquear el flujo de examen.
       });
@@ -110,7 +121,9 @@ export default function Biometria() {
         {/* Fase capturando → overlay inmersivo con BiometricCapture */}
         {fase === 'capturando' && (
           <BiometricCapture
-            onComplete={(landmarks, frame) => { void handleComplete(landmarks, frame); }}
+            onComplete={(landmarks, frame, passiveOk, retosResueltos, virtualCameraDetected) => {
+              void handleComplete(landmarks, frame, passiveOk, retosResueltos, virtualCameraDetected);
+            }}
             onCancel={handleCancel}
             contextLabel="Verificación de identidad"
           />

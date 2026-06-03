@@ -66,7 +66,16 @@ export function EnrollmentBiometricStep({ referenciaActual, onCapturada, esRenov
   // handleComplete — computar el descriptor 128-d REAL (face-api) sobre el frame
   // capturado y guardarlo como REFERENCIA para la verificación 1:1 posterior.
   // ---------------------------------------------------------------------------
-  const handleComplete = useCallback(async (_landmarks: FaceLandmark[], frame: HTMLCanvasElement | null) => {
+  // D3 (C-49): firma ampliada — el enrollment ignora passiveOk/virtualCameraDetected
+  // con `_` (su liveness se evalúa durante los retos de la captura de referencia,
+  // no condiciona el guardado del descriptor). Ver design D3 / Open Questions.
+  const handleComplete = useCallback(async (
+    _landmarks: FaceLandmark[],
+    frame: HTMLCanvasElement | null,
+    _passiveOk: boolean,
+    _retosResueltos: string[],
+    _virtualCameraDetected: boolean,
+  ) => {
     setFase('procesando');
     setRefRegistrada(false);
 
@@ -115,7 +124,9 @@ export function EnrollmentBiometricStep({ referenciaActual, onCapturada, esRenov
   if (fase === 'capturando') {
     return (
       <BiometricCapture
-        onComplete={(landmarks, frame) => { void handleComplete(landmarks, frame); }}
+        onComplete={(landmarks, frame, passiveOk, retosResueltos, virtualCameraDetected) => {
+          void handleComplete(landmarks, frame, passiveOk, retosResueltos, virtualCameraDetected);
+        }}
         onCancel={cancelarCaptura}
         contextLabel="Captura de referencia biométrica"
       />

@@ -43,6 +43,23 @@ import {
 } from './contextDetectors';
 import { descripcionEvento } from '../lib/api';
 import type { EventoSesion, Severidad, TipoEvento } from '../lib/types';
+import { CircularEventBuffer } from '../transport/eventBuffer';
+import { IndexedDbEventBufferStore } from '../transport/indexedDbBufferStore';
+import { drainAndReplay } from '../transport/replayCoordinator';
+import type { ReplaySender } from '../transport/replayCoordinator';
+import { hashClip } from '../features/biometria/clipCustody';
+
+// DEUDA TÉCNICA: los siguientes módulos están implementados y testeados pero no se
+// cablea porque el backend slim no los soporta aún:
+//
+// - `../transport/eventSignature.ts` (firma HMAC de eventos): el backend slim NO valida
+//   la firma del payload del evento. Firmar sin validación es teatro de seguridad.
+//   Cablear cuando el backend implemente la validación.
+//
+// - `../features/custodia/evidenceCapture.ts` (cadena de custodia completa): requiere
+//   el endpoint `/evidence/presign` (inexistente en el slim), storage externo
+//   (MinIO/S3 con Object Lock) y `sessionKey` rotativa post-verificación biométrica.
+//   Cablear cuando se implemente el backend completo de evidencia (C-12/C-24).
 
 /** Máximo de eventos recientes que el panel del examen muestra. */
 const MAX_EVENTOS = 30;
@@ -86,6 +103,7 @@ export function useExamProctoring(
   examen?: ExamenInfo | null,
 ): UseExamProctoringResult {
   const setProctoringSessionId = useApp((s) => s.setProctoringSessionId);
+  const addScore = useApp((s) => s.addScore);
 
   // ------ Estado observable ------
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -103,6 +121,11 @@ export function useExamProctoring(
   const faceCountRef = useRef(0);
   const stoppedRef = useRef(false);
 
+  // ------ Buffer IndexedDB (D1) ------
+  // Instancia única que persiste toda la duración del hook. Null si IndexedDB
+  // no está disponible (modo privado / iOS Safari → degradación silenciosa, R3).
+  const bufferRef = useRef<CircularEventBuffer | null>(null);
+
   // ------ Señales de contexto del navegador (acumuladas, consumidas por tick) ------
   const focusLostRef = useRef(false);
   const tabChangedRef = useRef(false);
@@ -113,7 +136,8 @@ export function useExamProctoring(
   // ------ Callback de cada evento discreto (ref estable, lee estado fresco) ------
   const handleEvent = useRef<EventSink['sendEvent']>(async () => {});
   handleEvent.current = async (rawEvent) => {
-    // Acumular score (prioriza, no sanciona — L2.5).
+    // Acumular score en el store global (scorePropio, L2.5 — prioriza, no sanciona).
+    addScore(PESO_SCORE[rawEvent.severidad as Severidad] ?? 0);
     setScore((prev) =>
       Math.min(100, prev + (PESO_SCORE[rawEvent.severidad as Severidad] ?? 0)),
     );
@@ -144,18 +168,57 @@ export function useExamProctoring(
         ? Number(rawEvent.payload.face_count)
         : faceCountRef.current;
 
-    void api
-      .enviarEventoProctoring(sid, {
-        tipo: rawEvent.tipo,
-        severidad: rawEvent.severidad,
-        ts_cliente: new Date().toISOString(),
-        payload: rawEvent.payload,
-        screenshot_base64: screenshot,
-        face_count_cliente: faceCountCliente,
-      })
-      .catch(() => {
-        /* silencioso: la red no debe interrumpir el examen */
-      });
+    // Calcular hash SHA-256 del screenshot para la primera capa de cadena de
+    // custodia del cliente (D5). Si falla (screenshot null / WebCrypto no disponible),
+    // se omite el campo del payload — no bloquea el evento.
+    let screenshotHash: string | undefined;
+    if (screenshot) {
+      try {
+        const b64 = screenshot.replace(/^data:[^;]+;base64,/, '');
+        const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+        screenshotHash = await hashClip(bytes.buffer);
+      } catch {
+        // error de WebCrypto: continuar sin el hash
+      }
+    }
+
+    // Payload del evento — omitir screenshot_sha256_cliente si es undefined.
+    const eventoPayload: {
+      tipo: string;
+      severidad: string;
+      ts_cliente: string;
+      payload?: Record<string, unknown>;
+      screenshot_base64?: string | null;
+      face_count_cliente?: number | null;
+      screenshot_sha256_cliente?: string;
+    } = {
+      tipo: rawEvent.tipo,
+      severidad: rawEvent.severidad,
+      ts_cliente: new Date().toISOString(),
+      payload: rawEvent.payload,
+      screenshot_base64: screenshot,
+      face_count_cliente: faceCountCliente,
+      ...(screenshotHash !== undefined && { screenshot_sha256_cliente: screenshotHash }),
+    };
+
+    // Patrón buffer-first con purga-en-éxito (D1, CRÍTICO):
+    // 1. Persistir ANTES del POST (idempotente por id — si falla el POST, queda para el drain).
+    // 2. Ejecutar el POST.
+    // 3. Si el POST resuelve OK → confirm(id) para PURGAR del buffer.
+    // 4. Si el POST rechaza (red caída) → NO confirmar (queda pendiente para drainAndReplay).
+    //
+    // Sin confirm on-success, el buffer retiene todos los eventos del examen y el drain
+    // los reinyecta masivamente en la primera reconexión (el backend slim NO deduplica).
+    await bufferRef.current?.append(rawEvent.id, eventoPayload).catch(() => {});
+
+    try {
+      await api.enviarEventoProctoring(sid, eventoPayload);
+      // POST resolvió OK → purgar del buffer (evento a salvo server-side).
+      await bufferRef.current?.confirm(rawEvent.id).catch(() => {});
+    } catch {
+      // POST rechazado (red caída) → no confirmar; el evento queda en el buffer
+      // para que drainAndReplay lo reenvíe al recuperar la conexión.
+    }
   };
 
   // ------ detener(): corta loop, dispone motor, limpia ------
@@ -180,6 +243,42 @@ export function useExamProctoring(
   useEffect(() => {
     stoppedRef.current = false;
     let cancelled = false;
+
+    // --- Inicializar buffer IndexedDB (R3: degradación silenciosa si no está disponible) ---
+    try {
+      bufferRef.current = new CircularEventBuffer(new IndexedDbEventBufferStore());
+    } catch {
+      bufferRef.current = null; // IndexedDB no disponible → operar sin buffer
+    }
+
+    // --- Adaptador ReplaySender: envuelve api.enviarEventoProctoring como ReplaySender ---
+    // El buffer almacena el payload del evento (message) serializado; el sender
+    // lo reenvía al backend usando el sessionId actual de sessionIdRef.
+    const replaySender: ReplaySender = async (record) => {
+      const sid = sessionIdRef.current;
+      if (!sid) return { status: 'persisted', id: record.id };
+      await api.enviarEventoProctoring(sid, record.message as Parameters<typeof api.enviarEventoProctoring>[1]);
+      // El backend slim no distingue persisted/duplicate — siempre tratamos el 200 como persisted.
+      return { status: 'persisted', id: record.id };
+    };
+
+    // --- handleDrain: drena el buffer al recuperar la conexión ---
+    // Gracias al confirm on-success en handleEvent, solo contiene eventos que fallaron
+    // mientras la red estaba caída — el drain reenvía únicamente esos (no el examen completo).
+    const handleDrain = () => {
+      if (bufferRef.current) {
+        drainAndReplay(bufferRef.current, replaySender).catch(() => {});
+      }
+    };
+
+    // --- handleOffline: solo para diagnóstico / future use ---
+    const handleOffline = () => {
+      // sin acción requerida: el patrón buffer-first en handleEvent ya persiste
+      // cada evento antes del POST; al volver online handleDrain los reenvía.
+    };
+
+    window.addEventListener('online', handleDrain);
+    window.addEventListener('offline', handleOffline);
 
     // --- Detectores de contexto del navegador ---
     const focus = new FocusDetector((sig) => {
@@ -282,6 +381,12 @@ export function useExamProctoring(
       focus.stop();
       fullscreen.stop();
       clipboard.stop();
+      window.removeEventListener('online', handleDrain);
+      window.removeEventListener('offline', handleOffline);
+      // Drain final: enviar cualquier evento pendiente al finalizar el examen.
+      if (bufferRef.current) {
+        drainAndReplay(bufferRef.current, replaySender).catch(() => {});
+      }
       detener();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
