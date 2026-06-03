@@ -8,13 +8,20 @@ Ley 25.326: el embedding se trata como dato sensible en toda la capa.
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.application.proctoring import biometria_service
+from app.domain.biometrics.matching import (
+    UMBRAL_COSENO_DEFECTO,
+    EmbeddingInvalidoError,
+    comparar_identidad,
+)
 from app.presentation.api.v1.proctoring.biometria.schemas import (
     BiometriaOut,
     GuardarBiometriaIn,
+    VerificarIdentidadIn,
+    VerificarIdentidadOut,
 )
 
 
@@ -46,5 +53,33 @@ def create_biometria_router(get_db) -> APIRouter:
             embedding=body.embedding,
         )
         return BiometriaOut(ok=True)
+
+    @router.post(
+        "/biometria/verificar",
+        response_model=VerificarIdentidadOut,
+        summary="Verificacion biometrica 1:1 (stateless, sin DB)",
+    )
+    async def verificar_identidad(
+        body: VerificarIdentidadIn,
+    ) -> VerificarIdentidadOut:
+        """Compara dos embeddings faciales por distancia coseno (RN-BIO-01/02/03).
+
+        Endpoint stateless: no persiste ni consulta la DB.
+        Ley 25.326: ambos embeddings son dato sensible; no se loguean.
+        """
+        umbral = body.umbral if body.umbral is not None else UMBRAL_COSENO_DEFECTO
+        try:
+            resultado = comparar_identidad(
+                body.embedding_vivo,
+                body.embedding_referencia,
+                umbral=umbral,
+            )
+        except EmbeddingInvalidoError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return VerificarIdentidadOut(
+            distancia=resultado.distancia,
+            es_match=resultado.es_match,
+            umbral=resultado.umbral,
+        )
 
     return router
