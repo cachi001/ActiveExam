@@ -114,9 +114,8 @@ export default function Examen() {
           <Card padded={false} className="overflow-hidden">
             <div className="relative aspect-video bg-inverse-surface">
               <video ref={videoRef} muted playsInline className="w-full h-full object-cover" />
-              <div className="absolute top-1/4 left-1/4 w-1/2 h-1/2 border-2 border-success/80 rounded-xl">
-                <span className="absolute -top-5 left-0 bg-success text-on-error text-[9px] font-bold px-1.5 py-0.5 rounded uppercase">Rostro verificado</span>
-              </div>
+              {/* La detección sigue corriendo en segundo plano (useExamProctoring);
+                  no se dibuja ningún marco/overlay sobre el video para no confundir. */}
               <div className="absolute top-3 left-3 inline-flex items-center gap-base bg-primary-container text-on-primary text-[9px] font-bold px-sm py-base rounded-full uppercase">
                 <Icon name="videocam" className="text-[12px]" /> Proctor activo
               </div>

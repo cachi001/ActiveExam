@@ -65,49 +65,16 @@ const DETECTORES_DEFAULT: TipoEvento[] = [
 
 type ExamenConComision = Examen & { comision_id?: string };
 
+// Un único examen "rendible" para probar el flujo completo sin clutter.
+// `estado: 'en_curso'` → es el que Login.tsx selecciona como `examenActivo`.
+const EXAMEN_RENDIBLE_ID = `EX-${INSTITUTION.idPrefix}-AMAT-I`;
+
 let EXAMENES: ExamenConComision[] = [
   {
-    id: `EX-${INSTITUTION.idPrefix}-AMAT-I`, nombre: 'Examen Final — Análisis Matemático I', catedra: 'Cátedra B',
+    id: EXAMEN_RENDIBLE_ID, nombre: 'Examen Final — Análisis Matemático I', catedra: 'Cátedra B',
     estado: 'en_curso', inicio: '2026-05-30T14:00:00', duracion_min: 90,
     umbral_score: 70, detectores: DETECTORES_DEFAULT, retencion_dias: 30,
     inscriptos: 48, rindiendo: 4, comision_id: 'COM-AMAT-1A',
-  },
-  {
-    id: `EX-${INSTITUTION.idPrefix}-FIS-I`, nombre: 'Parcial — Física I', catedra: 'Cátedra A',
-    estado: 'programado', inicio: '2026-06-02T09:00:00', duracion_min: 60,
-    umbral_score: 65, detectores: DETECTORES_DEFAULT, retencion_dias: 30,
-    inscriptos: 72, rindiendo: 0, comision_id: 'COM-FIS1-2B',
-  },
-  {
-    id: `EX-${INSTITUTION.idPrefix}-ALG-I`, nombre: 'Recuperatorio — Algoritmos y Estructuras de Datos I', catedra: 'Cátedra C',
-    estado: 'finalizado', inicio: '2026-05-28T16:00:00', duracion_min: 120,
-    umbral_score: 75, detectores: DETECTORES_DEFAULT, retencion_dias: 30,
-    inscriptos: 35, rindiendo: 0, comision_id: 'COM-PROG-1A',
-  },
-  {
-    id: `EX-${INSTITUTION.idPrefix}-SIS-REP`, nombre: 'Examen — Sistemas de Representación', catedra: 'Cátedra B',
-    estado: 'borrador', inicio: '2026-06-10T11:00:00', duracion_min: 75,
-    umbral_score: 70, detectores: DETECTORES_DEFAULT, retencion_dias: 30,
-    inscriptos: 0, rindiendo: 0, comision_id: 'COM-AMAT-1B',
-  },
-  // Exámenes UTN FRM adicionales para el portal del alumno
-  {
-    id: 'EX-FRM-AMAT-FINAL', nombre: 'Final — Análisis Matemático I', catedra: 'Dept. Ciencias Básicas',
-    estado: 'programado', inicio: '2026-06-15T09:00:00', duracion_min: 120,
-    umbral_score: 60, detectores: DETECTORES_DEFAULT, retencion_dias: 30,
-    inscriptos: 120, rindiendo: 0, comision_id: 'COM-AMAT-1A',
-  },
-  {
-    id: 'EX-FRM-FIS1-PARCIAL', nombre: 'Segundo Parcial — Física I', catedra: 'Dept. Ciencias Básicas',
-    estado: 'programado', inicio: '2026-06-18T14:00:00', duracion_min: 90,
-    umbral_score: 60, detectores: DETECTORES_DEFAULT, retencion_dias: 30,
-    inscriptos: 85, rindiendo: 0, comision_id: 'COM-FIS1-2B',
-  },
-  {
-    id: 'EX-FRM-PROG-RECUP', nombre: 'Recuperatorio — Programación I', catedra: 'Dept. Sistemas',
-    estado: 'programado', inicio: '2026-06-20T10:00:00', duracion_min: 90,
-    umbral_score: 60, detectores: DETECTORES_DEFAULT, retencion_dias: 30,
-    inscriptos: 42, rindiendo: 0, comision_id: 'COM-PROG-1A',
   },
 ];
 
@@ -132,25 +99,15 @@ const COMISIONES: Comision[] = [
   { id: 'COM-PROG-1B', materia_id: 'MAT-PROG', nombre: 'Comisión 1B', docente: 'Lic. Sebastián Díaz', horario: 'Lunes y Miércoles 18:00–20:00' },
 ];
 
-// 2.5 Inscripciones demo del alumno en distintos estados
+// 2.5 Inscripción demo del alumno: una sola, en estado `habilitado`, apuntando al
+// único examen rendible (mismo examen que Login setea como `examenActivo`). Así el
+// botón "Rendir" lleva al flujo de examen con ese `examenActivo` sin clutter.
 let MIS_INSCRIPCIONES: Inscripcion[] = [
   {
-    id: 'INS-001', examen_id: 'EX-FRM-AMAT-FINAL', comision_id: 'COM-AMAT-1A',
-    materia_id: 'MAT-AMAT', nombre_examen: 'Final — Análisis Matemático I',
-    nombre_materia: 'Análisis Matemático I', fecha: '2026-06-15T09:00:00',
-    estado: 'inscripto',
-  },
-  {
-    id: 'INS-002', examen_id: 'EX-FRM-FIS1-PARCIAL', comision_id: 'COM-FIS1-2B',
-    materia_id: 'MAT-FIS1', nombre_examen: 'Segundo Parcial — Física I',
-    nombre_materia: 'Física I', fecha: '2026-06-18T14:00:00',
+    id: 'INS-001', examen_id: EXAMEN_RENDIBLE_ID, comision_id: 'COM-AMAT-1A',
+    materia_id: 'MAT-AMAT', nombre_examen: 'Examen Final — Análisis Matemático I',
+    nombre_materia: 'Análisis Matemático I', fecha: '2026-05-30T14:00:00',
     estado: 'habilitado',
-  },
-  {
-    id: 'INS-003', examen_id: `EX-${INSTITUTION.idPrefix}-ALG-I`, comision_id: 'COM-PROG-1A',
-    materia_id: 'MAT-PROG', nombre_examen: 'Recuperatorio — Algoritmos y Estructuras de Datos I',
-    nombre_materia: 'Programación I', fecha: '2026-05-28T16:00:00',
-    estado: 'rendido',
   },
 ];
 
