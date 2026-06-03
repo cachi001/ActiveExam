@@ -5,6 +5,7 @@ import { StudentShell } from '../ui/shells';
 import { useNavigate } from '../lib/router';
 import { useApp } from '../lib/store';
 import { api } from '../lib/api';
+import { INSTITUTION } from '../config/institution';
 import type { Inscripcion } from '../lib/types';
 import { QuickAccessCard } from './alumno/components/QuickAccessCard';
 import { ExamenProximoCard } from './alumno/components/ExamenProximoCard';
@@ -39,7 +40,7 @@ export default function AlumnoDashboard() {
           <h1 className="font-headline text-headline-md text-on-surface tracking-tight">
             Hola, {principal?.nombre ?? 'estudiante'} 👋
           </h1>
-          <p className="text-body-md text-on-surface-variant mt-xs">{principal?.email} · UTN Regional Mendoza</p>
+          <p className="text-body-md text-on-surface-variant mt-xs">{principal?.email} · {INSTITUTION.nombreCorto}</p>
         </header>
 
         {puedeRendir === false && (

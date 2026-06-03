@@ -8,6 +8,7 @@
  * Spec: profile-header-card (C-42)
  */
 import { Card } from '../../../ui/components';
+import { INSTITUTION } from '../../../config/institution';
 import type { Principal } from '../../../lib/types';
 
 interface PerfilHeaderCardProps {
@@ -49,7 +50,7 @@ export function PerfilHeaderCard({ principal }: PerfilHeaderCardProps) {
         </div>
         <div>
           <p className="text-label-sm text-on-surface-variant uppercase tracking-wide mb-base">Institución</p>
-          <p className="text-label-md text-on-surface font-semibold">UTN Regional Mendoza</p>
+          <p className="text-label-md text-on-surface font-semibold">{INSTITUTION.nombreCorto}</p>
         </div>
         <div>
           <p className="text-label-sm text-on-surface-variant uppercase tracking-wide mb-base">Jurisdicción</p>

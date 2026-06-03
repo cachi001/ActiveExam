@@ -1,5 +1,6 @@
 import { StaffShell } from '../ui/shells';
-import { Icon, Card, SectionTitle, Button, Stat } from '../ui/components';
+import { Icon, Card, SectionTitle, Button } from '../ui/components';
+import { StatCard } from './proctoring/StatCard';
 import { ADMIN_NAV } from './AdminDashboard';
 import { AuditLogItem } from './admin/components/AuditLogItem';
 import { DsrCard } from './admin/components/DsrCard';
@@ -22,11 +23,28 @@ const DSR = [
 export default function AuditPrivacy() {
   return (
     <StaffShell nav={ADMIN_NAV} title="Auditoría y privacidad">
-      <div className="space-y-lg">
-        <div className="grid sm:grid-cols-3 gap-lg">
-          <Stat icon="schedule" label="Retención" value="30 días" sub="luego eliminación automática" />
-          <Stat icon="enhanced_encryption" label="Cifrado" value="At-rest + WORM" sub="MinIO Object Lock" />
-          <Stat icon="fingerprint" label="Embedding" value="Dato sensible" sub="responsabilidad reforzada" />
+      <div className="space-y-lg animate-in fade-in duration-500">
+        {/* Header */}
+        <div className="flex items-start justify-between gap-md flex-wrap">
+          <div>
+            <h1 className="font-headline text-headline-md text-on-surface tracking-tight">
+              Auditoría y privacidad
+            </h1>
+            <p className="text-body-md text-on-surface-variant mt-base">
+              Registro inmutable de acciones, cadena de custodia y derechos del titular bajo Ley 25.326.
+            </p>
+          </div>
+          <div className="flex items-center gap-base px-sm py-base rounded-lg bg-primary-fixed/50
+            border border-primary/20 text-label-sm text-on-primary-fixed-variant">
+            <Icon name="lock" className="text-[16px] shrink-0" fill />
+            <span>Soberanía de datos</span>
+          </div>
+        </div>
+
+        <div className="grid sm:grid-cols-3 gap-md">
+          <StatCard icon="schedule" label="Retención" value="30 días" sub="luego eliminación automática" tono="primary" />
+          <StatCard icon="enhanced_encryption" label="Cifrado" value="At-rest + WORM" sub="MinIO Object Lock" tono="success" />
+          <StatCard icon="fingerprint" label="Embedding" value="Dato sensible" sub="responsabilidad reforzada" tono="warning" />
         </div>
 
         <div className="grid lg:grid-cols-3 gap-lg">

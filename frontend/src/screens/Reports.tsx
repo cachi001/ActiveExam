@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { StaffShell } from '../ui/shells';
-import { Icon, Card, Stat, SectionTitle, SeverityBadge } from '../ui/components';
+import { Icon, Card, SectionTitle, SeverityBadge } from '../ui/components';
+import { StatCard } from './proctoring/StatCard';
 import { ADMIN_NAV } from './AdminDashboard';
 import { api } from '../lib/api';
 import type { ResumenReportes } from '../lib/types';
@@ -17,19 +18,45 @@ export default function Reports() {
   const [r, setR] = useState<ResumenReportes | null>(null);
   useEffect(() => { api.reportes().then(setR); }, []);
 
-  if (!r) return <StaffShell nav={ADMIN_NAV} title="Reportes y analítica"><Card>Cargando…</Card></StaffShell>;
+  if (!r) {
+    return (
+      <StaffShell nav={ADMIN_NAV} title="Reportes y analítica">
+        <Card className="flex items-center justify-center gap-sm py-xl text-on-surface-variant">
+          <Icon name="progress_activity" className="ae-spin text-[22px]" />
+          <span className="text-label-md">Cargando reportes…</span>
+        </Card>
+      </StaffShell>
+    );
+  }
 
   const maxSev = Math.max(...r.distribucion_severidad.map((d) => d.cantidad));
   const maxTend = Math.max(...r.tendencia_semanal.map((t) => Math.max(t.flaggeadas, t.revisadas)));
 
   return (
     <StaffShell nav={ADMIN_NAV} title="Reportes y analítica">
-      <div className="space-y-lg">
-        <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-lg">
-          <Stat icon="quiz" label="Exámenes" value={r.examenes_totales} />
-          <Stat icon="groups" label="Sesiones" value={r.sesiones_totales} />
-          <Stat icon="flag" label="Tasa de flag" value={`${r.tasa_flag}%`} sub="entran a revisión" />
-          <Stat icon="rule" label="Falsos positivos" value={`${r.falsos_positivos}%`} sub="descartados en revisión" />
+      <div className="space-y-lg animate-in fade-in duration-500">
+        {/* Header */}
+        <div className="flex items-start justify-between gap-md flex-wrap">
+          <div>
+            <h1 className="font-headline text-headline-md text-on-surface tracking-tight">
+              Analítica de integridad
+            </h1>
+            <p className="text-body-md text-on-surface-variant mt-base">
+              Métricas agregadas de exámenes, severidad de eventos y desempeño de la revisión humana.
+            </p>
+          </div>
+          <div className="flex items-center gap-base px-sm py-base rounded-lg bg-primary-fixed/50
+            border border-primary/20 text-label-sm text-on-primary-fixed-variant">
+            <Icon name="shield" className="text-[16px] shrink-0" fill />
+            <span>Decisión humana</span>
+          </div>
+        </div>
+
+        <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-md">
+          <StatCard icon="quiz" label="Exámenes" value={r.examenes_totales} tono="primary" />
+          <StatCard icon="groups" label="Sesiones" value={r.sesiones_totales} tono="neutral" />
+          <StatCard icon="flag" label="Tasa de flag" value={`${r.tasa_flag}%`} sub="entran a revisión" tono="warning" />
+          <StatCard icon="rule" label="Falsos positivos" value={`${r.falsos_positivos}%`} sub="descartados en revisión" tono="success" />
         </div>
 
         <div className="grid lg:grid-cols-2 gap-lg">
