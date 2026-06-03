@@ -47,8 +47,12 @@ export interface BiometricCaptureProps {
   challengeCount?: number;
   /** Texto de contexto mostrado en el encabezado del overlay. */
   contextLabel?: string;
-  /** Callback al completar todos los retos. Recibe los landmarks del último frame. */
-  onComplete: (landmarks: FaceLandmark[]) => void;
+  /**
+   * Callback al completar todos los retos. Recibe los landmarks del último frame
+   * y un canvas con ese frame (para que el caller compute el descriptor 128-d con
+   * face-api). `frame` es null si la cámara no estaba lista al completar.
+   */
+  onComplete: (landmarks: FaceLandmark[], frame: HTMLCanvasElement | null) => void;
   /** Callback al cancelar. */
   onCancel: () => void;
 }
@@ -142,8 +146,29 @@ export function BiometricCapture({
     if (document.fullscreenElement) {
       document.exitFullscreen?.().catch(() => {});
     }
-    // Llamar callback con los landmarks del último frame
-    onComplete(lastLandmarksRef.current);
+    // Capturar el frame actual del video en un canvas para que el caller compute
+    // el descriptor facial 128-d (face-api). Se dibuja SIN espejar (el espejado es
+    // solo visual via CSS scaleX(-1)); el descriptor es invariante a reflejo, pero
+    // mantenemos el frame "crudo" para fidelidad.
+    let frame: HTMLCanvasElement | null = null;
+    const video = videoRef.current;
+    if (video && video.videoWidth > 0 && video.videoHeight > 0) {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          frame = canvas;
+        }
+      } catch {
+        // Si el dibujo falla (tainted canvas / video no listo) → frame queda null.
+        frame = null;
+      }
+    }
+    // Llamar callback con los landmarks del último frame + el frame capturado
+    onComplete(lastLandmarksRef.current, frame);
   }, [onComplete]);
 
   // Task 4.2: registrar procesarCompletado en ref para acceso desde el loop RAF
@@ -422,11 +447,14 @@ export function BiometricCapture({
             aria-label="Vista de cámara para captura biométrica"
           />
 
-          {/* Spinner de carga del motor */}
+          {/* Spinner de carga del motor — refleja la etapa real: cargando el
+              modelo de detección/visión vs listo para buscar el rostro. */}
           {!motorListo && !motorError && !fallbackManual && (
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/75 backdrop-blur-sm">
               <Icon name="progress_activity" className="ae-spin text-primary text-[32px]" />
-              <span className="text-sm text-neutral-600 mt-2">Preparando verificación…</span>
+              <span className="text-sm text-neutral-600 mt-2 text-center px-3">
+                Cargando modelo de reconocimiento…
+              </span>
             </div>
           )}
 
@@ -455,12 +483,22 @@ export function BiometricCapture({
 
       {/* Sección inferior — paso actual + progreso */}
       <div className="mt-8 text-center space-y-3 w-full max-w-xs">
-        {/* Texto del paso actual */}
+        {/* Texto del paso actual — refleja la etapa real:
+            modelo cargando → detección lista → reto actual. */}
         <p className={`font-headline text-2xl font-bold ${
           todosResueltos ? 'text-green-600' : 'text-neutral-900'
         }`}>
-          {todosResueltos ? '¡Listo!' : retoActualLabel}
+          {!motorListo && !fallbackManual
+            ? 'Cargando modelo de reconocimiento…'
+            : todosResueltos
+              ? '¡Listo!'
+              : retoActualLabel}
         </p>
+
+        {/* Subtítulo de encuadre mientras el motor está listo pero aún sin completar */}
+        {motorListo && !todosResueltos && !fallbackManual && (
+          <p className="text-sm text-neutral-500">Buscá tu rostro en el óvalo y seguí las indicaciones.</p>
+        )}
 
         {/* Dots de progreso + contador */}
         {totalDesafios > 0 && (

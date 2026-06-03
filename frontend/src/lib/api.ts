@@ -326,6 +326,26 @@ const CONSENT_TEXT: ConsentTextResponse = {
 // API pública (modo demo). Cada método simula latencia de red.
 // ---------------------------------------------------------------------------
 
+/**
+ * Distancia coseno entre dos embeddings (1 - similitud coseno). Rango [0, 2];
+ * 0 = idénticos. Usada SOLO en modo mock para reproducir el contrato del backend
+ * (que compara server-side). Vectores de distinta longitud o nulos → 1 (neutro).
+ */
+function distanciaCoseno(a: number[], b: number[]): number {
+  if (!a?.length || !b?.length || a.length !== b.length) return 1;
+  let dot = 0;
+  let normA = 0;
+  let normB = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i] * b[i];
+    normA += a[i] * a[i];
+    normB += b[i] * b[i];
+  }
+  if (normA === 0 || normB === 0) return 1;
+  const sim = dot / (Math.sqrt(normA) * Math.sqrt(normB));
+  return 1 - sim;
+}
+
 async function realFetch<T>(path: string, init: RequestInit, token: string): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
@@ -368,6 +388,52 @@ export const api = {
       version_texto: CONSENT_TEXT.version, timestamp: new Date().toISOString(),
       hash: 'sha256:' + Math.random().toString(16).slice(2, 10),
     };
+  },
+
+  /**
+   * Verificación biométrica 1:1 REAL — compara el descriptor 128-d "vivo" contra
+   * la referencia capturada en el enrollment (face-api).
+   *
+   * Real (USE_REAL_BACKEND=1): POST /proctoring/biometria/verificar
+   *   body: { embedding_vivo, embedding_referencia, umbral }
+   *   resp: { distancia (coseno), es_match (distancia < umbral), umbral }
+   *   El backend re-computa la distancia server-side (cliente = sensor no confiable).
+   *
+   * Mock (USE_REAL_BACKEND=0): calcula la distancia coseno LOCALMENTE entre los dos
+   * descriptores reales (face-api corre igual en el cliente). Esto hace que la demo
+   * sin backend distinga de verdad "misma cara" (match) de "otra cara" (no-match).
+   *
+   * DATO SENSIBLE (Ley 25.326): los embeddings NO se loguean.
+   */
+  async verificarBiometria(
+    embeddingVivo: number[],
+    embeddingReferencia: number[],
+    umbral?: number,
+  ): Promise<{ distancia: number; es_match: boolean; umbral: number } | null> {
+    if (USE_REAL_BACKEND) {
+      try {
+        return await realFetch<{ distancia: number; es_match: boolean; umbral: number }>(
+          '/proctoring/biometria/verificar',
+          {
+            method: 'POST',
+            body: JSON.stringify({
+              embedding_vivo: embeddingVivo,
+              embedding_referencia: embeddingReferencia,
+              umbral: umbral ?? null,
+            }),
+          },
+          'demo',
+        );
+      } catch {
+        return null;
+      }
+    }
+
+    // Mock: distancia coseno real entre los descriptores 128-d.
+    await delay(900);
+    const u = umbral ?? 0.35;
+    const distancia = distanciaCoseno(embeddingVivo, embeddingReferencia);
+    return { distancia, es_match: distancia < u, umbral: u };
   },
 
   async verifyIdentity(_sessionId: string, distancia = 0.31): Promise<VerifyIdentityResponse> {

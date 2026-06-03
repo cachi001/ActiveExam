@@ -24,8 +24,9 @@ import { useCallback, useState } from 'react';
 import { Icon, Button, Card } from '../../ui/components';
 import { api, BIOMETRIC_VALIDITY_MONTHS } from '../../lib/api';
 import { Term } from '../../ui/Term';
-import { embeddingFromLandmarks } from '../../vision/MediaPipeVisionEngine';
 import { BiometricCapture } from '../../ui/BiometricCapture';
+import { computeFaceDescriptor } from '../../vision/faceEmbedding';
+import { useApp } from '../../lib/store';
 import type { ReferenciasBiometrica } from '../../lib/types';
 import type { FaceLandmark } from '../../vision/VisionEngine';
 
@@ -58,29 +59,33 @@ export function EnrollmentBiometricStep({ referenciaActual, onCapturada, esRenov
   // ── Estado de UI ────────────────────────────────────────────────────────
   const [fase, setFase]       = useState<Fase>('instrucciones');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [refRegistrada, setRefRegistrada] = useState(false);
+  const setBiometriaReferencia = useApp((s) => s.setBiometriaReferencia);
 
   // ---------------------------------------------------------------------------
-  // Task 8.3: handleComplete — calcular embedding y guardar referencia biométrica
+  // handleComplete — computar el descriptor 128-d REAL (face-api) sobre el frame
+  // capturado y guardarlo como REFERENCIA para la verificación 1:1 posterior.
   // ---------------------------------------------------------------------------
-  const handleComplete = useCallback(async (landmarks: FaceLandmark[]) => {
+  const handleComplete = useCallback(async (_landmarks: FaceLandmark[], frame: HTMLCanvasElement | null) => {
     setFase('procesando');
-
-    // C-36 Task 8.3: embedding real desde landmarks del último frame de BiometricCapture.
-    // NOTA: embeddingFromLandmarks produce 3 × N_landmarks floats (no 128).
-    //       El backend de producción comprimirá vía PCA/capa densa a la dimensión
-    //       canónica. El mock API acepta cualquier longitud.
-    // NOTA: Server-side el embedding real se re-infiere y cifra (RN-BIO-08, C-12).
-    const embeddingReal = embeddingFromLandmarks(landmarks);
+    setRefRegistrada(false);
 
     try {
-      // C-36: ya no tenemos videoRef propio — BiometricCapture gestiona la cámara.
-      // Para la imagen de referencia usamos null (el mock API acepta imagen null).
-      // En producción, BiometricCapture podría exponer una foto del último frame vía ref;
-      // eso se puede agregar en un change posterior sin romper el contrato actual.
+      // Descriptor real de 128-d con face-api sobre el frame del video.
+      // Dato sensible (Ley 25.326): no se loguea.
+      const descriptor = frame ? await computeFaceDescriptor(frame) : null;
+
+      // Persistir la referencia en el enrollment (mock/real) + en el store/localStorage
+      // para la verificación 1:1. El backend re-infiere y cifra server-side (C-12).
       const referencia = await api.guardarReferenciaBiometrica({
         imagen: null,
-        embedding: embeddingReal,
+        embedding: descriptor,
       });
+
+      if (descriptor) {
+        setBiometriaReferencia(descriptor);
+        setRefRegistrada(true);
+      }
 
       setFase('completado');
       onCapturada(referencia);
@@ -89,7 +94,7 @@ export function EnrollmentBiometricStep({ referenciaActual, onCapturada, esRenov
       setErrorMsg(msg);
       setFase('error');
     }
-  }, [onCapturada]);
+  }, [onCapturada, setBiometriaReferencia]);
 
   // ---------------------------------------------------------------------------
   // Task 8.4: cancelarCaptura — vuelve a instrucciones
@@ -110,7 +115,7 @@ export function EnrollmentBiometricStep({ referenciaActual, onCapturada, esRenov
   if (fase === 'capturando') {
     return (
       <BiometricCapture
-        onComplete={(landmarks) => { void handleComplete(landmarks); }}
+        onComplete={(landmarks, frame) => { void handleComplete(landmarks, frame); }}
         onCancel={cancelarCaptura}
         contextLabel="Captura de referencia biométrica"
       />
@@ -184,7 +189,7 @@ export function EnrollmentBiometricStep({ referenciaActual, onCapturada, esRenov
           <div className="text-center space-y-sm text-on-surface-variant">
             <Icon name="progress_activity" className="ae-spin text-primary text-[32px]" />
             <p className="text-body-md">
-              Calculando <Term termKey="embedding">embedding</Term> de referencia con <Term termKey="face_mesh" />…
+              Calculando <Term termKey="embedding">embedding</Term> de referencia (descriptor facial de 128 dimensiones)…
             </p>
             <p className="text-label-sm">Re-inferencia server-side y firma (C-12)</p>
           </div>
@@ -198,6 +203,17 @@ export function EnrollmentBiometricStep({ referenciaActual, onCapturada, esRenov
             <p className="text-label-sm text-on-surface-variant">
               Vigencia: {BIOMETRIC_VALIDITY_MONTHS} meses desde hoy.
             </p>
+            {refRegistrada ? (
+              <p className="inline-flex items-center gap-xs text-label-sm text-success">
+                <Icon name="fingerprint" className="text-[16px]" />
+                Referencia biométrica registrada para la verificación 1:1.
+              </p>
+            ) : (
+              <p className="text-label-sm text-warning">
+                No se pudo extraer el descriptor facial del último frame. Podés reintentar
+                la captura para habilitar la verificación 1:1.
+              </p>
+            )}
           </div>
         )}
 
