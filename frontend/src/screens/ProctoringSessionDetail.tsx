@@ -173,7 +173,7 @@ export default function ProctoringSessionDetail() {
         >
           <Icon name="shield" className="text-[20px] shrink-0 mt-px" fill />
           <div>
-            <p className="font-bold">Sistema L2.5 — Revisión humana obligatoria</p>
+            <p className="font-bold">Revisión humana obligatoria</p>
             <p className="mt-base">
               Este sistema <strong>nunca sanciona automáticamente</strong>.
               El score es un indicador de prioridad para revisión humana.

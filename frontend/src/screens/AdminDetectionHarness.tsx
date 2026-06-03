@@ -1959,7 +1959,7 @@ export default function AdminDetectionHarness() {
         <div className="bg-primary-fixed/40 rounded-xl p-sm text-label-sm text-on-primary-fixed-variant flex items-start gap-base">
           <Icon name="shield" className="text-[18px] shrink-0" fill />
           <span>
-            Herramienta diagnóstica — sin examen real, sin sesión de alumno, sin sanción automática (<Term termKey="l2_5" />).
+            Herramienta diagnóstica — sin examen real, sin sesión de alumno, sin sanción automática (la decisión es siempre humana).
             Los eventos generados aquí NO se almacenan en el backend de producción.
           </span>
         </div>

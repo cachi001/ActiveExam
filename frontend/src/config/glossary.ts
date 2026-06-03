@@ -5,7 +5,6 @@
  */
 
 export type TermKey =
-  | 'l2_5'
   | 'embedding'
   | 'worm'
   | 'liveness'
@@ -26,11 +25,6 @@ export interface GlossaryEntry {
 }
 
 export const GLOSSARY: Record<TermKey, GlossaryEntry> = {
-  l2_5: {
-    label: 'L2.5',
-    definition:
-      'Nivel de supervisión donde el sistema nunca sanciona automáticamente: solo prioriza casos para revisión. La decisión disciplinaria la toma siempre una persona.',
-  },
   embedding: {
     label: 'embedding',
     definition:

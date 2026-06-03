@@ -4,7 +4,6 @@ import { Icon, Card, Stat, Badge, Button, SectionTitle } from '../ui/components'
 import { Link } from '../lib/router';
 import { api } from '../lib/api';
 import { STAFF_NAV } from '../ui/nav';
-import { Term } from '../ui/Term';
 import type { Examen, ResumenReportes } from '../lib/types';
 
 // alias para mantener compatibilidad con las pantallas que ya lo importan
@@ -61,7 +60,7 @@ export default function AdminDashboard() {
             </div>
             <div className="bg-primary-fixed/40 rounded-xl p-sm text-label-sm text-on-primary-fixed-variant flex items-start gap-base mt-md">
               <Icon name="shield" className="text-[18px]" fill />
-              <span>Nivel <Term termKey="l2_5" /></span>
+              <span>Decisión siempre humana</span>
             </div>
           </Card>
         </div>

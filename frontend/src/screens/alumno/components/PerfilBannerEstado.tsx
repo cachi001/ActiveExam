@@ -62,7 +62,7 @@ export function PerfilBannerEstado({
           </p>
           <p className="text-label-sm text-on-surface-variant mt-base">
             Las verificaciones silenciosas detectaron deriva del <Term termKey="embedding" />. Se requiere renovar la referencia.
-            Las rendiciones en curso no se ven afectadas (<Term termKey="l2_5" />).
+            Las rendiciones en curso no se ven afectadas (la decisión es siempre humana).
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={onRenovarBiometria} className="shrink-0 text-label-sm" icon="refresh">
