@@ -22,6 +22,7 @@ import type { SesionProctoringResumen } from '../lib/types';
 import { SesionCard } from './proctoring/SesionCard';
 import { ResumenSesiones } from './proctoring/ResumenSesiones';
 import { ListaSkeleton, ListaVacia } from './proctoring/ListaEstados';
+import { joinExamInfo } from './proctoring/helpers';
 
 const PROCTORING_DETAIL_ROUTE = '/admin/proctoring-session-detail';
 
@@ -71,7 +72,8 @@ export default function ProctoringRevisor() {
               Sesiones de proctoring
             </h1>
             <p className="text-body-md text-on-surface-variant mt-base">
-              Historial de sesiones grabadas desde el harness diagnóstico y exámenes reales.
+              Historial completo de sesiones de proctoring — todas las grabadas, sin filtro.
+              Para revisar solo las de alto riesgo, usá la Cola de revisión.
             </p>
           </div>
           <div className="flex items-center gap-base px-sm py-base rounded-lg bg-primary-fixed/50
@@ -99,7 +101,13 @@ export default function ProctoringRevisor() {
           {!cargando && sesiones.length > 0 && (
             <div className="space-y-sm">
               {sesiones.map((s) => (
-                <SesionCard key={s.id} sesion={s} onAbrir={handleAbrir} onEliminar={setABorrar} />
+                <SesionCard
+                  key={s.id}
+                  sesion={s}
+                  onAbrir={handleAbrir}
+                  onEliminar={setABorrar}
+                  examInfo={joinExamInfo(s.exam_id)}
+                />
               ))}
             </div>
           )}

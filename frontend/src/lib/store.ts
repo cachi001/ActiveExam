@@ -1,7 +1,7 @@
 // Estado de sesión de la demo, compartido entre pantallas (rol activo, examen
 // seleccionado, anomalías generadas durante el examen que el panel del proctor refleja).
 import { create } from 'zustand';
-import type { Principal, Rol, EventoSesion, Examen, SesionRevision, EstadoEnrollment } from './types';
+import type { Principal, Rol, EventoSesion, Examen, SesionRevision, EstadoEnrollment, DecisionRevisor } from './types';
 
 /** Clave de localStorage para la referencia biométrica 128-d (demo). */
 const BIO_REF_KEY = 'activeexam_bio_ref';
@@ -52,6 +52,18 @@ interface AppState {
   proctoringSessionId: string | null;
 
   // ---------------------------------------------------------------------------
+  // Decisiones humanas del revisor sobre la cola de revisión — C-47
+  // ---------------------------------------------------------------------------
+  /**
+   * Mapa sessionId → decisión humana del revisor. El sistema nunca sanciona:
+   * el score solo prioriza; la decisión disciplinaria es siempre humana.
+   *
+   * Registro local de la demo (el backend slim no tiene tabla de decisiones).
+   * Valor inicial: {} (sin decisiones registradas).
+   */
+  decisionesRevisor: Record<string, DecisionRevisor>;
+
+  // ---------------------------------------------------------------------------
   // Referencia biométrica REAL para verificación 1:1 — face-api 128-d
   // ---------------------------------------------------------------------------
   /**
@@ -83,6 +95,8 @@ interface AppState {
   setFotoPerfil: (dataUrl: string) => void;
   /** C-46: setea el ID de la sesión de proctoring activa (o null para limpiarla). */
   setProctoringSessionId: (id: string | null) => void;
+  /** C-47: registra la decisión humana del revisor sobre una sesión de la cola. */
+  setDecisionRevisor: (id: string, decision: DecisionRevisor) => void;
   /** Setea el descriptor 128-d de referencia para la verificación 1:1 (face-api). */
   setBiometriaReferencia: (embedding: number[] | null) => void;
 }
@@ -97,6 +111,7 @@ export const useApp = create<AppState>((set) => ({
   enrollmentStatus: null,
   isProfileComplete: false,
   proctoringSessionId: null,
+  decisionesRevisor: {},
   biometriaReferencia: leerReferenciaBiometrica(),
 
   setPrincipal: (principal, rol) => set({ principal, rol }),
@@ -110,6 +125,8 @@ export const useApp = create<AppState>((set) => ({
     principal: s.principal ? { ...s.principal, foto_perfil: dataUrl } : s.principal,
   })),
   setProctoringSessionId: (id) => set({ proctoringSessionId: id }),
+  setDecisionRevisor: (id, decision) =>
+    set((s) => ({ decisionesRevisor: { ...s.decisionesRevisor, [id]: decision } })),
   setBiometriaReferencia: (embedding) => {
     try {
       if (embedding && embedding.length > 0) {

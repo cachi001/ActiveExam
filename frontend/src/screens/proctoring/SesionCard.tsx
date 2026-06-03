@@ -15,16 +15,19 @@ import {
   scoreTextColor,
   modoBadgeTone,
   modoLabel,
+  type ExamInfo,
 } from './helpers';
 
 export function SesionCard({
   sesion,
   onAbrir,
   onEliminar,
+  examInfo,
 }: {
   sesion: SesionProctoringResumen;
   onAbrir: (sesion: SesionProctoringResumen) => void;
   onEliminar: (sesion: SesionProctoringResumen) => void;
+  examInfo?: ExamInfo | null;
 }) {
   return (
     <div
@@ -52,6 +55,11 @@ export function SesionCard({
             </h3>
             <Badge tone={modoBadgeTone(sesion.modo)}>{modoLabel(sesion.modo)}</Badge>
           </div>
+          {examInfo && (
+            <p className="text-label-sm text-on-surface-variant mt-base truncate">
+              {examInfo.materiaNombre} · {examInfo.comisionNombre}
+            </p>
+          )}
           <p
             className="flex items-center gap-base text-label-sm text-on-surface-variant mt-base"
             title={formatFecha(sesion.creada_en, true)}

@@ -1,39 +1,104 @@
-import { useEffect, useState } from 'react';
+/**
+ * Revisor — Cola de revisión humana (conectada al backend slim).
+ *
+ * Ruta: /revisor. Lista las sesiones de proctoring REALES
+ * (api.listarSesionesProctoring(), dual real/mock) filtradas por ALTO RIESGO
+ * (score ≥ UMBRAL_COLA_REVISION) y priorizadas para decisión humana. Cada ítem
+ * se enriquece con el contexto académico (materia/comisión/docente) joineado
+ * desde el catálogo local via exam_id.
+ *
+ * El sistema NUNCA sanciona automáticamente: el score solo prioriza para revisión.
+ * La decisión disciplinaria es siempre del revisor humano; la plataforma registra
+ * esa decisión localmente (el backend slim no tiene tabla de decisiones).
+ * Ley 25.326: la cola no lista screenshots; el detalle sensible vive en
+ * ProctoringSessionDetail.
+ */
+import { useEffect, useMemo, useState } from 'react';
 import { StaffShell } from '../ui/shells';
-import { Icon, Card, Avatar, Badge, SeverityBadge, SectionTitle } from '../ui/components';
-import { api, TIPO_EVENTO_LABEL } from '../lib/api';
+import { Icon, Card, Badge, Button, SectionTitle } from '../ui/components';
+import { api } from '../lib/api';
 import { useApp } from '../lib/store';
 import { useNavigate } from '../lib/router';
 import { STAFF_NAV } from '../ui/nav';
 import { useToast } from '../ui/toast';
-import { Term } from '../ui/Term';
-import type { SesionRevision } from '../lib/types';
-import { INSTITUTION } from '../config/institution';
-import { ReviewQueueItem } from './admin/components/ReviewQueueItem';
-import { ReviewDecisionPanel } from './admin/components/ReviewDecisionPanel';
+import type { SesionProctoringResumen, DecisionRevisor } from '../lib/types';
+import {
+  joinExamInfo,
+  scoreTextColor,
+  formatFechaRelativa,
+  type ExamInfo,
+} from './proctoring/helpers';
 
 export const REVISOR_NAV = STAFF_NAV;
 
+/** Score mínimo para que una sesión aparezca en la cola de revisión priorizada. */
+const UMBRAL_COLA_REVISION = 60;
+const PROCTORING_DETAIL_ROUTE = '/admin/proctoring-session-detail';
+
+/** Etiqueta legible de cada decisión humana (para el toast de confirmación). */
+const DECISION_LABEL: Record<DecisionRevisor, string> = {
+  sin_hallazgos: 'Sin hallazgos',
+  aprobado: 'Aprobado con observación',
+  flaggeado_para_sumario: 'Flaggeado para sumario',
+  pendiente: 'Pendiente',
+};
+
+/** Ordena por score desc (mayor riesgo primero); desempata por más discrepancias. */
+function ordenarPorRiesgo(sesiones: SesionProctoringResumen[]): SesionProctoringResumen[] {
+  return [...sesiones].sort(
+    (a, b) => b.score - a.score || b.total_discrepancias - a.total_discrepancias,
+  );
+}
+
 export default function Revisor() {
-  const [cola, setCola] = useState<SesionRevision[]>([]);
-  const [sel, setSel] = useState<SesionRevision | null>(null);
-  const setRevision = useApp((s) => s.setRevisionSeleccionada);
   const navigate = useNavigate();
   const toast = useToast();
+  const setProctoringSessionId = useApp((s) => s.setProctoringSessionId);
+  const setDecisionRevisor = useApp((s) => s.setDecisionRevisor);
 
-  const cargar = () => api.reviewQueue().then((q) => { setCola(q); setSel((cur) => cur ?? q[0] ?? null); });
-  useEffect(() => { cargar(); }, []);
+  const [cola, setCola] = useState<SesionProctoringResumen[]>([]);
+  const [selId, setSelId] = useState<string | null>(null);
+  const [cargando, setCargando] = useState(true);
 
-  const resolver = async (decision: SesionRevision['decision'], etiqueta: string) => {
+  useEffect(() => {
+    setCargando(true);
+    api
+      .listarSesionesProctoring()
+      .then((data) => {
+        const altoRiesgo = ordenarPorRiesgo(
+          data.filter((s) => s.score >= UMBRAL_COLA_REVISION),
+        );
+        setCola(altoRiesgo);
+        setSelId((cur) => cur ?? altoRiesgo[0]?.id ?? null);
+      })
+      .catch(() => setCola([]))
+      .finally(() => setCargando(false));
+  }, []);
+
+  const sel = useMemo(() => cola.find((s) => s.id === selId) ?? null, [cola, selId]);
+  const examInfo = useMemo<ExamInfo | null>(
+    () => (sel ? joinExamInfo(sel.exam_id) : null),
+    [sel],
+  );
+
+  const resolver = (decision: DecisionRevisor) => {
     if (!sel) return;
-    await api.resolveReview(sel.id, decision);
-    toast.success(`Sesión de ${sel.estudiante}: ${etiqueta}. Registrado en el audit log inmutable.`);
-    const restantes = cola.filter((q) => q.id !== sel.id);
-    setCola(restantes); setSel(restantes[0] ?? null);
+    setDecisionRevisor(sel.id, decision);
+    toast.success(
+      `Decisión registrada: ${DECISION_LABEL[decision]}. El score prioriza; el revisor decide.`,
+    );
+    const restantes = cola.filter((s) => s.id !== sel.id);
+    setCola(restantes);
+    setSelId(restantes[0]?.id ?? null);
+  };
+
+  const verDetalle = (sesion: SesionProctoringResumen) => {
+    setProctoringSessionId(sesion.id);
+    navigate(PROCTORING_DETAIL_ROUTE);
   };
 
   return (
-    <StaffShell nav={REVISOR_NAV} title="Revisión académica">
+    <StaffShell nav={REVISOR_NAV} title="Cola de revisión">
       <div className="space-y-lg animate-in fade-in duration-500">
         {/* Header */}
         <div className="flex items-start justify-between gap-md flex-wrap">
@@ -42,7 +107,8 @@ export default function Revisor() {
               Cola de revisión humana
             </h1>
             <p className="text-body-md text-on-surface-variant mt-base">
-              Sesiones priorizadas por score. El sistema nunca sanciona: la decisión es siempre tuya.
+              Sesiones de alto riesgo (score ≥ {UMBRAL_COLA_REVISION}) priorizadas para
+              revisión. El sistema nunca sanciona: la decisión es siempre tuya.
             </p>
           </div>
           <div className="flex items-center gap-base px-sm py-base rounded-lg bg-primary-fixed/50
@@ -53,136 +119,199 @@ export default function Revisor() {
         </div>
 
         <div className="grid lg:grid-cols-3 gap-lg">
-        {/* Cola */}
-        <Card className="space-y-base">
-          <SectionTitle action={<Badge tone="error" dot>{cola.length} pendientes</Badge>}>Cola de sesiones</SectionTitle>
-          {cola.length === 0 && (
-            <div className="text-center py-xl text-on-surface-variant space-y-base">
-              <Icon name="inbox" className="text-[40px]" />
-              <p className="text-label-md">¡Cola vacía! No hay sesiones flaggeadas pendientes.</p>
-            </div>
-          )}
-          {cola.map((s) => (
-            <ReviewQueueItem key={s.id} sesion={s} selected={sel?.id === s.id} onClick={() => setSel(s)} />
-          ))}
-        </Card>
+          {/* Cola */}
+          <Card className="space-y-base">
+            <SectionTitle action={<Badge tone="error" dot>{cola.length} pendientes</Badge>}>
+              Cola de sesiones
+            </SectionTitle>
 
-        {/* Detalle + decisión */}
-        <div className="lg:col-span-2">
-          {sel ? (
-            <Card className="space-y-lg">
-              <div className="flex items-center justify-between border-b border-outline-variant/40 pb-md">
-                <div className="flex items-center gap-sm">
-                  <Avatar src={sel.foto} alt={sel.estudiante} size={56} />
-                  <div>
-                    <h2 className="font-headline text-headline-md text-on-surface">{sel.estudiante}</h2>
-                    <p className="text-label-sm text-on-surface-variant">{INSTITUTION.nombreCorto} · {sel.examen} · {sel.duracion}</p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className="text-label-sm uppercase tracking-wide text-on-surface-variant">ID sesión</p>
-                  <p className="font-mono text-label-md font-bold text-on-surface">{sel.id}</p>
-                </div>
+            {cargando && (
+              <div className="text-center py-xl text-on-surface-variant">
+                <Icon name="hourglass_empty" className="text-[32px] animate-pulse" />
+                <p className="text-label-md mt-base">Cargando cola…</p>
               </div>
+            )}
 
-              <div className="grid md:grid-cols-2 gap-lg">
-                <div className="space-y-sm">
-                  <SectionTitle sub={`${sel.eventos.length} incidencias`}>Línea de tiempo de anomalías</SectionTitle>
-                  {/* task 8.1: p-md en cada item; tasks 8.2–8.3: agrupación de ≥5 consecutivos del mismo tipo */}
-                  {groupConsecutiveEvents(sel.eventos).map((group) => {
-                    const ev = group.first;
-                    const isGrouped = group.count >= 5;
-                    return (
-                      <div key={ev.id} className="flex gap-sm p-md rounded-xl bg-surface-container-low border border-outline-variant/40">
-                        <Icon name="warning" className="text-warning shrink-0 text-[18px]" fill />
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center justify-between gap-base flex-wrap">
-                            <div className="flex items-center gap-sm flex-wrap">
-                              <span className="text-label-md font-semibold text-on-surface">{TIPO_EVENTO_LABEL[ev.tipo]}</span>
-                              {isGrouped && (
-                                <span className="inline-flex items-center gap-base px-sm py-base rounded-full bg-warning-container text-warning text-label-sm font-bold border border-warning/30">
-                                  {group.count} veces
-                                </span>
-                              )}
-                            </div>
-                            <SeverityBadge severidad={ev.severidad} />
-                          </div>
-                          <p className="text-label-sm text-on-surface-variant mt-base">{new Date(ev.ts_backend).toLocaleTimeString('es-AR')}</p>
-                          {ev.tiene_evidencia && <code className="text-[10px] font-mono text-primary bg-primary-fixed px-base rounded">{ev.evidencia_object_key}</code>}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                <div className="space-y-sm">
-                  <SectionTitle>Evidencia y <Term termKey="cadena_de_custodia">cadena de custodia</Term></SectionTitle>
-                  <div className="relative aspect-video bg-inverse-surface rounded-xl overflow-hidden flex items-center justify-center">
-                    <img src={sel.foto} alt="evidencia" className="absolute inset-0 w-full h-full object-cover opacity-30 blur-[2px]" />
-                    <button className="relative z-10 w-12 h-12 rounded-full bg-white/15 backdrop-blur ring-2 ring-white/30 flex items-center justify-center text-white hover:bg-white/25">
-                      <Icon name="play_arrow" className="text-[28px]" fill />
-                    </button>
-                  </div>
-                  <div className="bg-surface-container-low rounded-xl p-sm space-y-base text-label-sm">
-                    <Custodia label="Hash de custodia (cliente)" value={sel.cadena_custodia.hash_cliente} ok />
-                    <Custodia label="Re-hash server (FastAPI)" value={sel.cadena_custodia.rehash_backend} ok={sel.cadena_custodia.coincide} />
-                    <div className="flex justify-between">
-                      <span className="text-on-surface-variant">Firma maestra ({sel.cadena_custodia.algoritmo_firma})</span>
-                      <span className="text-success font-semibold inline-flex items-center gap-base"><Icon name="verified" className="text-[16px]" fill /> Firmada</span>
-                    </div>
-                  </div>
-                </div>
+            {!cargando && cola.length === 0 && (
+              <div className="text-center py-xl text-on-surface-variant space-y-base">
+                <Icon name="inbox" className="text-[40px]" />
+                <p className="text-label-md">
+                  ¡Cola limpia! No hay sesiones con score ≥ {UMBRAL_COLA_REVISION} pendientes
+                  de revisión.
+                </p>
               </div>
+            )}
 
-              <ReviewDecisionPanel sesion={sel} onResolver={resolver} onVerDetalle={() => { setRevision(sel); navigate('/revisor/detalle'); }} />
-            </Card>
-          ) : (
-            <Card className="text-center py-xl space-y-base">
-              <Icon name="task_alt" className="text-success text-[48px]" fill />
-              <h3 className="font-headline text-title-lg text-on-surface">¡Cola vacía!</h3>
-              <p className="text-body-md text-on-surface-variant">No hay más sesiones flaggeadas pendientes de revisión.</p>
-            </Card>
-          )}
-        </div>
+            {!cargando &&
+              cola.map((s) => (
+                <ColaItem
+                  key={s.id}
+                  sesion={s}
+                  examInfo={joinExamInfo(s.exam_id)}
+                  selected={selId === s.id}
+                  onClick={() => setSelId(s.id)}
+                />
+              ))}
+          </Card>
+
+          {/* Detalle + decisión */}
+          <div className="lg:col-span-2">
+            {sel ? (
+              <ColaPanelDecision
+                sesion={sel}
+                examInfo={examInfo}
+                onResolver={resolver}
+                onVerDetalle={() => verDetalle(sel)}
+              />
+            ) : (
+              <Card className="text-center py-xl space-y-base">
+                <Icon name="task_alt" className="text-success text-[48px]" fill />
+                <h3 className="font-headline text-title-lg text-on-surface">¡Cola limpia!</h3>
+                <p className="text-body-md text-on-surface-variant">
+                  No hay sesiones de alto riesgo pendientes de revisión.
+                </p>
+              </Card>
+            )}
+          </div>
         </div>
       </div>
     </StaffShell>
   );
 }
 
-function Custodia({ label, value, ok }: { label: string; value: string; ok: boolean }) {
+/** Ítem de la cola lateral: score, eventos, contexto académico (si lo hay). */
+function ColaItem({
+  sesion,
+  examInfo,
+  selected,
+  onClick,
+}: {
+  sesion: SesionProctoringResumen;
+  examInfo: ExamInfo | null;
+  selected: boolean;
+  onClick: () => void;
+}) {
   return (
-    <div className="flex justify-between items-center">
-      <span className="text-on-surface-variant">{label}</span>
-      <span className="inline-flex items-center gap-base font-mono text-on-surface">
-        {value} <Icon name={ok ? 'check_circle' : 'error'} className={`text-[14px] ${ok ? 'text-success' : 'text-error'}`} fill />
-      </span>
-    </div>
+    <button
+      type="button"
+      onClick={onClick}
+      className={`w-full text-left p-sm rounded-xl border transition-all ${
+        selected
+          ? 'bg-primary-fixed/40 border-primary-container'
+          : 'border-outline-variant/40 hover:bg-surface-container-low'
+      }`}
+    >
+      <div className="flex items-center justify-between gap-base">
+        <span className="text-label-md font-semibold text-on-surface truncate">
+          {sesion.etiqueta?.trim() || 'Sesión sin etiqueta'}
+        </span>
+        <Badge tone="error">Score {sesion.score}</Badge>
+      </div>
+      {examInfo && (
+        <p className="text-label-sm text-on-surface-variant truncate">
+          {examInfo.materiaNombre} · {examInfo.comisionNombre}
+        </p>
+      )}
+      <p className="text-label-sm text-on-surface-variant mt-base">
+        {sesion.id} · {sesion.total_eventos} eventos · {sesion.total_discrepancias} discrepancias
+      </p>
+    </button>
   );
 }
 
-/**
- * task 8.2–8.3: Agrupa eventos CONSECUTIVOS del mismo tipo cuando hay ≥5 seguidos.
- * Solo agrupa consecutivos, no todos los del mismo tipo en la sesión.
- */
-interface EventGroup {
-  first: SesionRevision['eventos'][number];
-  count: number;
+/** Panel de detalle + decisión humana de la sesión seleccionada. */
+function ColaPanelDecision({
+  sesion,
+  examInfo,
+  onResolver,
+  onVerDetalle,
+}: {
+  sesion: SesionProctoringResumen;
+  examInfo: ExamInfo | null;
+  onResolver: (decision: DecisionRevisor) => void;
+  onVerDetalle: () => void;
+}) {
+  return (
+    <Card className="space-y-lg">
+      {/* Encabezado de la sesión */}
+      <div className="flex items-start justify-between border-b border-outline-variant/40 pb-md gap-md flex-wrap">
+        <div className="min-w-0">
+          <h2 className="font-headline text-headline-md text-on-surface truncate">
+            {sesion.etiqueta?.trim() || 'Sesión sin etiqueta'}
+          </h2>
+          {examInfo ? (
+            <p className="text-label-sm text-on-surface-variant mt-base">
+              {examInfo.examNombre} · {examInfo.comisionNombre} · {examInfo.docente}
+            </p>
+          ) : (
+            <p className="text-label-sm text-on-surface-variant mt-base">
+              Sesión sin examen del catálogo asociado
+            </p>
+          )}
+        </div>
+        <div className="text-right shrink-0">
+          <p className="text-label-sm uppercase tracking-wide text-on-surface-variant">ID sesión</p>
+          <p className="font-mono text-label-md font-bold text-on-surface">{sesion.id}</p>
+        </div>
+      </div>
+
+      {/* Métricas de priorización */}
+      <div className="grid grid-cols-3 gap-sm">
+        <Metrica label="Score" valor={String(sesion.score)} clase={scoreTextColor(sesion.score)} />
+        <Metrica label="Eventos" valor={String(sesion.total_eventos)} />
+        <Metrica
+          label="Discrepancias"
+          valor={String(sesion.total_discrepancias)}
+          clase={sesion.total_discrepancias > 0 ? 'text-error' : 'text-on-surface'}
+        />
+      </div>
+
+      <p className="text-label-sm text-on-surface-variant inline-flex items-center gap-base">
+        <Icon name="schedule" className="text-[15px]" />
+        {formatFechaRelativa(sesion.creada_en)}
+      </p>
+
+      {/* Link al detalle completo (evidencia + cadena de custodia real) */}
+      <button
+        type="button"
+        onClick={onVerDetalle}
+        className="inline-flex items-center gap-base text-label-md font-semibold text-primary
+          hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
+      >
+        Ver detalle completo
+        <Icon name="arrow_forward" className="text-[18px]" />
+      </button>
+
+      {/* Decisión humana */}
+      <div className="border-t border-outline-variant/40 pt-md space-y-md">
+        <SectionTitle sub="El sistema nunca sanciona. La decisión es tuya.">
+          Resolución del revisor
+        </SectionTitle>
+        <div className="flex flex-wrap gap-sm">
+          <Button variant="outline" icon="done" onClick={() => onResolver('sin_hallazgos')}>
+            Sin hallazgos
+          </Button>
+          <Button variant="secondary" icon="flag" onClick={() => onResolver('aprobado')}>
+            Aprobar con observación
+          </Button>
+          <Button variant="danger" icon="gavel" onClick={() => onResolver('flaggeado_para_sumario')}>
+            Flaggear para sumario
+          </Button>
+        </div>
+        <p className="text-label-sm text-on-surface-variant">
+          La decisión disciplinaria es siempre humana; la plataforma solo la registra. El score
+          prioriza la cola, no emite veredicto.
+        </p>
+      </div>
+    </Card>
+  );
 }
 
-function groupConsecutiveEvents(eventos: SesionRevision['eventos']): EventGroup[] {
-  if (eventos.length === 0) return [];
-  const groups: EventGroup[] = [];
-  let current: EventGroup = { first: eventos[0], count: 1 };
-
-  for (let i = 1; i < eventos.length; i++) {
-    if (eventos[i].tipo === current.first.tipo) {
-      current.count++;
-    } else {
-      groups.push(current);
-      current = { first: eventos[i], count: 1 };
-    }
-  }
-  groups.push(current);
-  return groups;
+function Metrica({ label, valor, clase = 'text-on-surface' }: { label: string; valor: string; clase?: string }) {
+  return (
+    <div className="rounded-xl bg-surface-container-low border border-outline-variant/40 p-sm text-center">
+      <p className="text-label-sm uppercase tracking-wide text-on-surface-variant">{label}</p>
+      <p className={`font-headline text-title-lg font-bold ${clase}`}>{valor}</p>
+    </div>
+  );
 }

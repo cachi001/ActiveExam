@@ -13,7 +13,7 @@
  * sesión abre su detalle para la decisión humana asíncrona.
  * Ley 25.326: este panel solo lista metadatos agregados; no toca screenshots.
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StaffShell } from '../ui/shells';
 import { Card, Button, Icon, SectionTitle } from '../ui/components';
 import { STAFF_NAV } from '../ui/nav';
@@ -26,6 +26,7 @@ import { SesionVivoCard } from './proctoring/SesionVivoCard';
 import { ResumenVivo } from './proctoring/ResumenVivo';
 import { ListaSkeleton, ListaVaciaVivo } from './proctoring/ListaEstados';
 import { IndicadorVivo } from './proctoring/IndicadorVivo';
+import { joinExamInfo } from './proctoring/helpers';
 
 export const PROCTOR_NAV = STAFF_NAV;
 
@@ -87,6 +88,19 @@ export default function Proctor() {
     navigate(PROCTORING_DETAIL_ROUTE);
   };
 
+  // Particiona por modo: exámenes en curso (prioridad), diagnóstico/harness y otras.
+  const { examen, diagnostico, otras } = useMemo(() => {
+    const examen: SesionProctoringResumen[] = [];
+    const diagnostico: SesionProctoringResumen[] = [];
+    const otras: SesionProctoringResumen[] = [];
+    for (const s of sesiones) {
+      if (s.modo === 'examen') examen.push(s);
+      else if (s.modo === 'diagnostico') diagnostico.push(s);
+      else otras.push(s);
+    }
+    return { examen, diagnostico, otras };
+  }, [sesiones]);
+
   return (
     <StaffShell nav={PROCTOR_NAV} title="Supervisión en vivo">
       <div className="space-y-lg animate-in fade-in duration-500">
@@ -97,8 +111,8 @@ export default function Proctor() {
               Supervisión en vivo
             </h1>
             <p className="text-body-md text-on-surface-variant mt-base">
-              Sesiones de proctoring activas, ordenadas por riesgo. El score prioriza
-              para revisión humana; nunca sanciona.
+              Monitoreo en tiempo real. Los exámenes en curso se muestran primero. El score
+              prioriza para revisión humana; nunca sanciona.
             </p>
           </div>
           <div className="flex items-center gap-sm">
@@ -118,8 +132,8 @@ export default function Proctor() {
         {/* Resumen agregado del lote actual */}
         {!cargaInicial && sesiones.length > 0 && <ResumenVivo sesiones={sesiones} />}
 
-        {/* Lista de sesiones en vivo */}
-        <Card className="space-y-md">
+        {/* Mural de monitoreo: secciones diferenciadas por modo */}
+        <Card className="space-y-lg">
           <SectionTitle
             sub={
               cargaInicial
@@ -141,10 +155,52 @@ export default function Proctor() {
           {!cargaInicial && sesiones.length === 0 && <ListaVaciaVivo />}
 
           {!cargaInicial && sesiones.length > 0 && (
-            <div className="space-y-sm">
-              {sesiones.map((s) => (
-                <SesionVivoCard key={s.id} sesion={s} onAbrir={handleAbrir} />
-              ))}
+            <div className="space-y-lg">
+              {examen.length > 0 && (
+                <section className="space-y-sm">
+                  <SectionTitle
+                    sub={`${examen.length} examen${examen.length !== 1 ? 'es' : ''} activo${examen.length !== 1 ? 's' : ''}`}
+                    action={
+                      <span className="inline-flex items-center gap-base text-label-sm font-semibold text-success">
+                        <span className="w-2 h-2 rounded-full bg-success animate-pulse" />
+                        en curso
+                      </span>
+                    }
+                  >
+                    Exámenes en curso
+                  </SectionTitle>
+                  {examen.map((s) => (
+                    <SesionVivoCard
+                      key={s.id}
+                      sesion={s}
+                      onAbrir={handleAbrir}
+                      examInfo={joinExamInfo(s.exam_id)}
+                    />
+                  ))}
+                </section>
+              )}
+
+              {diagnostico.length > 0 && (
+                <section className="space-y-sm">
+                  <SectionTitle sub={`${diagnostico.length} sesión${diagnostico.length !== 1 ? 'es' : ''} de prueba`}>
+                    Diagnóstico / harness
+                  </SectionTitle>
+                  {diagnostico.map((s) => (
+                    <SesionVivoCard key={s.id} sesion={s} onAbrir={handleAbrir} />
+                  ))}
+                </section>
+              )}
+
+              {otras.length > 0 && (
+                <section className="space-y-sm">
+                  <SectionTitle sub={`${otras.length} sesión${otras.length !== 1 ? 'es' : ''}`}>
+                    Otras
+                  </SectionTitle>
+                  {otras.map((s) => (
+                    <SesionVivoCard key={s.id} sesion={s} onAbrir={handleAbrir} />
+                  ))}
+                </section>
+              )}
             </div>
           )}
         </Card>

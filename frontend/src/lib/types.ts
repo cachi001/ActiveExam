@@ -338,7 +338,25 @@ export interface SesionProctoringResumen {
   total_eventos: number;
   total_discrepancias: number;
   score: number;
+  /**
+   * ID del examen del catálogo académico al que pertenece la sesión (opcional).
+   * Permite joinear materia/comisión/docente desde el catálogo local.
+   * Aditivo: las sesiones de harness sin examen real lo dejan null/undefined.
+   */
+  exam_id?: string | null;
 }
+
+/**
+ * Decisión humana de un revisor sobre una sesión de la cola de revisión.
+ *
+ * El sistema nunca sanciona automáticamente: el score solo prioriza para revisión.
+ * La decisión disciplinaria es siempre del revisor humano; la plataforma la registra.
+ */
+export type DecisionRevisor =
+  | 'aprobado'
+  | 'flaggeado_para_sumario'
+  | 'sin_hallazgos'
+  | 'pendiente';
 
 /**
  * Detalle completo de una sesión de proctoring (para la vista de revisión).
