@@ -17,6 +17,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { StaffShell } from '../ui/shells';
 import { Icon, Card, Button, Badge, SeverityBadge, SectionTitle } from '../ui/components';
+import { useToast } from '../ui/toast';
 import { STAFF_NAV } from '../ui/nav';
 import { useApp } from '../lib/store';
 import { SEVERIDAD_LABEL, TIPO_EVENTO_LABEL, api } from '../lib/api';
@@ -316,8 +317,8 @@ export default function AdminDetectionHarness() {
   const [configDraft, setConfigDraft] = useState<TransitionConfig>({ ...DEFAULT_CONFIG });
   const [configErrors, setConfigErrors] = useState<ConfigErrors>({});
 
-  // ------ Toast ------
-  const [toast, setToast] = useState<string | null>(null);
+  // ------ Toast global (sistema reusable) ------
+  const toast = useToast();
 
   // ------ Modo sesión vs modo test ------
   const [modoSesion, setModoSesion] = useState(false);
@@ -354,12 +355,6 @@ export default function AdminDetectionHarness() {
   // Ref del estado del store para detectar overflow sin capturar en closure
   const anomaliasLengthRef = useRef(anomaliasVivo.length);
   useEffect(() => { anomaliasLengthRef.current = anomaliasVivo.length; }, [anomaliasVivo]);
-
-  // ------ Toast helper ------
-  const showToast = useCallback((msg: string) => {
-    setToast(msg);
-    setTimeout(() => setToast(null), 3500);
-  }, []);
 
   // ------ Elapsado para "Sin eventos aún" ------
   useEffect(() => {
@@ -755,10 +750,10 @@ export default function AdminDetectionHarness() {
 
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      showToast(`Error al iniciar: ${msg}`);
+      toast.error(`Error al iniciar: ${msg}`);
       setHarnessState('idle');
     }
-  }, [harnessState, config, createSink, createPipeline, showToast]);
+  }, [harnessState, config, createSink, createPipeline, toast]);
 
   // ------ Detener harness ------
   const stopHarness = useCallback(async () => {
@@ -881,7 +876,8 @@ export default function AdminDetectionHarness() {
   const exportLog = useCallback(() => {
     const events = logEntries.map((e) => e.event);
     if (events.length === 0) {
-      showToast('El log está vacío — no hay eventos para exportar.');
+      toast.info('El log está vacío — no hay eventos para exportar.');
+      return;
     }
     const data = {
       session_start_ts: new Date(sessionStart).toISOString(),
@@ -895,7 +891,7 @@ export default function AdminDetectionHarness() {
     a.download = `detection-harness-log-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
     a.click();
     URL.revokeObjectURL(url);
-  }, [logEntries, sessionStart, config, showToast]);
+  }, [logEntries, sessionStart, config, toast]);
 
   // ------ Entries filtradas ------
   const filteredEntries = logEntries.filter((e) => severityFilter.has(e.event.severidad as Severidad));
@@ -1964,13 +1960,6 @@ export default function AdminDetectionHarness() {
           </span>
         </div>
       </div>
-
-      {/* Toast (task 8.2) */}
-      {toast && (
-        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-[110] bg-inverse-surface text-inverse-on-surface px-lg py-sm rounded-xl shadow-card-lg text-label-md animate-in fade-in slide-in-from-bottom-4">
-          {toast}
-        </div>
-      )}
     </StaffShell>
   );
 }

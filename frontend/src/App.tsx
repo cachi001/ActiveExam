@@ -1,5 +1,6 @@
 import { RouterProvider, Routes } from './lib/router';
 import { ScreenNavigator } from './ui/ScreenNavigator';
+import { ToastProvider, Toaster } from './ui/toast';
 import { DEV_TOOLS_ENABLED } from './lib/devConfig';
 import Login from './screens/Login';
 import EquipmentCheck from './screens/EquipmentCheck';
@@ -63,9 +64,12 @@ export default function App() {
   };
 
   return (
-    <RouterProvider>
-      <Routes routes={routes} fallback={<Login />} />
-      {DEV_TOOLS_ENABLED && <ScreenNavigator />}
-    </RouterProvider>
+    <ToastProvider>
+      <RouterProvider>
+        <Routes routes={routes} fallback={<Login />} />
+        {DEV_TOOLS_ENABLED && <ScreenNavigator />}
+      </RouterProvider>
+      <Toaster />
+    </ToastProvider>
   );
 }
