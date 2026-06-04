@@ -12,6 +12,8 @@ el backplane los decide C-03 (detras de puerto). L2.5: solo transporta/persiste.
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import (
     APIRouter,
     Depends,
@@ -85,7 +87,14 @@ async def student_channel(websocket: WebSocket) -> None:
                 await websocket.send_json(ack)
         except WebSocketDisconnect:
             return
-        except Exception:
+        except Exception as exc:
+            # Antes tragaba el error en silencio: imposible diagnosticar por qué se
+            # cerraba el WS (firma inválida, sesión sin clave, evento malformado...).
+            logging.getLogger(__name__).warning(
+                "WS canal: error procesando mensaje del estudiante (%s): %s",
+                type(exc).__name__,
+                exc,
+            )
             await session.rollback()
             await websocket.close(code=status.WS_1011_INTERNAL_ERROR)
             return

@@ -51,7 +51,7 @@
 > **Esfuerzo**: M. **Objetivo**: construir los generadores de carga descartables calibrados contra el capacity model. Todo el código vive en `poc/` y NO se promueve a producción.
 
 - [x] 4.1 Crear `poc/k6/seed.py`: crea N sesiones con clave HMAC conocida en la DB; Done: crea sesiones y las lista por stdout — **VERIFICADO en vivo**: crea usuario+examen+N sesiones (estado 'activa', `clave_sesion` hex), `--sessions 5` → 5 filas en `sesion` + JSON consumible por stdout. Requiere `alembic upgrade 0004` (esquema prod) y `MSYS_NO_PATHCONV=1` para `docker cp` en Windows
-- [~] 4.2 Crear `poc/k6/students.js`: VU que abre WS, heartbeat firmado HMAC cada 5 s + eventos normales; Done: corre con `k6 run` — **ESCRITO** (JWT HS256 inline + firma del mensaje canónico exacto `id|session_id|exam_id|tipo|severidad|ts_client|schema_version`). ⚠️ NO verificado corriendo: **k6 no está instalado** (gap de entorno para B5)
+- [x] 4.2 Crear `poc/k6/students.js`: VU que abre WS, heartbeat firmado HMAC cada 5 s + eventos normales; Done: corre con `k6 run` — **VERIFICADO** corriendo k6 en Docker (`grafana/k6` en la red `proctoring_proctoring`, sin instalar k6 en el host): JWT HS256 + firma HMAC válidos, **poc_ack_ok 100% (132/132)**. Destapó y se corrigió un bug de prod (timestamp_cliente, ver 5.1)
 - [x] 4.3 Crear `poc/k6/evidence.js`: VU que encola evidencia sintética para re-inferencia; Done: `job_queue_depth > 0` — **RESUELTO + VERIFICADO**. **DECISIÓN DE DISEÑO**: en vez del endpoint real `/evidence/notify` (re-descarga WORM + valida firma + encola en cola de prod, pesado), se creó un endpoint PoC de encolado directo `POST /poc/enqueue` (panel_router.py) que inserta en `poc_job_queue` — aísla la medición del concern (a). `PocPostgresQueue` migrada a **pool asyncpg** (enqueue concurrente del barrido). Verificado en vivo: 3 POST → `depth` 1→2→3 → worker `--drain` → 3 procesados → count 0. ⚠️ `evidence.js` escrito; correr con k6 = B5 (no instalado)
 - [x] 4.4 Crear `poc/panels_asyncio.py`: N=20–40 conexiones SSE a `/poc/panel/stream`, delta `ts_backend→ts_rx`, p50/p95/p99 por ventana; Done: reporta percentiles — **VERIFICADO en vivo**: 2 paneles + 4 NOTIFYs → 8 mediciones, reporta `p50=12.66ms p95/p99=13.81ms` por ventana. Requiere `httpx` (instalado en runtime; falta en la imagen)
 - [x] 4.5 Documentar los escalones del barrido en `poc/README.md`: 100→200→400→800→1.200→1.600→2.100 VU; Done: escalones documentados — ya presentes en `poc/README.md` §Escalones (tabla P0..E7 con VU, inserts/s y duración)
@@ -62,7 +62,7 @@
 
 ### P0 — Sanidad del harness (precondición de todo)
 
-- [ ] 5.1 Correr P0 (100 VU, 5 min): verificar que el harness reporta métricas coherentes y el circuito E2E funciona; Done: Prometheus muestra `fanout_latency_seconds`, `evidence_signing_seconds` y `job_queue_depth` con valores reales — NO es criterio de aceptación, es sanidad
+- [~] 5.1 Correr P0: verificar que el harness reporta métricas coherentes y el circuito E2E funciona; Done: métricas con valores reales — **SANIDAD PASADA** (k6 Docker, 3-10 VU): students.js → acks 100%, eventos persisten. ⚠️ **BUG DE PROD DESTAPADO Y ARREGLADO**: `EventSqlRepository.append` pasaba `timestamp_cliente` como str ISO a columna timestamptz → asyncpg `DataError` (rechazaba TODO evento real; psycopg2 lo auto-convertía, asyncpg no). Fix: normalizar a datetime. Falta correr P0 a 100 VU 5 min con worker+panels para ver las 3 métricas juntas
 
 ### Concern (c) — Backplane LISTEN/NOTIFY — riesgo #1
 

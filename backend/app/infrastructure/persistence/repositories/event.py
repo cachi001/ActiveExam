@@ -8,12 +8,27 @@ produccion es C-10; aqui solo se persiste el Evento con su columna ``firma``.
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.entities.event import Evento
 from app.domain.repositories.ports import EventRepository
 from app.infrastructure.persistence.models.event import EventModel
+
+
+def _parse_ts_cliente(value: object) -> object:
+    """Normaliza ``timestamp_cliente`` (str ISO del cliente) a ``datetime`` aware.
+
+    El cliente manda ``ts_client`` como string ISO (es JSON). La columna es
+    ``TIMESTAMP WITH TIME ZONE`` y **asyncpg es estricto**: rechaza un str con
+    ``DataError`` (a diferencia de psycopg2, que lo auto-convierte). Sin esta
+    conversión, TODA ingesta de eventos por asyncpg falla. Acepta el sufijo 'Z'.
+    """
+    if isinstance(value, str):
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    return value
 
 
 def _to_domain(m: EventModel) -> Evento:
@@ -43,7 +58,7 @@ class EventSqlRepository(EventRepository):
             exam_id=entity.exam_id,
             tipo=entity.tipo,
             severidad=entity.severidad,
-            timestamp_cliente=entity.timestamp_cliente,
+            timestamp_cliente=_parse_ts_cliente(entity.timestamp_cliente),
             payload=entity.payload,
             firma=entity.firma,
             schema_version=entity.schema_version,
