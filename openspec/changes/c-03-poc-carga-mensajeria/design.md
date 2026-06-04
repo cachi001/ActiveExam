@@ -66,6 +66,65 @@ El proyecto Proctoring (React + FastAPI + PostgreSQL/TimescaleDB + Keycloak + Mi
 **Por qué**: "una función no observable no está lista" (DD-12). Una decisión de arquitectura tomada sobre `print`s o impresiones no es defendible ante el patrocinador.
 **Alternativa considerada**: medir con logs ad-hoc → no reproducible, no auditable.
 
+### D6 — Medir A4 primero; comparar SAD solo en el concern que falle (DD-19)
+**Decisión**: no se construyen ambas opciones de entrada. El stack A4 completo se mide primero. La pieza SAD correspondiente entra **solo si** el concern falla el SLO. Un concern que pasa con A4 no se vuelve a medir con SAD.
+**Por qué**: construir las dos arquitecturas completas de entrada viola DD-19 ("agregá complejidad solo cuando la métrica lo demuestre necesaria") y duplica el esfuerzo. La carga de la prueba la lleva quien quiera agregar complejidad — no el default.
+**Alternativa considerada**: comparación completa A4-vs-SAD de entrada → construye más de lo necesario; puede condicionar la lectura de los resultados y sesgar hacia SAD.
+
+### D7 — Entorno local Docker reducido con barrido de escalones buscando punto de quiebre
+**Decisión**: no generar 2.100 conexiones reales contra infra de nube. Usar local Docker reducido con un barrido de concurrencia por escalones (100 → 200 → 400 → 800 → 1.200 → 1.600 → 2.100+) para obtener la **curva del p99** y el **punto de quiebre exacto**.
+**Por qué**: `LISTEN/NOTIFY` quiebra de forma **no-lineal** por el `NotifyQueueLock` global en el commit del `NOTIFY`. Una extrapolación lineal desde 100 VU no predice el punto de quiebre real — produce un falso ✓. El barrido por escalones encuentra el umbral de no-linealidad y da el margen real sobre el pico requerido.
+**Alternativa considerada**: extrapolación lineal desde carga baja → no captura el comportamiento no-lineal del lock; invalida la decisión del backplane.
+
+### D8 — Arrancar por el concern (c) — fan-out backplane — como riesgo #1
+**Decisión**: el orden de ejecución prioriza el concern (c) (Postgres `LISTEN/NOTIFY`, p99 < 500 ms) antes que (a) y (b).
+**Por qué**: (c) es el único concern con probabilidad real de fallar y de promover una pieza del SAD (Redis Pub/Sub). Los concerns (a) cola < 30 s y (b) SSE resiliencia son holgados en local; (c) puede consumir la mayor parte del tiempo de ajuste del harness. Invertir el orden arriesga gastar tiempo en concerns que siempre pasan y llegar tarde al riesgo real.
+**Alternativa considerada**: orden secuencial a/b/c → (c) llega tarde; si falla, el ajuste del harness es sobre el final del time-box.
+
+### D9 — Publisher asyncpg real + panel SSE descartable para cerrar el circuito del concern (c)
+**Decisión**: el stack A4 tiene dos gaps que impiden ejecutar el concern (c): (1) `backplane.publish()` delega en `app.state.backplane_publisher` que es `None` → fan-out no-op inerte; (2) no existe ningún endpoint SSE de panel. Se construyen el **publisher asyncpg** que ejecuta `pg_notify` real y un **endpoint SSE descartable** (`GET /poc/panel/stream?exam_id=X`) que hace `LISTEN panel:{exam_id}` con conexión asyncpg dedicada y emite `text/event-stream`, registrando `ts_rx` para medir el delta.
+**Por qué**: sin estos dos componentes el fan-out no existe y el concern (c) no puede medirse. Son el circuito mínimo necesario.
+**Alternativa considerada**: mockear el publisher → no mide nada real; el concern (c) sería trivialmente ✓ sin validez.
+
+### D10 — Modo sin-auth PoC con token HS256 estático
+**Decisión**: usar token HS256 estático (`build_hs256_verify` ya existe en `verifiers.py`) en lugar de Keycloak durante la PoC. Declarar vars PoC opcionales en `backend/app/config.py` (`poc_jwt_secret`, `poc_panel_enabled`, `poc_stub_vault`), respetando `extra='forbid'` de Pydantic.
+**Por qué**: Keycloak bloquea la carga: agrega latencia de auth en cada request, requiere infra adicional, y es completamente ortogonal al concern que se mide. La PoC mide mensajería, no auth.
+**Alternativa considerada**: Keycloak real → overhead que contamina las métricas de mensajería; Keycloak caído bloquea toda la carga.
+**Riesgo**: las vars PoC deben ser `Optional` con default `None`/`False` para que el stack de producción no las requiera y no rompa Settings al no estar seteadas.
+
+### D11 — Fix `_now_iso()` a microsegundos — crítico para medir sub-500 ms
+**Decisión**: cambiar `_now_iso()` en `channel.py` de `datetime.strftime('%Y-%m-%dT%H:%M:%SZ')` (trunca a segundos) a `datetime.now(timezone.utc).isoformat()` (microsegundos).
+**Por qué**: el SLO del concern (c) es p99 < 500 ms. Con timestamps truncados a segundos la latencia medida tiene error de ±1.000 ms — imposible distinguir un p99 de 200 ms de uno de 800 ms. Sin este fix el concern (c) no puede medirse con la precisión necesaria. Es una precondición del bloque de medición.
+**Alternativa considerada**: usar `time.time()` o `time.monotonic()` en los scripts de carga → relojes distintos en procesos distintos; sin referencia común el delta es inválido. `isoformat()` da microsegundos y es la referencia UTC canónica.
+
+### D12 — Cola Postgres mínima implementada (sin NotImplementedError) para concern (a)
+**Decisión**: implementar la tabla `poc_job_queue` + enqueue (`INSERT`) / dequeue (`SELECT FOR UPDATE SKIP LOCKED`) / ack (`DELETE`) en `backend/app/infrastructure/messaging/postgres_queue.py`, que hoy tiene estos métodos como `NotImplementedError`.
+**Por qué**: el concern (a) requiere una cola funcional para medir la latencia de re-inferencia + firma. `NotImplementedError` haría colapsar el worker en el primer job.
+**Alternativa considerada**: usar pg-boss externo → dependencia adicional en la PoC; la implementación mínima con `SKIP LOCKED` es suficiente para medir y evita una capa extra.
+
+### D13 — Stubs de MasterSignerPort y ServerInferencePort para aislar la cola
+**Decisión**: usar stubs (sleep fijo de latencia simulada) en lugar de Vault y MediaPipe durante la PoC del concern (a).
+**Por qué**: el objetivo es medir la **cola**, no el motor de inferencia ni el signer. Si Vault tarda 2 s y MediaPipe tarda 800 ms, el p99 del concern (a) mide overhead de componentes externos, no la cola. Los stubs aíslan la variable de interés.
+**Alternativa considerada**: Vault/MediaPipe reales → la métrica de la cola está contaminada por la latencia del motor; el veredicto del concern (a) es inválido.
+
+### D14 — Instrumentación Prometheus declarada explícitamente antes de cargar
+**Decisión**: declarar y montar tres métricas antes de la primera corrida de carga: `fanout_latency_seconds` (Histogram, concern c), `evidence_signing_seconds` (Histogram, concern a), `job_queue_depth` (Gauge, concern a/b). No existen en el stack actual.
+**Por qué**: D5 — toda decisión se toma por métrica leída de Prometheus. Sin estas métricas la decisión se tomaría sobre logs ad-hoc, que no son reproducibles ni auditables.
+
+### D15 — Herramienta de carga: k6 con scripts descartables en `poc/`
+**Decisión**: usar **k6** como generador de carga (no existe en el repo). Scripts en `poc/k6/students.js`, `poc/k6/evidence.js`, `poc/panels_asyncio.py` (SSE vía asyncio Python), `poc/k6/seed.py` (crea sesiones con clave conocida en la DB).
+**Por qué**: k6 maneja VU parametrizables, HMAC nativo en JS, métricas integradas y reproducibilidad. `panels_asyncio.py` usa asyncio para abrir 20–40 conexiones SSE simultáneas con relojes locales coherentes, midiendo p99 con precisión de microsegundos.
+**Alternativa considerada**: locust / wrk → menos ergonómicos para WS firmado; sin soporte nativo de HMAC en el loop de carga.
+
+## Riesgos específicos del entorno local Windows
+
+Estos riesgos son adicionales a los de la sección `Risks / Trade-offs` y aplican al entorno de ejecución de la PoC (Windows 11 + Docker Desktop):
+
+- **asyncpg DNS en Windows**: asyncpg puede fallar silenciosamente al resolver `localhost` en entornos Docker Desktop con WSL2 si el host no está en el PATH de red correcto. Mitigación: usar `127.0.0.1` explícito en la cadena de conexión de la PoC.
+- **Límite de payload NOTIFY 8 KB**: Postgres rechaza silenciosamente un `NOTIFY` con payload > 8 KB. Mitigación: el payload del `NOTIFY` debe contener solo el `event_id` (UUID, ~36 bytes) — el panel SSE lo resuelve contra la DB. Verificar en task 1.1.
+- **Keycloak pesado en Docker Desktop**: Keycloak consume ~600 MB de RAM y tarda 30–60 s en levantar en Docker Desktop, bloqueando el arranque del stack. Mitigación: D10 — modo sin-auth PoC; Keycloak se excluye del `docker-compose.poc.yml`.
+- **Puertos efímeros Windows**: el rango de puertos efímeros de Windows (49152–65535) puede agotarse antes de los 2.100 VU si k6 no reutiliza conexiones. Mitigación: usar HTTP/1.1 keep-alive y WebSocket (una conexión por VU) en lugar de HTTP corto; parametrizar el número de VU del barrido para detectar agotamiento antes de llegar al techo.
+
 ## Arquitectura del harness (prototipo descartable)
 
 ```

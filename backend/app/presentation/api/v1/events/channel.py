@@ -28,7 +28,12 @@ CommandSender = Callable[[dict], Awaitable[None]]
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    # PoC C-03 D11 (CRITICO): isoformat() incluye microsegundos (ej.
+    # "2026-06-03T12:34:56.123456+00:00"). strftime('%Y-%m-%dT%H:%M:%SZ')
+    # truncaba a segundos -> error de medicion de ±1.000 ms, imposible medir
+    # el SLO p99 < 500 ms del concern (c). Este formato es compatible con
+    # datetime.fromisoformat() en Python 3.11+ y con Date.parse() en JS/k6.
+    return datetime.now(timezone.utc).isoformat()
 
 
 @dataclass(frozen=True, slots=True)
