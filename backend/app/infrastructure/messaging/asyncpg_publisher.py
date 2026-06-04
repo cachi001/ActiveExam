@@ -27,8 +27,16 @@ from __future__ import annotations
 import json
 import logging
 import re
+from datetime import datetime, timezone
 
 _log = logging.getLogger(__name__)
+
+# Metrica de persistencia (Bloque 5): el publisher observa el tramo ts_backend->ts_publish
+# (INSERT+commit, ya ocurrido cuando llega aqui). Import tolerante.
+try:
+    from app.observability.poc_metrics import persist_latency_seconds
+except Exception:  # noqa: BLE001
+    persist_latency_seconds = None
 
 # asyncpg es un import OPCIONAL: si no esta instalado el publisher queda no-op
 # y el arranque no falla (el backplane queda inerte en ese caso).
@@ -97,9 +105,24 @@ class AsyncpgPublisher:
         # Slim: solo los campos necesarios para medir la latencia de fan-out.
         # ``id`` es el event_id del evento persistido; ``ts_backend`` tiene microsegundos
         # (fix de _now_iso(), C-03 D11) y es la referencia de tiempo para el delta.
+        # ts_publish: momento JUSTO antes del NOTIFY. Parte el delta total en persist
+        # (ts_backend->ts_publish, ya ocurrido) y backplane puro (ts_publish->ts_rx,
+        # lo mide el panel). Permite no atribuir al backplane lo que es persistencia.
+        ts_publish_dt = datetime.now(timezone.utc)
+        ts_backend_str = payload.get("ts_backend")
+        if persist_latency_seconds is not None and ts_backend_str:
+            try:
+                ts_backend_dt = datetime.fromisoformat(str(ts_backend_str).replace("Z", "+00:00"))
+                persist_s = (ts_publish_dt - ts_backend_dt).total_seconds()
+                if persist_s >= 0:
+                    persist_latency_seconds.observe(persist_s)
+            except (ValueError, TypeError):
+                pass
+
         slim = {
             "event_id": payload.get("id"),
-            "ts_backend": payload.get("ts_backend"),
+            "ts_backend": ts_backend_str,
+            "ts_publish": ts_publish_dt.isoformat(),
         }
         payload_str = json.dumps(slim, separators=(",", ":"))
         # Validacion preventiva del limite de 8 KB de Postgres NOTIFY.

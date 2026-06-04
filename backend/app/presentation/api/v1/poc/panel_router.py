@@ -48,9 +48,13 @@ from pydantic import BaseModel, ConfigDict
 # server-side, asi /metrics tiene el histograma del concern (c) durante el barrido.
 # Import tolerante: si prometheus_client falta, el stream sigue funcionando sin medir.
 try:
-    from app.observability.poc_metrics import fanout_latency_seconds
+    from app.observability.poc_metrics import (
+        backplane_latency_seconds,
+        fanout_latency_seconds,
+    )
 except Exception:  # noqa: BLE001
     fanout_latency_seconds = None
+    backplane_latency_seconds = None
 
 _log = logging.getLogger(__name__)
 
@@ -151,12 +155,23 @@ async def panel_sse_stream(
                 # ts_backend (emision, del payload) y ts_rx (recepcion en el panel).
                 # Defensivo: payload sin ts_backend valido -> no se observa, no rompe.
                 ts_backend_str = data.get("ts_backend") if isinstance(data, dict) else None
+                ts_publish_str = data.get("ts_publish") if isinstance(data, dict) else None
+                # Total ts_backend->ts_rx (persist + backplane).
                 if fanout_latency_seconds is not None and ts_backend_str:
                     try:
-                        ts_backend_dt = datetime.fromisoformat(ts_backend_str)
+                        ts_backend_dt = datetime.fromisoformat(str(ts_backend_str).replace("Z", "+00:00"))
                         delta_s = (ts_rx_dt - ts_backend_dt).total_seconds()
                         if delta_s >= 0:
                             fanout_latency_seconds.observe(delta_s)
+                    except (ValueError, TypeError):
+                        pass
+                # Backplane PURO ts_publish->ts_rx (pg_notify + SSE, sin persistencia).
+                if backplane_latency_seconds is not None and ts_publish_str:
+                    try:
+                        ts_publish_dt = datetime.fromisoformat(str(ts_publish_str).replace("Z", "+00:00"))
+                        bp_s = (ts_rx_dt - ts_publish_dt).total_seconds()
+                        if bp_s >= 0:
+                            backplane_latency_seconds.observe(bp_s)
                     except (ValueError, TypeError):
                         pass
 

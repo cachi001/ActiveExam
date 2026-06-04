@@ -46,3 +46,19 @@ job_queue_depth = Gauge(
     "job_queue_depth",
     "Profundidad instantanea de la cola Postgres de trabajos (concern a). Debe quedar acotada.",
 )
+
+# Concern (c) — DESCOMPOSICION del fan-out para no atribuir al backplane lo que es
+# persistencia. fanout_latency_seconds (arriba) mide el TOTAL ts_backend->ts_rx; estas
+# dos lo parten en sus dos tramos para localizar el cuello de botella real:
+#   persist_latency_seconds  = ts_backend -> ts_publish (INSERT + commit a la hypertable)
+#   backplane_latency_seconds= ts_publish -> ts_rx      (pg_notify + entrega SSE, A4 puro)
+persist_latency_seconds = Histogram(
+    "persist_latency_seconds",
+    "Latencia de persistencia evento (INSERT+commit hypertable) antes del fan-out (concern c).",
+    buckets=(0.05, 0.1, 0.2, 0.5, 1.0, 2.0),
+)
+backplane_latency_seconds = Histogram(
+    "backplane_latency_seconds",
+    "Latencia del backplane PURO (pg_notify->panel SSE), sin persistencia (concern c, A4).",
+    buckets=(0.05, 0.1, 0.2, 0.5, 1.0, 2.0),
+)
