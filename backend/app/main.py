@@ -50,15 +50,52 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # dominio dependa de FastAPI. La construccion del validador RS256 es perezosa:
     # si PyJWT no esta disponible (entorno sin la dep), el state queda en None y
     # las dependencias devuelven 500 explicito en vez de fallar al arrancar.
+    #
+    # PoC C-03 D10: si poc_jwt_secret esta seteado, se recablea el validador para
+    # usar HS256 estatico (build_hs256_verify) en vez de JWKS/Keycloak. Esto
+    # permite que k6 use tokens firmados con el secret conocido sin round-trip a
+    # Keycloak (que se excluye del docker-compose.poc.yml). SOLO para el harness
+    # descartable; en produccion poc_jwt_secret es None y el RS256 permanece.
     from app.infrastructure.auth.refresh_store import InMemoryRefreshTokenStore
 
     app.state.settings = settings
-    try:
-        from app.infrastructure.auth.wiring import build_jwt_validator
 
-        app.state.jwt_validator = build_jwt_validator(settings)
-    except Exception:  # noqa: BLE001 - sin PyJWT/JWKS el validador no se arma aun
-        app.state.jwt_validator = None
+    if settings.poc_jwt_secret:
+        # Modo sin-auth PoC: validator HS256 estatico (bypass de Keycloak).
+        try:
+            from app.domain.auth.token import TokenPolicy
+            from app.infrastructure.auth.jwt_validator import JwtValidator
+            from app.infrastructure.auth.jwks_cache import JwksCache
+            from app.infrastructure.auth.verifiers import build_hs256_verify
+
+            _secret_bytes = settings.poc_jwt_secret.encode("utf-8")
+            # La JwksCache no se usa con HS256; inyectamos un stub que siempre
+            # devuelve None (el verificador HS256 ignora el parametro jwk).
+            _stub_cache = JwksCache(lambda: {"keys": []}, ttl_seconds=0)
+            _hs256_policy = TokenPolicy(
+                issuer=settings.keycloak_issuer,
+                audience=settings.jwt_audience,
+            )
+            app.state.jwt_validator = JwtValidator(
+                jwks_cache=_stub_cache,
+                policy=_hs256_policy,
+                verify_fn=build_hs256_verify(_secret_bytes),
+            )
+            logging.getLogger(__name__).warning(
+                "PoC C-03: validador JWT recableado a HS256 estatico "
+                "(poc_jwt_secret seteado). NO usar en produccion."
+            )
+        except Exception:  # noqa: BLE001
+            app.state.jwt_validator = None
+    else:
+        # Modo produccion: RS256 + JWKS cacheado de Keycloak (C-06).
+        try:
+            from app.infrastructure.auth.wiring import build_jwt_validator
+
+            app.state.jwt_validator = build_jwt_validator(settings)
+        except Exception:  # noqa: BLE001 - sin PyJWT/JWKS el validador no se arma aun
+            app.state.jwt_validator = None
+
     app.state.refresh_store = InMemoryRefreshTokenStore()
 
     # --- Persistencia y storage (C-07 consume; cableado perezoso/tolerante) ---
@@ -100,6 +137,52 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     except Exception:  # noqa: BLE001
         app.state.message_queue = None
 
+    # --- Backplane fan-out (PoC C-03 D9 — SOLO bajo poc_panel_enabled) ---------
+    # El publisher asyncpg real ejecuta pg_notify(canal, payload) con una conexion
+    # dedicada (separada del pool SQLAlchemy). La conexion asyncpg se abre al primer
+    # publish (lazy) para no bloquear el arranque.
+    #
+    # AISLAMIENTO PoC/prod: este cableado se monta SOLO con poc_panel_enabled, igual
+    # que el router SSE y las metricas. En PRODUCCION el fan-out queda no-op inerte
+    # (backplane_publisher=None -> get_backplane usa un _noop): es C-10 quien cablea
+    # el publisher real con lifecycle completo (pool supervisado, reconexion con
+    # backoff, cierre ordenado). Adelantar el fan-out a prod sin flag dispararia
+    # pg_notify al vacio (sin paneles SSE de C-15 escuchando) + 1 conexion extra.
+    if settings.poc_panel_enabled:
+        try:
+            from app.infrastructure.messaging.asyncpg_publisher import AsyncpgPublisher
+            from app.infrastructure.messaging.backplane import build_backplane
+
+            _asyncpg_publisher = AsyncpgPublisher(dsn=settings.database_url)
+            # Guardar la instancia completa (para .close() al shutdown) y el metodo
+            # .publish como el callable Publisher que espera get_backplane en
+            # dependencies.py (toma app.state.backplane_publisher como callable).
+            app.state.backplane_publisher_instance = _asyncpg_publisher
+            app.state.backplane_publisher = _asyncpg_publisher.publish
+            app.state.backplane = build_backplane(
+                settings.messaging_backend,
+                _asyncpg_publisher.publish,
+            )
+        except Exception as exc:  # noqa: BLE001 - sin asyncpg el backplane queda no-op
+            app.state.backplane_publisher_instance = None
+            app.state.backplane_publisher = None
+            app.state.backplane = None
+            # PoC C-03: si el publisher cae a None, get_backplane usa un _noop y NINGUN
+            # pg_notify se dispara — el fan-out queda inerte SIN error visible. En la PoC
+            # eso significa medir un circuito muerto (k6 persiste eventos pero el panel
+            # SSE no recibe nada). Por eso este except DEBE gritar (no tragar en silencio).
+            logging.getLogger(__name__).warning(
+                "PoC C-03: backplane fan-out NO cableado: el publisher asyncpg quedo "
+                "en None (%s). El fan-out evento->panel sera no-op y la medicion del "
+                "concern (c) sera invalida hasta resolverlo.",
+                exc,
+            )
+    else:
+        # Produccion (sin poc_panel_enabled): fan-out no-op inerte hasta C-10.
+        app.state.backplane_publisher_instance = None
+        app.state.backplane_publisher = None
+        app.state.backplane = None
+
     # --- Biometria (C-09): motor de vision, KMS y secreto maestro ------------
     # El motor de vision server-side (re-inferencia, DD-17), el KMS de cifrado del
     # embedding (D5) y el proveedor del secreto maestro (Vault) se cablean en
@@ -120,6 +203,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     # Router base /api/v1 (healthchecks C-04; auth C-06; dominio C-05+).
     app.include_router(api_v1_router, prefix=settings.api_v1_prefix)
+
+    # --- Router PoC C-03 (DESCARTABLE — montado solo si poc_panel_enabled) ------
+    # Expone GET /poc/panel/stream?exam_id=X (SSE, asyncpg LISTEN/NOTIFY). Solo
+    # cuando poc_panel_enabled=True; en produccion esta var es False -> no se monta.
+    if settings.poc_panel_enabled:
+        try:
+            from app.presentation.api.v1.poc.panel_router import router as poc_panel_router
+
+            # Importar el modulo registra las 3 metricas PoC en el REGISTRY default
+            # (Bloque 2): aparecen en /metrics con valor 0 aunque no haya carga.
+            from app.observability import poc_metrics  # noqa: F401
+
+            app.include_router(poc_panel_router, prefix="/poc", tags=["poc-c03"])
+            logging.getLogger(__name__).warning(
+                "PoC C-03: router /poc/panel/stream montado + metricas PoC registradas "
+                "(poc_panel_enabled=True). NO usar en produccion."
+            )
+        except Exception:  # noqa: BLE001 - si falla la importacion, no bloquea el arranque
+            logging.getLogger(__name__).warning(
+                "PoC C-03: no se pudo montar el router /poc/panel/stream."
+            )
 
     # Endpoint de metricas Prometheus (scrapeado por Prometheus).
     @app.get("/metrics", include_in_schema=False)

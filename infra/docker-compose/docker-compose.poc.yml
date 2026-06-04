@@ -1,0 +1,73 @@
+# =============================================================================
+# Override de PoC C-03 (DESCARTABLE) — harness de carga para medir A4.
+#
+# USO:
+#   docker compose \
+#     -f infra/docker-compose/docker-compose.yml \
+#     -f infra/docker-compose/docker-compose.poc.yml \
+#     up -d
+#
+# QUE CAMBIA respecto del stack base:
+#   - Keycloak EXCLUIDO: la PoC usa tokens HS256 estaticos (POC_JWT_SECRET) en
+#     vez del round-trip a Keycloak, que bloquea la carga y no es el concern a
+#     medir. Ver design.md D10.
+#   - El servicio `api` pierde el depends_on de keycloak y gana las tres env
+#     vars PoC (POC_JWT_SECRET, POC_PANEL_ENABLED, POC_STUB_VAULT).
+#   - Redis queda comentado: se activa SOLO si el concern (c) falla el SLO en
+#     el barrido (ver design.md D6, Bloque 6). Por defecto A4 = Postgres LISTEN/NOTIFY.
+#   - Puertos expuestos directamente en api (sin TLS Nginx) para simplificar el
+#     harness de k6; en produccion el trafico siempre entra por Nginx.
+#
+# NOTA: este archivo es DESCARTABLE. Nada de lo que se construye aqui se
+# promueve a produccion. El entregable del change C-03 es el VEREDICTO por
+# concern, no este codigo. Ver poc/README.md.
+# =============================================================================
+
+services:
+  # Keycloak DESHABILITADO para la PoC: se sobreescribe con una imagen minima
+  # que no hace nada. La dependencia de `api` sobre `keycloak` se elimina abajo.
+  # Esto libera ~600 MB de RAM y elimina el tiempo de arranque de 30-60 s de KC.
+  keycloak:
+    image: alpine:3.21.3
+    # Override para que el servicio "exista" pero no bloquee (solo sleep infinito).
+    # El depends_on de api sobre keycloak se quita mas abajo.
+    entrypoint: ["sh", "-c", "echo 'keycloak DESHABILITADO (PoC C-03)' && sleep infinity"]
+    healthcheck:
+      # Siempre healthy para que Docker no bloquee otros servicios.
+      test: ["CMD", "true"]
+      interval: 5s
+      retries: 1
+
+  # API FastAPI con sobreescritura de depends_on (sin Keycloak) y env vars PoC.
+  api:
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      # keycloak: eliminado intencionalmente — PoC usa HS256 estatico (D10).
+    # Puerto directo para k6 (sin Nginx/TLS en el harness de carga).
+    ports:
+      - "8000:8000"
+    environment:
+      # --- Vars PoC C-03 (SOLO para el harness descartable) ---
+      # Secret para tokens HS256 estaticos de k6. NUNCA usar en produccion.
+      POC_JWT_SECRET: ${POC_JWT_SECRET:-poc-secret-k6-do-not-use-in-prod}
+      # Habilita el endpoint SSE /poc/panel/stream para medir el fan-out.
+      POC_PANEL_ENABLED: "1"
+      # Stubs de latencia fija para MasterSigner/ServerInference (bloque 3).
+      POC_STUB_VAULT: "1"
+
+  # ---------------------------------------------------------------------------
+  # Redis — DESCOMENTADO SOLO si el concern (c) falla el SLO (design.md D6).
+  # Por defecto la PoC mide A4 = Postgres LISTEN/NOTIFY. Redis entra SOLO por
+  # metrica, no por defecto. Ver Bloque 6 de tasks.md.
+  # ---------------------------------------------------------------------------
+  # redis:
+  #   image: redis:7.4.1-alpine
+  #   networks: [proctoring]
+  #   healthcheck:
+  #     test: ["CMD", "redis-cli", "ping"]
+  #     interval: 5s
+  #     timeout: 3s
+  #     retries: 5

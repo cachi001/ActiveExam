@@ -1,0 +1,48 @@
+"""Metricas Prometheus de la PoC C-03 (Bloque 2, DESCARTABLE).
+
+Declara las tres metricas que sostienen la decision por concern del barrido de
+carga (Bloque 5). Se DECLARAN aqui (no en produccion) porque el entregable de
+C-03 es el veredicto, no este codigo; C-10/C-12/C-15 re-declaran las que el
+ganador necesite con calidad de produccion.
+
+Por que declararlas ANTES de generar carga (D5/D14): sin estas metricas, toda
+decision de arquitectura seria sobre logs ad-hoc -- indefendible. Instanciar el
+objeto basta para que aparezca en /metrics con valor 0 (sin carga); el .observe()
+las llena durante el barrido.
+
+Las tres metricas:
+- ``fanout_latency_seconds``  (Histogram) -> concern (c): latencia evento->panel.
+- ``evidence_signing_seconds`` (Histogram) -> concern (a): re-inferencia + firma.
+- ``job_queue_depth``          (Gauge)     -> concern (a): profundidad de la cola.
+
+Importar este modulo registra las tres en el REGISTRY por defecto de
+prometheus_client, que es el que ``telemetry.metrics_endpoint()`` renderiza.
+"""
+
+from __future__ import annotations
+
+from prometheus_client import Gauge, Histogram
+
+# Concern (c) -- riesgo #1. Latencia del fan-out evento->panel (LISTEN/NOTIFY->SSE).
+# SLO: p99 < 500 ms al pico ~2.100 VU. Buckets alrededor del umbral de 0.5 s para
+# que el p99 sea legible justo en la frontera de aceptacion.
+fanout_latency_seconds = Histogram(
+    "fanout_latency_seconds",
+    "Latencia evento->panel (fan-out del backplane, concern c). SLO p99 < 0.5 s.",
+    buckets=(0.05, 0.1, 0.2, 0.5, 1.0, 2.0),
+)
+
+# Concern (a). Latencia de re-inferencia + firma de evidencia en el worker.
+# SLO: p99 < 30 s. Buckets escalonados hasta 30 s (la frontera del SLO).
+evidence_signing_seconds = Histogram(
+    "evidence_signing_seconds",
+    "Latencia re-inferencia + firma de evidencia (worker, concern a). SLO p99 < 30 s.",
+    buckets=(0.5, 1.0, 2.0, 5.0, 10.0, 30.0),
+)
+
+# Concern (a). Profundidad instantanea de la cola Postgres de trabajos. El criterio
+# es que quede ACOTADA (no crezca sin techo) al pico; el worker la actualiza.
+job_queue_depth = Gauge(
+    "job_queue_depth",
+    "Profundidad instantanea de la cola Postgres de trabajos (concern a). Debe quedar acotada.",
+)

@@ -85,6 +85,30 @@ class Settings(BaseSettings):
         default=None, description="Token de Vault (inyectado en arranque)."
     )
 
+    # --- PoC C-03 (DESCARTABLE — no promover a produccion) ----------------------
+    # Vars opcionales para el harness de la PoC de carga. Cuando estan ausentes
+    # (default None/False) el stack de produccion NO las requiere y Settings no
+    # falla (extra='forbid' solo rechaza vars NO DECLARADAS; las declaradas con
+    # default son validas sin setear). Ver design.md D10.
+    #
+    # poc_jwt_secret: secret para tokens HS256 estaticos de k6 (bypass Keycloak).
+    #   Si es None -> el validador de prod (RS256/JWKS) permanece activo.
+    # poc_panel_enabled: habilita el router SSE descartable /poc/panel/stream.
+    # poc_stub_vault: si True, los stubs de MasterSigner y ServerInference
+    #   simulan latencia fija en vez de llamar a Vault/MediaPipe (bloque 3).
+    poc_jwt_secret: str | None = Field(
+        default=None,
+        description="(PoC C-03) Secret HS256 para bypass de Keycloak en carga. None = prod normal.",
+    )
+    poc_panel_enabled: bool = Field(
+        default=False,
+        description="(PoC C-03) Habilita router SSE /poc/panel/stream. False = prod normal.",
+    )
+    poc_stub_vault: bool = Field(
+        default=False,
+        description="(PoC C-03) Stubs de latencia fija para MasterSigner/Inference. False = prod.",
+    )
+
 
 @lru_cache
 def get_settings() -> Settings:

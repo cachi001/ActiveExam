@@ -46,6 +46,32 @@ Este change **no produce software de producción**. Construye un **harness de ca
 
 (Ninguna — este change no modifica requisitos de capacidades existentes; el código que valida es descartable y no se promueve a `openspec/specs/`.)
 
+## Enfoque de ejecución
+
+> Esta sección fija **cómo** se ejecuta la PoC. Reemplaza el enfoque anterior de comparación completa A4-vs-SAD de entrada (construir ambas arquitecturas para los 3 concerns desde el día uno) por el enfoque **DD-19 "medir A4 primero"**.
+
+### Principio: medir A4 primero, comparar SAD solo en el concern que falle
+
+No se construyen ambas arquitecturas de entrada. Se levanta **únicamente el stack A4** (Postgres-como-cola + SSE + Postgres `LISTEN/NOTIFY`), se miden los 3 SLO al pico, y se compara con la pieza SAD correspondiente **solo en el concern que falle su SLO**. Si A4 cumple un concern → ese concern queda resuelto sin construir SAD. Esto respeta DD-19: "agregá complejidad solo cuando la métrica lo exija".
+
+La secuencia de decisión es:
+
+1. Medir A4 en los 3 concerns (bloques 1–5 de las tasks).
+2. Para cada concern: si A4 cumple el SLO → veredicto A4 conservado ✓, **sin tocar SAD**.
+3. Para cada concern que **falle** el SLO → y solo ese → construir y medir la pieza SAD correspondiente (bloque 6).
+
+### Entorno: local Docker reducido con barrido de punto de quiebre
+
+**No se generan 2.100 conexiones reales**. El entorno es local Docker reducido (sin infra de nube ni carga distribuida real). Se hace un **barrido de concurrencia por escalones** (100 → 200 → 400 → 800 → 1.200 → 1.600 → 2.100+) buscando el **punto de quiebre** — el throughput donde p99 cruza el umbral — y la **curva del p99**, no una extrapolación lineal. La razón es estructural: `LISTEN/NOTIFY` quiebra de forma **no-lineal** por el `NotifyQueueLock` global que serializa los commits de `NOTIFY`; la extrapolación lineal no captura ese comportamiento y produce un falso ✓.
+
+### Orden de los concerns: arrancar por (c)
+
+Se empieza por el **concern (c)** — fan-out evento→panel vía `LISTEN/NOTIFY`, p99 < 500 ms — porque es el riesgo #1 identificado y el único con probabilidad real de fallar. Los concerns (a) cola < 30 s y (b) SSE resiliencia son holgados en entorno local y se miden después. Esto maximiza la información obtenida antes de invertir tiempo en los concerns menos riesgosos.
+
+### Herramienta de carga: k6
+
+El generador de carga es **k6** (no existe en el repo; se instala como dependencia PoC). El código de carga vive en `poc/k6/` (descartable). Los paneles SSE se miden con un script asyncio Python (`poc/panels_asyncio.py`). El código backend mínimo necesario va en `backend/` con cambios acotados y marcados como PoC.
+
 ## Impact
 
 - **Bloquea**: C-04 (foundation-setup) y, por transitividad, todo lo de cola/transporte/tiempo real — C-10 (event-ingestion-transport), C-12 (evidencia-cadena-custodia, usa el ganador de cola), C-15 (panel-proctor-sse, usa el ganador de transporte/backplane).
