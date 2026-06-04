@@ -215,6 +215,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             # (Bloque 2): aparecen en /metrics con valor 0 aunque no haya carga.
             from app.observability import poc_metrics  # noqa: F401
 
+            # Cola PoC para el endpoint /poc/enqueue (Bloque 4, concern a). Pool lazy:
+            # no abre conexiones al arranque. La drena el worker poc_load_worker.
+            from app.infrastructure.messaging.poc_postgres_queue import PocPostgresQueue
+
+            app.state.poc_queue = PocPostgresQueue(settings.database_url)
+
             app.include_router(poc_panel_router, prefix="/poc", tags=["poc-c03"])
             logging.getLogger(__name__).warning(
                 "PoC C-03: router /poc/panel/stream montado + metricas PoC registradas "

@@ -30,13 +30,16 @@ import logging
 import time
 
 from app.config import get_settings
-from app.infrastructure.messaging.poc_postgres_queue import PocPostgresQueue
+from app.infrastructure.messaging.poc_postgres_queue import (
+    TOPIC_POC_EVIDENCIA,
+    PocPostgresQueue,
+)
 from app.observability import poc_metrics
 
 _log = logging.getLogger(__name__)
 
 # Topic propio de la PoC (aislado del TOPIC_FIRMA_EVIDENCIA de produccion).
-TOPIC_POC = "poc.evidence.sign"
+TOPIC_POC = TOPIC_POC_EVIDENCIA
 
 # Latencias stub (segundos). Activas solo si poc_stub_vault=True.
 LAT_INFERENCE_S = 0.4

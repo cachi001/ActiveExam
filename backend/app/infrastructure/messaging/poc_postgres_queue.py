@@ -28,6 +28,10 @@ from app.infrastructure.messaging.port import MessageQueuePort, QueuedMessage
 
 _log = logging.getLogger(__name__)
 
+# Topic de la cola PoC (compartido por el endpoint /poc/enqueue y el worker).
+# Aislado del TOPIC_FIRMA_EVIDENCIA de produccion.
+TOPIC_POC_EVIDENCIA = "poc.evidence.sign"
+
 try:
     import asyncpg  # type: ignore[import-untyped]
     _ASYNCPG_AVAILABLE = True
@@ -57,33 +61,45 @@ RETURNING q.id, q.topic, q.payload;
 
 
 class PocPostgresQueue(MessageQueuePort):
-    """Cola Postgres descartable (SKIP LOCKED) sobre ``poc_job_queue`` (PoC C-03)."""
+    """Cola Postgres descartable (SKIP LOCKED) sobre ``poc_job_queue`` (PoC C-03).
 
-    def __init__(self, dsn: str) -> None:
+    Usa un POOL asyncpg (lazy): el endpoint de encolado ``POST /poc/enqueue`` produce
+    desde multiples requests concurrentes (barrido del concern a), y una sola conexion
+    serializaria los INSERT y falsearia la medicion. El worker consumidor tambien lo
+    comparte (acquire por operacion). ``min_size``/``max_size`` configurables.
+    """
+
+    def __init__(self, dsn: str, *, min_size: int = 2, max_size: int = 16) -> None:
         self._dsn = _dsn_asyncpg(dsn)
-        self._conn: Any | None = None  # asyncpg.Connection | None
+        self._min_size = min_size
+        self._max_size = max_size
+        self._pool: Any | None = None  # asyncpg.Pool | None
 
-    async def _ensure_connection(self) -> Any:
+    async def _ensure_pool(self) -> Any:
         if not _ASYNCPG_AVAILABLE:
             raise RuntimeError("asyncpg no esta instalado (cola PoC C-03 deshabilitada).")
-        if self._conn is None or self._conn.is_closed():
-            self._conn = await asyncpg.connect(self._dsn)
-        return self._conn
+        if self._pool is None:
+            self._pool = await asyncpg.create_pool(
+                self._dsn, min_size=self._min_size, max_size=self._max_size
+            )
+        return self._pool
 
     async def enqueue(self, topic: str, payload: dict[str, Any]) -> str:
         """INSERT en ``poc_job_queue``. Devuelve el id (UUID) como str."""
-        conn = await self._ensure_connection()
-        row = await conn.fetchrow(
-            "INSERT INTO poc_job_queue (topic, payload) VALUES ($1, $2::jsonb) RETURNING id",
-            topic,
-            json.dumps(payload, separators=(",", ":")),
-        )
+        pool = await self._ensure_pool()
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "INSERT INTO poc_job_queue (topic, payload) VALUES ($1, $2::jsonb) RETURNING id",
+                topic,
+                json.dumps(payload, separators=(",", ":")),
+            )
         return str(row["id"])
 
     async def dequeue(self, topic: str) -> QueuedMessage | None:
         """Reclama el siguiente job pendiente del ``topic`` (FOR UPDATE SKIP LOCKED)."""
-        conn = await self._ensure_connection()
-        row = await conn.fetchrow(_SQL_DEQUEUE, topic)
+        pool = await self._ensure_pool()
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow(_SQL_DEQUEUE, topic)
         if row is None:
             return None
         # payload es JSONB -> asyncpg lo devuelve como str; deserializar a dict.
@@ -94,13 +110,15 @@ class PocPostgresQueue(MessageQueuePort):
 
     async def ack(self, message_id: str) -> None:
         """Confirma el procesamiento: DELETE de la fila (job completado)."""
-        conn = await self._ensure_connection()
-        await conn.execute("DELETE FROM poc_job_queue WHERE id = $1::uuid", message_id)
+        pool = await self._ensure_pool()
+        async with pool.acquire() as conn:
+            await conn.execute("DELETE FROM poc_job_queue WHERE id = $1::uuid", message_id)
 
     async def health_check(self) -> bool:
         try:
-            conn = await self._ensure_connection()
-            await conn.execute("SELECT 1")
+            pool = await self._ensure_pool()
+            async with pool.acquire() as conn:
+                await conn.execute("SELECT 1")
             return True
         except Exception as exc:  # noqa: BLE001
             _log.warning("PocPostgresQueue health_check fallo: %s", exc)
@@ -108,14 +126,15 @@ class PocPostgresQueue(MessageQueuePort):
 
     async def depth(self, topic: str) -> int:
         """Profundidad de la cola (jobs pendientes) — para ``job_queue_depth`` (Bloque 2)."""
-        conn = await self._ensure_connection()
-        row = await conn.fetchrow(
-            "SELECT count(*) AS n FROM poc_job_queue WHERE topic = $1 AND taken_at IS NULL",
-            topic,
-        )
+        pool = await self._ensure_pool()
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT count(*) AS n FROM poc_job_queue WHERE topic = $1 AND taken_at IS NULL",
+                topic,
+            )
         return int(row["n"]) if row else 0
 
     async def close(self) -> None:
-        if self._conn is not None and not self._conn.is_closed():
-            await self._conn.close()
-        self._conn = None
+        if self._pool is not None:
+            await self._pool.close()
+        self._pool = None

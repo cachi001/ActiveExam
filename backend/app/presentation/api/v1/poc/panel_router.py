@@ -40,8 +40,9 @@ import json
 import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, ConfigDict
 
 # Metrica de fan-out (Bloque 2): el endpoint observa aqui el delta ts_rx-ts_backend
 # server-side, asi /metrics tiene el histograma del concern (c) durante el barrido.
@@ -196,3 +197,36 @@ async def panel_sse_stream(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+class PocEnqueueRequest(BaseModel):
+    """Cuerpo de ``POST /poc/enqueue``: evidencia sintética para el concern (a)."""
+
+    model_config = ConfigDict(extra="forbid")  # regla dura: rechaza campos no declarados
+
+    session_id: str | None = None
+    blob_size: int = 1024
+
+
+@router.post("/enqueue")
+async def poc_enqueue(request: Request, body: PocEnqueueRequest) -> dict:
+    """Encola UN job de evidencia sintética en ``poc_job_queue`` (PoC C-03, concern a).
+
+    Alternativa descartable al endpoint real ``/evidence/notify`` (que re-descarga el
+    binario de WORM + valida firma): mide la cola Postgres bajo carga HTTP concurrente
+    sin el peso del flujo de custodia. El worker PoC (``poc_load_worker``) la drena.
+
+    Lo alimenta ``evidence.js`` (k6). Disponible solo con ``poc_panel_enabled=True``.
+    """
+    from app.infrastructure.messaging.poc_postgres_queue import TOPIC_POC_EVIDENCIA
+    from app.observability import poc_metrics
+
+    cola = getattr(request.app.state, "poc_queue", None)
+    if cola is None:
+        raise HTTPException(status_code=503, detail="cola PoC no cableada (poc_queue=None)")
+
+    payload = {"session_id": body.session_id, "blob": "x" * max(0, body.blob_size)}
+    job_id = await cola.enqueue(TOPIC_POC_EVIDENCIA, payload)
+    depth = await cola.depth(TOPIC_POC_EVIDENCIA)
+    poc_metrics.job_queue_depth.set(depth)
+    return {"enqueued": True, "job_id": job_id, "depth": depth}
