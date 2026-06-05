@@ -12,7 +12,7 @@ El sistema cubre el ciclo completo de una evaluación supervisada: configuració
 |-------|--------------------|-----------------------|
 | Estudiante | Rendir sin fricción ni ansiedad | Claridad sobre qué se monitorea; respeto a privacidad/derechos; soporte si algo falla; no ser acusado injustamente |
 | Proctor en vivo | Atender solo lo que requiere atención (no observar a 700 personas) | Panel priorizado por riesgo, alertas accionables, capacidad de intervenir y cerrar sesiones |
-| Revisor académico | Decidir con criterio y evidencia sólida sobre sesiones flaggeadas | Línea de tiempo, clips firmados, re-inferencia y audit log en una sola vista |
+| Revisor académico | Decidir con criterio y evidencia sólida sobre sesiones flaggeadas | Línea de tiempo, capturas firmadas, re-inferencia y audit log en una sola vista |
 | Coordinador operativo | Que los exámenes corran sin incidentes y la cola de revisión no se acumule | Asignar proctors, monitorear backlog, escalar a TI |
 | Oficial de protección de datos (DPO) | Que el tratamiento sea legal y los derechos del titular se cumplan | DPIA, registro de solicitudes, retención automática, eliminación verificable |
 | Administrador del sistema | Disponibilidad y recuperabilidad | Observabilidad rica, runbooks, despliegues seguros, backups probados |
@@ -26,11 +26,11 @@ El sistema SÍ hace:
 - Configuración pre-examen: el admin crea exámenes, asigna estudiantes habilitados, define parámetros de monitoreo (umbrales, detectores activos) y carga la foto institucional de referencia.
 - Autenticación federada con credenciales institucionales (Keycloak, SAML/LDAP).
 - Consentimiento informado versionado, con acuse persistido (timestamp + hash).
-- Verificación biométrica de identidad: captura de video corto → liveness → embedding facial → comparación 1:1 contra foto institucional; hasta 2 reintentos; al 3.º fallo escala a proctor.
+- Verificación biométrica de identidad: captura de foto (snapshot) → liveness → embedding facial → comparación 1:1 contra foto institucional; hasta 2 reintentos; al 3.º fallo escala a proctor.
 - Verificación silenciosa continua del rostro contra el embedding inicial durante el examen.
 - Detección de comportamiento en el navegador: rostro ausente, múltiples rostros, dirección de mirada, postura, cambio de pestaña/pérdida de foco, monitores adicionales.
 - Generación de eventos estructurados versionados, con severidad y firma.
-- Captura de evidencia (clips) ante eventos severos, con hash + firma del cliente y subida por URL firmada.
+- Captura de evidencia (screenshots) ante eventos severos, con hash + firma del cliente y subida por URL firmada.
 - Cadena de custodia: re-hash y firma backend, re-inferencia server-side, firma maestra, audit log inmutable.
 - Cálculo incremental de score de riesgo (ponderado por severidad, frecuencia y persistencia).
 - Panel de supervisión en vivo (proctor): estado de sesiones, alertas en tiempo real, mensajería al estudiante, observaciones, cierre forzado.
@@ -45,7 +45,7 @@ El sistema NO:
 - **Opera el examen mismo**: la interfaz de preguntas/respuestas es del LMS institucional; el proctoring se integra (iframe/LTI/flujo coordinado) pero no se acopla a un LMS concreto.
 - **Califica las respuestas**: la corrección y la nota son del LMS o del docente.
 - **Toma decisiones disciplinarias**: flaggea, documenta y pone a disposición; la sanción es **siempre humana**.
-- **Transmite video continuo** al servidor: los pixels permanecen en el dispositivo salvo clips puntuales.
+- **Transmite video continuo** al servidor: los pixels permanecen en el dispositivo salvo capturas puntuales.
 - **Instala software** en la máquina del estudiante: corre íntegramente en el navegador (limita el anti-tampering al nivel L2.5).
 - **Detecta medios externos no observables**: una segunda computadora, un celular fuera de cuadro o un cómplice susurrando no se capturan directamente (solo heurísticamente y post-examen).
 - **Sirve para certificaciones de alto impacto**: L2.5 corresponde a evaluaciones académicas internas de impacto medio.

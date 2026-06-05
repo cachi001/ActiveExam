@@ -92,7 +92,7 @@ API versionada desde el día uno (`/api/v1/...`). Recursos principales: auth, ex
 | GET | `/api/v1/sessions/{id}` | Estado de la sesión |
 | POST | `/api/v1/sessions/{id}/verify` | Enviar artefactos de verificación biométrica |
 | POST | `/api/v1/sessions/{id}/finish` | Finalizar sesión ordenadamente |
-| POST | `/api/v1/evidence/presign` | URL firmada para subir un clip |
+| POST | `/api/v1/evidence/presign` | URL firmada para subir una captura |
 | GET | `/api/v1/exams/{id}/events` | Consultar eventos/agregaciones (panel) |
 | GET | `/api/v1/review/queue` | Cola de revisión ordenada por score |
 | POST | `/api/v1/review/{session_id}/decision` | Emitir decisión terminal de revisión |
