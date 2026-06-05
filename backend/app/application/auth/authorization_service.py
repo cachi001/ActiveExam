@@ -1,9 +1,8 @@
 """Gates de autorizacion contextual que necesitan el repositorio (aplicacion, D3).
 
-El RBAC del proctor exige conocer sus exámenes asignados (entidad ``Asignacion``,
-C-05). El dominio decide con ese dato (``autorizar_proctor_sobre_examen``); este
-servicio lo RESUELVE contra el ``AssignmentRepository`` y delega la decision al
-dominio puro. Asi la regla queda en dominio y el lookup en aplicacion.
+El proctor tiene alcance GLOBAL sobre todos los exámenes activos (C-50): el metodo
+``autorizar_proctor`` ya no resuelve asignaciones y delega directamente al dominio
+puro. El revisor sigue scoped a su jurisdiccion.
 
 Para el acceso a evidencia, ademas de decidir el acceso (dominio), registra el
 PROPOSITO declarado en el audit log (C-05 ``AuditLogRepository``) — sin sancionar
@@ -15,37 +14,30 @@ from __future__ import annotations
 from app.domain.auth import authorization
 from app.domain.auth.identity import AuthenticatedPrincipal
 from app.domain.audit_chain import AuditEntry
-from app.domain.repositories.ports import AssignmentRepository, AuditLogRepository
+from app.domain.repositories.ports import AuditLogRepository
 
 
 class ContextualAuthorizationService:
-    """Resuelve el contexto (asignacion/jurisdiccion) y delega la decision al dominio."""
+    """Resuelve el contexto (jurisdiccion/evidencia) y delega la decision al dominio."""
 
     def __init__(
         self,
-        assignments: AssignmentRepository,
         audit_log: AuditLogRepository,
     ) -> None:
-        self._assignments = assignments
         self._audit = audit_log
 
-    async def _examenes_asignados(self, proctor_id: str) -> set[str]:
-        """Exámenes en la Asignacion del proctor (C-05)."""
-        todas = await self._assignments.list()
-        return {a.exam_id for a in todas if a.proctor_id == proctor_id}
-
-    async def autorizar_proctor(
+    def autorizar_proctor(
         self,
         principal: AuthenticatedPrincipal,
         *,
-        proctor_id: str,
         exam_id: str,
     ) -> None:
-        """Autoriza al proctor sobre un examen SOLO si esta en su Asignacion (D3).
+        """Autoriza al proctor sobre cualquier examen activo (alcance global, C-50).
 
-        Levanta ``ForbiddenError`` (-> 403) si el examen no esta asignado."""
-        asignados = await self._examenes_asignados(proctor_id)
-        authorization.autorizar_proctor_sobre_examen(principal, exam_id, asignados)
+        El proctor con MFA satisfecho accede a todos los exámenes sin necesidad de
+        asignacion previa. La relajacion del minimo privilegio queda justificada en
+        el DPIA (C-01). No levanta excepcion si el acceso es valido."""
+        authorization.autorizar_proctor(principal)
 
     def autorizar_revisor(
         self,
