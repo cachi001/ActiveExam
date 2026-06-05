@@ -1,0 +1,46 @@
+{
+  "name": "C-03 PoC carga — host del veredicto (8-core)",
+
+  // POR QUE ESTE DEVCONTAINER EXISTE:
+  // El veredicto de escala de C-03 (regla dura de dominio #4) decide la
+  // arquitectura de mensajeria de TODO el proyecto. No puede salir de un entorno
+  // irreproducible. El desktop de dev tiene 2 cores fisicos -> confunde el
+  // backplane LISTEN/NOTIFY con saturacion de CPU (ver poc/README.md, hallazgo
+  // B5.1). Este archivo clava un host de 8 cores reales, deterministico, donde
+  // cualquiera levanta el MISMO entorno y vuelve a correr el barrido.
+
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu-22.04",
+
+  // 8-core/32GB NO es negociable: es la razon de ser de este entorno.
+  // hostRequirements fuerza que Codespaces ofrezca como MINIMO esa maquina.
+  "hostRequirements": {
+    "cpus": 8,
+    "memory": "32gb",
+    "storage": "32gb"
+  },
+
+  "features": {
+    // El stack PoC es multi-instancia (api/api2/api3 + nginx-poc + postgres +
+    // minio). Sin docker-in-docker no levanta nada.
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {},
+    // bootstrap.sh y panels_asyncio.py corren en el HOST con python3 (stdlib).
+    "ghcr.io/devcontainers/features/python:1": {
+      "version": "3.11"
+    }
+  },
+
+  // Solo PREPARA el terreno. NO corre bootstrap.sh: ese script hace un
+  // `up -d --build` del stack completo + seed (5-10 min) y este es el entorno
+  // del VEREDICTO -- se dispara a mano y se MIRA. Ver "Siguiente paso" abajo.
+  "postCreateCommand": "chmod +x poc/bootstrap.sh && docker --version && python3 --version",
+
+  // Puertos del stack PoC publicados al host (verificado contra los compose).
+  // Prometheus NO publica puerto: se scrapea interno y se mira por Grafana.
+  "forwardPorts": [8080, 3000],
+  "portsAttributes": {
+    "8080": { "label": "nginx-poc (API + SSE panel)" },
+    "3000": { "label": "Grafana (metricas del barrido)" }
+  },
+
+  "remoteUser": "vscode"
+}
