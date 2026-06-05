@@ -46,7 +46,7 @@ Ciclo: detección → declaración → mitigación → resolución → postmorte
 | Base primaria con replicación detenida | Sev 1 | Verificar lag; promover réplica si el primario no recupera; restaurar replicación |
 | Queue crítica creciendo | Sev 1-2 | Escalar workers de re-inferencia/firma; revisar DLX; identificar input corrupto |
 | Redis con memoria crítica | Sev 2 | Verificar claves; ampliar memoria; revisar TTLs (el estado durable está en Postgres) |
-| MinIO con error de escritura | Sev 1-2 | Verificar espacio/permisos; los clips quedan en buffer; reintentar subida |
+| MinIO con error de escritura | Sev 1-2 | Verificar espacio/permisos; las capturas quedan en buffer; reintentar subida |
 | Keycloak no autentica | Sev 1 | Failover a 2.ª instancia; verificar federación con el IdP |
 | Tasa elevada de tampering detectado | Sev 2 | Verificar falsos positivos por extensiones; ponderación humana; **no abortar exámenes** |
 | Espacio en disco crítico | Sev 2 | Forzar archivado de chunks; limpiar logs antiguos; ampliar volumen |

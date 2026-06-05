@@ -57,7 +57,7 @@ proctoring/
 ## Seguridad
 
 - **Autenticación**: delegada a Keycloak (OAuth2/OIDC/SAML), federada con el directorio institucional vía JIT provisioning. JWT validado localmente contra clave pública (JWKS cacheado). Access tokens 15–60 min; refresh tokens rotativos.
-- **Autorización**: RBAC con permisos **contextuales** (un proctor ve solo exámenes asignados; un revisor solo su jurisdicción). MFA obligatorio para roles con acceso a evidencia/administración (TOTP mín., WebAuthn recomendado). Descarga de clips vía URL firmada (expira 15 min) con propósito declarado en audit log.
+- **Autorización**: RBAC con permisos **contextuales** (un proctor ve solo exámenes asignados; un revisor solo su jurisdicción). MFA obligatorio para roles con acceso a evidencia/administración (TOTP mín., WebAuthn recomendado). Descarga de capturas vía URL firmada (expira 15 min) con propósito declarado en audit log.
 - **Validación de input**: Pydantic (FastAPI), SQLAlchemy parametrizado (anti-SQLi), escape de React + DOMPurify (anti-XSS), JWT + SameSite + tokens dedicados (anti-CSRF), rate limiting en Keycloak y Nginx (anti fuerza bruta).
 - **Cifrado en tránsito**: TLS 1.3 en todo, **incluida la comunicación interna** entre componentes (Postgres/Redis/RabbitMQ/MinIO con TLS). HSTS con preload, OCSP stapling.
 - **Cifrado at-rest**: KMS para evidencia y embeddings; versionado y logging activados en el bucket.

@@ -25,14 +25,14 @@ Los roles reflejan el ciclo de vida del examen y la disciplina. Hay siete roles 
 
 ## RBAC — Matriz de permisos
 
-El alcance de los permisos depende del rol: el proctor observa **todos los exámenes activos** (alcance global, C-50); el revisor está acotado a su jurisdicción (permiso contextual). La descarga de un clip requiere URL firmada que expira en 15 min; ciertos accesos exigen **propósito declarado** persistido en el audit log. **MFA obligatorio** para todos los roles con acceso a evidencia o administración (proctor, revisor, coordinador, administradores).
+El alcance de los permisos depende del rol: el proctor observa **todos los exámenes activos** (alcance global, C-50); el revisor está acotado a su jurisdicción (permiso contextual). La descarga de una captura requiere URL firmada que expira en 15 min; ciertos accesos exigen **propósito declarado** persistido en el audit log. **MFA obligatorio** para todos los roles con acceso a evidencia o administración (proctor, revisor, coordinador, administradores).
 
 | Rol | Recurso | Permisos | Restricciones |
 |-----|---------|----------|---------------|
 | Estudiante | Su propia sesión | C (iniciar), R (estado propio) | Solo su sesión; sin acceso a evidencia ajena |
 | Estudiante | Sus datos personales (DSR) | R, U (rectificar), D (eliminar), portar | Sin casos abiertos para eliminar |
 | Proctor | Sesiones de todos los exámenes activos | R, U (observaciones, mensajes, cierre forzado) | Todos los exámenes activos (alcance global); MFA |
-| Proctor | Evidencia de sesiones activas | R (clip vía URL firmada 15 min) | Acceso auditado con propósito |
+| Proctor | Evidencia de sesiones activas | R (captura vía URL firmada 15 min) | Acceso auditado con propósito |
 | Revisor académico | Cola de revisión de su jurisdicción | R, U (decisión terminal) | Solo su jurisdicción; cada apertura auditada; MFA |
 | Revisor académico | Evidencia + contexto de sesión flaggeada | R | Acceso auditado con propósito declarado |
 | Coordinador operativo | Asignación de proctors, cola, backlog | C, R, U | Escala a TI; MFA |

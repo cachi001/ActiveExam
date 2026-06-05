@@ -4,7 +4,7 @@ Complementa `05_reglas_de_negocio.md` (RN-BIO) y `09_decisiones_y_supuestos.md` 
 
 ## Flujo de verificación en cuatro pasos
 
-1. **Captura**: video corto (3–5 s) con instrucciones claras.
+1. **Captura**: foto (snapshot) con instrucciones claras.
 2. **Liveness**: confirma que hay una persona viva, no una foto/video/máscara. Señales: parpadeo natural involuntario, micro-movimientos faciales, profundidad estimada por la geometría 3D de los 468 landmarks de Face Mesh.
 3. **Embedding**: vector numérico (típicamente 128–512 dimensiones) que representa rasgos distintivos del rostro.
 4. **Comparación 1:1**: distancia coseno contra el embedding precomputado de la foto institucional; si < umbral, verificación exitosa.
@@ -17,7 +17,7 @@ Complementa `05_reglas_de_negocio.md` (RN-BIO) y `09_decisiones_y_supuestos.md` 
 
 ## Persistencia y privacidad
 
-- Se persisten dos artefactos: el clip de verificación (misma cadena de custodia que cualquier evidencia) y el embedding (cifrado at-rest, para la verificación continua).
+- Se persisten dos artefactos: la foto de referencia (misma cadena de custodia que cualquier evidencia) y el embedding (cifrado at-rest, para la verificación continua). La foto es el snapshot de enrollment; el embedding es el vector extraído de esa foto.
 - El embedding es un vector de números, no la foto ("huella matemática"); se elimina al egreso del estudiante.
 
 ### Riesgos biométricos y mitigaciones
