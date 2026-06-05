@@ -1,0 +1,26 @@
+# Prometheus PoC C-03 (DESCARTABLE) — scrape MULTI-INSTANCIA del harness de carga.
+#
+# Diferencia con prometheus.yml (base): apunta a los 3 targets EXPLICITOS en vez de
+# resolver `api` por DNS. Cada instancia FastAPI tiene su PROPIO histograma in-memory
+# (backplane_latency_seconds, persist_latency_seconds, fanout_latency_seconds, etc.);
+# para el p99 del barrido hay que scrapear las 3 y agregar:
+#
+#   histogram_quantile(0.99, sum(rate(backplane_latency_seconds_bucket[1m])) by (le))
+#
+# scrape_interval mas fino (5 s) para tener resolucion durante los escalones del barrido.
+
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # Las 3 instancias FastAPI de la PoC. `instance` queda como label para poder
+  # desglosar por instancia si una se satura distinto que las otras.
+  - job_name: proctoring-api-poc
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["api:8000", "api2:8000", "api3:8000"]

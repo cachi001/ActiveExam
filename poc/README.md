@@ -33,17 +33,55 @@ rechazado silenciosamente por tamano de payload.
 ## Como levantar el stack PoC
 
 ```bash
-# Desde la raiz del repo:
-docker compose \
+# Desde la raiz del repo. El --env-file es NECESARIO: al pasar -f con la ruta del
+# compose, Compose toma infra/docker-compose/ como project dir y busca el .env ahi;
+# sin el flag, ${POSTGRES_USER} y demas quedan en blanco.
+docker compose --env-file .env \
   -f infra/docker-compose/docker-compose.yml \
   -f infra/docker-compose/docker-compose.poc.yml \
-  up -d
+  up -d --build
 ```
 
-El override `docker-compose.poc.yml`:
+El override `docker-compose.poc.yml` monta el escenario **MULTI-INSTANCIA**:
 - Excluye Keycloak (reemplazado por stub que duerme).
-- Agrega env vars PoC al servicio `api` (POC_JWT_SECRET, POC_PANEL_ENABLED=1, POC_STUB_VAULT=1).
-- Expone el puerto 8000 directamente (sin Nginx/TLS) para k6.
+- Levanta **3 instancias FastAPI** (`api`/`api2`/`api3`), idénticas, con las env vars
+  PoC (POC_JWT_SECRET, POC_PANEL_ENABLED=1, POC_STUB_VAULT=1). Sin puerto al host.
+- Reemplaza el Nginx base por **`nginx-poc`** en HTTP plano **:8080**, round-robin
+  **SIN sticky** a las 3 instancias (config `infra/nginx/nginx.poc.conf`).
+- Apunta Prometheus a los 3 targets explícitos (`prometheus.poc.yml`).
+
+### Por qué multi-instancia (y por qué es EL experimento)
+
+Medir A4 en una sola instancia uvicorn (`--workers 1`, DD-10) **confunde** la latencia
+del backplane LISTEN/NOTIFY con la **saturación del único event loop** (ese loop sirve
+WS + persiste + publica + N paneles SSE en 1 core). El P0 mono-hilo dio persist=1.4s y
+backplane+SSE=3.85s con acks al 74% → saturación, no veredicto.
+
+Con round-robin **sin sticky**: el WS del estudiante cae en la instancia A → persiste →
+`pg_notify`; el panel SSE cae en la instancia B (otra) → `LISTEN` → recibe el NOTIFY.
+Que B reciba el evento de un estudiante en A **solo es posible porque el backplane es
+Postgres (no memoria local)**. Si funciona → A4 desacopla instancias = veredicto del
+concern (c) **y** (b). Producción corre así (N réplicas + Nginx), no mono-hilo.
+
+### Apuntar el harness a Nginx (no al `api` directo)
+
+El tráfico entra por `nginx-poc:8080`. Tanto `students.js` como `panels_asyncio.py` ya
+son parametrizables — solo cambia el destino:
+
+```bash
+# k6 (corre en la red Docker `proctoring`): WS por Nginx, no al api directo.
+k6 run --vus 100 --duration 60s \
+  -e POC_JWT_SECRET=poc-secret-k6-do-not-use-in-prod \
+  -e BASE_WS=ws://nginx-poc:8080 poc/k6/students.js
+
+# Medidor de paneles (corre en el host; nginx-poc publica 8080):
+python poc/panels_asyncio.py --panels 20 \
+  --exam-ids <uuid1> <uuid2> --base-url http://localhost:8080 --window 10
+```
+
+> Para la task 5.7 (concern b): durante la corrida, `docker compose ... stop api2`
+> y verificar que los paneles reconectan (Nginx saca api2 del pool por `max_fails`)
+> y siguen recibiendo eventos desde api/api3 — sin pérdida de suscripción.
 
 ## Escalones del barrido (concern c — Bloque 5)
 

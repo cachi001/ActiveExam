@@ -1,5 +1,5 @@
 # =============================================================================
-# Override de PoC C-03 (DESCARTABLE) — harness de carga para medir A4.
+# Override de PoC C-03 (DESCARTABLE) — harness de carga MULTI-INSTANCIA para medir A4.
 #
 # USO:
 #   docker compose \
@@ -7,61 +7,122 @@
 #     -f infra/docker-compose/docker-compose.poc.yml \
 #     up -d
 #
-# QUE CAMBIA respecto del stack base:
-#   - Keycloak EXCLUIDO: la PoC usa tokens HS256 estaticos (POC_JWT_SECRET) en
-#     vez del round-trip a Keycloak, que bloquea la carga y no es el concern a
-#     medir. Ver design.md D10.
-#   - El servicio `api` pierde el depends_on de keycloak y gana las tres env
-#     vars PoC (POC_JWT_SECRET, POC_PANEL_ENABLED, POC_STUB_VAULT).
-#   - Redis queda comentado: se activa SOLO si el concern (c) falla el SLO en
-#     el barrido (ver design.md D6, Bloque 6). Por defecto A4 = Postgres LISTEN/NOTIFY.
-#   - Puertos expuestos directamente en api (sin TLS Nginx) para simplificar el
-#     harness de k6; en produccion el trafico siempre entra por Nginx.
+# POR QUE MULTI-INSTANCIA (C-03, hallazgo del P0 mono-hilo):
+#   Medir A4 en UNA sola instancia uvicorn (--workers 1, DD-10) confunde la latencia
+#   del backplane LISTEN/NOTIFY con la SATURACION del unico event loop (ese loop sirve
+#   WS + persiste + publica + N paneles SSE en 1 core). El dato no es interpretable.
+#   Produccion corre N REPLICAS detras de Nginx; A4 se mide como va a correr.
 #
-# NOTA: este archivo es DESCARTABLE. Nada de lo que se construye aqui se
-# promueve a produccion. El entregable del change C-03 es el VEREDICTO por
-# concern, no este codigo. Ver poc/README.md.
+# LA HIPOTESIS BAJO PRUEBA (round-robin SIN sticky):
+#   El estudiante (WS) cae en la instancia A -> persiste -> pg_notify.
+#   El panel  (SSE) cae en la instancia B (otra) -> LISTEN -> recibe el NOTIFY.
+#   Que B reciba el evento de un estudiante en A SOLO es posible porque el backplane
+#   es Postgres (no memoria local). Si funciona -> A4 demostrado: cualquier instancia
+#   sirve cualquier panel. Valida el concern (c) Y el (b) de un saque. NO sticky.
+#
+# QUE CAMBIA respecto del stack base:
+#   - Keycloak EXCLUIDO: la PoC usa tokens HS256 estaticos (POC_JWT_SECRET). Ver D10.
+#   - 3 instancias FastAPI nombradas (api/api2/api3) en vez de 1; solo `expose`, sin
+#     puerto al host: el trafico entra por nginx-poc:8080 (round-robin).
+#   - nginx base NEUTRALIZADO (su upstream/TLS no sirve para el harness); en su lugar
+#     `nginx-poc` en HTTP plano 8080 con la config de SSE/WS sin sticky (D6/D10).
+#   - Prometheus apunta a los 3 targets explicitos (histogramas in-memory por proceso).
+#   - Redis sigue comentado: solo si el concern (c) falla el SLO (Bloque 6, design D6).
+#
+# NOTA: este archivo es DESCARTABLE. Nada se promueve a produccion. El entregable del
+# change C-03 es el VEREDICTO por concern, no este codigo. Ver poc/README.md.
 # =============================================================================
 
+# Config comun de una instancia FastAPI PoC. Las 3 (api/api2/api3) son IDENTICAS:
+# mismo build, misma DB, mismas vars PoC. Solo difieren en el nombre (= alias de red,
+# = entrada del upstream de nginx-poc, = target de Prometheus).
+x-poc-api: &poc-api
+  build:
+    context: ../../backend
+    dockerfile: Dockerfile
+  env_file: ../../.env
+  depends_on:
+    postgres:
+      condition: service_healthy
+    minio:
+      condition: service_healthy
+    # keycloak: NO — la PoC usa HS256 estatico (D10).
+  environment:
+    # --- Vars PoC C-03 (SOLO para el harness descartable) ---
+    # Secret para tokens HS256 estaticos de k6. NUNCA usar en produccion.
+    POC_JWT_SECRET: ${POC_JWT_SECRET:-poc-secret-k6-do-not-use-in-prod}
+    # Habilita el endpoint SSE /poc/panel/stream + el publisher asyncpg del backplane.
+    POC_PANEL_ENABLED: "1"
+    # Stubs de latencia fija para MasterSigner/ServerInference (bloque 3).
+    POC_STUB_VAULT: "1"
+  healthcheck:
+    test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/api/v1/health/live').status==200 else 1)\""]
+    interval: 10s
+    timeout: 5s
+    retries: 5
+  # Sin `ports`: el trafico entra por nginx-poc. Solo visible en la red interna.
+  expose: ["8000"]
+  networks: [proctoring]
+
 services:
-  # Keycloak DESHABILITADO para la PoC: se sobreescribe con una imagen minima
-  # que no hace nada. La dependencia de `api` sobre `keycloak` se elimina abajo.
-  # Esto libera ~600 MB de RAM y elimina el tiempo de arranque de 30-60 s de KC.
+  # Keycloak DESHABILITADO para la PoC (imagen minima que solo duerme). El depends_on
+  # de las api sobre keycloak (heredado del base) se satisface porque este healthcheck
+  # da siempre healthy. Libera ~600 MB y el arranque de 30-60 s de KC.
   keycloak:
     image: alpine:3.21.3
-    # Override para que el servicio "exista" pero no bloquee (solo sleep infinito).
-    # El depends_on de api sobre keycloak se quita mas abajo.
     entrypoint: ["sh", "-c", "echo 'keycloak DESHABILITADO (PoC C-03)' && sleep infinity"]
     healthcheck:
-      # Siempre healthy para que Docker no bloquee otros servicios.
       test: ["CMD", "true"]
       interval: 5s
       retries: 1
 
-  # API FastAPI con sobreescritura de depends_on (sin Keycloak) y env vars PoC.
+  # nginx BASE NEUTRALIZADO: su nginx.conf apunta a `api:8000` (1 instancia) con TLS,
+  # que no es lo que mide el harness. Se reemplaza por nginx-poc (HTTP 8080, 3 upstream).
+  nginx:
+    image: alpine:3.21.3
+    entrypoint: ["sh", "-c", "echo 'nginx base DESHABILITADO (PoC usa nginx-poc:8080)' && sleep infinity"]
+    healthcheck:
+      test: ["CMD", "true"]
+      interval: 5s
+      retries: 1
+
+  # --- Instancia 1 (override del `api` base: agrega vars PoC, saca dep keycloak) -----
   api:
-    depends_on:
-      postgres:
-        condition: service_healthy
-      minio:
-        condition: service_healthy
-      # keycloak: eliminado intencionalmente — PoC usa HS256 estatico (D10).
-    # Puerto directo para k6 (sin Nginx/TLS en el harness de carga).
+    <<: *poc-api
+
+  # --- Instancias 2 y 3 (nuevas, identicas) -----------------------------------------
+  api2:
+    <<: *poc-api
+
+  api3:
+    <<: *poc-api
+
+  # --- Reverse proxy de la PoC: HTTP plano 8080, round-robin SIN sticky -------------
+  # SSE y WS necesitan config especifica (buffering off / Upgrade) que el nginx base
+  # no tiene. TLS queda fuera del harness a proposito: el concern (c) mide fan-out, no
+  # el handshake TLS (igual que el override anterior exponia el puerto directo).
+  nginx-poc:
+    image: nginx:1.27.3-alpine
+    depends_on: [api, api2, api3]
     ports:
-      - "8000:8000"
-    environment:
-      # --- Vars PoC C-03 (SOLO para el harness descartable) ---
-      # Secret para tokens HS256 estaticos de k6. NUNCA usar en produccion.
-      POC_JWT_SECRET: ${POC_JWT_SECRET:-poc-secret-k6-do-not-use-in-prod}
-      # Habilita el endpoint SSE /poc/panel/stream para medir el fan-out.
-      POC_PANEL_ENABLED: "1"
-      # Stubs de latencia fija para MasterSigner/ServerInference (bloque 3).
-      POC_STUB_VAULT: "1"
+      - "8080:8080"
+    volumes:
+      - ../nginx/nginx.poc.conf:/etc/nginx/nginx.conf:ro
+    networks: [proctoring]
+
+  # --- Prometheus: scrape de los 3 targets explicitos -------------------------------
+  # El histograma (backplane_latency_seconds, etc.) es in-memory POR PROCESO; con 3
+  # instancias hay que scrapear las 3 y agregar con histogram_quantile(sum(rate(...))).
+  # command REEMPLAZA (override) -> apunta al config PoC; el volumen se agrega (target
+  # distinto, sin colision con el mount del base).
+  prometheus:
+    command: ["--config.file=/etc/prometheus/prometheus.poc.yml"]
+    volumes:
+      - ../observability/prometheus/prometheus.poc.yml:/etc/prometheus/prometheus.poc.yml:ro
 
   # ---------------------------------------------------------------------------
   # Redis — DESCOMENTADO SOLO si el concern (c) falla el SLO (design.md D6).
-  # Por defecto la PoC mide A4 = Postgres LISTEN/NOTIFY. Redis entra SOLO por
-  # metrica, no por defecto. Ver Bloque 6 de tasks.md.
+  # Por defecto la PoC mide A4 = Postgres LISTEN/NOTIFY. Ver Bloque 6 de tasks.md.
   # ---------------------------------------------------------------------------
   # redis:
   #   image: redis:7.4.1-alpine
