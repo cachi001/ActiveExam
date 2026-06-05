@@ -22,19 +22,19 @@ Cada regla tiene un código único `RN-{DOMINIO}-{NN}` para trazabilidad. Las re
 
 - **RN-CO-01**: Antes de habilitar el examen el estudiante debe atravesar un flujo de consentimiento informado con texto **versionado**; el acuse se persiste con timestamp y hash.
 - **RN-CO-02**: El consentimiento debe ser libre, expreso e informado, con acción afirmativa (no casillas premarcadas).
-- **RN-CO-03**: No se transmite video continuo; los pixels permanecen en el dispositivo del estudiante salvo clips puntuales asociados a eventos (minimización por defecto).
+- **RN-CO-03**: No se transmite video continuo; los pixels permanecen en el dispositivo del estudiante salvo capturas puntuales asociadas a eventos (minimización por defecto).
 - **RN-CO-04**: Los datos biométricos se usan **solo** para verificar identidad en el examen; prohibida la reutilización para cualquier otra finalidad (finalidad acotada y declarada).
 - **RN-CO-05**: Debe ofrecerse una vía alternativa de verificación de identidad sin biometría (p. ej. proctor humano en vivo) para quien no consienta, de modo que el consentimiento sea genuinamente libre. *(Recomendación legal Argentina; ver `1A_legal_y_cumplimiento_argentina.md`.)*
 
 ## Dominio: Verificación biométrica (RN-BIO)
 
-- **RN-BIO-01**: La verificación de identidad ocurre en cuatro pasos: (1) captura de video 3–5 s, (2) liveness, (3) cálculo de embedding facial, (4) comparación 1:1 por distancia coseno contra el embedding precomputado.
+- **RN-BIO-01**: La verificación de identidad ocurre en cuatro pasos: (1) captura de foto (snapshot), (2) liveness, (3) cálculo de embedding facial, (4) comparación 1:1 por distancia coseno contra el embedding precomputado.
 - **RN-BIO-02**: Si la distancia coseno está bajo el umbral configurado, la verificación es exitosa y se habilita el examen (se emite la clave de sesión rotativa).
 - **RN-BIO-03**: El umbral se configura **conservadoramente**: rechazar a un legítimo es peor que aceptar a un impostor en este paso (el impostor aún debe superar la verificación continua).
 - **RN-BIO-04**: Se permiten hasta **2 reintentos**; al **3.º fallo** se genera un **evento crítico** y se escala a un proctor humano (nunca se aborta automáticamente).
 - **RN-BIO-05**: Sin liveness el bypass es trivial (mostrar una foto/video del compañero); el liveness es prerrequisito obligatorio de la verificación.
 - **RN-BIO-06**: Durante todo el examen, la **verificación silenciosa continua** compara el embedding del rostro detectado contra el inicial; una desviación significativa dispara un evento crítico de "posible cambio de identidad".
-- **RN-BIO-07**: El embedding se persiste cifrado at-rest; el clip de verificación sigue la misma cadena de custodia que cualquier evidencia.
+- **RN-BIO-07**: El embedding se persiste cifrado at-rest; la foto de referencia (snapshot de enrollment) sigue la misma cadena de custodia que cualquier evidencia.
 - **RN-BIO-08**: El embedding se elimina al egreso del estudiante de la institución.
 
 ## Dominio: Detección y eventos (RN-EV)
@@ -81,7 +81,7 @@ Cada regla tiene un código único `RN-{DOMINIO}-{NN}` para trazabilidad. Las re
 - **RN-CC-02**: La cadena de custodia tiene cuatro etapas criptográficas **acumulativas** (las firmas no se reemplazan, se encadenan): (1) cliente: SHA-256 + firma HMAC con clave de sesión rotativa; (2) backend al recibir: valida firma cliente, recalcula hash, persiste metadata, deposita en bucket + audit log; (3) worker asíncrono: re-descarga, 3.ª verificación de hash, firma con clave maestra asimétrica (RSA-2048 / Ed25519); (4) re-inferencia **estática sobre el frame** (C-24, DD-24-03): detección de rostros/objetos en la imagen firmada por el backend; la discrepancia con lo reportado por el cliente es señal forense, no veredicto automático.
 - **RN-CC-03**: Si el hash recalculado no coincide en cualquier etapa, se genera un evento crítico de "evidencia corrupta o manipulada".
 - **RN-CC-04**: Las subidas de binarios van **directo al storage** mediante URLs firmadas (no pasan por el backend).
-- **RN-CC-05**: La descarga de un clip requiere URL firmada que expira en 15 minutos.
+- **RN-CC-05**: La descarga de una captura requiere URL firmada que expira en 15 minutos.
 - **RN-CC-06**: El bucket de evidencia usa Object Lock en modo Compliance (WORM): no se puede modificar ni borrar durante la retención, ni siquiera por el propietario.
 - **RN-CC-07**: Ante apelación, el sistema genera un certificado de verificación de la cadena de firmas que un perito externo puede validar independientemente.
 - **RN-CC-08 (NFR)**: Cero pérdida de eventos confirmados y de evidencia; la re-inferencia y la firma de evidencia son tareas que **no toleran pérdida**.

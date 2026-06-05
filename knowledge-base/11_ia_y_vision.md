@@ -35,7 +35,7 @@ Por qué: el cliente corre en una máquina no controlada y la cámara solo ve su
 
 ## Re-inferencia server-side
 
-El backend re-ejecuta modelos (potencialmente más sofisticados que los del cliente) sobre el clip y compara con lo reportado. Una **discrepancia es señal forense de posible tampering**. Duración: 1–10 s por clip. El output (labels, confidences) se firma sobre el clip exacto como cuarta etapa de la cadena de custodia.
+El backend re-ejecuta modelos (potencialmente más sofisticados que los del cliente) sobre la captura (frame estático — C-24, DD-24-03) y compara con lo reportado. Una **discrepancia es señal forense de posible tampering**. El output (labels, confidences) se firma sobre la captura exacta como cuarta etapa de la cadena de custodia.
 
 ## Falsos positivos vs. falsos negativos
 

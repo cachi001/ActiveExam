@@ -9,7 +9,7 @@ Cada flujo se documenta extremo a extremo mostrando interacciones entre componen
        │
 [INGRESO]        Estudiante autentica (Keycloak) → chequeo de dispositivo → permisos cámara/mic/pantalla
        │
-[BIOMETRÍA]      Captura video 3-5s → liveness → embedding facial → comparación 1:1 con foto institucional
+[BIOMETRÍA]      Foto (snapshot) + liveness → embedding facial → comparación 1:1 con foto institucional
        │                                              (3 fallos → escala a proctor humano)
        ▼
 [MONITOREO]      MediaPipe en navegador (rostro/mirada/postura) ─┐
@@ -49,7 +49,7 @@ Cada flujo se documenta extremo a extremo mostrando interacciones entre componen
 
 **Pasos**:
 1. Pantalla de consentimiento informado (lenguaje claro); el acuse se persiste con timestamp + hash.
-2. Captura de video corto (3–5 s).
+2. Captura de foto (snapshot).
 3. Liveness: parpadeo involuntario, micro-movimientos y profundidad 3D estimada por Face Mesh.
 4. Cálculo del embedding facial (Face Mesh).
 5. El cliente solicita el embedding de referencia (leído cifrado de la DB).
@@ -59,7 +59,7 @@ Cada flujo se documenta extremo a extremo mostrando interacciones entre componen
 **Diagrama de secuencia**:
 ```
 Cliente                              FastAPI                    DB(embedding ref)
-  │ captura video 3-5s                  │                            │
+  │ captura foto (snapshot)              │                            │
   │ liveness (blink, micro-mov, 3D)     │                            │
   │ calcula embedding (Face Mesh)       │                            │
   │── solicita embedding de referencia ►│── lee (cifrado) ──────────►│
@@ -103,23 +103,23 @@ Cliente        FastAPI        Storage(S3)     Cola/RabbitMQ  Worker        DB
   │──hash+firma──►│               │              │            │            │
   │  presign URL  │──────────────►│              │            │            │
   │◄── URL ───────│               │              │            │            │
-  │── PUT clip ──────────────────►│              │            │            │
+  │── PUT captura ───────────────►│              │            │            │
   │── notifica ──►│ valida firma  │              │            │            │
   │               │── audit log ──────────────────────────────────────────►│
   │               │── encola firma+reinferencia ►│            │            │
   │               │               │              │── tarea ──►│            │
-  │               │               │◄── GET clip ──────────────│            │
+  │               │               │◄── GET captura ────────────│            │
   │               │               │              │            │ re-hash    │
   │               │               │              │            │ firma maestra
   │               │               │              │            │── persiste ►│
   │◄── ack "recibido y validado" ─│              │            │            │
 ```
 
-**Pasos**: (1) cliente hashea (SHA-256) + firma (HMAC clave de sesión); (2) pide URL firmada y sube el clip directo al storage; (3) backend valida firma, recalcula hash, persiste metadata, audit log, deposita en bucket WORM; (4) encola firma + re-inferencia; (5) worker re-descarga, 3.ª verificación de hash, firma con clave maestra (RSA-2048/Ed25519), re-inferencia opcional firmada.
+**Pasos**: (1) cliente hashea (SHA-256) + firma (HMAC clave de sesión); (2) pide URL firmada y sube la captura directa al storage; (3) backend valida firma, recalcula hash, persiste metadata, audit log, deposita en bucket WORM; (4) encola firma + re-inferencia; (5) worker re-descarga, 3.ª verificación de hash, firma con clave maestra (RSA-2048/Ed25519), re-inferencia opcional firmada.
 
 **Casos de error**:
 - Hash no coincide → evento crítico "evidencia corrupta o manipulada".
-- Error de escritura en MinIO → el clip queda en buffer; reintento de subida.
+- Error de escritura en MinIO → la captura queda en buffer; reintento de subida.
 
 ## Flujo 5: Reconexión sin pérdida de eventos
 
@@ -174,7 +174,7 @@ SCORE FINAL → ¿supera umbral?
 **Pasos**:
 1. **Encolado**: sesiones que superan el umbral, ordenadas por score descendente.
 2. **Asignación**: el revisor toma una sesión de su jurisdicción; cada apertura se registra en el audit log con propósito declarado.
-3. **Contexto completo**: línea de tiempo de eventos, clips firmados, observaciones del proctor, output de re-inferencia, audit log de accesos previos.
+3. **Contexto completo**: línea de tiempo de eventos, capturas firmadas, observaciones del proctor, output de re-inferencia, audit log de accesos previos.
 4. **Decisión**: descartar (falso positivo) | escalar (investigación) | derivar a proceso disciplinario formal.
 5. **Trazabilidad**: la decisión y su fundamento se persisten vinculados a la evidencia mediante referencias inmutables.
 

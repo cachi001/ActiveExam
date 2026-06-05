@@ -55,12 +55,12 @@
 **Para** habilitar el examen
 
 **Criterios de aceptación**:
-- [ ] CA-1: Capturo un video corto (3–5 s) con instrucciones claras.
+- [ ] CA-1: Capturo una foto (snapshot) con instrucciones claras.
 - [ ] CA-2: El sistema confirma liveness (parpadeo, micro-movimientos, profundidad 3D).
 - [ ] CA-3: Se calcula el embedding y se compara 1:1 (distancia coseno) contra la foto institucional.
 - [ ] CA-4: Si la distancia < umbral, se habilita el examen y se emite la clave de sesión.
 - [ ] CA-5: Hasta 2 reintentos; al 3.º fallo se genera evento crítico y se escala a proctor (no abort).
-- [ ] CA-6: El clip y el embedding se persisten con cadena de custodia.
+- [ ] CA-6: La foto y el embedding se persisten con cadena de custodia.
 
 **Reglas relacionadas**: RN-BIO-01…RN-BIO-07, RN-CC-02
 
@@ -110,13 +110,13 @@
 
 ### US-008 — Capturar y subir evidencia ante eventos severos
 **Como** sistema
-**Quiero** capturar un clip ante eventos severos, hashearlo y firmarlo, y subirlo por URL firmada
+**Quiero** capturar una captura (screenshot) ante eventos severos, hashearla y firmarla, y subirla por URL firmada
 **Para** producir evidencia defendible sin sobrecargar el backend
 
 **Criterios de aceptación**:
-- [ ] CA-1: Un evento severo dispara un clip de 5–10 s con hash SHA-256 + firma HMAC del cliente.
+- [ ] CA-1: Un evento severo dispara una captura (screenshot) con hash SHA-256 + firma HMAC del cliente.
 - [ ] CA-2: La subida usa URL firmada directo al storage.
-- [ ] CA-3: El clip de verificación biométrica sigue la misma cadena de custodia.
+- [ ] CA-3: La foto de referencia biométrica sigue la misma cadena de custodia.
 
 **Reglas relacionadas**: RN-CC-01, RN-CC-02, RN-CC-04
 
@@ -174,7 +174,7 @@
 **Criterios de aceptación**:
 - [ ] CA-1: La cola se ordena por score descendente; solo veo mi jurisdicción.
 - [ ] CA-2: Cada acceso a evidencia se registra en el audit log con propósito declarado.
-- [ ] CA-3: Veo línea de tiempo, clips firmados, observaciones del proctor, re-inferencia y audit log.
+- [ ] CA-3: Veo línea de tiempo, capturas firmadas, observaciones del proctor, re-inferencia y audit log.
 - [ ] CA-4: Emito una de tres decisiones: descartar / escalar / derivar a disciplina.
 - [ ] CA-5: La decisión y su fundamento se persisten vinculados a la evidencia (inmutable).
 

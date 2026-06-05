@@ -37,7 +37,7 @@
 | Alta | ¿Cuál es la lista canónica de rutas públicas (sin auth)? No está explícita en el discovery. | Diseño de seguridad / routers | Equipo técnico |
 | Media | ¿Transporte del panel: SSE+backplane o WebSocket+sticky? | Arquitectura de tiempo real | Equipo técnico (post-PoC) |
 | Media | ¿Valores concretos de umbrales (score, distancia coseno, N fotogramas, severidades)? El discovery los deja "configurables" sin fijar números. | Calibración Fase 1/2 | Dirección académica + equipo |
-| Media | ¿Política de retención concreta por tipo de dato (clips, embeddings, eventos, audit log, casos)? Se mencionan 30 días / 1 año / 7 años / 2 años en distintos contextos. | Implementación de retención automática | Legal/DPO + equipo |
+| Media | ¿Política de retención concreta por tipo de dato (capturas, embeddings, eventos, audit log, casos)? Se mencionan 30 días / 1 año / 7 años / 2 años en distintos contextos. | Implementación de retención automática | Legal/DPO + equipo |
 | Media | ¿Algoritmo exacto de scoring (pesos por severidad, ventanas de correlación)? Descrito conceptualmente, no formalmente. | Implementación del scoring | Equipo + dirección académica |
 | Media | ¿Hay población menor de 18 años? Requiere flujo de consentimiento parental y retención diferenciada. | Cumplimiento legal | Legal/DPO |
 | Media | ¿Dimensiones del embedding (128–512) y algoritmo de extracción definitivo? "típicamente 128–512" en la fuente. | Verificación biométrica | Equipo técnico |
@@ -47,3 +47,15 @@
 | Baja | ¿Seed data inicial concreto (roles, realms Keycloak, configuración por defecto)? No detallado. | Bootstrap del sistema | Equipo técnico |
 | Baja | ¿Inscripción de la base ante la AAIP? Acción pendiente del área legal. | Cumplimiento Argentina | Legal/DPO |
 | Baja | ¿Se ofrece efectivamente la vía alternativa de verificación sin biometría? Recomendada legalmente, no confirmada en el alcance. | Cumplimiento del consentimiento libre | Dirección académica + Legal |
+
+## Cambios relevantes con impacto de gobernanza
+
+### C-51 — Terminología: foto+embedding (tradeoff de liveness temporal server-side)
+
+**C-51** consolida en la KB el modelo biométrico de enrollment como **foto de referencia (snapshot) + embedding**. Este modelo resuelve **identidad** (comparación 1:1: embedding del momento vs. embedding de la foto de referencia), pero **NO liveness temporal server-side**.
+
+**El tradeoff concreto**: una foto plana no permite re-inferencia temporal (movimiento, parpadeo, profundidad en secuencia). El liveness que corre en el navegador (liveness híbrido: análisis pasivo + retos activos aleatorios) opera sobre el stream de video en vivo *sin persistirlo como clip*. Esa liveness check es **client-side** — y el cliente es sensor no confiable (regla dura #6 del proyecto).
+
+El dominio `backend/app/domain/biometrics/liveness.py` existe para la verificación server-side de "rostro real, no foto plana", pero opera sobre el frame estático del momento (re-inferencia estática, no sobre una secuencia temporal). No puede detectar, por ejemplo, que el usuario presentó una foto impresa en lugar de su rostro en movimiento.
+
+**Implicación para el DPIA (C-01)**: el Acuerdo de Nivel de Proctoring y el DPIA **deben registrar y justificar explícitamente** este tradeoff dentro del nivel L2.5 declarado. La justificación razonable es: el liveness client-side + verificación continua de embedding + revisión humana asíncrona constituyen la red de seguridad aceptada para L2.5. Si la institución requiere liveness temporal server-side garantizado, el nivel de proctoring y el modelo de evidencia deben revisarse (y el DPIA actualizarse).
