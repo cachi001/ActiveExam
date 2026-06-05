@@ -1,5 +1,5 @@
 {
-  "name": "C-03 PoC carga — host del veredicto (8-core)",
+  "name": "C-03 PoC carga — host del veredicto (4-core)",
 
   // POR QUE ESTE DEVCONTAINER EXISTE:
   // El veredicto de escala de C-03 (regla dura de dominio #4) decide la
@@ -11,11 +11,15 @@
 
   "image": "mcr.microsoft.com/devcontainers/base:ubuntu-22.04",
 
-  // 8-core/32GB NO es negociable: es la razon de ser de este entorno.
-  // hostRequirements fuerza que Codespaces ofrezca como MINIMO esa maquina.
+  // 4-core/16GB (standardLinux32gb). El plan original pedia 8-core, pero la
+  // cuenta cachi001 SIN metodo de pago topa en 4 cores (las de 8/16 requieren
+  // spending limit > $0). 4 cores = 2x el desktop de dev (2 cores) -> alcanza
+  // para des-confundir el 3.85s mono-hilo y los escalones E1-E4. Al pico E6
+  // (2100 VU) hay que evaluar con criterio si el cuello es backplane o CPU.
+  // Ver engram: "Codespaces cachi001 topa en 4-core sin tarjeta".
   "hostRequirements": {
-    "cpus": 8,
-    "memory": "32gb",
+    "cpus": 4,
+    "memory": "16gb",
     "storage": "32gb"
   },
 
