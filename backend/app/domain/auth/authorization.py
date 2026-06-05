@@ -3,9 +3,9 @@
 Estas son las reglas de autorizacion del proctoring. NO son RBAC plano: tener el
 rol no basta, se evalua el CONTEXTO (`03` §RBAC):
 
-- **Proctor** -> solo exámenes en su ``Asignacion`` (C-05). El conjunto de
-  exámenes asignados lo resuelve la capa de aplicacion contra el repositorio y se
-  pasa como parametro; el dominio decide con ese dato (sin tocar infraestructura).
+- **Proctor** -> alcance GLOBAL: puede observar TODOS los exámenes activos (C-50).
+  El parámetro ``examenes_asignados`` fue eliminado (D1-C50); basta con el rol
+  PROCTOR y MFA satisfecho. Un rol superior (admin) también pasa.
 - **Revisor** -> solo sesiones de su ``jurisdiccion``.
 - **MFA** -> un rol con acceso a evidencia/administracion debe haber satisfecho el
   segundo factor (D4); si no, se rechaza ANTES de evaluar el contexto.
@@ -19,8 +19,6 @@ Sin framework ni infraestructura (D1) -> testeable sin DB ni red.
 """
 
 from __future__ import annotations
-
-from collections.abc import Iterable
 
 from app.domain.auth.errors import (
     ForbiddenError,
@@ -61,28 +59,22 @@ def exigir_roles(
         )
 
 
-def autorizar_proctor_sobre_examen(
+def autorizar_proctor(
     principal: AuthenticatedPrincipal,
-    exam_id: str,
-    examenes_asignados: Iterable[str],
 ) -> None:
-    """RBAC contextual del PROCTOR (D3): solo exámenes en su Asignacion (C-05).
+    """RBAC del PROCTOR con alcance GLOBAL (C-50, D1).
 
-    ``examenes_asignados`` lo provee la capa de aplicacion (lookup en el
-    ``AssignmentRepository``); aqui solo se decide. Un proctor sobre un examen NO
-    asignado -> 403, aunque el rol proctor sea valido.
+    El proctor puede observar TODOS los exámenes activos sin restriccion de
+    asignacion. Basta con el rol PROCTOR y MFA satisfecho. Un rol superior
+    (ADMIN_EXAMENES / ADMIN_SISTEMA) tambien pasa sin requerir MFA adicional.
 
-    Un rol superior con vision global de exámenes (admin de exámenes / del sistema)
-    no esta limitado por asignacion: se autoriza por rol."""
+    La relajacion del minimo privilegio queda justificada en el DPIA (C-01).
+    El sistema NUNCA sanciona (L2.5): esta funcion solo controla acceso."""
     if principal.tiene_algun_rol({Rol.ADMIN_EXAMENES, Rol.ADMIN_SISTEMA}):
         return
     if not principal.tiene_rol(Rol.PROCTOR):
         raise ForbiddenError("Se requiere rol proctor (o admin) para observar el examen.")
     verificar_mfa(principal)
-    if exam_id not in set(examenes_asignados):
-        raise ForbiddenError(
-            "El proctor no tiene asignado este examen (aislamiento contextual, `03`)."
-        )
 
 
 def autorizar_revisor_sobre_jurisdiccion(

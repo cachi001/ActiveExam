@@ -1,9 +1,9 @@
-"""Tests del servicio de autorizacion contextual con repositorios (C-06, D3).
+"""Tests del servicio de autorizacion contextual con repositorios (C-06 + C-50, D3).
 
-Verifica que el RBAC del proctor resuelve la ``Asignacion`` (C-05) contra el
-repositorio y delega la decision al dominio: proctor sobre examen no asignado ->
-403; y que el acceso a evidencia registra el PROPOSITO en el audit log (sin
-sancionar — L2.5).
+Verifica que el proctor tiene alcance global (C-50): ``autorizar_proctor`` ya no
+resuelve asignaciones y el proctor con MFA es autorizado sin necesidad de datos
+en repositorio. El acceso a evidencia sigue registrando el PROPOSITO en el audit
+log (sin sancionar — L2.5).
 
 Repositorios EN MEMORIA que implementan los puertos reales (sin mock de DB).
 """
@@ -16,29 +16,10 @@ import pytest
 
 from app.application.auth.authorization_service import ContextualAuthorizationService
 from app.domain.audit_chain import AuditEntry, construir_cadena, verificar_cadena
-from app.domain.auth.errors import ForbiddenError, MfaRequiredError
+from app.domain.auth.errors import MfaRequiredError
 from app.domain.auth.identity import AuthenticatedPrincipal
 from app.domain.auth.roles import Rol
-from app.domain.entities.assignment import Asignacion
-from app.domain.repositories.ports import AssignmentRepository, AuditLogRepository
-
-
-class InMemoryAssignmentRepo(AssignmentRepository):
-    def __init__(self, asignaciones: list[Asignacion]) -> None:
-        self._items = list(asignaciones)
-
-    async def add(self, entity: Asignacion) -> Asignacion:
-        self._items.append(entity)
-        return entity
-
-    async def get(self, entity_id: str) -> Asignacion | None:
-        return next((a for a in self._items if a.id == entity_id), None)
-
-    async def list(self) -> list[Asignacion]:
-        return list(self._items)
-
-    async def update(self, entity: Asignacion) -> Asignacion:
-        return entity
+from app.domain.repositories.ports import AuditLogRepository
 
 
 class InMemoryAuditRepo(AuditLogRepository):
@@ -69,32 +50,26 @@ def _proctor() -> AuthenticatedPrincipal:
     )
 
 
-def test_proctor_no_asignado_rechazado_por_servicio() -> None:
-    async def run() -> None:
-        repo = InMemoryAssignmentRepo([Asignacion(proctor_id="user-99", exam_id="EX-1")])
-        audit = InMemoryAuditRepo()
-        svc = ContextualAuthorizationService(repo, audit)
-        with pytest.raises(ForbiddenError):
-            await svc.autorizar_proctor(_proctor(), proctor_id="user-1", exam_id="EX-1")
+# ---------------------------------------------------------------------------
+# Proctor — alcance global (C-50)
+# ---------------------------------------------------------------------------
 
-    asyncio.run(run())
+def test_proctor_global_autorizado_por_servicio() -> None:
+    """Proctor con MFA -> servicio no levanta excepcion sin necesitar repositorio de asignaciones."""
+    audit = InMemoryAuditRepo()
+    svc = ContextualAuthorizationService(audit)
+    # Llamada sincrona — no levanta
+    svc.autorizar_proctor(_proctor(), exam_id="EX-CUALQUIERA")
 
 
-def test_proctor_asignado_autorizado_por_servicio() -> None:
-    async def run() -> None:
-        repo = InMemoryAssignmentRepo([Asignacion(proctor_id="user-1", exam_id="EX-1")])
-        audit = InMemoryAuditRepo()
-        svc = ContextualAuthorizationService(repo, audit)
-        await svc.autorizar_proctor(_proctor(), proctor_id="user-1", exam_id="EX-1")
-
-    asyncio.run(run())
-
+# ---------------------------------------------------------------------------
+# Evidencia — gate con audit log (sin cambios por C-50)
+# ---------------------------------------------------------------------------
 
 def test_acceso_evidencia_registra_proposito_en_audit() -> None:
     async def run() -> None:
-        repo = InMemoryAssignmentRepo([])
         audit = InMemoryAuditRepo()
-        svc = ContextualAuthorizationService(repo, audit)
+        svc = ContextualAuthorizationService(audit)
         await svc.acceder_a_evidencia(
             _proctor(),
             evidencia_id=None,
@@ -118,7 +93,7 @@ def test_acceso_evidencia_sin_mfa_no_audita() -> None:
             id_institucional="p", email="p@uni.edu", roles=(Rol.PROCTOR,)
         )
         audit = InMemoryAuditRepo()
-        svc = ContextualAuthorizationService(InMemoryAssignmentRepo([]), audit)
+        svc = ContextualAuthorizationService(audit)
         with pytest.raises(MfaRequiredError):
             await svc.acceder_a_evidencia(
                 sin_mfa,

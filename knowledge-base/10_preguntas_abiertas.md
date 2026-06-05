@@ -47,3 +47,11 @@
 | Baja | ¿Seed data inicial concreto (roles, realms Keycloak, configuración por defecto)? No detallado. | Bootstrap del sistema | Equipo técnico |
 | Baja | ¿Inscripción de la base ante la AAIP? Acción pendiente del área legal. | Cumplimiento Argentina | Legal/DPO |
 | Baja | ¿Se ofrece efectivamente la vía alternativa de verificación sin biometría? Recomendada legalmente, no confirmada en el alcance. | Cumplimiento del consentimiento libre | Dirección académica + Legal |
+
+## Cambios relevantes con impacto de gobernanza
+
+### C-50 — Proctor alcance global (RN-AU-07 revertida)
+
+**C-50 revierte RN-AU-07**: el proctor ya no está scoped a exámenes asignados; pasa a tener **alcance global** sobre todos los exámenes activos. Esta decisión relaja el principio de mínimo privilegio documentado en C-06 D3.
+
+**Acción pendiente para C-01**: el DPIA (C-01, hoy 0/23) debe registrar explícitamente la justificación de esta relajación del mínimo privilegio para el proctor global. C-50 **no se considera gobernanza-completo** hasta que C-01 absorba esa justificación. Ver `openspec/changes/c-50-proctor-alcance-global/design.md` §D4.

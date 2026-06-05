@@ -10,7 +10,7 @@ Cada regla tiene un código único `RN-{DOMINIO}-{NN}` para trazabilidad. Las re
 - **RN-AU-04**: Los access tokens duran 15–60 minutos; los refresh tokens rotan en cada uso.
 - **RN-AU-05**: MFA obligatorio para roles con acceso a evidencia o administración (proctor, revisor, coordinador, administradores). TOTP mínimo, WebAuthn recomendado.
 - **RN-AU-06**: Los usuarios se provisionan just-in-time desde el IdP institucional.
-- **RN-AU-07**: Los permisos son contextuales, no globales: un proctor observa solo exámenes asignados; un revisor solo su jurisdicción.
+- **RN-AU-07**: El alcance de los permisos depende del rol: el proctor tiene **alcance global** sobre todos los exámenes activos; el revisor está acotado a su jurisdicción (permiso contextual). *(C-50: la restricción de asignación del proctor fue revertida por decisión del dueño del producto; la relajación del mínimo privilegio queda justificada en el DPIA — C-01.)*
 
 ## Dominio: Configuración de examen (RN-EX)
 
