@@ -30,6 +30,12 @@
     // bootstrap.sh y panels_asyncio.py corren en el HOST con python3 (stdlib).
     "ghcr.io/devcontainers/features/python:1": {
       "version": "3.11"
+    },
+    // La imagen base:ubuntu NO trae sshd; sin esto `gh codespace ssh` falla
+    // ("Please check if an SSH server is installed"). Necesario para manejar
+    // el bootstrap/barrido por CLI desde fuera del Codespace.
+    "ghcr.io/devcontainers/features/sshd:1": {
+      "version": "latest"
     }
   },
 
