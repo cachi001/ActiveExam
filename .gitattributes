@@ -1,0 +1,3 @@
+# Los shell scripts DEBEN tener fin de linea LF: corren en Linux (Codespaces / VM).
+# Con CRLF el shebang se lee como "/usr/bin/env bash\r" y falla con "bad interpreter".
+*.sh text eol=lf

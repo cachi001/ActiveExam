@@ -24,12 +24,15 @@ from __future__ import annotations
 from prometheus_client import Gauge, Histogram
 
 # Concern (c) -- riesgo #1. Latencia del fan-out evento->panel (LISTEN/NOTIFY->SSE).
-# SLO: p99 < 500 ms al pico ~2.100 VU. Buckets alrededor del umbral de 0.5 s para
-# que el p99 sea legible justo en la frontera de aceptacion.
+# SLO: p99 < 500 ms al pico ~2.100 VU. Buckets finos alrededor de la frontera de 0.5 s
+# (legibilidad del p99 en la zona de aceptacion) + 0.025 en el piso (el backplane sano
+# es ~31 ms: hay que distinguirlo por debajo de 50 ms) + cola hasta 10 s.
+# El techo en 2.0 s era CIEGO: en B5.1 (host saturado) el p99 real >2 s leia "2000 ms"
+# (cota del ultimo bucket) y la cola quedaba indistinguible. Extendido a 10 s.
 fanout_latency_seconds = Histogram(
     "fanout_latency_seconds",
     "Latencia evento->panel (fan-out del backplane, concern c). SLO p99 < 0.5 s.",
-    buckets=(0.05, 0.1, 0.2, 0.5, 1.0, 2.0),
+    buckets=(0.025, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0),
 )
 
 # Concern (a). Latencia de re-inferencia + firma de evidencia en el worker.
@@ -52,13 +55,15 @@ job_queue_depth = Gauge(
 # dos lo parten en sus dos tramos para localizar el cuello de botella real:
 #   persist_latency_seconds  = ts_backend -> ts_publish (INSERT + commit a la hypertable)
 #   backplane_latency_seconds= ts_publish -> ts_rx      (pg_notify + entrega SSE, A4 puro)
+# Buckets identicos al fan-out (piso 0.025 para el backplane sano ~31 ms, cola a 10 s):
+# en B5.1 ambos tramos superaron 2 s bajo saturacion y el techo viejo los hacia ilegibles.
 persist_latency_seconds = Histogram(
     "persist_latency_seconds",
     "Latencia de persistencia evento (INSERT+commit hypertable) antes del fan-out (concern c).",
-    buckets=(0.05, 0.1, 0.2, 0.5, 1.0, 2.0),
+    buckets=(0.025, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0),
 )
 backplane_latency_seconds = Histogram(
     "backplane_latency_seconds",
     "Latencia del backplane PURO (pg_notify->panel SSE), sin persistencia (concern c, A4).",
-    buckets=(0.05, 0.1, 0.2, 0.5, 1.0, 2.0),
+    buckets=(0.025, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0),
 )

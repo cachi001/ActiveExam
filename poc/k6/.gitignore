@@ -1,0 +1,8 @@
+# Artefactos generados por la corrida del seed (DESCARTABLES — no versionar).
+# `sessions.json` lo escupe seed.py (docker exec ... seed.py > sessions.json) y
+# `.exam_id` queda atado a UNA siembra de la DB efímera: cambian en cada corrida.
+# Versionarlos deja data muerta que rompe la siguiente corrida del harness.
+sessions.json
+.exam_id
+# Salida del medidor de paneles (panels_asyncio.py) — scratch de cada corrida.
+panels.out
