@@ -15,6 +15,12 @@ dependencies = [
     "sqlalchemy==2.0.36",
     "asyncpg==0.30.0",
     "alembic==1.14.0",
+    # Driver SYNC para Alembic: migrations/env.py corre sincrono y strippea
+    # +asyncpg -> queda 'postgresql://' que SQLAlchemy mapea al dialecto psycopg2
+    # por default. La app usa asyncpg; Alembic usa psycopg2. Sin esto, el image
+    # runtime (pip install . = solo estas deps, NO el extra dev) no trae ningun
+    # driver sync -> ModuleNotFoundError: psycopg2 al migrar. Espeja requirements.txt.
+    "psycopg2-binary==2.9.10",
     # Auth/JWT (C-06): validacion LOCAL de JWT RS256 contra el JWKS de Keycloak.
     # 'crypto' trae el backend de claves publicas (cryptography) para RS256.
     "pyjwt[crypto]==2.10.1",
