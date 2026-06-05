@@ -1,0 +1,158 @@
+{
+  "id": "proctoring",
+  "realm": "proctoring",
+  "displayName": "Proctoring UTN",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": true,
+  "editUsernameAllowed": false,
+  "bruteForceProtected": true,
+  "permanentLockout": false,
+  "maxFailureWaitSeconds": 900,
+  "minimumQuickLoginWaitSeconds": 60,
+  "waitIncrementSeconds": 60,
+  "quickLoginCheckMilliSeconds": 1000,
+  "maxDeltaTimeSeconds": 43200,
+  "failureFactor": 5,
+  "accessTokenLifespan": 300,
+  "accessCodeLifespan": 60,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 36000,
+  "offlineSessionIdleTimeout": 2592000,
+  "offlineSessionMaxLifespanEnabled": false,
+  "roles": {
+    "realm": [
+      {
+        "name": "estudiante",
+        "description": "Estudiante que rinde un examen supervisado",
+        "composite": false,
+        "clientRole": false
+      },
+      {
+        "name": "proctor",
+        "description": "Supervisor en vivo de sesiones de examen",
+        "composite": false,
+        "clientRole": false
+      },
+      {
+        "name": "admin_examenes",
+        "description": "Administrador de configuración de exámenes",
+        "composite": false,
+        "clientRole": false
+      },
+      {
+        "name": "admin_sistema",
+        "description": "Administrador del sistema con acceso total",
+        "composite": false,
+        "clientRole": false
+      }
+    ],
+    "client": {}
+  },
+  "clients": [
+    {
+      "clientId": "proctoring-spa",
+      "name": "Proctoring SPA",
+      "description": "Cliente público OIDC para el frontend de proctoring (React+Vite). DEV ONLY: directAccessGrants habilitado para tests sin browser.",
+      "enabled": true,
+      "publicClient": true,
+      "protocol": "openid-connect",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "authorizationServicesEnabled": false,
+      "redirectUris": [
+        "http://localhost:5173/*",
+        "http://localhost:8080/*",
+        "http://localhost/*"
+      ],
+      "webOrigins": [
+        "+"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:5173/*##http://localhost/*"
+      },
+      "protocolMappers": [
+        {
+          "name": "audience-proctoring-api",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.custom.audience": "proctoring-api",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "lightweight.claim": "false"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "ecaceres",
+      "email": "ecaceres@frm.utn.edu.ar",
+      "firstName": "Emiliano",
+      "lastName": "Cáceres",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "test1234",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "estudiante"
+      ],
+      "attributes": {
+        "id_institucional": ["FRM-23-4912"]
+      }
+    },
+    {
+      "username": "cferreyra",
+      "email": "cferreyra@frm.utn.edu.ar",
+      "firstName": "Carolina",
+      "lastName": "Ferreyra",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "test1234",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "proctor"
+      ]
+    },
+    {
+      "username": "admin",
+      "email": "admin@proctoring.local",
+      "firstName": "Admin",
+      "lastName": "Sistema",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "test1234",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "admin_examenes",
+        "admin_sistema"
+      ]
+    }
+  ],
+  "scopeMappings": [],
+  "clientScopeMappings": {}
+}

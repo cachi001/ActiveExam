@@ -46,15 +46,24 @@ services:
       retries: 5
     networks: [proctoring]
 
-  # --- Identidad: Keycloak (auth REAL es C-06; aqui solo corre) ---------------
+  # --- Identidad: Keycloak (realm proctoring importado automaticamente — C-52) --
+  # KC_HOSTNAME_URL fija el claim `iss` a http://localhost:8080 para que coincida
+  # con KEYCLOAK_ISSUER del backend. El browser llega a localhost:8080; el backend
+  # valida JWKS via keycloak:8080 (backchannel Docker interno). La asimetria es
+  # INTENCIONAL: issuer = hostname del browser, jwks = red interna.
   keycloak:
     image: quay.io/keycloak/keycloak:26.0.7
-    command: start-dev
+    command: start-dev --import-realm
     environment:
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN}
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
       KC_HEALTH_ENABLED: "true"
       KC_HTTP_ENABLED: "true"
+      KC_HOSTNAME_URL: "http://localhost:8080"
+    ports:
+      - "8080:8080"
+    volumes:
+      - ../../infra/keycloak/proctoring-realm.json:/opt/keycloak/data/import/proctoring-realm.json:ro
     healthcheck:
       test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/9000 && echo -e 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && cat <&3 | grep -q '200 OK'"]
       interval: 15s
