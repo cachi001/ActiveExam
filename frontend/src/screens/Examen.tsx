@@ -9,12 +9,12 @@ import type { EventoSesion } from '../lib/types';
 
 const PREGUNTA = {
   numero: 'Pregunta 1 de 5',
-  enunciado: 'Identificá la descripción anatómica correcta del hueso hioides:',
+  enunciado: '¿Cuál es la derivada de f(x) = x³ − 3x² + 2x respecto de x?',
   opciones: [
-    'Hueso impar y simétrico ubicado en la parte anterior y superior del cuello.',
-    'Hueso par ubicado a nivel supraclavicular interno.',
-    'Hueso cartilaginoso simétrico a nivel de la laringe posterior.',
-    'Estructura ósea conectora interna del manubrio esternal.',
+    "f '(x) = 3x² − 6x + 2",
+    "f '(x) = x² − 3x + 2",
+    "f '(x) = 3x² − 6x",
+    "f '(x) = 3x³ − 6x² + 2x",
   ],
 };
 
@@ -25,7 +25,7 @@ export default function Examen() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
-  const [segRestantes, setSegRestantes] = useState((examen?.duracion_min ?? 90) * 60);
+  const [segRestantes, setSegRestantes] = useState((examen?.duracion_min ?? 60) * 60);
   const [alerta, setAlerta] = useState<EventoSesion | null>(null);
   const [opcion, setOpcion] = useState<number | null>(null);
   const [mensajes, setMensajes] = useState<{ de: string; texto: string; hora: string }[]>([

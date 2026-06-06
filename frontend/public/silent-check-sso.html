@@ -1,0 +1,10 @@
+<!doctype html>
+<html>
+  <body>
+    <script>
+      // Endpoint de check-sso silencioso de Keycloak: reenvía la URL de retorno
+      // al frame padre para que keycloak-js detecte la sesión sin recargar la app.
+      parent.postMessage(location.href, location.origin);
+    </script>
+  </body>
+</html>

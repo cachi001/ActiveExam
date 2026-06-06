@@ -1,71 +1,102 @@
-import { useState } from 'react';
+import { useEffect } from 'react';
 import { Icon, Button } from '../ui/components';
 import { useNavigate } from '../lib/router';
-import { useApp } from '../lib/store';
-import { api } from '../lib/api';
+import { useAuth } from '../lib/authStore';
+import type { Rol } from '../lib/types';
 import { INSTITUTION } from '../config/institution';
+
+/** Home de cada rol tras el login. admin_sistema centraliza administración + revisión. */
+function homePorRol(roles: Rol[]): string {
+  if (roles.includes('admin_sistema')) return '/admin';
+  if (roles.includes('proctor')) return '/proctor';
+  return '/alumno/dashboard';
+}
 
 export default function Login() {
   const navigate = useNavigate();
-  const { setPrincipal, setExamenActivo, resetSesion } = useApp();
-  const [cargando, setCargando] = useState(false);
+  const status = useAuth((s) => s.status);
+  const principal = useAuth((s) => s.principal);
+  const login = useAuth((s) => s.login);
 
-  const ingresar = async () => {
-    setCargando(true);
-    resetSesion();
-    const principal = await api.login('estudiante');
-    setPrincipal(principal, 'estudiante');
-    const examenes = await api.listExams();
-    setExamenActivo(examenes.find((e) => e.estado === 'en_curso') ?? examenes[0]);
-    setCargando(false);
-    navigate('/alumno/dashboard');
-  };
+  // Si ya hay sesión iniciada (volvimos del redirect de Keycloak), entrar al home del rol.
+  useEffect(() => {
+    if (status === 'authenticated' && principal) {
+      navigate(homePorRol(principal.roles));
+    }
+  }, [status, principal, navigate]);
+
+  const cargando = status === 'loading';
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center relative glass-glow px-lg bg-surface">
-      <div className="absolute top-0 right-0 w-[500px] h-[500px] pointer-events-none opacity-40 blur-[100px] bg-primary-fixed-dim rounded-full translate-x-1/2 -translate-y-1/2" />
+    <div className="min-h-screen grid lg:grid-cols-2 bg-surface">
+      {/* Panel de marca (color con presencia) — solo desktop */}
+      <aside className="hidden lg:flex flex-col justify-between p-xxl bg-gradient-to-br from-primary to-primary-700 text-on-primary relative overflow-hidden">
+        <span className="pointer-events-none absolute -top-16 -right-16 w-72 h-72 rounded-full bg-white/10" aria-hidden />
+        <span className="pointer-events-none absolute bottom-10 -left-20 w-80 h-80 rounded-full bg-white/5" aria-hidden />
 
-      <main className="w-full max-w-md z-10">
-        <div className="bg-surface-container-lowest rounded-xl p-xl flex flex-col gap-xl shadow-card-lg border border-outline-variant/50 animate-in fade-in slide-in-from-bottom-4 duration-700">
-          <header className="flex flex-col items-center gap-lg text-center">
-            <div className="w-14 h-14 rounded-2xl bg-primary text-on-primary flex items-center justify-center shadow-sm">
-              <Icon name="school" className="text-[28px]" fill />
+        <div className="flex items-center gap-sm relative">
+          <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
+            <Icon name="verified_user" className="text-[24px]" fill />
+          </div>
+          <span className="font-headline text-title-lg">Active Exam</span>
+        </div>
+
+        <div className="relative max-w-md">
+          <h2 className="font-headline text-display-lg leading-tight">Integridad académica, con soberanía de datos.</h2>
+          <p className="text-body-lg text-white/80 mt-md">
+            Supervisión de exámenes remotos con evidencia de cadena de custodia y decisión disciplinaria siempre humana.
+          </p>
+        </div>
+
+        <div className="relative flex items-center gap-xs text-label-sm text-white/70">
+          <Icon name="lock" className="text-[18px]" fill />
+          Self-hosted · Ley 25.326 · DPIA aprobado
+        </div>
+      </aside>
+
+      {/* Panel de acceso */}
+      <main className="flex flex-col items-center justify-center px-lg py-xl">
+        <div className="w-full max-w-sm flex flex-col gap-xxl animate-in fade-in slide-in-from-bottom-4 duration-700">
+          {/* Marca compacta (visible también en mobile) */}
+          <header className="flex flex-col items-center gap-md text-center">
+            <div className="w-14 h-14 rounded-2xl bg-primary text-on-primary flex items-center justify-center shadow-sm lg:hidden">
+              <Icon name="verified_user" className="text-[28px]" fill />
             </div>
             <div>
-              <h1 className="font-headline text-headline-md text-on-surface tracking-tight">Portal del alumno</h1>
-              <p className="text-label-md text-on-surface-variant mt-xs">{INSTITUTION.nombreCorto}</p>
-              <p className="text-body-md text-on-surface-variant mt-xs">Accedé para ver tus materias, inscribirte a exámenes y gestionar tu perfil académico.</p>
+              <h1 className="font-headline text-headline-lg text-on-surface tracking-tight">Iniciar sesión</h1>
+              <p className="text-body-md text-on-surface-variant mt-xs">
+                Accedé a la plataforma de exámenes supervisados.
+              </p>
             </div>
           </header>
 
-          <section className="flex flex-col gap-md">
-            <div className="space-y-base">
-              <label className="text-label-sm uppercase tracking-wide text-on-surface-variant font-semibold">Institución</label>
-              <div className="flex items-center gap-sm bg-surface-container-low border border-outline-variant rounded-xl px-md py-sm">
-                <Icon name="account_balance" className="text-on-surface-variant text-[20px]" />
-                <span className="text-body-md font-semibold text-on-surface">{INSTITUTION.nombre} — {INSTITUTION.facultad}</span>
+          <section className="flex flex-col gap-lg">
+            {/* Institución: fila limpia con acento de color, sin caja gris */}
+            <div className="flex items-center gap-sm pb-md border-b border-outline-variant/60">
+              <div className="w-11 h-11 rounded-xl bg-primary-fixed text-primary flex items-center justify-center shrink-0">
+                <Icon name="account_balance" className="text-[22px]" fill />
+              </div>
+              <div className="min-w-0">
+                <p className="text-label-sm text-on-surface-variant">Tu institución</p>
+                <p className="text-body-md font-semibold text-on-surface truncate">{INSTITUTION.nombre}</p>
               </div>
             </div>
 
-            <Button onClick={ingresar} disabled={cargando} size="lg" icon={cargando ? undefined : 'login'} iconRight={cargando ? undefined : 'arrow_forward'} className="w-full">
+            <Button onClick={login} disabled={cargando} size="lg" iconRight={cargando ? undefined : 'arrow_forward'} className="w-full">
               {cargando ? (
-                <span className="inline-flex items-center gap-xs"><Icon name="progress_activity" className="ae-spin text-[20px]" /> Conectando con Keycloak…</span>
-              ) : `Ingresar con ${INSTITUTION.loginLabel}`}
+                <span className="inline-flex items-center gap-xs"><Icon name="progress_activity" className="ae-spin text-[20px]" /> Conectando…</span>
+              ) : 'Ingresar con mi cuenta institucional'}
             </Button>
-            <p className="text-label-sm text-on-surface-variant text-center px-md">
-              Usás las mismas credenciales del campus (OAuth2 / OIDC con MFA).
+            <p className="text-label-sm text-on-surface-variant text-center">
+              Mismas credenciales del campus · OIDC con MFA
             </p>
           </section>
 
-          <nav className="flex justify-center items-center gap-lg border-t border-outline-variant/60 pt-lg">
-            <a className="text-label-md text-primary hover:underline" href="#/">Necesito ayuda</a>
-          </nav>
+          <p className="flex items-center justify-center gap-xs text-label-sm text-on-surface-variant">
+            <Icon name="lock" className="text-outline text-[16px]" fill />
+            Tu privacidad está protegida — Ley 25.326
+          </p>
         </div>
-
-        <footer className="mt-xl flex items-center justify-center gap-xs px-md py-sm bg-surface-container-low rounded-full border border-outline-variant/40">
-          <Icon name="lock" className="text-outline text-[18px]" fill />
-          <p className="text-label-sm text-on-surface-variant">Tu privacidad está protegida. ActiveExam nunca comparte tus datos. (Ley 25.326)</p>
-        </footer>
       </main>
     </div>
   );

@@ -40,7 +40,7 @@ export default function Consent() {
           </div>
           <h2 className="font-headline text-headline-lg text-on-surface">Consentimiento informado</h2>
           <p className="text-body-md text-on-surface-variant">
-            ActiveExam respeta tus derechos bajo la <strong>Ley 25.326</strong> y un DPIA aprobado. Leé con atención antes de continuar.
+            Active Exam respeta tus derechos bajo la <strong>Ley 25.326</strong> y un DPIA aprobado. Leé con atención antes de continuar.
           </p>
           {texto && <p className="text-label-sm text-on-surface-variant">Versión {texto.version} · {texto.hash_texto}</p>}
         </div>

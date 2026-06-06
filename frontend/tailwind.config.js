@@ -9,8 +9,11 @@ export default {
   theme: {
     extend: {
       colors: {
-        "primary": "#4241bc",
-        "primary-container": "#5b5bd6",
+        // Índigo institucional VIVO (formal, con presencia — no apagado).
+        "primary": "#4f46e5",
+        "primary-container": "#6366f1",
+        "primary-700": "#4338ca",
+        "primary-800": "#3730a3",
         "on-primary": "#ffffff",
         "on-primary-container": "#edeaff",
         "primary-fixed": "#e2dfff",
@@ -61,6 +64,18 @@ export default {
         "success-container": "#dcfce7",
         "warning": "#b45309",
         "warning-container": "#fef3c7",
+        // Escala viva para gradientes de stat cards (fondo de color + texto blanco).
+        "success-500": "#22c55e",
+        "success-600": "#16a34a",
+        "warning-500": "#f59e0b",
+        "warning-600": "#d97706",
+        "error-500": "#ef4444",
+        "error-600": "#dc2626",
+        "info": "#2563eb",
+        "info-500": "#3b82f6",
+        "info-600": "#2563eb",
+        "info-container": "#dbeafe",
+        "on-info": "#ffffff",
       },
       borderRadius: {
         DEFAULT: "0.5rem",
@@ -108,8 +123,10 @@ export default {
         "container-max": "1280px",
       },
       boxShadow: {
-        card: "0 1px 2px rgba(26,28,31,0.04), 0 4px 16px -8px rgba(26,28,31,0.06)",
-        "card-lg": "0 40px 100px -20px rgba(26,28,31,0.06), 0 10px 40px -10px rgba(26,28,31,0.04)",
+        // Sombras sutiles estilo "flat minimalism" (inspirado en el sistema de reservas):
+        // apenas perceptibles, sin nubes difusas. La definición la da el borde, no la sombra.
+        card: "0 1px 2px 0 rgba(16,24,40,0.04), 0 1px 3px 0 rgba(16,24,40,0.06)",
+        "card-lg": "0 2px 4px -1px rgba(16,24,40,0.04), 0 8px 16px -6px rgba(16,24,40,0.08)",
       },
     },
   },
