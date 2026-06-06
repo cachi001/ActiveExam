@@ -16,6 +16,7 @@ import type {
   BiometriaDetalle, VeredictoReinferencia,
 } from './types';
 import { INSTITUTION } from '../config/institution';
+import { getToken } from './auth/keycloak';
 
 export const API_BASE = (import.meta.env.VITE_API_BASE as string) || '/api/v1';
 export const USE_REAL_BACKEND = import.meta.env.VITE_USE_REAL_BACKEND === '1';
@@ -43,17 +44,9 @@ export const PRINCIPALES: Record<Rol, Principal> = {
     id_institucional: `${INSTITUTION.idPrefix}-DOC-1182`, nombre: 'Dra. Carolina Ferreyra',
     email: `cferreyra@${INSTITUTION.dominioEmail}`, roles: ['proctor'], mfa_satisfecho: true, jurisdiccion: 'AR',
   },
-  revisor: {
-    id_institucional: `${INSTITUTION.idPrefix}-DOC-0934`, nombre: 'Prof. Martín Acuña',
-    email: `macuna@${INSTITUTION.dominioEmail}`, roles: ['revisor'], mfa_satisfecho: true, jurisdiccion: 'AR',
-  },
-  admin_examenes: {
+  admin_sistema: {
     id_institucional: `${INSTITUTION.idPrefix}-ADM-0021`, nombre: 'Lucía Mendoza',
-    email: `lmendoza@${INSTITUTION.dominioEmail}`, roles: ['admin_examenes'], mfa_satisfecho: true, jurisdiccion: 'AR',
-  },
-  coordinador: {
-    id_institucional: `${INSTITUTION.idPrefix}-CRD-0007`, nombre: 'Coordinación Académica',
-    email: `coordinacion@${INSTITUTION.dominioEmail}`, roles: ['coordinador'], mfa_satisfecho: true, jurisdiccion: 'AR',
+    email: `lmendoza@${INSTITUTION.dominioEmail}`, roles: ['admin_sistema'], mfa_satisfecho: true, jurisdiccion: 'AR',
   },
 };
 
@@ -74,7 +67,7 @@ const EXAMEN_RENDIBLE_ID = `EX-${INSTITUTION.idPrefix}-AMAT-I`;
 export let EXAMENES: ExamenConComision[] = [
   {
     id: EXAMEN_RENDIBLE_ID, nombre: 'Examen Final — Análisis Matemático I', catedra: 'Cátedra B',
-    estado: 'en_curso', inicio: '2026-05-30T14:00:00', duracion_min: 90,
+    estado: 'en_curso', inicio: '2026-05-30T14:00:00', duracion_min: 60,
     umbral_score: 70, detectores: DETECTORES_DEFAULT, retencion_dias: 30,
     inscriptos: 48, rindiendo: 4, comision_id: 'COM-AMAT-1A',
   },
@@ -305,10 +298,17 @@ function distanciaCoseno(a: number[], b: number[]): number {
   return 1 - sim;
 }
 
-async function realFetch<T>(path: string, init: RequestInit, token: string): Promise<T> {
+// El token SIEMPRE sale de Keycloak (getToken). El 3er parámetro legacy se ignora
+// (los callers históricos pasaban 'demo'); se mantiene por compatibilidad de firma.
+async function realFetch<T>(path: string, init: RequestInit, _legacyToken?: string): Promise<T> {
+  const token = getToken();
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, ...(init.headers || {}) },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(init.headers || {}),
+    },
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json() as Promise<T>;
@@ -874,7 +874,7 @@ export const api = {
       {
         id: 'mock-session-diagnostico-001',
         modo: 'diagnostico',
-        etiqueta: 'Harness diagnóstico',
+        etiqueta: 'Prueba de detección local',
         creada_en: hace1h,
         total_eventos: 7,
         total_discrepancias: 2,
@@ -883,7 +883,7 @@ export const api = {
       {
         id: 'mock-session-examen-002',
         modo: 'examen',
-        etiqueta: 'Examen Final — Análisis Matemático I',
+        etiqueta: 'Persona en banca 08',
         creada_en: hace30m,
         total_eventos: 3,
         total_discrepancias: 0,
@@ -917,7 +917,7 @@ export const api = {
     return {
       id,
       modo: 'diagnostico',
-      etiqueta: 'Harness diagnóstico',
+      etiqueta: 'Prueba de detección local',
       creada_en: new Date(ahora.getTime() - 3600 * 1000).toISOString(),
       total_eventos: 3,
       total_discrepancias: 1,
@@ -975,9 +975,10 @@ export const api = {
   async eliminarSesionProctoring(id: string): Promise<{ ok: boolean }> {
     if (USE_REAL_BACKEND) {
       try {
+        const token = getToken();
         const res = await fetch(`${API_BASE}/proctoring/sessions/${id}`, {
           method: 'DELETE',
-          headers: { Authorization: 'Bearer demo' },
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
         });
         return { ok: res.ok };
       } catch {

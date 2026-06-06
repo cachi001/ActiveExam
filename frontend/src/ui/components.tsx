@@ -52,7 +52,7 @@ export const Button = forwardRef<HTMLButtonElement, {
 
 export function Card({ children, className = '', padded = true }: { children: ReactNode; className?: string; padded?: boolean }) {
   return (
-    <div className={`bg-surface-container-lowest rounded-xl border border-outline-variant/40 shadow-card ${padded ? 'p-lg' : ''} ${className}`}>
+    <div className={`bg-surface-container-lowest rounded-2xl border border-outline-variant/70 shadow-card ${padded ? 'p-lg' : ''} ${className}`}>
       {children}
     </div>
   );

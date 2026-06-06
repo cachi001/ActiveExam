@@ -17,13 +17,14 @@ export function ResumenVivo({ sesiones }: { sesiones: SesionProctoringResumen[] 
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-md">
+      {/* Cada card con un color BASE distinto para que nunca se confundan entre sí. */}
       <StatCard icon="sensors" label="Sesiones activas" value={activas} tono="primary" />
-      <StatCard icon="notifications" label="Eventos totales" value={totalEventos} tono="neutral" />
+      <StatCard icon="notifications" label="Eventos totales" value={totalEventos} tono="info" />
       <StatCard
         icon="rule"
         label="Discrepancias"
         value={totalDiscrepancias}
-        tono={totalDiscrepancias > 0 ? 'error' : 'success'}
+        tono={totalDiscrepancias > 0 ? 'warning' : 'neutral'}
       />
       <StatCard
         icon="priority_high"

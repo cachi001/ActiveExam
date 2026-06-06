@@ -35,18 +35,18 @@ const GRUPOS: Group[] = [
   },
   {
     titulo: 'Revisión académica', icon: 'gavel', items: [
-      { to: '/revisor', label: 'Cola de revisión', rol: 'revisor' },
+      { to: '/revisor', label: 'Cola de revisión', rol: 'admin_sistema' },
       { to: '/revisor/detalle', label: 'Detalle de sesión' },
     ],
   },
   {
     titulo: 'Administración', icon: 'admin_panel_settings', items: [
-      { to: '/admin', label: 'Dashboard', rol: 'admin_examenes' },
+      { to: '/admin', label: 'Dashboard', rol: 'admin_sistema' },
       { to: '/admin/examenes', label: 'Listado de exámenes' },
       { to: '/admin/configurar', label: 'Configurar examen' },
       { to: '/admin/reportes', label: 'Reportes y analítica' },
       { to: '/admin/auditoria', label: 'Auditoría y privacidad' },
-      { to: '/admin/detection-test', label: 'Test de detección', rol: 'admin_examenes' },
+      { to: '/admin/detection-test', label: 'Test de detección', rol: 'admin_sistema' },
     ],
   },
 ];

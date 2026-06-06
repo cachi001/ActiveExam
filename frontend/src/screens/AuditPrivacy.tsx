@@ -43,7 +43,7 @@ export default function AuditPrivacy() {
 
         <div className="grid sm:grid-cols-3 gap-md">
           <StatCard icon="schedule" label="Retención" value="30 días" sub="luego eliminación automática" tono="primary" />
-          <StatCard icon="enhanced_encryption" label="Cifrado" value="At-rest + WORM" sub="MinIO Object Lock" tono="success" />
+          <StatCard icon="enhanced_encryption" label="Evidencia" value="Protegida" sub="cifrada e inalterable" tono="success" />
           <StatCard icon="fingerprint" label="Embedding" value="Dato sensible" sub="responsabilidad reforzada" tono="warning" />
         </div>
 
