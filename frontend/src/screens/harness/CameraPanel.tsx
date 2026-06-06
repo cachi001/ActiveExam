@@ -86,7 +86,7 @@ export default function CameraPanel({
               />
               <span className="text-label-sm text-on-surface">
                 <Icon name="face" className="text-[14px] inline mr-base" />
-                Mesh completo (468 pts)
+                Mesh completo (468 pts) — diagnóstico de staff
               </span>
             </label>
           </div>

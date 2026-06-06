@@ -11,6 +11,7 @@ import { TIPO_EVENTO_LABEL } from '../../lib/api';
 import type { EventoProctoringDetalle, Severidad, TipoEvento } from '../../lib/types';
 import { formatFecha, verdictClasses, verdictIcon, verdictLabel } from './helpers';
 import { ScreenshotMiniatura } from './ScreenshotMiniatura';
+import { formatRostrosConOrigen } from '../../lib/faceCountLabel';
 
 /** Borde-izquierdo de acento según severidad. */
 function severidadAccent(sev: string): string {
@@ -81,12 +82,12 @@ export function EventoCard({ evento }: { evento: EventoProctoringDetalle }) {
               <span className="inline-flex items-center gap-base px-sm py-px rounded-lg
                 bg-surface-container text-label-sm text-on-surface">
                 <Icon name="person" className="text-[14px]" />
-                Cliente <strong>{fcCliente ?? '—'}</strong>
+                {formatRostrosConOrigen('Cliente', fcCliente)}
               </span>
               <span className="inline-flex items-center gap-base px-sm py-px rounded-lg
                 bg-surface-container text-label-sm text-on-surface">
                 <Icon name="dns" className="text-[14px]" />
-                Servidor <strong>{fcServidor ?? '—'}</strong>
+                {formatRostrosConOrigen('Servidor', fcServidor)}
               </span>
               {discrepanciaFC && <Badge tone="error">Discrepancia</Badge>}
             </div>

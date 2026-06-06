@@ -19,6 +19,13 @@
  * - Degradación silenciosa: un error de red NUNCA rompe el examen.
  * - Dual-mode: con USE_REAL_BACKEND=0 funciona (sesión mock, envío null).
  *
+ * GUARDIA DE OVERLAY (C-53/D4): este flujo de examen del alumno corre el
+ * pipeline de visión EN SILENCIO y NUNCA debe montar `VisionOverlay` ni dibujar
+ * puntos/box sobre la cara del alumno. El overlay de diagnóstico (canvas con
+ * mesh/box/gaze) queda restringido al harness de staff. NO importar ni instanciar
+ * `VisionOverlay` aquí: pintar el rostro del examinado es intrusivo y viola la spec
+ * `vision-overlay-canvas` ("El examen del alumno no dibuja overlay sobre la cara").
+ *
  * DATO SENSIBLE (Ley 25.326): el screenshot base64 es imagen del alumno; se
  * transmite solo al backend, nunca se loguea ni se persiste localmente.
  */

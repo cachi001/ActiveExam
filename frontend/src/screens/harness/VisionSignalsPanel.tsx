@@ -8,6 +8,7 @@
 import { Icon, Card, SectionTitle } from '../../ui/components';
 import { Term } from '../../ui/Term';
 import type { EngineMode, HarnessState, RawSignals } from './types';
+import { formatRostros } from '../../lib/faceCountLabel';
 
 interface VisionSignalsPanelProps {
   rawSignals: RawSignals;
@@ -66,11 +67,7 @@ export default function VisionSignalsPanel({
               fill
             />
             <span className="text-label-md font-semibold text-on-surface">
-              {rawSignals.faceDetection.face_count === 1
-                ? 'Se detectó 1 persona frente a la cámara'
-                : rawSignals.faceDetection.face_count === 0
-                ? 'No se detectó ninguna persona'
-                : `Se detectaron ${rawSignals.faceDetection.face_count} personas`}
+              {formatRostros(rawSignals.faceDetection.face_count)}
             </span>
             <span className={`ml-auto text-[10px] uppercase font-bold opacity-80 ${engineMode === 'real-active' ? 'text-success' : 'text-warning'}`}>{engineMode === 'real-active' ? '[REAL]' : '[SIM]'}</span>
           </div>
