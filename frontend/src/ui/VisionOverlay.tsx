@@ -36,34 +36,13 @@ interface VisionOverlayProps {
 }
 
 // ---------------------------------------------------------------------------
-// Subconjunto canónico de 68 landmarks (contorno de cara, ojos, cejas, nariz, boca)
-// Basado en los índices estándar de Face Mesh 468 para legibilidad visual.
-// ---------------------------------------------------------------------------
-
-const CANONICAL_68_INDICES: number[] = [
-  // Óvalo facial
-  10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288,
-  397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136,
-  172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109,
-  // Ceja izquierda
-  70, 63, 105, 66, 107,
-  // Ceja derecha
-  336, 296, 334, 293, 300,
-  // Puente nasal
-  168, 6, 195, 4,
-  // Ojo izquierdo
-  33, 7, 163, 144, 145, 153, 154, 155, 133,
-  // Ojo derecho
-  362, 382, 381, 380, 374, 373, 390, 249, 263,
-  // Nariz inferior
-  1, 2, 98, 327,
-  // Boca exterior
-  61, 185, 40, 39, 37, 0, 267, 269, 270, 409, 291, 375, 321, 405, 314, 17, 84, 181, 91, 146,
-];
-
 // Colores del overlay
+// ---------------------------------------------------------------------------
+// C-53/D4: el subconjunto canónico de 68 puntos (mesh verde por defecto) se
+// eliminó del render. El overlay por defecto no pinta puntos sobre la cara; el
+// mesh completo (468) es opt-in solo-staff vía el toggle `showFullMesh`.
+
 const COLOR_FACE_BOX = "#ff4444";
-const COLOR_MESH_CANONICAL = "rgba(0, 255, 120, 0.7)";
 const COLOR_MESH_FULL = "rgba(0, 200, 255, 0.4)";
 const COLOR_GAZE = "#ffcc00";
 const COLOR_POSE_LINE = "rgba(100, 180, 255, 0.5)";
@@ -132,25 +111,19 @@ export function drawFrame(
   });
 
   // 3. Landmarks de Face Mesh
+  // C-53/D4: el mesh es opt-in SOLO-staff. Por defecto (showFullMesh === false)
+  // NO se pinta ningún punto sobre la cara (se eliminó el subconjunto verde de
+  // 68 pts); se conservan box de rostro y gaze como ayudas mínimas de diagnóstico.
+  // El mesh completo de 468 puntos se dibuja únicamente con showFullMesh activado.
   if (faceMesh && faceMesh.landmarks.length > 0) {
     const landmarks = faceMesh.landmarks;
 
     if (showFullMesh) {
-      // Todos los 468 puntos (o los que haya)
+      // Todos los 468 puntos (o los que haya) — diagnóstico de staff bajo toggle
       ctx.fillStyle = COLOR_MESH_FULL;
       for (const lm of landmarks) {
         ctx.beginPath();
         ctx.arc(lm.x * videoW, lm.y * videoH, 1.5, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    } else {
-      // Subconjunto canónico de 68 puntos
-      ctx.fillStyle = COLOR_MESH_CANONICAL;
-      for (const idx of CANONICAL_68_INDICES) {
-        const lm = landmarks[idx];
-        if (!lm) continue;
-        ctx.beginPath();
-        ctx.arc(lm.x * videoW, lm.y * videoH, 2, 0, Math.PI * 2);
         ctx.fill();
       }
     }

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { ReactNode } from 'react';
 import { Icon } from './components';
-import { Link, useRouter, useNavigate } from '../lib/router';
+import { Link, useRouter } from '../lib/router';
 import { useApp } from '../lib/store';
 import { useAuth } from '../lib/authStore';
 import { INSTITUTION } from '../config/institution';
@@ -21,7 +21,6 @@ const LOGO = (
 /** Shell para el flujo del estudiante: barra superior + contenido centrado. */
 export function StudentShell({ children, step }: { children: ReactNode; step?: number }) {
   const principal = useApp((s) => s.principal);
-  const navigate = useNavigate();
   const logout = useAuth((s) => s.logout);
   const [glossaryOpen, setGlossaryOpen] = useState(false);
   const pasos = ['Ingreso', 'Requisitos', 'Privacidad', 'Biometría', 'Sala', 'Examen', 'Cierre'];
@@ -75,7 +74,6 @@ interface NavItem { to: string; icon: string; label: string; }
 export function StaffShell({ children, nav, title }: { children: ReactNode; nav: NavItem[]; title: string }) {
   const { path } = useRouter();
   const principal = useApp((s) => s.principal);
-  const navigate = useNavigate();
   const logout = useAuth((s) => s.logout);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 

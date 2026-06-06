@@ -10,6 +10,7 @@ import { SEVERIDAD_LABEL, TIPO_EVENTO_LABEL } from '../../lib/api';
 import type { Severidad, TipoEvento } from '../../lib/types';
 import { LOG_MAX, type HarnessLogEntry, type HarnessState } from './types';
 import { formatRelativeTs, SEVERITY_ORDER, SEVERITY_BADGE_COLORS } from './helpers';
+import { formatRostrosConOrigen } from '../../lib/faceCountLabel';
 
 interface EventLogProps {
   logEntries: HarnessLogEntry[];
@@ -170,7 +171,9 @@ export default function EventLog({
                         <span className="text-[10px] font-mono opacity-80 ml-base">{entry.verdictServer}</span>
                       )}
                       {entry.faceCountServer != null && (
-                        <span className="text-[10px] opacity-70 ml-base">srv:{entry.faceCountServer}</span>
+                        <span className="text-[10px] opacity-70 ml-base">
+                          {formatRostrosConOrigen('Servidor', entry.faceCountServer)}
+                        </span>
                       )}
                     </span>
                   )}

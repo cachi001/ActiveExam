@@ -9,7 +9,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StaffShell } from '../ui/shells';
-import { Card, Button, Icon, SectionTitle } from '../ui/components';
+import { Card, Icon, SectionTitle } from '../ui/components';
 import { StatCard } from './proctoring/StatCard';
 import { STAFF_NAV } from '../ui/nav';
 import { useToast } from '../ui/toast';

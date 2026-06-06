@@ -106,14 +106,17 @@ describe("drawFrame — bounding boxes", () => {
     );
   });
 
-  it("con faceMesh disponible: arc() es llamado para dibujar landmarks", () => {
-    const ctx = makeCtxMock();
-    const landmarks = Array.from({ length: 100 }, (_, i) => ({
-      x: 0.3 + i * 0.001,
-      y: 0.3 + i * 0.001,
+});
+
+describe("drawFrame — mesh opt-in solo-staff (C-53)", () => {
+  /** Construye señales con faceMesh de `n` landmarks y un rostro detectado. */
+  function makeMeshSignals(n: number): RawSignals {
+    const landmarks = Array.from({ length: n }, (_, i) => ({
+      x: 0.3 + i * 0.0001,
+      y: 0.3 + i * 0.0001,
       z: 0,
     }));
-    const signals: RawSignals = {
+    return {
       faceDetection: {
         face_count: 1,
         faces: [{ x: 0.1, y: 0.1, width: 0.5, height: 0.6, confidence: 0.9 }],
@@ -122,8 +125,26 @@ describe("drawFrame — bounding boxes", () => {
       poseAvailable: false,
       frameTs: 3000,
     };
+  }
+
+  it("showFullMesh=false: NO dibuja puntos de mesh (arc no se llama), pero SÍ box y gaze", () => {
+    const ctx = makeCtxMock();
+    const signals = makeMeshSignals(468);
     drawFrame(ctx, signals, 640, 480, false, false);
-    // arc() se llama para los landmarks del subconjunto canónico que tengan índice < 100
-    expect(ctx.arc).toHaveBeenCalled();
+    // Sin mesh: arc() no se invoca (solo se usa para landmarks de mesh y keypoints de pose)
+    expect(ctx.arc).not.toHaveBeenCalled();
+    // Box del rostro presente
+    expect(ctx.strokeRect).toHaveBeenCalledTimes(1);
+    // Gaze presente: drawGazeArrow usa moveTo/lineTo desde el centro del rostro
+    expect(ctx.moveTo).toHaveBeenCalled();
+    expect(ctx.lineTo).toHaveBeenCalled();
+  });
+
+  it("showFullMesh=true con 468 landmarks: dibuja los 468 puntos (un arc por punto)", () => {
+    const ctx = makeCtxMock();
+    const signals = makeMeshSignals(468);
+    drawFrame(ctx, signals, 640, 480, true, false);
+    // 468 arcs de mesh; el gaze usa moveTo/lineTo, no arc → exactamente 468
+    expect(ctx.arc).toHaveBeenCalledTimes(468);
   });
 });
