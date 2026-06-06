@@ -4,6 +4,7 @@ import { useNavigate } from '../lib/router';
 import { useAuth } from '../lib/authStore';
 import type { Rol } from '../lib/types';
 import { INSTITUTION } from '../config/institution';
+import { DEMO_MODE } from '../lib/devConfig';
 
 /** Home de cada rol tras el login. admin_sistema centraliza administración + revisión. */
 function homePorRol(roles: Rol[]): string {
@@ -17,6 +18,7 @@ export default function Login() {
   const status = useAuth((s) => s.status);
   const principal = useAuth((s) => s.principal);
   const login = useAuth((s) => s.login);
+  const loginDemo = useAuth((s) => s.loginDemo);
 
   // Si ya hay sesión iniciada (volvimos del redirect de Keycloak), entrar al home del rol.
   useEffect(() => {
@@ -82,14 +84,26 @@ export default function Login() {
               </div>
             </div>
 
-            <Button onClick={login} disabled={cargando} size="lg" iconRight={cargando ? undefined : 'arrow_forward'} className="w-full">
-              {cargando ? (
-                <span className="inline-flex items-center gap-xs"><Icon name="progress_activity" className="ae-spin text-[20px]" /> Conectando…</span>
-              ) : 'Ingresar con mi cuenta institucional'}
-            </Button>
-            <p className="text-label-sm text-on-surface-variant text-center">
-              Mismas credenciales del campus · OIDC con MFA
-            </p>
+            {DEMO_MODE ? (
+              <div className="flex flex-col gap-sm">
+                <p className="text-label-sm uppercase tracking-wide text-on-surface-variant font-semibold text-center">Entrar como</p>
+                <Button variant="primary" onClick={() => loginDemo('estudiante')} icon="school" size="lg" className="w-full">Estudiante</Button>
+                <Button variant="outline" onClick={() => loginDemo('proctor')} icon="visibility" size="lg" className="w-full">Proctor</Button>
+                <Button variant="outline" onClick={() => loginDemo('admin_sistema')} icon="admin_panel_settings" size="lg" className="w-full">Administrador</Button>
+                <p className="text-label-sm text-on-surface-variant text-center mt-xs">Modo demostración · sin autenticación real</p>
+              </div>
+            ) : (
+              <>
+                <Button onClick={login} disabled={cargando} size="lg" iconRight={cargando ? undefined : 'arrow_forward'} className="w-full">
+                  {cargando ? (
+                    <span className="inline-flex items-center gap-xs"><Icon name="progress_activity" className="ae-spin text-[20px]" /> Conectando…</span>
+                  ) : 'Ingresar con mi cuenta institucional'}
+                </Button>
+                <p className="text-label-sm text-on-surface-variant text-center">
+                  Mismas credenciales del campus · OIDC con MFA
+                </p>
+              </>
+            )}
           </section>
 
           <p className="flex items-center justify-center gap-xs text-label-sm text-on-surface-variant">

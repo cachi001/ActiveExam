@@ -36,7 +36,25 @@ interface AuthState {
    * la app sin Keycloak. SOLO se llama si AUTH_BYPASS está activo (dev). Ver devConfig.
    */
   enableDevBypass: () => void;
+  /** Login de DEMO (prod sin Keycloak): entra con un principal demo del rol elegido. */
+  loginDemo: (rol: Rol) => void;
 }
+
+/** Principales demo por rol (modo demo, sin Keycloak). */
+const DEMO_PRINCIPALS: Record<Rol, Principal> = {
+  estudiante: {
+    id_institucional: 'FRM-23-4912', nombre: 'Emiliano Cáceres', email: 'ecaceres@frm.utn.edu.ar',
+    roles: ['estudiante'], mfa_satisfecho: true, jurisdiccion: 'AR-MZA',
+  },
+  proctor: {
+    id_institucional: 'FRM-DOC-1182', nombre: 'Dra. Carolina Ferreyra', email: 'cferreyra@frm.utn.edu.ar',
+    roles: ['proctor'], mfa_satisfecho: true, jurisdiccion: 'AR',
+  },
+  admin_sistema: {
+    id_institucional: 'FRM-ADM-0021', nombre: 'Lucía Mendoza', email: 'lmendoza@frm.utn.edu.ar',
+    roles: ['admin_sistema'], mfa_satisfecho: true, jurisdiccion: 'AR',
+  },
+};
 
 export const useAuth = create<AuthState>((set, get) => ({
   status: 'loading',
@@ -85,4 +103,6 @@ export const useAuth = create<AuthState>((set, get) => ({
         jurisdiccion: 'AR',
       },
     }),
+
+  loginDemo: (rol) => set({ status: 'authenticated', token: 'demo', principal: DEMO_PRINCIPALS[rol] }),
 }));
