@@ -62,14 +62,15 @@
       "redirectUris": [
         "http://localhost:5173/*",
         "http://localhost:8080/*",
-        "http://localhost/*"
+        "http://localhost/*",
+        "https://active-exam.vercel.app/*"
       ],
       "webOrigins": [
         "+"
       ],
       "attributes": {
         "pkce.code.challenge.method": "S256",
-        "post.logout.redirect.uris": "http://localhost:5173/*##http://localhost/*"
+        "post.logout.redirect.uris": "http://localhost:5173/*##http://localhost/*##https://active-exam.vercel.app/*"
       },
       "protocolMappers": [
         {
