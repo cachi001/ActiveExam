@@ -8,11 +8,77 @@
  *
  * Espeja el dominio del backend (``app.domain.biometrics.liveness``): mismos retos
  * y mismo criterio de exito, para que la re-inferencia server-side sea coherente.
+ *
+ * C-54: agrega motor de retos secuenciales (baseline neutral + evaluacion relativa).
  */
 
 import type { FrameResult, PassiveSignals } from "./VisionEngine";
 
-/** Retos activos del catalogo (mismos valores que el backend). */
+// ---------------------------------------------------------------------------
+// C-54: Catalogo secuencial de retos (Task 1.1, 1.4, 1.2, 1.3)
+// ---------------------------------------------------------------------------
+
+/**
+ * Catalogo de retos secuenciales de liveness (C-54, D-4).
+ * Excluye "acercarse" (falsos positivos, no estandar ISO/IEC 30107-3).
+ * El orden se baraja con Fisher-Yates al iniciar cada intento.
+ */
+export const SEQUENTIAL_CHALLENGES = [
+  "parpadear",
+  "girar_cabeza",
+  "sonreír",
+] as const;
+
+/** Tipo derivado del catalogo secuencial. */
+export type SequentialChallenge = (typeof SEQUENTIAL_CHALLENGES)[number];
+
+/**
+ * Direccion de giro para el reto `girar_cabeza` (D-4).
+ * Se elige al azar al montar el componente y permanece fija durante el intento.
+ * Convencion de espejo selfie (coherente con enrollmentChallengeDetector.ts):
+ * - 'izquierda' -> gaze.x > +threshold (lo que el alumno percibe como su izquierda)
+ * - 'derecha'   -> gaze.x < -threshold (lo que el alumno percibe como su derecha)
+ */
+export type TurnDirection = "izquierda" | "derecha";
+
+/**
+ * Estado de la maquina de estados del motor de retos secuenciales (C-54, D-1).
+ * - idle:      estado inicial antes de iniciar la captura
+ * - baseline:  acumulando metricas neutrales del alumno (pre-retos)
+ * - challenge: evaluando el reto activo (challengeIndex)
+ * - cooldown:  confirmacion visual del paso completado (350 ms)
+ * - done:      todos los retos completados
+ */
+export type ChallengeState = "idle" | "baseline" | "challenge" | "cooldown" | "done";
+
+/**
+ * Metricas neutrales del alumno capturadas durante la fase baseline (C-54, D-2).
+ * Se usan como referencia para la evaluacion por delta relativo.
+ *
+ * @field blinkOpenness  Apertura vertical media del ojo izquierdo en reposo
+ *                       (|lm[159].y - lm[145].y|). La evaluacion pide que
+ *                       baje al 45 % de este valor para detectar parpadeo.
+ * @field smileWidth     Ancho de boca medio en reposo (|lm[291].x - lm[61].x|).
+ *                       La evaluacion pide que suba al 125 % para detectar sonrisa.
+ * @field gazeX          Posicion horizontal media del iris en reposo (referencia
+ *                       de frente). No se usa directamente en la evaluacion actual
+ *                       (el giro usa umbral absoluto ajustado), pero se captura
+ *                       para posible uso futuro.
+ */
+export interface BaselineMetrics {
+  blinkOpenness: number;
+  smileWidth: number;
+  gazeX: number;
+}
+
+// ---------------------------------------------------------------------------
+// Catalogo legacy (C-09) — mantenido para compatibilidad hacia atras
+// ---------------------------------------------------------------------------
+
+/**
+ * Retos activos del catalogo legacy (mismos valores que el backend).
+ * @deprecated Usar SEQUENTIAL_CHALLENGES para el flujo de enrollment (C-54).
+ */
 export const ACTIVE_CHALLENGES = [
   "girar_izquierda",
   "girar_derecha",
@@ -29,6 +95,7 @@ export const MAX_ACTIVE_CHALLENGES = 2;
 /**
  * Elige 1-2 retos activos AL AZAR (RN-BIO-05). ``rng`` inyectable para tests
  * deterministas (default ``Math.random``).
+ * @deprecated Usar SEQUENTIAL_CHALLENGES + barajado Fisher-Yates en BiometricCapture (C-54).
  */
 export function pickActiveChallenges(
   count = 2,

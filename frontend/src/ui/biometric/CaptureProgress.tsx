@@ -7,23 +7,32 @@
  * Sin lógica propia: recibe estado y callbacks por props desde BiometricCapture.
  * El cálculo de labels (getLabelForChallenge) vive en el padre y se reenvía como
  * `retoActualLabel` (paso actual) y `getLabel` (grilla manual).
+ *
+ * C-54: agrega props `cooldownActivo`, `retoRecienResueltoLabel` y `turnDirection`
+ * para mostrar confirmación visual de paso completado e instrucción direccional de giro.
  */
 
 import { Icon } from '../components';
-import type { ActiveChallenge } from '../../vision/liveness';
+import type { SequentialChallenge, TurnDirection } from '../../vision/liveness';
 
 export interface CaptureProgressProps {
   enExito: boolean;
   fallbackManual: boolean;
   retoActualLabel: string;
-  desafios: ActiveChallenge[];
+  desafios: SequentialChallenge[];
   resueltos: string[];
   totalResueltos: number;
   totalDesafios: number;
   /** Resuelve el label visible de un reto (delegado al padre). */
-  getLabel: (id: ActiveChallenge) => string;
+  getLabel: (id: SequentialChallenge) => string;
   /** Callback del fallback manual al tocar un reto. */
   onResolverManual: (id: string) => void;
+  /** C-54 (Task 8.1): true cuando el cooldown de 350ms entre pasos está activo. */
+  cooldownActivo: boolean;
+  /** C-54 (Task 8.2): label del reto recién resuelto (para mostrar en cooldown). null si no hay. */
+  retoRecienResueltoLabel: string | null;
+  /** C-54 (Task 8.3): dirección del giro (solo cuando el reto activo es girar_cabeza). null si no aplica. */
+  turnDirection: TurnDirection | null;
 }
 
 export function CaptureProgress({
@@ -36,19 +45,52 @@ export function CaptureProgress({
   totalDesafios,
   getLabel,
   onResolverManual,
+  cooldownActivo,
+  retoRecienResueltoLabel,
+  turnDirection,
 }: CaptureProgressProps) {
   return (
     // Sección inferior — paso actual + progreso. Oculta durante la carga.
     <div className="mt-8 text-center space-y-3 w-full max-w-xs">
+
+      {/* C-54 Task 8.4: Confirmación visual del paso completado durante el cooldown */}
+      {!enExito && cooldownActivo && retoRecienResueltoLabel && (
+        <div className="flex flex-col items-center gap-1 animate-in fade-in duration-200">
+          <span className="text-green-600 text-[32px]">✓</span>
+          <p className="font-headline text-lg font-bold text-green-600">
+            {retoActualLabel}
+          </p>
+          <p className="text-sm text-neutral-500">{retoRecienResueltoLabel}</p>
+        </div>
+      )}
+
       {/* Texto del paso actual: éxito → reto actual. */}
-      <p className={`font-headline text-2xl font-bold ${
-        enExito ? 'text-green-600' : 'text-neutral-900'
-      }`}>
-        {enExito ? 'Verificación completada' : retoActualLabel}
-      </p>
+      {/* Durante cooldown se muestra arriba; aquí solo mostramos si NO hay cooldown o si es éxito */}
+      {(enExito || !cooldownActivo) && (
+        <p className={`font-headline text-2xl font-bold ${
+          enExito ? 'text-green-600' : 'text-neutral-900'
+        }`}>
+          {enExito ? 'Verificación completada' : retoActualLabel}
+        </p>
+      )}
+
+      {/* C-54 Task 8.5: Indicador de dirección cuando el reto activo es girar_cabeza */}
+      {!enExito && !cooldownActivo && turnDirection && (
+        <div className="flex items-center justify-center gap-2 mt-1">
+          {turnDirection === 'izquierda' && (
+            <span className="text-2xl">←</span>
+          )}
+          <p className="text-sm font-semibold text-primary">
+            {turnDirection === 'izquierda' ? 'hacia la izquierda' : 'hacia la derecha'}
+          </p>
+          {turnDirection === 'derecha' && (
+            <span className="text-2xl">→</span>
+          )}
+        </div>
+      )}
 
       {/* Subtítulo de encuadre mientras el motor está listo pero aún sin completar */}
-      {!enExito && !fallbackManual && (
+      {!enExito && !fallbackManual && !cooldownActivo && (
         <p className="text-sm text-neutral-500">Buscá tu rostro en el óvalo y seguí las indicaciones.</p>
       )}
 
@@ -58,7 +100,7 @@ export function CaptureProgress({
           {desafios.map((id) => (
             <span
               key={id}
-              className={`text-lg ${resueltos.includes(id) ? 'text-green-600' : 'text-neutral-300'}`}
+              className={`text-lg transition-colors duration-300 ${resueltos.includes(id) ? 'text-green-600' : 'text-neutral-300'}`}
             >
               {resueltos.includes(id) ? '●' : '○'}
             </span>

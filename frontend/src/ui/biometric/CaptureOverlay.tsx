@@ -9,6 +9,9 @@
  * Sin lógica propia: TODO el estado, refs de cámara, loop RAF y callbacks viven en
  * BiometricCapture y se reenvían por props. El `videoRef` se pasa hasta el <video>
  * de CaptureOval para que el loop del padre lea el MISMO elemento.
+ *
+ * C-54: agrega props `cooldownActivo`, `retoRecienResueltoLabel` y `turnDirection`
+ * para mostrar la confirmación de paso y la instrucción direccional de giro.
  */
 
 import { forwardRef } from 'react';
@@ -16,7 +19,7 @@ import { Icon } from '../components';
 import { CaptureLoading } from './CaptureLoading';
 import { CaptureOval } from './CaptureOval';
 import { CaptureProgress } from './CaptureProgress';
-import type { ActiveChallenge } from '../../vision/liveness';
+import type { SequentialChallenge, TurnDirection } from '../../vision/liveness';
 
 export interface CaptureOverlayProps {
   /** Ref reenviado al <video> dentro de CaptureOval (loop RAF del padre). */
@@ -28,13 +31,19 @@ export interface CaptureOverlayProps {
   motorListo: boolean;
   fallbackManual: boolean;
   retoActualLabel: string;
-  desafios: ActiveChallenge[];
+  desafios: SequentialChallenge[];
   resueltos: string[];
   totalResueltos: number;
   totalDesafios: number;
-  getLabel: (id: ActiveChallenge) => string;
+  getLabel: (id: SequentialChallenge) => string;
   onResolverManual: (id: string) => void;
   onCancel: () => void;
+  /** C-54: true cuando el cooldown de 350ms entre pasos está activo. */
+  cooldownActivo: boolean;
+  /** C-54: label del reto recién resuelto (para mostrar en cooldown). null si no hay. */
+  retoRecienResueltoLabel: string | null;
+  /** C-54: dirección del giro (solo cuando el reto activo es girar_cabeza). null si no aplica. */
+  turnDirection: TurnDirection | null;
 }
 
 export const CaptureOverlay = forwardRef<HTMLDivElement, CaptureOverlayProps>(
@@ -55,6 +64,9 @@ export const CaptureOverlay = forwardRef<HTMLDivElement, CaptureOverlayProps>(
       getLabel,
       onResolverManual,
       onCancel,
+      cooldownActivo,
+      retoRecienResueltoLabel,
+      turnDirection,
     } = props;
 
     return (
@@ -117,6 +129,9 @@ export const CaptureOverlay = forwardRef<HTMLDivElement, CaptureOverlayProps>(
             totalDesafios={totalDesafios}
             getLabel={getLabel}
             onResolverManual={onResolverManual}
+            cooldownActivo={cooldownActivo}
+            retoRecienResueltoLabel={retoRecienResueltoLabel}
+            turnDirection={turnDirection}
           />
         )}
       </div>

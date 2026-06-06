@@ -195,11 +195,15 @@ export const ALCANCE_MONITOREO: { icono: string; label: string; descripcion: str
 let ACUSES_POR_EXAMEN: Map<string, AcuseExamen> = new Map();
 
 export const DESAFIOS: DesafioActivo[] = [
+  // Legacy (C-09)
   { id: 'girar_izquierda', label: 'Girar a la izquierda' },
   { id: 'girar_derecha', label: 'Girar a la derecha' },
   { id: 'parpadear', label: 'Parpadear' },
   { id: 'acercarse', label: 'Acercarse a la cámara' },
   { id: 'sonreir', label: 'Sonreír' },
+  // C-54: catálogo secuencial
+  { id: 'girar_cabeza', label: 'Girar la cabeza' },
+  { id: 'sonreír', label: 'Sonreír' },
 ];
 
 const SESIONES_VIVO: SesionEnVivo[] = [
