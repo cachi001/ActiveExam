@@ -1,12 +1,13 @@
 // Tipos de dominio del MVP ActiveExam. Calcados de los schemas del backend
 // (app/presentation/api/v1/*). Nombres y enums en español, igual que la API real.
 
+// Modelo de roles MVP (3 roles). admin_sistema es el rol administrativo único:
+// configura exámenes, ve reportes/auditoría Y resuelve la cola de revisión
+// (antes 'revisor'). Alineado con el realm de Keycloak (C-52).
 export type Rol =
   | 'estudiante'
   | 'proctor'
-  | 'revisor'
-  | 'admin_examenes'
-  | 'coordinador';
+  | 'admin_sistema';
 
 export type Severidad = 'baseline' | 'baja' | 'media' | 'alta' | 'critica';
 

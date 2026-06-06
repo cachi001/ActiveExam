@@ -54,9 +54,9 @@
 *::-webkit-scrollbar-thumb { background: #E2E2EC; border-radius: 10px; }
 *::-webkit-scrollbar-thumb:hover { background: #c7c4d6; }
 
-/* ----- glow atmosférico de la pantalla de login ----- */
+/* ----- fondo del login: limpio, sin glow atmosférico (estética minimalista) ----- */
 .glass-glow {
-  background: radial-gradient(circle at 100% 0%, rgba(91, 91, 214, 0.08) 0%, transparent 40%);
+  background: transparent;
 }
 
 /* ----- animaciones (shim de tailwindcss-animate usado por Stitch) ----- */

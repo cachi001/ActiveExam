@@ -1,10 +1,10 @@
 {
   "id": "proctoring",
   "realm": "proctoring",
-  "displayName": "Proctoring UTN",
+  "displayName": "Active Exam",
   "enabled": true,
   "sslRequired": "none",
-  "registrationAllowed": false,
+  "registrationAllowed": true,
   "loginWithEmailAllowed": true,
   "duplicateEmailsAllowed": false,
   "resetPasswordAllowed": true,
@@ -34,12 +34,6 @@
       {
         "name": "proctor",
         "description": "Supervisor en vivo de sesiones de examen",
-        "composite": false,
-        "clientRole": false
-      },
-      {
-        "name": "admin_examenes",
-        "description": "Administrador de configuración de exámenes",
         "composite": false,
         "clientRole": false
       },
@@ -148,7 +142,6 @@
         }
       ],
       "realmRoles": [
-        "admin_examenes",
         "admin_sistema"
       ]
     }

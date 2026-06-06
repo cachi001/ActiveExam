@@ -14,11 +14,53 @@ const SEV_TONE: Record<string, 'primary' | 'success' | 'warning' | 'error'> = {
   critica: 'error',
 };
 
+function Header() {
+  return (
+    <div>
+      <h1 className="font-headline text-headline-md text-on-surface tracking-tight">
+        Analítica de integridad
+      </h1>
+      <p className="text-body-md text-on-surface-variant mt-base">
+        Métricas agregadas de exámenes, severidad de eventos y desempeño de la revisión humana.
+      </p>
+    </div>
+  );
+}
+
 export default function Reports() {
   const [r, setR] = useState<ResumenReportes | null>(null);
-  useEffect(() => { api.reportes().then(setR); }, []);
+  const [cargando, setCargando] = useState(!api.modoDemo);
 
-  if (!r) {
+  useEffect(() => {
+    // En modo demo NO hay backend de analítica: mostramos estado vacío honesto.
+    if (api.modoDemo) return;
+    api.reportes().then(setR).finally(() => setCargando(false));
+  }, []);
+
+  // Estado vacío: la analítica agregada requiere el backend de reportes conectado.
+  if (api.modoDemo || (!cargando && !r)) {
+    return (
+      <StaffShell nav={ADMIN_NAV} title="Reportes y analítica">
+        <div className="space-y-lg animate-in fade-in duration-500">
+          <Header />
+          <Card className="flex flex-col items-center justify-center text-center gap-md py-xxl">
+            <div className="w-16 h-16 rounded-2xl bg-surface-container-high text-on-surface-variant flex items-center justify-center">
+              <Icon name="bar_chart" className="text-[32px]" />
+            </div>
+            <div className="max-w-md">
+              <h2 className="font-headline text-title-lg text-on-surface">Todavía no hay datos de analítica</h2>
+              <p className="text-body-md text-on-surface-variant mt-base">
+                Cuando se completen exámenes supervisados se generarán las métricas de integridad,
+                la distribución de severidad de eventos y el desempeño de la revisión humana.
+              </p>
+            </div>
+          </Card>
+        </div>
+      </StaffShell>
+    );
+  }
+
+  if (cargando || !r) {
     return (
       <StaffShell nav={ADMIN_NAV} title="Reportes y analítica">
         <Card className="flex items-center justify-center gap-sm py-xl text-on-surface-variant">
@@ -35,26 +77,11 @@ export default function Reports() {
   return (
     <StaffShell nav={ADMIN_NAV} title="Reportes y analítica">
       <div className="space-y-lg animate-in fade-in duration-500">
-        {/* Header */}
-        <div className="flex items-start justify-between gap-md flex-wrap">
-          <div>
-            <h1 className="font-headline text-headline-md text-on-surface tracking-tight">
-              Analítica de integridad
-            </h1>
-            <p className="text-body-md text-on-surface-variant mt-base">
-              Métricas agregadas de exámenes, severidad de eventos y desempeño de la revisión humana.
-            </p>
-          </div>
-          <div className="flex items-center gap-base px-sm py-base rounded-lg bg-primary-fixed/50
-            border border-primary/20 text-label-sm text-on-primary-fixed-variant">
-            <Icon name="shield" className="text-[16px] shrink-0" fill />
-            <span>Decisión humana</span>
-          </div>
-        </div>
+        <Header />
 
         <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-md">
           <StatCard icon="quiz" label="Exámenes" value={r.examenes_totales} tono="primary" />
-          <StatCard icon="groups" label="Sesiones" value={r.sesiones_totales} tono="neutral" />
+          <StatCard icon="groups" label="Sesiones" value={r.sesiones_totales} tono="info" />
           <StatCard icon="flag" label="Tasa de flag" value={`${r.tasa_flag}%`} sub="entran a revisión" tono="warning" />
           <StatCard icon="rule" label="Falsos positivos" value={`${r.falsos_positivos}%`} sub="descartados en revisión" tono="success" />
         </div>
@@ -101,16 +128,6 @@ export default function Reports() {
             </div>
           </Card>
         </div>
-
-        <Card className="bg-primary-fixed/40 border-primary-fixed-dim/50">
-          <div className="flex items-start gap-sm">
-            <Icon name="insights" className="text-primary" fill />
-            <p className="text-label-md text-on-primary-fixed-variant">
-              Tiempo medio de revisión humana: <strong>{r.tiempo_medio_revision}</strong>. La alta tasa de falsos positivos ({r.falsos_positivos}%)
-              confirma el enfoque de decisión siempre humana: el sistema prioriza, pero la decisión final siempre es de un revisor.
-            </p>
-          </div>
-        </Card>
       </div>
     </StaffShell>
   );
