@@ -23,10 +23,11 @@ import { useApp } from '../lib/store';
 import { api } from '../lib/api';
 import type { SesionProctoringResumen } from '../lib/types';
 import { SesionVivoCard } from './proctoring/SesionVivoCard';
+import { ExamenVivoGroup } from './proctoring/ExamenVivoGroup';
 import { ResumenVivo } from './proctoring/ResumenVivo';
 import { ListaSkeleton, ListaVaciaVivo } from './proctoring/ListaEstados';
 import { IndicadorVivo } from './proctoring/IndicadorVivo';
-import { joinExamInfo } from './proctoring/helpers';
+import { joinExamInfo, type ExamInfo } from './proctoring/helpers';
 
 export const PROCTOR_NAV = STAFF_NAV;
 
@@ -45,6 +46,7 @@ export default function Proctor() {
   const navigate = useNavigate();
   const toast = useToast();
   const setProctoringSessionId = useApp((s) => s.setProctoringSessionId);
+  const setProctoringExamId = useApp((s) => s.setProctoringExamId);
 
   const [sesiones, setSesiones] = useState<SesionProctoringResumen[]>([]);
   const [cargaInicial, setCargaInicial] = useState(true);
@@ -88,8 +90,14 @@ export default function Proctor() {
     navigate(PROCTORING_DETAIL_ROUTE);
   };
 
-  // Particiona por modo: exámenes en curso (prioridad), diagnóstico/harness y otras.
-  const { examen, diagnostico, otras } = useMemo(() => {
+  const handleAbrirExamen = (examId: string) => {
+    setProctoringExamId(examId);
+    navigate('/proctor/examen');
+  };
+
+  // Particiona por modo y AGRUPA los exámenes por exam_id: primero el examen
+  // concreto que se está rindiendo, y dentro sus personas (arquitectura correcta).
+  const { gruposExamen, diagnostico, otras } = useMemo(() => {
     const examen: SesionProctoringResumen[] = [];
     const diagnostico: SesionProctoringResumen[] = [];
     const otras: SesionProctoringResumen[] = [];
@@ -98,8 +106,23 @@ export default function Proctor() {
       else if (s.modo === 'diagnostico') diagnostico.push(s);
       else otras.push(s);
     }
-    return { examen, diagnostico, otras };
+
+    // Agrupa las sesiones de examen por exam_id (las sin id caen en un grupo aparte).
+    const porExamen = new Map<string, { examInfo: ExamInfo | null; sesiones: SesionProctoringResumen[] }>();
+    for (const s of examen) {
+      const key = s.exam_id ?? '__sin_examen__';
+      if (!porExamen.has(key)) porExamen.set(key, { examInfo: joinExamInfo(s.exam_id), sesiones: [] });
+      porExamen.get(key)!.sesiones.push(s);
+    }
+    // Ordena los grupos por su riesgo máximo (el examen más caliente, arriba).
+    const gruposExamen = [...porExamen.entries()]
+      .map(([examId, g]) => ({ examId, ...g, riesgoMax: Math.max(...g.sesiones.map((s) => s.score)) }))
+      .sort((a, b) => b.riesgoMax - a.riesgoMax);
+
+    return { gruposExamen, diagnostico, otras };
   }, [sesiones]);
+
+  const examenesActivos = gruposExamen.length;
 
   return (
     <StaffShell nav={PROCTOR_NAV} title="Supervisión en vivo">
@@ -111,8 +134,7 @@ export default function Proctor() {
               Supervisión en vivo
             </h1>
             <p className="text-body-md text-on-surface-variant mt-base">
-              Monitoreo en tiempo real. Los exámenes en curso se muestran primero. El score
-              prioriza para revisión humana; nunca sanciona.
+              Los exámenes con mayor riesgo se muestran primero.
             </p>
           </div>
           <div className="flex items-center gap-sm">
@@ -132,23 +154,19 @@ export default function Proctor() {
         {/* Resumen agregado del lote actual */}
         {!cargaInicial && sesiones.length > 0 && <ResumenVivo sesiones={sesiones} />}
 
-        {/* Mural de monitoreo: secciones diferenciadas por modo */}
+        {/* Secciones diferenciadas por modo */}
         <Card className="space-y-lg">
-          <SectionTitle
-            sub={
-              cargaInicial
+          <div className="flex items-center justify-between gap-md text-label-sm text-on-surface-variant border-b border-outline-variant/40 pb-sm">
+            <span>
+              {cargaInicial
                 ? 'Conectando…'
-                : `${sesiones.length} sesión${sesiones.length !== 1 ? 'es' : ''} en vivo`
-            }
-            action={
-              <span className="inline-flex items-center gap-base text-label-sm text-on-surface-variant">
-                <Icon name="bolt" className="text-[16px]" />
-                actualiza cada {POLL_MS / 1000}s
-              </span>
-            }
-          >
-            Mural de monitoreo
-          </SectionTitle>
+                : `${sesiones.length} sesión${sesiones.length !== 1 ? 'es' : ''} en vivo`}
+            </span>
+            <span className="inline-flex items-center gap-base">
+              <Icon name="bolt" className="text-[16px]" />
+              actualiza cada {POLL_MS / 1000}s
+            </span>
+          </div>
 
           {cargaInicial && <ListaSkeleton />}
 
@@ -156,34 +174,31 @@ export default function Proctor() {
 
           {!cargaInicial && sesiones.length > 0 && (
             <div className="space-y-lg">
-              {examen.length > 0 && (
+              {gruposExamen.length > 0 && (
                 <section className="space-y-sm">
                   <SectionTitle
-                    sub={`${examen.length} examen${examen.length !== 1 ? 'es' : ''} activo${examen.length !== 1 ? 's' : ''}`}
-                    action={
-                      <span className="inline-flex items-center gap-base text-label-sm font-semibold text-success">
-                        <span className="w-2 h-2 rounded-full bg-success animate-pulse" />
-                        en curso
-                      </span>
-                    }
+                    sub={`${examenesActivos} examen${examenesActivos !== 1 ? 'es' : ''} activo${examenesActivos !== 1 ? 's' : ''}`}
                   >
                     Exámenes en curso
                   </SectionTitle>
-                  {examen.map((s) => (
-                    <SesionVivoCard
-                      key={s.id}
-                      sesion={s}
-                      onAbrir={handleAbrir}
-                      examInfo={joinExamInfo(s.exam_id)}
-                    />
-                  ))}
+                  <div className="space-y-md">
+                    {gruposExamen.map((g) => (
+                      <ExamenVivoGroup
+                        key={g.examId}
+                        examInfo={g.examInfo}
+                        sesiones={g.sesiones}
+                        onAbrir={handleAbrir}
+                        onAbrirExamen={handleAbrirExamen}
+                      />
+                    ))}
+                  </div>
                 </section>
               )}
 
               {diagnostico.length > 0 && (
                 <section className="space-y-sm">
                   <SectionTitle sub={`${diagnostico.length} sesión${diagnostico.length !== 1 ? 'es' : ''} de prueba`}>
-                    Diagnóstico / harness
+                    Pruebas de detección
                   </SectionTitle>
                   {diagnostico.map((s) => (
                     <SesionVivoCard key={s.id} sesion={s} onAbrir={handleAbrir} />

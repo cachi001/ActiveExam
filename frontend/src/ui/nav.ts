@@ -6,7 +6,6 @@ export const STAFF_NAV = [
   { to: '/admin/configurar', icon: 'tune', label: 'Configurar examen' },
   { to: '/proctor', icon: 'visibility', label: 'Supervisión en vivo' },
   { to: '/revisor', icon: 'gavel', label: 'Cola de revisión' },
-  { to: '/revisor/detalle', icon: 'description', label: 'Detalle de sesión' },
   { to: '/admin/reportes', icon: 'analytics', label: 'Reportes y analítica' },
   { to: '/admin/auditoria', icon: 'policy', label: 'Auditoría y privacidad' },
   { to: '/admin/detection-test', icon: 'bug_report', label: 'Test de detección' },

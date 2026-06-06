@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { Icon } from './components';
 import { Link, useRouter, useNavigate } from '../lib/router';
 import { useApp } from '../lib/store';
+import { useAuth } from '../lib/authStore';
 import { INSTITUTION } from '../config/institution';
 import { GlossaryPanel } from './GlossaryPanel';
 
@@ -12,7 +13,7 @@ const LOGO = (
       <Icon name="verified_user" className="text-[20px]" fill />
     </div>
     <div className="leading-tight">
-      <div className="font-headline text-title-lg text-on-surface">ActiveExam</div>
+      <div className="font-headline text-title-lg text-on-surface">Active Exam</div>
     </div>
   </div>
 );
@@ -21,6 +22,7 @@ const LOGO = (
 export function StudentShell({ children, step }: { children: ReactNode; step?: number }) {
   const principal = useApp((s) => s.principal);
   const navigate = useNavigate();
+  const logout = useAuth((s) => s.logout);
   const [glossaryOpen, setGlossaryOpen] = useState(false);
   const pasos = ['Ingreso', 'Requisitos', 'Privacidad', 'Biometría', 'Sala', 'Examen', 'Cierre'];
   return (
@@ -35,7 +37,7 @@ export function StudentShell({ children, step }: { children: ReactNode; step?: n
                 <div className="text-label-sm text-on-surface-variant">{principal.id_institucional}</div>
               </div>
             )}
-            <button onClick={() => navigate('/login')} className="w-10 h-10 rounded-full bg-surface-container hover:bg-surface-container-high flex items-center justify-center text-on-surface-variant" title="Salir">
+            <button onClick={logout} className="w-10 h-10 rounded-full bg-surface-container hover:bg-surface-container-high flex items-center justify-center text-on-surface-variant" title="Salir">
               <Icon name="logout" className="text-[20px]" />
             </button>
           </div>
@@ -74,6 +76,7 @@ export function StaffShell({ children, nav, title }: { children: ReactNode; nav:
   const { path } = useRouter();
   const principal = useApp((s) => s.principal);
   const navigate = useNavigate();
+  const logout = useAuth((s) => s.logout);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   const navList = (onItemClick?: () => void) => (
@@ -83,7 +86,7 @@ export function StaffShell({ children, nav, title }: { children: ReactNode; nav:
         return (
           <Link key={item.to} to={item.to} onClick={onItemClick}
             className={`flex items-center gap-sm px-sm py-sm rounded-xl text-label-md font-semibold transition-colors ${
-              active ? 'bg-primary-fixed text-on-primary-fixed-variant' : 'text-on-surface-variant hover:bg-surface-container'
+              active ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:bg-surface-container'
             }`}>
             <Icon name={item.icon} className="text-[22px]" fill={active} />
             {item.label}
@@ -107,7 +110,7 @@ export function StaffShell({ children, nav, title }: { children: ReactNode; nav:
           <div className="text-label-md text-on-surface font-semibold truncate">{principal?.nombre ?? 'Invitado'}</div>
           <div className="text-label-sm text-on-surface-variant truncate">{principal?.roles.join(', ')}</div>
         </div>
-        <button onClick={() => navigate('/login')} title="Salir" className="text-on-surface-variant hover:text-error">
+        <button onClick={logout} title="Salir" className="text-on-surface-variant hover:text-error">
           <Icon name="logout" className="text-[20px]" />
         </button>
       </div>
@@ -158,7 +161,7 @@ function SharedFooter({ onGlossaryOpen }: { onGlossaryOpen: () => void }) {
   return (
     <footer className="border-t border-outline-variant/50 bg-surface-container-lowest py-lg">
       <div className="max-w-container-max mx-auto px-lg flex flex-col sm:flex-row items-center justify-between gap-sm text-label-sm text-on-surface-variant">
-        <span><span className="font-semibold text-primary">ActiveExam</span> · Transparencia radical en integridad académica.</span>
+        <span><span className="font-semibold text-primary">Active Exam</span> · Transparencia radical en integridad académica.</span>
         <div className="flex gap-md">
           <a className="hover:text-primary" href="#/">Retención (30 días)</a>
           <a className="hover:text-primary" href="#/">{INSTITUTION.soporteLabel}</a>

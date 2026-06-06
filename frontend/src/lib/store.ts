@@ -51,6 +51,13 @@ interface AppState {
    */
   proctoringSessionId: string | null;
 
+  /**
+   * ID del examen seleccionado en supervisión en vivo para ver el grid de personas
+   * que lo están rindiendo (drill-down examen → personas → detalle). Null si no hay
+   * examen seleccionado. El router es hash sin params dinámicos, por eso vive en el store.
+   */
+  proctoringExamId: string | null;
+
   // ---------------------------------------------------------------------------
   // Decisiones humanas del revisor sobre la cola de revisión — C-47
   // ---------------------------------------------------------------------------
@@ -95,6 +102,8 @@ interface AppState {
   setFotoPerfil: (dataUrl: string) => void;
   /** C-46: setea el ID de la sesión de proctoring activa (o null para limpiarla). */
   setProctoringSessionId: (id: string | null) => void;
+  /** Setea el examen seleccionado para ver su grid de personas en vivo. */
+  setProctoringExamId: (id: string | null) => void;
   /** C-47: registra la decisión humana del revisor sobre una sesión de la cola. */
   setDecisionRevisor: (id: string, decision: DecisionRevisor) => void;
   /** Setea el descriptor 128-d de referencia para la verificación 1:1 (face-api). */
@@ -111,6 +120,7 @@ export const useApp = create<AppState>((set) => ({
   enrollmentStatus: null,
   isProfileComplete: false,
   proctoringSessionId: null,
+  proctoringExamId: null,
   decisionesRevisor: {},
   biometriaReferencia: leerReferenciaBiometrica(),
 
@@ -125,6 +135,7 @@ export const useApp = create<AppState>((set) => ({
     principal: s.principal ? { ...s.principal, foto_perfil: dataUrl } : s.principal,
   })),
   setProctoringSessionId: (id) => set({ proctoringSessionId: id }),
+  setProctoringExamId: (id) => set({ proctoringExamId: id }),
   setDecisionRevisor: (id, decision) =>
     set((s) => ({ decisionesRevisor: { ...s.decisionesRevisor, [id]: decision } })),
   setBiometriaReferencia: (embedding) => {
