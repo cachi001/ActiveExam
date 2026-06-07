@@ -42,21 +42,29 @@ export function InscripcionCard({
 
   return (
     <Card className="space-y-md">
-      <div className="flex items-start gap-md">
-        <div className="w-11 h-11 rounded-xl bg-primary-fixed text-primary flex items-center justify-center shrink-0">
-          <Icon name={config.icon} />
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-label-md font-semibold text-on-surface">{inscripcion.nombre_examen}</p>
-          <p className="text-label-sm text-on-surface-variant">
-            {inscripcion.nombre_materia} · {fecha.toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' })}
-          </p>
+      {/* C-58 D6: en mobile el badge baja a su propia línea (flex-col) para que el
+          nombre del examen use el ancho completo; en sm+ vuelve a la derecha.
+          El flex-1+min-w-0 del título comprimía el texto a "Exa..." cuando el badge
+          competía por la misma fila — separarlos por breakpoint lo resuelve. */}
+      <div className="flex flex-col sm:flex-row sm:items-start gap-md">
+        <div className="flex items-start gap-md min-w-0 flex-1">
+          <div className="w-11 h-11 rounded-xl bg-primary-fixed text-primary flex items-center justify-center shrink-0">
+            <Icon name={config.icon} />
+          </div>
+          <div className="min-w-0 flex-1">
+            {/* line-clamp-2 en mobile (2 líneas legibles), truncate a 1 línea en sm+ */}
+            <p className="text-label-md font-semibold text-on-surface line-clamp-2 sm:truncate">{inscripcion.nombre_examen}</p>
+            <p className="text-label-sm text-on-surface-variant line-clamp-2">
+              {inscripcion.nombre_materia} · {fecha.toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' })}
+            </p>
+          </div>
         </div>
         <Badge tone={config.tone} dot>{config.label}</Badge>
       </div>
 
       {inscripcion.estado === 'habilitado' && (
-        <div className="flex items-center gap-sm pt-sm border-t border-outline-variant/40">
+        // C-58 D6: flex-col en mobile, flex-row en sm+ para que el <p> y el Button no compriman
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-sm pt-sm border-t border-outline-variant/40">
           {puedeRendirEsteExamen ? (
             <Button
               onClick={onRendir}
@@ -73,7 +81,7 @@ export function InscripcionCard({
             </Button>
           ) : codigoGate === 'acuse_examen_faltante' ? (
             <>
-              <p className="text-label-sm text-on-surface-variant flex-1">
+              <p className="text-label-sm text-on-surface-variant flex-1 min-w-0">
                 Falta el acuse de consentimiento para este examen.
               </p>
               <Button
@@ -87,7 +95,7 @@ export function InscripcionCard({
             </>
           ) : (
             <>
-              <p className="text-label-sm text-on-surface-variant flex-1">
+              <p className="text-label-sm text-on-surface-variant flex-1 min-w-0">
                 {codigoGate === 'biometria_caducada'
                   ? 'Tu referencia biométrica caducó. Renovála para poder rendir.'
                   : codigoGate === 'biometria_renovacion_requerida'

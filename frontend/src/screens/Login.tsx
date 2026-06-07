@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Icon, Button } from '../ui/components';
+import { Icon, Button, FormField } from '../ui/components';
 import { useNavigate } from '../lib/router';
 import { useAuth } from '../lib/authStore';
 import type { Rol } from '../lib/types';
@@ -25,6 +25,7 @@ function FormularioJwt() {
 
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [verPassword, setVerPassword] = useState(false); // C-58 D5: toggle mostrar/ocultar
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -102,10 +103,8 @@ function FormularioJwt() {
 
             {/* Formulario JWT */}
             <form onSubmit={handleSubmit} className="flex flex-col gap-md">
-              <div className="flex flex-col gap-xs">
-                <label htmlFor="username" className="text-label-sm text-on-surface-variant">
-                  Usuario o email
-                </label>
+              {/* C-58 D5: campos migrados a FormField + clase .input del sistema */}
+              <FormField label="Usuario o email">
                 <input
                   id="username"
                   type="text"
@@ -114,27 +113,36 @@ function FormularioJwt() {
                   onChange={(e) => setUsername(e.target.value)}
                   disabled={loading}
                   required
-                  className="px-md py-sm rounded-lg border border-outline text-body-md bg-surface text-on-surface focus:outline-none focus:border-primary disabled:opacity-50"
+                  className="input w-full disabled:opacity-50"
                   placeholder="usuario o email institucional"
                 />
-              </div>
+              </FormField>
 
-              <div className="flex flex-col gap-xs">
-                <label htmlFor="password" className="text-label-sm text-on-surface-variant">
-                  Contraseña
-                </label>
-                <input
-                  id="password"
-                  type="password"
-                  autoComplete="current-password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  disabled={loading}
-                  required
-                  className="px-md py-sm rounded-lg border border-outline text-body-md bg-surface text-on-surface focus:outline-none focus:border-primary disabled:opacity-50"
-                  placeholder="contraseña"
-                />
-              </div>
+              <FormField label="Contraseña">
+                {/* Contenedor relative para posicionar el botón de ojo dentro del campo */}
+                <div className="relative">
+                  <input
+                    id="password"
+                    type={verPassword ? 'text' : 'password'}
+                    autoComplete="current-password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    disabled={loading}
+                    required
+                    className="input w-full pr-[2.75rem] disabled:opacity-50"
+                    placeholder="contraseña"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setVerPassword((v) => !v)}
+                    aria-label={verPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                    className="absolute inset-y-0 right-0 flex items-center px-sm text-on-surface-variant hover:text-on-surface transition-colors"
+                    tabIndex={-1}
+                  >
+                    <Icon name={verPassword ? 'visibility_off' : 'visibility'} className="text-[20px]" />
+                  </button>
+                </div>
+              </FormField>
 
               {error && (
                 <div className="flex items-center gap-xs text-error text-body-sm p-sm rounded-lg bg-error-container">

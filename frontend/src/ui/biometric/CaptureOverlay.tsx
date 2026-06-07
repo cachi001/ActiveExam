@@ -3,15 +3,16 @@
  *
  * Owns el contenedor raíz `fixed inset-0 z-[60]` (con `containerRef` reenviado para
  * que el padre pueda pedir requestFullscreen) y compone los sub-componentes
- * presentacionales: botón Cancelar, etiqueta contextual, spinner de carga, óvalo,
+ * presentacionales: botón Cancelar, spinner de carga, óvalo,
  * banner de fallback y sección de progreso.
  *
  * Sin lógica propia: TODO el estado, refs de cámara, loop RAF y callbacks viven en
  * BiometricCapture y se reenvían por props. El `videoRef` se pasa hasta el <video>
  * de CaptureOval para que el loop del padre lea el MISMO elemento.
  *
- * C-54: agrega props `cooldownActivo`, `retoRecienResueltoLabel` y `turnDirection`
- * para mostrar la confirmación de paso y la instrucción direccional de giro.
+ * C-54: agrega props `cooldownActivo` y `retoRecienResueltoLabel`
+ * para mostrar la confirmación de paso.
+ * C-58 D4: se eliminaron `contextLabel` y `turnDirection` — chrome redundante.
  */
 
 import { forwardRef } from 'react';
@@ -19,12 +20,11 @@ import { Icon } from '../components';
 import { CaptureLoading } from './CaptureLoading';
 import { CaptureOval } from './CaptureOval';
 import { CaptureProgress } from './CaptureProgress';
-import type { SequentialChallenge, TurnDirection } from '../../vision/liveness';
+import type { SequentialChallenge } from '../../vision/liveness';
 
 export interface CaptureOverlayProps {
   /** Ref reenviado al <video> dentro de CaptureOval (loop RAF del padre). */
   videoRef: React.Ref<HTMLVideoElement>;
-  contextLabel?: string;
   listoParaMostrar: boolean;
   motorError: string | null;
   enExito: boolean;
@@ -42,15 +42,12 @@ export interface CaptureOverlayProps {
   cooldownActivo: boolean;
   /** C-54: label del reto recién resuelto (para mostrar en cooldown). null si no hay. */
   retoRecienResueltoLabel: string | null;
-  /** C-54: dirección del giro (solo cuando el reto activo es girar_cabeza). null si no aplica. */
-  turnDirection: TurnDirection | null;
 }
 
 export const CaptureOverlay = forwardRef<HTMLDivElement, CaptureOverlayProps>(
   function CaptureOverlay(props, containerRef) {
     const {
       videoRef,
-      contextLabel,
       listoParaMostrar,
       motorError,
       enExito,
@@ -66,7 +63,6 @@ export const CaptureOverlay = forwardRef<HTMLDivElement, CaptureOverlayProps>(
       onCancel,
       cooldownActivo,
       retoRecienResueltoLabel,
-      turnDirection,
     } = props;
 
     return (
@@ -75,15 +71,13 @@ export const CaptureOverlay = forwardRef<HTMLDivElement, CaptureOverlayProps>(
         ref={containerRef}
         className="fixed inset-0 z-[60] bg-white flex flex-col items-center justify-center px-6"
       >
-        {/* Barra superior: etiqueta a la izquierda + Cancelar a la derecha.
+        {/* Barra superior: botón Cancelar alineado a la derecha.
             Solo se muestra cuando el óvalo ya cargó (listoParaMostrar). Durante el
             spinner de carga NO hay barra ni Cancelar: pantalla limpia con el spinner
-            centrado. El fallback manual entra en listoParaMostrar y conserva su barra. */}
+            centrado. El fallback manual entra en listoParaMostrar y conserva su barra.
+            C-58 D4: se eliminó el contextLabel — era chrome redundante. */}
         {listoParaMostrar && (
-          <div className="absolute top-0 inset-x-0 flex items-center justify-between gap-3 px-5 py-4">
-            <p className="text-sm text-neutral-500 truncate min-w-0">
-              {contextLabel ?? ''}
-            </p>
+          <div className="absolute top-0 inset-x-0 flex items-center justify-end gap-3 px-5 py-4">
             <button
               onClick={onCancel}
               className="shrink-0 inline-flex items-center gap-1 text-sm text-neutral-500 hover:text-neutral-900 transition-colors px-3 py-1.5 rounded-full"
@@ -131,7 +125,6 @@ export const CaptureOverlay = forwardRef<HTMLDivElement, CaptureOverlayProps>(
             onResolverManual={onResolverManual}
             cooldownActivo={cooldownActivo}
             retoRecienResueltoLabel={retoRecienResueltoLabel}
-            turnDirection={turnDirection}
           />
         )}
       </div>

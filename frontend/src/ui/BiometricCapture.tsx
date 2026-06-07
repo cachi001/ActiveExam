@@ -55,8 +55,6 @@ export interface BiometricCaptureProps {
    * @deprecated El catálogo secuencial es fijo desde C-54; no pasar challenges externos.
    */
   challenges?: SequentialChallenge[];
-  /** Texto de contexto mostrado en el encabezado del overlay. */
-  contextLabel?: string;
   /**
    * Callback al completar todos los retos. Recibe los landmarks del último frame,
    * un canvas con el frame del baseline (para que el caller compute el descriptor
@@ -128,7 +126,6 @@ const BASELINE_NOSE_VARIANCE_THRESHOLD = 0.002;
 
 export function BiometricCapture({
   challenges,
-  contextLabel,
   onComplete,
   onCancel,
 }: BiometricCaptureProps) {
@@ -769,10 +766,10 @@ export function BiometricCapture({
   }
 
   return createPortal(
+    // C-58 D4: contextLabel y turnDirection eliminados (chrome redundante del overlay de liveness).
     <CaptureOverlay
       ref={containerRef}
       videoRef={videoRef}
-      contextLabel={contextLabel}
       listoParaMostrar={listoParaMostrar}
       motorError={motorError}
       enExito={enExito}
@@ -788,7 +785,6 @@ export function BiometricCapture({
       onCancel={handleCancel}
       cooldownActivo={cooldownActivo}
       retoRecienResueltoLabel={retoRecienResueltoLabel}
-      turnDirection={retoActivoId === 'girar_cabeza' ? turnDirection : null}
     />,
     document.body,
   );

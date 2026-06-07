@@ -27,14 +27,17 @@ export function ExamenCard({ examen, inscripto, inscribiendo, onInscribir }: Exa
   const puedeInscribirse = examen.estado === 'programado' && !inscripto;
 
   return (
-    <Card className="flex items-center gap-md">
+    // C-58 D6: flex-col en mobile, flex-row en sm+ para no desbordar en <360px
+    <Card className="flex flex-col sm:flex-row sm:items-center gap-md">
       <div className="flex-1 min-w-0">
-        <p className="text-label-md font-semibold text-on-surface">{examen.nombre}</p>
+        {/* truncate para nombres largos */}
+        <p className="text-label-md font-semibold text-on-surface truncate">{examen.nombre}</p>
         <p className="text-label-sm text-on-surface-variant">
           {fecha.toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' })} · {examen.duracion_min} min
         </p>
       </div>
-      <div className="flex items-center gap-sm shrink-0">
+      {/* flex-wrap + shrink-0 para que el cluster badge+botón no comprima */}
+      <div className="flex items-center gap-sm flex-wrap shrink-0">
         <Badge tone={ESTADO_EXAMEN_TONE[examen.estado]} dot>
           {ESTADO_EXAMEN_LABEL[examen.estado]}
         </Badge>

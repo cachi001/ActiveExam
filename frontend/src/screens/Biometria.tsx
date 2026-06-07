@@ -125,7 +125,6 @@ export default function Biometria() {
               void handleComplete(landmarks, frame, passiveOk, retosResueltos, virtualCameraDetected);
             }}
             onCancel={handleCancel}
-            contextLabel="Verificación de identidad"
           />
         )}
 

@@ -142,7 +142,6 @@ export function EnrollmentBiometricStep({ referenciaActual, onCapturada, esRenov
           void handleComplete(landmarks, frame, passiveOk, retosResueltos, virtualCameraDetected);
         }}
         onCancel={cancelarCaptura}
-        contextLabel="Captura de referencia biométrica"
       />
     );
   }

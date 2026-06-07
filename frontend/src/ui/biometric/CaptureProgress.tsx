@@ -8,12 +8,13 @@
  * El cálculo de labels (getLabelForChallenge) vive en el padre y se reenvía como
  * `retoActualLabel` (paso actual) y `getLabel` (grilla manual).
  *
- * C-54: agrega props `cooldownActivo`, `retoRecienResueltoLabel` y `turnDirection`
- * para mostrar confirmación visual de paso completado e instrucción direccional de giro.
+ * C-54: agrega props `cooldownActivo` y `retoRecienResueltoLabel`
+ * para mostrar confirmación visual de paso completado.
+ * C-58 D4: se eliminó `turnDirection` — la flecha direccional era chrome redundante.
  */
 
 import { Icon } from '../components';
-import type { SequentialChallenge, TurnDirection } from '../../vision/liveness';
+import type { SequentialChallenge } from '../../vision/liveness';
 
 export interface CaptureProgressProps {
   enExito: boolean;
@@ -31,8 +32,6 @@ export interface CaptureProgressProps {
   cooldownActivo: boolean;
   /** C-54 (Task 8.2): label del reto recién resuelto (para mostrar en cooldown). null si no hay. */
   retoRecienResueltoLabel: string | null;
-  /** C-54 (Task 8.3): dirección del giro (solo cuando el reto activo es girar_cabeza). null si no aplica. */
-  turnDirection: TurnDirection | null;
 }
 
 export function CaptureProgress({
@@ -47,7 +46,6 @@ export function CaptureProgress({
   onResolverManual,
   cooldownActivo,
   retoRecienResueltoLabel,
-  turnDirection,
 }: CaptureProgressProps) {
   return (
     // Sección inferior — paso actual + progreso. Oculta durante la carga.
@@ -72,21 +70,6 @@ export function CaptureProgress({
         }`}>
           {enExito ? 'Verificación completada' : retoActualLabel}
         </p>
-      )}
-
-      {/* C-54 Task 8.5: Indicador de dirección cuando el reto activo es girar_cabeza */}
-      {!enExito && !cooldownActivo && turnDirection && (
-        <div className="flex items-center justify-center gap-2 mt-1">
-          {turnDirection === 'izquierda' && (
-            <span className="text-2xl">←</span>
-          )}
-          <p className="text-sm font-semibold text-primary">
-            {turnDirection === 'izquierda' ? 'hacia la izquierda' : 'hacia la derecha'}
-          </p>
-          {turnDirection === 'derecha' && (
-            <span className="text-2xl">→</span>
-          )}
-        </div>
       )}
 
       {/* Subtítulo de encuadre mientras el motor está listo pero aún sin completar */}
