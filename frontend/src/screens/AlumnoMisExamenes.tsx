@@ -1,6 +1,7 @@
 // Portal del alumno — Mis inscripciones a exámenes (C-21)
 // C-22: puedeRendir usa estado tipado real (sin parseo por substring).
 // C-26: gate en capas — muestra "Completar acuse del examen" cuando falta el acuse por-examen.
+// C-58: setExamenActivo antes de navegar a /requisitos (fix bug examenActivo null).
 import { useEffect, useState } from 'react';
 import { Card, Button, Icon } from '../ui/components';
 import { StudentShell } from '../ui/shells';
@@ -8,7 +9,7 @@ import { useNavigate } from '../lib/router';
 import { useApp } from '../lib/store';
 import { api } from '../lib/api';
 import AcuseExamen from './AcuseExamen';
-import type { Inscripcion } from '../lib/types';
+import type { Inscripcion, Examen } from '../lib/types';
 import { InscripcionCard } from './alumno/components/InscripcionCard';
 
 interface GatePorExamen { puede: boolean; codigo?: string; razon?: string; }
@@ -16,6 +17,7 @@ interface GatePorExamen { puede: boolean; codigo?: string; razon?: string; }
 export default function AlumnoMisExamenes() {
   const navigate = useNavigate();
   const setEnrollmentStatus = useApp((s) => s.setEnrollmentStatus);
+  const setExamenActivo = useApp((s) => s.setExamenActivo);
   const [inscripciones, setInscripciones] = useState<Inscripcion[]>([]);
   const [cargando, setCargando] = useState(true);
   const [verificandoId, setVerificandoId] = useState<string | null>(null);
@@ -50,8 +52,33 @@ export default function AlumnoMisExamenes() {
     setVerificandoId(inscripcion.id);
     const gate = await api.puedeRendir(inscripcion.examen_id);
     setVerificandoId(null);
-    if (gate.puede) { navigate('/requisitos'); }
-    else { setGatesPorExamen((prev) => ({ ...prev, [inscripcion.examen_id]: gate })); }
+    if (gate.puede) {
+      // C-58 D1: resolver el Examen y setearlo en el store ANTES de navegar.
+      // Consent.tsx lee examenActivo del store; sin este seteo quedaba null y
+      // aceptar() era inerte (guard if (!acepto || !examen) return).
+      let examen: Examen | undefined = await api.getExam(inscripcion.examen_id);
+      if (!examen) {
+        // Fallback: construir un Examen mínimo desde la Inscripcion para no romper el flujo.
+        // Consent solo necesita examen.id para recordConsent(examen.id).
+        examen = {
+          id: inscripcion.examen_id,
+          nombre: inscripcion.nombre_examen,
+          catedra: inscripcion.nombre_materia,
+          estado: 'en_curso',
+          inicio: inscripcion.fecha,
+          duracion_min: 60,
+          umbral_score: 50,
+          detectores: [],
+          retencion_dias: 365,
+          inscriptos: 0,
+          rindiendo: 0,
+        };
+      }
+      setExamenActivo(examen);
+      navigate('/requisitos');
+    } else {
+      setGatesPorExamen((prev) => ({ ...prev, [inscripcion.examen_id]: gate }));
+    }
   };
 
   const handleAcuseCompletado = async () => {

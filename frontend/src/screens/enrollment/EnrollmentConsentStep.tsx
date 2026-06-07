@@ -26,13 +26,11 @@ export function EnrollmentConsentStep({ acuseActual, onConsentido }: Props) {
   const [texto, setTexto] = useState<ConsentTextResponse | null>(null);
   const [acepto, setAcepto] = useState(false); // RN-CO-02: NUNCA pre-marcado
   const [guardando, setGuardando] = useState(false);
-  const [cargandoTexto, setCargandoTexto] = useState(true);
 
+  // C-58 D3: sin estado cargandoTexto — render progresivo: el layout aparece de una,
+  // los bloques se rellenan cuando llega el texto (texto?.bloques ?? []).
   useEffect(() => {
-    api.getConsentText().then((t) => {
-      setTexto(t);
-      setCargandoTexto(false);
-    });
+    api.getConsentText().then(setTexto);
   }, []);
 
   /** ¿Es un re-consentimiento por cambio de versión? */
@@ -55,15 +53,6 @@ export function EnrollmentConsentStep({ acuseActual, onConsentido }: Props) {
     setGuardando(false);
     onConsentido(acuse);
   };
-
-  if (cargandoTexto) {
-    return (
-      <div className="flex items-center gap-sm text-on-surface-variant py-lg">
-        <Icon name="progress_activity" className="ae-spin text-[20px]" />
-        <span className="text-body-md">Cargando texto de consentimiento…</span>
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-lg animate-in fade-in duration-400">
