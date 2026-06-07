@@ -45,9 +45,23 @@ class EmbeddingEncryptionService:
         vector = service.decrypt(token)                    # round-trip
     """
 
-    def __init__(self) -> None:
-        settings = get_settings()
-        clave = getattr(settings, "embedding_encryption_key", None)
+    def __init__(self, *, _key: str | None = None) -> None:
+        """Inicializa el servicio de cifrado con la clave Fernet.
+
+        Args:
+            _key: clave Fernet en string. Si se provee, se usa directamente
+                  (modo slim, c-57: la clave viene de SlimSettings sin cargar
+                  la config del full). Si es None, se lee de ``get_settings()``
+                  del full (modo produccion completo, retrocompatible).
+        """
+        if _key is not None:
+            # Modo slim: clave inyectada directamente (sin cargar Settings del full).
+            clave = _key
+        else:
+            # Modo full: leer de la config completa.
+            settings = get_settings()
+            clave = getattr(settings, "embedding_encryption_key", None)
+
         if not clave:
             raise ConfigurationError(
                 "EMBEDDING_ENCRYPTION_KEY no esta configurada. "

@@ -28,13 +28,14 @@ from app.application.enrollment.guardar_embedding_referencia import (
     GuardarEmbeddingReferenciaService,
 )
 from app.application.enrollment.guardar_foto_perfil import GuardarFotoPerfilService
+from app.application.enrollment.guardar_foto_perfil_slim import GuardarFotoPerfilSlimService
 from app.domain.auth.identity import AuthenticatedPrincipal
 from app.domain.auth.roles import Rol
 from app.infrastructure.crypto.embedding_encryption import (
     ConfigurationError,
     EmbeddingEncryptionService,
 )
-from app.infrastructure.persistence.session import get_session
+from app.infrastructure.storage.db_photo_storage import DbPhotoStorageService
 from app.infrastructure.storage.profile_photo import ProfilePhotoStorageService
 from app.presentation.api.v1.auth.dependencies import require_roles
 from app.presentation.api.v1.enrollment.schemas import (
@@ -60,8 +61,13 @@ def _get_session_factory(request: Request):
     return factory
 
 
-def _get_profile_storage(request: Request) -> ProfilePhotoStorageService:
-    """Toma el servicio de storage de perfiles del app state o 500."""
+def _get_profile_storage(request: Request) -> ProfilePhotoStorageService | DbPhotoStorageService:
+    """Toma el servicio de storage de perfiles del app state o 500.
+
+    Devuelve ``ProfilePhotoStorageService`` (full/MinIO) o ``DbPhotoStorageService``
+    (slim/BYTEA). El endpoint ``guardar_foto_perfil`` detecta el tipo y despacha
+    al servicio correcto.
+    """
     storage = getattr(request.app.state, "profile_photo_storage", None)
     if storage is None:
         raise HTTPException(
@@ -71,8 +77,17 @@ def _get_profile_storage(request: Request) -> ProfilePhotoStorageService:
     return storage
 
 
-def _get_embedding_encryption() -> EmbeddingEncryptionService:
-    """Instancia el servicio de cifrado de embeddings desde la config."""
+def _get_embedding_encryption(request: Request) -> EmbeddingEncryptionService:
+    """Toma el servicio de cifrado de embeddings del app state (slim) o lo instancia (full).
+
+    En el slim (main_slim.py), el servicio se cablea en ``app.state.embedding_encryption``
+    con la clave de ``SlimSettings.embedding_encryption_key`` (sin cargar Settings del full).
+    En el full (main.py), se instancia desde la config completa.
+    """
+    service = getattr(request.app.state, "embedding_encryption", None)
+    if service is not None:
+        return service
+    # Modo full: instanciar desde la config completa (Settings).
     try:
         return EmbeddingEncryptionService()
     except ConfigurationError as exc:
@@ -117,11 +132,20 @@ async def guardar_foto_perfil(
 
     try:
         async with factory() as session:
-            service = GuardarFotoPerfilService(session=session, storage=storage)
-            foto_id = await service.ejecutar(
-                usuario_id=principal.subject,
-                imagen_base64=body.imagen_base64,
-            )
+            # Slim (Railway): storage es DbPhotoStorageService -> BYTEA en DB.
+            # Full (produccion): storage es ProfilePhotoStorageService -> MinIO.
+            if isinstance(storage, DbPhotoStorageService):
+                service_slim = GuardarFotoPerfilSlimService(session=session)
+                foto_id = await service_slim.ejecutar(
+                    usuario_id=principal.subject,
+                    imagen_base64=body.imagen_base64,
+                )
+            else:
+                service = GuardarFotoPerfilService(session=session, storage=storage)
+                foto_id = await service.ejecutar(
+                    usuario_id=principal.subject,
+                    imagen_base64=body.imagen_base64,
+                )
             await session.commit()
     except ValueError as exc:
         raise HTTPException(
@@ -163,7 +187,7 @@ async def guardar_embedding_referencia(
         )
 
     factory = _get_session_factory(request)
-    encryption = _get_embedding_encryption()
+    encryption = _get_embedding_encryption(request)
 
     try:
         async with factory() as session:
