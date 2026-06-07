@@ -81,6 +81,31 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.session_factory = None
         app.state.presign_service = None
 
+    # --- Storage de perfiles (C-56): bucket no-WORM para foto de perfil --------
+    # Bucket separado del de evidencia (D1/D7 del design de C-56). No Object Lock:
+    # la foto de perfil es mutable (el alumno puede renovarla). El callable put_fn
+    # es un stub en-memoria en dev/test; en prod se inyecta el SDK boto3/minio real.
+    # La config del bucket se toma de STORAGE_PERFIL_BUCKET (default activeexam-perfil).
+    try:
+        from app.infrastructure.storage.profile_photo import ProfilePhotoStorageService
+
+        # put_fn stub: en produccion se reemplaza con el SDK real (boto3 put_object).
+        # En local / sin S3 real, se usa un callable no-op que no falla al arrancar.
+        def _noop_put(bucket: str, key: str, data: bytes) -> None:
+            """Stub de subida en local/dev — no sube nada, solo registra en log."""
+            import logging as _log
+            _log.getLogger(__name__).warning(
+                "profile_photo_storage: put_fn stub (no SDK real). "
+                "Bucket=%s Key=%s size=%d bytes", bucket, key, len(data)
+            )
+
+        app.state.profile_photo_storage = ProfilePhotoStorageService(
+            bucket=settings.storage_perfil_bucket,
+            put_fn=_noop_put,
+        )
+    except Exception:  # noqa: BLE001
+        app.state.profile_photo_storage = None
+
     # --- Evidencia (C-12): bucket WORM (Object Lock Compliance) ----------------
     # El binario de evidencia se deposita/re-descarga en un bucket WORM. El SDK real
     # (boto3/minio con ObjectLockMode='COMPLIANCE') se inyecta en deploy via callables;

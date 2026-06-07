@@ -614,25 +614,61 @@ export const api = {
   },
 
   /**
-   * Persiste la referencia biométrica capturada en el enrollment del perfil (C-22).
+   * Persiste la referencia biométrica capturada en el enrollment del perfil (C-56).
+   *
+   * C-56: cuando USE_REAL_BACKEND=1, llama a POST /api/v1/enrollment/embedding-referencia
+   * con el array de 128 floats. El backend lo cifra at-rest con Fernet y devuelve
+   * un `referencia_id` opaco. El store persiste el `referencia_id` (no el embedding crudo).
    *
    * DATOS SENSIBLES (Ley 25.326):
-   * - `imagen`: cifrada at-rest server-side; en demo se guarda dataURL con metadatos.
-   *   Finalidad acotada a verificación de identidad y revisión humana.
-   *   Eliminada al egreso del estudiante; holds legales difieren la eliminación.
-   * - `embedding`: cifrado at-rest server-side; en demo se guarda el vector simulado.
+   * - `embedding`: cifrado at-rest server-side (Fernet/AES-128-CBC + HMAC-SHA256).
    *   Finalidad acotada a verificación de identidad 1:1.
    *   Marcado para eliminación al egreso; holds legales difieren.
    * El cliente es SENSOR NO CONFIABLE: el backend re-infiere y firma (C-12).
+   * D3 (C-56): el backend acepta el embedding client-side (NO re-infiere en enrollment).
+   * La re-inferencia aplica durante el examen (C-09 D2).
    */
   async guardarReferenciaBiometrica(params: {
     imagen: string | null;
     embedding: number[] | null;
-  }): Promise<ReferenciasBiometrica> {
+  }): Promise<ReferenciasBiometrica & { referencia_id?: string }> {
+    if (USE_REAL_BACKEND && params.embedding && params.embedding.length === 128) {
+      try {
+        const data = await realFetch<{ referencia_id: string }>(
+          '/enrollment/embedding-referencia',
+          {
+            method: 'POST',
+            body: JSON.stringify({ embedding: params.embedding }),
+          },
+        );
+        // Construir la referencia con el referencia_id opaco del backend.
+        const ahora = new Date().toISOString();
+        const expiracion = calcularExpiracion(ahora, BIOMETRIC_VALIDITY_MONTHS);
+        const ref: ReferenciasBiometrica & { referencia_id?: string } = {
+          captura_completada: true,
+          imagen: null,          // C-56: el embedding se persiste en el backend, no la imagen
+          embedding: null,       // C-56: el embedding crudo NO se persiste en el cliente
+          fecha_captura: ahora,
+          fecha_expiracion: expiracion,
+          vigencia_meses: BIOMETRIC_VALIDITY_MONTHS,
+          version_motor: VISION_ENGINE_VERSION,
+          vigencia: calcularVigencia(expiracion, false),
+          renovacion_anticipada_requerida: false,
+          referencia_id: data.referencia_id,
+        };
+        enrollmentAlumno = recalcularPerfilCompleto({ ...enrollmentAlumno, biometria: ref });
+        return ref;
+      } catch (err) {
+        // Si el backend falla, NO hacer fallback demo: propagar el error
+        // para que el componente pueda mostrar el mensaje y reintentar.
+        throw new Error(`Error al guardar referencia biométrica: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+    // Modo demo (USE_REAL_BACKEND=0 o embedding nulo/incompleto).
     await delay(600);
     const ahora = new Date().toISOString();
     const expiracion = calcularExpiracion(ahora, BIOMETRIC_VALIDITY_MONTHS);
-    const ref: ReferenciasBiometrica = {
+    const ref: ReferenciasBiometrica & { referencia_id?: string } = {
       captura_completada: true,
       imagen: params.imagen,
       embedding: params.embedding,
@@ -691,16 +727,40 @@ export const api = {
   },
 
   /**
-   * Persiste la foto de perfil del alumno (mock, C-37).
+   * Persiste la foto de perfil del alumno (C-56).
    *
-   * DATO PERSONAL (Ley 25.326): finalidad acotada (avatar en la UI).
-   * En producción: cifrado AES-256-GCM at-rest, eliminado al egreso del estudiante.
+   * C-56: cuando USE_REAL_BACKEND=1, llama a POST /api/v1/enrollment/foto-perfil
+   * con la imagen en base64. El backend la sube al bucket no-WORM (SSE-S3), calcula
+   * el hash SHA-256, persiste los metadatos en foto_referencia y devuelve el
+   * `foto_referencia_id` opaco. El store persiste el ID (no el dataUrl completo).
+   *
+   * DATO PERSONAL (Ley 25.326): finalidad acotada (identidad en enrollment).
+   * Cifrado at-rest server-side, eliminado al egreso del estudiante.
    * Demo: solo en memoria de la sesión.
+   *
+   * @returns foto_referencia_id (UUID opaco) en modo real, undefined en demo.
    */
-  async guardarFotoPerfil(dataUrl: string): Promise<void> {
+  async guardarFotoPerfil(dataUrl: string): Promise<string | undefined> {
+    if (USE_REAL_BACKEND) {
+      try {
+        const data = await realFetch<{ foto_referencia_id: string }>(
+          '/enrollment/foto-perfil',
+          {
+            method: 'POST',
+            body: JSON.stringify({ imagen_base64: dataUrl }),
+          },
+        );
+        // En modo real el dataUrl no se persiste en el store (solo el ID opaco).
+        return data.foto_referencia_id;
+      } catch (err) {
+        // Propagar el error para que el componente pueda mostrar el mensaje y reintentar.
+        throw new Error(`Error al guardar foto de perfil: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+    // Modo demo: guardar en memoria de la sesión (sin persistencia real).
     await delay(300);
-    // Actualiza el registro in-memory del principal de estudiante
     PRINCIPALES.estudiante = { ...PRINCIPALES.estudiante, foto_perfil: dataUrl };
+    return undefined;
   },
 
   // -------------------------------------------------------------------------

@@ -65,6 +65,8 @@ export default function StudentProfile() {
 
   const [enrollment, setEnrollment] = useState<EstadoEnrollment | null>(null);
   const [paso, setPaso] = useState<PasoEnrollment>('cargando');
+  /** C-56: error de backend al guardar la foto de perfil (para mostrar al alumno). */
+  const [fotoError, setFotoError] = useState<string | null>(null);
 
   /** Carga el estado de enrollment y actualiza el store de Zustand. */
   const cargarEnrollment = async () => {
@@ -107,13 +109,29 @@ export default function StudentProfile() {
   };
 
   /**
-   * Task 7.3 — Handler al confirmar la foto de perfil (C-37).
-   * Guarda via api mock, actualiza el store, y avanza al paso de biometría.
+   * C-56 — Handler al confirmar la foto de perfil.
+   * En modo real: llama a POST /enrollment/foto-perfil, obtiene el foto_referencia_id
+   * opaco y avanza al paso de biometría. Si el backend falla, muestra el error y
+   * no avanza la fase (el alumno puede reintentar).
+   * En modo demo: guarda en memoria y avanza.
    */
   const handleFotoCapturada = async (dataUrl: string) => {
-    await api.guardarFotoPerfil(dataUrl);
-    setFotoPerfil(dataUrl);
-    setPaso('biometria');
+    setFotoError(null);
+    try {
+      const fotoId = await api.guardarFotoPerfil(dataUrl);
+      // En modo demo fotoId es undefined; en modo real es el UUID del backend.
+      // El store actualiza la foto del principal para el avatar de la UI (demo).
+      if (!fotoId) {
+        // Modo demo: actualizar el avatar con el dataUrl.
+        setFotoPerfil(dataUrl);
+      }
+      // En modo real no mostramos el dataUrl como avatar (solo el ID opaco nos llega).
+      setPaso('biometria');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setFotoError(msg);
+      // No avanzar la fase: el alumno debe reintentar.
+    }
   };
 
   /**
@@ -213,7 +231,7 @@ export default function StudentProfile() {
     );
   }
 
-  // Task 7.7: Paso foto de perfil (C-37) — entre consentimiento y biometría
+  // C-56: Paso foto de perfil — entre consentimiento y biometría
   if (paso === 'foto_perfil') {
     return (
       <StudentShell>
@@ -224,9 +242,23 @@ export default function StudentProfile() {
         >
           <div className="text-label-sm text-on-surface-variant bg-surface-container-low rounded-xl p-sm border border-outline-variant/30">
             <span className="font-semibold">Privacidad (Ley 25.326):</span> La foto de perfil es
-            un dato personal con finalidad acotada (avatar en la UI). En el cliente se almacena en memoria de sesión.
-            Server-side es cifrada at-rest y eliminada al egreso (Ley 25.326).
+            un dato personal con finalidad acotada (identidad en enrollment). Cifrada at-rest
+            server-side y eliminada al egreso (Ley 25.326).
           </div>
+
+          {/* C-56: mostrar error del backend con opción de reintentar (task 11.2) */}
+          {fotoError && (
+            <div className="flex items-start gap-sm bg-error-container border border-error/30 rounded-xl p-md">
+              <Icon name="error" className="text-error text-[18px] shrink-0 mt-px" />
+              <div className="text-label-sm text-on-surface">
+                <p className="font-semibold text-error">Error al guardar la foto</p>
+                <p className="text-on-surface-variant mt-xs">{fotoError}</p>
+                <p className="text-on-surface-variant mt-xs">
+                  Intentá capturar la foto nuevamente. Si el problema persiste, contactá al soporte.
+                </p>
+              </div>
+            </div>
+          )}
 
           <CameraSnapshotCapture
             shape="oval"

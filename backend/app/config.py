@@ -115,6 +115,25 @@ class Settings(BaseSettings):
     # --- Mensajeria (pieza decidida por C-03; default A4 = postgres) ---
     messaging_backend: Literal["postgres", "rabbitmq", "redis"] = "postgres"
 
+    # --- Biometria de referencia (C-56) ---
+    # Clave maestra de cifrado at-rest del embedding biometrico de referencia.
+    # 32 bytes en base64-urlsafe (generados con Fernet.generate_key()). SENSIBLE:
+    # inyectada desde Vault en tmpfs efimero; NUNCA hardcodeada ni en la imagen.
+    # Si no esta configurada, EmbeddingEncryptionService lanza ConfigurationError.
+    embedding_encryption_key: str | None = Field(
+        default=None,
+        description=(
+            "Clave Fernet para cifrado at-rest del embedding (32 bytes base64-urlsafe). "
+            "Obligatoria en produccion. Inyectar desde Vault/tmpfs."
+        ),
+    )
+    # Bucket de foto de perfil del alumno: no-WORM, con SSE-S3 (D1, D7 del design).
+    # Separado del bucket de evidencia WORM. Mutable: el alumno puede renovar la foto.
+    storage_perfil_bucket: str = Field(
+        default="activeexam-perfil",
+        description="Bucket MinIO/S3 para fotos de perfil (no-WORM, sin Object Lock).",
+    )
+
     # --- Gestion de secretos (Vault) ---
     # Opcionales: en local la inyeccion puede no estar activa. En prod son
     # obligatorias operacionalmente, pero NO deben tener default inseguro de
