@@ -31,9 +31,9 @@ USO (modo full — stack completo):
     python scripts/seed_users.py
 
 CREDENCIALES SEED (para probar el login):
-    Estudiante: id_institucional=seed-estudiante | email=seed-estudiante@demo.test
-    Proctor:    id_institucional=seed-proctor   | email=seed-proctor@demo.test
-    Admin:      id_institucional=seed-admin     | email=seed-admin@demo.test
+    Estudiante: id_institucional=estudiante | email=estudiante@demo.test
+    Proctor:    id_institucional=proctor    | email=proctor@demo.test
+    Admin:      id_institucional=admin      | email=admin@demo.test
 """
 
 from __future__ import annotations
@@ -132,20 +132,20 @@ async def _ejecutar_seed(
 
     usuarios_seed = [
         {
-            "id_institucional": "seed-estudiante",
-            "email": "seed-estudiante@demo.test",
+            "id_institucional": "estudiante",
+            "email": "estudiante@demo.test",
             "password": pw_estudiante,
             "roles": ["estudiante"],
         },
         {
-            "id_institucional": "seed-proctor",
-            "email": "seed-proctor@demo.test",
+            "id_institucional": "proctor",
+            "email": "proctor@demo.test",
             "password": pw_proctor,
             "roles": ["proctor"],
         },
         {
-            "id_institucional": "seed-admin",
-            "email": "seed-admin@demo.test",
+            "id_institucional": "admin",
+            "email": "admin@demo.test",
             "password": pw_admin,
             "roles": ["admin_sistema"],
         },
