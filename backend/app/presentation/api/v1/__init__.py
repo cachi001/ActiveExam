@@ -11,6 +11,7 @@ from fastapi import APIRouter
 from app.presentation.api.v1.auth.router import router as auth_router
 from app.presentation.api.v1.biometrics.router import router as biometrics_router
 from app.presentation.api.v1.consent.router import router as consent_router
+from app.presentation.api.v1.enrollment.router import router as enrollment_router
 from app.presentation.api.v1.events.router import router as events_router
 from app.presentation.api.v1.evidence.router import router as evidence_router
 from app.presentation.api.v1.exams.router import router as exams_router
@@ -28,3 +29,6 @@ api_v1_router.include_router(biometrics_router, prefix="/identity", tags=["ident
 api_v1_router.include_router(events_router, prefix="/events", tags=["events"])
 api_v1_router.include_router(evidence_router, prefix="/evidence", tags=["evidence"])
 api_v1_router.include_router(sessions_router, prefix="/sessions", tags=["sessions"])
+api_v1_router.include_router(
+    enrollment_router, prefix="/enrollment", tags=["enrollment"]
+)  # C-56

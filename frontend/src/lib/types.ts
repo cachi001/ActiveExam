@@ -219,6 +219,13 @@ export interface ReferenciasBiometrica {
    * La deriva NO sanciona ni invalida la rendición en curso (L2.5).
    */
   renovacion_anticipada_requerida: boolean;
+  /**
+   * C-56: UUID opaco del registro en `embedding_referencia` (backend).
+   * Presente solo en modo real (USE_REAL_BACKEND=1) tras un enrollment exitoso.
+   * El cliente persiste este ID en el store (no el embedding crudo).
+   * Undefined en modo demo.
+   */
+  referencia_id?: string;
 }
 
 /**

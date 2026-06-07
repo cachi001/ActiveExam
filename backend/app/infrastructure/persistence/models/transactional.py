@@ -19,6 +19,7 @@ from sqlalchemy import (
     Enum as SAEnum,
 )
 from sqlalchemy import (
+    Boolean,
     Float,
     ForeignKey,
     Integer,
@@ -245,6 +246,81 @@ class RefreshTokenModel(Base):
         TIMESTAMP(timezone=True), nullable=False
     )
     rotado_en: Mapped[str | None] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    created_at: Mapped[str] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class FotoReferenciaModel(Base):
+    """Foto de perfil del alumno — referencia de enrollment (C-56).
+
+    La foto se almacena en el bucket de perfiles (no-WORM, SSE-S3, separado del
+    bucket de evidencia WORM). Solo los metadatos viven en la DB: la URL del
+    objeto, el hash SHA-256 del contenido (integridad), el bucket y el usuario.
+
+    ``vigente``: solo un registro TRUE por usuario. Al renovar la foto, el
+    registro anterior se marca FALSE (``marcar_anteriores_no_vigentes``).
+    El ON DELETE CASCADE garantiza que al borrar el usuario, sus fotos desaparecen.
+    """
+
+    __tablename__ = "foto_referencia"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    usuario_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("usuario.id", ondelete="CASCADE"), nullable=False
+    )
+    uri_storage: Mapped[str] = mapped_column(Text, nullable=False)
+    hash_sha256: Mapped[str] = mapped_column(Text, nullable=False)
+    bucket: Mapped[str] = mapped_column(Text, nullable=False)
+    vigente: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    created_at: Mapped[str] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[str] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class EmbeddingReferenciaModel(Base):
+    """Embedding biometrico de referencia cifrado at-rest (C-56, D2).
+
+    El vector 128-d del alumno (face-api / MediaPipe) se cifra con Fernet
+    (EMBEDDING_ENCRYPTION_KEY) antes de persistirse. La columna ``embedding_cifrado``
+    almacena el Fernet token (TEXT opaco); el plaintext NUNCA se persiste.
+
+    Campos de retencion (stub para C-19):
+    - ``fecha_expiracion``: NULL = no expira. Politica concreta en C-01/Fase 2.
+    - ``eliminado_en``: NULL = vigente; NOT NULL = marcado para eliminacion al egreso.
+
+    ``vigente``: solo un registro TRUE por usuario (el embedding de referencia
+    activo). Al renovar, el registro anterior se marca FALSE.
+    El ON DELETE CASCADE garantiza que al borrar el usuario, sus embeddings se eliminan.
+    """
+
+    __tablename__ = "embedding_referencia"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    usuario_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("usuario.id", ondelete="CASCADE"), nullable=False
+    )
+    embedding_cifrado: Mapped[str] = mapped_column(Text, nullable=False)
+    algoritmo: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default="face-api-128d"
+    )
+    fecha_captura: Mapped[str] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    fecha_expiracion: Mapped[str | None] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    vigente: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    eliminado_en: Mapped[str | None] = mapped_column(
         TIMESTAMP(timezone=True), nullable=True
     )
     created_at: Mapped[str] = mapped_column(

@@ -3,19 +3,17 @@
 import { create } from 'zustand';
 import type { Principal, Rol, EventoSesion, Examen, SesionRevision, EstadoEnrollment, DecisionRevisor } from './types';
 
-/** Clave de localStorage para la referencia biométrica 128-d (demo). */
-const BIO_REF_KEY = 'activeexam_bio_ref';
-
-/** Lee la referencia biométrica persistida (demo). Robusto ante JSON inválido. */
-function leerReferenciaBiometrica(): number[] | null {
-  try {
-    const raw = localStorage.getItem(BIO_REF_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) && parsed.every((n) => typeof n === 'number') ? parsed : null;
-  } catch {
-    return null;
+// C-56: la clave `activeexam_bio_ref` (embedding crudo en localStorage) queda eliminada.
+// El embedding ya no se persiste en el cliente: el backend devuelve un `referencia_id`
+// opaco que es lo único que el store persiste. Si quedó algún valor antiguo, lo limpiamos
+// al inicializar para garantizar que no haya datos biométricos en localStorage.
+const _LEGACY_BIO_REF_KEY = 'activeexam_bio_ref';
+try {
+  if (typeof localStorage !== 'undefined') {
+    localStorage.removeItem(_LEGACY_BIO_REF_KEY);
   }
+} catch {
+  // localStorage no disponible (SSR / modo privado) → ignorar silenciosamente.
 }
 
 interface AppState {
@@ -71,19 +69,25 @@ interface AppState {
   decisionesRevisor: Record<string, DecisionRevisor>;
 
   // ---------------------------------------------------------------------------
-  // Referencia biométrica REAL para verificación 1:1 — face-api 128-d
+  // Referencia biométrica persistida en backend — C-56
   // ---------------------------------------------------------------------------
   /**
-   * Descriptor facial de 128 dimensiones capturado en el enrollment, usado como
-   * REFERENCIA en la verificación 1:1 (Biometria.tsx lo compara contra el
-   * descriptor "vivo" via api.verificarBiometria).
+   * C-56: ID opaco (UUID) de la referencia biométrica persistida en el backend.
+   * Se obtiene tras un enrollment exitoso (POST /enrollment/embedding-referencia).
+   * Null si el alumno aún no completó el enrollment biométrico.
    *
-   * Fuente de verdad efímera de la demo: store + localStorage (clave
-   * `activeexam_bio_ref`). Null si el alumno aún no capturó referencia.
+   * El embedding crudo 128-d YA NO se persiste en el cliente ni en localStorage.
+   * El backend lo cifra at-rest (Fernet). Solo el `referencia_id` viaja al cliente.
+   */
+  biometrico_referencia_id: string | null;
+
+  /**
+   * Descriptor facial de 128 dimensiones para la verificación 1:1 en la demo
+   * (solo en modo demo, NO en modo real). En modo real el embedding queda en el
+   * backend cifrado at-rest; el cliente no lo almacena.
    *
-   * DATO SENSIBLE (Ley 25.326): es dato biométrico. En producción vive cifrado
-   * at-rest server-side; acá se mantiene solo para la comparación 1:1 de la demo.
-   * NUNCA loguear este vector.
+   * DATO SENSIBLE (Ley 25.326): NUNCA loguear. Solo para la comparación 1:1 demo.
+   * En producción (USE_REAL_BACKEND=1): siempre null.
    */
   biometriaReferencia: number[] | null;
 
@@ -106,7 +110,15 @@ interface AppState {
   setProctoringExamId: (id: string | null) => void;
   /** C-47: registra la decisión humana del revisor sobre una sesión de la cola. */
   setDecisionRevisor: (id: string, decision: DecisionRevisor) => void;
-  /** Setea el descriptor 128-d de referencia para la verificación 1:1 (face-api). */
+  /**
+   * C-56: persiste el referencia_id opaco del backend (no el embedding crudo).
+   * Llamar tras un enrollment exitoso con el UUID retornado por el backend.
+   */
+  setBiometricoReferenciaId: (id: string | null) => void;
+  /**
+   * Setea el descriptor 128-d de referencia para la verificación 1:1 (demo).
+   * Solo en modo demo. En modo real, usar setBiometricoReferenciaId.
+   */
   setBiometriaReferencia: (embedding: number[] | null) => void;
 }
 
@@ -122,7 +134,11 @@ export const useApp = create<AppState>((set) => ({
   proctoringSessionId: null,
   proctoringExamId: null,
   decisionesRevisor: {},
-  biometriaReferencia: leerReferenciaBiometrica(),
+  // C-56: el ID de referencia se inicializa en null (no viene de localStorage).
+  // El embedding crudo ya no se lee de localStorage (la clave `activeexam_bio_ref`
+  // fue eliminada al inicializar el módulo — ver bloque de limpieza arriba).
+  biometrico_referencia_id: null,
+  biometriaReferencia: null,
 
   setPrincipal: (principal, rol) => set({ principal, rol }),
   setExamenActivo: (examenActivo) => set({ examenActivo }),
@@ -138,16 +154,13 @@ export const useApp = create<AppState>((set) => ({
   setProctoringExamId: (id) => set({ proctoringExamId: id }),
   setDecisionRevisor: (id, decision) =>
     set((s) => ({ decisionesRevisor: { ...s.decisionesRevisor, [id]: decision } })),
+  // C-56: persiste el referencia_id opaco del backend (no el embedding crudo).
+  setBiometricoReferenciaId: (id) => set({ biometrico_referencia_id: id }),
+  // Solo en modo demo: persiste el descriptor 128-d en memoria (sin localStorage).
+  // En modo real (USE_REAL_BACKEND=1) el embedding queda en el backend cifrado at-rest.
   setBiometriaReferencia: (embedding) => {
-    try {
-      if (embedding && embedding.length > 0) {
-        localStorage.setItem(BIO_REF_KEY, JSON.stringify(embedding));
-      } else {
-        localStorage.removeItem(BIO_REF_KEY);
-      }
-    } catch {
-      // localStorage no disponible (modo privado / cuota) → solo en memoria.
-    }
+    // C-56: NO persiste el embedding en localStorage. Solo en memoria de la sesión.
+    // La clave `activeexam_bio_ref` fue eliminada (ver bloque de limpieza arriba).
     set({ biometriaReferencia: embedding });
   },
 }));

@@ -61,6 +61,7 @@ export function EnrollmentBiometricStep({ referenciaActual, onCapturada, esRenov
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [refRegistrada, setRefRegistrada] = useState(false);
   const setBiometriaReferencia = useApp((s) => s.setBiometriaReferencia);
+  const setBiometricoReferenciaId = useApp((s) => s.setBiometricoReferenciaId);
 
   // ---------------------------------------------------------------------------
   // handleComplete — computar el descriptor 128-d REAL (face-api) sobre el frame
@@ -84,26 +85,39 @@ export function EnrollmentBiometricStep({ referenciaActual, onCapturada, esRenov
       // Dato sensible (Ley 25.326): no se loguea.
       const descriptor = frame ? await computeFaceDescriptor(frame) : null;
 
-      // Persistir la referencia en el enrollment (mock/real) + en el store/localStorage
-      // para la verificación 1:1. El backend re-infiere y cifra server-side (C-12).
+      // C-56: POST al backend real cuando USE_REAL_BACKEND=1.
+      // El backend cifra at-rest y devuelve un referencia_id opaco.
+      // En modo demo: guarda in-memory (comportamiento anterior).
+      // Si el backend falla: propagar el error (no avanzar la fase).
       const referencia = await api.guardarReferenciaBiometrica({
         imagen: null,
         embedding: descriptor,
       });
 
       if (descriptor) {
-        setBiometriaReferencia(descriptor);
+        // C-56: en modo demo, el embedding se guarda en memoria para la verificación 1:1.
+        // En modo real, el embedding queda en el backend; el store recibe solo el referencia_id.
+        if (referencia.referencia_id) {
+          // Modo real: persistir el referencia_id opaco, descartar el embedding crudo.
+          setBiometricoReferenciaId(referencia.referencia_id);
+          setBiometriaReferencia(null);
+        } else {
+          // Modo demo: guardar el descriptor en el store (sin localStorage).
+          setBiometriaReferencia(descriptor);
+        }
         setRefRegistrada(true);
       }
 
       setFase('completado');
       onCapturada(referencia);
     } catch (err) {
+      // Errores de backend (4xx/5xx/red) o de cámara: mostrar en fase 'error'.
+      // La fase NO avanza: el alumno ve el error y puede reintentar (task 11.3).
       const msg = err instanceof Error ? err.message : String(err);
       setErrorMsg(msg);
       setFase('error');
     }
-  }, [onCapturada, setBiometriaReferencia]);
+  }, [onCapturada, setBiometriaReferencia, setBiometricoReferenciaId]);
 
   // ---------------------------------------------------------------------------
   // Task 8.4: cancelarCaptura — vuelve a instrucciones
@@ -228,15 +242,19 @@ export function EnrollmentBiometricStep({ referenciaActual, onCapturada, esRenov
           </div>
         )}
 
-        {/* ── Task 8.8: Estado: error ── */}
+        {/* ── Task 8.8 / 11.3 (C-56): Estado: error ── */}
         {fase === 'error' && (
           <div className="text-center space-y-sm">
             <Icon name="videocam_off" className="text-error text-[40px]" fill />
-            <p className="font-headline text-title-md text-on-surface">Sin acceso a la cámara</p>
+            <p className="font-headline text-title-md text-on-surface">Error en la captura</p>
             <p className="text-label-sm text-on-surface-variant">{errorMsg}</p>
             <p className="text-label-sm text-on-surface-variant">
-              Habilitá el permiso de cámara en tu navegador y recargá la página.
+              Si el error persiste, verificá tu cámara y conexión, y contactá al soporte.
             </p>
+            {/* C-56: botón de reintentar para errores de backend (task 11.3) */}
+            <Button icon="refresh" onClick={() => { setErrorMsg(null); setFase('instrucciones'); }}>
+              Reintentar captura
+            </Button>
           </div>
         )}
       </Card>
