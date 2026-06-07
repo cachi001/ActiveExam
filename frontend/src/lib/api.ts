@@ -355,19 +355,96 @@ export const api = {
   },
 
   /**
-   * Verificación biométrica 1:1 REAL — compara el descriptor 128-d "vivo" contra
-   * la referencia capturada en el enrollment (face-api).
+   * Consulta el estado de la referencia biométrica del usuario autenticado (C-59).
    *
-   * Real (USE_REAL_BACKEND=1): POST /proctoring/biometria/verificar
-   *   body: { embedding_vivo, embedding_referencia, umbral }
-   *   resp: { distancia (coseno), es_match (distancia < umbral), umbral }
-   *   El backend re-computa la distancia server-side (cliente = sensor no confiable).
+   * Real (USE_REAL_BACKEND=1): GET /proctoring/biometria/referencia/estado
+   *   El backend identifica al usuario por JWT y devuelve si tiene referencia vigente.
+   *   La respuesta SOLO contiene el booleano; NUNCA el embedding ni el referencia_id
+   *   (Ley 25.326, regla dura #7).
    *
-   * Mock (USE_REAL_BACKEND=0): calcula la distancia coseno LOCALMENTE entre los dos
-   * descriptores reales (face-api corre igual en el cliente). Esto hace que la demo
-   * sin backend distinga de verdad "misma cara" (match) de "otra cara" (no-match).
+   * Demo (USE_REAL_BACKEND=0): deriva de enrollmentAlumno.biometria?.captura_completada.
+   *
+   * Usar este endpoint para el gate de enrollment en el frontend ANTES de intentar
+   * la verificación (evita capturar el embedding vivo solo para descubrir que no hay ref).
+   */
+  async estadoReferenciaBiometrica(): Promise<{ tiene_referencia_vigente: boolean }> {
+    if (USE_REAL_BACKEND) {
+      try {
+        return await realFetch<{ tiene_referencia_vigente: boolean }>(
+          '/proctoring/biometria/referencia/estado',
+          { method: 'GET' },
+        );
+      } catch {
+        // Si el endpoint falla (ej. red), asumir sin referencia para no bloquear.
+        return { tiene_referencia_vigente: false };
+      }
+    }
+    // Demo: derivar del estado local de enrollment.
+    const capturada = enrollmentAlumno.biometria?.captura_completada ?? false;
+    return { tiene_referencia_vigente: capturada };
+  },
+
+  /**
+   * Verificación biométrica 1:1 server-side (C-59, rama REAL).
+   *
+   * Real (USE_REAL_BACKEND=1): POST /proctoring/biometria/verificar-referencia
+   *   body: { embedding_vivo, umbral? }
+   *   El backend identifica al usuario por JWT, busca la referencia vigente en DB,
+   *   la descifra server-side y compara. El embedding de referencia NUNCA viaja al
+   *   cliente (Ley 25.326, regla dura #7).
+   *   resp: { distancia, es_match, umbral }
+   *   - 404: sin referencia vigente -> señal de no_enrolado (distinto de error de red).
+   *   - 422: embedding_vivo de dimensión inválida.
+   *   - 500: error interno de descifrado.
+   *
+   * DATO SENSIBLE (Ley 25.326): el embedding_vivo NO se loguea.
+   */
+  async verificarBiometriaReferencia(
+    embeddingVivo: number[],
+    umbral?: number,
+  ): Promise<{ distancia: number; es_match: boolean; umbral: number }> {
+    // No hace try/catch: propaga el error para que el caller distinga:
+    //   - Error('HTTP 404') -> sin referencia vigente -> fase no_enrolado
+    //   - Error('HTTP 422') -> embedding invalido
+    //   - Error('HTTP 500') -> error interno de descifrado
+    //   - Otros -> error de red
+    const token = authProvider.getToken();
+    const res = await fetch(`${API_BASE}/proctoring/biometria/verificar-referencia`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({
+        embedding_vivo: embeddingVivo,
+        umbral: umbral ?? null,
+      }),
+    });
+    if (!res.ok) {
+      // Lanza un error con el status HTTP para que Biometria.tsx pueda distinguir 404.
+      const err = new Error(`HTTP ${res.status}`) as Error & { status: number };
+      err.status = res.status;
+      throw err;
+    }
+    return res.json() as Promise<{ distancia: number; es_match: boolean; umbral: number }>;
+  },
+
+  /**
+   * Verificación biométrica 1:1 — dos ramas (real vs demo).
+   *
+   * RAMA REAL (USE_REAL_BACKEND=1):
+   *   Llama a verificarBiometriaReferencia (POST /proctoring/biometria/verificar-referencia).
+   *   Solo se envía el embedding_vivo; el backend identifica al usuario por JWT.
+   *   embeddingReferencia se IGNORA en modo real (es null por diseño en C-56).
+   *
+   * RAMA DEMO (USE_REAL_BACKEND=0):
+   *   Calcula la distancia coseno LOCALMENTE entre los dos descriptores 128-d.
+   *   embeddingReferencia debe estar presente en el cliente (capturado en enrollment demo).
    *
    * DATO SENSIBLE (Ley 25.326): los embeddings NO se loguean.
+   *
+   * @deprecated Para modo real preferir verificarBiometriaReferencia directamente.
+   *   Este método conserva retrocompat con el flujo demo existente.
    */
   async verificarBiometria(
     embeddingVivo: number[],
@@ -375,25 +452,16 @@ export const api = {
     umbral?: number,
   ): Promise<{ distancia: number; es_match: boolean; umbral: number } | null> {
     if (USE_REAL_BACKEND) {
+      // Rama real (C-59): solo envía el embedding vivo; el backend hace el resto.
+      // embeddingReferencia se ignora intencionalmente (es null en modo real, C-56).
       try {
-        return await realFetch<{ distancia: number; es_match: boolean; umbral: number }>(
-          '/proctoring/biometria/verificar',
-          {
-            method: 'POST',
-            body: JSON.stringify({
-              embedding_vivo: embeddingVivo,
-              embedding_referencia: embeddingReferencia,
-              umbral: umbral ?? null,
-            }),
-          },
-          'demo',
-        );
+        return await this.verificarBiometriaReferencia(embeddingVivo, umbral);
       } catch {
         return null;
       }
     }
 
-    // Mock: distancia coseno real entre los descriptores 128-d.
+    // Rama demo: distancia coseno local entre los descriptores 128-d.
     await delay(900);
     const u = umbral ?? 0.35;
     const distancia = distanciaCoseno(embeddingVivo, embeddingReferencia);
