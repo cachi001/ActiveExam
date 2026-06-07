@@ -52,7 +52,7 @@ def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
 
     # Inyecta un validador HS256 de test (sin PyJWT/Keycloak).
     cache = JwksCache(lambda: {"keys": [{"kid": "test-key"}]}, ttl_seconds=3600)
-    policy = TokenPolicy(issuer=_ISSUER, audience=_AUD)
+    policy = TokenPolicy(issuers_aceptados=frozenset({_ISSUER}), audience=_AUD)
     app.state.jwt_validator = JwtValidator(
         jwks_cache=cache, policy=policy, verify_fn=build_hs256_verify(_SECRET)
     )

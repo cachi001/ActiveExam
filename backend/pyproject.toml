@@ -24,6 +24,10 @@ dependencies = [
     # Auth/JWT (C-06): validacion LOCAL de JWT RS256 contra el JWKS de Keycloak.
     # 'crypto' trae el backend de claves publicas (cryptography) para RS256.
     "pyjwt[crypto]==2.10.1",
+    # Hashing de passwords (C-55): bcrypt 12 rounds para el provider JWT propio.
+    # bcrypt debe ser < 5.0 (passlib 1.7.4 no soporta la nueva API de bcrypt 5.x).
+    "passlib[bcrypt]==1.7.4",
+    "bcrypt<5.0",
     # Observabilidad (DD-12)
     "prometheus-client==0.21.1",
     "opentelemetry-sdk==1.29.0",

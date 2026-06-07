@@ -6,7 +6,9 @@ fastapi==0.115.6
 uvicorn[standard]==0.34.0
 pydantic==2.10.4
 pydantic-settings==2.7.1
-sqlalchemy==2.0.36
+# [asyncio] arrastra greenlet, requerido por el engine async (asyncpg). Sin esto el
+# backend NO arranca en un entorno limpio (MissingGreenlet / ImportError).
+sqlalchemy[asyncio]==2.0.36
 asyncpg==0.30.0
 # Driver SYNC para Alembic: migrations/env.py corre sincrono y deriva el driver
 # sync de DATABASE_URL (queda postgresql://). Sin esto, "alembic upgrade slim@head"
@@ -14,6 +16,10 @@ asyncpg==0.30.0
 psycopg2-binary==2.9.10
 alembic==1.14.0
 pyjwt[crypto]==2.10.1
+# Hashing de passwords (C-55): bcrypt 12 rounds para el provider JWT propio.
+# bcrypt debe ser < 5.0 porque passlib 1.7.4 no soporta la nueva API de bcrypt 5.x.
+passlib[bcrypt]==1.7.4
+bcrypt<5.0
 # Pillow: decodifica el screenshot (base64 -> RGB) para la re-inferencia MediaPipe.
 # No es dependencia de mediapipe; el adapter la prefiere antes que opencv.
 Pillow==11.0.0

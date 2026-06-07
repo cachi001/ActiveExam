@@ -9,6 +9,23 @@ inseguro), cumpliendo el principio twelve-factor.
 
 La pieza de mensajeria (``messaging_backend``) por OMISION es ``postgres`` (A4),
 pero es swappable segun el veredicto de C-03. No se asume Redis/RabbitMQ.
+
+# Modelo multi-provider de auth (C-55)
+# ------------------------------------
+# ``auth_provider`` selecciona el mecanismo de autenticacion activo:
+#
+#   "jwt" (default MVP self-hosted):
+#     Requiere: ``jwt_own_secret`` (sensible, via Vault), ``jwt_own_issuer``,
+#               ``refresh_token_ttl_seconds``.
+#     El backend emite y verifica sus propios JWT HS256. Keycloak no es necesario.
+#
+#   "keycloak":
+#     Requiere: ``keycloak_issuer``, ``keycloak_jwks_url``, ``jwt_audience``,
+#               ``keycloak_token_url`` (para refresh).
+#     El validador multi-issuer acepta AMBOS (jwt propio + Keycloak) siempre
+#     que esten configurados; el provider elegido solo determina el flujo de login.
+#
+# Para exponer un endpoint JWKS propio (RS256 a escala) -> change futuro (DD-17).
 """
 
 from __future__ import annotations
@@ -65,6 +82,28 @@ class Settings(BaseSettings):
     # Endpoint del token de Keycloak (grant refresh_token); sensible-ish, va por env.
     keycloak_token_url: str | None = Field(
         default=None, description="Token endpoint de Keycloak (refresh grant)."
+    )
+
+    # --- Auth provider propio (C-55) ---
+    # El issuer se recomienda como string fijo (no URI) para evitar dependencia del
+    # dominio de hosting (aun no estable en staging). Valor sugerido: "activeexam-auth".
+    auth_provider: Literal["jwt", "keycloak"] = "jwt"
+    jwt_own_secret: str | None = Field(
+        default=None,
+        description=(
+            "Secreto HS256 (256+ bits, sensible — via Vault/tmpfs). "
+            "Obligatorio cuando auth_provider='jwt'. Si ausente con provider jwt, "
+            "el endpoint de login falla con 500 explicito (sin default inseguro)."
+        ),
+    )
+    jwt_own_issuer: str = Field(
+        default="activeexam-auth",
+        description="Claim 'iss' de los tokens propios (string fijo, no URI — C-55 D1).",
+    )
+    refresh_token_ttl_seconds: int = Field(
+        default=604800,  # 7 dias (C-55 — resuelto por el dueno)
+        ge=3600,
+        description="TTL del refresh token en segundos (default 7 dias).",
     )
 
     # --- Observabilidad (OpenTelemetry) ---

@@ -16,7 +16,7 @@ import type {
   BiometriaDetalle, VeredictoReinferencia,
 } from './types';
 import { INSTITUTION } from '../config/institution';
-import { getToken } from './auth/keycloak';
+import { authProvider } from './authProvider';
 
 export const API_BASE = (import.meta.env.VITE_API_BASE as string) || '/api/v1';
 export const USE_REAL_BACKEND = import.meta.env.VITE_USE_REAL_BACKEND === '1';
@@ -302,10 +302,11 @@ function distanciaCoseno(a: number[], b: number[]): number {
   return 1 - sim;
 }
 
-// El token SIEMPRE sale de Keycloak (getToken). El 3er parámetro legacy se ignora
-// (los callers históricos pasaban 'demo'); se mantiene por compatibilidad de firma.
+// El token sale del provider activo (authProvider.getToken()). El 3er parámetro
+// legacy se ignora (los callers históricos pasaban 'demo'); se mantiene por
+// compatibilidad de firma.
 async function realFetch<T>(path: string, init: RequestInit, _legacyToken?: string): Promise<T> {
-  const token = getToken();
+  const token = authProvider.getToken();
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers: {
@@ -979,7 +980,7 @@ export const api = {
   async eliminarSesionProctoring(id: string): Promise<{ ok: boolean }> {
     if (USE_REAL_BACKEND) {
       try {
-        const token = getToken();
+        const token = authProvider.getToken();
         const res = await fetch(`${API_BASE}/proctoring/sessions/${id}`, {
           method: 'DELETE',
           headers: token ? { Authorization: `Bearer ${token}` } : {},

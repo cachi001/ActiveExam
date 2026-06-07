@@ -56,6 +56,70 @@ proctoring/
 - **Migraciones**: destructivas en dos pasos (expand/contract). Ver
   `backend/migrations/README.md`.
 
+## Auth provider JWT propio (C-55)
+
+### Providers disponibles
+
+El auth se selecciona con `VITE_AUTH_PROVIDER` (frontend) y `AUTH_PROVIDER` (backend):
+
+| `VITE_AUTH_PROVIDER` | Comportamiento |
+|---|---|
+| `jwt` (default) | Formulario de login propio; llama `POST /api/v1/auth/login` |
+| `keycloak` | Redirect OIDC PKCE a Keycloak (C-06, conservado) |
+| `demo` | Selector de rol sin red (Vercel demo) |
+
+### Seed de usuarios de prueba (local/staging)
+
+```bash
+cd backend
+pip install ".[dev]"                       # incluye passlib[bcrypt]
+
+# Exportar las vars requeridas (ejemplo local)
+export DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5432/proctoring
+export JWT_OWN_SECRET=un-secreto-largo-de-256-bits-o-mas
+export JWT_AUDIENCE=proctoring-api
+export KEYCLOAK_ISSUER=http://localhost:8080/realms/proctoring
+export KEYCLOAK_JWKS_URL=http://localhost:8080/realms/proctoring/protocol/openid-connect/certs
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
+export STORAGE_ENDPOINT=http://localhost:9000
+export STORAGE_ACCESS_KEY=minioadmin
+export STORAGE_SECRET_KEY=minioadmin
+export STORAGE_BUCKET_EVIDENCE=evidence
+
+# Passwords para los usuarios seed (min 8 chars)
+export SEED_ESTUDIANTE_PASSWORD=Estudiante123
+export SEED_PROCTOR_PASSWORD=Proctor123
+export SEED_ADMIN_PASSWORD=Admin1234
+
+# Aplicar migración C-55 primero
+alembic upgrade head
+
+# Correr el seed (idempotente)
+python scripts/seed_users.py
+```
+
+**Credenciales seed para probar el login:**
+
+| Rol | username / email | password (env) |
+|---|---|---|
+| `estudiante` | `seed-estudiante` o `seed-estudiante@demo.test` | `$SEED_ESTUDIANTE_PASSWORD` |
+| `proctor` | `seed-proctor` o `seed-proctor@demo.test` | `$SEED_PROCTOR_PASSWORD` |
+| `admin_sistema` | `seed-admin` o `seed-admin@demo.test` | `$SEED_ADMIN_PASSWORD` |
+
+**Endpoint de login:**
+```bash
+curl -X POST http://localhost:8000/api/v1/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"seed-admin@demo.test","password":"Admin1234"}'
+```
+
+### Nota de deuda técnica — MFA (proctor/admin_sistema)
+
+El provider JWT propio emite `mfa_satisfecho=false` para todos los roles (no hay
+TOTP en este change). Los roles `proctor` y `admin_sistema` **no son bloqueados**
+en MVP — el frontend muestra un warning visible. La implementación de MFA propio
+(TOTP) es un **change futuro documentado** en el design.md de C-55.
+
 ## Criterio de salida de C-04 (desbloquea C-05)
 
 La fundacion esta lista cuando el stack es **arrancable + observable + con

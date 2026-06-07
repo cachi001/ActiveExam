@@ -16,10 +16,12 @@ from app.presentation.api.v1.evidence.router import router as evidence_router
 from app.presentation.api.v1.exams.router import router as exams_router
 from app.presentation.api.v1.health import router as health_router
 from app.presentation.api.v1.sessions.router import router as sessions_router
+from app.presentation.api.v1.users.router import router as users_router
 
 api_v1_router = APIRouter()
 api_v1_router.include_router(health_router, prefix="/health", tags=["health"])
 api_v1_router.include_router(auth_router, prefix="/auth", tags=["auth"])
+api_v1_router.include_router(users_router, prefix="/users", tags=["users"])  # C-55
 api_v1_router.include_router(exams_router, prefix="/exams", tags=["exams"])
 api_v1_router.include_router(consent_router, prefix="/consent", tags=["consent"])
 api_v1_router.include_router(biometrics_router, prefix="/identity", tags=["identity"])
