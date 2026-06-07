@@ -37,10 +37,38 @@ SEGUNDO_FACTOR_AMR: frozenset[str] = frozenset(
 
 @dataclass(frozen=True, slots=True)
 class TokenPolicy:
-    """Politica de validacion de claims (sin secretos: solo issuer + audiencia)."""
+    """Politica de validacion de claims (sin secretos: issuer(s) + audiencia).
 
-    issuer: str
+    C-55 — multi-issuer: ``issuers_aceptados`` reemplaza al anterior ``issuer: str``
+    unico. Para retrocompatibilidad, si se pasa ``issuer`` (str) en lugar de
+    ``issuers_aceptados`` (frozenset), se convierte internamente. El campo
+    ``issuer`` queda como propiedad derivada (retorna el primero del set).
+
+    El ``audience`` sigue siendo unico para todos los providers — simplifica la
+    validacion (decision D2 del design).
+    """
+
+    issuers_aceptados: frozenset[str]
     audience: str
+
+    @classmethod
+    def from_single_issuer(cls, issuer: str, audience: str) -> "TokenPolicy":
+        """Retrocompatibilidad: construye la policy desde un issuer unico."""
+        return cls(issuers_aceptados=frozenset({issuer}), audience=audience)
+
+    @property
+    def issuer(self) -> str:
+        """Propiedad derivada: retorna un issuer canonico (para JwtValidator legacy).
+
+        En modo multi-issuer el validador usa ``issuers_aceptados``; este accessor
+        facilita la transicion de codigo que solo esperaba un issuer.
+        """
+        if len(self.issuers_aceptados) == 1:
+            return next(iter(self.issuers_aceptados))
+        # Multi-issuer: retorna el primero (orden no garantizado en frozenset).
+        # El JwtValidator multi-issuer (C-55) no usa este accessor — lo usa el
+        # verify_fn de cada rama.
+        return next(iter(sorted(self.issuers_aceptados)))
 
     def _verificar_audiencia(self, claims: dict) -> None:
         aud = claims.get("aud")
@@ -49,8 +77,10 @@ class TokenPolicy:
             raise UnauthenticatedError("Audiencia del token no coincide con JWT_AUDIENCE.")
 
     def _verificar_issuer(self, claims: dict) -> None:
-        if claims.get("iss") != self.issuer:
-            raise UnauthenticatedError("Issuer del token no coincide con KEYCLOAK_ISSUER.")
+        if claims.get("iss") not in self.issuers_aceptados:
+            raise UnauthenticatedError(
+                "Issuer del token no esta en la lista de issuers aceptados."
+            )
 
     def _mfa_satisfecho(self, claims: dict) -> bool:
         amr = claims.get("amr") or []

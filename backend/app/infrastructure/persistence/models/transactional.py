@@ -27,7 +27,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import JSONB, TIMESTAMP, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -59,7 +59,13 @@ estado_sesion_enum = SAEnum(
 
 
 class UsuarioModel(Base):
-    """Usuario provisionado JIT desde el IdP (`04` Usuario)."""
+    """Usuario provisionado JIT desde el IdP (`04` Usuario).
+
+    Campos de auth local (C-55):
+    - ``password_hash``: hash bcrypt 12r (passlib). NULL = usuario federado Keycloak;
+      NOT NULL = usuario con credencial local. Ver migracion 0006 (paso 1).
+    - ``auth_provider``: 'keycloak' (default) o 'local'. Determina el flujo de login.
+    """
 
     __tablename__ = "usuario"
 
@@ -70,6 +76,11 @@ class UsuarioModel(Base):
     email: Mapped[str] = mapped_column(String(320), nullable=False)
     roles: Mapped[list[str]] = mapped_column(JSONB, nullable=False, server_default="[]")
     attrs_federados: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    # C-55: credencial local (nullable — usuarios Keycloak no tienen password local).
+    password_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
+    auth_provider: Mapped[str] = mapped_column(
+        String(32), nullable=False, server_default="keycloak"
+    )
 
 
 class ExamenModel(Base):
@@ -211,3 +222,31 @@ class CasoDisciplinarioModel(Base):
     decisiones: Mapped[list[str]] = mapped_column(JSONB, nullable=False, server_default="[]")
     vinculo_externo: Mapped[str | None] = mapped_column(Text, nullable=True)
     hold: Mapped[bool] = mapped_column(Integer, nullable=False, server_default="1")
+
+
+class RefreshTokenModel(Base):
+    """Refresh tokens persistentes del provider JWT propio (C-55).
+
+    ``rotado_en IS NULL`` = vigente; ``rotado_en IS NOT NULL`` = ya rotado.
+    La rotacion detecta reuso de un token ya rotado (-> 401, defensa en profundidad).
+    El ON DELETE CASCADE garantiza que al borrar un usuario sus tokens caducan.
+    """
+
+    __tablename__ = "refresh_tokens"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    jti: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    usuario_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("usuario.id", ondelete="CASCADE"), nullable=False
+    )
+    expires_at: Mapped[str] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False
+    )
+    rotado_en: Mapped[str | None] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    created_at: Mapped[str] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )

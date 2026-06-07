@@ -24,7 +24,7 @@ _AUD = "proctoring-api"
 
 def _validator(now: float = 1000.0) -> JwtValidator:
     cache = JwksCache(lambda: {"keys": [{"kid": "test-key"}]}, ttl_seconds=3600)
-    policy = TokenPolicy(issuer=_ISSUER, audience=_AUD)
+    policy = TokenPolicy(issuers_aceptados=frozenset({_ISSUER}), audience=_AUD)
     verify = build_hs256_verify(_SECRET, time_fn=lambda: now)
     return JwtValidator(jwks_cache=cache, policy=policy, verify_fn=verify)
 

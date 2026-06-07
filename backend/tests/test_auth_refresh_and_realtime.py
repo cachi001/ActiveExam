@@ -61,7 +61,7 @@ def _clock():
 
 def _validator(now_state) -> JwtValidator:
     cache = JwksCache(lambda: {"keys": [{"kid": "test-key"}]}, ttl_seconds=3600)
-    policy = TokenPolicy(issuer=_ISSUER, audience=_AUD)
+    policy = TokenPolicy(issuers_aceptados=frozenset({_ISSUER}), audience=_AUD)
     verify = build_hs256_verify(_SECRET, time_fn=lambda: now_state["t"])
     return JwtValidator(jwks_cache=cache, policy=policy, verify_fn=verify)
 
