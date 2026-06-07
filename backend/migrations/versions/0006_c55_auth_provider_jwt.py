@@ -31,12 +31,14 @@ from sqlalchemy.dialects.postgresql import UUID
 
 # revision identifiers, used by Alembic.
 revision: str = "0006"
-down_revision: str = "0005"
+down_revision: str = "0004"
 branch_labels = None
-# 0006 cuelga de la rama slim (0005, independiente con down_revision=None) pero hace
-# ALTER TABLE usuario; esa tabla la crea 0002 (rama principal). depends_on fuerza a
-# Alembic a aplicar 0002 antes, resolviendo el orden entre ramas automaticamente.
-depends_on = ("0002",)
+# c-55 (auth JWT propio) pertenece al backend FULL (main.py, con TimescaleDB), NO al
+# slim de Railway (main_slim es "REST sin auth"). Por eso cuelga de la rama PRINCIPAL
+# (0004), que ya trae la tabla usuario via 0002. Asi `alembic upgrade slim@head`
+# (Railway, Postgres pelado) NO corre esta migracion y no arrastra 0001
+# (CREATE EXTENSION timescaledb), que el Postgres de Railway rechaza.
+depends_on = None
 
 
 def upgrade() -> None:

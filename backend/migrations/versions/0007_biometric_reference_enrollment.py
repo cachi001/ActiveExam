@@ -39,10 +39,11 @@ from sqlalchemy.dialects.postgresql import UUID
 revision: str = "0007"
 down_revision: str = "0006"
 branch_labels = None
-# 0007 cuelga de la rama slim (0006) pero hace FK a usuario; esa tabla la crea
-# 0002 (rama principal). depends_on fuerza a Alembic a aplicar 0002 antes,
-# resolviendo el orden entre ramas automaticamente. Mismo patron que 0006.
-depends_on = ("0002",)
+# 0007 (c-56 biometria) sigue a 0006 en la rama PRINCIPAL (full, con TimescaleDB).
+# La tabla usuario ya existe via 0002 en esa cadena. NO cuelga de la rama slim: el
+# slim de Railway (main_slim, "REST sin auth") no usa enrollment ni la tabla usuario,
+# por eso `alembic upgrade slim@head` no debe correr esta migracion.
+depends_on = None
 
 
 def upgrade() -> None:

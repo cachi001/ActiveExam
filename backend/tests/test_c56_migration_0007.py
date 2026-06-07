@@ -1,11 +1,17 @@
 """Test de la migracion 0007 (C-56): upgrade y downgrade.
 
 Verifica que:
-- upgrade desde 0006 crea las tablas foto_referencia y embedding_referencia.
+- upgrade hasta 0007 (rama PRINCIPAL, requiere TimescaleDB) crea las tablas
+  foto_referencia y embedding_referencia.
 - downgrade desde 0007 las elimina limpiamente.
 - La DB queda en 0006 tras el downgrade.
 
-Requiere el stack de DB (RUN_STACK_TESTS=1). Se salta en la suite unitaria.
+RAMA: 0007 pertenece a la rama PRINCIPAL (full, con TimescaleDB), NO a la
+rama slim. slim@head = solo 0005 (Railway/Postgres estandar). Ver fix del
+bug documentado en engram (topic: migrations/branch-isolation).
+
+Requiere el stack de DB con TimescaleDB (RUN_STACK_TESTS=1). Se salta en la
+suite unitaria.
 """
 
 from __future__ import annotations
@@ -19,11 +25,16 @@ import pytest
 def test_migracion_0007_upgrade_y_downgrade(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """upgrade head (0007) → tablas existen; downgrade -1 → tablas eliminadas."""
+    """upgrade 0007 (rama principal) -> tablas existen; downgrade -1 -> tablas eliminadas.
+
+    Usa alembic upgrade 0007 (NO slim@head) porque 0006/0007 pertenecen a la
+    rama principal (full, con TimescaleDB). slim@head solo aplica 0005 en
+    Railway (Postgres estandar sin TimescaleDB).
+    """
     import subprocess
     import sys
 
-    db_url = os.environ.get(
+    db_url_sync = os.environ.get(
         "DATABASE_URL_SYNC",
         "postgresql://app@db:5432/proctoring",
     )
@@ -43,15 +54,15 @@ def test_migracion_0007_upgrade_y_downgrade(
             )
         return result.returncode
 
-    # Upgrade a head de la rama slim (incluye 0007).
-    # El proyecto tiene dos branches (default y slim): 'head' es ambiguo.
-    # Usar 'slim@head' o 'heads' para resolver las dos cabezas.
-    run(["upgrade", "slim@head"])
+    # Upgrade a 0007 (rama PRINCIPAL — incluye 0001 TimescaleDB -> ... -> 0007).
+    # NO usar slim@head: 0006/0007 NO estan en la rama slim desde el fix del
+    # bug de dependencias cruzadas.
+    run(["upgrade", "0007"])
 
-    # Verificar que las tablas existen con psycopg2.
+    # Verificar que las tablas existen con psycopg2 (sync).
     import psycopg2
 
-    conn = psycopg2.connect(db_url)
+    conn = psycopg2.connect(db_url_sync)
     cur = conn.cursor()
     cur.execute(
         "SELECT table_name FROM information_schema.tables "
@@ -68,7 +79,7 @@ def test_migracion_0007_upgrade_y_downgrade(
     run(["downgrade", "-1"])
 
     # Verificar que las tablas ya no existen.
-    conn = psycopg2.connect(db_url)
+    conn = psycopg2.connect(db_url_sync)
     cur = conn.cursor()
     cur.execute(
         "SELECT table_name FROM information_schema.tables "
@@ -81,5 +92,5 @@ def test_migracion_0007_upgrade_y_downgrade(
     cur.close()
     conn.close()
 
-    # Volver a slim@head para no dejar la DB rota para otros tests.
-    run(["upgrade", "slim@head"])
+    # Volver a 0007 para no dejar la DB rota para otros tests.
+    run(["upgrade", "0007"])
