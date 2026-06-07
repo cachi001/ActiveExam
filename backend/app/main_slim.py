@@ -113,10 +113,13 @@ def create_slim_app() -> FastAPI:
 
     # --- Routers ---
 
-    # Proctoring (original c-45): sin auth, para demo/PoC
+    # Proctoring: sessions, events, biometria (demo stateless + C-59 stateful).
+    # embedding_encryption se pasa para montar los endpoints C-59 server-side.
+    # El router queda montado en /api/v1/proctoring.
     proctoring_router = create_proctoring_router(
         session_factory=session_factory,
         reinferencia=reinferencia_adapter,
+        embedding_encryption=embedding_encryption,
     )
     app.include_router(proctoring_router, prefix="/api/v1/proctoring")
 
