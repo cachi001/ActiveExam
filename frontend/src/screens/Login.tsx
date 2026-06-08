@@ -112,7 +112,7 @@ function FormularioJwt() {
                 disabled={loading}
                 required
                 icon="person"
-                placeholder="usuario o email institucional"
+                placeholder="Usuario o email institucional"
               />
 
               <TextField
@@ -125,7 +125,7 @@ function FormularioJwt() {
                 disabled={loading}
                 required
                 icon="lock"
-                placeholder="contraseña"
+                placeholder="Contraseña"
               />
 
               {error && (
