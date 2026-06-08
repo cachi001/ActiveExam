@@ -122,6 +122,17 @@ export interface ListarUsuariosResponse {
   offset: number;
 }
 
+/** Configuracion del peso de score por tipo de evento (#10).
+ *  Espeja EventoScoreConfigResponse del backend (presentation/api/v1/scoring). */
+export interface EventoScoreConfig {
+  tipo_evento: string;
+  severidad: string;
+  peso: number;
+  descripcion: string | null;
+  activo: boolean;
+  updated_at: string;
+}
+
 export interface SesionEnVivo {
   id: string;
   estudiante: string;

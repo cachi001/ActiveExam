@@ -16,6 +16,8 @@ import type {
   BiometriaDetalle, VeredictoReinferencia,
   // C-61: gestión de usuarios
   UsuarioAdmin, ListarUsuariosResponse,
+  // #10: configuracion de scoring por tipo de evento
+  EventoScoreConfig,
 } from './types';
 import { INSTITUTION } from '../config/institution';
 import { authProvider } from './authProvider';
@@ -1496,6 +1498,60 @@ export const api = {
   },
 
   // -------------------------------------------------------------------------
+  // Configuracion de scoring (admin_sistema) — #9 / #10
+  // -------------------------------------------------------------------------
+
+  /**
+   * Lista los pesos configurados por tipo de evento (admin_sistema).
+   * Real: GET /scoring/config
+   * Mock: defaults del catalogo.
+   */
+  async listarScoringConfig(): Promise<{ items: EventoScoreConfig[] }> {
+    if (USE_REAL_BACKEND) {
+      return await realFetch<{ items: EventoScoreConfig[] }>('/scoring/config', { method: 'GET' });
+    }
+    await delay(200);
+    return {
+      items: [
+        { tipo_evento: 'rostro_ausente', severidad: 'media', peso: 20, descripcion: 'No se detecto rostro en el encuadre por mas de 3 segundos.', activo: true, updated_at: '' },
+        { tipo_evento: 'multiples_rostros', severidad: 'alta', peso: 50, descripcion: 'Se detectaron multiples rostros simultaneos en camara.', activo: true, updated_at: '' },
+        { tipo_evento: 'mirada_desviada_sostenida', severidad: 'media', peso: 20, descripcion: 'Patron de mirada sostenido hacia un punto fijo fuera de pantalla.', activo: true, updated_at: '' },
+        { tipo_evento: 'perdida_de_foco', severidad: 'baja', peso: 5, descripcion: 'La ventana del examen perdio el foco del sistema operativo.', activo: true, updated_at: '' },
+        { tipo_evento: 'cambio_pestana', severidad: 'media', peso: 20, descripcion: 'El estudiante cambio o abrio otra pestana durante el examen.', activo: true, updated_at: '' },
+        { tipo_evento: 'monitor_adicional', severidad: 'alta', peso: 50, descripcion: 'Se detecto un segundo monitor conectado al equipo.', activo: true, updated_at: '' },
+        { tipo_evento: 'salida_pantalla_completa', severidad: 'media', peso: 20, descripcion: 'El estudiante salio del modo de pantalla completa.', activo: true, updated_at: '' },
+        { tipo_evento: 'copiar_pegar', severidad: 'media', peso: 20, descripcion: 'Se detecto una accion de copiar o pegar (sin capturar contenido).', activo: true, updated_at: '' },
+      ],
+    };
+  },
+
+  /**
+   * Actualiza peso / severidad / descripcion / activo de un tipo (admin_sistema).
+   * Real: PATCH /scoring/config/{tipo}
+   * Mock: echo con campos sobrescritos.
+   */
+  async editarScoringConfig(
+    tipoEvento: string,
+    body: { severidad?: string; peso?: number; descripcion?: string; activo?: boolean },
+  ): Promise<EventoScoreConfig> {
+    if (USE_REAL_BACKEND) {
+      return await realFetch<EventoScoreConfig>(
+        `/scoring/config/${encodeURIComponent(tipoEvento)}`,
+        { method: 'PATCH', body: JSON.stringify(body) },
+      );
+    }
+    await delay(250);
+    return {
+      tipo_evento: tipoEvento,
+      severidad: body.severidad ?? 'media',
+      peso: body.peso ?? 20,
+      descripcion: body.descripcion ?? null,
+      activo: body.activo ?? true,
+      updated_at: new Date().toISOString(),
+    };
+  },
+
+  // -------------------------------------------------------------------------
   // Registro público de estudiantes — C-61 (task 7.3)
   // -------------------------------------------------------------------------
 
@@ -1553,4 +1609,6 @@ export type {
   BiometriaDetalle, VeredictoReinferencia,
   // C-61: gestión de usuarios
   UsuarioAdmin, ListarUsuariosResponse,
+  // #10: scoring config
+  EventoScoreConfig,
 };
