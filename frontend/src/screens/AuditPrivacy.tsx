@@ -31,7 +31,7 @@ export default function AuditPrivacy() {
               Auditoría y privacidad
             </h1>
             <p className="text-body-md text-on-surface-variant mt-base">
-              Registro inmutable de acciones, cadena de custodia y derechos del titular bajo Ley 25.326.
+              Registro inmutable de acciones y cadena de custodia. Derechos del titular disponibles abajo.
             </p>
           </div>
           <div className="flex items-center gap-base px-sm py-base rounded-lg bg-primary-fixed/50
@@ -61,7 +61,7 @@ export default function AuditPrivacy() {
 
           <div className="space-y-lg">
             <Card className="space-y-sm">
-              <SectionTitle sub="Ley 25.326 · AAIP">Derechos del titular</SectionTitle>
+              <SectionTitle sub="AAIP">Derechos del titular</SectionTitle>
               {DSR.map((d) => (
                 <DsrCard key={d.titulo} derecho={d} />
               ))}

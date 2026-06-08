@@ -32,6 +32,9 @@ import AdminDetectionHarness from './screens/AdminDetectionHarness';
 // C-46: Revisión de sesiones del backend slim de proctoring
 import ProctoringRevisor from './screens/ProctoringRevisor';
 import ProctoringSessionDetail from './screens/ProctoringSessionDetail';
+// C-61: Gestión de usuarios y registro público
+import GestionUsuarios from './screens/GestionUsuarios';
+import Registro from './screens/Registro';
 
 // Roles por área (modelo MVP: estudiante, proctor, admin_sistema).
 const ESTUDIANTE: Rol[] = ['estudiante'];
@@ -48,6 +51,7 @@ export default function App() {
     // Públicas
     '/': <Login />,
     '/login': <Login />,
+    '/registro': <Registro />,
 
     // Flujo de examen del estudiante
     '/requisitos': g(<EquipmentCheck />, ESTUDIANTE),
@@ -73,6 +77,8 @@ export default function App() {
     // C-46: Revisión de sesiones del backend slim de proctoring
     '/admin/proctoring-sessions': g(<ProctoringRevisor />, ADMIN),
     '/admin/proctoring-session-detail': g(<ProctoringSessionDetail />, ADMIN),
+    // C-61: Gestión de usuarios
+    '/admin/usuarios': g(<GestionUsuarios />, ADMIN),
 
     // Portal del alumno — C-21
     '/alumno/dashboard': g(<AlumnoDashboard />, ESTUDIANTE),

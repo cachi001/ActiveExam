@@ -74,6 +74,8 @@ export default function AdminDashboard() {
               <Link to="/admin/configurar"><Button size="sm" icon="add" className="w-full">Crear examen</Button></Link>
               <Link to="/admin/reportes"><Button size="sm" variant="outline" icon="analytics" className="w-full">Ver reportes</Button></Link>
               <Link to="/admin/auditoria"><Button size="sm" variant="outline" icon="policy" className="w-full">Auditoría</Button></Link>
+              {/* C-61: gestión de usuarios */}
+              <Link to="/admin/usuarios"><Button size="sm" variant="outline" icon="manage_accounts" className="w-full">Usuarios</Button></Link>
             </div>
             <div className="bg-primary-fixed/40 rounded-xl p-sm text-label-sm text-on-primary-fixed-variant flex items-start gap-base mt-md">
               <Icon name="shield" className="text-[18px]" fill />

@@ -62,7 +62,7 @@ export function RequisitoBiometria({
           </p>
 
           <div className="text-label-sm text-on-surface-variant bg-surface-container-low rounded-xl p-sm border border-outline-variant/30">
-            <span className="font-semibold">Privacidad (Ley 25.326):</span> La imagen y el <Term termKey="embedding" />
+            <span className="font-semibold">Privacidad:</span> La imagen y el <Term termKey="embedding" />
             biométrico son <strong>datos sensibles</strong>: cifrados at-rest, con finalidad acotada
             a la verificación de identidad. Se eliminan al egreso (salvo hold disciplinario).
           </div>

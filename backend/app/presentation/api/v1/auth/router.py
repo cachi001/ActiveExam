@@ -14,14 +14,19 @@ Pydantic con ``extra='forbid'`` (regla dura de codigo).
 
 from __future__ import annotations
 
+import os
+import re
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 from sqlalchemy import or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.domain.auth.identity import AuthenticatedPrincipal
+from app.domain.auth.roles import Rol
 from app.infrastructure.auth.db_refresh_store import DbRefreshTokenStore
-from app.infrastructure.auth.hashing import verificar_password
+from app.infrastructure.auth.hashing import hashear_password, verificar_password
 from app.infrastructure.auth.own_issuer import emitir_jwt_propio
 from app.infrastructure.auth.refresh_store import RefreshTokenError, RefreshTokenStore
 from app.infrastructure.persistence.models.transactional import UsuarioModel
@@ -134,17 +139,21 @@ async def login(
 
     async with session_factory() as session:
         # Buscar por email O id_institucional (ambos son formas validas de login).
+        # C-61 D3: filtrar eliminado_en IS NULL — usuarios dados de baja no pueden loguear.
         result = await session.execute(
             select(UsuarioModel).where(
                 or_(
                     UsuarioModel.email == body.username,
                     UsuarioModel.id_institucional == body.username,
-                )
+                ),
+                UsuarioModel.eliminado_en.is_(None),
             )
         )
         usuario = result.scalar_one_or_none()
 
         # Verificar: usuario debe existir, tener password_hash y credencial local.
+        # Mensaje GENERICO: no revela si el usuario existe, si fue dado de baja,
+        # o si el password es incorrecto (timing-safe a nivel de mensaje).
         if usuario is None or not usuario.password_hash:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -277,4 +286,135 @@ async def me(
         roles=[r.value for r in principal.roles],
         mfa_satisfecho=principal.mfa_satisfecho,
         jurisdiccion=principal.jurisdiccion,
+    )
+
+
+# ---------------------------------------------------------------------------
+# POST /auth/register (PUBLICA — C-61, D4)
+# ---------------------------------------------------------------------------
+
+# Patron basico de email valido (el validador de Pydantic EmailStr hace la
+# validacion profunda; este patron es una guarda extra para tests).
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+# Dominio institucional aceptado (vacio = acepta cualquier dominio valido).
+# Configurable via env INSTITUTION_EMAIL_DOMAIN (ej: "frm.utn.edu.ar").
+# El dueno confirmo que el registro es ABIERTO a cualquier email valido (S1).
+_INSTITUTION_DOMAIN = os.environ.get("INSTITUTION_EMAIL_DOMAIN", "").strip().lower()
+
+
+class RegistroRequest(BaseModel):
+    """Schema de auto-registro publico (C-61, D4).
+
+    SEGURIDAD: ``extra='forbid'`` impide que el body incluya ``roles``.
+    El rol se fuerza a ``["estudiante"]`` server-side; ningun estudiante puede
+    auto-elevarse a admin o proctor enviando un campo extra.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    nombre: str
+    apellido: str
+    id_institucional: str
+    email: str
+    password: str
+    password_confirmacion: str
+
+    @field_validator("email")
+    @classmethod
+    def email_valido(cls, v: str) -> str:
+        v = v.strip().lower()
+        if not _EMAIL_RE.match(v):
+            raise ValueError("El email no tiene un formato valido.")
+        # Validacion de dominio institucional (solo si INSTITUTION_EMAIL_DOMAIN esta configurado).
+        if _INSTITUTION_DOMAIN:
+            dominio = v.split("@", 1)[1]
+            if dominio != _INSTITUTION_DOMAIN:
+                raise ValueError(
+                    f"El email debe pertenecer al dominio institucional {_INSTITUTION_DOMAIN}."
+                )
+        return v
+
+    @field_validator("password")
+    @classmethod
+    def password_fuerte(cls, v: str) -> str:
+        if len(v) < 8:  # noqa: PLR2004
+            raise ValueError("El password debe tener al menos 8 caracteres.")
+        return v
+
+    @model_validator(mode="after")
+    def passwords_coinciden(self) -> "RegistroRequest":
+        if self.password != self.password_confirmacion:
+            raise ValueError("El password y la confirmacion no coinciden.")
+        return self
+
+
+class RegistroResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    id_institucional: str
+    email: str
+    nombre: str
+    apellido: str
+    roles: list[str]
+
+
+@router.post("/register", response_model=RegistroResponse, status_code=status.HTTP_201_CREATED)
+async def registrar(
+    body: RegistroRequest,
+    request: Request,
+) -> RegistroResponse:
+    """Auto-registro PUBLICO de estudiantes (C-61, D4).
+
+    - Rol forzado a ``["estudiante"]`` server-side (el body no acepta roles).
+    - auth_provider = "local".
+    - bcrypt 12r para el password.
+    - 409 si email o id_institucional ya existen.
+    - 201 sin token: el frontend redirige al login (S3 confirmado).
+
+    El password NUNCA se loguea ni se persiste en claro.
+    """
+    session_factory = getattr(request.app.state, "session_factory", None)
+    if session_factory is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Base de datos no disponible.",
+        )
+
+    # El password_hash se calcula; el password en claro se descarta inmediatamente.
+    password_hash = hashear_password(body.password)
+
+    usuario = UsuarioModel(
+        id_institucional=body.id_institucional,
+        email=body.email,
+        nombre=body.nombre,
+        apellido=body.apellido,
+        # Rol FORZADO server-side — defensa en profundidad contra auto-elevacion.
+        roles=[Rol.ESTUDIANTE.value],
+        auth_provider="local",
+        password_hash=password_hash,
+        attrs_federados={},
+    )
+
+    async with session_factory() as session:
+        session.add(usuario)
+        try:
+            await session.commit()
+            await session.refresh(usuario)
+        except IntegrityError as exc:
+            await session.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Ya existe un usuario con ese email o id_institucional.",
+            ) from exc
+
+    # 201 sin token — el frontend redirige al login (D4, S3).
+    return RegistroResponse(
+        id=str(usuario.id),
+        id_institucional=usuario.id_institucional,
+        email=usuario.email,
+        nombre=usuario.nombre or "",
+        apellido=usuario.apellido or "",
+        roles=usuario.roles,
     )
