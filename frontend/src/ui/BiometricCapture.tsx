@@ -108,8 +108,22 @@ function stddev(arr: number[]): number {
   return Math.sqrt(variance(arr));
 }
 
-// Cooldown entre pasos: 350 ms (C-54, D-5)
-const COOLDOWN_MS = 350;
+// Cooldown entre pasos: subido a 800ms para que el alumno alcance a leer el
+// nuevo reto y volver a posición neutral. Con 350ms ya pasaba que el residuo
+// del reto anterior (boca aún sonriendo / ojo aún cerrado) disparaba el reto
+// siguiente sin que el alumno hiciera nada — el bug del "último paso pasa
+// verificado sin moverme".
+const COOLDOWN_MS = 800;
+
+/**
+ * Frames CONSECUTIVOS de "no cumple" requeridos al entrar a un reto antes de
+ * empezar a contar positivos. Si el alumno entra al nuevo reto todavía en
+ * estado del reto anterior (ej. recién sonriendo cuando ahora toca parpadear),
+ * la transición física no termina de "limpiar" en 800ms — exigimos ver al
+ * alumno en neutral primero. Sin esto el contador positivo empieza desde el
+ * frame 1 y se cumplen los FRAMES_MIN sin acción real del alumno.
+ */
+const NEUTRAL_GATE_FRAMES = 3;
 
 // Número de frames de cara detectada antes de iniciar acumulación del baseline.
 // Evita subexposición inicial de cámara (OQ-3).
@@ -184,6 +198,14 @@ export function BiometricCapture({
 
   /** Acumulador de frames consecutivos del reto activo. */
   const challengeCountsRef = useRef<Map<SequentialChallenge, number>>(new Map());
+
+  /**
+   * Frames consecutivos de "no cumple" vistos en el reto activo desde que se
+   * activó. Hasta no haber visto >= NEUTRAL_GATE_FRAMES frames negativos, los
+   * positivos no se cuentan: evita que el residuo del reto anterior dispare
+   * el siguiente sin acción real del alumno.
+   */
+  const challengeNeutralFramesRef = useRef<Map<SequentialChallenge, number>>(new Map());
 
   // ── Liveness pasivo (D2) ────────────────────────────────────────────────
   const livenessWindowRef = useRef<Array<{
@@ -594,6 +616,7 @@ export function BiometricCapture({
             // Task 5.7: sin rostro → resetear acumulador del reto activo
             if (face_count === 0) {
               challengeCountsRef.current.set(retoActivo, 0);
+              challengeNeutralFramesRef.current.set(retoActivo, 0);
             } else {
               // Task 5.4: evaluar el reto activo con delta relativo
               const cumple = evaluateChallengeRelative(
@@ -605,20 +628,35 @@ export function BiometricCapture({
               );
 
               const prevCount = challengeCountsRef.current.get(retoActivo) ?? 0;
+              const neutralVistos = challengeNeutralFramesRef.current.get(retoActivo) ?? 0;
+              const neutralListo = neutralVistos >= NEUTRAL_GATE_FRAMES;
 
               if (cumple) {
-                // Task 5.5: incrementar acumulador
-                const newCount = prevCount + 1;
-                challengeCountsRef.current.set(retoActivo, newCount);
-
-                if (newCount >= framesMinForChallengeSeq(retoActivo)) {
-                  // Task 5.5: reto completado → resetear acumulador y activar cooldown
+                if (!neutralListo) {
+                  // Todavía no vimos al alumno en neutral. Probablemente está
+                  // arrastrando el estado del reto anterior. Ignoramos positivos
+                  // hasta que el gate de neutralidad se complete.
                   challengeCountsRef.current.set(retoActivo, 0);
-                  activarCooldown(retoActivo);
+                } else {
+                  // Task 5.5: incrementar acumulador
+                  const newCount = prevCount + 1;
+                  challengeCountsRef.current.set(retoActivo, newCount);
+
+                  if (newCount >= framesMinForChallengeSeq(retoActivo)) {
+                    // Reto completado → resetear acumuladores y activar cooldown
+                    challengeCountsRef.current.set(retoActivo, 0);
+                    challengeNeutralFramesRef.current.set(retoActivo, 0);
+                    activarCooldown(retoActivo);
+                  }
                 }
               } else {
-                // Task 5.6: no cumple → resetear acumulador
+                // Task 5.6: no cumple → resetear acumulador positivo y sumar al
+                // gate de neutralidad (capamos para no overflowear).
                 challengeCountsRef.current.set(retoActivo, 0);
+                challengeNeutralFramesRef.current.set(
+                  retoActivo,
+                  Math.min(neutralVistos + 1, NEUTRAL_GATE_FRAMES),
+                );
               }
             }
           } else if (face_count === 0) {
