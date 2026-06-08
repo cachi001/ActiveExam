@@ -7,23 +7,23 @@
  * banner de fallback y sección de progreso.
  *
  * Sin lógica propia: TODO el estado, refs de cámara, loop RAF y callbacks viven en
- * BiometricCapture y se reenvían por props. El `videoRef` se pasa hasta el <video>
- * de CaptureOval para que el loop del padre lea el MISMO elemento.
+ * BiometricCapture y se reenvían por props.
  *
- * C-54: agrega props `cooldownActivo` y `retoRecienResueltoLabel`
- * para mostrar la confirmación de paso.
- * C-58 D4: se eliminaron `contextLabel` y `turnDirection` — chrome redundante.
+ * Nuevos props (mejora UX): `progreso` (0..1) para el anillo, `tono` para el color
+ * del anillo y velo del óvalo, `framingHint` y `retoActualId` para que el panel
+ * inferior pueda enseñar guía contextual.
  */
 
 import { forwardRef } from 'react';
 import { Icon } from '../components';
 import { CaptureLoading } from './CaptureLoading';
 import { CaptureOval } from './CaptureOval';
+import type { OvalTono } from './CaptureOval';
 import { CaptureProgress } from './CaptureProgress';
 import type { SequentialChallenge } from '../../vision/liveness';
+import type { FramingHint } from './framingGuide';
 
 export interface CaptureOverlayProps {
-  /** Ref reenviado al <video> dentro de CaptureOval (loop RAF del padre). */
   videoRef: React.Ref<HTMLVideoElement>;
   listoParaMostrar: boolean;
   motorError: string | null;
@@ -31,6 +31,7 @@ export interface CaptureOverlayProps {
   motorListo: boolean;
   fallbackManual: boolean;
   retoActualLabel: string;
+  retoActualId: SequentialChallenge | null;
   desafios: SequentialChallenge[];
   resueltos: string[];
   totalResueltos: number;
@@ -38,10 +39,14 @@ export interface CaptureOverlayProps {
   getLabel: (id: SequentialChallenge) => string;
   onResolverManual: (id: string) => void;
   onCancel: () => void;
-  /** C-54: true cuando el cooldown de 350ms entre pasos está activo. */
   cooldownActivo: boolean;
-  /** C-54: label del reto recién resuelto (para mostrar en cooldown). null si no hay. */
   retoRecienResueltoLabel: string | null;
+  /** Progreso 0..1 (suma de retos completos + fracción del reto activo). */
+  progreso: number;
+  /** Tono del anillo del óvalo según el estado de la guía. */
+  tonoOvalo: OvalTono;
+  /** Hint de encuadre vigente — null si todo está OK. */
+  framingHint: FramingHint | null;
 }
 
 export const CaptureOverlay = forwardRef<HTMLDivElement, CaptureOverlayProps>(
@@ -54,6 +59,7 @@ export const CaptureOverlay = forwardRef<HTMLDivElement, CaptureOverlayProps>(
       motorListo,
       fallbackManual,
       retoActualLabel,
+      retoActualId,
       desafios,
       resueltos,
       totalResueltos,
@@ -63,19 +69,16 @@ export const CaptureOverlay = forwardRef<HTMLDivElement, CaptureOverlayProps>(
       onCancel,
       cooldownActivo,
       retoRecienResueltoLabel,
+      progreso,
+      tonoOvalo,
+      framingHint,
     } = props;
 
     return (
-      // Overlay full-screen, fondo claro estilo app de banco (portal a body — escapa el stacking context del shell)
       <div
         ref={containerRef}
         className="fixed inset-0 z-[60] bg-white flex flex-col items-center justify-center px-6"
       >
-        {/* Barra superior: botón Cancelar alineado a la derecha.
-            Solo se muestra cuando el óvalo ya cargó (listoParaMostrar). Durante el
-            spinner de carga NO hay barra ni Cancelar: pantalla limpia con el spinner
-            centrado. El fallback manual entra en listoParaMostrar y conserva su barra.
-            C-58 D4: se eliminó el contextLabel — era chrome redundante. */}
         {listoParaMostrar && (
           <div className="absolute top-0 inset-x-0 flex items-center justify-end gap-3 px-5 py-4">
             <button
@@ -87,22 +90,18 @@ export const CaptureOverlay = forwardRef<HTMLDivElement, CaptureOverlayProps>(
           </div>
         )}
 
-        {/* Bug 1: estado de carga LIMPIO — solo un spinner centrado, sin óvalo,
-            sin frame de cámara, sin jerga técnica. El <video> sigue montado abajo
-            (opacity-0) para que el stream se inicialice, pero no se ve. */}
         {!listoParaMostrar && !motorError && <CaptureLoading />}
 
-        {/* Óvalo con la cámara — el videoRef se reenvía para que el loop RAF y la
-            inicialización de cámara sigan leyendo el MISMO elemento <video>. */}
         <CaptureOval
           ref={videoRef}
           listoParaMostrar={listoParaMostrar}
           enExito={enExito}
           motorListo={motorListo}
           fallbackManual={fallbackManual}
+          progreso={progreso}
+          tono={tonoOvalo}
         />
 
-        {/* Banner de fallback manual */}
         {fallbackManual && !enExito && (
           <div className="mt-4 w-full max-w-xs bg-amber-50 border border-amber-300 rounded-xl px-3 py-2 text-center">
             <p className="text-sm text-amber-800">
@@ -111,12 +110,12 @@ export const CaptureOverlay = forwardRef<HTMLDivElement, CaptureOverlayProps>(
           </div>
         )}
 
-        {/* Sección inferior — paso actual + progreso. Oculta durante la carga. */}
         {listoParaMostrar && (
           <CaptureProgress
             enExito={enExito}
             fallbackManual={fallbackManual}
             retoActualLabel={retoActualLabel}
+            retoActualId={retoActualId}
             desafios={desafios}
             resueltos={resueltos}
             totalResueltos={totalResueltos}
@@ -125,6 +124,7 @@ export const CaptureOverlay = forwardRef<HTMLDivElement, CaptureOverlayProps>(
             onResolverManual={onResolverManual}
             cooldownActivo={cooldownActivo}
             retoRecienResueltoLabel={retoRecienResueltoLabel}
+            framingHint={framingHint}
           />
         )}
       </div>
