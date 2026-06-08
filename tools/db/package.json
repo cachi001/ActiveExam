@@ -4,6 +4,7 @@
   "type": "module",
   "description": "Scripts ad-hoc para consultar la DB de Railway desde el repo (uso vía `railway run --service ActiveExam -- node tools/db/<script>.js`). NO se incluye en build del frontend ni del backend.",
   "dependencies": {
+    "bcryptjs": "^3.0.3",
     "pg": "^8.13.1"
   }
 }
