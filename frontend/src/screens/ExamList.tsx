@@ -27,25 +27,20 @@ export default function ExamList() {
       <div className="space-y-lg animate-in fade-in duration-500">
         {/* Header */}
         <div className="flex items-start justify-between gap-md flex-wrap">
-          <div>
-            <div className="flex items-center gap-sm">
-              <h1 className="font-headline text-headline-md text-on-surface tracking-tight">
-                Exámenes
-              </h1>
-              <HelpButton title="Exámenes">
-                <p>
-                  Catálogo de evaluaciones supervisadas con su estado (borrador, programado, en
-                  curso, finalizado), inscriptos y umbral de revisión.
-                </p>
-                <p>
-                  Editá un examen para configurar detectores, umbrales y la lista de inscriptos.
-                  El botón "Crear examen" abre el wizard de configuración.
-                </p>
-              </HelpButton>
-            </div>
-            <p className="text-body-md text-on-surface-variant mt-base">
+          <div className="flex items-start gap-2 min-w-0">
+            <p className="text-[13px] text-on-surface-variant">
               Gestioná las evaluaciones supervisadas: estado, umbral de revisión e inscriptos.
             </p>
+            <HelpButton title="Exámenes">
+              <p>
+                Catálogo de evaluaciones supervisadas con su estado (borrador, programado, en
+                curso, finalizado), inscriptos y umbral de revisión.
+              </p>
+              <p>
+                Editá un examen para configurar detectores, umbrales y la lista de inscriptos.
+                El botón "Crear examen" abre el wizard de configuración.
+              </p>
+            </HelpButton>
           </div>
           <Button icon="add" onClick={() => { setExamenActivo(null); navigate('/admin/configurar'); }}>Crear examen</Button>
         </div>

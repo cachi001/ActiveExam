@@ -252,33 +252,28 @@ export default function GestionUsuarios() {
     <StaffShell nav={STAFF_NAV} title="Gestión de usuarios">
       <div className="space-y-lg animate-in fade-in duration-500">
 
-        {/* Encabezado */}
+        {/* Encabezado: descripción + ayuda + acción primaria */}
         <div className="flex items-start justify-between gap-md flex-wrap">
-          <div>
-            <div className="flex items-center gap-sm">
-              <h1 className="font-headline text-headline-md text-on-surface tracking-tight">
-                Gestión de usuarios
-              </h1>
-              <HelpButton title="Gestión de usuarios">
-                <p>
-                  Acá das de alta, editás y das de baja a los usuarios de la plataforma. Solo
-                  visible para <strong>admin_sistema</strong>.
-                </p>
-                <p>
-                  Los roles MVP son tres estrictos: <em>estudiante</em>, <em>proctor</em> y
-                  <em> admin_sistema</em>. La baja es <strong>lógica</strong> (no destruye evidencia)
-                  y revoca los refresh tokens del usuario.
-                </p>
-                <p>
-                  Anti-lockout: no podés quitarte a vos mismo el rol admin_sistema ni darte de baja.
-                </p>
-              </HelpButton>
-            </div>
-            <p className="text-body-md text-on-surface-variant mt-base">
+          <div className="flex items-start gap-2 min-w-0">
+            <p className="text-[13px] text-on-surface-variant">
               Alta, edición y baja lógica de usuarios de la plataforma.
             </p>
+            <HelpButton title="Gestión de usuarios">
+              <p>
+                Acá das de alta, editás y das de baja a los usuarios de la plataforma. Solo
+                visible para <strong>admin_sistema</strong>.
+              </p>
+              <p>
+                Los roles MVP son tres estrictos: <em>estudiante</em>, <em>proctor</em> y
+                <em> admin_sistema</em>. La baja es <strong>lógica</strong> (no destruye evidencia)
+                y revoca los refresh tokens del usuario.
+              </p>
+              <p>
+                Anti-lockout: no podés quitarte a vos mismo el rol admin_sistema ni darte de baja.
+              </p>
+            </HelpButton>
           </div>
-          <Button icon="person_add" onClick={abrirCrear} size="md">
+          <Button icon="person_add" onClick={abrirCrear} size="sm">
             Nuevo usuario
           </Button>
         </div>
@@ -392,120 +387,110 @@ export default function GestionUsuarios() {
         )}
 
         {/* Tabla / listado de usuarios */}
-        <Card>
-          <SectionTitle sub={`${total} usuario${total !== 1 ? 's' : ''} activos`}>
-            Usuarios activos
-          </SectionTitle>
+        <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/60 shadow-card overflow-hidden">
+          <div className="px-4 py-3 border-b border-outline-variant/40 flex items-center gap-2">
+            <Icon name="group" className="text-[16px] text-primary shrink-0" />
+            <h2 className="text-[13px] font-semibold text-on-surface">
+              Usuarios activos
+              <span className="text-on-surface-variant font-normal ml-1">({total})</span>
+            </h2>
+          </div>
 
           {cargando ? (
-            <div className="py-xl text-center text-on-surface-variant">
-              <Icon name="progress_activity" className="ae-spin text-[36px] text-outline" />
+            <div className="py-12 text-center text-on-surface-variant">
+              <Icon name="progress_activity" className="ae-spin text-[28px] text-outline" />
             </div>
           ) : usuarios.length === 0 ? (
-            <div className="py-xl text-center text-on-surface-variant space-y-base">
-              <Icon name="group_off" className="text-[36px] text-outline" />
-              <p className="text-label-md">No hay usuarios activos.</p>
+            <div className="py-12 text-center text-on-surface-variant space-y-base">
+              <Icon name="group_off" className="text-[32px] text-outline" />
+              <p className="text-[13px]">No hay usuarios activos.</p>
             </div>
           ) : (
             <>
               {/* Tabla desktop (hidden en mobile) */}
-              <table className="hidden md:table w-full mt-md border-collapse">
-                <thead>
-                  <tr className="border-b border-outline-variant/30">
-                    <th className="text-left text-label-sm text-on-surface-variant font-medium py-sm pr-md">Avatar / Nombre</th>
-                    <th className="text-left text-label-sm text-on-surface-variant font-medium py-sm pr-md">Email</th>
-                    <th className="text-left text-label-sm text-on-surface-variant font-medium py-sm pr-md">Legajo</th>
-                    <th className="text-left text-label-sm text-on-surface-variant font-medium py-sm pr-md">Rol</th>
-                    <th className="text-right text-label-sm text-on-surface-variant font-medium py-sm">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {usuarios.map((u) => (
-                    <tr key={u.id} className="border-b border-outline-variant/20 hover:bg-surface-container-low transition-colors">
-                      {/* Avatar + Nombre */}
-                      <td className="py-sm pr-md">
-                        <div className="flex items-center gap-sm">
-                          {fotos[u.id] ? (
-                            <Avatar src={fotos[u.id]} alt={`Foto de ${u.nombre ?? u.email}`} size={36} />
-                          ) : (
-                            <div className="w-9 h-9 rounded-md bg-secondary-container text-on-secondary flex items-center justify-center font-headline text-label-md shrink-0">
-                              {(u.nombre ?? u.email).charAt(0).toUpperCase()}
-                            </div>
-                          )}
-                          <span className="text-label-md font-semibold text-on-surface truncate max-w-[160px]">
-                            {u.nombre && u.apellido
-                              ? `${u.nombre} ${u.apellido}`
-                              : u.nombre ?? u.apellido ?? u.email}
-                          </span>
-                        </div>
-                      </td>
-                      {/* Email */}
-                      <td className="py-sm pr-md text-label-sm text-on-surface-variant truncate max-w-[200px]">
-                        {u.email}
-                      </td>
-                      {/* Legajo */}
-                      <td className="py-sm pr-md text-label-sm text-on-surface-variant">
-                        {u.id_institucional}
-                      </td>
-                      {/* Roles */}
-                      <td className="py-sm pr-md text-label-sm text-on-surface-variant">
-                        {u.roles.map((r) => getRolLabel(r)).join(', ')}
-                      </td>
-                      {/* Acciones */}
-                      <td className="py-sm text-right">
-                        <div className="flex gap-xs justify-end">
-                          <Button size="sm" variant="outline" icon="edit" onClick={() => abrirEditar(u)}>
-                            Editar
-                          </Button>
-                          <Button size="sm" variant="danger" icon="person_remove" onClick={() => setABajar(u)}>
-                            Dar de baja
-                          </Button>
-                        </div>
-                      </td>
+              <div className="hidden md:block overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-surface-container-low">
+                      <th className="text-left text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider px-4 py-2.5">Nombre</th>
+                      <th className="text-left text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider px-4 py-2.5">Email</th>
+                      <th className="text-left text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider px-4 py-2.5">Legajo</th>
+                      <th className="text-left text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider px-4 py-2.5">Rol</th>
+                      <th className="text-right text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider px-4 py-2.5">Acciones</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-outline-variant/30">
+                    {usuarios.map((u) => (
+                      <tr key={u.id} className="hover:bg-surface-container-low transition-colors">
+                        {/* Avatar + Nombre */}
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <div className="flex items-center gap-2.5">
+                            {fotos[u.id] ? (
+                              <Avatar src={fotos[u.id]} alt={`Foto de ${u.nombre ?? u.email}`} size={32} />
+                            ) : (
+                              <div className="w-8 h-8 rounded-full bg-secondary-container text-on-secondary flex items-center justify-center font-semibold text-[12px] shrink-0">
+                                {(u.nombre ?? u.email).charAt(0).toUpperCase()}
+                              </div>
+                            )}
+                            <span className="text-[13px] font-medium text-on-surface truncate max-w-[180px]">
+                              {u.nombre && u.apellido
+                                ? `${u.nombre} ${u.apellido}`
+                                : u.nombre ?? u.apellido ?? u.email}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-[13px] text-on-surface-variant truncate max-w-[220px]">
+                          {u.email}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-[13px] text-on-surface-variant font-mono">
+                          {u.id_institucional}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-[13px] text-on-surface-variant">
+                          {u.roles.map((r) => getRolLabel(r)).join(', ')}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-right">
+                          <div className="inline-flex gap-1.5">
+                            <Button size="sm" variant="ghost" icon="edit" onClick={() => abrirEditar(u)} aria-label={`Editar ${u.email}`}>
+                              Editar
+                            </Button>
+                            <Button size="sm" variant="ghost" icon="person_remove" onClick={() => setABajar(u)} aria-label={`Dar de baja ${u.email}`} className="text-error hover:bg-error-container/30">
+                              Baja
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
 
               {/* Cards mobile (hidden en desktop) */}
-              <div className="md:hidden mt-md space-y-base">
+              <div className="md:hidden divide-y divide-outline-variant/30">
                 {usuarios.map((u) => (
-                  <div
-                    key={u.id}
-                    className="bg-white border border-outline-variant/30 shadow-sm rounded-md p-sm flex items-center gap-md flex-wrap"
-                  >
-                    {/* Avatar */}
+                  <div key={u.id} className="px-4 py-3 flex items-center gap-3">
                     {fotos[u.id] ? (
-                      <Avatar src={fotos[u.id]} alt={`Foto de ${u.nombre ?? u.email}`} size={40} />
+                      <Avatar src={fotos[u.id]} alt={`Foto de ${u.nombre ?? u.email}`} size={36} />
                     ) : (
-                      <div className="w-10 h-10 rounded-md bg-secondary-container text-on-secondary flex items-center justify-center font-headline text-label-lg shrink-0">
+                      <div className="w-9 h-9 rounded-full bg-secondary-container text-on-secondary flex items-center justify-center font-semibold text-[13px] shrink-0">
                         {(u.nombre ?? u.email).charAt(0).toUpperCase()}
                       </div>
                     )}
-
-                    {/* Datos */}
                     <div className="flex-1 min-w-0">
-                      <p className="text-label-md font-semibold text-on-surface truncate">
+                      <p className="text-[13px] font-semibold text-on-surface truncate">
                         {u.nombre && u.apellido
                           ? `${u.nombre} ${u.apellido}`
                           : u.nombre ?? u.apellido ?? u.email}
                       </p>
-                      <p className="text-label-sm text-on-surface-variant truncate">
+                      <p className="text-[11px] text-on-surface-variant truncate">
                         {u.email} · {u.id_institucional}
                       </p>
-                      <p className="text-label-sm text-on-surface-variant">
+                      <p className="text-[11px] text-on-surface-variant">
                         {u.roles.map((r) => getRolLabel(r)).join(', ')}
                       </p>
                     </div>
-
-                    {/* Acciones */}
-                    <div className="flex gap-xs shrink-0">
-                      <Button size="sm" variant="outline" icon="edit" onClick={() => abrirEditar(u)}>
-                        Editar
-                      </Button>
-                      <Button size="sm" variant="danger" icon="person_remove" onClick={() => setABajar(u)}>
-                        Dar de baja
-                      </Button>
+                    <div className="flex gap-1 shrink-0">
+                      <Button size="sm" variant="ghost" icon="edit" onClick={() => abrirEditar(u)} aria-label="Editar" />
+                      <Button size="sm" variant="ghost" icon="person_remove" onClick={() => setABajar(u)} aria-label="Dar de baja" className="text-error" />
                     </div>
                   </div>
                 ))}
@@ -515,7 +500,7 @@ export default function GestionUsuarios() {
 
           {/* Paginación */}
           {totalPaginas > 1 && (
-            <div className="flex items-center justify-between mt-lg pt-md border-t border-outline-variant/30">
+            <div className="px-4 py-3 flex items-center justify-between border-t border-outline-variant/40">
               <Button
                 size="sm"
                 variant="ghost"
@@ -525,7 +510,7 @@ export default function GestionUsuarios() {
               >
                 Anterior
               </Button>
-              <span className="text-label-sm text-on-surface-variant">
+              <span className="text-[11px] text-on-surface-variant">
                 Página {paginaActual} de {totalPaginas}
               </span>
               <Button
@@ -539,7 +524,7 @@ export default function GestionUsuarios() {
               </Button>
             </div>
           )}
-        </Card>
+        </div>
 
       </div>
 

@@ -34,6 +34,7 @@ import ProctoringRevisor from './screens/ProctoringRevisor';
 import ProctoringSessionDetail from './screens/ProctoringSessionDetail';
 // C-61: Gestión de usuarios y registro público
 import GestionUsuarios from './screens/GestionUsuarios';
+import ScoringConfig from './screens/ScoringConfig';
 import Registro from './screens/Registro';
 
 // Roles por área (modelo MVP: estudiante, proctor, admin_sistema).
@@ -79,6 +80,8 @@ export default function App() {
     '/admin/proctoring-session-detail': g(<ProctoringSessionDetail />, ADMIN),
     // C-61: Gestión de usuarios
     '/admin/usuarios': g(<GestionUsuarios />, ADMIN),
+    // #10: Configuración de scoring por tipo de evento
+    '/admin/scoring': g(<ScoringConfig />, ADMIN),
 
     // Portal del alumno — C-21
     '/alumno/dashboard': g(<AlumnoDashboard />, ESTUDIANTE),

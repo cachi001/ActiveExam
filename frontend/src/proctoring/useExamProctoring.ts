@@ -40,7 +40,7 @@ import type { VisionEngine } from '../vision/VisionEngine';
 import { loadRealEngine, disposeRealEngine } from '../vision/harnessEngineLoader';
 import { VisionPipeline, type EventSink } from './visionPipeline';
 import { StateTransitionRules, DEFAULT_CONFIG } from './stateTransitionRules';
-import { PESO_SCORE } from './riskWeights';
+import { loadScoringWeights, pesoEvento } from './scoringWeights';
 import {
   FocusDetector,
   FullscreenDetector,
@@ -92,6 +92,8 @@ export interface ExamProctoringState {
   activo: boolean;
   /** últimos eventos detectados (para el panel de señales del examen). */
   eventos: EventoSesion[];
+  /** true si hay un monitor adicional conectado AHORA mismo (polling, no historial). */
+  extraMonitorActive: boolean;
 }
 
 export interface UseExamProctoringResult extends ExamProctoringState {
@@ -120,6 +122,9 @@ export function useExamProctoring(
   const [eventCount, setEventCount] = useState(0);
   const [activo, setActivo] = useState(false);
   const [eventos, setEventos] = useState<EventoSesion[]>([]);
+  // Estado en vivo del monitor adicional. Refleja la ultima lectura del polling
+  // (cada 5s). Examen.tsx lo usa para bloquear la rendicion mientras este `true`.
+  const [extraMonitorActive, setExtraMonitorActive] = useState(false);
 
   // ------ Refs del motor / pipeline / loop ------
   const engineRef = useRef<VisionEngine | null>(null);
@@ -146,10 +151,11 @@ export function useExamProctoring(
   const handleEvent = useRef<EventSink['sendEvent']>(async () => {});
   handleEvent.current = async (rawEvent) => {
     // Acumular score en el store global (scorePropio, L2.5 — prioriza, no sanciona).
-    addScore(PESO_SCORE[rawEvent.severidad as Severidad] ?? 0);
-    setScore((prev) =>
-      Math.min(100, prev + (PESO_SCORE[rawEvent.severidad as Severidad] ?? 0)),
-    );
+    // El peso por tipo se resuelve dinamicamente desde la BD (cache poblada en mount);
+    // si la API fallo, pesoEvento() vuelve al fallback por severidad.
+    const peso = pesoEvento(rawEvent.tipo, rawEvent.severidad as Severidad);
+    addScore(peso);
+    setScore((prev) => Math.min(100, prev + peso));
     setEventCount((c) => c + 1);
 
     // Registrar en el panel de señales del examen.
@@ -255,6 +261,10 @@ export function useExamProctoring(
     stoppedRef.current = false;
     let cancelled = false;
 
+    // --- Cargar pesos de scoring desde la BD (admin los puede haber ajustado en /admin/scoring).
+    // No bloquea: si la API falla, pesoEvento() recurre al fallback por severidad.
+    void loadScoringWeights();
+
     // --- Inicializar buffer IndexedDB (R3: degradación silenciosa si no está disponible) ---
     try {
       bufferRef.current = new CircularEventBuffer(new IndexedDbEventBufferStore());
@@ -319,7 +329,10 @@ export function useExamProctoring(
               ).getScreenDetails()
           : undefined;
       const sig = await detectExtraMonitor(provider);
+      const active = sig?.extra_monitor === true;
       extraMonitorRef.current = sig?.extra_monitor ?? null;
+      // Solo set-state si cambia (evita re-renders innecesarios).
+      setExtraMonitorActive((prev) => (prev !== active ? active : prev));
       if (monitorPollActive) setTimeout(pollMonitor, 5000);
     };
     void pollMonitor();
@@ -418,7 +431,7 @@ export function useExamProctoring(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [examen?.id]);
 
-  return { sessionId, score, eventCount, activo, eventos, detener };
+  return { sessionId, score, eventCount, activo, eventos, extraMonitorActive, detener };
 }
 
 // ---------------------------------------------------------------------------

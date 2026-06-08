@@ -13,4 +13,6 @@ export const STAFF_NAV = [
   { to: '/admin/proctoring-sessions', icon: 'video_library', label: 'Sesiones grabadas' },
   // C-61: Gestión de usuarios
   { to: '/admin/usuarios', icon: 'manage_accounts', label: 'Usuarios' },
+  // #10: Configuración de scoring por tipo de evento
+  { to: '/admin/scoring', icon: 'tune', label: 'Scoring' },
 ];

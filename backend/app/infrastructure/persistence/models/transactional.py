@@ -340,3 +340,32 @@ class EmbeddingReferenciaModel(Base):
     created_at: Mapped[str] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
+
+
+class EventoScoreConfigModel(Base):
+    """Configuracion del peso de score por tipo de evento (#9, migracion 0011).
+
+    Permite a admin_sistema ajustar en caliente cuanto suma cada tipo de evento al
+    score acumulado del examen (0-100), sin redeploy. Los valores por defecto coinciden
+    con PESO_SCORE de frontend/src/proctoring/riskWeights.ts: baja=5, media=20,
+    alta=50, critica=100. La migracion 0011 ya siembra los 8 tipos del catalogo.
+
+    Constraints (definidos en la migracion):
+    - severidad IN ('baseline','baja','media','alta','critica')
+    - peso >= 0 AND peso <= 100
+    - tipo_evento PK
+    """
+
+    __tablename__ = "evento_score_config"
+
+    tipo_evento: Mapped[str] = mapped_column(Text, primary_key=True)
+    severidad: Mapped[str] = mapped_column(Text, nullable=False)
+    peso: Mapped[int] = mapped_column(Integer, nullable=False)
+    descripcion: Mapped[str | None] = mapped_column(Text, nullable=True)
+    activo: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    created_at: Mapped[str] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[str] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
