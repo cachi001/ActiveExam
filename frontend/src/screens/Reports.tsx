@@ -17,27 +17,22 @@ const SEV_TONE: Record<string, 'primary' | 'success' | 'warning' | 'error'> = {
 
 function Header() {
   return (
-    <div>
-      <div className="flex items-center gap-sm">
-        <h1 className="font-headline text-headline-md text-on-surface tracking-tight">
-          Analítica de integridad
-        </h1>
-        <HelpButton title="Analítica de integridad">
-          <p>
-            Vista agregada de métricas para auditar el funcionamiento del proctoring: cantidad de
-            exámenes, distribución de severidad de eventos y desempeño de la revisión humana
-            (tasa de flag, tiempo medio).
-          </p>
-          <p>
-            Estas métricas <strong>no individualizan</strong> a estudiantes — son agregados de
-            integridad del sistema. La decisión disciplinaria por persona se hace siempre en la
-            cola de revisión.
-          </p>
-        </HelpButton>
-      </div>
-      <p className="text-body-md text-on-surface-variant mt-base">
+    <div className="flex items-start gap-2">
+      <p className="text-[13px] text-on-surface-variant">
         Métricas agregadas de exámenes, severidad de eventos y desempeño de la revisión humana.
       </p>
+      <HelpButton title="Analítica de integridad">
+        <p>
+          Vista agregada de métricas para auditar el funcionamiento del proctoring: cantidad de
+          exámenes, distribución de severidad de eventos y desempeño de la revisión humana
+          (tasa de flag, tiempo medio).
+        </p>
+        <p>
+          Estas métricas <strong>no individualizan</strong> a estudiantes — son agregados de
+          integridad del sistema. La decisión disciplinaria por persona se hace siempre en la
+          cola de revisión.
+        </p>
+      </HelpButton>
     </div>
   );
 }

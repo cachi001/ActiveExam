@@ -84,11 +84,12 @@ export function ScreenshotMiniatura({ base64 }: { base64: string | null | undefi
               <button
                 type="button"
                 onClick={() => setExpanded(false)}
-                className="absolute top-sm right-sm bg-surface-container-lowest rounded-full p-sm
-                  shadow-card-lg text-on-surface hover:bg-surface-container transition-colors"
+                className="absolute top-2 right-2 w-8 h-8 inline-flex items-center justify-center rounded-full
+                  bg-surface-container-lowest/95 backdrop-blur border border-outline-variant/60 shadow-sm
+                  text-on-surface-variant hover:text-on-surface hover:bg-surface-container transition-colors"
                 aria-label="Cerrar"
               >
-                <Icon name="close" className="text-[20px]" />
+                <Icon name="close" className="text-[16px]" />
               </button>
             </div>
           </div>,
