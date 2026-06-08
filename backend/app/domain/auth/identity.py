@@ -35,6 +35,8 @@ class AuthenticatedPrincipal:
     jurisdiccion: str | None = None
     subject: str | None = None  # ``sub`` del token (opaco del IdP)
     attrs_federados: dict[str, str] = field(default_factory=dict)
+    nombre: str | None = None
+    apellido: str | None = None
 
     def tiene_rol(self, rol: Rol) -> bool:
         """``True`` si el principal posee el rol indicado."""

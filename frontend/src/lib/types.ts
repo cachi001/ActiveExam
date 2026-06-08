@@ -27,6 +27,7 @@ export type TipoEvento =
 export interface Principal {
   id_institucional: string;
   nombre: string;
+  apellido?: string;
   email: string;
   roles: Rol[];
   mfa_satisfecho: boolean;

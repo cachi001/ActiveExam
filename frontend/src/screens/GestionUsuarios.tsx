@@ -21,6 +21,7 @@ import { STAFF_NAV } from '../ui/nav';
 import { useToast } from '../ui/toast';
 import { api } from '../lib/api';
 import type { UsuarioAdmin } from '../lib/types';
+import { ROL_LABELS, ROLES_VALIDOS, getRolLabel } from '../lib/constants/roles';
 
 // ---------------------------------------------------------------------------
 // Tipos locales
@@ -34,10 +35,8 @@ interface FormState {
   nombre: string;
   apellido: string;
   password: string;
-  roles: string;
+  roles: string[];
 }
-
-const ROLES_VALIDOS = ['estudiante', 'proctor', 'admin_sistema'];
 
 const FORM_VACIO: FormState = {
   id_institucional: '',
@@ -45,7 +44,7 @@ const FORM_VACIO: FormState = {
   nombre: '',
   apellido: '',
   password: '',
-  roles: '',
+  roles: [],
 };
 
 // ---------------------------------------------------------------------------
@@ -122,7 +121,7 @@ export default function GestionUsuarios() {
       nombre: u.nombre ?? '',
       apellido: u.apellido ?? '',
       password: '',
-      roles: u.roles.join(', '),
+      roles: [...u.roles],
     });
     setFormError(null);
   }
@@ -134,27 +133,28 @@ export default function GestionUsuarios() {
     setFormError(null);
   }
 
-  function cambiar(campo: keyof FormState) {
+  function cambiarTexto(campo: keyof Omit<FormState, 'roles'>) {
     return (e: React.ChangeEvent<HTMLInputElement>) =>
       setForm((prev) => ({ ...prev, [campo]: e.target.value }));
   }
 
-  function parsearRoles(raw: string): string[] {
-    return raw.split(',').map((r) => r.trim()).filter(Boolean);
+  function toggleRol(rol: string) {
+    setForm((prev) => {
+      const existe = prev.roles.includes(rol);
+      return {
+        ...prev,
+        roles: existe ? prev.roles.filter((r) => r !== rol) : [...prev.roles, rol],
+      };
+    });
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setFormError(null);
 
-    const roles = parsearRoles(form.roles);
+    const roles = form.roles;
     if (roles.length === 0) {
-      setFormError('Ingresá al menos un rol válido.');
-      return;
-    }
-    const invalidos = roles.filter((r) => !ROLES_VALIDOS.includes(r));
-    if (invalidos.length > 0) {
-      setFormError(`Roles inválidos: ${invalidos.join(', ')}. Válidos: ${ROLES_VALIDOS.join(', ')}.`);
+      setFormError('Seleccioná al menos un rol.');
       return;
     }
 
@@ -187,7 +187,7 @@ export default function GestionUsuarios() {
       await cargarUsuarios(offset);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes('409') || msg.includes('409')) {
+      if (msg.includes('409')) {
         setFormError('Ya existe un usuario con ese email o id_institucional, o no podés quitarte el rol admin_sistema.');
       } else {
         setFormError(`Error: ${msg}`);
@@ -268,7 +268,7 @@ export default function GestionUsuarios() {
                     label="ID institucional"
                     name="id_institucional"
                     value={form.id_institucional}
-                    onChange={cambiar('id_institucional')}
+                    onChange={cambiarTexto('id_institucional')}
                     icon="badge"
                     required
                     disabled={enviando}
@@ -280,7 +280,7 @@ export default function GestionUsuarios() {
                   name="email"
                   type="email"
                   value={form.email}
-                  onChange={cambiar('email')}
+                  onChange={cambiarTexto('email')}
                   icon="email"
                   required
                   disabled={enviando}
@@ -290,7 +290,7 @@ export default function GestionUsuarios() {
                   label="Nombre"
                   name="nombre"
                   value={form.nombre}
-                  onChange={cambiar('nombre')}
+                  onChange={cambiarTexto('nombre')}
                   icon="person"
                   disabled={enviando}
                   placeholder="Nombre"
@@ -299,7 +299,7 @@ export default function GestionUsuarios() {
                   label="Apellido"
                   name="apellido"
                   value={form.apellido}
-                  onChange={cambiar('apellido')}
+                  onChange={cambiarTexto('apellido')}
                   icon="person"
                   disabled={enviando}
                   placeholder="Apellido"
@@ -310,7 +310,7 @@ export default function GestionUsuarios() {
                     name="password"
                     type="password"
                     value={form.password}
-                    onChange={cambiar('password')}
+                    onChange={cambiarTexto('password')}
                     icon="lock"
                     required
                     disabled={enviando}
@@ -318,17 +318,25 @@ export default function GestionUsuarios() {
                     hint="Mínimo 8 caracteres."
                   />
                 )}
-                <TextField
-                  label="Roles (separados por coma)"
-                  name="roles"
-                  value={form.roles}
-                  onChange={cambiar('roles')}
-                  icon="manage_accounts"
-                  required
-                  disabled={enviando}
-                  placeholder="estudiante, proctor, admin_sistema"
-                  hint={`Roles válidos: ${ROLES_VALIDOS.join(', ')}.`}
-                />
+              </div>
+
+              {/* Selector de roles por checkboxes */}
+              <div>
+                <p className="text-label-sm text-on-surface-variant mb-sm">Roles</p>
+                <div className="flex flex-wrap gap-md">
+                  {ROLES_VALIDOS.map((rol) => (
+                    <label key={rol} className="flex items-center gap-xs cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={form.roles.includes(rol)}
+                        onChange={() => toggleRol(rol)}
+                        disabled={enviando}
+                        className="w-4 h-4 accent-primary"
+                      />
+                      <span className="text-label-md text-on-surface">{ROL_LABELS[rol]}</span>
+                    </label>
+                  ))}
+                </div>
               </div>
 
               {formError && (
@@ -371,62 +379,110 @@ export default function GestionUsuarios() {
               <p className="text-label-md">No hay usuarios activos.</p>
             </div>
           ) : (
-            <div className="mt-md space-y-base">
-              {usuarios.map((u) => (
-                <div
-                  key={u.id}
-                  className="flex items-center gap-md p-sm rounded-xl border border-outline-variant/30 hover:bg-surface-container-low transition-colors flex-wrap"
-                >
-                  {/* Avatar (task 5.3) */}
-                  {fotos[u.id] ? (
-                    <Avatar
-                      src={fotos[u.id]}
-                      alt={`Foto de ${u.nombre ?? u.email}`}
-                      size={40}
-                    />
-                  ) : (
-                    <div className="w-10 h-10 rounded-xl bg-secondary-container text-on-secondary flex items-center justify-center font-headline text-label-lg shrink-0">
-                      {(u.nombre ?? u.email).charAt(0).toUpperCase()}
+            <>
+              {/* Tabla desktop (hidden en mobile) */}
+              <table className="hidden md:table w-full mt-md border-collapse">
+                <thead>
+                  <tr className="border-b border-outline-variant/30">
+                    <th className="text-left text-label-sm text-on-surface-variant font-medium py-sm pr-md">Avatar / Nombre</th>
+                    <th className="text-left text-label-sm text-on-surface-variant font-medium py-sm pr-md">Email</th>
+                    <th className="text-left text-label-sm text-on-surface-variant font-medium py-sm pr-md">Legajo</th>
+                    <th className="text-left text-label-sm text-on-surface-variant font-medium py-sm pr-md">Roles</th>
+                    <th className="text-right text-label-sm text-on-surface-variant font-medium py-sm">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {usuarios.map((u) => (
+                    <tr key={u.id} className="border-b border-outline-variant/20 hover:bg-surface-container-low transition-colors">
+                      {/* Avatar + Nombre */}
+                      <td className="py-sm pr-md">
+                        <div className="flex items-center gap-sm">
+                          {fotos[u.id] ? (
+                            <Avatar src={fotos[u.id]} alt={`Foto de ${u.nombre ?? u.email}`} size={36} />
+                          ) : (
+                            <div className="w-9 h-9 rounded-md bg-secondary-container text-on-secondary flex items-center justify-center font-headline text-label-md shrink-0">
+                              {(u.nombre ?? u.email).charAt(0).toUpperCase()}
+                            </div>
+                          )}
+                          <span className="text-label-md font-semibold text-on-surface truncate max-w-[160px]">
+                            {u.nombre && u.apellido
+                              ? `${u.nombre} ${u.apellido}`
+                              : u.nombre ?? u.apellido ?? u.email}
+                          </span>
+                        </div>
+                      </td>
+                      {/* Email */}
+                      <td className="py-sm pr-md text-label-sm text-on-surface-variant truncate max-w-[200px]">
+                        {u.email}
+                      </td>
+                      {/* Legajo */}
+                      <td className="py-sm pr-md text-label-sm text-on-surface-variant">
+                        {u.id_institucional}
+                      </td>
+                      {/* Roles */}
+                      <td className="py-sm pr-md text-label-sm text-on-surface-variant">
+                        {u.roles.map((r) => getRolLabel(r)).join(', ')}
+                      </td>
+                      {/* Acciones */}
+                      <td className="py-sm text-right">
+                        <div className="flex gap-xs justify-end">
+                          <Button size="sm" variant="outline" icon="edit" onClick={() => abrirEditar(u)}>
+                            Editar
+                          </Button>
+                          <Button size="sm" variant="danger" icon="person_remove" onClick={() => setABajar(u)}>
+                            Dar de baja
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              {/* Cards mobile (hidden en desktop) */}
+              <div className="md:hidden mt-md space-y-base">
+                {usuarios.map((u) => (
+                  <div
+                    key={u.id}
+                    className="bg-white border border-outline-variant/30 shadow-sm rounded-md p-sm flex items-center gap-md flex-wrap"
+                  >
+                    {/* Avatar */}
+                    {fotos[u.id] ? (
+                      <Avatar src={fotos[u.id]} alt={`Foto de ${u.nombre ?? u.email}`} size={40} />
+                    ) : (
+                      <div className="w-10 h-10 rounded-md bg-secondary-container text-on-secondary flex items-center justify-center font-headline text-label-lg shrink-0">
+                        {(u.nombre ?? u.email).charAt(0).toUpperCase()}
+                      </div>
+                    )}
+
+                    {/* Datos */}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-label-md font-semibold text-on-surface truncate">
+                        {u.nombre && u.apellido
+                          ? `${u.nombre} ${u.apellido}`
+                          : u.nombre ?? u.apellido ?? u.email}
+                      </p>
+                      <p className="text-label-sm text-on-surface-variant truncate">
+                        {u.email} · {u.id_institucional}
+                      </p>
+                      <p className="text-label-sm text-on-surface-variant">
+                        {u.roles.map((r) => getRolLabel(r)).join(', ')}
+                      </p>
                     </div>
-                  )}
 
-                  {/* Datos */}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-label-md font-semibold text-on-surface truncate">
-                      {u.nombre && u.apellido
-                        ? `${u.nombre} ${u.apellido}`
-                        : u.nombre ?? u.apellido ?? u.email}
-                    </p>
-                    <p className="text-label-sm text-on-surface-variant truncate">
-                      {u.email} · {u.id_institucional}
-                    </p>
-                    <p className="text-label-sm text-on-surface-variant">
-                      {u.roles.join(', ')} · {u.auth_provider}
-                    </p>
+                    {/* Acciones */}
+                    <div className="flex gap-xs shrink-0">
+                      <Button size="sm" variant="outline" icon="edit" onClick={() => abrirEditar(u)}>
+                        Editar
+                      </Button>
+                      <Button size="sm" variant="danger" icon="person_remove" onClick={() => setABajar(u)}>
+                        Dar de baja
+                      </Button>
+                    </div>
                   </div>
-
-                  {/* Acciones */}
-                  <div className="flex gap-xs shrink-0">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      icon="edit"
-                      onClick={() => abrirEditar(u)}
-                    >
-                      Editar
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="danger"
-                      icon="person_remove"
-                      onClick={() => setABajar(u)}
-                    >
-                      Dar de baja
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            </>
           )}
 
           {/* Paginación */}

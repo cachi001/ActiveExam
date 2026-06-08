@@ -80,6 +80,8 @@ class PrincipalResponse(BaseModel):
     roles: list[str]
     mfa_satisfecho: bool
     jurisdiccion: str | None = None
+    nombre: str | None = None
+    apellido: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -277,15 +279,42 @@ async def refresh(
 
 @router.get("/me", response_model=PrincipalResponse)
 async def me(
+    request: Request,
     principal: AuthenticatedPrincipal = Depends(get_current_principal),
 ) -> PrincipalResponse:
-    """Devuelve el principal autenticado (Bearer requerido)."""
+    """Devuelve el principal autenticado (Bearer requerido).
+
+    Si hay DB disponible, hace lookup por ``principal.subject`` (= UsuarioModel.id)
+    para incluir ``nombre`` y ``apellido``. Si la DB no está disponible o el usuario
+    no se encuentra, ambos campos quedan ``None`` (degradación graceful).
+    """
+    nombre: str | None = None
+    apellido: str | None = None
+
+    session_factory = _get_session_factory(request)
+    if session_factory is not None and principal.subject is not None:
+        try:
+            async with session_factory() as session:
+                from sqlalchemy import select as sa_select  # noqa: PLC0415
+                result = await session.execute(
+                    sa_select(UsuarioModel).where(UsuarioModel.id == principal.subject)
+                )
+                usuario = result.scalar_one_or_none()
+                if usuario is not None:
+                    nombre = usuario.nombre
+                    apellido = usuario.apellido
+        except Exception:  # noqa: BLE001
+            # Degradación graceful: la DB no responde, devolvemos None en nombre/apellido.
+            pass
+
     return PrincipalResponse(
         id_institucional=principal.id_institucional,
         email=principal.email,
         roles=[r.value for r in principal.roles],
         mfa_satisfecho=principal.mfa_satisfecho,
         jurisdiccion=principal.jurisdiccion,
+        nombre=nombre,
+        apellido=apellido,
     )
 
 
