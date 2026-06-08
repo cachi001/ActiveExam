@@ -81,7 +81,7 @@ export default function ProctoringRevisor() {
                 </p>
                 <p>
                   Click en una fila para abrir el detalle con eventos, evidencia y biometría. La
-                  decisión disciplinaria siempre es del revisor (L2.5).
+                  decisión disciplinaria siempre es del revisor.
                 </p>
               </HelpButton>
             </div>

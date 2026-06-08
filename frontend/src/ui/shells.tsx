@@ -6,30 +6,6 @@ import { useApp } from '../lib/store';
 import { useAuth } from '../lib/authStore';
 import { INSTITUTION } from '../config/institution';
 import { GlossaryPanel } from './GlossaryPanel';
-import { AUTH_PROVIDER_TYPE } from '../lib/authProvider';
-
-/**
- * Banner de advertencia de MFA (C-55, deuda técnica).
- * Se muestra cuando el provider JWT propio está activo y el principal tiene
- * un rol que exige MFA (proctor o admin_sistema) pero mfa_satisfecho=false.
- * NO bloquea el acceso en MVP — el MFA propio es un change futuro.
- */
-function MfaWarningBanner() {
-  const principal = useAuth((s) => s.principal);
-  if (AUTH_PROVIDER_TYPE !== 'jwt') return null;
-  if (!principal) return null;
-  const rolExigeMfa = principal.roles.some((r) => r === 'proctor' || r === 'admin_sistema');
-  if (!rolExigeMfa || principal.mfa_satisfecho) return null;
-  return (
-    <div className="bg-amber-50 text-amber-900 px-lg py-sm flex items-center gap-sm text-label-sm border-b border-amber-200">
-      <Icon name="warning" className="text-[18px] shrink-0 text-amber-600" fill />
-      <span>
-        <strong>MFA no activo:</strong> tu cuenta de {principal.roles.includes('admin_sistema') ? 'administrador' : 'proctor'} debería tener segundo factor de autenticación.
-        El acceso está permitido en esta versión — se implementará en una próxima actualización.
-      </span>
-    </div>
-  );
-}
 
 const LOGO = (
   <div className="flex items-center gap-sm">
@@ -173,8 +149,6 @@ export function StaffShell({ children, nav, title }: { children: ReactNode; nav:
           </button>
           <h1 className="font-headline text-title-lg text-on-surface truncate">{title}</h1>
         </header>
-        {/* Advertencia de MFA para proctor/admin con provider JWT propio (C-55) */}
-        <MfaWarningBanner />
         <main className="flex-1 p-lg">{children}</main>
       </div>
     </div>

@@ -110,7 +110,7 @@ export default function ProctoringSessionDetail() {
               <p>
                 El <em>score</em> prioriza la revisión humana — no es un veredicto. La discrepancia
                 marca eventos donde el conteo del cliente no coincide con la re-inferencia del
-                backend (cliente = sensor no confiable, L2.5).
+                backend (el cliente es un sensor no confiable).
               </p>
               <p>
                 El screenshot es <strong>dato sensible</strong> (Ley 25.326): finalidad acotada a

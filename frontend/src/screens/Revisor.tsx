@@ -133,15 +133,14 @@ export default function Revisor() {
                   aprobada con nota o enviada a revisión formal).
                 </p>
                 <p>
-                  El sistema <strong>nunca sanciona</strong> (L2.5): el score solo prioriza, la
-                  decisión disciplinaria siempre es tuya.
+                  El sistema <strong>nunca sanciona automáticamente</strong>: el score solo prioriza,
+                  la decisión disciplinaria siempre es tuya.
                 </p>
               </HelpButton>
             </div>
             <p className="text-body-md text-on-surface-variant mt-base max-w-2xl">
               Sesiones de alto riesgo (score ≥ {UMBRAL_COLA_REVISION}) organizadas por materia,
-              comisión y examen. Entrá hasta cada persona para revisar y decidir. El sistema
-              nunca sanciona: la decisión es siempre tuya.
+              comisión y examen. Entrá hasta cada persona para revisar y decidir.
             </p>
           </div>
           <div className="flex items-center gap-base px-sm py-base rounded-lg bg-primary-fixed/50
