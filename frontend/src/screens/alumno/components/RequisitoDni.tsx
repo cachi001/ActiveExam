@@ -35,7 +35,7 @@ export function RequisitoDni({ dni, dniOk, dniScanHabilitado, onEscanear }: Requ
       }}
     >
       {dniOk && dni ? (
-        <div className="space-y-xs text-label-sm">
+        <div className="space-y-sm text-label-sm">
           <p className="text-on-surface-variant">
             Frente y dorso registrados el {new Date(dni.fecha_captura).toLocaleDateString('es-AR', {
               day: '2-digit', month: 'long', year: 'numeric',
@@ -45,6 +45,17 @@ export function RequisitoDni({ dni, dniOk, dniScanHabilitado, onEscanear }: Requ
             Tratado como dato sensible: cifrado at-rest, finalidad acotada,
             eliminado al egreso. La verificación del documento se realiza server-side.
           </p>
+          {dniScanHabilitado && (
+            <Button
+              variant="ghost"
+              size="sm"
+              icon="refresh"
+              onClick={onEscanear}
+              className="text-label-sm text-on-surface-variant"
+            >
+              Rehacer escaneo
+            </Button>
+          )}
         </div>
       ) : dniScanHabilitado ? (
         <div className="space-y-md">

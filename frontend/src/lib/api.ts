@@ -867,7 +867,20 @@ export const api = {
     imagen: string | null;
     embedding: number[] | null;
   }): Promise<ReferenciasBiometrica & { referencia_id?: string }> {
-    if (USE_REAL_BACKEND && params.embedding && params.embedding.length === 128) {
+    // En modo real exigimos un embedding 128-d válido. Si face-api no detectó
+    // rostro y devolvió null (o length distinto), antes el código caía al
+    // bloque demo de abajo y NO posteaba al backend: el usuario veía "Referencia
+    // capturada" pero el servidor nunca la recibía → luego en el examen
+    // estadoReferenciaBiometrica devolvía false y aparecía "no enrolado".
+    // Ahora fallamos fuerte para que la UI muestre error y el alumno reintente.
+    if (USE_REAL_BACKEND) {
+      if (!params.embedding || params.embedding.length !== 128) {
+        throw new Error(
+          'No se pudo extraer el descriptor facial de la captura. ' +
+            'Asegurate de que tu rostro esté bien encuadrado, con buena luz, ' +
+            'y reintentá la captura.',
+        );
+      }
       try {
         const data = await realFetch<{ referencia_id: string }>(
           '/enrollment/embedding-referencia',

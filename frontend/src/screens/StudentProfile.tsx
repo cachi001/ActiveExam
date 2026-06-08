@@ -362,7 +362,13 @@ export default function StudentProfile() {
           </p>
         </header>
 
-        <PerfilHeaderCard principal={principal} />
+        <PerfilHeaderCard
+          principal={principal}
+          // Dejamos siempre disponible la opción de rehacer la foto de perfil:
+          // si la captura anterior salió borrosa, mal encuadrada o no llegó a
+          // persistirse, el alumno la puede tomar de nuevo en cualquier momento.
+          onRehacerFoto={consentimientoOk ? () => setPaso('foto_perfil') : undefined}
+        />
 
         <PerfilBannerEstado
           perfilCompleto={perfilCompleto}

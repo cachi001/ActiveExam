@@ -270,9 +270,16 @@ export default function Biometria() {
               <div className="text-center space-y-md">
                 <Icon name="badge" className="text-error text-[40px]" fill />
                 <p className="text-body-md text-on-surface">
-                  No hay una referencia biométrica registrada en tu perfil. Es necesaria para comparar tu identidad.
+                  No encontramos tu referencia biométrica en el servidor.
                 </p>
-                <Button variant="outline" icon="account_circle" onClick={() => navigate('/perfil')}>Ir a mi perfil</Button>
+                <p className="text-label-sm text-on-surface-variant max-w-md mx-auto">
+                  Puede pasar si la captura anterior no llegó a guardarse (sin red,
+                  rostro no detectado, etc.). Volvé a <strong>Mi perfil</strong> y
+                  rehacé la captura de referencia biométrica.
+                </p>
+                <Button variant="outline" icon="account_circle" onClick={() => navigate('/perfil')}>
+                  Ir a mi perfil
+                </Button>
               </div>
             )}
           </Card>
