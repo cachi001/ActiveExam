@@ -92,6 +92,8 @@ export interface ExamProctoringState {
   activo: boolean;
   /** últimos eventos detectados (para el panel de señales del examen). */
   eventos: EventoSesion[];
+  /** true si hay un monitor adicional conectado AHORA mismo (polling, no historial). */
+  extraMonitorActive: boolean;
 }
 
 export interface UseExamProctoringResult extends ExamProctoringState {
@@ -120,6 +122,9 @@ export function useExamProctoring(
   const [eventCount, setEventCount] = useState(0);
   const [activo, setActivo] = useState(false);
   const [eventos, setEventos] = useState<EventoSesion[]>([]);
+  // Estado en vivo del monitor adicional. Refleja la ultima lectura del polling
+  // (cada 5s). Examen.tsx lo usa para bloquear la rendicion mientras este `true`.
+  const [extraMonitorActive, setExtraMonitorActive] = useState(false);
 
   // ------ Refs del motor / pipeline / loop ------
   const engineRef = useRef<VisionEngine | null>(null);
@@ -319,7 +324,10 @@ export function useExamProctoring(
               ).getScreenDetails()
           : undefined;
       const sig = await detectExtraMonitor(provider);
+      const active = sig?.extra_monitor === true;
       extraMonitorRef.current = sig?.extra_monitor ?? null;
+      // Solo set-state si cambia (evita re-renders innecesarios).
+      setExtraMonitorActive((prev) => (prev !== active ? active : prev));
       if (monitorPollActive) setTimeout(pollMonitor, 5000);
     };
     void pollMonitor();
@@ -418,7 +426,7 @@ export function useExamProctoring(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [examen?.id]);
 
-  return { sessionId, score, eventCount, activo, eventos, detener };
+  return { sessionId, score, eventCount, activo, eventos, extraMonitorActive, detener };
 }
 
 // ---------------------------------------------------------------------------

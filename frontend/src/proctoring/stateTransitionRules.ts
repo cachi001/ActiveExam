@@ -143,6 +143,9 @@ export class StateTransitionRules {
   // Previene re-emision mientras la senal persiste; se resetea cuando la senal se limpia.
   private tabChangedEmitted = false;
   private fullscreenExitedEmitted = false;
+  // Monitor adicional: persiste cada frame mientras este conectado (no es one-shot
+  // como focus/tab). De-dup transicion false->true para emitir UNA sola vez.
+  private monitorAdicionalEmitted = false;
   // clipboard_action es stateless (cada evento copy/paste es discreto); no necesita de-dupe.
 
   constructor(config: Partial<TransitionConfig> = {}) {
@@ -265,14 +268,23 @@ export class StateTransitionRules {
         trigger_evidence: false,
       });
     }
+    // Monitor adicional: emite UNA vez por transicion false->true (de-dup).
+    // Mientras persista el monitor conectado, no re-emitimos cada frame.
     if (s.extra_monitor) {
-      out.push({
-        tipo: "monitor_adicional",
-        severidad: "alta",
-        ts_ms: s.ts_ms,
-        payload: {},
-        trigger_evidence: false,
-      });
+      if (!this.monitorAdicionalEmitted) {
+        this.monitorAdicionalEmitted = true;
+        out.push({
+          tipo: "monitor_adicional",
+          severidad: "alta",
+          ts_ms: s.ts_ms,
+          payload: {},
+          // Es una incidencia bloqueante: el cliente decide UI; flag persiste el screenshot.
+          trigger_evidence: true,
+        });
+      }
+    } else {
+      // Monitor desconectado: resetea de-dupe para la proxima vez.
+      this.monitorAdicionalEmitted = false;
     }
 
     // --- C-25: cambio_pestana (de-dup: un evento por transicion hidden->visible) ---
