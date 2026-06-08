@@ -54,6 +54,32 @@ export const SEVERITY_BADGE_COLORS: Record<Severidad, string> = {
   critica: 'bg-error text-on-error',
 };
 
+/**
+ * Clases de Tailwind para pintar la CARD de un evento del log con un fondo
+ * suave matching la severidad + un acento de borde izquierdo. Asi se distinguen
+ * visualmente sin recargar (las cards grises deprimian la lectura).
+ */
+export const SEVERITY_CARD_COLORS: Record<Severidad, string> = {
+  baseline: 'bg-surface-container-low/60 border-outline-variant/40 border-l-4 border-l-outline-variant',
+  baja: 'bg-success-container/30 border-success/20 border-l-4 border-l-success',
+  media: 'bg-warning-container/40 border-warning/30 border-l-4 border-l-warning',
+  alta: 'bg-error-container/40 border-error/30 border-l-4 border-l-error',
+  critica: 'bg-error/15 border-error/50 border-l-4 border-l-error',
+};
+
+/**
+ * Rangos de score por nivel de severidad — usado por la Leyenda visual.
+ * Los pesos se mapean a "rango acumulable" (peso del evento + bono persistencia).
+ * Coherente con PESO_SCORE de riskWeights.ts (0/5/20/50/100).
+ */
+export const SEVERITY_RANGES: Record<Severidad, { label: string; descripcion: string; peso: number }> = {
+  baseline: { label: 'Base', descripcion: 'Sin riesgo: estado normal del examen.', peso: 0 },
+  baja: { label: 'Baja', descripcion: 'Ruido leve: gestos breves, oclusiones momentaneas.', peso: 5 },
+  media: { label: 'Media', descripcion: 'Patron a observar: cambio de pestana, foco perdido, copiar/pegar.', peso: 20 },
+  alta: { label: 'Alta', descripcion: 'Incidencia clara: monitor adicional, multiples rostros.', peso: 50 },
+  critica: { label: 'Critica', descripcion: 'Incidente bloqueante: requiere intervencion inmediata.', peso: 100 },
+};
+
 // ---------------------------------------------------------------------------
 // C-33: Helpers de color del gauge de riesgo
 // ---------------------------------------------------------------------------

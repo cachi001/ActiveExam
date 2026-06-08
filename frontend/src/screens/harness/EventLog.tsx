@@ -9,7 +9,7 @@ import { Icon, Card, Button, Badge, SeverityBadge, SectionTitle } from '../../ui
 import { SEVERIDAD_LABEL, TIPO_EVENTO_LABEL } from '../../lib/api';
 import type { Severidad, TipoEvento } from '../../lib/types';
 import { LOG_MAX, type HarnessLogEntry, type HarnessState } from './types';
-import { formatRelativeTs, SEVERITY_ORDER, SEVERITY_BADGE_COLORS } from './helpers';
+import { formatRelativeTs, SEVERITY_ORDER, SEVERITY_BADGE_COLORS, SEVERITY_CARD_COLORS } from './helpers';
 import { formatRostrosConOrigen } from '../../lib/faceCountLabel';
 
 interface EventLogProps {
@@ -119,11 +119,7 @@ export default function EventLog({
             return (
               <div
                 key={entry.id}
-                className={`rounded-xl border p-sm space-y-base transition-all ${
-                  sev === 'alta' || sev === 'critica'
-                    ? 'bg-error-container/20 border-error/30'
-                    : 'bg-surface-container-low border-outline-variant/40'
-                }`}
+                className={`rounded-xl border p-sm space-y-base transition-all ${SEVERITY_CARD_COLORS[sev]}`}
               >
                 {/* Fila principal */}
                 <div className="flex items-start justify-between gap-sm flex-wrap">
