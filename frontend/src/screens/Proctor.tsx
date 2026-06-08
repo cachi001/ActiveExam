@@ -101,20 +101,28 @@ export default function Proctor() {
 
   // Particiona por modo y AGRUPA los exámenes por exam_id: primero el examen
   // concreto que se está rindiendo, y dentro sus personas (arquitectura correcta).
+  // Las sesiones modo='examen' sin exam_id (legacy / orfanas) se separan: no son
+  // exámenes reales ni pruebas — confunden al proctor si se mezclan con cualquiera
+  // de los dos.
   const { gruposExamen, diagnostico, otras } = useMemo(() => {
     const examen: SesionProctoringResumen[] = [];
     const diagnostico: SesionProctoringResumen[] = [];
     const otras: SesionProctoringResumen[] = [];
     for (const s of sesiones) {
-      if (s.modo === 'examen') examen.push(s);
-      else if (s.modo === 'diagnostico') diagnostico.push(s);
+      if (s.modo === 'examen') {
+        // Sin exam_id no podemos joinear con el catálogo académico: tratamos
+        // la sesión como huérfana y la mostramos en la sección "Otras" para
+        // que no se confunda con un examen real ni con una prueba.
+        if (!s.exam_id) otras.push(s);
+        else examen.push(s);
+      } else if (s.modo === 'diagnostico') diagnostico.push(s);
       else otras.push(s);
     }
 
-    // Agrupa las sesiones de examen por exam_id (las sin id caen en un grupo aparte).
+    // Agrupa las sesiones de examen por exam_id.
     const porExamen = new Map<string, { examInfo: ExamInfo | null; sesiones: SesionProctoringResumen[] }>();
     for (const s of examen) {
-      const key = s.exam_id ?? '__sin_examen__';
+      const key = s.exam_id!;
       if (!porExamen.has(key)) porExamen.set(key, { examInfo: joinExamInfo(s.exam_id), sesiones: [] });
       porExamen.get(key)!.sesiones.push(s);
     }
@@ -228,8 +236,10 @@ export default function Proctor() {
 
               {otras.length > 0 && (
                 <section className="space-y-sm">
-                  <SectionTitle sub={`${otras.length} sesión${otras.length !== 1 ? 'es' : ''}`}>
-                    Otras
+                  <SectionTitle
+                    sub={`${otras.length} sesión${otras.length !== 1 ? 'es' : ''} sin examen vinculado o de origen desconocido`}
+                  >
+                    Sin examen vinculado
                   </SectionTitle>
                   {otras.map((s) => (
                     <SesionVivoCard key={s.id} sesion={s} onAbrir={handleAbrir} />

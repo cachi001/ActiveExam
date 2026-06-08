@@ -332,11 +332,13 @@ export function useExamProctoring(
         sessionIdRef.current = existingSessionId;
         setSessionId(existingSessionId);
         sessionPromiseRef.current = Promise.resolve(existingSessionId);
-      } else {
+      } else if (examen?.id) {
         // Abrir sesión en el backend (fire-and-forget; sessionPromiseRef permite que
-        // el primer evento espere si llega antes de que resuelva).
+        // el primer evento espere si llega antes de que resuelva). Exigimos `examen.id`:
+        // sin él, la sesión quedaba orfana ("examen sin examen vinculado") y aparecía
+        // en supervisión en vivo sin contexto, indistinguible de una prueba.
         sessionPromiseRef.current = api
-          .crearSesionProctoring('examen', examen?.nombre, examen?.id)
+          .crearSesionProctoring('examen', examen.nombre, examen.id)
           .then((s) => {
             if (cancelled) return null;
             sessionIdRef.current = s.id;
@@ -345,6 +347,11 @@ export function useExamProctoring(
             return s.id;
           })
           .catch(() => null);
+      } else {
+        // Llegamos a /examen sin un examenActivo válido (deep-link, reload sin
+        // contexto). NO creamos sesión orfana — el flujo del alumno falla seguro
+        // y el panel de supervisión queda limpio.
+        sessionPromiseRef.current = Promise.resolve(null);
       }
 
       // Cargar motor real; fallback honesto al stub si init() falla (no rompe).
