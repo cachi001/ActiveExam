@@ -155,6 +155,12 @@ let enrollmentAlumno: EstadoEnrollment = {
   perfil_completo: false,
 };
 
+/**
+ * Estado in-memory de las solicitudes de vía alternativa (C-63).
+ * Clave: examId (o "perfil"). Valor: estado actual.
+ */
+const _estadosViaAlternativa = new Map<string, string>();
+
 /** Recalcula `perfil_completo` según las reglas del gate. */
 function recalcularPerfilCompleto(e: EstadoEnrollment): EstadoEnrollment {
   const consentimientoValido =
@@ -162,7 +168,6 @@ function recalcularPerfilCompleto(e: EstadoEnrollment): EstadoEnrollment {
     (e.consentimiento.via_alternativa || e.consentimiento.version === CONSENT_TEXT.version);
 
   const biometriaVigente =
-    e.consentimiento?.via_alternativa === true ||
     (e.biometria !== null &&
       e.biometria.captura_completada &&
       e.biometria.vigencia !== 'caducada');
@@ -570,6 +575,47 @@ export const api = {
     const e = recalcularPerfilCompleto(enrollmentAlumno);
     enrollmentAlumno = e;
 
+    // C-63: verificar vía alternativa pendiente / habilitada antes del gate de perfil
+    if (examenId) {
+      const estadoAlt = _estadosViaAlternativa.get(examenId);
+      if (estadoAlt === 'pendiente_proctor') {
+        return {
+          puede: false,
+          codigo: 'via_alternativa_pendiente',
+          razon: 'Tu verificación alternativa está pendiente de aprobación de un proctor.',
+        };
+      }
+      if (estadoAlt === 'via_alternativa_habilitada' || estadoAlt === 'habilitado_por_proctor') {
+        // Proctor habilitó — puede rendir sin biometría. Saltar gate de biometría.
+        // Aún se verifica el acuse por-examen (capa 2).
+        const acuse = ACUSES_POR_EXAMEN.get(examenId);
+        if (!acuse || !acuse.afirmativo) {
+          return {
+            puede: false,
+            codigo: 'acuse_examen_faltante',
+            razon: 'Falta el acuse de consentimiento para este examen. Confirmá tu participación antes de rendir.',
+          };
+        }
+        return { puede: true };
+      }
+    }
+    // También verificar estado del perfil para vía alternativa habilitada (enrollment)
+    const estadoAltPerfil = _estadosViaAlternativa.get('perfil');
+    if (estadoAltPerfil === 'via_alternativa_habilitada' || estadoAltPerfil === 'habilitado_por_proctor') {
+      // El proctor habilitó el perfil — puede rendir sin biometría (C-63 D-04)
+      if (examenId) {
+        const acuse = ACUSES_POR_EXAMEN.get(examenId);
+        if (!acuse || !acuse.afirmativo) {
+          return {
+            puede: false,
+            codigo: 'acuse_examen_faltante',
+            razon: 'Falta el acuse de consentimiento para este examen. Confirmá tu participación antes de rendir.',
+          };
+        }
+      }
+      return { puede: true };
+    }
+
     // Capa 1: perfil completo (C-22)
     if (!e.perfil_completo) {
       const faltantes: string[] = [];
@@ -592,6 +638,15 @@ export const api = {
           faltantes.push('renovación de la referencia biométrica (requerida por deriva)');
           codigo = 'biometria_renovacion_requerida';
         }
+      }
+
+      // C-63: si hay vía alternativa pendiente en el perfil, mostrar ese código
+      if (estadoAltPerfil === 'pendiente_proctor') {
+        return {
+          puede: false,
+          codigo: 'via_alternativa_pendiente',
+          razon: 'Tu verificación alternativa está pendiente de aprobación de un proctor.',
+        };
       }
 
       return {
@@ -661,6 +716,58 @@ export const api = {
     await delay(0);
     enrollmentAlumno = recalcularPerfilCompleto(enrollmentAlumno);
     return { ...enrollmentAlumno };
+  },
+
+  // -------------------------------------------------------------------------
+  // Vía alternativa — C-63
+  // -------------------------------------------------------------------------
+
+  /**
+   * Registra una solicitud de vía alternativa sin biometría (C-63).
+   * El alumno queda en estado pendiente_proctor hasta que un proctor habilite.
+   * Retorna { estado, puede_rendir } — puede_rendir=false mientras sea pendiente.
+   */
+  async solicitarViaAlternativa(examId: string): Promise<{ estado: string; puede_rendir: boolean }> {
+    await delay(400);
+    if (USE_REAL_BACKEND) {
+      const token = authProvider.getToken?.() ?? '';
+      const resp = await fetch(`${API_BASE}/consent/alternative`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ exam_id: examId }),
+      });
+      if (!resp.ok) throw new Error(`solicitarViaAlternativa: ${resp.status}`);
+      return resp.json();
+    }
+    // Mock demo: guardar estado de vía alternativa pendiente
+    _estadosViaAlternativa.set(examId, 'pendiente_proctor');
+    return { estado: 'pendiente_proctor', puede_rendir: false };
+  },
+
+  /**
+   * Consulta el estado actual de la solicitud de vía alternativa (C-63).
+   * Retorna { estado } si existe, null si no hay solicitud.
+   */
+  async estadoViaAlternativa(examId: string): Promise<{ estado: string } | null> {
+    await delay(150);
+    if (USE_REAL_BACKEND) {
+      const token = authProvider.getToken?.() ?? '';
+      const resp = await fetch(`${API_BASE}/consent/gate?exam_id=${encodeURIComponent(examId)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!resp.ok) return null;
+      const data = await resp.json();
+      if (
+        data.resolucion === 'via_alternativa_pendiente' ||
+        data.resolucion === 'via_alternativa_habilitada'
+      ) {
+        return { estado: data.resolucion };
+      }
+      return null;
+    }
+    // Mock demo
+    const estado = _estadosViaAlternativa.get(examId);
+    return estado != null ? { estado } : null;
   },
 
   /**

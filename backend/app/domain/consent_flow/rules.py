@@ -27,9 +27,11 @@ from app.domain.consent_flow.text_catalog import ConsentText, get_texto
 class ResolucionConsentimiento(str, enum.Enum):
     """Como resolvio el estudiante la base legal del tratamiento biometrico."""
 
-    CONSENTIDO = "consentido"          # acuse valido registrado
-    VIA_ALTERNATIVA = "via_alternativa"  # eligio verificacion sin biometria
-    NO_RESUELTO = "no_resuelto"        # ni una ni otra -> gate cerrado
+    CONSENTIDO = "consentido"                             # acuse valido registrado
+    VIA_ALTERNATIVA = "via_alternativa"                   # DEPRECATED -> tratar como HABILITADA (retrocompat)
+    VIA_ALTERNATIVA_PENDIENTE = "via_alternativa_pendiente"   # C-63: solicitud pendiente de proctor
+    VIA_ALTERNATIVA_HABILITADA = "via_alternativa_habilitada" # C-63: proctor habilito; puede rendir
+    NO_RESUELTO = "no_resuelto"                           # ni una ni otra -> gate cerrado
 
 
 def validar_accion_afirmativa(affirmative_action: bool) -> None:
@@ -75,18 +77,29 @@ def hash_acuse(
 
 
 def evaluar_gate(resolucion: ResolucionConsentimiento) -> bool:
-    """Gate D4: ``True`` si se puede avanzar (consentido o via alternativa).
+    """Gate D4: ``True`` si se puede avanzar (consentido o via alternativa habilitada).
 
-    - CONSENTIDO -> biometria habilitada.
-    - VIA_ALTERNATIVA -> no se exige biometria (se va a proctor); el avance es valido.
-    - NO_RESUELTO -> ``ConsentNotResolvedError`` (-> 403): no se habilita biometria."""
+    - CONSENTIDO           -> biometria habilitada; puede avanzar.
+    - VIA_ALTERNATIVA      -> DEPRECATED, retrocompat: tratar como HABILITADA; puede avanzar.
+    - VIA_ALTERNATIVA_HABILITADA -> proctor habilito; puede avanzar sin biometria.
+    - VIA_ALTERNATIVA_PENDIENTE  -> solicitud pendiente; gate CERRADO (C-63 D-03).
+    - NO_RESUELTO          -> ``ConsentNotResolvedError`` (-> 403): no se habilita biometria.
+    """
+    if resolucion == ResolucionConsentimiento.VIA_ALTERNATIVA_PENDIENTE:
+        raise ConsentNotResolvedError(
+            "Verificacion alternativa pendiente de aprobacion por proctor (C-63 D-03)."
+        )
     if resolucion == ResolucionConsentimiento.NO_RESUELTO:
         raise ConsentNotResolvedError(
             "Sin consentimiento valido ni via alternativa: biometria no habilitada (D4)."
         )
+    # CONSENTIDO, VIA_ALTERNATIVA (retrocompat), VIA_ALTERNATIVA_HABILITADA -> puede avanzar
     return True
 
 
 def biometria_habilitada(resolucion: ResolucionConsentimiento) -> bool:
-    """``True`` SOLO si se consintio la biometria (la via alternativa NO la exige)."""
+    """``True`` SOLO si se consintio la biometria (la via alternativa NO la exige).
+
+    C-63: VIA_ALTERNATIVA_HABILITADA -> la verificacion fue humana; biometria no requerida.
+    """
     return resolucion == ResolucionConsentimiento.CONSENTIDO

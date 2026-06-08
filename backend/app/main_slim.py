@@ -35,6 +35,9 @@ from app.infrastructure.persistence.session_slim import (
 )
 from app.infrastructure.storage.db_photo_storage import DbPhotoStorageService
 from app.presentation.api.v1.auth.router import router as auth_router
+from app.presentation.api.v1.consent.dependencies import get_consent_service
+from app.presentation.api.v1.consent.dependencies_slim import get_consent_service_slim
+from app.presentation.api.v1.consent.router import router as consent_router
 from app.presentation.api.v1.enrollment.router import router as enrollment_router
 from app.presentation.api.v1.proctoring.router import create_proctoring_router
 from app.presentation.api.v1.users.router import router as users_router
@@ -131,6 +134,11 @@ def create_slim_app() -> FastAPI:
 
     # Enrollment biometrico (c-56/c-57): foto (BYTEA) + embedding cifrado
     app.include_router(enrollment_router, prefix="/api/v1/enrollment", tags=["enrollment"])
+
+    # Consentimiento (C-63): via alternativa + habilitacion por proctor.
+    # Usamos dependency_override para inyectar el servicio slim (sin tabla consentimiento).
+    app.dependency_overrides[get_consent_service] = get_consent_service_slim
+    app.include_router(consent_router, prefix="/api/v1/consent", tags=["consent"])
 
     return app
 

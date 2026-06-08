@@ -20,6 +20,8 @@ export default function Consent() {
   const [guardando, setGuardando] = useState(false);
   // C-58 D2: enlace "ver texto completo" en rama liviana
   const [verTextoCompleto, setVerTextoCompleto] = useState(false);
+  // C-63: estado de la solicitud de vía alternativa
+  const [estadoAlternativa, setEstadoAlternativa] = useState<'idle' | 'solicitando' | 'pendiente'>('idle');
 
   useEffect(() => {
     // Cargar texto de consentimiento y estado de enrollment en paralelo (D3: render progresivo).
@@ -45,9 +47,16 @@ export default function Consent() {
     navigate('/biometria');
   };
 
-  const alternativa = () => {
-    toast.info('Tu caso se escala a un proctor — se te asignará una vía alternativa sin biometría.');
-    navigate('/sala-espera');
+  const alternativa = async () => {
+    if (!examen || guardando) return;
+    setEstadoAlternativa('solicitando');
+    try {
+      await api.solicitarViaAlternativa(examen.id);
+      setEstadoAlternativa('pendiente');
+    } catch {
+      toast.error('No se pudo registrar tu solicitud. Intentá de nuevo.');
+      setEstadoAlternativa('idle');
+    }
   };
 
   // Formatear fecha del acuse de perfil para mostrarla en la rama liviana.
@@ -69,8 +78,24 @@ export default function Consent() {
           {texto && <p className="text-label-sm text-on-surface-variant">Versión {texto.version} · {texto.hash_texto}</p>}
         </div>
 
+        {/* C-63: pantalla de espera — vía alternativa solicitada, pendiente de proctor */}
+        {estadoAlternativa === 'pendiente' && (
+          <Card className="bg-secondary-container border-secondary/30 flex gap-md items-start">
+            <div className="w-10 h-10 rounded-xl bg-secondary-fixed text-secondary flex items-center justify-center shrink-0">
+              <Icon name="support_agent" className="text-[20px]" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-body-md font-semibold text-on-surface">Solicitud registrada</p>
+              <p className="text-label-sm text-on-surface-variant mt-base">
+                Tu solicitud quedó registrada. Un proctor verificará tu identidad antes de habilitarte.
+                No podés rendir hasta entonces.
+              </p>
+            </div>
+          </Card>
+        )}
+
         {/* Rama liviana: ya consintió en perfil con versión vigente */}
-        {yaConsintioPerfil && !verTextoCompleto ? (
+        {estadoAlternativa !== 'pendiente' && yaConsintioPerfil && !verTextoCompleto ? (
           <>
             <Card className="bg-success-container border-success/30 flex gap-md items-start">
               <div className="w-10 h-10 rounded-xl bg-primary-fixed text-primary flex items-center justify-center shrink-0">
@@ -113,8 +138,8 @@ export default function Consent() {
             </Card>
 
             <div className="flex flex-col sm:flex-row items-center justify-between gap-md">
-              <button onClick={alternativa} className="text-label-md text-on-surface-variant hover:text-primary inline-flex items-center gap-base">
-                <Icon name="support_agent" className="text-[20px]" /> No acepto — solicitar vía alternativa
+              <button onClick={alternativa} disabled={guardando || estadoAlternativa === 'solicitando'} className="text-label-md text-on-surface-variant hover:text-primary inline-flex items-center gap-base disabled:opacity-50">
+                <Icon name="support_agent" className="text-[20px]" /> {estadoAlternativa === 'solicitando' ? 'Registrando solicitud…' : 'No acepto — solicitar vía alternativa'}
               </button>
               <Button onClick={aceptar} disabled={!acepto || guardando} icon={guardando ? undefined : 'check'} iconRight={guardando ? undefined : 'arrow_forward'}>
                 {guardando
@@ -165,8 +190,8 @@ export default function Consent() {
             </Card>
 
             <div className="flex flex-col sm:flex-row items-center justify-between gap-md">
-              <button onClick={alternativa} className="text-label-md text-on-surface-variant hover:text-primary inline-flex items-center gap-base">
-                <Icon name="support_agent" className="text-[20px]" /> No acepto — solicitar vía alternativa
+              <button onClick={alternativa} disabled={guardando || estadoAlternativa === 'solicitando'} className="text-label-md text-on-surface-variant hover:text-primary inline-flex items-center gap-base disabled:opacity-50">
+                <Icon name="support_agent" className="text-[20px]" /> {estadoAlternativa === 'solicitando' ? 'Registrando solicitud…' : 'No acepto — solicitar vía alternativa'}
               </button>
               <Button onClick={aceptar} disabled={!acepto || guardando} icon={guardando ? undefined : 'check'} iconRight={guardando ? undefined : 'arrow_forward'}>
                 {guardando ? <span className="inline-flex items-center gap-xs"><Icon name="progress_activity" className="ae-spin text-[20px]" /> Registrando…</span> : 'Acepto y continúo'}

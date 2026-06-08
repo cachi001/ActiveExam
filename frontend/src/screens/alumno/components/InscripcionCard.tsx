@@ -65,6 +65,16 @@ export function InscripcionCard({
       {inscripcion.estado === 'habilitado' && (
         // C-58 D6: flex-col en mobile, flex-row en sm+ para que el <p> y el Button no compriman
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-sm pt-sm border-t border-outline-variant/40">
+          {/* C-63: badge de verificación alternativa pendiente */}
+          {codigoGate === 'via_alternativa_pendiente' && (
+            <div className="flex items-center gap-sm bg-secondary-container rounded-lg px-sm py-xs w-full">
+              <Icon name="support_agent" className="text-[18px] text-secondary shrink-0" />
+              <span className="text-label-sm text-on-surface">
+                Verificación alternativa pendiente — Pendiente de habilitación por proctor
+              </span>
+            </div>
+          )}
+
           {puedeRendirEsteExamen ? (
             <Button
               onClick={onRendir}
@@ -78,6 +88,16 @@ export function InscripcionCard({
                   Verificando…
                 </span>
               ) : 'Rendir'}
+            </Button>
+          ) : codigoGate === 'via_alternativa_pendiente' ? (
+            // C-63: botón Rendir deshabilitado con el motivo
+            <Button
+              onClick={onRendir}
+              disabled
+              icon="play_arrow"
+              className="h-10 opacity-50 cursor-not-allowed"
+            >
+              Pendiente de habilitación por proctor
             </Button>
           ) : codigoGate === 'acuse_examen_faltante' ? (
             <>

@@ -41,6 +41,33 @@ class AlternativeResponse(_Strict):
     via_alternativa: bool
     escalado_a_proctor: bool
     mensaje_id: str
+    estado: str = "pendiente_proctor"
+    puede_rendir: bool = False
+
+
+# --- C-63: schemas del flujo de habilitacion por proctor ----------------------
+
+
+class HabilitarAlternativaRequest(_Strict):
+    exam_id: str
+
+
+class HabilitarAlternativaResponse(_Strict):
+    user_id: str
+    exam_id: str
+    estado: str
+    habilitado_por: str | None
+    timestamp_habilitacion: str | None
+
+
+class PendienteItem(_Strict):
+    user_id: str
+    exam_id: str
+    timestamp_solicitud: str
+
+
+class PendientesResponse(_Strict):
+    items: list[PendienteItem]
 
 
 class GateResponse(_Strict):

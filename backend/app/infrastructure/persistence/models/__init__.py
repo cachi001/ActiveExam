@@ -7,6 +7,10 @@ porque su DDL especial (hypertable, compresion, agregados) la materializa la
 migracion 002 a mano, no la metadata declarativa.
 """
 
+from app.infrastructure.persistence.models.alternative_request import (
+    EstadoViaAlternativaDB,
+    SolicitudViaAlternativaModel,
+)
 from app.infrastructure.persistence.models.audit_log import AuditLogModel
 from app.infrastructure.persistence.models.event import EventModel
 from app.infrastructure.persistence.models.transactional import (
@@ -31,10 +35,12 @@ __all__ = [
     "EmbeddingModel",
     "EmbeddingReferenciaModel",
     "EstadoSesionDB",
+    "EstadoViaAlternativaDB",
     "EventModel",
     "EvidenciaModel",
     "ExamenModel",
     "FotoReferenciaModel",
     "SesionModel",
+    "SolicitudViaAlternativaModel",
     "UsuarioModel",
 ]
