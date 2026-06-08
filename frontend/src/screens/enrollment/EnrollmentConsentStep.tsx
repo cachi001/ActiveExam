@@ -26,6 +26,8 @@ export function EnrollmentConsentStep({ acuseActual, onConsentido }: Props) {
   const [texto, setTexto] = useState<ConsentTextResponse | null>(null);
   const [acepto, setAcepto] = useState(false); // RN-CO-02: NUNCA pre-marcado
   const [guardando, setGuardando] = useState(false);
+  // C-63: estado de la solicitud de vía alternativa del perfil
+  const [solicitandoAlternativa, setSolicitandoAlternativa] = useState<'idle' | 'solicitando' | 'pendiente'>('idle');
 
   // C-58 D3: sin estado cargandoTexto — render progresivo: el layout aparece de una,
   // los bloques se rellenan cuando llega el texto (texto?.bloques ?? []).
@@ -45,13 +47,18 @@ export function EnrollmentConsentStep({ acuseActual, onConsentido }: Props) {
   };
 
   const handleViaAlternativa = async () => {
-    if (!texto) return;
-    setGuardando(true);
-    // Vía alternativa: registra consentimiento con via_alternativa=true (RN-CO-05).
-    // El proctor humano toma el rol de verificación de identidad.
-    const acuse = await api.registrarConsentimientoPerfil(texto.version, true);
-    setGuardando(false);
-    onConsentido(acuse);
+    if (!texto || guardando) return;
+    // C-63: registrar solicitud pendiente — NO marcar perfil completo inmediatamente.
+    // El proctor debe habilitar antes de que el alumno pueda rendir.
+    setSolicitandoAlternativa('solicitando');
+    try {
+      await api.solicitarViaAlternativa('perfil');
+      setSolicitandoAlternativa('pendiente');
+      // 8.3: NO llamar onConsentido aquí — el perfil no está completo hasta que el proctor habilite.
+      // El acuse con via_alternativa solo se emite cuando el proctor habilite (c-47).
+    } catch {
+      setSolicitandoAlternativa('idle');
+    }
   };
 
   return (
@@ -118,30 +125,50 @@ export function EnrollmentConsentStep({ acuseActual, onConsentido }: Props) {
         </label>
       </Card>
 
+      {/* C-63: card de espera — solicitud pendiente de proctor */}
+      {solicitandoAlternativa === 'pendiente' && (
+        <Card className="bg-secondary-container border-secondary/30 flex gap-md items-start">
+          <div className="w-10 h-10 rounded-xl bg-secondary-fixed text-secondary flex items-center justify-center shrink-0">
+            <Icon name="support_agent" className="text-[20px]" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-body-md font-semibold text-on-surface">Solicitud registrada</p>
+            <p className="text-label-sm text-on-surface-variant mt-base">
+              Tu solicitud quedó registrada. Un proctor verificará tu identidad antes de habilitarte.
+              No podés completar el enrollment hasta entonces.
+            </p>
+          </div>
+        </Card>
+      )}
+
       {/* Acciones */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-md">
-        <button
-          onClick={handleViaAlternativa}
-          disabled={guardando}
-          className="text-label-md text-on-surface-variant hover:text-primary inline-flex items-center gap-base disabled:opacity-50"
-        >
-          <Icon name="support_agent" className="text-[20px]" />
-          No acepto — solicitar vía alternativa sin biometría
-        </button>
-        <Button
-          onClick={handleAceptar}
-          disabled={!acepto || guardando}
-          icon={guardando ? undefined : 'check'}
-          iconRight={guardando ? undefined : 'arrow_forward'}
-        >
-          {guardando ? (
-            <span className="inline-flex items-center gap-xs">
-              <Icon name="progress_activity" className="ae-spin text-[20px]" />
-              Registrando…
-            </span>
-          ) : 'Acepto y continúo'}
-        </Button>
-      </div>
+      {solicitandoAlternativa !== 'pendiente' && (
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-md">
+          <button
+            onClick={handleViaAlternativa}
+            disabled={guardando || solicitandoAlternativa === 'solicitando'}
+            className="text-label-md text-on-surface-variant hover:text-primary inline-flex items-center gap-base disabled:opacity-50"
+          >
+            <Icon name="support_agent" className="text-[20px]" />
+            {solicitandoAlternativa === 'solicitando'
+              ? 'Registrando solicitud…'
+              : 'No acepto — solicitar vía alternativa sin biometría'}
+          </button>
+          <Button
+            onClick={handleAceptar}
+            disabled={!acepto || guardando}
+            icon={guardando ? undefined : 'check'}
+            iconRight={guardando ? undefined : 'arrow_forward'}
+          >
+            {guardando ? (
+              <span className="inline-flex items-center gap-xs">
+                <Icon name="progress_activity" className="ae-spin text-[20px]" />
+                Registrando…
+              </span>
+            ) : 'Acepto y continúo'}
+          </Button>
+        </div>
+      )}
 
       {/* Nota de privacidad */}
       <p className="text-label-sm text-on-surface-variant text-center">
