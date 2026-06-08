@@ -16,6 +16,8 @@ interface HarnessHeaderProps {
   harnessState: HarnessState;
   modoSesion: boolean;
   eventosEnviados: number;
+  /** Score acumulado en vivo (0..100). Se muestra junto al indicador en sesión. */
+  harnessScore: number;
   propositoPanelOpen: boolean;
   setPropositoPanelOpen: (fn: (v: boolean) => boolean) => void;
   onStart: (conSesion: boolean) => void;
@@ -30,6 +32,7 @@ export default function HarnessHeader({
   harnessState,
   modoSesion,
   eventosEnviados,
+  harnessScore,
   propositoPanelOpen,
   setPropositoPanelOpen,
   onStart,
@@ -178,10 +181,21 @@ export default function HarnessHeader({
           )}
           {/* Indicador en vivo — visible solo mientras la detección está corriendo */}
           {harnessState === 'running' && modoSesion && (
-            <span className="inline-flex items-center gap-base text-label-sm text-primary bg-primary-container px-sm py-base rounded-full font-semibold border border-primary/20">
-              <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-              Transmitiendo en vivo · {eventosEnviados} evento{eventosEnviados !== 1 ? 's' : ''} enviado{eventosEnviados !== 1 ? 's' : ''}
-            </span>
+            <>
+              <span className="inline-flex items-center gap-base text-label-sm text-on-primary bg-primary px-sm py-base rounded-full font-semibold shadow-sm">
+                <span className="w-2 h-2 rounded-full bg-on-primary animate-pulse" />
+                Transmitiendo en vivo · {eventosEnviados} evento{eventosEnviados !== 1 ? 's' : ''} enviado{eventosEnviados !== 1 ? 's' : ''}
+              </span>
+              <span
+                className="inline-flex items-center gap-base text-label-sm font-bold
+                  bg-surface-container-lowest text-on-surface px-sm py-base rounded-full
+                  border border-outline-variant/60 shadow-sm"
+                title="Score acumulado de esta sesión (igual al que persiste el backend)"
+              >
+                <Icon name="speed" className="text-[16px] text-primary" fill />
+                Score {harnessScore}
+              </span>
+            </>
           )}
           {harnessState === 'running' && !modoSesion && (
             <span className="inline-flex items-center gap-base text-label-sm text-on-surface-variant bg-surface-container px-sm py-base rounded-full font-semibold border border-outline-variant/40">

@@ -43,15 +43,15 @@ function PersonaCard({
       <div className="flex items-center flex-wrap gap-md mt-base text-label-sm text-on-surface-variant">
         <span className="inline-flex items-center gap-base">
           <Icon name="sensors" className="text-[15px]" />
-          {sesion.total_eventos} señales
+          {sesion.total_eventos ?? 0} señales
         </span>
         <span
           className={`inline-flex items-center gap-base ${
-            sesion.total_discrepancias > 0 ? 'text-error' : ''
+            (sesion.total_discrepancias ?? 0) > 0 ? 'text-error' : ''
           }`}
         >
           <Icon name="difference" className="text-[15px]" />
-          {sesion.total_discrepancias} diferencias
+          {sesion.total_discrepancias ?? 0} diferencias
         </span>
         <span className="inline-flex items-center gap-base">
           <Icon name="schedule" className="text-[15px]" />

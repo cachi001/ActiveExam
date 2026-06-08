@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { StaffShell } from '../ui/shells';
 import { Icon, Card, Badge, Button, SectionTitle } from '../ui/components';
+import { HelpButton } from '../ui/HelpButton';
 import { StatCard } from './proctoring/StatCard';
 import { Link } from '../lib/router';
 import { api } from '../lib/api';
@@ -23,9 +24,21 @@ export default function AdminDashboard() {
       <div className="space-y-lg animate-in fade-in duration-500">
         {/* Header */}
         <div>
-          <h1 className="font-headline text-headline-md text-on-surface tracking-tight">
-            Resumen de actividad
-          </h1>
+          <div className="flex items-center gap-sm">
+            <h1 className="font-headline text-headline-md text-on-surface tracking-tight">
+              Resumen de actividad
+            </h1>
+            <HelpButton title="Panel de administración">
+              <p>
+                Vista agregada de la actividad del cuatrimestre: exámenes, sesiones supervisadas,
+                tasa de flag y tiempo medio de revisión.
+              </p>
+              <p>
+                Desde acá llegás a configurar exámenes, ver reportes, auditoría y gestión de
+                usuarios. La supervisión en vivo y la cola de revisión están en el menú lateral.
+              </p>
+            </HelpButton>
+          </div>
           <p className="text-body-md text-on-surface-variant mt-base">
             Estado de exámenes, sesiones supervisadas y cola de revisión del cuatrimestre.
           </p>

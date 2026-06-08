@@ -1,6 +1,7 @@
 // Portal del alumno — Dashboard de aterrizaje post-login (C-21)
 import { useEffect, useState } from 'react';
 import { Card, Button, Icon } from '../ui/components';
+import { HelpButton } from '../ui/HelpButton';
 import { StudentShell } from '../ui/shells';
 import { useNavigate } from '../lib/router';
 import { useApp } from '../lib/store';
@@ -37,9 +38,26 @@ export default function AlumnoDashboard() {
     <StudentShell>
       <div className="max-w-2xl mx-auto space-y-xl">
         <header>
-          <h1 className="font-headline text-headline-md text-on-surface tracking-tight">
-            Hola, {principal?.nombre ?? 'estudiante'} 👋
-          </h1>
+          <div className="flex items-center gap-sm">
+            <h1 className="font-headline text-headline-md text-on-surface tracking-tight">
+              Hola, {principal?.nombre ?? 'estudiante'} 👋
+            </h1>
+            <HelpButton title="Tu dashboard">
+              <p>
+                Esta es tu pantalla de inicio: vas a ver tus próximos exámenes y si tu perfil está
+                listo para rendir.
+              </p>
+              <p>
+                Antes de rendir necesitás completar el <strong>enrollment</strong> en <em>Mi perfil</em>:
+                consentimiento informado, foto y captura biométrica. Si algo falta, te lo vamos a
+                avisar acá arriba con un cartel naranja.
+              </p>
+              <p>
+                Desde el menú lateral llegás a tus materias e inscripciones, y a tus exámenes
+                programados.
+              </p>
+            </HelpButton>
+          </div>
           <p className="text-body-md text-on-surface-variant mt-xs">{principal?.email} · {INSTITUTION.nombreCorto}</p>
         </header>
 

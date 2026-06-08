@@ -9,8 +9,8 @@ import { StatCard } from './StatCard';
 
 export function ResumenSesiones({ sesiones }: { sesiones: SesionProctoringResumen[] }) {
   const totalSesiones = sesiones.length;
-  const totalEventos = sesiones.reduce((acc, s) => acc + s.total_eventos, 0);
-  const totalDiscrepancias = sesiones.reduce((acc, s) => acc + s.total_discrepancias, 0);
+  const totalEventos = sesiones.reduce((acc, s) => acc + (s.total_eventos ?? 0), 0);
+  const totalDiscrepancias = sesiones.reduce((acc, s) => acc + (s.total_discrepancias ?? 0), 0);
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-3 gap-md">

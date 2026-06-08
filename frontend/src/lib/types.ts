@@ -368,6 +368,12 @@ export interface SesionProctoringResumen {
   modo: string; // 'diagnostico' | 'examen' | ...
   etiqueta?: string | null;
   creada_en: string; // ISO 8601
+  /**
+   * Timestamp de finalización (ISO 8601) o null si la sesión sigue en vivo.
+   * Permite a la supervisión en vivo filtrar las cerradas y a "Sesiones
+   * grabadas" listarlas todas.
+   */
+  finalizada_en?: string | null;
   total_eventos: number;
   total_discrepancias: number;
   score: number;

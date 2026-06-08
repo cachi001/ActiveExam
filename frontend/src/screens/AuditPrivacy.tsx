@@ -1,5 +1,6 @@
 import { StaffShell } from '../ui/shells';
 import { Icon, Card, SectionTitle, Button } from '../ui/components';
+import { HelpButton } from '../ui/HelpButton';
 import { StatCard } from './proctoring/StatCard';
 import { ADMIN_NAV } from './AdminDashboard';
 import { AuditLogItem } from './admin/components/AuditLogItem';
@@ -27,9 +28,25 @@ export default function AuditPrivacy() {
         {/* Header */}
         <div className="flex items-start justify-between gap-md flex-wrap">
           <div>
-            <h1 className="font-headline text-headline-md text-on-surface tracking-tight">
-              Auditoría y privacidad
-            </h1>
+            <div className="flex items-center gap-sm">
+              <h1 className="font-headline text-headline-md text-on-surface tracking-tight">
+                Auditoría y privacidad
+              </h1>
+              <HelpButton title="Auditoría y privacidad">
+                <p>
+                  Registro <strong>inmutable</strong> de todas las acciones relevantes del sistema y
+                  cadena de custodia de la evidencia (hash + firma server-side).
+                </p>
+                <p>
+                  Abajo encontrás los <em>derechos del titular</em> que exige la Ley 25.326
+                  argentina: acceso, rectificación, supresión y reclamo ante la AAIP.
+                </p>
+                <p>
+                  La evidencia que se elimina por DSR queda en hold si hay un procedimiento
+                  disciplinario activo (regla #7 del proyecto).
+                </p>
+              </HelpButton>
+            </div>
             <p className="text-body-md text-on-surface-variant mt-base">
               Registro inmutable de acciones y cadena de custodia. Derechos del titular disponibles abajo.
             </p>

@@ -21,6 +21,14 @@ const NIVEL_LABEL = { bajo: 'Riesgo bajo', medio: 'Riesgo medio', alto: 'Riesgo 
 
 export function DetalleHeader({ detalle }: { detalle: SesionProctoringDetalle }) {
   const nivel = nivelRiesgo(detalle.score);
+  // El backend de detalle (GET /proctoring/sessions/{id}) NO devuelve los
+  // contadores agregados; los derivamos a partir de los eventos cargados.
+  // Fallback: usa los del resumen si vinieron (mock o respuestas antiguas).
+  const totalEventos = detalle.eventos?.length ?? detalle.total_eventos ?? 0;
+  const totalDiscrepancias =
+    detalle.eventos?.filter((e) => e.veredicto_reinferencia === 'discrepancia').length ??
+    detalle.total_discrepancias ??
+    0;
 
   return (
     <Card className="space-y-lg">
@@ -54,12 +62,12 @@ export function DetalleHeader({ detalle }: { detalle: SesionProctoringDetalle })
           sub={NIVEL_LABEL[nivel]}
           tono={nivel === 'alto' ? 'error' : nivel === 'medio' ? 'warning' : 'success'}
         />
-        <StatCard icon="notifications" label="Eventos" value={detalle.total_eventos} tono="neutral" />
+        <StatCard icon="notifications" label="Eventos" value={totalEventos} tono="neutral" />
         <StatCard
           icon="rule"
           label="Discrepancias"
-          value={detalle.total_discrepancias}
-          tono={detalle.total_discrepancias > 0 ? 'error' : 'success'}
+          value={totalDiscrepancias}
+          tono={totalDiscrepancias > 0 ? 'error' : 'success'}
         />
       </div>
 

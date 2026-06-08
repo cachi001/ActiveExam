@@ -16,6 +16,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StaffShell } from '../ui/shells';
 import { Card, Button, Icon, SectionTitle } from '../ui/components';
+import { HelpButton } from '../ui/HelpButton';
 import { STAFF_NAV } from '../ui/nav';
 import { useToast } from '../ui/toast';
 import { useNavigate } from '../lib/router';
@@ -64,7 +65,10 @@ export default function Proctor() {
     if (manual) setRefrescando(true);
     try {
       const data = await api.listarSesionesProctoring();
-      setSesiones(ordenarPorRiesgo(data));
+      // Supervisión EN VIVO: solo sesiones que todavía no fueron finalizadas.
+      // Las cerradas (finalizada_en != null) viven en /admin/proctoring-sessions.
+      const enVivo = data.filter((s) => !s.finalizada_en);
+      setSesiones(ordenarPorRiesgo(enVivo));
       setUltimoRefresh(Date.now());
     } catch {
       // Degradación silenciosa: avisamos pero NO rompemos el loop ni borramos
@@ -130,9 +134,25 @@ export default function Proctor() {
         {/* Header: título + indicador en vivo + refresco manual */}
         <div className="flex items-start justify-between gap-md flex-wrap">
           <div>
-            <h1 className="font-headline text-headline-md text-on-surface tracking-tight">
-              Supervisión en vivo
-            </h1>
+            <div className="flex items-center gap-sm">
+              <h1 className="font-headline text-headline-md text-on-surface tracking-tight">
+                Supervisión en vivo
+              </h1>
+              <HelpButton title="Supervisión en vivo">
+                <p>
+                  Acá ves las sesiones de proctoring <strong>en curso</strong> agrupadas por examen.
+                  Las sesiones que ya finalizaron viven en <em>Sesiones grabadas</em>.
+                </p>
+                <p>
+                  Los exámenes con mayor riesgo aparecen arriba. Click en un examen para ver el grid
+                  de personas; click en una persona para abrir su detalle y revisar evidencia.
+                </p>
+                <p>
+                  El panel <strong>nunca sanciona</strong>: el score solo prioriza la revisión humana
+                  (L2.5). La decisión disciplinaria siempre es del revisor.
+                </p>
+              </HelpButton>
+            </div>
             <p className="text-body-md text-on-surface-variant mt-base">
               Los exámenes con mayor riesgo se muestran primero.
             </p>

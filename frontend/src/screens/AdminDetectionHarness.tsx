@@ -76,6 +76,7 @@ export default function AdminDetectionHarness() {
           harnessState={h.harnessState}
           modoSesion={h.modoSesion}
           eventosEnviados={h.eventosEnviados}
+          harnessScore={h.harnessScore}
           propositoPanelOpen={h.propositoPanelOpen}
           setPropositoPanelOpen={h.setPropositoPanelOpen}
           onStart={h.startHarness}

@@ -30,7 +30,10 @@ export default function Cierre() {
       // 2. Leer conteos reales del backend.
       const detalle = await api.obtenerSesionProctoring(proctoringSessionId).catch(() => null);
       if (detalle) {
-        setTotalEventos(detalle.total_eventos ?? null);
+        // El detalle del backend no devuelve total_eventos agregado; lo derivamos
+        // de la lista de eventos (mismo criterio que DetalleHeader).
+        const cuenta = detalle.eventos?.length ?? detalle.total_eventos ?? null;
+        setTotalEventos(cuenta);
         setScoreBackend(detalle.score ?? null);
       }
     })();
