@@ -32,7 +32,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { CaptureOverlay } from './biometric/CaptureOverlay';
+import type { OvalTono } from './biometric/CaptureOval';
 import { CaptureError } from './biometric/CaptureError';
+import { evaluateFraming, type FramingHint } from './biometric/framingGuide';
+import { playStepCompleted, playSuccess, playHint } from './biometric/sounds';
 import { loadEnrollmentEngine, disposeEnrollmentEngine } from '../vision/enrollmentEngineLoader';
 import {
   evaluateChallengeRelative,
@@ -107,6 +110,44 @@ function variance(arr: number[]): number {
 function stddev(arr: number[]): number {
   return Math.sqrt(variance(arr));
 }
+
+/**
+ * Mide luminancia promedio (0..255) de un <video> usando un canvas pequeño.
+ * Reusa el mismo canvas entre llamadas para no asignar memoria por frame.
+ * Devuelve null si no se pudo medir (canvas bloqueado por CORS, video sin
+ * datos, etc.). Resolución reducida (32×24) para que el costo sea trivial.
+ */
+function medirLuminancia(
+  video: HTMLVideoElement | null,
+  canvasRef: { current: HTMLCanvasElement | null },
+): number | null {
+  if (!video || video.videoWidth === 0 || video.videoHeight === 0) return null;
+  try {
+    if (!canvasRef.current) {
+      canvasRef.current = document.createElement('canvas');
+      canvasRef.current.width = 32;
+      canvasRef.current.height = 24;
+    }
+    const ctx = canvasRef.current.getContext('2d');
+    if (!ctx) return null;
+    ctx.drawImage(video, 0, 0, 32, 24);
+    const data = ctx.getImageData(0, 0, 32, 24).data;
+    let sum = 0;
+    const pixels = data.length / 4;
+    for (let i = 0; i < data.length; i += 4) {
+      sum += 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+    }
+    return sum / pixels;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Frames consecutivos que un hint debe sostenerse antes de mostrarlo (histéresis).
+ * Sin esto la guía parpadea con cada ruido del detector y resulta agotadora.
+ */
+const HINT_STABLE_FRAMES = 8;
 
 // Cooldown entre pasos: subido a 800ms para que el alumno alcance a leer el
 // nuevo reto y volver a posición neutral. Con 350ms ya pasaba que el residuo
@@ -239,6 +280,23 @@ export function BiometricCapture({
   const [cooldownActivo, setCooldownActivo]         = useState(false);
   const [retoRecienResuelto, setRetoRecienResuelto] = useState<SequentialChallenge | null>(null);
 
+  // Guía de encuadre + progreso visual (mejora UX) ─────────────────────────
+  /** Hint vigente para la sección inferior. Se actualiza con histéresis para no parpadear. */
+  const [framingHint, setFramingHint] = useState<FramingHint | null>(null);
+  /** Progreso 0..1 que pinta el anillo del óvalo (retos completos + fracción del activo). */
+  const [progreso, setProgreso] = useState(0);
+  /** Tono del anillo: idle (loading) → ok (motor listo + sin hint) → aviso (hint activo) → exito. */
+  const [tonoOvalo, setTonoOvalo] = useState<OvalTono>('idle');
+
+  // Refs para que el loop RAF lea/escriba sin re-renderear cada frame.
+  const framingHintRef       = useRef<FramingHint | null>(null);
+  const framingStableRef     = useRef<{ hint: FramingHint | null; frames: number }>({
+    hint: null,
+    frames: 0,
+  });
+  /** Canvas reusable para medir luminancia (evita asignar uno por frame). */
+  const luminanceCanvasRef   = useRef<HTMLCanvasElement | null>(null);
+
   // turnDirection como estado estable inicializado al montar (Task 9.3)
   // Se inicializa con la dirección elegida al montar (se sincroniza con turnDirectionRef)
   const [turnDirection, setTurnDirection] = useState<TurnDirection>('izquierda');
@@ -337,6 +395,10 @@ export function BiometricCapture({
   // Al entrar en fase 'exito', mostrar "Verificación completada" ~1.6s y recién invocar onComplete
   useEffect(() => {
     if (fase !== 'exito') return;
+    // Feedback auditivo + visual del cierre antes de cerrar el overlay.
+    playSuccess();
+    setTonoOvalo('exito');
+    setProgreso(1);
     const t = setTimeout(() => {
       procesarCompletadoRef.current?.();
     }, 1600);
@@ -379,6 +441,9 @@ export function BiometricCapture({
     cooldownActiveRef.current = true;
     setCooldownActivo(true);
     setRetoRecienResuelto(retoResueltoId);
+    // Feedback auditivo: tick corto al completar un paso (no interfiere con el
+    // arpegio final, que tiene su propio cooldown interno en sounds.ts).
+    playStepCompleted();
     resolverRetoFromLoop(retoResueltoId);
 
     // avanzarAlSiguienteReto después del cooldown (Task 6.2)
@@ -417,6 +482,49 @@ export function BiometricCapture({
 
           const { landmarks, gaze } = meshResult;
           const face_count = faceResult.face_count;
+
+          // ── Guía de encuadre (mejora UX) ────────────────────────────────
+          // Computamos bbox/centroide/luminancia y resolvemos el hint dominante.
+          // Si el hint se sostiene HINT_STABLE_FRAMES (~150ms), recién ahí lo
+          // exponemos al usuario (evita parpadeo del cartel).
+          let bboxWidth: number | null = null;
+          let centerX: number | null = null;
+          let centerY: number | null = null;
+          if (face_count > 0 && landmarks.length > 0) {
+            // Bbox a partir de los landmarks (más estable que pedirlo aparte).
+            let minX = 1, maxX = 0, minY = 1, maxY = 0;
+            for (const l of landmarks) {
+              if (l.x < minX) minX = l.x;
+              if (l.x > maxX) maxX = l.x;
+              if (l.y < minY) minY = l.y;
+              if (l.y > maxY) maxY = l.y;
+            }
+            bboxWidth = Math.max(0, Math.min(1, maxX - minX));
+            centerX = (minX + maxX) / 2;
+            centerY = (minY + maxY) / 2;
+          }
+          const lum = medirLuminancia(videoRef.current, luminanceCanvasRef);
+          const hintAhora = evaluateFraming({
+            faceCount: face_count,
+            luminanceAvg: lum,
+            faceBboxWidth: bboxWidth,
+            faceCenterX: centerX,
+            faceCenterY: centerY,
+          });
+          // Histéresis: sólo aceptamos el cambio si se sostiene HINT_STABLE_FRAMES.
+          const estable = framingStableRef.current;
+          if (estable.hint === hintAhora) {
+            estable.frames = Math.min(estable.frames + 1, HINT_STABLE_FRAMES + 1);
+          } else {
+            estable.hint = hintAhora;
+            estable.frames = 1;
+          }
+          if (estable.frames >= HINT_STABLE_FRAMES && framingHintRef.current !== hintAhora) {
+            framingHintRef.current = hintAhora;
+            setFramingHint(hintAhora);
+            setTonoOvalo(hintAhora ? 'aviso' : 'ok');
+            if (hintAhora) playHint();
+          }
 
           // Actualizar landmarks del último frame
           if (face_count > 0 && landmarks.length > 0) {
@@ -658,6 +766,18 @@ export function BiometricCapture({
                   Math.min(neutralVistos + 1, NEUTRAL_GATE_FRAMES),
                 );
               }
+
+              // Progreso visual del anillo: retos completos + fracción del reto
+              // activo (acumulador / framesMin). Se anima a 350ms con CSS.
+              const totalRetos = desafiosBarajadosRef.current.length;
+              if (totalRetos > 0) {
+                const completos = challengeIndexRef.current;
+                const minFrames = framesMinForChallengeSeq(retoActivo);
+                const cuenta = challengeCountsRef.current.get(retoActivo) ?? 0;
+                const fracReto = minFrames > 0 ? Math.min(1, cuenta / minFrames) : 0;
+                const progresoNuevo = Math.min(1, (completos + fracReto) / totalRetos);
+                setProgreso(progresoNuevo);
+              }
             }
           } else if (face_count === 0) {
             // Sin rostro fuera del bloque de landmarks — resetear reto activo si hay baseline
@@ -723,6 +843,9 @@ export function BiometricCapture({
       }
       engineRef.current = engine;
       setMotorListo(true);
+      // Pasamos de idle (anillo gris punteado) a ok (anillo azul) en cuanto el
+      // motor está vivo; el primer hint detectado puede virar a 'aviso' enseguida.
+      setTonoOvalo('ok');
       activarFullscreen();
       startDetectionLoop(engine);
     }).catch((err) => {
@@ -814,6 +937,7 @@ export function BiometricCapture({
       motorListo={motorListo}
       fallbackManual={fallbackManual}
       retoActualLabel={retoActualLabel}
+      retoActualId={retoActivoId}
       desafios={desafios}
       resueltos={resueltos}
       totalResueltos={totalResueltos}
@@ -823,6 +947,9 @@ export function BiometricCapture({
       onCancel={handleCancel}
       cooldownActivo={cooldownActivo}
       retoRecienResueltoLabel={retoRecienResueltoLabel}
+      progreso={progreso}
+      tonoOvalo={tonoOvalo}
+      framingHint={framingHint}
     />,
     document.body,
   );
