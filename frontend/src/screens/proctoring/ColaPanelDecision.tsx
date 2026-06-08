@@ -42,11 +42,11 @@ export function ColaPanelDecision({
       </div>
 
       <div className="grid grid-cols-2 gap-sm">
-        <Metrica label="Señales registradas" valor={String(sesion.total_eventos)} />
+        <Metrica label="Señales registradas" valor={String(sesion.total_eventos ?? 0)} />
         <Metrica
           label="Diferencias con el servidor"
-          valor={String(sesion.total_discrepancias)}
-          clase={sesion.total_discrepancias > 0 ? 'text-error' : 'text-on-surface'}
+          valor={String(sesion.total_discrepancias ?? 0)}
+          clase={(sesion.total_discrepancias ?? 0) > 0 ? 'text-error' : 'text-on-surface'}
         />
       </div>
 

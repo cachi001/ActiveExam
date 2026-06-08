@@ -4,6 +4,7 @@
 // C-58: setExamenActivo antes de navegar a /requisitos (fix bug examenActivo null).
 import { useEffect, useState } from 'react';
 import { Card, Button, Icon } from '../ui/components';
+import { HelpButton } from '../ui/HelpButton';
 import { StudentShell } from '../ui/shells';
 import { useNavigate } from '../lib/router';
 import { useApp } from '../lib/store';
@@ -103,7 +104,24 @@ export default function AlumnoMisExamenes() {
     <StudentShell>
       <div className="max-w-2xl mx-auto space-y-xl">
         <header>
-          <h1 className="font-headline text-headline-md text-on-surface tracking-tight">Mis exámenes</h1>
+          <div className="flex items-center gap-sm">
+            <h1 className="font-headline text-headline-md text-on-surface tracking-tight">Mis exámenes</h1>
+            <HelpButton title="Mis exámenes">
+              <p>
+                Acá ves tus <strong>inscripciones</strong> a exámenes con su estado actual y la
+                acción que tenés que hacer (inscribirte, completar el acuse, rendir, etc.).
+              </p>
+              <p>
+                Antes de poder rendir, además del consentimiento general en <em>Mi perfil</em>,
+                cada examen pide un <em>acuse específico</em> con la información puntual de ese
+                examen (modalidad, fechas, requisitos).
+              </p>
+              <p>
+                Si el botón "Rendir" está deshabilitado, te vamos a mostrar la razón
+                (perfil incompleto, fuera de horario, etc.).
+              </p>
+            </HelpButton>
+          </div>
           <p className="text-body-md text-on-surface-variant mt-xs">Registro de tus inscripciones con estado y acción siguiente.</p>
         </header>
 

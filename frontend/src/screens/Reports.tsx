@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { StaffShell } from '../ui/shells';
 import { Icon, Card, SectionTitle, SeverityBadge } from '../ui/components';
+import { HelpButton } from '../ui/HelpButton';
 import { StatCard } from './proctoring/StatCard';
 import { ADMIN_NAV } from './AdminDashboard';
 import { api } from '../lib/api';
@@ -17,9 +18,23 @@ const SEV_TONE: Record<string, 'primary' | 'success' | 'warning' | 'error'> = {
 function Header() {
   return (
     <div>
-      <h1 className="font-headline text-headline-md text-on-surface tracking-tight">
-        Analítica de integridad
-      </h1>
+      <div className="flex items-center gap-sm">
+        <h1 className="font-headline text-headline-md text-on-surface tracking-tight">
+          Analítica de integridad
+        </h1>
+        <HelpButton title="Analítica de integridad">
+          <p>
+            Vista agregada de métricas para auditar el funcionamiento del proctoring: cantidad de
+            exámenes, distribución de severidad de eventos y desempeño de la revisión humana
+            (tasa de flag, tiempo medio).
+          </p>
+          <p>
+            Estas métricas <strong>no individualizan</strong> a estudiantes — son agregados de
+            integridad del sistema. La decisión disciplinaria por persona se hace siempre en la
+            cola de revisión (L2.5).
+          </p>
+        </HelpButton>
+      </div>
       <p className="text-body-md text-on-surface-variant mt-base">
         Métricas agregadas de exámenes, severidad de eventos y desempeño de la revisión humana.
       </p>

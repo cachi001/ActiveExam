@@ -15,6 +15,7 @@
 import { useEffect, useState } from 'react';
 import { StaffShell } from '../ui/shells';
 import { Icon, Card, SectionTitle, Button, Avatar } from '../ui/components';
+import { HelpButton } from '../ui/HelpButton';
 import { TextField } from '../ui/TextField';
 import { ConfirmModal } from '../ui/ConfirmModal';
 import { STAFF_NAV } from '../ui/nav';
@@ -84,7 +85,9 @@ export default function GestionUsuarios() {
       const data = await api.listarUsuarios(PAGE_SIZE, o);
       setUsuarios(data.items);
       setTotal(data.total);
-      // Task 5.3: cargar fotos de perfil para cada usuario.
+      // Task 5.3: cargar fotos de perfil para cada usuario. Solo intenta una vez
+      // por usuario por carga; los 404 (sin foto vigente) son normales y se
+      // ignoran silenciosamente.
       for (const u of data.items) {
         if (!fotos[u.id]) {
           api.obtenerFotoPerfilDeUsuario(u.id).then((foto) => {
@@ -92,8 +95,17 @@ export default function GestionUsuarios() {
           });
         }
       }
-    } catch {
-      toast.error('No se pudo cargar la lista de usuarios.');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      // 401 = sesión vencida o sin rol admin_sistema → mensaje accionable.
+      // 403 = autenticado pero sin permisos suficientes.
+      if (msg.includes('401')) {
+        toast.error('Tu sesión expiró. Cerrá sesión y volvé a entrar.');
+      } else if (msg.includes('403')) {
+        toast.error('No tenés permisos para listar usuarios (requiere admin_sistema).');
+      } else {
+        toast.error('No se pudo cargar la lista de usuarios.');
+      }
     } finally {
       setCargando(false);
     }
@@ -243,9 +255,25 @@ export default function GestionUsuarios() {
         {/* Encabezado */}
         <div className="flex items-start justify-between gap-md flex-wrap">
           <div>
-            <h1 className="font-headline text-headline-md text-on-surface tracking-tight">
-              Gestión de usuarios
-            </h1>
+            <div className="flex items-center gap-sm">
+              <h1 className="font-headline text-headline-md text-on-surface tracking-tight">
+                Gestión de usuarios
+              </h1>
+              <HelpButton title="Gestión de usuarios">
+                <p>
+                  Acá das de alta, editás y das de baja a los usuarios de la plataforma. Solo
+                  visible para <strong>admin_sistema</strong>.
+                </p>
+                <p>
+                  Los roles MVP son tres estrictos: <em>estudiante</em>, <em>proctor</em> y
+                  <em> admin_sistema</em>. La baja es <strong>lógica</strong> (no destruye evidencia)
+                  y revoca los refresh tokens del usuario.
+                </p>
+                <p>
+                  Anti-lockout: no podés quitarte a vos mismo el rol admin_sistema ni darte de baja.
+                </p>
+              </HelpButton>
+            </div>
             <p className="text-body-md text-on-surface-variant mt-base">
               Alta, edición y baja lógica de usuarios de la plataforma.
             </p>
@@ -387,7 +415,7 @@ export default function GestionUsuarios() {
                     <th className="text-left text-label-sm text-on-surface-variant font-medium py-sm pr-md">Avatar / Nombre</th>
                     <th className="text-left text-label-sm text-on-surface-variant font-medium py-sm pr-md">Email</th>
                     <th className="text-left text-label-sm text-on-surface-variant font-medium py-sm pr-md">Legajo</th>
-                    <th className="text-left text-label-sm text-on-surface-variant font-medium py-sm pr-md">Roles</th>
+                    <th className="text-left text-label-sm text-on-surface-variant font-medium py-sm pr-md">Rol</th>
                     <th className="text-right text-label-sm text-on-surface-variant font-medium py-sm">Acciones</th>
                   </tr>
                 </thead>

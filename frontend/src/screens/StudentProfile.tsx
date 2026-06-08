@@ -23,6 +23,7 @@
  */
 import { useEffect, useState } from 'react';
 import { Button, Icon } from '../ui/components';
+import { HelpButton } from '../ui/HelpButton';
 import { StudentShell } from '../ui/shells';
 import { useNavigate } from '../lib/router';
 import { useApp } from '../lib/store';
@@ -123,14 +124,13 @@ export default function StudentProfile() {
   const handleFotoCapturada = async (dataUrl: string) => {
     setFotoError(null);
     try {
-      const fotoId = await api.guardarFotoPerfil(dataUrl);
-      // En modo demo fotoId es undefined; en modo real es el UUID del backend.
-      // El store actualiza la foto del principal para el avatar de la UI (demo).
-      if (!fotoId) {
-        // Modo demo: actualizar el avatar con el dataUrl.
-        setFotoPerfil(dataUrl);
-      }
-      // En modo real no mostramos el dataUrl como avatar (solo el ID opaco nos llega).
+      await api.guardarFotoPerfil(dataUrl);
+      // El POST devolvió OK: la imagen ya fue persistida server-side. Como el
+      // alumno acaba de capturarla, tenemos el mismo binario en el cliente
+      // (`dataUrl`). Usarlo directamente como avatar evita una ida-y-vuelta
+      // adicional (GET /enrollment/foto-perfil → base64) y elimina la demora
+      // perceptual entre capturar y ver la foto en el header/perfil.
+      setFotoPerfil(dataUrl);
       setPaso('biometria');
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -337,7 +337,26 @@ export default function StudentProfile() {
     <StudentShell>
       <div className="max-w-2xl mx-auto space-y-xl animate-in fade-in duration-300">
         <header>
-          <h1 className="font-headline text-headline-md text-on-surface tracking-tight">Mi perfil</h1>
+          <div className="flex items-center gap-sm">
+            <h1 className="font-headline text-headline-md text-on-surface tracking-tight">Mi perfil</h1>
+            <HelpButton title="Mi perfil">
+              <p>
+                Desde acá completás los <strong>requisitos de enrollment</strong> para poder rendir
+                exámenes: consentimiento informado, foto de perfil, captura biométrica y (opcional)
+                escaneo de DNI.
+              </p>
+              <p>
+                La <em>captura biométrica</em> se hace una sola vez y queda vigente por 24 meses
+                para todos tus exámenes. Si se vence o el sistema detecta deriva, te pediremos
+                renovarla.
+              </p>
+              <p>
+                Tus datos biométricos (foto y embedding) son <strong>datos sensibles</strong> bajo
+                Ley 25.326: viajan cifrados, se usan solo para verificar tu identidad y se eliminan
+                al egresar de la institución.
+              </p>
+            </HelpButton>
+          </div>
           <p className="text-body-md text-on-surface-variant mt-xs">
             Datos personales y requisitos de enrollment para rendir exámenes.
           </p>

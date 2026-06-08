@@ -48,8 +48,9 @@ export default function ExamenPersonasGrid() {
     enVuelo.current = true;
     try {
       const data = await api.listarSesionesProctoring();
+      // Drill-down de supervisión EN VIVO: solo personas con sesión sin finalizar.
       const delExamen = data
-        .filter((s) => s.exam_id === examId)
+        .filter((s) => s.exam_id === examId && !s.finalizada_en)
         .sort((a, b) => b.score - a.score || b.total_eventos - a.total_eventos);
       setPersonas(delExamen);
     } catch {
@@ -195,12 +196,12 @@ function PersonaCard({
       </div>
 
       <div className="grid grid-cols-2 gap-sm mt-md">
-        <Metrica icon="notifications" label="Eventos" valor={sesion.total_eventos} />
+        <Metrica icon="notifications" label="Eventos" valor={sesion.total_eventos ?? 0} />
         <Metrica
           icon="rule"
           label="Discrepancias"
-          valor={sesion.total_discrepancias}
-          alerta={sesion.total_discrepancias > 0}
+          valor={sesion.total_discrepancias ?? 0}
+          alerta={(sesion.total_discrepancias ?? 0) > 0}
         />
       </div>
 

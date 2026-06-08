@@ -15,6 +15,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { StaffShell } from '../ui/shells';
 import { Icon, Card, Button } from '../ui/components';
+import { HelpButton } from '../ui/HelpButton';
 import { api } from '../lib/api';
 import { useApp } from '../lib/store';
 import { useNavigate } from '../lib/router';
@@ -117,9 +118,26 @@ export default function Revisor() {
         {/* Header */}
         <div className="flex items-start justify-between gap-md flex-wrap">
           <div>
-            <h1 className="font-headline text-headline-md text-on-surface tracking-tight">
-              Cola de revisión
-            </h1>
+            <div className="flex items-center gap-sm">
+              <h1 className="font-headline text-headline-md text-on-surface tracking-tight">
+                Cola de revisión
+              </h1>
+              <HelpButton title="Cola de revisión">
+                <p>
+                  Esta pantalla concentra las sesiones que <strong>priorizan revisión humana</strong>:
+                  solo las que superan el umbral de riesgo (score ≥ {UMBRAL_COLA_REVISION}).
+                </p>
+                <p>
+                  La cola se organiza por <em>Materia → Comisión → Examen → Persona</em>. Entrá hasta
+                  cada persona para revisar evidencia y registrar tu decisión (sin observaciones,
+                  aprobada con nota o enviada a revisión formal).
+                </p>
+                <p>
+                  El sistema <strong>nunca sanciona</strong> (L2.5): el score solo prioriza, la
+                  decisión disciplinaria siempre es tuya.
+                </p>
+              </HelpButton>
+            </div>
             <p className="text-body-md text-on-surface-variant mt-base max-w-2xl">
               Sesiones de alto riesgo (score ≥ {UMBRAL_COLA_REVISION}) organizadas por materia,
               comisión y examen. Entrá hasta cada persona para revisar y decidir. El sistema
@@ -142,10 +160,10 @@ export default function Revisor() {
 
         {!cargando && !hayRiesgo && (
           <Card className="text-center py-xl space-y-base">
-            <Icon name="task_alt" className="text-success text-[48px]" fill />
-            <h3 className="font-headline text-title-lg text-on-surface">¡Cola limpia!</h3>
+            <Icon name="inbox" className="text-on-surface-variant text-[40px]" />
+            <h3 className="font-headline text-title-lg text-on-surface">Sin sesiones pendientes</h3>
             <p className="text-body-md text-on-surface-variant">
-              No hay sesiones con score ≥ {UMBRAL_COLA_REVISION} pendientes de revisión.
+              Por ahora no hay sesiones con score ≥ {UMBRAL_COLA_REVISION}. Cuando aparezcan, se listarán acá.
             </p>
           </Card>
         )}

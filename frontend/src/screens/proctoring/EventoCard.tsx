@@ -9,7 +9,14 @@
 import { Icon, SeverityBadge, Badge } from '../../ui/components';
 import { TIPO_EVENTO_LABEL } from '../../lib/api';
 import type { EventoProctoringDetalle, Severidad, TipoEvento } from '../../lib/types';
-import { formatFecha, verdictClasses, verdictIcon, verdictLabel } from './helpers';
+import {
+  formatFecha,
+  formatPayloadKey,
+  formatPayloadValue,
+  verdictClasses,
+  verdictIcon,
+  verdictLabel,
+} from './helpers';
 import { ScreenshotMiniatura } from './ScreenshotMiniatura';
 import { formatRostrosConOrigen } from '../../lib/faceCountLabel';
 
@@ -22,12 +29,19 @@ function severidadAccent(sev: string): string {
   return 'border-l-outline-variant';
 }
 
-/** Convierte el payload en pares legibles (omite claves vacías). */
+/**
+ * Convierte el payload en pares legibles para revisión humana:
+ * - omite claves vacías o ya representadas arriba (face_count*: se muestran como "Rostros")
+ * - traduce claves a etiquetas humanas (sostenido_ms → "Duración")
+ * - formatea valores: ms → "3 s" / "1 min 5 s", booleanos → "Sí/No", floats → 2 decimales.
+ */
+const KEYS_OCULTAS = new Set(['face_count', 'face_count_cliente', 'face_count_servidor', 'trigger_evidence']);
+
 function payloadEntries(payload: Record<string, unknown> | undefined): [string, string][] {
   if (!payload) return [];
   return Object.entries(payload)
-    .filter(([, v]) => v !== null && v !== undefined && v !== '')
-    .map(([k, v]) => [k, typeof v === 'object' ? JSON.stringify(v) : String(v)]);
+    .filter(([k, v]) => v !== null && v !== undefined && v !== '' && !KEYS_OCULTAS.has(k))
+    .map(([k, v]) => [formatPayloadKey(k), formatPayloadValue(k, v)] as [string, string]);
 }
 
 export function EventoCard({ evento }: { evento: EventoProctoringDetalle }) {
@@ -101,7 +115,7 @@ export function EventoCard({ evento }: { evento: EventoProctoringDetalle }) {
             </div>
           )}
 
-          {/* Payload relevante */}
+          {/* Payload relevante (claves traducidas + valores normalizados) */}
           {payload.length > 0 && (
             <div className="flex flex-wrap gap-base pt-base">
               {payload.map(([k, v]) => (
@@ -111,7 +125,7 @@ export function EventoCard({ evento }: { evento: EventoProctoringDetalle }) {
                     bg-surface-container-high text-label-sm text-on-surface-variant"
                 >
                   <span className="text-on-surface-variant">{k}:</span>
-                  <span className="font-mono text-on-surface">{v}</span>
+                  <span className="text-on-surface font-semibold">{v}</span>
                 </span>
               ))}
             </div>

@@ -70,25 +70,27 @@ export function SesionCard({
         </div>
       </div>
 
-      {/* Métricas con separadores */}
+      {/* Métricas con separadores. Usamos ?? 0 porque algunos endpoints (mock,
+          versiones viejas del backend o respuestas degradadas) pueden no traer
+          los conteos: mostrar "0" es preferible a un hueco visual ambiguo. */}
       <div className="flex items-center gap-sm flex-wrap text-label-md text-on-surface-variant mt-sm">
         <span className="inline-flex items-center gap-base">
           <Icon name="notifications" className="text-[16px]" />
-          {sesion.total_eventos} eventos
+          {sesion.total_eventos ?? 0} eventos
         </span>
         <span className="text-outline-variant" aria-hidden>·</span>
         <span
           className={`inline-flex items-center gap-base ${
-            sesion.total_discrepancias > 0 ? 'text-error font-semibold' : ''
+            (sesion.total_discrepancias ?? 0) > 0 ? 'text-error font-semibold' : ''
           }`}
         >
           <Icon name="rule" className="text-[16px]" />
-          {sesion.total_discrepancias} discrepancias
+          {sesion.total_discrepancias ?? 0} discrepancias
         </span>
         <span className="text-outline-variant" aria-hidden>·</span>
-        <span className={`inline-flex items-center gap-base font-bold ${scoreTextColor(sesion.score)}`}>
+        <span className={`inline-flex items-center gap-base font-bold ${scoreTextColor(sesion.score ?? 0)}`}>
           <Icon name="speed" className="text-[16px]" fill />
-          Score {sesion.score}
+          Score {sesion.score ?? 0}
         </span>
       </div>
 

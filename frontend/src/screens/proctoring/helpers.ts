@@ -124,6 +124,84 @@ export function verdictLabel(v: VeredictoReinferencia | null | undefined): strin
   return map[v] ?? v;
 }
 
+// --- Formateo de payload de eventos (legibilidad para revisión humana) ---
+
+/**
+ * Tabla de etiquetas legibles para las claves más comunes del payload de un
+ * evento. Lo que NO está acá cae al fallback (key con guiones bajos a espacios,
+ * capitalizada). Mantener pequeño y honesto: si una clave no aparece, no pasa
+ * nada — el fallback es razonable.
+ */
+const PAYLOAD_KEY_LABELS: Record<string, string> = {
+  sostenido_ms: 'Duración',
+  duracion_ms: 'Duración',
+  tiempo_ms: 'Tiempo',
+  ms: 'Duración',
+  face_count: 'Rostros',
+  faces: 'Rostros',
+  rostros: 'Rostros',
+  trigger_evidence: 'Disparó evidencia',
+  gaze_x: 'Mirada X',
+  gaze_y: 'Mirada Y',
+  yaw: 'Yaw',
+  pitch: 'Pitch',
+  roll: 'Roll',
+};
+
+/** Etiqueta humana para una clave de payload. */
+export function formatPayloadKey(key: string): string {
+  if (key in PAYLOAD_KEY_LABELS) return PAYLOAD_KEY_LABELS[key];
+  // Fallback: snake_case → "Snake case"
+  const limpio = key.replace(/_/g, ' ').trim();
+  return limpio.charAt(0).toUpperCase() + limpio.slice(1);
+}
+
+/**
+ * Convierte una duración en milisegundos a una etiqueta legible.
+ *   500    → "0,5 s"
+ *   3000   → "3 s"
+ *   3200   → "3,2 s"
+ *   75_000 → "1 min 15 s"
+ * Para valores < 1 s pero ≥ 100 ms usamos décimas de segundo; bajo 100 ms
+ * mostramos los milisegundos directos (señal cruda, no rotamos a "0,0 s").
+ */
+export function formatDuracionMs(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return `${ms} ms`;
+  if (ms < 100) return `${Math.round(ms)} ms`;
+  if (ms < 60_000) {
+    const segundos = ms / 1000;
+    // 1 decimal solo si aporta info (3,2 s pero no 3,0 s).
+    const fmt = Number.isInteger(segundos) || segundos >= 10
+      ? segundos.toFixed(0)
+      : segundos.toFixed(1).replace('.', ',');
+    return `${fmt} s`;
+  }
+  const totalSeg = Math.round(ms / 1000);
+  const min = Math.floor(totalSeg / 60);
+  const seg = totalSeg % 60;
+  return seg === 0 ? `${min} min` : `${min} min ${seg} s`;
+}
+
+/**
+ * Formatea el valor de una clave de payload pensando en lectura humana:
+ * - claves que terminan en `_ms` o que son exactamente `ms` → "X s" / "X min Y s"
+ * - booleanos → "Sí"/"No"
+ * - números con muchos decimales → 2 decimales
+ * - el resto → String(v)
+ */
+export function formatPayloadValue(key: string, value: unknown): string {
+  if (value === null || value === undefined) return '—';
+  const esMs = key === 'ms' || /_ms$/.test(key);
+  if (esMs && typeof value === 'number') return formatDuracionMs(value);
+  if (typeof value === 'boolean') return value ? 'Sí' : 'No';
+  if (typeof value === 'number') {
+    if (Number.isInteger(value)) return String(value);
+    return value.toFixed(2).replace('.', ',');
+  }
+  if (typeof value === 'object') return JSON.stringify(value);
+  return String(value);
+}
+
 // --- Join del catálogo académico: enriquece una sesión con su contexto ---
 
 /**

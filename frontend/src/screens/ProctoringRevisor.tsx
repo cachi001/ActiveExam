@@ -12,6 +12,7 @@
 import { useEffect, useState } from 'react';
 import { StaffShell } from '../ui/shells';
 import { Icon, Card, SectionTitle } from '../ui/components';
+import { HelpButton } from '../ui/HelpButton';
 import { ConfirmModal } from '../ui/ConfirmModal';
 import { STAFF_NAV } from '../ui/nav';
 import { useToast } from '../ui/toast';
@@ -68,9 +69,22 @@ export default function ProctoringRevisor() {
         {/* Header */}
         <div className="flex items-start justify-between gap-md flex-wrap">
           <div>
-            <h1 className="font-headline text-headline-md text-on-surface tracking-tight">
-              Sesiones de proctoring
-            </h1>
+            <div className="flex items-center gap-sm">
+              <h1 className="font-headline text-headline-md text-on-surface tracking-tight">
+                Sesiones de proctoring
+              </h1>
+              <HelpButton title="Sesiones grabadas">
+                <p>
+                  Listado <strong>completo</strong> de sesiones de proctoring registradas (en vivo o
+                  finalizadas), sin filtro de riesgo. Para acotar a sesiones con score alto usá
+                  <em> Cola de revisión</em>.
+                </p>
+                <p>
+                  Click en una fila para abrir el detalle con eventos, evidencia y biometría. La
+                  decisión disciplinaria siempre es del revisor (L2.5).
+                </p>
+              </HelpButton>
+            </div>
             <p className="text-body-md text-on-surface-variant mt-base">
               Historial completo de sesiones de proctoring — todas las grabadas, sin filtro.
               Para revisar solo las de alto riesgo, usá la Cola de revisión.

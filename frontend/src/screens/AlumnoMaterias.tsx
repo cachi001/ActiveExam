@@ -2,6 +2,7 @@
 // C-26: flujo de inscripción incluye paso de acuse por-examen antes de inscribir.
 import { useEffect, useState } from 'react';
 import { Card, Icon } from '../ui/components';
+import { HelpButton } from '../ui/HelpButton';
 import { StudentShell } from '../ui/shells';
 import { api } from '../lib/api';
 import AcuseExamen from './AcuseExamen';
@@ -77,7 +78,22 @@ export default function AlumnoMaterias() {
     <StudentShell>
       <div className="max-w-2xl mx-auto space-y-xl">
         <header>
-          <h1 className="font-headline text-headline-md text-on-surface tracking-tight">Materias disponibles</h1>
+          <div className="flex items-center gap-sm">
+            <h1 className="font-headline text-headline-md text-on-surface tracking-tight">Materias disponibles</h1>
+            <HelpButton title="Materias">
+              <p>
+                Explorá el catálogo de <strong>materias y comisiones</strong>: entrá a una materia
+                para ver sus comisiones; entrá a una comisión para ver los exámenes programados.
+              </p>
+              <p>
+                Para inscribirte a un examen vas a tener que leer y aceptar el <em>acuse</em>
+                específico de ese examen (modalidad, horario, requisitos).
+              </p>
+              <p>
+                Tus inscripciones quedan después en <em>Mis exámenes</em>.
+              </p>
+            </HelpButton>
+          </div>
           <p className="text-body-md text-on-surface-variant mt-xs">Seleccioná una materia para ver sus comisiones y exámenes disponibles.</p>
         </header>
 

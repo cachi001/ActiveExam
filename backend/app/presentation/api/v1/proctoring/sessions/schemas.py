@@ -84,6 +84,7 @@ class SesionResumen(BaseModel):
     modo: str
     etiqueta: str | None = None
     creada_en: Any
+    finalizada_en: Any = None
     total_eventos: int
     total_discrepancias: int
     score: int

@@ -147,19 +147,19 @@ function PersonaVivoRow({
           </p>
         </div>
 
-        {/* Métricas inline */}
+        {/* Métricas inline. ?? 0 evita huecos cuando el backend no envía el campo. */}
         <div className="hidden sm:flex items-center gap-md text-label-sm text-on-surface-variant shrink-0">
           <span className="inline-flex items-center gap-base tabular-nums">
             <Icon name="notifications" className="text-[15px]" />
-            {sesion.total_eventos}
+            {sesion.total_eventos ?? 0}
           </span>
           <span
             className={`inline-flex items-center gap-base tabular-nums ${
-              sesion.total_discrepancias > 0 ? 'text-error font-semibold' : ''
+              (sesion.total_discrepancias ?? 0) > 0 ? 'text-error font-semibold' : ''
             }`}
           >
             <Icon name="rule" className="text-[15px]" />
-            {sesion.total_discrepancias}
+            {sesion.total_discrepancias ?? 0}
           </span>
         </div>
 
@@ -167,9 +167,9 @@ function PersonaVivoRow({
         <span
           className={`inline-flex items-center justify-center min-w-[44px] px-sm py-base rounded-full
             text-label-sm font-bold tabular-nums shrink-0
-            ${alto ? 'bg-error-container text-on-error-container' : 'bg-surface-container-high'} ${scoreTextColor(sesion.score)}`}
+            ${alto ? 'bg-error-container text-on-error-container' : 'bg-surface-container-high'} ${scoreTextColor(sesion.score ?? 0)}`}
         >
-          {sesion.score}
+          {sesion.score ?? 0}
         </span>
 
         <Icon

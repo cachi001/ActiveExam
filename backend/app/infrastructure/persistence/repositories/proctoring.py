@@ -33,6 +33,7 @@ class SesionResumenData:
     modo: str
     etiqueta: str | None
     creada_en: Any
+    finalizada_en: Any
     total_eventos: int
     total_discrepancias: int
     score: int
@@ -152,6 +153,7 @@ class ProctoringRepository:
                 modo=s.modo,
                 etiqueta=s.etiqueta,
                 creada_en=s.creada_en,
+                finalizada_en=s.finalizada_en,
                 total_eventos=total_por_sesion.get(s.id, 0),
                 total_discrepancias=disc_por_sesion.get(s.id, 0),
                 score=score_por_sesion.get(s.id, 0),
