@@ -16,7 +16,7 @@
 import type { RefObject, MutableRefObject } from 'react';
 import { api } from '../../lib/api';
 import { captureVideoFrame } from '../../lib/videoFrameCapture';
-import { PESO_SCORE } from '../../proctoring/riskWeights';
+import { pesoEvento } from '../../proctoring/scoringWeights';
 import type { EventoSesion, TipoEvento, Severidad } from '../../lib/types';
 import {
   LOG_MAX,
@@ -77,8 +77,10 @@ export function buildSinkEventHandler(deps: SinkEventDeps): SinkEventCallback {
       return { ...prev, [rawEvent.tipo]: { capturedAt: Date.now(), severidad: rawEvent.severidad } };
     });
 
-    // C-33: acumular score de riesgo diagnóstico (setter funcional — sin stale closure)
-    setHarnessScore((prev) => Math.min(100, prev + (PESO_SCORE[rawEvent.severidad as Severidad] ?? 0)));
+    // C-33: acumular score de riesgo diagnóstico (setter funcional — sin stale closure).
+    // El peso se resuelve por tipo desde la BD; si la API fallo, pesoEvento() vuelve al
+    // fallback por severidad.
+    setHarnessScore((prev) => Math.min(100, prev + pesoEvento(rawEvent.tipo, rawEvent.severidad as Severidad)));
 
     // Registrar en log local
     const seqId = String(logSeqRef.current++);

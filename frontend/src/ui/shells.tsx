@@ -78,16 +78,16 @@ export function StaffShell({ children, nav, title }: { children: ReactNode; nav:
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   const navList = (onItemClick?: () => void) => (
-    <nav className="flex-1 p-md space-y-base overflow-y-auto">
+    <nav className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto">
       {nav.map((item) => {
         const active = path === item.to;
         return (
           <Link key={item.to} to={item.to} onClick={onItemClick}
-            className={`flex items-center gap-sm px-sm py-sm rounded-xl text-label-md font-semibold transition-colors ${
-              active ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:bg-surface-container'
+            className={`flex items-center gap-2.5 px-3 py-2 rounded-md text-[13px] font-medium transition-colors ${
+              active ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:bg-surface-container hover:text-on-surface'
             }`}>
-            <Icon name={item.icon} className="text-[22px]" fill={active} />
-            {item.label}
+            <Icon name={item.icon} className="text-[18px] shrink-0" fill={active} />
+            <span className="truncate">{item.label}</span>
           </Link>
         );
       })}
@@ -95,23 +95,21 @@ export function StaffShell({ children, nav, title }: { children: ReactNode; nav:
   );
 
   const userBlock = (
-    <div className="p-md border-t border-outline-variant/40">
-      <div className="flex items-center gap-sm px-sm py-sm rounded-xl bg-surface-container">
-        {principal?.foto_perfil ? (
-          <img src={principal.foto_perfil} className="w-9 h-9 rounded-full object-cover" alt={`Foto de ${principal?.nombre}`} />
-        ) : (
-          <div className="w-9 h-9 rounded-full bg-secondary-container text-on-secondary flex items-center justify-center font-semibold">
-            {principal?.nombre.charAt(0) ?? '?'}
-          </div>
-        )}
-        <div className="min-w-0 flex-1">
-          <div className="text-label-md text-on-surface font-semibold truncate">{principal?.nombre ?? 'Invitado'}</div>
-          <div className="text-label-sm text-on-surface-variant truncate">{principal?.roles.join(', ')}</div>
+    <div className="px-3 py-3 border-t border-outline-variant/40 flex items-center gap-2.5">
+      {principal?.foto_perfil ? (
+        <img src={principal.foto_perfil} className="w-8 h-8 rounded-full object-cover shrink-0" alt={`Foto de ${principal?.nombre}`} />
+      ) : (
+        <div className="w-8 h-8 rounded-full bg-secondary-container text-on-secondary flex items-center justify-center font-semibold text-[13px] shrink-0">
+          {principal?.nombre.charAt(0) ?? '?'}
         </div>
-        <button onClick={logout} title="Salir" className="text-on-surface-variant hover:text-error">
-          <Icon name="logout" className="text-[20px]" />
-        </button>
+      )}
+      <div className="min-w-0 flex-1">
+        <div className="text-[13px] text-on-surface font-semibold truncate leading-tight">{principal?.nombre ?? 'Invitado'}</div>
+        <div className="text-[11px] text-on-surface-variant truncate leading-tight mt-0.5">{principal?.roles.join(', ')}</div>
       </div>
+      <button onClick={logout} title="Salir" aria-label="Salir" className="w-8 h-8 rounded-md text-on-surface-variant hover:text-error hover:bg-surface-container flex items-center justify-center shrink-0 transition-colors">
+        <Icon name="logout" className="text-[16px]" />
+      </button>
     </div>
   );
 

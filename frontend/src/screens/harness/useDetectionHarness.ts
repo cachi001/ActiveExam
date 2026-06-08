@@ -14,6 +14,7 @@
  */
 
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { loadScoringWeights } from '../../proctoring/scoringWeights';
 import { useToast } from '../../ui/toast';
 import { useApp } from '../../lib/store';
 import type { Severidad } from '../../lib/types';
@@ -150,6 +151,12 @@ export function useDetectionHarness() {
     const t = setInterval(() => setElapsed((e) => e + 1), 1000);
     return () => clearInterval(t);
   }, [harnessState]);
+
+  // ------ Cargar pesos de scoring desde la BD (admin puede haber ajustado en /admin/scoring).
+  // No bloquea: si la API falla, pesoEvento() usa el fallback por severidad.
+  useEffect(() => {
+    void loadScoringWeights();
+  }, []);
 
   // ------ C-25: Detectores de contexto reales (estado + refs + efectos en sub-hook) ------
   const {

@@ -27,29 +27,24 @@ export default function AuditPrivacy() {
       <div className="space-y-lg animate-in fade-in duration-500">
         {/* Header */}
         <div className="flex items-start justify-between gap-md flex-wrap">
-          <div>
-            <div className="flex items-center gap-sm">
-              <h1 className="font-headline text-headline-md text-on-surface tracking-tight">
-                Auditoría y privacidad
-              </h1>
-              <HelpButton title="Auditoría y privacidad">
-                <p>
-                  Registro <strong>inmutable</strong> de todas las acciones relevantes del sistema y
-                  cadena de custodia de la evidencia (hash + firma server-side).
-                </p>
-                <p>
-                  Abajo encontrás los <em>derechos del titular</em> que exige la Ley 25.326
-                  argentina: acceso, rectificación, supresión y reclamo ante la AAIP.
-                </p>
-                <p>
-                  La evidencia que se elimina por DSR queda en hold si hay un procedimiento
-                  disciplinario activo (regla #7 del proyecto).
-                </p>
-              </HelpButton>
-            </div>
-            <p className="text-body-md text-on-surface-variant mt-base">
+          <div className="flex items-start gap-2 min-w-0">
+            <p className="text-[13px] text-on-surface-variant">
               Registro inmutable de acciones y cadena de custodia. Derechos del titular disponibles abajo.
             </p>
+            <HelpButton title="Auditoría y privacidad">
+              <p>
+                Registro <strong>inmutable</strong> de todas las acciones relevantes del sistema y
+                cadena de custodia de la evidencia (hash + firma server-side).
+              </p>
+              <p>
+                Abajo encontrás los <em>derechos del titular</em> que exige la Ley 25.326
+                argentina: acceso, rectificación, supresión y reclamo ante la AAIP.
+              </p>
+              <p>
+                La evidencia que se elimina por DSR queda en hold si hay un procedimiento
+                disciplinario activo (regla #7 del proyecto).
+              </p>
+            </HelpButton>
           </div>
           <div className="flex items-center gap-base px-sm py-base rounded-lg bg-primary-fixed/50
             border border-primary/20 text-label-sm text-on-primary-fixed-variant">

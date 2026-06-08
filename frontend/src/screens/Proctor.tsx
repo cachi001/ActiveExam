@@ -141,29 +141,24 @@ export default function Proctor() {
       <div className="space-y-lg animate-in fade-in duration-500">
         {/* Header: título + indicador en vivo + refresco manual */}
         <div className="flex items-start justify-between gap-md flex-wrap">
-          <div>
-            <div className="flex items-center gap-sm">
-              <h1 className="font-headline text-headline-md text-on-surface tracking-tight">
-                Supervisión en vivo
-              </h1>
-              <HelpButton title="Supervisión en vivo">
-                <p>
-                  Acá ves las sesiones de proctoring <strong>en curso</strong> agrupadas por examen.
-                  Las sesiones que ya finalizaron viven en <em>Sesiones grabadas</em>.
-                </p>
-                <p>
-                  Los exámenes con mayor riesgo aparecen arriba. Click en un examen para ver el grid
-                  de personas; click en una persona para abrir su detalle y revisar evidencia.
-                </p>
-                <p>
-                  El panel <strong>nunca sanciona automáticamente</strong>: el score solo prioriza la
-                  revisión humana. La decisión disciplinaria siempre es del revisor.
-                </p>
-              </HelpButton>
-            </div>
-            <p className="text-body-md text-on-surface-variant mt-base">
+          <div className="flex items-start gap-2 min-w-0">
+            <p className="text-[13px] text-on-surface-variant">
               Los exámenes con mayor riesgo se muestran primero.
             </p>
+            <HelpButton title="Supervisión en vivo">
+              <p>
+                Acá ves las sesiones de proctoring <strong>en curso</strong> agrupadas por examen.
+                Las sesiones que ya finalizaron viven en <em>Sesiones grabadas</em>.
+              </p>
+              <p>
+                Los exámenes con mayor riesgo aparecen arriba. Click en un examen para ver el grid
+                de personas; click en una persona para abrir su detalle y revisar evidencia.
+              </p>
+              <p>
+                El panel <strong>nunca sanciona automáticamente</strong>: el score solo prioriza la
+                revisión humana. La decisión disciplinaria siempre es del revisor.
+              </p>
+            </HelpButton>
           </div>
           <div className="flex items-center gap-sm">
             <IndicadorVivo ultimoRefresh={ultimoRefresh} activo={!refrescando} />

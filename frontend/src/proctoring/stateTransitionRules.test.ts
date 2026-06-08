@@ -107,6 +107,26 @@ describe("configurabilidad por institucion (RN-EV-03)", () => {
   });
 });
 
+describe("monitor_adicional de-dup (Batch A bugfix)", () => {
+  it("emite monitor_adicional UNA vez por transicion false->true (no spam por frame)", () => {
+    const rules = new StateTransitionRules();
+    // Primer frame con monitor conectado: emite.
+    const ev1 = rules.process({ ts_ms: 0, face_count: 1, extra_monitor: true });
+    expect(ev1.filter((e) => e.tipo === "monitor_adicional")).toHaveLength(1);
+    // Mismo monitor sigue conectado en los frames siguientes: NO re-emite.
+    const ev2 = rules.process({ ts_ms: 1000, face_count: 1, extra_monitor: true });
+    expect(ev2.filter((e) => e.tipo === "monitor_adicional")).toHaveLength(0);
+    const ev3 = rules.process({ ts_ms: 2000, face_count: 1, extra_monitor: true });
+    expect(ev3.filter((e) => e.tipo === "monitor_adicional")).toHaveLength(0);
+    // El monitor se desconecta: no hay evento pero resetea de-dup.
+    const ev4 = rules.process({ ts_ms: 3000, face_count: 1, extra_monitor: false });
+    expect(ev4.filter((e) => e.tipo === "monitor_adicional")).toHaveLength(0);
+    // El monitor vuelve a conectarse: emite de nuevo (nueva transicion).
+    const ev5 = rules.process({ ts_ms: 4000, face_count: 1, extra_monitor: true });
+    expect(ev5.filter((e) => e.tipo === "monitor_adicional")).toHaveLength(1);
+  });
+});
+
 describe("garantia L2.5: ninguna transicion deriva sancion", () => {
   it("ningun evento producido contiene una sancion o veredicto", () => {
     const rules = new StateTransitionRules({ multiple_faces_frames: 1 });
