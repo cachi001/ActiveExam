@@ -72,7 +72,7 @@ export function useDetectionHarness() {
 
   // ------ C-30: Toggles del overlay ------
   const [showPose, setShowPose] = useState(false);
-  const [showFullMesh, setShowFullMesh] = useState(false);
+  const [showFullMesh, setShowFullMesh] = useState(true);
 
   // ------ Señales crudas ------
   const [rawSignals, setRawSignals] = useState<RawSignals>({
