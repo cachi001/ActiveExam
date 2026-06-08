@@ -40,7 +40,7 @@ import type { VisionEngine } from '../vision/VisionEngine';
 import { loadRealEngine, disposeRealEngine } from '../vision/harnessEngineLoader';
 import { VisionPipeline, type EventSink } from './visionPipeline';
 import { StateTransitionRules, DEFAULT_CONFIG } from './stateTransitionRules';
-import { PESO_SCORE } from './riskWeights';
+import { loadScoringWeights, pesoEvento } from './scoringWeights';
 import {
   FocusDetector,
   FullscreenDetector,
@@ -151,10 +151,11 @@ export function useExamProctoring(
   const handleEvent = useRef<EventSink['sendEvent']>(async () => {});
   handleEvent.current = async (rawEvent) => {
     // Acumular score en el store global (scorePropio, L2.5 — prioriza, no sanciona).
-    addScore(PESO_SCORE[rawEvent.severidad as Severidad] ?? 0);
-    setScore((prev) =>
-      Math.min(100, prev + (PESO_SCORE[rawEvent.severidad as Severidad] ?? 0)),
-    );
+    // El peso por tipo se resuelve dinamicamente desde la BD (cache poblada en mount);
+    // si la API fallo, pesoEvento() vuelve al fallback por severidad.
+    const peso = pesoEvento(rawEvent.tipo, rawEvent.severidad as Severidad);
+    addScore(peso);
+    setScore((prev) => Math.min(100, prev + peso));
     setEventCount((c) => c + 1);
 
     // Registrar en el panel de señales del examen.
@@ -259,6 +260,10 @@ export function useExamProctoring(
   useEffect(() => {
     stoppedRef.current = false;
     let cancelled = false;
+
+    // --- Cargar pesos de scoring desde la BD (admin los puede haber ajustado en /admin/scoring).
+    // No bloquea: si la API falla, pesoEvento() recurre al fallback por severidad.
+    void loadScoringWeights();
 
     // --- Inicializar buffer IndexedDB (R3: degradación silenciosa si no está disponible) ---
     try {

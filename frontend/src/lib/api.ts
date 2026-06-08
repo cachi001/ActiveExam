@@ -1506,6 +1506,31 @@ export const api = {
    * Real: GET /scoring/config
    * Mock: defaults del catalogo.
    */
+  /**
+   * Devuelve el mapa { tipo_evento: peso } de tipos activos (cualquier usuario
+   * autenticado). Lo usa scoringWeights.ts para el calculo de score en vivo.
+   * Real: GET /scoring/weights
+   * Mock: defaults del catalogo.
+   */
+  async obtenerScoringWeights(): Promise<{ weights: Record<string, number> }> {
+    if (USE_REAL_BACKEND) {
+      return await realFetch<{ weights: Record<string, number> }>('/scoring/weights', { method: 'GET' });
+    }
+    await delay(150);
+    return {
+      weights: {
+        rostro_ausente: 20,
+        multiples_rostros: 50,
+        mirada_desviada_sostenida: 20,
+        perdida_de_foco: 5,
+        cambio_pestana: 20,
+        monitor_adicional: 50,
+        salida_pantalla_completa: 20,
+        copiar_pegar: 20,
+      },
+    };
+  },
+
   async listarScoringConfig(): Promise<{ items: EventoScoreConfig[] }> {
     if (USE_REAL_BACKEND) {
       return await realFetch<{ items: EventoScoreConfig[] }>('/scoring/config', { method: 'GET' });

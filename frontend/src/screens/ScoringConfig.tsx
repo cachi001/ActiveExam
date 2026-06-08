@@ -15,6 +15,7 @@ import { HelpButton } from '../ui/HelpButton';
 import { api, SEVERIDAD_LABEL, TIPO_EVENTO_LABEL } from '../lib/api';
 import type { EventoScoreConfig, Severidad, TipoEvento } from '../lib/types';
 import { SEVERITY_BADGE_COLORS } from './harness/helpers';
+import { resetScoringWeightsCache } from '../proctoring/scoringWeights';
 
 const SEVERIDADES: Severidad[] = ['baseline', 'baja', 'media', 'alta', 'critica'];
 
@@ -76,6 +77,9 @@ export default function ScoringConfig() {
         delete next[cfg.tipo_evento];
         return next;
       });
+      // Invalidar el cache de pesos: si admin abre /admin/detection-test o un examen
+      // a continuacion, va a refetchear los pesos actualizados de la BD.
+      resetScoringWeightsCache();
       toast.success(`Guardado: ${TIPO_EVENTO_LABEL[cfg.tipo_evento as TipoEvento] ?? cfg.tipo_evento}`);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -108,9 +112,9 @@ export default function ScoringConfig() {
               <strong> peso</strong> (0-100) que aporta al score acumulado del examen cuando se dispara.
             </p>
             <p>
-              Los pesos default coinciden con los de la versión hardcoded del cliente: baja=5, media=20,
-              alta=50, critica=100. Subí el peso para priorizar un tipo en la cola de revisión; bajalo para
-              tolerar más antes de flaggear.
+              Los pesos default por severidad son: baja=5, media=20, alta=50, critica=100. Subí el peso
+              para priorizar un tipo en la cola de revisión; bajalo para tolerar más antes de flaggear.
+              Los cambios se aplican al próximo examen que arranque (el cliente refetchea al iniciar).
             </p>
             <p>
               <strong>Desactivar</strong> un tipo dejará de sumar score por ese evento (sin perder el registro

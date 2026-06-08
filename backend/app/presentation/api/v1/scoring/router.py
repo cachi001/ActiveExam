@@ -27,7 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.domain.auth.identity import AuthenticatedPrincipal
 from app.domain.auth.roles import Rol
 from app.infrastructure.persistence.models.transactional import EventoScoreConfigModel
-from app.presentation.api.v1.auth.dependencies import require_roles
+from app.presentation.api.v1.auth.dependencies import get_current_principal, require_roles
 
 router = APIRouter()
 
@@ -56,6 +56,15 @@ class ListarConfigResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     items: list[EventoScoreConfigResponse]
+
+
+class PesosEventoResponse(BaseModel):
+    """Mapa de pesos activos por tipo de evento. Lo que el cliente del examen
+    necesita para puntuar — sin metadata (descripcion / updated_at)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    weights: dict[str, int]
 
 
 class EditarEventoScoreConfigRequest(BaseModel):
@@ -127,6 +136,34 @@ async def listar_configs(
         )
         items = result.scalars().all()
     return ListarConfigResponse(items=[_to_response(it) for it in items])
+
+
+# ---------------------------------------------------------------------------
+# GET /weights — mapa { tipo: peso } solo de tipos activos (cualquier sesion)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/weights", response_model=PesosEventoResponse)
+async def obtener_pesos(
+    request: Request,
+    _principal: AuthenticatedPrincipal = Depends(get_current_principal),
+) -> PesosEventoResponse:
+    """Devuelve el mapa { tipo_evento: peso } SOLO de tipos activos.
+
+    Cualquier usuario autenticado puede leerlo (lo necesita el cliente del examen
+    para calcular el score acumulado en tiempo real, sin hardcodear los pesos).
+    Tipos con activo=False NO aparecen en el mapa — el cliente trata su peso como 0.
+    """
+    session_factory = _get_session_factory(request)
+    async with session_factory() as session:
+        result = await session.execute(
+            select(
+                EventoScoreConfigModel.tipo_evento,
+                EventoScoreConfigModel.peso,
+            ).where(EventoScoreConfigModel.activo.is_(True))
+        )
+        rows = result.all()
+    return PesosEventoResponse(weights={row.tipo_evento: row.peso for row in rows})
 
 
 # ---------------------------------------------------------------------------
