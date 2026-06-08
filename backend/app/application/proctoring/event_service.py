@@ -40,6 +40,11 @@ async def ingestar_evento(
     payload: dict | None = None,
     screenshot_base64: str | None = None,
     face_count_cliente: int | None = None,
+    # C-64 D2: screenshot_sha256_cliente se acepta en el schema IngestEventoIn pero
+    # NO se persiste aquí porque ProctoringEventModel no tiene esa columna.
+    # El campo no genera 422 (el schema lo acepta); la comparación cliente vs servidor
+    # queda pendiente de cuando se agregue la columna con migración.
+    # screenshot_sha256_cliente: str | None = None  # descomentado cuando se agregue columna
 ) -> ProctoringEventModel:
     """Ingesta un evento de deteccion con re-inferencia e integridad SHA-256.
 

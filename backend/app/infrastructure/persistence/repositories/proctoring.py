@@ -11,7 +11,7 @@ El score solo prioriza la cola de revision humana (D5).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import func, select
@@ -158,6 +158,21 @@ class ProctoringRepository:
             )
             for s in sesiones
         ]
+
+    async def finalizar_sesion(self, session_id: str) -> ProctoringSessionModel | None:
+        """Setea finalizada_en = now() si y solo si es NULL.
+
+        Idempotente: si ya estaba finalizada, devuelve la sesion sin modificar.
+        Devuelve None si la sesion no existe.
+        """
+        sesion = await self._db.get(ProctoringSessionModel, session_id)
+        if sesion is None:
+            return None
+        if sesion.finalizada_en is None:
+            sesion.finalizada_en = datetime.now(tz=timezone.utc)
+            await self._db.commit()
+            await self._db.refresh(sesion)
+        return sesion
 
     async def eliminar_sesion(self, session_id: str) -> bool:
         """Elimina una sesion por ID. Los eventos y biometria se borran por FK CASCADE.

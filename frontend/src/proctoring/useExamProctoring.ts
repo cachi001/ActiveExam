@@ -111,6 +111,8 @@ export function useExamProctoring(
 ): UseExamProctoringResult {
   const setProctoringSessionId = useApp((s) => s.setProctoringSessionId);
   const addScore = useApp((s) => s.addScore);
+  // C-64 D1: si Consent.tsx ya creó la sesión anticipada, reutilizarla — no crear otra.
+  const existingSessionId = useApp((s) => s.proctoringSessionId);
 
   // ------ Estado observable ------
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -222,9 +224,11 @@ export function useExamProctoring(
       await api.enviarEventoProctoring(sid, eventoPayload);
       // POST resolvió OK → purgar del buffer (evento a salvo server-side).
       await bufferRef.current?.confirm(rawEvent.id).catch(() => {});
-    } catch {
+    } catch (err) {
       // POST rechazado (red caída) → no confirmar; el evento queda en el buffer
       // para que drainAndReplay lo reenvíe al recuperar la conexión.
+      // C-64 D5: loguear el error para diagnóstico en prod (antes era catch silencioso).
+      console.error('[proctoring] POST evento falló:', err);
     }
   };
 
@@ -322,18 +326,26 @@ export function useExamProctoring(
 
     // --- Carga del motor + sesión + loop (async) ---
     void (async () => {
-      // Abrir sesión en el backend (fire-and-forget; sessionPromiseRef permite que
-      // el primer evento espere si llega antes de que resuelva).
-      sessionPromiseRef.current = api
-        .crearSesionProctoring('examen', examen?.nombre, examen?.id)
-        .then((s) => {
-          if (cancelled) return null;
-          sessionIdRef.current = s.id;
-          setSessionId(s.id);
-          setProctoringSessionId(s.id);
-          return s.id;
-        })
-        .catch(() => null);
+      // C-64 D1: idempotencia — si Consent.tsx ya creó la sesión anticipada, reutilizarla.
+      // Si ya existe en el store, setear directamente sin llamar al backend de nuevo.
+      if (existingSessionId) {
+        sessionIdRef.current = existingSessionId;
+        setSessionId(existingSessionId);
+        sessionPromiseRef.current = Promise.resolve(existingSessionId);
+      } else {
+        // Abrir sesión en el backend (fire-and-forget; sessionPromiseRef permite que
+        // el primer evento espere si llega antes de que resuelva).
+        sessionPromiseRef.current = api
+          .crearSesionProctoring('examen', examen?.nombre, examen?.id)
+          .then((s) => {
+            if (cancelled) return null;
+            sessionIdRef.current = s.id;
+            setSessionId(s.id);
+            setProctoringSessionId(s.id);
+            return s.id;
+          })
+          .catch(() => null);
+      }
 
       // Cargar motor real; fallback honesto al stub si init() falla (no rompe).
       let engine: VisionEngine;

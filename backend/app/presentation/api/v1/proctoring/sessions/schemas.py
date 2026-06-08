@@ -12,6 +12,15 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class FinalizarSesionOut(BaseModel):
+    """Respuesta de PATCH /sessions/{id}/finalizar → 200."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    finalizada_en: Any  # datetime o str segun el ORM
+
+
 class CrearSesionIn(BaseModel):
     """Body de POST /sessions."""
 

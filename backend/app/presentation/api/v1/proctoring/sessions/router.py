@@ -21,6 +21,7 @@ from app.presentation.api.v1.proctoring.sessions.schemas import (
     CrearSesionIn,
     CrearSesionOut,
     EventoDetalle,
+    FinalizarSesionOut,
     SesionDetalle,
     SesionResumen,
 )
@@ -128,6 +129,29 @@ def create_sessions_router(get_db) -> APIRouter:
             eventos=eventos,
             biometria=biometria,
         )
+
+    @router.patch(
+        "/sessions/{session_id}/finalizar",
+        response_model=FinalizarSesionOut,
+        summary="Finalizar sesion de proctoring (idempotente)",
+    )
+    async def finalizar_sesion(
+        session_id: str,
+        db: Annotated[AsyncSession, Depends(get_db)],
+    ) -> FinalizarSesionOut:
+        """Setea finalizada_en = now() si es NULL.
+
+        Idempotente: si ya estaba finalizada, responde 200 sin modificar.
+        404 si la sesion no existe.
+        Sin body requerido.
+        """
+        sesion = await session_service.finalizar_sesion(db, session_id)
+        if sesion is None:
+            raise HTTPException(
+                status_code=http_status.HTTP_404_NOT_FOUND,
+                detail=f"Sesion {session_id!r} no encontrada",
+            )
+        return FinalizarSesionOut(id=sesion.id, finalizada_en=sesion.finalizada_en)
 
     @router.delete(
         "/sessions/{session_id}",

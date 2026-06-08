@@ -50,6 +50,15 @@ class IngestEventoIn(BaseModel):
             "El servidor re-detecta con MediaPipe (mismo motor) y produce veredicto."
         ),
     )
+    screenshot_sha256_cliente: str | None = Field(
+        None,
+        description=(
+            "Hash SHA-256 del screenshot calculado por el cliente (cadena de custodia C-49, D5). "
+            "Opcional — no bloquea la ingestión si está ausente. "
+            "El backend recibe el campo pero NO lo persiste (columna no existe en DB); "
+            "la comparación con screenshot_sha256 servidor queda para cuando se agregue la columna."
+        ),
+    )
 
 
 class IngestEventoOut(BaseModel):

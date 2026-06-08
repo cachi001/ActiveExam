@@ -42,6 +42,14 @@ async def detalle_sesion(
     return await repo.obtener_sesion(session_id)
 
 
+async def finalizar_sesion(
+    db: AsyncSession, session_id: str
+) -> ProctoringSessionModel | None:
+    """Setea finalizada_en = now() si es NULL (idempotente). None si no existe."""
+    repo = ProctoringRepository(db)
+    return await repo.finalizar_sesion(session_id)
+
+
 async def eliminar_sesion(db: AsyncSession, session_id: str) -> bool:
     """Elimina una sesion por ID. Devuelve True si existia, False si no."""
     repo = ProctoringRepository(db)
