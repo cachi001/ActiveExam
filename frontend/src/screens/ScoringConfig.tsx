@@ -8,7 +8,7 @@
  */
 import { useEffect, useState } from 'react';
 import { StaffShell } from '../ui/shells';
-import { Icon, Button, Card } from '../ui/components';
+import { Icon, Button } from '../ui/components';
 import { STAFF_NAV } from '../ui/nav';
 import { useToast } from '../ui/toast';
 import { HelpButton } from '../ui/HelpButton';

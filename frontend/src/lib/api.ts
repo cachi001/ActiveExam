@@ -1557,7 +1557,7 @@ export const api = {
    */
   async editarScoringConfig(
     tipoEvento: string,
-    body: { severidad?: string; peso?: number; descripcion?: string; activo?: boolean },
+    body: { severidad?: string; peso?: number; descripcion?: string | null; activo?: boolean },
   ): Promise<EventoScoreConfig> {
     if (USE_REAL_BACKEND) {
       return await realFetch<EventoScoreConfig>(
