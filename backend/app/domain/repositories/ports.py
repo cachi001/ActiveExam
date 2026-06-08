@@ -14,6 +14,10 @@ from __future__ import annotations
 from abc import abstractmethod
 
 from app.domain.audit_chain import AuditEntry
+from app.domain.entities.alternative_request import (
+    EstadoViaAlternativa,
+    SolicitudViaAlternativa,
+)
 from app.domain.entities.assignment import Asignacion
 from app.domain.entities.consent import Consentimiento
 from app.domain.entities.disciplinary_case import CasoDisciplinario
@@ -92,3 +96,34 @@ class AuditLogRepository(AppendOnlyRepository[AuditEntry]):
     @abstractmethod
     async def verificar_cadena(self) -> bool:
         """Verifica el encadenamiento de hash extremo a extremo (validacion diaria)."""
+
+
+class AlternativeRequestRepository:
+    """Puerto del repositorio de solicitudes de via alternativa (C-63 D-01).
+
+    Estado mutable (pendiente -> habilitado): tabla propia, NO el audit log.
+    """
+
+    @abstractmethod
+    async def add(self, solicitud: SolicitudViaAlternativa) -> SolicitudViaAlternativa:
+        """Persiste una nueva solicitud y la retorna con su id asignado."""
+
+    @abstractmethod
+    async def get_by_user_exam(
+        self, user_id: str, exam_id: str
+    ) -> SolicitudViaAlternativa | None:
+        """Busca la solicitud activa para el par (user_id, exam_id). None si no existe."""
+
+    @abstractmethod
+    async def list_pending(self) -> list[SolicitudViaAlternativa]:
+        """Lista todas las solicitudes con estado pendiente_proctor."""
+
+    @abstractmethod
+    async def update_estado(
+        self,
+        solicitud_id: str,
+        estado: EstadoViaAlternativa,
+        habilitado_por: str | None,
+        timestamp: str | None,
+    ) -> SolicitudViaAlternativa:
+        """Actualiza el estado (y opcionalmente habilitado_por + timestamp_habilitacion)."""
