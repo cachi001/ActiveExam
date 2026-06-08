@@ -10,7 +10,7 @@ import type {
   VerifyIdentityResponse, SesionEnVivo, SesionRevision, ResumenReportes,
   EventoSesion, DesafioActivo, Severidad, TipoEvento,
   Materia, Comision, Inscripcion, EstadoInscripcion,
-  EstadoEnrollment, AcuseConsentimiento, ReferenciasBiometrica, EscaneDNI, VigenciaReferencia,
+  EstadoEnrollment, AcuseConsentimiento, BloqueConsentimiento, ReferenciasBiometrica, EscaneDNI, VigenciaReferencia,
   AcuseExamen,
   SesionProctoringResumen, SesionProctoringDetalle, EventoProctoringDetalle,
   BiometriaDetalle, VeredictoReinferencia,
@@ -326,6 +326,47 @@ async function realFetch<T>(path: string, init: RequestInit, _legacyToken?: stri
   return res.json() as Promise<T>;
 }
 
+// El backend (app/.../consent/schemas.py) serializa `bloques` como dict[str, str]
+// con las cinco claves canónicas (que/como/donde/cuanto/derechos), mientras que la
+// UI consume `BloqueConsentimiento[]` (título + cuerpo + icono). Acá traducimos esa
+// forma del backend a la del frontend, en el límite de la API (el dato del backend
+// es no confiable: nunca debe llegar crudo a un componente que hace `.map`).
+const BLOQUE_META: Record<string, { titulo: string; icono: string }> = {
+  que_se_recolecta: { titulo: '¿Qué datos recolectamos?', icono: 'help' },
+  como_se_recolecta: { titulo: '¿Cómo se procesan?', icono: 'memory' },
+  donde_se_almacena: { titulo: '¿Dónde se almacenan?', icono: 'dns' },
+  cuanto_tiempo: { titulo: '¿Cuánto tiempo?', icono: 'schedule' },
+  derechos_titular: { titulo: 'Tus derechos', icono: 'gavel' },
+};
+
+/**
+ * Normaliza la respuesta de `/consent/text` a la forma del frontend.
+ * Acepta tanto el array ya tipado como el `dict[str, str]` del backend real
+ * (orden canónico del catálogo), garantizando que `bloques` SIEMPRE sea un array.
+ */
+function normalizarConsentText(raw: unknown): ConsentTextResponse {
+  const r = (raw ?? {}) as { version?: string; hash_texto?: string; bloques?: unknown };
+  let bloques: BloqueConsentimiento[];
+  if (Array.isArray(r.bloques)) {
+    bloques = r.bloques as BloqueConsentimiento[];
+  } else if (r.bloques && typeof r.bloques === 'object') {
+    const dict = r.bloques as Record<string, string>;
+    // Orden canónico de BLOQUE_META primero; cualquier clave extra se anexa.
+    const claves = [
+      ...Object.keys(BLOQUE_META).filter((k) => k in dict),
+      ...Object.keys(dict).filter((k) => !(k in BLOQUE_META)),
+    ];
+    bloques = claves.map((clave) => ({
+      titulo: BLOQUE_META[clave]?.titulo ?? clave,
+      icono: BLOQUE_META[clave]?.icono ?? 'info',
+      cuerpo: dict[clave],
+    }));
+  } else {
+    bloques = [];
+  }
+  return { version: r.version ?? '', hash_texto: r.hash_texto ?? '', bloques };
+}
+
 export const api = {
   modoDemo: !USE_REAL_BACKEND,
 
@@ -336,7 +377,8 @@ export const api = {
 
   async getConsentText(token = 'demo'): Promise<ConsentTextResponse> {
     if (USE_REAL_BACKEND) {
-      try { return await realFetch<ConsentTextResponse>('/consent/text', { method: 'GET' }, token); }
+      // El backend devuelve `bloques` como dict[str, str]; normalizamos a array.
+      try { return normalizarConsentText(await realFetch<unknown>('/consent/text', { method: 'GET' }, token)); }
       catch { /* fallback demo */ }
     }
     await delay(0);
