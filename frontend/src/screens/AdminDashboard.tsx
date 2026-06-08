@@ -22,26 +22,21 @@ export default function AdminDashboard() {
   return (
     <StaffShell nav={ADMIN_NAV} title="Panel de administración">
       <div className="space-y-lg animate-in fade-in duration-500">
-        {/* Header */}
-        <div>
-          <div className="flex items-center gap-sm">
-            <h1 className="font-headline text-headline-md text-on-surface tracking-tight">
-              Resumen de actividad
-            </h1>
-            <HelpButton title="Panel de administración">
-              <p>
-                Vista agregada de la actividad del cuatrimestre: exámenes, sesiones supervisadas,
-                tasa de flag y tiempo medio de revisión.
-              </p>
-              <p>
-                Desde acá llegás a configurar exámenes, ver reportes, auditoría y gestión de
-                usuarios. La supervisión en vivo y la cola de revisión están en el menú lateral.
-              </p>
-            </HelpButton>
-          </div>
-          <p className="text-body-md text-on-surface-variant mt-base">
+        {/* Subtítulo descriptivo + ayuda */}
+        <div className="flex items-start gap-2">
+          <p className="text-[13px] text-on-surface-variant">
             Estado de exámenes, sesiones supervisadas y cola de revisión del cuatrimestre.
           </p>
+          <HelpButton title="Panel de administración">
+            <p>
+              Vista agregada de la actividad del cuatrimestre: exámenes, sesiones supervisadas,
+              tasa de flag y tiempo medio de revisión.
+            </p>
+            <p>
+              Desde acá llegás a configurar exámenes, ver reportes, auditoría y gestión de
+              usuarios. La supervisión en vivo y la cola de revisión están en el menú lateral.
+            </p>
+          </HelpButton>
         </div>
 
         <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-md">
