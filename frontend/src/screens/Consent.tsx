@@ -13,6 +13,8 @@ export default function Consent() {
   const navigate = useNavigate();
   const toast = useToast();
   const examen = useApp((s) => s.examenActivo);
+  const proctoringSessionId = useApp((s) => s.proctoringSessionId);
+  const setProctoringSessionId = useApp((s) => s.setProctoringSessionId);
   const [texto, setTexto] = useState<ConsentTextResponse | null>(null);
   // Acuse de perfil (del enrollment) — null si no consintió aún.
   const [acusePerfil, setAcusePerfil] = useState<AcuseConsentimiento | null | undefined>(undefined);
@@ -43,6 +45,19 @@ export default function Consent() {
     setGuardando(true);
     // RN-CC: acuse por-rendición siempre obligatorio, en AMBAS ramas.
     await api.recordConsent(examen.id);
+
+    // C-64 D1: crear la sesión de proctoring ANTES de navegar a biometría (paso 3).
+    // Guard de idempotencia: si ya existe en el store (re-render / doble clic), no crear otra.
+    // Si la llamada falla, continuar igual (degradación silenciosa — el flujo no se bloquea por proctoring).
+    if (!proctoringSessionId) {
+      try {
+        const sesion = await api.crearSesionProctoring('examen', examen.nombre, examen.id);
+        setProctoringSessionId(sesion.id);
+      } catch {
+        // degradación silenciosa: la sesión se intentará crear en useExamProctoring
+      }
+    }
+
     setGuardando(false);
     navigate('/biometria');
   };

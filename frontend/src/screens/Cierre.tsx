@@ -1,8 +1,10 @@
 import type { ReactNode } from 'react';
+import { useEffect, useState } from 'react';
 import { StudentShell } from '../ui/shells';
 import { Icon, Button, Card } from '../ui/components';
 import { useNavigate } from '../lib/router';
 import { useApp } from '../lib/store';
+import { api } from '../lib/api';
 import { Term } from '../ui/Term';
 
 export default function Cierre() {
@@ -11,7 +13,30 @@ export default function Cierre() {
   const score = useApp((s) => s.scorePropio);
   const examen = useApp((s) => s.examenActivo);
   const resetSesion = useApp((s) => s.resetSesion);
-  const irARevision = score >= (examen?.umbral_score ?? 70);
+  const proctoringSessionId = useApp((s) => s.proctoringSessionId);
+
+  // C-64 D4: conteos reales leídos del backend al montar (fuente de verdad).
+  // Fallback: "—" si el GET falla o proctoringSessionId es null.
+  const [totalEventos, setTotalEventos] = useState<number | null>(null);
+  const [scoreBackend, setScoreBackend] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!proctoringSessionId) return;
+
+    void (async () => {
+      // 1. Finalizar la sesión (setea finalizada_en en el backend).
+      await api.finalizarSesionProctoring(proctoringSessionId).catch(() => null);
+
+      // 2. Leer conteos reales del backend.
+      const detalle = await api.obtenerSesionProctoring(proctoringSessionId).catch(() => null);
+      if (detalle) {
+        setTotalEventos(detalle.total_eventos ?? null);
+        setScoreBackend(detalle.score ?? null);
+      }
+    })();
+  }, [proctoringSessionId]);
+
+  const irARevision = (scoreBackend ?? score) >= (examen?.umbral_score ?? 70);
 
   const volver = () => { resetSesion(); navigate('/login'); };
 
@@ -33,8 +58,22 @@ export default function Cierre() {
           <Row label="Hash de sesión (SHA-256)" value={<code className="text-label-sm bg-surface-container px-base py-0.5 rounded font-mono">f92b8ac3e70d48bc93…</code>} />
           <Row label="Firma maestra (Ed25519)" value={<span className="text-success font-semibold inline-flex items-center gap-base"><Icon name="verified" className="text-[16px]" fill /> Válida y sellada</span>} />
           <Row label="Clave de sesión efímera" value={<span className="text-on-surface-variant italic">Liberada y eliminada</span>} />
-          <Row label="Señales registradas" value={<span className="font-semibold">{anomalias.length}</span>} />
-          <Row label="Score de prioridad" value={<span className="font-semibold">{score}%</span>} />
+          <Row
+            label="Señales registradas"
+            value={
+              <span className="font-semibold">
+                {totalEventos !== null ? totalEventos : anomalias.length}
+              </span>
+            }
+          />
+          <Row
+            label="Score de prioridad"
+            value={
+              <span className="font-semibold">
+                {scoreBackend !== null ? scoreBackend : score}%
+              </span>
+            }
+          />
         </Card>
 
         <Card className={`text-left ${irARevision ? 'bg-warning-container/40 border-warning/30' : 'bg-success-container/40 border-success/30'}`}>

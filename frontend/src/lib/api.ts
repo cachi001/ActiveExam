@@ -1055,6 +1055,55 @@ export const api = {
   },
 
   /**
+   * Finaliza una sesión de proctoring (C-64).
+   * Real: PATCH /proctoring/sessions/{sessionId}/finalizar
+   * Mock o fallo: retorna null sin propagar (fire-and-forget seguro).
+   */
+  async finalizarSesionProctoring(
+    sessionId: string,
+  ): Promise<{ id: string; finalizada_en: string } | null> {
+    if (!sessionId) return null;
+    if (USE_REAL_BACKEND) {
+      try {
+        return await realFetch<{ id: string; finalizada_en: string }>(
+          `/proctoring/sessions/${sessionId}/finalizar`,
+          { method: 'PATCH' },
+          'demo',
+        );
+      } catch {
+        return null;
+      }
+    }
+    // Mock: simular finalización exitosa
+    return { id: sessionId, finalizada_en: new Date().toISOString() };
+  },
+
+  /**
+   * Obtiene el detalle de una sesión de proctoring (C-64).
+   * Real: GET /proctoring/sessions/{sessionId}
+   * Mock o fallo: retorna null sin propagar.
+   * Alias conveniente de getSesionProctoring para uso desde Cierre.tsx.
+   */
+  async obtenerSesionProctoring(
+    sessionId: string,
+  ): Promise<SesionProctoringDetalle | null> {
+    if (!sessionId) return null;
+    if (USE_REAL_BACKEND) {
+      try {
+        return await realFetch<SesionProctoringDetalle>(
+          `/proctoring/sessions/${sessionId}`,
+          { method: 'GET' },
+          'demo',
+        );
+      } catch {
+        return null;
+      }
+    }
+    // Mock: retorna null (Cierre.tsx usa fallback del store)
+    return null;
+  },
+
+  /**
    * Lista todas las sesiones de proctoring del backend slim (C-46).
    * Real: GET /proctoring/sessions
    * Mock: dos sesiones de ejemplo con datos plausibles
