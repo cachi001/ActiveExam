@@ -53,7 +53,6 @@ export const TextField = forwardRef<HTMLInputElement, TextFieldProps>(
           className="text-sm font-medium text-on-surface-variant mb-1"
         >
           {label}
-          {required && <span className="text-error ml-0.5">*</span>}
         </label>
 
         <div className="relative">
@@ -76,7 +75,7 @@ export const TextField = forwardRef<HTMLInputElement, TextFieldProps>(
             required={required}
             autoComplete={autoComplete}
             className={[
-              'bg-white border border-outline-variant rounded-xl py-3 shadow-xs',
+              'bg-white border border-outline-variant rounded-md py-3 shadow-xs',
               'focus:outline-none focus:ring-4 focus:ring-primary/15 focus:border-primary',
               'hover:border-outline transition-colors duration-150',
               'w-full disabled:opacity-50',
