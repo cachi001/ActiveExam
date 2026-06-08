@@ -165,7 +165,7 @@ const _estadosViaAlternativa = new Map<string, string>();
 function recalcularPerfilCompleto(e: EstadoEnrollment): EstadoEnrollment {
   const consentimientoValido =
     e.consentimiento !== null &&
-    (e.consentimiento.via_alternativa || e.consentimiento.version === CONSENT_TEXT.version);
+    (e.consentimiento.via_alternativa || e.consentimiento.version === consentVersionVigente());
 
   const biometriaVigente =
     (e.biometria !== null &&
@@ -285,6 +285,17 @@ const CONSENT_TEXT: ConsentTextResponse = {
   ],
 };
 
+// Versión vigente del texto de consentimiento. En modo demo es la del mock
+// (`CONSENT_TEXT.version`); con backend real, `getConsentText` la actualiza con la
+// versión que devuelve el catálogo del backend (p. ej. "v1"). El gate de perfil
+// compara la versión del acuse contra ESTA, no contra la constante mock — si no,
+// real backend ("v1") nunca coincide con el mock ("2026.1") y el perfil queda
+// eternamente "incompleto: renovación del consentimiento".
+let _consentVersionVigente: string = CONSENT_TEXT.version;
+function consentVersionVigente(): string {
+  return _consentVersionVigente;
+}
+
 // ---------------------------------------------------------------------------
 // API pública (modo demo). Cada método simula latencia de red.
 // ---------------------------------------------------------------------------
@@ -378,10 +389,15 @@ export const api = {
   async getConsentText(token = 'demo'): Promise<ConsentTextResponse> {
     if (USE_REAL_BACKEND) {
       // El backend devuelve `bloques` como dict[str, str]; normalizamos a array.
-      try { return normalizarConsentText(await realFetch<unknown>('/consent/text', { method: 'GET' }, token)); }
-      catch { /* fallback demo */ }
+      try {
+        const texto = normalizarConsentText(await realFetch<unknown>('/consent/text', { method: 'GET' }, token));
+        // Sincronizar la versión vigente para el gate de perfil (evita falso "renovación").
+        _consentVersionVigente = texto.version || _consentVersionVigente;
+        return texto;
+      } catch { /* fallback demo */ }
     }
     await delay(0);
+    _consentVersionVigente = CONSENT_TEXT.version;
     return CONSENT_TEXT;
   },
 
@@ -665,7 +681,7 @@ export const api = {
 
       if (!e.consentimiento) {
         faltantes.push('consentimiento informado');
-      } else if (!e.consentimiento.via_alternativa && e.consentimiento.version !== CONSENT_TEXT.version) {
+      } else if (!e.consentimiento.via_alternativa && e.consentimiento.version !== consentVersionVigente()) {
         faltantes.push('renovación del consentimiento (nueva versión disponible)');
         codigo = 'consentimiento_version_desactualizada';
       }
