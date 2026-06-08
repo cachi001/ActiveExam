@@ -7,18 +7,24 @@
  *
  * Spec: profile-header-card (C-42)
  */
-import { Card } from '../../../ui/components';
+import { Button, Card } from '../../../ui/components';
 import { INSTITUTION } from '../../../config/institution';
 import type { Principal } from '../../../lib/types';
 
 interface PerfilHeaderCardProps {
   principal: Principal | null;
+  /**
+   * Callback opcional para rehacer la foto de perfil. Cuando se pasa, se muestra
+   * un botón pequeño "Cambiar foto" junto al avatar. Si se omite, no aparece —
+   * por defecto el header es de solo lectura.
+   */
+  onRehacerFoto?: () => void;
 }
 
-export function PerfilHeaderCard({ principal }: PerfilHeaderCardProps) {
+export function PerfilHeaderCard({ principal, onRehacerFoto }: PerfilHeaderCardProps) {
   return (
     <Card>
-      {/* Fila superior: avatar + nombre + roles */}
+      {/* Fila superior: avatar + nombre + roles + acciones */}
       <div className="flex items-center gap-md mb-lg">
         {/* Avatar condicional: foto circular si existe, inicial si no */}
         {principal?.foto_perfil ? (
@@ -32,12 +38,26 @@ export function PerfilHeaderCard({ principal }: PerfilHeaderCardProps) {
             {principal?.nombre.charAt(0) ?? '?'}
           </div>
         )}
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <p className="text-label-lg font-semibold text-on-surface">
             {[principal?.nombre, principal?.apellido].filter(Boolean).join(' ') || '—'}
           </p>
           <p className="text-label-sm text-on-surface-variant">{principal?.roles.join(', ') ?? '—'}</p>
         </div>
+        {onRehacerFoto && (
+          <Button
+            variant="ghost"
+            size="sm"
+            icon="photo_camera"
+            onClick={onRehacerFoto}
+            className="text-label-sm text-on-surface-variant shrink-0"
+            aria-label={principal?.foto_perfil ? 'Cambiar foto de perfil' : 'Tomar foto de perfil'}
+          >
+            <span className="hidden sm:inline">
+              {principal?.foto_perfil ? 'Cambiar foto' : 'Tomar foto'}
+            </span>
+          </Button>
+        )}
       </div>
 
       {/* Grid 2×2 de datos personales */}

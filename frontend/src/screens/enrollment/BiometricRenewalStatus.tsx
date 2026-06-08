@@ -102,9 +102,16 @@ export function BiometricRenewalStatus({ referencia, onRenovar }: Props) {
         </div>
       )}
 
-      {config.mostrarBotonRenovar && (
+      {config.mostrarBotonRenovar ? (
         <Button variant="outline" icon="refresh" onClick={onRenovar} className="w-full sm:w-auto">
           {referencia.vigencia === 'caducada' ? 'Renovar referencia (requerido)' : 'Renovar anticipadamente'}
+        </Button>
+      ) : (
+        // Vigente: igual ofrecemos un "Rehacer" suave por si la captura quedó mal
+        // (rostro mal encuadrado, luz pobre, falla de red al guardar, etc.).
+        // Usa el mismo flujo de renovación (reemplaza la referencia vigente).
+        <Button variant="ghost" icon="refresh" onClick={onRenovar} className="w-full sm:w-auto text-on-surface-variant">
+          Rehacer captura
         </Button>
       )}
     </div>
