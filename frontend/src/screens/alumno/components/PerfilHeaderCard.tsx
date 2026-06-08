@@ -25,7 +25,7 @@ export function PerfilHeaderCard({ principal }: PerfilHeaderCardProps) {
           <img
             src={principal.foto_perfil}
             className="w-14 h-14 rounded-full object-cover shrink-0"
-            alt={`Foto de perfil de ${principal.nombre}`}
+            alt={`Foto de perfil de ${[principal.nombre, principal.apellido].filter(Boolean).join(' ')}`}
           />
         ) : (
           <div className="w-14 h-14 rounded-full bg-secondary-container text-on-secondary flex items-center justify-center font-headline text-headline-sm shrink-0">
@@ -33,7 +33,9 @@ export function PerfilHeaderCard({ principal }: PerfilHeaderCardProps) {
           </div>
         )}
         <div className="min-w-0">
-          <p className="text-label-lg font-semibold text-on-surface">{principal?.nombre ?? '—'}</p>
+          <p className="text-label-lg font-semibold text-on-surface">
+            {[principal?.nombre, principal?.apellido].filter(Boolean).join(' ') || '—'}
+          </p>
           <p className="text-label-sm text-on-surface-variant">{principal?.roles.join(', ') ?? '—'}</p>
         </div>
       </div>

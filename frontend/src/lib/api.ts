@@ -334,7 +334,7 @@ export const api = {
       try { return await realFetch<ConsentTextResponse>('/consent/text', { method: 'GET' }, token); }
       catch { /* fallback demo */ }
     }
-    await delay(300);
+    await delay(0);
     return CONSENT_TEXT;
   },
 
@@ -658,7 +658,7 @@ export const api = {
 
   /** Retorna el estado de enrollment completo del perfil (C-22). */
   async getEnrollment(): Promise<EstadoEnrollment> {
-    await delay(250);
+    await delay(0);
     enrollmentAlumno = recalcularPerfilCompleto(enrollmentAlumno);
     return { ...enrollmentAlumno };
   },
