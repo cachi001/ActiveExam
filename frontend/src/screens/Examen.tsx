@@ -35,7 +35,7 @@ export default function Examen() {
 
   // Proctoring REAL de fondo: motor MediaPipe + detectores de contexto + streaming
   // al backend (sesión modo:'examen'). Expone score/eventos/eventCount y detener().
-  const { score, eventCount, activo, eventos, detener } = useExamProctoring(videoRef, examen);
+  const { score, eventCount, activo, eventos, extraMonitorActive, detener } = useExamProctoring(videoRef, examen);
 
   // cámara (preview en línea; el hook de proctoring consume este mismo <video>)
   useEffect(() => {
@@ -53,9 +53,14 @@ export default function Examen() {
   }, []);
 
   // Alerta sobria ante eventos de alta/crítica detectados realmente.
+  // Nota: ignora monitor_adicional aquí; la incidencia de monitor se maneja con un
+  // modal bloqueante dedicado (ver MonitorBloqueante más abajo) que no se cierra hasta
+  // que el monitor extra se desconecte.
   const lastAlertaId = useRef<string | null>(null);
   useEffect(() => {
-    const critico = eventos.find((e) => e.severidad === 'alta' || e.severidad === 'critica');
+    const critico = eventos.find(
+      (e) => (e.severidad === 'alta' || e.severidad === 'critica') && e.tipo !== 'monitor_adicional',
+    );
     if (critico && critico.id !== lastAlertaId.current) {
       lastAlertaId.current = critico.id;
       setAlerta(critico);
@@ -173,7 +178,45 @@ export default function Examen() {
       </div>
 
       {alerta && <AlertaCritica ev={alerta} onClose={() => setAlerta(null)} />}
+      {/* Modal BLOQUEANTE: aparece cuando hay monitor adicional detectado.
+          No se puede cerrar mientras el monitor siga conectado.
+          Se cierra automaticamente cuando el polling reporta extraMonitorActive=false. */}
+      {extraMonitorActive && <MonitorBloqueante />}
     </StudentShell>
+  );
+}
+
+function MonitorBloqueante() {
+  return (
+    <div
+      role="alertdialog"
+      aria-modal="true"
+      aria-labelledby="monitor-bloqueante-titulo"
+      className="fixed inset-0 z-[100] bg-inverse-surface/80 backdrop-blur-md flex items-center justify-center p-lg animate-in fade-in"
+    >
+      <Card className="max-w-lg w-full text-center space-y-md border-error/40">
+        <div className="w-16 h-16 rounded-full bg-error-container text-error flex items-center justify-center mx-auto">
+          <Icon name="block" className="text-[36px]" fill />
+        </div>
+        <div className="space-y-base">
+          <h3 id="monitor-bloqueante-titulo" className="font-headline text-headline-md text-on-surface">
+            Pantalla adicional detectada
+          </h3>
+          <p className="text-body-md text-on-surface-variant">
+            El examen requiere <strong>un único monitor</strong>. Detectamos que tenés más de una
+            pantalla conectada al equipo.
+          </p>
+          <p className="text-label-sm text-on-surface-variant">
+            Desconectá la pantalla adicional para volver a habilitar el examen. Esta ventana se
+            cerrará automáticamente cuando solo quede un monitor.
+          </p>
+        </div>
+        <div className="inline-flex items-center gap-base px-sm py-base rounded-lg bg-warning-container text-warning text-label-sm">
+          <Icon name="info" className="text-[16px]" fill />
+          <span>Mientras tanto, no podés interactuar con el examen.</span>
+        </div>
+      </Card>
+    </div>
   );
 }
 
