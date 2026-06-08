@@ -17,20 +17,26 @@ export function Icon({ name, className = '', fill = false, style }: {
   );
 }
 
-type Variant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'outline';
+type Variant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'outline' | 'success';
 const VARIANTS: Record<Variant, string> = {
-  primary: 'bg-primary text-on-primary hover:bg-primary-container shadow-sm hover:shadow-md',
-  secondary: 'bg-primary-container text-on-primary hover:brightness-110 shadow-sm',
-  ghost: 'bg-transparent text-on-surface-variant hover:bg-surface-container',
-  outline: 'bg-surface-container-lowest text-on-surface border border-outline-variant hover:bg-surface-container',
-  danger: 'bg-error text-on-error hover:brightness-110 shadow-sm',
+  primary: 'bg-primary text-on-primary hover:bg-primary-700 active:bg-primary-800 shadow-sm',
+  secondary: 'bg-surface-container text-on-surface hover:bg-surface-container-high active:bg-surface-container-highest',
+  ghost: 'bg-transparent text-on-surface-variant hover:bg-surface-container active:bg-surface-container-high',
+  outline: 'bg-surface-container-lowest text-on-surface border border-outline-variant shadow-sm hover:bg-surface-container-low hover:border-outline',
+  danger: 'bg-error-600 text-on-error hover:bg-error-500 active:bg-error shadow-sm',
+  success: 'bg-success-600 text-on-primary hover:bg-success-500 active:bg-success shadow-sm',
 };
 
 type Size = 'sm' | 'md' | 'lg';
 const SIZE_CLASSES: Record<Size, string> = {
-  sm: 'h-9 px-md',
-  md: 'h-12 px-lg',
-  lg: 'h-14 px-xl',
+  sm: 'px-2.5 py-1 text-label-sm gap-1.5',
+  md: 'px-3.5 py-1.5 text-label-md gap-1.5',
+  lg: 'px-5 py-2.5 text-label-md gap-2',
+};
+const ICON_SIZE: Record<Size, string> = {
+  sm: 'text-[14px]',
+  md: 'text-[16px]',
+  lg: 'text-[18px]',
 };
 
 export const Button = forwardRef<HTMLButtonElement, {
@@ -43,12 +49,15 @@ export const Button = forwardRef<HTMLButtonElement, {
     <button
       ref={ref}
       {...rest}
-      className={`inline-flex items-center justify-center gap-xs ${SIZE_CLASSES[size]} rounded-xl font-label-md text-label-md
-        transition-all duration-200 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none ${VARIANTS[variant]} ${className}`}
+      className={`inline-flex items-center justify-center font-medium rounded-lg
+        transition-colors duration-200 ease-out
+        focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-0
+        disabled:opacity-50 disabled:cursor-not-allowed
+        ${SIZE_CLASSES[size]} ${VARIANTS[variant]} ${className}`}
     >
-      {icon && <Icon name={icon} className="text-[20px]" />}
+      {icon && <Icon name={icon} className={`${ICON_SIZE[size]} shrink-0`} />}
       {children}
-      {iconRight && <Icon name={iconRight} className="text-[20px]" />}
+      {iconRight && <Icon name={iconRight} className={`${ICON_SIZE[size]} shrink-0`} />}
     </button>
   );
 });
