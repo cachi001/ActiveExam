@@ -98,6 +98,29 @@ export interface EventoSesion {
   evidencia_object_key?: string;
 }
 
+// ---------------------------------------------------------------------------
+// Gestión de usuarios — C-61
+// ---------------------------------------------------------------------------
+
+/** Usuario devuelto por GET/POST/PUT /api/v1/users/. Espeja UsuarioResponse del backend. */
+export interface UsuarioAdmin {
+  id: string;
+  id_institucional: string;
+  email: string;
+  nombre: string | null;
+  apellido: string | null;
+  roles: string[];
+  auth_provider: string;
+}
+
+/** Respuesta paginada de GET /api/v1/users/. */
+export interface ListarUsuariosResponse {
+  items: UsuarioAdmin[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 export interface SesionEnVivo {
   id: string;
   estudiante: string;

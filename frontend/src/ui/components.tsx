@@ -1,6 +1,9 @@
 // Primitivas de UI del design system ActiveExam (estilo "warm minimalism" de Stitch).
 import { forwardRef } from 'react';
 import type { ReactNode, ButtonHTMLAttributes } from 'react';
+
+export { TextField } from './TextField';
+export type { TextFieldProps } from './TextField';
 import type { Severidad } from '../lib/types';
 import { SEVERIDAD_LABEL } from '../lib/api';
 

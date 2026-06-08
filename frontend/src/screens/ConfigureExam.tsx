@@ -157,7 +157,7 @@ export default function ConfigureExam() {
           </FormField>
           <FormField
             label="Retención de evidencia (días)"
-            hint="Por defecto 30 días (Ley 25.326). Luego se elimina automáticamente."
+            hint="Por defecto 30 días. Los datos se eliminan automáticamente al vencer el plazo."
             error={errorVisible('retencion_dias')}
           >
             <input

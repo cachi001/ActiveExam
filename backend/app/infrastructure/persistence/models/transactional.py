@@ -66,6 +66,13 @@ class UsuarioModel(Base):
     - ``password_hash``: hash bcrypt 12r (passlib). NULL = usuario federado Keycloak;
       NOT NULL = usuario con credencial local. Ver migracion 0006 (paso 1).
     - ``auth_provider``: 'keycloak' (default) o 'local'. Determina el flujo de login.
+
+    Campos de datos personales (C-61):
+    - ``nombre``, ``apellido``: nullable para compatibilidad con usuarios pre-existentes
+      (federados / seed) que no tienen nombre en la DB.
+    - ``eliminado_en``: NULL = activo; NOT NULL = baja logica (soft-delete). La fila
+      nunca se borra fisicamente para preservar la cadena de custodia de evidencias
+      asociadas (regla de dominio #6/#7).
     """
 
     __tablename__ = "usuario"
@@ -81,6 +88,13 @@ class UsuarioModel(Base):
     password_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
     auth_provider: Mapped[str] = mapped_column(
         String(32), nullable=False, server_default="keycloak"
+    )
+    # C-61: datos personales (nullable — compatibilidad con usuarios pre-existentes).
+    nombre: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    apellido: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # C-61: baja logica (soft-delete). NULL = activo; NOT NULL = dado de baja.
+    eliminado_en: Mapped[str | None] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
     )
 
 
