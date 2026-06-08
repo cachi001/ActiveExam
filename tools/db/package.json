@@ -1,0 +1,9 @@
+{
+  "name": "activeexam-db-tools",
+  "private": true,
+  "type": "module",
+  "description": "Scripts ad-hoc para consultar la DB de Railway desde el repo (uso vía `railway run --service ActiveExam -- node tools/db/<script>.js`). NO se incluye en build del frontend ni del backend.",
+  "dependencies": {
+    "pg": "^8.13.1"
+  }
+}
