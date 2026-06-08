@@ -31,7 +31,7 @@ function Header() {
           <p>
             Estas métricas <strong>no individualizan</strong> a estudiantes — son agregados de
             integridad del sistema. La decisión disciplinaria por persona se hace siempre en la
-            cola de revisión (L2.5).
+            cola de revisión.
           </p>
         </HelpButton>
       </div>

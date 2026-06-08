@@ -148,8 +148,8 @@ export default function Proctor() {
                   de personas; click en una persona para abrir su detalle y revisar evidencia.
                 </p>
                 <p>
-                  El panel <strong>nunca sanciona</strong>: el score solo prioriza la revisión humana
-                  (L2.5). La decisión disciplinaria siempre es del revisor.
+                  El panel <strong>nunca sanciona automáticamente</strong>: el score solo prioriza la
+                  revisión humana. La decisión disciplinaria siempre es del revisor.
                 </p>
               </HelpButton>
             </div>

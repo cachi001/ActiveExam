@@ -141,12 +141,40 @@ const PAYLOAD_KEY_LABELS: Record<string, string> = {
   faces: 'Rostros',
   rostros: 'Rostros',
   trigger_evidence: 'Disparó evidencia',
+  gaze: 'Dirección de mirada',
   gaze_x: 'Mirada X',
   gaze_y: 'Mirada Y',
   yaw: 'Yaw',
   pitch: 'Pitch',
   roll: 'Roll',
 };
+
+/**
+ * Convierte un vector de mirada {x, y} (normalizado a [-1, 1] aprox., donde
+ * x>0 = derecha, y>0 = abajo según convención de visión por computadora) en
+ * una etiqueta cardinal humana. Si la magnitud es chica, devuelve "centro".
+ *
+ * Ejemplos:
+ *   { x: -0.22, y: -0.05 } -> "izquierda"
+ *   { x:  0.30, y:  0.40 } -> "abajo-derecha"
+ *   { x:  0.02, y: -0.01 } -> "centro"
+ */
+export function formatGazeDirection(gaze: { x?: unknown; y?: unknown }): string {
+  const x = typeof gaze.x === 'number' ? gaze.x : 0;
+  const y = typeof gaze.y === 'number' ? gaze.y : 0;
+  const magnitud = Math.hypot(x, y);
+  // Tolerancia: por debajo de ~0.1 la mirada está alineada al frente.
+  if (magnitud < 0.1) return 'centro';
+
+  // Solo el eje dominante si el otro es despreciable (< 30% del dominante).
+  const ax = Math.abs(x);
+  const ay = Math.abs(y);
+  const horiz = x < 0 ? 'izquierda' : 'derecha';
+  const vert = y < 0 ? 'arriba' : 'abajo';
+  if (ay < ax * 0.3) return horiz;
+  if (ax < ay * 0.3) return vert;
+  return `${vert}-${horiz}`;
+}
 
 /** Etiqueta humana para una clave de payload. */
 export function formatPayloadKey(key: string): string {
@@ -185,6 +213,7 @@ export function formatDuracionMs(ms: number): string {
 /**
  * Formatea el valor de una clave de payload pensando en lectura humana:
  * - claves que terminan en `_ms` o que son exactamente `ms` → "X s" / "X min Y s"
+ * - clave `gaze` con shape {x, y} → "izquierda" / "abajo-derecha" / "centro"
  * - booleanos → "Sí"/"No"
  * - números con muchos decimales → 2 decimales
  * - el resto → String(v)
@@ -193,6 +222,15 @@ export function formatPayloadValue(key: string, value: unknown): string {
   if (value === null || value === undefined) return '—';
   const esMs = key === 'ms' || /_ms$/.test(key);
   if (esMs && typeof value === 'number') return formatDuracionMs(value);
+  if (
+    key === 'gaze' &&
+    typeof value === 'object' &&
+    value !== null &&
+    'x' in value &&
+    'y' in value
+  ) {
+    return formatGazeDirection(value as { x: unknown; y: unknown });
+  }
   if (typeof value === 'boolean') return value ? 'Sí' : 'No';
   if (typeof value === 'number') {
     if (Number.isInteger(value)) return String(value);

@@ -218,6 +218,18 @@ export function useHarnessLifecycle(deps: LifecycleDeps) {
 
   // ------ Detener harness ------
   const stopHarness = useCallback(async () => {
+    // Finalizar la sesión en el backend ANTES de limpiar las refs.
+    // Sin esto la sesión queda `finalizada_en = NULL` en `proctoring_session`
+    // y "Supervisión en vivo" la sigue listando como activa (filtra por
+    // !finalizada_en). Fire-and-forget: si la red falla, igual avanzamos con
+    // el cleanup local.
+    const sidPendiente =
+      sessionIdRef.current ??
+      (sessionPromiseRef.current ? await sessionPromiseRef.current.catch(() => null) : null);
+    if (sidPendiente) {
+      void api.finalizarSesionProctoring(sidPendiente).catch(() => null);
+    }
+
     // Limpiar sesión automática al detener
     sessionIdRef.current = null;
     sessionPromiseRef.current = null;
