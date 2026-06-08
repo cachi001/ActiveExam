@@ -33,6 +33,7 @@ import ThresholdsConfig from './harness/ThresholdsConfig';
 import RiskMeter from './harness/RiskMeter';
 import EventLog from './harness/EventLog';
 import CoverageChecklist from './harness/CoverageChecklist';
+import LeyendaSeveridad from './harness/LeyendaSeveridad';
 
 export default function AdminDetectionHarness() {
   const h = useDetectionHarness();
@@ -136,6 +137,8 @@ export default function AdminDetectionHarness() {
               onThresholdChange={h.setRiskThreshold}
               onResetScore={() => h.setHarnessScore(0)}
             />
+
+            <LeyendaSeveridad />
 
             {/* Contador del store (tasks 7.1, 7.2) */}
             <Card className="flex items-center justify-between gap-md flex-wrap">
