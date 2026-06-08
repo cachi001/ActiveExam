@@ -6,6 +6,8 @@
 
 import { Icon, Card, SectionTitle } from '../../ui/components';
 import { SUSPICIOUS_ACTIVITY_CATALOG } from '../../proctoring/suspiciousActivityCatalog';
+import { PESO_SCORE } from '../../proctoring/riskWeights';
+import { SEVERITY_BADGE_COLORS } from './helpers';
 import type { CoverageEntry, MonitorPermission } from './types';
 
 interface CoverageChecklistProps {
@@ -85,7 +87,11 @@ export default function CoverageChecklist({
                     }`}>
                       {entry.categoria === 'vision' ? 'Visión' : 'Navegador'}
                     </span>
-                    <span className="text-[10px] text-on-surface-variant uppercase">sev: {entry.severidad}</span>
+                    {/* Badge de severidad con color + peso de score que aporta. */}
+                    <span className={`inline-flex items-center gap-base text-[10px] uppercase tracking-wide px-base py-px rounded-full font-bold ${SEVERITY_BADGE_COLORS[entry.severidad]}`}>
+                      {entry.severidad}
+                      <span className="font-mono normal-case">+{PESO_SCORE[entry.severidad]}</span>
+                    </span>
                   </div>
                   <p className="text-[11px] text-on-surface-variant">{entry.descripcion}</p>
                 </div>
