@@ -108,7 +108,7 @@ export default function CoverageChecklist({
 
       <div className="flex items-center gap-base p-sm rounded-lg bg-surface-container border border-outline-variant/40 text-label-sm text-on-surface-variant">
         <Icon name="lock" className="text-[14px] shrink-0" fill />
-        Aislamiento D-4: todos los eventos de esta sesión permanecen en el sink local. Ninguno se envía al backend de producción.
+        Modo aislado: todos los eventos de esta sesión permanecen en el dispositivo local. Ninguno se envía al backend de producción.
       </div>
     </Card>
   );

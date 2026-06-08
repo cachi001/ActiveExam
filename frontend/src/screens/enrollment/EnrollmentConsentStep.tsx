@@ -145,8 +145,8 @@ export function EnrollmentConsentStep({ acuseActual, onConsentido }: Props) {
 
       {/* Nota de privacidad */}
       <p className="text-label-sm text-on-surface-variant text-center">
-        El acuse queda registrado con timestamp y hash inmutable (RN-CO-01). Podés solicitar acceso,
-        rectificación y eliminación de tus datos ante la AAIP.
+        El acuse queda registrado de forma permanente e inalterable. Podés solicitar acceso,
+        rectificación y eliminación de tus datos ante la AAIP (Agencia de Acceso a la Información Pública).
       </p>
     </div>
   );

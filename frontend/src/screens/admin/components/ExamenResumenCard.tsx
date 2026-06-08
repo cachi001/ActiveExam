@@ -36,7 +36,7 @@ export default function ExamenResumenCard({ examen }: ExamenResumenCardProps) {
         <Row
           icon="inventory_2"
           label="Retención de evidencia"
-          value={`${examen.retencion_dias} días (Ley 25.326)`}
+          value={`${examen.retencion_dias} días`}
         />
       </div>
       <div className="pt-sm border-t border-outline-variant/40">

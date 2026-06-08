@@ -14,6 +14,8 @@ import type {
   AcuseExamen,
   SesionProctoringResumen, SesionProctoringDetalle, EventoProctoringDetalle,
   BiometriaDetalle, VeredictoReinferencia,
+  // C-61: gestión de usuarios
+  UsuarioAdmin, ListarUsuariosResponse,
 } from './types';
 import { INSTITUTION } from '../config/institution';
 import { authProvider } from './authProvider';
@@ -1121,6 +1123,181 @@ export const api = {
     await delay(200);
     return { ok: true }; // mock: simula éxito
   },
+
+  // -------------------------------------------------------------------------
+  // Foto de perfil — C-61 (task 5.1)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Obtiene la foto de perfil del usuario autenticado (C-61).
+   * Real: GET /enrollment/foto-perfil → { imagen_base64: string }
+   * Mock: retorna null (sin foto demo).
+   */
+  async obtenerFotoPerfil(): Promise<string | null> {
+    if (USE_REAL_BACKEND) {
+      try {
+        const data = await realFetch<{ imagen_base64: string }>(
+          '/enrollment/foto-perfil',
+          { method: 'GET' },
+        );
+        return data.imagen_base64;
+      } catch {
+        return null;
+      }
+    }
+    await delay(150);
+    return null; // mock: sin foto
+  },
+
+  /**
+   * Obtiene la foto de perfil de un usuario específico (admin/proctor) — C-61.
+   * Real: GET /enrollment/foto-perfil/{usuario_id} → { imagen_base64: string }
+   * Mock: retorna null.
+   */
+  async obtenerFotoPerfilDeUsuario(usuarioId: string): Promise<string | null> {
+    if (USE_REAL_BACKEND) {
+      try {
+        const data = await realFetch<{ imagen_base64: string }>(
+          `/enrollment/foto-perfil/${usuarioId}`,
+          { method: 'GET' },
+        );
+        return data.imagen_base64;
+      } catch {
+        return null;
+      }
+    }
+    await delay(150);
+    return null; // mock: sin foto
+  },
+
+  // -------------------------------------------------------------------------
+  // Gestión de usuarios (admin) — C-61 (task 6.4)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Lista usuarios paginados (admin_sistema) — C-61.
+   * Real: GET /users/?limit=&offset=
+   * Mock: lista demo de 3 usuarios.
+   */
+  async listarUsuarios(limit = 20, offset = 0): Promise<ListarUsuariosResponse> {
+    if (USE_REAL_BACKEND) {
+      return await realFetch<ListarUsuariosResponse>(
+        `/users/?limit=${limit}&offset=${offset}`,
+        { method: 'GET' },
+      );
+    }
+    await delay(300);
+    const items: UsuarioAdmin[] = [
+      { id: 'u1', id_institucional: 'FRM-ADM-0021', email: 'lmendoza@frm.utn.edu.ar', nombre: 'Lucía', apellido: 'Mendoza', roles: ['admin_sistema'], auth_provider: 'local' },
+      { id: 'u2', id_institucional: 'FRM-DOC-1182', email: 'cferreyra@frm.utn.edu.ar', nombre: 'Carolina', apellido: 'Ferreyra', roles: ['proctor'], auth_provider: 'local' },
+      { id: 'u3', id_institucional: 'FRM-23-4912', email: 'ecaceres@frm.utn.edu.ar', nombre: 'Emiliano', apellido: 'Cáceres', roles: ['estudiante'], auth_provider: 'local' },
+    ];
+    return { items, total: items.length, limit, offset };
+  },
+
+  /**
+   * Crea un usuario con credencial local (admin_sistema) — C-61.
+   * Real: POST /users/
+   */
+  async crearUsuario(body: {
+    id_institucional: string;
+    email: string;
+    password: string;
+    roles: string[];
+    nombre?: string;
+    apellido?: string;
+  }): Promise<UsuarioAdmin> {
+    if (USE_REAL_BACKEND) {
+      return await realFetch<UsuarioAdmin>(
+        '/users/',
+        { method: 'POST', body: JSON.stringify(body) },
+      );
+    }
+    await delay(400);
+    return {
+      id: 'u-' + Date.now().toString(36),
+      id_institucional: body.id_institucional,
+      email: body.email,
+      nombre: body.nombre ?? null,
+      apellido: body.apellido ?? null,
+      roles: body.roles,
+      auth_provider: 'local',
+    };
+  },
+
+  /**
+   * Edita email, nombre, apellido o roles de un usuario (admin_sistema) — C-61.
+   * Real: PUT /users/{usuarioId}
+   */
+  async editarUsuario(
+    usuarioId: string,
+    body: { email?: string; nombre?: string; apellido?: string; roles?: string[] },
+  ): Promise<UsuarioAdmin> {
+    if (USE_REAL_BACKEND) {
+      return await realFetch<UsuarioAdmin>(
+        `/users/${usuarioId}`,
+        { method: 'PUT', body: JSON.stringify(body) },
+      );
+    }
+    await delay(350);
+    return {
+      id: usuarioId,
+      id_institucional: '',
+      email: body.email ?? '',
+      nombre: body.nombre ?? null,
+      apellido: body.apellido ?? null,
+      roles: body.roles ?? [],
+      auth_provider: 'local',
+    };
+  },
+
+  /**
+   * Da de baja lógica (soft-delete) a un usuario (admin_sistema) — C-61.
+   * Real: DELETE /users/{usuarioId} → 204 sin cuerpo.
+   */
+  async eliminarUsuario(usuarioId: string): Promise<void> {
+    if (USE_REAL_BACKEND) {
+      const token = authProvider.getToken();
+      const res = await fetch(`${API_BASE}/users/${usuarioId}`, {
+        method: 'DELETE',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return;
+    }
+    await delay(300);
+  },
+
+  // -------------------------------------------------------------------------
+  // Registro público de estudiantes — C-61 (task 7.3)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Registro público de un nuevo estudiante (C-61).
+   * Real: POST /auth/register → 201 sin token.
+   * Mock: 201 simulado.
+   */
+  async registrarUsuario(body: {
+    id_institucional: string;
+    nombre: string;
+    apellido: string;
+    email: string;
+    password: string;
+    password_confirmacion: string;
+  }): Promise<{ id: string; id_institucional: string; email: string }> {
+    if (USE_REAL_BACKEND) {
+      return await realFetch<{ id: string; id_institucional: string; email: string }>(
+        '/auth/register',
+        { method: 'POST', body: JSON.stringify(body) },
+      );
+    }
+    await delay(500);
+    return {
+      id: 'u-' + Date.now().toString(36),
+      id_institucional: body.id_institucional,
+      email: body.email,
+    };
+  },
 };
 
 // Helpers de presentación
@@ -1147,4 +1324,6 @@ export type {
   // C-46: tipos de proctoring (re-export desde types.ts)
   SesionProctoringResumen, SesionProctoringDetalle, EventoProctoringDetalle,
   BiometriaDetalle, VeredictoReinferencia,
+  // C-61: gestión de usuarios
+  UsuarioAdmin, ListarUsuariosResponse,
 };

@@ -50,7 +50,7 @@ export default function Cierre() {
         </Card>
 
         <p className="text-label-sm text-on-surface-variant px-md leading-relaxed">
-          Conforme al reglamento y la Ley 25.326, tus datos biométricos se eliminan automáticamente a los 30 días, salvo apelación o hold disciplinario abierto.
+          Tus datos biométricos se eliminan automáticamente a los 30 días del egreso, salvo que haya una apelación o proceso disciplinario abierto.
         </p>
 
         <Button variant="outline" icon="home" onClick={volver} className="mx-auto">Volver al inicio</Button>

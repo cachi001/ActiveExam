@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Icon, Button, FormField } from '../ui/components';
-import { useNavigate } from '../lib/router';
+import { Icon, Button, TextField } from '../ui/components';
+import { useNavigate, Link } from '../lib/router';
 import { useAuth } from '../lib/authStore';
 import type { Rol } from '../lib/types';
 import { INSTITUTION } from '../config/institution';
@@ -25,7 +25,6 @@ function FormularioJwt() {
 
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [verPassword, setVerPassword] = useState(false); // C-58 D5: toggle mostrar/ocultar
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -70,7 +69,7 @@ function FormularioJwt() {
         </div>
         <div className="relative flex items-center gap-xs text-label-sm text-white/70">
           <Icon name="lock" className="text-[18px]" fill />
-          Self-hosted · Ley 25.326 · DPIA aprobado
+          Self-hosted · DPIA aprobado
         </div>
       </aside>
 
@@ -103,46 +102,31 @@ function FormularioJwt() {
 
             {/* Formulario JWT */}
             <form onSubmit={handleSubmit} className="flex flex-col gap-md">
-              {/* C-58 D5: campos migrados a FormField + clase .input del sistema */}
-              <FormField label="Usuario o email">
-                <input
-                  id="username"
-                  type="text"
-                  autoComplete="username"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  disabled={loading}
-                  required
-                  className="input w-full disabled:opacity-50"
-                  placeholder="usuario o email institucional"
-                />
-              </FormField>
+              <TextField
+                label="Usuario o email"
+                name="username"
+                type="text"
+                autoComplete="username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                disabled={loading}
+                required
+                icon="person"
+                placeholder="usuario o email institucional"
+              />
 
-              <FormField label="Contraseña">
-                {/* Contenedor relative para posicionar el botón de ojo dentro del campo */}
-                <div className="relative">
-                  <input
-                    id="password"
-                    type={verPassword ? 'text' : 'password'}
-                    autoComplete="current-password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    disabled={loading}
-                    required
-                    className="input w-full pr-[2.75rem] disabled:opacity-50"
-                    placeholder="contraseña"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setVerPassword((v) => !v)}
-                    aria-label={verPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
-                    className="absolute inset-y-0 right-0 flex items-center px-sm text-on-surface-variant hover:text-on-surface transition-colors"
-                    tabIndex={-1}
-                  >
-                    <Icon name={verPassword ? 'visibility_off' : 'visibility'} className="text-[20px]" />
-                  </button>
-                </div>
-              </FormField>
+              <TextField
+                label="Contraseña"
+                name="password"
+                type="password"
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                disabled={loading}
+                required
+                icon="lock"
+                placeholder="contraseña"
+              />
 
               {error && (
                 <div className="flex items-center gap-xs text-error text-body-sm p-sm rounded-lg bg-error-container">
@@ -171,6 +155,14 @@ function FormularioJwt() {
           <p className="flex items-center justify-center gap-xs text-label-sm text-on-surface-variant">
             <Icon name="lock" className="text-outline text-[16px]" fill />
             Tu privacidad está protegida — Ley 25.326
+          </p>
+
+          {/* C-61: enlace al registro público */}
+          <p className="text-center text-label-sm text-on-surface-variant">
+            ¿No tenés cuenta?{' '}
+            <Link to="/registro" className="text-primary font-semibold hover:underline">
+              Registrarse
+            </Link>
           </p>
         </div>
       </main>
@@ -213,7 +205,7 @@ function SelectorRolDemo() {
         </div>
         <div className="relative flex items-center gap-xs text-label-sm text-white/70">
           <Icon name="lock" className="text-[18px]" fill />
-          Self-hosted · Ley 25.326 · DPIA aprobado
+          Self-hosted · DPIA aprobado
         </div>
       </aside>
 
@@ -298,7 +290,7 @@ function LoginKeycloak() {
         </div>
         <div className="relative flex items-center gap-xs text-label-sm text-white/70">
           <Icon name="lock" className="text-[18px]" fill />
-          Self-hosted · Ley 25.326 · DPIA aprobado
+          Self-hosted · DPIA aprobado
         </div>
       </aside>
 

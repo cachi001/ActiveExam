@@ -90,7 +90,7 @@ export default function ProctoringSessionDetail() {
             <p className="mt-base">
               Este sistema <strong>nunca sanciona automáticamente</strong>. El score es un indicador
               de prioridad para revisión humana. La decisión disciplinaria es{' '}
-              <strong>siempre del revisor</strong>. Los screenshots son dato sensible (Ley 25.326):
+              <strong>siempre del revisor</strong>. Los screenshots son dato sensible:
               finalidad acotada a revisión humana.
             </p>
           </div>

@@ -26,7 +26,7 @@ import { Button, Icon } from '../ui/components';
 import { StudentShell } from '../ui/shells';
 import { useNavigate } from '../lib/router';
 import { useApp } from '../lib/store';
-import { api, ENABLE_DNI_SCAN } from '../lib/api';
+import { api, ENABLE_DNI_SCAN, USE_REAL_BACKEND } from '../lib/api';
 import { DEV_TOOLS_ENABLED } from '../lib/devConfig';
 import { EnrollmentConsentStep } from './enrollment/EnrollmentConsentStep';
 import { EnrollmentBiometricStep } from './enrollment/EnrollmentBiometricStep';
@@ -80,6 +80,11 @@ export default function StudentProfile() {
     let cancelado = false;
     (async () => {
       await cargarEnrollment();
+      // C-61 task 5.2: cargar foto de perfil desde el backend real y mostrar avatar.
+      if (USE_REAL_BACKEND && !principal?.foto_perfil) {
+        const foto = await api.obtenerFotoPerfil();
+        if (!cancelado && foto) setFotoPerfil(foto);
+      }
       if (cancelado) return;
       // La UI del perfil ofrece iniciar/continuar enrollment según el estado.
       setPaso('perfil');
@@ -241,9 +246,7 @@ export default function StudentProfile() {
           onBack={volverAlPerfil}
         >
           <div className="text-label-sm text-on-surface-variant bg-surface-container-low rounded-xl p-sm border border-outline-variant/30">
-            <span className="font-semibold">Privacidad (Ley 25.326):</span> La foto de perfil es
-            un dato personal con finalidad acotada (identidad en enrollment). Cifrada at-rest
-            server-side y eliminada al egreso (Ley 25.326).
+            <span className="font-semibold">Privacidad:</span> La foto de perfil se procesa server-side y se elimina al egreso.
           </div>
 
           {/* C-56: mostrar error del backend con opción de reintentar (task 11.2) */}

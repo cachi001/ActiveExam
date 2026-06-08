@@ -124,8 +124,8 @@ export function EnrollmentDniStep({ escanActual, onEscaneado, onOmitir }: Props)
                 <p className="text-label-md font-semibold text-on-surface">DNI registrado (frente y dorso)</p>
               </div>
               <p className="text-label-sm text-on-surface-variant">
-                Capturado el {formatearFecha(escanGuardado.fecha_captura)}. Tratado como dato sensible
-                (Ley 25.326): cifrado at-rest, finalidad acotada a la verificación de identidad,
+                Capturado el {formatearFecha(escanGuardado.fecha_captura)}. Tratado como dato sensible:
+                cifrado at-rest, finalidad acotada a la verificación de identidad,
                 eliminado al egreso. La verificación del documento se realiza server-side.
               </p>
               <Button variant="ghost" onClick={onOmitir} icon="arrow_forward" className="w-full">
@@ -147,7 +147,7 @@ export function EnrollmentDniStep({ escanActual, onEscaneado, onOmitir }: Props)
               <div className="flex items-start gap-sm bg-surface-container-low rounded-xl p-md border border-outline-variant/30">
                 <Icon name="privacy_tip" className="text-on-surface-variant text-[18px] shrink-0 mt-px" />
                 <p className="text-label-sm text-on-surface-variant">
-                  <strong>Dato sensible (Ley 25.326):</strong> el frente y el dorso del DNI se cifran
+                  <strong>Dato sensible:</strong> el frente y el dorso del DNI se cifran
                   at-rest y su uso queda restringido exclusivamente a la verificación de tu identidad.
                   Se eliminan al egreso de la institución (salvo hold disciplinario vigente).
                 </p>

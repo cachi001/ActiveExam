@@ -42,7 +42,7 @@ export function RequisitoDni({ dni, dniOk, dniScanHabilitado, onEscanear }: Requ
             })}.
           </p>
           <p className="text-on-surface-variant">
-            Tratado como dato sensible (Ley 25.326): cifrado at-rest, finalidad acotada,
+            Tratado como dato sensible: cifrado at-rest, finalidad acotada,
             eliminado al egreso. La verificación del documento se realiza server-side.
           </p>
         </div>
@@ -59,7 +59,7 @@ export function RequisitoDni({ dni, dniOk, dniScanHabilitado, onEscanear }: Requ
       ) : (
         <p className="text-label-sm text-on-surface-variant">
           No disponible en esta versión. No bloquea el perfil completo. Cuando esté activo, el DNI
-          será tratado como dato sensible (Ley 25.326): cifrado, finalidad acotada, eliminado al egreso.
+          será tratado como dato sensible: cifrado, finalidad acotada, eliminado al egreso.
         </p>
       )}
     </RequisitoCard>

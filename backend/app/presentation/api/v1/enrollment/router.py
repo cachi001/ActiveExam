@@ -1,13 +1,16 @@
-"""Router de enrollment biometrico (C-56).
+"""Router de enrollment biometrico (C-56 + C-61).
 
 Endpoints del alumno autenticado:
 - ``POST /enrollment/foto-perfil``: sube la foto de perfil al bucket no-WORM
   y persiste los metadatos en ``foto_referencia``.
 - ``POST /enrollment/embedding-referencia``: recibe el embedding 128-d,
   lo cifra at-rest con Fernet, y lo persiste en ``embedding_referencia``.
+- ``GET  /enrollment/foto-perfil``: devuelve la foto vigente del usuario
+  autenticado como base64 en JSON (C-61, D7).
+- ``GET  /enrollment/foto-perfil/{usuario_id}``: devuelve la foto de otro
+  usuario (solo admin_sistema/proctor) (C-61, D7).
 
-Autenticacion: Bearer JWT (rol ``estudiante``). HTTP 401 sin token. HTTP 403
-con token de rol incorrecto.
+Autenticacion: Bearer JWT. HTTP 401 sin token. HTTP 403 con rol incorrecto.
 
 La logica de negocio se delega a los application services
 ``GuardarFotoPerfilService`` y ``GuardarEmbeddingReferenciaService``.
@@ -15,13 +18,21 @@ El storage y el cifrado se inyectan desde el app state.
 
 D3 del design: el backend acepta el embedding client-side (NO re-infiere en
 enrollment). La re-inferencia aplica durante el examen (C-09 D2).
+
+DATO SENSIBLE (Ley 25.326, C-61 D7): el binario de la foto NO se loguea.
+El endpoint de foto ajena exige rol explicito (admin_sistema o proctor).
 """
 
 from __future__ import annotations
 
+import base64
+import logging
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from pydantic import BaseModel, ConfigDict
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.application.enrollment.guardar_embedding_referencia import (
     DimensionError,
@@ -44,6 +55,8 @@ from app.presentation.api.v1.enrollment.schemas import (
     FotoPerfilRequest,
     FotoPerfilResponse,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -207,3 +220,122 @@ async def guardar_embedding_referencia(
         ) from exc
 
     return EmbeddingReferenciaResponse(referencia_id=UUID(referencia_id))
+
+
+# ---------------------------------------------------------------------------
+# Helpers de lectura de foto (C-61, D7)
+# ---------------------------------------------------------------------------
+
+
+class FotoPerfilReadResponse(BaseModel):
+    """Response de lectura de foto de perfil como base64 dataURL."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    imagen_base64: str
+
+
+async def _leer_foto_slim(
+    session_factory: async_sessionmaker[AsyncSession],
+    usuario_id: str,
+) -> str | None:
+    """Lee la foto vigente de un usuario desde la DB slim (BYTEA).
+
+    Retorna el dataURL base64 o None si no existe foto vigente.
+    El binario NO se loguea (Ley 25.326 — dato sensible).
+    """
+    async with session_factory() as session:
+        result = await session.execute(
+            text(
+                "SELECT foto_bytes FROM foto_referencia "
+                "WHERE usuario_id = :usuario_id AND vigente = true "
+                "LIMIT 1"
+            ),
+            {"usuario_id": usuario_id},
+        )
+        row = result.fetchone()
+        if row is None:
+            return None
+        foto_bytes: bytes = row[0]
+    # Convertir a base64 dataURL (JPEG por convencion; el cliente acepta ambos).
+    b64 = base64.b64encode(foto_bytes).decode("ascii")
+    return f"data:image/jpeg;base64,{b64}"
+
+
+# ---------------------------------------------------------------------------
+# GET /enrollment/foto-perfil — foto propia del usuario autenticado (C-61, D7)
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/foto-perfil",
+    response_model=FotoPerfilReadResponse,
+    summary="Devuelve la foto de perfil vigente del usuario autenticado (base64).",
+)
+async def obtener_foto_perfil_propia(
+    request: Request,
+    principal: AuthenticatedPrincipal = Depends(require_roles(Rol.ESTUDIANTE, Rol.PROCTOR, Rol.ADMIN_SISTEMA)),
+) -> FotoPerfilReadResponse:
+    """Devuelve la foto vigente del usuario autenticado como base64 dataURL.
+
+    - 200: foto en base64.
+    - 401: sin token.
+    - 404: sin foto vigente.
+
+    DATO SENSIBLE (Ley 25.326): el binario no se loguea.
+    """
+    if not principal.subject:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token no porta un subject (sub) valido.",
+        )
+
+    factory = _get_session_factory(request)
+    imagen_base64 = await _leer_foto_slim(factory, principal.subject)
+
+    if imagen_base64 is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No hay foto de perfil vigente para este usuario.",
+        )
+
+    return FotoPerfilReadResponse(imagen_base64=imagen_base64)
+
+
+# ---------------------------------------------------------------------------
+# GET /enrollment/foto-perfil/{usuario_id} — foto ajena (admin/proctor)
+# ---------------------------------------------------------------------------
+
+_require_staff = require_roles(Rol.ADMIN_SISTEMA, Rol.PROCTOR)
+
+
+@router.get(
+    "/foto-perfil/{usuario_id}",
+    response_model=FotoPerfilReadResponse,
+    summary="Devuelve la foto de perfil de otro usuario (solo admin/proctor).",
+)
+async def obtener_foto_perfil_ajena(
+    usuario_id: str,
+    request: Request,
+    _principal: AuthenticatedPrincipal = Depends(_require_staff),
+) -> FotoPerfilReadResponse:
+    """Devuelve la foto vigente de otro usuario (solo admin_sistema/proctor).
+
+    - 200: foto en base64.
+    - 401: sin token.
+    - 403: rol insuficiente (un estudiante no puede ver la foto de otro).
+    - 404: el usuario objetivo no tiene foto vigente.
+
+    DATO SENSIBLE (Ley 25.326): el binario no se loguea. Finalidad acotada
+    a supervision/gestion. El guard de rol es defensa en profundidad.
+    """
+    factory = _get_session_factory(request)
+    imagen_base64 = await _leer_foto_slim(factory, usuario_id)
+
+    if imagen_base64 is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No hay foto de perfil vigente para ese usuario.",
+        )
+
+    return FotoPerfilReadResponse(imagen_base64=imagen_base64)

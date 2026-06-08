@@ -263,7 +263,7 @@ export function EnrollmentBiometricStep({ referenciaActual, onCapturada, esRenov
         <div className="text-label-sm text-on-surface-variant bg-surface-container-low rounded-xl p-md border border-outline-variant/30 space-y-xs">
           <p className="font-semibold text-on-surface flex items-center gap-xs">
             <Icon name="lock" className="text-[16px]" />
-            Privacidad y custodia de datos (Ley 25.326)
+            Privacidad y custodia de datos
           </p>
           <p>
             La imagen de referencia y el <Term termKey="embedding">embedding</Term> se tratan como <strong>datos sensibles</strong>:
