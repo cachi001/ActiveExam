@@ -4,7 +4,6 @@ import { Icon, Card, Badge, Button, SectionTitle } from '../ui/components';
 import { HelpButton } from '../ui/HelpButton';
 import { ADMIN_NAV } from './AdminDashboard';
 import { useNavigate } from '../lib/router';
-import { useApp } from '../lib/store';
 import { api } from '../lib/api';
 import type { Examen } from '../lib/types';
 
@@ -15,42 +14,38 @@ export default function ExamList() {
   const [examenes, setExamenes] = useState<Examen[]>([]);
   const [q, setQ] = useState('');
   const navigate = useNavigate();
-  const setExamenActivo = useApp((s) => s.setExamenActivo);
 
   useEffect(() => { api.listExams().then(setExamenes); }, []);
   const filtrados = examenes.filter((e) => e.nombre.toLowerCase().includes(q.toLowerCase()) || e.catedra.toLowerCase().includes(q.toLowerCase()));
 
-  const editar = (e: Examen) => { setExamenActivo(e); navigate('/admin/configurar'); };
+  const configurar = () => navigate('/admin/configuracion');
 
   return (
-    <StaffShell nav={ADMIN_NAV} title="Listado de exámenes">
+    <StaffShell
+      nav={ADMIN_NAV}
+      title="Listado de exámenes"
+      subtitle="Gestioná las evaluaciones supervisadas: estado, umbral de revisión e inscriptos."
+      help={
+        <HelpButton title="Exámenes">
+          <p>
+            Catálogo de evaluaciones supervisadas con su estado (borrador, programado, en
+            curso, finalizado), inscriptos y umbral de revisión.
+          </p>
+          <p>
+            Los detectores, umbrales y pesos se configuran de forma global en
+            <em> Configuración del sistema</em>. El botón "Configurar" te lleva ahí.
+          </p>
+        </HelpButton>
+      }
+    >
       <div className="space-y-lg animate-in fade-in duration-500">
-        {/* Header */}
-        <div className="flex items-start justify-between gap-md flex-wrap">
-          <div className="flex items-start gap-2 min-w-0">
-            <p className="text-[13px] text-on-surface-variant">
-              Gestioná las evaluaciones supervisadas: estado, umbral de revisión e inscriptos.
-            </p>
-            <HelpButton title="Exámenes">
-              <p>
-                Catálogo de evaluaciones supervisadas con su estado (borrador, programado, en
-                curso, finalizado), inscriptos y umbral de revisión.
-              </p>
-              <p>
-                Editá un examen para configurar detectores, umbrales y la lista de inscriptos.
-                El botón "Crear examen" abre el wizard de configuración.
-              </p>
-            </HelpButton>
-          </div>
-          <Button icon="add" onClick={() => { setExamenActivo(null); navigate('/admin/configurar'); }}>Crear examen</Button>
-        </div>
 
         <Card>
           <SectionTitle sub={`${examenes.length} examen${examenes.length !== 1 ? 'es' : ''}`}>
             Listado
           </SectionTitle>
 
-          <div className="flex items-center gap-base bg-surface-container-low border border-outline-variant rounded-xl px-sm py-base mb-md
+          <div className="flex items-center gap-base bg-white border border-outline-variant rounded-xl px-sm py-base mb-md
             focus-within:border-primary transition-colors">
             <Icon name="search" className="text-on-surface-variant" />
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar por nombre o cátedra…"
@@ -91,7 +86,7 @@ export default function ExamList() {
                   <td className="py-sm pr-md text-label-md text-on-surface">{e.umbral_score}%</td>
                   <td className="py-sm pr-md text-label-md text-on-surface">{e.inscriptos}</td>
                   <td className="py-sm text-right">
-                    <Button size="sm" variant="ghost" icon="edit" onClick={() => editar(e)}>Configurar</Button>
+                    <Button size="sm" variant="ghost" icon="edit" onClick={configurar}>Configurar</Button>
                   </td>
                 </tr>
               ))}
