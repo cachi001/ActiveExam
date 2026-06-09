@@ -15,7 +15,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StaffShell } from '../ui/shells';
-import { Card, Button, Icon, SectionTitle } from '../ui/components';
+import { Button, Icon, SectionTitle } from '../ui/components';
 import { HelpButton } from '../ui/HelpButton';
 import { STAFF_NAV } from '../ui/nav';
 import { useToast } from '../ui/toast';
@@ -137,113 +137,111 @@ export default function Proctor() {
   const examenesActivos = gruposExamen.length;
 
   return (
-    <StaffShell nav={PROCTOR_NAV} title="Supervisión en vivo">
+    <StaffShell
+      nav={PROCTOR_NAV}
+      title="Supervisión en vivo"
+      subtitle="Los exámenes con mayor riesgo se muestran primero."
+      help={
+        <HelpButton title="Supervisión en vivo">
+          <p>
+            Acá ves las sesiones de proctoring <strong>en curso</strong> agrupadas por examen.
+            Las sesiones que ya finalizaron viven en <em>Sesiones grabadas</em>.
+          </p>
+          <p>
+            Los exámenes con mayor riesgo aparecen arriba. Click en un examen para ver el grid
+            de personas; click en una persona para abrir su detalle y revisar evidencia.
+          </p>
+        </HelpButton>
+      }
+      actions={
+        <>
+          <IndicadorVivo ultimoRefresh={ultimoRefresh} activo={!refrescando} />
+          <Button
+            variant="outline"
+            size="sm"
+            icon="refresh"
+            onClick={() => void refrescar(true)}
+            disabled={refrescando}
+          >
+            {refrescando ? 'Actualizando…' : 'Actualizar'}
+          </Button>
+        </>
+      }
+    >
       <div className="space-y-lg animate-in fade-in duration-500">
-        {/* Header: título + indicador en vivo + refresco manual */}
-        <div className="flex items-start justify-between gap-md flex-wrap">
-          <div className="flex items-start gap-2 min-w-0">
-            <p className="text-[13px] text-on-surface-variant">
-              Los exámenes con mayor riesgo se muestran primero.
-            </p>
-            <HelpButton title="Supervisión en vivo">
-              <p>
-                Acá ves las sesiones de proctoring <strong>en curso</strong> agrupadas por examen.
-                Las sesiones que ya finalizaron viven en <em>Sesiones grabadas</em>.
-              </p>
-              <p>
-                Los exámenes con mayor riesgo aparecen arriba. Click en un examen para ver el grid
-                de personas; click en una persona para abrir su detalle y revisar evidencia.
-              </p>
-              <p>
-                El panel <strong>nunca sanciona automáticamente</strong>: el score solo prioriza la
-                revisión humana. La decisión disciplinaria siempre es del revisor.
-              </p>
-            </HelpButton>
-          </div>
-          <div className="flex items-center gap-sm">
-            <IndicadorVivo ultimoRefresh={ultimoRefresh} activo={!refrescando} />
-            <Button
-              variant="outline"
-              size="sm"
-              icon="refresh"
-              onClick={() => void refrescar(true)}
-              disabled={refrescando}
-            >
-              {refrescando ? 'Actualizando…' : 'Actualizar'}
-            </Button>
-          </div>
-        </div>
 
         {/* Resumen agregado del lote actual */}
         {!cargaInicial && sesiones.length > 0 && <ResumenVivo sesiones={sesiones} />}
 
-        {/* Secciones diferenciadas por modo */}
-        <Card className="space-y-lg">
-          <div className="flex items-center justify-between gap-md text-label-sm text-on-surface-variant border-b border-outline-variant/40 pb-sm">
-            <span>
-              {cargaInicial
-                ? 'Conectando…'
-                : `${sesiones.length} sesión${sesiones.length !== 1 ? 'es' : ''} en vivo`}
-            </span>
-            <span className="inline-flex items-center gap-base">
-              <Icon name="bolt" className="text-[16px]" />
-              actualiza cada {POLL_MS / 1000}s
-            </span>
-          </div>
+        {/* Barra de estado del polling (sin card) */}
+        <div className="flex items-center justify-between gap-md text-label-sm text-on-surface-variant">
+          <span>
+            {cargaInicial
+              ? 'Conectando…'
+              : `${sesiones.length} sesión${sesiones.length !== 1 ? 'es' : ''} en vivo`}
+          </span>
+          <span className="inline-flex items-center gap-base">
+            <Icon name="bolt" className="text-[16px]" />
+            actualiza cada {POLL_MS / 1000}s
+          </span>
+        </div>
 
-          {cargaInicial && <ListaSkeleton />}
+        {cargaInicial && <ListaSkeleton />}
 
-          {!cargaInicial && sesiones.length === 0 && <ListaVaciaVivo />}
+        {!cargaInicial && sesiones.length === 0 && <ListaVaciaVivo />}
 
-          {!cargaInicial && sesiones.length > 0 && (
-            <div className="space-y-lg">
-              {gruposExamen.length > 0 && (
-                <section className="space-y-sm">
-                  <SectionTitle
-                    sub={`${examenesActivos} examen${examenesActivos !== 1 ? 'es' : ''} activo${examenesActivos !== 1 ? 's' : ''}`}
-                  >
-                    Exámenes en curso
-                  </SectionTitle>
-                  <div className="space-y-md">
-                    {gruposExamen.map((g) => (
-                      <ExamenVivoGroup
-                        key={g.examId}
-                        examInfo={g.examInfo}
-                        sesiones={g.sesiones}
-                        onAbrir={handleAbrir}
-                        onAbrirExamen={handleAbrirExamen}
-                      />
-                    ))}
-                  </div>
-                </section>
-              )}
+        {!cargaInicial && sesiones.length > 0 && (
+          <div className="space-y-xl">
+            {gruposExamen.length > 0 && (
+              <section className="space-y-md">
+                <SectionTitle
+                  sub={`${examenesActivos} examen${examenesActivos !== 1 ? 'es' : ''} activo${examenesActivos !== 1 ? 's' : ''}`}
+                >
+                  Exámenes en curso
+                </SectionTitle>
+                <div className="space-y-md">
+                  {gruposExamen.map((g) => (
+                    <ExamenVivoGroup
+                      key={g.examId}
+                      examInfo={g.examInfo}
+                      sesiones={g.sesiones}
+                      onAbrir={handleAbrir}
+                      onAbrirExamen={handleAbrirExamen}
+                    />
+                  ))}
+                </div>
+              </section>
+            )}
 
-              {diagnostico.length > 0 && (
-                <section className="space-y-sm">
-                  <SectionTitle sub={`${diagnostico.length} sesión${diagnostico.length !== 1 ? 'es' : ''} de prueba`}>
-                    Pruebas de detección
-                  </SectionTitle>
+            {diagnostico.length > 0 && (
+              <section className="space-y-md">
+                <SectionTitle sub={`${diagnostico.length} sesión${diagnostico.length !== 1 ? 'es' : ''} de prueba`}>
+                  Pruebas de detección
+                </SectionTitle>
+                <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-md">
                   {diagnostico.map((s) => (
                     <SesionVivoCard key={s.id} sesion={s} onAbrir={handleAbrir} />
                   ))}
-                </section>
-              )}
+                </div>
+              </section>
+            )}
 
-              {otras.length > 0 && (
-                <section className="space-y-sm">
-                  <SectionTitle
-                    sub={`${otras.length} sesión${otras.length !== 1 ? 'es' : ''} sin examen vinculado o de origen desconocido`}
-                  >
-                    Sin examen vinculado
-                  </SectionTitle>
+            {otras.length > 0 && (
+              <section className="space-y-md">
+                <SectionTitle
+                  sub={`${otras.length} sesión${otras.length !== 1 ? 'es' : ''} sin examen vinculado o de origen desconocido`}
+                >
+                  Sin examen vinculado
+                </SectionTitle>
+                <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-md">
                   {otras.map((s) => (
                     <SesionVivoCard key={s.id} sesion={s} onAbrir={handleAbrir} />
                   ))}
-                </section>
-              )}
-            </div>
-          )}
-        </Card>
+                </div>
+              </section>
+            )}
+          </div>
+        )}
       </div>
     </StaffShell>
   );
