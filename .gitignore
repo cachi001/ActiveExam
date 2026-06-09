@@ -32,3 +32,7 @@ minio_data/
 # Estado de herramientas de scaffolding local — no es parte del proyecto
 *-state.json
 .claude/
+
+# Playwright MCP screenshots / dumps de review
+.playwright-mcp/
+*.stackdump
