@@ -63,8 +63,8 @@ export function ColaBreadcrumb({
   return (
     <nav
       aria-label="Ruta de navegación de la cola"
-      className="flex items-center flex-wrap gap-base rounded-xl bg-surface-container-low
-        border border-outline-variant/40 px-md py-sm"
+      className="flex items-center flex-wrap gap-base rounded-xl bg-white
+        border border-outline-variant/60 px-md py-sm"
     >
       <Icon name="account_tree" className="text-[18px] text-on-surface-variant shrink-0" />
       <Segmento texto="Materias" activo={enRaiz} onClick={() => onNavigate('raiz')} />

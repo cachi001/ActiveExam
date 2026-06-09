@@ -136,7 +136,7 @@ export default function Consent() {
               </div>
             </Card>
 
-            <Card className="bg-surface-container-low border-primary-fixed-dim/60">
+            <Card className="bg-white border-primary-fixed-dim/60">
               <label className="flex items-start gap-sm cursor-pointer">
                 <input
                   type="checkbox"
@@ -192,7 +192,7 @@ export default function Consent() {
               ))}
             </div>
 
-            <Card className="bg-surface-container-low border-primary-fixed-dim/60">
+            <Card className="bg-white border-primary-fixed-dim/60">
               <label className="flex items-start gap-sm cursor-pointer">
                 <input type="checkbox" checked={acepto} onChange={(e) => setAcepto(e.target.checked)}
                   className="mt-base w-5 h-5 accent-[#4241bc] rounded" />

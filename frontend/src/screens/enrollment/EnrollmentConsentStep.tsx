@@ -106,7 +106,7 @@ export function EnrollmentConsentStep({ acuseActual, onConsentido }: Props) {
       </div>
 
       {/* Acción afirmativa — RN-CO-02: checkbox NUNCA premarcado */}
-      <Card className="bg-surface-container-low border-primary-fixed-dim/60">
+      <Card className="bg-white border-primary-fixed-dim/60">
         <label className="flex items-start gap-sm cursor-pointer select-none">
           {/* El estado inicial es false (sin pre-marcar) — acción afirmativa explícita */}
           <input

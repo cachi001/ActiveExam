@@ -12,8 +12,8 @@ interface AuditLogItemProps {
 
 export function AuditLogItem({ entrada }: AuditLogItemProps) {
   return (
-    <div className="flex items-start gap-sm p-sm rounded-xl bg-surface-container-low border border-outline-variant/30">
-      <div className="w-9 h-9 rounded-full bg-surface-container flex items-center justify-center text-on-surface-variant shrink-0">
+    <div className="flex items-start gap-sm p-sm rounded-xl bg-white border border-outline-variant/60">
+      <div className="w-9 h-9 rounded-full bg-primary-fixed/50 flex items-center justify-center text-primary shrink-0">
         <Icon name="history" className="text-[18px]" />
       </div>
       <div className="flex-1 min-w-0">

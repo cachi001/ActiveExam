@@ -54,7 +54,7 @@ export function RequisitoConsentimiento({ consentimiento, viaAlternativa, onInic
             </MetaCampo>
           </div>
           {viaAlternativa && (
-            <div className="flex items-start gap-sm bg-surface-container-low rounded-xl p-sm">
+            <div className="flex items-start gap-sm bg-white border border-outline-variant/40 rounded-xl p-sm">
               <Icon name="support_agent" className="text-[16px] text-on-surface-variant shrink-0 mt-px" />
               <p className="text-label-sm text-on-surface-variant">
                 Elegiste la <strong>vía alternativa sin biometría</strong>. Un proctor humano supervisará

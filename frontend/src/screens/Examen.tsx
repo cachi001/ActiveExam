@@ -144,7 +144,7 @@ export default function Examen() {
                   <p className="text-label-sm">Integridad óptima. Sin incidencias en el navegador.</p>
                 </div>
               ) : eventos.map((ev) => (
-                <div key={ev.id} className="flex gap-sm p-sm rounded-xl bg-surface-container-low border border-outline-variant/40">
+                <div key={ev.id} className="flex gap-sm p-sm rounded-xl bg-white border border-outline-variant/40">
                   <Icon name="warning" className="text-warning shrink-0 text-[18px]" fill />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-base">
@@ -160,7 +160,7 @@ export default function Examen() {
 
           <Card className="space-y-sm">
             <h3 className="text-label-md font-bold text-on-surface border-b border-outline-variant/40 pb-base">Canal con el proctor</h3>
-            <div className="h-[120px] overflow-y-auto space-y-base bg-surface-container-low rounded-xl p-sm">
+            <div className="h-[120px] overflow-y-auto space-y-base bg-white border border-outline-variant/40 rounded-xl p-sm">
               {mensajes.map((m, i) => (
                 <div key={i} className={`text-label-sm ${m.de === 'Sistema' ? 'text-on-surface-variant italic text-center' : m.de === 'Estudiante' ? 'text-right' : ''}`}>
                   {m.de !== 'Sistema' && <span className="font-semibold">{m.de} · {m.hora} </span>}

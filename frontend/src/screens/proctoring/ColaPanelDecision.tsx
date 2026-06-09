@@ -90,7 +90,7 @@ function Metrica({
   clase?: string;
 }) {
   return (
-    <div className="rounded-xl bg-surface-container-low border border-outline-variant/40 p-sm">
+    <div className="rounded-xl bg-white border border-outline-variant/60 p-sm">
       <p className="text-label-sm uppercase tracking-wide text-on-surface-variant">{label}</p>
       <p className={`font-headline text-title-lg font-bold ${clase}`}>{valor}</p>
     </div>

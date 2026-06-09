@@ -61,7 +61,7 @@ export function RequisitoBiometria({
             <strong>{biometria?.vigencia_meses ?? 24} meses</strong>.
           </p>
 
-          <div className="text-label-sm text-on-surface-variant bg-surface-container-low rounded-xl p-sm border border-outline-variant/30">
+          <div className="text-label-sm text-on-surface-variant bg-white rounded-xl p-sm border border-outline-variant/40">
             <span className="font-semibold">Privacidad:</span> La imagen y el <Term termKey="embedding" />
             biométrico son <strong>datos sensibles</strong>: cifrados at-rest, con finalidad acotada
             a la verificación de identidad. Se eliminan al egreso (salvo hold disciplinario).
