@@ -77,7 +77,35 @@ export default function ProctoringSessionDetail() {
   };
 
   return (
-    <StaffShell nav={STAFF_NAV} title="Detalle de sesión">
+    <StaffShell
+      nav={STAFF_NAV}
+      title="Detalle de sesión"
+      help={
+        <HelpButton title="Detalle de sesión">
+          <p>
+            Esta vista concentra toda la <strong>evidencia</strong> de una sesión de proctoring:
+            metadata, stat cards (score, eventos, discrepancias), eventos individuales con
+            screenshot y veredicto de re-inferencia server-side, y el resultado biométrico.
+          </p>
+          <p>
+            El <em>score</em> prioriza la revisión humana — no es un veredicto. La discrepancia
+            marca eventos donde el conteo del cliente no coincide con la re-inferencia del
+            backend (el cliente es un sensor no confiable).
+          </p>
+          <p>
+            El screenshot es <strong>dato sensible</strong> (Ley 25.326): finalidad acotada a
+            revisión humana, nunca se loguea ni se persiste en el cliente.
+          </p>
+        </HelpButton>
+      }
+      actions={
+        sessionId && !error ? (
+          <Button variant="danger" size="sm" icon="delete" onClick={() => setConfirmando(true)}>
+            Eliminar sesión
+          </Button>
+        ) : undefined
+      }
+    >
       <div className="space-y-lg animate-in fade-in duration-500">
         {/* Disclaimer L2.5 — inamovible */}
         <div
@@ -97,33 +125,8 @@ export default function ProctoringSessionDetail() {
           </div>
         </div>
 
-        {/* Acciones: volver + ayuda + eliminar */}
-        <div className="flex items-center justify-between gap-md flex-wrap">
-          <VolverLink onClick={() => navigate(LISTA_ROUTE)} />
-          <div className="flex items-center gap-sm">
-            <HelpButton title="Detalle de sesión">
-              <p>
-                Esta vista concentra toda la <strong>evidencia</strong> de una sesión de proctoring:
-                metadata, stat cards (score, eventos, discrepancias), eventos individuales con
-                screenshot y veredicto de re-inferencia server-side, y el resultado biométrico.
-              </p>
-              <p>
-                El <em>score</em> prioriza la revisión humana — no es un veredicto. La discrepancia
-                marca eventos donde el conteo del cliente no coincide con la re-inferencia del
-                backend (el cliente es un sensor no confiable).
-              </p>
-              <p>
-                El screenshot es <strong>dato sensible</strong> (Ley 25.326): finalidad acotada a
-                revisión humana, nunca se loguea ni se persiste en el cliente.
-              </p>
-            </HelpButton>
-            {sessionId && !error && (
-              <Button variant="danger" size="sm" icon="delete" onClick={() => setConfirmando(true)}>
-                Eliminar sesión
-              </Button>
-            )}
-          </div>
-        </div>
+        {/* Volver a la lista */}
+        <VolverLink onClick={() => navigate(LISTA_ROUTE)} />
 
         {/* Estado de carga */}
         {cargando && (
