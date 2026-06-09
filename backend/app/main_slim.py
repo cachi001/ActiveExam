@@ -15,6 +15,8 @@ Routers montados:
     /api/v1/auth        - login, refresh, /me (JWT HS256 propio)
     /api/v1/users       - creacion de usuarios (solo admin_sistema)
     /api/v1/enrollment  - foto de perfil (BYTEA en DB) + embedding cifrado
+    /api/v1/consent     - consentimiento + via alternativa (C-63)
+    /api/v1/scoring     - pesos por tipo de evento (#10, solo admin_sistema)
 """
 
 from __future__ import annotations
@@ -40,6 +42,7 @@ from app.presentation.api.v1.consent.dependencies_slim import get_consent_servic
 from app.presentation.api.v1.consent.router import router as consent_router
 from app.presentation.api.v1.enrollment.router import router as enrollment_router
 from app.presentation.api.v1.proctoring.router import create_proctoring_router
+from app.presentation.api.v1.scoring.router import router as scoring_router
 from app.presentation.api.v1.users.router import router as users_router
 from app.infrastructure.reinferencia.mediapipe_adapter import MediaPipeReinferencia
 
@@ -139,6 +142,13 @@ def create_slim_app() -> FastAPI:
     # Usamos dependency_override para inyectar el servicio slim (sin tabla consentimiento).
     app.dependency_overrides[get_consent_service] = get_consent_service_slim
     app.include_router(consent_router, prefix="/api/v1/consent", tags=["consent"])
+
+    # Scoring (#10): configuracion de pesos por tipo de evento (solo admin_sistema).
+    # Reusa app.state.session_factory + jwt_validator (ya cableados); no necesita
+    # servicio extra. El front (ScoringConfig.tsx) pega a /api/v1/scoring/config y
+    # /api/v1/scoring/weights. Sin este include, ambos daban 404 en prod (estaba
+    # cableado solo en app.main, no en el slim que corre en Railway).
+    app.include_router(scoring_router, prefix="/api/v1/scoring", tags=["scoring"])
 
     return app
 
