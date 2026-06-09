@@ -113,37 +113,41 @@ export default function Revisor() {
   const enRaiz = !path.materia;
 
   return (
-    <StaffShell nav={REVISOR_NAV} title="Cola de revisión">
-      <div className="space-y-lg animate-in fade-in duration-500">
-        {/* Header */}
-        <div className="flex items-start justify-between gap-md flex-wrap">
-          <div className="flex items-start gap-2 min-w-0 max-w-2xl">
-            <p className="text-[13px] text-on-surface-variant">
-              Sesiones de alto riesgo (score ≥ {UMBRAL_COLA_REVISION}) organizadas por materia,
-              comisión y examen. Entrá hasta cada persona para revisar y decidir.
-            </p>
-            <HelpButton title="Cola de revisión">
-              <p>
-                Esta pantalla concentra las sesiones que <strong>priorizan revisión humana</strong>:
-                solo las que superan el umbral de riesgo (score ≥ {UMBRAL_COLA_REVISION}).
-              </p>
-              <p>
-                La cola se organiza por <em>Materia → Comisión → Examen → Persona</em>. Entrá hasta
-                cada persona para revisar evidencia y registrar tu decisión (sin observaciones,
-                aprobada con nota o enviada a revisión formal).
-              </p>
-              <p>
-                El sistema <strong>nunca sanciona automáticamente</strong>: el score solo prioriza,
-                la decisión disciplinaria siempre es tuya.
-              </p>
-            </HelpButton>
-          </div>
-          <div className="flex items-center gap-base px-sm py-base rounded-lg bg-primary-fixed/50
-            border border-primary/20 text-label-sm text-on-primary-fixed-variant shrink-0">
-            <Icon name="shield" className="text-[16px] shrink-0" fill />
-            <span>Decisión humana</span>
-          </div>
+    <StaffShell
+      nav={REVISOR_NAV}
+      title="Cola de revisión"
+      subtitle={
+        <>
+          Sesiones de alto riesgo (score ≥ {UMBRAL_COLA_REVISION}) organizadas por materia,
+          comisión y examen. Entrá hasta cada persona para revisar y decidir.
+        </>
+      }
+      help={
+        <HelpButton title="Cola de revisión">
+          <p>
+            Esta pantalla concentra las sesiones que <strong>priorizan revisión humana</strong>:
+            solo las que superan el umbral de riesgo (score ≥ {UMBRAL_COLA_REVISION}).
+          </p>
+          <p>
+            La cola se organiza por <em>Materia → Comisión → Examen → Persona</em>. Entrá hasta
+            cada persona para revisar evidencia y registrar tu decisión (sin observaciones,
+            aprobada con nota o enviada a revisión formal).
+          </p>
+          <p>
+            El sistema <strong>nunca sanciona automáticamente</strong>: el score solo prioriza,
+            la decisión disciplinaria siempre es tuya.
+          </p>
+        </HelpButton>
+      }
+      actions={
+        <div className="flex items-center gap-base px-sm py-base rounded-lg bg-primary-fixed/50
+          border border-primary/20 text-label-sm text-on-primary-fixed-variant shrink-0">
+          <Icon name="shield" className="text-[16px] shrink-0" fill />
+          <span>Decisión humana</span>
         </div>
+      }
+    >
+      <div className="space-y-lg animate-in fade-in duration-500">
 
         {cargando && (
           <Card className="text-center py-xl text-on-surface-variant space-y-base">

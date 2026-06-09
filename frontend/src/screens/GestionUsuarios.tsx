@@ -16,6 +16,7 @@ import { useEffect, useState } from 'react';
 import { StaffShell } from '../ui/shells';
 import { Icon, Card, SectionTitle, Button, Avatar } from '../ui/components';
 import { HelpButton } from '../ui/HelpButton';
+import { ActionMenu } from '../ui/ActionMenu';
 import { TextField } from '../ui/TextField';
 import { ConfirmModal } from '../ui/ConfirmModal';
 import { STAFF_NAV } from '../ui/nav';
@@ -249,34 +250,33 @@ export default function GestionUsuarios() {
   // ---------------------------------------------------------------------------
 
   return (
-    <StaffShell nav={STAFF_NAV} title="Gestión de usuarios">
+    <StaffShell
+      nav={STAFF_NAV}
+      title="Gestión de usuarios"
+      subtitle="Alta, edición y baja lógica de usuarios de la plataforma."
+      help={
+        <HelpButton title="Gestión de usuarios">
+          <p>
+            Acá das de alta, editás y das de baja a los usuarios de la plataforma. Solo
+            visible para <strong>admin_sistema</strong>.
+          </p>
+          <p>
+            Los roles MVP son tres estrictos: <em>estudiante</em>, <em>proctor</em> y
+            <em> admin_sistema</em>. La baja es <strong>lógica</strong> (no destruye evidencia)
+            y revoca los refresh tokens del usuario.
+          </p>
+          <p>
+            Anti-lockout: no podés quitarte a vos mismo el rol admin_sistema ni darte de baja.
+          </p>
+        </HelpButton>
+      }
+      actions={
+        <Button icon="person_add" onClick={abrirCrear} size="sm">
+          Nuevo usuario
+        </Button>
+      }
+    >
       <div className="space-y-lg animate-in fade-in duration-500">
-
-        {/* Encabezado: descripción + ayuda + acción primaria */}
-        <div className="flex items-start justify-between gap-md flex-wrap">
-          <div className="flex items-start gap-2 min-w-0">
-            <p className="text-[13px] text-on-surface-variant">
-              Alta, edición y baja lógica de usuarios de la plataforma.
-            </p>
-            <HelpButton title="Gestión de usuarios">
-              <p>
-                Acá das de alta, editás y das de baja a los usuarios de la plataforma. Solo
-                visible para <strong>admin_sistema</strong>.
-              </p>
-              <p>
-                Los roles MVP son tres estrictos: <em>estudiante</em>, <em>proctor</em> y
-                <em> admin_sistema</em>. La baja es <strong>lógica</strong> (no destruye evidencia)
-                y revoca los refresh tokens del usuario.
-              </p>
-              <p>
-                Anti-lockout: no podés quitarte a vos mismo el rol admin_sistema ni darte de baja.
-              </p>
-            </HelpButton>
-          </div>
-          <Button icon="person_add" onClick={abrirCrear} size="sm">
-            Nuevo usuario
-          </Button>
-        </div>
 
         {/* Formulario de creación / edición */}
         {modoForm && (
@@ -449,14 +449,13 @@ export default function GestionUsuarios() {
                           {u.roles.map((r) => getRolLabel(r)).join(', ')}
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap text-right">
-                          <div className="inline-flex gap-1.5">
-                            <Button size="sm" variant="ghost" icon="edit" onClick={() => abrirEditar(u)} aria-label={`Editar ${u.email}`}>
-                              Editar
-                            </Button>
-                            <Button size="sm" variant="ghost" icon="person_remove" onClick={() => setABajar(u)} aria-label={`Dar de baja ${u.email}`} className="text-error hover:bg-error-container/30">
-                              Baja
-                            </Button>
-                          </div>
+                          <ActionMenu
+                            ariaLabel={`Acciones de ${u.email}`}
+                            items={[
+                              { label: 'Editar', icon: 'edit', onClick: () => abrirEditar(u) },
+                              { label: 'Dar de baja', icon: 'person_remove', danger: true, onClick: () => setABajar(u) },
+                            ]}
+                          />
                         </td>
                       </tr>
                     ))}
@@ -488,10 +487,13 @@ export default function GestionUsuarios() {
                         {u.roles.map((r) => getRolLabel(r)).join(', ')}
                       </p>
                     </div>
-                    <div className="flex gap-1 shrink-0">
-                      <Button size="sm" variant="ghost" icon="edit" onClick={() => abrirEditar(u)} aria-label="Editar" />
-                      <Button size="sm" variant="ghost" icon="person_remove" onClick={() => setABajar(u)} aria-label="Dar de baja" className="text-error" />
-                    </div>
+                    <ActionMenu
+                      ariaLabel="Acciones del usuario"
+                      items={[
+                        { label: 'Editar', icon: 'edit', onClick: () => abrirEditar(u) },
+                        { label: 'Dar de baja', icon: 'person_remove', danger: true, onClick: () => setABajar(u) },
+                      ]}
+                    />
                   </div>
                 ))}
               </div>

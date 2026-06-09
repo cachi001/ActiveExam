@@ -20,24 +20,24 @@ export default function AdminDashboard() {
   useEffect(() => { api.listExams().then(setExamenes); api.reportes().then(setRep); }, []);
 
   return (
-    <StaffShell nav={ADMIN_NAV} title="Panel de administración">
-      <div className="space-y-lg animate-in fade-in duration-500">
-        {/* Subtítulo descriptivo + ayuda */}
-        <div className="flex items-start gap-2">
-          <p className="text-[13px] text-on-surface-variant">
-            Estado de exámenes, sesiones supervisadas y cola de revisión del cuatrimestre.
+    <StaffShell
+      nav={ADMIN_NAV}
+      title="Panel de administración"
+      subtitle="Estado de exámenes, sesiones supervisadas y cola de revisión del cuatrimestre."
+      help={
+        <HelpButton title="Panel de administración">
+          <p>
+            Vista agregada de la actividad del cuatrimestre: exámenes, sesiones supervisadas,
+            tasa de flag y tiempo medio de revisión.
           </p>
-          <HelpButton title="Panel de administración">
-            <p>
-              Vista agregada de la actividad del cuatrimestre: exámenes, sesiones supervisadas,
-              tasa de flag y tiempo medio de revisión.
-            </p>
-            <p>
-              Desde acá llegás a configurar exámenes, ver reportes, auditoría y gestión de
-              usuarios. La supervisión en vivo y la cola de revisión están en el menú lateral.
-            </p>
-          </HelpButton>
-        </div>
+          <p>
+            Desde acá llegás a configurar exámenes, ver reportes, auditoría y gestión de
+            usuarios. La supervisión en vivo y la cola de revisión están en el menú lateral.
+          </p>
+        </HelpButton>
+      }
+    >
+      <div className="space-y-lg animate-in fade-in duration-500">
 
         <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-md">
           <StatCard icon="quiz" label="Exámenes" value={rep?.examenes_totales ?? '—'} sub="este cuatrimestre" tono="primary" />
@@ -79,15 +79,10 @@ export default function AdminDashboard() {
           <Card className="space-y-md">
             <SectionTitle>Acciones rápidas</SectionTitle>
             <div className="flex flex-col gap-sm">
-              <Link to="/admin/configurar"><Button size="sm" icon="add" className="w-full">Crear examen</Button></Link>
               <Link to="/admin/reportes"><Button size="sm" variant="outline" icon="analytics" className="w-full">Ver reportes</Button></Link>
               <Link to="/admin/auditoria"><Button size="sm" variant="outline" icon="policy" className="w-full">Auditoría</Button></Link>
               {/* C-61: gestión de usuarios */}
               <Link to="/admin/usuarios"><Button size="sm" variant="outline" icon="manage_accounts" className="w-full">Usuarios</Button></Link>
-            </div>
-            <div className="bg-primary-fixed/40 rounded-xl p-sm text-label-sm text-on-primary-fixed-variant flex items-start gap-base mt-md">
-              <Icon name="shield" className="text-[18px]" fill />
-              <span>Decisión siempre humana</span>
             </div>
           </Card>
         </div>

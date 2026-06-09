@@ -15,27 +15,23 @@ const SEV_TONE: Record<string, 'primary' | 'success' | 'warning' | 'error'> = {
   critica: 'error',
 };
 
-function Header() {
-  return (
-    <div className="flex items-start gap-2">
-      <p className="text-[13px] text-on-surface-variant">
-        Métricas agregadas de exámenes, severidad de eventos y desempeño de la revisión humana.
-      </p>
-      <HelpButton title="Analítica de integridad">
-        <p>
-          Vista agregada de métricas para auditar el funcionamiento del proctoring: cantidad de
-          exámenes, distribución de severidad de eventos y desempeño de la revisión humana
-          (tasa de flag, tiempo medio).
-        </p>
-        <p>
-          Estas métricas <strong>no individualizan</strong> a estudiantes — son agregados de
-          integridad del sistema. La decisión disciplinaria por persona se hace siempre en la
-          cola de revisión.
-        </p>
-      </HelpButton>
-    </div>
-  );
-}
+const REPORTES_SUBTITULO =
+  'Métricas agregadas de exámenes, severidad de eventos y desempeño de la revisión humana.';
+
+const REPORTES_AYUDA = (
+  <HelpButton title="Analítica de integridad">
+    <p>
+      Vista agregada de métricas para auditar el funcionamiento del proctoring: cantidad de
+      exámenes, distribución de severidad de eventos y desempeño de la revisión humana
+      (tasa de flag, tiempo medio).
+    </p>
+    <p>
+      Estas métricas <strong>no individualizan</strong> a estudiantes — son agregados de
+      integridad del sistema. La decisión disciplinaria por persona se hace siempre en la
+      cola de revisión.
+    </p>
+  </HelpButton>
+);
 
 export default function Reports() {
   const [r, setR] = useState<ResumenReportes | null>(null);
@@ -50,9 +46,8 @@ export default function Reports() {
   // Estado vacío: la analítica agregada requiere el backend de reportes conectado.
   if (api.modoDemo || (!cargando && !r)) {
     return (
-      <StaffShell nav={ADMIN_NAV} title="Reportes y analítica">
+      <StaffShell nav={ADMIN_NAV} title="Reportes y analítica" subtitle={REPORTES_SUBTITULO} help={REPORTES_AYUDA}>
         <div className="space-y-lg animate-in fade-in duration-500">
-          <Header />
           <Card className="flex flex-col items-center justify-center text-center gap-md py-xxl">
             <div className="w-16 h-16 rounded-2xl bg-surface-container-high text-on-surface-variant flex items-center justify-center">
               <Icon name="bar_chart" className="text-[32px]" />
@@ -72,7 +67,7 @@ export default function Reports() {
 
   if (cargando || !r) {
     return (
-      <StaffShell nav={ADMIN_NAV} title="Reportes y analítica">
+      <StaffShell nav={ADMIN_NAV} title="Reportes y analítica" subtitle={REPORTES_SUBTITULO} help={REPORTES_AYUDA}>
         <Card className="flex items-center justify-center gap-sm py-xl text-on-surface-variant">
           <Icon name="progress_activity" className="ae-spin text-[22px]" />
           <span className="text-label-md">Cargando reportes…</span>
@@ -85,10 +80,8 @@ export default function Reports() {
   const maxTend = Math.max(...r.tendencia_semanal.map((t) => Math.max(t.flaggeadas, t.revisadas)));
 
   return (
-    <StaffShell nav={ADMIN_NAV} title="Reportes y analítica">
+    <StaffShell nav={ADMIN_NAV} title="Reportes y analítica" subtitle={REPORTES_SUBTITULO} help={REPORTES_AYUDA}>
       <div className="space-y-lg animate-in fade-in duration-500">
-        <Header />
-
         <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-md">
           <StatCard icon="quiz" label="Exámenes" value={r.examenes_totales} tono="primary" />
           <StatCard icon="groups" label="Sesiones" value={r.sesiones_totales} tono="info" />

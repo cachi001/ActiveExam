@@ -64,33 +64,32 @@ export default function ProctoringRevisor() {
   };
 
   return (
-    <StaffShell nav={STAFF_NAV} title="Sesiones grabadas">
-      <div className="space-y-lg animate-in fade-in duration-500">
-        {/* Header */}
-        <div className="flex items-start justify-between gap-md flex-wrap">
-          <div className="flex items-start gap-2 min-w-0">
-            <p className="text-[13px] text-on-surface-variant">
-              Historial completo de sesiones de proctoring — todas las grabadas, sin filtro.
-              Para revisar solo las de alto riesgo, usá la Cola de revisión.
-            </p>
-            <HelpButton title="Sesiones grabadas">
-              <p>
-                Listado <strong>completo</strong> de sesiones de proctoring registradas (en vivo o
-                finalizadas), sin filtro de riesgo. Para acotar a sesiones con score alto usá
-                <em> Cola de revisión</em>.
-              </p>
-              <p>
-                Click en una fila para abrir el detalle con eventos, evidencia y biometría. La
-                decisión disciplinaria siempre es del revisor.
-              </p>
-            </HelpButton>
-          </div>
-          <div className="flex items-center gap-base px-sm py-base rounded-lg bg-primary-fixed/50
-            border border-primary/20 text-label-sm text-on-primary-fixed-variant">
-            <Icon name="shield" className="text-[16px] shrink-0" fill />
-            <span>Decisión humana</span>
-          </div>
+    <StaffShell
+      nav={STAFF_NAV}
+      title="Sesiones grabadas"
+      subtitle="Historial completo de sesiones de proctoring — todas las grabadas, sin filtro. Para revisar solo las de alto riesgo, usá la Cola de revisión."
+      help={
+        <HelpButton title="Sesiones grabadas">
+          <p>
+            Listado <strong>completo</strong> de sesiones de proctoring registradas (en vivo o
+            finalizadas), sin filtro de riesgo. Para acotar a sesiones con score alto usá
+            <em> Cola de revisión</em>.
+          </p>
+          <p>
+            Click en una fila para abrir el detalle con eventos, evidencia y biometría. La
+            decisión disciplinaria siempre es del revisor.
+          </p>
+        </HelpButton>
+      }
+      actions={
+        <div className="flex items-center gap-base px-sm py-base rounded-lg bg-primary-fixed/50
+          border border-primary/20 text-label-sm text-on-primary-fixed-variant">
+          <Icon name="shield" className="text-[16px] shrink-0" fill />
+          <span>Decisión humana</span>
         </div>
+      }
+    >
+      <div className="space-y-lg animate-in fade-in duration-500">
 
         {/* Resumen agregado */}
         {!cargando && sesiones.length > 0 && <ResumenSesiones sesiones={sesiones} />}
