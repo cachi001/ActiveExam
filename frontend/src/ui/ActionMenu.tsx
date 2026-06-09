@@ -1,8 +1,8 @@
 /**
  * ActionMenu — menú de acciones "kebab" (3 puntitos) con popup.
  *
- * Patrón de tabla del sistema de reservas: en vez de botones inline por fila,
- * un único botón ⋮ que despliega las acciones. Cierra con Escape o click afuera.
+ * Patrón de tabla: en vez de botones inline por fila, un único botón ⋮ que
+ * despliega las acciones. Cierra con Escape o click afuera.
  */
 import { useState, useEffect } from 'react';
 import { Icon } from './components';

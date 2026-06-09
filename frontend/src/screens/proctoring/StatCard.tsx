@@ -2,7 +2,7 @@
  * StatCard — Tarjeta de métrica con PRESENCIA DE COLOR.
  *
  * Fondo de color en gradiente + texto blanco + ícono en un nido translúcido
- * (estética formal inspirada en el sistema de reservas). El color comunica el
+ * (estética formal). El color comunica el
  * estado de la métrica de un vistazo; nada de cards blancas/grises apagadas.
  *
  * Reutilizada en el resumen de la lista en vivo, el dashboard y el header del detalle.

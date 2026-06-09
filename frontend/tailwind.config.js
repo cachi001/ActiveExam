@@ -123,8 +123,8 @@ export default {
         "container-max": "1280px",
       },
       boxShadow: {
-        // Sombras sutiles estilo "flat minimalism" (inspirado en el sistema de reservas):
-        // apenas perceptibles, sin nubes difusas. La definición la da el borde, no la sombra.
+        // Sombras sutiles estilo "flat minimalism": apenas perceptibles, sin nubes
+        // difusas. La definición la da el borde, no la sombra.
         card: "0 1px 2px 0 rgba(16,24,40,0.04), 0 1px 3px 0 rgba(16,24,40,0.06)",
         "card-lg": "0 2px 4px -1px rgba(16,24,40,0.04), 0 8px 16px -6px rgba(16,24,40,0.08)",
       },
