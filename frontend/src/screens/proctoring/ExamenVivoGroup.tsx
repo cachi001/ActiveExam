@@ -39,6 +39,13 @@ export function ExamenVivoGroup({
   const examId = sesiones[0]?.exam_id;
   const navegable = Boolean(examId && onAbrirExamen);
 
+  // Escala: con muchas personas mostramos solo las de mayor riesgo y derivamos al
+  // grid completo del examen. Evita renderizar cientos de filas en el panel en vivo.
+  const MAX_VISIBLE = 6;
+  const ordenadas = [...sesiones].sort((a, b) => b.score - a.score);
+  const visibles = ordenadas.slice(0, MAX_VISIBLE);
+  const ocultas = personas - visibles.length;
+
   return (
     <section className="rounded-2xl border border-outline-variant/70 bg-surface-container-lowest shadow-card overflow-hidden">
       {/* Header del examen: clickable → grid de personas de ESE examen */}
@@ -56,7 +63,7 @@ export function ExamenVivoGroup({
               },
             }
           : {})}
-        className={`group flex items-center justify-between gap-md p-md border-b border-outline-variant/50 bg-surface-container-low/40
+        className={`group flex items-center justify-between gap-md p-md border-b border-outline-variant/50 bg-white
           ${navegable ? 'cursor-pointer hover:bg-surface-container-low focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40' : ''}`}
       >
         <div className="min-w-0">
@@ -100,12 +107,24 @@ export function ExamenVivoGroup({
         )}
       </div>
 
-      {/* Filas de persona (compactas) */}
+      {/* Filas de persona (solo las de mayor riesgo; el resto en el grid del examen) */}
       <ul className="divide-y divide-outline-variant/40">
-        {sesiones.map((s) => (
+        {visibles.map((s) => (
           <PersonaVivoRow key={s.id} sesion={s} onAbrir={onAbrir} />
         ))}
       </ul>
+
+      {ocultas > 0 && (
+        <button
+          type="button"
+          onClick={() => examId && onAbrirExamen?.(examId)}
+          className="w-full flex items-center justify-center gap-base px-md py-sm border-t border-outline-variant/40
+            text-label-md font-semibold text-primary hover:bg-surface-container-low/60 transition-colors"
+        >
+          Ver las {personas} personas
+          <Icon name="arrow_forward" className="text-[18px]" />
+        </button>
+      )}
     </section>
   );
 }
