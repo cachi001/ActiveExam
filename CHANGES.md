@@ -478,7 +478,7 @@ C-01 → C-03 → C-04 → C-05 → C-06 → C-07 → C-08 → C-09 → C-10 →
 
 ## FASE 2 — Refinamiento y analytics
 
-> Depende de producto estable. Otras features diferidas (audio FR-16, integración LMS FR-17, liveness pasivo open-source, ONNX Runtime Web, Redis como backplane) se agregan como changes adicionales cuando el piloto las priorice.
+> Depende de producto estable. Otras features diferidas (audio FR-16, **integración LMS FR-17 → `C-49`**, liveness pasivo open-source, ONNX Runtime Web, Redis como backplane) se agregan como changes adicionales cuando el piloto las priorice.
 
 ### [C-20] `reportes-analytics`
 - **Estado**: `[ ]` pendiente
@@ -837,6 +837,26 @@ C-01 → C-03 → C-04 → C-05 → C-06 → C-07 → C-08 → C-09 → C-10 →
   - `frontend/src/ui/components.tsx` (primitivas: Button, SectionTitle, RangeInput, ProgressBar)
   - `frontend/src/screens/alumno/components/` (patrón de colocalización de C-41/C-42)
 
+### [C-49] `c-49-integracion-lms-lti`
+- **Estado**: `[ ]` propuesto (investigación — pendiente de proponer artefactos)
+- **Scope**: ⭐ **Materializa FR-17 (integración LMS) de Fase 2.** Convierte el proctoring en un **LTI 1.3 Tool Provider** que cualquier LMS compatible (Moodle, Canvas, Blackboard, D2L…) puede lanzar, **sin acoplarse a un LMS concreto** (DD-20). El LMS opera el examen; el proctoring se integra alrededor.
+  - **LTI 1.3 Resource Link Launch + OIDC**: el docente configura el proctoring como herramienta externa en su curso; el alumno lanza desde el LMS → login OIDC (encaja con Keycloak, DD-09/C-06) → contexto del examen (`context_id`, `resource_link_id`, roles del lanzamiento).
+  - **NRPS** (Names and Roles): provisioning del roster habilitado desde el LMS (reemplaza la asignación manual de estudiantes de C-07).
+  - **AGS** (Assignment and Grade Services): retorno del **resultado/score de proctoring** (NO la nota — el sistema prioriza, no sanciona, L2.5) y/o un flag de "requiere revisión" al gradebook del LMS, respetando que la decisión disciplinaria es siempre humana (RN-RV).
+  - **Mapeo de identidad**: claims del lanzamiento LTI / Keycloak → 7 roles de ActiveExam (hoy hueco, ver C-06).
+  - **Diseño LTI-ready desde el MVP**: superficie de API de retorno de resultado + provisioning de roster + mapeo de claims (hoy la API REST y el flujo de lanzamiento son propios, sin handoff externo).
+  - **Opcional**: plugin Moodle `quizaccess` nativo como integración profunda ADEMÁS del LTI, si una institución lo justifica (lock-in a Moodle — evaluar).
+  - Tests: handshake OIDC del launch, validación de firma JWT del id_token LTI, deep-linking, retorno AGS idempotente, sincronización de roster NRPS, aislamiento por `context_id` (multi-tenancy).
+- **Dependencias**: `C-01` (DPIA — instalar handoff con el LMS cambia la proporcionalidad), `C-02` (revisores), `C-06` (auth-rbac-keycloak — OIDC + mapeo de roles), `C-07` (exam-config — el roster que NRPS reemplaza), `C-16` (cola de revisión — el resultado que AGS retorna). **No se integra un proctoring que aún no existe: requiere MVP operativo.**
+- **Governance**: ALTO (toca identidad, handoff de datos con sistema externo y el DPIA)
+- **Leer antes**:
+  - `knowledge-base/09_decisiones_y_supuestos.md` §DD-20 §DD-21 §DD-09
+  - `knowledge-base/06_funcionalidades.md` §Épica 18 §FR-17
+  - `knowledge-base/02_descripcion_general.md` §Integraciones externas §API REST
+  - `knowledge-base/03_actores_y_roles.md` §RBAC §Estudiante §Roles
+  - `knowledge-base/13_legal_y_cumplimiento_argentina.md` §Base legal §Finalidad acotada
+  - `knowledge-base/10_preguntas_abiertas.md` §Integración LMS
+
 ---
 
 ## Resumen
@@ -847,8 +867,9 @@ C-01 → C-03 → C-04 → C-05 → C-06 → C-07 → C-08 → C-09 → C-10 →
 | **1 — MVP** | C-04…C-19 | 6 CRITICO, 8 ALTO, 2 MEDIO |
 | **2 — Refinamiento** | C-20 | 1 MEDIO |
 | **Refinamiento post-fundación** | C-21, C-22, C-23, C-24, C-25, C-26, C-27, C-28, C-29, C-30, C-31, C-32, C-33, C-34, C-35, C-36, C-37, C-38, C-39, C-40, C-41, C-42, C-43, C-44, C-45, C-46, C-47, C-48 | 6 ALTO, 10 MEDIO, 12 BAJO |
+| **Fase 2 — Integración LMS** | C-49 (FR-17, LTI 1.3) | 1 ALTO |
 
-- **Total**: **47 changes** — 20 de la fundación (3 fases) + 27 post-fundación (capa frontend/demo, captura de actividad, consentimiento en capas, decisiones de producto, identidad institucional, lenguaje claro/glosario, UX/legibilidad del harness, motor de visión real en el harness, quick-fixes de presentación, harness cache UX, medidor de riesgo en harness, biometría perfil funcional, fixes detección cámara/mirada, verificación biométrica inmersiva, foto de perfil en enrollment, escaneo DNI frente+dorso, análisis/validación indicativa DNI, UI base limpieza, rediseño portal alumno, rediseño perfil alumno, rediseño admin/staff, pantalla de proctoring UI, backend proctoring slim Railway, integración frontend-proctoring E2E, cola de revisión real + diferenciación supervisión — ver sección dedicada arriba).
+- **Total**: **48 changes** — 20 de la fundación (3 fases) + 27 post-fundación + C-49 (integración LMS vía LTI 1.3, FR-17) (capa frontend/demo, captura de actividad, consentimiento en capas, decisiones de producto, identidad institucional, lenguaje claro/glosario, UX/legibilidad del harness, motor de visión real en el harness, quick-fixes de presentación, harness cache UX, medidor de riesgo en harness, biometría perfil funcional, fixes detección cámara/mirada, verificación biométrica inmersiva, foto de perfil en enrollment, escaneo DNI frente+dorso, análisis/validación indicativa DNI, UI base limpieza, rediseño portal alumno, rediseño perfil alumno, rediseño admin/staff, pantalla de proctoring UI, backend proctoring slim Railway, integración frontend-proctoring E2E, cola de revisión real + diferenciación supervisión — ver sección dedicada arriba).
 - **Camino crítico**: 11 changes (`C-01 → C-03 → C-04 → C-05 → C-06 → C-07 → C-08 → C-09 → C-10 → C-15 → C-16`). C-21…C-48 quedan **fuera** del camino crítico (refinamiento de demo, no MVP backend).
 - **Gates de paralelismo**: 13 (GATE 0…GATE 12). Forks grandes en GATE 5, GATE 6 y GATE 9.
 - **Primer change recomendado**: `C-01` (acuerdo-proctoring-dpia) — gate legal que junto a `C-02` bloquea todo el desarrollo. El primer change de **código** es `C-03` (poc-carga-mensajeria, Tier 1, BLOQUEANTE).
