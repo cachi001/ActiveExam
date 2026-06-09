@@ -144,7 +144,7 @@ export function EnrollmentDniStep({ escanActual, onEscaneado, onOmitir }: Props)
               </p>
 
               {/* Nota legal prominente */}
-              <div className="flex items-start gap-sm bg-surface-container-low rounded-xl p-md border border-outline-variant/30">
+              <div className="flex items-start gap-sm bg-white rounded-xl p-md border border-outline-variant/40">
                 <Icon name="privacy_tip" className="text-on-surface-variant text-[18px] shrink-0 mt-px" />
                 <p className="text-label-sm text-on-surface-variant">
                   <strong>Dato sensible:</strong> el frente y el dorso del DNI se cifran

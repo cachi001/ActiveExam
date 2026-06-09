@@ -7,7 +7,7 @@
  */
 
 import { Card, SectionTitle } from '../../ui/components';
-import { SEVERITY_ORDER, SEVERITY_BADGE_COLORS, SEVERITY_RANGES, SEVERITY_CARD_COLORS } from './helpers';
+import { SEVERITY_ORDER, SEVERITY_BADGE_COLORS, SEVERITY_RANGES } from './helpers';
 
 export default function LeyendaSeveridad() {
   return (
@@ -21,7 +21,7 @@ export default function LeyendaSeveridad() {
           return (
             <li
               key={sev}
-              className={`flex items-start gap-sm px-sm py-base rounded-lg border ${SEVERITY_CARD_COLORS[sev]}`}
+              className="flex items-center gap-sm px-sm py-base rounded-lg border border-outline-variant/40 bg-white"
             >
               <span
                 className={`inline-flex items-center justify-center min-w-[64px] px-sm py-base rounded-full text-label-sm font-bold ${SEVERITY_BADGE_COLORS[sev]}`}
@@ -39,8 +39,7 @@ export default function LeyendaSeveridad() {
         })}
       </ul>
       <p className="text-[11px] text-on-surface-variant">
-        El score se acumula con cap en 100. El sistema NO sanciona automaticamente — solo prioriza
-        revision humana (L2.5).
+        El score se acumula con tope en 100.
       </p>
     </Card>
   );

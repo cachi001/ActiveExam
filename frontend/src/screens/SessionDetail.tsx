@@ -48,7 +48,7 @@ export default function SessionDetail() {
           <Card className="space-y-sm">
             <SectionTitle sub={`${sel.eventos.length} evento${sel.eventos.length !== 1 ? 's' : ''}`}>Eventos discretos</SectionTitle>
             {sel.eventos.map((ev) => (
-              <div key={ev.id} className="flex items-center justify-between gap-sm p-sm rounded-xl bg-surface-container-low border border-outline-variant/40">
+              <div key={ev.id} className="flex items-center justify-between gap-sm p-sm rounded-xl bg-white border border-outline-variant/40">
                 <div className="flex items-center gap-sm">
                   <Icon name="bolt" className="text-warning" fill />
                   <div>
@@ -127,7 +127,7 @@ function CadenaPaso({ n, titulo, desc, icon, ok }: { n: number; titulo: string; 
   }
 
   return (
-    <div className="flex items-start gap-sm p-sm rounded-xl bg-surface-container-low border border-outline-variant/40">
+    <div className="flex items-start gap-sm p-sm rounded-xl bg-white border border-outline-variant/40">
       <div className="w-8 h-8 rounded-full bg-primary text-on-primary flex items-center justify-center text-label-sm font-bold shrink-0">{n}</div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-base">

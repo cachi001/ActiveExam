@@ -33,7 +33,7 @@ export function ComisionRow({
         className={`w-full flex items-center gap-md px-md py-sm rounded-xl border transition-colors text-left ${
           activa
             ? 'bg-secondary-container border-secondary/20'
-            : 'bg-surface-container border-outline-variant/30 hover:bg-surface-container-high'
+            : 'bg-white border-outline-variant/40 hover:bg-surface-container-high'
         }`}
       >
         <Icon name="groups" className="text-on-surface-variant shrink-0" />

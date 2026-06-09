@@ -245,7 +245,7 @@ export default function StudentProfile() {
           subtitle={<>Paso 2 de {totalPasos()} — Tu foto será usada como avatar en la plataforma.</>}
           onBack={volverAlPerfil}
         >
-          <div className="text-label-sm text-on-surface-variant bg-surface-container-low rounded-xl p-sm border border-outline-variant/30">
+          <div className="text-label-sm text-on-surface-variant bg-white rounded-xl p-sm border border-outline-variant/40">
             <span className="font-semibold">Privacidad:</span> La foto de perfil se procesa server-side y se elimina al egreso.
           </div>
 
