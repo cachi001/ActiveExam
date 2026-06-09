@@ -18,7 +18,6 @@ import Revisor from './screens/Revisor';
 import SessionDetail from './screens/SessionDetail';
 import AdminDashboard from './screens/AdminDashboard';
 import ExamList from './screens/ExamList';
-import ConfigureExam from './screens/ConfigureExam';
 import Reports from './screens/Reports';
 import AuditPrivacy from './screens/AuditPrivacy';
 // Portal del alumno — C-21
@@ -34,7 +33,7 @@ import ProctoringRevisor from './screens/ProctoringRevisor';
 import ProctoringSessionDetail from './screens/ProctoringSessionDetail';
 // C-61: Gestión de usuarios y registro público
 import GestionUsuarios from './screens/GestionUsuarios';
-import ScoringConfig from './screens/ScoringConfig';
+import Configuracion from './screens/Configuracion';
 import Registro from './screens/Registro';
 
 // Roles por área (modelo MVP: estudiante, proctor, admin_sistema).
@@ -71,7 +70,6 @@ export default function App() {
     '/revisor/detalle': g(<SessionDetail />, ADMIN),
     '/admin': g(<AdminDashboard />, ADMIN),
     '/admin/examenes': g(<ExamList />, ADMIN),
-    '/admin/configurar': g(<ConfigureExam />, ADMIN),
     '/admin/reportes': g(<Reports />, ADMIN),
     '/admin/auditoria': g(<AuditPrivacy />, ADMIN),
     '/admin/detection-test': g(<AdminDetectionHarness />, ADMIN),
@@ -80,8 +78,8 @@ export default function App() {
     '/admin/proctoring-session-detail': g(<ProctoringSessionDetail />, ADMIN),
     // C-61: Gestión de usuarios
     '/admin/usuarios': g(<GestionUsuarios />, ADMIN),
-    // #10: Configuración de scoring por tipo de evento
-    '/admin/scoring': g(<ScoringConfig />, ADMIN),
+    // #10: Configuración del sistema (scoring por tipo de evento + ajustes globales futuros)
+    '/admin/configuracion': g(<Configuracion />, ADMIN),
 
     // Portal del alumno — C-21
     '/alumno/dashboard': g(<AlumnoDashboard />, ESTUDIANTE),

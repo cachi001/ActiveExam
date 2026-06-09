@@ -152,7 +152,7 @@ export function useDetectionHarness() {
     return () => clearInterval(t);
   }, [harnessState]);
 
-  // ------ Cargar pesos de scoring desde la BD (admin puede haber ajustado en /admin/scoring).
+  // ------ Cargar pesos de scoring desde la BD (admin puede haber ajustado en /admin/configuracion).
   // No bloquea: si la API falla, pesoEvento() usa el fallback por severidad.
   useEffect(() => {
     void loadScoringWeights();

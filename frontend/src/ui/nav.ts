@@ -3,7 +3,6 @@
 export const STAFF_NAV = [
   { to: '/admin', icon: 'space_dashboard', label: 'Dashboard' },
   { to: '/admin/examenes', icon: 'quiz', label: 'Exámenes' },
-  { to: '/admin/configurar', icon: 'tune', label: 'Configurar examen' },
   { to: '/proctor', icon: 'visibility', label: 'Supervisión en vivo' },
   { to: '/revisor', icon: 'gavel', label: 'Cola de revisión' },
   { to: '/admin/reportes', icon: 'analytics', label: 'Reportes y analítica' },
@@ -13,6 +12,6 @@ export const STAFF_NAV = [
   { to: '/admin/proctoring-sessions', icon: 'video_library', label: 'Sesiones grabadas' },
   // C-61: Gestión de usuarios
   { to: '/admin/usuarios', icon: 'manage_accounts', label: 'Usuarios' },
-  // #10: Configuración de scoring por tipo de evento
-  { to: '/admin/scoring', icon: 'tune', label: 'Scoring' },
+  // #10: Configuración del sistema (scoring por tipo de evento + ajustes globales futuros)
+  { to: '/admin/configuracion', icon: 'settings', label: 'Configuración' },
 ];

@@ -261,7 +261,7 @@ export function useExamProctoring(
     stoppedRef.current = false;
     let cancelled = false;
 
-    // --- Cargar pesos de scoring desde la BD (admin los puede haber ajustado en /admin/scoring).
+    // --- Cargar pesos de scoring desde la BD (admin los puede haber ajustado en /admin/configuracion).
     // No bloquea: si la API falla, pesoEvento() recurre al fallback por severidad.
     void loadScoringWeights();
 

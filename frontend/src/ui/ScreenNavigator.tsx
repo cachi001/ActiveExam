@@ -43,7 +43,6 @@ const GRUPOS: Group[] = [
     titulo: 'Administración', icon: 'admin_panel_settings', items: [
       { to: '/admin', label: 'Dashboard', rol: 'admin_sistema' },
       { to: '/admin/examenes', label: 'Listado de exámenes' },
-      { to: '/admin/configurar', label: 'Configurar examen' },
       { to: '/admin/reportes', label: 'Reportes y analítica' },
       { to: '/admin/auditoria', label: 'Auditoría y privacidad' },
       { to: '/admin/detection-test', label: 'Test de detección', rol: 'admin_sistema' },

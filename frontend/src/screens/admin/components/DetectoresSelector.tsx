@@ -36,7 +36,7 @@ export default function DetectoresSelector({ value, onChange }: DetectoresSelect
               className={`flex items-center gap-base p-sm rounded-xl border cursor-pointer transition-colors ${
                 on
                   ? 'bg-primary-fixed/40 border-primary-container'
-                  : 'bg-surface-container-low border-outline-variant/40'
+                  : 'bg-white border-outline-variant/40'
               }`}
             >
               <input
