@@ -30,10 +30,10 @@ USO (modo full — stack completo):
     ... (todas las vars del stack completo) \\
     python scripts/seed_users.py
 
-CREDENCIALES SEED (para probar el login):
-    Estudiante: id_institucional=estudiante | email=estudiante@demo.test
-    Proctor:    id_institucional=proctor    | email=proctor@demo.test
-    Admin:      id_institucional=admin      | email=admin@demo.test
+CREDENCIALES SEED (para probar el login — identificadores estilo produccion):
+    Estudiante: id_institucional=EST-001   | email=estudiante@activeexam.local
+    Proctor:    id_institucional=PROC-001  | email=proctor@activeexam.local
+    Admin:      id_institucional=ADMIN-001 | email=admin@activeexam.local
 """
 
 from __future__ import annotations
@@ -132,20 +132,20 @@ async def _ejecutar_seed(
 
     usuarios_seed = [
         {
-            "id_institucional": "estudiante",
-            "email": "estudiante@demo.test",
+            "id_institucional": "EST-001",
+            "email": "estudiante@activeexam.local",
             "password": pw_estudiante,
             "roles": ["estudiante"],
         },
         {
-            "id_institucional": "proctor",
-            "email": "proctor@demo.test",
+            "id_institucional": "PROC-001",
+            "email": "proctor@activeexam.local",
             "password": pw_proctor,
             "roles": ["proctor"],
         },
         {
-            "id_institucional": "admin",
-            "email": "admin@demo.test",
+            "id_institucional": "ADMIN-001",
+            "email": "admin@activeexam.local",
             "password": pw_admin,
             "roles": ["admin_sistema"],
         },

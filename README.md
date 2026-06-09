@@ -6,6 +6,38 @@ Plataforma self-hosted de proctoring **L2.5**. Este repo contiene la **fundacion
 > Contexto de dominio y reglas duras: ver [AGENTS.md](AGENTS.md) /
 > [CLAUDE.md](CLAUDE.md) y `knowledge-base/`. Roadmap: [CHANGES.md](CHANGES.md).
 
+## Quickstart — clonar y testear como en producción
+
+Espeja el deploy real (Railway = backend slim + Postgres; Vercel = frontend), con
+**login JWT real (sin modo demo)** y los usuarios de prueba creados **siempre**.
+
+**Requisitos:** Docker Desktop corriendo + Node 18+.
+
+```bash
+# 1. Backend + DB (build + migra + seed + uvicorn en http://localhost:8000)
+./scripts/dev-up.ps1          # Windows (PowerShell)
+./scripts/dev-up.sh           # macOS / Linux
+
+# 2. Frontend (otra terminal) -> http://localhost:5173
+cd frontend && npm install && npm run dev
+```
+
+El frontend usa `frontend/.env.development` (commiteado): apunta a
+`http://localhost:8000/api/v1`, con `VITE_AUTH_PROVIDER=jwt` y demo/bypass
+apagados. Para frenar: `./scripts/dev-down.ps1` (agregá `-v` para resetear la DB).
+
+**Usuarios de prueba (seed idempotente, estilo producción):**
+
+| Rol | Usuario o email | Password |
+|---|---|---|
+| Administrador | `ADMIN-001` · `admin@activeexam.local` | `Admin123` |
+| Estudiante | `EST-001` · `estudiante@activeexam.local` | `Estudiante123` |
+| Proctor | `PROC-001` · `proctor@activeexam.local` | `Proctor123` |
+
+> Las credenciales y secretos de `docker-compose.dev.yml` son **dev-only** (DB
+> local, JWT y Fernet de juguete). En producción se inyectan por el dashboard de
+> Railway. No son secretos reales.
+
 ## Arbol canonico del repositorio (cierra la suposicion SU-07)
 
 C-04 fija esta estructura como **convencion del proyecto** (Clean/Hexagonal
@@ -102,15 +134,15 @@ python scripts/seed_users.py
 
 | Rol | username / email | password (env) |
 |---|---|---|
-| `estudiante` | `seed-estudiante` o `seed-estudiante@demo.test` | `$SEED_ESTUDIANTE_PASSWORD` |
-| `proctor` | `seed-proctor` o `seed-proctor@demo.test` | `$SEED_PROCTOR_PASSWORD` |
-| `admin_sistema` | `seed-admin` o `seed-admin@demo.test` | `$SEED_ADMIN_PASSWORD` |
+| `estudiante` | `EST-001` o `estudiante@activeexam.local` | `$SEED_ESTUDIANTE_PASSWORD` |
+| `proctor` | `PROC-001` o `proctor@activeexam.local` | `$SEED_PROCTOR_PASSWORD` |
+| `admin_sistema` | `ADMIN-001` o `admin@activeexam.local` | `$SEED_ADMIN_PASSWORD` |
 
 **Endpoint de login:**
 ```bash
 curl -X POST http://localhost:8000/api/v1/auth/login \
   -H 'Content-Type: application/json' \
-  -d '{"username":"seed-admin@demo.test","password":"Admin1234"}'
+  -d '{"username":"ADMIN-001","password":"Admin123"}'
 ```
 
 ### Nota de deuda técnica — MFA (proctor/admin_sistema)

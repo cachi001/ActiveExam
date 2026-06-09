@@ -1,0 +1,78 @@
+# =============================================================================
+# Stack de DESARROLLO que ESPEJA produccion (Railway = backend slim + Postgres).
+#
+# Objetivo: que cualquiera al CLONAR el repo pueda testear "como en prod" con un
+# solo comando — sin modo demo, con login JWT real y los usuarios de prueba
+# (ADMIN-001 / EST-001 / PROC-001) creados SIEMPRE via seed idempotente.
+#
+# Uso:
+#   docker compose -f infra/docker-compose/docker-compose.dev.yml up --build
+#   (o el wrapper:  scripts/dev-up.ps1  /  scripts/dev-up.sh)
+#
+# Luego el frontend (en otra terminal):
+#   cd frontend && npm install && npm run dev   ->  http://localhost:5173
+#
+# SECRETOS: los valores de abajo son DEV-ONLY (DB local, JWT y Fernet de juguete).
+# NO son secretos de produccion. En prod se inyectan por el dashboard de Railway.
+# =============================================================================
+
+name: activeexam-dev
+
+services:
+  # --- Base de datos: Postgres estandar (la rama de migraciones slim NO usa
+  #     TimescaleDB, a diferencia del stack full). -----------------------------
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: proctoring
+      POSTGRES_PASSWORD: dev-only-change-me
+      POSTGRES_DB: proctoring
+    ports:
+      - "5432:5432" # expuesto para inspeccionar con psql/DBeaver desde el host
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U proctoring -d proctoring"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      # El init de primera vez (crear el data dir) puede tardar; no contar fallos
+      # de healthcheck durante ese arranque para no marcar el contenedor unhealthy.
+      start_period: 60s
+
+  # --- Backend slim (mismo Dockerfile.slim que Railway). Al arrancar:
+  #     1) migra (alembic slim@head)  2) seed de usuarios  3) uvicorn ----------
+  backend:
+    build:
+      context: ../.. # raiz del repo: el Dockerfile.slim copia backend/ y frontend/public/mediapipe/
+      dockerfile: Dockerfile.slim
+    environment:
+      DATABASE_URL: postgresql+asyncpg://proctoring:dev-only-change-me@postgres:5432/proctoring
+      FRONTEND_ORIGIN: http://localhost:5173
+      JWT_OWN_SECRET: dev-only-insecure-jwt-secret-change-me-0123456789abcdef
+      EMBEDDING_ENCRYPTION_KEY: VXqRzW9ksjWE2eCa752juwQdOtAPCrYVnratlmHj7b0=
+      PORT: "8000"
+      ENVIRONMENT: development
+      # Passwords del seed (dev-only). El seed es idempotente: no duplica.
+      SEED_ADMIN_PASSWORD: Admin123
+      SEED_ESTUDIANTE_PASSWORD: Estudiante123
+      SEED_PROCTOR_PASSWORD: Proctor123
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    # Pisa el CMD del Dockerfile.slim para INTERCALAR el seed entre migrar y servir.
+    command:
+      - sh
+      - -c
+      - |
+        echo ">>> [1/3] migrando DB (alembic slim@head)..." && \
+        alembic -c alembic.ini upgrade slim@head && \
+        echo ">>> [2/3] seed de usuarios (idempotente)..." && \
+        python scripts/seed_users.py --slim && \
+        echo ">>> [3/3] levantando uvicorn en :8000" && \
+        uvicorn app.main_slim:app --host 0.0.0.0 --port 8000
+
+volumes:
+  pgdata:
