@@ -1,0 +1,35 @@
+# Excluye del build context de Docker (Dockerfile.slim se buildea desde la raiz).
+# Mantiene el context chico -> builds rapidos para quien clona el repo.
+
+# Dependencias y artefactos del frontend (NO se necesitan en la imagen backend)
+frontend/node_modules
+frontend/dist
+**/node_modules
+
+# Control de versiones e historia
+.git
+.gitignore
+
+# Entornos virtuales y caches de Python
+**/.venv
+**/venv
+**/__pycache__
+**/*.pyc
+.pytest_cache
+.mypy_cache
+.ruff_cache
+
+# Artefactos de QA / capturas / herramientas de review
+*.png
+.playwright-mcp
+playwright-mcp
+poc/
+
+# Editor / OS
+.vscode
+.idea
+.DS_Store
+Thumbs.db
+
+# Specs y docs (no van en la imagen runtime)
+openspec/changes/archive
