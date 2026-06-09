@@ -38,7 +38,7 @@ export default function SeccionConsentimiento() {
 
   if (cargando) {
     return (
-      <div className="space-y-base max-w-3xl">
+      <div className="space-y-lg max-w-3xl">
         {Array.from({ length: 3 }).map((_, i) => (
           <div key={i} className="h-[140px] rounded-2xl border border-outline-variant/40 bg-white animate-pulse" />
         ))}
@@ -47,7 +47,7 @@ export default function SeccionConsentimiento() {
   }
 
   return (
-    <div className="space-y-base max-w-3xl">
+    <div className="space-y-lg max-w-3xl">
       <div className="flex items-center gap-base text-[13px] text-on-surface-variant">
         <Icon name="article" className="text-[18px] text-primary" />
         <span>Versión <span className="font-mono font-semibold text-on-surface">{version}</span> — editá el texto que los alumnos leen y confirman antes de rendir.</span>

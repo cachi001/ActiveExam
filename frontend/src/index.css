@@ -6,6 +6,11 @@
   html, body, #root {
     height: 100%;
   }
+  /* Reserva el ancho del scrollbar siempre, así el layout no salta cuando una
+     pantalla larga (ej. Configuración > Consentimiento) hace aparecer el scroll. */
+  html {
+    scrollbar-gutter: stable;
+  }
   body {
     @apply bg-surface text-on-surface font-sans antialiased;
   }
