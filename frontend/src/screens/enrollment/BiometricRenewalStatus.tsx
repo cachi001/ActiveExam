@@ -7,10 +7,20 @@
  * Spec: biometric-reference-renewal (C-22)
  * - La referencia caducada bloquea rendir hasta renovar.
  * - La renovación anticipada por deriva NO sanciona ni invalida la rendición en curso (L2.5).
+ *
+ * C-65 Task 7.2: límite suave de re-captura.
+ * - MAX_RECAPTURAS_VENTANA: máximo de re-capturas permitidas en la ventana.
+ * - VENTANA_MS: duración de la ventana en ms (30 min).
+ * - Al alcanzar el límite, el botón se deshabilita con copy explicativo. Sin sanción.
  */
+import { useState, useCallback } from 'react';
 import { Icon, Button } from '../../ui/components';
 import { Term } from '../../ui/Term';
 import type { ReferenciasBiometrica, VigenciaReferencia } from '../../lib/types';
+
+// C-65: Límite suave de re-captura (anti fishing de liveness).
+const MAX_RECAPTURAS_VENTANA = 3;
+const VENTANA_MS = 30 * 60 * 1000; // 30 minutos
 
 interface Props {
   referencia: ReferenciasBiometrica;
@@ -57,6 +67,27 @@ const VIGENCIA_CONFIG: Record<VigenciaReferencia, {
 export function BiometricRenewalStatus({ referencia, onRenovar }: Props) {
   const config = VIGENCIA_CONFIG[referencia.vigencia];
 
+  // C-65 Task 7.2: Límite suave de re-captura — estado local de la ventana.
+  // timestamps[] almacena los epoch ms de cada re-captura en la ventana actual.
+  const [timestamps, setTimestamps] = useState<number[]>([]);
+
+  const handleRenovar = useCallback(() => {
+    const ahora = Date.now();
+    // Filtrar re-capturas fuera de la ventana actual
+    const enVentana = timestamps.filter((t) => ahora - t < VENTANA_MS);
+    if (enVentana.length >= MAX_RECAPTURAS_VENTANA) {
+      // Límite alcanzado — no llama a onRenovar, no sanciona.
+      return;
+    }
+    setTimestamps([...enVentana, ahora]);
+    onRenovar();
+  }, [timestamps, onRenovar]);
+
+  // Calcular estado del límite para el botón
+  const ahora = Date.now();
+  const enVentanaActual = timestamps.filter((t) => ahora - t < VENTANA_MS);
+  const limiteAlcanzado = enVentanaActual.length >= MAX_RECAPTURAS_VENTANA;
+
   const formatearFecha = (iso: string) =>
     new Date(iso).toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' });
 
@@ -102,16 +133,39 @@ export function BiometricRenewalStatus({ referencia, onRenovar }: Props) {
         </div>
       )}
 
+      {/* C-65 Task 7.2: copy explicativo cuando el límite suave está alcanzado */}
+      {limiteAlcanzado && (
+        <div className="flex items-start gap-sm bg-surface-variant/60 rounded-xl p-sm border border-outline-variant/20">
+          <Icon name="info" className="text-on-surface-variant text-[16px] shrink-0 mt-px" />
+          <p className="text-label-sm text-on-surface-variant">
+            Alcanzaste el límite de re-capturas por ahora. Podés volver a intentarlo en 30 minutos.
+            Esto no afecta tu rendición ni genera ninguna sanción.
+          </p>
+        </div>
+      )}
+
       {config.mostrarBotonRenovar ? (
-        <Button variant="outline" icon="refresh" onClick={onRenovar} className="w-full sm:w-auto">
+        <Button
+          variant="outline"
+          icon="refresh"
+          onClick={handleRenovar}
+          disabled={limiteAlcanzado}
+          className="w-full sm:w-auto"
+        >
           {referencia.vigencia === 'caducada' ? 'Renovar referencia (requerido)' : 'Renovar anticipadamente'}
         </Button>
       ) : (
         // Vigente: igual ofrecemos un "Rehacer" suave por si la captura quedó mal
         // (rostro mal encuadrado, luz pobre, falla de red al guardar, etc.).
         // Usa el mismo flujo de renovación (reemplaza la referencia vigente).
-        <Button variant="ghost" icon="refresh" onClick={onRenovar} className="w-full sm:w-auto text-on-surface-variant">
-          Rehacer captura
+        <Button
+          variant="ghost"
+          icon="refresh"
+          onClick={handleRenovar}
+          disabled={limiteAlcanzado}
+          className="w-full sm:w-auto text-on-surface-variant"
+        >
+          {limiteAlcanzado ? 'Límite de re-capturas alcanzado' : 'Rehacer captura'}
         </Button>
       )}
     </div>

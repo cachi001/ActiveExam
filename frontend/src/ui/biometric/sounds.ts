@@ -130,3 +130,20 @@ export function playSuccess(): void {
 export function playHint(): void {
   playSequence('hint', [{ freq: 330, duration: 0.10, type: 'sine' }]);
 }
+
+/**
+ * C-65: Tono descendente discreto de fallo (≤ 250 ms).
+ * Se dispara en fallos relevantes: timeout de baseline sin éxito, liveness
+ * pasivo fallido, cámara virtual detectada, error de cámara.
+ *
+ * Respeta todas las mismas reglas que los sonidos existentes:
+ * - prefers-reduced-motion → silencio
+ * - setSoundEnabled(false) → silencio
+ * - Cooldown interno de 400ms (no estalla en bucle).
+ */
+export function playError(): void {
+  playSequence('error', [
+    { freq: 440, duration: 0.10, delay: 0,    type: 'sine', gain: 0.9 }, // la4
+    { freq: 330, duration: 0.13, delay: 0.09, type: 'sine', gain: 0.7 }, // mi4 (descendente)
+  ]);
+}

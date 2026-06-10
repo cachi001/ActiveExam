@@ -310,6 +310,75 @@ describe("validacion del baseline (Task 11.5)", () => {
 });
 
 // ---------------------------------------------------------------------------
+// C-65 Task 4.1 RED / 4.3 TRIANGULATE: gestureHold — confirmación por tiempo
+// ---------------------------------------------------------------------------
+
+import { gestureHold, GESTURE_HOLD_MS } from "./enrollmentChallengeDetector";
+
+describe("gestureHold — confirmación temporal (C-65 Task 4.1 / 4.3)", () => {
+  // ── Caso base: gesto no sostenido suficiente ────────────────────────────
+  it("gesto instantáneo (no cumple): no confirma y reinicia holdStart", () => {
+    const result = gestureHold({ now: 1000, holdStart: null, cumple: false });
+    expect(result.holdStart).toBeNull();
+    expect(result.confirmado).toBe(false);
+  });
+
+  it("gesto nuevo (cumple por primera vez): inicia holdStart sin confirmar", () => {
+    const result = gestureHold({ now: 1000, holdStart: null, cumple: true });
+    expect(result.holdStart).toBe(1000);
+    expect(result.confirmado).toBe(false);
+  });
+
+  it("gesto sostenido justo bajo el umbral: no confirma aún", () => {
+    // holdStart = 0, now = GESTURE_HOLD_MS - 1 → elapsed < HOLD_MS
+    const result = gestureHold({ now: GESTURE_HOLD_MS - 1, holdStart: 0, cumple: true });
+    expect(result.confirmado).toBe(false);
+    expect(result.holdStart).toBe(0); // holdStart se mantiene
+  });
+
+  it("gesto sostenido exactamente en el umbral: confirma", () => {
+    // holdStart = 0, now = GESTURE_HOLD_MS → elapsed === HOLD_MS → confirma
+    const result = gestureHold({ now: GESTURE_HOLD_MS, holdStart: 0, cumple: true });
+    expect(result.confirmado).toBe(true);
+  });
+
+  it("gesto sostenido por encima del umbral: también confirma", () => {
+    const result = gestureHold({ now: GESTURE_HOLD_MS + 200, holdStart: 0, cumple: true });
+    expect(result.confirmado).toBe(true);
+  });
+
+  it("gesto interrumpido (deja de cumplir): resetea holdStart", () => {
+    // holdStart tenía un valor; ahora cumple=false → resetea
+    const result = gestureHold({ now: 600, holdStart: 200, cumple: false });
+    expect(result.holdStart).toBeNull();
+    expect(result.confirmado).toBe(false);
+  });
+
+  // ── Independencia del framerate (TRIANGULATE Task 4.3) ──────────────────
+  it("30fps: 15 frames = 500ms → confirma exactamente igual que 60fps 30 frames", () => {
+    // A 30fps: frames duran ~33ms, 15 frames = ~500ms → confirma
+    // Simulamos holdStart=0, now=500 (15 frames a 30fps)
+    const at30fps = gestureHold({ now: 500, holdStart: 0, cumple: true });
+    expect(at30fps.confirmado).toBe(true);
+
+    // A 60fps: frames duran ~16ms, 31 frames = ~496ms < 500ms → NO confirma
+    const at60fps_early = gestureHold({ now: 496, holdStart: 0, cumple: true });
+    expect(at60fps_early.confirmado).toBe(false);
+
+    // A 60fps: 32 frames = ~512ms → confirma
+    const at60fps_late = gestureHold({ now: 512, holdStart: 0, cumple: true });
+    expect(at60fps_late.confirmado).toBe(true);
+  });
+
+  it("hold no comienza hasta cumple=true, incluso si now es alto", () => {
+    // Si no cumplía antes (holdStart=null) y now es 9999, sin cumple no inicia
+    const r = gestureHold({ now: 9999, holdStart: null, cumple: false });
+    expect(r.holdStart).toBeNull();
+    expect(r.confirmado).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Task 11.6: aleatorización Fisher-Yates
 // ---------------------------------------------------------------------------
 
