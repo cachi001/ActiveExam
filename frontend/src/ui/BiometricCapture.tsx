@@ -34,8 +34,8 @@ import { createPortal } from 'react-dom';
 import { CaptureOverlay } from './biometric/CaptureOverlay';
 import type { OvalTono } from './biometric/CaptureOval';
 import { CaptureError } from './biometric/CaptureError';
-import { evaluateFraming, type FramingHint } from './biometric/framingGuide';
-import { playStepCompleted, playSuccess, playHint } from './biometric/sounds';
+import { evaluateFraming, isHintBloqueante, type FramingHint } from './biometric/framingGuide';
+import { playStepCompleted, playSuccess, playHint, playError } from './biometric/sounds';
 import { loadEnrollmentEngine, disposeEnrollmentEngine } from '../vision/enrollmentEngineLoader';
 import {
   evaluateChallengeRelative,
@@ -43,6 +43,8 @@ import {
   fisherYatesShuffle,
   computeBaselineFromAccumulator,
   isBaselineSmileValid,
+  gestureHold,
+  GESTURE_HOLD_MS,
 } from '../vision/enrollmentChallengeDetector';
 import type { BaselineFrame } from '../vision/enrollmentChallengeDetector';
 import { SEQUENTIAL_CHALLENGES, derivePassiveSignals, passivePassed, detectVirtualCamera } from '../vision/liveness';
@@ -248,6 +250,14 @@ export function BiometricCapture({
    */
   const challengeNeutralFramesRef = useRef<Map<SequentialChallenge, number>>(new Map());
 
+  /**
+   * C-65: Timestamp (performance.now()) del primer frame en que el alumno
+   * cumplió el gesto del reto activo. null si aún no inició el hold.
+   * Se resetea al confirmar el reto, al interrumpirse el gesto, o al cambiar
+   * de reto (framing gate, cooldown, doble reset).
+   */
+  const holdStartRef = useRef<Map<SequentialChallenge, number | null>>(new Map());
+
   // ── Liveness pasivo (D2) ────────────────────────────────────────────────
   const livenessWindowRef = useRef<Array<{
     blinkL: number;
@@ -264,6 +274,10 @@ export function BiometricCapture({
   // ── Detección de cámara virtual (D4) ────────────────────────────────────
   const prevFrameDataRef = useRef<ImageData | null>(null);
   const virtualCameraRef = useRef(false);
+
+  // ── C-65: Framing gate — rastrea si el frame anterior tenía hint bloqueante
+  //    (para resetear el acumulador del reto activo al reanudar, tarea 3.4)
+  const wasBlockedByFramingRef = useRef(false);
 
   // ── Estado de UI ─────────────────────────────────────────────────────────
   const [fase, setFase]               = useState<Fase>('capturando');
@@ -378,12 +392,21 @@ export function BiometricCapture({
     }
 
     const isFallback = fallbackManualRef.current;
+    const passiveOkFinal = isFallback ? false : passiveOkRef.current;
+    const virtualCameraFinal = isFallback ? false : virtualCameraRef.current;
+
+    // C-65 Task 6.3: Sonido de fallo al cierre si liveness pasivo falló
+    // o cámara virtual detectada.
+    if (!passiveOkFinal || virtualCameraFinal) {
+      playError();
+    }
+
     onComplete(
       lastLandmarksRef.current,
       frame,
-      isFallback ? false : passiveOkRef.current,
+      passiveOkFinal,
       resueltosRef.current,
-      isFallback ? false : virtualCameraRef.current,
+      virtualCameraFinal,
     );
   }, [onComplete]);
 
@@ -706,6 +729,36 @@ export function BiometricCapture({
               return;
             }
 
+            // C-65 Task 3.2-3.4: gate de encuadre — si el hint actual es bloqueante,
+            // no evaluar el reto activo ni acumular progreso.
+            // El liveness pasivo y detectVirtualCamera siguen ejecutándose arriba
+            // (ya corrieron en este frame, antes de llegar a esta sección).
+            // Pattern: mismo corte temprano que cooldownActiveRef (D1).
+            if (isHintBloqueante(framingHintRef.current)) {
+              wasBlockedByFramingRef.current = true;
+              if (faseRef.current === 'capturando') {
+                rafHandleRef.current = requestAnimationFrame(() => { void detectFrame(); });
+              } else {
+                rafHandleRef.current = null;
+              }
+              return;
+            }
+
+            // C-65 Task 3.4: si el frame anterior tenía hint bloqueante y ahora
+            // se reanuda, resetear el acumulador del reto activo para exigir el
+            // gate de neutralidad antes de contar positivos (evita confirmación
+            // inmediata por residuo físico del gesto anterior al desbloqueo).
+            if (wasBlockedByFramingRef.current) {
+              wasBlockedByFramingRef.current = false;
+              const idxReset = challengeIndexRef.current;
+              const barReset = desafiosBarajadosRef.current;
+              if (idxReset < barReset.length) {
+                challengeCountsRef.current.set(barReset[idxReset], 0);
+                challengeNeutralFramesRef.current.set(barReset[idxReset], 0);
+                holdStartRef.current.set(barReset[idxReset], null);
+              }
+            }
+
             // Task 5.3: obtener el reto activo
             const idx = challengeIndexRef.current;
             const barajados = desafiosBarajadosRef.current;
@@ -721,10 +774,11 @@ export function BiometricCapture({
 
             const retoActivo = barajados[idx];
 
-            // Task 5.7: sin rostro → resetear acumulador del reto activo
+            // Task 5.7: sin rostro → resetear acumulador del reto activo y hold
             if (face_count === 0) {
               challengeCountsRef.current.set(retoActivo, 0);
               challengeNeutralFramesRef.current.set(retoActivo, 0);
+              holdStartRef.current.set(retoActivo, null);
             } else {
               // Task 5.4: evaluar el reto activo con delta relativo
               const cumple = evaluateChallengeRelative(
@@ -745,36 +799,53 @@ export function BiometricCapture({
                   // arrastrando el estado del reto anterior. Ignoramos positivos
                   // hasta que el gate de neutralidad se complete.
                   challengeCountsRef.current.set(retoActivo, 0);
+                  holdStartRef.current.set(retoActivo, null);
                 } else {
-                  // Task 5.5: incrementar acumulador
-                  const newCount = prevCount + 1;
-                  challengeCountsRef.current.set(retoActivo, newCount);
+                  // C-65 Task 4.4: confirmación por TIEMPO (GESTURE_HOLD_MS),
+                  // reemplazando el conteo por frames como condición primaria.
+                  const prevHoldStart = holdStartRef.current.get(retoActivo) ?? null;
+                  const nowMs = performance.now();
+                  const { holdStart: newHoldStart, confirmado } = gestureHold({
+                    now: nowMs,
+                    holdStart: prevHoldStart,
+                    cumple: true,
+                  });
+                  holdStartRef.current.set(retoActivo, newHoldStart);
 
-                  if (newCount >= framesMinForChallengeSeq(retoActivo)) {
+                  // Mantener el contador de frames por compatibilidad (no es la condición)
+                  challengeCountsRef.current.set(retoActivo, prevCount + 1);
+
+                  if (confirmado) {
                     // Reto completado → resetear acumuladores y activar cooldown
                     challengeCountsRef.current.set(retoActivo, 0);
                     challengeNeutralFramesRef.current.set(retoActivo, 0);
+                    holdStartRef.current.set(retoActivo, null);
                     activarCooldown(retoActivo);
                   }
                 }
               } else {
-                // Task 5.6: no cumple → resetear acumulador positivo y sumar al
-                // gate de neutralidad (capamos para no overflowear).
+                // Task 5.6 / C-65: no cumple → resetear acumulador positivo,
+                // resetear hold temporal, y sumar al gate de neutralidad.
                 challengeCountsRef.current.set(retoActivo, 0);
+                holdStartRef.current.set(retoActivo, null);
                 challengeNeutralFramesRef.current.set(
                   retoActivo,
                   Math.min(neutralVistos + 1, NEUTRAL_GATE_FRAMES),
                 );
               }
 
-              // Progreso visual del anillo: retos completos + fracción del reto
-              // activo (acumulador / framesMin). Se anima a 350ms con CSS.
+              // C-65 Task 4.5: Progreso visual del anillo: retos completos +
+              // fracción temporal del reto activo ((now - holdStart) / HOLD_MS).
+              // Si holdStart es null, fracción = 0. Esto hace el anillo frame-rate
+              // independiente igual que la confirmación.
               const totalRetos = desafiosBarajadosRef.current.length;
               if (totalRetos > 0) {
                 const completos = challengeIndexRef.current;
-                const minFrames = framesMinForChallengeSeq(retoActivo);
-                const cuenta = challengeCountsRef.current.get(retoActivo) ?? 0;
-                const fracReto = minFrames > 0 ? Math.min(1, cuenta / minFrames) : 0;
+                const currentHoldStart = holdStartRef.current.get(retoActivo) ?? null;
+                let fracReto = 0;
+                if (currentHoldStart !== null) {
+                  fracReto = Math.min(1, (performance.now() - currentHoldStart) / GESTURE_HOLD_MS);
+                }
                 const progresoNuevo = Math.min(1, (completos + fracReto) / totalRetos);
                 setProgreso(progresoNuevo);
               }
@@ -814,6 +885,41 @@ export function BiometricCapture({
     }).then((stream) => {
       if (cancelado) { stream.getTracks().forEach((t) => t.stop()); return; }
       streamRef.current = stream;
+
+      // C-65 Task 5.1: Best-effort camera exposure improvement.
+      // Consult getCapabilities() before requesting unsupported constraints.
+      // Any failure is silently ignored — the poca_luz guide remains active (task 5.3).
+      try {
+        const videoTrack = stream.getVideoTracks()[0];
+        if (videoTrack) {
+          type ExtendedCapabilities = MediaTrackCapabilities & {
+            exposureMode?: string[];
+            brightness?: { min: number; max: number; step?: number };
+          };
+          type ExtendedConstraints = MediaTrackConstraintSet & {
+            exposureMode?: ConstrainDOMString;
+            brightness?: ConstrainDouble;
+          };
+          const caps = videoTrack.getCapabilities() as ExtendedCapabilities;
+          const advanced: ExtendedConstraints[] = [];
+          if (caps.exposureMode && caps.exposureMode.includes('continuous')) {
+            advanced.push({ exposureMode: 'continuous' });
+          }
+          if (caps.brightness) {
+            // Request brightness at 70% of max (gentle boost, best-effort)
+            const targetBrightness = caps.brightness.min + (caps.brightness.max - caps.brightness.min) * 0.7;
+            advanced.push({ brightness: targetBrightness });
+          }
+          if (advanced.length > 0) {
+            await videoTrack.applyConstraints({ advanced } as MediaTrackConstraints).catch(() => {
+              // Silently ignore: not supported on this device/browser
+            });
+          }
+        }
+      } catch {
+        // Silently ignore any capability query or constraint errors
+      }
+
       if (videoRef.current) {
         const video = videoRef.current;
         video.srcObject = stream;
@@ -830,6 +936,7 @@ export function BiometricCapture({
       if (!cancelado) {
         setErrorMsg(`Sin acceso a la cámara: ${err?.message ?? 'permiso denegado'}`);
         setFase('error');
+        playError(); // C-65 Task 6.3: sonido de fallo al error de cámara
       }
     });
 

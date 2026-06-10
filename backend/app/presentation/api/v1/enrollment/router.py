@@ -46,6 +46,7 @@ from app.infrastructure.crypto.embedding_encryption import (
     ConfigurationError,
     EmbeddingEncryptionService,
 )
+from app.infrastructure.persistence.repositories.audit_log import AuditLogSqlRepository
 from app.infrastructure.storage.db_photo_storage import DbPhotoStorageService
 from app.infrastructure.storage.profile_photo import ProfilePhotoStorageService
 from app.presentation.api.v1.auth.dependencies import require_roles
@@ -202,8 +203,14 @@ async def guardar_embedding_referencia(
     factory = _get_session_factory(request)
     encryption = _get_embedding_encryption(request)
 
+    # C-65 task 7.3: capturar IP y User-Agent reales del request para el audit log.
+    # Patron identico al de evidence/router.py (fuente canonica en este repo).
+    client_ip = request.client.host if request.client else ""
+    client_ua = request.headers.get("user-agent", "")
+
     try:
         async with factory() as session:
+            audit_repo = AuditLogSqlRepository(session)
             service = GuardarEmbeddingReferenciaService(
                 session=session,
                 encryption=encryption,
@@ -211,6 +218,10 @@ async def guardar_embedding_referencia(
             referencia_id = await service.ejecutar(
                 usuario_id=principal.subject,
                 embedding=body.embedding,
+                audit_repo=audit_repo,
+                origen="perfil-web",
+                ip=client_ip,
+                user_agent=client_ua,
             )
             await session.commit()
     except DimensionError as exc:
