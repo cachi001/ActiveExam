@@ -16,7 +16,8 @@ export type FramingHint =
   | 'mucha_luz'
   | 'lejos'
   | 'cerca'
-  | 'descentrado';
+  | 'descentrado'
+  | 'no_frontal';
 
 export interface FramingSignals {
   /** Cantidad de rostros detectados por el motor en el frame actual. */
@@ -35,12 +36,23 @@ export interface FramingSignals {
 }
 
 // Umbrales calibrados a ojo razonable. Si se ajustan, mover acá (D-2 del C-34).
+// C-65 ajuste post-prueba: óvalo tipo app bancaria — centrado y tamaño APRETADOS
+// para forzar una referencia consistente (cara grande, centrada, con margen del
+// borde del frame). NO es por corrección del embedding (face-api re-alinea), sino
+// guardarraíl de CALIDAD/consistencia de la captura.
 const LUM_LOW = 55;     // < 55 sobre 255 = penumbra → "más luz"
 const LUM_HIGH = 230;   // > 230 = contraluz/saturado → "menos luz / contraluz"
-const BBOX_FAR = 0.22;  // rostro < 22% del frame → "acercate"
+const BBOX_FAR = 0.30;  // rostro < 30% del frame → "acercate" (debe LLENAR el óvalo)
 const BBOX_NEAR = 0.58; // rostro > 58% del frame → "alejate un poco"
-const OFFCENTER = 0.20; // |0.5 - cx| > 0.20 o |0.5 - cy| > 0.22 → "centrá"
-const OFFCENTER_Y = 0.22;
+const OFFCENTER = 0.08; // |0.5 - cx| > 0.08 → "centrá" (cara COMPLETAMENTE centrada)
+const OFFCENTER_Y = 0.10; // |0.5 - cy| > 0.10 → "centrá" (cara COMPLETAMENTE centrada)
+
+// Frontalidad (C-65) = CABEZA DERECHA, NO mirada de ojos. Se mide por la asimetría
+// horizontal de la nariz respecto a las comisuras externas de los ojos (yaw de
+// la cabeza). NO usa gaze/iris: el alumno mira la PANTALLA (no la cámara), así que
+// exigir que el iris apunte a la lente sería antinatural. Umbral LENE: sólo
+// bloquea cuando la cabeza está claramente girada, no por mirar de reojo.
+const YAW_MAX = 0.30;
 
 /**
  * Devuelve el hint dominante para el frame actual, en orden de prioridad:
@@ -73,14 +85,52 @@ export function evaluateFraming(s: FramingSignals): FramingHint | null {
   return null;
 }
 
+/**
+ * Asimetría horizontal de la nariz respecto a las comisuras externas de los ojos.
+ * Devuelve un valor en [-1, 1]: 0 = nariz centrada entre los ojos (cabeza de
+ * frente); el signo indica el lado del giro. Invariante a escala y a la posición
+ * absoluta de la cara en el frame (sólo mide la geometría del giro).
+ *
+ * Función PURA.
+ */
+export function headYawAsymmetry(noseX: number, eyeOuterAX: number, eyeOuterBX: number): number {
+  const dA = Math.abs(noseX - eyeOuterAX);
+  const dB = Math.abs(eyeOuterBX - noseX);
+  const sum = dA + dB;
+  if (sum === 0) return 0;
+  return (dA - dB) / sum;
+}
+
+/**
+ * Retorna true si la CABEZA está derecha (de frente), mirando la pantalla con la
+ * cara recta — independiente de a dónde apunten los OJOS. Usa los landmarks de
+ * Face Mesh: nariz (1) y comisuras externas de los ojos (33, 263). NO usa gaze.
+ *
+ * Sirve para exigir pose frontal al capturar la referencia (baseline neutral) y
+ * en retos que no sean de giro; el caller DEBE suprimir esta exigencia durante el
+ * reto girar_cabeza. Si no hay landmarks suficientes, retorna true (no bloquea por
+ * frontalidad sin datos — otros hints ya cubren "sin rostro").
+ *
+ * Función PURA: sin DOM, sin estado, sin efectos.
+ */
+export function isFrontal(landmarks: ReadonlyArray<{ x: number }>): boolean {
+  if (!landmarks || landmarks.length < 264) return true;
+  const nose = landmarks[1];
+  const eyeA = landmarks[33];
+  const eyeB = landmarks[263];
+  if (!nose || !eyeA || !eyeB) return true;
+  return Math.abs(headYawAsymmetry(nose.x, eyeA.x, eyeB.x)) <= YAW_MAX;
+}
+
 // ---------------------------------------------------------------------------
 // C-65: Clasificación bloqueante / informativo (biometric-capture-framing-gate)
 // ---------------------------------------------------------------------------
 
 /**
  * Set de hints que BLOQUEAN la evaluación del reto activo mientras estén activos.
- * El hint `descentrado` es informativo (no bloqueante): el alumno puede seguir
- * siendo evaluado aunque no esté perfectamente centrado.
+ * C-65 (ajuste post-prueba): el óvalo es referencia DURA — `descentrado` también
+ * bloquea. Cualquier advertencia de encuadre (luz, distancia, centrado, rostro)
+ * detiene el avance del reto. Sólo `null` (encuadre correcto) deja progresar.
  */
 export const BLOCKING_HINTS = new Set<FramingHint>([
   'sin_rostro',
@@ -89,11 +139,14 @@ export const BLOCKING_HINTS = new Set<FramingHint>([
   'mucha_luz',
   'lejos',
   'cerca',
+  'descentrado',
+  'no_frontal',
 ]);
 
 /**
  * Retorna true si el hint es BLOQUEANTE (debe detener la evaluación del reto activo).
- * Retorna false para hints informativos (`descentrado`) y para null (sin hint).
+ * Con el ajuste de C-65, TODO hint no-null es bloqueante; sólo `null` (encuadre
+ * correcto) retorna false.
  *
  * Función PURA: sin DOM, sin estado, sin efectos.
  */
@@ -131,5 +184,9 @@ export const FRAMING_COPY: Record<FramingHint, { titulo: string; sub: string }> 
   descentrado: {
     titulo: 'Centrá tu rostro',
     sub: 'Movete despacio hasta quedar en el medio del óvalo.',
+  },
+  no_frontal: {
+    titulo: 'Mirá de frente',
+    sub: 'Poné la cabeza derecha y mirá a la cámara, sin girar la cara.',
   },
 };

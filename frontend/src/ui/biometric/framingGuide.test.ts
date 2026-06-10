@@ -2,15 +2,16 @@
  * Tests para isHintBloqueante (C-65 — biometric-capture-framing-gate).
  *
  * TDD: ciclo RED → GREEN → TRIANGULATE.
- * Especificación: los hints bloqueantes son sin_rostro, multiples_rostros,
- * poca_luz, mucha_luz, lejos, cerca.
- * El hint informativo es descentrado.
- * null también es no-bloqueante.
+ * Especificación (C-65 ajuste post-prueba): TODA advertencia de encuadre es
+ * bloqueante — sin_rostro, multiples_rostros, poca_luz, mucha_luz, lejos, cerca
+ * y descentrado. El óvalo es referencia dura: estar fuera de él (descentrado)
+ * también detiene la evaluación del reto.
+ * Sólo null (encuadre correcto) es no-bloqueante.
  */
 
 import { describe, expect, it } from 'vitest';
-import { isHintBloqueante } from './framingGuide';
-import type { FramingHint } from './framingGuide';
+import { isHintBloqueante, evaluateFraming, isFrontal, headYawAsymmetry } from './framingGuide';
+import type { FramingHint, FramingSignals } from './framingGuide';
 
 // ---------------------------------------------------------------------------
 // 2.1 RED — tests escritos antes de la implementación
@@ -42,13 +43,18 @@ describe('isHintBloqueante', () => {
     expect(isHintBloqueante('cerca')).toBe(true);
   });
 
-  // ── Hints informativos (no bloqueantes) ───────────────────────────────────
-  it('descentrado → false (informativo, no bloqueante)', () => {
-    expect(isHintBloqueante('descentrado')).toBe(false);
+  // ── descentrado ahora BLOQUEA (el óvalo es referencia dura) ───────────────
+  it('descentrado → true (bloqueante: fuera del óvalo no avanza)', () => {
+    expect(isHintBloqueante('descentrado')).toBe(true);
   });
 
-  // ── null → no bloqueante ──────────────────────────────────────────────────
-  it('null → false (sin hint, no bloquea)', () => {
+  // ── no_frontal BLOQUEA (mirá de frente) ───────────────────────────────────
+  it('no_frontal → true (bloqueante: cabeza girada no avanza)', () => {
+    expect(isHintBloqueante('no_frontal')).toBe(true);
+  });
+
+  // ── null → no bloqueante (único caso que deja avanzar) ────────────────────
+  it('null → false (sin hint, encuadre correcto, no bloquea)', () => {
     expect(isHintBloqueante(null)).toBe(false);
   });
 });
@@ -65,9 +71,12 @@ describe('isHintBloqueante — tabla completa', () => {
     'mucha_luz',
     'lejos',
     'cerca',
+    'descentrado',
+    'no_frontal',
   ];
 
-  const INFORMATIVOS: Array<FramingHint | null> = ['descentrado', null];
+  // Sólo null (encuadre correcto) deja avanzar el reto.
+  const INFORMATIVOS: Array<FramingHint | null> = [null];
 
   for (const hint of BLOQUEANTES) {
     it(`${hint} es bloqueante → true`, () => {
@@ -80,4 +89,102 @@ describe('isHintBloqueante — tabla completa', () => {
       expect(isHintBloqueante(hint)).toBe(false);
     });
   }
+});
+
+// ---------------------------------------------------------------------------
+// C-65 ajuste post-prueba: umbrales APRETADOS (óvalo tipo app bancaria).
+// Centrado: |0.5 - cx| > 0.08 (x) o |0.5 - cy| > 0.10 (y) → descentrado.
+// Tamaño: bbox < 0.30 → lejos (exige que la cara LLENE más el óvalo).
+// Estos tests FIJAN la calibración: si alguien afloja los umbrales, fallan.
+// ---------------------------------------------------------------------------
+
+describe('evaluateFraming — umbrales apretados (centrado + tamaño)', () => {
+  // Señal base con todo OK; cada test pisa sólo lo que quiere probar.
+  const ok: FramingSignals = {
+    faceCount: 1,
+    luminanceAvg: 120, // luz OK (entre 55 y 230)
+    faceBboxWidth: 0.4, // tamaño OK (entre 0.30 y 0.58)
+    faceCenterX: 0.5,
+    faceCenterY: 0.5,
+  };
+
+  // ── Centrado horizontal ────────────────────────────────────────────────
+  it('cx 0.12 fuera de centro (>0.08) → descentrado', () => {
+    expect(evaluateFraming({ ...ok, faceCenterX: 0.5 + 0.12 })).toBe('descentrado');
+  });
+
+  it('cx 0.05 fuera de centro (<0.08) → null (centrado aceptable)', () => {
+    expect(evaluateFraming({ ...ok, faceCenterX: 0.5 + 0.05 })).toBeNull();
+  });
+
+  // ── Centrado vertical ──────────────────────────────────────────────────
+  it('cy 0.13 fuera de centro (>0.10) → descentrado', () => {
+    expect(evaluateFraming({ ...ok, faceCenterY: 0.5 + 0.13 })).toBe('descentrado');
+  });
+
+  it('cy 0.07 fuera de centro (<0.10) → null (centrado aceptable)', () => {
+    expect(evaluateFraming({ ...ok, faceCenterY: 0.5 + 0.07 })).toBeNull();
+  });
+
+  // ── Tamaño (llenar el óvalo) ───────────────────────────────────────────
+  it('bbox 0.26 (<0.30) → lejos (la cara no llena el óvalo)', () => {
+    expect(evaluateFraming({ ...ok, faceBboxWidth: 0.26 })).toBe('lejos');
+  });
+
+  it('bbox 0.34 (>0.30) → null (la cara llena el óvalo)', () => {
+    expect(evaluateFraming({ ...ok, faceBboxWidth: 0.34 })).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// C-65: frontalidad = CABEZA DERECHA (pose), NO mirada de ojos. Se mide por la
+// asimetría horizontal de la nariz (landmark 1) respecto a las comisuras externas
+// de los ojos (33 y 263): ~0 = cabeza de frente. Independiente de a dónde apunten
+// los ojos — el alumno mira la PANTALLA, no la cámara, y eso es válido.
+// ---------------------------------------------------------------------------
+
+describe('headYawAsymmetry — giro de cabeza por geometría', () => {
+  it('nariz centrada entre los ojos → asimetría ~0 (de frente)', () => {
+    expect(headYawAsymmetry(0.5, 0.35, 0.65)).toBeCloseTo(0, 5);
+  });
+
+  it('nariz corrida hacia un ojo → asimetría alta (cabeza girada)', () => {
+    // nariz 0.62, ojos 0.3/0.7 → dA=0.32, dB=0.08 → (0.32-0.08)/0.40 = 0.6
+    expect(Math.abs(headYawAsymmetry(0.62, 0.3, 0.7))).toBeGreaterThan(0.3);
+  });
+
+  it('es simétrica al lado del giro (signo según dirección)', () => {
+    const izq = headYawAsymmetry(0.4, 0.35, 0.65);
+    const der = headYawAsymmetry(0.6, 0.35, 0.65);
+    expect(Math.sign(izq)).not.toBe(Math.sign(der));
+  });
+});
+
+describe('isFrontal — cabeza derecha (no mirada)', () => {
+  // Construye un array de landmarks con sólo los índices que isFrontal usa (1,33,263).
+  const mk = (noseX: number, eyeAX: number, eyeBX: number) => {
+    const a: Array<{ x: number }> = new Array(264).fill({ x: 0.5 });
+    a[1] = { x: noseX };
+    a[33] = { x: eyeAX };
+    a[263] = { x: eyeBX };
+    return a;
+  };
+
+  it('cabeza derecha (nariz centrada) → true, mires donde mires con los ojos', () => {
+    expect(isFrontal(mk(0.5, 0.35, 0.65))).toBe(true);
+  });
+
+  it('giro leve (tolerante) → true (no forzamos rigidez)', () => {
+    // nariz 0.54 → asym ≈ 0.27, dentro del umbral lene
+    expect(isFrontal(mk(0.54, 0.35, 0.65))).toBe(true);
+  });
+
+  it('cabeza claramente girada → false', () => {
+    // nariz 0.62 → asym = 0.8
+    expect(isFrontal(mk(0.62, 0.35, 0.65))).toBe(false);
+  });
+
+  it('landmarks insuficientes → true (no bloquear por frontalidad sin datos)', () => {
+    expect(isFrontal([{ x: 0.5 }])).toBe(true);
+  });
 });

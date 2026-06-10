@@ -34,12 +34,11 @@ import { createPortal } from 'react-dom';
 import { CaptureOverlay } from './biometric/CaptureOverlay';
 import type { OvalTono } from './biometric/CaptureOval';
 import { CaptureError } from './biometric/CaptureError';
-import { evaluateFraming, isHintBloqueante, type FramingHint } from './biometric/framingGuide';
+import { evaluateFraming, isHintBloqueante, isFrontal, type FramingHint } from './biometric/framingGuide';
 import { playStepCompleted, playSuccess, playHint, playError } from './biometric/sounds';
 import { loadEnrollmentEngine, disposeEnrollmentEngine } from '../vision/enrollmentEngineLoader';
 import {
   evaluateChallengeRelative,
-  framesMinForChallengeSeq,
   fisherYatesShuffle,
   computeBaselineFromAccumulator,
   isBaselineSmileValid,
@@ -527,13 +526,28 @@ export function BiometricCapture({
             centerY = (minY + maxY) / 2;
           }
           const lum = medirLuminancia(videoRef.current, luminanceCanvasRef);
-          const hintAhora = evaluateFraming({
+          let hintAhora = evaluateFraming({
             faceCount: face_count,
             luminanceAvg: lum,
             faceBboxWidth: bboxWidth,
             faceCenterX: centerX,
             faceCenterY: centerY,
           });
+          // C-65: frontalidad = CABEZA derecha (pose por landmarks), NO mirada de
+          // ojos — el alumno mira la PANTALLA, no la cámara. Si el encuadre estático
+          // está OK, exigir cabeza de frente — SALVO en el reto girar_cabeza, que
+          // pide girar. Durante el baseline (aún sin reto activo) también se exige:
+          // así la cara de referencia (que alimenta el embedding) sale de frente.
+          if (hintAhora === null) {
+            let retoEsGiro = false;
+            if (baselineRef.current !== null) {
+              const retoActivo = desafiosBarajadosRef.current[challengeIndexRef.current];
+              retoEsGiro = typeof retoActivo === 'string' && retoActivo.startsWith('girar');
+            }
+            if (!retoEsGiro && !isFrontal(landmarks)) {
+              hintAhora = 'no_frontal';
+            }
+          }
           // Histéresis: sólo aceptamos el cambio si se sostiene HINT_STABLE_FRAMES.
           const estable = framingStableRef.current;
           if (estable.hint === hintAhora) {
@@ -638,8 +652,12 @@ export function BiometricCapture({
                   const noseYArr = nosePositionsRef.current.map((p) => p.y);
                   const noseVariance = variance(noseXArr) + variance(noseYArr);
 
-                  if (noseVariance < BASELINE_NOSE_VARIANCE_THRESHOLD) {
-                    // Nariz estable — intentar declarar el baseline
+                  // C-65: además de nariz estable, exigir CABEZA derecha (pose por
+                  // landmarks, no mirada) para declarar el baseline → la referencia
+                  // se captura de frente (no se acepta una cabeza girada). El timeout
+                  // (frame 60) sigue como válvula si el alumno nunca se endereza.
+                  if (noseVariance < BASELINE_NOSE_VARIANCE_THRESHOLD && isFrontal(landmarks)) {
+                    // Nariz estable y cabeza de frente — intentar declarar el baseline
                     const avgSmileWidth = acc.reduce((s, f) => s + f.smileWidth, 0) / acc.length;
 
                     if (!isBaselineSmileValid(avgSmileWidth)) {
@@ -911,7 +929,9 @@ export function BiometricCapture({
             advanced.push({ brightness: targetBrightness });
           }
           if (advanced.length > 0) {
-            await videoTrack.applyConstraints({ advanced } as MediaTrackConstraints).catch(() => {
+            // Fire-and-forget best-effort: NO await (el callback de .then no es
+            // async). El .catch interno absorbe el rechazo sin unhandled rejection.
+            void videoTrack.applyConstraints({ advanced } as MediaTrackConstraints).catch(() => {
               // Silently ignore: not supported on this device/browser
             });
           }
