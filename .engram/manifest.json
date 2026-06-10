@@ -168,6 +168,14 @@
       "sessions": 0,
       "memories": 1,
       "prompts": 0
+    },
+    {
+      "id": "3013f934",
+      "created_by": "Juan Cruz Robledo",
+      "created_at": "2026-06-10T22:25:29Z",
+      "sessions": 0,
+      "memories": 3,
+      "prompts": 0
     }
   ]
 }
