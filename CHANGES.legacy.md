@@ -1,0 +1,878 @@
+# CHANGES — Secuencia de Implementación
+
+> Índice canónico de todos los changes del proyecto **Proctoring** (plataforma self-hosted de supervisión asistida por IA de evaluaciones universitarias remotas).
+> Cada change es atómico: un agente puede implementarlo en una sesión (~4-6 horas).
+> **Leer este archivo antes de ejecutar cualquier `/opsx:propose`.**
+
+---
+
+## Cómo usar este documento
+
+1. **Identificá el change** por su código `C-NN` en la fase correspondiente. Respetá el orden de dependencias: no arranques un change cuyas dependencias estén en `[ ]`.
+2. **Leé la KB** indicada en "Leer antes" de ese change (3-5 canónicos con su sección) ANTES de proponer.
+3. **Proponé** con `/opsx:propose C-NN-<nombre>` para generar proposal + design + tasks.
+4. **Implementá y archivá** con `/opsx:apply` y luego `/opsx:archive` cuando los criterios estén cumplidos.
+5. **Marcá el checkbox** del change (`[ ]` → `[x]`) al archivar. Eso desbloquea los gates que dependen de él.
+
+> **Regla de oro del proyecto (DD-19)**: "Empezá con la arquitectura más simple que cumpla los NFR, instrumentá todo, y agregá complejidad solo cuando una métrica lo demuestre." La hipótesis por defecto es la opción A4 (la más simple); promover piezas del SAD (RabbitMQ, WebSocket+sticky, Redis) requiere que **C-03 (PoC de carga)** lo exija con métricas.
+
+---
+
+## Gates organizacionales de Fase 0 (BLOQUEAN TODO el desarrollo)
+
+Estos no producen software pero **son precondición dura** para el resto del roadmap (KB 09 DD-14, 10_preguntas_abiertas Alta, 13_legal, 15_roadmap Fase 0). Se modelan como changes `C-01` y `C-02` con governance CRITICO y deben cerrarse antes de tocar código de dominio.
+
+- **C-01** — Acuerdo de Nivel de Proctoring firmado + DPIA completo + 14 ADRs aprobados (legal/patrocinador).
+- **C-02** — Designación y capacitación de revisores humanos y coordinación operativa (dirección académica). **La dependencia más subestimada del proyecto (SU-03 / O-003).**
+
+Sin C-01 y C-02 en `[x]`, el sistema no puede operar legalmente ni cumplir su propósito, aunque el código exista.
+
+---
+
+## Árbol de dependencias
+
+```
+C-01 acuerdo-proctoring-dpia  (gate legal — Fase 0)
+C-02 designacion-revisores    (gate organizacional — Fase 0)
+   │
+   ▼
+C-03 poc-carga-mensajeria  ★ Tier 1 · BLOQUEANTE · valida cola/transporte/backplane al PICO ~2.100/~5.000 inserts/s
+   │
+   ▼
+C-04 foundation-setup  (monorepo, docker-compose, .env, Alembic, DB inicial, observabilidad base)
+   │
+   ▼
+C-05 core-models  (Usuario, Examen, Sesión, Evento[hypertable], Evidencia, Audit log, Consentimiento, Embedding, Caso)
+   │
+   ├──► C-06 auth-rbac-keycloak  ◄── (todo recurso protegido depende de esto)
+   │        │
+   │        ├──► C-07 exam-config        (admin: CRUD examen, asignaciones, foto referencia)
+   │        │        │
+   │        │        ├──► C-08 consentimiento
+   │        │        │        │
+   │        │        │        └──► C-09 biometria-liveness  (verificación 1:1 + clave de sesión)
+   │        │        │                 │
+   │        │        │                 └──► C-10 event-ingestion-transport  (WS estudiante + validación firma + TimescaleDB)
+   │        │        │                          │   [usa el ganador de C-03]
+   │        │        │                          ├──► C-11 vision-engine-detectores  (motor abstraído + reglas de transición)
+   │        │        │                          ├──► C-12 evidencia-cadena-custodia  (clip+firma+worker+firma maestra)
+   │        │        │                          ├──► C-13 scoring-incremental        (continuous aggregates)
+   │        │        │                          ├──► C-14 resiliencia-reconexion     (buffer IndexedDB + replay exactly-once)
+   │        │        │                          │
+   │        │        │                          └──► C-15 panel-proctor-sse  (SSE + backplane; alertas <500ms)
+   │        │        │                                   │   [usa el ganador de C-03]
+   │        │        │                                   └──► C-16 cola-revision-humana  (orden por score + audit de acceso + decisión)
+   │        │        │
+   │        │        └──► C-19 retencion-holds  (políticas automáticas + hold por caso)
+   │        │
+   │        └──► C-17 dsr-derechos-titular  (acceso/rectificación/eliminación/portabilidad)
+   │
+   └──► C-18 verificacion-cadena-apelacion  (POST verify-chain + certificado para perito) [dep C-12]
+        C-20 reportes-analytics  (Fase 2) [dep C-13, C-16]
+```
+
+### Paralelismo por fase
+
+```
+GATE 0: (arranque del proyecto)
+  → C-01 acuerdo-proctoring-dpia        [Legal/Patrocinador]   ← gates organizacionales, en paralelo entre sí
+  → C-02 designacion-revisores          [Dirección académica]
+
+GATE 1: C-01 ✓ y C-02 ✓                  ← desbloquea desarrollo
+  → C-03 poc-carga-mensajeria           [Agente A — Tier 1, BLOQUEANTE: nada de cola/transporte/tiempo real avanza sin esto]
+
+GATE 2: C-03 ✓                            ← decisión de arquitectura tomada (cola / transporte / backplane)
+  → C-04 foundation-setup               [Agente A]
+
+GATE 3: C-04 ✓
+  → C-05 core-models                    [Agente A]
+
+GATE 4: C-05 ✓                            ← FORK
+  → C-06 auth-rbac-keycloak             [Agente A — CRITICO, todo recurso protegido depende]
+
+GATE 5: C-06 ✓                            ← FORK
+  → C-07 exam-config                    [Agente A]
+  → C-17 dsr-derechos-titular           [Agente B — solo necesita core-models + auth]
+
+GATE 6: C-07 ✓                            ← FORK
+  → C-08 consentimiento                 [Agente A]
+  → C-19 retencion-holds                [Agente B]
+
+GATE 7: C-08 ✓
+  → C-09 biometria-liveness             [Agente A — frontend+backend acoplados]
+
+GATE 8: C-09 ✓
+  → C-10 event-ingestion-transport      [Agente A — usa ganador de C-03]
+
+GATE 9: C-10 ✓                            ← FORK GRANDE (rama de tiempo real desplegada)
+  → C-11 vision-engine-detectores       [Agente C — frontend/Web Worker]
+  → C-12 evidencia-cadena-custodia      [Agente A — backend core + worker]
+  → C-13 scoring-incremental            [Agente B — backend aux]
+  → C-14 resiliencia-reconexion         [Agente C — frontend transport]
+  → C-15 panel-proctor-sse              [Agente B — usa ganador de C-03]
+
+GATE 10: C-12 ✓
+  → C-18 verificacion-cadena-apelacion  [Agente A]
+
+GATE 11: C-15 ✓
+  → C-16 cola-revision-humana           [Agente B]  ← cierre del ciclo MVP (cumple propósito con C-02)
+
+GATE 12 (Fase 2): C-13 ✓ y C-16 ✓
+  → C-20 reportes-analytics             [Agente C]
+```
+
+### Camino crítico (11 changes — mínimo irreducible hasta MVP operativo)
+
+```
+C-01 → C-03 → C-04 → C-05 → C-06 → C-07 → C-08 → C-09 → C-10 → C-15 → C-16*
+```
+
+> C-02 (designación de revisores) corre en paralelo a C-01 pero es **co-bloqueante**: sin él, C-16 (cola de revisión) no cumple su propósito aunque el código exista (SU-03). C-16* es el último change indispensable: cierra el ciclo extremo-a-extremo (verificación → examen → evidencia → revisión humana). C-11/C-12/C-13/C-14 son indispensables para un examen real pero salen en paralelo en GATE 9, no alargan la cadena.
+
+### Plan óptimo con 3 agentes
+
+| Paso | Agente A (Backend Core) | Agente B (Backend Aux) | Agente C (Frontend / Vision) |
+|------|-------------------------|------------------------|------------------------------|
+| 0 | C-01 / C-02 (coordinación con stakeholders — no-código) | — | — |
+| 1 | C-03 poc-carga-mensajeria | — | — |
+| 2 | C-04 foundation-setup | — | — |
+| 3 | C-05 core-models | — | — |
+| 4 | C-06 auth-rbac-keycloak | — | — |
+| 5 | C-07 exam-config | C-17 dsr-derechos-titular | — |
+| 6 | C-08 consentimiento | C-19 retencion-holds | — |
+| 7 | C-09 biometria-liveness (backend) | — | C-09 biometria-liveness (cliente liveness) |
+| 8 | C-10 event-ingestion-transport | — | — |
+| 9 | C-12 evidencia-cadena-custodia | C-13 scoring-incremental + C-15 panel-proctor-sse | C-11 vision-engine + C-14 resiliencia |
+| 10 | C-18 verificacion-cadena-apelacion | C-16 cola-revision-humana | — |
+| 11 (F2) | — | — | C-20 reportes-analytics |
+
+---
+
+## FASE 0 — Fundaciones organizacionales y validación de arquitectura
+
+> No produce software de dominio (C-01/C-02) o produce un prototipo descartable (C-03). **Bloquean todo lo demás.**
+
+### [C-01] `acuerdo-proctoring-dpia`
+- **Estado**: `[ ]` pendiente
+- **Scope**: Gate organizacional, no-código.
+  - Firma del **Acuerdo de Nivel de Proctoring** (nivel L2.5, DD-01) que calibra expectativas y delimita responsabilidad.
+  - **DPIA** completo por el área legal/DPO antes de escribir código de dominio.
+  - Aprobación formal de los **14 ADRs Tier 1** (DD-01…DD-14) + revisiones A4 (DD-15…DD-19).
+  - Clasificación formal del embedding como dato sensible por defecto (IN-04 / SU-08).
+  - Decisión de vía alternativa sin biometría y población menor de 18 (si aplica).
+  - **Entregable**: documentos firmados; sin ellos el proyecto no sale de Fase 0.
+- **Dependencias**: ninguna
+- **Governance**: CRITICO
+- **Leer antes**:
+  - `knowledge-base/13_legal_y_cumplimiento_argentina.md` (DPIA, base legal, checklist)
+  - `knowledge-base/09_decisiones_y_supuestos.md` §DD-14, §DD-01, §SU-08
+  - `knowledge-base/10_preguntas_abiertas.md` §IN-04 §preguntas Alta
+  - `knowledge-base/15_roadmap_y_riesgos.md` §Fase 0
+
+### [C-02] `designacion-revisores`
+- **Estado**: `[ ]` pendiente
+- **Scope**: Gate organizacional, no-código. **La dependencia más subestimada del proyecto.**
+  - Designación y capacitación de **revisores académicos** y **coordinación operativa** antes de Fase 1 (SU-03 / O-003).
+  - Estimación temprana de carga de revisión (5–15% de sesiones) y dimensionamiento del equipo humano.
+  - Plan de capacitación por rol (proctor, revisor, coordinador, on-call) y monitoreo de backlog.
+  - **Entregable**: equipo humano de revisión designado, capacitado y con capacidad sostenida confirmada.
+- **Dependencias**: ninguna (paralelo a C-01)
+- **Governance**: CRITICO
+- **Leer antes**:
+  - `knowledge-base/09_decisiones_y_supuestos.md` §SU-03
+  - `knowledge-base/03_actores_y_roles.md` §RACI §revisor §coordinador
+  - `knowledge-base/15_roadmap_y_riesgos.md` §O-003 §Gestión del cambio
+  - `knowledge-base/07_flujos_principales.md` §Flujo 7
+
+### [C-03] `poc-carga-mensajeria`  ★ Tier 1 · BLOQUEANTE
+- **Estado**: `[ ]` pendiente
+- **Scope**: PoC de carga formal que **valida la arquitectura de mensajería/transporte/backplane bajo carga**. Prototipo descartable; su salida es la **decisión de arquitectura**, no código de producción. La decisión NO es binaria SAD-vs-A4: se descompone en 3 concerns validados por separado.
+  - **Concern (a) — Cola de trabajos**: Postgres-como-cola (pg-boss / SKIP LOCKED + LISTEN/NOTIFY) **vs** RabbitMQ quorum + Celery. Hipótesis por defecto = Postgres (A4, DD-15). (IN-01)
+  - **Concern (b) — Transporte del panel**: SSE + backplane (sin sticky) **vs** WebSocket + sticky sessions. Hipótesis por defecto = SSE (A4, DD-16). (IN-02)
+  - **Concern (c) — Backplane de eventos**: Postgres LISTEN/NOTIFY **vs** Redis Pub/Sub. Hipótesis por defecto = LISTEN/NOTIFY (A4, DD-16). ⚠️ **ESTE es el riesgo de tiempo real número uno**: `LISTEN/NOTIFY` serializa por una conexión y toma un lock global en el commit del `NOTIFY`; a fan-out de ~1.000–5.000 eventos/s entre instancias puede no sostener el p99 < 500 ms. Es el concern con mayor probabilidad de promover la pieza del SAD (Redis Pub/Sub, sub-50 ms, diseñado para fan-out). **La PoC debe atacarlo de frente.**
+  - **Criterio de aceptación clavado al PICO** (NO al sostenido): **~2.100 concurrentes / ~5.000 inserts/s**, con los SLO de `14`:
+    - **Tiempo real — fan-out del panel**: con **N paneles de proctor activos** (≈ 1 proctor / 50–100 estudiantes ⇒ ~20–40 paneles concurrentes) suscriptos a sus sesiones asignadas, la latencia de propagación evento-cliente→panel debe ser **p99 < 500 ms** *en sostenido al pico*, no solo en estado de reposo. Este es el criterio que decide LISTEN/NOTIFY vs Redis.
+    - **Cero pérdida** de eventos confirmados / evidencia (exactly-once lógico bajo reconexión y caída de instancia).
+    - Re-inferencia + firma final **< 30 s** desde la subida (camino asíncrono — no es tiempo real).
+  - Generadores de carga vs capacity model (`14`); instrumentación completa (Prometheus/Tempo) para que la decisión sea por métrica.
+  - **Salida**: por cada concern, decisión registrada (promover pieza del SAD **solo si** la métrica lo exige); documentada como evolución, no retrabajo. Documentar explícitamente el veredicto del backplane (LISTEN/NOTIFY sostiene el pico ✓ / se promueve Redis ✗).
+  - Tests: load/estrés al pico sostenido (no burst aislado), **medición de p99 de fan-out con N paneles activos degradando LISTEN/NOTIFY hasta el punto de quiebre**, caos (caída de instancia/nodo durante el pico), exactly-once bajo reconexión.
+- **Dependencias**: `C-01, C-02`
+- **Governance**: CRITICO
+- **Leer antes**:
+  - `knowledge-base/14_observabilidad_y_devops.md` §SLIs/SLOs §Capacity model
+  - `knowledge-base/09_decisiones_y_supuestos.md` §DD-15 §DD-16 §DD-19 §SU-06
+  - `knowledge-base/10_preguntas_abiertas.md` §IN-01 §IN-02
+  - `knowledge-base/08_arquitectura_propuesta.md` §Dimensionamiento §Patrones
+  - `knowledge-base/07_flujos_principales.md` §Flujo 3 §Flujo 4 §Flujo 5
+
+---
+
+## FASE 1 — MVP (ciclo completo de un examen)
+
+> Cadena lineal hasta el monitoreo en tiempo real (C-04…C-10), luego fork grande en GATE 9. Todo lo de cola/transporte usa el **ganador de C-03**.
+
+### [C-04] `foundation-setup`
+- **Estado**: `[ ]` pendiente
+- **Scope**:
+  - Monorepo `backend/` (Clean/Hexagonal: domain/application/infrastructure/presentation/workers/observability) + `frontend/` (features/shared/vision/proctoring/transport/pages) + `infra/`.
+  - `docker-compose` inicial: PostgreSQL+TimescaleDB, MinIO/S3, Keycloak, Nginx (TLS 1.3), observabilidad base (Prometheus/Loki/Tempo/Grafana) — DD-12.
+  - Alembic configurado (migraciones destructivas en dos pasos); Migración 001: extensión TimescaleDB + esquema vacío.
+  - `.env` con las env vars del stack (DATABASE_URL, STORAGE_*, KEYCLOAK_*, VAULT_*, OTEL_*) gestionadas vía Vault/tmpfs.
+  - FastAPI mono-hilo escalado horizontalmente (DD-10), código twelve-factor (DD-11).
+  - Tests: smoke de arranque de servicios, healthchecks, conexión a DB/storage/IdP.
+- **Dependencias**: `C-03`
+- **Governance**: MEDIO
+- **Leer antes**:
+  - `knowledge-base/08_arquitectura_propuesta.md` §Estructura de directorios §Variables de entorno §Seguridad
+  - `knowledge-base/09_decisiones_y_supuestos.md` §DD-10 §DD-11 §DD-12
+  - `knowledge-base/14_observabilidad_y_devops.md` §Topología inicial §Tres pilares
+
+### [C-05] `core-models`
+- **Estado**: `[ ]` pendiente
+- **Scope**: Entidades base que todo lo demás referencia.
+  - Modelos transaccionales: `Usuario`, `Examen`, `Sesión` (enum de estado: iniciada/activa/finalizada/flaggeada/cerrada), `Asignación` (proctor↔examen), `Consentimiento` (inmutable), `Embedding` (cifrado), `Evidencia`, `Caso disciplinario`.
+  - `Audit log` **append-only** con trigger que rechaza UPDATE/DELETE + hash encadenado (hash_prev).
+  - `Evento` como **hypertable TimescaleDB**: índices `(session_id, timestamp)` y `(exam_id, timestamp)`; política de compresión (7d sin comprimir, >7d comprimido); continuous aggregates base.
+  - Migración 002: tablas de dominio + hypertable + trigger append-only del audit log.
+  - Repositorios genéricos (puertos) por dominio.
+  - Tests: constraints de enum, trigger append-only rechaza mutaciones, encadenamiento de hash, creación de hypertable.
+- **Dependencias**: `C-04`
+- **Governance**: CRITICO
+- **Leer antes**:
+  - `knowledge-base/04_modelo_de_datos.md` (entidades completas, ERD, cardinalidades)
+  - `knowledge-base/08_arquitectura_propuesta.md` §Patrones (capas, CQRS-lite)
+  - `knowledge-base/09_decisiones_y_supuestos.md` §DD-05 §DD-07
+
+### [C-06] `auth-rbac-keycloak`
+- **Estado**: `[ ]` pendiente
+- **Scope**: Autenticación y autorización — **todo recurso protegido depende de esto**.
+  - Federación con Keycloak (OAuth2/OIDC/SAML), JIT provisioning del Usuario al primer login federado.
+  - Validación local de JWT contra JWKS cacheado; access 15–60 min; refresh rotativo. `POST /api/v1/auth/refresh`.
+  - RBAC con permisos **contextuales** (proctor solo exámenes asignados; revisor solo su jurisdicción) — 7 roles.
+  - MFA obligatorio para roles con acceso a evidencia/administración (TOTP mín., WebAuthn recomendado).
+  - Validación de handshake WS/SSE con JWT + revalidación periódica.
+  - Rate limiting (Keycloak + Nginx). Definición de rutas públicas (login redirect, estáticos).
+  - Tests: validación JWT, expiración/refresh, aislamiento por rol contextual, MFA enforcement, rechazo de handshake sin token.
+- **Dependencias**: `C-05`
+- **Governance**: CRITICO
+- **Leer antes**:
+  - `knowledge-base/03_actores_y_roles.md` §RBAC §Rutas públicas
+  - `knowledge-base/08_arquitectura_propuesta.md` §Seguridad (auth/authz)
+  - `knowledge-base/09_decisiones_y_supuestos.md` §DD-09
+  - `knowledge-base/07_flujos_principales.md` §Flujo 1
+
+### [C-07] `exam-config`
+- **Estado**: `[ ]` pendiente
+- **Scope**: Configuración pre-examen (US-001, FR-01).
+  - Endpoints admin: CRUD `Examen` (nombre, ventana temporal, umbral de score, política de retención, detectores activos + umbrales).
+  - Asignación de estudiantes habilitados (solo ellos inician); asignación proctor↔examen.
+  - Carga de **foto institucional de referencia** (o marcado como precomputada) — prerrequisito de la verificación 1:1 (SU-01).
+  - Calendarización visible para operaciones.
+  - Tests: CRUD, RBAC admin-only, validación de parámetros, lista de habilitados.
+- **Dependencias**: `C-06`
+- **Governance**: MEDIO
+- **Leer antes**:
+  - `knowledge-base/06_funcionalidades.md` §US-001
+  - `knowledge-base/04_modelo_de_datos.md` §Examen §Asignación
+  - `knowledge-base/05_reglas_de_negocio.md` §RN-EX
+  - `knowledge-base/03_actores_y_roles.md` §Admin de exámenes
+
+### [C-08] `consentimiento`
+- **Estado**: `[ ]` pendiente
+- **Scope**: Consentimiento informado (US-003, FR-03).
+  - Pantalla dedicada con lenguaje claro (qué/cómo/dónde/cuánto/derechos); acción afirmativa, sin casillas premarcadas.
+  - Persistencia inmutable del acuse con timestamp + hash (`Consentimiento`).
+  - Vía alternativa sin biometría para quien no consiente (escalación a proctor humano).
+  - Tests: registro inmutable, hash, rechazo sin acción afirmativa, ruta alternativa.
+- **Dependencias**: `C-07`
+- **Governance**: ALTO
+- **Leer antes**:
+  - `knowledge-base/06_funcionalidades.md` §US-003
+  - `knowledge-base/13_legal_y_cumplimiento_argentina.md` §Base legal §Checklist
+  - `knowledge-base/05_reglas_de_negocio.md` §RN-CO
+  - `knowledge-base/07_flujos_principales.md` §Flujo 2
+
+### [C-09] `biometria-liveness`
+- **Estado**: `[ ]` pendiente
+- **Scope**: Verificación biométrica de identidad (US-004, FR-04, UC-01). Frontend + backend acoplados.
+  - Cliente: captura video 3–5 s, liveness **híbrido propio** (pasivo + 1–2 retos activos aleatorios), cálculo de embedding (Face Mesh), detección de cámara virtual (DD-18).
+  - Comparación 1:1 por distancia coseno contra el embedding de referencia (leído cifrado de la DB).
+  - Backend: emisión de **clave de sesión rotativa** (HMAC) si distancia < umbral; re-inferencia server-side del clip.
+  - Hasta 2 reintentos; al 3.º fallo → evento crítico + escalación a proctor (no abort).
+  - Clip + embedding persistidos con cadena de custodia inicial (cifrado at-rest, eliminado al egreso).
+  - Tests: liveness, distancia coseno, emisión de clave, reintentos→escalación, cifrado del embedding.
+- **Dependencias**: `C-08`
+- **Governance**: CRITICO
+- **Leer antes**:
+  - `knowledge-base/06_funcionalidades.md` §US-004 §US-005
+  - `knowledge-base/12_biometria_y_liveness.md` (pipeline completo de liveness/embedding)
+  - `knowledge-base/04_modelo_de_datos.md` §Embedding §Sesión
+  - `knowledge-base/09_decisiones_y_supuestos.md` §DD-03 §DD-18
+  - `knowledge-base/07_flujos_principales.md` §Flujo 2
+
+### [C-10] `event-ingestion-transport`
+- **Estado**: `[ ]` pendiente
+- **Scope**: Generación e ingesta de eventos firmados (US-007, FR-07; Flujo 3). **Usa el ganador de transporte de C-03.**
+  - Canal **WebSocket del estudiante** (bidireccional): eventos/heartbeats/comandos; handshake con session_id + JWT + last_event_id.
+  - Esquema de evento versionado: id, session_id, exam_id, tipo, severidad, ts_client, ts_backend, payload JSON, firma HMAC, schema_version.
+  - Backend valida **firma de cada evento** antes de persistir en TimescaleDB; heartbeat firmado cada 5 s.
+  - Fan-out a paneles vía backplane (ganador de C-03: LISTEN/NOTIFY o Redis Pub/Sub).
+  - Eventos: `ROUND`-style del dominio proctoring (rostro ausente, múltiples rostros, mirada, postura, pestaña/foco, monitores, posible cambio de identidad, evidencia corrupta).
+  - Tests: validación de firma, rechazo de evento no firmado, persistencia en hypertable, contrato de esquema versionado, fan-out.
+- **Dependencias**: `C-09`
+- **Governance**: ALTO
+- **Leer antes**:
+  - `knowledge-base/06_funcionalidades.md` §US-007
+  - `knowledge-base/07_flujos_principales.md` §Flujo 3
+  - `knowledge-base/04_modelo_de_datos.md` §Evento
+  - `knowledge-base/09_decisiones_y_supuestos.md` §DD-16 §DD-05
+  - `knowledge-base/05_reglas_de_negocio.md` §RN-EV
+
+### [C-11] `vision-engine-detectores`
+- **Estado**: `[ ]` pendiente
+- **Scope**: Pipeline de visión en el cliente (US-006, FR-06, UC-02). Frontend / Web Worker.
+  - **Motor de visión abstraído** detrás de interfaz (MediaPipe en MVP, ruta a ONNX Runtime Web — DD-17).
+  - Tres detectores: Face Detection (5–10 fps), Face Mesh (5–10 fps, mirada + embedding), Pose (2–5 fps); WASM+WebGL en Web Worker, transferencia de buffers sin copias.
+  - Detector adicional: pestaña activa, foco de ventana, monitores múltiples.
+  - **Reglas de transición de estado** (configurables por institución): señales continuas → eventos discretos con severidad (umbrales temporales, fotogramas consecutivos, patrones sostenidos).
+  - Múltiples rostros (≥2 durante N fotogramas) → severidad alta + captura evidencia + alerta < 500 ms.
+  - Degradación graceful: baja Pose → Face Mesh → escala a proctor.
+  - Tests: reglas de transición, no-evento por ruido instantáneo, degradación, abstracción del motor.
+- **Dependencias**: `C-10`
+- **Governance**: ALTO
+- **Leer antes**:
+  - `knowledge-base/11_ia_y_vision.md` (detectores, reglas, optimización, limitaciones)
+  - `knowledge-base/06_funcionalidades.md` §US-006
+  - `knowledge-base/05_reglas_de_negocio.md` §RN-EV
+  - `knowledge-base/08_arquitectura_propuesta.md` §Patrones (motor abstraído)
+
+### [C-12] `evidencia-cadena-custodia`
+- **Estado**: `[ ]` pendiente
+- **Scope**: Captura y cadena de custodia (US-008/US-009, FR-08/FR-09; Flujo 4). Backend core + worker. **Usa el ganador de cola de C-03.**
+  - Cliente: evento severo → clip 5–10 s → hash SHA-256 + firma HMAC de sesión → upload directo a storage por **URL firmada**.
+  - Backend: valida firma, re-hashea, persiste metadata, deposita en **bucket WORM (Object Lock Compliance)**, escribe audit log.
+  - Worker (cola ganadora de C-03): re-descarga, 3.ª verificación de hash, **firma maestra (RSA-2048/Ed25519)**, re-inferencia server-side firmada (4.ª etapa).
+  - Discrepancia de hash → evento crítico "evidencia corrupta o manipulada".
+  - SLO objetivo: re-inferencia + firma < 30 s desde la subida.
+  - Tests: cadena de 4 firmas, WORM inmutable, detección de hash divergente, audit log inmutable, latencia de firma.
+- **Dependencias**: `C-10`
+- **Governance**: CRITICO
+- **Leer antes**:
+  - `knowledge-base/07_flujos_principales.md` §Flujo 4
+  - `knowledge-base/06_funcionalidades.md` §US-008 §US-009
+  - `knowledge-base/04_modelo_de_datos.md` §Evidencia §Audit log
+  - `knowledge-base/09_decisiones_y_supuestos.md` §DD-07 §DD-06
+  - `knowledge-base/08_arquitectura_propuesta.md` §Seguridad (cadena de custodia)
+
+### [C-13] `scoring-incremental`
+- **Estado**: `[ ]` pendiente
+- **Scope**: Cálculo de score de riesgo (US-010, FR-10; Flujo 6). Backend aux.
+  - Score incremental vía **continuous aggregate de TimescaleDB** (al minuto): pondera severidad, frecuencia y persistencia; eventos correlacionados pesan más que la suma.
+  - Cierre de sesión (`/sessions/{id}/finish`): tarea asíncrona consolida métricas y calcula **score final**; libera la clave de sesión.
+  - Si score final > umbral institucional → sesión a cola de revisión (estado flaggeada); si no → archivada.
+  - El score **prioriza**, no emite veredicto (ninguna sanción automática).
+  - Tests: agregado incremental, correlación, decisión de encolado por umbral, archivado.
+- **Dependencias**: `C-10`
+- **Governance**: ALTO
+- **Leer antes**:
+  - `knowledge-base/06_funcionalidades.md` §US-010
+  - `knowledge-base/07_flujos_principales.md` §Flujo 6
+  - `knowledge-base/05_reglas_de_negocio.md` §RN-SC
+  - `knowledge-base/04_modelo_de_datos.md` §Evento (continuous aggregates)
+
+### [C-14] `resiliencia-reconexion`
+- **Estado**: `[ ]` pendiente
+- **Scope**: Resiliencia de red sin pérdida (US-015, UC-03; Flujo 5). Frontend transport.
+  - Buffer **IndexedDB**: eventos persisten localmente si cae el WS.
+  - Backoff exponencial + jitter; handshake de reconexión con `last_event_id`; backend reenvía eventos faltantes.
+  - Drenaje del buffer en orden, **deduplicación por event_id** (exactly-once lógico).
+  - Cortes < 5 min → sin pérdida; cortes > 5 min → evento crítico al reconectar.
+  - Tests: replay ordenado, dedup, corte corto sin pérdida, corte largo → evento crítico.
+- **Dependencias**: `C-10`
+- **Governance**: ALTO
+- **Leer antes**:
+  - `knowledge-base/07_flujos_principales.md` §Flujo 5
+  - `knowledge-base/06_funcionalidades.md` §US-015
+  - `knowledge-base/05_reglas_de_negocio.md` §RN-HB
+  - `knowledge-base/08_arquitectura_propuesta.md` §frontend/transport
+
+### [C-15] `panel-proctor-sse`
+- **Estado**: `[ ]` pendiente
+- **Scope**: Supervisión en vivo (US-011, FR-11). **Usa el ganador de transporte de C-03 (hipótesis: SSE + backplane).**
+  - Panel del proctor vía **SSE** (unidireccional, reconecta solo) alimentado por el backplane; sin sticky sessions (DD-16).
+  - Lecturas desde continuous aggregates (CQRS-lite): sesiones priorizadas por **score de riesgo**.
+  - Alertas críticas en **< 500 ms** (SLO); mensajería al estudiante, registro de observaciones, **cierre forzado** de sesión.
+  - Permisos contextuales (solo exámenes asignados) + MFA.
+  - Tests: priorización por score, latencia de alerta < 500 ms, aislamiento por asignación, cierre forzado, reconexión SSE.
+- **Dependencias**: `C-10`
+- **Governance**: ALTO
+- **Leer antes**:
+  - `knowledge-base/06_funcionalidades.md` §US-011
+  - `knowledge-base/09_decisiones_y_supuestos.md` §DD-16 §DD-08
+  - `knowledge-base/14_observabilidad_y_devops.md` §SLOs (propagación < 500 ms)
+  - `knowledge-base/03_actores_y_roles.md` §Proctor
+  - `knowledge-base/08_arquitectura_propuesta.md` §Patrones (CQRS-lite)
+
+### [C-16] `cola-revision-humana`
+- **Estado**: `[ ]` pendiente
+- **Scope**: Cola de revisión asíncrona (US-012, FR-12, UC-04; Flujo 7). **Cierre del ciclo MVP.** Requiere C-02 (revisores designados) para cumplir su propósito.
+  - Cola ordenada por **score descendente**, filtrada por jurisdicción del revisor.
+  - Apertura de sesión: **audit log con propósito declarado**; contexto completo (línea de tiempo de eventos, clips firmados vía URL 15 min, observaciones del proctor, re-inferencia, audit log de accesos previos).
+  - Decisión terminal: descartar | escalar | derivar a disciplina; persistida inmutable vinculada a la evidencia.
+  - El sistema **nunca sanciona automáticamente** (decisión final humana).
+  - Tests: orden por score, aislamiento por jurisdicción, audit de cada apertura, persistencia inmutable de decisión.
+- **Dependencias**: `C-15`
+- **Governance**: ALTO
+- **Leer antes**:
+  - `knowledge-base/06_funcionalidades.md` §US-012
+  - `knowledge-base/07_flujos_principales.md` §Flujo 7
+  - `knowledge-base/03_actores_y_roles.md` §Revisor §RACI
+  - `knowledge-base/05_reglas_de_negocio.md` §RN-RV
+
+### [C-17] `dsr-derechos-titular`
+- **Estado**: `[ ]` pendiente
+- **Scope**: Derechos del titular (US-013, FR-13, UC-05; Flujo 9). Backend aux — paraleliza tras auth.
+  - `POST /api/v1/dsr/{type}`: acceso, rectificación, **eliminación** (borra binarios + embeddings, anonimiza registros dejando residual sin datos personales), portabilidad.
+  - Verificación de **holds** (casos abiertos difieren la eliminación).
+  - Respuesta en plazo legal; operación verificable en auditoría.
+  - Tests: eliminación con/ sin holds, anonimización, portabilidad, plazo, trazabilidad en audit log.
+- **Dependencias**: `C-06`
+- **Governance**: CRITICO
+- **Leer antes**:
+  - `knowledge-base/06_funcionalidades.md` §US-013
+  - `knowledge-base/07_flujos_principales.md` §Flujo 9
+  - `knowledge-base/13_legal_y_cumplimiento_argentina.md` §Derechos del titular
+  - `knowledge-base/05_reglas_de_negocio.md` §RN-DSR
+
+### [C-18] `verificacion-cadena-apelacion`
+- **Estado**: `[ ]` pendiente
+- **Scope**: Verificación de evidencia en apelación (UC-06; Flujo 8). Backend core.
+  - `POST /api/v1/evidence/{id}/verify-chain`: genera **certificado de verificación** de la cadena de firmas (cliente → backend → worker/clave maestra → re-inferencia).
+  - Un perito externo valida la cadena independientemente; cadena rota → no se sostiene, queda registrado.
+  - Tests: certificado válido, detección de cadena rota, verificación independiente.
+- **Dependencias**: `C-12`
+- **Governance**: CRITICO
+- **Leer antes**:
+  - `knowledge-base/07_flujos_principales.md` §Flujo 8
+  - `knowledge-base/06_funcionalidades.md` §US-009
+  - `knowledge-base/04_modelo_de_datos.md` §Evidencia §Audit log
+  - `knowledge-base/13_legal_y_cumplimiento_argentina.md` §SRFP §trazabilidad
+
+### [C-19] `retencion-holds`
+- **Estado**: `[ ]` pendiente
+- **Scope**: Retención automática con holds (US-014, FR-14). Backend aux — paraleliza tras exam-config.
+  - Aplicación automática de políticas de retención configuradas (clips, embeddings, eventos, audit log, casos); chunks TimescaleDB a Parquet + eliminación de base activa > umbral.
+  - **Holds**: casos abiertos extienden la retención automáticamente.
+  - Eliminación del embedding al egreso del estudiante.
+  - Tests: aplicación de política, hold por caso abierto, archivado de chunks, eliminación al egreso.
+- **Dependencias**: `C-07`
+- **Governance**: ALTO
+- **Leer antes**:
+  - `knowledge-base/06_funcionalidades.md` §US-014
+  - `knowledge-base/04_modelo_de_datos.md` §Evento (compresión/retención) §Caso disciplinario
+  - `knowledge-base/13_legal_y_cumplimiento_argentina.md` §Retención
+  - `knowledge-base/05_reglas_de_negocio.md` §RN-DSR-02
+
+---
+
+## FASE 2 — Refinamiento y analytics
+
+> Depende de producto estable. Otras features diferidas (audio FR-16, **integración LMS FR-17 → `C-49`**, liveness pasivo open-source, ONNX Runtime Web, Redis como backplane) se agregan como changes adicionales cuando el piloto las priorice.
+
+### [C-20] `reportes-analytics`
+- **Estado**: `[ ]` pendiente
+- **Scope**: Reportes post-examen (US-016, FR-15). Frontend + backend.
+  - Reportes por examen y por estudiante; distribución estadística para detectar outliers; métricas de calidad del detector.
+  - Exports y sumario institucional.
+  - Tests: agregaciones, exports, distribución estadística.
+- **Dependencias**: `C-13, C-16`
+- **Governance**: MEDIO
+- **Leer antes**:
+  - `knowledge-base/06_funcionalidades.md` §US-016
+  - `knowledge-base/14_observabilidad_y_devops.md` §Niveles de métricas
+  - `knowledge-base/05_reglas_de_negocio.md` §RN-SC-04
+
+---
+
+## Refinamiento post-fundación — capa frontend/demo y decisiones de producto
+
+> Estos changes (**C-21…C-24**) NO salen del discovery original: se agregaron **después de la fundación**, sobre la capa de presentación de demo (mock en `frontend/src/lib/api.ts`) y como decisiones de producto. Por eso no figuran en el árbol de dependencias de arriba (que es de la fundación).
+>
+> **Fuente de lectura doble — leé AMBAS:** este índice **y** engram. El detalle completo y el porqué de cada decisión vive en engram → proyecto `activeexam`, topic `activeexam/refinamiento-frontend-v2` (y relacionados `activeexam/fundacion`, `activeexam/frontend`). Si este índice y engram divergen, engram tiene el contexto fino; sincronizá.
+>
+> ⚠️ **Orden de archive**: los deltas `## MODIFIED Requirements` de C-22 y C-24 modifican specs de C-08/C-09/C-12, que están **aplicados pero NO archivados** (no existe aún el spec canónico en `openspec/specs/`). Antes de `/opsx:archive` de C-21…C-24, **archivá primero C-08/C-09/C-12** para que el MODIFIED resuelva contra la base. (No se archiva nada hasta testear.)
+
+### [C-21] `portal-alumno-materias-inscripcion`
+- **Estado**: `[ ]` propuesto (validate --strict OK — 43 tasks)
+- **Scope**: Side del alumno sobre la capa de demo (sin backend). Login → **dashboard del alumno**; modela **Materia→Comisión→Examen** (hoy solo existe `catedra:string`); **inscripción** a exámenes + "Mis exámenes" (registro con estado y acción siguiente); pantalla de **perfil (shell)** con el gate `puedeRendir`. Caps NEW: student-dashboard-landing, student-portal-navigation, exam-enrollment, student-profile-shell.
+- **Dependencias**: `C-07` (exámenes contra los que inscribirse); el contenido del perfil (consentimiento+biometría) lo completa `C-22`
+- **Governance**: MEDIO
+- **Leer antes**:
+  - `openspec/changes/c-21-portal-alumno-materias-inscripcion/` (proposal, design, tasks, specs)
+  - **engram** `activeexam/refinamiento-frontend-v2`
+  - `knowledge-base/06_funcionalidades.md` §US-001 §US-003
+
+### [C-22] `perfil-biometrico-enrollment`
+- **Estado**: `[ ]` propuesto (validate --strict OK — 21 tasks)
+- **Scope**: **Enrollment único en el perfil** (reutilizable, con renovación): consentimiento informado (**reorden desde C-08** — se da en el perfil, no antes de rendir) + **escaneo biométrico de referencia** + imagen de referencia guardada + **escaneo DNI opcional/flaggeado** + **renovación cada 24 meses** (configurable), con la verificación silenciosa continua gatillando renovación anticipada por deriva del embedding. Caps NEW: student-profile-enrollment, biometric-reference-renewal, optional-dni-scan. **MODIFICA** (deltas dentro del change): `consent-gate`, `informed-consent-presentation` (C-08), `embedding-computation`, `biometric-custody-encryption` (C-09).
+- **Dependencias**: `C-21` (perfil shell + gate), `C-08`, `C-09` (specs que modifica)
+- **Governance**: ALTO
+- **Pregunta abierta (legal)**: ¿se necesita acuse de consentimiento **por-examen** además del de perfil? Hipótesis: el de perfil alcanza mientras la versión de texto no cambie. Validar con legal antes de cerrar el gate. (Detalle en el design del change.)
+- **Leer antes**:
+  - `openspec/changes/c-22-perfil-biometrico-enrollment/` (incl. la pregunta abierta en design.md)
+  - **engram** `activeexam/refinamiento-frontend-v2`
+  - `knowledge-base/12_biometria_y_liveness.md`, `13_legal_y_cumplimiento_argentina.md`, `05_reglas_de_negocio.md` §RN-CO
+
+### [C-23] `admin-mediapipe-test-harness`
+- **Estado**: `[ ]` propuesto (validate --strict OK — 30 tasks)
+- **Scope**: **Página admin diagnóstica** que corre el pipeline de visión del cliente **end-to-end como alumno de prueba** (VisionEngine/MediaPipe + visionPipeline + stateTransitionRules + EventSink) y **verifica que se registran** las detecciones y eventos. Reusa el cableado de C-11; corre con la cámara del propio admin, sin examen real ni sanción. Caps NEW: admin-detection-test-harness, detection-event-verification.
+- **Dependencias**: `C-11` (vision-engine), `C-10` (event-transport)
+- **Governance**: MEDIO
+- **Leer antes**:
+  - `openspec/changes/c-23-admin-mediapipe-test-harness/`
+  - **engram** `activeexam/refinamiento-frontend-v2`
+  - `knowledge-base/11_ia_y_vision.md`
+
+### [C-24] `evidencia-screenshots`
+- **Estado**: `[ ]` propuesto (validate --strict OK — 15 tasks)
+- **Scope**: ⚠️ **Decisión de arquitectura** — la evidencia pasa de **CLIPS (5–10s) a SCREENSHOTS** (captura **event-driven + heartbeat** de baja frecuencia), por costo y proporcionalidad L2.5. El DD documenta el tradeoff honesto: una foto fija **no permite re-inferencia temporal ni re-verificación de liveness/movimiento**; cadena de custodia **intacta** (hash+firma cliente → re-firma server-side → WORM). Caps NEW: screenshot-evidence-capture, evidence-capture-cadence. **MODIFICA** `evidence-capture` (C-12) y `RN-CC-01`; impacta el modelo de costo (`14`) y la re-inferencia (`11`).
+- **Dependencias**: `C-12` (evidencia-cadena-custodia)
+- **Governance**: ALTO
+- **Leer antes**:
+  - `openspec/changes/c-24-evidencia-screenshots/` (DD-24-01/02/03)
+  - **engram** `activeexam/refinamiento-frontend-v2`
+  - `knowledge-base/05_reglas_de_negocio.md` §RN-CC, `11_ia_y_vision.md`, `14_observabilidad_y_devops.md`
+
+### [C-25] `captura-actividad-integral`
+- **Estado**: `[ ]` propuesto (validate --strict OK)
+- **Scope**: ⭐ **Base funcional** — captura y registro de TODA la actividad sospechosa (**visión + navegador/entorno**) + **página de validación end-to-end** para probarlo con la propia persona. Implementa los detectores de navegador que faltan (**cambio/apertura de pestaña**, **salida de pantalla completa**, **copy/paste**), **cablea el detector de monitores múltiples** (hoy hardcodeado `false` en `Examen.tsx:77` y `AdminDetectionHarness.tsx:376`), y **extiende la página de testeo de C-23** para validar también lo de navegador, con checklist de cobertura. Reusa el pipeline existente (`stateTransitionRules` → `EventSink`); el sistema no sanciona automático, cliente = sensor no confiable. Caps NEW: browser-activity-detectors, suspicious-activity-catalog, integral-activity-validation. **MODIFICA** (deltas dentro del change): `state-transition-rules`, `browser-context-detectors` (C-11), `admin-detection-test-harness` (C-23).
+- **Dependencias**: `C-10` (event-schema-contract), `C-11` (vision-engine-detectores), `C-23` (harness)
+- **Governance**: ALTO
+- **Leer antes**:
+  - `openspec/changes/c-25-captura-actividad-integral/` (proposal, design con inventario existe/falta, tasks, specs)
+  - **engram** `activeexam/refinamiento-frontend-v2`
+  - `knowledge-base/11_ia_y_vision.md`, `05_reglas_de_negocio.md` §RN-EV
+
+### [C-26] `acuse-consentimiento-por-examen`
+- **Estado**: `[ ]` propuesto (validate --strict OK)
+- **Scope**: **Consentimiento EN CAPAS** — resuelve la pregunta legal abierta de C-22. Agrega un **acuse liviano por-examen** al inscribirse a un examen concreto: muestra el examen + qué se monitorea, con una acción afirmativa que da **finalidad específica** a esa instancia de tratamiento (Ley 25.326), **referenciando** el consentimiento de perfil de C-22 (no re-pide biometría ni el texto pesado). Acuse inmutable por `(estudiante, examen)` (versión+timestamp+hash, demo). Gate de habilitación = perfil completo (C-22) **Y** acuse por-examen (código nuevo `acuse_examen_faltante`). Caps NEW: per-exam-consent-acknowledgment. **MODIFICA** (deltas dentro del change): `exam-enrollment` (C-21), `consent-gate` (C-22).
+- **Dependencias**: `C-21` (inscripción), `C-22` (consentimiento de perfil + gate)
+- **Governance**: ALTO
+- **Leer antes**:
+  - `openspec/changes/c-26-acuse-consentimiento-por-examen/`
+  - **engram** `activeexam/refinamiento-frontend-v2`
+  - `knowledge-base/13_legal_y_cumplimiento_argentina.md`, `05_reglas_de_negocio.md` §RN-CO
+
+### [C-27] `branding-utn-frm`
+- **Estado**: `[ ]` propuesto (validate --strict OK — 17 tasks)
+- **Scope**: **Corrección de identidad institucional** — elimina las 13 referencias hardcodeadas a "UBA" / "Universidad de Buenos Aires" y crea un **módulo central de configuración** `frontend/src/config/institution.ts` desde el cual toda la UI y los mocks leen la identidad de UTN Regional Mendoza (FRM). Reemplaza además materias de Medicina (Anatomía, Fisiología, etc.) por materias canónicas del CBU de Ingeniería UTN. Soporte de override por `VITE_INSTITUTION_*` para futura multi-tenancy. Caps NEW: `institution-config`.
+- **Dependencias**: ninguna (solo strings y datos mock del frontend; independiente de todos los changes de backend)
+- **Governance**: BAJO
+- **Leer antes**:
+  - `openspec/changes/c-27-branding-utn-frm/` (proposal, design, specs/institution-config/spec.md, tasks)
+  - `knowledge-base/03_actores_y_roles.md` §Actores (institución/roles)
+
+### [C-28] `lenguaje-claro-glosario`
+- **Estado**: `[ ]` propuesto (validate --strict OK — 38 tasks)
+- **Scope**: **Inteligibilidad de la UI** — la interfaz repite 19× "L2.5", 4× "embedding", y múltiples "WORM", "liveness", "cadena de custodia", "Face Mesh" sin explicación. C-28 agrega **definiciones en lenguaje claro accesibles en contexto** (tooltips + panel de glosario), SIN eliminar la terminología técnica (necesaria legal y técnicamente). Crea el diccionario central `frontend/src/config/glossary.ts` (mismo patrón que `institution.ts` de C-27) y el componente átomo `<Term>` (tooltip accesible, responsive, sin dependencias externas). Caps NEW: `glossary-config`, `term-tooltip-component`, `glossary-panel`. Cap MODIFIED (delta): `institution-config` (formaliza la convención de la carpeta `config/`).
+- **Dependencias**: ninguna (100 % capa de presentación; independiente de todos los changes de backend; puede correr en cualquier momento como C-27)
+- **Governance**: MEDIO
+- **Leer antes**:
+  - `openspec/changes/c-28-lenguaje-claro-glosario/` (proposal, design, specs/, tasks)
+  - `knowledge-base/13_legal_y_cumplimiento_argentina.md` §embedding §dato sensible §Ley 25.326
+  - `knowledge-base/05_reglas_de_negocio.md` §RN-CO (consentimiento informado con lenguaje claro)
+  - **engram** `activeexam/refinamiento-frontend-v2`
+
+### [C-29] `ux-admin-harness-legible`
+- **Estado**: `[ ]` propuesto (validate --strict OK — 30 tasks)
+- **Scope**: **Densidad visual y honestidad del harness** — mejora de experiencia y claridad en las pantallas más técnicas/densas, sin cambiar funcionalidad. (1) Banner prominente en el harness de diagnóstico admin que advierte que las **señales de visión son SIMULADAS** (motor MediaPipe en stub); (2) panel de propósito del harness en lenguaje no técnico; (3) tarjetas de interpretación por señal con accordion de datos técnicos crudos colapsable; (4) descripción contextual por cada señal de entorno; (5) respiro visual en la tabla de eventos de Revisor + agrupación de eventos repetidos; (6) cadena de custodia colapsable en SessionDetail con hashes truncados; (7) **reframe del copy de Login** como portal del alumno (headline "Portal del alumno"). Caps NEW: `harness-legibility-layer`, `login-portal-reframe`. Caps MODIFIED (delta): `admin-detection-test-harness` (C-23), `glossary-config` (C-28 — 4 términos nuevos: `bounding_box`, `gaze_vector`, `pose_keypoints`, `motor_stub`).
+- **Dependencias**: `C-27` (INSTITUTION), `C-28` (Term, glossary.ts). Independiente de backend.
+- **Governance**: BAJO
+- **Leer antes**:
+  - `openspec/changes/c-29-ux-admin-harness-legible/` (proposal, design, specs/, tasks)
+  - `openspec/changes/c-28-lenguaje-claro-glosario/` (patrón Term + glossary.ts)
+  - `knowledge-base/11_ia_y_vision.md` §Motor abstraído §stub MediaPipe
+  - **engram** `activeexam/refinamiento-frontend-v2`
+
+### [C-30] `vision-real-harness`
+- **Estado**: `[ ]` propuesto (validate --strict OK — 34 tasks)
+- **Scope**: **Motor de visión MediaPipe REAL en el harness de diagnóstico** — cablea `@mediapipe/tasks-vision` Tasks API (FaceDetector + FaceLandmarker 468 landmarks/iris + PoseLandmarker) **únicamente en el harness** `/admin/detection-test`, para que el admin vea detecciones reales: múltiples rostros, gaze real, pose real. El flujo de examen sigue con señales simuladas, sin cambios. Agrega **overlay canvas** sobre el video con bounding boxes y landmarks para visualizar en tiempo real qué detecta la cámara. Los modelos `.task` se sirven **localmente** (`frontend/public/mediapipe/`) nunca desde CDN externo (soberanía de datos). Cargados con **import dinámico (lazy)** para no inflar el bundle inicial. **Actualiza el banner de C-29** haciéndolo condicional: `SIMULADO` / `CARGANDO` / `VISIÓN REAL (MediaPipe)` / `ERROR DE CARGA`. Fallback honesto: error explícito en UI si los modelos no cargan. Caps NEW: `real-vision-engine-harness`, `vision-overlay-canvas`, `harness-model-loader`. Caps MODIFIED (delta): `harness-legibility-layer` (C-29 — banner condicional), `admin-detection-test-harness` (C-23 — señales reales).
+- **Dependencias**: `C-23` (harness base), `C-25` (pipeline completo con detectores de entorno), `C-29` (banner legibilidad)
+- **Governance**: ALTO
+- **Leer antes**:
+  - `openspec/changes/c-30-vision-real-harness/` (proposal, design, specs/, tasks)
+  - `openspec/changes/c-23-admin-mediapipe-test-harness/` (harness base)
+  - `openspec/changes/c-29-ux-admin-harness-legible/` (banner que se modifica)
+  - `knowledge-base/11_ia_y_vision.md` §Detectores §Ejecución y optimización §DD-17
+  - `knowledge-base/13_legal_y_cumplimiento_argentina.md` §Soberanía de datos
+  - `knowledge-base/09_decisiones_y_supuestos.md` §DD-17
+
+### [C-31] `quick-fixes-header-login`
+- **Estado**: `[x]` aplicado (9/9 tasks, tsc --noEmit 0 errores)
+- **Scope**: **2 quick-fixes de presentación** — (1) Elimina el badge "Self-hosted · {institución}" del header de la shell de staff (`shells.tsx`): era jerga de infraestructura irrelevante para el usuario final; el nombre institucional ya aparece en la sidebar. (2) Elimina el link "Requisitos técnicos" del nav del login (`Login.tsx`): la ruta `/requisitos` lleva al flujo demo de EquipmentCheck, causando confusión al alumno que intenta autenticarse. Se elimina también el separador visual (`<span>` bullet) que quedaba huérfano. La ruta `#/requisitos` permanece definida en `App.tsx` para uso futuro. Caps MODIFIED (delta): `staff-shell-header`, `login-screen`.
+- **Dependencias**: ninguna (solo JSX estático de presentación)
+- **Governance**: BAJO
+- **Leer antes**:
+  - `openspec/changes/c-31-quick-fixes-header-login/` (proposal, design, specs/, tasks)
+  - `frontend/src/ui/shells.tsx` (header de staff)
+  - `frontend/src/screens/Login.tsx` (nav del login)
+
+### [C-32] `harness-motor-cache-ux`
+- **Estado**: `[ ]` propuesto (validate --strict OK — 29 tasks)
+- **Scope**: **4 mejoras al harness `/admin/detection-test`** — (1) **Cache del motor WASM**: `harnessEngineLoader.ts` cachea la instancia de `RealMediaPipeVisionEngine` ya inicializada a nivel módulo; los ciclos Iniciar/Detener posteriores reutilizan el motor sin recargar WASM (~25–50 MB). Nuevo export `disposeRealEngine()` para limpieza explícita al navegar fuera. (2) **Spinner amigable**: el banner de estado `'loading'` reemplaza la jerga técnica ("WASM", "MediaPipe", "MB") por spinner animado + "Preparando la cámara…" para personal no técnico. (3) **Labels de umbrales en lenguaje claro**: los 5 campos de configuración (`face_absent_ms`, `multiple_faces_frames`, `gaze_deviation_threshold`, `gaze_sustained_ms`, `gaze_fixation_tolerance`) muestran nombres en español comprensible con la clave técnica como referencia secundaria. (4) **Flujo de permiso Window Management**: botón "Detectar pantallas" que solicita el permiso `window-management` con gesto del usuario, con mensajería clara para los casos `unsupported`, `denied` y `granted`. Caps NEW: `harness-engine-cache`, `harness-loading-ux`, `harness-threshold-labels`, `window-management-permission-flow`. Caps MODIFIED (delta): `harness-model-loader` (C-30), `admin-detection-test-harness` (C-23), `browser-context-detectors` (C-25).
+- **Dependencias**: `C-23` (harness base), `C-25` (detectores de contexto), `C-29` (banner legibilidad), `C-30` (motor real + loader)
+- **Governance**: MEDIO
+- **Leer antes**:
+  - `openspec/changes/c-32-harness-motor-cache-ux/` (proposal, design, specs/, tasks)
+  - `frontend/src/vision/harnessEngineLoader.ts` (loader actual a modificar)
+  - `frontend/src/screens/AdminDetectionHarness.tsx` (harness: banner ~695, umbrales ~1158, monitor polling ~340)
+  - `frontend/src/proctoring/contextDetectors.ts` (detectExtraMonitor a extender)
+  - `frontend/src/ui/Term.tsx` (componente Term de C-28, reutilizable para claves técnicas)
+
+### [C-33] `medidor-riesgo-harness`
+- **Estado**: `[ ]` propuesto (validate --strict OK — 20 tasks)
+- **Scope**: **Medidor de riesgo en vivo en el harness de diagnóstico** — (1) **Medidor/gauge de riesgo**: barra de progreso con color escalado (verde→amarillo→rojo) que muestra el % de riesgo acumulado en tiempo real, sumando el peso (`PESO_SCORE`) de cada evento emitido durante la sesión de diagnóstico. (2) **Botón RESET del medidor**: resetea el score acumulado a 0 sin interrumpir cámara ni motor. (3) **Umbral configurable**: input numérico (1–100 %) que, cuando es superado, muestra un banner "Superaría el umbral — priorizaría para revisión humana" (semántica L2.5 — prioriza, no sanciona). (4) **Extracción de `PESO_SCORE` a módulo compartido**: `frontend/src/proctoring/riskWeights.ts` elimina la duplicación entre `Examen.tsx` y `AdminDetectionHarness.tsx` (valores sin cambio). El acumulador de riesgo vive en estado local del componente, aislado del `store.scorePropio` del alumno real. Caps NEW: `harness-risk-meter`. Caps MODIFIED (delta): `admin-detection-test-harness` (C-23).
+- **Dependencias**: `C-23` (harness base), `C-25` (pipeline de eventos y `PESO_SCORE` existente en Examen), `C-32` (estado actual del harness)
+- **Governance**: BAJO
+- **Leer antes**:
+  - `openspec/changes/c-33-medidor-riesgo-harness/` (proposal, design, specs/, tasks)
+  - `frontend/src/screens/Examen.tsx` (línea 27: `PESO_SCORE` a extraer)
+  - `frontend/src/screens/AdminDetectionHarness.tsx` (sink callback, estado local, layout)
+  - `frontend/src/lib/store.ts` (scorePropio — no se toca, solo referencia)
+
+### [C-34] `biometria-perfil-funcional`
+- **Estado**: `[ ]` propuesto (validate --strict OK — 37 tasks)
+- **Scope**: **Captura biométrica del perfil FUNCIONAL para test** — hace que el enrollment biométrico del alumno deje de ser mock y pase a usar detección real: (1) **Retos de liveness detectados de verdad** con el motor MediaPipe real (`RealMediaPipeVisionEngine`) frame-a-frame: girar izquierda/derecha (gaze), parpadear (cierre ocular), acercarse (bounding box), sonreír (comisuras de boca). (2) **Embedding REAL** derivado con `embeddingFromLandmarks(landmarks)` (determinista, no `Math.random`). (3) **Fullscreen en móvil** al tomar la cámara: `requestFullscreen()` sobre el contenedor, con fallback CSS `fixed inset-0` para iOS Safari. (4) **Loader lazy con singleton** `enrollmentEngineLoader.ts` — mismo patrón que `harnessEngineLoader.ts` pero con ciclo de vida independiente; motor WASM sigue fuera del bundle inicial. Fallback manual (modo botón) visible solo cuando el motor no puede cargar. Cliente sigue siendo SENSOR NO CONFIABLE (RN-GLB-01); la verificación real es server-side (C-12). Caps NEW: `enrollment-liveness-detection`, `enrollment-fullscreen-mobile`. Caps MODIFIED (delta): `harness-model-loader` (C-30/C-32 — nuevo loader paralelo).
+- **Dependencias**: `C-22` (paso biométrico del perfil que se hace funcional), `C-30` (motor real y helpers `embeddingFromLandmarks`, `gazeFromIris` disponibles), `C-32` (patrón de loader lazy singleton ya establecido en `harnessEngineLoader.ts`)
+- **Governance**: ALTO
+- **Leer antes**:
+  - `openspec/changes/c-34-biometria-perfil-funcional/` (proposal, design, specs/, tasks)
+  - `frontend/src/screens/enrollment/EnrollmentBiometricStep.tsx` (componente a refactorizar)
+  - `frontend/src/vision/liveness.ts` (lógica pura de retos a reusar)
+  - `frontend/src/vision/harnessEngineLoader.ts` (patrón de singleton a replicar)
+  - `knowledge-base/12_biometria_y_liveness.md` (liveness híbrido, thresholds, ISO 30107-3)
+
+### [C-35] `fixes-deteccion-camara-mirada`
+- **Estado**: `[ ]` propuesto (validate --strict OK — 18 tasks)
+- **Scope**: **2 bugs del harness `/admin/detection-test`** — (1) **Bug 1 — Cámara trabada al volver a la página**: al navegar fuera y volver, el `<video>` muestra un frame congelado de la sesión anterior. Fix: en `startHarness()` limpiar `srcObject = null` + `load()` ANTES de asignar el nuevo stream; en el `useEffect` cleanup también limpiar `srcObject`. (2) **Bug 2 — Mirada sostenida floja / riesgo no sube**: `gaze_deviation_threshold: 0.6` es inalcanzable para el vector iris (rango real ~0.15–0.35) y `gaze_fixation_tolerance: 0.15` reinicia el ancla por movimiento natural. Fix: recalibrar `DEFAULT_CONFIG` a `gaze_deviation_threshold: 0.25`, `gaze_sustained_ms: 2500`, `gaze_fixation_tolerance: 0.25`; promediar ambos iris en `detectFaceMesh()`; agregar `head_yaw_deg?` en `FrameSignals` para usar head pose (PoseSignal) como señal complementaria. Caps MODIFIED (deltas): `admin-detection-test-harness`, `state-transition-rules`, `real-vision-engine-harness`.
+- **Dependencias**: `C-23` (harness base), `C-25` (pipeline + FrameSignals), `C-30` (motor real + RealMediaPipeVisionEngine), `C-32` (cache motor + disposeRealEngine), `C-33` (medidor de riesgo que se beneficia del fix Bug 2)
+- **Governance**: MEDIO
+- **Leer antes**:
+  - `openspec/changes/c-35-fixes-deteccion-camara-mirada/` (proposal, design, specs/, tasks)
+  - `frontend/src/screens/AdminDetectionHarness.tsx` (~502–507 startHarness cámara; ~632–663 stopHarness + cleanup)
+  - `frontend/src/proctoring/stateTransitionRules.ts` (~76–82 DEFAULT_CONFIG; ~169–203 evalGaze)
+  - `frontend/src/vision/RealMediaPipeVisionEngine.ts` (~243–278 detectFaceMesh + gazeFromIris)
+  - `frontend/src/ui/VisionOverlay.tsx` (canvas + clearRect)
+
+### [C-36] `c-36-verificacion-biometrica-inmersiva`
+- **Estado**: `[ ]` propuesto (validate --strict OK — 36 tasks)
+- **Scope**: **Componente compartido de captura biométrica inmersiva** para el examen (pre-rendición) y el perfil (enrollment). Elimina el mock de botones de `Biometria.tsx` y la duplicación de UI/loop con `EnrollmentBiometricStep.tsx`. (1) **`BiometricCapture` nuevo** (`frontend/src/ui/BiometricCapture.tsx`): encapsula cámara (getUserMedia), loop RAF real (`evaluateChallenge`, `framesMinForChallenge`), motor lazy (`loadEnrollmentEngine`/`disposeEnrollmentEngine`), UI inmersiva (`fixed inset-0 z-50`, óvalo dominante, paso actual abajo, progreso de retos), fallback manual, `requestFullscreen()` best-effort. (2) **Refactor `Biometria.tsx`**: reemplaza mock de botones por `<BiometricCapture>` en fase `capturando`; detección real de liveness; `handleComplete(landmarks)` calcula embedding y llama `verificar()`. (3) **Refactor `EnrollmentBiometricStep.tsx`**: delega la captura a `<BiometricCapture>`; elimina `startDetectionLoop`, `engineRef`, `challengeCountsRef` y UI inline de retos; mantiene encabezado contextual, nota de privacidad Ley 25.326 y callback `onCapturada`. Caps: NEW `biometric-capture-component`; MODIFIED `exam-enrollment`, `student-profile-shell`.
+- **Dependencias**: `C-34` (motor lazy singleton, evaluador de retos, fallback manual, loop RAF — reutilizados sin cambio)
+- **Governance**: MEDIO
+- **Leer antes**:
+  - `openspec/changes/c-36-verificacion-biometrica-inmersiva/` (proposal, design, specs/, tasks)
+  - `frontend/src/screens/Biometria.tsx` (mock a reemplazar)
+  - `frontend/src/screens/enrollment/EnrollmentBiometricStep.tsx` (loop RAF + fullscreen a extraer)
+  - `frontend/src/vision/enrollmentEngineLoader.ts` (reutilizar sin cambio)
+  - `frontend/src/vision/enrollmentChallengeDetector.ts` (reutilizar sin cambio)
+  - `frontend/src/vision/liveness.ts` (ACTIVE_CHALLENGES, pickActiveChallenges)
+  - `knowledge-base/12_biometria_y_liveness.md` (liveness híbrido, thresholds, ISO 30107-3)
+
+### [C-37] `foto-perfil-enrollment`
+- **Estado**: `[ ]` propuesto (validate --strict OK — 37 tasks)
+- **Scope**: **Foto de perfil como paso del enrollment del alumno** — (1) Componente compartido `CameraSnapshotCapture` (`frontend/src/ui/CameraSnapshotCapture.tsx`): overlay full-screen (portal a `document.body`, fondo blanco, estilo banco), `getUserMedia` + `canvas.drawImage` + `toDataURL`, marco-guía parametrizable (`shape: 'oval' | 'rect'` + `aspectRatio`), flujo capturar → preview → "Usar"/"Repetir", SIN MediaPipe, SIN RAF. Reutilizable por C-38 (DNI) con `shape='rect'` sin modificar el componente. (2) `Principal.foto_perfil?: string` en `types.ts`. (3) `api.guardarFotoPerfil(dataUrl)` mock + `setFotoPerfil` en el store Zustand. (4) Paso `'foto_perfil'` en `StudentProfile.tsx` ANTES de `'biometria'`, DESPUÉS de `'consentimiento'`. Paso NO bloqueante: cancelar avanza a biometría. (5) Avatar condicional en `StudentProfile` encabezado y `StaffShell` sidebar: foto circular si `foto_perfil` existe, inicial si no. Caps NEW: `camera-snapshot-capture`, `profile-photo-enrollment`. Caps MODIFIED (delta): `student-profile-shell` (nuevo paso, avatar, contadores de pasos).
+- **Dependencias**: `C-22` (perfil shell + paso de enrollment); `C-36` (patrón visual de overlay — referencia, no dependencia técnica)
+- **Governance**: MEDIO
+- **Leer antes**:
+  - `openspec/changes/c-37-foto-perfil-enrollment/` (proposal, design, specs/, tasks)
+  - `frontend/src/ui/BiometricCapture.tsx` (referencia visual del overlay — C-36)
+  - `knowledge-base/13_legal_y_cumplimiento_argentina.md` §Dato sensible §Ley 25.326
+  - `knowledge-base/05_reglas_de_negocio.md` §RN-CO
+
+### [C-38] `c-38-dni-frente-dorso-escaner`
+- **Estado**: `[ ]` propuesto (validate --strict OK — 33 tasks)
+- **Scope**: **Escaneo del DNI argentino FRENTE + DORSO con marco estilo escáner ID-1** — (1) Activar `ENABLE_DNI_SCAN` por defecto (`!== '0'`) para que el paso sea accesible en la demo sin configuración extra. (2) Refactorizar `EnrollmentDniStep` para reusar `CameraSnapshotCapture` (`shape='rect'`, `scannerCorners=true`, `aspectRatio=85.6/54`) con flujo secuencial frente → dorso; eliminar el `getUserMedia` propio. (3) Extender `EscaneDNI` (`types.ts`): campo `imagen` → `imagen_frente` + `imagen_dorso`. (4) Actualizar `api.guardarEscaneDNI(frente, dorso)` con la nueva firma de dos parámetros. (5) Agregar prop opcional `scannerCorners?: boolean` y `facingMode?: ConstrainDOMString` a `CameraSnapshotCapture` (compatible hacia atrás con C-37). (6) Actualizar contadores de pasos en `StudentProfile` (4 de 4 con DNI activo). DNI sigue OPCIONAL — no bloquea `perfil_completo`. Dato sensible (Ley 25.326): cifrado at-rest, finalidad acotada, eliminado al egreso. Caps NEW: `dni-scanner-dual-side`. Caps MODIFIED (delta): `exam-enrollment`, `camera-snapshot-capture`, `student-profile-shell`.
+- **Dependencias**: `C-22` (paso DNI base a refactorizar), `C-37` (`CameraSnapshotCapture` con `shape='rect'` a extender)
+- **Governance**: MEDIO
+- **Leer antes**:
+  - `openspec/changes/c-38-dni-frente-dorso-escaner/` (proposal, design, specs/, tasks)
+  - `frontend/src/screens/enrollment/EnrollmentDniStep.tsx` (paso DNI a refactorizar)
+  - `frontend/src/ui/CameraSnapshotCapture.tsx` (componente base C-37 a extender con scannerCorners + facingMode)
+  - `frontend/src/lib/types.ts` (EscaneDNI a extender)
+  - `frontend/src/lib/api.ts` (guardarEscaneDNI + ENABLE_DNI_SCAN)
+  - `knowledge-base/13_legal_y_cumplimiento_argentina.md` §Dato sensible §Ley 25.326
+
+### [C-39] `c-39-analisis-validacion-dni`
+- **Estado**: `[ ]` propuesto (validate --strict OK — 26 tasks)
+- **Scope**: **Interfaz de análisis/validación indicativa del DNI (mock client-side con UX realista)** — tras capturar frente+dorso (C-38), mostrar un panel que simule cómo se corrobora que el DNI es real y está bien. (1) Nuevo tipo `AnalisisDNI` en `types.ts` con checks booleanos (`documento_detectado`, `imagen_legible`, `tipo_documento`, `pdf417_leido`), datos OCR mock coherentes con el alumno demo (Emiliano Cáceres, FRM-23-4912), `concordancia_facial` (0..1, rango 0.88–0.96) y `estado: 'preliminar_ok' | 'requiere_revision'` (NUNCA 'aprobado'/'rechazado' — L2.5). (2) Extender `EscaneDNI` con campo opcional `analisis?: AnalisisDNI`. (3) Nuevo mock `api.analizarDNI()` con delay ~1.8s, sin llamadas de red. (4) En `EnrollmentDniStep`: nuevas fases `'analizando'` (spinner) y `'resultado'` (panel con 4 secciones: checks, datos OCR, concordancia facial, estado + disclaimer L2.5 inamovible). (5) En `StudentProfile` sección DNI: mostrar badge de estado del análisis cuando existe (`'preliminar_ok'` → success / `'requiere_revision'` → warning) + nota "Pendiente de revisión humana". Disclaimer: "Análisis indicativo (demo). La validación oficial es server-side. El cliente es sensor no confiable (RN-GLB-01). Decisión final siempre humana (L2.5)." Caps NEW: `dni-analysis-panel`. Caps MODIFIED (delta): `dni-scanner-dual-side` (C-38 — nuevas fases + analisis adjunto), `student-profile-shell` (C-38/C-37 — resumen con análisis).
+- **Dependencias**: `C-38` (escaneo frente+dorso implementado, `EscaneDNI` y `api.guardarEscaneDNI` a extender), `C-22` (`ReferenciasBiometrica` para concordancia facial mock)
+- **Governance**: MEDIO
+- **Leer antes**:
+  - `openspec/changes/c-39-analisis-validacion-dni/` (proposal, design, specs/, tasks)
+  - `frontend/src/screens/enrollment/EnrollmentDniStep.tsx` (flujo de fases a extender)
+  - `frontend/src/lib/types.ts` (EscaneDNI a extender con AnalisisDNI)
+  - `frontend/src/lib/api.ts` (guardarEscaneDNI + nuevo analizarDNI)
+  - `frontend/src/screens/StudentProfile.tsx` (sección DNI a actualizar)
+  - `knowledge-base/13_legal_y_cumplimiento_argentina.md` §Dato sensible §Ley 25.326
+  - `knowledge-base/12_biometria_y_liveness.md` §Concordancia facial §embedding
+
+### [C-40] `c-40-ui-base-limpieza`
+- **Estado**: `[ ]` propuesto (validate --strict OK — 30 tasks)
+- **Scope**: **Base de UI minimalista/moderna — primer change de la tanda de rediseño.** (1) **Jerga visible eliminada**: reformula 11 strings visibles al usuario con "demo", "stub", "Ej:", "modo demo" en StudentProfile, EnrollmentDniStep, EquipmentCheck, ScreenNavigator, AdminDetectionHarness y ConfigureExam; preserva íntegros los disclaimers legales L2.5 (RN-GLB-01, L2.5). (2) **Sistema de tamaños de Button**: prop `size?: 'sm' | 'md' | 'lg'` en `ui/components.tsx` con tokens del design system (h-9/px-md, h-12/px-lg, h-14/px-xl); normaliza el `h-14` hardcodeado de Login.tsx; corrige stacks de botones sin gap (AdminDashboard). (3) **Primitivas de formulario**: componentes exportados `FormField` (label + control + hint/error) y `RangeInput` (slider con label dinámico y `accent-primary`), reutilizables en ConfigureExam y pantallas futuras. (4) **Flag `VITE_DEV_TOOLS`**: constante `DEV_TOOLS_ENABLED` en `src/lib/devConfig.ts` (default OFF); condiciona ScreenNavigator en App.tsx y el bloque "Control de demostración" en StudentProfile; sin efecto funcional cuando está OFF. Caps NEW: `button-size-system`, `form-primitives`, `dev-tools-flag`, `visible-jargon-cleanup`. Caps MODIFIED (delta): `student-profile-shell`, `login-portal-reframe`.
+- **Dependencias**: ninguna (100 % capa de presentación; independiente de todos los changes de backend)
+- **Governance**: BAJO
+- **Leer antes**:
+  - `openspec/changes/c-40-ui-base-limpieza/` (proposal, design, specs/, tasks)
+  - `frontend/src/ui/components.tsx` (Button, Card — design system base)
+  - `frontend/tailwind.config.js` (tokens: spacing, colors, radios, sombras)
+  - `frontend/src/ui/ScreenNavigator.tsx` (herramienta a ocultar por flag)
+  - `frontend/src/screens/StudentProfile.tsx` (bloque demo a condicionar, texto DNI a reformular)
+- **Scope**: **Interfaz de análisis/validación indicativa del DNI (mock client-side con UX realista)** — tras capturar frente+dorso (C-38), mostrar un panel que simule cómo se corrobora que el DNI es real y está bien. (1) Nuevo tipo `AnalisisDNI` en `types.ts` con checks booleanos (`documento_detectado`, `imagen_legible`, `tipo_documento`, `pdf417_leido`), datos OCR mock coherentes con el alumno demo (Emiliano Cáceres, FRM-23-4912), `concordancia_facial` (0..1, rango 0.88–0.96) y `estado: 'preliminar_ok' | 'requiere_revision'` (NUNCA 'aprobado'/'rechazado' — L2.5). (2) Extender `EscaneDNI` con campo opcional `analisis?: AnalisisDNI`. (3) Nuevo mock `api.analizarDNI()` con delay ~1.8s, sin llamadas de red. (4) En `EnrollmentDniStep`: nuevas fases `'analizando'` (spinner) y `'resultado'` (panel con 4 secciones: checks, datos OCR, concordancia facial, estado + disclaimer L2.5 inamovible). (5) En `StudentProfile` sección DNI: mostrar badge de estado del análisis cuando existe (`'preliminar_ok'` → success / `'requiere_revision'` → warning) + nota "Pendiente de revisión humana". Disclaimer: "Análisis indicativo (demo). La validación oficial es server-side. El cliente es sensor no confiable (RN-GLB-01). Decisión final siempre humana (L2.5)." Caps NEW: `dni-analysis-panel`. Caps MODIFIED (delta): `dni-scanner-dual-side` (C-38 — nuevas fases + analisis adjunto), `student-profile-shell` (C-38/C-37 — resumen con análisis).
+- **Dependencias**: `C-38` (escaneo frente+dorso implementado, `EscaneDNI` y `api.guardarEscaneDNI` a extender), `C-22` (`ReferenciasBiometrica` para concordancia facial mock)
+- **Governance**: MEDIO
+- **Leer antes**:
+  - `openspec/changes/c-39-analisis-validacion-dni/` (proposal, design, specs/, tasks)
+  - `frontend/src/screens/enrollment/EnrollmentDniStep.tsx` (flujo de fases a extender)
+  - `frontend/src/lib/types.ts` (EscaneDNI a extender con AnalisisDNI)
+  - `frontend/src/lib/api.ts` (guardarEscaneDNI + nuevo analizarDNI)
+  - `frontend/src/screens/StudentProfile.tsx` (sección DNI a actualizar)
+  - `knowledge-base/13_legal_y_cumplimiento_argentina.md` §Dato sensible §Ley 25.326
+  - `knowledge-base/12_biometria_y_liveness.md` §Concordancia facial §embedding
+
+### [C-41] `c-41-login-portal-alumno-ui`
+- **Estado**: `[x]` aplicado (validate --strict OK — 63 tasks)
+- **Scope**: **Rediseño minimalista + componentización del portal del alumno** — Login, AlumnoDashboard, AlumnoMaterias y AlumnoMisExamenes (4 pantallas monolíticas de 168–264 líneas). Crea 6 componentes de presentación pura en `frontend/src/screens/alumno/components/` (`QuickAccessCard`, `ExamenProximoCard`, `ExamenCard`, `InscripcionCard`, `ComisionRow`, `MateriaCard`), refactoriza las 3 pantallas del portal del alumno para usarlos, y refina el Login con el diseño visual del portal. Caps NEW: `student-dashboard-landing`, `student-portal-navigation`. Caps MODIFIED (delta): `login-portal-reframe`, `exam-enrollment`.
+- **Dependencias**: `C-40` (sistema de tamaños de Button; design system base limpio)
+- **Governance**: BAJO
+- **Leer antes**:
+  - `openspec/changes/c-41-login-portal-alumno-ui/` (proposal, design, specs/, tasks)
+  - `frontend/src/screens/alumno/` (pantallas del portal)
+  - `frontend/src/screens/alumno/components/` (componentes creados en este change)
+
+### [C-42] `c-42-perfil-alumno-ui`
+- **Estado**: `[ ]` propuesto (validate --strict OK — 37 tasks)
+- **Scope**: **Rediseño minimalista + componentización del Perfil del alumno** — `StudentProfile.tsx` (~700 líneas, pantalla más grande del proyecto). Extrae la vista `paso==='perfil'` en 3 componentes de presentación pura en `frontend/src/screens/alumno/components/`: `PerfilHeaderCard` (avatar condicional + datos personales), `RequisitoCard` (patrón genérico parametrizable para los 4 requisitos de enrollment: consentimiento/biometría/foto/DNI), `PerfilBannerEstado` (banners contextuales: completo/caducada/renovación requerida). `StudentProfile` queda como orquestador delgado: handlers, máquina de fases `PasoEnrollment` y gate `perfil_completo` intactos. Caps NEW: `profile-requisito-cards`, `profile-header-card`, `profile-banner-estado`. Caps MODIFIED (delta): `student-profile-shell`.
+- **Dependencias**: `C-40` (design system base limpio, DEV_TOOLS_ENABLED — herramientas demo ya detrás del flag), `C-41` (patrón de componentización en `alumno/components/`)
+- **Governance**: BAJO
+- **Leer antes**:
+  - `openspec/changes/c-42-perfil-alumno-ui/` (proposal, design, specs/, tasks)
+  - `frontend/src/screens/StudentProfile.tsx` (pantalla a refactorizar — solo vista paso==='perfil')
+  - `frontend/src/screens/alumno/components/` (patrón de colocalización de C-41)
+  - `frontend/src/ui/components.tsx` (primitivas: Card, Badge, Button, Icon, Term)
+
+### [C-44] `c-44-proctoring-screen-ui`
+- **Estado**: `[x]` aplicado (validate --strict OK)
+- **Scope**: Pantalla de proctoring del alumno durante el examen (captura de cámara, eventos de detección, UI de tiempo real). Ver artefactos en `openspec/changes/c-44-proctoring-screen-ui/`.
+- **Dependencias**: `C-40`, `C-41`, `C-42`
+- **Governance**: MEDIO
+
+### [C-45] `c-45-backend-proctoring-slim`
+- **Estado**: `[ ]` propuesto (validate --strict OK — 29 tasks)
+- **Scope**: **Backend slim de proctoring sin auth, deployable en Railway (FastAPI + Postgres administrado).** Módulo aditivo nuevo — NO modifica el backend de producción existente. (1) `app/config_slim.py` con `SlimSettings` (solo `DATABASE_URL`, `FRONTEND_ORIGIN`, `PORT`). (2) `app/main_slim.py` con `create_slim_app()` sin Keycloak/Vault/MinIO/OTLP; CORS parametrizable. (3) Router slim bajo `/api/v1/proctoring`: `POST /sessions`, `POST /sessions/{id}/events` (con screenshot base64), `POST /sessions/{id}/biometria`, `GET /sessions`, `GET /sessions/{id}`, `GET /health`. (4) 3 tablas Postgres nuevas: `proctoring_session`, `proctoring_event`, `proctoring_biometria` — migración Alembic `branch_labels=("slim",)`, sin TimescaleDB. (5) Score calculado server-side (pesos `{bajo:5, medio:20, alto:50, critico:100}`) alineado con `riskWeights` del frontend. (6) `Dockerfile.slim`: `alembic upgrade slim@head && uvicorn app.main_slim:app --port $PORT`. L2.5: el backend NUNCA sanciona; screenshots = dato sensible Ley 25.326. Caps NEW: `proctoring-session-api`, `proctoring-event-ingestion`, `proctoring-history`, `railway-deploy-config`.
+- **Dependencias**: ninguna (módulo slim aditivo, independiente del camino crítico de producción)
+- **Governance**: MEDIO
+- **Leer antes**:
+  - `openspec/changes/c-45-backend-proctoring-slim/` (proposal, design, specs/, tasks)
+  - `backend/app/config.py` (Settings de producción — NO modificar)
+  - `backend/app/main.py` (app factory de producción — NO modificar)
+  - `backend/migrations/versions/` (convención de migrations Alembic)
+  - `knowledge-base/13_legal_y_cumplimiento_argentina.md` §Dato sensible §Ley 25.326
+  - `knowledge-base/05_reglas_de_negocio.md` §L2.5 (nunca sancionar automáticamente)
+
+### [C-46] `c-46-frontend-proctoring-integracion`
+- **Estado**: `[ ]` propuesto (validate --strict OK — 46 tasks)
+- **Scope**: **Cableado del frontend al backend slim C-45 — flujo completo detectar → grabar → revisar.** (1) Cinco métodos duales (`crearSesionProctoring`, `enviarEventoProctoring`, `enviarBiometriaProctoring`, `listarSesionesProctoring`, `getSesionProctoring`) en `api.ts` con tipos TypeScript calcados del backend C-45 y fallback mock cuando `USE_REAL_BACKEND=0`. (2) Modo "Grabar sesión" en `AdminDetectionHarness`: crea sesión en backend → captura screenshot por evento (frame del `<video>` a canvas base64) → envía al backend → estado grabando + contador; degradación silenciosa si la red falla. (3) Helper puro `captureVideoFrame` en `videoFrameCapture.ts` (sin React, reutilizable). (4) Envío de biometría al backend atado al `sessionId` de la sesión activa. (5) Vista `ProctoringRevisor` + `ProctoringSessionDetail`: lista de sesiones + detalle con screenshots, veredictos de re-inferencia, comparación face_count cliente/servidor, biometría y score; disclaimer L2.5 inamovible. (6) Ajuste fino de `DEFAULT_CONFIG` en `stateTransitionRules.ts` (`gaze_deviation_threshold` 0.15→0.20, `face_absent_ms` 2000→3000ms) para reducir falsos positivos. Caps NEW: `proctoring-api-client`, `harness-record-mode`, `video-frame-capture`, `proctoring-revisor-real`. Caps MODIFIED (delta): `admin-detection-test-harness`, `state-transition-rules`.
+- **Dependencias**: `C-45` (backend slim — endpoints REST disponibles en Railway)
+- **Governance**: MEDIO
+- **Leer antes**:
+  - `openspec/changes/c-46-frontend-proctoring-integracion/` (proposal, design, specs/, tasks)
+  - `frontend/src/lib/api.ts` (patrón dual-mode USE_REAL_BACKEND, realFetch)
+  - `frontend/src/screens/AdminDetectionHarness.tsx` (harness a extender con modo grabar)
+  - `frontend/src/ui/CameraSnapshotCapture.tsx` (patrón canvas + toDataURL a reusar)
+  - `frontend/src/screens/Revisor.tsx`, `SessionDetail.tsx` (patrón visual a reusar)
+  - `frontend/src/proctoring/riskWeights.ts` (pesos alineados con backend C-45)
+  - `knowledge-base/13_legal_y_cumplimiento_argentina.md` §Dato sensible §Ley 25.326
+  - `knowledge-base/05_reglas_de_negocio.md` §L2.5 (nunca sancionar automáticamente)
+
+### [C-48] `c-48-cola-revision-jerarquica`
+- **Estado**: `[x]` aplicado (validate --strict OK)
+- **Scope**: **Rediseño de la Cola de revisión (`Revisor.tsx`) de lista plana a navegación drill-down jerárquica.** REEMPLAZA el modelo plano del C-47 (que quedó solapado y sin estructura académica). Navegación de 4 niveles con breadcrumb clickable: (1) **Nivel 1 Materias** — cards de materias con sesiones en riesgo (`score >= 60`), contador "N en riesgo" por nodo. (2) **Nivel 2 Comisiones** de la materia. (3) **Nivel 3 Exámenes** de la comisión. (4) **Nivel 4 Personas en riesgo** — sesiones de proctoring del examen (cada sesión = una persona) con score/eventos/discrepancias. Click persona → detalle completo (reusa `ProctoringSessionDetail`) + panel de decisión humana (`ColaPanelDecision`, 3 botones en palabras llanas). **Breadcrumb** (Materias › Materia › Comisión › Examen) en su propia fila + botón "Volver". Agregación pura en `colaAgregacion.ts` (enriquecerYFiltrar + materias/comisiones/examenes/personasEnRiesgo) sobre `joinExamInfo`. Mock: 2-3 sesiones de riesgo sobre `EXAMEN_RENDIBLE_ID` para poblar la hoja. Layout limpio sin `absolute` sobre texto, sin solapamientos a 1440/1280/1024px. Caps NEW: `cola-revision-jerarquica`, `agregacion-cola-por-catalogo`. Cap MODIFIED: `cola-revision-real` (C-47, cambia presentación).
+- **Dependencias**: `C-47` (fuente de datos real + filtro umbral + `joinExamInfo` + tipos/store de decisión que se reutilizan), `C-46` (`listarSesionesProctoring`/`getSesionProctoring` duales + `ProctoringSessionDetail`)
+- **Governance**: BAJO
+- **Leer antes**:
+  - `openspec/changes/c-48-cola-revision-jerarquica/` (proposal, design, specs/, tasks)
+  - `frontend/src/screens/Revisor.tsx` (cola plana C-47 a reescribir como drill-down)
+  - `frontend/src/screens/proctoring/helpers.ts` (`joinExamInfo`, `ExamInfo` a reutilizar)
+  - `frontend/src/screens/ProctoringSessionDetail.tsx` (pantalla destino del detalle — reusar)
+  - `frontend/src/lib/api.ts` (catálogo EXAMENES/COMISIONES/MATERIAS + mock de sesiones a poblar)
+  - `frontend/src/lib/store.ts` (`setDecisionRevisor`, `setProctoringSessionId` — ya existen)
+  - `knowledge-base/05_reglas_de_negocio.md` §L2.5 (nunca sancionar automáticamente)
+
+### [C-47] `c-47-cola-revision-real-supervision`
+- **Estado**: `[ ]` propuesto (validate --strict OK — 40 tasks)
+- **Scope**: **Diferenciación y conexión real de las 3 pantallas de revisión/supervisión.** (1) **`Revisor.tsx` (Cola de revisión)**: reemplaza `api.reviewQueue()` mock por `api.listarSesionesProctoring()` real filtrado por `score >= 60`; join de `exam_id` → catálogo local para mostrar materia/comisión/docente; panel de resolución humana `ColaPanelDecision` (3 acciones: sin_hallazgos / aprobado / flaggeado_para_sumario); decisiones guardadas en store Zustand; disclaimer L2.5 inamovible. (2) **`ProctoringRevisor.tsx` (Sesiones grabadas)**: subtítulo diferenciador "Historial completo — todas, sin filtro"; join de catálogo en cada `SesionCard`. (3) **`Proctor.tsx` (Supervisión en vivo)**: partición visual por `modo` — sección "Exámenes en curso" (modo=examen) + sección "Diagnóstico / harness" (modo=diagnostico); join de catálogo para sesiones de examen. (4) **`joinExamInfo` en `helpers.ts`**: función pura de join síncrono `exam_id → EXAMENES → COMISIONES → MATERIAS`. (5) **Tipos delta**: `DecisionRevisor`, `exam_id` en `SesionProctoringResumen`, `ExamInfo`. Mock de `listarSesionesProctoring()` actualizado con sesión score 72 y exam_id real. Caps NEW: `cola-revision-real`, `exam-catalog-join`. Caps MODIFIED (delta): `proctoring-revisor-real` (C-46), `proctor-live-panel` (C-43/C-46), `session-card-components` (C-46).
+- **Dependencias**: `C-46` (métodos duales `listarSesionesProctoring`/`getSesionProctoring` + componentes proctoring), `C-43` (design system base, `SectionTitle`, `ReviewQueueItem`)
+- **Governance**: BAJO
+- **Leer antes**:
+  - `openspec/changes/c-47-cola-revision-real-supervision/` (proposal, design, specs/, tasks)
+  - `frontend/src/screens/Revisor.tsx` (cola mock actual a reemplazar)
+  - `frontend/src/screens/ProctoringRevisor.tsx` (historial real C-46 a enriquecer)
+  - `frontend/src/screens/Proctor.tsx` (polling real C-46 a diferenciar por modo)
+  - `frontend/src/screens/proctoring/` (SesionCard, SesionVivoCard, helpers.ts a extender)
+  - `frontend/src/screens/ProctoringSessionDetail.tsx` (pantalla destino del detalle — reusar)
+  - `frontend/src/lib/api.ts` (catálogo local EXAMENES/COMISIONES/MATERIAS + mock a actualizar)
+  - `frontend/src/lib/types.ts` (SesionProctoringResumen, store)
+  - `knowledge-base/05_reglas_de_negocio.md` §L2.5 (nunca sancionar automáticamente)
+  - `knowledge-base/13_legal_y_cumplimiento_argentina.md` §Dato sensible §Ley 25.326
+
+### [C-43] `c-43-admin-ui`
+- **Estado**: `[ ]` propuesto (validate --strict OK — 35 tasks)
+- **Scope**: **Rediseño minimalista uniforme + componentización del área admin/staff** — 7 pantallas: AdminDashboard, ExamList, Reports, Revisor, SessionDetail, Proctor, AuditPrivacy. (1) **AdminDashboard**: `SectionTitle` en acciones rápidas, botones `size="sm"` en el card de sidebar, jerarquía visual clara en tabla. (2) **ExamList**: `Button size="sm" variant="ghost"` en acción "Configurar" inline (reemplaza `<button>` raw con clases manuales). (3) **Reports**: barra de distribución de severidad con tono semántico correcto por nivel (baja→success, media→warning, alta→error). (4) **Revisor**: extrae `ReviewQueueItem` + `ReviewDecisionPanel` a `screens/admin/components/`; espaciado `space-y-base` entre ítems; `SectionTitle` en encabezados internos; disclaimer L2.5 inamovible. (5) **SessionDetail**: `SectionTitle` en "Eventos discretos" con sub de conteo. (6) **Proctor**: extrae `StudentFeedCard` (tile de video) + `ProctorControls` (umbral + retos + mensaje) a `screens/admin/components/`; usa `RangeInput` de C-40 para el slider de umbral; `accent-primary` en checkboxes; `SectionTitle` en encabezados. (7) **AuditPrivacy**: extrae `AuditLogItem` + `DsrCard`; `SectionTitle` con sub legal en "Derechos del titular". NO toca AdminDetectionHarness (change propio). Caps NEW: `admin-dashboard-ui`, `proctor-live-panel`, `reviewer-queue-panel`, `audit-privacy-ui`. Caps MODIFIED (delta): `student-profile-shell` (SessionDetail con SectionTitle).
+- **Dependencias**: `C-40` (Button size, RangeInput, FormField, SectionTitle — design system base), `C-41` (patrón de colocalización en `screens/alumno/components/` → replicar en `screens/admin/components/`), `C-42` (tanda de rediseño UI completa antes de admin)
+- **Governance**: BAJO
+- **Leer antes**:
+  - `openspec/changes/c-43-admin-ui/` (proposal, design, specs/, tasks)
+  - `frontend/src/screens/AdminDashboard.tsx`, `ExamList.tsx`, `Reports.tsx`, `Revisor.tsx`, `SessionDetail.tsx`, `Proctor.tsx`, `AuditPrivacy.tsx`
+  - `frontend/src/ui/components.tsx` (primitivas: Button, SectionTitle, RangeInput, ProgressBar)
+  - `frontend/src/screens/alumno/components/` (patrón de colocalización de C-41/C-42)
+
+### [C-49] `c-49-integracion-lms-lti`
+- **Estado**: `[ ]` propuesto (investigación — pendiente de proponer artefactos)
+- **Scope**: ⭐ **Materializa FR-17 (integración LMS) de Fase 2.** Convierte el proctoring en un **LTI 1.3 Tool Provider** que cualquier LMS compatible (Moodle, Canvas, Blackboard, D2L…) puede lanzar, **sin acoplarse a un LMS concreto** (DD-20). El LMS opera el examen; el proctoring se integra alrededor.
+  - **LTI 1.3 Resource Link Launch + OIDC**: el docente configura el proctoring como herramienta externa en su curso; el alumno lanza desde el LMS → login OIDC (encaja con Keycloak, DD-09/C-06) → contexto del examen (`context_id`, `resource_link_id`, roles del lanzamiento).
+  - **NRPS** (Names and Roles): provisioning del roster habilitado desde el LMS (reemplaza la asignación manual de estudiantes de C-07).
+  - **AGS** (Assignment and Grade Services): retorno del **resultado/score de proctoring** (NO la nota — el sistema prioriza, no sanciona, L2.5) y/o un flag de "requiere revisión" al gradebook del LMS, respetando que la decisión disciplinaria es siempre humana (RN-RV).
+  - **Mapeo de identidad**: claims del lanzamiento LTI / Keycloak → 7 roles de ActiveExam (hoy hueco, ver C-06).
+  - **Diseño LTI-ready desde el MVP**: superficie de API de retorno de resultado + provisioning de roster + mapeo de claims (hoy la API REST y el flujo de lanzamiento son propios, sin handoff externo).
+  - **Opcional**: plugin Moodle `quizaccess` nativo como integración profunda ADEMÁS del LTI, si una institución lo justifica (lock-in a Moodle — evaluar).
+  - Tests: handshake OIDC del launch, validación de firma JWT del id_token LTI, deep-linking, retorno AGS idempotente, sincronización de roster NRPS, aislamiento por `context_id` (multi-tenancy).
+- **Dependencias**: `C-01` (DPIA — instalar handoff con el LMS cambia la proporcionalidad), `C-02` (revisores), `C-06` (auth-rbac-keycloak — OIDC + mapeo de roles), `C-07` (exam-config — el roster que NRPS reemplaza), `C-16` (cola de revisión — el resultado que AGS retorna). **No se integra un proctoring que aún no existe: requiere MVP operativo.**
+- **Governance**: ALTO (toca identidad, handoff de datos con sistema externo y el DPIA)
+- **Leer antes**:
+  - `knowledge-base/09_decisiones_y_supuestos.md` §DD-20 §DD-21 §DD-09
+  - `knowledge-base/06_funcionalidades.md` §Épica 18 §FR-17
+  - `knowledge-base/02_descripcion_general.md` §Integraciones externas §API REST
+  - `knowledge-base/03_actores_y_roles.md` §RBAC §Estudiante §Roles
+  - `knowledge-base/13_legal_y_cumplimiento_argentina.md` §Base legal §Finalidad acotada
+  - `knowledge-base/10_preguntas_abiertas.md` §Integración LMS
+
+---
+
+## Resumen
+
+| Fase | Changes | Governance |
+|------|---------|-----------|
+| **0 — Fundaciones** | C-01, C-02, C-03 | 3× CRITICO (C-03 ★ Tier 1 BLOQUEANTE) |
+| **1 — MVP** | C-04…C-19 | 6 CRITICO, 8 ALTO, 2 MEDIO |
+| **2 — Refinamiento** | C-20 | 1 MEDIO |
+| **Refinamiento post-fundación** | C-21, C-22, C-23, C-24, C-25, C-26, C-27, C-28, C-29, C-30, C-31, C-32, C-33, C-34, C-35, C-36, C-37, C-38, C-39, C-40, C-41, C-42, C-43, C-44, C-45, C-46, C-47, C-48 | 6 ALTO, 10 MEDIO, 12 BAJO |
+| **Fase 2 — Integración LMS** | C-49 (FR-17, LTI 1.3) | 1 ALTO |
+
+- **Total**: **48 changes** — 20 de la fundación (3 fases) + 27 post-fundación + C-49 (integración LMS vía LTI 1.3, FR-17) (capa frontend/demo, captura de actividad, consentimiento en capas, decisiones de producto, identidad institucional, lenguaje claro/glosario, UX/legibilidad del harness, motor de visión real en el harness, quick-fixes de presentación, harness cache UX, medidor de riesgo en harness, biometría perfil funcional, fixes detección cámara/mirada, verificación biométrica inmersiva, foto de perfil en enrollment, escaneo DNI frente+dorso, análisis/validación indicativa DNI, UI base limpieza, rediseño portal alumno, rediseño perfil alumno, rediseño admin/staff, pantalla de proctoring UI, backend proctoring slim Railway, integración frontend-proctoring E2E, cola de revisión real + diferenciación supervisión — ver sección dedicada arriba).
+- **Camino crítico**: 11 changes (`C-01 → C-03 → C-04 → C-05 → C-06 → C-07 → C-08 → C-09 → C-10 → C-15 → C-16`). C-21…C-48 quedan **fuera** del camino crítico (refinamiento de demo, no MVP backend).
+- **Gates de paralelismo**: 13 (GATE 0…GATE 12). Forks grandes en GATE 5, GATE 6 y GATE 9.
+- **Primer change recomendado**: `C-01` (acuerdo-proctoring-dpia) — gate legal que junto a `C-02` bloquea todo el desarrollo. El primer change de **código** es `C-03` (poc-carga-mensajeria, Tier 1, BLOQUEANTE).
+- **Post-fundación**: el detalle y el porqué viven también en **engram** (`activeexam/refinamiento-frontend-v2`). Orden de aplicación sugerido: **C-21 → C-22 → C-26** (perfil cuelga del portal; el acuse por-examen de C-26 cuelga de la inscripción de C-21 + el consentimiento de C-22); **C-23 → C-25** (C-25 extiende el harness y cablea los detectores de navegador); C-24 independiente; **C-27 → C-28 → C-29 → C-30 → C-32 → C-33 → C-34 → C-35 → C-36 → C-37 → C-38 → C-39 pueden correr en secuencia** (C-28 inteligibilidad; C-29 legibilidad/banner; C-30 motor real en el harness con overlay canvas; C-32 cache + UX amigable del harness; C-33 medidor de riesgo en harness; C-34 biometría perfil funcional; C-35 fixes bugs detección cámara + mirada; C-36 verificación biométrica inmersiva con componente compartido; C-37 foto de perfil en enrollment con componente snapshot reutilizable; C-38 escaneo DNI frente+dorso con marco escáner ID-1; C-39 análisis indicativo DNI con panel de resultados mock). **C-40** (UI base limpieza) es independiente y puede correr antes de la tanda de rediseño. **C-41 → C-42 → C-43** (rediseño portal alumno → rediseño perfil alumno → rediseño admin/staff) corren en secuencia, todos BAJO governance. **C-47** (cola revisión real + diferenciación supervisión) depende de C-46 y C-43; puede correr inmediatamente después de ambos.
+
+Para arrancar: `/opsx:propose C-01-acuerdo-proctoring-dpia`
