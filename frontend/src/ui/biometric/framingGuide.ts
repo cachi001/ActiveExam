@@ -73,6 +73,35 @@ export function evaluateFraming(s: FramingSignals): FramingHint | null {
   return null;
 }
 
+// ---------------------------------------------------------------------------
+// C-65: Clasificación bloqueante / informativo (biometric-capture-framing-gate)
+// ---------------------------------------------------------------------------
+
+/**
+ * Set de hints que BLOQUEAN la evaluación del reto activo mientras estén activos.
+ * El hint `descentrado` es informativo (no bloqueante): el alumno puede seguir
+ * siendo evaluado aunque no esté perfectamente centrado.
+ */
+export const BLOCKING_HINTS = new Set<FramingHint>([
+  'sin_rostro',
+  'multiples_rostros',
+  'poca_luz',
+  'mucha_luz',
+  'lejos',
+  'cerca',
+]);
+
+/**
+ * Retorna true si el hint es BLOQUEANTE (debe detener la evaluación del reto activo).
+ * Retorna false para hints informativos (`descentrado`) y para null (sin hint).
+ *
+ * Función PURA: sin DOM, sin estado, sin efectos.
+ */
+export function isHintBloqueante(hint: FramingHint | null): boolean {
+  if (hint === null) return false;
+  return BLOCKING_HINTS.has(hint);
+}
+
 /** Copy humano por hint — el componente lo lee tal cual y lo muestra. */
 export const FRAMING_COPY: Record<FramingHint, { titulo: string; sub: string }> = {
   sin_rostro: {

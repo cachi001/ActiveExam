@@ -142,8 +142,6 @@ export const CaptureOval = forwardRef<HTMLVideoElement, CaptureOvalProps>(
               strokeLinecap="round"
               strokeDasharray={PERIMETER}
               strokeDashoffset={offset}
-              // El óvalo SVG empieza a la derecha; rotamos para arrancar arriba.
-              transform="rotate(-90 50 65)"
               style={{
                 transition: 'stroke-dashoffset 350ms ease-out, stroke 250ms ease-out',
               }}

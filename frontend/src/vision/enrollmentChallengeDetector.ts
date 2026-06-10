@@ -265,6 +265,66 @@ export function fisherYatesShuffle<T>(arr: T[]): T[] {
 }
 
 // ---------------------------------------------------------------------------
+// C-65: Confirmación de gesto por tiempo sostenido (biometric-gesture-hold-timing)
+// ---------------------------------------------------------------------------
+
+/**
+ * Milisegundos que el alumno debe sostener el gesto para que el reto se confirme.
+ * Constante exportada y ajustable sin re-deploy (design D2).
+ * Default ~500 ms — independiente del framerate (D2).
+ */
+export const GESTURE_HOLD_MS = 500;
+
+/**
+ * Input del helper puro de hold temporal.
+ */
+export interface GestureHoldInput {
+  /** Timestamp monótono actual (performance.now()). */
+  now: number;
+  /** Timestamp del primer frame en que el alumno cumplió el gesto, o null si no empezó. */
+  holdStart: number | null;
+  /** ¿El frame actual cumple la condición del reto? */
+  cumple: boolean;
+}
+
+/**
+ * Output del helper de hold.
+ */
+export interface GestureHoldOutput {
+  /** Nuevo holdStart: null si se reinició, valor original si sigue, now si acaba de iniciar. */
+  holdStart: number | null;
+  /** true si el gesto se sostuvo >= GESTURE_HOLD_MS. */
+  confirmado: boolean;
+}
+
+/**
+ * Helper PURO de confirmación temporal: gestiona el hold del gesto activo.
+ *
+ * - Si `cumple` es false: resetea holdStart a null (interrupción del gesto).
+ * - Si `cumple` es true y holdStart es null: inicia el hold (holdStart = now).
+ * - Si `cumple` es true y holdStart tiene valor: evalúa si elapsed >= GESTURE_HOLD_MS.
+ *
+ * SIN efectos secundarios. El componente es el responsable de la integración.
+ */
+export function gestureHold({ now, holdStart, cumple }: GestureHoldInput): GestureHoldOutput {
+  if (!cumple) {
+    return { holdStart: null, confirmado: false };
+  }
+
+  if (holdStart === null) {
+    // Primera vez que cumple: iniciar el hold
+    return { holdStart: now, confirmado: false };
+  }
+
+  const elapsed = now - holdStart;
+  if (elapsed >= GESTURE_HOLD_MS) {
+    return { holdStart, confirmado: true };
+  }
+
+  return { holdStart, confirmado: false };
+}
+
+// ---------------------------------------------------------------------------
 // API legacy (C-34) — mantenida para compatibilidad hacia atras (Task 2.5)
 // ---------------------------------------------------------------------------
 
