@@ -55,4 +55,4 @@
 
 - [x] 8.1 `openspec verify` / revisar que specs, design y tasks están alineados
 - [x] 8.2 Confirmar reglas duras: snake_case Python, PascalCase componentes, `extra='forbid'` en todos los schemas, tests sin mocks de DB, sin build/commit automático
-- [ ] 8.3 Confirmar con el dueño los supuestos abiertos S1–S5 del design antes del archive
+- [x] 8.3 Confirmar con el dueño los supuestos abiertos S1–S5 del design antes del archive [Confirmado por el dueño (2026-06-11): S1 registro abierto con validación de dominio, S2 sin verificación email/recuperación/rate-limiting en v1, S3 redirige al login, S4 dominio configurable por env, S5 soft-delete sin UI de reactivación. DEUDA anotada: rate-limiting del auto-registro (S1+S2) como prioridad de hardening futuro.]
