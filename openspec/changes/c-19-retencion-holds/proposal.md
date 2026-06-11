@@ -1,5 +1,21 @@
 # Proposal — C-19 `retencion-holds`
 
+> ⚠️ **REALITY CHECK 2026-06-11 — implementación slim simplifica DRÁSTICAMENTE el scope**
+>
+> **El cambio más grande de esta auditoría** está acá:
+>
+> - **Archivado a Parquet de chunks TimescaleDB** → ⚠️ **NO aplica en slim**. La rama slim usa **tabla común `proctoring_event` en Postgres puro**, sin hypertable. La retención se hace con **`DELETE FROM proctoring_event WHERE created_at < NOW() - INTERVAL '180 days'`** — un cron simple, no exportación a Parquet + drop de chunks.
+> - **Compresión nativa TimescaleDB** → no existe en slim. Se asume retención en caliente hasta el límite, después DELETE.
+> - **Esfuerzo baja de ~15h a ~8-10h**. El riesgo principal del change (archivado Parquet "a medias" con pérdida de datos) **desaparece**.
+> - **El resto sigue válido sin cambios**:
+>   - Políticas de retención por tipo de dato (clips→screenshots, embeddings, eventos, audit log, casos)
+>   - Holds por caso disciplinario abierto (`CasoDisciplinarioModel.hold` ya existe)
+>   - Eliminación de embedding al egreso del estudiante
+>   - Coordinación con C-17 (DSR diferida por hold)
+>   - Trazabilidad en audit log
+> - **Visión futura (rama "full", post-c-03 si valida escala)**: el archivado a Parquet vuelve cuando se migre a TimescaleDB. El design body refleja esa visión — sigue siendo válido para Fase 2.
+> - **Para el implementador**: enfocate en (a) job periódico de DELETE por política, (b) `HoldVerifier` antes de borrar, (c) trigger de eliminación de embedding al marcar `usuario.eliminado_en`. **Olvidate de Parquet por ahora.**
+
 > **Naturaleza del change**: backend **auxiliar** de cumplimiento legal. Governance **ALTO** (retención y supresión verificable, Ley 25.326). Implementa la aplicación automática de políticas de retención con holds (US-014, FR-14; RN-DSR-02). Depende de C-07 (modelo de datos / eventos / casos ya persistidos).
 
 ## Why

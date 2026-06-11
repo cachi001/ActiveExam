@@ -23,6 +23,25 @@
 
 ---
 
+## ⚠️ Reality check 2026-06-11 — rama "slim" (Postgres puro + screenshots) vs rama "full" (TimescaleDB + clips)
+
+> Los proposals/designs originales fueron escritos asumiendo la **rama "full"** (TimescaleDB hypertables + continuous aggregates + clips de video). La realidad de producción (Railway con `Dockerfile.slim`) es la **rama "slim"** (Postgres puro + screenshots por evento). Diferencias clave que afectan a varios changes activos:
+>
+> | Concepto en designs | Realidad slim (hoy) | Aplica a |
+> |---------------------|---------------------|----------|
+> | Hypertable TimescaleDB | Tabla común `proctoring_event` | c-10, c-19 |
+> | Continuous aggregates (`cagg_*`) | Query directa o materialized view manual | c-15, c-20 |
+> | Compresión nativa TimescaleDB | No existe | c-19 |
+> | Archivado a Parquet de chunks | `DELETE WHERE created_at < X` simple | **c-19 (el más afectado, esfuerzo baja de ~15h a ~8-10h)** |
+> | "Clips de video URL firmada 15min" | **Screenshots por evento** (`proctoring_event.screenshot_b64`). La URL firmada sigue aplicando, pero sobre screenshot | c-16, c-17 |
+> | Auth: Keycloak | JWT propio (c-55) hoy; Keycloak diferido a integración LMS | c-17 |
+>
+> **Decisión del dueño**: Postgres puro ahora, TimescaleDB cuando c-03 valide escala. Los design bodies originales siguen siendo válidos para **Fase 2 (post-c-03)**. Cada proposal afectado tiene una nota "⚠️ REALITY CHECK" al principio con el detalle.
+>
+> **Changes afectados (con nota en proposal.md)**: c-10, c-15, c-16, c-17, c-19. **Sin impacto**: c-18 (cadena de custodia funciona igual con screenshots).
+
+---
+
 ## ⛔ Prioridad 0 — Gates bloqueantes
 
 > El CLI los marca en 0% o con trabajo parcial sin veredicto cerrado. Son precondición dura del resto.

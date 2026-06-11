@@ -1,5 +1,11 @@
 # Proposal — C-10 `event-ingestion-transport`
 
+> ⚠️ **REALITY CHECK 2026-06-11 — implementación slim vs visión futura**
+>
+> - **Implementación ahora (rama "slim", prod Railway)**: persistencia en **tabla común `proctoring_event`** (Postgres puro, migración 0005). Screenshots adjuntos al evento (`screenshot_b64`, `screenshot_sha256`). Backplane Postgres `LISTEN/NOTIFY` estándar. **NO hay hypertable, NO hay TimescaleDB extension, NO hay clips de video** (la evidencia es screenshot por evento, no video continuo).
+> - **Visión futura (rama "full", cuando c-03 valide volumen al pico)**: migrar a hypertable TimescaleDB con compresión nativa. El design body refleja esa visión — sigue siendo válido para Fase 2.
+> - **Tasks afectadas**: persistencia (sección 4) opera contra tabla común, no hypertable. El resto (validación HMAC, fan-out, OTEL) aplica igual.
+
 > **Naturaleza del change**: núcleo de monitoreo en tiempo real, governance **ALTO**. Es la **columna vertebral del pipeline de eventos**: el canal por el que el cliente (sensor no confiable) reporta lo que ocurre, el backend lo valida, lo firma server-side, lo persiste en TimescaleDB y lo propaga a los paneles. Todo lo de detección (C-11), evidencia (C-12), scoring (C-13), panel (C-15) y resiliencia (C-14) cuelga de este transporte.
 
 ## Why

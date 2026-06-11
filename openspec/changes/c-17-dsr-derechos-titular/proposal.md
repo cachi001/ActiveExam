@@ -1,5 +1,12 @@
 # Proposal — C-17 `dsr-derechos-titular`
 
+> ⚠️ **REALITY CHECK 2026-06-11 — corrección de vocabulario "clips" → "screenshots"**
+>
+> - **Implementación ahora (rama "slim")**: la evidencia binaria que el DSR tiene que borrar/anonimizar son **screenshots por evento** (`proctoring_event.screenshot_b64`), no video clips. El concepto de erasure es el mismo, solo cambia el tipo de binario.
+> - **MinIO/S3 WORM con Object Lock**: aplica igual — los screenshots subidos al bucket de evidencia tienen Object Lock; la erasure física se difiere hasta que expire el lock (eso no cambia con slim).
+> - **Autenticación del titular**: hoy usa **JWT propio (c-55 archivado)** no Keycloak (c-52 archivado pero diferido). El design dice "Keycloak" — al implementar, usar el provider JWT activo.
+> - **Visión futura**: cuando se active Keycloak (con integración LMS/LTI), reemplazar el auth provider. La lógica de DSR (`HoldVerifier`, `Anonymizer`, erasure de embeddings cifrados) no cambia.
+
 > **Naturaleza del change**: backend **auxiliar** de cumplimiento legal. Governance **CRÍTICO** (Ley 25.326, derechos del titular). Implementa el endpoint `POST /api/v1/dsr/{type}` y la maquinaria de acceso / rectificación / eliminación / portabilidad, con verificación de holds y trazabilidad en audit log. Depende de C-06 (autenticación / Keycloak para identificar al titular).
 
 ## Why
