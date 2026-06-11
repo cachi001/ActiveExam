@@ -13,7 +13,7 @@
 3. Flujo: `/opsx:propose` (si falta) → `/opsx:apply` → `/opsx:archive`. Al archivar, el change sale de este roadmap.
 4. Regenerá este archivo con `/roadmap-generator` cuando cambie el estado (no lo edites a mano para "tildar").
 
-> **Foto al 2026-06-11**: 65 changes totales · **46 archivados** (cerrados y versionados) · **19 pendientes** (abajo).
+> **Foto al 2026-06-11**: 65 changes totales · **46 archivados** (cerrados y versionados) · **19 pendientes** (abajo) · **+1 planificado sin crear** (`c-66` LTI, Fase 2 — ver Prioridad 3).
 
 ---
 
@@ -60,10 +60,22 @@
 | **c-34** `biometria-perfil-funcional` | 41/45 | Liveness real en el enrollment (hoy mock de botones + embedding random) + fullscreen móvil. 4 tasks. | ALTO |
 | **c-35** `fixes-deteccion-camara-mirada` | 17/20 | Bugs del harness: frame congelado al volver a la página + umbral de mirada inalcanzable. 3 tasks. | MEDIO |
 | **c-39** `analisis-validacion-dni` | 28/32 | UI de análisis indicativo del DNI capturado (mock client-side, disclaimer L2.5). 4 tasks. | MEDIO |
-| **c-44** `creacion-examenes-ui` | 0/40 | Validación inline en `ConfigureExam.tsx` (hoy `alert()`), feedback de guardado, preview. | MEDIO |
+| **c-44** `creacion-examenes-ui` ⬇️ **DESPRIORIZADO** | 0/40 | Validación inline en `ConfigureExam.tsx` (hoy `alert()`), feedback de guardado, preview. **Ver nota ↓ (relación con c-66/DD-20).** | MEDIO |
 | **c-52** `keycloak-realm-config` | 0/20 | Crear realm `proctoring` + clients + usuarios + audience mapper (hoy `start-dev` sin realm). | ALTO |
 | **c-53** `vision-mesh-objetos` | 12/33 | Mesh + detección de objetos + separar diagnóstico de staff de la experiencia del alumno. | MEDIO |
 | **c-56** `persistencia-biometrica-referencia` | 23/33 | Persistir foto + embedding de referencia en backend (hoy en localStorage/memoria) — habilita 1:1 real. | ALTO |
+
+> **Nota c-44 (desprioritizado — decisión 2026-06-11, ver [Prioridad 3](#-prioridad-3--fase-2-planificada-integración-lms--lti--aún-sin-change-en-el-cli) / DD-20)**: `ConfigureExam.tsx` configura DOS bloques. (1) **Info del examen** (nombre, cátedra, horario, duración) → en el modelo objetivo **la provee el LMS** vía contexto del launch LTI; la creación local queda como **demo/fallback** (institución sin LMS). (2) **Parámetros de proctoring** (detectores, umbral de revisión, retención Ley 25.326) → son **nuestros**, se configuran **por examen asociados al contexto del LMS**, y **se reaprovechan en `c-66`** re-enganchados al launch LTI. **No invertir las 40 tasks de pulido completo** hasta confirmar el modelo LTI; mantener solo lo mínimo funcional para la demo. — Fase 2 planificada (integración LMS / LTI) — ⚠️ aún SIN change en el CLI
+
+> Este change estaba en el plan original (`CHANGES.legacy.md` §[C-49] `c-49-integracion-lms-lti`) pero **nunca se creó como change real en el CLI**: el número `c-49` lo tomó otro change (`c-49-cablear-codigo-fantasma-proctoring`, ya archivado), así que al regenerar este roadmap desde `openspec list --json` quedó **invisible**. Se re-incorpora acá para que no se pierda. **NO cuenta en los 19 pendientes del CLI** hasta que se corra `/opsx:propose`.
+
+| Change (propuesto) | Progreso | Qué es | Dep | Gov |
+|--------------------|----------|--------|-----|-----|
+| **c-66** `integracion-lms-lti` | sin crear | ⭐ Materializa **FR-17 (integración LMS) de Fase 2 — DD-20 (rev. 2026-06-11)**. **Dos capas**: (1) **LTI 1.3 Tool Provider** universal que cualquier LMS (Moodle, Canvas, Blackboard, D2L…) puede lanzar — launch OIDC (encaja con Keycloak), roster vía **NRPS**, retorno vía **AGS** (resultado de proctoring, **NO la nota** — L2.5), mapeo de claims→7 roles; (2) **plugin Moodle `quizaccess`** (NO opcional) — proctoring como regla de acceso al quiz nativo (gate cámara/consentimiento + monitoreo durante el intento, sin saltar de pantalla). El examen lo opera el LMS; el proctoring NO crea ni importa exámenes. | c-01, c-02, c-06 ✓, c-07 ✓, c-16 | ALTO |
+
+**Leer antes**: `09_decisiones_y_supuestos.md` §DD-20 · `CHANGES.legacy.md` §[C-49] (scope completo, líneas 840-851) · `02_descripcion_general.md` §Integraciones · `06_funcionalidades.md` §Épica 18 (FR-17).
+
+**Para arrancarlo**: `/opsx:propose c-66-integracion-lms-lti`. No antes del MVP operativo — no se integra un proctoring que todavía no existe.
 
 ---
 
@@ -125,7 +137,7 @@ c-03 → c-04 → c-10 → c-15 → c-16 → c-20
 2. **Cerrar los "casi listos"** (1–4 tasks): c-04, c-10, c-32, c-34, c-35, c-39. Victorias rápidas que limpian el tablero.
 3. **Camino crítico del MVP**: c-10 → c-15 → c-16 (cierra el ciclo extremo-a-extremo) + los desbloqueados c-17/c-18/c-19 en paralelo.
 4. **Track demo/slim**: c-53, c-44, c-52, c-56.
-5. **Fase 2**: c-20 (reportes, requiere c-16 cerrado).
+5. **Fase 2**: c-20 (reportes, requiere c-16 cerrado) y **c-66 integración LMS/LTI** (re-incorporado, requiere MVP operativo — correr `/opsx:propose` primero).
 
 > Regla dura del proyecto (DD-19): la arquitectura de mensajería **la decide C-03**. No asumir A4 ni SAD antes de esa PoC.
 
