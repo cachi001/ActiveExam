@@ -1,5 +1,12 @@
 # Proposal — C-16 `cola-revision-humana`
 
+> ⚠️ **REALITY CHECK 2026-06-11 — implementación slim + corrección de vocabulario**
+>
+> - **Implementación ahora (rama "slim", prod Railway)**: la cola lee de `proctoring_session` ordenando por `score` desc (Postgres puro). NO usa continuous aggregates de TimescaleDB.
+> - **Sobre "clips firmados de 15 min"**: ⚠️ **el vocabulario del proposal está desactualizado**. La evidencia NO son video clips — son **screenshots por evento** (`proctoring_event.screenshot_b64` + `screenshot_sha256`). La "URL firmada de 15 min" para descargar **sigue aplicando, pero sobre el screenshot del evento**, no sobre un video. El revisor ve: timeline de eventos + screenshot adjunto a cada uno + observaciones del proctor + audit previo. **Más simple que video continuo**, no menos.
+> - **Sobre c-02 (designación revisores)**: ⚠️ **fue cancelado** en sesión 2 (basta asignar rol `proctor` en Keycloak). C-16 NO está bloqueado por c-02 ya — único bloqueador real es c-15.
+> - **Visión futura**: si la evidencia llega a incluir clips de video en algún momento (no hay plan hoy), el design body cubre ese caso. Por ahora, **mentalmente reemplazar "clip" → "screenshot del evento"** al leer el resto del documento.
+
 > **Naturaleza del change**: feature de producción, governance **ALTO**. **Cierra el ciclo MVP** (verificación → examen → evidencia → **revisión humana**) — US-012, FR-12, UC-04, Flujo 7. **Depende de C-15** (panel/observaciones) y **requiere C-02** (revisores designados y capacitados) para cumplir su propósito (SU-03). **Principio inviolable**: el sistema NUNCA sanciona automáticamente; la decisión final es **siempre humana** (RN-RV-07, DD-01).
 
 ## Why

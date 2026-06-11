@@ -1,5 +1,12 @@
 # Proposal — C-15 `panel-proctor-sse`
 
+> ⚠️ **REALITY CHECK 2026-06-11 — implementación slim vs visión futura**
+>
+> - **Implementación ahora (rama "slim", prod Railway)**: la priorización por score lee **directamente de `proctoring_event` + `proctoring_session`** vía query agregado en runtime o **materialized view manual** (Postgres puro). **NO hay `cagg_score_ponderado_min` continuous aggregate** — ese es de TimescaleDB y vive solo en la rama full.
+> - **Visión futura (rama "full", post-c-03)**: continuous aggregates de TimescaleDB que pre-calculan el score por minuto. Esa es la versión escalable, no la actual.
+> - **Tasks afectadas**: las que dicen "leer del continuous aggregate" — implementarlas contra query/materialized view en slim. El SLO p99 < 500 ms sigue aplicando, solo cambia la fuente.
+> - **Sobre "clips de video"**: no aplica. La evidencia que ve el proctor son **screenshots por evento** (ya en `proctoring_event.screenshot_b64`). No hay "video stream" ni "thumbnail live".
+
 > **Naturaleza del change**: feature de producción, governance **ALTO**. Implementa el **panel del proctor en vivo** (US-011, FR-11). **Usa el ganador de transporte de C-03** (hipótesis A4: SSE + backplane, sin sticky — DD-16). **Depende de C-10** (eventos + backplane). Cierra contra el SLO duro de **alertas al panel < 500 ms** (`14`).
 
 ## Why
