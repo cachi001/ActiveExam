@@ -50,7 +50,7 @@
 ## 7. Dockerfile.slim
 
 - [x] 7.1 Crear `Dockerfile.slim` en la raíz del repo: base `python:3.12-slim`, instala deps de `backend/requirements.txt` (incluye `mediapipe`), copia código, copia `frontend/public/mediapipe/face_detector_short_range.task` a `/app/models/`, setea `PYTHONPATH=/app` y `MEDIAPIPE_MODEL_DIR=/app/models`, CMD = `alembic upgrade slim@head && uvicorn app.main_slim:app --host 0.0.0.0 --port ${PORT:-8000}`. El build se corre desde la raíz del repo (`docker build -f Dockerfile.slim .`) para acceder a `frontend/public/mediapipe/`
-- [ ] 7.2 Verificar que el build `docker build -f Dockerfile.slim .` completa sin errores
+- [x] 7.2 Verificar que el build `docker build -f Dockerfile.slim .` completa sin errores [Verificado 2026-06-11: build OK (exit 0), imagen 1.19GB. 1 warning NO bloqueante: JSONArgsRecommended en CMD (línea 65, shell-form) → DEUDA: pasar CMD a exec/JSON-form para manejo correcto de SIGTERM en Railway.]
 - [x] 7.3 Documentar en un comentario del Dockerfile o en un `railway.json` las variables de entorno: `DATABASE_URL`, `FRONTEND_ORIGIN`, `PORT` (auto Railway) y `MEDIAPIPE_MODEL_DIR` (opcional, default `/app/models`)
 
 ## 8. Tests de Integración (Postgres real)
