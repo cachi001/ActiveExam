@@ -1,8 +1,10 @@
-# Spec — suspicious-activity-catalog
+# suspicious-activity-catalog
 
-> Catálogo canónico de actividad sospechosa (visión + navegador) que mapea cada tipo de actividad a un `tipo` de evento del dominio y a una severidad, compatible con el `event-schema-contract` de C-10 (RN-EV-04). Es la fuente de verdad para `TipoEvento`, los labels de UI y el checklist de cobertura del harness.
+## Purpose
 
-## ADDED Requirements
+Define el catálogo canónico de actividad sospechosa (visión + navegador) que mapea cada actividad a un `tipo` de evento del dominio y a su severidad. Es la fuente de verdad consumida por las reglas de transición (que producen los eventos), por el frontend (labels y descripciones de UI), por el scoring y por el checklist de cobertura del harness, compatible con el `event-schema-contract` de C-10 (RN-EV-04).
+
+## Requirements
 
 ### Requirement: Catálogo de actividad sospechosa de visión
 El sistema SHALL declarar el mapeo de cada actividad sospechosa de visión a un tipo de evento del dominio y a una severidad: rostro ausente sostenido (`rostro_ausente`, media), múltiples rostros (`multiples_rostros`, alta), mirada desviada sostenida (`mirada_desviada_sostenida`, media). Estos tipos SHALL coincidir con los emitidos por las reglas de transición.

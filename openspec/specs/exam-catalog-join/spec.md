@@ -1,4 +1,10 @@
-## ADDED Requirements
+# exam-catalog-join
+
+## Purpose
+
+Define la función pura `joinExamInfo` que enriquece un `exam_id` de una sesión de proctoring con su contexto académico (examen, materia, comisión, docente) a partir del catálogo local del frontend, y expone la prop opcional `examInfo` para que las cards de sesión (`SesionCard`, `SesionVivoCard`) puedan mostrar ese contexto sin romper a los callers existentes. Es la pieza compartida entre la cola de revisión, el panel en vivo y la agregación drill-down: una sola fuente de verdad para resolver "qué examen es este" en el cliente.
+
+## Requirements
 
 ### Requirement: `joinExamInfo` — función pura de join con catálogo local
 

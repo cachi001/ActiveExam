@@ -1,4 +1,10 @@
-## ADDED Requirements
+# term-tooltip-component
+
+## Purpose
+
+Define el componente átomo `<Term>` que envuelve terminología técnica en cualquier pantalla con una indicación visual (subrayado punteado + icono "?") y un tooltip accesible con la definición de `GLOSSARY[termKey]`. Cubre además el reemplazo de las menciones crudas de términos técnicos visibles al alumno (L2.5, embedding, WORM, liveness, cadena de custodia) por su versión envuelta en `<Term>` para que el texto siga visible pero la definición esté disponible en contexto.
+
+## Requirements
 
 ### Requirement: Componente átomo Term que envuelve terminología técnica con definición accesible
 El sistema SHALL proveer un componente React `<Term>` en `frontend/src/ui/Term.tsx` que reciba una `termKey: TermKey`, renderice el texto técnico con indicación visual (subrayado punteado + icono "?") y muestre la definición de `GLOSSARY[termKey]` como tooltip al hacer hover en desktop o tap en mobile. El componente SHALL ser accesible (aria-describedby, role="tooltip") y reutilizable en cualquier pantalla del frontend.

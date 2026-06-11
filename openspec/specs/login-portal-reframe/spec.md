@@ -1,4 +1,10 @@
-## ADDED Requirements
+# login-portal-reframe
+
+## Purpose
+
+Define el reframe de la pantalla de login del alumno como portal general (acceso a materias, inscripción a exámenes, gestión de perfil) en lugar de presentarse como acceso exclusivo a un examen en curso. Cambia headline, subtítulo e ícono principal, manteniendo intacto el branding institucional (label de login, widget de institución, links de soporte y footer de privacidad con Ley 25.326).
+
+## Requirements
 
 ### Requirement: Login como portal del alumno
 La pantalla `Login.tsx` SHALL presentarse como un portal de acceso general del alumno, no como acceso exclusivo a un examen en curso. El headline SHALL ser "Portal del alumno" y el subtítulo SHALL describir las capacidades del portal (ver materias, inscribirse a exámenes, gestionar perfil académico). El ícono principal SHALL ser `school` en lugar de `verified_user`.

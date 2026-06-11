@@ -1,4 +1,10 @@
-## ADDED Requirements
+# agregacion-cola-por-catalogo
+
+## Purpose
+
+Define las funciones puras que enriquecen y agrupan las sesiones de proctoring de alto riesgo por la jerarquía del catálogo académico (materia → comisión → examen → persona), apoyándose en `joinExamInfo`. Es la capa de datos que alimenta la navegación drill-down de la cola de revisión, sin React, sin hooks y sin llamadas HTTP, de modo que cada nivel del drill-down se pueda calcular y testear de forma determinística.
+
+## Requirements
 
 ### Requirement: Agregación pura de sesiones por catálogo académico
 

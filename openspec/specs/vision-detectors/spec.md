@@ -1,8 +1,10 @@
-# Spec — vision-detectors
+# vision-detectors
 
-> Los tres detectores de visión (Face Detection, Face Mesh, Pose) ejecutando WASM+WebGL en un Web Worker con transferencia de buffers sin copias (`11_ia_y_vision.md`, Flujo 3).
+## Purpose
 
-## ADDED Requirements
+Define los tres detectores de visión del cliente — Face Detection, Face Mesh y Pose — corriendo sobre WebAssembly + WebGL dentro de un Web Worker dedicado, con transferencia de buffers sin copias para no bloquear el hilo principal. Establece los fps objetivo de cada detector y lo que cada uno SHALL producir (bounding boxes con confianza, landmarks para mirada y embedding facial, keypoints de pose), de modo que las reglas de transición y la verificación silenciosa continua tengan las señales necesarias.
+
+## Requirements
 
 ### Requirement: Tres detectores a sus fps objetivo
 El motor SHALL ejecutar Face Detection (5–10 fps), Face Mesh (5–10 fps) y Pose (2–5 fps). Face Detection SHALL producir bounding boxes y score de confianza por rostro; Face Mesh SHALL producir landmarks para dirección de la mirada (iris) y el embedding facial para verificación silenciosa continua; Pose SHALL producir puntos clave del cuerpo para posturas de consulta.
