@@ -1,7 +1,7 @@
 # CHANGES — Roadmap de pendientes
 
 > Índice **solo de lo que falta** del proyecto **Proctoring** (plataforma self-hosted de supervisión asistida por IA de evaluaciones remotas).
-> Regenerado el **2026-06-11** (sesión 2) a partir del estado real del CLI de OpenSpec (`openspec list --json`), tras higiene masiva: 6 archivados + 3 cancelados + 1 sincronizado desde rama + 26 specs canónicas regeneradas.
+> Regenerado el **2026-06-11** (sesión 2, post-c-39) a partir del estado real del CLI de OpenSpec (`openspec list --json`), tras higiene masiva: 6 archivados + **4 cancelados** + 1 sincronizado desde rama + 26 specs canónicas regeneradas.
 > El plan original completo (los 65 changes, hechos y pendientes) quedó archivado en **[CHANGES.legacy.md](CHANGES.legacy.md)**.
 
 ---
@@ -13,11 +13,11 @@
 3. Flujo: `/opsx:propose` (si falta) → `/opsx:apply` → `/opsx:archive`. Al archivar, el change sale de este roadmap.
 4. Regenerá este archivo con `/roadmap-generator` cuando cambie el estado (no lo edites a mano para "tildar").
 
-> **Foto al 2026-06-11 (sesión 2)**: 65 changes totales · **52 archivados** + **3 cancelados** (sin retomar) · **10 pendientes** (abajo) · **+1 planificado sin crear** (`c-66` LTI, Fase 2 — ver Prioridad 3).
+> **Foto al 2026-06-11 (sesión 2, post-c-39)**: 65 changes totales · **52 archivados** + **4 cancelados** (sin retomar) · **9 pendientes** (abajo) · **+1 planificado sin crear** (`c-66` LTI, Fase 2 — ver Prioridad 2).
 
 > **Cambios respecto del estado anterior (sesión 1 del 2026-06-11)**:
 > - **Archivados nuevos**: c-04, c-32, c-34, c-35, c-52, c-56 (código en main + verificación cerrada).
-> - **Cancelados** (movidos a `archive/<fecha>-c-NN-name-CANCELLED/` con nota): **c-02** (basta asignar rol `proctor` en Keycloak), **c-44** (no se crean exámenes en plataforma — LMS lo hace vía c-66/DD-20), **c-53** (Object Detection diferido sine die).
+> - **Cancelados** (movidos a `archive/<fecha>-c-NN-name-CANCELLED/` con nota): **c-02** (basta asignar rol `proctor` en Keycloak), **c-44** (no se crean exámenes en plataforma — LMS lo hace vía c-66/DD-20), **c-53** (Object Detection diferido sine die), **c-39** (análisis DNI mock client-side contradice la postura "no análisis cliente" ya escrita en `EnrollmentDniStep.tsx`; el análisis real será server-side a futuro).
 > - **c-03 sincronizado** desde rama `feat/c-03-poc-carga` → main: trae `/poc/` (harness multi-instancia + k6 + panels_asyncio) y `results-4core-baseline.md`. Estado pasó de 0/25 → **24/45** (Bloques 0-4 hechos; Bloque 5 medición + Bloque 6 condicional + cierre veredictos pendientes).
 > - **Deuda de specs canónicas malformadas**: regeneradas las 26 que fallaban `openspec validate --specs --strict`. Hoy: **111 passed / 0 failed**.
 
@@ -56,19 +56,9 @@
 
 ---
 
-## 🔵 Prioridad 2 — Track demo/slim restante
+## 🟣 Prioridad 2 — Fase 2 planificada (integración LMS / LTI) — ⚠️ aún SIN change en el CLI
 
-> Único superviviente del track slim post-cleanup. **Hallazgo importante**: el CLI marca 28/32 pero la auditoría revela que ~24 tasks fueron marcadas sin escribir el código (tipos, función `analizarDNI`, fases UI no existen). Requiere re-planificación antes de retomar.
-
-| Change | Progreso CLI | Realidad | Gov |
-|--------|--------------|----------|-----|
-| **c-39** `analisis-validacion-dni` | 28/32 | **~4/32** real. Falta: `AnalisisDNI`/`DatosOCRMock` types, `analizarDNI()` API, fases `'analizando'/'resultado'` en `EnrollmentDniStep`. Decisión del dueño: postergar hasta confirmar prioridad. | MEDIO |
-
----
-
-## 🟣 Prioridad 3 — Fase 2 planificada (integración LMS / LTI) — ⚠️ aún SIN change en el CLI
-
-> Este change estaba en el plan original (`CHANGES.legacy.md` §[C-49] `c-49-integracion-lms-lti`) pero **nunca se creó como change real en el CLI**: el número `c-49` lo tomó otro change (`c-49-cablear-codigo-fantasma-proctoring`, ya archivado), así que al regenerar este roadmap desde `openspec list --json` quedó **invisible**. Se re-incorpora acá para que no se pierda. **NO cuenta en los 10 pendientes del CLI** hasta que se corra `/opsx:propose`.
+> Este change estaba en el plan original (`CHANGES.legacy.md` §[C-49] `c-49-integracion-lms-lti`) pero **nunca se creó como change real en el CLI**: el número `c-49` lo tomó otro change (`c-49-cablear-codigo-fantasma-proctoring`, ya archivado), así que al regenerar este roadmap desde `openspec list --json` quedó **invisible**. Se re-incorpora acá para que no se pierda. **NO cuenta en los 9 pendientes del CLI** hasta que se corra `/opsx:propose`.
 
 | Change (propuesto) | Progreso | Qué es | Dep | Gov |
 |--------------------|----------|--------|-----|-----|
@@ -94,9 +84,6 @@ Desbloqueados hoy (deps ya archivadas — pueden arrancar en paralelo):
   c-17-dsr-derechos-titular (0/20)         [c-06 ✓]
   c-18-verificacion-cadena-apelacion (0/20) [c-12 ✓]
   c-19-retencion-holds (0/19)              [c-07 ✓]
-
-Postergado (decisión del dueño):
-  c-39-analisis-validacion-dni (28/32 CLI, ~4/32 real)
 
 Planificado sin proponer:
   c-66-integracion-lms-lti (Fase 2)
@@ -131,7 +118,7 @@ c-03 → c-10 → c-15 → c-16 → c-20
 2. **En paralelo, c-17/c-18/c-19**: tres changes del módulo legal/cumplimiento ya desbloqueados (deps archivadas), sin dependencia entre ellos. Ideal para 3 agentes en paralelo.
 3. **Cuando DPO esté disponible, c-01**: drafts de Acuerdo L2.5 + DPIA + Acta ADRs los puede preparar Claude desde la KB; firma humana cierra el gate.
 4. **Camino crítico cerrado**: c-15 → c-16 → c-20 después de c-10.
-5. **Fase 2**: c-66 integración LMS/LTI cuando el MVP esté operativo. Tomar c-39 (DNI análisis) cuando se vuelva a priorizar (re-planificar primero — los 28/32 son falsos).
+5. **Fase 2**: c-66 integración LMS/LTI cuando el MVP esté operativo. **Análisis real del DNI** (server-side, OCR + PDF417 + RENAPER) sería un change nuevo separado cuando aparezca la necesidad — no reabrir c-39 (cancelado).
 
 > Regla dura del proyecto (DD-19): la arquitectura de mensajería **la decide C-03**. No asumir A4 ni SAD antes de esa PoC.
 
@@ -144,9 +131,8 @@ c-03 → c-10 → c-15 → c-16 → c-20
 | Gate bloqueante (parcial) | c-01, c-03 | 68 | 24 |
 | MVP camino crítico (parcial) | c-10 | 26 | 22 |
 | MVP sin empezar (0%) | c-15, c-16, c-17, c-18, c-19, c-20 | 109 | 0 |
-| Track demo postergado | c-39 | 32 | 28 (~4 reales) |
-| **Total pendientes** | **10** | **235** | **74** |
+| **Total pendientes** | **9** | **203** | **46** |
 | Archivados | 52 | — | — |
-| Cancelados (sin retomar) | 3 (c-02, c-44, c-53) | — | — |
+| Cancelados (sin retomar) | 4 (c-02, c-39, c-44, c-53) | — | — |
 | **Total universo** | **65** | — | — |
 | Planificado sin crear | c-66 (Fase 2) | — | — |
