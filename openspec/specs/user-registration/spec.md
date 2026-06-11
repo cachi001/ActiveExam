@@ -1,4 +1,10 @@
-## ADDED Requirements
+# user-registration
+
+## Purpose
+
+Define el endpoint público de auto-registro de estudiantes (`POST /api/v1/auth/register`) y los datos personales asociados (`nombre`, `apellido`). El rol queda forzado a `estudiante` server-side — el cliente NUNCA puede auto-asignarse un rol elevado — el schema rechaza campos extra, el password se hashea con bcrypt y nunca se persiste en claro, y el email debe pertenecer al dominio institucional configurado. Incluye también la pantalla de signup en el frontend que reúsa el input reusable y redirige al login tras un alta exitosa.
+
+## Requirements
 
 ### Requirement: Auto-registro público de estudiantes
 

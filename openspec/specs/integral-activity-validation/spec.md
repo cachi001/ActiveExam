@@ -1,8 +1,10 @@
-# Spec — integral-activity-validation
+# integral-activity-validation
 
-> Validación de cobertura end-to-end en la página de testeo: el operador confirma, con su propia persona y navegador, que CADA tipo de actividad sospechosa del catálogo (visión + navegador) se capturó y registró al menos una vez. Se apoya en el sink local air-gapped del harness (C-23, D-4): sin examen real ni emisión al backend de producción.
+## Purpose
 
-## ADDED Requirements
+Define la página de testeo integral que permite al operador validar end-to-end, con su propia cámara y navegador, que cada tipo de actividad sospechosa del catálogo (visión + navegador) se capturó y registró al menos una vez. Se apoya en el sink local air-gapped del harness — NUNCA emite eventos al backend de producción ni abre una sesión de alumno real. Aporta un checklist de cobertura en tiempo real y reglas para distinguir lo "no testeable en este navegador" de lo "faltante".
+
+## Requirements
 
 ### Requirement: Checklist de cobertura de actividad sospechosa
 La página de testeo SHALL mostrar un checklist con cada tipo de actividad sospechosa del catálogo (visión y navegador) e indicar, en tiempo real, cuáles fueron capturados y registrados al menos una vez durante la sesión de prueba, marcándose a partir del log de eventos del harness.

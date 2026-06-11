@@ -1,4 +1,10 @@
-## ADDED Requirements
+# glossary-panel
+
+## Purpose
+
+Define el componente `<GlossaryPanel>` — un modal accesible que lista todos los términos del diccionario `GLOSSARY` con sus definiciones y referencias legales, disponible desde el footer de la shell. Es el contrapunto al componente `<Term>` (tooltip puntual): cuando el usuario quiere ver todo el vocabulario técnico en un solo lugar, abre este panel desde cualquier pantalla de la aplicación.
+
+## Requirements
 
 ### Requirement: Panel de glosario completo accesible desde el footer
 El sistema SHALL proveer un componente `<GlossaryPanel>` en `frontend/src/ui/GlossaryPanel.tsx` que muestre un modal con la lista completa de términos del diccionario `GLOSSARY`, cada uno con su `label`, `definition` y `legalRef` (si existe). El panel SHALL ser activable mediante un botón "Glosario" en el footer de la shell (`shells.tsx`).

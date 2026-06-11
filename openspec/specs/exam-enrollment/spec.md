@@ -50,28 +50,23 @@ El sistema SHALL proveer la pantalla `/alumno/mis-examenes` que liste todas las 
 - **THEN** la pantalla muestra un mensaje invitando a inscribirse en `/alumno/materias`
 
 ### Requirement: El gate puedeRendir bloquea el inicio del examen si el perfil está incompleto
-El sistema SHALL evaluar `api.puedeRendir()` antes de permitir el inicio del flujo de examen. Si el resultado es `{ puede: false }`, el sistema SHALL mostrar el motivo específico al alumno según el código retornado. El código `via_alternativa_pendiente` SHALL mostrar el mensaje "Tu verificación alternativa está pendiente de aprobación de un proctor" con indicación de que no debe intentar rendir. El código `via_alternativa_habilitada` (proveniente de habilitación por proctor) SHALL permitir rendir sin biometría. Si el resultado es `{ puede: false }` por cualquier otro motivo, el sistema SHALL redirigir al alumno a `/alumno/perfil`.
+El sistema SHALL verificar que el alumno tenga un registro `embedding_referencia` con `vigente = TRUE` en la base de datos (además de consentimiento válido) como condición para que `puedeRendir()` retorne `{ puede: true }`. La verificación SHALL ser server-side: el backend evaluará si existe la referencia biométrica persistida, no si existe en el store del cliente.
 
-#### Scenario: Gate permite rendir con perfil completo
-- **WHEN** `puedeRendir()` retorna `{ puede: true }`
+#### Scenario: Gate permite rendir con perfil completo incluyendo referencia biométrica persistida
+- **WHEN** el alumno tiene consentimiento válido Y tiene un registro `embedding_referencia` con `vigente = TRUE` en la DB
+- **THEN** `api.puedeRendir()` (que llama al backend) retorna `{ puede: true }`
 - **THEN** el flujo navega a `/requisitos` para iniciar el examen
 
-#### Scenario: Gate bloquea el examen con perfil incompleto genérico
-- **WHEN** `puedeRendir()` retorna `{ puede: false, razon: string }` con código distinto de `via_alternativa_pendiente`
+#### Scenario: Gate bloquea el examen si falta referencia biométrica en backend
+- **WHEN** el alumno tiene consentimiento válido PERO no tiene un registro `embedding_referencia` con `vigente = TRUE` en la DB
+- **THEN** `api.puedeRendir()` retorna `{ puede: false, razon: "referencia_biometrica_pendiente" }`
 - **THEN** el sistema no navega a `/requisitos`
-- **THEN** se muestra un mensaje con la razón del bloqueo y un enlace a `/alumno/perfil`
+- **THEN** se muestra un mensaje con la razón del bloqueo y un enlace a `/alumno/perfil` para completar el enrollment biométrico
 
-#### Scenario: Gate bloquea con vía alternativa pendiente de habilitación
-- **WHEN** `puedeRendir()` retorna `{ puede: false, codigo: "via_alternativa_pendiente" }`
-- **THEN** el sistema no navega a `/requisitos`
-- **THEN** se muestra el mensaje "Tu verificación alternativa está pendiente de aprobación de un proctor."
-- **THEN** el botón "Rendir" aparece deshabilitado con el motivo visible
-- **THEN** NO se muestra el enlace a `/alumno/perfil` (el perfil ya tiene la solicitud registrada)
-
-#### Scenario: Gate permite rendir con vía alternativa habilitada por proctor
-- **WHEN** `puedeRendir()` retorna `{ puede: true }` para un alumno con `habilitado_por_proctor`
-- **THEN** el flujo navega a `/requisitos` omitiendo el paso de biometría
-- **THEN** el sistema no exige captura biométrica al alumno durante el examen
+#### Scenario: Gate bloquea si la referencia existe en localStorage pero no en backend
+- **WHEN** el store Zustand o localStorage contiene un `referencia_id` pero el backend no tiene un registro `vigente = TRUE` para ese `usuario_id`
+- **THEN** `api.puedeRendir()` retorna `{ puede: false, razon: "referencia_biometrica_pendiente" }`
+- **THEN** la verificación es server-side y no puede ser bypasseada por manipulación del store local
 
 ### Requirement: BiometricCapture notifica al caller con resultado biométrico completo
 El componente `BiometricCapture` SHALL invocar el callback `onComplete` con la firma ampliada: `(landmarks: FaceLandmark[], frame: HTMLCanvasElement | null, passiveOk: boolean, retosResueltos: string[], virtualCameraDetected: boolean)`. Los callers del componente (verificación en `Biometria.tsx` y enrollment en el perfil del alumno) SHALL actualizar su handler para aceptar los nuevos parámetros. Este requirement no se modifica en este change — se preserva íntegro para no perder el contrato establecido.
@@ -112,4 +107,17 @@ El sistema SHALL reemplazar el mock de botones manuales en `Biometria.tsx` por e
 #### Scenario: Las fases verificando, verificado y reintento no cambian
 - **WHEN** la verificación server-side completa
 - **THEN** el comportamiento de las fases `verificando`, `verificado` y `reintento` es idéntico al anterior (incluyendo navegación a `/sala-espera` en éxito)
+
+### Requirement: La fase biometria del enrollment devuelve un referencia_id opaco al cliente
+El sistema SHALL garantizar que al completar la fase `biometria` del enrollment, el cliente recibe únicamente el `referencia_id` (UUID opaco) del embedding persistido en el backend. El embedding crudo (array de floats) SHALL ser descartado del estado del cliente tras la confirmación del backend. El cliente SHALL tratar el `referencia_id` como un identificador de referencia para uso futuro (e.g., indicar qué referencia usar en la verificación de C-09), no como un dato biométrico.
+
+#### Scenario: referencia_id almacenado en store tras enrollment exitoso
+- **WHEN** `POST /api/v1/enrollment/embedding-referencia` retorna `{ referencia_id: "<uuid>" }` con HTTP 201
+- **THEN** el store Zustand persiste `{ biometrico_referencia_id: "<uuid>" }` (u equivalente)
+- **THEN** el embedding crudo es descartado de la memoria del cliente y de localStorage
+
+#### Scenario: referencia_id visible como metadato en el perfil del alumno (UI)
+- **WHEN** el alumno navega a `/alumno/perfil` y la sección de biometría está completada
+- **THEN** la UI muestra el estado `completado` para la sección biométrica
+- **THEN** la UI NO muestra el embedding crudo (ni parcialmente); puede mostrar el `referencia_id` truncado como referencia visual si el diseño lo requiere
 

@@ -1,4 +1,10 @@
-## MODIFIED Requirements
+# harness-legibility-layer
+
+## Purpose
+
+Define la capa de legibilidad del `AdminDetectionHarness`: el banner de estado del motor de visión SHALL reflejar el estado real (simulated / loading / real-active / load-error) con su styling, mensaje y comportamiento ante fallos. Reemplaza el banner estático "SIMULATED" por una señalización honesta al admin de qué está pasando con el motor MediaPipe real, sin caer en simulación silenciosa cuando la carga falla.
+
+## Requirements
 
 ### Requirement: Banner de estado del motor es condicional
 The engine status banner in `AdminDetectionHarness` SHALL reflect the actual state of the vision engine rather than showing a static "SIMULATED" message. It SHALL display one of four states: `simulated`, `loading`, `real-active`, or `load-error`.

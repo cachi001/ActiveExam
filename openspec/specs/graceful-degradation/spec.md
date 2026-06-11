@@ -1,8 +1,10 @@
-# Spec — graceful-degradation
+# graceful-degradation
 
-> Degradación graceful ante hardware insuficiente: baja Pose → Face Mesh → escala a proctor, nunca abort silencioso (RN-GLB-02, RN-GLB-03, `11_ia_y_vision.md`).
+## Purpose
 
-## ADDED Requirements
+Define la degradación escalonada del pipeline de visión ante hardware insuficiente: primero baja Pose, después Face Mesh, y solo si sigue sin alcanzar escala a un proctor humano. El pipeline NUNCA aborta el examen de forma silenciosa. Incluye además la detección inicial de capacidad del dispositivo para ajustar fps o degradar de entrada (RN-GLB-02, RN-GLB-03, `11_ia_y_vision.md`).
+
+## Requirements
 
 ### Requirement: Degradación escalonada ante hardware insuficiente
 Ante capacidad de cómputo insuficiente, el pipeline SHALL degradar en orden: primero bajar/desactivar Pose, luego Face Mesh; solo si sigue siendo insuficiente SHALL escalar a un proctor. El pipeline SHALL NOT abortar el examen de forma silenciosa (RN-GLB-02, RN-GLB-03).

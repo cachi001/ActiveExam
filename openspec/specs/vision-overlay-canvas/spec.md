@@ -1,4 +1,10 @@
-## ADDED Requirements
+# vision-overlay-canvas
+
+## Purpose
+
+Define el componente `<VisionOverlay>` — un canvas superpuesto al video del harness que dibuja en tiempo real las señales del motor de visión: bounding boxes de rostros detectados con su confianza, landmarks del Face Mesh y vector de mirada, y keypoints de pose con sus conexiones. El canvas no captura eventos de puntero (no interfiere con la UI), se ajusta a las dimensiones del video y se limpia entre frames para reflejar fielmente cada inferencia.
+
+## Requirements
 
 ### Requirement: Canvas overlay superpuesto al video
 A `<VisionOverlay>` component SHALL render an HTML `<canvas>` element positioned absolutely over the `<video>` element in the harness. The canvas SHALL have `pointer-events: none` so it does not interfere with any click/touch on the video area.

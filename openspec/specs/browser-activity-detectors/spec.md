@@ -1,8 +1,10 @@
-# Spec — browser-activity-detectors
+# browser-activity-detectors
 
-> Detectores de actividad de navegador/entorno (cambio/apertura de pestaña, salida de pantalla completa, copy/paste) que producen señales para las reglas de transición y se emiten como eventos discretos por el mismo `EventSink` que la visión, sin sancionar (L2.5, RN-EV-04, cliente = sensor no confiable).
+## Purpose
 
-## ADDED Requirements
+Define los detectores de actividad de navegador y entorno que se ejecutan en el cliente (cambio o apertura de pestaña, salida de pantalla completa, copiar y pegar) y producen señales discretas para las reglas de transición. Son sensores no confiables (cliente) que alimentan el mismo `EventSink` que la visión y NUNCA emiten veredicto ni sanción: solo registran evidencia para la revisión humana posterior (L2.5, RN-EV-04).
+
+## Requirements
 
 ### Requirement: Detección de cambio o apertura de pestaña
 El cliente SHALL detectar mediante la Page Visibility API cuando la pestaña del examen deja de estar visible (el estudiante cambia o abre otra pestaña), produciendo una señal de contexto distinta de la pérdida de foco de ventana, que alimenta las reglas de transición. El detector SHALL ser inyectable (dependencia `doc`) para permitir pruebas sin un navegador real.

@@ -1,6 +1,10 @@
-## ADDED Requirements
+# cola-revision-jerarquica
 
-> Introducido en C-48. REEMPLAZA el modelo de lista plana de `cola-revision-real` (C-47) con una navegación drill-down jerárquica de cuatro niveles. El spec `cola-revision-real` sigue vigente para los requisitos de conexión al backend real, filtro de score, tipos y store — pero su presentación fue sustituida por este modelo.
+## Purpose
+
+Define la presentación drill-down jerárquica de cuatro niveles (materia → comisión → examen → persona) de la cola de revisión, que reemplaza el modelo de lista plana de `cola-revision-real` por una navegación orientada al catálogo académico. Incluye el breadcrumb clickable, los contadores "N en riesgo" por nodo, el panel de decisión humana en el nivel persona y las reglas de layout y legibilidad — manteniendo la regla dura L2.5 de que el score solo prioriza y la decisión es del revisor humano.
+
+## Requirements
 
 ### Requirement: Navegación drill-down de 4 niveles en la Cola de revisión
 

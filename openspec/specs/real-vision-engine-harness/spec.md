@@ -1,5 +1,9 @@
-## ADDED Requirements
+# real-vision-engine-harness
 
+## Purpose
+
+Define la implementación del motor de visión REAL (`RealMediaPipeVisionEngine`) que provee detección facial, mesh, gaze, embedding y pose vía `@mediapipe/tasks-vision`. Solo se instancia desde el harness admin (`/admin/detection-test`); el flujo de examen en producción usa el stub. Carga modelos desde rutas locales (`/mediapipe/`), nunca de CDN externas, y se separa del bundle principal por chunk lazy.
+## Requirements
 ### Requirement: Motor real MediaPipe implementa VisionEngine
 `RealMediaPipeVisionEngine` SHALL implement the `VisionEngine` interface (DD-17) using `@mediapipe/tasks-vision` Tasks API. It SHALL NOT couple any caller to the concrete MediaPipe library — all callers interact only through the `VisionEngine` contract.
 
@@ -7,9 +11,13 @@
 - **WHEN** the camera feed has N faces in frame (N = 0, 1, 2+)
 - **THEN** `detectFaces()` SHALL return a `FaceDetectionSignal` with `face_count === N` and one `FaceBox` per detected face with normalized coordinates (0..1) and a confidence score > 0
 
-#### Scenario: detectFaceMesh retorna landmarks e iris reales
-- **WHEN** at least one face is present in frame
-- **THEN** `detectFaceMesh()` SHALL return a `FaceMeshSignal` with `landmarks.length === 468`, a non-zero `gaze` vector derived from iris landmarks via `gazeFromIris()`, and a non-empty `embedding` array
+#### Scenario: detectFaceMesh retorna landmarks e iris reales con promedio de ambos iris
+- **WHEN** at least one face is present in frame and both iris landmarks (468 and 473) are available
+- **THEN** `detectFaceMesh()` SHALL return a `FaceMeshSignal` with `landmarks.length === 468`, a non-zero `gaze` vector computed as the **average of both iris vectors** (left iris 468 with corners 33/133, right iris 473 with corners 362/263), and a non-empty `embedding` array
+
+#### Scenario: detectFaceMesh fallback a un solo iris
+- **WHEN** only one iris landmark is available (e.g., left iris 468 present but right iris 473 absent)
+- **THEN** `detectFaceMesh()` SHALL compute `gaze` from the available iris only (existing single-iris logic), returning a valid non-zero vector
 
 #### Scenario: detectPose retorna keypoints reales
 - **WHEN** a human body is visible in frame
@@ -44,3 +52,4 @@ The real engine (`RealMediaPipeVisionEngine`) SHALL only be instantiated within 
 #### Scenario: chunk lazy no entra al bundle principal
 - **WHEN** the Vite production build is run
 - **THEN** `@mediapipe/tasks-vision` and `RealMediaPipeVisionEngine` SHALL NOT appear in the initial JavaScript bundle (chunk split enforced by dynamic import)
+

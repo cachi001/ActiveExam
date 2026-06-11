@@ -1,4 +1,10 @@
-## MODIFIED Requirements
+# glossary-config
+
+## Purpose
+
+Define el diccionario canónico de términos técnicos del frontend (`GLOSSARY` en `frontend/src/config/glossary.ts`) y, en particular, los términos de visión artificial y del motor de inferencia que el harness, el componente `<Term>` y el `<GlossaryPanel>` consumen. Centraliza las definiciones en lenguaje llano para el usuario final y garantiza que cualquier mención de terminología técnica tenga una explicación accesible y consistente.
+
+## Requirements
 
 ### Requirement: Glosario extiende términos técnicos de visión y stub
 El módulo `frontend/src/config/glossary.ts` SHALL incluir definiciones para al menos los siguientes términos adicionales, en el mismo formato de objeto `GlossaryEntry` con las propiedades `term`, `definition`, `example` (opcional) y `seeAlso` (opcional):

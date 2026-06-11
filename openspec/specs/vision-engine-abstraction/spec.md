@@ -1,8 +1,10 @@
-# Spec — vision-engine-abstraction
+# vision-engine-abstraction
 
-> Interfaz `VisionEngine` que abstrae el motor de visión detrás de un puerto: MediaPipe en el MVP, ruta a ONNX Runtime Web (DD-17, `08_arquitectura_propuesta.md §Patrones`). El resto del pipeline no depende de la implementación concreta.
+## Purpose
 
-## ADDED Requirements
+Define la interfaz `VisionEngine` que abstrae el motor de visión detrás de un puerto: MediaPipe en el MVP, ruta a ONNX Runtime Web en el futuro (DD-17). Garantiza que las reglas de transición, los detectores de contexto y la capa de transporte no dependan de la implementación concreta del motor, de modo que cambiarlo sea reemplazar la implementación sin reescribir el resto del pipeline.
+
+## Requirements
 
 ### Requirement: Motor de visión detrás de una interfaz abstracta
 El pipeline SHALL acceder al motor de visión únicamente a través de una interfaz `VisionEngine` abstracta; ningún componente de reglas de transición ni de transporte SHALL depender directamente de MediaPipe (DD-17).

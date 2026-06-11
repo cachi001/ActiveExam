@@ -1,6 +1,10 @@
-## MODIFIED Requirements
+# cola-revision-real
 
-> Modifica `reviewer-queue-panel` (C-43) — reemplaza la fuente de datos mock por el backend slim real con filtro de alto riesgo y acción de resolución L2.5.
+## Purpose
+
+Define la pantalla de cola de revisión (`Revisor.tsx`) conectada al backend slim real (con fallback mock por `USE_REAL_BACKEND`), filtrando exclusivamente las sesiones de alto riesgo (`score >= UMBRAL_COLA_REVISION = 60`), ordenadas por prioridad y enriquecidas con contexto académico. Incluye el panel `ColaPanelDecision` con tres acciones humanas y disclaimer L2.5 inamovible — el sistema nunca sanciona, el score solo prioriza y la decisión es del revisor. Aporta también los tipos (`DecisionRevisor`) y campos (`exam_id`) que el store y el catálogo requieren.
+
+## Requirements
 
 ### Requirement: `Revisor.tsx` conectada al backend real con filtro de score
 
@@ -49,8 +53,6 @@ El sistema SHALL proveer un componente local `ColaPanelDecision` en `Revisor.tsx
 #### Scenario: Sesión sin exam_id no rompe el renderizado
 - **WHEN** una sesión tiene `exam_id` null o undefined
 - **THEN** `joinExamInfo` retorna null y el componente renderiza el ítem sin línea de contexto académico
-
-## ADDED Requirements
 
 ### Requirement: Tipos `DecisionRevisor` y `exam_id` en `SesionProctoringResumen`
 

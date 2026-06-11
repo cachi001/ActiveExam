@@ -1,4 +1,10 @@
-## MODIFIED Requirements
+# institution-config
+
+## Purpose
+
+Define el módulo central de configuración institucional del frontend (`frontend/src/config/institution.ts`) con la identidad canónica de UTN FRM y la posibilidad de sobrescribir cada campo por variable de entorno Vite en build-time. Establece además a `frontend/src/config/` como el punto de extensión canónico para todos los módulos de configuración estática del frontend: TypeScript puro, export named, sin hooks ni context providers, importable directo desde cualquier componente.
+
+## Requirements
 
 ### Requirement: Módulo central de configuración institucional
 El sistema SHALL proveer un módulo TypeScript en `frontend/src/config/institution.ts` que exporte un objeto `INSTITUTION` tipado con la identidad institucional canónica de UTN FRM. Los valores default SHALL corresponder a UTN Regional Mendoza. Cada campo SHALL ser overrideable mediante la variable de entorno Vite correspondiente (`VITE_INSTITUTION_<CAMPO>`), evaluada en build-time.

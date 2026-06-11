@@ -1,4 +1,10 @@
-## ADDED Requirements
+# profile-photo-retrieval
+
+## Purpose
+
+Define los endpoints de lectura de la foto de perfil (propia y de otros usuarios por rol autorizado) y su renderizado como avatar en el frontend. La foto es un dato sensible bajo Ley 25.326: el binario no se loguea, la lectura de fotos ajenas está restringida a `admin_sistema` y `proctor` (nunca al rol `estudiante`), y la UI tiene fallback de avatar cuando no hay foto vigente.
+
+## Requirements
 
 ### Requirement: Lectura de la foto de perfil propia
 

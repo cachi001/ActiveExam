@@ -1,47 +1,113 @@
 # Tasks — C-03 `poc-carga-mensajeria`
 
-> **Naturaleza**: estas tareas construyen un **harness de carga descartable** y producen un **veredicto por concern por métrica**. El Done de cada tarea de medición es **un número leído de Prometheus/Tempo contra un umbral del `14`**, no una feature entregada. El change se completa solo cuando los tres veredictos (a, b, c) están registrados; recién ahí se desbloquea C-04 con la infraestructura decidida.
+> **Naturaleza**: estas tareas construyen un **harness de carga descartable** y producen un **veredicto por concern por métrica**. El código de la PoC vive en `poc/` (descartable) y en cambios mínimos de `backend/` marcados como PoC; nada se promueve a producción. El entregable del change NO es código sino el **veredicto por concern** documentado. El change se completa solo cuando los tres veredictos (a, b, c) están registrados; recién ahí se desbloquea C-04 con la infraestructura decidida.
+>
+> **Enfoque**: medir A4 primero (DD-19). Se construye y mide solo el stack A4 (Postgres-como-cola + SSE + Postgres LISTEN/NOTIFY). La pieza SAD entra **solo en el concern que falle** su SLO. El orden de ejecución es: concern (c) primero — riesgo #1 — luego (a) y (b).
+>
 > Convención: `(Métrica: <umbral>)` indica el criterio de aceptación medido.
 
-## 1. Montar el harness y la instrumentación (capability `load-poc-harness`)
+## Bloque 0 — Infra y modo sin-auth PoC
 
-- [ ] 1.1 Levantar el entorno de la PoC (2–3 instancias FastAPI mono-hilo tras Nginx, PostgreSQL/TimescaleDB, Redis y RabbitMQ disponibles para swap por concern); Done: stack arriba y conectado
-- [ ] 1.2 Montar la instrumentación ANTES de cargar: Prometheus (p50/p95/p99 por concern, profundidad de cola, lag de backplane, inserts/s, conexiones/instancia), Tempo (traza evento→persist→fan-out→panel), dashboard Grafana de la PoC (DD-12); Done: métricas y trazas visibles sin generar carga aún (Métrica: instrumentación completa pre-carga)
-- [ ] 1.3 Construir el generador de estudiantes: ~2.100 conexiones WS sintéticas con heartbeat firmado /5s (~200 inserts/s) + eventos normales (~1.000 inserts/s) + ráfaga multi-examen (~5.000 inserts/s pico); Done: generador calibrado contra el capacity model del `14`
-- [ ] 1.4 Construir el generador de paneles: N=20–40 suscriptores sintéticos (≈ 1 proctor/50–100 estudiantes), cada uno suscripto a sus sesiones, midiendo timestamp de recepción evento→panel; Done: latencia de propagación instrumentada por panel
-- [ ] 1.5 Construir el generador de evidencia: uploads sintéticos que encolan re-inferencia+firma; Done: cola alimentada bajo carga
-- [ ] 1.6 Definir los perfiles de tráfico P0 (reposo, sanidad), P1 (sostenido ~1.000), P2 (pico ~2.100/~5.000, criterio), P3 (punto de quiebre), P4 (caos); Done: perfiles parametrizados y reproducibles
-- [ ] 1.7 Declarar explícitamente en el README de la PoC que el código es descartable y que el entregable es la decisión; Done: naturaleza descartable documentada
+> **Esfuerzo**: S. **Objetivo**: levantar el stack A4 mínimo sin Keycloak, verificar que todos los servicios responden, y declarar las vars PoC en Settings sin romper el stack de producción.
 
-## 2. Validar capacity model y suposición de escalado (capability `load-poc-harness`)
+- [x] 0.1 Agregar vars PoC opcionales a `backend/app/config.py` → `poc_jwt_secret: Optional[str] = None`, `poc_panel_enabled: bool = False`, `poc_stub_vault: bool = False`; respetar `extra='forbid'` de Pydantic; Done: `python -c "from app.config import Settings; Settings()"` no lanza error con y sin las vars seteadas
+- [x] 0.2 Crear `docker-compose.poc.yml` (override) que excluye Keycloak, expone PostgreSQL + Redis (disponible para swap posterior) + FastAPI + Prometheus + Grafana; Done: `docker compose -f docker-compose.yml -f docker-compose.poc.yml up -d` levanta sin error
+- [x] 0.3 Implementar middleware PoC de auth HS256: si `poc_jwt_secret` está seteado, aceptar tokens firmados con HS256 estático (`build_hs256_verify` ya existe en `verifiers.py`); bypass de Keycloak solo cuando `poc_panel_enabled=True`; Done: request con token HS256 estático pasa auth y llega al handler
+- [x] 0.4 Verificar stack completo arriba: FastAPI `/health` responde 200, PostgreSQL conectado, Prometheus scrapea métricas del backend; Done: stack A4 sin Keycloak operativo end-to-end
 
-- [ ] 2.1 Correr P0 (reposo) para validar la sanidad del harness y la instrumentación; Done: el harness reporta métricas coherentes (no es criterio de aceptación)
-- [ ] 2.2 Correr P1 (sostenido ~1.000 conc. / ~1.000 inserts/s) y registrar el comportamiento base; Done: sostenido confirmado
-- [ ] 2.3 Escalar P1→P2 y registrar si el escalado de inserts es ~lineal (valida o refuta SU-06); Done: Suposición de escalado documentada (Métrica: lineal sostenido→pico ✓/✗)
+## Bloque 1 — Publisher asyncpg + panel SSE descartable
 
-## 3. Concern (a) — Cola de trabajos asíncrona (capability `job-queue-validation`)
+> **Esfuerzo**: M. **Objetivo**: cerrar el circuito completo del concern (c): WS estudiante → evento → `pg_notify` real → panel SSE recibe. Hito verificable: un solo k6 VU manda 1 evento WS → el NOTIFY se ejecuta → el panel SSE lo recibe y registra `ts_rx`. Este bloque es **precondición** del Bloque 5 (medición concern c).
 
-- [ ] 3.1 Correr P2 con la cola en **Postgres** (`SKIP LOCKED` + pg-boss/`LISTEN/NOTIFY`); medir p99 de re-inferencia+firma y profundidad de cola; Done: métricas registradas (Métrica: p99 < 30 s, cola acotada)
-- [ ] 3.2 Correr P2 con la cola en **RabbitMQ quorum + Celery** bajo idéntico tráfico; medir las mismas métricas; Done: comparación apples-to-apples registrada
-- [ ] 3.3 Aplicar la matriz de decisión y registrar el **veredicto del concern (a)**: conservar Postgres ✓ o promover RabbitMQ ✗, con la métrica que lo justifica; Done: veredicto (a) documentado
+- [x] 1.1 Verificar límite de payload NOTIFY: confirmar que el payload de `pg_notify` contiene solo `event_id` (UUID, ~36 bytes, bien bajo el límite de 8 KB de Postgres); documentar en README de la PoC; Done: payload verificado y documentado
+- [x] 1.2 Implementar publisher asyncpg real en `backend/app/infrastructure/messaging/backplane.py`: `backplane.publish()` hoy delega en `app.state.backplane_publisher` que es `None` (fan-out no-op inerte); implementar el publisher que ejecuta `EXECUTE pg_notify(canal, payload)` con conexión asyncpg dedicada; Done: `pg_notify` ejecutado al recibir un evento WS (verificable con `LISTEN` en `psql`)
+- [x] 1.3 Fix `_now_iso()` en `channel.py`: cambiar de `datetime.strftime('%Y-%m-%dT%H:%M:%SZ')` (trunca a segundos) a `datetime.now(timezone.utc).isoformat()` (microsegundos); Done: timestamp tiene precisión de microsegundos — **CRÍTICO para medir sub-500 ms** (sin este fix el error de medición es ±1.000 ms)
+- [x] 1.4 Construir endpoint SSE descartable `GET /poc/panel/stream?exam_id={exam_id}` en un router PoC: abre conexión asyncpg dedicada, ejecuta `LISTEN panel:{exam_id}`, emite `text/event-stream` con cada notificación, registra `ts_rx` en el payload; Done: endpoint devuelve `Content-Type: text/event-stream` y emite eventos (verificable con `curl`)
+- [x] 1.5 Verificar el circuito completo E2E: k6 manda 1 evento WS → FastAPI procesa → publisher ejecuta `pg_notify` → panel SSE recibe y loguea el delta `ts_emit - ts_rx`; Done: delta visible en logs del panel SSE — **hito de circuito cerrado**
 
-## 4. Concern (b) — Transporte del panel (capability `panel-transport-validation`)
+## Bloque 2 — Instrumentación Prometheus
 
-- [ ] 4.1 Correr P2 con el panel sobre **SSE + backplane (sin sticky)**; durante la corrida, redistribuir/caer instancias FastAPI; medir continuidad de suscripción y reconexión; Done: comportamiento registrado (Métrica: sin pérdida de suscripción, reconexión transparente)
-- [ ] 4.2 Correr P2 con el panel sobre **WebSocket + sticky sessions** bajo idéntico escenario; medir concentración de conexiones/instancia y comportamiento de reconexión; Done: comparación registrada
-- [ ] 4.3 Aplicar la matriz y registrar el **veredicto del concern (b)**: conservar SSE ✓ o promover WebSocket+sticky ✗; Done: veredicto (b) documentado
+> **Esfuerzo**: S. **Objetivo**: declarar y exponer las métricas necesarias para los 3 concerns ANTES de generar carga (D5/D14). Sin estas métricas toda decisión sería sobre logs ad-hoc — indefendible.
 
-## 5. Concern (c) — Backplane de eventos ⚠️ riesgo #1 (capability `realtime-backplane-validation`)
+- [x] 2.1 Declarar `fanout_latency_seconds` (Histogram, buckets 0.05/0.1/0.2/0.5/1.0/2.0 s) — mide latencia evento→panel para concern (c); Done: métrica visible en `/metrics` sin carga — **VERIFICADO en vivo**: declarada en `observability/poc_metrics.py`, visible en `/metrics` en 0, y observando real (count=1, sum=0.0014 s tras 1 NOTIFY) vía `.observe()` en el panel SSE
+- [x] 2.2 Declarar `evidence_signing_seconds` (Histogram, buckets 0.5/1/2/5/10/30 s) — mide latencia re-inferencia+firma para concern (a); Done: métrica visible en `/metrics` — **VERIFICADO**: visible en `/metrics` con sus 6 buckets en 0. El `.observe()` lo cablea el worker (Bloque 3)
+- [x] 2.3 Declarar `job_queue_depth` (Gauge) — mide profundidad de la cola de trabajos; Done: métrica visible en `/metrics` y actualizada por el worker — **VERIFICADO (parcial)**: declarada y visible en `/metrics` (= 0). La actualización (`.set()`) la hace el worker del Bloque 3 (task 3.7), aún no construido
+- [ ] 2.4 Importar dashboard Grafana PoC con paneles por concern: p99 fan-out (concern c), p99 signing (concern a), queue_depth (concern a), inserts/s, conexiones/instancia; Done: dashboard importado y visible con datos reales al correr P0 — **PENDIENTE**: su Done exige datos reales de P0 (Bloque 5); se hace tras el barrido
 
-- [ ] 5.1 Correr P2 con el backplane sobre **Postgres `LISTEN/NOTIFY`** y 20–40 paneles activos EN SOSTENIDO AL PICO; medir p99 de propagación evento→panel; Done: p99 registrado (Métrica: p99 < 500 ms al pico)
-- [ ] 5.2 Correr P2 con el backplane sobre **Redis Pub/Sub** bajo idéntico tráfico; medir el mismo p99; Done: comparación apples-to-apples registrada
-- [ ] 5.3 Correr P3 (barrido creciente) degradando **`LISTEN/NOTIFY` hasta el punto de quiebre** donde p99 cruza 500 ms; registrar el throughput (eventos/s × N paneles) en ese punto vs el pico requerido; Done: punto de quiebre y margen registrados (Métrica: throughput de quiebre vs pico)
-- [ ] 5.4 Correr P4 (caos): inyectar caída de instancia/nodo + reconexión de paneles durante P2 para ambas opciones; verificar exactly-once lógico por conteo extremo a extremo; Done: cero pérdida y cero duplicados verificados (Métrica: exactly-once bajo caos)
-- [ ] 5.5 Registrar el **veredicto explícito del concern (c)**: `LISTEN/NOTIFY` sostiene el pico ✓ o se promueve Redis Pub/Sub ✗, con el punto de quiebre; Done: veredicto (c) documentado con la cota de migración
+## Bloque 3 — Cola Postgres mínima + worker ejecutable
 
-## 6. Registrar el veredicto de arquitectura y cerrar el gate (capability `architecture-verdict`)
+> **Esfuerzo**: M. **Objetivo**: implementar la cola Postgres funcional (sin `NotImplementedError`) y un worker ejecutable con stubs de Vault/inferencia, para que concern (a) pueda medirse de forma aislada.
 
-- [ ] 6.1 Consolidar los tres veredictos (a, b, c), cada uno citando su métrica, umbral y decisión; Done: documento de veredicto por concern completo
-- [ ] 6.2 Documentar toda promoción de pieza del SAD como evolución condicionada en el ADR (no retrabajo), respetando DD-19; Done: evolución documentada o constancia de "A4 conservado en los tres concerns"
-- [ ] 6.3 Dejar el veredicto consumible por C-04 (infra), C-10 (fan-out), C-12 (cola de evidencia) y C-15 (transporte del panel); Done: qué cola/transporte/backplane se implementan, sin ambigüedad
-- [ ] 6.4 Comunicar el cierre del gate y habilitar C-04; Done: gate de validación de arquitectura declarado cerrado y veredicto distribuido al equipo
+- [x] 3.1 Crear migración Alembic para tabla `poc_job_queue` (id UUID PK, payload JSONB, created_at TIMESTAMPTZ, taken_at TIMESTAMPTZ nullable); Done: migración aplicada sin error — **VERIFICADO**: `migrations/versions/0006_poc_job_queue.py` (branch independiente `down_revision=None`, como 0005 slim), `alembic upgrade 0006` → `Running upgrade -> 0006`. ⚠️ GAP: `psycopg2` no está en la imagen (Alembic lo necesita); se instaló en runtime para la PoC — pendiente agregarlo a requirements para el Bloque 5
+- [x] 3.2 Implementar `enqueue()` — `INSERT INTO poc_job_queue`; Done: enqueue funcional — **VERIFICADO**: `--enqueue 5` → `SELECT count(*)` = 5. **DECISIÓN DE DISEÑO**: implementado en adaptador PoC descartable `poc_postgres_queue.py` (NO en el `postgres_queue.py` de producción), para no ensuciar prod con SQL de `poc_job_queue` — mantiene el aislamiento PoC/prod
+- [x] 3.3 Implementar `dequeue()` — `SELECT ... FOR UPDATE SKIP LOCKED LIMIT 1` con `taken_at = now()`; Done: dequeue funcional sin conflictos entre workers — **VERIFICADO**: `--drain` procesó los 5 (CTE atómico reclamo+marca)
+- [x] 3.4 Implementar `ack()` — `DELETE FROM poc_job_queue WHERE id = $1`; Done: ack funcional — **VERIFICADO**: `SELECT count(*)` = 0 tras el drain
+- [x] 3.5 Stub de firma maestra: si `poc_stub_vault=True`, latencia fija (~200 ms) sin Vault; Done: **VERIFICADO** (inline en el worker: `_stub_firma_maestra`, 0.2 s)
+- [x] 3.6 Stub de re-inferencia: si `poc_stub_vault=True`, latencia fija (~400 ms) sin MediaPipe; Done: **VERIFICADO** (inline en el worker: `_stub_reinferencia`, 0.4 s)
+- [x] 3.7 Verificar loop de worker: dequeue → stub inferencia → stub firma → ack → `evidence_signing_seconds.observe()`; Done: worker procesa jobs con `job_queue_depth` en Prometheus — **VERIFICADO en /metrics del worker (:9100)**: `evidence_signing_seconds_count=5`, `sum=3.047` (~0.61 s/job = 0.4+0.2), `job_queue_depth=0`. NOTA: el worker expone su PROPIO /metrics (métricas in-memory por proceso); en B5 Prometheus scrapea api y worker por separado
+
+## Bloque 4 — Scripts k6 + seed + panel asyncio
+
+> **Esfuerzo**: M. **Objetivo**: construir los generadores de carga descartables calibrados contra el capacity model. Todo el código vive en `poc/` y NO se promueve a producción.
+
+- [x] 4.1 Crear `poc/k6/seed.py`: crea N sesiones con clave HMAC conocida en la DB; Done: crea sesiones y las lista por stdout — **VERIFICADO en vivo**: crea usuario+examen+N sesiones (estado 'activa', `clave_sesion` hex), `--sessions 5` → 5 filas en `sesion` + JSON consumible por stdout. Requiere `alembic upgrade 0004` (esquema prod) y `MSYS_NO_PATHCONV=1` para `docker cp` en Windows
+- [x] 4.2 Crear `poc/k6/students.js`: VU que abre WS, heartbeat firmado HMAC cada 5 s + eventos normales; Done: corre con `k6 run` — **VERIFICADO** corriendo k6 en Docker (`grafana/k6` en la red `proctoring_proctoring`, sin instalar k6 en el host): JWT HS256 + firma HMAC válidos, **poc_ack_ok 100% (132/132)**. Destapó y se corrigió un bug de prod (timestamp_cliente, ver 5.1)
+- [x] 4.3 Crear `poc/k6/evidence.js`: VU que encola evidencia sintética para re-inferencia; Done: `job_queue_depth > 0` — **RESUELTO + VERIFICADO**. **DECISIÓN DE DISEÑO**: en vez del endpoint real `/evidence/notify` (re-descarga WORM + valida firma + encola en cola de prod, pesado), se creó un endpoint PoC de encolado directo `POST /poc/enqueue` (panel_router.py) que inserta en `poc_job_queue` — aísla la medición del concern (a). `PocPostgresQueue` migrada a **pool asyncpg** (enqueue concurrente del barrido). Verificado en vivo: 3 POST → `depth` 1→2→3 → worker `--drain` → 3 procesados → count 0. ⚠️ `evidence.js` escrito; correr con k6 = B5 (no instalado)
+- [x] 4.4 Crear `poc/panels_asyncio.py`: N=20–40 conexiones SSE a `/poc/panel/stream`, delta `ts_backend→ts_rx`, p50/p95/p99 por ventana; Done: reporta percentiles — **VERIFICADO en vivo**: 2 paneles + 4 NOTIFYs → 8 mediciones, reporta `p50=12.66ms p95/p99=13.81ms` por ventana. Requiere `httpx` (instalado en runtime; falta en la imagen)
+- [x] 4.5 Documentar los escalones del barrido en `poc/README.md`: 100→200→400→800→1.200→1.600→2.100 VU; Done: escalones documentados — ya presentes en `poc/README.md` §Escalones (tabla P0..E7 con VU, inserts/s y duración)
+
+## Bloque 5 — Barrido A4 y medición de los 3 SLO
+
+> **Esfuerzo**: M. **Objetivo**: medir el stack A4 completo en los 3 concerns, empezando por (c) — el riesgo #1. Para cada concern: si A4 cumple el SLO → veredicto inmediato sin construir SAD.
+
+### P0 — Sanidad del harness (precondición de todo)
+
+- [~] 5.1 Correr P0: verificar que el harness reporta métricas coherentes y el circuito E2E funciona; Done: métricas con valores reales — **SANIDAD PASADA** (k6 Docker, 3-10 VU): students.js → acks 100%, eventos persisten. ⚠️ **BUG DE PROD DESTAPADO Y ARREGLADO**: `EventSqlRepository.append` pasaba `timestamp_cliente` como str ISO a columna timestamptz → asyncpg `DataError` (rechazaba TODO evento real; psycopg2 lo auto-convertía, asyncpg no). Fix: normalizar a datetime. Falta correr P0 a 100 VU 5 min con worker+panels para ver las 3 métricas juntas
+
+### Concern (c) — Backplane LISTEN/NOTIFY — riesgo #1
+
+- [ ] 5.2 Correr barrido de escalones sobre concern (c) con backplane `LISTEN/NOTIFY` y N=20 paneles SSE activos: 100 → 200 → 400 → 800 → 1.200 → 1.600 → 2.100 VU; registrar p99 de `fanout_latency_seconds` en cada escalón; Done: curva p99 por escalón registrada
+- [ ] 5.3 Identificar el punto de quiebre del concern (c): escalón donde p99 cruza 500 ms; si el quiebre está por encima de 2.100 VU → A4 sostiene con margen; Done: punto de quiebre documentado en eventos/s (Métrica: umbral p99 < 500 ms al pico ~2.100 VU)
+- [ ] 5.4 Registrar veredicto preliminar del concern (c) A4: `LISTEN/NOTIFY` sostiene ✓ si p99 < 500 ms a 2.100 VU con margen; pendiente de fallo → pasa a Bloque 6(c); Done: veredicto preliminary (c) documentado con el punto de quiebre y el margen
+
+### Concern (a) — Cola Postgres asíncrona
+
+- [ ] 5.5 Correr barrido de escalones sobre concern (a) con Postgres-cola (`SKIP LOCKED`) y worker con stubs: 100 → 400 → 1.200 → 2.100 VU; registrar p99 de `evidence_signing_seconds` y `job_queue_depth` en cada escalón; Done: métricas registradas por escalón
+- [ ] 5.6 Registrar veredicto preliminar del concern (a) A4: cola Postgres conservada ✓ si p99 < 30 s y `job_queue_depth` acotado (no crece sin techo) a 2.100 VU; pendiente de fallo → pasa a Bloque 6(a); Done: veredicto preliminary (a) documentado (Métrica: p99 < 30 s, cola acotada)
+
+### Concern (b) — Transporte SSE del panel bajo redistribución
+
+- [ ] 5.7 Correr P2 (2.100 VU, ≥ 10 min) sobre concern (b) con SSE + backplane sin sticky: durante la corrida, bajar y subir una instancia FastAPI; verificar que los paneles SSE reconectan automáticamente y no pierden suscripción; Done: comportamiento registrado (Métrica: sin pérdida de suscripción, reconexión transparente < 5 s)
+- [ ] 5.8 Registrar veredicto preliminar del concern (b) A4: SSE conservado ✓ si reconexión es transparente y sin pérdida de suscripción; pendiente de fallo → pasa a Bloque 6(b); Done: veredicto preliminary (b) documentado
+
+### Validación de SU-06 (escalado lineal)
+
+- [ ] 5.9 Con los datos de la curva del barrido, registrar si el escalado de inserts sostenido → pico es ~lineal o no-lineal; Done: Suposición SU-06 confirmada o refutada con la curva real (Métrica: lineal ✓/✗ con el factor medido)
+
+## Bloque 6 — Comparar SAD SOLO en el concern que falle + veredicto final
+
+> **Esfuerzo**: S/M condicional — se ejecuta ÚNICAMENTE en los concerns cuyo veredicto preliminary A4 fue ✗. Si todos los concerns pasan A4, este bloque se documenta como "no ejecutado — A4 sostuvo los 3 concerns" y el change cierra directamente. El código SAD es también descartable (poc/).
+
+### Concern (c) — Redis Pub/Sub (solo si LISTEN/NOTIFY falló en 5.3–5.4)
+
+- [ ] 6.1 [CONDICIONAL — solo si 5.4 = ✗] Implementar adaptador Redis Pub/Sub descartable en `poc/` como swap del backplane A4; Done: adaptador funcional como reemplazo del publisher asyncpg
+- [ ] 6.2 [CONDICIONAL] Repetir barrido de escalones con Redis Pub/Sub y N=20 paneles SSE bajo idéntico tráfico; registrar p99 de `fanout_latency_seconds`; Done: curva p99 Redis registrada (Métrica: p99 < 500 ms al pico ~2.100 VU)
+- [ ] 6.3 [CONDICIONAL] Registrar veredicto final del concern (c): comparar punto de quiebre `LISTEN/NOTIFY` vs Redis; documentar la decisión con ambos números; Done: veredicto (c) final — `LISTEN/NOTIFY` ✓ o Redis promovido ✗ — con el punto de quiebre de ambas opciones
+
+### Concern (a) — RabbitMQ + Celery (solo si Postgres-cola falló en 5.5–5.6)
+
+- [ ] 6.4 [CONDICIONAL — solo si 5.6 = ✗] Levantar RabbitMQ quorum + Celery en el `docker-compose.poc.yml`; implementar adapter descartable en `poc/`; Done: worker Celery procesa jobs del mismo workload
+- [ ] 6.5 [CONDICIONAL] Correr barrido de escalones con RabbitMQ + Celery bajo idéntico tráfico; registrar p99 y profundidad de cola; Done: comparación apples-to-apples registrada (Métrica: p99 < 30 s, cola acotada)
+- [ ] 6.6 [CONDICIONAL] Registrar veredicto final del concern (a): Postgres-cola ✓ o RabbitMQ promovido ✗; Done: veredicto (a) final con métrica que lo justifica
+
+### Concern (b) — WebSocket + sticky (solo si SSE falló en 5.7–5.8)
+
+- [ ] 6.7 [CONDICIONAL — solo si 5.8 = ✗] Configurar sticky sessions en Nginx + WebSocket de panel descartable en `poc/`; Done: panel WS+sticky funcional bajo redistribución
+- [ ] 6.8 [CONDICIONAL] Correr P2 con WS+sticky bajo idéntico escenario de redistribución; registrar reconexión y pérdida de suscripción; Done: comparación registrada
+- [ ] 6.9 [CONDICIONAL] Registrar veredicto final del concern (b): SSE ✓ o WS+sticky promovido ✗; Done: veredicto (b) final con métrica que lo justifica
+
+### Veredicto consolidado y cierre del gate
+
+- [ ] 6.10 Consolidar los tres veredictos (a, b, c) — cada uno citando su métrica medida, el umbral, y la decisión (A4 conservado / SAD promovido) — en el documento de veredicto de arquitectura; Done: documento de veredicto completo, consumible por C-04/C-10/C-12/C-15
+- [ ] 6.11 Documentar toda promoción de pieza del SAD como evolución condicionada en el ADR correspondiente (respetando DD-19); si A4 sostuvo los 3 concerns, documentar "A4 conservado en los 3 concerns" con la cota de migración del backplane; Done: ADR actualizado o constancia de conservación
+- [ ] 6.12 Comunicar el cierre del gate: veredicto por concern disponible para C-04 (infra), C-10 (fan-out), C-12 (cola de evidencia) y C-15 (transporte del panel) — sin ambigüedad sobre qué cola, transporte y backplane se implementan; Done: gate declarado cerrado

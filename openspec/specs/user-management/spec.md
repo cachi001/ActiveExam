@@ -1,4 +1,10 @@
-## ADDED Requirements
+# user-management
+
+## Purpose
+
+Define los endpoints administrativos de gestión de usuarios (listar paginado, editar email/roles, soft-delete) accesibles SÓLO al rol `admin_sistema`, y su contraparte de UI. Aplica reglas duras: nunca expone `password_hash`, nunca permite modificar `auth_provider`, schemas con `extra='forbid'`, protección contra lockout del propio admin, soft-delete que preserva la evidencia con cadena de custodia y revoca refresh tokens del usuario dado de baja.
+
+## Requirements
 
 ### Requirement: Listado paginado de usuarios
 

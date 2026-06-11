@@ -1,6 +1,10 @@
-## MODIFIED Requirements
+# supervision-vivo-diferenciada
 
-> Modifica `proctor-live-panel` (C-43/C-46) — agrega partición visual por modo de sesión y enriquecimiento con contexto académico.
+## Purpose
+
+Define la partición visual del panel de supervisión en vivo (`Proctor.tsx`) por modo de sesión: las sesiones de examen real aparecen primero y diferenciadas de las de diagnóstico/harness, cada una en su sección con título. Agrega además el enriquecimiento con contexto académico (`joinExamInfo`) para las sesiones de examen, y un subtítulo que diferencia claramente el propósito del panel en vivo frente al historial y la cola de revisión.
+
+## Requirements
 
 ### Requirement: Partición visual por modo en `Proctor.tsx`
 
@@ -29,8 +33,6 @@
 #### Scenario: Subtítulo visible al cargar el panel
 - **WHEN** el operador navega a `/proctor`
 - **THEN** el subtítulo actualizado es visible en el header de la pantalla
-
-## ADDED Requirements
 
 ### Requirement: Join de catálogo en `Proctor.tsx` para sesiones de examen
 
