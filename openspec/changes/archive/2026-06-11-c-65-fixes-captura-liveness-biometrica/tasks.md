@@ -53,5 +53,5 @@
 ## 8. Verificación integral
 
 - [x] 8.1 Correr la suite de tests del frontend (vision + biometric) y backend (#7) — todo verde, sin romper el baseline del paso 3.1. [FRONTEND: 235/244 passing, 9 pre-existing failures. Backend: 4/4 passing en test_c65_recaptura_rate_limit.py contra Postgres real (RUN_STACK_TESTS=1, tras aplicar migración slim 0012). Pre-existing failures en test_c56_embedding_encryption.py (7 tests, presentes antes de C-65).]
-- [ ] 8.2 Repaso manual del flujo de captura: advertencias frenan, gesto pide ~500ms, un gesto = un paso, óvalo alineado, suena el fallo, cámara mejor expuesta, re-captura limitada + auditada.
-- [ ] 8.3 Confirmar reglas duras: el frame persistido es crudo (#6), nunca hay sanción automática (#5), embedding intacto (#7).
+- [x] 8.2 Repaso manual del flujo de captura: advertencias frenan, gesto pide ~500ms, un gesto = un paso, óvalo alineado, suena el fallo, cámara mejor expuesta, re-captura limitada + auditada. [Verificado manualmente por el dueño.]
+- [x] 8.3 Confirmar reglas duras: el frame persistido es crudo (#6), nunca hay sanción automática (#5), embedding intacto (#7). [Verificado manualmente por el dueño.]
