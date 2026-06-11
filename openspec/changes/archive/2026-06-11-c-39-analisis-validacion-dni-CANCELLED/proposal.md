@@ -1,4 +1,16 @@
-## Why
+# 🚫 CANCELADO 2026-06-11 (sesión 2)
+
+> **Razón**: el equipo decidió en `frontend/src/screens/enrollment/EnrollmentDniStep.tsx` mantener explícitamente la postura **"no hay análisis client-side: la verificación del documento se realiza server-side (cliente = sensor no confiable, RN-GLB-01)"**. Esa decisión está pegada en el cabecal del componente y en el texto que ve el alumno al completar la captura.
+>
+> Implementar este change (mock client-side) **contradice esa decisión ya tomada y escrita en el código**. La captura dual (frente+dorso) que el producto necesita ya vive en **C-38 (archivado)**: el alumno ve "DNI registrado · Verificación server-side". No hace falta nada más en cliente.
+>
+> **Auditoría del CLI al cancelar**: 28/32 marcadas, pero **~4/32 reales** (las 4 reales eran metadata del propio change: CHANGES.md update + validate/tsc tautológicos). Ninguna representaba código de feature en main. Las marcas se cancelan junto con el change — no se preservan porque eran sobre sí mismo, no sobre código vivo.
+>
+> **Cuándo retomar**: si en el futuro se requiere análisis REAL del DNI (OCR + PDF417 + RENAPER + face matching), se propone un change nuevo **server-side** (ej. `c-67-dni-analisis-server-side`) con dependencias C-12 (cadena de custodia), C-17 (DSR derecho del titular sobre dato sensible) y convenio con AAIP/RENAPER. NO se reabre C-39.
+
+---
+
+## Why (original — para referencia histórica)
 
 C-38 captura frente y dorso del DNI y los guarda, pero la interfaz no muestra ningún resultado: el alumno ve "DNI registrado (frente y dorso)" sin saber si el documento es legible, si los datos coinciden o si hay algún problema. Para una demo convincente del flujo de enrollment, el sistema necesita una interfaz de análisis indicativo (mock client-side con UX realista) que simule el proceso de verificación documental que en producción ocurre server-side, manteniendo el disclaimer claro de que es preliminar y sujeto a revisión humana (L2.5).
 
