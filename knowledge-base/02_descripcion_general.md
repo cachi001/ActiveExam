@@ -74,7 +74,7 @@ TRANSVERSAL: Prometheus · Loki · Tempo · Grafana
 | Servicio | Propósito | Tipo |
 |----------|-----------|------|
 | Directorio institucional (Active Directory / LDAP / IdP SAML) | Federación de identidad, autenticación de estudiantes y staff | SAML / LDAP vía Keycloak |
-| LMS institucional (Moodle, Canvas, Blackboard…) | El estudiante rinde el examen ahí; el proctoring se integra alrededor **sin acoplarse a un LMS concreto** | **LTI 1.3** universal (roster vía NRPS, retorno vía AGS) **+ plugin Moodle `quizaccess`** profundo — DD-20, `c-66-integracion-lms-lti` (Fase 2) |
+| LMS institucional (Moodle, Canvas, Blackboard…) | El estudiante rinde el examen ahí; el proctoring se integra alrededor **sin acoplarse a un LMS concreto** | **LTI 1.3** universal (roster vía NRPS, retorno vía AGS) **+ plugin Moodle `quizaccess`** profundo — DD-20, `integracion-lms-lti` (Fase 2, change sin número aún) |
 | MinIO / S3 | Almacenamiento WORM de evidencia | SDK / API S3 |
 | HashiCorp Vault (o secret manager cloud) | Gestión de secretos | API / agente |
 | Sistema de auditoría externa | Lectura write-only de backups del audit log | Backup físicamente separado |

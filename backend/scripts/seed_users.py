@@ -136,18 +136,24 @@ async def _ejecutar_seed(
             "email": "estudiante@activeexam.local",
             "password": pw_estudiante,
             "roles": ["estudiante"],
+            "nombre": "Estudiante",
+            "apellido": "Prueba",
         },
         {
             "id_institucional": "PROC-001",
             "email": "proctor@activeexam.local",
             "password": pw_proctor,
             "roles": ["proctor"],
+            "nombre": "Proctor",
+            "apellido": "Prueba",
         },
         {
             "id_institucional": "ADMIN-001",
             "email": "admin@activeexam.local",
             "password": pw_admin,
             "roles": ["admin_sistema"],
+            "nombre": "Admin",
+            "apellido": "Sistema",
         },
     ]
 
@@ -174,6 +180,8 @@ async def _ejecutar_seed(
                 password_hash=hashear_password(datos["password"]),  # type: ignore[arg-type]
                 auth_provider=auth_provider,
                 attrs_federados={},
+                nombre=datos.get("nombre"),
+                apellido=datos.get("apellido"),
             )
             session.add(usuario)
             print(f"  [create] {datos['id_institucional']} ({', '.join(datos['roles'])})")

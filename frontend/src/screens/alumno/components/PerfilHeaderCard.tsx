@@ -7,6 +7,7 @@
  *
  * Spec: profile-header-card (C-42)
  */
+import { motion } from 'motion/react';
 import { Button, Card } from '../../../ui/components';
 import { INSTITUTION } from '../../../config/institution';
 import type { Principal } from '../../../lib/types';
@@ -21,11 +22,39 @@ interface PerfilHeaderCardProps {
   onRehacerFoto?: () => void;
 }
 
+const containerVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.08,
+      delayChildren: 0.1,
+    },
+  },
+};
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 12 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: {
+      duration: 0.4,
+      ease: [0.16, 1, 0.3, 1] as const,
+    },
+  },
+};
+
 export function PerfilHeaderCard({ principal, onRehacerFoto }: PerfilHeaderCardProps) {
   return (
     <Card>
       {/* Fila superior: avatar + nombre + roles + acciones */}
-      <div className="flex items-center gap-md mb-lg">
+      <motion.div
+        className="flex items-center gap-md mb-lg"
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+      >
         {/* Avatar condicional: foto circular si existe, inicial si no */}
         {principal?.foto_perfil ? (
           <img
@@ -58,27 +87,32 @@ export function PerfilHeaderCard({ principal, onRehacerFoto }: PerfilHeaderCardP
             </span>
           </Button>
         )}
-      </div>
+      </motion.div>
 
       {/* Grid 2×2 de datos personales */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-md">
-        <div>
+      <motion.div
+        className="grid grid-cols-1 sm:grid-cols-2 gap-md"
+        variants={containerVariants}
+        initial="hidden"
+        animate="visible"
+      >
+        <motion.div variants={itemVariants}>
           <p className="text-label-sm text-on-surface-variant uppercase tracking-wide mb-base">Legajo</p>
           <p className="text-label-md text-on-surface font-semibold">{principal?.id_institucional ?? '—'}</p>
-        </div>
-        <div>
+        </motion.div>
+        <motion.div variants={itemVariants}>
           <p className="text-label-sm text-on-surface-variant uppercase tracking-wide mb-base">Email institucional</p>
           <p className="text-label-md text-on-surface font-semibold">{principal?.email ?? '—'}</p>
-        </div>
-        <div>
+        </motion.div>
+        <motion.div variants={itemVariants}>
           <p className="text-label-sm text-on-surface-variant uppercase tracking-wide mb-base">Institución</p>
           <p className="text-label-md text-on-surface font-semibold">{INSTITUTION.nombreCorto}</p>
-        </div>
-        <div>
+        </motion.div>
+        <motion.div variants={itemVariants}>
           <p className="text-label-sm text-on-surface-variant uppercase tracking-wide mb-base">Jurisdicción</p>
           <p className="text-label-md text-on-surface font-semibold">{principal?.jurisdiccion ?? '—'}</p>
-        </div>
-      </div>
+        </motion.div>
+      </motion.div>
     </Card>
   );
 }

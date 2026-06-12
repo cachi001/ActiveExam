@@ -9,7 +9,7 @@
  *   - Re-disparo al cambiar la versión del texto (spec informed-consent-presentation)
  */
 import { useEffect, useState } from 'react';
-import { Icon, Button, Card } from '../../ui/components';
+import { Icon, Button, Card, LoadingSpinner } from '../../ui/components';
 import { api } from '../../lib/api';
 import { Term } from '../../ui/Term';
 import type { ConsentTextResponse } from '../../lib/types';
@@ -61,21 +61,21 @@ export function EnrollmentConsentStep({ acuseActual, onConsentido }: Props) {
     }
   };
 
+  // c-66: bloquear render hasta tener `texto` (mismo fix que Consent.tsx).
+  if (texto === null) {
+    return <LoadingSpinner label="Cargando consentimiento…" />;
+  }
+
   return (
     <div className="space-y-lg animate-in fade-in duration-400">
       {/* Encabezado */}
       <div className="space-y-xs">
         <div className="flex items-center gap-sm">
           <div className="w-10 h-10 rounded-xl bg-primary-fixed text-primary flex items-center justify-center shrink-0">
-            <Icon name="shield" className="text-[20px]" fill />
+            <Icon name="description" className="text-[20px]" />
           </div>
           <div>
             <h3 className="font-headline text-title-md text-on-surface">Consentimiento informado</h3>
-            {texto && (
-              <p className="text-label-sm text-on-surface-variant">
-                Versión {texto.version} · {texto.hash_texto}
-              </p>
-            )}
           </div>
         </div>
 
@@ -120,7 +120,7 @@ export function EnrollmentConsentStep({ acuseActual, onConsentido }: Props) {
             (incluido el <Term termKey="embedding">embedding biométrico</Term> y la imagen de referencia, tratados como datos sensibles bajo la{' '}
             <strong>Ley 25.326</strong>) con la única finalidad de supervisar mis evaluaciones académicas.
             Entiendo que <strong>el sistema nunca sanciona automáticamente</strong> y que toda decisión disciplinaria
-            es humana. El acuse queda registrado con la versión {texto?.version} del texto.
+            es humana. Tu aceptación queda registrada con la versión {texto?.version} del texto.
           </span>
         </label>
       </Card>
@@ -135,7 +135,7 @@ export function EnrollmentConsentStep({ acuseActual, onConsentido }: Props) {
             <p className="text-body-md font-semibold text-on-surface">Solicitud registrada</p>
             <p className="text-label-sm text-on-surface-variant mt-base">
               Tu solicitud quedó registrada. Un proctor verificará tu identidad antes de habilitarte.
-              No podés completar el enrollment hasta entonces.
+              No podés completar tu perfil hasta entonces.
             </p>
           </div>
         </Card>
@@ -172,7 +172,7 @@ export function EnrollmentConsentStep({ acuseActual, onConsentido }: Props) {
 
       {/* Nota de privacidad */}
       <p className="text-label-sm text-on-surface-variant text-center">
-        El acuse queda registrado de forma permanente e inalterable. Podés solicitar acceso,
+        Tu aceptación queda registrada de forma permanente e inalterable. Podés solicitar acceso,
         rectificación y eliminación de tus datos ante la AAIP (Agencia de Acceso a la Información Pública).
       </p>
     </div>

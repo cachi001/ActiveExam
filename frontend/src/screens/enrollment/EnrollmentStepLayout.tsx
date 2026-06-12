@@ -6,7 +6,7 @@
  * contador de paso opcional. Presentación pura.
  */
 import type { ReactNode } from 'react';
-import { Icon } from '../../ui/components';
+import { BackButton } from '../../ui/components';
 
 interface EnrollmentStepLayoutProps {
   title: string;
@@ -18,10 +18,11 @@ interface EnrollmentStepLayoutProps {
   children: ReactNode;
 }
 
+// c-66: max-width responsive desktop (lg:/xl:) para aprovechar el ancho en pantallas grandes.
 const MAX_WIDTH: Record<NonNullable<EnrollmentStepLayoutProps['maxWidth']>, string> = {
-  xl: 'max-w-xl',
-  '2xl': 'max-w-2xl',
-  '3xl': 'max-w-3xl',
+  xl: 'max-w-xl lg:max-w-3xl xl:max-w-4xl',
+  '2xl': 'max-w-2xl lg:max-w-4xl xl:max-w-5xl',
+  '3xl': 'max-w-3xl lg:max-w-5xl xl:max-w-6xl',
 };
 
 export function EnrollmentStepLayout({
@@ -34,13 +35,7 @@ export function EnrollmentStepLayout({
   return (
     <div className={`${MAX_WIDTH[maxWidth]} mx-auto space-y-xl animate-in fade-in duration-300`}>
       <header>
-        <button
-          onClick={onBack}
-          className="inline-flex items-center gap-xs text-label-md text-on-surface-variant hover:text-primary transition-colors mb-md"
-        >
-          <Icon name="arrow_back" className="text-[18px]" />
-          Volver al perfil
-        </button>
+        <BackButton onClick={onBack} label="Volver al perfil" className="mb-md" />
         <h1 className="font-headline text-headline-md text-on-surface tracking-tight">{title}</h1>
         <p className="text-body-md text-on-surface-variant mt-xs">{subtitle}</p>
       </header>

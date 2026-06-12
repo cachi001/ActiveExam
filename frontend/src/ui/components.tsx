@@ -70,6 +70,50 @@ export function Card({ children, className = '', padded = true }: { children: Re
   );
 }
 
+// LoadingSpinner: spinner unificado morado (text-primary) centrado para pantallas en carga.
+// Para el spinner inline DENTRO de un botón procesando, usá <Icon name="progress_activity" className="ae-spin text-[20px]" /> directo.
+const SPINNER_SIZE: Record<'sm' | 'md' | 'lg', string> = {
+  sm: 'text-[20px]',
+  md: 'text-[32px]',
+  lg: 'text-[48px]',
+};
+export function LoadingSpinner({
+  size = 'md',
+  label,
+  className = '',
+}: { size?: 'sm' | 'md' | 'lg'; label?: string; className?: string }) {
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className={`flex flex-col items-center justify-center gap-sm py-xl text-on-surface-variant ${className}`}
+    >
+      <Icon name="progress_activity" className={`ae-spin text-primary ${SPINNER_SIZE[size]}`} />
+      {label && <p className="text-body-md">{label}</p>}
+    </div>
+  );
+}
+
+// BackButton: botón "volver" reutilizable para pantallas intermedias del workflow del estudiante.
+// El dashboard del estudiante (raíz del workflow) NO debe usarlo.
+export function BackButton({
+  onClick,
+  label = 'Volver',
+  className = '',
+}: { onClick: () => void; label?: string; className?: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`inline-flex items-center gap-xs text-label-md text-on-surface-variant hover:text-primary transition-colors ${className}`}
+      aria-label={label}
+    >
+      <Icon name="arrow_back" className="text-[20px]" />
+      <span>{label}</span>
+    </button>
+  );
+}
+
 export function SectionTitle({ children, sub, action }: { children: ReactNode; sub?: ReactNode; action?: ReactNode }) {
   return (
     <div className="flex items-start justify-between gap-md mb-md">

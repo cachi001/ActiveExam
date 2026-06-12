@@ -3,7 +3,7 @@
 // NO re-captura biometría ni re-presenta el consentimiento de perfil: LO REFERENCIA.
 // Sin acción afirmativa explícita el acuse NO se registra (RN-CO-02 adaptado a C-26).
 import { useEffect, useState } from 'react';
-import { Card, Button, Icon } from '../ui/components';
+import { Card, Button, Icon, LoadingSpinner } from '../ui/components';
 import { StudentShell } from '../ui/shells';
 import { useNavigate } from '../lib/router';
 import { useApp } from '../lib/store';
@@ -70,9 +70,8 @@ export default function AcuseExamen({ examenId, onConfirmado, onCancelar }: Prop
   if (cargando) {
     return (
       <StudentShell>
-        <div className="max-w-xl mx-auto flex items-center gap-sm text-on-surface-variant py-xl">
-          <Icon name="progress_activity" className="ae-spin text-[22px]" />
-          <span className="text-body-md">Cargando datos del examen…</span>
+        <div className="max-w-xl mx-auto">
+          <LoadingSpinner label="Cargando datos del examen…" />
         </div>
       </StudentShell>
     );
