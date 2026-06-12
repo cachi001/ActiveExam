@@ -1,7 +1,7 @@
 // Portal del alumno — Exploración Materia → Comisión → Examen (C-21)
 // C-26: flujo de inscripción incluye paso de acuse por-examen antes de inscribir.
 import { useEffect, useState } from 'react';
-import { Card, Icon, BackButton, LoadingSpinner } from '../ui/components';
+import { Card, BackButton, LoadingSpinner } from '../ui/components';
 import { HelpButton } from '../ui/HelpButton';
 import { StudentShell } from '../ui/shells';
 import { useNavigate } from '../lib/router';
