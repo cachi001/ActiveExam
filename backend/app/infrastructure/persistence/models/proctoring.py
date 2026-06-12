@@ -63,6 +63,23 @@ class ProctoringSessionModel(Base):
         nullable=True,
     )
 
+    # c-16: decision terminal del revisor (slim, migration 0013). NULLABLE
+    # — None = sin revisar todavia. Una vez seteada, es INMUTABLE (RN-RV-07).
+    decision: Mapped[str | None] = mapped_column(
+        String(32), nullable=True,
+        comment="'pendiente' | 'descartada' | 'escalada' | 'derivada' | NULL"
+    )
+    decision_actor: Mapped[str | None] = mapped_column(
+        String(255), nullable=True,
+        comment="Subject del JWT del revisor al momento de decidir"
+    )
+    decision_at: Mapped[str | None] = mapped_column(
+        DateTime(timezone=True), nullable=True,
+    )
+    decision_observaciones: Mapped[str | None] = mapped_column(
+        String(1024), nullable=True,
+    )
+
     eventos: Mapped[list[ProctoringEventModel]] = relationship(
         back_populates="sesion",
         cascade="all, delete-orphan",
