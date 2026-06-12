@@ -22,7 +22,7 @@
  *       + optional-dni-scan (C-22) · profile-requisito-cards (C-42)
  */
 import { useEffect, useState } from 'react';
-import { Button, Icon } from '../ui/components';
+import { Button, Icon, LoadingSpinner, BackButton } from '../ui/components';
 import { HelpButton } from '../ui/HelpButton';
 import { StudentShell } from '../ui/shells';
 import { useNavigate } from '../lib/router';
@@ -210,9 +210,8 @@ export default function StudentProfile() {
   if (paso === 'cargando') {
     return (
       <StudentShell>
-        <div className="max-w-2xl mx-auto flex items-center justify-center py-xl gap-sm text-on-surface-variant">
-          <Icon name="progress_activity" className="ae-spin text-[24px]" />
-          <span className="text-body-md">Cargando perfil…</span>
+        <div className="max-w-2xl lg:max-w-4xl mx-auto">
+          <LoadingSpinner label="Cargando perfil…" />
         </div>
       </StudentShell>
     );
@@ -335,15 +334,15 @@ export default function StudentProfile() {
 
   return (
     <StudentShell>
-      <div className="max-w-2xl mx-auto space-y-xl animate-in fade-in duration-300">
+      <div className="max-w-2xl lg:max-w-5xl xl:max-w-6xl mx-auto space-y-xl animate-in fade-in duration-300">
+        <BackButton onClick={() => navigate('/alumno')} />
         <header>
           <div className="flex items-center gap-sm">
             <h1 className="font-headline text-headline-md text-on-surface tracking-tight">Mi perfil</h1>
             <HelpButton title="Mi perfil">
               <p>
-                Desde acá completás los <strong>requisitos de enrollment</strong> para poder rendir
-                exámenes: consentimiento informado, foto de perfil, captura biométrica y (opcional)
-                escaneo de DNI.
+                Desde acá completás los <strong>requisitos para rendir</strong>: consentimiento
+                informado, foto de perfil, verificación facial y (opcional) escaneo de DNI.
               </p>
               <p>
                 La <em>captura biométrica</em> se hace una sola vez y queda vigente por 24 meses
@@ -358,7 +357,7 @@ export default function StudentProfile() {
             </HelpButton>
           </div>
           <p className="text-body-md text-on-surface-variant mt-xs">
-            Datos personales y requisitos de enrollment para rendir exámenes.
+            Datos personales y requisitos para rendir exámenes.
           </p>
         </header>
 

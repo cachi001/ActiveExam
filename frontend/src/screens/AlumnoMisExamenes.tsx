@@ -3,7 +3,7 @@
 // C-26: gate en capas — muestra "Completar acuse del examen" cuando falta el acuse por-examen.
 // C-58: setExamenActivo antes de navegar a /requisitos (fix bug examenActivo null).
 import { useEffect, useState } from 'react';
-import { Card, Button, Icon } from '../ui/components';
+import { Card, Button, Icon, BackButton, LoadingSpinner } from '../ui/components';
 import { HelpButton } from '../ui/HelpButton';
 import { StudentShell } from '../ui/shells';
 import { useNavigate } from '../lib/router';
@@ -102,7 +102,8 @@ export default function AlumnoMisExamenes() {
 
   return (
     <StudentShell>
-      <div className="max-w-2xl mx-auto space-y-xl">
+      <div className="max-w-2xl lg:max-w-5xl xl:max-w-6xl mx-auto space-y-xl">
+        <BackButton onClick={() => navigate('/alumno')} />
         <header>
           <div className="flex items-center gap-sm">
             <h1 className="font-headline text-headline-md text-on-surface tracking-tight">Mis exámenes</h1>
@@ -126,9 +127,8 @@ export default function AlumnoMisExamenes() {
         </header>
 
         {cargando ? (
-          <Card className="flex items-center gap-sm text-on-surface-variant">
-            <Icon name="progress_activity" className="ae-spin text-[20px]" />
-            <span className="text-body-md">Cargando inscripciones…</span>
+          <Card>
+            <LoadingSpinner label="Cargando inscripciones…" />
           </Card>
         ) : inscripciones.length === 0 ? (
           <Card className="text-center py-xl">

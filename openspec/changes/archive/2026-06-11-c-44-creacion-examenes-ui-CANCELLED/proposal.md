@@ -4,7 +4,7 @@
 >
 > **Componentes ya extraídos** (DetectoresSelector, ExamenResumenCard) están en uso en otros lados del producto (Configuración del sistema), no se pierden.
 >
-> **Decisión del dueño**: Active Exam consume exámenes via integración LMS (LTI 1.3 + plugin Moodle, ver DD-20). La creación es responsabilidad del LMS, no de la plataforma.
+> **Decisión del dueño**: la creación de exámenes (si en el futuro vuelve al scope) debe ser **server-side**, no como UI client-side que era el alcance de este change.
 
 ---
 

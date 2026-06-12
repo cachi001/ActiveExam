@@ -42,7 +42,7 @@
 | Media | ¿Hay población menor de 18 años? Requiere flujo de consentimiento parental y retención diferenciada. | Cumplimiento legal | Legal/DPO |
 | Media | ¿Dimensiones del embedding (128–512) y algoritmo de extracción definitivo? "típicamente 128–512" en la fuente. | Verificación biométrica | Equipo técnico |
 | Media | ¿Estructura de directorios y env vars definitivas? Inferidas en la KB, no especificadas. | Convenciones del repo | Equipo técnico |
-| Baja | ¿Integración LMS concreta (qué LMS, LTI vs iframe vs flujo coordinado)? **RESUELTO (2026-06-11, DD-20): LTI 1.3 universal + plugin Moodle `quizaccess` profundo (ambos), materializado en `c-66-integracion-lms-lti`.** Resta como detalle de diseño confirmar AGS/NRPS por LMS objetivo. | Fase 2 | TI + dirección académica |
+| Baja | ¿Integración LMS concreta (qué LMS, LTI vs iframe vs flujo coordinado)? **RESUELTO (2026-06-11, DD-20): LTI 1.3 universal + plugin Moodle `quizaccess` profundo (ambos), materializado en change futuro `integracion-lms-lti` (sin número aún).** Resta como detalle de diseño confirmar AGS/NRPS por LMS objetivo. | Fase 2 | TI + dirección académica |
 | Baja | ¿Esquema de multi-tenancy (aislamiento por DB, por schema, por fila)? | Fase 3 | Equipo técnico |
 | Baja | ¿Seed data inicial concreto (roles, realms Keycloak, configuración por defecto)? No detallado. | Bootstrap del sistema | Equipo técnico |
 | Baja | ¿Inscripción de la base ante la AAIP? Acción pendiente del área legal. | Cumplimiento Argentina | Legal/DPO |

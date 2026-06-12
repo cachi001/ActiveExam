@@ -13,11 +13,11 @@
 3. Flujo: `/opsx:propose` (si falta) → `/opsx:apply` → `/opsx:archive`. Al archivar, el change sale de este roadmap.
 4. Regenerá este archivo con `/roadmap-generator` cuando cambie el estado (no lo edites a mano para "tildar").
 
-> **Foto al 2026-06-11 (sesión 2, post-c-39)**: 65 changes totales · **52 archivados** + **4 cancelados** (sin retomar) · **9 pendientes** (abajo) · **+1 planificado sin crear** (`c-66` LTI, Fase 2 — ver Prioridad 2).
+> **Foto al 2026-06-11 (sesión 2, post-c-39)**: 65 changes totales · **52 archivados** + **4 cancelados** (sin retomar) · **9 pendientes** (abajo) · **+1 planificado sin crear** (integración LMS/LTI, Fase 2 — ver Prioridad 2).
 
 > **Cambios respecto del estado anterior (sesión 1 del 2026-06-11)**:
 > - **Archivados nuevos**: c-04, c-32, c-34, c-35, c-52, c-56 (código en main + verificación cerrada).
-> - **Cancelados** (movidos a `archive/<fecha>-c-NN-name-CANCELLED/` con nota): **c-02** (basta asignar rol `proctor` en Keycloak), **c-44** (no se crean exámenes en plataforma — LMS lo hace vía c-66/DD-20), **c-53** (Object Detection diferido sine die), **c-39** (análisis DNI mock client-side contradice la postura "no análisis cliente" ya escrita en `EnrollmentDniStep.tsx`; el análisis real será server-side a futuro).
+> - **Cancelados** (movidos a `archive/<fecha>-c-NN-name-CANCELLED/` con nota): **c-02** (basta asignar rol `proctor` en Keycloak), **c-44** (no se crean exámenes en plataforma — LMS lo hará vía change futuro de integración LMS, DD-20), **c-53** (Object Detection diferido sine die), **c-39** (análisis DNI mock client-side contradice la postura "no análisis cliente" ya escrita en `EnrollmentDniStep.tsx`; el análisis real será server-side a futuro).
 > - **c-03 sincronizado** desde rama `feat/c-03-poc-carga` → main: trae `/poc/` (harness multi-instancia + k6 + panels_asyncio) y `results-4core-baseline.md`. Estado pasó de 0/25 → **24/45** (Bloques 0-4 hechos; Bloque 5 medición + Bloque 6 condicional + cierre veredictos pendientes).
 > - **Deuda de specs canónicas malformadas**: regeneradas las 26 que fallaban `openspec validate --specs --strict`. Hoy: **111 passed / 0 failed**.
 
@@ -81,11 +81,11 @@
 
 | Change (propuesto) | Progreso | Qué es | Dep | Gov |
 |--------------------|----------|--------|-----|-----|
-| **c-66** `integracion-lms-lti` | sin crear | ⭐ Materializa **FR-17 (integración LMS) de Fase 2 — DD-20 (rev. 2026-06-11)**. **Dos capas**: (1) **LTI 1.3 Tool Provider** universal que cualquier LMS (Moodle, Canvas, Blackboard, D2L…) puede lanzar — launch OIDC (encaja con Keycloak ya configurado en c-52), roster vía **NRPS**, retorno vía **AGS** (resultado de proctoring, **NO la nota** — L2.5), mapeo de claims→3 roles reales; (2) **plugin Moodle `quizaccess`** (NO opcional) — proctoring como regla de acceso al quiz nativo (gate cámara/consentimiento + monitoreo durante el intento, sin saltar de pantalla). El examen lo opera el LMS; el proctoring NO crea ni importa exámenes. | c-01, c-06 ✓, c-07 ✓, c-16 | ALTO |
+| **integracion-lms-lti** (sin número) | sin crear | ⭐ Materializa **FR-17 (integración LMS) de Fase 2 — DD-20 (rev. 2026-06-11)**. **Dos capas**: (1) **LTI 1.3 Tool Provider** universal que cualquier LMS (Moodle, Canvas, Blackboard, D2L…) puede lanzar — launch OIDC (encaja con Keycloak ya configurado en c-52), roster vía **NRPS**, retorno vía **AGS** (resultado de proctoring, **NO la nota** — L2.5), mapeo de claims→3 roles reales; (2) **plugin Moodle `quizaccess`** (NO opcional) — proctoring como regla de acceso al quiz nativo (gate cámara/consentimiento + monitoreo durante el intento, sin saltar de pantalla). El examen lo opera el LMS; el proctoring NO crea ni importa exámenes. | c-01, c-06 ✓, c-07 ✓, c-16 | ALTO |
 
 **Leer antes**: `09_decisiones_y_supuestos.md` §DD-20 · `CHANGES.legacy.md` §[C-49] (scope completo) · `02_descripcion_general.md` §Integraciones · `06_funcionalidades.md` §Épica 18 (FR-17).
 
-**Para arrancarlo**: `/opsx:propose c-66-integracion-lms-lti`. No antes del MVP operativo — no se integra un proctoring que todavía no existe.
+**Para arrancarlo**: `/opsx:propose <c-XX>-integracion-lms-lti` con el siguiente número libre del CLI cuando se quiera arrancar. No antes del MVP operativo — no se integra un proctoring que todavía no existe.
 
 ---
 
@@ -105,7 +105,7 @@ Desbloqueados hoy (deps ya archivadas — pueden arrancar en paralelo):
   c-19-retencion-holds (0/19)              [c-07 ✓]
 
 Planificado sin proponer:
-  c-66-integracion-lms-lti (Fase 2)
+  integracion-lms-lti (Fase 2, sin número — se le asigna el siguiente libre al proponerlo)
 ```
 
 ### Camino crítico restante (5 changes)
@@ -125,7 +125,7 @@ c-03 → c-10 → c-15 → c-16 → c-20
 | 3 | c-15 panel-proctor-sse | c-19 retencion-holds | — |
 | 4 | c-16 cola-revision-humana | — | — |
 | 5 | c-20 reportes-analytics | — | — |
-| 6 | c-66 integracion-lms-lti (post-MVP) | — | — |
+| 6 | integracion-lms-lti (post-MVP, sin número aún) | — | — |
 
 > Agente A camino crítico (depende de c-03 cerrado). Agente B avanza independiente en módulo legal/cumplimiento (DSR + cadena custodia + retención). Agente C corre la pista legal de c-01 en paralelo.
 
@@ -137,7 +137,7 @@ c-03 → c-10 → c-15 → c-16 → c-20
 2. **En paralelo, c-17/c-18/c-19**: tres changes del módulo legal/cumplimiento ya desbloqueados (deps archivadas), sin dependencia entre ellos. Ideal para 3 agentes en paralelo.
 3. **Cuando DPO esté disponible, c-01**: drafts de Acuerdo L2.5 + DPIA + Acta ADRs los puede preparar Claude desde la KB; firma humana cierra el gate.
 4. **Camino crítico cerrado**: c-15 → c-16 → c-20 después de c-10.
-5. **Fase 2**: c-66 integración LMS/LTI cuando el MVP esté operativo. **Análisis real del DNI** (server-side, OCR + PDF417 + RENAPER) sería un change nuevo separado cuando aparezca la necesidad — no reabrir c-39 (cancelado).
+5. **Fase 2**: integración LMS/LTI (sin número aún, ver Prioridad 2) cuando el MVP esté operativo. **Análisis real del DNI** (server-side, OCR + PDF417 + RENAPER) sería un change nuevo separado cuando aparezca la necesidad — no reabrir c-39 (cancelado).
 
 > Regla dura del proyecto (DD-19): la arquitectura de mensajería **la decide C-03**. No asumir A4 ni SAD antes de esa PoC.
 
@@ -154,4 +154,4 @@ c-03 → c-10 → c-15 → c-16 → c-20
 | Archivados | 52 | — | — |
 | Cancelados (sin retomar) | 4 (c-02, c-39, c-44, c-53) | — | — |
 | **Total universo** | **65** | — | — |
-| Planificado sin crear | c-66 (Fase 2) | — | — |
+| Planificado sin crear | integracion-lms-lti (Fase 2, sin número) | — | — |

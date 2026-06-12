@@ -67,7 +67,7 @@ export function RequisitoBiometria({
             a la verificación de identidad. Se eliminan al egreso (salvo hold disciplinario).
           </div>
 
-          <Button onClick={onCapturar} disabled={!consentimientoOk} icon="face" iconRight="arrow_forward">
+          <Button onClick={onCapturar} disabled={!consentimientoOk} iconRight="arrow_forward">
             {!consentimientoOk ? 'Primero completá el consentimiento' : 'Capturar referencia biométrica'}
           </Button>
         </div>

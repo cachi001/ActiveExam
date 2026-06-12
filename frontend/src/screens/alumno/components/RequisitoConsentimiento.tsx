@@ -69,7 +69,7 @@ export function RequisitoConsentimiento({ consentimiento, viaAlternativa, onInic
             Para enrollarte y poder rendir exámenes, necesitás leer y aceptar el uso de tus datos
             biométricos. El acuse es inmutable e incluye la versión del texto que firmaste.
           </p>
-          <Button onClick={onIniciar} icon="gavel" iconRight="arrow_forward">
+          <Button onClick={onIniciar} iconRight="arrow_forward">
             Leer y consentir
           </Button>
         </div>

@@ -1,7 +1,7 @@
 // C-58 D2: consentimiento liviano cuando el alumno ya consintió en el perfil con versión vigente.
 import { useEffect, useState } from 'react';
 import { StudentShell } from '../ui/shells';
-import { Icon, Button, Card } from '../ui/components';
+import { Icon, Button, Card, LoadingSpinner, BackButton } from '../ui/components';
 import { useNavigate } from '../lib/router';
 import { useApp } from '../lib/store';
 import { api } from '../lib/api';
@@ -79,18 +79,31 @@ export default function Consent() {
     ? new Date(acusePerfil.timestamp).toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' })
     : null;
 
+  // c-66: bloquear render hasta tener `texto` — sin esto el botón "Acepto y continúo"
+  // aparece ANTES que las cláusulas (el `(texto?.bloques ?? []).map` rendereaba vacío
+  // mientras el resto del JSX salía igual).
+  if (texto === null) {
+    return (
+      <StudentShell step={2}>
+        <div className="max-w-3xl lg:max-w-5xl mx-auto">
+          <LoadingSpinner label="Cargando consentimiento…" />
+        </div>
+      </StudentShell>
+    );
+  }
+
   return (
     <StudentShell step={2}>
-      <div className="max-w-3xl mx-auto space-y-lg animate-in fade-in duration-500">
+      <div className="max-w-3xl lg:max-w-5xl mx-auto space-y-lg animate-in fade-in duration-500">
+        <BackButton onClick={() => navigate('/alumno')} />
         <div className="text-center space-y-base">
           <div className="w-14 h-14 rounded-2xl bg-primary-fixed text-primary flex items-center justify-center mx-auto">
-            <Icon name="shield" className="text-[28px]" fill />
+            <Icon name="description" className="text-[28px]" />
           </div>
           <h2 className="font-headline text-headline-lg text-on-surface">Consentimiento informado</h2>
           <p className="text-body-md text-on-surface-variant">
             Active Exam respeta tus derechos bajo la <strong>Ley 25.326</strong> y un DPIA aprobado.
           </p>
-          {texto && <p className="text-label-sm text-on-surface-variant">Versión {texto.version} · {texto.hash_texto}</p>}
         </div>
 
         {/* C-63: pantalla de espera — vía alternativa solicitada, pendiente de proctor */}

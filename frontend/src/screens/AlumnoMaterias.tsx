@@ -1,15 +1,17 @@
 // Portal del alumno — Exploración Materia → Comisión → Examen (C-21)
 // C-26: flujo de inscripción incluye paso de acuse por-examen antes de inscribir.
 import { useEffect, useState } from 'react';
-import { Card, Icon } from '../ui/components';
+import { Card, Icon, BackButton, LoadingSpinner } from '../ui/components';
 import { HelpButton } from '../ui/HelpButton';
 import { StudentShell } from '../ui/shells';
+import { useNavigate } from '../lib/router';
 import { api } from '../lib/api';
 import AcuseExamen from './AcuseExamen';
 import type { Materia, Comision, Examen, Inscripcion } from '../lib/types';
 import { MateriaCard } from './alumno/components/MateriaCard';
 
 export default function AlumnoMaterias() {
+  const navigate = useNavigate();
   const [materias, setMaterias] = useState<Materia[]>([]);
   const [comisiones, setComisiones] = useState<Comision[]>([]);
   const [examenes, setExamenes] = useState<Examen[]>([]);
@@ -76,7 +78,8 @@ export default function AlumnoMaterias() {
 
   return (
     <StudentShell>
-      <div className="max-w-2xl mx-auto space-y-xl">
+      <div className="max-w-2xl lg:max-w-5xl xl:max-w-6xl mx-auto space-y-xl">
+        <BackButton onClick={() => navigate('/alumno')} />
         <header>
           <div className="flex items-center gap-sm">
             <h1 className="font-headline text-headline-md text-on-surface tracking-tight">Materias disponibles</h1>
@@ -98,9 +101,8 @@ export default function AlumnoMaterias() {
         </header>
 
         {cargandoMaterias ? (
-          <Card className="flex items-center gap-sm text-on-surface-variant">
-            <Icon name="progress_activity" className="ae-spin text-[20px]" />
-            <span className="text-body-md">Cargando materias…</span>
+          <Card>
+            <LoadingSpinner label="Cargando materias…" />
           </Card>
         ) : (
           <div className="space-y-sm">

@@ -63,7 +63,7 @@ export function RequisitoDni({ dni, dniOk, dniScanHabilitado, onEscanear }: Requ
             El escaneo del DNI es opcional y no bloquea tu habilitación para rendir.
             Refuerza la verificación de identidad documental.
           </p>
-          <Button variant="outline" size="sm" onClick={onEscanear} icon="badge" className="text-label-sm">
+          <Button variant="outline" size="sm" onClick={onEscanear} className="text-label-sm">
             Escanear DNI (opcional)
           </Button>
         </div>
