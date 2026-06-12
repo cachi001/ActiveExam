@@ -36,7 +36,11 @@ from app.infrastructure.persistence.session_slim import (
     create_slim_session_factory,
 )
 from app.infrastructure.storage.db_photo_storage import DbPhotoStorageService
+from app.presentation.api.v1.admin import admin_retention_router
 from app.presentation.api.v1.auth.router import router as auth_router
+from app.presentation.api.v1.dsr import dsr_slim_router
+from app.presentation.api.v1.review import review_slim_router
+from app.presentation.api.v1.verify_chain import verify_chain_slim_router
 from app.presentation.api.v1.consent.dependencies import get_consent_service
 from app.presentation.api.v1.consent.dependencies_slim import get_consent_service_slim
 from app.presentation.api.v1.consent.router import router as consent_router
@@ -149,6 +153,26 @@ def create_slim_app() -> FastAPI:
     # /api/v1/scoring/weights. Sin este include, ambos daban 404 en prod (estaba
     # cableado solo en app.main, no en el slim que corre en Railway).
     app.include_router(scoring_router, prefix="/api/v1/scoring", tags=["scoring"])
+
+    # Admin (#19): trigger manual del motor de retencion (admin_sistema-only).
+    # POST /api/v1/admin/retention/session  -> aplica retencion de sesiones
+    # POST /api/v1/admin/retention/biometric -> borra biometria al egreso
+    app.include_router(
+        admin_retention_router, prefix="/api/v1/admin", tags=["admin"]
+    )
+
+    # Verify-chain slim (#18): re-verifica integridad SHA-256 de screenshots.
+    # POST /api/v1/evidence/{event_id}/verify-chain  -> certificado autoportante
+    app.include_router(
+        verify_chain_slim_router, prefix="/api/v1", tags=["verify-chain"]
+    )
+
+    # DSR slim (#17): derechos del titular Ley 25.326 (access/rect/erasure/portability).
+    app.include_router(dsr_slim_router, prefix="/api/v1/dsr", tags=["dsr"])
+
+    # Review slim (#16): decision terminal inmutable del revisor.
+    # POST /api/v1/review/session/{id}/decide
+    app.include_router(review_slim_router, prefix="/api/v1/review", tags=["review"])
 
     return app
 
