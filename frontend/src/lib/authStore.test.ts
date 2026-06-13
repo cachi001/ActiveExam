@@ -127,8 +127,12 @@ describe('authStore.logout()', () => {
     useAuth.getState().hydrateFromProvider(provider);
 
     useAuth.getState().logout();
-    // Esperar a que la promesa de logout.then() se resuelva.
-    await vi.runAllTimersAsync?.() ?? await new Promise((r) => setTimeout(r, 0));
+    // logout() hace `provider.logout().then(() => set(...))`. El `.then` es un
+    // microtask; un setTimeout(0) macro-task corre DESPUÉS de que el microtask
+    // resolvió, así que para entonces el store ya quedó limpio. (Antes esto
+    // usaba `vi.runAllTimersAsync?.()`, que en vitest v4 existe y se invoca,
+    // pero sin fake timers activados LANZA — por eso fallaba.)
+    await new Promise((r) => setTimeout(r, 0));
 
     expect(useAuth.getState().status).toBe('unauthenticated');
     expect(useAuth.getState().principal).toBeNull();
@@ -156,19 +160,24 @@ describe('authStore.hasRole()', () => {
 
 describe('authStore.loginDemo()', () => {
   it('llama loginConRol en el DemoAdapter y actualiza el store', () => {
-    const loginConRol = vi.fn();
-    const provider = {
-      ..._makeMockProvider(null, null),
-      loginConRol,
-    };
-    // Simular que después de loginConRol el provider tiene el principal.
-    (provider as { _principal: Principal | null })._principal = _fakeEstudiante();
+    // OJO: NO spreadear el mock — `getPrincipal` es un closure que lee el
+    // `_principal` del objeto ORIGINAL; un spread crea otro objeto y el closure
+    // seguiría leyendo null. Mutamos el MISMO objeto que el closure observa.
+    const provider = _makeMockProvider(null, null);
+    const loginConRol = vi.fn().mockImplementation(() => {
+      // Simular que el DemoAdapter, al loguear, deja el principal en el provider.
+      (provider as { _principal: Principal | null })._principal = _fakeEstudiante();
+    });
+    (provider as { loginConRol?: (r: Rol) => void }).loginConRol = loginConRol;
 
-    useAuth.getState().hydrateFromProvider(provider as unknown as AuthProvider);
+    useAuth.getState().hydrateFromProvider(provider);
+    // Antes de loginDemo no hay principal → unauthenticated.
+    expect(useAuth.getState().status).toBe('unauthenticated');
+
     useAuth.getState().loginDemo('estudiante');
 
     expect(loginConRol).toHaveBeenCalledWith('estudiante');
-    // El store se rehidrata — el principal debería estar.
+    // loginDemo → loginConRol setea el principal → re-hidrata → authenticated.
     expect(useAuth.getState().status).toBe('authenticated');
   });
 });

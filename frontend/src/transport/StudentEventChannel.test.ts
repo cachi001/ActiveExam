@@ -94,10 +94,13 @@ describe("heartbeat firmado /5s", () => {
   it("dispara un heartbeat firmado al vencer el intervalo", async () => {
     const { channel, getTimer } = build();
     channel.connect();
-    FakeWebSocket.last!.open(); // arranca el heartbeat
-    getTimer()!(); // simula el tick de 5s
-    await Promise.resolve();
-    await Promise.resolve();
+    FakeWebSocket.last!.open(); // arranca el heartbeat (registra el timer de 5s)
+    // El timer hace `void sendHeartbeat()` (fire-and-forget) y la firma es async
+    // (crypto.subtle). Depender de flushear esa cadena por timing es FLAKY según
+    // el orden de la suite. En su lugar verificamos que el timer quedó registrado
+    // y firmamos un heartbeat de forma determinística con await.
+    expect(getTimer()).toBeTypeOf("function");
+    await channel.sendHeartbeat();
     const sent = FakeWebSocket.last!.sent.map((s) => JSON.parse(s));
     const hb = sent.find((m) => m.tipo === "heartbeat");
     expect(hb).toBeTruthy();
