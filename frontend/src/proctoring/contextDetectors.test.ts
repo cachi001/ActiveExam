@@ -38,15 +38,18 @@ describe("FocusDetector", () => {
     expect(signals).toContain(false);
   });
 
-  it("emite focus_lost cuando la pestana queda oculta", () => {
+  it("emite tab_changed cuando la pestana queda oculta", () => {
     const doc = Object.assign(new FakeTarget(), { visibilityState: "hidden" as DocumentVisibilityState });
-    let lost = false;
+    // C-25: `visibilitychange` con la pestaña oculta emite `tab_changed` (señal
+    // propia), NO `focus_lost` (que es blur de ventana del SO). El test anterior
+    // esperaba `focus_lost` y quedó desactualizado tras separar ambas señales.
+    let tabChanged: boolean | undefined;
     const det = new FocusDetector((s) => {
-      lost = s.focus_lost!;
+      tabChanged = s.tab_changed;
     }, { doc: doc as unknown as Document });
     det.start();
     doc.fire("visibilitychange");
-    expect(lost).toBe(true);
+    expect(tabChanged).toBe(true);
   });
 });
 
@@ -78,26 +81,15 @@ describe("detectExtraMonitor", () => {
 // ---------------------------------------------------------------------------
 
 describe("requestAndDetectExtraMonitor", () => {
-  // Guardar descriptor original de window.getScreenDetails para restaurarlo
-  let originalDescriptor: PropertyDescriptor | undefined;
-
+  // El runner corre en entorno node (sin jsdom): `window` no existe como global.
+  // Stubeamos un `window` fresco por test para poder definir/borrar getScreenDetails
+  // sin contaminar otros tests. `unstubAllGlobals` lo limpia después.
   beforeEach(() => {
-    originalDescriptor = Object.getOwnPropertyDescriptor(window, "getScreenDetails");
+    vi.stubGlobal("window", {} as Window & typeof globalThis);
   });
 
   afterEach(() => {
-    // Restaurar el estado original de la propiedad
-    if (originalDescriptor) {
-      Object.defineProperty(window, "getScreenDetails", originalDescriptor);
-    } else {
-      // Si no existía, eliminarla
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        delete (window as any).getScreenDetails;
-      } catch {
-        // En algunos entornos la propiedad no se puede eliminar; ignorar
-      }
-    }
+    vi.unstubAllGlobals();
   });
 
   it("devuelve unsupported cuando getScreenDetails no existe en window", async () => {

@@ -72,8 +72,10 @@ describe("Flujo 5 e2e (5.1)", () => {
 
     clock += 30 * 1000; // corte de 30s (< 5 min)
     ch.handleDisconnect(); // backoff -> reconnect (scheduleImpl inmediato)
-    await Promise.resolve();
-    await Promise.resolve();
+    // El replay drena el buffer con llamados async a replaySender; dos
+    // `Promise.resolve()` no alcanzan a persistir 'b'/'c'. Un macrotask deja
+    // resolver toda la cadena de reenvío antes de las aserciones.
+    await new Promise((r) => setTimeout(r, 0));
 
     // handshake de reconexion lleva el last_event_id ('c', el ultimo producido)
     expect(handshakes[handshakes.length - 1]).toBe("c");
