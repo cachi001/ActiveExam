@@ -2,6 +2,7 @@ import { StudentShell } from '../ui/shells';
 import { Icon, Button, Card } from '../ui/components';
 import { useNavigate } from '../lib/router';
 import { useApp } from '../lib/store';
+import { nombreCompleto } from '../lib/types';
 
 export default function SalaEspera() {
   const navigate = useNavigate();
@@ -22,7 +23,7 @@ export default function SalaEspera() {
         <Card className="text-left space-y-sm">
           <Row label="Examen" value={examen?.nombre ?? '—'} highlight />
           <Row label="Cátedra" value={examen?.catedra ?? '—'} />
-          <Row label="Estudiante" value={`${principal?.nombre ?? '—'} (${principal?.id_institucional ?? ''})`} />
+          <Row label="Estudiante" value={`${nombreCompleto(principal) || '—'} (${principal?.id_institucional ?? ''})`} />
           <Row label="Duración" value={`${examen?.duracion_min ?? 0} minutos`} />
           <div className="flex justify-between items-center pt-base border-t border-outline-variant/40">
             <span className="text-label-sm uppercase tracking-wide text-on-surface-variant">Estado del monitor</span>

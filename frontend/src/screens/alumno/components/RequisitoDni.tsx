@@ -42,8 +42,7 @@ export function RequisitoDni({ dni, dniOk, dniScanHabilitado, onEscanear }: Requ
             })}.
           </p>
           <p className="text-on-surface-variant">
-            Tratado como dato sensible: cifrado at-rest, finalidad acotada,
-            eliminado al egreso. La verificación del documento se realiza server-side.
+            Se guarda cifrado y protegido, y se usa solo para verificar tu identidad.
           </p>
           {dniScanHabilitado && (
             <Button
@@ -69,8 +68,8 @@ export function RequisitoDni({ dni, dniOk, dniScanHabilitado, onEscanear }: Requ
         </div>
       ) : (
         <p className="text-label-sm text-on-surface-variant">
-          No disponible en esta versión. No bloquea el perfil completo. Cuando esté activo, el DNI
-          será tratado como dato sensible: cifrado, finalidad acotada, eliminado al egreso.
+          No disponible en esta versión. No bloquea el perfil completo. Cuando esté activo, tu DNI
+          se va a guardar cifrado y protegido.
         </p>
       )}
     </RequisitoCard>

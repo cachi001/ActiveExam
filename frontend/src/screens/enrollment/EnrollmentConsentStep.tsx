@@ -20,9 +20,11 @@ interface Props {
   acuseActual: AcuseConsentimiento | null;
   /** Callback tras consentir (acción afirmativa o vía alternativa). */
   onConsentido: (acuse: AcuseConsentimiento) => void;
+  /** Modo solo lectura: muestra el texto sin el formulario de aceptación (volver a leer). */
+  soloLectura?: boolean;
 }
 
-export function EnrollmentConsentStep({ acuseActual, onConsentido }: Props) {
+export function EnrollmentConsentStep({ acuseActual, onConsentido, soloLectura = false }: Props) {
   const [texto, setTexto] = useState<ConsentTextResponse | null>(null);
   const [acepto, setAcepto] = useState(false); // RN-CO-02: NUNCA pre-marcado
   const [guardando, setGuardando] = useState(false);
@@ -105,8 +107,20 @@ export function EnrollmentConsentStep({ acuseActual, onConsentido }: Props) {
         ))}
       </div>
 
+      {/* Solo lectura: confirmación de que ya aceptó (sin formulario) */}
+      {soloLectura && (
+        <Card className="bg-success-container/40 border-success/40 flex items-start gap-sm">
+          <Icon name="check_circle" className="text-success text-[20px] shrink-0 mt-px" fill />
+          <p className="text-body-md text-on-surface">
+            Ya aceptaste este consentimiento
+            {acuseActual ? ` el ${new Date(acuseActual.timestamp).toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' })}` : ''}.
+            Acá arriba podés volver a leer todo lo que aceptaste.
+          </p>
+        </Card>
+      )}
+
       {/* Acción afirmativa — RN-CO-02: checkbox NUNCA premarcado */}
-      <Card className="bg-white border-primary-fixed-dim/60">
+      {!soloLectura && <Card className="bg-white border-primary-fixed-dim/60">
         <label className="flex items-start gap-sm cursor-pointer select-none">
           {/* El estado inicial es false (sin pre-marcar) — acción afirmativa explícita */}
           <input
@@ -123,7 +137,7 @@ export function EnrollmentConsentStep({ acuseActual, onConsentido }: Props) {
             es humana. Tu aceptación queda registrada con la versión {texto?.version} del texto.
           </span>
         </label>
-      </Card>
+      </Card>}
 
       {/* C-63: card de espera — solicitud pendiente de proctor */}
       {solicitandoAlternativa === 'pendiente' && (
@@ -142,7 +156,7 @@ export function EnrollmentConsentStep({ acuseActual, onConsentido }: Props) {
       )}
 
       {/* Acciones */}
-      {solicitandoAlternativa !== 'pendiente' && (
+      {!soloLectura && solicitandoAlternativa !== 'pendiente' && (
         <div className="flex flex-col sm:flex-row items-center justify-between gap-md">
           <button
             onClick={handleViaAlternativa}
@@ -172,8 +186,8 @@ export function EnrollmentConsentStep({ acuseActual, onConsentido }: Props) {
 
       {/* Nota de privacidad */}
       <p className="text-label-sm text-on-surface-variant text-center">
-        Tu aceptación queda registrada de forma permanente e inalterable. Podés solicitar acceso,
-        rectificación y eliminación de tus datos ante la AAIP (Agencia de Acceso a la Información Pública).
+        Tu aceptación queda registrada de forma permanente e inalterable. Si cambia la versión o el
+        contenido del consentimiento, te lo vamos a pedir de nuevo antes de continuar.
       </p>
     </div>
   );
