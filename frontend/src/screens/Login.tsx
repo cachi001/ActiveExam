@@ -10,7 +10,7 @@ import { AUTH_PROVIDER_TYPE } from '../lib/authProvider';
 function homePorRol(roles: Rol[]): string {
   if (roles.includes('admin_sistema')) return '/admin';
   if (roles.includes('proctor')) return '/proctor';
-  return '/alumno/dashboard';
+  return '/alumno';
 }
 
 // ---------------------------------------------------------------------------

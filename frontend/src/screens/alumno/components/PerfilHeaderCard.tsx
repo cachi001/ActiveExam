@@ -9,7 +9,6 @@
  */
 import { motion } from 'motion/react';
 import { Button, Card } from '../../../ui/components';
-import { INSTITUTION } from '../../../config/institution';
 import type { Principal } from '../../../lib/types';
 
 interface PerfilHeaderCardProps {
@@ -103,14 +102,6 @@ export function PerfilHeaderCard({ principal, onRehacerFoto }: PerfilHeaderCardP
         <motion.div variants={itemVariants}>
           <p className="text-label-sm text-on-surface-variant uppercase tracking-wide mb-base">Email institucional</p>
           <p className="text-label-md text-on-surface font-semibold">{principal?.email ?? '—'}</p>
-        </motion.div>
-        <motion.div variants={itemVariants}>
-          <p className="text-label-sm text-on-surface-variant uppercase tracking-wide mb-base">Institución</p>
-          <p className="text-label-md text-on-surface font-semibold">{INSTITUTION.nombreCorto}</p>
-        </motion.div>
-        <motion.div variants={itemVariants}>
-          <p className="text-label-sm text-on-surface-variant uppercase tracking-wide mb-base">Jurisdicción</p>
-          <p className="text-label-md text-on-surface font-semibold">{principal?.jurisdiccion ?? '—'}</p>
         </motion.div>
       </motion.div>
     </Card>

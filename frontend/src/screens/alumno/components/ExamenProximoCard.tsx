@@ -31,7 +31,7 @@ export function ExamenProximoCard({ inscripcion }: ExamenProximoCardProps) {
       <div className="flex-1 min-w-0">
         <p className="text-label-md font-semibold text-on-surface truncate">{inscripcion.nombre_examen}</p>
         <p className="text-label-sm text-on-surface-variant">
-          {inscripcion.nombre_materia} · {fecha.toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' })}
+          {fecha.toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' })} · {fecha.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })} hs
         </p>
       </div>
       <Badge tone={badge.tone} dot>{badge.label}</Badge>

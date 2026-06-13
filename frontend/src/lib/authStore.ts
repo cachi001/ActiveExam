@@ -103,17 +103,16 @@ export const useAuth = create<AuthState>((set, get) => ({
         if (!extra || !extra.nombre) return;
         const current = get().principal;
         if (!current) return;
-        const nombreCompleto = extra.apellido
-          ? `${extra.nombre} ${extra.apellido}`
-          : extra.nombre;
         // Solo actualizamos si lo que tenemos sigue siendo el fallback
         // (id_institucional). Si el provider ya nos dio un nombre humano
         // (Keycloak con claim `name`), respetamos eso.
         if (current.nombre !== current.id_institucional) return;
+        // Guardamos nombre y apellido POR SEPARADO (no combinados): la UI los
+        // une donde corresponde (perfil) y usa solo el nombre en el saludo.
         set({
           principal: {
             ...current,
-            nombre: nombreCompleto,
+            nombre: extra.nombre,
             apellido: extra.apellido ?? current.apellido,
           },
         });

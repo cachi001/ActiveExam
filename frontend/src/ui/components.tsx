@@ -29,14 +29,14 @@ const VARIANTS: Record<Variant, string> = {
 
 type Size = 'sm' | 'md' | 'lg';
 const SIZE_CLASSES: Record<Size, string> = {
-  sm: 'px-2.5 py-1 text-label-sm gap-1.5',
-  md: 'px-3.5 py-1.5 text-label-md gap-1.5',
-  lg: 'px-5 py-2.5 text-label-md gap-2',
+  sm: 'px-3.5 py-2 text-label-md gap-2',
+  md: 'px-5 py-2.5 text-label-md gap-2',
+  lg: 'px-7 py-3.5 text-label-lg gap-2.5',
 };
 const ICON_SIZE: Record<Size, string> = {
-  sm: 'text-[14px]',
-  md: 'text-[16px]',
-  lg: 'text-[18px]',
+  sm: 'text-[18px]',
+  md: 'text-[20px]',
+  lg: 'text-[22px]',
 };
 
 export const Button = forwardRef<HTMLButtonElement, {
@@ -143,8 +143,8 @@ export function SeverityBadge({ severidad }: { severidad: Severidad }) {
   );
 }
 
-export function Badge({ children, tone = 'neutral', dot = false }: {
-  children: ReactNode; tone?: 'neutral' | 'primary' | 'success' | 'warning' | 'error'; dot?: boolean;
+export function Badge({ children, tone = 'neutral', dot = false, className = '' }: {
+  children: ReactNode; tone?: 'neutral' | 'primary' | 'success' | 'warning' | 'error'; dot?: boolean; className?: string;
 }) {
   const tones = {
     neutral: 'bg-surface-container-high text-on-surface-variant',
@@ -154,7 +154,7 @@ export function Badge({ children, tone = 'neutral', dot = false }: {
     error: 'bg-error-container text-on-error-container',
   } as const;
   return (
-    <span className={`inline-flex items-center gap-base px-sm py-base rounded-full text-label-sm font-semibold ${tones[tone]}`}>
+    <span className={`inline-flex items-center gap-base px-sm py-base rounded-full text-label-sm font-semibold ${tones[tone]} ${className}`}>
       {dot && <span className="w-1.5 h-1.5 rounded-full bg-current" />}
       {children}
     </span>

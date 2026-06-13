@@ -6,7 +6,6 @@
  * tool de dev para simular deriva del embedding.
  */
 import { Button, Icon } from '../../../ui/components';
-import { Term } from '../../../ui/Term';
 import { RequisitoCard } from './RequisitoCard';
 import { BiometricRenewalStatus } from '../../enrollment/BiometricRenewalStatus';
 import type { ReferenciasBiometrica } from '../../../lib/types';
@@ -62,9 +61,8 @@ export function RequisitoBiometria({
           </p>
 
           <div className="text-label-sm text-on-surface-variant bg-white rounded-xl p-sm border border-outline-variant/40">
-            <span className="font-semibold">Privacidad:</span> La imagen y el <Term termKey="embedding" />
-            biométrico son <strong>datos sensibles</strong>: cifrados at-rest, con finalidad acotada
-            a la verificación de identidad. Se eliminan al egreso (salvo hold disciplinario).
+            <span className="font-semibold">Privacidad:</span> Tu foto y los datos de tu rostro se guardan
+            <strong> cifrados y protegidos</strong>, y se usan solo para confirmar tu identidad en los exámenes.
           </div>
 
           <Button onClick={onCapturar} disabled={!consentimientoOk} iconRight="arrow_forward">

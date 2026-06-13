@@ -124,9 +124,8 @@ export function EnrollmentDniStep({ escanActual, onEscaneado, onOmitir }: Props)
                 <p className="text-label-md font-semibold text-on-surface">DNI registrado (frente y dorso)</p>
               </div>
               <p className="text-label-sm text-on-surface-variant">
-                Capturado el {formatearFecha(escanGuardado.fecha_captura)}. Tratado como dato sensible:
-                cifrado at-rest, finalidad acotada a la verificación de identidad,
-                eliminado al egreso. La verificación del documento se realiza server-side.
+                Capturado el {formatearFecha(escanGuardado.fecha_captura)}. Se guarda cifrado y protegido,
+                y se usa solo para verificar tu identidad.
               </p>
               <Button variant="ghost" onClick={onOmitir} icon="arrow_forward" className="w-full">
                 Continuar
@@ -147,9 +146,8 @@ export function EnrollmentDniStep({ escanActual, onEscaneado, onOmitir }: Props)
               <div className="flex items-start gap-sm bg-white rounded-xl p-md border border-outline-variant/40">
                 <Icon name="privacy_tip" className="text-on-surface-variant text-[18px] shrink-0 mt-px" />
                 <p className="text-label-sm text-on-surface-variant">
-                  <strong>Dato sensible:</strong> el frente y el dorso del DNI se cifran
-                  at-rest y su uso queda restringido exclusivamente a la verificación de tu identidad.
-                  Se eliminan al egreso de la institución (salvo hold disciplinario vigente).
+                  <strong>Protegido:</strong> el frente y el dorso de tu DNI se guardan cifrados y
+                  se usan solo para verificar tu identidad.
                 </p>
               </div>
 

@@ -13,10 +13,11 @@
 3. Flujo: `/opsx:propose` (si falta) → `/opsx:apply` → `/opsx:archive`. Al archivar, el change sale de este roadmap.
 4. Regenerá este archivo con `/roadmap-generator` cuando cambie el estado (no lo edites a mano para "tildar").
 
-> **Foto al 2026-06-11 (sesión 2, post-c-39)**: 65 changes totales · **52 archivados** + **4 cancelados** (sin retomar) · **9 pendientes** (abajo) · **+1 planificado sin crear** (integración LMS/LTI, Fase 2 — ver Prioridad 2).
+> **Foto al 2026-06-13 (sesión 3, post-c-66)**: 65 changes totales · **53 archivados** + **4 cancelados** (sin retomar) · **9 pendientes** (abajo) · **+1 planificado sin crear** (integración LMS/LTI, Fase 2 — ver Prioridad 2).
 
-> **Cambios respecto del estado anterior (sesión 1 del 2026-06-11)**:
-> - **Archivados nuevos**: c-04, c-32, c-34, c-35, c-52, c-56 (código en main + verificación cerrada).
+> **Cambios respecto del estado anterior (sesión 2 del 2026-06-11)**:
+> - **Archivados nuevos**: c-66 (UI estudiante onboarding desktop+mobile, frontend-only, todas las 24 tasks completadas — tsc limpio, build verde).
+> - **Sesión 2 (2026-06-11)**: c-04, c-32, c-34, c-35, c-52, c-56 (código en main + verificación cerrada).
 > - **Cancelados** (movidos a `archive/<fecha>-c-NN-name-CANCELLED/` con nota): **c-02** (basta asignar rol `proctor` en Keycloak), **c-44** (no se crean exámenes en plataforma — LMS lo hará vía change futuro de integración LMS, DD-20), **c-53** (Object Detection diferido sine die), **c-39** (análisis DNI mock client-side contradice la postura "no análisis cliente" ya escrita en `EnrollmentDniStep.tsx`; el análisis real será server-side a futuro).
 > - **c-03 sincronizado** desde rama `feat/c-03-poc-carga` → main: trae `/poc/` (harness multi-instancia + k6 + panels_asyncio) y `results-4core-baseline.md`. Estado pasó de 0/25 → **24/45** (Bloques 0-4 hechos; Bloque 5 medición + Bloque 6 condicional + cierre veredictos pendientes).
 > - **Deuda de specs canónicas malformadas**: regeneradas las 26 que fallaban `openspec validate --specs --strict`. Hoy: **111 passed / 0 failed**.
@@ -151,7 +152,7 @@ c-03 → c-10 → c-15 → c-16 → c-20
 | MVP camino crítico (parcial) | c-10 | 26 | 22 |
 | MVP sin empezar (0%) | c-15, c-16, c-17, c-18, c-19, c-20 | 109 | 0 |
 | **Total pendientes** | **9** | **203** | **46** |
-| Archivados | 52 | — | — |
+| Archivados | 53 (c-66 + anteriores) | — | — |
 | Cancelados (sin retomar) | 4 (c-02, c-39, c-44, c-53) | — | — |
-| **Total universo** | **65** | — | — |
+| **Total universo** | **66** | — | — |
 | Planificado sin crear | integracion-lms-lti (Fase 2, sin número) | — | — |

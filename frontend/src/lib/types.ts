@@ -40,6 +40,12 @@ export interface Principal {
   foto_perfil?: string;
 }
 
+/** Nombre completo "Nombre Apellido" (omite el apellido si no está). */
+export function nombreCompleto(p: Principal | null | undefined): string {
+  if (!p) return '';
+  return [p.nombre, p.apellido].filter(Boolean).join(' ');
+}
+
 export interface BloqueConsentimiento {
   titulo: string;
   cuerpo: string;
