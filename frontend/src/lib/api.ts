@@ -150,12 +150,39 @@ function calcularVigencia(fechaExpiracion: string, renovacionAnticipada: boolean
  * Estado in-memory del enrollment del alumno (C-22).
  * Reemplaza el antiguo `perfilAlumno = { consentimiento_ok, biometria_ok }`.
  */
-let enrollmentAlumno: EstadoEnrollment = {
-  consentimiento: null,
-  biometria: null,
-  dni: null,
-  perfil_completo: false,
-};
+// Demo: persistir el enrollment y la foto en localStorage para que NO se pierdan
+// al recargar la página (el mock vive en memoria; sin esto, consentimiento/foto se borran).
+const LS_ENROLLMENT = 'ae_demo_enrollment';
+const LS_FOTO = 'ae_demo_foto_perfil';
+
+function loadEnrollmentFromLS(): EstadoEnrollment {
+  try {
+    const raw = localStorage.getItem(LS_ENROLLMENT);
+    if (raw) return JSON.parse(raw) as EstadoEnrollment;
+  } catch { /* ignore */ }
+  return { consentimiento: null, biometria: null, dni: null, perfil_completo: false };
+}
+
+let enrollmentAlumno: EstadoEnrollment = loadEnrollmentFromLS();
+
+/** Persiste el enrollment del alumno (demo: sobrevive recargas). */
+function persistEnrollment(): void {
+  try { localStorage.setItem(LS_ENROLLMENT, JSON.stringify(enrollmentAlumno)); } catch { /* ignore */ }
+}
+
+/** Asigna + recalcula perfil_completo + persiste, en un solo paso. */
+function commitEnrollment(e: EstadoEnrollment): EstadoEnrollment {
+  const next = recalcularPerfilCompleto(e);
+  enrollmentAlumno = next;
+  persistEnrollment();
+  return enrollmentAlumno;
+}
+
+// Restaurar la foto de perfil persistida (demo) al avatar del estudiante.
+try {
+  const fotoLS = localStorage.getItem(LS_FOTO);
+  if (fotoLS) PRINCIPALES.estudiante = { ...PRINCIPALES.estudiante, foto_perfil: fotoLS };
+} catch { /* ignore */ }
 
 /**
  * Estado in-memory de las solicitudes de vía alternativa (C-63).
@@ -774,7 +801,7 @@ export const api = {
   /** Retorna el estado de enrollment completo del perfil (C-22). */
   async getEnrollment(): Promise<EstadoEnrollment> {
     await delay(0);
-    enrollmentAlumno = recalcularPerfilCompleto(enrollmentAlumno);
+    commitEnrollment(enrollmentAlumno);
     return { ...enrollmentAlumno };
   },
 
@@ -846,7 +873,7 @@ export const api = {
       hash: 'sha256:' + Math.random().toString(16).slice(2, 18),
       via_alternativa: viaAlternativa,
     };
-    enrollmentAlumno = recalcularPerfilCompleto({ ...enrollmentAlumno, consentimiento: acuse });
+    commitEnrollment({ ...enrollmentAlumno, consentimiento: acuse });
     return acuse;
   },
 
@@ -906,7 +933,7 @@ export const api = {
           renovacion_anticipada_requerida: false,
           referencia_id: data.referencia_id,
         };
-        enrollmentAlumno = recalcularPerfilCompleto({ ...enrollmentAlumno, biometria: ref });
+        commitEnrollment({ ...enrollmentAlumno, biometria: ref });
         return ref;
       } catch (err) {
         // Si el backend falla, NO hacer fallback demo: propagar el error
@@ -929,7 +956,7 @@ export const api = {
       vigencia: calcularVigencia(expiracion, false),
       renovacion_anticipada_requerida: false,
     };
-    enrollmentAlumno = recalcularPerfilCompleto({ ...enrollmentAlumno, biometria: ref });
+    commitEnrollment({ ...enrollmentAlumno, biometria: ref });
     return ref;
   },
 
@@ -949,7 +976,7 @@ export const api = {
       imagen_dorso: dorso,
       fecha_captura: new Date().toISOString(),
     };
-    enrollmentAlumno = recalcularPerfilCompleto({ ...enrollmentAlumno, dni: escan });
+    commitEnrollment({ ...enrollmentAlumno, dni: escan });
     return escan;
   },
 
@@ -967,13 +994,13 @@ export const api = {
       renovacion_anticipada_requerida: true,
       vigencia: 'renovacion_requerida',
     };
-    enrollmentAlumno = recalcularPerfilCompleto({ ...enrollmentAlumno, biometria: bioActualizada });
+    commitEnrollment({ ...enrollmentAlumno, biometria: bioActualizada });
   },
 
   /** Elimina la referencia biométrica para forzar renovación (demo / testing). */
   async resetearReferenciaBiometrica(): Promise<void> {
     await delay(150);
-    enrollmentAlumno = recalcularPerfilCompleto({ ...enrollmentAlumno, biometria: null });
+    commitEnrollment({ ...enrollmentAlumno, biometria: null });
   },
 
   /**
@@ -1010,6 +1037,7 @@ export const api = {
     // Modo demo: guardar en memoria de la sesión (sin persistencia real).
     await delay(300);
     PRINCIPALES.estudiante = { ...PRINCIPALES.estudiante, foto_perfil: dataUrl };
+    try { localStorage.setItem(LS_FOTO, dataUrl); } catch { /* ignore */ }
     return undefined;
   },
 
@@ -1375,7 +1403,7 @@ export const api = {
       }
     }
     await delay(150);
-    return null; // mock: sin foto
+    try { return localStorage.getItem(LS_FOTO); } catch { return null; } // demo: foto persistida
   },
 
   /**

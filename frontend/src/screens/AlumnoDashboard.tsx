@@ -7,7 +7,8 @@ import { useNavigate } from '../lib/router';
 import { useApp } from '../lib/store';
 import { api } from '../lib/api';
 import { INSTITUTION } from '../config/institution';
-import type { Inscripcion } from '../lib/types';
+import { nombreCompleto } from '../lib/types';
+import type { Inscripcion, EstadoEnrollment } from '../lib/types';
 import { QuickAccessCard } from './alumno/components/QuickAccessCard';
 import { ExamenProximoCard } from './alumno/components/ExamenProximoCard';
 
@@ -16,17 +17,17 @@ export default function AlumnoDashboard() {
   const principal = useApp((s) => s.principal);
   const [inscripciones, setInscripciones] = useState<Inscripcion[]>([]);
   const [puedeRendir, setPuedeRendir] = useState<boolean | null>(null);
-  const [razonBloqueo, setRazonBloqueo] = useState<string | undefined>();
+  const [enrollment, setEnrollment] = useState<EstadoEnrollment | null>(null);
   const [cargando, setCargando] = useState(true);
 
   useEffect(() => {
     let cancelado = false;
     (async () => {
-      const [insc, gate] = await Promise.all([api.misInscripciones(), api.puedeRendir()]);
+      const [insc, gate, enr] = await Promise.all([api.misInscripciones(), api.puedeRendir(), api.getEnrollment()]);
       if (cancelado) return;
       setInscripciones(insc);
       setPuedeRendir(gate.puede);
-      setRazonBloqueo(gate.razon);
+      setEnrollment(enr);
       setCargando(false);
     })();
     return () => { cancelado = true; };
@@ -34,11 +35,11 @@ export default function AlumnoDashboard() {
 
   const proximos = inscripciones.filter((i) => i.estado === 'inscripto' || i.estado === 'habilitado');
 
-  const Header = (
-    <header>
-      <div className="flex items-center gap-sm">
-        <h1 className="font-headline text-headline-md text-on-surface tracking-tight">
-          Hola, {principal?.nombre ?? 'estudiante'} 👋
+  const renderHeader = (centered = false) => (
+    <header className={centered ? 'text-center' : ''}>
+      <div className={`flex items-center gap-sm ${centered ? 'justify-center' : ''}`}>
+        <h1 className="font-headline text-title-lg sm:text-headline-md text-on-surface tracking-tight leading-tight">
+          Hola, {nombreCompleto(principal) || 'estudiante'} 👋
         </h1>
         <HelpButton title="Tu dashboard">
           <p>
@@ -73,28 +74,41 @@ export default function AlumnoDashboard() {
   }
 
   if (puedeRendir === false) {
+    const pasos = [
+      { label: 'Consentimiento informado', done: !!enrollment?.consentimiento },
+      { label: 'Captura biométrica de referencia', done: !!enrollment?.biometria },
+    ];
     return (
       <StudentShell>
-        <div className="min-h-[calc(100vh-180px)] flex items-center justify-center px-md">
-          <div className="w-full max-w-2xl space-y-xl">
-            {Header}
-            <div className="bg-warning-container border border-warning/30 rounded-xl p-md sm:p-lg">
-              <div className="flex flex-col sm:flex-row sm:items-center gap-md">
-                <div className="flex items-start gap-md flex-1 min-w-0">
-                  <Icon name="warning" className="text-warning text-[28px] shrink-0 mt-base" fill />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-title-md font-semibold text-on-surface">Completá tu perfil antes de rendir</p>
-                    <p className="text-body-md text-on-surface-variant mt-base">{razonBloqueo}</p>
-                  </div>
-                </div>
-                <Button
-                  variant="outline"
-                  onClick={() => navigate('/alumno/perfil')}
-                  className="shrink-0 w-full sm:w-auto"
-                >
-                  Completar perfil
-                </Button>
-              </div>
+        <div className="max-w-2xl mx-auto min-h-[calc(100dvh-13rem)] flex flex-col gap-lg">
+          {renderHeader(false)}
+          <div className="flex-1 flex items-center justify-center">
+            <div className="w-full bg-warning-container border border-warning/30 rounded-xl p-lg sm:p-xl flex flex-col items-center text-center gap-md">
+            <Icon name="warning" className="text-warning text-[36px] shrink-0" fill />
+            <div className="space-y-base">
+              <p className="text-title-lg font-semibold text-on-surface">Completá tu perfil antes de rendir</p>
+              <p className="text-body-md text-on-surface-variant max-w-md mx-auto">Antes de poder rendir necesitás completar estos pasos:</p>
+            </div>
+            <ul className="space-y-sm w-full max-w-xs mx-auto text-left">
+              {pasos.map((p) => (
+                <li key={p.label} className="flex items-center gap-sm">
+                  <Icon
+                    name={p.done ? 'check_circle' : 'radio_button_unchecked'}
+                    className={`text-[22px] shrink-0 ${p.done ? 'text-success' : 'text-on-surface-variant'}`}
+                    fill={p.done}
+                  />
+                  <span className={`text-body-md ${p.done ? 'text-on-surface-variant line-through' : 'text-on-surface font-medium'}`}>{p.label}</span>
+                  {p.done && <span className="ml-auto text-label-sm text-success font-semibold shrink-0">Listo</span>}
+                </li>
+              ))}
+            </ul>
+            <Button
+              variant="outline"
+              onClick={() => navigate('/alumno/perfil')}
+              className="w-full sm:w-auto"
+            >
+              Completar perfil
+            </Button>
             </div>
           </div>
         </div>
@@ -105,7 +119,7 @@ export default function AlumnoDashboard() {
   return (
     <StudentShell>
       <div className="max-w-2xl lg:max-w-5xl xl:max-w-6xl 2xl:max-w-7xl mx-auto space-y-xl">
-        {Header}
+        {renderHeader()}
 
         {puedeRendir === true && (
           <>
@@ -115,9 +129,7 @@ export default function AlumnoDashboard() {
                 <button onClick={() => navigate('/alumno/mis-examenes')} className="text-label-sm text-primary hover:underline">Ver todos</button>
               </div>
               {cargando ? (
-                <Card>
-                  <LoadingSpinner size="sm" label="Cargando inscripciones…" />
-                </Card>
+                <LoadingSpinner size="sm" label="Cargando inscripciones…" />
               ) : proximos.length === 0 ? (
                 <Card className="text-center py-xl">
                   <Icon name="event_busy" className="text-[40px] text-on-surface-variant mb-md" />

@@ -27,12 +27,12 @@ import { HelpButton } from '../ui/HelpButton';
 import { StudentShell } from '../ui/shells';
 import { useNavigate } from '../lib/router';
 import { useApp } from '../lib/store';
-import { api, ENABLE_DNI_SCAN, USE_REAL_BACKEND } from '../lib/api';
+import { api, ENABLE_DNI_SCAN } from '../lib/api';
 import { DEV_TOOLS_ENABLED } from '../lib/devConfig';
 import { EnrollmentConsentStep } from './enrollment/EnrollmentConsentStep';
 import { EnrollmentBiometricStep } from './enrollment/EnrollmentBiometricStep';
 import { EnrollmentDniStep } from './enrollment/EnrollmentDniStep';
-import { EnrollmentStepLayout } from './enrollment/EnrollmentStepLayout';
+import { EnrollmentStepLayout, type WizardPaso } from './enrollment/EnrollmentStepLayout';
 import { CameraSnapshotCapture } from '../ui/CameraSnapshotCapture';
 import { PerfilHeaderCard } from './alumno/components/PerfilHeaderCard';
 import { PerfilBannerEstado } from './alumno/components/PerfilBannerEstado';
@@ -50,13 +50,13 @@ type PasoEnrollment =
   | 'cargando'
   | 'perfil'
   | 'consentimiento'
+  | 'leer_consentimiento'
   | 'foto_perfil'
   | 'biometria'
   | 'dni'
   | 'renovar_biometria';
 
 /** Total de pasos del enrollment según el flag de DNI (afecta el contador "Paso X de N"). */
-const totalPasos = () => (ENABLE_DNI_SCAN ? '4' : '3');
 
 export default function StudentProfile() {
   const navigate = useNavigate();
@@ -68,6 +68,8 @@ export default function StudentProfile() {
   const [paso, setPaso] = useState<PasoEnrollment>('cargando');
   /** C-56: error de backend al guardar la foto de perfil (para mostrar al alumno). */
   const [fotoError, setFotoError] = useState<string | null>(null);
+  // C-66: foto capturada pendiente de confirmar (paso 2) antes de avanzar a biometría.
+  const [fotoConfirmando, setFotoConfirmando] = useState<string | null>(null);
 
   /** Carga el estado de enrollment y actualiza el store de Zustand. */
   const cargarEnrollment = async () => {
@@ -81,8 +83,8 @@ export default function StudentProfile() {
     let cancelado = false;
     (async () => {
       await cargarEnrollment();
-      // C-61 task 5.2: cargar foto de perfil desde el backend real y mostrar avatar.
-      if (USE_REAL_BACKEND && !principal?.foto_perfil) {
+      // Cargar foto de perfil (backend real o persistida en demo) y mostrar avatar.
+      if (!principal?.foto_perfil) {
         const foto = await api.obtenerFotoPerfil();
         if (!cancelado && foto) setFotoPerfil(foto);
       }
@@ -131,7 +133,8 @@ export default function StudentProfile() {
       // adicional (GET /enrollment/foto-perfil → base64) y elimina la demora
       // perceptual entre capturar y ver la foto en el header/perfil.
       setFotoPerfil(dataUrl);
-      setPaso('biometria');
+      // C-66: mostrar la foto capturada (confirmación del paso 2) antes de avanzar.
+      setFotoConfirmando(dataUrl);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setFotoError(msg);
@@ -203,6 +206,21 @@ export default function StudentProfile() {
 
   const volverAlPerfil = () => setPaso('perfil');
 
+  // C-66: pasos del wizard de enrollment. `actual` = nº de paso en curso (1-based).
+  // Un paso se pinta verde cuando su requisito está completo.
+  const wizardPasos = (actual: number): WizardPaso[] => {
+    const items = [
+      { label: 'Consentimiento', done: consentimientoOk },
+      { label: 'Foto', done: Boolean(principal?.foto_perfil) },
+      { label: 'Biometría', done: biometriaOk },
+    ];
+    if (ENABLE_DNI_SCAN) items.push({ label: 'DNI', done: dniOk });
+    return items.map((it, i) => ({
+      label: it.label,
+      estado: it.done ? 'completado' : i + 1 === actual ? 'actual' : 'pendiente',
+    }));
+  };
+
   // ─────────────────────────────────────────────────────────────────────────────
   // Pasos del flujo de enrollment
   // ─────────────────────────────────────────────────────────────────────────────
@@ -223,12 +241,33 @@ export default function StudentProfile() {
         <EnrollmentStepLayout
           maxWidth="3xl"
           title="Consentimiento informado"
-          subtitle={<>Paso 1 de {totalPasos()} — Leé y aceptá el uso de tus datos biométricos.</>}
+          subtitle="Leé y aceptá el uso de tus datos para verificar tu identidad."
+          pasos={wizardPasos(1)}
           onBack={volverAlPerfil}
         >
           <EnrollmentConsentStep
             acuseActual={enrollment?.consentimiento ?? null}
             onConsentido={handleConsentido}
+          />
+        </EnrollmentStepLayout>
+      </StudentShell>
+    );
+  }
+
+  // C-66: lectura del consentimiento ya aceptado (solo lectura, sin formulario)
+  if (paso === 'leer_consentimiento') {
+    return (
+      <StudentShell>
+        <EnrollmentStepLayout
+          maxWidth="3xl"
+          title="Consentimiento informado"
+          subtitle="Este es el consentimiento que aceptaste."
+          onBack={volverAlPerfil}
+        >
+          <EnrollmentConsentStep
+            acuseActual={enrollment?.consentimiento ?? null}
+            onConsentido={volverAlPerfil}
+            soloLectura
           />
         </EnrollmentStepLayout>
       </StudentShell>
@@ -241,34 +280,59 @@ export default function StudentProfile() {
       <StudentShell>
         <EnrollmentStepLayout
           title="Foto de perfil"
-          subtitle={<>Paso 2 de {totalPasos()} — Tu foto será usada como avatar en la plataforma.</>}
+          subtitle="Tu foto se usará como tu imagen en la plataforma."
+          pasos={wizardPasos(2)}
           onBack={volverAlPerfil}
         >
-          <div className="text-label-sm text-on-surface-variant bg-white rounded-xl p-sm border border-outline-variant/40">
-            <span className="font-semibold">Privacidad:</span> La foto de perfil se procesa server-side y se elimina al egreso.
-          </div>
-
-          {/* C-56: mostrar error del backend con opción de reintentar (task 11.2) */}
-          {fotoError && (
-            <div className="flex items-start gap-sm bg-error-container border border-error/30 rounded-xl p-md">
-              <Icon name="error" className="text-error text-[18px] shrink-0 mt-px" />
-              <div className="text-label-sm text-on-surface">
-                <p className="font-semibold text-error">Error al guardar la foto</p>
-                <p className="text-on-surface-variant mt-xs">{fotoError}</p>
-                <p className="text-on-surface-variant mt-xs">
-                  Intentá capturar la foto nuevamente. Si el problema persiste, contactá al soporte.
+          {fotoConfirmando ? (
+            /* C-66: confirmación de la foto capturada (paso 2) antes de avanzar a biometría */
+            <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/70 shadow-card p-lg flex flex-col items-center text-center gap-md">
+              <img src={fotoConfirmando} alt="Tu foto de perfil" className="w-36 h-36 rounded-full object-cover shadow-sm" />
+              <div className="space-y-base">
+                <p className="inline-flex items-center gap-xs font-headline text-title-lg text-on-surface">
+                  <Icon name="check_circle" className="text-success text-[24px]" fill /> ¡Foto lista!
+                </p>
+                <p className="text-body-md text-on-surface-variant max-w-md mx-auto">
+                  Esta es la foto que se va a mostrar en tu perfil. Si te gusta, continuá; si no, cambiala.
                 </p>
               </div>
+              <div className="flex flex-col sm:flex-row items-center gap-sm w-full sm:w-auto">
+                <Button variant="outline" icon="refresh" onClick={() => setFotoConfirmando(null)} className="w-full sm:w-auto">
+                  Cambiar foto
+                </Button>
+                <Button iconRight="arrow_forward" onClick={() => { setFotoConfirmando(null); setPaso('biometria'); }} className="w-full sm:w-auto">
+                  Continuar
+                </Button>
+              </div>
             </div>
-          )}
+          ) : (
+            <>
+              <div className="text-label-sm text-on-surface-variant bg-white rounded-xl p-sm border border-outline-variant/40">
+                <span className="font-semibold">Privacidad:</span> Tu foto se usa solo como tu imagen en la plataforma.
+              </div>
 
-          <CameraSnapshotCapture
-            shape="oval"
-            instruction="Posicioná tu cara dentro del óvalo y presioná Capturar"
-            contextLabel="Foto de perfil"
-            onCapture={handleFotoCapturada}
-            onCancel={handleFotoCancelada}
-          />
+              {fotoError && (
+                <div className="flex items-start gap-sm bg-error-container border border-error/30 rounded-xl p-md">
+                  <Icon name="error" className="text-error text-[18px] shrink-0 mt-px" />
+                  <div className="text-label-sm text-on-surface">
+                    <p className="font-semibold text-error">Error al guardar la foto</p>
+                    <p className="text-on-surface-variant mt-xs">{fotoError}</p>
+                    <p className="text-on-surface-variant mt-xs">
+                      Intentá capturar la foto nuevamente. Si el problema persiste, contactá al soporte.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              <CameraSnapshotCapture
+                shape="oval"
+                instruction="Posicioná tu cara dentro del óvalo y presioná Capturar"
+                contextLabel="Foto de perfil"
+                onCapture={handleFotoCapturada}
+                onCancel={handleFotoCancelada}
+              />
+            </>
+          )}
         </EnrollmentStepLayout>
       </StudentShell>
     );
@@ -279,7 +343,8 @@ export default function StudentProfile() {
       <StudentShell>
         <EnrollmentStepLayout
           title="Captura biométrica de referencia"
-          subtitle={<>Paso 3 de {totalPasos()} — Se realiza UNA sola vez. La referencia es reutilizable en todos tus exámenes.</>}
+          subtitle="Configurás tu referencia una sola vez. En cada examen comparamos tu rostro con ella para confirmar que sos vos."
+          pasos={wizardPasos(3)}
           onBack={volverAlPerfil}
         >
           <EnrollmentBiometricStep
@@ -315,7 +380,8 @@ export default function StudentProfile() {
       <StudentShell>
         <EnrollmentStepLayout
           title="Verificación documental"
-          subtitle="Paso 4 de 4 — Opcional. El escaneo del DNI (frente y dorso) refuerza la verificación pero no bloquea el perfil completo."
+          subtitle="Opcional. Escanear tu DNI (frente y dorso) refuerza la verificación, pero no es obligatorio para completar el perfil."
+          pasos={wizardPasos(4)}
           onBack={volverAlPerfil}
         >
           <EnrollmentDniStep
@@ -382,6 +448,7 @@ export default function StudentProfile() {
           consentimiento={enrollment?.consentimiento ?? null}
           viaAlternativa={viaAlternativa}
           onIniciar={() => setPaso('consentimiento')}
+          onLeer={() => setPaso('leer_consentimiento')}
         />
 
         {!viaAlternativa && (

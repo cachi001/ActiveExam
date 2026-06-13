@@ -33,7 +33,7 @@ export function ExamenCard({ examen, inscripto, inscribiendo, onInscribir }: Exa
         {/* truncate para nombres largos */}
         <p className="text-label-md font-semibold text-on-surface truncate">{examen.nombre}</p>
         <p className="text-label-sm text-on-surface-variant">
-          {fecha.toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' })} · {examen.duracion_min} min
+          {fecha.toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' })} · {fecha.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })} hs · {examen.duracion_min} min
         </p>
       </div>
       {/* flex-wrap + shrink-0 para que el cluster badge+botón no comprima */}

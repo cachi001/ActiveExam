@@ -55,11 +55,11 @@ export function InscripcionCard({
             {/* line-clamp-2 en mobile (2 líneas legibles), truncate a 1 línea en sm+ */}
             <p className="text-label-md font-semibold text-on-surface line-clamp-2 sm:truncate">{inscripcion.nombre_examen}</p>
             <p className="text-label-sm text-on-surface-variant line-clamp-2">
-              {inscripcion.nombre_materia} · {fecha.toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' })}
+              {fecha.toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' })} · {fecha.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })} hs
             </p>
           </div>
         </div>
-        <Badge tone={config.tone} dot>{config.label}</Badge>
+        <Badge tone={config.tone} dot className="self-start">{config.label}</Badge>
       </div>
 
       {inscripcion.estado === 'habilitado' && (
