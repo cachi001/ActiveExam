@@ -79,7 +79,7 @@ export function PerfilBannerEstado({
         <Icon name="verified" className="text-success text-[24px] shrink-0" fill />
         <div className="flex-1">
           <p className="text-label-md font-semibold text-on-surface">
-            Perfil completo — podés rendir tus exámenes
+            Perfil completo, ya podés rendir tus exámenes
           </p>
           <p className="text-label-sm text-on-surface-variant mt-base">
             {viaAlternativa
@@ -88,7 +88,7 @@ export function PerfilBannerEstado({
           </p>
         </div>
         <Button
-          variant="secondary"
+          variant="outline"
           onClick={onIrAExamenes}
           className="shrink-0 h-9 px-md text-label-sm"
         >

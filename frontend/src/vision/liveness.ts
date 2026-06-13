@@ -69,6 +69,14 @@ export interface BaselineMetrics {
   blinkOpenness: number;
   smileWidth: number;
   gazeX: number;
+  /**
+   * C-67: Posición Y promedio de las comisuras de la boca en reposo.
+   * Landmarks 61 (izquierda) y 291 (derecha): avgCornerY = (lm[61].y + lm[291].y) / 2.
+   * Cuando el alumno sonríe, las comisuras suben (y disminuye en coordenadas de imagen).
+   * Usado por la métrica compuesta de sonrisa (elevación + ancho).
+   * Opcional: undefined si el baseline se computó antes de C-67 (backward compatible).
+   */
+  smileCornerY?: number;
 }
 
 // ---------------------------------------------------------------------------

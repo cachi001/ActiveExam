@@ -40,12 +40,15 @@ export interface FramingSignals {
 // para forzar una referencia consistente (cara grande, centrada, con margen del
 // borde del frame). NO es por corrección del embedding (face-api re-alinea), sino
 // guardarraíl de CALIDAD/consistencia de la captura.
-const LUM_LOW = 55;     // < 55 sobre 255 = penumbra → "más luz"
-const LUM_HIGH = 230;   // > 230 = contraluz/saturado → "menos luz / contraluz"
-const BBOX_FAR = 0.30;  // rostro < 30% del frame → "acercate" (debe LLENAR el óvalo)
-const BBOX_NEAR = 0.58; // rostro > 58% del frame → "alejate un poco"
-const OFFCENTER = 0.08; // |0.5 - cx| > 0.08 → "centrá" (cara COMPLETAMENTE centrada)
-const OFFCENTER_Y = 0.10; // |0.5 - cy| > 0.10 → "centrá" (cara COMPLETAMENTE centrada)
+// C-67: umbrales RELAJADOS. Los de C-65 ("tipo banco", apretados) falseaban:
+// pedían recentrar/acercar/alejar aunque el rostro estuviera bien. Se aflojan a
+// una ventana cómoda — siguen siendo guardarraíl de calidad, sin nitpicking.
+const LUM_LOW = 48;     // < 48 sobre 255 = penumbra real → "más luz" (antes 55)
+const LUM_HIGH = 238;   // > 238 = contraluz/saturado (antes 230)
+const BBOX_FAR = 0.22;  // rostro < 22% del frame → "acercate" (antes 0.30)
+const BBOX_NEAR = 0.72; // rostro > 72% del frame → "alejate" (antes 0.58)
+const OFFCENTER = 0.16; // |0.5 - cx| > 0.16 → "centrá" (antes 0.08, demasiado estricto)
+const OFFCENTER_Y = 0.20; // |0.5 - cy| > 0.20 → "centrá" (antes 0.10)
 
 // Frontalidad (C-65) = CABEZA DERECHA, NO mirada de ojos. Se mide por la asimetría
 // horizontal de la nariz respecto a las comisuras externas de los ojos (yaw de

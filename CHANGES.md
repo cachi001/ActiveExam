@@ -90,6 +90,18 @@
 
 ---
 
+## 🟢 Prioridad — Frontend / UX biométrico (no bloqueante)
+
+> Changes 100% client-side sobre el flujo biométrico ya implementado. **No dependen de c-03** (no tocan cola/transporte/tiempo real) ni del camino crítico del MVP; pueden correr en paralelo. Construyen sobre el linaje biométrico archivado (c-22 / c-36 / c-54 / c-59 / c-65).
+
+| Change | Progreso | Qué es / scope | Dep | Gov |
+|--------|----------|----------------|-----|-----|
+| **c-67** `captura-biometrica-gestos-liveness` | 0/27 | Mejoras de UX y robustez del flujo biométrico client-side: sonrisa más precisa y rápida; anillo de progreso al **borde exterior** del óvalo, fino, con relleno verde tipo barra de carga y **reanudación sin reinicio**; cues de audio de progreso/pérdida de gesto; pantalla de **resultado de la verificación del examen en lenguaje claro** (sin jerga, gate de "continuar"); endurecimiento **anti-foto (PAD, ISO 30107-3)** combinando reto-respuesta + pasivo + cámara virtual. **No toca cadena de custodia ni embedding; autoridad = re-inferencia server-side.** | c-54 ✓, c-59 ✓, c-65 ✓ (archivados) | **CRÍTICO** (biometría + anti-spoofing — requiere aprobación humana antes de implementar) |
+
+**Leer antes**: `11_ia_y_vision.md`, `12_biometria_y_liveness.md`, `05_reglas_de_negocio.md` §RN-BIO.
+
+---
+
 ## Árbol de dependencias (pendientes)
 
 ```

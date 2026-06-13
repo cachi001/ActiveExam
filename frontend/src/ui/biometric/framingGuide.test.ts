@@ -92,47 +92,51 @@ describe('isHintBloqueante — tabla completa', () => {
 });
 
 // ---------------------------------------------------------------------------
-// C-65 ajuste post-prueba: umbrales APRETADOS (óvalo tipo app bancaria).
-// Centrado: |0.5 - cx| > 0.08 (x) o |0.5 - cy| > 0.10 (y) → descentrado.
-// Tamaño: bbox < 0.30 → lejos (exige que la cara LLENE más el óvalo).
-// Estos tests FIJAN la calibración: si alguien afloja los umbrales, fallan.
+// C-67: umbrales RELAJADOS (los de C-65 falseaban: pedían recentrar/acercar aun
+// estando bien). Centrado: |0.5-cx| > 0.16 (x) o |0.5-cy| > 0.20 (y) → descentrado.
+// Tamaño: bbox < 0.22 → lejos; bbox > 0.72 → cerca.
+// Estos tests FIJAN la nueva calibración.
 // ---------------------------------------------------------------------------
 
-describe('evaluateFraming — umbrales apretados (centrado + tamaño)', () => {
+describe('evaluateFraming — umbrales relajados (centrado + tamaño)', () => {
   // Señal base con todo OK; cada test pisa sólo lo que quiere probar.
   const ok: FramingSignals = {
     faceCount: 1,
-    luminanceAvg: 120, // luz OK (entre 55 y 230)
-    faceBboxWidth: 0.4, // tamaño OK (entre 0.30 y 0.58)
+    luminanceAvg: 120, // luz OK (entre 48 y 238)
+    faceBboxWidth: 0.4, // tamaño OK (entre 0.22 y 0.72)
     faceCenterX: 0.5,
     faceCenterY: 0.5,
   };
 
   // ── Centrado horizontal ────────────────────────────────────────────────
-  it('cx 0.12 fuera de centro (>0.08) → descentrado', () => {
-    expect(evaluateFraming({ ...ok, faceCenterX: 0.5 + 0.12 })).toBe('descentrado');
+  it('cx 0.20 fuera de centro (>0.16) → descentrado', () => {
+    expect(evaluateFraming({ ...ok, faceCenterX: 0.5 + 0.20 })).toBe('descentrado');
   });
 
-  it('cx 0.05 fuera de centro (<0.08) → null (centrado aceptable)', () => {
-    expect(evaluateFraming({ ...ok, faceCenterX: 0.5 + 0.05 })).toBeNull();
+  it('cx 0.12 fuera de centro (<0.16) → null (centrado aceptable)', () => {
+    expect(evaluateFraming({ ...ok, faceCenterX: 0.5 + 0.12 })).toBeNull();
   });
 
   // ── Centrado vertical ──────────────────────────────────────────────────
-  it('cy 0.13 fuera de centro (>0.10) → descentrado', () => {
-    expect(evaluateFraming({ ...ok, faceCenterY: 0.5 + 0.13 })).toBe('descentrado');
+  it('cy 0.25 fuera de centro (>0.20) → descentrado', () => {
+    expect(evaluateFraming({ ...ok, faceCenterY: 0.5 + 0.25 })).toBe('descentrado');
   });
 
-  it('cy 0.07 fuera de centro (<0.10) → null (centrado aceptable)', () => {
-    expect(evaluateFraming({ ...ok, faceCenterY: 0.5 + 0.07 })).toBeNull();
+  it('cy 0.13 fuera de centro (<0.20) → null (centrado aceptable)', () => {
+    expect(evaluateFraming({ ...ok, faceCenterY: 0.5 + 0.13 })).toBeNull();
   });
 
   // ── Tamaño (llenar el óvalo) ───────────────────────────────────────────
-  it('bbox 0.26 (<0.30) → lejos (la cara no llena el óvalo)', () => {
-    expect(evaluateFraming({ ...ok, faceBboxWidth: 0.26 })).toBe('lejos');
+  it('bbox 0.18 (<0.22) → lejos (la cara no llena el óvalo)', () => {
+    expect(evaluateFraming({ ...ok, faceBboxWidth: 0.18 })).toBe('lejos');
   });
 
-  it('bbox 0.34 (>0.30) → null (la cara llena el óvalo)', () => {
-    expect(evaluateFraming({ ...ok, faceBboxWidth: 0.34 })).toBeNull();
+  it('bbox 0.4 (entre 0.22 y 0.72) → null (encuadre cómodo)', () => {
+    expect(evaluateFraming({ ...ok, faceBboxWidth: 0.4 })).toBeNull();
+  });
+
+  it('bbox 0.78 (>0.72) → cerca (demasiado cerca)', () => {
+    expect(evaluateFraming({ ...ok, faceBboxWidth: 0.78 })).toBe('cerca');
   });
 });
 

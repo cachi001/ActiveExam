@@ -147,3 +147,20 @@ export function playError(): void {
     { freq: 330, duration: 0.13, delay: 0.09, type: 'sine', gain: 0.7 }, // mi4 (descendente)
   ]);
 }
+
+/**
+ * C-67: Tick breve y agudo de progreso del gesto (barra cargando).
+ * Se dispara por cruce de fracción, no por frame.
+ * Cooldown interno 400ms por nombre.
+ */
+export function playGestureProgress(): void {
+  playSequence('gesture_progress', [{ freq: 1046.5, duration: 0.06, type: 'sine', gain: 0.5 }]); // do6
+}
+
+/**
+ * C-67: Tono grave corto al perder el gesto con progreso acumulado.
+ * Distinto de playError() (fallo terminal) y playHint() (encuadre).
+ */
+export function playGestureLost(): void {
+  playSequence('gesture_lost', [{ freq: 220, duration: 0.09, type: 'sine', gain: 0.6 }]); // la2 — grave, corto
+}

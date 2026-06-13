@@ -26,7 +26,7 @@ const SUB_INSTRUCCION_RETO: Record<SequentialChallenge, string> = {
   girar_cabeza:
     'Girá la cabeza despacio hacia el lado indicado, manteniendo el rostro dentro del óvalo. Quedate unos segundos así.',
   sonreír:
-    'Mostrá una sonrisa marcada (mostrando dientes está bien) y mantenela un par de segundos.',
+    'Sonreí despacio, marcando bien la sonrisa (mostrando los dientes está bien) y sostenela quieto un par de segundos hasta que se complete.',
 };
 
 export interface CaptureProgressProps {
@@ -75,8 +75,7 @@ export function CaptureProgress({
       {!enExito && cooldownActivo && retoRecienResueltoLabel && (
         <div className="flex flex-col items-center gap-1 animate-in fade-in duration-200">
           <span className="text-green-600 text-[32px]" aria-hidden>✓</span>
-          <p className="font-headline text-lg font-bold text-green-600">{retoActualLabel}</p>
-          <p className="text-sm text-neutral-500">{retoRecienResueltoLabel}</p>
+          <p className="font-headline text-lg font-bold text-green-600">¡Bien! {retoRecienResueltoLabel} listo</p>
         </div>
       )}
 
