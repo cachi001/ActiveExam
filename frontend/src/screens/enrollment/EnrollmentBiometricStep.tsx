@@ -23,7 +23,6 @@
 import { useCallback, useState } from 'react';
 import { Icon, Button, Card } from '../../ui/components';
 import { api, BIOMETRIC_VALIDITY_MONTHS } from '../../lib/api';
-import { Term } from '../../ui/Term';
 import { BiometricCapture } from '../../ui/BiometricCapture';
 import { computeFaceDescriptor } from '../../vision/faceEmbedding';
 import { useApp } from '../../lib/store';
@@ -162,7 +161,7 @@ export function EnrollmentBiometricStep({ referenciaActual, onCapturada, esRenov
             {esRenovacion ? 'Renovar referencia biométrica' : 'Captura de referencia biométrica'}
           </h3>
           <p className="text-label-sm text-on-surface-variant">
-            Vigencia {BIOMETRIC_VALIDITY_MONTHS} meses · <Term termKey="face_mesh" /> + <Term termKey="liveness">liveness híbrido</Term>
+            Vigencia {BIOMETRIC_VALIDITY_MONTHS} meses
           </p>
         </div>
       </div>
@@ -186,20 +185,28 @@ export function EnrollmentBiometricStep({ referenciaActual, onCapturada, esRenov
       {/* Contenedor principal */}
       <Card className="flex flex-col items-center gap-lg">
         {/* Visor de cámara (estático en instrucciones/completado/error) */}
-        <div className="relative w-[260px] h-[320px] rounded-[36px] overflow-hidden bg-inverse-surface flex items-center justify-center">
-          <div className={`relative w-[160px] h-[210px] rounded-[50%] border-2 border-dashed transition-colors duration-300 ${
-            fase === 'completado'  ? 'border-success' :
-            fase === 'procesando' ? 'border-warning animate-pulse' :
-            'border-primary-container'
-          }`} />
+        {/* Óvalo guía con la MISMA forma (clip-path elipse) que la cámara real. */}
+        <div
+          className="relative"
+          style={{ width: 'min(70vw, 220px)', filter: 'drop-shadow(0 10px 24px rgba(16,24,40,0.10))' }}
+        >
+          <div
+            className={`w-full rounded-[50%] border-2 border-black transition-colors duration-300 ${
+              fase === 'completado' ? 'bg-success-container' :
+              fase === 'procesando' ? 'bg-warning-container animate-pulse' :
+              'bg-surface-container-high'
+            }`}
+            style={{ aspectRatio: '3 / 4' }}
+          />
         </div>
 
         {/* ── Task 8.8: Estado: instrucciones iniciales ── */}
         {fase === 'instrucciones' && (
           <div className="text-center space-y-md w-full">
-            <p className="text-body-md text-on-surface-variant">
-              Encuadrá tu rostro dentro del óvalo con buena iluminación y sin objetos que lo cubran.
-              La captura dura 3–5 segundos y requiere dos gestos anti-suplantación.
+            <p className="text-body-md text-on-surface-variant leading-relaxed">
+              Ubicá tu rostro dentro del óvalo, con buena luz y sin nada que lo tape (gorra,
+              anteojos oscuros, barbijo). Dura unos segundos e incluye <strong>tres gestos rápidos</strong>
+              {' '}para confirmar que sos una persona real.
             </p>
             {/* Botón iniciar — activa la fase capturando con el overlay BiometricCapture */}
             <Button icon="photo_camera" onClick={() => setFase('capturando')}>
@@ -212,10 +219,8 @@ export function EnrollmentBiometricStep({ referenciaActual, onCapturada, esRenov
         {fase === 'procesando' && (
           <div className="text-center space-y-sm text-on-surface-variant">
             <Icon name="progress_activity" className="ae-spin text-primary text-[32px]" />
-            <p className="text-body-md">
-              Calculando <Term termKey="embedding">embedding</Term> de referencia (descriptor facial de 128 dimensiones)…
-            </p>
-            <p className="text-label-sm">Re-inferencia y firma del lado del servidor</p>
+            <p className="text-body-md">Procesando tu referencia facial…</p>
+            <p className="text-label-sm">La estamos guardando de forma segura. Tarda unos segundos.</p>
           </div>
         )}
 
@@ -234,8 +239,7 @@ export function EnrollmentBiometricStep({ referenciaActual, onCapturada, esRenov
               </p>
             ) : (
               <p className="text-label-sm text-warning">
-                No se pudo extraer el descriptor facial del último frame. Podés reintentar
-                la captura para habilitar la verificación 1:1.
+                No pudimos procesar bien tu rostro en esta toma. Volvé a intentar la captura.
               </p>
             )}
           </div>
@@ -263,13 +267,12 @@ export function EnrollmentBiometricStep({ referenciaActual, onCapturada, esRenov
         <div className="text-label-sm text-on-surface-variant bg-white rounded-xl p-md border border-outline-variant/40 space-y-xs">
           <p className="font-semibold text-on-surface flex items-center gap-xs">
             <Icon name="lock" className="text-[16px]" />
-            Privacidad y custodia de datos
+            Tu privacidad
           </p>
           <p>
-            La imagen de referencia y el <Term termKey="embedding">embedding</Term> se tratan como <strong>datos sensibles</strong>:
-            cifrados at-rest, con finalidad acotada exclusivamente a la verificación de tu identidad
-            y la revisión humana (la decisión es siempre humana). Se eliminan al egreso de la institución (salvo hold disciplinario vigente).
-            El cliente es sensor no confiable: el backend re-infiere y firma toda evidencia.
+            Tu foto y los datos de tu rostro se guardan <strong>cifrados y protegidos</strong>, y se usan
+            <strong> solo</strong> para confirmar que sos vos en tus exámenes. Ninguna decisión la toma una máquina:
+            siempre la revisa una persona del equipo académico.
           </p>
         </div>
       )}

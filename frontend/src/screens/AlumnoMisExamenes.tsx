@@ -127,9 +127,9 @@ export default function AlumnoMisExamenes() {
         </header>
 
         {cargando ? (
-          <Card>
+          <div className="min-h-[60vh] flex items-center justify-center">
             <LoadingSpinner label="Cargando inscripciones…" />
-          </Card>
+          </div>
         ) : inscripciones.length === 0 ? (
           <Card className="text-center py-xl">
             <Icon name="event_busy" className="text-[40px] text-on-surface-variant mb-md" />

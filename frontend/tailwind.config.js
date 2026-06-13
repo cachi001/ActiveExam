@@ -116,6 +116,7 @@ export default {
         "title-lg": ["20px", { lineHeight: "28px", fontWeight: "600" }],
         "body-lg": ["16px", { lineHeight: "24px", fontWeight: "400" }],
         "body-md": ["15px", { lineHeight: "22px", fontWeight: "400" }],
+        "label-lg": ["16px", { lineHeight: "24px", letterSpacing: "0.01em", fontWeight: "600" }],
         "label-md": ["14px", { lineHeight: "20px", letterSpacing: "0.01em", fontWeight: "600" }],
         "label-sm": ["12px", { lineHeight: "16px", fontWeight: "500" }],
       },

@@ -1,7 +1,7 @@
 // Portal del alumno — Exploración Materia → Comisión → Examen (C-21)
 // C-26: flujo de inscripción incluye paso de acuse por-examen antes de inscribir.
 import { useEffect, useState } from 'react';
-import { Card, BackButton, LoadingSpinner } from '../ui/components';
+import { BackButton, LoadingSpinner } from '../ui/components';
 import { HelpButton } from '../ui/HelpButton';
 import { StudentShell } from '../ui/shells';
 import { useNavigate } from '../lib/router';
@@ -101,9 +101,9 @@ export default function AlumnoMaterias() {
         </header>
 
         {cargandoMaterias ? (
-          <Card>
+          <div className="min-h-[60vh] flex items-center justify-center">
             <LoadingSpinner label="Cargando materias…" />
-          </Card>
+          </div>
         ) : (
           <div className="space-y-sm">
             {materias.map((materia) => (

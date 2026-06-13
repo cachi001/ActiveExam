@@ -82,6 +82,7 @@ export default function App() {
     '/admin/configuracion': g(<Configuracion />, ADMIN),
 
     // Portal del alumno — C-21
+    '/alumno': g(<AlumnoDashboard />, ESTUDIANTE),
     '/alumno/dashboard': g(<AlumnoDashboard />, ESTUDIANTE),
     '/alumno/materias': g(<AlumnoMaterias />, ESTUDIANTE),
     '/alumno/mis-examenes': g(<AlumnoMisExamenes />, ESTUDIANTE),

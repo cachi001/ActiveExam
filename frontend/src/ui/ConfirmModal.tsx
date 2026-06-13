@@ -18,7 +18,7 @@ export interface ConfirmModalProps {
   mensaje: React.ReactNode;
   textoConfirmar?: string;
   textoCancelar?: string;
-  variante?: 'danger' | 'default';
+  variante?: 'danger' | 'default' | 'logout';
   onConfirmar: () => void;
   onCancelar: () => void;
 }
@@ -33,6 +33,12 @@ const VARIANTE_CONFIG = {
     icon: 'warning',
     iconWrap: 'bg-warning-container text-warning',
     botonVariant: 'primary' as const,
+  },
+  // Cerrar sesión: tono rojo, pero con icono de logout (no el triángulo de advertencia).
+  logout: {
+    icon: 'logout',
+    iconWrap: 'bg-error-container text-on-error-container',
+    botonVariant: 'danger' as const,
   },
 };
 
