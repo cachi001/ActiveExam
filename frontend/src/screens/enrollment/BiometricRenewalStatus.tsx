@@ -159,11 +159,12 @@ export function BiometricRenewalStatus({ referencia, onRenovar }: Props) {
         // (rostro mal encuadrado, luz pobre, falla de red al guardar, etc.).
         // Usa el mismo flujo de renovación (reemplaza la referencia vigente).
         <Button
-          variant="ghost"
+          variant="outline"
+          size="sm"
           icon="refresh"
           onClick={handleRenovar}
           disabled={limiteAlcanzado}
-          className="w-full sm:w-auto text-on-surface-variant"
+          className="w-full sm:w-auto"
         >
           {limiteAlcanzado ? 'Límite de re-capturas alcanzado' : 'Rehacer captura'}
         </Button>

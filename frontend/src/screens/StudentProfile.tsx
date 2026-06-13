@@ -146,7 +146,8 @@ export default function StudentProfile() {
    * Task 7.4 — Handler al cancelar la foto de perfil (C-37).
    * El paso NO bloquea el enrollment: si cancela, avanza a biometría igualmente.
    */
-  const handleFotoCancelada = () => setPaso('biometria');
+  const handleFotoCancelada = () =>
+    setPaso(enrollment?.biometria?.captura_completada ? 'perfil' : 'biometria');
 
   const handleBiometriaCapturada = async (_ref: ReferenciasBiometrica) => {
     await cargarEnrollment();
@@ -281,7 +282,9 @@ export default function StudentProfile() {
         <EnrollmentStepLayout
           title="Foto de perfil"
           subtitle="Tu foto se usará como tu imagen en la plataforma."
-          pasos={wizardPasos(2)}
+          // Cambio de foto desde un perfil ya completo → no es el wizard inicial:
+          // ocultamos el stepper "Paso 2 de N" para no dar la sensación de retroceder.
+          pasos={enrollment?.biometria?.captura_completada ? undefined : wizardPasos(2)}
           onBack={volverAlPerfil}
         >
           {fotoConfirmando ? (
@@ -300,8 +303,18 @@ export default function StudentProfile() {
                 <Button variant="outline" icon="refresh" onClick={() => setFotoConfirmando(null)} className="w-full sm:w-auto">
                   Cambiar foto
                 </Button>
-                <Button iconRight="arrow_forward" onClick={() => { setFotoConfirmando(null); setPaso('biometria'); }} className="w-full sm:w-auto">
-                  Continuar
+                <Button
+                  iconRight="arrow_forward"
+                  onClick={() => {
+                    setFotoConfirmando(null);
+                    // Si ya completó la biometría (cambio de foto desde un perfil ya
+                    // completo), volver al perfil — NO re-disparar el wizard de captura.
+                    // Solo el enrollment inicial (sin biometría aún) sigue a 'biometria'.
+                    setPaso(enrollment?.biometria?.captura_completada ? 'perfil' : 'biometria');
+                  }}
+                  className="w-full sm:w-auto"
+                >
+                  {enrollment?.biometria?.captura_completada ? 'Guardar foto' : 'Continuar'}
                 </Button>
               </div>
             </div>
@@ -471,14 +484,6 @@ export default function StudentProfile() {
           dniScanHabilitado={ENABLE_DNI_SCAN}
           onEscanear={() => setPaso('dni')}
         />
-
-        {perfilCompleto && (
-          <div className="text-center">
-            <Button onClick={() => navigate('/alumno/mis-examenes')} icon="assignment" iconRight="arrow_forward">
-              Ir a mis exámenes
-            </Button>
-          </div>
-        )}
       </div>
     </StudentShell>
   );

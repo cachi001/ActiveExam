@@ -35,14 +35,14 @@ import { CaptureOverlay } from './biometric/CaptureOverlay';
 import type { OvalTono } from './biometric/CaptureOval';
 import { CaptureError } from './biometric/CaptureError';
 import { evaluateFraming, isHintBloqueante, isFrontal, type FramingHint } from './biometric/framingGuide';
-import { playStepCompleted, playSuccess, playHint, playError } from './biometric/sounds';
+import { playStepCompleted, playSuccess, playHint, playError, playGestureProgress, playGestureLost } from './biometric/sounds';
 import { loadEnrollmentEngine, disposeEnrollmentEngine } from '../vision/enrollmentEngineLoader';
 import {
   evaluateChallengeRelative,
   fisherYatesShuffle,
   computeBaselineFromAccumulator,
   isBaselineSmileValid,
-  gestureHold,
+  gestureAccumulator,
   GESTURE_HOLD_MS,
 } from '../vision/enrollmentChallengeDetector';
 import type { BaselineFrame } from '../vision/enrollmentChallengeDetector';
@@ -133,12 +133,21 @@ function medirLuminancia(
     if (!ctx) return null;
     ctx.drawImage(video, 0, 0, 32, 24);
     const data = ctx.getImageData(0, 0, 32, 24).data;
+    // C-67: medir SOLO la región central (donde está el rostro dentro del óvalo),
+    // no el frame entero. Sin esto, un fondo oscuro arrastra el promedio abajo y
+    // dispara un "Poca luz" falso aunque la cara esté bien iluminada.
+    const W = 32;
+    const X0 = 8, X1 = 24, Y0 = 6, Y1 = 18; // caja central ~rostro (16×12)
     let sum = 0;
-    const pixels = data.length / 4;
-    for (let i = 0; i < data.length; i += 4) {
-      sum += 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+    let count = 0;
+    for (let y = Y0; y < Y1; y++) {
+      for (let x = X0; x < X1; x++) {
+        const i = (y * W + x) * 4;
+        sum += 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+        count++;
+      }
     }
-    return sum / pixels;
+    return count > 0 ? sum / count : null;
   } catch {
     return null;
   }
@@ -166,6 +175,20 @@ const COOLDOWN_MS = 800;
  * frame 1 y se cumplen los FRAMES_MIN sin acción real del alumno.
  */
 const NEUTRAL_GATE_FRAMES = 3;
+
+/**
+ * C-67: Tope de `dt` (ms) por frame que se vuelca al acumulador de gesto.
+ *
+ * El acumulador suma el delta de tiempo entre frames evaluados. Pero `lastFrameTimeRef`
+ * NO se actualiza mientras el loop hace early-return (cooldown entre pasos ~800ms,
+ * framing bloqueante, sin cara, pestaña en background). Sin tope, el primer frame
+ * evaluado tras un hueco calcula un `dt` enorme (~800ms+) y, si ese frame cumple el
+ * reto, el acumulador supera GESTURE_HOLD_MS (500ms) de un saque → confirma el reto
+ * sin que el alumno lo sostenga de verdad. Era el bug "el último paso me lo toma sin
+ * hacerlo". Un frame real a 30-60fps es ~16-33ms; con tope de 100ms (≈3 frames) un
+ * hold legítimo necesita varios frames reales de gesto sostenido.
+ */
+const MAX_FRAME_DT_MS = 100;
 
 // Número de frames de cara detectada antes de iniciar acumulación del baseline.
 // Evita subexposición inicial de cámara (OQ-3).
@@ -250,12 +273,30 @@ export function BiometricCapture({
   const challengeNeutralFramesRef = useRef<Map<SequentialChallenge, number>>(new Map());
 
   /**
-   * C-65: Timestamp (performance.now()) del primer frame en que el alumno
-   * cumplió el gesto del reto activo. null si aún no inició el hold.
-   * Se resetea al confirmar el reto, al interrumpirse el gesto, o al cambiar
-   * de reto (framing gate, cooldown, doble reset).
+   * C-67: Acumulador de tiempo efectivo de gesto (ms) por reto.
+   * Se preserva cuando el gesto se pierde y reanuda al recuperarlo.
+   * Solo se reinicia al confirmar el reto o al avanzar a otro.
    */
-  const holdStartRef = useRef<Map<SequentialChallenge, number | null>>(new Map());
+  const gestureAccumMsRef = useRef<Map<SequentialChallenge, number>>(new Map());
+
+  /**
+   * C-67: Timestamp del último frame procesado para calcular dt.
+   * null antes del primer frame.
+   */
+  const lastFrameTimeRef = useRef<number | null>(null);
+
+  /**
+   * C-67: Rastrea si el gesto estaba siendo sostenido en el frame anterior,
+   * por reto. Usado para detectar el momento de pérdida del gesto (para
+   * disparar playGestureLost).
+   */
+  const wasHoldingRef = useRef<Map<SequentialChallenge, boolean>>(new Map());
+
+  /**
+   * C-67: Última fracción de progreso en la que se tocó el tick de progreso.
+   * Se usa para disparar playGestureProgress cada 0.25 de fracción.
+   */
+  const lastProgressTickFractionRef = useRef(0);
 
   // ── Liveness pasivo (D2) ────────────────────────────────────────────────
   const livenessWindowRef = useRef<Array<{
@@ -475,6 +516,12 @@ export function BiometricCapture({
       setCooldownActivo(false);
       setRetoRecienResuelto(null);
       cooldownTimerRef.current = null;
+      // C-67: al avanzar al siguiente reto, resetear acumulador y tick de progreso.
+      // Resetear también lastFrameTimeRef → el primer frame del reto nuevo arranca
+      // con dt=0 (no arrastra el hueco del cooldown al acumulador de gesto).
+      lastProgressTickFractionRef.current = 0;
+      lastFrameTimeRef.current = null;
+      // El nuevo reto empieza fresh (accumMs=0 se inicializa al primer acceso)
       // Si challengeIndexRef ya apunta más allá del último reto,
       // la fase éxito ya fue activada por resolverRetoFromLoop arriba.
     }, COOLDOWN_MS);
@@ -641,8 +688,10 @@ export function BiometricCapture({
                 const blinkOpenness = Math.abs(landmarks[159].y - landmarks[145].y);
                 const smileWidth    = Math.abs(landmarks[291].x - landmarks[61].x);
                 const gazeX         = gaze.x;
+                // C-67: capturar posición Y promedio de comisuras para la métrica de sonrisa compuesta
+                const smileCornerY  = (landmarks[61].y + landmarks[291].y) / 2;
 
-                baselineAccumulatorRef.current.push({ blinkOpenness, smileWidth, gazeX });
+                baselineAccumulatorRef.current.push({ blinkOpenness, smileWidth, gazeX, smileCornerY });
                 nosePositionsRef.current.push({ x: noseX, y: noseY });
 
                 // Task 4.4: verificar estabilidad con >= 12 frames acumulados
@@ -701,8 +750,14 @@ export function BiometricCapture({
                   const blinkOpenness = ultimosDiez.reduce((s, f) => s + f.blinkOpenness, 0) / n;
                   const smileWidth    = ultimosDiez.reduce((s, f) => s + f.smileWidth, 0) / n;
                   const gazeX         = ultimosDiez.reduce((s, f) => s + f.gazeX, 0) / n;
+                  // C-67: incluir smileCornerY también en el fallback para que la
+                  // ruta de elevación de la sonrisa funcione (no solo el ancho).
+                  const cornerFrames = ultimosDiez.filter((f) => f.smileCornerY !== undefined);
+                  const smileCornerY = cornerFrames.length > 0
+                    ? cornerFrames.reduce((s, f) => s + (f.smileCornerY ?? 0), 0) / cornerFrames.length
+                    : undefined;
                   // Fallback: usar sin check de smileWidth (robustez ante iluminación pobre)
-                  baselineRef.current = { blinkOpenness: Math.max(blinkOpenness, 0.01), smileWidth, gazeX };
+                  baselineRef.current = { blinkOpenness: Math.max(blinkOpenness, 0.01), smileWidth, gazeX, smileCornerY };
                 } else {
                   // Sin frames — usar defaults razonables
                   baselineRef.current = { blinkOpenness: 0.05, smileWidth: 0.08, gazeX: 0 };
@@ -773,7 +828,9 @@ export function BiometricCapture({
               if (idxReset < barReset.length) {
                 challengeCountsRef.current.set(barReset[idxReset], 0);
                 challengeNeutralFramesRef.current.set(barReset[idxReset], 0);
-                holdStartRef.current.set(barReset[idxReset], null);
+                // C-67: resetear acumulador de gesto al reanudar tras framing bloqueante
+                gestureAccumMsRef.current.set(barReset[idxReset], 0);
+                lastProgressTickFractionRef.current = 0;
               }
             }
 
@@ -796,7 +853,9 @@ export function BiometricCapture({
             if (face_count === 0) {
               challengeCountsRef.current.set(retoActivo, 0);
               challengeNeutralFramesRef.current.set(retoActivo, 0);
-              holdStartRef.current.set(retoActivo, null);
+              // C-67: sin cara → resetear acumulador de gesto
+              gestureAccumMsRef.current.set(retoActivo, 0);
+              lastProgressTickFractionRef.current = 0;
             } else {
               // Task 5.4: evaluar el reto activo con delta relativo
               const cumple = evaluateChallengeRelative(
@@ -811,59 +870,96 @@ export function BiometricCapture({
               const neutralVistos = challengeNeutralFramesRef.current.get(retoActivo) ?? 0;
               const neutralListo = neutralVistos >= NEUTRAL_GATE_FRAMES;
 
+              // C-67: calcular dt para el acumulador de gesto. Clampeado a
+              // MAX_FRAME_DT_MS: un hueco sin evaluar (cooldown, framing bloqueado,
+              // sin cara) NO debe volcar cientos de ms al acumulador y confirmar el
+              // reto sin gesto real (bug "el último paso me lo toma sin hacerlo").
+              const nowMs = performance.now();
+              const rawDt = lastFrameTimeRef.current !== null ? nowMs - lastFrameTimeRef.current : 0;
+              const dt = Math.min(rawDt, MAX_FRAME_DT_MS);
+              lastFrameTimeRef.current = nowMs;
+
               if (cumple) {
                 if (!neutralListo) {
-                  // Todavía no vimos al alumno en neutral. Probablemente está
-                  // arrastrando el estado del reto anterior. Ignoramos positivos
+                  // Todavía no vimos al alumno en neutral. Ignoramos positivos
                   // hasta que el gate de neutralidad se complete.
                   challengeCountsRef.current.set(retoActivo, 0);
-                  holdStartRef.current.set(retoActivo, null);
                 } else {
-                  // C-65 Task 4.4: confirmación por TIEMPO (GESTURE_HOLD_MS),
-                  // reemplazando el conteo por frames como condición primaria.
-                  const prevHoldStart = holdStartRef.current.get(retoActivo) ?? null;
-                  const nowMs = performance.now();
-                  const { holdStart: newHoldStart, confirmado } = gestureHold({
-                    now: nowMs,
-                    holdStart: prevHoldStart,
+                  // C-67: confirmación por acumulador de tiempo (gestureAccumulator)
+                  const prevAccumMs = gestureAccumMsRef.current.get(retoActivo) ?? 0;
+                  const prevWasHolding = wasHoldingRef.current.get(retoActivo) ?? false;
+                  const accumResult = gestureAccumulator({
+                    prevAccumMs,
                     cumple: true,
+                    dt,
+                    gestureHoldMs: GESTURE_HOLD_MS,
                   });
-                  holdStartRef.current.set(retoActivo, newHoldStart);
+                  gestureAccumMsRef.current.set(retoActivo, accumResult.accumMs);
+                  wasHoldingRef.current.set(retoActivo, true);
 
-                  // Mantener el contador de frames por compatibilidad (no es la condición)
+                  // Mantener el contador de frames por compatibilidad
                   challengeCountsRef.current.set(retoActivo, prevCount + 1);
 
-                  if (confirmado) {
+                  // C-67 Group 3: tick de progreso por cruce de fracción (cada 0.25)
+                  const fracCurrent = accumResult.fracReto;
+                  if (Math.floor(fracCurrent * 4) > Math.floor(lastProgressTickFractionRef.current * 4)) {
+                    playGestureProgress();
+                    lastProgressTickFractionRef.current = fracCurrent;
+                  }
+
+                  // Detectar que se reanudó el gesto (wasHolding era false antes)
+                  if (!prevWasHolding) {
+                    // Reanudación desde pausa — no reproducir nada extra aquí
+                  }
+
+                  if (accumResult.confirmado) {
                     // Reto completado → resetear acumuladores y activar cooldown
                     challengeCountsRef.current.set(retoActivo, 0);
                     challengeNeutralFramesRef.current.set(retoActivo, 0);
-                    holdStartRef.current.set(retoActivo, null);
+                    gestureAccumMsRef.current.set(retoActivo, 0);
+                    wasHoldingRef.current.set(retoActivo, false);
+                    lastProgressTickFractionRef.current = 0;
                     activarCooldown(retoActivo);
                   }
                 }
               } else {
-                // Task 5.6 / C-65: no cumple → resetear acumulador positivo,
-                // resetear hold temporal, y sumar al gate de neutralidad.
+                // C-67: no cumple → acumulador se preserva (gestureAccumulator retorna prevAccumMs)
+                const prevAccumMs = gestureAccumMsRef.current.get(retoActivo) ?? 0;
+                const prevWasHolding = wasHoldingRef.current.get(retoActivo) ?? false;
+                const accumResult = gestureAccumulator({
+                  prevAccumMs,
+                  cumple: false,
+                  dt,
+                  gestureHoldMs: GESTURE_HOLD_MS,
+                });
+                // accumMs ya está preservado (gestureAccumulator no lo modifica en !cumple)
+                // No es necesario set (ya está el valor previo), pero lo hacemos explícito:
+                gestureAccumMsRef.current.set(retoActivo, accumResult.accumMs);
+                wasHoldingRef.current.set(retoActivo, false);
+
+                // C-67 Group 3: disparar playGestureLost si había progreso y se acaba de perder
+                if (prevWasHolding && prevAccumMs > 0) {
+                  playGestureLost();
+                }
+
+                // Sumar al gate de neutralidad
                 challengeCountsRef.current.set(retoActivo, 0);
-                holdStartRef.current.set(retoActivo, null);
                 challengeNeutralFramesRef.current.set(
                   retoActivo,
                   Math.min(neutralVistos + 1, NEUTRAL_GATE_FRAMES),
                 );
               }
 
-              // C-65 Task 4.5: Progreso visual del anillo: retos completos +
-              // fracción temporal del reto activo ((now - holdStart) / HOLD_MS).
-              // Si holdStart es null, fracción = 0. Esto hace el anillo frame-rate
-              // independiente igual que la confirmación.
+              // C-67 Group 2: Progreso visual del anillo.
+              // fracReto refleja el acumulado. Cuando !isHolding, ocultar el fill
+              // del reto activo (mostrarFracActiva=false) pasando fracReto=0.
               const totalRetos = desafiosBarajadosRef.current.length;
               if (totalRetos > 0) {
                 const completos = challengeIndexRef.current;
-                const currentHoldStart = holdStartRef.current.get(retoActivo) ?? null;
-                let fracReto = 0;
-                if (currentHoldStart !== null) {
-                  fracReto = Math.min(1, (performance.now() - currentHoldStart) / GESTURE_HOLD_MS);
-                }
+                const accumMs = gestureAccumMsRef.current.get(retoActivo) ?? 0;
+                const isHoldingNow = wasHoldingRef.current.get(retoActivo) ?? false;
+                // Mostrar fill solo mientras se sostiene el gesto
+                const fracReto = isHoldingNow ? Math.min(1, accumMs / GESTURE_HOLD_MS) : 0;
                 const progresoNuevo = Math.min(1, (completos + fracReto) / totalRetos);
                 setProgreso(progresoNuevo);
               }

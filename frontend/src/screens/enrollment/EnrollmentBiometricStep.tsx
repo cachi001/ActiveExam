@@ -171,12 +171,13 @@ export function EnrollmentBiometricStep({ referenciaActual, onCapturada, esRenov
         <div className="flex items-start gap-sm bg-warning-container border border-warning/30 rounded-xl p-md">
           <Icon name="refresh" className="text-warning text-[18px] shrink-0 mt-px" />
           <div className="text-label-sm text-on-surface">
-            <p><strong>Referencia anterior:</strong> capturada el {formatearFecha(referenciaActual.fecha_captura)},
-              {' '}vencía el {formatearFecha(referenciaActual.fecha_expiracion)}.</p>
+            <p><strong>Referencia anterior:</strong> capturada el {formatearFecha(referenciaActual.fecha_captura)}.</p>
             <p className="text-on-surface-variant mt-base">
-              {referenciaActual.renovacion_anticipada_requerida
-                ? 'Se detectó deriva del embedding durante las verificaciones. La nueva captura reemplazará la referencia anterior.'
-                : 'La referencia venció. La nueva captura reemplazará la referencia anterior.'}
+              {referenciaActual.vigencia === 'caducada'
+                ? 'La referencia venció. La nueva captura reemplazará la anterior.'
+                : referenciaActual.renovacion_anticipada_requerida
+                  ? 'Detectamos cambios en tu rostro. La nueva captura reemplazará la anterior.'
+                  : 'La nueva captura reemplazará la referencia anterior.'}
             </p>
           </div>
         </div>
@@ -184,21 +185,20 @@ export function EnrollmentBiometricStep({ referenciaActual, onCapturada, esRenov
 
       {/* Contenedor principal */}
       <Card className="flex flex-col items-center gap-lg">
-        {/* Visor de cámara (estático en instrucciones/completado/error) */}
-        {/* Óvalo guía con la MISMA forma (clip-path elipse) que la cámara real. */}
-        <div
-          className="relative"
-          style={{ width: 'min(70vw, 220px)', filter: 'drop-shadow(0 10px 24px rgba(16,24,40,0.10))' }}
-        >
+        {/* Óvalo guía estático — SOLO en instrucciones (antes de la captura). En
+            procesando/éxito/error se oculta: mostrar el óvalo vacío titilando mientras
+            se guarda no aporta y confunde (el alumno ya hizo la captura). */}
+        {fase === 'instrucciones' && (
           <div
-            className={`w-full rounded-[50%] border-2 border-black transition-colors duration-300 ${
-              fase === 'completado' ? 'bg-success-container' :
-              fase === 'procesando' ? 'bg-warning-container animate-pulse' :
-              'bg-surface-container-high'
-            }`}
-            style={{ aspectRatio: '3 / 4' }}
-          />
-        </div>
+            className="relative"
+            style={{ width: 'min(70vw, 220px)', filter: 'drop-shadow(0 8px 20px rgba(16,24,40,0.08))' }}
+          >
+            <div
+              className="w-full rounded-[50%] border-2 border-dashed bg-surface-container-high border-outline-variant transition-colors duration-300"
+              style={{ aspectRatio: '3 / 4' }}
+            />
+          </div>
+        )}
 
         {/* ── Task 8.8: Estado: instrucciones iniciales ── */}
         {fase === 'instrucciones' && (

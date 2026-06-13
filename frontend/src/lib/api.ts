@@ -325,6 +325,25 @@ function consentVersionVigente(): string {
   return _consentVersionVigente;
 }
 
+// C-67: la versión vigente del consentimiento sólo se sincronizaba con el backend
+// cuando se abría la pantalla de consentimiento (getConsentText). Tras un reload que
+// aterriza directo en el dashboard, `_consentVersionVigente` volvía al default mock
+// ('2026.1') y el gate de perfil lo comparaba contra el acuse guardado ('v1' real) →
+// falso "consentimiento desactualizado" → tarjeta amarilla "completá tu perfil" aunque
+// el perfil estuviera completo. Sincronizamos la versión del backend ANTES de evaluar
+// el gate (una vez por sesión; un reload vuelve a sincronizar y detecta cambios reales).
+let _consentVersionSynced = false;
+async function ensureConsentVersionSynced(): Promise<void> {
+  if (!USE_REAL_BACKEND || _consentVersionSynced) return;
+  try {
+    const texto = normalizarConsentText(await realFetch<unknown>('/consent/text', { method: 'GET' }));
+    if (texto.version) _consentVersionVigente = texto.version;
+    _consentVersionSynced = true;
+  } catch {
+    // Fallo de red: no bloquear el gate. Se reintenta en la próxima llamada.
+  }
+}
+
 // ---------------------------------------------------------------------------
 // API pública (modo demo). Cada método simula latencia de red.
 // ---------------------------------------------------------------------------
@@ -354,7 +373,7 @@ function distanciaCoseno(a: number[], b: number[]): number {
 // compatibilidad de firma.
 async function realFetch<T>(path: string, init: RequestInit, _legacyToken?: string): Promise<T> {
   const token = authProvider.getToken();
-  const res = await fetch(`${API_BASE}${path}`, {
+  let res = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers: {
       'Content-Type': 'application/json',
@@ -362,6 +381,26 @@ async function realFetch<T>(path: string, init: RequestInit, _legacyToken?: stri
       ...(init.headers || {}),
     },
   });
+
+  // C-67: el access token JWT vive sólo 15 min. En flujos largos (la captura
+  // biométrica con gestos lentos) expira a mitad de camino y el backend responde
+  // 401. Intentamos UN refresh con el refresh_token y reintentamos el request una
+  // sola vez. Sin esto el alumno quedaba clavado en 401 aunque tuviera un
+  // refresh_token válido en sessionStorage (getToken devolvía undefined sin refrescar).
+  if (res.status === 401 && authProvider.refresh) {
+    const fresh = await authProvider.refresh();
+    if (fresh) {
+      res = await fetch(`${API_BASE}${path}`, {
+        ...init,
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${fresh}`,
+          ...(init.headers || {}),
+        },
+      });
+    }
+  }
+
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json() as Promise<T>;
 }
@@ -659,6 +698,9 @@ export const api = {
    */
   async puedeRendir(examenId?: string): Promise<{ puede: boolean; razon?: string; codigo?: string }> {
     await delay(200);
+    // C-67: sincronizar la versión vigente del consentimiento desde el backend antes
+    // de evaluar el gate, para no marcar como "desactualizado" un acuse válido.
+    await ensureConsentVersionSynced();
     const e = recalcularPerfilCompleto(enrollmentAlumno);
     enrollmentAlumno = e;
 
@@ -801,6 +843,9 @@ export const api = {
   /** Retorna el estado de enrollment completo del perfil (C-22). */
   async getEnrollment(): Promise<EstadoEnrollment> {
     await delay(0);
+    // C-67: idem puedeRendir — la versión vigente debe venir del backend para que
+    // recalcularPerfilCompleto no invalide un consentimiento real ('v1' vs mock).
+    await ensureConsentVersionSynced();
     commitEnrollment(enrollmentAlumno);
     return { ...enrollmentAlumno };
   },
@@ -938,7 +983,12 @@ export const api = {
       } catch (err) {
         // Si el backend falla, NO hacer fallback demo: propagar el error
         // para que el componente pueda mostrar el mensaje y reintentar.
-        throw new Error(`Error al guardar referencia biométrica: ${err instanceof Error ? err.message : String(err)}`);
+        const msg = err instanceof Error ? err.message : String(err);
+        // 401 = token vencido (sesión larga). Mensaje claro y accionable.
+        if (/\b401\b/.test(msg) || /unauthorized/i.test(msg)) {
+          throw new Error('Tu sesión expiró. Cerrá sesión y volvé a iniciar sesión, y reintentá la captura.');
+        }
+        throw new Error(`No se pudo guardar la referencia: ${msg}`);
       }
     }
     // Modo demo (USE_REAL_BACKEND=0 o embedding nulo/incompleto).

@@ -35,6 +35,14 @@ export interface AuthProvider {
    */
   getToken(): string | undefined;
 
+  /**
+   * Refresca el access token usando el refresh_token, si el adapter lo soporta.
+   * Devuelve el nuevo token vigente, o undefined si no se pudo refrescar.
+   * Opcional: sólo JwtAdapter lo implementa (Keycloak refresca solo; Demo no aplica).
+   * Lo usa `realFetch` para auto-curarse ante un 401 por token expirado.
+   */
+  refresh?(): Promise<string | undefined>;
+
   /** Retorna el principal autenticado, o null si no hay sesión. */
   getPrincipal(): Principal | null;
 

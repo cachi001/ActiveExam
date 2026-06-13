@@ -89,10 +89,15 @@ export const FRAMES_MIN_SMILE = 2;
 export const BLINK_RELATIVE_FACTOR = 0.45;
 
 /**
- * Factor relativo para sonrisa: la boca debe abrirse al menos un 25 % mas
- * que en reposo (baseline.smileWidth).
+ * C-67: factor relativo para sonrisa (ancho de boca). Bajado de 1.25 (25% más
+ * ancho — exigía una mueca grande, "no se llenaba al sonreír") a 1.12 (12% más
+ * ancho = sonrisa normal). El hold de 500 ms + los frames mínimos evitan falsos
+ * positivos por ruido.
  */
-export const SMILE_RELATIVE_FACTOR = 1.25;
+export const SMILE_RELATIVE_FACTOR = 1.12;
+
+/** C-67: ancho parcial para la ruta compuesta (ancho leve + comisuras arriba). */
+export const SMILE_WIDTH_PARTIAL_FACTOR = 1.08;
 
 /**
  * Umbral absoluto ajustado para detectar giro de cabeza (C-54).
@@ -168,14 +173,34 @@ export function evaluateChallengeRelative(
       }
     }
 
-    // sonreír — smileWidth > baseline.smileWidth * SMILE_RELATIVE_FACTOR
+    // sonreír — C-67: métrica compuesta (ancho + elevación de comisuras)
+    // Confirma si: widthOk OR (widthPartial AND elevationOk)
+    // - widthOk: width > baseline.smileWidth * SMILE_RELATIVE_FACTOR
+    // - widthPartial: width > baseline.smileWidth * SMILE_RELATIVE_FACTOR * 0.85
+    // - elevationOk: comisuras subieron (avgCornerY < baseline.smileCornerY - threshold)
+    //   Solo si baseline.smileCornerY está disponible (backward compatible).
     case "sonreír": {
       if (!baseline) return false;
       if (landmarks.length < 292) return false;
       const left  = landmarks[61];
       const right = landmarks[291];
       const width = Math.abs(right.x - left.x);
-      return width > baseline.smileWidth * SMILE_RELATIVE_FACTOR;
+      const avgCornerY = (left.y + right.y) / 2;
+      const widthRatio = baseline.smileWidth > 0 ? width / baseline.smileWidth : 0;
+
+      // Ancho claro de sonrisa (12% más que en reposo).
+      const widthOk = widthRatio > SMILE_RELATIVE_FACTOR;
+
+      // Elevación de comisuras (y menor = subieron). Solo si baseline trae smileCornerY.
+      const cornerY = (baseline as BaselineMetrics & { smileCornerY?: number }).smileCornerY;
+      const elevationOk = cornerY !== undefined
+        ? avgCornerY < cornerY - SMILE_CORNER_RISE_THRESHOLD
+        : false;
+
+      // Ruta compuesta: ensanche leve (8%) + comisuras hacia arriba — capta sonrisas
+      // genuinas que no ensanchan tanto la boca pero sí levantan las comisuras.
+      const widthPartial = widthRatio > SMILE_WIDTH_PARTIAL_FACTOR;
+      return widthOk || (widthPartial && elevationOk);
     }
 
     default:
@@ -205,6 +230,8 @@ export interface BaselineFrame {
   blinkOpenness: number;
   smileWidth: number;
   gazeX: number;
+  /** C-67: posición Y promedio de comisuras de la boca en este frame. */
+  smileCornerY?: number;
 }
 
 /**
@@ -239,7 +266,14 @@ export function computeBaselineFromAccumulator(accumulator: BaselineFrame[]): Ba
   // Validar que el alumno no estaba sonriendo al baseline
   if (!isBaselineSmileValid(smileWidth)) return null;
 
-  return { blinkOpenness, smileWidth, gazeX };
+  // C-67: calcular smileCornerY promedio si los frames lo incluyen
+  const framesConCornerY = accumulator.filter((f) => f.smileCornerY !== undefined);
+  let smileCornerY: number | undefined;
+  if (framesConCornerY.length >= 6) {
+    smileCornerY = framesConCornerY.reduce((s, f) => s + (f.smileCornerY ?? 0), 0) / framesConCornerY.length;
+  }
+
+  return { blinkOpenness, smileWidth, gazeX, smileCornerY };
 }
 
 // ---------------------------------------------------------------------------
@@ -262,6 +296,58 @@ export function fisherYatesShuffle<T>(arr: T[]): T[] {
     arr[j] = tmp;
   }
   return arr;
+}
+
+// ---------------------------------------------------------------------------
+// C-67: Constantes adicionales para sonrisa compuesta (Group 4)
+// ---------------------------------------------------------------------------
+
+/**
+ * Peso del componente de ancho de boca en la métrica compuesta de sonrisa.
+ */
+export const SMILE_RAISE_WEIGHT = 0.5;
+
+/**
+ * Peso del componente de elevación de comisuras en la métrica compuesta de sonrisa.
+ */
+export const SMILE_WIDTH_WEIGHT = 0.5;
+
+/**
+ * Factor compuesto para la métrica de sonrisa combinada.
+ */
+export const SMILE_COMPOSITE_FACTOR = 1.3;
+
+/**
+ * C-67: Umbral mínimo de elevación de comisuras (decremento en y) para
+ * que el componente de elevación cuente como señal de sonrisa.
+ * Un valor de 0.006 filtra el ruido de iris/landmark sin perder sonrisas reales.
+ */
+export const SMILE_CORNER_RISE_THRESHOLD = 0.006;
+
+/**
+ * C-67: Computa el score compuesto de sonrisa usando ancho de boca Y elevación
+ * de comisuras.
+ *
+ * Landmarks:
+ * - 61: comisura boca izquierda
+ * - 291: comisura boca derecha
+ *
+ * Devuelve null si landmarks.length < 292.
+ */
+export function computeSmileScore(
+  landmarks: FaceLandmark[],
+): { width: number; elevation: number; composite: number } | null {
+  if (landmarks.length < 292) return null;
+  const left = landmarks[61];
+  const right = landmarks[291];
+  const width = Math.abs(right.x - left.x);
+  // Average y de las comisuras (elevación: y menor = más arriba en pantalla)
+  const avgCornerY = (left.y + right.y) / 2;
+  return {
+    width,
+    elevation: avgCornerY,
+    composite: width * SMILE_WIDTH_WEIGHT + avgCornerY * SMILE_RAISE_WEIGHT,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -322,6 +408,72 @@ export function gestureHold({ now, holdStart, cumple }: GestureHoldInput): Gestu
   }
 
   return { holdStart, confirmado: false };
+}
+
+// ---------------------------------------------------------------------------
+// C-67: gestureAccumulator — progreso acumulado con reanudación (Group 2)
+// ---------------------------------------------------------------------------
+
+/**
+ * Input del acumulador de progreso de gesto (C-67, design D1).
+ */
+export interface GestureAccumInput {
+  /** Milisegundos acumulados del reto actual hasta ahora. */
+  prevAccumMs: number;
+  /** ¿El frame actual cumple el reto? */
+  cumple: boolean;
+  /** Delta tiempo desde el último frame (ms). */
+  dt: number;
+  /** Duración objetivo del hold (ms). */
+  gestureHoldMs: number;
+}
+
+/**
+ * Output del acumulador de progreso de gesto (C-67, design D1).
+ */
+export interface GestureAccumOutput {
+  /** Nuevo acumulado en ms. Se PRESERVA al perder el gesto (no se reinicia). */
+  accumMs: number;
+  /** Fracción 0..1 del progreso (accumMs / gestureHoldMs). */
+  fracReto: number;
+  /** true cuando accumMs >= gestureHoldMs. */
+  confirmado: boolean;
+  /** true si el gesto está siendo sostenido ahora mismo. */
+  isHolding: boolean;
+}
+
+/**
+ * Helper PURO de acumulación de tiempo de gesto con reanudación.
+ *
+ * Diferencia clave con gestureHold():
+ * - Al perder el gesto (cumple=false), el acumulado se PRESERVA.
+ * - Al reanudar el gesto, continúa desde donde quedó.
+ * - Solo se reinicia explícitamente desde el componente (al confirmar o avanzar reto).
+ *
+ * El progreso se oculta visualmente al perder el gesto (isHolding=false),
+ * pero el acumulado interno no se descarta.
+ *
+ * SIN efectos secundarios. El componente es el responsable de la integración.
+ */
+export function gestureAccumulator(input: GestureAccumInput): GestureAccumOutput {
+  const { prevAccumMs, cumple, dt, gestureHoldMs } = input;
+  if (!cumple) {
+    return {
+      accumMs: prevAccumMs, // PRESERVE on loss
+      fracReto: Math.min(1, prevAccumMs / gestureHoldMs),
+      confirmado: false,
+      isHolding: false,
+    };
+  }
+  // Cap at 1.5x gestureHoldMs to avoid overflow (no observable difference, just safety)
+  const newAccum = Math.min(prevAccumMs + dt, gestureHoldMs * 1.5);
+  const confirmado = newAccum >= gestureHoldMs;
+  return {
+    accumMs: newAccum,
+    fracReto: Math.min(1, newAccum / gestureHoldMs),
+    confirmado,
+    isHolding: true,
+  };
 }
 
 // ---------------------------------------------------------------------------

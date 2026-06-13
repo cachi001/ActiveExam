@@ -44,18 +44,38 @@ export interface CaptureOvalProps {
 
 // El SVG usa una elipse con perímetro aproximado constante. La fórmula de
 // Ramanujan (h = ((a-b)/(a+b))^2) es suficiente para nuestro caso.
-const RX = 50; // radio horizontal en %
-const RY = 65; // radio vertical en % (relativo al viewBox 100x130)
+
+/** Radio horizontal del clip del video (en % del viewBox 100x130). */
+export const OVAL_RX = 50;
+/** Radio vertical del clip del video (en % del viewBox 100x130). */
+export const OVAL_RY = 65;
+
+/**
+ * C-67: El anillo de progreso va EXACTO sobre el borde del óvalo (rx=OVAL_RX,
+ * ry=OVAL_RY). Antes estaba en +2 y se salía del viewBox 100×130 → se cortaba
+ * en las esquinas. Sobre el borde no se recorta y coincide con el clip del video.
+ */
+export const PROGRESS_RX = OVAL_RX; // 50
+export const PROGRESS_RY = OVAL_RY; // 65
+
+/** C-67: Trazo fino del anillo de progreso (minimalista). */
+export const PROGRESS_STROKE_WIDTH = 1.4;
+
+/** C-67: Trazo fino del track de fondo. */
+export const TRACK_STROKE_WIDTH = 1.2;
+
+// PERIMETER usando los radios del anillo exterior (PROGRESS_RX, PROGRESS_RY)
+// para que strokeDasharray/offset coincidan con el path real del progreso.
 const PERIMETER = (() => {
-  const a = RX;
-  const b = RY;
+  const a = PROGRESS_RX;
+  const b = PROGRESS_RY;
   const h = ((a - b) / (a + b)) ** 2;
   return Math.PI * (a + b) * (1 + (3 * h) / (10 + Math.sqrt(4 - 3 * h)));
 })();
 
 const STROKE_BY_TONO: Record<OvalTono, string> = {
   idle: '#cbd5e1',      // slate-300 — antes de motor listo
-  ok: '#3b82f6',        // blue-500 — todo bien, evaluando reto
+  ok: '#22c55e',        // C-67: green-500 — relleno tipo barra de carga durante gesto activo
   aviso: '#f59e0b',     // amber-500 — hint activo (lejos, oscuro, …)
   exito: '#22c55e',     // green-500 — éxito final
 };
@@ -81,9 +101,13 @@ export const CaptureOval = forwardRef<HTMLVideoElement, CaptureOvalProps>(
         style={{ width: 'min(80vw, 300px)', filter: 'drop-shadow(0 10px 24px rgba(0,0,0,0.15))' }}
         aria-hidden={!listoParaMostrar}
       >
+        {/* C-67: marco BLANCO alrededor de la cámara (contenedor que el dueño quería).
+            El video va recortado a una elipse un poco más chica, dejando un anillo
+            blanco entre la cámara y el borde del óvalo. */}
+        <div className="relative w-full aspect-[3/4] rounded-[50%] bg-white p-[6px]">
         {/* clip-path ellipse recorta el video a la forma del óvalo */}
         <div
-          className="relative w-full aspect-[3/4] overflow-hidden bg-neutral-100"
+          className="relative w-full h-full overflow-hidden bg-neutral-100 rounded-[50%]"
           style={{ clipPath: 'ellipse(50% 50% at 50% 50%)' }}
         >
           <video
@@ -110,55 +134,71 @@ export const CaptureOval = forwardRef<HTMLVideoElement, CaptureOvalProps>(
           )}
         </div>
 
+        {/* C-67: borde de ESTADO que LATE — va DETRÁS del anillo de progreso. Sólo
+            ámbar = aviso (lejos / poca luz / etc.) y verde = éxito. El azul de "todo
+            OK" se quitó: se mezclaba con el anillo verde de progreso y quedaba feo;
+            cuando está todo OK el avance ya se comunica con el relleno verde del anillo.
+            rounded-[50%] = elipse real (coincide con el clip del video). */}
+        {!enExito && tono === 'aviso' && (
+          <div className="absolute inset-0 rounded-[50%] border-2 border-amber-400 ae-oval-breathe-amber pointer-events-none" aria-hidden />
+        )}
+        {enExito && (
+          <div className="absolute inset-0 rounded-[50%] border-2 border-green-400 pointer-events-none" aria-hidden />
+        )}
+
         {/* Anillo de progreso — SVG superpuesto al óvalo. El stroke se llena con
             strokeDashoffset. Si motor no listo y no es fallback, mostramos un
             anillo punteado idle (sin progreso) usando strokeDasharray fijo. */}
         <svg
           className="absolute inset-0 w-full h-full pointer-events-none"
-          viewBox="0 0 100 130"
+          viewBox="-3 -3 106 136"
           preserveAspectRatio="none"
           aria-hidden
         >
-          {/* Track de fondo */}
+          {/* Track de fondo — en el borde exterior del óvalo */}
           <ellipse
             cx="50"
             cy="65"
-            rx={RX - 2}
-            ry={RY - 2}
+            rx={PROGRESS_RX}
+            ry={PROGRESS_RY}
             fill="none"
             stroke={TRACK_COLOR}
-            strokeWidth={2.2}
+            strokeWidth={TRACK_STROKE_WIDTH}
           />
-          {/* Trazo de progreso */}
+          {/* Trazo de progreso — en el borde exterior del óvalo (C-67) */}
           {motorListo && !fallbackManual ? (
             <ellipse
               cx="50"
               cy="65"
-              rx={RX - 2}
-              ry={RY - 2}
+              rx={PROGRESS_RX}
+              ry={PROGRESS_RY}
               fill="none"
               stroke={stroke}
-              strokeWidth={2.6}
+              strokeWidth={PROGRESS_STROKE_WIDTH}
               strokeLinecap="round"
               strokeDasharray={PERIMETER}
               strokeDashoffset={offset}
               style={{
-                transition: 'stroke-dashoffset 350ms ease-out, stroke 250ms ease-out',
+                // C-67: transición corta y lineal → el llenado sigue el acumulador
+                // por frame de forma FLUIDA (como llenando un vaso), sin el lag del
+                // ease-out de 350ms que lo hacía trabar.
+                transition: 'stroke-dashoffset 90ms linear, stroke 250ms ease-out',
               }}
             />
           ) : (
             <ellipse
               cx="50"
               cy="65"
-              rx={RX - 2}
-              ry={RY - 2}
+              rx={PROGRESS_RX}
+              ry={PROGRESS_RY}
               fill="none"
               stroke={fallbackManual ? '#cbd5e1' : '#cbd5e1'}
-              strokeWidth={2.4}
+              strokeWidth={TRACK_STROKE_WIDTH}
               strokeDasharray="3 4"
             />
           )}
         </svg>
+        </div>
       </div>
     );
   },

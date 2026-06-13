@@ -242,7 +242,7 @@ describe("framesMinForChallengeSeq (Task 11.4)", () => {
 
   it("las constantes de factor tienen los valores correctos", () => {
     expect(BLINK_RELATIVE_FACTOR).toBe(0.45);
-    expect(SMILE_RELATIVE_FACTOR).toBe(1.25);
+    expect(SMILE_RELATIVE_FACTOR).toBe(1.12); // C-67: bajado de 1.25 (sonrisa más fácil)
     expect(GAZE_TURN_THRESHOLD_ADJUSTED).toBe(0.22);
   });
 });
@@ -375,6 +375,207 @@ describe("gestureHold — confirmación temporal (C-65 Task 4.1 / 4.3)", () => {
     const r = gestureHold({ now: 9999, holdStart: null, cumple: false });
     expect(r.holdStart).toBeNull();
     expect(r.confirmado).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// C-67 Group 2: gestureAccumulator — progreso acumulado con reanudación
+// ---------------------------------------------------------------------------
+
+import { gestureAccumulator } from "./enrollmentChallengeDetector";
+
+describe("gestureAccumulator — progreso acumulado sin reinicio (C-67 Group 2)", () => {
+  const gestureHoldMs = 500;
+
+  // Test 2.1a: acumula dt mientras el gesto está sostenido
+  it("2.1a: acumula dt mientras el gesto es cumplido", () => {
+    const result = gestureAccumulator({
+      prevAccumMs: 0,
+      cumple: true,
+      dt: 100,
+      gestureHoldMs,
+    });
+    expect(result.accumMs).toBeCloseTo(100);
+    expect(result.fracReto).toBeCloseTo(0.2);
+    expect(result.isHolding).toBe(true);
+    expect(result.confirmado).toBe(false);
+  });
+
+  // Test 2.1b: NO resetea accumMs al perder el gesto
+  it("2.1b: NO resetea accumMs cuando el gesto se pierde (isHolding=false, accumMs preservado)", () => {
+    const result = gestureAccumulator({
+      prevAccumMs: 300,
+      cumple: false,
+      dt: 50,
+      gestureHoldMs,
+    });
+    // accumMs debe preservarse en 300 (no se pierde el progreso)
+    expect(result.accumMs).toBe(300);
+    expect(result.isHolding).toBe(false);
+    expect(result.confirmado).toBe(false);
+    // fracReto refleja el progreso preservado
+    expect(result.fracReto).toBeCloseTo(0.6);
+  });
+
+  // Test 2.1c: reanuda desde el valor preservado cuando el gesto vuelve
+  it("2.1c: reanuda desde accumMs preservado cuando el gesto se recupera", () => {
+    // Simular: tenía 300ms acumulados, pierde el gesto (accumMs=300 preservado)
+    const lostResult = gestureAccumulator({
+      prevAccumMs: 300,
+      cumple: false,
+      dt: 50,
+      gestureHoldMs,
+    });
+    expect(lostResult.accumMs).toBe(300);
+
+    // Ahora reanuda con el valor preservado
+    const resumeResult = gestureAccumulator({
+      prevAccumMs: lostResult.accumMs,
+      cumple: true,
+      dt: 100,
+      gestureHoldMs,
+    });
+    expect(resumeResult.accumMs).toBeCloseTo(400);
+    expect(resumeResult.fracReto).toBeCloseTo(0.8);
+    expect(resumeResult.isHolding).toBe(true);
+    expect(resumeResult.confirmado).toBe(false);
+  });
+
+  // Test 2.1d: confirma cuando accumMs alcanza gestureHoldMs
+  it("2.1d: confirma cuando accumMs >= gestureHoldMs", () => {
+    const result = gestureAccumulator({
+      prevAccumMs: 450,
+      cumple: true,
+      dt: 60, // 450 + 60 = 510 >= 500
+      gestureHoldMs,
+    });
+    expect(result.confirmado).toBe(true);
+    expect(result.fracReto).toBe(1);
+    expect(result.isHolding).toBe(true);
+  });
+
+  // Test 2.1e: con múltiples pérdidas y reanudaciones, eventualmente confirma
+  it("2.1e: con múltiples pérdidas y reanudaciones, eventualmente confirma", () => {
+    let accum = 0;
+
+    // Ciclo 1: gana 200ms
+    let r = gestureAccumulator({ prevAccumMs: accum, cumple: true, dt: 200, gestureHoldMs });
+    accum = r.accumMs;
+    expect(r.confirmado).toBe(false);
+
+    // Pierde el gesto
+    r = gestureAccumulator({ prevAccumMs: accum, cumple: false, dt: 100, gestureHoldMs });
+    accum = r.accumMs;
+    expect(accum).toBeCloseTo(200); // preservado
+
+    // Ciclo 2: gana 150ms más (total ~350ms)
+    r = gestureAccumulator({ prevAccumMs: accum, cumple: true, dt: 150, gestureHoldMs });
+    accum = r.accumMs;
+    expect(r.confirmado).toBe(false);
+
+    // Pierde el gesto de nuevo
+    r = gestureAccumulator({ prevAccumMs: accum, cumple: false, dt: 50, gestureHoldMs });
+    accum = r.accumMs;
+    expect(accum).toBeCloseTo(350); // preservado
+
+    // Ciclo 3: gana 200ms más (total ~550ms >= 500ms → confirma)
+    r = gestureAccumulator({ prevAccumMs: accum, cumple: true, dt: 200, gestureHoldMs });
+    accum = r.accumMs;
+    expect(r.confirmado).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// C-67 Group 4: computeSmileScore + evaluateChallengeRelative sonrisa compuesta
+// ---------------------------------------------------------------------------
+
+import {
+  computeSmileScore,
+  SMILE_CORNER_RISE_THRESHOLD,
+} from "./enrollmentChallengeDetector";
+
+describe("computeSmileScore — métrica compuesta de sonrisa (C-67 Group 4)", () => {
+  function makeLm468(overrides: Record<number, Partial<FaceLandmark>>): FaceLandmark[] {
+    const lm: FaceLandmark[] = Array.from({ length: 468 }, () => ({ x: 0, y: 0, z: 0 }));
+    for (const [idx, vals] of Object.entries(overrides)) {
+      lm[Number(idx)] = { x: 0, y: 0, z: 0, ...vals };
+    }
+    return lm;
+  }
+
+  it("retorna null si hay menos de 292 landmarks", () => {
+    const lm: FaceLandmark[] = Array.from({ length: 100 }, () => ({ x: 0, y: 0, z: 0 }));
+    expect(computeSmileScore(lm)).toBeNull();
+  });
+
+  it("retorna { width, elevation, composite } con landmarks suficientes", () => {
+    const lm = makeLm468({ 61: { x: 0.05 }, 291: { x: 0.15 } });
+    const result = computeSmileScore(lm);
+    expect(result).not.toBeNull();
+    expect(typeof result!.width).toBe('number');
+    expect(typeof result!.elevation).toBe('number');
+    expect(typeof result!.composite).toBe('number');
+  });
+
+  it("width = |lm[291].x - lm[61].x|", () => {
+    const lm = makeLm468({ 61: { x: 0.05 }, 291: { x: 0.15 } });
+    const result = computeSmileScore(lm);
+    expect(result!.width).toBeCloseTo(0.10);
+  });
+});
+
+describe("evaluateChallengeRelative — sonrisa compuesta (C-67 Group 4)", () => {
+  function makeLm468(overrides: Record<number, Partial<FaceLandmark>>): FaceLandmark[] {
+    const lm: FaceLandmark[] = Array.from({ length: 468 }, () => ({ x: 0, y: 0, z: 0 }));
+    for (const [idx, vals] of Object.entries(overrides)) {
+      lm[Number(idx)] = { x: 0, y: 0, z: 0, ...vals };
+    }
+    return lm;
+  }
+
+  const BASE_GAZE = { x: 0, y: 0 };
+
+  // Test 4.1a: sonrisa real (ancho + elevación de comisuras) → confirma
+  it("4.1a: sonrisa real (ancho grande) → confirma (widthOk)", () => {
+    const baseline: BaselineMetrics = { blinkOpenness: 0.06, smileWidth: 0.10, gazeX: 0 };
+    // width = 0.14 > 0.10 * 1.25 = 0.125 → widthOk = true
+    const lm = makeLm468({ 61: { x: 0, y: 0.5 }, 291: { x: 0.14, y: 0.5 } });
+    expect(evaluateChallengeRelative("sonreír", lm, BASE_GAZE, baseline)).toBe(true);
+  });
+
+  // Test 4.1b: cara neutral (sin aumento de ancho, sin elevación) → NO confirma
+  it("4.1b: cara neutral (sin sonrisa) → NO confirma", () => {
+    const baseline: BaselineMetrics = { blinkOpenness: 0.06, smileWidth: 0.10, gazeX: 0 };
+    // width = 0.105 < 0.125, sin elevación → false
+    const lm = makeLm468({ 61: { x: 0, y: 0.5 }, 291: { x: 0.105, y: 0.5 } });
+    expect(evaluateChallengeRelative("sonreír", lm, BASE_GAZE, baseline)).toBe(false);
+  });
+
+  // Test 4.1c: boca abierta sin sonreír (ancho parcial + esquinas no suben) → NO confirma
+  // cuando hay datos de cornerY en el baseline
+  it("4.1c: ancho parcial (85% de factor) sin elevación de comisuras → NO confirma", () => {
+    // widthPartial = 0.106 (>= 0.10 * 1.25 * 0.85 = 0.106), pero elevationOk = false
+    const baselineWithCorner = {
+      blinkOpenness: 0.06,
+      smileWidth: 0.10,
+      gazeX: 0,
+      smileCornerY: 0.45, // baseline corner y (en reposo)
+    } as BaselineMetrics & { smileCornerY: number };
+    // avgCornerY = 0.46 > baseline.smileCornerY - threshold = 0.45 - 0.008 = 0.442
+    // 0.46 < 0.442? No → elevationOk = false
+    const lm = makeLm468({
+      61:  { x: 0, y: 0.46 },
+      291: { x: 0.106, y: 0.46 },
+    });
+    expect(evaluateChallengeRelative("sonreír", lm, BASE_GAZE, baselineWithCorner)).toBe(false);
+  });
+
+  // Test 4.1d: sin datos de cornerY en baseline → fallback a solo ancho
+  it("4.1d: sin smileCornerY en baseline → fallback a width-only, confirma si width pasa", () => {
+    const baseline: BaselineMetrics = { blinkOpenness: 0.06, smileWidth: 0.10, gazeX: 0 };
+    // Sin smileCornerY: elevationOk = false, pero widthOk con width = 0.13 > 0.125
+    const lm = makeLm468({ 61: { x: 0, y: 0.5 }, 291: { x: 0.13, y: 0.5 } });
+    expect(evaluateChallengeRelative("sonreír", lm, BASE_GAZE, baseline)).toBe(true);
   });
 });
 

@@ -29,7 +29,7 @@ export function RequisitoCard({ icon, title, badge, action, children, className 
       <div className="flex items-center justify-between gap-sm flex-wrap">
         <div className="flex items-center gap-sm min-w-0">
           <Icon name={icon} className="text-[22px] text-on-surface-variant shrink-0" />
-          <h2 className="font-headline text-title-lg text-on-surface">{title}</h2>
+          <h2 className="font-headline text-title-lg text-on-surface whitespace-nowrap">{title}</h2>
         </div>
         <Badge tone={badge.tone} dot className="shrink-0">
           {badge.label}
