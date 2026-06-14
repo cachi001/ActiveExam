@@ -23,11 +23,18 @@ La métrica SHALL seguir siendo **relativa al baseline** (no un umbral absoluto 
 - **WHEN** el alumno abre la boca sin elevar las comisuras (no es sonrisa)
 - **THEN** la métrica compuesta no confirma el gesto de sonrisa
 
-### Requirement: La confirmación de la sonrisa tiene menor latencia
+### Requirement: La confirmación de la sonrisa tiene un hold propio ajustable
 
-El sistema SHALL permitir que el gesto de sonrisa confirme con menor latencia que la de los otros gestos (un umbral de hold propio o factor reducido para la sonrisa), de modo que responda más rápido una vez detectada, manteniendo el gate de neutralidad y el criterio de hold por tiempo.
+El sistema SHALL utilizar una constante de hold propia para el gesto de sonrisa (`SMILE_GESTURE_HOLD_MS`), independiente de `GESTURE_HOLD_MS`, de modo que el valor pueda ajustarse sin afectar los demás gestos. El valor actual es **500 ms** (igual a los demás gestos), priorizando anti-spoofing sobre latencia percibida — conforme a la decisión del dueño del producto (2026-06-13). El gate de neutralidad y el criterio de hold por tiempo acumulado se mantienen.
 
-#### Scenario: La sonrisa confirma más rápido que antes
+> **Decisión de producto (2026-06-13):** hold de sonrisa = 500 ms (NO reducción de latencia). Se eligió mantener el hold idéntico a los demás gestos para priorizar la defensa contra presentación de fotos/videos (ISO 30107-3). El valor es ajustable en `enrollmentChallengeDetector.ts` mediante `SMILE_GESTURE_HOLD_MS` sin necesidad de tocar la lógica del caller.
 
-- **WHEN** el alumno sostiene una sonrisa válida
-- **THEN** el reto de sonrisa se confirma con menor latencia que el comportamiento previo, sin saltar el gate de neutralidad
+#### Scenario: La sonrisa confirma al sostener el hold propio
+
+- **WHEN** el alumno sostiene una sonrisa válida durante `SMILE_GESTURE_HOLD_MS` (actualmente 500 ms)
+- **THEN** el reto de sonrisa se confirma, sin saltar el gate de neutralidad
+
+#### Scenario: El hold de sonrisa es configurable independientemente
+
+- **WHEN** se requiere ajustar la latencia del gesto de sonrisa
+- **THEN** basta modificar `SMILE_GESTURE_HOLD_MS` en `enrollmentChallengeDetector.ts`; los demás gestos no se ven afectados

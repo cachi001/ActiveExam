@@ -128,7 +128,7 @@ export function SectionTitle({ children, sub, action }: { children: ReactNode; s
 
 const SEV_STYLES: Record<Severidad, string> = {
   baseline: 'bg-surface-container-high text-on-surface-variant',
-  baja: 'bg-success-container text-success',
+  baja: 'bg-blue-100 text-blue-700',
   media: 'bg-warning-container text-warning',
   alta: 'bg-error-container text-on-error-container',
   critica: 'bg-error text-on-error',

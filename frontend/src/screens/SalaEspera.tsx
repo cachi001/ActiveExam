@@ -10,14 +10,14 @@ export default function SalaEspera() {
   const examen = useApp((s) => s.examenActivo);
 
   return (
-    <StudentShell step={4}>
+    <StudentShell step={4} backTo="/biometria">
       <div className="max-w-xl mx-auto space-y-lg text-center animate-in zoom-in duration-500">
         <div className="w-20 h-20 rounded-full bg-success-container text-success flex items-center justify-center mx-auto">
           <Icon name="how_to_reg" className="text-[40px]" fill />
         </div>
         <div className="space-y-base">
           <h2 className="font-headline text-headline-lg text-on-surface">¡Identidad confirmada!</h2>
-          <p className="text-body-md text-on-surface-variant">Tu acceso fue firmado con hash y clave de sesión efímera rotativa. Esperá la habilitación para comenzar.</p>
+          <p className="text-body-md text-on-surface-variant">Tu identidad quedó confirmada de forma segura. Esperá un momento a que te habiliten para empezar.</p>
         </div>
 
         <Card className="text-left space-y-sm">
@@ -26,9 +26,9 @@ export default function SalaEspera() {
           <Row label="Estudiante" value={`${nombreCompleto(principal) || '—'} (${principal?.id_institucional ?? ''})`} />
           <Row label="Duración" value={`${examen?.duracion_min ?? 0} minutos`} />
           <div className="flex justify-between items-center pt-base border-t border-outline-variant/40">
-            <span className="text-label-sm uppercase tracking-wide text-on-surface-variant">Estado del monitor</span>
-            <span className="inline-flex items-center gap-base text-success text-label-md font-semibold">
-              <span className="w-2 h-2 rounded-full bg-success animate-ping" /> Web Worker de visión activo (local)
+            <span className="text-label-sm uppercase tracking-wide text-on-surface-variant">Supervisión</span>
+            <span className="inline-flex items-center gap-xs text-success text-label-md font-semibold">
+              <span className="w-2 h-2 rounded-full bg-success shrink-0" /> Lista
             </span>
           </div>
         </Card>
@@ -36,7 +36,7 @@ export default function SalaEspera() {
         <Button icon="play_arrow" onClick={() => navigate('/examen')} className="mx-auto">Comenzar examen</Button>
 
         <p className="text-label-sm text-on-surface-variant">
-          Al comenzar, el análisis corre en tu navegador. Solo se envían señales firmadas y, ante incidencias graves, clips de evidencia.
+          Al comenzar, todo el análisis ocurre en tu propio dispositivo. No se graba tu examen: solo se avisa al equipo si se detecta algo para revisar.
         </p>
       </div>
     </StudentShell>

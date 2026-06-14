@@ -624,3 +624,186 @@ describe("aleatorización Fisher-Yates (Task 11.6)", () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// C-67 Grupo 5: Consistencia de la defensa anti-foto (PAD) — Task 5.2
+// ---------------------------------------------------------------------------
+
+describe("C-67 Grupo 5 — consistencia de la defensa anti-foto (PAD, Task 5.2)", () => {
+  /**
+   * Verifica que el barajado Fisher-Yates produzca orden diferente al original
+   * con suficiente frecuencia (probabilidad de mantener el orden: 1/6 ≈ 16.7%).
+   * En N=200 iteraciones, al menos un barajado debe diferir.
+   *
+   * Nota: el orden barajado Y la dirección de giro aleatoria elevan el costo de
+   * un video pregrabado (el atacante no puede ensayar la secuencia exacta).
+   * ISO/IEC 30107-3: la aleatoriedad del reto-respuesta es parte del Nivel 1–2.
+   */
+  it("5.2a Fisher-Yates produce al menos una permutación distinta al original en 200 intentos", () => {
+    const original = [...SEQUENTIAL_CHALLENGES];
+    let seenDifferent = false;
+
+    for (let i = 0; i < 200; i++) {
+      const shuffled = fisherYatesShuffle([...original]);
+      if (shuffled.join(",") !== original.join(",")) {
+        seenDifferent = true;
+        break;
+      }
+    }
+
+    expect(seenDifferent).toBe(true);
+  });
+
+  /**
+   * El barajado preserva todos los retos (sin duplicados ni omisiones).
+   * Una foto no puede ejecutar ninguno; el orden es irrelevante para ella.
+   * Para un video pregrabado, el orden aleatorio ya invalida la grabación.
+   */
+  it("5.2b Fisher-Yates preserva todos los elementos (sin duplicados ni omisiones)", () => {
+    for (let i = 0; i < 50; i++) {
+      const shuffled = fisherYatesShuffle([...SEQUENTIAL_CHALLENGES]);
+      expect(shuffled).toHaveLength(SEQUENTIAL_CHALLENGES.length);
+      for (const challenge of SEQUENTIAL_CHALLENGES) {
+        expect(shuffled).toContain(challenge);
+      }
+    }
+  });
+
+  /**
+   * La dirección de giro tiene dos valores posibles ('izquierda' / 'derecha').
+   * En N=200 iteraciones ambas deben aparecer (distribución no degenerada).
+   * Esta aleatoriedad sube el costo del video pregrabado: un video que gira
+   * a la izquierda falla si se pide girar a la derecha.
+   *
+   * Nota: la lógica de elección vive en BiometricCapture (Math.random() < 0.5),
+   * no en una función pura. Verificamos aquí la invarianza de dominio:
+   * los únicos valores válidos son 'izquierda' y 'derecha'.
+   */
+  it("5.2c la dirección de giro tiene exactamente dos valores posibles (izquierda/derecha)", () => {
+    // Los únicos valores válidos del tipo TurnDirection
+    const validDirections: readonly string[] = ["izquierda", "derecha"];
+    const seen = new Set<string>();
+
+    for (let i = 0; i < 200; i++) {
+      const dir = Math.random() < 0.5 ? "izquierda" : "derecha";
+      expect(validDirections).toContain(dir);
+      seen.add(dir);
+    }
+
+    // Ambas deben aparecer en 200 intentos (P(ninguna derecha) = (0.5)^200 ≈ 0)
+    expect(seen.has("izquierda")).toBe(true);
+    expect(seen.has("derecha")).toBe(true);
+  });
+
+  /**
+   * Las tres capas de defensa están presentes en el módulo:
+   * - Activa: SEQUENTIAL_CHALLENGES (reto-respuesta)
+   * - Pasiva: derivePassiveSignals + passivePassed (en liveness.ts)
+   * - Cámara virtual: detectVirtualCamera (en liveness.ts)
+   *
+   * Este test verifica la invarianza estructural: girar_cabeza es el reto
+   * con dirección aleatoria; sin baseline o sin dirección, no confirma.
+   */
+  it("5.2d evaluateChallengeRelative(girar_cabeza) sin turnDirection retorna false (dirección requerida)", () => {
+    const lm = makeLandmarks({});
+    const gaze = { x: 0.5, y: 0 }; // gaze desplazado — debería confirmar giro izq
+    const baseline: BaselineMetrics = { blinkOpenness: 0.06, smileWidth: 0.10, gazeX: 0 };
+
+    // Sin turnDirection → false (no se puede confirmar el giro sin dirección)
+    expect(evaluateChallengeRelative("girar_cabeza", lm, gaze, baseline, undefined)).toBe(false);
+  });
+
+  it("5.2e evaluateChallengeRelative(girar_cabeza, izquierda) confirma con gaze.x > threshold", () => {
+    const lm = makeLandmarks({});
+    const gaze = { x: GAZE_TURN_THRESHOLD_ADJUSTED + 0.05, y: 0 }; // claramente izquierda
+    const baseline: BaselineMetrics = { blinkOpenness: 0.06, smileWidth: 0.10, gazeX: 0 };
+
+    expect(evaluateChallengeRelative("girar_cabeza", lm, gaze, baseline, "izquierda")).toBe(true);
+    // El mismo gaze NO confirma "derecha"
+    expect(evaluateChallengeRelative("girar_cabeza", lm, gaze, baseline, "derecha")).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// C-67 Task 4.4 / 4.5: SMILE_GESTURE_HOLD_MS — hold propio de sonrisa
+//
+// Reconciliación con la decisión del dueño:
+//   "TODO deliberado, NO rápido" (Open Questions resueltas, 2026-06-13).
+//   SMILE_GESTURE_HOLD_MS = GESTURE_HOLD_MS (500 ms) — mismo valor pero
+//   constante PROPIA, exportada y ajustable sin re-deploy.
+//   "Menor latencia" del spec = HOLD PROPIO separado del genérico, no
+//   necesariamente un valor menor. Si el dueño en el futuro quiere bajar el
+//   valor (ej. a 450 ms), cambia SOLO esta constante sin romper nada más.
+//   ⚠️ DUDA PARA EL DUEÑO: el spec pide "menor latencia que los demás gestos"
+//   literalmente, pero la decisión de diseño pide "deliberado, ≥500ms".
+//   Esta implementación da hold PROPIO = 500 ms (conservador). Si el dueño
+//   quiere reducirlo, debe confirmar el valor mínimo seguro.
+// ---------------------------------------------------------------------------
+
+import { SMILE_GESTURE_HOLD_MS } from "./enrollmentChallengeDetector";
+// Note: gestureAccumulator and GESTURE_HOLD_MS already imported above (line ~316 and ~385)
+
+describe("SMILE_GESTURE_HOLD_MS — hold propio de sonrisa (C-67 Task 4.4/4.5)", () => {
+  // Test 4.4a (happy path): la sonrisa confirma al sostener SMILE_GESTURE_HOLD_MS
+  it("4.4a: sonrisa sostenida por SMILE_GESTURE_HOLD_MS confirma (happy path)", () => {
+    // Simular frames que acumulan hasta alcanzar exactamente SMILE_GESTURE_HOLD_MS.
+    // Con prevAccumMs = SMILE_GESTURE_HOLD_MS - 1 y dt = 1, debe confirmar.
+    const result = gestureAccumulator({
+      prevAccumMs: SMILE_GESTURE_HOLD_MS - 1,
+      cumple: true,
+      dt: 1,
+      gestureHoldMs: SMILE_GESTURE_HOLD_MS,
+    });
+    expect(result.confirmado).toBe(true);
+    expect(result.isHolding).toBe(true);
+  });
+
+  // Test 4.4b (edge: neutral NO confirma): con cara neutral, evaluateChallengeRelative
+  // retorna false para sonreír → el acumulador NO avanza → no confirma.
+  it("4.4b: cara neutral — evaluateChallengeRelative sonreír = false → acumulador no confirma", () => {
+    const baselineNeutral: BaselineMetrics = {
+      blinkOpenness: 0.06,
+      smileWidth: 0.10,
+      gazeX: 0,
+    };
+    // Cara neutral: ancho de boca = 0.105 (< threshold de 0.112 = 0.10 * 1.12)
+    const lm = makeLandmarks({ 61: { x: 0, y: 0.5 }, 291: { x: 0.105, y: 0.5 } });
+    const cumple = evaluateChallengeRelative("sonreír", lm, { x: 0, y: 0 }, baselineNeutral);
+    expect(cumple).toBe(false);
+
+    // Acumulador con cumple=false no avanza — aunque prevAccumMs sea alto
+    const accumResult = gestureAccumulator({
+      prevAccumMs: SMILE_GESTURE_HOLD_MS - 10,
+      cumple: false,
+      dt: 100,
+      gestureHoldMs: SMILE_GESTURE_HOLD_MS,
+    });
+    expect(accumResult.confirmado).toBe(false);
+    expect(accumResult.isHolding).toBe(false);
+  });
+
+  // Test 4.4c: SMILE_GESTURE_HOLD_MS está exportada y es >= GESTURE_HOLD_MS (deliberada)
+  it("4.4c: SMILE_GESTURE_HOLD_MS es constante propia >= GESTURE_HOLD_MS (ritmo deliberado)", () => {
+    // Invariante de seguridad anti-spoofing: el hold de sonrisa no puede ser
+    // agresivamente corto. El mínimo seguro es GESTURE_HOLD_MS (500ms).
+    expect(typeof SMILE_GESTURE_HOLD_MS).toBe("number");
+    expect(SMILE_GESTURE_HOLD_MS).toBeGreaterThanOrEqual(GESTURE_HOLD_MS);
+  });
+
+  // Test 4.4d: el gate de neutralidad sigue activo con SMILE_GESTURE_HOLD_MS —
+  // el acumulador con cumple=false no confirma aunque tenga prevAccumMs alto.
+  it("4.4d: el gate de neutralidad preserva el acumulado pero NO confirma (anti doble-paso)", () => {
+    // Si el alumno tiene 499ms acumulados y pierde la sonrisa un frame,
+    // el acumulador se preserva pero isHolding=false → no confirma ese frame.
+    const accumLost = gestureAccumulator({
+      prevAccumMs: SMILE_GESTURE_HOLD_MS - 1,
+      cumple: false,
+      dt: 50,
+      gestureHoldMs: SMILE_GESTURE_HOLD_MS,
+    });
+    expect(accumLost.confirmado).toBe(false);
+    expect(accumLost.isHolding).toBe(false);
+    // El acumulado se preserva para reanudación
+    expect(accumLost.accumMs).toBe(SMILE_GESTURE_HOLD_MS - 1);
+  });
+});

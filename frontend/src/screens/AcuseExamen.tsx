@@ -7,7 +7,7 @@ import { Card, Button, Icon, LoadingSpinner } from '../ui/components';
 import { StudentShell } from '../ui/shells';
 import { useNavigate } from '../lib/router';
 import { useApp } from '../lib/store';
-import { api, ALCANCE_MONITOREO, ACUSE_EXAMEN_VERSION } from '../lib/api';
+import { api, ALCANCE_MONITOREO } from '../lib/api';
 import type { Examen } from '../lib/types';
 
 interface Props {
@@ -103,8 +103,8 @@ export default function AcuseExamen({ examenId, onConfirmado, onCancelar }: Prop
             <div className="flex-1 min-w-0">
               <p className="text-label-md font-semibold text-on-surface">Completá tu perfil primero</p>
               <p className="text-label-sm text-on-surface-variant mt-base">
-                El acuse de consentimiento por examen requiere que tu perfil esté completo
-                (consentimiento de perfil vigente + biometría). Completalo antes de continuar.
+                Para confirmar tu participación necesitás tener el perfil completo
+                (consentimiento vigente + foto de referencia). Completalo antes de continuar.
               </p>
             </div>
           </div>
@@ -128,7 +128,7 @@ export default function AcuseExamen({ examenId, onConfirmado, onCancelar }: Prop
             <div className="w-10 h-10 rounded-xl bg-primary-fixed text-primary flex items-center justify-center shrink-0">
               <Icon name="assignment_turned_in" />
             </div>
-            <p className="text-label-sm text-on-surface-variant font-medium uppercase tracking-wide">Acuse de monitoreo</p>
+            <p className="text-label-sm text-on-surface-variant font-medium uppercase tracking-wide">Monitoreo del examen</p>
           </div>
           <h1 className="font-headline text-headline-sm text-on-surface tracking-tight">
             Confirmación de participación
@@ -189,35 +189,18 @@ export default function AcuseExamen({ examenId, onConfirmado, onCancelar }: Prop
               Consentimiento de perfil vigente
             </p>
             <p className="text-label-sm text-on-surface-variant mt-base">
-              Tu consentimiento de tratamiento biométrico y de datos sensibles está registrado
-              (versión {versionPerfilVigente}). Este paso referencia ese acuse como base legal;
-              no se vuelve a pedir ni se re-captura biometría.
+              Tu consentimiento para el tratamiento de tus datos ya está registrado
+              (versión {versionPerfilVigente}). Este paso se apoya en ese consentimiento;
+              no se vuelve a pedir ni se repite la captura de tu rostro.
             </p>
             <button
               onClick={() => navigate('/alumno/perfil')}
               className="text-label-sm text-primary hover:underline mt-xs inline-flex items-center gap-xs"
             >
               <Icon name="open_in_new" className="text-[14px]" />
-              Ver perfil y consentimiento de perfil
+              Ver mi perfil y consentimiento
             </button>
           </div>
-        </div>
-
-        {/* Información de privacidad */}
-        <div className="text-label-sm text-on-surface-variant bg-surface-container-lowest border border-outline-variant/30 rounded-xl p-md space-y-xs">
-          <p className="font-semibold text-on-surface flex items-center gap-xs">
-            <Icon name="gavel" className="text-[16px]" />
-            Acerca de este acuse (Ley 25.326)
-          </p>
-          <p>
-            Este acuse da <strong>finalidad específica</strong> al tratamiento de datos para esta instancia de examen concreta,
-            conforme al art. 4 de la Ley 25.326. El sistema no sancionará automáticamente:
-            cualquier anomalía detectada se deriva a revisión humana.
-          </p>
-          <p className="text-on-surface-variant/70">
-            Versión del texto de acuse: {ACUSE_EXAMEN_VERSION}.
-            El acuse es inmutable una vez registrado.
-          </p>
         </div>
 
         {/* Acuse ya registrado */}
@@ -225,7 +208,7 @@ export default function AcuseExamen({ examenId, onConfirmado, onCancelar }: Prop
           <div className="flex items-center gap-md bg-tertiary-container border border-tertiary/20 rounded-xl p-md">
             <Icon name="check_circle" className="text-[22px] text-tertiary shrink-0" fill />
             <p className="text-label-md text-on-surface">
-              Ya otorgaste el acuse para este examen. Tu inscripción está habilitada.
+              Ya confirmaste tu participación en este examen. Tu inscripción está habilitada.
             </p>
           </div>
         )}
@@ -242,14 +225,14 @@ export default function AcuseExamen({ examenId, onConfirmado, onCancelar }: Prop
               {confirmando ? (
                 <span className="inline-flex items-center gap-xs">
                   <Icon name="progress_activity" className="ae-spin text-[18px]" />
-                  Registrando acuse…
+                  Confirmando…
                 </span>
               ) : (
-                'Confirmo que rendiré este examen bajo monitoreo'
+                'Confirmar y continuar'
               )}
             </Button>
-            <Button variant="ghost" onClick={handleCancelar} className="w-full">
-              Cancelar — decidir más tarde
+            <Button variant="outline" onClick={handleCancelar} className="w-full">
+              Decidir más tarde
             </Button>
           </div>
         )}

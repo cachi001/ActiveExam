@@ -18,6 +18,21 @@ const PREGUNTA = {
   ],
 };
 
+// Color de la card del evento según el riesgo/severidad (mismo código de color que
+// la severidad: rojo = alto/crítico, ámbar = medio, azul = bajo).
+const SEV_CARD: Record<string, string> = {
+  critica: 'bg-error-container border-error/40',
+  alta: 'bg-error-container border-error/40',
+  media: 'bg-warning-container border-warning/40',
+  baja: 'bg-blue-50 border-blue-200',
+};
+const SEV_ICON: Record<string, { name: string; cls: string }> = {
+  critica: { name: 'gpp_bad', cls: 'text-error' },
+  alta: { name: 'gpp_bad', cls: 'text-error' },
+  media: { name: 'warning', cls: 'text-warning' },
+  baja: { name: 'info', cls: 'text-blue-600' },
+};
+
 export default function Examen() {
   const navigate = useNavigate();
   const examen = useApp((s) => s.examenActivo);
@@ -83,7 +98,7 @@ export default function Examen() {
   };
 
   return (
-    <StudentShell step={5}>
+    <StudentShell>
       <div className="grid lg:grid-cols-3 gap-lg animate-in fade-in duration-500">
         {/* Examen */}
         <div className="lg:col-span-2 space-y-lg">
@@ -107,9 +122,10 @@ export default function Examen() {
                 </label>
               ))}
             </div>
-            <div className="flex justify-between pt-md border-t border-outline-variant/40">
-              <Button variant="outline" icon="arrow_back">Anterior</Button>
-              <Button icon="check_circle" onClick={finalizar}>Finalizar y entregar</Button>
+            <div className="flex pt-md border-t border-outline-variant/40">
+              <Button icon="check_circle" onClick={finalizar} className="w-full sm:w-auto sm:ml-auto">
+                Finalizar y entregar
+              </Button>
             </div>
           </Card>
         </div>
@@ -118,12 +134,10 @@ export default function Examen() {
         <div className="space-y-lg">
           <Card padded={false} className="overflow-hidden">
             <div className="relative aspect-video bg-inverse-surface">
-              <video ref={videoRef} muted playsInline className="w-full h-full object-cover" />
+              <video ref={videoRef} muted playsInline className="w-full h-full object-cover" style={{ transform: 'scaleX(-1)' }} />
               {/* La detección sigue corriendo en segundo plano (useExamProctoring);
-                  no se dibuja ningún marco/overlay sobre el video para no confundir. */}
-              <div className="absolute top-3 left-3 inline-flex items-center gap-base bg-primary-container text-on-primary text-[9px] font-bold px-sm py-base rounded-full uppercase">
-                <Icon name="videocam" className="text-[12px]" /> Proctor activo
-              </div>
+                  no se dibuja ningún marco/overlay ni badge encima del video para no
+                  tapar ni confundir. El estado va abajo, discreto. */}
               {/* Indicador discreto de supervisión real en vivo */}
               <div className="absolute bottom-3 left-3 inline-flex items-center gap-base bg-inverse-surface/70 text-inverse-on-surface text-[9px] font-semibold px-sm py-base rounded-full">
                 <span className={`w-1.5 h-1.5 rounded-full ${activo ? 'bg-success animate-pulse' : 'bg-on-surface-variant'}`} />
@@ -143,18 +157,22 @@ export default function Examen() {
                   <Icon name="check_circle" className="text-success text-[32px]" fill />
                   <p className="text-label-sm">Integridad óptima. Sin incidencias en el navegador.</p>
                 </div>
-              ) : eventos.map((ev) => (
-                <div key={ev.id} className="flex gap-sm p-sm rounded-xl bg-white border border-outline-variant/40">
-                  <Icon name="warning" className="text-warning shrink-0 text-[18px]" fill />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between gap-base">
-                      <span className="text-label-md font-semibold text-on-surface">{TIPO_EVENTO_LABEL[ev.tipo]}</span>
-                      <SeverityBadge severidad={ev.severidad} />
+              ) : eventos.map((ev) => {
+                const card = SEV_CARD[ev.severidad] ?? SEV_CARD.baja;
+                const ic = SEV_ICON[ev.severidad] ?? SEV_ICON.baja;
+                return (
+                  <div key={ev.id} className={`flex gap-sm p-sm rounded-xl border ${card}`}>
+                    <Icon name={ic.name} className={`${ic.cls} shrink-0 text-[18px]`} fill />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-base">
+                        <span className="text-label-md font-semibold text-on-surface">{TIPO_EVENTO_LABEL[ev.tipo]}</span>
+                        <SeverityBadge severidad={ev.severidad} />
+                      </div>
+                      <p className="text-label-sm text-on-surface-variant mt-base">{ev.descripcion}</p>
                     </div>
-                    <p className="text-label-sm text-on-surface-variant mt-base">{ev.descripcion}</p>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </Card>
 

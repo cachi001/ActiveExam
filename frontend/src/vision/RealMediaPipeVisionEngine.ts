@@ -59,7 +59,18 @@ export class RealMediaPipeVisionEngine implements VisionEngine {
   /** Timestamp del último frame procesado (requerido por detectForVideo). */
   private lastFrameTs = 0;
 
-  async init(): Promise<void> {
+  /**
+   * Inicializa el motor cargando WASM + modelos.
+   *
+   * C-67 (fix payload del enrollment): `options.loadPose` permite OMITIR el
+   * PoseLandmarker (modelo de 5.7 MB). La captura de referencia biométrica
+   * (enrollment) NUNCA llama `detectPose` — solo usa face mesh + face detection —
+   * así que cargar Pose ahí es 5.7 MB de descarga y memoria desperdiciados en el
+   * teléfono. Por defecto `loadPose = true` para NO regresionar harness/proctoring,
+   * que sí usan pose. El enrollmentEngineLoader pasa `{ loadPose: false }`.
+   */
+  async init(options?: { loadPose?: boolean }): Promise<void> {
+    const loadPose = options?.loadPose ?? true;
     // Verificar WebGL antes de intentar cargar cualquier modelo
     if (!this.isWebGLAvailable()) {
       throw new Error(
@@ -97,8 +108,10 @@ export class RealMediaPipeVisionEngine implements VisionEngine {
     // --- FaceLandmarker ---
     await this.loadFaceLandmarker(vision);
 
-    // --- PoseLandmarker ---
-    await this.loadPoseLandmarker(vision);
+    // --- PoseLandmarker (opcional — omitido en el enrollment, C-67) ---
+    if (loadPose) {
+      await this.loadPoseLandmarker(vision);
+    }
 
     this.ready = true;
   }
@@ -312,6 +325,13 @@ export class RealMediaPipeVisionEngine implements VisionEngine {
 
   async detectPose(frame: ImageBitmap | VideoFrame): Promise<PoseSignal> {
     this.ensureReady();
+    // C-67: el motor pudo inicializarse sin Pose (enrollment, loadPose=false).
+    if (this.poseLandmarker === null) {
+      throw new Error(
+        "Pose no disponible: el motor se inicializó sin PoseLandmarker (init({ loadPose: false })). " +
+        "La captura de referencia biométrica no usa pose; volvé a inicializar con loadPose=true si necesitás postura.",
+      );
+    }
     const ts = this.nextTimestamp();
     const result: PoseLandmarkerResult = this.poseLandmarker!.detectForVideo(frame as ImageBitmap, ts);
 

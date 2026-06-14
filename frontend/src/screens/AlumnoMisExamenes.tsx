@@ -110,11 +110,11 @@ export default function AlumnoMisExamenes() {
             <HelpButton title="Mis exámenes">
               <p>
                 Acá ves tus <strong>inscripciones</strong> a exámenes con su estado actual y la
-                acción que tenés que hacer (inscribirte, completar el acuse, rendir, etc.).
+                acción que tenés que hacer (inscribirte, confirmar tu participación, rendir, etc.).
               </p>
               <p>
                 Antes de poder rendir, además del consentimiento general en <em>Mi perfil</em>,
-                cada examen pide un <em>acuse específico</em> con la información puntual de ese
+                cada examen pide una <em>confirmación específica</em> con la información puntual de ese
                 examen (modalidad, fechas, requisitos).
               </p>
               <p>

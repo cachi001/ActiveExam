@@ -44,10 +44,12 @@ import {
   isBaselineSmileValid,
   gestureAccumulator,
   GESTURE_HOLD_MS,
+  SMILE_GESTURE_HOLD_MS,
 } from '../vision/enrollmentChallengeDetector';
 import type { BaselineFrame } from '../vision/enrollmentChallengeDetector';
 import { SEQUENTIAL_CHALLENGES, derivePassiveSignals, passivePassed, detectVirtualCamera } from '../vision/liveness';
 import { DESAFIOS } from '../lib/api';
+import { withTimeout } from '../lib/withTimeout';
 import type { FaceLandmark, VisionEngine } from '../vision/VisionEngine';
 import type { BaselineMetrics, SequentialChallenge, TurnDirection } from '../vision/liveness';
 
@@ -224,6 +226,15 @@ export function BiometricCapture({
 
   /** Índice del reto activo en la secuencia barajada (D-1). */
   const challengeIndexRef = useRef(0);
+
+  /**
+   * C-67 fix: pasos REALMENTE confirmados (sube al confirmar, NO después del
+   * cooldown como challengeIndexRef). Es la base MONÓTONA del anillo de progreso:
+   * sin esto, al confirmar un paso el relleno "desaparecía" y volvía a empezar
+   * durante el cooldown (challengeIndexRef todavía no había incrementado). El
+   * anillo nunca debe retroceder en los pasos ya completados.
+   */
+  const completadosRef = useRef(0);
 
   /** Métricas del baseline neutral (null mientras no se declara). */
   const baselineRef = useRef<BaselineMetrics | null>(null);
@@ -849,6 +860,13 @@ export function BiometricCapture({
 
             const retoActivo = barajados[idx];
 
+            // C-67 Task 4.5: usar hold propio por reto (SMILE_GESTURE_HOLD_MS para
+            // 'sonreír', GESTURE_HOLD_MS para los demás). Ambas constantes son iguales
+            // en valor por decisión del dueño ("ritmo deliberado, ≥500ms"), pero la
+            // separación permite ajustar la sonrisa de forma independiente en el futuro.
+            const gestureHoldForReto =
+              retoActivo === 'sonreír' ? SMILE_GESTURE_HOLD_MS : GESTURE_HOLD_MS;
+
             // Task 5.7: sin rostro → resetear acumulador del reto activo y hold
             if (face_count === 0) {
               challengeCountsRef.current.set(retoActivo, 0);
@@ -892,7 +910,7 @@ export function BiometricCapture({
                     prevAccumMs,
                     cumple: true,
                     dt,
-                    gestureHoldMs: GESTURE_HOLD_MS,
+                    gestureHoldMs: gestureHoldForReto,
                   });
                   gestureAccumMsRef.current.set(retoActivo, accumResult.accumMs);
                   wasHoldingRef.current.set(retoActivo, true);
@@ -919,6 +937,10 @@ export function BiometricCapture({
                     gestureAccumMsRef.current.set(retoActivo, 0);
                     wasHoldingRef.current.set(retoActivo, false);
                     lastProgressTickFractionRef.current = 0;
+                    // C-67 fix: incrementar la base monótona AL confirmar (no tras el
+                    // cooldown). Así el anillo salta a (completados/total) y se queda
+                    // ahí — nunca retrocede el avance ya logrado.
+                    completadosRef.current += 1;
                     activarCooldown(retoActivo);
                   }
                 }
@@ -930,7 +952,7 @@ export function BiometricCapture({
                   prevAccumMs,
                   cumple: false,
                   dt,
-                  gestureHoldMs: GESTURE_HOLD_MS,
+                  gestureHoldMs: gestureHoldForReto,
                 });
                 // accumMs ya está preservado (gestureAccumulator no lo modifica en !cumple)
                 // No es necesario set (ya está el valor previo), pero lo hacemos explícito:
@@ -950,16 +972,22 @@ export function BiometricCapture({
                 );
               }
 
-              // C-67 Group 2: Progreso visual del anillo.
-              // fracReto refleja el acumulado. Cuando !isHolding, ocultar el fill
-              // del reto activo (mostrarFracActiva=false) pasando fracReto=0.
+              // C-67 Group 2 + fix: Progreso visual del anillo, MONÓTONO en los
+              // pasos completados. La base es completadosRef (sube al confirmar),
+              // no challengeIndexRef (sube tras el cooldown) → el avance ya logrado
+              // nunca retrocede. El segmento del reto activo sí sube/baja con el
+              // gesto, pero acotado entre completados/total y (completados+1)/total.
               const totalRetos = desafiosBarajadosRef.current.length;
               if (totalRetos > 0) {
-                const completos = challengeIndexRef.current;
+                const completos = completadosRef.current;
                 const accumMs = gestureAccumMsRef.current.get(retoActivo) ?? 0;
-                const isHoldingNow = wasHoldingRef.current.get(retoActivo) ?? false;
-                // Mostrar fill solo mientras se sostiene el gesto
-                const fracReto = isHoldingNow ? Math.min(1, accumMs / GESTURE_HOLD_MS) : 0;
+                // C-67 fix: el verde se LLENA a medida que se sostiene el gesto, en
+                // base al acumulador (que solo crece mientras se cumple, y se preserva
+                // si se pierde un instante). Antes se gateaba por isHoldingNow y el fill
+                // "desaparecía" si el detector titilaba → parecía que solo se dibujaba
+                // al completar. El segmento del reto activo va de completados/total a
+                // (completados+1)/total.
+                const fracReto = Math.min(1, accumMs / gestureHoldForReto);
                 const progresoNuevo = Math.min(1, (completos + fracReto) / totalRetos);
                 setProgreso(progresoNuevo);
               }
@@ -1059,7 +1087,17 @@ export function BiometricCapture({
     const onFullscreenChange = () => {};
     document.addEventListener('fullscreenchange', onFullscreenChange);
 
-    loadEnrollmentEngine().then((engine) => {
+    // C-67 fix: blindar la carga del motor con un timeout. En el teléfono, la
+    // descarga de los modelos (WASM ~11 MB) sobre el túnel puede stallar y dejar
+    // el overlay cargando para SIEMPRE. Con el timeout, si tarda más de la cuenta
+    // caemos al modo manual (que ya existe) en vez de un spinner eterno. Tras la
+    // primera carga, el Service Worker sirve los modelos de cache → instantáneo.
+    const ENGINE_LOAD_TIMEOUT_MS = 30000;
+    withTimeout(
+      loadEnrollmentEngine(),
+      ENGINE_LOAD_TIMEOUT_MS,
+      'La cámara inteligente tardó demasiado en cargar (conexión lenta). Podés continuar de forma manual.',
+    ).then((engine) => {
       if (cancelado) {
         void disposeEnrollmentEngine();
         return;

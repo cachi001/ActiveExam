@@ -48,7 +48,7 @@ export const SEVERITY_ORDER: Severidad[] = ['baseline', 'baja', 'media', 'alta',
 
 export const SEVERITY_BADGE_COLORS: Record<Severidad, string> = {
   baseline: 'bg-surface-container-high text-on-surface-variant',
-  baja: 'bg-success-container text-success',
+  baja: 'bg-blue-100 text-blue-700',
   media: 'bg-warning-container text-warning',
   alta: 'bg-error-container text-on-error-container',
   critica: 'bg-error text-on-error',
@@ -61,7 +61,7 @@ export const SEVERITY_BADGE_COLORS: Record<Severidad, string> = {
  */
 export const SEVERITY_CARD_COLORS: Record<Severidad, string> = {
   baseline: 'bg-surface-container-low/60 border-outline-variant/40 border-l-4 border-l-outline-variant',
-  baja: 'bg-success-container/30 border-success/20 border-l-4 border-l-success',
+  baja: 'bg-blue-50 border-blue-200 border-l-4 border-l-blue-500',
   media: 'bg-warning-container/40 border-warning/30 border-l-4 border-l-warning',
   alta: 'bg-error-container/40 border-error/30 border-l-4 border-l-error',
   critica: 'bg-error/15 border-error/50 border-l-4 border-l-error',

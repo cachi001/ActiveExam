@@ -13,7 +13,10 @@ export type TermKey =
   | 'datos_biometricos'
   | 'bounding_box'
   | 'gaze_vector'
-  | 'pose_keypoints';
+  | 'pose_keypoints'
+  // C-67 Grupo 6: términos para el detalle técnico colapsado de verificación 1:1
+  | 'similitud_coseno'
+  | 'umbral_verificacion';
 
 export interface GlossaryEntry {
   /** Texto del término tal como aparece en la UI (ej. "L2.5") */
@@ -37,9 +40,9 @@ export const GLOSSARY: Record<TermKey, GlossaryEntry> = {
       'Write Once Read Many: una vez escrito, el archivo no puede modificarse ni borrarse. Garantiza que la evidencia es auténtica.',
   },
   liveness: {
-    label: 'liveness',
+    label: 'Verificación de presencia',
     definition:
-      'Prueba de que hay una persona viva frente a la cámara (no una foto, video ni máscara). Parte de la verificación de identidad.',
+      'Confirma que hay una persona real frente a la cámara (no una foto, un video ni una máscara). Es parte de la verificación de tu identidad.',
   },
   cadena_de_custodia: {
     label: 'cadena de custodia',
@@ -71,5 +74,16 @@ export const GLOSSARY: Record<TermKey, GlossaryEntry> = {
     label: 'pose keypoints',
     definition:
       'Puntos de referencia del cuerpo de una persona (hombros, codos, manos, etc.) detectados por un modelo de visión artificial. Su presencia confirma que hay una persona entera visible, no solo el rostro.',
+  },
+  // C-67 Grupo 6: términos del detalle técnico colapsado de verificación 1:1
+  similitud_coseno: {
+    label: 'similitud',
+    definition:
+      'Número entre 0 y 1 que mide qué tan parecida es la imagen capturada a la foto de referencia. Cuanto más cerca de 1, más similitud. Es una señal de conveniencia; la verificación definitiva la hace el servidor.',
+  },
+  umbral_verificacion: {
+    label: 'referencia mínima',
+    definition:
+      'Valor mínimo de similitud que se necesita para considerar que la imagen coincide con la foto registrada. Configurado de forma conservadora para proteger la identidad del alumno.',
   },
 };

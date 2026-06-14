@@ -219,9 +219,26 @@ export const ACUSE_EXAMEN_VERSION = '2026.1';
  * En producción vendría de la configuración del examen (C-07).
  */
 export const ALCANCE_MONITOREO: { icono: string; label: string; descripcion: string }[] = [
-  { icono: 'videocam', label: 'Cámara web', descripcion: 'Video continuo para verificación de identidad y detección de presencia.' },
-  { icono: 'monitor', label: 'Pantalla y foco', descripcion: 'Captura de pantalla y detección de pérdida de foco de la ventana del examen.' },
-  { icono: 'tab', label: 'Pestañas del navegador', descripcion: 'Detección de cambio o apertura de nuevas pestañas durante la rendición.' },
+  {
+    icono: 'videocam',
+    label: 'Tu cámara',
+    descripcion: 'Se analiza la imagen en vivo para confirmar que sos vos y que estás presente. Se registra un aviso si no se te ve, si aparece otra persona en cámara, o si mirás mucho rato hacia afuera de la pantalla. No se graba video: solo se guarda una captura puntual cuando pasa algo de eso.',
+  },
+  {
+    icono: 'desktop_windows',
+    label: 'La ventana del examen',
+    descripcion: 'Se detecta si minimizás o salís de la ventana del examen, si salís de pantalla completa, o si cambiás o abrís otra pestaña. No se graba la pantalla: solo se guarda una captura puntual ante uno de esos eventos.',
+  },
+  {
+    icono: 'devices',
+    label: 'Monitores y dispositivos',
+    descripcion: 'Se detecta si tenés un segundo monitor conectado al equipo. El examen pide usar una sola pantalla.',
+  },
+  {
+    icono: 'content_paste',
+    label: 'Acciones en el equipo',
+    descripcion: 'Se detecta si copiás o pegás durante el examen (se registra que ocurrió, nunca el contenido de lo que copiás).',
+  },
 ];
 
 /**
@@ -303,7 +320,9 @@ const REPORTES: ResumenReportes = {
 };
 
 const CONSENT_TEXT: ConsentTextResponse = {
-  version: '2026.1',
+  // Alineada con la versión del backend real ('v1') para que demo y real coincidan
+  // y la versión del consentimiento se muestre igual en todo el sistema.
+  version: 'v1',
   hash_texto: 'sha256:9f2b…a31',
   bloques: [
     { icono: 'help', titulo: '¿Qué datos recolectamos?', cuerpo: 'Video de tu cámara y captura de pantalla durante el examen, y un embedding facial para verificar tu identidad. El embedding se trata como dato sensible bajo la Ley 25.326.' },

@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
-import { Icon } from './components';
+import { Icon, BackButton } from './components';
 import { Link, useRouter, useNavigate } from '../lib/router';
 import { useApp } from '../lib/store';
 import { nombreCompleto } from '../lib/types';
 import { useAuth } from '../lib/authStore';
 import { api } from '../lib/api';
 import { ConfirmModal } from './ConfirmModal';
+import { WizardStepper, type WizardPaso } from '../screens/enrollment/EnrollmentStepLayout';
 
 const LOGO = (
   <div className="flex items-center gap-sm">
@@ -167,14 +168,30 @@ function StudentUserMenu({ onLogoutClick }: { onLogoutClick: () => void }) {
 }
 
 /** Shell para el flujo del estudiante: header + drawer lateral (flecha pegada al borde). */
-export function StudentShell({ children, step }: { children: ReactNode; step?: number }) {
+export function StudentShell({ children, step, backTo = '/alumno' }: { children: ReactNode; step?: number; backTo?: string }) {
   const logout = useAuth((s) => s.logout);
+  const navigate = useNavigate();
   const { path } = useRouter();
   const principal = useApp((s) => s.principal);
   const setFotoPerfil = useApp((s) => s.setFotoPerfil);
   const [confirmandoLogout, setConfirmandoLogout] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const pasos = ['Ingreso', 'Requisitos', 'Privacidad', 'Biometría', 'Sala', 'Examen', 'Cierre'];
+  // Flujo del examen (1-based): empieza en el PRIMER paso real (Requisitos), no en
+  // 'Ingreso'. Cada paso tiene su label breve debajo del número (estilo wizard de
+  // completar perfil). Las pantallas pasan `step` = posición 1..6.
+  // Pasos PARA ENTRAR al examen. El examen en sí (y el cierre) NO son pasos del wizard.
+  const PASOS_EXAMEN = ['Requisitos', 'Consentimiento', 'Verificación', 'Sala'];
+  const pasosWizard: WizardPaso[] = PASOS_EXAMEN.map((label, i) => ({
+    label,
+    estado:
+      step === undefined
+        ? 'pendiente'
+        : i + 1 < step
+          ? 'completado'
+          : i + 1 === step
+            ? 'actual'
+            : 'pendiente',
+  }));
 
   // Cargar la foto de perfil persistida (demo o backend) para mostrarla en el header
   // en cualquier página, no solo en el perfil.
@@ -198,25 +215,6 @@ export function StudentShell({ children, step }: { children: ReactNode; step?: n
           </div>
           <StudentUserMenu onLogoutClick={() => setConfirmandoLogout(true)} />
         </div>
-        {typeof step === 'number' && (
-          <div className="max-w-container-max mx-auto px-lg pb-sm overflow-x-auto no-scrollbar border-t border-outline-variant/40">
-            <div className="flex items-center gap-base min-w-max py-base">
-              {pasos.map((p, i) => (
-                <div key={p} className="flex items-center gap-base">
-                  <div className={`flex items-center gap-base px-sm py-base rounded-full text-label-sm font-semibold ${
-                    i === step ? 'bg-primary text-on-primary' : i < step ? 'bg-primary-fixed text-on-primary-fixed-variant' : 'bg-surface-container text-on-surface-variant'
-                  }`}>
-                    <span className="w-5 h-5 rounded-full bg-current/20 flex items-center justify-center text-[11px]">
-                      {i < step ? '✓' : i + 1}
-                    </span>
-                    <span className="hidden md:inline">{p}</span>
-                  </div>
-                  {i < pasos.length - 1 && <span className="w-4 h-px bg-outline-variant" />}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
       </header>
 
       {/* Handle flotante (SOLO desktop): botón que despliega el menú lateral.
@@ -271,10 +269,16 @@ export function StudentShell({ children, step }: { children: ReactNode; step?: n
       {/* Contenido scrolleable: el scroll vive acá adentro, no en el documento.
           Así la barra inferior es un hijo flex fijo abajo, siempre visible. */}
       <main className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-styled">
-        <div className="w-full max-w-container-max mx-auto px-lg pt-xl pb-xl">{children}</div>
-        {/* Footer solo en desktop; en mobile su lugar lo ocupa la barra inferior */}
-        <div className="hidden md:block">
-          <SharedFooter />
+        <div className="w-full max-w-container-max mx-auto px-lg pt-lg pb-xl">
+          {/* Flujo del examen: botón Volver SIEMPRE arriba + pasos del wizard debajo,
+              SIN card contenedora (mismo patrón que el wizard de completar perfil). */}
+          {typeof step === 'number' && (
+            <div className="mb-lg space-y-md">
+              <BackButton onClick={() => navigate(backTo)} />
+              <WizardStepper pasos={pasosWizard} />
+            </div>
+          )}
+          {children}
         </div>
       </main>
 
@@ -393,12 +397,3 @@ export function StaffShell({ children, nav, title, subtitle, help, actions }: { 
   );
 }
 
-function SharedFooter() {
-  return (
-    <footer className="border-t border-outline-variant/50 bg-surface-container-lowest py-lg">
-      <div className="max-w-container-max mx-auto px-lg text-center text-label-sm text-on-surface-variant">
-        <span><span className="font-semibold text-primary">Active Exam</span> · Transparencia radical en integridad académica.</span>
-      </div>
-    </footer>
-  );
-}

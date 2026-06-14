@@ -25,6 +25,7 @@ import { Icon, Button, Card } from '../../ui/components';
 import { api, BIOMETRIC_VALIDITY_MONTHS } from '../../lib/api';
 import { BiometricCapture } from '../../ui/BiometricCapture';
 import { computeFaceDescriptor } from '../../vision/faceEmbedding';
+import { unlockAudio } from '../../ui/biometric/sounds';
 import { useApp } from '../../lib/store';
 import type { ReferenciasBiometrica } from '../../lib/types';
 import type { FaceLandmark } from '../../vision/VisionEngine';
@@ -208,19 +209,24 @@ export function EnrollmentBiometricStep({ referenciaActual, onCapturada, esRenov
               anteojos oscuros, barbijo). Dura unos segundos e incluye <strong>tres gestos rápidos</strong>
               {' '}para confirmar que sos una persona real.
             </p>
-            {/* Botón iniciar — activa la fase capturando con el overlay BiometricCapture */}
-            <Button icon="photo_camera" onClick={() => setFase('capturando')}>
+            {/* Botón iniciar — activa la fase capturando con el overlay BiometricCapture.
+                La carga de modelos ocurre al entrar a la captura (con su propio estado
+                de carga en el overlay), no acá. */}
+            <Button icon="photo_camera" onClick={() => { unlockAudio(); setFase('capturando'); }}>
               Iniciar captura de referencia
             </Button>
           </div>
         )}
 
-        {/* ── Task 8.8: Estado: procesando ── */}
+        {/* ── Estado: procesando — continúa el "Verificado" del óvalo (no reinicia) ── */}
         {fase === 'procesando' && (
-          <div className="text-center space-y-sm text-on-surface-variant">
-            <Icon name="progress_activity" className="ae-spin text-primary text-[32px]" />
-            <p className="text-body-md">Procesando tu referencia facial…</p>
-            <p className="text-label-sm">La estamos guardando de forma segura. Tarda unos segundos.</p>
+          <div className="text-center space-y-sm">
+            <Icon name="verified_user" className="text-success text-[40px]" fill />
+            <p className="font-headline text-title-md text-on-surface">¡Verificación lista!</p>
+            <p className="text-label-sm text-on-surface-variant inline-flex items-center gap-xs justify-center">
+              <Icon name="progress_activity" className="ae-spin text-[16px]" />
+              Guardando tu referencia de forma segura…
+            </p>
           </div>
         )}
 

@@ -362,6 +362,26 @@ export function computeSmileScore(
 export const GESTURE_HOLD_MS = 500;
 
 /**
+ * C-67 Task 4.5 — Hold propio del reto "sonreír" (ms).
+ *
+ * Reconciliación con la decisión del dueño (Open Questions resueltas 2026-06-13):
+ *   "TODO deliberado, NO rápido" → SMILE_GESTURE_HOLD_MS = GESTURE_HOLD_MS (500 ms).
+ *   "Menor latencia" del spec = constante PROPIA y separada, ajustable sin tocar
+ *   el hold genérico. No se reduce el valor para no generar falsos positivos de
+ *   liveness (hold demasiado corto = riesgo de spoofing, ya documentado en C-65/task 8.3).
+ *
+ * ⚠️ DUDA ABIERTA PARA EL DUEÑO:
+ *   El spec biometric-smile-precision pide "confirma con MENOR latencia que los
+ *   demás gestos". La decisión de diseño pide "deliberado, ≥500ms". Esta
+ *   implementación los reconcilia con un hold propio = 500 ms (conservador).
+ *   Si el dueño quiere acortar el hold de sonrisa, debe confirmar el valor mínimo
+ *   seguro (recomendación técnica: no bajar de 400 ms; el anti-spoofing necesita
+ *   al menos varios frames reales de gesto sostenido).
+ *   Para ajustar: cambiar SOLO esta constante (no tocar GESTURE_HOLD_MS).
+ */
+export const SMILE_GESTURE_HOLD_MS = GESTURE_HOLD_MS;
+
+/**
  * Input del helper puro de hold temporal.
  */
 export interface GestureHoldInput {

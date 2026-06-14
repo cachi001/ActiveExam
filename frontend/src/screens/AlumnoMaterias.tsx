@@ -89,8 +89,8 @@ export default function AlumnoMaterias() {
                 para ver sus comisiones; entrá a una comisión para ver los exámenes programados.
               </p>
               <p>
-                Para inscribirte a un examen vas a tener que leer y aceptar el <em>acuse</em>
-                específico de ese examen (modalidad, horario, requisitos).
+                Para inscribirte a un examen vas a tener que leer y <em>confirmar</em> la
+                información específica de ese examen (modalidad, horario, requisitos).
               </p>
               <p>
                 Tus inscripciones quedan después en <em>Mis exámenes</em>.

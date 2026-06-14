@@ -30,6 +30,20 @@ export function setSoundEnabled(value: boolean): void {
   enabled = value;
 }
 
+/**
+ * Desbloquea el audio. DEBE llamarse desde un gesto del usuario (un click/tap),
+ * porque en mobile/Safari el AudioContext nace 'suspended' y solo se puede
+ * resumir dentro del call-stack de una interacción. Sin esto, los sonidos del
+ * loop de captura (que corren en RAF, fuera de un gesto) no suenan.
+ * Llamar en el onClick del botón "Iniciar" de la captura/verificación.
+ */
+export function unlockAudio(): void {
+  const c = getCtx(); // crea el ctx y, si está suspended, intenta resumirlo
+  if (c && c.state === 'suspended') {
+    void c.resume().catch(() => {});
+  }
+}
+
 /** True si el SO/navegador pide reducir el movimiento (proxy razonable para "menos estímulos"). */
 function prefersReducedMotion(): boolean {
   if (typeof window === 'undefined' || !window.matchMedia) return false;

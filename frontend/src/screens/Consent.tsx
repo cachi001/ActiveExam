@@ -1,7 +1,8 @@
 // C-58 D2: consentimiento liviano cuando el alumno ya consintió en el perfil con versión vigente.
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { StudentShell } from '../ui/shells';
-import { Icon, Button, Card, LoadingSpinner, BackButton } from '../ui/components';
+import { Icon, Button, Card, LoadingSpinner } from '../ui/components';
 import { useNavigate } from '../lib/router';
 import { useApp } from '../lib/store';
 import { api } from '../lib/api';
@@ -20,8 +21,10 @@ export default function Consent() {
   const [acusePerfil, setAcusePerfil] = useState<AcuseConsentimiento | null | undefined>(undefined);
   const [acepto, setAcepto] = useState(false); // RN-CO-02: nunca pre-marcado
   const [guardando, setGuardando] = useState(false);
-  // C-58 D2: enlace "ver texto completo" en rama liviana
-  const [verTextoCompleto, setVerTextoCompleto] = useState(false);
+  // C-58 D2 / fix: "ver texto completo" en la rama liviana abre un MODAL de solo
+  // lectura (no vuelve a presentar el flujo de aceptación del perfil, que no tiene
+  // sentido acá: el alumno ya consintió en su perfil).
+  const [mostrarTextoModal, setMostrarTextoModal] = useState(false);
   // C-63: estado de la solicitud de vía alternativa
   const [estadoAlternativa, setEstadoAlternativa] = useState<'idle' | 'solicitando' | 'pendiente'>('idle');
 
@@ -84,7 +87,7 @@ export default function Consent() {
   // mientras el resto del JSX salía igual).
   if (texto === null) {
     return (
-      <StudentShell step={2}>
+      <StudentShell step={2} backTo="/requisitos">
         <div className="max-w-3xl lg:max-w-5xl mx-auto">
           <LoadingSpinner label="Cargando consentimiento…" />
         </div>
@@ -93,17 +96,13 @@ export default function Consent() {
   }
 
   return (
-    <StudentShell step={2}>
+    <StudentShell step={2} backTo="/requisitos">
       <div className="max-w-3xl lg:max-w-5xl mx-auto space-y-lg animate-in fade-in duration-500">
-        <BackButton onClick={() => navigate('/alumno')} />
         <div className="text-center space-y-base">
           <div className="w-14 h-14 rounded-2xl bg-primary-fixed text-primary flex items-center justify-center mx-auto">
             <Icon name="description" className="text-[28px]" />
           </div>
           <h2 className="font-headline text-headline-lg text-on-surface">Consentimiento informado</h2>
-          <p className="text-body-md text-on-surface-variant">
-            Active Exam respeta tus derechos bajo la <strong>Ley 25.326</strong> y un DPIA aprobado.
-          </p>
         </div>
 
         {/* C-63: pantalla de espera — vía alternativa solicitada, pendiente de proctor */}
@@ -123,7 +122,7 @@ export default function Consent() {
         )}
 
         {/* Rama liviana: ya consintió en perfil con versión vigente */}
-        {estadoAlternativa !== 'pendiente' && yaConsintioPerfil && !verTextoCompleto ? (
+        {estadoAlternativa !== 'pendiente' && yaConsintioPerfil ? (
           <>
             <Card className="bg-success-container border-success/30 flex gap-md items-start">
               <div className="w-10 h-10 rounded-xl bg-primary-fixed text-primary flex items-center justify-center shrink-0">
@@ -131,20 +130,21 @@ export default function Consent() {
               </div>
               <div className="min-w-0">
                 <p className="text-body-md font-semibold text-on-surface">
-                  Ya consentiste el tratamiento de tus datos
+                  Ya diste tu consentimiento
                   {fechaAcuse && <span className="font-normal text-on-surface-variant"> el {fechaAcuse}</span>}
                 </p>
                 <p className="text-label-sm text-on-surface-variant mt-base">
-                  Tu consentimiento de perfil (versión {acusePerfil.version}) está vigente.
-                  Solo necesitás confirmar tu participación en esta evaluación.
+                  Tu consentimiento ya está registrado y vigente (versión {acusePerfil.version}).
+                  Para rendir este examen solo falta que confirmes que vas a participar bajo monitoreo.
                 </p>
-                {/* Enlace discreto para ver el texto completo — Ley 25.326: siempre accesible */}
+                {/* Enlace discreto para LEER el texto completo en un modal — Ley 25.326:
+                    siempre accesible, sin re-presentar el flujo de aceptación. */}
                 <button
-                  onClick={() => setVerTextoCompleto(true)}
+                  onClick={() => setMostrarTextoModal(true)}
                   className="text-label-sm text-primary hover:underline mt-xs inline-flex items-center gap-base"
                   type="button"
                 >
-                  <Icon name="description" className="text-[16px]" /> Ver texto completo del consentimiento
+                  <Icon name="description" className="text-[16px]" /> Leer el texto completo
                 </button>
               </div>
             </Card>
@@ -158,9 +158,9 @@ export default function Consent() {
                   className="mt-base w-5 h-5 accent-[#4241bc] rounded"
                 />
                 <span className="text-body-md text-on-surface">
-                  Confirmo que acepto ser supervisado en esta evaluación y que mis datos biométricos
-                  serán tratados de acuerdo al consentimiento que presté en mi perfil.
-                  Entiendo que <strong>el sistema nunca sanciona automáticamente</strong> y que toda decisión es humana.
+                  Confirmo que voy a rendir <strong>este examen</strong> bajo monitoreo, según el
+                  consentimiento que ya di. Sé que ninguna decisión se toma de forma automática:
+                  si surge algo para revisar, <strong>siempre lo mira una persona del equipo</strong>.
                 </span>
               </label>
             </Card>
@@ -178,17 +178,8 @@ export default function Consent() {
           </>
         ) : (
           <>
-            {/* Rama completa: primera vez o versión desactualizada.
-                También se muestra cuando el alumno pidió "ver texto completo" desde la rama liviana. */}
-            {verTextoCompleto && (
-              <button
-                onClick={() => setVerTextoCompleto(false)}
-                type="button"
-                className="inline-flex items-center gap-xs text-label-sm text-on-surface-variant hover:text-primary"
-              >
-                <Icon name="arrow_back" className="text-[18px]" /> Volver a la confirmación rápida
-              </button>
-            )}
+            {/* Rama completa: primera vez o versión desactualizada (el alumno aún no
+                consintió en su perfil con la versión vigente). */}
 
             {/* Render progresivo: la grilla aparece vacía hasta que llega el texto (D3) */}
             <div className="grid sm:grid-cols-2 gap-md">
@@ -226,6 +217,57 @@ export default function Consent() {
               </Button>
             </div>
           </>
+        )}
+
+        {/* Modal de SOLO LECTURA del texto completo (Ley 25.326: siempre accesible).
+            No re-presenta el flujo de aceptación: el alumno ya consintió en su perfil.
+            Via createPortal a document.body: si no, un ancestro con transform/filter
+            (animate-in) atrapa el `fixed` y el modal queda sin botones / no cierra. */}
+        {mostrarTextoModal && createPortal(
+          <div
+            className="fixed inset-0 z-[100] bg-black/40 flex items-end sm:items-center justify-center sm:p-md animate-in fade-in duration-200"
+            onClick={() => setMostrarTextoModal(false)}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Texto completo del consentimiento"
+          >
+            <div
+              className="bg-surface w-full sm:max-w-lg max-h-[85vh] rounded-t-3xl sm:rounded-3xl overflow-hidden flex flex-col shadow-xl animate-in slide-in-from-bottom-4 duration-300"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between gap-sm px-lg py-md border-b border-outline-variant/40 shrink-0">
+                <h3 className="font-headline text-title-md text-on-surface">Texto del consentimiento</h3>
+                <button
+                  onClick={() => setMostrarTextoModal(false)}
+                  className="text-on-surface-variant hover:text-on-surface p-base rounded-full -mr-base"
+                  aria-label="Cerrar"
+                  type="button"
+                >
+                  <Icon name="close" className="text-[22px]" />
+                </button>
+              </div>
+              <div className="overflow-y-auto px-lg py-md space-y-md">
+                {(texto?.bloques ?? []).map((b) => (
+                  <div key={b.titulo} className="flex gap-sm">
+                    <div className="w-9 h-9 rounded-xl bg-primary-fixed text-primary flex items-center justify-center shrink-0">
+                      <Icon name={b.icono} className="text-[18px]" />
+                    </div>
+                    <div className="min-w-0">
+                      <h4 className="text-label-md font-semibold text-on-surface">{b.titulo}</h4>
+                      <p className="text-label-sm text-on-surface-variant mt-base leading-relaxed">{b.cuerpo}</p>
+                    </div>
+                  </div>
+                ))}
+                <p className="text-label-sm text-on-surface-variant/70 pt-sm border-t border-outline-variant/30">
+                  Versión {texto?.version}. Es el mismo texto que aceptaste en tu perfil.
+                </p>
+              </div>
+              <div className="px-lg py-md border-t border-outline-variant/40 shrink-0">
+                <Button onClick={() => setMostrarTextoModal(false)} className="w-full">Entendido</Button>
+              </div>
+            </div>
+          </div>,
+          document.body,
         )}
       </div>
     </StudentShell>

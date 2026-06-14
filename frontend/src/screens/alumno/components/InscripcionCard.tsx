@@ -102,7 +102,7 @@ export function InscripcionCard({
           ) : codigoGate === 'acuse_examen_faltante' ? (
             <>
               <p className="text-label-sm text-on-surface-variant flex-1 min-w-0">
-                Falta el acuse de consentimiento para este examen.
+                Falta confirmar tu participación en este examen.
               </p>
               <Button
                 variant="secondary"
@@ -110,7 +110,7 @@ export function InscripcionCard({
                 icon="assignment_turned_in"
                 className="h-10 shrink-0"
               >
-                Completar acuse del examen
+                Confirmar participación
               </Button>
             </>
           ) : (

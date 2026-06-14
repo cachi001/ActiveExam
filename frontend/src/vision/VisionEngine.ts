@@ -89,8 +89,12 @@ export type DetectorKind = "face_detection" | "face_mesh" | "pose";
  * este contrato, nunca tipos de MediaPipe.
  */
 export interface VisionEngine {
-  /** Inicializa el grafo del motor (carga WASM/modelo). Idempotente. */
-  init(): Promise<void>;
+  /**
+   * Inicializa el grafo del motor (carga WASM/modelo). Idempotente.
+   * `options.loadPose` (default true): si es false, omite el PoseLandmarker
+   * (5.7 MB) — usado por el enrollment, que nunca llama detectPose (C-67).
+   */
+  init(options?: { loadPose?: boolean }): Promise<void>;
   /** Procesa un frame de video y devuelve landmarks + conteo de rostros. */
   processFrame(frame: ImageBitmap | VideoFrame): Promise<FrameResult>;
   /** Calcula el embedding facial a partir de una secuencia de frames del clip. */
