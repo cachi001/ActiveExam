@@ -165,7 +165,7 @@ export class RealMediaPipeVisionEngine implements VisionEngine {
           minFaceDetectionConfidence: 0.5,
           minFacePresenceConfidence: 0.5,
           minTrackingConfidence: 0.5,
-          outputFaceBlendshapes: false,
+          outputFaceBlendshapes: true, // C-67: coeficiente mouthSmile para sonrisa robusta
           outputFacialTransformationMatrixes: false,
         });
       } catch {
@@ -179,7 +179,7 @@ export class RealMediaPipeVisionEngine implements VisionEngine {
           minFaceDetectionConfidence: 0.5,
           minFacePresenceConfidence: 0.5,
           minTrackingConfidence: 0.5,
-          outputFaceBlendshapes: false,
+          outputFaceBlendshapes: true, // C-67: coeficiente mouthSmile para sonrisa robusta
           outputFacialTransformationMatrixes: false,
         });
       }
@@ -320,7 +320,17 @@ export class RealMediaPipeVisionEngine implements VisionEngine {
 
     const embedding = embeddingFromLandmarks(landmarks);
 
-    return { gaze, embedding, landmarks };
+    // C-67: extraer el coeficiente de sonrisa (blendshape mouthSmile, 0..1).
+    // Promedio de izquierda/derecha. Señal absoluta y robusta para el reto "sonreír".
+    let smile: number | undefined;
+    const blendCategories = result.faceBlendshapes?.[0]?.categories;
+    if (blendCategories && blendCategories.length > 0) {
+      const left = blendCategories.find((c) => c.categoryName === "mouthSmileLeft")?.score ?? 0;
+      const right = blendCategories.find((c) => c.categoryName === "mouthSmileRight")?.score ?? 0;
+      smile = (left + right) / 2;
+    }
+
+    return { gaze, embedding, landmarks, smile };
   }
 
   async detectPose(frame: ImageBitmap | VideoFrame): Promise<PoseSignal> {

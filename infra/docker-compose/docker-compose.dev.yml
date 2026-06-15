@@ -29,8 +29,12 @@ services:
       POSTGRES_DB: proctoring
     ports:
       - "5432:5432" # expuesto para inspeccionar con psql/DBeaver desde el host
-    volumes:
-      - pgdata:/var/lib/postgresql/data
+    # DEV EFIMERO (create-drop): el dato vive en RAM (tmpfs), NO en un volumen.
+    # Cada `up` arranca con una BD vacia -> el `command` de abajo migra (crea schema)
+    # y seedea de cero; al parar el contenedor el dato se descarta. Asi dev nunca
+    # arrastra estado viejo. PROD persiste normal (docker-compose.yml, sin tmpfs).
+    tmpfs:
+      - /var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U proctoring -d proctoring"]
       interval: 5s
@@ -73,6 +77,3 @@ services:
         python scripts/seed_users.py --slim && \
         echo ">>> [3/3] levantando uvicorn en :8000" && \
         uvicorn app.main_slim:app --host 0.0.0.0 --port 8000
-
-volumes:
-  pgdata:

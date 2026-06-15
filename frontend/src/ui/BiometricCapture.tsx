@@ -36,6 +36,7 @@ import type { OvalTono } from './biometric/CaptureOval';
 import { CaptureError } from './biometric/CaptureError';
 import { evaluateFraming, isHintBloqueante, isFrontal, type FramingHint } from './biometric/framingGuide';
 import { playStepCompleted, playSuccess, playHint, playError, playGestureProgress, playGestureLost } from './biometric/sounds';
+import { decideCameraResumeActions } from './biometric/cameraResume';
 import { loadEnrollmentEngine, disposeEnrollmentEngine } from '../vision/enrollmentEngineLoader';
 import {
   evaluateChallengeRelative,
@@ -63,17 +64,19 @@ export interface BiometricCaptureProps {
   challenges?: SequentialChallenge[];
   /**
    * Callback al completar todos los retos. Recibe los landmarks del último frame,
-   * un canvas con el frame del baseline (para que el caller compute el descriptor
-   * 128-d con face-api), el resultado del liveness pasivo, los retos resueltos y
-   * si se detectó cámara virtual. `frame` es null si la cámara no estaba lista.
+   * una LISTA de frames candidatos (mejor primero) para que el caller compute el
+   * descriptor 128-d con face-api probando uno tras otro, el resultado del liveness
+   * pasivo, los retos resueltos y si se detectó cámara virtual.
    *
    * D3: firma ampliada para propagar liveness real (no hardcodeado) a los callers.
-   * C-54 (D-3): `frame` es ahora el frame capturado durante el baseline (cara
-   * frontal neutral), no el último frame arbitrario del loop.
+   * C-67: `frames` es una lista (no un único frame) — el baseline frontal primero,
+   * luego buenos encuadres juntados durante la sesión. Probar varios evita el "todo
+   * perfecto y error" cuando face-api no engancha la cara en un único frame. Vacía
+   * si la cámara nunca estuvo lista.
    */
   onComplete: (
     landmarks: FaceLandmark[],
-    frame: HTMLCanvasElement | null,
+    frames: HTMLCanvasElement[],
     passiveOk: boolean,
     retosResueltos: string[],
     virtualCameraDetected: boolean,
@@ -179,16 +182,16 @@ const COOLDOWN_MS = 800;
 const NEUTRAL_GATE_FRAMES = 3;
 
 /**
- * C-67: Tope de `dt` (ms) por frame que se vuelca al acumulador de gesto.
+ * C-67: Tope de `dt` (ms) por frame que se vuelca al acumulador de gesto. Es una RED
+ * DE SEGURIDAD para huecos no manejados; ya cortamos la cadena de dt (lastFrameTimeRef
+ * = null) en TODOS los early-return (cooldown, framing bloqueante, sin cara), así que
+ * normalmente el dt = intervalo real de frame (~16-200ms según el equipo).
  *
- * El acumulador suma el delta de tiempo entre frames evaluados. Pero `lastFrameTimeRef`
- * NO se actualiza mientras el loop hace early-return (cooldown entre pasos ~800ms,
- * framing bloqueante, sin cara, pestaña en background). Sin tope, el primer frame
- * evaluado tras un hueco calcula un `dt` enorme (~800ms+) y, si ese frame cumple el
- * reto, el acumulador supera GESTURE_HOLD_MS (500ms) de un saque → confirma el reto
- * sin que el alumno lo sostenga de verdad. Era el bug "el último paso me lo toma sin
- * hacerlo". Un frame real a 30-60fps es ~16-33ms; con tope de 100ms (≈3 frames) un
- * hold legítimo necesita varios frames reales de gesto sostenido.
+ * Se subió de 100 a 300: con 100, en un teléfono lento (frames de ~150-200ms) el
+ * acumulador contaba menos que el tiempo real, y el loop visual (que extrapola tiempo
+ * REAL) daba pequeños saltos hacia atrás en cada frame de detección. Con 300 el
+ * acumulador cuenta el tiempo real del frame (consistente con la extrapolación) y
+ * sigue atajando un hueco gigante (>300ms) que se escape de los resets.
  */
 const MAX_FRAME_DT_MS = 100;
 
@@ -204,6 +207,22 @@ const BASELINE_TIMEOUT_FRAMES = 60;
 
 // Umbral de varianza del centroide de nariz para declarar baseline estable.
 const BASELINE_NOSE_VARIANCE_THRESHOLD = 0.002;
+
+/** C-67: snapshot del frame actual del <video> a un canvas (null si no está listo). */
+function snapshotToCanvas(video: HTMLVideoElement | null): HTMLCanvasElement | null {
+  if (!video || video.videoWidth === 0 || video.videoHeight === 0) return null;
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    return canvas;
+  } catch {
+    return null;
+  }
+}
 
 export function BiometricCapture({
   challenges,
@@ -289,6 +308,8 @@ export function BiometricCapture({
    * Solo se reinicia al confirmar el reto o al avanzar a otro.
    */
   const gestureAccumMsRef = useRef<Map<SequentialChallenge, number>>(new Map());
+  /** C-67: ms de pérdida consecutiva por reto (para la gracia del acumulador). */
+  const gestureLostMsRef = useRef<Map<SequentialChallenge, number>>(new Map());
 
   /**
    * C-67: Timestamp del último frame procesado para calcular dt.
@@ -418,29 +439,19 @@ export function BiometricCapture({
       document.exitFullscreen?.().catch(() => {});
     }
 
-    // C-54 (D-3): usar el frame del baseline como frame de referencia para el embedding.
-    // Si no está disponible (baseline no capturado / modo fallback), capturar el frame actual.
-    // Tasks 7.1-7.3
-    let frame: HTMLCanvasElement | null = bestReferenceFrameRef.current;
-
-    if (!frame) {
-      // Fallback: capturar el frame actual del video
-      const video = videoRef.current;
-      if (video && video.videoWidth > 0 && video.videoHeight > 0) {
-        try {
-          const canvas = document.createElement('canvas');
-          canvas.width = video.videoWidth;
-          canvas.height = video.videoHeight;
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            frame = canvas;
-          }
-        } catch {
-          frame = null;
-        }
-      }
-    }
+    // C-67 (D-3): lista de frames candidatos para el descriptor 128-d, MEJOR PRIMERO:
+    // el frame del baseline (cara frontal neutral) → los buenos encuadres juntados
+    // durante la sesión → el frame actual como último recurso. handleComplete prueba
+    // face-api en cada uno hasta que enganche, evitando el "todo perfecto y error"
+    // por fallar en un único frame. Dedup + sin nulls.
+    const frames: HTMLCanvasElement[] = Array.from(
+      new Set(
+        [
+          bestReferenceFrameRef.current,        // baseline: cara frontal neutral (mejor)
+          snapshotToCanvas(videoRef.current),   // frame final como respaldo
+        ].filter((c): c is HTMLCanvasElement => c !== null),
+      ),
+    );
 
     const isFallback = fallbackManualRef.current;
     const passiveOkFinal = isFallback ? false : passiveOkRef.current;
@@ -454,7 +465,7 @@ export function BiometricCapture({
 
     onComplete(
       lastLandmarksRef.current,
-      frame,
+      frames,
       passiveOkFinal,
       resueltosRef.current,
       virtualCameraFinal,
@@ -560,7 +571,7 @@ export function BiometricCapture({
 
           bitmap.close();
 
-          const { landmarks, gaze } = meshResult;
+          const { landmarks, gaze, smile } = meshResult;
           const face_count = faceResult.face_count;
 
           // ── Guía de encuadre (mejora UX) ────────────────────────────────
@@ -805,6 +816,9 @@ export function BiometricCapture({
 
             // Task 5.2: si cooldown activo, no evaluar
             if (cooldownActiveRef.current) {
+              // C-67: cortar la cadena de dt → el próximo frame evaluado arranca con
+              // dt=0 (no vuelca el hueco del cooldown al acumulador).
+              lastFrameTimeRef.current = null;
               if (faseRef.current === 'capturando') {
                 rafHandleRef.current = requestAnimationFrame(() => { void detectFrame(); });
               } else {
@@ -820,6 +834,9 @@ export function BiometricCapture({
             // Pattern: mismo corte temprano que cooldownActiveRef (D1).
             if (isHintBloqueante(framingHintRef.current)) {
               wasBlockedByFramingRef.current = true;
+              // C-67: cortar la cadena de dt → al reanudar (típico al girar, que
+              // descentra un instante) no se vuelca el hueco al acumulador.
+              lastFrameTimeRef.current = null;
               if (faseRef.current === 'capturando') {
                 rafHandleRef.current = requestAnimationFrame(() => { void detectFrame(); });
               } else {
@@ -841,6 +858,7 @@ export function BiometricCapture({
                 challengeNeutralFramesRef.current.set(barReset[idxReset], 0);
                 // C-67: resetear acumulador de gesto al reanudar tras framing bloqueante
                 gestureAccumMsRef.current.set(barReset[idxReset], 0);
+                gestureLostMsRef.current.set(barReset[idxReset], 0);
                 lastProgressTickFractionRef.current = 0;
               }
             }
@@ -873,6 +891,9 @@ export function BiometricCapture({
               challengeNeutralFramesRef.current.set(retoActivo, 0);
               // C-67: sin cara → resetear acumulador de gesto
               gestureAccumMsRef.current.set(retoActivo, 0);
+              gestureLostMsRef.current.set(retoActivo, 0);
+              // C-67: cortar la cadena de dt → sin cara no vuelca el hueco al acumulador.
+              lastFrameTimeRef.current = null;
               lastProgressTickFractionRef.current = 0;
             } else {
               // Task 5.4: evaluar el reto activo con delta relativo
@@ -882,6 +903,7 @@ export function BiometricCapture({
                 gaze,
                 baselineRef.current,
                 turnDirectionRef.current,
+                smile, // C-67: coeficiente mouthSmile (blendshape) — sonrisa robusta
               );
 
               const prevCount = challengeCountsRef.current.get(retoActivo) ?? 0;
@@ -911,8 +933,10 @@ export function BiometricCapture({
                     cumple: true,
                     dt,
                     gestureHoldMs: gestureHoldForReto,
+                    prevLostMs: gestureLostMsRef.current.get(retoActivo) ?? 0,
                   });
                   gestureAccumMsRef.current.set(retoActivo, accumResult.accumMs);
+                  gestureLostMsRef.current.set(retoActivo, accumResult.lostMs);
                   wasHoldingRef.current.set(retoActivo, true);
 
                   // Mantener el contador de frames por compatibilidad
@@ -935,17 +959,18 @@ export function BiometricCapture({
                     challengeCountsRef.current.set(retoActivo, 0);
                     challengeNeutralFramesRef.current.set(retoActivo, 0);
                     gestureAccumMsRef.current.set(retoActivo, 0);
+                    gestureLostMsRef.current.set(retoActivo, 0);
                     wasHoldingRef.current.set(retoActivo, false);
                     lastProgressTickFractionRef.current = 0;
-                    // C-67 fix: incrementar la base monótona AL confirmar (no tras el
-                    // cooldown). Así el anillo salta a (completados/total) y se queda
-                    // ahí — nunca retrocede el avance ya logrado.
+                    // C-67: base monótona del anillo sube AL confirmar → salta a
+                    // (completados/total) y no retrocede.
                     completadosRef.current += 1;
                     activarCooldown(retoActivo);
                   }
                 }
               } else {
-                // C-67: no cumple → acumulador se preserva (gestureAccumulator retorna prevAccumMs)
+                // C-67: no cumple → gracia (preserva si es un titileo breve) o
+                // reseteo (si se soltó de verdad). gestureAccumulator decide según lostMs.
                 const prevAccumMs = gestureAccumMsRef.current.get(retoActivo) ?? 0;
                 const prevWasHolding = wasHoldingRef.current.get(retoActivo) ?? false;
                 const accumResult = gestureAccumulator({
@@ -953,10 +978,10 @@ export function BiometricCapture({
                   cumple: false,
                   dt,
                   gestureHoldMs: gestureHoldForReto,
+                  prevLostMs: gestureLostMsRef.current.get(retoActivo) ?? 0,
                 });
-                // accumMs ya está preservado (gestureAccumulator no lo modifica en !cumple)
-                // No es necesario set (ya está el valor previo), pero lo hacemos explícito:
                 gestureAccumMsRef.current.set(retoActivo, accumResult.accumMs);
+                gestureLostMsRef.current.set(retoActivo, accumResult.lostMs);
                 wasHoldingRef.current.set(retoActivo, false);
 
                 // C-67 Group 3: disparar playGestureLost si había progreso y se acaba de perder
@@ -972,24 +997,16 @@ export function BiometricCapture({
                 );
               }
 
-              // C-67 Group 2 + fix: Progreso visual del anillo, MONÓTONO en los
-              // pasos completados. La base es completadosRef (sube al confirmar),
-              // no challengeIndexRef (sube tras el cooldown) → el avance ya logrado
-              // nunca retrocede. El segmento del reto activo sí sube/baja con el
-              // gesto, pero acotado entre completados/total y (completados+1)/total.
+              // C-67 (opción B — la que el dueño confirmó más fluida): el anillo se
+              // llena ACUMULANDO por pasos. Base monótona completados/total + el
+              // segmento del reto activo (frac del hold). Directo del acumulador, sin
+              // capa de extrapolación (que metía saltos en mobile).
               const totalRetos = desafiosBarajadosRef.current.length;
               if (totalRetos > 0) {
                 const completos = completadosRef.current;
                 const accumMs = gestureAccumMsRef.current.get(retoActivo) ?? 0;
-                // C-67 fix: el verde se LLENA a medida que se sostiene el gesto, en
-                // base al acumulador (que solo crece mientras se cumple, y se preserva
-                // si se pierde un instante). Antes se gateaba por isHoldingNow y el fill
-                // "desaparecía" si el detector titilaba → parecía que solo se dibujaba
-                // al completar. El segmento del reto activo va de completados/total a
-                // (completados+1)/total.
                 const fracReto = Math.min(1, accumMs / gestureHoldForReto);
-                const progresoNuevo = Math.min(1, (completos + fracReto) / totalRetos);
-                setProgreso(progresoNuevo);
+                setProgreso(Math.min(1, (completos + fracReto) / totalRetos));
               }
             }
           } else if (face_count === 0) {
@@ -1134,6 +1151,64 @@ export function BiometricCapture({
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // C-67 fix: re-adquirir la cámara cuando el track murió (caso típico en mobile
+  // al volver de background / cambiar de app). Suelta los tracks viejos, vuelve a
+  // pedir getUserMedia, reengancha el <video> y, si estábamos capturando, reinicia
+  // el loop de detección (cancelando cualquier loop zombi antes para no duplicar).
+  const reacquireCamera = useCallback(async () => {
+    try {
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+      const stream = await navigator.mediaDevices?.getUserMedia({
+        video: { facingMode: 'user', width: 640, height: 480 },
+      });
+      if (!stream) return;
+      streamRef.current = stream;
+      const video = videoRef.current;
+      if (video) {
+        video.srcObject = stream;
+        await video.play().catch(() => {});
+      }
+      if (faseRef.current === 'capturando' && engineRef.current) {
+        if (rafHandleRef.current !== null) {
+          cancelAnimationFrame(rafHandleRef.current);
+          rafHandleRef.current = null;
+        }
+        startDetectionLoop(engineRef.current);
+      }
+    } catch {
+      // Re-adquisición fallida (permiso/red): no romper. El usuario puede
+      // reintentar o usar el fallback manual ya existente.
+    }
+  }, [startDetectionLoop]);
+
+  // C-67 fix: al volver a primer plano, "descongelar" la cámara. La DECISIÓN de
+  // qué hacer vive en cameraResume.ts (lógica pura, testeada); acá solo ejecutamos
+  // las acciones contra el DOM/refs. Sin esto, ocultar la pestaña (PC) o salir de
+  // la pestaña (mobile) dejaba el último frame congelado al volver.
+  useEffect(() => {
+    const onVisibility = () => {
+      const track = streamRef.current?.getVideoTracks()[0];
+      const acciones = decideCameraResumeActions({
+        visible: document.visibilityState === 'visible',
+        trackEnded: !track || track.readyState === 'ended',
+        videoPaused: videoRef.current?.paused ?? false,
+        loopActive: rafHandleRef.current !== null,
+        capturing: faseRef.current === 'capturando',
+      });
+      for (const accion of acciones) {
+        if (accion === 'reacquire') {
+          void reacquireCamera();
+        } else if (accion === 'play') {
+          void videoRef.current?.play().catch(() => {});
+        } else if (accion === 'restart-loop' && engineRef.current) {
+          startDetectionLoop(engineRef.current);
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, [reacquireCamera, startDetectionLoop]);
+
   // resolverRetoManual — fallback manual, sin RAF
   const resolverRetoManual = useCallback((id: string) => {
     setResueltos((prev) => {
@@ -1159,9 +1234,14 @@ export function BiometricCapture({
   } else if (!retoActivoId) {
     retoActualLabel = '¡Listo!';
   } else if (retoActivoId === 'girar_cabeza') {
-    // Label direccional para girar_cabeza (Task 8.5)
+    // C-67: el título es la INSTRUCCIÓN — debe transmitir que es lento y sostenido,
+    // no solo el verbo. Direccional para girar_cabeza (Task 8.5).
     const dir = turnDirection === 'izquierda' ? 'IZQUIERDA' : 'DERECHA';
-    retoActualLabel = `Girá la cabeza a la ${dir}`;
+    retoActualLabel = `Girá despacio a la ${dir} y mantené`;
+  } else if (retoActivoId === 'parpadear') {
+    retoActualLabel = 'Cerrá los ojos y mantené';
+  } else if (retoActivoId === 'sonreír') {
+    retoActualLabel = 'Sonreí y sostené';
   } else {
     retoActualLabel = getLabelForChallenge(retoActivoId);
   }

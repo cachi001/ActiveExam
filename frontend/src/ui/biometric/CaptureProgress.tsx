@@ -22,11 +22,11 @@ import { FRAMING_COPY } from './framingGuide';
  */
 const SUB_INSTRUCCION_RETO: Record<SequentialChallenge, string> = {
   parpadear:
-    'Cerrá los ojos por un segundo y volvé a abrirlos. No hace falta apurarse: con un parpadeo claro alcanza.',
+    'Cerrá los ojos y mantenelos cerrados, sin apurarte, hasta que la barra se complete. Recién ahí abrílos.',
   girar_cabeza:
-    'Girá la cabeza despacio hacia el lado indicado, manteniendo el rostro dentro del óvalo. Quedate unos segundos así.',
+    'Girá la cabeza despacio hacia el lado indicado, manteniendo el rostro dentro del óvalo. Quedate quieto así hasta que la barra se complete.',
   sonreír:
-    'Sonreí despacio, marcando bien la sonrisa (mostrando los dientes está bien) y sostenela quieto un par de segundos hasta que se complete.',
+    'Sonreí despacio, marcando bien la sonrisa (mostrando los dientes está bien) y sostenela quieta hasta que la barra se complete.',
 };
 
 export interface CaptureProgressProps {
@@ -119,9 +119,10 @@ export function CaptureProgress({
         </p>
       )}
 
-      {/* Dots de progreso + contador */}
+      {/* Dots de progreso (un punto por paso; lleno = completado). C-67: se quitó el
+          contador "N / total" — los dots ya comunican el avance y quedaba cargado. */}
       {!enExito && totalDesafios > 0 && (
-        <div className="flex items-center justify-center gap-2 pt-1">
+        <div className="flex items-center justify-center gap-2 pt-1" role="status" aria-label={`${totalResueltos} de ${totalDesafios} pasos`}>
           {desafios.map((id) => (
             <span
               key={id}
@@ -133,9 +134,6 @@ export function CaptureProgress({
               {resueltos.includes(id) ? '●' : '○'}
             </span>
           ))}
-          <span className="text-sm text-neutral-500 ml-1">
-            {totalResueltos} / {totalDesafios}
-          </span>
         </div>
       )}
 

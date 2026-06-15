@@ -7,6 +7,7 @@ import { api, USE_REAL_BACKEND } from '../lib/api';
 import { Term } from '../ui/Term';
 import { BiometricCapture } from '../ui/BiometricCapture';
 import { computeFaceDescriptor } from '../vision/faceEmbedding';
+import { firstDescriptor } from '../vision/descriptorFallback';
 import { unlockAudio } from '../ui/biometric/sounds';
 import { buildBiometriaProctoringPayload } from '../vision/liveness';
 import type { FaceLandmark } from '../vision/VisionEngine';
@@ -83,7 +84,7 @@ export default function Biometria() {
   // ---------------------------------------------------------------------------
   const handleComplete = async (
     _landmarks: FaceLandmark[],
-    frame: HTMLCanvasElement | null,
+    frames: HTMLCanvasElement[],
     passiveOk: boolean,
     retosResueltos: string[],
     virtualCameraDetected: boolean,
@@ -97,8 +98,9 @@ export default function Biometria() {
 
     setFase('verificando');
 
-    // Descriptor 128-d del rostro vivo. Dato sensible (Ley 25.326): NO se loguea.
-    const vivo = frame ? await computeFaceDescriptor(frame) : null;
+    // C-67: descriptor 128-d del rostro vivo, probando los frames candidatos hasta
+    // que uno enganche. Dato sensible (Ley 25.326): NO se loguea.
+    const vivo = await firstDescriptor(frames, computeFaceDescriptor);
 
     if (!vivo) {
       // No se detectó rostro en el frame (encuadre vacío / baja luz / sin modelo).
@@ -198,8 +200,8 @@ export default function Biometria() {
         {/* Fase capturando → overlay inmersivo con BiometricCapture */}
         {fase === 'capturando' && (
           <BiometricCapture
-            onComplete={(landmarks, frame, passiveOk, retosResueltos, virtualCameraDetected) => {
-              void handleComplete(landmarks, frame, passiveOk, retosResueltos, virtualCameraDetected);
+            onComplete={(landmarks, frames, passiveOk, retosResueltos, virtualCameraDetected) => {
+              void handleComplete(landmarks, frames, passiveOk, retosResueltos, virtualCameraDetected);
             }}
             onCancel={handleCancel}
           />
@@ -238,8 +240,9 @@ export default function Biometria() {
                   <>
                     <p className="text-body-md text-on-surface-variant leading-relaxed">
                       Ubicá tu rostro dentro del óvalo, con buena luz y sin nada que lo tape (gorra,
-                      anteojos oscuros, barbijo). Dura unos segundos e incluye <strong>tres gestos rápidos</strong>
-                      {' '}para confirmar que sos una persona real.
+                      anteojos oscuros, barbijo). Incluye <strong>tres gestos simples</strong>: hacé cada uno
+                      {' '}<strong>despacio y sostenelo unos segundos</strong> hasta que se complete, para
+                      confirmar que sos una persona real.
                     </p>
                     <Button icon="photo_camera" onClick={() => { unlockAudio(); setFase('capturando'); }}>Iniciar verificación</Button>
                   </>

@@ -25,6 +25,7 @@ import { Icon, Button, Card } from '../../ui/components';
 import { api, BIOMETRIC_VALIDITY_MONTHS } from '../../lib/api';
 import { BiometricCapture } from '../../ui/BiometricCapture';
 import { computeFaceDescriptor } from '../../vision/faceEmbedding';
+import { firstDescriptor } from '../../vision/descriptorFallback';
 import { unlockAudio } from '../../ui/biometric/sounds';
 import { useApp } from '../../lib/store';
 import type { ReferenciasBiometrica } from '../../lib/types';
@@ -72,7 +73,7 @@ export function EnrollmentBiometricStep({ referenciaActual, onCapturada, esRenov
   // no condiciona el guardado del descriptor). Ver design D3 / Open Questions.
   const handleComplete = useCallback(async (
     _landmarks: FaceLandmark[],
-    frame: HTMLCanvasElement | null,
+    frames: HTMLCanvasElement[],
     _passiveOk: boolean,
     _retosResueltos: string[],
     _virtualCameraDetected: boolean,
@@ -81,9 +82,10 @@ export function EnrollmentBiometricStep({ referenciaActual, onCapturada, esRenov
     setRefRegistrada(false);
 
     try {
-      // Descriptor real de 128-d con face-api sobre el frame del video.
-      // Dato sensible (Ley 25.326): no se loguea.
-      const descriptor = frame ? await computeFaceDescriptor(frame) : null;
+      // C-67: descriptor real de 128-d con face-api, probando los frames candidatos
+      // (mejor primero) hasta que uno enganche. Evita el "todo perfecto y error"
+      // por fallar en un único frame. Dato sensible (Ley 25.326): no se loguea.
+      const descriptor = await firstDescriptor(frames, computeFaceDescriptor);
 
       // C-56: POST al backend real cuando USE_REAL_BACKEND=1.
       // El backend cifra at-rest y devuelve un referencia_id opaco.
@@ -138,8 +140,8 @@ export function EnrollmentBiometricStep({ referenciaActual, onCapturada, esRenov
   if (fase === 'capturando') {
     return (
       <BiometricCapture
-        onComplete={(landmarks, frame, passiveOk, retosResueltos, virtualCameraDetected) => {
-          void handleComplete(landmarks, frame, passiveOk, retosResueltos, virtualCameraDetected);
+        onComplete={(landmarks, frames, passiveOk, retosResueltos, virtualCameraDetected) => {
+          void handleComplete(landmarks, frames, passiveOk, retosResueltos, virtualCameraDetected);
         }}
         onCancel={cancelarCaptura}
       />
@@ -206,8 +208,9 @@ export function EnrollmentBiometricStep({ referenciaActual, onCapturada, esRenov
           <div className="text-center space-y-md w-full">
             <p className="text-body-md text-on-surface-variant leading-relaxed">
               Ubicá tu rostro dentro del óvalo, con buena luz y sin nada que lo tape (gorra,
-              anteojos oscuros, barbijo). Dura unos segundos e incluye <strong>tres gestos rápidos</strong>
-              {' '}para confirmar que sos una persona real.
+              anteojos oscuros, barbijo). Incluye <strong>tres gestos simples</strong>: hacé cada uno
+              {' '}<strong>despacio y sostenelo unos segundos</strong> hasta que se complete, para
+              confirmar que sos una persona real.
             </p>
             {/* Botón iniciar — activa la fase capturando con el overlay BiometricCapture.
                 La carga de modelos ocurre al entrar a la captura (con su propio estado

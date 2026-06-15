@@ -62,6 +62,13 @@ export interface FaceMeshSignal {
   /** Embedding facial derivado de la geometria (verificacion continua). */
   embedding: number[];
   landmarks: FaceLandmark[];
+  /**
+   * C-67: coeficiente de sonrisa (blendshape mouthSmile de MediaPipe, 0..1),
+   * promedio de izquierda/derecha. Opcional: solo lo provee el motor real cuando
+   * `outputFaceBlendshapes` está activo; los detectores de gestos lo usan como
+   * señal ABSOLUTA y robusta de sonrisa (reemplaza la geometría frágil).
+   */
+  smile?: number;
 }
 
 /** Senal continua de Pose (2-5 fps): puntos clave del cuerpo (postura de consulta). */

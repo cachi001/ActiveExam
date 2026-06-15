@@ -18,8 +18,11 @@ import { describe, expect, it } from "vitest";
 import {
   evaluateChallengeRelative,
   framesMinForChallengeSeq,
+  isSmileByBlendshape,
   BLINK_RELATIVE_FACTOR,
   SMILE_RELATIVE_FACTOR,
+  SMILE_BLENDSHAPE_THRESHOLD,
+  TURN_YAW_THRESHOLD,
   GAZE_TURN_THRESHOLD_ADJUSTED,
   FRAMES_MIN_BLINK_SEQ,
   FRAMES_MIN_TURN_SEQ,
@@ -158,59 +161,128 @@ describe("evaluateChallengeRelative — sonreír (Task 11.2)", () => {
 });
 
 // ---------------------------------------------------------------------------
+// C-67: sonreír por BLENDSHAPE (coeficiente mouthSmile de MediaPipe).
+// Señal ABSOLUTA y robusta: cuando el motor la provee, manda sobre la métrica
+// geométrica (ancho relativo al baseline), que era frágil y daba el "no me toma
+// la sonrisa" crónico. Si no hay coeficiente, se cae al método geométrico.
+// ---------------------------------------------------------------------------
+describe("isSmileByBlendshape (C-67)", () => {
+  it("coeficiente por encima del umbral -> true", () => {
+    expect(isSmileByBlendshape(SMILE_BLENDSHAPE_THRESHOLD + 0.1)).toBe(true);
+  });
+
+  it("coeficiente por debajo del umbral -> false", () => {
+    expect(isSmileByBlendshape(SMILE_BLENDSHAPE_THRESHOLD - 0.1)).toBe(false);
+  });
+
+  it("coeficiente exactamente en el umbral -> true (>=)", () => {
+    expect(isSmileByBlendshape(SMILE_BLENDSHAPE_THRESHOLD)).toBe(true);
+  });
+});
+
+describe("evaluateChallengeRelative — sonreír por blendshape (C-67)", () => {
+  // Boca angosta + baseline con boca ancha => la métrica GEOMÉTRICA daría false.
+  const lmBocaAngosta = makeLandmarks({ 61: { x: 0 }, 291: { x: 0.10 } });
+  const baselineBocaAncha: BaselineMetrics = { blinkOpenness: 0.06, smileWidth: 0.20, gazeX: 0 };
+
+  it("blendshape alto MANDA sobre la geometría: sonrisa genuina detectada aunque el ancho no alcance", () => {
+    // Sin blendshape esto sería false (boca angosta vs baseline ancho).
+    expect(
+      evaluateChallengeRelative("sonreír", lmBocaAngosta, BASE_GAZE, baselineBocaAncha, undefined, 0.7),
+    ).toBe(true);
+  });
+
+  it("blendshape bajo MANDA: cara neutra de boca ancha NO cuenta como sonrisa", () => {
+    const lmBocaAncha = makeLandmarks({ 61: { x: 0 }, 291: { x: 0.30 } });
+    expect(
+      evaluateChallengeRelative("sonreír", lmBocaAncha, BASE_GAZE, BASELINE_NEUTRAL, undefined, 0.05),
+    ).toBe(false);
+  });
+
+  it("con blendshape alto, baseline null ya NO bloquea (la señal absoluta basta)", () => {
+    expect(
+      evaluateChallengeRelative("sonreír", lmBocaAngosta, BASE_GAZE, null, undefined, 0.8),
+    ).toBe(true);
+  });
+
+  it("sin coeficiente (undefined) -> cae al método geométrico (retrocompat)", () => {
+    // Boca clara de sonrisa vs baseline neutral -> geométrico true.
+    const lmSonrisa = makeLandmarks({ 61: { x: 0 }, 291: { x: 0.14 } });
+    expect(
+      evaluateChallengeRelative("sonreír", lmSonrisa, BASE_GAZE, BASELINE_NEUTRAL),
+    ).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Task 11.3: evaluateChallengeRelative — girar_cabeza DIRECCIONAL
 // ---------------------------------------------------------------------------
 
-describe("evaluateChallengeRelative — girar_cabeza DIRECCIONAL (Task 11.3)", () => {
-  const lmVacio = makeLandmarks({});
+describe("evaluateChallengeRelative — girar_cabeza por HEAD YAW (C-67)", () => {
+  // C-67: el giro se mide por la CABEZA (yaw geométrico nariz vs comisuras externas),
+  // no por los ojos (gaze). Con comisuras en x=0 y x=1, el yaw = 2·noseX − 1:
+  //   noseX 0.5 → yaw 0 (de frente) | noseX > 0.5 → yaw + | noseX < 0.5 → yaw −
+  const lmTurn = (noseX: number) => makeLandmarks({ 1: { x: noseX }, 33: { x: 0 }, 263: { x: 1 } });
+  const G = { x: 0, y: 0 }; // gaze ya NO se usa para el giro
+  // noseX que produce yaw == TURN_YAW_THRESHOLD exacto: (1 + thr) / 2
+  const noseAtThreshold = (1 + TURN_YAW_THRESHOLD) / 2;
 
-  describe("con turnDirection = 'izquierda'", () => {
+  describe("con turnDirection = 'izquierda' (yaw +)", () => {
     const dir: TurnDirection = "izquierda";
 
-    it("gaze.x = +0.25 -> true (giro correcto hacia izquierda percibida)", () => {
-      expect(evaluateChallengeRelative("girar_cabeza", lmVacio, { x: 0.25, y: 0 }, BASELINE_NEUTRAL, dir)).toBe(true);
+    it("cabeza bien girada (yaw +) -> true", () => {
+      expect(evaluateChallengeRelative("girar_cabeza", lmTurn(0.85), G, BASELINE_NEUTRAL, dir)).toBe(true);
     });
 
-    it("gaze.x = -0.25 -> false (giro en direccion equivocada)", () => {
-      expect(evaluateChallengeRelative("girar_cabeza", lmVacio, { x: -0.25, y: 0 }, BASELINE_NEUTRAL, dir)).toBe(false);
+    it("girada al lado opuesto (yaw -) -> false", () => {
+      expect(evaluateChallengeRelative("girar_cabeza", lmTurn(0.15), G, BASELINE_NEUTRAL, dir)).toBe(false);
     });
 
-    it("gaze.x = 0 -> false (mirando al frente)", () => {
-      expect(evaluateChallengeRelative("girar_cabeza", lmVacio, { x: 0, y: 0 }, BASELINE_NEUTRAL, dir)).toBe(false);
+    it("de frente (yaw 0) -> false", () => {
+      expect(evaluateChallengeRelative("girar_cabeza", lmTurn(0.5), G, BASELINE_NEUTRAL, dir)).toBe(false);
     });
 
-    it("gaze.x exactamente en threshold (0.22) -> false (no cumple >)", () => {
-      expect(evaluateChallengeRelative("girar_cabeza", lmVacio, { x: GAZE_TURN_THRESHOLD_ADJUSTED, y: 0 }, BASELINE_NEUTRAL, dir)).toBe(false);
+    it("apenas por debajo del umbral -> false (no alcanza)", () => {
+      expect(evaluateChallengeRelative("girar_cabeza", lmTurn(noseAtThreshold - 0.03), G, BASELINE_NEUTRAL, dir)).toBe(false);
     });
 
-    it("gaze.x justo encima del threshold (0.221) -> true", () => {
-      expect(evaluateChallengeRelative("girar_cabeza", lmVacio, { x: 0.221, y: 0 }, BASELINE_NEUTRAL, dir)).toBe(true);
+    it("apenas por encima del umbral -> true", () => {
+      expect(evaluateChallengeRelative("girar_cabeza", lmTurn(noseAtThreshold + 0.03), G, BASELINE_NEUTRAL, dir)).toBe(true);
     });
   });
 
-  describe("con turnDirection = 'derecha'", () => {
+  describe("con turnDirection = 'derecha' (yaw -)", () => {
     const dir: TurnDirection = "derecha";
 
-    it("gaze.x = -0.25 -> true (giro correcto hacia derecha percibida)", () => {
-      expect(evaluateChallengeRelative("girar_cabeza", lmVacio, { x: -0.25, y: 0 }, BASELINE_NEUTRAL, dir)).toBe(true);
+    it("cabeza bien girada (yaw -) -> true", () => {
+      expect(evaluateChallengeRelative("girar_cabeza", lmTurn(0.15), G, BASELINE_NEUTRAL, dir)).toBe(true);
     });
 
-    it("gaze.x = +0.25 -> false (giro en direccion equivocada)", () => {
-      expect(evaluateChallengeRelative("girar_cabeza", lmVacio, { x: 0.25, y: 0 }, BASELINE_NEUTRAL, dir)).toBe(false);
+    it("girada al lado opuesto (yaw +) -> false", () => {
+      expect(evaluateChallengeRelative("girar_cabeza", lmTurn(0.85), G, BASELINE_NEUTRAL, dir)).toBe(false);
     });
 
-    it("gaze.x = 0 -> false (mirando al frente)", () => {
-      expect(evaluateChallengeRelative("girar_cabeza", lmVacio, { x: 0, y: 0 }, BASELINE_NEUTRAL, dir)).toBe(false);
+    it("de frente (yaw 0) -> false", () => {
+      expect(evaluateChallengeRelative("girar_cabeza", lmTurn(0.5), G, BASELINE_NEUTRAL, dir)).toBe(false);
+    });
+
+    it("un giro chiquito (apenas) NO alcanza -> false", () => {
+      // yaw ~0.10 (noseX 0.55): el problema reportado ("apenas giro lo toma")
+      expect(evaluateChallengeRelative("girar_cabeza", lmTurn(0.45), G, BASELINE_NEUTRAL, dir)).toBe(false);
     });
   });
 
-  it("sin turnDirection (undefined) -> false por defecto (no se puede evaluar sin direccion)", () => {
-    expect(evaluateChallengeRelative("girar_cabeza", lmVacio, { x: 0.5, y: 0 }, BASELINE_NEUTRAL, undefined)).toBe(false);
+  it("sin turnDirection (undefined) -> false", () => {
+    expect(evaluateChallengeRelative("girar_cabeza", lmTurn(0.85), G, BASELINE_NEUTRAL, undefined)).toBe(false);
   });
 
   it("baseline null con giro correcto -> true (el giro no usa baseline)", () => {
-    // El reto girar_cabeza usa umbral absoluto (no relativo al baseline)
-    expect(evaluateChallengeRelative("girar_cabeza", lmVacio, { x: 0.30, y: 0 }, null, "izquierda")).toBe(true);
+    expect(evaluateChallengeRelative("girar_cabeza", lmTurn(0.85), G, null, "izquierda")).toBe(true);
+  });
+
+  it("landmarks insuficientes (<264) -> false", () => {
+    const lm = lmTurn(0.85).slice(0, 200);
+    expect(evaluateChallengeRelative("girar_cabeza", lm, G, BASELINE_NEUTRAL, "izquierda")).toBe(false);
   });
 });
 
@@ -382,105 +454,106 @@ describe("gestureHold — confirmación temporal (C-65 Task 4.1 / 4.3)", () => {
 // C-67 Group 2: gestureAccumulator — progreso acumulado con reanudación
 // ---------------------------------------------------------------------------
 
-import { gestureAccumulator } from "./enrollmentChallengeDetector";
+import { gestureAccumulator, GESTURE_GRACE_MS } from "./enrollmentChallengeDetector";
 
-describe("gestureAccumulator — progreso acumulado sin reinicio (C-67 Group 2)", () => {
+describe("gestureAccumulator — progreso por hold con GRACIA (C-67)", () => {
   const gestureHoldMs = 500;
 
-  // Test 2.1a: acumula dt mientras el gesto está sostenido
-  it("2.1a: acumula dt mientras el gesto es cumplido", () => {
+  // Test 2.1a: acumula dt mientras el gesto está sostenido; resetea la pérdida
+  it("2.1a: acumula dt mientras el gesto es cumplido (lostMs vuelve a 0)", () => {
     const result = gestureAccumulator({
       prevAccumMs: 0,
       cumple: true,
       dt: 100,
       gestureHoldMs,
+      prevLostMs: 80,
     });
     expect(result.accumMs).toBeCloseTo(100);
     expect(result.fracReto).toBeCloseTo(0.2);
     expect(result.isHolding).toBe(true);
     expect(result.confirmado).toBe(false);
+    expect(result.lostMs).toBe(0);
   });
 
-  // Test 2.1b: NO resetea accumMs al perder el gesto
-  it("2.1b: NO resetea accumMs cuando el gesto se pierde (isHolding=false, accumMs preservado)", () => {
+  // Test 2.1b: pérdida BREVE (≤ gracia) → PRESERVA el progreso (anillo sube smooth).
+  it("2.1b: un titileo breve (≤ gracia) PRESERVA el acumulado", () => {
+    const dt = Math.floor(GESTURE_GRACE_MS / 3);
+    const result = gestureAccumulator({ prevAccumMs: 300, cumple: false, dt, gestureHoldMs, prevLostMs: 0 });
+    expect(result.accumMs).toBe(300); // preservado
+    expect(result.isHolding).toBe(false);
+    expect(result.confirmado).toBe(false);
+    expect(result.lostMs).toBe(dt);
+  });
+
+  // Test 2.1b-bis: pérdida SOSTENIDA (> gracia) → RESETEA a 0 (hay que sostener).
+  it("2.1b-bis: soltar de verdad (> gracia) RESETEA el acumulado a 0", () => {
     const result = gestureAccumulator({
       prevAccumMs: 300,
       cumple: false,
       dt: 50,
       gestureHoldMs,
+      prevLostMs: GESTURE_GRACE_MS, // lostMs = gracia + 50 > gracia
     });
-    // accumMs debe preservarse en 300 (no se pierde el progreso)
-    expect(result.accumMs).toBe(300);
-    expect(result.isHolding).toBe(false);
-    expect(result.confirmado).toBe(false);
-    // fracReto refleja el progreso preservado
-    expect(result.fracReto).toBeCloseTo(0.6);
+    expect(result.accumMs).toBe(0);
+    expect(result.fracReto).toBe(0);
   });
 
-  // Test 2.1c: reanuda desde el valor preservado cuando el gesto vuelve
-  it("2.1c: reanuda desde accumMs preservado cuando el gesto se recupera", () => {
-    // Simular: tenía 300ms acumulados, pierde el gesto (accumMs=300 preservado)
-    const lostResult = gestureAccumulator({
-      prevAccumMs: 300,
-      cumple: false,
-      dt: 50,
-      gestureHoldMs,
-    });
-    expect(lostResult.accumMs).toBe(300);
+  // Test 2.1c: tras un titileo (preservado), el gesto se reanuda y sigue sumando
+  it("2.1c: reanuda desde el valor preservado tras un titileo breve", () => {
+    const dt = Math.floor(GESTURE_GRACE_MS / 3);
+    const lost = gestureAccumulator({ prevAccumMs: 300, cumple: false, dt, gestureHoldMs, prevLostMs: 0 });
+    expect(lost.accumMs).toBe(300); // preservado dentro de la gracia
 
-    // Ahora reanuda con el valor preservado
-    const resumeResult = gestureAccumulator({
-      prevAccumMs: lostResult.accumMs,
+    const resume = gestureAccumulator({
+      prevAccumMs: lost.accumMs,
       cumple: true,
       dt: 100,
       gestureHoldMs,
+      prevLostMs: lost.lostMs,
     });
-    expect(resumeResult.accumMs).toBeCloseTo(400);
-    expect(resumeResult.fracReto).toBeCloseTo(0.8);
-    expect(resumeResult.isHolding).toBe(true);
-    expect(resumeResult.confirmado).toBe(false);
+    expect(resume.accumMs).toBeCloseTo(400); // 300 + 100
+    expect(resume.lostMs).toBe(0);
+    expect(resume.isHolding).toBe(true);
   });
 
-  // Test 2.1d: confirma cuando accumMs alcanza gestureHoldMs
+  // Test 2.1c-bis: parpadeo rápido (cerrar/abrir) NO acumula: cada apertura supera
+  // la gracia y resetea. Simulamos frames de 33ms: cerrado 3 frames, abierto 5.
+  it("2.1c-bis: el parpadeo rápido NO acumula hasta confirmar (cada apertura resetea)", () => {
+    let accum = 0;
+    let lost = 0;
+    for (let ciclo = 0; ciclo < 10; ciclo++) {
+      for (let i = 0; i < 3; i++) {
+        const r = gestureAccumulator({ prevAccumMs: accum, cumple: true, dt: 33, gestureHoldMs, prevLostMs: lost });
+        accum = r.accumMs; lost = r.lostMs;
+      }
+      for (let i = 0; i < 5; i++) {
+        const r = gestureAccumulator({ prevAccumMs: accum, cumple: false, dt: 33, gestureHoldMs, prevLostMs: lost });
+        accum = r.accumMs; lost = r.lostMs;
+      }
+    }
+    expect(accum).toBeLessThan(gestureHoldMs); // nunca completa parpadeando rápido
+  });
+
+  // Test 2.1d: confirma cuando accumMs alcanza gestureHoldMs (hold sostenido)
   it("2.1d: confirma cuando accumMs >= gestureHoldMs", () => {
-    const result = gestureAccumulator({
-      prevAccumMs: 450,
-      cumple: true,
-      dt: 60, // 450 + 60 = 510 >= 500
-      gestureHoldMs,
-    });
+    const result = gestureAccumulator({ prevAccumMs: 450, cumple: true, dt: 60, gestureHoldMs });
     expect(result.confirmado).toBe(true);
     expect(result.fracReto).toBe(1);
     expect(result.isHolding).toBe(true);
   });
 
-  // Test 2.1e: con múltiples pérdidas y reanudaciones, eventualmente confirma
-  it("2.1e: con múltiples pérdidas y reanudaciones, eventualmente confirma", () => {
-    let accum = 0;
+  // Test 2.1e: soltar de verdad resetea; recién un hold sostenido completo confirma.
+  it("2.1e: tras soltar (reset), hay que rehacer el hold sostenido para confirmar", () => {
+    // Hold parcial 300ms
+    let r = gestureAccumulator({ prevAccumMs: 0, cumple: true, dt: 300, gestureHoldMs });
+    expect(r.accumMs).toBeCloseTo(300);
 
-    // Ciclo 1: gana 200ms
-    let r = gestureAccumulator({ prevAccumMs: accum, cumple: true, dt: 200, gestureHoldMs });
-    accum = r.accumMs;
-    expect(r.confirmado).toBe(false);
+    // Soltó de verdad (> gracia) → reset 0
+    r = gestureAccumulator({ prevAccumMs: r.accumMs, cumple: false, dt: GESTURE_GRACE_MS + 50, gestureHoldMs, prevLostMs: 0 });
+    expect(r.accumMs).toBe(0);
 
-    // Pierde el gesto
-    r = gestureAccumulator({ prevAccumMs: accum, cumple: false, dt: 100, gestureHoldMs });
-    accum = r.accumMs;
-    expect(accum).toBeCloseTo(200); // preservado
-
-    // Ciclo 2: gana 150ms más (total ~350ms)
-    r = gestureAccumulator({ prevAccumMs: accum, cumple: true, dt: 150, gestureHoldMs });
-    accum = r.accumMs;
-    expect(r.confirmado).toBe(false);
-
-    // Pierde el gesto de nuevo
-    r = gestureAccumulator({ prevAccumMs: accum, cumple: false, dt: 50, gestureHoldMs });
-    accum = r.accumMs;
-    expect(accum).toBeCloseTo(350); // preservado
-
-    // Ciclo 3: gana 200ms más (total ~550ms >= 500ms → confirma)
-    r = gestureAccumulator({ prevAccumMs: accum, cumple: true, dt: 200, gestureHoldMs });
-    accum = r.accumMs;
+    // Hold sostenido completo (>=500) → confirma
+    r = gestureAccumulator({ prevAccumMs: 0, cumple: true, dt: 520, gestureHoldMs });
     expect(r.confirmado).toBe(true);
   });
 });
@@ -713,13 +786,15 @@ describe("C-67 Grupo 5 — consistencia de la defensa anti-foto (PAD, Task 5.2)"
     expect(evaluateChallengeRelative("girar_cabeza", lm, gaze, baseline, undefined)).toBe(false);
   });
 
-  it("5.2e evaluateChallengeRelative(girar_cabeza, izquierda) confirma con gaze.x > threshold", () => {
-    const lm = makeLandmarks({});
-    const gaze = { x: GAZE_TURN_THRESHOLD_ADJUSTED + 0.05, y: 0 }; // claramente izquierda
+  it("5.2e evaluateChallengeRelative(girar_cabeza, izquierda) confirma con head yaw > threshold", () => {
+    // C-67: el giro se mide por head yaw (cabeza), no gaze. nose 0.85 vs comisuras
+    // 0/1 → yaw +0.70 (giro claro a izquierda).
+    const lm = makeLandmarks({ 1: { x: 0.85 }, 33: { x: 0 }, 263: { x: 1 } });
+    const gaze = { x: 0, y: 0 };
     const baseline: BaselineMetrics = { blinkOpenness: 0.06, smileWidth: 0.10, gazeX: 0 };
 
     expect(evaluateChallengeRelative("girar_cabeza", lm, gaze, baseline, "izquierda")).toBe(true);
-    // El mismo gaze NO confirma "derecha"
+    // La misma cabeza girada (yaw +) NO confirma "derecha"
     expect(evaluateChallengeRelative("girar_cabeza", lm, gaze, baseline, "derecha")).toBe(false);
   });
 });
@@ -790,20 +865,19 @@ describe("SMILE_GESTURE_HOLD_MS — hold propio de sonrisa (C-67 Task 4.4/4.5)",
     expect(SMILE_GESTURE_HOLD_MS).toBeGreaterThanOrEqual(GESTURE_HOLD_MS);
   });
 
-  // Test 4.4d: el gate de neutralidad sigue activo con SMILE_GESTURE_HOLD_MS —
-  // el acumulador con cumple=false no confirma aunque tenga prevAccumMs alto.
-  it("4.4d: el gate de neutralidad preserva el acumulado pero NO confirma (anti doble-paso)", () => {
-    // Si el alumno tiene 499ms acumulados y pierde la sonrisa un frame,
-    // el acumulador se preserva pero isHolding=false → no confirma ese frame.
+  // Test 4.4d: con cumple=false el acumulador NO confirma (isHolding=false) y, C-67,
+  // DECAE (resta dt) en vez de preservar — perder la sonrisa cuesta progreso.
+  it("4.4d: perder la sonrisa un frame breve (≤ gracia) NO confirma pero PRESERVA (anti doble-paso)", () => {
     const accumLost = gestureAccumulator({
-      prevAccumMs: SMILE_GESTURE_HOLD_MS - 1,
+      prevAccumMs: SMILE_GESTURE_HOLD_MS - 1, // 499
       cumple: false,
-      dt: 50,
+      dt: 50, // dentro de la gracia → preserva
       gestureHoldMs: SMILE_GESTURE_HOLD_MS,
+      prevLostMs: 0,
     });
     expect(accumLost.confirmado).toBe(false);
     expect(accumLost.isHolding).toBe(false);
-    // El acumulado se preserva para reanudación
+    // Titileo breve dentro de la gracia → preserva (no resetea)
     expect(accumLost.accumMs).toBe(SMILE_GESTURE_HOLD_MS - 1);
   });
 });

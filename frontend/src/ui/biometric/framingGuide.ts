@@ -45,7 +45,10 @@ export interface FramingSignals {
 // una ventana cómoda — siguen siendo guardarraíl de calidad, sin nitpicking.
 const LUM_LOW = 48;     // < 48 sobre 255 = penumbra real → "más luz" (antes 55)
 const LUM_HIGH = 238;   // > 238 = contraluz/saturado (antes 230)
-const BBOX_FAR = 0.22;  // rostro < 22% del frame → "acercate" (antes 0.30)
+const BBOX_FAR = 0.28;  // rostro < 28% del frame → "acercate". C-67: subido de 0.22:
+                        // el detector de parpadeo necesita la cara más grande (señal
+                        // del ojo nítida); a 0.22 se podía arrancar muy lejos y el
+                        // "cerrar los ojos" no se tomaba bien.
 const BBOX_NEAR = 0.72; // rostro > 72% del frame → "alejate" (antes 0.58)
 const OFFCENTER = 0.16; // |0.5 - cx| > 0.16 → "centrá" (antes 0.08, demasiado estricto)
 const OFFCENTER_Y = 0.20; // |0.5 - cy| > 0.20 → "centrá" (antes 0.10)

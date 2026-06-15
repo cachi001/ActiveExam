@@ -192,9 +192,12 @@ export const CaptureOval = forwardRef<HTMLVideoElement, CaptureOvalProps>(
                 strokeDasharray={PERIMETER}
                 strokeDashoffset={offset}
                 style={{
-                  // Transición corta y lineal → el llenado sigue el acumulador por
-                  // frame de forma fluida (como llenando un vaso).
-                  transition: 'stroke-dashoffset 90ms linear, stroke 250ms ease-out',
+                  // C-67: transición de 250ms lineal → el navegador INTERPOLA a 60fps
+                  // entre las actualizaciones del acumulador, que en mobile llegan a
+                  // 5-10fps. Así el llenado se ve fluido en CUALQUIER dispositivo (no
+                  // depende del fps del loop de detección). 250ms bridgea los huecos
+                  // de un teléfono lento sin lag perceptible en desktop.
+                  transition: 'stroke-dashoffset 250ms linear, stroke 250ms ease-out',
                 }}
               />
             ) : (

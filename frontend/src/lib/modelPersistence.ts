@@ -55,6 +55,20 @@ export function registerModelCacheWorker(): void {
   if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) {
     return;
   }
+  // C-67: en DESARROLLO NO registrar el SW y, además, DESREGISTRAR cualquiera ya
+  // instalado + limpiar sus caches. El SW (cache de modelos) en dev hacía que el
+  // teléfono quedara "pegado" a una versión vieja de la app y no se actualizara nunca
+  // por más que se refrescara. En PROD sí se registra (cada release es inmutable).
+  if (import.meta.env.DEV) {
+    navigator.serviceWorker
+      .getRegistrations?.()
+      .then((regs) => regs.forEach((r) => r.unregister()))
+      .catch(() => {});
+    if (typeof caches !== "undefined") {
+      caches.keys?.().then((keys) => keys.forEach((k) => caches.delete(k))).catch(() => {});
+    }
+    return;
+  }
   // Registrar tras 'load' para no competir con la carga inicial de la app.
   window.addEventListener("load", () => {
     navigator.serviceWorker.register("/sw.js").catch(() => {

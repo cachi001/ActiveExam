@@ -127,11 +127,17 @@ describe('evaluateFraming — umbrales relajados (centrado + tamaño)', () => {
   });
 
   // ── Tamaño (llenar el óvalo) ───────────────────────────────────────────
-  it('bbox 0.18 (<0.22) → lejos (la cara no llena el óvalo)', () => {
+  it('bbox 0.18 (<0.28) → lejos (la cara no llena el óvalo)', () => {
     expect(evaluateFraming({ ...ok, faceBboxWidth: 0.18 })).toBe('lejos');
   });
 
-  it('bbox 0.4 (entre 0.22 y 0.72) → null (encuadre cómodo)', () => {
+  // C-67: el detector de parpadeo necesita la cara más grande (señal del ojo nítida).
+  // BBOX_FAR subido 0.22→0.28 → un rostro a 0.25 ahora pide acercarse.
+  it('bbox 0.25 (entre 0.22 y 0.28) → lejos (acercate más para el parpadeo)', () => {
+    expect(evaluateFraming({ ...ok, faceBboxWidth: 0.25 })).toBe('lejos');
+  });
+
+  it('bbox 0.4 (entre 0.28 y 0.72) → null (encuadre cómodo)', () => {
     expect(evaluateFraming({ ...ok, faceBboxWidth: 0.4 })).toBeNull();
   });
 

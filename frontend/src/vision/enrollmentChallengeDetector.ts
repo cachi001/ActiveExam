@@ -100,11 +100,33 @@ export const SMILE_RELATIVE_FACTOR = 1.12;
 export const SMILE_WIDTH_PARTIAL_FACTOR = 1.08;
 
 /**
+ * C-67: umbral del coeficiente mouthSmile (blendshape de MediaPipe, 0..1) para
+ * declarar sonrisa. Señal ABSOLUTA y entrenada — reemplaza la métrica geométrica
+ * (ancho relativo al baseline), que era frágil: si el alumno tenía la boca un toque
+ * ancha en reposo, el umbral relativo se volvía casi inalcanzable ("no me toma la
+ * sonrisa"). 0.4 = sonrisa clara pero no exagerada. Tunable.
+ */
+export const SMILE_BLENDSHAPE_THRESHOLD = 0.5;
+
+/** C-67: ¿el coeficiente mouthSmile (0..1) alcanza para declarar sonrisa? */
+export function isSmileByBlendshape(smile: number): boolean {
+  return smile >= SMILE_BLENDSHAPE_THRESHOLD;
+}
+
+/**
  * Umbral absoluto ajustado para detectar giro de cabeza (C-54).
  * Subido de 0.18 -> 0.22 para mayor robustez contra ruido de iris.
  * El giro ya es relativo a la posicion del iris (no usa baseline).
  */
 export const GAZE_TURN_THRESHOLD_ADJUSTED = 0.22;
+
+/**
+ * C-67: umbral de giro de CABEZA por yaw geométrico (nariz vs comisuras externas
+ * de los ojos), en [0..1]. Reemplaza al de gaze (ojos), que daba falsos positivos:
+ * al girar un poco, un ojo se escorza y gaze.x salta → "apenas giro lo toma".
+ * 0.30 = giro de cabeza claro (por encima del límite de frontalidad YAW_MAX).
+ */
+export const TURN_YAW_THRESHOLD = 0.30;
 
 /** Frames minimos consecutivos para confirmar parpadeo (C-54). */
 export const FRAMES_MIN_BLINK_SEQ = 3;
@@ -145,9 +167,13 @@ const BASELINE_SMILE_MAX = 0.14;
 export function evaluateChallengeRelative(
   challenge: SequentialChallenge,
   landmarks: FaceLandmark[],
-  gaze: { x: number; y: number },
+  /** @deprecated C-67: el giro ahora usa head yaw (landmarks), no gaze. Se mantiene
+   * en la firma por retrocompat de los callers; ya no se lee acá. */
+  _gaze: { x: number; y: number },
   baseline: BaselineMetrics | null,
   turnDirection?: TurnDirection,
+  /** C-67: coeficiente mouthSmile (blendshape, 0..1). Si está, manda para sonreír. */
+  smile?: number,
 ): boolean {
   switch (challenge) {
     // parpadear — openness < baseline.blinkOpenness * BLINK_RELATIVE_FACTOR
@@ -166,10 +192,22 @@ export function evaluateChallengeRelative(
     // Cuando el alumno gira hacia SU izquierda (lo que ve en el espejo), gaze.x > 0 en raw.
     case "girar_cabeza": {
       if (!turnDirection) return false;
+      // C-67: medir la CABEZA (yaw geométrico: nariz vs comisuras externas de los
+      // ojos), NO los ojos (gaze). El gaze daba falsos positivos: al girar un poco
+      // un ojo se escorza y gaze.x salta, así que "apenas giro lo tomaba".
+      if (landmarks.length < 264) return false;
+      const nose = landmarks[1];
+      const eyeA = landmarks[33];
+      const eyeB = landmarks[263];
+      if (!nose || !eyeA || !eyeB) return false;
+      const dA = Math.abs(nose.x - eyeA.x);
+      const dB = Math.abs(eyeB.x - nose.x);
+      const sum = dA + dB;
+      const yaw = sum === 0 ? 0 : (dA - dB) / sum;
       if (turnDirection === "izquierda") {
-        return gaze.x > GAZE_TURN_THRESHOLD_ADJUSTED;
+        return yaw > TURN_YAW_THRESHOLD;
       } else {
-        return gaze.x < -GAZE_TURN_THRESHOLD_ADJUSTED;
+        return yaw < -TURN_YAW_THRESHOLD;
       }
     }
 
@@ -180,6 +218,10 @@ export function evaluateChallengeRelative(
     // - elevationOk: comisuras subieron (avgCornerY < baseline.smileCornerY - threshold)
     //   Solo si baseline.smileCornerY está disponible (backward compatible).
     case "sonreír": {
+      // C-67: si el motor provee el coeficiente mouthSmile (blendshape), es la
+      // señal AUTORITATIVA — absoluta y entrenada, sin la fragilidad del baseline
+      // geométrico. Solo si no está disponible se cae al método de ancho de boca.
+      if (smile !== undefined) return isSmileByBlendshape(smile);
       if (!baseline) return false;
       if (landmarks.length < 292) return false;
       const left  = landmarks[61];
@@ -437,6 +479,14 @@ export function gestureHold({ now, holdStart, cumple }: GestureHoldInput): Gestu
 /**
  * Input del acumulador de progreso de gesto (C-67, design D1).
  */
+/**
+ * C-67: ventana de GRACIA (ms) para perder el gesto sin perder el progreso. Un
+ * titileo del detector (≤ gracia) PRESERVA el acumulado → el anillo sube smooth.
+ * Soltar el gesto de verdad (> gracia) RESETEA a 0 → hay que sostener, y el
+ * parpadeo rápido no acumula (cada apertura de ojos supera la gracia y resetea).
+ */
+export const GESTURE_GRACE_MS = 120;
+
 export interface GestureAccumInput {
   /** Milisegundos acumulados del reto actual hasta ahora. */
   prevAccumMs: number;
@@ -446,13 +496,17 @@ export interface GestureAccumInput {
   dt: number;
   /** Duración objetivo del hold (ms). */
   gestureHoldMs: number;
+  /** C-67: ms de pérdida consecutiva acumulados (para la gracia). Default 0. */
+  prevLostMs?: number;
+  /** C-67: ventana de gracia. Default GESTURE_GRACE_MS. */
+  graceMs?: number;
 }
 
 /**
  * Output del acumulador de progreso de gesto (C-67, design D1).
  */
 export interface GestureAccumOutput {
-  /** Nuevo acumulado en ms. Se PRESERVA al perder el gesto (no se reinicia). */
+  /** Nuevo acumulado en ms. Se preserva durante la gracia; se resetea si se supera. */
   accumMs: number;
   /** Fracción 0..1 del progreso (accumMs / gestureHoldMs). */
   fracReto: number;
@@ -460,29 +514,36 @@ export interface GestureAccumOutput {
   confirmado: boolean;
   /** true si el gesto está siendo sostenido ahora mismo. */
   isHolding: boolean;
+  /** C-67: pérdida consecutiva acumulada (0 mientras se cumple). */
+  lostMs: number;
 }
 
 /**
- * Helper PURO de acumulación de tiempo de gesto con reanudación.
+ * Helper PURO de acumulación de tiempo de gesto con GRACIA (C-67).
  *
- * Diferencia clave con gestureHold():
- * - Al perder el gesto (cumple=false), el acumulado se PRESERVA.
- * - Al reanudar el gesto, continúa desde donde quedó.
- * - Solo se reinicia explícitamente desde el componente (al confirmar o avanzar reto).
+ * - cumple=true: suma dt al acumulado (hasta confirmar); resetea la pérdida.
+ * - cumple=false: acumula la pérdida. Mientras la pérdida ≤ graceMs, PRESERVA el
+ *   acumulado (tolera el titileo del detector → el anillo sube smooth). Si la
+ *   pérdida supera graceMs, RESETEA el acumulado a 0 (hay que volver a sostener).
  *
- * El progreso se oculta visualmente al perder el gesto (isHolding=false),
- * pero el acumulado interno no se descarta.
+ * Esto da un llenado gradual estable y a la vez exige sostener el gesto: el
+ * parpadeo rápido no acumula porque cada apertura de ojos supera la gracia.
  *
- * SIN efectos secundarios. El componente es el responsable de la integración.
+ * SIN efectos secundarios. El componente integra (guarda accumMs y lostMs).
  */
 export function gestureAccumulator(input: GestureAccumInput): GestureAccumOutput {
   const { prevAccumMs, cumple, dt, gestureHoldMs } = input;
+  const graceMs = input.graceMs ?? GESTURE_GRACE_MS;
+  const prevLostMs = input.prevLostMs ?? 0;
   if (!cumple) {
+    const lostMs = prevLostMs + dt;
+    const accumMs = lostMs > graceMs ? 0 : prevAccumMs;
     return {
-      accumMs: prevAccumMs, // PRESERVE on loss
-      fracReto: Math.min(1, prevAccumMs / gestureHoldMs),
+      accumMs,
+      fracReto: Math.min(1, accumMs / gestureHoldMs),
       confirmado: false,
       isHolding: false,
+      lostMs,
     };
   }
   // Cap at 1.5x gestureHoldMs to avoid overflow (no observable difference, just safety)
@@ -493,6 +554,7 @@ export function gestureAccumulator(input: GestureAccumInput): GestureAccumOutput
     fracReto: Math.min(1, newAccum / gestureHoldMs),
     confirmado,
     isHolding: true,
+    lostMs: 0,
   };
 }
 
