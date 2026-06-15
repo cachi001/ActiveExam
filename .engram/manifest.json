@@ -256,6 +256,14 @@
       "sessions": 0,
       "memories": 11,
       "prompts": 0
+    },
+    {
+      "id": "a901227f",
+      "created_by": "Emiliano",
+      "created_at": "2026-06-15T01:20:13Z",
+      "sessions": 0,
+      "memories": 1,
+      "prompts": 0
     }
   ]
 }
