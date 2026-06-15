@@ -26,6 +26,7 @@ from app.domain.audit_chain import AuditEntry
 from app.domain.dsr.ports import DsrAuditor, UserDsrRepository
 from app.infrastructure.persistence.models.proctoring import ProctoringSessionModel
 from app.infrastructure.persistence.models.transactional import (
+    ConsentimientoPerfilModel,
     EmbeddingReferenciaModel,
     FotoReferenciaModel,
     UsuarioModel,
@@ -105,6 +106,15 @@ class SqlUserDsrRepository(UserDsrRepository):
         result = await self._session.execute(
             delete(FotoReferenciaModel).where(
                 FotoReferenciaModel.usuario_id == usuario_id
+            )
+        )
+        return int(result.rowcount or 0)
+
+    async def delete_consent_perfil(self, usuario_id: str) -> int:
+        """Purga el consentimiento de perfil (eliminacion al egreso, Ley 25.326)."""
+        result = await self._session.execute(
+            delete(ConsentimientoPerfilModel).where(
+                ConsentimientoPerfilModel.usuario_id == usuario_id
             )
         )
         return int(result.rowcount or 0)

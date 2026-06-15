@@ -43,7 +43,11 @@ from app.presentation.api.v1.review import review_slim_router
 from app.presentation.api.v1.verify_chain import verify_chain_slim_router
 from app.presentation.api.v1.consent.dependencies import get_consent_service
 from app.presentation.api.v1.consent.dependencies_slim import get_consent_service_slim
+from app.presentation.api.v1.config.router import router as config_router
 from app.presentation.api.v1.consent.router import router as consent_router
+from app.presentation.api.v1.consent_perfil.router import (
+    router as consent_perfil_router,
+)
 from app.presentation.api.v1.enrollment.router import router as enrollment_router
 from app.presentation.api.v1.proctoring.router import create_proctoring_router
 from app.presentation.api.v1.scoring.router import router as scoring_router
@@ -147,12 +151,26 @@ def create_slim_app() -> FastAPI:
     app.dependency_overrides[get_consent_service] = get_consent_service_slim
     app.include_router(consent_router, prefix="/api/v1/consent", tags=["consent"])
 
+    # Consentimiento de PERFIL persistido server-side (Ley 25.326, GAP #2).
+    # POST/GET/POST-revoke en /api/v1/consent/profile. Fuente de verdad en BD
+    # (reemplaza el localStorage demo del frontend en ola 2).
+    app.include_router(
+        consent_perfil_router,
+        prefix="/api/v1/consent/profile",
+        tags=["consent-profile"],
+    )
+
     # Scoring (#10): configuracion de pesos por tipo de evento (solo admin_sistema).
     # Reusa app.state.session_factory + jwt_validator (ya cableados); no necesita
     # servicio extra. El front (ScoringConfig.tsx) pega a /api/v1/scoring/config y
     # /api/v1/scoring/weights. Sin este include, ambos daban 404 en prod (estaba
     # cableado solo en app.main, no en el slim que corre en Railway).
     app.include_router(scoring_router, prefix="/api/v1/scoring", tags=["scoring"])
+
+    # Config del Sistema (configuracion-sistema-funcional): config efectiva +
+    # edicion admin_sistema-only con MFA. GET /api/v1/config/effective lo consumen
+    # TEST DETECCION y el examen; PATCH /api/v1/config lo edita admin_sistema.
+    app.include_router(config_router, prefix="/api/v1/config", tags=["config"])
 
     # Admin (#19): trigger manual del motor de retencion (admin_sistema-only).
     # POST /api/v1/admin/retention/session  -> aplica retencion de sesiones

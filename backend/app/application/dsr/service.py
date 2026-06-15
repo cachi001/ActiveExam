@@ -148,6 +148,13 @@ class DsrService:
                 await self.repo.delete_session(sid)
                 deleted.append(sid)
 
+        # Consentimiento de perfil: dato sensible (Ley 25.326). Se purga al egreso
+        # SOLO si no quedan holds que preservar (coherente con la anonimizacion);
+        # ante un hold se DIFIERE hasta que el hold se libere (RN-DSR-03).
+        consent_perfil_deleted = 0
+        if not deferred:
+            consent_perfil_deleted = await self.repo.delete_consent_perfil(usuario_id)
+
         # Anonimizacion: solo si no quedan holds que preservar
         anonimizado = False
         if not deferred:
@@ -168,4 +175,5 @@ class DsrService:
             sessions_deleted=deleted,
             sessions_deferred=deferred,
             anonimizado=anonimizado,
+            consent_perfil_deleted=consent_perfil_deleted,
         )

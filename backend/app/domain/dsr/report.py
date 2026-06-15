@@ -51,3 +51,6 @@ class DsrErasureReport:
     sessions_deleted: list[str]
     sessions_deferred: list[str]
     anonimizado: bool
+    # Filas de consentimiento de perfil purgadas al egreso (Ley 25.326). 0 si se
+    # difirio por hold (no se borra hasta que el hold se libere).
+    consent_perfil_deleted: int = 0
