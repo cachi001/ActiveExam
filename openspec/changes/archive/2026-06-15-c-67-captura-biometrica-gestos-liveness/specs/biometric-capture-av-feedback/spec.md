@@ -2,7 +2,7 @@
 
 ## MODIFIED Requirements
 
-### Requirement: La captura emite sonidos de acierto, fallo y progreso de gesto
+### Requirement: La captura emite un sonido de fallo además del de acierto
 
 El catálogo de feedback auditivo (`sounds.ts`) SHALL incluir `playError()`, un tono discreto (≤ 250 ms, descendente) generado con WebAudio, que respeta `prefers-reduced-motion`, el cooldown por nombre y el flag `setSoundEnabled`, igual que los sonidos existentes.
 
@@ -26,7 +26,7 @@ El catálogo SHALL incluir además dos señales de progreso de gesto: una señal
 - **WHEN** el alumno sostiene el gesto correcto y el relleno cruza fracciones de progreso
 - **THEN** se emite la señal de progreso de gesto sin estallar en bucle (cooldown por nombre)
 
-### Requirement: El anillo de progreso del óvalo se renderiza alineado y en el borde exterior, con trazo fino
+### Requirement: El anillo de progreso del óvalo se renderiza alineado con la guía
 
 El anillo de progreso SHALL renderizarse con la misma orientación que el track de fondo y que el clip-path vertical (portrait) del video, sin transformaciones que intercambien sus ejes. El sistema NO SHALL aplicar `transform="rotate(-90 …)"` (ni rotaciones de 90°) al elemento `<ellipse>` de progreso, dado que rotar una elipse no circular intercambia sus ejes mayor/menor y la desalinea.
 

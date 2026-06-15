@@ -2,7 +2,7 @@
 
 ## MODIFIED Requirements
 
-### Requirement: Comparación 1:1 por distancia coseno con umbral conservador (señal de conveniencia client-side)
+### Requirement: Comparación 1:1 por distancia coseno con umbral conservador
 El sistema SHALL comparar el embedding capturado contra el embedding de referencia (cargado en C-07, leído cifrado de la DB) mediante distancia coseno, usando un umbral configurado conservadoramente, de modo que rechazar a un legítimo sea preferido por encima de aceptar a un impostor en este paso (RN-BIO-01, RN-BIO-02, RN-BIO-03, US-004 CA-3).
 
 El resultado de esta comparación mostrado al alumno en el navegador SHALL tratarse como **señal de conveniencia / UX**, NO como la verificación autoritativa: la verificación autoritativa es la re-inferencia server-side (cliente = sensor no confiable). El sistema NUNCA SHALL exponer el vector de embedding al cliente ni en logs (dato sensible, Ley 25.326).

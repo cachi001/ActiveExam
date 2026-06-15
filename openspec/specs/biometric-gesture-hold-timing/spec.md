@@ -7,17 +7,21 @@ TBD - created by archiving change c-65-fixes-captura-liveness-biometrica. Update
 
 El sistema SHALL confirmar un reto de liveness sólo cuando la condición del gesto se cumple de forma sostenida durante al menos un umbral de tiempo configurable (por defecto ~500 ms), medido con un reloj monótono (`performance.now()`), independiente del framerate del loop RAF.
 
-El umbral SHALL ser una constante exportada y ajustable sin re-deploy. Si la condición deja de cumplirse antes de alcanzar el umbral, el temporizador de sostenimiento SHALL reiniciarse a cero.
+El umbral SHALL ser una constante exportada y ajustable sin re-deploy. El criterio de confirmación SHALL basarse en el **tiempo efectivo de gesto cumplido** acumulado por reto, de modo que el **progreso visual** del anillo no se reinicie a cero cuando el gesto se pierde momentáneamente (ver `biometric-gesture-progress-resume`). El temporizador instantáneo de hold puede reiniciarse al perder el gesto, pero el progreso acumulado del reto SHALL preservarse hasta que el reto se confirme o se avance a otro reto.
 
 Este criterio temporal REEMPLAZA al umbral por frames (`FRAMES_MIN_*`) como condición de confirmación; el conteo por frames puede conservarse sólo como derivación interna pero no SHALL ser la condición de aceptación.
 
 #### Scenario: Gesto mantenido el tiempo mínimo confirma
-- **WHEN** el alumno sostiene el gesto del reto activo durante ≥ el umbral de tiempo configurado
+- **WHEN** el alumno sostiene el gesto del reto activo durante ≥ el umbral de tiempo configurado (acumulado)
 - **THEN** el reto se marca como completado
 
 #### Scenario: Gesto instantáneo no confirma
-- **WHEN** la condición del gesto se cumple sólo por un instante (menos del umbral de tiempo)
-- **THEN** el reto NO se marca como completado y el temporizador de sostenimiento se reinicia
+- **WHEN** la condición del gesto se cumple sólo por un instante (menos del umbral de tiempo acumulado)
+- **THEN** el reto NO se marca como completado
+
+#### Scenario: El progreso acumulado se preserva al perder el gesto
+- **WHEN** el alumno sostiene el gesto parcialmente y luego lo pierde antes de confirmar
+- **THEN** el progreso acumulado del reto se conserva (no vuelve a cero) y reanuda al recuperar el gesto
 
 #### Scenario: Independencia del framerate
 - **WHEN** el loop corre a 60 fps versus 30 fps
