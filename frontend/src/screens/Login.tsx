@@ -69,7 +69,7 @@ function FormularioJwt() {
         </div>
         <div className="relative flex items-center gap-xs text-label-sm text-white/70">
           <Icon name="lock" className="text-[18px]" fill />
-          Self-hosted · DPIA aprobado
+          Self-hosted
         </div>
       </aside>
 
@@ -154,7 +154,7 @@ function FormularioJwt() {
 
           <p className="flex items-center justify-center gap-xs text-label-sm text-on-surface-variant">
             <Icon name="lock" className="text-outline text-[16px]" fill />
-            Tu privacidad está protegida — Ley 25.326
+            Tu privacidad está protegida
           </p>
 
           {/* C-61: enlace al registro público */}
@@ -205,7 +205,7 @@ function SelectorRolDemo() {
         </div>
         <div className="relative flex items-center gap-xs text-label-sm text-white/70">
           <Icon name="lock" className="text-[18px]" fill />
-          Self-hosted · DPIA aprobado
+          Self-hosted
         </div>
       </aside>
 
@@ -245,7 +245,7 @@ function SelectorRolDemo() {
 
           <p className="flex items-center justify-center gap-xs text-label-sm text-on-surface-variant">
             <Icon name="lock" className="text-outline text-[16px]" fill />
-            Tu privacidad está protegida — Ley 25.326
+            Tu privacidad está protegida
           </p>
         </div>
       </main>
@@ -290,7 +290,7 @@ function LoginKeycloak() {
         </div>
         <div className="relative flex items-center gap-xs text-label-sm text-white/70">
           <Icon name="lock" className="text-[18px]" fill />
-          Self-hosted · DPIA aprobado
+          Self-hosted
         </div>
       </aside>
 
@@ -331,7 +331,7 @@ function LoginKeycloak() {
 
           <p className="flex items-center justify-center gap-xs text-label-sm text-on-surface-variant">
             <Icon name="lock" className="text-outline text-[16px]" fill />
-            Tu privacidad está protegida — Ley 25.326
+            Tu privacidad está protegida
           </p>
         </div>
       </main>

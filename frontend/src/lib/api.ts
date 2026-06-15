@@ -219,9 +219,26 @@ export const ACUSE_EXAMEN_VERSION = '2026.1';
  * En producción vendría de la configuración del examen (C-07).
  */
 export const ALCANCE_MONITOREO: { icono: string; label: string; descripcion: string }[] = [
-  { icono: 'videocam', label: 'Cámara web', descripcion: 'Video continuo para verificación de identidad y detección de presencia.' },
-  { icono: 'monitor', label: 'Pantalla y foco', descripcion: 'Captura de pantalla y detección de pérdida de foco de la ventana del examen.' },
-  { icono: 'tab', label: 'Pestañas del navegador', descripcion: 'Detección de cambio o apertura de nuevas pestañas durante la rendición.' },
+  {
+    icono: 'videocam',
+    label: 'Tu cámara',
+    descripcion: 'Se analiza la imagen en vivo para confirmar que sos vos y que estás presente. Se registra un aviso si no se te ve, si aparece otra persona en cámara, o si mirás mucho rato hacia afuera de la pantalla. No se graba video: solo se guarda una captura puntual cuando pasa algo de eso.',
+  },
+  {
+    icono: 'desktop_windows',
+    label: 'La ventana del examen',
+    descripcion: 'Se detecta si minimizás o salís de la ventana del examen, si salís de pantalla completa, o si cambiás o abrís otra pestaña. No se graba la pantalla: solo se guarda una captura puntual ante uno de esos eventos.',
+  },
+  {
+    icono: 'devices',
+    label: 'Monitores y dispositivos',
+    descripcion: 'Se detecta si tenés un segundo monitor conectado al equipo. El examen pide usar una sola pantalla.',
+  },
+  {
+    icono: 'content_paste',
+    label: 'Acciones en el equipo',
+    descripcion: 'Se detecta si copiás o pegás durante el examen (se registra que ocurrió, nunca el contenido de lo que copiás).',
+  },
 ];
 
 /**
@@ -303,7 +320,9 @@ const REPORTES: ResumenReportes = {
 };
 
 const CONSENT_TEXT: ConsentTextResponse = {
-  version: '2026.1',
+  // Alineada con la versión del backend real ('v1') para que demo y real coincidan
+  // y la versión del consentimiento se muestre igual en todo el sistema.
+  version: 'v1',
   hash_texto: 'sha256:9f2b…a31',
   bloques: [
     { icono: 'help', titulo: '¿Qué datos recolectamos?', cuerpo: 'Video de tu cámara y captura de pantalla durante el examen, y un embedding facial para verificar tu identidad. El embedding se trata como dato sensible bajo la Ley 25.326.' },
@@ -323,6 +342,25 @@ const CONSENT_TEXT: ConsentTextResponse = {
 let _consentVersionVigente: string = CONSENT_TEXT.version;
 function consentVersionVigente(): string {
   return _consentVersionVigente;
+}
+
+// C-67: la versión vigente del consentimiento sólo se sincronizaba con el backend
+// cuando se abría la pantalla de consentimiento (getConsentText). Tras un reload que
+// aterriza directo en el dashboard, `_consentVersionVigente` volvía al default mock
+// ('2026.1') y el gate de perfil lo comparaba contra el acuse guardado ('v1' real) →
+// falso "consentimiento desactualizado" → tarjeta amarilla "completá tu perfil" aunque
+// el perfil estuviera completo. Sincronizamos la versión del backend ANTES de evaluar
+// el gate (una vez por sesión; un reload vuelve a sincronizar y detecta cambios reales).
+let _consentVersionSynced = false;
+async function ensureConsentVersionSynced(): Promise<void> {
+  if (!USE_REAL_BACKEND || _consentVersionSynced) return;
+  try {
+    const texto = normalizarConsentText(await realFetch<unknown>('/consent/text', { method: 'GET' }));
+    if (texto.version) _consentVersionVigente = texto.version;
+    _consentVersionSynced = true;
+  } catch {
+    // Fallo de red: no bloquear el gate. Se reintenta en la próxima llamada.
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -354,7 +392,7 @@ function distanciaCoseno(a: number[], b: number[]): number {
 // compatibilidad de firma.
 async function realFetch<T>(path: string, init: RequestInit, _legacyToken?: string): Promise<T> {
   const token = authProvider.getToken();
-  const res = await fetch(`${API_BASE}${path}`, {
+  let res = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers: {
       'Content-Type': 'application/json',
@@ -362,6 +400,26 @@ async function realFetch<T>(path: string, init: RequestInit, _legacyToken?: stri
       ...(init.headers || {}),
     },
   });
+
+  // C-67: el access token JWT vive sólo 15 min. En flujos largos (la captura
+  // biométrica con gestos lentos) expira a mitad de camino y el backend responde
+  // 401. Intentamos UN refresh con el refresh_token y reintentamos el request una
+  // sola vez. Sin esto el alumno quedaba clavado en 401 aunque tuviera un
+  // refresh_token válido en sessionStorage (getToken devolvía undefined sin refrescar).
+  if (res.status === 401 && authProvider.refresh) {
+    const fresh = await authProvider.refresh();
+    if (fresh) {
+      res = await fetch(`${API_BASE}${path}`, {
+        ...init,
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${fresh}`,
+          ...(init.headers || {}),
+        },
+      });
+    }
+  }
+
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json() as Promise<T>;
 }
@@ -659,6 +717,9 @@ export const api = {
    */
   async puedeRendir(examenId?: string): Promise<{ puede: boolean; razon?: string; codigo?: string }> {
     await delay(200);
+    // C-67: sincronizar la versión vigente del consentimiento desde el backend antes
+    // de evaluar el gate, para no marcar como "desactualizado" un acuse válido.
+    await ensureConsentVersionSynced();
     const e = recalcularPerfilCompleto(enrollmentAlumno);
     enrollmentAlumno = e;
 
@@ -801,6 +862,9 @@ export const api = {
   /** Retorna el estado de enrollment completo del perfil (C-22). */
   async getEnrollment(): Promise<EstadoEnrollment> {
     await delay(0);
+    // C-67: idem puedeRendir — la versión vigente debe venir del backend para que
+    // recalcularPerfilCompleto no invalide un consentimiento real ('v1' vs mock).
+    await ensureConsentVersionSynced();
     commitEnrollment(enrollmentAlumno);
     return { ...enrollmentAlumno };
   },
@@ -938,7 +1002,12 @@ export const api = {
       } catch (err) {
         // Si el backend falla, NO hacer fallback demo: propagar el error
         // para que el componente pueda mostrar el mensaje y reintentar.
-        throw new Error(`Error al guardar referencia biométrica: ${err instanceof Error ? err.message : String(err)}`);
+        const msg = err instanceof Error ? err.message : String(err);
+        // 401 = token vencido (sesión larga). Mensaje claro y accionable.
+        if (/\b401\b/.test(msg) || /unauthorized/i.test(msg)) {
+          throw new Error('Tu sesión expiró. Cerrá sesión y volvé a iniciar sesión, y reintentá la captura.');
+        }
+        throw new Error(`No se pudo guardar la referencia: ${msg}`);
       }
     }
     // Modo demo (USE_REAL_BACKEND=0 o embedding nulo/incompleto).

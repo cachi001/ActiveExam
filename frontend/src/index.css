@@ -99,6 +99,23 @@ input[type="number"] {
 }
 .scanning-ring { animation: pulse-ring 2s infinite ease-in-out; }
 
+/* C-67: latido moderno del contorno del óvalo — respiración suave de opacidad +
+   glow (sin scale tosco). Aplica sobre un borde rounded-[50%].
+   Ámbar = aviso (lejos/poca luz/…); Azul = todo OK ("te estamos tomando bien"). */
+@keyframes ae-oval-breathe-amber {
+  0%, 100% { opacity: 0.55; box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
+  50%      { opacity: 1;    box-shadow: 0 0 14px 1px rgba(245, 158, 11, 0.45); }
+}
+@keyframes ae-oval-breathe-blue {
+  0%, 100% { opacity: 0.55; box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+  50%      { opacity: 1;    box-shadow: 0 0 14px 1px rgba(59, 130, 246, 0.45); }
+}
+.ae-oval-breathe-amber { animation: ae-oval-breathe-amber 1.6s ease-in-out infinite; }
+.ae-oval-breathe-blue  { animation: ae-oval-breathe-blue 1.6s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .ae-oval-breathe-amber, .ae-oval-breathe-blue { animation: none; opacity: 0.9; }
+}
+
 /* ----- shimmer de carga ----- */
 @keyframes shimmer {
   0% { background-position: -200% 0; }

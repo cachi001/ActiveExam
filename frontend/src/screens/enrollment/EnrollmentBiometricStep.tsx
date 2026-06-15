@@ -25,6 +25,8 @@ import { Icon, Button, Card } from '../../ui/components';
 import { api, BIOMETRIC_VALIDITY_MONTHS } from '../../lib/api';
 import { BiometricCapture } from '../../ui/BiometricCapture';
 import { computeFaceDescriptor } from '../../vision/faceEmbedding';
+import { firstDescriptor } from '../../vision/descriptorFallback';
+import { unlockAudio } from '../../ui/biometric/sounds';
 import { useApp } from '../../lib/store';
 import type { ReferenciasBiometrica } from '../../lib/types';
 import type { FaceLandmark } from '../../vision/VisionEngine';
@@ -71,7 +73,7 @@ export function EnrollmentBiometricStep({ referenciaActual, onCapturada, esRenov
   // no condiciona el guardado del descriptor). Ver design D3 / Open Questions.
   const handleComplete = useCallback(async (
     _landmarks: FaceLandmark[],
-    frame: HTMLCanvasElement | null,
+    frames: HTMLCanvasElement[],
     _passiveOk: boolean,
     _retosResueltos: string[],
     _virtualCameraDetected: boolean,
@@ -80,9 +82,10 @@ export function EnrollmentBiometricStep({ referenciaActual, onCapturada, esRenov
     setRefRegistrada(false);
 
     try {
-      // Descriptor real de 128-d con face-api sobre el frame del video.
-      // Dato sensible (Ley 25.326): no se loguea.
-      const descriptor = frame ? await computeFaceDescriptor(frame) : null;
+      // C-67: descriptor real de 128-d con face-api, probando los frames candidatos
+      // (mejor primero) hasta que uno enganche. Evita el "todo perfecto y error"
+      // por fallar en un único frame. Dato sensible (Ley 25.326): no se loguea.
+      const descriptor = await firstDescriptor(frames, computeFaceDescriptor);
 
       // C-56: POST al backend real cuando USE_REAL_BACKEND=1.
       // El backend cifra at-rest y devuelve un referencia_id opaco.
@@ -137,8 +140,8 @@ export function EnrollmentBiometricStep({ referenciaActual, onCapturada, esRenov
   if (fase === 'capturando') {
     return (
       <BiometricCapture
-        onComplete={(landmarks, frame, passiveOk, retosResueltos, virtualCameraDetected) => {
-          void handleComplete(landmarks, frame, passiveOk, retosResueltos, virtualCameraDetected);
+        onComplete={(landmarks, frames, passiveOk, retosResueltos, virtualCameraDetected) => {
+          void handleComplete(landmarks, frames, passiveOk, retosResueltos, virtualCameraDetected);
         }}
         onCancel={cancelarCaptura}
       />
@@ -171,12 +174,13 @@ export function EnrollmentBiometricStep({ referenciaActual, onCapturada, esRenov
         <div className="flex items-start gap-sm bg-warning-container border border-warning/30 rounded-xl p-md">
           <Icon name="refresh" className="text-warning text-[18px] shrink-0 mt-px" />
           <div className="text-label-sm text-on-surface">
-            <p><strong>Referencia anterior:</strong> capturada el {formatearFecha(referenciaActual.fecha_captura)},
-              {' '}vencía el {formatearFecha(referenciaActual.fecha_expiracion)}.</p>
+            <p><strong>Referencia anterior:</strong> capturada el {formatearFecha(referenciaActual.fecha_captura)}.</p>
             <p className="text-on-surface-variant mt-base">
-              {referenciaActual.renovacion_anticipada_requerida
-                ? 'Se detectó deriva del embedding durante las verificaciones. La nueva captura reemplazará la referencia anterior.'
-                : 'La referencia venció. La nueva captura reemplazará la referencia anterior.'}
+              {referenciaActual.vigencia === 'caducada'
+                ? 'La referencia venció. La nueva captura reemplazará la anterior.'
+                : referenciaActual.renovacion_anticipada_requerida
+                  ? 'Detectamos cambios en tu rostro. La nueva captura reemplazará la anterior.'
+                  : 'La nueva captura reemplazará la referencia anterior.'}
             </p>
           </div>
         </div>
@@ -184,43 +188,48 @@ export function EnrollmentBiometricStep({ referenciaActual, onCapturada, esRenov
 
       {/* Contenedor principal */}
       <Card className="flex flex-col items-center gap-lg">
-        {/* Visor de cámara (estático en instrucciones/completado/error) */}
-        {/* Óvalo guía con la MISMA forma (clip-path elipse) que la cámara real. */}
-        <div
-          className="relative"
-          style={{ width: 'min(70vw, 220px)', filter: 'drop-shadow(0 10px 24px rgba(16,24,40,0.10))' }}
-        >
+        {/* Óvalo guía estático — SOLO en instrucciones (antes de la captura). En
+            procesando/éxito/error se oculta: mostrar el óvalo vacío titilando mientras
+            se guarda no aporta y confunde (el alumno ya hizo la captura). */}
+        {fase === 'instrucciones' && (
           <div
-            className={`w-full rounded-[50%] border-2 border-black transition-colors duration-300 ${
-              fase === 'completado' ? 'bg-success-container' :
-              fase === 'procesando' ? 'bg-warning-container animate-pulse' :
-              'bg-surface-container-high'
-            }`}
-            style={{ aspectRatio: '3 / 4' }}
-          />
-        </div>
+            className="relative"
+            style={{ width: 'min(70vw, 220px)', filter: 'drop-shadow(0 8px 20px rgba(16,24,40,0.08))' }}
+          >
+            <div
+              className="w-full rounded-[50%] border-2 border-dashed bg-surface-container-high border-outline-variant transition-colors duration-300"
+              style={{ aspectRatio: '3 / 4' }}
+            />
+          </div>
+        )}
 
         {/* ── Task 8.8: Estado: instrucciones iniciales ── */}
         {fase === 'instrucciones' && (
           <div className="text-center space-y-md w-full">
             <p className="text-body-md text-on-surface-variant leading-relaxed">
               Ubicá tu rostro dentro del óvalo, con buena luz y sin nada que lo tape (gorra,
-              anteojos oscuros, barbijo). Dura unos segundos e incluye <strong>tres gestos rápidos</strong>
-              {' '}para confirmar que sos una persona real.
+              anteojos oscuros, barbijo). Incluye <strong>tres gestos simples</strong>: hacé cada uno
+              {' '}<strong>despacio y sostenelo unos segundos</strong> hasta que se complete, para
+              confirmar que sos una persona real.
             </p>
-            {/* Botón iniciar — activa la fase capturando con el overlay BiometricCapture */}
-            <Button icon="photo_camera" onClick={() => setFase('capturando')}>
+            {/* Botón iniciar — activa la fase capturando con el overlay BiometricCapture.
+                La carga de modelos ocurre al entrar a la captura (con su propio estado
+                de carga en el overlay), no acá. */}
+            <Button icon="photo_camera" onClick={() => { unlockAudio(); setFase('capturando'); }}>
               Iniciar captura de referencia
             </Button>
           </div>
         )}
 
-        {/* ── Task 8.8: Estado: procesando ── */}
+        {/* ── Estado: procesando — continúa el "Verificado" del óvalo (no reinicia) ── */}
         {fase === 'procesando' && (
-          <div className="text-center space-y-sm text-on-surface-variant">
-            <Icon name="progress_activity" className="ae-spin text-primary text-[32px]" />
-            <p className="text-body-md">Procesando tu referencia facial…</p>
-            <p className="text-label-sm">La estamos guardando de forma segura. Tarda unos segundos.</p>
+          <div className="text-center space-y-sm">
+            <Icon name="verified_user" className="text-success text-[40px]" fill />
+            <p className="font-headline text-title-md text-on-surface">¡Verificación lista!</p>
+            <p className="text-label-sm text-on-surface-variant inline-flex items-center gap-xs justify-center">
+              <Icon name="progress_activity" className="ae-spin text-[16px]" />
+              Guardando tu referencia de forma segura…
+            </p>
           </div>
         )}
 

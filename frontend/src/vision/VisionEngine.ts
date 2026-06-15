@@ -62,6 +62,13 @@ export interface FaceMeshSignal {
   /** Embedding facial derivado de la geometria (verificacion continua). */
   embedding: number[];
   landmarks: FaceLandmark[];
+  /**
+   * C-67: coeficiente de sonrisa (blendshape mouthSmile de MediaPipe, 0..1),
+   * promedio de izquierda/derecha. Opcional: solo lo provee el motor real cuando
+   * `outputFaceBlendshapes` está activo; los detectores de gestos lo usan como
+   * señal ABSOLUTA y robusta de sonrisa (reemplaza la geometría frágil).
+   */
+  smile?: number;
 }
 
 /** Senal continua de Pose (2-5 fps): puntos clave del cuerpo (postura de consulta). */
@@ -89,8 +96,12 @@ export type DetectorKind = "face_detection" | "face_mesh" | "pose";
  * este contrato, nunca tipos de MediaPipe.
  */
 export interface VisionEngine {
-  /** Inicializa el grafo del motor (carga WASM/modelo). Idempotente. */
-  init(): Promise<void>;
+  /**
+   * Inicializa el grafo del motor (carga WASM/modelo). Idempotente.
+   * `options.loadPose` (default true): si es false, omite el PoseLandmarker
+   * (5.7 MB) — usado por el enrollment, que nunca llama detectPose (C-67).
+   */
+  init(options?: { loadPose?: boolean }): Promise<void>;
   /** Procesa un frame de video y devuelve landmarks + conteo de rostros. */
   processFrame(frame: ImageBitmap | VideoFrame): Promise<FrameResult>;
   /** Calcula el embedding facial a partir de una secuencia de frames del clip. */

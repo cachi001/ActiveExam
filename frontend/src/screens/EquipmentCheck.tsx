@@ -71,13 +71,16 @@ export default function EquipmentCheck() {
         <div className="grid md:grid-cols-2 gap-lg">
           <Card padded={false} className="overflow-hidden">
             <div className="relative aspect-video bg-inverse-surface flex items-center justify-center">
-              <video ref={videoRef} muted playsInline className="w-full h-full object-cover" />
-              <div className="absolute top-3 left-3 inline-flex items-center gap-base bg-error text-on-error text-label-sm font-bold px-sm py-base rounded-full">
-                <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" /> CÁMARA EN VIVO
-              </div>
+              <video
+                ref={videoRef}
+                muted
+                playsInline
+                className="w-full h-full object-cover"
+                style={{ transform: 'scaleX(-1)' }}
+              />
             </div>
             <div className="p-md text-center">
-              <p className="text-label-sm text-on-surface-variant">Vista previa local · no se transmite hasta iniciar el examen.</p>
+              <p className="text-label-sm text-on-surface-variant">Esta imagen es solo para que verifiques tu cámara. No se envía a nadie hasta que empieces el examen.</p>
             </div>
           </Card>
 

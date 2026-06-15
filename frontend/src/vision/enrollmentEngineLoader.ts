@@ -67,7 +67,12 @@ export async function loadEnrollmentEngine(): Promise<VisionEngine> {
       // init() puede lanzar si WebGL no está disponible, el modelo .task
       // no se encuentra (404) o hay error de red al cargar el WASM.
       // No capturamos — la promesa se rechaza con el error original.
-      await engine.init();
+      //
+      // C-67 (fix payload): loadPose=false. El enrollment SOLO usa face mesh +
+      // face detection (BiometricCapture nunca llama detectPose). Omitir el
+      // PoseLandmarker ahorra 5.7 MB de descarga y memoria — clave en el teléfono,
+      // donde el payload completo (~28 MB) cuelga/crashea la pestaña.
+      await engine.init({ loadPose: false });
 
       // Éxito: guardar en cache
       _cachedEnrollmentEngine = engine;

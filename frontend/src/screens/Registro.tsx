@@ -124,7 +124,7 @@ export default function Registro() {
         </div>
         <div className="relative flex items-center gap-xs text-label-sm text-white/70">
           <Icon name="lock" className="text-[18px]" fill />
-          Self-hosted · DPIA aprobado
+          Self-hosted
         </div>
       </aside>
 

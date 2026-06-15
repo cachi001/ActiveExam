@@ -30,6 +30,20 @@ export function setSoundEnabled(value: boolean): void {
   enabled = value;
 }
 
+/**
+ * Desbloquea el audio. DEBE llamarse desde un gesto del usuario (un click/tap),
+ * porque en mobile/Safari el AudioContext nace 'suspended' y solo se puede
+ * resumir dentro del call-stack de una interacción. Sin esto, los sonidos del
+ * loop de captura (que corren en RAF, fuera de un gesto) no suenan.
+ * Llamar en el onClick del botón "Iniciar" de la captura/verificación.
+ */
+export function unlockAudio(): void {
+  const c = getCtx(); // crea el ctx y, si está suspended, intenta resumirlo
+  if (c && c.state === 'suspended') {
+    void c.resume().catch(() => {});
+  }
+}
+
 /** True si el SO/navegador pide reducir el movimiento (proxy razonable para "menos estímulos"). */
 function prefersReducedMotion(): boolean {
   if (typeof window === 'undefined' || !window.matchMedia) return false;
@@ -146,4 +160,21 @@ export function playError(): void {
     { freq: 440, duration: 0.10, delay: 0,    type: 'sine', gain: 0.9 }, // la4
     { freq: 330, duration: 0.13, delay: 0.09, type: 'sine', gain: 0.7 }, // mi4 (descendente)
   ]);
+}
+
+/**
+ * C-67: Tick breve y agudo de progreso del gesto (barra cargando).
+ * Se dispara por cruce de fracción, no por frame.
+ * Cooldown interno 400ms por nombre.
+ */
+export function playGestureProgress(): void {
+  playSequence('gesture_progress', [{ freq: 1046.5, duration: 0.06, type: 'sine', gain: 0.5 }]); // do6
+}
+
+/**
+ * C-67: Tono grave corto al perder el gesto con progreso acumulado.
+ * Distinto de playError() (fallo terminal) y playHint() (encuadre).
+ */
+export function playGestureLost(): void {
+  playSequence('gesture_lost', [{ freq: 220, duration: 0.09, type: 'sine', gain: 0.6 }]); // la2 — grave, corto
 }

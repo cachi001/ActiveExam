@@ -73,8 +73,10 @@ export async function computeFaceDescriptor(
   await ensureModelsLoaded();
 
   try {
+    // C-67: detector más tolerante — scoreThreshold 0.3 (default 0.5) e inputSize
+    // 416, para enganchar la cara en más frames (menos "no se detectó rostro").
     const result = await faceapi
-      .detectSingleFace(input, new faceapi.TinyFaceDetectorOptions())
+      .detectSingleFace(input, new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.3 }))
       .withFaceLandmarks()
       .withFaceDescriptor();
 

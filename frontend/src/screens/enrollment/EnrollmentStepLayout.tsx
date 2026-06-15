@@ -55,8 +55,10 @@ export function EnrollmentStepLayout({
   );
 }
 
-/** Stepper horizontal del wizard de enrollment. Verde al completar, índigo el actual. */
-function WizardStepper({ pasos }: { pasos: WizardPaso[] }) {
+/** Stepper horizontal del wizard de enrollment. Verde al completar, índigo el actual.
+ *  Exportado para reutilizarlo en el flujo del examen (StudentShell) y que se vea
+ *  igual que el wizard de completar perfil. */
+export function WizardStepper({ pasos }: { pasos: WizardPaso[] }) {
   return (
     <div className="flex">
       {pasos.map((p, i) => (

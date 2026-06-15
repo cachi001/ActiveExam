@@ -9,7 +9,7 @@ const AUDITORIA = [
   { ts: '2026-05-30 16:42:10', actor: 'Prof. Martín Acuña', accion: 'Resolución de revisión', detalle: 'Sesión S-93041 derivada a disciplina', tono: 'error' as const },
   { ts: '2026-05-30 16:21:55', actor: 'Sistema', accion: 'Re-inferencia server-side', detalle: 'Evidencia clip_tomas_01 re-hasheada y firmada (Ed25519)', tono: 'neutral' as const },
   { ts: '2026-05-30 15:58:31', actor: 'Sistema', accion: 'Captura de evidencia', detalle: 'Evento alta: múltiples rostros (SESS-00394)', tono: 'warning' as const },
-  { ts: '2026-05-30 14:02:00', actor: 'Emiliano Cáceres', accion: 'Consentimiento registrado', detalle: 'Versión 2026.1 · acción afirmativa', tono: 'success' as const },
+  { ts: '2026-05-30 14:02:00', actor: 'Emiliano Cáceres', accion: 'Consentimiento registrado', detalle: 'Versión v1 · acción afirmativa', tono: 'success' as const },
   { ts: '2026-05-30 13:55:12', actor: 'Lucía Mendoza', accion: 'Examen publicado', detalle: 'Anatomía I (Cátedra B) programado', tono: 'primary' as const },
 ];
 

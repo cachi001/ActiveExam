@@ -125,6 +125,18 @@ export class JwtAdapter implements AuthProvider {
     return token;
   }
 
+  /**
+   * Refresh awaitable (usado por realFetch ante un 401). El access token vive sólo
+   * 15 min; en flujos largos (captura biométrica) expira. `getToken()` no podía
+   * recuperar porque `_getStoredToken()` borra el token expirado y devolvía undefined
+   * ANTES de poder refrescar. Acá refrescamos con el refresh_token (que NO se borra)
+   * y devolvemos el token fresco para reintentar el request.
+   */
+  async refresh(): Promise<string | undefined> {
+    await this._refreshToken();
+    return sessionStorage.getItem(STORAGE_KEY) ?? undefined;
+  }
+
   getPrincipal(): Principal | null {
     return this._principal;
   }

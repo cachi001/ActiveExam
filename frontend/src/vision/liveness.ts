@@ -10,6 +10,32 @@
  * y mismo criterio de exito, para que la re-inferencia server-side sea coherente.
  *
  * C-54: agrega motor de retos secuenciales (baseline neutral + evaluacion relativa).
+ *
+ * ── Alcance PAD honesto (C-67, ISO/IEC 30107-3, DD-18) ────────────────────────
+ *
+ * Este módulo implementa defensa anti-presentación (PAD) de Nivel 1–2 en el
+ * navegador: protege contra fotos estáticas, videos de reproducción y máscaras
+ * de mediana sofisticación. Combina tres capas:
+ *   1. Reto-respuesta activo (gestos secuenciales barajados con Fisher-Yates,
+ *      giro con dirección aleatoria por intento — elevan el costo del video pregrabado).
+ *   2. Señales pasivas (parpadeo, micro-movimientos, profundidad 3D de 468 landmarks).
+ *   3. Detección de cámara virtual / inyección de pipeline.
+ *
+ * LÍMITE HONESTO — NO hay inmunidad a:
+ *   - Inyección de cámara (camera pipe injection): el atacante evita la cámara
+ *     física e inyecta video sintético directamente en el pipeline de la app.
+ *   - Deepfakes "puppet master" en tiempo real: pueden ejecutar los retos activos.
+ * Ambas amenazas son límites inherentes al paradigma cliente (el cliente es
+ * manipulable por definición). Ningún liveness que corra en el navegador puede
+ * garantizar inmunidad a la inyección (DD-18).
+ *
+ * La red de seguridad REAL combina (en orden de autoridad):
+ *   1. Re-inferencia server-side sobre el clip (RN-GLB-01, C-12, C-59).
+ *   2. Verificación biométrica continua durante el examen.
+ *   3. Revisión humana por el proctor (L2.5 — NUNCA sanción automática, RN-GLB-02).
+ *
+ * Las señales de este módulo se REPORTAN al backend como evidencia, no como
+ * veredicto final. El cliente es SENSOR NO CONFIABLE (regla dura #6).
  */
 
 import type { FrameResult, PassiveSignals } from "./VisionEngine";
@@ -69,6 +95,14 @@ export interface BaselineMetrics {
   blinkOpenness: number;
   smileWidth: number;
   gazeX: number;
+  /**
+   * C-67: Posición Y promedio de las comisuras de la boca en reposo.
+   * Landmarks 61 (izquierda) y 291 (derecha): avgCornerY = (lm[61].y + lm[291].y) / 2.
+   * Cuando el alumno sonríe, las comisuras suben (y disminuye en coordenadas de imagen).
+   * Usado por la métrica compuesta de sonrisa (elevación + ancho).
+   * Opcional: undefined si el baseline se computó antes de C-67 (backward compatible).
+   */
+  smileCornerY?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -120,6 +154,11 @@ export function pickActiveChallenges(
  *
  * ``blinkOpenness``/``motion``/``depthRange`` se calculan del motor; aqui se
  * aplican los umbrales del cliente. Una foto/video plano da varianza ~0 y z ~0.
+ *
+ * Alcance PAD (ISO 30107-3 Nivel 1–2): detecta fotos y videos de baja calidad.
+ * No detecta deepfakes de alta fidelidad ni inyección de cámara — esas amenazas
+ * requieren re-inferencia server-side (DD-18). El resultado se REPORTA al backend;
+ * NO es el veredicto final.
  */
 export function derivePassiveSignals(metrics: {
   blinkVariance: number;
@@ -133,7 +172,14 @@ export function derivePassiveSignals(metrics: {
   };
 }
 
-/** El pasivo pasa solo si las TRES senales son positivas (defensa estricta). */
+/**
+ * El pasivo pasa solo si las TRES senales son positivas (defensa estricta).
+ *
+ * Alcance honesto (ISO 30107-3, DD-18): este gate cubre Nivel 1–2 (fotos planas,
+ * videos estáticos). Deepfakes puppet-master o inyección de cámara pueden tener
+ * varianza suficiente para superarlo. La re-inferencia server-side es la
+ * verificación autoritativa. El sistema NUNCA sanciona automáticamente (L2.5).
+ */
 export function passivePassed(signals: PassiveSignals): boolean {
   return (
     signals.parpadeo_detectado &&
@@ -146,6 +192,16 @@ export function passivePassed(signals: PassiveSignals): boolean {
  * Gate de liveness del cliente: pasivo OK + todos los retos resueltos + sin camara
  * virtual. Espeja ``liveness_exitoso`` del backend. NO es el veredicto final: el
  * backend re-infiere (RN-GLB-01).
+ *
+ * Alcance PAD honesto (ISO 30107-3 Nivel 1–2, DD-18):
+ * - Protege contra fotos estáticas, videos de reproducción, máscaras de mediana
+ *   sofisticación (nivel comercial razonable para exámenes universitarios).
+ * - NO garantiza inmunidad a inyección de cámara ni a deepfakes puppet-master.
+ * - La verificación autoritativa es re-inferencia server-side + verificación
+ *   continua + revisión humana (L2.5, regla dura #5 y #6).
+ * El resultado se reporta al backend como evidencia (`liveness_ok`, `retos_resueltos`,
+ * `resultado: "camara_virtual_detectada"` | "verificado"). El cliente es sensor
+ * no confiable; el backend firma y re-infiere.
  */
 export function clientLivenessOk(args: {
   passive: PassiveSignals;
@@ -167,6 +223,13 @@ export function clientLivenessOk(args: {
  * - frameRate sospechosamente constante (sin jitter de camara fisica).
  *
  * Es UNA capa, no el veredicto unico (DD-18): se REPORTA al backend.
+ *
+ * Límite honesto (ISO 30107-3, DD-18): detecta inyecciones simples (bucles de video,
+ * feeds perfectamente estables). Un atacante sofisticado puede introducir jitter
+ * artificial para evadir esta heurística. La defensa robusta contra inyección de
+ * cámara es análisis server-side del contexto del OS/browser (Fase 2, DD-18).
+ * Este resultado se reporta como señal de contexto (`resultado: "camara_virtual_detectada"`),
+ * NO como sanción automática. La decisión disciplinaria es siempre humana (L2.5).
  */
 export function detectVirtualCamera(signals: {
   interFramePixelVariance: number;
@@ -183,4 +246,57 @@ export function detectVirtualCamera(signals: {
 export function aggregateFaceCount(frames: FrameResult[]): number {
   if (frames.length === 0) return 0;
   return Math.max(...frames.map((f) => f.face_count));
+}
+
+// ---------------------------------------------------------------------------
+// C-67 Grupo 5 — Propagación de señales PAD al backend (Task 5.4)
+// ---------------------------------------------------------------------------
+
+/**
+ * Payload de biometría de proctoring que se envía al backend tras la captura.
+ *
+ * Contiene las tres señales PAD reales (sin hardcodes):
+ *   - liveness_ok:          señal pasiva real (parpadeo + micro-movimientos + profundidad 3D).
+ *   - retos_resueltos:      retos activos completados realmente por el alumno.
+ *   - resultado:            señal de cámara virtual detectada vs. verificado.
+ *   - embedding (opcional): descriptor 128-d del rostro vivo para re-inferencia server-side.
+ *
+ * Este payload SE REPORTA al backend como evidencia (C-46, D6). El backend lo
+ * firma y re-infiere (RN-GLB-01). El cliente NO emite veredicto (L2.5, regla dura #5).
+ *
+ * Invariante (Task 5.4): NUNCA hardcodear liveness_ok=true ni retos_resueltos=['...'];
+ * los valores SIEMPRE vienen de los parámetros reales de onComplete del BiometricCapture.
+ */
+export interface BiometriaProctoringPayload {
+  liveness_ok: boolean;
+  retos_resueltos: string[];
+  embedding?: number[];
+  resultado: "verificado" | "camara_virtual_detectada";
+}
+
+/**
+ * Construye el payload de biometría de proctoring a partir de las señales PAD reales.
+ *
+ * Función PURA (sin efectos secundarios) para que sea testeable (Task 5.4).
+ * Esta función es la fuente de verdad del mapping de señales PAD al payload del backend.
+ * Biometria.tsx la usa en lugar de construir el payload inline (evita hardcodes accidentales).
+ *
+ * @param passiveOk            - Señal pasiva real de `passivePassed(derivePassiveSignals(...))`.
+ * @param retosResueltos       - Array real de retos completados desde BiometricCapture.onComplete.
+ * @param virtualCameraDetected - Señal real de `detectVirtualCamera(...)`.
+ * @param embedding            - Descriptor 128-d del rostro vivo (dato sensible, Ley 25.326).
+ *                               Nunca se loguea ni se muestra en UI.
+ */
+export function buildBiometriaProctoringPayload(
+  passiveOk: boolean,
+  retosResueltos: string[],
+  virtualCameraDetected: boolean,
+  embedding?: number[],
+): BiometriaProctoringPayload {
+  return {
+    liveness_ok: passiveOk,
+    retos_resueltos: retosResueltos,
+    ...(embedding !== undefined ? { embedding } : {}),
+    resultado: virtualCameraDetected ? "camara_virtual_detectada" : "verificado",
+  };
 }

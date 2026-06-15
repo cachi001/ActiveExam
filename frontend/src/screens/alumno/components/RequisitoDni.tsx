@@ -15,20 +15,11 @@ interface RequisitoDniProps {
   onEscanear: () => void;
 }
 
-const TITULO = (
-  <>
-    Verificación documental
-    <span className="ml-sm text-label-sm font-normal text-on-surface-variant bg-surface-container px-sm py-base rounded-full">
-      Opcional
-    </span>
-  </>
-);
-
 export function RequisitoDni({ dni, dniOk, dniScanHabilitado, onEscanear }: RequisitoDniProps) {
   return (
     <RequisitoCard
       icon="badge"
-      title={TITULO}
+      title="Verificación documental"
       badge={{
         tone: dniOk ? 'success' : 'neutral',
         label: dniOk ? 'Registrado' : dniScanHabilitado ? 'Pendiente' : 'No disponible',
@@ -62,7 +53,7 @@ export function RequisitoDni({ dni, dniOk, dniScanHabilitado, onEscanear }: Requ
             El escaneo del DNI es opcional y no bloquea tu habilitación para rendir.
             Refuerza la verificación de identidad documental.
           </p>
-          <Button variant="outline" size="sm" onClick={onEscanear} className="text-label-sm">
+          <Button variant="outline" size="sm" icon="badge" onClick={onEscanear} className="w-full sm:w-auto">
             Escanear DNI (opcional)
           </Button>
         </div>

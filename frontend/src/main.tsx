@@ -6,6 +6,12 @@ import { authProvider, AUTH_PROVIDER_TYPE } from './lib/authProvider'
 import { useAuth } from './lib/authStore'
 import { useApp } from './lib/store'
 import { AUTH_BYPASS } from './lib/devConfig'
+import { registerModelCacheWorker } from './lib/modelPersistence'
+
+// C-67 fix: cachear de forma persistente los modelos de IA (MediaPipe + face-api)
+// vía Service Worker, para que se bajen una sola vez y no se re-descarguen en cada
+// captura biométrica (eliminaba el cuelgue/crash en el teléfono).
+registerModelCacheWorker()
 
 // Espeja el principal de auth (useAuth, fuente de verdad) hacia useApp, que es lo
 // que leen las pantallas legacy (Hola {nombre}, sidebar, etc.). Suscripto ANTES del

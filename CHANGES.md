@@ -90,6 +90,18 @@
 
 ---
 
+## 🟢 Prioridad — Frontend / UX biométrico (no bloqueante)
+
+> Changes 100% client-side sobre el flujo biométrico ya implementado. **No dependen de c-03** (no tocan cola/transporte/tiempo real) ni del camino crítico del MVP; pueden correr en paralelo. Construyen sobre el linaje biométrico archivado (c-22 / c-36 / c-54 / c-59 / c-65).
+
+| Change | Progreso | Qué es / scope | Dep | Gov |
+|--------|----------|----------------|-----|-----|
+| **c-67** `captura-biometrica-gestos-liveness` | 62/63 | **Implementado y testeado** (suite 336/336 verde + verificación en navegador real con Playwright). Grupos 0–7 (scope original 27 tasks) + grupo 8 (28 fixes de UX/copy/robustez surgidos al probar en teléfono real, tasks 8.1–8.28): sonrisa precisa/rápida, anillo en la banda blanca con relleno verde progresivo y reanudación sin reinicio, cues de audio (+unlockAudio mobile), resultado del examen en lenguaje claro con gate, PAD anti-foto, persistencia de modelos (Service Worker) + −PoseLandmarker, animación de éxito (motion), stepper estilo wizard de perfil, cámara sin espejo en todo el flujo, severidad baja=azul, y limpieza total de jerga (acuse/hash/web worker/clips/embedding/liveness/Ley 25.326/DPIA). **No toca cadena de custodia ni embedding; autoridad = re-inferencia server-side.** **Falta solo:** 7.2 = revisión manual final de aceptación del dueño en dispositivo (no automatizable). | c-54 ✓, c-59 ✓, c-65 ✓ (archivados) | **Listo para archivar tras la pasada manual final** (aprobado e implementado; dominio CRÍTICO) |
+
+**Leer antes**: `11_ia_y_vision.md`, `12_biometria_y_liveness.md`, `05_reglas_de_negocio.md` §RN-BIO.
+
+---
+
 ## Árbol de dependencias (pendientes)
 
 ```

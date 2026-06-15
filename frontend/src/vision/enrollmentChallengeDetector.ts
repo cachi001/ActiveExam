@@ -89,10 +89,29 @@ export const FRAMES_MIN_SMILE = 2;
 export const BLINK_RELATIVE_FACTOR = 0.45;
 
 /**
- * Factor relativo para sonrisa: la boca debe abrirse al menos un 25 % mas
- * que en reposo (baseline.smileWidth).
+ * C-67: factor relativo para sonrisa (ancho de boca). Bajado de 1.25 (25% más
+ * ancho — exigía una mueca grande, "no se llenaba al sonreír") a 1.12 (12% más
+ * ancho = sonrisa normal). El hold de 500 ms + los frames mínimos evitan falsos
+ * positivos por ruido.
  */
-export const SMILE_RELATIVE_FACTOR = 1.25;
+export const SMILE_RELATIVE_FACTOR = 1.12;
+
+/** C-67: ancho parcial para la ruta compuesta (ancho leve + comisuras arriba). */
+export const SMILE_WIDTH_PARTIAL_FACTOR = 1.08;
+
+/**
+ * C-67: umbral del coeficiente mouthSmile (blendshape de MediaPipe, 0..1) para
+ * declarar sonrisa. Señal ABSOLUTA y entrenada — reemplaza la métrica geométrica
+ * (ancho relativo al baseline), que era frágil: si el alumno tenía la boca un toque
+ * ancha en reposo, el umbral relativo se volvía casi inalcanzable ("no me toma la
+ * sonrisa"). 0.4 = sonrisa clara pero no exagerada. Tunable.
+ */
+export const SMILE_BLENDSHAPE_THRESHOLD = 0.5;
+
+/** C-67: ¿el coeficiente mouthSmile (0..1) alcanza para declarar sonrisa? */
+export function isSmileByBlendshape(smile: number): boolean {
+  return smile >= SMILE_BLENDSHAPE_THRESHOLD;
+}
 
 /**
  * Umbral absoluto ajustado para detectar giro de cabeza (C-54).
@@ -100,6 +119,14 @@ export const SMILE_RELATIVE_FACTOR = 1.25;
  * El giro ya es relativo a la posicion del iris (no usa baseline).
  */
 export const GAZE_TURN_THRESHOLD_ADJUSTED = 0.22;
+
+/**
+ * C-67: umbral de giro de CABEZA por yaw geométrico (nariz vs comisuras externas
+ * de los ojos), en [0..1]. Reemplaza al de gaze (ojos), que daba falsos positivos:
+ * al girar un poco, un ojo se escorza y gaze.x salta → "apenas giro lo toma".
+ * 0.30 = giro de cabeza claro (por encima del límite de frontalidad YAW_MAX).
+ */
+export const TURN_YAW_THRESHOLD = 0.30;
 
 /** Frames minimos consecutivos para confirmar parpadeo (C-54). */
 export const FRAMES_MIN_BLINK_SEQ = 3;
@@ -140,9 +167,13 @@ const BASELINE_SMILE_MAX = 0.14;
 export function evaluateChallengeRelative(
   challenge: SequentialChallenge,
   landmarks: FaceLandmark[],
-  gaze: { x: number; y: number },
+  /** @deprecated C-67: el giro ahora usa head yaw (landmarks), no gaze. Se mantiene
+   * en la firma por retrocompat de los callers; ya no se lee acá. */
+  _gaze: { x: number; y: number },
   baseline: BaselineMetrics | null,
   turnDirection?: TurnDirection,
+  /** C-67: coeficiente mouthSmile (blendshape, 0..1). Si está, manda para sonreír. */
+  smile?: number,
 ): boolean {
   switch (challenge) {
     // parpadear — openness < baseline.blinkOpenness * BLINK_RELATIVE_FACTOR
@@ -161,21 +192,57 @@ export function evaluateChallengeRelative(
     // Cuando el alumno gira hacia SU izquierda (lo que ve en el espejo), gaze.x > 0 en raw.
     case "girar_cabeza": {
       if (!turnDirection) return false;
+      // C-67: medir la CABEZA (yaw geométrico: nariz vs comisuras externas de los
+      // ojos), NO los ojos (gaze). El gaze daba falsos positivos: al girar un poco
+      // un ojo se escorza y gaze.x salta, así que "apenas giro lo tomaba".
+      if (landmarks.length < 264) return false;
+      const nose = landmarks[1];
+      const eyeA = landmarks[33];
+      const eyeB = landmarks[263];
+      if (!nose || !eyeA || !eyeB) return false;
+      const dA = Math.abs(nose.x - eyeA.x);
+      const dB = Math.abs(eyeB.x - nose.x);
+      const sum = dA + dB;
+      const yaw = sum === 0 ? 0 : (dA - dB) / sum;
       if (turnDirection === "izquierda") {
-        return gaze.x > GAZE_TURN_THRESHOLD_ADJUSTED;
+        return yaw > TURN_YAW_THRESHOLD;
       } else {
-        return gaze.x < -GAZE_TURN_THRESHOLD_ADJUSTED;
+        return yaw < -TURN_YAW_THRESHOLD;
       }
     }
 
-    // sonreír — smileWidth > baseline.smileWidth * SMILE_RELATIVE_FACTOR
+    // sonreír — C-67: métrica compuesta (ancho + elevación de comisuras)
+    // Confirma si: widthOk OR (widthPartial AND elevationOk)
+    // - widthOk: width > baseline.smileWidth * SMILE_RELATIVE_FACTOR
+    // - widthPartial: width > baseline.smileWidth * SMILE_RELATIVE_FACTOR * 0.85
+    // - elevationOk: comisuras subieron (avgCornerY < baseline.smileCornerY - threshold)
+    //   Solo si baseline.smileCornerY está disponible (backward compatible).
     case "sonreír": {
+      // C-67: si el motor provee el coeficiente mouthSmile (blendshape), es la
+      // señal AUTORITATIVA — absoluta y entrenada, sin la fragilidad del baseline
+      // geométrico. Solo si no está disponible se cae al método de ancho de boca.
+      if (smile !== undefined) return isSmileByBlendshape(smile);
       if (!baseline) return false;
       if (landmarks.length < 292) return false;
       const left  = landmarks[61];
       const right = landmarks[291];
       const width = Math.abs(right.x - left.x);
-      return width > baseline.smileWidth * SMILE_RELATIVE_FACTOR;
+      const avgCornerY = (left.y + right.y) / 2;
+      const widthRatio = baseline.smileWidth > 0 ? width / baseline.smileWidth : 0;
+
+      // Ancho claro de sonrisa (12% más que en reposo).
+      const widthOk = widthRatio > SMILE_RELATIVE_FACTOR;
+
+      // Elevación de comisuras (y menor = subieron). Solo si baseline trae smileCornerY.
+      const cornerY = (baseline as BaselineMetrics & { smileCornerY?: number }).smileCornerY;
+      const elevationOk = cornerY !== undefined
+        ? avgCornerY < cornerY - SMILE_CORNER_RISE_THRESHOLD
+        : false;
+
+      // Ruta compuesta: ensanche leve (8%) + comisuras hacia arriba — capta sonrisas
+      // genuinas que no ensanchan tanto la boca pero sí levantan las comisuras.
+      const widthPartial = widthRatio > SMILE_WIDTH_PARTIAL_FACTOR;
+      return widthOk || (widthPartial && elevationOk);
     }
 
     default:
@@ -205,6 +272,8 @@ export interface BaselineFrame {
   blinkOpenness: number;
   smileWidth: number;
   gazeX: number;
+  /** C-67: posición Y promedio de comisuras de la boca en este frame. */
+  smileCornerY?: number;
 }
 
 /**
@@ -239,7 +308,14 @@ export function computeBaselineFromAccumulator(accumulator: BaselineFrame[]): Ba
   // Validar que el alumno no estaba sonriendo al baseline
   if (!isBaselineSmileValid(smileWidth)) return null;
 
-  return { blinkOpenness, smileWidth, gazeX };
+  // C-67: calcular smileCornerY promedio si los frames lo incluyen
+  const framesConCornerY = accumulator.filter((f) => f.smileCornerY !== undefined);
+  let smileCornerY: number | undefined;
+  if (framesConCornerY.length >= 6) {
+    smileCornerY = framesConCornerY.reduce((s, f) => s + (f.smileCornerY ?? 0), 0) / framesConCornerY.length;
+  }
+
+  return { blinkOpenness, smileWidth, gazeX, smileCornerY };
 }
 
 // ---------------------------------------------------------------------------
@@ -265,6 +341,58 @@ export function fisherYatesShuffle<T>(arr: T[]): T[] {
 }
 
 // ---------------------------------------------------------------------------
+// C-67: Constantes adicionales para sonrisa compuesta (Group 4)
+// ---------------------------------------------------------------------------
+
+/**
+ * Peso del componente de ancho de boca en la métrica compuesta de sonrisa.
+ */
+export const SMILE_RAISE_WEIGHT = 0.5;
+
+/**
+ * Peso del componente de elevación de comisuras en la métrica compuesta de sonrisa.
+ */
+export const SMILE_WIDTH_WEIGHT = 0.5;
+
+/**
+ * Factor compuesto para la métrica de sonrisa combinada.
+ */
+export const SMILE_COMPOSITE_FACTOR = 1.3;
+
+/**
+ * C-67: Umbral mínimo de elevación de comisuras (decremento en y) para
+ * que el componente de elevación cuente como señal de sonrisa.
+ * Un valor de 0.006 filtra el ruido de iris/landmark sin perder sonrisas reales.
+ */
+export const SMILE_CORNER_RISE_THRESHOLD = 0.006;
+
+/**
+ * C-67: Computa el score compuesto de sonrisa usando ancho de boca Y elevación
+ * de comisuras.
+ *
+ * Landmarks:
+ * - 61: comisura boca izquierda
+ * - 291: comisura boca derecha
+ *
+ * Devuelve null si landmarks.length < 292.
+ */
+export function computeSmileScore(
+  landmarks: FaceLandmark[],
+): { width: number; elevation: number; composite: number } | null {
+  if (landmarks.length < 292) return null;
+  const left = landmarks[61];
+  const right = landmarks[291];
+  const width = Math.abs(right.x - left.x);
+  // Average y de las comisuras (elevación: y menor = más arriba en pantalla)
+  const avgCornerY = (left.y + right.y) / 2;
+  return {
+    width,
+    elevation: avgCornerY,
+    composite: width * SMILE_WIDTH_WEIGHT + avgCornerY * SMILE_RAISE_WEIGHT,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // C-65: Confirmación de gesto por tiempo sostenido (biometric-gesture-hold-timing)
 // ---------------------------------------------------------------------------
 
@@ -274,6 +402,26 @@ export function fisherYatesShuffle<T>(arr: T[]): T[] {
  * Default ~500 ms — independiente del framerate (D2).
  */
 export const GESTURE_HOLD_MS = 500;
+
+/**
+ * C-67 Task 4.5 — Hold propio del reto "sonreír" (ms).
+ *
+ * Reconciliación con la decisión del dueño (Open Questions resueltas 2026-06-13):
+ *   "TODO deliberado, NO rápido" → SMILE_GESTURE_HOLD_MS = GESTURE_HOLD_MS (500 ms).
+ *   "Menor latencia" del spec = constante PROPIA y separada, ajustable sin tocar
+ *   el hold genérico. No se reduce el valor para no generar falsos positivos de
+ *   liveness (hold demasiado corto = riesgo de spoofing, ya documentado en C-65/task 8.3).
+ *
+ * ⚠️ DUDA ABIERTA PARA EL DUEÑO:
+ *   El spec biometric-smile-precision pide "confirma con MENOR latencia que los
+ *   demás gestos". La decisión de diseño pide "deliberado, ≥500ms". Esta
+ *   implementación los reconcilia con un hold propio = 500 ms (conservador).
+ *   Si el dueño quiere acortar el hold de sonrisa, debe confirmar el valor mínimo
+ *   seguro (recomendación técnica: no bajar de 400 ms; el anti-spoofing necesita
+ *   al menos varios frames reales de gesto sostenido).
+ *   Para ajustar: cambiar SOLO esta constante (no tocar GESTURE_HOLD_MS).
+ */
+export const SMILE_GESTURE_HOLD_MS = GESTURE_HOLD_MS;
 
 /**
  * Input del helper puro de hold temporal.
@@ -322,6 +470,92 @@ export function gestureHold({ now, holdStart, cumple }: GestureHoldInput): Gestu
   }
 
   return { holdStart, confirmado: false };
+}
+
+// ---------------------------------------------------------------------------
+// C-67: gestureAccumulator — progreso acumulado con reanudación (Group 2)
+// ---------------------------------------------------------------------------
+
+/**
+ * Input del acumulador de progreso de gesto (C-67, design D1).
+ */
+/**
+ * C-67: ventana de GRACIA (ms) para perder el gesto sin perder el progreso. Un
+ * titileo del detector (≤ gracia) PRESERVA el acumulado → el anillo sube smooth.
+ * Soltar el gesto de verdad (> gracia) RESETEA a 0 → hay que sostener, y el
+ * parpadeo rápido no acumula (cada apertura de ojos supera la gracia y resetea).
+ */
+export const GESTURE_GRACE_MS = 120;
+
+export interface GestureAccumInput {
+  /** Milisegundos acumulados del reto actual hasta ahora. */
+  prevAccumMs: number;
+  /** ¿El frame actual cumple el reto? */
+  cumple: boolean;
+  /** Delta tiempo desde el último frame (ms). */
+  dt: number;
+  /** Duración objetivo del hold (ms). */
+  gestureHoldMs: number;
+  /** C-67: ms de pérdida consecutiva acumulados (para la gracia). Default 0. */
+  prevLostMs?: number;
+  /** C-67: ventana de gracia. Default GESTURE_GRACE_MS. */
+  graceMs?: number;
+}
+
+/**
+ * Output del acumulador de progreso de gesto (C-67, design D1).
+ */
+export interface GestureAccumOutput {
+  /** Nuevo acumulado en ms. Se preserva durante la gracia; se resetea si se supera. */
+  accumMs: number;
+  /** Fracción 0..1 del progreso (accumMs / gestureHoldMs). */
+  fracReto: number;
+  /** true cuando accumMs >= gestureHoldMs. */
+  confirmado: boolean;
+  /** true si el gesto está siendo sostenido ahora mismo. */
+  isHolding: boolean;
+  /** C-67: pérdida consecutiva acumulada (0 mientras se cumple). */
+  lostMs: number;
+}
+
+/**
+ * Helper PURO de acumulación de tiempo de gesto con GRACIA (C-67).
+ *
+ * - cumple=true: suma dt al acumulado (hasta confirmar); resetea la pérdida.
+ * - cumple=false: acumula la pérdida. Mientras la pérdida ≤ graceMs, PRESERVA el
+ *   acumulado (tolera el titileo del detector → el anillo sube smooth). Si la
+ *   pérdida supera graceMs, RESETEA el acumulado a 0 (hay que volver a sostener).
+ *
+ * Esto da un llenado gradual estable y a la vez exige sostener el gesto: el
+ * parpadeo rápido no acumula porque cada apertura de ojos supera la gracia.
+ *
+ * SIN efectos secundarios. El componente integra (guarda accumMs y lostMs).
+ */
+export function gestureAccumulator(input: GestureAccumInput): GestureAccumOutput {
+  const { prevAccumMs, cumple, dt, gestureHoldMs } = input;
+  const graceMs = input.graceMs ?? GESTURE_GRACE_MS;
+  const prevLostMs = input.prevLostMs ?? 0;
+  if (!cumple) {
+    const lostMs = prevLostMs + dt;
+    const accumMs = lostMs > graceMs ? 0 : prevAccumMs;
+    return {
+      accumMs,
+      fracReto: Math.min(1, accumMs / gestureHoldMs),
+      confirmado: false,
+      isHolding: false,
+      lostMs,
+    };
+  }
+  // Cap at 1.5x gestureHoldMs to avoid overflow (no observable difference, just safety)
+  const newAccum = Math.min(prevAccumMs + dt, gestureHoldMs * 1.5);
+  const confirmado = newAccum >= gestureHoldMs;
+  return {
+    accumMs: newAccum,
+    fracReto: Math.min(1, newAccum / gestureHoldMs),
+    confirmado,
+    isHolding: true,
+    lostMs: 0,
+  };
 }
 
 // ---------------------------------------------------------------------------

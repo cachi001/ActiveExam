@@ -34,8 +34,21 @@ vi.mock("@mediapipe/tasks-vision", () => {
   };
 });
 
+import {
+  FaceDetector,
+  FaceLandmarker,
+  PoseLandmarker,
+} from "@mediapipe/tasks-vision";
 import { RealMediaPipeVisionEngine } from "./RealMediaPipeVisionEngine";
 import type { VisionEngine } from "./VisionEngine";
+
+// El entorno de estos tests es node (sin DOM), por lo que el chequeo interno de
+// WebGL devolvería false y init() lanzaría antes de cargar modelos. Espiamos el
+// método privado isWebGLAvailable de la instancia para que init() avance.
+function stubWebGL(engine: RealMediaPipeVisionEngine) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  vi.spyOn(engine as any, "isWebGLAvailable").mockReturnValue(true);
+}
 
 // Verificar que RealMediaPipeVisionEngine satisface el contrato VisionEngine
 describe("RealMediaPipeVisionEngine — contrato VisionEngine", () => {
@@ -55,6 +68,51 @@ describe("RealMediaPipeVisionEngine — contrato VisionEngine", () => {
   it("es una instancia asignable a VisionEngine", () => {
     const engine: VisionEngine = new RealMediaPipeVisionEngine();
     expect(engine).toBeInstanceOf(RealMediaPipeVisionEngine);
+  });
+});
+
+describe("RealMediaPipeVisionEngine — init({ loadPose }) (C-67 fix: payload del enrollment)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // restaurar mocks de createFromOptions a resolver un runner básico
+    const runner = { detectForVideo: vi.fn(), close: vi.fn() };
+    vi.mocked(FaceDetector.createFromOptions).mockResolvedValue(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      runner as any,
+    );
+    vi.mocked(FaceLandmarker.createFromOptions).mockResolvedValue(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      runner as any,
+    );
+    vi.mocked(PoseLandmarker.createFromOptions).mockResolvedValue(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      runner as any,
+    );
+  });
+
+  it("init() por defecto carga los TRES modelos (incluye Pose) — sin regresión para harness/proctoring", async () => {
+    const engine = new RealMediaPipeVisionEngine();
+    stubWebGL(engine);
+    await engine.init();
+    expect(FaceDetector.createFromOptions).toHaveBeenCalled();
+    expect(FaceLandmarker.createFromOptions).toHaveBeenCalled();
+    expect(PoseLandmarker.createFromOptions).toHaveBeenCalled();
+  });
+
+  it("init({ loadPose: false }) NO carga PoseLandmarker (ahorra 5.7 MB en el enrollment)", async () => {
+    const engine = new RealMediaPipeVisionEngine();
+    stubWebGL(engine);
+    await engine.init({ loadPose: false });
+    expect(FaceDetector.createFromOptions).toHaveBeenCalled();
+    expect(FaceLandmarker.createFromOptions).toHaveBeenCalled();
+    expect(PoseLandmarker.createFromOptions).not.toHaveBeenCalled();
+  });
+
+  it("tras init({ loadPose: false }), detectPose rechaza con un error claro de pose no disponible", async () => {
+    const engine = new RealMediaPipeVisionEngine();
+    stubWebGL(engine);
+    await engine.init({ loadPose: false });
+    await expect(engine.detectPose({} as ImageBitmap)).rejects.toThrow(/pose/i);
   });
 });
 

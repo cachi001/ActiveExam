@@ -44,7 +44,7 @@ export default function Cierre() {
   const volver = () => { resetSesion(); navigate('/login'); };
 
   return (
-    <StudentShell step={6}>
+    <StudentShell>
       <div className="max-w-xl mx-auto space-y-lg text-center animate-in zoom-in duration-500">
         <div className="w-20 h-20 rounded-full bg-success-container text-success flex items-center justify-center mx-auto">
           <Icon name="task_alt" className="text-[40px]" fill />
