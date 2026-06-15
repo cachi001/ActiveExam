@@ -1,11 +1,13 @@
-// Seed minimo de 2 usuarios con credencial local.
+// Seed minimo de 3 usuarios con credencial local (canonico, alineado con el seed
+// del backend: ADMIN-001 / EST-001 / PROC-001).
 //
 // Uso (desde la raiz del repo):
-//   ALLOW_MUTATION=1 railway run --service ActiveExam -- node tools/db/seed_users.js
+//   ALLOW_MUTATION=1 railway run --service Postgres -- node tools/db/seed_users.js
 //
 // Crea o actualiza el password (idempotente — re-correr es seguro):
 //   admin@activeexam.local       rol admin_sistema   password Admin123
 //   estudiante@activeexam.local  rol estudiante      password Estudiante123
+//   proctor@activeexam.local     rol proctor         password Proctor123
 //
 // El hash se calcula con bcryptjs a 12 rounds — equivalente al bcrypt 12r de
 // passlib que usa el backend en POST /api/v1/users. auth_provider='local'.
@@ -28,6 +30,14 @@ const SEEDS = [
     password: 'Estudiante123',
     roles: ['estudiante'],
     nombre: 'Estudiante',
+    apellido: 'Prueba',
+  },
+  {
+    id_institucional: 'PROC-001',
+    email: 'proctor@activeexam.local',
+    password: 'Proctor123',
+    roles: ['proctor'],
+    nombre: 'Proctor',
     apellido: 'Prueba',
   },
 ];
