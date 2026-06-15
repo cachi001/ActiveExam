@@ -125,14 +125,17 @@ async def test_editar_no_admin_403(app_y_factory) -> None:
     assert resp.status_code == 403
 
 
-async def test_editar_admin_sin_mfa_403(app_y_factory) -> None:
+async def test_editar_admin_sin_mfa_ok(app_y_factory) -> None:
+    # C-68 (decisión del dueño): edición restringida a admin_sistema por ROL, sin
+    # exigir MFA (el JWT propio del slim no emite MFA → exigirlo haría la config
+    # ineditable en slim/Railway). Admin sin MFA DEBE poder editar.
     client, _ = app_y_factory
     resp = await client.patch(
         "/api/v1/config",
         json={"umbral_cola_revision": 80},
         headers=_h(_token(["admin_sistema"], mfa=False)),
     )
-    assert resp.status_code == 403
+    assert resp.status_code == 200
 
 
 # --- Validacion -------------------------------------------------------------

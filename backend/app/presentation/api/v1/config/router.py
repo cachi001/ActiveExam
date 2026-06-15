@@ -170,7 +170,7 @@ async def config_efectiva(
 
 
 # ---------------------------------------------------------------------------
-# PATCH / — editar la config global (admin_sistema + MFA)
+# PATCH / — editar la config global (SOLO admin_sistema)
 # ---------------------------------------------------------------------------
 
 
@@ -179,9 +179,14 @@ async def editar_config(
     body: EditarConfigRequest,
     request: Request,
     principal: AuthenticatedPrincipal = Depends(_require_admin),
-    _mfa: AuthenticatedPrincipal = Depends(require_mfa),
 ) -> ConfigEfectivaResponse:
-    """Edita los defaults globales. SOLO ``admin_sistema`` con MFA (403 si no).
+    """Edita los defaults globales. SOLO ``admin_sistema`` (403 si no).
+
+    C-68 (decisión del dueño): edición restringida a ``admin_sistema`` por ROL,
+    sin exigir MFA. El backend slim usa JWT propio que NO emite MFA (deuda técnica
+    documentada en own_issuer.py: 'MFA propio = change futuro'); exigir MFA acá
+    haría la config INEDITABLE en slim/Railway. Cuando exista MFA propio se puede
+    re-agregar require_mfa.
 
     400 si el body no trae ningun campo. Bump monotonico de version + fila
     inmutable ``config_update`` en audit_log (snapshot before/after)."""
