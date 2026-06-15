@@ -1,29 +1,45 @@
 /**
  * SeccionConsentimiento — edición del texto que los alumnos confirman.
  *
- * Carga los bloques del consentimiento (api.getConsentText) y permite editar
- * título y cuerpo de cada uno. En demo el guardado es local (toast); con backend
- * real iría a un PUT /consent/text que versione el texto.
+ * Dos responsabilidades:
+ *  1. Editar los bloques de texto del consentimiento (api.getConsentText — texto estático/demo).
+ *  2. Actualizar la `consent_version_vigente` en la config del sistema vía PATCH /api/v1/config
+ *     para que nuevos consentimientos usen la versión nueva (D5 — append-only, re-pedir al alumno).
+ *
+ * La versión del texto vigente se carga de la config efectiva (GET /api/v1/config/effective).
+ * Invalidar el cache de config efectiva tras guardar.
  */
 import { useState, useEffect } from 'react';
 import { Card, Button, Icon } from '../../ui/components';
 import { useToast } from '../../ui/toast';
 import { api } from '../../lib/api';
+import { resetEffectiveConfigCache } from '../../config/effectiveConfigCache';
 import type { BloqueConsentimiento } from '../../lib/types';
 
 export default function SeccionConsentimiento() {
   const toast = useToast();
   const [bloques, setBloques] = useState<BloqueConsentimiento[]>([]);
   const [version, setVersion] = useState('');
+  const [nuevaVersion, setNuevaVersion] = useState('');
   const [cargando, setCargando] = useState(true);
   const [guardando, setGuardando] = useState(false);
 
   useEffect(() => {
-    api.getConsentText()
-      .then((t) => { setBloques(t.bloques); setVersion(t.version); })
+    // Carga los bloques de texto del consentimiento (estáticos / demo)
+    // y la versión vigente desde la config efectiva.
+    Promise.all([
+      api.getConsentText(),
+      api.obtenerConfigEfectiva(),
+    ])
+      .then(([t, cfg]) => {
+        setBloques(t.bloques);
+        setVersion(cfg.consent_version_vigente);
+        setNuevaVersion(cfg.consent_version_vigente);
+      })
       .catch((e) => toast.error(`No se pudo cargar el consentimiento: ${e instanceof Error ? e.message : String(e)}`))
       .finally(() => setCargando(false));
-  }, [toast]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function setBloque(i: number, field: keyof BloqueConsentimiento, value: string) {
     setBloques((prev) => prev.map((b, idx) => (idx === i ? { ...b, [field]: value } : b)));
@@ -31,9 +47,22 @@ export default function SeccionConsentimiento() {
 
   async function guardar() {
     setGuardando(true);
-    await new Promise((r) => setTimeout(r, 400));
-    setGuardando(false);
-    toast.success('Texto de consentimiento guardado');
+    try {
+      // Actualiza la versión vigente en la config del sistema si cambió.
+      if (nuevaVersion && nuevaVersion !== version) {
+        await api.editarConfigSistema({ consent_version_vigente: nuevaVersion });
+        resetEffectiveConfigCache();
+        setVersion(nuevaVersion);
+        toast.success(`Versión de consentimiento actualizada a "${nuevaVersion}". Los alumnos deberán re-consentir.`);
+      } else {
+        // Solo actualizó el texto (sin bump de version) — guardado local/demo.
+        toast.success('Texto de consentimiento guardado');
+      }
+    } catch (e) {
+      toast.error(`Error al guardar: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setGuardando(false);
+    }
   }
 
   if (cargando) {
@@ -50,8 +79,33 @@ export default function SeccionConsentimiento() {
     <div className="space-y-lg max-w-3xl">
       <div className="flex items-center gap-base text-[13px] text-on-surface-variant">
         <Icon name="article" className="text-[18px] text-primary" />
-        <span>Versión <span className="font-mono font-semibold text-on-surface">{version}</span> — editá el texto que los alumnos leen y confirman antes de rendir.</span>
+        <span>Versión vigente: <span className="font-mono font-semibold text-on-surface">{version}</span> — editá el texto que los alumnos leen y confirman antes de rendir.</span>
       </div>
+
+      {/* Nueva versión (bump para re-pedir consentimiento) */}
+      <Card className="flex items-end gap-md">
+        <div className="flex-1 space-y-base">
+          <label className="text-label-sm font-semibold text-on-surface block">
+            Nueva versión del texto
+          </label>
+          <p className="text-[11px] text-on-surface-variant">
+            Si cambiás la versión, todos los alumnos deberán re-consentir antes de rendir.
+          </p>
+          <input
+            type="text"
+            value={nuevaVersion}
+            onChange={(e) => setNuevaVersion(e.target.value)}
+            placeholder="ej. v2, v1.1, 2026-06"
+            className="w-full px-sm py-base rounded-xl border border-outline-variant bg-white font-mono text-label-md focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors"
+          />
+        </div>
+        {nuevaVersion !== version && (
+          <div className="flex items-center gap-base text-warning text-[12px] shrink-0 pb-sm">
+            <Icon name="warning" className="text-[16px]" />
+            Se pedirá re-consentimiento
+          </div>
+        )}
+      </Card>
 
       {bloques.map((b, i) => (
         <Card key={i} className="space-y-sm">

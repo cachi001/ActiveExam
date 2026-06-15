@@ -77,6 +77,29 @@ export let EXAMENES: ExamenConComision[] = [
   },
 ];
 
+/**
+ * Actualiza el examen demo con los valores de la config efectiva.
+ * Llamar cuando se cargue o invalide la config efectiva para que el examen
+ * de prueba (EXAMEN_RENDIBLE_ID) refleje los defaults globales actualizados.
+ * Solo aplica en modo demo (USE_REAL_BACKEND=0), donde EXAMENES es la fuente de datos.
+ */
+export function patchDemoExamenFromConfig(cfg: {
+  umbral_cola_revision: number;
+  detectores_activos: string[];
+  retencion_dias_default: number;
+}): void {
+  EXAMENES = EXAMENES.map((e) =>
+    e.id === EXAMEN_RENDIBLE_ID
+      ? {
+          ...e,
+          umbral_score: cfg.umbral_cola_revision,
+          detectores: cfg.detectores_activos as TipoEvento[],
+          retencion_dias: cfg.retencion_dias_default,
+        }
+      : e,
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Portal del alumno — datos demo (C-21)
 // ---------------------------------------------------------------------------
@@ -922,26 +945,6 @@ export const api = {
   },
 
   /**
-   * Registra el acuse de consentimiento en el perfil (C-22).
-   * Acción afirmativa explícita; nunca pre-marcado (RN-CO-02).
-   * El acuse referencia la versión exacta del texto mostrado (RN-CO-01).
-   *
-   * Demo: hash simulado. Server-side: SHA-256 firmado por clave maestra (C-12).
-   */
-  async registrarConsentimientoPerfil(versionTexto: string, viaAlternativa = false): Promise<AcuseConsentimiento> {
-    await delay(400);
-    const acuse: AcuseConsentimiento = {
-      version: versionTexto,
-      timestamp: new Date().toISOString(),
-      // Demo: hash simulado. Server-side: SHA-256 del contenido firmado server-side.
-      hash: 'sha256:' + Math.random().toString(16).slice(2, 18),
-      via_alternativa: viaAlternativa,
-    };
-    commitEnrollment({ ...enrollmentAlumno, consentimiento: acuse });
-    return acuse;
-  },
-
-  /**
    * Persiste la referencia biométrica capturada en el enrollment del perfil (C-56).
    *
    * C-56: cuando USE_REAL_BACKEND=1, llama a POST /api/v1/enrollment/embedding-referencia
@@ -1701,6 +1704,193 @@ export const api = {
       id: 'u-' + Date.now().toString(36),
       id_institucional: body.id_institucional,
       email: body.email,
+    };
+  },
+
+  // -------------------------------------------------------------------------
+  // Config efectiva del sistema — configuracion-sistema-funcional (ola 2)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Config efectiva autoritativa (pesos + umbrales + version/ETag).
+   * Accesible a cualquier usuario autenticado.
+   * Real: GET /api/v1/config/effective
+   * Mock: DEFAULT_CONFIG + pesos hardcodeados demo.
+   */
+  async obtenerConfigEfectiva(): Promise<{
+    version: number;
+    face_absent_ms: number;
+    multiple_faces_frames: number;
+    gaze_deviation_threshold: number;
+    gaze_sustained_ms: number;
+    gaze_fixation_tolerance: number;
+    umbral_cola_revision: number;
+    retencion_dias_default: number;
+    consent_version_vigente: string;
+    detectores_activos: string[];
+    scoring_weights: Record<string, number>;
+  }> {
+    if (USE_REAL_BACKEND) {
+      return await realFetch('/config/effective', { method: 'GET' });
+    }
+    await delay(150);
+    return {
+      version: 1,
+      face_absent_ms: 3000,
+      multiple_faces_frames: 5,
+      gaze_deviation_threshold: 0.20,
+      gaze_sustained_ms: 2500,
+      gaze_fixation_tolerance: 0.25,
+      umbral_cola_revision: 70,
+      retencion_dias_default: 30,
+      consent_version_vigente: 'v1',
+      detectores_activos: [
+        'rostro_ausente', 'multiples_rostros', 'mirada_desviada_sostenida',
+        'perdida_de_foco', 'cambio_pestana', 'monitor_adicional',
+        'salida_pantalla_completa', 'copiar_pegar',
+      ],
+      scoring_weights: {
+        rostro_ausente: 20,
+        multiples_rostros: 50,
+        mirada_desviada_sostenida: 20,
+        perdida_de_foco: 5,
+        cambio_pestana: 20,
+        monitor_adicional: 50,
+        salida_pantalla_completa: 20,
+        copiar_pegar: 20,
+      },
+    };
+  },
+
+  /**
+   * Edita los defaults globales de la config del sistema.
+   * SOLO admin_sistema con MFA. Invalida el cache del backend.
+   * Real: PATCH /api/v1/config
+   * Mock: devuelve la config demo sin cambios reales.
+   */
+  async editarConfigSistema(body: {
+    face_absent_ms?: number;
+    multiple_faces_frames?: number;
+    gaze_deviation_threshold?: number;
+    gaze_sustained_ms?: number;
+    gaze_fixation_tolerance?: number;
+    umbral_cola_revision?: number;
+    detectores_activos?: string[];
+    retencion_dias_default?: number;
+    consent_version_vigente?: string;
+  }): Promise<{
+    version: number;
+    face_absent_ms: number;
+    multiple_faces_frames: number;
+    gaze_deviation_threshold: number;
+    gaze_sustained_ms: number;
+    gaze_fixation_tolerance: number;
+    umbral_cola_revision: number;
+    retencion_dias_default: number;
+    consent_version_vigente: string;
+    detectores_activos: string[];
+    scoring_weights: Record<string, number>;
+  }> {
+    if (USE_REAL_BACKEND) {
+      return await realFetch('/config', { method: 'PATCH', body: JSON.stringify(body) });
+    }
+    await delay(350);
+    // Demo: echo con los cambios aplicados sobre los defaults
+    const base = await api.obtenerConfigEfectiva();
+    return { ...base, ...body, version: base.version + 1 };
+  },
+
+  // -------------------------------------------------------------------------
+  // Consentimiento de perfil persistido server-side — configuracion-sistema-funcional (ola 2)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Otorga el consentimiento de perfil (acción afirmativa explícita, RN-CO-02).
+   * Real: POST /api/v1/consent/profile
+   * Demo: registra localmente (no persiste server-side).
+   *
+   * REEMPLAZA la implementación anterior que solo guardaba en localStorage.
+   */
+  async registrarConsentimientoPerfil(versionTexto: string, viaAlternativa = false): Promise<AcuseConsentimiento> {
+    if (USE_REAL_BACKEND && !viaAlternativa) {
+      // Consentimiento directo: POST al backend server-side (Ley 25.326, append-only).
+      const data = await realFetch<{
+        estado: string;
+        version_texto: string | null;
+        hash_texto: string | null;
+        timestamp: string | null;
+      }>('/consent/profile', {
+        method: 'POST',
+        body: JSON.stringify({ version_texto: versionTexto, affirmative_action: true }),
+      });
+      const acuse: AcuseConsentimiento = {
+        version: data.version_texto ?? versionTexto,
+        timestamp: data.timestamp ?? new Date().toISOString(),
+        hash: data.hash_texto ? `sha256:${data.hash_texto}` : '',
+        via_alternativa: false,
+      };
+      commitEnrollment({ ...enrollmentAlumno, consentimiento: acuse });
+      return acuse;
+    }
+    // Demo / vía alternativa: comportamiento original (hash simulado local)
+    await delay(400);
+    const acuse: AcuseConsentimiento = {
+      version: versionTexto,
+      timestamp: new Date().toISOString(),
+      hash: 'sha256:' + Math.random().toString(16).slice(2, 18),
+      via_alternativa: viaAlternativa,
+    };
+    commitEnrollment({ ...enrollmentAlumno, consentimiento: acuse });
+    return acuse;
+  },
+
+  /**
+   * Estado vigente del consentimiento de perfil del usuario autenticado.
+   * Real: GET /api/v1/consent/profile
+   * Demo: lee el enrollment local.
+   */
+  async estadoConsentimientoPerfil(): Promise<{
+    estado: 'otorgado' | 'revocado' | 'inexistente';
+    version_texto: string | null;
+    hash_texto: string | null;
+    timestamp: string | null;
+  }> {
+    if (USE_REAL_BACKEND) {
+      return await realFetch('/consent/profile', { method: 'GET' });
+    }
+    await delay(150);
+    const acuse = enrollmentAlumno.consentimiento;
+    if (!acuse) {
+      return { estado: 'inexistente', version_texto: null, hash_texto: null, timestamp: null };
+    }
+    return {
+      estado: 'otorgado',
+      version_texto: acuse.version,
+      hash_texto: acuse.hash ?? null,
+      timestamp: acuse.timestamp,
+    };
+  },
+
+  /**
+   * Revoca el consentimiento de perfil (inserta estado revocado, preserva histórico).
+   * Real: POST /api/v1/consent/profile/revoke
+   * Demo: simula estado revocado.
+   */
+  async revocarConsentimientoPerfil(): Promise<{
+    estado: string;
+    version_texto: string | null;
+    hash_texto: string | null;
+    timestamp: string | null;
+  }> {
+    if (USE_REAL_BACKEND) {
+      return await realFetch('/consent/profile/revoke', { method: 'POST' });
+    }
+    await delay(300);
+    return {
+      estado: 'revocado',
+      version_texto: enrollmentAlumno.consentimiento?.version ?? 'v1',
+      hash_texto: null,
+      timestamp: new Date().toISOString(),
     };
   },
 };

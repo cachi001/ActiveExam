@@ -11,7 +11,7 @@ import { useToast } from '../../ui/toast';
 import { api, SEVERIDAD_LABEL, TIPO_EVENTO_LABEL } from '../../lib/api';
 import type { EventoScoreConfig, Severidad, TipoEvento } from '../../lib/types';
 import { SEVERITY_BADGE_COLORS } from '../harness/helpers';
-import { resetScoringWeightsCache } from '../../proctoring/scoringWeights';
+import { resetEffectiveConfigCache } from '../../config/effectiveConfigCache';
 
 const SEVERIDADES: Severidad[] = ['baseline', 'baja', 'media', 'alta', 'critica'];
 
@@ -62,7 +62,8 @@ export default function SeccionScoring() {
         delete next[cfg.tipo_evento];
         return next;
       });
-      resetScoringWeightsCache();
+      // Invalida ambos caches: scoring weights + config efectiva completa (task 4.5).
+      resetEffectiveConfigCache();
       toast.success(`Guardado: ${TIPO_EVENTO_LABEL[cfg.tipo_evento as TipoEvento] ?? cfg.tipo_evento}`);
     } catch (e) {
       toast.error(`No se pudo guardar: ${e instanceof Error ? e.message : String(e)}`);

@@ -59,6 +59,17 @@ export function resetScoringWeightsCache(): void {
 }
 
 /**
+ * Siembra el cache de pesos directamente desde un mapa (sin red).
+ * Usado por `effectiveConfigCache` para propagar los `scoring_weights` de la
+ * config efectiva al cache de pesos, evitando un segundo round-trip a /scoring/weights.
+ * Idempotente: si ya había datos, los reemplaza.
+ */
+export function seedScoringWeights(weights: Record<string, number>): void {
+  weightsByTipo = weights;
+  inflight = null;
+}
+
+/**
  * Peso del evento (0-100) que se suma al score acumulado.
  *
  * Orden de resolucion:

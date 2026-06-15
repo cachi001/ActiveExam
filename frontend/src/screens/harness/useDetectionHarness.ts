@@ -15,6 +15,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { loadScoringWeights } from '../../proctoring/scoringWeights';
+import { loadEffectiveConfig, getEffectiveConfig } from '../../config/effectiveConfigCache';
 import { useToast } from '../../ui/toast';
 import { useApp } from '../../lib/store';
 import type { Severidad } from '../../lib/types';
@@ -152,10 +153,29 @@ export function useDetectionHarness() {
     return () => clearInterval(t);
   }, [harnessState]);
 
-  // ------ Cargar pesos de scoring desde la BD (admin puede haber ajustado en /admin/configuracion).
-  // No bloquea: si la API falla, pesoEvento() usa el fallback por severidad.
+  // ------ Cargar config efectiva al montar (pesos + umbrales vivos, task 5.3).
+  // Al cargarse, la config efectiva siembra también el cache de scoring weights.
+  // Si la API falla, pesoEvento() usa el fallback por severidad (degradación silenciosa).
+  // El harness sigue air-gapped para la captura — esta carga es solo para la config baseline.
   useEffect(() => {
-    void loadScoringWeights();
+    void loadEffectiveConfig()
+      .then(() => {
+        const cfg = getEffectiveConfig();
+        if (cfg) {
+          // Pre-popular el config del harness con los umbrales vivos del sistema.
+          const thresholds = {
+            face_absent_ms: cfg.face_absent_ms,
+            multiple_faces_frames: cfg.multiple_faces_frames,
+            gaze_deviation_threshold: cfg.gaze_deviation_threshold,
+            gaze_sustained_ms: cfg.gaze_sustained_ms,
+            gaze_fixation_tolerance: cfg.gaze_fixation_tolerance,
+          };
+          setConfig(thresholds);
+          setConfigDraft(thresholds);
+        }
+      })
+      .catch(() => void loadScoringWeights());
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ------ C-25: Detectores de contexto reales (estado + refs + efectos en sub-hook) ------

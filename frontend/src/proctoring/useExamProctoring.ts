@@ -41,6 +41,7 @@ import { loadRealEngine, disposeRealEngine } from '../vision/harnessEngineLoader
 import { VisionPipeline, type EventSink } from './visionPipeline';
 import { StateTransitionRules, DEFAULT_CONFIG } from './stateTransitionRules';
 import { loadScoringWeights, pesoEvento } from './scoringWeights';
+import { loadEffectiveConfig, getEffectiveConfig } from '../config/effectiveConfigCache';
 import {
   FocusDetector,
   FullscreenDetector,
@@ -261,9 +262,11 @@ export function useExamProctoring(
     stoppedRef.current = false;
     let cancelled = false;
 
-    // --- Cargar pesos de scoring desde la BD (admin los puede haber ajustado en /admin/configuracion).
-    // No bloquea: si la API falla, pesoEvento() recurre al fallback por severidad.
-    void loadScoringWeights();
+    // --- Cargar config efectiva desde el backend (pesos + umbrales vivos).
+    // Primero cargamos la config efectiva completa (tarea 5.1/5.2); si falla,
+    // pesoEvento() recurre al fallback por severidad (degradación silenciosa).
+    // loadScoringWeights() sigue como fallback si loadEffectiveConfig falla.
+    void loadEffectiveConfig().catch(() => void loadScoringWeights());
 
     // --- Inicializar buffer IndexedDB (R3: degradación silenciosa si no está disponible) ---
     try {
@@ -390,10 +393,21 @@ export function useExamProctoring(
       const sink: EventSink = {
         sendEvent: (args) => handleEvent.current(args),
       };
+      // Usa la config efectiva si ya fue cargada; si no, DEFAULT_CONFIG como fallback.
+      const efectiva = getEffectiveConfig();
+      const thresholds = efectiva
+        ? {
+            face_absent_ms: efectiva.face_absent_ms,
+            multiple_faces_frames: efectiva.multiple_faces_frames,
+            gaze_deviation_threshold: efectiva.gaze_deviation_threshold,
+            gaze_sustained_ms: efectiva.gaze_sustained_ms,
+            gaze_fixation_tolerance: efectiva.gaze_fixation_tolerance,
+          }
+        : { ...DEFAULT_CONFIG };
       pipelineRef.current = new VisionPipeline({
         engine,
         sink,
-        rules: new StateTransitionRules({ ...DEFAULT_CONFIG }),
+        rules: new StateTransitionRules(thresholds),
       });
       setActivo(true);
 

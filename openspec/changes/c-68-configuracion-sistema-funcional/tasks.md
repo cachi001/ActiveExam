@@ -49,26 +49,26 @@
 
 ## 4. Frontend — Cablear Configuración del Sistema a endpoints reales
 
-- [ ] 4.1 `SeccionProctoring.tsx`: guardar `umbral_cola_revision`, `detectores_activos`, `retencion` contra el endpoint real (reemplazar toast mock)
-- [ ] 4.2 `SeccionDeteccion.tsx`: guardar los umbrales contra el endpoint real (reemplazar toast mock)
-- [ ] 4.3 `SeccionConsentimiento.tsx`: leer/escribir `consent_version_vigente` contra el endpoint real
-- [ ] 4.4 `Consent.tsx` + `api.ts`: reemplazar `registrarConsentimientoPerfil` (demo/localStorage `ae_demo_enrollment`) por los endpoints reales de consentimiento de perfil
-- [ ] 4.5 Generalizar `resetScoringWeightsCache()` → `resetEffectiveConfigCache()` y llamarlo tras cada guardado de config
-- [ ] 4.6 `store.ts`: estado de consentimiento de perfil leído del servidor (no localStorage)
+- [x] 4.1 `SeccionProctoring.tsx`: guardar `umbral_cola_revision`, `detectores_activos`, `retencion` contra el endpoint real (reemplazar toast mock)
+- [x] 4.2 `SeccionDeteccion.tsx`: guardar los umbrales contra el endpoint real (reemplazar toast mock)
+- [x] 4.3 `SeccionConsentimiento.tsx`: leer/escribir `consent_version_vigente` contra el endpoint real
+- [x] 4.4 `Consent.tsx` + `api.ts`: reemplazar `registrarConsentimientoPerfil` (demo/localStorage `ae_demo_enrollment`) por los endpoints reales de consentimiento de perfil
+- [x] 4.5 Generalizar `resetScoringWeightsCache()` → `resetEffectiveConfigCache()` y llamarlo tras cada guardado de config
+- [x] 4.6 `store.ts`: estado de consentimiento de perfil leído del servidor (no localStorage) — el store ya lee el enrollment del backend; `registrarConsentimientoPerfil` ahora postea al backend (USE_REAL_BACKEND=1)
 
 ## 5. Frontend — Test Detección y Exámenes consumen la config efectiva
 
-- [ ] 5.1 `api.ts`: función `obtenerConfigEfectiva()` → `GET /api/v1/config/effective` con caché por `version`
-- [ ] 5.2 `useExamProctoring.ts`: cargar la config efectiva al inicio del examen y usar sus pesos/umbrales (no `DEFAULT_CONFIG`)
-- [ ] 5.3 `useDetectionHarness.ts` / `AdminDetectionHarness.tsx`: cargar la config efectiva como baseline (manteniendo captura air-gapped)
-- [ ] 5.4 Test: editar config → nuevo examen/harness refleja el cambio
+- [x] 5.1 `api.ts`: función `obtenerConfigEfectiva()` → `GET /api/v1/config/effective` con caché por `version` (vía `effectiveConfigCache.ts`)
+- [x] 5.2 `useExamProctoring.ts`: cargar la config efectiva al inicio del examen y usar sus pesos/umbrales (no `DEFAULT_CONFIG`)
+- [x] 5.3 `useDetectionHarness.ts` / `AdminDetectionHarness.tsx`: cargar la config efectiva como baseline (manteniendo captura air-gapped)
+- [x] 5.4 Test: editar config → nuevo examen/harness refleja el cambio (invalidación de cache vía `resetEffectiveConfigCache()` + `patchDemoExamenFromConfig()`)
 
 ## 6. Frontend — "Números más fáciles" + UX de admin
 
-- [ ] 6.1 Módulo `frontend/src/config/configScale.ts` (TS puro, export named) con conversión bidireccional interno↔amigable (ms↔segundos, 0–1↔sensibilidad baja/media/alta, frames↔"N detecciones")
-- [ ] 6.2 Tests del módulo de escala (round-trip preserva el valor interno)
-- [ ] 6.3 UI de las 3 secciones muestra la escala amigable; convierte a unidad interna antes de enviar
-- [ ] 6.4 Validación + textos de ayuda claros en cada campo (lenguaje no técnico); mensajes de error legibles
+- [x] 6.1 Módulo `frontend/src/config/configScale.ts` (TS puro, export named) con conversión bidireccional interno↔amigable (ms↔segundos, 0–1↔sensibilidad baja/media/alta, frames↔"N detecciones")
+- [x] 6.2 Tests del módulo de escala (round-trip preserva el valor interno) — 41 tests en `configScale.test.ts`
+- [x] 6.3 UI de las 3 secciones muestra la escala amigable; convierte a unidad interna antes de enviar
+- [x] 6.4 Validación + textos de ayuda claros en cada campo (lenguaje no técnico); mensajes de error legibles
 
 ## 7. Verificación y cierre
 
