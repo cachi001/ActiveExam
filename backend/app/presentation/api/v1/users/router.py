@@ -27,7 +27,16 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.domain.auth.identity import AuthenticatedPrincipal
 from app.domain.auth.roles import Rol
 from app.infrastructure.auth.hashing import hashear_password
-from app.infrastructure.persistence.models.transactional import RefreshTokenModel, UsuarioModel
+from app.infrastructure.persistence.models.transactional import (
+    RefreshTokenModel,
+    UsuarioModel,
+)
+from app.infrastructure.persistence.repositories.biometric_reference import (
+    EmbeddingReferenciaRepository,
+)
+from app.infrastructure.persistence.repositories.consent_perfil import (
+    ConsentimientoPerfilSqlRepository,
+)
 from app.presentation.api.v1.auth.dependencies import require_roles
 
 router = APIRouter()
@@ -103,6 +112,7 @@ class UsuarioResponse(BaseModel):
     apellido: str | None
     roles: list[str]
     auth_provider: str
+    eliminado_en: str | None
 
 
 class ListarUsuariosResponse(BaseModel):
@@ -112,6 +122,57 @@ class ListarUsuariosResponse(BaseModel):
     total: int
     limit: int
     offset: int
+
+
+class UsuarioDetalleResponse(BaseModel):
+    """Detalle completo de un usuario (admin).
+
+    Incluye ``eliminado_en`` (ISO 8601 o null). NUNCA incluye password_hash
+    ni embedding_cifrado (gobernanza critica).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    id_institucional: str
+    email: str
+    nombre: str | None
+    apellido: str | None
+    roles: list[str]
+    auth_provider: str
+    eliminado_en: str | None
+
+
+class ConsentProfileAdminResponse(BaseModel):
+    """Estado vigente del consentimiento de perfil de un usuario (admin).
+
+    Todos los campos son nullable: si no hay consentimiento registrado
+    se devuelve 200 con todos en null (no 404).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    estado: str | None = None
+    version_texto: str | None = None
+    hash_texto: str | None = None
+    timestamp: str | None = None
+
+
+class BiometriaReferenciaEstadoAdminResponse(BaseModel):
+    """Estado de la captura de referencia biometrica de un usuario (admin).
+
+    GOBERNANZA: NUNCA incluye embedding_cifrado ni el vector. Solo metadatos.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    tiene_referencia_vigente: bool
+    algoritmo: str | None = None
+    fecha_expiracion: str | None = None
+    created_at: str | None = None
+    tiene_foto: bool
+    foto_hash: str | None = None
+    foto_created_at: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -138,6 +199,7 @@ def _usuario_to_response(u: UsuarioModel) -> UsuarioResponse:
         apellido=u.apellido,
         roles=u.roles,
         auth_provider=u.auth_provider,
+        eliminado_en=str(u.eliminado_en) if u.eliminado_en is not None else None,
     )
 
 
@@ -196,33 +258,70 @@ async def listar_usuarios(
     request: Request,
     limit: int = 20,
     offset: int = 0,
+    rol: str | None = None,
+    estado: str | None = "activo",
+    q: str | None = None,
     _principal: AuthenticatedPrincipal = Depends(_require_admin),
 ) -> ListarUsuariosResponse:
-    """Lista usuarios activos paginados (excluye dados de baja).
+    """Lista usuarios paginados con filtros opcionales.
+
+    Filtros:
+    - ``rol``: filtra por rol exacto (JSONB contains).
+    - ``estado``: ``"activo"`` (default) = solo activos; ``"inactivo"`` = solo dados de baja;
+      ``"todos"`` = ambos.
+    - ``q``: búsqueda ILIKE en nombre, apellido, email e id_institucional.
 
     Solo ``admin_sistema``. No incluye password_hash.
     """
+    from sqlalchemy import func as sa_func  # noqa: PLC0415
+
     session_factory = _get_session_factory(request)
 
     async with session_factory() as session:
-        # Filtrar eliminado_en IS NULL (solo activos).
+        # Clauses ORM y parámetros extra (para text() con CAST).
+        base_where = []
+        extra_params: dict = {}
+
+        # Filtro de estado.
+        if estado == "activo" or estado is None:
+            base_where.append(UsuarioModel.eliminado_en.is_(None))
+        elif estado == "inactivo":
+            base_where.append(UsuarioModel.eliminado_en.isnot(None))
+        # estado == "todos" → sin filtro de eliminado_en
+
+        # Filtro de rol (JSONB contains).
+        # asyncpg no acepta el valor como string sin CAST explícito.
+        # Usamos text() con CAST(:param AS jsonb) y pasamos el param al execute().
+        if rol is not None:
+            import json  # noqa: PLC0415
+            base_where.append(text("usuario.roles @> CAST(:rol_json AS jsonb)"))
+            extra_params["rol_json"] = json.dumps([rol])
+
+        # Filtro de búsqueda ILIKE.
+        if q is not None:
+            from sqlalchemy import or_  # noqa: PLC0415
+            pattern = f"%{q}%"
+            base_where.append(
+                or_(
+                    UsuarioModel.nombre.ilike(pattern),
+                    UsuarioModel.apellido.ilike(pattern),
+                    UsuarioModel.email.ilike(pattern),
+                    UsuarioModel.id_institucional.ilike(pattern),
+                )
+            )
+
         stmt = (
             select(UsuarioModel)
-            .where(UsuarioModel.eliminado_en.is_(None))
+            .where(*base_where)
             .order_by(UsuarioModel.id)
             .limit(limit)
             .offset(offset)
         )
-        result = await session.execute(stmt)
+        result = await session.execute(stmt, extra_params if extra_params else None)
         usuarios = result.scalars().all()
 
-        # Contar total de activos.
-        from sqlalchemy import func as sa_func  # noqa: PLC0415
-        count_stmt = (
-            select(sa_func.count(UsuarioModel.id))
-            .where(UsuarioModel.eliminado_en.is_(None))
-        )
-        count_result = await session.execute(count_stmt)
+        count_stmt = select(sa_func.count(UsuarioModel.id)).where(*base_where)
+        count_result = await session.execute(count_stmt, extra_params if extra_params else None)
         total = count_result.scalar_one()
 
     return ListarUsuariosResponse(
@@ -366,3 +465,220 @@ async def eliminar_usuario(
         )
 
         await session.commit()
+
+
+# ---------------------------------------------------------------------------
+# POST /{usuario_id}/reactivar — reactivar usuario dado de baja (admin_sistema)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/{usuario_id}/reactivar", response_model=UsuarioDetalleResponse)
+async def reactivar_usuario(
+    usuario_id: str,
+    request: Request,
+    principal: AuthenticatedPrincipal = Depends(_require_admin),
+) -> UsuarioDetalleResponse:
+    """Reactiva un usuario dado de baja (soft-delete revertido).
+
+    - Setea ``eliminado_en = NULL``.
+    - 404 si el usuario no existe (ni activo ni dado de baja).
+    - 409 si el usuario ya está activo (``eliminado_en IS NULL``).
+    - 409 si el admin intenta reactivarse a sí mismo.
+    """
+    # El admin no puede reactivarse a sí mismo.
+    if str(usuario_id) == str(principal.subject):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="No podés reactivarte a vos mismo.",
+        )
+
+    session_factory = _get_session_factory(request)
+
+    async with session_factory() as session:
+        result = await session.execute(
+            select(UsuarioModel).where(UsuarioModel.id == usuario_id)
+        )
+        usuario = result.scalar_one_or_none()
+
+        if usuario is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Usuario no encontrado.",
+            )
+
+        if usuario.eliminado_en is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="El usuario ya está activo.",
+            )
+
+        # Reactivar: limpiar eliminado_en via SQL directo (mismo patrón que DELETE).
+        await session.execute(
+            text("UPDATE usuario SET eliminado_en = NULL WHERE id = :id"),
+            {"id": usuario_id},
+        )
+        await session.commit()
+        await session.refresh(usuario)
+
+    return UsuarioDetalleResponse(
+        id=str(usuario.id),
+        id_institucional=usuario.id_institucional,
+        email=usuario.email,
+        nombre=usuario.nombre,
+        apellido=usuario.apellido,
+        roles=usuario.roles,
+        auth_provider=usuario.auth_provider,
+        eliminado_en=None,  # acaba de reactivarse
+    )
+
+
+# ---------------------------------------------------------------------------
+# Helpers privados para los endpoints de detalle (C-68)
+# ---------------------------------------------------------------------------
+
+
+async def _get_usuario_or_404(session: AsyncSession, usuario_id: str) -> UsuarioModel:
+    """Devuelve el UsuarioModel por id (activo o dado de baja). 404 si no existe."""
+    result = await session.execute(
+        select(UsuarioModel).where(UsuarioModel.id == usuario_id)
+    )
+    usuario = result.scalar_one_or_none()
+    if usuario is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Usuario no encontrado.",
+        )
+    return usuario
+
+
+# ---------------------------------------------------------------------------
+# GET /{usuario_id} — detalle del usuario (C-68, D1)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/{usuario_id}", response_model=UsuarioDetalleResponse)
+async def obtener_usuario(
+    usuario_id: str,
+    request: Request,
+    _principal: AuthenticatedPrincipal = Depends(_require_admin),
+) -> UsuarioDetalleResponse:
+    """Detalle completo de un usuario (solo admin_sistema).
+
+    Devuelve id, id_institucional, email, nombre, apellido, roles,
+    auth_provider y eliminado_en (ISO 8601 o null).
+    NUNCA incluye password_hash ni datos biometricos (gobernanza critica).
+    404 si el usuario no existe.
+    """
+    session_factory = _get_session_factory(request)
+    async with session_factory() as session:
+        usuario = await _get_usuario_or_404(session, usuario_id)
+
+    return UsuarioDetalleResponse(
+        id=str(usuario.id),
+        id_institucional=usuario.id_institucional,
+        email=usuario.email,
+        nombre=usuario.nombre,
+        apellido=usuario.apellido,
+        roles=usuario.roles,
+        auth_provider=usuario.auth_provider,
+        eliminado_en=str(usuario.eliminado_en) if usuario.eliminado_en is not None else None,
+    )
+
+
+# ---------------------------------------------------------------------------
+# GET /{usuario_id}/consent-profile — consentimiento vigente (C-68, D2)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/{usuario_id}/consent-profile", response_model=ConsentProfileAdminResponse)
+async def obtener_consent_profile(
+    usuario_id: str,
+    request: Request,
+    _principal: AuthenticatedPrincipal = Depends(_require_admin),
+) -> ConsentProfileAdminResponse:
+    """Estado vigente del consentimiento de perfil de un usuario (solo admin_sistema).
+
+    - 404 si el usuario no existe.
+    - 200 con todos los campos null si el usuario existe pero no tiene consentimiento
+      registrado (no es un 404 — la ausencia de consentimiento es un estado valido).
+    """
+    session_factory = _get_session_factory(request)
+    async with session_factory() as session:
+        # Verificar que el usuario existe (404 si no).
+        await _get_usuario_or_404(session, usuario_id)
+
+        # Buscar el consentimiento vigente del usuario.
+        repo = ConsentimientoPerfilSqlRepository(session)
+        vigente = await repo.vigente(usuario_id)
+
+    if vigente is None:
+        return ConsentProfileAdminResponse()
+
+    return ConsentProfileAdminResponse(
+        estado=vigente.estado,
+        version_texto=vigente.version_texto,
+        hash_texto=vigente.hash_texto,
+        timestamp=str(vigente.timestamp),
+    )
+
+
+# ---------------------------------------------------------------------------
+# GET /{usuario_id}/biometria/referencia/estado — estado biometrico (C-68, D3)
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/{usuario_id}/biometria/referencia/estado",
+    response_model=BiometriaReferenciaEstadoAdminResponse,
+)
+async def obtener_biometria_referencia_estado(
+    usuario_id: str,
+    request: Request,
+    _principal: AuthenticatedPrincipal = Depends(_require_admin),
+) -> BiometriaReferenciaEstadoAdminResponse:
+    """Estado de la captura de referencia biometrica de un usuario (solo admin_sistema).
+
+    GOBERNANZA CRITICA: NUNCA devuelve embedding_cifrado ni el vector. Solo metadatos.
+    - tiene_referencia_vigente: si existe un embedding vigente.
+    - algoritmo/fecha_expiracion/created_at: metadatos del embedding (NO el vector).
+    - tiene_foto/foto_hash/foto_created_at: metadatos de la foto de referencia.
+
+    404 si el usuario no existe.
+    """
+    session_factory = _get_session_factory(request)
+    async with session_factory() as session:
+        # Verificar que el usuario existe (404 si no).
+        await _get_usuario_or_404(session, usuario_id)
+
+        # Embedding de referencia (solo metadatos, SIN embedding_cifrado).
+        emb_repo = EmbeddingReferenciaRepository(session)
+        emb = await emb_repo.obtener_vigente(usuario_id)
+
+        # Foto de referencia — consulta por SQL crudo para no depender de
+        # que el ORM model refleje exactamente el schema de la DB (que puede
+        # variar entre slim y full). Solo leemos los metadatos necesarios.
+        foto_result = await session.execute(
+            text(
+                "SELECT hash_sha256, created_at "
+                "FROM foto_referencia "
+                "WHERE usuario_id = :uid AND vigente = TRUE "
+                "LIMIT 1"
+            ),
+            {"uid": usuario_id},
+        )
+        foto_row = foto_result.fetchone()
+
+    tiene_referencia = emb is not None
+    return BiometriaReferenciaEstadoAdminResponse(
+        tiene_referencia_vigente=tiene_referencia,
+        algoritmo=emb.algoritmo if emb is not None else None,
+        fecha_expiracion=(
+            str(emb.fecha_expiracion)
+            if emb is not None and emb.fecha_expiracion is not None
+            else None
+        ),
+        created_at=str(emb.created_at) if emb is not None else None,
+        tiene_foto=foto_row is not None,
+        foto_hash=foto_row[0] if foto_row is not None else None,
+        foto_created_at=str(foto_row[1]) if foto_row is not None else None,
+    )

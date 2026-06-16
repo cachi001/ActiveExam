@@ -189,7 +189,10 @@ async def editar_config(
     re-agregar require_mfa.
 
     400 si el body no trae ningun campo. Bump monotonico de version + fila
-    inmutable ``config_update`` en audit_log (snapshot before/after)."""
+    inmutable ``config_update`` en audit_log (snapshot before/after).
+
+    422 si ``consent_version_vigente`` refiere una version que no existe en la tabla
+    ``consent_texto_version`` (C-08 ext, Ley 25.326 compliance)."""
     cambios = body.model_dump(exclude_none=True)
     if not cambios:
         raise HTTPException(
@@ -198,6 +201,22 @@ async def editar_config(
         )
 
     factory = _get_session_factory(request)
+
+    # Validar consent_version_vigente contra la tabla de versiones si se especifica.
+    if "consent_version_vigente" in cambios:
+        nueva_version = cambios["consent_version_vigente"]
+        from app.application.consent.text_version_service import ConsentTextoVersionService
+        async with factory() as session:
+            tv_svc = ConsentTextoVersionService(session)
+            if not await tv_svc.version_exists(nueva_version):
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=(
+                        f"La version de consentimiento {nueva_version!r} no existe en la tabla "
+                        "consent_texto_version. Publicala primero con POST /api/v1/consent/text/versions."
+                    ),
+                )
+
     async with factory() as session:
         repo = ConfiguracionSistemaSqlRepository(session)
         antes = await repo.ensure_singleton()

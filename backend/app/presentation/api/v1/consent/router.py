@@ -4,29 +4,40 @@ Endpoints del estudiante autenticado (C-06 ``get_current_principal``). El acuse 
 asocia al ``id_institucional`` del principal (no se confia en un user_id del body).
 Errores de dominio -> 422 (falta accion afirmativa / version desconocida) y 403
 (gate no resuelto).
+
+Endpoints adicionales de admin (C-08 ext, Ley 25.326):
+- GET /text/versions: lista versiones (admin_sistema).
+- POST /text/versions: publica nueva version (admin_sistema).
 """
 
 from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
 
 from app.application.consent.service import ConsentService
+from app.application.consent.text_version_service import ConsentTextoVersionService
+from app.application.config.service import ConfigService
 from app.domain.auth.identity import AuthenticatedPrincipal
+from app.domain.auth.roles import Rol
 from app.domain.consent_flow.errors import (
     ConsentNotResolvedError,
     MissingAffirmativeActionError,
     UnknownConsentVersionError,
 )
 from app.domain.consent_flow.rules import ResolucionConsentimiento
-from app.presentation.api.v1.auth.dependencies import get_current_principal
+from app.presentation.api.v1.auth.dependencies import get_current_principal, require_roles
 from app.presentation.api.v1.consent.dependencies import get_consent_service
 from app.presentation.api.v1.consent.schemas import (
     AlternativeRequest,
     AlternativeResponse,
+    BloqueConsentimiento,
     ConsentResponse,
     ConsentTextResponse,
+    ConsentVersionCreate,
+    ConsentVersionListItem,
     GateResponse,
     HabilitarAlternativaRequest,
     HabilitarAlternativaResponse,
@@ -37,26 +48,142 @@ from app.presentation.api.v1.consent.schemas import (
 
 router = APIRouter()
 
+_require_admin = require_roles(Rol.ADMIN_SISTEMA)
+
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _get_session_factory(request: Request):
+    factory = getattr(request.app.state, "session_factory", None)
+    if factory is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Base de datos no disponible.",
+        )
+    return factory
+
+
+def _get_config_service(request: Request) -> ConfigService:
+    svc = getattr(request.app.state, "config_service", None)
+    if svc is None:
+        svc = ConfigService(_get_session_factory(request))
+        request.app.state.config_service = svc
+    return svc
+
+
+@router.get("/text/versions", response_model=list[ConsentVersionListItem])
+async def list_text_versions(
+    request: Request,
+    _principal: AuthenticatedPrincipal = Depends(_require_admin),
+) -> list[ConsentVersionListItem]:
+    """Lista todas las versiones del texto de consentimiento (solo admin_sistema)."""
+    factory = _get_session_factory(request)
+    async with factory() as session:
+        svc = ConsentTextoVersionService(session)
+        items = await svc.list_versions()
+    return [
+        ConsentVersionListItem(
+            version=item.version,
+            hash_texto=item.hash_texto,
+            created_at=item.created_at,
+        )
+        for item in items
+    ]
+
+
+@router.post(
+    "/text/versions",
+    response_model=ConsentTextResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_text_version(
+    body: ConsentVersionCreate,
+    request: Request,
+    principal: AuthenticatedPrincipal = Depends(_require_admin),
+) -> ConsentTextResponse:
+    """Publica una nueva version del texto de consentimiento (solo admin_sistema).
+
+    409 si la version ya existe (append-only: el texto nunca muta).
+    """
+    factory = _get_session_factory(request)
+    bloques_dict = [{"titulo": b.titulo, "cuerpo": b.cuerpo} for b in body.bloques]
+    async with factory() as session:
+        svc = ConsentTextoVersionService(session)
+        try:
+            vista = await svc.create_version(body.version, bloques_dict)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT, detail=str(exc)
+            ) from exc
+        await session.commit()
+    return ConsentTextResponse(
+        version=vista.version,
+        bloques=[BloqueConsentimiento(titulo=b.titulo, cuerpo=b.cuerpo) for b in vista.bloques],
+        hash_texto=vista.hash_texto,
+    )
+
+
 @router.get("/text", response_model=ConsentTextResponse)
 async def get_text(
+    request: Request,
     service: ConsentService = Depends(get_consent_service),
     version: str | None = Query(default=None),
     _principal: AuthenticatedPrincipal = Depends(get_current_principal),
 ) -> ConsentTextResponse:
-    """Texto vigente del consentimiento (cinco bloques + version, RN-CO-01)."""
+    """Texto vigente del consentimiento (cinco bloques + version, RN-CO-01).
+
+    Sin ?version: devuelve la version vigente segun config (consent_version_vigente).
+    Con ?version=X: devuelve esa version especifica desde la DB.
+
+    Prioriza la tabla ``consent_texto_version`` (DB). Fallback a text_catalog en
+    memoria si la tabla no esta disponible o la version no existe.
+    """
+    factory = getattr(request.app.state, "session_factory", None)
+
+    if factory is not None:
+        async with factory() as session:
+            tv_svc = ConsentTextoVersionService(session)
+            try:
+                if version is not None:
+                    # version especifica
+                    try:
+                        vista = await tv_svc.get_version(version)
+                    except KeyError as exc:
+                        raise HTTPException(
+                            status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+                        ) from exc
+                else:
+                    # version vigente desde config
+                    config_svc = _get_config_service(request)
+                    cfg = await config_svc.get_efectiva()
+                    vista = await tv_svc.get_vigente(cfg.consent_version_vigente)
+                return ConsentTextResponse(
+                    version=vista.version,
+                    bloques=[
+                        BloqueConsentimiento(titulo=b.titulo, cuerpo=b.cuerpo)
+                        for b in vista.bloques
+                    ],
+                    hash_texto=vista.hash_texto,
+                )
+            except HTTPException:
+                raise
+            except Exception:
+                # Fallback a catalogo en memoria si la tabla no existe aun
+                pass
+
+    # Fallback legacy: catalogo en memoria
     try:
-        vista = service.get_text_view(version)
+        vista_legacy = service.get_text_view(version)
     except UnknownConsentVersionError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
         ) from exc
     return ConsentTextResponse(
-        version=vista.version, bloques=vista.bloques, hash_texto=vista.hash_texto
+        version=vista_legacy.version,
+        bloques=vista_legacy.bloques,
+        hash_texto=vista_legacy.hash_texto,
     )
 
 

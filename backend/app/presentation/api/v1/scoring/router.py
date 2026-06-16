@@ -24,6 +24,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.application.config.service import ConfigService
 from app.domain.auth.identity import AuthenticatedPrincipal
 from app.domain.auth.roles import Rol
 from app.infrastructure.persistence.models.transactional import EventoScoreConfigModel
@@ -105,6 +106,10 @@ def _get_session_factory(request: Request) -> async_sessionmaker[AsyncSession]:
             detail="Base de datos no disponible.",
         )
     return factory
+
+
+def _get_config_service(request: Request) -> ConfigService | None:
+    return getattr(request.app.state, "config_service", None)
 
 
 def _to_response(m: EventoScoreConfigModel) -> EventoScoreConfigResponse:
@@ -219,5 +224,9 @@ async def editar_config(
 
         await session.commit()
         await session.refresh(cfg)
+
+    svc = _get_config_service(request)
+    if svc is not None:
+        svc.invalidate()
 
     return _to_response(cfg)

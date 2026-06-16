@@ -14,8 +14,11 @@ metadata declarativa.
 from __future__ import annotations
 
 import enum
+from datetime import datetime
+from typing import Optional
 
 from sqlalchemy import (
+    DateTime,
     Enum as SAEnum,
 )
 from sqlalchemy import (
@@ -463,3 +466,28 @@ class EventoScoreConfigModel(Base):
     updated_at: Mapped[str] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
+
+
+class ConsentTextoVersionModel(Base):
+    """Version del texto de consentimiento informado (Ley 25.326, C-08 ext).
+
+    Tabla APPEND-ONLY por semantica: version es PK (string), el texto NUNCA muta.
+    Misma version => mismo hash; texto nuevo => nueva version.
+
+    El campo ``bloques`` almacena una lista de dicts {titulo, cuerpo} (los cinco
+    bloques informativos obligatorios de RN-CO-01). El ``hash_texto`` es el SHA-256
+    deterministico de version+bloques (JSON canonico: sorted keys, sin whitespace).
+
+    El admin publica versiones; los estudiantes deben re-consentir cuando la
+    version vigente (``configuracion_sistema.consent_version_vigente``) cambia.
+    """
+
+    __tablename__ = "consent_texto_version"
+
+    version: Mapped[str] = mapped_column(String(64), primary_key=True)
+    bloques: Mapped[list] = mapped_column(JSONB, nullable=False)
+    hash_texto: Mapped[str] = mapped_column(String(128), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    created_by: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
