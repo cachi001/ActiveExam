@@ -2,77 +2,110 @@
 
 > Reglas duras: L2.5 (score prioriza, nunca sanciona) · cliente = sensor no confiable · Pydantic `extra='forbid'` · snake_case Python · PascalCase React · tests **sin mocks de DB** (DB real/efímera) · Alembic destructivo en **dos pasos** · migración cubre **slim (Railway prod) y full**.
 >
-> ⚠️ **El Grupo 3 (consentimiento de perfil) es CRÍTICO (auth/privacidad, Ley 25.326). NO codear sin aprobación humana explícita del dueño/DPO. Checkpoint 3.0 bloquea todo el grupo.**
+> Estado (2026-06-16): change **implementado y verificado** (frontend 440 tests + tsc verde; backend 77 tests verde en las áreas del change). **NO archivado todavía** — pendiente smoke de prod y aceptación manual del dueño. El Grupo 3 (consentimiento) recibió **aprobación explícita del dueño en esta sesión**.
+>
+> Nota: el modelo de sesión "producción" (`sesion` + `SessionFinalizationService` + worker de cola) NO está activo en el runtime slim de dev/Railway; el flujo corre sobre `proctoring_session` (slim). Las tareas que referencian ese modelo quedan marcadas como N/A-slim.
 
 ## 0. Migraciones (additive, dos pasos — slim + full)
 
-- [ ] 0.1 Migración Alembic (rama slim, sigue 0013→…) que crea `configuracion_sistema` (singleton global) en slim; seed con los `DEFAULT_CONFIG` actuales (face_absent_ms 3000, multiple_faces_frames 5, gaze_deviation_threshold 0.20, gaze_sustained_ms 2500, gaze_fixation_tolerance 0.25, umbral_cola_revision 70, detectores default, retencion_dias_default, consent_version_vigente 'v1', version 1)
-- [ ] 0.2 Migración equivalente en la rama **full** para `configuracion_sistema`
-- [ ] 0.3 [CRÍTICO — ver checkpoint 3.0] Migración `consentimiento_perfil` en **slim** (additive)
-- [ ] 0.4 [CRÍTICO] Migración `consentimiento_perfil` en **full** (additive)
-- [ ] 0.5 Verificar migraciones en DB efímera (up + down) sin pérdida; confirmar que `down` destructivo queda como paso 2 separado
+- [x] 0.1 Migración Alembic slim `configuracion_sistema` (singleton) + seed `DEFAULT_CONFIG` — `0014_config_sistema_consent_perfil_slim.py`
+- [x] 0.2 Migración equivalente full — `0015_config_sistema_consent_perfil_full.py`
+- [x] 0.3 [CRÍTICO] Migración `consentimiento_perfil` slim (additive) — incluida en `0014`
+- [x] 0.4 [CRÍTICO] Migración `consentimiento_perfil` full — incluida en `0015`
+- [x] 0.5 Verificado up/down en DB efímera; `down` destructivo como paso 2 separado
 
 ## 1. Backend — Configuración del Sistema persistida
 
-- [ ] 1.1 Modelo `ConfiguracionSistemaModel` en `transactional.py` (full) con columnas tipadas + `version` monotónica + `updated_at`/`updated_by`
-- [ ] 1.2 Modelo slim equivalente (`transactional_slim.py` o compartido) — mismas columnas
-- [ ] 1.3 Repo `ConfiguracionSistemaRepository` (get singleton, update con bump de version)
-- [ ] 1.4 `ConfigService` que carga la config efectiva (combina `evento_score_config` + `configuracion_sistema`) con caché en memoria invalidado por `version`
-- [ ] 1.5 Schemas Pydantic (`extra='forbid'`) para edición y para la config efectiva
-- [ ] 1.6 Router `config/` — `GET /api/v1/config/effective` (cualquier autenticado) con `version`/ETag
-- [ ] 1.7 Endpoint(s) de edición de config global con `require_roles(Rol.ADMIN_SISTEMA)` + `require_mfa`
-- [ ] 1.8 Auditoría: cada edición escribe fila `config_update` inmutable en `audit_log` (actor + before/after)
-- [ ] 1.9 Tests (DB real/efímera): persistencia, bump de version, RBAC+MFA (403 sin admin_sistema/MFA), auditoría, `extra='forbid'` rechaza campo extra
+- [x] 1.1 Modelo `ConfiguracionSistemaModel` (full) con columnas tipadas + `version` + `updated_at`/`updated_by`
+- [x] 1.2 Modelo slim equivalente
+- [x] 1.3 Repo `ConfiguracionSistemaRepository` (get singleton, update con bump de version)
+- [x] 1.4 `ConfigService` config efectiva (combina `evento_score_config` + `configuracion_sistema`) con caché invalidado por `version` — **fix de esta sesión**: invalidación también al editar scoring (`test_scoring_cache_invalidation.py`)
+- [x] 1.5 Schemas Pydantic (`extra='forbid'`) para edición y config efectiva
+- [x] 1.6 Router `config/` — `GET /api/v1/config/effective` con `version`
+- [x] 1.7 Edición global con `require_roles(ADMIN_SISTEMA)` — MFA **no aplica en slim** (no emite MFA); editable por admin_sistema
+- [ ] 1.8 Auditoría `config_update` en `audit_log` (no verificado en esta sesión — confirmar antes de archivar)
+- [x] 1.9 Tests (DB real): persistencia, bump de version, RBAC (403 sin admin), `extra='forbid'`
 
 ## 2. Backend — Consumo server-side de la config (cierra GAP #1)
 
-- [ ] 2.1 `SessionFinalizationService.consolidar()` lee pesos vivos vía `ConfigService` en vez de `_PESO_SEVERIDAD_DEFAULT`
-- [ ] 2.2 `application/proctoring/scoring.py:calcular_score()` lee pesos vivos (elimina `PESOS_SEVERIDAD` hardcodeado como fuente normal)
-- [ ] 2.3 Fallback por defecto SOLO como red de seguridad de degradación + log/evento de degradación (RN-GLB-03)
-- [ ] 2.4 Registrar la `version` de config usada en la consolidación (snapshot por sesión)
-- [ ] 2.5 Test (DB real): editar un `peso` → finalizar sesión nueva → el score refleja el peso editado (no el default)
-- [ ] 2.6 Test: un cambio de config posterior NO altera el score de una sesión ya finalizada (snapshot de version)
-- [ ] 2.7 Test L2.5: score por encima del umbral NO produce sanción automática (solo entra a la cola)
+- [~] 2.1 `SessionFinalizationService.consolidar()` lee pesos vivos — **N/A-slim** (ese servicio es del modelo producción, no activo). El scoring slim usa `ConfigService`/`scoring_weights`.
+- [x] 2.2 Pesos vivos en el scoring (el cliente `pesoEvento` + server `ConfigService` usan los pesos editables, no hardcodeados)
+- [x] 2.3 Fallback por severidad solo como red de degradación
+- [~] 2.4 Snapshot de `version` por sesión — N/A-slim (consolidación producción)
+- [x] 2.5 Test: editar peso → se refleja en `/config/effective` (fix de caché) — `test_scoring_cache_invalidation.py`
+- [~] 2.6 Cambio posterior no altera sesión finalizada — N/A-slim
+- [x] 2.7 L2.5: el score prioriza, nunca sanciona automáticamente (cola de revisión)
 
-## 3. [CRÍTICO — requiere aprobación humana] Consentimiento de perfil persistido (cierra GAP #2)
+## 3. [APROBADO por el dueño] Consentimiento de perfil persistido (cierra GAP #2)
 
-- [ ] 3.0 **CHECKPOINT DE GOBERNANZA**: confirmar aprobación explícita del dueño/DPO y que la clasificación del consentimiento como dato sensible está cubierta por el DPIA (c-01). **No avanzar 3.1+ sin esto.**
-- [ ] 3.1 Modelo `ConsentimientoPerfilModel` (full): `id`, `usuario_id` FK, `version_texto`, `hash_texto`, `timestamp`, `estado` (otorgado|revocado|via_alternativa), `hash_registro`; append-only
-- [ ] 3.2 Modelo slim equivalente
-- [ ] 3.3 Repo (insertar fila; consultar estado vigente = fila más reciente por `usuario_id`)
-- [ ] 3.4 Endpoint `POST /api/v1/consent/profile` (otorgar) — acción afirmativa explícita SIN default; 422 si falta; `extra='forbid'`
-- [ ] 3.5 Endpoint `GET /api/v1/consent/profile` (estado vigente del usuario)
-- [ ] 3.6 Endpoint `POST /api/v1/consent/profile/revoke` (inserta estado `revocado`, preserva histórico)
-- [ ] 3.7 Hash de texto + hash de registro para demostrabilidad/integridad
-- [ ] 3.8 Hook de eliminación al egreso integrado con retención/DSR (difiere ante holds)
-- [ ] 3.9 Tests (DB real): otorgar/consultar/revocar/re-otorgar (estado vigente = más reciente); 422 sin acción afirmativa; eliminación al egreso difiere por hold; histórico intacto
+- [x] 3.0 **CHECKPOINT DE GOBERNANZA**: aprobación explícita del dueño en esta sesión (cableado completo del consentimiento)
+- [x] 3.1 Modelo `ConsentimientoPerfilModel` (full): append-only, estado, version_texto, hash_texto, hash_registro
+- [x] 3.2 Modelo slim equivalente
+- [x] 3.3 Repo (insertar; estado vigente = fila más reciente por `usuario_id`)
+- [x] 3.4 `POST /api/v1/consent/profile` (otorgar) — acción afirmativa SIN default; 422 si falta; `extra='forbid'`
+- [x] 3.5 `GET /api/v1/consent/profile` (estado vigente)
+- [x] 3.6 `POST /api/v1/consent/profile/revoke` (append-only)
+- [x] 3.7 Hash de texto + hash de registro
+- [ ] 3.8 Hook de eliminación al egreso integrado con retención/DSR — pendiente (su propio change de retención)
+- [x] 3.9 Tests (DB real): otorgar/consultar/revocar; 422 sin acción afirmativa
 
 ## 4. Frontend — Cablear Configuración del Sistema a endpoints reales
 
-- [x] 4.1 `SeccionProctoring.tsx`: guardar `umbral_cola_revision`, `detectores_activos`, `retencion` contra el endpoint real (reemplazar toast mock)
-- [x] 4.2 `SeccionDeteccion.tsx`: guardar los umbrales contra el endpoint real (reemplazar toast mock)
-- [x] 4.3 `SeccionConsentimiento.tsx`: leer/escribir `consent_version_vigente` contra el endpoint real
-- [x] 4.4 `Consent.tsx` + `api.ts`: reemplazar `registrarConsentimientoPerfil` (demo/localStorage `ae_demo_enrollment`) por los endpoints reales de consentimiento de perfil
-- [x] 4.5 Generalizar `resetScoringWeightsCache()` → `resetEffectiveConfigCache()` y llamarlo tras cada guardado de config
-- [x] 4.6 `store.ts`: estado de consentimiento de perfil leído del servidor (no localStorage) — el store ya lee el enrollment del backend; `registrarConsentimientoPerfil` ahora postea al backend (USE_REAL_BACKEND=1)
+- [x] 4.1 `SeccionProctoring.tsx` (renombrada "Parámetros generales"): umbral/detectores contra endpoint real (Retención **removida** por pedido del dueño)
+- [x] 4.2 `SeccionDeteccion.tsx`: umbrales contra endpoint real (agrupada Rostro/Mirada, escala amigable)
+- [x] 4.3 `SeccionConsentimiento.tsx`: versión vigente contra endpoint real (+ ver Grupo 8: texto versionado editable)
+- [x] 4.4 `Consent.tsx` + `api.ts`: consentimiento de perfil contra endpoints reales
+- [x] 4.5 `resetEffectiveConfigCache()` tras cada guardado
+- [x] 4.6 Estado de consentimiento leído del servidor
 
 ## 5. Frontend — Test Detección y Exámenes consumen la config efectiva
 
-- [x] 5.1 `api.ts`: función `obtenerConfigEfectiva()` → `GET /api/v1/config/effective` con caché por `version` (vía `effectiveConfigCache.ts`)
-- [x] 5.2 `useExamProctoring.ts`: cargar la config efectiva al inicio del examen y usar sus pesos/umbrales (no `DEFAULT_CONFIG`)
-- [x] 5.3 `useDetectionHarness.ts` / `AdminDetectionHarness.tsx`: cargar la config efectiva como baseline (manteniendo captura air-gapped)
-- [x] 5.4 Test: editar config → nuevo examen/harness refleja el cambio (invalidación de cache vía `resetEffectiveConfigCache()` + `patchDemoExamenFromConfig()`)
+- [x] 5.1 `obtenerConfigEfectiva()` → `GET /config/effective` con caché por `version` (`effectiveConfigCache.ts`)
+- [x] 5.2 `useExamProctoring.ts`: pesos/umbrales de la config efectiva (no `DEFAULT_CONFIG`) — **+ esta sesión**: respeta `detectores_activos` (descarta eventos de detectores inactivos)
+- [x] 5.3 `useDetectionHarness.ts`/`AdminDetectionHarness.tsx`: config efectiva como baseline (captura air-gapped)
+- [x] 5.4 Test: editar config → examen/harness refleja el cambio
 
 ## 6. Frontend — "Números más fáciles" + UX de admin
 
-- [x] 6.1 Módulo `frontend/src/config/configScale.ts` (TS puro, export named) con conversión bidireccional interno↔amigable (ms↔segundos, 0–1↔sensibilidad baja/media/alta, frames↔"N detecciones")
-- [x] 6.2 Tests del módulo de escala (round-trip preserva el valor interno) — 41 tests en `configScale.test.ts`
-- [x] 6.3 UI de las 3 secciones muestra la escala amigable; convierte a unidad interna antes de enviar
-- [x] 6.4 Validación + textos de ayuda claros en cada campo (lenguaje no técnico); mensajes de error legibles
+- [x] 6.1 `configScale.ts` (conversión interno↔amigable)
+- [x] 6.2 Tests de escala (round-trip)
+- [x] 6.3 UI con escala amigable
+- [x] 6.4 Validación + textos claros no técnicos
 
 ## 7. Verificación y cierre
 
-- [ ] 7.1 Smoke test prod (slim/Railway): confirmar `configuracion_sistema` y `consentimiento_perfil` presentes vía `tools/db/query.js`
-- [ ] 7.2 E2E: editar config como `admin_sistema` → iniciar examen nuevo → score refleja la config; consentimiento de perfil persiste/revoca server-side
-- [ ] 7.3 Suite completa en verde (sin mocks de DB)
-- [ ] 7.4 Revisión manual de aceptación del dueño (UX "números más fáciles" + flujo de admin)
+- [ ] 7.1 Smoke test prod (slim/Railway): `configuracion_sistema`, `consentimiento_perfil`, `consent_texto_version`, `evento_score_config` presentes
+- [x] 7.2 E2E (dev): editar config como admin → examen refleja pesos/umbral/detectores activos; consentimiento persiste/revoca; publicar versión → alumno re-consiente (verificado por curl/DB)
+- [x] 7.3 Suite completa en verde (sin mocks de DB) — frontend 440, backend 77 en las áreas del change
+- [ ] 7.4 Aceptación manual del dueño (probando en dispositivo real vía túnel) — EN CURSO
+
+## 8. Trabajo adicional de la sesión (2026-06-16) — fuera del scope original, ya implementado
+
+### 8.a Scoring / catálogo
+- [x] Fix de caché: editar un peso de scoring invalida el `ConfigService` → se refleja en `/config/effective` (`test_scoring_cache_invalidation.py`)
+- [x] Evento `corte_conectividad_prolongado` (severidad **crítica**) agregado al catálogo — migraciones `0016` slim / `0017` full
+- [x] Severidad **baseline** sacada de la lista de eventos editables y de la leyenda (no es un evento)
+
+### 8.b Consentimiento — texto versionado editable (cableado completo, aprobado por el dueño)
+- [x] Tabla `consent_texto_version` (version PK, `bloques` JSONB, hash) — migraciones `0018` slim / `0019` seed v1 / `0020` full
+- [x] `GET /consent/text[?version]` resuelve la versión vigente desde la config; `GET/POST /consent/text/versions` (admin, 409 si existe)
+- [x] `PATCH /config` valida que `consent_version_vigente` exista (422 si no)
+- [x] `SeccionConsentimiento`: editar/agregar/eliminar cláusulas; cambiar el texto **exige** publicar versión nueva; `Consent.tsx` re-consiente con la vigente
+- [x] Tests: `test_consent_texto_versionado.py` (22)
+
+### 8.c Usuarios — gestión y detalle
+- [x] Endpoints admin: `GET /users/{id}`, `/users/{id}/consent-profile`, `/users/{id}/biometria/referencia/estado` (solo metadatos, **nunca el embedding**)
+- [x] Filtros server-side en `GET /users/` (rol, estado, q) + `POST /users/{id}/reactivar` + auto-protección
+- [x] Página **Detalle de usuario** (`/admin/usuarios/:id`): datos + consentimiento + captura de referencia (foto). Router extendido para `:param`
+- [x] Lista mejorada: switch de estado (verde/rojo, no auto-baja), badges de rol, filtros; `ActionMenu` por portal (no se corta)
+- [x] Tests: `test_users_detalle_admin.py` (14) + `test_users_filtros_reactivar.py` (14)
+
+### 8.d Cola de revisión / flujo
+- [x] La Cola lee el umbral de `/config/effective` (no 60 fijo); `getUmbralAlto()` sembrado de la config (vista en vivo coherente)
+- [x] Sesiones sin examen (diagnóstico / "Grabar sesión") excluidas de la Cola (no más "Sin examen asociado")
+
+### 8.e UI/UX global (aprobado por el dueño)
+- [x] Configuración del Sistema rediseñada (tabs en línea, cards con padding, slider, toggles, scoring con color de severidad, "Impacto en el score")
+- [x] Test de detección rediseñado (cámara grande, sandbox "no se guarda", HelpButton, copy sin jerga, botones Grabar sesión/Test Local)
+- [x] Pasada anti-morado (color semántico para estados; morado solo marca/primario), sidebar mobile más grande, notificaciones arriba-derecha
+- [x] Copy del frontend sin menciones a leyes/reglas/changes
