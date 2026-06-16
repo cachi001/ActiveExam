@@ -29,7 +29,7 @@ function ColaNivelCard({
       <Card className="h-full flex flex-col gap-md transition-all
         group-hover:border-primary/40 group-hover:shadow-card-lg">
         <div className="flex items-start justify-between gap-md">
-          <div className="w-11 h-11 rounded-xl bg-primary-fixed text-primary flex items-center
+          <div className="w-11 h-11 rounded-xl bg-surface-container text-on-surface-variant flex items-center
             justify-center shrink-0">
             <Icon name={icono} className="text-[22px]" fill />
           </div>
@@ -42,7 +42,7 @@ function ColaNivelCard({
             {nodo.nombre}
           </p>
         </div>
-        <div className="mt-auto flex items-center gap-base text-label-sm text-primary
+        <div className="mt-auto flex items-center gap-base text-label-sm text-on-surface-variant
           font-semibold pt-base">
           Abrir
           <Icon name="arrow_forward" className="text-[16px]" />

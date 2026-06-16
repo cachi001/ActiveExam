@@ -18,9 +18,11 @@
  */
 
 import { StaffShell } from '../ui/shells';
-import { Icon, Card, Badge } from '../ui/components';
+import { Icon, Card, Badge, SectionTitle } from '../ui/components';
+import { HelpButton } from '../ui/HelpButton';
 import { STAFF_NAV } from '../ui/nav';
 import { DEFAULT_CONFIG } from '../proctoring/stateTransitionRules';
+import { getEffectiveConfig } from '../config/effectiveConfigCache';
 // C-30/C-32: loaders del motor real para el botón "Reintentar"
 import { loadRealEngine, disposeRealEngine } from '../vision/harnessEngineLoader';
 
@@ -33,7 +35,40 @@ import ThresholdsConfig from './harness/ThresholdsConfig';
 import RiskMeter from './harness/RiskMeter';
 import EventLog from './harness/EventLog';
 import CoverageChecklist from './harness/CoverageChecklist';
-import LeyendaSeveridad from './harness/LeyendaSeveridad';
+
+const AYUDA = (
+  <HelpButton title="¿Para qué sirve esta prueba?">
+    <p>
+      Sirve para comprobar que el sistema detecta bien las situaciones sospechosas <strong className="text-on-surface">antes</strong> de
+      usarlo en un examen real. Al encender la cámara, el sistema analiza en vivo lo que ve —tu rostro,
+      hacia dónde mirás y tu postura— y lo que pasa en la pantalla: si cambiás de pestaña, si salís de
+      pantalla completa o si copiás y pegás.
+    </p>
+    <div>
+      <p className="font-semibold text-on-surface mb-2">Probá haciendo esto:</p>
+      <ul className="list-disc list-inside space-y-1 ml-2">
+        <li>Moverte frente a la cámara o alejarte</li>
+        <li>Taparte la cara o tapar la cámara con la mano</li>
+        <li>Cambiar de pestaña o abrir otra aplicación</li>
+        <li>Copiar o pegar un texto</li>
+        <li>Salir de la pantalla completa</li>
+      </ul>
+      <p className="mt-2 text-on-surface-variant">Cada acción debería aparecer como un evento en la lista de la derecha.</p>
+    </div>
+    <div>
+      <p className="font-semibold text-on-surface mb-2">Hay dos formas de probar:</p>
+      <ul className="list-disc list-inside space-y-1 ml-2">
+        <li><strong className="text-on-surface">Probar (local):</strong> todo queda en este dispositivo y no se guarda nada.</li>
+        <li><strong className="text-on-surface">Iniciar sesión:</strong> los eventos quedan registrados para poder revisarlos, pero sigue siendo una prueba — no es un examen real.</li>
+      </ul>
+    </div>
+    <p className="border-t border-outline-variant/40 pt-2">
+      Es una <strong className="text-on-surface">herramienta solo para administradores</strong>: no hay examen
+      real ni un alumno rindiendo, y el sistema <strong className="text-on-surface">nunca sanciona por su cuenta</strong> —
+      siempre decide una persona. Nada de lo que pase acá se guarda como evidencia de un examen.
+    </p>
+  </HelpButton>
+);
 
 export default function AdminDetectionHarness() {
   const h = useDetectionHarness();
@@ -57,18 +92,39 @@ export default function AdminDetectionHarness() {
     }
   };
 
-  const handleRestoreDefaults = () => {
-    h.setConfigDraft({ ...DEFAULT_CONFIG });
-    h.setConfig({ ...DEFAULT_CONFIG });
+  // Opción A: "Volver a la config del sistema" descarta los cambios de prueba y
+  // restaura los umbrales VIVOS del sistema (config efectiva), no los defaults
+  // hardcodeados. Si la config efectiva no cargó, cae a DEFAULT_CONFIG.
+  const handleRestoreSystem = () => {
+    const cfg = getEffectiveConfig();
+    const thresholds = cfg
+      ? {
+          face_absent_ms: cfg.face_absent_ms,
+          multiple_faces_frames: cfg.multiple_faces_frames,
+          gaze_deviation_threshold: cfg.gaze_deviation_threshold,
+          gaze_sustained_ms: cfg.gaze_sustained_ms,
+          gaze_fixation_tolerance: cfg.gaze_fixation_tolerance,
+        }
+      : { ...DEFAULT_CONFIG };
+    h.setConfigDraft(thresholds);
+    h.setConfig(thresholds);
     h.setConfigErrors({});
     if (h.engineRef.current && h.sinkRef.current) {
-      h.pipelineRef.current = h.createPipeline(h.engineRef.current, h.sinkRef.current, DEFAULT_CONFIG);
+      h.pipelineRef.current = h.createPipeline(h.engineRef.current, h.sinkRef.current, thresholds);
     }
   };
 
   return (
-    <StaffShell nav={STAFF_NAV} title="Test de detección">
+    <StaffShell nav={STAFF_NAV} title="Test de detección" subtitle="Probá el motor de detección en vivo — herramienta diagnóstica, no afecta exámenes reales ni guarda datos." help={AYUDA}>
       <div className="space-y-lg animate-in fade-in duration-300">
+
+        {/* Aviso de importancia (una sola vez, arriba de todo): todo es de prueba, no toca la config real */}
+        <Card className="flex items-start gap-sm border-l-4 border-l-warning bg-warning-container/30">
+          <Icon name="info" className="text-[20px] shrink-0 mt-px text-warning" fill />
+          <p className="text-label-sm text-on-surface">
+            Todo lo que cambies en esta pantalla es <strong>solo para esta prueba</strong> y no modifica la configuración real. Para cambiar lo que se aplica a los exámenes, andá a <strong>Configuración</strong>.
+          </p>
+        </Card>
 
         <HarnessHeader
           engineMode={h.engineMode}
@@ -78,8 +134,6 @@ export default function AdminDetectionHarness() {
           modoSesion={h.modoSesion}
           eventosEnviados={h.eventosEnviados}
           harnessScore={h.harnessScore}
-          propositoPanelOpen={h.propositoPanelOpen}
-          setPropositoPanelOpen={h.setPropositoPanelOpen}
           onStart={h.startHarness}
           onStop={h.stopHarness}
           onRetryEngine={handleRetryEngine}
@@ -87,12 +141,14 @@ export default function AdminDetectionHarness() {
 
         {/* ================================================================
             GRID PRINCIPAL
+            Layout: cámara protagonista (2/3 de ancho) + panel lateral (1/3).
+            Fila superior: cámara grande a la izquierda, medidor de riesgo a la derecha.
+            Fila inferior: señales/config a la izquierda, log/cobertura a la derecha.
         ================================================================ */}
         <div className="grid lg:grid-cols-3 gap-lg">
 
-          {/* ---- Columna izquierda: cámara + señales crudas + config ---- */}
-          <div className="space-y-lg">
-
+          {/* ---- Cámara (2 cols) — protagonista visual ---- */}
+          <div className="lg:col-span-2 space-y-lg">
             <CameraPanel
               videoRef={h.videoRef}
               engineMode={h.engineMode}
@@ -104,18 +160,21 @@ export default function AdminDetectionHarness() {
               setShowFullMesh={h.setShowFullMesh}
             />
 
-            <VisionSignalsPanel
-              rawSignals={h.rawSignals}
-              engineMode={h.engineMode}
-              harnessState={h.harnessState}
-            />
+            {/* Señales de visión y entorno debajo de la cámara */}
+            <div className="grid sm:grid-cols-2 gap-lg">
+              <VisionSignalsPanel
+                rawSignals={h.rawSignals}
+                engineMode={h.engineMode}
+                harnessState={h.harnessState}
+              />
 
-            <EnvSignalsPanel
-              envSignals={h.envSignals}
-              harnessState={h.harnessState}
-              monitorPermission={h.monitorPermission}
-              onRequestMonitorPermission={h.handleRequestMonitorPermission}
-            />
+              <EnvSignalsPanel
+                envSignals={h.envSignals}
+                harnessState={h.harnessState}
+                monitorPermission={h.monitorPermission}
+                onRequestMonitorPermission={h.handleRequestMonitorPermission}
+              />
+            </div>
 
             <ThresholdsConfig
               configDraft={h.configDraft}
@@ -123,13 +182,12 @@ export default function AdminDetectionHarness() {
               harnessState={h.harnessState}
               onConfigChange={h.applyConfigChange}
               onResetRules={h.resetRules}
-              onRestoreDefaults={handleRestoreDefaults}
+              onRestoreSystem={handleRestoreSystem}
             />
-
           </div>
 
-          {/* ---- Columna derecha (2 cols): medidor de riesgo + store counter + log de eventos + cobertura ---- */}
-          <div className="lg:col-span-2 space-y-lg">
+          {/* ---- Panel lateral (1 col): medidor de riesgo + leyenda + store + log + cobertura ---- */}
+          <div className="space-y-lg">
 
             <RiskMeter
               harnessScore={h.harnessScore}
@@ -138,24 +196,27 @@ export default function AdminDetectionHarness() {
               onResetScore={() => h.setHarnessScore(0)}
             />
 
-            <LeyendaSeveridad />
-
             {/* Contador del store (tasks 7.1, 7.2) */}
-            <Card className="flex items-center justify-between gap-md flex-wrap">
-              <div className="flex items-center gap-sm">
-                <div className="w-10 h-10 rounded-xl bg-primary-fixed text-primary flex items-center justify-center shrink-0">
-                  <Icon name="storage" />
+            <Card className="space-y-md">
+              <SectionTitle sub="Eventos recientes en memoria (máx. 50); los más viejos se descartan cuando se llena.">
+                Buffer de eventos
+              </SectionTitle>
+              <div className="flex items-center justify-between gap-md flex-wrap">
+                <div className="flex items-center gap-sm">
+                  <div className="w-10 h-10 rounded-xl bg-surface-container text-on-surface-variant flex items-center justify-center shrink-0">
+                    <Icon name="storage" />
+                  </div>
+                  <div>
+                    <p className="text-label-sm text-on-surface-variant">Eventos en memoria</p>
+                    <p className="font-headline text-headline-md text-on-surface">
+                      {h.anomaliasVivo.length} <span className="text-label-sm text-on-surface-variant font-normal">/ 50</span>
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-label-sm text-on-surface-variant uppercase tracking-wide">store.anomaliasVivo</p>
-                  <p className="font-headline text-headline-md text-on-surface">
-                    {h.anomaliasVivo.length} <span className="text-label-sm text-on-surface-variant font-normal">/ 50 (límite)</span>
-                  </p>
-                </div>
+                {h.anomaliasVivo.length >= 50 && (
+                  <Badge tone="warning" dot>Store lleno — overflow activo</Badge>
+                )}
               </div>
-              {h.anomaliasVivo.length >= 50 && (
-                <Badge tone="warning" dot>Store lleno — overflow activo</Badge>
-              )}
             </Card>
 
             <EventLog
@@ -178,20 +239,12 @@ export default function AdminDetectionHarness() {
               coverage={h.coverage}
               monitorPermission={h.monitorPermission}
               sessionStart={h.sessionStart}
+              legendRows={h.legendRows}
+              legendError={h.legendError}
             />
           </div>
         </div>
 
-        {/* ================================================================
-            AVISO LEGAL L2.5
-        ================================================================ */}
-        <div className="bg-primary-fixed/40 rounded-xl p-sm text-label-sm text-on-primary-fixed-variant flex items-start gap-base">
-          <Icon name="shield" className="text-[18px] shrink-0" fill />
-          <span>
-            Herramienta diagnóstica — sin examen real, sin sesión de alumno, sin sanción automática (la decisión es siempre humana).
-            Los eventos generados aquí NO se almacenan en el backend de producción.
-          </span>
-        </div>
       </div>
     </StaffShell>
   );

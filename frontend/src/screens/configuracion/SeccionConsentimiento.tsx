@@ -1,15 +1,18 @@
 /**
- * SeccionConsentimiento — edición del texto que los alumnos confirman.
+ * SeccionConsentimiento — publicación versionada del texto de consentimiento.
  *
- * Dos responsabilidades:
- *  1. Editar los bloques de texto del consentimiento (api.getConsentText — texto estático/demo).
- *  2. Actualizar la `consent_version_vigente` en la config del sistema vía PATCH /api/v1/config
- *     para que nuevos consentimientos usen la versión nueva (D5 — append-only, re-pedir al alumno).
- *
- * La versión del texto vigente se carga de la config efectiva (GET /api/v1/config/effective).
- * Invalidar el cache de config efectiva tras guardar.
+ * Flujo real:
+ *  1. Carga: getConsentText() (texto vigente del backend) + obtenerConfigEfectiva()
+ *     (para saber qué versión está activa).
+ *  2. Si el admin edita los bloques SIN cambiar la versión → bloquear guardar
+ *     con un mensaje claro: debe ingresar una versión nueva.
+ *  3. Con versión nueva: crearVersionConsentimiento() → editarConfigSistema()
+ *     → resetEffectiveConfigCache(). Toast informando que los alumnos deben re-consentir.
+ *  4. Si solo cambia la versión pero no el texto (sin sentido práctico, pero válido):
+ *     igual crea la versión nueva con los bloques actuales.
+ *  5. 409 (versión ya existe): mensaje claro al admin.
  */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Card, Button, Icon } from '../../ui/components';
 import { useToast } from '../../ui/toast';
 import { api } from '../../lib/api';
@@ -19,20 +22,21 @@ import type { BloqueConsentimiento } from '../../lib/types';
 export default function SeccionConsentimiento() {
   const toast = useToast();
   const [bloques, setBloques] = useState<BloqueConsentimiento[]>([]);
+  const [bloquesInicial, setBloquesInicial] = useState<BloqueConsentimiento[]>([]);
   const [version, setVersion] = useState('');
   const [nuevaVersion, setNuevaVersion] = useState('');
   const [cargando, setCargando] = useState(true);
   const [guardando, setGuardando] = useState(false);
 
   useEffect(() => {
-    // Carga los bloques de texto del consentimiento (estáticos / demo)
-    // y la versión vigente desde la config efectiva.
+    // Carga el texto vigente del backend y la versión activa de la config efectiva.
     Promise.all([
       api.getConsentText(),
       api.obtenerConfigEfectiva(),
     ])
       .then(([t, cfg]) => {
         setBloques(t.bloques);
+        setBloquesInicial(t.bloques);
         setVersion(cfg.consent_version_vigente);
         setNuevaVersion(cfg.consent_version_vigente);
       })
@@ -41,25 +45,82 @@ export default function SeccionConsentimiento() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Dirty: cambió la versión o algún bloque
+  const versionCambio = nuevaVersion.trim() !== version;
+  const bloquesCambiaron =
+    bloques.length !== bloquesInicial.length ||
+    bloques.some((b, i) => {
+      const orig = bloquesInicial[i];
+      return !orig || b.titulo !== orig.titulo || b.cuerpo !== orig.cuerpo;
+    });
+  const dirty = versionCambio || bloquesCambiaron;
+
+  // Invariante: si editó texto pero no cambió la versión → no se puede guardar.
+  const textoCambioSinVersion = bloquesCambiaron && !versionCambio;
+
+  const cancelar = useCallback(() => {
+    setBloques(bloquesInicial);
+    setNuevaVersion(version);
+  }, [bloquesInicial, version]);
+
   function setBloque(i: number, field: keyof BloqueConsentimiento, value: string) {
     setBloques((prev) => prev.map((b, idx) => (idx === i ? { ...b, [field]: value } : b)));
   }
 
+  function agregarBloque() {
+    setBloques((prev) => [...prev, { titulo: 'Nueva cláusula', cuerpo: '', icono: 'article' }]);
+  }
+
+  function eliminarBloque(i: number) {
+    // Siempre debe quedar al menos una cláusula.
+    setBloques((prev) => (prev.length <= 1 ? prev : prev.filter((_, idx) => idx !== i)));
+  }
+
+  // Auto-grow: ajusta el alto del textarea a su contenido (sin scroll interno que recorte).
+  function autoGrow(el: HTMLTextAreaElement | null) {
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+  }
+
   async function guardar() {
+    const versionTrimmed = nuevaVersion.trim();
+
+    // Validación: texto editado sin nueva versión → bloquear.
+    if (textoCambioSinVersion) {
+      toast.error('Cambiaste el texto: ingresá una versión nueva antes de guardar.');
+      return;
+    }
+
+    if (!versionTrimmed) {
+      toast.error('Ingresá un nombre de versión antes de guardar.');
+      return;
+    }
+
     setGuardando(true);
     try {
-      // Actualiza la versión vigente en la config del sistema si cambió.
-      if (nuevaVersion && nuevaVersion !== version) {
-        await api.editarConfigSistema({ consent_version_vigente: nuevaVersion });
-        resetEffectiveConfigCache();
-        setVersion(nuevaVersion);
-        toast.success(`Versión de consentimiento actualizada a "${nuevaVersion}". Los alumnos deberán re-consentir.`);
-      } else {
-        // Solo actualizó el texto (sin bump de version) — guardado local/demo.
-        toast.success('Texto de consentimiento guardado');
-      }
+      // 1. Crear la nueva versión del texto en el backend.
+      await api.crearVersionConsentimiento({
+        version: versionTrimmed,
+        bloques: bloques.map(({ titulo, cuerpo }) => ({ titulo, cuerpo })),
+      });
+
+      // 2. Activar la versión nueva en la config del sistema.
+      await api.editarConfigSistema({ consent_version_vigente: versionTrimmed });
+      resetEffectiveConfigCache();
+
+      // 3. Confirmar localmente y notificar.
+      setVersion(versionTrimmed);
+      setNuevaVersion(versionTrimmed);
+      setBloquesInicial(bloques);
+      toast.success(`Publicaste la versión "${versionTrimmed}". Los alumnos deberán confirmar el nuevo texto antes de rendir.`);
     } catch (e) {
-      toast.error(`Error al guardar: ${e instanceof Error ? e.message : String(e)}`);
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg.includes('409') || msg.includes('HTTP 409')) {
+        toast.error(`La versión "${versionTrimmed}" ya existe. Ingresá un nombre de versión diferente.`);
+      } else {
+        toast.error(`Error al guardar: ${msg}`);
+      }
     } finally {
       setGuardando(false);
     }
@@ -67,7 +128,7 @@ export default function SeccionConsentimiento() {
 
   if (cargando) {
     return (
-      <div className="space-y-lg max-w-3xl">
+      <div className="space-y-lg max-w-4xl">
         {Array.from({ length: 3 }).map((_, i) => (
           <div key={i} className="h-[140px] rounded-2xl border border-outline-variant/40 bg-white animate-pulse" />
         ))}
@@ -76,20 +137,38 @@ export default function SeccionConsentimiento() {
   }
 
   return (
-    <div className="space-y-lg max-w-3xl">
-      <div className="flex items-center gap-base text-[13px] text-on-surface-variant">
-        <Icon name="article" className="text-[18px] text-primary" />
-        <span>Versión vigente: <span className="font-mono font-semibold text-on-surface">{version}</span> — editá el texto que los alumnos leen y confirman antes de rendir.</span>
+    <div className="space-y-lg max-w-4xl">
+      {/* Título de la sección */}
+      <div>
+        <h2 className="font-headline text-title-xl text-on-surface tracking-tight">Consentimiento</h2>
+        <p className="text-[13px] text-on-surface-variant mt-1">
+          Texto que los alumnos leen y confirman antes de rendir. Publicar una nueva versión obliga a todos
+          los alumnos a leer y confirmar el texto actualizado.
+        </p>
       </div>
 
-      {/* Nueva versión (bump para re-pedir consentimiento) */}
+      {/* Versión vigente actual */}
+      <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-surface-container border border-outline-variant/60">
+        <Icon name="article" className="text-[20px] text-on-surface-variant shrink-0 mt-0.5" />
+        <div className="space-y-0.5">
+          <p className="text-[13px] font-semibold text-on-surface">
+            Versión activa: <span className="font-mono">{version}</span>
+          </p>
+          <p className="text-[12px] text-on-surface-variant">
+            Editá el texto y publicalo con una versión nueva para que los alumnos lo confirmen.
+          </p>
+        </div>
+      </div>
+
+      {/* Campo de nueva versión */}
       <Card className="flex items-end gap-md">
         <div className="flex-1 space-y-base">
           <label className="text-label-sm font-semibold text-on-surface block">
-            Nueva versión del texto
+            Versión a publicar
           </label>
           <p className="text-[11px] text-on-surface-variant">
-            Si cambiás la versión, todos los alumnos deberán re-consentir antes de rendir.
+            Cada versión es permanente e inmutable. Si cambiás el texto, debés publicarlo bajo
+            una versión nueva (ej. v2, v1.1, 2026-06).
           </p>
           <input
             type="text"
@@ -99,38 +178,87 @@ export default function SeccionConsentimiento() {
             className="w-full px-sm py-base rounded-xl border border-outline-variant bg-white font-mono text-label-md focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors"
           />
         </div>
-        {nuevaVersion !== version && (
+        {versionCambio && (
           <div className="flex items-center gap-base text-warning text-[12px] shrink-0 pb-sm">
             <Icon name="warning" className="text-[16px]" />
-            Se pedirá re-consentimiento
+            Los alumnos deberán re-confirmar
           </div>
         )}
       </Card>
 
+      {/* Alerta: texto editado sin versión nueva */}
+      {textoCambioSinVersion && (
+        <div className="flex items-start gap-sm px-md py-sm rounded-xl bg-error-container border border-error/30">
+          <Icon name="error" className="text-error text-[18px] shrink-0 mt-px" />
+          <p className="text-[12px] text-on-surface">
+            <strong>Cambios de texto requieren una versión nueva.</strong>{' '}
+            Ingresá un nombre de versión diferente a <span className="font-mono">"{version}"</span> para poder guardar.
+          </p>
+        </div>
+      )}
+
       {bloques.map((b, i) => (
-        <Card key={i} className="space-y-sm">
-          <input
-            type="text"
-            value={b.titulo}
-            onChange={(e) => setBloque(i, 'titulo', e.target.value)}
-            className="w-full text-title-md font-headline text-on-surface bg-transparent border-b border-transparent hover:border-outline-variant focus:border-primary focus:outline-none pb-1 transition-colors"
-            aria-label={`Título del bloque ${i + 1}`}
-          />
+        <Card key={i} className="space-y-sm flex flex-col">
+          <div className="flex items-start gap-sm">
+            <input
+              type="text"
+              value={b.titulo}
+              onChange={(e) => setBloque(i, 'titulo', e.target.value)}
+              className="flex-1 min-w-0 text-title-md font-headline text-on-surface bg-transparent border-b border-transparent hover:border-outline-variant focus:border-primary focus:outline-none pb-1 transition-colors"
+              aria-label={`Título de la cláusula ${i + 1}`}
+            />
+            <button
+              type="button"
+              onClick={() => eliminarBloque(i)}
+              disabled={bloques.length <= 1}
+              title={bloques.length <= 1 ? 'Debe quedar al menos una cláusula' : 'Eliminar cláusula'}
+              aria-label={`Eliminar cláusula ${i + 1}`}
+              className="shrink-0 w-8 h-8 rounded-lg flex items-center justify-center text-on-surface-variant hover:bg-error-container hover:text-error disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-on-surface-variant transition-colors"
+            >
+              <Icon name="delete" className="text-[18px]" />
+            </button>
+          </div>
           <textarea
+            ref={autoGrow}
             value={b.cuerpo}
-            onChange={(e) => setBloque(i, 'cuerpo', e.target.value)}
-            rows={3}
-            className="w-full text-[13px] text-on-surface-variant bg-white rounded-xl border border-outline-variant p-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors resize-y"
-            aria-label={`Cuerpo del bloque ${i + 1}`}
+            onChange={(e) => { setBloque(i, 'cuerpo', e.target.value); autoGrow(e.target); }}
+            className="w-full text-[13px] text-on-surface-variant bg-white rounded-xl border border-outline-variant p-sm min-h-[7rem] overflow-hidden resize-none focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors"
+            aria-label={`Cuerpo de la cláusula ${i + 1}`}
           />
         </Card>
       ))}
 
-      <div className="flex justify-end">
-        <Button icon="save" onClick={guardar} disabled={guardando}>
-          {guardando ? 'Guardando…' : 'Guardar consentimiento'}
-        </Button>
-      </div>
+      {/* Agregar una nueva cláusula al consentimiento */}
+      <button
+        type="button"
+        onClick={agregarBloque}
+        className="w-full flex items-center justify-center gap-sm py-3 rounded-xl border border-dashed border-outline-variant text-on-surface-variant hover:border-primary hover:text-primary transition-colors text-label-md font-medium"
+      >
+        <Icon name="add" className="text-[18px]" />
+        Agregar cláusula
+      </button>
+
+      {/* Footer dirty-aware */}
+      {dirty && (
+        <div className="flex items-center justify-between gap-sm pt-sm border-t border-outline-variant/40">
+          <div className="flex items-center gap-xs text-[12px] text-on-surface-variant">
+            <Icon name="edit" className="text-[14px]" />
+            Hay cambios sin guardar
+          </div>
+          <div className="flex gap-sm">
+            <Button variant="outline" icon="undo" onClick={cancelar} disabled={guardando}>
+              Cancelar
+            </Button>
+            <Button
+              icon="publish"
+              onClick={guardar}
+              disabled={guardando || textoCambioSinVersion || !nuevaVersion.trim()}
+            >
+              {guardando ? 'Publicando…' : 'Publicar versión'}
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

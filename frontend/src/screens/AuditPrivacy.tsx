@@ -46,7 +46,7 @@ export default function AuditPrivacy() {
       <div className="space-y-lg animate-in fade-in duration-500">
 
         <div className="grid sm:grid-cols-3 gap-md">
-          <StatCard icon="schedule" label="Retención" value="30 días" sub="luego eliminación automática" tono="primary" />
+          <StatCard icon="schedule" label="Retención" value="30 días" sub="luego eliminación automática" tono="neutral" />
           <StatCard icon="enhanced_encryption" label="Evidencia" value="Protegida" sub="cifrada e inalterable" tono="success" />
           <StatCard icon="fingerprint" label="Embedding" value="Dato sensible" sub="responsabilidad reforzada" tono="warning" />
         </div>
@@ -69,7 +69,7 @@ export default function AuditPrivacy() {
               <ul className="space-y-sm">
                 {DSR.map((d) => (
                   <li key={d.titulo} className="flex items-start gap-sm">
-                    <div className="w-8 h-8 rounded-lg bg-primary-fixed/60 text-primary flex items-center justify-center shrink-0">
+                    <div className="w-8 h-8 rounded-lg bg-surface-container text-on-surface-variant flex items-center justify-center shrink-0">
                       <Icon name={d.icon} className="text-[16px]" />
                     </div>
                     <div className="min-w-0">

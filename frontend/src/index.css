@@ -56,6 +56,47 @@
   }
 }
 
+/* ----- slider moderno (range) — track via inline gradient, thumb estilado ----- */
+.ae-slider {
+  height: 8px;
+  border-radius: 9999px;
+}
+.ae-slider:focus-visible {
+  outline: 2px solid #6366f1; /* primary-container */
+  outline-offset: 4px;
+}
+.ae-slider::-webkit-slider-runnable-track {
+  height: 8px;
+  border-radius: 9999px;
+}
+.ae-slider::-moz-range-track {
+  height: 8px;
+  border-radius: 9999px;
+}
+.ae-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  margin-top: -6px; /* centra el thumb de 20px sobre el track de 8px */
+  width: 20px;
+  height: 20px;
+  border-radius: 9999px;
+  background: #ffffff;
+  border: 3px solid #4f46e5; /* primary */
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+  cursor: pointer;
+  transition: transform 0.12s ease;
+}
+.ae-slider::-webkit-slider-thumb:hover { transform: scale(1.12); }
+.ae-slider::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 9999px;
+  background: #ffffff;
+  border: 3px solid #4f46e5; /* primary */
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+  cursor: pointer;
+}
+
 /* ----- inputs numéricos sin spinners (más profesional) ----- */
 /* Chrome, Safari, Edge */
 input[type="number"]::-webkit-outer-spin-button,

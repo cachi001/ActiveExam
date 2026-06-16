@@ -14,7 +14,7 @@ export function ResumenSesiones({ sesiones }: { sesiones: SesionProctoringResume
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-3 gap-md">
-      <StatCard icon="video_library" label="Sesiones" value={totalSesiones} tono="primary" />
+      <StatCard icon="video_library" label="Sesiones" value={totalSesiones} tono="neutral" />
       <StatCard icon="notifications" label="Eventos" value={totalEventos} tono="neutral" />
       <StatCard
         icon="rule"

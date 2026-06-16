@@ -131,8 +131,8 @@ export function EnrollmentConsentStep({ acuseActual, onConsentido, soloLectura =
           />
           <span className="text-body-md text-on-surface">
             Presto mi <strong>consentimiento libre, expreso e informado</strong> para el tratamiento de mis datos
-            (incluido el <Term termKey="embedding">embedding biométrico</Term> y la imagen de referencia, tratados como datos sensibles bajo la{' '}
-            <strong>Ley 25.326</strong>) con la única finalidad de supervisar mis evaluaciones académicas.
+            (incluido el <Term termKey="embedding">embedding biométrico</Term> y la imagen de referencia, tratados como datos sensibles)
+            con la única finalidad de supervisar mis evaluaciones académicas.
             Entiendo que <strong>el sistema nunca sanciona automáticamente</strong> y que toda decisión disciplinaria
             es humana. Tu aceptación queda registrada con la versión {texto?.version} del texto.
           </span>

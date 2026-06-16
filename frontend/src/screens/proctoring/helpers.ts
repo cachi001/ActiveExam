@@ -8,8 +8,41 @@
 import type { VeredictoReinferencia } from '../../lib/types';
 import { EXAMENES, COMISIONES, MATERIAS } from '../../lib/api';
 
-/** Umbral de score a partir del cual una sesión se considera de riesgo alto. */
-export const SCORE_UMBRAL_ALTO = 60;
+/**
+ * Umbral "alto" sembrable desde la config efectiva.
+ *
+ * Patrón análogo a `seedScoringWeights` de scoringWeights.ts:
+ *  - `seedUmbralAlto(v)` — llamado desde `effectiveConfigCache.loadEffectiveConfig()`
+ *    para propagar `umbral_cola_revision` sin un segundo round-trip.
+ *  - `getUmbralAlto()`   — O(1), sin red; usado en `nivelRiesgo()` y en las vistas.
+ *  - Default 70 (igual que el mock del backend en api.ts).
+ *
+ * @deprecated SCORE_UMBRAL_ALTO — se mantiene solo para compatibilidad con
+ * importaciones existentes. Usar `getUmbralAlto()` en código nuevo.
+ */
+let _umbralAlto = 70;
+
+/** Siembra el umbral de riesgo alto desde la config efectiva (sin red). Idempotente. */
+export function seedUmbralAlto(v: number): void {
+  _umbralAlto = v;
+}
+
+/** Devuelve el umbral de riesgo alto vigente (default 70, o el sembrado por la config). */
+export function getUmbralAlto(): number {
+  return _umbralAlto;
+}
+
+/** Resetea el umbral al default (70). Solo para tests. */
+export function resetUmbralAlto(): void {
+  _umbralAlto = 70;
+}
+
+/**
+ * Constante de compatibilidad. ATENCIÓN: su valor es el default inicial (70) y NO
+ * se actualiza cuando se siembra la config. Usar `getUmbralAlto()` para el valor vivo.
+ * @deprecated Usar `getUmbralAlto()`.
+ */
+export const SCORE_UMBRAL_ALTO = 70;
 /** Umbral de score a partir del cual una sesión se considera de riesgo medio. */
 export const SCORE_UMBRAL_MEDIO = 30;
 
@@ -53,7 +86,7 @@ export function formatFechaRelativa(iso: string): string {
 export type NivelRiesgo = 'bajo' | 'medio' | 'alto';
 
 export function nivelRiesgo(score: number): NivelRiesgo {
-  if (score >= SCORE_UMBRAL_ALTO) return 'alto';
+  if (score >= getUmbralAlto()) return 'alto';
   if (score >= SCORE_UMBRAL_MEDIO) return 'medio';
   return 'bajo';
 }

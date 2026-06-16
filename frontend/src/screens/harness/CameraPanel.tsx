@@ -54,7 +54,7 @@ export default function CameraPanel({
           {harnessState === 'initializing' && (
             <div className="absolute inset-0 flex flex-col items-center justify-center text-on-surface-variant gap-sm">
               <Icon name="hourglass_empty" className="text-[40px] animate-spin" />
-              <span className="text-label-sm">Inicializando motor…</span>
+              <span className="text-label-sm">Preparando la cámara…</span>
             </div>
           )}
         </div>

@@ -118,6 +118,8 @@ export interface UsuarioAdmin {
   apellido: string | null;
   roles: string[];
   auth_provider: string;
+  /** null = activo; ISO string = dado de baja (soft-delete). */
+  eliminado_en?: string | null;
 }
 
 /** Respuesta paginada de GET /api/v1/users/. */

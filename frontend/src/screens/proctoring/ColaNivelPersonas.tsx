@@ -30,7 +30,7 @@ function PersonaCard({
       className={`w-full text-left p-md rounded-xl border transition-all focus:outline-none
         focus-visible:ring-2 focus-visible:ring-primary/40 ${
           seleccionada
-            ? 'bg-primary-fixed/40 border-primary-container'
+            ? 'bg-surface-container-high border-outline'
             : 'border-outline-variant/40 hover:bg-surface-container-low'
         }`}
     >

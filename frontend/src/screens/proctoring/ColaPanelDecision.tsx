@@ -53,8 +53,8 @@ export function ColaPanelDecision({
       <button
         type="button"
         onClick={onVerDetalle}
-        className="inline-flex items-center gap-base text-label-md font-semibold text-primary
-          hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
+        className="inline-flex items-center gap-base text-label-md font-semibold text-on-surface-variant
+          hover:text-on-surface hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
       >
         Ver detalle completo
         <Icon name="arrow_forward" className="text-[18px]" />

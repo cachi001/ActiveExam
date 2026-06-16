@@ -5,7 +5,7 @@
  * Presentacional: recibe las entries, filtros y callbacks por props.
  */
 
-import { Icon, Card, Button, Badge, SeverityBadge, SectionTitle } from '../../ui/components';
+import { Icon, Card, Badge, SeverityBadge, SectionTitle } from '../../ui/components';
 import { SEVERIDAD_LABEL, TIPO_EVENTO_LABEL } from '../../lib/api';
 import type { Severidad, TipoEvento } from '../../lib/types';
 import { LOG_MAX, type HarnessLogEntry, type HarnessState } from './types';
@@ -25,7 +25,7 @@ interface EventLogProps {
   sessionStart: number;
   onToggleSeverityFilter: (sev: Severidad) => void;
   onShowAllSeverities: () => void;
-  onExportLog: () => void;
+  onExportLog?: () => void;
 }
 
 export default function EventLog({
@@ -41,24 +41,18 @@ export default function EventLog({
   sessionStart,
   onToggleSeverityFilter,
   onShowAllSeverities,
-  onExportLog,
 }: EventLogProps) {
   return (
     <Card className="space-y-md">
-      <div className="flex items-start justify-between gap-md flex-wrap">
-        <SectionTitle sub={
-          isFilterActive
-            ? `${logEntries.length} eventos (${filteredEntries.length} visibles)`
-            : `${logEntries.length} evento${logEntries.length !== 1 ? 's' : ''}`
-        }>
-          Log de eventos
-        </SectionTitle>
-        <div className="flex items-center gap-sm flex-wrap">
-          <Button variant="outline" size="sm" icon="download" onClick={onExportLog} className="text-label-sm">
-            Exportar log
-          </Button>
-        </div>
-      </div>
+      <SectionTitle sub={(() => {
+        // Excluir baseline del conteo visible — no aparecen en el log
+        const realCount = logEntries.filter((e) => e.event.severidad !== 'baseline').length;
+        return isFilterActive
+          ? `${realCount} eventos (${filteredEntries.length} visibles)`
+          : `${realCount} evento${realCount !== 1 ? 's' : ''}`;
+      })()}>
+        Log de eventos
+      </SectionTitle>
 
       {logTruncated && (
         <div className="flex items-center gap-base p-sm rounded-lg bg-warning-container/40 border border-warning/30 text-label-sm text-warning">
@@ -67,10 +61,10 @@ export default function EventLog({
         </div>
       )}
 
-      {/* Filtro por severidad (task 8.1) */}
+      {/* Filtro por severidad (task 8.1) — excluye baseline (no aparece en log) */}
       <div className="flex items-center gap-base flex-wrap">
         <span className="text-label-sm text-on-surface-variant">Filtrar:</span>
-        {SEVERITY_ORDER.map((sev) => (
+        {SEVERITY_ORDER.filter((sev) => sev !== 'baseline').map((sev) => (
           <button
             key={sev}
             onClick={() => onToggleSeverityFilter(sev)}
@@ -86,7 +80,7 @@ export default function EventLog({
         {isFilterActive && (
           <button
             onClick={onShowAllSeverities}
-            className="text-label-sm text-primary hover:underline"
+            className="text-label-sm text-on-surface-variant hover:text-on-surface hover:underline"
           >
             Mostrar todos
           </button>
@@ -150,7 +144,7 @@ export default function EventLog({
                     </span>
                   )}
                   {entry.inStore ? (
-                    <span className="inline-flex items-center gap-base text-label-sm text-primary">
+                    <span className="inline-flex items-center gap-base text-label-sm text-on-surface-variant">
                       <Icon name="inventory_2" className="text-[14px]" fill /> en store
                     </span>
                   ) : (
@@ -192,7 +186,7 @@ export default function EventLog({
                           return next;
                         })
                       }
-                      className="text-label-sm text-on-surface-variant hover:text-primary flex items-center gap-base"
+                      className="text-label-sm text-on-surface-variant hover:text-on-surface flex items-center gap-base"
                     >
                       <Icon name={isExpanded ? 'expand_less' : 'expand_more'} className="text-[16px]" />
                       payload

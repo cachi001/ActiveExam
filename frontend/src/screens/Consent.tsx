@@ -46,7 +46,18 @@ export default function Consent() {
   const aceptar = async () => {
     if (!acepto || !examen) return; // guard defensivo: deep-link directo sin examenActivo
     setGuardando(true);
-    // RN-CC: acuse por-rendición siempre obligatorio, en AMBAS ramas.
+
+    // Si el alumno no tiene consentimiento de perfil vigente con la versión actual,
+    // registrarlo ahora (primera vez o re-consentimiento por versión nueva).
+    if (!yaConsintioPerfil && texto) {
+      try {
+        await api.registrarConsentimientoPerfil(texto.version, false);
+      } catch {
+        // No bloquear el flujo si falla — se reintentará en el próximo ciclo de enrollment.
+      }
+    }
+
+    // Acuse por-rendición: siempre obligatorio, en AMBAS ramas.
     await api.recordConsent(examen.id);
 
     // C-64 D1: crear la sesión de proctoring ANTES de navegar a biometría (paso 3).

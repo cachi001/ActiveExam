@@ -173,8 +173,9 @@ function ToastCard({ item, onDismiss }: { item: ToastItem; onDismiss: (id: numbe
 }
 
 /**
- * Contenedor fijo que renderiza la pila de toasts. Posicionado abajo-centro,
- * z alto para verse por encima de overlays (BiometricCapture usa z-[60]).
+ * Contenedor fijo que renderiza la pila de toasts. Posicionado arriba-derecha
+ * (convención estándar de notificaciones), z alto para verse por encima de
+ * overlays (BiometricCapture usa z-[60]).
  */
 export function Toaster() {
   const items = useContext(ToastListContext);
@@ -183,8 +184,8 @@ export function Toaster() {
 
   return (
     <div
-      className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[120]
-        flex flex-col items-center gap-sm w-full max-w-sm px-md pointer-events-none"
+      className="fixed top-6 right-6 z-[120]
+        flex flex-col items-end gap-sm w-full max-w-sm px-md pointer-events-none"
     >
       {items.map((item) => (
         <ToastCard key={item.id} item={item} onDismiss={ctx.dismiss} />

@@ -22,7 +22,7 @@ import {
   scoreAccentBorder,
   scoreTextColor,
   nivelRiesgo,
-  SCORE_UMBRAL_ALTO,
+  getUmbralAlto,
   joinExamInfo,
 } from './proctoring/helpers';
 
@@ -83,7 +83,7 @@ export default function ExamenPersonasGrid() {
         <div className="space-y-sm">
           <button
             onClick={() => navigate('/proctor')}
-            className="inline-flex items-center gap-base text-label-md font-semibold text-primary hover:underline"
+            className="inline-flex items-center gap-base text-label-md font-semibold text-on-surface-variant hover:text-on-surface hover:underline"
           >
             <Icon name="arrow_back" className="text-[18px]" />
             Volver a supervisión
@@ -108,11 +108,11 @@ export default function ExamenPersonasGrid() {
 
         {/* Resumen del examen */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-md">
-          <StatCard icon="group" label="Personas" value={personas.length} tono="primary" />
+          <StatCard icon="group" label="Personas" value={personas.length} tono="neutral" />
           <StatCard icon="notifications" label="Eventos" value={eventos} tono="info" />
           <StatCard
             icon="priority_high"
-            label={`Riesgo alto (≥${SCORE_UMBRAL_ALTO})`}
+            label={`Riesgo alto (≥${getUmbralAlto()})`}
             value={riesgoAlto}
             tono={riesgoAlto > 0 ? 'error' : 'success'}
           />
@@ -205,7 +205,7 @@ function PersonaCard({
         />
       </div>
 
-      <div className="flex items-center justify-end gap-base mt-md text-label-md font-semibold text-primary opacity-0 group-hover:opacity-100 transition-opacity">
+      <div className="flex items-center justify-end gap-base mt-md text-label-md font-semibold text-on-surface-variant opacity-0 group-hover:opacity-100 transition-opacity">
         Ver detalle
         <Icon name="arrow_forward" className="text-[18px]" />
       </div>

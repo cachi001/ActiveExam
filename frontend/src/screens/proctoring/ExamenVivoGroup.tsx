@@ -18,7 +18,7 @@ import {
   scoreAccentBorder,
   scoreTextColor,
   nivelRiesgo,
-  SCORE_UMBRAL_ALTO,
+  getUmbralAlto,
   type ExamInfo,
 } from './helpers';
 
@@ -102,7 +102,7 @@ export function ExamenVivoGroup({
         {riesgoAlto > 0 && (
           <span className="inline-flex items-center gap-base text-error font-semibold">
             <Icon name="priority_high" className="text-[16px]" />
-            {riesgoAlto} en riesgo alto (≥{SCORE_UMBRAL_ALTO})
+            {riesgoAlto} en riesgo alto (≥{getUmbralAlto()})
           </span>
         )}
       </div>

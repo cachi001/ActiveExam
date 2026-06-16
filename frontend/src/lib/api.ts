@@ -348,11 +348,11 @@ const CONSENT_TEXT: ConsentTextResponse = {
   version: 'v1',
   hash_texto: 'sha256:9f2b…a31',
   bloques: [
-    { icono: 'help', titulo: '¿Qué datos recolectamos?', cuerpo: 'Video de tu cámara y captura de pantalla durante el examen, y un embedding facial para verificar tu identidad. El embedding se trata como dato sensible bajo la Ley 25.326.' },
+    { icono: 'help', titulo: '¿Qué datos recolectamos?', cuerpo: 'Video de tu cámara y captura de pantalla durante el examen, y un descriptor facial para verificar tu identidad. El descriptor biométrico se trata como dato sensible.' },
     { icono: 'memory', titulo: '¿Cómo se procesan?', cuerpo: 'El análisis de visión corre localmente en tu navegador (Web Worker). Solo se envían señales discretas firmadas y, ante incidencias graves, clips cortos de evidencia. El backend re-infiere y firma toda la evidencia.' },
     { icono: 'dns', titulo: '¿Dónde se almacenan?', cuerpo: 'En infraestructura self-hosted de la universidad, cifrada en reposo, con cadena de custodia criptográfica. Soberanía de datos completa.' },
     { icono: 'schedule', titulo: '¿Cuánto tiempo?', cuerpo: 'La evidencia se conserva 30 días y luego se elimina automáticamente. El embedding biométrico se elimina al egreso, salvo apelación o hold disciplinario.' },
-    { icono: 'gavel', titulo: 'Tus derechos', cuerpo: 'El sistema nunca sanciona automáticamente: solo prioriza para revisión humana. Podés acceder, rectificar y solicitar la eliminación de tus datos ante la AAIP.' },
+    { icono: 'gavel', titulo: 'Tus derechos', cuerpo: 'El sistema nunca sanciona automáticamente: solo prioriza para revisión humana. Podés acceder, rectificar y solicitar la eliminación de tus datos.' },
   ],
 };
 
@@ -1504,24 +1504,66 @@ export const api = {
   // -------------------------------------------------------------------------
 
   /**
-   * Lista usuarios paginados (admin_sistema) — C-61.
-   * Real: GET /users/?limit=&offset=
-   * Mock: lista demo de 3 usuarios.
+   * Lista usuarios paginados con filtros server-side (admin_sistema) — C-61 / C-68.
+   * Real: GET /users/?rol=&estado=&q=&limit=&offset=
+   * Mock: lista demo de 4 usuarios (activos e inactivos) con filtrado local.
    */
-  async listarUsuarios(limit = 20, offset = 0): Promise<ListarUsuariosResponse> {
+  async listarUsuarios(
+    limit = 20,
+    offset = 0,
+    filtros?: { rol?: string; estado?: string; q?: string },
+  ): Promise<ListarUsuariosResponse> {
     if (USE_REAL_BACKEND) {
+      const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+      if (filtros?.rol) params.set('rol', filtros.rol);
+      if (filtros?.estado) params.set('estado', filtros.estado);
+      if (filtros?.q) params.set('q', filtros.q);
       return await realFetch<ListarUsuariosResponse>(
-        `/users/?limit=${limit}&offset=${offset}`,
+        `/users/?${params.toString()}`,
         { method: 'GET' },
       );
     }
     await delay(300);
-    const items: UsuarioAdmin[] = [
-      { id: 'u1', id_institucional: 'FRM-ADM-0021', email: 'lmendoza@frm.utn.edu.ar', nombre: 'Lucía', apellido: 'Mendoza', roles: ['admin_sistema'], auth_provider: 'local' },
-      { id: 'u2', id_institucional: 'FRM-DOC-1182', email: 'cferreyra@frm.utn.edu.ar', nombre: 'Carolina', apellido: 'Ferreyra', roles: ['proctor'], auth_provider: 'local' },
-      { id: 'u3', id_institucional: 'FRM-23-4912', email: 'ecaceres@frm.utn.edu.ar', nombre: 'Emiliano', apellido: 'Cáceres', roles: ['estudiante'], auth_provider: 'local' },
+    const MOCK_ITEMS: UsuarioAdmin[] = [
+      { id: 'u1', id_institucional: 'FRM-ADM-0021', email: 'lmendoza@frm.utn.edu.ar', nombre: 'Lucía', apellido: 'Mendoza', roles: ['admin_sistema'], auth_provider: 'local', eliminado_en: null },
+      { id: 'u2', id_institucional: 'FRM-DOC-1182', email: 'cferreyra@frm.utn.edu.ar', nombre: 'Carolina', apellido: 'Ferreyra', roles: ['proctor'], auth_provider: 'local', eliminado_en: null },
+      { id: 'u3', id_institucional: 'FRM-23-4912', email: 'ecaceres@frm.utn.edu.ar', nombre: 'Emiliano', apellido: 'Cáceres', roles: ['estudiante'], auth_provider: 'local', eliminado_en: null },
+      { id: 'u4', id_institucional: 'FRM-23-0099', email: 'blopez@frm.utn.edu.ar', nombre: 'Bruno', apellido: 'López', roles: ['estudiante'], auth_provider: 'local', eliminado_en: '2026-04-10T10:00:00Z' },
     ];
-    return { items, total: items.length, limit, offset };
+    // Filtrado demo server-side simulado
+    let items = [...MOCK_ITEMS];
+    if (filtros?.rol) items = items.filter((u) => u.roles.includes(filtros.rol!));
+    if (filtros?.estado === 'activo') items = items.filter((u) => !u.eliminado_en);
+    else if (filtros?.estado === 'inactivo') items = items.filter((u) => !!u.eliminado_en);
+    if (filtros?.q) {
+      const q = filtros.q.toLowerCase();
+      items = items.filter((u) =>
+        [u.nombre, u.apellido, u.email, u.id_institucional]
+          .filter(Boolean)
+          .some((v) => (v ?? '').toLowerCase().includes(q)),
+      );
+    }
+    const total = items.length;
+    const pageItems = items.slice(offset, offset + limit);
+    return { items: pageItems, total, limit, offset };
+  },
+
+  /**
+   * Reactiva un usuario dado de baja (admin_sistema) — C-68.
+   * Real: POST /users/{id}/reactivar → usuario reactivado.
+   * Mock: no-op (demo sin persistencia real de baja).
+   */
+  async reactivarUsuario(usuarioId: string): Promise<void> {
+    if (USE_REAL_BACKEND) {
+      const token = authProvider.getToken();
+      const res = await fetch(`${API_BASE}/users/${usuarioId}/reactivar`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return;
+    }
+    await delay(300);
   },
 
   /**
@@ -1677,6 +1719,114 @@ export const api = {
   },
 
   // -------------------------------------------------------------------------
+  // Detalle de usuario (admin) — C-68
+  // -------------------------------------------------------------------------
+
+  /**
+   * Detalle completo de un usuario (admin_sistema) — C-68.
+   * Real: GET /users/{id}
+   * Mock: busca en el listado demo.
+   */
+  async obtenerDetalleUsuario(id: string): Promise<UsuarioAdmin & { eliminado_en?: string | null }> {
+    if (USE_REAL_BACKEND) {
+      return await realFetch<UsuarioAdmin & { eliminado_en?: string | null }>(
+        `/users/${id}`,
+        { method: 'GET' },
+      );
+    }
+    await delay(200);
+    const MOCK: (UsuarioAdmin & { eliminado_en?: string | null })[] = [
+      { id: 'u1', id_institucional: 'FRM-ADM-0021', email: 'lmendoza@frm.utn.edu.ar', nombre: 'Lucía', apellido: 'Mendoza', roles: ['admin_sistema'], auth_provider: 'local', eliminado_en: null },
+      { id: 'u2', id_institucional: 'FRM-DOC-1182', email: 'cferreyra@frm.utn.edu.ar', nombre: 'Carolina', apellido: 'Ferreyra', roles: ['proctor'], auth_provider: 'local', eliminado_en: null },
+      { id: 'u3', id_institucional: 'FRM-23-4912', email: 'ecaceres@frm.utn.edu.ar', nombre: 'Emiliano', apellido: 'Cáceres', roles: ['estudiante'], auth_provider: 'local', eliminado_en: null },
+    ];
+    const found = MOCK.find((u) => u.id === id);
+    if (!found) throw new Error('HTTP 404');
+    return found;
+  },
+
+  /**
+   * Consentimiento de perfil de un usuario específico (admin_sistema) — C-68.
+   * Real: GET /users/{id}/consent-profile
+   * Mock: estado simulado con datos plausibles.
+   */
+  async obtenerConsentimientoDeUsuario(id: string): Promise<{
+    estado: 'otorgado' | 'revocado' | null;
+    version_texto: string | null;
+    hash_texto: string | null;
+    timestamp: string | null;
+  }> {
+    if (USE_REAL_BACKEND) {
+      return await realFetch<{
+        estado: 'otorgado' | 'revocado' | null;
+        version_texto: string | null;
+        hash_texto: string | null;
+        timestamp: string | null;
+      }>(`/users/${id}/consent-profile`, { method: 'GET' });
+    }
+    await delay(200);
+    // Demo: usuario u3 (estudiante) tiene consentimiento otorgado
+    if (id === 'u3') {
+      return {
+        estado: 'otorgado',
+        version_texto: 'v1',
+        hash_texto: 'sha256:9f2ba31c4e7d0821',
+        timestamp: '2026-05-28T14:32:00Z',
+      };
+    }
+    return { estado: null, version_texto: null, hash_texto: null, timestamp: null };
+  },
+
+  /**
+   * Estado de la referencia biométrica de un usuario específico (admin_sistema) — C-68.
+   * Real: GET /users/{id}/biometria/referencia/estado
+   * Mock: estado simulado.
+   */
+  async obtenerEstadoBiometriaDeUsuario(id: string): Promise<{
+    tiene_referencia_vigente: boolean;
+    algoritmo: string | null;
+    fecha_expiracion: string | null;
+    created_at: string | null;
+    tiene_foto: boolean;
+    foto_hash: string | null;
+    foto_created_at: string | null;
+  }> {
+    if (USE_REAL_BACKEND) {
+      return await realFetch<{
+        tiene_referencia_vigente: boolean;
+        algoritmo: string | null;
+        fecha_expiracion: string | null;
+        created_at: string | null;
+        tiene_foto: boolean;
+        foto_hash: string | null;
+        foto_created_at: string | null;
+      }>(`/users/${id}/biometria/referencia/estado`, { method: 'GET' });
+    }
+    await delay(200);
+    // Demo: usuario u3 tiene referencia vigente
+    if (id === 'u3') {
+      return {
+        tiene_referencia_vigente: true,
+        algoritmo: 'mediapipe-face-mesh-v1',
+        fecha_expiracion: '2028-05-28T14:33:00Z',
+        created_at: '2026-05-28T14:33:00Z',
+        tiene_foto: true,
+        foto_hash: 'sha256:4a7f3b9c1d2e8f05',
+        foto_created_at: '2026-05-28T14:33:00Z',
+      };
+    }
+    return {
+      tiene_referencia_vigente: false,
+      algoritmo: null,
+      fecha_expiracion: null,
+      created_at: null,
+      tiene_foto: false,
+      foto_hash: null,
+      foto_created_at: null,
+    };
+  },
+
+  // -------------------------------------------------------------------------
   // Registro público de estudiantes — C-61 (task 7.3)
   // -------------------------------------------------------------------------
 
@@ -1705,6 +1855,63 @@ export const api = {
       id_institucional: body.id_institucional,
       email: body.email,
     };
+  },
+
+  // -------------------------------------------------------------------------
+  // Versiones del texto de consentimiento (admin) — C-68
+  // -------------------------------------------------------------------------
+
+  /**
+   * Lista las versiones publicadas del texto de consentimiento (admin_sistema).
+   * Real: GET /api/v1/consent/text/versions
+   * Mock: devuelve la versión demo como única entrada.
+   */
+  async listarVersionesConsentimiento(): Promise<{ version: string; hash_texto: string }[]> {
+    if (USE_REAL_BACKEND) {
+      return await realFetch<{ version: string; hash_texto: string }[]>(
+        '/consent/text/versions',
+        { method: 'GET' },
+      );
+    }
+    await delay(150);
+    return [{ version: CONSENT_TEXT.version, hash_texto: CONSENT_TEXT.hash_texto }];
+  },
+
+  /**
+   * Publica una nueva versión del texto de consentimiento (admin_sistema).
+   * Real: POST /api/v1/consent/text/versions
+   *   body: { version, bloques: [{titulo, cuerpo}] }
+   *   → 200 { version, bloques, hash_texto }
+   *   → 409 si la versión ya existe
+   * Mock: guarda en memoria (actualiza CONSENT_TEXT para la sesión).
+   *
+   * La versión publicada no se activa hasta hacer PATCH /config { consent_version_vigente }.
+   */
+  async crearVersionConsentimiento(params: {
+    version: string;
+    bloques: Array<{ titulo: string; cuerpo: string }>;
+  }): Promise<{ version: string; bloques: BloqueConsentimiento[]; hash_texto: string }> {
+    if (USE_REAL_BACKEND) {
+      const raw = await realFetch<unknown>(
+        '/consent/text/versions',
+        { method: 'POST', body: JSON.stringify(params) },
+      );
+      return normalizarConsentText(raw);
+    }
+    await delay(400);
+    // Demo: actualizar el CONSENT_TEXT en memoria para que getConsentText
+    // devuelva los bloques nuevos en esta sesión.
+    const bloquesNuevos: BloqueConsentimiento[] = params.bloques.map((b, i) => ({
+      titulo: b.titulo,
+      cuerpo: b.cuerpo,
+      icono: CONSENT_TEXT.bloques[i]?.icono ?? 'info',
+    }));
+    const hashDemo = 'sha256:' + Math.random().toString(16).slice(2, 18);
+    // Mutar el objeto demo para que getConsentText lo devuelva en próximas llamadas.
+    CONSENT_TEXT.version = params.version;
+    CONSENT_TEXT.hash_texto = hashDemo;
+    CONSENT_TEXT.bloques = bloquesNuevos;
+    return { version: params.version, bloques: bloquesNuevos, hash_texto: hashDemo };
   },
 
   // -------------------------------------------------------------------------

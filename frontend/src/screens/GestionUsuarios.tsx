@@ -2,28 +2,79 @@
  * GestionUsuarios — CRUD administrativo de usuarios (C-61).
  *
  * Ruta: /admin/usuarios (roles: admin_sistema)
- * Accede a api.listarUsuarios / api.crearUsuario / api.editarUsuario / api.eliminarUsuario
- * (dual real/mock).
+ * Accede a api.listarUsuarios / api.crearUsuario / api.editarUsuario /
+ *         api.eliminarUsuario / api.reactivarUsuario (dual real/mock).
  *
- * Reglas:
- * - Anti-lockout: el backend rechaza que el admin se quite el rol admin_sistema (409).
- * - Baja lógica (soft-delete): el usuario no se borra físicamente.
- * - Evidencia intacta tras la baja (L2.5).
- * - La tabla muestra avatar (foto de perfil) si está disponible (C-61 task 5.3).
+ * Filtros server-side: rol, estado (activo/inactivo/todos), texto libre.
+ * Estado como switch: verde=activo / rojo=inactivo, deshabilitado para el
+ * propio usuario logueado (anti-lockout).
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { StaffShell } from '../ui/shells';
-import { Icon, Card, SectionTitle, Button, Avatar } from '../ui/components';
+import { Icon, Card, SectionTitle, Badge, Button, Avatar } from '../ui/components';
 import { HelpButton } from '../ui/HelpButton';
 import { ActionMenu } from '../ui/ActionMenu';
 import { TextField } from '../ui/TextField';
 import { ConfirmModal } from '../ui/ConfirmModal';
 import { STAFF_NAV } from '../ui/nav';
 import { useToast } from '../ui/toast';
+import { useNavigate } from '../lib/router';
+import { useAuth } from '../lib/authStore';
 import { api } from '../lib/api';
 import type { UsuarioAdmin } from '../lib/types';
 import { ROL_LABELS, ROLES_VALIDOS, getRolLabel } from '../lib/constants/roles';
+
+/** Badge de rol con color semántico, consistente con DetalleUsuario. */
+function RolBadge({ rol }: { rol: string }) {
+  const toneMap: Record<string, 'primary' | 'success' | 'warning' | 'error' | 'neutral'> = {
+    admin_sistema: 'primary',
+    proctor: 'warning',
+    estudiante: 'success',
+  };
+  const tone = toneMap[rol] ?? 'neutral';
+  return <Badge tone={tone} className="text-[11px]">{getRolLabel(rol)}</Badge>;
+}
+
+// ---------------------------------------------------------------------------
+// Switch de estado (activo / inactivo)
+// ---------------------------------------------------------------------------
+
+interface EstadoSwitchProps {
+  usuario: UsuarioAdmin;
+  esPropioUsuario: boolean;
+  onToggle: (u: UsuarioAdmin) => void;
+}
+
+function EstadoSwitch({ usuario, esPropioUsuario, onToggle }: EstadoSwitchProps) {
+  const activo = !usuario.eliminado_en;
+  return (
+    <div className="flex items-center gap-2" title={esPropioUsuario ? 'No podés cambiar tu propio estado' : undefined}>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={activo}
+        aria-label={activo ? 'Activo — click para dar de baja' : 'Inactivo — click para reactivar'}
+        disabled={esPropioUsuario}
+        onClick={() => !esPropioUsuario && onToggle(usuario)}
+        className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-1 ${
+          esPropioUsuario
+            ? 'cursor-not-allowed opacity-50'
+            : 'cursor-pointer focus:ring-primary/40'
+        } ${activo ? 'bg-success' : 'bg-error'}`}
+      >
+        <span
+          className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform duration-200 ${
+            activo ? 'translate-x-4' : 'translate-x-0'
+          }`}
+        />
+      </button>
+      <span className={`text-[12px] font-medium ${activo ? 'text-success' : 'text-error'}`}>
+        {activo ? 'Activo' : 'Inactivo'}
+      </span>
+    </div>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Tipos locales
@@ -49,12 +100,28 @@ const FORM_VACIO: FormState = {
   roles: [],
 };
 
+// Opciones de filtros
+const OPCIONES_ROL = [
+  { value: '', label: 'Todos los roles' },
+  { value: 'admin_sistema', label: 'Administrador' },
+  { value: 'proctor', label: 'Proctor' },
+  { value: 'estudiante', label: 'Estudiante' },
+];
+
+const OPCIONES_ESTADO = [
+  { value: 'activo', label: 'Activos' },
+  { value: 'inactivo', label: 'Inactivos' },
+  { value: 'todos', label: 'Todos' },
+];
+
 // ---------------------------------------------------------------------------
 // Componente principal
 // ---------------------------------------------------------------------------
 
 export default function GestionUsuarios() {
   const toast = useToast();
+  const navigate = useNavigate();
+  const principal = useAuth((s) => s.principal);
 
   // Lista paginada
   const [usuarios, setUsuarios] = useState<UsuarioAdmin[]>([]);
@@ -63,7 +130,14 @@ export default function GestionUsuarios() {
   const PAGE_SIZE = 20;
   const [offset, setOffset] = useState(0);
 
-  // Fotos de perfil indexadas por usuario_id (cargadas bajo demanda — task 5.3)
+  // Filtros server-side
+  const [filtroRol, setFiltroRol] = useState('');
+  const [filtroEstado, setFiltroEstado] = useState('activo');
+  const [filtroQ, setFiltroQ] = useState('');
+  // Valor del input de texto (diferido para debounce ligero)
+  const [qInput, setQInput] = useState('');
+
+  // Fotos de perfil indexadas por usuario_id
   const [fotos, setFotos] = useState<Record<string, string>>({});
 
   // Formulario de creación / edición
@@ -80,15 +154,16 @@ export default function GestionUsuarios() {
   // Carga de datos
   // ---------------------------------------------------------------------------
 
-  const cargarUsuarios = async (o = offset) => {
+  const cargarUsuarios = useCallback(async (o: number, rol: string, estado: string, q: string) => {
     setCargando(true);
     try {
-      const data = await api.listarUsuarios(PAGE_SIZE, o);
+      const data = await api.listarUsuarios(PAGE_SIZE, o, {
+        rol: rol || undefined,
+        estado: estado !== 'todos' ? estado : undefined,
+        q: q || undefined,
+      });
       setUsuarios(data.items);
       setTotal(data.total);
-      // Task 5.3: cargar fotos de perfil para cada usuario. Solo intenta una vez
-      // por usuario por carga; los 404 (sin foto vigente) son normales y se
-      // ignoran silenciosamente.
       for (const u of data.items) {
         if (!fotos[u.id]) {
           api.obtenerFotoPerfilDeUsuario(u.id).then((foto) => {
@@ -98,21 +173,54 @@ export default function GestionUsuarios() {
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      // 401 = sesión vencida o sin rol admin_sistema → mensaje accionable.
-      // 403 = autenticado pero sin permisos suficientes.
       if (msg.includes('401')) {
         toast.error('Tu sesión expiró. Cerrá sesión y volvé a entrar.');
       } else if (msg.includes('403')) {
-        toast.error('No tenés permisos para listar usuarios (requiere admin_sistema).');
+        toast.error('No tenés permisos para listar usuarios.');
       } else {
         toast.error('No se pudo cargar la lista de usuarios.');
       }
     } finally {
       setCargando(false);
     }
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  useEffect(() => { cargarUsuarios(0); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // Carga inicial
+  useEffect(() => { cargarUsuarios(0, filtroRol, filtroEstado, filtroQ); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Re-fetch al cambiar filtros de select (inmediato)
+  function aplicarFiltros(rol: string, estado: string, q: string) {
+    setOffset(0);
+    cargarUsuarios(0, rol, estado, q);
+  }
+
+  function handleFiltroRol(v: string) {
+    setFiltroRol(v);
+    aplicarFiltros(v, filtroEstado, filtroQ);
+  }
+
+  function handleFiltroEstado(v: string) {
+    setFiltroEstado(v);
+    aplicarFiltros(filtroRol, v, filtroQ);
+  }
+
+  // Búsqueda de texto: debounce ligero (dispara al limpiar o al presionar Enter)
+  function handleQChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const v = e.target.value;
+    setQInput(v);
+    if (!v) {
+      setFiltroQ('');
+      aplicarFiltros(filtroRol, filtroEstado, '');
+    }
+  }
+
+  function handleQKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Enter') {
+      setFiltroQ(qInput);
+      aplicarFiltros(filtroRol, filtroEstado, qInput);
+    }
+  }
 
   // ---------------------------------------------------------------------------
   // Formulario
@@ -197,11 +305,11 @@ export default function GestionUsuarios() {
         toast.success('Usuario actualizado correctamente.');
       }
       cerrarFormulario();
-      await cargarUsuarios(offset);
+      await cargarUsuarios(offset, filtroRol, filtroEstado, filtroQ);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes('409')) {
-        setFormError('Ya existe un usuario con ese email o id_institucional, o no podés quitarte el rol admin_sistema.');
+        setFormError('Ya existe un usuario con ese email o legajo, o no podés quitarte el rol de administrador.');
       } else {
         setFormError(`Error: ${msg}`);
       }
@@ -211,7 +319,7 @@ export default function GestionUsuarios() {
   }
 
   // ---------------------------------------------------------------------------
-  // Baja lógica
+  // Baja lógica y reactivación
   // ---------------------------------------------------------------------------
 
   async function handleBaja() {
@@ -220,14 +328,32 @@ export default function GestionUsuarios() {
     setABajar(null);
     try {
       await api.eliminarUsuario(u.id);
-      toast.success(`Usuario ${u.email} dado de baja correctamente.`);
-      await cargarUsuarios(offset);
+      toast.success(`${u.email} dado de baja.`);
+      await cargarUsuarios(offset, filtroRol, filtroEstado, filtroQ);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes('409')) {
         toast.error('No podés darte de baja a vos mismo.');
       } else {
         toast.error(`Error al dar de baja: ${msg}`);
+      }
+    }
+  }
+
+  async function handleToggleEstado(u: UsuarioAdmin) {
+    const activo = !u.eliminado_en;
+    if (activo) {
+      // Pedir confirmación antes de dar de baja
+      setABajar(u);
+    } else {
+      // Reactivar sin confirmación
+      try {
+        await api.reactivarUsuario(u.id);
+        toast.success(`${u.email} reactivado.`);
+        await cargarUsuarios(offset, filtroRol, filtroEstado, filtroQ);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        toast.error(`No se pudo reactivar: ${msg}`);
       }
     }
   }
@@ -242,7 +368,17 @@ export default function GestionUsuarios() {
   function irPagina(p: number) {
     const nuevoOffset = (p - 1) * PAGE_SIZE;
     setOffset(nuevoOffset);
-    cargarUsuarios(nuevoOffset);
+    cargarUsuarios(nuevoOffset, filtroRol, filtroEstado, filtroQ);
+  }
+
+  function verDetalle(u: UsuarioAdmin) {
+    navigate(`/admin/usuarios/${u.id}`);
+  }
+
+  // Identifica si un usuario es el propio usuario logueado (por email o id_institucional)
+  function esPropioUsuario(u: UsuarioAdmin): boolean {
+    if (!principal) return false;
+    return u.email === principal.email || u.id_institucional === principal.id_institucional;
   }
 
   // ---------------------------------------------------------------------------
@@ -257,16 +393,16 @@ export default function GestionUsuarios() {
       help={
         <HelpButton title="Gestión de usuarios">
           <p>
-            Acá das de alta, editás y das de baja a los usuarios de la plataforma. Solo
-            visible para <strong>admin_sistema</strong>.
+            Acá das de alta, editás y cambiás el estado de los usuarios. Solo visible para
+            administradores del sistema.
           </p>
           <p>
-            Los roles MVP son tres estrictos: <em>estudiante</em>, <em>proctor</em> y
-            <em> admin_sistema</em>. La baja es <strong>lógica</strong> (no destruye evidencia)
-            y revoca los refresh tokens del usuario.
+            Los roles disponibles son <em>Estudiante</em>, <em>Proctor</em> y{' '}
+            <em>Administrador</em>. La baja es lógica: el usuario no se borra,
+            solo pierde acceso. La evidencia asociada queda intacta.
           </p>
           <p>
-            Anti-lockout: no podés quitarte a vos mismo el rol admin_sistema ni darte de baja.
+            No podés cambiar tu propio estado ni quitarte el rol de administrador.
           </p>
         </HelpButton>
       }
@@ -386,12 +522,68 @@ export default function GestionUsuarios() {
           </Card>
         )}
 
+        {/* Card de filtros */}
+        <Card>
+          <SectionTitle sub="Filtrá por rol, estado o búsqueda de texto.">Filtros</SectionTitle>
+          <div className="flex flex-col sm:flex-row gap-md mt-md flex-wrap">
+            {/* Filtro de rol */}
+            <div className="flex flex-col gap-xs min-w-[160px]">
+              <label className="text-[11px] font-semibold text-on-surface-variant uppercase tracking-wide">
+                Rol
+              </label>
+              <select
+                value={filtroRol}
+                onChange={(e) => handleFiltroRol(e.target.value)}
+                className="text-[13px] rounded-lg border border-outline-variant/60 bg-surface-container-low px-3 py-1.5 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 text-on-surface"
+              >
+                {OPCIONES_ROL.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Filtro de estado */}
+            <div className="flex flex-col gap-xs min-w-[140px]">
+              <label className="text-[11px] font-semibold text-on-surface-variant uppercase tracking-wide">
+                Estado
+              </label>
+              <select
+                value={filtroEstado}
+                onChange={(e) => handleFiltroEstado(e.target.value)}
+                className="text-[13px] rounded-lg border border-outline-variant/60 bg-surface-container-low px-3 py-1.5 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 text-on-surface"
+              >
+                {OPCIONES_ESTADO.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Búsqueda de texto */}
+            <div className="flex flex-col gap-xs flex-1 min-w-[200px]">
+              <label className="text-[11px] font-semibold text-on-surface-variant uppercase tracking-wide">
+                Buscar
+              </label>
+              <div className="relative">
+                <Icon name="search" className="text-[16px] text-on-surface-variant absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  type="search"
+                  placeholder="Nombre, email o legajo… (Enter)"
+                  value={qInput}
+                  onChange={handleQChange}
+                  onKeyDown={handleQKeyDown}
+                  className="w-full pl-8 pr-3 py-1.5 text-[13px] rounded-lg border border-outline-variant/60 bg-surface-container-low focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 placeholder:text-on-surface-variant/60"
+                />
+              </div>
+            </div>
+          </div>
+        </Card>
+
         {/* Tabla / listado de usuarios */}
         <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/60 shadow-card overflow-hidden">
           <div className="px-4 py-3 border-b border-outline-variant/40 flex items-center gap-2">
             <Icon name="group" className="text-[16px] text-primary shrink-0" />
             <h2 className="text-[13px] font-semibold text-on-surface">
-              Usuarios activos
+              Usuarios
               <span className="text-on-surface-variant font-normal ml-1">({total})</span>
             </h2>
           </div>
@@ -403,7 +595,7 @@ export default function GestionUsuarios() {
           ) : usuarios.length === 0 ? (
             <div className="py-12 text-center text-on-surface-variant space-y-base">
               <Icon name="group_off" className="text-[32px] text-outline" />
-              <p className="text-[13px]">No hay usuarios activos.</p>
+              <p className="text-[13px]">No se encontraron usuarios con esos filtros.</p>
             </div>
           ) : (
             <>
@@ -415,45 +607,61 @@ export default function GestionUsuarios() {
                       <th className="text-left text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider px-4 py-2.5">Nombre</th>
                       <th className="text-left text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider px-4 py-2.5">Email</th>
                       <th className="text-left text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider px-4 py-2.5">Legajo</th>
-                      <th className="text-left text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider px-4 py-2.5">Rol</th>
+                      <th className="text-left text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider px-4 py-2.5">Roles</th>
+                      <th className="text-left text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider px-4 py-2.5">Estado</th>
                       <th className="text-right text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider px-4 py-2.5">Acciones</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-outline-variant/30">
                     {usuarios.map((u) => (
-                      <tr key={u.id} className="hover:bg-surface-container-low transition-colors">
+                      <tr key={u.id} className="hover:bg-surface-container-low transition-colors group">
                         {/* Avatar + Nombre */}
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          <div className="flex items-center gap-2.5">
+                        <td className="px-4 py-3.5 whitespace-nowrap">
+                          <div className="flex items-center gap-3">
                             {fotos[u.id] ? (
-                              <Avatar src={fotos[u.id]} alt={`Foto de ${u.nombre ?? u.email}`} size={32} />
+                              <Avatar src={fotos[u.id]} alt={`Foto de ${u.nombre ?? u.email}`} size={34} />
                             ) : (
-                              <div className="w-8 h-8 rounded-full bg-secondary-container text-on-secondary flex items-center justify-center font-semibold text-[12px] shrink-0">
+                              <div className="w-8 h-8 rounded-full bg-secondary-container text-on-secondary flex items-center justify-center font-semibold text-[13px] shrink-0">
                                 {(u.nombre ?? u.email).charAt(0).toUpperCase()}
                               </div>
                             )}
-                            <span className="text-[13px] font-medium text-on-surface truncate max-w-[180px]">
+                            <button
+                              type="button"
+                              onClick={() => verDetalle(u)}
+                              className="text-[13px] font-semibold text-on-surface group-hover:text-primary transition-colors truncate max-w-[180px] text-left"
+                            >
                               {u.nombre && u.apellido
                                 ? `${u.nombre} ${u.apellido}`
                                 : u.nombre ?? u.apellido ?? u.email}
-                            </span>
+                            </button>
                           </div>
                         </td>
-                        <td className="px-4 py-3 whitespace-nowrap text-[13px] text-on-surface-variant truncate max-w-[220px]">
+                        <td className="px-4 py-3.5 whitespace-nowrap text-[13px] text-on-surface-variant truncate max-w-[220px]">
                           {u.email}
                         </td>
-                        <td className="px-4 py-3 whitespace-nowrap text-[13px] text-on-surface-variant font-mono">
-                          {u.id_institucional}
+                        <td className="px-4 py-3.5 whitespace-nowrap">
+                          <span className="font-mono text-[12px] text-on-surface-variant bg-surface-container px-2 py-0.5 rounded-md">
+                            {u.id_institucional}
+                          </span>
                         </td>
-                        <td className="px-4 py-3 whitespace-nowrap text-[13px] text-on-surface-variant">
-                          {u.roles.map((r) => getRolLabel(r)).join(', ')}
+                        <td className="px-4 py-3.5 whitespace-nowrap">
+                          <div className="flex flex-wrap gap-1">
+                            {u.roles.map((r) => <RolBadge key={r} rol={r} />)}
+                          </div>
                         </td>
-                        <td className="px-4 py-3 whitespace-nowrap text-right">
+                        <td className="px-4 py-3.5 whitespace-nowrap">
+                          <EstadoSwitch
+                            usuario={u}
+                            esPropioUsuario={esPropioUsuario(u)}
+                            onToggle={handleToggleEstado}
+                          />
+                        </td>
+                        <td className="px-4 py-3.5 whitespace-nowrap text-right">
                           <ActionMenu
                             ariaLabel={`Acciones de ${u.email}`}
                             items={[
+                              { label: 'Ver detalle', icon: 'person_search', onClick: () => verDetalle(u) },
                               { label: 'Editar', icon: 'edit', onClick: () => abrirEditar(u) },
-                              { label: 'Dar de baja', icon: 'person_remove', danger: true, onClick: () => setABajar(u) },
                             ]}
                           />
                         </td>
@@ -466,32 +674,47 @@ export default function GestionUsuarios() {
               {/* Cards mobile (hidden en desktop) */}
               <div className="md:hidden divide-y divide-outline-variant/30">
                 {usuarios.map((u) => (
-                  <div key={u.id} className="px-4 py-3 flex items-center gap-3">
+                  <div key={u.id} className="px-4 py-4 flex items-start gap-3">
                     {fotos[u.id] ? (
-                      <Avatar src={fotos[u.id]} alt={`Foto de ${u.nombre ?? u.email}`} size={36} />
+                      <Avatar src={fotos[u.id]} alt={`Foto de ${u.nombre ?? u.email}`} size={40} />
                     ) : (
-                      <div className="w-9 h-9 rounded-full bg-secondary-container text-on-secondary flex items-center justify-center font-semibold text-[13px] shrink-0">
+                      <div className="w-10 h-10 rounded-full bg-secondary-container text-on-secondary flex items-center justify-center font-semibold text-[14px] shrink-0">
                         {(u.nombre ?? u.email).charAt(0).toUpperCase()}
                       </div>
                     )}
                     <div className="flex-1 min-w-0">
-                      <p className="text-[13px] font-semibold text-on-surface truncate">
+                      <button
+                        type="button"
+                        onClick={() => verDetalle(u)}
+                        className="text-[13px] font-semibold text-on-surface hover:text-primary transition-colors truncate text-left w-full"
+                      >
                         {u.nombre && u.apellido
                           ? `${u.nombre} ${u.apellido}`
                           : u.nombre ?? u.apellido ?? u.email}
+                      </button>
+                      <p className="text-[11px] text-on-surface-variant truncate mt-0.5">
+                        {u.email}
                       </p>
-                      <p className="text-[11px] text-on-surface-variant truncate">
-                        {u.email} · {u.id_institucional}
+                      <p className="text-[11px] font-mono text-on-surface-variant mt-0.5">
+                        {u.id_institucional}
                       </p>
-                      <p className="text-[11px] text-on-surface-variant">
-                        {u.roles.map((r) => getRolLabel(r)).join(', ')}
-                      </p>
+                      <div className="flex flex-wrap gap-1 mt-1.5">
+                        {u.roles.map((r) => <RolBadge key={r} rol={r} />)}
+                      </div>
+                      {/* Estado visible en mobile */}
+                      <div className="mt-2">
+                        <EstadoSwitch
+                          usuario={u}
+                          esPropioUsuario={esPropioUsuario(u)}
+                          onToggle={handleToggleEstado}
+                        />
+                      </div>
                     </div>
                     <ActionMenu
                       ariaLabel="Acciones del usuario"
                       items={[
+                        { label: 'Ver detalle', icon: 'person_search', onClick: () => verDetalle(u) },
                         { label: 'Editar', icon: 'edit', onClick: () => abrirEditar(u) },
-                        { label: 'Dar de baja', icon: 'person_remove', danger: true, onClick: () => setABajar(u) },
                       ]}
                     />
                   </div>
@@ -538,10 +761,10 @@ export default function GestionUsuarios() {
         mensaje={
           aBajar ? (
             <>
-              ¿Confirmar la baja lógica de <strong>{aBajar.email}</strong>?
+              ¿Confirmar la baja de <strong>{aBajar.email}</strong>?
               <br />
               <span className="text-on-surface-variant text-body-sm">
-                El usuario no podrá iniciar sesión. La evidencia queda intacta (cadena de custodia).
+                El usuario no podrá iniciar sesión. La evidencia generada queda intacta.
               </span>
             </>
           ) : null

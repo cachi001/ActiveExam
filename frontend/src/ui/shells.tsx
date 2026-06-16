@@ -325,15 +325,15 @@ export function StaffShell({ children, nav, title, subtitle, help, actions }: { 
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   const navList = (onItemClick?: () => void) => (
-    <nav className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto">
+    <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto lg:px-2 lg:py-3 lg:space-y-0.5">
       {nav.map((item) => {
         const active = path === item.to;
         return (
           <Link key={item.to} to={item.to} onClick={onItemClick}
-            className={`flex items-center gap-2.5 px-3 py-2 rounded-md text-[13px] font-medium transition-colors ${
+            className={`flex items-center gap-3 px-3.5 py-3 rounded-xl text-[15px] font-medium transition-colors lg:gap-2.5 lg:px-3 lg:py-2 lg:rounded-md lg:text-[13px] ${
               active ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:bg-surface-container hover:text-on-surface'
             }`}>
-            <Icon name={item.icon} className="text-[18px] shrink-0" fill={active} />
+            <Icon name={item.icon} className="text-[24px] shrink-0 lg:text-[18px]" fill={active} />
             <span className="truncate">{item.label}</span>
           </Link>
         );
@@ -353,11 +353,11 @@ export function StaffShell({ children, nav, title, subtitle, help, actions }: { 
       {mobileNavOpen && (
         <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true">
           <div className="absolute inset-0 bg-black/40 animate-in fade-in duration-150" onClick={() => setMobileNavOpen(false)} />
-          <aside className="absolute left-0 top-0 h-full w-[80vw] max-w-xs bg-surface-container-lowest border-r border-outline-variant/50 flex flex-col shadow-card-lg animate-in fade-in duration-200">
+          <aside className="absolute left-0 top-0 h-full w-[86vw] max-w-sm bg-surface-container-lowest border-r border-outline-variant/50 flex flex-col shadow-card-lg animate-in fade-in slide-in-from-left-2 duration-200">
             <div className="px-lg h-16 flex items-center justify-between border-b border-outline-variant/40">
               {LOGO}
-              <button onClick={() => setMobileNavOpen(false)} aria-label="Cerrar menú" className="w-9 h-9 rounded-full hover:bg-surface-container flex items-center justify-center text-on-surface-variant">
-                <Icon name="close" className="text-[22px]" />
+              <button onClick={() => setMobileNavOpen(false)} aria-label="Cerrar menú" className="w-10 h-10 rounded-full hover:bg-surface-container flex items-center justify-center text-on-surface-variant">
+                <Icon name="close" className="text-[24px]" />
               </button>
             </div>
             {navList(() => setMobileNavOpen(false))}
@@ -369,7 +369,7 @@ export function StaffShell({ children, nav, title, subtitle, help, actions }: { 
         {/* Header bar: marco superior. NO muestra el título (ese vive en el
             contenido). En mobile aloja el botón de menú; en desktop es una franja
             limpia sticky. */}
-        <header className="sticky top-0 z-30 bg-surface/80 backdrop-blur border-b border-outline-variant/40 px-lg h-16 flex items-center gap-sm">
+        <header className="sticky top-0 z-30 bg-white border-b border-outline-variant/60 px-lg h-16 flex items-center gap-sm">
           <button onClick={() => setMobileNavOpen(true)} aria-label="Abrir menú" className="lg:hidden -ml-1 w-10 h-10 rounded-full hover:bg-surface-container flex items-center justify-center text-on-surface-variant shrink-0">
             <Icon name="menu" className="text-[24px]" />
           </button>

@@ -32,7 +32,7 @@ function VolverLink({ onClick }: { onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex items-center gap-base text-label-md text-primary hover:underline"
+      className="inline-flex items-center gap-base text-label-md text-on-surface-variant hover:text-on-surface hover:underline"
     >
       <Icon name="arrow_back" className="text-[18px]" />
       Volver a la lista de sesiones
@@ -110,8 +110,8 @@ export default function ProctoringSessionDetail() {
         {/* Disclaimer L2.5 — inamovible */}
         <div
           role="note"
-          className="flex items-start gap-sm p-md rounded-xl bg-primary-fixed/50
-            border border-primary/20 text-label-sm text-on-primary-fixed-variant"
+          className="flex items-start gap-sm p-md rounded-xl bg-surface-container
+            border border-outline-variant/60 text-label-sm text-on-surface-variant"
         >
           <Icon name="shield" className="text-[20px] shrink-0 mt-px" fill />
           <div>
@@ -131,7 +131,7 @@ export default function ProctoringSessionDetail() {
         {/* Estado de carga */}
         {cargando && (
           <Card className="flex flex-col items-center py-xl gap-sm text-on-surface-variant">
-            <Icon name="progress_activity" className="text-[36px] text-primary ae-spin" />
+            <Icon name="progress_activity" className="text-[36px] text-on-surface-variant ae-spin" />
             <p className="text-label-md">Cargando sesión…</p>
           </Card>
         )}

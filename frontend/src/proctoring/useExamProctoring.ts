@@ -42,6 +42,7 @@ import { VisionPipeline, type EventSink } from './visionPipeline';
 import { StateTransitionRules, DEFAULT_CONFIG } from './stateTransitionRules';
 import { loadScoringWeights, pesoEvento } from './scoringWeights';
 import { loadEffectiveConfig, getEffectiveConfig } from '../config/effectiveConfigCache';
+import { detectorActivo } from './detectorActivo';
 import {
   FocusDetector,
   FullscreenDetector,
@@ -151,6 +152,14 @@ export function useExamProctoring(
   // ------ Callback de cada evento discreto (ref estable, lee estado fresco) ------
   const handleEvent = useRef<EventSink['sendEvent']>(async () => {});
   handleEvent.current = async (rawEvent) => {
+    // Respetar detectores_activos de la config efectiva (FIX C-68):
+    // si el detector no está activo, descartar el evento completamente — sin score,
+    // sin log, sin envío al backend. Fail-open: si la config no cargó (undefined),
+    // no suprimimos nada (el examen sigue funcionando).
+    if (!detectorActivo(rawEvent.tipo, getEffectiveConfig()?.detectores_activos)) {
+      return;
+    }
+
     // Acumular score en el store global (scorePropio, L2.5 — prioriza, no sanciona).
     // El peso por tipo se resuelve dinamicamente desde la BD (cache poblada en mount);
     // si la API fallo, pesoEvento() vuelve al fallback por severidad.

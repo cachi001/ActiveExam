@@ -11,7 +11,7 @@
 
 import { useEffect, useState } from 'react';
 import { StaffShell } from '../ui/shells';
-import { Icon, Card, SectionTitle } from '../ui/components';
+import { Card, SectionTitle } from '../ui/components';
 import { HelpButton } from '../ui/HelpButton';
 import { ConfirmModal } from '../ui/ConfirmModal';
 import { STAFF_NAV } from '../ui/nav';
@@ -80,13 +80,6 @@ export default function ProctoringRevisor() {
             decisión disciplinaria siempre es del revisor.
           </p>
         </HelpButton>
-      }
-      actions={
-        <div className="flex items-center gap-base px-sm py-base rounded-lg bg-primary-fixed/50
-          border border-primary/20 text-label-sm text-on-primary-fixed-variant">
-          <Icon name="shield" className="text-[16px] shrink-0" fill />
-          <span>Decisión humana</span>
-        </div>
       }
     >
       <div className="space-y-lg animate-in fade-in duration-500">

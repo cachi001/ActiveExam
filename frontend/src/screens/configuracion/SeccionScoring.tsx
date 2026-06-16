@@ -4,16 +4,25 @@
  * Sección de la página Configuración del sistema. Lista los tipos del catalogo
  * persistidos en `evento_score_config` como tarjetas blancas en grilla de 2
  * columnas, con severidad, peso (0-100) y un toggle activo por tipo.
+ *
+ * C-68 UX:
+ *  - Toggle movido a esquina superior derecha de la card (fuera de la fila Sev/Impacto).
+ *  - Toggle rojo cuando DESACTIVADO, verde cuando ACTIVADO.
+ *  - Fila inferior con controles en grilla alineada.
+ *  - Más separación entre cards (gap-md).
+ *  - Nota inferior con padding correcto.
+ *  - Título de sección propio.
  */
 import { useEffect, useState } from 'react';
 import { Icon, Button } from '../../ui/components';
 import { useToast } from '../../ui/toast';
 import { api, SEVERIDAD_LABEL, TIPO_EVENTO_LABEL } from '../../lib/api';
 import type { EventoScoreConfig, Severidad, TipoEvento } from '../../lib/types';
-import { SEVERITY_BADGE_COLORS } from '../harness/helpers';
+import { SEVERITY_BADGE_COLORS, SEVERITY_CARD_COLORS } from '../harness/helpers';
 import { resetEffectiveConfigCache } from '../../config/effectiveConfigCache';
 
-const SEVERIDADES: Severidad[] = ['baseline', 'baja', 'media', 'alta', 'critica'];
+// baseline NO es un evento: es el piso 0 del score, no se elige por evento.
+const SEVERIDADES: Severidad[] = ['baja', 'media', 'alta', 'critica'];
 
 export default function SeccionScoring() {
   const toast = useToast();
@@ -82,7 +91,7 @@ export default function SeccionScoring() {
 
   if (cargando) {
     return (
-      <div className="grid lg:grid-cols-2 gap-base">
+      <div className="grid md:grid-cols-2 gap-md max-w-4xl">
         {Array.from({ length: 6 }).map((_, i) => (
           <div key={i} className="h-[120px] rounded-2xl border border-outline-variant/40 bg-white animate-pulse" />
         ))}
@@ -100,11 +109,17 @@ export default function SeccionScoring() {
   }
 
   return (
-    <div className="space-y-base">
-      <p className="text-[13px] text-on-surface-variant">
-        Cuánto suma cada tipo de evento al score acumulado (0–100).
-      </p>
-      <div className="grid lg:grid-cols-2 gap-base">
+    <div className="space-y-lg max-w-4xl">
+      {/* B: Título propio de la sección */}
+      <div>
+        <h2 className="font-headline text-title-xl text-on-surface tracking-tight">Scoring</h2>
+        <p className="text-[13px] text-on-surface-variant mt-1">
+          Cuánto suma cada tipo de evento al puntaje de riesgo (0–100) que prioriza la revisión humana.
+          A mayor impacto, más peso tiene ese evento para que una persona revise la sesión.
+        </p>
+      </div>
+
+      <div className="grid md:grid-cols-2 gap-md min-w-0">
         {configs.map((cfg) => {
           const editado = tieneEdicion(cfg.tipo_evento);
           const sev = valorActual(cfg, 'severidad') as Severidad;
@@ -114,15 +129,16 @@ export default function SeccionScoring() {
           return (
             <div
               key={cfg.tipo_evento}
-              className={`rounded-2xl border bg-white shadow-card p-4 transition-colors ${
-                editado ? 'border-primary/50' : 'border-outline-variant/60'
+              className={`rounded-2xl border shadow-card p-5 transition-colors min-w-0 flex flex-col gap-3 ${SEVERITY_CARD_COLORS[sev]} ${
+                editado ? 'ring-2 ring-primary/40' : ''
               }`}
             >
+              {/* Cabecera: badge + nombre + toggle activo (E: toggle en esquina superior derecha) */}
               <div className="flex items-start gap-3">
                 <span className={`mt-0.5 inline-flex items-center justify-center w-16 py-0.5 rounded-full text-[11px] font-semibold shrink-0 ${SEVERITY_BADGE_COLORS[sev]}`}>
                   {SEVERIDAD_LABEL[sev]}
                 </span>
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <p className="text-[14px] font-semibold text-on-surface">
                     {TIPO_EVENTO_LABEL[cfg.tipo_evento as TipoEvento] ?? cfg.tipo_evento}
                   </p>
@@ -130,9 +146,25 @@ export default function SeccionScoring() {
                     <p className="text-[12px] text-on-surface-variant mt-0.5">{cfg.descripcion}</p>
                   )}
                 </div>
+                {/* Toggle activo: verde=on, rojo=off (E: color semántico) */}
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={activo}
+                  aria-label={`${activo ? 'Desactivar' : 'Activar'} ${cfg.tipo_evento}`}
+                  onClick={() => setDraft(cfg.tipo_evento, 'activo', !activo)}
+                  disabled={isGuardando}
+                  title={activo ? 'Activo — clic para desactivar' : 'Inactivo — clic para activar'}
+                  className={`relative shrink-0 inline-flex h-6 w-11 rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:opacity-50 ${
+                    activo ? 'bg-success-600' : 'bg-error-600'
+                  }`}
+                >
+                  <span className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transition-transform duration-200 ${activo ? 'translate-x-5' : 'translate-x-0'}`} />
+                </button>
               </div>
 
-              <div className="flex items-end gap-5 mt-3 pt-3 border-t border-outline-variant/40">
+              {/* Fila de controles: Severidad + Impacto en grilla alineada (E: alineación prolija) */}
+              <div className="border-t border-outline-variant/40 pt-3 grid grid-cols-2 gap-3">
                 <label className="flex flex-col gap-1.5">
                   <span className="text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant">Severidad</span>
                   <select
@@ -149,7 +181,9 @@ export default function SeccionScoring() {
                 </label>
 
                 <label className="flex flex-col gap-1.5">
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant">Peso</span>
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant" title="Cuánto suma este evento al puntaje de riesgo (0–100) que prioriza la revisión humana">
+                    Impacto en score
+                  </span>
                   <input
                     type="number"
                     min={0}
@@ -160,48 +194,31 @@ export default function SeccionScoring() {
                       if (isNaN(raw)) return;
                       setDraft(cfg.tipo_evento, 'peso', Math.max(0, Math.min(100, raw)));
                     }}
-                    className="w-20 px-2.5 py-1.5 text-[13px] rounded-xl border border-outline-variant bg-white font-mono hover:border-outline focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors"
+                    className="w-full px-2.5 py-1.5 text-[13px] rounded-xl border border-outline-variant bg-white font-mono hover:border-outline focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors"
                     disabled={isGuardando}
-                    aria-label={`Peso de ${cfg.tipo_evento}`}
+                    aria-label={`Impacto en el score de ${cfg.tipo_evento}`}
                   />
                 </label>
-
-                <div className="flex flex-col gap-1.5">
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant">Activo</span>
-                  <div className="h-[34px] flex items-center">
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={activo}
-                      aria-label={`Activar ${cfg.tipo_evento}`}
-                      onClick={() => setDraft(cfg.tipo_evento, 'activo', !activo)}
-                      disabled={isGuardando}
-                      className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:opacity-50 ${
-                        activo ? 'bg-primary' : 'bg-outline'
-                      }`}
-                    >
-                      <span className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transition-transform duration-200 ${activo ? 'translate-x-5' : 'translate-x-0'}`} />
-                    </button>
-                  </div>
-                </div>
-
-                {editado && (
-                  <div className="ml-auto flex items-center gap-1.5">
-                    <Button size="sm" variant="ghost" onClick={() => descartar(cfg.tipo_evento)} disabled={isGuardando}>
-                      Descartar
-                    </Button>
-                    <Button size="sm" variant="primary" icon="save" onClick={() => guardar(cfg)} disabled={isGuardando}>
-                      {isGuardando ? '…' : 'Guardar'}
-                    </Button>
-                  </div>
-                )}
               </div>
+
+              {/* Acciones de la card (solo si hay edición) */}
+              {editado && (
+                <div className="flex items-center justify-end gap-1.5 pt-1">
+                  <Button size="sm" variant="ghost" onClick={() => descartar(cfg.tipo_evento)} disabled={isGuardando}>
+                    Descartar
+                  </Button>
+                  <Button size="sm" variant="primary" icon="save" onClick={() => guardar(cfg)} disabled={isGuardando}>
+                    {isGuardando ? '…' : 'Guardar'}
+                  </Button>
+                </div>
+              )}
             </div>
           );
         })}
       </div>
 
-      <div className="bg-primary-fixed/40 rounded-2xl p-base text-[12px] text-on-primary-fixed-variant flex items-start gap-base">
+      {/* Nota inferior con padding correcto (E) */}
+      <div className="bg-surface-container rounded-2xl p-lg text-[12px] text-on-surface-variant flex items-start gap-base border border-outline-variant/40">
         <Icon name="info" className="text-[16px] shrink-0" fill />
         <span>Cambiar los pesos no modifica eventos pasados; solo afecta el cálculo del score en futuros exámenes.</span>
       </div>

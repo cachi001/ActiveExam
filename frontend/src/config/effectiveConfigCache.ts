@@ -18,6 +18,7 @@
 
 import { api, patchDemoExamenFromConfig } from '../lib/api';
 import { seedScoringWeights, resetScoringWeightsCache as _resetScoringWeightsCache } from '../proctoring/scoringWeights';
+import { seedUmbralAlto } from '../screens/proctoring/helpers';
 
 export interface ConfigEfectivaSnapshot {
   version: number;
@@ -56,6 +57,9 @@ export async function loadEffectiveConfig(): Promise<void> {
       if (data.scoring_weights && Object.keys(data.scoring_weights).length > 0) {
         seedScoringWeights(data.scoring_weights);
       }
+      // Siembra el umbral de riesgo alto desde la config efectiva.
+      // nivelRiesgo() y las vistas usan getUmbralAlto() en lugar del const hardcodeado.
+      seedUmbralAlto(data.umbral_cola_revision);
       // En modo demo, actualiza el examen demo para que refleje la config actualizada.
       patchDemoExamenFromConfig({
         umbral_cola_revision: data.umbral_cola_revision,

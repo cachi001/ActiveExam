@@ -7,8 +7,8 @@ import { ADMIN_NAV } from './AdminDashboard';
 import { api } from '../lib/api';
 import type { ResumenReportes } from '../lib/types';
 
-const SEV_TONE: Record<string, 'primary' | 'success' | 'warning' | 'error'> = {
-  baseline: 'primary',
+const SEV_TONE: Record<string, 'neutral' | 'success' | 'warning' | 'error'> = {
+  baseline: 'neutral',
   baja: 'success',
   media: 'warning',
   alta: 'error',
@@ -83,7 +83,7 @@ export default function Reports() {
     <StaffShell nav={ADMIN_NAV} title="Reportes y analítica" subtitle={REPORTES_SUBTITULO} help={REPORTES_AYUDA}>
       <div className="space-y-lg animate-in fade-in duration-500">
         <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-md">
-          <StatCard icon="quiz" label="Exámenes" value={r.examenes_totales} tono="primary" />
+          <StatCard icon="quiz" label="Exámenes" value={r.examenes_totales} tono="neutral" />
           <StatCard icon="groups" label="Sesiones" value={r.sesiones_totales} tono="info" />
           <StatCard icon="flag" label="Tasa de flag" value={`${r.tasa_flag}%`} sub="entran a revisión" tono="warning" />
           <StatCard icon="rule" label="Falsos positivos" value={`${r.falsos_positivos}%`} sub="descartados en revisión" tono="success" />
@@ -99,7 +99,7 @@ export default function Reports() {
                   <div className="flex-1 h-6 rounded-full bg-surface-container-high overflow-hidden">
                     <div
                       className={`h-full rounded-full flex items-center justify-end pr-base text-label-sm font-semibold ${
-                        SEV_TONE[d.severidad] === 'primary' ? 'bg-primary-container text-on-primary' :
+                        SEV_TONE[d.severidad] === 'neutral' ? 'bg-surface-container-high text-on-surface-variant' :
                         SEV_TONE[d.severidad] === 'success' ? 'bg-success-container text-success' :
                         SEV_TONE[d.severidad] === 'warning' ? 'bg-warning-container text-warning' :
                         'bg-error-container text-on-error-container'
@@ -118,16 +118,16 @@ export default function Reports() {
               {r.tendencia_semanal.map((t) => (
                 <div key={t.semana} className="flex flex-col items-center gap-base flex-1">
                   <div className="flex items-end gap-base h-40">
-                    <div className="w-5 rounded-t-md bg-primary" style={{ height: `${(t.flaggeadas / maxTend) * 100}%` }} title={`${t.flaggeadas} flaggeadas`} />
-                    <div className="w-5 rounded-t-md bg-primary-fixed-dim" style={{ height: `${(t.revisadas / maxTend) * 100}%` }} title={`${t.revisadas} revisadas`} />
+                    <div className="w-5 rounded-t-md bg-warning" style={{ height: `${(t.flaggeadas / maxTend) * 100}%` }} title={`${t.flaggeadas} flaggeadas`} />
+                    <div className="w-5 rounded-t-md bg-success-container" style={{ height: `${(t.revisadas / maxTend) * 100}%` }} title={`${t.revisadas} revisadas`} />
                   </div>
                   <span className="text-label-sm text-on-surface-variant">{t.semana}</span>
                 </div>
               ))}
             </div>
             <div className="flex justify-center gap-md mt-sm text-label-sm text-on-surface-variant">
-              <span className="inline-flex items-center gap-base"><span className="w-3 h-3 rounded-sm bg-primary" /> Flaggeadas</span>
-              <span className="inline-flex items-center gap-base"><span className="w-3 h-3 rounded-sm bg-primary-fixed-dim" /> Revisadas</span>
+              <span className="inline-flex items-center gap-base"><span className="w-3 h-3 rounded-sm bg-warning" /> Flaggeadas</span>
+              <span className="inline-flex items-center gap-base"><span className="w-3 h-3 rounded-sm bg-success-container" /> Revisadas</span>
             </div>
           </Card>
         </div>

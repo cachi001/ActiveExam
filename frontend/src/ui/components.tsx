@@ -165,7 +165,7 @@ export function Stat({ label, value, sub, icon }: { label: string; value: ReactN
   return (
     <Card className="flex items-start gap-md">
       {icon && (
-        <div className="w-11 h-11 rounded-xl bg-primary-fixed text-primary flex items-center justify-center shrink-0">
+        <div className="w-11 h-11 rounded-xl bg-surface-container text-on-surface-variant flex items-center justify-center shrink-0">
           <Icon name={icon} />
         </div>
       )}
