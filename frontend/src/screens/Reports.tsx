@@ -83,7 +83,7 @@ export default function Reports() {
     <StaffShell nav={ADMIN_NAV} title="Reportes y analítica" subtitle={REPORTES_SUBTITULO} help={REPORTES_AYUDA}>
       <div className="space-y-lg animate-in fade-in duration-500">
         <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-md">
-          <StatCard icon="quiz" label="Exámenes" value={r.examenes_totales} tono="neutral" />
+          <StatCard icon="quiz" label="Exámenes" value={r.examenes_totales} tono="primary" />
           <StatCard icon="groups" label="Sesiones" value={r.sesiones_totales} tono="info" />
           <StatCard icon="flag" label="Tasa de flag" value={`${r.tasa_flag}%`} sub="entran a revisión" tono="warning" />
           <StatCard icon="rule" label="Falsos positivos" value={`${r.falsos_positivos}%`} sub="descartados en revisión" tono="success" />

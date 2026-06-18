@@ -152,7 +152,7 @@ function ToastCard({ item, onDismiss }: { item: ToastItem; onDismiss: (id: numbe
         bg-surface-container-lowest text-on-surface
         border border-outline-variant/40 border-l-4 ${cfg.accent}
         rounded-xl shadow-card-lg px-md py-sm cursor-pointer
-        animate-in fade-in slide-in-from-bottom-4`}
+        animate-in fade-in slide-in-from-top-4`}
     >
       <Icon name={cfg.icon} className={`text-[20px] shrink-0 mt-px ${cfg.iconColor}`} fill />
       <span className="flex-1 text-label-md leading-snug break-words">{item.msg}</span>
@@ -184,8 +184,14 @@ export function Toaster() {
 
   return (
     <div
-      className="fixed top-6 right-6 z-[120]
-        flex flex-col items-end gap-sm w-full max-w-sm px-md pointer-events-none"
+      // Anclado a top-right de la VENTANA. `right-0` + `pr-4`/`pt-4` evita conflictos
+      // con shells mobile que recortan el padding. Respeta safe-area iOS.
+      style={{
+        paddingTop: 'max(1rem, env(safe-area-inset-top))',
+        paddingRight: 'max(1rem, env(safe-area-inset-right))',
+      }}
+      className="fixed top-0 right-0 z-[120]
+        flex flex-col items-end gap-sm w-full max-w-sm pointer-events-none"
     >
       {items.map((item) => (
         <ToastCard key={item.id} item={item} onDismiss={ctx.dismiss} />

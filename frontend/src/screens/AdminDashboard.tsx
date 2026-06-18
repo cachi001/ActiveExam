@@ -1,6 +1,11 @@
+// Panel de administración (admin_sistema) — KPIs del cuatrimestre + accesos.
+//
+// Layout dashboard moderno: 4 stat cards arriba, dos columnas debajo (lista de
+// exámenes + columna lateral con "Acciones rápidas"). Cards Card padded={false}
+// con header separado por border, hover sobre filas en bg-surface-50.
 import { useEffect, useState } from 'react';
 import { StaffShell } from '../ui/shells';
-import { Icon, Card, Badge, Button, SectionTitle } from '../ui/components';
+import { Icon, Card, Badge } from '../ui/components';
 import { HelpButton } from '../ui/HelpButton';
 import { StatCard } from './proctoring/StatCard';
 import { Link } from '../lib/router';
@@ -39,54 +44,85 @@ export default function AdminDashboard() {
     >
       <div className="space-y-lg animate-in fade-in duration-500">
 
+        {/* Stat cards — paleta clara (primary/info/warning/success), nada de slate oscuro */}
         <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-md">
-          <StatCard icon="quiz" label="Exámenes" value={rep?.examenes_totales ?? '—'} sub="este cuatrimestre" tono="neutral" />
+          <StatCard icon="quiz" label="Exámenes" value={rep?.examenes_totales ?? '—'} sub="este cuatrimestre" tono="primary" />
           <StatCard icon="groups" label="Sesiones" value={rep?.sesiones_totales ?? '—'} sub="supervisadas" tono="info" />
           <StatCard icon="flag" label="Tasa de flag" value={`${rep?.tasa_flag ?? 0}%`} sub="entran a revisión" tono="warning" />
-          <StatCard icon="schedule" label="Revisión media" value={rep?.tiempo_medio_revision ?? '—'} sub="por sesión" tono="neutral" />
+          <StatCard icon="schedule" label="Revisión media" value={rep?.tiempo_medio_revision ?? '—'} sub="por sesión" tono="success" />
         </div>
 
         <div className="grid lg:grid-cols-3 gap-lg">
+          {/* Lista de exámenes — col-span-2 en desktop */}
           <div className="lg:col-span-2">
-            <Card>
-              <SectionTitle sub="Estado de los exámenes recientes"
-                action={<Link to="/admin/examenes" className="text-label-md text-on-surface-variant hover:text-on-surface hover:underline">Ver todos</Link>}>
-                Exámenes
-              </SectionTitle>
-              <div className="space-y-base">
-                {examenes.length === 0 && (
-                  <div className="text-center py-lg text-on-surface-variant space-y-base">
-                    <Icon name="quiz" className="text-[36px] text-outline" />
-                    <p className="text-label-md">Todavía no hay exámenes cargados.</p>
+            <Card padded={false}>
+              <div className="px-lg py-md border-b border-surface-200 flex items-center justify-between">
+                <div>
+                  <h2 className="text-[16px] font-semibold text-on-surface leading-tight">Exámenes</h2>
+                  <p className="text-[12.5px] text-on-surface-variant mt-0.5">Estado de los exámenes recientes</p>
+                </div>
+                <Link to="/admin/examenes" className="inline-flex items-center gap-1 text-[13px] font-medium text-primary hover:underline">
+                  Ver todos
+                  <Icon name="arrow_forward" className="text-[16px]" />
+                </Link>
+              </div>
+              <div className="divide-y divide-surface-200">
+                {examenes.length === 0 ? (
+                  <div className="px-lg py-xl flex flex-col items-center text-center gap-md text-on-surface-variant">
+                    <Icon name="quiz" className="text-[36px]" />
+                    <p className="text-[14px]">Todavía no hay exámenes cargados.</p>
                   </div>
-                )}
-                {examenes.map((e) => (
-                  <Link key={e.id} to="/admin/examenes" className="flex items-center justify-between gap-md p-sm rounded-xl hover:bg-surface-container-low transition-colors border border-outline-variant/30">
-                    <div className="flex items-center gap-sm">
-                      <div className="w-10 h-10 rounded-xl bg-surface-container text-on-surface-variant flex items-center justify-center"><Icon name="description" /></div>
-                      <div>
-                        <p className="text-label-md font-semibold text-on-surface">{e.nombre}</p>
-                        <p className="text-label-sm text-on-surface-variant">{e.catedra} · {e.inscriptos} inscriptos</p>
+                ) : (
+                  examenes.map((e) => (
+                    <Link
+                      key={e.id}
+                      to="/admin/examenes"
+                      className="flex items-center justify-between gap-3 px-lg py-3 hover:bg-surface-50 transition-colors"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-10 h-10 rounded-md bg-surface-100 text-on-surface-variant flex items-center justify-center shrink-0">
+                          <Icon name="description" className="text-[20px]" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-[14px] font-semibold text-on-surface truncate leading-tight">{e.nombre}</p>
+                          <p className="text-[12.5px] text-on-surface-variant truncate leading-tight mt-0.5">{e.catedra} · {e.inscriptos} inscriptos</p>
+                        </div>
                       </div>
-                    </div>
-                    <Badge tone={ESTADO_TONE[e.estado]} dot>{ESTADO_LABEL[e.estado]}</Badge>
-                  </Link>
-                ))}
+                      <Badge tone={ESTADO_TONE[e.estado]} dot>{ESTADO_LABEL[e.estado]}</Badge>
+                    </Link>
+                  ))
+                )}
               </div>
             </Card>
           </div>
 
-          <Card className="space-y-md">
-            <SectionTitle>Acciones rápidas</SectionTitle>
-            <div className="flex flex-col gap-sm">
-              <Link to="/admin/reportes"><Button size="sm" variant="outline" icon="analytics" className="w-full">Ver reportes</Button></Link>
-              <Link to="/admin/auditoria"><Button size="sm" variant="outline" icon="policy" className="w-full">Auditoría</Button></Link>
-              {/* C-61: gestión de usuarios */}
-              <Link to="/admin/usuarios"><Button size="sm" variant="outline" icon="manage_accounts" className="w-full">Usuarios</Button></Link>
+          {/* Acciones rápidas — estilo "outline buttons full-width left-aligned" */}
+          <Card padded={false}>
+            <div className="px-lg py-md border-b border-surface-200">
+              <h2 className="text-[16px] font-semibold text-on-surface leading-tight">Acciones rápidas</h2>
+              <p className="text-[12.5px] text-on-surface-variant mt-0.5">Accesos directos</p>
+            </div>
+            <div className="p-md flex flex-col gap-2">
+              <AccionRapida to="/admin/reportes" icon="analytics" label="Ver reportes" />
+              <AccionRapida to="/admin/auditoria" icon="policy" label="Auditoría" />
+              <AccionRapida to="/admin/usuarios" icon="manage_accounts" label="Usuarios" />
             </div>
           </Card>
         </div>
       </div>
     </StaffShell>
+  );
+}
+
+function AccionRapida({ to, icon, label }: { to: string; icon: string; label: string }) {
+  return (
+    <Link
+      to={to}
+      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-md border border-surface-200 bg-white text-on-surface text-[14px] font-medium hover:bg-surface-50 hover:border-primary/40 transition-colors"
+    >
+      <Icon name={icon} className="text-[18px] text-on-surface-variant" />
+      {label}
+      <Icon name="chevron_right" className="text-[18px] text-on-surface-variant ml-auto" />
+    </Link>
   );
 }

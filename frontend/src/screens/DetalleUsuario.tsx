@@ -138,16 +138,13 @@ export default function DetalleUsuario() {
       .catch((err) => setConsent({ status: 'error', message: err instanceof Error ? err.message : String(err) }));
 
     api.obtenerEstadoBiometriaDeUsuario(usuarioId)
-      .then((data) => {
-        setBiometria({ status: 'ok', data });
-        // Cargar foto si el backend indica que existe
-        if (data.tiene_foto) {
-          api.obtenerFotoPerfilDeUsuario(usuarioId)
-            .then((f) => { if (f) setFoto(f); })
-            .catch(() => {});
-        }
-      })
+      .then((data) => setBiometria({ status: 'ok', data }))
       .catch((err) => setBiometria({ status: 'error', message: err instanceof Error ? err.message : String(err) }));
+
+    // Foto de perfil en paralelo (mismo endpoint que la tabla); si no hay, queda en null.
+    api.obtenerFotoPerfilDeUsuario(usuarioId)
+      .then((f) => { if (f) setFoto(f); })
+      .catch(() => {});
   }, [usuarioId]);
 
   return (
@@ -181,11 +178,19 @@ export default function DetalleUsuario() {
             const esBaja = Boolean(u.eliminado_en);
             return (
               <div className="flex flex-col md:flex-row gap-lg">
-                {/* Avatar grande */}
+                {/* Avatar grande — foto de perfil si existe, fallback inicial */}
                 <div className="shrink-0 flex flex-col items-center gap-sm">
-                  <div className="w-20 h-20 rounded-2xl bg-secondary-container text-on-secondary flex items-center justify-center font-bold text-[32px] shadow-sm">
-                    {(u.nombre ?? u.email).charAt(0).toUpperCase()}
-                  </div>
+                  {foto ? (
+                    <img
+                      src={foto}
+                      alt={`Foto de ${nombreDisplay}`}
+                      className="w-20 h-20 rounded-2xl object-cover border border-outline-variant/40 shadow-sm"
+                    />
+                  ) : (
+                    <div className="w-20 h-20 rounded-2xl bg-secondary-container text-on-secondary flex items-center justify-center font-bold text-[32px] shadow-sm">
+                      {(u.nombre ?? u.email).charAt(0).toUpperCase()}
+                    </div>
+                  )}
                   <Badge tone={esBaja ? 'error' : 'success'} dot>
                     {esBaja ? 'Dado de baja' : 'Activo'}
                   </Badge>
@@ -300,7 +305,14 @@ export default function DetalleUsuario() {
                   } />
                   <DataRow label="Algoritmo" value={b.algoritmo ?? '—'} />
                   <DataRow label="Fecha de creación" value={formatFecha(b.created_at)} />
-                  <DataRow label="Fecha de expiración" value={formatFecha(b.fecha_expiracion)} />
+                  <DataRow
+                    label="Fecha de expiración"
+                    value={
+                      b.fecha_expiracion
+                        ? formatFecha(b.fecha_expiracion)
+                        : <span className="text-on-surface-variant italic">Sin expiración (vigente mientras no se renueve)</span>
+                    }
+                  />
                   <DataRow label="Foto registrada" value={
                     <Badge tone={b.tiene_foto ? 'success' : 'neutral'} dot>
                       {b.tiene_foto ? 'Sí' : 'No'}

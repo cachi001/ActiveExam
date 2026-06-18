@@ -106,7 +106,7 @@ export default function AlumnoMisExamenes() {
         <BackButton onClick={() => navigate('/alumno')} />
         <header>
           <div className="flex items-center gap-sm">
-            <h1 className="font-headline text-headline-md text-on-surface tracking-tight">Mis exámenes</h1>
+            <h1 className="text-[22px] sm:text-[24px] font-semibold text-on-surface tracking-tight">Mis exámenes</h1>
             <HelpButton title="Mis exámenes">
               <p>
                 Acá ves tus <strong>inscripciones</strong> a exámenes con su estado actual y la
@@ -123,7 +123,7 @@ export default function AlumnoMisExamenes() {
               </p>
             </HelpButton>
           </div>
-          <p className="text-body-md text-on-surface-variant mt-xs">Registro de tus inscripciones con estado y acción siguiente.</p>
+          <p className="text-[13px] text-on-surface-variant mt-1">Registro de tus inscripciones con estado y acción siguiente.</p>
         </header>
 
         {cargando ? (

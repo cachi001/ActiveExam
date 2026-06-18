@@ -16,6 +16,7 @@ import { useToast } from '../ui/toast';
 import { useNavigate } from '../lib/router';
 import { useApp } from '../lib/store';
 import { api } from '../lib/api';
+import { loadEffectiveConfig } from '../config/effectiveConfigCache';
 import type { SesionProctoringResumen } from '../lib/types';
 import {
   formatFechaRelativa,
@@ -63,6 +64,9 @@ export default function ExamenPersonasGrid() {
 
   useEffect(() => {
     if (!examId) return;
+    // Sembrar el umbral_cola_revision de la config efectiva antes del primer
+    // render, así "Riesgo alto (≥X)" refleja lo que el admin configuró.
+    void loadEffectiveConfig();
     void refrescar();
     const id = setInterval(() => void refrescar(), POLL_MS);
     return () => clearInterval(id);
@@ -108,7 +112,7 @@ export default function ExamenPersonasGrid() {
 
         {/* Resumen del examen */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-md">
-          <StatCard icon="group" label="Personas" value={personas.length} tono="neutral" />
+          <StatCard icon="group" label="Personas" value={personas.length} tono="primary" />
           <StatCard icon="notifications" label="Eventos" value={eventos} tono="info" />
           <StatCard
             icon="priority_high"

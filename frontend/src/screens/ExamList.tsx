@@ -41,7 +41,7 @@ export default function ExamList() {
       <div className="space-y-lg animate-in fade-in duration-500">
 
         <Card>
-          <SectionTitle sub={`${examenes.length} examen${examenes.length !== 1 ? 'es' : ''}`}>
+          <SectionTitle sub={`${examenes.length} ${examenes.length === 1 ? 'examen' : 'exámenes'}`}>
             Listado
           </SectionTitle>
 

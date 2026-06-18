@@ -201,13 +201,16 @@ export default function SeccionScoring() {
                 </label>
               </div>
 
-              {/* Acciones de la card (solo si hay edición) */}
+              {/* Acciones de la card (solo si hay edición). Descartar = outline
+                  (siempre tiene borde y se lee como botón sin esperar el hover).
+                  Guardar = success — verde sober "save" universal, sin morado que
+                  no encaja en el contexto de configuración. */}
               {editado && (
                 <div className="flex items-center justify-end gap-1.5 pt-1">
-                  <Button size="sm" variant="ghost" onClick={() => descartar(cfg.tipo_evento)} disabled={isGuardando}>
+                  <Button size="sm" variant="outline" onClick={() => descartar(cfg.tipo_evento)} disabled={isGuardando}>
                     Descartar
                   </Button>
-                  <Button size="sm" variant="primary" icon="save" onClick={() => guardar(cfg)} disabled={isGuardando}>
+                  <Button size="sm" variant="success" icon="save" onClick={() => guardar(cfg)} disabled={isGuardando}>
                     {isGuardando ? '…' : 'Guardar'}
                   </Button>
                 </div>

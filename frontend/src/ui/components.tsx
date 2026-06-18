@@ -63,8 +63,11 @@ export const Button = forwardRef<HTMLButtonElement, {
 });
 
 export function Card({ children, className = '', padded = true }: { children: ReactNode; className?: string; padded?: boolean }) {
+  // Aterrizado a `rounded-lg` (16px) + borde slate sutil, sin shadow agresivo. El
+  // 2xl + shadow-card previo se acumulaba en pantallas con muchas cards y daba
+  // sensación pesada/redonda; el ajuste deja la card legible sin gritar.
   return (
-    <div className={`bg-surface-container-lowest rounded-2xl border border-outline-variant/70 shadow-card ${padded ? 'p-lg' : ''} ${className}`}>
+    <div className={`bg-surface-container-lowest rounded-lg border border-surface-200 ${padded ? 'p-lg' : ''} ${className}`}>
       {children}
     </div>
   );

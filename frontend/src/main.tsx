@@ -13,6 +13,20 @@ import { registerModelCacheWorker } from './lib/modelPersistence'
 // captura biométrica (eliminaba el cuelgue/crash en el teléfono).
 registerModelCacheWorker()
 
+// Material Symbols leaks: en conexiones lentas (túnel cloudflared) el font CSS
+// con `display=block` deja ver el nombre del ligature ("verification", "home", …)
+// tras ~3s. Marcamos `<html>` con `ms-ready` cuando la fuente realmente cargó —
+// el CSS oculta los iconos hasta entonces. Fallback a 5s si `document.fonts`
+// no resuelve (entornos sin Font Loading API).
+const markIconsReady = () => document.documentElement.classList.add('ms-ready');
+const fonts = (document as Document & { fonts?: FontFaceSet }).fonts;
+if (fonts) {
+  fonts.load('24px "Material Symbols Outlined"').then(markIconsReady).catch(markIconsReady);
+  window.setTimeout(markIconsReady, 5000);
+} else {
+  markIconsReady();
+}
+
 // Espeja el principal de auth (useAuth, fuente de verdad) hacia useApp, que es lo
 // que leen las pantallas legacy (Hola {nombre}, sidebar, etc.). Suscripto ANTES del
 // init para capturar la hidratación inicial. Evita migrar cada pantalla a useAuth.

@@ -195,11 +195,12 @@ export default function Consent() {
             {/* Render progresivo: la grilla aparece vacía hasta que llega el texto (D3) */}
             <div className="grid sm:grid-cols-2 gap-md">
               {(texto?.bloques ?? []).map((b) => (
-                <Card key={b.titulo} className="flex gap-sm">
-                  <div className="w-10 h-10 rounded-xl bg-primary-fixed text-primary flex items-center justify-center shrink-0">
-                    <Icon name={b.icono} />
-                  </div>
-                  <div>
+                <Card key={b.titulo} className="flex gap-md items-start">
+                  <div
+                    className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-fixed to-primary-fixed-dim ring-1 ring-primary/15 shadow-sm shrink-0"
+                    aria-hidden
+                  />
+                  <div className="min-w-0">
                     <h3 className="text-label-md font-semibold text-on-surface">{b.titulo}</h3>
                     <p className="text-label-sm text-on-surface-variant mt-base leading-relaxed">{b.cuerpo}</p>
                   </div>
@@ -259,10 +260,11 @@ export default function Consent() {
               </div>
               <div className="overflow-y-auto px-lg py-md space-y-md">
                 {(texto?.bloques ?? []).map((b) => (
-                  <div key={b.titulo} className="flex gap-sm">
-                    <div className="w-9 h-9 rounded-xl bg-primary-fixed text-primary flex items-center justify-center shrink-0">
-                      <Icon name={b.icono} className="text-[18px]" />
-                    </div>
+                  <div key={b.titulo} className="flex gap-md items-start">
+                    <div
+                      className="w-11 h-11 rounded-full bg-gradient-to-br from-primary-fixed to-primary-fixed-dim ring-1 ring-primary/15 shadow-sm shrink-0"
+                      aria-hidden
+                    />
                     <div className="min-w-0">
                       <h4 className="text-label-md font-semibold text-on-surface">{b.titulo}</h4>
                       <p className="text-label-sm text-on-surface-variant mt-base leading-relaxed">{b.cuerpo}</p>

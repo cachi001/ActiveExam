@@ -281,7 +281,7 @@ export default function SeccionDeteccion() {
             <Button variant="outline" icon="undo" onClick={cancelar} disabled={guardando}>
               Cancelar
             </Button>
-            <Button icon="save" onClick={guardar} disabled={guardando}>
+            <Button variant="success" icon="save" onClick={guardar} disabled={guardando}>
               {guardando ? 'Guardando…' : 'Guardar umbrales'}
             </Button>
           </div>

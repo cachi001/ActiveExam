@@ -12,14 +12,16 @@ import { Icon } from '../../ui/components';
 
 export type StatTono = 'neutral' | 'success' | 'warning' | 'error' | 'primary' | 'info';
 
-/** Fondo en gradiente por tono (oscuro→más oscuro, para que el blanco se lea siempre). */
+/** Fondo en gradiente por tono. Paletas vivas tipo "dashboard moderno". `neutral`
+ * usa slate-500/600 (gris medio legible) — el slate-900 anterior se sentía negro
+ * pesado en el panel y no encaja con el resto de la paleta. */
 const TONO_BG: Record<StatTono, string> = {
-  primary: 'bg-gradient-to-br from-primary to-primary-700',
+  primary: 'bg-gradient-to-br from-primary to-primary-800',
   info: 'bg-gradient-to-br from-info-500 to-info-600',
   success: 'bg-gradient-to-br from-success-500 to-success-600',
   warning: 'bg-gradient-to-br from-warning-500 to-warning-600',
   error: 'bg-gradient-to-br from-error-500 to-error-600',
-  neutral: 'bg-gradient-to-br from-tertiary to-tertiary-container',
+  neutral: 'bg-gradient-to-br from-surface-500 to-surface-600',
 };
 
 export function StatCard({

@@ -30,21 +30,21 @@ export function ComisionRow({
     <div>
       <button
         onClick={onSelect}
-        className={`w-full flex items-center gap-md px-md py-sm rounded-xl border-2 transition-all text-left ${
+        className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg border transition-colors text-left ${
           activa
-            ? 'bg-white border-primary ring-2 ring-primary/15'
-            : 'bg-white border-outline-variant/40 hover:bg-surface-container-low hover:border-outline-variant'
+            ? 'bg-white border-primary ring-1 ring-primary/15'
+            : 'bg-white border-surface-200 hover:bg-surface-50 hover:border-primary/40'
         }`}
       >
         <Icon
           name="groups"
-          className={`shrink-0 ${activa ? 'text-primary' : 'text-on-surface-variant'}`}
+          className={`shrink-0 text-[20px] ${activa ? 'text-primary' : 'text-on-surface-variant'}`}
         />
         <div className="flex-1 min-w-0">
-          <p className={`text-label-md font-semibold ${activa ? 'text-primary' : 'text-on-surface'}`}>
+          <p className={`text-[14px] font-semibold leading-tight ${activa ? 'text-primary' : 'text-on-surface'}`}>
             {comision.nombre}
           </p>
-          <p className="text-label-sm text-on-surface-variant">
+          <p className="text-[12.5px] text-on-surface-variant leading-tight mt-0.5">
             {comision.docente} · {comision.horario}
           </p>
         </div>

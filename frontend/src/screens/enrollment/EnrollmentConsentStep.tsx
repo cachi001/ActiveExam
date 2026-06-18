@@ -76,8 +76,14 @@ export function EnrollmentConsentStep({ acuseActual, onConsentido, soloLectura =
           <div className="w-10 h-10 rounded-xl bg-primary-fixed text-primary flex items-center justify-center shrink-0">
             <Icon name="description" className="text-[20px]" />
           </div>
-          <div>
+          <div className="flex-1 min-w-0 flex items-center justify-between gap-sm">
             <h3 className="font-headline text-title-md text-on-surface">Consentimiento informado</h3>
+            {texto?.version && (
+              <span className="inline-flex items-center gap-base px-sm py-base rounded-full bg-primary-fixed text-primary text-label-sm font-semibold shrink-0">
+                <Icon name="bookmark" className="text-[16px]" />
+                Versión {texto.version}
+              </span>
+            )}
           </div>
         </div>
 
@@ -95,11 +101,12 @@ export function EnrollmentConsentStep({ acuseActual, onConsentido, soloLectura =
       {/* Bloques informativos */}
       <div className="grid sm:grid-cols-2 gap-md">
         {(texto?.bloques ?? []).map((b) => (
-          <Card key={b.titulo} className="flex gap-sm">
-            <div className="w-9 h-9 rounded-xl bg-primary-fixed text-primary flex items-center justify-center shrink-0">
-              <Icon name={b.icono} className="text-[18px]" />
-            </div>
-            <div>
+          <Card key={b.titulo} className="flex gap-md items-start">
+            <div
+              className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-fixed to-primary-fixed-dim ring-1 ring-primary/15 shadow-sm shrink-0"
+              aria-hidden
+            />
+            <div className="min-w-0">
               <h4 className="text-label-md font-semibold text-on-surface">{b.titulo}</h4>
               <p className="text-label-sm text-on-surface-variant mt-base leading-relaxed">{b.cuerpo}</p>
             </div>

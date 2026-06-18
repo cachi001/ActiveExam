@@ -62,7 +62,7 @@ export function DetalleHeader({ detalle }: { detalle: SesionProctoringDetalle })
           sub={NIVEL_LABEL[nivel]}
           tono={nivel === 'alto' ? 'error' : nivel === 'medio' ? 'warning' : 'success'}
         />
-        <StatCard icon="notifications" label="Eventos" value={totalEventos} tono="neutral" />
+        <StatCard icon="notifications" label="Eventos" value={totalEventos} tono="info" />
         <StatCard
           icon="rule"
           label="Discrepancias"

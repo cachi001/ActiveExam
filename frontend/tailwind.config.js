@@ -41,24 +41,36 @@ export default {
         "on-error": "#ffffff",
         "error-container": "#ffdad6",
         "on-error-container": "#93000a",
-        "surface": "#fbfaf7",
-        "surface-dim": "#d9dade",
-        "surface-bright": "#fbfaf7",
+        // Paleta de superficies basada en slate — fondos limpios, sin tinte cremita.
+        "surface": "#f8fafc",            // slate-50: fondo principal de la app
+        "surface-dim": "#cbd5e1",        // slate-300
+        "surface-bright": "#ffffff",
         "surface-container-lowest": "#ffffff",
-        "surface-container-low": "#f3f3f7",
-        "surface-container": "#ededf1",
-        "surface-container-high": "#e8e8ec",
-        "surface-container-highest": "#e2e2e6",
-        "surface-variant": "#e2e2e6",
-        "surface-tint": "#4e4ec9",
-        "on-surface": "#1a1c1f",
-        "on-surface-variant": "#464553",
-        "inverse-surface": "#2e3034",
-        "inverse-on-surface": "#f0f0f4",
-        "background": "#f9f9fd",
-        "on-background": "#1a1c1f",
-        "outline": "#777585",
-        "outline-variant": "#c7c4d6",
+        "surface-container-low": "#f1f5f9",   // slate-100: fondo de cards sutiles
+        "surface-container": "#e2e8f0",       // slate-200: separadores fuertes / chips
+        "surface-container-high": "#cbd5e1",  // slate-300
+        "surface-container-highest": "#94a3b8", // slate-400
+        "surface-variant": "#e2e8f0",
+        "surface-tint": "#4f46e5",
+        "on-surface": "#0f172a",         // slate-900
+        "on-surface-variant": "#475569", // slate-600
+        "inverse-surface": "#1e293b",    // slate-800
+        "inverse-on-surface": "#f1f5f9",
+        "background": "#f8fafc",
+        "on-background": "#0f172a",
+        "outline": "#64748b",            // slate-500
+        "outline-variant": "#e2e8f0",    // slate-200 — bordes sutiles tipo dashboard moderno
+        // Escala numérica adicional (para alinear con utilidades estándar).
+        "surface-50":  "#f8fafc",
+        "surface-100": "#f1f5f9",
+        "surface-200": "#e2e8f0",
+        "surface-300": "#cbd5e1",
+        "surface-400": "#94a3b8",
+        "surface-500": "#64748b",
+        "surface-600": "#475569",
+        "surface-700": "#334155",
+        "surface-800": "#1e293b",
+        "surface-900": "#0f172a",
         // tokens de estado semántico (para badges de severidad)
         "success": "#15803d",
         "success-container": "#dcfce7",
@@ -95,19 +107,14 @@ export default {
         xxl: "48px",
         gutter: "24px",
         "container-max": "1280px",
-        "sidebar-width": "260px",
+        "sidebar-width": "240px",
+        "sidebar-collapsed": "60px",
+        "topbar-height": "56px",
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif'],
-        headline: ['"Plus Jakarta Sans"', 'sans-serif'],
-        "display-lg": ['"Plus Jakarta Sans"'],
-        "headline-lg": ['"Plus Jakarta Sans"'],
-        "headline-md": ['"Plus Jakarta Sans"'],
-        "title-lg": ['"Plus Jakarta Sans"'],
-        "body-lg": ['Inter'],
-        "body-md": ['Inter'],
-        "label-md": ['Inter'],
-        "label-sm": ['Inter'],
+        // Tipografía unificada: Inter en todo (más limpia/moderna para dashboard).
+        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+        headline: ['Inter', 'system-ui', 'sans-serif'],
       },
       fontSize: {
         "display-lg": ["48px", { lineHeight: "56px", letterSpacing: "-0.02em", fontWeight: "700" }],

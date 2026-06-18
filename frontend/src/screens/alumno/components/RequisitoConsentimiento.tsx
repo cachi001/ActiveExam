@@ -33,7 +33,7 @@ export function RequisitoConsentimiento({ consentimiento, viaAlternativa, onInic
           <div className="flex items-start gap-sm">
             <Icon name="check_circle" className="text-success text-[20px] shrink-0 mt-px" fill />
             <p className="text-label-sm text-on-surface">
-              Aceptaste el consentimiento el{' '}
+              Aceptaste la <strong>versión {consentimiento.version}</strong> del consentimiento el{' '}
               <strong>
                 {new Date(consentimiento.timestamp).toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' })}
               </strong>.

@@ -453,12 +453,27 @@ async function realFetch<T>(path: string, init: RequestInit, _legacyToken?: stri
 // forma del backend a la del frontend, en el límite de la API (el dato del backend
 // es no confiable: nunca debe llegar crudo a un componente que hace `.map`).
 const BLOQUE_META: Record<string, { titulo: string; icono: string }> = {
-  que_se_recolecta: { titulo: '¿Qué datos recolectamos?', icono: 'help' },
+  que_se_recolecta: { titulo: '¿Qué datos recolectamos?', icono: 'database' },
   como_se_recolecta: { titulo: '¿Cómo se procesan?', icono: 'memory' },
   donde_se_almacena: { titulo: '¿Dónde se almacenan?', icono: 'dns' },
   cuanto_tiempo: { titulo: '¿Cuánto tiempo?', icono: 'schedule' },
   derechos_titular: { titulo: 'Tus derechos', icono: 'gavel' },
 };
+
+/**
+ * Cuando el backend devuelve bloques desde la tabla `consent_texto_version`
+ * solo trae {titulo, cuerpo} (sin icono). Inferimos el icono por heurística
+ * sobre el titulo — fallback `description` para versiones custom.
+ */
+function inferirIconoBloque(titulo: string): string {
+  const t = titulo.toLowerCase();
+  if (t.includes('qué datos') || t.includes('que datos') || t.includes('recolect')) return 'database';
+  if (t.includes('cómo') || t.includes('como')) return 'memory';
+  if (t.includes('dónde') || t.includes('donde') || t.includes('guard') || t.includes('almacen')) return 'dns';
+  if (t.includes('cuánto') || t.includes('cuanto') || t.includes('tiempo') || t.includes('conserv') || t.includes('retenc')) return 'schedule';
+  if (t.includes('derecho')) return 'gavel';
+  return 'description';
+}
 
 /**
  * Normaliza la respuesta de `/consent/text` a la forma del frontend.
@@ -469,7 +484,11 @@ function normalizarConsentText(raw: unknown): ConsentTextResponse {
   const r = (raw ?? {}) as { version?: string; hash_texto?: string; bloques?: unknown };
   let bloques: BloqueConsentimiento[];
   if (Array.isArray(r.bloques)) {
-    bloques = r.bloques as BloqueConsentimiento[];
+    bloques = (r.bloques as Array<{ titulo: string; cuerpo: string; icono?: string }>).map((b) => ({
+      titulo: b.titulo,
+      cuerpo: b.cuerpo,
+      icono: b.icono || inferirIconoBloque(b.titulo),
+    }));
   } else if (r.bloques && typeof r.bloques === 'object') {
     const dict = r.bloques as Record<string, string>;
     // Orden canónico de BLOQUE_META primero; cualquier clave extra se anexa.
@@ -888,6 +907,60 @@ export const api = {
     // C-67: idem puedeRendir — la versión vigente debe venir del backend para que
     // recalcularPerfilCompleto no invalide un consentimiento real ('v1' vs mock).
     await ensureConsentVersionSynced();
+
+    // En modo REAL la fuente de verdad es el backend: si la DB se reseteó (tmpfs),
+    // el cache local en localStorage queda mintiendo "ya hiciste todo". Por eso
+    // pisamos el estado local con lo que dice el servidor en cada carga.
+    if (USE_REAL_BACKEND) {
+      const token = authProvider.getToken?.() ?? '';
+      const headers = { Authorization: `Bearer ${token}` };
+      const [consentResp, biometriaResp] = await Promise.all([
+        fetch(`${API_BASE}/consent/profile`, { headers })
+          .then((r) => (r.ok ? r.json() : null))
+          .catch(() => null),
+        fetch(`${API_BASE}/proctoring/biometria/referencia/estado`, { headers })
+          .then((r) => (r.ok ? r.json() : null))
+          .catch(() => null),
+      ]);
+
+      const consentimiento: AcuseConsentimiento | null =
+        consentResp && consentResp.estado === 'otorgado'
+          ? {
+              version: consentResp.version_texto ?? consentVersionVigente(),
+              timestamp: consentResp.timestamp ?? new Date().toISOString(),
+              hash: consentResp.hash_texto ?? '',
+              via_alternativa: false,
+            }
+          : null;
+
+      const tieneRefVigente = Boolean(biometriaResp?.tiene_referencia_vigente);
+      // El backend solo expone el booleano (RN-BIO/Ley 25.326). Si no había cache
+      // local, sintetizamos un stub mínimo que satisface el tipo sin filtrar dato.
+      const biometriaStub: ReferenciasBiometrica = enrollmentAlumno.biometria ?? {
+        captura_completada: true,
+        imagen: null,
+        embedding: null,
+        fecha_captura: new Date().toISOString(),
+        fecha_expiracion: new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString(),
+        vigencia_meses: 12,
+        version_motor: 'server',
+        vigencia: 'vigente',
+        renovacion_anticipada_requerida: false,
+      };
+      const biometria: ReferenciasBiometrica | null = tieneRefVigente
+        ? { ...biometriaStub, captura_completada: true, vigencia: 'vigente' }
+        : null;
+
+      const next: EstadoEnrollment = {
+        consentimiento,
+        biometria,
+        dni: enrollmentAlumno.dni,
+        perfil_completo: false, // recalcularPerfilCompleto lo decide
+      };
+      commitEnrollment(next);
+      return { ...enrollmentAlumno };
+    }
+
     commitEnrollment(enrollmentAlumno);
     return { ...enrollmentAlumno };
   },
