@@ -393,6 +393,11 @@ export interface SesionProctoringResumen {
    * grabadas" listarlas todas.
    */
   finalizada_en?: string | null;
+  /**
+   * Timestamp del último evento (ISO 8601). En ausencia de eventos = creada_en.
+   * La UI lo usa para distinguir actividad reciente de calma/abandono.
+   */
+  ultimo_evento_en?: string | null;
   total_eventos: number;
   total_discrepancias: number;
   score: number;

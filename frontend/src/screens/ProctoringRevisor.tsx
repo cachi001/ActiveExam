@@ -40,7 +40,10 @@ export default function ProctoringRevisor() {
     setCargando(true);
     api
       .listarSesionesProctoring()
-      .then((data) => setSesiones(data))
+      // Sesiones grabadas = solo las ya finalizadas. Las que siguen en vivo se
+      // ven en "Supervisión en vivo" para no duplicar y para que esta lista sea
+      // realmente histórica (criterio del proctor).
+      .then((data) => setSesiones(data.filter((s) => s.finalizada_en)))
       .catch(() => setSesiones([]))
       .finally(() => setCargando(false));
   }, []);
@@ -67,13 +70,13 @@ export default function ProctoringRevisor() {
     <StaffShell
       nav={STAFF_NAV}
       title="Sesiones grabadas"
-      subtitle="Historial completo de sesiones de proctoring — todas las grabadas, sin filtro. Para revisar solo las de alto riesgo, usá la Cola de revisión."
+      subtitle="Historial de sesiones de proctoring ya finalizadas. Para sesiones en curso, usá Supervisión en vivo; para acotar por riesgo, la Cola de revisión."
       help={
         <HelpButton title="Sesiones grabadas">
           <p>
-            Listado <strong>completo</strong> de sesiones de proctoring registradas (en vivo o
-            finalizadas), sin filtro de riesgo. Para acotar a sesiones con score alto usá
-            <em> Cola de revisión</em>.
+            Listado histórico de sesiones de proctoring <strong>ya finalizadas</strong>.
+            Las que siguen en curso aparecen en <em>Supervisión en vivo</em>; para
+            acotar por riesgo, usá <em>Cola de revisión</em>.
           </p>
           <p>
             Click en una fila para abrir el detalle con eventos, evidencia y biometría. La
@@ -90,7 +93,7 @@ export default function ProctoringRevisor() {
         {/* Lista */}
         <Card className="space-y-md">
           <SectionTitle
-            sub={cargando ? 'Cargando…' : `${sesiones.length} sesión${sesiones.length !== 1 ? 'es' : ''}`}
+            sub={cargando ? 'Cargando…' : `${sesiones.length} ${sesiones.length === 1 ? 'sesión' : 'sesiones'}`}
           >
             Sesiones grabadas
           </SectionTitle>

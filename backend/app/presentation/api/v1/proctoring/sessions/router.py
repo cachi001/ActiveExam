@@ -91,6 +91,7 @@ def create_sessions_router(get_db) -> APIRouter:
                 etiqueta=s.etiqueta,
                 creada_en=s.creada_en,
                 finalizada_en=s.finalizada_en,
+                ultimo_evento_en=s.ultimo_evento_en,
                 total_eventos=s.total_eventos,
                 total_discrepancias=s.total_discrepancias,
                 score=s.score,
