@@ -33,6 +33,30 @@ _PESO_SEVERIDAD_DEFAULT: dict[str, float] = {
     "critica": 6.0,
 }
 
+# Rangos institucionales de peso por severidad (RN-SC-05): la severidad determina
+# un *rango* dentro del cual el admin puede ajustar el peso de cada evento.
+# Evita que la severidad sea solo decorativa (antes: baja con peso 100 hacia que
+# un solo evento "bajo" disparara la cola). El UI y el endpoint PATCH lo validan.
+# El score total de una sesion se cappea aparte a SCORE_CAP (finalization).
+SEVERITY_RANGES: dict[str, tuple[int, int]] = {
+    "baja": (1, 10),
+    "media": (11, 30),
+    "alta": (31, 60),
+    "critica": (61, 100),
+}
+
+
+def peso_dentro_de_rango(peso: int, severidad: str) -> bool:
+    """True si ``peso`` esta dentro del rango institucional de ``severidad``.
+
+    Severidades no listadas (eg. 'baseline') NO son configurables por evento — el
+    UI las excluye y el endpoint las rechaza."""
+    rango = SEVERITY_RANGES.get(severidad)
+    if rango is None:
+        return False
+    min_, max_ = rango
+    return min_ <= peso <= max_
+
 # Bono de persistencia por cada fotograma/minuto consecutivo sostenido (RN-SC-03).
 _BONO_PERSISTENCIA_DEFAULT = 0.5
 # Factor de correlacion: cuanto MAS que la suma aporta cada par coincidente (>1.0).
@@ -41,11 +65,23 @@ _FACTOR_CORRELACION_DEFAULT = 1.5
 
 @dataclass(frozen=True, slots=True)
 class PesosScore:
-    """Configuracion de pesos del score (configurable por institucion, RN-SC-05)."""
+    """Configuracion de pesos del score (configurable por institucion, RN-SC-05).
+
+    Dos fuentes posibles, prioridad de uso en ``peso_evento``:
+    1. ``por_tipo[ev.tipo]`` — peso especifico configurado en ``evento_score_config``
+       (lo que el admin edita en la UI de Scoring). Es la fuente *normal*.
+    2. ``severidad[ev.severidad]`` — fallback cuando ``por_tipo`` no esta presente o
+       el tipo del evento no esta mapeado (graceful degradation, RN-GLB-03).
+
+    Antes de unificar (config-driven-scoring v2) el sistema usaba SOLO ``severidad``,
+    lo que dejaba la UI de pesos por tipo desconectada del flujo de cierre."""
 
     severidad: dict[str, float] = field(
         default_factory=lambda: dict(_PESO_SEVERIDAD_DEFAULT)
     )
+    # Peso por TIPO de evento (config viva, ``evento_score_config``). None = sin
+    # config; se cae al fallback por severidad.
+    por_tipo: dict[str, float] | None = None
     bono_persistencia: float = _BONO_PERSISTENCIA_DEFAULT
     factor_correlacion: float = _FACTOR_CORRELACION_DEFAULT
     # Ventana de correlacion en milisegundos: eventos de distinto tipo dentro de esta
@@ -65,11 +101,18 @@ class EventoScore:
 
 
 def peso_evento(ev: EventoScore, pesos: PesosScore = PesosScore()) -> float:
-    """Peso de un evento: severidad x (1 + bono por persistencia sostenida).
+    """Peso de un evento: base x (1 + bono por persistencia sostenida).
 
-    Un pico aislado (persistencia=1) pesa su severidad base; un patron sostenido
+    El peso base sale de ``pesos.por_tipo[ev.tipo]`` si esta presente (config viva
+    desde ``evento_score_config``, lo que el admin edita en la UI), o cae al
+    fallback ``pesos.severidad[ev.severidad]`` (graceful degradation, RN-GLB-03).
+
+    Un pico aislado (persistencia=1) pesa su base; un patron sostenido
     (persistencia>1) pesa mas, escalado por el bono (RN-SC-02/RN-SC-03)."""
-    base = pesos.severidad.get(ev.severidad, 0.0)
+    if pesos.por_tipo is not None and ev.tipo in pesos.por_tipo:
+        base = pesos.por_tipo[ev.tipo]
+    else:
+        base = pesos.severidad.get(ev.severidad, 0.0)
     sostenido = 1.0 + pesos.bono_persistencia * max(0, ev.persistencia - 1)
     return base * sostenido
 

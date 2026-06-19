@@ -7,7 +7,7 @@
  */
 import type { SesionProctoringResumen } from '../../lib/types';
 import { StatCard } from './StatCard';
-import { nivelRiesgo, getUmbralAlto } from './helpers';
+import { nivelRiesgo } from './helpers';
 
 export function ResumenVivo({ sesiones }: { sesiones: SesionProctoringResumen[] }) {
   const activas = sesiones.length;
@@ -28,7 +28,7 @@ export function ResumenVivo({ sesiones }: { sesiones: SesionProctoringResumen[] 
       />
       <StatCard
         icon="priority_high"
-        label={`Riesgo alto (≥${getUmbralAlto()})`}
+        label="Riesgo alto"
         value={riesgoAlto}
         tono={riesgoAlto > 0 ? 'error' : 'success'}
       />

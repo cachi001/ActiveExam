@@ -27,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.application.config.service import ConfigService
 from app.domain.auth.identity import AuthenticatedPrincipal
 from app.domain.auth.roles import Rol
+from app.domain.scoring.risk_score import SEVERITY_RANGES, peso_dentro_de_rango
 from app.infrastructure.persistence.models.transactional import EventoScoreConfigModel
 from app.presentation.api.v1.auth.dependencies import get_current_principal, require_roles
 
@@ -211,6 +212,21 @@ async def editar_config(
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Tipo de evento {tipo_evento!r} no encontrado.",
+            )
+
+        # Validacion de rango severidad↔peso. Combina los valores entrantes con los
+        # actuales (uno puede venir y el otro no) y rechaza si el peso final queda
+        # fuera del rango institucional de la severidad final (SEVERITY_RANGES).
+        severidad_final = body.severidad if body.severidad is not None else cfg.severidad
+        peso_final = body.peso if body.peso is not None else cfg.peso
+        if severidad_final in SEVERITY_RANGES and not peso_dentro_de_rango(peso_final, severidad_final):
+            rango_min, rango_max = SEVERITY_RANGES[severidad_final]
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    f"Peso {peso_final} fuera del rango permitido para severidad "
+                    f"{severidad_final!r} ({rango_min}–{rango_max} pts)."
+                ),
             )
 
         if body.severidad is not None:

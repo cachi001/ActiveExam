@@ -135,9 +135,6 @@ function UserMenu() {
           <div className="px-4 py-3 border-b border-surface-200">
             <div className="text-sm font-medium text-on-surface truncate">{principal?.nombre ?? 'Invitado'}</div>
             <div className="text-xs text-on-surface-variant truncate">{secundario}</div>
-            {principal?.roles && principal.roles.length > 0 && (
-              <div className="text-[11px] text-on-surface-variant truncate mt-0.5">{principal.roles.join(', ')}</div>
-            )}
           </div>
           <button
             onClick={() => { setOpen(false); setConfirmandoLogout(true); }}
@@ -381,10 +378,10 @@ export function StaffShell({
           <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <h1 className="text-[22px] sm:text-[24px] font-semibold text-on-surface truncate">{title}</h1>
+                <h1 className="text-2xl font-bold text-on-surface truncate">{title}</h1>
                 {help}
               </div>
-              {subtitle && <p className="text-[13px] text-on-surface-variant mt-1">{subtitle}</p>}
+              {subtitle && <p className="text-base text-on-surface-variant mt-1">{subtitle}</p>}
             </div>
             {actions && <div className="flex items-center gap-2 shrink-0">{actions}</div>}
           </div>

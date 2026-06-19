@@ -10,6 +10,7 @@
 import { motion } from 'motion/react';
 import { Button, Card } from '../../../ui/components';
 import type { Principal } from '../../../lib/types';
+import { getRolLabel } from '../../../lib/constants/roles';
 
 interface PerfilHeaderCardProps {
   principal: Principal | null;
@@ -70,7 +71,7 @@ export function PerfilHeaderCard({ principal, onRehacerFoto }: PerfilHeaderCardP
           <p className="text-label-lg font-semibold text-on-surface">
             {[principal?.nombre, principal?.apellido].filter(Boolean).join(' ') || '—'}
           </p>
-          <p className="text-label-sm text-on-surface-variant">{principal?.roles.join(', ') ?? '—'}</p>
+          <p className="text-label-sm text-on-surface-variant">{principal?.roles.map(getRolLabel).join(', ') ?? '—'}</p>
         </div>
         {onRehacerFoto && (
           <Button

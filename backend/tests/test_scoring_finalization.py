@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 
 from app.application.scoring.finalization import (
+    SCORE_CAP,
     SCORE_THRESHOLD_DEFAULT,
     SessionFinalizationService,
     TOPIC_CIERRE_SESION,
@@ -167,6 +168,28 @@ def test_umbral_default_conservador_cuando_examen_no_define() -> None:
     svc, _, _ = _service(_sesion(EstadoSesion.FINALIZADA), _eventos_severos(1), umbral=SCORE_THRESHOLD_DEFAULT)
     res = asyncio.run(svc.consolidar("sess-1"))
     assert res.decision in (DecisionEncolado.FLAGGEADA, DecisionEncolado.ARCHIVADA)
+
+
+def test_consolidar_capea_score_a_SCORE_CAP() -> None:
+    """El score consolidado nunca supera SCORE_CAP (100): el dominio puro suma sin
+    tope, pero la capa de aplicacion lo capea para que cliente y server muestren la
+    misma escala 0-100 (ver doc en finalization.SCORE_CAP)."""
+    # 20 eventos criticos con persistencia frames=6 producen un score crudo bien por
+    # encima de 100 (~ 6*3.5*20 = 420 base + bonos de correlacion). Tras el cap = 100.
+    svc, repo_s, _ = _service(_sesion(EstadoSesion.FINALIZADA), _eventos_severos(20), umbral=5.0)
+    res = asyncio.run(svc.consolidar("sess-1"))
+    assert res.score_final == SCORE_CAP
+    # El score persistido en la sesion tambien queda capeado.
+    assert repo_s.sesion.score == SCORE_CAP
+
+
+def test_consolidar_score_bajo_cap_pasa_sin_modificar() -> None:
+    """Si el score crudo es < SCORE_CAP, no se altera (cap es una cota superior, no
+    redondeo)."""
+    # 1 evento critica frames=6 -> 6.0*3.5 = 21.0 (muy debajo de 100).
+    svc, _, _ = _service(_sesion(EstadoSesion.FINALIZADA), _eventos_severos(1), umbral=5.0)
+    res = asyncio.run(svc.consolidar("sess-1"))
+    assert res.score_final == 21.0
 
 
 def test_ningun_path_produce_veredicto_solo_estado() -> None:

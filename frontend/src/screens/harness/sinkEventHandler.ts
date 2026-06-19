@@ -38,6 +38,8 @@ interface SinkEventDeps {
   setLogEntries: (fn: (prev: HarnessLogEntry[]) => HarnessLogEntry[]) => void;
   setLogTruncated: (v: boolean) => void;
   setEventosEnviados: (fn: (c: number) => number) => void;
+  /** Overrides locales (modo what-if del harness). Si vacío, usa la config persistida. */
+  scoringOverridesRef?: MutableRefObject<Record<string, number>>;
 }
 
 /** Construye el callback que el sink invoca por evento (lógica idéntica al original). */
@@ -55,6 +57,7 @@ export function buildSinkEventHandler(deps: SinkEventDeps): SinkEventCallback {
     setLogEntries,
     setLogTruncated,
     setEventosEnviados,
+    scoringOverridesRef,
   } = deps;
 
   return (rawEvent, sinkStatus, sinkError) => {
@@ -78,9 +81,10 @@ export function buildSinkEventHandler(deps: SinkEventDeps): SinkEventCallback {
     });
 
     // C-33: acumular score de riesgo diagnóstico (setter funcional — sin stale closure).
-    // El peso se resuelve por tipo desde la BD; si la API fallo, pesoEvento() vuelve al
-    // fallback por severidad.
-    setHarnessScore((prev) => Math.min(100, prev + pesoEvento(rawEvent.tipo, rawEvent.severidad as Severidad)));
+    // El peso se resuelve por: 1) overrides locales (modo what-if), 2) cache de la BD
+    // (config viva), 3) fallback por severidad (si la API fallo).
+    const overrides = scoringOverridesRef?.current;
+    setHarnessScore((prev) => Math.min(100, prev + pesoEvento(rawEvent.tipo, rawEvent.severidad as Severidad, overrides)));
 
     // Registrar en log local
     const seqId = String(logSeqRef.current++);

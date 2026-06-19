@@ -114,7 +114,7 @@ export default function SeccionProctoring() {
             <span className="text-[40px] leading-none font-headline font-bold text-on-surface tabular-nums">
               {estado.umbral}
             </span>
-            <span className="text-title-md font-semibold text-on-surface-variant">%</span>
+            <span className="text-title-md font-semibold text-on-surface-variant">puntos</span>
           </div>
 
           <div className="relative pt-1">
@@ -125,22 +125,24 @@ export default function SeccionProctoring() {
               value={estado.umbral}
               onChange={(e) => setEstado((p) => ({ ...p, umbral: Number(e.target.value) }))}
               aria-label="Umbral de cola de revisión"
-              aria-valuetext={`${estado.umbral} por ciento`}
+              aria-valuetext={`score mayor o igual a ${estado.umbral} puntos entra a la cola de revisión`}
               className="ae-slider w-full appearance-none bg-transparent cursor-pointer"
               style={{
-                background: `linear-gradient(to right, #4f46e5 0%, #4f46e5 ${umbralPct}%, #c7c4d6 ${umbralPct}%, #c7c4d6 100%)`,
+                background: `linear-gradient(to right, #2563eb 0%, #2563eb ${umbralPct}%, #cbd5e1 ${umbralPct}%, #cbd5e1 100%)`,
               }}
             />
             <div className="flex justify-between text-[11px] text-on-surface-variant mt-2 tabular-nums">
-              <span>{UMBRAL_MIN}% · más sesiones a revisión</span>
-              <span>{UMBRAL_MAX}% · solo las más riesgosas</span>
+              <span>Desde {UMBRAL_MIN} puntos · más sesiones a revisión</span>
+              <span>Desde {UMBRAL_MAX} puntos · solo las más riesgosas</span>
             </div>
           </div>
 
           <p className="text-[12px] text-on-surface-variant leading-relaxed border-t border-outline-variant/40 pt-sm">
-            Cuando una sesión termina con un puntaje de riesgo igual o mayor a este valor, queda marcada
-            para que una persona la revise. Bajarlo manda más sesiones a revisión; subirlo deja solo las
-            más sospechosas. El sistema nunca sanciona solo.
+            El score de riesgo es un puntaje acumulado por los eventos detectados durante el examen
+            (no es un porcentaje). Cuando una sesión termina con un score <strong>mayor o igual al
+            valor configurado</strong>, queda marcada para que una persona la revise. Bajar el umbral
+            envía más sesiones a revisión; subirlo deja solo las más sospechosas. El sistema nunca
+            sanciona solo.
           </p>
         </Card>
 

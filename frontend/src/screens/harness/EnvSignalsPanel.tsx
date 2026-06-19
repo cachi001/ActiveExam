@@ -43,7 +43,7 @@ export default function EnvSignalsPanel({
           {/* Foco de ventana */}
           <div className={`flex items-start justify-between p-sm rounded-xl border text-label-sm ${
             envSignals.focusLost
-              ? 'bg-warning-container/60 border-warning/40 text-warning'
+              ? 'bg-warning-container/60 border-warning-200 text-warning'
               : 'bg-surface-container-low border-outline-variant/40 text-on-surface-variant'
           }`}>
             <div className="flex-1 min-w-0">
@@ -59,7 +59,7 @@ export default function EnvSignalsPanel({
           {/* Cambio de pestaña */}
           <div className={`flex items-start justify-between p-sm rounded-xl border text-label-sm ${
             envSignals.tabChanged
-              ? 'bg-warning-container/60 border-warning/40 text-warning'
+              ? 'bg-warning-container/60 border-warning-200 text-warning'
               : 'bg-surface-container-low border-outline-variant/40 text-on-surface-variant'
           }`}>
             <div className="flex-1 min-w-0">
@@ -75,7 +75,7 @@ export default function EnvSignalsPanel({
           {/* Pantalla completa */}
           <div className={`flex items-start justify-between p-sm rounded-xl border text-label-sm ${
             envSignals.fullscreenExited
-              ? 'bg-warning-container/60 border-warning/40 text-warning'
+              ? 'bg-warning-container/60 border-warning-200 text-warning'
               : 'bg-surface-container-low border-outline-variant/40 text-on-surface-variant'
           }`}>
             <div className="flex-1 min-w-0">
@@ -161,7 +161,7 @@ export default function EnvSignalsPanel({
           )}
 
           {monitorPermission === 'denied' && (
-            <div className="flex items-start gap-sm p-sm rounded-xl border text-label-sm bg-warning-container/40 border-warning/40 text-warning">
+            <div className="flex items-start gap-sm p-sm rounded-xl border text-label-sm bg-warning-container/40 border-warning-200 text-warning">
               <Icon name="block" className="text-[16px] shrink-0 mt-px" />
               <div className="min-w-0 flex-1">
                 <span className="font-semibold block">Monitor adicional</span>

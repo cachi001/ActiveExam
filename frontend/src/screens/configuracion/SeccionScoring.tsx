@@ -22,7 +22,27 @@ import { SEVERITY_BADGE_COLORS, SEVERITY_CARD_COLORS } from '../harness/helpers'
 import { resetEffectiveConfigCache } from '../../config/effectiveConfigCache';
 
 // baseline NO es un evento: es el piso 0 del score, no se elige por evento.
-const SEVERIDADES: Severidad[] = ['baja', 'media', 'alta', 'critica'];
+import {
+  rangoDeSeveridad,
+  type SeveridadEditable,
+} from '../../config/severityRanges';
+
+const SEVERIDADES: SeveridadEditable[] = ['baja', 'media', 'alta', 'critica'];
+
+/** Devuelve el peso ajustado al rango de la severidad dada. */
+function ajustarPesoARango(peso: number, severidad: SeveridadEditable): number {
+  const { min, max } = rangoDeSeveridad(severidad);
+  if (peso < min) return min;
+  if (peso > max) return max;
+  return peso;
+}
+
+/** Severidad segura para indexar rangos (defaultea a 'media' si viene una
+ * severidad no editable como 'baseline' — el catálogo no debería tener
+ * baseline, pero el guardrail evita un undefined en la UI). */
+function severidadEditable(s: Severidad): SeveridadEditable {
+  return s === 'baseline' ? 'media' : s;
+}
 
 export default function SeccionScoring() {
   const toast = useToast();
@@ -48,6 +68,19 @@ export default function SeccionScoring() {
 
   function setDraft<K extends keyof EventoScoreConfig>(tipo: string, field: K, value: EventoScoreConfig[K]) {
     setDrafts((prev) => ({ ...prev, [tipo]: { ...prev[tipo], [field]: value } }));
+  }
+
+  /**
+   * Setter para `severidad` que también ajusta el peso si queda fuera del rango
+   * de la nueva severidad. Evita el bug "baja con peso 100" o "crítica con peso 5".
+   */
+  function setSeveridad(cfg: EventoScoreConfig, nuevaSev: SeveridadEditable) {
+    const pesoActual = valorActual(cfg, 'peso') as number;
+    const pesoAjustado = ajustarPesoARango(pesoActual, nuevaSev);
+    setDrafts((prev) => ({
+      ...prev,
+      [cfg.tipo_evento]: { ...prev[cfg.tipo_evento], severidad: nuevaSev, peso: pesoAjustado },
+    }));
   }
 
   function valorActual<K extends keyof EventoScoreConfig>(cfg: EventoScoreConfig, field: K): EventoScoreConfig[K] {
@@ -110,19 +143,27 @@ export default function SeccionScoring() {
 
   return (
     <div className="space-y-lg max-w-4xl">
-      {/* B: Título propio de la sección */}
-      <div>
-        <h2 className="font-headline text-title-xl text-on-surface tracking-tight">Scoring</h2>
-        <p className="text-[13px] text-on-surface-variant mt-1">
-          Cuánto suma cada tipo de evento al puntaje de riesgo (0–100) que prioriza la revisión humana.
-          A mayor impacto, más peso tiene ese evento para que una persona revise la sesión.
-        </p>
+      {/* Título + chips de rangos por severidad (compactos, una sola línea) */}
+      <div className="space-y-sm">
+        <div>
+          <h2 className="font-headline text-title-xl text-on-surface tracking-tight">Scoring</h2>
+          <p className="text-[13px] text-on-surface-variant mt-1">
+            Cuántos puntos suma cada tipo de evento al score de riesgo.
+          </p>
+        </div>
+        <div className="flex items-center gap-1.5 flex-wrap text-[12px]">
+          <span className="text-on-surface-variant">Rangos:</span>
+          <span className="inline-flex items-baseline gap-1.5 px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 font-semibold"><span>Baja</span><span className="font-normal tabular-nums opacity-80">1–10</span></span>
+          <span className="inline-flex items-baseline gap-1.5 px-2 py-0.5 rounded-full bg-warning-container text-warning font-semibold"><span>Media</span><span className="font-normal tabular-nums opacity-80">11–30</span></span>
+          <span className="inline-flex items-baseline gap-1.5 px-2 py-0.5 rounded-full bg-error-container text-on-error-container font-semibold"><span>Alta</span><span className="font-normal tabular-nums opacity-80">31–60</span></span>
+          <span className="inline-flex items-baseline gap-1.5 px-2 py-0.5 rounded-full bg-error text-on-error font-semibold"><span>Crítica</span><span className="font-normal tabular-nums opacity-80">61–100</span></span>
+        </div>
       </div>
 
       <div className="grid md:grid-cols-2 gap-md min-w-0">
         {configs.map((cfg) => {
           const editado = tieneEdicion(cfg.tipo_evento);
-          const sev = valorActual(cfg, 'severidad') as Severidad;
+          const sev = severidadEditable(valorActual(cfg, 'severidad') as Severidad);
           const peso = valorActual(cfg, 'peso') as number;
           const activo = valorActual(cfg, 'activo') as boolean;
           const isGuardando = guardando === cfg.tipo_evento;
@@ -169,34 +210,34 @@ export default function SeccionScoring() {
                   <span className="text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant">Severidad</span>
                   <select
                     value={sev}
-                    onChange={(e) => setDraft(cfg.tipo_evento, 'severidad', e.target.value)}
+                    onChange={(e) => setSeveridad(cfg, e.target.value as SeveridadEditable)}
                     className="text-[13px] px-2.5 py-1.5 rounded-xl border border-outline-variant bg-white hover:border-outline focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors"
                     disabled={isGuardando}
                     aria-label={`Severidad de ${cfg.tipo_evento}`}
                   >
                     {SEVERIDADES.map((s) => (
-                      <option key={s} value={s}>{SEVERIDAD_LABEL[s]}</option>
+                      <option key={s} value={s}>{SEVERIDAD_LABEL[s]} ({rangoDeSeveridad(s).min}–{rangoDeSeveridad(s).max} pts)</option>
                     ))}
                   </select>
                 </label>
 
                 <label className="flex flex-col gap-1.5">
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant" title="Cuánto suma este evento al puntaje de riesgo (0–100) que prioriza la revisión humana">
-                    Impacto en score
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant" title={`Puntos que suma este evento al score (rango permitido para severidad ${SEVERIDAD_LABEL[sev]}: ${rangoDeSeveridad(sev).min}–${rangoDeSeveridad(sev).max})`}>
+                    Impacto ({rangoDeSeveridad(sev).min}–{rangoDeSeveridad(sev).max} pts)
                   </span>
                   <input
                     type="number"
-                    min={0}
-                    max={100}
+                    min={rangoDeSeveridad(sev).min}
+                    max={rangoDeSeveridad(sev).max}
                     value={peso}
                     onChange={(e) => {
                       const raw = parseInt(e.target.value, 10);
                       if (isNaN(raw)) return;
-                      setDraft(cfg.tipo_evento, 'peso', Math.max(0, Math.min(100, raw)));
+                      setDraft(cfg.tipo_evento, 'peso', ajustarPesoARango(raw, sev));
                     }}
                     className="w-full px-2.5 py-1.5 text-[13px] rounded-xl border border-outline-variant bg-white font-mono hover:border-outline focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors"
                     disabled={isGuardando}
-                    aria-label={`Impacto en el score de ${cfg.tipo_evento}`}
+                    aria-label={`Impacto en el score de ${cfg.tipo_evento} (rango ${rangoDeSeveridad(sev).min} a ${rangoDeSeveridad(sev).max} puntos)`}
                   />
                 </label>
               </div>

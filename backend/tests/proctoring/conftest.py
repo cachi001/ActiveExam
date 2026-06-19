@@ -17,6 +17,7 @@ from collections.abc import AsyncIterator
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.infrastructure.persistence.models.proctoring import (  # noqa: F401 -- registra tablas
@@ -43,32 +44,52 @@ def db_url() -> str:
     return url
 
 
+_SLIM_TABLE_NAMES = (
+    "proctoring_biometria",
+    "proctoring_event",
+    "proctoring_session",
+)
+
+
 @pytest_asyncio.fixture(scope="session")
 async def slim_engine(db_url: str):
-    """Engine async para los tests — usa Postgres real."""
+    """Engine async para los tests — usa Postgres real.
+
+    Setup/teardown usan ``DROP TABLE ... CASCADE`` via SQL crudo: el ``table.drop``
+    de SQLAlchemy emite ``DROP TABLE`` sin CASCADE, y falla si quedan vistas,
+    triggers o referencias previas (cualquier estado sucio de una corrida anterior
+    deja los tests rojos al iniciar).
+    """
     engine = create_async_engine(db_url, pool_pre_ping=True, future=True)
-    # Crear tablas slim (sin alembic, directo para tests)
     from app.infrastructure.persistence.models.proctoring import (  # noqa
         ProctoringBiometriaModel,
         ProctoringEventModel,
         ProctoringSessionModel,
     )
-    # Usamos metadata separada solo con los modelos slim
     slim_tables = [
         ProctoringSessionModel.__table__,
         ProctoringEventModel.__table__,
         ProctoringBiometriaModel.__table__,
     ]
     async with engine.begin() as conn:
-        for table in slim_tables:
-            await conn.run_sync(table.drop, checkfirst=True)
+        # Limpieza previa robusta (CASCADE) — tolera estado sucio de corridas previas.
+        for name in _SLIM_TABLE_NAMES:
+            await conn.execute(text(f'DROP TABLE IF EXISTS "{name}" CASCADE'))
         for table in slim_tables:
             await conn.run_sync(table.create, checkfirst=True)
     yield engine
+    # Teardown final: idem, CASCADE para no dejar restos.
     async with engine.begin() as conn:
-        for table in reversed(slim_tables):
-            await conn.run_sync(table.drop, checkfirst=True)
+        for name in _SLIM_TABLE_NAMES:
+            await conn.execute(text(f'DROP TABLE IF EXISTS "{name}" CASCADE'))
     await engine.dispose()
+
+
+async def _limpiar_tablas_slim(engine) -> None:
+    """Resetea las tablas slim. Usa TRUNCATE ... CASCADE (rapido y respeta FKs)."""
+    async with engine.begin() as conn:
+        nombres = ", ".join(f'"{n}"' for n in _SLIM_TABLE_NAMES)
+        await conn.execute(text(f"TRUNCATE {nombres} RESTART IDENTITY CASCADE"))
 
 
 @pytest_asyncio.fixture
@@ -106,8 +127,13 @@ def slim_app(slim_engine):
 
 
 @pytest_asyncio.fixture
-async def client(slim_app) -> AsyncIterator[AsyncClient]:
-    """Cliente HTTP async para tests de endpoints."""
+async def client(slim_app, slim_engine) -> AsyncIterator[AsyncClient]:
+    """Cliente HTTP async para tests de endpoints.
+
+    Limpia las tablas slim ANTES de cada test para aislar estado entre tests
+    (sin esto, las sesiones creadas en un test leakean al siguiente y los
+    asserts dependen del orden de ejecucion)."""
+    await _limpiar_tablas_slim(slim_engine)
     async with AsyncClient(
         transport=ASGITransport(app=slim_app), base_url="http://test"
     ) as c:

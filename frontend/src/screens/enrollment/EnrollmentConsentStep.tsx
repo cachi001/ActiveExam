@@ -88,7 +88,7 @@ export function EnrollmentConsentStep({ acuseActual, onConsentido, soloLectura =
         </div>
 
         {esRenovacion && (
-          <div className="flex items-start gap-sm bg-warning-container border border-warning/30 rounded-xl p-md">
+          <div className="flex items-start gap-sm bg-warning-container border border-warning-200 rounded-xl p-md">
             <Icon name="update" className="text-warning text-[18px] shrink-0 mt-px" />
             <p className="text-label-sm text-on-surface">
               <strong>El texto de consentimiento fue actualizado</strong> (versión {texto?.version}).

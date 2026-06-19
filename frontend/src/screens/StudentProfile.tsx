@@ -40,6 +40,7 @@ import { RequisitoConsentimiento } from './alumno/components/RequisitoConsentimi
 import { RequisitoBiometria } from './alumno/components/RequisitoBiometria';
 import { RequisitoDni } from './alumno/components/RequisitoDni';
 import type { AcuseConsentimiento, EstadoEnrollment, ReferenciasBiometrica, EscaneDNI } from '../lib/types';
+import { loadEffectiveConfig, getEffectiveConfig, resetEffectiveConfigCache } from '../config/effectiveConfigCache';
 
 /**
  * Pasos del flujo de enrollment.
@@ -66,6 +67,9 @@ export default function StudentProfile() {
 
   const [enrollment, setEnrollment] = useState<EstadoEnrollment | null>(null);
   const [paso, setPaso] = useState<PasoEnrollment>('cargando');
+  // Versión vigente del consentimiento (config del sistema). Si cambia, el
+  // alumno debe re-aceptar — RequisitoConsentimiento lo detecta comparando.
+  const [versionVigente, setVersionVigente] = useState<string | null>(null);
   /** C-56: error de backend al guardar la foto de perfil (para mostrar al alumno). */
   const [fotoError, setFotoError] = useState<string | null>(null);
   // C-66: foto capturada pendiente de confirmar (paso 2) antes de avanzar a biometría.
@@ -88,6 +92,15 @@ export default function StudentProfile() {
         const foto = await api.obtenerFotoPerfil();
         if (!cancelado && foto) setFotoPerfil(foto);
       }
+      // Cargar versión vigente del consentimiento desde la config efectiva.
+      // Invalidamos el cache para detectar cambios hechos por admin entre sesiones.
+      try {
+        resetEffectiveConfigCache();
+        await loadEffectiveConfig();
+        if (!cancelado) {
+          setVersionVigente(getEffectiveConfig()?.consent_version_vigente ?? null);
+        }
+      } catch { /* sin red: deja versionVigente=null y RequisitoConsentimiento no marca desactualizado */ }
       if (cancelado) return;
       // La UI del perfil ofrece iniciar/continuar enrollment según el estado.
       setPaso('perfil');
@@ -304,7 +317,6 @@ export default function StudentProfile() {
                   Cambiar foto
                 </Button>
                 <Button
-                  iconRight="arrow_forward"
                   onClick={() => {
                     setFotoConfirmando(null);
                     // Si ya completó la biometría (cambio de foto desde un perfil ya
@@ -460,6 +472,7 @@ export default function StudentProfile() {
         <RequisitoConsentimiento
           consentimiento={enrollment?.consentimiento ?? null}
           viaAlternativa={viaAlternativa}
+          versionVigente={versionVigente}
           onIniciar={() => setPaso('consentimiento')}
           onLeer={() => setPaso('leer_consentimiento')}
         />

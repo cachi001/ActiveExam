@@ -79,6 +79,21 @@ export function useDetectionHarness() {
   const [legendRows, setLegendRows] = useState<LegendRow[]>([]);
   const [legendError, setLegendError] = useState(false);
 
+  // ------ Modo what-if: overrides locales de pesos por evento ------
+  // Cuando el admin edita un peso en la leyenda, queda en este mapa y reemplaza
+  // al valor del sistema SOLO para esta prueba (no persiste). El sink lee este
+  // mapa via ref para evitar recrearlo al cambiar de override.
+  const [scoringOverrides, setScoringOverrides] = useState<Record<string, number>>({});
+  const scoringOverridesRef = useRef<Record<string, number>>({});
+  useEffect(() => { scoringOverridesRef.current = scoringOverrides; }, [scoringOverrides]);
+
+  const setScoringOverride = useCallback((tipoEvento: string, peso: number) => {
+    setScoringOverrides((prev) => ({ ...prev, [tipoEvento]: peso }));
+  }, []);
+  const resetScoringOverrides = useCallback(() => {
+    setScoringOverrides({});
+  }, []);
+
   // ------ C-30: Estado del motor de visión ------
   const [engineMode, setEngineMode] = useState<EngineMode>('simulated');
   const [engineError, setEngineError] = useState<string | null>(null);
@@ -257,6 +272,7 @@ export function useDetectionHarness() {
     setLogEntries,
     setLogTruncated,
     setEventosEnviados,
+    scoringOverridesRef,
   });
 
   // ------ Lifecycle: start/stop + cleanup de desmontaje (sub-hook) ------
@@ -441,6 +457,10 @@ export function useDetectionHarness() {
     // c-68: leyenda viva
     legendRows,
     legendError,
+    // what-if: overrides locales de pesos
+    scoringOverrides,
+    setScoringOverride,
+    resetScoringOverrides,
     // store
     anomaliasVivo,
     // panel propósito

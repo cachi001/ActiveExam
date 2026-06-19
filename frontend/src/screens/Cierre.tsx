@@ -73,18 +73,18 @@ export default function Cierre() {
             label="Score de prioridad"
             value={
               <span className="font-semibold">
-                {scoreBackend !== null ? scoreBackend : score}%
+                {scoreBackend !== null ? scoreBackend : score} <span className="text-on-surface-variant font-normal">pts</span>
               </span>
             }
           />
         </Card>
 
-        <Card className={`text-left ${irARevision ? 'bg-warning-container/40 border-warning/30' : 'bg-success-container/40 border-success/30'}`}>
+        <Card className={`text-left ${irARevision ? 'bg-warning-container/40 border-warning-200' : 'bg-success-container/40 border-success/30'}`}>
           <div className="flex items-start gap-sm">
             <Icon name={irARevision ? 'gavel' : 'verified_user'} className={irARevision ? 'text-warning' : 'text-success'} fill />
             <p className="text-label-md text-on-surface">
               {irARevision
-                ? <>Tu sesión superó el umbral ({examen?.umbral_score}%) y entra a la cola de revisión académica. Recordá: el sistema no sanciona — la decisión es siempre humana.</>
+                ? <>Tu sesión alcanzó o superó el umbral establecido ({examen?.umbral_score} puntos) y entra a la cola de revisión académica. Recordá: el sistema no sanciona — la decisión es siempre humana.</>
 
                 : 'Tu sesión no presenta incidencias relevantes. No se requiere revisión adicional.'}
             </p>

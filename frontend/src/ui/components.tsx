@@ -49,7 +49,7 @@ export const Button = forwardRef<HTMLButtonElement, {
     <button
       ref={ref}
       {...rest}
-      className={`inline-flex items-center justify-center font-medium rounded-lg
+      className={`inline-flex items-center justify-center font-medium rounded-md
         transition-colors duration-200 ease-out
         focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-0
         disabled:opacity-50 disabled:cursor-not-allowed
@@ -199,7 +199,7 @@ export function ProgressBar({ value, tone = 'primary' }: { value: number; tone?:
 
 export function ScoreChip({ score, umbral }: { score: number; umbral: number }) {
   const tone = score >= umbral ? 'bg-error text-on-error' : score >= umbral * 0.6 ? 'bg-warning-container text-warning' : 'bg-success-container text-success';
-  return <span className={`px-sm py-base rounded-full text-label-sm font-bold ${tone}`}>Riesgo {score}%</span>;
+  return <span className={`px-sm py-base rounded-full text-label-sm font-bold ${tone}`}>Riesgo {score} pts</span>;
 }
 
 // ── Primitivas de formulario ──────────────────────────────────────────────────

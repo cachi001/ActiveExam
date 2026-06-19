@@ -11,6 +11,7 @@
  *
  * L2.5: el score PRIORIZA para revisión humana, nunca sanciona.
  */
+import { useState } from 'react';
 import { Icon } from '../../ui/components';
 import type { SesionProctoringResumen } from '../../lib/types';
 import {
@@ -18,7 +19,6 @@ import {
   scoreAccentBorder,
   scoreTextColor,
   nivelRiesgo,
-  getUmbralAlto,
   type ExamInfo,
 } from './helpers';
 
@@ -33,6 +33,9 @@ export function ExamenVivoGroup({
   onAbrir: (sesion: SesionProctoringResumen) => void;
   onAbrirExamen?: (examId: string) => void;
 }) {
+  // Colapsable: con muchos exámenes, plegar grupos enteros mantiene la lista
+  // manejable. Por default abierto.
+  const [colapsado, setColapsado] = useState(false);
   const personas = sesiones.length;
   const eventos = sesiones.reduce((acc, s) => acc + s.total_eventos, 0);
   const riesgoAlto = sesiones.filter((s) => nivelRiesgo(s.score) === 'alto').length;
@@ -48,46 +51,63 @@ export function ExamenVivoGroup({
 
   return (
     <section className="rounded-2xl border border-outline-variant/70 bg-surface-container-lowest shadow-card overflow-hidden">
-      {/* Header del examen: clickable → grid de personas de ESE examen */}
-      <header
-        {...(navegable
-          ? {
-              role: 'button',
-              tabIndex: 0,
-              onClick: () => onAbrirExamen!(examId!),
-              onKeyDown: (e: React.KeyboardEvent) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  onAbrirExamen!(examId!);
-                }
-              },
-            }
-          : {})}
-        className={`group flex items-center justify-between gap-md p-md border-b border-outline-variant/50 bg-white
-          ${navegable ? 'cursor-pointer hover:bg-surface-container-low focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40' : ''}`}
-      >
-        <div className="min-w-0">
-          <div className="flex items-center gap-sm">
-            <Icon name="menu_book" className="text-[18px] text-on-surface-variant shrink-0" />
-            <h3 className="font-headline text-title-lg text-on-surface tracking-tight truncate">
-              {examInfo?.examNombre ?? 'Sesiones sin examen asignado'}
-            </h3>
+      {/* Header del examen con botón de colapso y acción "Ver personas" */}
+      <header className="flex items-center gap-sm p-md border-b border-outline-variant/50 bg-white">
+        {/* Botón de colapso (chevron) — solo cambia visibilidad local */}
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); setColapsado((v) => !v); }}
+          aria-label={colapsado ? 'Mostrar personas' : 'Ocultar personas'}
+          aria-expanded={!colapsado}
+          className="shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-md hover:bg-surface-100 text-on-surface-variant transition-colors"
+        >
+          <Icon
+            name="expand_more"
+            className={`text-[20px] transition-transform ${colapsado ? '-rotate-90' : ''}`}
+          />
+        </button>
+
+        <div
+          className={`flex-1 min-w-0 flex items-center justify-between gap-md
+            ${navegable ? 'cursor-pointer rounded-md hover:bg-surface-100 -mx-1 px-1 py-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40' : ''}`}
+          {...(navegable
+            ? {
+                role: 'button',
+                tabIndex: 0,
+                onClick: () => onAbrirExamen!(examId!),
+                onKeyDown: (e: React.KeyboardEvent) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    onAbrirExamen!(examId!);
+                  }
+                },
+              }
+            : {})}
+        >
+          <div className="min-w-0">
+            <div className="flex items-center gap-sm">
+              <Icon name="menu_book" className="text-[18px] text-on-surface-variant shrink-0" />
+              <h3 className="font-headline text-title-lg text-on-surface tracking-tight truncate">
+                {examInfo?.examNombre ?? 'Sesiones sin examen asignado'}
+              </h3>
+            </div>
+            {examInfo && (
+              <p className="text-label-sm text-on-surface-variant mt-base truncate pl-[26px]">
+                {examInfo.comisionNombre} · {examInfo.docente}
+              </p>
+            )}
           </div>
-          {examInfo && (
-            <p className="text-label-sm text-on-surface-variant mt-base truncate pl-[26px]">
-              {examInfo.comisionNombre} · {examInfo.docente}
-            </p>
+          {navegable && (
+            <span className="inline-flex items-center gap-base text-label-md font-semibold text-primary shrink-0">
+              <span className="hidden sm:inline">Ver personas</span>
+              <Icon name="arrow_forward" className="text-[20px]" />
+            </span>
           )}
         </div>
-        {navegable && (
-          <span className="inline-flex items-center gap-base text-label-md font-semibold text-primary shrink-0">
-            <span className="hidden sm:inline">Ver personas</span>
-            <Icon name="arrow_forward" className="text-[20px]" />
-          </span>
-        )}
       </header>
 
-      {/* Métricas agregadas del examen */}
+      {/* Métricas agregadas del examen — se ocultan al colapsar */}
+      {!colapsado && (
       <div className="flex items-center gap-lg px-md py-sm text-label-sm text-on-surface-variant border-b border-outline-variant/40">
         <span className="inline-flex items-center gap-base">
           <Icon name="group" className="text-[16px]" />
@@ -102,24 +122,27 @@ export function ExamenVivoGroup({
         {riesgoAlto > 0 && (
           <span className="inline-flex items-center gap-base text-error font-semibold">
             <Icon name="priority_high" className="text-[16px]" />
-            {riesgoAlto} en riesgo alto (≥{getUmbralAlto()})
+            {riesgoAlto} en riesgo alto
           </span>
         )}
       </div>
+      )}
 
-      {/* Filas de persona (solo las de mayor riesgo; el resto en el grid del examen) */}
-      <ul className="divide-y divide-outline-variant/40">
-        {visibles.map((s) => (
-          <PersonaVivoRow key={s.id} sesion={s} onAbrir={onAbrir} />
-        ))}
-      </ul>
+      {/* Filas de persona — se ocultan al colapsar */}
+      {!colapsado && (
+        <ul className="divide-y divide-outline-variant/40">
+          {visibles.map((s) => (
+            <PersonaVivoRow key={s.id} sesion={s} onAbrir={onAbrir} />
+          ))}
+        </ul>
+      )}
 
-      {ocultas > 0 && (
+      {!colapsado && ocultas > 0 && (
         <button
           type="button"
           onClick={() => examId && onAbrirExamen?.(examId)}
           className="w-full flex items-center justify-center gap-base px-md py-sm border-t border-outline-variant/40
-            text-label-md font-semibold text-primary hover:bg-surface-container-low/60 transition-colors"
+            text-label-md font-semibold text-primary hover:bg-surface-100 transition-colors"
         >
           Ver las {personas} personas
           <Icon name="arrow_forward" className="text-[18px]" />
@@ -137,8 +160,6 @@ function PersonaVivoRow({
   sesion: SesionProctoringResumen;
   onAbrir: (sesion: SesionProctoringResumen) => void;
 }) {
-  const alto = nivelRiesgo(sesion.score) === 'alto';
-
   return (
     <li>
       <div
@@ -182,11 +203,12 @@ function PersonaVivoRow({
           </span>
         </div>
 
-        {/* Score chip */}
+        {/* Score chip — fondo translúcido del color de la severidad para que se
+            integre con el color de la fila (sin gris hardcodeado sobre cards
+            amarillas/rojas). */}
         <span
           className={`inline-flex items-center justify-center min-w-[44px] px-sm py-base rounded-full
-            text-label-sm font-bold tabular-nums shrink-0
-            ${alto ? 'bg-error-container text-on-error-container' : 'bg-surface-container-high'} ${scoreTextColor(sesion.score ?? 0)}`}
+            text-label-sm font-bold tabular-nums shrink-0 bg-white/70 ${scoreTextColor(sesion.score ?? 0)}`}
         >
           {sesion.score ?? 0}
         </span>

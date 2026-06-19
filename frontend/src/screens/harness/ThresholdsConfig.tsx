@@ -30,7 +30,6 @@ interface ThresholdsConfigProps {
   configErrors: ConfigErrors;
   harnessState: HarnessState;
   onConfigChange: (field: keyof TransitionConfig, rawValue: string) => void;
-  onResetRules: () => void;
   onRestoreSystem: () => void;
 }
 
@@ -41,9 +40,8 @@ const INPUT_CLASS =
 export default function ThresholdsConfig({
   configDraft,
   configErrors,
-  harnessState,
+  harnessState: _harnessState,
   onConfigChange,
-  onResetRules,
   onRestoreSystem,
 }: ThresholdsConfigProps) {
   // Valores amigables derivados del draft interno
@@ -235,17 +233,8 @@ export default function ThresholdsConfig({
         </div>
       </Card>
 
-      {/* Footer — ambos botones outline */}
-      <div className="flex gap-sm pt-sm border-t border-outline-variant/40">
-        <Button
-          variant="outline"
-          icon="restart_alt"
-          onClick={onResetRules}
-          className="flex-1"
-          disabled={harnessState !== 'running'}
-        >
-          Resetear estado
-        </Button>
+      {/* Footer */}
+      <div className="flex justify-end pt-sm border-t border-outline-variant/40">
         <Button
           variant="outline"
           icon="settings_backup_restore"

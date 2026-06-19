@@ -23,7 +23,6 @@ import {
   scoreAccentBorder,
   scoreTextColor,
   nivelRiesgo,
-  getUmbralAlto,
   joinExamInfo,
 } from './proctoring/helpers';
 
@@ -116,7 +115,7 @@ export default function ExamenPersonasGrid() {
           <StatCard icon="notifications" label="Eventos" value={eventos} tono="info" />
           <StatCard
             icon="priority_high"
-            label={`Riesgo alto (≥${getUmbralAlto()})`}
+            label="Riesgo alto"
             value={riesgoAlto}
             tono={riesgoAlto > 0 ? 'error' : 'success'}
           />

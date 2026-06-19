@@ -119,7 +119,7 @@ export default function AdminDetectionHarness() {
       <div className="space-y-lg animate-in fade-in duration-300">
 
         {/* Aviso de importancia (una sola vez, arriba de todo): todo es de prueba, no toca la config real */}
-        <Card className="flex items-start gap-sm border-l-4 border-l-warning bg-warning-container/30">
+        <Card className="flex items-start gap-sm border-l-4 border-l-warning-400 bg-warning-container/60">
           <Icon name="info" className="text-[20px] shrink-0 mt-px text-warning" fill />
           <p className="text-label-sm text-on-surface">
             Todo lo que cambies en esta pantalla es <strong>solo para esta prueba</strong> y no modifica la configuración real. Para cambiar lo que se aplica a los exámenes, andá a <strong>Configuración</strong>.
@@ -181,7 +181,6 @@ export default function AdminDetectionHarness() {
               configErrors={h.configErrors}
               harnessState={h.harnessState}
               onConfigChange={h.applyConfigChange}
-              onResetRules={h.resetRules}
               onRestoreSystem={handleRestoreSystem}
             />
           </div>
@@ -234,16 +233,21 @@ export default function AdminDetectionHarness() {
               onShowAllSeverities={h.showAllSeverities}
               onExportLog={h.exportLog}
             />
-
-            <CoverageChecklist
-              coverage={h.coverage}
-              monitorPermission={h.monitorPermission}
-              sessionStart={h.sessionStart}
-              legendRows={h.legendRows}
-              legendError={h.legendError}
-            />
           </div>
         </div>
+
+        {/* Cobertura — FULL WIDTH abajo, así el grid bento aprovecha 2-3 columnas
+            en desktop en lugar de quedar comprimido en la columna lateral 1/3. */}
+        <CoverageChecklist
+          coverage={h.coverage}
+          monitorPermission={h.monitorPermission}
+          sessionStart={h.sessionStart}
+          legendRows={h.legendRows}
+          legendError={h.legendError}
+          scoringOverrides={h.scoringOverrides}
+          onOverrideChange={h.setScoringOverride}
+          onResetOverrides={h.resetScoringOverrides}
+        />
 
       </div>
     </StaffShell>

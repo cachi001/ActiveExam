@@ -48,6 +48,12 @@ dev = [
 testpaths = ["tests"]
 pythonpath = ["."]
 addopts = "-ra"
+# pytest-asyncio: usar el mismo event loop para tests y fixtures session-scoped.
+# Sin esto, fixtures session-scoped que abren conexiones async (ej. slim_engine
+# de tests/proctoring/conftest.py) se cierran cuando termina el primer loop y
+# disparan "RuntimeError: Event loop is closed" en los siguientes tests.
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
 
 [tool.ruff]
 line-length = 100

@@ -37,7 +37,7 @@ export default function RiskMeter({
         <div className="flex items-center justify-between gap-sm">
           <span className="text-label-sm text-on-surface-variant">Score acumulado</span>
           <span className={`font-headline text-headline-sm font-bold ${gaugeTextColor(harnessScore, riskThreshold)}`}>
-            {harnessScore}%
+            {harnessScore} <span className="text-label-sm font-semibold text-on-surface-variant">pts</span>
           </span>
         </div>
         <div className="bg-surface-container-high rounded-full h-3 overflow-hidden">
@@ -78,7 +78,7 @@ export default function RiskMeter({
           <span className="text-[36px] leading-none font-headline font-bold text-on-surface tabular-nums">
             {riskThreshold}
           </span>
-          <span className="text-title-md font-semibold text-on-surface-variant">%</span>
+          <span className="text-title-md font-semibold text-on-surface-variant">puntos</span>
         </div>
 
         <div className="relative pt-1">
@@ -93,15 +93,15 @@ export default function RiskMeter({
               onThresholdChange(clamped);
             }}
             aria-label="Umbral de riesgo para revisión"
-            aria-valuetext={`${riskThreshold} por ciento`}
+            aria-valuetext={`score mayor o igual a ${riskThreshold} puntos prioriza revisión`}
             className="ae-slider w-full appearance-none bg-transparent cursor-pointer"
             style={{
-              background: `linear-gradient(to right, #4f46e5 0%, #4f46e5 ${umbralPct}%, #c7c4d6 ${umbralPct}%, #c7c4d6 100%)`,
+              background: `linear-gradient(to right, #2563eb 0%, #2563eb ${umbralPct}%, #cbd5e1 ${umbralPct}%, #cbd5e1 100%)`,
             }}
           />
           <div className="flex justify-between text-[11px] text-on-surface-variant mt-2 tabular-nums">
-            <span>{UMBRAL_MIN}% · más sesiones a revisión</span>
-            <span>{UMBRAL_MAX}% · solo las más riesgosas</span>
+            <span>Desde {UMBRAL_MIN} puntos · más sesiones a revisión</span>
+            <span>Desde {UMBRAL_MAX} puntos · solo las más riesgosas</span>
           </div>
         </div>
       </div>

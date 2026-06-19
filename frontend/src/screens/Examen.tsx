@@ -23,7 +23,7 @@ const PREGUNTA = {
 const SEV_CARD: Record<string, string> = {
   critica: 'bg-error-container border-error/40',
   alta: 'bg-error-container border-error/40',
-  media: 'bg-warning-container border-warning/40',
+  media: 'bg-warning-container border-warning-200',
   baja: 'bg-blue-50 border-blue-200',
 };
 const SEV_ICON: Record<string, { name: string; cls: string }> = {
@@ -149,7 +149,7 @@ export default function Examen() {
           <Card className="space-y-sm">
             <div className="flex items-center justify-between border-b border-outline-variant/40 pb-base">
               <h3 className="text-label-md font-bold text-on-surface">Señales de integridad (en vivo)</h3>
-              <span className="text-label-sm text-on-surface-variant">Riesgo {score}%</span>
+              <span className="text-label-sm text-on-surface-variant">Riesgo {score} pts</span>
             </div>
             <div className="space-y-base max-h-[220px] overflow-y-auto">
               {eventos.length === 0 ? (

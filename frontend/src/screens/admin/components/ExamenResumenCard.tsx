@@ -32,7 +32,7 @@ export default function ExamenResumenCard({ examen }: ExamenResumenCardProps) {
         <Row icon="school" label="Cátedra" value={catedra} />
         <Row icon="schedule" label="Inicio" value={inicio} />
         <Row icon="timer" label="Duración" value={`${examen.duracion_min} minutos`} />
-        <Row icon="shield" label="Umbral de revisión" value={`${examen.umbral_score}%`} />
+        <Row icon="shield" label="Umbral de revisión" value={`Desde ${examen.umbral_score} puntos`} />
         <Row
           icon="inventory_2"
           label="Retención de evidencia"

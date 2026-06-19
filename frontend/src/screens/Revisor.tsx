@@ -17,7 +17,7 @@ import { StaffShell } from '../ui/shells';
 import { Icon, Card, Button } from '../ui/components';
 import { HelpButton } from '../ui/HelpButton';
 import { api } from '../lib/api';
-import { loadEffectiveConfig, getEffectiveConfig } from '../config/effectiveConfigCache';
+import { loadEffectiveConfig, getEffectiveConfig, resetEffectiveConfigCache } from '../config/effectiveConfigCache';
 import { useApp } from '../lib/store';
 import { useNavigate } from '../lib/router';
 import { STAFF_NAV } from '../ui/nav';
@@ -65,8 +65,11 @@ export default function Revisor() {
     setCargando(true);
     (async () => {
       // El umbral de la cola sale de la config del sistema (no un valor fijo).
+      // Invalidamos el cache al montar para que SIEMPRE veamos el valor actual,
+      // incluso si el admin cambió el umbral desde otra pestaña / sesión.
       let u = UMBRAL_FALLBACK;
       try {
+        resetEffectiveConfigCache();
         await loadEffectiveConfig();
         u = getEffectiveConfig()?.umbral_cola_revision ?? UMBRAL_FALLBACK;
       } catch { /* usa el fallback */ }
@@ -132,7 +135,7 @@ export default function Revisor() {
       title="Cola de revisión"
       subtitle={
         <>
-          Sesiones de alto riesgo (score ≥ {umbral}) organizadas por materia,
+          Sesiones de alto riesgo (score mayor o igual a {umbral} puntos) organizadas por materia,
           comisión y examen. Entrá hasta cada persona para revisar y decidir.
         </>
       }
@@ -140,7 +143,7 @@ export default function Revisor() {
         <HelpButton title="Cola de revisión">
           <p>
             Esta pantalla concentra las sesiones que <strong>priorizan revisión humana</strong>:
-            solo las que superan el umbral de riesgo (score ≥ {umbral}).
+            solo las que alcanzan o superan el umbral de riesgo ({umbral} puntos).
           </p>
           <p>
             La cola se organiza por <em>Materia → Comisión → Examen → Persona</em>. Entrá hasta
@@ -152,13 +155,6 @@ export default function Revisor() {
             la decisión disciplinaria siempre es tuya.
           </p>
         </HelpButton>
-      }
-      actions={
-        <div className="flex items-center gap-base px-sm py-base rounded-lg bg-surface-container
-          border border-outline-variant/60 text-label-sm text-on-surface-variant shrink-0">
-          <Icon name="shield" className="text-[16px] shrink-0" fill />
-          <span>Decisión humana</span>
-        </div>
       }
     >
       <div className="space-y-lg animate-in fade-in duration-500">
@@ -175,7 +171,7 @@ export default function Revisor() {
             <Icon name="inbox" className="text-on-surface-variant text-[40px]" />
             <h3 className="font-headline text-title-lg text-on-surface">Sin sesiones pendientes</h3>
             <p className="text-body-md text-on-surface-variant">
-              Por ahora no hay sesiones con score ≥ {umbral}. Cuando aparezcan, se listarán acá.
+              Por ahora no hay sesiones con score mayor o igual a {umbral} puntos. Cuando aparezcan, se listarán acá.
             </p>
           </Card>
         )}

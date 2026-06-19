@@ -11,27 +11,42 @@ import type { AcuseConsentimiento } from '../../../lib/types';
 interface RequisitoConsentimientoProps {
   consentimiento: AcuseConsentimiento | null;
   viaAlternativa: boolean;
+  /** Versión de consentimiento VIGENTE según la config del sistema. Si no
+   * coincide con la versión aceptada por el alumno, se requiere re-aceptación. */
+  versionVigente?: string | null;
   onIniciar: () => void;
   /** Abrir el consentimiento en modo lectura (volver a leerlo). */
   onLeer: () => void;
 }
 
-export function RequisitoConsentimiento({ consentimiento, viaAlternativa, onIniciar, onLeer }: RequisitoConsentimientoProps) {
+export function RequisitoConsentimiento({ consentimiento, viaAlternativa, versionVigente, onIniciar, onLeer }: RequisitoConsentimientoProps) {
   const ok = Boolean(consentimiento);
+  const desactualizado = Boolean(
+    ok && consentimiento && versionVigente && consentimiento.version !== versionVigente
+  );
+
+  const badge = !ok
+    ? { tone: 'warning' as const, label: 'Pendiente' }
+    : desactualizado
+      ? { tone: 'warning' as const, label: 'Renovación requerida' }
+      : viaAlternativa
+        ? { tone: 'success' as const, label: 'Vía alternativa' }
+        : { tone: 'success' as const, label: 'Completado' };
 
   return (
     <RequisitoCard
       icon="gavel"
       title="Consentimiento informado"
-      badge={{
-        tone: ok ? 'success' : 'warning',
-        label: ok ? (viaAlternativa ? 'Vía alternativa' : 'Completado') : 'Pendiente',
-      }}
+      badge={badge}
     >
       {ok && consentimiento ? (
         <div className="space-y-sm">
           <div className="flex items-start gap-sm">
-            <Icon name="check_circle" className="text-success text-[20px] shrink-0 mt-px" fill />
+            <Icon
+              name={desactualizado ? 'update' : 'check_circle'}
+              className={`${desactualizado ? 'text-warning' : 'text-success'} text-[20px] shrink-0 mt-px`}
+              fill
+            />
             <p className="text-label-sm text-on-surface">
               Aceptaste la <strong>versión {consentimiento.version}</strong> del consentimiento el{' '}
               <strong>
@@ -39,10 +54,26 @@ export function RequisitoConsentimiento({ consentimiento, viaAlternativa, onInic
               </strong>.
             </p>
           </div>
-          <Button variant="outline" size="sm" icon="description" onClick={onLeer}>
-            Leer el consentimiento
-          </Button>
-          {viaAlternativa && (
+          {desactualizado && (
+            <div className="flex items-start gap-sm bg-warning-container border border-warning-200 rounded-xl p-sm">
+              <Icon name="info" className="text-warning text-[18px] shrink-0 mt-px" fill />
+              <p className="text-label-sm text-on-surface">
+                Hay una nueva versión del consentimiento (<strong>{versionVigente}</strong>) vigente.
+                Necesitás leerla y aceptarla para poder rendir exámenes.
+              </p>
+            </div>
+          )}
+          <div className="flex flex-wrap gap-sm">
+            {desactualizado && (
+              <Button variant="primary" size="sm" onClick={onIniciar}>
+                Leer y aceptar versión {versionVigente}
+              </Button>
+            )}
+            <Button variant="outline" size="sm" icon="description" onClick={onLeer}>
+              Leer el consentimiento
+            </Button>
+          </div>
+          {viaAlternativa && !desactualizado && (
             <div className="flex items-start gap-sm bg-white border border-outline-variant/40 rounded-xl p-sm">
               <Icon name="support_agent" className="text-[16px] text-on-surface-variant shrink-0 mt-px" />
               <p className="text-label-sm text-on-surface-variant">
@@ -58,7 +89,7 @@ export function RequisitoConsentimiento({ consentimiento, viaAlternativa, onInic
             Para enrollarte y poder rendir exámenes, necesitás leer y aceptar el uso de tus datos
             biométricos. El acuse es inmutable e incluye la versión del texto que firmaste.
           </p>
-          <Button onClick={onIniciar} iconRight="arrow_forward">
+          <Button onClick={onIniciar} size="sm">
             Leer y consentir
           </Button>
         </div>

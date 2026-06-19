@@ -53,7 +53,8 @@ export default function AdminDashboard() {
         </div>
 
         <div className="grid lg:grid-cols-3 gap-lg">
-          {/* Lista de exámenes — col-span-2 en desktop */}
+          {/* Lista de exámenes — col-span-2 en desktop. Paleta morada para el
+              tile + badge (identidad del producto), sin exagerar el tamaño. */}
           <div className="lg:col-span-2">
             <Card padded={false}>
               <div className="px-lg py-md border-b border-surface-200 flex items-center justify-between">
@@ -80,7 +81,7 @@ export default function AdminDashboard() {
                       className="flex items-center justify-between gap-3 px-lg py-3 hover:bg-surface-50 transition-colors"
                     >
                       <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-10 h-10 rounded-md bg-surface-100 text-on-surface-variant flex items-center justify-center shrink-0">
+                        <div className="w-10 h-10 rounded-md bg-primary-fixed text-on-primary-fixed-variant flex items-center justify-center shrink-0">
                           <Icon name="description" className="text-[20px]" />
                         </div>
                         <div className="min-w-0">
@@ -88,7 +89,7 @@ export default function AdminDashboard() {
                           <p className="text-[12.5px] text-on-surface-variant truncate leading-tight mt-0.5">{e.catedra} · {e.inscriptos} inscriptos</p>
                         </div>
                       </div>
-                      <Badge tone={ESTADO_TONE[e.estado]} dot>{ESTADO_LABEL[e.estado]}</Badge>
+                      <Badge tone={ESTADO_TONE[e.estado]}>{ESTADO_LABEL[e.estado]}</Badge>
                     </Link>
                   ))
                 )}
@@ -100,7 +101,6 @@ export default function AdminDashboard() {
           <Card padded={false}>
             <div className="px-lg py-md border-b border-surface-200">
               <h2 className="text-[16px] font-semibold text-on-surface leading-tight">Acciones rápidas</h2>
-              <p className="text-[12.5px] text-on-surface-variant mt-0.5">Accesos directos</p>
             </div>
             <div className="p-md flex flex-col gap-2">
               <AccionRapida to="/admin/reportes" icon="analytics" label="Ver reportes" />

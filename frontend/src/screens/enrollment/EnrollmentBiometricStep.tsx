@@ -207,7 +207,7 @@ export function EnrollmentBiometricStep({ referenciaActual, onCapturada, esRenov
 
       {/* Estado actual (si hay referencia previa caducada o por renovar) */}
       {referenciaActual && esRenovacion && (
-        <div className="flex items-start gap-sm bg-warning-container border border-warning/30 rounded-xl p-md">
+        <div className="flex items-start gap-sm bg-warning-container border border-warning-200 rounded-xl p-md">
           <Icon name="refresh" className="text-warning text-[18px] shrink-0 mt-px" />
           <div className="text-label-sm text-on-surface">
             <p><strong>Referencia anterior:</strong> capturada el {formatearFecha(referenciaActual.fecha_captura)}.</p>
@@ -289,8 +289,6 @@ export function EnrollmentBiometricStep({ referenciaActual, onCapturada, esRenov
             )}
             <div className="pt-sm">
               <Button
-                icon="check"
-                iconRight="arrow_forward"
                 disabled={!referenciaPendiente}
                 onClick={() => { if (referenciaPendiente) onCapturada(referenciaPendiente); }}
               >

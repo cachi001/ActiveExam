@@ -35,7 +35,7 @@ export default function SessionDetail() {
               <p className="text-label-md text-on-surface-variant">Legajo {sel.legajo} · {sel.examen} ({sel.catedra})</p>
             </div>
           </div>
-          <Badge tone="error" dot>Score de prioridad {sel.score}%</Badge>
+          <Badge tone="error" dot>Score de prioridad {sel.score} pts</Badge>
         </Card>
 
         <div className="grid sm:grid-cols-3 gap-md">

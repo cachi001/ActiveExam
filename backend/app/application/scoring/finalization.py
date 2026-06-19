@@ -39,6 +39,14 @@ SCORE_THRESHOLD_DEFAULT = 5.0
 # Clave de sesion liberada: cadena vacia -> la ingesta rechaza eventos firmados
 # (SesionSinClaveError en application/events/ingestion.py).
 CLAVE_LIBERADA = ""
+# Tope del score consolidado: el dominio puro (``score_correlacionado``) puede
+# devolver una suma sin tope (>100 con muchos eventos criticos correlacionados),
+# pero la UI/UX y el slider de umbral institucional viven en escala 0-100. Capeamos
+# en la capa de aplicacion para que cliente y server muestren siempre el mismo numero
+# (en el cliente el harness ya capea con ``Math.min(100, ...)``). El umbral
+# institucional se compara contra el score CAPEADO, asi un examen con 247 pts crudos
+# se consolida como 100 — siempre flaggeado, sin perdida de informacion ordinal.
+SCORE_CAP = 100.0
 
 
 _log = logging.getLogger(__name__)
@@ -110,9 +118,12 @@ class SessionFinalizationService:
         # hardcodeado es SOLO red de seguridad de degradacion (RN-GLB-03), nunca
         # fuente normal: si se usa, se loguea la degradacion.
         pesos, config_version = await self._resolver_pesos()
-        score_final = score_correlacionado(
+        score_crudo = score_correlacionado(
             [self._a_evento_score(e) for e in eventos], pesos
         )
+        # Cap a SCORE_CAP (100) para que cliente y server muestren el mismo numero.
+        # El umbral institucional vive en la misma escala 0-100.
+        score_final = min(SCORE_CAP, score_crudo)
 
         umbral = await self._umbral_de(sesion.exam_id)
         resultado = decidir_encolado(score_final, umbral=umbral)

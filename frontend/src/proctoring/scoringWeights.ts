@@ -73,12 +73,22 @@ export function seedScoringWeights(weights: Record<string, number>): void {
  * Peso del evento (0-100) que se suma al score acumulado.
  *
  * Orden de resolucion:
- *   1. Cache cargado y el tipo esta activo en la BD -> usa ese peso.
- *   2. Cache cargado pero el tipo NO esta (inactivo / no existe) -> 0.
- *   3. Cache vacio (no se llamo loadScoringWeights, o fallo la API) -> fallback
+ *   1. ``overrides[tipo]`` presente (modo what-if del harness) -> usa ese peso.
+ *      Los overrides son LOCALES (no persisten) — los usa Test Deteccion para
+ *      probar pesos sin tocar la config real.
+ *   2. Cache cargado y el tipo esta activo en la BD -> usa ese peso.
+ *   3. Cache cargado pero el tipo NO esta (inactivo / no existe) -> 0.
+ *   4. Cache vacio (no se llamo loadScoringWeights, o fallo la API) -> fallback
  *      al peso por severidad de riskWeights.ts.
  */
-export function pesoEvento(tipo: string, severidad: Severidad): number {
+export function pesoEvento(
+  tipo: string,
+  severidad: Severidad,
+  overrides?: Record<string, number> | null,
+): number {
+  if (overrides && Object.prototype.hasOwnProperty.call(overrides, tipo)) {
+    return overrides[tipo];
+  }
   if (weightsByTipo !== null) {
     return weightsByTipo[tipo] ?? 0;
   }

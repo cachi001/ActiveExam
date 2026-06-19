@@ -95,7 +95,7 @@ export default function HarnessHeader({
           BOTONES DE ACCIÓN + INDICADORES EN VIVO
           Mobile: flex-col centrado; Desktop: justify-end alineado a la derecha.
       ================================================================ */}
-      <div className="flex items-center justify-center sm:justify-end flex-wrap gap-md">
+      <div className="flex items-center justify-center sm:justify-start flex-wrap gap-md">
         <div className="flex flex-col sm:flex-row items-center gap-sm flex-wrap w-full sm:w-auto">
           {harnessState === 'running' && (
             <span className="inline-flex items-center gap-base text-label-sm text-success bg-success-container px-sm py-base rounded-full font-semibold">
@@ -104,11 +104,11 @@ export default function HarnessHeader({
             </span>
           )}
           {(harnessState === 'idle' || harnessState === 'stopped') && (
-            <div className="grid grid-cols-2 sm:flex gap-sm w-full sm:w-auto">
-              <Button variant="success" icon="videocam" onClick={() => onStart(true)} className="justify-center">
+            <div className="grid grid-cols-2 gap-sm w-full sm:w-auto">
+              <Button variant="primary" icon="videocam" onClick={() => onStart(true)} className="justify-center sm:min-w-[160px]">
                 Grabar sesión
               </Button>
-              <Button variant="outline" icon="science" onClick={() => onStart(false)} className="justify-center">
+              <Button variant="outline" icon="science" onClick={() => onStart(false)} className="justify-center sm:min-w-[160px]">
                 Test Local
               </Button>
             </div>

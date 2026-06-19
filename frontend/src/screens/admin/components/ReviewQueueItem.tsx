@@ -18,7 +18,7 @@ export function ReviewQueueItem({ sesion, selected, onClick }: ReviewQueueItemPr
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between gap-base">
             <span className="text-label-md font-semibold text-on-surface truncate">{sesion.estudiante}</span>
-            <Badge tone="error">Score {sesion.score}%</Badge>
+            <Badge tone="error">Score {sesion.score} pts</Badge>
           </div>
           <p className="text-label-sm text-on-surface-variant">{sesion.examen} · {sesion.fecha}</p>
           <p className="text-label-sm text-on-surface-variant mt-base">{sesion.id} · {sesion.eventos.length} incidencias</p>
