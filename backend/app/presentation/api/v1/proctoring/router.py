@@ -22,6 +22,7 @@ from app.domain.auth.roles import Rol
 from app.infrastructure.crypto.embedding_encryption import EmbeddingEncryptionService
 from app.presentation.api.v1.auth.dependencies import require_roles
 from app.presentation.api.v1.proctoring.biometria.router import create_biometria_router
+from app.presentation.api.v1.proctoring.chat_pausa.router import create_chat_pausa_router
 from app.presentation.api.v1.proctoring.events.router import create_events_router
 from app.presentation.api.v1.proctoring.sessions.router import create_sessions_router
 
@@ -95,5 +96,9 @@ def create_proctoring_router(
         require_estudiante=_require_estudiante,
     )
     router.include_router(biometria_router)
+
+    # C-15 (slim, tareas 6.x): chat bidireccional + pausa autorizada (REST + polling).
+    chat_pausa_router = create_chat_pausa_router(get_db)
+    router.include_router(chat_pausa_router)
 
     return router

@@ -62,6 +62,9 @@ class EventoDetalle(BaseModel):
     face_count_cliente: int | None = None
     face_count_servidor: int | None = None
     veredicto_reinferencia: str
+    # C-15 (6.4): True si el evento cayo dentro de una ventana de pausa autorizada.
+    # El score del detalle EXCLUYE estos eventos (L2.5: contextualiza, no borra).
+    en_pausa_autorizada: bool = False
 
 
 class BiometriaDetalle(BaseModel):

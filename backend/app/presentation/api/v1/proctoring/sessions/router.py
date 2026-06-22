@@ -15,7 +15,10 @@ from fastapi import status as http_status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.application.proctoring import session_service
-from app.application.proctoring.scoring import calcular_score
+from app.application.proctoring.scoring import (
+    calcular_score,
+    eventos_en_pausa_autorizada,
+)
 from app.presentation.api.v1.proctoring.sessions.schemas import (
     BiometriaDetalle,
     CrearSesionIn,
@@ -49,6 +52,29 @@ async def _pesos_vivos_por_tipo(db: AsyncSession) -> dict[str, int] | None:
         return {row.tipo_evento: row.peso for row in result.all()}
     except Exception:  # noqa: BLE001 — degradacion: sin config, fallback por severidad
         return None
+
+
+async def _ventanas_pausa_aprobada(db: AsyncSession, session_id: str) -> list:
+    """Ventanas de pausa APROBADA de la sesion (estados 'aprobada' y 'finalizada').
+
+    Devuelve filas con estado/inicio_en/fin_en que el helper puro
+    ``eventos_en_pausa_autorizada`` usa para contextualizar el score (C-15 6.4).
+    Si la tabla no esta disponible (degradacion graceful) devuelve lista vacia:
+    el score se calcula sin exclusiones."""
+    from sqlalchemy import select
+
+    from app.infrastructure.persistence.models.chat_pausa import PausaAutorizadaModel
+
+    try:
+        result = await db.execute(
+            select(PausaAutorizadaModel).where(
+                PausaAutorizadaModel.session_id == session_id,
+                PausaAutorizadaModel.estado.in_(("aprobada", "finalizada")),
+            )
+        )
+        return list(result.scalars().all())
+    except Exception:  # noqa: BLE001 — sin tabla de pausas, no se excluye nada
+        return []
 
 
 def create_sessions_router(get_db) -> APIRouter:
@@ -122,7 +148,17 @@ def create_sessions_router(get_db) -> APIRouter:
         # cae al fallback por severidad (degradacion graceful, RN-GLB-03). L2.5:
         # el score solo prioriza la revision humana.
         pesos_por_tipo = await _pesos_vivos_por_tipo(db)
-        score = calcular_score(sesion.eventos, pesos_por_tipo=pesos_por_tipo)
+
+        # C-15 (6.4): contextualizacion del score. Los eventos que caen dentro de
+        # una ventana de pausa AUTORIZADA (aprobada/finalizada) se EXCLUYEN del
+        # puntaje (L2.5: no se borran ni se ocultan, solo se marcan). El detalle
+        # del proctor reporta el score SIN esos eventos.
+        ventanas = await _ventanas_pausa_aprobada(db, session_id)
+        ids_en_pausa = eventos_en_pausa_autorizada(sesion.eventos, ventanas)
+        eventos_para_score = [
+            e for e in sesion.eventos if e.id not in ids_en_pausa
+        ]
+        score = calcular_score(eventos_para_score, pesos_por_tipo=pesos_por_tipo)
 
         eventos = [
             EventoDetalle(
@@ -137,6 +173,7 @@ def create_sessions_router(get_db) -> APIRouter:
                 face_count_cliente=e.face_count_cliente,
                 face_count_servidor=e.face_count_servidor,
                 veredicto_reinferencia=e.veredicto_reinferencia,
+                en_pausa_autorizada=e.id in ids_en_pausa,
             )
             for e in sesion.eventos
         ]

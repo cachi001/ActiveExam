@@ -26,6 +26,10 @@ from app.infrastructure.persistence.models.proctoring import (  # noqa: F401 -- 
     ProctoringEventModel,
     ProctoringSessionModel,
 )
+from app.infrastructure.persistence.models.chat_pausa import (  # noqa: F401 -- registra tablas (C-15 6.x)
+    MensajeChatModel,
+    PausaAutorizadaModel,
+)
 from app.infrastructure.persistence.base import Base
 
 
@@ -46,6 +50,8 @@ def db_url() -> str:
 
 
 _SLIM_TABLE_NAMES = (
+    "mensaje_chat",
+    "pausa_autorizada",
     "proctoring_biometria",
     "proctoring_event",
     "proctoring_session",
@@ -67,10 +73,16 @@ async def slim_engine(db_url: str):
         ProctoringEventModel,
         ProctoringSessionModel,
     )
+    from app.infrastructure.persistence.models.chat_pausa import (  # noqa
+        MensajeChatModel,
+        PausaAutorizadaModel,
+    )
     slim_tables = [
         ProctoringSessionModel.__table__,
         ProctoringEventModel.__table__,
         ProctoringBiometriaModel.__table__,
+        MensajeChatModel.__table__,
+        PausaAutorizadaModel.__table__,
     ]
     async with engine.begin() as conn:
         # Limpieza previa robusta (CASCADE) — tolera estado sucio de corridas previas.
