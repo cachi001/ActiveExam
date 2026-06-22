@@ -372,6 +372,12 @@ export interface EventoProctoringDetalle {
   face_count_cliente?: number | null;
   veredicto_reinferencia?: VeredictoReinferencia | null;
   face_count_servidor?: number | null;
+  /**
+   * true si el evento ocurrió durante una pausa autorizada (C-15). Estos eventos
+   * NO suman al score (el backend ya los excluye del cálculo); la UI los marca con
+   * un badge informativo para que el revisor sepa que están contextualizados.
+   */
+  en_pausa_autorizada?: boolean;
 }
 
 /** Resultado de la verificación biométrica de liveness híbrido. */
@@ -428,6 +434,48 @@ export type DecisionRevisor =
 export interface SesionProctoringDetalle extends SesionProctoringResumen {
   eventos: EventoProctoringDetalle[];
   biometria: BiometriaDetalle | null;
+}
+
+// ── Chat bidireccional proctor↔alumno (C-15) ──────────────────────────────
+
+/** Autor de un mensaje de chat de la sesión. */
+export type AutorChat = 'alumno' | 'proctor';
+
+/** Un mensaje del canal de chat de una sesión de proctoring. */
+export interface MensajeChat {
+  id: string;
+  autor: AutorChat;
+  texto: string;
+  creado_en: string; // ISO 8601
+}
+
+// ── Pausa autorizada (C-15) ───────────────────────────────────────────────
+
+/** Estado del ciclo de vida de una solicitud de pausa. */
+export type EstadoPausa = 'solicitada' | 'aprobada' | 'rechazada' | 'finalizada';
+
+/** Acción del proctor al resolver una pausa solicitada. */
+export type AccionPausa = 'aprobar' | 'rechazar';
+
+/** Una pausa autorizada de una sesión (vista del alumno / detalle). */
+export interface Pausa {
+  id: string;
+  motivo: string;
+  estado: EstadoPausa;
+  solicitada_en: string; // ISO 8601
+  resuelta_en?: string | null;
+  proctor_actor?: string | null;
+  inicio_en?: string | null;
+  fin_en?: string | null;
+}
+
+/** Entrada de la cola de pausas pendientes (poll del proctor a nivel panel). */
+export interface PausaPendiente {
+  id: string;
+  session_id: string;
+  etiqueta?: string | null;
+  motivo: string;
+  solicitada_en: string; // ISO 8601
 }
 
 /** Materia/asignatura de la currícula. */

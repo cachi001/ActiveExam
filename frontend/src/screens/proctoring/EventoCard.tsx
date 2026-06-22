@@ -64,6 +64,19 @@ export function EventoCard({ evento }: { evento: EventoProctoringDetalle }) {
         <div className="flex items-center gap-sm flex-wrap">
           <span className="font-headline text-title-lg text-on-surface tracking-tight">{tipoLabel}</span>
           <SeverityBadge severidad={evento.severidad as Severidad} />
+          {/* C-15: el evento ocurrió durante una pausa autorizada → NO suma al
+              score (el backend ya lo excluye). Badge informativo teal para que el
+              revisor sepa que está contextualizado. */}
+          {evento.en_pausa_autorizada && (
+            <span
+              className="inline-flex items-center gap-base px-sm py-px rounded-full
+                bg-teal-50 text-teal-700 border border-teal-200 text-label-sm font-semibold"
+              title="Ocurrió durante una pausa autorizada — no suma al score de riesgo"
+            >
+              <Icon name="pause_circle" className="text-[14px]" fill />
+              Pausa autorizada · no suma al score
+            </span>
+          )}
         </div>
         <span className="inline-flex items-center gap-base text-label-sm text-on-surface-variant font-mono">
           <Icon name="schedule" className="text-[15px]" />

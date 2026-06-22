@@ -30,6 +30,7 @@ import { ResumenVivo } from './proctoring/ResumenVivo';
 import { ListaSkeleton, ListaVaciaVivo } from './proctoring/ListaEstados';
 import { IndicadorVivo } from './proctoring/IndicadorVivo';
 import { joinExamInfo, type ExamInfo } from './proctoring/helpers';
+import { PausasPendientes } from './proctoring/PausasPendientes';
 
 export const PROCTOR_NAV = STAFF_NAV;
 
@@ -49,6 +50,9 @@ export default function Proctor() {
   const toast = useToast();
   const setProctoringSessionId = useApp((s) => s.setProctoringSessionId);
   const setProctoringExamId = useApp((s) => s.setProctoringExamId);
+  // Identidad del proctor logueado → se registra como proctor_actor al resolver
+  // una pausa (C-15). Email como subject estable; null si no hay sesión.
+  const proctorActor = useApp((s) => s.principal?.email ?? null);
 
   const [sesiones, setSesiones] = useState<SesionProctoringResumen[]>([]);
   const [cargaInicial, setCargaInicial] = useState(true);
@@ -174,6 +178,9 @@ export default function Proctor() {
       }
     >
       <div className="space-y-lg animate-in fade-in duration-500">
+
+        {/* C-15: cola de solicitudes de pausa (poll propio; se oculta si no hay). */}
+        <PausasPendientes proctorActor={proctorActor} />
 
         {/* Resumen agregado del lote actual */}
         {!cargaInicial && sesiones.length > 0 && <ResumenVivo sesiones={sesiones} />}
