@@ -145,32 +145,44 @@ export default function ProctoringSessionDetail() {
           <>
             <DetalleHeader detalle={detalle} />
 
-            {/* Eventos */}
-            <Card className="space-y-md">
-              <SectionTitle
-                sub={`${detalle.eventos.length} evento${detalle.eventos.length !== 1 ? 's' : ''} registrado${
-                  detalle.eventos.length !== 1 ? 's' : ''
-                }`}
-              >
-                Eventos de la sesión
-              </SectionTitle>
+            {/* Eventos (izquierda) + chat del proctor (derecha) en dos columnas.
+                En mobile colapsan a una sola columna (eventos arriba, chat abajo). */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-lg items-start">
+              {/* Eventos registrados — columna izquierda */}
+              <Card className="space-y-md">
+                <SectionTitle
+                  sub={`${detalle.eventos.length} evento${detalle.eventos.length !== 1 ? 's' : ''} registrado${
+                    detalle.eventos.length !== 1 ? 's' : ''
+                  }`}
+                >
+                  Eventos de la sesión
+                </SectionTitle>
 
-              {detalle.eventos.length === 0 ? (
-                <div className="flex flex-col items-center text-center py-xl gap-sm text-on-surface-variant">
-                  <Icon name="check_circle" className="text-success text-[36px]" fill />
-                  <p className="text-body-md">Sin eventos registrados en esta sesión.</p>
-                </div>
-              ) : (
-                <div className="space-y-sm">
-                  {detalle.eventos.map((ev) => (
-                    <EventoCard key={ev.evento_id} evento={ev} />
-                  ))}
-                </div>
-              )}
-            </Card>
+                {detalle.eventos.length === 0 ? (
+                  <div className="flex flex-col items-center text-center py-xl gap-sm text-on-surface-variant">
+                    <Icon name="check_circle" className="text-success text-[36px]" fill />
+                    <p className="text-body-md">Sin eventos registrados en esta sesión.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-sm">
+                    {detalle.eventos.map((ev) => (
+                      <EventoCard key={ev.evento_id} evento={ev} />
+                    ))}
+                  </div>
+                )}
+              </Card>
 
-            {/* C-15: canal de chat con el alumno de esta sesión (envío como proctor). */}
-            <ChatBox sessionId={sessionId} yo="proctor" titulo="Canal con el estudiante" altura="h-[180px]" />
+              {/* C-15: canal de chat con el alumno de esta sesión (envío como proctor).
+                  Sticky en desktop para que acompañe el scroll de la lista de eventos. */}
+              <div className="lg:sticky lg:top-lg">
+                <ChatBox
+                  sessionId={sessionId}
+                  yo="proctor"
+                  titulo="Canal con el estudiante"
+                  altura="h-[420px]"
+                />
+              </div>
+            </div>
 
             {/* Biometría */}
             <BiometriaCard biometria={detalle.biometria} />
