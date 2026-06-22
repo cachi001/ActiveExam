@@ -1,0 +1,28 @@
+#!/bin/sh
+# pre-push — typecheck del frontend antes de pushear.
+#
+# Vercel buildea con `tsc && vite build`: si hay errores de TypeScript, la build
+# FALLA y el frontend NO se deploya. Vite en dev (HMR) NO typechequea, así que esos
+# errores pasan desapercibidos hasta el deploy. Este hook los caza ANTES del push.
+#
+# Instalación (una vez por clon): git config core.hooksPath .githooks
+# Saltear puntualmente (emergencia): git push --no-verify
+
+set -e
+ROOT="$(git rev-parse --show-toplevel)"
+
+if [ -d "$ROOT/frontend/node_modules" ]; then
+  echo ">>> pre-push: typecheck del frontend (tsc --noEmit)…"
+  cd "$ROOT/frontend"
+  if ! npx tsc --noEmit; then
+    echo ""
+    echo "✗ pre-push ABORTADO: hay errores de TypeScript que romperían la build de Vercel."
+    echo "  Arreglalos y reintentá. (Emergencia: git push --no-verify)"
+    exit 1
+  fi
+  echo "✓ typecheck OK — push permitido."
+else
+  echo ">>> pre-push: frontend/node_modules no encontrado; salteo el typecheck."
+fi
+
+exit 0
