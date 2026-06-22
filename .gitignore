@@ -36,3 +36,7 @@ minio_data/
 # Playwright MCP screenshots / dumps de review
 .playwright-mcp/
 *.stackdump
+
+# Engram: dump cross-project del capturador (NO versionar — filtra data de otros
+# proyectos en un repo público). Los chunks/ y manifest.json sí se versionan.
+.engram/all_projects.json
