@@ -4,12 +4,16 @@
 
 ## ADDED Requirements
 
-### Requirement: Mensajería al estudiante
-El proctor SHALL poder enviar mensajes al estudiante de una sesión que supervisa; la escritura va por el canal de comandos (no por el SSE unidireccional).
+### Requirement: Chat bidireccional proctor↔estudiante
+El proctor y el estudiante de una sesión supervisada SHALL poder intercambiar mensajes de texto en ambos sentidos durante el examen. En la implementación slim el canal es REST con polling (no SSE/WS): cada parte publica sus mensajes y consulta los del otro. Los mensajes se persisten vinculados a la sesión.
 
-#### Scenario: Mensaje entregado al estudiante
+#### Scenario: Mensaje del proctor entregado al estudiante
 - **WHEN** el proctor envía un mensaje a un estudiante de una sesión asignada
-- **THEN** el mensaje se entrega al estudiante por el canal del estudiante, sin pasar por el stream SSE del panel
+- **THEN** el mensaje se persiste con autor `proctor` y queda disponible para que el estudiante lo consulte por su canal (sin pasar por el stream del panel)
+
+#### Scenario: Mensaje del estudiante entregado al proctor
+- **WHEN** el estudiante envía un mensaje en una sesión activa
+- **THEN** el mensaje se persiste con autor `alumno` y queda disponible para que el proctor lo consulte en el panel
 
 ### Requirement: Registro de observaciones
 El proctor SHALL poder registrar **observaciones** sobre una sesión; las observaciones se persisten como insumo del contexto de revisión (consumido por C-16).
