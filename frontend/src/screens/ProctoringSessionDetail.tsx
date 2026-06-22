@@ -24,10 +24,9 @@ import type { SesionProctoringDetalle } from '../lib/types';
 import { DetalleHeader } from './proctoring/DetalleHeader';
 import { EventoCard } from './proctoring/EventoCard';
 import { BiometriaCard } from './proctoring/BiometriaCard';
+import { ChatBox } from '../ui/ChatBox';
 
-const LISTA_ROUTE = '/admin/proctoring-sessions';
-
-function VolverLink({ onClick }: { onClick: () => void }) {
+function VolverLink({ onClick, label }: { onClick: () => void; label: string }) {
   return (
     <button
       type="button"
@@ -35,7 +34,7 @@ function VolverLink({ onClick }: { onClick: () => void }) {
       className="inline-flex items-center gap-base text-label-md text-on-surface-variant hover:text-on-surface hover:underline"
     >
       <Icon name="arrow_back" className="text-[18px]" />
-      Volver a la lista de sesiones
+      {label}
     </button>
   );
 }
@@ -44,6 +43,12 @@ export default function ProctoringSessionDetail() {
   const navigate = useNavigate();
   const toast = useToast();
   const sessionId = useApp((s) => s.proctoringSessionId);
+  const rol = useApp((s) => s.rol);
+  // C-15: el proctor puede abrir el detalle para chatear/supervisar, pero NO
+  // borrar evidencia (regla dura #6: cadena de custodia). El borrado y la lista
+  // admin quedan reservados a admin_sistema; el proctor vuelve a su panel.
+  const esAdmin = rol === 'admin_sistema';
+  const backRoute = esAdmin ? '/admin/proctoring-sessions' : '/proctor';
   const [detalle, setDetalle] = useState<SesionProctoringDetalle | null>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -70,7 +75,7 @@ export default function ProctoringSessionDetail() {
     const { ok } = await api.eliminarSesionProctoring(sessionId);
     if (ok) {
       toast.success('Sesión eliminada');
-      navigate(LISTA_ROUTE);
+      navigate(backRoute);
     } else {
       toast.error('No se pudo eliminar la sesión');
     }
@@ -99,7 +104,7 @@ export default function ProctoringSessionDetail() {
         </HelpButton>
       }
       actions={
-        sessionId && !error ? (
+        esAdmin && sessionId && !error ? (
           <Button variant="danger" size="sm" icon="delete" onClick={() => setConfirmando(true)}>
             Eliminar sesión
           </Button>
@@ -108,7 +113,10 @@ export default function ProctoringSessionDetail() {
     >
       <div className="space-y-lg animate-in fade-in duration-500">
         {/* Volver a la lista */}
-        <VolverLink onClick={() => navigate(LISTA_ROUTE)} />
+        <VolverLink
+          onClick={() => navigate(backRoute)}
+          label={esAdmin ? 'Volver a la lista de sesiones' : 'Volver al panel'}
+        />
 
         {/* Estado de carga */}
         {cargando && (
@@ -125,8 +133,8 @@ export default function ProctoringSessionDetail() {
             <p className="text-title-lg text-on-surface">No se pudo cargar la sesión</p>
             <p className="text-body-md text-on-surface-variant">{error}</p>
             <div className="pt-sm">
-              <Button variant="outline" size="sm" icon="arrow_back" onClick={() => navigate(LISTA_ROUTE)}>
-                Volver a la lista
+              <Button variant="outline" size="sm" icon="arrow_back" onClick={() => navigate(backRoute)}>
+                Volver
               </Button>
             </div>
           </Card>
@@ -160,6 +168,9 @@ export default function ProctoringSessionDetail() {
                 </div>
               )}
             </Card>
+
+            {/* C-15: canal de chat con el alumno de esta sesión (envío como proctor). */}
+            <ChatBox sessionId={sessionId} yo="proctor" titulo="Canal con el estudiante" altura="h-[180px]" />
 
             {/* Biometría */}
             <BiometriaCard biometria={detalle.biometria} />

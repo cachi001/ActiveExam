@@ -77,7 +77,9 @@ export default function App() {
     '/admin/detection-test': g(<AdminDetectionHarness />, ADMIN),
     // C-46: Revisión de sesiones del backend slim de proctoring
     '/admin/proctoring-sessions': g(<ProctoringRevisor />, ADMIN),
-    '/admin/proctoring-session-detail': g(<ProctoringSessionDetail />, ADMIN),
+    // C-15: el proctor abre el detalle para supervisar/chatear (SUPERVISION).
+    // El borrado de evidencia sigue siendo admin-only (gateado dentro de la pantalla).
+    '/admin/proctoring-session-detail': g(<ProctoringSessionDetail />, SUPERVISION),
     // C-61: Gestión de usuarios
     '/admin/usuarios': g(<GestionUsuarios />, ADMIN),
     // C-68: Detalle de usuario (ruta con parámetro dinámico /:id)
