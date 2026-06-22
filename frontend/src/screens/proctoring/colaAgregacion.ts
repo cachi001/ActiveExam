@@ -54,7 +54,9 @@ export function enriquecerYFiltrar(
   umbral: number,
 ): SesionEnriquecida[] {
   return sesiones
-    .filter((s) => s.score >= umbral)
+    // Solo sesiones vinculadas a un examen real: las de diagnóstico / sin examen
+    // (ej. "Grabar sesión" del Test de detección) NO entran a la cola de revisión.
+    .filter((s) => s.score >= umbral && s.exam_id != null)
     .sort((a, b) => b.score - a.score || b.total_discrepancias - a.total_discrepancias)
     .map((sesion) => ({ sesion, info: joinExamInfo(sesion.exam_id) }));
 }

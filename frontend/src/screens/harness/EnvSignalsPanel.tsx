@@ -43,7 +43,7 @@ export default function EnvSignalsPanel({
           {/* Foco de ventana */}
           <div className={`flex items-start justify-between p-sm rounded-xl border text-label-sm ${
             envSignals.focusLost
-              ? 'bg-warning-container/60 border-warning/40 text-warning'
+              ? 'bg-warning-container/60 border-warning-200 text-warning'
               : 'bg-surface-container-low border-outline-variant/40 text-on-surface-variant'
           }`}>
             <div className="flex-1 min-w-0">
@@ -59,7 +59,7 @@ export default function EnvSignalsPanel({
           {/* Cambio de pestaña */}
           <div className={`flex items-start justify-between p-sm rounded-xl border text-label-sm ${
             envSignals.tabChanged
-              ? 'bg-warning-container/60 border-warning/40 text-warning'
+              ? 'bg-warning-container/60 border-warning-200 text-warning'
               : 'bg-surface-container-low border-outline-variant/40 text-on-surface-variant'
           }`}>
             <div className="flex-1 min-w-0">
@@ -75,7 +75,7 @@ export default function EnvSignalsPanel({
           {/* Pantalla completa */}
           <div className={`flex items-start justify-between p-sm rounded-xl border text-label-sm ${
             envSignals.fullscreenExited
-              ? 'bg-warning-container/60 border-warning/40 text-warning'
+              ? 'bg-warning-container/60 border-warning-200 text-warning'
               : 'bg-surface-container-low border-outline-variant/40 text-on-surface-variant'
           }`}>
             <div className="flex-1 min-w-0">
@@ -111,7 +111,7 @@ export default function EnvSignalsPanel({
           {/* C-32 Task 6.3: tarjeta de monitores con flujo de permiso */}
           {monitorPermission === 'unsupported' && (
             <div className="flex items-start gap-sm p-sm rounded-xl border text-label-sm bg-surface-container-low border-outline-variant/40 text-on-surface-variant">
-              <Icon name="info" className="text-[16px] shrink-0 mt-px text-primary" fill />
+              <Icon name="info" className="text-[16px] shrink-0 mt-px text-on-surface-variant" fill />
               <div className="min-w-0">
                 <span className="font-semibold block">Monitor adicional</span>
                 <p className="text-[11px] mt-px opacity-80">
@@ -133,7 +133,7 @@ export default function EnvSignalsPanel({
                 <button
                   type="button"
                   onClick={onRequestMonitorPermission}
-                  className="mt-sm inline-flex items-center gap-base px-sm py-base rounded-lg bg-primary text-on-primary text-label-sm font-semibold hover:opacity-90 transition-opacity"
+                  className="mt-sm inline-flex items-center gap-base px-sm py-base rounded-lg bg-surface-container-high text-on-surface border border-outline-variant text-label-sm font-semibold hover:bg-surface-container-highest transition-colors"
                 >
                   <Icon name="monitor" className="text-[14px]" />
                   Detectar pantallas
@@ -143,15 +143,15 @@ export default function EnvSignalsPanel({
           )}
 
           {monitorPermission === 'requesting' && (
-            <div className="flex items-start gap-sm p-sm rounded-xl border text-label-sm bg-primary-container/40 border-primary/30 text-on-primary-container">
-              <Icon name="progress_activity" className="text-[16px] shrink-0 mt-px text-primary animate-spin" />
+            <div className="flex items-start gap-sm p-sm rounded-xl border text-label-sm bg-surface-container border-outline-variant text-on-surface-variant">
+              <Icon name="progress_activity" className="text-[16px] shrink-0 mt-px text-on-surface-variant animate-spin" />
               <div className="min-w-0">
                 <span className="font-semibold block">Monitor adicional</span>
                 <p className="text-[11px] mt-px opacity-80">Solicitando permiso al navegador…</p>
                 <button
                   type="button"
                   disabled
-                  className="mt-sm inline-flex items-center gap-base px-sm py-base rounded-lg bg-primary/50 text-on-primary text-label-sm font-semibold opacity-60 cursor-not-allowed"
+                  className="mt-sm inline-flex items-center gap-base px-sm py-base rounded-lg bg-surface-container-high text-on-surface-variant border border-outline-variant text-label-sm font-semibold opacity-60 cursor-not-allowed"
                 >
                   <Icon name="progress_activity" className="text-[14px] animate-spin" />
                   Detectar pantallas
@@ -161,7 +161,7 @@ export default function EnvSignalsPanel({
           )}
 
           {monitorPermission === 'denied' && (
-            <div className="flex items-start gap-sm p-sm rounded-xl border text-label-sm bg-warning-container/40 border-warning/40 text-warning">
+            <div className="flex items-start gap-sm p-sm rounded-xl border text-label-sm bg-warning-container/40 border-warning-200 text-warning">
               <Icon name="block" className="text-[16px] shrink-0 mt-px" />
               <div className="min-w-0 flex-1">
                 <span className="font-semibold block">Monitor adicional</span>

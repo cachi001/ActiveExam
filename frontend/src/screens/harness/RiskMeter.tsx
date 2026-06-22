@@ -8,6 +8,9 @@
 import { Icon, Card, Button, SectionTitle } from '../../ui/components';
 import { gaugeColor, gaugeTextColor } from './helpers';
 
+const UMBRAL_MIN = 1;
+const UMBRAL_MAX = 100;
+
 interface RiskMeterProps {
   harnessScore: number;
   riskThreshold: number;
@@ -21,18 +24,20 @@ export default function RiskMeter({
   onThresholdChange,
   onResetScore,
 }: RiskMeterProps) {
+  const umbralPct = ((riskThreshold - UMBRAL_MIN) / (UMBRAL_MAX - UMBRAL_MIN)) * 100;
+
   return (
     <Card className="space-y-md">
       <SectionTitle sub="Score acumulado de esta sesión de diagnóstico">
         Medidor de riesgo
       </SectionTitle>
 
-      {/* Gauge — barra de progreso */}
+      {/* Gauge — barra de progreso con color semántico */}
       <div className="space-y-sm">
         <div className="flex items-center justify-between gap-sm">
           <span className="text-label-sm text-on-surface-variant">Score acumulado</span>
           <span className={`font-headline text-headline-sm font-bold ${gaugeTextColor(harnessScore, riskThreshold)}`}>
-            {harnessScore}%
+            {harnessScore} <span className="text-label-sm font-semibold text-on-surface-variant">pts</span>
           </span>
         </div>
         <div className="bg-surface-container-high rounded-full h-3 overflow-hidden">
@@ -58,28 +63,51 @@ export default function RiskMeter({
         </div>
       )}
 
-      {/* Input de umbral configurable */}
+      {/* Slider de umbral — igual que el de Configuración → Parámetros generales */}
       <div className="space-y-base">
-        <label>
+        <div>
           <span className="text-label-sm font-semibold text-on-surface block">
-            Umbral de riesgo (%)
+            Umbral del sistema (de Configuración)
           </span>
           <span className="text-[11px] text-on-surface-variant">
             Cuando el score supera este valor, la sesión priorizaría revisión humana.
           </span>
-        </label>
-        <input
-          type="number"
-          min={1}
-          max={100}
-          value={riskThreshold}
-          onChange={(e) => {
-            const raw = parseInt(e.target.value, 10);
-            const clamped = isNaN(raw) ? 1 : Math.max(1, Math.min(100, raw));
-            onThresholdChange(clamped);
-          }}
-          className="w-full px-sm py-base text-label-md rounded-xl border border-outline-variant bg-surface-container-lowest outline-none font-mono focus:border-primary-container"
-        />
+        </div>
+
+        <div className="flex items-baseline gap-2">
+          <span className="text-[36px] leading-none font-headline font-bold text-on-surface tabular-nums">
+            {riskThreshold}
+          </span>
+          <span className="text-title-md font-semibold text-on-surface-variant">puntos</span>
+        </div>
+
+        <div className="relative pt-1">
+          <input
+            type="range"
+            min={UMBRAL_MIN}
+            max={UMBRAL_MAX}
+            value={riskThreshold}
+            onChange={(e) => {
+              const raw = parseInt(e.target.value, 10);
+              const clamped = isNaN(raw) ? UMBRAL_MIN : Math.max(UMBRAL_MIN, Math.min(UMBRAL_MAX, raw));
+              onThresholdChange(clamped);
+            }}
+            aria-label="Umbral de riesgo para revisión"
+            aria-valuetext={`score mayor o igual a ${riskThreshold} puntos prioriza revisión`}
+            className="ae-slider w-full appearance-none bg-transparent cursor-pointer"
+            style={{
+              background: `linear-gradient(to right, #2563eb 0%, #2563eb ${umbralPct}%, #cbd5e1 ${umbralPct}%, #cbd5e1 100%)`,
+            }}
+          />
+          <div className="flex justify-between text-[11px] text-on-surface-variant mt-1 tabular-nums">
+            <span>{UMBRAL_MIN}</span>
+            <span>{UMBRAL_MAX}</span>
+          </div>
+          <p className="text-[12px] text-on-surface-variant mt-2">
+            Las sesiones que alcancen <strong>{riskThreshold} puntos o más</strong> entran a la cola de revisión humana.
+            Bajar el umbral manda más sesiones a revisar; subirlo, solo las más riesgosas.
+          </p>
+        </div>
       </div>
 
       {/* Botón Resetear riesgo — independiente del pipeline */}

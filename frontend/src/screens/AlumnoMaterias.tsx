@@ -82,7 +82,7 @@ export default function AlumnoMaterias() {
         <BackButton onClick={() => navigate('/alumno')} />
         <header>
           <div className="flex items-center gap-sm">
-            <h1 className="font-headline text-headline-md text-on-surface tracking-tight">Materias disponibles</h1>
+            <h1 className="text-[22px] sm:text-[24px] font-semibold text-on-surface tracking-tight">Materias disponibles</h1>
             <HelpButton title="Materias">
               <p>
                 Explorá el catálogo de <strong>materias y comisiones</strong>: entrá a una materia
@@ -97,7 +97,7 @@ export default function AlumnoMaterias() {
               </p>
             </HelpButton>
           </div>
-          <p className="text-body-md text-on-surface-variant mt-xs">Seleccioná una materia para ver sus comisiones y exámenes disponibles.</p>
+          <p className="text-[13px] text-on-surface-variant mt-1">Seleccioná una materia para ver sus comisiones y exámenes disponibles.</p>
         </header>
 
         {cargandoMaterias ? (

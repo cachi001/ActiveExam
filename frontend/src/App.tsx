@@ -33,6 +33,8 @@ import ProctoringRevisor from './screens/ProctoringRevisor';
 import ProctoringSessionDetail from './screens/ProctoringSessionDetail';
 // C-61: Gestión de usuarios y registro público
 import GestionUsuarios from './screens/GestionUsuarios';
+// C-68: Detalle de usuario
+import DetalleUsuario from './screens/DetalleUsuario';
 import Configuracion from './screens/Configuracion';
 import Registro from './screens/Registro';
 
@@ -78,6 +80,8 @@ export default function App() {
     '/admin/proctoring-session-detail': g(<ProctoringSessionDetail />, ADMIN),
     // C-61: Gestión de usuarios
     '/admin/usuarios': g(<GestionUsuarios />, ADMIN),
+    // C-68: Detalle de usuario (ruta con parámetro dinámico /:id)
+    '/admin/usuarios/:id': g(<DetalleUsuario />, ADMIN),
     // #10: Configuración del sistema (scoring por tipo de evento + ajustes globales futuros)
     '/admin/configuracion': g(<Configuracion />, ADMIN),
 

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from pydantic import BaseModel, ConfigDict
 
 
@@ -9,10 +11,40 @@ class _Strict(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class BloqueConsentimiento(_Strict):
+    """Un bloque informativo del texto de consentimiento (titulo + cuerpo)."""
+    titulo: str
+    cuerpo: str
+
+
 class ConsentTextResponse(_Strict):
+    """Respuesta del texto de consentimiento — puede ser dict legacy o lista de bloques.
+
+    Para la ruta GET /text sin version (legacy): bloques como dict[str, str].
+    Para la ruta GET /text con texto versionado en DB: bloques como list[BloqueConsentimiento].
+    Usamos ``Any`` para compatibilidad durante la transicion; los tests validan la forma.
+    """
     version: str
-    bloques: dict[str, str]
+    bloques: list[BloqueConsentimiento] | dict[str, str]
     hash_texto: str
+
+
+# ---------------------------------------------------------------------------
+# Schemas de version de texto (admin)
+# ---------------------------------------------------------------------------
+
+
+class ConsentVersionListItem(_Strict):
+    """Item del listado de versiones disponibles (admin)."""
+    version: str
+    hash_texto: str
+    created_at: datetime
+
+
+class ConsentVersionCreate(_Strict):
+    """Request para crear una nueva version del texto."""
+    version: str
+    bloques: list[BloqueConsentimiento]
 
 
 class RecordConsentRequest(_Strict):

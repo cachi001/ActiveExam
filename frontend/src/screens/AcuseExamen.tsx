@@ -98,7 +98,7 @@ export default function AcuseExamen({ examenId, onConfirmado, onCancelar }: Prop
     return (
       <StudentShell>
         <div className="max-w-xl mx-auto space-y-lg py-lg">
-          <div className="flex items-start gap-md bg-warning-container border border-warning/30 rounded-xl p-md">
+          <div className="flex items-start gap-md bg-warning-container border border-warning-200 rounded-xl p-md">
             <Icon name="warning" className="text-[22px] text-warning shrink-0 mt-base" fill />
             <div className="flex-1 min-w-0">
               <p className="text-label-md font-semibold text-on-surface">Completá tu perfil primero</p>

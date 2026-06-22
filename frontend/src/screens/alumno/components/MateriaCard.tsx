@@ -35,20 +35,20 @@ export function MateriaCard({
     <div>
       <button
         onClick={onSelect}
-        className={`w-full flex items-center gap-md p-md rounded-xl border-2 transition-all text-left ${
+        className={`w-full flex items-center gap-4 px-4 py-4 rounded-lg border transition-colors text-left ${
           activa
-            ? 'bg-surface-container-lowest border-primary ring-2 ring-primary/15 text-on-surface'
-            : 'bg-surface-container-lowest border-outline-variant/40 hover:bg-surface-container-low hover:border-outline-variant text-on-surface'
+            ? 'bg-white border-primary ring-1 ring-primary/15 text-on-surface'
+            : 'bg-white border-surface-200 hover:bg-surface-50 hover:border-primary/40 text-on-surface'
         }`}
       >
-        <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${activa ? 'bg-primary text-on-primary' : 'bg-secondary-container text-on-secondary'}`}>
-          <Icon name="school" />
+        <div className={`w-11 h-11 rounded-lg flex items-center justify-center shrink-0 ${activa ? 'bg-primary text-on-primary' : 'bg-secondary-container text-on-secondary'}`}>
+          <Icon name="school" className="text-[22px]" />
         </div>
         <div className="flex-1 min-w-0">
-          <p className={`text-label-md font-semibold ${activa ? 'text-primary' : 'text-on-surface'}`}>
+          <p className={`text-[15px] font-semibold leading-tight ${activa ? 'text-primary' : 'text-on-surface'}`}>
             {materia.nombre}
           </p>
-          <p className="text-label-sm text-on-surface-variant">
+          <p className="text-[13px] text-on-surface-variant leading-tight mt-1 truncate">
             {materia.codigo} · {materia.descripcion}
           </p>
         </div>

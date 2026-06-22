@@ -47,6 +47,8 @@ export interface CaptureProgressProps {
   retoRecienResueltoLabel: string | null;
   /** Hint de encuadre vigente — gana prioridad si está presente y no estamos en cooldown/éxito. */
   framingHint: FramingHint | null;
+  /** Pista de "no detectamos el gesto" cuando el reto no avanza durante varios segundos. */
+  stallTip: string | null;
 }
 
 export function CaptureProgress({
@@ -63,6 +65,7 @@ export function CaptureProgress({
   cooldownActivo,
   retoRecienResueltoLabel,
   framingHint,
+  stallTip,
 }: CaptureProgressProps) {
   // Prioridad: éxito > cooldown > hint de encuadre > reto activo.
   const mostrarHint = !enExito && !cooldownActivo && framingHint !== null;
@@ -108,6 +111,14 @@ export function CaptureProgress({
           </p>
           {!enExito && subInstruccion && (
             <p className="text-sm text-neutral-600 leading-relaxed">{subInstruccion}</p>
+          )}
+          {/* Pista de gesto estancado — sólo si no hay hint de encuadre y el alumno
+              lleva varios segundos sin progresar. La idea es romper el silencio. */}
+          {!enExito && stallTip && (
+            <div className="mt-2 inline-flex items-start gap-2 text-left bg-amber-50 border border-amber-300 text-amber-900 rounded-xl px-3 py-2">
+              <Icon name="tips_and_updates" className="text-[18px] text-amber-700 shrink-0 mt-px" fill />
+              <p className="text-sm leading-relaxed">{stallTip}</p>
+            </div>
           )}
         </>
       )}

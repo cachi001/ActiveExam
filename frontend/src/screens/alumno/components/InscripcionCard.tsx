@@ -48,13 +48,13 @@ export function InscripcionCard({
           competía por la misma fila — separarlos por breakpoint lo resuelve. */}
       <div className="flex flex-col sm:flex-row sm:items-start gap-md">
         <div className="flex items-start gap-md min-w-0 flex-1">
-          <div className="w-11 h-11 rounded-xl bg-primary-fixed text-primary flex items-center justify-center shrink-0">
-            <Icon name={config.icon} />
+          <div className="w-11 h-11 rounded-lg bg-primary-fixed text-primary flex items-center justify-center shrink-0">
+            <Icon name={config.icon} className="text-[22px]" />
           </div>
           <div className="min-w-0 flex-1">
             {/* line-clamp-2 en mobile (2 líneas legibles), truncate a 1 línea en sm+ */}
-            <p className="text-label-md font-semibold text-on-surface line-clamp-2 sm:truncate">{inscripcion.nombre_examen}</p>
-            <p className="text-label-sm text-on-surface-variant line-clamp-2">
+            <p className="text-[15px] font-semibold text-on-surface line-clamp-2 sm:truncate leading-tight">{inscripcion.nombre_examen}</p>
+            <p className="text-[13px] text-on-surface-variant line-clamp-2 leading-tight mt-1">
               {fecha.toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' })} · {fecha.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })} hs
             </p>
           </div>

@@ -54,7 +54,7 @@ export function PerfilBannerEstado({
   /* 2. Banner amarillo — renovación requerida (sin caducar) */
   if (biometriaRenovacionRequerida) {
     return (
-      <div className="flex items-start gap-md bg-warning-container border border-warning/30 rounded-xl p-md">
+      <div className="flex items-start gap-md bg-warning-container border border-warning-200 rounded-xl p-md">
         <Icon name="refresh" className="text-warning text-[22px] shrink-0 mt-base" />
         <div className="flex-1">
           <p className="text-label-md font-semibold text-on-surface">
@@ -89,8 +89,10 @@ export function PerfilBannerEstado({
         </div>
         <Button
           variant="outline"
+          size="sm"
           onClick={onIrAExamenes}
-          className="shrink-0 h-9 px-md text-label-sm"
+          className="shrink-0 text-label-sm"
+          icon="event"
         >
           Mis exámenes
         </Button>

@@ -14,8 +14,11 @@ metadata declarativa.
 from __future__ import annotations
 
 import enum
+from datetime import datetime
+from typing import Optional
 
 from sqlalchemy import (
+    DateTime,
     Enum as SAEnum,
 )
 from sqlalchemy import (
@@ -342,6 +345,107 @@ class EmbeddingReferenciaModel(Base):
     )
 
 
+class ConfiguracionSistemaModel(Base):
+    """Configuracion global del sistema (singleton versionado, configuracion-sistema-funcional).
+
+    Fila UNICA (PK fija ``id='global'``) con los defaults globales del proctoring que
+    hoy viven mock-only en el frontend: umbrales de deteccion, umbral de cola de
+    revision, detectores activos, retencion default y el puntero a la version de
+    texto de consentimiento vigente.
+
+    Es la fuente de verdad autoritativa server-side (RN-GLB-01, cliente = sensor no
+    confiable). ``version`` es un entero monotonico que actua como ETag: cada edicion
+    exitosa lo incrementa para que los clientes detecten config rancia. La tabla
+    existe IGUAL en full y en slim (mismo schema), por eso vive aqui (Base compartida).
+
+    L2.5: estos valores alimentan la PRIORIZACION de la cola de revision; nunca una
+    sancion automatica.
+    """
+
+    __tablename__ = "configuracion_sistema"
+
+    # Singleton: una sola fila con id fijo 'global'.
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, server_default="global")
+    # Umbrales de deteccion (unidades internas autoritativas).
+    face_absent_ms: Mapped[int] = mapped_column(Integer, nullable=False, server_default="3000")
+    multiple_faces_frames: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="5"
+    )
+    gaze_deviation_threshold: Mapped[float] = mapped_column(
+        Float, nullable=False, server_default="0.20"
+    )
+    gaze_sustained_ms: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="2500"
+    )
+    gaze_fixation_tolerance: Mapped[float] = mapped_column(
+        Float, nullable=False, server_default="0.25"
+    )
+    # Umbral de cola de revision (0-100): score por encima entra a la cola humana.
+    umbral_cola_revision: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="70"
+    )
+    # Detectores activos (lista de TipoEvento) — JSONB para portabilidad slim/full.
+    # Default: TODOS los detectores activos (el admin desactiva los que no quiera).
+    detectores_activos: Mapped[list[str]] = mapped_column(
+        JSONB,
+        nullable=False,
+        server_default=(
+            '["rostro_ausente", "multiples_rostros", "mirada_desviada_sostenida", '
+            '"perdida_de_foco", "cambio_pestana", "monitor_adicional", '
+            '"salida_pantalla_completa", "copiar_pegar", "corte_conectividad_prolongado"]'
+        ),
+    )
+    # Retencion default en dias (politica concreta en C-19).
+    retencion_dias_default: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="365"
+    )
+    # Puntero a la version de texto de consentimiento vigente (perfil).
+    consent_version_vigente: Mapped[str] = mapped_column(
+        String(64), nullable=False, server_default="v1"
+    )
+    # Version monotonica (ETag). Cada edicion exitosa la incrementa.
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    updated_at: Mapped[str] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+
+class ConsentimientoPerfilModel(Base):
+    """Consentimiento de perfil del usuario, APPEND-ONLY (Ley 25.326, GAP #2).
+
+    Atado a ``usuario_id``; cada otorgamiento/revocacion/via-alternativa inserta una
+    fila nueva (nunca se actualiza), de modo que el historico es demostrable. El
+    estado vigente es la fila mas reciente por ``usuario_id``.
+
+    - ``version_texto`` + ``hash_texto``: que texto exacto consintio el usuario.
+    - ``hash_registro``: SHA-256 de ``usuario_id|version_texto|timestamp|estado`` para
+      integridad del registro.
+
+    La tabla existe IGUAL en full y slim. Eliminacion al egreso atada al motor de
+    retencion/DSR (difiere ante holds).
+    """
+
+    __tablename__ = "consentimiento_perfil"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    usuario_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("usuario.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    version_texto: Mapped[str] = mapped_column(String(64), nullable=False)
+    hash_texto: Mapped[str] = mapped_column(String(64), nullable=False)
+    timestamp: Mapped[str] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    estado: Mapped[str] = mapped_column(String(32), nullable=False)
+    hash_registro: Mapped[str] = mapped_column(String(64), nullable=False)
+
+
 class EventoScoreConfigModel(Base):
     """Configuracion del peso de score por tipo de evento (#9, migracion 0011).
 
@@ -369,3 +473,28 @@ class EventoScoreConfigModel(Base):
     updated_at: Mapped[str] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
+
+
+class ConsentTextoVersionModel(Base):
+    """Version del texto de consentimiento informado (Ley 25.326, C-08 ext).
+
+    Tabla APPEND-ONLY por semantica: version es PK (string), el texto NUNCA muta.
+    Misma version => mismo hash; texto nuevo => nueva version.
+
+    El campo ``bloques`` almacena una lista de dicts {titulo, cuerpo} (los cinco
+    bloques informativos obligatorios de RN-CO-01). El ``hash_texto`` es el SHA-256
+    deterministico de version+bloques (JSON canonico: sorted keys, sin whitespace).
+
+    El admin publica versiones; los estudiantes deben re-consentir cuando la
+    version vigente (``configuracion_sistema.consent_version_vigente``) cambia.
+    """
+
+    __tablename__ = "consent_texto_version"
+
+    version: Mapped[str] = mapped_column(String(64), primary_key=True)
+    bloques: Mapped[list] = mapped_column(JSONB, nullable=False)
+    hash_texto: Mapped[str] = mapped_column(String(128), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    created_by: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)

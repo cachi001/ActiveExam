@@ -41,7 +41,7 @@ export default function ExamList() {
       <div className="space-y-lg animate-in fade-in duration-500">
 
         <Card>
-          <SectionTitle sub={`${examenes.length} examen${examenes.length !== 1 ? 'es' : ''}`}>
+          <SectionTitle sub={`${examenes.length} ${examenes.length === 1 ? 'examen' : 'exámenes'}`}>
             Listado
           </SectionTitle>
 
@@ -83,7 +83,7 @@ export default function ExamList() {
                   </td>
                   <td className="py-sm pr-md"><Badge tone={ESTADO_TONE[e.estado]} dot>{ESTADO_LABEL[e.estado]}</Badge></td>
                   <td className="py-sm pr-md text-label-md text-on-surface-variant">{new Date(e.inicio).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}</td>
-                  <td className="py-sm pr-md text-label-md text-on-surface">{e.umbral_score}%</td>
+                  <td className="py-sm pr-md text-label-md text-on-surface tabular-nums">Desde {e.umbral_score} <span className="text-on-surface-variant text-label-sm">pts</span></td>
                   <td className="py-sm pr-md text-label-md text-on-surface">{e.inscriptos}</td>
                   <td className="py-sm text-right">
                     <Button size="sm" variant="ghost" icon="edit" onClick={configurar}>Configurar</Button>

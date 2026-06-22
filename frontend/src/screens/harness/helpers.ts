@@ -38,10 +38,13 @@ export function validateConfig(cfg: TransitionConfig): ConfigErrors {
 // ---------------------------------------------------------------------------
 
 export function formatRelativeTs(eventTs: number, sessionStart: number): string {
+  // Tiempo transcurrido desde el inicio de la prueba, en mm:ss (legible).
+  // Antes mostraba "+174.761s" (segundos con ms), que confundía al usuario.
   const diff = Math.max(0, eventTs - sessionStart);
-  const s = Math.floor(diff / 1000);
-  const ms = diff % 1000;
-  return `+${s}.${String(ms).padStart(3, '0')}s`;
+  const totalSeg = Math.floor(diff / 1000);
+  const m = Math.floor(totalSeg / 60);
+  const s = totalSeg % 60;
+  return `min ${m}:${String(s).padStart(2, '0')}`;
 }
 
 export const SEVERITY_ORDER: Severidad[] = ['baseline', 'baja', 'media', 'alta', 'critica'];
@@ -67,18 +70,10 @@ export const SEVERITY_CARD_COLORS: Record<Severidad, string> = {
   critica: 'bg-error/15 border-error/50 border-l-4 border-l-error',
 };
 
-/**
- * Rangos de score por nivel de severidad — usado por la Leyenda visual.
- * Los pesos se mapean a "rango acumulable" (peso del evento + bono persistencia).
- * Coherente con PESO_SCORE de riskWeights.ts (0/5/20/50/100).
- */
-export const SEVERITY_RANGES: Record<Severidad, { label: string; descripcion: string; peso: number }> = {
-  baseline: { label: 'Base', descripcion: 'Sin riesgo: estado normal del examen.', peso: 0 },
-  baja: { label: 'Baja', descripcion: 'Ruido leve: gestos breves, oclusiones momentaneas.', peso: 5 },
-  media: { label: 'Media', descripcion: 'Patron a observar: cambio de pestana, foco perdido, copiar/pegar.', peso: 20 },
-  alta: { label: 'Alta', descripcion: 'Incidencia clara: monitor adicional, multiples rostros.', peso: 50 },
-  critica: { label: 'Critica', descripcion: 'Incidente bloqueante: requiere intervencion inmediata.', peso: 100 },
-};
+// NOTA (c-68 task 5.3): SEVERITY_RANGES (pesos hardcodeados 0/5/20/50/100) fue
+// eliminado. La leyenda ahora REFLEJA la config viva de scoring por tipo de
+// evento (ver buildLegendModel.ts + LeyendaSeveridad.tsx). Para los pesos vivos
+// la fuente es api.listarScoringConfig() / getEffectiveConfig().
 
 // ---------------------------------------------------------------------------
 // C-33: Helpers de color del gauge de riesgo

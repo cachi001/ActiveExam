@@ -1,12 +1,12 @@
 /**
- * HarnessHeader — banner del motor, panel "¿para qué sirve?", disclaimer
- * diagnóstico, botones de inicio/detener e indicador en vivo.
+ * HarnessHeader — banner del motor + botones de inicio/detener e indicador en vivo.
  *
  * Presentacional: recibe estado y callbacks del hook por props.
+ * El acordeón "¿Para qué sirve?" y el banner diagnóstico fueron movidos al
+ * modal HelpButton en AdminDetectionHarness (punto 4).
  */
 
 import { Icon, Button } from '../../ui/components';
-import { Term } from '../../ui/Term';
 import type { EngineMode, HarnessState } from './types';
 
 interface HarnessHeaderProps {
@@ -18,8 +18,6 @@ interface HarnessHeaderProps {
   eventosEnviados: number;
   /** Score acumulado en vivo (0..100). Se muestra junto al indicador en sesión. */
   harnessScore: number;
-  propositoPanelOpen: boolean;
-  setPropositoPanelOpen: (fn: (v: boolean) => boolean) => void;
   onStart: (conSesion: boolean) => void;
   onStop: () => void;
   onRetryEngine: () => void;
@@ -33,8 +31,6 @@ export default function HarnessHeader({
   modoSesion,
   eventosEnviados,
   harnessScore,
-  propositoPanelOpen,
-  setPropositoPanelOpen,
   onStart,
   onStop,
   onRetryEngine,
@@ -45,29 +41,15 @@ export default function HarnessHeader({
           C-30: BANNER CONDICIONAL DEL MOTOR — 4 estados (D-5, harness-legibility-layer)
       ================================================================ */}
       {/* Estado 'simulated' (idle): sin banner — al iniciar la cámara se activa el motor real (MediaPipe). */}
-      {/* C-32 Tasks 3.1–3.4: spinner amigable, sin jerga técnica */}
-      {engineMode === 'loading' && (
-        <div className="flex items-start gap-sm p-md rounded-xl bg-primary-container border-2 border-primary/30 text-on-primary-container" role="status" aria-live="polite">
-          <Icon name="progress_activity" className="text-[22px] shrink-0 mt-px text-primary animate-spin" />
-          <div className="min-w-0">
-            <p className="font-bold text-label-md">Preparando la cámara…</p>
-            {/* Task 3.3: subtítulo solo en la primera carga */}
-            {isFirstEngineLoad && (
-              <p className="text-label-sm mt-base">
-                Esto puede tardar unos segundos la primera vez.
-              </p>
-            )}
-          </div>
-        </div>
-      )}
+      {/* El estado "preparando" se muestra con UN solo spinner, dentro del panel de
+          cámara (CameraPanel). No repetimos un banner con spinner acá. */}
       {engineMode === 'real-active' && (
-        <div className="flex items-start gap-sm p-md rounded-xl bg-success-container border-2 border-success/40 text-on-primary-container" role="status" aria-live="polite">
+        <div className="flex items-start gap-sm p-md rounded-xl bg-success-container border-2 border-success/40 text-on-surface" role="status" aria-live="polite">
           <Icon name="sensors" className="text-[22px] shrink-0 mt-px text-success" fill />
           <div className="min-w-0">
-            <p className="font-bold text-label-md text-success">VISIÓN REAL (MediaPipe)</p>
+            <p className="font-bold text-label-md text-success">Cámara analizando en vivo</p>
             <p className="text-label-sm mt-base text-on-surface-variant">
-              Motor MediaPipe real activo —{' '}
-              <strong>FaceDetector + FaceLandmarker + PoseLandmarker</strong> procesando frames reales de la cámara.
+              El sistema está analizando en tiempo real lo que ve la cámara: tu rostro, hacia dónde mirás y tu postura.
             </p>
           </div>
         </div>
@@ -76,13 +58,11 @@ export default function HarnessHeader({
         <div className="flex items-start gap-sm p-md rounded-xl bg-error-container border-2 border-error/50 text-on-error-container" role="alert" aria-live="assertive">
           <Icon name="error" className="text-[22px] shrink-0 mt-px text-error" fill />
           <div className="min-w-0 flex-1">
-            <p className="font-bold text-label-md">ERROR AL CARGAR EL MOTOR MEDIAPIPE</p>
-            <p className="text-label-sm mt-base font-mono break-all">{engineError}</p>
+            <p className="font-bold text-label-md">No se pudo iniciar el análisis de la cámara</p>
             <p className="text-label-sm mt-sm">
-              Las señales de visión corresponden al motor de respaldo (sin MediaPipe). Verificá que ejecutaste{' '}
-              <code className="bg-error/10 px-base rounded font-mono text-[11px]">scripts/download-mediapipe-models.sh</code>{' '}
-              (o <code className="bg-error/10 px-base rounded font-mono text-[11px]">.ps1</code> en Windows) y que WebGL está habilitado.
+              Probá tocar “Reintentar” o recargar la página. Si el problema continúa, contactá al equipo de soporte.
             </p>
+            <p className="text-label-sm mt-base font-mono break-all text-on-error-container/70">{engineError}</p>
             {/* C-32 Task 2.3: botón Reintentar llama disposeRealEngine() antes de re-invocar loadRealEngine() */}
             {harnessState === 'running' && (
               <button
@@ -99,100 +79,38 @@ export default function HarnessHeader({
       )}
 
       {/* ================================================================
-          PANEL DE PROPÓSITO — colapsable (DD-29-04, tasks 4.1–4.4)
+          BOTONES DE ACCIÓN + INDICADORES EN VIVO
+          Mobile: flex-col centrado; Desktop: justify-end alineado a la derecha.
       ================================================================ */}
-      <div className="rounded-xl border border-outline-variant/60 bg-surface-container-lowest overflow-hidden">
-        <button
-          type="button"
-          onClick={() => setPropositoPanelOpen((v) => !v)}
-          className="w-full flex items-center justify-between gap-sm px-md py-sm text-left hover:bg-surface-container-low transition-colors"
-          aria-expanded={propositoPanelOpen}
-        >
-          <div className="flex items-center gap-sm">
-            <Icon name="help_outline" className="text-primary text-[20px] shrink-0" />
-            <span className="font-semibold text-label-md text-on-surface">¿Para qué sirve esta prueba?</span>
-          </div>
-          <Icon name={propositoPanelOpen ? 'expand_less' : 'expand_more'} className="text-on-surface-variant text-[20px] shrink-0" />
-        </button>
-        {propositoPanelOpen && (
-          <div className="px-md pb-md pt-sm space-y-sm border-t border-outline-variant/40 text-label-sm text-on-surface-variant">
-            <p>
-              Esta herramienta verifica que el sistema detecta señales correctamente antes de un examen real.
-              Al iniciar la cámara, el motor de visión (MediaPipe) procesa los frames en vivo: rostros, mirada y
-              postura. Las señales del navegador (pestaña, pantalla completa, portapapeles) también son reales.
-            </p>
-            <div>
-              <p className="font-semibold text-on-surface mb-base">Acciones sugeridas para probar:</p>
-              <ul className="list-disc list-inside space-y-base ml-sm">
-                <li>Moverse frente a la cámara o alejarse</li>
-                <li>Tapar la cámara con la mano</li>
-                <li>Cambiar de pestaña o abrir otra aplicación</li>
-                <li>Copiar o pegar texto en cualquier campo</li>
-                <li>Salir de la vista de pantalla completa (si aplica)</li>
-              </ul>
-            </div>
-            <div className="flex items-start gap-base p-sm rounded-lg bg-surface-container border border-outline-variant/40">
-              <Icon name="info" className="text-[16px] shrink-0 mt-px text-primary" fill />
-              <span>
-                <strong className="text-on-surface">Señales de visión</strong> (rostros, <Term termKey="gaze_vector">mirada</Term>, <Term termKey="pose_keypoints">cuerpo</Term>): del motor MediaPipe procesando la cámara en vivo. &nbsp;
-                <strong className="text-on-surface">Señales de navegador</strong> (pestaña, pantalla completa, portapapeles): <em>reales</em>.
-              </span>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* ================================================================
-          HEADER DIAGNÓSTICO — badge prominente (task 2.1 / D-4)
-      ================================================================ */}
-      {/* C-30 / C-29: Advertencia de herramienta diagnóstica siempre visible (admin-detection-test-harness spec) */}
-      <div className="flex items-center gap-base p-sm rounded-lg bg-surface-container border border-outline-variant/40 text-label-sm text-on-surface-variant">
-        <Icon name="admin_panel_settings" className="text-[16px] shrink-0 text-primary" fill />
-        <span>
-          <strong className="text-on-surface">Herramienta diagnóstica admin.</strong>{' '}
-          En <strong className="text-on-surface">modo test</strong> la detección corre solo localmente.
-          En <strong className="text-on-surface">modo sesión</strong> los eventos se registran en el backend de proctoring para revisión —{' '}
-          <em>NO es evidencia de un examen real</em>.
-        </span>
-      </div>
-
-      <div className="flex items-center justify-between flex-wrap gap-md">
-        <div className="flex items-center gap-sm">
-          <div className="inline-flex items-center gap-sm px-md py-sm rounded-xl bg-error-container text-on-error-container font-bold text-label-md border border-error/30">
-            <Icon name="bug_report" className="text-[20px]" fill />
-            MODO DIAGNÓSTICO — sin examen real
-          </div>
-        </div>
-        <div className="flex items-center gap-sm flex-wrap">
-          {harnessState === 'running' && (
-            <span className="inline-flex items-center gap-base text-label-sm text-success bg-success-container px-sm py-base rounded-full font-semibold">
-              <span className="w-2 h-2 rounded-full bg-success animate-pulse" />
-              Cámara activa
-            </span>
-          )}
+      <div className="flex items-center justify-center sm:justify-start flex-wrap gap-md">
+        <div className="flex flex-col sm:flex-row items-center gap-sm flex-wrap w-full sm:w-auto">
           {(harnessState === 'idle' || harnessState === 'stopped') && (
-            <>
-              <Button icon="sensors" onClick={() => onStart(true)}>Iniciar sesión</Button>
-              <Button variant="outline" icon="science" onClick={() => onStart(false)}>Probar (local)</Button>
-            </>
+            <div className="grid grid-cols-2 gap-sm w-full sm:w-auto">
+              <Button variant="primary" icon="videocam" onClick={() => onStart(true)} className="justify-center sm:min-w-[160px]">
+                Grabar sesión
+              </Button>
+              <Button variant="secondary" icon="science" onClick={() => onStart(false)} className="justify-center sm:min-w-[160px]">
+                Test Local
+              </Button>
+            </div>
           )}
           {harnessState === 'initializing' && (
-            <Button icon="hourglass_empty" disabled>Inicializando…</Button>
+            <Button disabled>Inicializando…</Button>
           )}
           {/* Indicador en vivo — visible solo mientras la detección está corriendo */}
           {harnessState === 'running' && modoSesion && (
             <>
-              <span className="inline-flex items-center gap-base text-label-sm text-on-primary bg-primary px-sm py-base rounded-full font-semibold shadow-sm">
-                <span className="w-2 h-2 rounded-full bg-on-primary animate-pulse" />
+              <span className="inline-flex items-center gap-base text-label-sm text-on-surface bg-surface-container-high px-sm py-base rounded-full font-semibold shadow-sm border border-outline-variant/60">
+                <span className="w-2 h-2 rounded-full bg-on-surface-variant animate-pulse" />
                 Transmitiendo en vivo · {eventosEnviados} evento{eventosEnviados !== 1 ? 's' : ''} enviado{eventosEnviados !== 1 ? 's' : ''}
               </span>
               <span
                 className="inline-flex items-center gap-base text-label-sm font-bold
                   bg-surface-container-lowest text-on-surface px-sm py-base rounded-full
                   border border-outline-variant/60 shadow-sm"
-                title="Score acumulado de esta sesión (igual al que persiste el backend)"
+                title="Puntaje de riesgo acumulado en esta prueba"
               >
-                <Icon name="speed" className="text-[16px] text-primary" fill />
+                <Icon name="speed" className="text-[16px] text-on-surface-variant" fill />
                 Score {harnessScore}
               </span>
             </>

@@ -52,6 +52,36 @@ interface Props {
 }
 
 // ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Traduce mensajes técnicos (HTTP 4xx/5xx, fallos de red, descriptor null) a
+ * frases que el alumno pueda entender y accionar. Si no matchea ningún patrón
+ * conocido, devuelve el mensaje original (que ya suele ser humano por venir
+ * de api.guardarReferenciaBiometrica).
+ */
+function traducirErrorCaptura(raw: string): string {
+  const m = (raw ?? '').toLowerCase();
+  if (m.includes('http 401') || m.includes('unauthorized')) {
+    return 'Tu sesión venció. Cerrá sesión, volvé a entrar y reintentá la captura.';
+  }
+  if (m.includes('http 403')) {
+    return 'No tenés permiso para registrar la captura. Avisale al administrador.';
+  }
+  if (m.includes('http 422')) {
+    return 'La captura no cumplió los requisitos de calidad (rostro mal detectado). Reintentá con buena luz, centrando tu rostro en el óvalo.';
+  }
+  if (m.includes('http 5') || m.includes('internal server error')) {
+    return 'El servidor tuvo un problema al guardar tu captura. Esperá unos segundos y reintentá.';
+  }
+  if (m.includes('failed to fetch') || m.includes('networkerror') || m.includes('network request failed')) {
+    return 'No pudimos contactar al servidor (sin conexión o internet inestable). Revisá tu conexión y reintentá.';
+  }
+  return raw;
+}
+
+// ---------------------------------------------------------------------------
 // Componente
 // ---------------------------------------------------------------------------
 
@@ -61,6 +91,9 @@ export function EnrollmentBiometricStep({ referenciaActual, onCapturada, esRenov
   const [fase, setFase]       = useState<Fase>('instrucciones');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [refRegistrada, setRefRegistrada] = useState(false);
+  // Referencia capturada — la guardamos para que `Continuar` (acción explícita
+  // del alumno) dispare `onCapturada` y evite el "flash" de la pantalla de éxito.
+  const [referenciaPendiente, setReferenciaPendiente] = useState<ReferenciasBiometrica | null>(null);
   const setBiometriaReferencia = useApp((s) => s.setBiometriaReferencia);
   const setBiometricoReferenciaId = useApp((s) => s.setBiometricoReferenciaId);
 
@@ -110,13 +143,16 @@ export function EnrollmentBiometricStep({ referenciaActual, onCapturada, esRenov
         setRefRegistrada(true);
       }
 
+      setReferenciaPendiente(referencia);
       setFase('completado');
-      onCapturada(referencia);
+      // No avanzamos automáticamente: el alumno confirma con "Continuar".
+      // Esto evita que la pantalla de éxito aparezca solo en un flash mientras
+      // el padre (StudentProfile) cambia de paso (consentimiento → dni).
     } catch (err) {
       // Errores de backend (4xx/5xx/red) o de cámara: mostrar en fase 'error'.
       // La fase NO avanza: el alumno ve el error y puede reintentar (task 11.3).
-      const msg = err instanceof Error ? err.message : String(err);
-      setErrorMsg(msg);
+      const raw = err instanceof Error ? err.message : String(err);
+      setErrorMsg(traducirErrorCaptura(raw));
       setFase('error');
     }
   }, [onCapturada, setBiometriaReferencia, setBiometricoReferenciaId]);
@@ -171,7 +207,7 @@ export function EnrollmentBiometricStep({ referenciaActual, onCapturada, esRenov
 
       {/* Estado actual (si hay referencia previa caducada o por renovar) */}
       {referenciaActual && esRenovacion && (
-        <div className="flex items-start gap-sm bg-warning-container border border-warning/30 rounded-xl p-md">
+        <div className="flex items-start gap-sm bg-warning-container border border-warning-200 rounded-xl p-md">
           <Icon name="refresh" className="text-warning text-[18px] shrink-0 mt-px" />
           <div className="text-label-sm text-on-surface">
             <p><strong>Referencia anterior:</strong> capturada el {formatearFecha(referenciaActual.fecha_captura)}.</p>
@@ -233,10 +269,10 @@ export function EnrollmentBiometricStep({ referenciaActual, onCapturada, esRenov
           </div>
         )}
 
-        {/* ── Task 8.8: Estado: completado ── */}
+        {/* ── Task 8.8: Estado: completado — requiere "Continuar" del alumno ── */}
         {fase === 'completado' && (
-          <div className="text-center space-y-sm">
-            <Icon name="verified_user" className="text-success text-[40px]" fill />
+          <div className="text-center space-y-md">
+            <Icon name="verified_user" className="text-success text-[48px]" fill />
             <p className="font-headline text-title-lg text-on-surface">¡Referencia capturada!</p>
             <p className="text-label-sm text-on-surface-variant">
               Vigencia: {BIOMETRIC_VALIDITY_MONTHS} meses desde hoy.
@@ -251,6 +287,14 @@ export function EnrollmentBiometricStep({ referenciaActual, onCapturada, esRenov
                 No pudimos procesar bien tu rostro en esta toma. Volvé a intentar la captura.
               </p>
             )}
+            <div className="pt-sm">
+              <Button
+                disabled={!referenciaPendiente}
+                onClick={() => { if (referenciaPendiente) onCapturada(referenciaPendiente); }}
+              >
+                Continuar
+              </Button>
+            </div>
           </div>
         )}
 

@@ -13,6 +13,8 @@ Depende SOLO de puertos (repos + cola). El umbral es configurable por examen (D6
 
 from __future__ import annotations
 
+import logging
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
 
 from app.domain.entities.session import EstadoSesion, Sesion
@@ -37,6 +39,21 @@ SCORE_THRESHOLD_DEFAULT = 5.0
 # Clave de sesion liberada: cadena vacia -> la ingesta rechaza eventos firmados
 # (SesionSinClaveError en application/events/ingestion.py).
 CLAVE_LIBERADA = ""
+# Tope del score consolidado: el dominio puro (``score_correlacionado``) puede
+# devolver una suma sin tope (>100 con muchos eventos criticos correlacionados),
+# pero la UI/UX y el slider de umbral institucional viven en escala 0-100. Capeamos
+# en la capa de aplicacion para que cliente y server muestren siempre el mismo numero
+# (en el cliente el harness ya capea con ``Math.min(100, ...)``). El umbral
+# institucional se compara contra el score CAPEADO, asi un examen con 247 pts crudos
+# se consolida como 100 — siempre flaggeado, sin perdida de informacion ordinal.
+SCORE_CAP = 100.0
+
+
+_log = logging.getLogger(__name__)
+
+# Provider de pesos VIVOS: devuelve (PesosScore, config_version). La config nueva
+# aplica a sesiones nuevas; la version se snapshotea en el resultado (D4).
+PesosProvider = Callable[[], Awaitable[tuple[PesosScore, int]]]
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,6 +64,9 @@ class ResultadoCierre:
     score_final: float
     decision: DecisionEncolado
     clave_liberada: bool
+    # Snapshot de la version de config usada (reproducibilidad forense, D4).
+    # None = se uso el fallback hardcodeado (config no disponible).
+    config_version: int | None = None
 
 
 class SessionFinalizationService:
@@ -60,12 +80,17 @@ class SessionFinalizationService:
         examenes: ExamRepository,
         cola: MessageQueuePort,
         pesos: PesosScore | None = None,
+        pesos_provider: PesosProvider | None = None,
     ) -> None:
         self._sesiones = sesiones
         self._eventos = eventos
         self._examenes = examenes
         self._cola = cola
         self._pesos = pesos or PesosScore()
+        # Provider de pesos vivos desde la config persistida (cierra GAP #1). Si
+        # esta presente, ``consolidar`` lo usa; el ``pesos`` hardcodeado queda como
+        # red de seguridad de degradacion (RN-GLB-03).
+        self._pesos_provider = pesos_provider
 
     async def finish(self, session_id: str) -> str:
         """Marca la sesion FINALIZADA y encola la consolidacion (no bloqueante, D5).
@@ -89,9 +114,16 @@ class SessionFinalizationService:
         eventos = await self._eventos.posteriores_a(
             session_id=session_id, last_event_id=None
         )
-        score_final = score_correlacionado(
-            [self._a_evento_score(e) for e in eventos], self._pesos
+        # Pesos VIVOS desde la config persistida (cierra GAP #1). El fallback
+        # hardcodeado es SOLO red de seguridad de degradacion (RN-GLB-03), nunca
+        # fuente normal: si se usa, se loguea la degradacion.
+        pesos, config_version = await self._resolver_pesos()
+        score_crudo = score_correlacionado(
+            [self._a_evento_score(e) for e in eventos], pesos
         )
+        # Cap a SCORE_CAP (100) para que cliente y server muestren el mismo numero.
+        # El umbral institucional vive en la misma escala 0-100.
+        score_final = min(SCORE_CAP, score_crudo)
 
         umbral = await self._umbral_de(sesion.exam_id)
         resultado = decidir_encolado(score_final, umbral=umbral)
@@ -120,7 +152,27 @@ class SessionFinalizationService:
             score_final=score_final,
             decision=resultado.decision,
             clave_liberada=True,
+            config_version=config_version,
         )
+
+    async def _resolver_pesos(self) -> tuple[PesosScore, int | None]:
+        """Pesos vivos desde la config (provider) o fallback de degradacion.
+
+        Devuelve ``(pesos, config_version)``. ``config_version=None`` cuando se cae
+        al fallback hardcodeado (config no disponible) — y se loguea la degradacion
+        (RN-GLB-03); nunca es la fuente normal."""
+        if self._pesos_provider is None:
+            return self._pesos, None
+        try:
+            pesos, version = await self._pesos_provider()
+            return pesos, version
+        except Exception:  # noqa: BLE001 — degradacion graceful, no debe romper el cierre
+            _log.warning(
+                "config de scoring no disponible; usando pesos por defecto "
+                "(degradacion RN-GLB-03)",
+                exc_info=True,
+            )
+            return self._pesos, None
 
     def _sesion_consolidada(
         self, sesion: Sesion, score_final: float, destino: EstadoSesion

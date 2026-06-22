@@ -15,9 +15,12 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { loadScoringWeights } from '../../proctoring/scoringWeights';
+import { loadEffectiveConfig, getEffectiveConfig, resetEffectiveConfigCache } from '../../config/effectiveConfigCache';
 import { useToast } from '../../ui/toast';
 import { useApp } from '../../lib/store';
+import { api } from '../../lib/api';
 import type { Severidad } from '../../lib/types';
+import { buildLegendModel, type LegendRow } from './buildLegendModel';
 
 // Visión — reutilizar sin duplicar (C-11, DD-17)
 import type { VisionEngine } from '../../vision/VisionEngine';
@@ -45,6 +48,9 @@ import {
   type MonitorPermission,
 } from './types';
 import { validateConfig, SEVERITY_ORDER } from './helpers';
+
+/** Severidades que se muestran en el log y en el filtro (baseline excluido). */
+const LOG_SEVERITY_ORDER = SEVERITY_ORDER.filter((s) => s !== 'baseline');
 import { useContextDetectors } from './useContextDetectors';
 import { buildSinkEventHandler } from './sinkEventHandler';
 import { useHarnessLifecycle } from './useHarnessLifecycle';
@@ -61,8 +67,39 @@ export function useDetectionHarness() {
   const [elapsed, setElapsed] = useState(0); // segundos desde inicio (para "Sin eventos aún")
 
   // ------ C-33: Medidor de riesgo ------
+  // c-68 task 5.3: el umbral default viene del SISTEMA (Configuración → Scoring),
+  // no de un literal local. Si el cache aún no cargó, cae a 70 (default del seed).
+  // El admin puede sobreescribirlo localmente para hacer "what-if".
   const [harnessScore, setHarnessScore] = useState(0);
-  const [riskThreshold, setRiskThreshold] = useState(60);
+  const [riskThreshold, setRiskThreshold] = useState(
+    () => getEffectiveConfig()?.umbral_cola_revision ?? 70,
+  );
+
+  // ------ c-68 task 5.3: leyenda basada en config viva de scoring ------
+  const [legendRows, setLegendRows] = useState<LegendRow[]>([]);
+  const [legendError, setLegendError] = useState(false);
+
+  // ------ Modo what-if: overrides locales de pesos por evento ------
+  // Cuando el admin edita un peso en la leyenda, queda en este mapa y reemplaza
+  // al valor del sistema SOLO para esta prueba (no persiste). El sink lee este
+  // mapa via ref para evitar recrearlo al cambiar de override.
+  const [scoringOverrides, setScoringOverrides] = useState<Record<string, number>>({});
+  const scoringOverridesRef = useRef<Record<string, number>>({});
+  useEffect(() => { scoringOverridesRef.current = scoringOverrides; }, [scoringOverrides]);
+
+  const setScoringOverride = useCallback((tipoEvento: string, peso: number) => {
+    setScoringOverrides((prev) => ({ ...prev, [tipoEvento]: peso }));
+  }, []);
+  const resetScoringOverrides = useCallback(() => {
+    setScoringOverrides({});
+  }, []);
+
+  // Detectores activos PARA ESTA PRUEBA (override local del harness). Se siembra de
+  // la config del sistema al montar; el usuario puede togglear sin tocar la config real.
+  // null = aún no sembrado → fail-open (usa la config persistida).
+  const [detectoresActivos, setDetectoresActivos] = useState<string[] | null>(null);
+  const detectoresActivosRef = useRef<string[] | null>(null);
+  useEffect(() => { detectoresActivosRef.current = detectoresActivos; }, [detectoresActivos]);
 
   // ------ C-30: Estado del motor de visión ------
   const [engineMode, setEngineMode] = useState<EngineMode>('simulated');
@@ -98,7 +135,8 @@ export function useDetectionHarness() {
   );
 
   // ------ Filtros y UI ------
-  const [severityFilter, setSeverityFilter] = useState<Set<Severidad>>(new Set(SEVERITY_ORDER));
+  // Inicializar con severidades reales (sin baseline — baseline nunca se muestra en el log)
+  const [severityFilter, setSeverityFilter] = useState<Set<Severidad>>(new Set(LOG_SEVERITY_ORDER));
   const [expandedPayloads, setExpandedPayloads] = useState<Set<string>>(new Set());
 
   // ------ Config de umbrales ------
@@ -152,10 +190,54 @@ export function useDetectionHarness() {
     return () => clearInterval(t);
   }, [harnessState]);
 
-  // ------ Cargar pesos de scoring desde la BD (admin puede haber ajustado en /admin/configuracion).
-  // No bloquea: si la API falla, pesoEvento() usa el fallback por severidad.
+  // ------ Cargar config efectiva al montar (pesos + umbrales vivos, task 5.3).
+  // Al cargarse, la config efectiva siembra también el cache de scoring weights.
+  // Si la API falla, pesoEvento() usa el fallback por severidad (degradación silenciosa).
+  // El harness sigue air-gapped para la captura — esta carga es solo para la config baseline.
   useEffect(() => {
-    void loadScoringWeights();
+    // Invalidamos el cache al montar para tomar SIEMPRE la config vigente,
+    // incluso si el admin la cambió desde otra pestaña (igual que Revisor/Perfil).
+    resetEffectiveConfigCache();
+    void loadEffectiveConfig()
+      .then(() => {
+        const cfg = getEffectiveConfig();
+        if (cfg) {
+          // Pre-popular el config del harness con los umbrales vivos del sistema.
+          const thresholds = {
+            face_absent_ms: cfg.face_absent_ms,
+            multiple_faces_frames: cfg.multiple_faces_frames,
+            gaze_deviation_threshold: cfg.gaze_deviation_threshold,
+            gaze_sustained_ms: cfg.gaze_sustained_ms,
+            gaze_fixation_tolerance: cfg.gaze_fixation_tolerance,
+          };
+          setConfig(thresholds);
+          setConfigDraft(thresholds);
+          // c-68 task 5.3: el umbral del medidor de riesgo viene del sistema.
+          setRiskThreshold(cfg.umbral_cola_revision);
+          // Siembra los detectores activos de la prueba desde la config del sistema.
+          setDetectoresActivos([...(cfg.detectores_activos ?? [])]);
+        }
+      })
+      .catch(() => void loadScoringWeights());
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ------ c-68 task 5.3: cargar la config viva de scoring para la leyenda ------
+  // Air-gapped para la CAPTURA: esto es solo lectura de config baseline.
+  // Si falla, marcamos legendError para que la UI avise (no rompe el harness).
+  useEffect(() => {
+    void api
+      .listarScoringConfig()
+      .then(({ items }) => {
+        const detectoresActivos = getEffectiveConfig()?.detectores_activos;
+        setLegendRows(buildLegendModel(items, detectoresActivos));
+        setLegendError(false);
+      })
+      .catch(() => {
+        setLegendRows([]);
+        setLegendError(true);
+      });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ------ C-25: Detectores de contexto reales (estado + refs + efectos en sub-hook) ------
@@ -202,6 +284,8 @@ export function useDetectionHarness() {
     setLogEntries,
     setLogTruncated,
     setEventosEnviados,
+    scoringOverridesRef,
+    detectoresActivosRef,
   });
 
   // ------ Lifecycle: start/stop + cleanup de desmontaje (sub-hook) ------
@@ -301,7 +385,7 @@ export function useDetectionHarness() {
   }, []);
 
   const showAllSeverities = useCallback(() => {
-    setSeverityFilter(new Set(SEVERITY_ORDER));
+    setSeverityFilter(new Set(LOG_SEVERITY_ORDER));
   }, []);
 
   // ------ Exportar log (task 8.2) ------
@@ -325,9 +409,11 @@ export function useDetectionHarness() {
     URL.revokeObjectURL(url);
   }, [logEntries, sessionStart, config, toast]);
 
-  // ------ Entries filtradas ------
-  const filteredEntries = logEntries.filter((e) => severityFilter.has(e.event.severidad as Severidad));
-  const isFilterActive = severityFilter.size !== SEVERITY_ORDER.length;
+  // ------ Entries filtradas — excluye baseline + aplica filtro de severidad ------
+  const filteredEntries = logEntries
+    .filter((e) => e.event.severidad !== 'baseline')
+    .filter((e) => severityFilter.has(e.event.severidad as Severidad));
+  const isFilterActive = severityFilter.size !== LOG_SEVERITY_ORDER.length;
 
   // ------ Estado del panel de propósito (task 4.4) ------
   const [propositoPanelOpen, setPropositoPanelOpen] = useState(false);
@@ -381,6 +467,16 @@ export function useDetectionHarness() {
     setHarnessScore,
     riskThreshold,
     setRiskThreshold,
+    // c-68: leyenda viva
+    legendRows,
+    legendError,
+    // what-if: overrides locales de pesos
+    scoringOverrides,
+    setScoringOverride,
+    resetScoringOverrides,
+    // detectores activos para esta prueba (override local, sembrado de la config)
+    detectoresActivos,
+    setDetectoresActivos,
     // store
     anomaliasVivo,
     // panel propósito

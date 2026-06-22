@@ -5,6 +5,7 @@ import { Icon, Button, Card } from '../ui/components';
 import { useNavigate } from '../lib/router';
 import { useApp } from '../lib/store';
 import { api } from '../lib/api';
+import { loadEffectiveConfig, getEffectiveConfig, resetEffectiveConfigCache } from '../config/effectiveConfigCache';
 import { Term } from '../ui/Term';
 
 export default function Cierre() {
@@ -19,6 +20,19 @@ export default function Cierre() {
   // Fallback: "—" si el GET falla o proctoringSessionId es null.
   const [totalEventos, setTotalEventos] = useState<number | null>(null);
   const [scoreBackend, setScoreBackend] = useState<number | null>(null);
+  // Umbral de revisión: SIEMPRE de la config efectiva del sistema (no un literal).
+  // Así la pantalla de cierre es coherente con la Cola de revisión.
+  const [umbralRevision, setUmbralRevision] = useState<number | null>(null);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        resetEffectiveConfigCache();
+        await loadEffectiveConfig();
+        setUmbralRevision(getEffectiveConfig()?.umbral_cola_revision ?? null);
+      } catch { /* sin red: cae al fallback del examen */ }
+    })();
+  }, []);
 
   useEffect(() => {
     if (!proctoringSessionId) return;
@@ -39,7 +53,8 @@ export default function Cierre() {
     })();
   }, [proctoringSessionId]);
 
-  const irARevision = (scoreBackend ?? score) >= (examen?.umbral_score ?? 70);
+  const umbralEfectivo = umbralRevision ?? examen?.umbral_score ?? 70;
+  const irARevision = (scoreBackend ?? score) >= umbralEfectivo;
 
   const volver = () => { resetSesion(); navigate('/login'); };
 
@@ -52,7 +67,7 @@ export default function Cierre() {
         <div className="space-y-base">
           <h2 className="font-headline text-headline-lg text-on-surface">¡Examen finalizado!</h2>
           <p className="text-body-md text-on-surface-variant">
-            Tu sesión se cerró con <Term termKey="cadena_de_custodia">cadena de custodia criptográfica</Term> server-side. La consolidación del score corre de forma asíncrona.
+            Tu sesión se cerró de forma segura, con <Term termKey="cadena_de_custodia">cadena de custodia criptográfica</Term>.
           </p>
         </div>
 
@@ -65,7 +80,7 @@ export default function Cierre() {
             label="Señales registradas"
             value={
               <span className="font-semibold">
-                {totalEventos !== null ? totalEventos : anomalias.length}
+                {Math.max(anomalias.length, totalEventos ?? 0)}
               </span>
             }
           />
@@ -73,27 +88,22 @@ export default function Cierre() {
             label="Score de prioridad"
             value={
               <span className="font-semibold">
-                {scoreBackend !== null ? scoreBackend : score}%
+                {scoreBackend !== null ? scoreBackend : score} <span className="text-on-surface-variant font-normal">pts</span>
               </span>
             }
           />
         </Card>
 
-        <Card className={`text-left ${irARevision ? 'bg-warning-container/40 border-warning/30' : 'bg-success-container/40 border-success/30'}`}>
+        <Card className={`text-left ${irARevision ? 'bg-warning-container/40 border-warning-200' : 'bg-success-container/40 border-success/30'}`}>
           <div className="flex items-start gap-sm">
             <Icon name={irARevision ? 'gavel' : 'verified_user'} className={irARevision ? 'text-warning' : 'text-success'} fill />
             <p className="text-label-md text-on-surface">
               {irARevision
-                ? <>Tu sesión superó el umbral ({examen?.umbral_score}%) y entra a la cola de revisión académica. Recordá: el sistema no sanciona — la decisión es siempre humana.</>
-
+                ? <>Tu sesión alcanzó o superó el umbral establecido ({umbralEfectivo} puntos) y entra a la cola de revisión académica.</>
                 : 'Tu sesión no presenta incidencias relevantes. No se requiere revisión adicional.'}
             </p>
           </div>
         </Card>
-
-        <p className="text-label-sm text-on-surface-variant px-md leading-relaxed">
-          Tus datos biométricos se eliminan automáticamente a los 30 días del egreso, salvo que haya una apelación o proceso disciplinario abierto.
-        </p>
 
         <Button variant="outline" icon="home" onClick={volver} className="mx-auto">Volver al inicio</Button>
       </div>

@@ -24,7 +24,7 @@ export default function VisionSignalsPanel({
   return (
     <Card className="space-y-md">
       <div className="flex items-start justify-between gap-sm flex-wrap">
-        <SectionTitle sub={engineMode === 'real-active' ? 'Valores reales del motor MediaPipe' : 'Iniciá la cámara para ver valores reales'}>
+        <SectionTitle sub={engineMode === 'real-active' ? 'Valores en vivo de lo que ve la cámara' : 'Iniciá la cámara para ver valores en vivo'}>
           Señales de visión
         </SectionTitle>
         {/* C-30: badge REAL / SIM */}
@@ -110,7 +110,7 @@ export default function VisionSignalsPanel({
 
           {/* ---- Accordion de datos técnicos crudos (DD-29-02, tasks 5.5–5.7) ---- */}
           <details open={harnessState === 'running' && rawSignals.faceDetection.face_count !== 1 ? true : undefined}>
-            <summary className="cursor-pointer select-none text-label-sm text-on-surface-variant hover:text-primary flex items-center gap-base py-base">
+            <summary className="cursor-pointer select-none text-label-sm text-on-surface-variant hover:text-on-surface flex items-center gap-base py-base">
               <Icon name="expand_more" className="text-[16px]" />
               Ver detalle técnico (coordenadas)
             </summary>

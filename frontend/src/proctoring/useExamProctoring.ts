@@ -40,7 +40,9 @@ import type { VisionEngine } from '../vision/VisionEngine';
 import { loadRealEngine, disposeRealEngine } from '../vision/harnessEngineLoader';
 import { VisionPipeline, type EventSink } from './visionPipeline';
 import { StateTransitionRules, DEFAULT_CONFIG } from './stateTransitionRules';
-import { loadScoringWeights, pesoEvento } from './scoringWeights';
+import { loadScoringWeights, pesoEvento, severidadEvento } from './scoringWeights';
+import { loadEffectiveConfig, getEffectiveConfig } from '../config/effectiveConfigCache';
+import { detectorActivo } from './detectorActivo';
 import {
   FocusDetector,
   FullscreenDetector,
@@ -150,10 +152,23 @@ export function useExamProctoring(
   // ------ Callback de cada evento discreto (ref estable, lee estado fresco) ------
   const handleEvent = useRef<EventSink['sendEvent']>(async () => {});
   handleEvent.current = async (rawEvent) => {
+    // Respetar detectores_activos de la config efectiva (FIX C-68):
+    // si el detector no está activo, descartar el evento completamente — sin score,
+    // sin log, sin envío al backend. Fail-open: si la config no cargó (undefined),
+    // no suprimimos nada (el examen sigue funcionando).
+    if (!detectorActivo(rawEvent.tipo, getEffectiveConfig()?.detectores_activos)) {
+      return;
+    }
+
+    // Severidad VIGENTE del tipo (config viva del backend). Si la config no cargó,
+    // cae a la del catalogo del cliente. Misma fuente que el peso → score y severidad
+    // mostrada quedan consistentes con lo que el admin configuró.
+    const sev = severidadEvento(rawEvent.tipo, rawEvent.severidad as Severidad);
+
     // Acumular score en el store global (scorePropio, L2.5 — prioriza, no sanciona).
     // El peso por tipo se resuelve dinamicamente desde la BD (cache poblada en mount);
     // si la API fallo, pesoEvento() vuelve al fallback por severidad.
-    const peso = pesoEvento(rawEvent.tipo, rawEvent.severidad as Severidad);
+    const peso = pesoEvento(rawEvent.tipo, sev);
     addScore(peso);
     setScore((prev) => Math.min(100, prev + peso));
     setEventCount((c) => c + 1);
@@ -162,7 +177,7 @@ export function useExamProctoring(
     const ev: EventoSesion = {
       id: rawEvent.id,
       tipo: rawEvent.tipo as TipoEvento,
-      severidad: rawEvent.severidad as Severidad,
+      severidad: sev,
       ts_backend: new Date().toISOString(),
       descripcion: descripcionEvento(rawEvent.tipo as TipoEvento),
       tiene_evidencia: !!rawEvent.payload?.['trigger_evidence'],
@@ -208,7 +223,7 @@ export function useExamProctoring(
       screenshot_sha256_cliente?: string;
     } = {
       tipo: rawEvent.tipo,
-      severidad: rawEvent.severidad,
+      severidad: sev,
       ts_cliente: new Date().toISOString(),
       payload: rawEvent.payload,
       screenshot_base64: screenshot,
@@ -248,22 +263,31 @@ export function useExamProctoring(
     }
     pipelineRef.current = null;
     engineRef.current = null;
+    // Finalizar la sesión en el backend al detener el examen: la marca como
+    // finalizada (sale de "Supervisión en vivo", entra a Grabadas y, si supera el
+    // umbral, a la Cola de revisión). Fire-and-forget + idempotente (el Cierre lo
+    // reintenta). CRÍTICO: NO limpiamos proctoringSessionId del store acá — el Cierre
+    // lo necesita para leer el detalle (conteos/score). resetSesion() lo limpia al
+    // "Volver al inicio". Antes se nulificaba acá y la sesión nunca se finalizaba.
+    const sid = sessionIdRef.current;
+    if (sid) void api.finalizarSesionProctoring(sid).catch(() => {});
     sessionIdRef.current = null;
     sessionPromiseRef.current = null;
-    setProctoringSessionId(null);
     setActivo(false);
     // Liberar el motor WASM/GPU (singleton de módulo).
     void disposeRealEngine().catch(() => {});
-  }, [setProctoringSessionId]);
+  }, []);
 
   // ------ Arranque del proctoring (una vez por montaje) ------
   useEffect(() => {
     stoppedRef.current = false;
     let cancelled = false;
 
-    // --- Cargar pesos de scoring desde la BD (admin los puede haber ajustado en /admin/configuracion).
-    // No bloquea: si la API falla, pesoEvento() recurre al fallback por severidad.
-    void loadScoringWeights();
+    // --- Cargar config efectiva desde el backend (pesos + umbrales vivos).
+    // Primero cargamos la config efectiva completa (tarea 5.1/5.2); si falla,
+    // pesoEvento() recurre al fallback por severidad (degradación silenciosa).
+    // loadScoringWeights() sigue como fallback si loadEffectiveConfig falla.
+    void loadEffectiveConfig().catch(() => void loadScoringWeights());
 
     // --- Inicializar buffer IndexedDB (R3: degradación silenciosa si no está disponible) ---
     try {
@@ -390,10 +414,21 @@ export function useExamProctoring(
       const sink: EventSink = {
         sendEvent: (args) => handleEvent.current(args),
       };
+      // Usa la config efectiva si ya fue cargada; si no, DEFAULT_CONFIG como fallback.
+      const efectiva = getEffectiveConfig();
+      const thresholds = efectiva
+        ? {
+            face_absent_ms: efectiva.face_absent_ms,
+            multiple_faces_frames: efectiva.multiple_faces_frames,
+            gaze_deviation_threshold: efectiva.gaze_deviation_threshold,
+            gaze_sustained_ms: efectiva.gaze_sustained_ms,
+            gaze_fixation_tolerance: efectiva.gaze_fixation_tolerance,
+          }
+        : { ...DEFAULT_CONFIG };
       pipelineRef.current = new VisionPipeline({
         engine,
         sink,
-        rules: new StateTransitionRules({ ...DEFAULT_CONFIG }),
+        rules: new StateTransitionRules(thresholds),
       });
       setActivo(true);
 

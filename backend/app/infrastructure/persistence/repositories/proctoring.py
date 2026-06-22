@@ -11,7 +11,7 @@ El score solo prioriza la cola de revision humana (D5).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from sqlalchemy import func, select
@@ -24,6 +24,14 @@ from app.infrastructure.persistence.models.proctoring import (
     ProctoringSessionModel,
 )
 
+# Una sesion "en vivo" sin actividad por mas de este lapso se considera
+# abandonada y se auto-finaliza al primer listado (ver listar_sesiones). Asi la
+# supervision en vivo deja de mostrarla y queda solo en "Sesiones grabadas".
+# Para evitar cerrar sesiones legitimas que solo estan calmas (sin eventos), el
+# umbral se mide contra el ultimo evento o, en ausencia de eventos, contra la
+# creacion. 15 min cubre lapsos de calma normales en un examen.
+IDLE_TIMEOUT_MIN = 15
+
 
 @dataclass
 class SesionResumenData:
@@ -31,12 +39,14 @@ class SesionResumenData:
 
     id: str
     modo: str
+    exam_id: str | None
     etiqueta: str | None
     creada_en: Any
     finalizada_en: Any
     total_eventos: int
     total_discrepancias: int
     score: int
+    ultimo_evento_en: Any
 
 
 class ProctoringRepository:
@@ -147,16 +157,57 @@ class ProctoringRepository:
             peso = pesos.get(row.severidad, 0)
             score_por_sesion[sid] = score_por_sesion.get(sid, 0) + peso * row.cnt
 
+        # Ultimo evento por sesion (max ts_backend). Permite (a) diferenciar
+        # actividad reciente de calma en la UI y (b) auto-finalizar sesiones
+        # abandonadas. Sin eventos, cae a creada_en al armar el DTO.
+        last_stmt = (
+            select(
+                ProctoringEventModel.session_id,
+                func.max(ProctoringEventModel.ts_backend).label("ultimo"),
+            )
+            .where(ProctoringEventModel.session_id.in_(session_ids))
+            .group_by(ProctoringEventModel.session_id)
+        )
+        last_result = await self._db.execute(last_stmt)
+        ultimo_por_sesion: dict[str, datetime] = {
+            row.session_id: row.ultimo for row in last_result
+        }
+
+        # Auto-finalizar las que llevan IDLE_TIMEOUT_MIN sin actividad: la UI en
+        # vivo solo debe mostrar sesiones realmente activas (decision UX). La
+        # idempotencia la garantiza el guard `finalizada_en is None`.
+        now_utc = datetime.now(tz=timezone.utc)
+        cutoff = now_utc - timedelta(minutes=IDLE_TIMEOUT_MIN)
+        cambios = False
+        for s in sesiones:
+            if s.finalizada_en is not None:
+                continue
+            actividad = ultimo_por_sesion.get(s.id) or s.creada_en
+            if actividad is None:
+                continue
+            # Aseguramos timezone-aware antes de comparar (SQLite/PG pueden
+            # devolver naive en algunos drivers).
+            if actividad.tzinfo is None:
+                actividad = actividad.replace(tzinfo=timezone.utc)
+            if actividad < cutoff:
+                s.finalizada_en = actividad
+                cambios = True
+        if cambios:
+            await self._db.commit()
+
         return [
             SesionResumenData(
                 id=s.id,
                 modo=s.modo,
+                exam_id=s.exam_id,
                 etiqueta=s.etiqueta,
                 creada_en=s.creada_en,
                 finalizada_en=s.finalizada_en,
                 total_eventos=total_por_sesion.get(s.id, 0),
                 total_discrepancias=disc_por_sesion.get(s.id, 0),
-                score=score_por_sesion.get(s.id, 0),
+                # Cap a 100 (igual que el detalle y el cliente): el score es 0..100.
+                score=min(100, score_por_sesion.get(s.id, 0)),
+                ultimo_evento_en=ultimo_por_sesion.get(s.id) or s.creada_en,
             )
             for s in sesiones
         ]
@@ -235,7 +286,20 @@ class ProctoringRepository:
         resultado: str,
         embedding: str | None = None,
     ) -> ProctoringBiometriaModel:
-        """Persiste el resultado biometrico de una sesion."""
+        """Persiste el resultado biometrico de una sesion (UPSERT: el último gana).
+
+        Si el alumno falló un intento y reintentó con éxito, vale el resultado MÁS
+        RECIENTE. Antes se insertaba siempre una fila nueva y la relación one-to-one
+        devolvía la primera (la fallada) — por eso quedaba el resultado viejo.
+        """
+        previas = await self._db.execute(
+            select(ProctoringBiometriaModel).where(
+                ProctoringBiometriaModel.session_id == session_id
+            )
+        )
+        for prev in previas.scalars().all():
+            await self._db.delete(prev)
+
         bio = ProctoringBiometriaModel(
             session_id=session_id,
             liveness_ok=liveness_ok,

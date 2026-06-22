@@ -36,6 +36,13 @@
   .ms-fill {
     font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
   }
+  /* En conexiones lentas (túnel cloudflared), el `display=block` del CSS de Google
+     Fonts caduca tras ~3s y deja "leaks" del nombre del ligature ("verification",
+     "home", etc.). main.tsx marca `<html>` con `ms-ready` cuando `document.fonts`
+     confirmó la carga; mientras tanto, el texto del ligature queda invisible. */
+  html:not(.ms-ready) .material-symbols-outlined {
+    visibility: hidden;
+  }
 }
 
 @layer components {
@@ -54,6 +61,47 @@
   .input:focus {
     @apply border-primary-container;
   }
+}
+
+/* ----- slider moderno (range) — track via inline gradient, thumb estilado ----- */
+.ae-slider {
+  height: 8px;
+  border-radius: 9999px;
+}
+.ae-slider:focus-visible {
+  outline: 2px solid #3b82f6; /* primary-container */
+  outline-offset: 4px;
+}
+.ae-slider::-webkit-slider-runnable-track {
+  height: 8px;
+  border-radius: 9999px;
+}
+.ae-slider::-moz-range-track {
+  height: 8px;
+  border-radius: 9999px;
+}
+.ae-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  margin-top: -6px; /* centra el thumb de 20px sobre el track de 8px */
+  width: 20px;
+  height: 20px;
+  border-radius: 9999px;
+  background: #ffffff;
+  border: 3px solid #2563eb; /* primary */
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+  cursor: pointer;
+  transition: transform 0.12s ease;
+}
+.ae-slider::-webkit-slider-thumb:hover { transform: scale(1.12); }
+.ae-slider::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 9999px;
+  background: #ffffff;
+  border: 3px solid #2563eb; /* primary */
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+  cursor: pointer;
 }
 
 /* ----- inputs numéricos sin spinners (más profesional) ----- */

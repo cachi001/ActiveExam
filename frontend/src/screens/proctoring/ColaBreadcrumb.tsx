@@ -39,7 +39,7 @@ function Segmento({
     <button
       type="button"
       onClick={onClick}
-      className="text-label-md text-primary hover:underline focus:outline-none
+      className="text-label-md text-on-surface-variant hover:text-on-surface hover:underline focus:outline-none
         focus-visible:ring-2 focus-visible:ring-primary/40 rounded truncate max-w-[12rem]"
     >
       {texto}

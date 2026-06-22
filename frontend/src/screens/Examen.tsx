@@ -3,9 +3,22 @@ import { StudentShell } from '../ui/shells';
 import { Icon, Button, Card, SeverityBadge } from '../ui/components';
 import { useNavigate } from '../lib/router';
 import { useApp } from '../lib/store';
-import { TIPO_EVENTO_LABEL } from '../lib/api';
+import { TIPO_EVENTO_LABEL, SEVERIDAD_LABEL } from '../lib/api';
 import { useExamProctoring } from '../proctoring/useExamProctoring';
-import type { EventoSesion } from '../lib/types';
+import { pesoEvento } from '../proctoring/scoringWeights';
+import { getEffectiveConfig } from '../config/effectiveConfigCache';
+import { useToast, type ToastTipo } from '../ui/toast';
+import type { EventoSesion, Severidad } from '../lib/types';
+
+// Severidad del evento -> tipo (y color) del toast de alerta en pantalla.
+// baja=info(azul), media=warning(ámbar), alta/crítica=error(rojo) — mismo código
+// de color que la card del evento y el SeverityBadge.
+const SEV_TOAST: Record<string, ToastTipo> = {
+  baja: 'info',
+  media: 'warning',
+  alta: 'error',
+  critica: 'error',
+};
 
 const PREGUNTA = {
   numero: 'Pregunta 1 de 5',
@@ -23,7 +36,7 @@ const PREGUNTA = {
 const SEV_CARD: Record<string, string> = {
   critica: 'bg-error-container border-error/40',
   alta: 'bg-error-container border-error/40',
-  media: 'bg-warning-container border-warning/40',
+  media: 'bg-warning-container border-warning-200',
   baja: 'bg-blue-50 border-blue-200',
 };
 const SEV_ICON: Record<string, { name: string; cls: string }> = {
@@ -51,6 +64,7 @@ export default function Examen() {
   // Proctoring REAL de fondo: motor MediaPipe + detectores de contexto + streaming
   // al backend (sesión modo:'examen'). Expone score/eventos/eventCount y detener().
   const { score, eventCount, activo, eventos, extraMonitorActive, detener } = useExamProctoring(videoRef, examen);
+  const toast = useToast();
 
   // cámara (preview en línea; el hook de proctoring consume este mismo <video>)
   useEffect(() => {
@@ -81,6 +95,27 @@ export default function Examen() {
       setAlerta(critico);
     }
   }, [eventos]);
+
+  // Toast por CADA evento registrado, del color de su severidad — para que el
+  // alumno vea en vivo qué se detectó y cuánto suma (transparencia, "controlado").
+  // `eventos` viene newest-first; recorremos al revés para notificar en orden
+  // cronológico. Trackeamos ids ya notificados para no repetir en cada render.
+  const toastedIds = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    for (let i = eventos.length - 1; i >= 0; i--) {
+      const ev = eventos[i];
+      if (toastedIds.current.has(ev.id)) continue;
+      toastedIds.current.add(ev.id);
+      const sev = ev.severidad as Severidad;
+      const tipoToast = SEV_TOAST[sev] ?? 'info';
+      const puntos = pesoEvento(ev.tipo, sev);
+      const label = TIPO_EVENTO_LABEL[ev.tipo as keyof typeof TIPO_EVENTO_LABEL] ?? ev.tipo;
+      toast.show({
+        tipo: tipoToast,
+        msg: `${label} · ${SEVERIDAD_LABEL[sev] ?? sev} · +${puntos} pts`,
+      });
+    }
+  }, [eventos, toast]);
 
   // Cierre prolijo: cortar el proctoring antes de navegar (eventos ya persistidos).
   const finalizar = () => {
@@ -147,9 +182,27 @@ export default function Examen() {
           </Card>
 
           <Card className="space-y-sm">
-            <div className="flex items-center justify-between border-b border-outline-variant/40 pb-base">
+            <div className="border-b border-outline-variant/40 pb-md space-y-sm">
               <h3 className="text-label-md font-bold text-on-surface">Señales de integridad (en vivo)</h3>
-              <span className="text-label-sm text-on-surface-variant">Riesgo {score}%</span>
+              {(() => {
+                const umbral = getEffectiveConfig()?.umbral_cola_revision ?? examen?.umbral_score ?? 70;
+                const enRiesgo = score >= umbral;
+                return (
+                  <>
+                    <div className="flex items-baseline gap-sm">
+                      <span className={`text-[32px] font-bold leading-none ${enRiesgo ? 'text-error' : 'text-on-surface'}`}>
+                        {score}
+                      </span>
+                      <span className="text-label-md text-on-surface-variant">pts de riesgo</span>
+                    </div>
+                    <p className={`text-label-sm ${enRiesgo ? 'text-error font-semibold' : 'text-on-surface-variant'}`}>
+                      {enRiesgo
+                        ? `Alcanzaste ${umbral} pts: tu sesión va a revisión de un docente.`
+                        : `Desde ${umbral} puntos tu sesión pasa a revisión de un docente.`}
+                    </p>
+                  </>
+                );
+              })()}
             </div>
             <div className="space-y-base max-h-[220px] overflow-y-auto">
               {eventos.length === 0 ? (
@@ -160,13 +213,17 @@ export default function Examen() {
               ) : eventos.map((ev) => {
                 const card = SEV_CARD[ev.severidad] ?? SEV_CARD.baja;
                 const ic = SEV_ICON[ev.severidad] ?? SEV_ICON.baja;
+                const puntosEv = pesoEvento(ev.tipo, ev.severidad as Severidad);
                 return (
                   <div key={ev.id} className={`flex gap-sm p-sm rounded-xl border ${card}`}>
                     <Icon name={ic.name} className={`${ic.cls} shrink-0 text-[18px]`} fill />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-base">
                         <span className="text-label-md font-semibold text-on-surface">{TIPO_EVENTO_LABEL[ev.tipo]}</span>
-                        <SeverityBadge severidad={ev.severidad} />
+                        <div className="flex items-center gap-base shrink-0">
+                          <span className="text-label-sm font-bold font-mono text-on-surface">+{puntosEv} pts</span>
+                          <SeverityBadge severidad={ev.severidad} />
+                        </div>
                       </div>
                       <p className="text-label-sm text-on-surface-variant mt-base">{ev.descripcion}</p>
                     </div>

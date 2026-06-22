@@ -7,7 +7,7 @@
  */
 import type { SesionProctoringResumen } from '../../lib/types';
 import { StatCard } from './StatCard';
-import { nivelRiesgo, SCORE_UMBRAL_ALTO } from './helpers';
+import { nivelRiesgo } from './helpers';
 
 export function ResumenVivo({ sesiones }: { sesiones: SesionProctoringResumen[] }) {
   const activas = sesiones.length;
@@ -24,11 +24,11 @@ export function ResumenVivo({ sesiones }: { sesiones: SesionProctoringResumen[] 
         icon="rule"
         label="Discrepancias"
         value={totalDiscrepancias}
-        tono={totalDiscrepancias > 0 ? 'warning' : 'neutral'}
+        tono={totalDiscrepancias > 0 ? 'warning' : 'success'}
       />
       <StatCard
         icon="priority_high"
-        label={`Riesgo alto (≥${SCORE_UMBRAL_ALTO})`}
+        label="Riesgo alto"
         value={riesgoAlto}
         tono={riesgoAlto > 0 ? 'error' : 'success'}
       />

@@ -62,7 +62,7 @@ export function DetalleHeader({ detalle }: { detalle: SesionProctoringDetalle })
           sub={NIVEL_LABEL[nivel]}
           tono={nivel === 'alto' ? 'error' : nivel === 'medio' ? 'warning' : 'success'}
         />
-        <StatCard icon="notifications" label="Eventos" value={totalEventos} tono="neutral" />
+        <StatCard icon="notifications" label="Eventos" value={totalEventos} tono="info" />
         <StatCard
           icon="rule"
           label="Discrepancias"
@@ -76,7 +76,7 @@ export function DetalleHeader({ detalle }: { detalle: SesionProctoringDetalle })
         <div className="flex items-center justify-between">
           <span className="text-label-sm text-on-surface-variant">Score acumulado de priorización</span>
           <span className={`font-headline text-title-lg font-bold ${scoreTextColor(detalle.score)}`}>
-            {detalle.score}%
+            {detalle.score} <span className="text-label-sm font-semibold text-on-surface-variant">pts</span>
           </span>
         </div>
         <div className="bg-surface-container-high rounded-full h-2.5 overflow-hidden">

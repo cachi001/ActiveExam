@@ -27,6 +27,30 @@ from app.presentation.api.v1.proctoring.sessions.schemas import (
 )
 
 
+async def _pesos_vivos_por_tipo(db: AsyncSession) -> dict[str, int] | None:
+    """Lee los pesos vivos por tipo de evento desde evento_score_config (activos).
+
+    Devuelve None si la tabla no esta disponible (degradacion graceful, RN-GLB-03):
+    en ese caso calcular_score cae al fallback por severidad. Cierra GAP #1
+    (consumo server-side de la config, no constantes hardcodeadas)."""
+    from sqlalchemy import select
+
+    from app.infrastructure.persistence.models.transactional import (
+        EventoScoreConfigModel,
+    )
+
+    try:
+        result = await db.execute(
+            select(
+                EventoScoreConfigModel.tipo_evento,
+                EventoScoreConfigModel.peso,
+            ).where(EventoScoreConfigModel.activo.is_(True))
+        )
+        return {row.tipo_evento: row.peso for row in result.all()}
+    except Exception:  # noqa: BLE001 — degradacion: sin config, fallback por severidad
+        return None
+
+
 def create_sessions_router(get_db) -> APIRouter:
     """Factory del router de sesiones. Recibe la dependencia de DB inyectada."""
     router = APIRouter()
@@ -64,9 +88,11 @@ def create_sessions_router(get_db) -> APIRouter:
             SesionResumen(
                 id=s.id,
                 modo=s.modo,
+                exam_id=s.exam_id,
                 etiqueta=s.etiqueta,
                 creada_en=s.creada_en,
                 finalizada_en=s.finalizada_en,
+                ultimo_evento_en=s.ultimo_evento_en,
                 total_eventos=s.total_eventos,
                 total_discrepancias=s.total_discrepancias,
                 score=s.score,
@@ -91,7 +117,12 @@ def create_sessions_router(get_db) -> APIRouter:
                 detail=f"Sesion {session_id!r} no encontrada",
             )
 
-        score = calcular_score(sesion.eventos)
+        # Pesos VIVOS por tipo de evento desde la config persistida
+        # (evento_score_config). Si la config no esta disponible, calcular_score
+        # cae al fallback por severidad (degradacion graceful, RN-GLB-03). L2.5:
+        # el score solo prioriza la revision humana.
+        pesos_por_tipo = await _pesos_vivos_por_tipo(db)
+        score = calcular_score(sesion.eventos, pesos_por_tipo=pesos_por_tipo)
 
         eventos = [
             EventoDetalle(

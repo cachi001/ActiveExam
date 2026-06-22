@@ -41,6 +41,11 @@ class UserDsrRepository(Protocol):
 
     async def delete_fotos(self, usuario_id: str) -> int: ...
 
+    async def delete_consent_perfil(self, usuario_id: str) -> int:
+        """Purga el consentimiento de perfil del usuario (eliminacion al egreso,
+        Ley 25.326). Devuelve filas borradas. Degrada a 0 si la tabla no existe."""
+        ...
+
     async def anonymize_user(self, usuario_id: str) -> None:
         """Anonimiza el usuario (sustituye PII por seudonimo irreversible).
 

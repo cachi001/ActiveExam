@@ -47,6 +47,8 @@ export interface CaptureOverlayProps {
   tonoOvalo: OvalTono;
   /** Hint de encuadre vigente — null si todo está OK. */
   framingHint: FramingHint | null;
+  /** Pista de gesto estancado (mostrada cuando el reto no progresa). */
+  stallTip: string | null;
 }
 
 export const CaptureOverlay = forwardRef<HTMLDivElement, CaptureOverlayProps>(
@@ -72,6 +74,7 @@ export const CaptureOverlay = forwardRef<HTMLDivElement, CaptureOverlayProps>(
       progreso,
       tonoOvalo,
       framingHint,
+      stallTip,
     } = props;
 
     return (
@@ -125,6 +128,7 @@ export const CaptureOverlay = forwardRef<HTMLDivElement, CaptureOverlayProps>(
             cooldownActivo={cooldownActivo}
             retoRecienResueltoLabel={retoRecienResueltoLabel}
             framingHint={framingHint}
+            stallTip={stallTip}
           />
         )}
       </div>

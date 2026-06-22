@@ -9,14 +9,32 @@ correlacion (coincidentes > suma de partes); decision de encolado por umbral
 from __future__ import annotations
 
 from app.domain.scoring.risk_score import (
+    SEVERITY_RANGES,
     DecisionEncolado,
     EventoScore,
     PesosScore,
     decidir_encolado,
+    peso_dentro_de_rango,
     peso_evento,
     score_correlacionado,
     score_incremental,
 )
+
+
+def test_peso_por_tipo_tiene_prioridad_sobre_severidad() -> None:
+    """Si ``PesosScore.por_tipo`` mapea el tipo del evento, ese peso prevalece sobre
+    el peso por severidad (config-driven-scoring v2). La severidad sigue siendo
+    fallback si el tipo no esta mapeado."""
+    pesos = PesosScore(
+        severidad={"alta": 3.0, "media": 1.0},
+        por_tipo={"mirada_desviada_sostenida": 50.0},
+    )
+    # Tipo presente en por_tipo: usa 50.0 aunque la severidad diga 'alta' (3.0).
+    ev_mapeado = EventoScore(tipo="mirada_desviada_sostenida", severidad="alta", ts_ms=0)
+    assert peso_evento(ev_mapeado, pesos) == 50.0
+    # Tipo NO presente en por_tipo: cae al peso por severidad.
+    ev_no_mapeado = EventoScore(tipo="otro_tipo", severidad="alta", ts_ms=0)
+    assert peso_evento(ev_no_mapeado, pesos) == 3.0
 
 
 def test_severidad_modula_el_peso() -> None:
@@ -85,6 +103,37 @@ def test_umbral_es_configurable() -> None:
     # El mismo score decide distinto segun el umbral institucional (RN-SC-05).
     assert decidir_encolado(4.0, umbral=3.0).decision is DecisionEncolado.FLAGGEADA
     assert decidir_encolado(4.0, umbral=10.0).decision is DecisionEncolado.ARCHIVADA
+
+
+def test_severity_ranges_son_disjuntos_y_contiguos() -> None:
+    """Los rangos por severidad cubren 1..100 sin huecos ni solapes."""
+    # Esperado: baja [1-10], media [11-30], alta [31-60], critica [61-100].
+    rangos_ordenados = [SEVERITY_RANGES[s] for s in ("baja", "media", "alta", "critica")]
+    # No solapes / no huecos: cada rango empieza en max_anterior + 1.
+    for (min_a, max_a), (min_b, _max_b) in zip(rangos_ordenados, rangos_ordenados[1:]):
+        assert min_b == max_a + 1, f"Hueco/solape entre rangos: {max_a} → {min_b}"
+    # Cubren toda la escala 1..100.
+    assert rangos_ordenados[0][0] == 1
+    assert rangos_ordenados[-1][1] == 100
+
+
+def test_peso_dentro_de_rango_acepta_extremos_y_rechaza_fuera() -> None:
+    # baja [1-10]
+    assert peso_dentro_de_rango(1, "baja")
+    assert peso_dentro_de_rango(10, "baja")
+    assert not peso_dentro_de_rango(0, "baja")
+    assert not peso_dentro_de_rango(11, "baja")
+    # critica [61-100]
+    assert peso_dentro_de_rango(61, "critica")
+    assert peso_dentro_de_rango(100, "critica")
+    assert not peso_dentro_de_rango(60, "critica")
+    assert not peso_dentro_de_rango(101, "critica")
+
+
+def test_peso_dentro_de_rango_rechaza_severidad_no_configurable() -> None:
+    """baseline no es configurable por evento (es el piso 0 del score)."""
+    assert not peso_dentro_de_rango(0, "baseline")
+    assert not peso_dentro_de_rango(50, "desconocida")
 
 
 def test_score_nunca_emite_veredicto_solo_prioridad() -> None:

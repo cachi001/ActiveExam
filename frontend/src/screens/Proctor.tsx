@@ -22,6 +22,7 @@ import { useToast } from '../ui/toast';
 import { useNavigate } from '../lib/router';
 import { useApp } from '../lib/store';
 import { api } from '../lib/api';
+import { loadEffectiveConfig } from '../config/effectiveConfigCache';
 import type { SesionProctoringResumen } from '../lib/types';
 import { SesionVivoCard } from './proctoring/SesionVivoCard';
 import { ExamenVivoGroup } from './proctoring/ExamenVivoGroup';
@@ -83,7 +84,11 @@ export default function Proctor() {
 
   // Polling con cleanup: una sola carga inicial + un único intervalo que se
   // limpia en el unmount (sin acumular timers entre renders).
+  // Antes del primer refresh, sembramos la config efectiva (umbral_cola_revision)
+  // para que el "Riesgo alto (≥X)" refleje lo que el admin configuró y no quede
+  // hardcodeado en 70.
   useEffect(() => {
+    void loadEffectiveConfig();
     void refrescar(false);
     const id = setInterval(() => void refrescar(false), POLL_MS);
     return () => clearInterval(id);
@@ -178,7 +183,7 @@ export default function Proctor() {
           <span>
             {cargaInicial
               ? 'Conectando…'
-              : `${sesiones.length} sesión${sesiones.length !== 1 ? 'es' : ''} en vivo`}
+              : `${sesiones.length} ${sesiones.length === 1 ? 'sesión' : 'sesiones'} en vivo`}
           </span>
           <span className="inline-flex items-center gap-base">
             <Icon name="bolt" className="text-[16px]" />
@@ -195,7 +200,7 @@ export default function Proctor() {
             {gruposExamen.length > 0 && (
               <section className="space-y-md">
                 <SectionTitle
-                  sub={`${examenesActivos} examen${examenesActivos !== 1 ? 'es' : ''} activo${examenesActivos !== 1 ? 's' : ''}`}
+                  sub={`${examenesActivos} ${examenesActivos === 1 ? 'examen activo' : 'exámenes activos'}`}
                 >
                   Exámenes en curso
                 </SectionTitle>
@@ -215,7 +220,7 @@ export default function Proctor() {
 
             {diagnostico.length > 0 && (
               <section className="space-y-md">
-                <SectionTitle sub={`${diagnostico.length} sesión${diagnostico.length !== 1 ? 'es' : ''} de prueba`}>
+                <SectionTitle sub={`${diagnostico.length} ${diagnostico.length === 1 ? 'sesión de prueba' : 'sesiones de prueba'}`}>
                   Pruebas de detección
                 </SectionTitle>
                 <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-md">
@@ -229,7 +234,7 @@ export default function Proctor() {
             {otras.length > 0 && (
               <section className="space-y-md">
                 <SectionTitle
-                  sub={`${otras.length} sesión${otras.length !== 1 ? 'es' : ''} sin examen vinculado o de origen desconocido`}
+                  sub={`${otras.length} ${otras.length === 1 ? 'sesión' : 'sesiones'} sin examen vinculado o de origen desconocido`}
                 >
                   Sin examen vinculado
                 </SectionTitle>

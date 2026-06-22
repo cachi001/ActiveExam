@@ -36,6 +36,7 @@ class FakeUserRepo:
     deleted_sessions: list[str] = field(default_factory=list)
     embeddings_deleted: dict[str, int] = field(default_factory=dict)
     fotos_deleted: dict[str, int] = field(default_factory=dict)
+    consent_perfil_deleted: dict[str, int] = field(default_factory=dict)
     anonymized: list[str] = field(default_factory=list)
     sessions_by_user: dict[str, list[str]] = field(default_factory=dict)
 
@@ -65,6 +66,10 @@ class FakeUserRepo:
 
     async def delete_fotos(self, usuario_id: str) -> int:
         self.fotos_deleted[usuario_id] = 1
+        return 1
+
+    async def delete_consent_perfil(self, usuario_id: str) -> int:
+        self.consent_perfil_deleted[usuario_id] = 1
         return 1
 
     async def anonymize_user(self, usuario_id: str) -> None:

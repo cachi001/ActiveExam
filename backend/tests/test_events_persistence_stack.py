@@ -30,6 +30,7 @@ def test_evento_validado_se_inserta_en_hypertable() -> None:
     import asyncio
 
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+    from sqlalchemy.pool import NullPool
 
     from app.application.events.ingestion import EventIngestionService
     from app.domain.biometrics import custody
@@ -43,7 +44,7 @@ def test_evento_validado_se_inserta_en_hypertable() -> None:
     )
 
     async def run() -> None:
-        engine = create_async_engine(_dsn())
+        engine = create_async_engine(_dsn(), poolclass=NullPool)
         factory = async_sessionmaker(engine, expire_on_commit=False)
         clave = custody.derivar_clave_sesion(secreto_maestro=b"s", session_id="ss")
         publicados: list = []

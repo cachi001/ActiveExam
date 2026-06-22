@@ -387,11 +387,37 @@ export function BiometricCapture({
   // Se inicializa con la dirección elegida al montar (se sincroniza con turnDirectionRef)
   const [turnDirection, setTurnDirection] = useState<TurnDirection>('izquierda');
 
+  // Tip de estancamiento: si el alumno está en un reto sin progresar y sin hint
+  // de encuadre activo, mostramos una ayuda explícita ("hacelo más marcado / despacio")
+  // pasados ~6 segundos, así no se queda intentando sin saber qué cambiar.
+  const [stallTip, setStallTip] = useState<string | null>(null);
+
   // Sync de refs para acceso desde el loop RAF (sin stale closure)
   useEffect(() => { faseRef.current = fase; }, [fase]);
   useEffect(() => { resueltosRef.current = resueltos; }, [resueltos]);
   useEffect(() => { desafiosRef.current = desafios; }, [desafios]);
   useEffect(() => { fallbackManualRef.current = fallbackManual; }, [fallbackManual]);
+
+  // Detector de estancamiento de gesto. Si el alumno está en un reto sin progreso
+  // visible (progreso no cambia) y sin hint de encuadre, después de ~6s mostramos
+  // una pista concreta del reto activo, así no se queda repitiendo "a ciegas".
+  // Se cancela ante cualquier cambio (siguiente reto, cooldown, hint, o progreso).
+  useEffect(() => {
+    // Si hay hint, cooldown o ya terminó → no mostrar stall.
+    const idx = desafios.findIndex((id) => !resueltos.includes(id));
+    const retoId = idx >= 0 ? desafios[idx] : null;
+    setStallTip(null);
+    if (!retoId || cooldownActivo || framingHint !== null) return;
+    const STALL_TIP_MS = 6000;
+    const TIPS: Record<SequentialChallenge, string> = {
+      parpadear: 'Cerrá los ojos un poco más y mantenelos cerrados un par de segundos, sin apurarte.',
+      girar_cabeza: 'Girá la cabeza un poco más al lado indicado y quedate quieto en esa posición hasta que la barra avance.',
+      sonreír: 'Marcá más la sonrisa (mostrá los dientes está bien) y sostenela quieta hasta que la barra avance.',
+    };
+    const tip = TIPS[retoId] ?? 'Hacé el gesto más marcado y sostenelo quieto hasta que la barra avance.';
+    const t = window.setTimeout(() => setStallTip(tip), STALL_TIP_MS);
+    return () => window.clearTimeout(t);
+  }, [resueltos, desafios, cooldownActivo, framingHint, progreso]);
 
   // C-54: Inicialización al montar: barajar retos y elegir dirección (Tasks 3.7, 3.8, 9.3)
   useEffect(() => {
@@ -1291,6 +1317,7 @@ export function BiometricCapture({
       progreso={progreso}
       tonoOvalo={tonoOvalo}
       framingHint={framingHint}
+      stallTip={stallTip}
     />,
     document.body,
   );

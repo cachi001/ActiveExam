@@ -124,7 +124,7 @@ export function BiometricRenewalStatus({ referencia, onRenovar }: Props) {
 
       {/* Nota sobre renovación anticipada por deriva */}
       {referencia.renovacion_anticipada_requerida && (
-        <div className="flex items-start gap-sm bg-warning-container/60 rounded-xl p-sm border border-warning/20">
+        <div className="flex items-start gap-sm bg-warning-container/60 rounded-xl p-sm border border-warning-200">
           <Icon name="info" className="text-warning text-[16px] shrink-0 mt-px" />
           <p className="text-label-sm text-on-surface">
             La verificación silenciosa detectó <strong>deriva del <Term termKey="embedding">embedding</Term></strong> respecto de la

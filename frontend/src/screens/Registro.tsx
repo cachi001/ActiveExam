@@ -105,9 +105,10 @@ export default function Registro() {
   // ---------------------------------------------------------------------------
 
   return (
-    <div className="min-h-screen grid lg:grid-cols-2 bg-surface">
-      {/* Panel de marca — solo desktop */}
-      <aside className="hidden lg:flex flex-col justify-between p-xxl bg-gradient-to-br from-primary to-primary-700 text-on-primary relative overflow-hidden">
+    <div className="lg:h-screen lg:overflow-hidden min-h-screen grid lg:grid-cols-2 bg-surface">
+      {/* Panel de marca — solo desktop. Altura fija a viewport para que el form
+          (que puede exceder pantalla) no estire el branding del lado izquierdo. */}
+      <aside className="hidden lg:flex flex-col justify-between p-xxl bg-gradient-to-br from-primary to-primary-700 text-on-primary relative overflow-hidden lg:h-screen lg:sticky lg:top-0">
         <span className="pointer-events-none absolute -top-16 -right-16 w-72 h-72 rounded-full bg-white/10" aria-hidden />
         <span className="pointer-events-none absolute bottom-10 -left-20 w-80 h-80 rounded-full bg-white/5" aria-hidden />
         <div className="flex items-center gap-sm relative">
@@ -124,13 +125,14 @@ export default function Registro() {
         </div>
         <div className="relative flex items-center gap-xs text-label-sm text-white/70">
           <Icon name="lock" className="text-[18px]" fill />
-          Self-hosted
+          Tu privacidad está protegida
         </div>
       </aside>
 
-      {/* Panel de formulario */}
-      <main className="flex flex-col items-center justify-center px-lg py-xl">
-        <div className="w-full max-w-sm flex flex-col gap-xxl animate-in fade-in slide-in-from-bottom-4 duration-700">
+      {/* Panel de formulario — scroll interno en desktop si el form excede pantalla,
+          así el aside de la izquierda no se estira. */}
+      <main className="flex flex-col items-center px-lg py-xl lg:overflow-y-auto lg:h-screen">
+        <div className="w-full max-w-md flex flex-col gap-lg animate-in fade-in slide-in-from-bottom-4 duration-700 my-auto">
 
           {/* Encabezado */}
           <header className="flex flex-col items-center gap-md text-center">
@@ -138,8 +140,8 @@ export default function Registro() {
               <Icon name="person_add" className="text-[28px]" fill />
             </div>
             <div>
-              <h1 className="font-headline text-headline-lg text-on-surface tracking-tight">Crear cuenta</h1>
-              <p className="text-body-md text-on-surface-variant mt-xs">
+              <h1 className="font-headline text-headline-md text-on-surface tracking-tight">Crear cuenta</h1>
+              <p className="text-label-md text-on-surface-variant mt-xs">
                 Completá tus datos para registrarte como estudiante.
               </p>
             </div>
@@ -228,9 +230,9 @@ export default function Registro() {
                 icon="lock"
                 required
                 disabled={loading}
-                placeholder="Mínimo 8 caracteres"
+                placeholder="••••••••"
                 autoComplete="new-password"
-                hint="Mínimo 8 caracteres."
+                hint="Mínimo 8 caracteres"
               />
 
               <TextField
@@ -242,7 +244,7 @@ export default function Registro() {
                 icon="lock"
                 required
                 disabled={loading}
-                placeholder="Repetí la contraseña"
+                placeholder="••••••••"
                 autoComplete="new-password"
                 error={
                   form.password_confirmacion && form.password !== form.password_confirmacion
@@ -261,13 +263,11 @@ export default function Registro() {
               <Button
                 type="submit"
                 disabled={loading || !form.id_institucional || !form.email || !form.password || !form.password_confirmacion}
-                size="lg"
-                iconRight={loading ? undefined : 'arrow_forward'}
                 className="w-full"
               >
                 {loading ? (
                   <span className="inline-flex items-center gap-xs">
-                    <Icon name="progress_activity" className="ae-spin text-[20px]" />
+                    <Icon name="progress_activity" className="ae-spin text-[18px]" />
                     Registrando…
                   </span>
                 ) : 'Crear cuenta'}
@@ -283,10 +283,6 @@ export default function Registro() {
             </Link>
           </p>
 
-          <p className="flex items-center justify-center gap-xs text-label-sm text-on-surface-variant">
-            <Icon name="lock" className="text-outline text-[16px]" fill />
-            Tu privacidad está protegida — Ley 25.326
-          </p>
         </div>
       </main>
     </div>

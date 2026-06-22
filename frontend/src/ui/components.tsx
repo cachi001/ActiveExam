@@ -49,7 +49,7 @@ export const Button = forwardRef<HTMLButtonElement, {
     <button
       ref={ref}
       {...rest}
-      className={`inline-flex items-center justify-center font-medium rounded-lg
+      className={`inline-flex items-center justify-center font-medium rounded-md
         transition-colors duration-200 ease-out
         focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-0
         disabled:opacity-50 disabled:cursor-not-allowed
@@ -63,8 +63,11 @@ export const Button = forwardRef<HTMLButtonElement, {
 });
 
 export function Card({ children, className = '', padded = true }: { children: ReactNode; className?: string; padded?: boolean }) {
+  // Aterrizado a `rounded-lg` (16px) + borde slate sutil, sin shadow agresivo. El
+  // 2xl + shadow-card previo se acumulaba en pantallas con muchas cards y daba
+  // sensación pesada/redonda; el ajuste deja la card legible sin gritar.
   return (
-    <div className={`bg-surface-container-lowest rounded-2xl border border-outline-variant/70 shadow-card ${padded ? 'p-lg' : ''} ${className}`}>
+    <div className={`bg-surface-container-lowest rounded-lg border border-surface-200 ${padded ? 'p-lg' : ''} ${className}`}>
       {children}
     </div>
   );
@@ -165,7 +168,7 @@ export function Stat({ label, value, sub, icon }: { label: string; value: ReactN
   return (
     <Card className="flex items-start gap-md">
       {icon && (
-        <div className="w-11 h-11 rounded-xl bg-primary-fixed text-primary flex items-center justify-center shrink-0">
+        <div className="w-11 h-11 rounded-xl bg-surface-container text-on-surface-variant flex items-center justify-center shrink-0">
           <Icon name={icon} />
         </div>
       )}
@@ -196,7 +199,7 @@ export function ProgressBar({ value, tone = 'primary' }: { value: number; tone?:
 
 export function ScoreChip({ score, umbral }: { score: number; umbral: number }) {
   const tone = score >= umbral ? 'bg-error text-on-error' : score >= umbral * 0.6 ? 'bg-warning-container text-warning' : 'bg-success-container text-success';
-  return <span className={`px-sm py-base rounded-full text-label-sm font-bold ${tone}`}>Riesgo {score}%</span>;
+  return <span className={`px-sm py-base rounded-full text-label-sm font-bold ${tone}`}>Riesgo {score} pts</span>;
 }
 
 // ── Primitivas de formulario ──────────────────────────────────────────────────

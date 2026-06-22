@@ -39,11 +39,40 @@ export function useRouter() { return useContext(Ctx); }
 
 export function useNavigate() { return useContext(Ctx).navigate; }
 
-/** Renderiza el primer match exacto del mapa de rutas, o el fallback. */
+/**
+ * Renderiza el primer match del mapa de rutas.
+ *
+ * Matching en orden:
+ * 1. Exact match: `routes[path]` — preserva el comportamiento original.
+ * 2. Prefix match con parámetro: si una clave termina en `/:param`, intenta
+ *    matchear `path` como `prefix/<valor>` y pasa el valor via sessionStorage
+ *    bajo la clave `router_param_<param>`. Esto es minimal y seguro — no rompe
+ *    el matching exacto.
+ * 3. Fallback.
+ */
 export function Routes({ routes, fallback }: { routes: Record<string, ReactNode>; fallback?: ReactNode }) {
   const { path } = useRouter();
+  // 1. Exact match (comportamiento original, intacto)
   if (routes[path]) return <>{routes[path]}</>;
+  // 2. Prefix match con parámetro dinámico (/:param al final de la clave)
+  for (const [pattern, node] of Object.entries(routes)) {
+    const paramMatch = pattern.match(/^(.*)\/:([^/]+)$/);
+    if (!paramMatch) continue;
+    const [, prefix, paramName] = paramMatch;
+    if (path.startsWith(prefix + '/')) {
+      const paramValue = path.slice(prefix.length + 1);
+      if (paramValue && !paramValue.includes('/')) {
+        try { sessionStorage.setItem(`router_param_${paramName}`, paramValue); } catch { /* ignore */ }
+        return <>{node}</>;
+      }
+    }
+  }
   return <>{fallback ?? null}</>;
+}
+
+/** Lee un parámetro de ruta dinámico guardado por Routes. */
+export function useRouteParam(name: string): string | null {
+  try { return sessionStorage.getItem(`router_param_${name}`); } catch { return null; }
 }
 
 export function Link({ to, className, children, onClick }: {

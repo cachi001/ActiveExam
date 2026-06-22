@@ -9,80 +9,163 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Índigo institucional VIVO (formal, con presencia — no apagado).
-        "primary": "#4f46e5",
-        "primary-container": "#6366f1",
-        "primary-700": "#4338ca",
-        "primary-800": "#3730a3",
+        // Tokens como OBJETO anidado. `bg-primary` cae a `primary.DEFAULT`;
+        // `bg-primary-500` cae a `primary.500`; `bg-primary-container` cae a
+        // `primary.container`. Una sola fuente de verdad, escala completa, sin
+        // tener que agregar key por key cada vez que se necesita un nuevo paso.
+
+        // ── PRIMARY — azul institucional (blue de Tailwind) ─────────────────
+        primary: {
+          DEFAULT: "#2563eb",   // blue-600
+          50:  "#eff6ff",
+          100: "#dbeafe",
+          200: "#bfdbfe",
+          300: "#93c5fd",
+          400: "#60a5fa",
+          500: "#3b82f6",
+          600: "#2563eb",
+          700: "#1d4ed8",
+          800: "#1e40af",
+          900: "#1e3a8a",
+          // Alias semánticos del design system
+          container: "#3b82f6",   // bg fuerte (= blue-500)
+          fixed: "#dbeafe",       // fondo suave (= blue-100)
+          "fixed-dim": "#93c5fd", // borde sobre fixed (= blue-300)
+        },
         "on-primary": "#ffffff",
-        "on-primary-container": "#edeaff",
-        "primary-fixed": "#e2dfff",
-        "primary-fixed-dim": "#c1c1ff",
-        "on-primary-fixed": "#0a006b",
-        "on-primary-fixed-variant": "#3533b0",
-        "inverse-primary": "#c1c1ff",
-        "secondary": "#5845ca",
-        "secondary-container": "#7260e5",
+        "on-primary-container": "#dbeafe",
+        "on-primary-fixed": "#0c2766",
+        "on-primary-fixed-variant": "#1d4ed8",
+        "inverse-primary": "#93c5fd",
+
+        // ── SECONDARY — misma familia para coherencia ───────────────────────
+        secondary: {
+          DEFAULT: "#1d4ed8",
+          container: "#3b82f6",
+          fixed: "#dbeafe",
+          "fixed-dim": "#93c5fd",
+        },
         "on-secondary": "#ffffff",
-        "on-secondary-container": "#fffbff",
-        "secondary-fixed": "#e5deff",
-        "secondary-fixed-dim": "#c7bfff",
-        "on-secondary-fixed": "#180065",
-        "on-secondary-fixed-variant": "#432bb4",
-        "tertiary": "#515067",
-        "tertiary-container": "#696880",
+        "on-secondary-container": "#eff6ff",
+        "on-secondary-fixed": "#0c2766",
+        "on-secondary-fixed-variant": "#1d4ed8",
+
+        // ── TERTIARY — gris violáceo (uso puntual) ──────────────────────────
+        tertiary: {
+          DEFAULT: "#515067",
+          container: "#696880",
+          fixed: "#e2e0fc",
+          "fixed-dim": "#c6c4df",
+        },
         "on-tertiary": "#ffffff",
         "on-tertiary-container": "#ece9ff",
-        "tertiary-fixed": "#e2e0fc",
-        "tertiary-fixed-dim": "#c6c4df",
         "on-tertiary-fixed": "#1a1a2e",
         "on-tertiary-fixed-variant": "#45455b",
-        "error": "#ba1a1a",
+
+        // ── ERROR / DANGER ──────────────────────────────────────────────────
+        error: {
+          DEFAULT: "#ba1a1a",
+          50:  "#fef2f2",
+          100: "#fee2e2",
+          200: "#fecaca",
+          500: "#ef4444",
+          600: "#dc2626",
+          700: "#b91c1c",
+          800: "#991b1b",
+          900: "#7f1d1d",
+          container: "#ffdad6",
+        },
         "on-error": "#ffffff",
-        "error-container": "#ffdad6",
         "on-error-container": "#93000a",
-        "surface": "#fbfaf7",
-        "surface-dim": "#d9dade",
-        "surface-bright": "#fbfaf7",
-        "surface-container-lowest": "#ffffff",
-        "surface-container-low": "#f3f3f7",
-        "surface-container": "#ededf1",
-        "surface-container-high": "#e8e8ec",
-        "surface-container-highest": "#e2e2e6",
-        "surface-variant": "#e2e2e6",
-        "surface-tint": "#4e4ec9",
-        "on-surface": "#1a1c1f",
-        "on-surface-variant": "#464553",
-        "inverse-surface": "#2e3034",
-        "inverse-on-surface": "#f0f0f4",
-        "background": "#f9f9fd",
-        "on-background": "#1a1c1f",
-        "outline": "#777585",
-        "outline-variant": "#c7c4d6",
-        // tokens de estado semántico (para badges de severidad)
-        "success": "#15803d",
-        "success-container": "#dcfce7",
-        "warning": "#b45309",
-        "warning-container": "#fef3c7",
-        // Escala viva para gradientes de stat cards (fondo de color + texto blanco).
-        "success-500": "#22c55e",
-        "success-600": "#16a34a",
-        "warning-500": "#f59e0b",
-        "warning-600": "#d97706",
-        "error-500": "#ef4444",
-        "error-600": "#dc2626",
-        "info": "#2563eb",
-        "info-500": "#3b82f6",
-        "info-600": "#2563eb",
-        "info-container": "#dbeafe",
+
+        // ── SUCCESS ─────────────────────────────────────────────────────────
+        success: {
+          DEFAULT: "#15803d",
+          50:  "#ecfdf5",
+          100: "#d1fae5",
+          200: "#a7f3d0",
+          500: "#22c55e",
+          600: "#16a34a",
+          700: "#15803d",
+          800: "#166534",
+          900: "#14532d",
+          container: "#dcfce7",
+        },
+
+        // ── WARNING ─────────────────────────────────────────────────────────
+        warning: {
+          DEFAULT: "#b45309",
+          50:  "#fffbeb",
+          100: "#fef3c7",
+          200: "#fde68a",
+          300: "#fcd34d",
+          400: "#fbbf24",
+          500: "#f59e0b",
+          600: "#d97706",
+          700: "#b45309",
+          800: "#92400e",
+          900: "#78350f",
+          container: "#fef3c7",
+        },
+
+        // ── INFO — teal sutil (verde-azulado), diferencia clara del primary
+        // azul sin caer en cyan estridente.
+        info: {
+          DEFAULT: "#0d9488",   // teal-600
+          50:  "#f0fdfa",
+          100: "#ccfbf1",
+          200: "#99f6e4",
+          500: "#14b8a6",       // teal-500 (gradient start)
+          600: "#0d9488",       // teal-600 (gradient end)
+          700: "#0f766e",
+          container: "#ccfbf1",
+        },
         "on-info": "#ffffff",
+
+        // ── SURFACE — slate como base de fondos/bordes ──────────────────────
+        surface: {
+          DEFAULT: "#f8fafc",   // slate-50: fondo principal de la app
+          50:  "#f8fafc",
+          100: "#f1f5f9",
+          200: "#e2e8f0",
+          300: "#cbd5e1",
+          400: "#94a3b8",
+          500: "#64748b",
+          600: "#475569",
+          700: "#334155",
+          800: "#1e293b",
+          900: "#0f172a",
+          // Alias semánticos del design system
+          dim: "#cbd5e1",
+          bright: "#ffffff",
+          variant: "#e2e8f0",
+          tint: "#2563eb",
+          "container-lowest": "#ffffff",
+          "container-low": "#f1f5f9",
+          container: "#e2e8f0",
+          "container-high": "#cbd5e1",
+          "container-highest": "#94a3b8",
+        },
+        "on-surface": "#0f172a",
+        "on-surface-variant": "#475569",
+        "inverse-surface": "#1e293b",
+        "inverse-on-surface": "#f1f5f9",
+
+        // ── Tokens globales ─────────────────────────────────────────────────
+        background: "#f8fafc",
+        "on-background": "#0f172a",
+        outline: "#64748b",
+        "outline-variant": "#e2e8f0",
       },
       borderRadius: {
-        DEFAULT: "0.5rem",
-        sm: "0.25rem",
-        md: "0.75rem",
-        lg: "1rem",
-        xl: "1.5rem",
+        // Escala mas mesurada (institucional). Cada token bajo un nivel respecto
+        // al anterior — antes rounded-xl daba 24px, ahora 12px.
+        DEFAULT: "0.375rem", // 6px
+        sm: "0.25rem",       // 4px
+        md: "0.5rem",        // 8px
+        lg: "0.625rem",      // 10px
+        xl: "0.75rem",       // 12px
+        "2xl": "1rem",       // 16px — solo para contenedores grandes
         full: "9999px",
       },
       spacing: {
@@ -95,19 +178,14 @@ export default {
         xxl: "48px",
         gutter: "24px",
         "container-max": "1280px",
-        "sidebar-width": "260px",
+        "sidebar-width": "240px",
+        "sidebar-collapsed": "60px",
+        "topbar-height": "56px",
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif'],
-        headline: ['"Plus Jakarta Sans"', 'sans-serif'],
-        "display-lg": ['"Plus Jakarta Sans"'],
-        "headline-lg": ['"Plus Jakarta Sans"'],
-        "headline-md": ['"Plus Jakarta Sans"'],
-        "title-lg": ['"Plus Jakarta Sans"'],
-        "body-lg": ['Inter'],
-        "body-md": ['Inter'],
-        "label-md": ['Inter'],
-        "label-sm": ['Inter'],
+        // Tipografía unificada: Inter en todo (más limpia/moderna para dashboard).
+        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+        headline: ['Inter', 'system-ui', 'sans-serif'],
       },
       fontSize: {
         "display-lg": ["48px", { lineHeight: "56px", letterSpacing: "-0.02em", fontWeight: "700" }],

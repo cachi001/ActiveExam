@@ -35,7 +35,7 @@ export default function SessionDetail() {
               <p className="text-label-md text-on-surface-variant">Legajo {sel.legajo} · {sel.examen} ({sel.catedra})</p>
             </div>
           </div>
-          <Badge tone="error" dot>Score de prioridad {sel.score}%</Badge>
+          <Badge tone="error" dot>Score de prioridad {sel.score} pts</Badge>
         </Card>
 
         <div className="grid sm:grid-cols-3 gap-md">
@@ -77,7 +77,7 @@ export default function SessionDetail() {
                 <CadenaPaso n={2} titulo="Backend (FastAPI)" desc={`Re-hash: ${sel.cadena_custodia.rehash_backend} · ${sel.cadena_custodia.coincide ? 'coincide' : 'divergencia'}`} icon="dns" ok={sel.cadena_custodia.coincide} />
                 <CadenaPaso n={3} titulo="Worker / clave maestra" desc={`Firma ${sel.cadena_custodia.algoritmo_firma}: ${sel.cadena_custodia.firma_maestra}`} icon="key" ok />
                 <CadenaPaso n={4} titulo="Re-inferencia server-side" desc="Señales re-evaluadas sobre la evidencia exacta." icon="neurology" ok />
-                <div className="bg-primary-fixed/40 rounded-xl p-sm text-label-sm text-on-primary-fixed-variant flex items-start gap-base">
+                <div className="bg-surface-container rounded-xl p-sm text-label-sm text-on-surface-variant flex items-start gap-base border border-outline-variant/40">
                   <Icon name="info" className="text-[18px]" fill />
                   <span>El cliente es un sensor no confiable: toda evidencia se re-hashea, re-infiere y firma del lado del servidor.</span>
                 </div>
@@ -117,7 +117,7 @@ function CadenaPaso({ n, titulo, desc, icon, ok }: { n: number; titulo: string; 
         <button
           type="button"
           onClick={() => setHashExpanded((v) => !v)}
-          className="text-primary hover:underline text-[11px]"
+          className="text-on-surface-variant hover:text-on-surface hover:underline text-[11px]"
         >
           {hashExpanded ? 'ocultar' : 'ver completo'}
         </button>
@@ -128,7 +128,7 @@ function CadenaPaso({ n, titulo, desc, icon, ok }: { n: number; titulo: string; 
 
   return (
     <div className="flex items-start gap-sm p-sm rounded-xl bg-white border border-outline-variant/40">
-      <div className="w-8 h-8 rounded-full bg-primary text-on-primary flex items-center justify-center text-label-sm font-bold shrink-0">{n}</div>
+      <div className="w-8 h-8 rounded-full bg-surface-container-high text-on-surface-variant flex items-center justify-center text-label-sm font-bold shrink-0">{n}</div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-base">
           <Icon name={icon} className="text-on-surface-variant text-[18px]" />

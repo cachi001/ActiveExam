@@ -32,7 +32,7 @@ function VolverLink({ onClick }: { onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex items-center gap-base text-label-md text-primary hover:underline"
+      className="inline-flex items-center gap-base text-label-md text-on-surface-variant hover:text-on-surface hover:underline"
     >
       <Icon name="arrow_back" className="text-[18px]" />
       Volver a la lista de sesiones
@@ -107,31 +107,13 @@ export default function ProctoringSessionDetail() {
       }
     >
       <div className="space-y-lg animate-in fade-in duration-500">
-        {/* Disclaimer L2.5 — inamovible */}
-        <div
-          role="note"
-          className="flex items-start gap-sm p-md rounded-xl bg-primary-fixed/50
-            border border-primary/20 text-label-sm text-on-primary-fixed-variant"
-        >
-          <Icon name="shield" className="text-[20px] shrink-0 mt-px" fill />
-          <div>
-            <p className="font-bold">Revisión humana obligatoria</p>
-            <p className="mt-base">
-              Este sistema <strong>nunca sanciona automáticamente</strong>. El score es un indicador
-              de prioridad para revisión humana. La decisión disciplinaria es{' '}
-              <strong>siempre del revisor</strong>. Los screenshots son dato sensible:
-              finalidad acotada a revisión humana.
-            </p>
-          </div>
-        </div>
-
         {/* Volver a la lista */}
         <VolverLink onClick={() => navigate(LISTA_ROUTE)} />
 
         {/* Estado de carga */}
         {cargando && (
           <Card className="flex flex-col items-center py-xl gap-sm text-on-surface-variant">
-            <Icon name="progress_activity" className="text-[36px] text-primary ae-spin" />
+            <Icon name="progress_activity" className="text-[36px] text-on-surface-variant ae-spin" />
             <p className="text-label-md">Cargando sesión…</p>
           </Card>
         )}
@@ -181,9 +163,6 @@ export default function ProctoringSessionDetail() {
 
             {/* Biometría */}
             <BiometriaCard biometria={detalle.biometria} />
-
-            {/* Volver (pie) */}
-            <VolverLink onClick={() => navigate(LISTA_ROUTE)} />
           </>
         )}
       </div>

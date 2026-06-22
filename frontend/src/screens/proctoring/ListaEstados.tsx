@@ -8,7 +8,7 @@ import { Icon } from '../../ui/components';
 
 function SkeletonLinea({ className = '' }: { className?: string }) {
   return (
-    <div className={`relative overflow-hidden rounded-md bg-surface-container-high ${className}`}>
+    <div className={`relative overflow-hidden rounded-md bg-surface-100 ${className}`}>
       <div className="absolute inset-0 shimmer" />
     </div>
   );
@@ -21,7 +21,7 @@ export function ListaSkeleton({ filas = 3 }: { filas?: number }) {
         <div
           key={i}
           className="rounded-xl bg-surface-container-lowest border border-outline-variant/50
-            border-l-4 border-l-surface-container-high p-md shadow-card space-y-sm"
+            border-l-4 border-l-surface-200 p-md shadow-card space-y-sm"
         >
           <div className="flex items-center gap-sm">
             <SkeletonLinea className="h-5 w-48" />
@@ -42,8 +42,8 @@ export function ListaSkeleton({ filas = 3 }: { filas?: number }) {
 export function ListaVacia() {
   return (
     <div className="flex flex-col items-center text-center py-xxl gap-sm">
-      <div className="w-16 h-16 rounded-2xl bg-surface-container-high text-on-surface-variant
-        flex items-center justify-center mb-base">
+      <div className="w-16 h-16 rounded-2xl bg-surface-100 text-on-surface-variant
+        flex items-center justify-center mb-base border border-surface-200">
         <Icon name="video_library" className="text-[32px]" />
       </div>
       <p className="font-headline text-title-lg text-on-surface">Todavía no hay sesiones grabadas</p>
@@ -59,8 +59,8 @@ export function ListaVacia() {
 export function ListaVaciaVivo() {
   return (
     <div className="flex flex-col items-center text-center py-xxl gap-sm">
-      <div className="w-16 h-16 rounded-2xl bg-surface-container-high text-on-surface-variant
-        flex items-center justify-center mb-base">
+      <div className="w-16 h-16 rounded-2xl bg-surface-100 text-on-surface-variant
+        flex items-center justify-center mb-base border border-surface-200">
         <Icon name="sensors_off" className="text-[32px]" />
       </div>
       <p className="font-headline text-title-lg text-on-surface">No hay sesiones activas</p>

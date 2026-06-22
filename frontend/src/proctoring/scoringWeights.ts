@@ -23,6 +23,10 @@ import { PESO_SCORE } from './riskWeights';
 
 // Mapa { tipo_evento -> peso } (solo tipos ACTIVOS).
 let weightsByTipo: Record<string, number> | null = null;
+// Mapa { tipo_evento -> severidad CONFIGURADA } (solo tipos ACTIVOS). Lo siembra
+// effectiveConfigCache desde /config/effective. El cliente lo usa para mostrar la
+// severidad vigente en vez de la del catalogo hardcodeado (suspiciousActivityCatalog).
+let severidadesByTipo: Record<string, Severidad> | null = null;
 // Promesa en vuelo para deduplicar llamadas concurrentes al iniciar.
 let inflight: Promise<void> | null = null;
 
@@ -55,19 +59,61 @@ export async function loadScoringWeights(): Promise<void> {
  */
 export function resetScoringWeightsCache(): void {
   weightsByTipo = null;
+  severidadesByTipo = null;
   inflight = null;
+}
+
+/**
+ * Siembra el cache de pesos directamente desde un mapa (sin red).
+ * Usado por `effectiveConfigCache` para propagar los `scoring_weights` de la
+ * config efectiva al cache de pesos, evitando un segundo round-trip a /scoring/weights.
+ * Idempotente: si ya había datos, los reemplaza.
+ */
+export function seedScoringWeights(weights: Record<string, number>): void {
+  weightsByTipo = weights;
+  inflight = null;
+}
+
+/**
+ * Siembra el cache de severidades configuradas por tipo (desde /config/effective).
+ * El cliente lo usa para mostrar la severidad VIGENTE de cada evento, no la del
+ * catalogo hardcodeado. Idempotente.
+ */
+export function seedScoringSeveridades(severidades: Record<string, Severidad>): void {
+  severidadesByTipo = severidades;
+}
+
+/**
+ * Severidad CONFIGURADA del tipo de evento (vigente en la BD). Si no hay config
+ * cargada o el tipo no esta, devuelve `fallback` (la del catalogo del cliente).
+ */
+export function severidadEvento(tipo: string, fallback: Severidad): Severidad {
+  if (severidadesByTipo !== null && severidadesByTipo[tipo]) {
+    return severidadesByTipo[tipo];
+  }
+  return fallback;
 }
 
 /**
  * Peso del evento (0-100) que se suma al score acumulado.
  *
  * Orden de resolucion:
- *   1. Cache cargado y el tipo esta activo en la BD -> usa ese peso.
- *   2. Cache cargado pero el tipo NO esta (inactivo / no existe) -> 0.
- *   3. Cache vacio (no se llamo loadScoringWeights, o fallo la API) -> fallback
+ *   1. ``overrides[tipo]`` presente (modo what-if del harness) -> usa ese peso.
+ *      Los overrides son LOCALES (no persisten) — los usa Test Deteccion para
+ *      probar pesos sin tocar la config real.
+ *   2. Cache cargado y el tipo esta activo en la BD -> usa ese peso.
+ *   3. Cache cargado pero el tipo NO esta (inactivo / no existe) -> 0.
+ *   4. Cache vacio (no se llamo loadScoringWeights, o fallo la API) -> fallback
  *      al peso por severidad de riskWeights.ts.
  */
-export function pesoEvento(tipo: string, severidad: Severidad): number {
+export function pesoEvento(
+  tipo: string,
+  severidad: Severidad,
+  overrides?: Record<string, number> | null,
+): number {
+  if (overrides && Object.prototype.hasOwnProperty.call(overrides, tipo)) {
+    return overrides[tipo];
+  }
   if (weightsByTipo !== null) {
     return weightsByTipo[tipo] ?? 0;
   }

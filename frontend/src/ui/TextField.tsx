@@ -75,9 +75,9 @@ export const TextField = forwardRef<HTMLInputElement, TextFieldProps>(
             required={required}
             autoComplete={autoComplete}
             className={[
-              'bg-white border border-outline-variant rounded-md py-3 shadow-xs',
+              'bg-white border border-surface-200 rounded-md py-3 shadow-xs',
               'focus:outline-none focus:ring-4 focus:ring-primary/15 focus:border-primary',
-              'hover:border-outline transition-colors duration-150',
+              'hover:border-surface-300 transition-colors duration-150',
               'w-full disabled:opacity-50',
               inputPaddingLeft,
               inputPaddingRight,
@@ -104,7 +104,8 @@ export const TextField = forwardRef<HTMLInputElement, TextFieldProps>(
           )}
         </div>
 
-        {/* Error / hint */}
+        {/* Error / hint. Hint siempre visible (no condicional al focus) — los
+            requisitos del campo deben estar disponibles incluso antes de editar. */}
         {error && (
           <p className="text-label-sm text-error mt-0.5">{error}</p>
         )}

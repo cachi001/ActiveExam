@@ -19,15 +19,31 @@ Reglas duras:
 
 from __future__ import annotations
 
+import json
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.application.config.service import ConfigService
+from app.domain.audit_chain import AuditEntry
 from app.domain.auth.identity import AuthenticatedPrincipal
 from app.domain.auth.roles import Rol
+from app.domain.scoring.risk_score import SEVERITY_RANGES, peso_dentro_de_rango
 from app.infrastructure.persistence.models.transactional import EventoScoreConfigModel
+from app.infrastructure.persistence.repositories.audit_log import AuditLogSqlRepository
 from app.presentation.api.v1.auth.dependencies import get_current_principal, require_roles
+
+# Auditoria: editar un peso/severidad de scoring altera como el score prioriza la
+# cola de revision (cadena de custodia). Misma accion que el config global para que
+# el rastro quede unificado y verificable por verificar_cadena().
+ACCION_CONFIG_UPDATE = "config_update"
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 router = APIRouter()
 
@@ -107,6 +123,21 @@ def _get_session_factory(request: Request) -> async_sessionmaker[AsyncSession]:
     return factory
 
 
+def _get_config_service(request: Request) -> ConfigService | None:
+    return getattr(request.app.state, "config_service", None)
+
+
+def _snapshot(m: EventoScoreConfigModel) -> dict[str, object]:
+    """Foto plana de la config de un evento para el rastro de auditoria."""
+    return {
+        "tipo_evento": m.tipo_evento,
+        "severidad": m.severidad,
+        "peso": m.peso,
+        "descripcion": m.descripcion,
+        "activo": m.activo,
+    }
+
+
 def _to_response(m: EventoScoreConfigModel) -> EventoScoreConfigResponse:
     return EventoScoreConfigResponse(
         tipo_evento=m.tipo_evento,
@@ -176,7 +207,7 @@ async def editar_config(
     tipo_evento: str,
     body: EditarEventoScoreConfigRequest,
     request: Request,
-    _principal: AuthenticatedPrincipal = Depends(_require_admin),
+    principal: AuthenticatedPrincipal = Depends(_require_admin),
 ) -> EventoScoreConfigResponse:
     """Edita el peso / severidad / descripcion / activo de un tipo de evento.
 
@@ -208,6 +239,24 @@ async def editar_config(
                 detail=f"Tipo de evento {tipo_evento!r} no encontrado.",
             )
 
+        # Validacion de rango severidad↔peso. Combina los valores entrantes con los
+        # actuales (uno puede venir y el otro no) y rechaza si el peso final queda
+        # fuera del rango institucional de la severidad final (SEVERITY_RANGES).
+        severidad_final = body.severidad if body.severidad is not None else cfg.severidad
+        peso_final = body.peso if body.peso is not None else cfg.peso
+        if severidad_final in SEVERITY_RANGES and not peso_dentro_de_rango(peso_final, severidad_final):
+            rango_min, rango_max = SEVERITY_RANGES[severidad_final]
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    f"Peso {peso_final} fuera del rango permitido para severidad "
+                    f"{severidad_final!r} ({rango_min}–{rango_max} pts)."
+                ),
+            )
+
+        # Snapshot before (antes de mutar) para la cadena de custodia.
+        before = _snapshot(cfg)
+
         if body.severidad is not None:
             cfg.severidad = body.severidad
         if body.peso is not None:
@@ -217,7 +266,29 @@ async def editar_config(
         if body.activo is not None:
             cfg.activo = body.activo
 
+        after = _snapshot(cfg)
+
+        # Auditoria inmutable: fila config_update con before/after. Editar un peso de
+        # scoring cambia que sesiones entran a la cola de revision — debe dejar rastro.
+        await AuditLogSqlRepository(session).append(
+            AuditEntry(
+                actor=principal.id_institucional,
+                timestamp=_now_iso(),
+                ip="",
+                user_agent="",
+                accion=ACCION_CONFIG_UPDATE,
+                evidencia_id=None,
+                proposito=json.dumps(
+                    {"before": before, "after": after}, ensure_ascii=False
+                ),
+            )
+        )
+
         await session.commit()
         await session.refresh(cfg)
+
+    svc = _get_config_service(request)
+    if svc is not None:
+        svc.invalidate()
 
     return _to_response(cfg)

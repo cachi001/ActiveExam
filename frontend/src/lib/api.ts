@@ -77,6 +77,29 @@ export let EXAMENES: ExamenConComision[] = [
   },
 ];
 
+/**
+ * Actualiza el examen demo con los valores de la config efectiva.
+ * Llamar cuando se cargue o invalide la config efectiva para que el examen
+ * de prueba (EXAMEN_RENDIBLE_ID) refleje los defaults globales actualizados.
+ * Solo aplica en modo demo (USE_REAL_BACKEND=0), donde EXAMENES es la fuente de datos.
+ */
+export function patchDemoExamenFromConfig(cfg: {
+  umbral_cola_revision: number;
+  detectores_activos: string[];
+  retencion_dias_default: number;
+}): void {
+  EXAMENES = EXAMENES.map((e) =>
+    e.id === EXAMEN_RENDIBLE_ID
+      ? {
+          ...e,
+          umbral_score: cfg.umbral_cola_revision,
+          detectores: cfg.detectores_activos as TipoEvento[],
+          retencion_dias: cfg.retencion_dias_default,
+        }
+      : e,
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Portal del alumno — datos demo (C-21)
 // ---------------------------------------------------------------------------
@@ -325,11 +348,11 @@ const CONSENT_TEXT: ConsentTextResponse = {
   version: 'v1',
   hash_texto: 'sha256:9f2b…a31',
   bloques: [
-    { icono: 'help', titulo: '¿Qué datos recolectamos?', cuerpo: 'Video de tu cámara y captura de pantalla durante el examen, y un embedding facial para verificar tu identidad. El embedding se trata como dato sensible bajo la Ley 25.326.' },
+    { icono: 'help', titulo: '¿Qué datos recolectamos?', cuerpo: 'Video de tu cámara y captura de pantalla durante el examen, y un descriptor facial para verificar tu identidad. El descriptor biométrico se trata como dato sensible.' },
     { icono: 'memory', titulo: '¿Cómo se procesan?', cuerpo: 'El análisis de visión corre localmente en tu navegador (Web Worker). Solo se envían señales discretas firmadas y, ante incidencias graves, clips cortos de evidencia. El backend re-infiere y firma toda la evidencia.' },
     { icono: 'dns', titulo: '¿Dónde se almacenan?', cuerpo: 'En infraestructura self-hosted de la universidad, cifrada en reposo, con cadena de custodia criptográfica. Soberanía de datos completa.' },
     { icono: 'schedule', titulo: '¿Cuánto tiempo?', cuerpo: 'La evidencia se conserva 30 días y luego se elimina automáticamente. El embedding biométrico se elimina al egreso, salvo apelación o hold disciplinario.' },
-    { icono: 'gavel', titulo: 'Tus derechos', cuerpo: 'El sistema nunca sanciona automáticamente: solo prioriza para revisión humana. Podés acceder, rectificar y solicitar la eliminación de tus datos ante la AAIP.' },
+    { icono: 'gavel', titulo: 'Tus derechos', cuerpo: 'El sistema nunca sanciona automáticamente: solo prioriza para revisión humana. Podés acceder, rectificar y solicitar la eliminación de tus datos.' },
   ],
 };
 
@@ -351,13 +374,14 @@ function consentVersionVigente(): string {
 // falso "consentimiento desactualizado" → tarjeta amarilla "completá tu perfil" aunque
 // el perfil estuviera completo. Sincronizamos la versión del backend ANTES de evaluar
 // el gate (una vez por sesión; un reload vuelve a sincronizar y detecta cambios reales).
-let _consentVersionSynced = false;
 async function ensureConsentVersionSynced(): Promise<void> {
-  if (!USE_REAL_BACKEND || _consentVersionSynced) return;
+  // SIEMPRE re-sincroniza la versión vigente desde el backend (no cachear por sesión):
+  // si el admin publica una versión nueva mientras el alumno está logueado, el gate
+  // del inicio debe detectarlo SIN que tenga que ir al perfil y volver. Es un GET chico.
+  if (!USE_REAL_BACKEND) return;
   try {
     const texto = normalizarConsentText(await realFetch<unknown>('/consent/text', { method: 'GET' }));
     if (texto.version) _consentVersionVigente = texto.version;
-    _consentVersionSynced = true;
   } catch {
     // Fallo de red: no bloquear el gate. Se reintenta en la próxima llamada.
   }
@@ -430,12 +454,27 @@ async function realFetch<T>(path: string, init: RequestInit, _legacyToken?: stri
 // forma del backend a la del frontend, en el límite de la API (el dato del backend
 // es no confiable: nunca debe llegar crudo a un componente que hace `.map`).
 const BLOQUE_META: Record<string, { titulo: string; icono: string }> = {
-  que_se_recolecta: { titulo: '¿Qué datos recolectamos?', icono: 'help' },
+  que_se_recolecta: { titulo: '¿Qué datos recolectamos?', icono: 'database' },
   como_se_recolecta: { titulo: '¿Cómo se procesan?', icono: 'memory' },
   donde_se_almacena: { titulo: '¿Dónde se almacenan?', icono: 'dns' },
   cuanto_tiempo: { titulo: '¿Cuánto tiempo?', icono: 'schedule' },
   derechos_titular: { titulo: 'Tus derechos', icono: 'gavel' },
 };
+
+/**
+ * Cuando el backend devuelve bloques desde la tabla `consent_texto_version`
+ * solo trae {titulo, cuerpo} (sin icono). Inferimos el icono por heurística
+ * sobre el titulo — fallback `description` para versiones custom.
+ */
+function inferirIconoBloque(titulo: string): string {
+  const t = titulo.toLowerCase();
+  if (t.includes('qué datos') || t.includes('que datos') || t.includes('recolect')) return 'database';
+  if (t.includes('cómo') || t.includes('como')) return 'memory';
+  if (t.includes('dónde') || t.includes('donde') || t.includes('guard') || t.includes('almacen')) return 'dns';
+  if (t.includes('cuánto') || t.includes('cuanto') || t.includes('tiempo') || t.includes('conserv') || t.includes('retenc')) return 'schedule';
+  if (t.includes('derecho')) return 'gavel';
+  return 'description';
+}
 
 /**
  * Normaliza la respuesta de `/consent/text` a la forma del frontend.
@@ -446,7 +485,11 @@ function normalizarConsentText(raw: unknown): ConsentTextResponse {
   const r = (raw ?? {}) as { version?: string; hash_texto?: string; bloques?: unknown };
   let bloques: BloqueConsentimiento[];
   if (Array.isArray(r.bloques)) {
-    bloques = r.bloques as BloqueConsentimiento[];
+    bloques = (r.bloques as Array<{ titulo: string; cuerpo: string; icono?: string }>).map((b) => ({
+      titulo: b.titulo,
+      cuerpo: b.cuerpo,
+      icono: b.icono || inferirIconoBloque(b.titulo),
+    }));
   } else if (r.bloques && typeof r.bloques === 'object') {
     const dict = r.bloques as Record<string, string>;
     // Orden canónico de BLOQUE_META primero; cualquier clave extra se anexa.
@@ -865,6 +908,60 @@ export const api = {
     // C-67: idem puedeRendir — la versión vigente debe venir del backend para que
     // recalcularPerfilCompleto no invalide un consentimiento real ('v1' vs mock).
     await ensureConsentVersionSynced();
+
+    // En modo REAL la fuente de verdad es el backend: si la DB se reseteó (tmpfs),
+    // el cache local en localStorage queda mintiendo "ya hiciste todo". Por eso
+    // pisamos el estado local con lo que dice el servidor en cada carga.
+    if (USE_REAL_BACKEND) {
+      const token = authProvider.getToken?.() ?? '';
+      const headers = { Authorization: `Bearer ${token}` };
+      const [consentResp, biometriaResp] = await Promise.all([
+        fetch(`${API_BASE}/consent/profile`, { headers })
+          .then((r) => (r.ok ? r.json() : null))
+          .catch(() => null),
+        fetch(`${API_BASE}/proctoring/biometria/referencia/estado`, { headers })
+          .then((r) => (r.ok ? r.json() : null))
+          .catch(() => null),
+      ]);
+
+      const consentimiento: AcuseConsentimiento | null =
+        consentResp && consentResp.estado === 'otorgado'
+          ? {
+              version: consentResp.version_texto ?? consentVersionVigente(),
+              timestamp: consentResp.timestamp ?? new Date().toISOString(),
+              hash: consentResp.hash_texto ?? '',
+              via_alternativa: false,
+            }
+          : null;
+
+      const tieneRefVigente = Boolean(biometriaResp?.tiene_referencia_vigente);
+      // El backend solo expone el booleano (RN-BIO/Ley 25.326). Si no había cache
+      // local, sintetizamos un stub mínimo que satisface el tipo sin filtrar dato.
+      const biometriaStub: ReferenciasBiometrica = enrollmentAlumno.biometria ?? {
+        captura_completada: true,
+        imagen: null,
+        embedding: null,
+        fecha_captura: new Date().toISOString(),
+        fecha_expiracion: new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString(),
+        vigencia_meses: 12,
+        version_motor: 'server',
+        vigencia: 'vigente',
+        renovacion_anticipada_requerida: false,
+      };
+      const biometria: ReferenciasBiometrica | null = tieneRefVigente
+        ? { ...biometriaStub, captura_completada: true, vigencia: 'vigente' }
+        : null;
+
+      const next: EstadoEnrollment = {
+        consentimiento,
+        biometria,
+        dni: enrollmentAlumno.dni,
+        perfil_completo: false, // recalcularPerfilCompleto lo decide
+      };
+      commitEnrollment(next);
+      return { ...enrollmentAlumno };
+    }
+
     commitEnrollment(enrollmentAlumno);
     return { ...enrollmentAlumno };
   },
@@ -919,26 +1016,6 @@ export const api = {
     // Mock demo
     const estado = _estadosViaAlternativa.get(examId);
     return estado != null ? { estado } : null;
-  },
-
-  /**
-   * Registra el acuse de consentimiento en el perfil (C-22).
-   * Acción afirmativa explícita; nunca pre-marcado (RN-CO-02).
-   * El acuse referencia la versión exacta del texto mostrado (RN-CO-01).
-   *
-   * Demo: hash simulado. Server-side: SHA-256 firmado por clave maestra (C-12).
-   */
-  async registrarConsentimientoPerfil(versionTexto: string, viaAlternativa = false): Promise<AcuseConsentimiento> {
-    await delay(400);
-    const acuse: AcuseConsentimiento = {
-      version: versionTexto,
-      timestamp: new Date().toISOString(),
-      // Demo: hash simulado. Server-side: SHA-256 del contenido firmado server-side.
-      hash: 'sha256:' + Math.random().toString(16).slice(2, 18),
-      via_alternativa: viaAlternativa,
-    };
-    commitEnrollment({ ...enrollmentAlumno, consentimiento: acuse });
-    return acuse;
   },
 
   /**
@@ -1211,9 +1288,18 @@ export const api = {
   ): Promise<{ ok: boolean }> {
     if (USE_REAL_BACKEND) {
       try {
+        // El backend espera `embedding` como STRING (columna Text, dato sensible).
+        // El cliente lo arma como number[] → serializamos a JSON string. Sin esto el
+        // backend devolvía 422 y la verificación biométrica NO se guardaba en la sesión.
+        const payload = {
+          liveness_ok: bio.liveness_ok,
+          retos_resueltos: bio.retos_resueltos,
+          resultado: bio.resultado,
+          ...(bio.embedding !== undefined ? { embedding: JSON.stringify(bio.embedding) } : {}),
+        };
         return await realFetch<{ ok: boolean }>(
           `/proctoring/sessions/${sessionId}/biometria`,
-          { method: 'POST', body: JSON.stringify(bio) },
+          { method: 'POST', body: JSON.stringify(payload) },
           'demo',
         );
       } catch {
@@ -1501,24 +1587,66 @@ export const api = {
   // -------------------------------------------------------------------------
 
   /**
-   * Lista usuarios paginados (admin_sistema) — C-61.
-   * Real: GET /users/?limit=&offset=
-   * Mock: lista demo de 3 usuarios.
+   * Lista usuarios paginados con filtros server-side (admin_sistema) — C-61 / C-68.
+   * Real: GET /users/?rol=&estado=&q=&limit=&offset=
+   * Mock: lista demo de 4 usuarios (activos e inactivos) con filtrado local.
    */
-  async listarUsuarios(limit = 20, offset = 0): Promise<ListarUsuariosResponse> {
+  async listarUsuarios(
+    limit = 20,
+    offset = 0,
+    filtros?: { rol?: string; estado?: string; q?: string },
+  ): Promise<ListarUsuariosResponse> {
     if (USE_REAL_BACKEND) {
+      const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+      if (filtros?.rol) params.set('rol', filtros.rol);
+      if (filtros?.estado) params.set('estado', filtros.estado);
+      if (filtros?.q) params.set('q', filtros.q);
       return await realFetch<ListarUsuariosResponse>(
-        `/users/?limit=${limit}&offset=${offset}`,
+        `/users/?${params.toString()}`,
         { method: 'GET' },
       );
     }
     await delay(300);
-    const items: UsuarioAdmin[] = [
-      { id: 'u1', id_institucional: 'FRM-ADM-0021', email: 'lmendoza@frm.utn.edu.ar', nombre: 'Lucía', apellido: 'Mendoza', roles: ['admin_sistema'], auth_provider: 'local' },
-      { id: 'u2', id_institucional: 'FRM-DOC-1182', email: 'cferreyra@frm.utn.edu.ar', nombre: 'Carolina', apellido: 'Ferreyra', roles: ['proctor'], auth_provider: 'local' },
-      { id: 'u3', id_institucional: 'FRM-23-4912', email: 'ecaceres@frm.utn.edu.ar', nombre: 'Emiliano', apellido: 'Cáceres', roles: ['estudiante'], auth_provider: 'local' },
+    const MOCK_ITEMS: UsuarioAdmin[] = [
+      { id: 'u1', id_institucional: 'FRM-ADM-0021', email: 'lmendoza@frm.utn.edu.ar', nombre: 'Lucía', apellido: 'Mendoza', roles: ['admin_sistema'], auth_provider: 'local', eliminado_en: null },
+      { id: 'u2', id_institucional: 'FRM-DOC-1182', email: 'cferreyra@frm.utn.edu.ar', nombre: 'Carolina', apellido: 'Ferreyra', roles: ['proctor'], auth_provider: 'local', eliminado_en: null },
+      { id: 'u3', id_institucional: 'FRM-23-4912', email: 'ecaceres@frm.utn.edu.ar', nombre: 'Emiliano', apellido: 'Cáceres', roles: ['estudiante'], auth_provider: 'local', eliminado_en: null },
+      { id: 'u4', id_institucional: 'FRM-23-0099', email: 'blopez@frm.utn.edu.ar', nombre: 'Bruno', apellido: 'López', roles: ['estudiante'], auth_provider: 'local', eliminado_en: '2026-04-10T10:00:00Z' },
     ];
-    return { items, total: items.length, limit, offset };
+    // Filtrado demo server-side simulado
+    let items = [...MOCK_ITEMS];
+    if (filtros?.rol) items = items.filter((u) => u.roles.includes(filtros.rol!));
+    if (filtros?.estado === 'activo') items = items.filter((u) => !u.eliminado_en);
+    else if (filtros?.estado === 'inactivo') items = items.filter((u) => !!u.eliminado_en);
+    if (filtros?.q) {
+      const q = filtros.q.toLowerCase();
+      items = items.filter((u) =>
+        [u.nombre, u.apellido, u.email, u.id_institucional]
+          .filter(Boolean)
+          .some((v) => (v ?? '').toLowerCase().includes(q)),
+      );
+    }
+    const total = items.length;
+    const pageItems = items.slice(offset, offset + limit);
+    return { items: pageItems, total, limit, offset };
+  },
+
+  /**
+   * Reactiva un usuario dado de baja (admin_sistema) — C-68.
+   * Real: POST /users/{id}/reactivar → usuario reactivado.
+   * Mock: no-op (demo sin persistencia real de baja).
+   */
+  async reactivarUsuario(usuarioId: string): Promise<void> {
+    if (USE_REAL_BACKEND) {
+      const token = authProvider.getToken();
+      const res = await fetch(`${API_BASE}/users/${usuarioId}/reactivar`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return;
+    }
+    await delay(300);
   },
 
   /**
@@ -1674,6 +1802,114 @@ export const api = {
   },
 
   // -------------------------------------------------------------------------
+  // Detalle de usuario (admin) — C-68
+  // -------------------------------------------------------------------------
+
+  /**
+   * Detalle completo de un usuario (admin_sistema) — C-68.
+   * Real: GET /users/{id}
+   * Mock: busca en el listado demo.
+   */
+  async obtenerDetalleUsuario(id: string): Promise<UsuarioAdmin & { eliminado_en?: string | null }> {
+    if (USE_REAL_BACKEND) {
+      return await realFetch<UsuarioAdmin & { eliminado_en?: string | null }>(
+        `/users/${id}`,
+        { method: 'GET' },
+      );
+    }
+    await delay(200);
+    const MOCK: (UsuarioAdmin & { eliminado_en?: string | null })[] = [
+      { id: 'u1', id_institucional: 'FRM-ADM-0021', email: 'lmendoza@frm.utn.edu.ar', nombre: 'Lucía', apellido: 'Mendoza', roles: ['admin_sistema'], auth_provider: 'local', eliminado_en: null },
+      { id: 'u2', id_institucional: 'FRM-DOC-1182', email: 'cferreyra@frm.utn.edu.ar', nombre: 'Carolina', apellido: 'Ferreyra', roles: ['proctor'], auth_provider: 'local', eliminado_en: null },
+      { id: 'u3', id_institucional: 'FRM-23-4912', email: 'ecaceres@frm.utn.edu.ar', nombre: 'Emiliano', apellido: 'Cáceres', roles: ['estudiante'], auth_provider: 'local', eliminado_en: null },
+    ];
+    const found = MOCK.find((u) => u.id === id);
+    if (!found) throw new Error('HTTP 404');
+    return found;
+  },
+
+  /**
+   * Consentimiento de perfil de un usuario específico (admin_sistema) — C-68.
+   * Real: GET /users/{id}/consent-profile
+   * Mock: estado simulado con datos plausibles.
+   */
+  async obtenerConsentimientoDeUsuario(id: string): Promise<{
+    estado: 'otorgado' | 'revocado' | null;
+    version_texto: string | null;
+    hash_texto: string | null;
+    timestamp: string | null;
+  }> {
+    if (USE_REAL_BACKEND) {
+      return await realFetch<{
+        estado: 'otorgado' | 'revocado' | null;
+        version_texto: string | null;
+        hash_texto: string | null;
+        timestamp: string | null;
+      }>(`/users/${id}/consent-profile`, { method: 'GET' });
+    }
+    await delay(200);
+    // Demo: usuario u3 (estudiante) tiene consentimiento otorgado
+    if (id === 'u3') {
+      return {
+        estado: 'otorgado',
+        version_texto: 'v1',
+        hash_texto: 'sha256:9f2ba31c4e7d0821',
+        timestamp: '2026-05-28T14:32:00Z',
+      };
+    }
+    return { estado: null, version_texto: null, hash_texto: null, timestamp: null };
+  },
+
+  /**
+   * Estado de la referencia biométrica de un usuario específico (admin_sistema) — C-68.
+   * Real: GET /users/{id}/biometria/referencia/estado
+   * Mock: estado simulado.
+   */
+  async obtenerEstadoBiometriaDeUsuario(id: string): Promise<{
+    tiene_referencia_vigente: boolean;
+    algoritmo: string | null;
+    fecha_expiracion: string | null;
+    created_at: string | null;
+    tiene_foto: boolean;
+    foto_hash: string | null;
+    foto_created_at: string | null;
+  }> {
+    if (USE_REAL_BACKEND) {
+      return await realFetch<{
+        tiene_referencia_vigente: boolean;
+        algoritmo: string | null;
+        fecha_expiracion: string | null;
+        created_at: string | null;
+        tiene_foto: boolean;
+        foto_hash: string | null;
+        foto_created_at: string | null;
+      }>(`/users/${id}/biometria/referencia/estado`, { method: 'GET' });
+    }
+    await delay(200);
+    // Demo: usuario u3 tiene referencia vigente
+    if (id === 'u3') {
+      return {
+        tiene_referencia_vigente: true,
+        algoritmo: 'mediapipe-face-mesh-v1',
+        fecha_expiracion: '2028-05-28T14:33:00Z',
+        created_at: '2026-05-28T14:33:00Z',
+        tiene_foto: true,
+        foto_hash: 'sha256:4a7f3b9c1d2e8f05',
+        foto_created_at: '2026-05-28T14:33:00Z',
+      };
+    }
+    return {
+      tiene_referencia_vigente: false,
+      algoritmo: null,
+      fecha_expiracion: null,
+      created_at: null,
+      tiene_foto: false,
+      foto_hash: null,
+      foto_created_at: null,
+    };
+  },
+
+  // -------------------------------------------------------------------------
   // Registro público de estudiantes — C-61 (task 7.3)
   // -------------------------------------------------------------------------
 
@@ -1701,6 +1937,261 @@ export const api = {
       id: 'u-' + Date.now().toString(36),
       id_institucional: body.id_institucional,
       email: body.email,
+    };
+  },
+
+  // -------------------------------------------------------------------------
+  // Versiones del texto de consentimiento (admin) — C-68
+  // -------------------------------------------------------------------------
+
+  /**
+   * Lista las versiones publicadas del texto de consentimiento (admin_sistema).
+   * Real: GET /api/v1/consent/text/versions
+   * Mock: devuelve la versión demo como única entrada.
+   */
+  async listarVersionesConsentimiento(): Promise<{ version: string; hash_texto: string }[]> {
+    if (USE_REAL_BACKEND) {
+      return await realFetch<{ version: string; hash_texto: string }[]>(
+        '/consent/text/versions',
+        { method: 'GET' },
+      );
+    }
+    await delay(150);
+    return [{ version: CONSENT_TEXT.version, hash_texto: CONSENT_TEXT.hash_texto }];
+  },
+
+  /**
+   * Publica una nueva versión del texto de consentimiento (admin_sistema).
+   * Real: POST /api/v1/consent/text/versions
+   *   body: { version, bloques: [{titulo, cuerpo}] }
+   *   → 200 { version, bloques, hash_texto }
+   *   → 409 si la versión ya existe
+   * Mock: guarda en memoria (actualiza CONSENT_TEXT para la sesión).
+   *
+   * La versión publicada no se activa hasta hacer PATCH /config { consent_version_vigente }.
+   */
+  async crearVersionConsentimiento(params: {
+    version: string;
+    bloques: Array<{ titulo: string; cuerpo: string }>;
+  }): Promise<{ version: string; bloques: BloqueConsentimiento[]; hash_texto: string }> {
+    if (USE_REAL_BACKEND) {
+      const raw = await realFetch<unknown>(
+        '/consent/text/versions',
+        { method: 'POST', body: JSON.stringify(params) },
+      );
+      return normalizarConsentText(raw);
+    }
+    await delay(400);
+    // Demo: actualizar el CONSENT_TEXT en memoria para que getConsentText
+    // devuelva los bloques nuevos en esta sesión.
+    const bloquesNuevos: BloqueConsentimiento[] = params.bloques.map((b, i) => ({
+      titulo: b.titulo,
+      cuerpo: b.cuerpo,
+      icono: CONSENT_TEXT.bloques[i]?.icono ?? 'info',
+    }));
+    const hashDemo = 'sha256:' + Math.random().toString(16).slice(2, 18);
+    // Mutar el objeto demo para que getConsentText lo devuelva en próximas llamadas.
+    CONSENT_TEXT.version = params.version;
+    CONSENT_TEXT.hash_texto = hashDemo;
+    CONSENT_TEXT.bloques = bloquesNuevos;
+    return { version: params.version, bloques: bloquesNuevos, hash_texto: hashDemo };
+  },
+
+  // -------------------------------------------------------------------------
+  // Config efectiva del sistema — configuracion-sistema-funcional (ola 2)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Config efectiva autoritativa (pesos + umbrales + version/ETag).
+   * Accesible a cualquier usuario autenticado.
+   * Real: GET /api/v1/config/effective
+   * Mock: DEFAULT_CONFIG + pesos hardcodeados demo.
+   */
+  async obtenerConfigEfectiva(): Promise<{
+    version: number;
+    face_absent_ms: number;
+    multiple_faces_frames: number;
+    gaze_deviation_threshold: number;
+    gaze_sustained_ms: number;
+    gaze_fixation_tolerance: number;
+    umbral_cola_revision: number;
+    retencion_dias_default: number;
+    consent_version_vigente: string;
+    detectores_activos: string[];
+    scoring_weights: Record<string, number>;
+    scoring_severidades: Record<string, string>;
+  }> {
+    if (USE_REAL_BACKEND) {
+      return await realFetch('/config/effective', { method: 'GET' });
+    }
+    await delay(150);
+    return {
+      version: 1,
+      face_absent_ms: 3000,
+      multiple_faces_frames: 5,
+      gaze_deviation_threshold: 0.20,
+      gaze_sustained_ms: 2500,
+      gaze_fixation_tolerance: 0.25,
+      umbral_cola_revision: 70,
+      retencion_dias_default: 30,
+      consent_version_vigente: 'v1',
+      detectores_activos: [
+        'rostro_ausente', 'multiples_rostros', 'mirada_desviada_sostenida',
+        'perdida_de_foco', 'cambio_pestana', 'monitor_adicional',
+        'salida_pantalla_completa', 'copiar_pegar',
+      ],
+      scoring_weights: {
+        rostro_ausente: 20,
+        multiples_rostros: 50,
+        mirada_desviada_sostenida: 20,
+        perdida_de_foco: 5,
+        cambio_pestana: 20,
+        monitor_adicional: 50,
+        salida_pantalla_completa: 20,
+        copiar_pegar: 20,
+      },
+      scoring_severidades: {
+        rostro_ausente: 'media',
+        multiples_rostros: 'alta',
+        mirada_desviada_sostenida: 'media',
+        perdida_de_foco: 'baja',
+        cambio_pestana: 'media',
+        monitor_adicional: 'alta',
+        salida_pantalla_completa: 'media',
+        copiar_pegar: 'baja',
+      },
+    };
+  },
+
+  /**
+   * Edita los defaults globales de la config del sistema.
+   * SOLO admin_sistema con MFA. Invalida el cache del backend.
+   * Real: PATCH /api/v1/config
+   * Mock: devuelve la config demo sin cambios reales.
+   */
+  async editarConfigSistema(body: {
+    face_absent_ms?: number;
+    multiple_faces_frames?: number;
+    gaze_deviation_threshold?: number;
+    gaze_sustained_ms?: number;
+    gaze_fixation_tolerance?: number;
+    umbral_cola_revision?: number;
+    detectores_activos?: string[];
+    retencion_dias_default?: number;
+    consent_version_vigente?: string;
+  }): Promise<{
+    version: number;
+    face_absent_ms: number;
+    multiple_faces_frames: number;
+    gaze_deviation_threshold: number;
+    gaze_sustained_ms: number;
+    gaze_fixation_tolerance: number;
+    umbral_cola_revision: number;
+    retencion_dias_default: number;
+    consent_version_vigente: string;
+    detectores_activos: string[];
+    scoring_weights: Record<string, number>;
+  }> {
+    if (USE_REAL_BACKEND) {
+      return await realFetch('/config', { method: 'PATCH', body: JSON.stringify(body) });
+    }
+    await delay(350);
+    // Demo: echo con los cambios aplicados sobre los defaults
+    const base = await api.obtenerConfigEfectiva();
+    return { ...base, ...body, version: base.version + 1 };
+  },
+
+  // -------------------------------------------------------------------------
+  // Consentimiento de perfil persistido server-side — configuracion-sistema-funcional (ola 2)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Otorga el consentimiento de perfil (acción afirmativa explícita, RN-CO-02).
+   * Real: POST /api/v1/consent/profile
+   * Demo: registra localmente (no persiste server-side).
+   *
+   * REEMPLAZA la implementación anterior que solo guardaba en localStorage.
+   */
+  async registrarConsentimientoPerfil(versionTexto: string, viaAlternativa = false): Promise<AcuseConsentimiento> {
+    if (USE_REAL_BACKEND && !viaAlternativa) {
+      // Consentimiento directo: POST al backend server-side (Ley 25.326, append-only).
+      const data = await realFetch<{
+        estado: string;
+        version_texto: string | null;
+        hash_texto: string | null;
+        timestamp: string | null;
+      }>('/consent/profile', {
+        method: 'POST',
+        body: JSON.stringify({ version_texto: versionTexto, affirmative_action: true }),
+      });
+      const acuse: AcuseConsentimiento = {
+        version: data.version_texto ?? versionTexto,
+        timestamp: data.timestamp ?? new Date().toISOString(),
+        hash: data.hash_texto ? `sha256:${data.hash_texto}` : '',
+        via_alternativa: false,
+      };
+      commitEnrollment({ ...enrollmentAlumno, consentimiento: acuse });
+      return acuse;
+    }
+    // Demo / vía alternativa: comportamiento original (hash simulado local)
+    await delay(400);
+    const acuse: AcuseConsentimiento = {
+      version: versionTexto,
+      timestamp: new Date().toISOString(),
+      hash: 'sha256:' + Math.random().toString(16).slice(2, 18),
+      via_alternativa: viaAlternativa,
+    };
+    commitEnrollment({ ...enrollmentAlumno, consentimiento: acuse });
+    return acuse;
+  },
+
+  /**
+   * Estado vigente del consentimiento de perfil del usuario autenticado.
+   * Real: GET /api/v1/consent/profile
+   * Demo: lee el enrollment local.
+   */
+  async estadoConsentimientoPerfil(): Promise<{
+    estado: 'otorgado' | 'revocado' | 'inexistente';
+    version_texto: string | null;
+    hash_texto: string | null;
+    timestamp: string | null;
+  }> {
+    if (USE_REAL_BACKEND) {
+      return await realFetch('/consent/profile', { method: 'GET' });
+    }
+    await delay(150);
+    const acuse = enrollmentAlumno.consentimiento;
+    if (!acuse) {
+      return { estado: 'inexistente', version_texto: null, hash_texto: null, timestamp: null };
+    }
+    return {
+      estado: 'otorgado',
+      version_texto: acuse.version,
+      hash_texto: acuse.hash ?? null,
+      timestamp: acuse.timestamp,
+    };
+  },
+
+  /**
+   * Revoca el consentimiento de perfil (inserta estado revocado, preserva histórico).
+   * Real: POST /api/v1/consent/profile/revoke
+   * Demo: simula estado revocado.
+   */
+  async revocarConsentimientoPerfil(): Promise<{
+    estado: string;
+    version_texto: string | null;
+    hash_texto: string | null;
+    timestamp: string | null;
+  }> {
+    if (USE_REAL_BACKEND) {
+      return await realFetch('/consent/profile/revoke', { method: 'POST' });
+    }
+    await delay(300);
+    return {
+      estado: 'revocado',
+      version_texto: enrollmentAlumno.consentimiento?.version ?? 'v1',
+      hash_texto: null,
+      timestamp: new Date().toISOString(),
     };
   },
 };
