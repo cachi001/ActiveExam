@@ -35,6 +35,9 @@ minio_data/
 
 # Playwright MCP screenshots / dumps de review
 .playwright-mcp/
+# Screenshots sueltos en la root (Playwright MCP los guarda con nombre explícito
+# fuera de .playwright-mcp/). Solo root, para no pisar assets en public/ o src/.
+/*.png
 *.stackdump
 
 # Engram: dump cross-project del capturador (NO versionar — filtra data de otros
