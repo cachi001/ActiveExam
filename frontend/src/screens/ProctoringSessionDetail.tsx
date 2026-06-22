@@ -31,7 +31,7 @@ function VolverLink({ onClick, label }: { onClick: () => void; label: string }) 
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex items-center gap-base text-label-md text-on-surface-variant hover:text-on-surface hover:underline"
+      className="inline-flex items-center gap-base text-label-md text-on-surface-variant hover:text-on-surface transition-colors"
     >
       <Icon name="arrow_back" className="text-[18px]" />
       {label}

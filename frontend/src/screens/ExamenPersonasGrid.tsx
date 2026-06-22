@@ -86,7 +86,7 @@ export default function ExamenPersonasGrid() {
         <div className="space-y-sm">
           <button
             onClick={() => navigate('/proctor')}
-            className="inline-flex items-center gap-base text-label-md font-semibold text-on-surface-variant hover:text-on-surface hover:underline"
+            className="inline-flex items-center gap-base text-label-md font-semibold text-on-surface-variant hover:text-on-surface transition-colors"
           >
             <Icon name="arrow_back" className="text-[18px]" />
             Volver a supervisión
@@ -111,14 +111,9 @@ export default function ExamenPersonasGrid() {
 
         {/* Resumen del examen */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-md">
-          <StatCard icon="group" label="Personas" value={personas.length} tono="primary" />
-          <StatCard icon="notifications" label="Eventos" value={eventos} tono="info" />
-          <StatCard
-            icon="priority_high"
-            label="Riesgo alto"
-            value={riesgoAlto}
-            tono={riesgoAlto > 0 ? 'error' : 'success'}
-          />
+          <StatCard icon="group" label="Personas" value={personas.length} sub="rindiendo" tono="primary" />
+          <StatCard icon="notifications" label="Eventos" value={eventos} sub="detectados" tono="info" />
+          <StatCard icon="priority_high" label="Riesgo alto" value={riesgoAlto} sub="superan el umbral" tono="error" />
         </div>
 
         {/* Grid de personas */}

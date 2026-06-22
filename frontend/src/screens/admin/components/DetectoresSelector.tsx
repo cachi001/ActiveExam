@@ -7,15 +7,20 @@
 import { TIPO_EVENTO_LABEL } from '../../../lib/api';
 import type { TipoEvento } from '../../../lib/types';
 
+// Orden por grupos lógicos: primero lo que ve la cámara, después el
+// comportamiento en el navegador, y al final hardware/conectividad.
 const DETECTORES: TipoEvento[] = [
+  // Cámara / visión
   'rostro_ausente',
   'multiples_rostros',
   'mirada_desviada_sostenida',
+  // Navegador / contexto del examen
   'perdida_de_foco',
-  'monitor_adicional',
   'cambio_pestana',
   'salida_pantalla_completa',
   'copiar_pegar',
+  // Hardware / conectividad
+  'monitor_adicional',
   'corte_conectividad_prolongado',
 ];
 
@@ -47,7 +52,7 @@ export default function DetectoresSelector({ value, onChange }: DetectoresSelect
       <p className="text-label-sm text-on-surface-variant">
         <span className="font-semibold text-on-surface">{value.length}</span> de {DETECTORES.length} detectores activos
       </p>
-      <div className="flex flex-col gap-2">
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-2">
         {DETECTORES.map((d) => {
           const on = value.includes(d);
           return (

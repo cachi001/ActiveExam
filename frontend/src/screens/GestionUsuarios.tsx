@@ -25,15 +25,10 @@ import { api } from '../lib/api';
 import type { UsuarioAdmin } from '../lib/types';
 import { ROL_LABELS, ROLES_VALIDOS, getRolLabel } from '../lib/constants/roles';
 
-/** Badge de rol con color semántico, consistente con DetalleUsuario. */
+/** Badge de rol — todos los roles con el MISMO color (primary), como el sistema
+ * de referencia. El color del badge no distingue el rol; lo distingue el texto. */
 function RolBadge({ rol }: { rol: string }) {
-  const toneMap: Record<string, 'primary' | 'success' | 'warning' | 'error' | 'neutral'> = {
-    admin_sistema: 'primary',
-    proctor: 'warning',
-    estudiante: 'success',
-  };
-  const tone = toneMap[rol] ?? 'neutral';
-  return <Badge tone={tone} className="text-[11px]">{getRolLabel(rol)}</Badge>;
+  return <Badge tone="primary" className="text-[11px]">{getRolLabel(rol)}</Badge>;
 }
 
 // ---------------------------------------------------------------------------
@@ -48,31 +43,36 @@ interface EstadoSwitchProps {
 
 function EstadoSwitch({ usuario, esPropioUsuario, onToggle }: EstadoSwitchProps) {
   const activo = !usuario.eliminado_en;
-  return (
-    <div className="flex items-center gap-2" title={esPropioUsuario ? 'No podés cambiar tu propio estado' : undefined}>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={activo}
-        aria-label={activo ? 'Activo — click para dar de baja' : 'Inactivo — click para reactivar'}
-        disabled={esPropioUsuario}
-        onClick={() => !esPropioUsuario && onToggle(usuario)}
-        className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-1 ${
-          esPropioUsuario
-            ? 'cursor-not-allowed opacity-50'
-            : 'cursor-pointer focus:ring-primary/40'
-        } ${activo ? 'bg-success' : 'bg-error'}`}
-      >
-        <span
-          className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform duration-200 ${
-            activo ? 'translate-x-4' : 'translate-x-0'
-          }`}
-        />
-      </button>
-      <span className={`text-[12px] font-medium ${activo ? 'text-success' : 'text-error'}`}>
+  const dotColor = activo ? 'bg-success-600' : 'bg-error-600';
+  const tono = activo ? 'bg-success-100 text-success-800' : 'bg-error-100 text-error-800';
+
+  // Tu propio usuario: no se puede cambiar el estado, así que NO se muestra como
+  // botón (ni deshabilitado). Se muestra como un chip de estado PLANO (igual que
+  // el sistema de referencia, que para isSelf renderiza un Badge, no el toggle).
+  if (esPropioUsuario) {
+    return (
+      <span className={`inline-flex items-center px-3 py-1.5 rounded-full text-xs font-semibold ${tono}`}>
+        <span className={`w-2 h-2 rounded-full mr-2 ${dotColor}`} />
         {activo ? 'Activo' : 'Inactivo'}
       </span>
-    </div>
+    );
+  }
+
+  // Resto de usuarios: pill clickeable (estilo de la referencia) que alterna el estado.
+  return (
+    <button
+      type="button"
+      aria-label={activo ? 'Activo — click para dar de baja' : 'Inactivo — click para reactivar'}
+      onClick={() => onToggle(usuario)}
+      className={`inline-flex items-center px-3 py-1.5 rounded-full text-xs font-semibold shadow-sm border transition-colors duration-150 cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-1 ${
+        activo
+          ? 'bg-success-100 text-success-800 border-success-200 hover:bg-success-200 focus:ring-success-500'
+          : 'bg-error-100 text-error-800 border-error-200 hover:bg-error-200 focus:ring-error-500'
+      }`}
+    >
+      <span className={`w-2 h-2 rounded-full mr-2 ${dotColor}`} />
+      {activo ? 'Activo' : 'Inactivo'}
+    </button>
   );
 }
 

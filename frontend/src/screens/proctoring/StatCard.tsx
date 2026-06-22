@@ -81,6 +81,7 @@ export function StatCard({
   return (
     <div
       className={`relative overflow-hidden ${s.padding} rounded-2xl shadow-lg
+        h-full flex flex-col justify-center
         transition-shadow hover:shadow-xl text-white ${TONO_BG[tono]}`}
     >
       {/* Círculo decorativo translúcido arriba-derecha */}

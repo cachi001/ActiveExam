@@ -15,13 +15,13 @@ export interface StaffNavItem {
 export const STAFF_NAV: StaffNavItem[] = [
   { to: '/admin',                       icon: 'space_dashboard', label: 'Dashboard',               group: 'main' },
   { to: '/admin/examenes',              icon: 'quiz',            label: 'Exámenes',                group: 'main' },
-  // Bloque "proctoring": las 3 vistas de sesiones (vivo, cola de revisión,
-  // grabadas) van juntas para que el mental model del proctor sea claro.
+  { to: '/admin/reportes',              icon: 'analytics',       label: 'Reportes y analítica',    group: 'main' },
+  { to: '/admin/auditoria',             icon: 'policy',          label: 'Auditoría y privacidad',  group: 'main' },
+  // Bloque "proctoring": las 3 vistas de sesiones van juntas y al FINAL del grupo
+  // main (justo arriba del divider), en orden de flujo: vivo → cola → grabadas.
   { to: '/proctor',                     icon: 'visibility',      label: 'Supervisión en vivo',     group: 'main' },
   { to: '/revisor',                     icon: 'gavel',           label: 'Cola de revisión',        group: 'main' },
   { to: '/admin/proctoring-sessions',   icon: 'video_library',   label: 'Sesiones grabadas',       group: 'main' },
-  { to: '/admin/reportes',              icon: 'analytics',       label: 'Reportes y analítica',    group: 'main' },
-  { to: '/admin/auditoria',             icon: 'policy',          label: 'Auditoría y privacidad',  group: 'main' },
   // Administración: separadas con divider.
   { to: '/admin/usuarios',              icon: 'manage_accounts', label: 'Usuarios',                group: 'config' },
   { to: '/admin/detection-test',        icon: 'bug_report',      label: 'Test de detección',       group: 'config' },

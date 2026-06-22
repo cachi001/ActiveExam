@@ -136,12 +136,13 @@ export function useToast(): ToastApi {
 // Presentación
 // ---------------------------------------------------------------------------
 
-const TIPO_CONFIG: Record<ToastTipo, { icon: string; bg: string; iconColor: string }> = {
-  // Fondo tintado + ícono semántico por tipo (color correspondiente a la notificación).
-  success: { icon: 'check_circle', bg: 'bg-success-container border-success/40', iconColor: 'text-success' },
-  error: { icon: 'error', bg: 'bg-error-container border-error/40', iconColor: 'text-error' },
-  info: { icon: 'info', bg: 'bg-primary-fixed border-primary/30', iconColor: 'text-primary' },
-  warning: { icon: 'warning', bg: 'bg-warning-container border-warning-200', iconColor: 'text-warning' },
+const TIPO_CONFIG: Record<ToastTipo, { icon: string; bg: string; border: string; iconColor: string; textColor: string }> = {
+  // Estilo "card tintada suave" (fondo -50, borde -200, ícono -600, texto -900),
+  // tomado del sistema de referencia.
+  success: { icon: 'check_circle', bg: 'bg-success-50', border: 'border-success-200', iconColor: 'text-success-600', textColor: 'text-success-900' },
+  error: { icon: 'cancel', bg: 'bg-error-50', border: 'border-error-200', iconColor: 'text-error-600', textColor: 'text-error-900' },
+  info: { icon: 'info', bg: 'bg-primary-50', border: 'border-primary-200', iconColor: 'text-primary-600', textColor: 'text-primary-900' },
+  warning: { icon: 'warning', bg: 'bg-warning-50', border: 'border-warning-200', iconColor: 'text-warning-600', textColor: 'text-warning-900' },
 };
 
 function ToastCard({ item, onDismiss }: { item: ToastItem; onDismiss: (id: number) => void }) {
@@ -150,14 +151,13 @@ function ToastCard({ item, onDismiss }: { item: ToastItem; onDismiss: (id: numbe
     <div
       role="status"
       aria-live="polite"
-      onClick={() => onDismiss(item.id)}
-      className={`pointer-events-auto flex items-center gap-sm max-w-sm w-full
-        text-on-surface border ${cfg.bg}
-        rounded-lg shadow-card-lg px-md py-sm cursor-pointer
-        animate-in fade-in slide-in-from-top-4`}
+      className={`pointer-events-auto flex items-start gap-3 w-full min-w-[300px] max-w-[400px]
+        border ${cfg.bg} ${cfg.border}
+        rounded-xl shadow-lg p-4
+        animate-in fade-in slide-in-from-right-8 duration-300`}
     >
-      <Icon name={cfg.icon} className={`text-[20px] shrink-0 ${cfg.iconColor}`} fill />
-      <span className="flex-1 text-label-md font-medium leading-snug break-words text-center">{item.msg}</span>
+      <Icon name={cfg.icon} className={`text-[20px] shrink-0 mt-0.5 ${cfg.iconColor}`} fill />
+      <span className={`flex-1 min-w-0 text-sm font-medium leading-snug break-words ${cfg.textColor}`}>{item.msg}</span>
       <button
         type="button"
         aria-label="Descartar notificación"
@@ -165,10 +165,10 @@ function ToastCard({ item, onDismiss }: { item: ToastItem; onDismiss: (id: numbe
           e.stopPropagation();
           onDismiss(item.id);
         }}
-        className="shrink-0 -mr-1 rounded-full p-0.5 text-on-surface-variant
-          hover:text-on-surface hover:bg-black/5 transition-colors"
+        className="shrink-0 -mr-1 -mt-0.5 rounded-lg p-1 text-on-surface-variant
+          hover:text-on-surface hover:bg-black/5 transition-colors cursor-pointer"
       >
-        <Icon name="close" className="text-[18px]" />
+        <Icon name="close" className="text-[16px]" />
       </button>
     </div>
   );

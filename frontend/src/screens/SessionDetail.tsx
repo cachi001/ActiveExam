@@ -39,8 +39,8 @@ export default function SessionDetail() {
         </Card>
 
         <div className="grid sm:grid-cols-3 gap-md">
-          <StatCard icon="schedule" label="Duración" value={sel.duracion} tono="neutral" />
-          <StatCard icon="event" label="Fecha" value={sel.fecha} tono="neutral" />
+          <StatCard icon="schedule" label="Duración" value={sel.duracion} sub="del examen" tono="primary" />
+          <StatCard icon="event" label="Fecha" value={sel.fecha} sub="de rendición" tono="info" />
           <StatCard icon="warning" label="Incidencias" value={sel.eventos.length} sub={`${sel.eventos.filter((e) => e.tiene_evidencia).length} con evidencia`} tono="warning" />
         </div>
 

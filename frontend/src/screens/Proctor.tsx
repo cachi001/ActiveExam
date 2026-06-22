@@ -179,11 +179,12 @@ export default function Proctor() {
     >
       <div className="space-y-lg animate-in fade-in duration-500">
 
+        {/* Resumen agregado del lote actual — va PRIMERO (las métricas del panel
+            arriba de todo, antes de la cola de solicitudes de pausa). */}
+        {!cargaInicial && sesiones.length > 0 && <ResumenVivo sesiones={sesiones} />}
+
         {/* C-15: cola de solicitudes de pausa (poll propio; se oculta si no hay). */}
         <PausasPendientes proctorActor={proctorActor} />
-
-        {/* Resumen agregado del lote actual */}
-        {!cargaInicial && sesiones.length > 0 && <ResumenVivo sesiones={sesiones} />}
 
         {/* Barra de estado del polling (sin card) */}
         <div className="flex items-center justify-between gap-md text-label-sm text-on-surface-variant">

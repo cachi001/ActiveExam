@@ -14,14 +14,9 @@ export function ResumenSesiones({ sesiones }: { sesiones: SesionProctoringResume
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-3 gap-md">
-      <StatCard icon="video_library" label="Sesiones" value={totalSesiones} tono="primary" />
-      <StatCard icon="notifications" label="Eventos" value={totalEventos} tono="info" />
-      <StatCard
-        icon="rule"
-        label="Discrepancias"
-        value={totalDiscrepancias}
-        tono={totalDiscrepancias > 0 ? 'error' : 'success'}
-      />
+      <StatCard icon="video_library" label="Sesiones" value={totalSesiones} sub="grabadas en total" tono="primary" />
+      <StatCard icon="notifications" label="Eventos" value={totalEventos} sub="detectados" tono="info" />
+      <StatCard icon="rule" label="Discrepancias" value={totalDiscrepancias} sub="verificadas en server" tono="warning" />
     </div>
   );
 }
