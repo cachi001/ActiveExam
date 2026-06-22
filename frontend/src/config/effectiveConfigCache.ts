@@ -33,7 +33,8 @@ export interface ConfigEfectivaSnapshot {
   consent_version_vigente: string;
   detectores_activos: string[];
   scoring_weights: Record<string, number>;
-  scoring_severidades?: Record<string, Severidad>;
+  // El backend devuelve strings; se castean a Severidad al sembrar el cache.
+  scoring_severidades?: Record<string, string>;
 }
 
 // Cache en memoria — nulo hasta que se carga.
@@ -62,7 +63,7 @@ export async function loadEffectiveConfig(): Promise<void> {
       // Siembra las severidades configuradas por tipo (para mostrar la severidad
       // vigente en el log de eventos, no la del catalogo hardcodeado del cliente).
       if (data.scoring_severidades && Object.keys(data.scoring_severidades).length > 0) {
-        seedScoringSeveridades(data.scoring_severidades);
+        seedScoringSeveridades(data.scoring_severidades as Record<string, Severidad>);
       }
       // Siembra el umbral de riesgo alto desde la config efectiva.
       // nivelRiesgo() y las vistas usan getUmbralAlto() en lugar del const hardcodeado.

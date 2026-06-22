@@ -26,7 +26,6 @@ interface HarnessHeaderProps {
 export default function HarnessHeader({
   engineMode,
   engineError,
-  isFirstEngineLoad,
   harnessState,
   modoSesion,
   eventosEnviados,

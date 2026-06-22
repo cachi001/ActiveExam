@@ -145,7 +145,7 @@ export default function EventLog({
                       Guardado en el servidor
                       {entry.faceCountServer != null && (
                         <span className="text-[10px] opacity-70 ml-base">
-                          ({formatRostrosConOrigen('servidor', entry.faceCountServer)})
+                          ({formatRostrosConOrigen('Servidor', entry.faceCountServer)})
                         </span>
                       )}
                     </span>
