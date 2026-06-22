@@ -29,6 +29,7 @@ export default function AlumnoDashboard() {
   const principal = useApp((s) => s.principal);
   const [inscripciones, setInscripciones] = useState<Inscripcion[]>([]);
   const [puedeRendir, setPuedeRendir] = useState<boolean | null>(null);
+  const [gateCodigo, setGateCodigo] = useState<string | null>(null);
   const [enrollment, setEnrollment] = useState<EstadoEnrollment | null>(null);
   const [cargando, setCargando] = useState(true);
 
@@ -39,6 +40,7 @@ export default function AlumnoDashboard() {
       if (cancelado) return;
       setInscripciones(insc);
       setPuedeRendir(gate.puede);
+      setGateCodigo(gate.codigo ?? null);
       setEnrollment(enr);
       setCargando(false);
     })();
@@ -93,8 +95,18 @@ export default function AlumnoDashboard() {
   }
 
   if (puedeRendir === false) {
+    // El consentimiento puede EXISTIR pero estar desactualizado (el admin publicó una
+    // versión nueva): en ese caso NO está "listo" — hay que renovarlo. No basta con
+    // mirar si existe el acuse; usamos el código del gate para distinguirlo.
+    const consentDesactualizado = gateCodigo === 'consentimiento_version_desactualizada';
+    const consentListo = !!enrollment?.consentimiento && !consentDesactualizado;
     const pasos = [
-      { label: 'Consentimiento informado', done: !!enrollment?.consentimiento },
+      {
+        label: consentDesactualizado
+          ? 'Renovar el consentimiento (hay una versión nueva)'
+          : 'Consentimiento informado',
+        done: consentListo,
+      },
       { label: 'Captura biométrica de referencia', done: !!enrollment?.biometria },
     ];
     return (

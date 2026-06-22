@@ -15,7 +15,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { loadScoringWeights } from '../../proctoring/scoringWeights';
-import { loadEffectiveConfig, getEffectiveConfig } from '../../config/effectiveConfigCache';
+import { loadEffectiveConfig, getEffectiveConfig, resetEffectiveConfigCache } from '../../config/effectiveConfigCache';
 import { useToast } from '../../ui/toast';
 import { useApp } from '../../lib/store';
 import { api } from '../../lib/api';
@@ -188,6 +188,9 @@ export function useDetectionHarness() {
   // Si la API falla, pesoEvento() usa el fallback por severidad (degradación silenciosa).
   // El harness sigue air-gapped para la captura — esta carga es solo para la config baseline.
   useEffect(() => {
+    // Invalidamos el cache al montar para tomar SIEMPRE la config vigente,
+    // incluso si el admin la cambió desde otra pestaña (igual que Revisor/Perfil).
+    resetEffectiveConfigCache();
     void loadEffectiveConfig()
       .then(() => {
         const cfg = getEffectiveConfig();

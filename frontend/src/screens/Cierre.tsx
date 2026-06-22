@@ -5,6 +5,7 @@ import { Icon, Button, Card } from '../ui/components';
 import { useNavigate } from '../lib/router';
 import { useApp } from '../lib/store';
 import { api } from '../lib/api';
+import { loadEffectiveConfig, getEffectiveConfig, resetEffectiveConfigCache } from '../config/effectiveConfigCache';
 import { Term } from '../ui/Term';
 
 export default function Cierre() {
@@ -19,6 +20,19 @@ export default function Cierre() {
   // Fallback: "—" si el GET falla o proctoringSessionId es null.
   const [totalEventos, setTotalEventos] = useState<number | null>(null);
   const [scoreBackend, setScoreBackend] = useState<number | null>(null);
+  // Umbral de revisión: SIEMPRE de la config efectiva del sistema (no un literal).
+  // Así la pantalla de cierre es coherente con la Cola de revisión.
+  const [umbralRevision, setUmbralRevision] = useState<number | null>(null);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        resetEffectiveConfigCache();
+        await loadEffectiveConfig();
+        setUmbralRevision(getEffectiveConfig()?.umbral_cola_revision ?? null);
+      } catch { /* sin red: cae al fallback del examen */ }
+    })();
+  }, []);
 
   useEffect(() => {
     if (!proctoringSessionId) return;
@@ -39,7 +53,8 @@ export default function Cierre() {
     })();
   }, [proctoringSessionId]);
 
-  const irARevision = (scoreBackend ?? score) >= (examen?.umbral_score ?? 70);
+  const umbralEfectivo = umbralRevision ?? examen?.umbral_score ?? 70;
+  const irARevision = (scoreBackend ?? score) >= umbralEfectivo;
 
   const volver = () => { resetSesion(); navigate('/login'); };
 
@@ -84,7 +99,7 @@ export default function Cierre() {
             <Icon name={irARevision ? 'gavel' : 'verified_user'} className={irARevision ? 'text-warning' : 'text-success'} fill />
             <p className="text-label-md text-on-surface">
               {irARevision
-                ? <>Tu sesión alcanzó o superó el umbral establecido ({examen?.umbral_score} puntos) y entra a la cola de revisión académica. Recordá: el sistema no sanciona — la decisión es siempre humana.</>
+                ? <>Tu sesión alcanzó o superó el umbral establecido ({umbralEfectivo} puntos) y entra a la cola de revisión académica. Recordá: el sistema no sanciona — la decisión es siempre humana.</>
 
                 : 'Tu sesión no presenta incidencias relevantes. No se requiere revisión adicional.'}
             </p>

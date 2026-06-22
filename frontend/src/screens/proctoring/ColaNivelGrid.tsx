@@ -26,10 +26,10 @@ function ColaNivelCard({
       className="text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40
         rounded-xl group"
     >
-      <Card className="h-full flex flex-col gap-md transition-all
-        group-hover:border-primary/40 group-hover:shadow-card-lg">
+      <Card className="h-full flex flex-col gap-md transition-all border-l-4 border-l-error/60
+        group-hover:border-primary/40 group-hover:border-l-error group-hover:shadow-card-lg">
         <div className="flex items-start justify-between gap-md">
-          <div className="w-11 h-11 rounded-xl bg-surface-container text-on-surface-variant flex items-center
+          <div className="w-11 h-11 rounded-xl bg-error-container text-error flex items-center
             justify-center shrink-0">
             <Icon name={icono} className="text-[22px]" fill />
           </div>

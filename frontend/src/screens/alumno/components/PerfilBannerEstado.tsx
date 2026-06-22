@@ -89,8 +89,10 @@ export function PerfilBannerEstado({
         </div>
         <Button
           variant="outline"
+          size="sm"
           onClick={onIrAExamenes}
-          className="shrink-0 h-9 px-md text-label-sm"
+          className="shrink-0 text-label-sm"
+          icon="event"
         >
           Mis exámenes
         </Button>
