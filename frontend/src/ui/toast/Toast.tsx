@@ -29,7 +29,7 @@ import { Icon } from '../components';
 // Tipos
 // ---------------------------------------------------------------------------
 
-export type ToastTipo = 'success' | 'error' | 'info';
+export type ToastTipo = 'success' | 'error' | 'info' | 'warning';
 
 interface ToastItem {
   id: number;
@@ -48,6 +48,7 @@ export interface ToastApi {
   success: (msg: string, duracion?: number) => void;
   error: (msg: string, duracion?: number) => void;
   info: (msg: string, duracion?: number) => void;
+  warning: (msg: string, duracion?: number) => void;
   show: (opts: ToastOptions) => void;
   dismiss: (id: number) => void;
 }
@@ -105,6 +106,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       success: (msg, duracion) => show({ tipo: 'success', msg, duracion }),
       error: (msg, duracion) => show({ tipo: 'error', msg, duracion }),
       info: (msg, duracion) => show({ tipo: 'info', msg, duracion }),
+      warning: (msg, duracion) => show({ tipo: 'warning', msg, duracion }),
       show,
       dismiss,
     }),
@@ -134,11 +136,12 @@ export function useToast(): ToastApi {
 // Presentación
 // ---------------------------------------------------------------------------
 
-const TIPO_CONFIG: Record<ToastTipo, { icon: string; accent: string; iconColor: string }> = {
-  // Borde de acento + color de ícono semántico, sobre surface neutro (sobrio).
-  success: { icon: 'check_circle', accent: 'border-l-success', iconColor: 'text-success' },
-  error: { icon: 'error', accent: 'border-l-error', iconColor: 'text-error' },
-  info: { icon: 'info', accent: 'border-l-primary', iconColor: 'text-primary' },
+const TIPO_CONFIG: Record<ToastTipo, { icon: string; bg: string; iconColor: string }> = {
+  // Fondo tintado + ícono semántico por tipo (color correspondiente a la notificación).
+  success: { icon: 'check_circle', bg: 'bg-success-container border-success/40', iconColor: 'text-success' },
+  error: { icon: 'error', bg: 'bg-error-container border-error/40', iconColor: 'text-error' },
+  info: { icon: 'info', bg: 'bg-primary-fixed border-primary/30', iconColor: 'text-primary' },
+  warning: { icon: 'warning', bg: 'bg-warning-container border-warning-200', iconColor: 'text-warning' },
 };
 
 function ToastCard({ item, onDismiss }: { item: ToastItem; onDismiss: (id: number) => void }) {
@@ -148,14 +151,13 @@ function ToastCard({ item, onDismiss }: { item: ToastItem; onDismiss: (id: numbe
       role="status"
       aria-live="polite"
       onClick={() => onDismiss(item.id)}
-      className={`pointer-events-auto flex items-start gap-sm max-w-sm w-full
-        bg-surface-container-lowest text-on-surface
-        border border-outline-variant/40 border-l-4 ${cfg.accent}
-        rounded-xl shadow-card-lg px-md py-sm cursor-pointer
+      className={`pointer-events-auto flex items-center gap-sm max-w-sm w-full
+        text-on-surface border ${cfg.bg}
+        rounded-lg shadow-card-lg px-md py-sm cursor-pointer
         animate-in fade-in slide-in-from-top-4`}
     >
-      <Icon name={cfg.icon} className={`text-[20px] shrink-0 mt-px ${cfg.iconColor}`} fill />
-      <span className="flex-1 text-label-md leading-snug break-words">{item.msg}</span>
+      <Icon name={cfg.icon} className={`text-[20px] shrink-0 ${cfg.iconColor}`} fill />
+      <span className="flex-1 text-label-md font-medium leading-snug break-words text-center">{item.msg}</span>
       <button
         type="button"
         aria-label="Descartar notificación"
@@ -163,8 +165,8 @@ function ToastCard({ item, onDismiss }: { item: ToastItem; onDismiss: (id: numbe
           e.stopPropagation();
           onDismiss(item.id);
         }}
-        className="shrink-0 -mr-1 -mt-px rounded-full p-0.5 text-on-surface-variant
-          hover:text-on-surface hover:bg-surface-container transition-colors"
+        className="shrink-0 -mr-1 rounded-full p-0.5 text-on-surface-variant
+          hover:text-on-surface hover:bg-black/5 transition-colors"
       >
         <Icon name="close" className="text-[18px]" />
       </button>

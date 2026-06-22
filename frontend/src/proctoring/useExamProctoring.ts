@@ -40,7 +40,7 @@ import type { VisionEngine } from '../vision/VisionEngine';
 import { loadRealEngine, disposeRealEngine } from '../vision/harnessEngineLoader';
 import { VisionPipeline, type EventSink } from './visionPipeline';
 import { StateTransitionRules, DEFAULT_CONFIG } from './stateTransitionRules';
-import { loadScoringWeights, pesoEvento } from './scoringWeights';
+import { loadScoringWeights, pesoEvento, severidadEvento } from './scoringWeights';
 import { loadEffectiveConfig, getEffectiveConfig } from '../config/effectiveConfigCache';
 import { detectorActivo } from './detectorActivo';
 import {
@@ -160,10 +160,15 @@ export function useExamProctoring(
       return;
     }
 
+    // Severidad VIGENTE del tipo (config viva del backend). Si la config no cargó,
+    // cae a la del catalogo del cliente. Misma fuente que el peso → score y severidad
+    // mostrada quedan consistentes con lo que el admin configuró.
+    const sev = severidadEvento(rawEvent.tipo, rawEvent.severidad as Severidad);
+
     // Acumular score en el store global (scorePropio, L2.5 — prioriza, no sanciona).
     // El peso por tipo se resuelve dinamicamente desde la BD (cache poblada en mount);
     // si la API fallo, pesoEvento() vuelve al fallback por severidad.
-    const peso = pesoEvento(rawEvent.tipo, rawEvent.severidad as Severidad);
+    const peso = pesoEvento(rawEvent.tipo, sev);
     addScore(peso);
     setScore((prev) => Math.min(100, prev + peso));
     setEventCount((c) => c + 1);
@@ -172,7 +177,7 @@ export function useExamProctoring(
     const ev: EventoSesion = {
       id: rawEvent.id,
       tipo: rawEvent.tipo as TipoEvento,
-      severidad: rawEvent.severidad as Severidad,
+      severidad: sev,
       ts_backend: new Date().toISOString(),
       descripcion: descripcionEvento(rawEvent.tipo as TipoEvento),
       tiene_evidencia: !!rawEvent.payload?.['trigger_evidence'],
@@ -218,7 +223,7 @@ export function useExamProctoring(
       screenshot_sha256_cliente?: string;
     } = {
       tipo: rawEvent.tipo,
-      severidad: rawEvent.severidad,
+      severidad: sev,
       ts_cliente: new Date().toISOString(),
       payload: rawEvent.payload,
       screenshot_base64: screenshot,
@@ -258,13 +263,20 @@ export function useExamProctoring(
     }
     pipelineRef.current = null;
     engineRef.current = null;
+    // Finalizar la sesión en el backend al detener el examen: la marca como
+    // finalizada (sale de "Supervisión en vivo", entra a Grabadas y, si supera el
+    // umbral, a la Cola de revisión). Fire-and-forget + idempotente (el Cierre lo
+    // reintenta). CRÍTICO: NO limpiamos proctoringSessionId del store acá — el Cierre
+    // lo necesita para leer el detalle (conteos/score). resetSesion() lo limpia al
+    // "Volver al inicio". Antes se nulificaba acá y la sesión nunca se finalizaba.
+    const sid = sessionIdRef.current;
+    if (sid) void api.finalizarSesionProctoring(sid).catch(() => {});
     sessionIdRef.current = null;
     sessionPromiseRef.current = null;
-    setProctoringSessionId(null);
     setActivo(false);
     // Liberar el motor WASM/GPU (singleton de módulo).
     void disposeRealEngine().catch(() => {});
-  }, [setProctoringSessionId]);
+  }, []);
 
   // ------ Arranque del proctoring (una vez por montaje) ------
   useEffect(() => {

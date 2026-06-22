@@ -17,7 +17,8 @@
  */
 
 import { api, patchDemoExamenFromConfig } from '../lib/api';
-import { seedScoringWeights, resetScoringWeightsCache as _resetScoringWeightsCache } from '../proctoring/scoringWeights';
+import { seedScoringWeights, seedScoringSeveridades, resetScoringWeightsCache as _resetScoringWeightsCache } from '../proctoring/scoringWeights';
+import type { Severidad } from '../lib/types';
 import { seedUmbralAlto } from '../screens/proctoring/helpers';
 
 export interface ConfigEfectivaSnapshot {
@@ -32,6 +33,7 @@ export interface ConfigEfectivaSnapshot {
   consent_version_vigente: string;
   detectores_activos: string[];
   scoring_weights: Record<string, number>;
+  scoring_severidades?: Record<string, Severidad>;
 }
 
 // Cache en memoria — nulo hasta que se carga.
@@ -56,6 +58,11 @@ export async function loadEffectiveConfig(): Promise<void> {
       // Así, pesoEvento() usa los pesos vivos sin un segundo round-trip a /scoring/weights.
       if (data.scoring_weights && Object.keys(data.scoring_weights).length > 0) {
         seedScoringWeights(data.scoring_weights);
+      }
+      // Siembra las severidades configuradas por tipo (para mostrar la severidad
+      // vigente en el log de eventos, no la del catalogo hardcodeado del cliente).
+      if (data.scoring_severidades && Object.keys(data.scoring_severidades).length > 0) {
+        seedScoringSeveridades(data.scoring_severidades);
       }
       // Siembra el umbral de riesgo alto desde la config efectiva.
       // nivelRiesgo() y las vistas usan getUmbralAlto() en lugar del const hardcodeado.

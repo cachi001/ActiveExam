@@ -30,8 +30,9 @@ import { useDetectionHarness } from './harness/useDetectionHarness';
 import HarnessHeader from './harness/HarnessHeader';
 import CameraPanel from './harness/CameraPanel';
 import VisionSignalsPanel from './harness/VisionSignalsPanel';
-import EnvSignalsPanel from './harness/EnvSignalsPanel';
 import ThresholdsConfig from './harness/ThresholdsConfig';
+import DetectoresSelector from './admin/components/DetectoresSelector';
+import type { TipoEvento } from '../lib/types';
 import RiskMeter from './harness/RiskMeter';
 import EventLog from './harness/EventLog';
 import CoverageChecklist from './harness/CoverageChecklist';
@@ -160,21 +161,14 @@ export default function AdminDetectionHarness() {
               setShowFullMesh={h.setShowFullMesh}
             />
 
-            {/* Señales de visión y entorno debajo de la cámara */}
-            <div className="grid sm:grid-cols-2 gap-lg">
-              <VisionSignalsPanel
-                rawSignals={h.rawSignals}
-                engineMode={h.engineMode}
-                harnessState={h.harnessState}
-              />
-
-              <EnvSignalsPanel
-                envSignals={h.envSignals}
-                harnessState={h.harnessState}
-                monitorPermission={h.monitorPermission}
-                onRequestMonitorPermission={h.handleRequestMonitorPermission}
-              />
-            </div>
+            {/* Señales de visión debajo de la cámara (el panel de "señales de
+                entorno" se removió: los detectores de contexto se controlan en la
+                sección "Detectores (para esta prueba)" más abajo). */}
+            <VisionSignalsPanel
+              rawSignals={h.rawSignals}
+              engineMode={h.engineMode}
+              harnessState={h.harnessState}
+            />
 
             <ThresholdsConfig
               configDraft={h.configDraft}
@@ -183,6 +177,19 @@ export default function AdminDetectionHarness() {
               onConfigChange={h.applyConfigChange}
               onRestoreSystem={handleRestoreSystem}
             />
+
+            {/* Detectores para esta prueba — arrancan desde la Configuración del
+                sistema; togglealos para ver cómo reacciona la detección en vivo.
+                Mismo selector (rojo=off / verde=on) que Configuración. */}
+            <Card className="space-y-md">
+              <SectionTitle sub="Arrancan desde la Configuración del sistema. Desactivá uno para que deje de registrarse en esta prueba (no toca la config real).">
+                Detectores (para esta prueba)
+              </SectionTitle>
+              <DetectoresSelector
+                value={(h.detectoresActivos ?? []) as TipoEvento[]}
+                onChange={(d) => h.setDetectoresActivos(d)}
+              />
+            </Card>
           </div>
 
           {/* ---- Panel lateral (1 col): medidor de riesgo + leyenda + store + log + cobertura ---- */}

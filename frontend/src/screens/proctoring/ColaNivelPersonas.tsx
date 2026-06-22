@@ -27,11 +27,11 @@ function PersonaCard({
     <button
       type="button"
       onClick={onSeleccionar}
-      className={`w-full text-left p-md rounded-xl border transition-all focus:outline-none
+      className={`w-full text-left p-md rounded-xl border bg-white transition-all focus:outline-none
         focus-visible:ring-2 focus-visible:ring-primary/40 ${
           seleccionada
-            ? 'bg-surface-container-high border-outline'
-            : 'border-outline-variant/40 hover:bg-surface-container-low'
+            ? 'border-primary ring-2 ring-primary/30 shadow-card-lg'
+            : 'border-outline-variant/60 shadow-card hover:shadow-card-lg hover:border-outline'
         }`}
     >
       <div className="flex items-center justify-between gap-md flex-wrap">

@@ -131,10 +131,13 @@ export default function SeccionProctoring() {
                 background: `linear-gradient(to right, #2563eb 0%, #2563eb ${umbralPct}%, #cbd5e1 ${umbralPct}%, #cbd5e1 100%)`,
               }}
             />
-            <div className="flex justify-between text-[11px] text-on-surface-variant mt-2 tabular-nums">
-              <span>Desde {UMBRAL_MIN} puntos · más sesiones a revisión</span>
-              <span>Desde {UMBRAL_MAX} puntos · solo las más riesgosas</span>
+            <div className="flex justify-between text-[11px] text-on-surface-variant mt-1 tabular-nums">
+              <span>{UMBRAL_MIN}</span>
+              <span>{UMBRAL_MAX}</span>
             </div>
+            <p className="text-[12px] text-on-surface mt-2 font-medium">
+              Las sesiones que alcancen <strong>{estado.umbral} puntos o más</strong> entran a la cola de revisión humana.
+            </p>
           </div>
 
           <p className="text-[12px] text-on-surface-variant leading-relaxed border-t border-outline-variant/40 pt-sm">

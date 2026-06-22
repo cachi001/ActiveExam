@@ -16,6 +16,7 @@ const DETECTORES: TipoEvento[] = [
   'cambio_pestana',
   'salida_pantalla_completa',
   'copiar_pegar',
+  'corte_conectividad_prolongado',
 ];
 
 // Descripciones cortas y claras (para NO técnicos) de qué vigila cada detector.
@@ -28,6 +29,7 @@ const DETECTOR_DESC: Record<string, string> = {
   cambio_pestana: 'El alumno cambia a otra pestaña o ventana.',
   salida_pantalla_completa: 'Se sale del modo pantalla completa.',
   copiar_pegar: 'Se usa copiar o pegar durante el examen.',
+  corte_conectividad_prolongado: 'Se corta la conexión por un tiempo prolongado.',
 };
 
 interface DetectoresSelectorProps {

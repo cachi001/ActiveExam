@@ -64,14 +64,18 @@ export function RequisitoConsentimiento({ consentimiento, viaAlternativa, versio
             </div>
           )}
           <div className="flex flex-wrap gap-sm">
-            {desactualizado && (
+            {desactualizado ? (
+              // Renovación pendiente: una sola acción clara (leer + aceptar la nueva).
+              // El "leer" de solo-lectura no tiene sentido acá (todavía no aceptaste esta versión).
               <Button variant="primary" size="sm" onClick={onIniciar}>
                 Leer y aceptar versión {versionVigente}
               </Button>
+            ) : (
+              // Ya estás al día: podés volver a leer el texto que aceptaste.
+              <Button variant="outline" size="sm" icon="description" onClick={onLeer}>
+                Leer el consentimiento
+              </Button>
             )}
-            <Button variant="outline" size="sm" icon="description" onClick={onLeer}>
-              Leer el consentimiento
-            </Button>
           </div>
           {viaAlternativa && !desactualizado && (
             <div className="flex items-start gap-sm bg-white border border-outline-variant/40 rounded-xl p-sm">

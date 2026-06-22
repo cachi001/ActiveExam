@@ -61,6 +61,8 @@ export interface EnvSignals {
 export interface HarnessLogEntry {
   id: string;
   event: DiscreteEvent;
+  /** Puntos que este evento sumó al score de riesgo (peso resuelto por config/override). */
+  puntos: number;
   /** Estado del sink tras el sendEvent. */
   sinkStatus: 'ok' | 'error';
   sinkError?: string;

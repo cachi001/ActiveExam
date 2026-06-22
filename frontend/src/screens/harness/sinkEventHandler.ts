@@ -16,7 +16,9 @@
 import type { RefObject, MutableRefObject } from 'react';
 import { api } from '../../lib/api';
 import { captureVideoFrame } from '../../lib/videoFrameCapture';
-import { pesoEvento } from '../../proctoring/scoringWeights';
+import { pesoEvento, severidadEvento } from '../../proctoring/scoringWeights';
+import { getEffectiveConfig } from '../../config/effectiveConfigCache';
+import { detectorActivo } from '../../proctoring/detectorActivo';
 import type { EventoSesion, TipoEvento, Severidad } from '../../lib/types';
 import {
   LOG_MAX,
@@ -40,6 +42,9 @@ interface SinkEventDeps {
   setEventosEnviados: (fn: (c: number) => number) => void;
   /** Overrides locales (modo what-if del harness). Si vacío, usa la config persistida. */
   scoringOverridesRef?: MutableRefObject<Record<string, number>>;
+  /** Detectores activos para ESTA prueba (override local del harness, sembrado de la
+   *  config). null = no cargado aún → fail-open (usa la config persistida). */
+  detectoresActivosRef?: MutableRefObject<string[] | null>;
 }
 
 /** Construye el callback que el sink invoca por evento (lógica idéntica al original). */
@@ -58,16 +63,30 @@ export function buildSinkEventHandler(deps: SinkEventDeps): SinkEventCallback {
     setLogTruncated,
     setEventosEnviados,
     scoringOverridesRef,
+    detectoresActivosRef,
   } = deps;
 
   return (rawEvent, sinkStatus, sinkError) => {
+    // Respeta los detectores activos (igual que el examen real): si el detector está
+    // desactivado, NO se registra en el test. Prioriza el override local de la prueba;
+    // si no hay (null), cae a la config persistida. Fail-open si tampoco hay config.
+    const detectoresActivos = detectoresActivosRef?.current ?? getEffectiveConfig()?.detectores_activos;
+    if (!detectorActivo(rawEvent.tipo, detectoresActivos)) {
+      return;
+    }
+
     const wasAtLimit = anomaliasLengthRef.current >= 50;
+
+    // Severidad VIGENTE del tipo (config viva). Si no hay config cargada, cae a la
+    // del catalogo del cliente (rawEvent.severidad). Así el log muestra lo que el
+    // admin configuró en Scoring, no el default hardcodeado.
+    const sev = severidadEvento(rawEvent.tipo, rawEvent.severidad as Severidad);
 
     // Empujar al store (igual que el flujo del alumno)
     const ev: EventoSesion = {
       id: rawEvent.id,
       tipo: rawEvent.tipo as TipoEvento,
-      severidad: rawEvent.severidad as Severidad,
+      severidad: sev,
       ts_backend: new Date().toISOString(),
       descripcion: rawEvent.payload ? JSON.stringify(rawEvent.payload).slice(0, 80) : '',
       tiene_evidencia: !!(rawEvent.payload?.['trigger_evidence']),
@@ -77,14 +96,17 @@ export function buildSinkEventHandler(deps: SinkEventDeps): SinkEventCallback {
     // C-25: actualizar checklist de cobertura (primer evento de cada tipo)
     setCoverage((prev) => {
       if (prev[rawEvent.tipo]) return prev; // ya capturado
-      return { ...prev, [rawEvent.tipo]: { capturedAt: Date.now(), severidad: rawEvent.severidad } };
+      return { ...prev, [rawEvent.tipo]: { capturedAt: Date.now(), severidad: sev } };
     });
 
     // C-33: acumular score de riesgo diagnóstico (setter funcional — sin stale closure).
     // El peso se resuelve por: 1) overrides locales (modo what-if), 2) cache de la BD
     // (config viva), 3) fallback por severidad (si la API fallo).
     const overrides = scoringOverridesRef?.current;
-    setHarnessScore((prev) => Math.min(100, prev + pesoEvento(rawEvent.tipo, rawEvent.severidad as Severidad, overrides)));
+    // Puntos que suma ESTE evento al score (mismo valor que se acumula). Se guarda
+    // en el log para mostrar "+N pts" por evento.
+    const puntos = pesoEvento(rawEvent.tipo, sev, overrides);
+    setHarnessScore((prev) => Math.min(100, prev + puntos));
 
     // Registrar en log local
     const seqId = String(logSeqRef.current++);
@@ -92,11 +114,12 @@ export function buildSinkEventHandler(deps: SinkEventDeps): SinkEventCallback {
       id: seqId,
       event: {
         tipo: rawEvent.tipo,
-        severidad: rawEvent.severidad as Severidad,
+        severidad: sev,
         ts_ms: Date.now(),
         payload: rawEvent.payload ?? {},
         trigger_evidence: !!(rawEvent.payload?.['trigger_evidence']),
       },
+      puntos,
       sinkStatus,
       sinkError,
       inStore: true, // pushAnomalia fue llamado; el store hace slice(0,50)
@@ -127,7 +150,7 @@ export function buildSinkEventHandler(deps: SinkEventDeps): SinkEventCallback {
 
       void api.enviarEventoProctoring(sid, {
         tipo: rawEvent.tipo,
-        severidad: rawEvent.severidad,
+        severidad: sev,
         ts_cliente: new Date().toISOString(),
         payload: rawEvent.payload,
         screenshot_base64: screenshot,

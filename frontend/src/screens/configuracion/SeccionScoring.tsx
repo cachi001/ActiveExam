@@ -2,12 +2,14 @@
  * SeccionScoring — pesos de scoring por tipo de evento (#10 / migracion 0011).
  *
  * Sección de la página Configuración del sistema. Lista los tipos del catalogo
- * persistidos en `evento_score_config` como tarjetas blancas en grilla de 2
- * columnas, con severidad, peso (0-100) y un toggle activo por tipo.
+ * persistidos en `evento_score_config` como tarjetas en grilla de 2 columnas,
+ * con severidad y peso (0-100) por tipo.
+ *
+ * El on/off del evento NO vive acá: el único interruptor de activación es el
+ * detector (Parámetros generales → Detectores). Si un detector está apagado, el
+ * evento no se detecta y su peso no aplica. Acá solo se configura cuánto pesa.
  *
  * C-68 UX:
- *  - Toggle movido a esquina superior derecha de la card (fuera de la fila Sev/Impacto).
- *  - Toggle rojo cuando DESACTIVADO, verde cuando ACTIVADO.
  *  - Fila inferior con controles en grilla alineada.
  *  - Más separación entre cards (gap-md).
  *  - Nota inferior con padding correcto.
@@ -50,6 +52,10 @@ export default function SeccionScoring() {
   const [cargando, setCargando] = useState(true);
   const [guardando, setGuardando] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, Partial<EventoScoreConfig>>>({});
+  // Texto en progreso del input de peso (permite vaciar/tipear libre sin clampear
+  // en cada tecla; el clamp al rango se aplica en onBlur). Sin esto, borrar un
+  // digito o tipear un valor intermedio salta al min/max y no se puede llegar a 8.
+  const [pesoText, setPesoText] = useState<Record<string, string>>({});
 
   useEffect(() => { cargar(); }, []);
 
@@ -104,6 +110,11 @@ export default function SeccionScoring() {
         delete next[cfg.tipo_evento];
         return next;
       });
+      setPesoText((prev) => {
+        const next = { ...prev };
+        delete next[cfg.tipo_evento];
+        return next;
+      });
       // Invalida ambos caches: scoring weights + config efectiva completa (task 4.5).
       resetEffectiveConfigCache();
       toast.success(`Guardado: ${TIPO_EVENTO_LABEL[cfg.tipo_evento as TipoEvento] ?? cfg.tipo_evento}`);
@@ -116,6 +127,11 @@ export default function SeccionScoring() {
 
   function descartar(tipo: string) {
     setDrafts((prev) => {
+      const next = { ...prev };
+      delete next[tipo];
+      return next;
+    });
+    setPesoText((prev) => {
       const next = { ...prev };
       delete next[tipo];
       return next;
@@ -165,7 +181,6 @@ export default function SeccionScoring() {
           const editado = tieneEdicion(cfg.tipo_evento);
           const sev = severidadEditable(valorActual(cfg, 'severidad') as Severidad);
           const peso = valorActual(cfg, 'peso') as number;
-          const activo = valorActual(cfg, 'activo') as boolean;
           const isGuardando = guardando === cfg.tipo_evento;
           return (
             <div
@@ -174,7 +189,9 @@ export default function SeccionScoring() {
                 editado ? 'ring-2 ring-primary/40' : ''
               }`}
             >
-              {/* Cabecera: badge + nombre + toggle activo (E: toggle en esquina superior derecha) */}
+              {/* Cabecera: badge de severidad + nombre. El on/off del evento vive en
+                  Parámetros generales → Detectores (un solo interruptor). Acá solo se
+                  configura cuánto pesa y su severidad. */}
               <div className="flex items-start gap-3">
                 <span className={`mt-0.5 inline-flex items-center justify-center w-16 py-0.5 rounded-full text-[11px] font-semibold shrink-0 ${SEVERITY_BADGE_COLORS[sev]}`}>
                   {SEVERIDAD_LABEL[sev]}
@@ -187,21 +204,6 @@ export default function SeccionScoring() {
                     <p className="text-[12px] text-on-surface-variant mt-0.5">{cfg.descripcion}</p>
                   )}
                 </div>
-                {/* Toggle activo: verde=on, rojo=off (E: color semántico) */}
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={activo}
-                  aria-label={`${activo ? 'Desactivar' : 'Activar'} ${cfg.tipo_evento}`}
-                  onClick={() => setDraft(cfg.tipo_evento, 'activo', !activo)}
-                  disabled={isGuardando}
-                  title={activo ? 'Activo — clic para desactivar' : 'Inactivo — clic para activar'}
-                  className={`relative shrink-0 inline-flex h-6 w-11 rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:opacity-50 ${
-                    activo ? 'bg-success-600' : 'bg-error-600'
-                  }`}
-                >
-                  <span className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transition-transform duration-200 ${activo ? 'translate-x-5' : 'translate-x-0'}`} />
-                </button>
               </div>
 
               {/* Fila de controles: Severidad + Impacto en grilla alineada (E: alineación prolija) */}
@@ -229,11 +231,26 @@ export default function SeccionScoring() {
                     type="number"
                     min={rangoDeSeveridad(sev).min}
                     max={rangoDeSeveridad(sev).max}
-                    value={peso}
+                    value={pesoText[cfg.tipo_evento] ?? String(peso)}
                     onChange={(e) => {
-                      const raw = parseInt(e.target.value, 10);
-                      if (isNaN(raw)) return;
-                      setDraft(cfg.tipo_evento, 'peso', ajustarPesoARango(raw, sev));
+                      const text = e.target.value;
+                      setPesoText((p) => ({ ...p, [cfg.tipo_evento]: text }));
+                      // Guardamos el valor tipeado SIN clampear (el clamp es en onBlur),
+                      // para poder llegar a valores intermedios como 8.
+                      const raw = parseInt(text, 10);
+                      if (!isNaN(raw)) setDraft(cfg.tipo_evento, 'peso', raw);
+                    }}
+                    onBlur={() => {
+                      // Al salir del campo: clampeamos al rango de la severidad y
+                      // sincronizamos el texto al valor final (o al actual si quedó vacío).
+                      const parsed = parseInt(pesoText[cfg.tipo_evento] ?? '', 10);
+                      const ajustado = ajustarPesoARango(isNaN(parsed) ? peso : parsed, sev);
+                      setDraft(cfg.tipo_evento, 'peso', ajustado);
+                      setPesoText((p) => {
+                        const next = { ...p };
+                        delete next[cfg.tipo_evento];
+                        return next;
+                      });
                     }}
                     className="w-full px-2.5 py-1.5 text-[13px] rounded-xl border border-outline-variant bg-white font-mono hover:border-outline focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors"
                     disabled={isGuardando}

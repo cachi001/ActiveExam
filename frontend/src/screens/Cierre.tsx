@@ -67,7 +67,7 @@ export default function Cierre() {
         <div className="space-y-base">
           <h2 className="font-headline text-headline-lg text-on-surface">¡Examen finalizado!</h2>
           <p className="text-body-md text-on-surface-variant">
-            Tu sesión se cerró con <Term termKey="cadena_de_custodia">cadena de custodia criptográfica</Term> server-side. La consolidación del score corre de forma asíncrona.
+            Tu sesión se cerró de forma segura, con <Term termKey="cadena_de_custodia">cadena de custodia criptográfica</Term>.
           </p>
         </div>
 
@@ -80,7 +80,7 @@ export default function Cierre() {
             label="Señales registradas"
             value={
               <span className="font-semibold">
-                {totalEventos !== null ? totalEventos : anomalias.length}
+                {Math.max(anomalias.length, totalEventos ?? 0)}
               </span>
             }
           />
@@ -99,16 +99,11 @@ export default function Cierre() {
             <Icon name={irARevision ? 'gavel' : 'verified_user'} className={irARevision ? 'text-warning' : 'text-success'} fill />
             <p className="text-label-md text-on-surface">
               {irARevision
-                ? <>Tu sesión alcanzó o superó el umbral establecido ({umbralEfectivo} puntos) y entra a la cola de revisión académica. Recordá: el sistema no sanciona — la decisión es siempre humana.</>
-
+                ? <>Tu sesión alcanzó o superó el umbral establecido ({umbralEfectivo} puntos) y entra a la cola de revisión académica.</>
                 : 'Tu sesión no presenta incidencias relevantes. No se requiere revisión adicional.'}
             </p>
           </div>
         </Card>
-
-        <p className="text-label-sm text-on-surface-variant px-md leading-relaxed">
-          Tus datos biométricos se eliminan automáticamente a los 30 días del egreso, salvo que haya una apelación o proceso disciplinario abierto.
-        </p>
 
         <Button variant="outline" icon="home" onClick={volver} className="mx-auto">Volver al inicio</Button>
       </div>

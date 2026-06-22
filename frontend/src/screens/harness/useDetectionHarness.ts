@@ -94,6 +94,13 @@ export function useDetectionHarness() {
     setScoringOverrides({});
   }, []);
 
+  // Detectores activos PARA ESTA PRUEBA (override local del harness). Se siembra de
+  // la config del sistema al montar; el usuario puede togglear sin tocar la config real.
+  // null = aún no sembrado → fail-open (usa la config persistida).
+  const [detectoresActivos, setDetectoresActivos] = useState<string[] | null>(null);
+  const detectoresActivosRef = useRef<string[] | null>(null);
+  useEffect(() => { detectoresActivosRef.current = detectoresActivos; }, [detectoresActivos]);
+
   // ------ C-30: Estado del motor de visión ------
   const [engineMode, setEngineMode] = useState<EngineMode>('simulated');
   const [engineError, setEngineError] = useState<string | null>(null);
@@ -207,6 +214,8 @@ export function useDetectionHarness() {
           setConfigDraft(thresholds);
           // c-68 task 5.3: el umbral del medidor de riesgo viene del sistema.
           setRiskThreshold(cfg.umbral_cola_revision);
+          // Siembra los detectores activos de la prueba desde la config del sistema.
+          setDetectoresActivos([...(cfg.detectores_activos ?? [])]);
         }
       })
       .catch(() => void loadScoringWeights());
@@ -276,6 +285,7 @@ export function useDetectionHarness() {
     setLogTruncated,
     setEventosEnviados,
     scoringOverridesRef,
+    detectoresActivosRef,
   });
 
   // ------ Lifecycle: start/stop + cleanup de desmontaje (sub-hook) ------
@@ -464,6 +474,9 @@ export function useDetectionHarness() {
     scoringOverrides,
     setScoringOverride,
     resetScoringOverrides,
+    // detectores activos para esta prueba (override local, sembrado de la config)
+    detectoresActivos,
+    setDetectoresActivos,
     // store
     anomaliasVivo,
     // panel propósito

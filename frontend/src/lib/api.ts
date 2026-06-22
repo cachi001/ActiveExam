@@ -374,13 +374,14 @@ function consentVersionVigente(): string {
 // falso "consentimiento desactualizado" → tarjeta amarilla "completá tu perfil" aunque
 // el perfil estuviera completo. Sincronizamos la versión del backend ANTES de evaluar
 // el gate (una vez por sesión; un reload vuelve a sincronizar y detecta cambios reales).
-let _consentVersionSynced = false;
 async function ensureConsentVersionSynced(): Promise<void> {
-  if (!USE_REAL_BACKEND || _consentVersionSynced) return;
+  // SIEMPRE re-sincroniza la versión vigente desde el backend (no cachear por sesión):
+  // si el admin publica una versión nueva mientras el alumno está logueado, el gate
+  // del inicio debe detectarlo SIN que tenga que ir al perfil y volver. Es un GET chico.
+  if (!USE_REAL_BACKEND) return;
   try {
     const texto = normalizarConsentText(await realFetch<unknown>('/consent/text', { method: 'GET' }));
     if (texto.version) _consentVersionVigente = texto.version;
-    _consentVersionSynced = true;
   } catch {
     // Fallo de red: no bloquear el gate. Se reintenta en la próxima llamada.
   }
@@ -1287,9 +1288,18 @@ export const api = {
   ): Promise<{ ok: boolean }> {
     if (USE_REAL_BACKEND) {
       try {
+        // El backend espera `embedding` como STRING (columna Text, dato sensible).
+        // El cliente lo arma como number[] → serializamos a JSON string. Sin esto el
+        // backend devolvía 422 y la verificación biométrica NO se guardaba en la sesión.
+        const payload = {
+          liveness_ok: bio.liveness_ok,
+          retos_resueltos: bio.retos_resueltos,
+          resultado: bio.resultado,
+          ...(bio.embedding !== undefined ? { embedding: JSON.stringify(bio.embedding) } : {}),
+        };
         return await realFetch<{ ok: boolean }>(
           `/proctoring/sessions/${sessionId}/biometria`,
-          { method: 'POST', body: JSON.stringify(bio) },
+          { method: 'POST', body: JSON.stringify(payload) },
           'demo',
         );
       } catch {
@@ -2009,6 +2019,7 @@ export const api = {
     consent_version_vigente: string;
     detectores_activos: string[];
     scoring_weights: Record<string, number>;
+    scoring_severidades: Record<string, string>;
   }> {
     if (USE_REAL_BACKEND) {
       return await realFetch('/config/effective', { method: 'GET' });
@@ -2038,6 +2049,16 @@ export const api = {
         monitor_adicional: 50,
         salida_pantalla_completa: 20,
         copiar_pegar: 20,
+      },
+      scoring_severidades: {
+        rostro_ausente: 'media',
+        multiples_rostros: 'alta',
+        mirada_desviada_sostenida: 'media',
+        perdida_de_foco: 'baja',
+        cambio_pestana: 'media',
+        monitor_adicional: 'alta',
+        salida_pantalla_completa: 'media',
+        copiar_pegar: 'baja',
       },
     };
   },

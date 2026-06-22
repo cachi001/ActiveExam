@@ -122,47 +122,30 @@ export default function EventLog({
                       {TIPO_EVENTO_LABEL[tipo] ?? tipo}
                     </span>
                     <SeverityBadge severidad={sev} />
+                    {/* Puntos que este evento suma al score de riesgo — color de la severidad */}
+                    <span
+                      className={`inline-flex items-center gap-base text-label-sm font-bold font-mono
+                        px-sm py-base rounded-full border border-transparent ${SEVERITY_BADGE_COLORS[sev]}`}
+                      title="Puntos que este evento suma al score de riesgo"
+                    >
+                      +{entry.puntos} pts
+                    </span>
                     {entry.event.trigger_evidence && (
-                      <Badge tone="error" dot>dispara evidencia</Badge>
-                    )}
-                    {entry.storeOverflow && (
-                      <Badge tone="warning">store: overflow, evento anterior descartado</Badge>
+                      <Badge tone="error" dot>genera evidencia</Badge>
                     )}
                   </div>
                   <span className="text-label-sm text-on-surface-variant font-mono">{relTs}</span>
                 </div>
 
-                {/* Indicadores de sink e inStore */}
+                {/* Estado de registro — en lenguaje claro (sin jerga interna). */}
                 <div className="flex items-center gap-sm flex-wrap">
-                  {entry.sinkStatus === 'ok' ? (
-                    <span className="inline-flex items-center gap-base text-label-sm text-success">
-                      <Icon name="check_circle" className="text-[14px]" fill /> emitido al sink
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-base text-label-sm text-error">
-                      <Icon name="cancel" className="text-[14px]" fill /> error en sink: {entry.sinkError}
-                    </span>
-                  )}
-                  {entry.inStore ? (
-                    <span className="inline-flex items-center gap-base text-label-sm text-on-surface-variant">
-                      <Icon name="inventory_2" className="text-[14px]" fill /> en store
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-base text-label-sm text-on-surface-variant">
-                      <Icon name="inventory_2" className="text-[14px]" /> no en store
-                    </span>
-                  )}
-                  {/* C-46: badge de red (grabación) */}
                   {entry.networkBadge === 'ok' && (
                     <span className="inline-flex items-center gap-base text-label-sm text-success">
                       <Icon name="cloud_done" className="text-[14px]" fill />
-                      grabado
-                      {entry.verdictServer && (
-                        <span className="text-[10px] font-mono opacity-80 ml-base">{entry.verdictServer}</span>
-                      )}
+                      Guardado en el servidor
                       {entry.faceCountServer != null && (
                         <span className="text-[10px] opacity-70 ml-base">
-                          {formatRostrosConOrigen('Servidor', entry.faceCountServer)}
+                          ({formatRostrosConOrigen('servidor', entry.faceCountServer)})
                         </span>
                       )}
                     </span>
@@ -170,7 +153,13 @@ export default function EventLog({
                   {entry.networkBadge === 'net-error' && (
                     <span className="inline-flex items-center gap-base text-label-sm text-warning">
                       <Icon name="cloud_off" className="text-[14px]" />
-                      ⚠ sin red
+                      No se pudo guardar (sin conexión)
+                    </span>
+                  )}
+                  {entry.networkBadge === undefined && (
+                    <span className="inline-flex items-center gap-base text-label-sm text-on-surface-variant">
+                      <Icon name="science" className="text-[14px]" />
+                      Prueba local — no se guarda
                     </span>
                   )}
                 </div>
@@ -189,7 +178,7 @@ export default function EventLog({
                       className="text-label-sm text-on-surface-variant hover:text-on-surface flex items-center gap-base"
                     >
                       <Icon name={isExpanded ? 'expand_less' : 'expand_more'} className="text-[16px]" />
-                      payload
+                      {isExpanded ? 'Ocultar detalle técnico' : 'Ver detalle técnico'}
                     </button>
                     {isExpanded && (
                       <pre className="mt-base text-label-sm font-mono bg-surface-container rounded-lg p-sm overflow-x-auto text-on-surface-variant">

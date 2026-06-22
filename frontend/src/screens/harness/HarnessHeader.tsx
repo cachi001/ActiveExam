@@ -41,21 +41,8 @@ export default function HarnessHeader({
           C-30: BANNER CONDICIONAL DEL MOTOR — 4 estados (D-5, harness-legibility-layer)
       ================================================================ */}
       {/* Estado 'simulated' (idle): sin banner — al iniciar la cámara se activa el motor real (MediaPipe). */}
-      {/* C-32 Tasks 3.1–3.4: spinner amigable, sin jerga técnica */}
-      {engineMode === 'loading' && (
-        <div className="flex items-start gap-sm p-md rounded-xl bg-surface-container border-2 border-outline-variant text-on-surface" role="status" aria-live="polite">
-          <Icon name="progress_activity" className="text-[22px] shrink-0 mt-px text-on-surface-variant animate-spin" />
-          <div className="min-w-0">
-            <p className="font-bold text-label-md">Preparando la cámara…</p>
-            {/* Task 3.3: subtítulo solo en la primera carga */}
-            {isFirstEngineLoad && (
-              <p className="text-label-sm mt-base">
-                Esto puede tardar unos segundos la primera vez.
-              </p>
-            )}
-          </div>
-        </div>
-      )}
+      {/* El estado "preparando" se muestra con UN solo spinner, dentro del panel de
+          cámara (CameraPanel). No repetimos un banner con spinner acá. */}
       {engineMode === 'real-active' && (
         <div className="flex items-start gap-sm p-md rounded-xl bg-success-container border-2 border-success/40 text-on-surface" role="status" aria-live="polite">
           <Icon name="sensors" className="text-[22px] shrink-0 mt-px text-success" fill />
@@ -97,24 +84,18 @@ export default function HarnessHeader({
       ================================================================ */}
       <div className="flex items-center justify-center sm:justify-start flex-wrap gap-md">
         <div className="flex flex-col sm:flex-row items-center gap-sm flex-wrap w-full sm:w-auto">
-          {harnessState === 'running' && (
-            <span className="inline-flex items-center gap-base text-label-sm text-success bg-success-container px-sm py-base rounded-full font-semibold">
-              <span className="w-2 h-2 rounded-full bg-success animate-pulse" />
-              Cámara activa
-            </span>
-          )}
           {(harnessState === 'idle' || harnessState === 'stopped') && (
             <div className="grid grid-cols-2 gap-sm w-full sm:w-auto">
               <Button variant="primary" icon="videocam" onClick={() => onStart(true)} className="justify-center sm:min-w-[160px]">
                 Grabar sesión
               </Button>
-              <Button variant="outline" icon="science" onClick={() => onStart(false)} className="justify-center sm:min-w-[160px]">
+              <Button variant="secondary" icon="science" onClick={() => onStart(false)} className="justify-center sm:min-w-[160px]">
                 Test Local
               </Button>
             </div>
           )}
           {harnessState === 'initializing' && (
-            <Button icon="hourglass_empty" disabled>Inicializando…</Button>
+            <Button disabled>Inicializando…</Button>
           )}
           {/* Indicador en vivo — visible solo mientras la detección está corriendo */}
           {harnessState === 'running' && modoSesion && (

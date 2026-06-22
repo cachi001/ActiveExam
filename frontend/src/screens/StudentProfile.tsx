@@ -242,7 +242,7 @@ export default function StudentProfile() {
   if (paso === 'cargando') {
     return (
       <StudentShell>
-        <div className="max-w-2xl lg:max-w-4xl mx-auto">
+        <div className="min-h-[calc(100dvh-13rem)] flex items-center justify-center">
           <LoadingSpinner label="Cargando perfil…" />
         </div>
       </StudentShell>
@@ -250,13 +250,18 @@ export default function StudentProfile() {
   }
 
   if (paso === 'consentimiento') {
+    // Re-consentimiento (ya enrollado: tiene consentimiento previo + biometría) vs
+    // enrollment por primera vez. El stepper de 4 pasos SOLO tiene sentido la primera
+    // vez; al re-consentir una versión nueva no mostramos el wizard (foto/biometría
+    // ya están hechos y confunde — ver feedback del dueño).
+    const esReconsentimiento = !!enrollment?.consentimiento && !!enrollment?.biometria;
     return (
       <StudentShell>
         <EnrollmentStepLayout
           maxWidth="3xl"
           title="Consentimiento informado"
           subtitle="Leé y aceptá el uso de tus datos para verificar tu identidad."
-          pasos={wizardPasos(1)}
+          pasos={esReconsentimiento ? undefined : wizardPasos(1)}
           onBack={volverAlPerfil}
         >
           <EnrollmentConsentStep

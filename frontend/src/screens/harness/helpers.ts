@@ -38,10 +38,13 @@ export function validateConfig(cfg: TransitionConfig): ConfigErrors {
 // ---------------------------------------------------------------------------
 
 export function formatRelativeTs(eventTs: number, sessionStart: number): string {
+  // Tiempo transcurrido desde el inicio de la prueba, en mm:ss (legible).
+  // Antes mostraba "+174.761s" (segundos con ms), que confundía al usuario.
   const diff = Math.max(0, eventTs - sessionStart);
-  const s = Math.floor(diff / 1000);
-  const ms = diff % 1000;
-  return `+${s}.${String(ms).padStart(3, '0')}s`;
+  const totalSeg = Math.floor(diff / 1000);
+  const m = Math.floor(totalSeg / 60);
+  const s = totalSeg % 60;
+  return `min ${m}:${String(s).padStart(2, '0')}`;
 }
 
 export const SEVERITY_ORDER: Severidad[] = ['baseline', 'baja', 'media', 'alta', 'critica'];
