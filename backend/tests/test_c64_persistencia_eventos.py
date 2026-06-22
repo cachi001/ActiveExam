@@ -32,6 +32,7 @@ def _setup_db_tables(url: str) -> None:
     """Crea las tablas slim en la DB de test (drop CASCADE + create)."""
     from sqlalchemy import text
     from sqlalchemy.ext.asyncio import create_async_engine
+    from sqlalchemy.pool import NullPool
 
     from app.infrastructure.persistence.models.proctoring import (  # noqa: F401
         ProctoringBiometriaModel,
@@ -40,7 +41,7 @@ def _setup_db_tables(url: str) -> None:
     )
 
     async def _run() -> None:
-        engine = create_async_engine(url, pool_pre_ping=True, future=True)
+        engine = create_async_engine(url, pool_pre_ping=True, future=True, poolclass=NullPool)
         async with engine.begin() as conn:
             await conn.execute(text("DROP TABLE IF EXISTS proctoring_biometria CASCADE"))
             await conn.execute(text("DROP TABLE IF EXISTS proctoring_event CASCADE"))
@@ -79,6 +80,7 @@ def client(db_url_c64: str):
     cerrado entre tests (anyio crea/destruye el loop por TestClient).
     """
     from sqlalchemy.ext.asyncio import create_async_engine
+    from sqlalchemy.pool import NullPool
 
     from app.infrastructure.persistence.session_slim import create_slim_session_factory
     from app.infrastructure.reinferencia.mediapipe_adapter import MediaPipeReinferencia
@@ -87,7 +89,7 @@ def client(db_url_c64: str):
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.testclient import TestClient
 
-    engine = create_async_engine(db_url_c64, pool_pre_ping=True, future=True)
+    engine = create_async_engine(db_url_c64, pool_pre_ping=True, future=True, poolclass=NullPool)
     factory = create_slim_session_factory(engine)
     reinferencia = MediaPipeReinferencia()
     proctoring_router = create_proctoring_router(

@@ -19,6 +19,7 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
 from app.infrastructure.persistence.models.proctoring import (  # noqa: F401 -- registra tablas
     ProctoringBiometriaModel,
@@ -60,7 +61,7 @@ async def slim_engine(db_url: str):
     triggers o referencias previas (cualquier estado sucio de una corrida anterior
     deja los tests rojos al iniciar).
     """
-    engine = create_async_engine(db_url, pool_pre_ping=True, future=True)
+    engine = create_async_engine(db_url, pool_pre_ping=True, future=True, poolclass=NullPool)
     from app.infrastructure.persistence.models.proctoring import (  # noqa
         ProctoringBiometriaModel,
         ProctoringEventModel,

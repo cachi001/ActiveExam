@@ -27,6 +27,7 @@ import pytest_asyncio
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
 from app.infrastructure.auth.verifiers import build_hs256_verify, encode_hs256
 from app.infrastructure.auth.jwks_cache import JwksCache
@@ -113,8 +114,17 @@ async def ctx() -> AsyncGenerator[dict, None]:
         pytest.skip("DATABASE_URL no seteada; test de integración (DB real).")
 
     # --- motor async ---
-    engine = create_async_engine(url, pool_pre_ping=True, future=True)
+    # NullPool: conexion fresca por checkout en el loop actual (evita el
+    # "asyncpg got Future attached to a different loop" entre setup y request HTTP).
+    engine = create_async_engine(url, pool_pre_ping=True, future=True, poolclass=NullPool)
     factory = async_sessionmaker(engine, expire_on_commit=False)
+
+    # Asegurar que existan las tablas que tocan estos tests. La DB de test puede no
+    # estar migrada al schema completo (alembic marca head pero teardowns de otros
+    # tests dropean tablas). usuario primero (FK de consentimiento_perfil).
+    async with engine.begin() as conn:
+        await conn.run_sync(UsuarioModel.__table__.create, checkfirst=True)
+        await conn.run_sync(ConsentimientoPerfilModel.__table__.create, checkfirst=True)
 
     # --- seed: admin + estudiante con IDs únicos por ejecución ---
     suffix = uuid.uuid4().hex[:8]

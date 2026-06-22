@@ -39,6 +39,7 @@ async def app_y_factory() -> AsyncIterator[tuple]:
     from fastapi import FastAPI
     from sqlalchemy import text
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+    from sqlalchemy.pool import NullPool
 
     from app.domain.auth.token import TokenPolicy
     from app.infrastructure.auth.jwks_cache import JwksCache
@@ -49,7 +50,7 @@ async def app_y_factory() -> AsyncIterator[tuple]:
     )
     from app.presentation.api.v1.config.router import router as config_router
 
-    engine = create_async_engine(url, pool_pre_ping=True, future=True)
+    engine = create_async_engine(url, pool_pre_ping=True, future=True, poolclass=NullPool)
     cfg_tbl = ConfiguracionSistemaModel.__table__
     async with engine.begin() as conn:
         await conn.run_sync(cfg_tbl.drop, checkfirst=True)

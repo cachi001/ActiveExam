@@ -114,6 +114,7 @@ async def ctx() -> AsyncIterator[tuple]:
     from fastapi import FastAPI
     from sqlalchemy import text as sqla_text
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+    from sqlalchemy.pool import NullPool
 
     from app.domain.auth.token import TokenPolicy
     from app.infrastructure.auth.jwks_cache import JwksCache
@@ -138,7 +139,10 @@ async def ctx() -> AsyncIterator[tuple]:
         async def health_check(self) -> bool:
             return True
 
-    engine = create_async_engine(url, pool_pre_ping=True, future=True)
+    # NullPool: sin pool, cada checkout abre una conexion fresca en el loop actual.
+    # Evita el "asyncpg got Future attached to a different loop" cuando el setup del
+    # fixture y la request HTTP (httpx ASGITransport) corren en loops distintos.
+    engine = create_async_engine(url, pool_pre_ping=True, future=True, poolclass=NullPool)
 
     # Reset consent_texto_version para aislamiento de test (seed limpio de v1).
     import hashlib as _hl

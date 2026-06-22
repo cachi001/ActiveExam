@@ -14,6 +14,7 @@ import pytest
 import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
 pytestmark = pytest.mark.asyncio
 
@@ -33,7 +34,7 @@ async def factory() -> AsyncIterator[async_sessionmaker[AsyncSession]]:
         EventoScoreConfigModel,
     )
 
-    engine = create_async_engine(url, pool_pre_ping=True, future=True)
+    engine = create_async_engine(url, pool_pre_ping=True, future=True, poolclass=NullPool)
     cfg_tbl = ConfiguracionSistemaModel.__table__
     score_tbl = EventoScoreConfigModel.__table__
     async with engine.begin() as conn:

@@ -18,6 +18,7 @@ import pytest
 import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
 pytestmark = pytest.mark.asyncio
 
@@ -46,7 +47,7 @@ async def factory() -> AsyncIterator[async_sessionmaker[AsyncSession]]:
         EventoScoreConfigModel,
     )
 
-    engine = create_async_engine(url, pool_pre_ping=True, future=True)
+    engine = create_async_engine(url, pool_pre_ping=True, future=True, poolclass=NullPool)
     cfg_tbl = ConfiguracionSistemaModel.__table__
     score_tbl = EventoScoreConfigModel.__table__
     async with engine.begin() as conn:
@@ -149,7 +150,10 @@ def _h(token: str) -> dict:
 
 
 async def test_patch_peso_refleja_en_effective_tipo1(app_client) -> None:
-    """PATCH peso de rostro_ausente (20→35) -> GET /effective muestra 35, no 20."""
+    """PATCH peso de rostro_ausente (20→28) -> GET /effective muestra 28, no 20.
+
+    28 queda dentro del rango de severidad 'media' (11–30, migración 0021).
+    """
     client, _ = app_client
     admin = _token(["admin_sistema"])
 
@@ -159,37 +163,119 @@ async def test_patch_peso_refleja_en_effective_tipo1(app_client) -> None:
 
     patch = await client.patch(
         "/api/v1/scoring/config/rostro_ausente",
-        json={"peso": 35},
+        json={"peso": 28},
         headers=_h(admin),
     )
     assert patch.status_code == 200
-    assert patch.json()["peso"] == 35
+    assert patch.json()["peso"] == 28
 
     after = await client.get("/api/v1/config/effective", headers=_h(admin))
     assert after.status_code == 200
-    assert after.json()["scoring_weights"]["rostro_ausente"] == 35, (
+    assert after.json()["scoring_weights"]["rostro_ausente"] == 28, (
         "BUG: cache no se invalido tras PATCH; /effective sigue devolviendo peso viejo"
     )
 
 
 async def test_patch_peso_refleja_en_effective_tipo2(app_client) -> None:
-    """Triangulacion: PATCH multiples_rostros (50→75) -> /effective muestra 75."""
+    """Triangulacion: PATCH multiples_rostros (50→55) -> /effective muestra 55.
+
+    55 queda dentro del rango de severidad 'alta' (31–60, migración 0021).
+    """
     client, _ = app_client
     admin = _token(["admin_sistema"])
 
     patch = await client.patch(
         "/api/v1/scoring/config/multiples_rostros",
-        json={"peso": 75},
+        json={"peso": 55},
         headers=_h(admin),
     )
     assert patch.status_code == 200
-    assert patch.json()["peso"] == 75
+    assert patch.json()["peso"] == 55
 
     after = await client.get("/api/v1/config/effective", headers=_h(admin))
     assert after.status_code == 200
-    assert after.json()["scoring_weights"]["multiples_rostros"] == 75, (
+    assert after.json()["scoring_weights"]["multiples_rostros"] == 55, (
         "BUG: cache no se invalido tras PATCH de segundo tipo de evento"
     )
+
+
+# ---------------------------------------------------------------------------
+# Auditoria: editar un peso de scoring debe dejar rastro inmutable en audit_log
+# (cadena de custodia — cambia que sesiones entran a la cola de revision).
+# audit_log ya existe en la DB slim (migracion 0012); el test cuenta el delta.
+# ---------------------------------------------------------------------------
+
+
+async def _contar_config_update(factory) -> int:
+    async with factory() as s:
+        return (
+            await s.execute(
+                text("SELECT count(*) FROM audit_log WHERE accion = 'config_update'")
+            )
+        ).scalar_one()
+
+
+async def test_patch_scoring_escribe_audit_log(app_client, factory) -> None:
+    """PATCH peso de rostro_ausente escribe una fila config_update con before/after.
+
+    28 dentro del rango de severidad 'media' (11–30, migración 0021).
+    """
+    client, _ = app_client
+    admin = _token(["admin_sistema"])
+
+    antes = await _contar_config_update(factory)
+    patch = await client.patch(
+        "/api/v1/scoring/config/rostro_ausente",
+        json={"peso": 28},
+        headers=_h(admin),
+    )
+    assert patch.status_code == 200
+    despues = await _contar_config_update(factory)
+    assert despues == antes + 1, "editar un peso de scoring debe dejar rastro en audit_log"
+
+    async with factory() as s:
+        accion, proposito = (
+            await s.execute(
+                text(
+                    "SELECT accion, proposito FROM audit_log "
+                    "WHERE accion = 'config_update' ORDER BY timestamp DESC, id DESC LIMIT 1"
+                )
+            )
+        ).all()[0]
+    assert accion == "config_update"
+    # Snapshot before/after demostrable: peso viejo (20) y nuevo (28) en el rastro.
+    assert "before" in proposito and "after" in proposito
+    assert "rostro_ausente" in proposito
+    assert "20" in proposito and "28" in proposito
+
+
+async def test_patch_scoring_activo_escribe_audit_log(app_client, factory) -> None:
+    """Triangulacion: desactivar un evento (activo=false) tambien deja rastro."""
+    client, _ = app_client
+    admin = _token(["admin_sistema"])
+
+    antes = await _contar_config_update(factory)
+    patch = await client.patch(
+        "/api/v1/scoring/config/multiples_rostros",
+        json={"activo": False},
+        headers=_h(admin),
+    )
+    assert patch.status_code == 200
+    despues = await _contar_config_update(factory)
+    assert despues == antes + 1
+
+    async with factory() as s:
+        proposito = (
+            await s.execute(
+                text(
+                    "SELECT proposito FROM audit_log WHERE accion = 'config_update' "
+                    "ORDER BY timestamp DESC, id DESC LIMIT 1"
+                )
+            )
+        ).scalar_one()
+    assert "multiples_rostros" in proposito
+    # before activo=true, after activo=false.
+    assert "true" in proposito and "false" in proposito
 
 
 # ---------------------------------------------------------------------------
@@ -205,10 +291,10 @@ async def test_config_service_refleja_peso_nuevo_tras_invalidate(factory) -> Non
     efectiva = await svc.get_efectiva()
     assert efectiva.scoring_weights["rostro_ausente"] == 20
 
-    # Edita peso directamente en BD.
+    # Edita peso directamente en BD (28 dentro del rango 'media' 11–30, migración 0021).
     async with factory() as s:
         await s.execute(
-            text("UPDATE evento_score_config SET peso=40 WHERE tipo_evento='rostro_ausente'")
+            text("UPDATE evento_score_config SET peso=28 WHERE tipo_evento='rostro_ausente'")
         )
         await s.commit()
 
@@ -221,13 +307,16 @@ async def test_config_service_refleja_peso_nuevo_tras_invalidate(factory) -> Non
     # Tras invalidate: debe devolver nuevo.
     svc.invalidate()
     nuevo = await svc.get_efectiva()
-    assert nuevo.scoring_weights["rostro_ausente"] == 40, (
+    assert nuevo.scoring_weights["rostro_ausente"] == 28, (
         "ConfigService no reflejo el peso nuevo tras invalidate()"
     )
 
 
 async def test_config_service_refleja_peso_nuevo_tipo2(factory) -> None:
-    """Triangulacion de capa de servicio con multiples_rostros (50→80)."""
+    """Triangulacion de capa de servicio con multiples_rostros (50→55).
+
+    55 dentro del rango de severidad 'alta' (31–60, migración 0021).
+    """
     from app.application.config.service import ConfigService
 
     svc = ConfigService(factory)
@@ -237,11 +326,11 @@ async def test_config_service_refleja_peso_nuevo_tipo2(factory) -> None:
     async with factory() as s:
         await s.execute(
             text(
-                "UPDATE evento_score_config SET peso=80 WHERE tipo_evento='multiples_rostros'"
+                "UPDATE evento_score_config SET peso=55 WHERE tipo_evento='multiples_rostros'"
             )
         )
         await s.commit()
 
     svc.invalidate()
     nuevo = await svc.get_efectiva()
-    assert nuevo.scoring_weights["multiples_rostros"] == 80
+    assert nuevo.scoring_weights["multiples_rostros"] == 55

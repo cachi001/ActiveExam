@@ -37,6 +37,7 @@ async def ctx() -> AsyncIterator[tuple]:
 
     from fastapi import FastAPI
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+    from sqlalchemy.pool import NullPool
 
     from app.domain.auth.token import TokenPolicy
     from app.infrastructure.auth.jwks_cache import JwksCache
@@ -50,7 +51,7 @@ async def ctx() -> AsyncIterator[tuple]:
         router as consent_perfil_router,
     )
 
-    engine = create_async_engine(url, pool_pre_ping=True, future=True)
+    engine = create_async_engine(url, pool_pre_ping=True, future=True, poolclass=NullPool)
     tbl = ConsentimientoPerfilModel.__table__
     async with engine.begin() as conn:
         await conn.run_sync(tbl.drop, checkfirst=True)

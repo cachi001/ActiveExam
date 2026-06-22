@@ -24,6 +24,7 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import delete, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
 from app.domain.auth.token import TokenPolicy
 from app.infrastructure.auth.jwks_cache import JwksCache
@@ -103,7 +104,7 @@ async def ctx() -> AsyncGenerator[dict, None]:
         pytest.skip("DATABASE_URL no seteada; test de integración (DB real).")
 
     # --- motor async ---
-    engine = create_async_engine(url, pool_pre_ping=True, future=True)
+    engine = create_async_engine(url, pool_pre_ping=True, future=True, poolclass=NullPool)
     factory = async_sessionmaker(engine, expire_on_commit=False)
 
     # --- seed: admin + estudiante con IDs únicos por ejecución ---

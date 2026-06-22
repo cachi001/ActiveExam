@@ -18,6 +18,7 @@ from collections.abc import AsyncIterator
 import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
 pytestmark = pytest.mark.asyncio
 
@@ -36,7 +37,7 @@ async def factory() -> AsyncIterator[async_sessionmaker[AsyncSession]]:
         ConsentimientoPerfilModel,
     )
 
-    engine = create_async_engine(url, pool_pre_ping=True, future=True)
+    engine = create_async_engine(url, pool_pre_ping=True, future=True, poolclass=NullPool)
     tbl = ConsentimientoPerfilModel.__table__
     async with engine.begin() as conn:
         await conn.run_sync(tbl.drop, checkfirst=True)
