@@ -43,6 +43,9 @@ class ConfigEfectiva:
     detectores_activos: tuple[str, ...]
     # Pesos de scoring por tipo de evento (solo tipos activos).
     scoring_weights: dict[str, int] = field(default_factory=dict)
+    # Severidad configurada por tipo de evento (solo tipos activos). El cliente la usa
+    # para mostrar la severidad VIGENTE (no la del catalogo hardcodeado).
+    scoring_severidades: dict[str, str] = field(default_factory=dict)
 
 
 class ConfigService:
@@ -71,7 +74,7 @@ class ConfigService:
         if cfg is None:
             cfg = await repo.ensure_singleton()
             await session.commit()
-        pesos = await self._pesos_activos(session)
+        pesos, severidades = await self._scoring_activos(session)
         return ConfigEfectiva(
             version=cfg.version,
             face_absent_ms=cfg.face_absent_ms,
@@ -84,13 +87,21 @@ class ConfigService:
             consent_version_vigente=cfg.consent_version_vigente,
             detectores_activos=tuple(cfg.detectores_activos or ()),
             scoring_weights=pesos,
+            scoring_severidades=severidades,
         )
 
-    async def _pesos_activos(self, session: AsyncSession) -> dict[str, int]:
+    async def _scoring_activos(
+        self, session: AsyncSession
+    ) -> tuple[dict[str, int], dict[str, str]]:
+        """Pesos y severidades configurados por tipo de evento (solo tipos activos)."""
         result = await session.execute(
             select(
                 EventoScoreConfigModel.tipo_evento,
                 EventoScoreConfigModel.peso,
+                EventoScoreConfigModel.severidad,
             ).where(EventoScoreConfigModel.activo.is_(True))
         )
-        return {row.tipo_evento: row.peso for row in result.all()}
+        rows = result.all()
+        pesos = {row.tipo_evento: row.peso for row in rows}
+        severidades = {row.tipo_evento: row.severidad for row in rows}
+        return pesos, severidades

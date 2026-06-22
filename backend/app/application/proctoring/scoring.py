@@ -36,6 +36,10 @@ PESOS_SEVERIDAD: dict[str, int] = {
     "critica": 80,
 }
 
+# Tope del score (igual que el cliente y la finalizacion de produccion). El score
+# es 0..100; nunca se persiste ni se muestra por encima de 100.
+SCORE_CAP = 100
+
 
 def calcular_score(
     eventos: list, pesos_por_tipo: dict[str, int] | None = None
@@ -68,4 +72,5 @@ def calcular_score(
             total += pesos[tipo]
         else:
             total += PESOS_SEVERIDAD.get(getattr(e, "severidad", ""), 0)
-    return total
+    # Cap a 100: el score es 0..100 (coincide con el cliente y la finalizacion).
+    return min(SCORE_CAP, total)

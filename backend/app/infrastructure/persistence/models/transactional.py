@@ -385,8 +385,15 @@ class ConfiguracionSistemaModel(Base):
         Integer, nullable=False, server_default="70"
     )
     # Detectores activos (lista de TipoEvento) — JSONB para portabilidad slim/full.
+    # Default: TODOS los detectores activos (el admin desactiva los que no quiera).
     detectores_activos: Mapped[list[str]] = mapped_column(
-        JSONB, nullable=False, server_default="[]"
+        JSONB,
+        nullable=False,
+        server_default=(
+            '["rostro_ausente", "multiples_rostros", "mirada_desviada_sostenida", '
+            '"perdida_de_foco", "cambio_pestana", "monitor_adicional", '
+            '"salida_pantalla_completa", "copiar_pegar", "corte_conectividad_prolongado"]'
+        ),
     )
     # Retencion default en dias (politica concreta en C-19).
     retencion_dias_default: Mapped[int] = mapped_column(

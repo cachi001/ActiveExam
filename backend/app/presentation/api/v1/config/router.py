@@ -69,6 +69,7 @@ class ConfigEfectivaResponse(_Strict):
     consent_version_vigente: str
     detectores_activos: list[str]
     scoring_weights: dict[str, int]
+    scoring_severidades: dict[str, str] = {}
 
 
 class EditarConfigRequest(_Strict):
@@ -125,6 +126,7 @@ def _to_response(e: ConfigEfectiva) -> ConfigEfectivaResponse:
         consent_version_vigente=e.consent_version_vigente,
         detectores_activos=list(e.detectores_activos),
         scoring_weights=dict(e.scoring_weights),
+        scoring_severidades=dict(e.scoring_severidades),
     )
 
 

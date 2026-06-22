@@ -39,6 +39,7 @@ class SesionResumenData:
 
     id: str
     modo: str
+    exam_id: str | None
     etiqueta: str | None
     creada_en: Any
     finalizada_en: Any
@@ -198,12 +199,14 @@ class ProctoringRepository:
             SesionResumenData(
                 id=s.id,
                 modo=s.modo,
+                exam_id=s.exam_id,
                 etiqueta=s.etiqueta,
                 creada_en=s.creada_en,
                 finalizada_en=s.finalizada_en,
                 total_eventos=total_por_sesion.get(s.id, 0),
                 total_discrepancias=disc_por_sesion.get(s.id, 0),
-                score=score_por_sesion.get(s.id, 0),
+                # Cap a 100 (igual que el detalle y el cliente): el score es 0..100.
+                score=min(100, score_por_sesion.get(s.id, 0)),
                 ultimo_evento_en=ultimo_por_sesion.get(s.id) or s.creada_en,
             )
             for s in sesiones
@@ -283,7 +286,20 @@ class ProctoringRepository:
         resultado: str,
         embedding: str | None = None,
     ) -> ProctoringBiometriaModel:
-        """Persiste el resultado biometrico de una sesion."""
+        """Persiste el resultado biometrico de una sesion (UPSERT: el último gana).
+
+        Si el alumno falló un intento y reintentó con éxito, vale el resultado MÁS
+        RECIENTE. Antes se insertaba siempre una fila nueva y la relación one-to-one
+        devolvía la primera (la fallada) — por eso quedaba el resultado viejo.
+        """
+        previas = await self._db.execute(
+            select(ProctoringBiometriaModel).where(
+                ProctoringBiometriaModel.session_id == session_id
+            )
+        )
+        for prev in previas.scalars().all():
+            await self._db.delete(prev)
+
         bio = ProctoringBiometriaModel(
             session_id=session_id,
             liveness_ok=liveness_ok,

@@ -82,6 +82,9 @@ class SesionResumen(BaseModel):
 
     id: str
     modo: str
+    # ID del examen (referencia externa). La Cola de revision lo usa para vincular
+    # la sesion con la materia/comision/examen. Sin esto, la cola descarta la sesion.
+    exam_id: str | None = None
     etiqueta: str | None = None
     creada_en: Any
     finalizada_en: Any = None

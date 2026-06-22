@@ -88,6 +88,7 @@ def create_sessions_router(get_db) -> APIRouter:
             SesionResumen(
                 id=s.id,
                 modo=s.modo,
+                exam_id=s.exam_id,
                 etiqueta=s.etiqueta,
                 creada_en=s.creada_en,
                 finalizada_en=s.finalizada_en,
