@@ -1,9 +1,15 @@
+/// <reference types="vitest/config" />
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
+  // Vitest: los tests de lógica corren en node (rápido); los de componente
+  // (.test.tsx) necesitan DOM → jsdom solo para ellos.
+  test: {
+    environmentMatchGlobs: [['**/*.test.tsx', 'jsdom']],
+  },
   server: {
     port: 5173,
     host: true,
