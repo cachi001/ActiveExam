@@ -18,10 +18,16 @@ import pytest_asyncio
 from httpx import AsyncClient
 from sqlalchemy import text
 
+from tests.proctoring.conftest import auth_headers
+
 pytestmark = pytest.mark.asyncio
 
 _BASE = "/api/v1/proctoring"
 _PESO_GAZE = 50  # peso vivo sembrado para GAZE_DEVIATION
+
+# GET /sessions/{id} (detalle) y PATCH /pausas/{id} (aprobar) son del proctor; el
+# ``client`` por defecto va como estudiante. Se mandan con Bearer de rol proctor.
+_PROCTOR = auth_headers(["proctor"])
 
 
 @pytest_asyncio.fixture
@@ -69,7 +75,7 @@ async def test_detalle_evento_fuera_de_pausa_cuenta_en_score(
     sid = (await client.post(f"{_BASE}/sessions", json={"modo": "test"})).json()["id"]
     await _evento(client, sid)
 
-    resp = await client.get(f"{_BASE}/sessions/{sid}")
+    resp = await client.get(f"{_BASE}/sessions/{sid}", headers=_PROCTOR)
     assert resp.status_code == 200
     data = resp.json()
     assert data["score"] == _PESO_GAZE
@@ -88,13 +94,15 @@ async def test_detalle_evento_en_pausa_excluido_del_score(
         await client.post(f"{_BASE}/sessions/{sid}/pausas", json={"motivo": "bano"})
     ).json()["id"]
     await client.patch(
-        f"{_BASE}/pausas/{pid}", json={"accion": "aprobar", "proctor_actor": "doc"}
+        f"{_BASE}/pausas/{pid}",
+        json={"accion": "aprobar", "proctor_actor": "doc"},
+        headers=_PROCTOR,
     )
 
     # Evento DURANTE la pausa (ts_backend = now, dentro de la ventana activa)
     await _evento(client, sid)
 
-    resp = await client.get(f"{_BASE}/sessions/{sid}")
+    resp = await client.get(f"{_BASE}/sessions/{sid}", headers=_PROCTOR)
     assert resp.status_code == 200
     data = resp.json()
     # El evento sigue en la lista (no se borra — L2.5) con el badge
@@ -118,13 +126,15 @@ async def test_detalle_mezcla_dentro_y_fuera_de_pausa(
         await client.post(f"{_BASE}/sessions/{sid}/pausas", json={"motivo": "x"})
     ).json()["id"]
     await client.patch(
-        f"{_BASE}/pausas/{pid}", json={"accion": "aprobar", "proctor_actor": "doc"}
+        f"{_BASE}/pausas/{pid}",
+        json={"accion": "aprobar", "proctor_actor": "doc"},
+        headers=_PROCTOR,
     )
     # Evento DURANTE la ventana abierta -> excluido
     await _evento(client, sid)
     await client.patch(f"{_BASE}/pausas/{pid}/finalizar")
 
-    resp = await client.get(f"{_BASE}/sessions/{sid}")
+    resp = await client.get(f"{_BASE}/sessions/{sid}", headers=_PROCTOR)
     assert resp.status_code == 200
     data = resp.json()
     badges = [e["en_pausa_autorizada"] for e in data["eventos"]]

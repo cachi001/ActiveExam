@@ -23,8 +23,12 @@ from app.presentation.api.v1.proctoring.events.schemas import (
 )
 
 
-def create_events_router(get_db, get_reinferencia) -> APIRouter:
-    """Factory del router de eventos. Recibe dependencias de DB y re-inferencia."""
+def create_events_router(get_db, get_reinferencia, *, require_autenticado) -> APIRouter:
+    """Factory del router de eventos. Recibe dependencias de DB y re-inferencia.
+
+    ``require_autenticado``: guard de auth (cualquier token valido) — el alumno
+    ingesta sus eventos de deteccion. Lo inyecta el router padre.
+    """
     router = APIRouter()
 
     @router.post(
@@ -32,6 +36,7 @@ def create_events_router(get_db, get_reinferencia) -> APIRouter:
         status_code=http_status.HTTP_201_CREATED,
         response_model=IngestEventoOut,
         summary="Ingestar evento de deteccion con re-inferencia server-side",
+        dependencies=[Depends(require_autenticado)],
     )
     async def ingestar_evento(
         session_id: str,

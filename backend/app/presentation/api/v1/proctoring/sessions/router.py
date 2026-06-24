@@ -14,17 +14,21 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi import status as http_status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.application.proctoring import session_service
+from app.application.proctoring import observacion_service, session_service
 from app.application.proctoring.scoring import (
     calcular_score,
     eventos_en_pausa_autorizada,
 )
 from app.presentation.api.v1.proctoring.sessions.schemas import (
     BiometriaDetalle,
+    CerrarForzadoIn,
+    CerrarForzadoOut,
     CrearSesionIn,
     CrearSesionOut,
     EventoDetalle,
     FinalizarSesionOut,
+    ObservacionIn,
+    ObservacionOut,
     SesionDetalle,
     SesionResumen,
 )
@@ -77,8 +81,20 @@ async def _ventanas_pausa_aprobada(db: AsyncSession, session_id: str) -> list:
         return []
 
 
-def create_sessions_router(get_db) -> APIRouter:
-    """Factory del router de sesiones. Recibe la dependencia de DB inyectada."""
+def create_sessions_router(
+    get_db,
+    *,
+    require_autenticado,
+    require_proctor_o_admin,
+    require_admin,
+) -> APIRouter:
+    """Factory del router de sesiones. Recibe la dependencia de DB inyectada.
+
+    Guards de auth/RBAC (endurecimiento por rol — los inyecta el router padre):
+      - ``require_autenticado``: cualquier token valido (flujo del alumno).
+      - ``require_proctor_o_admin``: vista del proctor (lista/detalle de sesiones).
+      - ``require_admin``: operaciones de cadena de custodia (DELETE — JAMAS proctor).
+    """
     router = APIRouter()
 
     @router.post(
@@ -86,6 +102,7 @@ def create_sessions_router(get_db) -> APIRouter:
         status_code=http_status.HTTP_201_CREATED,
         response_model=CrearSesionOut,
         summary="Crear sesion de proctoring",
+        dependencies=[Depends(require_autenticado)],
     )
     async def crear_sesion(
         body: CrearSesionIn,
@@ -104,6 +121,7 @@ def create_sessions_router(get_db) -> APIRouter:
         "/sessions",
         response_model=list[SesionResumen],
         summary="Listar sesiones con score y discrepancias",
+        dependencies=[Depends(require_proctor_o_admin)],
     )
     async def listar_sesiones(
         db: Annotated[AsyncSession, Depends(get_db)],
@@ -130,6 +148,7 @@ def create_sessions_router(get_db) -> APIRouter:
         "/sessions/{session_id}",
         response_model=SesionDetalle,
         summary="Detalle de sesion para revision del proctor",
+        dependencies=[Depends(require_proctor_o_admin)],
     )
     async def obtener_sesion(
         session_id: str,
@@ -203,6 +222,7 @@ def create_sessions_router(get_db) -> APIRouter:
         "/sessions/{session_id}/finalizar",
         response_model=FinalizarSesionOut,
         summary="Finalizar sesion de proctoring (idempotente)",
+        dependencies=[Depends(require_autenticado)],
     )
     async def finalizar_sesion(
         session_id: str,
@@ -222,10 +242,98 @@ def create_sessions_router(get_db) -> APIRouter:
             )
         return FinalizarSesionOut(id=sesion.id, finalizada_en=sesion.finalizada_en)
 
+    # C-15 (3.2): observaciones del proctor (insumo de la revision humana C-16).
+    @router.post(
+        "/sessions/{session_id}/observaciones",
+        status_code=http_status.HTTP_201_CREATED,
+        response_model=ObservacionOut,
+        summary="Registrar observacion del proctor (insumo C-16)",
+        dependencies=[Depends(require_proctor_o_admin)],
+    )
+    async def crear_observacion(
+        session_id: str,
+        body: ObservacionIn,
+        db: Annotated[AsyncSession, Depends(get_db)],
+    ) -> ObservacionOut:
+        """Persiste una observacion del proctor sobre la sesion. 404 si no existe."""
+        obs = await observacion_service.crear_observacion(
+            db, session_id=session_id, texto=body.texto, proctor_actor=body.proctor_actor
+        )
+        if obs is None:
+            raise HTTPException(
+                status_code=http_status.HTTP_404_NOT_FOUND,
+                detail=f"Sesion {session_id!r} no encontrada",
+            )
+        return ObservacionOut(
+            id=obs.id,
+            texto=obs.texto,
+            proctor_actor=obs.proctor_actor,
+            creada_en=obs.creada_en,
+        )
+
+    @router.get(
+        "/sessions/{session_id}/observaciones",
+        response_model=list[ObservacionOut],
+        summary="Listar observaciones del proctor de la sesion",
+        dependencies=[Depends(require_proctor_o_admin)],
+    )
+    async def listar_observaciones(
+        session_id: str,
+        db: Annotated[AsyncSession, Depends(get_db)],
+    ) -> list[ObservacionOut]:
+        """Lista observaciones asc por creada_en. 404 si la sesion no existe."""
+        obs = await observacion_service.listar_observaciones(db, session_id)
+        if obs is None:
+            raise HTTPException(
+                status_code=http_status.HTTP_404_NOT_FOUND,
+                detail=f"Sesion {session_id!r} no encontrada",
+            )
+        return [
+            ObservacionOut(
+                id=o.id,
+                texto=o.texto,
+                proctor_actor=o.proctor_actor,
+                creada_en=o.creada_en,
+            )
+            for o in obs
+        ]
+
+    # C-15 (3.3): cierre FORZADO de la sesion por el proctor. Operativo, NO
+    # disciplinario (regla dura #5: el sistema nunca sanciona; el veredicto es
+    # HUMANO en C-16). El audit trail vive en la propia fila (cierre_forzado_*).
+    @router.patch(
+        "/sessions/{session_id}/cerrar-forzado",
+        response_model=CerrarForzadoOut,
+        summary="Cierre forzado de sesion por el proctor (operativo, auditado)",
+        dependencies=[Depends(require_proctor_o_admin)],
+    )
+    async def cerrar_forzado(
+        session_id: str,
+        body: CerrarForzadoIn,
+        db: Annotated[AsyncSession, Depends(get_db)],
+    ) -> CerrarForzadoOut:
+        """Fuerza el cierre: setea finalizada_en + cierre_forzado_*. Idempotente. 404 si no existe."""
+        sesion = await session_service.cerrar_forzado(
+            db, session_id, motivo=body.motivo, proctor_actor=body.proctor_actor
+        )
+        if sesion is None:
+            raise HTTPException(
+                status_code=http_status.HTTP_404_NOT_FOUND,
+                detail=f"Sesion {session_id!r} no encontrada",
+            )
+        return CerrarForzadoOut(
+            id=sesion.id,
+            finalizada_en=sesion.finalizada_en,
+            cierre_forzado_en=sesion.cierre_forzado_en,
+            cierre_forzado_por=sesion.cierre_forzado_por,
+            cierre_forzado_motivo=sesion.cierre_forzado_motivo,
+        )
+
     @router.delete(
         "/sessions/{session_id}",
         status_code=http_status.HTTP_204_NO_CONTENT,
         summary="Eliminar sesion",
+        dependencies=[Depends(require_admin)],
     )
     async def eliminar_sesion(
         session_id: str,

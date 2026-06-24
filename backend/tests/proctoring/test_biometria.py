@@ -8,6 +8,11 @@ from __future__ import annotations
 import pytest
 from httpx import AsyncClient
 
+from tests.proctoring.conftest import auth_headers
+
+# GET /sessions/{id} (detalle con biometria) es vista del proctor (proctor-only).
+_PROCTOR = auth_headers(["proctor"])
+
 
 pytestmark = pytest.mark.asyncio
 
@@ -94,7 +99,9 @@ async def test_biometria_aparece_en_detalle_sesion(client: AsyncClient) -> None:
             "resultado": "verificado",
         },
     )
-    resp = await client.get(f"/api/v1/proctoring/sessions/{session_id}")
+    resp = await client.get(
+        f"/api/v1/proctoring/sessions/{session_id}", headers=_PROCTOR
+    )
     assert resp.status_code == 200
     data = resp.json()
     assert data["biometria"] is not None

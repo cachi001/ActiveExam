@@ -108,6 +108,11 @@ class PausaAutorizadaModel(Base):
         nullable=True,
         comment="Subject del JWT del proctor que resolvio la pausa (audit trail).",
     )
+    motivo_rechazo: Mapped[str | None] = mapped_column(
+        String(500),
+        nullable=True,
+        comment="Motivo que el proctor da al RECHAZAR (se muestra al alumno). NULL si se aprobo.",
+    )
     inicio_en: Mapped[str | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,

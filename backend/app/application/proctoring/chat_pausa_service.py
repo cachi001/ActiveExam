@@ -137,17 +137,24 @@ class EstadoInvalido(Exception):
 
 
 async def resolver_pausa(
-    db: AsyncSession, pausa_id: str, accion: str, proctor_actor: str | None
+    db: AsyncSession,
+    pausa_id: str,
+    accion: str,
+    proctor_actor: str | None,
+    motivo_rechazo: str | None = None,
 ) -> PausaAutorizadaModel | None:
     """Aprueba o rechaza una pausa 'solicitada'.
 
-    aprobar  → estado='aprobada', resuelta_en=now, inicio_en=now, proctor_actor set.
-    rechazar → estado='rechazada', resuelta_en=now, proctor_actor set (NO abre ventana).
+    aprobar  → estado='aprobada', resuelta_en=now, inicio_en=now, proctor_actor set,
+               motivo_rechazo=None (no aplica al aprobar).
+    rechazar → estado='rechazada', resuelta_en=now, proctor_actor set, motivo_rechazo
+               persistido (se muestra al alumno). NO abre ventana.
 
     Devuelve None si la pausa no existe. Lanza EstadoInvalido si estado != 'solicitada'.
 
     AUDIT (L2.5): la resolucion queda registrada en la propia fila (proctor_actor +
-    resuelta_en) — audit trail persistente. La pausa NUNCA sanciona ni exime."""
+    resuelta_en + motivo_rechazo) — audit trail persistente. La pausa NUNCA sanciona
+    ni exime. La obligatoriedad/validez del motivo se valida en el schema (422)."""
     pausa = await db.get(PausaAutorizadaModel, pausa_id)
     if pausa is None:
         return None
@@ -161,8 +168,10 @@ async def resolver_pausa(
     if accion == "aprobar":
         pausa.estado = "aprobada"
         pausa.inicio_en = ahora
+        pausa.motivo_rechazo = None
     else:  # rechazar
         pausa.estado = "rechazada"
+        pausa.motivo_rechazo = motivo_rechazo
     await db.commit()
     await db.refresh(pausa)
     return pausa

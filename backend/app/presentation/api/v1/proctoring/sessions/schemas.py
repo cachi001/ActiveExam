@@ -112,3 +112,58 @@ class SesionDetalle(BaseModel):
     score: int
     eventos: list[EventoDetalle]
     biometria: BiometriaDetalle | None = None
+
+
+# --- C-15 (3.2): observaciones del proctor (insumo de C-16) ---
+
+
+class ObservacionIn(BaseModel):
+    """Body de POST /sessions/{id}/observaciones (proctor)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    texto: str = Field(..., min_length=1, max_length=2000)
+    proctor_actor: str | None = Field(
+        None, description="Subject del JWT del proctor que escribe (audit trail)."
+    )
+
+
+class ObservacionOut(BaseModel):
+    """Observacion del proctor (respuesta de POST y elemento del GET)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    texto: str
+    proctor_actor: str | None = None
+    creada_en: Any
+
+
+# --- C-15 (3.3): cierre forzado de sesion (operativo, NO disciplinario) ---
+
+
+class CerrarForzadoIn(BaseModel):
+    """Body de PATCH /sessions/{id}/cerrar-forzado (proctor).
+
+    ``motivo`` es OBLIGATORIO (operativo): por que el proctor cierra la sesion.
+    NO es un veredicto disciplinario (regla dura #5).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    motivo: str = Field(..., min_length=1, max_length=500)
+    proctor_actor: str | None = Field(
+        None, description="Subject del JWT del proctor que fuerza el cierre (audit trail)."
+    )
+
+
+class CerrarForzadoOut(BaseModel):
+    """Respuesta de PATCH /sessions/{id}/cerrar-forzado → 200."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    finalizada_en: Any
+    cierre_forzado_en: Any
+    cierre_forzado_por: str | None = None
+    cierre_forzado_motivo: str | None = None

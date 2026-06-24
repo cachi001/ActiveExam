@@ -50,6 +50,20 @@ async def finalizar_sesion(
     return await repo.finalizar_sesion(session_id)
 
 
+async def cerrar_forzado(
+    db: AsyncSession,
+    session_id: str,
+    motivo: str,
+    proctor_actor: str | None = None,
+) -> ProctoringSessionModel | None:
+    """Cierre forzado de la sesion por el proctor (operativo, NO disciplinario).
+
+    Idempotente: si ya estaba cerrada de forma forzada, no muta el audit. None si
+    la sesion no existe. Ver ProctoringRepository.cerrar_forzado."""
+    repo = ProctoringRepository(db)
+    return await repo.cerrar_forzado(session_id, motivo=motivo, proctor_actor=proctor_actor)
+
+
 async def eliminar_sesion(db: AsyncSession, session_id: str) -> bool:
     """Elimina una sesion por ID. Devuelve True si existia, False si no."""
     repo = ProctoringRepository(db)

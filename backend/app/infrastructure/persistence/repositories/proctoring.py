@@ -227,6 +227,36 @@ class ProctoringRepository:
             await self._db.refresh(sesion)
         return sesion
 
+    async def cerrar_forzado(
+        self,
+        session_id: str,
+        motivo: str,
+        proctor_actor: str | None = None,
+    ) -> ProctoringSessionModel | None:
+        """Cierre FORZADO de la sesion por el proctor (C-15 3.3). Operativo, NO disciplinario.
+
+        Setea ``cierre_forzado_en/por/motivo`` (audit trail persistente en la propia
+        fila) y, si la sesion no estaba finalizada, tambien ``finalizada_en``. NO toca
+        ``decision`` (eso es el veredicto HUMANO de C-16 — regla dura #5: el sistema
+        nunca sanciona).
+
+        Idempotente: si la sesion YA fue cerrada de forma forzada, devuelve la fila
+        sin modificar (el audit del primer cierre es inmutable). None si no existe.
+        """
+        sesion = await self._db.get(ProctoringSessionModel, session_id)
+        if sesion is None:
+            return None
+        if sesion.cierre_forzado_en is None:
+            ahora = datetime.now(tz=timezone.utc)
+            sesion.cierre_forzado_en = ahora
+            sesion.cierre_forzado_por = proctor_actor
+            sesion.cierre_forzado_motivo = motivo
+            if sesion.finalizada_en is None:
+                sesion.finalizada_en = ahora
+            await self._db.commit()
+            await self._db.refresh(sesion)
+        return sesion
+
     async def eliminar_sesion(self, session_id: str) -> bool:
         """Elimina una sesion por ID. Los eventos y biometria se borran por FK CASCADE.
 

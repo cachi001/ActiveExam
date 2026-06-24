@@ -11,6 +11,14 @@ import pytest
 import pytest_asyncio
 from httpx import AsyncClient
 
+from tests.proctoring.conftest import auth_headers
+
+# GET /sessions y GET /sessions/{id} son vista del proctor (proctor-only tras el
+# endurecimiento por rol). El ``client`` por defecto va autenticado como
+# estudiante (flujo del alumno: POST /sessions, /events). Para las lecturas del
+# proctor mandamos un Bearer de rol proctor.
+_PROCTOR = auth_headers(["proctor"])
+
 
 pytestmark = pytest.mark.asyncio
 
@@ -51,7 +59,7 @@ async def test_crear_sesion_campo_extra_rechazado(client: AsyncClient) -> None:
 @pytest.mark.asyncio
 async def test_listar_sesiones_200(client: AsyncClient) -> None:
     """GET /sessions → 200 con lista (puede estar vacia)."""
-    resp = await client.get("/api/v1/proctoring/sessions")
+    resp = await client.get("/api/v1/proctoring/sessions", headers=_PROCTOR)
     assert resp.status_code == 200
     assert isinstance(resp.json(), list)
 
@@ -68,7 +76,7 @@ async def test_listar_sesiones_incluye_sesion_creada(client: AsyncClient) -> Non
     session_id = create_resp.json()["id"]
 
     # Listar y verificar que aparece
-    list_resp = await client.get("/api/v1/proctoring/sessions")
+    list_resp = await client.get("/api/v1/proctoring/sessions", headers=_PROCTOR)
     assert list_resp.status_code == 200
     sesiones = list_resp.json()
     ids = [s["id"] for s in sesiones]
@@ -92,7 +100,9 @@ async def test_obtener_sesion_200(client: AsyncClient) -> None:
     )
     session_id = create_resp.json()["id"]
 
-    resp = await client.get(f"/api/v1/proctoring/sessions/{session_id}")
+    resp = await client.get(
+        f"/api/v1/proctoring/sessions/{session_id}", headers=_PROCTOR
+    )
     assert resp.status_code == 200
     data = resp.json()
     assert data["id"] == session_id
@@ -106,7 +116,8 @@ async def test_obtener_sesion_200(client: AsyncClient) -> None:
 async def test_obtener_sesion_404(client: AsyncClient) -> None:
     """GET /sessions/{id} con id inexistente → 404."""
     resp = await client.get(
-        "/api/v1/proctoring/sessions/00000000-0000-0000-0000-000000000000"
+        "/api/v1/proctoring/sessions/00000000-0000-0000-0000-000000000000",
+        headers=_PROCTOR,
     )
     assert resp.status_code == 404
 
@@ -133,7 +144,7 @@ async def test_listar_sesiones_total_discrepancias_correcto(client: AsyncClient)
         },
     )
 
-    list_resp = await client.get("/api/v1/proctoring/sessions")
+    list_resp = await client.get("/api/v1/proctoring/sessions", headers=_PROCTOR)
     sesiones = list_resp.json()
     sesion = next((s for s in sesiones if s["id"] == session_id), None)
     assert sesion is not None
@@ -160,7 +171,9 @@ async def test_sesion_detalle_incluye_campos_reinferencia(client: AsyncClient) -
         },
     )
 
-    resp = await client.get(f"/api/v1/proctoring/sessions/{session_id}")
+    resp = await client.get(
+        f"/api/v1/proctoring/sessions/{session_id}", headers=_PROCTOR
+    )
     assert resp.status_code == 200
     data = resp.json()
     assert len(data["eventos"]) == 1

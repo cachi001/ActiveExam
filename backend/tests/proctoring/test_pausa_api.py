@@ -5,9 +5,16 @@ from __future__ import annotations
 import pytest
 from httpx import AsyncClient
 
+from tests.proctoring.conftest import auth_headers
+
 pytestmark = pytest.mark.asyncio
 
 _BASE = "/api/v1/proctoring"
+
+# El ``client`` por defecto va autenticado como estudiante (solicitar pausa, poll
+# de su sesion, reanudar). Resolver (aprobar/rechazar) y el poll de pendientes
+# son del proctor: se mandan con un Bearer de rol proctor.
+_PROCTOR = auth_headers(["proctor"])
 
 
 async def _crear_sesion(client: AsyncClient, etiqueta: str | None = None) -> str:
@@ -75,7 +82,7 @@ async def test_get_pausas_de_sesion_desc(client: AsyncClient) -> None:
     assert pausas[0]["motivo"] == "segunda"  # mas reciente primero
     campos = {
         "id", "motivo", "estado", "solicitada_en", "resuelta_en",
-        "proctor_actor", "inicio_en", "fin_en",
+        "proctor_actor", "motivo_rechazo", "inicio_en", "fin_en",
     }
     assert set(pausas[0]) == campos
 
@@ -97,9 +104,13 @@ async def test_get_pausas_pendientes_solo_solicitadas(client: AsyncClient) -> No
     p1 = await _solicitar(client, sid1, "m1")
     await _solicitar(client, sid2, "m2")
     # Aprobar p1 → ya no debe aparecer en pendientes
-    await client.patch(f"{_BASE}/pausas/{p1}", json={"accion": "aprobar", "proctor_actor": "doc"})
+    await client.patch(
+        f"{_BASE}/pausas/{p1}",
+        json={"accion": "aprobar", "proctor_actor": "doc"},
+        headers=_PROCTOR,
+    )
 
-    resp = await client.get(f"{_BASE}/pausas/pendientes")
+    resp = await client.get(f"{_BASE}/pausas/pendientes", headers=_PROCTOR)
     assert resp.status_code == 200
     pendientes = resp.json()
     assert len(pendientes) == 1
@@ -118,7 +129,9 @@ async def test_patch_aprobar_abre_ventana(client: AsyncClient) -> None:
     sid = await _crear_sesion(client)
     pid = await _solicitar(client, sid)
     resp = await client.patch(
-        f"{_BASE}/pausas/{pid}", json={"accion": "aprobar", "proctor_actor": "doc-99"}
+        f"{_BASE}/pausas/{pid}",
+        json={"accion": "aprobar", "proctor_actor": "doc-99"},
+        headers=_PROCTOR,
     )
     assert resp.status_code == 200
     data = resp.json()
@@ -134,7 +147,9 @@ async def test_patch_rechazar_no_abre_ventana(client: AsyncClient) -> None:
     sid = await _crear_sesion(client)
     pid = await _solicitar(client, sid)
     resp = await client.patch(
-        f"{_BASE}/pausas/{pid}", json={"accion": "rechazar", "proctor_actor": "doc-1"}
+        f"{_BASE}/pausas/{pid}",
+        json={"accion": "rechazar", "proctor_actor": "doc-1", "motivo_rechazo": "no corresponde"},
+        headers=_PROCTOR,
     )
     assert resp.status_code == 200
     data = resp.json()
@@ -144,14 +159,116 @@ async def test_patch_rechazar_no_abre_ventana(client: AsyncClient) -> None:
     assert data["inicio_en"] is None
 
 
+async def test_patch_rechazar_con_motivo_persiste(client: AsyncClient) -> None:
+    """rechazar con motivo_rechazo → estado 'rechazada' y motivo_rechazo persistido."""
+    sid = await _crear_sesion(client)
+    pid = await _solicitar(client, sid)
+    resp = await client.patch(
+        f"{_BASE}/pausas/{pid}",
+        json={
+            "accion": "rechazar",
+            "proctor_actor": "doc-7",
+            "motivo_rechazo": "Estas en mitad de una pregunta, espera 5 minutos.",
+        },
+        headers=_PROCTOR,
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["estado"] == "rechazada"
+    assert data["motivo_rechazo"] == "Estas en mitad de una pregunta, espera 5 minutos."
+    assert data["inicio_en"] is None
+
+
+async def test_patch_rechazar_sin_motivo_422(client: AsyncClient) -> None:
+    """rechazar SIN motivo_rechazo → 422 (motivo obligatorio al rechazar)."""
+    sid = await _crear_sesion(client)
+    pid = await _solicitar(client, sid)
+    resp = await client.patch(
+        f"{_BASE}/pausas/{pid}",
+        json={"accion": "rechazar", "proctor_actor": "doc-1"},
+        headers=_PROCTOR,
+    )
+    assert resp.status_code == 422
+
+
+async def test_patch_rechazar_motivo_vacio_422(client: AsyncClient) -> None:
+    """rechazar con motivo_rechazo vacio/blanco → 422 (no admite vacio)."""
+    sid = await _crear_sesion(client)
+    pid = await _solicitar(client, sid)
+    resp = await client.patch(
+        f"{_BASE}/pausas/{pid}",
+        json={"accion": "rechazar", "proctor_actor": "doc-1", "motivo_rechazo": "   "},
+        headers=_PROCTOR,
+    )
+    assert resp.status_code == 422
+
+
+async def test_patch_aprobar_ignora_motivo_rechazo(client: AsyncClient) -> None:
+    """aprobar → motivo_rechazo queda None aunque el body lo traiga (no se persiste)."""
+    sid = await _crear_sesion(client)
+    pid = await _solicitar(client, sid)
+    resp = await client.patch(
+        f"{_BASE}/pausas/{pid}",
+        json={"accion": "aprobar", "proctor_actor": "doc-2", "motivo_rechazo": "x"},
+        headers=_PROCTOR,
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["estado"] == "aprobada"
+    assert data["motivo_rechazo"] is None
+
+
+async def test_get_pausas_de_sesion_devuelve_motivo_rechazo(client: AsyncClient) -> None:
+    """El poll del alumno (GET /sessions/{id}/pausas) devuelve motivo_rechazo de la rechazada."""
+    sid = await _crear_sesion(client)
+    pid = await _solicitar(client, sid, "ir al bano")
+    await client.patch(
+        f"{_BASE}/pausas/{pid}",
+        json={
+            "accion": "rechazar",
+            "proctor_actor": "doc-3",
+            "motivo_rechazo": "Acabas de volver de una pausa, no corresponde otra.",
+        },
+        headers=_PROCTOR,
+    )
+    resp = await client.get(f"{_BASE}/sessions/{sid}/pausas")
+    assert resp.status_code == 200
+    pausas = resp.json()
+    assert len(pausas) == 1
+    assert pausas[0]["estado"] == "rechazada"
+    assert (
+        pausas[0]["motivo_rechazo"]
+        == "Acabas de volver de una pausa, no corresponde otra."
+    )
+    assert "motivo_rechazo" in set(pausas[0])
+
+
+async def test_patch_resolver_campo_extra_422(client: AsyncClient) -> None:
+    """Campo extra en el body de resolver → 422 (extra='forbid')."""
+    sid = await _crear_sesion(client)
+    pid = await _solicitar(client, sid)
+    resp = await client.patch(
+        f"{_BASE}/pausas/{pid}",
+        json={"accion": "aprobar", "proctor_actor": "d", "evil": 1},
+        headers=_PROCTOR,
+    )
+    assert resp.status_code == 422
+
+
 async def test_patch_resolver_no_solicitada_409(client: AsyncClient) -> None:
     """Resolver una pausa que ya no esta 'solicitada' → 409 (edge)."""
     sid = await _crear_sesion(client)
     pid = await _solicitar(client, sid)
-    await client.patch(f"{_BASE}/pausas/{pid}", json={"accion": "aprobar", "proctor_actor": "d"})
+    await client.patch(
+        f"{_BASE}/pausas/{pid}",
+        json={"accion": "aprobar", "proctor_actor": "d"},
+        headers=_PROCTOR,
+    )
     # Segundo intento sobre la misma pausa ya aprobada
     resp = await client.patch(
-        f"{_BASE}/pausas/{pid}", json={"accion": "rechazar", "proctor_actor": "d"}
+        f"{_BASE}/pausas/{pid}",
+        json={"accion": "rechazar", "proctor_actor": "d", "motivo_rechazo": "ya aprobada"},
+        headers=_PROCTOR,
     )
     assert resp.status_code == 409
 
@@ -160,6 +277,7 @@ async def test_patch_resolver_inexistente_404(client: AsyncClient) -> None:
     resp = await client.patch(
         f"{_BASE}/pausas/00000000-0000-0000-0000-000000000000",
         json={"accion": "aprobar", "proctor_actor": None},
+        headers=_PROCTOR,
     )
     assert resp.status_code == 404
 
@@ -171,7 +289,11 @@ async def test_patch_finalizar_cierra_ventana(client: AsyncClient) -> None:
     """finalizar una pausa aprobada → estado 'finalizada', fin_en seteado."""
     sid = await _crear_sesion(client)
     pid = await _solicitar(client, sid)
-    await client.patch(f"{_BASE}/pausas/{pid}", json={"accion": "aprobar", "proctor_actor": "d"})
+    await client.patch(
+        f"{_BASE}/pausas/{pid}",
+        json={"accion": "aprobar", "proctor_actor": "d"},
+        headers=_PROCTOR,
+    )
     resp = await client.patch(f"{_BASE}/pausas/{pid}/finalizar")
     assert resp.status_code == 200
     data = resp.json()

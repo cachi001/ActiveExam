@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # --- Chat ---
 
@@ -68,6 +68,7 @@ class PausaDetalle(BaseModel):
     solicitada_en: Any
     resuelta_en: Any = None
     proctor_actor: str | None = None
+    motivo_rechazo: str | None = None
     inicio_en: Any = None
     fin_en: Any = None
 
@@ -95,3 +96,21 @@ class PausaResolverIn(BaseModel):
     proctor_actor: str | None = Field(
         None, description="Subject del JWT del proctor que resuelve (audit trail)."
     )
+    motivo_rechazo: str | None = Field(
+        None,
+        max_length=500,
+        description=(
+            "Motivo del rechazo (se muestra al alumno). OBLIGATORIO y no vacio "
+            "cuando accion='rechazar'; ignorado (no se persiste) cuando accion='aprobar'."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _validar_motivo_rechazo(self) -> "PausaResolverIn":
+        """Al rechazar, el motivo es obligatorio y no puede ser vacio/blanco."""
+        if self.accion == "rechazar":
+            if self.motivo_rechazo is None or not self.motivo_rechazo.strip():
+                raise ValueError(
+                    "motivo_rechazo es obligatorio (y no vacio) cuando accion='rechazar'."
+                )
+        return self

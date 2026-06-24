@@ -35,8 +35,19 @@ from app.presentation.api.v1.proctoring.chat_pausa.schemas import (
 )
 
 
-def create_chat_pausa_router(get_db) -> APIRouter:
-    """Factory del router de chat + pausa. Recibe la dependencia de DB inyectada."""
+def create_chat_pausa_router(
+    get_db,
+    *,
+    require_autenticado,
+    require_proctor_o_admin,
+) -> APIRouter:
+    """Factory del router de chat + pausa. Recibe la dependencia de DB inyectada.
+
+    Guards de auth/RBAC (los inyecta el router padre):
+      - ``require_autenticado``: chat (alumno y proctor postean), solicitar pausa,
+        poll de pausas de la sesion, reanudar (finalizar) pausa — flujo del alumno.
+      - ``require_proctor_o_admin``: poll de pausas pendientes y aprobar/rechazar.
+    """
     router = APIRouter()
 
     # ---------------- CHAT ----------------
@@ -46,6 +57,7 @@ def create_chat_pausa_router(get_db) -> APIRouter:
         status_code=http_status.HTTP_201_CREATED,
         response_model=MensajeChatOut,
         summary="Enviar mensaje de chat (alumno o proctor)",
+        dependencies=[Depends(require_autenticado)],
     )
     async def enviar_mensaje(
         session_id: str,
@@ -72,6 +84,7 @@ def create_chat_pausa_router(get_db) -> APIRouter:
         "/sessions/{session_id}/chat",
         response_model=list[MensajeChatOut],
         summary="Listar mensajes de chat (polling incremental con ?desde)",
+        dependencies=[Depends(require_autenticado)],
     )
     async def listar_mensajes(
         session_id: str,
@@ -102,6 +115,7 @@ def create_chat_pausa_router(get_db) -> APIRouter:
         status_code=http_status.HTTP_201_CREATED,
         response_model=PausaSolicitudOut,
         summary="Solicitar pausa autorizada (alumno)",
+        dependencies=[Depends(require_autenticado)],
     )
     async def solicitar_pausa(
         session_id: str,
@@ -128,6 +142,7 @@ def create_chat_pausa_router(get_db) -> APIRouter:
         "/sessions/{session_id}/pausas",
         response_model=list[PausaDetalle],
         summary="Listar pausas de la sesion (poll del alumno)",
+        dependencies=[Depends(require_autenticado)],
     )
     async def listar_pausas_sesion(
         session_id: str,
@@ -148,6 +163,7 @@ def create_chat_pausa_router(get_db) -> APIRouter:
                 solicitada_en=p.solicitada_en,
                 resuelta_en=p.resuelta_en,
                 proctor_actor=p.proctor_actor,
+                motivo_rechazo=p.motivo_rechazo,
                 inicio_en=p.inicio_en,
                 fin_en=p.fin_en,
             )
@@ -158,6 +174,7 @@ def create_chat_pausa_router(get_db) -> APIRouter:
         "/pausas/pendientes",
         response_model=list[PausaPendiente],
         summary="Listar pausas pendientes de TODAS las sesiones (poll del proctor)",
+        dependencies=[Depends(require_proctor_o_admin)],
     )
     async def listar_pausas_pendientes(
         db: Annotated[AsyncSession, Depends(get_db)],
@@ -179,6 +196,7 @@ def create_chat_pausa_router(get_db) -> APIRouter:
         "/pausas/{pausa_id}",
         response_model=PausaDetalle,
         summary="Resolver pausa (aprobar | rechazar) — proctor",
+        dependencies=[Depends(require_proctor_o_admin)],
     )
     async def resolver_pausa(
         pausa_id: str,
@@ -188,7 +206,11 @@ def create_chat_pausa_router(get_db) -> APIRouter:
         """aprobar abre ventana (inicio_en); rechazar no. 404 si no existe; 409 si no esta 'solicitada'."""
         try:
             pausa = await chat_pausa_service.resolver_pausa(
-                db, pausa_id, accion=body.accion, proctor_actor=body.proctor_actor
+                db,
+                pausa_id,
+                accion=body.accion,
+                proctor_actor=body.proctor_actor,
+                motivo_rechazo=body.motivo_rechazo,
             )
         except EstadoInvalido as exc:
             raise HTTPException(
@@ -206,6 +228,7 @@ def create_chat_pausa_router(get_db) -> APIRouter:
             solicitada_en=pausa.solicitada_en,
             resuelta_en=pausa.resuelta_en,
             proctor_actor=pausa.proctor_actor,
+            motivo_rechazo=pausa.motivo_rechazo,
             inicio_en=pausa.inicio_en,
             fin_en=pausa.fin_en,
         )
@@ -214,6 +237,7 @@ def create_chat_pausa_router(get_db) -> APIRouter:
         "/pausas/{pausa_id}/finalizar",
         response_model=PausaDetalle,
         summary="Finalizar (cerrar ventana de) una pausa aprobada",
+        dependencies=[Depends(require_autenticado)],
     )
     async def finalizar_pausa(
         pausa_id: str,
@@ -238,6 +262,7 @@ def create_chat_pausa_router(get_db) -> APIRouter:
             solicitada_en=pausa.solicitada_en,
             resuelta_en=pausa.resuelta_en,
             proctor_actor=pausa.proctor_actor,
+            motivo_rechazo=pausa.motivo_rechazo,
             inicio_en=pausa.inicio_en,
             fin_en=pausa.fin_en,
         )
