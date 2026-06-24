@@ -23,6 +23,9 @@ export function PausasPendientes({ proctorActor }: { proctorActor?: string | nul
   const [pendientes, setPendientes] = useState<PausaPendiente[]>([]);
   // Pausas que están resolviéndose (para deshabilitar sus botones).
   const [resolviendo, setResolviendo] = useState<Set<string>>(new Set());
+  // Rechazo: la pausa elegida + el motivo que el proctor escribe (obligatorio).
+  const [rechazando, setRechazando] = useState<PausaPendiente | null>(null);
+  const [motivoRechazo, setMotivoRechazo] = useState('');
 
   const enVuelo = useRef(false);
   const toastRef = useRef(toast);
@@ -48,10 +51,10 @@ export function PausasPendientes({ proctorActor }: { proctorActor?: string | nul
     return () => clearInterval(id);
   }, [refrescar]);
 
-  const resolver = async (pausaId: string, accion: AccionPausa) => {
+  const resolver = async (pausaId: string, accion: AccionPausa, motivo?: string) => {
     setResolviendo((s) => new Set(s).add(pausaId));
     try {
-      await api.resolverPausa(pausaId, accion, proctorActor ?? null);
+      await api.resolverPausa(pausaId, accion, proctorActor ?? null, motivo ?? null);
       toastRef.current.success(accion === 'aprobar' ? 'Pausa aprobada' : 'Pausa rechazada');
       // Sacamos la pausa de la cola de inmediato (ya no está 'solicitada').
       setPendientes((prev) => prev.filter((p) => p.id !== pausaId));
@@ -70,6 +73,21 @@ export function PausasPendientes({ proctorActor }: { proctorActor?: string | nul
         return next;
       });
     }
+  };
+
+  // Abre el modal para capturar el motivo del rechazo (obligatorio).
+  const abrirRechazo = (p: PausaPendiente) => {
+    setMotivoRechazo('');
+    setRechazando(p);
+  };
+
+  // Confirma el rechazo: requiere motivo no vacío. Cierra el modal al disparar.
+  const confirmarRechazo = async () => {
+    const motivo = motivoRechazo.trim();
+    if (!motivo || !rechazando) return;
+    const pausaId = rechazando.id;
+    setRechazando(null);
+    await resolver(pausaId, 'rechazar', motivo);
   };
 
   if (pendientes.length === 0) return null;
@@ -115,7 +133,7 @@ export function PausasPendientes({ proctorActor }: { proctorActor?: string | nul
                   size="sm"
                   icon="close"
                   className="flex-1"
-                  onClick={() => void resolver(p.id, 'rechazar')}
+                  onClick={() => abrirRechazo(p)}
                   disabled={ocupado}
                 >
                   Rechazar
@@ -125,6 +143,49 @@ export function PausasPendientes({ proctorActor }: { proctorActor?: string | nul
           );
         })}
       </div>
+
+      {/* Modal para capturar el MOTIVO del rechazo (obligatorio). El alumno lo
+          verá en pantalla, así que pedimos un texto claro y no vacío. */}
+      {rechazando && (
+        <div className="fixed inset-0 z-[95] bg-inverse-surface/60 backdrop-blur-sm flex items-center justify-center p-lg animate-in fade-in">
+          <Card className="max-w-md w-full space-y-md">
+            <div className="space-y-base">
+              <h3 className="font-headline text-headline-md text-on-surface">Rechazar pausa</h3>
+              <p className="text-label-sm text-on-surface-variant">
+                Explicá brevemente por qué no autorizás la pausa. El alumno verá este
+                mensaje en su pantalla.
+              </p>
+              <p className="text-label-sm text-on-surface bg-surface-container-low rounded-lg px-sm py-base">
+                <span className="text-on-surface-variant">Pedido del alumno: </span>
+                {rechazando.motivo}
+              </p>
+            </div>
+            <textarea
+              value={motivoRechazo}
+              onChange={(e) => setMotivoRechazo(e.target.value)}
+              rows={3}
+              autoFocus
+              maxLength={500}
+              placeholder="Ej.: estás en mitad de una pregunta; esperá a terminarla."
+              className="w-full px-sm py-base text-label-md rounded-xl border border-outline-variant bg-surface-container-lowest focus:border-primary-container outline-none resize-none"
+            />
+            <div className="flex gap-base justify-end">
+              <Button variant="outline" size="sm" onClick={() => setRechazando(null)}>
+                Cancelar
+              </Button>
+              <Button
+                variant="danger"
+                size="sm"
+                icon="close"
+                onClick={() => void confirmarRechazo()}
+                disabled={!motivoRechazo.trim()}
+              >
+                Rechazar pausa
+              </Button>
+            </div>
+          </Card>
+        </div>
+      )}
     </section>
   );
 }

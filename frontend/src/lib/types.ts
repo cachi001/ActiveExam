@@ -465,6 +465,8 @@ export interface Pausa {
   solicitada_en: string; // ISO 8601
   resuelta_en?: string | null;
   proctor_actor?: string | null;
+  /** Motivo que el proctor da al RECHAZAR la pausa; se muestra al alumno. */
+  motivo_rechazo?: string | null;
   inicio_en?: string | null;
   fin_en?: string | null;
 }
@@ -476,6 +478,29 @@ export interface PausaPendiente {
   etiqueta?: string | null;
   motivo: string;
   solicitada_en: string; // ISO 8601
+}
+
+/**
+ * Observación libre del proctor sobre una sesión (C-15 3.2). Múltiples por sesión,
+ * append-only. Insumo de la revisión humana (C-16). NO sanciona ni exime (L2.5).
+ */
+export interface ObservacionProctor {
+  id: string;
+  texto: string;
+  proctor_actor?: string | null;
+  creada_en: string; // ISO 8601
+}
+
+/**
+ * Resultado del cierre FORZADO de una sesión por el proctor (C-15 3.3).
+ * Operativo, NO disciplinario (L2.5). El audit trail vive en la propia fila.
+ */
+export interface CierreForzado {
+  id: string;
+  finalizada_en: string;
+  cierre_forzado_en: string;
+  cierre_forzado_por?: string | null;
+  cierre_forzado_motivo?: string | null;
 }
 
 /** Materia/asignatura de la currícula. */

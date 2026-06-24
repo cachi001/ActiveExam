@@ -279,8 +279,17 @@ export function StaffShell({
     ? (showAsCollapsed ? SIDEBAR_COLLAPSED : SIDEBAR_EXPANDED)
     : SIDEBAR_DRAWER_W;
 
-  const mainItems = useMemo(() => nav.filter((i) => i.group === 'main'), [nav]);
-  const configItems = useMemo(() => nav.filter((i) => i.group === 'config'), [nav]);
+  // Filtramos el nav por los roles del usuario logueado ANTES de partirlo en
+  // grupos: el proctor solo ve los items de SUPERVISION (vivo / cola / grabadas);
+  // el admin ve todo. Coherente con los guards de ruta de App.tsx — un item cuya
+  // ruta el rol no puede abrir no se muestra (si no, clickea y ve "Sin permisos").
+  const roles = useAuth((s) => s.principal?.roles);
+  const visibleNav = useMemo(
+    () => nav.filter((i) => i.roles.some((r) => roles?.includes(r))),
+    [nav, roles],
+  );
+  const mainItems = useMemo(() => visibleNav.filter((i) => i.group === 'main'), [visibleNav]);
+  const configItems = useMemo(() => visibleNav.filter((i) => i.group === 'config'), [visibleNav]);
 
   return (
     <div className="min-h-screen bg-surface text-on-surface">

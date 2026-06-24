@@ -6,7 +6,8 @@
  * pausa más reciente:
  *   - solicitada → "Esperando aprobación del proctor…"
  *   - aprobada   → banner de PAUSA ACTIVA bien visible + timer + "Reanudar examen"
- *   - rechazada  → toast (una vez) y vuelta al estado normal
+ *   - rechazada  → aviso EN PANTALLA, persistente (Card visible con el motivo del
+ *                  proctor), hasta que el alumno lo cierre o pida otra pausa
  *   - finalizada → estado normal
  *
  * IMPORTANTE (decisión de producto, Opción 1): la detección NO se apaga durante
@@ -30,7 +31,15 @@ function mmss(totalSeg: number): string {
   return `${mm}:${ss}`;
 }
 
-export function PausaAlumno({ sessionId }: { sessionId: string | null | undefined }) {
+export function PausaAlumno({
+  sessionId,
+  onActivaChange,
+}: {
+  sessionId: string | null | undefined;
+  /** Notifica al contenedor cuándo la pausa está ACTIVA, para que empuje el layout
+   *  (padding-top) y el banner full-width no tape el header/controles del examen. */
+  onActivaChange?: (activa: boolean) => void;
+}) {
   const toast = useToast();
   const [pausa, setPausa] = useState<Pausa | null>(null);
   const [pidiendo, setPidiendo] = useState(false);
@@ -38,10 +47,11 @@ export function PausaAlumno({ sessionId }: { sessionId: string | null | undefine
   const [transcurrido, setTranscurrido] = useState(0);
   const [modalMotivo, setModalMotivo] = useState(false);
   const [motivo, setMotivo] = useState('');
+  // Id de la pausa rechazada cuyo aviso EN PANTALLA el alumno ya cerró (para no
+  // re-mostrarlo en cada poll). El aviso vive hasta que lo cierre o pida otra pausa.
+  const [rechazoCerrado, setRechazoCerrado] = useState<string | null>(null);
 
   const enVuelo = useRef(false);
-  // Para avisar UNA sola vez del rechazo (el poll seguiría devolviendo la pausa).
-  const rechazoAvisado = useRef<string | null>(null);
 
   const refrescar = useCallback(async () => {
     if (!sessionId || enVuelo.current) return;
@@ -51,16 +61,12 @@ export function PausaAlumno({ sessionId }: { sessionId: string | null | undefine
       // La más reciente es la primera (el backend ordena desc por solicitada_en).
       const actual = lista[0] ?? null;
       setPausa(actual);
-      if (actual?.estado === 'rechazada' && rechazoAvisado.current !== actual.id) {
-        rechazoAvisado.current = actual.id;
-        toast.error('El proctor rechazó la pausa');
-      }
     } catch {
       // Degradación silenciosa.
     } finally {
       enVuelo.current = false;
     }
-  }, [sessionId, toast]);
+  }, [sessionId]);
 
   // Polling con cleanup.
   useEffect(() => {
@@ -73,6 +79,12 @@ export function PausaAlumno({ sessionId }: { sessionId: string | null | undefine
   // Timer de la pausa activa: cuenta desde inicio_en (fuente: backend).
   const activa = pausa?.estado === 'aprobada';
   const inicioEn = pausa?.inicio_en ?? null;
+
+  // Avisar al contenedor (Examen) cuándo hay pausa activa, para que empuje el
+  // contenido y el banner full-width no tape los controles del examen.
+  useEffect(() => {
+    onActivaChange?.(activa);
+  }, [activa, onActivaChange]);
   useEffect(() => {
     if (!activa || !inicioEn) {
       setTranscurrido(0);
@@ -87,6 +99,8 @@ export function PausaAlumno({ sessionId }: { sessionId: string | null | undefine
 
   const abrirSolicitud = () => {
     setMotivo('');
+    // Al pedir otra pausa, dejamos de mostrar el aviso del rechazo anterior.
+    if (pausa?.estado === 'rechazada') setRechazoCerrado(pausa.id);
     setModalMotivo(true);
   };
 
@@ -123,6 +137,9 @@ export function PausaAlumno({ sessionId }: { sessionId: string | null | undefine
 
   const estado = pausa?.estado;
   const esperando = estado === 'solicitada';
+  // Mostramos el aviso de rechazo EN PANTALLA mientras la pausa más reciente esté
+  // 'rechazada' y el alumno no lo haya cerrado. Persiste entre polls (no es un toast).
+  const mostrarRechazo = estado === 'rechazada' && pausa != null && rechazoCerrado !== pausa.id;
 
   return (
     <>
@@ -142,6 +159,39 @@ export function PausaAlumno({ sessionId }: { sessionId: string | null | undefine
           </p>
         ) : (
           <>
+            {mostrarRechazo && pausa && (
+              <div
+                role="alert"
+                className="rounded-xl border border-error/40 bg-error-container/60 px-sm py-base space-y-base"
+              >
+                <div className="flex items-start gap-sm">
+                  <Icon name="cancel" className="text-[20px] text-error shrink-0 mt-px" fill />
+                  <div className="min-w-0 flex-1 space-y-base">
+                    <p className="text-label-md font-bold text-on-error-container">
+                      El proctor rechazó tu pedido de pausa
+                    </p>
+                    {pausa.motivo_rechazo?.trim() ? (
+                      <p className="text-label-sm text-on-error-container">
+                        <span className="font-semibold">Motivo: </span>
+                        {pausa.motivo_rechazo}
+                      </p>
+                    ) : (
+                      <p className="text-label-sm text-on-error-container">
+                        El proctor no indicó un motivo.
+                      </p>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    aria-label="Cerrar aviso"
+                    onClick={() => setRechazoCerrado(pausa.id)}
+                    className="shrink-0 text-on-error-container/70 hover:text-on-error-container"
+                  >
+                    <Icon name="close" className="text-[18px]" />
+                  </button>
+                </div>
+              </div>
+            )}
             <p className="text-label-sm text-on-surface-variant">
               Si necesitás interrumpir el examen (ir al baño, una urgencia), pedí una pausa.
               El proctor la aprueba; durante la pausa la supervisión sigue activa.
@@ -153,12 +203,17 @@ export function PausaAlumno({ sessionId }: { sessionId: string | null | undefine
         )}
       </Card>
 
-      {/* Banner de pausa ACTIVA: full-width, bien visible, con timer y reanudar. */}
+      {/* Banner de pausa ACTIVA: full-width, bien visible, con timer y reanudar.
+          Se ancla DEBAJO del topbar (top-14 = 56px = TOPBAR_H del StudentShell) en
+          vez de top-0, para no tapar el logo/menú. El contenido del examen recibe
+          padding-top cuando está activo (Examen.tsx, vía onActivaChange) para que
+          tampoco quede tapado a 1366px. z-40 lo deja por DEBAJO de los modales
+          bloqueantes (monitor z-100, alerta z-90) pero sobre el contenido. */}
       {activa && (
         <div
           role="status"
           aria-live="polite"
-          className="fixed inset-x-0 top-0 z-[110] bg-primary text-on-primary shadow-lg animate-in fade-in"
+          className="fixed inset-x-0 top-14 z-40 bg-primary text-on-primary shadow-lg animate-in fade-in slide-in-from-top"
         >
           <div className="max-w-5xl mx-auto flex items-center justify-between gap-md px-lg py-sm">
             <div className="flex items-center gap-sm">

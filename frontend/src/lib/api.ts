@@ -14,8 +14,8 @@ import type {
   AcuseExamen,
   SesionProctoringResumen, SesionProctoringDetalle, EventoProctoringDetalle,
   BiometriaDetalle, VeredictoReinferencia,
-  // C-15: chat bidireccional + pausa autorizada
-  MensajeChat, AutorChat, Pausa, AccionPausa, PausaPendiente,
+  // C-15: chat bidireccional + pausa autorizada + acciones del proctor
+  MensajeChat, AutorChat, Pausa, AccionPausa, PausaPendiente, ObservacionProctor, CierreForzado,
   // C-61: gestión de usuarios
   UsuarioAdmin, ListarUsuariosResponse,
   // #10: configuracion de scoring por tipo de evento
@@ -37,8 +37,11 @@ const delay = (ms = 350) => new Promise((r) => setTimeout(r, ms));
 const CHAT_DEMO = new Map<string, MensajeChat[]>();
 /** Pausas por sesión (key = session_id), más recientes primero al leer. */
 const PAUSAS_DEMO = new Map<string, Pausa[]>();
+/** Observaciones del proctor por sesión (key = session_id), asc por creada_en (C-15 3.2). */
+const OBS_DEMO = new Map<string, ObservacionProctor[]>();
 let _chatSeq = 0;
 let _pausaSeq = 0;
+let _obsSeq = 0;
 
 // ---------------------------------------------------------------------------
 // Datos demo (en memoria)
@@ -1630,12 +1633,19 @@ export const api = {
     pausaId: string,
     accion: AccionPausa,
     proctorActor?: string | null,
+    motivoRechazo?: string | null,
   ): Promise<Pausa> {
     if (USE_REAL_BACKEND) {
+      // El motivo solo viaja al rechazar (al aprobar el backend lo ignora/None).
+      const body: Record<string, unknown> = {
+        accion,
+        proctor_actor: proctorActor ?? null,
+      };
+      if (accion === 'rechazar') body.motivo_rechazo = motivoRechazo ?? null;
       // Sin fallback: una resolución que dispara 409 NO debe simularse como OK.
       return await realFetch<Pausa>(
         `/proctoring/pausas/${pausaId}`,
-        { method: 'PATCH', body: JSON.stringify({ accion, proctor_actor: proctorActor ?? null }) },
+        { method: 'PATCH', body: JSON.stringify(body) },
         'demo',
       );
     }
@@ -1652,7 +1662,12 @@ export const api = {
       p.estado = accion === 'aprobar' ? 'aprobada' : 'rechazada';
       p.resuelta_en = ahora;
       p.proctor_actor = proctorActor ?? null;
-      if (accion === 'aprobar') p.inicio_en = ahora;
+      if (accion === 'aprobar') {
+        p.inicio_en = ahora;
+        p.motivo_rechazo = null;
+      } else {
+        p.motivo_rechazo = motivoRechazo ?? null;
+      }
       return p;
     }
     const err = new Error('Pausa no encontrada') as Error & { status?: number };
@@ -1690,6 +1705,94 @@ export const api = {
     const err = new Error('Pausa no encontrada') as Error & { status?: number };
     err.status = 409;
     throw err;
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // C-15 (3.2 / 3.3) — Acciones del proctor: observaciones + cierre forzado
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * El proctor registra una observación sobre la sesión (C-15 3.2) — insumo de C-16.
+   * Real: POST /proctoring/sessions/{id}/observaciones → 201
+   * Mock o fallo: agrega la observación en memoria.
+   */
+  async crearObservacionProctor(
+    sessionId: string,
+    texto: string,
+    proctorActor?: string | null,
+  ): Promise<ObservacionProctor> {
+    if (USE_REAL_BACKEND) {
+      try {
+        return await realFetch<ObservacionProctor>(
+          `/proctoring/sessions/${sessionId}/observaciones`,
+          { method: 'POST', body: JSON.stringify({ texto, proctor_actor: proctorActor ?? null }) },
+          'demo',
+        );
+      } catch {
+        /* fallback mock */
+      }
+    }
+    await delay(120);
+    const obs: ObservacionProctor = {
+      id: `mock-obs-${++_obsSeq}`,
+      texto,
+      proctor_actor: proctorActor ?? null,
+      creada_en: new Date().toISOString(),
+    };
+    const lista = OBS_DEMO.get(sessionId) ?? [];
+    lista.push(obs);
+    OBS_DEMO.set(sessionId, lista);
+    return obs;
+  },
+
+  /**
+   * Lista las observaciones del proctor de una sesión, asc por creada_en (C-15 3.2).
+   * Real: GET /proctoring/sessions/{id}/observaciones
+   * Mock o fallo: lista en memoria.
+   */
+  async listarObservacionesProctor(sessionId: string): Promise<ObservacionProctor[]> {
+    if (USE_REAL_BACKEND) {
+      try {
+        return await realFetch<ObservacionProctor[]>(
+          `/proctoring/sessions/${sessionId}/observaciones`,
+          { method: 'GET' },
+          'demo',
+        );
+      } catch {
+        /* fallback mock */
+      }
+    }
+    await delay(80);
+    return [...(OBS_DEMO.get(sessionId) ?? [])];
+  },
+
+  /**
+   * Cierre FORZADO de una sesión por el proctor (C-15 3.3). Operativo, NO
+   * disciplinario (L2.5). Idempotente: preserva el audit del primer cierre.
+   * Real: PATCH /proctoring/sessions/{id}/cerrar-forzado → 200
+   * Mock o fallo: simula el cierre.
+   */
+  async cerrarSesionForzado(
+    sessionId: string,
+    motivo: string,
+    proctorActor?: string | null,
+  ): Promise<CierreForzado> {
+    if (USE_REAL_BACKEND) {
+      return await realFetch<CierreForzado>(
+        `/proctoring/sessions/${sessionId}/cerrar-forzado`,
+        { method: 'PATCH', body: JSON.stringify({ motivo, proctor_actor: proctorActor ?? null }) },
+        'demo',
+      );
+    }
+    await delay(150);
+    const ahora = new Date().toISOString();
+    return {
+      id: sessionId,
+      finalizada_en: ahora,
+      cierre_forzado_en: ahora,
+      cierre_forzado_por: proctorActor ?? null,
+      cierre_forzado_motivo: motivo,
+    };
   },
 
   /**

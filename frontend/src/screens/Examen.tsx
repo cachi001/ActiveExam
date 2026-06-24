@@ -58,6 +58,11 @@ export default function Examen() {
   const [segRestantes, setSegRestantes] = useState((examen?.duracion_min ?? 60) * 60);
   const [alerta, setAlerta] = useState<EventoSesion | null>(null);
   const [opcion, setOpcion] = useState<number | null>(null);
+  // C-15: cuando hay una pausa autorizada ACTIVA, PausaAlumno muestra un banner
+  // fijo full-width debajo del topbar. Empujamos el contenido del examen hacia
+  // abajo para que el banner no tape la pregunta ni los controles (bug z-index a
+  // 1366px). El alto del banner (~60px) se compensa con padding-top en el grid.
+  const [pausaActiva, setPausaActiva] = useState(false);
 
   // Proctoring REAL de fondo: motor MediaPipe + detectores de contexto + streaming
   // al backend (sesión modo:'examen'). Expone score/eventos/eventCount y detener().
@@ -127,7 +132,11 @@ export default function Examen() {
 
   return (
     <StudentShell>
-      <div className="grid lg:grid-cols-3 gap-lg animate-in fade-in duration-500">
+      <div
+        className={`grid lg:grid-cols-3 gap-lg animate-in fade-in duration-500 transition-[padding] ${
+          pausaActiva ? 'pt-16' : ''
+        }`}
+      >
         {/* Examen */}
         <div className="lg:col-span-2 space-y-lg">
           <Card className="space-y-md">
@@ -227,7 +236,7 @@ export default function Examen() {
           </Card>
 
           {/* C-15: flujo de pausa autorizada (solicitar / esperar / activa+timer). */}
-          <PausaAlumno sessionId={sessionId} />
+          <PausaAlumno sessionId={sessionId} onActivaChange={setPausaActiva} />
 
           {/* C-15: canal de chat bidireccional con el proctor (poll incremental). */}
           <ChatBox sessionId={sessionId} yo="alumno" titulo="Canal con el proctor" altura="h-[140px]" />

@@ -25,6 +25,7 @@ import { DetalleHeader } from './proctoring/DetalleHeader';
 import { EventoCard } from './proctoring/EventoCard';
 import { BiometriaCard } from './proctoring/BiometriaCard';
 import { ChatBox } from '../ui/ChatBox';
+import { ObservacionesProctor } from './proctoring/ObservacionesProctor';
 
 function VolverLink({ onClick, label }: { onClick: () => void; label: string }) {
   return (
@@ -53,6 +54,10 @@ export default function ProctoringSessionDetail() {
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [confirmando, setConfirmando] = useState(false);
+  // C-15 (3.3): cierre forzado por el proctor (operativo, NO disciplinario).
+  const [cerrando, setCerrando] = useState(false);
+  const [motivoCierre, setMotivoCierre] = useState('');
+  const [cerrada, setCerrada] = useState(false);
 
   useEffect(() => {
     if (!sessionId) {
@@ -81,6 +86,24 @@ export default function ProctoringSessionDetail() {
     }
   };
 
+  const handleConfirmarCierre = async () => {
+    if (!sessionId) return;
+    const motivo = motivoCierre.trim();
+    if (!motivo) {
+      toast.error('El motivo del cierre es obligatorio');
+      return;
+    }
+    setCerrando(false);
+    try {
+      await api.cerrarSesionForzado(sessionId, motivo);
+      setCerrada(true);
+      setMotivoCierre('');
+      toast.success('Sesión cerrada de forma forzada');
+    } catch {
+      toast.error('No se pudo cerrar la sesión');
+    }
+  };
+
   return (
     <StaffShell
       nav={STAFF_NAV}
@@ -104,10 +127,25 @@ export default function ProctoringSessionDetail() {
         </HelpButton>
       }
       actions={
-        esAdmin && sessionId && !error ? (
-          <Button variant="danger" size="sm" icon="delete" onClick={() => setConfirmando(true)}>
-            Eliminar sesión
-          </Button>
+        sessionId && !error ? (
+          <div className="flex items-center gap-base">
+            {/* C-15 (3.3): cierre forzado — proctor y admin. Operativo, NO disciplinario. */}
+            <Button
+              variant="outline"
+              size="sm"
+              icon="lock"
+              onClick={() => setCerrando(true)}
+              disabled={cerrada}
+            >
+              {cerrada ? 'Sesión cerrada' : 'Cerrar (forzado)'}
+            </Button>
+            {/* Eliminar evidencia — solo admin (cadena de custodia, regla dura #6). */}
+            {esAdmin && (
+              <Button variant="danger" size="sm" icon="delete" onClick={() => setConfirmando(true)}>
+                Eliminar sesión
+              </Button>
+            )}
+          </div>
         ) : undefined
       }
     >
@@ -172,15 +210,17 @@ export default function ProctoringSessionDetail() {
                 )}
               </Card>
 
-              {/* C-15: canal de chat con el alumno de esta sesión (envío como proctor).
+              {/* C-15: canal de chat con el alumno + observaciones del proctor.
                   Sticky en desktop para que acompañe el scroll de la lista de eventos. */}
-              <div className="lg:sticky lg:top-lg">
+              <div className="lg:sticky lg:top-lg space-y-lg">
                 <ChatBox
                   sessionId={sessionId}
                   yo="proctor"
                   titulo="Canal con el estudiante"
                   altura="h-[420px]"
                 />
+                {/* C-15 (3.2): observaciones del proctor — insumo de la revisión C-16. */}
+                <ObservacionesProctor sessionId={sessionId} />
               </div>
             </div>
 
@@ -207,6 +247,40 @@ export default function ProctoringSessionDetail() {
         textoCancelar="Cancelar"
         onConfirmar={() => void handleConfirmarBorrado()}
         onCancelar={() => setConfirmando(false)}
+      />
+
+      {/* C-15 (3.3): cierre forzado — pide motivo OBLIGATORIO. Operativo, NO
+          disciplinario (L2.5: el veredicto es humano en C-16). */}
+      <ConfirmModal
+        abierto={cerrando}
+        variante="default"
+        titulo="Cerrar sesión (forzado)"
+        mensaje={
+          <div className="space-y-sm text-left">
+            <p>
+              Vas a cerrar de forma forzada{' '}
+              <strong className="text-on-surface">
+                {detalle?.etiqueta?.trim() || 'esta sesión'}
+              </strong>
+              . Es una acción <strong>operativa</strong>, no un veredicto disciplinario.
+              Quedará registrada con tu autoría y el motivo.
+            </p>
+            <textarea
+              value={motivoCierre}
+              onChange={(e) => setMotivoCierre(e.target.value)}
+              rows={3}
+              placeholder="Motivo del cierre (obligatorio)…"
+              className="w-full px-sm py-base text-label-md rounded-xl border border-outline-variant bg-surface-container-lowest focus:border-primary-container outline-none resize-none"
+            />
+          </div>
+        }
+        textoConfirmar="Cerrar sesión"
+        textoCancelar="Cancelar"
+        onConfirmar={() => void handleConfirmarCierre()}
+        onCancelar={() => {
+          setCerrando(false);
+          setMotivoCierre('');
+        }}
       />
     </StaffShell>
   );
