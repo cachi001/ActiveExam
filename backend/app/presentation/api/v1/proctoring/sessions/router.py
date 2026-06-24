@@ -216,6 +216,8 @@ def create_sessions_router(
             score=score,
             eventos=eventos,
             biometria=biometria,
+            cierre_forzado_en=sesion.cierre_forzado_en,
+            cierre_forzado_motivo=sesion.cierre_forzado_motivo,
         )
 
     @router.patch(
@@ -312,7 +314,10 @@ def create_sessions_router(
         body: CerrarForzadoIn,
         db: Annotated[AsyncSession, Depends(get_db)],
     ) -> CerrarForzadoOut:
-        """Fuerza el cierre: setea finalizada_en + cierre_forzado_*. Idempotente. 404 si no existe."""
+        """Fuerza el cierre: setea finalizada_en + cierre_forzado_*.
+
+        Idempotente. 404 si la sesion no existe.
+        """
         sesion = await session_service.cerrar_forzado(
             db, session_id, motivo=body.motivo, proctor_actor=body.proctor_actor
         )

@@ -130,3 +130,32 @@ async def test_cerrar_forzado_estudiante_403(client: AsyncClient) -> None:
         json={"motivo": "intento alumno"},
     )
     assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_detalle_surfacea_cierre_forzado(client: AsyncClient) -> None:
+    """El detalle del proctor expone el cierre forzado (para que la UI lo refleje al recargar)."""
+    session_id = await _crear_sesion(client)
+
+    # Antes de cerrar: el detalle reporta el cierre como NULL.
+    antes = await client.get(
+        f"/api/v1/proctoring/sessions/{session_id}", headers=_PROCTOR
+    )
+    assert antes.status_code == 200
+    assert antes.json()["cierre_forzado_en"] is None
+    assert antes.json()["cierre_forzado_motivo"] is None
+
+    await client.patch(
+        f"/api/v1/proctoring/sessions/{session_id}/cerrar-forzado",
+        json={"motivo": "operativo detalle", "proctor_actor": "proc-7"},
+        headers=_PROCTOR,
+    )
+
+    # Despues de cerrar: el detalle surfacea en + motivo (audit visible para el proctor).
+    despues = await client.get(
+        f"/api/v1/proctoring/sessions/{session_id}", headers=_PROCTOR
+    )
+    assert despues.status_code == 200
+    data = despues.json()
+    assert data["cierre_forzado_en"] is not None
+    assert data["cierre_forzado_motivo"] == "operativo detalle"

@@ -69,7 +69,12 @@ export default function ProctoringSessionDetail() {
     setError(null);
     api
       .getSesionProctoring(sessionId)
-      .then((data) => setDetalle(data))
+      .then((data) => {
+        setDetalle(data);
+        // C-15 (3.3): si la sesión ya fue cerrada de forma forzada, reflejarlo al
+        // recargar (el botón queda deshabilitado, no se reabre).
+        setCerrada(Boolean(data.cierre_forzado_en));
+      })
       .catch((e) => setError(e instanceof Error ? e.message : 'Error al cargar.'))
       .finally(() => setCargando(false));
   }, [sessionId]);

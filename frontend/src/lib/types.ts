@@ -434,6 +434,10 @@ export type DecisionRevisor =
 export interface SesionProctoringDetalle extends SesionProctoringResumen {
   eventos: EventoProctoringDetalle[];
   biometria: BiometriaDetalle | null;
+  // C-15 (3.3): cierre forzado (operativo, NO disciplinario). NULL si la sesión no
+  // fue cerrada de forma forzada. Permite reflejar el estado al recargar el detalle.
+  cierre_forzado_en?: string | null;
+  cierre_forzado_motivo?: string | null;
 }
 
 // ── Chat bidireccional proctor↔alumno (C-15) ──────────────────────────────

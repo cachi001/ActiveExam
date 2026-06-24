@@ -6,7 +6,6 @@ Ley 25.326: screenshot_base64 y biometria son datos sensibles.
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -112,6 +111,11 @@ class SesionDetalle(BaseModel):
     score: int
     eventos: list[EventoDetalle]
     biometria: BiometriaDetalle | None = None
+    # C-15 (3.3): cierre forzado (operativo, NO disciplinario). Se exponen para que
+    # la UI del proctor refleje el estado al RECARGAR el detalle (no solo en la
+    # accion). NULL si la sesion no fue cerrada de forma forzada.
+    cierre_forzado_en: Any = None
+    cierre_forzado_motivo: str | None = None
 
 
 # --- C-15 (3.2): observaciones del proctor (insumo de C-16) ---
