@@ -114,6 +114,15 @@ EVENTOS (C-10) ──► BACKPLANE ───────────────
 
 **Rollback**: feature aislada tras puertos; si el backplane ganador falla el SLO, se swapea el adaptador (Redis) sin reescribir el panel.
 
+## Contrato de observaciones para C-16 (tarea 5.2)
+
+Las observaciones del proctor (tarea 3.2) son **insumo del contexto de revisión** que consume C-16. Contrato congelado por este change:
+
+- **Origen**: tabla `observacion_proctor` (migración slim 0025). Columnas: `id` (uuid), `session_id` (FK → `proctoring_session.id`, `ON DELETE CASCADE`), `proctor_actor` (str|null — subject del JWT, audit trail), `texto` (str, 1..2000), `creada_en` (timestamptz, server-default `now()`).
+- **Lectura para C-16**: `GET /api/v1/proctoring/sessions/{id}/observaciones` → `200` lista de `ObservacionOut` (`{id, texto, proctor_actor, creada_en}`) **ordenada ascendente por `creada_en`**; lista vacía si no hay. Guard: `require_proctor_o_admin` (proctor/admin; el estudiante recibe `403`).
+- **Semántica (L2.5, reglas duras #5/#6)**: **múltiples** por sesión, **append-only** (nunca se mutan ni se borran). NO son un veredicto: la decisión terminal es **humana** y vive en C-16 (`decision_*`). C-16 las muestra como contexto junto a los eventos, sin recalcular score a partir de ellas.
+- **Estabilidad**: el shape de `ObservacionOut` y el orden ascendente son el contrato; agregar campos será aditivo (los schemas son `extra='forbid'`, así que C-16 no debe enviar campos no declarados al escribir).
+
 ## Open Questions
 
 Cerradas por este change:

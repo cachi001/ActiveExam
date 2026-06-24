@@ -7,7 +7,13 @@
 > - **Sección 4 (4.1/4.2) → RESUELTA.** Superseded por decisión del dueño (proctor ve TODAS las revisiones, sin aislamiento por asignación). Implementado el endurecimiento por rol. **4.3 MFA → DIFERIDO** por decisión del dueño (no entra por ahora; el slim no emite segundo factor).
 > - **Sección 6 (chat + pausa autorizada slim) → COMPLETA** (slice entregado en `feat/c-15-chat-pausa-autorizada`).
 > - **Sección 3 (acciones del proctor) → COMPLETA (slim)**: 3.1 cubierta por el chat (§6); 3.2 observaciones (insumo C-16) y 3.3 cierre forzado auditado implementadas y verificadas con tests de DB real. Era el único trabajo de C-15 que no dependía del gate de C-03.
-> - **C-15 NO se archiva todavía:** queda abierto a la espera de C-03 para las secciones 1, 2 y 5.
+> - **C-15 NO se archiva todavía:** queda abierto a la espera de C-03 para las secciones 1, 2 y 5.1.
+>
+> **FIXES (2026-06-24) — corrida local + saneamiento:**
+> - **5.2 cerrada**: contrato de observaciones para C-16 documentado en `design.md`.
+> - **Detalle del proctor surfacea el cierre forzado**: `GET /sessions/{id}` ahora expone `cierre_forzado_en` y `cierre_forzado_motivo` (antes solo los devolvía la acción `/cerrar-forzado`); el frontend refleja el estado al recargar (botón "Cerrar (forzado)" queda deshabilitado). Test nuevo `test_detalle_surfacea_cierre_forzado` (DB real). 
+> - **Bug de harness de tests (backend)**: `pyproject.toml` pineaba `pytest-asyncio==0.24.0` pero seteaba `asyncio_default_test_loop_scope` (solo existe en 0.25+) → se ignoraba (warning). Bumpeado a `0.26.0`. ⚠️ La suite **completa** de proctoring igual cuelga por un deadlock de **MediaPipe (re-inferencia C-10) + asyncio** al correr muchas inferencias en un mismo proceso (independiente de C-15): cada archivo C-15 pasa solo (chat 8, pausa 19, score 3, observaciones 8, cierre 7, rbac 22). Pendiente de C-10: aislar los tests de re-inferencia (subproceso/forked).
+> - **Bug de runner (frontend)**: 41 `.test.ts(x)` importaban `vitest` pero no estaba en `package.json` ni había script `test`. Agregados `vitest`+`jsdom` (devDeps) y scripts `test`/`test:watch` + `environmentMatchGlobs` para `.tsx`. `npm test` → 443 tests verdes.
 
 ## 1. Transporte SSE sin sticky (capability `proctor-sse-transport`) — ⛔ BLOQUEADA POR C-03
 
@@ -27,7 +33,7 @@
 
 - [~] 3.1 Mensajería al estudiante por el canal de comandos (no por SSE); Done: test de entrega de mensaje al estudiante — **CUBIERTA por §6 (chat slim REST+polling)**. La mensajería real-time por canal de comandos entra con el transporte de C-03; el chat bidireccional ya está entregado.
 - [x] 3.2 Registro de **observaciones** persistidas como insumo de C-16; Done: test de persistencia de observación — **IMPLEMENTADA (slim)**: tabla `observacion_proctor` (mig. 0025), `observacion_service`, `POST/GET /sessions/{id}/observaciones` (proctor-only), append-only (insumo C-16). UI: panel `ObservacionesProctor` en el detalle. Tests: `test_observaciones_api.py` (8 casos, DB real) verdes.
-- [x] 3.3 **Cierre forzado** de sesión: cambia estado + escribe audit log; operativo, NO disciplinario; Done: test de cierre forzado auditado sin veredicto — **IMPLEMENTADA (slim)**: columnas `cierre_forzado_{en,por,motivo}` en `proctoring_session` (mig. 0025, audit-as-row porque el slim no tiene tabla `audit_log` persistente), `PATCH /sessions/{id}/cerrar-forzado` (proctor-only, idempotente). NO toca `decision` (L2.5: veredicto humano en C-16). UI: botón "Cerrar (forzado)" + modal con motivo. Tests: `test_cierre_forzado_api.py` (6 casos, incl. assert `decision is None`) verdes.
+- [x] 3.3 **Cierre forzado** de sesión: cambia estado + escribe audit log; operativo, NO disciplinario; Done: test de cierre forzado auditado sin veredicto — **IMPLEMENTADA (slim)**: columnas `cierre_forzado_{en,por,motivo}` en `proctoring_session` (mig. 0025, audit-as-row porque el slim no tiene tabla `audit_log` persistente), `PATCH /sessions/{id}/cerrar-forzado` (proctor-only, idempotente). NO toca `decision` (L2.5: veredicto humano en C-16). UI: botón "Cerrar (forzado)" + modal con motivo. El detalle del proctor (`GET /sessions/{id}`) surfacea `cierre_forzado_en`/`cierre_forzado_motivo` para reflejar el estado al recargar. Tests: `test_cierre_forzado_api.py` (7 casos: incl. assert `decision is None` y detalle que surfacea el cierre) verdes.
 
 ## 4. Acceso contextual + MFA (capability `proctor-contextual-access`)
 
@@ -42,7 +48,7 @@
 ## 5. Cierre
 
 - [ ] 5.1 Test e2e: evento crítico → alerta en panel < 500 ms → proctor actúa (mensaje/cierre); Done: flujo extremo a extremo verde — **⛔ BLOQUEADA POR C-03** (el SLO <500 ms exige el transporte ganador de §1)
-- [ ] 5.2 Confirmar que las observaciones del proctor quedan consumibles por **C-16** (contexto de revisión); Done: contrato de observaciones documentado para C-16 — depende de 3.2
+- [x] 5.2 Confirmar que las observaciones del proctor quedan consumibles por **C-16** (contexto de revisión); Done: contrato de observaciones documentado para C-16 — **COMPLETA**: contrato congelado en `design.md` §"Contrato de observaciones para C-16" (origen `observacion_proctor`, lectura `GET /sessions/{id}/observaciones` orden asc proctor/admin, semántica append-only L2.5, estabilidad del shape `ObservacionOut`).
 
 ## 6. Chat bidireccional + pausa autorizada (slim, REST + polling) — capabilities `proctor-session-actions` (chat) y `proctor-pausa-autorizada`
 
