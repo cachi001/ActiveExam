@@ -165,7 +165,7 @@ export default function Revisor() {
 
         {!cargando && !hayRiesgo && (
           <Card className="text-center py-xl space-y-base">
-            <Icon name="task_alt" className="text-success text-[44px]" />
+            <Icon name="check_circle" className="text-success text-[44px]" fill />
             <h3 className="font-headline text-title-lg text-on-surface">Sin sesiones pendientes</h3>
             <p className="text-body-md text-on-surface-variant">
               Nada que revisar por ahora.
