@@ -65,9 +65,9 @@ function LogoFull({ showText = true }: { showText?: boolean }) {
     <Link to="/admin" className="flex items-center gap-2.5 min-w-0">
       <LogoMark />
       {showText && (
-        <div className="hidden sm:flex flex-col leading-tight">
+        <div className="flex flex-col leading-tight">
           <span className="text-sm font-semibold text-on-surface">Active Exam</span>
-          <span className="text-[10px] text-on-surface-variant">Plataforma de proctoring</span>
+          <span className="hidden sm:block text-[10px] text-on-surface-variant">Plataforma de proctoring</span>
         </div>
       )}
     </Link>
