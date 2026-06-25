@@ -154,9 +154,14 @@ export function ChatBox({
           onKeyDown={(e) => e.key === 'Enter' && void enviar()}
           disabled={!sessionId || enviando}
           placeholder={sessionId ? 'Escribir mensaje…' : 'Canal no disponible'}
-          className="flex-1 px-sm py-base text-label-md rounded-xl border border-outline-variant bg-surface-container-lowest focus:border-primary-container outline-none disabled:opacity-50"
+          className="flex-1 h-10 px-sm py-base text-label-md rounded-xl border border-outline-variant bg-surface-container-lowest focus:border-primary-container outline-none disabled:opacity-50"
         />
-        <Button onClick={() => void enviar()} disabled={!sessionId || enviando} className="h-auto px-md">
+        <Button
+          onClick={() => void enviar()}
+          disabled={!sessionId || enviando}
+          aria-label="Enviar mensaje"
+          className="shrink-0 h-10 w-10 !p-0"
+        >
           <Icon name="send" className="text-[18px]" />
         </Button>
       </div>

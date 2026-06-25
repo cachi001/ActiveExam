@@ -1,8 +1,8 @@
 /**
  * Estados de la lista de sesiones: skeleton de carga y vacío.
  *
- * El skeleton imita la forma de una SesionCard (con su borde-izquierdo y filas)
- * usando el shimmer del sistema, para que la carga no parezca improvisada.
+ * El skeleton imita la forma de una SesionCard (superficie suave sin acento de
+ * color) usando el shimmer del sistema, para que la carga no parezca improvisada.
  */
 import { Icon } from '../../ui/components';
 
@@ -20,8 +20,8 @@ export function ListaSkeleton({ filas = 3 }: { filas?: number }) {
       {Array.from({ length: filas }).map((_, i) => (
         <div
           key={i}
-          className="rounded-xl bg-surface-container-lowest border border-outline-variant/50
-            border-l-4 border-l-surface-200 p-md shadow-card space-y-sm"
+          className="rounded-xl bg-surface-container-lowest border border-outline-variant/40
+            p-md shadow-card space-y-sm"
         >
           <div className="flex items-center gap-sm">
             <SkeletonLinea className="h-5 w-48" />

@@ -106,7 +106,12 @@ export function ObservacionesProctor({
           placeholder={sessionId ? 'Anotar una observación…' : 'No disponible'}
           className="flex-1 px-sm py-base text-label-md rounded-xl border border-outline-variant bg-surface-container-lowest focus:border-primary-container outline-none disabled:opacity-50 resize-none"
         />
-        <Button onClick={() => void agregar()} disabled={!sessionId || guardando} className="h-auto px-md">
+        <Button
+          onClick={() => void agregar()}
+          disabled={!sessionId || guardando}
+          aria-label="Agregar observación"
+          className="shrink-0 h-10 w-10 !p-0"
+        >
           <Icon name="add_comment" className="text-[18px]" />
         </Button>
       </div>
