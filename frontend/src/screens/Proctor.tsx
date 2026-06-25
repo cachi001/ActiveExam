@@ -50,6 +50,7 @@ export default function Proctor() {
   const toast = useToast();
   const setProctoringSessionId = useApp((s) => s.setProctoringSessionId);
   const setProctoringExamId = useApp((s) => s.setProctoringExamId);
+  const setProctoringDetailBackRoute = useApp((s) => s.setProctoringDetailBackRoute);
   // Identidad del proctor logueado → se registra como proctor_actor al resolver
   // una pausa (C-15). Email como subject estable; null si no hay sesión.
   const proctorActor = useApp((s) => s.principal?.email ?? null);
@@ -100,6 +101,8 @@ export default function Proctor() {
 
   const handleAbrir = (sesion: SesionProctoringResumen) => {
     setProctoringSessionId(sesion.id);
+    // "Volver" del detalle regresa acá (supervisión en vivo), no a grabadas.
+    setProctoringDetailBackRoute('/proctor');
     navigate(PROCTORING_DETAIL_ROUTE);
   };
 

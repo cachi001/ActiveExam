@@ -56,6 +56,13 @@ interface AppState {
    */
   proctoringExamId: string | null;
 
+  /**
+   * Ruta de ORIGEN desde la que se abrió el detalle de sesión, para que "Volver"
+   * regrese a donde el usuario estaba (supervisión en vivo, grid de personas, cola
+   * de revisión o grabadas) y no a una ruta fija por rol. Null = usar el fallback.
+   */
+  proctoringDetailBackRoute: string | null;
+
   // ---------------------------------------------------------------------------
   // Decisiones humanas del revisor sobre la cola de revisión — C-47
   // ---------------------------------------------------------------------------
@@ -108,6 +115,8 @@ interface AppState {
   setProctoringSessionId: (id: string | null) => void;
   /** Setea el examen seleccionado para ver su grid de personas en vivo. */
   setProctoringExamId: (id: string | null) => void;
+  /** Setea la ruta de origen para el "Volver" del detalle de sesión. */
+  setProctoringDetailBackRoute: (route: string | null) => void;
   /** C-47: registra la decisión humana del revisor sobre una sesión de la cola. */
   setDecisionRevisor: (id: string, decision: DecisionRevisor) => void;
   /**
@@ -133,6 +142,7 @@ export const useApp = create<AppState>((set) => ({
   isProfileComplete: false,
   proctoringSessionId: null,
   proctoringExamId: null,
+  proctoringDetailBackRoute: null,
   decisionesRevisor: {},
   // C-56: el ID de referencia se inicializa en null (no viene de localStorage).
   // El embedding crudo ya no se lee de localStorage (la clave `activeexam_bio_ref`
@@ -152,6 +162,7 @@ export const useApp = create<AppState>((set) => ({
   })),
   setProctoringSessionId: (id) => set({ proctoringSessionId: id }),
   setProctoringExamId: (id) => set({ proctoringExamId: id }),
+  setProctoringDetailBackRoute: (route) => set({ proctoringDetailBackRoute: route }),
   setDecisionRevisor: (id, decision) =>
     set((s) => ({ decisionesRevisor: { ...s.decisionesRevisor, [id]: decision } })),
   // C-56: persiste el referencia_id opaco del backend (no el embedding crudo).

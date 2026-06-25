@@ -20,10 +20,11 @@ import { loadEffectiveConfig } from '../config/effectiveConfigCache';
 import type { SesionProctoringResumen } from '../lib/types';
 import {
   formatFechaRelativa,
-  scoreAccentBorder,
+  scoreCardSurface,
   scoreTextColor,
   nivelRiesgo,
   joinExamInfo,
+  INNER_CHIP_BG,
 } from './proctoring/helpers';
 
 const POLL_MS = 4000;
@@ -34,6 +35,7 @@ export default function ExamenPersonasGrid() {
   const toast = useToast();
   const examId = useApp((s) => s.proctoringExamId);
   const setProctoringSessionId = useApp((s) => s.setProctoringSessionId);
+  const setProctoringDetailBackRoute = useApp((s) => s.setProctoringDetailBackRoute);
 
   const [personas, setPersonas] = useState<SesionProctoringResumen[]>([]);
   const [cargaInicial, setCargaInicial] = useState(true);
@@ -73,6 +75,8 @@ export default function ExamenPersonasGrid() {
 
   const abrir = (s: SesionProctoringResumen) => {
     setProctoringSessionId(s.id);
+    // "Volver" del detalle regresa al grid de personas de este examen.
+    setProctoringDetailBackRoute('/proctor/examen');
     navigate(DETALLE_ROUTE);
   };
 
@@ -169,14 +173,14 @@ function PersonaCard({
           onAbrir(sesion);
         }
       }}
-      className={`group cursor-pointer rounded-2xl bg-surface-container-lowest border border-outline-variant/70
-        border-l-4 ${scoreAccentBorder(sesion.score)} p-md shadow-card transition-all duration-200
+      className={`group cursor-pointer rounded-2xl border ${scoreCardSurface(sesion.score)}
+        p-md shadow-card transition-all duration-200
         hover:shadow-card-lg hover:-translate-y-px focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40
         ${alto ? 'ring-1 ring-error/30' : ''}`}
     >
       <div className="flex items-start justify-between gap-sm">
         <div className="flex items-center gap-sm min-w-0">
-          <div className="w-10 h-10 rounded-full bg-primary-fixed text-primary flex items-center justify-center font-semibold shrink-0">
+          <div className="w-10 h-10 rounded-full bg-white/70 text-primary flex items-center justify-center font-semibold shrink-0">
             {etiqueta.charAt(0).toUpperCase()}
           </div>
           <div className="min-w-0">
@@ -186,8 +190,7 @@ function PersonaCard({
         </div>
         <span
           className={`inline-flex items-center justify-center min-w-[44px] px-sm py-base rounded-full
-            text-label-sm font-bold tabular-nums shrink-0
-            ${alto ? 'bg-error-container text-on-error-container' : 'bg-surface-container-high'} ${scoreTextColor(sesion.score)}`}
+            text-label-sm font-bold tabular-nums shrink-0 ${INNER_CHIP_BG} ${scoreTextColor(sesion.score)}`}
         >
           {sesion.score}
         </span>
@@ -213,7 +216,7 @@ function PersonaCard({
 
 function Metrica({ icon, label, valor, alerta = false }: { icon: string; label: string; valor: number; alerta?: boolean }) {
   return (
-    <div className="rounded-xl bg-surface-container-low border border-outline-variant/40 p-sm">
+    <div className="rounded-xl bg-white/60 border border-white/50 p-sm">
       <p className="inline-flex items-center gap-base text-label-sm text-on-surface-variant">
         <Icon name={icon} className="text-[15px]" /> {label}
       </p>

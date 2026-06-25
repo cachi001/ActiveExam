@@ -53,6 +53,7 @@ export default function Revisor() {
   const navigate = useNavigate();
   const toast = useToast();
   const setProctoringSessionId = useApp((s) => s.setProctoringSessionId);
+  const setProctoringDetailBackRoute = useApp((s) => s.setProctoringDetailBackRoute);
   const setDecisionRevisor = useApp((s) => s.setDecisionRevisor);
 
   const [items, setItems] = useState<SesionEnriquecida[]>([]);
@@ -115,6 +116,7 @@ export default function Revisor() {
 
   const verDetalle = (id: string) => {
     setProctoringSessionId(id);
+    setProctoringDetailBackRoute('/revisor');
     navigate(PROCTORING_DETAIL_ROUTE);
   };
 

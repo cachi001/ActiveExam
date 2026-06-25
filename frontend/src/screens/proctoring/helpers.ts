@@ -107,6 +107,41 @@ export function scoreAccentBorder(score: number): string {
   return 'border-l-success';
 }
 
+/**
+ * Fondo + borde SUAVE para la tarjeta entera, tintado por nivel de riesgo.
+ *
+ * Reemplaza el acento "fuerte" (stripe lateral saturado) por el color del badge
+ * en su versión clara (los `*-container` del design system). Así una sesión de
+ * riesgo medio se ve con toda la card en amarillo clarito, no con una franja
+ * amarilla fuerte sobre blanco. Pensado para usarse como `border ${scoreCardSurface(score)}`.
+ */
+export function scoreCardSurface(score: number): string {
+  return `${scoreSoftBg(score)} ${scoreSoftBorder(score)}`;
+}
+
+/** Solo el fondo claro tintado por riesgo (para filas/elementos sin borde propio). */
+export function scoreSoftBg(score: number): string {
+  const nivel = nivelRiesgo(score);
+  if (nivel === 'alto') return 'bg-error-container/40';
+  if (nivel === 'medio') return 'bg-warning-container/50';
+  return 'bg-success-container/25';
+}
+
+/** Solo el color del borde acorde al riesgo (combina con `border`). */
+export function scoreSoftBorder(score: number): string {
+  const nivel = nivelRiesgo(score);
+  if (nivel === 'alto') return 'border-error/30';
+  if (nivel === 'medio') return 'border-warning/30';
+  return 'border-success/20';
+}
+
+/**
+ * Fondo translúcido para elementos INTERNOS de una card tintada (chips de métrica,
+ * chip de score). Blanco semitransparente que se integra con el tinte de la card,
+ * en vez de un gris sólido (`surface-container-*`) que se ve sucio sobre el color.
+ */
+export const INNER_CHIP_BG = 'bg-white/60';
+
 /** Clase de relleno del gauge de score. */
 export function gaugeFill(score: number): string {
   const nivel = nivelRiesgo(score);

@@ -26,6 +26,15 @@ import { EventoCard } from './proctoring/EventoCard';
 import { BiometriaCard } from './proctoring/BiometriaCard';
 import { ChatBox } from '../ui/ChatBox';
 import { ObservacionesProctor } from './proctoring/ObservacionesProctor';
+import { PausaSesionPanel } from './proctoring/PausaSesionPanel';
+
+/** Texto del "Volver" según la ruta de origen guardada en el store. */
+const BACK_LABELS: Record<string, string> = {
+  '/proctor': 'Volver a supervisión en vivo',
+  '/proctor/examen': 'Volver al examen',
+  '/admin/proctoring-sessions': 'Volver a sesiones grabadas',
+  '/revisor': 'Volver a la cola de revisión',
+};
 
 function VolverLink({ onClick, label }: { onClick: () => void; label: string }) {
   return (
@@ -45,11 +54,18 @@ export default function ProctoringSessionDetail() {
   const toast = useToast();
   const sessionId = useApp((s) => s.proctoringSessionId);
   const rol = useApp((s) => s.rol);
+  // Identidad del proctor → se registra como proctor_actor al resolver una pausa.
+  const proctorActor = useApp((s) => s.principal?.email ?? null);
   // C-15: el proctor puede abrir el detalle para chatear/supervisar, pero NO
   // borrar evidencia (regla dura #6: cadena de custodia). El borrado y la lista
   // admin quedan reservados a admin_sistema; el proctor vuelve a su panel.
   const esAdmin = rol === 'admin_sistema';
-  const backRoute = esAdmin ? '/admin/proctoring-sessions' : '/proctor';
+  // "Volver" regresa al ORIGEN real (supervisión en vivo, grid de personas, cola
+  // o grabadas), guardado en el store al abrir el detalle. Fallback por rol si no
+  // se seteó (deep-link directo).
+  const detailBackRoute = useApp((s) => s.proctoringDetailBackRoute);
+  const backRoute = detailBackRoute ?? (esAdmin ? '/admin/proctoring-sessions' : '/proctor');
+  const backLabel = BACK_LABELS[backRoute] ?? 'Volver';
   const [detalle, setDetalle] = useState<SesionProctoringDetalle | null>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -156,10 +172,7 @@ export default function ProctoringSessionDetail() {
     >
       <div className="space-y-lg animate-in fade-in duration-500">
         {/* Volver a la lista */}
-        <VolverLink
-          onClick={() => navigate(backRoute)}
-          label={esAdmin ? 'Volver a la lista de sesiones' : 'Volver al panel'}
-        />
+        <VolverLink onClick={() => navigate(backRoute)} label={backLabel} />
 
         {/* Estado de carga */}
         {cargando && (
@@ -187,6 +200,10 @@ export default function ProctoringSessionDetail() {
         {!cargando && !error && detalle && (
           <>
             <DetalleHeader detalle={detalle} />
+
+            {/* C-15: solicitud de pausa de ESTA sesión — el proctor la ve y resuelve
+                acá mismo (antes solo aparecía en el panel de supervisión en vivo). */}
+            {sessionId && <PausaSesionPanel sessionId={sessionId} proctorActor={proctorActor} />}
 
             {/* Eventos (izquierda) + chat del proctor (derecha) en dos columnas.
                 En mobile colapsan a una sola columna (eventos arriba, chat abajo). */}

@@ -51,6 +51,7 @@ import {
   type ScreenDetailsProvider,
 } from './contextDetectors';
 import { descripcionEvento } from '../lib/api';
+import { nombreCompleto } from '../lib/types';
 import type { EventoSesion, Severidad, TipoEvento } from '../lib/types';
 import { CircularEventBuffer } from '../transport/eventBuffer';
 import { IndexedDbEventBufferStore } from '../transport/indexedDbBufferStore';
@@ -157,6 +158,7 @@ export function useExamProctoring(
   examen?: ExamenInfo | null,
 ): UseExamProctoringResult {
   const setProctoringSessionId = useApp((s) => s.setProctoringSessionId);
+  const principal = useApp((s) => s.principal);
   const addScore = useApp((s) => s.addScore);
   // C-64 D1: si Consent.tsx ya creó la sesión anticipada, reutilizarla — no crear otra.
   const existingSessionId = useApp((s) => s.proctoringSessionId);
@@ -179,6 +181,10 @@ export function useExamProctoring(
   const sessionPromiseRef = useRef<Promise<string | null> | null>(null);
   const faceCountRef = useRef(0);
   const stoppedRef = useRef(false);
+  // Nombre del alumno para la etiqueta de la sesión (lo que ve el proctor en las
+  // cards). En un ref para no meter `principal` en las deps del effect de arranque.
+  const nombreAlumnoRef = useRef('');
+  nombreAlumnoRef.current = nombreCompleto(principal);
   // examen.id de la sesión creada por ESTE hook (no por reuso de existingSessionId).
   // Lo usamos para liberar la guarda de idempotencia de módulo al finalizar, así una
   // rendición posterior del mismo examen puede crear una sesión nueva (no reusar la ya
@@ -444,7 +450,7 @@ export function useExamProctoring(
         // sesión. El `cancelled` sigue protegiendo de aplicar el resultado a un montaje
         // ya desmontado, pero ya no hay POST duplicado que limpiar.
         createdExamenIdRef.current = examen.id;
-        sessionPromiseRef.current = obtenerOCrearSesion(examen.id, examen.nombre).then(
+        sessionPromiseRef.current = obtenerOCrearSesion(examen.id, nombreAlumnoRef.current || examen.nombre).then(
           (id) => {
             if (cancelled || !id) return id ?? null;
             sessionIdRef.current = id;

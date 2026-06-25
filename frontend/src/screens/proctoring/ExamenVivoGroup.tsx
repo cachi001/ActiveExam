@@ -16,9 +16,10 @@ import { Icon } from '../../ui/components';
 import type { SesionProctoringResumen } from '../../lib/types';
 import {
   formatFechaRelativa,
-  scoreAccentBorder,
+  scoreSoftBg,
   scoreTextColor,
   nivelRiesgo,
+  INNER_CHIP_BG,
   type ExamInfo,
 } from './helpers';
 
@@ -165,10 +166,10 @@ function PersonaVivoRow({
             onAbrir(sesion);
           }
         }}
-        className={`group flex items-center gap-md pl-sm pr-md py-sm cursor-pointer
-          border-l-[3px] ${scoreAccentBorder(sesion.score)}
-          transition-colors hover:bg-surface-container-low/60
-          focus:outline-none focus-visible:bg-surface-container-low`}
+        className={`group flex items-center gap-md px-md py-sm cursor-pointer
+          ${scoreSoftBg(sesion.score)}
+          transition-[filter] hover:brightness-[0.97]
+          focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/40`}
       >
         {/* Identidad de la persona */}
         <div className="min-w-0 flex-1">
@@ -201,7 +202,7 @@ function PersonaVivoRow({
             amarillas/rojas). */}
         <span
           className={`inline-flex items-center justify-center min-w-[44px] px-sm py-base rounded-full
-            text-label-sm font-bold tabular-nums shrink-0 bg-white/70 ${scoreTextColor(sesion.score ?? 0)}`}
+            text-label-sm font-bold tabular-nums shrink-0 ${INNER_CHIP_BG} ${scoreTextColor(sesion.score ?? 0)}`}
         >
           {sesion.score ?? 0}
         </span>

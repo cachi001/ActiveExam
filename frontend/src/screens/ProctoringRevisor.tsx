@@ -31,6 +31,7 @@ export default function ProctoringRevisor() {
   const navigate = useNavigate();
   const toast = useToast();
   const setProctoringSessionId = useApp((s) => s.setProctoringSessionId);
+  const setProctoringDetailBackRoute = useApp((s) => s.setProctoringDetailBackRoute);
   const [sesiones, setSesiones] = useState<SesionProctoringResumen[]>([]);
   const [cargando, setCargando] = useState(true);
   // Sesión pendiente de confirmación de borrado (null = modal cerrado).
@@ -50,6 +51,7 @@ export default function ProctoringRevisor() {
 
   const handleAbrir = (sesion: SesionProctoringResumen) => {
     setProctoringSessionId(sesion.id);
+    setProctoringDetailBackRoute('/admin/proctoring-sessions');
     navigate(PROCTORING_DETAIL_ROUTE);
   };
 
