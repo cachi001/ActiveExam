@@ -60,13 +60,16 @@
 
 ## 🟡 Prioridad 1 — MVP camino crítico
 
-> Camino crítico restante: `c-03 → c-10 → c-15 → c-16 → c-20`. c-17, c-18, c-19 están desbloqueados y pueden correr en paralelo.
+> Camino crítico restante: `c-03 → c-15b → c-16 → c-20` (c-10 y el slim de c-15 ya **archivados**). c-17, c-18, c-19 están desbloqueados y pueden correr en paralelo.
+>
+> **PARTICIÓN 2026-06-24**: c-10 y c-15 se **archivaron por su scope entregado** y lo que dependía de c-03 se movió a un sucesor. c-10: implementación del fan-out completa; la **verificación de SLO bajo carga** (p99<500ms, cero pérdida, e2e, OTEL) se consolidó en **c-03** (su harness es el banco de carga). c-15: se entregó el **slim** (chat/pausa/observaciones/cierre/RBAC vía REST+polling); el **tiempo real** (SSE, priorización por score, alertas <500ms, MFA) pasó a **c-15b**.
 
 | Change | Progreso | Qué falta / scope | Dep | Estado |
 |--------|----------|-------------------|-----|--------|
-| **c-10** `event-ingestion-transport` | 22/26 | WS del estudiante + validación HMAC + fan-out (ganador C-03). Las 4 tasks pendientes (SLO p99<500ms, cero pérdida bajo reconexión, e2e Flujo 3, OTEL) **se validan con el harness de c-03**. | c-03 | Archiva con c-03 |
-| **c-15** `panel-proctor-sse` | 0/16 | Supervisión en vivo vía SSE; priorización por score; alertas críticas <500 ms; cierre forzado de sesión. | c-10 | Bloqueado por c-10 |
-| **c-16** `cola-revision-humana` | 0/15 | Cola por score + aislada por jurisdicción + audit de acceso + decisión humana terminal inmutable. **Cierre del ciclo MVP.** | c-15 | Bloqueado por c-15 |
+| **c-10** `event-ingestion-transport` | 26/26 | Contrato de evento, WS del estudiante, validación HMAC, persistencia hypertable y **fan-out** (puerto + adaptadores LISTEN/NOTIFY y Redis) entregados. Verificación de SLO bajo carga → **c-03**. | c-03 | ✅ **Archivado** (scope entregado) |
+| **c-15** `panel-proctor-sse` | — | **Slim entregado**: acciones del proctor (chat, observaciones, cierre forzado), pausa autorizada + contextualización de score, RBAC por rol. | c-10 ✓ | ✅ **Archivado** (slim) |
+| **c-15b** `panel-proctor-sse-transport` | 0/10 | Tiempo real: transporte SSE sin sticky + backplane (ganador c-03); priorización por score (continuous aggregates c-13); alertas críticas p99<500ms; reconexión SSE; MFA del panel. | c-03, c-13 | ⛔ Bloqueado por c-03 |
+| **c-16** `cola-revision-humana` | 0/15 | Cola por score + aislada por jurisdicción + audit de acceso + decisión humana terminal inmutable. **Cierre del ciclo MVP.** Consume las **observaciones** del proctor (ya entregadas en el slim de c-15). | c-13, c-15 ✓ (slim) | Desbloqueado por el slim de c-15 (no requiere c-15b) |
 | **c-17** `dsr-derechos-titular` | 0/20 | `POST /api/v1/dsr/{type}` access/rectification/erasure/portability + holds + audit log. | c-06 ✓ | **Listo para arrancar** |
 | **c-18** `verificacion-cadena-apelacion` | 0/20 | `POST /api/v1/evidence/{id}/verify-chain` que re-verifica 4 etapas de firma + emite certificado independiente para perito externo. | c-12 ✓ | **Listo para arrancar** |
 | **c-19** `retencion-holds` | 0/19 | Motor retención automática + holds por caso abierto + archivado a Parquet + eliminación embedding al egreso (Ley 25.326, RN-DSR-02). | c-07 ✓ | **Listo para arrancar** |
@@ -110,11 +113,16 @@
 
 ```
 c-01-acuerdo-proctoring-dpia (0/23)
-  └── c-03-poc-carga-mensajeria (24/45)
-        └── c-10-event-ingestion-transport (22/26)   ← archiva en paralelo con c-03 (misma métrica)
-              └── c-15-panel-proctor-sse (0/16)
-                    └── c-16-cola-revision-humana (0/15)
-                          └── c-20-reportes-analytics (0/19)
+  └── c-03-poc-carga-mensajeria (24/45)   ← absorbe la verificación de SLO bajo carga de c-10
+        └── c-15b-panel-proctor-sse-transport (0/10)   [tiempo real; dep c-03 + c-13]
+              └── (panel en vivo de producción)
+
+c-16-cola-revision-humana (0/15)   ← desbloqueado por el SLIM de c-15 (observaciones); dep c-13
+      └── c-20-reportes-analytics (0/19)
+
+Archivados 2026-06-24 (scope entregado):
+  c-10-event-ingestion-transport  → fan-out implementado; verificación de SLO → c-03
+  c-15-panel-proctor-sse (slim)    → chat/pausa/observaciones/cierre/RBAC (REST+polling)
 
 Desbloqueados hoy (deps ya archivadas — pueden arrancar en paralelo):
   c-17-dsr-derechos-titular (0/20)         [c-06 ✓]
@@ -125,24 +133,24 @@ Planificado sin proponer:
   integracion-lms-lti (Fase 2, sin número — se le asigna el siguiente libre al proponerlo)
 ```
 
-### Camino crítico restante (5 changes)
+### Camino crítico restante (4 changes)
 
 ```
-c-03 → c-10 → c-15 → c-16 → c-20
+c-03 → c-15b → (panel en vivo prod)
+c-16 → c-20            [c-16 ya desbloqueado por el slim de c-15; dep c-13]
 ```
 
-(c-01 es gate legal independiente; corre en paralelo, no en serie con el código)
+(c-01 es gate legal independiente; corre en paralelo, no en serie con el código. c-10 y el slim de c-15 quedaron archivados 2026-06-24.)
 
 ### Plan de ataque con 3 agentes (foto al 2026-06-11 sesión 2)
 
 | Paso | Agente A (MVP crítico) | Agente B (MVP desbloqueado) | Agente C (Gate paralelo) |
 |------|------------------------|-----------------------------|--------------------------|
 | 1 | (espera c-03 con host 8+ cores) | c-17 dsr-derechos-titular | c-01 acuerdo + DPIA (drafts legales) |
-| 2 | c-10 cerrar 4 tasks (junto con veredicto c-03) | c-18 verificacion-cadena-apelacion | c-01 firma DPO |
-| 3 | c-15 panel-proctor-sse | c-19 retencion-holds | — |
-| 4 | c-16 cola-revision-humana | — | — |
-| 5 | c-20 reportes-analytics | — | — |
-| 6 | integracion-lms-lti (post-MVP, sin número aún) | — | — |
+| 2 | c-16 cola-revision-humana (ya desbloqueado por el slim de c-15) | c-18 verificacion-cadena-apelacion | c-01 firma DPO |
+| 3 | c-15b panel-proctor-sse-transport (tras veredicto c-03) | c-19 retencion-holds | — |
+| 4 | c-20 reportes-analytics (tras c-16) | — | — |
+| 5 | integracion-lms-lti (post-MVP, sin número aún) | — | — |
 
 > Agente A camino crítico (depende de c-03 cerrado). Agente B avanza independiente en módulo legal/cumplimiento (DSR + cadena custodia + retención). Agente C corre la pista legal de c-01 en paralelo.
 
@@ -150,10 +158,10 @@ c-03 → c-10 → c-15 → c-16 → c-20
 
 ## Orden sugerido de ataque
 
-1. **Recuperar c-03**: levantar host con 8+ cores (Codespaces Pro / AWS spot) y correr Bloque 5 — barrido P0→E6 — para cerrar veredictos (a/b/c). **Esto desbloquea c-10 simultáneamente** (comparten métrica).
-2. **En paralelo, c-17/c-18/c-19**: tres changes del módulo legal/cumplimiento ya desbloqueados (deps archivadas), sin dependencia entre ellos. Ideal para 3 agentes en paralelo.
+1. **Recuperar c-03**: levantar host con 8+ cores (Codespaces Pro / AWS spot) y correr Bloque 5 — barrido P0→E6 — para cerrar veredictos (a/b/c). **Esto consolida la verificación de SLO que se descopeó de c-10 y desbloquea c-15b** (tiempo real del panel).
+2. **En paralelo, c-16** (ya desbloqueado por el slim de c-15: consume las observaciones del proctor) **y c-17/c-18/c-19** (módulo legal/cumplimiento, deps archivadas). Ideal para varios agentes en paralelo.
 3. **Cuando DPO esté disponible, c-01**: drafts de Acuerdo L2.5 + DPIA + Acta ADRs los puede preparar Claude desde la KB; firma humana cierra el gate.
-4. **Camino crítico cerrado**: c-15 → c-16 → c-20 después de c-10.
+4. **Tras veredicto c-03**: c-15b (panel en vivo de producción). c-20 tras c-16.
 5. **Fase 2**: integración LMS/LTI (sin número aún, ver Prioridad 2) cuando el MVP esté operativo. **Análisis real del DNI** (server-side, OCR + PDF417 + RENAPER) sería un change nuevo separado cuando aparezca la necesidad — no reabrir c-39 (cancelado).
 
 > Regla dura del proyecto (DD-19): la arquitectura de mensajería **la decide C-03**. No asumir A4 ni SAD antes de esa PoC.
@@ -165,9 +173,10 @@ c-03 → c-10 → c-15 → c-16 → c-20
 | Bucket | Changes | Tasks totales | Tasks completas |
 |--------|---------|---------------|-----------------|
 | Gate bloqueante (parcial) | c-01, c-03 | 68 | 24 |
-| MVP camino crítico (parcial) | c-10 | 26 | 22 |
-| MVP sin empezar (0%) | c-15, c-16, c-17, c-18, c-19, c-20 | 109 | 0 |
-| **Total pendientes** | **9** | **203** | **46** |
+| Archivados 2026-06-24 (scope entregado) | c-10, c-15 (slim) | — | — |
+| MVP bloqueado por c-03 | c-15b | 10 | 0 |
+| MVP sin empezar (0%) | c-16, c-17, c-18, c-19, c-20 | 93 | 0 |
+| **Total pendientes** | **8** | **171** | **24** |
 | Archivados | 53 (c-66 + anteriores) | — | — |
 | Cancelados (sin retomar) | 4 (c-02, c-39, c-44, c-53) | — | — |
 | **Total universo** | **66** | — | — |

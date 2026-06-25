@@ -39,12 +39,22 @@ Implementa el panel del proctor con transporte SSE alimentado por el backplane (
 
 > Cada SHALL se prueba con un test (priorización por score, latencia de alerta < 500 ms, aislamiento por asignación, cierre forzado, reconexión SSE).
 
-### New Capabilities
+> **SCOPE ARCHIVADO (2026-06-24)**: este change se partió. Lo entregado y archivado acá
+> es el **slice slim** (REST + polling). El **tiempo real** (`proctor-sse-transport`,
+> `proctor-panel-prioritization`) y el **MFA** se movieron a
+> `c-15b-panel-proctor-sse-transport` (depende de C-03 y C-13).
 
-- `proctor-sse-transport`: el transporte SSE del panel (unidireccional, reconecta solo, sin sticky) alimentado por el backplane ganador de C-03, con reconexión transparente ante caída de instancia.
-- `proctor-panel-prioritization`: la presentación de sesiones priorizadas por score de riesgo, leídas de continuous aggregates (CQRS-lite), con alertas críticas propagadas en p99 < 500 ms.
-- `proctor-session-actions`: las acciones del proctor sobre sesiones asignadas — mensajería al estudiante, registro de observaciones y cierre forzado de sesión.
-- `proctor-contextual-access`: el control de acceso contextual (solo exámenes asignados) con MFA obligatorio para el rol proctor.
+### New Capabilities (entregadas en el slim)
+
+- `proctor-session-actions`: las acciones del proctor sobre sesiones — chat bidireccional con el estudiante, registro de observaciones y cierre forzado de sesión (REST + polling).
+- `proctor-pausa-autorizada`: la solicitud/aprobación de pausas autorizadas con contextualización del score (excluye del puntaje los eventos en ventana de pausa aprobada).
+- `proctor-contextual-access`: el control de acceso al panel **por rol** (RBAC). "Solo exámenes asignados" (RN-AU-07) quedó superseded por decisión del dueño; el MFA se difirió a C-15b.
+
+### Diferidas a `c-15b-panel-proctor-sse-transport` (dependen de C-03/C-13)
+
+- `proctor-sse-transport`: transporte SSE sin sticky + backplane de fan-out (ganadores de C-03).
+- `proctor-panel-prioritization`: priorización por score (continuous aggregates de C-13) + alertas p99 < 500 ms.
+- MFA obligatorio del panel (RN-AU-05).
 
 ### Modified Capabilities
 
