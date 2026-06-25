@@ -33,6 +33,10 @@ minio_data/
 *-state.json
 .claude/
 
+# Overrides locales de docker-compose (específicos de cada máquina, p. ej. cambiar
+# FRONTEND_ORIGIN cuando el 5173 está ocupado). NO versionar.
+infra/docker-compose/docker-compose.dev.local.yml
+
 # Playwright MCP screenshots / dumps de review
 .playwright-mcp/
 # Screenshots sueltos en la root (Playwright MCP los guarda con nombre explícito
