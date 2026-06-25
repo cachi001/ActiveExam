@@ -65,15 +65,18 @@ export function RequisitoBiometria({
             <strong> cifrados y protegidos</strong>, y se usan solo para confirmar tu identidad en los exámenes.
           </div>
 
-          {!consentimientoOk && (
+          {/* Sin consentimiento NO mostramos el botón (no un botón disabled):
+              solo el aviso de qué falta. El CTA aparece recién cuando se puede tocar. */}
+          {consentimientoOk ? (
+            <Button onClick={onCapturar} size="sm">
+              Capturar referencia biométrica
+            </Button>
+          ) : (
             <div className="flex items-start gap-xs text-label-sm text-on-surface-variant">
               <Icon name="info" className="text-[16px] shrink-0 mt-px" />
               <span>Necesitás completar el consentimiento antes de capturar la referencia.</span>
             </div>
           )}
-          <Button onClick={onCapturar} disabled={!consentimientoOk} size="sm">
-            Capturar referencia biométrica
-          </Button>
         </div>
       )}
 
