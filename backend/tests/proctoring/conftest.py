@@ -183,21 +183,35 @@ def _build_test_jwt_validator():
     )
 
 
+@pytest.fixture(scope="session")
+def slim_reinferencia():
+    """Una UNICA instancia de MediaPipeReinferencia para toda la sesion de tests.
+
+    Espeja produccion (uvicorn crea el adapter una sola vez al arranque, vive para
+    siempre). Crear uno NUEVO por test hace que el FaceDetector real de MediaPipe
+    quede sin referencias y el GC dispare su ``__del__`` → ``close()``, que delega
+    en un *serial dispatcher* ya finalizado y se cuelga eternamente en
+    ``executor.submit(...).result()``. Reusar una sola instancia evita ese deadlock.
+    """
+    from app.infrastructure.reinferencia.mediapipe_adapter import MediaPipeReinferencia
+
+    return MediaPipeReinferencia()
+
+
 @pytest.fixture
-def slim_app(slim_engine):
+def slim_app(slim_engine, slim_reinferencia):
     """App slim instanciada con el engine de test.
 
     Cablea ``app.state.jwt_validator`` (HS256 de test) para que los guards de rol
     de los endpoints de proctoring slim resuelvan el principal igual que en prod.
     """
     from app.infrastructure.persistence.session_slim import create_slim_session_factory
-    from app.infrastructure.reinferencia.mediapipe_adapter import MediaPipeReinferencia
     from app.presentation.api.v1.proctoring.router import create_proctoring_router
     from fastapi import FastAPI
     from fastapi.middleware.cors import CORSMiddleware
 
     factory = create_slim_session_factory(slim_engine)
-    reinferencia = MediaPipeReinferencia()
+    reinferencia = slim_reinferencia
     proctoring_router = create_proctoring_router(
         session_factory=factory,
         reinferencia=reinferencia,
