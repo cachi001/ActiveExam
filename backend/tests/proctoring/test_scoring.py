@@ -51,14 +51,13 @@ def test_score_critica() -> None:
 
 
 def test_score_suma_multiples() -> None:
-    """Score de multiples eventos suma sus pesos."""
+    """Score de multiples eventos suma sus pesos (sin alcanzar el cap de 100)."""
     eventos = [
-        _FakeEvento("baja"),     # 5
-        _FakeEvento("media"),    # 20
-        _FakeEvento("alta"),     # 45
-        _FakeEvento("critica"),  # 80
+        _FakeEvento("baja"),   # 5
+        _FakeEvento("media"),  # 20
+        _FakeEvento("alta"),   # 45
     ]
-    assert calcular_score(eventos) == 150
+    assert calcular_score(eventos) == 70
 
 
 def test_score_baseline_no_suma() -> None:
@@ -81,7 +80,7 @@ def test_pesos_fallback_alineados_con_rangos_institucionales() -> None:
     assert 61 <= PESOS_SEVERIDAD["critica"] <= 100
 
 
-def test_score_solo_criticas() -> None:
-    """3 eventos criticos → 240 (3 * 80)."""
+def test_score_solo_criticas_topa_en_cap() -> None:
+    """3 eventos criticos (3 * 80 = 240) superan el cap → score topa en 100 (0..100)."""
     eventos = [_FakeEvento("critica")] * 3
-    assert calcular_score(eventos) == 240
+    assert calcular_score(eventos) == 100

@@ -14,6 +14,8 @@ import type {
   AcuseExamen,
   SesionProctoringResumen, SesionProctoringDetalle, EventoProctoringDetalle,
   BiometriaDetalle, VeredictoReinferencia,
+  // C-15: chat bidireccional + pausa autorizada + acciones del proctor
+  MensajeChat, AutorChat, Pausa, AccionPausa, PausaPendiente, ObservacionProctor, CierreForzado,
   // C-61: gestión de usuarios
   UsuarioAdmin, ListarUsuariosResponse,
   // #10: configuracion de scoring por tipo de evento
@@ -26,6 +28,20 @@ export const API_BASE = (import.meta.env.VITE_API_BASE as string) || '/api/v1';
 export const USE_REAL_BACKEND = import.meta.env.VITE_USE_REAL_BACKEND === '1';
 
 const delay = (ms = 350) => new Promise((r) => setTimeout(r, ms));
+
+// ---------------------------------------------------------------------------
+// C-15 — Estado demo en memoria para chat y pausas (modo sin backend).
+// Coherente con el contrato del backend para que la demo funcione end-to-end.
+// ---------------------------------------------------------------------------
+/** Mensajes de chat por sesión (key = session_id). */
+const CHAT_DEMO = new Map<string, MensajeChat[]>();
+/** Pausas por sesión (key = session_id), más recientes primero al leer. */
+const PAUSAS_DEMO = new Map<string, Pausa[]>();
+/** Observaciones del proctor por sesión (key = session_id), asc por creada_en (C-15 3.2). */
+const OBS_DEMO = new Map<string, ObservacionProctor[]>();
+let _chatSeq = 0;
+let _pausaSeq = 0;
+let _obsSeq = 0;
 
 // ---------------------------------------------------------------------------
 // Datos demo (en memoria)
@@ -444,7 +460,13 @@ async function realFetch<T>(path: string, init: RequestInit, _legacyToken?: stri
     }
   }
 
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  if (!res.ok) {
+    // Adjuntamos el status code para que los callers puedan ramificar (p.ej. el
+    // 409 de "pausa ya resuelta" en C-15) sin parsear el mensaje a mano.
+    const err = new Error(`HTTP ${res.status}`) as Error & { status?: number };
+    err.status = res.status;
+    throw err;
+  }
   return res.json() as Promise<T>;
 }
 
@@ -1440,6 +1462,339 @@ export const api = {
     ];
   },
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // C-15 — Chat bidireccional proctor↔alumno
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Envía un mensaje al canal de chat de una sesión (C-15).
+   * Real: POST /proctoring/sessions/{id}/chat → 201 {id, autor, texto, creado_en}
+   * Mock o fallo: agrega a la lista en memoria y devuelve el mensaje.
+   */
+  async enviarMensajeChat(
+    sessionId: string,
+    autor: AutorChat,
+    texto: string,
+  ): Promise<MensajeChat> {
+    if (USE_REAL_BACKEND) {
+      try {
+        return await realFetch<MensajeChat>(
+          `/proctoring/sessions/${sessionId}/chat`,
+          { method: 'POST', body: JSON.stringify({ autor, texto }) },
+          'demo',
+        );
+      } catch {
+        /* fallback mock */
+      }
+    }
+    await delay(120);
+    const msg: MensajeChat = {
+      id: `mock-chat-${++_chatSeq}`,
+      autor,
+      texto,
+      creado_en: new Date().toISOString(),
+    };
+    const lista = CHAT_DEMO.get(sessionId) ?? [];
+    lista.push(msg);
+    CHAT_DEMO.set(sessionId, lista);
+    return msg;
+  },
+
+  /**
+   * Lista los mensajes de chat de una sesión, asc por creado_en (C-15).
+   * `desde` (ISO) → polling incremental: solo mensajes con creado_en > desde.
+   * Real: GET /proctoring/sessions/{id}/chat?desde=<iso>
+   * Mock o fallo: filtra la lista en memoria.
+   */
+  async listarMensajesChat(sessionId: string, desde?: string): Promise<MensajeChat[]> {
+    if (USE_REAL_BACKEND) {
+      try {
+        const qs = desde ? `?desde=${encodeURIComponent(desde)}` : '';
+        return await realFetch<MensajeChat[]>(
+          `/proctoring/sessions/${sessionId}/chat${qs}`,
+          { method: 'GET' },
+          'demo',
+        );
+      } catch {
+        /* fallback mock */
+      }
+    }
+    await delay(80);
+    const lista = CHAT_DEMO.get(sessionId) ?? [];
+    const filtrada = desde ? lista.filter((m) => m.creado_en > desde) : lista;
+    return [...filtrada].sort((a, b) => a.creado_en.localeCompare(b.creado_en));
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // C-15 — Pausa autorizada
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * El alumno solicita una pausa (C-15).
+   * Real: POST /proctoring/sessions/{id}/pausas → 201 pausa 'solicitada'
+   * Mock o fallo: crea la pausa en memoria.
+   */
+  async solicitarPausa(sessionId: string, motivo: string): Promise<Pausa> {
+    if (USE_REAL_BACKEND) {
+      try {
+        return await realFetch<Pausa>(
+          `/proctoring/sessions/${sessionId}/pausas`,
+          { method: 'POST', body: JSON.stringify({ motivo }) },
+          'demo',
+        );
+      } catch {
+        /* fallback mock */
+      }
+    }
+    await delay(150);
+    const pausa: Pausa = {
+      id: `mock-pausa-${++_pausaSeq}`,
+      motivo,
+      estado: 'solicitada',
+      solicitada_en: new Date().toISOString(),
+      resuelta_en: null,
+      proctor_actor: null,
+      inicio_en: null,
+      fin_en: null,
+    };
+    const lista = PAUSAS_DEMO.get(sessionId) ?? [];
+    lista.push(pausa);
+    PAUSAS_DEMO.set(sessionId, lista);
+    return pausa;
+  },
+
+  /**
+   * Lista las pausas de una sesión, desc por solicitada_en (C-15).
+   * La más reciente queda primera (lo que el poll del alumno necesita).
+   * Real: GET /proctoring/sessions/{id}/pausas
+   * Mock o fallo: lista en memoria ordenada desc.
+   */
+  async listarPausas(sessionId: string): Promise<Pausa[]> {
+    if (USE_REAL_BACKEND) {
+      try {
+        return await realFetch<Pausa[]>(
+          `/proctoring/sessions/${sessionId}/pausas`,
+          { method: 'GET' },
+          'demo',
+        );
+      } catch {
+        /* fallback mock */
+      }
+    }
+    await delay(80);
+    const lista = PAUSAS_DEMO.get(sessionId) ?? [];
+    return [...lista].sort((a, b) => b.solicitada_en.localeCompare(a.solicitada_en));
+  },
+
+  /**
+   * Lista las pausas pendientes de TODAS las sesiones (C-15) — poll del proctor.
+   * Solo estado 'solicitada', asc por solicitada_en.
+   * Real: GET /proctoring/pausas/pendientes
+   * Mock o fallo: arma la cola desde el estado en memoria.
+   */
+  async listarPausasPendientes(): Promise<PausaPendiente[]> {
+    if (USE_REAL_BACKEND) {
+      try {
+        return await realFetch<PausaPendiente[]>(
+          '/proctoring/pausas/pendientes',
+          { method: 'GET' },
+          'demo',
+        );
+      } catch {
+        /* fallback mock */
+      }
+    }
+    await delay(80);
+    const pendientes: PausaPendiente[] = [];
+    for (const [sessionId, lista] of PAUSAS_DEMO.entries()) {
+      for (const p of lista) {
+        if (p.estado === 'solicitada') {
+          pendientes.push({
+            id: p.id,
+            session_id: sessionId,
+            etiqueta: null,
+            motivo: p.motivo,
+            solicitada_en: p.solicitada_en,
+          });
+        }
+      }
+    }
+    return pendientes.sort((a, b) => a.solicitada_en.localeCompare(b.solicitada_en));
+  },
+
+  /**
+   * El proctor resuelve una pausa solicitada: aprobar o rechazar (C-15).
+   * Real: PATCH /proctoring/pausas/{id} → 200 pausa actualizada; 409 si ya no
+   *       está 'solicitada' (otra resolución ganó la carrera).
+   * Mock o fallo: muta la pausa en memoria; lanza Error con .status=409 si ya
+   *       no estaba 'solicitada' para que la UI maneje el caso igual que en real.
+   */
+  async resolverPausa(
+    pausaId: string,
+    accion: AccionPausa,
+    proctorActor?: string | null,
+    motivoRechazo?: string | null,
+  ): Promise<Pausa> {
+    if (USE_REAL_BACKEND) {
+      // El motivo solo viaja al rechazar (al aprobar el backend lo ignora/None).
+      const body: Record<string, unknown> = {
+        accion,
+        proctor_actor: proctorActor ?? null,
+      };
+      if (accion === 'rechazar') body.motivo_rechazo = motivoRechazo ?? null;
+      // Sin fallback: una resolución que dispara 409 NO debe simularse como OK.
+      return await realFetch<Pausa>(
+        `/proctoring/pausas/${pausaId}`,
+        { method: 'PATCH', body: JSON.stringify(body) },
+        'demo',
+      );
+    }
+    await delay(150);
+    for (const lista of PAUSAS_DEMO.values()) {
+      const p = lista.find((x) => x.id === pausaId);
+      if (!p) continue;
+      if (p.estado !== 'solicitada') {
+        const err = new Error('La pausa ya no está pendiente') as Error & { status?: number };
+        err.status = 409;
+        throw err;
+      }
+      const ahora = new Date().toISOString();
+      p.estado = accion === 'aprobar' ? 'aprobada' : 'rechazada';
+      p.resuelta_en = ahora;
+      p.proctor_actor = proctorActor ?? null;
+      if (accion === 'aprobar') {
+        p.inicio_en = ahora;
+        p.motivo_rechazo = null;
+      } else {
+        p.motivo_rechazo = motivoRechazo ?? null;
+      }
+      return p;
+    }
+    const err = new Error('Pausa no encontrada') as Error & { status?: number };
+    err.status = 409;
+    throw err;
+  },
+
+  /**
+   * Finaliza una pausa aprobada (el alumno reanuda el examen) (C-15).
+   * Real: PATCH /proctoring/pausas/{id}/finalizar → 200 pausa 'finalizada';
+   *       409 si no estaba 'aprobada'.
+   * Mock o fallo: muta la pausa en memoria.
+   */
+  async finalizarPausa(pausaId: string): Promise<Pausa> {
+    if (USE_REAL_BACKEND) {
+      return await realFetch<Pausa>(
+        `/proctoring/pausas/${pausaId}/finalizar`,
+        { method: 'PATCH' },
+        'demo',
+      );
+    }
+    await delay(120);
+    for (const lista of PAUSAS_DEMO.values()) {
+      const p = lista.find((x) => x.id === pausaId);
+      if (!p) continue;
+      if (p.estado !== 'aprobada') {
+        const err = new Error('La pausa no estaba activa') as Error & { status?: number };
+        err.status = 409;
+        throw err;
+      }
+      p.estado = 'finalizada';
+      p.fin_en = new Date().toISOString();
+      return p;
+    }
+    const err = new Error('Pausa no encontrada') as Error & { status?: number };
+    err.status = 409;
+    throw err;
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // C-15 (3.2 / 3.3) — Acciones del proctor: observaciones + cierre forzado
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * El proctor registra una observación sobre la sesión (C-15 3.2) — insumo de C-16.
+   * Real: POST /proctoring/sessions/{id}/observaciones → 201
+   * Mock o fallo: agrega la observación en memoria.
+   */
+  async crearObservacionProctor(
+    sessionId: string,
+    texto: string,
+    proctorActor?: string | null,
+  ): Promise<ObservacionProctor> {
+    if (USE_REAL_BACKEND) {
+      try {
+        return await realFetch<ObservacionProctor>(
+          `/proctoring/sessions/${sessionId}/observaciones`,
+          { method: 'POST', body: JSON.stringify({ texto, proctor_actor: proctorActor ?? null }) },
+          'demo',
+        );
+      } catch {
+        /* fallback mock */
+      }
+    }
+    await delay(120);
+    const obs: ObservacionProctor = {
+      id: `mock-obs-${++_obsSeq}`,
+      texto,
+      proctor_actor: proctorActor ?? null,
+      creada_en: new Date().toISOString(),
+    };
+    const lista = OBS_DEMO.get(sessionId) ?? [];
+    lista.push(obs);
+    OBS_DEMO.set(sessionId, lista);
+    return obs;
+  },
+
+  /**
+   * Lista las observaciones del proctor de una sesión, asc por creada_en (C-15 3.2).
+   * Real: GET /proctoring/sessions/{id}/observaciones
+   * Mock o fallo: lista en memoria.
+   */
+  async listarObservacionesProctor(sessionId: string): Promise<ObservacionProctor[]> {
+    if (USE_REAL_BACKEND) {
+      try {
+        return await realFetch<ObservacionProctor[]>(
+          `/proctoring/sessions/${sessionId}/observaciones`,
+          { method: 'GET' },
+          'demo',
+        );
+      } catch {
+        /* fallback mock */
+      }
+    }
+    await delay(80);
+    return [...(OBS_DEMO.get(sessionId) ?? [])];
+  },
+
+  /**
+   * Cierre FORZADO de una sesión por el proctor (C-15 3.3). Operativo, NO
+   * disciplinario (L2.5). Idempotente: preserva el audit del primer cierre.
+   * Real: PATCH /proctoring/sessions/{id}/cerrar-forzado → 200
+   * Mock o fallo: simula el cierre.
+   */
+  async cerrarSesionForzado(
+    sessionId: string,
+    motivo: string,
+    proctorActor?: string | null,
+  ): Promise<CierreForzado> {
+    if (USE_REAL_BACKEND) {
+      return await realFetch<CierreForzado>(
+        `/proctoring/sessions/${sessionId}/cerrar-forzado`,
+        { method: 'PATCH', body: JSON.stringify({ motivo, proctor_actor: proctorActor ?? null }) },
+        'demo',
+      );
+    }
+    await delay(150);
+    const ahora = new Date().toISOString();
+    return {
+      id: sessionId,
+      finalizada_en: ahora,
+      cierre_forzado_en: ahora,
+      cierre_forzado_por: proctorActor ?? null,
+      cierre_forzado_motivo: motivo,
+    };
+  },
+
   /**
    * Obtiene el detalle completo de una sesión de proctoring (C-46).
    * Real: GET /proctoring/sessions/{id}
@@ -2220,6 +2575,8 @@ export type {
   // C-46: tipos de proctoring (re-export desde types.ts)
   SesionProctoringResumen, SesionProctoringDetalle, EventoProctoringDetalle,
   BiometriaDetalle, VeredictoReinferencia,
+  // C-15: chat + pausa autorizada (re-export desde types.ts)
+  MensajeChat, AutorChat, Pausa, AccionPausa, PausaPendiente,
   // C-61: gestión de usuarios
   UsuarioAdmin, ListarUsuariosResponse,
   // #10: scoring config

@@ -67,9 +67,12 @@ export default function App() {
     '/proctor': g(<Proctor />, SUPERVISION),
     '/proctor/examen': g(<ExamenPersonasGrid />, SUPERVISION),
 
-    // Revisión académica + administración (admin_sistema)
-    '/revisor': g(<Revisor />, ADMIN),
-    '/revisor/detalle': g(<SessionDetail />, ADMIN),
+    // Revisión académica + administración
+    // Cola de revisión: proctor + admin (el proctor revisa sesiones de alumnos).
+    // El detalle legacy (SessionDetail) y las acciones terminales admin-only se
+    // gatean dentro de la pantalla, no en la ruta.
+    '/revisor': g(<Revisor />, SUPERVISION),
+    '/revisor/detalle': g(<SessionDetail />, SUPERVISION),
     '/admin': g(<AdminDashboard />, ADMIN),
     '/admin/examenes': g(<ExamList />, ADMIN),
     '/admin/reportes': g(<Reports />, ADMIN),
@@ -77,7 +80,9 @@ export default function App() {
     '/admin/detection-test': g(<AdminDetectionHarness />, ADMIN),
     // C-46: Revisión de sesiones del backend slim de proctoring
     '/admin/proctoring-sessions': g(<ProctoringRevisor />, ADMIN),
-    '/admin/proctoring-session-detail': g(<ProctoringSessionDetail />, ADMIN),
+    // C-15: el proctor abre el detalle para supervisar/chatear (SUPERVISION).
+    // El borrado de evidencia sigue siendo admin-only (gateado dentro de la pantalla).
+    '/admin/proctoring-session-detail': g(<ProctoringSessionDetail />, SUPERVISION),
     // C-61: Gestión de usuarios
     '/admin/usuarios': g(<GestionUsuarios />, ADMIN),
     // C-68: Detalle de usuario (ruta con parámetro dinámico /:id)

@@ -1,91 +1,88 @@
-// Router mínimo basado en hash (#/ruta). Sin dependencias externas: funciona
-// con `vite dev` y con build estático sin configurar el servidor.
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-
-interface RouterCtx {
-  path: string;
-  navigate: (to: string) => void;
-}
-
-const Ctx = createContext<RouterCtx>({ path: '/', navigate: () => {} });
-
-function currentHashPath(): string {
-  const h = window.location.hash.replace(/^#/, '');
-  return h.startsWith('/') ? h : '/' + h;
-}
+// Router de la app sobre `react-router-dom` (BrowserRouter → URLs limpias, sin #).
+//
+// Mantiene la MISMA superficie de API que el router propio anterior
+// (RouterProvider, useRouter, useNavigate, useRouteParam, Routes, Link), así los
+// ~25 archivos que la consumen no cambian; solo cambia la implementación interna
+// y, con ella, el formato de URL (`/admin/usuarios` en vez de `#/admin/usuarios`).
+//
+// DEPLOY: BrowserRouter exige que el host sirva `index.html` para cualquier ruta
+// (SPA fallback). El dev server de Vite ya lo hace; en Vercel está el rewrite de
+// `vercel.json` (`/(.*) -> /index.html`). Sin ese fallback, un F5 en una ruta
+// profunda daría 404.
+import { useCallback, useEffect, type ReactNode } from 'react';
+import {
+  BrowserRouter,
+  Routes as RouterRoutes,
+  Route,
+  Link as RouterLink,
+  useLocation,
+  useNavigate as useRouterNavigate,
+  useParams,
+} from 'react-router-dom';
 
 export function RouterProvider({ children }: { children: ReactNode }) {
-  const [path, setPath] = useState<string>(() => (window.location.hash ? currentHashPath() : '/'));
-
-  useEffect(() => {
-    const onHash = () => setPath(currentHashPath());
-    window.addEventListener('hashchange', onHash);
-    if (!window.location.hash) window.location.hash = '#/';
-    return () => window.removeEventListener('hashchange', onHash);
-  }, []);
-
-  const navigate = useCallback((to: string) => {
-    const norm = to.startsWith('/') ? to : '/' + to;
-    if (currentHashPath() !== norm) window.location.hash = '#' + norm;
-    else setPath(norm);
-    window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
-  }, []);
-
-  const value = useMemo(() => ({ path, navigate }), [path, navigate]);
-  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+  return <BrowserRouter>{children}</BrowserRouter>;
 }
-
-export function useRouter() { return useContext(Ctx); }
-
-export function useNavigate() { return useContext(Ctx).navigate; }
 
 /**
- * Renderiza el primer match del mapa de rutas.
- *
- * Matching en orden:
- * 1. Exact match: `routes[path]` — preserva el comportamiento original.
- * 2. Prefix match con parámetro: si una clave termina en `/:param`, intenta
- *    matchear `path` como `prefix/<valor>` y pasa el valor via sessionStorage
- *    bajo la clave `router_param_<param>`. Esto es minimal y seguro — no rompe
- *    el matching exacto.
- * 3. Fallback.
+ * Navegación con la firma `(to: string) => void` que usa toda la app. Normaliza
+ * para que siempre sea absoluta (el router anterior aceptaba paths sin `/` inicial
+ * y los trataba como absolutos; react-router-dom los trataría como relativos).
  */
-export function Routes({ routes, fallback }: { routes: Record<string, ReactNode>; fallback?: ReactNode }) {
-  const { path } = useRouter();
-  // 1. Exact match (comportamiento original, intacto)
-  if (routes[path]) return <>{routes[path]}</>;
-  // 2. Prefix match con parámetro dinámico (/:param al final de la clave)
-  for (const [pattern, node] of Object.entries(routes)) {
-    const paramMatch = pattern.match(/^(.*)\/:([^/]+)$/);
-    if (!paramMatch) continue;
-    const [, prefix, paramName] = paramMatch;
-    if (path.startsWith(prefix + '/')) {
-      const paramValue = path.slice(prefix.length + 1);
-      if (paramValue && !paramValue.includes('/')) {
-        try { sessionStorage.setItem(`router_param_${paramName}`, paramValue); } catch { /* ignore */ }
-        return <>{node}</>;
-      }
-    }
-  }
-  return <>{fallback ?? null}</>;
+export function useNavigate() {
+  const navigate = useRouterNavigate();
+  return useCallback(
+    (to: string) => navigate(to.startsWith('/') ? to : '/' + to),
+    [navigate],
+  );
 }
 
-/** Lee un parámetro de ruta dinámico guardado por Routes. */
+export function useRouter() {
+  const { pathname } = useLocation();
+  const navigate = useNavigate();
+  return { path: pathname, navigate };
+}
+
+/** Lee un parámetro de ruta dinámico (p.ej. `/admin/usuarios/:id` → useRouteParam('id')). */
 export function useRouteParam(name: string): string | null {
-  try { return sessionStorage.getItem(`router_param_${name}`); } catch { return null; }
+  const params = useParams();
+  return params[name] ?? null;
+}
+
+/** Sube el scroll al tope en cada cambio de ruta (lo hacía el navigate anterior). */
+function ScrollToTop() {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
+  }, [pathname]);
+  return null;
+}
+
+/**
+ * Renderiza el match de un mapa `{ ruta: nodo }`. Las claves son patrones de
+ * react-router-dom: estáticos (`/admin/usuarios`) o con parámetro (`/admin/usuarios/:id`).
+ * `fallback` se usa para cualquier ruta no matcheada (`*`).
+ */
+export function Routes({ routes, fallback }: { routes: Record<string, ReactNode>; fallback?: ReactNode }) {
+  return (
+    <>
+      <ScrollToTop />
+      <RouterRoutes>
+        {Object.entries(routes).map(([pattern, node]) => (
+          <Route key={pattern} path={pattern} element={<>{node}</>} />
+        ))}
+        <Route path="*" element={<>{fallback ?? null}</>} />
+      </RouterRoutes>
+    </>
+  );
 }
 
 export function Link({ to, className, children, onClick }: {
   to: string; className?: string; children: ReactNode; onClick?: () => void;
 }) {
-  const navigate = useNavigate();
   return (
-    <a
-      href={'#' + to}
-      className={className}
-      onClick={(e) => { e.preventDefault(); onClick?.(); navigate(to); }}
-    >
+    <RouterLink to={to} className={className} onClick={onClick ? () => onClick() : undefined}>
       {children}
-    </a>
+    </RouterLink>
   );
 }

@@ -89,6 +89,8 @@ def client(db_url_c64: str):
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.testclient import TestClient
 
+    from tests.proctoring.conftest import _build_test_jwt_validator, auth_headers
+
     engine = create_async_engine(db_url_c64, pool_pre_ping=True, future=True, poolclass=NullPool)
     factory = create_slim_session_factory(engine)
     reinferencia = MediaPipeReinferencia()
@@ -97,6 +99,10 @@ def client(db_url_c64: str):
         reinferencia=reinferencia,
     )
     app = FastAPI()
+    # Los endpoints de proctoring slim quedan endurecidos por rol; cableamos el
+    # jwt_validator de test y autenticamos como estudiante (flujo del alumno:
+    # crear sesion, eventos, finalizar).
+    app.state.jwt_validator = _build_test_jwt_validator()
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["http://localhost:5173"],
@@ -105,7 +111,7 @@ def client(db_url_c64: str):
     )
     app.include_router(proctoring_router, prefix="/api/v1/proctoring")
 
-    with TestClient(app) as c:
+    with TestClient(app, headers=auth_headers(["estudiante"])) as c:
         yield c
 
 

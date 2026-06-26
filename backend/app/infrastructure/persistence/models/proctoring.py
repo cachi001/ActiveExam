@@ -63,6 +63,24 @@ class ProctoringSessionModel(Base):
         nullable=True,
     )
 
+    # C-15 (tarea 3.3): cierre FORZADO por el proctor. Operativo, NO disciplinario
+    # (regla dura #5: el sistema nunca sanciona — esto solo CIERRA la sesion). El
+    # cierre forzado tambien setea finalizada_en; estas 3 columnas son el audit trail
+    # persistente (quien, cuando, por que) — patron "la fila ES el audit log" del slim,
+    # que no tiene tabla audit_log persistente. INMUTABLE una vez seteado.
+    cierre_forzado_en: Mapped[str | None] = mapped_column(
+        DateTime(timezone=True), nullable=True,
+        comment="Timestamp del cierre forzado por el proctor. NULL = no fue cierre forzado.",
+    )
+    cierre_forzado_por: Mapped[str | None] = mapped_column(
+        String(255), nullable=True,
+        comment="Subject del JWT del proctor que forzo el cierre (audit trail).",
+    )
+    cierre_forzado_motivo: Mapped[str | None] = mapped_column(
+        String(500), nullable=True,
+        comment="Motivo operativo del cierre forzado (NO veredicto disciplinario).",
+    )
+
     # c-16: decision terminal del revisor (slim, migration 0013). NULLABLE
     # — None = sin revisar todavia. Una vez seteada, es INMUTABLE (RN-RV-07).
     decision: Mapped[str | None] = mapped_column(

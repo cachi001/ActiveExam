@@ -51,6 +51,7 @@ import {
   type ScreenDetailsProvider,
 } from './contextDetectors';
 import { descripcionEvento } from '../lib/api';
+import { nombreCompleto } from '../lib/types';
 import type { EventoSesion, Severidad, TipoEvento } from '../lib/types';
 import { CircularEventBuffer } from '../transport/eventBuffer';
 import { IndexedDbEventBufferStore } from '../transport/indexedDbBufferStore';
@@ -72,6 +73,49 @@ import { hashClip } from '../features/biometria/clipCustody';
 
 /** Máximo de eventos recientes que el panel del examen muestra. */
 const MAX_EVENTOS = 30;
+
+/**
+ * Guarda de idempotencia para la CREACIÓN de sesión, a nivel de MÓDULO (sobrevive
+ * a los re-montajes del effect en React.StrictMode dev, que monta→desmonta→monta).
+ *
+ * Mapea examen.id → promesa de creación EN VUELO o YA RESUELTA. El effect, en vez de
+ * llamar a `api.crearSesionProctoring` directamente, consulta este mapa: si ya hay una
+ * promesa para ese examen, la reutiliza (no dispara un segundo POST). Sin esto, el
+ * doble montaje de StrictMode crea DOS sesiones (el `cancelled` solo descarta el
+ * RESULTADO del segundo, pero el POST ya salió).
+ *
+ * No interfiere con el reuso de `existingSessionId` (Consent.tsx): ese camino ni
+ * siquiera consulta el mapa. La entrada se limpia si la creación falla (vuelve null),
+ * para permitir un reintento legítimo en un montaje posterior.
+ */
+const sesionEnCreacion = new Map<string, Promise<string | null>>();
+
+/**
+ * Devuelve la sesión para `examenId`, creándola solo si no hay una en vuelo/creada.
+ * Exportada para testeo de la guarda de idempotencia (no se usa fuera del hook).
+ */
+export function obtenerOCrearSesion(
+  examenId: string,
+  nombre: string | undefined,
+): Promise<string | null> {
+  const enVuelo = sesionEnCreacion.get(examenId);
+  if (enVuelo) return enVuelo;
+  const p = api
+    .crearSesionProctoring('examen', nombre, examenId)
+    .then((s) => s.id)
+    .catch(() => {
+      // La creación falló: liberar la entrada para permitir reintento futuro.
+      sesionEnCreacion.delete(examenId);
+      return null;
+    });
+  sesionEnCreacion.set(examenId, p);
+  return p;
+}
+
+/** Test-only: limpia la guarda de idempotencia de módulo entre casos de test. */
+export function __resetSesionEnCreacionParaTest(): void {
+  sesionEnCreacion.clear();
+}
 
 /** ~5 fps: suficiente para detección en vivo sin saturar el cliente. */
 const FRAME_INTERVAL_MS = 200;
@@ -114,6 +158,7 @@ export function useExamProctoring(
   examen?: ExamenInfo | null,
 ): UseExamProctoringResult {
   const setProctoringSessionId = useApp((s) => s.setProctoringSessionId);
+  const principal = useApp((s) => s.principal);
   const addScore = useApp((s) => s.addScore);
   // C-64 D1: si Consent.tsx ya creó la sesión anticipada, reutilizarla — no crear otra.
   const existingSessionId = useApp((s) => s.proctoringSessionId);
@@ -136,6 +181,15 @@ export function useExamProctoring(
   const sessionPromiseRef = useRef<Promise<string | null> | null>(null);
   const faceCountRef = useRef(0);
   const stoppedRef = useRef(false);
+  // Nombre del alumno para la etiqueta de la sesión (lo que ve el proctor en las
+  // cards). En un ref para no meter `principal` en las deps del effect de arranque.
+  const nombreAlumnoRef = useRef('');
+  nombreAlumnoRef.current = nombreCompleto(principal);
+  // examen.id de la sesión creada por ESTE hook (no por reuso de existingSessionId).
+  // Lo usamos para liberar la guarda de idempotencia de módulo al finalizar, así una
+  // rendición posterior del mismo examen puede crear una sesión nueva (no reusar la ya
+  // finalizada). Permanece null si reutilizamos la sesión anticipada de Consent.tsx.
+  const createdExamenIdRef = useRef<string | null>(null);
 
   // ------ Buffer IndexedDB (D1) ------
   // Instancia única que persiste toda la duración del hook. Null si IndexedDB
@@ -254,7 +308,18 @@ export function useExamProctoring(
   };
 
   // ------ detener(): corta loop, dispone motor, limpia ------
-  const detener = useCallback(() => {
+  //
+  // `finalizarSesion` distingue el CIERRE EXPLÍCITO del examen (botón "Finalizar y
+  // entregar" → true) de un desmontaje TRANSITORIO del componente (cleanup del effect
+  // por remontaje / StrictMode / navegación de ida y vuelta → false).
+  //
+  // CRÍTICO (bug "no sale nada en Supervisión en vivo"): finalizar la sesión en CADA
+  // cleanup la marcaba `finalizada_en` apenas el componente remontaba, y como el panel
+  // del proctor solo muestra sesiones con `finalizada_en = NULL`, la sesión viva del
+  // alumno desaparecía. La finalización es responsabilidad del cierre explícito: el
+  // botón llama detener() (true) y además `Cierre.tsx` finaliza (idempotente). El
+  // cleanup transitorio NO debe finalizar: la sesión sigue viva y el remontaje la reusa.
+  const detener = useCallback((finalizarSesion = true) => {
     if (stoppedRef.current) return;
     stoppedRef.current = true;
     if (frameLoopRef.current) {
@@ -263,14 +328,18 @@ export function useExamProctoring(
     }
     pipelineRef.current = null;
     engineRef.current = null;
-    // Finalizar la sesión en el backend al detener el examen: la marca como
-    // finalizada (sale de "Supervisión en vivo", entra a Grabadas y, si supera el
-    // umbral, a la Cola de revisión). Fire-and-forget + idempotente (el Cierre lo
-    // reintenta). CRÍTICO: NO limpiamos proctoringSessionId del store acá — el Cierre
-    // lo necesita para leer el detalle (conteos/score). resetSesion() lo limpia al
-    // "Volver al inicio". Antes se nulificaba acá y la sesión nunca se finalizaba.
+    // Finalizar la sesión SOLO en el cierre explícito. Marca `finalizada_en` (sale de
+    // "Supervisión en vivo", entra a Grabadas y, si supera el umbral, a la Cola de
+    // revisión). Fire-and-forget + idempotente (el Cierre lo reintenta). NO limpiamos
+    // proctoringSessionId del store acá — el Cierre lo necesita para leer el detalle.
     const sid = sessionIdRef.current;
-    if (sid) void api.finalizarSesionProctoring(sid).catch(() => {});
+    if (sid && finalizarSesion) {
+      void api.finalizarSesionProctoring(sid).catch(() => {});
+      // Liberar la guarda de idempotencia: la sesión quedó finalizada, así una
+      // rendición posterior del mismo examen crea una sesión nueva (no reusa esta).
+      const examenId = createdExamenIdRef.current;
+      if (examenId) sesionEnCreacion.delete(examenId);
+    }
     sessionIdRef.current = null;
     sessionPromiseRef.current = null;
     setActivo(false);
@@ -374,16 +443,22 @@ export function useExamProctoring(
         // el primer evento espere si llega antes de que resuelva). Exigimos `examen.id`:
         // sin él, la sesión quedaba orfana ("examen sin examen vinculado") y aparecía
         // en supervisión en vivo sin contexto, indistinguible de una prueba.
-        sessionPromiseRef.current = api
-          .crearSesionProctoring('examen', examen.nombre, examen.id)
-          .then((s) => {
-            if (cancelled) return null;
-            sessionIdRef.current = s.id;
-            setSessionId(s.id);
-            setProctoringSessionId(s.id);
-            return s.id;
-          })
-          .catch(() => null);
+        //
+        // IDEMPOTENCIA (StrictMode): pasamos por obtenerOCrearSesion, que dedupe la
+        // creación por examen.id a nivel de módulo. El doble montaje de StrictMode
+        // reutiliza la MISMA promesa en lugar de disparar un segundo POST → una sola
+        // sesión. El `cancelled` sigue protegiendo de aplicar el resultado a un montaje
+        // ya desmontado, pero ya no hay POST duplicado que limpiar.
+        createdExamenIdRef.current = examen.id;
+        sessionPromiseRef.current = obtenerOCrearSesion(examen.id, nombreAlumnoRef.current || examen.nombre).then(
+          (id) => {
+            if (cancelled || !id) return id ?? null;
+            sessionIdRef.current = id;
+            setSessionId(id);
+            setProctoringSessionId(id);
+            return id;
+          },
+        );
       } else {
         // Llegamos a /examen sin un examenActivo válido (deep-link, reload sin
         // contexto). NO creamos sesión orfana — el flujo del alumno falla seguro
@@ -461,7 +536,11 @@ export function useExamProctoring(
       if (bufferRef.current) {
         drainAndReplay(bufferRef.current, replaySender).catch(() => {});
       }
-      detener();
+      // Cleanup TRANSITORIO: corta el loop y dispone el motor pero NO finaliza la
+      // sesión (la deja viva). Un remontaje (StrictMode/navegación) la reusa y sigue
+      // apareciendo en "Supervisión en vivo". La finalización real la hace el cierre
+      // explícito: el botón "Finalizar y entregar" (Examen.tsx) + Cierre.tsx.
+      detener(false);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [examen?.id]);

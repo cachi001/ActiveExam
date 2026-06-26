@@ -8,12 +8,14 @@ import { useApp } from '../lib/store';
 import { api } from '../lib/api';
 import { Term } from '../ui/Term';
 import { useToast } from '../ui/toast';
+import { nombreCompleto } from '../lib/types';
 import type { ConsentTextResponse, AcuseConsentimiento } from '../lib/types';
 
 export default function Consent() {
   const navigate = useNavigate();
   const toast = useToast();
   const examen = useApp((s) => s.examenActivo);
+  const principal = useApp((s) => s.principal);
   const proctoringSessionId = useApp((s) => s.proctoringSessionId);
   const setProctoringSessionId = useApp((s) => s.setProctoringSessionId);
   const [texto, setTexto] = useState<ConsentTextResponse | null>(null);
@@ -65,7 +67,10 @@ export default function Consent() {
     // Si la llamada falla, continuar igual (degradación silenciosa — el flujo no se bloquea por proctoring).
     if (!proctoringSessionId) {
       try {
-        const sesion = await api.crearSesionProctoring('examen', examen.nombre, examen.id);
+        // etiqueta = NOMBRE DEL ALUMNO (lo que el proctor necesita ver en las
+        // cards de supervisión). El examen ya se deriva de exam_id vía el catálogo.
+        const etiqueta = nombreCompleto(principal) || examen.nombre;
+        const sesion = await api.crearSesionProctoring('examen', etiqueta, examen.id);
         setProctoringSessionId(sesion.id);
       } catch {
         // degradación silenciosa: la sesión se intentará crear en useExamProctoring

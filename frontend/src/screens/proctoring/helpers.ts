@@ -107,6 +107,41 @@ export function scoreAccentBorder(score: number): string {
   return 'border-l-success';
 }
 
+/**
+ * Fondo + borde SUAVE para la tarjeta entera, tintado por nivel de riesgo.
+ *
+ * Reemplaza el acento "fuerte" (stripe lateral saturado) por el color del badge
+ * en su versión clara (los `*-container` del design system). Así una sesión de
+ * riesgo medio se ve con toda la card en amarillo clarito, no con una franja
+ * amarilla fuerte sobre blanco. Pensado para usarse como `border ${scoreCardSurface(score)}`.
+ */
+export function scoreCardSurface(score: number): string {
+  return `${scoreSoftBg(score)} ${scoreSoftBorder(score)}`;
+}
+
+/** Solo el fondo claro tintado por riesgo (para filas/elementos sin borde propio). */
+export function scoreSoftBg(score: number): string {
+  const nivel = nivelRiesgo(score);
+  if (nivel === 'alto') return 'bg-error-container/40';
+  if (nivel === 'medio') return 'bg-warning-container/50';
+  return 'bg-success-container/25';
+}
+
+/** Solo el color del borde acorde al riesgo (combina con `border`). */
+export function scoreSoftBorder(score: number): string {
+  const nivel = nivelRiesgo(score);
+  if (nivel === 'alto') return 'border-error/30';
+  if (nivel === 'medio') return 'border-warning/30';
+  return 'border-success/20';
+}
+
+/**
+ * Fondo translúcido para elementos INTERNOS de una card tintada (chips de métrica,
+ * chip de score). Blanco semitransparente que se integra con el tinte de la card,
+ * en vez de un gris sólido (`surface-container-*`) que se ve sucio sobre el color.
+ */
+export const INNER_CHIP_BG = 'bg-white/60';
+
 /** Clase de relleno del gauge de score. */
 export function gaugeFill(score: number): string {
   const nivel = nivelRiesgo(score);
@@ -137,24 +172,51 @@ export function modoLabel(modo: string): string {
 export function verdictClasses(v: VeredictoReinferencia | null | undefined): string {
   if (v === 'coincide') return 'bg-success-container text-success border-success/30';
   if (v === 'discrepancia') return 'bg-error-container text-on-error-container border-error/30';
-  return 'bg-surface-container text-on-surface-variant border-outline-variant/40';
+  return 'bg-white/70 text-on-surface-variant border-outline-variant/40';
 }
 
 export function verdictIcon(v: VeredictoReinferencia | null | undefined): string {
   if (v === 'coincide') return 'check_circle';
   if (v === 'discrepancia') return 'report';
-  return 'help';
+  if (v === 'error') return 'error';
+  return 'info';
 }
 
 export function verdictLabel(v: VeredictoReinferencia | null | undefined): string {
-  if (!v) return 'No evaluado';
-  const map: Record<VeredictoReinferencia, string> = {
-    coincide: 'Coincide',
-    discrepancia: 'Discrepancia',
-    sin_referencia: 'Sin referencia',
-    error: 'Error',
+  const map: Record<string, string> = {
+    coincide: 'Coincide con el navegador',
+    discrepancia: 'No coincide con el navegador',
+    sin_referencia: 'Sin referencia previa',
+    error: 'Error al verificar',
+    no_evaluado: 'No evaluado',
   };
-  return map[v] ?? v;
+  return map[v ?? ''] ?? 'No evaluado';
+}
+
+/**
+ * ¿El veredicto aporta evidencia que valga la pena mostrar?
+ * `no_evaluado`/null = el servidor no re-infirió (p. ej. evento sin captura) → no
+ * se muestra la fila para no ensuciar con ruido sin valor.
+ */
+export function tieneVeredicto(v: VeredictoReinferencia | null | undefined): boolean {
+  return v === 'coincide' || v === 'discrepancia' || v === 'sin_referencia' || v === 'error';
+}
+
+/** snake_case / minúsculas → "Texto legible" (fallback cuando no hay etiqueta). */
+export function humanizarLabel(raw: string): string {
+  const limpio = (raw ?? '').replace(/_/g, ' ').trim();
+  return limpio.charAt(0).toUpperCase() + limpio.slice(1);
+}
+
+/** Fondo claro tintado por SEVERIDAD del evento (para la card del evento, sin
+ *  bordes grises ni stripe fuerte). Coherente con scoreSoftBg de las sesiones. */
+export function severidadSoftBg(sev: string): string {
+  // El backend guarda la severidad en masculino (bajo/medio/alto/critico) y el
+  // cliente la maneja en femenino (baja/media/alta/critica); aceptamos ambos.
+  if (sev === 'critica' || sev === 'critico' || sev === 'alta' || sev === 'alto') return 'bg-error-container/40';
+  if (sev === 'media' || sev === 'medio') return 'bg-warning-container/50';
+  if (sev === 'baja' || sev === 'bajo') return 'bg-success-container/25';
+  return 'bg-surface-container-lowest';
 }
 
 // --- Formateo de payload de eventos (legibilidad para revisión humana) ---

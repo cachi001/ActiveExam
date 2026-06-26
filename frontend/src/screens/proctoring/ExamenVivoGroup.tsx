@@ -16,9 +16,10 @@ import { Icon } from '../../ui/components';
 import type { SesionProctoringResumen } from '../../lib/types';
 import {
   formatFechaRelativa,
-  scoreAccentBorder,
+  scoreSoftBg,
   scoreTextColor,
   nivelRiesgo,
+  INNER_CHIP_BG,
   type ExamInfo,
 } from './helpers';
 
@@ -56,98 +57,91 @@ export function ExamenVivoGroup({
         {/* Botón de colapso (chevron) — solo cambia visibilidad local */}
         <button
           type="button"
-          onClick={(e) => { e.stopPropagation(); setColapsado((v) => !v); }}
+          onClick={() => setColapsado((v) => !v)}
           aria-label={colapsado ? 'Mostrar personas' : 'Ocultar personas'}
           aria-expanded={!colapsado}
-          className="shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-md hover:bg-surface-100 text-on-surface-variant transition-colors"
+          className="shrink-0 inline-flex items-center justify-center w-8 h-8 rounded-md hover:bg-surface-100 text-on-surface-variant transition-colors"
         >
           <Icon
             name="expand_more"
-            className={`text-[20px] transition-transform ${colapsado ? '-rotate-90' : ''}`}
+            className={`text-[22px] leading-none transition-transform duration-300 ease-out ${colapsado ? '-rotate-90' : ''}`}
           />
         </button>
 
-        <div
-          className={`flex-1 min-w-0 flex items-center justify-between gap-md
-            ${navegable ? 'cursor-pointer rounded-md hover:bg-surface-100 -mx-1 px-1 py-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40' : ''}`}
-          {...(navegable
-            ? {
-                role: 'button',
-                tabIndex: 0,
-                onClick: () => onAbrirExamen!(examId!),
-                onKeyDown: (e: React.KeyboardEvent) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    onAbrirExamen!(examId!);
-                  }
-                },
-              }
-            : {})}
-        >
-          <div className="min-w-0">
-            <div className="flex items-center gap-sm">
-              <Icon name="menu_book" className="text-[18px] text-on-surface-variant shrink-0" />
-              <h3 className="font-headline text-title-lg text-on-surface tracking-tight truncate">
-                {examInfo?.examNombre ?? 'Sesiones sin examen asignado'}
-              </h3>
-            </div>
-            {examInfo && (
-              <p className="text-label-sm text-on-surface-variant mt-base truncate pl-[26px]">
-                {examInfo.comisionNombre} · {examInfo.docente}
-              </p>
-            )}
+        {/* Título del examen — NO navega (solo el botón "Ver personas" lo hace). */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-sm">
+            <Icon name="menu_book" className="text-[18px] text-on-surface-variant shrink-0" />
+            <h3 className="font-headline text-title-lg text-on-surface tracking-tight truncate">
+              {examInfo?.examNombre ?? 'Sesiones sin examen asignado'}
+            </h3>
           </div>
-          {navegable && (
-            <span className="inline-flex items-center gap-base text-label-md font-semibold text-primary shrink-0">
-              <span className="hidden sm:inline">Ver personas</span>
-              <Icon name="arrow_forward" className="text-[20px]" />
-            </span>
+          {examInfo && (
+            <p className="text-label-sm text-on-surface-variant mt-base truncate pl-[26px]">
+              {examInfo.comisionNombre} · {examInfo.docente}
+            </p>
           )}
         </div>
+
+        {/* Única zona navegable: el botón "Ver personas". */}
+        {navegable && (
+          <button
+            type="button"
+            onClick={() => onAbrirExamen!(examId!)}
+            className="shrink-0 inline-flex items-center gap-base rounded-md px-2 py-1 text-label-md font-semibold text-primary
+              hover:bg-primary/5 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+          >
+            <span className="hidden sm:inline">Ver personas</span>
+            <Icon name="arrow_forward" className="text-[20px]" />
+          </button>
+        )}
       </header>
 
-      {/* Métricas agregadas del examen — se ocultan al colapsar */}
-      {!colapsado && (
-      <div className="flex items-center gap-lg px-md py-sm text-label-sm text-on-surface-variant border-b border-outline-variant/40">
-        <span className="inline-flex items-center gap-base">
-          <Icon name="group" className="text-[16px]" />
-          <strong className="font-semibold text-on-surface">{personas}</strong>
-          {personas === 1 ? 'persona' : 'personas'}
-        </span>
-        <span className="inline-flex items-center gap-base">
-          <Icon name="notifications" className="text-[16px]" />
-          <strong className="font-semibold text-on-surface">{eventos}</strong>
-          {eventos === 1 ? 'evento' : 'eventos'}
-        </span>
-        {riesgoAlto > 0 && (
-          <span className="inline-flex items-center gap-base text-error font-semibold">
-            <Icon name="priority_high" className="text-[16px]" />
-            {riesgoAlto} en riesgo alto
-          </span>
-        )}
+      {/* Cuerpo colapsable — animación fluida de alto con el truco grid-rows. */}
+      <div
+        className={`grid transition-[grid-template-rows] duration-300 ease-out ${colapsado ? 'grid-rows-[0fr]' : 'grid-rows-[1fr]'}`}
+      >
+        <div className="overflow-hidden">
+          {/* Métricas agregadas del examen */}
+          <div className="flex items-center gap-lg px-md py-sm text-label-sm text-on-surface-variant border-b border-outline-variant/40">
+            <span className="inline-flex items-center gap-base">
+              <Icon name="group" className="text-[16px]" />
+              <strong className="font-semibold text-on-surface">{personas}</strong>
+              {personas === 1 ? 'persona' : 'personas'}
+            </span>
+            <span className="inline-flex items-center gap-base">
+              <Icon name="notifications" className="text-[16px]" />
+              <strong className="font-semibold text-on-surface">{eventos}</strong>
+              {eventos === 1 ? 'evento' : 'eventos'}
+            </span>
+            {riesgoAlto > 0 && (
+              <span className="inline-flex items-center gap-base text-error font-semibold">
+                <Icon name="priority_high" className="text-[16px]" />
+                {riesgoAlto} en riesgo alto
+              </span>
+            )}
+          </div>
+
+          {/* Filas de persona */}
+          <ul className="divide-y divide-outline-variant/40">
+            {visibles.map((s) => (
+              <PersonaVivoRow key={s.id} sesion={s} onAbrir={onAbrir} />
+            ))}
+          </ul>
+
+          {ocultas > 0 && (
+            <button
+              type="button"
+              onClick={() => examId && onAbrirExamen?.(examId)}
+              className="w-full flex items-center justify-center gap-base px-md py-sm border-t border-outline-variant/40
+                text-label-md font-semibold text-primary hover:bg-primary/5 transition-colors"
+            >
+              Ver las {personas} personas
+              <Icon name="arrow_forward" className="text-[18px]" />
+            </button>
+          )}
+        </div>
       </div>
-      )}
-
-      {/* Filas de persona — se ocultan al colapsar */}
-      {!colapsado && (
-        <ul className="divide-y divide-outline-variant/40">
-          {visibles.map((s) => (
-            <PersonaVivoRow key={s.id} sesion={s} onAbrir={onAbrir} />
-          ))}
-        </ul>
-      )}
-
-      {!colapsado && ocultas > 0 && (
-        <button
-          type="button"
-          onClick={() => examId && onAbrirExamen?.(examId)}
-          className="w-full flex items-center justify-center gap-base px-md py-sm border-t border-outline-variant/40
-            text-label-md font-semibold text-primary hover:bg-surface-100 transition-colors"
-        >
-          Ver las {personas} personas
-          <Icon name="arrow_forward" className="text-[18px]" />
-        </button>
-      )}
     </section>
   );
 }
@@ -172,10 +166,10 @@ function PersonaVivoRow({
             onAbrir(sesion);
           }
         }}
-        className={`group flex items-center gap-md pl-sm pr-md py-sm cursor-pointer
-          border-l-[3px] ${scoreAccentBorder(sesion.score)}
-          transition-colors hover:bg-surface-container-low/60
-          focus:outline-none focus-visible:bg-surface-container-low`}
+        className={`group flex items-center gap-md px-md py-sm cursor-pointer
+          ${scoreSoftBg(sesion.score)}
+          transition-[filter] hover:brightness-[0.97]
+          focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/40`}
       >
         {/* Identidad de la persona */}
         <div className="min-w-0 flex-1">
@@ -208,7 +202,7 @@ function PersonaVivoRow({
             amarillas/rojas). */}
         <span
           className={`inline-flex items-center justify-center min-w-[44px] px-sm py-base rounded-full
-            text-label-sm font-bold tabular-nums shrink-0 bg-white/70 ${scoreTextColor(sesion.score ?? 0)}`}
+            text-label-sm font-bold tabular-nums shrink-0 ${INNER_CHIP_BG} ${scoreTextColor(sesion.score ?? 0)}`}
         >
           {sesion.score ?? 0}
         </span>

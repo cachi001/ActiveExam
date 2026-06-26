@@ -21,6 +21,8 @@ de los rangos institucionales por severidad (``SEVERITY_RANGES``).
 
 from __future__ import annotations
 
+from datetime import datetime
+
 # Fallback por severidad (RN-GLB-03 — solo si la config persistida no esta). Los
 # valores son el centro del rango institucional definido en
 # ``app/domain/scoring/risk_score.SEVERITY_RANGES``:
@@ -74,3 +76,64 @@ def calcular_score(
             total += PESOS_SEVERIDAD.get(getattr(e, "severidad", ""), 0)
     # Cap a 100: el score es 0..100 (coincide con el cliente y la finalizacion).
     return min(SCORE_CAP, total)
+
+
+def _en_ventana(
+    ts: datetime | None, inicio: datetime | None, fin: datetime | None, ahora: datetime
+) -> bool:
+    """True si ``ts`` cae dentro de la ventana [inicio, fin or ahora] (bordes inclusive).
+
+    Una pausa aprobada todavia activa (``fin is None``) usa ``ahora`` como cierre
+    de la ventana. Si no hay ``inicio`` la ventana no esta definida y no contiene
+    nada (la pausa no abrio ventana: rechazada o sin aprobar)."""
+    if ts is None or inicio is None:
+        return False
+    cierre = fin if fin is not None else ahora
+    return inicio <= ts <= cierre
+
+
+def eventos_en_pausa_autorizada(
+    eventos: list, ventanas: list, ahora: datetime | None = None
+) -> set[str]:
+    """Devuelve el set de ids de eventos cuyo ``ts_backend`` cae en alguna ventana de pausa.
+
+    HELPER PURO (sin DB, sin red) — testeable en aislamiento. Implementa la
+    contextualizacion del score (Opcion 1, sabor 1a): los eventos producidos
+    DURANTE una pausa autorizada se EXCLUYEN del puntaje (no se borran ni se
+    ocultan; L2.5 regla #6).
+
+    Args:
+        eventos: objetos duck-typed con ``id`` y ``ts_backend`` (datetime).
+        ventanas: objetos duck-typed con ``estado``, ``inicio_en``, ``fin_en``. Solo
+            cuentan las ventanas de pausa APROBADA — estados ``aprobada`` y
+            ``finalizada``. ``solicitada``/``rechazada`` no abren ventana.
+        ahora: cierre para ventanas activas (``fin_en is None``). Default: ``datetime.now``
+            con tz de ``inicio_en`` si la hay, si no naive ``utcnow``-equivalente.
+
+    Returns:
+        Set de ``id`` (str) de los eventos que caen dentro de alguna ventana aprobada.
+    """
+    ventanas_aprobadas = [
+        v for v in ventanas if getattr(v, "estado", "") in ("aprobada", "finalizada")
+    ]
+    if not ventanas_aprobadas:
+        return set()
+
+    ids: set[str] = set()
+    for e in eventos:
+        ts = getattr(e, "ts_backend", None)
+        if ts is None:
+            continue
+        # ``ahora`` debe ser comparable con ``ts`` (aware vs naive). Lo derivamos
+        # del propio ts para evitar TypeError al comparar datetimes con/sin tz.
+        ref_ahora = ahora if ahora is not None else datetime.now(tz=getattr(ts, "tzinfo", None))
+        for v in ventanas_aprobadas:
+            if _en_ventana(
+                ts,
+                getattr(v, "inicio_en", None),
+                getattr(v, "fin_en", None),
+                ref_ahora,
+            ):
+                ids.add(getattr(e, "id"))
+                break
+    return ids

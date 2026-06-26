@@ -201,7 +201,7 @@ export default function ThresholdsConfig({
           </div>
 
           {/* gaze_fixation_tolerance → segmented Alta/Media/Baja */}
-          <div className="space-y-base min-w-0 sm:col-span-2">
+          <div className="space-y-base min-w-0">
             <label className="block">
               <span className="text-label-sm font-semibold text-on-surface">
                 Tolerancia de fijación de mirada
@@ -210,7 +210,7 @@ export default function ThresholdsConfig({
             <p className="text-[11px] text-on-surface-variant">
               Alta = más alertas (exige que la mirada no se mueva); Baja = permite más variación natural.
             </p>
-            <div className="flex gap-sm max-w-sm">
+            <div className="flex gap-sm">
               {SENSIBILIDAD_OPTIONS.map((opt) => (
                 <button
                   key={opt.value}

@@ -30,6 +30,7 @@ import { ResumenVivo } from './proctoring/ResumenVivo';
 import { ListaSkeleton, ListaVaciaVivo } from './proctoring/ListaEstados';
 import { IndicadorVivo } from './proctoring/IndicadorVivo';
 import { joinExamInfo, type ExamInfo } from './proctoring/helpers';
+import { PausasPendientes } from './proctoring/PausasPendientes';
 
 export const PROCTOR_NAV = STAFF_NAV;
 
@@ -49,6 +50,10 @@ export default function Proctor() {
   const toast = useToast();
   const setProctoringSessionId = useApp((s) => s.setProctoringSessionId);
   const setProctoringExamId = useApp((s) => s.setProctoringExamId);
+  const setProctoringDetailBackRoute = useApp((s) => s.setProctoringDetailBackRoute);
+  // Identidad del proctor logueado → se registra como proctor_actor al resolver
+  // una pausa (C-15). Email como subject estable; null si no hay sesión.
+  const proctorActor = useApp((s) => s.principal?.email ?? null);
 
   const [sesiones, setSesiones] = useState<SesionProctoringResumen[]>([]);
   const [cargaInicial, setCargaInicial] = useState(true);
@@ -96,6 +101,8 @@ export default function Proctor() {
 
   const handleAbrir = (sesion: SesionProctoringResumen) => {
     setProctoringSessionId(sesion.id);
+    // "Volver" del detalle regresa acá (supervisión en vivo), no a grabadas.
+    setProctoringDetailBackRoute('/proctor');
     navigate(PROCTORING_DETAIL_ROUTE);
   };
 
@@ -175,8 +182,12 @@ export default function Proctor() {
     >
       <div className="space-y-lg animate-in fade-in duration-500">
 
-        {/* Resumen agregado del lote actual */}
+        {/* Resumen agregado del lote actual — va PRIMERO (las métricas del panel
+            arriba de todo, antes de la cola de solicitudes de pausa). */}
         {!cargaInicial && sesiones.length > 0 && <ResumenVivo sesiones={sesiones} />}
+
+        {/* C-15: cola de solicitudes de pausa (poll propio; se oculta si no hay). */}
+        <PausasPendientes proctorActor={proctorActor} />
 
         {/* Barra de estado del polling (sin card) */}
         <div className="flex items-center justify-between gap-md text-label-sm text-on-surface-variant">

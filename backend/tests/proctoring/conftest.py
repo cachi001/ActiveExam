@@ -26,6 +26,13 @@ from app.infrastructure.persistence.models.proctoring import (  # noqa: F401 -- 
     ProctoringEventModel,
     ProctoringSessionModel,
 )
+from app.infrastructure.persistence.models.chat_pausa import (  # noqa: F401 -- registra tablas (C-15 6.x)
+    MensajeChatModel,
+    PausaAutorizadaModel,
+)
+from app.infrastructure.persistence.models.observacion import (  # noqa: F401 -- registra tabla (C-15 3.2)
+    ObservacionProctorModel,
+)
 from app.infrastructure.persistence.base import Base
 
 
@@ -46,6 +53,9 @@ def db_url() -> str:
 
 
 _SLIM_TABLE_NAMES = (
+    "observacion_proctor",
+    "mensaje_chat",
+    "pausa_autorizada",
     "proctoring_biometria",
     "proctoring_event",
     "proctoring_session",
@@ -67,10 +77,20 @@ async def slim_engine(db_url: str):
         ProctoringEventModel,
         ProctoringSessionModel,
     )
+    from app.infrastructure.persistence.models.chat_pausa import (  # noqa
+        MensajeChatModel,
+        PausaAutorizadaModel,
+    )
+    from app.infrastructure.persistence.models.observacion import (  # noqa
+        ObservacionProctorModel,
+    )
     slim_tables = [
         ProctoringSessionModel.__table__,
         ProctoringEventModel.__table__,
         ProctoringBiometriaModel.__table__,
+        MensajeChatModel.__table__,
+        PausaAutorizadaModel.__table__,
+        ObservacionProctorModel.__table__,
     ]
     async with engine.begin() as conn:
         # Limpieza previa robusta (CASCADE) — tolera estado sucio de corridas previas.
@@ -101,22 +121,103 @@ async def db_session(slim_engine) -> AsyncIterator[AsyncSession]:
         yield session
 
 
-@pytest.fixture
-def slim_app(slim_engine):
-    """App slim instanciada con el engine de test."""
-    from app.infrastructure.persistence.session_slim import create_slim_session_factory
+# ---------------------------------------------------------------------------
+# Auth de test: JwtValidator HS256 (stdlib, sin red) + emisor de tokens por rol.
+#
+# Los endpoints de proctoring slim quedan endurecidos por rol (auth/RBAC). Para
+# testearlos sin levantar Keycloak ni el stack completo, cableamos un
+# ``JwtValidator`` HS256-only en ``app.state.jwt_validator`` (mismo mecanismo que
+# produccion lee en ``get_current_principal``) y emitimos tokens firmados con el
+# mismo secreto via ``encode_hs256`` (helper de test del repo).
+# ---------------------------------------------------------------------------
+
+_TEST_JWT_SECRET = b"proctoring-slim-test-secret"
+_TEST_JWT_ISSUER = "activeexam-auth"
+_TEST_JWT_AUDIENCE = "proctoring-api"
+
+
+def token_for(roles: list[str], *, mfa: bool = True) -> str:
+    """Emite un JWT HS256 de test con los roles dados (claims shape Keycloak).
+
+    ``mfa=True`` agrega ``amr=['otp']`` para satisfacer el segundo factor de los
+    roles que lo exigen; los endpoints de proctoring slim solo chequean rol (no
+    MFA), pero lo incluimos por defecto para no acoplar el test a esa decision.
+    """
+    from app.infrastructure.auth.verifiers import encode_hs256
+
+    claims: dict = {
+        "iss": _TEST_JWT_ISSUER,
+        "aud": _TEST_JWT_AUDIENCE,
+        "sub": "test-subject",
+        "preferred_username": "+".join(roles) or "anon",
+        "email": "test@uni.edu",
+        "exp": 9999999999,
+        "realm_access": {"roles": roles},
+    }
+    if mfa:
+        claims["amr"] = ["otp"]
+    return encode_hs256(claims, _TEST_JWT_SECRET)
+
+
+def auth_headers(roles: list[str], *, mfa: bool = True) -> dict[str, str]:
+    """Header Authorization Bearer con un token de test para los roles dados."""
+    return {"Authorization": f"Bearer {token_for(roles, mfa=mfa)}"}
+
+
+def _build_test_jwt_validator():
+    """JwtValidator HS256-only para los tests (stdlib, sin PyJWT ni red)."""
+    from app.domain.auth.token import TokenPolicy
+    from app.infrastructure.auth.jwks_cache import JwksCache
+    from app.infrastructure.auth.jwt_validator import JwtValidator
+    from app.infrastructure.auth.verifiers import build_hs256_verify
+
+    cache = JwksCache(lambda: {"keys": [{"kid": "test-key"}]}, ttl_seconds=3600)
+    policy = TokenPolicy(
+        issuers_aceptados=frozenset({_TEST_JWT_ISSUER}),
+        audience=_TEST_JWT_AUDIENCE,
+    )
+    return JwtValidator(
+        jwks_cache=cache,
+        policy=policy,
+        verify_fn=build_hs256_verify(_TEST_JWT_SECRET),
+    )
+
+
+@pytest.fixture(scope="session")
+def slim_reinferencia():
+    """Una UNICA instancia de MediaPipeReinferencia para toda la sesion de tests.
+
+    Espeja produccion (uvicorn crea el adapter una sola vez al arranque, vive para
+    siempre). Crear uno NUEVO por test hace que el FaceDetector real de MediaPipe
+    quede sin referencias y el GC dispare su ``__del__`` → ``close()``, que delega
+    en un *serial dispatcher* ya finalizado y se cuelga eternamente en
+    ``executor.submit(...).result()``. Reusar una sola instancia evita ese deadlock.
+    """
     from app.infrastructure.reinferencia.mediapipe_adapter import MediaPipeReinferencia
+
+    return MediaPipeReinferencia()
+
+
+@pytest.fixture
+def slim_app(slim_engine, slim_reinferencia):
+    """App slim instanciada con el engine de test.
+
+    Cablea ``app.state.jwt_validator`` (HS256 de test) para que los guards de rol
+    de los endpoints de proctoring slim resuelvan el principal igual que en prod.
+    """
+    from app.infrastructure.persistence.session_slim import create_slim_session_factory
     from app.presentation.api.v1.proctoring.router import create_proctoring_router
     from fastapi import FastAPI
     from fastapi.middleware.cors import CORSMiddleware
 
     factory = create_slim_session_factory(slim_engine)
-    reinferencia = MediaPipeReinferencia()
+    reinferencia = slim_reinferencia
     proctoring_router = create_proctoring_router(
         session_factory=factory,
         reinferencia=reinferencia,
     )
     app = FastAPI()
+    app.state.jwt_validator = _build_test_jwt_validator()
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["http://localhost:5173"],
@@ -129,11 +230,29 @@ def slim_app(slim_engine):
 
 @pytest_asyncio.fixture
 async def client(slim_app, slim_engine) -> AsyncIterator[AsyncClient]:
-    """Cliente HTTP async para tests de endpoints.
+    """Cliente HTTP async AUTENTICADO COMO ESTUDIANTE para tests del flujo del alumno.
 
-    Limpia las tablas slim ANTES de cada test para aislar estado entre tests
-    (sin esto, las sesiones creadas en un test leakean al siguiente y los
-    asserts dependen del orden de ejecucion)."""
+    El alumno usa los endpoints compartidos (crear sesion, eventos, chat, pausas,
+    finalizar). Inyecta por defecto un Bearer de rol ``estudiante`` para que el
+    flujo del alumno siga verde tras el endurecimiento por rol. Los tests de
+    guards (proctor/admin/401) usan ``client_noauth`` + ``auth_headers(...)``.
+
+    Limpia las tablas slim ANTES de cada test para aislar estado entre tests."""
+    await _limpiar_tablas_slim(slim_engine)
+    async with AsyncClient(
+        transport=ASGITransport(app=slim_app),
+        base_url="http://test",
+        headers=auth_headers(["estudiante"]),
+    ) as c:
+        yield c
+
+
+@pytest_asyncio.fixture
+async def client_noauth(slim_app, slim_engine) -> AsyncIterator[AsyncClient]:
+    """Cliente HTTP async SIN auth por defecto (para tests de 401/403 y roles).
+
+    Igual que ``client`` pero sin Authorization header preinyectado: cada test
+    decide que token mandar (o ninguno) via ``auth_headers(...)``."""
     await _limpiar_tablas_slim(slim_engine)
     async with AsyncClient(
         transport=ASGITransport(app=slim_app), base_url="http://test"

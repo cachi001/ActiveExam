@@ -93,17 +93,10 @@ export default function SeccionProctoring() {
   const umbralPct = ((estado.umbral - UMBRAL_MIN) / (UMBRAL_MAX - UMBRAL_MIN)) * 100;
 
   return (
-    <div className="space-y-lg max-w-4xl">
-      {/* B: Título propio de la sección */}
-      <div>
-        <h2 className="font-headline text-title-xl text-on-surface tracking-tight">Parámetros generales</h2>
-        <p className="text-[13px] text-on-surface-variant mt-1">
-          Umbral de riesgo para revisión humana y detectores que vigila el sistema por defecto.
-          Los cambios aplican a partir del próximo examen que arranque.
-        </p>
-      </div>
-
-      <div className="grid lg:grid-cols-2 gap-lg items-stretch">
+    <div className="space-y-lg">
+      {/* El título y el subtítulo ya los pone el header de la página + el tab;
+          cada card tiene su propio SectionTitle. Sin intro redundante acá. */}
+      <div className="grid lg:grid-cols-2 gap-lg items-start">
         <Card className="space-y-md min-w-0 flex flex-col">
           <SectionTitle sub="A partir de qué puntaje de riesgo una sesión entra a revisión humana">
             Umbral de revisión

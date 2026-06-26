@@ -38,7 +38,11 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest==8.3.4",
-    "pytest-asyncio==0.24.0", # pineado: 1.x rompe el loop-scoping de los fixtures async (asyncpg "different loop")
+    # 0.26.0: primera version que RESPETA asyncio_default_test_loop_scope (abajo).
+    # 0.24.0 lo ignoraba (warning "Unknown config option") -> tests con loop por-funcion
+    # y fixtures session-scoped en loops distintos -> deadlock al correr la suite junta
+    # (asyncpg "different loop"). 1.x rompe el loop-scoping, por eso se queda en 0.26.x.
+    "pytest-asyncio==0.26.0",
     "httpx==0.28.1",          # TestClient de FastAPI
     "psycopg[binary]==3.2.3", # smoke de conectividad a Postgres
     "requests==2.32.3",       # smoke de conectividad MinIO/Keycloak

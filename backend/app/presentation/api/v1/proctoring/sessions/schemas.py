@@ -6,7 +6,6 @@ Ley 25.326: screenshot_base64 y biometria son datos sensibles.
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -62,6 +61,9 @@ class EventoDetalle(BaseModel):
     face_count_cliente: int | None = None
     face_count_servidor: int | None = None
     veredicto_reinferencia: str
+    # C-15 (6.4): True si el evento cayo dentro de una ventana de pausa autorizada.
+    # El score del detalle EXCLUYE estos eventos (L2.5: contextualiza, no borra).
+    en_pausa_autorizada: bool = False
 
 
 class BiometriaDetalle(BaseModel):
@@ -109,3 +111,63 @@ class SesionDetalle(BaseModel):
     score: int
     eventos: list[EventoDetalle]
     biometria: BiometriaDetalle | None = None
+    # C-15 (3.3): cierre forzado (operativo, NO disciplinario). Se exponen para que
+    # la UI del proctor refleje el estado al RECARGAR el detalle (no solo en la
+    # accion). NULL si la sesion no fue cerrada de forma forzada.
+    cierre_forzado_en: Any = None
+    cierre_forzado_motivo: str | None = None
+
+
+# --- C-15 (3.2): observaciones del proctor (insumo de C-16) ---
+
+
+class ObservacionIn(BaseModel):
+    """Body de POST /sessions/{id}/observaciones (proctor)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    texto: str = Field(..., min_length=1, max_length=2000)
+    proctor_actor: str | None = Field(
+        None, description="Subject del JWT del proctor que escribe (audit trail)."
+    )
+
+
+class ObservacionOut(BaseModel):
+    """Observacion del proctor (respuesta de POST y elemento del GET)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    texto: str
+    proctor_actor: str | None = None
+    creada_en: Any
+
+
+# --- C-15 (3.3): cierre forzado de sesion (operativo, NO disciplinario) ---
+
+
+class CerrarForzadoIn(BaseModel):
+    """Body de PATCH /sessions/{id}/cerrar-forzado (proctor).
+
+    ``motivo`` es OBLIGATORIO (operativo): por que el proctor cierra la sesion.
+    NO es un veredicto disciplinario (regla dura #5).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    motivo: str = Field(..., min_length=1, max_length=500)
+    proctor_actor: str | None = Field(
+        None, description="Subject del JWT del proctor que fuerza el cierre (audit trail)."
+    )
+
+
+class CerrarForzadoOut(BaseModel):
+    """Respuesta de PATCH /sessions/{id}/cerrar-forzado → 200."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    finalizada_en: Any
+    cierre_forzado_en: Any
+    cierre_forzado_por: str | None = None
+    cierre_forzado_motivo: str | None = None

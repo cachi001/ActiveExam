@@ -65,9 +65,9 @@ function LogoFull({ showText = true }: { showText?: boolean }) {
     <Link to="/admin" className="flex items-center gap-2.5 min-w-0">
       <LogoMark />
       {showText && (
-        <div className="hidden sm:flex flex-col leading-tight">
+        <div className="flex flex-col leading-tight">
           <span className="text-sm font-semibold text-on-surface">Active Exam</span>
-          <span className="text-[10px] text-on-surface-variant">Plataforma de proctoring</span>
+          <span className="hidden sm:block text-[10px] text-on-surface-variant">Plataforma de proctoring</span>
         </div>
       )}
     </Link>
@@ -279,8 +279,17 @@ export function StaffShell({
     ? (showAsCollapsed ? SIDEBAR_COLLAPSED : SIDEBAR_EXPANDED)
     : SIDEBAR_DRAWER_W;
 
-  const mainItems = useMemo(() => nav.filter((i) => i.group === 'main'), [nav]);
-  const configItems = useMemo(() => nav.filter((i) => i.group === 'config'), [nav]);
+  // Filtramos el nav por los roles del usuario logueado ANTES de partirlo en
+  // grupos: el proctor solo ve los items de SUPERVISION (vivo / cola / grabadas);
+  // el admin ve todo. Coherente con los guards de ruta de App.tsx — un item cuya
+  // ruta el rol no puede abrir no se muestra (si no, clickea y ve "Sin permisos").
+  const roles = useAuth((s) => s.principal?.roles);
+  const visibleNav = useMemo(
+    () => nav.filter((i) => i.roles.some((r) => roles?.includes(r))),
+    [nav, roles],
+  );
+  const mainItems = useMemo(() => visibleNav.filter((i) => i.group === 'main'), [visibleNav]);
+  const configItems = useMemo(() => visibleNav.filter((i) => i.group === 'config'), [visibleNav]);
 
   return (
     <div className="min-h-screen bg-surface text-on-surface">

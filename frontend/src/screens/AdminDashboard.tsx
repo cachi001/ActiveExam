@@ -44,12 +44,12 @@ export default function AdminDashboard() {
     >
       <div className="space-y-lg animate-in fade-in duration-500">
 
-        {/* Stat cards — paleta clara (primary/info/warning/success), nada de slate oscuro */}
-        <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-md">
-          <StatCard icon="quiz" label="Exámenes" value={rep?.examenes_totales ?? '—'} sub="este cuatrimestre" tono="primary" />
-          <StatCard icon="groups" label="Sesiones" value={rep?.sesiones_totales ?? '—'} sub="supervisadas" tono="info" />
+        {/* Stat cards — cada una con color distinto (primary/info/warning) y descripción.
+            Si la métrica no cargó, mostramos 0 (no "—"). */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-md">
+          <StatCard icon="quiz" label="Exámenes" value={rep?.examenes_totales ?? 0} sub="este cuatrimestre" tono="primary" />
+          <StatCard icon="groups" label="Sesiones" value={rep?.sesiones_totales ?? 0} sub="supervisadas" tono="info" />
           <StatCard icon="flag" label="Tasa de flag" value={`${rep?.tasa_flag ?? 0}%`} sub="entran a revisión" tono="warning" />
-          <StatCard icon="schedule" label="Revisión media" value={rep?.tiempo_medio_revision ?? '—'} sub="por sesión" tono="success" />
         </div>
 
         <div className="grid lg:grid-cols-3 gap-lg">
@@ -78,15 +78,15 @@ export default function AdminDashboard() {
                     <Link
                       key={e.id}
                       to="/admin/examenes"
-                      className="flex items-center justify-between gap-3 px-lg py-3 hover:bg-surface-50 transition-colors"
+                      className="flex items-center justify-between gap-4 px-lg py-4 hover:bg-surface-50 transition-colors"
                     >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-10 h-10 rounded-md bg-primary-fixed text-on-primary-fixed-variant flex items-center justify-center shrink-0">
-                          <Icon name="description" className="text-[20px]" />
+                      <div className="flex items-center gap-4 min-w-0">
+                        <div className="w-12 h-12 rounded-lg bg-primary-fixed text-on-primary-fixed-variant flex items-center justify-center shrink-0">
+                          <Icon name="description" className="text-[24px]" />
                         </div>
                         <div className="min-w-0">
-                          <p className="text-[14px] font-semibold text-on-surface truncate leading-tight">{e.nombre}</p>
-                          <p className="text-[12.5px] text-on-surface-variant truncate leading-tight mt-0.5">{e.catedra} · {e.inscriptos} inscriptos</p>
+                          <p className="text-[15px] font-semibold text-on-surface truncate leading-snug">{e.nombre}</p>
+                          <p className="text-[13px] text-on-surface-variant truncate leading-snug mt-0.5">{e.catedra} · {e.inscriptos} inscriptos</p>
                         </div>
                       </div>
                       <Badge tone={ESTADO_TONE[e.estado]}>{ESTADO_LABEL[e.estado]}</Badge>
@@ -118,7 +118,7 @@ function AccionRapida({ to, icon, label }: { to: string; icon: string; label: st
   return (
     <Link
       to={to}
-      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-md border border-surface-200 bg-white text-on-surface text-[14px] font-medium hover:bg-surface-50 hover:border-primary/40 transition-colors"
+      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-md border border-surface-200 bg-white text-on-surface text-[14px] font-medium hover:bg-primary/5 hover:border-primary/50 transition-colors"
     >
       <Icon name={icon} className="text-[18px] text-on-surface-variant" />
       {label}

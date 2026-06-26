@@ -17,21 +17,12 @@ export function ResumenVivo({ sesiones }: { sesiones: SesionProctoringResumen[] 
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-md">
-      {/* Cada card con un color BASE distinto para que nunca se confundan entre sí. */}
-      <StatCard icon="sensors" label="Sesiones activas" value={activas} tono="primary" />
-      <StatCard icon="notifications" label="Eventos totales" value={totalEventos} tono="info" />
-      <StatCard
-        icon="rule"
-        label="Discrepancias"
-        value={totalDiscrepancias}
-        tono={totalDiscrepancias > 0 ? 'warning' : 'success'}
-      />
-      <StatCard
-        icon="priority_high"
-        label="Riesgo alto"
-        value={riesgoAlto}
-        tono={riesgoAlto > 0 ? 'error' : 'success'}
-      />
+      {/* Cada card con un color BASE FIJO y distinto: nunca dos del mismo color,
+          incluso cuando discrepancias y riesgo están ambos en 0. */}
+      <StatCard icon="sensors" label="Sesiones activas" value={activas} sub="rindiendo ahora" tono="primary" />
+      <StatCard icon="notifications" label="Eventos totales" value={totalEventos} sub="en el lote actual" tono="info" />
+      <StatCard icon="rule" label="Discrepancias" value={totalDiscrepancias} sub="verificadas en server" tono="warning" />
+      <StatCard icon="priority_high" label="Riesgo alto" value={riesgoAlto} sub="superan el umbral" tono="error" />
     </div>
   );
 }

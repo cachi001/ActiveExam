@@ -269,30 +269,48 @@ export function EnrollmentBiometricStep({ referenciaActual, onCapturada, esRenov
           </div>
         )}
 
-        {/* ── Task 8.8: Estado: completado — requiere "Continuar" del alumno ── */}
-        {fase === 'completado' && (
+        {/* ── Task 8.8: Estado: completado — requiere "Continuar" del alumno ──
+            Se parte por `refRegistrada`: si la toma salió bien mostramos éxito +
+            "Continuar"; si el rostro no se pudo procesar mostramos el problema y
+            SOLO "Reintentar captura" (no un "Continuar" que no corresponde — sin
+            embedding registrado no tiene sentido avanzar). */}
+        {fase === 'completado' && refRegistrada && (
           <div className="text-center space-y-md">
             <Icon name="verified_user" className="text-success text-[48px]" fill />
             <p className="font-headline text-title-lg text-on-surface">¡Referencia capturada!</p>
             <p className="text-label-sm text-on-surface-variant">
               Vigencia: {BIOMETRIC_VALIDITY_MONTHS} meses desde hoy.
             </p>
-            {refRegistrada ? (
-              <p className="inline-flex items-center gap-xs text-label-sm text-success">
-                <Icon name="fingerprint" className="text-[16px]" />
-                Referencia biométrica registrada para la verificación 1:1.
-              </p>
-            ) : (
-              <p className="text-label-sm text-warning">
-                No pudimos procesar bien tu rostro en esta toma. Volvé a intentar la captura.
-              </p>
-            )}
+            <p className="inline-flex items-center gap-xs text-label-sm text-success">
+              <Icon name="fingerprint" className="text-[16px]" />
+              Referencia biométrica registrada para la verificación 1:1.
+            </p>
             <div className="pt-sm">
               <Button
                 disabled={!referenciaPendiente}
                 onClick={() => { if (referenciaPendiente) onCapturada(referenciaPendiente); }}
               >
                 Continuar
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* ── Estado: completado pero el rostro no se pudo procesar ── */}
+        {fase === 'completado' && !refRegistrada && (
+          <div className="text-center space-y-md">
+            <Icon name="sentiment_dissatisfied" className="text-warning text-[48px]" fill />
+            <p className="font-headline text-title-lg text-on-surface">No pudimos procesar tu rostro</p>
+            <p className="text-label-sm text-on-surface-variant">
+              La toma no quedó bien. Reintentá con buena luz, sin nada que tape tu rostro
+              (gorra, anteojos oscuros, barbijo) y mirando de frente a la cámara.
+            </p>
+            <div className="pt-sm">
+              <Button
+                icon="refresh"
+                onClick={() => { setRefRegistrada(false); setReferenciaPendiente(null); setFase('instrucciones'); }}
+              >
+                Reintentar captura
               </Button>
             </div>
           </div>

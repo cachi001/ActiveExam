@@ -204,7 +204,8 @@ export default function SeccionConsentimiento() {
               type="text"
               value={b.titulo}
               onChange={(e) => setBloque(i, 'titulo', e.target.value)}
-              className="flex-1 min-w-0 text-title-md font-headline text-on-surface bg-transparent border-b border-transparent hover:border-outline-variant focus:border-primary focus:outline-none pb-1 transition-colors"
+              placeholder={`Título de la cláusula ${i + 1}`}
+              className="flex-1 min-w-0 text-title-md font-headline text-on-surface bg-white rounded-lg border border-outline-variant px-3 py-1.5 hover:border-outline focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30 transition-colors"
               aria-label={`Título de la cláusula ${i + 1}`}
             />
             <button
@@ -232,7 +233,7 @@ export default function SeccionConsentimiento() {
       <button
         type="button"
         onClick={agregarBloque}
-        className="w-full flex items-center justify-center gap-sm py-3 rounded-xl border border-dashed border-outline-variant text-on-surface-variant hover:border-primary hover:text-primary transition-colors text-label-md font-medium"
+        className="w-full flex items-center justify-center gap-sm py-3 rounded-xl border border-primary/50 bg-primary/5 text-primary hover:bg-primary/10 hover:border-primary transition-colors text-label-md font-semibold"
       >
         <Icon name="add" className="text-[18px]" />
         Agregar cláusula

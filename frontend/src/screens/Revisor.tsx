@@ -53,6 +53,7 @@ export default function Revisor() {
   const navigate = useNavigate();
   const toast = useToast();
   const setProctoringSessionId = useApp((s) => s.setProctoringSessionId);
+  const setProctoringDetailBackRoute = useApp((s) => s.setProctoringDetailBackRoute);
   const setDecisionRevisor = useApp((s) => s.setDecisionRevisor);
 
   const [items, setItems] = useState<SesionEnriquecida[]>([]);
@@ -115,6 +116,7 @@ export default function Revisor() {
 
   const verDetalle = (id: string) => {
     setProctoringSessionId(id);
+    setProctoringDetailBackRoute('/revisor');
     navigate(PROCTORING_DETAIL_ROUTE);
   };
 
@@ -133,12 +135,7 @@ export default function Revisor() {
     <StaffShell
       nav={REVISOR_NAV}
       title="Cola de revisión"
-      subtitle={
-        <>
-          Sesiones de alto riesgo (score mayor o igual a {umbral} puntos) organizadas por materia,
-          comisión y examen. Entrá hasta cada persona para revisar y decidir.
-        </>
-      }
+      subtitle={`Sesiones que superan ${umbral} pts de riesgo, por materia, comisión y examen.`}
       help={
         <HelpButton title="Cola de revisión">
           <p>
@@ -168,10 +165,10 @@ export default function Revisor() {
 
         {!cargando && !hayRiesgo && (
           <Card className="text-center py-xl space-y-base">
-            <Icon name="inbox" className="text-on-surface-variant text-[40px]" />
+            <Icon name="check_circle" className="text-success text-[44px]" fill />
             <h3 className="font-headline text-title-lg text-on-surface">Sin sesiones pendientes</h3>
             <p className="text-body-md text-on-surface-variant">
-              Por ahora no hay sesiones con score mayor o igual a {umbral} puntos. Cuando aparezcan, se listarán acá.
+              Nada que revisar por ahora.
             </p>
           </Card>
         )}

@@ -63,15 +63,10 @@ function formatFecha(iso: string | null | undefined): string {
   }
 }
 
-/** Badge de rol con color semántico. */
+/** Badge de rol — todos los roles con el MISMO color (primary), consistente con
+ * la tabla de Gestión de usuarios y el sistema de referencia. */
 function RolBadge({ rol }: { rol: string }) {
-  const toneMap: Record<string, 'primary' | 'success' | 'warning' | 'error' | 'neutral'> = {
-    admin_sistema: 'primary',
-    proctor: 'warning',
-    estudiante: 'success',
-  };
-  const tone = toneMap[rol] ?? 'neutral';
-  return <Badge tone={tone}>{getRolLabel(rol)}</Badge>;
+  return <Badge tone="primary">{getRolLabel(rol)}</Badge>;
 }
 
 /** Skeleton para una sección mientras carga. */

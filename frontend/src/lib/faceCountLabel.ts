@@ -33,7 +33,7 @@ export function formatRostros(n: number | null | undefined): string {
  * `null`/`undefined` → "{origen}: —".
  */
 export function formatRostrosConOrigen(
-  origen: 'Cliente' | 'Servidor',
+  origen: 'Cliente' | 'Servidor' | 'Navegador',
   n: number | null | undefined,
 ): string {
   if (n == null) return `${origen}: —`;

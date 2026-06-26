@@ -62,13 +62,10 @@ export function DetalleHeader({ detalle }: { detalle: SesionProctoringDetalle })
           sub={NIVEL_LABEL[nivel]}
           tono={nivel === 'alto' ? 'error' : nivel === 'medio' ? 'warning' : 'success'}
         />
-        <StatCard icon="notifications" label="Eventos" value={totalEventos} tono="info" />
-        <StatCard
-          icon="rule"
-          label="Discrepancias"
-          value={totalDiscrepancias}
-          tono={totalDiscrepancias > 0 ? 'error' : 'success'}
-        />
+        <StatCard icon="notifications" label="Eventos" value={totalEventos} sub="en la sesión" tono="info" />
+        {/* tono fijo `primary`: el del Score es semántico (error/warning/success), así
+            esta card nunca queda del mismo color que el Score. */}
+        <StatCard icon="rule" label="Discrepancias" value={totalDiscrepancias} sub="el servidor no coincidió" tono="primary" />
       </div>
 
       {/* Gauge de score */}

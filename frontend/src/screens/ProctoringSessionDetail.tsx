@@ -24,18 +24,28 @@ import type { SesionProctoringDetalle } from '../lib/types';
 import { DetalleHeader } from './proctoring/DetalleHeader';
 import { EventoCard } from './proctoring/EventoCard';
 import { BiometriaCard } from './proctoring/BiometriaCard';
+import { ChatBox } from '../ui/ChatBox';
+import { ObservacionesProctor } from './proctoring/ObservacionesProctor';
+import { PausaSesionPanel } from './proctoring/PausaSesionPanel';
+import { PausasHistorial } from './proctoring/PausasHistorial';
 
-const LISTA_ROUTE = '/admin/proctoring-sessions';
+/** Texto del "Volver" según la ruta de origen guardada en el store. */
+const BACK_LABELS: Record<string, string> = {
+  '/proctor': 'Volver a supervisión en vivo',
+  '/proctor/examen': 'Volver al examen',
+  '/admin/proctoring-sessions': 'Volver a sesiones grabadas',
+  '/revisor': 'Volver a la cola de revisión',
+};
 
-function VolverLink({ onClick }: { onClick: () => void }) {
+function VolverLink({ onClick, label }: { onClick: () => void; label: string }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex items-center gap-base text-label-md text-on-surface-variant hover:text-on-surface hover:underline"
+      className="inline-flex items-center gap-base text-label-md text-on-surface-variant hover:text-on-surface transition-colors"
     >
       <Icon name="arrow_back" className="text-[18px]" />
-      Volver a la lista de sesiones
+      {label}
     </button>
   );
 }
@@ -44,10 +54,27 @@ export default function ProctoringSessionDetail() {
   const navigate = useNavigate();
   const toast = useToast();
   const sessionId = useApp((s) => s.proctoringSessionId);
+  const rol = useApp((s) => s.rol);
+  // Identidad del proctor → se registra como proctor_actor al resolver una pausa.
+  const proctorActor = useApp((s) => s.principal?.email ?? null);
+  // C-15: el proctor puede abrir el detalle para chatear/supervisar, pero NO
+  // borrar evidencia (regla dura #6: cadena de custodia). El borrado y la lista
+  // admin quedan reservados a admin_sistema; el proctor vuelve a su panel.
+  const esAdmin = rol === 'admin_sistema';
+  // "Volver" regresa al ORIGEN real (supervisión en vivo, grid de personas, cola
+  // o grabadas), guardado en el store al abrir el detalle. Fallback por rol si no
+  // se seteó (deep-link directo).
+  const detailBackRoute = useApp((s) => s.proctoringDetailBackRoute);
+  const backRoute = detailBackRoute ?? (esAdmin ? '/admin/proctoring-sessions' : '/proctor');
+  const backLabel = BACK_LABELS[backRoute] ?? 'Volver';
   const [detalle, setDetalle] = useState<SesionProctoringDetalle | null>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [confirmando, setConfirmando] = useState(false);
+  // C-15 (3.3): cierre forzado por el proctor (operativo, NO disciplinario).
+  const [cerrando, setCerrando] = useState(false);
+  const [motivoCierre, setMotivoCierre] = useState('');
+  const [cerrada, setCerrada] = useState(false);
 
   useEffect(() => {
     if (!sessionId) {
@@ -59,7 +86,12 @@ export default function ProctoringSessionDetail() {
     setError(null);
     api
       .getSesionProctoring(sessionId)
-      .then((data) => setDetalle(data))
+      .then((data) => {
+        setDetalle(data);
+        // C-15 (3.3): si la sesión ya fue cerrada de forma forzada, reflejarlo al
+        // recargar (el botón queda deshabilitado, no se reabre).
+        setCerrada(Boolean(data.cierre_forzado_en));
+      })
       .catch((e) => setError(e instanceof Error ? e.message : 'Error al cargar.'))
       .finally(() => setCargando(false));
   }, [sessionId]);
@@ -70,11 +102,33 @@ export default function ProctoringSessionDetail() {
     const { ok } = await api.eliminarSesionProctoring(sessionId);
     if (ok) {
       toast.success('Sesión eliminada');
-      navigate(LISTA_ROUTE);
+      navigate(backRoute);
     } else {
       toast.error('No se pudo eliminar la sesión');
     }
   };
+
+  const handleConfirmarCierre = async () => {
+    if (!sessionId) return;
+    const motivo = motivoCierre.trim();
+    if (!motivo) {
+      toast.error('El motivo del cierre es obligatorio');
+      return;
+    }
+    setCerrando(false);
+    try {
+      await api.cerrarSesionForzado(sessionId, motivo);
+      setCerrada(true);
+      setMotivoCierre('');
+      toast.success('Sesión cerrada de forma forzada');
+    } catch {
+      toast.error('No se pudo cerrar la sesión');
+    }
+  };
+
+  // Sesión EN VIVO (supervisión activa) vs GRABADA (finalizada → evidencia de solo
+  // lectura). En vivo: chat/observaciones/pausa accionables. Grabada: historial.
+  const esVivo = Boolean(detalle && !detalle.finalizada_en) && !cerrada;
 
   return (
     <StaffShell
@@ -100,15 +154,32 @@ export default function ProctoringSessionDetail() {
       }
       actions={
         sessionId && !error ? (
-          <Button variant="danger" size="sm" icon="delete" onClick={() => setConfirmando(true)}>
-            Eliminar sesión
-          </Button>
+          <div className="flex items-center gap-base">
+            {/* C-15 (3.3): cierre forzado — solo si la sesión sigue EN VIVO. En una
+                sesión ya finalizada (grabada) no tiene sentido cerrarla. */}
+            {esVivo && (
+              <Button
+                variant="outline"
+                size="sm"
+                icon="lock"
+                onClick={() => setCerrando(true)}
+              >
+                Cerrar (forzado)
+              </Button>
+            )}
+            {/* Eliminar evidencia — solo admin (cadena de custodia, regla dura #6). */}
+            {esAdmin && (
+              <Button variant="danger" size="sm" icon="delete" onClick={() => setConfirmando(true)}>
+                Eliminar sesión
+              </Button>
+            )}
+          </div>
         ) : undefined
       }
     >
       <div className="space-y-lg animate-in fade-in duration-500">
         {/* Volver a la lista */}
-        <VolverLink onClick={() => navigate(LISTA_ROUTE)} />
+        <VolverLink onClick={() => navigate(backRoute)} label={backLabel} />
 
         {/* Estado de carga */}
         {cargando && (
@@ -125,8 +196,8 @@ export default function ProctoringSessionDetail() {
             <p className="text-title-lg text-on-surface">No se pudo cargar la sesión</p>
             <p className="text-body-md text-on-surface-variant">{error}</p>
             <div className="pt-sm">
-              <Button variant="outline" size="sm" icon="arrow_back" onClick={() => navigate(LISTA_ROUTE)}>
-                Volver a la lista
+              <Button variant="outline" size="sm" icon="arrow_back" onClick={() => navigate(backRoute)}>
+                Volver
               </Button>
             </div>
           </Card>
@@ -137,29 +208,56 @@ export default function ProctoringSessionDetail() {
           <>
             <DetalleHeader detalle={detalle} />
 
-            {/* Eventos */}
-            <Card className="space-y-md">
-              <SectionTitle
-                sub={`${detalle.eventos.length} evento${detalle.eventos.length !== 1 ? 's' : ''} registrado${
-                  detalle.eventos.length !== 1 ? 's' : ''
-                }`}
-              >
-                Eventos de la sesión
-              </SectionTitle>
+            {/* Pausa: EN VIVO el proctor la resuelve acá; GRABADA muestra el
+                historial de todas las pausas como evidencia (solo lectura). */}
+            {sessionId && (
+              esVivo
+                ? <PausaSesionPanel sessionId={sessionId} proctorActor={proctorActor} />
+                : <PausasHistorial sessionId={sessionId} />
+            )}
 
-              {detalle.eventos.length === 0 ? (
-                <div className="flex flex-col items-center text-center py-xl gap-sm text-on-surface-variant">
-                  <Icon name="check_circle" className="text-success text-[36px]" fill />
-                  <p className="text-body-md">Sin eventos registrados en esta sesión.</p>
-                </div>
-              ) : (
-                <div className="space-y-sm">
-                  {detalle.eventos.map((ev) => (
-                    <EventoCard key={ev.evento_id} evento={ev} />
-                  ))}
-                </div>
-              )}
-            </Card>
+            {/* Eventos (izquierda) + chat del proctor (derecha) en dos columnas.
+                En mobile colapsan a una sola columna (eventos arriba, chat abajo). */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-lg items-start">
+              {/* Eventos registrados — columna izquierda */}
+              <Card className="space-y-md">
+                <SectionTitle
+                  sub={`${detalle.eventos.length} evento${detalle.eventos.length !== 1 ? 's' : ''} registrado${
+                    detalle.eventos.length !== 1 ? 's' : ''
+                  }`}
+                >
+                  Eventos de la sesión
+                </SectionTitle>
+
+                {detalle.eventos.length === 0 ? (
+                  <div className="flex flex-col items-center text-center py-xl gap-sm text-on-surface-variant">
+                    <Icon name="check_circle" className="text-success text-[36px]" fill />
+                    <p className="text-body-md">Sin eventos registrados en esta sesión.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-sm">
+                    {detalle.eventos.map((ev) => (
+                      <EventoCard key={ev.evento_id} evento={ev} />
+                    ))}
+                  </div>
+                )}
+              </Card>
+
+              {/* C-15: canal de chat con el alumno + observaciones del proctor.
+                  Sticky en desktop para que acompañe el scroll de la lista de eventos. */}
+              <div className="lg:sticky lg:top-lg space-y-lg">
+                <ChatBox
+                  sessionId={sessionId}
+                  yo="proctor"
+                  titulo={esVivo ? 'Canal con el estudiante' : 'Historial del canal con el estudiante'}
+                  altura="h-[420px]"
+                  readOnly={!esVivo}
+                />
+                {/* C-15 (3.2): observaciones del proctor — insumo de la revisión C-16.
+                    En grabada se muestran como evidencia (solo lectura). */}
+                <ObservacionesProctor sessionId={sessionId} proctorActor={proctorActor} readOnly={!esVivo} />
+              </div>
+            </div>
 
             {/* Biometría */}
             <BiometriaCard biometria={detalle.biometria} />
@@ -184,6 +282,40 @@ export default function ProctoringSessionDetail() {
         textoCancelar="Cancelar"
         onConfirmar={() => void handleConfirmarBorrado()}
         onCancelar={() => setConfirmando(false)}
+      />
+
+      {/* C-15 (3.3): cierre forzado — pide motivo OBLIGATORIO. Operativo, NO
+          disciplinario (L2.5: el veredicto es humano en C-16). */}
+      <ConfirmModal
+        abierto={cerrando}
+        variante="default"
+        titulo="Cerrar sesión (forzado)"
+        mensaje={
+          <div className="space-y-sm text-left">
+            <p>
+              Vas a cerrar de forma forzada{' '}
+              <strong className="text-on-surface">
+                {detalle?.etiqueta?.trim() || 'esta sesión'}
+              </strong>
+              . Es una acción <strong>operativa</strong>, no un veredicto disciplinario.
+              Quedará registrada con tu autoría y el motivo.
+            </p>
+            <textarea
+              value={motivoCierre}
+              onChange={(e) => setMotivoCierre(e.target.value)}
+              rows={3}
+              placeholder="Motivo del cierre (obligatorio)…"
+              className="w-full px-sm py-base text-label-md rounded-xl border border-outline-variant bg-surface-container-lowest focus:border-primary-container outline-none resize-none"
+            />
+          </div>
+        }
+        textoConfirmar="Cerrar sesión"
+        textoCancelar="Cancelar"
+        onConfirmar={() => void handleConfirmarCierre()}
+        onCancelar={() => {
+          setCerrando(false);
+          setMotivoCierre('');
+        }}
       />
     </StaffShell>
   );

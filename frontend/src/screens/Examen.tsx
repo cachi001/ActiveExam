@@ -8,6 +8,8 @@ import { useExamProctoring } from '../proctoring/useExamProctoring';
 import { pesoEvento } from '../proctoring/scoringWeights';
 import { getEffectiveConfig } from '../config/effectiveConfigCache';
 import { useToast, type ToastTipo } from '../ui/toast';
+import { ChatBox } from '../ui/ChatBox';
+import { PausaAlumno } from './PausaAlumno';
 import type { EventoSesion, Severidad } from '../lib/types';
 
 // Severidad del evento -> tipo (y color) del toast de alerta en pantalla.
@@ -56,14 +58,16 @@ export default function Examen() {
   const [segRestantes, setSegRestantes] = useState((examen?.duracion_min ?? 60) * 60);
   const [alerta, setAlerta] = useState<EventoSesion | null>(null);
   const [opcion, setOpcion] = useState<number | null>(null);
-  const [mensajes, setMensajes] = useState<{ de: string; texto: string; hora: string }[]>([
-    { de: 'Sistema', texto: 'Canal cifrado y persistido con cadena de custodia.', hora: '' },
-  ]);
-  const [borrador, setBorrador] = useState('');
+  // C-15: cuando hay una pausa autorizada ACTIVA, PausaAlumno muestra un banner
+  // fijo full-width debajo del topbar. Empujamos el contenido del examen hacia
+  // abajo para que el banner no tape la pregunta ni los controles (bug z-index a
+  // 1366px). El alto del banner (~60px) se compensa con padding-top en el grid.
+  const [pausaActiva, setPausaActiva] = useState(false);
 
   // Proctoring REAL de fondo: motor MediaPipe + detectores de contexto + streaming
   // al backend (sesión modo:'examen'). Expone score/eventos/eventCount y detener().
-  const { score, eventCount, activo, eventos, extraMonitorActive, detener } = useExamProctoring(videoRef, examen);
+  // sessionId alimenta el chat y el flujo de pausa autorizada (C-15).
+  const { sessionId, score, eventCount, activo, eventos, extraMonitorActive, detener } = useExamProctoring(videoRef, examen);
   const toast = useToast();
 
   // cámara (preview en línea; el hook de proctoring consume este mismo <video>)
@@ -126,15 +130,13 @@ export default function Examen() {
   const mm = String(Math.floor(segRestantes / 60)).padStart(2, '0');
   const ss = String(segRestantes % 60).padStart(2, '0');
 
-  const enviar = () => {
-    if (!borrador.trim()) return;
-    setMensajes((m) => [...m, { de: 'Estudiante', texto: borrador, hora: new Date().toTimeString().slice(0, 5) }]);
-    setBorrador('');
-  };
-
   return (
     <StudentShell>
-      <div className="grid lg:grid-cols-3 gap-lg animate-in fade-in duration-500">
+      <div
+        className={`grid lg:grid-cols-3 gap-lg animate-in fade-in duration-500 transition-[padding] ${
+          pausaActiva ? 'pt-16' : ''
+        }`}
+      >
         {/* Examen */}
         <div className="lg:col-span-2 space-y-lg">
           <Card className="space-y-md">
@@ -233,22 +235,11 @@ export default function Examen() {
             </div>
           </Card>
 
-          <Card className="space-y-sm">
-            <h3 className="text-label-md font-bold text-on-surface border-b border-outline-variant/40 pb-base">Canal con el proctor</h3>
-            <div className="h-[120px] overflow-y-auto space-y-base bg-white border border-outline-variant/40 rounded-xl p-sm">
-              {mensajes.map((m, i) => (
-                <div key={i} className={`text-label-sm ${m.de === 'Sistema' ? 'text-on-surface-variant italic text-center' : m.de === 'Estudiante' ? 'text-right' : ''}`}>
-                  {m.de !== 'Sistema' && <span className="font-semibold">{m.de} · {m.hora} </span>}
-                  {m.texto}
-                </div>
-              ))}
-            </div>
-            <div className="flex gap-base">
-              <input value={borrador} onChange={(e) => setBorrador(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && enviar()}
-                placeholder="Escribir mensaje…" className="flex-1 px-sm py-base text-label-md rounded-xl border border-outline-variant bg-surface-container-lowest focus:border-primary-container outline-none" />
-              <Button onClick={enviar} className="h-auto px-md">Enviar</Button>
-            </div>
-          </Card>
+          {/* C-15: flujo de pausa autorizada (solicitar / esperar / activa+timer). */}
+          <PausaAlumno sessionId={sessionId} onActivaChange={setPausaActiva} />
+
+          {/* C-15: canal de chat bidireccional con el proctor (poll incremental). */}
+          <ChatBox sessionId={sessionId} yo="alumno" titulo="Canal con el proctor" altura="h-[140px]" />
         </div>
       </div>
 

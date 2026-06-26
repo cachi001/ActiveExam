@@ -120,7 +120,7 @@ export default function AdminDetectionHarness() {
       <div className="space-y-lg animate-in fade-in duration-300">
 
         {/* Aviso de importancia (una sola vez, arriba de todo): todo es de prueba, no toca la config real */}
-        <Card className="flex items-start gap-sm border-l-4 border-l-warning-400 bg-warning-container/60">
+        <Card className="flex items-start gap-sm bg-warning-container/60">
           <Icon name="info" className="text-[20px] shrink-0 mt-px text-warning" fill />
           <p className="text-label-sm text-on-surface">
             Todo lo que cambies en esta pantalla es <strong>solo para esta prueba</strong> y no modifica la configuración real. Para cambiar lo que se aplica a los exámenes, andá a <strong>Configuración</strong>.
