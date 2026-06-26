@@ -27,6 +27,7 @@ import { BiometriaCard } from './proctoring/BiometriaCard';
 import { ChatBox } from '../ui/ChatBox';
 import { ObservacionesProctor } from './proctoring/ObservacionesProctor';
 import { PausaSesionPanel } from './proctoring/PausaSesionPanel';
+import { PausasHistorial } from './proctoring/PausasHistorial';
 
 /** Texto del "Volver" según la ruta de origen guardada en el store. */
 const BACK_LABELS: Record<string, string> = {
@@ -125,6 +126,10 @@ export default function ProctoringSessionDetail() {
     }
   };
 
+  // Sesión EN VIVO (supervisión activa) vs GRABADA (finalizada → evidencia de solo
+  // lectura). En vivo: chat/observaciones/pausa accionables. Grabada: historial.
+  const esVivo = Boolean(detalle && !detalle.finalizada_en) && !cerrada;
+
   return (
     <StaffShell
       nav={STAFF_NAV}
@@ -150,16 +155,18 @@ export default function ProctoringSessionDetail() {
       actions={
         sessionId && !error ? (
           <div className="flex items-center gap-base">
-            {/* C-15 (3.3): cierre forzado — proctor y admin. Operativo, NO disciplinario. */}
-            <Button
-              variant="outline"
-              size="sm"
-              icon="lock"
-              onClick={() => setCerrando(true)}
-              disabled={cerrada}
-            >
-              {cerrada ? 'Sesión cerrada' : 'Cerrar (forzado)'}
-            </Button>
+            {/* C-15 (3.3): cierre forzado — solo si la sesión sigue EN VIVO. En una
+                sesión ya finalizada (grabada) no tiene sentido cerrarla. */}
+            {esVivo && (
+              <Button
+                variant="outline"
+                size="sm"
+                icon="lock"
+                onClick={() => setCerrando(true)}
+              >
+                Cerrar (forzado)
+              </Button>
+            )}
             {/* Eliminar evidencia — solo admin (cadena de custodia, regla dura #6). */}
             {esAdmin && (
               <Button variant="danger" size="sm" icon="delete" onClick={() => setConfirmando(true)}>
@@ -201,9 +208,13 @@ export default function ProctoringSessionDetail() {
           <>
             <DetalleHeader detalle={detalle} />
 
-            {/* C-15: solicitud de pausa de ESTA sesión — el proctor la ve y resuelve
-                acá mismo (antes solo aparecía en el panel de supervisión en vivo). */}
-            {sessionId && <PausaSesionPanel sessionId={sessionId} proctorActor={proctorActor} />}
+            {/* Pausa: EN VIVO el proctor la resuelve acá; GRABADA muestra el
+                historial de todas las pausas como evidencia (solo lectura). */}
+            {sessionId && (
+              esVivo
+                ? <PausaSesionPanel sessionId={sessionId} proctorActor={proctorActor} />
+                : <PausasHistorial sessionId={sessionId} />
+            )}
 
             {/* Eventos (izquierda) + chat del proctor (derecha) en dos columnas.
                 En mobile colapsan a una sola columna (eventos arriba, chat abajo). */}
@@ -238,11 +249,13 @@ export default function ProctoringSessionDetail() {
                 <ChatBox
                   sessionId={sessionId}
                   yo="proctor"
-                  titulo="Canal con el estudiante"
+                  titulo={esVivo ? 'Canal con el estudiante' : 'Historial del canal con el estudiante'}
                   altura="h-[420px]"
+                  readOnly={!esVivo}
                 />
-                {/* C-15 (3.2): observaciones del proctor — insumo de la revisión C-16. */}
-                <ObservacionesProctor sessionId={sessionId} />
+                {/* C-15 (3.2): observaciones del proctor — insumo de la revisión C-16.
+                    En grabada se muestran como evidencia (solo lectura). */}
+                <ObservacionesProctor sessionId={sessionId} proctorActor={proctorActor} readOnly={!esVivo} />
               </div>
             </div>
 

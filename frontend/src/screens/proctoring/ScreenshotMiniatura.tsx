@@ -26,8 +26,7 @@ export function ScreenshotMiniatura({ base64 }: { base64: string | null | undefi
   if (!base64) {
     return (
       <div className="flex items-center gap-base h-[88px] w-[120px] rounded-lg justify-center
-        bg-surface-container-high border border-dashed border-outline-variant/60
-        text-on-surface-variant">
+        bg-white/50 border-2 border-dashed border-on-surface-variant/30 text-on-surface-variant">
         <div className="flex flex-col items-center gap-base">
           <Icon name="image_not_supported" className="text-[22px]" />
           <span className="text-label-sm">Sin captura</span>
@@ -41,8 +40,8 @@ export function ScreenshotMiniatura({ base64 }: { base64: string | null | undefi
       <button
         type="button"
         onClick={() => setExpanded(true)}
-        className="group relative block rounded-lg overflow-hidden border border-outline-variant/50
-          hover:border-primary/50 transition-colors"
+        className="group relative block rounded-lg overflow-hidden ring-1 ring-black/5
+          hover:ring-primary/40 transition-shadow"
         title="Click para ampliar la captura"
         aria-label="Ampliar captura del evento"
       >

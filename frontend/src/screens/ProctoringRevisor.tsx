@@ -9,7 +9,7 @@
  * Ley 25.326: no se persiste screenshot_base64 en este componente (solo se lista).
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { StaffShell } from '../ui/shells';
 import { Card, SectionTitle } from '../ui/components';
 import { HelpButton } from '../ui/HelpButton';
@@ -23,7 +23,8 @@ import type { SesionProctoringResumen } from '../lib/types';
 import { SesionCard } from './proctoring/SesionCard';
 import { ResumenSesiones } from './proctoring/ResumenSesiones';
 import { ListaSkeleton, ListaVacia } from './proctoring/ListaEstados';
-import { joinExamInfo } from './proctoring/helpers';
+import { GrabadasExamenGroup } from './proctoring/GrabadasExamenGroup';
+import { joinExamInfo, type ExamInfo } from './proctoring/helpers';
 
 const PROCTORING_DETAIL_ROUTE = '/admin/proctoring-session-detail';
 
@@ -68,6 +69,33 @@ export default function ProctoringRevisor() {
     }
   };
 
+  // Agrupar por examen (igual que supervisión en vivo): cada grupo es un examen
+  // con sus sesiones dentro. Las sesiones sin examen vinculado caen a un grupo
+  // aparte al final. Grupos y sesiones ordenados por fecha (más recientes arriba).
+  const grupos = useMemo(() => {
+    const map = new Map<
+      string,
+      { examId: string | null; examInfo: ExamInfo | null; sesiones: SesionProctoringResumen[] }
+    >();
+    for (const s of sesiones) {
+      const key = s.exam_id ?? '__sin_examen__';
+      if (!map.has(key)) {
+        map.set(key, { examId: s.exam_id ?? null, examInfo: joinExamInfo(s.exam_id), sesiones: [] });
+      }
+      map.get(key)!.sesiones.push(s);
+    }
+    const arr = [...map.values()].map((g) => ({
+      ...g,
+      sesiones: [...g.sesiones].sort((a, b) => b.creada_en.localeCompare(a.creada_en)),
+    }));
+    arr.sort((a, b) => {
+      if (!a.examId && b.examId) return 1; // "sin examen" al final
+      if (a.examId && !b.examId) return -1;
+      return (b.sesiones[0]?.creada_en ?? '').localeCompare(a.sesiones[0]?.creada_en ?? '');
+    });
+    return arr;
+  }, [sesiones]);
+
   return (
     <StaffShell
       nav={STAFF_NAV}
@@ -92,32 +120,40 @@ export default function ProctoringRevisor() {
         {/* Resumen agregado */}
         {!cargando && sesiones.length > 0 && <ResumenSesiones sesiones={sesiones} />}
 
-        {/* Lista */}
-        <Card className="space-y-md">
+        {/* Lista agrupada por examen (colapsable), igual que supervisión en vivo */}
+        <div className="space-y-md">
           <SectionTitle
             sub={cargando ? 'Cargando…' : `${sesiones.length} ${sesiones.length === 1 ? 'sesión' : 'sesiones'}`}
           >
             Sesiones grabadas
           </SectionTitle>
 
-          {cargando && <ListaSkeleton />}
+          {cargando && <Card className="space-y-md"><ListaSkeleton /></Card>}
 
-          {!cargando && sesiones.length === 0 && <ListaVacia />}
+          {!cargando && sesiones.length === 0 && <Card><ListaVacia /></Card>}
 
           {!cargando && sesiones.length > 0 && (
-            <div className="space-y-sm">
-              {sesiones.map((s) => (
-                <SesionCard
-                  key={s.id}
-                  sesion={s}
-                  onAbrir={handleAbrir}
-                  onEliminar={setABorrar}
-                  examInfo={joinExamInfo(s.exam_id)}
-                />
+            <div className="space-y-md">
+              {grupos.map((g) => (
+                <GrabadasExamenGroup
+                  key={g.examId ?? '__sin_examen__'}
+                  examInfo={g.examInfo}
+                  count={g.sesiones.length}
+                >
+                  {g.sesiones.map((s) => (
+                    <SesionCard
+                      key={s.id}
+                      sesion={s}
+                      onAbrir={handleAbrir}
+                      onEliminar={setABorrar}
+                      examInfo={null}
+                    />
+                  ))}
+                </GrabadasExamenGroup>
               ))}
             </div>
           )}
-        </Card>
+        </div>
       </div>
 
       <ConfirmModal

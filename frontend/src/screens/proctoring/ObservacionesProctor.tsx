@@ -22,9 +22,12 @@ function fechaCorta(iso: string): string {
 export function ObservacionesProctor({
   sessionId,
   proctorActor,
+  readOnly = false,
 }: {
   sessionId: string | null | undefined;
   proctorActor?: string | null;
+  /** Solo lectura (sesión grabada): muestra las observaciones sin caja para escribir. */
+  readOnly?: boolean;
 }) {
   const toast = useToast();
   const [observaciones, setObservaciones] = useState<ObservacionProctor[]>([]);
@@ -79,42 +82,53 @@ export function ObservacionesProctor({
       <div className="max-h-[260px] overflow-y-auto space-y-base">
         {observaciones.length === 0 ? (
           <p className="text-label-sm text-on-surface-variant italic text-center py-md">
-            {sessionId ? 'Sin observaciones todavía.' : 'No hay sesión seleccionada.'}
+            {!sessionId
+              ? 'No hay sesión seleccionada.'
+              : readOnly
+                ? 'No se registraron observaciones en esta sesión.'
+                : 'Sin observaciones todavía.'}
           </p>
         ) : (
           observaciones.map((o) => (
             <div
               key={o.id}
-              className="bg-surface-container-high rounded-xl px-sm py-base text-label-sm text-on-surface"
+              className="flex gap-sm bg-white/70 border border-outline-variant/30 rounded-xl px-sm py-base"
             >
-              <p className="whitespace-pre-wrap">{o.texto}</p>
-              <span className="block text-[10px] text-on-surface-variant mt-base">
-                {o.proctor_actor ? `${o.proctor_actor} · ` : ''}
-                {fechaCorta(o.creada_en)}
-              </span>
+              <Icon name="sticky_note_2" className="text-[16px] text-on-surface-variant shrink-0 mt-px" />
+              <div className="min-w-0 flex-1">
+                <p className="text-label-sm text-on-surface whitespace-pre-wrap break-words">{o.texto}</p>
+                <span className="block text-[10px] text-on-surface-variant mt-base">
+                  {o.proctor_actor ? `${o.proctor_actor} · ` : ''}
+                  {fechaCorta(o.creada_en)}
+                </span>
+              </div>
             </div>
           ))
         )}
       </div>
 
-      <div className="flex gap-base items-end">
-        <textarea
-          value={borrador}
-          onChange={(e) => setBorrador(e.target.value)}
-          disabled={!sessionId || guardando}
-          rows={2}
-          placeholder={sessionId ? 'Anotar una observación…' : 'No disponible'}
-          className="flex-1 px-sm py-base text-label-md rounded-xl border border-outline-variant bg-surface-container-lowest focus:border-primary-container outline-none disabled:opacity-50 resize-none"
-        />
-        <Button
-          onClick={() => void agregar()}
-          disabled={!sessionId || guardando}
-          aria-label="Agregar observación"
-          className="shrink-0 h-10 w-10 !p-0"
-        >
-          <Icon name="add_comment" className="text-[18px]" />
-        </Button>
-      </div>
+      {!readOnly && (
+        <div className="space-y-base">
+          <textarea
+            value={borrador}
+            onChange={(e) => setBorrador(e.target.value)}
+            disabled={!sessionId || guardando}
+            rows={4}
+            placeholder={sessionId ? 'Anotá una observación para la revisión humana…' : 'No disponible'}
+            className="w-full px-sm py-base text-label-md rounded-xl border border-outline-variant bg-surface-container-lowest focus:border-primary-container outline-none disabled:opacity-50 resize-y min-h-[88px]"
+          />
+          <div className="flex justify-end">
+            <Button
+              size="sm"
+              icon="add_comment"
+              onClick={() => void agregar()}
+              disabled={!sessionId || guardando || !borrador.trim()}
+            >
+              Agregar observación
+            </Button>
+          </div>
+        </div>
+      )}
     </Card>
   );
 }

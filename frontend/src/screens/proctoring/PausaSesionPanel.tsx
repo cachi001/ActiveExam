@@ -13,7 +13,7 @@
  * veredicto disciplinario.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Card, Button, Icon } from '../../ui/components';
+import { Card, Button, Icon, Badge } from '../../ui/components';
 import { useToast } from '../../ui/toast';
 import { api } from '../../lib/api';
 import type { AccionPausa, Pausa } from '../../lib/types';
@@ -94,15 +94,15 @@ export function PausaSesionPanel({
   const enCurso = pausa.estado === 'aprobada';
 
   return (
-    <Card
-      className={`space-y-md border-l-4 ${enCurso ? 'border-l-success bg-success-container/25' : 'border-l-warning bg-warning-container/40'}`}
-    >
+    <div className={`max-w-2xl rounded-2xl border shadow-sm transition-shadow hover:shadow-md p-md space-y-sm ${enCurso ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'}`}>
       <div className="flex items-start gap-sm">
-        <Icon
-          name={enCurso ? 'pause_circle' : 'pan_tool'}
-          className={`${enCurso ? 'text-success' : 'text-warning'} text-[22px] shrink-0 mt-px`}
-          fill
-        />
+        <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${enCurso ? 'bg-success-container' : 'bg-warning-container'}`}>
+          <Icon
+            name={enCurso ? 'pause_circle' : 'pan_tool'}
+            className={`${enCurso ? 'text-success' : 'text-warning'} text-[18px]`}
+            fill
+          />
+        </div>
         <div className="min-w-0 flex-1">
           <p className="font-headline text-title-md text-on-surface">
             {enCurso ? 'Pausa en curso' : 'El alumno solicita una pausa'}
@@ -112,35 +112,29 @@ export function PausaSesionPanel({
             {formatFechaRelativa((enCurso && pausa.inicio_en) || pausa.solicitada_en)}
           </p>
         </div>
+        <Badge tone={enCurso ? 'success' : 'warning'}>{enCurso ? 'En curso' : 'Pendiente'}</Badge>
       </div>
 
-      <p className="text-label-md text-on-surface bg-white/60 rounded-lg px-sm py-base">
-        <span className="text-on-surface-variant">Motivo: </span>
-        {pausa.motivo}
-      </p>
+      <p className="text-label-md font-medium text-on-surface break-words">“{pausa.motivo}”</p>
 
       {!enCurso && (
         <div className="flex gap-base">
-          <Button
-            variant="success"
-            size="sm"
-            icon="check"
-            className="flex-1"
+          <button
+            type="button"
             onClick={() => void resolver('aprobar')}
             disabled={resolviendo}
+            className="inline-flex items-center justify-center gap-base rounded-lg px-md py-base text-label-sm font-semibold bg-success-container text-success hover:bg-success-container/70 disabled:opacity-50 transition-colors"
           >
-            Aprobar pausa
-          </Button>
-          <Button
-            variant="danger"
-            size="sm"
-            icon="close"
-            className="flex-1"
+            <Icon name="check" className="text-[16px]" /> Aprobar pausa
+          </button>
+          <button
+            type="button"
             onClick={() => { setMotivoRechazo(''); setRechazando(true); }}
             disabled={resolviendo}
+            className="inline-flex items-center justify-center gap-base rounded-lg px-md py-base text-label-sm font-semibold bg-error-container text-on-error-container hover:bg-error-container/70 disabled:opacity-50 transition-colors"
           >
-            Rechazar
-          </Button>
+            <Icon name="close" className="text-[16px]" /> Rechazar
+          </button>
         </div>
       )}
 
@@ -185,7 +179,7 @@ export function PausaSesionPanel({
           </Card>
         </div>
       )}
-    </Card>
+    </div>
   );
 }
 

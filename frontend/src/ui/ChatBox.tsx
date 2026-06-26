@@ -34,11 +34,14 @@ export function ChatBox({
   yo,
   titulo = 'Canal con el proctor',
   altura = 'h-[160px]',
+  readOnly = false,
 }: {
   sessionId: string | null | undefined;
   yo: AutorChat;
   titulo?: string;
   altura?: string;
+  /** Solo lectura (sesión grabada): muestra el historial sin caja de envío. */
+  readOnly?: boolean;
 }) {
   const toast = useToast();
   const [mensajes, setMensajes] = useState<MensajeChat[]>([]);
@@ -85,9 +88,11 @@ export function ChatBox({
     setMensajes([]);
     if (!sessionId) return;
     void refrescar();
+    // Solo lectura (grabada): carga única, sin polling.
+    if (readOnly) return;
     const id = setInterval(() => void refrescar(), POLL_MS);
     return () => clearInterval(id);
-  }, [sessionId, refrescar]);
+  }, [sessionId, refrescar, readOnly]);
 
   // Autoscroll al fondo cuando llega/envío un mensaje.
   useEffect(() => {
@@ -122,7 +127,11 @@ export function ChatBox({
       >
         {mensajes.length === 0 ? (
           <p className="text-label-sm text-on-surface-variant italic text-center py-md">
-            {sessionId ? 'Sin mensajes todavía.' : 'El canal se habilita al iniciar la sesión.'}
+            {!sessionId
+              ? 'El canal se habilita al iniciar la sesión.'
+              : readOnly
+                ? 'No hubo mensajes en esta sesión.'
+                : 'Sin mensajes todavía.'}
           </p>
         ) : (
           mensajes.map((m) => {
@@ -147,24 +156,26 @@ export function ChatBox({
         )}
       </div>
 
-      <div className="flex gap-base">
-        <input
-          value={borrador}
-          onChange={(e) => setBorrador(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && void enviar()}
-          disabled={!sessionId || enviando}
-          placeholder={sessionId ? 'Escribir mensaje…' : 'Canal no disponible'}
-          className="flex-1 h-10 px-sm py-base text-label-md rounded-xl border border-outline-variant bg-surface-container-lowest focus:border-primary-container outline-none disabled:opacity-50"
-        />
-        <Button
-          onClick={() => void enviar()}
-          disabled={!sessionId || enviando}
-          aria-label="Enviar mensaje"
-          className="shrink-0 h-10 w-10 !p-0"
-        >
-          <Icon name="send" className="text-[18px]" />
-        </Button>
-      </div>
+      {!readOnly && (
+        <div className="flex gap-base">
+          <input
+            value={borrador}
+            onChange={(e) => setBorrador(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && void enviar()}
+            disabled={!sessionId || enviando}
+            placeholder={sessionId ? 'Escribir mensaje…' : 'Canal no disponible'}
+            className="flex-1 h-10 px-sm py-base text-label-md rounded-xl border border-outline-variant bg-surface-container-lowest focus:border-primary-container outline-none disabled:opacity-50"
+          />
+          <Button
+            onClick={() => void enviar()}
+            disabled={!sessionId || enviando}
+            aria-label="Enviar mensaje"
+            className="shrink-0 h-10 w-10 !p-0"
+          >
+            <Icon name="send" className="text-[18px]" />
+          </Button>
+        </div>
+      )}
     </Card>
   );
 }

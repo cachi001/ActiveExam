@@ -9,7 +9,7 @@
  * en vez de un error duro. No se renderiza nada si no hay pendientes.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Card, Button, Icon, SectionTitle } from '../../ui/components';
+import { Card, Button, Icon, SectionTitle, Badge } from '../../ui/components';
 import { useToast } from '../../ui/toast';
 import { api } from '../../lib/api';
 import type { AccionPausa, PausaPendiente } from '../../lib/types';
@@ -103,43 +103,42 @@ export function PausasPendientes({ proctorActor }: { proctorActor?: string | nul
         {pendientes.map((p) => {
           const ocupado = resolviendo.has(p.id);
           return (
-            <Card key={p.id} className="space-y-sm border-l-4 border-l-warning">
-              <div className="flex items-start gap-base">
-                <Icon name="pan_tool" className="text-warning text-[20px] shrink-0 mt-px" fill />
+            <div
+              key={p.id}
+              className="bg-amber-50 rounded-2xl border border-amber-200 shadow-sm transition-shadow hover:shadow-md p-md space-y-sm"
+            >
+              <div className="flex items-start gap-sm">
+                <div className="w-9 h-9 rounded-full bg-warning-container flex items-center justify-center shrink-0">
+                  <Icon name="pan_tool" className="text-warning text-[18px]" fill />
+                </div>
                 <div className="min-w-0 flex-1">
                   <p className="text-label-md font-semibold text-on-surface truncate">
                     {p.etiqueta?.trim() || `Sesión ${p.session_id.slice(0, 8)}…`}
                   </p>
                   <p className="text-label-sm text-on-surface-variant">{formatFechaRelativa(p.solicitada_en)}</p>
                 </div>
+                <Badge tone="warning">Pendiente</Badge>
               </div>
-              <p className="text-label-sm text-on-surface bg-surface-container-low rounded-lg px-sm py-base">
-                <span className="text-on-surface-variant">Motivo: </span>
-                {p.motivo}
-              </p>
+              <p className="text-label-sm font-medium text-on-surface break-words">“{p.motivo}”</p>
               <div className="flex gap-base">
-                <Button
-                  variant="success"
-                  size="sm"
-                  icon="check"
-                  className="flex-1"
+                <button
+                  type="button"
                   onClick={() => void resolver(p.id, 'aprobar')}
                   disabled={ocupado}
+                  className="flex-1 inline-flex items-center justify-center gap-base rounded-lg px-sm py-base text-label-sm font-semibold bg-success-container text-success hover:bg-success-container/70 disabled:opacity-50 transition-colors"
                 >
-                  Aprobar
-                </Button>
-                <Button
-                  variant="danger"
-                  size="sm"
-                  icon="close"
-                  className="flex-1"
+                  <Icon name="check" className="text-[16px]" /> Aprobar
+                </button>
+                <button
+                  type="button"
                   onClick={() => abrirRechazo(p)}
                   disabled={ocupado}
+                  className="flex-1 inline-flex items-center justify-center gap-base rounded-lg px-sm py-base text-label-sm font-semibold bg-error-container text-on-error-container hover:bg-error-container/70 disabled:opacity-50 transition-colors"
                 >
-                  Rechazar
-                </Button>
+                  <Icon name="close" className="text-[16px]" /> Rechazar
+                </button>
               </div>
-            </Card>
+            </div>
           );
         })}
       </div>

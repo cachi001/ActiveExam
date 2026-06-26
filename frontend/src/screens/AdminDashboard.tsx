@@ -78,15 +78,15 @@ export default function AdminDashboard() {
                     <Link
                       key={e.id}
                       to="/admin/examenes"
-                      className="flex items-center justify-between gap-3 px-lg py-3 hover:bg-surface-50 transition-colors"
+                      className="flex items-center justify-between gap-4 px-lg py-4 hover:bg-surface-50 transition-colors"
                     >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-10 h-10 rounded-md bg-primary-fixed text-on-primary-fixed-variant flex items-center justify-center shrink-0">
-                          <Icon name="description" className="text-[20px]" />
+                      <div className="flex items-center gap-4 min-w-0">
+                        <div className="w-12 h-12 rounded-lg bg-primary-fixed text-on-primary-fixed-variant flex items-center justify-center shrink-0">
+                          <Icon name="description" className="text-[24px]" />
                         </div>
                         <div className="min-w-0">
-                          <p className="text-[14px] font-semibold text-on-surface truncate leading-tight">{e.nombre}</p>
-                          <p className="text-[12.5px] text-on-surface-variant truncate leading-tight mt-0.5">{e.catedra} · {e.inscriptos} inscriptos</p>
+                          <p className="text-[15px] font-semibold text-on-surface truncate leading-snug">{e.nombre}</p>
+                          <p className="text-[13px] text-on-surface-variant truncate leading-snug mt-0.5">{e.catedra} · {e.inscriptos} inscriptos</p>
                         </div>
                       </div>
                       <Badge tone={ESTADO_TONE[e.estado]}>{ESTADO_LABEL[e.estado]}</Badge>

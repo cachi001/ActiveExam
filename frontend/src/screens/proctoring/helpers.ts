@@ -172,24 +172,51 @@ export function modoLabel(modo: string): string {
 export function verdictClasses(v: VeredictoReinferencia | null | undefined): string {
   if (v === 'coincide') return 'bg-success-container text-success border-success/30';
   if (v === 'discrepancia') return 'bg-error-container text-on-error-container border-error/30';
-  return 'bg-surface-container text-on-surface-variant border-outline-variant/40';
+  return 'bg-white/70 text-on-surface-variant border-outline-variant/40';
 }
 
 export function verdictIcon(v: VeredictoReinferencia | null | undefined): string {
   if (v === 'coincide') return 'check_circle';
   if (v === 'discrepancia') return 'report';
-  return 'help';
+  if (v === 'error') return 'error';
+  return 'info';
 }
 
 export function verdictLabel(v: VeredictoReinferencia | null | undefined): string {
-  if (!v) return 'No evaluado';
-  const map: Record<VeredictoReinferencia, string> = {
-    coincide: 'Coincide',
-    discrepancia: 'Discrepancia',
-    sin_referencia: 'Sin referencia',
-    error: 'Error',
+  const map: Record<string, string> = {
+    coincide: 'Coincide con el navegador',
+    discrepancia: 'No coincide con el navegador',
+    sin_referencia: 'Sin referencia previa',
+    error: 'Error al verificar',
+    no_evaluado: 'No evaluado',
   };
-  return map[v] ?? v;
+  return map[v ?? ''] ?? 'No evaluado';
+}
+
+/**
+ * ¿El veredicto aporta evidencia que valga la pena mostrar?
+ * `no_evaluado`/null = el servidor no re-infirió (p. ej. evento sin captura) → no
+ * se muestra la fila para no ensuciar con ruido sin valor.
+ */
+export function tieneVeredicto(v: VeredictoReinferencia | null | undefined): boolean {
+  return v === 'coincide' || v === 'discrepancia' || v === 'sin_referencia' || v === 'error';
+}
+
+/** snake_case / minúsculas → "Texto legible" (fallback cuando no hay etiqueta). */
+export function humanizarLabel(raw: string): string {
+  const limpio = (raw ?? '').replace(/_/g, ' ').trim();
+  return limpio.charAt(0).toUpperCase() + limpio.slice(1);
+}
+
+/** Fondo claro tintado por SEVERIDAD del evento (para la card del evento, sin
+ *  bordes grises ni stripe fuerte). Coherente con scoreSoftBg de las sesiones. */
+export function severidadSoftBg(sev: string): string {
+  // El backend guarda la severidad en masculino (bajo/medio/alto/critico) y el
+  // cliente la maneja en femenino (baja/media/alta/critica); aceptamos ambos.
+  if (sev === 'critica' || sev === 'critico' || sev === 'alta' || sev === 'alto') return 'bg-error-container/40';
+  if (sev === 'media' || sev === 'medio') return 'bg-warning-container/50';
+  if (sev === 'baja' || sev === 'bajo') return 'bg-success-container/25';
+  return 'bg-surface-container-lowest';
 }
 
 // --- Formateo de payload de eventos (legibilidad para revisión humana) ---
