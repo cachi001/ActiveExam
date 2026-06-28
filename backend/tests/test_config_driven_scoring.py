@@ -23,28 +23,28 @@ class _Evento:
 def test_usa_pesos_vivos_por_tipo() -> None:
     """Con pesos_por_tipo, el score usa el peso editado, no el default por severidad."""
     eventos = [_Evento(severidad="alta", tipo="multiples_rostros")]
-    # Peso vivo editado a 77 (distinto del default por severidad alto=50).
+    # Peso vivo editado a 77 (distinto del default por severidad alta=45).
     score = calcular_score(eventos, pesos_por_tipo={"multiples_rostros": 77})
     assert score == 77
 
 
 def test_fallback_a_severidad_sin_config() -> None:
     """Sin pesos_por_tipo (config ausente) usa la red de seguridad por severidad."""
-    eventos = [_Evento(severidad="alto", tipo="multiples_rostros")]
-    assert calcular_score(eventos) == 50  # default por severidad (sin cambio de contrato)
+    eventos = [_Evento(severidad="alta", tipo="multiples_rostros")]
+    assert calcular_score(eventos) == 45  # default por severidad alta (C-15: alta=45)
 
 
 def test_tipo_no_en_config_cae_a_severidad() -> None:
     """Un tipo no presente en los pesos vivos cae al peso por severidad."""
-    eventos = [_Evento(severidad="medio", tipo="tipo_desconocido")]
+    eventos = [_Evento(severidad="media", tipo="tipo_desconocido")]
     score = calcular_score(eventos, pesos_por_tipo={"otro_tipo": 99})
-    assert score == 20  # severidad medio default
+    assert score == 20  # severidad media default
 
 
 def test_suma_mixta_vivos_y_fallback() -> None:
     eventos = [
         _Evento(severidad="alta", tipo="multiples_rostros"),  # vivo 77
-        _Evento(severidad="medio", tipo="cambio_pestana"),    # fallback severidad 20
+        _Evento(severidad="media", tipo="cambio_pestana"),    # fallback severidad 20
     ]
     score = calcular_score(eventos, pesos_por_tipo={"multiples_rostros": 77})
     assert score == 97
