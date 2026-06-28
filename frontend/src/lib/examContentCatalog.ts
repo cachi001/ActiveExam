@@ -8,9 +8,22 @@
 
 import type { ExamenContenidoResumen } from './types';
 
+/** Respuesta paginada del catálogo (C-69 admin-sync, tarea 4). */
+export interface CatalogoExamenesPaginado {
+  items: ExamenContenidoResumen[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
 /**
- * Función pura que llama a GET /exam-content y devuelve la lista.
+ * Función pura que llama a GET /exam-content y devuelve la lista de exámenes.
  * Exportada para tests unitarios — permite inyectar apiBase y token.
+ *
+ * Contrato del backend (C-69 admin-sync, tarea 4): respuesta paginada
+ * { items, total, page, page_size }. Esta función desempaqueta `items` y es
+ * TOLERANTE: si el backend devolviera un array plano (contrato legacy) lo usa
+ * tal cual. Sin params, el backend usa un page_size amplio (1000) → devuelve todo.
  *
  * @param apiBase  - Base de la API (ej: '/api/v1')
  * @param token    - JWT de acceso (undefined si no hay sesión)
@@ -29,9 +42,59 @@ export async function listarExamenesContenidoFn(
       },
     });
     if (!res.ok) return [];
-    return (await res.json()) as ExamenContenidoResumen[];
+    const body = await res.json();
+    // Forma paginada { items, ... } o, por tolerancia, un array plano legacy.
+    if (Array.isArray(body)) return body as ExamenContenidoResumen[];
+    return (body?.items ?? []) as ExamenContenidoResumen[];
   } catch {
     // Error de red o de parseo: degradación silenciosa (no bloquea el flujo).
     return [];
+  }
+}
+
+/**
+ * Versión paginada de listarExamenesContenidoFn con soporte de búsqueda serverside.
+ * Acepta q (búsqueda por título/materia/comisión), page y page_size.
+ * Retorna la respuesta paginada completa (items + metadatos de paginación).
+ *
+ * En error de red retorna una respuesta vacía sin propagar.
+ */
+export async function listarExamenesContenidoPaginadoFn(
+  apiBase: string,
+  token: string | undefined,
+  params: { q?: string; page?: number; page_size?: number } = {},
+): Promise<CatalogoExamenesPaginado> {
+  const qs = new URLSearchParams();
+  if (params.q) qs.set('q', params.q);
+  if (params.page !== undefined) qs.set('page', String(params.page));
+  if (params.page_size !== undefined) qs.set('page_size', String(params.page_size));
+  const qStr = qs.toString();
+  const fallback: CatalogoExamenesPaginado = {
+    items: [],
+    total: 0,
+    page: params.page ?? 1,
+    page_size: params.page_size ?? 25,
+  };
+  try {
+    const res = await fetch(`${apiBase}/exam-content${qStr ? '?' + qStr : ''}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    });
+    if (!res.ok) return fallback;
+    const body = await res.json();
+    if (Array.isArray(body)) {
+      return { items: body as ExamenContenidoResumen[], total: body.length, page: 1, page_size: body.length || fallback.page_size };
+    }
+    return {
+      items: (body?.items ?? []) as ExamenContenidoResumen[],
+      total: body?.total ?? 0,
+      page: body?.page ?? 1,
+      page_size: body?.page_size ?? fallback.page_size,
+    };
+  } catch {
+    return fallback;
   }
 }

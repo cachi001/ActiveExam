@@ -35,6 +35,8 @@ import ProctoringSessionDetail from './screens/ProctoringSessionDetail';
 import GestionUsuarios from './screens/GestionUsuarios';
 // C-68: Detalle de usuario
 import DetalleUsuario from './screens/DetalleUsuario';
+// C-69: Detalle de examen (alumnos, notas, sincronización Moodle)
+import ExamDetail from './screens/ExamDetail';
 import Configuracion from './screens/Configuracion';
 import Registro from './screens/Registro';
 
@@ -75,6 +77,7 @@ export default function App() {
     '/revisor/detalle': g(<SessionDetail />, SUPERVISION),
     '/admin': g(<AdminDashboard />, ADMIN),
     '/admin/examenes': g(<ExamList />, ADMIN),
+    '/admin/examenes/:id': g(<ExamDetail />, ADMIN),
     '/admin/reportes': g(<Reports />, ADMIN),
     '/admin/auditoria': g(<AuditPrivacy />, ADMIN),
     '/admin/detection-test': g(<AdminDetectionHarness />, ADMIN),

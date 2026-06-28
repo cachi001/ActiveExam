@@ -188,6 +188,30 @@ describe('4.1 listarExamenesContenidoFn() — shape de la respuesta', () => {
     expect(headers?.['Authorization']).toBeUndefined();
   });
 
+  it('desempaqueta la forma paginada { items, total, page, page_size } del backend', async () => {
+    const paginado = {
+      items: [
+        { id: 'pg-1', titulo: 'Álgebra', cantidad_preguntas: 3 },
+        { id: 'pg-2', titulo: 'Biología', cantidad_preguntas: 5 },
+      ],
+      total: 2,
+      page: 1,
+      page_size: 1000,
+    };
+    fetchSpy.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => paginado,
+    } as Response);
+
+    const { listarExamenesContenidoFn } = await import('./examContentCatalog');
+    const resultado = await listarExamenesContenidoFn('/api/v1', 'tok');
+
+    expect(resultado).toHaveLength(2);
+    expect(resultado[0].id).toBe('pg-1');
+    expect(resultado[1].titulo).toBe('Biología');
+  });
+
   it('examen_contenido_id del item es el mismo que se usa para GET /{id}', async () => {
     const mockItems: ExamenContenidoResumen[] = [
       { id: 'real-uuid-123', titulo: 'Cálculo Diferencial', cantidad_preguntas: 10 },
