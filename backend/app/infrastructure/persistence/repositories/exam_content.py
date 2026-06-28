@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -131,6 +131,64 @@ class ExamenContenidoSqlRepository:
         stmt = self._stmt_resumen().order_by(ExamenContenidoModel.titulo)
         result = await self._db.execute(stmt)
         return [self._row_to_resumen(row) for row in result.all()]
+
+    def _filtro_q(self, stmt, q: str | None):
+        """Aplica búsqueda serverside por título / materia / comisión (ILIKE)."""
+        if not q:
+            return stmt
+        patron = f"%{q.strip()}%"
+        return stmt.where(
+            or_(
+                ExamenContenidoModel.titulo.ilike(patron),
+                ComisionModel.nombre.ilike(patron),
+                MateriaModel.nombre.ilike(patron),
+            )
+        )
+
+    async def listar_paginado(
+        self,
+        *,
+        q: str | None = None,
+        page: int = 1,
+        page_size: int = 1000,
+    ) -> tuple[list[ExamenContenidoResumen], int]:
+        """Lista paginada + búsqueda serverside del catálogo (tarea 4, admin-sync).
+
+        Filtra por título/materia/comisión (q, ILIKE) SIEMPRE en SQL. Orden estable
+        alfabético por título. Devuelve (items_de_la_pagina, total_global_filtrado).
+        El total cuenta los exámenes que matchean el filtro, no solo la página.
+        """
+        page = max(1, page)
+        page_size = max(1, page_size)
+
+        base = self._filtro_q(self._stmt_resumen(), q)
+
+        # total = cantidad de grupos (exámenes) que matchean el filtro
+        total_stmt = select(func.count()).select_from(base.subquery())
+        total = (await self._db.execute(total_stmt)).scalar_one()
+
+        page_stmt = (
+            base.order_by(ExamenContenidoModel.titulo)
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )
+        result = await self._db.execute(page_stmt)
+        items = [self._row_to_resumen(row) for row in result.all()]
+        return items, int(total)
+
+    async def obtener_resumen(self, examen_id: str) -> ExamenContenidoResumen | None:
+        """Resumen (metadatos) de UN examen para el encabezado del detalle.
+
+        Reusa el read-model de resumen (count de preguntas + LEFT JOIN comisión/
+        materia, D11). Devuelve None si el examen no existe. D3: sin preguntas ni
+        es_correcta — solo metadatos.
+        """
+        stmt = self._stmt_resumen().where(ExamenContenidoModel.id == examen_id)
+        result = await self._db.execute(stmt)
+        row = result.one_or_none()
+        if row is None:
+            return None
+        return self._row_to_resumen(row)
 
     async def listar_por_comision(
         self, comision_id: str

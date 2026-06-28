@@ -183,9 +183,13 @@ async def test_listar_vacio_devuelve_lista_vacia(client_student):
     """GET /api/v1/exam-content/ con BD vacía → 200 + lista vacía."""
     resp = await client_student.get("/api/v1/exam-content/")
     assert resp.status_code == 200, resp.text
-    data = resp.json()
+    body = resp.json()
+    # Contrato paginado (C-69 admin-sync, tarea 4): { items, total, page, page_size }
+    assert set(body.keys()) == {"items", "total", "page", "page_size"}
+    data = body["items"]
     assert isinstance(data, list)
     assert data == [], f"Se esperaba [] en BD vacía, se obtuvo {data}"
+    assert body["total"] == 0
 
 
 @pytest.mark.asyncio
@@ -198,7 +202,7 @@ async def test_listar_devuelve_examen_importado(client_student, factory):
 
     resp = await client_student.get("/api/v1/exam-content/")
     assert resp.status_code == 200, resp.text
-    data = resp.json()
+    data = resp.json()["items"]
     assert isinstance(data, list)
 
     item = next((x for x in data if x["id"] == guardado.id), None)
@@ -226,7 +230,7 @@ async def test_listar_shape_tiene_solo_campos_permitidos(client_student, factory
 
     resp = await client_student.get("/api/v1/exam-content/")
     assert resp.status_code == 200, resp.text
-    data = resp.json()
+    data = resp.json()["items"]
 
     for item in data:
         assert "id" in item
@@ -250,7 +254,7 @@ async def test_listar_orden_alfabetico(client_student, factory):
 
     resp = await client_student.get("/api/v1/exam-content/")
     assert resp.status_code == 200, resp.text
-    data = resp.json()
+    data = resp.json()["items"]
 
     titulos = [item["titulo"] for item in data]
     assert "Zoología Aplicada" in titulos

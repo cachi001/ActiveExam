@@ -12,6 +12,14 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 
 from app.application.exam_content.asociacion_service import AsociacionComisionService
+from app.application.moodle.resultados_query import (
+    listar_estados_sincronizables,
+    listar_resultados_examen,
+)
+from app.application.moodle.writeback_service import (
+    MoodleWritebackService,
+    WritebackEstado,
+)
 from app.application.exam_content.errors import (
     ComisionNoEncontradaError,
     ExamenNoEncontradoError,
@@ -39,12 +47,16 @@ from app.presentation.api.v1.exam_content.schemas import (
     AsociarComisionResponse,
     ComisionResponse,
     ExamenContenidoResumenResponse,
+    ExamenesContenidoPaginadosResponse,
     ExamenRendicionResponse,
     ImportReporteResponse,
     MateriaResponse,
     OmitidaItemResponse,
     OpcionRendicionResponse,
     PreguntaRendicionResponse,
+    ResultadoAlumnoResponse,
+    ResultadosExamenPaginadosResponse,
+    SincronizarMoodleResponse,
 )
 
 
@@ -60,8 +72,16 @@ def _resumen_to_response(r) -> ExamenContenidoResumenResponse:
     )
 
 
-def create_exam_content_router(session_factory=None) -> APIRouter:
-    """Factory que permite inyectar session_factory en tests."""
+def create_exam_content_router(
+    session_factory=None,
+    *,
+    writeback_svc: MoodleWritebackService | None = None,
+) -> APIRouter:
+    """Factory que permite inyectar session_factory en tests.
+
+    writeback_svc: servicio de write-back a Moodle (None = Moodle no configurado;
+    la sincronización manual responde 'sin_token' sin crashear).
+    """
     router = APIRouter(
         dependencies=[
             Depends(require_roles(Rol.ADMIN_EXAMENES, Rol.ADMIN_SISTEMA)),
@@ -254,6 +274,133 @@ def create_exam_content_router(session_factory=None) -> APIRouter:
 
         return AsociarComisionResponse(examen_id=examen_id, comision_id=body.comision_id)
 
+    # -----------------------------------------------------------------------
+    # Resultados del examen (C-69 admin-sync, tarea 2) — admin-only, SIN MFA.
+    # Lista de alumnos que rindieron, con nota y estado del envío a Moodle.
+    # -----------------------------------------------------------------------
+
+    @router.get(
+        "/{examen_id}/resultados",
+        response_model=ResultadosExamenPaginadosResponse,
+        summary="Resultados del examen: alumnos, nota y estado de envío a Moodle (paginado)",
+    )
+    async def resultados_examen(
+        examen_id: str,
+        q: str | None = None,
+        estado: str | None = None,
+        page: int = 1,
+        page_size: int = 20,
+    ) -> ResultadosExamenPaginadosResponse:
+        """Lista paginada de los alumnos que rindieron el examen.
+
+        Deriva de las sesiones FINALIZADAS vinculadas + la nota persistida + el
+        estado de write-back. Filtrado/orden SIEMPRE serverside.
+        - q:      búsqueda por alumno (idnumber/email).
+        - estado: filtro por estado (pendiente/enviado/fallido/sin_token).
+        estado_moodle = 'sin_token' cuando Moodle no está configurado.
+        D3: es_correcta NUNCA expuesta.
+        """
+        if session_factory is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Persistencia no inicializada.",
+            )
+
+        moodle_configurado = writeback_svc is not None
+        async with session_factory() as session:
+            items, total = await listar_resultados_examen(
+                db=session,
+                examen_id=examen_id,
+                q=q,
+                estado=estado,
+                page=page,
+                page_size=page_size,
+                moodle_configurado=moodle_configurado,
+            )
+
+        return ResultadosExamenPaginadosResponse(
+            items=[
+                ResultadoAlumnoResponse(
+                    session_id=r.session_id,
+                    alumno_idnumber=r.alumno_idnumber,
+                    alumno_email=r.alumno_email,
+                    alumno_nombre=r.alumno_nombre,
+                    nota=r.nota,
+                    estado_moodle=r.estado_moodle,
+                    actualizado_en=r.actualizado_en,
+                )
+                for r in items
+            ],
+            total=total,
+            page=max(1, page),
+            page_size=max(1, page_size),
+        )
+
+    # -----------------------------------------------------------------------
+    # Sincronización manual a Moodle (C-69 admin-sync, tarea 3) — admin-only.
+    # Dispara el write-back de las notas pendientes/fallidas del examen.
+    # -----------------------------------------------------------------------
+
+    @router.post(
+        "/{examen_id}/sincronizar-moodle",
+        response_model=SincronizarMoodleResponse,
+        summary="Sincronizar manualmente las notas pendientes/fallidas del examen a Moodle",
+    )
+    async def sincronizar_moodle(examen_id: str) -> SincronizarMoodleResponse:
+        """Envía a Moodle las notas en estado 'pendiente'/'fallido' del examen.
+
+        Idempotente: las 'enviado' NO se re-mandan (las excluye la query). Si Moodle
+        no está configurado (writeback_svc None), NO crashea: devuelve todo como
+        'sin_token' y deja las notas en 'pendiente'.
+        """
+        if session_factory is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Persistencia no inicializada.",
+            )
+
+        async with session_factory() as session:
+            pendientes = await listar_estados_sincronizables(
+                db=session, examen_id=examen_id
+            )
+            total = len(pendientes)
+
+            # Moodle no configurado: no se puede enviar. No crashea — sin_token.
+            if writeback_svc is None:
+                return SincronizarMoodleResponse(
+                    enviadas=0,
+                    fallidas=0,
+                    sin_token=total,
+                    total=total,
+                    mensaje=(
+                        "Moodle no está configurado (sin token). Las notas quedan "
+                        "'pendiente'; configurá MOODLE_BASE_URL/MOODLE_WS_TOKEN para enviar."
+                    ),
+                )
+
+            enviadas = 0
+            fallidas = 0
+            for fila in pendientes:
+                await writeback_svc.ejecutar_writeback(
+                    db=session,
+                    session_id=fila.session_id,
+                    nota=float(fila.nota) if fila.nota is not None else 0.0,
+                    alumno_idnumber=fila.alumno_idnumber or "",
+                    alumno_email=fila.alumno_email or "",
+                )
+                if fila.estado == WritebackEstado.ENVIADO:
+                    enviadas += 1
+                else:
+                    fallidas += 1
+            await session.commit()
+
+        return SincronizarMoodleResponse(
+            enviadas=enviadas,
+            fallidas=fallidas,
+            sin_token=0,
+            total=total,
+        )
+
     return router
 
 
@@ -269,22 +416,28 @@ def create_exam_taking_router(session_factory=None) -> APIRouter:
 
     @router.get(
         "",
-        response_model=list[ExamenContenidoResumenResponse],
-        summary="Listar exámenes de contenido importados (catálogo del alumno)",
+        response_model=ExamenesContenidoPaginadosResponse,
+        summary="Listar exámenes de contenido importados (catálogo paginado)",
     )
     @router.get(
         "/",
-        response_model=list[ExamenContenidoResumenResponse],
+        response_model=ExamenesContenidoPaginadosResponse,
         include_in_schema=False,
     )
     async def listar_examenes_contenido(
         principal: AuthenticatedPrincipal = Depends(get_current_principal),
-    ) -> list[ExamenContenidoResumenResponse]:
-        """Lista todos los exámenes de contenido disponibles para rendir.
+        q: str | None = None,
+        page: int = 1,
+        page_size: int = 1000,
+    ) -> ExamenesContenidoPaginadosResponse:
+        """Lista paginada de exámenes de contenido (catálogo del alumno/admin).
 
         Cualquier principal autenticado puede consultar el catálogo (sin admin ni MFA).
-        Devuelve id, titulo y cantidad_preguntas en orden alfabético.
-        D3: es_correcta NUNCA incluida — solo metadatos del examen.
+        Contrato (C-69 admin-sync, tarea 4): { items, total, page, page_size }.
+        - q:        búsqueda serverside por título/materia/comisión (ILIKE, opcional).
+        - page:     1-indexado (default 1).
+        - page_size: default 1000 → sin params devuelve TODO (compat frontend).
+        Filtrado y orden SIEMPRE en SQL. D3: es_correcta NUNCA incluida.
         """
         if session_factory is None:
             raise HTTPException(
@@ -298,9 +451,16 @@ def create_exam_taking_router(session_factory=None) -> APIRouter:
 
         async with session_factory() as session:
             repo = ExamenContenidoSqlRepository(session)
-            resumenes = await repo.listar()
+            resumenes, total = await repo.listar_paginado(
+                q=q, page=page, page_size=page_size
+            )
 
-        return [_resumen_to_response(r) for r in resumenes]
+        return ExamenesContenidoPaginadosResponse(
+            items=[_resumen_to_response(r) for r in resumenes],
+            total=total,
+            page=max(1, page),
+            page_size=max(1, page_size),
+        )
 
     # -----------------------------------------------------------------------
     # Navegación del alumno: materia → comisión → examen (datos REALES).
@@ -395,6 +555,43 @@ def create_exam_taking_router(session_factory=None) -> APIRouter:
             )
 
         return [_resumen_to_response(r) for r in resumenes]
+
+    @router.get(
+        "/{examen_id}/resumen",
+        response_model=ExamenContenidoResumenResponse,
+        summary="Resumen (metadatos) de un examen para el encabezado del detalle",
+    )
+    async def obtener_resumen_examen(
+        examen_id: str,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    ) -> ExamenContenidoResumenResponse:
+        """Metadatos del encabezado del detalle: id, titulo, cantidad_preguntas y,
+        si tiene comisión asociada (D11, NULLABLE), comision_id/comision_nombre/
+        materia_nombre. Cualquier principal autenticado (sin admin/MFA). 404 si no
+        existe. D3: es_correcta NUNCA expuesta; no viajan preguntas ni opciones.
+        """
+        if session_factory is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Persistencia no inicializada.",
+            )
+
+        from app.infrastructure.persistence.repositories.exam_content import (
+            ExamenContenidoSqlRepository,
+        )
+
+        async with session_factory() as session:
+            resumen = await ExamenContenidoSqlRepository(session).obtener_resumen(
+                examen_id
+            )
+
+        if resumen is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"error": "examen_no_encontrado", "examen_id": examen_id},
+            )
+
+        return _resumen_to_response(resumen)
 
     @router.get(
         "/{examen_id}",

@@ -34,6 +34,65 @@ class WritebackEstado(StrEnum):
     FALLIDO = "fallido"
 
 
+async def _get_estado_for_session(
+    db: AsyncSession, session_id: str
+) -> MoodleWritebackEstadoModel | None:
+    result = await db.execute(
+        select(MoodleWritebackEstadoModel).where(
+            MoodleWritebackEstadoModel.session_id == session_id
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def persistir_nota_pendiente(
+    *,
+    db: AsyncSession,
+    session_id: str,
+    nota: float,
+    alumno_idnumber: str,
+    alumno_email: str,
+    moodle_courseid: int | None = None,
+    moodle_cmid: int | None = None,
+) -> MoodleWritebackEstadoModel:
+    """Crea (o actualiza) el registro de estado en 'pendiente' con la nota calculada.
+
+    Standalone — NO requiere cliente Moodle: sirve cuando el write-back está
+    deshabilitado (Moodle sin configurar) pero la nota igual debe persistirse para
+    que el admin la vea/sincronice luego (decisión de producto: envío manual).
+
+    Idempotente: si ya existe un estado 'enviado' para esta sesión, lo devuelve tal
+    cual (no sobrescribe una nota ya enviada).
+    """
+    existing = await _get_estado_for_session(db, session_id)
+
+    if existing is not None and existing.estado == WritebackEstado.ENVIADO:
+        return existing
+
+    if existing is None:
+        estado = MoodleWritebackEstadoModel(
+            session_id=session_id,
+            alumno_idnumber=alumno_idnumber,
+            alumno_email=alumno_email,
+            nota=nota,
+            estado=WritebackEstado.PENDIENTE,
+            intento=0,
+            moodle_courseid=moodle_courseid,
+            moodle_cmid=moodle_cmid,
+        )
+        db.add(estado)
+        await db.flush()
+        return estado
+
+    # Ya existe (fallido o pendiente) — actualizar nota y volver a pendiente
+    existing.nota = nota
+    existing.alumno_idnumber = alumno_idnumber
+    existing.alumno_email = alumno_email
+    existing.estado = WritebackEstado.PENDIENTE
+    await db.flush()
+    return existing
+
+
 class MoodleWritebackService:
     """Orquesta el write-back de la nota académica a Moodle con idempotencia y auditoría.
 
@@ -58,34 +117,15 @@ class MoodleWritebackService:
         Si ya existe un estado 'enviado' para esta sesión, lo devuelve tal cual
         (idempotente: no sobrescribe una nota ya enviada).
         """
-        existing = await self._get_estado(db, session_id)
-
-        if existing is not None and existing.estado == WritebackEstado.ENVIADO:
-            return existing
-
-        if existing is None:
-            estado = MoodleWritebackEstadoModel(
-                session_id=session_id,
-                alumno_idnumber=alumno_idnumber,
-                alumno_email=alumno_email,
-                nota=nota,
-                estado=WritebackEstado.PENDIENTE,
-                intento=0,
-                moodle_courseid=self._client._config.courseid,
-                moodle_cmid=self._client._config.cmid,
-            )
-            db.add(estado)
-            await db.flush()
-        else:
-            # Ya existe (fallido o pendiente) — actualizar nota y estado a pendiente
-            existing.nota = nota
-            existing.alumno_idnumber = alumno_idnumber
-            existing.alumno_email = alumno_email
-            existing.estado = WritebackEstado.PENDIENTE
-            await db.flush()
-            estado = existing
-
-        return estado
+        return await persistir_nota_pendiente(
+            db=db,
+            session_id=session_id,
+            nota=nota,
+            alumno_idnumber=alumno_idnumber,
+            alumno_email=alumno_email,
+            moodle_courseid=self._client._config.courseid,
+            moodle_cmid=self._client._config.cmid,
+        )
 
     async def ejecutar_writeback(
         self,

@@ -6,6 +6,8 @@ D3: es_correcta NO aparece en ningún schema de respuesta al cliente.
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from pydantic import BaseModel, ConfigDict
 
 
@@ -46,6 +48,22 @@ class ExamenContenidoResumenResponse(BaseModel):
     comision_id: str | None = None
     comision_nombre: str | None = None
     materia_nombre: str | None = None
+
+
+class ExamenesContenidoPaginadosResponse(BaseModel):
+    """Catálogo de exámenes paginado (C-69 admin-sync, tarea 4).
+
+    Forma estándar de paginación serverside: la página de items + el total global
+    filtrado (no solo el de la página). El frontend usa `items`; `total` permite
+    construir el paginador. D3: es_correcta AUSENTE en cada item.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[ExamenContenidoResumenResponse]
+    total: int
+    page: int
+    page_size: int
 
 
 # ---------------------------------------------------------------------------
@@ -155,3 +173,49 @@ class AsociarComisionResponse(BaseModel):
 
     examen_id: str
     comision_id: str
+
+
+# ---------------------------------------------------------------------------
+# Resultados del examen + sincronización a Moodle (C-69 admin-sync, tareas 2-3)
+# ---------------------------------------------------------------------------
+
+
+class ResultadoAlumnoResponse(BaseModel):
+    """Fila de resultados de un examen para el admin.
+
+    L2.5 / D3: NUNCA incluye es_correcta ni respuestas — solo identidad del alumno,
+    nota académica y estado del envío a Moodle.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    session_id: str
+    alumno_idnumber: str | None = None
+    alumno_email: str | None = None
+    alumno_nombre: str | None = None
+    nota: float | None = None
+    estado_moodle: str  # pendiente | enviado | fallido | sin_token
+    actualizado_en: datetime | None = None
+
+
+class ResultadosExamenPaginadosResponse(BaseModel):
+    """Resultados de un examen paginados (forma estándar { items, total, page, page_size })."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[ResultadoAlumnoResponse]
+    total: int
+    page: int
+    page_size: int
+
+
+class SincronizarMoodleResponse(BaseModel):
+    """Resultado de la sincronización manual de notas a Moodle disparada por el admin."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enviadas: int
+    fallidas: int
+    sin_token: int
+    total: int
+    mensaje: str | None = None

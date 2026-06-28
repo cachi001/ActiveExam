@@ -265,6 +265,9 @@ def create_sessions_router(
                 for r in body.respuestas
             ],
         )
+        # El repo hace flush; sin commit las respuestas se pierden al cerrar la
+        # sesión de DB del request (get_db no auto-commitea).
+        await db.commit()
         return SubmitRespuestasOut(session_id=session_id, respuestas_guardadas=n)
 
     @router.patch(
@@ -281,43 +284,43 @@ def create_sessions_router(
 
         Idempotente: si ya estaba finalizada, responde 200 sin modificar.
         404 si la sesion no existe.
-        C-69 D8/D10: si la sesión tiene examen_contenido vinculado y respuestas del
-        alumno, dispara el write-back de la nota a Moodle en background sin bloquear.
+        C-69 (admin-sync): si la sesión tiene examen_contenido vinculado, la nota se
+        CALCULA y PERSISTE como 'pendiente'. NO se auto-envía a Moodle — el envío es
+        manual por el admin (POST /exam-content/{examen_id}/sincronizar-moodle). La
+        nota se calcula SIEMPRE que haya examen vinculado, esté o no Moodle configurado
+        (así el admin la ve en los resultados aunque Moodle no exista todavía).
         """
-        # Calcular nota y disparar writeback sólo si hay writeback habilitado
-        nota: float | None = None
-        if writeback_svc is not None:
-            # Leer la sesión para obtener examen_contenido_id
-            from sqlalchemy import select
-            from app.infrastructure.persistence.models.proctoring import ProctoringSessionModel
-            from app.infrastructure.persistence.models.moodle_writeback import RespuestaAlumnoModel
+        from sqlalchemy import select
+        from app.infrastructure.persistence.models.proctoring import ProctoringSessionModel
+        from app.infrastructure.persistence.models.moodle_writeback import RespuestaAlumnoModel
 
-            sesion_row = await db.execute(
-                select(ProctoringSessionModel).where(
-                    ProctoringSessionModel.id == session_id
+        # Calcular la nota SIEMPRE que la sesión tenga examen de contenido vinculado.
+        nota: float | None = None
+        sesion_row = await db.execute(
+            select(ProctoringSessionModel).where(
+                ProctoringSessionModel.id == session_id
+            )
+        )
+        sesion_model = sesion_row.scalar_one_or_none()
+
+        if sesion_model is not None and sesion_model.examen_contenido_id:
+            resp_rows = await db.execute(
+                select(RespuestaAlumnoModel).where(
+                    RespuestaAlumnoModel.session_id == session_id
                 )
             )
-            sesion_model = sesion_row.scalar_one_or_none()
-
-            if sesion_model is not None and sesion_model.examen_contenido_id:
-                # Leer las respuestas del alumno almacenadas
-                resp_rows = await db.execute(
-                    select(RespuestaAlumnoModel).where(
-                        RespuestaAlumnoModel.session_id == session_id
-                    )
+            respuestas = [
+                RespuestaAlumno(
+                    pregunta_id=r.pregunta_id,
+                    opcion_elegida_id=r.opcion_elegida_id,
                 )
-                respuestas = [
-                    RespuestaAlumno(
-                        pregunta_id=r.pregunta_id,
-                        opcion_elegida_id=r.opcion_elegida_id,
-                    )
-                    for r in resp_rows.scalars().all()
-                ]
-                nota = await calcular_nota_academica(
-                    db=db,
-                    examen_contenido_id=sesion_model.examen_contenido_id,
-                    respuestas=respuestas,
-                )
+                for r in resp_rows.scalars().all()
+            ]
+            nota = await calcular_nota_academica(
+                db=db,
+                examen_contenido_id=sesion_model.examen_contenido_id,
+                respuestas=respuestas,
+            )
 
         # Identidad del alumno para el write-back (D9)
         alumno_idnumber = principal.id_institucional or ""
@@ -326,7 +329,7 @@ def create_sessions_router(
         sesion = await finalizar_sesion_con_writeback(
             db=db,
             session_id=session_id,
-            writeback_svc=writeback_svc if nota is not None else None,
+            writeback_svc=writeback_svc,
             nota=nota,
             alumno_idnumber=alumno_idnumber,
             alumno_email=alumno_email,

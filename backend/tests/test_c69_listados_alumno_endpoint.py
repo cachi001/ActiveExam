@@ -270,7 +270,8 @@ async def test_listado_examenes_incluye_materia_y_comision(client_student, facto
     ids = await _seed(factory)
     resp = await client_student.get("/api/v1/exam-content")
     assert resp.status_code == 200, resp.text
-    data = resp.json()
+    # Contrato paginado (C-69 admin-sync, tarea 4): { items, total, page, page_size }
+    data = resp.json()["items"]
 
     con_com = next(x for x in data if x["id"] == ids["examen_id"])
     assert con_com["comision_id"] == ids["comision_id"]
