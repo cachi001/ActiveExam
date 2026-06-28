@@ -4,21 +4,53 @@ import { Icon, Card, Badge, Button, SectionTitle } from '../ui/components';
 import { HelpButton } from '../ui/HelpButton';
 import { ADMIN_NAV } from './AdminDashboard';
 import { useNavigate } from '../lib/router';
-import { api } from '../lib/api';
-import type { Examen } from '../lib/types';
+import { api, USE_REAL_BACKEND } from '../lib/api';
+import type { Examen, ExamenContenidoResumen } from '../lib/types';
 
 const ESTADO_TONE = { borrador: 'neutral', programado: 'primary', en_curso: 'success', finalizado: 'neutral' } as const;
 const ESTADO_LABEL = { borrador: 'Borrador', programado: 'Programado', en_curso: 'En curso', finalizado: 'Finalizado' } as const;
 
 export default function ExamList() {
+  // Modo real (C-69): exámenes de contenido importados de Moodle, con materia y comisión.
+  // Modo demo: exámenes programados en memoria (C-21).
   const [examenes, setExamenes] = useState<Examen[]>([]);
+  const [importados, setImportados] = useState<ExamenContenidoResumen[]>([]);
+  const [cargando, setCargando] = useState(true);
   const [q, setQ] = useState('');
   const navigate = useNavigate();
 
-  useEffect(() => { api.listExams().then(setExamenes); }, []);
-  const filtrados = examenes.filter((e) => e.nombre.toLowerCase().includes(q.toLowerCase()) || e.catedra.toLowerCase().includes(q.toLowerCase()));
+  useEffect(() => {
+    let cancelado = false;
+    (async () => {
+      if (USE_REAL_BACKEND) {
+        const reales = await api.listarExamenesContenido();
+        if (cancelado) return;
+        setImportados(reales);
+      } else {
+        const demo = await api.listExams();
+        if (cancelado) return;
+        setExamenes(demo);
+      }
+      setCargando(false);
+    })();
+    return () => { cancelado = true; };
+  }, []);
 
   const configurar = () => navigate('/admin/configuracion');
+
+  const term = q.toLowerCase();
+  const importadosFiltrados = importados.filter(
+    (e) =>
+      e.titulo.toLowerCase().includes(term) ||
+      (e.materia_nombre ?? '').toLowerCase().includes(term) ||
+      (e.comision_nombre ?? '').toLowerCase().includes(term),
+  );
+  const demoFiltrados = examenes.filter(
+    (e) => e.nombre.toLowerCase().includes(term) || e.catedra.toLowerCase().includes(term),
+  );
+
+  const total = USE_REAL_BACKEND ? importados.length : examenes.length;
+  const hayResultados = USE_REAL_BACKEND ? importadosFiltrados.length > 0 : demoFiltrados.length > 0;
 
   return (
     <StaffShell
@@ -28,8 +60,8 @@ export default function ExamList() {
       help={
         <HelpButton title="Exámenes">
           <p>
-            Catálogo de evaluaciones supervisadas con su estado (borrador, programado, en
-            curso, finalizado), inscriptos y umbral de revisión.
+            Catálogo de evaluaciones supervisadas. Con la plataforma conectada, lista los
+            exámenes importados desde Moodle con su <em>materia</em> y <em>comisión</em>.
           </p>
           <p>
             Los detectores, umbrales y pesos se configuran de forma global en
@@ -41,18 +73,18 @@ export default function ExamList() {
       <div className="space-y-lg animate-in fade-in duration-500">
 
         <Card>
-          <SectionTitle sub={`${examenes.length} ${examenes.length === 1 ? 'examen' : 'exámenes'}`}>
+          <SectionTitle sub={`${total} ${total === 1 ? 'examen' : 'exámenes'}`}>
             Listado
           </SectionTitle>
 
           <div className="flex items-center gap-base bg-white border border-outline-variant rounded-xl px-sm py-base mb-md
             focus-within:border-primary transition-colors">
             <Icon name="search" className="text-on-surface-variant" />
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar por nombre o cátedra…"
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar por nombre, materia o comisión…"
               className="flex-1 bg-transparent outline-none text-label-md" />
           </div>
 
-          {filtrados.length === 0 && (
+          {!cargando && !hayResultados && (
             <div className="text-center py-xl text-on-surface-variant space-y-base">
               <Icon name="search_off" className="text-[40px] text-outline" />
               <p className="text-label-md">
@@ -61,7 +93,45 @@ export default function ExamList() {
             </div>
           )}
 
-          {filtrados.length > 0 && (
+          {/* Modo real (C-69): exámenes importados con materia y comisión */}
+          {USE_REAL_BACKEND && hayResultados && (
+          <div className="overflow-x-auto">
+          <table className="w-full text-left">
+            <thead>
+              <tr className="text-label-sm uppercase tracking-wide text-on-surface-variant border-b border-outline-variant/40">
+                <th className="py-sm pr-md font-semibold">Examen</th>
+                <th className="py-sm pr-md font-semibold">Materia</th>
+                <th className="py-sm pr-md font-semibold">Comisión</th>
+                <th className="py-sm pr-md font-semibold">Preguntas</th>
+                <th className="py-sm font-semibold text-right">Acción</th>
+              </tr>
+            </thead>
+            <tbody>
+              {importadosFiltrados.map((e) => (
+                <tr key={e.id} className="border-b border-outline-variant/20 hover:bg-surface-container-low">
+                  <td className="py-sm pr-md">
+                    <p className="text-label-md font-semibold text-on-surface">{e.titulo}</p>
+                    <p className="text-label-sm text-on-surface-variant">{e.id}</p>
+                  </td>
+                  <td className="py-sm pr-md text-label-md text-on-surface-variant">
+                    {e.materia_nombre ?? <span className="text-outline">— sin materia</span>}
+                  </td>
+                  <td className="py-sm pr-md text-label-md text-on-surface-variant">
+                    {e.comision_nombre ?? <span className="text-outline">— sin comisión</span>}
+                  </td>
+                  <td className="py-sm pr-md text-label-md text-on-surface tabular-nums">{e.cantidad_preguntas}</td>
+                  <td className="py-sm text-right">
+                    <Button size="sm" variant="ghost" icon="edit" onClick={configurar}>Configurar</Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          </div>
+          )}
+
+          {/* Modo demo (C-21): exámenes programados en memoria */}
+          {!USE_REAL_BACKEND && hayResultados && (
           <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead>
@@ -75,7 +145,7 @@ export default function ExamList() {
               </tr>
             </thead>
             <tbody>
-              {filtrados.map((e) => (
+              {demoFiltrados.map((e) => (
                 <tr key={e.id} className="border-b border-outline-variant/20 hover:bg-surface-container-low">
                   <td className="py-sm pr-md">
                     <p className="text-label-md font-semibold text-on-surface">{e.nombre}</p>

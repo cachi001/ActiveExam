@@ -370,7 +370,7 @@ export function joinExamInfo(examId: string | null | undefined): ExamInfo | null
       examNombre: examen.nombre,
       materiaNombre: materia.nombre,
       comisionNombre: comision.nombre,
-      docente: comision.docente,
+      docente: comision.docente ?? '',
     };
   } catch {
     return null;

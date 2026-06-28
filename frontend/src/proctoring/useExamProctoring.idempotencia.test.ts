@@ -59,6 +59,31 @@ describe('useExamProctoring — guarda de idempotencia de creación de sesión',
     expect(spy).toHaveBeenCalledTimes(2);
   });
 
+  it('C-69: reenvía examen_contenido_id a crearSesionProctoring (vínculo real server-side)', async () => {
+    const spy = vi
+      .spyOn(api, 'crearSesionProctoring')
+      .mockResolvedValue({ id: 'sesion-1', examen_contenido_id: 'cont-XYZ' } as Awaited<
+        ReturnType<typeof api.crearSesionProctoring>
+      >);
+
+    await obtenerOCrearSesion('examen-A', 'Final Cálculo', 'cont-XYZ');
+
+    // El 4º argumento (examenContenidoId) viaja al backend para persistir el vínculo.
+    expect(spy).toHaveBeenCalledWith('examen', 'Final Cálculo', 'examen-A', 'cont-XYZ');
+  });
+
+  it('C-69: sin examen_contenido_id pasa undefined (sesión sin contenido sigue válida)', async () => {
+    const spy = vi
+      .spyOn(api, 'crearSesionProctoring')
+      .mockResolvedValue({ id: 'sesion-1' } as Awaited<
+        ReturnType<typeof api.crearSesionProctoring>
+      >);
+
+    await obtenerOCrearSesion('examen-B', 'Prueba');
+
+    expect(spy).toHaveBeenCalledWith('examen', 'Prueba', 'examen-B', undefined);
+  });
+
   it('libera la guarda si la creación falla, permitiendo reintentar', async () => {
     const spy = vi
       .spyOn(api, 'crearSesionProctoring')

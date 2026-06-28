@@ -79,6 +79,27 @@ export interface Examen {
   retencion_dias: number;
   inscriptos: number;
   rindiendo: number;
+  /**
+   * C-69: ID del ExamenContenido (preguntas/opciones importadas de Moodle XML).
+   * Null cuando el examen de proctoring no tiene contenido asociado todavía.
+   * El frontend usa este ID para llamar a GET /api/v1/exam-content/{examen_contenido_id}.
+   */
+  examen_contenido_id?: string | null;
+}
+
+/**
+ * C-69: Resumen de un examen de contenido para el catálogo del alumno.
+ * Read-model liviano: solo metadatos (id, titulo, cantidad_preguntas).
+ * D3: es_correcta NUNCA presente — aplica al detalle y al listado.
+ */
+export interface ExamenContenidoResumen {
+  id: string;
+  titulo: string;
+  cantidad_preguntas: number;
+  /** Comisión/materia asociadas (D11, NULLABLE): null si el examen no tiene comisión. */
+  comision_id?: string | null;
+  comision_nombre?: string | null;
+  materia_nombre?: string | null;
 }
 
 export interface DesafioActivo {
@@ -507,21 +528,30 @@ export interface CierreForzado {
   cierre_forzado_motivo?: string | null;
 }
 
-/** Materia/asignatura de la currícula. */
+/** Materia/asignatura de la currícula.
+ *
+ * `descripcion` es opcional: el backend real (C-69) sólo expone id/codigo/nombre;
+ * los datos demo la incluyen. */
 export interface Materia {
   id: string;
   nombre: string;
   codigo: string;
-  descripcion: string;
+  descripcion?: string;
 }
 
-/** Comisión: instancia de cursado de una Materia con docente y horario. */
+/** Comisión: instancia de cursado de una Materia.
+ *
+ * `docente`/`horario` son del modelo demo (C-21). El backend real (C-69) expone
+ * `codigo`/`periodo`/`anio`; todos opcionales para soportar ambas fuentes. */
 export interface Comision {
   id: string;
   materia_id: string;
   nombre: string;
-  docente: string;
-  horario: string;
+  docente?: string;
+  horario?: string;
+  codigo?: string;
+  periodo?: string | null;
+  anio?: number | null;
 }
 
 /** Inscripción de un alumno a un examen puntual. */

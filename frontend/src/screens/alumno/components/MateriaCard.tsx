@@ -1,5 +1,5 @@
 import { Icon, LoadingSpinner } from '../../../ui/components';
-import type { Materia, Comision, Examen, Inscripcion } from '../../../lib/types';
+import type { Materia, Comision, ExamenContenidoResumen } from '../../../lib/types';
 import { ComisionRow } from './ComisionRow';
 
 interface MateriaCardProps {
@@ -9,12 +9,11 @@ interface MateriaCardProps {
   comisiones: Comision[];
   comisionSeleccionada: Comision | null;
   cargandoExamenes: boolean;
-  examenes: Examen[];
-  inscripciones: Inscripcion[];
-  inscribiendoId: string | null;
+  examenes: ExamenContenidoResumen[];
+  rindiendoId: string | null;
   onSelect: () => void;
   onSelectComision: (c: Comision) => void;
-  onInscribir: (examenId: string) => void;
+  onRendir: (examenId: string) => void;
 }
 
 export function MateriaCard({
@@ -25,11 +24,10 @@ export function MateriaCard({
   comisionSeleccionada,
   cargandoExamenes,
   examenes,
-  inscripciones,
-  inscribiendoId,
+  rindiendoId,
   onSelect,
   onSelectComision,
-  onInscribir,
+  onRendir,
 }: MateriaCardProps) {
   return (
     <div>
@@ -49,7 +47,7 @@ export function MateriaCard({
             {materia.nombre}
           </p>
           <p className="text-[13px] text-on-surface-variant leading-tight mt-1 truncate">
-            {materia.codigo} · {materia.descripcion}
+            {[materia.codigo, materia.descripcion].filter(Boolean).join(' · ')}
           </p>
         </div>
         <Icon
@@ -72,10 +70,9 @@ export function MateriaCard({
                 activa={comisionSeleccionada?.id === comision.id}
                 cargandoExamenes={cargandoExamenes}
                 examenes={examenes}
-                inscripciones={inscripciones}
-                inscribiendoId={inscribiendoId}
+                rindiendoId={rindiendoId}
                 onSelect={() => onSelectComision(comision)}
-                onInscribir={onInscribir}
+                onRendir={onRendir}
               />
             ))
           )}

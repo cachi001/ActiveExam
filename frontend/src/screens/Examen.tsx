@@ -3,35 +3,23 @@ import { StudentShell } from '../ui/shells';
 import { Icon, Button, Card, SeverityBadge } from '../ui/components';
 import { useNavigate } from '../lib/router';
 import { useApp } from '../lib/store';
-import { TIPO_EVENTO_LABEL, SEVERIDAD_LABEL } from '../lib/api';
+import { TIPO_EVENTO_LABEL } from '../lib/api';
 import { useExamProctoring } from '../proctoring/useExamProctoring';
 import { pesoEvento } from '../proctoring/scoringWeights';
 import { getEffectiveConfig } from '../config/effectiveConfigCache';
-import { useToast, type ToastTipo } from '../ui/toast';
 import { ChatBox } from '../ui/ChatBox';
 import { PausaAlumno } from './PausaAlumno';
 import type { EventoSesion, Severidad } from '../lib/types';
-
-// Severidad del evento -> tipo (y color) del toast de alerta en pantalla.
-// baja=info(azul), media=warning(ámbar), alta/crítica=error(rojo) — mismo código
-// de color que la card del evento y el SeverityBadge.
-const SEV_TOAST: Record<string, ToastTipo> = {
-  baja: 'info',
-  media: 'warning',
-  alta: 'error',
-  critica: 'error',
-};
-
-const PREGUNTA = {
-  numero: 'Pregunta 1 de 5',
-  enunciado: '¿Cuál es la derivada de f(x) = x³ − 3x² + 2x respecto de x?',
-  opciones: [
-    "f '(x) = 3x² − 6x + 2",
-    "f '(x) = x² − 3x + 2",
-    "f '(x) = 3x² − 6x",
-    "f '(x) = 3x³ − 6x² + 2x",
-  ],
-};
+import { fetchExamenParaRendir } from '../lib/examTakingApi';
+import type { ExamenRendicion } from '../lib/examTakingApi';
+import {
+  puedeIrAnterior,
+  puedeIrSiguiente,
+  avanzarPregunta,
+  retrocederPregunta,
+  preguntaEnIndice,
+} from './ExamenLogic';
+import { FullscreenLockdown, soportaFullscreen, MENSAJE_LIMITE_FULLSCREEN } from '../proctoring/fullscreenLockdown';
 
 // Color de la card del evento según el riesgo/severidad (mismo código de color que
 // la severidad: rojo = alto/crítico, ámbar = medio, azul = bajo).
@@ -57,18 +45,26 @@ export default function Examen() {
 
   const [segRestantes, setSegRestantes] = useState((examen?.duracion_min ?? 60) * 60);
   const [alerta, setAlerta] = useState<EventoSesion | null>(null);
-  const [opcion, setOpcion] = useState<number | null>(null);
   // C-15: cuando hay una pausa autorizada ACTIVA, PausaAlumno muestra un banner
-  // fijo full-width debajo del topbar. Empujamos el contenido del examen hacia
-  // abajo para que el banner no tape la pregunta ni los controles (bug z-index a
-  // 1366px). El alto del banner (~60px) se compensa con padding-top en el grid.
+  // fijo full-width debajo del topbar.
   const [pausaActiva, setPausaActiva] = useState(false);
+
+  // C-69: preguntas de la API de rendición (sin es_correcta — D3)
+  const [preguntas, setPreguntas] = useState<ExamenRendicion['preguntas']>([]);
+  const [cargandoPreguntas, setCargandoPreguntas] = useState(false);
+  // Índice de la pregunta actual en la navegación prev/next
+  const [indiceActual, setIndiceActual] = useState(0);
+  // Mapa de respuestas: preguntaId -> opcionId seleccionada
+  const [respuestas, setRespuestas] = useState<Record<string, string>>({});
+
+  // C-69 Section 5: estado de lockdown de pantalla completa
+  const [bloqueado, setBloqueado] = useState(false);
+  const lockdownRef = useRef<FullscreenLockdown | null>(null);
 
   // Proctoring REAL de fondo: motor MediaPipe + detectores de contexto + streaming
   // al backend (sesión modo:'examen'). Expone score/eventos/eventCount y detener().
   // sessionId alimenta el chat y el flujo de pausa autorizada (C-15).
   const { sessionId, score, eventCount, activo, eventos, extraMonitorActive, detener } = useExamProctoring(videoRef, examen);
-  const toast = useToast();
 
   // cámara (preview en línea; el hook de proctoring consume este mismo <video>)
   useEffect(() => {
@@ -85,6 +81,23 @@ export default function Examen() {
     return () => clearInterval(t);
   }, []);
 
+  // C-69: cargar preguntas de la API de rendición al montar
+  useEffect(() => {
+    const examenContenidoId = examen?.examen_contenido_id;
+    if (!examenContenidoId) return;
+    setCargandoPreguntas(true);
+    fetchExamenParaRendir(examenContenidoId)
+      .then((data) => {
+        if (data) {
+          setPreguntas(data.preguntas);
+        }
+      })
+      .catch(() => {
+        // Error de red: el examen sigue funcionando (degradación silenciosa)
+      })
+      .finally(() => setCargandoPreguntas(false));
+  }, [examen?.examen_contenido_id]);
+
   // Alerta sobria ante eventos de alta/crítica detectados realmente.
   // Nota: ignora monitor_adicional aquí; la incidencia de monitor se maneja con un
   // modal bloqueante dedicado (ver MonitorBloqueante más abajo) que no se cierra hasta
@@ -100,26 +113,21 @@ export default function Examen() {
     }
   }, [eventos]);
 
-  // Toast por CADA evento registrado, del color de su severidad — para que el
-  // alumno vea en vivo qué se detectó y cuánto suma (transparencia, "controlado").
-  // `eventos` viene newest-first; recorremos al revés para notificar en orden
-  // cronológico. Trackeamos ids ya notificados para no repetir en cada render.
-  const toastedIds = useRef<Set<string>>(new Set());
+  // C-69 Section 5: inicializar el lockdown al iniciar el examen
+  // El lockdown se crea cuando el componente monta y se detiene al desmontar.
+  // L2.5: bloquea y re-fuerza, NUNCA expulsa ni anula la sesión.
   useEffect(() => {
-    for (let i = eventos.length - 1; i >= 0; i--) {
-      const ev = eventos[i];
-      if (toastedIds.current.has(ev.id)) continue;
-      toastedIds.current.add(ev.id);
-      const sev = ev.severidad as Severidad;
-      const tipoToast = SEV_TOAST[sev] ?? 'info';
-      const puntos = pesoEvento(ev.tipo, sev);
-      const label = TIPO_EVENTO_LABEL[ev.tipo as keyof typeof TIPO_EVENTO_LABEL] ?? ev.tipo;
-      toast.show({
-        tipo: tipoToast,
-        msg: `${label} · ${SEVERIDAD_LABEL[sev] ?? sev} · +${puntos} pts`,
-      });
-    }
-  }, [eventos, toast]);
+    const lockdown = new FullscreenLockdown(
+      (state) => setBloqueado(state.bloqueado),
+      // onSenalParaScore: las señales de fullscreen/blur siguen al pipeline de score
+      // via useExamProctoring (D4: retrocompat intacta). No hacemos nada extra aquí.
+      (_tipo) => {},
+    );
+    lockdownRef.current = lockdown;
+    // Iniciar en respuesta al mount (el alumno ya hizo clic para llegar aquí)
+    lockdown.iniciar().catch(() => {});
+    return () => lockdown.detener();
+  }, []);
 
   // Cierre prolijo: cortar el proctoring antes de navegar (eventos ya persistidos).
   const finalizar = () => {
@@ -129,6 +137,17 @@ export default function Examen() {
 
   const mm = String(Math.floor(segRestantes / 60)).padStart(2, '0');
   const ss = String(segRestantes % 60).padStart(2, '0');
+
+  // C-69: pregunta actual y estado de navegación
+  const total = preguntas.length;
+  const preguntaActual = preguntaEnIndice(preguntas, indiceActual);
+
+  const handleSeleccionarOpcion = (preguntaId: string, opcionId: string) => {
+    setRespuestas((prev) => ({ ...prev, [preguntaId]: opcionId }));
+  };
+
+  const handleAnterior = () => setIndiceActual((i) => retrocederPregunta(i));
+  const handleSiguiente = () => setIndiceActual((i) => avanzarPregunta(i, total));
 
   return (
     <StudentShell>
@@ -142,28 +161,80 @@ export default function Examen() {
           <Card className="space-y-md">
             <div className="flex items-center justify-between border-b border-outline-variant/40 pb-md">
               <div>
-                <p className="text-label-sm uppercase tracking-wide text-on-surface-variant">{PREGUNTA.numero}</p>
-                <h2 className="font-headline text-title-lg text-on-surface mt-base">{PREGUNTA.enunciado}</h2>
+                {preguntaActual && (
+                  <p className="text-label-sm uppercase tracking-wide text-on-surface-variant">
+                    Pregunta {indiceActual + 1} de {total}
+                  </p>
+                )}
+                {cargandoPreguntas && (
+                  <p className="text-body-md text-on-surface-variant">Cargando preguntas…</p>
+                )}
+                {!cargandoPreguntas && !preguntaActual && (
+                  <p className="text-body-md text-on-surface-variant">
+                    No hay preguntas disponibles para este examen.
+                  </p>
+                )}
+                {preguntaActual && (
+                  <h2 className="font-headline text-title-lg text-on-surface mt-base">
+                    {preguntaActual.enunciado}
+                  </h2>
+                )}
               </div>
               <span className={`inline-flex items-center gap-base px-sm py-base rounded-lg text-label-md font-bold ${segRestantes < 300 ? 'bg-error-container text-on-error-container' : 'bg-warning-container text-warning'}`}>
                 <Icon name="timer" className="text-[18px]" /> {mm}:{ss}
               </span>
             </div>
-            <div className="space-y-sm">
-              {PREGUNTA.opciones.map((op, i) => (
-                <label key={i} className={`flex items-center gap-sm p-md rounded-xl border cursor-pointer transition-all ${
-                  opcion === i ? 'border-primary-container bg-primary-fixed/40' : 'border-outline-variant hover:border-primary-container hover:bg-surface-container-low'
-                }`}>
-                  <input type="radio" name="q" checked={opcion === i} onChange={() => setOpcion(i)} className="w-4 h-4 accent-[#4241bc]" />
-                  <span className="text-body-md text-on-surface">{op}</span>
-                </label>
-              ))}
+
+            {preguntaActual && (
+              <div className="space-y-sm">
+                {preguntaActual.opciones.map((op) => {
+                  const seleccionada = respuestas[preguntaActual.id] === op.id;
+                  return (
+                    <label key={op.id} className={`flex items-center gap-sm p-md rounded-xl border cursor-pointer transition-all ${
+                      seleccionada
+                        ? 'border-primary-container bg-primary-fixed/40'
+                        : 'border-outline-variant hover:border-primary-container hover:bg-surface-container-low'
+                    }`}>
+                      <input
+                        type="radio"
+                        name={`q-${preguntaActual.id}`}
+                        checked={seleccionada}
+                        onChange={() => handleSeleccionarOpcion(preguntaActual.id, op.id)}
+                        className="w-4 h-4 accent-[#4241bc]"
+                      />
+                      <span className="text-body-md text-on-surface">{op.texto}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+
+            <div className="flex items-center justify-between pt-md border-t border-outline-variant/40 gap-sm">
+              {puedeIrAnterior(indiceActual) ? (
+                <Button icon="arrow_back" onClick={handleAnterior} className="sm:w-auto">
+                  Anterior
+                </Button>
+              ) : (
+                <div />
+              )}
+              {puedeIrSiguiente(indiceActual, total) ? (
+                <Button icon="arrow_forward" onClick={handleSiguiente} className="sm:w-auto">
+                  Siguiente
+                </Button>
+              ) : (
+                <Button icon="check_circle" onClick={finalizar} className="sm:w-auto">
+                  Finalizar y entregar
+                </Button>
+              )}
             </div>
-            <div className="flex pt-md border-t border-outline-variant/40">
-              <Button icon="check_circle" onClick={finalizar} className="w-full sm:w-auto sm:ml-auto">
-                Finalizar y entregar
-              </Button>
-            </div>
+
+            {/* DD-21/D6: límite honesto del lockdown — solo visible si el navegador
+                no soporta la Fullscreen API o si el lockdown está activo */}
+            {!soportaFullscreen() && (
+              <p className="text-label-sm text-on-surface-variant mt-base italic">
+                {MENSAJE_LIMITE_FULLSCREEN}
+              </p>
+            )}
           </Card>
         </div>
 
@@ -248,6 +319,15 @@ export default function Examen() {
           No se puede cerrar mientras el monitor siga conectado.
           Se cierra automaticamente cuando el polling reporta extraMonitorActive=false. */}
       {extraMonitorActive && <MonitorBloqueante />}
+
+      {/* C-69 Section 5: overlay de lockdown de pantalla completa.
+          L2.5: bloquea e invita a volver, NUNCA expulsa ni anula la sesión.
+          Aparece ante fullscreen_exited / blur / visibilitychange=hidden. */}
+      {bloqueado && (
+        <LockdownOverlay
+          onVolverAPantallaCompleta={() => lockdownRef.current?.volverAPantallaCompleta()}
+        />
+      )}
     </StudentShell>
   );
 }
@@ -303,6 +383,51 @@ function AlertaCritica({ ev, onClose }: { ev: EventoSesion; onClose: () => void 
           </p>
         </div>
         <Button icon="check" onClick={onClose} className="mx-auto">Entendido, continuar</Button>
+      </Card>
+    </div>
+  );
+}
+
+/**
+ * C-69 Section 5: overlay de bloqueo de pantalla completa.
+ * L2.5: invita a volver — NUNCA expulsa ni anula la sesión automáticamente.
+ * DD-21/D6: el navegador detecta y reacciona; no puede impedir el minimize del SO.
+ */
+function LockdownOverlay({ onVolverAPantallaCompleta }: { onVolverAPantallaCompleta: () => void }) {
+  return (
+    <div
+      role="alertdialog"
+      aria-modal="true"
+      aria-labelledby="lockdown-overlay-titulo"
+      className="fixed inset-0 z-[95] bg-inverse-surface/90 backdrop-blur-md flex items-center justify-center p-lg animate-in fade-in"
+    >
+      <Card className="max-w-lg w-full text-center space-y-md border-warning/40">
+        <div className="w-16 h-16 rounded-full bg-warning-container text-warning flex items-center justify-center mx-auto">
+          <Icon name="fullscreen_exit" className="text-[36px]" fill />
+        </div>
+        <div className="space-y-base">
+          <h3 id="lockdown-overlay-titulo" className="font-headline text-headline-md text-on-surface">
+            Volvé a pantalla completa para continuar
+          </h3>
+          <p className="text-body-md text-on-surface-variant">
+            El examen requiere pantalla completa. Saliste del modo pantalla completa,
+            perdiste el foco o cambiaste de pestaña.
+          </p>
+          <p className="text-label-sm text-on-surface-variant">
+            Esta salida quedó registrada como señal de supervisión (no es una sanción).
+            Volvé a pantalla completa para seguir respondiendo.
+          </p>
+          <p className="text-label-xs text-on-surface-variant italic">
+            {MENSAJE_LIMITE_FULLSCREEN}
+          </p>
+        </div>
+        <Button
+          icon="fullscreen"
+          onClick={onVolverAPantallaCompleta}
+          className="mx-auto"
+        >
+          Volver a pantalla completa
+        </Button>
       </Card>
     </div>
   );

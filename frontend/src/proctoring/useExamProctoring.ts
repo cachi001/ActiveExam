@@ -97,11 +97,14 @@ const sesionEnCreacion = new Map<string, Promise<string | null>>();
 export function obtenerOCrearSesion(
   examenId: string,
   nombre: string | undefined,
+  examenContenidoId?: string | null,
 ): Promise<string | null> {
   const enVuelo = sesionEnCreacion.get(examenId);
   if (enVuelo) return enVuelo;
   const p = api
-    .crearSesionProctoring('examen', nombre, examenId)
+    // C-69: propagamos examen_contenido_id para que la sesión registre server-side
+    // contra qué contenido (Moodle XML) rinde el alumno (vínculo REAL en proctoring_session).
+    .crearSesionProctoring('examen', nombre, examenId, examenContenidoId)
     .then((s) => s.id)
     .catch(() => {
       // La creación falló: liberar la entrada para permitir reintento futuro.
@@ -124,6 +127,13 @@ const FRAME_INTERVAL_MS = 200;
 interface ExamenInfo {
   id?: string;
   nombre?: string;
+  /**
+   * C-69: ID del examen de contenido (preguntas/opciones importadas de Moodle XML).
+   * Se envía al crear la sesión para registrar el vínculo REAL server-side
+   * (proctoring_session.examen_contenido_id). Examen.tsx lo consume para cargar
+   * las preguntas vía GET /api/v1/exam-content/{examen_contenido_id}.
+   */
+  examen_contenido_id?: string | null;
 }
 
 /** Estado observable que el hook expone al componente Examen. */
@@ -450,7 +460,11 @@ export function useExamProctoring(
         // sesión. El `cancelled` sigue protegiendo de aplicar el resultado a un montaje
         // ya desmontado, pero ya no hay POST duplicado que limpiar.
         createdExamenIdRef.current = examen.id;
-        sessionPromiseRef.current = obtenerOCrearSesion(examen.id, nombreAlumnoRef.current || examen.nombre).then(
+        sessionPromiseRef.current = obtenerOCrearSesion(
+          examen.id,
+          nombreAlumnoRef.current || examen.nombre,
+          examen.examen_contenido_id,
+        ).then(
           (id) => {
             if (cancelled || !id) return id ?? null;
             sessionIdRef.current = id;

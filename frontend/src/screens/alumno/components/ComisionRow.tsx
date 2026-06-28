@@ -1,16 +1,23 @@
-import { Icon, LoadingSpinner } from '../../../ui/components';
-import type { Comision, Examen, Inscripcion } from '../../../lib/types';
-import { ExamenCard } from './ExamenCard';
+import { Card, Button, Icon, LoadingSpinner } from '../../../ui/components';
+import type { Comision, ExamenContenidoResumen } from '../../../lib/types';
 
 interface ComisionRowProps {
   comision: Comision;
   activa: boolean;
   cargandoExamenes: boolean;
-  examenes: Examen[];
-  inscripciones: Inscripcion[];
-  inscribiendoId: string | null;
+  examenes: ExamenContenidoResumen[];
+  rindiendoId: string | null;
   onSelect: () => void;
-  onInscribir: (examenId: string) => void;
+  onRendir: (examenId: string) => void;
+}
+
+/** Subtítulo de la comisión: usa docente/horario (demo) o codigo/periodo/año (real, C-69). */
+function subtituloComision(comision: Comision): string {
+  if (comision.docente || comision.horario) {
+    return [comision.docente, comision.horario].filter(Boolean).join(' · ');
+  }
+  const periodo = [comision.periodo, comision.anio].filter(Boolean).join(' ');
+  return [comision.codigo, periodo].filter(Boolean).join(' · ');
 }
 
 export function ComisionRow({
@@ -18,13 +25,11 @@ export function ComisionRow({
   activa,
   cargandoExamenes,
   examenes,
-  inscripciones,
-  inscribiendoId,
+  rindiendoId,
   onSelect,
-  onInscribir,
+  onRendir,
 }: ComisionRowProps) {
-  const estaInscripto = (examenId: string) =>
-    inscripciones.some((i) => i.examen_id === examenId);
+  const subtitulo = subtituloComision(comision);
 
   return (
     <div>
@@ -44,9 +49,11 @@ export function ComisionRow({
           <p className={`text-[14px] font-semibold leading-tight ${activa ? 'text-primary' : 'text-on-surface'}`}>
             {comision.nombre}
           </p>
-          <p className="text-[12.5px] text-on-surface-variant leading-tight mt-0.5">
-            {comision.docente} · {comision.horario}
-          </p>
+          {subtitulo && (
+            <p className="text-[12.5px] text-on-surface-variant leading-tight mt-0.5">
+              {subtitulo}
+            </p>
+          )}
         </div>
         <Icon
           name={activa ? 'expand_less' : 'expand_more'}
@@ -62,13 +69,28 @@ export function ComisionRow({
             <p className="text-label-md text-on-surface-variant px-md py-sm">No hay exámenes en esta comisión.</p>
           ) : (
             examenes.map((examen) => (
-              <ExamenCard
-                key={examen.id}
-                examen={examen}
-                inscripto={estaInscripto(examen.id)}
-                inscribiendo={inscribiendoId === examen.id}
-                onInscribir={() => onInscribir(examen.id)}
-              />
+              <Card key={examen.id} className="flex items-center justify-between gap-md p-md">
+                <div className="flex items-start gap-sm min-w-0">
+                  <div className="w-9 h-9 rounded-md bg-primary-fixed text-primary flex items-center justify-center shrink-0 mt-0.5">
+                    <Icon name="quiz" className="text-[18px]" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[14px] font-medium text-on-surface leading-tight truncate">{examen.titulo}</p>
+                    <p className="text-[12px] text-on-surface-variant mt-0.5">
+                      {examen.cantidad_preguntas} {examen.cantidad_preguntas === 1 ? 'pregunta' : 'preguntas'}
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => onRendir(examen.id)}
+                  disabled={rindiendoId === examen.id}
+                  icon={rindiendoId === examen.id ? undefined : 'play_arrow'}
+                >
+                  {rindiendoId === examen.id ? 'Verificando…' : 'Rendir'}
+                </Button>
+              </Card>
             ))
           )}
         </div>

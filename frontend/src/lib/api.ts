@@ -20,6 +20,8 @@ import type {
   UsuarioAdmin, ListarUsuariosResponse,
   // #10: configuracion de scoring por tipo de evento
   EventoScoreConfig,
+  // C-69: catálogo de exámenes de contenido importados
+  ExamenContenidoResumen,
 } from './types';
 import { INSTITUTION } from '../config/institution';
 import { authProvider } from './authProvider';
@@ -722,22 +724,43 @@ export const api = {
   // Portal del alumno — API mock (C-21)
   // -------------------------------------------------------------------------
 
-  /** 2.7 Retorna las materias disponibles para inscripción. */
+  /** 2.7 Materias disponibles. Con backend real (C-69): GET /exam-content/materias.
+   * En modo demo (sin backend) devuelve el catálogo en memoria como fallback. */
   async materiasDisponibles(): Promise<Materia[]> {
+    if (USE_REAL_BACKEND) {
+      const { listarMateriasFn } = await import('./examContentBrowse');
+      return listarMateriasFn(API_BASE, authProvider.getToken());
+    }
     await delay(300);
     return [...MATERIAS];
   },
 
-  /** 2.8 Retorna las comisiones de una materia dada. */
+  /** 2.8 Comisiones de una materia. Con backend real (C-69):
+   * GET /exam-content/materias/{id}/comisiones. Demo: fallback en memoria. */
   async comisionesDeMateria(materiaId: string): Promise<Comision[]> {
+    if (USE_REAL_BACKEND) {
+      const { listarComisionesFn } = await import('./examContentBrowse');
+      return listarComisionesFn(API_BASE, authProvider.getToken(), materiaId);
+    }
     await delay(250);
     return COMISIONES.filter((c) => c.materia_id === materiaId);
   },
 
-  /** 2.9 Retorna los exámenes asociados a una comisión. */
-  async examenesDeComision(comisionId: string): Promise<Examen[]> {
+  /** 2.9 Exámenes de una comisión (contenido importado de Moodle). Con backend real
+   * (C-69): GET /exam-content/comisiones/{id}/examenes → ExamenContenidoResumen[].
+   * Demo: mapea los exámenes en memoria al mismo shape (sin inventar inscripciones). */
+  async examenesDeComision(comisionId: string): Promise<ExamenContenidoResumen[]> {
+    if (USE_REAL_BACKEND) {
+      const { listarExamenesDeComisionFn } = await import('./examContentBrowse');
+      return listarExamenesDeComisionFn(API_BASE, authProvider.getToken(), comisionId);
+    }
     await delay(250);
-    return EXAMENES.filter((e) => e.comision_id === comisionId);
+    return EXAMENES.filter((e) => e.comision_id === comisionId).map((e) => ({
+      id: e.id,
+      titulo: e.nombre,
+      cantidad_preguntas: 0,
+      comision_id: e.comision_id ?? null,
+    }));
   },
 
   /** 2.10 Inscribe al alumno a un examen. Idempotente: retorna la inscripción existente si ya existe. */
@@ -1224,14 +1247,23 @@ export const api = {
     modo: string,
     etiqueta?: string,
     examId?: string,
-  ): Promise<{ id: string; creada_en: string }> {
+    examenContenidoId?: string | null,
+  ): Promise<{ id: string; creada_en: string; examen_contenido_id?: string | null }> {
     if (USE_REAL_BACKEND) {
       try {
-        return await realFetch<{ id: string; creada_en: string }>(
+        // C-69: enviamos examen_contenido_id para que la sesión REGISTRE server-side
+        // contra qué examen de contenido (Moodle XML) rinde el alumno. NULLABLE: una
+        // sesión de prueba (sin contenido) sigue siendo válida.
+        return await realFetch<{ id: string; creada_en: string; examen_contenido_id?: string | null }>(
           '/proctoring/sessions',
           {
             method: 'POST',
-            body: JSON.stringify({ modo, etiqueta, exam_id: examId }),
+            body: JSON.stringify({
+              modo,
+              etiqueta,
+              exam_id: examId,
+              examen_contenido_id: examenContenidoId ?? null,
+            }),
           },
           'demo',
         );
@@ -1240,7 +1272,11 @@ export const api = {
       }
     }
     await delay(200);
-    return { id: 'mock-session-' + Date.now(), creada_en: new Date().toISOString() };
+    return {
+      id: 'mock-session-' + Date.now(),
+      creada_en: new Date().toISOString(),
+      examen_contenido_id: examenContenidoId ?? null,
+    };
   },
 
   /**
@@ -2525,6 +2561,33 @@ export const api = {
       hash_texto: acuse.hash ?? null,
       timestamp: acuse.timestamp,
     };
+  },
+
+  // -------------------------------------------------------------------------
+  // Catálogo de exámenes de contenido importados (C-69)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Lista los exámenes de contenido importados desde Moodle XML (C-69).
+   *
+   * Real (USE_REAL_BACKEND=1): GET /api/v1/exam-content
+   *   Devuelve [{id, titulo, cantidad_preguntas}] en orden alfabético.
+   *   Cualquier principal autenticado puede consultar el catálogo.
+   *   D3: es_correcta NUNCA en la respuesta.
+   *
+   * Demo (USE_REAL_BACKEND=0): devuelve [] — en modo demo los exámenes son
+   *   estáticos en memoria (EXAMENES); el catálogo real no aplica.
+   *
+   * Degradación silenciosa: un error de red retorna [] sin propagar.
+   */
+  async listarExamenesContenido(): Promise<ExamenContenidoResumen[]> {
+    if (USE_REAL_BACKEND) {
+      const { listarExamenesContenidoFn } = await import('./examContentCatalog');
+      const token = authProvider.getToken();
+      return listarExamenesContenidoFn(API_BASE, token);
+    }
+    // Demo: sin backend real, no hay exámenes importados en el catálogo.
+    return [];
   },
 
   /**

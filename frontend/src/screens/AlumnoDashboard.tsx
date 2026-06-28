@@ -2,8 +2,16 @@
 //
 // Layout pensado para el alumno (no admin): header, dos cards compactas
 // con counts personales (Materias / Exámenes) en estilo "personal" — fondo
-// blanco, sin gradiente —, sección de Próximos exámenes con una lista, accesos
+// blanco, sin gradiente —, sección de Exámenes disponibles y accesos
 // rápidos en grid y un panel chico de Estado del perfil al pie.
+//
+// FUENTES DE DATOS (modo real, USE_REAL_BACKEND=1):
+//   • Materias disponibles: GET /api/v1/exam-content/materias (api.materiasDisponibles)
+//   • Exámenes disponibles: GET /api/v1/exam-content          (api.listarExamenesContenido)
+//   • Inscripciones: SIN endpoint real en slim → vacío honesto (no se inventan datos)
+//
+// FUENTES DE DATOS (modo demo, USE_REAL_BACKEND=0):
+//   • Todo viene de api.misInscripciones() (datos en memoria)
 import { useEffect, useMemo, useState } from 'react';
 import { Card, Button, Icon, LoadingSpinner } from '../ui/components';
 import { HelpButton } from '../ui/HelpButton';
@@ -13,9 +21,10 @@ import { useApp } from '../lib/store';
 import { api } from '../lib/api';
 import { INSTITUTION } from '../config/institution';
 import { nombreCompleto } from '../lib/types';
-import type { Inscripcion, EstadoEnrollment } from '../lib/types';
+import type { Inscripcion, EstadoEnrollment, ExamenContenidoResumen } from '../lib/types';
 import { QuickAccessCard } from './alumno/components/QuickAccessCard';
 import { ExamenProximoCard } from './alumno/components/ExamenProximoCard';
+import { examenContenidoSubtitulo } from './dashboards.helpers';
 
 const VIGENCIA_LABEL: Record<string, string> = {
   vigente: 'Vigente',
@@ -27,34 +36,69 @@ const VIGENCIA_LABEL: Record<string, string> = {
 export default function AlumnoDashboard() {
   const navigate = useNavigate();
   const principal = useApp((s) => s.principal);
+
+  // Demo mode: inscripciones del alumno (datos en memoria).
   const [inscripciones, setInscripciones] = useState<Inscripcion[]>([]);
+
+  // Modo real: datos del catálogo oficial (sin inscripciones inventadas).
+  const [materiasCount, setMateriasCount] = useState(0);
+  const [examenesDisponibles, setExamenesDisponibles] = useState<ExamenContenidoResumen[]>([]);
+
   const [puedeRendir, setPuedeRendir] = useState<boolean | null>(null);
   const [gateCodigo, setGateCodigo] = useState<string | null>(null);
   const [enrollment, setEnrollment] = useState<EstadoEnrollment | null>(null);
   const [cargando, setCargando] = useState(true);
 
+  const modoDemo = api.modoDemo;
+
   useEffect(() => {
     let cancelado = false;
     (async () => {
-      const [insc, gate, enr] = await Promise.all([api.misInscripciones(), api.puedeRendir(), api.getEnrollment()]);
-      if (cancelado) return;
-      setInscripciones(insc);
-      setPuedeRendir(gate.puede);
-      setGateCodigo(gate.codigo ?? null);
-      setEnrollment(enr);
+      if (modoDemo) {
+        // Modo demo: usar datos en memoria (MIS_INSCRIPCIONES)
+        const [insc, gate, enr] = await Promise.all([
+          api.misInscripciones(),
+          api.puedeRendir(),
+          api.getEnrollment(),
+        ]);
+        if (cancelado) return;
+        setInscripciones(insc);
+        setPuedeRendir(gate.puede);
+        setGateCodigo(gate.codigo ?? null);
+        setEnrollment(enr);
+      } else {
+        // Modo real: fuentes reales; sin inscripciones (no hay endpoint en slim)
+        const [materias, examenes, gate, enr] = await Promise.all([
+          api.materiasDisponibles(),
+          api.listarExamenesContenido(),
+          api.puedeRendir(),
+          api.getEnrollment(),
+        ]);
+        if (cancelado) return;
+        setMateriasCount(materias.length);
+        setExamenesDisponibles(examenes);
+        setPuedeRendir(gate.puede);
+        setGateCodigo(gate.codigo ?? null);
+        setEnrollment(enr);
+      }
       setCargando(false);
     })();
     return () => { cancelado = true; };
-  }, []);
+  }, [modoDemo]);
 
+  // Demo: derivar counts desde inscripciones en memoria
   const proximos = useMemo(
     () => inscripciones.filter((i) => i.estado === 'inscripto' || i.estado === 'habilitado'),
     [inscripciones],
   );
-  const materias = useMemo(
+  const materiasDeInscripciones = useMemo(
     () => new Set(inscripciones.map((i) => i.materia_id)).size,
     [inscripciones],
   );
+
+  // Valores de display: modo real usa catálogo real; modo demo usa inscripciones.
+  const displayMateriasCount = modoDemo ? materiasDeInscripciones : materiasCount;
+  const displayExamenesCount = modoDemo ? inscripciones.length : examenesDisponibles.length;
 
   const renderHeader = (centered = false) => (
     <header className={centered ? 'text-center' : ''}>
@@ -154,32 +198,69 @@ export default function AlumnoDashboard() {
       <div className="max-w-2xl lg:max-w-5xl xl:max-w-6xl 2xl:max-w-7xl mx-auto space-y-xl">
         {renderHeader()}
 
-        {/* Counts personales: 2 cards SOBRIAS (fondo blanco, sin gradiente) —
-            informan, no hacen "ruido admin". */}
+        {/* Counts: 2 cards SOBRIAS (fondo blanco, sin gradiente).
+            Modo real: del catálogo oficial (materias disponibles / exámenes importados).
+            Modo demo: de las inscripciones en memoria. */}
         <div className="grid grid-cols-2 gap-md">
-          <ContadorPersonal icon="menu_book" label="Mis materias" value={materias} />
-          <ContadorPersonal icon="assignment" label="Mis exámenes" value={inscripciones.length} />
+          <ContadorPersonal
+            icon="menu_book"
+            label={modoDemo ? 'Mis materias' : 'Materias disponibles'}
+            value={displayMateriasCount}
+          />
+          <ContadorPersonal
+            icon="assignment"
+            label={modoDemo ? 'Mis exámenes' : 'Exámenes disponibles'}
+            value={displayExamenesCount}
+          />
         </div>
 
         <section>
           <div className="flex items-center justify-between mb-md">
-            <h2 className="text-[16px] font-semibold text-on-surface">Próximos exámenes</h2>
-            <button onClick={() => navigate('/alumno/mis-examenes')} className="text-[13px] text-primary hover:underline">Ver todos</button>
+            <h2 className="text-[16px] font-semibold text-on-surface">
+              {modoDemo ? 'Próximos exámenes' : 'Exámenes disponibles'}
+            </h2>
+            <button
+              onClick={() => navigate(modoDemo ? '/alumno/mis-examenes' : '/alumno/materias')}
+              className="text-[13px] text-primary hover:underline"
+            >
+              Ver todos
+            </button>
           </div>
+
           {cargando ? (
-            <LoadingSpinner size="sm" label="Cargando inscripciones…" />
-          ) : proximos.length === 0 ? (
-            <Card className="text-center py-xl">
-              <Icon name="event_busy" className="text-[36px] text-on-surface-variant mb-md" />
-              <p className="text-[14px] text-on-surface-variant">No tenés exámenes próximos.</p>
-              <Button variant="outline" size="sm" onClick={() => navigate('/alumno/materias')} className="mt-md" icon="add_circle">
-                Inscribite a un examen
-              </Button>
-            </Card>
+            <LoadingSpinner size="sm" label={modoDemo ? 'Cargando inscripciones…' : 'Cargando catálogo…'} />
+          ) : modoDemo ? (
+            /* Modo demo: lista de inscripciones */
+            proximos.length === 0 ? (
+              <Card className="text-center py-xl">
+                <Icon name="event_busy" className="text-[36px] text-on-surface-variant mb-md" />
+                <p className="text-[14px] text-on-surface-variant">No tenés exámenes próximos.</p>
+                <Button variant="outline" size="sm" onClick={() => navigate('/alumno/materias')} className="mt-md" icon="add_circle">
+                  Inscribite a un examen
+                </Button>
+              </Card>
+            ) : (
+              <div className="space-y-sm">
+                {proximos.map((insc) => <ExamenProximoCard key={insc.id} inscripcion={insc} />)}
+              </div>
+            )
           ) : (
-            <div className="space-y-sm">
-              {proximos.map((insc) => <ExamenProximoCard key={insc.id} inscripcion={insc} />)}
-            </div>
+            /* Modo real: catálogo real (sin inscripciones inventadas) */
+            examenesDisponibles.length === 0 ? (
+              <Card className="text-center py-xl">
+                <Icon name="quiz" className="text-[36px] text-on-surface-variant mb-md" />
+                <p className="text-[14px] text-on-surface-variant">No hay exámenes disponibles por el momento.</p>
+                <Button variant="outline" size="sm" onClick={() => navigate('/alumno/materias')} className="mt-md" icon="menu_book">
+                  Explorar materias
+                </Button>
+              </Card>
+            ) : (
+              <div className="space-y-sm">
+                {examenesDisponibles.map((e) => (
+                  <ExamenCatalogoCard key={e.id} examen={e} onNavigate={() => navigate('/alumno/materias')} />
+                ))}
+              </div>
+            )
           )}
         </section>
 
@@ -228,6 +309,39 @@ function ContadorPersonal({ icon, label, value }: { icon: string; label: string;
         <p className="text-[22px] font-semibold text-on-surface leading-tight tabular-nums">{value}</p>
       </div>
     </div>
+  );
+}
+
+/**
+ * Card de examen del catálogo real (modo real).
+ * Muestra titulo + materia/comision + cantidad de preguntas.
+ * Navega a /alumno/materias para que el alumno explore e inscriba.
+ */
+function ExamenCatalogoCard({
+  examen,
+  onNavigate,
+}: {
+  examen: ExamenContenidoResumen;
+  onNavigate: () => void;
+}) {
+  const subtitulo = examenContenidoSubtitulo(examen);
+  return (
+    <button
+      type="button"
+      onClick={onNavigate}
+      className="w-full text-left bg-white rounded-lg border border-surface-200 px-4 py-4 flex items-center gap-4 hover:border-primary/40 hover:bg-surface-50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+      aria-label={`Ver detalle del examen ${examen.titulo}`}
+    >
+      <div className="w-11 h-11 rounded-lg bg-primary-fixed text-primary flex items-center justify-center shrink-0">
+        <Icon name="quiz" className="text-[22px]" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-[15px] font-semibold text-on-surface truncate leading-tight">{examen.titulo}</p>
+        <p className="text-[13px] text-on-surface-variant leading-tight mt-1">{subtitulo}</p>
+      </div>
+      <span className="text-[12px] text-on-surface-variant shrink-0 tabular-nums">{examen.cantidad_preguntas} preg.</span>
+      <Icon name="chevron_right" className="text-[22px] text-on-surface-variant shrink-0" />
+    </button>
   );
 }
 

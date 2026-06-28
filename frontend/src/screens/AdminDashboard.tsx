@@ -1,28 +1,34 @@
 // Panel de administración (admin_sistema) — KPIs del cuatrimestre + accesos.
 //
-// Layout dashboard moderno: 4 stat cards arriba, dos columnas debajo (lista de
-// exámenes + columna lateral con "Acciones rápidas"). Cards Card padded={false}
-// con header separado por border, hover sobre filas en bg-surface-50.
+// Layout dashboard moderno: stat cards arriba, dos columnas debajo (lista de
+// exámenes del catálogo real + columna lateral con "Acciones rápidas").
+//
+// FUENTES DE DATOS:
+//   • Exámenes: GET /api/v1/exam-content → ExamenContenidoResumen[] (catálogo real).
+//   • Sesiones supervisadas / Tasa de flag: SIN endpoint real en slim → "—" (vacío honesto).
 import { useEffect, useState } from 'react';
 import { StaffShell } from '../ui/shells';
-import { Icon, Card, Badge } from '../ui/components';
+import { Icon, Card, LoadingSpinner } from '../ui/components';
 import { HelpButton } from '../ui/HelpButton';
 import { StatCard } from './proctoring/StatCard';
 import { Link } from '../lib/router';
 import { api } from '../lib/api';
 import { STAFF_NAV } from '../ui/nav';
-import type { Examen, ResumenReportes } from '../lib/types';
+import type { ExamenContenidoResumen } from '../lib/types';
+import { examenContenidoSubtitulo } from './dashboards.helpers';
 
 // alias para mantener compatibilidad con las pantallas que ya lo importan
 export const ADMIN_NAV = STAFF_NAV;
 
-const ESTADO_TONE = { borrador: 'neutral', programado: 'neutral', en_curso: 'success', finalizado: 'neutral' } as const;
-const ESTADO_LABEL = { borrador: 'Borrador', programado: 'Programado', en_curso: 'En curso', finalizado: 'Finalizado' } as const;
-
 export default function AdminDashboard() {
-  const [examenes, setExamenes] = useState<Examen[]>([]);
-  const [rep, setRep] = useState<ResumenReportes | null>(null);
-  useEffect(() => { api.listExams().then(setExamenes); api.reportes().then(setRep); }, []);
+  const [examenes, setExamenes] = useState<ExamenContenidoResumen[]>([]);
+  const [cargando, setCargando] = useState(true);
+
+  useEffect(() => {
+    api.listarExamenesContenido()
+      .then(setExamenes)
+      .finally(() => setCargando(false));
+  }, []);
 
   return (
     <StaffShell
@@ -32,8 +38,8 @@ export default function AdminDashboard() {
       help={
         <HelpButton title="Panel de administración">
           <p>
-            Vista agregada de la actividad del cuatrimestre: exámenes, sesiones supervisadas,
-            tasa de flag y tiempo medio de revisión.
+            Vista agregada de la actividad del cuatrimestre: exámenes importados del catálogo,
+            sesiones supervisadas, tasa de flag y tiempo medio de revisión.
           </p>
           <p>
             Desde acá llegás a configurar exámenes, ver reportes, auditoría y gestión de
@@ -44,23 +50,22 @@ export default function AdminDashboard() {
     >
       <div className="space-y-lg animate-in fade-in duration-500">
 
-        {/* Stat cards — cada una con color distinto (primary/info/warning) y descripción.
-            Si la métrica no cargó, mostramos 0 (no "—"). */}
+        {/* Stat cards — Exámenes es el único con fuente real en esta versión slim.
+            Sesiones y Tasa de flag muestran "—" (vacío honesto, sin fuente real). */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-md">
-          <StatCard icon="quiz" label="Exámenes" value={rep?.examenes_totales ?? 0} sub="este cuatrimestre" tono="primary" />
-          <StatCard icon="groups" label="Sesiones" value={rep?.sesiones_totales ?? 0} sub="supervisadas" tono="info" />
-          <StatCard icon="flag" label="Tasa de flag" value={`${rep?.tasa_flag ?? 0}%`} sub="entran a revisión" tono="warning" />
+          <StatCard icon="quiz" label="Exámenes" value={cargando ? '…' : examenes.length} sub="importados" tono="primary" />
+          <StatCard icon="groups" label="Sesiones" value="—" sub="sin datos en tiempo real" tono="info" />
+          <StatCard icon="flag" label="Tasa de flag" value="—" sub="sin datos en tiempo real" tono="warning" />
         </div>
 
         <div className="grid lg:grid-cols-3 gap-lg">
-          {/* Lista de exámenes — col-span-2 en desktop. Paleta morada para el
-              tile + badge (identidad del producto), sin exagerar el tamaño. */}
+          {/* Lista del catálogo de exámenes importados — col-span-2 en desktop. */}
           <div className="lg:col-span-2">
             <Card padded={false}>
               <div className="px-lg py-md border-b border-surface-200 flex items-center justify-between">
                 <div>
                   <h2 className="text-[16px] font-semibold text-on-surface leading-tight">Exámenes</h2>
-                  <p className="text-[12.5px] text-on-surface-variant mt-0.5">Estado de los exámenes recientes</p>
+                  <p className="text-[12.5px] text-on-surface-variant mt-0.5">Catálogo de exámenes importados</p>
                 </div>
                 <Link to="/admin/examenes" className="inline-flex items-center gap-1 text-[13px] font-medium text-primary hover:underline">
                   Ver todos
@@ -68,29 +73,18 @@ export default function AdminDashboard() {
                 </Link>
               </div>
               <div className="divide-y divide-surface-200">
-                {examenes.length === 0 ? (
+                {cargando ? (
+                  <div className="px-lg py-xl flex items-center justify-center">
+                    <LoadingSpinner size="sm" label="Cargando exámenes…" />
+                  </div>
+                ) : examenes.length === 0 ? (
                   <div className="px-lg py-xl flex flex-col items-center text-center gap-md text-on-surface-variant">
                     <Icon name="quiz" className="text-[36px]" />
-                    <p className="text-[14px]">Todavía no hay exámenes cargados.</p>
+                    <p className="text-[14px]">Todavía no hay exámenes importados.</p>
                   </div>
                 ) : (
                   examenes.map((e) => (
-                    <Link
-                      key={e.id}
-                      to="/admin/examenes"
-                      className="flex items-center justify-between gap-4 px-lg py-4 hover:bg-surface-50 transition-colors"
-                    >
-                      <div className="flex items-center gap-4 min-w-0">
-                        <div className="w-12 h-12 rounded-lg bg-primary-fixed text-on-primary-fixed-variant flex items-center justify-center shrink-0">
-                          <Icon name="description" className="text-[24px]" />
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-[15px] font-semibold text-on-surface truncate leading-snug">{e.nombre}</p>
-                          <p className="text-[13px] text-on-surface-variant truncate leading-snug mt-0.5">{e.catedra} · {e.inscriptos} inscriptos</p>
-                        </div>
-                      </div>
-                      <Badge tone={ESTADO_TONE[e.estado]}>{ESTADO_LABEL[e.estado]}</Badge>
-                    </Link>
+                    <ExamenContenidoRow key={e.id} examen={e} />
                   ))
                 )}
               </div>
@@ -111,6 +105,28 @@ export default function AdminDashboard() {
         </div>
       </div>
     </StaffShell>
+  );
+}
+
+/** Fila del catálogo de exámenes importados. Muestra titulo + materia/comisión/preguntas. */
+function ExamenContenidoRow({ examen }: { examen: ExamenContenidoResumen }) {
+  const subtitulo = examenContenidoSubtitulo(examen);
+  return (
+    <Link
+      to="/admin/examenes"
+      className="flex items-center justify-between gap-4 px-lg py-4 hover:bg-surface-50 transition-colors"
+    >
+      <div className="flex items-center gap-4 min-w-0">
+        <div className="w-12 h-12 rounded-lg bg-primary-fixed text-on-primary-fixed-variant flex items-center justify-center shrink-0">
+          <Icon name="description" className="text-[24px]" />
+        </div>
+        <div className="min-w-0">
+          <p className="text-[15px] font-semibold text-on-surface truncate leading-snug">{examen.titulo}</p>
+          <p className="text-[13px] text-on-surface-variant truncate leading-snug mt-0.5">{subtitulo}</p>
+        </div>
+      </div>
+      <span className="text-[12px] text-on-surface-variant shrink-0 tabular-nums">{examen.cantidad_preguntas} preg.</span>
+    </Link>
   );
 }
 
