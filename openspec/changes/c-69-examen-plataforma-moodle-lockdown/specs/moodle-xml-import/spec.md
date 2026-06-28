@@ -33,6 +33,17 @@ La importación SHALL devolver un reporte que indique cuántas preguntas se impo
 - **WHEN** se sube un documento que no es un Moodle XML parseable o no contiene preguntas soportadas
 - **THEN** el sistema responde con un error claro (4xx) y no crea un examen de contenido vacío
 
+### Requirement: El import no requiere materia ni comisión
+El export Moodle XML no trae materia ni comisión. El import SHALL crear el examen de contenido **aunque NO se indique materia ni comisión** (la FK `comision_id` del examen queda en NULL), y NUNCA SHALL fallar por la ausencia de materia/comisión. De forma **opcional**, el admin PUEDE asociar una materia+comisión existente o darlas de alta inline durante (o después de) el import; esa asociación NO es obligatoria en el MVP y NO bloquea ni el import ni la rendición.
+
+#### Scenario: Importar sin materia ni comisión crea el examen igual
+- **WHEN** un admin sube un Moodle XML válido sin indicar materia ni comisión
+- **THEN** el sistema crea el examen de contenido con sus preguntas y el examen queda rendible, con su comisión sin asignar (`comision_id` en NULL), sin error
+
+#### Scenario: El admin asocia materia y comisión de forma opcional
+- **WHEN** durante o después del import el admin selecciona una comisión existente (o da de alta materia+comisión inline) y la asocia al examen
+- **THEN** el examen queda ligado a esa comisión; si el admin NO lo hace, el examen sigue siendo válido y rendible sin materia ni comisión
+
 ### Requirement: La REST API de Moodle queda fuera de alcance
 Este change SHALL NOT implementar integración con la REST API / Web Services de Moodle (token, listar cursos/quizzes, devolver nota); la única vía de ingesta de contenido SHALL ser el archivo Moodle XML.
 
