@@ -53,6 +53,19 @@ class ProctoringSessionModel(Base):
         nullable=True,
         comment="Etiqueta libre para identificar la sesion",
     )
+    # C-69 (slim, migration 0027): vinculo REAL con el examen de contenido importado
+    # de Moodle XML. NULLABLE — una sesion de prueba (modo 'test') o un examen sin
+    # contenido asociado sigue siendo valida. FK ON DELETE SET NULL: borrar el
+    # contenido del catalogo NO borra la sesion ni su evidencia (cadena de custodia,
+    # L2.5) — solo se pierde la referencia. La tabla `examen` (config) no existe en
+    # slim; `examen_contenido` y `proctoring_session` SI coexisten, por eso el
+    # vinculo vive aca.
+    examen_contenido_id: Mapped[str | None] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("examen_contenido.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="FK a examen_contenido(id). NULL = sesion sin contenido vinculado.",
+    )
     creada_en: Mapped[str] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

@@ -34,6 +34,7 @@ class InMemoryExamRepo(ExamRepository):
             detectores=entity.detectores,
             ventana=entity.ventana,
             retencion=entity.retencion,
+            examen_contenido_id=entity.examen_contenido_id,
         )
         self._by_id[e.id] = e
         return e

@@ -115,6 +115,7 @@ def _exam_to_domain(m: ExamenModel) -> Examen:
         detectores=tuple(m.detectores or ()),
         ventana=dict(m.ventana or {}),
         retencion=dict(m.retencion or {}),
+        examen_contenido_id=m.examen_contenido_id,
     )
 
 
@@ -126,6 +127,7 @@ def _exam_to_model(e: Examen) -> ExamenModel:
         detectores=list(e.detectores),
         ventana=e.ventana,
         retencion=e.retencion,
+        examen_contenido_id=e.examen_contenido_id,
     )
     if e.id is not None:
         kwargs["id"] = e.id

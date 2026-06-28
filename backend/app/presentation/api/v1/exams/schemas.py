@@ -23,6 +23,9 @@ class ExamCreateRequest(_Strict):
     umbrales_detector: dict[str, float] = Field(default_factory=dict)
     politica_retencion: str = "estandar"
     exige_biometria: bool = True
+    # C-69: referencia opcional al examen de contenido importado (banco Moodle).
+    # NULLABLE: un examen sin contenido es válido. El admin lo setea para asociar.
+    examen_contenido_id: str | None = None
 
 
 class ExamResponse(_Strict):
@@ -33,6 +36,8 @@ class ExamResponse(_Strict):
     ventana: dict[str, str]
     retencion: dict[str, str]
     parametros: dict
+    # C-69: el frontend usa este id para GET /api/v1/exam-content/{id} y rendir.
+    examen_contenido_id: str | None = None
 
 
 class EnabledStudentsRequest(_Strict):

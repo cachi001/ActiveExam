@@ -17,6 +17,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.application.moodle.writeback_service import MoodleWritebackService
 from app.application.proctoring.reinferencia import ReinferenciaPort
 from app.domain.auth.roles import Rol
 from app.infrastructure.crypto.embedding_encryption import EmbeddingEncryptionService
@@ -34,6 +35,7 @@ def create_proctoring_router(
     session_factory: async_sessionmaker[AsyncSession],
     reinferencia: ReinferenciaPort,
     embedding_encryption: EmbeddingEncryptionService | None = None,
+    writeback_svc: MoodleWritebackService | None = None,
 ) -> APIRouter:
     """Factory del router principal de proctoring.
 
@@ -105,6 +107,7 @@ def create_proctoring_router(
         require_autenticado=_require_autenticado,
         require_proctor_o_admin=_require_proctor_o_admin,
         require_admin=_require_admin,
+        writeback_svc=writeback_svc,
     )
     router.include_router(sessions_router)
 

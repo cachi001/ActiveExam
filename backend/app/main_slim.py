@@ -28,9 +28,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
+from app.application.moodle.writeback_service import MoodleWritebackService
 from app.config_slim import get_slim_settings
 from app.infrastructure.auth.slim_wiring import build_slim_jwt_validator
 from app.infrastructure.crypto.embedding_encryption import EmbeddingEncryptionService
+from app.infrastructure.moodle.client import MoodleClientConfig, MoodleRestClient
 from app.infrastructure.persistence.session_slim import (
     create_slim_engine,
     create_slim_session_factory,
@@ -49,6 +51,10 @@ from app.presentation.api.v1.consent_perfil.router import (
     router as consent_perfil_router,
 )
 from app.presentation.api.v1.enrollment.router import router as enrollment_router
+from app.presentation.api.v1.exam_content.router import (
+    create_exam_content_router,
+    create_exam_taking_router,
+)
 from app.presentation.api.v1.proctoring.router import create_proctoring_router
 from app.presentation.api.v1.scoring.router import router as scoring_router
 from app.presentation.api.v1.users.router import router as users_router
@@ -89,6 +95,19 @@ def create_slim_app() -> FastAPI:
 
     # Servicio de cifrado de embeddings con clave slim (sin cargar Settings del full).
     embedding_encryption = EmbeddingEncryptionService(_key=settings.embedding_encryption_key)
+
+    # Servicio de write-back de nota a Moodle (C-69, D7/D10).
+    # Si moodle_base_url no está configurado, el write-back queda deshabilitado.
+    # El token se toma de settings.moodle_ws_token — NUNCA se loguea.
+    _writeback_svc: MoodleWritebackService | None = None
+    if settings.moodle_base_url:
+        _moodle_config = MoodleClientConfig(
+            base_url=settings.moodle_base_url,
+            ws_token=settings.moodle_ws_token,
+            courseid=settings.moodle_courseid,
+            cmid=settings.moodle_cmid,
+        )
+        _writeback_svc = MoodleWritebackService(moodle_client=MoodleRestClient(config=_moodle_config))
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -134,6 +153,7 @@ def create_slim_app() -> FastAPI:
         session_factory=session_factory,
         reinferencia=reinferencia_adapter,
         embedding_encryption=embedding_encryption,
+        writeback_svc=_writeback_svc,
     )
     app.include_router(proctoring_router, prefix="/api/v1/proctoring")
 
@@ -191,6 +211,21 @@ def create_slim_app() -> FastAPI:
     # Review slim (#16): decision terminal inmutable del revisor.
     # POST /api/v1/review/session/{id}/decide
     app.include_router(review_slim_router, prefix="/api/v1/review", tags=["review"])
+
+    # Exam content (C-69): importacion Moodle XML (admin-only) + lectura de
+    # examen para la rendicion del alumno (sin opcion correcta, D3).
+    # POST /api/v1/exam-content/moodle-import  -> admin importa el banco
+    # GET  /api/v1/exam-content/{examen_id}    -> alumno rinde (sin es_correcta)
+    app.include_router(
+        create_exam_content_router(session_factory=session_factory),
+        prefix="/api/v1/exam-content",
+        tags=["exam-content"],
+    )
+    app.include_router(
+        create_exam_taking_router(session_factory=session_factory),
+        prefix="/api/v1/exam-content",
+        tags=["exam-content"],
+    )
 
     return app
 

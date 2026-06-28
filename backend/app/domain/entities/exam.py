@@ -22,3 +22,7 @@ class Examen:
     ventana: dict[str, str] = field(default_factory=dict)
     retencion: dict[str, str] = field(default_factory=dict)
     id: str | None = None
+    # C-69: referencia (opcional) al examen de CONTENIDO importado de Moodle
+    # (banco de preguntas). NULLABLE: un examen sin contenido sigue siendo válido.
+    # Es una referencia por id (no se acopla la config de proctoring al contenido).
+    examen_contenido_id: str | None = None

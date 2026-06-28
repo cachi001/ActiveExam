@@ -3,6 +3,12 @@
 # PRODUCCION: usar pip-compile o poetry export para pins reproducibles.
 
 fastapi==0.115.6
+# Requerido por los endpoints que reciben multipart/form-data (UploadFile/Form),
+# p. ej. el import de Moodle XML (C-69). Sin esto FastAPI tira RuntimeError al arrancar.
+python-multipart==0.0.20
+# Cliente HTTP async para el write-back de nota a Moodle (REST WS core_grades_update_grades, C-69).
+# Server-side; sin esto el backend NO arranca (ModuleNotFoundError en main_slim).
+httpx==0.28.1
 uvicorn[standard]==0.34.0
 pydantic==2.10.4
 pydantic-settings==2.7.1

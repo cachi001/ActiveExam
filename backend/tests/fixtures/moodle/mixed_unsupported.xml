@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<quiz>
+<!-- question: 1 - supported multichoice -->
+  <question type="multichoice">
+    <name>
+      <text>MC - ¿Cuánto es 2+2?</text>
+    </name>
+    <questiontext format="html">
+      <text><![CDATA[<p>¿Cuánto es 2+2?</p>]]></text>
+    </questiontext>
+    <answer fraction="100" format="html">
+      <text><![CDATA[<p>4</p>]]></text>
+      <feedback format="html"><text></text></feedback>
+    </answer>
+    <answer fraction="0" format="html">
+      <text><![CDATA[<p>3</p>]]></text>
+      <feedback format="html"><text></text></feedback>
+    </answer>
+    <answer fraction="0" format="html">
+      <text><![CDATA[<p>5</p>]]></text>
+      <feedback format="html"><text></text></feedback>
+    </answer>
+  </question>
+
+<!-- question: 2 - unsupported cloze -->
+  <question type="cloze">
+    <name>
+      <text>Cloze - completar</text>
+    </name>
+    <questiontext format="html">
+      <text><![CDATA[<p>La capital de {1:SHORTANSWER:=Francia} es {1:SHORTANSWER:=París}</p>]]></text>
+    </questiontext>
+  </question>
+
+<!-- question: 3 - unsupported essay -->
+  <question type="essay">
+    <name>
+      <text>Essay - desarrollo</text>
+    </name>
+    <questiontext format="html">
+      <text><![CDATA[<p>Explique el teorema de Pitágoras.</p>]]></text>
+    </questiontext>
+  </question>
+
+</quiz>

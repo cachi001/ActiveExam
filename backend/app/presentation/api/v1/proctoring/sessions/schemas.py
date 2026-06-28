@@ -28,6 +28,11 @@ class CrearSesionIn(BaseModel):
     modo: str = Field(..., description="'test' o 'examen'")
     exam_id: str | None = Field(None, description="ID del examen (referencia externa)")
     etiqueta: str | None = Field(None, description="Etiqueta libre para la sesion")
+    # C-69: vinculo REAL con el examen de contenido importado de Moodle XML.
+    # NULLABLE — sesion sin contenido (modo 'test' o examen sin contenido) sigue valida.
+    examen_contenido_id: str | None = Field(
+        None, description="FK a examen_contenido(id). NULL = sesion sin contenido vinculado."
+    )
 
 
 class CrearSesionOut(BaseModel):
@@ -37,6 +42,9 @@ class CrearSesionOut(BaseModel):
 
     id: str
     creada_en: Any  # datetime o str segun el ORM
+    # C-69: eco del vinculo persistido. El front lo usa para confirmar contra qué
+    # examen_contenido quedó atada la sesion (round-trip por la sesion real).
+    examen_contenido_id: str | None = None
 
 
 class EventoDetalle(BaseModel):
@@ -106,6 +114,9 @@ class SesionDetalle(BaseModel):
     id: str
     modo: str
     etiqueta: str | None = None
+    # C-69: contra qué examen_contenido (Moodle XML) rindió el alumno. NULL si la
+    # sesion no tiene contenido vinculado.
+    examen_contenido_id: str | None = None
     creada_en: Any
     finalizada_en: Any = None
     score: int
@@ -171,3 +182,45 @@ class CerrarForzadoOut(BaseModel):
     cierre_forzado_en: Any
     cierre_forzado_por: str | None = None
     cierre_forzado_motivo: str | None = None
+
+
+# --- C-69 sección 7: respuestas del alumno + write-back de nota ---
+
+
+class RespuestaItem(BaseModel):
+    """Respuesta del alumno para una pregunta (C-69 D8, sección 7)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    pregunta_id: str
+    opcion_elegida_id: str
+
+
+class SubmitRespuestasIn(BaseModel):
+    """Body de POST /sessions/{id}/respuestas.
+
+    El alumno envía sus respuestas antes de finalizar.
+    La identidad para el write-back es opcional: si se omite, se usa la del JWT.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    respuestas: list[RespuestaItem]
+    alumno_idnumber: str = Field(
+        default="",
+        description="id_institucional del alumno (para write-back Moodle D9). "
+                    "Si se omite, se usa el id_institucional del JWT.",
+    )
+    alumno_email: str = Field(
+        default="",
+        description="Email del alumno (fallback de identidad D9).",
+    )
+
+
+class SubmitRespuestasOut(BaseModel):
+    """Respuesta de POST /sessions/{id}/respuestas → 201."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    session_id: str
+    respuestas_guardadas: int

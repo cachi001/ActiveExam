@@ -15,9 +15,18 @@ from fastapi import status as http_status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.application.proctoring import observacion_service, session_service
+from app.application.proctoring.finalizar_con_writeback import (
+    finalizar_sesion_con_writeback,
+)
 from app.application.proctoring.scoring import (
     calcular_score,
     eventos_en_pausa_autorizada,
+)
+from app.application.moodle.grade_calculator import RespuestaAlumno, calcular_nota_academica
+from app.application.moodle.writeback_service import MoodleWritebackService
+from app.domain.auth.identity import AuthenticatedPrincipal
+from app.infrastructure.persistence.repositories.moodle_writeback import (
+    RespuestaAlumnoRepository,
 )
 from app.presentation.api.v1.proctoring.sessions.schemas import (
     BiometriaDetalle,
@@ -31,6 +40,8 @@ from app.presentation.api.v1.proctoring.sessions.schemas import (
     ObservacionOut,
     SesionDetalle,
     SesionResumen,
+    SubmitRespuestasIn,
+    SubmitRespuestasOut,
 )
 
 
@@ -87,6 +98,7 @@ def create_sessions_router(
     require_autenticado,
     require_proctor_o_admin,
     require_admin,
+    writeback_svc: MoodleWritebackService | None = None,
 ) -> APIRouter:
     """Factory del router de sesiones. Recibe la dependencia de DB inyectada.
 
@@ -114,8 +126,13 @@ def create_sessions_router(
             modo=body.modo,
             exam_id=body.exam_id,
             etiqueta=body.etiqueta,
+            examen_contenido_id=body.examen_contenido_id,
         )
-        return CrearSesionOut(id=sesion.id, creada_en=sesion.creada_en)
+        return CrearSesionOut(
+            id=sesion.id,
+            creada_en=sesion.creada_en,
+            examen_contenido_id=sesion.examen_contenido_id,
+        )
 
     @router.get(
         "/sessions",
@@ -211,6 +228,7 @@ def create_sessions_router(
             id=sesion.id,
             modo=sesion.modo,
             etiqueta=sesion.etiqueta,
+            examen_contenido_id=sesion.examen_contenido_id,
             creada_en=sesion.creada_en,
             finalizada_en=sesion.finalizada_en,
             score=score,
@@ -220,23 +238,99 @@ def create_sessions_router(
             cierre_forzado_motivo=sesion.cierre_forzado_motivo,
         )
 
+    @router.post(
+        "/sessions/{session_id}/respuestas",
+        status_code=http_status.HTTP_201_CREATED,
+        response_model=SubmitRespuestasOut,
+        summary="Enviar respuestas del alumno (para cálculo de nota server-side, C-69)",
+        dependencies=[Depends(require_autenticado)],
+    )
+    async def submit_respuestas(
+        session_id: str,
+        body: SubmitRespuestasIn,
+        db: Annotated[AsyncSession, Depends(get_db)],
+        principal: Annotated[AuthenticatedPrincipal, Depends(require_autenticado)],
+    ) -> SubmitRespuestasOut:
+        """Persiste las respuestas del alumno para calcular la nota server-side.
+
+        D8: la corrección y el write-back los origina el backend, nunca el cliente.
+        D3: la opción correcta NUNCA viaja al cliente — sólo se usa acá server-side.
+        Idempotente por (session_id, pregunta_id): re-enviar sobreescribe la respuesta.
+        """
+        repo = RespuestaAlumnoRepository(db)
+        n = await repo.guardar_respuestas(
+            session_id=session_id,
+            respuestas=[
+                {"pregunta_id": r.pregunta_id, "opcion_elegida_id": r.opcion_elegida_id}
+                for r in body.respuestas
+            ],
+        )
+        return SubmitRespuestasOut(session_id=session_id, respuestas_guardadas=n)
+
     @router.patch(
         "/sessions/{session_id}/finalizar",
         response_model=FinalizarSesionOut,
         summary="Finalizar sesion de proctoring (idempotente)",
-        dependencies=[Depends(require_autenticado)],
     )
     async def finalizar_sesion(
         session_id: str,
         db: Annotated[AsyncSession, Depends(get_db)],
+        principal: Annotated[AuthenticatedPrincipal, Depends(require_autenticado)],
     ) -> FinalizarSesionOut:
         """Setea finalizada_en = now() si es NULL.
 
         Idempotente: si ya estaba finalizada, responde 200 sin modificar.
         404 si la sesion no existe.
-        Sin body requerido.
+        C-69 D8/D10: si la sesión tiene examen_contenido vinculado y respuestas del
+        alumno, dispara el write-back de la nota a Moodle en background sin bloquear.
         """
-        sesion = await session_service.finalizar_sesion(db, session_id)
+        # Calcular nota y disparar writeback sólo si hay writeback habilitado
+        nota: float | None = None
+        if writeback_svc is not None:
+            # Leer la sesión para obtener examen_contenido_id
+            from sqlalchemy import select
+            from app.infrastructure.persistence.models.proctoring import ProctoringSessionModel
+            from app.infrastructure.persistence.models.moodle_writeback import RespuestaAlumnoModel
+
+            sesion_row = await db.execute(
+                select(ProctoringSessionModel).where(
+                    ProctoringSessionModel.id == session_id
+                )
+            )
+            sesion_model = sesion_row.scalar_one_or_none()
+
+            if sesion_model is not None and sesion_model.examen_contenido_id:
+                # Leer las respuestas del alumno almacenadas
+                resp_rows = await db.execute(
+                    select(RespuestaAlumnoModel).where(
+                        RespuestaAlumnoModel.session_id == session_id
+                    )
+                )
+                respuestas = [
+                    RespuestaAlumno(
+                        pregunta_id=r.pregunta_id,
+                        opcion_elegida_id=r.opcion_elegida_id,
+                    )
+                    for r in resp_rows.scalars().all()
+                ]
+                nota = await calcular_nota_academica(
+                    db=db,
+                    examen_contenido_id=sesion_model.examen_contenido_id,
+                    respuestas=respuestas,
+                )
+
+        # Identidad del alumno para el write-back (D9)
+        alumno_idnumber = principal.id_institucional or ""
+        alumno_email = principal.email or ""
+
+        sesion = await finalizar_sesion_con_writeback(
+            db=db,
+            session_id=session_id,
+            writeback_svc=writeback_svc if nota is not None else None,
+            nota=nota,
+            alumno_idnumber=alumno_idnumber,
+            alumno_email=alumno_email,
+        )
         if sesion is None:
             raise HTTPException(
                 status_code=http_status.HTTP_404_NOT_FOUND,

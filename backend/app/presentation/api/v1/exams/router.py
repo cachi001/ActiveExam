@@ -52,6 +52,7 @@ def _to_response(examen) -> ExamResponse:
         ventana=dict(examen.ventana),
         retencion=dict(examen.retencion),
         parametros=dict(examen.parametros),
+        examen_contenido_id=examen.examen_contenido_id,
     )
 
 
@@ -65,6 +66,7 @@ def _input(body: ExamCreateRequest) -> ExamConfigInput:
         umbrales_detector=dict(body.umbrales_detector),
         politica_retencion=body.politica_retencion,
         exige_biometria=body.exige_biometria,
+        examen_contenido_id=body.examen_contenido_id,
     )
 
 

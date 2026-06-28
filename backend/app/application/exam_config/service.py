@@ -35,6 +35,8 @@ class ExamConfigInput:
     umbrales_detector: dict[str, float] = field(default_factory=dict)
     politica_retencion: str = "estandar"
     exige_biometria: bool = True
+    # C-69: referencia opcional al examen de contenido (banco Moodle). NULLABLE.
+    examen_contenido_id: str | None = None
 
 
 class ExamConfigService:
@@ -68,6 +70,7 @@ class ExamConfigService:
                 "referencias": {},
                 "exige_biometria": "true" if data.exige_biometria else "false",
             },
+            examen_contenido_id=data.examen_contenido_id,
         )
         return await self._exams.add(examen)
 
@@ -102,6 +105,7 @@ class ExamConfigService:
             ventana=ventana,
             retencion={"politica": data.politica_retencion},
             parametros=parametros,
+            examen_contenido_id=data.examen_contenido_id,
         )
         return await self._exams.update(actualizado)
 
@@ -126,6 +130,7 @@ class ExamConfigService:
                 ventana=ventana,
                 retencion=actual.retencion,
                 parametros=actual.parametros,
+                examen_contenido_id=actual.examen_contenido_id,
             )
         )
         return True
@@ -254,4 +259,5 @@ def _con_parametros(examen: Examen, parametros: dict) -> Examen:
         ventana=examen.ventana,
         retencion=examen.retencion,
         parametros=parametros,
+        examen_contenido_id=examen.examen_contenido_id,
     )

@@ -1,0 +1,224 @@
+"""7.1 RED → 7.2 GREEN: tests del servicio de cálculo de nota académica.
+
+Tests contra DB real (DATABASE_URL requerida). El servicio lee es_correcta
+server-side desde la tabla opcion_respuesta — D3 (opción correcta NUNCA al cliente).
+
+L2.5: la nota es sólo de respuestas correctas. Sin proctoring score.
+"""
+
+from __future__ import annotations
+
+import os
+
+import pytest
+import pytest_asyncio
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
+
+from app.application.moodle.grade_calculator import (
+    RespuestaAlumno,
+    calcular_nota_academica,
+)
+from app.infrastructure.persistence.base import Base
+from app.infrastructure.persistence.models.exam_content import (  # noqa: F401
+    ExamenContenidoModel,
+    OpcionRespuestaModel,
+    PreguntaExamenModel,
+)
+
+_TABLES = ("opcion_respuesta", "pregunta_examen", "examen_contenido")
+
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def db_url():
+    url = os.environ.get("DATABASE_URL")
+    if not url:
+        pytest.skip("DATABASE_URL no seteada — tests de integración omitidos")
+    return url
+
+
+@pytest_asyncio.fixture(scope="module")
+async def engine(db_url):
+    eng = create_async_engine(db_url, pool_pre_ping=True, future=True, poolclass=NullPool)
+    async with eng.begin() as conn:
+        for t in _TABLES:
+            await conn.execute(text(f'DROP TABLE IF EXISTS "{t}" CASCADE'))
+        await conn.run_sync(
+            Base.metadata.create_all,
+            tables=[
+                ExamenContenidoModel.__table__,
+                PreguntaExamenModel.__table__,
+                OpcionRespuestaModel.__table__,
+            ],
+        )
+    yield eng
+    async with eng.begin() as conn:
+        for t in _TABLES:
+            await conn.execute(text(f'DROP TABLE IF EXISTS "{t}" CASCADE'))
+    await eng.dispose()
+
+
+@pytest_asyncio.fixture
+async def session(engine) -> AsyncSession:
+    factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+    async with factory() as s:
+        yield s
+        await s.rollback()
+
+
+async def _crear_examen_con_2_preguntas(db: AsyncSession) -> tuple[str, str, str, str, str]:
+    """Crea un examen de 2 preguntas multichoice; devuelve (examen_id, p1_id, p2_id, correcta1_id, correcta2_id)."""
+    examen = ExamenContenidoModel(titulo="Parcial test")
+    db.add(examen)
+    await db.flush()
+
+    p1 = PreguntaExamenModel(examen_id=examen.id, enunciado="Pregunta 1", tipo="multichoice", orden=0)
+    p2 = PreguntaExamenModel(examen_id=examen.id, enunciado="Pregunta 2", tipo="multichoice", orden=1)
+    db.add_all([p1, p2])
+    await db.flush()
+
+    o1_c = OpcionRespuestaModel(pregunta_id=p1.id, texto="Correcta", es_correcta=True, orden=0)
+    o1_w = OpcionRespuestaModel(pregunta_id=p1.id, texto="Incorrecta", es_correcta=False, orden=1)
+    o2_c = OpcionRespuestaModel(pregunta_id=p2.id, texto="Correcta", es_correcta=True, orden=0)
+    o2_w = OpcionRespuestaModel(pregunta_id=p2.id, texto="Incorrecta", es_correcta=False, orden=1)
+    db.add_all([o1_c, o1_w, o2_c, o2_w])
+    await db.flush()
+
+    return examen.id, p1.id, p2.id, o1_c.id, o2_c.id
+
+
+# ---------------------------------------------------------------------------
+# Tests 7.1 RED → 7.2 GREEN
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_nota_perfecta_todas_correctas(session):
+    """El alumno elige la opción correcta en todas las preguntas → nota 10."""
+    examen_id, p1_id, p2_id, c1_id, c2_id = await _crear_examen_con_2_preguntas(session)
+
+    respuestas = [
+        RespuestaAlumno(pregunta_id=p1_id, opcion_elegida_id=c1_id),
+        RespuestaAlumno(pregunta_id=p2_id, opcion_elegida_id=c2_id),
+    ]
+
+    nota = await calcular_nota_academica(
+        db=session, examen_contenido_id=examen_id, respuestas=respuestas
+    )
+
+    assert nota == pytest.approx(10.0)
+
+
+@pytest.mark.asyncio
+async def test_nota_cero_todas_incorrectas(session):
+    """El alumno elige siempre la opción incorrecta → nota 0."""
+    examen_id, p1_id, p2_id, c1_id, c2_id = await _crear_examen_con_2_preguntas(session)
+
+    # Necesitamos las ids de las incorrectas — leemos del session
+    from sqlalchemy import select
+
+    res = await session.execute(
+        select(OpcionRespuestaModel)
+        .where(OpcionRespuestaModel.pregunta_id.in_([p1_id, p2_id]))
+        .where(OpcionRespuestaModel.es_correcta.is_(False))
+    )
+    incorrectas = {r.pregunta_id: r.id for r in res.scalars().all()}
+
+    respuestas = [
+        RespuestaAlumno(pregunta_id=p1_id, opcion_elegida_id=incorrectas[p1_id]),
+        RespuestaAlumno(pregunta_id=p2_id, opcion_elegida_id=incorrectas[p2_id]),
+    ]
+
+    nota = await calcular_nota_academica(
+        db=session, examen_contenido_id=examen_id, respuestas=respuestas
+    )
+
+    assert nota == pytest.approx(0.0)
+
+
+@pytest.mark.asyncio
+async def test_nota_parcial_mitad_correctas(session):
+    """El alumno acierta la mitad → nota 5.0."""
+    examen_id, p1_id, p2_id, c1_id, c2_id = await _crear_examen_con_2_preguntas(session)
+
+    from sqlalchemy import select
+
+    res = await session.execute(
+        select(OpcionRespuestaModel)
+        .where(OpcionRespuestaModel.pregunta_id == p2_id)
+        .where(OpcionRespuestaModel.es_correcta.is_(False))
+    )
+    incorrecta_p2 = res.scalar_one().id
+
+    respuestas = [
+        RespuestaAlumno(pregunta_id=p1_id, opcion_elegida_id=c1_id),       # correcta
+        RespuestaAlumno(pregunta_id=p2_id, opcion_elegida_id=incorrecta_p2),  # incorrecta
+    ]
+
+    nota = await calcular_nota_academica(
+        db=session, examen_contenido_id=examen_id, respuestas=respuestas
+    )
+
+    assert nota == pytest.approx(5.0)
+
+
+@pytest.mark.asyncio
+async def test_nota_cero_sin_respuestas(session):
+    """Sin respuestas del alumno → nota 0 (no crash)."""
+    examen_id, *_ = await _crear_examen_con_2_preguntas(session)
+
+    nota = await calcular_nota_academica(
+        db=session, examen_contenido_id=examen_id, respuestas=[]
+    )
+
+    assert nota == pytest.approx(0.0)
+
+
+@pytest.mark.asyncio
+async def test_nota_cero_examen_inexistente(session):
+    """Examen que no existe → nota 0 (no crash, no exception)."""
+    nota = await calcular_nota_academica(
+        db=session,
+        examen_contenido_id="00000000-0000-0000-0000-000000000000",
+        respuestas=[],
+    )
+
+    assert nota == pytest.approx(0.0)
+
+
+# ---------------------------------------------------------------------------
+# L2.5: la nota no incorpora score de proctoring (7.13)
+# ---------------------------------------------------------------------------
+
+
+def test_l2_5_nota_no_afectada_por_proctoring_score():
+    """7.13 L2.5: calcular_nota_academica NO recibe ni usa score de proctoring.
+
+    El servicio SÓLO recibe examen_contenido_id y respuestas.
+    No existe parámetro de score ni flags de proctoring en su firma.
+    Esta prueba verifica que la firma del servicio no acepte datos de proctoring.
+    """
+    import inspect
+
+    from app.application.moodle.grade_calculator import calcular_nota_academica
+
+    sig = inspect.signature(calcular_nota_academica)
+    param_names = set(sig.parameters.keys())
+
+    # La firma SÓLO debe tener: db, examen_contenido_id, respuestas
+    assert "db" in param_names
+    assert "examen_contenido_id" in param_names
+    assert "respuestas" in param_names
+
+    # NO debe tener parámetros de proctoring
+    proctoring_params = {"score", "flags", "proctoring_score", "proctoring_flags", "eventos"}
+    assert not (proctoring_params & param_names), (
+        f"La firma de calcular_nota_academica contiene parámetros de proctoring: "
+        f"{proctoring_params & param_names} — viola L2.5"
+    )

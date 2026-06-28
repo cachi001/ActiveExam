@@ -115,6 +115,12 @@ class ExamenModel(Base):
     detectores: Mapped[list[str]] = mapped_column(JSONB, nullable=False, server_default="[]")
     ventana: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
     retencion: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    # C-69: referencia opcional al examen de contenido importado (banco Moodle).
+    # NULLABLE: un examen sin contenido es válido. La FK/columna en la DB la
+    # provee la migración del modelo de contenido (ver nota de apply C-69).
+    examen_contenido_id: Mapped[str | None] = mapped_column(
+        UUID(as_uuid=False), nullable=True
+    )
 
 
 class SesionModel(Base):

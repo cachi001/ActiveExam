@@ -61,6 +61,15 @@ class SlimSettings(BaseSettings):
     # --- Biometria (c-57) ---
     embedding_encryption_key: str  # Obligatorio. Clave Fernet. Sin default.
 
+    # --- Moodle Write-back (C-69, D7/D10) ---
+    # Opcional: si moodle_base_url está vacío, el write-back de notas queda deshabilitado.
+    # El token es un secreto — NUNCA embeber en código ni commitear. Se inyecta vía
+    # variable de entorno o secret manager.
+    moodle_base_url: str = ""         # Ej: https://moodle.miinstituto.edu.ar
+    moodle_ws_token: str = ""         # Token de Web Services de Moodle (secreto)
+    moodle_courseid: int = 0          # ID del curso destino en Moodle
+    moodle_cmid: int = 0              # ID del ítem de calificación (cm) en Moodle
+
     @field_validator("database_url")
     @classmethod
     def _normalizar_a_asyncpg(cls, valor: str) -> str:

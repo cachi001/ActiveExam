@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<quiz>
+  <!-- No supported questions — only category entries -->
+  <question type="category">
+    <category>
+      <text>$course$/top/Default</text>
+    </category>
+  </question>
+</quiz>

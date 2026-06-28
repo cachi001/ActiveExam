@@ -1,0 +1,157 @@
+"""Entidades de dominio para el contenido de examen (C-69).
+
+Reglas de dominio (NON-NEGOTIABLE):
+- D3: es_correcta NUNCA sale al cliente; vive server-side.
+- D11: comision_id NULLABLE — un examen sin comisión es válido.
+- multichoice: >= 2 opciones, exactamente 1 correcta.
+- truefalse: exactamente 2 opciones, exactamente 1 correcta.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+
+from app.domain.exam_content.errors import (
+    ComisionInvalidaError,
+    MateriaInvalidaError,
+    PreguntaInvalidaError,
+)
+
+
+@dataclass(frozen=True, slots=True)
+class OpcionRespuesta:
+    """Opción de respuesta de una pregunta.
+
+    es_correcta: NUNCA se expone al cliente (D3 / regla dura #6).
+    """
+
+    texto: str
+    es_correcta: bool
+    id: str | None = None
+    orden: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class Pregunta:
+    """Pregunta de un examen de contenido.
+
+    Validaciones de dominio en __post_init__ (frozen=True obliga a usar
+    object.__setattr__ internamente, pero dataclass lo maneja solo en el init).
+    """
+
+    enunciado: str
+    tipo: str
+    opciones: tuple[OpcionRespuesta, ...]
+    id: str | None = None
+    orden: int = 0
+
+    def __post_init__(self) -> None:
+        self._validar()
+
+    def _validar(self) -> None:
+        correctas = sum(1 for o in self.opciones if o.es_correcta)
+
+        if self.tipo == "multichoice":
+            if len(self.opciones) < 2:
+                raise PreguntaInvalidaError(
+                    f"multichoice requiere >= 2 opciones; tiene {len(self.opciones)}"
+                )
+            if correctas != 1:
+                raise PreguntaInvalidaError(
+                    f"multichoice exige exactamente 1 correcta; tiene {correctas}"
+                )
+
+        elif self.tipo == "truefalse":
+            if len(self.opciones) != 2:
+                raise PreguntaInvalidaError(
+                    f"truefalse exige exactamente 2 opciones; tiene {len(self.opciones)}"
+                )
+            if correctas != 1:
+                raise PreguntaInvalidaError(
+                    f"truefalse exige exactamente 1 correcta; tiene {correctas}"
+                )
+
+        else:
+            if correctas < 1:
+                raise PreguntaInvalidaError(
+                    f"Toda pregunta necesita al menos 1 opción correcta; tipo='{self.tipo}'"
+                )
+
+
+@dataclass(frozen=True, slots=True)
+class ExamenContenido:
+    """Examen de contenido con sus preguntas.
+
+    comision_id es NULLABLE (D11): un examen sin comisión es válido y rendible.
+    """
+
+    titulo: str
+    preguntas: tuple[Pregunta, ...]
+    id: str | None = None
+    comision_id: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class Materia:
+    """Materia académica (D11).
+
+    `codigo` es único a nivel DB (no se modela aquí); el dominio exige que
+    `codigo` y `nombre` estén presentes.
+    """
+
+    codigo: str
+    nombre: str
+    id: str | None = None
+
+    def __post_init__(self) -> None:
+        if not (self.codigo and self.codigo.strip()):
+            raise MateriaInvalidaError("La materia requiere un codigo no vacío.")
+        if not (self.nombre and self.nombre.strip()):
+            raise MateriaInvalidaError("La materia requiere un nombre no vacío.")
+
+
+@dataclass(frozen=True, slots=True)
+class Comision:
+    """Comisión de una materia (D11).
+
+    Una comisión pertenece a EXACTAMENTE una materia: `materia_id` es
+    obligatorio. `periodo`/`cuatrimestre` y `anio` son opcionales. La unicidad
+    de (`materia_id`, `codigo`) se garantiza a nivel DB.
+    """
+
+    codigo: str
+    nombre: str
+    materia_id: str | None = None
+    periodo: str | None = None
+    anio: int | None = None
+    id: str | None = None
+
+    def __post_init__(self) -> None:
+        if not (self.materia_id and self.materia_id.strip()):
+            raise ComisionInvalidaError(
+                "Toda comisión pertenece a exactamente una materia: materia_id es obligatorio."
+            )
+        if not (self.codigo and self.codigo.strip()):
+            raise ComisionInvalidaError("La comisión requiere un codigo no vacío.")
+        if not (self.nombre and self.nombre.strip()):
+            raise ComisionInvalidaError("La comisión requiere un nombre no vacío.")
+
+
+@dataclass(frozen=True, slots=True)
+class ExamenContenidoResumen:
+    """Resumen de un examen de contenido para el catálogo del alumno/admin.
+
+    Read-model liviano para el listado: solo metadatos, sin preguntas ni opciones.
+    D3: es_correcta ausente (aplica al detalle; aquí no hay preguntas).
+
+    comision_id / comision_nombre / materia_nombre son NULLABLE (D11): un examen
+    sin comisión asociada los deja en None; con comisión, se derivan transitivamente
+    (examen → comisión → materia).
+    """
+
+    id: str
+    titulo: str
+    cantidad_preguntas: int
+    comision_id: str | None = None
+    comision_nombre: str | None = None
+    materia_nombre: str | None = None

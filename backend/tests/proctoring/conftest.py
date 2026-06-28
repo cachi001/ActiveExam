@@ -33,6 +33,9 @@ from app.infrastructure.persistence.models.chat_pausa import (  # noqa: F401 -- 
 from app.infrastructure.persistence.models.observacion import (  # noqa: F401 -- registra tabla (C-15 3.2)
     ObservacionProctorModel,
 )
+from app.infrastructure.persistence.models.exam_content import (  # noqa: F401 -- registra tabla (C-69)
+    ExamenContenidoModel,
+)
 from app.infrastructure.persistence.base import Base
 
 
@@ -59,6 +62,10 @@ _SLIM_TABLE_NAMES = (
     "proctoring_biometria",
     "proctoring_event",
     "proctoring_session",
+    # C-69: contenido de examen — vinculado por proctoring_session.examen_contenido_id
+    # (FK ON DELETE SET NULL, migracion slim 0027). Se crea ANTES de proctoring_session
+    # (ver slim_tables abajo) para que el FK resuelva; CASCADE cubre el orden de drop.
+    "examen_contenido",
 )
 
 
@@ -84,7 +91,12 @@ async def slim_engine(db_url: str):
     from app.infrastructure.persistence.models.observacion import (  # noqa
         ObservacionProctorModel,
     )
+    from app.infrastructure.persistence.models.exam_content import (  # noqa
+        ExamenContenidoModel,
+    )
     slim_tables = [
+        # examen_contenido PRIMERO: proctoring_session tiene un FK hacia ella (C-69).
+        ExamenContenidoModel.__table__,
         ProctoringSessionModel.__table__,
         ProctoringEventModel.__table__,
         ProctoringBiometriaModel.__table__,

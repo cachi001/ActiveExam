@@ -9,10 +9,12 @@ requires-python = ">=3.12"
 # se agregan solo si la PoC C-03 los promueve por metrica.
 dependencies = [
     "fastapi==0.115.6",
+    "python-multipart==0.0.20",  # multipart/form-data (UploadFile/Form), p. ej. import Moodle XML (C-69)
+    "httpx==0.28.1",             # cliente HTTP async runtime: write-back de nota a Moodle (C-69)
     "uvicorn[standard]==0.34.0",
     "pydantic==2.10.4",
     "pydantic-settings==2.7.1",
-    "sqlalchemy==2.0.36",
+    "sqlalchemy[asyncio]==2.0.36",
     "asyncpg==0.30.0",
     "alembic==1.14.0",
     # Driver SYNC para Alembic: migrations/env.py corre sincrono y strippea
@@ -47,6 +49,7 @@ dev = [
     "psycopg[binary]==3.2.3", # smoke de conectividad a Postgres
     "requests==2.32.3",       # smoke de conectividad MinIO/Keycloak
     "ruff==0.8.4",
+    "respx>=0.21.0",            # mock de httpx para tests del cliente Moodle REST (C-69 sección 7)
 ]
 
 [tool.pytest.ini_options]

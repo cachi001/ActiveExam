@@ -1,0 +1,306 @@
+"""Repositorio SQLAlchemy para ExamenContenido (C-69)."""
+
+from __future__ import annotations
+
+from sqlalchemy import func, select, update
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from app.domain.exam_content.entities import (
+    Comision,
+    ExamenContenido,
+    ExamenContenidoResumen,
+    Materia,
+    OpcionRespuesta,
+    Pregunta,
+)
+from app.domain.exam_content.errors import (
+    ComisionDuplicadaError,
+    MateriaDuplicadaError,
+)
+from app.infrastructure.persistence.models.exam_content import (
+    ComisionModel,
+    ExamenContenidoModel,
+    MateriaModel,
+    OpcionRespuestaModel,
+    PreguntaExamenModel,
+)
+
+# SQLSTATE de Postgres para "unique_violation". Otras violaciones de integridad
+# (p. ej. foreign_key_violation 23503) NO se mapean a "duplicado": se re-elevan.
+_PG_UNIQUE_VIOLATION = "23505"
+
+
+def _es_violacion_unicidad(exc: IntegrityError) -> bool:
+    return getattr(getattr(exc, "orig", None), "sqlstate", None) == _PG_UNIQUE_VIOLATION
+
+
+class ExamenContenidoSqlRepository:
+    """CRUD async para examen_contenido, pregunta_examen, opcion_respuesta."""
+
+    def __init__(self, db: AsyncSession) -> None:
+        self._db = db
+
+    async def guardar(self, examen: ExamenContenido) -> ExamenContenido:
+        """Persiste el examen con sus preguntas y opciones; devuelve entidad con id."""
+        model = ExamenContenidoModel(
+            titulo=examen.titulo,
+            comision_id=examen.comision_id,
+        )
+        for i, pregunta in enumerate(examen.preguntas):
+            p_model = PreguntaExamenModel(
+                enunciado=pregunta.enunciado,
+                tipo=pregunta.tipo,
+                orden=pregunta.orden if pregunta.orden else i,
+            )
+            for j, opcion in enumerate(pregunta.opciones):
+                o_model = OpcionRespuestaModel(
+                    texto=opcion.texto,
+                    es_correcta=opcion.es_correcta,
+                    orden=opcion.orden if opcion.orden else j,
+                )
+                p_model.opciones.append(o_model)
+            model.preguntas.append(p_model)
+
+        self._db.add(model)
+        await self._db.flush()
+
+        # async NO soporta lazy-load de relaciones: re-leemos con eager load
+        # (selectinload via obtener) en vez de refresh(), que expira las
+        # relaciones y dispararia MissingGreenlet al construir la entidad.
+        entidad = await self.obtener(model.id)
+        assert entidad is not None  # recien insertado en esta misma transaccion
+        return entidad
+
+    def _stmt_resumen(self):
+        """Statement base del read-model de resumen, enriquecido con comisión+materia.
+
+        LEFT JOIN a comisión y materia (D11): un examen sin comisión deja esos
+        campos en NULL. Se agrupa por las columnas no agregadas para contar preguntas.
+        """
+        return (
+            select(
+                ExamenContenidoModel.id,
+                ExamenContenidoModel.titulo,
+                func.count(PreguntaExamenModel.id).label("cantidad_preguntas"),
+                ExamenContenidoModel.comision_id,
+                ComisionModel.nombre.label("comision_nombre"),
+                MateriaModel.nombre.label("materia_nombre"),
+            )
+            .outerjoin(
+                PreguntaExamenModel,
+                PreguntaExamenModel.examen_id == ExamenContenidoModel.id,
+            )
+            .outerjoin(
+                ComisionModel,
+                ComisionModel.id == ExamenContenidoModel.comision_id,
+            )
+            .outerjoin(
+                MateriaModel,
+                MateriaModel.id == ComisionModel.materia_id,
+            )
+            .group_by(
+                ExamenContenidoModel.id,
+                ExamenContenidoModel.titulo,
+                ExamenContenidoModel.comision_id,
+                ComisionModel.nombre,
+                MateriaModel.nombre,
+            )
+        )
+
+    @staticmethod
+    def _row_to_resumen(row) -> ExamenContenidoResumen:
+        return ExamenContenidoResumen(
+            id=row.id,
+            titulo=row.titulo,
+            cantidad_preguntas=row.cantidad_preguntas,
+            comision_id=row.comision_id,
+            comision_nombre=row.comision_nombre,
+            materia_nombre=row.materia_nombre,
+        )
+
+    async def listar(self) -> list[ExamenContenidoResumen]:
+        """Lista todos los exámenes con id, titulo, cantidad de preguntas y, si tienen
+        comisión asociada, comision_id/comision_nombre/materia_nombre (D11, NULLABLE).
+
+        Read-model liviano para el catálogo del alumno/admin: sin preguntas ni opciones.
+        Orden estable: alfabético ascendente por titulo.
+        D3: es_correcta no expuesta (solo metadatos del examen).
+        """
+        stmt = self._stmt_resumen().order_by(ExamenContenidoModel.titulo)
+        result = await self._db.execute(stmt)
+        return [self._row_to_resumen(row) for row in result.all()]
+
+    async def listar_por_comision(
+        self, comision_id: str
+    ) -> list[ExamenContenidoResumen]:
+        """Lista los exámenes asociados a una comisión (orden alfabético por titulo)."""
+        stmt = (
+            self._stmt_resumen()
+            .where(ExamenContenidoModel.comision_id == comision_id)
+            .order_by(ExamenContenidoModel.titulo)
+        )
+        result = await self._db.execute(stmt)
+        return [self._row_to_resumen(row) for row in result.all()]
+
+    async def asociar_comision(
+        self, examen_id: str, comision_id: str | None
+    ) -> ExamenContenido | None:
+        """Asocia (o desasocia con None) un examen a una comisión.
+
+        Devuelve el examen actualizado, o None si el examen no existe. No
+        reimporta el contenido (D11): solo actualiza la FK comision_id.
+        """
+        result = await self._db.execute(
+            update(ExamenContenidoModel)
+            .where(ExamenContenidoModel.id == examen_id)
+            .values(comision_id=comision_id)
+            .returning(ExamenContenidoModel.id)
+        )
+        if result.scalar_one_or_none() is None:
+            return None
+        await self._db.flush()
+        return await self.obtener(examen_id)
+
+    async def obtener(self, examen_id: str) -> ExamenContenido | None:
+        """Recupera un examen por id con preguntas y opciones (eager load)."""
+        result = await self._db.execute(
+            select(ExamenContenidoModel)
+            .where(ExamenContenidoModel.id == examen_id)
+            .options(
+                selectinload(ExamenContenidoModel.preguntas).selectinload(
+                    PreguntaExamenModel.opciones
+                )
+            )
+        )
+        model = result.scalar_one_or_none()
+        if model is None:
+            return None
+        return self._to_entity(model)
+
+    def _to_entity(self, model: ExamenContenidoModel) -> ExamenContenido:
+        preguntas = tuple(
+            Pregunta(
+                id=p.id,
+                enunciado=p.enunciado,
+                tipo=p.tipo,
+                orden=p.orden,
+                opciones=tuple(
+                    OpcionRespuesta(
+                        id=o.id,
+                        texto=o.texto,
+                        es_correcta=o.es_correcta,
+                        orden=o.orden,
+                    )
+                    for o in p.opciones
+                ),
+            )
+            for p in model.preguntas
+        )
+        return ExamenContenido(
+            id=model.id,
+            titulo=model.titulo,
+            comision_id=model.comision_id,
+            preguntas=preguntas,
+        )
+
+
+class MateriaSqlRepository:
+    """CRUD async para la tabla materia (C-69 sección 6, D11)."""
+
+    def __init__(self, db: AsyncSession) -> None:
+        self._db = db
+
+    async def guardar(self, materia: Materia) -> Materia:
+        """Persiste una materia; codigo único → MateriaDuplicadaError si colisiona."""
+        model = MateriaModel(codigo=materia.codigo, nombre=materia.nombre)
+        self._db.add(model)
+        try:
+            await self._db.flush()
+        except IntegrityError as exc:
+            await self._db.rollback()
+            if _es_violacion_unicidad(exc):
+                raise MateriaDuplicadaError(
+                    f"Ya existe una materia con codigo {materia.codigo!r}."
+                ) from exc
+            raise
+        return Materia(id=model.id, codigo=model.codigo, nombre=model.nombre)
+
+    async def listar(self) -> list[Materia]:
+        """Lista todas las materias (id, codigo, nombre), orden alfabético por nombre."""
+        result = await self._db.execute(
+            select(MateriaModel).order_by(MateriaModel.nombre)
+        )
+        return [
+            Materia(id=m.id, codigo=m.codigo, nombre=m.nombre)
+            for m in result.scalars().all()
+        ]
+
+    async def obtener(self, materia_id: str) -> Materia | None:
+        model = await self._db.get(MateriaModel, materia_id)
+        if model is None:
+            return None
+        return Materia(id=model.id, codigo=model.codigo, nombre=model.nombre)
+
+    async def obtener_por_codigo(self, codigo: str) -> Materia | None:
+        result = await self._db.execute(
+            select(MateriaModel).where(MateriaModel.codigo == codigo)
+        )
+        model = result.scalar_one_or_none()
+        if model is None:
+            return None
+        return Materia(id=model.id, codigo=model.codigo, nombre=model.nombre)
+
+
+class ComisionSqlRepository:
+    """CRUD async para la tabla comision (C-69 sección 6, D11)."""
+
+    def __init__(self, db: AsyncSession) -> None:
+        self._db = db
+
+    async def guardar(self, comision: Comision) -> Comision:
+        """Persiste una comisión; único (materia_id, codigo) → ComisionDuplicadaError."""
+        model = ComisionModel(
+            materia_id=comision.materia_id,
+            codigo=comision.codigo,
+            nombre=comision.nombre,
+            periodo=comision.periodo,
+            anio=comision.anio,
+        )
+        self._db.add(model)
+        try:
+            await self._db.flush()
+        except IntegrityError as exc:
+            await self._db.rollback()
+            if _es_violacion_unicidad(exc):
+                raise ComisionDuplicadaError(
+                    f"Ya existe una comisión con codigo {comision.codigo!r} en esa materia."
+                ) from exc
+            raise
+        return self._to_entity(model)
+
+    async def listar_por_materia(self, materia_id: str) -> list[Comision]:
+        """Lista las comisiones de una materia (orden alfabético por nombre)."""
+        result = await self._db.execute(
+            select(ComisionModel)
+            .where(ComisionModel.materia_id == materia_id)
+            .order_by(ComisionModel.nombre)
+        )
+        return [self._to_entity(m) for m in result.scalars().all()]
+
+    async def obtener(self, comision_id: str) -> Comision | None:
+        model = await self._db.get(ComisionModel, comision_id)
+        if model is None:
+            return None
+        return self._to_entity(model)
+
+    def _to_entity(self, model: ComisionModel) -> Comision:
+        return Comision(
+            id=model.id,
+            materia_id=model.materia_id,
+            codigo=model.codigo,
+            nombre=model.nombre,
+            periodo=model.periodo,
+            anio=model.anio,
+        )

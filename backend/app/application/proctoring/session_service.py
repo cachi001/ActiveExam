@@ -22,10 +22,20 @@ async def crear_sesion(
     modo: str,
     exam_id: str | None = None,
     etiqueta: str | None = None,
+    examen_contenido_id: str | None = None,
 ) -> ProctoringSessionModel:
-    """Crea una nueva sesion de proctoring slim."""
+    """Crea una nueva sesion de proctoring slim.
+
+    ``examen_contenido_id`` (C-69) vincula la sesion con el examen de contenido
+    importado de Moodle XML (NULLABLE).
+    """
     repo = ProctoringRepository(db)
-    return await repo.crear_sesion(modo=modo, exam_id=exam_id, etiqueta=etiqueta)
+    return await repo.crear_sesion(
+        modo=modo,
+        exam_id=exam_id,
+        etiqueta=etiqueta,
+        examen_contenido_id=examen_contenido_id,
+    )
 
 
 async def listar_sesiones(db: AsyncSession) -> list[SesionResumenData]:
