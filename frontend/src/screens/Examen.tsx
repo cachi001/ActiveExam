@@ -18,7 +18,9 @@ import {
   avanzarPregunta,
   retrocederPregunta,
   preguntaEnIndice,
+  indicesRespondidos,
 } from './ExamenLogic';
+import { QuestionNavigator } from './alumno/components/QuestionNavigator';
 import { FullscreenLockdown, soportaFullscreen, MENSAJE_LIMITE_FULLSCREEN } from '../proctoring/fullscreenLockdown';
 
 // Color de la card del evento según el riesgo/severidad (mismo código de color que
@@ -141,6 +143,8 @@ export default function Examen() {
   // C-69: pregunta actual y estado de navegación
   const total = preguntas.length;
   const preguntaActual = preguntaEnIndice(preguntas, indiceActual);
+  // Índices 0-based de las preguntas que ya tienen respuesta seleccionada
+  const respondidas = indicesRespondidos(preguntas, respuestas);
 
   const handleSeleccionarOpcion = (preguntaId: string, opcionId: string) => {
     setRespuestas((prev) => ({ ...prev, [preguntaId]: opcionId }));
@@ -207,6 +211,18 @@ export default function Examen() {
                   );
                 })}
               </div>
+            )}
+
+            {/* Navegador estilo Moodle: grilla de botones numerados que permite
+                saltar directamente a cualquier pregunta. Muestra el estado visual
+                de cada pregunta (actual / respondida / sin responder). */}
+            {total > 0 && (
+              <QuestionNavigator
+                total={total}
+                indiceActual={indiceActual}
+                respondidas={respondidas}
+                onIr={setIndiceActual}
+              />
             )}
 
             <div className="flex items-center justify-between pt-md border-t border-outline-variant/40 gap-sm">

@@ -36,3 +36,35 @@ export function preguntaEnIndice(
   const idx = Math.min(Math.max(indice, 0), preguntas.length - 1);
   return preguntas[idx];
 }
+
+/**
+ * Retorna el conjunto de índices 0-based de las preguntas que tienen una
+ * respuesta seleccionada en el mapa `respuestas`.
+ *
+ * Usado por QuestionNavigator para colorear los botones respondidos.
+ */
+export function indicesRespondidos(
+  preguntas: Array<{ id: number | string }>,
+  respuestas: Record<string | number, number | string>,
+): Set<number> {
+  const result = new Set<number>();
+  preguntas.forEach((p, i) => {
+    if (respuestas[p.id] !== undefined) {
+      result.add(i);
+    }
+  });
+  return result;
+}
+
+/**
+ * Valida que `indice` esté dentro del rango [0, total-1].
+ * Retorna el índice si es válido, null si está fuera de rango.
+ *
+ * Permite al componente QuestionNavigator rechazar saltos inválidos antes
+ * de actualizar el estado.
+ */
+export function irAIndice(indice: number, total: number): number | null {
+  if (total <= 0) return null;
+  if (indice < 0 || indice >= total) return null;
+  return indice;
+}
