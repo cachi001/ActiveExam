@@ -15,6 +15,11 @@ from fastapi import status as http_status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.application.proctoring import observacion_service, session_service
+from app.application.proctoring.enforcement import (
+    FueraDeVentanaError,
+    IntentosAgotadosError,
+    verificar_enforcement,
+)
 from app.application.proctoring.finalizar_con_writeback import (
     finalizar_sesion_con_writeback,
 )
@@ -114,19 +119,63 @@ def create_sessions_router(
         status_code=http_status.HTTP_201_CREATED,
         response_model=CrearSesionOut,
         summary="Crear sesion de proctoring",
-        dependencies=[Depends(require_autenticado)],
     )
     async def crear_sesion(
         body: CrearSesionIn,
         db: Annotated[AsyncSession, Depends(get_db)],
+        principal: Annotated[AuthenticatedPrincipal, Depends(require_autenticado)],
     ) -> CrearSesionOut:
-        """Crea una nueva sesion de proctoring slim."""
+        """Crea una nueva sesion de proctoring slim.
+
+        C-69 (backstop server-side): si la sesion se vincula a un examen
+        (``examen_contenido_id``), se ENFORCEA la ventana de rendicion
+        (apertura/cierre) y los intentos permitidos contra ``examen_contenido``,
+        con la hora del servidor. El cliente ya gatea "Rendir" pero es un sensor
+        no confiable (regla dura #6); esto es el backstop duro. Sin
+        ``examen_contenido_id`` (modo 'test') NO se aplica enforcement.
+
+        La identidad del alumno (id_institucional/email del JWT) se persiste SIEMPRE
+        en la fila — el enforcement de intentos la usa para contar las rendiciones.
+        """
+        from datetime import datetime, timezone
+
+        if body.examen_contenido_id is not None:
+            try:
+                await verificar_enforcement(
+                    db,
+                    examen_contenido_id=body.examen_contenido_id,
+                    alumno_idnumber=principal.id_institucional,
+                    ahora=datetime.now(timezone.utc),
+                )
+            except FueraDeVentanaError as exc:
+                raise HTTPException(
+                    status_code=http_status.HTTP_403_FORBIDDEN,
+                    detail={
+                        "error": "fuera_de_ventana",
+                        "mensaje": exc.mensaje,
+                        "apertura": exc.apertura.isoformat() if exc.apertura else None,
+                        "cierre": exc.cierre.isoformat() if exc.cierre else None,
+                    },
+                ) from exc
+            except IntentosAgotadosError as exc:
+                raise HTTPException(
+                    status_code=http_status.HTTP_409_CONFLICT,
+                    detail={
+                        "error": "intentos_agotados",
+                        "mensaje": exc.mensaje,
+                        "intentos_permitidos": exc.intentos_permitidos,
+                        "rendidos": exc.rendidos,
+                    },
+                ) from exc
+
         sesion = await session_service.crear_sesion(
             db=db,
             modo=body.modo,
             exam_id=body.exam_id,
             etiqueta=body.etiqueta,
             examen_contenido_id=body.examen_contenido_id,
+            alumno_idnumber=principal.id_institucional or None,
+            alumno_email=principal.email or None,
         )
         return CrearSesionOut(
             id=sesion.id,

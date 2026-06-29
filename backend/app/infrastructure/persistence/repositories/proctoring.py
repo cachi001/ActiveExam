@@ -65,18 +65,26 @@ class ProctoringRepository:
         exam_id: str | None = None,
         etiqueta: str | None = None,
         examen_contenido_id: str | None = None,
+        alumno_idnumber: str | None = None,
+        alumno_email: str | None = None,
     ) -> ProctoringSessionModel:
         """Crea y persiste una nueva sesion de proctoring slim.
 
         ``examen_contenido_id`` (C-69) vincula la sesion con el examen de contenido
         importado de Moodle XML. NULLABLE: una sesion sin contenido sigue siendo
         valida (modo 'test' o examen sin contenido asociado).
+
+        ``alumno_idnumber``/``alumno_email`` (C-69, migration 0033) persisten la
+        identidad del alumno al CREAR la sesion (id_institucional del JWT). El
+        enforcement de intentos cuenta sesiones finalizadas por (alumno, examen).
         """
         sesion = ProctoringSessionModel(
             modo=modo,
             exam_id=exam_id,
             etiqueta=etiqueta,
             examen_contenido_id=examen_contenido_id,
+            alumno_idnumber=alumno_idnumber,
+            alumno_email=alumno_email,
         )
         self._db.add(sesion)
         await self._db.commit()

@@ -23,11 +23,14 @@ async def crear_sesion(
     exam_id: str | None = None,
     etiqueta: str | None = None,
     examen_contenido_id: str | None = None,
+    alumno_idnumber: str | None = None,
+    alumno_email: str | None = None,
 ) -> ProctoringSessionModel:
     """Crea una nueva sesion de proctoring slim.
 
     ``examen_contenido_id`` (C-69) vincula la sesion con el examen de contenido
-    importado de Moodle XML (NULLABLE).
+    importado de Moodle XML (NULLABLE). ``alumno_idnumber``/``alumno_email``
+    persisten la identidad del alumno (C-69, enforcement de intentos).
     """
     repo = ProctoringRepository(db)
     return await repo.crear_sesion(
@@ -35,6 +38,8 @@ async def crear_sesion(
         exam_id=exam_id,
         etiqueta=etiqueta,
         examen_contenido_id=examen_contenido_id,
+        alumno_idnumber=alumno_idnumber,
+        alumno_email=alumno_email,
     )
 
 

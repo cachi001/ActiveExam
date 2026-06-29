@@ -76,6 +76,21 @@ class ProctoringSessionModel(Base):
         nullable=True,
     )
 
+    # C-69 (migration 0033): identidad del alumno persistida al CREAR la sesion.
+    # Antes la identidad se extraia del JWT recien en finalize (write-back). El
+    # enforcement server-side de intentos por examen necesita contar las sesiones
+    # finalizadas de un alumno, por eso se persiste aca. NULLABLE: las sesiones de
+    # prueba (modo 'test') o las creadas antes de esta migracion quedan con NULL.
+    # alumno_idnumber = principal.id_institucional (mismo criterio que el write-back).
+    alumno_idnumber: Mapped[str | None] = mapped_column(
+        String(255), nullable=True,
+        comment="id_institucional del alumno (legajo/padron). NULL = sin identidad.",
+    )
+    alumno_email: Mapped[str | None] = mapped_column(
+        String(255), nullable=True,
+        comment="Email del alumno (fallback de identidad). NULL = sin email.",
+    )
+
     # C-15 (tarea 3.3): cierre FORZADO por el proctor. Operativo, NO disciplinario
     # (regla dura #5: el sistema nunca sanciona — esto solo CIERRA la sesion). El
     # cierre forzado tambien setea finalizada_en; estas 3 columnas son el audit trail
