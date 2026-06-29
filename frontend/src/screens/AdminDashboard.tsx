@@ -15,7 +15,7 @@ import { Link } from '../lib/router';
 import { api } from '../lib/api';
 import { STAFF_NAV } from '../ui/nav';
 import type { ExamenContenidoResumen, SesionProctoringResumen } from '../lib/types';
-import { examenContenidoSubtitulo } from './dashboards.helpers';
+import { examenContenidoSubtitulo, formatVentanaExamen, formatDuracionExamen } from './dashboards.helpers';
 import { loadEffectiveConfig, getEffectiveConfig } from '../config/effectiveConfigCache';
 
 // alias para mantener compatibilidad con las pantallas que ya lo importan
@@ -145,9 +145,19 @@ function ExamenContenidoRow({ examen }: { examen: ExamenContenidoResumen }) {
         <div className="min-w-0">
           <p className="text-[15px] font-semibold text-on-surface truncate leading-snug">{examen.titulo}</p>
           <p className="text-[13px] text-on-surface-variant truncate leading-snug mt-0.5">{subtitulo}</p>
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[12px] text-on-surface-variant">
+            <span className="inline-flex items-center gap-1 min-w-0">
+              <Icon name="event" className="text-[14px] shrink-0" />
+              <span className="truncate">{formatVentanaExamen(examen.apertura, examen.cierre)}</span>
+            </span>
+            <span className="inline-flex items-center gap-1 shrink-0">
+              <Icon name="schedule" className="text-[14px]" />
+              {formatDuracionExamen(examen.tiempo_limite_min)}
+            </span>
+          </div>
         </div>
       </div>
-      <span className="text-[12px] text-on-surface-variant shrink-0 tabular-nums">{examen.cantidad_preguntas} preg.</span>
+      <span className="text-[12px] text-on-surface-variant shrink-0 tabular-nums self-start mt-0.5">{examen.cantidad_preguntas} preg.</span>
     </Link>
   );
 }

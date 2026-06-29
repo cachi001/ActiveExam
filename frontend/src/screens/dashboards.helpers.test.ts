@@ -9,7 +9,11 @@
  * Sin DOM ni React — solo lógica pura, corre en node (vitest default).
  */
 import { describe, it, expect } from 'vitest';
-import { examenContenidoSubtitulo } from './dashboards.helpers';
+import {
+  examenContenidoSubtitulo,
+  formatVentanaExamen,
+  formatDuracionExamen,
+} from './dashboards.helpers';
 import type { ExamenContenidoResumen } from '../lib/types';
 
 // ---------------------------------------------------------------------------
@@ -93,6 +97,55 @@ describe('examenContenidoSubtitulo — fallback a cantidad_preguntas', () => {
       cantidad_preguntas: 0,
     };
     expect(examenContenidoSubtitulo(e)).toBe('0 preguntas');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// formatVentanaExamen — ventana de rendición legible
+// (no aserta el render exacto de fecha para no acoplar el test al timezone)
+// ---------------------------------------------------------------------------
+
+describe('formatVentanaExamen', () => {
+  it('sin apertura ni cierre → "Sin ventana de fechas"', () => {
+    expect(formatVentanaExamen(null, null)).toBe('Sin ventana de fechas');
+    expect(formatVentanaExamen(undefined, undefined)).toBe('Sin ventana de fechas');
+  });
+
+  it('apertura y cierre → rango con flecha', () => {
+    const r = formatVentanaExamen('2026-07-03T14:00:00Z', '2026-07-03T16:00:00Z');
+    expect(r).toContain('→');
+  });
+
+  it('solo apertura → prefijo "Desde"', () => {
+    expect(formatVentanaExamen('2026-07-03T14:00:00Z', null)).toMatch(/^Desde /);
+  });
+
+  it('solo cierre → prefijo "Hasta"', () => {
+    expect(formatVentanaExamen(null, '2026-07-03T16:00:00Z')).toMatch(/^Hasta /);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// formatDuracionExamen — duración legible (determinística)
+// ---------------------------------------------------------------------------
+
+describe('formatDuracionExamen', () => {
+  it('sin límite (null/0) → "Sin límite de tiempo"', () => {
+    expect(formatDuracionExamen(null)).toBe('Sin límite de tiempo');
+    expect(formatDuracionExamen(0)).toBe('Sin límite de tiempo');
+    expect(formatDuracionExamen(undefined)).toBe('Sin límite de tiempo');
+  });
+
+  it('menos de una hora → "N min"', () => {
+    expect(formatDuracionExamen(45)).toBe('45 min');
+  });
+
+  it('horas exactas → "N h"', () => {
+    expect(formatDuracionExamen(120)).toBe('2 h');
+  });
+
+  it('horas + minutos → "N h M min"', () => {
+    expect(formatDuracionExamen(90)).toBe('1 h 30 min');
   });
 });
 

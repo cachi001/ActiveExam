@@ -11,7 +11,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { StaffShell } from '../ui/shells';
-import { Card, SectionTitle } from '../ui/components';
+import { Card } from '../ui/components';
 import { HelpButton } from '../ui/HelpButton';
 import { ConfirmModal } from '../ui/ConfirmModal';
 import { STAFF_NAV } from '../ui/nav';
@@ -120,14 +120,10 @@ export default function ProctoringRevisor() {
         {/* Resumen agregado */}
         {!cargando && sesiones.length > 0 && <ResumenSesiones sesiones={sesiones} />}
 
-        {/* Lista agrupada por examen (colapsable), igual que supervisión en vivo */}
+        {/* Lista agrupada por examen (colapsable), igual que supervisión en vivo.
+            Sin header repetido: el título de la página ya dice "Sesiones grabadas" y
+            el conteo lo muestra ResumenSesiones (arriba). */}
         <div className="space-y-md">
-          <SectionTitle
-            sub={cargando ? 'Cargando…' : `${sesiones.length} ${sesiones.length === 1 ? 'sesión' : 'sesiones'}`}
-          >
-            Sesiones grabadas
-          </SectionTitle>
-
           {cargando && <Card className="space-y-md"><ListaSkeleton /></Card>}
 
           {!cargando && sesiones.length === 0 && <Card><ListaVacia /></Card>}

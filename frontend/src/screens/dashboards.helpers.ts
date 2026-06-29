@@ -16,3 +16,36 @@ export function examenContenidoSubtitulo(e: ExamenContenidoResumen): string {
   if (partes.length > 0) return partes.join(' · ');
   return `${e.cantidad_preguntas} preguntas`;
 }
+
+/** Formatea un ISO a "dd/mm HH:MM" en es-AR (corto, para chips de listado). */
+function fechaCorta(iso: string): string {
+  return new Date(iso).toLocaleString('es-AR', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+/**
+ * Ventana de rendición legible: "dd/mm HH:MM → dd/mm HH:MM", o "Desde …" / "Hasta …"
+ * si solo hay un extremo, o "Sin ventana de fechas" si no hay ninguno.
+ */
+export function formatVentanaExamen(
+  apertura?: string | null,
+  cierre?: string | null,
+): string {
+  if (apertura && cierre) return `${fechaCorta(apertura)} → ${fechaCorta(cierre)}`;
+  if (apertura) return `Desde ${fechaCorta(apertura)}`;
+  if (cierre) return `Hasta ${fechaCorta(cierre)}`;
+  return 'Sin ventana de fechas';
+}
+
+/** Duración legible del examen a partir de los minutos límite. */
+export function formatDuracionExamen(min?: number | null): string {
+  if (!min || min <= 0) return 'Sin límite de tiempo';
+  if (min < 60) return `${min} min`;
+  const horas = Math.floor(min / 60);
+  const resto = min % 60;
+  return resto > 0 ? `${horas} h ${resto} min` : `${horas} h`;
+}
