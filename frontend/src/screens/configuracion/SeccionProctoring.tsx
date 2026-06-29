@@ -202,7 +202,7 @@ export default function SeccionProctoring() {
             <Button variant="outline" icon="undo" onClick={cancelar} disabled={guardando}>
               Cancelar
             </Button>
-            <Button variant="success" icon="save" onClick={guardar} disabled={guardando}>
+            <Button variant="primary" icon="save" onClick={guardar} disabled={guardando}>
               {guardando ? 'Guardando…' : 'Guardar parámetros'}
             </Button>
           </div>

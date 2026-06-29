@@ -19,7 +19,7 @@ export function ReviewDecisionPanel({ sesion: _sesion, onResolver, onVerDetalle 
         <Button variant="outline" className="flex-1 text-warning border-warning/40" icon="search" onClick={() => onResolver('escalada', 'escalada para investigación')}>Escalar (investigar)</Button>
         <Button variant="danger" className="flex-1" icon="gavel" onClick={() => onResolver('derivada', 'derivada a disciplina')}>Derivar a disciplina</Button>
       </div>
-      <button onClick={onVerDetalle} className="text-label-md text-on-surface-variant hover:text-on-surface hover:underline inline-flex items-center gap-base">
+      <button onClick={onVerDetalle} className="text-label-md text-on-surface-variant hover:text-on-surface inline-flex items-center gap-base transition-colors">
         <Icon name="open_in_full" className="text-[18px]" /> Ver detalle forense completo
       </button>
     </div>

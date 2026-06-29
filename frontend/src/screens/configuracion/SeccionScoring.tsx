@@ -176,6 +176,12 @@ export default function SeccionScoring() {
         </div>
       </div>
 
+      {/* Aviso inline al inicio: los pesos solo afectan cálculos futuros. */}
+      <div className="flex items-center gap-2.5 rounded-xl bg-surface-container border border-outline-variant/40 px-4 py-3 text-[13px] text-on-surface-variant">
+        <Icon name="info" className="text-[20px] text-primary shrink-0" fill />
+        <span>Cambiar los pesos no modifica eventos pasados; solo afecta el cálculo del score en futuros exámenes.</span>
+      </div>
+
       <div className="grid md:grid-cols-2 gap-md min-w-0">
         {configs.map((cfg) => {
           const editado = tieneEdicion(cfg.tipo_evento);
@@ -259,16 +265,14 @@ export default function SeccionScoring() {
                 </label>
               </div>
 
-              {/* Acciones de la card (solo si hay edición). Descartar = outline
-                  (siempre tiene borde y se lee como botón sin esperar el hover).
-                  Guardar = success — verde sober "save" universal, sin morado que
-                  no encaja en el contexto de configuración. */}
+              {/* Acciones de la card (solo si hay edición). Descartar = outline;
+                  Guardar = primary (color institucional #004BA8). */}
               {editado && (
                 <div className="flex items-center justify-end gap-1.5 pt-1">
                   <Button size="sm" variant="outline" onClick={() => descartar(cfg.tipo_evento)} disabled={isGuardando}>
                     Descartar
                   </Button>
-                  <Button size="sm" variant="success" icon="save" onClick={() => guardar(cfg)} disabled={isGuardando}>
+                  <Button size="sm" variant="primary" icon="save" onClick={() => guardar(cfg)} disabled={isGuardando}>
                     {isGuardando ? '…' : 'Guardar'}
                   </Button>
                 </div>
@@ -276,12 +280,6 @@ export default function SeccionScoring() {
             </div>
           );
         })}
-      </div>
-
-      {/* Nota inferior con padding correcto (E) */}
-      <div className="bg-surface-container rounded-2xl p-lg text-[12px] text-on-surface-variant flex items-start gap-base border border-outline-variant/40">
-        <Icon name="info" className="text-[16px] shrink-0" fill />
-        <span>Cambiar los pesos no modifica eventos pasados; solo afecta el cálculo del score en futuros exámenes.</span>
       </div>
     </div>
   );
