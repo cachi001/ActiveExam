@@ -595,6 +595,22 @@ export interface Comision {
   anio?: number | null;
 }
 
+/** Alumno inscripto a una comisión, con su estado de elegibilidad para rendir
+ *  (C-69). Espeja el item de GET /exam-content/comisiones/{id}/alumnos del
+ *  backend: el `puede_rendir` lo decide el servidor combinando consentimiento +
+ *  biometría vigentes; `razon` explica el motivo cuando no puede rendir. */
+export interface AlumnoInscripto {
+  usuario_id: string;
+  id_institucional: string;
+  nombre: string | null;
+  apellido: string | null;
+  email: string;
+  consentimiento_vigente: boolean;
+  biometria_vigente: boolean;
+  puede_rendir: boolean;
+  razon: string | null;
+}
+
 /** Inscripción de un alumno a un examen puntual. */
 export interface Inscripcion {
   id: string;

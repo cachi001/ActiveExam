@@ -434,3 +434,171 @@ describe('examContentAdmin — actualizarComision', () => {
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+// listarAlumnosDeComision — RED → GREEN → TRIANGULATE
+// ---------------------------------------------------------------------------
+
+describe('examContentAdmin — listarAlumnosDeComision', () => {
+  let fetchSpy: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => {
+    fetchSpy = vi.spyOn(globalThis, 'fetch');
+  });
+  afterEach(() => {
+    fetchSpy.mockRestore();
+  });
+
+  it('GET al endpoint con comisionId en URL y token; devuelve el listado de alumnos', async () => {
+    const mock = [
+      {
+        usuario_id: 'u-1',
+        id_institucional: 'FRM-23-4912',
+        nombre: 'Emiliano',
+        apellido: 'Cáceres',
+        email: 'ecaceres@frm.utn.edu.ar',
+        consentimiento_vigente: true,
+        biometria_vigente: true,
+        puede_rendir: true,
+        razon: null,
+      },
+    ];
+    fetchSpy.mockResolvedValueOnce({ ok: true, status: 200, json: async () => mock } as Response);
+
+    const { listarAlumnosDeComision } = await import('./examContentAdmin');
+    const res = await listarAlumnosDeComision('com-1');
+
+    expect(res).toHaveLength(1);
+    expect(res[0].usuario_id).toBe('u-1');
+    expect(res[0].puede_rendir).toBe(true);
+    expect(fetchSpy).toHaveBeenCalledWith(
+      '/api/v1/exam-content/comisiones/com-1/alumnos',
+      expect.objectContaining({
+        method: 'GET',
+        headers: expect.objectContaining({ Authorization: 'Bearer tok' }),
+      }),
+    );
+  });
+
+  it('lanza error con status=404 si la comisión no existe', async () => {
+    fetchSpy.mockResolvedValueOnce({
+      ok: false,
+      status: 404,
+      json: async () => ({ error: 'comision_no_encontrada' }),
+    } as Response);
+
+    const { listarAlumnosDeComision } = await import('./examContentAdmin');
+    const promise = listarAlumnosDeComision('no-existe');
+
+    await expect(promise).rejects.toThrow('comision_no_encontrada');
+    const err = await promise.catch((e: unknown) => e as Error & { status?: number });
+    expect(err.status).toBe(404);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// inscribirAlumno — RED → GREEN → TRIANGULATE
+// ---------------------------------------------------------------------------
+
+describe('examContentAdmin — inscribirAlumno', () => {
+  let fetchSpy: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => {
+    fetchSpy = vi.spyOn(globalThis, 'fetch');
+  });
+  afterEach(() => {
+    fetchSpy.mockRestore();
+  });
+
+  it('POST al endpoint con comisionId en URL, token y body; devuelve la inscripción en 201', async () => {
+    const mock = { id: 'insc-1', usuario_id: 'u-1', comision_id: 'com-1' };
+    fetchSpy.mockResolvedValueOnce({ ok: true, status: 201, json: async () => mock } as Response);
+
+    const { inscribirAlumno } = await import('./examContentAdmin');
+    const res = await inscribirAlumno('com-1', 'u-1');
+
+    expect(res.id).toBe('insc-1');
+    expect(res.usuario_id).toBe('u-1');
+    expect(res.comision_id).toBe('com-1');
+    expect(fetchSpy).toHaveBeenCalledWith(
+      '/api/v1/exam-content/comisiones/com-1/inscripciones',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({ Authorization: 'Bearer tok' }),
+        body: JSON.stringify({ usuario_id: 'u-1' }),
+      }),
+    );
+  });
+
+  it('lanza error con status=409 si el alumno ya está inscripto', async () => {
+    fetchSpy.mockResolvedValueOnce({
+      ok: false,
+      status: 409,
+      json: async () => ({ error: 'ya_inscripto' }),
+    } as Response);
+
+    const { inscribirAlumno } = await import('./examContentAdmin');
+    const promise = inscribirAlumno('com-1', 'u-1');
+
+    await expect(promise).rejects.toThrow('ya_inscripto');
+    const err = await promise.catch((e: unknown) => e as Error & { status?: number });
+    expect(err.status).toBe(409);
+  });
+
+  it('lanza error con status=404 si la comisión o el usuario no existen', async () => {
+    fetchSpy.mockResolvedValueOnce({
+      ok: false,
+      status: 404,
+      json: async () => ({ error: 'no_encontrado' }),
+    } as Response);
+
+    const { inscribirAlumno } = await import('./examContentAdmin');
+    const promise = inscribirAlumno('no-existe', 'u-1');
+
+    await expect(promise).rejects.toThrow('no_encontrado');
+    const err = await promise.catch((e: unknown) => e as Error & { status?: number });
+    expect(err.status).toBe(404);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// eliminarInscripcion — RED → GREEN → TRIANGULATE
+// ---------------------------------------------------------------------------
+
+describe('examContentAdmin — eliminarInscripcion', () => {
+  let fetchSpy: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => {
+    fetchSpy = vi.spyOn(globalThis, 'fetch');
+  });
+  afterEach(() => {
+    fetchSpy.mockRestore();
+  });
+
+  it('DELETE al endpoint con comisionId y usuarioId en URL y token; resuelve en 204 sin cuerpo', async () => {
+    fetchSpy.mockResolvedValueOnce({ ok: true, status: 204 } as Response);
+
+    const { eliminarInscripcion } = await import('./examContentAdmin');
+    await expect(eliminarInscripcion('com-1', 'u-1')).resolves.toBeUndefined();
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      '/api/v1/exam-content/comisiones/com-1/inscripciones/u-1',
+      expect.objectContaining({
+        method: 'DELETE',
+        headers: expect.objectContaining({ Authorization: 'Bearer tok' }),
+      }),
+    );
+  });
+
+  it('lanza error con status=404 si el alumno no estaba inscripto', async () => {
+    fetchSpy.mockResolvedValueOnce({
+      ok: false,
+      status: 404,
+      json: async () => ({ error: 'no_inscripto' }),
+    } as Response);
+
+    const { eliminarInscripcion } = await import('./examContentAdmin');
+    const promise = eliminarInscripcion('com-1', 'u-1');
+
+    await expect(promise).rejects.toThrow('no_inscripto');
+    const err = await promise.catch((e: unknown) => e as Error & { status?: number });
+    expect(err.status).toBe(404);
+  });
+});

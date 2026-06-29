@@ -12,6 +12,7 @@
  */
 
 import { authProvider } from './authProvider';
+import type { AlumnoInscripto } from './types';
 
 export interface MateriaInline {
   codigo: string;
@@ -392,4 +393,71 @@ export async function setPreguntasSeleccion(
   }
   const body = await res.json().catch(() => null);
   return { seleccionadas: body?.seleccionadas ?? seleccionadasIds.length };
+}
+
+// ---------------------------------------------------------------------------
+// C-69: alumnos inscriptos por comisión + elegibilidad ("puede rendir").
+// Endpoints admin-only bajo /api/v1/exam-content/ (mismo guard Bearer).
+// Manejo de error con throwAdminError → el Error lleva `.status` HTTP para que
+// la UI distinga 409 (ya inscripto) / 404 (comisión o usuario no existe).
+// ---------------------------------------------------------------------------
+
+/** Resultado de inscribir un alumno a una comisión. POST devuelve 201. */
+export interface InscripcionAlumnoResponse {
+  id: string;
+  usuario_id: string;
+  comision_id: string;
+}
+
+/** Lista los alumnos inscriptos a una comisión con su elegibilidad para rendir.
+ *  Admin-only. GET /exam-content/comisiones/{comisionId}/alumnos.
+ *  404 → la comisión no existe. */
+export async function listarAlumnosDeComision(
+  comisionId: string,
+): Promise<AlumnoInscripto[]> {
+  const res = await fetch(
+    `/api/v1/exam-content/comisiones/${encodeURIComponent(comisionId)}/alumnos`,
+    {
+      method: 'GET',
+      headers: authHeaders(),
+    },
+  );
+  if (!res.ok) return throwAdminError(res);
+  return res.json() as Promise<AlumnoInscripto[]>;
+}
+
+/** Inscribe un alumno (usuario rol estudiante) a una comisión. Admin-only.
+ *  POST /exam-content/comisiones/{comisionId}/inscripciones → 201.
+ *  409 → ya inscripto  |  404 → comisión o usuario no existe. */
+export async function inscribirAlumno(
+  comisionId: string,
+  usuarioId: string,
+): Promise<InscripcionAlumnoResponse> {
+  const res = await fetch(
+    `/api/v1/exam-content/comisiones/${encodeURIComponent(comisionId)}/inscripciones`,
+    {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ usuario_id: usuarioId }),
+    },
+  );
+  if (!res.ok) return throwAdminError(res);
+  return res.json() as Promise<InscripcionAlumnoResponse>;
+}
+
+/** Elimina la inscripción de un alumno a una comisión. Admin-only.
+ *  DELETE /exam-content/comisiones/{comisionId}/inscripciones/{usuarioId} → 204.
+ *  404 → el alumno no estaba inscripto. No hay cuerpo en la respuesta. */
+export async function eliminarInscripcion(
+  comisionId: string,
+  usuarioId: string,
+): Promise<void> {
+  const res = await fetch(
+    `/api/v1/exam-content/comisiones/${encodeURIComponent(comisionId)}/inscripciones/${encodeURIComponent(usuarioId)}`,
+    {
+      method: 'DELETE',
+      headers: authHeaders(),
+    },
+  );
+  if (!res.ok) return throwAdminError(res);
 }

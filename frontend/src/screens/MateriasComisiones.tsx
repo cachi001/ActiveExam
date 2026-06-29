@@ -14,11 +14,13 @@
  * muestran error de red esperado).
  */
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, Fragment } from 'react';
+import { createPortal } from 'react-dom';
 import { StaffShell } from '../ui/shells';
-import { Icon, Card, SectionTitle, Button } from '../ui/components';
+import { Icon, Card, SectionTitle, Button, Badge } from '../ui/components';
 import { HelpButton } from '../ui/HelpButton';
 import { ActionMenu } from '../ui/ActionMenu';
+import { ConfirmModal } from '../ui/ConfirmModal';
 import { STAFF_NAV } from '../ui/nav';
 import { useToast } from '../ui/toast';
 import { api } from '../lib/api';
@@ -27,8 +29,11 @@ import {
   actualizarMateria,
   crearComision,
   actualizarComision,
+  listarAlumnosDeComision,
+  inscribirAlumno,
+  eliminarInscripcion,
 } from '../lib/examContentAdmin';
-import type { Materia, Comision } from '../lib/types';
+import type { Materia, Comision, AlumnoInscripto, UsuarioAdmin } from '../lib/types';
 
 // ---------------------------------------------------------------------------
 // Clases de input — misma estética que ImportExamModal (border-outline-variant,
@@ -106,6 +111,440 @@ function mensajeDeError(
   return e.message ?? 'Error inesperado.';
 }
 
+/** Nombre legible de un alumno: "Nombre Apellido", o el que haya, o el id
+ *  institucional como fallback (nunca queda vacío). */
+function nombreAlumno(a: AlumnoInscripto): string {
+  const completo = [a.nombre, a.apellido].filter(Boolean).join(' ').trim();
+  return completo || a.id_institucional;
+}
+
+/** Nombre legible de un usuario del picker (rol estudiante). */
+function nombreUsuario(u: UsuarioAdmin): string {
+  const completo = [u.nombre, u.apellido].filter(Boolean).join(' ').trim();
+  return completo || u.id_institucional || u.email;
+}
+
+// ---------------------------------------------------------------------------
+// Badge de check / cruz para una condición de elegibilidad (consentimiento /
+// biometría). Verde con ✔ si está vigente; gris con ✗ si no.
+// ---------------------------------------------------------------------------
+
+function CondicionBadge({ ok, label }: { ok: boolean; label: string }) {
+  return (
+    <Badge tone={ok ? 'success' : 'neutral'} className="text-[11px]">
+      <Icon name={ok ? 'check_circle' : 'cancel'} className="text-[14px]" fill />
+      {label}
+    </Badge>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Picker de alumnos — modal accesible que reusa api.listarUsuarios filtrando por
+// rol estudiante. Selección simple + confirmar. Escape y click-afuera cierran.
+// ---------------------------------------------------------------------------
+
+interface AlumnoPickerModalProps {
+  abierto: boolean;
+  comisionNombre: string;
+  yaInscriptos: Set<string>;
+  inscribiendo: boolean;
+  onConfirmar: (usuarioId: string) => void;
+  onCancelar: () => void;
+}
+
+function AlumnoPickerModal({
+  abierto,
+  comisionNombre,
+  yaInscriptos,
+  inscribiendo,
+  onConfirmar,
+  onCancelar,
+}: AlumnoPickerModalProps) {
+  const [qInput, setQInput] = useState('');
+  const [usuarios, setUsuarios] = useState<UsuarioAdmin[]>([]);
+  const [cargando, setCargando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [seleccionado, setSeleccionado] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const cargar = useCallback(async (texto: string) => {
+    setCargando(true);
+    setError(null);
+    try {
+      const data = await api.listarUsuarios(50, 0, {
+        rol: 'estudiante',
+        estado: 'activo',
+        q: texto || undefined,
+      });
+      setUsuarios(data.items);
+    } catch {
+      setError('No se pudo cargar la lista de estudiantes.');
+      setUsuarios([]);
+    } finally {
+      setCargando(false);
+    }
+  }, []);
+
+  // Al abrir: reset + carga inicial + foco en el buscador.
+  useEffect(() => {
+    if (!abierto) return;
+    setQInput('');
+    setSeleccionado(null);
+    void cargar('');
+    const t = setTimeout(() => inputRef.current?.focus(), 50);
+    return () => clearTimeout(t);
+  }, [abierto, cargar]);
+
+  // Escape cierra el picker.
+  useEffect(() => {
+    if (!abierto) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onCancelar();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [abierto, onCancelar]);
+
+  if (!abierto) return null;
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center p-md bg-black/40 animate-in fade-in"
+      onClick={onCancelar}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="picker-alumno-titulo"
+        className="w-full max-w-lg bg-surface-container-lowest rounded-2xl shadow-card-lg
+          border border-outline-variant/40 p-lg space-y-md animate-in zoom-in fade-in flex flex-col max-h-[80vh]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="space-y-base">
+          <h2 id="picker-alumno-titulo" className="font-headline text-title-lg text-on-surface tracking-tight">
+            Inscribir alumno
+          </h2>
+          <p className="text-body-sm text-on-surface-variant">
+            Elegí un estudiante para inscribir en <strong>{comisionNombre}</strong>.
+          </p>
+        </div>
+
+        {/* Buscador */}
+        <div className="relative">
+          <Icon name="search" className="text-[16px] text-on-surface-variant absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <input
+            ref={inputRef}
+            type="search"
+            aria-label="Buscar estudiante por nombre, email o legajo"
+            placeholder="Buscar por nombre, email o legajo… (Enter)"
+            value={qInput}
+            onChange={(e) => {
+              const v = e.target.value;
+              setQInput(v);
+              if (!v) void cargar('');
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                void cargar(qInput);
+              }
+            }}
+            className={INPUT_CLASS + ' pl-8'}
+          />
+        </div>
+
+        {/* Listado de estudiantes */}
+        <div className="flex-1 overflow-y-auto -mx-1 px-1 min-h-[120px]">
+          {cargando ? (
+            <div className="py-8 text-center">
+              <Icon name="progress_activity" className="ae-spin text-[24px] text-outline" />
+            </div>
+          ) : error ? (
+            <div role="alert" className="flex items-center gap-xs text-error text-body-sm p-sm rounded-lg bg-error-container">
+              <Icon name="error" className="text-[18px] shrink-0" fill />
+              {error}
+            </div>
+          ) : usuarios.length === 0 ? (
+            <p className="py-8 text-center text-on-surface-variant text-[13px]">
+              No se encontraron estudiantes con esa búsqueda.
+            </p>
+          ) : (
+            <ul className="space-y-1" role="listbox" aria-label="Estudiantes disponibles">
+              {usuarios.map((u) => {
+                const inscripto = yaInscriptos.has(u.id);
+                const elegido = seleccionado === u.id;
+                return (
+                  <li key={u.id}>
+                    <button
+                      type="button"
+                      role="option"
+                      aria-selected={elegido}
+                      disabled={inscripto || inscribiendo}
+                      onClick={() => setSeleccionado(u.id)}
+                      className={`w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-lg border transition-colors
+                        disabled:opacity-50 disabled:cursor-not-allowed
+                        ${elegido
+                          ? 'border-primary bg-primary/5'
+                          : 'border-outline-variant hover:border-outline hover:bg-surface-container-low'}`}
+                    >
+                      <div className="w-8 h-8 rounded-full bg-secondary-container text-on-secondary flex items-center justify-center font-semibold text-[13px] shrink-0">
+                        {nombreUsuario(u).charAt(0).toUpperCase()}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[13px] font-medium text-on-surface truncate">{nombreUsuario(u)}</p>
+                        <p className="text-[11px] text-on-surface-variant truncate">
+                          {u.email}
+                          <span className="font-mono"> · {u.id_institucional}</span>
+                        </p>
+                      </div>
+                      {inscripto ? (
+                        <span className="text-[11px] text-on-surface-variant shrink-0">Ya inscripto</span>
+                      ) : elegido ? (
+                        <Icon name="check_circle" className="text-[18px] text-primary shrink-0" fill />
+                      ) : null}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+
+        <div className="flex items-center justify-end gap-sm pt-base border-t border-outline-variant/40">
+          <Button variant="ghost" size="sm" onClick={onCancelar} disabled={inscribiendo}>
+            Cancelar
+          </Button>
+          <Button
+            variant="primary"
+            size="sm"
+            disabled={!seleccionado || inscribiendo}
+            onClick={() => seleccionado && onConfirmar(seleccionado)}
+          >
+            {inscribiendo ? (
+              <span className="inline-flex items-center gap-xs">
+                <Icon name="progress_activity" className="ae-spin text-[18px]" />
+                Inscribiendo…
+              </span>
+            ) : 'Inscribir'}
+          </Button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Panel de alumnos inscriptos de una comisión. Se monta SOLO al expandir la
+// comisión (carga lazy): el primer render dispara la carga de alumnos.
+// ---------------------------------------------------------------------------
+
+function AlumnosComisionPanel({
+  comisionId,
+  comisionNombre,
+}: {
+  comisionId: string;
+  comisionNombre: string;
+}) {
+  const toast = useToast();
+  const [alumnos, setAlumnos] = useState<AlumnoInscripto[] | null>(null);
+  const [cargando, setCargando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [pickerAbierto, setPickerAbierto] = useState(false);
+  const [inscribiendo, setInscribiendo] = useState(false);
+  const [aQuitar, setAQuitar] = useState<AlumnoInscripto | null>(null);
+
+  const cargar = useCallback(async () => {
+    setCargando(true);
+    setError(null);
+    try {
+      const data = await listarAlumnosDeComision(comisionId);
+      setAlumnos(data);
+    } catch (err) {
+      const e = err as Error & { status?: number };
+      setError(
+        e.status === 404
+          ? 'No se encontró la comisión.'
+          : 'No se pudieron cargar los alumnos inscriptos.',
+      );
+      setAlumnos([]);
+    } finally {
+      setCargando(false);
+    }
+  }, [comisionId]);
+
+  // Carga lazy: el panel se monta al expandir la comisión.
+  useEffect(() => { void cargar(); }, [cargar]);
+
+  async function handleInscribir(usuarioId: string) {
+    setInscribiendo(true);
+    try {
+      await inscribirAlumno(comisionId, usuarioId);
+      toast.success('Alumno inscripto correctamente.');
+      setPickerAbierto(false);
+      await cargar();
+    } catch (err) {
+      const e = err as Error & { status?: number };
+      if (e.status === 409) toast.error('Ese alumno ya está inscripto en la comisión.');
+      else if (e.status === 404) toast.error('No se encontró la comisión o el alumno.');
+      else toast.error('No se pudo inscribir al alumno.');
+    } finally {
+      setInscribiendo(false);
+    }
+  }
+
+  async function handleQuitar() {
+    if (!aQuitar) return;
+    const alumno = aQuitar;
+    setAQuitar(null);
+    try {
+      await eliminarInscripcion(comisionId, alumno.usuario_id);
+      toast.success('Inscripción eliminada.');
+      await cargar();
+    } catch (err) {
+      const e = err as Error & { status?: number };
+      if (e.status === 404) toast.error('El alumno no estaba inscripto.');
+      else toast.error('No se pudo quitar la inscripción.');
+    }
+  }
+
+  const inscriptosIds = new Set((alumnos ?? []).map((a) => a.usuario_id));
+
+  return (
+    <div className="px-8 py-4 bg-surface-container-lowest/60 border-t border-outline-variant/20 space-y-3">
+      {/* Cabecera del panel */}
+      <div className="flex items-center justify-between gap-3">
+        <h4 className="text-[12px] font-semibold text-on-surface-variant uppercase tracking-wide flex items-center gap-2">
+          <Icon name="groups" className="text-[16px] text-primary" />
+          Alumnos inscriptos
+          {alumnos && (
+            <span className="font-normal normal-case text-on-surface-variant">({alumnos.length})</span>
+          )}
+        </h4>
+        <Button
+          variant="primary"
+          size="sm"
+          icon="person_add"
+          onClick={() => setPickerAbierto(true)}
+        >
+          Inscribir alumno
+        </Button>
+      </div>
+
+      {/* Estados */}
+      {cargando ? (
+        <div className="py-6 text-center">
+          <Icon name="progress_activity" className="ae-spin text-[22px] text-outline" />
+        </div>
+      ) : error ? (
+        <div role="alert" className="flex items-center justify-between gap-xs text-error text-body-sm p-sm rounded-lg bg-error-container">
+          <span className="flex items-center gap-xs">
+            <Icon name="error" className="text-[18px] shrink-0" fill />
+            {error}
+          </span>
+          <Button variant="ghost" size="sm" onClick={() => void cargar()}>Reintentar</Button>
+        </div>
+      ) : alumnos && alumnos.length === 0 ? (
+        <div className="py-6 text-on-surface-variant text-[13px] flex items-center gap-2">
+          <Icon name="info" className="text-[16px] shrink-0" />
+          No hay alumnos inscriptos todavía.
+        </div>
+      ) : alumnos && alumnos.length > 0 ? (
+        <ul className="divide-y divide-outline-variant/20 rounded-lg border border-outline-variant/40 overflow-hidden bg-surface">
+          {alumnos.map((a) => (
+            <li key={a.usuario_id} className="px-3 py-3 flex flex-col sm:flex-row sm:items-center gap-3">
+              {/* Identidad */}
+              <div className="flex-1 min-w-0">
+                <p className="text-[13px] font-medium text-on-surface truncate">{nombreAlumno(a)}</p>
+                <p className="text-[11px] text-on-surface-variant truncate">
+                  {a.email}
+                  <span className="font-mono"> · {a.id_institucional}</span>
+                </p>
+              </div>
+
+              {/* Elegibilidad */}
+              <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                <CondicionBadge ok={a.consentimiento_vigente} label="Consentimiento" />
+                <CondicionBadge ok={a.biometria_vigente} label="Biometría" />
+                {a.puede_rendir ? (
+                  <Badge tone="primary" className="text-[11px]">
+                    <Icon name="task_alt" className="text-[14px]" fill />
+                    Puede rendir
+                  </Badge>
+                ) : (
+                  <span title={a.razon ?? undefined}>
+                    <Badge tone="error" className="text-[11px]">
+                      <Icon name="block" className="text-[14px]" fill />
+                      No puede rendir
+                    </Badge>
+                  </span>
+                )}
+              </div>
+
+              {/* Acción: quitar */}
+              <button
+                type="button"
+                aria-label={`Quitar inscripción de ${nombreAlumno(a)}`}
+                onClick={() => setAQuitar(a)}
+                className="w-8 h-8 rounded-md flex items-center justify-center text-on-surface-variant hover:bg-error-container hover:text-error transition-colors shrink-0 self-end sm:self-auto"
+              >
+                <Icon name="person_remove" className="text-[18px]" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
+      {/* Razón de "no puede rendir" — visible (no solo en title) para los que no pueden */}
+      {alumnos && alumnos.some((a) => !a.puede_rendir && a.razon) && (
+        <ul className="space-y-1">
+          {alumnos
+            .filter((a) => !a.puede_rendir && a.razon)
+            .map((a) => (
+              <li key={a.usuario_id} className="text-[11px] text-error flex items-start gap-1.5">
+                <Icon name="info" className="text-[13px] shrink-0 mt-0.5" />
+                <span><strong>{nombreAlumno(a)}</strong>: {a.razon}</span>
+              </li>
+            ))}
+        </ul>
+      )}
+
+      {/* Picker de inscripción */}
+      <AlumnoPickerModal
+        abierto={pickerAbierto}
+        comisionNombre={comisionNombre}
+        yaInscriptos={inscriptosIds}
+        inscribiendo={inscribiendo}
+        onConfirmar={(usuarioId) => void handleInscribir(usuarioId)}
+        onCancelar={() => setPickerAbierto(false)}
+      />
+
+      {/* Confirmación de quita de inscripción */}
+      <ConfirmModal
+        abierto={aQuitar !== null}
+        variante="danger"
+        titulo="Quitar inscripción"
+        mensaje={
+          aQuitar ? (
+            <>
+              ¿Quitar la inscripción de <strong>{nombreAlumno(aQuitar)}</strong> de{' '}
+              <strong>{comisionNombre}</strong>?
+              <br />
+              <span className="text-on-surface-variant text-body-sm">
+                El alumno dejará de figurar como inscripto en esta comisión.
+              </span>
+            </>
+          ) : null
+        }
+        textoConfirmar="Quitar inscripción"
+        textoCancelar="Cancelar"
+        onConfirmar={() => void handleQuitar()}
+        onCancelar={() => setAQuitar(null)}
+      />
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Componente principal
 // ---------------------------------------------------------------------------
@@ -121,6 +560,13 @@ export default function MateriasComisiones() {
   const [expandida, setExpandida] = useState<string | null>(null);
   const [comisionesPorMateria, setComisionesPorMateria] = useState<Record<string, Comision[]>>({});
   const [cargandoComisiones, setCargandoComisiones] = useState<Record<string, boolean>>({});
+
+  // ── Comisión expandida (para ver/gestionar alumnos inscriptos) ─────────────
+  const [comisionExpandida, setComisionExpandida] = useState<string | null>(null);
+
+  function toggleComision(comisionId: string) {
+    setComisionExpandida((prev) => (prev === comisionId ? null : comisionId));
+  }
 
   // ── Formulario de materia ─────────────────────────────────────────────────
   const [formMateria, setFormMateria] = useState<FormMateria | null>(null);
@@ -691,12 +1137,29 @@ export default function MateriasComisiones() {
                                   </tr>
                                 </thead>
                                 <tbody className="divide-y divide-outline-variant/20">
-                                  {comisiones.map((c) => (
-                                    <tr key={c.id} className="hover:bg-surface-container/50 transition-colors">
+                                  {comisiones.map((c) => {
+                                    const comExpandida = comisionExpandida === c.id;
+                                    return (
+                                    <Fragment key={c.id}>
+                                    <tr className="hover:bg-surface-container/50 transition-colors">
                                       <td className="px-8 py-3 whitespace-nowrap">
-                                        <span className="font-mono text-[12px] text-on-surface-variant bg-surface-container px-2 py-0.5 rounded-md">
-                                          {c.codigo ?? '—'}
-                                        </span>
+                                        <div className="flex items-center gap-2">
+                                          <button
+                                            type="button"
+                                            aria-label={comExpandida ? `Ocultar alumnos de ${c.nombre}` : `Ver alumnos de ${c.nombre}`}
+                                            aria-expanded={comExpandida}
+                                            onClick={() => toggleComision(c.id)}
+                                            className="w-6 h-6 rounded-md flex items-center justify-center text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-colors shrink-0"
+                                          >
+                                            <Icon
+                                              name={comExpandida ? 'keyboard_arrow_down' : 'keyboard_arrow_right'}
+                                              className="text-[18px]"
+                                            />
+                                          </button>
+                                          <span className="font-mono text-[12px] text-on-surface-variant bg-surface-container px-2 py-0.5 rounded-md">
+                                            {c.codigo ?? '—'}
+                                          </span>
+                                        </div>
                                       </td>
                                       <td className="px-4 py-3 text-[13px] text-on-surface">
                                         {c.nombre}
@@ -712,6 +1175,11 @@ export default function MateriasComisiones() {
                                           ariaLabel={`Acciones de ${c.nombre}`}
                                           items={[
                                             {
+                                              label: comExpandida ? 'Ocultar alumnos' : 'Ver alumnos',
+                                              icon: 'groups',
+                                              onClick: () => toggleComision(c.id),
+                                            },
+                                            {
                                               label: 'Editar comisión',
                                               icon: 'edit',
                                               onClick: () => abrirEditarComision(m.id, c),
@@ -720,35 +1188,69 @@ export default function MateriasComisiones() {
                                         />
                                       </td>
                                     </tr>
-                                  ))}
+                                    {comExpandida && (
+                                      <tr>
+                                        <td colSpan={5} className="p-0">
+                                          <AlumnosComisionPanel comisionId={c.id} comisionNombre={c.nombre} />
+                                        </td>
+                                      </tr>
+                                    )}
+                                    </Fragment>
+                                    );
+                                  })}
                                 </tbody>
                               </table>
                             </div>
 
                             {/* Cards mobile */}
                             <div className="sm:hidden divide-y divide-outline-variant/20">
-                              {comisiones.map((c) => (
-                                <div key={c.id} className="px-8 py-3 flex items-center justify-between gap-3">
-                                  <div className="min-w-0">
-                                    <p className="text-[13px] font-medium text-on-surface truncate">{c.nombre}</p>
-                                    <p className="text-[11px] text-on-surface-variant font-mono mt-0.5">
-                                      {c.codigo ?? '—'}
-                                      {c.periodo ? ` · ${c.periodo}` : ''}
-                                      {c.anio ? ` · ${c.anio}` : ''}
-                                    </p>
+                              {comisiones.map((c) => {
+                                const comExpandida = comisionExpandida === c.id;
+                                return (
+                                <div key={c.id}>
+                                  <div className="px-8 py-3 flex items-center justify-between gap-3">
+                                    <button
+                                      type="button"
+                                      aria-label={comExpandida ? `Ocultar alumnos de ${c.nombre}` : `Ver alumnos de ${c.nombre}`}
+                                      aria-expanded={comExpandida}
+                                      onClick={() => toggleComision(c.id)}
+                                      className="w-6 h-6 rounded-md flex items-center justify-center text-on-surface-variant hover:bg-surface-container shrink-0"
+                                    >
+                                      <Icon
+                                        name={comExpandida ? 'keyboard_arrow_down' : 'keyboard_arrow_right'}
+                                        className="text-[18px]"
+                                      />
+                                    </button>
+                                    <div className="min-w-0 flex-1">
+                                      <p className="text-[13px] font-medium text-on-surface truncate">{c.nombre}</p>
+                                      <p className="text-[11px] text-on-surface-variant font-mono mt-0.5">
+                                        {c.codigo ?? '—'}
+                                        {c.periodo ? ` · ${c.periodo}` : ''}
+                                        {c.anio ? ` · ${c.anio}` : ''}
+                                      </p>
+                                    </div>
+                                    <ActionMenu
+                                      ariaLabel={`Acciones de ${c.nombre}`}
+                                      items={[
+                                        {
+                                          label: comExpandida ? 'Ocultar alumnos' : 'Ver alumnos',
+                                          icon: 'groups',
+                                          onClick: () => toggleComision(c.id),
+                                        },
+                                        {
+                                          label: 'Editar comisión',
+                                          icon: 'edit',
+                                          onClick: () => abrirEditarComision(m.id, c),
+                                        },
+                                      ]}
+                                    />
                                   </div>
-                                  <ActionMenu
-                                    ariaLabel={`Acciones de ${c.nombre}`}
-                                    items={[
-                                      {
-                                        label: 'Editar comisión',
-                                        icon: 'edit',
-                                        onClick: () => abrirEditarComision(m.id, c),
-                                      },
-                                    ]}
-                                  />
+                                  {comExpandida && (
+                                    <AlumnosComisionPanel comisionId={c.id} comisionNombre={c.nombre} />
+                                  )}
                                 </div>
-                              ))}
+                                );
+                              })}
                             </div>
                           </>
                         ) : null}
