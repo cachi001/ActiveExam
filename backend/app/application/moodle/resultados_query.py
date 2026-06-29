@@ -233,6 +233,8 @@ class MiNota:
     examen_id: str
     examen_titulo: str
     nota: float | None
+    nota_maxima: float | None
+    aprobado: bool
     estado_moodle: str
     en_cola_revision: bool
     score: float | None
@@ -312,6 +314,8 @@ async def listar_mis_notas(
             ProctoringSessionModel.examen_contenido_id,
             ProctoringSessionModel.finalizada_en,
             ExamenContenidoModel.titulo.label("examen_titulo"),
+            ExamenContenidoModel.nota_maxima,
+            ExamenContenidoModel.nota_aprobacion,
             MoodleWritebackEstadoModel.nota,
             MoodleWritebackEstadoModel.estado,
         )
@@ -360,11 +364,22 @@ async def listar_mis_notas(
     for r in rows:
         evs = eventos_por_sesion.get(r.session_id, [])
         score = calcular_score(evs, pesos_por_tipo=pesos)
+        nota = float(r.nota) if r.nota is not None else None
+        nota_aprobacion = (
+            float(r.nota_aprobacion) if r.nota_aprobacion is not None else None
+        )
+        aprobado = (
+            nota is not None
+            and nota_aprobacion is not None
+            and nota >= nota_aprobacion
+        )
         items.append(
             MiNota(
                 examen_id=r.examen_contenido_id or "",
                 examen_titulo=r.examen_titulo or "",
-                nota=float(r.nota) if r.nota is not None else None,
+                nota=nota,
+                nota_maxima=float(r.nota_maxima) if r.nota_maxima is not None else None,
+                aprobado=aprobado,
                 estado_moodle=estado_moodle_display(
                     r.estado, moodle_configurado=moodle_configurado
                 ),

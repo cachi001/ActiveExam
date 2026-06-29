@@ -35,11 +35,20 @@ class PreguntaRendicion:
 
 @dataclass(frozen=True, slots=True)
 class ExamenRendicion:
-    """Proyección del examen de contenido para la rendición (sin opciones correctas)."""
+    """Proyección del examen de contenido para la rendición (sin opciones correctas).
+
+    Incluye la config POR EXAMEN que el front usa al rendir: timer
+    (``tiempo_limite_min``), shuffle (``mezclar_preguntas``) y la escala de la nota
+    (``nota_maxima``/``nota_aprobacion``) para mostrarla. D3: SIN es_correcta.
+    """
 
     id: str
     titulo: str
     preguntas: tuple[PreguntaRendicion, ...]
+    tiempo_limite_min: int | None = None
+    mezclar_preguntas: bool = False
+    nota_maxima: float = 10.0
+    nota_aprobacion: float = 6.0
 
 
 def proyectar_examen(examen: ExamenContenido) -> ExamenRendicion:
@@ -73,6 +82,10 @@ def proyectar_examen(examen: ExamenContenido) -> ExamenRendicion:
         id=examen.id or "",
         titulo=examen.titulo,
         preguntas=preguntas,
+        tiempo_limite_min=examen.tiempo_limite_min,
+        mezclar_preguntas=examen.mezclar_preguntas,
+        nota_maxima=examen.nota_maxima,
+        nota_aprobacion=examen.nota_aprobacion,
     )
 
 

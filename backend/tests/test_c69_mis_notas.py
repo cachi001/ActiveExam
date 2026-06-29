@@ -360,6 +360,55 @@ async def test_sin_moodle_estado_sin_token(app_sin_moodle, factory):
     assert resp.json()["items"][0]["estado_moodle"] == "sin_token"
 
 
+async def _crear_examen_con_config(
+    factory, titulo: str, *, nota_maxima: float, nota_aprobacion: float
+) -> str:
+    async with factory() as s:
+        examen = ExamenContenidoModel(
+            titulo=titulo,
+            nota_maxima=nota_maxima,
+            nota_aprobacion=nota_aprobacion,
+        )
+        s.add(examen)
+        await s.flush()
+        examen_id = examen.id
+        await s.commit()
+    return examen_id
+
+
+@pytest.mark.asyncio
+async def test_mis_notas_incluye_nota_maxima_y_aprobado(app_con_moodle, factory):
+    """Cada ítem trae nota_maxima del examen y aprobado = nota >= nota_aprobacion."""
+    ex_aprob = await _crear_examen_con_config(
+        factory, "Aprobado", nota_maxima=20.0, nota_aprobacion=12.0
+    )
+    ex_reprob = await _crear_examen_con_config(
+        factory, "Reprobado", nota_maxima=20.0, nota_aprobacion=12.0
+    )
+    # nota 15 >= 12 -> aprobado; nota 8 < 12 -> reprobado. nota_maxima=20 en ambos.
+    await _crear_sesion_con_nota_y_eventos(
+        factory, ex_aprob, idnumber="leg-A", email="a@u.edu", nota=15.0,
+        evento_tipo="rostro_ausente", n_eventos=1,
+    )
+    await _crear_sesion_con_nota_y_eventos(
+        factory, ex_reprob, idnumber="leg-A", email="a@u.edu", nota=8.0,
+        evento_tipo="rostro_ausente", n_eventos=1,
+    )
+
+    async with _client(app_con_moodle, "leg-A", "a@u.edu") as c:
+        resp = await c.get("/api/v1/exam-content/mis-notas")
+    assert resp.status_code == 200, resp.text
+    items = {it["examen_id"]: it for it in resp.json()["items"]}
+
+    aprob = items[ex_aprob]
+    assert float(aprob["nota_maxima"]) == pytest.approx(20.0)
+    assert aprob["aprobado"] is True
+
+    reprob = items[ex_reprob]
+    assert float(reprob["nota_maxima"]) == pytest.approx(20.0)
+    assert reprob["aprobado"] is False
+
+
 @pytest.mark.asyncio
 async def test_requiere_autenticacion(app_con_moodle):
     async with AsyncClient(

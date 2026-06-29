@@ -51,6 +51,13 @@ class ExamenContenidoSqlRepository:
             comision_id=examen.comision_id,
             moodle_courseid=examen.moodle_courseid,
             moodle_cmid=examen.moodle_cmid,
+            tiempo_limite_min=examen.tiempo_limite_min,
+            intentos_permitidos=examen.intentos_permitidos,
+            apertura=examen.apertura,
+            cierre=examen.cierre,
+            nota_maxima=examen.nota_maxima,
+            nota_aprobacion=examen.nota_aprobacion,
+            mezclar_preguntas=examen.mezclar_preguntas,
         )
         for i, pregunta in enumerate(examen.preguntas):
             p_model = PreguntaExamenModel(
@@ -98,6 +105,10 @@ class ExamenContenidoSqlRepository:
                 ExamenContenidoModel.comision_id,
                 ComisionModel.nombre.label("comision_nombre"),
                 MateriaModel.nombre.label("materia_nombre"),
+                ExamenContenidoModel.apertura,
+                ExamenContenidoModel.cierre,
+                ExamenContenidoModel.tiempo_limite_min,
+                ExamenContenidoModel.intentos_permitidos,
             )
             .outerjoin(
                 PreguntaExamenModel,
@@ -117,6 +128,10 @@ class ExamenContenidoSqlRepository:
                 ExamenContenidoModel.comision_id,
                 ComisionModel.nombre,
                 MateriaModel.nombre,
+                ExamenContenidoModel.apertura,
+                ExamenContenidoModel.cierre,
+                ExamenContenidoModel.tiempo_limite_min,
+                ExamenContenidoModel.intentos_permitidos,
             )
         )
 
@@ -129,6 +144,10 @@ class ExamenContenidoSqlRepository:
             comision_id=row.comision_id,
             comision_nombre=row.comision_nombre,
             materia_nombre=row.materia_nombre,
+            apertura=row.apertura,
+            cierre=row.cierre,
+            tiempo_limite_min=row.tiempo_limite_min,
+            intentos_permitidos=row.intentos_permitidos,
         )
 
     async def listar(self) -> list[ExamenContenidoResumen]:
@@ -248,6 +267,28 @@ class ExamenContenidoSqlRepository:
             update(ExamenContenidoModel)
             .where(ExamenContenidoModel.id == examen_id)
             .values(moodle_courseid=moodle_courseid, moodle_cmid=moodle_cmid)
+            .returning(ExamenContenidoModel.id)
+        )
+        if result.scalar_one_or_none() is None:
+            return None
+        await self._db.flush()
+        return await self.obtener(examen_id)
+
+    async def actualizar_config(
+        self, examen_id: str, valores: dict
+    ) -> ExamenContenido | None:
+        """Actualiza los campos de configuración dados (update parcial) del examen.
+
+        ``valores`` mapea nombre de columna → valor (solo las claves presentes se
+        actualizan). Devuelve el examen actualizado, o None si no existe. NO valida:
+        la validación de dominio la hace el caller (capa de aplicación/HTTP) antes.
+        """
+        if not valores:
+            return await self.obtener(examen_id)
+        result = await self._db.execute(
+            update(ExamenContenidoModel)
+            .where(ExamenContenidoModel.id == examen_id)
+            .values(**valores)
             .returning(ExamenContenidoModel.id)
         )
         if result.scalar_one_or_none() is None:
@@ -387,6 +428,13 @@ class ExamenContenidoSqlRepository:
             comision_id=model.comision_id,
             moodle_courseid=model.moodle_courseid,
             moodle_cmid=model.moodle_cmid,
+            tiempo_limite_min=model.tiempo_limite_min,
+            intentos_permitidos=model.intentos_permitidos,
+            apertura=model.apertura,
+            cierre=model.cierre,
+            nota_maxima=float(model.nota_maxima),
+            nota_aprobacion=float(model.nota_aprobacion),
+            mezclar_preguntas=model.mezclar_preguntas,
             preguntas=preguntas,
         )
 

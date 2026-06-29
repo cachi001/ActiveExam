@@ -14,9 +14,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.infrastructure.persistence.models.exam_content import (
+    ExamenContenidoModel,
     OpcionRespuestaModel,
     PreguntaExamenModel,
 )
+
+# Escala por defecto si el examen no existe o no tiene nota_maxima configurada.
+_NOTA_MAXIMA_DEFAULT = 10.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,10 +37,13 @@ async def calcular_nota_academica(
     examen_contenido_id: str,
     respuestas: list[RespuestaAlumno],
 ) -> float:
-    """Calcula la nota académica (0..10) de un alumno dado su examen y respuestas.
+    """Calcula la nota académica (0..nota_maxima) de un alumno dado su examen.
 
-    Fórmula: nota = (respuestas_correctas / total_preguntas) * 10.
-    Si el examen no existe, no tiene preguntas, o las respuestas están vacías → 0.
+    Fórmula: nota = (respuestas_correctas / total_preguntas) * nota_maxima,
+    redondeada a 2 decimales. ``nota_maxima`` se lee server-side desde la config
+    POR EXAMEN (examen_contenido.nota_maxima, migración 0032); default 10 si el
+    examen no existe. Si el examen no existe, no tiene preguntas, o las respuestas
+    están vacías → 0.
 
     Opción B (pool de preguntas): SOLO cuentan las preguntas seleccionadas por el
     docente (``seleccionada=True``) — tanto el total como las correctas. Una
@@ -75,4 +82,13 @@ async def calcular_nota_academica(
         if es_correcta is True:
             correctas += 1
 
-    return (correctas / total_preguntas) * 10.0
+    # nota_maxima server-side por examen (default 10 si el examen no existe).
+    nota_maxima_row = await db.execute(
+        select(ExamenContenidoModel.nota_maxima).where(
+            ExamenContenidoModel.id == examen_contenido_id
+        )
+    )
+    nota_maxima = nota_maxima_row.scalar_one_or_none()
+    escala = float(nota_maxima) if nota_maxima is not None else _NOTA_MAXIMA_DEFAULT
+
+    return round((correctas / total_preguntas) * escala, 2)

@@ -30,6 +30,15 @@ class SeleccionInvalidaError(ExamenContenidoError):
     """
 
 
+class ConfigExamenInvalidaError(ExamenContenidoError):
+    """La configuración del examen viola una regla de validación (→ 422).
+
+    Reglas: intentos_permitidos >= 1; nota_maxima > 0; 0 <= nota_aprobacion <=
+    nota_maxima; si apertura y cierre están seteados, apertura < cierre;
+    tiempo_limite_min null o > 0.
+    """
+
+
 class MateriaDuplicadaError(ExamenContenidoError):
     """Ya existe una materia con el mismo codigo (unicidad de codigo)."""
 

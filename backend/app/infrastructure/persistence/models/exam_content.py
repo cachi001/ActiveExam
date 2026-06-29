@@ -9,11 +9,16 @@ D11: comision_id es NULLABLE en examen_contenido (FK a comision se agrega en sec
 
 from __future__ import annotations
 
+from decimal import Decimal
+from datetime import datetime
+
 from sqlalchemy import (
     Boolean,
+    DateTime,
     ForeignKey,
     Index,
     Integer,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -97,6 +102,44 @@ class ExamenContenidoModel(Base):
         Integer,
         nullable=True,
         comment="D12: course-module de calificación por examen; NULL = fallback global.",
+    )
+
+    # Configuración del examen POR EXAMEN (migración 0032). ActiveExam la opera;
+    # el alumno rinde con estos parámetros (timer/ventana/intentos/shuffle/nota).
+    tiempo_limite_min: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+        comment="Límite de tiempo en minutos; NULL = sin límite.",
+    )
+    intentos_permitidos: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        server_default="1",
+    )
+    apertura: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        comment="Inicio de la ventana de rendición; NULL = sin apertura.",
+    )
+    cierre: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        comment="Fin de la ventana de rendición; NULL = sin cierre.",
+    )
+    nota_maxima: Mapped[Decimal] = mapped_column(
+        Numeric(5, 2),
+        nullable=False,
+        server_default="10",
+    )
+    nota_aprobacion: Mapped[Decimal] = mapped_column(
+        Numeric(5, 2),
+        nullable=False,
+        server_default="6",
+    )
+    mezclar_preguntas: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        server_default="false",
     )
 
     preguntas: Mapped[list[PreguntaExamenModel]] = relationship(

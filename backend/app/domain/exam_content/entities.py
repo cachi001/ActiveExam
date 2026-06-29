@@ -10,6 +10,7 @@ Reglas de dominio (NON-NEGOTIABLE):
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
 
 from app.domain.exam_content.errors import (
     ComisionInvalidaError,
@@ -96,6 +97,16 @@ class ExamenContenido:
     # si quedan en None, el write-back usa el valor global de config_slim (fallback).
     moodle_courseid: int | None = None
     moodle_cmid: int | None = None
+    # Configuración del examen POR EXAMEN (migración 0032). ActiveExam la opera; el
+    # alumno rinde con estos parámetros. Defaults compat: 1 intento, nota sobre 10,
+    # aprueba con 6, sin ventana ni límite, sin mezclar.
+    tiempo_limite_min: int | None = None  # None = sin límite
+    intentos_permitidos: int = 1
+    apertura: datetime | None = None  # None = sin apertura
+    cierre: datetime | None = None  # None = sin cierre
+    nota_maxima: float = 10.0
+    nota_aprobacion: float = 6.0
+    mezclar_preguntas: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -177,3 +188,9 @@ class ExamenContenidoResumen:
     comision_id: str | None = None
     comision_nombre: str | None = None
     materia_nombre: str | None = None
+    # Config por examen que el front usa para gatear "Rendir" por ventana/intentos
+    # (migración 0032). apertura/cierre/tiempo_limite_min son NULLABLE.
+    apertura: datetime | None = None
+    cierre: datetime | None = None
+    tiempo_limite_min: int | None = None
+    intentos_permitidos: int = 1

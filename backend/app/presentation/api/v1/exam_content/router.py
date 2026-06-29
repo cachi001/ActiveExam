@@ -31,9 +31,11 @@ from app.application.exam_content.import_service import ImportacionMoodleService
 from app.application.exam_content.taking_service import LecturaExamenService, proyectar_examen
 from app.domain.auth.identity import AuthenticatedPrincipal
 from app.domain.auth.roles import Rol
+from app.domain.exam_content.config import validar_config_examen
 from app.domain.exam_content.entities import Materia
 from app.domain.exam_content.errors import (
     ComisionDuplicadaError,
+    ConfigExamenInvalidaError,
     ExamenContenidoError,
     MateriaDuplicadaError,
     SeleccionInvalidaError,
@@ -48,6 +50,8 @@ from app.presentation.api.v1.exam_content.schemas import (
     AsociarComisionRequest,
     AsociarComisionResponse,
     ComisionResponse,
+    ExamenConfigPatchRequest,
+    ExamenConfigResponse,
     ExamenContenidoResumenResponse,
     ExamenesContenidoPaginadosResponse,
     ExamenRendicionResponse,
@@ -78,6 +82,10 @@ def _resumen_to_response(r) -> ExamenContenidoResumenResponse:
         comision_id=r.comision_id,
         comision_nombre=r.comision_nombre,
         materia_nombre=r.materia_nombre,
+        apertura=r.apertura,
+        cierre=r.cierre,
+        tiempo_limite_min=r.tiempo_limite_min,
+        intentos_permitidos=r.intentos_permitidos,
     )
 
 
@@ -376,6 +384,113 @@ def create_exam_content_router(
             moodle_courseid=examen.moodle_courseid,
             moodle_cmid=examen.moodle_cmid,
         )
+
+    # -----------------------------------------------------------------------
+    # Configuración del examen POR EXAMEN (C-69, migración 0032) — admin-only.
+    # ActiveExam opera estos 7 campos; el alumno rinde con ellos. GET lee la
+    # config; PATCH la actualiza parcialmente (extra='forbid', validaciones → 422).
+    # -----------------------------------------------------------------------
+
+    def _config_to_response(examen) -> ExamenConfigResponse:
+        return ExamenConfigResponse(
+            tiempo_limite_min=examen.tiempo_limite_min,
+            intentos_permitidos=examen.intentos_permitidos,
+            apertura=examen.apertura,
+            cierre=examen.cierre,
+            nota_maxima=examen.nota_maxima,
+            nota_aprobacion=examen.nota_aprobacion,
+            mezclar_preguntas=examen.mezclar_preguntas,
+        )
+
+    @router.get(
+        "/{examen_id}/config",
+        response_model=ExamenConfigResponse,
+        summary="Leer la configuración POR EXAMEN (timer/ventana/intentos/nota/shuffle)",
+    )
+    async def leer_config_examen(examen_id: str) -> ExamenConfigResponse:
+        """Devuelve los 7 campos de configuración del examen. 404 si no existe."""
+        if session_factory is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Persistencia no inicializada.",
+            )
+
+        from app.infrastructure.persistence.repositories.exam_content import (
+            ExamenContenidoSqlRepository,
+        )
+
+        async with session_factory() as session:
+            examen = await ExamenContenidoSqlRepository(session).obtener(examen_id)
+
+        if examen is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"error": "examen_no_encontrado", "examen_id": examen_id},
+            )
+
+        return _config_to_response(examen)
+
+    @router.patch(
+        "/{examen_id}/config",
+        response_model=ExamenConfigResponse,
+        summary="Actualizar (parcial) la configuración POR EXAMEN del examen",
+    )
+    async def actualizar_config_examen(
+        examen_id: str,
+        body: ExamenConfigPatchRequest,
+    ) -> ExamenConfigResponse:
+        """Actualiza parcialmente los 7 campos de config (solo los presentes).
+
+        Valida el resultado mergeado (config actual + cambios) — 422 ante:
+        intentos_permitidos < 1; nota_maxima <= 0; nota_aprobacion fuera de
+        [0, nota_maxima]; apertura >= cierre (si ambos seteados); tiempo_limite_min
+        <= 0. 404 si el examen no existe.
+        """
+        if session_factory is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Persistencia no inicializada.",
+            )
+
+        from app.infrastructure.persistence.repositories.exam_content import (
+            ExamenContenidoSqlRepository,
+        )
+
+        # Solo los campos REALMENTE enviados (distingue "ausente" de "null explícito").
+        cambios = body.model_dump(exclude_unset=True)
+
+        async with session_factory() as session:
+            repo = ExamenContenidoSqlRepository(session)
+            actual = await repo.obtener(examen_id)
+            if actual is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail={"error": "examen_no_encontrado", "examen_id": examen_id},
+                )
+
+            # Merge: campo enviado → su valor; ausente → el valor actual del examen.
+            def _merged(campo: str):
+                return cambios[campo] if campo in cambios else getattr(actual, campo)
+
+            try:
+                validar_config_examen(
+                    tiempo_limite_min=_merged("tiempo_limite_min"),
+                    intentos_permitidos=_merged("intentos_permitidos"),
+                    apertura=_merged("apertura"),
+                    cierre=_merged("cierre"),
+                    nota_maxima=_merged("nota_maxima"),
+                    nota_aprobacion=_merged("nota_aprobacion"),
+                )
+            except ConfigExamenInvalidaError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail={"error": "config_invalida", "mensaje": str(exc)},
+                ) from exc
+
+            examen = await repo.actualizar_config(examen_id, cambios)
+            await session.commit()
+
+        return _config_to_response(examen)
 
     # -----------------------------------------------------------------------
     # Pool de preguntas seleccionables (C-69, opción B) — admin-only, SIN MFA.
@@ -719,6 +834,8 @@ def create_exam_taking_router(
                     examen_id=r.examen_id,
                     examen_titulo=r.examen_titulo,
                     nota=r.nota,
+                    nota_maxima=r.nota_maxima,
+                    aprobado=r.aprobado,
                     estado_moodle=r.estado_moodle,
                     en_cola_revision=r.en_cola_revision,
                     score=r.score,
@@ -899,6 +1016,10 @@ def create_exam_taking_router(
         return ExamenRendicionResponse(
             id=rendicion.id,
             titulo=rendicion.titulo,
+            tiempo_limite_min=rendicion.tiempo_limite_min,
+            mezclar_preguntas=rendicion.mezclar_preguntas,
+            nota_maxima=rendicion.nota_maxima,
+            nota_aprobacion=rendicion.nota_aprobacion,
             preguntas=[
                 PreguntaRendicionResponse(
                     id=p.id,

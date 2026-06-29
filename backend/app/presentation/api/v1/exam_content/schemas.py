@@ -48,6 +48,11 @@ class ExamenContenidoResumenResponse(BaseModel):
     comision_id: str | None = None
     comision_nombre: str | None = None
     materia_nombre: str | None = None
+    # Config por examen para gatear "Rendir" por ventana/intentos (migración 0032).
+    apertura: datetime | None = None
+    cierre: datetime | None = None
+    tiempo_limite_min: int | None = None
+    intentos_permitidos: int = 1
 
 
 class ExamenesContenidoPaginadosResponse(BaseModel):
@@ -95,13 +100,22 @@ class PreguntaRendicionResponse(BaseModel):
 
 
 class ExamenRendicionResponse(BaseModel):
-    """Examen de contenido proyectado para la rendición del alumno."""
+    """Examen de contenido proyectado para la rendición del alumno.
+
+    Incluye la config POR EXAMEN que el front usa al rendir: ``tiempo_limite_min``
+    (timer; null = sin límite), ``mezclar_preguntas`` (shuffle) y la escala de la
+    nota (``nota_maxima``/``nota_aprobacion``) para mostrarla. D3: SIN es_correcta.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     id: str
     titulo: str
     preguntas: list[PreguntaRendicionResponse]
+    tiempo_limite_min: int | None = None
+    mezclar_preguntas: bool = False
+    nota_maxima: float = 10.0
+    nota_aprobacion: float = 6.0
 
 
 # ---------------------------------------------------------------------------
@@ -246,6 +260,44 @@ class MoodleTargetResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Configuración del examen POR EXAMEN (C-69, migración 0032) — endpoints admin
+# ---------------------------------------------------------------------------
+
+
+class ExamenConfigResponse(BaseModel):
+    """Los 7 campos de configuración de un examen (GET /{id}/config)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    tiempo_limite_min: int | None = None
+    intentos_permitidos: int
+    apertura: datetime | None = None
+    cierre: datetime | None = None
+    nota_maxima: float
+    nota_aprobacion: float
+    mezclar_preguntas: bool
+
+
+class ExamenConfigPatchRequest(BaseModel):
+    """Body del PATCH /{id}/config: los 7 campos, TODOS opcionales (update parcial).
+
+    extra='forbid' (regla dura de código). Solo los campos presentes en el body se
+    actualizan; los demás conservan su valor actual. Validaciones (→ 422) sobre el
+    resultado mergeado las hace la capa de aplicación/dominio.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    tiempo_limite_min: int | None = None
+    intentos_permitidos: int | None = None
+    apertura: datetime | None = None
+    cierre: datetime | None = None
+    nota_maxima: float | None = None
+    nota_aprobacion: float | None = None
+    mezclar_preguntas: bool | None = None
+
+
+# ---------------------------------------------------------------------------
 # Resultados del examen + sincronización a Moodle (C-69 admin-sync, tareas 2-3)
 # ---------------------------------------------------------------------------
 
@@ -310,6 +362,10 @@ class MiNotaResponse(BaseModel):
     examen_id: str
     examen_titulo: str
     nota: float | None = None
+    # Escala de la nota del examen (migración 0032) y si el alumno aprobó
+    # (nota >= nota_aprobacion del examen). aprobado = False si no hay nota.
+    nota_maxima: float | None = None
+    aprobado: bool = False
     estado_moodle: str  # pendiente | enviado | fallido | sin_token
     en_cola_revision: bool
     score: float | None = None

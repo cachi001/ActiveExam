@@ -174,6 +174,11 @@ async def test_resumen_devuelve_metadata_con_comision(client, factory):
         "comision_id",
         "comision_nombre",
         "materia_nombre",
+        # Config por examen (migración 0032): el front gatea "Rendir" con esto.
+        "apertura",
+        "cierre",
+        "tiempo_limite_min",
+        "intentos_permitidos",
     }
     assert body["id"] == examen_id
     assert body["cantidad_preguntas"] == 2
