@@ -12,6 +12,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi import status as http_status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.application.proctoring import observacion_service, session_service
@@ -30,6 +31,8 @@ from app.application.proctoring.scoring import (
 from app.application.moodle.grade_calculator import RespuestaAlumno, calcular_nota_academica
 from app.application.moodle.writeback_service import MoodleWritebackService
 from app.domain.auth.identity import AuthenticatedPrincipal
+from app.infrastructure.persistence.models.moodle_writeback import RespuestaAlumnoModel
+from app.infrastructure.persistence.models.proctoring import ProctoringSessionModel
 from app.infrastructure.persistence.repositories.moodle_writeback import (
     RespuestaAlumnoRepository,
 )
@@ -48,6 +51,33 @@ from app.presentation.api.v1.proctoring.sessions.schemas import (
     SubmitRespuestasIn,
     SubmitRespuestasOut,
 )
+
+
+def _principal_es_dueno(
+    sesion: ProctoringSessionModel, principal: AuthenticatedPrincipal
+) -> bool:
+    """True si la sesion pertenece al principal autenticado (H1, IDOR).
+
+    Los endpoints de respuestas/finalizar son del ALUMNO: solo el dueno de la
+    sesion puede operarla. La identidad del alumno se persiste server-side al
+    CREAR la sesion (``alumno_idnumber``/``alumno_email`` desde el JWT), por lo
+    que aca se compara contra el principal del request.
+
+    - Coincide por ``id_institucional`` O por ``email`` → es el dueno.
+    - Sesion SIN identidad almacenada (legacy/modo 'test' previo a la persistencia
+      de identidad) → se permite: no hay a quien atribuirla y no expone notas de
+      nadie. Toda sesion nueva guarda identidad, asi que este caso no aplica al
+      flujo normal de examen.
+    """
+    idn = sesion.alumno_idnumber
+    email = sesion.alumno_email
+    if not idn and not email:
+        return True
+    if idn and principal.id_institucional and idn == principal.id_institucional:
+        return True
+    if email and principal.email and email == principal.email:
+        return True
+    return False
 
 
 async def _pesos_vivos_por_tipo(db: AsyncSession) -> dict[str, int] | None:
@@ -305,7 +335,34 @@ def create_sessions_router(
         D8: la corrección y el write-back los origina el backend, nunca el cliente.
         D3: la opción correcta NUNCA viaja al cliente — sólo se usa acá server-side.
         Idempotente por (session_id, pregunta_id): re-enviar sobreescribe la respuesta.
+
+        Seguridad:
+        - H1 (IDOR): 404 si la sesión no existe o no es del alumno autenticado.
+        - H2 (regrade): 409 si la sesión ya está finalizada — no se pueden cambiar
+          las respuestas de un intento ya entregado.
         """
+        sesion_model = (
+            await db.execute(
+                select(ProctoringSessionModel).where(
+                    ProctoringSessionModel.id == session_id
+                )
+            )
+        ).scalar_one_or_none()
+        # 404 (no 403) tanto si no existe como si no es del alumno: no revelar la
+        # existencia de sesiones ajenas (no dar un oráculo de session_ids).
+        if sesion_model is None or not _principal_es_dueno(sesion_model, principal):
+            raise HTTPException(
+                status_code=http_status.HTTP_404_NOT_FOUND,
+                detail=f"Sesion {session_id!r} no encontrada",
+            )
+        if sesion_model.finalizada_en is not None:
+            raise HTTPException(
+                status_code=http_status.HTTP_409_CONFLICT,
+                detail={
+                    "error": "sesion_finalizada",
+                    "mensaje": "No se pueden modificar las respuestas de una sesión ya finalizada.",
+                },
+            )
         repo = RespuestaAlumnoRepository(db)
         n = await repo.guardar_respuestas(
             session_id=session_id,
@@ -338,21 +395,33 @@ def create_sessions_router(
         manual por el admin (POST /exam-content/{examen_id}/sincronizar-moodle). La
         nota se calcula SIEMPRE que haya examen vinculado, esté o no Moodle configurado
         (así el admin la ve en los resultados aunque Moodle no exista todavía).
+
+        Seguridad:
+        - H1 (IDOR): 404 si la sesión no existe o no es del alumno autenticado.
+        - H2 (regrade): si la sesión YA estaba finalizada, NO se recalcula ni
+          re-persiste la nota (idempotente puro) — así no se puede subir la nota
+          re-finalizando un intento ya entregado.
         """
-        from sqlalchemy import select
-        from app.infrastructure.persistence.models.proctoring import ProctoringSessionModel
-        from app.infrastructure.persistence.models.moodle_writeback import RespuestaAlumnoModel
-
-        # Calcular la nota SIEMPRE que la sesión tenga examen de contenido vinculado.
-        nota: float | None = None
-        sesion_row = await db.execute(
-            select(ProctoringSessionModel).where(
-                ProctoringSessionModel.id == session_id
+        sesion_model = (
+            await db.execute(
+                select(ProctoringSessionModel).where(
+                    ProctoringSessionModel.id == session_id
+                )
             )
-        )
-        sesion_model = sesion_row.scalar_one_or_none()
+        ).scalar_one_or_none()
+        if sesion_model is None or not _principal_es_dueno(sesion_model, principal):
+            raise HTTPException(
+                status_code=http_status.HTTP_404_NOT_FOUND,
+                detail=f"Sesion {session_id!r} no encontrada",
+            )
 
-        if sesion_model is not None and sesion_model.examen_contenido_id:
+        ya_finalizada = sesion_model.finalizada_en is not None
+
+        # H2: la nota se calcula SOLO en la primera finalización. Re-finalizar una
+        # sesión ya finalizada es idempotente y NO recalcula (nota=None → el
+        # writeback no toca el estado persistido).
+        nota: float | None = None
+        if not ya_finalizada and sesion_model.examen_contenido_id:
             resp_rows = await db.execute(
                 select(RespuestaAlumnoModel).where(
                     RespuestaAlumnoModel.session_id == session_id
@@ -371,9 +440,11 @@ def create_sessions_router(
                 respuestas=respuestas,
             )
 
-        # Identidad del alumno para el write-back (D9)
-        alumno_idnumber = principal.id_institucional or ""
-        alumno_email = principal.email or ""
+        # Identidad para el write-back: la del DUEÑO de la sesión (persistida al
+        # crearla), con fallback al principal. Antes se usaba la identidad del que
+        # finaliza → atribución incorrecta de la nota (H1).
+        alumno_idnumber = sesion_model.alumno_idnumber or principal.id_institucional or ""
+        alumno_email = sesion_model.alumno_email or principal.email or ""
 
         sesion = await finalizar_sesion_con_writeback(
             db=db,

@@ -200,21 +200,17 @@ class SubmitRespuestasIn(BaseModel):
     """Body de POST /sessions/{id}/respuestas.
 
     El alumno envía sus respuestas antes de finalizar.
-    La identidad para el write-back es opcional: si se omite, se usa la del JWT.
+
+    Seguridad (H4): NO se aceptan campos de identidad del cliente. La identidad
+    del alumno se persiste server-side al CREAR la sesión (desde el JWT) y es la
+    única fuente para el write-back de la nota. Con ``extra='forbid'`` cualquier
+    ``alumno_idnumber``/``alumno_email`` enviado por el cliente es rechazado (422)
+    para cerrar la superficie de spoofing de identidad de la nota.
     """
 
     model_config = ConfigDict(extra="forbid")
 
     respuestas: list[RespuestaItem]
-    alumno_idnumber: str = Field(
-        default="",
-        description="id_institucional del alumno (para write-back Moodle D9). "
-                    "Si se omite, se usa el id_institucional del JWT.",
-    )
-    alumno_email: str = Field(
-        default="",
-        description="Email del alumno (fallback de identidad D9).",
-    )
 
 
 class SubmitRespuestasOut(BaseModel):
