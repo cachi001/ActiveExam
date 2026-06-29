@@ -218,6 +218,45 @@ class AltaInlineResponse(BaseModel):
     examen_id: str | None = None
 
 
+class MateriaCrearRequest(BaseModel):
+    """Body del POST /materias: alta de una materia (gestión independiente)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    codigo: str
+    nombre: str
+
+
+class MateriaActualizarRequest(BaseModel):
+    """Body del PATCH /materias/{id}: solo el nombre es mutable (codigo inmutable)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    nombre: str
+
+
+class ComisionCrearRequest(BaseModel):
+    """Body del POST /materias/{id}/comisiones: alta de una comisión en la materia."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    codigo: str
+    nombre: str
+    periodo: str | None = None
+    anio: int | None = None
+
+
+class ComisionActualizarRequest(BaseModel):
+    """Body del PATCH /comisiones/{id}: nombre/periodo/anio mutables; codigo y
+    materia_id inmutables."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    nombre: str
+    periodo: str | None = None
+    anio: int | None = None
+
+
 class AsociarComisionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

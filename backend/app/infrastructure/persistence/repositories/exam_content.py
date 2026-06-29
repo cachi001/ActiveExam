@@ -485,6 +485,23 @@ class MateriaSqlRepository:
             return None
         return Materia(id=model.id, codigo=model.codigo, nombre=model.nombre)
 
+    async def actualizar(self, materia_id: str, *, nombre: str) -> Materia | None:
+        """Actualiza el nombre de una materia (codigo inmutable).
+
+        Devuelve la materia actualizada, o None si no existe. No valida: la
+        validación de dominio la hace el caller (capa de aplicación) antes.
+        """
+        result = await self._db.execute(
+            update(MateriaModel)
+            .where(MateriaModel.id == materia_id)
+            .values(nombre=nombre)
+            .returning(MateriaModel.id)
+        )
+        if result.scalar_one_or_none() is None:
+            return None
+        await self._db.flush()
+        return await self.obtener(materia_id)
+
 
 class ComisionSqlRepository:
     """CRUD async para la tabla comision (C-69 sección 6, D11)."""
@@ -527,6 +544,30 @@ class ComisionSqlRepository:
         if model is None:
             return None
         return self._to_entity(model)
+
+    async def actualizar(
+        self,
+        comision_id: str,
+        *,
+        nombre: str,
+        periodo: str | None,
+        anio: int | None,
+    ) -> Comision | None:
+        """Actualiza nombre/periodo/anio de una comisión (codigo y materia_id inmutables).
+
+        Devuelve la comisión actualizada, o None si no existe. No valida: la
+        validación de dominio la hace el caller (capa de aplicación) antes.
+        """
+        result = await self._db.execute(
+            update(ComisionModel)
+            .where(ComisionModel.id == comision_id)
+            .values(nombre=nombre, periodo=periodo, anio=anio)
+            .returning(ComisionModel.id)
+        )
+        if result.scalar_one_or_none() is None:
+            return None
+        await self._db.flush()
+        return await self.obtener(comision_id)
 
     def _to_entity(self, model: ComisionModel) -> Comision:
         return Comision(

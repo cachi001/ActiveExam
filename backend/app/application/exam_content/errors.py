@@ -17,3 +17,7 @@ class ExamenNoEncontradoError(Exception):
 
 class ComisionNoEncontradaError(Exception):
     """No existe una comisión con el id indicado."""
+
+
+class MateriaNoEncontradaError(Exception):
+    """No existe una materia con el id indicado."""

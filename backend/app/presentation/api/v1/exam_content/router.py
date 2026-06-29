@@ -12,6 +12,9 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 
 from app.application.exam_content.asociacion_service import AsociacionComisionService
+from app.application.exam_content.materia_comision_service import (
+    MateriaComisionService,
+)
 from app.application.moodle.resultados_query import (
     listar_estados_sincronizables,
     listar_mis_notas,
@@ -24,6 +27,7 @@ from app.application.moodle.writeback_service import (
 from app.application.exam_content.errors import (
     ComisionNoEncontradaError,
     ExamenNoEncontradoError,
+    MateriaNoEncontradaError,
     MoodleXmlInvalidoError,
     MoodleXmlVacioError,
 )
@@ -49,6 +53,8 @@ from app.presentation.api.v1.exam_content.schemas import (
     AltaInlineResponse,
     AsociarComisionRequest,
     AsociarComisionResponse,
+    ComisionActualizarRequest,
+    ComisionCrearRequest,
     ComisionResponse,
     ExamenConfigPatchRequest,
     ExamenConfigResponse,
@@ -56,6 +62,8 @@ from app.presentation.api.v1.exam_content.schemas import (
     ExamenesContenidoPaginadosResponse,
     ExamenRendicionResponse,
     ImportReporteResponse,
+    MateriaActualizarRequest,
+    MateriaCrearRequest,
     MateriaResponse,
     MiNotaResponse,
     MisNotasResponse,
@@ -301,6 +309,218 @@ def create_exam_content_router(
                 ) from exc
 
         return AsociarComisionResponse(examen_id=examen_id, comision_id=body.comision_id)
+
+    # -----------------------------------------------------------------------
+    # CRUD de Materias y Comisiones (C-69 sección 6, D11) — admin-only, SIN MFA.
+    # Gestión INDEPENDIENTE del import de examen: dar de alta/editar materias y
+    # comisiones sin reimportar contenido. No hay DELETE (riesgo de FK). El codigo
+    # es inmutable (identidad académica). Errores: duplicado→409, validación→422,
+    # no-encontrada→404. Capa router→service→repo (reusa repos/errores existentes).
+    # -----------------------------------------------------------------------
+
+    def _build_materia_comision_service(session) -> MateriaComisionService:
+        from app.infrastructure.persistence.repositories.exam_content import (
+            ComisionSqlRepository,
+            MateriaSqlRepository,
+        )
+
+        return MateriaComisionService(
+            materia_repo=MateriaSqlRepository(session),
+            comision_repo=ComisionSqlRepository(session),
+        )
+
+    @router.post(
+        "/materias",
+        response_model=MateriaResponse,
+        status_code=status.HTTP_201_CREATED,
+        summary="Crear una materia (gestión independiente del import)",
+    )
+    async def crear_materia(body: MateriaCrearRequest) -> MateriaResponse:
+        """Crea una materia. 409 'duplicado' si el codigo ya existe; 422
+        'validacion_dominio' si codigo/nombre son vacíos o inválidos."""
+        if session_factory is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Persistencia no inicializada.",
+            )
+
+        async with session_factory() as session:
+            service = _build_materia_comision_service(session)
+            try:
+                materia = await service.crear_materia(body.codigo, body.nombre)
+                await session.commit()
+            except MateriaDuplicadaError as exc:
+                await session.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={"error": "duplicado", "mensaje": str(exc)},
+                ) from exc
+            except ExamenContenidoError as exc:
+                await session.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail={"error": "validacion_dominio", "mensaje": str(exc)},
+                ) from exc
+
+        return MateriaResponse(
+            id=materia.id, codigo=materia.codigo, nombre=materia.nombre
+        )
+
+    @router.patch(
+        "/materias/{materia_id}",
+        response_model=MateriaResponse,
+        summary="Actualizar el nombre de una materia (codigo inmutable)",
+    )
+    async def actualizar_materia(
+        materia_id: str,
+        body: MateriaActualizarRequest,
+    ) -> MateriaResponse:
+        """Actualiza el nombre de una materia. 404 'materia_no_encontrada' si no
+        existe; 422 'validacion_dominio' si el nombre es vacío. El codigo NO se toca."""
+        if session_factory is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Persistencia no inicializada.",
+            )
+
+        async with session_factory() as session:
+            service = _build_materia_comision_service(session)
+            try:
+                materia = await service.actualizar_materia(materia_id, body.nombre)
+                await session.commit()
+            except MateriaNoEncontradaError as exc:
+                await session.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail={
+                        "error": "materia_no_encontrada",
+                        "materia_id": materia_id,
+                    },
+                ) from exc
+            except ExamenContenidoError as exc:
+                await session.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail={"error": "validacion_dominio", "mensaje": str(exc)},
+                ) from exc
+
+        return MateriaResponse(
+            id=materia.id, codigo=materia.codigo, nombre=materia.nombre
+        )
+
+    @router.post(
+        "/materias/{materia_id}/comisiones",
+        response_model=ComisionResponse,
+        status_code=status.HTTP_201_CREATED,
+        summary="Crear una comisión dentro de una materia",
+    )
+    async def crear_comision(
+        materia_id: str,
+        body: ComisionCrearRequest,
+    ) -> ComisionResponse:
+        """Crea una comisión en la materia. 404 'materia_no_encontrada' si la materia
+        no existe; 409 'duplicado' si (materia_id, codigo) ya existe; 422
+        'validacion_dominio' si codigo/nombre son vacíos."""
+        if session_factory is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Persistencia no inicializada.",
+            )
+
+        async with session_factory() as session:
+            service = _build_materia_comision_service(session)
+            try:
+                comision = await service.crear_comision(
+                    materia_id=materia_id,
+                    codigo=body.codigo,
+                    nombre=body.nombre,
+                    periodo=body.periodo,
+                    anio=body.anio,
+                )
+                await session.commit()
+            except MateriaNoEncontradaError as exc:
+                await session.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail={
+                        "error": "materia_no_encontrada",
+                        "materia_id": materia_id,
+                    },
+                ) from exc
+            except ComisionDuplicadaError as exc:
+                await session.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={"error": "duplicado", "mensaje": str(exc)},
+                ) from exc
+            except ExamenContenidoError as exc:
+                await session.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail={"error": "validacion_dominio", "mensaje": str(exc)},
+                ) from exc
+
+        return ComisionResponse(
+            id=comision.id,
+            materia_id=comision.materia_id,
+            codigo=comision.codigo,
+            nombre=comision.nombre,
+            periodo=comision.periodo,
+            anio=comision.anio,
+        )
+
+    @router.patch(
+        "/comisiones/{comision_id}",
+        response_model=ComisionResponse,
+        summary="Actualizar nombre/periodo/anio de una comisión (codigo inmutable)",
+    )
+    async def actualizar_comision(
+        comision_id: str,
+        body: ComisionActualizarRequest,
+    ) -> ComisionResponse:
+        """Actualiza nombre/periodo/anio de una comisión. 404 'comision_no_encontrada'
+        si no existe; 422 'validacion_dominio' si el nombre es vacío. El codigo y la
+        materia NO se tocan."""
+        if session_factory is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Persistencia no inicializada.",
+            )
+
+        async with session_factory() as session:
+            service = _build_materia_comision_service(session)
+            try:
+                comision = await service.actualizar_comision(
+                    comision_id=comision_id,
+                    nombre=body.nombre,
+                    periodo=body.periodo,
+                    anio=body.anio,
+                )
+                await session.commit()
+            except ComisionNoEncontradaError as exc:
+                await session.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail={
+                        "error": "comision_no_encontrada",
+                        "comision_id": comision_id,
+                    },
+                ) from exc
+            except ExamenContenidoError as exc:
+                await session.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail={"error": "validacion_dominio", "mensaje": str(exc)},
+                ) from exc
+
+        return ComisionResponse(
+            id=comision.id,
+            materia_id=comision.materia_id,
+            codigo=comision.codigo,
+            nombre=comision.nombre,
+            periodo=comision.periodo,
+            anio=comision.anio,
+        )
 
     # -----------------------------------------------------------------------
     # Destino de write-back a Moodle POR EXAMEN (C-69, D12 parte B) — admin-only.
