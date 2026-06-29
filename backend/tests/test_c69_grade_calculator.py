@@ -193,6 +193,82 @@ async def test_nota_cero_examen_inexistente(session):
 
 
 # ---------------------------------------------------------------------------
+# Opción B (pool): la nota considera SOLO las preguntas seleccionadas
+# ---------------------------------------------------------------------------
+
+
+async def _crear_examen_pool(
+    db: AsyncSession,
+) -> tuple[str, str, str, str, str, str]:
+    """Examen con 2 seleccionadas + 1 deseleccionada.
+
+    Devuelve (examen_id, p1_sel_id, p2_sel_id, p3_desel_id, c1_id, c3_id) donde
+    c1/c3 son las opciones correctas de p1 (seleccionada) y p3 (deseleccionada).
+    """
+    examen = ExamenContenidoModel(titulo="Pool parcial")
+    db.add(examen)
+    await db.flush()
+
+    p1 = PreguntaExamenModel(examen_id=examen.id, enunciado="Sel 1", tipo="multichoice", orden=0, seleccionada=True)
+    p2 = PreguntaExamenModel(examen_id=examen.id, enunciado="Sel 2", tipo="multichoice", orden=1, seleccionada=True)
+    p3 = PreguntaExamenModel(examen_id=examen.id, enunciado="Desel 3", tipo="multichoice", orden=2, seleccionada=False)
+    db.add_all([p1, p2, p3])
+    await db.flush()
+
+    o1_c = OpcionRespuestaModel(pregunta_id=p1.id, texto="C", es_correcta=True, orden=0)
+    o1_w = OpcionRespuestaModel(pregunta_id=p1.id, texto="W", es_correcta=False, orden=1)
+    o2_c = OpcionRespuestaModel(pregunta_id=p2.id, texto="C", es_correcta=True, orden=0)
+    o2_w = OpcionRespuestaModel(pregunta_id=p2.id, texto="W", es_correcta=False, orden=1)
+    o3_c = OpcionRespuestaModel(pregunta_id=p3.id, texto="C", es_correcta=True, orden=0)
+    o3_w = OpcionRespuestaModel(pregunta_id=p3.id, texto="W", es_correcta=False, orden=1)
+    db.add_all([o1_c, o1_w, o2_c, o2_w, o3_c, o3_w])
+    await db.flush()
+
+    return examen.id, p1.id, p2.id, p3.id, o1_c.id, o3_c.id
+
+
+@pytest.mark.asyncio
+async def test_total_solo_cuenta_seleccionadas(session):
+    """Opción B: el total ignora la deseleccionada.
+
+    Alumno acierta la única seleccionada que responde (p1) → 1/2 seleccionadas = 5.0.
+    La pregunta deseleccionada (p3) NO suma al total.
+    """
+    examen_id, p1_id, p2_id, p3_id, c1_id, c3_id = await _crear_examen_pool(session)
+
+    respuestas = [
+        RespuestaAlumno(pregunta_id=p1_id, opcion_elegida_id=c1_id),  # correcta, seleccionada
+    ]
+
+    nota = await calcular_nota_academica(
+        db=session, examen_contenido_id=examen_id, respuestas=respuestas
+    )
+
+    assert nota == pytest.approx(5.0)
+
+
+@pytest.mark.asyncio
+async def test_respuesta_a_deseleccionada_no_cuenta(session):
+    """Opción B: acertar una pregunta deseleccionada NO suma correctas ni total.
+
+    Alumno acierta p1 (seleccionada) y p3 (deseleccionada). Solo p1 cuenta:
+    1 correcta / 2 seleccionadas = 5.0 (la correcta de p3 se ignora).
+    """
+    examen_id, p1_id, p2_id, p3_id, c1_id, c3_id = await _crear_examen_pool(session)
+
+    respuestas = [
+        RespuestaAlumno(pregunta_id=p1_id, opcion_elegida_id=c1_id),  # seleccionada, correcta
+        RespuestaAlumno(pregunta_id=p3_id, opcion_elegida_id=c3_id),  # deseleccionada, correcta
+    ]
+
+    nota = await calcular_nota_academica(
+        db=session, examen_contenido_id=examen_id, respuestas=respuestas
+    )
+
+    assert nota == pytest.approx(5.0)
+
+
+# ---------------------------------------------------------------------------
 # L2.5: la nota no incorpora score de proctoring (7.13)
 # ---------------------------------------------------------------------------
 

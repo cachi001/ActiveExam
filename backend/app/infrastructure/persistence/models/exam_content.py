@@ -125,6 +125,15 @@ class PreguntaExamenModel(Base):
     enunciado: Mapped[str] = mapped_column(Text, nullable=False)
     tipo: Mapped[str] = mapped_column(String(20), nullable=False)
     orden: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    # Opción B (pool de preguntas): el docente elige cuáles preguntas del pool
+    # forman el examen. La rendición y la nota respetan SOLO seleccionada=true.
+    # DEFAULT true (migración 0031): exámenes previos quedan con todas seleccionadas.
+    seleccionada: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        server_default="true",
+        comment="Opción B: la pregunta forma parte del examen (pool seleccionable).",
+    )
 
     examen: Mapped[ExamenContenidoModel] = relationship(
         "ExamenContenidoModel", back_populates="preguntas"

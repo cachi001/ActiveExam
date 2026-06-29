@@ -23,6 +23,13 @@ class ComisionInvalidaError(ExamenContenidoError):
     """
 
 
+class SeleccionInvalidaError(ExamenContenidoError):
+    """La selección del pool dejaría el examen sin ninguna pregunta seleccionada.
+
+    Opción B: un examen necesita al menos 1 pregunta seleccionada para ser rendible.
+    """
+
+
 class MateriaDuplicadaError(ExamenContenidoError):
     """Ya existe una materia con el mismo codigo (unicidad de codigo)."""
 

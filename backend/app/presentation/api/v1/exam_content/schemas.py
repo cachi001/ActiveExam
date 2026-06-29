@@ -105,6 +105,48 @@ class ExamenRendicionResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Pool de preguntas seleccionables (C-69, opción B) — endpoints admin
+# ---------------------------------------------------------------------------
+
+
+class PreguntaPoolItemResponse(BaseModel):
+    """Pregunta del pool para la pantalla de selección del docente (opción B).
+
+    D3: es_correcta y opciones AUSENTES — el docente identifica por enunciado.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    enunciado: str
+    tipo: str
+    orden: int
+    seleccionada: bool
+
+
+class PreguntasPoolResponse(BaseModel):
+    """Pool completo de un examen + conteos (total del pool y seleccionadas)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[PreguntaPoolItemResponse]
+    total: int
+    seleccionadas: int
+
+
+class PreguntasSeleccionRequest(BaseModel):
+    """Body para fijar qué preguntas del pool forman el examen (opción B).
+
+    ``seleccionadas`` = ids de las preguntas que quedan seleccionadas; el resto del
+    pool del examen queda deseleccionado. Debe resultar en >= 1 seleccionada (422).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    seleccionadas: list[str]
+
+
+# ---------------------------------------------------------------------------
 # Materia + comisión (C-69 sección 6, D11) — endpoints admin
 # ---------------------------------------------------------------------------
 

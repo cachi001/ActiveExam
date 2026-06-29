@@ -14,10 +14,12 @@ from app.domain.exam_content.entities import (
     Materia,
     OpcionRespuesta,
     Pregunta,
+    PreguntaSeleccionItem,
 )
 from app.domain.exam_content.errors import (
     ComisionDuplicadaError,
     MateriaDuplicadaError,
+    SeleccionInvalidaError,
 )
 from app.infrastructure.persistence.models.exam_content import (
     ComisionModel,
@@ -55,6 +57,7 @@ class ExamenContenidoSqlRepository:
                 enunciado=pregunta.enunciado,
                 tipo=pregunta.tipo,
                 orden=pregunta.orden if pregunta.orden else i,
+                seleccionada=pregunta.seleccionada,
             )
             for j, opcion in enumerate(pregunta.opciones):
                 o_model = OpcionRespuestaModel(
@@ -80,12 +83,18 @@ class ExamenContenidoSqlRepository:
 
         LEFT JOIN a comisión y materia (D11): un examen sin comisión deja esos
         campos en NULL. Se agrupa por las columnas no agregadas para contar preguntas.
+
+        Opción B (pool de preguntas): cantidad_preguntas cuenta SOLO las preguntas
+        seleccionadas (FILTER por seleccionada=true), para que el catálogo y el
+        encabezado muestren el tamaño REAL del examen, no el del pool importado.
         """
         return (
             select(
                 ExamenContenidoModel.id,
                 ExamenContenidoModel.titulo,
-                func.count(PreguntaExamenModel.id).label("cantidad_preguntas"),
+                func.count(PreguntaExamenModel.id)
+                .filter(PreguntaExamenModel.seleccionada.is_(True))
+                .label("cantidad_preguntas"),
                 ExamenContenidoModel.comision_id,
                 ComisionModel.nombre.label("comision_nombre"),
                 MateriaModel.nombre.label("materia_nombre"),
@@ -246,6 +255,96 @@ class ExamenContenidoSqlRepository:
         await self._db.flush()
         return await self.obtener(examen_id)
 
+    async def _examen_existe(self, examen_id: str) -> bool:
+        result = await self._db.execute(
+            select(ExamenContenidoModel.id).where(
+                ExamenContenidoModel.id == examen_id
+            )
+        )
+        return result.scalar_one_or_none() is not None
+
+    async def listar_preguntas(
+        self, examen_id: str
+    ) -> list[PreguntaSeleccionItem] | None:
+        """Lista TODO el pool de preguntas del examen (seleccionadas y no) — opción B.
+
+        Devuelve None si el examen no existe. Orden estable por ``orden``. D3:
+        es_correcta y opciones AUSENTES — el docente identifica por enunciado.
+        """
+        if not await self._examen_existe(examen_id):
+            return None
+        result = await self._db.execute(
+            select(
+                PreguntaExamenModel.id,
+                PreguntaExamenModel.enunciado,
+                PreguntaExamenModel.tipo,
+                PreguntaExamenModel.orden,
+                PreguntaExamenModel.seleccionada,
+            )
+            .where(PreguntaExamenModel.examen_id == examen_id)
+            .order_by(PreguntaExamenModel.orden)
+        )
+        return [
+            PreguntaSeleccionItem(
+                id=row.id,
+                enunciado=row.enunciado,
+                tipo=row.tipo,
+                orden=row.orden,
+                seleccionada=row.seleccionada,
+            )
+            for row in result.all()
+        ]
+
+    async def actualizar_seleccion(
+        self, examen_id: str, seleccionadas_ids: list[str]
+    ) -> list[PreguntaSeleccionItem] | None:
+        """Marca seleccionada=true para los ids dados y false para el resto (opción B).
+
+        - Devuelve None si el examen no existe (→ 404).
+        - Ignora ids que no pertenezcan a ESTE examen (intersección con su pool).
+        - Si tras filtrar no queda ninguna pregunta válida seleccionada, eleva
+          ``SeleccionInvalidaError`` (→ 422): un examen necesita >= 1 seleccionada.
+        - Devuelve el pool actualizado en caso de éxito.
+        """
+        if not await self._examen_existe(examen_id):
+            return None
+
+        ids_examen = set(
+            (
+                await self._db.execute(
+                    select(PreguntaExamenModel.id).where(
+                        PreguntaExamenModel.examen_id == examen_id
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        validas = ids_examen & set(seleccionadas_ids)
+        if not validas:
+            raise SeleccionInvalidaError(
+                "La selección debe incluir al menos 1 pregunta del examen."
+            )
+
+        await self._db.execute(
+            update(PreguntaExamenModel)
+            .where(
+                PreguntaExamenModel.examen_id == examen_id,
+                PreguntaExamenModel.id.in_(validas),
+            )
+            .values(seleccionada=True)
+        )
+        await self._db.execute(
+            update(PreguntaExamenModel)
+            .where(
+                PreguntaExamenModel.examen_id == examen_id,
+                PreguntaExamenModel.id.notin_(validas),
+            )
+            .values(seleccionada=False)
+        )
+        await self._db.flush()
+        return await self.listar_preguntas(examen_id)
+
     async def obtener(self, examen_id: str) -> ExamenContenido | None:
         """Recupera un examen por id con preguntas y opciones (eager load)."""
         result = await self._db.execute(
@@ -269,6 +368,7 @@ class ExamenContenidoSqlRepository:
                 enunciado=p.enunciado,
                 tipo=p.tipo,
                 orden=p.orden,
+                seleccionada=p.seleccionada,
                 opciones=tuple(
                     OpcionRespuesta(
                         id=o.id,

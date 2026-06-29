@@ -117,6 +117,56 @@ def test_proyeccion_orden_determinístico():
         assert [o.id for o in p1.opciones] == [o.id for o in p2.opciones]
 
 
+# ---------------------------------------------------------------------------
+# Opción B (pool de preguntas): la rendición proyecta SOLO las seleccionadas
+# ---------------------------------------------------------------------------
+
+
+def _examen_pool(seleccion: tuple[bool, bool, bool]) -> ExamenContenido:
+    """Examen de 3 preguntas con la marca seleccionada según `seleccion`."""
+    return ExamenContenido(
+        id="exam-pool",
+        titulo="Pool",
+        preguntas=tuple(
+            Pregunta(
+                id=f"p{i}",
+                enunciado=f"Pregunta {i}",
+                tipo="multichoice",
+                orden=i,
+                seleccionada=sel,
+                opciones=(
+                    OpcionRespuesta(id=f"o{i}a", texto="A", es_correcta=True, orden=0),
+                    OpcionRespuesta(id=f"o{i}b", texto="B", es_correcta=False, orden=1),
+                ),
+            )
+            for i, sel in enumerate(seleccion)
+        ),
+        comision_id=None,
+    )
+
+
+def test_proyeccion_solo_incluye_preguntas_seleccionadas():
+    """Opción B: una pregunta con seleccionada=False NO viaja a la rendición."""
+    examen = _examen_pool((True, False, True))
+    rendicion = proyectar_examen(examen)
+    ids = [p.id for p in rendicion.preguntas]
+    assert ids == ["p0", "p2"], "solo las seleccionadas se proyectan, en orden"
+
+
+def test_proyeccion_todas_seleccionadas_devuelve_todas():
+    """Triangulación: si todas están seleccionadas, se proyectan las 3."""
+    examen = _examen_pool((True, True, True))
+    rendicion = proyectar_examen(examen)
+    assert [p.id for p in rendicion.preguntas] == ["p0", "p1", "p2"]
+
+
+def test_proyeccion_ninguna_seleccionada_devuelve_vacio():
+    """Triangulación borde: ninguna seleccionada → rendición sin preguntas."""
+    examen = _examen_pool((False, False, False))
+    rendicion = proyectar_examen(examen)
+    assert rendicion.preguntas == ()
+
+
 def test_proyeccion_aislamiento_examenes_distintos_no_se_mezclan():
     """Proyecciones de exámenes distintos son independientes."""
     examen_a = ExamenContenido(

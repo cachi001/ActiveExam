@@ -36,6 +36,7 @@ from app.domain.exam_content.errors import (
     ComisionDuplicadaError,
     ExamenContenidoError,
     MateriaDuplicadaError,
+    SeleccionInvalidaError,
 )
 from app.presentation.api.v1.auth.dependencies import (
     get_current_principal,
@@ -58,7 +59,10 @@ from app.presentation.api.v1.exam_content.schemas import (
     MoodleTargetResponse,
     OmitidaItemResponse,
     OpcionRendicionResponse,
+    PreguntaPoolItemResponse,
     PreguntaRendicionResponse,
+    PreguntasPoolResponse,
+    PreguntasSeleccionRequest,
     ResultadoAlumnoResponse,
     ResultadosExamenPaginadosResponse,
     SincronizarMoodleResponse,
@@ -372,6 +376,108 @@ def create_exam_content_router(
             moodle_courseid=examen.moodle_courseid,
             moodle_cmid=examen.moodle_cmid,
         )
+
+    # -----------------------------------------------------------------------
+    # Pool de preguntas seleccionables (C-69, opción B) — admin-only, SIN MFA.
+    # El examen importado es un POOL; el docente elige CUÁLES preguntas lo forman.
+    # GET   /{examen_id}/preguntas            → todo el pool (seleccionadas y no).
+    # PATCH /{examen_id}/preguntas-seleccion  → fija la selección (>= 1, 422 si 0).
+    # D3: es_correcta NUNCA viaja; el docente identifica la pregunta por enunciado.
+    # -----------------------------------------------------------------------
+
+    def _pool_to_response(items) -> PreguntasPoolResponse:
+        return PreguntasPoolResponse(
+            items=[
+                PreguntaPoolItemResponse(
+                    id=p.id,
+                    enunciado=p.enunciado,
+                    tipo=p.tipo,
+                    orden=p.orden,
+                    seleccionada=p.seleccionada,
+                )
+                for p in items
+            ],
+            total=len(items),
+            seleccionadas=sum(1 for p in items if p.seleccionada),
+        )
+
+    @router.get(
+        "/{examen_id}/preguntas",
+        response_model=PreguntasPoolResponse,
+        summary="Listar el pool de preguntas de un examen (seleccionadas y no)",
+    )
+    async def listar_preguntas_pool(examen_id: str) -> PreguntasPoolResponse:
+        """Devuelve TODO el pool del examen para la pantalla de selección del docente.
+
+        D3: sin es_correcta ni opciones — el docente identifica por enunciado.
+        404 si el examen no existe.
+        """
+        if session_factory is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Persistencia no inicializada.",
+            )
+
+        from app.infrastructure.persistence.repositories.exam_content import (
+            ExamenContenidoSqlRepository,
+        )
+
+        async with session_factory() as session:
+            items = await ExamenContenidoSqlRepository(session).listar_preguntas(
+                examen_id
+            )
+
+        if items is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"error": "examen_no_encontrado", "examen_id": examen_id},
+            )
+
+        return _pool_to_response(items)
+
+    @router.patch(
+        "/{examen_id}/preguntas-seleccion",
+        response_model=PreguntasPoolResponse,
+        summary="Fijar qué preguntas del pool forman el examen (opción B)",
+    )
+    async def fijar_seleccion_preguntas(
+        examen_id: str,
+        body: PreguntasSeleccionRequest,
+    ) -> PreguntasPoolResponse:
+        """Marca seleccionada=true para los ids dados, false para el resto del pool.
+
+        Valida >= 1 pregunta seleccionada (422 si la lista queda sin ids válidos).
+        Ignora ids que no pertenezcan a este examen. 404 si el examen no existe.
+        """
+        if session_factory is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Persistencia no inicializada.",
+            )
+
+        from app.infrastructure.persistence.repositories.exam_content import (
+            ExamenContenidoSqlRepository,
+        )
+
+        async with session_factory() as session:
+            repo = ExamenContenidoSqlRepository(session)
+            try:
+                items = await repo.actualizar_seleccion(examen_id, body.seleccionadas)
+            except SeleccionInvalidaError as exc:
+                await session.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail={"error": "seleccion_invalida", "mensaje": str(exc)},
+                ) from exc
+            if items is None:
+                await session.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail={"error": "examen_no_encontrado", "examen_id": examen_id},
+                )
+            await session.commit()
+
+        return _pool_to_response(items)
 
     # -----------------------------------------------------------------------
     # Resultados del examen (C-69 admin-sync, tarea 2) — admin-only, SIN MFA.

@@ -235,6 +235,64 @@ async def test_repo_obtener_resumen_existente(factory):
     assert resumen.comision_nombre == comision_nombre
 
 
+# ---------------------------------------------------------------------------
+# Opción B (pool): cantidad_preguntas cuenta SOLO las seleccionadas
+# ---------------------------------------------------------------------------
+
+
+async def _seed_pool(factory, *, titulo: str, seleccion: tuple[bool, ...]) -> str:
+    """Crea un examen cuyo pool tiene la marca seleccionada según `seleccion`."""
+    examen = ExamenContenido(
+        titulo=titulo,
+        comision_id=None,
+        preguntas=tuple(
+            Pregunta(
+                enunciado=f"P{i}",
+                tipo="multichoice",
+                orden=i,
+                seleccionada=sel,
+                opciones=(
+                    OpcionRespuesta(texto="A", es_correcta=True, orden=0),
+                    OpcionRespuesta(texto="B", es_correcta=False, orden=1),
+                ),
+            )
+            for i, sel in enumerate(seleccion)
+        ),
+    )
+    async with factory() as session:
+        repo = ExamenContenidoSqlRepository(session)
+        guardado = await repo.guardar(examen)
+        await session.commit()
+    return guardado.id
+
+
+@pytest.mark.asyncio
+async def test_resumen_cantidad_preguntas_cuenta_solo_seleccionadas(client, factory):
+    """Pool de 4, 2 seleccionadas → cantidad_preguntas == 2 (tamaño REAL del examen)."""
+    examen_id = await _seed_pool(
+        factory,
+        titulo=f"Pool {uuid.uuid4().hex[:6]}",
+        seleccion=(True, False, True, False),
+    )
+    resp = await client.get(f"/api/v1/exam-content/{examen_id}/resumen")
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["cantidad_preguntas"] == 2
+
+
+@pytest.mark.asyncio
+async def test_catalogo_cantidad_preguntas_cuenta_solo_seleccionadas(client, factory):
+    """El catálogo paginado también refleja el tamaño real (solo seleccionadas)."""
+    titulo = f"Cat {uuid.uuid4().hex[:6]}"
+    examen_id = await _seed_pool(
+        factory, titulo=titulo, seleccion=(True, True, False)
+    )
+    resp = await client.get(f"/api/v1/exam-content?q={titulo}")
+    assert resp.status_code == 200, resp.text
+    items = resp.json()["items"]
+    fila = next(i for i in items if i["id"] == examen_id)
+    assert fila["cantidad_preguntas"] == 2
+
+
 @pytest.mark.asyncio
 async def test_repo_obtener_resumen_inexistente_devuelve_none(factory):
     async with factory() as session:

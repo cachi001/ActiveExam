@@ -46,6 +46,10 @@ def proyectar_examen(examen: ExamenContenido) -> ExamenRendicion:
     """Proyecta un ExamenContenido a ExamenRendicion, excluyendo es_correcta (D3).
 
     El orden de preguntas y opciones es estable (por ``orden`` ascendente).
+
+    Opción B (pool de preguntas): solo se proyectan las preguntas seleccionadas
+    por el docente (``seleccionada=True``). Las del pool no seleccionadas NO viajan
+    a la rendición del alumno.
     """
     preguntas = tuple(
         PreguntaRendicion(
@@ -63,6 +67,7 @@ def proyectar_examen(examen: ExamenContenido) -> ExamenRendicion:
             ),
         )
         for p in sorted(examen.preguntas, key=lambda x: x.orden)
+        if p.seleccionada
     )
     return ExamenRendicion(
         id=examen.id or "",

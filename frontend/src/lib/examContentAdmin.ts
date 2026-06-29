@@ -146,3 +146,68 @@ export async function getMoodleTarget(examenId: string): Promise<MoodleTargetRes
   }
   return res.json() as Promise<MoodleTargetResponse>;
 }
+
+// ---------------------------------------------------------------------------
+// Selección de preguntas del examen (opción B): el docente elige qué preguntas
+// del pool importado forman el examen. El alumno rinde solo las seleccionadas.
+// ---------------------------------------------------------------------------
+
+/** Tipo de pregunta importada desde Moodle (sin es_correcta: admin no ve la clave). */
+export type PreguntaTipo = 'multichoice' | 'truefalse';
+
+/** Una pregunta del pool del examen, con su estado de inclusión actual. */
+export interface PreguntaSeleccion {
+  id: string;
+  enunciado: string;
+  tipo: PreguntaTipo | string;
+  orden: number;
+  seleccionada: boolean;
+}
+
+/** Respuesta del listado de preguntas del pool + contadores. */
+export interface PreguntasExamenResponse {
+  items: PreguntaSeleccion[];
+  total: number;
+  seleccionadas: number;
+}
+
+/**
+ * Lista TODAS las preguntas del pool importado del examen, cada una con su flag
+ * `seleccionada` (si forma parte del examen que rinde el alumno). Admin-only.
+ * GET /api/v1/exam-content/{examenId}/preguntas
+ */
+export async function getPreguntasExamen(examenId: string): Promise<PreguntasExamenResponse> {
+  const res = await fetch(`/api/v1/exam-content/${examenId}/preguntas`, {
+    method: 'GET',
+    headers: authHeaders(),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.detail?.mensaje ?? body?.detail ?? `Error ${res.status}`);
+  }
+  return res.json() as Promise<PreguntasExamenResponse>;
+}
+
+/**
+ * Define la selección de preguntas del examen: `seleccionadasIds` son los ids
+ * INCLUIDOS. El backend rechaza con 422 si la lista queda vacía (un examen no
+ * puede quedar sin preguntas). Admin-only. Devuelve los contadores resultantes
+ * (tolera cuerpo vacío en la respuesta).
+ * PATCH /api/v1/exam-content/{examenId}/preguntas-seleccion
+ */
+export async function setPreguntasSeleccion(
+  examenId: string,
+  seleccionadasIds: string[],
+): Promise<{ seleccionadas: number }> {
+  const res = await fetch(`/api/v1/exam-content/${examenId}/preguntas-seleccion`, {
+    method: 'PATCH',
+    headers: authHeaders(),
+    body: JSON.stringify({ seleccionadas: seleccionadasIds }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.detail?.mensaje ?? body?.detail ?? `Error ${res.status}`);
+  }
+  const body = await res.json().catch(() => null);
+  return { seleccionadas: body?.seleccionadas ?? seleccionadasIds.length };
+}

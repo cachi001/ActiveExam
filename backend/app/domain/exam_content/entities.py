@@ -44,6 +44,9 @@ class Pregunta:
     opciones: tuple[OpcionRespuesta, ...]
     id: str | None = None
     orden: int = 0
+    # Opción B (pool de preguntas): si el docente la seleccionó para el examen.
+    # Default True (compat): una pregunta recién importada cuenta como seleccionada.
+    seleccionada: bool = True
 
     def __post_init__(self) -> None:
         self._validar()
@@ -93,6 +96,21 @@ class ExamenContenido:
     # si quedan en None, el write-back usa el valor global de config_slim (fallback).
     moodle_courseid: int | None = None
     moodle_cmid: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class PreguntaSeleccionItem:
+    """Item del pool de preguntas para la pantalla de selección del docente (opción B).
+
+    Read-model liviano: el docente identifica la pregunta por su ENUNCIADO.
+    D3: es_correcta AUSENTE — no viaja al cliente ni en la selección.
+    """
+
+    id: str
+    enunciado: str
+    tipo: str
+    orden: int
+    seleccionada: bool
 
 
 @dataclass(frozen=True, slots=True)

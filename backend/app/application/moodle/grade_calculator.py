@@ -38,13 +38,19 @@ async def calcular_nota_academica(
     Fórmula: nota = (respuestas_correctas / total_preguntas) * 10.
     Si el examen no existe, no tiene preguntas, o las respuestas están vacías → 0.
 
+    Opción B (pool de preguntas): SOLO cuentan las preguntas seleccionadas por el
+    docente (``seleccionada=True``) — tanto el total como las correctas. Una
+    respuesta a una pregunta deseleccionada no suma ni al numerador ni al
+    denominador.
+
     No recibe ni usa score/flags de proctoring — L2.5: el proctoring no altera
     la nota académica de forma automática.
     """
-    # Contar total de preguntas del examen
+    # Contar total de preguntas SELECCIONADAS del examen (opción B)
     total_result = await db.execute(
         select(PreguntaExamenModel.id).where(
-            PreguntaExamenModel.examen_id == examen_contenido_id
+            PreguntaExamenModel.examen_id == examen_contenido_id,
+            PreguntaExamenModel.seleccionada.is_(True),
         )
     )
     pregunta_ids = [r for r in total_result.scalars().all()]
