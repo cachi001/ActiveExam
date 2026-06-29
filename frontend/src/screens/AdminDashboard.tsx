@@ -14,8 +14,9 @@ import { StatCard } from './proctoring/StatCard';
 import { Link } from '../lib/router';
 import { api } from '../lib/api';
 import { STAFF_NAV } from '../ui/nav';
-import type { ExamenContenidoResumen } from '../lib/types';
+import type { ExamenContenidoResumen, SesionProctoringResumen } from '../lib/types';
 import { examenContenidoSubtitulo } from './dashboards.helpers';
+import { loadEffectiveConfig, getEffectiveConfig } from '../config/effectiveConfigCache';
 
 // alias para mantener compatibilidad con las pantallas que ya lo importan
 export const ADMIN_NAV = STAFF_NAV;
@@ -23,12 +24,32 @@ export const ADMIN_NAV = STAFF_NAV;
 export default function AdminDashboard() {
   const [examenes, setExamenes] = useState<ExamenContenidoResumen[]>([]);
   const [cargando, setCargando] = useState(true);
+  // Sesiones reales (GET /proctoring/sessions) + tasa de flag derivada del umbral
+  // de cola de revisión. null = todavía cargando; [] = sin sesiones → 0 / 0%.
+  const [sesiones, setSesiones] = useState<SesionProctoringResumen[] | null>(null);
+  const [umbral, setUmbral] = useState(70);
 
   useEffect(() => {
     api.listarExamenesContenido()
       .then(setExamenes)
       .finally(() => setCargando(false));
+
+    void (async () => {
+      try {
+        await loadEffectiveConfig();
+        setUmbral(getEffectiveConfig()?.umbral_cola_revision ?? 70);
+      } catch { /* sin red: umbral por defecto */ }
+      try {
+        setSesiones(await api.listarSesionesProctoring());
+      } catch {
+        setSesiones([]);
+      }
+    })();
   }, []);
+
+  const totalSesiones = sesiones?.length ?? null;
+  const flagged = sesiones ? sesiones.filter((s) => (s.score ?? 0) >= umbral).length : 0;
+  const tasaFlag = sesiones && sesiones.length > 0 ? Math.round((flagged / sesiones.length) * 100) : 0;
 
   return (
     <StaffShell
@@ -50,12 +71,12 @@ export default function AdminDashboard() {
     >
       <div className="space-y-lg animate-in fade-in duration-500">
 
-        {/* Stat cards — Exámenes es el único con fuente real en esta versión slim.
-            Sesiones y Tasa de flag muestran "—" (vacío honesto, sin fuente real). */}
+        {/* Stat cards con datos reales (catálogo + sesiones de proctoring). Cuando
+            no hay sesiones se muestra 0 / 0% (no "—"). */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-md">
           <StatCard icon="quiz" label="Exámenes" value={cargando ? '…' : examenes.length} sub="importados" tono="primary" />
-          <StatCard icon="groups" label="Sesiones" value="—" sub="sin datos en tiempo real" tono="info" />
-          <StatCard icon="flag" label="Tasa de flag" value="—" sub="sin datos en tiempo real" tono="warning" />
+          <StatCard icon="groups" label="Sesiones" value={totalSesiones ?? '…'} sub="supervisadas" tono="info" />
+          <StatCard icon="flag" label="Tasa de flag" value={sesiones === null ? '…' : `${tasaFlag}%`} sub="en cola de revisión" tono="warning" />
         </div>
 
         <div className="grid lg:grid-cols-3 gap-lg">
