@@ -29,7 +29,10 @@ import {
 import {
   getPreguntasExamen,
   setPreguntasSeleccion,
+  getExamConfig,
+  setExamConfig,
   type PreguntaSeleccion,
+  type ExamConfig,
 } from '../lib/examContentAdmin';
 import type { ExamenContenidoResumen } from '../lib/types';
 
@@ -348,6 +351,339 @@ function PreguntasSeleccionSection({
 }
 
 // ---------------------------------------------------------------------------
+// Sección: Configuración del examen (la define el docente, la aplica la
+// plataforma). Inputs modernos de esquinas rectas (rounded-none), grandes y
+// espaciados. Valida en cliente lo básico; el backend valida en serio.
+// ---------------------------------------------------------------------------
+
+/** Convierte un ISO 8601 al valor que espera <input type="datetime-local">. */
+function isoToLocalInput(iso: string | null): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/** Convierte el valor de un <input type="datetime-local"> a ISO 8601 (o null). */
+function localInputToIso(local: string): string | null {
+  if (!local) return null;
+  const d = new Date(local);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString();
+}
+
+/** Estado del formulario de configuración (campos como los manipula la UI). */
+interface ConfigForm {
+  sinLimite: boolean;
+  tiempoLimiteMin: string;
+  intentosPermitidos: string;
+  apertura: string;
+  cierre: string;
+  notaMaxima: string;
+  notaAprobacion: string;
+  mezclarPreguntas: boolean;
+}
+
+const INPUT_CLS =
+  'w-full rounded-none border border-outline-variant bg-surface px-4 py-3 text-body-md text-on-surface placeholder:text-on-surface-variant focus:border-primary focus:outline-none transition-colors';
+const LABEL_CLS = 'block text-label-md font-semibold text-on-surface mb-1.5';
+
+function configToForm(cfg: ExamConfig): ConfigForm {
+  return {
+    sinLimite: cfg.tiempo_limite_min === null,
+    tiempoLimiteMin: cfg.tiempo_limite_min !== null ? String(cfg.tiempo_limite_min) : '',
+    intentosPermitidos: String(cfg.intentos_permitidos ?? 1),
+    apertura: isoToLocalInput(cfg.apertura),
+    cierre: isoToLocalInput(cfg.cierre),
+    notaMaxima: String(cfg.nota_maxima ?? 10),
+    notaAprobacion: String(cfg.nota_aprobacion ?? 6),
+    mezclarPreguntas: !!cfg.mezclar_preguntas,
+  };
+}
+
+/** Valida el formulario en cliente. Devuelve un mensaje de error o null si OK. */
+function validarConfig(form: ConfigForm): string | null {
+  if (!form.sinLimite) {
+    const t = Number(form.tiempoLimiteMin);
+    if (!form.tiempoLimiteMin.trim() || Number.isNaN(t) || t <= 0) {
+      return 'El tiempo límite debe ser un número mayor a 0 (o marcá "sin límite").';
+    }
+  }
+  const intentos = Number(form.intentosPermitidos);
+  if (Number.isNaN(intentos) || intentos < 1) {
+    return 'Los intentos permitidos deben ser al menos 1.';
+  }
+  const max = Number(form.notaMaxima);
+  const aprob = Number(form.notaAprobacion);
+  if (Number.isNaN(max) || max <= 0) {
+    return 'La nota máxima debe ser un número mayor a 0.';
+  }
+  if (Number.isNaN(aprob) || aprob < 0) {
+    return 'La nota de aprobación debe ser un número válido.';
+  }
+  if (aprob > max) {
+    return 'La nota de aprobación no puede ser mayor que la nota máxima.';
+  }
+  if (form.apertura && form.cierre) {
+    if (new Date(form.apertura).getTime() >= new Date(form.cierre).getTime()) {
+      return 'La fecha de apertura debe ser anterior a la de cierre.';
+    }
+  }
+  return null;
+}
+
+/** Arma el patch a enviar al backend a partir del formulario validado. */
+function formToPatch(form: ConfigForm): ExamConfig {
+  return {
+    tiempo_limite_min: form.sinLimite ? null : Number(form.tiempoLimiteMin),
+    intentos_permitidos: Number(form.intentosPermitidos),
+    apertura: localInputToIso(form.apertura),
+    cierre: localInputToIso(form.cierre),
+    nota_maxima: Number(form.notaMaxima),
+    nota_aprobacion: Number(form.notaAprobacion),
+    mezclar_preguntas: form.mezclarPreguntas,
+  };
+}
+
+function ConfiguracionExamenSection({ examenId }: { examenId: string }) {
+  const [form, setForm] = useState<ConfigForm | null>(null);
+  const [cargando, setCargando] = useState(true);
+  const [errorCarga, setErrorCarga] = useState<string | null>(null);
+
+  const [guardando, setGuardando] = useState(false);
+  const [okGuardado, setOkGuardado] = useState(false);
+  const [errorGuardar, setErrorGuardar] = useState<string | null>(null);
+
+  const cargar = useCallback(async () => {
+    setCargando(true);
+    setErrorCarga(null);
+    try {
+      const cfg = await getExamConfig(examenId);
+      setForm(configToForm(cfg));
+    } catch (err: unknown) {
+      setErrorCarga(err instanceof Error ? err.message : 'No se pudo cargar la configuración.');
+      setForm(null);
+    } finally {
+      setCargando(false);
+    }
+  }, [examenId]);
+
+  useEffect(() => {
+    cargar();
+  }, [cargar]);
+
+  function update<K extends keyof ConfigForm>(key: K, value: ConfigForm[K]) {
+    setOkGuardado(false);
+    setErrorGuardar(null);
+    setForm((prev) => (prev ? { ...prev, [key]: value } : prev));
+  }
+
+  async function guardar() {
+    if (!form) return;
+    const validationError = validarConfig(form);
+    if (validationError) {
+      setErrorGuardar(validationError);
+      setOkGuardado(false);
+      return;
+    }
+    setGuardando(true);
+    setOkGuardado(false);
+    setErrorGuardar(null);
+    try {
+      const cfg = await setExamConfig(examenId, formToPatch(form));
+      setForm(configToForm(cfg));
+      setOkGuardado(true);
+    } catch (err: unknown) {
+      setErrorGuardar(err instanceof Error ? err.message : 'No se pudo guardar la configuración.');
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  return (
+    <Card>
+      <SectionTitle sub="La define el docente; la plataforma la aplica al rendir.">
+        Configuración del examen
+      </SectionTitle>
+
+      {cargando && (
+        <div className="space-y-3 animate-pulse">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="h-12 bg-surface-container-high rounded-lg" />
+          ))}
+        </div>
+      )}
+
+      {!cargando && errorCarga && (
+        <div className="space-y-md">
+          <div className="flex items-center gap-sm text-error bg-error-container/40 rounded-xl px-md py-sm text-label-sm">
+            <Icon name="error" className="text-[18px] shrink-0" fill />
+            {errorCarga}
+          </div>
+          <Button variant="outline" size="sm" icon="refresh" onClick={cargar}>
+            Reintentar
+          </Button>
+        </div>
+      )}
+
+      {!cargando && !errorCarga && form && (
+        <div className="space-y-5">
+          {okGuardado && (
+            <div className="flex items-center gap-sm text-success bg-success-container rounded-none px-4 py-3 text-label-sm">
+              <Icon name="check_circle" className="text-[18px] shrink-0" fill />
+              Configuración guardada.
+            </div>
+          )}
+          {errorGuardar && (
+            <div className="flex items-center gap-sm text-error bg-error-container/40 rounded-none px-4 py-3 text-label-sm">
+              <Icon name="error" className="text-[18px] shrink-0" fill />
+              {errorGuardar}
+            </div>
+          )}
+
+          {/* Tiempo límite */}
+          <div>
+            <label className={LABEL_CLS} htmlFor="cfg-tiempo">Tiempo límite (minutos)</label>
+            <input
+              id="cfg-tiempo"
+              type="number"
+              min={1}
+              inputMode="numeric"
+              className={INPUT_CLS}
+              placeholder="Ej. 60"
+              value={form.tiempoLimiteMin}
+              disabled={form.sinLimite || guardando}
+              onChange={(e) => update('tiempoLimiteMin', e.target.value)}
+            />
+            <label className="mt-2 inline-flex items-center gap-sm cursor-pointer select-none text-label-md text-on-surface-variant">
+              <input
+                type="checkbox"
+                className="w-4 h-4 accent-primary"
+                checked={form.sinLimite}
+                disabled={guardando}
+                onChange={(e) => update('sinLimite', e.target.checked)}
+              />
+              Sin límite de tiempo
+            </label>
+          </div>
+
+          {/* Intentos permitidos */}
+          <div>
+            <label className={LABEL_CLS} htmlFor="cfg-intentos">Intentos permitidos</label>
+            <input
+              id="cfg-intentos"
+              type="number"
+              min={1}
+              inputMode="numeric"
+              className={INPUT_CLS}
+              value={form.intentosPermitidos}
+              disabled={guardando}
+              onChange={(e) => update('intentosPermitidos', e.target.value)}
+            />
+          </div>
+
+          {/* Apertura / Cierre */}
+          <div className="grid sm:grid-cols-2 gap-5">
+            <div>
+              <label className={LABEL_CLS} htmlFor="cfg-apertura">Apertura (opcional)</label>
+              <input
+                id="cfg-apertura"
+                type="datetime-local"
+                className={INPUT_CLS}
+                value={form.apertura}
+                disabled={guardando}
+                onChange={(e) => update('apertura', e.target.value)}
+              />
+            </div>
+            <div>
+              <label className={LABEL_CLS} htmlFor="cfg-cierre">Cierre (opcional)</label>
+              <input
+                id="cfg-cierre"
+                type="datetime-local"
+                className={INPUT_CLS}
+                value={form.cierre}
+                disabled={guardando}
+                onChange={(e) => update('cierre', e.target.value)}
+              />
+            </div>
+          </div>
+
+          {/* Nota máxima / Nota de aprobación */}
+          <div className="grid sm:grid-cols-2 gap-5">
+            <div>
+              <label className={LABEL_CLS} htmlFor="cfg-nota-max">Nota máxima</label>
+              <input
+                id="cfg-nota-max"
+                type="number"
+                min={0}
+                step="any"
+                inputMode="decimal"
+                className={INPUT_CLS}
+                value={form.notaMaxima}
+                disabled={guardando}
+                onChange={(e) => update('notaMaxima', e.target.value)}
+              />
+            </div>
+            <div>
+              <label className={LABEL_CLS} htmlFor="cfg-nota-aprob">Nota de aprobación</label>
+              <input
+                id="cfg-nota-aprob"
+                type="number"
+                min={0}
+                step="any"
+                inputMode="decimal"
+                className={INPUT_CLS}
+                value={form.notaAprobacion}
+                disabled={guardando}
+                onChange={(e) => update('notaAprobacion', e.target.value)}
+              />
+            </div>
+          </div>
+
+          {/* Mezclar preguntas (toggle) */}
+          <div className="flex items-center justify-between gap-md border border-outline-variant rounded-none px-4 py-3">
+            <div className="min-w-0">
+              <p className="text-label-md font-semibold text-on-surface">Mezclar preguntas</p>
+              <p className="text-label-sm text-on-surface-variant mt-0.5">
+                Cada alumno ve las preguntas en un orden aleatorio (la nota no depende del orden).
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={form.mezclarPreguntas}
+              aria-label="Mezclar preguntas"
+              disabled={guardando}
+              onClick={() => update('mezclarPreguntas', !form.mezclarPreguntas)}
+              className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors disabled:opacity-50
+                ${form.mezclarPreguntas ? 'bg-primary' : 'bg-surface-container-high'}`}
+            >
+              <span
+                className={`inline-block h-5 w-5 transform rounded-full bg-surface shadow transition-transform
+                  ${form.mezclarPreguntas ? 'translate-x-6' : 'translate-x-1'}`}
+              />
+            </button>
+          </div>
+
+          {/* Acción guardar */}
+          <div className="flex justify-end">
+            <Button
+              variant="primary"
+              icon={guardando ? undefined : 'save'}
+              onClick={guardar}
+              disabled={guardando}
+            >
+              {guardando ? 'Guardando…' : 'Guardar configuración'}
+            </Button>
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Componente principal
 // ---------------------------------------------------------------------------
 
@@ -572,6 +908,9 @@ export default function ExamDetail() {
             }
           />
         )}
+
+        {/* Configuración del examen (tiempo, intentos, ventana, notas, mezclar) */}
+        {USE_REAL_BACKEND && <ConfiguracionExamenSection examenId={examenId} />}
 
         {/* Tabla de resultados */}
         <Card>

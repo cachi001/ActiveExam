@@ -100,6 +100,13 @@ export interface ExamenContenidoResumen {
   comision_id?: string | null;
   comision_nombre?: string | null;
   materia_nombre?: string | null;
+  /** Config aplicada por la plataforma: ventana de rendición (ISO 8601, nullable). */
+  apertura?: string | null;
+  cierre?: string | null;
+  /** Minutos de tiempo límite. null = sin límite. */
+  tiempo_limite_min?: number | null;
+  /** Intentos permitidos por alumno. */
+  intentos_permitidos?: number | null;
 }
 
 /**
@@ -124,6 +131,10 @@ export interface NotaExamen {
   eventos: number | null;
   /** ISO 8601: momento de finalización de la rendición. */
   finalizada_en: string | null;
+  /** Nota máxima de la escala configurada (ej. 10 o 100). Para mostrar "X / max". */
+  nota_maxima?: number | null;
+  /** true si la nota alcanza la nota de aprobación (decidido server-side). */
+  aprobado?: boolean | null;
 }
 
 /** C-69: respuesta paginada del endpoint de notas del alumno. */

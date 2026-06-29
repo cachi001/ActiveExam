@@ -16,6 +16,55 @@ import { InscripcionCard } from './alumno/components/InscripcionCard';
 
 interface GatePorExamen { puede: boolean; codigo?: string; razon?: string; }
 
+/** Resultado del gate de un examen importado (ventana + intentos). */
+interface GateImportado { habilitado: boolean; motivo?: string; }
+
+/** Formatea un ISO 8601 a fecha+hora legible (es-AR). */
+function formatFechaHora(iso: string): string {
+  try {
+    return new Intl.DateTimeFormat('es-AR', {
+      day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit',
+    }).format(new Date(iso));
+  } catch {
+    return iso;
+  }
+}
+
+/**
+ * Gate de "Rendir" para un examen importado (C-69 config):
+ * 1. Ventana: antes de `apertura` → "Disponible desde…"; después de `cierre` → "Cerrado el…".
+ * 2. Intentos: si el alumno ya rindió `intentos_permitidos` veces (contando ítems de
+ *    `misNotas()` de ese examen) → bloqueado con "Ya rendiste este examen (n/intentos)".
+ * Función pura (acepta `ahora` inyectable) para poder testearla sin reloj real.
+ */
+function gateExamenImportado(
+  contenido: ExamenContenidoResumen,
+  notas: NotaExamen[],
+  ahora: number = Date.now(),
+): GateImportado {
+  if (contenido.apertura) {
+    const ap = new Date(contenido.apertura).getTime();
+    if (!Number.isNaN(ap) && ahora < ap) {
+      return { habilitado: false, motivo: `Disponible desde ${formatFechaHora(contenido.apertura)}` };
+    }
+  }
+  if (contenido.cierre) {
+    const ci = new Date(contenido.cierre).getTime();
+    if (!Number.isNaN(ci) && ahora > ci) {
+      return { habilitado: false, motivo: `Cerrado el ${formatFechaHora(contenido.cierre)}` };
+    }
+  }
+  const permitidos = contenido.intentos_permitidos ?? null;
+  if (permitidos !== null && permitidos >= 1) {
+    const usados = notas.filter((n) => n.examen_id === contenido.id).length;
+    if (usados >= permitidos) {
+      return { habilitado: false, motivo: `Ya rendiste este examen (${usados}/${permitidos})` };
+    }
+  }
+  return { habilitado: true };
+}
+
 /** Detectores por defecto para exámenes importados (sin config de examen-config). */
 const DETECTORES_SLIM = [
   'rostro_ausente', 'multiples_rostros', 'mirada_desviada_sostenida',
@@ -85,6 +134,8 @@ export default function AlumnoMisExamenes() {
    * Setea examenActivo con examen_contenido_id para que Examen.tsx cargue las preguntas.
    */
   const handleRendirImportado = async (contenido: ExamenContenidoResumen) => {
+    // Gate de ventana/intentos: si está bloqueado, no iniciar la rendición.
+    if (!gateExamenImportado(contenido, notas).habilitado) return;
     setRindiendoImportadoId(contenido.id);
     const gate = await api.puedeRendir(); // sin examenId → solo gate de perfil
     setRindiendoImportadoId(null);
@@ -261,6 +312,7 @@ export default function AlumnoMisExamenes() {
                     key={contenido.id}
                     contenido={contenido}
                     rindiendo={rindiendoImportadoId === contenido.id}
+                    gate={gateExamenImportado(contenido, notas)}
                     onRendir={() => handleRendirImportado(contenido)}
                   />
                 ))}
@@ -280,18 +332,23 @@ export default function AlumnoMisExamenes() {
 interface ExamenImportadoCardProps {
   contenido: ExamenContenidoResumen;
   rindiendo: boolean;
+  gate: GateImportado;
   onRendir: () => void;
 }
 
 /**
  * Card que muestra un examen importado desde Moodle XML en el catálogo del alumno.
  * PascalCase: componente React. Solo se muestra cuando USE_REAL_BACKEND=1.
+ * El gate (ventana de disponibilidad + intentos) puede deshabilitar "Rendir" y
+ * mostrar el motivo en lenguaje claro.
  */
-function ExamenImportadoCard({ contenido, rindiendo, onRendir }: ExamenImportadoCardProps) {
+function ExamenImportadoCard({ contenido, rindiendo, gate, onRendir }: ExamenImportadoCardProps) {
+  const bloqueado = !gate.habilitado;
+  const tiempo = contenido.tiempo_limite_min;
   return (
     <Card className="flex items-center justify-between gap-md p-md">
       <div className="flex items-start gap-sm min-w-0">
-        <div className="w-9 h-9 rounded-md bg-primary-fixed text-primary flex items-center justify-center shrink-0 mt-0.5">
+        <div className={`w-9 h-9 rounded-md flex items-center justify-center shrink-0 mt-0.5 ${bloqueado ? 'bg-surface-container text-on-surface-variant' : 'bg-primary-fixed text-primary'}`}>
           <Icon name="quiz" className="text-[18px]" />
         </div>
         <div className="min-w-0">
@@ -300,15 +357,21 @@ function ExamenImportadoCard({ contenido, rindiendo, onRendir }: ExamenImportado
           </p>
           <p className="text-[12px] text-on-surface-variant mt-0.5">
             {contenido.cantidad_preguntas} {contenido.cantidad_preguntas === 1 ? 'pregunta' : 'preguntas'}
+            {typeof tiempo === 'number' && tiempo > 0 && ` · ${tiempo} min`}
           </p>
+          {bloqueado && gate.motivo && (
+            <p className="text-[12px] text-error mt-1 flex items-center gap-1">
+              <Icon name="lock" className="text-[14px]" fill /> {gate.motivo}
+            </p>
+          )}
         </div>
       </div>
       <Button
         variant="primary"
         size="sm"
         onClick={onRendir}
-        disabled={rindiendo}
-        icon={rindiendo ? undefined : 'play_arrow'}
+        disabled={rindiendo || bloqueado}
+        icon={rindiendo ? undefined : bloqueado ? 'lock' : 'play_arrow'}
       >
         {rindiendo ? 'Verificando…' : 'Rendir'}
       </Button>
@@ -337,16 +400,33 @@ function NotaCard({ nota }: { nota: NotaExamen }) {
       </div>
       <div className="min-w-0 flex-1">
         <p className="text-[14px] font-semibold text-on-surface leading-tight">{nota.examen_titulo}</p>
-        <p className="text-[15px] text-on-surface mt-0.5">
-          {tieneNota ? (
-            <>
-              {enRevision ? 'Nota preliminar: ' : 'Nota: '}
-              <strong>{nota.nota}</strong>
-            </>
-          ) : (
-            <span className="text-on-surface-variant">Nota pendiente de cálculo</span>
+        <div className="flex items-center gap-sm flex-wrap mt-0.5">
+          <p className="text-[15px] text-on-surface">
+            {tieneNota ? (
+              <>
+                {enRevision ? 'Nota preliminar: ' : 'Nota: '}
+                <strong>
+                  {nota.nota}
+                  {nota.nota_maxima != null ? ` / ${nota.nota_maxima}` : ''}
+                </strong>
+              </>
+            ) : (
+              <span className="text-on-surface-variant">Nota pendiente de cálculo</span>
+            )}
+          </p>
+          {tieneNota && nota.aprobado != null && (
+            <span
+              className={`inline-flex items-center gap-xs text-[12px] font-medium rounded-full px-sm py-0.5 ${
+                nota.aprobado
+                  ? 'bg-success-container text-success'
+                  : 'bg-error-container text-on-error-container'
+              }`}
+            >
+              <Icon name={nota.aprobado ? 'check_circle' : 'cancel'} className="text-[14px]" fill />
+              {nota.aprobado ? 'Aprobado' : 'Desaprobado'}
+            </span>
           )}
-        </p>
+        </div>
         {enRevision ? (
           <div className="flex items-start gap-xs mt-xs">
             <span className="inline-flex items-center gap-xs bg-warning-container text-warning text-[12px] font-medium rounded-full px-sm py-0.5">

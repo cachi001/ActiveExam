@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { StudentShell } from '../ui/shells';
 import { Icon, Button, Card, SeverityBadge } from '../ui/components';
 import { useNavigate } from '../lib/router';
@@ -19,6 +19,7 @@ import {
   retrocederPregunta,
   preguntaEnIndice,
   indicesRespondidos,
+  mezclarConSemilla,
 } from './ExamenLogic';
 import { QuestionNavigator } from './alumno/components/QuestionNavigator';
 import { FullscreenLockdown, soportaFullscreen, MENSAJE_LIMITE_FULLSCREEN } from '../proctoring/fullscreenLockdown';
@@ -46,15 +47,23 @@ export default function Examen() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
-  const [segRestantes, setSegRestantes] = useState((examen?.duracion_min ?? 60) * 60);
+  // C-69 config: el tiempo límite lo define el docente. undefined = aún no cargó;
+  // null = sin límite (no hay cuenta regresiva); número = minutos.
+  const [tiempoLimiteMin, setTiempoLimiteMin] = useState<number | null | undefined>(undefined);
+  // Segundos restantes. null = sin cuenta regresiva (sin límite o aún sin cargar).
+  const [segRestantes, setSegRestantes] = useState<number | null>(null);
   const [alerta, setAlerta] = useState<EventoSesion | null>(null);
   // C-15: cuando hay una pausa autorizada ACTIVA, PausaAlumno muestra un banner
   // fijo full-width debajo del topbar.
   const [pausaActiva, setPausaActiva] = useState(false);
 
-  // C-69: preguntas de la API de rendición (sin es_correcta — D3)
-  const [preguntas, setPreguntas] = useState<ExamenRendicion['preguntas']>([]);
+  // C-69: preguntas de la API de rendición (sin es_correcta — D3).
+  // Guardamos el orden CRUDO; el orden mostrado se deriva abajo (shuffle estable).
+  const [preguntasRaw, setPreguntasRaw] = useState<ExamenRendicion['preguntas']>([]);
+  const [mezclar, setMezclar] = useState(false);
   const [cargandoPreguntas, setCargandoPreguntas] = useState(false);
+  // Guarda contra doble auto-entrega (timer + click "Finalizar").
+  const entregadoRef = useRef(false);
   // Índice de la pregunta actual en la navegación prev/next
   const [indiceActual, setIndiceActual] = useState(0);
   // Mapa de respuestas: preguntaId -> opcionId seleccionada
@@ -78,22 +87,29 @@ export default function Examen() {
     return () => streamRef.current?.getTracks().forEach((t) => t.stop());
   }, []);
 
-  // temporizador
+  // temporizador: solo decrementa si hay cuenta regresiva (segRestantes !== null).
   useEffect(() => {
-    const t = setInterval(() => setSegRestantes((s) => (s <= 0 ? 0 : s - 1)), 1000);
+    const t = setInterval(
+      () => setSegRestantes((s) => (s === null ? null : s <= 0 ? 0 : s - 1)),
+      1000,
+    );
     return () => clearInterval(t);
   }, []);
 
-  // C-69: cargar preguntas de la API de rendición al montar
+  // C-69: cargar preguntas + config de rendición al montar.
   useEffect(() => {
     const examenContenidoId = examen?.examen_contenido_id;
     if (!examenContenidoId) return;
     setCargandoPreguntas(true);
     fetchExamenParaRendir(examenContenidoId)
       .then((data) => {
-        if (data) {
-          setPreguntas(data.preguntas);
-        }
+        if (!data) return;
+        setPreguntasRaw(data.preguntas);
+        setMezclar(!!data.mezclar_preguntas);
+        // Timer desde config: tiempo_limite_min manda. null/0 → sin cuenta regresiva.
+        const tl = data.tiempo_limite_min ?? null;
+        setTiempoLimiteMin(tl);
+        setSegRestantes(tl !== null && tl > 0 ? tl * 60 : null);
       })
       .catch(() => {
         // Error de red: el examen sigue funcionando (degradación silenciosa)
@@ -140,6 +156,10 @@ export default function Examen() {
   // computarse. Degradación silenciosa: enviarRespuestasProctoring nunca rompe el
   // cierre (mock/red caída → no-op), pero la await-eamos para respetar el orden.
   const finalizar = async () => {
+    // Guarda contra doble entrega: el click manual y la auto-entrega del timer
+    // pueden coincidir. La primera gana; la segunda es no-op.
+    if (entregadoRef.current) return;
+    entregadoRef.current = true;
     if (sessionId) {
       const items = Object.entries(respuestas).map(([pregunta_id, opcion_elegida_id]) => ({
         pregunta_id,
@@ -154,8 +174,28 @@ export default function Examen() {
     navigate('/cierre');
   };
 
-  const mm = String(Math.floor(segRestantes / 60)).padStart(2, '0');
-  const ss = String(segRestantes % 60).padStart(2, '0');
+  // C-69: auto-entrega al llegar a 0 (mismo flujo que "Finalizar y entregar").
+  // Solo si hay cuenta regresiva real (tiempoLimiteMin > 0). El guard de finalizar
+  // evita disparos duplicados.
+  useEffect(() => {
+    if (segRestantes === 0 && typeof tiempoLimiteMin === 'number' && tiempoLimiteMin > 0) {
+      void finalizar();
+    }
+    // finalizar es estable en la práctica y autoprotegido por entregadoRef.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [segRestantes, tiempoLimiteMin]);
+
+  const mm = segRestantes !== null ? String(Math.floor(segRestantes / 60)).padStart(2, '0') : '00';
+  const ss = segRestantes !== null ? String(segRestantes % 60).padStart(2, '0') : '00';
+
+  // C-69: orden mostrado de las preguntas. Si mezclar_preguntas, se baraja de forma
+  // DETERMINÍSTICA con semilla derivada del sessionId (estable por sesión: prev/next
+  // no reordena). Antes de tener sessionId, cae al id del contenido para no flickear.
+  const seedMezcla = sessionId ?? examen?.examen_contenido_id ?? examen?.id ?? 'sin-sesion';
+  const preguntas = useMemo(
+    () => (mezclar ? mezclarConSemilla(preguntasRaw, seedMezcla) : preguntasRaw),
+    [preguntasRaw, mezclar, seedMezcla],
+  );
 
   // C-69: pregunta actual y estado de navegación
   const total = preguntas.length;
@@ -201,9 +241,15 @@ export default function Examen() {
                   </h2>
                 )}
               </div>
-              <span className={`inline-flex items-center gap-base px-sm py-base rounded-lg text-label-md font-bold ${segRestantes < 300 ? 'bg-error-container text-on-error-container' : 'bg-warning-container text-warning'}`}>
-                <Icon name="timer" className="text-[18px]" /> {mm}:{ss}
-              </span>
+              {segRestantes !== null ? (
+                <span className={`inline-flex items-center gap-base px-sm py-base rounded-lg text-label-md font-bold ${segRestantes < 300 ? 'bg-error-container text-on-error-container' : 'bg-warning-container text-warning'}`}>
+                  <Icon name="timer" className="text-[18px]" /> {mm}:{ss}
+                </span>
+              ) : tiempoLimiteMin === null ? (
+                <span className="inline-flex items-center gap-base px-sm py-base rounded-lg text-label-md font-bold bg-surface-container text-on-surface-variant">
+                  <Icon name="timer_off" className="text-[18px]" /> Sin límite
+                </span>
+              ) : null}
             </div>
 
             {preguntaActual && (

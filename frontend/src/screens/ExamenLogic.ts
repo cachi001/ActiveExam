@@ -57,6 +57,45 @@ export function indicesRespondidos(
 }
 
 /**
+ * Hash determinístico (FNV-1a) de un string a un entero uint32.
+ * Sirve para derivar una semilla numérica estable a partir del sessionId.
+ */
+export function hashSemilla(s: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return h >>> 0;
+}
+
+/** PRNG mulberry32: secuencia determinística a partir de una semilla uint32. */
+function mulberry32(seed: number): () => number {
+  let a = seed >>> 0;
+  return function () {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/**
+ * Shuffle determinístico (Fisher-Yates) sembrado por `semilla` (string).
+ * La MISMA semilla produce SIEMPRE el mismo orden → estable por sesión, de modo
+ * que prev/next no reordenan las preguntas. No muta el array original.
+ */
+export function mezclarConSemilla<T>(items: T[], semilla: string): T[] {
+  const rand = mulberry32(hashSemilla(semilla));
+  const arr = [...items];
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+/**
  * Valida que `indice` esté dentro del rango [0, total-1].
  * Retorna el índice si es válido, null si está fuera de rango.
  *

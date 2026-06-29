@@ -32,6 +32,14 @@ export interface ExamenRendicion {
   id: string;
   titulo: string;
   preguntas: PreguntaRendicion[];
+  /** Config aplicada por la plataforma (puede faltar si el backend es viejo). */
+  /** Minutos de tiempo límite. null = sin cuenta regresiva. */
+  tiempo_limite_min?: number | null;
+  /** Si true, mostrar preguntas en orden aleatorio estable por sesión. */
+  mezclar_preguntas?: boolean;
+  /** Nota máxima / nota de aprobación de la escala configurada. */
+  nota_maxima?: number | null;
+  nota_aprobacion?: number | null;
 }
 
 /**

@@ -148,6 +148,65 @@ export async function getMoodleTarget(examenId: string): Promise<MoodleTargetRes
 }
 
 // ---------------------------------------------------------------------------
+// Configuración del examen: el docente la define, la plataforma la aplica.
+// GET/PATCH /api/v1/exam-content/{id}/config — las validaciones finales son
+// server-side; el cliente sólo valida lo básico para feedback inmediato.
+// ---------------------------------------------------------------------------
+
+/** Configuración de un examen (la define el docente; la aplica la plataforma). */
+export interface ExamConfig {
+  /** Minutos de tiempo límite. null = sin límite (no hay cuenta regresiva). */
+  tiempo_limite_min: number | null;
+  /** Intentos permitidos por alumno (mín 1). */
+  intentos_permitidos: number;
+  /** ISO 8601 de apertura de la ventana de rendición. null = sin restricción. */
+  apertura: string | null;
+  /** ISO 8601 de cierre de la ventana de rendición. null = sin restricción. */
+  cierre: string | null;
+  /** Nota máxima de la escala (ej. 10 o 100). */
+  nota_maxima: number;
+  /** Nota mínima para aprobar (debe ser ≤ nota_maxima). */
+  nota_aprobacion: number;
+  /** Si true, las preguntas se muestran en orden aleatorio estable por sesión. */
+  mezclar_preguntas: boolean;
+}
+
+/** Lee la configuración del examen. Admin-only. GET /exam-content/{id}/config */
+export async function getExamConfig(examenId: string): Promise<ExamConfig> {
+  const res = await fetch(`/api/v1/exam-content/${examenId}/config`, {
+    method: 'GET',
+    headers: authHeaders(),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.detail?.mensaje ?? body?.detail ?? `Error ${res.status}`);
+  }
+  return res.json() as Promise<ExamConfig>;
+}
+
+/**
+ * Actualiza (parcialmente) la configuración del examen. Admin-only.
+ * PATCH /exam-content/{id}/config — acepta un subconjunto de campos.
+ * Las validaciones definitivas (aprobación ≤ máxima, apertura < cierre, etc.)
+ * las hace el backend; devuelve 422 con `detail` si algo no valida.
+ */
+export async function setExamConfig(
+  examenId: string,
+  patch: Partial<ExamConfig>,
+): Promise<ExamConfig> {
+  const res = await fetch(`/api/v1/exam-content/${examenId}/config`, {
+    method: 'PATCH',
+    headers: authHeaders(),
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.detail?.mensaje ?? body?.detail ?? `Error ${res.status}`);
+  }
+  return res.json() as Promise<ExamConfig>;
+}
+
+// ---------------------------------------------------------------------------
 // Selección de preguntas del examen (opción B): el docente elige qué preguntas
 // del pool importado forman el examen. El alumno rinde solo las seleccionadas.
 // ---------------------------------------------------------------------------

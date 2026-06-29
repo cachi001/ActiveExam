@@ -126,9 +126,25 @@ export default function Cierre() {
             <div className="flex items-start gap-sm">
               <Icon name={irARevision ? 'hourglass_top' : 'grade'} className={irARevision ? 'text-warning' : 'text-success'} fill />
               <div className="min-w-0">
-                <p className="text-headline-sm font-semibold text-on-surface">
-                  {irARevision ? <>Tu nota preliminar: {nota!.nota}</> : <>Tu nota: {nota!.nota}</>}
-                </p>
+                <div className="flex items-center gap-sm flex-wrap">
+                  <p className="text-headline-sm font-semibold text-on-surface">
+                    {irARevision ? 'Tu nota preliminar: ' : 'Tu nota: '}
+                    {nota!.nota}
+                    {nota!.nota_maxima != null ? ` / ${nota!.nota_maxima}` : ''}
+                  </p>
+                  {nota!.aprobado != null && (
+                    <span
+                      className={`inline-flex items-center gap-xs text-label-sm font-medium rounded-full px-sm py-0.5 ${
+                        nota!.aprobado
+                          ? 'bg-success-container text-success'
+                          : 'bg-error-container text-on-error-container'
+                      }`}
+                    >
+                      <Icon name={nota!.aprobado ? 'check_circle' : 'cancel'} className="text-[14px]" fill />
+                      {nota!.aprobado ? 'Aprobado' : 'Desaprobado'}
+                    </span>
+                  )}
+                </div>
                 <p className="text-label-md text-on-surface mt-base">
                   {irARevision
                     ? <>Tu examen quedó <strong>en cola de revisión</strong> por los eventos registrados durante la supervisión. Un docente la revisará y confirmará tu nota.</>
