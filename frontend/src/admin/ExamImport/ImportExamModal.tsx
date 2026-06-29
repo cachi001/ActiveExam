@@ -10,8 +10,10 @@
  * Reusa el patrón de portal/overlay/Escape/foco de ConfirmModal. Renderiza vía
  * createPortal a document.body. Cierra con Escape y click en el backdrop.
  *
- * Estilo de inputs (pedido explícito): esquinas rectas (rounded-none), grandes
- * (px-4 py-3, text-base), full-width, separados (space-y-5), label arriba.
+ * Estilo (rediseño minimalista): modal compacto (max-w-md), título sobrio,
+ * ritmo prolijo (space-y-4), inputs de altura moderada (py-2.5 text-sm) con
+ * radio chico consistente, y un dropzone elegante para el archivo (en vez del
+ * input nativo feo). El color de acción es el primary del design system.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -38,13 +40,13 @@ interface ImportReport {
   importadas: number;
 }
 
-// Clases compartidas de los inputs: rectos, grandes, separados, foco visible.
+// Clases compartidas de los inputs: compactos, radio chico, foco con primary.
 const INPUT_CLASS =
-  'w-full rounded-none border border-outline bg-surface px-4 py-3 text-base ' +
+  'w-full rounded-md border border-outline bg-surface px-3 py-2.5 text-sm ' +
   'text-on-surface outline-none transition-colors focus:border-primary ' +
   'disabled:opacity-50 disabled:cursor-not-allowed';
-const LABEL_CLASS = 'block text-label-md font-medium text-on-surface';
-const HELPER_CLASS = 'mt-1 text-label-sm text-on-surface-variant';
+const LABEL_CLASS = 'block text-sm font-medium text-on-surface';
+const HELPER_CLASS = 'mt-1 text-xs text-on-surface-variant';
 
 export function ImportExamModal({ abierto, onCerrar, onImportado }: ImportExamModalProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -52,6 +54,7 @@ export function ImportExamModal({ abierto, onCerrar, onImportado }: ImportExamMo
 
   // ── Paso 1: archivo + título ──────────────────────────────────────────────
   const [file, setFile] = useState<File | null>(null);
+  const [arrastrando, setArrastrando] = useState(false);
   const [titulo, setTitulo] = useState('');
 
   // ── Paso 2: materia + comisión ────────────────────────────────────────────
@@ -78,8 +81,21 @@ export function ImportExamModal({ abierto, onCerrar, onImportado }: ImportExamMo
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Toma el primer archivo de un FileList (acepta solo .xml; si arrastran otro
+  // formato lo ignoramos en silencio, igual que el accept del input).
+  const tomarArchivo = useCallback((files: FileList | null) => {
+    const f = files?.[0];
+    if (f && f.name.toLowerCase().endsWith('.xml')) setFile(f);
+  }, []);
+
+  const quitarArchivo = useCallback(() => {
+    setFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }, []);
+
   const resetForm = useCallback(() => {
     setFile(null);
+    setArrastrando(false);
     setTitulo('');
     setModo('existente');
     setMateriaId('');
@@ -239,20 +255,21 @@ export function ImportExamModal({ abierto, onCerrar, onImportado }: ImportExamMo
         role="dialog"
         aria-modal="true"
         aria-labelledby="import-modal-titulo"
-        className="my-auto w-full max-w-[560px] bg-surface-container-lowest shadow-card-lg
+        className="my-auto flex max-h-[85vh] w-full max-w-md flex-col overflow-hidden
+          rounded-xl bg-surface-container-lowest shadow-card-lg
           border border-outline-variant/40 animate-in zoom-in fade-in"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
-        <div className="flex items-start justify-between gap-md border-b border-outline-variant/40 px-lg py-base">
+        {/* Header sticky, sobrio */}
+        <div className="flex shrink-0 items-start justify-between gap-sm border-b border-outline-variant/60 px-5 py-4">
           <div className="min-w-0">
             <h2
               id="import-modal-titulo"
-              className="font-headline text-title-lg tracking-tight text-on-surface"
+              className="text-lg font-semibold leading-tight tracking-tight text-on-surface"
             >
               Importar examen
             </h2>
-            <p className="mt-0.5 text-label-sm text-on-surface-variant">
+            <p className="mt-0.5 text-sm text-on-surface-variant">
               Subí un XML de Moodle y asocialo a una materia y comisión.
             </p>
           </div>
@@ -261,41 +278,88 @@ export function ImportExamModal({ abierto, onCerrar, onImportado }: ImportExamMo
             type="button"
             onClick={onCerrar}
             aria-label="Cerrar"
-            className="shrink-0 rounded-md p-1 text-on-surface-variant transition-colors
+            className="-mr-1 -mt-0.5 shrink-0 rounded-md p-1.5 text-on-surface-variant transition-colors
               hover:bg-surface-container hover:text-on-surface
               focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
           >
-            <Icon name="close" className="text-[22px]" />
+            <Icon name="close" className="text-[20px]" />
           </button>
         </div>
 
         {/* Body scrolleable */}
-        <form onSubmit={handleSubmit} className="max-h-[70vh] overflow-y-auto px-lg py-lg">
-          <div className="space-y-5">
-            {/* 1. Archivo XML (obligatorio) */}
+        <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-5">
+            {/* 1. Archivo XML (obligatorio) — dropzone elegante */}
             <div>
               <label className={LABEL_CLASS} htmlFor="import-file">
                 Archivo Moodle XML <span className="text-error">*</span>
               </label>
-              <p className={HELPER_CLASS}>Exportá el banco de preguntas desde Moodle en formato XML.</p>
+
+              {/* Input nativo oculto: lo disparamos desde el dropzone/chip. */}
               <input
                 ref={fileInputRef}
                 id="import-file"
                 type="file"
                 accept=".xml"
-                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-                className="mt-2 block w-full cursor-pointer rounded-none border border-outline
-                  bg-surface px-4 py-3 text-base text-on-surface outline-none transition-colors
-                  focus:border-primary
-                  file:mr-4 file:rounded-none file:border-0 file:bg-primary file:px-4 file:py-2
-                  file:text-label-md file:font-medium file:text-on-primary hover:file:bg-primary-700"
+                className="sr-only"
+                onChange={(e) => tomarArchivo(e.target.files)}
               />
-              {file && (
-                <p className="mt-2 flex items-center gap-1 text-label-sm text-on-surface-variant">
-                  <Icon name="description" className="text-[16px]" />
-                  <span className="truncate">{file.name}</span>
-                </p>
+
+              {file ? (
+                // Chip prolijo con el archivo elegido.
+                <div className="mt-2 flex items-center gap-3 rounded-md border border-outline-variant bg-surface-container-low px-3 py-2.5">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary-fixed text-primary">
+                    <Icon name="description" className="text-[20px]" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-on-surface">{file.name}</p>
+                    <p className="text-xs text-on-surface-variant">
+                      {(file.size / 1024).toFixed(0)} KB · XML de Moodle
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={quitarArchivo}
+                    aria-label="Quitar archivo"
+                    className="shrink-0 rounded-md p-1.5 text-on-surface-variant transition-colors
+                      hover:bg-surface-container hover:text-on-surface
+                      focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                  >
+                    <Icon name="close" className="text-[18px]" />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setArrastrando(true);
+                  }}
+                  onDragLeave={() => setArrastrando(false)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setArrastrando(false);
+                    tomarArchivo(e.dataTransfer.files);
+                  }}
+                  className={`mt-2 flex w-full flex-col items-center justify-center gap-1.5
+                    rounded-md border border-dashed px-4 py-6 text-center transition-colors
+                    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${
+                      arrastrando
+                        ? 'border-primary bg-primary-fixed/40'
+                        : 'border-outline hover:border-primary hover:bg-surface-container-low'
+                    }`}
+                >
+                  <Icon name="upload_file" className="text-[26px] text-primary" />
+                  <span className="text-sm font-medium text-primary">Seleccioná un archivo</span>
+                  <span className="text-xs text-on-surface-variant">
+                    o arrastrá el XML de Moodle aquí
+                  </span>
+                </button>
               )}
+              <p className={HELPER_CLASS}>
+                Exportá el banco de preguntas desde Moodle en formato XML.
+              </p>
             </div>
 
             {/* 2. Título (obligatorio) */}
@@ -319,17 +383,20 @@ export function ImportExamModal({ abierto, onCerrar, onImportado }: ImportExamMo
                 Materia y comisión <span className="text-error">*</span>
               </span>
 
-              {/* Toggle segmented */}
-              <div className="mt-2 inline-flex w-full border border-outline" role="tablist">
+              {/* Toggle segmentado prolijo */}
+              <div
+                className="mt-2 inline-flex w-full gap-1 rounded-md border border-outline-variant bg-surface-container-low p-1"
+                role="tablist"
+              >
                 <button
                   type="button"
                   role="tab"
                   aria-selected={modo === 'existente'}
                   onClick={() => setModo('existente')}
-                  className={`flex-1 px-4 py-2.5 text-label-md font-medium transition-colors ${
+                  className={`flex-1 rounded-[5px] px-3 py-1.5 text-sm font-medium transition-colors ${
                     modo === 'existente'
-                      ? 'bg-primary text-on-primary'
-                      : 'bg-surface text-on-surface-variant hover:bg-surface-container'
+                      ? 'bg-primary text-on-primary shadow-sm'
+                      : 'text-on-surface-variant hover:text-on-surface'
                   }`}
                 >
                   Usar existente
@@ -339,10 +406,10 @@ export function ImportExamModal({ abierto, onCerrar, onImportado }: ImportExamMo
                   role="tab"
                   aria-selected={modo === 'nueva'}
                   onClick={() => setModo('nueva')}
-                  className={`flex-1 border-l border-outline px-4 py-2.5 text-label-md font-medium transition-colors ${
+                  className={`flex-1 rounded-[5px] px-3 py-1.5 text-sm font-medium transition-colors ${
                     modo === 'nueva'
-                      ? 'bg-primary text-on-primary'
-                      : 'bg-surface text-on-surface-variant hover:bg-surface-container'
+                      ? 'bg-primary text-on-primary shadow-sm'
+                      : 'text-on-surface-variant hover:text-on-surface'
                   }`}
                 >
                   Crear nueva
@@ -459,25 +526,25 @@ export function ImportExamModal({ abierto, onCerrar, onImportado }: ImportExamMo
             </div>
 
             {/* 4. Destino Moodle (opcional, colapsable) */}
-            <div className="border border-outline-variant/60">
+            <div className="rounded-md border border-outline-variant/60">
               <button
                 type="button"
                 onClick={() => setMostrarDestino((v) => !v)}
                 aria-expanded={mostrarDestino}
-                className="flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-surface-container"
+                className="flex w-full items-center justify-between rounded-md px-3 py-2.5 text-left transition-colors hover:bg-surface-container-low"
               >
-                <span className="text-label-md font-medium text-on-surface">
+                <span className="text-sm font-medium text-on-surface">
                   Destino de la nota en Moodle{' '}
                   <span className="font-normal text-on-surface-variant">(opcional)</span>
                 </span>
                 <Icon
                   name={mostrarDestino ? 'expand_less' : 'expand_more'}
-                  className="text-[22px] text-on-surface-variant"
+                  className="text-[20px] text-on-surface-variant"
                 />
               </button>
               {mostrarDestino && (
-                <div className="space-y-4 border-t border-outline-variant/60 px-4 py-4">
-                  <p className="text-label-sm text-on-surface-variant">
+                <div className="space-y-4 border-t border-outline-variant/60 px-3 py-3.5">
+                  <p className="text-xs text-on-surface-variant">
                     A qué curso y actividad de Moodle se le devolverá la nota. Podés
                     completarlo ahora o más tarde.
                   </p>
@@ -514,18 +581,19 @@ export function ImportExamModal({ abierto, onCerrar, onImportado }: ImportExamMo
             </div>
 
             {error && (
-              <div className="border border-error-200 bg-error-50 px-4 py-3 text-label-md text-error-700">
-                {error}
+              <div className="flex items-start gap-2 rounded-md border border-error-200 bg-error-50 px-3 py-2.5 text-sm text-error-700">
+                <Icon name="error" className="mt-0.5 shrink-0 text-[18px]" />
+                <span>{error}</span>
               </div>
             )}
           </div>
 
-          {/* Footer acciones */}
-          <div className="mt-6 flex items-center justify-end gap-sm border-t border-outline-variant/40 pt-4">
-            <Button type="button" variant="ghost" size="md" onClick={onCerrar} disabled={enviando}>
+          {/* Footer acciones — alineado a la derecha, sticky al fondo */}
+          <div className="flex shrink-0 items-center justify-end gap-2 border-t border-outline-variant/60 px-5 py-3.5">
+            <Button type="button" variant="ghost" size="sm" onClick={onCerrar} disabled={enviando}>
               Cancelar
             </Button>
-            <Button type="submit" variant="primary" size="md" icon="upload" disabled={!puedeEnviar}>
+            <Button type="submit" variant="primary" size="sm" icon="upload" disabled={!puedeEnviar}>
               {enviando ? 'Importando…' : 'Importar examen'}
             </Button>
           </div>

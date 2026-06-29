@@ -14,29 +14,29 @@ export default {
         // `primary.container`. Una sola fuente de verdad, escala completa, sin
         // tener que agregar key por key cada vez que se necesita un nuevo paso.
 
-        // ── PRIMARY — azul institucional (blue de Tailwind) ─────────────────
+        // ── PRIMARY — azul institucional profundo (#004BA8) ─────────────────
         primary: {
-          DEFAULT: "#2563eb",   // blue-600
-          50:  "#eff6ff",
-          100: "#dbeafe",
-          200: "#bfdbfe",
-          300: "#93c5fd",
-          400: "#60a5fa",
-          500: "#3b82f6",
-          600: "#2563eb",
-          700: "#1d4ed8",
-          800: "#1e40af",
-          900: "#1e3a8a",
+          DEFAULT: "#004BA8",   // azul institucional
+          50:  "#e8eff8",
+          100: "#cdddf1",
+          200: "#9bbbe3",
+          300: "#6899d5",
+          400: "#3677c7",
+          500: "#0a5fc0",
+          600: "#004BA8",
+          700: "#003d8a",
+          800: "#002f6c",
+          900: "#00214e",
           // Alias semánticos del design system
-          container: "#3b82f6",   // bg fuerte (= blue-500)
-          fixed: "#dbeafe",       // fondo suave (= blue-100)
-          "fixed-dim": "#93c5fd", // borde sobre fixed (= blue-300)
+          container: "#0a5fc0",   // bg fuerte (un paso más claro que el default)
+          fixed: "#d6e4f5",       // fondo suave (chips, íconos)
+          "fixed-dim": "#9bbbe3", // borde sobre fixed
         },
         "on-primary": "#ffffff",
-        "on-primary-container": "#dbeafe",
-        "on-primary-fixed": "#0c2766",
-        "on-primary-fixed-variant": "#1d4ed8",
-        "inverse-primary": "#93c5fd",
+        "on-primary-container": "#d6e4f5",
+        "on-primary-fixed": "#00214e",
+        "on-primary-fixed-variant": "#003d8a",
+        "inverse-primary": "#9bbbe3",
 
         // ── SECONDARY — misma familia para coherencia ───────────────────────
         secondary: {
