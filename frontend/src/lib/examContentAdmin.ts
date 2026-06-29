@@ -113,6 +113,106 @@ export async function asociarExamenAComision(
   return res.json() as Promise<AsociarComisionResponse>;
 }
 
+// ---------------------------------------------------------------------------
+// C-69: CRUD de materias y comisiones (admin-only).
+// Endpoints bajo /api/v1/exam-content/ (mismo guard Bearer que el resto).
+// Manejo de error unificado: el objeto Error lleva `.status` HTTP para que
+// el llamador distinga 409 (duplicado) / 422 (validación) / 404 (no existe).
+// ---------------------------------------------------------------------------
+
+/** Construye y lanza un error tipado con `.status` a partir de la respuesta HTTP. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function throwAdminError(res: Response): Promise<never> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const body: any = await res.json().catch(() => ({}));
+  const msg: string =
+    body?.error ??
+    body?.detail?.mensaje ??
+    body?.detail ??
+    `Error ${res.status}`;
+  const err = Object.assign(new Error(msg), { status: res.status });
+  throw err;
+}
+
+/** Crea una materia nueva. Admin-only. POST /exam-content/materias.
+ *  409 → duplicado  |  422 → validacion_dominio. */
+export async function crearMateria(data: {
+  codigo: string;
+  nombre: string;
+}): Promise<MateriaResponse> {
+  const res = await fetch('/api/v1/exam-content/materias', {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) return throwAdminError(res);
+  return res.json() as Promise<MateriaResponse>;
+}
+
+/** Actualiza el nombre de una materia existente. Admin-only.
+ *  PATCH /exam-content/materias/{materiaId}.  404 → no existe. */
+export async function actualizarMateria(
+  materiaId: string,
+  data: { nombre: string },
+): Promise<MateriaResponse> {
+  const res = await fetch(
+    `/api/v1/exam-content/materias/${encodeURIComponent(materiaId)}`,
+    {
+      method: 'PATCH',
+      headers: authHeaders(),
+      body: JSON.stringify(data),
+    },
+  );
+  if (!res.ok) return throwAdminError(res);
+  return res.json() as Promise<MateriaResponse>;
+}
+
+/** Crea una comisión bajo una materia. Admin-only.
+ *  POST /exam-content/materias/{materiaId}/comisiones.
+ *  404 → materia no existe  |  409 → duplicado  |  422 → validacion_dominio. */
+export async function crearComision(
+  materiaId: string,
+  data: {
+    codigo: string;
+    nombre: string;
+    periodo?: string | null;
+    anio?: number | null;
+  },
+): Promise<ComisionResponse> {
+  const res = await fetch(
+    `/api/v1/exam-content/materias/${encodeURIComponent(materiaId)}/comisiones`,
+    {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify(data),
+    },
+  );
+  if (!res.ok) return throwAdminError(res);
+  return res.json() as Promise<ComisionResponse>;
+}
+
+/** Actualiza una comisión existente. Admin-only.
+ *  PATCH /exam-content/comisiones/{comisionId}.  404 → no existe. */
+export async function actualizarComision(
+  comisionId: string,
+  data: {
+    nombre: string;
+    periodo?: string | null;
+    anio?: number | null;
+  },
+): Promise<ComisionResponse> {
+  const res = await fetch(
+    `/api/v1/exam-content/comisiones/${encodeURIComponent(comisionId)}`,
+    {
+      method: 'PATCH',
+      headers: authHeaders(),
+      body: JSON.stringify(data),
+    },
+  );
+  if (!res.ok) return throwAdminError(res);
+  return res.json() as Promise<ComisionResponse>;
+}
+
 /**
  * Define (o reemplaza) el destino de la nota en Moodle para un examen ya
  * importado: a qué curso (courseid) y actividad/calificación (cmid) se le

@@ -43,6 +43,7 @@ export const STAFF_NAV: StaffNavItem[] = [
   { to: '/admin/proctoring-sessions',   icon: 'video_library',   label: 'Sesiones grabadas',       group: 'main',   roles: SUPERVISION },
   // Administración: separadas con divider. Solo admin.
   { to: '/admin/usuarios',              icon: 'manage_accounts', label: 'Usuarios',                group: 'config', roles: ADMIN },
+  { to: '/admin/materias',              icon: 'school',          label: 'Materias y comisiones',   group: 'config', roles: ADMIN },
   { to: '/admin/detection-test',        icon: 'bug_report',      label: 'Test de detección',       group: 'config', roles: ADMIN },
   { to: '/admin/configuracion',         icon: 'settings',        label: 'Configuración',           group: 'config', roles: ADMIN },
 ];

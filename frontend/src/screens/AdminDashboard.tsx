@@ -74,7 +74,7 @@ export default function AdminDashboard() {
         {/* Stat cards con datos reales (catálogo + sesiones de proctoring). Cuando
             no hay sesiones se muestra 0 / 0% (no "—"). */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-md">
-          <StatCard icon="quiz" label="Exámenes" value={cargando ? '…' : examenes.length} sub="importados" tono="primary" />
+          <StatCard icon="assignment" label="Exámenes" value={cargando ? '…' : examenes.length} sub="importados" tono="primary" />
           <StatCard icon="groups" label="Sesiones" value={totalSesiones ?? '…'} sub="supervisadas" tono="info" />
           <StatCard icon="flag" label="Tasa de flag" value={sesiones === null ? '…' : `${tasaFlag}%`} sub="en cola de revisión" tono="warning" />
         </div>
@@ -121,6 +121,7 @@ export default function AdminDashboard() {
               <AccionRapida to="/admin/reportes" icon="analytics" label="Ver reportes" />
               <AccionRapida to="/admin/auditoria" icon="policy" label="Auditoría" />
               <AccionRapida to="/admin/usuarios" icon="manage_accounts" label="Usuarios" />
+              <AccionRapida to="/admin/materias" icon="school" label="Materias y comisiones" />
             </div>
           </Card>
         </div>

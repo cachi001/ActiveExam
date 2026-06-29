@@ -91,3 +91,262 @@ describe('examContentAdmin — getMoodleTarget', () => {
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+// crearMateria — RED → GREEN → TRIANGULATE
+// ---------------------------------------------------------------------------
+
+describe('examContentAdmin — crearMateria', () => {
+  let fetchSpy: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => {
+    fetchSpy = vi.spyOn(globalThis, 'fetch');
+  });
+  afterEach(() => {
+    fetchSpy.mockRestore();
+  });
+
+  it('POST al endpoint correcto con token y body; devuelve MateriaResponse en 201', async () => {
+    const mock = { id: 'mat-1', codigo: 'CB101', nombre: 'Análisis Matemático I' };
+    fetchSpy.mockResolvedValueOnce({ ok: true, status: 201, json: async () => mock } as Response);
+
+    const { crearMateria } = await import('./examContentAdmin');
+    const res = await crearMateria({ codigo: 'CB101', nombre: 'Análisis Matemático I' });
+
+    expect(res.id).toBe('mat-1');
+    expect(res.codigo).toBe('CB101');
+    expect(res.nombre).toBe('Análisis Matemático I');
+    expect(fetchSpy).toHaveBeenCalledWith(
+      '/api/v1/exam-content/materias',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({ Authorization: 'Bearer tok' }),
+        body: JSON.stringify({ codigo: 'CB101', nombre: 'Análisis Matemático I' }),
+      }),
+    );
+  });
+
+  it('lanza error con status=409 ante código duplicado', async () => {
+    fetchSpy.mockResolvedValueOnce({
+      ok: false,
+      status: 409,
+      json: async () => ({ error: 'duplicado' }),
+    } as Response);
+
+    const { crearMateria } = await import('./examContentAdmin');
+    const promise = crearMateria({ codigo: 'CB101', nombre: 'Materia X' });
+
+    await expect(promise).rejects.toThrow('duplicado');
+    const err = await promise.catch((e: unknown) => e as Error & { status?: number });
+    expect(err.status).toBe(409);
+  });
+
+  it('lanza error con status=422 ante validación de dominio', async () => {
+    fetchSpy.mockResolvedValueOnce({
+      ok: false,
+      status: 422,
+      json: async () => ({ error: 'validacion_dominio' }),
+    } as Response);
+
+    const { crearMateria } = await import('./examContentAdmin');
+    const promise = crearMateria({ codigo: '', nombre: '' });
+
+    await expect(promise).rejects.toThrow('validacion_dominio');
+    const err = await promise.catch((e: unknown) => e as Error & { status?: number });
+    expect(err.status).toBe(422);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// actualizarMateria — RED → GREEN → TRIANGULATE
+// ---------------------------------------------------------------------------
+
+describe('examContentAdmin — actualizarMateria', () => {
+  let fetchSpy: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => {
+    fetchSpy = vi.spyOn(globalThis, 'fetch');
+  });
+  afterEach(() => {
+    fetchSpy.mockRestore();
+  });
+
+  it('PATCH al endpoint con materiaId en URL, token y body; devuelve MateriaResponse', async () => {
+    const mock = { id: 'mat-2', codigo: 'CB102', nombre: 'Física I — nuevo nombre' };
+    fetchSpy.mockResolvedValueOnce({ ok: true, status: 200, json: async () => mock } as Response);
+
+    const { actualizarMateria } = await import('./examContentAdmin');
+    const res = await actualizarMateria('mat-2', { nombre: 'Física I — nuevo nombre' });
+
+    expect(res.nombre).toBe('Física I — nuevo nombre');
+    expect(fetchSpy).toHaveBeenCalledWith(
+      '/api/v1/exam-content/materias/mat-2',
+      expect.objectContaining({
+        method: 'PATCH',
+        headers: expect.objectContaining({ Authorization: 'Bearer tok' }),
+        body: JSON.stringify({ nombre: 'Física I — nuevo nombre' }),
+      }),
+    );
+  });
+
+  it('lanza error con status=404 si la materia no existe', async () => {
+    fetchSpy.mockResolvedValueOnce({
+      ok: false,
+      status: 404,
+      json: async () => ({}),
+    } as Response);
+
+    const { actualizarMateria } = await import('./examContentAdmin');
+    const promise = actualizarMateria('no-existe', { nombre: 'X' });
+
+    await expect(promise).rejects.toThrow();
+    const err = await promise.catch((e: unknown) => e as Error & { status?: number });
+    expect(err.status).toBe(404);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// crearComision — RED → GREEN → TRIANGULATE
+// ---------------------------------------------------------------------------
+
+describe('examContentAdmin — crearComision', () => {
+  let fetchSpy: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => {
+    fetchSpy = vi.spyOn(globalThis, 'fetch');
+  });
+  afterEach(() => {
+    fetchSpy.mockRestore();
+  });
+
+  it('POST al endpoint con materiaId en URL, token y body; devuelve ComisionResponse', async () => {
+    const mock = {
+      id: 'com-1',
+      materia_id: 'mat-1',
+      codigo: '1A',
+      nombre: 'Comisión 1A',
+      periodo: '2026-1',
+      anio: 2026,
+    };
+    fetchSpy.mockResolvedValueOnce({ ok: true, status: 201, json: async () => mock } as Response);
+
+    const { crearComision } = await import('./examContentAdmin');
+    const res = await crearComision('mat-1', {
+      codigo: '1A',
+      nombre: 'Comisión 1A',
+      periodo: '2026-1',
+      anio: 2026,
+    });
+
+    expect(res.id).toBe('com-1');
+    expect(res.materia_id).toBe('mat-1');
+    expect(res.periodo).toBe('2026-1');
+    expect(fetchSpy).toHaveBeenCalledWith(
+      '/api/v1/exam-content/materias/mat-1/comisiones',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({ Authorization: 'Bearer tok' }),
+        body: JSON.stringify({ codigo: '1A', nombre: 'Comisión 1A', periodo: '2026-1', anio: 2026 }),
+      }),
+    );
+  });
+
+  it('lanza error con status=409 ante comision duplicada', async () => {
+    fetchSpy.mockResolvedValueOnce({
+      ok: false,
+      status: 409,
+      json: async () => ({ error: 'duplicado' }),
+    } as Response);
+
+    const { crearComision } = await import('./examContentAdmin');
+    const promise = crearComision('mat-1', { codigo: '1A', nombre: 'Comisión 1A' });
+
+    await expect(promise).rejects.toThrow('duplicado');
+    const err = await promise.catch((e: unknown) => e as Error & { status?: number });
+    expect(err.status).toBe(409);
+  });
+
+  it('incluye campos opcionales null si no se pasan', async () => {
+    const mock = { id: 'com-2', materia_id: 'mat-1', codigo: '1B', nombre: 'Comisión 1B', periodo: null, anio: null };
+    fetchSpy.mockResolvedValueOnce({ ok: true, status: 201, json: async () => mock } as Response);
+
+    const { crearComision } = await import('./examContentAdmin');
+    const res = await crearComision('mat-1', { codigo: '1B', nombre: 'Comisión 1B' });
+
+    expect(res.periodo).toBeNull();
+    expect(res.anio).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// actualizarComision — RED → GREEN → TRIANGULATE
+// ---------------------------------------------------------------------------
+
+describe('examContentAdmin — actualizarComision', () => {
+  let fetchSpy: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => {
+    fetchSpy = vi.spyOn(globalThis, 'fetch');
+  });
+  afterEach(() => {
+    fetchSpy.mockRestore();
+  });
+
+  it('PATCH al endpoint con comisionId en URL, token y body; devuelve ComisionResponse', async () => {
+    const mock = {
+      id: 'com-5',
+      materia_id: 'mat-3',
+      codigo: '2A',
+      nombre: 'Comisión 2A — actualizada',
+      periodo: '2026-2',
+      anio: 2026,
+    };
+    fetchSpy.mockResolvedValueOnce({ ok: true, status: 200, json: async () => mock } as Response);
+
+    const { actualizarComision } = await import('./examContentAdmin');
+    const res = await actualizarComision('com-5', {
+      nombre: 'Comisión 2A — actualizada',
+      periodo: '2026-2',
+      anio: 2026,
+    });
+
+    expect(res.nombre).toBe('Comisión 2A — actualizada');
+    expect(res.anio).toBe(2026);
+    expect(fetchSpy).toHaveBeenCalledWith(
+      '/api/v1/exam-content/comisiones/com-5',
+      expect.objectContaining({
+        method: 'PATCH',
+        headers: expect.objectContaining({ Authorization: 'Bearer tok' }),
+        body: JSON.stringify({ nombre: 'Comisión 2A — actualizada', periodo: '2026-2', anio: 2026 }),
+      }),
+    );
+  });
+
+  it('lanza error con status=404 si la comision no existe', async () => {
+    fetchSpy.mockResolvedValueOnce({
+      ok: false,
+      status: 404,
+      json: async () => ({}),
+    } as Response);
+
+    const { actualizarComision } = await import('./examContentAdmin');
+    const promise = actualizarComision('no-existe', { nombre: 'X' });
+
+    await expect(promise).rejects.toThrow();
+    const err = await promise.catch((e: unknown) => e as Error & { status?: number });
+    expect(err.status).toBe(404);
+  });
+
+  it('acepta periodo y anio nulos para limpiar los campos', async () => {
+    const mock = { id: 'com-6', materia_id: 'mat-1', codigo: '1C', nombre: 'Sin periodo', periodo: null, anio: null };
+    fetchSpy.mockResolvedValueOnce({ ok: true, status: 200, json: async () => mock } as Response);
+
+    const { actualizarComision } = await import('./examContentAdmin');
+    const res = await actualizarComision('com-6', { nombre: 'Sin periodo', periodo: null, anio: null });
+
+    expect(res.periodo).toBeNull();
+    expect(res.anio).toBeNull();
+    expect(fetchSpy).toHaveBeenCalledWith(
+      '/api/v1/exam-content/comisiones/com-6',
+      expect.objectContaining({
+        body: JSON.stringify({ nombre: 'Sin periodo', periodo: null, anio: null }),
+      }),
+    );
+  });
+});

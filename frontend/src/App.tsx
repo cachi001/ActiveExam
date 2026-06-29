@@ -33,6 +33,8 @@ import ProctoringRevisor from './screens/ProctoringRevisor';
 import ProctoringSessionDetail from './screens/ProctoringSessionDetail';
 // C-61: Gestión de usuarios y registro público
 import GestionUsuarios from './screens/GestionUsuarios';
+// C-69: Gestión de materias y comisiones (admin)
+import MateriasComisiones from './screens/MateriasComisiones';
 // C-68: Detalle de usuario
 import DetalleUsuario from './screens/DetalleUsuario';
 // C-69: Detalle de examen (alumnos, notas, sincronización Moodle)
@@ -91,6 +93,8 @@ export default function App() {
     '/admin/proctoring-session-detail': g(<ProctoringSessionDetail />, SUPERVISION),
     // C-61: Gestión de usuarios
     '/admin/usuarios': g(<GestionUsuarios />, ADMIN),
+    // C-69: Gestión de materias y comisiones
+    '/admin/materias': g(<MateriasComisiones />, ADMIN),
     // C-68: Detalle de usuario (ruta con parámetro dinámico /:id)
     '/admin/usuarios/:id': g(<DetalleUsuario />, ADMIN),
     // #10: Configuración del sistema (scoring por tipo de evento + ajustes globales futuros)
