@@ -75,6 +75,9 @@ export default function AlumnoMisExamenes() {
   const navigate = useNavigate();
   const setEnrollmentStatus = useApp((s) => s.setEnrollmentStatus);
   const setExamenActivo = useApp((s) => s.setExamenActivo);
+  // C-69: si el perfil (consentimiento + biometría) no está completo, la card del
+  // examen muestra "Completar perfil" en vez de "Rendir".
+  const perfilCompleto = useApp((s) => s.enrollmentStatus?.perfil_completo ?? false);
   const [inscripciones, setInscripciones] = useState<Inscripcion[]>([]);
   const [cargando, setCargando] = useState(true);
   const [verificandoId, setVerificandoId] = useState<string | null>(null);
@@ -313,7 +316,9 @@ export default function AlumnoMisExamenes() {
                     contenido={contenido}
                     rindiendo={rindiendoImportadoId === contenido.id}
                     gate={gateExamenImportado(contenido, notas)}
+                    perfilCompleto={perfilCompleto}
                     onRendir={() => handleRendirImportado(contenido)}
+                    onCompletarPerfil={() => navigate('/alumno/perfil')}
                   />
                 ))}
               </div>
@@ -333,22 +338,27 @@ interface ExamenImportadoCardProps {
   contenido: ExamenContenidoResumen;
   rindiendo: boolean;
   gate: GateImportado;
+  perfilCompleto: boolean;
   onRendir: () => void;
+  onCompletarPerfil: () => void;
 }
 
 /**
  * Card que muestra un examen importado desde Moodle XML en el catálogo del alumno.
  * PascalCase: componente React. Solo se muestra cuando USE_REAL_BACKEND=1.
- * El gate (ventana de disponibilidad + intentos) puede deshabilitar "Rendir" y
- * mostrar el motivo en lenguaje claro.
+ * Prioridad del CTA: perfil incompleto → "Completar perfil"; si no, el gate
+ * (ventana de disponibilidad + intentos) puede deshabilitar "Rendir".
  */
-function ExamenImportadoCard({ contenido, rindiendo, gate, onRendir }: ExamenImportadoCardProps) {
+function ExamenImportadoCard({ contenido, rindiendo, gate, perfilCompleto, onRendir, onCompletarPerfil }: ExamenImportadoCardProps) {
   const bloqueado = !gate.habilitado;
   const tiempo = contenido.tiempo_limite_min;
+  // El perfil tiene prioridad: sin consentimiento + biometría no se puede rendir.
+  const faltaPerfil = !perfilCompleto;
+  const inerte = faltaPerfil || bloqueado;
   return (
     <Card className="flex items-center justify-between gap-md p-md">
       <div className="flex items-start gap-sm min-w-0">
-        <div className={`w-9 h-9 rounded-md flex items-center justify-center shrink-0 mt-0.5 ${bloqueado ? 'bg-surface-container text-on-surface-variant' : 'bg-primary-fixed text-primary'}`}>
+        <div className={`w-9 h-9 rounded-md flex items-center justify-center shrink-0 mt-0.5 ${inerte ? 'bg-surface-container text-on-surface-variant' : 'bg-primary-fixed text-primary'}`}>
           <Icon name="quiz" className="text-[18px]" />
         </div>
         <div className="min-w-0">
@@ -359,22 +369,37 @@ function ExamenImportadoCard({ contenido, rindiendo, gate, onRendir }: ExamenImp
             {contenido.cantidad_preguntas} {contenido.cantidad_preguntas === 1 ? 'pregunta' : 'preguntas'}
             {typeof tiempo === 'number' && tiempo > 0 && ` · ${tiempo} min`}
           </p>
-          {bloqueado && gate.motivo && (
+          {faltaPerfil ? (
+            <p className="text-[12px] text-warning mt-1 flex items-center gap-1">
+              <Icon name="manage_accounts" className="text-[14px]" fill /> Completá tu perfil para poder rendir.
+            </p>
+          ) : bloqueado && gate.motivo && (
             <p className="text-[12px] text-error mt-1 flex items-center gap-1">
               <Icon name="lock" className="text-[14px]" fill /> {gate.motivo}
             </p>
           )}
         </div>
       </div>
-      <Button
-        variant="primary"
-        size="sm"
-        onClick={onRendir}
-        disabled={rindiendo || bloqueado}
-        icon={rindiendo ? undefined : bloqueado ? 'lock' : 'play_arrow'}
-      >
-        {rindiendo ? 'Verificando…' : 'Rendir'}
-      </Button>
+      {faltaPerfil ? (
+        <Button
+          variant="primary"
+          size="sm"
+          onClick={onCompletarPerfil}
+          icon="manage_accounts"
+        >
+          Completar perfil
+        </Button>
+      ) : (
+        <Button
+          variant="primary"
+          size="sm"
+          onClick={onRendir}
+          disabled={rindiendo || bloqueado}
+          icon={rindiendo ? undefined : bloqueado ? 'lock' : 'play_arrow'}
+        >
+          {rindiendo ? 'Verificando…' : 'Rendir'}
+        </Button>
+      )}
     </Card>
   );
 }
