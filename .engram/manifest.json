@@ -472,6 +472,14 @@
       "sessions": 0,
       "memories": 1,
       "prompts": 0
+    },
+    {
+      "id": "e9aac3ca",
+      "created_by": "Emiliano",
+      "created_at": "2026-06-29T20:40:15Z",
+      "sessions": 0,
+      "memories": 1,
+      "prompts": 0
     }
   ]
 }
