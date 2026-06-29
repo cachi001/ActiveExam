@@ -13,8 +13,6 @@ examen sin contenido sigue siendo válido).
 
 from __future__ import annotations
 
-import asyncio
-
 import pytest
 
 from app.application.exam_config.service import ExamConfigInput, ExamConfigService
@@ -62,64 +60,54 @@ def test_examen_dataclass_default_none() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_create_exam_persiste_examen_contenido_id() -> None:
-    async def run() -> None:
-        svc, exams = _service()
-        examen = await svc.create_exam(
-            ExamConfigInput(**_INPUT_BASE, examen_contenido_id=_CONTENIDO_ID)
-        )
-        assert examen.examen_contenido_id == _CONTENIDO_ID
-        persistido = await exams.get(examen.id)
-        assert persistido.examen_contenido_id == _CONTENIDO_ID
-
-    asyncio.run(run())
+@pytest.mark.asyncio
+async def test_create_exam_persiste_examen_contenido_id() -> None:
+    svc, exams = _service()
+    examen = await svc.create_exam(
+        ExamConfigInput(**_INPUT_BASE, examen_contenido_id=_CONTENIDO_ID)
+    )
+    assert examen.examen_contenido_id == _CONTENIDO_ID
+    persistido = await exams.get(examen.id)
+    assert persistido.examen_contenido_id == _CONTENIDO_ID
 
 
-def test_create_exam_sin_contenido_es_none() -> None:
-    async def run() -> None:
-        svc, _ = _service()
-        examen = await svc.create_exam(ExamConfigInput(**_INPUT_BASE))
-        assert examen.examen_contenido_id is None
-
-    asyncio.run(run())
+@pytest.mark.asyncio
+async def test_create_exam_sin_contenido_es_none() -> None:
+    svc, _ = _service()
+    examen = await svc.create_exam(ExamConfigInput(**_INPUT_BASE))
+    assert examen.examen_contenido_id is None
 
 
-def test_update_exam_asocia_contenido_a_examen_existente() -> None:
-    async def run() -> None:
-        svc, _ = _service()
-        examen = await svc.create_exam(ExamConfigInput(**_INPUT_BASE))
-        assert examen.examen_contenido_id is None
-        actualizado = await svc.update_exam(
-            examen.id,
-            ExamConfigInput(**_INPUT_BASE, examen_contenido_id=_CONTENIDO_ID),
-        )
-        assert actualizado.examen_contenido_id == _CONTENIDO_ID
-
-    asyncio.run(run())
+@pytest.mark.asyncio
+async def test_update_exam_asocia_contenido_a_examen_existente() -> None:
+    svc, _ = _service()
+    examen = await svc.create_exam(ExamConfigInput(**_INPUT_BASE))
+    assert examen.examen_contenido_id is None
+    actualizado = await svc.update_exam(
+        examen.id,
+        ExamConfigInput(**_INPUT_BASE, examen_contenido_id=_CONTENIDO_ID),
+    )
+    assert actualizado.examen_contenido_id == _CONTENIDO_ID
 
 
-def test_update_exam_sin_contenido_lo_desasocia() -> None:
-    async def run() -> None:
-        svc, _ = _service()
-        examen = await svc.create_exam(
-            ExamConfigInput(**_INPUT_BASE, examen_contenido_id=_CONTENIDO_ID)
-        )
-        actualizado = await svc.update_exam(examen.id, ExamConfigInput(**_INPUT_BASE))
-        assert actualizado.examen_contenido_id is None
-
-    asyncio.run(run())
+@pytest.mark.asyncio
+async def test_update_exam_sin_contenido_lo_desasocia() -> None:
+    svc, _ = _service()
+    examen = await svc.create_exam(
+        ExamConfigInput(**_INPUT_BASE, examen_contenido_id=_CONTENIDO_ID)
+    )
+    actualizado = await svc.update_exam(examen.id, ExamConfigInput(**_INPUT_BASE))
+    assert actualizado.examen_contenido_id is None
 
 
-def test_set_enabled_students_preserva_examen_contenido_id() -> None:
-    async def run() -> None:
-        svc, _ = _service()
-        examen = await svc.create_exam(
-            ExamConfigInput(**_INPUT_BASE, examen_contenido_id=_CONTENIDO_ID)
-        )
-        tras = await svc.set_enabled_students(examen.id, ["alu-1"])
-        assert tras.examen_contenido_id == _CONTENIDO_ID
-
-    asyncio.run(run())
+@pytest.mark.asyncio
+async def test_set_enabled_students_preserva_examen_contenido_id() -> None:
+    svc, _ = _service()
+    examen = await svc.create_exam(
+        ExamConfigInput(**_INPUT_BASE, examen_contenido_id=_CONTENIDO_ID)
+    )
+    tras = await svc.set_enabled_students(examen.id, ["alu-1"])
+    assert tras.examen_contenido_id == _CONTENIDO_ID
 
 
 # ---------------------------------------------------------------------------
