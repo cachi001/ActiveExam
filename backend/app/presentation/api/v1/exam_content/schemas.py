@@ -247,3 +247,39 @@ class SincronizarMoodleResponse(BaseModel):
     sin_token: int
     total: int
     mensaje: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# "Mis notas" del alumno (C-69, student-facing)
+# ---------------------------------------------------------------------------
+
+
+class MiNotaResponse(BaseModel):
+    """Una nota finalizada del alumno + estado de envío a Moodle + estado L2.5.
+
+    ``en_cola_revision`` (L2.5): True si el score de proctoring de la sesión supera
+    el umbral de cola de revisión (``score >= umbral_revision``). El score PRIORIZA
+    la revisión humana; NUNCA es una sanción.
+    L2.5 / D3: NUNCA incluye es_correcta ni respuestas.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    examen_id: str
+    examen_titulo: str
+    nota: float | None = None
+    estado_moodle: str  # pendiente | enviado | fallido | sin_token
+    en_cola_revision: bool
+    score: float | None = None
+    umbral_revision: float | None = None
+    eventos: int
+    finalizada_en: datetime | None = None
+
+
+class MisNotasResponse(BaseModel):
+    """Notas finalizadas del alumno autenticado (forma { items, total })."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[MiNotaResponse]
+    total: int

@@ -225,7 +225,10 @@ def create_slim_app() -> FastAPI:
         tags=["exam-content"],
     )
     app.include_router(
-        create_exam_taking_router(session_factory=session_factory),
+        create_exam_taking_router(
+            session_factory=session_factory,
+            writeback_svc=_writeback_svc,
+        ),
         prefix="/api/v1/exam-content",
         tags=["exam-content"],
     )

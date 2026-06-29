@@ -14,15 +14,23 @@ from dataclasses import dataclass
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.application.proctoring.scoring import calcular_score
 from app.infrastructure.persistence.models.exam_content import ExamenContenidoModel
 from app.infrastructure.persistence.models.moodle_writeback import (
     MoodleWritebackEstadoModel,
 )
-from app.infrastructure.persistence.models.proctoring import ProctoringSessionModel
+from app.infrastructure.persistence.models.proctoring import (
+    ProctoringEventModel,
+    ProctoringSessionModel,
+)
 
 # Estados de display posibles para el admin.
 ESTADO_SIN_TOKEN = "sin_token"
 ESTADO_PENDIENTE = "pendiente"
+
+# Umbral de cola de revision por defecto si el singleton de config no existe (mismo
+# default que ConfiguracionSistemaModel.umbral_cola_revision y el mock del frontend).
+UMBRAL_COLA_REVISION_DEFAULT = 70
 
 
 @dataclass(frozen=True, slots=True)
@@ -198,3 +206,173 @@ async def listar_estados_sincronizables(
         fila.moodle_cmid = cmid
 
     return filas
+
+
+# ===========================================================================
+# Read-model de "mis notas" para el ALUMNO (C-69, student-facing).
+#
+# Mismo origen de datos que el read-model del admin (proctoring_session FINALIZADA
+# + moodle_writeback_estado), pero SCOPED a un solo alumno (idnumber/email del JWT)
+# y enriquecido con el estado L2.5 "en cola de revision": el score de la sesion vs
+# el umbral_cola_revision del singleton de config. score >= umbral -> en cola.
+#
+# Consistente con la Cola de revision humana:
+# - umbral  = configuracion_sistema.umbral_cola_revision (ConfigService.get_efectiva)
+# - score   = calcular_score(eventos) con pesos vivos por tipo (evento_score_config)
+#             — la MISMA funcion que usa el detalle de sesion del proctor.
+# - compara = score >= umbral (igual que el frontend `enriquecerYFiltrar`).
+#
+# L2.5 / D3: NUNCA expone es_correcta ni respuestas. El score PRIORIZA, no sanciona.
+# ===========================================================================
+
+
+@dataclass(frozen=True, slots=True)
+class MiNota:
+    """Una fila de "mis notas": nota academica + estado de envio + estado L2.5."""
+
+    examen_id: str
+    examen_titulo: str
+    nota: float | None
+    estado_moodle: str
+    en_cola_revision: bool
+    score: float | None
+    umbral_revision: float | None
+    eventos: int
+    finalizada_en: object | None  # datetime tz-aware (lo serializa Pydantic)
+
+
+async def _umbral_cola_revision(db: AsyncSession) -> int:
+    """Umbral de cola de revision desde el singleton de config (default si falta).
+
+    Misma fuente que la Cola de revision humana (ConfigService.get_efectiva
+    -> ConfiguracionSistemaModel.umbral_cola_revision). Degradacion graceful: si la
+    tabla/singleton no esta disponible, cae al default institucional (70)."""
+    from app.infrastructure.persistence.models.transactional import (
+        ConfiguracionSistemaModel,
+    )
+
+    try:
+        row = await db.execute(select(ConfiguracionSistemaModel.umbral_cola_revision))
+        val = row.scalars().first()
+    except Exception:  # noqa: BLE001 — degradacion: sin config, usa el default
+        return UMBRAL_COLA_REVISION_DEFAULT
+    return int(val) if val is not None else UMBRAL_COLA_REVISION_DEFAULT
+
+
+async def _pesos_vivos_por_tipo(db: AsyncSession) -> dict[str, int] | None:
+    """Pesos vivos por tipo de evento desde evento_score_config (activos).
+
+    None si la tabla no esta disponible (degradacion graceful, RN-GLB-03): en ese
+    caso calcular_score cae al fallback por severidad. Misma fuente que el detalle
+    de sesion del proctor (consumo server-side de la config, no constantes)."""
+    from app.infrastructure.persistence.models.transactional import (
+        EventoScoreConfigModel,
+    )
+
+    try:
+        result = await db.execute(
+            select(
+                EventoScoreConfigModel.tipo_evento,
+                EventoScoreConfigModel.peso,
+            ).where(EventoScoreConfigModel.activo.is_(True))
+        )
+        return {row.tipo_evento: row.peso for row in result.all()}
+    except Exception:  # noqa: BLE001 — sin config, fallback por severidad
+        return None
+
+
+async def listar_mis_notas(
+    *,
+    db: AsyncSession,
+    alumno_idnumber: str,
+    alumno_email: str,
+    moodle_configurado: bool = True,
+) -> tuple[list[MiNota], int]:
+    """Notas finalizadas del alumno (idnumber/email del JWT) + estado L2.5.
+
+    Deriva de las sesiones FINALIZADAS del alumno con nota persistida
+    (moodle_writeback_estado), join con examen_contenido para el titulo. Para cada
+    sesion calcula el score de proctoring y lo compara contra umbral_cola_revision
+    para marcar ``en_cola_revision`` (score >= umbral). Orden: finalizada_en desc.
+
+    Identidad: un alumno ve SOLO sus filas (match exacto por idnumber O email; los
+    valores vacios no matchean para no colisionar entre alumnos sin idnumber)."""
+    conds = []
+    if alumno_idnumber:
+        conds.append(MoodleWritebackEstadoModel.alumno_idnumber == alumno_idnumber)
+    if alumno_email:
+        conds.append(MoodleWritebackEstadoModel.alumno_email == alumno_email)
+    if not conds:
+        # Sin identidad utilizable: no se puede aislar al alumno -> sin resultados.
+        return [], 0
+
+    stmt = (
+        select(
+            ProctoringSessionModel.id.label("session_id"),
+            ProctoringSessionModel.examen_contenido_id,
+            ProctoringSessionModel.finalizada_en,
+            ExamenContenidoModel.titulo.label("examen_titulo"),
+            MoodleWritebackEstadoModel.nota,
+            MoodleWritebackEstadoModel.estado,
+        )
+        .select_from(ProctoringSessionModel)
+        .join(
+            MoodleWritebackEstadoModel,
+            MoodleWritebackEstadoModel.session_id == ProctoringSessionModel.id,
+        )
+        .outerjoin(
+            ExamenContenidoModel,
+            ExamenContenidoModel.id == ProctoringSessionModel.examen_contenido_id,
+        )
+        .where(
+            ProctoringSessionModel.finalizada_en.isnot(None),
+            or_(*conds),
+        )
+        .order_by(
+            ProctoringSessionModel.finalizada_en.desc(),
+            ProctoringSessionModel.id,
+        )
+    )
+    rows = (await db.execute(stmt)).all()
+    if not rows:
+        return [], 0
+
+    session_ids = [r.session_id for r in rows]
+
+    # Eventos de las sesiones del alumno (tipo + severidad para el score, conteo).
+    ev_rows = (
+        await db.execute(
+            select(
+                ProctoringEventModel.session_id,
+                ProctoringEventModel.tipo,
+                ProctoringEventModel.severidad,
+            ).where(ProctoringEventModel.session_id.in_(session_ids))
+        )
+    ).all()
+    eventos_por_sesion: dict[str, list] = {}
+    for ev in ev_rows:
+        eventos_por_sesion.setdefault(ev.session_id, []).append(ev)
+
+    pesos = await _pesos_vivos_por_tipo(db)
+    umbral = await _umbral_cola_revision(db)
+
+    items: list[MiNota] = []
+    for r in rows:
+        evs = eventos_por_sesion.get(r.session_id, [])
+        score = calcular_score(evs, pesos_por_tipo=pesos)
+        items.append(
+            MiNota(
+                examen_id=r.examen_contenido_id or "",
+                examen_titulo=r.examen_titulo or "",
+                nota=float(r.nota) if r.nota is not None else None,
+                estado_moodle=estado_moodle_display(
+                    r.estado, moodle_configurado=moodle_configurado
+                ),
+                en_cola_revision=score >= umbral,
+                score=float(score),
+                umbral_revision=float(umbral),
+                eventos=len(evs),
+                finalizada_en=r.finalizada_en,
+            )
+        )
+    return items, len(items)

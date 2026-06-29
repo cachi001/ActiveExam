@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, s
 from app.application.exam_content.asociacion_service import AsociacionComisionService
 from app.application.moodle.resultados_query import (
     listar_estados_sincronizables,
+    listar_mis_notas,
     listar_resultados_examen,
 )
 from app.application.moodle.writeback_service import (
@@ -51,6 +52,8 @@ from app.presentation.api.v1.exam_content.schemas import (
     ExamenRendicionResponse,
     ImportReporteResponse,
     MateriaResponse,
+    MiNotaResponse,
+    MisNotasResponse,
     MoodleTargetRequest,
     MoodleTargetResponse,
     OmitidaItemResponse,
@@ -500,13 +503,21 @@ def create_exam_content_router(
     return router
 
 
-def create_exam_taking_router(session_factory=None) -> APIRouter:
+def create_exam_taking_router(
+    session_factory=None,
+    *,
+    writeback_svc: MoodleWritebackService | None = None,
+) -> APIRouter:
     """Router de lectura de examen para la rendición del alumno (C-69, D3).
 
     GET /            : cualquier principal autenticado lista los exámenes importados
                        con id, titulo y cantidad_preguntas (catálogo del alumno).
+    GET /mis-notas   : el alumno autenticado ve SUS notas finalizadas + estado L2.5.
     GET /{examen_id} : cualquier principal autenticado obtiene preguntas+opciones
                        en orden estable, SIN es_correcta (D3).
+
+    writeback_svc: None = Moodle no configurado; una nota 'pendiente' se muestra como
+    'sin_token' (igual que el read-model del admin).
     """
     router = APIRouter()
 
@@ -556,6 +567,62 @@ def create_exam_taking_router(session_factory=None) -> APIRouter:
             total=total,
             page=max(1, page),
             page_size=max(1, page_size),
+        )
+
+    # -----------------------------------------------------------------------
+    # "Mis notas" del alumno (C-69, student-facing). Cualquier principal
+    # autenticado ve SOLO sus notas finalizadas (identificado por el JWT:
+    # id_institucional -> alumno_idnumber, email -> alumno_email). Ruta estática
+    # declarada ANTES de "/{examen_id}" para que el path param no la capture.
+    # -----------------------------------------------------------------------
+
+    @router.get(
+        "/mis-notas",
+        response_model=MisNotasResponse,
+        summary="Mis notas finalizadas (nota + estado de envío + estado de revisión L2.5)",
+    )
+    async def mis_notas(
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    ) -> MisNotasResponse:
+        """Notas finalizadas del alumno autenticado + estado L2.5 'en cola de revisión'.
+
+        Identidad del alumno desde el JWT (id_institucional/email), igual que lo que
+        el write-back persiste (alumno_idnumber/alumno_email). Para cada examen:
+        nota académica, estado del envío a Moodle y si la sesión está en cola de
+        revisión (score de proctoring >= umbral_cola_revision). D3: es_correcta NUNCA
+        expuesta; el score PRIORIZA, no sanciona (L2.5).
+        """
+        if session_factory is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Persistencia no inicializada.",
+            )
+
+        moodle_configurado = writeback_svc is not None
+        async with session_factory() as session:
+            items, total = await listar_mis_notas(
+                db=session,
+                alumno_idnumber=principal.id_institucional or "",
+                alumno_email=principal.email or "",
+                moodle_configurado=moodle_configurado,
+            )
+
+        return MisNotasResponse(
+            items=[
+                MiNotaResponse(
+                    examen_id=r.examen_id,
+                    examen_titulo=r.examen_titulo,
+                    nota=r.nota,
+                    estado_moodle=r.estado_moodle,
+                    en_cola_revision=r.en_cola_revision,
+                    score=r.score,
+                    umbral_revision=r.umbral_revision,
+                    eventos=r.eventos,
+                    finalizada_en=r.finalizada_en,
+                )
+                for r in items
+            ],
+            total=total,
         )
 
     # -----------------------------------------------------------------------
