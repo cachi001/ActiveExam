@@ -484,6 +484,11 @@ function LockdownOverlay({ onVolverAPantallaCompleta }: { onVolverAPantallaCompl
         <div className="w-16 h-16 rounded-full bg-warning-container text-warning flex items-center justify-center mx-auto">
           <Icon name="fullscreen_exit" className="text-[36px]" fill />
         </div>
+        {/* Badge ámbar de advertencia: no se puede salir hasta finalizar el examen. */}
+        <div className="inline-flex items-center gap-base px-md py-sm rounded-lg bg-warning-container text-warning text-label-md font-bold mx-auto">
+          <Icon name="warning" className="text-[20px]" fill />
+          No podés salir de pantalla completa hasta finalizar el examen
+        </div>
         <div className="space-y-base">
           <h3 id="lockdown-overlay-titulo" className="font-headline text-headline-md text-on-surface">
             Volvé a pantalla completa para continuar
