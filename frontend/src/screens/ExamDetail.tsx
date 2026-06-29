@@ -16,7 +16,7 @@ import { StaffShell } from '../ui/shells';
 import { Badge, Button, Card, Icon, SectionTitle } from '../ui/components';
 import { STAFF_NAV } from '../ui/nav';
 import { useNavigate, useRouteParam } from '../lib/router';
-import { API_BASE, USE_REAL_BACKEND } from '../lib/api';
+import { api, API_BASE, USE_REAL_BACKEND } from '../lib/api';
 import { authProvider } from '../lib/authProvider';
 import { TableToolbar, type TableQuery } from '../ui/TableToolbar';
 import {
@@ -31,10 +31,14 @@ import {
   setPreguntasSeleccion,
   getExamConfig,
   setExamConfig,
+  asociarExamenAComision,
+  getMoodleTarget,
+  setMoodleTarget,
+  buildMoodleTarget,
   type PreguntaSeleccion,
   type ExamConfig,
 } from '../lib/examContentAdmin';
-import type { ExamenContenidoResumen } from '../lib/types';
+import type { ExamenContenidoResumen, Materia, Comision } from '../lib/types';
 
 // ---------------------------------------------------------------------------
 // Badge de estado Moodle
@@ -684,6 +688,417 @@ function ConfiguracionExamenSection({ examenId }: { examenId: string }) {
 }
 
 // ---------------------------------------------------------------------------
+// Sección: Comisión asociada (editar sobre un examen YA importado). Permite
+// reasignar la materia→comisión sin reimportar. Reusa el patrón de selects de
+// ImportExamModal (materias disponibles → comisiones de la materia).
+// ---------------------------------------------------------------------------
+
+// Inputs/selects de borde suave (como ImportExamModal): no se ven oscuros, el
+// foco vira a primary. Todo con design tokens, sin colores hardcodeados.
+const SOFT_INPUT_CLS =
+  'w-full rounded-md border border-outline-variant bg-surface px-3 py-2.5 text-sm ' +
+  'text-on-surface outline-none transition-colors hover:border-outline focus:border-primary ' +
+  'disabled:opacity-50 disabled:cursor-not-allowed';
+const SOFT_LABEL_CLS = 'block text-sm font-medium text-on-surface';
+
+function ComisionSection({
+  examenId,
+  materiaActual,
+  comisionActual,
+  onAsociada,
+}: {
+  examenId: string;
+  materiaActual: string | null | undefined;
+  comisionActual: string | null | undefined;
+  onAsociada: () => void;
+}) {
+  const [editando, setEditando] = useState(false);
+
+  const [materias, setMaterias] = useState<Materia[]>([]);
+  const [materiaId, setMateriaId] = useState('');
+  const [comisiones, setComisiones] = useState<Comision[]>([]);
+  const [comisionId, setComisionId] = useState('');
+  const [cargandoMaterias, setCargandoMaterias] = useState(false);
+  const [cargandoComisiones, setCargandoComisiones] = useState(false);
+
+  const [guardando, setGuardando] = useState(false);
+  const [ok, setOk] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Cargar materias al entrar en modo edición.
+  useEffect(() => {
+    if (!editando) return;
+    let cancelado = false;
+    setCargandoMaterias(true);
+    api
+      .materiasDisponibles()
+      .then((items) => {
+        if (!cancelado) setMaterias(items);
+      })
+      .catch(() => {
+        if (!cancelado) setMaterias([]);
+      })
+      .finally(() => {
+        if (!cancelado) setCargandoMaterias(false);
+      });
+    return () => {
+      cancelado = true;
+    };
+  }, [editando]);
+
+  // Cargar comisiones cuando cambia la materia elegida.
+  useEffect(() => {
+    if (!materiaId) {
+      setComisiones([]);
+      setComisionId('');
+      return;
+    }
+    let cancelado = false;
+    setCargandoComisiones(true);
+    setComisionId('');
+    api
+      .comisionesDeMateria(materiaId)
+      .then((items) => {
+        if (!cancelado) setComisiones(items);
+      })
+      .catch(() => {
+        if (!cancelado) setComisiones([]);
+      })
+      .finally(() => {
+        if (!cancelado) setCargandoComisiones(false);
+      });
+    return () => {
+      cancelado = true;
+    };
+  }, [materiaId]);
+
+  function abrir() {
+    setEditando(true);
+    setOk(false);
+    setError(null);
+    setMateriaId('');
+    setComisionId('');
+  }
+
+  function cancelar() {
+    setEditando(false);
+    setError(null);
+  }
+
+  async function guardar() {
+    if (!comisionId) return;
+    setGuardando(true);
+    setError(null);
+    setOk(false);
+    try {
+      await asociarExamenAComision(examenId, comisionId);
+      setOk(true);
+      setEditando(false);
+      onAsociada();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'No se pudo asociar la comisión.');
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  const actual = [materiaActual, comisionActual].filter(Boolean).join(' · ');
+
+  return (
+    <Card>
+      <SectionTitle
+        sub="Materia y comisión a la que pertenece este examen importado."
+        action={
+          !editando ? (
+            <Button variant="outline" size="sm" icon="edit" onClick={abrir}>
+              Cambiar comisión
+            </Button>
+          ) : undefined
+        }
+      >
+        Comisión asociada
+      </SectionTitle>
+
+      <div className="space-y-4">
+        {ok && (
+          <div
+            role="status"
+            className="flex items-center gap-sm text-success bg-success-container rounded-md px-3 py-2.5 text-label-sm"
+          >
+            <Icon name="check_circle" className="text-[18px] shrink-0" fill />
+            Comisión asociada.
+          </div>
+        )}
+        {error && (
+          <div
+            role="alert"
+            className="flex items-center gap-sm text-error bg-error-container/40 rounded-md px-3 py-2.5 text-label-sm"
+          >
+            <Icon name="error" className="text-[18px] shrink-0" fill />
+            {error}
+          </div>
+        )}
+
+        {!editando ? (
+          <div className="flex items-center gap-sm">
+            <Icon name="group" className="text-[20px] text-on-surface-variant shrink-0" />
+            <p className="text-label-md text-on-surface">
+              {actual || <span className="text-outline italic">— sin materia / comisión asignada</span>}
+            </p>
+          </div>
+        ) : (
+          <>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className={SOFT_LABEL_CLS} htmlFor="comision-materia">
+                  Materia
+                </label>
+                <select
+                  id="comision-materia"
+                  value={materiaId}
+                  onChange={(e) => setMateriaId(e.target.value)}
+                  disabled={cargandoMaterias || guardando}
+                  className={`${SOFT_INPUT_CLS} mt-2`}
+                >
+                  <option value="">
+                    {cargandoMaterias ? 'Cargando materias…' : 'Elegí una materia'}
+                  </option>
+                  {materias.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.nombre}
+                      {m.codigo ? ` (${m.codigo})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className={SOFT_LABEL_CLS} htmlFor="comision-comision">
+                  Comisión
+                </label>
+                <select
+                  id="comision-comision"
+                  value={comisionId}
+                  onChange={(e) => setComisionId(e.target.value)}
+                  disabled={!materiaId || cargandoComisiones || guardando}
+                  className={`${SOFT_INPUT_CLS} mt-2`}
+                >
+                  <option value="">
+                    {!materiaId
+                      ? 'Elegí primero una materia'
+                      : cargandoComisiones
+                        ? 'Cargando comisiones…'
+                        : 'Elegí una comisión'}
+                  </option>
+                  {comisiones.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.nombre}
+                      {c.codigo ? ` (${c.codigo})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <p className="text-xs text-on-surface-variant">
+              ¿No encontrás la materia o comisión? Creala en{' '}
+              <span className="font-medium text-on-surface">Administración → Materias</span>.
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" size="sm" onClick={cancelar} disabled={guardando}>
+                Cancelar
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                icon={guardando ? undefined : 'save'}
+                onClick={guardar}
+                disabled={guardando || !comisionId}
+              >
+                {guardando ? 'Guardando…' : 'Guardar comisión'}
+              </Button>
+            </div>
+          </>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Sección: Destino de la nota en Moodle (editar sobre un examen YA importado).
+// courseid/cmid precargados con getMoodleTarget; guardar llama setMoodleTarget.
+// Vaciar ambos campos → null/null = cae al destino global.
+// ---------------------------------------------------------------------------
+
+function DestinoMoodleSection({ examenId }: { examenId: string }) {
+  const [courseId, setCourseId] = useState('');
+  const [cmid, setCmid] = useState('');
+
+  const [cargando, setCargando] = useState(true);
+  const [errorCarga, setErrorCarga] = useState<string | null>(null);
+
+  const [guardando, setGuardando] = useState(false);
+  const [ok, setOk] = useState(false);
+  const [errorGuardar, setErrorGuardar] = useState<string | null>(null);
+
+  const cargar = useCallback(async () => {
+    setCargando(true);
+    setErrorCarga(null);
+    try {
+      const t = await getMoodleTarget(examenId);
+      setCourseId(t.moodle_courseid != null ? String(t.moodle_courseid) : '');
+      setCmid(t.moodle_cmid != null ? String(t.moodle_cmid) : '');
+    } catch (err: unknown) {
+      setErrorCarga(err instanceof Error ? err.message : 'No se pudo cargar el destino de Moodle.');
+    } finally {
+      setCargando(false);
+    }
+  }, [examenId]);
+
+  useEffect(() => {
+    cargar();
+  }, [cargar]);
+
+  function update(setter: (v: string) => void, value: string) {
+    setOk(false);
+    setErrorGuardar(null);
+    setter(value);
+  }
+
+  function limpiar() {
+    setOk(false);
+    setErrorGuardar(null);
+    setCourseId('');
+    setCmid('');
+  }
+
+  async function guardar() {
+    setGuardando(true);
+    setOk(false);
+    setErrorGuardar(null);
+    try {
+      const res = await setMoodleTarget(examenId, buildMoodleTarget(courseId, cmid));
+      setCourseId(res.moodle_courseid != null ? String(res.moodle_courseid) : '');
+      setCmid(res.moodle_cmid != null ? String(res.moodle_cmid) : '');
+      setOk(true);
+    } catch (err: unknown) {
+      setErrorGuardar(err instanceof Error ? err.message : 'No se pudo guardar el destino de Moodle.');
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  const vacio = courseId.trim() === '' && cmid.trim() === '';
+
+  return (
+    <Card>
+      <SectionTitle sub="A qué curso y actividad de Moodle se le devolverá la nota. Vacío = usa el destino global.">
+        Destino de la nota en Moodle
+      </SectionTitle>
+
+      {cargando && (
+        <div className="space-y-3 animate-pulse">
+          {[1, 2].map((i) => (
+            <div key={i} className="h-12 bg-surface-container-high rounded-lg" />
+          ))}
+        </div>
+      )}
+
+      {!cargando && errorCarga && (
+        <div className="space-y-md">
+          <div
+            role="alert"
+            className="flex items-center gap-sm text-error bg-error-container/40 rounded-md px-3 py-2.5 text-label-sm"
+          >
+            <Icon name="error" className="text-[18px] shrink-0" fill />
+            {errorCarga}
+          </div>
+          <Button variant="outline" size="sm" icon="refresh" onClick={cargar}>
+            Reintentar
+          </Button>
+        </div>
+      )}
+
+      {!cargando && !errorCarga && (
+        <div className="space-y-4">
+          {ok && (
+            <div
+              role="status"
+              className="flex items-center gap-sm text-success bg-success-container rounded-md px-3 py-2.5 text-label-sm"
+            >
+              <Icon name="check_circle" className="text-[18px] shrink-0" fill />
+              Destino guardado.
+            </div>
+          )}
+          {errorGuardar && (
+            <div
+              role="alert"
+              className="flex items-center gap-sm text-error bg-error-container/40 rounded-md px-3 py-2.5 text-label-sm"
+            >
+              <Icon name="error" className="text-[18px] shrink-0" fill />
+              {errorGuardar}
+            </div>
+          )}
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className={SOFT_LABEL_CLS} htmlFor="moodle-courseid">
+                ID del curso (courseid)
+              </label>
+              <input
+                id="moodle-courseid"
+                type="number"
+                inputMode="numeric"
+                value={courseId}
+                onChange={(e) => update(setCourseId, e.target.value)}
+                disabled={guardando}
+                placeholder="Ej: 42"
+                className={`${SOFT_INPUT_CLS} mt-2`}
+              />
+            </div>
+            <div>
+              <label className={SOFT_LABEL_CLS} htmlFor="moodle-cmid">
+                ID de la actividad (cmid)
+              </label>
+              <input
+                id="moodle-cmid"
+                type="number"
+                inputMode="numeric"
+                value={cmid}
+                onChange={(e) => update(setCmid, e.target.value)}
+                disabled={guardando}
+                placeholder="Ej: 128"
+                className={`${SOFT_INPUT_CLS} mt-2`}
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              icon="backspace"
+              onClick={limpiar}
+              disabled={guardando || vacio}
+            >
+              Limpiar destino
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              icon={guardando ? undefined : 'save'}
+              onClick={guardar}
+              disabled={guardando}
+            >
+              {guardando ? 'Guardando…' : 'Guardar destino'}
+            </Button>
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Componente principal
 // ---------------------------------------------------------------------------
 
@@ -718,16 +1133,21 @@ export default function ExamDetail() {
   // Carga del encabezado
   // ---------------------------------------------------------------------------
 
-  useEffect(() => {
+  const cargarHeader = useCallback(() => {
     if (!examenId) return;
     if (!USE_REAL_BACKEND) {
       setExamen({ id: examenId, titulo: 'Examen demo', cantidad_preguntas: 0, comision_nombre: null, materia_nombre: null });
       return;
     }
+    setHeaderError(null);
     getExamenHeaderFn(API_BASE, authProvider.getToken(), examenId)
       .then(setExamen)
       .catch((err: unknown) => setHeaderError(err instanceof Error ? err.message : String(err)));
   }, [examenId]);
+
+  useEffect(() => {
+    cargarHeader();
+  }, [cargarHeader]);
 
   // ---------------------------------------------------------------------------
   // Carga de resultados (serverside, depende de query)
@@ -908,6 +1328,19 @@ export default function ExamDetail() {
             }
           />
         )}
+
+        {/* Comisión asociada (editar sobre un examen ya importado) */}
+        {USE_REAL_BACKEND && (
+          <ComisionSection
+            examenId={examenId}
+            materiaActual={examen?.materia_nombre}
+            comisionActual={examen?.comision_nombre}
+            onAsociada={cargarHeader}
+          />
+        )}
+
+        {/* Destino de la nota en Moodle (editar sobre un examen ya importado) */}
+        {USE_REAL_BACKEND && <DestinoMoodleSection examenId={examenId} />}
 
         {/* Configuración del examen (tiempo, intentos, ventana, notas, mezclar) */}
         {USE_REAL_BACKEND && <ConfiguracionExamenSection examenId={examenId} />}

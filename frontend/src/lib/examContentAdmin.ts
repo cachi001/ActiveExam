@@ -234,6 +234,29 @@ export async function setMoodleTarget(
   return res.json() as Promise<MoodleTargetResponse>;
 }
 
+/**
+ * Convierte el valor de un input de courseid/cmid (texto) a `number | null`.
+ * Vacío (o solo espacios) → null (limpia el destino → cae al global). Un valor
+ * no numérico también cae a null para no enviar basura al backend.
+ */
+export function parseMoodleId(value: string): number | null {
+  const trimmed = value.trim();
+  if (trimmed === '') return null;
+  const n = Number(trimmed);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Arma un `MoodleTarget` a partir de los dos inputs de la UI (courseid + cmid).
+ * Ambos vacíos → destino limpio (null/null) = fallback al destino global.
+ */
+export function buildMoodleTarget(courseIdInput: string, cmidInput: string): MoodleTarget {
+  return {
+    moodle_courseid: parseMoodleId(courseIdInput),
+    moodle_cmid: parseMoodleId(cmidInput),
+  };
+}
+
 /** Lee el destino de la nota en Moodle de un examen importado. */
 export async function getMoodleTarget(examenId: string): Promise<MoodleTargetResponse> {
   const res = await fetch(`/api/v1/exam-content/${examenId}/moodle-target`, {

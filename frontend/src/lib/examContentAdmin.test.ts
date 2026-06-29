@@ -64,6 +64,90 @@ describe('examContentAdmin — setMoodleTarget', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Helpers de destino Moodle: parseMoodleId / buildMoodleTarget (puros)
+// ---------------------------------------------------------------------------
+
+describe('examContentAdmin — parseMoodleId', () => {
+  it('convierte texto numérico a número', async () => {
+    const { parseMoodleId } = await import('./examContentAdmin');
+    expect(parseMoodleId('42')).toBe(42);
+    expect(parseMoodleId('  128  ')).toBe(128);
+  });
+
+  it('vacío o solo espacios → null (limpia el destino)', async () => {
+    const { parseMoodleId } = await import('./examContentAdmin');
+    expect(parseMoodleId('')).toBeNull();
+    expect(parseMoodleId('   ')).toBeNull();
+  });
+
+  it('texto no numérico → null', async () => {
+    const { parseMoodleId } = await import('./examContentAdmin');
+    expect(parseMoodleId('abc')).toBeNull();
+  });
+});
+
+describe('examContentAdmin — buildMoodleTarget', () => {
+  it('arma el target con ambos ids', async () => {
+    const { buildMoodleTarget } = await import('./examContentAdmin');
+    expect(buildMoodleTarget('42', '128')).toEqual({ moodle_courseid: 42, moodle_cmid: 128 });
+  });
+
+  it('ambos vacíos → null/null (fallback global)', async () => {
+    const { buildMoodleTarget } = await import('./examContentAdmin');
+    expect(buildMoodleTarget('', '')).toEqual({ moodle_courseid: null, moodle_cmid: null });
+  });
+
+  it('uno solo cargado deja el otro en null', async () => {
+    const { buildMoodleTarget } = await import('./examContentAdmin');
+    expect(buildMoodleTarget('7', '')).toEqual({ moodle_courseid: 7, moodle_cmid: null });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// asociarExamenAComision — RED → GREEN → TRIANGULATE
+// ---------------------------------------------------------------------------
+
+describe('examContentAdmin — asociarExamenAComision', () => {
+  let fetchSpy: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => {
+    fetchSpy = vi.spyOn(globalThis, 'fetch');
+  });
+  afterEach(() => {
+    fetchSpy.mockRestore();
+  });
+
+  it('POST al endpoint con token y body; devuelve la asociación', async () => {
+    const mock = { examen_id: 'ex-1', comision_id: 'com-9' };
+    fetchSpy.mockResolvedValueOnce({ ok: true, status: 200, json: async () => mock } as Response);
+
+    const { asociarExamenAComision } = await import('./examContentAdmin');
+    const res = await asociarExamenAComision('ex-1', 'com-9');
+
+    expect(res.examen_id).toBe('ex-1');
+    expect(res.comision_id).toBe('com-9');
+    expect(fetchSpy).toHaveBeenCalledWith(
+      '/api/v1/exam-content/ex-1/comision',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({ Authorization: 'Bearer tok' }),
+        body: JSON.stringify({ comision_id: 'com-9' }),
+      }),
+    );
+  });
+
+  it('ante error HTTP propaga el detalle', async () => {
+    fetchSpy.mockResolvedValueOnce({
+      ok: false,
+      status: 404,
+      json: async () => ({ detail: 'Comisión no encontrada' }),
+    } as Response);
+
+    const { asociarExamenAComision } = await import('./examContentAdmin');
+    await expect(asociarExamenAComision('ex-2', 'no-existe')).rejects.toThrow('Comisión no encontrada');
+  });
+});
+
 describe('examContentAdmin — getMoodleTarget', () => {
   let fetchSpy: ReturnType<typeof vi.spyOn>;
   beforeEach(() => {
