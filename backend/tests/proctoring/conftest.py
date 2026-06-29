@@ -148,12 +148,23 @@ _TEST_JWT_ISSUER = "activeexam-auth"
 _TEST_JWT_AUDIENCE = "proctoring-api"
 
 
-def token_for(roles: list[str], *, mfa: bool = True) -> str:
+def token_for(
+    roles: list[str],
+    *,
+    mfa: bool = True,
+    username: str | None = None,
+    email: str = "test@uni.edu",
+) -> str:
     """Emite un JWT HS256 de test con los roles dados (claims shape Keycloak).
 
     ``mfa=True`` agrega ``amr=['otp']`` para satisfacer el segundo factor de los
     roles que lo exigen; los endpoints de proctoring slim solo chequean rol (no
     MFA), pero lo incluimos por defecto para no acoplar el test a esa decision.
+
+    ``username`` overridea el ``preferred_username`` (del que el dominio deriva
+    ``id_institucional``); ``email`` overridea el email. Por defecto coinciden con
+    el alumno historico ("estudiante"/"test@uni.edu"). Sirven para emitir tokens
+    de DOS alumnos distintos en los tests de propiedad de sesion (IDOR).
     """
     from app.infrastructure.auth.verifiers import encode_hs256
 
@@ -161,8 +172,8 @@ def token_for(roles: list[str], *, mfa: bool = True) -> str:
         "iss": _TEST_JWT_ISSUER,
         "aud": _TEST_JWT_AUDIENCE,
         "sub": "test-subject",
-        "preferred_username": "+".join(roles) or "anon",
-        "email": "test@uni.edu",
+        "preferred_username": username or ("+".join(roles) or "anon"),
+        "email": email,
         "exp": 9999999999,
         "realm_access": {"roles": roles},
     }
@@ -171,9 +182,17 @@ def token_for(roles: list[str], *, mfa: bool = True) -> str:
     return encode_hs256(claims, _TEST_JWT_SECRET)
 
 
-def auth_headers(roles: list[str], *, mfa: bool = True) -> dict[str, str]:
+def auth_headers(
+    roles: list[str],
+    *,
+    mfa: bool = True,
+    username: str | None = None,
+    email: str = "test@uni.edu",
+) -> dict[str, str]:
     """Header Authorization Bearer con un token de test para los roles dados."""
-    return {"Authorization": f"Bearer {token_for(roles, mfa=mfa)}"}
+    return {
+        "Authorization": f"Bearer {token_for(roles, mfa=mfa, username=username, email=email)}"
+    }
 
 
 def _build_test_jwt_validator():
