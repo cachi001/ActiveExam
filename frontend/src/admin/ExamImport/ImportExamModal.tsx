@@ -41,9 +41,10 @@ interface ImportReport {
 }
 
 // Clases compartidas de los inputs: compactos, radio chico, foco con primary.
+// Borde suave (outline-variant) para que no se vean oscuros; el foco vira a primary.
 const INPUT_CLASS =
-  'w-full rounded-md border border-outline bg-surface px-3 py-2.5 text-sm ' +
-  'text-on-surface outline-none transition-colors focus:border-primary ' +
+  'w-full rounded-md border border-outline-variant bg-surface px-3 py-2.5 text-sm ' +
+  'text-on-surface outline-none transition-colors hover:border-outline focus:border-primary ' +
   'disabled:opacity-50 disabled:cursor-not-allowed';
 const LABEL_CLASS = 'block text-sm font-medium text-on-surface';
 const HELPER_CLASS = 'mt-1 text-xs text-on-surface-variant';
@@ -255,7 +256,7 @@ export function ImportExamModal({ abierto, onCerrar, onImportado }: ImportExamMo
         role="dialog"
         aria-modal="true"
         aria-labelledby="import-modal-titulo"
-        className="my-auto flex max-h-[85vh] w-full max-w-md flex-col overflow-hidden
+        className="my-auto flex max-h-[85vh] w-full max-w-md sm:max-w-2xl flex-col overflow-hidden
           rounded-xl bg-surface-container-lowest shadow-card-lg
           border border-outline-variant/40 animate-in zoom-in fade-in"
         onClick={(e) => e.stopPropagation()}
@@ -347,7 +348,7 @@ export function ImportExamModal({ abierto, onCerrar, onImportado }: ImportExamMo
                     focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${
                       arrastrando
                         ? 'border-primary bg-primary-fixed/40'
-                        : 'border-outline hover:border-primary hover:bg-surface-container-low'
+                        : 'border-outline-variant hover:border-primary hover:bg-surface-container-low'
                     }`}
                 >
                   <Icon name="upload_file" className="text-[26px] text-primary" />
@@ -417,7 +418,7 @@ export function ImportExamModal({ abierto, onCerrar, onImportado }: ImportExamMo
               </div>
 
               {modo === 'existente' ? (
-                <div className="mt-4 space-y-4">
+                <div className="mt-4 grid gap-4 sm:grid-cols-2">
                   <div>
                     <label className={LABEL_CLASS} htmlFor="import-materia">
                       Materia
@@ -468,7 +469,7 @@ export function ImportExamModal({ abierto, onCerrar, onImportado }: ImportExamMo
                   </div>
                 </div>
               ) : (
-                <div className="mt-4 space-y-4">
+                <div className="mt-4 grid gap-4 sm:grid-cols-2">
                   <div>
                     <label className={LABEL_CLASS} htmlFor="import-materia-codigo">
                       Materia — código
@@ -548,33 +549,35 @@ export function ImportExamModal({ abierto, onCerrar, onImportado }: ImportExamMo
                     A qué curso y actividad de Moodle se le devolverá la nota. Podés
                     completarlo ahora o más tarde.
                   </p>
-                  <div>
-                    <label className={LABEL_CLASS} htmlFor="import-courseid">
-                      ID del curso (courseid)
-                    </label>
-                    <input
-                      id="import-courseid"
-                      type="number"
-                      inputMode="numeric"
-                      value={courseId}
-                      onChange={(e) => setCourseId(e.target.value)}
-                      placeholder="Ej: 42"
-                      className={`${INPUT_CLASS} mt-2`}
-                    />
-                  </div>
-                  <div>
-                    <label className={LABEL_CLASS} htmlFor="import-cmid">
-                      ID de la actividad (cmid)
-                    </label>
-                    <input
-                      id="import-cmid"
-                      type="number"
-                      inputMode="numeric"
-                      value={cmid}
-                      onChange={(e) => setCmid(e.target.value)}
-                      placeholder="Ej: 128"
-                      className={`${INPUT_CLASS} mt-2`}
-                    />
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div>
+                      <label className={LABEL_CLASS} htmlFor="import-courseid">
+                        ID del curso (courseid)
+                      </label>
+                      <input
+                        id="import-courseid"
+                        type="number"
+                        inputMode="numeric"
+                        value={courseId}
+                        onChange={(e) => setCourseId(e.target.value)}
+                        placeholder="Ej: 42"
+                        className={`${INPUT_CLASS} mt-2`}
+                      />
+                    </div>
+                    <div>
+                      <label className={LABEL_CLASS} htmlFor="import-cmid">
+                        ID de la actividad (cmid)
+                      </label>
+                      <input
+                        id="import-cmid"
+                        type="number"
+                        inputMode="numeric"
+                        value={cmid}
+                        onChange={(e) => setCmid(e.target.value)}
+                        placeholder="Ej: 128"
+                        className={`${INPUT_CLASS} mt-2`}
+                      />
+                    </div>
                   </div>
                 </div>
               )}

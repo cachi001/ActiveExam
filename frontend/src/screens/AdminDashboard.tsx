@@ -100,7 +100,7 @@ export default function AdminDashboard() {
                   </div>
                 ) : examenes.length === 0 ? (
                   <div className="px-lg py-xl flex flex-col items-center text-center gap-md text-on-surface-variant">
-                    <Icon name="quiz" className="text-[36px]" />
+                    <Icon name="assignment" className="text-[36px]" />
                     <p className="text-[14px]">Todavía no hay exámenes importados.</p>
                   </div>
                 ) : (
@@ -139,7 +139,7 @@ function ExamenContenidoRow({ examen }: { examen: ExamenContenidoResumen }) {
     >
       <div className="flex items-center gap-4 min-w-0">
         <div className="w-12 h-12 rounded-lg bg-primary-fixed text-on-primary-fixed-variant flex items-center justify-center shrink-0">
-          <Icon name="description" className="text-[24px]" />
+          <Icon name="assignment" className="text-[24px]" />
         </div>
         <div className="min-w-0">
           <p className="text-[15px] font-semibold text-on-surface truncate leading-snug">{examen.titulo}</p>
