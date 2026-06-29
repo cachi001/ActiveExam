@@ -12,6 +12,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 
 from app.application.exam_content.asociacion_service import AsociacionComisionService
+from app.application.exam_content.inscripcion_service import InscripcionService
 from app.application.exam_content.materia_comision_service import (
     MateriaComisionService,
 )
@@ -27,9 +28,11 @@ from app.application.moodle.writeback_service import (
 from app.application.exam_content.errors import (
     ComisionNoEncontradaError,
     ExamenNoEncontradoError,
+    InscripcionNoEncontradaError,
     MateriaNoEncontradaError,
     MoodleXmlInvalidoError,
     MoodleXmlVacioError,
+    UsuarioNoEncontradoError,
 )
 from app.application.exam_content.import_service import ImportacionMoodleService
 from app.application.exam_content.taking_service import LecturaExamenService, proyectar_examen
@@ -41,6 +44,7 @@ from app.domain.exam_content.errors import (
     ComisionDuplicadaError,
     ConfigExamenInvalidaError,
     ExamenContenidoError,
+    InscripcionDuplicadaError,
     MateriaDuplicadaError,
     SeleccionInvalidaError,
 )
@@ -51,6 +55,7 @@ from app.presentation.api.v1.auth.dependencies import (
 from app.presentation.api.v1.exam_content.schemas import (
     AltaInlineRequest,
     AltaInlineResponse,
+    AlumnoElegibilidadResponse,
     AsociarComisionRequest,
     AsociarComisionResponse,
     ComisionActualizarRequest,
@@ -62,6 +67,8 @@ from app.presentation.api.v1.exam_content.schemas import (
     ExamenesContenidoPaginadosResponse,
     ExamenRendicionResponse,
     ImportReporteResponse,
+    InscribirAlumnoRequest,
+    InscripcionResponse,
     MateriaActualizarRequest,
     MateriaCrearRequest,
     MateriaResponse,
@@ -521,6 +528,163 @@ def create_exam_content_router(
             periodo=comision.periodo,
             anio=comision.anio,
         )
+
+    # -----------------------------------------------------------------------
+    # Inscripción de alumnos a comisiones + elegibilidad (C-69) — admin-only.
+    # Inscribe/da de baja alumnos a una comisión y lista los inscriptos con su
+    # elegibilidad ("puede rendir" = consentimiento vigente + biometría vigente),
+    # resuelta server-side (cliente = sensor no confiable). El picker de alumnos
+    # del front reusa el GET /users?rol=estudiante existente. Capa router→service→repo.
+    # -----------------------------------------------------------------------
+
+    def _build_inscripcion_service(session) -> InscripcionService:
+        from app.infrastructure.persistence.repositories.exam_content import (
+            ComisionSqlRepository,
+            InscripcionSqlRepository,
+        )
+        from app.infrastructure.persistence.repositories.biometric_reference import (
+            EmbeddingReferenciaRepository,
+        )
+        from app.infrastructure.persistence.repositories.consent_perfil import (
+            ConsentimientoPerfilSqlRepository,
+        )
+
+        return InscripcionService(
+            inscripcion_repo=InscripcionSqlRepository(session),
+            comision_repo=ComisionSqlRepository(session),
+            consent_repo=ConsentimientoPerfilSqlRepository(session),
+            embedding_repo=EmbeddingReferenciaRepository(session),
+        )
+
+    @router.post(
+        "/comisiones/{comision_id}/inscripciones",
+        response_model=InscripcionResponse,
+        status_code=status.HTTP_201_CREATED,
+        summary="Inscribir un alumno a una comisión",
+    )
+    async def inscribir_alumno(
+        comision_id: str,
+        body: InscribirAlumnoRequest,
+    ) -> InscripcionResponse:
+        """Inscribe un alumno a una comisión.
+
+        404 'comision_no_encontrada' si la comisión no existe; 404
+        'usuario_no_encontrado' si el alumno no existe (o está dado de baja);
+        409 'duplicado' si el alumno ya está inscripto a esa comisión.
+        """
+        if session_factory is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Persistencia no inicializada.",
+            )
+
+        async with session_factory() as session:
+            service = _build_inscripcion_service(session)
+            try:
+                inscripcion = await service.inscribir(comision_id, body.usuario_id)
+                await session.commit()
+            except ComisionNoEncontradaError as exc:
+                await session.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail={"error": "comision_no_encontrada", "comision_id": comision_id},
+                ) from exc
+            except UsuarioNoEncontradoError as exc:
+                await session.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail={"error": "usuario_no_encontrado", "usuario_id": body.usuario_id},
+                ) from exc
+            except InscripcionDuplicadaError as exc:
+                await session.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={"error": "duplicado", "mensaje": str(exc)},
+                ) from exc
+
+        return InscripcionResponse(
+            id=inscripcion.id,
+            usuario_id=inscripcion.usuario_id,
+            comision_id=inscripcion.comision_id,
+        )
+
+    @router.delete(
+        "/comisiones/{comision_id}/inscripciones/{usuario_id}",
+        status_code=status.HTTP_204_NO_CONTENT,
+        response_model=None,
+        summary="Eliminar la inscripción de un alumno a una comisión",
+    )
+    async def eliminar_inscripcion(comision_id: str, usuario_id: str) -> None:
+        """Da de baja la inscripción del alumno a la comisión.
+
+        204 si se eliminó; 404 'inscripcion_no_encontrada' si no existía.
+        """
+        if session_factory is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Persistencia no inicializada.",
+            )
+
+        async with session_factory() as session:
+            service = _build_inscripcion_service(session)
+            try:
+                await service.eliminar(comision_id, usuario_id)
+                await session.commit()
+            except InscripcionNoEncontradaError as exc:
+                await session.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail={
+                        "error": "inscripcion_no_encontrada",
+                        "comision_id": comision_id,
+                        "usuario_id": usuario_id,
+                    },
+                ) from exc
+
+    @router.get(
+        "/comisiones/{comision_id}/alumnos",
+        response_model=list[AlumnoElegibilidadResponse],
+        summary="Listar los inscriptos de una comisión con su elegibilidad para rendir",
+    )
+    async def listar_alumnos_de_comision(
+        comision_id: str,
+    ) -> list[AlumnoElegibilidadResponse]:
+        """Lista los alumnos inscriptos a la comisión con su elegibilidad.
+
+        Por cada alumno: puede_rendir = consentimiento vigente + biometría vigente
+        (resuelto server-side); razon describe qué falta cuando no puede. 404
+        'comision_no_encontrada' si la comisión no existe.
+        """
+        if session_factory is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Persistencia no inicializada.",
+            )
+
+        async with session_factory() as session:
+            service = _build_inscripcion_service(session)
+            try:
+                alumnos = await service.listar_alumnos_con_elegibilidad(comision_id)
+            except ComisionNoEncontradaError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail={"error": "comision_no_encontrada", "comision_id": comision_id},
+                ) from exc
+
+        return [
+            AlumnoElegibilidadResponse(
+                usuario_id=a.usuario_id,
+                id_institucional=a.id_institucional,
+                nombre=a.nombre,
+                apellido=a.apellido,
+                email=a.email,
+                consentimiento_vigente=a.consentimiento_vigente,
+                biometria_vigente=a.biometria_vigente,
+                puede_rendir=a.puede_rendir,
+                razon=a.razon,
+            )
+            for a in alumnos
+        ]
 
     # -----------------------------------------------------------------------
     # Destino de write-back a Moodle POR EXAMEN (C-69, D12 parte B) — admin-only.

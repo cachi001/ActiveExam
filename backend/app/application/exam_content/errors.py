@@ -21,3 +21,11 @@ class ComisionNoEncontradaError(Exception):
 
 class MateriaNoEncontradaError(Exception):
     """No existe una materia con el id indicado."""
+
+
+class UsuarioNoEncontradoError(Exception):
+    """No existe un usuario activo con el id indicado."""
+
+
+class InscripcionNoEncontradaError(Exception):
+    """No existe una inscripción del usuario a la comisión indicada."""

@@ -1,0 +1,139 @@
+"""Servicio de inscripción de alumnos a comisiones + elegibilidad (C-69).
+
+Casos de uso (admin):
+- ``inscribir``: inscribe un alumno a una comisión (valida que ambos existan).
+- ``eliminar``: da de baja una inscripción.
+- ``listar_alumnos_con_elegibilidad``: lista los inscriptos de una comisión,
+  resolviendo por cada uno si "puede rendir" (consentimiento vigente + biometría
+  vigente), reusando los repos de consentimiento de perfil y embedding de referencia.
+
+L2.5: la elegibilidad PRIORIZA/gatea la rendición; no sanciona. La decisión la
+toma el sistema sobre datos server-side (cliente = sensor no confiable).
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from app.application.exam_content.errors import (
+    ComisionNoEncontradaError,
+    InscripcionNoEncontradaError,
+    UsuarioNoEncontradoError,
+)
+
+
+@dataclass(frozen=True)
+class AlumnoElegibilidad:
+    """Fila de elegibilidad de un alumno inscripto a una comisión.
+
+    ``puede_rendir`` = consentimiento_vigente AND biometria_vigente. ``razon`` es
+    None cuando puede rendir; cuando no, describe qué falta (consentimiento,
+    biometría, o ambos).
+    """
+
+    usuario_id: str
+    id_institucional: str
+    nombre: str | None
+    apellido: str | None
+    email: str
+    consentimiento_vigente: bool
+    biometria_vigente: bool
+    puede_rendir: bool
+    razon: str | None
+
+
+def _razon(consentimiento_vigente: bool, biometria_vigente: bool) -> str | None:
+    """Texto de por qué un alumno NO puede rendir (None si puede)."""
+    if consentimiento_vigente and biometria_vigente:
+        return None
+    if not consentimiento_vigente and not biometria_vigente:
+        return "Falta consentimiento y biometría"
+    if not consentimiento_vigente:
+        return "Falta consentimiento"
+    return "Falta biometría"
+
+
+class InscripcionService:
+    """Casos de uso (admin): inscribir/eliminar alumnos y listar con elegibilidad."""
+
+    def __init__(
+        self,
+        inscripcion_repo,
+        comision_repo,
+        consent_repo,
+        embedding_repo,
+    ) -> None:
+        self._inscripcion_repo = inscripcion_repo
+        self._comision_repo = comision_repo
+        self._consent_repo = consent_repo
+        self._embedding_repo = embedding_repo
+
+    async def inscribir(self, comision_id: str, usuario_id: str):
+        """Inscribe un alumno a una comisión.
+
+        Raises:
+            ComisionNoEncontradaError: la comisión no existe.
+            UsuarioNoEncontradoError: el usuario no existe (o está dado de baja).
+            InscripcionDuplicadaError: el alumno ya está inscripto (lo eleva el repo).
+        """
+        comision = await self._comision_repo.obtener(comision_id)
+        if comision is None:
+            raise ComisionNoEncontradaError(f"Comisión {comision_id!r} no existe.")
+        if not await self._inscripcion_repo.usuario_existe(usuario_id):
+            raise UsuarioNoEncontradoError(f"Usuario {usuario_id!r} no existe.")
+        return await self._inscripcion_repo.inscribir(usuario_id, comision_id)
+
+    async def eliminar(self, comision_id: str, usuario_id: str) -> None:
+        """Elimina la inscripción del alumno a la comisión.
+
+        Raises:
+            InscripcionNoEncontradaError: no existía la inscripción.
+        """
+        eliminada = await self._inscripcion_repo.eliminar(usuario_id, comision_id)
+        if not eliminada:
+            raise InscripcionNoEncontradaError(
+                f"No existe inscripción del usuario {usuario_id!r} a la comisión "
+                f"{comision_id!r}."
+            )
+
+    async def listar_alumnos_con_elegibilidad(
+        self, comision_id: str
+    ) -> list[AlumnoElegibilidad]:
+        """Lista los inscriptos de una comisión con su elegibilidad ("puede rendir").
+
+        Por cada alumno resuelve, sobre datos server-side:
+        - consentimiento_vigente: existe un consentimiento vigente en estado 'otorgado'.
+        - biometria_vigente: existe un embedding de referencia vigente.
+        puede_rendir = ambos True; razon describe qué falta cuando no.
+
+        Raises:
+            ComisionNoEncontradaError: la comisión no existe.
+        """
+        comision = await self._comision_repo.obtener(comision_id)
+        if comision is None:
+            raise ComisionNoEncontradaError(f"Comisión {comision_id!r} no existe.")
+
+        usuarios = await self._inscripcion_repo.listar_usuarios_de_comision(comision_id)
+        elegibles: list[AlumnoElegibilidad] = []
+        for usuario in usuarios:
+            consentimiento = await self._consent_repo.vigente(usuario.id)
+            consentimiento_vigente = (
+                consentimiento is not None and consentimiento.estado == "otorgado"
+            )
+            embedding = await self._embedding_repo.obtener_vigente(usuario.id)
+            biometria_vigente = embedding is not None
+            puede_rendir = consentimiento_vigente and biometria_vigente
+            elegibles.append(
+                AlumnoElegibilidad(
+                    usuario_id=usuario.id,
+                    id_institucional=usuario.id_institucional,
+                    nombre=usuario.nombre,
+                    apellido=usuario.apellido,
+                    email=usuario.email,
+                    consentimiento_vigente=consentimiento_vigente,
+                    biometria_vigente=biometria_vigente,
+                    puede_rendir=puede_rendir,
+                    razon=_razon(consentimiento_vigente, biometria_vigente),
+                )
+            )
+        return elegibles

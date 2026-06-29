@@ -271,6 +271,49 @@ class AsociarComisionResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Inscripción de alumnos a comisiones + elegibilidad (C-69) — endpoints admin
+# ---------------------------------------------------------------------------
+
+
+class InscribirAlumnoRequest(BaseModel):
+    """Body del POST /comisiones/{id}/inscripciones: inscribe un alumno."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    usuario_id: str
+
+
+class InscripcionResponse(BaseModel):
+    """Inscripción creada (alumno↔comisión)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    usuario_id: str
+    comision_id: str
+
+
+class AlumnoElegibilidadResponse(BaseModel):
+    """Alumno inscripto a una comisión + su elegibilidad para rendir.
+
+    ``puede_rendir`` = consentimiento_vigente AND biometria_vigente. ``razon`` es
+    null cuando puede rendir; cuando no, describe qué falta.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    usuario_id: str
+    id_institucional: str
+    nombre: str | None = None
+    apellido: str | None = None
+    email: str
+    consentimiento_vigente: bool
+    biometria_vigente: bool
+    puede_rendir: bool
+    razon: str | None = None
+
+
+# ---------------------------------------------------------------------------
 # Destino del write-back a Moodle POR EXAMEN (C-69, D12 parte B)
 # ---------------------------------------------------------------------------
 

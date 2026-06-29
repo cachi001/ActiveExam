@@ -48,3 +48,10 @@ class ComisionDuplicadaError(ExamenContenidoError):
 
     Viola la unicidad de (materia_id, codigo).
     """
+
+
+class InscripcionDuplicadaError(ExamenContenidoError):
+    """El alumno ya está inscripto a esa comisión.
+
+    Viola la unicidad de (usuario_id, comision_id) de la tabla inscripcion.
+    """

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from sqlalchemy import func, or_, select, update
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -18,6 +18,7 @@ from app.domain.exam_content.entities import (
 )
 from app.domain.exam_content.errors import (
     ComisionDuplicadaError,
+    InscripcionDuplicadaError,
     MateriaDuplicadaError,
     SeleccionInvalidaError,
 )
@@ -28,6 +29,8 @@ from app.infrastructure.persistence.models.exam_content import (
     OpcionRespuestaModel,
     PreguntaExamenModel,
 )
+from app.infrastructure.persistence.models.inscripcion import InscripcionModel
+from app.infrastructure.persistence.models.transactional import UsuarioModel
 
 # SQLSTATE de Postgres para "unique_violation". Otras violaciones de integridad
 # (p. ej. foreign_key_violation 23503) NO se mapean a "duplicado": se re-elevan.
@@ -578,3 +581,89 @@ class ComisionSqlRepository:
             periodo=model.periodo,
             anio=model.anio,
         )
+
+
+class InscripcionSqlRepository:
+    """CRUD async para la tabla inscripcion (C-69): alumno↔comisión."""
+
+    def __init__(self, db: AsyncSession) -> None:
+        self._db = db
+
+    async def inscribir(self, usuario_id: str, comision_id: str) -> InscripcionModel:
+        """Inscribe un alumno a una comisión.
+
+        Raises:
+            InscripcionDuplicadaError: el alumno ya está inscripto a esa comisión
+                (viola UNIQUE(usuario_id, comision_id)).
+        """
+        model = InscripcionModel(usuario_id=usuario_id, comision_id=comision_id)
+        self._db.add(model)
+        try:
+            await self._db.flush()
+        except IntegrityError as exc:
+            await self._db.rollback()
+            if _es_violacion_unicidad(exc):
+                raise InscripcionDuplicadaError(
+                    f"El usuario {usuario_id!r} ya está inscripto a la comisión "
+                    f"{comision_id!r}."
+                ) from exc
+            raise
+        return model
+
+    async def eliminar(self, usuario_id: str, comision_id: str) -> bool:
+        """Elimina la inscripción del alumno a la comisión.
+
+        Devuelve True si se borró una fila; False si no existía (→ 404 en el caller).
+        """
+        result = await self._db.execute(
+            delete(InscripcionModel).where(
+                InscripcionModel.usuario_id == usuario_id,
+                InscripcionModel.comision_id == comision_id,
+            )
+        )
+        await self._db.flush()
+        return (result.rowcount or 0) > 0
+
+    async def existe(self, usuario_id: str, comision_id: str) -> bool:
+        """True si el alumno ya está inscripto a la comisión."""
+        result = await self._db.execute(
+            select(InscripcionModel.id).where(
+                InscripcionModel.usuario_id == usuario_id,
+                InscripcionModel.comision_id == comision_id,
+            )
+        )
+        return result.scalar_one_or_none() is not None
+
+    async def usuario_existe(self, usuario_id: str) -> bool:
+        """True si existe un usuario ACTIVO (no dado de baja) con ese id."""
+        result = await self._db.execute(
+            select(UsuarioModel.id).where(
+                UsuarioModel.id == usuario_id,
+                UsuarioModel.eliminado_en.is_(None),
+            )
+        )
+        return result.scalar_one_or_none() is not None
+
+    async def listar_usuarios_de_comision(
+        self, comision_id: str
+    ) -> list[UsuarioModel]:
+        """Lista los usuarios ACTIVOS inscriptos a la comisión (orden estable).
+
+        Join inscripcion→usuario filtrando dados de baja (eliminado_en IS NULL).
+        Orden alfabético por apellido y nombre (NULLs al final) para un listado
+        determinístico.
+        """
+        result = await self._db.execute(
+            select(UsuarioModel)
+            .join(InscripcionModel, InscripcionModel.usuario_id == UsuarioModel.id)
+            .where(
+                InscripcionModel.comision_id == comision_id,
+                UsuarioModel.eliminado_en.is_(None),
+            )
+            .order_by(
+                UsuarioModel.apellido.asc().nulls_last(),
+                UsuarioModel.nombre.asc().nulls_last(),
+                UsuarioModel.id.asc(),
+            )
+        )
+        return list(result.scalars().all())
