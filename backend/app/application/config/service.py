@@ -41,6 +41,9 @@ class ConfigEfectiva:
     retencion_dias_default: int
     consent_version_vigente: str
     detectores_activos: tuple[str, ...]
+    # Toggles globales de la rendicion (C-69).
+    chat_habilitado: bool = True
+    pausas_habilitadas: bool = True
     # Pesos de scoring por tipo de evento (solo tipos activos).
     scoring_weights: dict[str, int] = field(default_factory=dict)
     # Severidad configurada por tipo de evento (solo tipos activos). El cliente la usa
@@ -86,6 +89,8 @@ class ConfigService:
             retencion_dias_default=cfg.retencion_dias_default,
             consent_version_vigente=cfg.consent_version_vigente,
             detectores_activos=tuple(cfg.detectores_activos or ()),
+            chat_habilitado=bool(cfg.chat_habilitado),
+            pausas_habilitadas=bool(cfg.pausas_habilitadas),
             scoring_weights=pesos,
             scoring_severidades=severidades,
         )

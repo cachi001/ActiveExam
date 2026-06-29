@@ -35,6 +35,8 @@ CAMPOS_EDITABLES: frozenset[str] = frozenset(
         "detectores_activos",
         "retencion_dias_default",
         "consent_version_vigente",
+        "chat_habilitado",
+        "pausas_habilitadas",
     }
 )
 

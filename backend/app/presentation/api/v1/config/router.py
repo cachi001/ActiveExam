@@ -68,6 +68,8 @@ class ConfigEfectivaResponse(_Strict):
     retencion_dias_default: int
     consent_version_vigente: str
     detectores_activos: list[str]
+    chat_habilitado: bool
+    pausas_habilitadas: bool
     scoring_weights: dict[str, int]
     scoring_severidades: dict[str, str] = {}
 
@@ -87,6 +89,9 @@ class EditarConfigRequest(_Strict):
     detectores_activos: list[str] | None = None
     retencion_dias_default: int | None = Field(default=None, ge=0, le=36500)
     consent_version_vigente: str | None = None
+    # Toggles globales de la rendicion (C-69).
+    chat_habilitado: bool | None = None
+    pausas_habilitadas: bool | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -125,6 +130,8 @@ def _to_response(e: ConfigEfectiva) -> ConfigEfectivaResponse:
         retencion_dias_default=e.retencion_dias_default,
         consent_version_vigente=e.consent_version_vigente,
         detectores_activos=list(e.detectores_activos),
+        chat_habilitado=e.chat_habilitado,
+        pausas_habilitadas=e.pausas_habilitadas,
         scoring_weights=dict(e.scoring_weights),
         scoring_severidades=dict(e.scoring_severidades),
     )
@@ -145,6 +152,8 @@ def _snapshot(cfg) -> dict:
         "detectores_activos": list(cfg.detectores_activos or ()),
         "retencion_dias_default": cfg.retencion_dias_default,
         "consent_version_vigente": cfg.consent_version_vigente,
+        "chat_habilitado": cfg.chat_habilitado,
+        "pausas_habilitadas": cfg.pausas_habilitadas,
     }
 
 

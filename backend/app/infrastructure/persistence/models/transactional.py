@@ -409,6 +409,14 @@ class ConfiguracionSistemaModel(Base):
     consent_version_vigente: Mapped[str] = mapped_column(
         String(64), nullable=False, server_default="v1"
     )
+    # Toggles globales de la rendicion (C-69). Default true = funcion habilitada
+    # (compat con el comportamiento previo al toggle).
+    chat_habilitado: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="true"
+    )
+    pausas_habilitadas: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="true"
+    )
     # Version monotonica (ETag). Cada edicion exitosa la incrementa.
     version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
     updated_at: Mapped[str] = mapped_column(
