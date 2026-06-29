@@ -14,7 +14,7 @@ import type { Examen, ExamenContenidoResumen } from '../lib/types';
 const ESTADO_TONE = { borrador: 'neutral', programado: 'primary', en_curso: 'success', finalizado: 'neutral' } as const;
 const ESTADO_LABEL = { borrador: 'Borrador', programado: 'Programado', en_curso: 'En curso', finalizado: 'Finalizado' } as const;
 
-const PAGE_SIZE_DEFAULT = 10;
+const PAGE_SIZE_DEFAULT = 5;
 const PAGE_SIZE_OPTIONS = [5, 10, 15, 20, 50];
 
 export default function ExamList() {
