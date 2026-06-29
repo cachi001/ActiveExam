@@ -403,15 +403,7 @@ async def test_sincronizar_sin_token_no_crashea(app_sin_moodle, factory):
     assert body["fallidas"] == 0
     assert "mensaje" in body
 
-    # las notas siguen 'pendiente' (no se tocaron)
-    async with factory() as s:
-        rows = (
-            await s.execute(
-                select(MoodleWritebackEstadoModel.estado)
-            )
-        ).scalars().all()
-        assert all(e == WritebackEstado.PENDIENTE for e in rows if e is not None) or True
-    # comprobación específica del examen
+    # las notas siguen 'pendiente' (no se tocaron) — comprobación específica del examen
     async with factory() as s:
         estados = (
             await s.execute(
