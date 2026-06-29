@@ -11,7 +11,7 @@ import { useNavigate } from '../lib/router';
 import { useApp } from '../lib/store';
 import { api, USE_REAL_BACKEND } from '../lib/api';
 import AcuseExamen from './AcuseExamen';
-import type { Inscripcion, Examen, ExamenContenidoResumen, NotaExamen } from '../lib/types';
+import type { Inscripcion, Examen, ExamenContenidoResumen, NotaExamen, EstadoEnrollment } from '../lib/types';
 import { InscripcionCard } from './alumno/components/InscripcionCard';
 
 interface GatePorExamen { puede: boolean; codigo?: string; razon?: string; }
@@ -77,7 +77,12 @@ export default function AlumnoMisExamenes() {
   const setExamenActivo = useApp((s) => s.setExamenActivo);
   // C-69: si el perfil (consentimiento + biometría) no está completo, la card del
   // examen muestra "Completar perfil" en vez de "Rendir".
-  const perfilCompleto = useApp((s) => s.enrollmentStatus?.perfil_completo ?? false);
+  // Fix estado-fresco: NO derivar de la store (`enrollmentStatus`), que puede tener un
+  // valor stale del usuario/carga anterior y mostrar "Rendir" antes de tiempo. Usamos
+  // el enrollment recién leído del servidor en ESTA carga; default `false` (incompleto)
+  // hasta confirmarlo, para nunca habilitar "Rendir" con un valor stale.
+  const [enrollmentLocal, setEnrollmentLocal] = useState<EstadoEnrollment | null>(null);
+  const perfilCompleto = enrollmentLocal?.perfil_completo ?? false;
   const [inscripciones, setInscripciones] = useState<Inscripcion[]>([]);
   const [cargando, setCargando] = useState(true);
   const [verificandoId, setVerificandoId] = useState<string | null>(null);
@@ -106,6 +111,7 @@ export default function AlumnoMisExamenes() {
       const [insc, enrollment] = await Promise.all([api.misInscripciones(), api.getEnrollment()]);
       if (cancelado) return;
       setInscripciones(insc);
+      setEnrollmentLocal(enrollment);
       setEnrollmentStatus(enrollment);
       await evaluarGates(insc);
       setCargando(false);

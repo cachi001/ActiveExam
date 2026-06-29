@@ -16,7 +16,8 @@
 import { create } from 'zustand';
 import type { Principal, Rol } from './types';
 import type { AuthProvider, AuthStatus } from './auth/provider';
-import { API_BASE, USE_REAL_BACKEND } from './api';
+import { API_BASE, USE_REAL_BACKEND, resetEnrollmentCache } from './api';
+import { useApp } from './store';
 
 export type { AuthStatus };
 
@@ -133,11 +134,21 @@ export const useAuth = create<AuthState>((set, get) => ({
   login: async (creds?: { username: string; password: string }) => {
     if (!_activeProvider) return;
     await _activeProvider.login(creds);
+    // Invalidar el enrollment cacheado del usuario anterior ANTES de hidratar el nuevo
+    // principal: sin esto, un usuario nuevo hereda el `perfil_completo`/acuses del
+    // usuario previo (cache en api.ts + store) y ve "disponible" hasta que el servidor
+    // lo corrige (flash de estado stale).
+    resetEnrollmentCache();
+    useApp.getState().clearEnrollment();
     // Actualizar el store tras login exitoso.
     get().hydrateFromProvider(_activeProvider);
   },
 
   logout: () => {
+    // Limpiar el enrollment cacheado al cerrar sesión (mismo motivo que en login):
+    // que el próximo usuario no arranque con el perfil del anterior.
+    resetEnrollmentCache();
+    useApp.getState().clearEnrollment();
     if (!_activeProvider) {
       set({ status: 'unauthenticated', principal: null, token: null });
       return;

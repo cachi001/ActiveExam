@@ -138,6 +138,11 @@ interface AppState {
   /** Actualiza el estado de enrollment en el store (llamar tras cada api.getEnrollment()). */
   setEnrollmentStatus: (e: EstadoEnrollment) => void;
   /**
+   * Limpia el enrollment cacheado en el store (al iniciar/cerrar sesión) para que un
+   * usuario nuevo NO herede el `perfil_completo` del usuario anterior en el mismo browser.
+   */
+  clearEnrollment: () => void;
+  /**
    * Actualiza la foto de perfil del principal en el store (C-37).
    * Sin error si principal es null.
    */
@@ -189,6 +194,7 @@ export const useApp = create<AppState>((set) => ({
   addScore: (delta) => set((s) => ({ scorePropio: Math.min(100, s.scorePropio + delta) })),
   resetSesion: () => { persistExamenActivo(null); set({ anomaliasVivo: [], scorePropio: 0, examenActivo: null }); },
   setEnrollmentStatus: (e) => set({ enrollmentStatus: e, isProfileComplete: e.perfil_completo }),
+  clearEnrollment: () => set({ enrollmentStatus: null, isProfileComplete: false }),
   setFotoPerfil: (dataUrl) => set((s) => ({
     principal: s.principal ? { ...s.principal, foto_perfil: dataUrl } : s.principal,
   })),

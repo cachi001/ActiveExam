@@ -407,6 +407,89 @@ async function ensureConsentVersionSynced(): Promise<void> {
   }
 }
 
+/**
+ * Refresca el enrollment del alumno con el estado FRESCO del servidor (modo real) y
+ * recalcula `perfil_completo`. Es la fuente única para `getEnrollment` y `puedeRendir`:
+ * el gate NUNCA debe decidir con el cache local (localStorage `ae_demo_enrollment`),
+ * que puede mentir tras un reset de DB (tmpfs) o un cambio de usuario en el mismo browser.
+ *
+ * En modo demo no hay servidor: sólo re-sincroniza la versión del consentimiento y
+ * recalcula el perfil desde el estado en memoria (comportamiento previo intacto).
+ */
+async function syncEnrollmentState(): Promise<EstadoEnrollment> {
+  // C-67: la versión vigente del consentimiento debe venir del backend antes de
+  // recalcular el perfil, para no invalidar un acuse real ('v1' vs mock).
+  await ensureConsentVersionSynced();
+
+  if (USE_REAL_BACKEND) {
+    const token = authProvider.getToken?.() ?? '';
+    const headers = { Authorization: `Bearer ${token}` };
+    const [consentResp, biometriaResp] = await Promise.all([
+      fetch(`${API_BASE}/consent/profile`, { headers })
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null),
+      fetch(`${API_BASE}/proctoring/biometria/referencia/estado`, { headers })
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null),
+    ]);
+
+    const consentimiento: AcuseConsentimiento | null =
+      consentResp && consentResp.estado === 'otorgado'
+        ? {
+            version: consentResp.version_texto ?? consentVersionVigente(),
+            timestamp: consentResp.timestamp ?? new Date().toISOString(),
+            hash: consentResp.hash_texto ?? '',
+            via_alternativa: false,
+          }
+        : null;
+
+    const tieneRefVigente = Boolean(biometriaResp?.tiene_referencia_vigente);
+    // El backend solo expone el booleano (RN-BIO/Ley 25.326). Si no había cache
+    // local, sintetizamos un stub mínimo que satisface el tipo sin filtrar dato.
+    const biometriaStub: ReferenciasBiometrica = enrollmentAlumno.biometria ?? {
+      captura_completada: true,
+      imagen: null,
+      embedding: null,
+      fecha_captura: new Date().toISOString(),
+      fecha_expiracion: new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString(),
+      vigencia_meses: 12,
+      version_motor: 'server',
+      vigencia: 'vigente',
+      renovacion_anticipada_requerida: false,
+    };
+    const biometria: ReferenciasBiometrica | null = tieneRefVigente
+      ? { ...biometriaStub, captura_completada: true, vigencia: 'vigente' }
+      : null;
+
+    const next: EstadoEnrollment = {
+      consentimiento,
+      biometria,
+      dni: enrollmentAlumno.dni,
+      perfil_completo: false, // recalcularPerfilCompleto lo decide en commitEnrollment
+    };
+    commitEnrollment(next);
+    return { ...enrollmentAlumno };
+  }
+
+  // Modo demo: sin servidor; recalcular desde el estado en memoria.
+  commitEnrollment(enrollmentAlumno);
+  return { ...enrollmentAlumno };
+}
+
+/**
+ * Invalida el enrollment cacheado del alumno (cache en memoria + localStorage +
+ * acuses por-examen + estados de vía alternativa). Se llama al iniciar/cerrar sesión
+ * para que un usuario NO herede el `perfil_completo` (ni los acuses) del usuario
+ * anterior en el mismo browser. El siguiente `getEnrollment`/`puedeRendir` lo
+ * reconstruye desde el servidor (modo real).
+ */
+export function resetEnrollmentCache(): void {
+  enrollmentAlumno = { consentimiento: null, biometria: null, dni: null, perfil_completo: false };
+  try { localStorage.removeItem(LS_ENROLLMENT); } catch { /* ignore */ }
+  ACUSES_POR_EXAMEN.clear();
+  _estadosViaAlternativa.clear();
+}
+
 // ---------------------------------------------------------------------------
 // API pública (modo demo). Cada método simula latencia de red.
 // ---------------------------------------------------------------------------
@@ -831,10 +914,12 @@ export const api = {
    */
   async puedeRendir(examenId?: string): Promise<{ puede: boolean; razon?: string; codigo?: string }> {
     await delay(200);
-    // C-67: sincronizar la versión vigente del consentimiento desde el backend antes
-    // de evaluar el gate, para no marcar como "desactualizado" un acuse válido.
-    await ensureConsentVersionSynced();
-    const e = recalcularPerfilCompleto(enrollmentAlumno);
+    // El gate debe decidir con estado FRESCO del servidor, NO con el cache local
+    // (localStorage `ae_demo_enrollment`), que puede mentir tras un reset de DB o un
+    // cambio de usuario en el mismo browser → flash de "disponible" stale. syncEnrollmentState
+    // refetcha del backend (modo real), re-sincroniza la versión del consentimiento (C-67)
+    // y recalcula `perfil_completo` antes de evaluar el gate.
+    const e = await syncEnrollmentState();
     enrollmentAlumno = e;
 
     // C-63: verificar vía alternativa pendiente / habilitada antes del gate de perfil
@@ -976,65 +1061,10 @@ export const api = {
   /** Retorna el estado de enrollment completo del perfil (C-22). */
   async getEnrollment(): Promise<EstadoEnrollment> {
     await delay(0);
-    // C-67: idem puedeRendir — la versión vigente debe venir del backend para que
-    // recalcularPerfilCompleto no invalide un consentimiento real ('v1' vs mock).
-    await ensureConsentVersionSynced();
-
     // En modo REAL la fuente de verdad es el backend: si la DB se reseteó (tmpfs),
-    // el cache local en localStorage queda mintiendo "ya hiciste todo". Por eso
-    // pisamos el estado local con lo que dice el servidor en cada carga.
-    if (USE_REAL_BACKEND) {
-      const token = authProvider.getToken?.() ?? '';
-      const headers = { Authorization: `Bearer ${token}` };
-      const [consentResp, biometriaResp] = await Promise.all([
-        fetch(`${API_BASE}/consent/profile`, { headers })
-          .then((r) => (r.ok ? r.json() : null))
-          .catch(() => null),
-        fetch(`${API_BASE}/proctoring/biometria/referencia/estado`, { headers })
-          .then((r) => (r.ok ? r.json() : null))
-          .catch(() => null),
-      ]);
-
-      const consentimiento: AcuseConsentimiento | null =
-        consentResp && consentResp.estado === 'otorgado'
-          ? {
-              version: consentResp.version_texto ?? consentVersionVigente(),
-              timestamp: consentResp.timestamp ?? new Date().toISOString(),
-              hash: consentResp.hash_texto ?? '',
-              via_alternativa: false,
-            }
-          : null;
-
-      const tieneRefVigente = Boolean(biometriaResp?.tiene_referencia_vigente);
-      // El backend solo expone el booleano (RN-BIO/Ley 25.326). Si no había cache
-      // local, sintetizamos un stub mínimo que satisface el tipo sin filtrar dato.
-      const biometriaStub: ReferenciasBiometrica = enrollmentAlumno.biometria ?? {
-        captura_completada: true,
-        imagen: null,
-        embedding: null,
-        fecha_captura: new Date().toISOString(),
-        fecha_expiracion: new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString(),
-        vigencia_meses: 12,
-        version_motor: 'server',
-        vigencia: 'vigente',
-        renovacion_anticipada_requerida: false,
-      };
-      const biometria: ReferenciasBiometrica | null = tieneRefVigente
-        ? { ...biometriaStub, captura_completada: true, vigencia: 'vigente' }
-        : null;
-
-      const next: EstadoEnrollment = {
-        consentimiento,
-        biometria,
-        dni: enrollmentAlumno.dni,
-        perfil_completo: false, // recalcularPerfilCompleto lo decide
-      };
-      commitEnrollment(next);
-      return { ...enrollmentAlumno };
-    }
-
-    commitEnrollment(enrollmentAlumno);
-    return { ...enrollmentAlumno };
+    // el cache local en localStorage queda mintiendo "ya hiciste todo". syncEnrollmentState
+    // pisa el estado local con lo que dice el servidor en cada carga.
+    return syncEnrollmentState();
   },
 
   // -------------------------------------------------------------------------
