@@ -135,3 +135,37 @@
 - [x] 11.6 GREEN: **UI admin** — `lib/examContentAdmin.ts` `setMoodleTarget`/`getMoodleTarget`; `admin/ExamImport/MoodleImportPage.tsx` campos numéricos (courseid/cmid) en el form de import + form "Destino de la nota en Moodle" editable tras importar. Done: `lib/examContentAdmin.test.ts` (4 verdes), tsc limpio en los archivos tocados (`@testing-library/react` ausente → la pantalla queda cubierta por tsc + test de capa API, gap de entorno preexistente).
 - [x] 11.7 GREEN: **cableado frontend de la cadena nota** (gaps hallados en la verificación de 4.11) — `Examen.tsx` `finalizar` ahora envía las respuestas (`POST /proctoring/sessions/{id}/respuestas`) **antes** de `detener()`/finalizar; `Consent.tsx` crea la sesión anticipada CON `examen_contenido_id`; nuevo `api.enviarRespuestasProctoring`. Done: `Examen.finalizar.test.tsx` + `Consent.contenido.test.ts` + `Examen.test.ts` (42 verdes vitest).
 - [x] 11.8 Verificación e2e (browser real, backend rebuildeado con 0030): seteo target por-examen (courseid=2, cmid=14) vía endpoint → alumno rinde (respuestas POST #295 ANTES de finalizar PATCH #296) → sesión queda con `examen_contenido_id` → `nota=10.0` en `/resultados` (estado `sin_token`, sin Moodle real) → `moodle_writeback_estado` snapshotea el target POR-EXAMEN (`moodle_courseid=2, moodle_cmid=14`, estado `pendiente`). Done: verificado.
+
+## 12. [Extensión · selección de preguntas] El examen es un subconjunto del pool importado (opción B)
+
+> El import de Moodle trae un POOL; el docente elige qué preguntas componen el examen. La opción C (leer el cuestionario real por REST de Moodle) queda para cuando haya token admin.
+
+- [x] 12.1 Migración aditiva `0031` — `pregunta_examen.seleccionada` BOOLEAN NOT NULL DEFAULT true (compat: existentes todas seleccionadas). Done: up/down verificada; modelo+entidad+repo.
+- [x] 12.2 Rendición y nota respetan SOLO seleccionadas: `taking_service` proyecta seleccionadas; `grade_calculator` cuenta solo seleccionadas; `cantidad_preguntas` (resumen/catálogo) = seleccionadas. Done: tests con DB real.
+- [x] 12.3 Endpoints admin `GET /exam-content/{id}/preguntas` (pool con flag, sin es_correcta — D3) y `PATCH /exam-content/{id}/preguntas-seleccion` (mín 1 → 422; 404 si no existe). Done: `tests/test_c69_preguntas_seleccion.py` (11 verdes).
+- [x] 12.4 UI en el detalle del examen: sección "Preguntas del examen" con checkboxes, contador "X de Y", seleccionar/quitar todas, guardar (mín 1). Done: verificado en vivo (dejar 5 → alumno ve 5).
+
+## 13. [Extensión · configuración del examen] Tiempo, intentos, ventana, calificación, mezclar
+
+- [x] 13.1 Migración aditiva `0032` en `examen_contenido`: `tiempo_limite_min` (null=sin límite), `intentos_permitidos` (def 1), `apertura`/`cierre`, `nota_maxima` (def 10), `nota_aprobacion` (def 6), `mezclar_preguntas`. Done: up/down verificada.
+- [x] 13.2 Endpoints admin `GET/PATCH /exam-content/{id}/config` con validaciones (aprobación≤máxima, apertura<cierre, intentos≥1, tiempo>0 o null → 422). Done: `tests/test_c69_exam_config.py` (34 verdes).
+- [x] 13.3 La nota se calcula sobre `nota_maxima`; la proyección de rendición expone tiempo/mezclar/notas; resumen y catálogo exponen ventana e intentos; `mis-notas` agrega `nota_maxima` y `aprobado`. Done.
+- [x] 13.4 Frontend: sección "Configuración del examen" en el detalle (inputs modernos). `Examen.tsx`: timer desde `tiempo_limite_min` con **auto-entrega a los 0** (estilo Moodle); **mezcla estable por sesión** (semilla=sessionId). Done: verificado en vivo.
+- [x] 13.5 Gate de Rendir por **ventana** (apertura/cierre) e **intentos** (cuenta `mis-notas` vs intentos_permitidos). Nota mostrada como **X / nota_maxima** + chip **Aprobado/Desaprobado** (Cierre + Tus notas). Done: verificado (EST-001 "Ya rendiste 1/1", nota 10/10 Aprobado).
+- [x] 13.6 Enforcement SERVER-SIDE (migración `0033`: `alumno_idnumber`/email en `proctoring_session`): al crear sesión con examen, fuera de ventana → **403**, intentos agotados → **409**. Done: `tests/proctoring/test_c69_sesion_enforcement.py` (8 verdes); verificado en vivo (403/409).
+
+## 14. [Extensión · config del sistema] Chat proctor↔alumno y pausas configurables
+
+- [x] 14.1 Migración aditiva `0034`: `chat_habilitado`/`pausas_habilitadas` en `configuracion_sistema` (def true); expuestos en `GET /config/effective` y editables por `PATCH /config`. Done: `tests/test_c69_config_chat_pausas.py` (verde sobre slim migrado) + migración (2).
+- [x] 14.2 Frontend: card "Canales del alumno" en Configuración (2 toggles). Al apagar, se ocultan el ChatBox y "Solicitar pausa" en **alumno y proctor** (detalle + cola en vivo). Done: verificado en vivo (round-trip ON/OFF reflejado).
+- [x] 14.3 Cooldown anti-flood de 5s en el chat del alumno (el proctor responde sin límite). Done.
+
+## 15. [Extensión · UX/UI y robustez] Pulido de interfaz y estado de perfil
+
+- [x] 15.1 Modal de importar examen (rediseño minimalista): dropzone con drag&drop + chip, título sobrio, materia/comisión obligatorias (existente o nueva), tamaños moderados. Done: verificado import end-to-end por el modal.
+- [x] 15.2 Página de exámenes admin: botón "Importar examen" (ruteo de la página de import que faltaba), paginación 5/10/15/20/50 serverside, acciones en kebab, responsive (cards en mobile), números centrados. Done.
+- [x] 15.3 Color primary institucional **#004BA8** (escala+alias) en toda la app; logo del header con fondo claro. Done.
+- [x] 15.4 Dashboard admin: statcards "Sesiones" y "Tasa de flag" con datos reales (0/0% en vez de "—"). Done.
+- [x] 15.5 Catálogo del alumno: la card muestra "Completar perfil" cuando el perfil no está completo (en vez de "Rendir"). Sección "Tus notas" con nota + estado de cola de revisión. Examen mock de matemática y texto "(contenido importado)" fuera; micrófono fuera de los requisitos; botones de "vía alternativa" eliminados en todos lados. Done.
+- [x] 15.6 Estado de perfil fresco y reactivo: `puedeRendir()`/`getEnrollment` sincronizan estado fresco del server; cache de enrollment se invalida al loguear (sin herencia entre usuarios) y se refresca al completar (sin flash de "disponible" ni quedar stale). Done: verificado en vivo (bug 1 y 2 de timing).
+- [x] 15.7 Verificación integral: suites backend (proctoring 133/133, C-69 257) y frontend (628 tests, tsc limpio) verdes salvo gaps de entorno conocidos (`@testing-library/react`, tests HTTP de config que requieren DB migrada). Done.
