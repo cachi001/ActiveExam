@@ -9,6 +9,8 @@ import { authProvider } from '../lib/authProvider';
 import { TableToolbar, type TableQuery } from '../ui/TableToolbar';
 import { ActionMenu } from '../ui/ActionMenu';
 import { listarExamenesContenidoPaginadoFn } from '../lib/examContentCatalog';
+import { ImportExamModal } from '../admin/ExamImport/ImportExamModal';
+import { useToast } from '../ui/toast';
 import type { Examen, ExamenContenidoResumen } from '../lib/types';
 
 const ESTADO_TONE = { borrador: 'neutral', programado: 'primary', en_curso: 'success', finalizado: 'neutral' } as const;
@@ -19,6 +21,10 @@ const PAGE_SIZE_OPTIONS = [5, 10, 15, 20, 50];
 
 export default function ExamList() {
   const navigate = useNavigate();
+  const toast = useToast();
+
+  // Modal de importación (reemplaza la navegación a /admin/examenes/importar).
+  const [importOpen, setImportOpen] = useState(false);
 
   // ── Modo real: exámenes paginados serverside ────────────────────────────
   const [query, setQuery] = useState<TableQuery>({
@@ -64,6 +70,18 @@ export default function ExamList() {
   const configurar = () => navigate('/admin/configuracion');
   const importar = () => navigate('/admin/examenes/importar');
 
+  // Éxito del modal: cerrar + refrescar la lista paginada (nuevo ref de query
+  // → re-dispara el fetch del useEffect, volviendo a la página 1).
+  const onImportado = (importadas: number) => {
+    setImportOpen(false);
+    setQuery((q) => ({ ...q, page: 1 }));
+    toast.success(
+      importadas > 0
+        ? `Examen importado: ${importadas} ${importadas === 1 ? 'pregunta' : 'preguntas'}.`
+        : 'Examen importado correctamente.',
+    );
+  };
+
   // Demo: filtrado en memoria (solo modo sin backend, datos pequeños)
   const demoTerm = demoQ.toLowerCase();
   const demoFiltrados = examenes.filter(
@@ -98,7 +116,7 @@ export default function ExamList() {
               ? `${totalImportados} ${totalImportados === 1 ? 'examen' : 'exámenes'}`
               : `${examenes.length} ${examenes.length === 1 ? 'examen' : 'exámenes'}`}
             action={
-              <Button icon="upload" onClick={importar} className="shrink-0">
+              <Button icon="upload" onClick={() => setImportOpen(true)} className="shrink-0">
                 Importar examen
               </Button>
             }
@@ -332,6 +350,12 @@ export default function ExamList() {
           )}
         </Card>
       </div>
+
+      <ImportExamModal
+        abierto={importOpen}
+        onCerrar={() => setImportOpen(false)}
+        onImportado={onImportado}
+      />
     </StaffShell>
   );
 }
