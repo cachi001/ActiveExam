@@ -132,6 +132,51 @@ async def test_token_not_in_request_body_as_plaintext(client):
     assert "debug_token" not in captured["content"]
 
 
+@pytest.mark.asyncio
+@respx.mock
+async def test_write_grade_usa_target_por_examen(client):
+    """D12: si se pasan courseid/cmid, el payload los usa (no el global de config)."""
+    captured = {}
+
+    def capture(request, **kwargs):
+        captured["content"] = request.content.decode()
+        return Response(200, json={"warnings": []})
+
+    respx.post("https://moodle.example.com/webservice/rest/server.php").mock(
+        side_effect=capture
+    )
+
+    # config global es courseid=42, cmid=99; el examen apunta a 1000/2000
+    await client.write_grade(moodle_userid=7, nota=8.5, courseid=1000, cmid=2000)
+
+    content = captured["content"]
+    assert "courseid=1000" in content
+    assert "activityid=2000" in content
+    assert "courseid=42" not in content
+    assert "activityid=99" not in content
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_write_grade_fallback_a_config_cuando_none(client):
+    """D12: sin courseid/cmid (None) cae al global de config (compat exámenes viejos)."""
+    captured = {}
+
+    def capture(request, **kwargs):
+        captured["content"] = request.content.decode()
+        return Response(200, json={"warnings": []})
+
+    respx.post("https://moodle.example.com/webservice/rest/server.php").mock(
+        side_effect=capture
+    )
+
+    await client.write_grade(moodle_userid=7, nota=8.5)  # sin target → global
+
+    content = captured["content"]
+    assert "courseid=42" in content
+    assert "activityid=99" in content
+
+
 def test_config_extra_forbid():
     """MoodleClientConfig tiene extra='forbid' (Pydantic)."""
     import pydantic

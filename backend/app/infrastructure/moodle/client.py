@@ -38,14 +38,28 @@ class MoodleRestClient:
     def __init__(self, config: MoodleClientConfig) -> None:
         self._config = config
 
-    async def write_grade(self, *, moodle_userid: int, nota: float) -> None:
+    async def write_grade(
+        self,
+        *,
+        moodle_userid: int,
+        nota: float,
+        courseid: int | None = None,
+        cmid: int | None = None,
+    ) -> None:
         """Escribe la nota del alumno en Moodle vía core_grades_update_grades.
+
+        D12 (parte B): courseid/cmid son el destino POR EXAMEN. Si se pasan, se usan;
+        si son None, se cae al global de config (compat con exámenes sin destino).
 
         Raises:
             MoodleGradeWriteError: si Moodle devuelve un error, token inválido,
                 fallo de red o respuesta HTTP no-2xx.
         """
         url = f"{self._config.base_url.rstrip('/')}/webservice/rest/server.php"
+
+        # Destino: valor por examen si vino; si no, fallback al global de config.
+        target_courseid = courseid if courseid is not None else self._config.courseid
+        target_cmid = cmid if cmid is not None else self._config.cmid
 
         # Payload del WS. El token va en wstoken (protocolo Moodle REST WS).
         # NUNCA se loguea ni aparece en campos de audit.
@@ -54,9 +68,9 @@ class MoodleRestClient:
             "wsfunction": "core_grades_update_grades",
             "moodlewsrestformat": "json",
             "source": "activeexam",
-            "courseid": str(self._config.courseid),
+            "courseid": str(target_courseid),
             "component": "mod_assign",
-            "activityid": str(self._config.cmid),
+            "activityid": str(target_cmid),
             "itemnumber": "0",
             "grades[0][studentid]": str(moodle_userid),
             "grades[0][grade]": str(round(nota, 2)),

@@ -143,6 +143,90 @@ async def test_examen_no_encontrado_devuelve_none(session):
 
 
 # ---------------------------------------------------------------------------
+# D12 (parte B): destino de write-back a Moodle POR EXAMEN
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_moodle_target_default_none(session):
+    """Un examen importado sin destino explícito deja courseid/cmid en None (fallback global)."""
+    repo = ExamenContenidoSqlRepository(session)
+    guardado = await repo.guardar(_examen_con_preguntas())
+
+    recuperado = await repo.obtener(guardado.id)
+    assert recuperado is not None
+    assert recuperado.moodle_courseid is None
+    assert recuperado.moodle_cmid is None
+
+
+@pytest.mark.asyncio
+async def test_guardar_persiste_moodle_target(session):
+    """Si el examen trae moodle_courseid/cmid, se persisten y recuperan."""
+    repo = ExamenContenidoSqlRepository(session)
+    base = _examen_con_preguntas()
+    examen = ExamenContenido(
+        titulo=base.titulo,
+        preguntas=base.preguntas,
+        comision_id=None,
+        moodle_courseid=777,
+        moodle_cmid=12,
+    )
+    guardado = await repo.guardar(examen)
+
+    recuperado = await repo.obtener(guardado.id)
+    assert recuperado is not None
+    assert recuperado.moodle_courseid == 777
+    assert recuperado.moodle_cmid == 12
+
+
+@pytest.mark.asyncio
+async def test_set_moodle_target_actualiza(session):
+    """set_moodle_target fija el destino de un examen ya importado."""
+    repo = ExamenContenidoSqlRepository(session)
+    guardado = await repo.guardar(_examen_con_preguntas())
+
+    actualizado = await repo.set_moodle_target(guardado.id, 404, 88)
+    assert actualizado is not None
+    assert actualizado.moodle_courseid == 404
+    assert actualizado.moodle_cmid == 88
+
+    # persistido: una nueva lectura lo confirma
+    releido = await repo.obtener(guardado.id)
+    assert releido is not None
+    assert releido.moodle_courseid == 404
+    assert releido.moodle_cmid == 88
+
+
+@pytest.mark.asyncio
+async def test_set_moodle_target_limpia_con_none(session):
+    """set_moodle_target con None limpia el destino (vuelve al fallback global)."""
+    repo = ExamenContenidoSqlRepository(session)
+    base = _examen_con_preguntas()
+    examen = ExamenContenido(
+        titulo=base.titulo,
+        preguntas=base.preguntas,
+        moodle_courseid=1,
+        moodle_cmid=2,
+    )
+    guardado = await repo.guardar(examen)
+
+    limpiado = await repo.set_moodle_target(guardado.id, None, None)
+    assert limpiado is not None
+    assert limpiado.moodle_courseid is None
+    assert limpiado.moodle_cmid is None
+
+
+@pytest.mark.asyncio
+async def test_set_moodle_target_examen_inexistente_none(session):
+    """set_moodle_target sobre un examen inexistente devuelve None."""
+    repo = ExamenContenidoSqlRepository(session)
+    result = await repo.set_moodle_target(
+        "00000000-0000-0000-0000-000000000000", 1, 1
+    )
+    assert result is None
+
+
+# ---------------------------------------------------------------------------
 # 1.5 TRIANGULATE — reversibilidad: las tablas se crean y dropean
 # ---------------------------------------------------------------------------
 

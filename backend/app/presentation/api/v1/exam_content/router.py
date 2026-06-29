@@ -51,6 +51,8 @@ from app.presentation.api.v1.exam_content.schemas import (
     ExamenRendicionResponse,
     ImportReporteResponse,
     MateriaResponse,
+    MoodleTargetRequest,
+    MoodleTargetResponse,
     OmitidaItemResponse,
     OpcionRendicionResponse,
     PreguntaRendicionResponse,
@@ -107,8 +109,14 @@ def create_exam_content_router(
     async def importar_moodle(
         file: UploadFile = File(...),
         titulo: str | None = Form(default=None),
+        moodle_courseid: int | None = Form(default=None),
+        moodle_cmid: int | None = Form(default=None),
     ) -> ImportReporteResponse:
-        """Importa un archivo Moodle XML y crea el examen de contenido."""
+        """Importa un archivo Moodle XML y crea el examen de contenido.
+
+        D12 (parte B): moodle_courseid/moodle_cmid son opcionales y fijan el destino
+        del write-back de nota POR EXAMEN. Si se omiten, el write-back usa el global.
+        """
         from fastapi import Request
 
         xml_bytes = await file.read()
@@ -128,7 +136,12 @@ def create_exam_content_router(
             repo = ExamenContenidoSqlRepository(session)
             service = ImportacionMoodleService(repo)
             try:
-                report = await service.importar(xml_bytes, titulo=titulo)
+                report = await service.importar(
+                    xml_bytes,
+                    titulo=titulo,
+                    moodle_courseid=moodle_courseid,
+                    moodle_cmid=moodle_cmid,
+                )
                 await session.commit()
             except MoodleXmlInvalidoError as exc:
                 raise HTTPException(
@@ -273,6 +286,89 @@ def create_exam_content_router(
                 ) from exc
 
         return AsociarComisionResponse(examen_id=examen_id, comision_id=body.comision_id)
+
+    # -----------------------------------------------------------------------
+    # Destino de write-back a Moodle POR EXAMEN (C-69, D12 parte B) — admin-only.
+    # Permite fijar/leer moodle_courseid/cmid de un examen ya importado. Valores
+    # AUTORITATIVOS: el write-back los usa; NULL → fallback al global de config_slim.
+    # -----------------------------------------------------------------------
+
+    async def _set_target(examen_id: str, courseid: int | None, cmid: int | None):
+        """Carga el repo, fija el destino y devuelve la entidad (o None si no existe)."""
+        from app.infrastructure.persistence.repositories.exam_content import (
+            ExamenContenidoSqlRepository,
+        )
+
+        async with session_factory() as session:
+            repo = ExamenContenidoSqlRepository(session)
+            examen = await repo.set_moodle_target(examen_id, courseid, cmid)
+            await session.commit()
+        return examen
+
+    @router.post(
+        "/{examen_id}/moodle-target",
+        response_model=MoodleTargetResponse,
+        status_code=status.HTTP_200_OK,
+        summary="Fijar el destino de write-back a Moodle (courseid/cmid) de un examen",
+    )
+    async def fijar_moodle_target(
+        examen_id: str,
+        body: MoodleTargetRequest,
+    ) -> MoodleTargetResponse:
+        """Fija moodle_courseid/cmid del examen (D12). 404 si el examen no existe.
+
+        Valores AUTORITATIVOS para el write-back; null limpia y cae al global.
+        """
+        if session_factory is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Persistencia no inicializada.",
+            )
+
+        examen = await _set_target(examen_id, body.moodle_courseid, body.moodle_cmid)
+        if examen is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"error": "examen_no_encontrado", "examen_id": examen_id},
+            )
+
+        return MoodleTargetResponse(
+            examen_id=examen.id,
+            moodle_courseid=examen.moodle_courseid,
+            moodle_cmid=examen.moodle_cmid,
+        )
+
+    @router.get(
+        "/{examen_id}/moodle-target",
+        response_model=MoodleTargetResponse,
+        summary="Leer el destino de write-back a Moodle (courseid/cmid) de un examen",
+    )
+    async def leer_moodle_target(examen_id: str) -> MoodleTargetResponse:
+        """Devuelve moodle_courseid/cmid del examen (null = fallback global). 404 si no existe."""
+        if session_factory is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Persistencia no inicializada.",
+            )
+
+        from app.infrastructure.persistence.repositories.exam_content import (
+            ExamenContenidoSqlRepository,
+        )
+
+        async with session_factory() as session:
+            examen = await ExamenContenidoSqlRepository(session).obtener(examen_id)
+
+        if examen is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"error": "examen_no_encontrado", "examen_id": examen_id},
+            )
+
+        return MoodleTargetResponse(
+            examen_id=examen.id,
+            moodle_courseid=examen.moodle_courseid,
+            moodle_cmid=examen.moodle_cmid,
+        )
 
     # -----------------------------------------------------------------------
     # Resultados del examen (C-69 admin-sync, tarea 2) — admin-only, SIN MFA.

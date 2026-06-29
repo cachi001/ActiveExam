@@ -176,6 +176,34 @@ class AsociarComisionResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Destino del write-back a Moodle POR EXAMEN (C-69, D12 parte B)
+# ---------------------------------------------------------------------------
+
+
+class MoodleTargetRequest(BaseModel):
+    """Body para fijar el destino de write-back de un examen.
+
+    Ambos NULLABLE: enviar null limpia el destino y vuelve al fallback global.
+    extra='forbid' (regla dura de código).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    moodle_courseid: int | None = None
+    moodle_cmid: int | None = None
+
+
+class MoodleTargetResponse(BaseModel):
+    """Destino de write-back a Moodle de un examen (estado actual tras el update)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    examen_id: str
+    moodle_courseid: int | None = None
+    moodle_cmid: int | None = None
+
+
+# ---------------------------------------------------------------------------
 # Resultados del examen + sincronización a Moodle (C-69 admin-sync, tareas 2-3)
 # ---------------------------------------------------------------------------
 

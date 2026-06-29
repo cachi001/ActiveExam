@@ -120,6 +120,26 @@ async def _crear_sesion(db: AsyncSession) -> str:
     return sesion.id
 
 
+async def _crear_examen(
+    db: AsyncSession, *, courseid: int | None = None, cmid: int | None = None
+) -> str:
+    examen = ExamenContenidoModel(
+        titulo="Examen D12", moodle_courseid=courseid, moodle_cmid=cmid
+    )
+    db.add(examen)
+    await db.flush()
+    return examen.id
+
+
+async def _crear_sesion_de_examen(db: AsyncSession, examen_id: str) -> str:
+    sesion = ProctoringSessionModel(
+        modo="examen", etiqueta="test", examen_contenido_id=examen_id
+    )
+    db.add(sesion)
+    await db.flush()
+    return sesion.id
+
+
 async def _estado(db: AsyncSession, session_id: str) -> MoodleWritebackEstadoModel | None:
     result = await db.execute(
         select(MoodleWritebackEstadoModel).where(
@@ -190,6 +210,54 @@ async def test_finalizar_sin_writeback_persiste_pendiente(session):
     # Sin cliente Moodle: courseid/cmid quedan NULL
     assert estado.moodle_courseid is None
     assert estado.moodle_cmid is None
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_finalizar_resuelve_target_por_examen(session, writeback_svc):
+    """D12: al finalizar, el estado guarda el destino del examen vinculado (no el global)."""
+    respx.post(f"{BASE}/webservice/rest/server.php")
+
+    examen_id = await _crear_examen(session, courseid=8080, cmid=42)
+    session_id = await _crear_sesion_de_examen(session, examen_id)
+
+    await finalizar_sesion_con_writeback(
+        db=session,
+        session_id=session_id,
+        writeback_svc=writeback_svc,
+        nota=7.0,
+        alumno_idnumber="legE",
+        alumno_email="e@e.com",
+    )
+
+    estado = await _estado(session, session_id)
+    assert estado is not None
+    assert estado.moodle_courseid == 8080  # del examen, no el global (10)
+    assert estado.moodle_cmid == 42
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_finalizar_examen_sin_target_cae_a_global(session, writeback_svc):
+    """D12: si el examen no tiene destino propio (NULL), el estado guarda el global."""
+    respx.post(f"{BASE}/webservice/rest/server.php")
+
+    examen_id = await _crear_examen(session)  # sin courseid/cmid
+    session_id = await _crear_sesion_de_examen(session, examen_id)
+
+    await finalizar_sesion_con_writeback(
+        db=session,
+        session_id=session_id,
+        writeback_svc=writeback_svc,
+        nota=7.0,
+        alumno_idnumber="legF",
+        alumno_email="f@f.com",
+    )
+
+    estado = await _estado(session, session_id)
+    assert estado is not None
+    assert estado.moodle_courseid == 10  # global de config
+    assert estado.moodle_cmid == 5
 
 
 @pytest.mark.asyncio

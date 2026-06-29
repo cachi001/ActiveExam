@@ -251,6 +251,103 @@ async def test_writeback_fallido_queda_reintenable(session, writeback_svc):
 
 
 # ---------------------------------------------------------------------------
+# D12 (parte B): destino de write-back POR EXAMEN
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_iniciar_writeback_persiste_target_por_examen(session, writeback_svc):
+    """D12: iniciar_writeback con courseid/cmid los persiste en el estado (no el global)."""
+    session_id = await _crear_sesion(session)
+
+    await writeback_svc.iniciar_writeback(
+        db=session,
+        session_id=session_id,
+        nota=7.0,
+        alumno_idnumber="legX",
+        alumno_email="x@x.com",
+        moodle_courseid=1234,
+        moodle_cmid=56,
+    )
+
+    estado = (
+        await session.execute(
+            select(MoodleWritebackEstadoModel).where(
+                MoodleWritebackEstadoModel.session_id == session_id
+            )
+        )
+    ).scalar_one()
+    assert estado.moodle_courseid == 1234  # per-examen, no el global (10)
+    assert estado.moodle_cmid == 56
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_iniciar_writeback_fallback_global_cuando_none(session, writeback_svc):
+    """D12: sin target (None) el estado guarda el global del cliente (courseid=10, cmid=5)."""
+    session_id = await _crear_sesion(session)
+
+    await writeback_svc.iniciar_writeback(
+        db=session,
+        session_id=session_id,
+        nota=7.0,
+        alumno_idnumber="legY",
+        alumno_email="y@y.com",
+    )
+
+    estado = (
+        await session.execute(
+            select(MoodleWritebackEstadoModel).where(
+                MoodleWritebackEstadoModel.session_id == session_id
+            )
+        )
+    ).scalar_one()
+    assert estado.moodle_courseid == 10  # global de config
+    assert estado.moodle_cmid == 5
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_ejecutar_writeback_pushea_al_target_por_examen(session, writeback_svc):
+    """D12: el push usa el courseid/cmid del estado (destino por examen)."""
+    session_id = await _crear_sesion(session)
+    captured = {}
+
+    def side_effect(request, **kwargs):
+        content = request.content.decode()
+        if "core_user_get_users_by_field" in content or "field=idnumber" in content:
+            return Response(200, json=[{"id": 77}])
+        if "core_grades_update_grades" in content:
+            captured["grade"] = content
+        return Response(200, json={"warnings": []})
+
+    respx.post(f"{BASE}/webservice/rest/server.php").mock(side_effect=side_effect)
+
+    # Estado con destino por examen distinto del global (10/5)
+    await writeback_svc.iniciar_writeback(
+        db=session,
+        session_id=session_id,
+        nota=8.0,
+        alumno_idnumber="legZ",
+        alumno_email="z@z.com",
+        moodle_courseid=4040,
+        moodle_cmid=303,
+    )
+    await writeback_svc.ejecutar_writeback(
+        db=session,
+        session_id=session_id,
+        nota=8.0,
+        alumno_idnumber="legZ",
+        alumno_email="z@z.com",
+    )
+
+    assert "grade" in captured
+    assert "courseid=4040" in captured["grade"]
+    assert "activityid=303" in captured["grade"]
+
+
+# ---------------------------------------------------------------------------
 # 7.9-7.10: Moodle caído no bloquea la finalización
 # ---------------------------------------------------------------------------
 

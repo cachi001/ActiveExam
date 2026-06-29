@@ -89,6 +89,10 @@ class ExamenContenido:
     preguntas: tuple[Pregunta, ...]
     id: str | None = None
     comision_id: str | None = None
+    # D12 (parte B): destino del write-back de nota a Moodle POR EXAMEN. NULLABLE —
+    # si quedan en None, el write-back usa el valor global de config_slim (fallback).
+    moodle_courseid: int | None = None
+    moodle_cmid: int | None = None
 
 
 @dataclass(frozen=True, slots=True)

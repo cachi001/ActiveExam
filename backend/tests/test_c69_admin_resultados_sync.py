@@ -341,6 +341,50 @@ async def test_sincronizar_envia_pendientes(app_con_moodle, factory):
 
 
 @pytest.mark.asyncio
+@respx.mock
+async def test_sincronizar_usa_target_seteado_despues_de_finalizar(app_con_moodle, factory):
+    """D12: un admin que fija el target DESPUÉS de finalizar sincroniza al curso correcto."""
+    examen_id = await _crear_examen(factory)  # sin destino al crear
+    await _crear_sesion_con_nota(
+        factory, examen_id, idnumber="LATE-1", email="late@u.edu", nota=7.0
+    )
+
+    # El admin fija el destino del examen DESPUÉS de que la nota quedó pendiente.
+    async with factory() as s:
+        examen = (
+            await s.execute(
+                select(ExamenContenidoModel).where(
+                    ExamenContenidoModel.id == examen_id
+                )
+            )
+        ).scalar_one()
+        examen.moodle_courseid = 9999
+        examen.moodle_cmid = 111
+        await s.commit()
+
+    captured = {}
+
+    def side_effect(request, **kwargs):
+        content = request.content.decode()
+        if "core_user_get_users_by_field" in content or "field=idnumber" in content:
+            return Response(200, json=[{"id": 321}])
+        if "core_grades_update_grades" in content:
+            captured["grade"] = content
+        return Response(200, json={"warnings": []})
+
+    respx.post(f"{BASE}/webservice/rest/server.php").mock(side_effect=side_effect)
+
+    async with _admin_client(app_con_moodle) as c:
+        resp = await c.post(f"/api/v1/exam-content/{examen_id}/sincronizar-moodle")
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["enviadas"] == 1
+
+    assert "grade" in captured
+    assert "courseid=9999" in captured["grade"]  # destino fijado tras finalizar
+    assert "activityid=111" in captured["grade"]
+
+
+@pytest.mark.asyncio
 async def test_sincronizar_sin_token_no_crashea(app_sin_moodle, factory):
     examen_id = await _crear_examen(factory)
     await _crear_sesion_con_nota(

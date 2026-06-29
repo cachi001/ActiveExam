@@ -111,20 +111,31 @@ class MoodleWritebackService:
         nota: float,
         alumno_idnumber: str,
         alumno_email: str,
+        moodle_courseid: int | None = None,
+        moodle_cmid: int | None = None,
     ) -> MoodleWritebackEstadoModel:
         """Crea (o actualiza) el registro de estado en 'pendiente' con la nota calculada.
+
+        D12 (parte B): moodle_courseid/cmid son el destino POR EXAMEN (autoritativo).
+        Si vienen None, se cae al global del cliente (compat con exámenes sin destino).
 
         Si ya existe un estado 'enviado' para esta sesión, lo devuelve tal cual
         (idempotente: no sobrescribe una nota ya enviada).
         """
+        target_courseid = (
+            moodle_courseid if moodle_courseid is not None else self._client._config.courseid
+        )
+        target_cmid = (
+            moodle_cmid if moodle_cmid is not None else self._client._config.cmid
+        )
         return await persistir_nota_pendiente(
             db=db,
             session_id=session_id,
             nota=nota,
             alumno_idnumber=alumno_idnumber,
             alumno_email=alumno_email,
-            moodle_courseid=self._client._config.courseid,
-            moodle_cmid=self._client._config.cmid,
+            moodle_courseid=target_courseid,
+            moodle_cmid=target_cmid,
         )
 
     async def ejecutar_writeback(
@@ -170,11 +181,14 @@ class MoodleWritebackService:
             )
             return
 
-        # Paso 3: push de la nota a Moodle
+        # Paso 3: push de la nota a Moodle. Destino POR EXAMEN persistido en el estado
+        # (D12); si está NULL, write_grade cae al global de config.
         try:
             await self._client.write_grade(
                 moodle_userid=moodle_userid,
                 nota=float(estado.nota),
+                courseid=estado.moodle_courseid,
+                cmid=estado.moodle_cmid,
             )
         except MoodleGradeWriteError as exc:
             await self._registrar_fallo(

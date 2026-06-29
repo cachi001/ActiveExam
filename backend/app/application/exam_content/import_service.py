@@ -35,8 +35,18 @@ class ImportacionMoodleService:
     def __init__(self, repo: AbstractExamenContenidoRepository) -> None:
         self._repo = repo
 
-    async def importar(self, xml_bytes: bytes, titulo: str | None = None) -> ImportReport:
+    async def importar(
+        self,
+        xml_bytes: bytes,
+        titulo: str | None = None,
+        *,
+        moodle_courseid: int | None = None,
+        moodle_cmid: int | None = None,
+    ) -> ImportReport:
         """Parsea XML, valida preguntas y persiste el examen.
+
+        D12 (parte B): moodle_courseid/moodle_cmid fijan el destino del write-back
+        de nota POR EXAMEN. Si quedan en None, el write-back cae al global (compat).
 
         Raises:
             MoodleXmlInvalidoError: si el XML es malformado.
@@ -67,6 +77,8 @@ class ImportacionMoodleService:
             titulo=titulo or "Examen importado",
             preguntas=tuple(preguntas_validas),
             comision_id=None,  # D11: se asocia en sección 6
+            moodle_courseid=moodle_courseid,  # D12: destino por examen (None = global)
+            moodle_cmid=moodle_cmid,
         )
         guardado = await self._repo.guardar(examen)
 

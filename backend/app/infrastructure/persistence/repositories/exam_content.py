@@ -47,6 +47,8 @@ class ExamenContenidoSqlRepository:
         model = ExamenContenidoModel(
             titulo=examen.titulo,
             comision_id=examen.comision_id,
+            moodle_courseid=examen.moodle_courseid,
+            moodle_cmid=examen.moodle_cmid,
         )
         for i, pregunta in enumerate(examen.preguntas):
             p_model = PreguntaExamenModel(
@@ -221,6 +223,29 @@ class ExamenContenidoSqlRepository:
         await self._db.flush()
         return await self.obtener(examen_id)
 
+    async def set_moodle_target(
+        self,
+        examen_id: str,
+        moodle_courseid: int | None,
+        moodle_cmid: int | None,
+    ) -> ExamenContenido | None:
+        """Fija (o limpia con None) el destino de write-back a Moodle del examen (D12).
+
+        Devuelve el examen actualizado, o None si el examen no existe. NO reimporta
+        el contenido: solo actualiza moodle_courseid/moodle_cmid. Estos valores son
+        AUTORITATIVOS en el write-back; cuando quedan NULL, se cae al global.
+        """
+        result = await self._db.execute(
+            update(ExamenContenidoModel)
+            .where(ExamenContenidoModel.id == examen_id)
+            .values(moodle_courseid=moodle_courseid, moodle_cmid=moodle_cmid)
+            .returning(ExamenContenidoModel.id)
+        )
+        if result.scalar_one_or_none() is None:
+            return None
+        await self._db.flush()
+        return await self.obtener(examen_id)
+
     async def obtener(self, examen_id: str) -> ExamenContenido | None:
         """Recupera un examen por id con preguntas y opciones (eager load)."""
         result = await self._db.execute(
@@ -260,6 +285,8 @@ class ExamenContenidoSqlRepository:
             id=model.id,
             titulo=model.titulo,
             comision_id=model.comision_id,
+            moodle_courseid=model.moodle_courseid,
+            moodle_cmid=model.moodle_cmid,
             preguntas=preguntas,
         )
 

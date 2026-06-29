@@ -85,6 +85,19 @@ class ExamenContenidoModel(Base):
         nullable=True,
         comment="FK a comision se agrega en sección 6 (D11: nullable).",
     )
+    # D12 (parte B): destino del write-back de nota POR EXAMEN. NULLABLE — si es
+    # NULL, el write-back cae al valor global de config_slim (compat con exámenes
+    # importados antes de la migración 0030). cmid = course-module de calificación.
+    moodle_courseid: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+        comment="D12: curso destino en Moodle por examen; NULL = fallback global.",
+    )
+    moodle_cmid: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+        comment="D12: course-module de calificación por examen; NULL = fallback global.",
+    )
 
     preguntas: Mapped[list[PreguntaExamenModel]] = relationship(
         "PreguntaExamenModel",

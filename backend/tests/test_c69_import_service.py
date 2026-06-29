@@ -129,6 +129,36 @@ async def test_importar_xml_mixto_reporta_omitidas(session):
 
 
 @pytest.mark.asyncio
+async def test_importar_con_moodle_target_lo_persiste(session):
+    """D12: importar con moodle_courseid/cmid los guarda en el examen."""
+    repo = ExamenContenidoSqlRepository(session)
+    service = ImportacionMoodleService(repo)
+
+    xml = (FIXTURES / "sample_export_multichoice_truefalse.xml").read_bytes()
+    report = await service.importar(xml, moodle_courseid=321, moodle_cmid=9)
+
+    examen = await repo.obtener(report.examen_id)
+    assert examen is not None
+    assert examen.moodle_courseid == 321
+    assert examen.moodle_cmid == 9
+
+
+@pytest.mark.asyncio
+async def test_importar_sin_moodle_target_queda_none(session):
+    """D12: sin destino explícito, courseid/cmid quedan None (fallback global)."""
+    repo = ExamenContenidoSqlRepository(session)
+    service = ImportacionMoodleService(repo)
+
+    xml = (FIXTURES / "sample_export_multichoice_truefalse.xml").read_bytes()
+    report = await service.importar(xml)
+
+    examen = await repo.obtener(report.examen_id)
+    assert examen is not None
+    assert examen.moodle_courseid is None
+    assert examen.moodle_cmid is None
+
+
+@pytest.mark.asyncio
 async def test_importar_xml_invalido_lanza_error(session):
     repo = ExamenContenidoSqlRepository(session)
     service = ImportacionMoodleService(repo)

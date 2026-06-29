@@ -183,6 +183,36 @@ async def test_import_con_titulo_201(client_admin):
 
 
 @pytest.mark.asyncio
+async def test_import_con_moodle_target_201(client_admin, db_engine):
+    """D12: admin puede enviar moodle_courseid/cmid en el form; se persisten."""
+    from sqlalchemy import select
+
+    xml = (FIXTURES / "sample_export_multichoice_truefalse.xml").read_bytes()
+    resp = await client_admin.post(
+        "/api/v1/exam-content/moodle-import",
+        files={
+            "file": ("exam.xml", xml, "application/xml"),
+            "moodle_courseid": (None, "555"),
+            "moodle_cmid": (None, "13"),
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    examen_id = resp.json()["examen_id"]
+
+    factory = async_sessionmaker(db_engine, expire_on_commit=False, class_=AsyncSession)
+    async with factory() as s:
+        row = (
+            await s.execute(
+                select(ExamenContenidoModel).where(
+                    ExamenContenidoModel.id == examen_id
+                )
+            )
+        ).scalar_one()
+        assert row.moodle_courseid == 555
+        assert row.moodle_cmid == 13
+
+
+@pytest.mark.asyncio
 async def test_import_xml_invalido_422(client_admin):
     """XML malformado → 422."""
     resp = await client_admin.post(

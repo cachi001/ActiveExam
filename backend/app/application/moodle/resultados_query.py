@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.infrastructure.persistence.models.exam_content import ExamenContenidoModel
 from app.infrastructure.persistence.models.moodle_writeback import (
     MoodleWritebackEstadoModel,
 )
@@ -143,12 +144,38 @@ async def listar_resultados_examen(
     return items, int(total)
 
 
+async def obtener_target_examen(
+    *, db: AsyncSession, examen_id: str
+) -> tuple[int | None, int | None]:
+    """Destino de write-back POR EXAMEN actual (moodle_courseid, moodle_cmid).
+
+    D12 (parte B). Devuelve (None, None) si el examen no existe o no tiene destino
+    propio (en cuyo caso el write-back cae al global).
+    """
+    row = await db.execute(
+        select(
+            ExamenContenidoModel.moodle_courseid,
+            ExamenContenidoModel.moodle_cmid,
+        ).where(ExamenContenidoModel.id == examen_id)
+    )
+    target = row.one_or_none()
+    if target is None:
+        return None, None
+    return target.moodle_courseid, target.moodle_cmid
+
+
 async def listar_estados_sincronizables(
     *, db: AsyncSession, examen_id: str
 ) -> list[MoodleWritebackEstadoModel]:
     """Filas de write-back en estado 'pendiente'/'fallido' del examen (para sincronizar).
 
     Las 'enviado' se excluyen (idempotencia: no se re-mandan).
+
+    D12 (parte B): refresca el destino (moodle_courseid/cmid) de cada fila desde el
+    valor ACTUAL del examen, para que un admin que fija el target DESPUÉS de finalizar
+    sincronice al curso correcto. NULL en el examen → la fila queda NULL y el cliente
+    cae al global. El refresco es en memoria sobre la misma sesión (mismo identity map);
+    el commit del caller lo persiste.
     """
     stmt = (
         select(MoodleWritebackEstadoModel)
@@ -163,4 +190,11 @@ async def listar_estados_sincronizables(
             ),
         )
     )
-    return list((await db.execute(stmt)).scalars().all())
+    filas = list((await db.execute(stmt)).scalars().all())
+
+    courseid, cmid = await obtener_target_examen(db=db, examen_id=examen_id)
+    for fila in filas:
+        fila.moodle_courseid = courseid
+        fila.moodle_cmid = cmid
+
+    return filas

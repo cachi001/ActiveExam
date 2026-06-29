@@ -28,6 +28,35 @@ from app.infrastructure.persistence.models.proctoring import ProctoringSessionMo
 logger = logging.getLogger(__name__)
 
 
+async def _resolver_target_examen(
+    db: AsyncSession, examen_contenido_id: str | None
+) -> tuple[int | None, int | None]:
+    """Devuelve (moodle_courseid, moodle_cmid) del examen vinculado, o (None, None).
+
+    D12 (parte B): el destino del write-back es POR EXAMEN. Si la sesión no tiene
+    examen vinculado o el examen no existe, devuelve (None, None) → fallback global.
+    """
+    if not examen_contenido_id:
+        return None, None
+
+    from sqlalchemy import select
+
+    from app.infrastructure.persistence.models.exam_content import (
+        ExamenContenidoModel,
+    )
+
+    row = await db.execute(
+        select(
+            ExamenContenidoModel.moodle_courseid,
+            ExamenContenidoModel.moodle_cmid,
+        ).where(ExamenContenidoModel.id == examen_contenido_id)
+    )
+    target = row.one_or_none()
+    if target is None:
+        return None, None
+    return target.moodle_courseid, target.moodle_cmid
+
+
 async def finalizar_sesion_con_writeback(
     *,
     db: AsyncSession,
@@ -60,6 +89,13 @@ async def finalizar_sesion_con_writeback(
     if sesion is None:
         return None
 
+    # D12 (parte B): destino del write-back POR EXAMEN. Se resuelve desde el examen
+    # vinculado a la sesión (examen_contenido_id). Si el examen no tiene destino
+    # propio (NULL), se cae al global (iniciar_writeback/write_grade lo resuelven).
+    moodle_courseid, moodle_cmid = await _resolver_target_examen(
+        db, sesion.examen_contenido_id
+    )
+
     # Persistir la nota como 'pendiente' SIN enviar a Moodle (envío manual del admin).
     if nota is not None:
         try:
@@ -70,6 +106,8 @@ async def finalizar_sesion_con_writeback(
                     nota=nota,
                     alumno_idnumber=alumno_idnumber,
                     alumno_email=alumno_email,
+                    moodle_courseid=moodle_courseid,
+                    moodle_cmid=moodle_cmid,
                 )
             else:
                 await persistir_nota_pendiente(
@@ -78,6 +116,8 @@ async def finalizar_sesion_con_writeback(
                     nota=nota,
                     alumno_idnumber=alumno_idnumber,
                     alumno_email=alumno_email,
+                    moodle_courseid=moodle_courseid,
+                    moodle_cmid=moodle_cmid,
                 )
             # finalizar_sesion ya commiteó la sesión; el persist de la nota corre
             # después con solo flush, así que necesita su propio commit o se pierde.
