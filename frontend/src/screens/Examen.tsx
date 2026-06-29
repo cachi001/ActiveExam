@@ -6,7 +6,7 @@ import { useApp } from '../lib/store';
 import { api, TIPO_EVENTO_LABEL } from '../lib/api';
 import { useExamProctoring } from '../proctoring/useExamProctoring';
 import { pesoEvento } from '../proctoring/scoringWeights';
-import { getEffectiveConfig } from '../config/effectiveConfigCache';
+import { getEffectiveConfig, loadEffectiveConfig } from '../config/effectiveConfigCache';
 import { ChatBox } from '../ui/ChatBox';
 import { PausaAlumno } from './PausaAlumno';
 import type { EventoSesion, Severidad } from '../lib/types';
@@ -72,6 +72,21 @@ export default function Examen() {
   // C-69 Section 5: estado de lockdown de pantalla completa
   const [bloqueado, setBloqueado] = useState(false);
   const lockdownRef = useRef<FullscreenLockdown | null>(null);
+
+  // C-69 admin-sync: el admin puede desactivar el chat proctor↔alumno y/o las
+  // pausas del alumno desde la Configuración del sistema. Default `true`
+  // (degradación segura): si la config efectiva aún no cargó, NO ocultamos nada.
+  const [chatHabilitado, setChatHabilitado] = useState(true);
+  const [pausasHabilitadas, setPausasHabilitadas] = useState(true);
+  useEffect(() => {
+    void loadEffectiveConfig().then(() => {
+      const cfg = getEffectiveConfig();
+      if (cfg) {
+        setChatHabilitado(cfg.chat_habilitado);
+        setPausasHabilitadas(cfg.pausas_habilitadas);
+      }
+    });
+  }, []);
 
   // Proctoring REAL de fondo: motor MediaPipe + detectores de contexto + streaming
   // al backend (sesión modo:'examen'). Expone score/eventos/eventCount y detener().
@@ -385,11 +400,15 @@ export default function Examen() {
             </div>
           </Card>
 
-          {/* C-15: flujo de pausa autorizada (solicitar / esperar / activa+timer). */}
-          <PausaAlumno sessionId={sessionId} onActivaChange={setPausaActiva} />
+          {/* C-15: flujo de pausa autorizada (solicitar / esperar / activa+timer).
+              C-69 admin-sync: se oculta si el admin desactivó las pausas del alumno. */}
+          {pausasHabilitadas && <PausaAlumno sessionId={sessionId} onActivaChange={setPausaActiva} />}
 
-          {/* C-15: canal de chat bidireccional con el proctor (poll incremental). */}
-          <ChatBox sessionId={sessionId} yo="alumno" titulo="Canal con el proctor" altura="h-[140px]" />
+          {/* C-15: canal de chat bidireccional con el proctor (poll incremental).
+              C-69 admin-sync: se oculta si el admin desactivó el chat. */}
+          {chatHabilitado && (
+            <ChatBox sessionId={sessionId} yo="alumno" titulo="Canal con el proctor" altura="h-[140px]" />
+          )}
         </div>
       </div>
 

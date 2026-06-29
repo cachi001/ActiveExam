@@ -28,18 +28,30 @@ const UMBRAL_MAX = 90;
 interface Estado {
   umbral: number;
   detectores: TipoEvento[];
+  // C-69 admin-sync: interruptores de los canales del alumno.
+  chatHabilitado: boolean;
+  pausasHabilitadas: boolean;
 }
 
 function estadosIguales(a: Estado, b: Estado): boolean {
   return a.umbral === b.umbral &&
+    a.chatHabilitado === b.chatHabilitado &&
+    a.pausasHabilitadas === b.pausasHabilitadas &&
     a.detectores.length === b.detectores.length &&
     a.detectores.every((d) => b.detectores.includes(d));
 }
 
+const ESTADO_DEFAULT: Estado = {
+  umbral: 70,
+  detectores: DETECTORES_DEFAULT,
+  chatHabilitado: true,
+  pausasHabilitadas: true,
+};
+
 export default function SeccionProctoring() {
   const toast = useToast();
-  const [estado, setEstado] = useState<Estado>({ umbral: 70, detectores: DETECTORES_DEFAULT });
-  const [inicial, setInicial] = useState<Estado>({ umbral: 70, detectores: DETECTORES_DEFAULT });
+  const [estado, setEstado] = useState<Estado>(ESTADO_DEFAULT);
+  const [inicial, setInicial] = useState<Estado>(ESTADO_DEFAULT);
   const [guardando, setGuardando] = useState(false);
   const [cargando, setCargando] = useState(true);
 
@@ -50,6 +62,9 @@ export default function SeccionProctoring() {
         const cargado: Estado = {
           umbral: cfg.umbral_cola_revision,
           detectores: cfg.detectores_activos as TipoEvento[],
+          // Degradación segura: si el backend no los manda, se asumen habilitados.
+          chatHabilitado: cfg.chat_habilitado ?? true,
+          pausasHabilitadas: cfg.pausas_habilitadas ?? true,
         };
         setEstado(cargado);
         setInicial(cargado);
@@ -69,6 +84,8 @@ export default function SeccionProctoring() {
       await api.editarConfigSistema({
         umbral_cola_revision: estado.umbral,
         detectores_activos: estado.detectores,
+        chat_habilitado: estado.chatHabilitado,
+        pausas_habilitadas: estado.pausasHabilitadas,
       });
       // Invalida el cache de config efectiva para que el examen y el harness
       // carguen la nueva config en la próxima sesión (task 4.5).
@@ -153,6 +170,27 @@ export default function SeccionProctoring() {
         </Card>
       </div>
 
+      {/* C-69 admin-sync: canales del alumno durante el examen. */}
+      <Card className="space-y-md">
+        <SectionTitle sub="Qué herramientas de comunicación y ayuda tiene disponibles el alumno mientras rinde">
+          Canales del alumno
+        </SectionTitle>
+        <div className="grid lg:grid-cols-2 gap-2">
+          <ToggleRow
+            label="Chat entre proctor y alumno"
+            description="Habilita el canal de mensajes en vivo entre el alumno que rinde y el proctor que supervisa. Si lo desactivás, no aparece el chat ni del lado del alumno ni del proctor."
+            on={estado.chatHabilitado}
+            onToggle={() => setEstado((p) => ({ ...p, chatHabilitado: !p.chatHabilitado }))}
+          />
+          <ToggleRow
+            label="Pausas solicitadas por el alumno"
+            description="Permite que el alumno pida una pausa durante el examen para que el proctor la autorice. Si lo desactivás, el alumno no ve el botón de pausa y el proctor no recibe solicitudes."
+            on={estado.pausasHabilitadas}
+            onToggle={() => setEstado((p) => ({ ...p, pausasHabilitadas: !p.pausasHabilitadas }))}
+          />
+        </div>
+      </Card>
+
       {/* C: Footer dirty-aware */}
       {dirty && (
         <div className="flex items-center justify-between gap-sm pt-sm border-t border-outline-variant/40">
@@ -171,5 +209,51 @@ export default function SeccionProctoring() {
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * ToggleRow — fila con nombre + descripción a la izquierda y un switch a la
+ * derecha. Mismo lenguaje visual que DetectoresSelector (verde = activo,
+ * rojo = inactivo) para que el admin lo lea de un vistazo.
+ */
+function ToggleRow({
+  label,
+  description,
+  on,
+  onToggle,
+}: {
+  label: string;
+  description: string;
+  on: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      aria-label={`${label} — ${on ? 'activado' : 'desactivado'}`}
+      onClick={onToggle}
+      className={`group flex items-center gap-3 px-4 py-3 rounded-xl border text-left transition-colors min-w-0 focus:outline-none focus:ring-2 focus:ring-outline-variant ${
+        on ? 'bg-success-container/40 border-success/40' : 'bg-error-container/30 border-error/30'
+      }`}
+    >
+      <div className="flex-1 min-w-0">
+        <p className="text-label-md font-semibold text-on-surface">{label}</p>
+        <p className="text-[11px] text-on-surface-variant leading-snug mt-0.5">{description}</p>
+      </div>
+      <span
+        className={`relative shrink-0 inline-flex h-6 w-11 rounded-full border-2 border-transparent transition-colors duration-200 ${
+          on ? 'bg-success-600' : 'bg-error-600'
+        }`}
+      >
+        <span
+          className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transition-transform duration-200 ${
+            on ? 'translate-x-5' : 'translate-x-0'
+          }`}
+        />
+      </span>
+    </button>
   );
 }

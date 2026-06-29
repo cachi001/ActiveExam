@@ -54,7 +54,7 @@ function useSidebarCollapsed(): [boolean, () => void] {
 
 function LogoMark() {
   return (
-    <div className="w-8 h-8 rounded-lg bg-primary text-on-primary flex items-center justify-center shadow-sm shrink-0">
+    <div className="w-8 h-8 rounded-lg bg-primary-fixed text-primary flex items-center justify-center shadow-sm shrink-0">
       <Icon name="verified_user" className="text-[18px]" fill />
     </div>
   );

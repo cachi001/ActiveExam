@@ -2479,6 +2479,10 @@ export const api = {
     detectores_activos: string[];
     scoring_weights: Record<string, number>;
     scoring_severidades: Record<string, string>;
+    // C-69 admin-sync: el backend puede no enviarlos aún (en construcción). Opcionales
+    // acá; el cache normaliza a `true` (degradación segura) si vienen ausentes.
+    chat_habilitado?: boolean;
+    pausas_habilitadas?: boolean;
   }> {
     if (USE_REAL_BACKEND) {
       return await realFetch('/config/effective', { method: 'GET' });
@@ -2494,6 +2498,8 @@ export const api = {
       umbral_cola_revision: 70,
       retencion_dias_default: 30,
       consent_version_vigente: 'v1',
+      chat_habilitado: true,
+      pausas_habilitadas: true,
       detectores_activos: [
         'rostro_ausente', 'multiples_rostros', 'mirada_desviada_sostenida',
         'perdida_de_foco', 'cambio_pestana', 'monitor_adicional',
@@ -2538,6 +2544,10 @@ export const api = {
     detectores_activos?: string[];
     retencion_dias_default?: number;
     consent_version_vigente?: string;
+    // C-69 admin-sync: habilitar/deshabilitar el chat proctor↔alumno y las pausas
+    // solicitadas por el alumno desde la Configuración del sistema.
+    chat_habilitado?: boolean;
+    pausas_habilitadas?: boolean;
   }): Promise<{
     version: number;
     face_absent_ms: number;
@@ -2550,6 +2560,8 @@ export const api = {
     consent_version_vigente: string;
     detectores_activos: string[];
     scoring_weights: Record<string, number>;
+    chat_habilitado?: boolean;
+    pausas_habilitadas?: boolean;
   }> {
     if (USE_REAL_BACKEND) {
       return await realFetch('/config', { method: 'PATCH', body: JSON.stringify(body) });

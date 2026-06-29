@@ -22,7 +22,7 @@ import { useToast } from '../ui/toast';
 import { useNavigate } from '../lib/router';
 import { useApp } from '../lib/store';
 import { api } from '../lib/api';
-import { loadEffectiveConfig } from '../config/effectiveConfigCache';
+import { loadEffectiveConfig, getEffectiveConfig } from '../config/effectiveConfigCache';
 import type { SesionProctoringResumen } from '../lib/types';
 import { SesionVivoCard } from './proctoring/SesionVivoCard';
 import { ExamenVivoGroup } from './proctoring/ExamenVivoGroup';
@@ -57,6 +57,9 @@ export default function Proctor() {
 
   const [sesiones, setSesiones] = useState<SesionProctoringResumen[]>([]);
   const [cargaInicial, setCargaInicial] = useState(true);
+  // C-69 admin-sync: si el admin desactivó las pausas, no se muestra la cola de
+  // solicitudes. Default `true` (degradación segura).
+  const [pausasHabilitadas, setPausasHabilitadas] = useState(true);
   const [refrescando, setRefrescando] = useState(false);
   const [ultimoRefresh, setUltimoRefresh] = useState<number | null>(null);
 
@@ -93,7 +96,10 @@ export default function Proctor() {
   // para que el "Riesgo alto (≥X)" refleje lo que el admin configuró y no quede
   // hardcodeado en 70.
   useEffect(() => {
-    void loadEffectiveConfig();
+    void loadEffectiveConfig().then(() => {
+      const cfg = getEffectiveConfig();
+      if (cfg) setPausasHabilitadas(cfg.pausas_habilitadas);
+    });
     void refrescar(false);
     const id = setInterval(() => void refrescar(false), POLL_MS);
     return () => clearInterval(id);
@@ -186,8 +192,9 @@ export default function Proctor() {
             arriba de todo, antes de la cola de solicitudes de pausa). */}
         {!cargaInicial && sesiones.length > 0 && <ResumenVivo sesiones={sesiones} />}
 
-        {/* C-15: cola de solicitudes de pausa (poll propio; se oculta si no hay). */}
-        <PausasPendientes proctorActor={proctorActor} />
+        {/* C-15: cola de solicitudes de pausa (poll propio; se oculta si no hay).
+            C-69 admin-sync: se oculta del todo si el admin desactivó las pausas. */}
+        {pausasHabilitadas && <PausasPendientes proctorActor={proctorActor} />}
 
         {/* Barra de estado del polling (sin card) */}
         <div className="flex items-center justify-between gap-md text-label-sm text-on-surface-variant">

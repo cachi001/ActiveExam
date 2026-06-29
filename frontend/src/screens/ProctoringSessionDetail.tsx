@@ -21,6 +21,7 @@ import { useNavigate } from '../lib/router';
 import { useApp } from '../lib/store';
 import { api } from '../lib/api';
 import type { SesionProctoringDetalle } from '../lib/types';
+import { loadEffectiveConfig, getEffectiveConfig } from '../config/effectiveConfigCache';
 import { DetalleHeader } from './proctoring/DetalleHeader';
 import { EventoCard } from './proctoring/EventoCard';
 import { BiometriaCard } from './proctoring/BiometriaCard';
@@ -75,6 +76,21 @@ export default function ProctoringSessionDetail() {
   const [cerrando, setCerrando] = useState(false);
   const [motivoCierre, setMotivoCierre] = useState('');
   const [cerrada, setCerrada] = useState(false);
+
+  // C-69 admin-sync: el admin puede desactivar el chat y/o las pausas desde la
+  // Configuración del sistema. Default `true` (degradación segura): si la config
+  // efectiva aún no cargó, NO ocultamos los paneles.
+  const [chatHabilitado, setChatHabilitado] = useState(true);
+  const [pausasHabilitadas, setPausasHabilitadas] = useState(true);
+  useEffect(() => {
+    void loadEffectiveConfig().then(() => {
+      const cfg = getEffectiveConfig();
+      if (cfg) {
+        setChatHabilitado(cfg.chat_habilitado);
+        setPausasHabilitadas(cfg.pausas_habilitadas);
+      }
+    });
+  }, []);
 
   useEffect(() => {
     if (!sessionId) {
@@ -209,8 +225,9 @@ export default function ProctoringSessionDetail() {
             <DetalleHeader detalle={detalle} />
 
             {/* Pausa: EN VIVO el proctor la resuelve acá; GRABADA muestra el
-                historial de todas las pausas como evidencia (solo lectura). */}
-            {sessionId && (
+                historial de todas las pausas como evidencia (solo lectura).
+                C-69 admin-sync: si el admin desactivó las pausas, se oculta la gestión. */}
+            {sessionId && pausasHabilitadas && (
               esVivo
                 ? <PausaSesionPanel sessionId={sessionId} proctorActor={proctorActor} />
                 : <PausasHistorial sessionId={sessionId} />
@@ -246,13 +263,16 @@ export default function ProctoringSessionDetail() {
               {/* C-15: canal de chat con el alumno + observaciones del proctor.
                   Sticky en desktop para que acompañe el scroll de la lista de eventos. */}
               <div className="lg:sticky lg:top-lg space-y-lg">
-                <ChatBox
-                  sessionId={sessionId}
-                  yo="proctor"
-                  titulo={esVivo ? 'Canal con el estudiante' : 'Historial del canal con el estudiante'}
-                  altura="h-[420px]"
-                  readOnly={!esVivo}
-                />
+                {/* C-69 admin-sync: el chat se oculta si el admin lo desactivó. */}
+                {chatHabilitado && (
+                  <ChatBox
+                    sessionId={sessionId}
+                    yo="proctor"
+                    titulo={esVivo ? 'Canal con el estudiante' : 'Historial del canal con el estudiante'}
+                    altura="h-[420px]"
+                    readOnly={!esVivo}
+                  />
+                )}
                 {/* C-15 (3.2): observaciones del proctor — insumo de la revisión C-16.
                     En grabada se muestran como evidencia (solo lectura). */}
                 <ObservacionesProctor sessionId={sessionId} proctorActor={proctorActor} readOnly={!esVivo} />

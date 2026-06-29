@@ -35,6 +35,11 @@ export interface ConfigEfectivaSnapshot {
   scoring_weights: Record<string, number>;
   // El backend devuelve strings; se castean a Severidad al sembrar el cache.
   scoring_severidades?: Record<string, string>;
+  // C-69 admin-sync: interruptores de canales del alumno. Se normalizan a `true`
+  // en `loadEffectiveConfig()` si el backend aún no los envía (degradación segura:
+  // ante la duda, se muestra el chat y la pausa, no se ocultan por error).
+  chat_habilitado: boolean;
+  pausas_habilitadas: boolean;
 }
 
 // Cache en memoria — nulo hasta que se carga.
@@ -54,7 +59,14 @@ export async function loadEffectiveConfig(): Promise<void> {
   _inflight = (async () => {
     try {
       const data = await api.obtenerConfigEfectiva();
-      _cache = data;
+      // Normalización de degradación segura: si el backend (en construcción) no
+      // envía los interruptores, se asumen habilitados (true) para no ocultar el
+      // chat ni la pausa por error.
+      _cache = {
+        ...data,
+        chat_habilitado: data.chat_habilitado ?? true,
+        pausas_habilitadas: data.pausas_habilitadas ?? true,
+      };
       // Siembra el cache de scoring weights con los pesos de la config efectiva.
       // Así, pesoEvento() usa los pesos vivos sin un segundo round-trip a /scoring/weights.
       if (data.scoring_weights && Object.keys(data.scoring_weights).length > 0) {
