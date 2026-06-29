@@ -138,7 +138,7 @@ function FormularioJwt() {
 
               <Button
                 type="submit"
-                disabled={loading || !username || !password}
+                disabled={loading}
                 className="w-full"
               >
                 {loading ? (
