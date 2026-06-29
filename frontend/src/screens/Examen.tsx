@@ -3,7 +3,7 @@ import { StudentShell } from '../ui/shells';
 import { Icon, Button, Card, SeverityBadge } from '../ui/components';
 import { useNavigate } from '../lib/router';
 import { useApp } from '../lib/store';
-import { TIPO_EVENTO_LABEL } from '../lib/api';
+import { api, TIPO_EVENTO_LABEL } from '../lib/api';
 import { useExamProctoring } from '../proctoring/useExamProctoring';
 import { pesoEvento } from '../proctoring/scoringWeights';
 import { getEffectiveConfig } from '../config/effectiveConfigCache';
@@ -41,6 +41,7 @@ const SEV_ICON: Record<string, { name: string; cls: string }> = {
 export default function Examen() {
   const navigate = useNavigate();
   const examen = useApp((s) => s.examenActivo);
+  const principal = useApp((s) => s.principal);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -131,8 +132,24 @@ export default function Examen() {
     return () => lockdown.detener();
   }, []);
 
-  // Cierre prolijo: cortar el proctoring antes de navegar (eventos ya persistidos).
-  const finalizar = () => {
+  // Cierre prolijo del examen.
+  // C-69 sección 7: el ORDEN importa. Primero enviamos las respuestas del alumno
+  // (POST .../respuestas) para que el backend calcule la nota server-side (D8);
+  // recién DESPUÉS finalizamos la sesión (detener() PATCHea finalizar) y navegamos.
+  // Si las respuestas se enviaran después de finalizar, la nota no tendría con qué
+  // computarse. Degradación silenciosa: enviarRespuestasProctoring nunca rompe el
+  // cierre (mock/red caída → no-op), pero la await-eamos para respetar el orden.
+  const finalizar = async () => {
+    if (sessionId) {
+      const items = Object.entries(respuestas).map(([pregunta_id, opcion_elegida_id]) => ({
+        pregunta_id,
+        opcion_elegida_id,
+      }));
+      await api.enviarRespuestasProctoring(sessionId, items, {
+        alumno_idnumber: principal?.id_institucional,
+        alumno_email: principal?.email,
+      });
+    }
     detener();
     navigate('/cierre');
   };

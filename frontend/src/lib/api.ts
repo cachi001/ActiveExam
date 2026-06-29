@@ -1393,6 +1393,48 @@ export const api = {
   },
 
   /**
+   * Envía las respuestas del alumno ANTES de finalizar la sesión (C-69 sección 7).
+   * El backend calcula la nota server-side a partir de estas respuestas (D8: la
+   * corrección y el write-back los origina el backend, nunca el cliente; D3: la
+   * opción correcta nunca viaja al cliente).
+   *
+   * Real: POST /proctoring/sessions/{sessionId}/respuestas
+   * Mock o fallo: retorna null sin propagar (degradación silenciosa — NUNCA rompe
+   * el cierre del examen). El caller DEBE await-earla antes de finalizar para que
+   * la nota pueda computarse, pero un error de red no debe bloquear la entrega.
+   *
+   * `identidad` (alumno_idnumber/email) es opcional: alimenta el write-back a Moodle
+   * (D9). Si se omite, el backend usa la identidad del JWT.
+   */
+  async enviarRespuestasProctoring(
+    sessionId: string,
+    respuestas: { pregunta_id: string; opcion_elegida_id: string }[],
+    identidad?: { alumno_idnumber?: string; alumno_email?: string },
+  ): Promise<{ session_id: string; respuestas_guardadas: number } | null> {
+    if (!sessionId) return null;
+    if (USE_REAL_BACKEND) {
+      try {
+        const body = {
+          respuestas,
+          // Solo enviar la identidad cuando está disponible; si se omite, el backend
+          // cae a la identidad del JWT (campos con default="" en SubmitRespuestasIn).
+          ...(identidad?.alumno_idnumber ? { alumno_idnumber: identidad.alumno_idnumber } : {}),
+          ...(identidad?.alumno_email ? { alumno_email: identidad.alumno_email } : {}),
+        };
+        return await realFetch<{ session_id: string; respuestas_guardadas: number }>(
+          `/proctoring/sessions/${sessionId}/respuestas`,
+          { method: 'POST', body: JSON.stringify(body) },
+          'demo',
+        );
+      } catch {
+        return null;
+      }
+    }
+    // Mock/degradado: no-op (no hay corrección server-side en modo demo).
+    return null;
+  },
+
+  /**
    * Obtiene el detalle de una sesión de proctoring (C-64).
    * Real: GET /proctoring/sessions/{sessionId}
    * Mock o fallo: retorna null sin propagar.

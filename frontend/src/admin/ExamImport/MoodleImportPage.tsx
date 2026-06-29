@@ -1,5 +1,9 @@
 import { useState } from 'react';
-import { altaInlineMateriaComision } from '../../lib/examContentAdmin';
+import {
+  altaInlineMateriaComision,
+  getMoodleTarget,
+  setMoodleTarget,
+} from '../../lib/examContentAdmin';
 
 interface OmitidaItem {
   tipo: string;
@@ -28,6 +32,36 @@ export default function MoodleImportPage() {
   const [asocLoading, setAsocLoading] = useState(false);
   const [asocError, setAsocError] = useState<string | null>(null);
   const [asocOk, setAsocOk] = useState(false);
+
+  // Destino de la nota en Moodle (D12): courseid + cmid. Opcional al importar y
+  // editable después. Se setea en el FormData del import si se completa, y/o
+  // mediante setMoodleTarget sobre el examen ya creado.
+  const [courseId, setCourseId] = useState('');
+  const [cmid, setCmid] = useState('');
+  const [targetLoading, setTargetLoading] = useState(false);
+  const [targetError, setTargetError] = useState<string | null>(null);
+  const [targetOk, setTargetOk] = useState(false);
+
+  async function handleGuardarTarget(e: React.FormEvent) {
+    e.preventDefault();
+    if (!report) return;
+    setTargetLoading(true);
+    setTargetError(null);
+    setTargetOk(false);
+    try {
+      await setMoodleTarget(report.examen_id, {
+        moodle_courseid: courseId.trim() ? Number(courseId.trim()) : null,
+        moodle_cmid: cmid.trim() ? Number(cmid.trim()) : null,
+      });
+      setTargetOk(true);
+    } catch (err) {
+      setTargetError(
+        err instanceof Error ? err.message : 'Error al guardar el destino en Moodle.',
+      );
+    } finally {
+      setTargetLoading(false);
+    }
+  }
 
   async function handleAsociar(e: React.FormEvent) {
     e.preventDefault();
@@ -58,10 +92,14 @@ export default function MoodleImportPage() {
     setReport(null);
     setAsocOk(false);
     setAsocError(null);
+    setTargetOk(false);
+    setTargetError(null);
 
     const formData = new FormData();
     formData.append('file', file);
     if (titulo.trim()) formData.append('titulo', titulo.trim());
+    if (courseId.trim()) formData.append('moodle_courseid', courseId.trim());
+    if (cmid.trim()) formData.append('moodle_cmid', cmid.trim());
 
     try {
       const resp = await fetch('/api/v1/exam-content/moodle-import', {
@@ -69,7 +107,17 @@ export default function MoodleImportPage() {
         body: formData,
       });
       if (resp.ok) {
-        setReport(await resp.json());
+        const created: ImportReport = await resp.json();
+        setReport(created);
+        // Pre-cargar el destino ya persistido (si el import lo guardó) para que el
+        // formulario de edición refleje lo existente.
+        try {
+          const target = await getMoodleTarget(created.examen_id);
+          setCourseId(target.moodle_courseid != null ? String(target.moodle_courseid) : '');
+          setCmid(target.moodle_cmid != null ? String(target.moodle_cmid) : '');
+        } catch {
+          /* destino aún sin definir o no legible: dejamos los campos como están */
+        }
       } else {
         const body = await resp.json().catch(() => ({}));
         setError(body?.detail?.mensaje ?? body?.detail ?? `Error ${resp.status}`);
@@ -118,6 +166,41 @@ export default function MoodleImportPage() {
             className="w-full border border-outline-variant rounded-xl px-sm py-base
               text-label-md bg-surface outline-none focus:border-primary transition-colors"
           />
+        </div>
+
+        <div className="space-y-xs">
+          <p className="text-label-md text-on-surface-variant">
+            Destino de la nota en Moodle{' '}
+            <span className="text-on-surface-variant/60">(opcional)</span>
+          </p>
+          <p className="text-label-sm text-on-surface-variant">
+            A qué curso y actividad de Moodle se le devolverá la nota de este examen.
+            Podés completarlo ahora o más tarde.
+          </p>
+          <div className="grid grid-cols-2 gap-sm">
+            <input
+              id="moodle-courseid"
+              type="number"
+              inputMode="numeric"
+              value={courseId}
+              onChange={(e) => setCourseId(e.target.value)}
+              aria-label="ID del curso Moodle (courseid)"
+              placeholder="ID del curso (courseid)"
+              className="w-full border border-outline-variant rounded-xl px-sm py-base
+                text-label-md bg-surface outline-none focus:border-primary transition-colors"
+            />
+            <input
+              id="moodle-cmid"
+              type="number"
+              inputMode="numeric"
+              value={cmid}
+              onChange={(e) => setCmid(e.target.value)}
+              aria-label="ID de la actividad/calificación (cmid)"
+              placeholder="ID de la actividad (cmid)"
+              className="w-full border border-outline-variant rounded-xl px-sm py-base
+                text-label-md bg-surface outline-none focus:border-primary transition-colors"
+            />
+          </div>
         </div>
 
         <button
@@ -234,6 +317,63 @@ export default function MoodleImportPage() {
           {asocOk && (
             <div className="rounded-xl bg-surface-container-high p-md text-label-sm text-on-surface">
               Comisión asociada al examen.
+            </div>
+          )}
+        </form>
+      )}
+
+      {report && (
+        <form
+          onSubmit={handleGuardarTarget}
+          className="rounded-xl bg-surface-container p-md space-y-sm"
+          aria-label="Destino de la nota en Moodle"
+        >
+          <p className="text-label-md font-semibold text-on-surface">
+            Destino de la nota en Moodle{' '}
+            <span className="text-on-surface-variant/60">(opcional)</span>
+          </p>
+          <p className="text-label-sm text-on-surface-variant">
+            A qué curso y actividad de Moodle se le devolverá la nota de este examen.
+            Dejá ambos campos vacíos para no definir un destino.
+          </p>
+
+          <div className="grid grid-cols-2 gap-sm">
+            <input
+              type="number"
+              inputMode="numeric"
+              value={courseId}
+              onChange={(e) => setCourseId(e.target.value)}
+              aria-label="ID del curso Moodle (courseid)"
+              placeholder="ID del curso (courseid)"
+              className="border border-outline-variant rounded-xl px-sm py-base text-label-md bg-surface outline-none focus:border-primary"
+            />
+            <input
+              type="number"
+              inputMode="numeric"
+              value={cmid}
+              onChange={(e) => setCmid(e.target.value)}
+              aria-label="ID de la actividad/calificación (cmid)"
+              placeholder="ID de la actividad (cmid)"
+              className="border border-outline-variant rounded-xl px-sm py-base text-label-md bg-surface outline-none focus:border-primary"
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={targetLoading}
+            className="w-full py-sm px-md rounded-xl bg-primary text-on-primary text-label-md font-semibold shadow-sm hover:bg-primary-700 active:bg-primary-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            {targetLoading ? 'Guardando…' : 'Guardar destino'}
+          </button>
+
+          {targetError && (
+            <div className="rounded-xl bg-error-50 border border-error-200 p-md text-label-sm text-error-700">
+              {targetError}
+            </div>
+          )}
+          {targetOk && (
+            <div className="rounded-xl bg-surface-container-high p-md text-label-sm text-on-surface">
+              Destino en Moodle guardado.
             </div>
           )}
         </form>

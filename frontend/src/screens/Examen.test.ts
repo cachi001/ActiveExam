@@ -179,3 +179,42 @@ describe('4.9-4.10 — Acción de finalizar rendición', () => {
     expect(examenSource).toMatch(/\/cierre/);
   });
 });
+
+// ---------------------------------------------------------------------------
+// C-69 sección 7: finalizar envía las respuestas ANTES de finalizar la sesión
+// ---------------------------------------------------------------------------
+
+describe('C-69 §7 — Envío de respuestas en finalizar (source inspection)', () => {
+  it('finalizar llama a api.enviarRespuestasProctoring', () => {
+    expect(examenSource).toMatch(/enviarRespuestasProctoring/);
+  });
+
+  it('finalizar es async y await-ea el envío de respuestas', () => {
+    // El handler debe esperar el POST de respuestas antes de finalizar la sesión.
+    expect(examenSource).toMatch(/const finalizar = async/);
+    expect(examenSource).toMatch(/await api\.enviarRespuestasProctoring/);
+  });
+
+  it('las respuestas se envían ANTES de detener() (orden: nota se computa al finalizar)', () => {
+    // Acotamos al cuerpo de finalizar (hay otros detener() en el archivo, p.ej.
+    // lockdown.detener() en un useEffect, que no deben confundir el chequeo de orden).
+    const inicio = examenSource.indexOf('const finalizar = async');
+    const cuerpo = examenSource.slice(inicio, examenSource.indexOf('const mm =', inicio));
+    const idxEnvio = cuerpo.indexOf('enviarRespuestasProctoring');
+    const idxDetener = cuerpo.indexOf('detener();');
+    expect(idxEnvio).toBeGreaterThan(-1);
+    expect(idxDetener).toBeGreaterThan(-1);
+    // El envío aparece antes que detener() dentro de finalizar.
+    expect(idxEnvio).toBeLessThan(idxDetener);
+  });
+
+  it('mapea el estado respuestas (preguntaId->opcionId) a {pregunta_id, opcion_elegida_id}', () => {
+    expect(examenSource).toMatch(/pregunta_id/);
+    expect(examenSource).toMatch(/opcion_elegida_id/);
+  });
+
+  it('propaga la identidad del alumno (idnumber/email) cuando está disponible', () => {
+    expect(examenSource).toMatch(/alumno_idnumber/);
+    expect(examenSource).toMatch(/alumno_email/);
+  });
+});

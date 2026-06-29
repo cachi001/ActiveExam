@@ -70,7 +70,17 @@ export default function Consent() {
         // etiqueta = NOMBRE DEL ALUMNO (lo que el proctor necesita ver en las
         // cards de supervisión). El examen ya se deriva de exam_id vía el catálogo.
         const etiqueta = nombreCompleto(principal) || examen.nombre;
-        const sesion = await api.crearSesionProctoring('examen', etiqueta, examen.id);
+        // C-69: la sesión ANTICIPADA debe nacer ya vinculada al examen_contenido
+        // (Moodle XML). useExamProctoring la reutiliza vía existingSessionId (store),
+        // así que si no le pasáramos el examen_contenido_id acá, la sesión reusada
+        // quedaría con examen_contenido_id = NULL y la nota nunca podría computarse.
+        // Mismo argumento que useExamProctoring.obtenerOCrearSesion.
+        const sesion = await api.crearSesionProctoring(
+          'examen',
+          etiqueta,
+          examen.id,
+          examen.examen_contenido_id,
+        );
         setProctoringSessionId(sesion.id);
       } catch {
         // degradación silenciosa: la sesión se intentará crear en useExamProctoring

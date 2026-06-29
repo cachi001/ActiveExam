@@ -51,6 +51,16 @@ export interface AsociarComisionResponse {
   comision_id: string;
 }
 
+/** Destino de la nota en Moodle para un examen (curso + actividad/cmid). */
+export interface MoodleTarget {
+  moodle_courseid: number | null;
+  moodle_cmid: number | null;
+}
+
+export interface MoodleTargetResponse extends MoodleTarget {
+  examen_id: string;
+}
+
 function authHeaders(): Record<string, string> {
   const token = authProvider.getToken();
   return {
@@ -101,4 +111,38 @@ export async function asociarExamenAComision(
     throw new Error(body?.detail?.mensaje ?? body?.detail ?? `Error ${res.status}`);
   }
   return res.json() as Promise<AsociarComisionResponse>;
+}
+
+/**
+ * Define (o reemplaza) el destino de la nota en Moodle para un examen ya
+ * importado: a qué curso (courseid) y actividad/calificación (cmid) se le
+ * devolverá la nota. Ambos pueden ser null para limpiar el destino.
+ */
+export async function setMoodleTarget(
+  examenId: string,
+  target: MoodleTarget,
+): Promise<MoodleTargetResponse> {
+  const res = await fetch(`/api/v1/exam-content/${examenId}/moodle-target`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify(target),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.detail?.mensaje ?? body?.detail ?? `Error ${res.status}`);
+  }
+  return res.json() as Promise<MoodleTargetResponse>;
+}
+
+/** Lee el destino de la nota en Moodle de un examen importado. */
+export async function getMoodleTarget(examenId: string): Promise<MoodleTargetResponse> {
+  const res = await fetch(`/api/v1/exam-content/${examenId}/moodle-target`, {
+    method: 'GET',
+    headers: authHeaders(),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.detail?.mensaje ?? body?.detail ?? `Error ${res.status}`);
+  }
+  return res.json() as Promise<MoodleTargetResponse>;
 }
