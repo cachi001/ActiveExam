@@ -70,7 +70,7 @@ vi.mock('../lib/api', () => ({
   api: { enviarRespuestasProctoring },
 }));
 
-vi.mock('../config/effectiveConfigCache', () => ({ getEffectiveConfig: () => null }));
+vi.mock('../config/effectiveConfigCache', () => ({ getEffectiveConfig: () => null, loadEffectiveConfig: () => Promise.resolve(null), resetEffectiveConfigCache: () => {} }));
 vi.mock('../proctoring/scoringWeights', () => ({ pesoEvento: () => 0 }));
 
 // Una sola pregunta con dos opciones: deja el botón "Finalizar y entregar" visible

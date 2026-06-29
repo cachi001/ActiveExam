@@ -53,7 +53,7 @@ vi.mock('../lib/router', () => ({ useNavigate: () => () => {} }));
 
 vi.mock('../lib/api', () => ({ TIPO_EVENTO_LABEL: {} }));
 
-vi.mock('../config/effectiveConfigCache', () => ({ getEffectiveConfig: () => null }));
+vi.mock('../config/effectiveConfigCache', () => ({ getEffectiveConfig: () => null, loadEffectiveConfig: () => Promise.resolve(null), resetEffectiveConfigCache: () => {} }));
 
 vi.mock('../proctoring/scoringWeights', () => ({ pesoEvento: () => 0 }));
 
