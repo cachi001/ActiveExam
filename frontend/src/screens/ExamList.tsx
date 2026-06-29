@@ -7,13 +7,15 @@ import { useNavigate } from '../lib/router';
 import { api, API_BASE, USE_REAL_BACKEND } from '../lib/api';
 import { authProvider } from '../lib/authProvider';
 import { TableToolbar, type TableQuery } from '../ui/TableToolbar';
+import { ActionMenu } from '../ui/ActionMenu';
 import { listarExamenesContenidoPaginadoFn } from '../lib/examContentCatalog';
 import type { Examen, ExamenContenidoResumen } from '../lib/types';
 
 const ESTADO_TONE = { borrador: 'neutral', programado: 'primary', en_curso: 'success', finalizado: 'neutral' } as const;
 const ESTADO_LABEL = { borrador: 'Borrador', programado: 'Programado', en_curso: 'En curso', finalizado: 'Finalizado' } as const;
 
-const PAGE_SIZE_DEFAULT = 25;
+const PAGE_SIZE_DEFAULT = 10;
+const PAGE_SIZE_OPTIONS = [5, 10, 15, 20, 50];
 
 export default function ExamList() {
   const navigate = useNavigate();
@@ -60,6 +62,7 @@ export default function ExamList() {
   }, [query, fetchImportados]);
 
   const configurar = () => navigate('/admin/configuracion');
+  const importar = () => navigate('/admin/examenes/importar');
 
   // Demo: filtrado en memoria (solo modo sin backend, datos pequeños)
   const demoTerm = demoQ.toLowerCase();
@@ -94,6 +97,11 @@ export default function ExamList() {
             sub={USE_REAL_BACKEND
               ? `${totalImportados} ${totalImportados === 1 ? 'examen' : 'exámenes'}`
               : `${examenes.length} ${examenes.length === 1 ? 'examen' : 'exámenes'}`}
+            action={
+              <Button icon="upload" onClick={importar} className="shrink-0">
+                Importar examen
+              </Button>
+            }
           >
             Listado
           </SectionTitle>
@@ -106,6 +114,7 @@ export default function ExamList() {
                 onChange={setQuery}
                 placeholder="Buscar por nombre, materia o comisión…"
                 total={totalImportados}
+                pageSizeOptions={PAGE_SIZE_OPTIONS}
                 loading={cargando}
               />
             </div>
@@ -146,104 +155,180 @@ export default function ExamList() {
 
           {/* ── Tabla modo real (C-69): exámenes importados ── */}
           {USE_REAL_BACKEND && hayResultados && (
-            <div className="overflow-x-auto -mx-lg px-lg">
-              <table className="w-full text-left min-w-[580px]">
-                <thead>
-                  <tr className="text-label-sm uppercase tracking-wide text-on-surface-variant border-b border-outline-variant/40">
-                    <th className="py-sm pr-md font-semibold">Examen</th>
-                    <th className="py-sm pr-md font-semibold">Materia</th>
-                    <th className="py-sm pr-md font-semibold">Comisión</th>
-                    <th className="py-sm pr-md font-semibold text-right">Preguntas</th>
-                    <th className="py-sm font-semibold text-right">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {importados.map((e) => (
-                    <tr
-                      key={e.id}
-                      className={`border-b border-outline-variant/20 transition-colors
-                        ${cargando ? 'opacity-50' : 'hover:bg-surface-container-low cursor-pointer'}`}
-                      onClick={!cargando ? () => navigate(`/admin/examenes/${e.id}`) : undefined}
-                    >
-                      <td className="py-sm pr-md">
-                        <p className="text-label-md font-semibold text-on-surface">{e.titulo}</p>
-                        <p className="text-label-sm text-on-surface-variant font-mono text-[11px]">{e.id}</p>
-                      </td>
-                      <td className="py-sm pr-md text-label-md text-on-surface-variant">
-                        {e.materia_nombre ?? <span className="text-outline italic text-label-sm">sin materia</span>}
-                      </td>
-                      <td className="py-sm pr-md text-label-md text-on-surface-variant">
-                        {e.comision_nombre ?? <span className="text-outline italic text-label-sm">sin comisión</span>}
-                      </td>
-                      <td className="py-sm pr-md text-label-md text-on-surface tabular-nums text-right">
-                        {e.cantidad_preguntas}
-                      </td>
-                      <td className="py-sm text-right">
-                        <div className="flex items-center justify-end gap-xs">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            icon="open_in_new"
-                            onClick={(ev) => { ev.stopPropagation(); navigate(`/admin/examenes/${e.id}`); }}
-                          >
-                            Detalle
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            icon="settings"
-                            onClick={(ev) => { ev.stopPropagation(); configurar(); }}
-                          >
-                            Config
-                          </Button>
-                        </div>
-                      </td>
+            <>
+              {/* Desktop: tabla (md+) */}
+              <div className="hidden md:block">
+                <table className="w-full text-left">
+                  <thead>
+                    <tr className="text-label-sm uppercase tracking-wide text-on-surface-variant border-b border-outline-variant/40">
+                      <th className="py-sm pr-md font-semibold">Examen</th>
+                      <th className="py-sm pr-md font-semibold">Materia</th>
+                      <th className="py-sm pr-md font-semibold">Comisión</th>
+                      <th className="py-sm px-md font-semibold text-center">Preguntas</th>
+                      <th className="py-sm font-semibold text-center">Acciones</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {importados.map((e) => (
+                      <tr
+                        key={e.id}
+                        className={`border-b border-outline-variant/20 transition-colors
+                          ${cargando ? 'opacity-50' : 'hover:bg-surface-container-low cursor-pointer'}`}
+                        onClick={!cargando ? () => navigate(`/admin/examenes/${e.id}`) : undefined}
+                      >
+                        <td className="py-sm pr-md">
+                          <p className="text-label-md font-semibold text-on-surface">{e.titulo}</p>
+                          <p className="text-label-sm text-on-surface-variant font-mono text-[11px]">{e.id}</p>
+                        </td>
+                        <td className="py-sm pr-md text-label-md text-on-surface-variant">
+                          {e.materia_nombre ?? <span className="text-outline italic text-label-sm">sin materia</span>}
+                        </td>
+                        <td className="py-sm pr-md text-label-md text-on-surface-variant">
+                          {e.comision_nombre ?? <span className="text-outline italic text-label-sm">sin comisión</span>}
+                        </td>
+                        <td className="py-sm px-md text-label-md text-on-surface tabular-nums text-center">
+                          {e.cantidad_preguntas}
+                        </td>
+                        <td className="py-sm">
+                          <div className="flex items-center justify-center" onClick={(ev) => ev.stopPropagation()}>
+                            <ActionMenu
+                              ariaLabel={`Acciones de ${e.titulo}`}
+                              items={[
+                                { label: 'Ver detalle', icon: 'open_in_new', onClick: () => navigate(`/admin/examenes/${e.id}`) },
+                                { label: 'Configurar / vincular', icon: 'settings', onClick: importar },
+                              ]}
+                            />
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mobile: cards apiladas (<md) */}
+              <div className="md:hidden space-y-sm">
+                {importados.map((e) => (
+                  <div
+                    key={e.id}
+                    className={`rounded-xl border border-outline-variant/40 bg-white p-base flex items-start gap-sm transition-colors
+                      ${cargando ? 'opacity-50' : 'active:bg-surface-container-low'}`}
+                  >
+                    <button
+                      type="button"
+                      onClick={!cargando ? () => navigate(`/admin/examenes/${e.id}`) : undefined}
+                      className="flex-1 min-w-0 text-left"
+                    >
+                      <p className="text-label-md font-semibold text-on-surface truncate">{e.titulo}</p>
+                      <p className="text-label-sm text-on-surface-variant font-mono text-[11px] truncate mt-0.5">{e.id}</p>
+                      <div className="mt-2 space-y-0.5 text-label-sm text-on-surface-variant">
+                        <p>
+                          <span className="text-outline">Materia:</span>{' '}
+                          {e.materia_nombre ?? <span className="text-outline italic">sin materia</span>}
+                        </p>
+                        <p>
+                          <span className="text-outline">Comisión:</span>{' '}
+                          {e.comision_nombre ?? <span className="text-outline italic">sin comisión</span>}
+                        </p>
+                        <p>
+                          <span className="text-outline">Preguntas:</span>{' '}
+                          <span className="text-on-surface tabular-nums">{e.cantidad_preguntas}</span>
+                        </p>
+                      </div>
+                    </button>
+                    <ActionMenu
+                      ariaLabel={`Acciones de ${e.titulo}`}
+                      items={[
+                        { label: 'Ver detalle', icon: 'open_in_new', onClick: () => navigate(`/admin/examenes/${e.id}`) },
+                        { label: 'Configurar / vincular', icon: 'settings', onClick: importar },
+                      ]}
+                    />
+                  </div>
+                ))}
+              </div>
+            </>
           )}
 
           {/* ── Tabla modo demo (C-21): exámenes en memoria ── */}
           {!USE_REAL_BACKEND && hayResultados && (
-            <div className="overflow-x-auto -mx-lg px-lg">
-              <table className="w-full text-left min-w-[580px]">
-                <thead>
-                  <tr className="text-label-sm uppercase tracking-wide text-on-surface-variant border-b border-outline-variant/40">
-                    <th className="py-sm pr-md font-semibold">Examen</th>
-                    <th className="py-sm pr-md font-semibold">Estado</th>
-                    <th className="py-sm pr-md font-semibold">Inicio</th>
-                    <th className="py-sm pr-md font-semibold">Umbral</th>
-                    <th className="py-sm pr-md font-semibold">Inscriptos</th>
-                    <th className="py-sm font-semibold text-right">Acción</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {demoFiltrados.map((e) => (
-                    <tr key={e.id} className="border-b border-outline-variant/20 hover:bg-surface-container-low transition-colors">
-                      <td className="py-sm pr-md">
-                        <p className="text-label-md font-semibold text-on-surface">{e.nombre}</p>
-                        <p className="text-label-sm text-on-surface-variant">{e.catedra} · {e.id}</p>
-                      </td>
-                      <td className="py-sm pr-md">
-                        <Badge tone={ESTADO_TONE[e.estado]} dot>{ESTADO_LABEL[e.estado]}</Badge>
-                      </td>
-                      <td className="py-sm pr-md text-label-md text-on-surface-variant">
-                        {new Date(e.inicio).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}
-                      </td>
-                      <td className="py-sm pr-md text-label-md text-on-surface tabular-nums">
-                        Desde {e.umbral_score} <span className="text-on-surface-variant text-label-sm">pts</span>
-                      </td>
-                      <td className="py-sm pr-md text-label-md text-on-surface">{e.inscriptos}</td>
-                      <td className="py-sm text-right">
-                        <Button size="sm" variant="ghost" icon="settings" onClick={configurar}>Configurar</Button>
-                      </td>
+            <>
+              {/* Desktop: tabla (md+) */}
+              <div className="hidden md:block">
+                <table className="w-full text-left">
+                  <thead>
+                    <tr className="text-label-sm uppercase tracking-wide text-on-surface-variant border-b border-outline-variant/40">
+                      <th className="py-sm pr-md font-semibold">Examen</th>
+                      <th className="py-sm pr-md font-semibold">Estado</th>
+                      <th className="py-sm pr-md font-semibold">Inicio</th>
+                      <th className="py-sm px-md font-semibold text-center">Umbral</th>
+                      <th className="py-sm px-md font-semibold text-center">Inscriptos</th>
+                      <th className="py-sm font-semibold text-center">Acción</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {demoFiltrados.map((e) => (
+                      <tr key={e.id} className="border-b border-outline-variant/20 hover:bg-surface-container-low transition-colors">
+                        <td className="py-sm pr-md">
+                          <p className="text-label-md font-semibold text-on-surface">{e.nombre}</p>
+                          <p className="text-label-sm text-on-surface-variant">{e.catedra} · {e.id}</p>
+                        </td>
+                        <td className="py-sm pr-md">
+                          <Badge tone={ESTADO_TONE[e.estado]} dot>{ESTADO_LABEL[e.estado]}</Badge>
+                        </td>
+                        <td className="py-sm pr-md text-label-md text-on-surface-variant">
+                          {new Date(e.inicio).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}
+                        </td>
+                        <td className="py-sm px-md text-label-md text-on-surface tabular-nums text-center">
+                          Desde {e.umbral_score} <span className="text-on-surface-variant text-label-sm">pts</span>
+                        </td>
+                        <td className="py-sm px-md text-label-md text-on-surface tabular-nums text-center">{e.inscriptos}</td>
+                        <td className="py-sm">
+                          <div className="flex items-center justify-center">
+                            <ActionMenu
+                              ariaLabel={`Acciones de ${e.nombre}`}
+                              items={[{ label: 'Configurar', icon: 'settings', onClick: configurar }]}
+                            />
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mobile: cards apiladas (<md) */}
+              <div className="md:hidden space-y-sm">
+                {demoFiltrados.map((e) => (
+                  <div key={e.id} className="rounded-xl border border-outline-variant/40 bg-white p-base flex items-start gap-sm">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-label-md font-semibold text-on-surface truncate">{e.nombre}</p>
+                      <p className="text-label-sm text-on-surface-variant truncate mt-0.5">{e.catedra} · {e.id}</p>
+                      <div className="mt-2">
+                        <Badge tone={ESTADO_TONE[e.estado]} dot>{ESTADO_LABEL[e.estado]}</Badge>
+                      </div>
+                      <div className="mt-2 space-y-0.5 text-label-sm text-on-surface-variant">
+                        <p>
+                          <span className="text-outline">Inicio:</span>{' '}
+                          {new Date(e.inicio).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}
+                        </p>
+                        <p>
+                          <span className="text-outline">Umbral:</span>{' '}
+                          <span className="text-on-surface tabular-nums">desde {e.umbral_score} pts</span>
+                        </p>
+                        <p>
+                          <span className="text-outline">Inscriptos:</span>{' '}
+                          <span className="text-on-surface tabular-nums">{e.inscriptos}</span>
+                        </p>
+                      </div>
+                    </div>
+                    <ActionMenu
+                      ariaLabel={`Acciones de ${e.nombre}`}
+                      items={[{ label: 'Configurar', icon: 'settings', onClick: configurar }]}
+                    />
+                  </div>
+                ))}
+              </div>
+            </>
           )}
         </Card>
       </div>

@@ -37,6 +37,8 @@ import GestionUsuarios from './screens/GestionUsuarios';
 import DetalleUsuario from './screens/DetalleUsuario';
 // C-69: Detalle de examen (alumnos, notas, sincronización Moodle)
 import ExamDetail from './screens/ExamDetail';
+// C-69: Importación de examen desde Moodle (XML + alta/asociación + destino de nota)
+import MoodleImportPage from './admin/ExamImport/MoodleImportPage';
 import Configuracion from './screens/Configuracion';
 import Registro from './screens/Registro';
 
@@ -77,6 +79,7 @@ export default function App() {
     '/revisor/detalle': g(<SessionDetail />, SUPERVISION),
     '/admin': g(<AdminDashboard />, ADMIN),
     '/admin/examenes': g(<ExamList />, ADMIN),
+    '/admin/examenes/importar': g(<MoodleImportPage />, ADMIN),
     '/admin/examenes/:id': g(<ExamDetail />, ADMIN),
     '/admin/reportes': g(<Reports />, ADMIN),
     '/admin/auditoria': g(<AuditPrivacy />, ADMIN),
