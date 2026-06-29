@@ -6,6 +6,8 @@
 >
 > **Decisión del dueño**: la creación de exámenes (si en el futuro vuelve al scope) debe ser **server-side**, no como UI client-side que era el alcance de este change.
 
+> **🔄 REVIVIDO por c-69 (2026-06-28)**: el alcance de "operar el examen en la plataforma" volvió al scope a través del change **c-69** (examen en plataforma con Moodle + lockdown + write-back de nota). A diferencia de este c-44 (UI de creación client-side), c-69 lo hace en la dirección correcta: **importa el examen desde Moodle** (Moodle XML export), el alumno lo **rinde en la plataforma con lockdown a pantalla completa**, y la **nota vuelve a Moodle** vía REST WS `core_grades_update_grades` (server-side). Ver DD-20 (revisión C-69) en `knowledge-base/09_decisiones_y_supuestos.md`.
+
 ---
 
 ## Why (original)
