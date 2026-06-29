@@ -42,7 +42,6 @@ const SEV_ICON: Record<string, { name: string; cls: string }> = {
 export default function Examen() {
   const navigate = useNavigate();
   const examen = useApp((s) => s.examenActivo);
-  const principal = useApp((s) => s.principal);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -180,10 +179,7 @@ export default function Examen() {
         pregunta_id,
         opcion_elegida_id,
       }));
-      await api.enviarRespuestasProctoring(sessionId, items, {
-        alumno_idnumber: principal?.id_institucional,
-        alumno_email: principal?.email,
-      });
+      await api.enviarRespuestasProctoring(sessionId, items);
     }
     detener();
     navigate('/cierre');

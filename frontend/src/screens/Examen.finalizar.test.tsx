@@ -197,13 +197,18 @@ describe('C-69 §7 — entrega: respuestas antes de finalizar', () => {
     expect(order).toEqual(['respuestas', 'detener', 'navigate']);
   });
 
-  it('propaga la identidad del alumno (idnumber + email) al backend', async () => {
+  it('H4 (seguridad): NO envía identidad del cliente — el backend usa la del JWT', async () => {
     await montar();
     await seleccionarPrimeraOpcion();
     await clickFinalizar();
 
-    const identidad = enviarRespuestasProctoring.mock.calls[0][2];
-    expect(identidad).toEqual({ alumno_idnumber: 'LU-123', alumno_email: 'alumno@uni.edu' });
+    // El submit se llama solo con (sessionId, items). La identidad del alumno la
+    // resuelve el backend desde la sesión (persistida del JWT al crearla); mandar
+    // alumno_idnumber/email desde el cliente sería superficie de spoofing y ahora
+    // el schema lo rechaza (extra='forbid').
+    const args = enviarRespuestasProctoring.mock.calls[0];
+    expect(args).toHaveLength(2);
+    expect(args[2]).toBeUndefined();
   });
 
   it('navega a /cierre tras la entrega', async () => {

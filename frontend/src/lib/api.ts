@@ -1465,18 +1465,14 @@ export const api = {
   async enviarRespuestasProctoring(
     sessionId: string,
     respuestas: { pregunta_id: string; opcion_elegida_id: string }[],
-    identidad?: { alumno_idnumber?: string; alumno_email?: string },
   ): Promise<{ session_id: string; respuestas_guardadas: number } | null> {
     if (!sessionId) return null;
     if (USE_REAL_BACKEND) {
       try {
-        const body = {
-          respuestas,
-          // Solo enviar la identidad cuando está disponible; si se omite, el backend
-          // cae a la identidad del JWT (campos con default="" en SubmitRespuestasIn).
-          ...(identidad?.alumno_idnumber ? { alumno_idnumber: identidad.alumno_idnumber } : {}),
-          ...(identidad?.alumno_email ? { alumno_email: identidad.alumno_email } : {}),
-        };
+        // H4 (seguridad): NO se envía identidad del cliente. El backend usa la
+        // identidad del alumno persistida server-side al crear la sesión (JWT);
+        // SubmitRespuestasIn rechaza (extra='forbid') cualquier campo extra.
+        const body = { respuestas };
         return await realFetch<{ session_id: string; respuestas_guardadas: number }>(
           `/proctoring/sessions/${sessionId}/respuestas`,
           { method: 'POST', body: JSON.stringify(body) },

@@ -213,8 +213,11 @@ describe('C-69 §7 — Envío de respuestas en finalizar (source inspection)', (
     expect(examenSource).toMatch(/opcion_elegida_id/);
   });
 
-  it('propaga la identidad del alumno (idnumber/email) cuando está disponible', () => {
-    expect(examenSource).toMatch(/alumno_idnumber/);
-    expect(examenSource).toMatch(/alumno_email/);
+  it('H4 (seguridad): NO propaga identidad del cliente en el envío de respuestas', () => {
+    // La identidad del alumno la resuelve el backend desde la sesión (JWT). Mandar
+    // alumno_idnumber/email desde el cliente sería superficie de spoofing y el
+    // schema lo rechaza (extra='forbid').
+    expect(examenSource).not.toMatch(/alumno_idnumber/);
+    expect(examenSource).not.toMatch(/alumno_email/);
   });
 });
