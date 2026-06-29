@@ -18,6 +18,13 @@ import type { AutorChat, MensajeChat } from '../lib/types';
 /** Intervalo de polling del chat (ms). Suficiente para sentirse "en vivo". */
 const POLL_MS = 3500;
 
+/**
+ * Cooldown anti-flood entre mensajes del ALUMNO (segundos). No bloquea la
+ * comunicación (puede mandar varios sin esperar respuesta del proctor), solo
+ * evita el envío en ráfaga. El proctor responde sin cooldown.
+ */
+const COOLDOWN_ALUMNO_S = 5;
+
 const AUTOR_LABEL: Record<AutorChat, string> = {
   alumno: 'Estudiante',
   proctor: 'Proctor',
@@ -47,6 +54,9 @@ export function ChatBox({
   const [mensajes, setMensajes] = useState<MensajeChat[]>([]);
   const [borrador, setBorrador] = useState('');
   const [enviando, setEnviando] = useState(false);
+  // Cooldown anti-flood (solo alumno): segundos restantes hasta poder reenviar.
+  const aplicaCooldown = yo === 'alumno';
+  const [cooldown, setCooldown] = useState(0);
 
   // Último timestamp recibido → polling incremental (solo trae los nuevos).
   const ultimoTs = useRef<string | undefined>(undefined);
@@ -102,18 +112,29 @@ export function ChatBox({
 
   const enviar = async () => {
     const texto = borrador.trim();
-    if (!texto || !sessionId || enviando) return;
+    if (!texto || !sessionId || enviando || cooldown > 0) return;
     setEnviando(true);
     try {
       const msg = await api.enviarMensajeChat(sessionId, yo, texto);
       merge([msg]);
       setBorrador('');
+      if (aplicaCooldown) {
+        setCooldown(COOLDOWN_ALUMNO_S);
+      }
     } catch {
       toast.error('No se pudo enviar el mensaje');
     } finally {
       setEnviando(false);
     }
   };
+
+  // Tick del cooldown (1/s). Al llegar a 0 se limpia el aviso de "enviado".
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const t = setInterval(() => setCooldown((c) => Math.max(0, c - 1)), 1000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cooldown > 0]);
 
   return (
     <Card className="space-y-sm">
@@ -157,24 +178,32 @@ export function ChatBox({
       </div>
 
       {!readOnly && (
-        <div className="flex gap-base">
-          <input
-            value={borrador}
-            onChange={(e) => setBorrador(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && void enviar()}
-            disabled={!sessionId || enviando}
-            placeholder={sessionId ? 'Escribir mensaje…' : 'Canal no disponible'}
-            className="flex-1 h-10 px-sm py-base text-label-md rounded-xl border border-outline-variant bg-surface-container-lowest focus:border-primary-container outline-none disabled:opacity-50"
-          />
-          <Button
-            onClick={() => void enviar()}
-            disabled={!sessionId || enviando}
-            aria-label="Enviar mensaje"
-            className="shrink-0 h-10 w-10 !p-0"
-          >
-            <Icon name="send" className="text-[18px]" />
-          </Button>
-        </div>
+        <>
+          <div className="flex gap-base">
+            <input
+              value={borrador}
+              onChange={(e) => setBorrador(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && void enviar()}
+              disabled={!sessionId || enviando || cooldown > 0}
+              placeholder={sessionId ? 'Escribir mensaje…' : 'Canal no disponible'}
+              className="flex-1 h-10 px-sm py-base text-label-md rounded-xl border border-outline-variant bg-surface-container-lowest focus:border-primary-container outline-none disabled:opacity-50"
+            />
+            <Button
+              onClick={() => void enviar()}
+              disabled={!sessionId || enviando || cooldown > 0}
+              aria-label="Enviar mensaje"
+              className="shrink-0 h-10 w-10 !p-0"
+            >
+              <Icon name="send" className="text-[18px]" />
+            </Button>
+          </div>
+          {aplicaCooldown && cooldown > 0 && (
+            <p className="text-[11px] text-on-surface-variant flex items-center gap-1">
+              <Icon name="check_circle" className="text-[13px] text-success" fill />
+              Mensaje enviado — el proctor lo verá. Podés escribir de nuevo en {cooldown}s.
+            </p>
+          )}
+        </>
       )}
     </Card>
   );
