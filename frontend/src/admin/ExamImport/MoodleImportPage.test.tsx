@@ -1,6 +1,11 @@
-import { describe, expect, it } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it } from 'vitest';
+import { cleanup, render, screen } from '@testing-library/react';
 import MoodleImportPage from './MoodleImportPage';
+
+// Sin cleanup entre tests los render() se acumulan en el DOM y las queries
+// (getByRole/getByLabelText) encuentran múltiples coincidencias. Limpiamos
+// después de cada test para aislarlos.
+afterEach(cleanup);
 
 describe('MoodleImportPage', () => {
   it('renders without crashing', () => {
