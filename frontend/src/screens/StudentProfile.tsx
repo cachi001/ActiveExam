@@ -113,12 +113,9 @@ export default function StudentProfile() {
   // Handlers de los pasos de enrollment
   // ─────────────────────────────────────────────────────────────────────────────
 
-  const handleConsentido = async (acuse: AcuseConsentimiento) => {
+  const handleConsentido = async (_acuse: AcuseConsentimiento) => {
     const estado = await cargarEnrollment();
-    if (acuse.via_alternativa) {
-      // Vía alternativa: el perfil puede estar completo sin biometría
-      setPaso('perfil');
-    } else if (!principal?.foto_perfil) {
+    if (!principal?.foto_perfil) {
       // Task 7.5: sin foto de perfil → paso foto_perfil (C-37)
       setPaso('foto_perfil');
     } else if (!estado.biometria?.captura_completada) {
@@ -182,7 +179,7 @@ export default function StudentProfile() {
     // Task 7.6: navegar al paso correcto según estado actual
     if (!enrollment?.consentimiento) {
       setPaso('consentimiento');
-    } else if (!principal?.foto_perfil && !enrollment.consentimiento.via_alternativa) {
+    } else if (!principal?.foto_perfil) {
       // Tiene consentimiento pero no foto → foto_perfil (C-37)
       setPaso('foto_perfil');
     } else {
@@ -209,7 +206,6 @@ export default function StudentProfile() {
   // ─────────────────────────────────────────────────────────────────────────────
 
   const consentimientoOk = Boolean(enrollment?.consentimiento);
-  const viaAlternativa = enrollment?.consentimiento?.via_alternativa ?? false;
   const biometriaOk = Boolean(enrollment?.biometria?.captura_completada);
   const biometriaCaducada = enrollment?.biometria?.vigencia === 'caducada';
   const biometriaRenovacionRequerida =
@@ -469,32 +465,28 @@ export default function StudentProfile() {
           perfilCompleto={perfilCompleto}
           biometriaCaducada={biometriaCaducada}
           biometriaRenovacionRequerida={biometriaRenovacionRequerida}
-          viaAlternativa={viaAlternativa}
           onIrAExamenes={() => navigate('/alumno/mis-examenes')}
           onRenovarBiometria={handleRenovarBiometria}
         />
 
         <RequisitoConsentimiento
           consentimiento={enrollment?.consentimiento ?? null}
-          viaAlternativa={viaAlternativa}
           versionVigente={versionVigente}
           onIniciar={() => setPaso('consentimiento')}
           onLeer={() => setPaso('leer_consentimiento')}
         />
 
-        {!viaAlternativa && (
-          <RequisitoBiometria
-            biometria={enrollment?.biometria ?? null}
-            biometriaOk={biometriaOk}
-            biometriaCaducada={biometriaCaducada}
-            biometriaRenovacionRequerida={biometriaRenovacionRequerida}
-            consentimientoOk={consentimientoOk}
-            devToolsEnabled={DEV_TOOLS_ENABLED}
-            onCapturar={handleIniciarEnrollment}
-            onRenovar={handleRenovarBiometria}
-            onSimularDeriva={handleSimularDeriva}
-          />
-        )}
+        <RequisitoBiometria
+          biometria={enrollment?.biometria ?? null}
+          biometriaOk={biometriaOk}
+          biometriaCaducada={biometriaCaducada}
+          biometriaRenovacionRequerida={biometriaRenovacionRequerida}
+          consentimientoOk={consentimientoOk}
+          devToolsEnabled={DEV_TOOLS_ENABLED}
+          onCapturar={handleIniciarEnrollment}
+          onRenovar={handleRenovarBiometria}
+          onSimularDeriva={handleSimularDeriva}
+        />
 
         <RequisitoDni
           dni={enrollment?.dni ?? null}

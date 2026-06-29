@@ -27,8 +27,6 @@ export default function Consent() {
   // lectura (no vuelve a presentar el flujo de aceptación del perfil, que no tiene
   // sentido acá: el alumno ya consintió en su perfil).
   const [mostrarTextoModal, setMostrarTextoModal] = useState(false);
-  // C-63: estado de la solicitud de vía alternativa
-  const [estadoAlternativa, setEstadoAlternativa] = useState<'idle' | 'solicitando' | 'pendiente'>('idle');
 
   useEffect(() => {
     // Cargar texto de consentimiento y estado de enrollment en paralelo (D3: render progresivo).
@@ -46,7 +44,14 @@ export default function Consent() {
     (acusePerfil.via_alternativa || acusePerfil.version === texto.version);
 
   const aceptar = async () => {
-    if (!acepto || !examen) return; // guard defensivo: deep-link directo sin examenActivo
+    if (!acepto) return;
+    // El store rehidrata `examenActivo` desde sessionStorage tras una recarga, así que
+    // normalmente está presente. Si aun así faltara (deep-link directo sin pasar por
+    // "Mis exámenes"), NO dejamos el botón inerte: avisamos en vez de no hacer nada.
+    if (!examen) {
+      toast.error('No pudimos identificar el examen. Volvé a "Mis exámenes" y entrá de nuevo a "Rendir".');
+      return;
+    }
     setGuardando(true);
 
     // Si el alumno no tiene consentimiento de perfil vigente con la versión actual,
@@ -59,8 +64,14 @@ export default function Consent() {
       }
     }
 
-    // Acuse por-rendición: siempre obligatorio, en AMBAS ramas.
-    await api.recordConsent(examen.id);
+    // Acuse por-rendición: siempre obligatorio, en AMBAS ramas. Lo envolvemos en
+    // try/catch para que un fallo (red) NO bloquee la navegación al paso 3: con
+    // `acepto` tildado, el alumno SIEMPRE debe avanzar a /biometria.
+    try {
+      await api.recordConsent(examen.id);
+    } catch {
+      // degradación silenciosa: el acuse se reintentará server-side; no bloquear el flujo.
+    }
 
     // C-64 D1: crear la sesión de proctoring ANTES de navegar a biometría (paso 3).
     // Guard de idempotencia: si ya existe en el store (re-render / doble clic), no crear otra.
@@ -91,18 +102,6 @@ export default function Consent() {
     navigate('/biometria');
   };
 
-  const alternativa = async () => {
-    if (!examen || guardando) return;
-    setEstadoAlternativa('solicitando');
-    try {
-      await api.solicitarViaAlternativa(examen.id);
-      setEstadoAlternativa('pendiente');
-    } catch {
-      toast.error('No se pudo registrar tu solicitud. Intentá de nuevo.');
-      setEstadoAlternativa('idle');
-    }
-  };
-
   // Formatear fecha del acuse de perfil para mostrarla en la rama liviana.
   const fechaAcuse = acusePerfil?.timestamp
     ? new Date(acusePerfil.timestamp).toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' })
@@ -131,24 +130,8 @@ export default function Consent() {
           <h2 className="font-headline text-headline-lg text-on-surface">Consentimiento informado</h2>
         </div>
 
-        {/* C-63: pantalla de espera — vía alternativa solicitada, pendiente de proctor */}
-        {estadoAlternativa === 'pendiente' && (
-          <Card className="bg-secondary-container border-secondary/30 flex gap-md items-start">
-            <div className="w-10 h-10 rounded-xl bg-secondary-fixed text-secondary flex items-center justify-center shrink-0">
-              <Icon name="support_agent" className="text-[20px]" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-body-md font-semibold text-on-surface">Solicitud registrada</p>
-              <p className="text-label-sm text-on-surface-variant mt-base">
-                Tu solicitud quedó registrada. Un proctor verificará tu identidad antes de habilitarte.
-                No podés rendir hasta entonces.
-              </p>
-            </div>
-          </Card>
-        )}
-
         {/* Rama liviana: ya consintió en perfil con versión vigente */}
-        {estadoAlternativa !== 'pendiente' && yaConsintioPerfil ? (
+        {yaConsintioPerfil ? (
           <>
             <Card className="bg-success-container border-success/30 flex gap-md items-start">
               <div className="w-10 h-10 rounded-xl bg-primary-fixed text-primary flex items-center justify-center shrink-0">
@@ -191,10 +174,7 @@ export default function Consent() {
               </label>
             </Card>
 
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-md">
-              <button onClick={alternativa} disabled={guardando || estadoAlternativa === 'solicitando'} className="text-label-md text-on-surface-variant hover:text-primary inline-flex items-center gap-base disabled:opacity-50">
-                <Icon name="support_agent" className="text-[20px]" /> {estadoAlternativa === 'solicitando' ? 'Registrando solicitud…' : 'No acepto — solicitar vía alternativa'}
-              </button>
+            <div className="flex items-center justify-end">
               <Button onClick={aceptar} disabled={!acepto || guardando} icon={guardando ? undefined : 'check'} iconRight={guardando ? undefined : 'arrow_forward'}>
                 {guardando
                   ? <span className="inline-flex items-center gap-xs"><Icon name="progress_activity" className="ae-spin text-[20px]" /> Registrando…</span>
@@ -235,10 +215,7 @@ export default function Consent() {
               </label>
             </Card>
 
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-md">
-              <button onClick={alternativa} disabled={guardando || estadoAlternativa === 'solicitando'} className="text-label-md text-on-surface-variant hover:text-primary inline-flex items-center gap-base disabled:opacity-50">
-                <Icon name="support_agent" className="text-[20px]" /> {estadoAlternativa === 'solicitando' ? 'Registrando solicitud…' : 'No acepto — solicitar vía alternativa'}
-              </button>
+            <div className="flex items-center justify-end">
               <Button onClick={aceptar} disabled={!acepto || guardando} icon={guardando ? undefined : 'check'} iconRight={guardando ? undefined : 'arrow_forward'}>
                 {guardando ? <span className="inline-flex items-center gap-xs"><Icon name="progress_activity" className="ae-spin text-[20px]" /> Registrando…</span> : 'Acepto y continúo'}
               </Button>

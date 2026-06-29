@@ -11,7 +11,7 @@ import { useNavigate } from '../lib/router';
 import { useApp } from '../lib/store';
 import { api, USE_REAL_BACKEND } from '../lib/api';
 import AcuseExamen from './AcuseExamen';
-import type { Inscripcion, Examen, ExamenContenidoResumen } from '../lib/types';
+import type { Inscripcion, Examen, ExamenContenidoResumen, NotaExamen } from '../lib/types';
 import { InscripcionCard } from './alumno/components/InscripcionCard';
 
 interface GatePorExamen { puede: boolean; codigo?: string; razon?: string; }
@@ -37,6 +37,8 @@ export default function AlumnoMisExamenes() {
   const [examenesImportados, setExamenesImportados] = useState<ExamenContenidoResumen[]>([]);
   const [cargandoImportados, setCargandoImportados] = useState(USE_REAL_BACKEND);
   const [rindiendoImportadoId, setRindiendoImportadoId] = useState<string | null>(null);
+  // C-69: notas académicas del alumno + estado de cola de revisión (solo modo real)
+  const [notas, setNotas] = useState<NotaExamen[]>([]);
 
   const evaluarGates = async (insc: Inscripcion[]) => {
     const resultados = await Promise.all(
@@ -65,9 +67,13 @@ export default function AlumnoMisExamenes() {
     if (!USE_REAL_BACKEND) return;
     let cancelado = false;
     (async () => {
-      const importados = await api.listarExamenesContenido();
+      const [importados, misNotas] = await Promise.all([
+        api.listarExamenesContenido(),
+        api.misNotas(),
+      ]);
       if (cancelado) return;
       setExamenesImportados(importados);
+      setNotas(misNotas);
       setCargandoImportados(false);
     })();
     return () => { cancelado = true; };
@@ -181,21 +187,18 @@ export default function AlumnoMisExamenes() {
               </p>
             </HelpButton>
           </div>
-          <p className="text-[13px] text-on-surface-variant mt-1">Registro de tus inscripciones con estado y acción siguiente.</p>
+          <p className="text-[13px] text-on-surface-variant mt-1">Elegí un examen disponible para rendir y consultá tus notas.</p>
         </header>
 
+        {/* Sección de inscripciones: solo se muestra si el alumno TIENE inscripciones.
+            En modo real no existe el modelo de inscripción (misInscripciones() = []),
+            así que esta sección queda oculta y el alumno ve solo los exámenes
+            disponibles + sus notas más abajo. */}
         {cargando ? (
-          <div className="min-h-[60vh] flex items-center justify-center">
-            <LoadingSpinner label="Cargando inscripciones…" />
+          <div className="min-h-[40vh] flex items-center justify-center">
+            <LoadingSpinner label="Cargando tus exámenes…" />
           </div>
-        ) : inscripciones.length === 0 ? (
-          <Card className="text-center py-xl">
-            <Icon name="event_busy" className="text-[40px] text-on-surface-variant mb-md" />
-            <p className="text-body-md text-on-surface font-semibold">No tenés inscripciones registradas</p>
-            <p className="text-label-sm text-on-surface-variant mt-xs mb-md">Explorá las materias disponibles e inscribite a un examen.</p>
-            <Button variant="secondary" onClick={() => navigate('/alumno/materias')} icon="add_circle">Ver materias disponibles</Button>
-          </Card>
-        ) : (
+        ) : inscripciones.length > 0 ? (
           <div className="space-y-sm">
             {inscripciones.map((insc) => (
               <InscripcionCard
@@ -209,6 +212,22 @@ export default function AlumnoMisExamenes() {
               />
             ))}
           </div>
+        ) : null}
+
+        {/* C-69: Tus notas — nota académica + estado de cola de revisión por eventos.
+            Solo con backend real y solo si el alumno ya rindió algún examen. */}
+        {USE_REAL_BACKEND && notas.length > 0 && (
+          <section>
+            <div className="flex items-center gap-sm mb-md">
+              <Icon name="grade" className="text-[20px] text-primary" />
+              <h2 className="text-[16px] font-semibold text-on-surface">Tus notas</h2>
+            </div>
+            <div className="space-y-sm">
+              {notas.map((n) => (
+                <NotaCard key={n.examen_id} nota={n} />
+              ))}
+            </div>
+          </section>
         )}
 
         {/* C-69: Catálogo de exámenes importados (Moodle XML) — solo con backend real.
@@ -219,7 +238,7 @@ export default function AlumnoMisExamenes() {
             <div className="flex items-center gap-sm mb-md">
               <Icon name="quiz" className="text-[20px] text-primary" />
               <h2 className="text-[16px] font-semibold text-on-surface">
-                Exámenes disponibles (contenido importado)
+                Exámenes disponibles
               </h2>
             </div>
 
@@ -293,6 +312,57 @@ function ExamenImportadoCard({ contenido, rindiendo, onRendir }: ExamenImportado
       >
         {rindiendo ? 'Verificando…' : 'Rendir'}
       </Button>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// C-69: Card de nota académica + estado de cola de revisión
+// ---------------------------------------------------------------------------
+
+/**
+ * Muestra la nota de un examen rendido en lenguaje claro para el alumno.
+ * Si `en_cola_revision` (el score de proctoring superó el umbral), la nota se
+ * presenta como PRELIMINAR con un chip "En revisión por eventos registrados":
+ * un docente revisará el examen antes de confirmar la nota. La fuente de verdad
+ * es el backend (api.misNotas); el cliente solo la muestra.
+ */
+function NotaCard({ nota }: { nota: NotaExamen }) {
+  const enRevision = nota.en_cola_revision;
+  const tieneNota = nota.nota !== null && nota.nota !== undefined;
+  return (
+    <Card className={`flex items-start gap-md p-md ${enRevision ? 'bg-warning-container/30 border-warning-200' : ''}`}>
+      <div className={`w-9 h-9 rounded-md flex items-center justify-center shrink-0 mt-0.5 ${enRevision ? 'bg-warning-container text-warning' : 'bg-success-container text-success'}`}>
+        <Icon name={enRevision ? 'hourglass_top' : 'grade'} className="text-[18px]" fill />
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-[14px] font-semibold text-on-surface leading-tight">{nota.examen_titulo}</p>
+        <p className="text-[15px] text-on-surface mt-0.5">
+          {tieneNota ? (
+            <>
+              {enRevision ? 'Nota preliminar: ' : 'Nota: '}
+              <strong>{nota.nota}</strong>
+            </>
+          ) : (
+            <span className="text-on-surface-variant">Nota pendiente de cálculo</span>
+          )}
+        </p>
+        {enRevision ? (
+          <div className="flex items-start gap-xs mt-xs">
+            <span className="inline-flex items-center gap-xs bg-warning-container text-warning text-[12px] font-medium rounded-full px-sm py-0.5">
+              <Icon name="gavel" className="text-[14px]" fill /> En revisión por eventos registrados
+            </span>
+          </div>
+        ) : tieneNota ? (
+          <p className="text-[12px] text-on-surface-variant mt-0.5">Esta es tu nota final.</p>
+        ) : null}
+        {enRevision && (
+          <p className="text-[12px] text-on-surface-variant mt-xs">
+            Tu examen quedó en cola de revisión por los eventos registrados durante la supervisión.
+            Un docente la revisará y confirmará tu nota.
+          </p>
+        )}
+      </div>
     </Card>
   );
 }

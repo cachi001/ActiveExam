@@ -102,6 +102,36 @@ export interface ExamenContenidoResumen {
   materia_nombre?: string | null;
 }
 
+/**
+ * C-69: nota académica de un examen rendido por el alumno, con estado de la cola
+ * de revisión por eventos de proctoring. La fuente de verdad es el backend
+ * (GET /api/v1/exam-content/mis-notas); el cliente solo la muestra.
+ */
+export interface NotaExamen {
+  examen_id: string;
+  examen_titulo: string;
+  /** Nota académica calculada server-side. null si aún no se computó. */
+  nota: number | null;
+  /** Estado del write-back a Moodle (ej. 'pendiente' | 'sincronizada' | 'error'). */
+  estado_moodle: string | null;
+  /** true si el score de proctoring superó el umbral → en cola de revisión humana. */
+  en_cola_revision: boolean;
+  /** Score de prioridad de proctoring. */
+  score: number | null;
+  /** Umbral de cola de revisión vigente. */
+  umbral_revision: number | null;
+  /** Cantidad de eventos registrados durante la supervisión. */
+  eventos: number | null;
+  /** ISO 8601: momento de finalización de la rendición. */
+  finalizada_en: string | null;
+}
+
+/** C-69: respuesta paginada del endpoint de notas del alumno. */
+export interface MisNotasResponse {
+  items: NotaExamen[];
+  total: number;
+}
+
 export interface DesafioActivo {
   /** Legacy ids (C-09) + catálogo secuencial C-54 (`girar_cabeza`, `sonreír`). */
   id: 'girar_izquierda' | 'girar_derecha' | 'parpadear' | 'acercarse' | 'sonreir' | 'girar_cabeza' | 'sonreír';

@@ -7,6 +7,7 @@ import { useApp } from '../lib/store';
 import { api } from '../lib/api';
 import { loadEffectiveConfig, getEffectiveConfig, resetEffectiveConfigCache } from '../config/effectiveConfigCache';
 import { Term } from '../ui/Term';
+import type { NotaExamen } from '../lib/types';
 
 export default function Cierre() {
   const navigate = useNavigate();
@@ -23,6 +24,8 @@ export default function Cierre() {
   // Umbral de revisión: SIEMPRE de la config efectiva del sistema (no un literal).
   // Así la pantalla de cierre es coherente con la Cola de revisión.
   const [umbralRevision, setUmbralRevision] = useState<number | null>(null);
+  // C-69: nota académica del examen recién rendido (fuente de verdad = backend).
+  const [nota, setNota] = useState<NotaExamen | null>(null);
 
   useEffect(() => {
     void (async () => {
@@ -53,8 +56,30 @@ export default function Cierre() {
     })();
   }, [proctoringSessionId]);
 
-  const umbralEfectivo = umbralRevision ?? examen?.umbral_score ?? 70;
-  const irARevision = (scoreBackend ?? score) >= umbralEfectivo;
+  // C-69: traer la nota del examen recién rendido. Se intenta varias veces porque la
+  // corrección server-side (write-back de Moodle) puede tardar un instante tras finalizar.
+  useEffect(() => {
+    if (!examen) return;
+    const objetivoId = examen.examen_contenido_id ?? examen.id;
+    let cancelado = false;
+    let intentos = 0;
+    const buscar = async () => {
+      const notas = await api.misNotas().catch(() => []);
+      if (cancelado) return;
+      const match = notas.find((n) => n.examen_id === objetivoId);
+      if (match) { setNota(match); return; }
+      // Reintentar mientras la nota aún no esté disponible (máx ~5 intentos).
+      if (++intentos < 5) setTimeout(buscar, 1500);
+    };
+    void buscar();
+    return () => { cancelado = true; };
+  }, [examen]);
+
+  const umbralEfectivo = nota?.umbral_revision ?? umbralRevision ?? examen?.umbral_score ?? 70;
+  // Reconciliar el cálculo local con el backend: si tenemos la nota, su `en_cola_revision`
+  // (decidido server-side) MANDA sobre el cálculo local de score>=umbral.
+  const irARevision = nota ? nota.en_cola_revision : (scoreBackend ?? score) >= umbralEfectivo;
+  const tieneNota = nota != null && nota.nota !== null && nota.nota !== undefined;
 
   const volver = () => { resetSesion(); navigate('/login'); };
 
@@ -93,6 +118,26 @@ export default function Cierre() {
             }
           />
         </Card>
+
+        {/* C-69: NOTA académica del examen. Si quedó en cola de revisión, se muestra
+            como PRELIMINAR con la explicación; si no, como nota final. */}
+        {tieneNota && (
+          <Card className={`text-left ${irARevision ? 'bg-warning-container/40 border-warning-200' : 'bg-success-container/40 border-success/30'}`}>
+            <div className="flex items-start gap-sm">
+              <Icon name={irARevision ? 'hourglass_top' : 'grade'} className={irARevision ? 'text-warning' : 'text-success'} fill />
+              <div className="min-w-0">
+                <p className="text-headline-sm font-semibold text-on-surface">
+                  {irARevision ? <>Tu nota preliminar: {nota!.nota}</> : <>Tu nota: {nota!.nota}</>}
+                </p>
+                <p className="text-label-md text-on-surface mt-base">
+                  {irARevision
+                    ? <>Tu examen quedó <strong>en cola de revisión</strong> por los eventos registrados durante la supervisión. Un docente la revisará y confirmará tu nota.</>
+                    : 'Esta es tu nota final del examen.'}
+                </p>
+              </div>
+            </div>
+          </Card>
+        )}
 
         <Card className={`text-left ${irARevision ? 'bg-warning-container/40 border-warning-200' : 'bg-success-container/40 border-success/30'}`}>
           <div className="flex items-start gap-sm">

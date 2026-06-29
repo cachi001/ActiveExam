@@ -10,7 +10,6 @@ import type { AcuseConsentimiento } from '../../../lib/types';
 
 interface RequisitoConsentimientoProps {
   consentimiento: AcuseConsentimiento | null;
-  viaAlternativa: boolean;
   /** Versión de consentimiento VIGENTE según la config del sistema. Si no
    * coincide con la versión aceptada por el alumno, se requiere re-aceptación. */
   versionVigente?: string | null;
@@ -19,7 +18,7 @@ interface RequisitoConsentimientoProps {
   onLeer: () => void;
 }
 
-export function RequisitoConsentimiento({ consentimiento, viaAlternativa, versionVigente, onIniciar, onLeer }: RequisitoConsentimientoProps) {
+export function RequisitoConsentimiento({ consentimiento, versionVigente, onIniciar, onLeer }: RequisitoConsentimientoProps) {
   const ok = Boolean(consentimiento);
   const desactualizado = Boolean(
     ok && consentimiento && versionVigente && consentimiento.version !== versionVigente
@@ -29,9 +28,7 @@ export function RequisitoConsentimiento({ consentimiento, viaAlternativa, versio
     ? { tone: 'warning' as const, label: 'Pendiente' }
     : desactualizado
       ? { tone: 'warning' as const, label: 'Renovación requerida' }
-      : viaAlternativa
-        ? { tone: 'success' as const, label: 'Vía alternativa' }
-        : { tone: 'success' as const, label: 'Completado' };
+      : { tone: 'success' as const, label: 'Completado' };
 
   return (
     <RequisitoCard
@@ -77,15 +74,6 @@ export function RequisitoConsentimiento({ consentimiento, viaAlternativa, versio
               </Button>
             )}
           </div>
-          {viaAlternativa && !desactualizado && (
-            <div className="flex items-start gap-sm bg-white border border-outline-variant/40 rounded-xl p-sm">
-              <Icon name="support_agent" className="text-[16px] text-on-surface-variant shrink-0 mt-px" />
-              <p className="text-label-sm text-on-surface-variant">
-                Elegiste la <strong>vía alternativa sin biometría</strong>. Un proctor humano supervisará
-                tu verificación de identidad en cada examen.
-              </p>
-            </div>
-          )}
         </div>
       ) : (
         <div className="space-y-md">

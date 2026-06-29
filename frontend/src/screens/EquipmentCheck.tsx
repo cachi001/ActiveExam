@@ -12,7 +12,6 @@ export default function EquipmentCheck() {
   const streamRef = useRef<MediaStream | null>(null);
   const [checks, setChecks] = useState<Chk[]>([
     { id: 'camara', label: 'Cámara web', desc: 'Necesaria para verificación y supervisión.', icon: 'videocam', estado: 'pendiente' },
-    { id: 'microfono', label: 'Micrófono', desc: 'Detección de ruido ambiente.', icon: 'mic', estado: 'pendiente' },
     { id: 'red', label: 'Conexión a internet', desc: 'Estable para el canal de eventos.', icon: 'wifi', estado: 'pendiente' },
     { id: 'navegador', label: 'Navegador compatible', desc: 'Soporte de WebAssembly y WebGL.', icon: 'web', estado: 'pendiente' },
     { id: 'monitor', label: 'Un solo monitor', desc: 'No se permiten pantallas adicionales.', icon: 'desktop_windows', estado: 'pendiente' },
@@ -22,15 +21,15 @@ export default function EquipmentCheck() {
 
   const correr = async () => {
     setChecks((c) => c.map((x) => ({ ...x, estado: 'verificando' })));
-    // Cámara + micrófono reales (getUserMedia)
+    // Solo capturamos VIDEO: el proctoring no graba ni evalúa audio. Por eso
+    // getUserMedia pide únicamente { video: true } (sin audio) y no se chequea micrófono.
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
       streamRef.current = stream;
       if (videoRef.current) { videoRef.current.srcObject = stream; await videoRef.current.play().catch(() => {}); }
       set('camara', stream.getVideoTracks().length ? 'ok' : 'falla');
-      set('microfono', stream.getAudioTracks().length ? 'ok' : 'falla');
     } catch {
-      set('camara', 'falla'); set('microfono', 'falla');
+      set('camara', 'falla');
     }
     // Red
     set('red', navigator.onLine ? 'ok' : 'falla');

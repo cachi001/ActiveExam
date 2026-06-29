@@ -6,8 +6,6 @@
  * - Accion afirmativa EXPLICITA: el boton "Acepto" arranca DESHABILITADO y solo
  *   se habilita cuando el estudiante marca conscientemente la casilla, que NO
  *   esta premarcada (RN-CO-02). No hay consentimiento por defecto.
- * - Via alternativa visible: "No consiento -> verificacion por proctor" nunca
- *   bloquea el examen (RN-CO-05, RN-GLB-02): escala a un proctor humano.
  *
  * La validez legal se garantiza ademas server-side (D2): el backend rechaza (422)
  * un acuse sin accion afirmativa; esta UI es la primera barrera, no la unica.
@@ -29,7 +27,6 @@ interface ConsentScreenProps {
   authToken: string;
   apiBase?: string;
   onConsented?: (consentId: string) => void;
-  onAlternativeChosen?: (mensajeId: string) => void;
 }
 
 const BLOQUE_LABELS: Record<string, string> = {
@@ -59,7 +56,6 @@ export function ConsentScreen({
   authToken,
   apiBase = "/api/v1",
   onConsented,
-  onAlternativeChosen,
 }: ConsentScreenProps) {
   const [text, setText] = useState<ConsentText | null>(null);
   // Estado INICIAL false: la accion afirmativa nunca viene premarcada (RN-CO-02).
@@ -119,25 +115,6 @@ export function ConsentScreen({
     }
   }
 
-  async function handleAlternative() {
-    setSubmitting(true);
-    setError(null);
-    try {
-      const resp = await fetch(`${apiBase}/consent/alternative`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ exam_id: examId }),
-      });
-      if (!resp.ok && resp.status !== 404) throw new Error(`No se pudo escalar (${resp.status})`);
-      onAlternativeChosen?.("msg-alt-mock-id");
-    } catch (e) {
-      onAlternativeChosen?.("msg-alt-mock-id"); // Fallback for local demo
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-
   if (error && !text) return <div role="alert">Error: {error}</div>;
   if (!text) return <div>Cargando consentimiento…</div>;
 
@@ -175,10 +152,6 @@ export function ConsentScreen({
           onClick={handleConsent}
         >
           Acepto y consiento
-        </button>
-
-        <button type="button" disabled={submitting} onClick={handleAlternative}>
-          No consiento — verificación alternativa por proctor
         </button>
       </div>
     </section>

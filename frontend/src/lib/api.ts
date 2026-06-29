@@ -22,6 +22,8 @@ import type {
   EventoScoreConfig,
   // C-69: catálogo de exámenes de contenido importados
   ExamenContenidoResumen,
+  // C-69: notas académicas del alumno + estado de cola de revisión
+  NotaExamen, MisNotasResponse,
 } from './types';
 import { INSTITUTION } from '../config/institution';
 import { authProvider } from './authProvider';
@@ -785,10 +787,34 @@ export const api = {
     return { ...nueva };
   },
 
-  /** 2.11 Retorna las inscripciones del alumno. */
+  /** 2.11 Retorna las inscripciones del alumno.
+   * En modo real (USE_REAL_BACKEND=1) NO existe el modelo de inscripción: el alumno
+   * rinde directamente los exámenes de contenido importados (Moodle XML). Devolvemos
+   * [] para no mostrar el examen demo de matemática ni la sección de inscripciones. */
   async misInscripciones(): Promise<Inscripcion[]> {
+    if (USE_REAL_BACKEND) return [];
     await delay(250);
     return [...MIS_INSCRIPCIONES];
+  },
+
+  /**
+   * Lista las notas académicas de los exámenes rendidos por el alumno (C-69).
+   * Real (USE_REAL_BACKEND=1): GET /api/v1/exam-content/mis-notas →
+   *   { items: NotaExamen[], total }. La nota se calcula y el estado de cola de
+   *   revisión lo decide el backend (fuente de verdad); el cliente solo la muestra.
+   * Demo (USE_REAL_BACKEND=0): [] — no hay corrección server-side en modo demo.
+   * Degradación silenciosa: un error de red retorna [] sin propagar.
+   */
+  async misNotas(): Promise<NotaExamen[]> {
+    if (USE_REAL_BACKEND) {
+      try {
+        const resp = await realFetch<MisNotasResponse>('/exam-content/mis-notas', { method: 'GET' });
+        return resp.items ?? [];
+      } catch {
+        return [];
+      }
+    }
+    return [];
   },
 
   // -------------------------------------------------------------------------

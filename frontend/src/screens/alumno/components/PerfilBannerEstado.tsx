@@ -18,7 +18,6 @@ interface PerfilBannerEstadoProps {
   perfilCompleto: boolean;
   biometriaCaducada: boolean;
   biometriaRenovacionRequerida: boolean;
-  viaAlternativa: boolean;
   onIrAExamenes: () => void;
   onRenovarBiometria: () => void;
 }
@@ -27,7 +26,6 @@ export function PerfilBannerEstado({
   perfilCompleto,
   biometriaCaducada,
   biometriaRenovacionRequerida,
-  viaAlternativa,
   onIrAExamenes,
   onRenovarBiometria,
 }: PerfilBannerEstadoProps) {
@@ -82,9 +80,7 @@ export function PerfilBannerEstado({
             Perfil completo, ya podés rendir tus exámenes
           </p>
           <p className="text-label-sm text-on-surface-variant mt-base">
-            {viaAlternativa
-              ? 'Elegiste la vía alternativa. Un proctor supervisará tu verificación de identidad.'
-              : 'Consentimiento y referencia biométrica vigentes.'}
+            Consentimiento y referencia biométrica vigentes.
           </p>
         </div>
         <Button

@@ -16,6 +16,37 @@ try {
   // localStorage no disponible (SSR / modo privado) → ignorar silenciosamente.
 }
 
+// ---------------------------------------------------------------------------
+// Persistencia del examen activo en sessionStorage (fix bug paso 2 — Consent)
+// ---------------------------------------------------------------------------
+// El flujo de rendición (Mis exámenes → /requisitos → /consentimiento → /biometria
+// → examen → cierre) lleía `examenActivo` SOLO de la memoria del store Zustand. Una
+// recarga de página entre pasos (común en mobile) reinicia el módulo y `examenActivo`
+// volvía a null → en Consent el handler `aceptar()` (guard `if (!acepto || !examen)`)
+// quedaba inerte y el paso 2 no avanzaba. Persistimos el examen seleccionado en
+// sessionStorage para rehidratarlo al reiniciarse el store; `resetSesion()` lo limpia.
+const _EXAMEN_ACTIVO_KEY = 'ae_examen_activo';
+
+function loadExamenActivo(): Examen | null {
+  try {
+    if (typeof sessionStorage === 'undefined') return null;
+    const raw = sessionStorage.getItem(_EXAMEN_ACTIVO_KEY);
+    return raw ? (JSON.parse(raw) as Examen) : null;
+  } catch {
+    return null;
+  }
+}
+
+function persistExamenActivo(e: Examen | null): void {
+  try {
+    if (typeof sessionStorage === 'undefined') return;
+    if (e) sessionStorage.setItem(_EXAMEN_ACTIVO_KEY, JSON.stringify(e));
+    else sessionStorage.removeItem(_EXAMEN_ACTIVO_KEY);
+  } catch {
+    // sessionStorage no disponible → degradar silenciosamente (vuelve al comportamiento anterior).
+  }
+}
+
 interface AppState {
   principal: Principal | null;
   rol: Rol | null;
@@ -134,7 +165,8 @@ interface AppState {
 export const useApp = create<AppState>((set) => ({
   principal: null,
   rol: null,
-  examenActivo: null,
+  // Rehidratar el examen activo desde sessionStorage (sobrevive recargas entre pasos).
+  examenActivo: loadExamenActivo(),
   anomaliasVivo: [],
   scorePropio: 0,
   revisionSeleccionada: null,
@@ -151,11 +183,11 @@ export const useApp = create<AppState>((set) => ({
   biometriaReferencia: null,
 
   setPrincipal: (principal, rol) => set({ principal, rol }),
-  setExamenActivo: (examenActivo) => set({ examenActivo }),
+  setExamenActivo: (examenActivo) => { persistExamenActivo(examenActivo); set({ examenActivo }); },
   setRevisionSeleccionada: (revisionSeleccionada) => set({ revisionSeleccionada }),
   pushAnomalia: (e) => set((s) => ({ anomaliasVivo: [e, ...s.anomaliasVivo].slice(0, 50) })),
   addScore: (delta) => set((s) => ({ scorePropio: Math.min(100, s.scorePropio + delta) })),
-  resetSesion: () => set({ anomaliasVivo: [], scorePropio: 0, examenActivo: null }),
+  resetSesion: () => { persistExamenActivo(null); set({ anomaliasVivo: [], scorePropio: 0, examenActivo: null }); },
   setEnrollmentStatus: (e) => set({ enrollmentStatus: e, isProfileComplete: e.perfil_completo }),
   setFotoPerfil: (dataUrl) => set((s) => ({
     principal: s.principal ? { ...s.principal, foto_perfil: dataUrl } : s.principal,
