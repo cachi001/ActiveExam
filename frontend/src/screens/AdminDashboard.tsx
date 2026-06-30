@@ -49,7 +49,6 @@ export default function AdminDashboard() {
 
   const totalSesiones = sesiones?.length ?? null;
   const flagged = sesiones ? sesiones.filter((s) => (s.score ?? 0) >= umbral).length : 0;
-  const tasaFlag = sesiones && sesiones.length > 0 ? Math.round((flagged / sesiones.length) * 100) : 0;
 
   return (
     <StaffShell
