@@ -78,6 +78,7 @@ from app.presentation.api.v1.exam_content.schemas import (
     MoodleTargetResponse,
     OmitidaItemResponse,
     OpcionRendicionResponse,
+    PeriodoEnum,
     PreguntaPoolItemResponse,
     PreguntaRendicionResponse,
     PreguntasPoolResponse,
@@ -102,6 +103,21 @@ def _resumen_to_response(r) -> ExamenContenidoResumenResponse:
         tiempo_limite_min=r.tiempo_limite_min,
         intentos_permitidos=r.intentos_permitidos,
     )
+
+
+def create_periodos_router() -> APIRouter:
+    """Router público (sin auth) que expone los valores válidos de período."""
+    router = APIRouter()
+
+    @router.get("/periodos", response_model=list[dict], tags=["exam-content"])
+    async def listar_periodos():
+        """Devuelve los períodos académicos válidos para una comisión."""
+        return [
+            {"value": PeriodoEnum.primer_cuatrimestre, "label": "1er cuatrimestre"},
+            {"value": PeriodoEnum.segundo_cuatrimestre, "label": "2do cuatrimestre"},
+        ]
+
+    return router
 
 
 def create_exam_content_router(

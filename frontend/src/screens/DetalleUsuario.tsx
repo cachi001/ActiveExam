@@ -203,9 +203,6 @@ export default function DetalleUsuario() {
                       ? <div className="flex flex-wrap gap-1">{u.roles.map((r) => <RolBadge key={r} rol={r} />)}</div>
                       : <span className="text-on-surface-variant">Sin roles</span>
                   } />
-                  <DataRow label="Proveedor de autenticación" value={
-                    <Badge tone="neutral">{u.auth_provider ?? 'local'}</Badge>
-                  } />
                   {esBaja && (
                     <DataRow label="Fecha de baja" value={
                       <span className="text-error">{formatFecha(u.eliminado_en)}</span>

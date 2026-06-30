@@ -54,6 +54,7 @@ from app.presentation.api.v1.enrollment.router import router as enrollment_route
 from app.presentation.api.v1.exam_content.router import (
     create_exam_content_router,
     create_exam_taking_router,
+    create_periodos_router,
 )
 from app.presentation.api.v1.proctoring.router import create_proctoring_router
 from app.presentation.api.v1.scoring.router import router as scoring_router
@@ -216,6 +217,11 @@ def create_slim_app() -> FastAPI:
     # examen para la rendicion del alumno (sin opcion correcta, D3).
     # POST /api/v1/exam-content/moodle-import  -> admin importa el banco
     # GET  /api/v1/exam-content/{examen_id}    -> alumno rinde (sin es_correcta)
+    app.include_router(
+        create_periodos_router(),
+        prefix="/api/v1/exam-content",
+        tags=["exam-content"],
+    )
     app.include_router(
         create_exam_content_router(
             session_factory=session_factory,

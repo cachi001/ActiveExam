@@ -579,6 +579,14 @@ export default function MateriasComisiones() {
   const [errorFormComision, setErrorFormComision] = useState<string | null>(null);
   const [enviandoComision, setEnviandoComision] = useState(false);
   const primerInputComisionRef = useRef<HTMLInputElement>(null);
+  const [periodos, setPeriodos] = useState<{ value: string; label: string }[]>([
+    { value: '1C', label: '1er cuatrimestre' },
+    { value: '2C', label: '2do cuatrimestre' },
+  ]);
+
+  useEffect(() => {
+    api.listarPeriodos().then(setPeriodos).catch(() => {/* usa fallback */});
+  }, []);
 
   // ── Carga inicial de materias ─────────────────────────────────────────────
 
@@ -1024,12 +1032,10 @@ export default function MateriasComisiones() {
                                   <label htmlFor="comision-periodo" className={LABEL_CLASS}>
                                     Período
                                   </label>
-                                  <input
+                                  <select
                                     id="comision-periodo"
                                     name="comision-periodo"
-                                    type="text"
                                     disabled={enviandoComision}
-                                    placeholder="Ej. 2026-1"
                                     value={formComision.periodo}
                                     onChange={(e) =>
                                       setFormComision((prev) =>
@@ -1037,7 +1043,12 @@ export default function MateriasComisiones() {
                                       )
                                     }
                                     className={INPUT_CLASS}
-                                  />
+                                  >
+                                    <option value="">Seleccionar...</option>
+                                    {periodos.map((p) => (
+                                      <option key={p.value} value={p.value}>{p.label}</option>
+                                    ))}
+                                  </select>
                                 </div>
                                 <div>
                                   <label htmlFor="comision-anio" className={LABEL_CLASS}>

@@ -75,8 +75,8 @@ export default function AdminDashboard() {
             no hay sesiones se muestra 0 / 0% (no "—"). */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-md">
           <StatCard icon="assignment" label="Exámenes" value={cargando ? '…' : examenes.length} sub="importados" tono="primary" />
-          <StatCard icon="groups" label="Sesiones" value={totalSesiones ?? '…'} sub="supervisadas" tono="info" />
-          <StatCard icon="flag" label="Tasa de flag" value={sesiones === null ? '…' : `${tasaFlag}%`} sub="en cola de revisión" tono="warning" />
+          <StatCard icon="groups" label="Sesiones" value={totalSesiones ?? '…'} sub="grabadas" tono="success" />
+          <StatCard icon="flag" label="Cola de revisión" value={sesiones === null ? '…' : flagged} sub="sesiones en revisión" tono="warning" />
         </div>
 
         <div className="grid lg:grid-cols-3 gap-lg">

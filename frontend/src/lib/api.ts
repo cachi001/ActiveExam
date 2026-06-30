@@ -820,6 +820,18 @@ export const api = {
     return [...MATERIAS];
   },
 
+  /** Periodos académicos válidos para una comisión.
+   * GET /exam-content/periodos → [{value, label}] (sin auth). */
+  async listarPeriodos(): Promise<{ value: string; label: string }[]> {
+    if (USE_REAL_BACKEND) {
+      return realFetch<{ value: string; label: string }[]>('/exam-content/periodos', { method: 'GET' });
+    }
+    return [
+      { value: '1C', label: '1er cuatrimestre' },
+      { value: '2C', label: '2do cuatrimestre' },
+    ];
+  },
+
   /** 2.8 Comisiones de una materia. Con backend real (C-69):
    * GET /exam-content/materias/{id}/comisiones. Demo: fallback en memoria. */
   async comisionesDeMateria(materiaId: string): Promise<Comision[]> {

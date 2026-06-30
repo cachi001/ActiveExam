@@ -7,8 +7,14 @@ D3: es_correcta NO aparece en ningún schema de respuesta al cliente.
 from __future__ import annotations
 
 from datetime import datetime
+from enum import Enum
 
 from pydantic import BaseModel, ConfigDict
+
+
+class PeriodoEnum(str, Enum):
+    primer_cuatrimestre = "1C"
+    segundo_cuatrimestre = "2C"
 
 
 class OmitidaItemResponse(BaseModel):
@@ -177,7 +183,7 @@ class ComisionInlineRequest(BaseModel):
 
     codigo: str
     nombre: str
-    periodo: str | None = None
+    periodo: PeriodoEnum | None = None
     anio: int | None = None
 
 
@@ -242,7 +248,7 @@ class ComisionCrearRequest(BaseModel):
 
     codigo: str
     nombre: str
-    periodo: str | None = None
+    periodo: PeriodoEnum | None = None
     anio: int | None = None
 
 
@@ -253,7 +259,7 @@ class ComisionActualizarRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     nombre: str
-    periodo: str | None = None
+    periodo: PeriodoEnum | None = None
     anio: int | None = None
 
 
