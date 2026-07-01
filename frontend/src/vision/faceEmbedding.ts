@@ -24,13 +24,19 @@
  * no crashean — mismo patrón de fallback que BiometricCapture.
  */
 
-import * as faceapi from '@vladmandic/face-api';
-
 const MODEL_URL = '/models';
 
-// Carga perezosa: una sola vez por sesión. Reusa la promesa en vuelo para evitar
-// dobles cargas si dos pantallas piden modelos en simultáneo.
+type FaceApi = typeof import('@vladmandic/face-api');
+
+let faceapiModule: FaceApi | null = null;
 let modelsLoadedPromise: Promise<void> | null = null;
+
+async function getFaceApi(): Promise<FaceApi> {
+  if (!faceapiModule) {
+    faceapiModule = await import('@vladmandic/face-api');
+  }
+  return faceapiModule;
+}
 
 /**
  * Precarga (idempotente) los tres modelos necesarios para el descriptor 128-d.
@@ -42,6 +48,7 @@ export async function ensureModelsLoaded(): Promise<void> {
 
   modelsLoadedPromise = (async () => {
     try {
+      const faceapi = await getFaceApi();
       await Promise.all([
         faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
         faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
@@ -71,6 +78,7 @@ export async function computeFaceDescriptor(
   input: HTMLVideoElement | HTMLCanvasElement | HTMLImageElement,
 ): Promise<number[] | null> {
   await ensureModelsLoaded();
+  const faceapi = await getFaceApi();
 
   try {
     // C-67: detector más tolerante — scoreThreshold 0.3 (default 0.5) e inputSize

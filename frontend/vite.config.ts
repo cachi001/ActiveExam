@@ -10,6 +10,21 @@ export default defineConfig({
   test: {
     environmentMatchGlobs: [['**/*.test.tsx', 'jsdom']],
   },
+  build: {
+    chunkSizeWarningLimit: 1400,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-react':    ['react', 'react-dom', 'react-router-dom'],
+          'vendor-motion':   ['motion'],
+          'vendor-lucide':   ['lucide-react'],
+          'vendor-keycloak': ['keycloak-js'],
+          'vendor-zustand':  ['zustand'],
+          'vendor-mediapipe':['@mediapipe/tasks-vision'],
+        },
+      },
+    },
+  },
   server: {
     port: 5173,
     host: true,

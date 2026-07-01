@@ -1,48 +1,41 @@
-import type { ReactNode } from 'react';
+import { lazy, Suspense, type ReactNode } from 'react';
 import { RouterProvider, Routes } from './lib/router';
 import { ScreenNavigator } from './ui/ScreenNavigator';
 import { ToastProvider, Toaster } from './ui/toast';
 import { DEV_TOOLS_ENABLED } from './lib/devConfig';
 import { RequireAuth } from './lib/auth/RequireAuth';
 import type { Rol } from './lib/types';
-import Login from './screens/Login';
-import EquipmentCheck from './screens/EquipmentCheck';
-import Consent from './screens/Consent';
-import Biometria from './screens/Biometria';
-import SalaEspera from './screens/SalaEspera';
-import Examen from './screens/Examen';
-import Cierre from './screens/Cierre';
-import Proctor from './screens/Proctor';
-import ExamenPersonasGrid from './screens/ExamenPersonasGrid';
-import Revisor from './screens/Revisor';
-import SessionDetail from './screens/SessionDetail';
-import AdminDashboard from './screens/AdminDashboard';
-import ExamList from './screens/ExamList';
-import Reports from './screens/Reports';
-import AuditPrivacy from './screens/AuditPrivacy';
-// Portal del alumno — C-21
-import AlumnoDashboard from './screens/AlumnoDashboard';
-import AlumnoMaterias from './screens/AlumnoMaterias';
-import AlumnoMisExamenes from './screens/AlumnoMisExamenes';
-// C-22: StudentProfile reemplaza AlumnoPerfil con el flujo real de enrollment
-import StudentProfile from './screens/StudentProfile';
-// C-23: Harness de diagnóstico de detección para administradores
-import AdminDetectionHarness from './screens/AdminDetectionHarness';
-// C-46: Revisión de sesiones del backend slim de proctoring
-import ProctoringRevisor from './screens/ProctoringRevisor';
-import ProctoringSessionDetail from './screens/ProctoringSessionDetail';
-// C-61: Gestión de usuarios y registro público
-import GestionUsuarios from './screens/GestionUsuarios';
-// C-69: Gestión de materias y comisiones (admin)
-import MateriasComisiones from './screens/MateriasComisiones';
-// C-68: Detalle de usuario
-import DetalleUsuario from './screens/DetalleUsuario';
-// C-69: Detalle de examen (alumnos, notas, sincronización Moodle)
-import ExamDetail from './screens/ExamDetail';
-// C-69: Importación de examen desde Moodle (XML + alta/asociación + destino de nota)
-import MoodleImportPage from './admin/ExamImport/MoodleImportPage';
-import Configuracion from './screens/Configuracion';
-import Registro from './screens/Registro';
+import { LoadingSpinner } from './ui/components';
+
+const Login                 = lazy(() => import('./screens/Login'));
+const EquipmentCheck        = lazy(() => import('./screens/EquipmentCheck'));
+const Consent               = lazy(() => import('./screens/Consent'));
+const Biometria             = lazy(() => import('./screens/Biometria'));
+const SalaEspera            = lazy(() => import('./screens/SalaEspera'));
+const Examen                = lazy(() => import('./screens/Examen'));
+const Cierre                = lazy(() => import('./screens/Cierre'));
+const Proctor               = lazy(() => import('./screens/Proctor'));
+const ExamenPersonasGrid    = lazy(() => import('./screens/ExamenPersonasGrid'));
+const Revisor               = lazy(() => import('./screens/Revisor'));
+const SessionDetail         = lazy(() => import('./screens/SessionDetail'));
+const AdminDashboard        = lazy(() => import('./screens/AdminDashboard'));
+const ExamList              = lazy(() => import('./screens/ExamList'));
+const Reports               = lazy(() => import('./screens/Reports'));
+const AuditPrivacy          = lazy(() => import('./screens/AuditPrivacy'));
+const AlumnoDashboard       = lazy(() => import('./screens/AlumnoDashboard'));
+const AlumnoMaterias        = lazy(() => import('./screens/AlumnoMaterias'));
+const AlumnoMisExamenes     = lazy(() => import('./screens/AlumnoMisExamenes'));
+const StudentProfile        = lazy(() => import('./screens/StudentProfile'));
+const AdminDetectionHarness = lazy(() => import('./screens/AdminDetectionHarness'));
+const ProctoringRevisor     = lazy(() => import('./screens/ProctoringRevisor'));
+const ProctoringSessionDetail = lazy(() => import('./screens/ProctoringSessionDetail'));
+const GestionUsuarios       = lazy(() => import('./screens/GestionUsuarios'));
+const MateriasComisiones    = lazy(() => import('./screens/MateriasComisiones'));
+const DetalleUsuario        = lazy(() => import('./screens/DetalleUsuario'));
+const ExamDetail            = lazy(() => import('./screens/ExamDetail'));
+const MoodleImportPage      = lazy(() => import('./admin/ExamImport/MoodleImportPage'));
+const Configuracion         = lazy(() => import('./screens/Configuracion'));
+const Registro              = lazy(() => import('./screens/Registro'));
 
 // Roles por área (modelo MVP: estudiante, proctor, admin_sistema).
 const ESTUDIANTE: Rol[] = ['estudiante'];
@@ -53,6 +46,12 @@ const ADMIN: Rol[] = ['admin_sistema'];
 function g(node: ReactNode, roles: Rol[]): ReactNode {
   return <RequireAuth roles={roles}>{node}</RequireAuth>;
 }
+
+const PageFallback = () => (
+  <div className="flex items-center justify-center min-h-screen">
+    <LoadingSpinner size="md" label="Cargando…" />
+  </div>
+);
 
 export default function App() {
   const routes = {
@@ -74,9 +73,6 @@ export default function App() {
     '/proctor/examen': g(<ExamenPersonasGrid />, SUPERVISION),
 
     // Revisión académica + administración
-    // Cola de revisión: proctor + admin (el proctor revisa sesiones de alumnos).
-    // El detalle legacy (SessionDetail) y las acciones terminales admin-only se
-    // gatean dentro de la pantalla, no en la ruta.
     '/revisor': g(<Revisor />, SUPERVISION),
     '/revisor/detalle': g(<SessionDetail />, SUPERVISION),
     '/admin': g(<AdminDashboard />, ADMIN),
@@ -86,18 +82,11 @@ export default function App() {
     '/admin/reportes': g(<Reports />, ADMIN),
     '/admin/auditoria': g(<AuditPrivacy />, ADMIN),
     '/admin/detection-test': g(<AdminDetectionHarness />, ADMIN),
-    // C-46: Revisión de sesiones del backend slim de proctoring
     '/admin/proctoring-sessions': g(<ProctoringRevisor />, ADMIN),
-    // C-15: el proctor abre el detalle para supervisar/chatear (SUPERVISION).
-    // El borrado de evidencia sigue siendo admin-only (gateado dentro de la pantalla).
     '/admin/proctoring-session-detail': g(<ProctoringSessionDetail />, SUPERVISION),
-    // C-61: Gestión de usuarios
     '/admin/usuarios': g(<GestionUsuarios />, ADMIN),
-    // C-69: Gestión de materias y comisiones
     '/admin/materias': g(<MateriasComisiones />, ADMIN),
-    // C-68: Detalle de usuario (ruta con parámetro dinámico /:id)
     '/admin/usuarios/:id': g(<DetalleUsuario />, ADMIN),
-    // #10: Configuración del sistema (scoring por tipo de evento + ajustes globales futuros)
     '/admin/configuracion': g(<Configuracion />, ADMIN),
 
     // Portal del alumno — C-21
@@ -111,7 +100,9 @@ export default function App() {
   return (
     <ToastProvider>
       <RouterProvider>
-        <Routes routes={routes} fallback={<Login />} />
+        <Suspense fallback={<PageFallback />}>
+          <Routes routes={routes} fallback={<Login />} />
+        </Suspense>
         {DEV_TOOLS_ENABLED && <ScreenNavigator />}
       </RouterProvider>
       <Toaster />
