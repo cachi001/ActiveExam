@@ -10,6 +10,7 @@ import { computeFaceDescriptor } from '../vision/faceEmbedding';
 import { firstDescriptor } from '../vision/descriptorFallback';
 import { unlockAudio } from '../ui/biometric/sounds';
 import { buildBiometriaProctoringPayload } from '../vision/liveness';
+import { SKIP_BIOMETRIC_CAPTURE, FAKE_EMBEDDING_128D } from '../lib/devConfig';
 import type { FaceLandmark } from '../vision/VisionEngine';
 import {
   COPY_VERIFICADO_PRINCIPAL,
@@ -181,6 +182,54 @@ export default function Biometria() {
     setFase('preparar');
   };
 
+  // ---------------------------------------------------------------------------
+  // DEV ONLY (SKIP_BIOMETRIC_CAPTURE): mismo camino que handleComplete pero sin
+  // cámara — usa el mismo embedding fake fijo del enrollment, así matchea siempre
+  // (distancia 0). No existe en build de producción (ver devConfig.ts).
+  // ---------------------------------------------------------------------------
+  const handleSkipVerificacion = async () => {
+    setFase('verificando');
+
+    let r: { distancia: number; es_match: boolean; umbral: number } | null = null;
+    if (USE_REAL_BACKEND) {
+      try {
+        r = await api.verificarBiometriaReferencia(FAKE_EMBEDDING_128D);
+      } catch (err) {
+        const statusCode = (err as { status?: number })?.status ??
+          (err instanceof Response ? err.status : undefined);
+        if (statusCode === 404) {
+          setFase('no_enrolado');
+          return;
+        }
+        setFase('reintento');
+        setReintentos((n) => n + 1);
+        return;
+      }
+    } else {
+      r = await api.verificarBiometria(FAKE_EMBEDDING_128D, biometriaReferencia ?? FAKE_EMBEDDING_128D);
+    }
+
+    if (!r) {
+      setFase('reintento');
+      setReintentos((n) => n + 1);
+      return;
+    }
+
+    setResultado({ distancia: r.distancia, umbral: r.umbral });
+    if (r.es_match) {
+      setFase('verificado');
+      setReintentos(0);
+    } else {
+      setFase('reintento');
+      setReintentos((n) => n + 1);
+    }
+
+    if (r.es_match && proctoringSessionId) {
+      const payload = buildBiometriaProctoringPayload(true, [], false, FAKE_EMBEDDING_128D);
+      void api.enviarBiometriaProctoring(proctoringSessionId, payload).catch(() => {});
+    }
+  };
+
   const sinIntentos = reintentos >= MAX_REINTENTOS;
 
   return (
@@ -245,6 +294,11 @@ export default function Biometria() {
                       confirmar que sos una persona real.
                     </p>
                     <Button icon="photo_camera" onClick={() => { unlockAudio(); setFase('capturando'); }}>Iniciar verificación</Button>
+                    {SKIP_BIOMETRIC_CAPTURE && (
+                      <Button icon="developer_mode" onClick={() => { void handleSkipVerificacion(); }}>
+                        Saltear verificación (dev, sin cámara)
+                      </Button>
+                    )}
                   </>
                 ) : (
                   <>

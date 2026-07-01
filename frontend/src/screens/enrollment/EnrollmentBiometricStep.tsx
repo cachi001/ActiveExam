@@ -27,6 +27,7 @@ import { BiometricCapture } from '../../ui/BiometricCapture';
 import { computeFaceDescriptor } from '../../vision/faceEmbedding';
 import { firstDescriptor } from '../../vision/descriptorFallback';
 import { unlockAudio } from '../../ui/biometric/sounds';
+import { SKIP_BIOMETRIC_CAPTURE, FAKE_EMBEDDING_128D } from '../../lib/devConfig';
 import { useApp } from '../../lib/store';
 import type { ReferenciasBiometrica } from '../../lib/types';
 import type { FaceLandmark } from '../../vision/VisionEngine';
@@ -165,6 +166,35 @@ export function EnrollmentBiometricStep({ referenciaActual, onCapturada, esRenov
   }, []);
 
   // ---------------------------------------------------------------------------
+  // DEV ONLY (SKIP_BIOMETRIC_CAPTURE): mismo camino que handleComplete pero sin
+  // cámara — usa el embedding fake fijo de devConfig en vez de computeFaceDescriptor.
+  // No existe en build de producción (ver devConfig.ts).
+  // ---------------------------------------------------------------------------
+  const handleSkipCaptura = useCallback(async () => {
+    setFase('procesando');
+    setRefRegistrada(false);
+    try {
+      const referencia = await api.guardarReferenciaBiometrica({
+        imagen: null,
+        embedding: FAKE_EMBEDDING_128D,
+      });
+      if (referencia.referencia_id) {
+        setBiometricoReferenciaId(referencia.referencia_id);
+        setBiometriaReferencia(null);
+      } else {
+        setBiometriaReferencia(FAKE_EMBEDDING_128D);
+      }
+      setRefRegistrada(true);
+      setReferenciaPendiente(referencia);
+      setFase('completado');
+    } catch (err) {
+      const raw = err instanceof Error ? err.message : String(err);
+      setErrorMsg(traducirErrorCaptura(raw));
+      setFase('error');
+    }
+  }, [setBiometriaReferencia, setBiometricoReferenciaId]);
+
+  // ---------------------------------------------------------------------------
   // Formatear fecha
   // ---------------------------------------------------------------------------
   const formatearFecha = (iso: string) =>
@@ -254,6 +284,11 @@ export function EnrollmentBiometricStep({ referenciaActual, onCapturada, esRenov
             <Button icon="photo_camera" onClick={() => { unlockAudio(); setFase('capturando'); }}>
               Iniciar captura de referencia
             </Button>
+            {SKIP_BIOMETRIC_CAPTURE && (
+              <Button icon="developer_mode" onClick={() => { void handleSkipCaptura(); }}>
+                Saltear captura (dev, sin cámara)
+              </Button>
+            )}
           </div>
         )}
 

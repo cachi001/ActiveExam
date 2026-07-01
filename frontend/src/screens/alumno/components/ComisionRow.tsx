@@ -72,7 +72,7 @@ export function ComisionRow({
               <Card key={examen.id} className="flex items-center justify-between gap-md p-md">
                 <div className="flex items-start gap-sm min-w-0">
                   <div className="w-9 h-9 rounded-md bg-primary-fixed text-primary flex items-center justify-center shrink-0 mt-0.5">
-                    <Icon name="quiz" className="text-[18px]" />
+                    <Icon name="assignment" className="text-[18px]" />
                   </div>
                   <div className="min-w-0">
                     <p className="text-[14px] font-medium text-on-surface leading-tight truncate">{examen.titulo}</p>

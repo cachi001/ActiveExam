@@ -11,7 +11,7 @@ export default function SalaEspera() {
 
   return (
     <StudentShell step={4} backTo="/biometria">
-      <div className="max-w-xl mx-auto space-y-lg text-center animate-in zoom-in duration-500">
+      <div className="max-w-xl lg:max-w-2xl mx-auto space-y-lg text-center animate-in zoom-in duration-500">
         <div className="w-20 h-20 rounded-full bg-success-container text-success flex items-center justify-center mx-auto">
           <Icon name="how_to_reg" className="text-[40px]" fill />
         </div>
@@ -24,7 +24,7 @@ export default function SalaEspera() {
           <Row label="Examen" value={examen?.nombre ?? '—'} highlight />
           <Row label="Cátedra" value={examen?.catedra ?? '—'} />
           <Row label="Estudiante" value={`${nombreCompleto(principal) || '—'} (${principal?.id_institucional ?? ''})`} />
-          <Row label="Duración" value={`${examen?.duracion_min ?? 0} minutos`} />
+          <Row label="Duración" value={examen?.duracion_min ? `${examen.duracion_min} minutos` : 'Sin límite'} />
           <div className="flex justify-between items-center pt-base border-t border-outline-variant/40">
             <span className="text-label-sm uppercase tracking-wide text-on-surface-variant">Supervisión</span>
             <span className="inline-flex items-center gap-xs text-success text-label-md font-semibold">

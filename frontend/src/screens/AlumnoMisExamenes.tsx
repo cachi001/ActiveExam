@@ -161,7 +161,9 @@ export default function AlumnoMisExamenes() {
       catedra: '',
       estado: 'en_curso',
       inicio: new Date().toISOString(),
-      duracion_min: 60,
+      // Duración real del examen (config del docente); 0 = sin límite, coherente
+      // con lo que Examen.tsx va a leer server-side vía fetchExamenParaRendir.
+      duracion_min: contenido.tiempo_limite_min ?? 0,
       umbral_score: 70,
       detectores: [...DETECTORES_SLIM],
       retencion_dias: 365,
@@ -296,7 +298,7 @@ export default function AlumnoMisExamenes() {
         {USE_REAL_BACKEND && (
           <section>
             <div className="flex items-center gap-sm mb-md">
-              <Icon name="quiz" className="text-[20px] text-primary" />
+              <Icon name="assignment" className="text-[20px] text-primary" />
               <h2 className="text-[16px] font-semibold text-on-surface">
                 Exámenes disponibles
               </h2>
@@ -365,7 +367,7 @@ function ExamenImportadoCard({ contenido, rindiendo, gate, perfilCompleto, onRen
     <Card className="flex items-center justify-between gap-md p-md">
       <div className="flex items-start gap-sm min-w-0">
         <div className={`w-9 h-9 rounded-md flex items-center justify-center shrink-0 mt-0.5 ${inerte ? 'bg-surface-container text-on-surface-variant' : 'bg-primary-fixed text-primary'}`}>
-          <Icon name="quiz" className="text-[18px]" />
+          <Icon name="assignment" className="text-[18px]" />
         </div>
         <div className="min-w-0">
           <p className="text-[14px] font-medium text-on-surface leading-tight truncate">

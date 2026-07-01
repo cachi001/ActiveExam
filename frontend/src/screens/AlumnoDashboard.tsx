@@ -248,7 +248,7 @@ export default function AlumnoDashboard() {
             /* Modo real: catálogo real (sin inscripciones inventadas) */
             examenesDisponibles.length === 0 ? (
               <Card className="text-center py-xl">
-                <Icon name="quiz" className="text-[36px] text-on-surface-variant mb-md" />
+                <Icon name="assignment" className="text-[36px] text-on-surface-variant mb-md" />
                 <p className="text-[14px] text-on-surface-variant">No hay exámenes disponibles por el momento.</p>
                 <Button variant="outline" size="sm" onClick={() => navigate('/alumno/materias')} className="mt-md" icon="menu_book">
                   Explorar materias
@@ -300,13 +300,13 @@ export default function AlumnoDashboard() {
  *  del propio alumno (no es un KPI ni admin). */
 function ContadorPersonal({ icon, label, value }: { icon: string; label: string; value: number }) {
   return (
-    <div className="flex items-center gap-3 px-4 py-3 bg-white border border-surface-200 rounded-lg">
-      <div className="w-10 h-10 rounded-md bg-primary-fixed text-primary flex items-center justify-center shrink-0">
-        <Icon name={icon} className="text-[20px]" />
+    <div className="flex items-center gap-4 px-5 py-5 bg-white border border-surface-200 rounded-lg">
+      <div className="w-12 h-12 rounded-md bg-primary-fixed text-primary flex items-center justify-center shrink-0">
+        <Icon name={icon} className="text-[24px]" />
       </div>
       <div className="min-w-0">
-        <p className="text-[12.5px] text-on-surface-variant leading-tight">{label}</p>
-        <p className="text-[22px] font-semibold text-on-surface leading-tight tabular-nums">{value}</p>
+        <p className="text-[13px] text-on-surface-variant leading-tight">{label}</p>
+        <p className="text-[28px] font-semibold text-on-surface leading-tight tabular-nums">{value}</p>
       </div>
     </div>
   );
@@ -333,7 +333,7 @@ function ExamenCatalogoCard({
       aria-label={`Ver detalle del examen ${examen.titulo}`}
     >
       <div className="w-11 h-11 rounded-lg bg-primary-fixed text-primary flex items-center justify-center shrink-0">
-        <Icon name="quiz" className="text-[22px]" />
+        <Icon name="assignment" className="text-[22px]" />
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-[15px] font-semibold text-on-surface truncate leading-tight">{examen.titulo}</p>

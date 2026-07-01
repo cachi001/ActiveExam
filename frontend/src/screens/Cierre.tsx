@@ -1,4 +1,3 @@
-import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 import { StudentShell } from '../ui/shells';
 import { Icon, Button, Card } from '../ui/components';
@@ -6,21 +5,15 @@ import { useNavigate } from '../lib/router';
 import { useApp } from '../lib/store';
 import { api } from '../lib/api';
 import { loadEffectiveConfig, getEffectiveConfig, resetEffectiveConfigCache } from '../config/effectiveConfigCache';
-import { Term } from '../ui/Term';
 import type { NotaExamen } from '../lib/types';
 
 export default function Cierre() {
   const navigate = useNavigate();
-  const anomalias = useApp((s) => s.anomaliasVivo);
   const score = useApp((s) => s.scorePropio);
   const examen = useApp((s) => s.examenActivo);
   const resetSesion = useApp((s) => s.resetSesion);
   const proctoringSessionId = useApp((s) => s.proctoringSessionId);
 
-  // C-64 D4: conteos reales leídos del backend al montar (fuente de verdad).
-  // Fallback: "—" si el GET falla o proctoringSessionId es null.
-  const [totalEventos, setTotalEventos] = useState<number | null>(null);
-  const [scoreBackend, setScoreBackend] = useState<number | null>(null);
   // Umbral de revisión: SIEMPRE de la config efectiva del sistema (no un literal).
   // Así la pantalla de cierre es coherente con la Cola de revisión.
   const [umbralRevision, setUmbralRevision] = useState<number | null>(null);
@@ -37,23 +30,12 @@ export default function Cierre() {
     })();
   }, []);
 
+  // Solo finalizar la sesión (setea finalizada_en en el backend). El detalle
+  // completo de la sesión (GET /proctoring/sessions/{id}) es vista del
+  // PROCTOR (403 para el alumno, RBAC intencional) — el alumno no la consulta.
   useEffect(() => {
     if (!proctoringSessionId) return;
-
-    void (async () => {
-      // 1. Finalizar la sesión (setea finalizada_en en el backend).
-      await api.finalizarSesionProctoring(proctoringSessionId).catch(() => null);
-
-      // 2. Leer conteos reales del backend.
-      const detalle = await api.obtenerSesionProctoring(proctoringSessionId).catch(() => null);
-      if (detalle) {
-        // El detalle del backend no devuelve total_eventos agregado; lo derivamos
-        // de la lista de eventos (mismo criterio que DetalleHeader).
-        const cuenta = detalle.eventos?.length ?? detalle.total_eventos ?? null;
-        setTotalEventos(cuenta);
-        setScoreBackend(detalle.score ?? null);
-      }
-    })();
+    void api.finalizarSesionProctoring(proctoringSessionId).catch(() => null);
   }, [proctoringSessionId]);
 
   // C-69: traer la nota del examen recién rendido. Se intenta varias veces porque la
@@ -78,46 +60,23 @@ export default function Cierre() {
   const umbralEfectivo = nota?.umbral_revision ?? umbralRevision ?? examen?.umbral_score ?? 70;
   // Reconciliar el cálculo local con el backend: si tenemos la nota, su `en_cola_revision`
   // (decidido server-side) MANDA sobre el cálculo local de score>=umbral.
-  const irARevision = nota ? nota.en_cola_revision : (scoreBackend ?? score) >= umbralEfectivo;
+  const irARevision = nota ? nota.en_cola_revision : score >= umbralEfectivo;
   const tieneNota = nota != null && nota.nota !== null && nota.nota !== undefined;
 
   const volver = () => { resetSesion(); navigate('/login'); };
 
   return (
     <StudentShell>
-      <div className="max-w-xl mx-auto space-y-lg text-center animate-in zoom-in duration-500">
+      <div className="max-w-xl lg:max-w-2xl mx-auto space-y-lg text-center animate-in zoom-in duration-500">
         <div className="w-20 h-20 rounded-full bg-success-container text-success flex items-center justify-center mx-auto">
-          <Icon name="task_alt" className="text-[40px]" fill />
+          <Icon name="check_circle" className="text-[40px]" fill />
         </div>
         <div className="space-y-base">
           <h2 className="font-headline text-headline-lg text-on-surface">¡Examen finalizado!</h2>
           <p className="text-body-md text-on-surface-variant">
-            Tu sesión se cerró de forma segura, con <Term termKey="cadena_de_custodia">cadena de custodia criptográfica</Term>.
+            Tu examen quedó guardado de forma segura. Nadie puede modificarlo después de que lo entregaste.
           </p>
         </div>
-
-        <Card className="text-left space-y-sm">
-          <h3 className="text-label-sm uppercase tracking-wide text-on-surface-variant border-b border-outline-variant/40 pb-base">Evidencia y firmas</h3>
-          <Row label="Hash de sesión (SHA-256)" value={<code className="text-label-sm bg-surface-container px-base py-0.5 rounded font-mono">f92b8ac3e70d48bc93…</code>} />
-          <Row label="Firma maestra (Ed25519)" value={<span className="text-success font-semibold inline-flex items-center gap-base"><Icon name="verified" className="text-[16px]" fill /> Válida y sellada</span>} />
-          <Row label="Clave de sesión efímera" value={<span className="text-on-surface-variant italic">Liberada y eliminada</span>} />
-          <Row
-            label="Señales registradas"
-            value={
-              <span className="font-semibold">
-                {Math.max(anomalias.length, totalEventos ?? 0)}
-              </span>
-            }
-          />
-          <Row
-            label="Score de prioridad"
-            value={
-              <span className="font-semibold">
-                {scoreBackend !== null ? scoreBackend : score} <span className="text-on-surface-variant font-normal">pts</span>
-              </span>
-            }
-          />
-        </Card>
 
         {/* C-69: NOTA académica del examen. Si quedó en cola de revisión, se muestra
             como PRELIMINAR con la explicación; si no, como nota final. */}
@@ -169,14 +128,5 @@ export default function Cierre() {
         <Button variant="outline" icon="home" onClick={volver} className="mx-auto">Volver al inicio</Button>
       </div>
     </StudentShell>
-  );
-}
-
-function Row({ label, value }: { label: string; value: ReactNode }) {
-  return (
-    <div className="flex justify-between items-center gap-md">
-      <span className="text-label-sm text-on-surface-variant">{label}</span>
-      <span className="text-label-md text-on-surface text-right">{value}</span>
-    </div>
   );
 }

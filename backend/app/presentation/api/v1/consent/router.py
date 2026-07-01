@@ -206,6 +206,15 @@ async def record_consent(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
         ) from exc
+    except RuntimeError as exc:
+        # Modulo slim: NoOpConsentRepository.add() no persiste el acuse
+        # por-rendicion (tabla `consentimiento` no existe fuera del modulo
+        # full). El consentimiento de perfil (RN-CO) ya quedo registrado via
+        # /consent/profile; este endpoint es un extra no soportado en slim.
+        # 501 controlado en vez de dejar que el RuntimeError explote como 500.
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED, detail=str(exc)
+        ) from exc
     return ConsentResponse(
         id=acuse.id,
         user_id=acuse.user_id,

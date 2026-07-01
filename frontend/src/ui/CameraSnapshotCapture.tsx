@@ -172,21 +172,24 @@ export function CameraSnapshotCapture({
     return createPortal(
       // Task 6.2: contenedor raíz
       <div className="fixed inset-0 z-[60] bg-white flex flex-col items-center justify-center px-6">
-        {/* Task 6.3: Botón Cancelar discreto */}
-        <button
-          onClick={handleCancel}
-          className="absolute top-4 right-4 inline-flex items-center gap-1 text-sm text-neutral-500 hover:text-neutral-900 transition-colors px-3 py-1.5 rounded-full"
-        >
-          Cancelar <Icon name="close" className="text-[18px]" />
-        </button>
         {/* Task 6.9: Icono + mensaje de error */}
         <div className="text-center space-y-4 max-w-xs">
           <Icon name="videocam_off" className="text-error text-[48px]" fill />
           <p className="font-headline text-title-lg text-neutral-900">Sin acceso a la cámara</p>
           <p className="text-body-sm text-neutral-600">{errorMsg}</p>
           <p className="text-label-sm text-neutral-500">
-            Habilitá el permiso de cámara en tu navegador y volvé a intentarlo.
+            Habilitá el permiso de cámara en tu navegador y volvé a intentarlo, o continuá sin foto.
           </p>
+          {/* Sin cámara disponible (o no querés usarla ahora): este paso no bloquea
+              el resto del perfil, así que el botón para seguir es la acción
+              PRINCIPAL acá — no un link chiquito escondido. */}
+          <button
+            onClick={handleCancel}
+            className="inline-flex items-center gap-2 bg-neutral-900 hover:bg-neutral-700 text-white font-semibold text-sm px-6 py-3 rounded-full transition-colors"
+          >
+            <Icon name="arrow_forward" className="text-[18px]" />
+            Continuar sin foto
+          </button>
         </div>
       </div>,
       document.body,

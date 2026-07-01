@@ -489,7 +489,20 @@ function StudentUserMenu({ onLogoutClick }: { onLogoutClick: () => void }) {
   );
 }
 
-export function StudentShell({ children, step, backTo = '/alumno' }: { children: ReactNode; step?: number; backTo?: string }) {
+export function StudentShell({
+  children,
+  step,
+  backTo = '/alumno',
+  locked = false,
+}: {
+  children: ReactNode;
+  step?: number;
+  backTo?: string;
+  /** Lockdown del examen en curso (C-69 sección 5): oculta sidebar, bottom-nav y
+   *  cualquier link de navegación (logo, menú de usuario). El alumno no debe
+   *  poder salir de la pantalla del examen por otra vía que no sea entregarlo. */
+  locked?: boolean;
+}) {
   const logout = useAuth((s) => s.logout);
   const navigate = useNavigate();
   const { path } = useRouter();
@@ -523,36 +536,40 @@ export function StudentShell({ children, step, backTo = '/alumno' }: { children:
   return (
     <div className="min-h-screen bg-surface text-on-surface">
       {/* Topbar — en mobile NO hay hamburger ni drawer: la navegación va por el
-          bottom-nav, que ya cubre las 4 secciones del alumno. */}
-      <header
-        className="fixed top-0 left-0 right-0 z-50 border-b border-surface-200/80 bg-white/95 backdrop-blur-sm"
-        style={{ height: TOPBAR_H }}
-      >
-        <div className="h-full px-4 sm:px-6 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3 min-w-0">
-            {isDesktop && (
-              <>
-                <button
-                  onClick={toggleCollapsed}
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-md text-on-surface-variant hover:bg-surface-50 hover:text-on-surface transition-colors"
-                  aria-label={collapsed ? 'Expandir menú' : 'Colapsar menú'}
-                >
-                  <Icon name={collapsed ? 'chevron_right' : 'chevron_left'} className="text-[20px]" />
-                </button>
-                <div className="hidden sm:block w-px h-6 bg-surface-200" />
-              </>
-            )}
-            <Link to="/alumno" className="flex items-center gap-2.5 min-w-0">
-              <LogoMark />
-              <span className="text-sm font-semibold text-on-surface leading-tight">Active Exam</span>
-            </Link>
+          bottom-nav, que ya cubre las 4 secciones del alumno. En lockdown NO se
+          monta: cero header, cero logo, cero "Cerrar sesión" — la ÚNICA salida
+          del examen es "Finalizar y entregar" dentro del contenido. */}
+      {!locked && (
+        <header
+          className="fixed top-0 left-0 right-0 z-50 border-b border-surface-200/80 bg-white/95 backdrop-blur-sm"
+          style={{ height: TOPBAR_H }}
+        >
+          <div className="h-full px-4 sm:px-6 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3 min-w-0">
+              {isDesktop && (
+                <>
+                  <button
+                    onClick={toggleCollapsed}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-md text-on-surface-variant hover:bg-surface-50 hover:text-on-surface transition-colors"
+                    aria-label={collapsed ? 'Expandir menú' : 'Colapsar menú'}
+                  >
+                    <Icon name={collapsed ? 'chevron_right' : 'chevron_left'} className="text-[20px]" />
+                  </button>
+                  <div className="hidden sm:block w-px h-6 bg-surface-200" />
+                </>
+              )}
+              <Link to="/alumno" className="flex items-center gap-2.5 min-w-0">
+                <LogoMark />
+                <span className="text-sm font-semibold text-on-surface leading-tight">Active Exam</span>
+              </Link>
+            </div>
+            <StudentUserMenu onLogoutClick={() => setConfirmandoLogout(true)} />
           </div>
-          <StudentUserMenu onLogoutClick={() => setConfirmandoLogout(true)} />
-        </div>
-      </header>
+        </header>
+      )}
 
-      {/* Sidebar persistente — sólo desktop. En mobile no se monta. */}
-      {isDesktop && (
+      {/* Sidebar persistente — sólo desktop y fuera de lockdown. En mobile no se monta. */}
+      {isDesktop && !locked && (
         <aside
           className="fixed left-0 bottom-0 z-40 flex flex-col bg-white border-r border-surface-200 transition-[width] duration-300 ease-in-out"
           style={{ top: TOPBAR_H, width: showAsCollapsed ? SIDEBAR_COLLAPSED : SIDEBAR_EXPANDED }}
@@ -571,11 +588,11 @@ export function StudentShell({ children, step, backTo = '/alumno' }: { children:
       <div
         className="min-h-screen transition-[margin] duration-300 ease-in-out"
         style={{
-          paddingTop: TOPBAR_H,
-          marginLeft: isDesktop ? (showAsCollapsed ? SIDEBAR_COLLAPSED : SIDEBAR_EXPANDED) : 0,
+          paddingTop: locked ? 0 : TOPBAR_H,
+          marginLeft: isDesktop && !locked ? (showAsCollapsed ? SIDEBAR_COLLAPSED : SIDEBAR_EXPANDED) : 0,
         }}
       >
-        <main className="p-4 sm:p-6 pb-24 md:pb-6">
+        <main className={`p-4 sm:p-6 ${locked ? '' : 'pb-24 md:pb-6'}`}>
           {typeof step === 'number' && (
             <div className="mb-6 space-y-4">
               <BackButton onClick={() => navigate(backTo)} />
@@ -586,24 +603,27 @@ export function StudentShell({ children, step, backTo = '/alumno' }: { children:
         </main>
       </div>
 
-      {/* Bottom-nav (mobile only) — atajo rápido cuando el drawer está cerrado */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur-sm border-t border-surface-200 flex items-stretch justify-around pb-[env(safe-area-inset-bottom)]">
-        {STUDENT_NAV.map((item) => {
-          const active = path === item.to;
-          return (
-            <Link
-              key={item.to}
-              to={item.to}
-              className={`flex-1 min-w-[4.5rem] flex flex-col items-center justify-center gap-0.5 py-2 transition-colors ${
-                active ? 'text-primary' : 'text-on-surface-variant hover:text-on-surface'
-              }`}
-            >
-              <Icon name={item.icon} className="text-[22px]" fill={active} />
-              <span className="text-[11px] font-medium whitespace-nowrap">{item.short ?? item.label}</span>
-            </Link>
-          );
-        })}
-      </nav>
+      {/* Bottom-nav (mobile only) — atajo rápido cuando el drawer está cerrado. No se
+          monta en lockdown: sería una vía de escape del examen. */}
+      {!locked && (
+        <nav className="md:hidden fixed bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur-sm border-t border-surface-200 flex items-stretch justify-around pb-[env(safe-area-inset-bottom)]">
+          {STUDENT_NAV.map((item) => {
+            const active = path === item.to;
+            return (
+              <Link
+                key={item.to}
+                to={item.to}
+                className={`flex-1 min-w-[4.5rem] flex flex-col items-center justify-center gap-0.5 py-2 transition-colors ${
+                  active ? 'text-primary' : 'text-on-surface-variant hover:text-on-surface'
+                }`}
+              >
+                <Icon name={item.icon} className="text-[22px]" fill={active} />
+                <span className="text-[11px] font-medium whitespace-nowrap">{item.short ?? item.label}</span>
+              </Link>
+            );
+          })}
+        </nav>
+      )}
 
       <ConfirmModal
         abierto={confirmandoLogout}

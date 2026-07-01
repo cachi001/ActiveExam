@@ -174,15 +174,23 @@ export default function Examen() {
     // pueden coincidir. La primera gana; la segunda es no-op.
     if (entregadoRef.current) return;
     entregadoRef.current = true;
-    if (sessionId) {
-      const items = Object.entries(respuestas).map(([pregunta_id, opcion_elegida_id]) => ({
-        pregunta_id,
-        opcion_elegida_id,
-      }));
-      await api.enviarRespuestasProctoring(sessionId, items);
+    try {
+      if (sessionId) {
+        const items = Object.entries(respuestas).map(([pregunta_id, opcion_elegida_id]) => ({
+          pregunta_id,
+          opcion_elegida_id,
+        }));
+        await api.enviarRespuestasProctoring(sessionId, items);
+      }
+    } catch {
+      // El envío de respuestas NUNCA debe trabar la entrega: si falla (red, 401
+      // transitorio, etc.) igual navegamos a /cierre. Perder la entrega completa
+      // por un error de red en un sub-paso es peor que una nota que se recalcula
+      // después — Cierre.tsx reintenta leer la nota varias veces.
+    } finally {
+      detener();
+      navigate('/cierre');
     }
-    detener();
-    navigate('/cierre');
   };
 
   // C-69: auto-entrega al llegar a 0 (mismo flujo que "Finalizar y entregar").
@@ -222,7 +230,7 @@ export default function Examen() {
   const handleSiguiente = () => setIndiceActual((i) => avanzarPregunta(i, total));
 
   return (
-    <StudentShell>
+    <StudentShell locked>
       <div
         className={`grid lg:grid-cols-3 gap-lg animate-in fade-in duration-500 transition-[padding] ${
           pausaActiva ? 'pt-16' : ''

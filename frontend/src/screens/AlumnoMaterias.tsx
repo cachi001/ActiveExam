@@ -79,7 +79,9 @@ export default function AlumnoMaterias() {
       catedra: contenido.materia_nombre ?? '',
       estado: 'en_curso',
       inicio: new Date().toISOString(),
-      duracion_min: 60,
+      // Duración real del examen (config del docente); 0 = sin límite, coherente
+      // con lo que Examen.tsx va a leer server-side vía fetchExamenParaRendir.
+      duracion_min: contenido.tiempo_limite_min ?? 0,
       umbral_score: 70,
       detectores: [...DETECTORES_SLIM],
       retencion_dias: 365,

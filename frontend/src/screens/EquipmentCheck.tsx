@@ -61,7 +61,7 @@ export default function EquipmentCheck() {
 
   return (
     <StudentShell step={1}>
-      <div className="max-w-3xl mx-auto space-y-lg animate-in fade-in duration-500">
+      <div className="max-w-3xl lg:max-w-4xl mx-auto space-y-lg animate-in fade-in duration-500">
         <div className="text-center space-y-base">
           <h2 className="font-headline text-headline-lg text-on-surface">Chequeo de requisitos</h2>
           <p className="text-body-md text-on-surface-variant">Verificamos tu equipo antes de comenzar. El análisis de visión corre localmente en tu navegador.</p>

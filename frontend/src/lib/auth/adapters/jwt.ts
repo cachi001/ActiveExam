@@ -65,6 +65,13 @@ function _principalFromClaims(claims: Record<string, unknown>): Principal | null
 export class JwtAdapter implements AuthProvider {
   private _listeners: Array<(status: AuthStatus) => void> = [];
   private _principal: Principal | null = null;
+  // Single-flight: todas las llamadas concurrentes que disparan un refresh
+  // (múltiples requests en paralelo pegando 401 a la vez) esperan la MISMA
+  // promesa en vez de una por-caller. Sin esto, la primera gana el refresh
+  // token rotado; las demás llegan con el refresh_token ya usado, el backend
+  // las rechaza con 401, y cada una dispara su propio logout() — pisando la
+  // sesión válida que la ganadora acababa de guardar un instante antes.
+  private _refreshInFlight: Promise<void> | null = null;
 
   async init(): Promise<void> {
     // Intentar recuperar la sesión de sessionStorage al arrancar.
@@ -176,6 +183,20 @@ export class JwtAdapter implements AuthProvider {
   }
 
   private async _refreshToken(): Promise<void> {
+    // Ya hay un refresh en curso: esperar ESE resultado en vez de disparar
+    // otro POST /auth/refresh con el mismo refresh_token (que el backend
+    // rechazaría por rotación de un solo uso).
+    if (this._refreshInFlight) {
+      await this._refreshInFlight;
+      return;
+    }
+    this._refreshInFlight = this._doRefresh().finally(() => {
+      this._refreshInFlight = null;
+    });
+    await this._refreshInFlight;
+  }
+
+  private async _doRefresh(): Promise<void> {
     const refreshJti = sessionStorage.getItem(STORAGE_REFRESH_KEY);
     if (!refreshJti) return;
 

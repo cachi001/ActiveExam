@@ -97,7 +97,7 @@ export default function AcuseExamen({ examenId, onConfirmado, onCancelar }: Prop
   if (!perfilCompleto) {
     return (
       <StudentShell>
-        <div className="max-w-xl mx-auto space-y-lg py-lg">
+        <div className="max-w-xl lg:max-w-2xl mx-auto space-y-lg py-lg">
           <div className="flex items-start gap-md bg-warning-container border border-warning-200 rounded-xl p-md">
             <Icon name="warning" className="text-[22px] text-warning shrink-0 mt-base" fill />
             <div className="flex-1 min-w-0">
@@ -121,7 +121,7 @@ export default function AcuseExamen({ examenId, onConfirmado, onCancelar }: Prop
 
   return (
     <StudentShell>
-      <div className="max-w-xl mx-auto space-y-lg py-lg">
+      <div className="max-w-xl lg:max-w-2xl mx-auto space-y-lg py-lg">
         {/* Encabezado */}
         <header>
           <div className="flex items-center gap-sm mb-xs">

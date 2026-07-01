@@ -217,7 +217,10 @@ export default function StudentProfile() {
   const volverAlPerfil = () => setPaso('perfil');
 
   // C-66: pasos del wizard de enrollment. `actual` = nº de paso en curso (1-based).
-  // Un paso se pinta verde cuando su requisito está completo.
+  // Un paso se pinta verde cuando su requisito está completo O cuando ya se dejó
+  // atrás navegando (pasos opcionales como Foto/DNI se pueden saltear sin dejar
+  // un dato real — "completado" en el stepper no es "hay una foto guardada", es
+  // "ya no estás ahí").
   const wizardPasos = (actual: number): WizardPaso[] => {
     const items = [
       { label: 'Consentimiento', done: consentimientoOk },
@@ -227,7 +230,7 @@ export default function StudentProfile() {
     if (ENABLE_DNI_SCAN) items.push({ label: 'DNI', done: dniOk });
     return items.map((it, i) => ({
       label: it.label,
-      estado: it.done ? 'completado' : i + 1 === actual ? 'actual' : 'pendiente',
+      estado: it.done || i + 1 < actual ? 'completado' : i + 1 === actual ? 'actual' : 'pendiente',
     }));
   };
 
