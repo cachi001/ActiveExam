@@ -68,9 +68,11 @@ export function RequisitoBiometria({
           {/* Sin consentimiento NO mostramos el botón (no un botón disabled):
               solo el aviso de qué falta. El CTA aparece recién cuando se puede tocar. */}
           {consentimientoOk ? (
-            <Button onClick={onCapturar} size="sm">
-              Capturar referencia biométrica
-            </Button>
+            <div className="flex justify-end">
+              <Button onClick={onCapturar} size="sm">
+                Capturar referencia biométrica
+              </Button>
+            </div>
           ) : (
             <div className="flex items-start gap-xs text-label-sm text-on-surface-variant">
               <Icon name="info" className="text-[16px] shrink-0 mt-px" />

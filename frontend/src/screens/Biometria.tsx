@@ -263,18 +263,25 @@ export default function Biometria() {
                 para que el "antes de iniciar" se vea consistente entre perfil y examen.
                 En verificando/verificado/etc. se muestra la caja-cámara con feedback
                 (scanning-ring / borde verde de éxito). */}
-            {/* El óvalo guía SOLO se muestra ANTES de capturar ('preparar'). Después
-                de la captura no se vuelve a mostrar ningún óvalo: el resultado lo
-                comunica la columna de la derecha (icono + texto + acción). */}
-            {fase === 'preparar' && (
+            {/* Óvalo: guía antes de capturar ('preparar'), confirmación visual en 'verificado'. */}
+            {(fase === 'preparar' || fase === 'verificado') && (
               <div
-                className="shrink-0 relative mx-auto"
+                className="shrink-0 relative mx-auto flex items-center justify-center"
                 style={{ width: 'min(70vw, 220px)', filter: 'drop-shadow(0 8px 20px rgba(16,24,40,0.08))' }}
               >
-                <div
-                  className="w-full rounded-[50%] border-2 border-dashed bg-surface-container-high border-outline-variant transition-colors duration-300"
-                  style={{ aspectRatio: '3 / 4' }}
-                />
+                {fase === 'preparar' ? (
+                  <div
+                    className="w-full rounded-[50%] border-2 border-dashed bg-surface-container-high border-outline-variant transition-colors duration-300"
+                    style={{ aspectRatio: '3 / 4' }}
+                  />
+                ) : (
+                  <div
+                    className="w-full rounded-[50%] border-4 border-success bg-success/10 flex items-center justify-center"
+                    style={{ aspectRatio: '3 / 4' }}
+                  >
+                    <Icon name="verified" className="text-success text-[64px]" fill />
+                  </div>
+                )}
               </div>
             )}
 
@@ -323,7 +330,6 @@ export default function Biometria() {
 
             {fase === 'verificado' && (
               <div className="text-center space-y-md">
-                <Icon name="verified" className="text-success text-[40px]" fill />
                 <p className="font-headline text-title-lg text-on-surface">¡Identidad confirmada!</p>
 
                 {/* 6.2 / 6.4: copy principal en lenguaje claro — fuente: COPY_VERIFICADO_PRINCIPAL */}

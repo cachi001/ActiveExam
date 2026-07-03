@@ -12,6 +12,7 @@ const EquipmentCheck        = lazy(() => import('./screens/EquipmentCheck'));
 const Consent               = lazy(() => import('./screens/Consent'));
 const Biometria             = lazy(() => import('./screens/Biometria'));
 const SalaEspera            = lazy(() => import('./screens/SalaEspera'));
+const PreExamen             = lazy(() => import('./screens/PreExamen'));
 const Examen                = lazy(() => import('./screens/Examen'));
 const Cierre                = lazy(() => import('./screens/Cierre'));
 const Proctor               = lazy(() => import('./screens/Proctor'));
@@ -65,6 +66,7 @@ export default function App() {
     '/consentimiento': g(<Consent />, ESTUDIANTE),
     '/biometria': g(<Biometria />, ESTUDIANTE),
     '/sala-espera': g(<SalaEspera />, ESTUDIANTE),
+    '/pre-examen': g(<PreExamen />, ESTUDIANTE),
     '/examen': g(<Examen />, ESTUDIANTE),
     '/cierre': g(<Cierre />, ESTUDIANTE),
 

@@ -138,8 +138,8 @@ function ExamenContenidoRow({ examen }: { examen: ExamenContenidoResumen }) {
       className="flex items-center justify-between gap-4 px-lg py-4 hover:bg-surface-50 transition-colors"
     >
       <div className="flex items-center gap-4 min-w-0">
-        <div className="w-12 h-12 rounded-lg bg-primary-fixed text-on-primary-fixed-variant flex items-center justify-center shrink-0">
-          <Icon name="assignment" className="text-[24px]" />
+        <div className="w-8 h-8 rounded-md bg-primary-fixed text-on-primary-fixed-variant flex items-center justify-center shrink-0">
+          <Icon name="assignment" className="text-[16px]" />
         </div>
         <div className="min-w-0">
           <p className="text-[15px] font-semibold text-on-surface truncate leading-snug">{examen.titulo}</p>
@@ -167,9 +167,9 @@ function AccionRapida({ to, icon, label }: { to: string; icon: string; label: st
       to={to}
       className="w-full flex items-center gap-3 px-3 py-2.5 rounded-md border border-surface-200 bg-white text-on-surface text-[14px] font-medium hover:bg-primary/5 hover:border-primary/50 transition-colors"
     >
-      <Icon name={icon} className="text-[18px] text-on-surface-variant" />
+      <Icon name={icon} className="text-[16px] text-on-surface-variant" />
       {label}
-      <Icon name="chevron_right" className="text-[18px] text-on-surface-variant ml-auto" />
+      <Icon name="chevron_right" className="text-[14px] text-on-surface-variant ml-auto" />
     </Link>
   );
 }

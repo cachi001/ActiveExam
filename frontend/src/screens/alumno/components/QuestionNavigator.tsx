@@ -2,9 +2,9 @@
  * QuestionNavigator — navegador de preguntas estilo Moodle para el examen.
  *
  * Muestra una grilla de botones numerados (1..N) con tres estados visuales:
- *  - actual    → bg-primary text-on-primary   (azul institucional)
- *  - respondida → bg-success text-on-primary   (verde)
- *  - sin resp. → bg-surface-container-low text-on-surface-variant (neutro)
+ *  - actual    → bg-primary text-on-primary                           (azul institucional)
+ *  - respondida → bg-secondary-container text-on-secondary-container  (neutro — no confundir con "correcta")
+ *  - sin resp. → bg-surface-container-low text-on-surface-variant     (neutro)
  *
  * Cada botón tiene aria-label accesible e invoca onIr con el índice 0-based.
  * Diseño responsivo: flex-wrap, mínimo táctil w-10 h-10 (40×40 px).
@@ -41,7 +41,7 @@ export function QuestionNavigator({
             'w-10 h-10 flex items-center justify-center rounded-lg text-label-sm font-semibold transition-colors bg-primary text-on-primary';
         } else if (esRespondida) {
           clases =
-            'w-10 h-10 flex items-center justify-center rounded-lg text-label-sm font-semibold transition-colors bg-success text-on-primary';
+            'w-10 h-10 flex items-center justify-center rounded-lg text-label-sm font-semibold transition-colors bg-secondary-container text-on-secondary-container';
         } else {
           clases =
             'w-10 h-10 flex items-center justify-center rounded-lg text-label-sm font-semibold transition-colors bg-surface-container-low text-on-surface-variant hover:bg-surface-container';

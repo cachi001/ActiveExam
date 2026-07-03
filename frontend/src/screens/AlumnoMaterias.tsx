@@ -2,7 +2,7 @@
 // C-69: datos REALES desde el backend (materias/comisiones/exámenes importados de Moodle).
 //       El leaf es un examen de contenido: el alumno lo rinde directo (sin inscripción demo).
 import { useEffect, useState } from 'react';
-import { BackButton, LoadingSpinner } from '../ui/components';
+import { BackButton, LoadingSpinner, Icon } from '../ui/components';
 import { HelpButton } from '../ui/HelpButton';
 import { StudentShell } from '../ui/shells';
 import { useNavigate } from '../lib/router';
@@ -119,9 +119,19 @@ export default function AlumnoMaterias() {
             <LoadingSpinner label="Cargando materias…" />
           </div>
         ) : materias.length === 0 ? (
-          <p className="text-[13px] text-on-surface-variant px-md py-lg">
-            No hay materias disponibles. Un administrador debe importar exámenes y asociarlos a una comisión.
-          </p>
+          <div className="min-h-[340px] flex items-center justify-center">
+            <div className="flex flex-col items-center text-center gap-md max-w-sm">
+              <div className="w-16 h-16 rounded-2xl bg-primary-fixed text-primary flex items-center justify-center">
+                <Icon name="menu_book" className="text-[32px]" />
+              </div>
+              <div className="space-y-1">
+                <p className="text-[16px] font-semibold text-on-surface">No hay materias disponibles</p>
+                <p className="text-[13px] text-on-surface-variant leading-relaxed">
+                  Cuando un administrador importe exámenes y los asocie a una comisión, van a aparecer acá.
+                </p>
+              </div>
+            </div>
+          </div>
         ) : (
           <div className="space-y-sm">
             {materias.map((materia) => (

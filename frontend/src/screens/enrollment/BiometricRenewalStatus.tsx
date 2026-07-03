@@ -144,31 +144,26 @@ export function BiometricRenewalStatus({ referencia, onRenovar }: Props) {
         </div>
       )}
 
-      {config.mostrarBotonRenovar ? (
-        <Button
-          variant="outline"
-          icon="refresh"
-          onClick={handleRenovar}
-          disabled={limiteAlcanzado}
-          className="w-full sm:w-auto"
-        >
-          {referencia.vigencia === 'caducada' ? 'Renovar referencia (requerido)' : 'Renovar anticipadamente'}
-        </Button>
-      ) : (
-        // Vigente: igual ofrecemos un "Rehacer" suave por si la captura quedó mal
-        // (rostro mal encuadrado, luz pobre, falla de red al guardar, etc.).
-        // Usa el mismo flujo de renovación (reemplaza la referencia vigente).
-        <Button
-          variant="outline"
-          size="sm"
-          icon="refresh"
-          onClick={handleRenovar}
-          disabled={limiteAlcanzado}
-          className="w-full sm:w-auto"
-        >
-          {limiteAlcanzado ? 'Límite de re-capturas alcanzado' : 'Rehacer captura'}
-        </Button>
-      )}
+      <div className="flex justify-end">
+        {config.mostrarBotonRenovar ? (
+          <Button
+            icon="refresh"
+            onClick={handleRenovar}
+            disabled={limiteAlcanzado}
+          >
+            {referencia.vigencia === 'caducada' ? 'Renovar referencia (requerido)' : 'Renovar anticipadamente'}
+          </Button>
+        ) : (
+          <Button
+            size="sm"
+            icon="refresh"
+            onClick={handleRenovar}
+            disabled={limiteAlcanzado}
+          >
+            {limiteAlcanzado ? 'Límite de re-capturas alcanzado' : 'Rehacer captura'}
+          </Button>
+        )}
+      </div>
     </div>
   );
 }

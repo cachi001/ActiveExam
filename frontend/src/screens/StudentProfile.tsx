@@ -22,23 +22,17 @@
  *       + optional-dni-scan (C-22) · profile-requisito-cards (C-42)
  */
 import { useEffect, useState } from 'react';
-import { Button, Icon, LoadingSpinner, BackButton } from '../ui/components';
-import { HelpButton } from '../ui/HelpButton';
+import { LoadingSpinner } from '../ui/components';
 import { StudentShell } from '../ui/shells';
 import { useNavigate } from '../lib/router';
 import { useApp } from '../lib/store';
-import { api, ENABLE_DNI_SCAN } from '../lib/api';
-import { DEV_TOOLS_ENABLED } from '../lib/devConfig';
+import { api } from '../lib/api';
 import { EnrollmentConsentStep } from './enrollment/EnrollmentConsentStep';
 import { EnrollmentBiometricStep } from './enrollment/EnrollmentBiometricStep';
 import { EnrollmentDniStep } from './enrollment/EnrollmentDniStep';
 import { EnrollmentStepLayout, type WizardPaso } from './enrollment/EnrollmentStepLayout';
-import { CameraSnapshotCapture } from '../ui/CameraSnapshotCapture';
-import { PerfilHeaderCard } from './alumno/components/PerfilHeaderCard';
-import { PerfilBannerEstado } from './alumno/components/PerfilBannerEstado';
-import { RequisitoConsentimiento } from './alumno/components/RequisitoConsentimiento';
-import { RequisitoBiometria } from './alumno/components/RequisitoBiometria';
-import { RequisitoDni } from './alumno/components/RequisitoDni';
+import { EnrollmentFotoPerfilStep } from './enrollment/EnrollmentFotoPerfilStep';
+import { PerfilVistaGeneral } from './alumno/components/PerfilVistaGeneral';
 import type { AcuseConsentimiento, EstadoEnrollment, ReferenciasBiometrica, EscaneDNI } from '../lib/types';
 import { loadEffectiveConfig, getEffectiveConfig, resetEffectiveConfigCache } from '../config/effectiveConfigCache';
 
@@ -299,69 +293,18 @@ export default function StudentProfile() {
         <EnrollmentStepLayout
           title="Foto de perfil"
           subtitle="Tu foto se usará como tu imagen en la plataforma."
-          // Cambio de foto desde un perfil ya completo → no es el wizard inicial:
-          // ocultamos el stepper "Paso 2 de N" para no dar la sensación de retroceder.
           pasos={enrollment?.biometria?.captura_completada ? undefined : wizardPasos(2)}
           onBack={volverAlPerfil}
         >
-          {fotoConfirmando ? (
-            /* C-66: confirmación de la foto capturada (paso 2) antes de avanzar a biometría */
-            <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/70 shadow-card p-lg flex flex-col items-center text-center gap-md">
-              <img src={fotoConfirmando} alt="Tu foto de perfil" className="w-36 h-36 rounded-full object-cover shadow-sm" />
-              <div className="space-y-base">
-                <p className="inline-flex items-center gap-xs font-headline text-title-lg text-on-surface">
-                  <Icon name="check_circle" className="text-success text-[24px]" fill /> ¡Foto lista!
-                </p>
-                <p className="text-body-md text-on-surface-variant max-w-md mx-auto">
-                  Esta es la foto que se va a mostrar en tu perfil. Si te gusta, continuá; si no, cambiala.
-                </p>
-              </div>
-              <div className="flex flex-col sm:flex-row items-center gap-sm w-full sm:w-auto">
-                <Button variant="outline" icon="refresh" onClick={() => setFotoConfirmando(null)} className="w-full sm:w-auto">
-                  Cambiar foto
-                </Button>
-                <Button
-                  onClick={() => {
-                    setFotoConfirmando(null);
-                    // Si ya completó la biometría (cambio de foto desde un perfil ya
-                    // completo), volver al perfil — NO re-disparar el wizard de captura.
-                    // Solo el enrollment inicial (sin biometría aún) sigue a 'biometria'.
-                    setPaso(enrollment?.biometria?.captura_completada ? 'perfil' : 'biometria');
-                  }}
-                  className="w-full sm:w-auto"
-                >
-                  {enrollment?.biometria?.captura_completada ? 'Guardar foto' : 'Continuar'}
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <>
-              <div className="text-label-sm text-on-surface-variant bg-white rounded-xl p-sm border border-outline-variant/40">
-                <span className="font-semibold">Privacidad:</span> Tu foto se usa solo como tu imagen en la plataforma.
-              </div>
-
-              {fotoError && (
-                <div className="flex items-start gap-sm bg-error-container border border-error/30 rounded-xl p-md">
-                  <Icon name="error" className="text-error text-[18px] shrink-0 mt-px" />
-                  <div className="text-label-sm text-on-surface">
-                    <p className="font-semibold text-error">Error al guardar la foto</p>
-                    <p className="text-on-surface-variant mt-xs">{fotoError}</p>
-                    <p className="text-on-surface-variant mt-xs">
-                      Intentá capturar la foto nuevamente. Si el problema persiste, contactá al soporte.
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              <CameraSnapshotCapture
-                shape="oval"
-                instruction="Posicioná tu cara dentro del óvalo y presioná Capturar"
-                contextLabel="Foto de perfil"
-                onCapture={handleFotoCapturada}
-                onCancel={handleFotoCancelada}
-              />
-            </>
-          )}
+          <EnrollmentFotoPerfilStep
+            fotoConfirmando={fotoConfirmando}
+            setFotoConfirmando={setFotoConfirmando}
+            fotoError={fotoError}
+            enrollment={enrollment}
+            onAvanzar={() => setPaso(enrollment?.biometria?.captura_completada ? 'perfil' : 'biometria')}
+            onCapture={handleFotoCapturada}
+            onCancel={handleFotoCancelada}
+          />
         </EnrollmentStepLayout>
       </StudentShell>
     );
@@ -423,81 +366,28 @@ export default function StudentProfile() {
     );
   }
 
-  // ─────────────────────────────────────────────────────────────────────────────
   // Vista principal del perfil (paso === 'perfil')
-  // ─────────────────────────────────────────────────────────────────────────────
-
   return (
     <StudentShell>
-      <div className="max-w-2xl lg:max-w-5xl xl:max-w-6xl mx-auto space-y-xl animate-in fade-in duration-300">
-        <BackButton onClick={() => navigate('/alumno')} />
-        <header>
-          <div className="flex items-center gap-sm">
-            <h1 className="font-headline text-headline-md text-on-surface tracking-tight">Mi perfil</h1>
-            <HelpButton title="Mi perfil">
-              <p>
-                Desde acá completás los <strong>requisitos para rendir</strong>: consentimiento
-                informado, foto de perfil, verificación facial y (opcional) escaneo de DNI.
-              </p>
-              <p>
-                La <em>captura biométrica</em> se hace una sola vez y queda vigente por 24 meses
-                para todos tus exámenes. Si se vence o el sistema detecta deriva, te pediremos
-                renovarla.
-              </p>
-              <p>
-                Tus datos biométricos (foto y embedding) son <strong>datos sensibles</strong> bajo
-                Ley 25.326: viajan cifrados, se usan solo para verificar tu identidad y se eliminan
-                al egresar de la institución.
-              </p>
-            </HelpButton>
-          </div>
-          <p className="text-body-md text-on-surface-variant mt-xs">
-            Datos personales y requisitos para rendir exámenes.
-          </p>
-        </header>
-
-        <PerfilHeaderCard
-          principal={principal}
-          // Dejamos siempre disponible la opción de rehacer la foto de perfil:
-          // si la captura anterior salió borrosa, mal encuadrada o no llegó a
-          // persistirse, el alumno la puede tomar de nuevo en cualquier momento.
-          onRehacerFoto={consentimientoOk ? () => setPaso('foto_perfil') : undefined}
-        />
-
-        <PerfilBannerEstado
-          perfilCompleto={perfilCompleto}
-          biometriaCaducada={biometriaCaducada}
-          biometriaRenovacionRequerida={biometriaRenovacionRequerida}
-          onIrAExamenes={() => navigate('/alumno/mis-examenes')}
-          onRenovarBiometria={handleRenovarBiometria}
-        />
-
-        <RequisitoConsentimiento
-          consentimiento={enrollment?.consentimiento ?? null}
-          versionVigente={versionVigente}
-          onIniciar={() => setPaso('consentimiento')}
-          onLeer={() => setPaso('leer_consentimiento')}
-        />
-
-        <RequisitoBiometria
-          biometria={enrollment?.biometria ?? null}
-          biometriaOk={biometriaOk}
-          biometriaCaducada={biometriaCaducada}
-          biometriaRenovacionRequerida={biometriaRenovacionRequerida}
-          consentimientoOk={consentimientoOk}
-          devToolsEnabled={DEV_TOOLS_ENABLED}
-          onCapturar={handleIniciarEnrollment}
-          onRenovar={handleRenovarBiometria}
-          onSimularDeriva={handleSimularDeriva}
-        />
-
-        <RequisitoDni
-          dni={enrollment?.dni ?? null}
-          dniOk={dniOk}
-          dniScanHabilitado={ENABLE_DNI_SCAN}
-          onEscanear={() => setPaso('dni')}
-        />
-      </div>
+      <PerfilVistaGeneral
+        principal={principal}
+        enrollment={enrollment}
+        versionVigente={versionVigente}
+        consentimientoOk={consentimientoOk}
+        biometriaOk={biometriaOk}
+        biometriaCaducada={biometriaCaducada}
+        biometriaRenovacionRequerida={biometriaRenovacionRequerida}
+        dniOk={dniOk}
+        perfilCompleto={perfilCompleto}
+        onNavigate={navigate}
+        onIniciarConsentimiento={() => setPaso('consentimiento')}
+        onLeerConsentimiento={() => setPaso('leer_consentimiento')}
+        onIniciarEnrollment={handleIniciarEnrollment}
+        onRenovarBiometria={handleRenovarBiometria}
+        onSimularDeriva={handleSimularDeriva}
+        onRehacerFoto={() => setPaso('foto_perfil')}
+        onEscanearDni={() => setPaso('dni')}
+      />
     </StudentShell>
   );
 }

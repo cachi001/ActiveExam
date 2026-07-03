@@ -13,11 +13,10 @@ import { api, USE_REAL_BACKEND } from '../lib/api';
 import AcuseExamen from './AcuseExamen';
 import type { Inscripcion, Examen, ExamenContenidoResumen, NotaExamen, EstadoEnrollment } from '../lib/types';
 import { InscripcionCard } from './alumno/components/InscripcionCard';
+import { ExamenImportadoCard, type GateImportado } from './alumno/components/ExamenImportadoCard';
+import { NotaCard } from './alumno/components/NotaCard';
 
 interface GatePorExamen { puede: boolean; codigo?: string; razon?: string; }
-
-/** Resultado del gate de un examen importado (ventana + intentos). */
-interface GateImportado { habilitado: boolean; motivo?: string; }
 
 /** Formatea un ISO 8601 a fecha+hora legible (es-AR). */
 function formatFechaHora(iso: string): string {
@@ -92,7 +91,6 @@ export default function AlumnoMisExamenes() {
   const [examenCompletandoAcuse, setExamenCompletandoAcuse] = useState<string | null>(null);
   // C-69: catálogo de exámenes importados (Moodle XML) — solo cuando USE_REAL_BACKEND=1
   const [examenesImportados, setExamenesImportados] = useState<ExamenContenidoResumen[]>([]);
-  const [cargandoImportados, setCargandoImportados] = useState(USE_REAL_BACKEND);
   const [rindiendoImportadoId, setRindiendoImportadoId] = useState<string | null>(null);
   // C-69: notas académicas del alumno + estado de cola de revisión (solo modo real)
   const [notas, setNotas] = useState<NotaExamen[]>([]);
@@ -105,36 +103,31 @@ export default function AlumnoMisExamenes() {
     setGatesPorExamen(Object.fromEntries(resultados));
   };
 
+  // Un único fetch que carga todo en paralelo → un solo spinner, sin doble carga.
   useEffect(() => {
     let cancelado = false;
     (async () => {
-      const [insc, enrollment] = await Promise.all([api.misInscripciones(), api.getEnrollment()]);
+      const baseFetches: [Promise<Inscripcion[]>, Promise<EstadoEnrollment>] = [
+        api.misInscripciones(),
+        api.getEnrollment(),
+      ];
+      const extraFetches = USE_REAL_BACKEND
+        ? [api.listarExamenesContenido(), api.misNotas()] as const
+        : [];
+      const [insc, enrollment, ...extra] = await Promise.all([...baseFetches, ...extraFetches]);
       if (cancelado) return;
       setInscripciones(insc);
       setEnrollmentLocal(enrollment);
       setEnrollmentStatus(enrollment);
+      if (USE_REAL_BACKEND && extra.length === 2) {
+        setExamenesImportados(extra[0] as ExamenContenidoResumen[]);
+        setNotas(extra[1] as NotaExamen[]);
+      }
       await evaluarGates(insc);
       setCargando(false);
     })();
     return () => { cancelado = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // C-69: cargar exámenes importados desde Moodle (solo en modo real)
-  useEffect(() => {
-    if (!USE_REAL_BACKEND) return;
-    let cancelado = false;
-    (async () => {
-      const [importados, misNotas] = await Promise.all([
-        api.listarExamenesContenido(),
-        api.misNotas(),
-      ]);
-      if (cancelado) return;
-      setExamenesImportados(importados);
-      setNotas(misNotas);
-      setCargandoImportados(false);
-    })();
-    return () => { cancelado = true; };
   }, []);
 
   /**
@@ -158,7 +151,7 @@ export default function AlumnoMisExamenes() {
     const examen: Examen = {
       id: contenido.id,                          // id del contenido como id del examen
       nombre: contenido.titulo,
-      catedra: '',
+      catedra: contenido.materia_nombre ?? '',
       estado: 'en_curso',
       inicio: new Date().toISOString(),
       // Duración real del examen (config del docente); 0 = sin límite, coherente
@@ -260,222 +253,87 @@ export default function AlumnoMisExamenes() {
           <div className="min-h-[40vh] flex items-center justify-center">
             <LoadingSpinner label="Cargando tus exámenes…" />
           </div>
-        ) : inscripciones.length > 0 ? (
-          <div className="space-y-sm">
-            {inscripciones.map((insc) => (
-              <InscripcionCard
-                key={insc.id}
-                inscripcion={insc}
-                gate={gatesPorExamen[insc.examen_id]}
-                verificando={verificandoId === insc.id}
-                onRendir={() => handleRendir(insc)}
-                onCompletarAcuse={() => setExamenCompletandoAcuse(insc.examen_id)}
-                onIrAPerfil={() => navigate('/alumno/perfil')}
-              />
-            ))}
-          </div>
-        ) : null}
-
-        {/* C-69: Tus notas — nota académica + estado de cola de revisión por eventos.
-            Solo con backend real y solo si el alumno ya rindió algún examen. */}
-        {USE_REAL_BACKEND && notas.length > 0 && (
-          <section>
-            <div className="flex items-center gap-sm mb-md">
-              <Icon name="grade" className="text-[20px] text-primary" />
-              <h2 className="text-[16px] font-semibold text-on-surface">Tus notas</h2>
-            </div>
-            <div className="space-y-sm">
-              {notas.map((n) => (
-                <NotaCard key={n.examen_id} nota={n} />
-              ))}
-            </div>
-          </section>
-        )}
-
-        {/* C-69: Catálogo de exámenes importados (Moodle XML) — solo con backend real.
-            Permite al alumno elegir un examen importado y rendir con preguntas reales.
-            En modo demo (VITE_USE_REAL_BACKEND=0) esta sección no aparece. */}
-        {USE_REAL_BACKEND && (
-          <section>
-            <div className="flex items-center gap-sm mb-md">
-              <Icon name="assignment" className="text-[20px] text-primary" />
-              <h2 className="text-[16px] font-semibold text-on-surface">
-                Exámenes disponibles
-              </h2>
-            </div>
-
-            {cargandoImportados ? (
-              <LoadingSpinner size="sm" label="Cargando exámenes importados…" />
-            ) : examenesImportados.length === 0 ? (
-              <Card className="text-center py-lg">
-                <Icon name="upload_file" className="text-[32px] text-on-surface-variant mb-sm" />
-                <p className="text-[14px] text-on-surface-variant">
-                  No hay exámenes importados disponibles.
-                </p>
-                <p className="text-[12px] text-on-surface-variant mt-xs">
-                  Un administrador debe importar un examen en formato Moodle XML.
-                </p>
-              </Card>
-            ) : (
+        ) : (
+          <>
+            {inscripciones.length > 0 && (
               <div className="space-y-sm">
-                {examenesImportados.map((contenido) => (
-                  <ExamenImportadoCard
-                    key={contenido.id}
-                    contenido={contenido}
-                    rindiendo={rindiendoImportadoId === contenido.id}
-                    gate={gateExamenImportado(contenido, notas)}
-                    perfilCompleto={perfilCompleto}
-                    onRendir={() => handleRendirImportado(contenido)}
-                    onCompletarPerfil={() => navigate('/alumno/perfil')}
+                {inscripciones.map((insc) => (
+                  <InscripcionCard
+                    key={insc.id}
+                    inscripcion={insc}
+                    gate={gatesPorExamen[insc.examen_id]}
+                    verificando={verificandoId === insc.id}
+                    onRendir={() => handleRendir(insc)}
+                    onCompletarAcuse={() => setExamenCompletandoAcuse(insc.examen_id)}
+                    onIrAPerfil={() => navigate('/alumno/perfil')}
                   />
                 ))}
               </div>
             )}
-          </section>
+
+            {/* C-69: Tus notas — nota académica + estado de cola de revisión por eventos.
+                Solo con backend real y solo si el alumno ya rindió algún examen. */}
+            {USE_REAL_BACKEND && notas.length > 0 && (
+              <section>
+                <div className="flex items-center gap-sm mb-md">
+                  <Icon name="grade" className="text-[20px] text-primary" />
+                  <h2 className="text-[16px] font-semibold text-on-surface">Tus notas</h2>
+                </div>
+                <div className="space-y-sm">
+                  {notas.map((n) => (
+                    <NotaCard key={n.examen_id} nota={n} />
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {/* C-69: Catálogo de exámenes importados (Moodle XML) — solo con backend real. */}
+            {USE_REAL_BACKEND && (
+              <section>
+                {examenesImportados.length > 0 && (
+                  <div className="flex items-center gap-sm mb-md">
+                    <Icon name="assignment" className="text-[20px] text-primary" />
+                    <h2 className="text-[16px] font-semibold text-on-surface">
+                      Exámenes disponibles
+                    </h2>
+                  </div>
+                )}
+
+                {examenesImportados.length === 0 ? (
+                  <div className="min-h-[280px] flex items-center justify-center">
+                    <div className="flex flex-col items-center text-center gap-md max-w-sm">
+                      <div className="w-16 h-16 rounded-2xl bg-primary-fixed text-primary flex items-center justify-center">
+                        <Icon name="assignment" className="text-[32px]" />
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-[16px] font-semibold text-on-surface">No hay exámenes disponibles</p>
+                        <p className="text-[13px] text-on-surface-variant leading-relaxed">
+                          Todavía no hay exámenes programados para vos. Volvé a consultar más cerca de la fecha de tu evaluación.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-sm">
+                    {examenesImportados.map((contenido) => (
+                      <ExamenImportadoCard
+                        key={contenido.id}
+                        contenido={contenido}
+                        rindiendo={rindiendoImportadoId === contenido.id}
+                        gate={gateExamenImportado(contenido, notas)}
+                        perfilCompleto={perfilCompleto}
+                        onRendir={() => handleRendirImportado(contenido)}
+                        onCompletarPerfil={() => navigate('/alumno/perfil')}
+                      />
+                    ))}
+                  </div>
+                )}
+              </section>
+            )}
+          </>
         )}
       </div>
     </StudentShell>
   );
 }
 
-// ---------------------------------------------------------------------------
-// C-69: Card de examen importado (Moodle XML)
-// ---------------------------------------------------------------------------
-
-interface ExamenImportadoCardProps {
-  contenido: ExamenContenidoResumen;
-  rindiendo: boolean;
-  gate: GateImportado;
-  perfilCompleto: boolean;
-  onRendir: () => void;
-  onCompletarPerfil: () => void;
-}
-
-/**
- * Card que muestra un examen importado desde Moodle XML en el catálogo del alumno.
- * PascalCase: componente React. Solo se muestra cuando USE_REAL_BACKEND=1.
- * Prioridad del CTA: perfil incompleto → "Completar perfil"; si no, el gate
- * (ventana de disponibilidad + intentos) puede deshabilitar "Rendir".
- */
-function ExamenImportadoCard({ contenido, rindiendo, gate, perfilCompleto, onRendir, onCompletarPerfil }: ExamenImportadoCardProps) {
-  const bloqueado = !gate.habilitado;
-  const tiempo = contenido.tiempo_limite_min;
-  // El perfil tiene prioridad: sin consentimiento + biometría no se puede rendir.
-  const faltaPerfil = !perfilCompleto;
-  const inerte = faltaPerfil || bloqueado;
-  return (
-    <Card className="flex items-center justify-between gap-md p-md">
-      <div className="flex items-start gap-sm min-w-0">
-        <div className={`w-9 h-9 rounded-md flex items-center justify-center shrink-0 mt-0.5 ${inerte ? 'bg-surface-container text-on-surface-variant' : 'bg-primary-fixed text-primary'}`}>
-          <Icon name="assignment" className="text-[18px]" />
-        </div>
-        <div className="min-w-0">
-          <p className="text-[14px] font-medium text-on-surface leading-tight truncate">
-            {contenido.titulo}
-          </p>
-          <p className="text-[12px] text-on-surface-variant mt-0.5">
-            {contenido.cantidad_preguntas} {contenido.cantidad_preguntas === 1 ? 'pregunta' : 'preguntas'}
-            {typeof tiempo === 'number' && tiempo > 0 && ` · ${tiempo} min`}
-          </p>
-          {faltaPerfil ? (
-            <p className="text-[12px] text-warning mt-1 flex items-center gap-1">
-              <Icon name="manage_accounts" className="text-[14px]" fill /> Completá tu perfil para poder rendir.
-            </p>
-          ) : bloqueado && gate.motivo && (
-            <p className="text-[12px] text-error mt-1 flex items-center gap-1">
-              <Icon name="lock" className="text-[14px]" fill /> {gate.motivo}
-            </p>
-          )}
-        </div>
-      </div>
-      {faltaPerfil ? (
-        <Button
-          variant="primary"
-          size="sm"
-          onClick={onCompletarPerfil}
-          icon="manage_accounts"
-        >
-          Completar perfil
-        </Button>
-      ) : (
-        <Button
-          variant="primary"
-          size="sm"
-          onClick={onRendir}
-          disabled={rindiendo || bloqueado}
-          icon={rindiendo ? undefined : bloqueado ? 'lock' : 'play_arrow'}
-        >
-          {rindiendo ? 'Verificando…' : 'Rendir'}
-        </Button>
-      )}
-    </Card>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// C-69: Card de nota académica + estado de cola de revisión
-// ---------------------------------------------------------------------------
-
-/**
- * Muestra la nota de un examen rendido en lenguaje claro para el alumno.
- * Si `en_cola_revision` (el score de proctoring superó el umbral), la nota se
- * presenta como PRELIMINAR con un chip "En revisión por eventos registrados":
- * un docente revisará el examen antes de confirmar la nota. La fuente de verdad
- * es el backend (api.misNotas); el cliente solo la muestra.
- */
-function NotaCard({ nota }: { nota: NotaExamen }) {
-  const enRevision = nota.en_cola_revision;
-  const tieneNota = nota.nota !== null && nota.nota !== undefined;
-  return (
-    <Card className={`flex items-start gap-md p-md ${enRevision ? 'bg-warning-container/30 border-warning-200' : ''}`}>
-      <div className={`w-9 h-9 rounded-md flex items-center justify-center shrink-0 mt-0.5 ${enRevision ? 'bg-warning-container text-warning' : 'bg-success-container text-success'}`}>
-        <Icon name={enRevision ? 'hourglass_top' : 'grade'} className="text-[18px]" fill />
-      </div>
-      <div className="min-w-0 flex-1">
-        <p className="text-[14px] font-semibold text-on-surface leading-tight">{nota.examen_titulo}</p>
-        <div className="flex items-center gap-sm flex-wrap mt-0.5">
-          <p className="text-[15px] text-on-surface">
-            {tieneNota ? (
-              <>
-                {enRevision ? 'Nota preliminar: ' : 'Nota: '}
-                <strong>
-                  {nota.nota}
-                  {nota.nota_maxima != null ? ` / ${nota.nota_maxima}` : ''}
-                </strong>
-              </>
-            ) : (
-              <span className="text-on-surface-variant">Nota pendiente de cálculo</span>
-            )}
-          </p>
-          {tieneNota && nota.aprobado != null && (
-            <span
-              className={`inline-flex items-center gap-xs text-[12px] font-medium rounded-full px-sm py-0.5 ${
-                nota.aprobado
-                  ? 'bg-success-container text-success'
-                  : 'bg-error-container text-on-error-container'
-              }`}
-            >
-              <Icon name={nota.aprobado ? 'check_circle' : 'cancel'} className="text-[14px]" fill />
-              {nota.aprobado ? 'Aprobado' : 'Desaprobado'}
-            </span>
-          )}
-        </div>
-        {enRevision ? (
-          <div className="flex items-start gap-xs mt-xs">
-            <span className="inline-flex items-center gap-xs bg-warning-container text-warning text-[12px] font-medium rounded-full px-sm py-0.5">
-              <Icon name="gavel" className="text-[14px]" fill /> En revisión por eventos registrados
-            </span>
-          </div>
-        ) : tieneNota ? (
-          <p className="text-[12px] text-on-surface-variant mt-0.5">Esta es tu nota final.</p>
-        ) : null}
-        {enRevision && (
-          <p className="text-[12px] text-on-surface-variant mt-xs">
-            Tu examen quedó en cola de revisión por los eventos registrados durante la supervisión.
-            Un docente la revisará y confirmará tu nota.
-          </p>
-        )}
-      </div>
-    </Card>
-  );
-}

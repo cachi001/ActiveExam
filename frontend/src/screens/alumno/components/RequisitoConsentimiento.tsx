@@ -38,10 +38,10 @@ export function RequisitoConsentimiento({ consentimiento, versionVigente, onInic
     >
       {ok && consentimiento ? (
         <div className="space-y-sm">
-          <div className="flex items-start gap-sm">
+          <div className="flex items-center gap-sm">
             <Icon
               name={desactualizado ? 'update' : 'check_circle'}
-              className={`${desactualizado ? 'text-warning' : 'text-success'} text-[20px] shrink-0 mt-px`}
+              className={`${desactualizado ? 'text-warning' : 'text-success'} text-[20px] shrink-0`}
               fill
             />
             <p className="text-label-sm text-on-surface">
@@ -60,16 +60,13 @@ export function RequisitoConsentimiento({ consentimiento, versionVigente, onInic
               </p>
             </div>
           )}
-          <div className="flex flex-wrap gap-sm">
+          <div className="flex flex-wrap gap-sm justify-end">
             {desactualizado ? (
-              // Renovación pendiente: una sola acción clara (leer + aceptar la nueva).
-              // El "leer" de solo-lectura no tiene sentido acá (todavía no aceptaste esta versión).
-              <Button variant="primary" size="sm" onClick={onIniciar}>
+              <Button size="sm" onClick={onIniciar}>
                 Leer y aceptar versión {versionVigente}
               </Button>
             ) : (
-              // Ya estás al día: podés volver a leer el texto que aceptaste.
-              <Button variant="outline" size="sm" icon="description" onClick={onLeer}>
+              <Button size="sm" icon="description" onClick={onLeer}>
                 Leer el consentimiento
               </Button>
             )}

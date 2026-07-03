@@ -63,7 +63,7 @@ export function PerfilHeaderCard({ principal, onRehacerFoto }: PerfilHeaderCardP
             alt={`Foto de perfil de ${[principal.nombre, principal.apellido].filter(Boolean).join(' ')}`}
           />
         ) : (
-          <div className="w-14 h-14 rounded-full bg-secondary-container text-on-secondary flex items-center justify-center font-headline text-headline-sm shrink-0">
+          <div className="w-14 h-14 rounded-full bg-primary text-on-primary flex items-center justify-center font-headline text-headline-sm shrink-0">
             {principal?.nombre.charAt(0) ?? '?'}
           </div>
         )}

@@ -204,7 +204,7 @@ export default function AlumnoDashboard() {
         <div className="grid grid-cols-2 gap-md">
           <ContadorPersonal
             icon="menu_book"
-            label={modoDemo ? 'Mis materias' : 'Materias disponibles'}
+            label="Mis materias"
             value={displayMateriasCount}
           />
           <ContadorPersonal
@@ -214,82 +214,82 @@ export default function AlumnoDashboard() {
           />
         </div>
 
-        <section>
-          <div className="flex items-center justify-between mb-md">
-            <h2 className="text-[16px] font-semibold text-on-surface">
-              {modoDemo ? 'Próximos exámenes' : 'Exámenes disponibles'}
-            </h2>
-            <button
-              onClick={() => navigate(modoDemo ? '/alumno/mis-examenes' : '/alumno/materias')}
-              className="text-[13px] text-primary hover:underline"
-            >
-              Ver todos
-            </button>
-          </div>
+        <div className="flex flex-col lg:flex-row gap-xl items-start">
+          {/* Exámenes disponibles — columna principal (izquierda, ~70%) */}
+          <section className="flex-1 min-w-0">
+            <div className="flex items-center justify-between mb-md">
+              <h2 className="text-[16px] font-semibold text-on-surface">
+                {modoDemo ? 'Próximos exámenes' : 'Exámenes disponibles'}
+              </h2>
+              <button
+                onClick={() => navigate('/alumno/mis-examenes')}
+                className="text-[13px] text-primary hover:underline"
+              >
+                Ver todos
+              </button>
+            </div>
 
-          {cargando ? (
-            <LoadingSpinner size="sm" label={modoDemo ? 'Cargando inscripciones…' : 'Cargando catálogo…'} />
-          ) : modoDemo ? (
-            /* Modo demo: lista de inscripciones */
-            proximos.length === 0 ? (
-              <Card className="text-center py-xl">
-                <Icon name="event_busy" className="text-[36px] text-on-surface-variant mb-md" />
-                <p className="text-[14px] text-on-surface-variant">No tenés exámenes próximos.</p>
-                <Button variant="outline" size="sm" onClick={() => navigate('/alumno/materias')} className="mt-md" icon="add_circle">
-                  Inscribite a un examen
-                </Button>
-              </Card>
+            {cargando ? (
+              <LoadingSpinner size="sm" label={modoDemo ? 'Cargando inscripciones…' : 'Cargando catálogo…'} />
+            ) : modoDemo ? (
+              proximos.length === 0 ? (
+                <Card className="text-center py-2xl min-h-[320px] flex flex-col items-center justify-center">
+                  <Icon name="event_busy" className="text-[44px] text-on-surface-variant mb-md" />
+                  <p className="text-[14px] text-on-surface-variant">No tenés exámenes próximos.</p>
+                  <Button variant="outline" size="sm" onClick={() => navigate('/alumno/materias')} className="mt-md" icon="add_circle">
+                    Inscribite a un examen
+                  </Button>
+                </Card>
+              ) : (
+                <div className="space-y-sm">
+                  {proximos.map((insc) => <ExamenProximoCard key={insc.id} inscripcion={insc} />)}
+                </div>
+              )
             ) : (
-              <div className="space-y-sm">
-                {proximos.map((insc) => <ExamenProximoCard key={insc.id} inscripcion={insc} />)}
-              </div>
-            )
-          ) : (
-            /* Modo real: catálogo real (sin inscripciones inventadas) */
-            examenesDisponibles.length === 0 ? (
-              <Card className="text-center py-xl">
-                <Icon name="assignment" className="text-[36px] text-on-surface-variant mb-md" />
-                <p className="text-[14px] text-on-surface-variant">No hay exámenes disponibles por el momento.</p>
-                <Button variant="outline" size="sm" onClick={() => navigate('/alumno/materias')} className="mt-md" icon="menu_book">
-                  Explorar materias
-                </Button>
-              </Card>
-            ) : (
-              <div className="space-y-sm">
-                {examenesDisponibles.map((e) => (
-                  <ExamenCatalogoCard key={e.id} examen={e} onNavigate={() => navigate('/alumno/materias')} />
-                ))}
-              </div>
-            )
-          )}
-        </section>
+              examenesDisponibles.length === 0 ? (
+                <Card className="text-center py-2xl min-h-[320px] flex flex-col items-center justify-center">
+                  <Icon name="assignment" className="text-[44px] text-on-surface-variant mb-md" />
+                  <p className="text-[14px] text-on-surface-variant">No hay exámenes disponibles por el momento.</p>
+                  <Button variant="outline" size="sm" onClick={() => navigate('/alumno/materias')} className="mt-md" icon="menu_book">
+                    Explorar materias
+                  </Button>
+                </Card>
+              ) : (
+                <div className="space-y-sm">
+                  {examenesDisponibles.map((e) => (
+                    <ExamenCatalogoCard key={e.id} examen={e} onNavigate={() => navigate('/alumno/mis-examenes')} />
+                  ))}
+                </div>
+              )
+            )}
+          </section>
 
-        <section>
-          <h2 className="text-[16px] font-semibold text-on-surface mb-md">Acceso rápido</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-md">
-            <QuickAccessCard icon="menu_book" title="Mis materias" description="Explorar y inscribirse" onClick={() => navigate('/alumno/materias')} />
-            <QuickAccessCard icon="assignment" title="Mis exámenes" description="Ver inscripciones y estado" onClick={() => navigate('/alumno/mis-examenes')} />
-            <QuickAccessCard icon="manage_accounts" title="Mi perfil" description="Consentimiento y biometría" onClick={() => navigate('/alumno/perfil')} />
-          </div>
-        </section>
+          {/* Acceso rápido — columna secundaria (derecha, ~30%) */}
+          <section className="w-full lg:w-64 xl:w-72 shrink-0">
+            <h2 className="text-[16px] font-semibold text-on-surface mb-md">Acceso rápido</h2>
+            <div className="flex flex-row lg:flex-col gap-md">
+              <QuickAccessCard icon="menu_book" title="Mis materias" description="Explorar y inscribirse" onClick={() => navigate('/alumno/materias')} />
+              <QuickAccessCard icon="assignment" title="Mis exámenes" description="Ver inscripciones y estado" onClick={() => navigate('/alumno/mis-examenes')} />
+              <QuickAccessCard icon="manage_accounts" title="Mi perfil" description="Consentimiento y biometría" onClick={() => navigate('/alumno/perfil')} />
+            </div>
+          </section>
+        </div>
 
         <section>
           <h2 className="text-[16px] font-semibold text-on-surface mb-md">Estado del perfil</h2>
-          <Card padded={false}>
-            <div className="p-md space-y-3">
-              <EstadoItem
-                ok={!!enrollment?.consentimiento}
-                label="Consentimiento informado"
-                hint={enrollment?.consentimiento ? `Versión ${enrollment.consentimiento.version}` : 'Pendiente'}
-              />
-              <EstadoItem
-                ok={vigencia === 'vigente'}
-                warn={vigencia === 'por_vencer' || vigencia === 'renovacion_requerida'}
-                label="Verificación biométrica"
-                hint={VIGENCIA_LABEL[vigencia] ?? 'Vigente'}
-              />
-            </div>
-          </Card>
+          <div className="space-y-2">
+            <EstadoItem
+              ok={!!enrollment?.consentimiento}
+              label="Consentimiento informado"
+              hint={enrollment?.consentimiento ? `Versión ${enrollment.consentimiento.version}` : 'Pendiente — aceptá el consentimiento en Mi perfil'}
+            />
+            <EstadoItem
+              ok={vigencia === 'vigente'}
+              warn={vigencia === 'por_vencer' || vigencia === 'renovacion_requerida'}
+              label="Verificación biométrica"
+              hint={VIGENCIA_LABEL[vigencia] ?? 'Vigente'}
+            />
+          </div>
         </section>
       </div>
     </StudentShell>
@@ -301,8 +301,8 @@ export default function AlumnoDashboard() {
 function ContadorPersonal({ icon, label, value }: { icon: string; label: string; value: number }) {
   return (
     <div className="flex items-center gap-4 px-5 py-5 bg-white border border-surface-200 rounded-lg">
-      <div className="w-12 h-12 rounded-md bg-primary-fixed text-primary flex items-center justify-center shrink-0">
-        <Icon name={icon} className="text-[24px]" />
+      <div className="w-9 h-9 rounded-md bg-primary-fixed text-primary flex items-center justify-center shrink-0">
+        <Icon name={icon} className="text-[18px]" />
       </div>
       <div className="min-w-0">
         <p className="text-[13px] text-on-surface-variant leading-tight">{label}</p>
@@ -332,8 +332,8 @@ function ExamenCatalogoCard({
       className="w-full text-left bg-white rounded-lg border border-surface-200 px-4 py-4 flex items-center gap-4 hover:border-primary/40 hover:bg-surface-50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
       aria-label={`Ver detalle del examen ${examen.titulo}`}
     >
-      <div className="w-11 h-11 rounded-lg bg-primary-fixed text-primary flex items-center justify-center shrink-0">
-        <Icon name="assignment" className="text-[22px]" />
+      <div className="w-8 h-8 rounded-md bg-primary-fixed text-primary flex items-center justify-center shrink-0">
+        <Icon name="assignment" className="text-[16px]" />
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-[15px] font-semibold text-on-surface truncate leading-tight">{examen.titulo}</p>
@@ -346,20 +346,33 @@ function ExamenCatalogoCard({
 }
 
 function EstadoItem({ ok, warn = false, label, hint }: { ok: boolean; warn?: boolean; label: string; hint: string }) {
-  const tono = ok && !warn ? 'success' : warn ? 'warning' : 'error';
+  const tono = ok && !warn ? 'success' : warn ? 'warning' : 'pending';
   const iconName = ok && !warn ? 'check_circle' : warn ? 'warning' : 'radio_button_unchecked';
-  const colorMap = {
+
+  const bgMap = {
+    success: 'bg-[#f0faf4] border border-[#bbdfc8]',
+    warning: 'bg-warning-container border border-warning-200',
+    pending: 'bg-surface-50 border border-surface-200',
+  } as const;
+  const iconColorMap = {
     success: 'text-success',
     warning: 'text-warning',
-    error: 'text-on-surface-variant',
+    pending: 'text-on-surface-variant',
   } as const;
+  const badgeMap = {
+    success: <span className="ml-auto text-[11px] font-semibold text-success bg-success/10 px-2 py-0.5 rounded-full shrink-0">Listo</span>,
+    warning: <span className="ml-auto text-[11px] font-semibold text-warning bg-warning/10 px-2 py-0.5 rounded-full shrink-0">Atención</span>,
+    pending: <span className="ml-auto text-[11px] font-semibold text-on-surface-variant bg-surface-200 px-2 py-0.5 rounded-full shrink-0">Pendiente</span>,
+  } as const;
+
   return (
-    <div className="flex items-center gap-3">
-      <Icon name={iconName} className={`text-[22px] shrink-0 ${colorMap[tono]}`} fill={ok || warn} />
+    <div className={`flex items-center gap-3 rounded-xl px-4 py-3 ${bgMap[tono]}`}>
+      <Icon name={iconName} className={`text-[24px] shrink-0 ${iconColorMap[tono]}`} fill={ok || warn} />
       <div className="flex-1 min-w-0">
-        <p className="text-[14px] font-medium text-on-surface leading-tight">{label}</p>
+        <p className="text-[14px] font-semibold text-on-surface leading-tight">{label}</p>
         <p className="text-[12px] text-on-surface-variant leading-tight mt-0.5">{hint}</p>
       </div>
+      {badgeMap[tono]}
     </div>
   );
 }
