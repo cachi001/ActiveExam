@@ -78,8 +78,11 @@ describe('6.3 QuestionNavigator — tres estados visuales distintos', () => {
     expect(src).toMatch(/bg-primary/);
   });
 
-  it('6.3b estado "respondida": clase de fondo verde (bg-success)', () => {
-    expect(src).toMatch(/bg-success/);
+  it('6.3b estado "respondida": fondo neutro (bg-secondary-container, NO verde para no confundirlo con "correcta")', () => {
+    // Decisión de diseño (ver docstring del componente): la pregunta respondida
+    // NO usa verde/success, para no sugerir que la respuesta es correcta.
+    expect(src).toMatch(/bg-secondary-container/);
+    expect(src).not.toMatch(/bg-success/);
   });
 
   it('6.3c estado "sin responder": fondo neutro de superficie', () => {
