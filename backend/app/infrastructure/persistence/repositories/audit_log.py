@@ -12,12 +12,34 @@ cada una coincida con el ``hash_self`` de la anterior (validacion diaria, `04`).
 
 from __future__ import annotations
 
+import ipaddress
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.audit_chain import GENESIS_HASH, AuditEntry
 from app.domain.repositories.ports import AuditLogRepository
 from app.infrastructure.persistence.models.audit_log import AuditLogModel
+
+
+def _normalizar_ip(raw: str | None) -> str | None:
+    """Devuelve `raw` si es una IP (v4/v6) valida; None en cualquier otro caso.
+
+    El origen tipico de este valor es `request.client.host`. Detras de nginx es
+    una IP real, pero con el TestClient de FastAPI (host literal 'testclient'),
+    un proxy mal configurado o un socket unix puede no ser una IP. La columna
+    `ip` es INET: un valor no-IP aborta el INSERT (asyncpg DataError) y tumbaria
+    la accion auditada. Preferimos registrar la entrada del audit log con
+    ip=NULL antes que perderla (la cadena de custodia igual guarda actor,
+    user_agent, accion y proposito).
+    """
+    if not raw:
+        return None
+    try:
+        ipaddress.ip_address(raw)
+    except ValueError:
+        return None
+    return raw
 
 
 def _to_domain(m: AuditLogModel) -> AuditEntry:
@@ -45,7 +67,7 @@ class AuditLogSqlRepository(AuditLogRepository):
         # sea el motor.
         row = AuditLogModel(
             actor=entity.actor,
-            ip=entity.ip or None,
+            ip=_normalizar_ip(entity.ip),
             user_agent=entity.user_agent or None,
             accion=entity.accion,
             evidencia_id=entity.evidencia_id,
