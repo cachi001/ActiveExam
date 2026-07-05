@@ -4,7 +4,7 @@
 // C-58: setExamenActivo antes de navegar a /requisitos (fix bug examenActivo null).
 // C-69: catálogo de exámenes importados (Moodle XML) visible cuando USE_REAL_BACKEND=1.
 import { useEffect, useState } from 'react';
-import { Card, Button, Icon, BackButton, LoadingSpinner } from '../ui/components';
+import { Icon, BackButton, LoadingSpinner } from '../ui/components';
 import { HelpButton } from '../ui/HelpButton';
 import { StudentShell } from '../ui/shells';
 import { useNavigate } from '../lib/router';

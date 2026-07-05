@@ -3,7 +3,7 @@ import { StaffShell } from '../ui/shells';
 import { Button, Card, Icon, SectionTitle } from '../ui/components';
 import { STAFF_NAV } from '../ui/nav';
 import { useNavigate, useRouteParam } from '../lib/router';
-import { api, API_BASE, USE_REAL_BACKEND } from '../lib/api';
+import { API_BASE, USE_REAL_BACKEND } from '../lib/api';
 import { authProvider } from '../lib/authProvider';
 import { TableToolbar, type TableQuery } from '../ui/TableToolbar';
 import {

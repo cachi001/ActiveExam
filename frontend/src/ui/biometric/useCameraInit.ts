@@ -7,7 +7,7 @@ import { playError } from './sounds';
 import { withTimeout } from '../../lib/withTimeout';
 
 interface CameraInitDeps {
-  streamRef: React.RefObject<MediaStream | null>;
+  streamRef: React.MutableRefObject<MediaStream | null>;
   videoRef: React.RefObject<HTMLVideoElement | null>;
   rafHandleRef: React.MutableRefObject<number | null>;
   cooldownTimerRef: React.MutableRefObject<ReturnType<typeof setTimeout> | null>;

@@ -26,7 +26,7 @@ import { LoadingSpinner } from '../ui/components';
 import { StudentShell } from '../ui/shells';
 import { useNavigate } from '../lib/router';
 import { useApp } from '../lib/store';
-import { api } from '../lib/api';
+import { api, ENABLE_DNI_SCAN } from '../lib/api';
 import { EnrollmentConsentStep } from './enrollment/EnrollmentConsentStep';
 import { EnrollmentBiometricStep } from './enrollment/EnrollmentBiometricStep';
 import { EnrollmentDniStep } from './enrollment/EnrollmentDniStep';
