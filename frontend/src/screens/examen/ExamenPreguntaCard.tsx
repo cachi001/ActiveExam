@@ -1,17 +1,15 @@
-import { Icon, Button, Card } from '../../ui/components';
+import { Button, Card } from '../../ui/components';
 import { QuestionNavigator } from '../alumno/components/QuestionNavigator';
 import { puedeIrAnterior, puedeIrSiguiente } from '../ExamenLogic';
 import { soportaFullscreen, MENSAJE_LIMITE_FULLSCREEN } from '../../proctoring/fullscreenLockdown';
 import type { ExamenRendicion } from '../../lib/examTakingApi';
 
 interface Props {
-  preguntaActual: ExamenRendicion['preguntas'][number] | undefined;
+  preguntaActual: ExamenRendicion['preguntas'][number] | null | undefined;
   indiceActual: number;
   total: number;
   cargandoPreguntas: boolean;
   respuestas: Record<string, string>;
-  tiempoLimiteMin: number | null | undefined;
-  segRestantes: number | null;
   respondidas: Set<number>;
   onSeleccionarOpcion: (preguntaId: string, opcionId: string) => void;
   onAnterior: () => void;
@@ -22,50 +20,31 @@ interface Props {
 
 export function ExamenPreguntaCard({
   preguntaActual, indiceActual, total, cargandoPreguntas,
-  respuestas, tiempoLimiteMin, segRestantes, respondidas,
+  respuestas, respondidas,
   onSeleccionarOpcion, onAnterior, onSiguiente, onFinalizar, onIr,
 }: Props) {
-  const mm = segRestantes !== null ? String(Math.floor(segRestantes / 60)).padStart(2, '0') : '00';
-  const ss = segRestantes !== null ? String(segRestantes % 60).padStart(2, '0') : '00';
-
   return (
     <Card className="space-y-md">
-      {/* Header: número de pregunta + timer */}
-      <div className="flex items-start justify-between border-b border-outline-variant/40 pb-md gap-md">
-        <div className="min-w-0 flex-1">
-          {cargandoPreguntas && (
-            <p className="text-body-md text-on-surface-variant">Cargando preguntas…</p>
-          )}
-          {!cargandoPreguntas && !preguntaActual && (
-            <p className="text-body-md text-on-surface-variant">
-              No hay preguntas disponibles para este examen.
-            </p>
-          )}
-          {preguntaActual && (
-            <>
-              <p className="text-label-sm uppercase tracking-wide text-on-surface-variant">
-                Pregunta {indiceActual + 1} de {total}
-              </p>
-              <h2 className="font-headline text-title-lg text-on-surface mt-base leading-snug">
-                {preguntaActual.enunciado}
-              </h2>
-            </>
-          )}
-        </div>
-        {segRestantes !== null ? (
-          <span className={`inline-flex items-center gap-base px-sm py-base rounded-lg text-label-md font-bold shrink-0 ${segRestantes < 300 ? 'bg-error-container text-on-error-container' : 'bg-warning-container text-warning'}`}>
-            <Icon name="timer" className="text-[18px]" /> {mm}:{ss}
-          </span>
-        ) : tiempoLimiteMin === null ? (
-          <span className="inline-flex items-center gap-base px-sm py-base rounded-lg text-label-md font-bold bg-surface-container text-on-surface-variant shrink-0">
-            <Icon name="timer_off" className="text-[18px]" /> Sin límite
-          </span>
-        ) : null}
+      {/* Enunciado (el progreso y el timer viven en la barra superior) */}
+      <div className="border-b border-outline-variant/40 pb-md">
+        {cargandoPreguntas && (
+          <p className="text-body-md text-on-surface-variant">Cargando preguntas…</p>
+        )}
+        {!cargandoPreguntas && !preguntaActual && (
+          <p className="text-body-md text-on-surface-variant">
+            No hay preguntas disponibles para este examen.
+          </p>
+        )}
+        {preguntaActual && (
+          <h2 className="font-headline text-title-lg text-on-surface leading-snug max-w-2xl">
+            {preguntaActual.enunciado}
+          </h2>
+        )}
       </div>
 
       {/* Opciones */}
       {preguntaActual && (
-        <div className="space-y-sm">
+        <div className="space-y-sm max-w-2xl">
           {preguntaActual.opciones.map((op) => {
             const seleccionada = respuestas[preguntaActual.id] === op.id;
             return (

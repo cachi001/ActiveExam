@@ -28,10 +28,6 @@ interface Props {
   sessionId: string | null;
   chatHabilitado: boolean;
   pausasHabilitadas: boolean;
-  total: number;
-  indiceActual: number;
-  respondidas: Set<number>;
-  onIr: (indice: number) => void;
   onActivaChange: (activa: boolean) => void;
 }
 

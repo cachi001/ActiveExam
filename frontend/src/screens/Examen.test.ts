@@ -30,6 +30,9 @@ import type { PreguntaRendicion } from '../lib/examTakingApi';
 const here = dirname(fileURLToPath(import.meta.url));
 const examenSource = readFileSync(join(here, 'Examen.tsx'), 'utf8');
 const apiSource = readFileSync(join(here, '..', 'lib', 'examTakingApi.ts'), 'utf8');
+// El panel de señales de integridad se componentizó a examen/ProctoringPanel.tsx:
+// ahí viven SEV_CARD/SEV_ICON y el render de eventos.
+const panelSource = readFileSync(join(here, 'examen', 'ProctoringPanel.tsx'), 'utf8');
 
 // ---------------------------------------------------------------------------
 // 4.1 RED: toast.show NO se llama ante eventos de proctoring
@@ -58,12 +61,13 @@ describe('4.1-4.3 — Eliminación de toast por evento de proctoring', () => {
   // 4.3 TRIANGULATE: la detección/score sigue intacta
   it('eventos del panel lateral siguen presentes (detección intacta)', () => {
     // SEV_CARD y SEV_ICON se mantienen (panel lateral "Señales de integridad").
-    expect(examenSource).toMatch(/SEV_CARD/);
-    expect(examenSource).toMatch(/SEV_ICON/);
+    expect(panelSource).toMatch(/SEV_CARD/);
+    expect(panelSource).toMatch(/SEV_ICON/);
   });
 
-  it('eventos.map sigue presente (panel de señales sigue renderizando eventos)', () => {
-    expect(examenSource).toMatch(/eventos\.map/);
+  it('el panel de señales sigue renderizando eventos (map sobre los últimos)', () => {
+    expect(panelSource).toMatch(/eventos\.slice\(-4\)/);
+    expect(panelSource).toMatch(/ultimosEventos\.map/);
   });
 
   it('useExamProctoring sigue importado y en uso (score/streaming intactos)', () => {

@@ -21,6 +21,7 @@ import { AlertaCritica } from './examen/AlertaCritica';
 import { LockdownOverlay } from './examen/LockdownOverlay';
 import { ExamenPreguntaCard } from './examen/ExamenPreguntaCard';
 import { ProctoringPanel } from './examen/ProctoringPanel';
+import { ExamenTopBar } from './examen/ExamenTopBar';
 
 export default function Examen() {
   const navigate = useNavigate();
@@ -150,60 +151,54 @@ export default function Examen() {
 
   return (
     <StudentShell locked>
-      {/* Cámara flotante — esquina superior derecha, no interfiere con el layout */}
-      <div className="fixed top-4 right-4 z-40 w-44 rounded-xl overflow-hidden shadow-lg ring-1 ring-outline-variant/30 bg-inverse-surface">
-        <div className="relative aspect-video">
-          <video
-            ref={videoRef}
-            muted
-            playsInline
-            className="w-full h-full object-cover"
-            style={{ transform: 'scaleX(-1)' }}
-          />
-          <div className="absolute bottom-1.5 left-1.5 inline-flex items-center gap-base bg-inverse-surface/70 text-inverse-on-surface text-[9px] font-semibold px-[6px] py-[3px] rounded-full">
-            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${activo ? 'bg-success animate-pulse' : 'bg-on-surface-variant'}`} />
-            {eventCount} eventos
-          </div>
-        </div>
-      </div>
+      <div className={`mx-auto w-full max-w-[1400px] animate-in fade-in duration-500 transition-[padding] ${pausaActiva ? 'pt-16' : ''}`}>
 
-      <div className={`grid lg:grid-cols-4 gap-lg animate-in fade-in duration-500 transition-[padding] ${pausaActiva ? 'pt-16' : ''}`}>
-
-        {/* Pregunta: ocupa 3/4 del ancho */}
-        <div className="lg:col-span-3">
-          <ExamenPreguntaCard
-            preguntaActual={preguntaActual}
-            indiceActual={indiceActual}
-            total={total}
-            cargandoPreguntas={cargandoPreguntas}
-            respuestas={respuestas}
-            tiempoLimiteMin={tiempoLimiteMin}
-            segRestantes={segRestantes}
-            respondidas={respondidas}
-            onSeleccionarOpcion={(pid, oid) => setRespuestas((prev) => ({ ...prev, [pid]: oid }))}
-            onAnterior={() => setIndiceActual((i) => retrocederPregunta(i))}
-            onSiguiente={() => setIndiceActual((i) => avanzarPregunta(i, total))}
-            onFinalizar={finalizar}
-            onIr={setIndiceActual}
-          />
-        </div>
-
-        {/* Sidebar: navegador + integridad + chat/pausa */}
-        <ProctoringPanel
+        {/* Barra superior sticky: progreso + timer + cámara (PiP in-flow) */}
+        <ExamenTopBar
+          videoRef={videoRef}
           activo={activo}
           eventCount={eventCount}
-          score={score}
-          eventos={eventos}
-          examen={examen}
-          sessionId={sessionId}
-          chatHabilitado={chatHabilitado}
-          pausasHabilitadas={pausasHabilitadas}
-          total={total}
           indiceActual={indiceActual}
+          total={total}
           respondidas={respondidas}
-          onIr={setIndiceActual}
-          onActivaChange={setPausaActiva}
+          tiempoLimiteMin={tiempoLimiteMin}
+          segRestantes={segRestantes}
+          stickyOffsetClass={pausaActiva ? 'top-16' : 'top-0'}
         />
+
+        <div className="grid lg:grid-cols-3 gap-lg items-start">
+          {/* Pregunta: 2/3 del ancho en desktop */}
+          <div className="lg:col-span-2">
+            <ExamenPreguntaCard
+              preguntaActual={preguntaActual}
+              indiceActual={indiceActual}
+              total={total}
+              cargandoPreguntas={cargandoPreguntas}
+              respuestas={respuestas}
+              respondidas={respondidas}
+              onSeleccionarOpcion={(pid, oid) => setRespuestas((prev) => ({ ...prev, [pid]: oid }))}
+              onAnterior={() => setIndiceActual((i) => retrocederPregunta(i))}
+              onSiguiente={() => setIndiceActual((i) => avanzarPregunta(i, total))}
+              onFinalizar={finalizar}
+              onIr={setIndiceActual}
+            />
+          </div>
+
+          {/* Sidebar: integridad + chat/pausa — sticky para seguir visible al scrollear */}
+          <div className="lg:sticky lg:top-24">
+            <ProctoringPanel
+              activo={activo}
+              eventCount={eventCount}
+              score={score}
+              eventos={eventos}
+              examen={examen}
+              sessionId={sessionId}
+              chatHabilitado={chatHabilitado}
+              pausasHabilitadas={pausasHabilitadas}
+              onActivaChange={setPausaActiva}
+            />
+          </div>
+        </div>
       </div>
 
       {alerta && <AlertaCritica ev={alerta} onClose={() => setAlerta(null)} />}
