@@ -495,24 +495,21 @@ class TestVerificarReferenciaServerSide:
             _limpiar_usuario_slim_sync(usuario_id)
 
     # ------------------------------------------------------------------
-    # Endpoint stateless demo-only sigue funcionando (retrocompat)
+    # Regresión: el endpoint demo-only stateless fue ELIMINADO (modo demo fuera)
     # ------------------------------------------------------------------
 
-    def test_endpoint_stateless_demo_still_works(self, slim_client) -> None:
-        """POST /biometria/verificar (stateless, demo-only) sigue operativo."""
-        emb_a = _vector_128(0.1)
-        emb_b = _vector_128(0.15)  # Ligeramente diferente pero cercano.
+    def test_endpoint_demo_verificar_eliminado(self, slim_client) -> None:
+        """POST /biometria/verificar (demo-only, stateless) fue eliminado → 404.
 
+        Violaba Ley 25.326 (recibía ambos embeddings del cliente, sin auth). El
+        único path de verificación es POST /biometria/verificar-referencia
+        (C-59, stateful, autenticado por JWT).
+        """
         resp = slim_client.post(
             "/api/v1/proctoring/biometria/verificar",
-            json={
-                "embedding_vivo": emb_a,
-                "embedding_referencia": emb_b,
-            },
+            json={"embedding_vivo": [0.1], "embedding_referencia": [0.1]},
         )
-
-        assert resp.status_code == 200, f"Demo endpoint roto: {resp.text}"
-        data = resp.json()
-        assert "distancia" in data
-        assert "es_match" in data
-        assert "umbral" in data
+        assert resp.status_code == 404, (
+            f"El endpoint demo-only debe estar eliminado: "
+            f"{resp.status_code} {resp.text}"
+        )

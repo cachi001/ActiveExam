@@ -2,21 +2,18 @@
  * authStore — Estado de autenticación (Zustand), desacoplado del provider concreto (C-55).
  *
  * En vez de importar keycloak.ts directamente, delega al provider activo
- * (JwtAdapter | KeycloakAdapter | DemoAdapter) vía la interfaz AuthProvider.
+ * (JwtAdapter | KeycloakAdapter) vía la interfaz AuthProvider.
  *
  * La interfaz del store NO cambia: los componentes que usan useAuth funcionan
  * sin modificación. Solo la implementación interna cambia.
  *
  * hydrateFromProvider() reemplaza hydrateFromKeycloak() — mismo resultado,
  * agnóstico del provider.
- *
- * loginDemo() ahora usa DemoAdapter.loginConRol() en lugar de setear el estado
- * directamente — mantiene coherencia con el adapter.
  */
 import { create } from 'zustand';
 import type { Principal, Rol } from './types';
 import type { AuthProvider, AuthStatus } from './auth/provider';
-import { API_BASE, USE_REAL_BACKEND, resetEnrollmentCache } from './api';
+import { API_BASE, resetEnrollmentCache } from './api';
 import { useApp } from './store';
 
 export type { AuthStatus };
@@ -33,7 +30,6 @@ export type { AuthStatus };
 async function fetchMyName(
   provider: AuthProvider,
 ): Promise<{ nombre?: string; apellido?: string } | null> {
-  if (!USE_REAL_BACKEND) return null;
   const token = provider.getToken();
   if (!token) return null;
   try {
@@ -76,9 +72,6 @@ interface AuthState {
    * la app sin auth. SOLO se llama si AUTH_BYPASS está activo (dev). Ver devConfig.
    */
   enableDevBypass: () => void;
-
-  /** Login de DEMO: entra con un principal demo del rol elegido (vía DemoAdapter). */
-  loginDemo: (rol: Rol) => void;
 }
 
 // Guardamos referencia al provider activo para que login/logout puedan delegar.
@@ -176,29 +169,4 @@ export const useAuth = create<AuthState>((set, get) => ({
         jurisdiccion: 'AR',
       },
     }),
-
-  loginDemo: (rol: Rol) => {
-    // Si el provider activo es DemoAdapter, delegar.
-    if (_activeProvider && 'loginConRol' in _activeProvider) {
-      (_activeProvider as { loginConRol: (r: Rol) => void }).loginConRol(rol);
-      get().hydrateFromProvider(_activeProvider);
-    } else {
-      // Fallback inline (compatibilidad cuando no hay provider inicializado).
-      const DEMO_PRINCIPALS: Record<Rol, Principal> = {
-        estudiante: {
-          id_institucional: 'FRM-23-4912', nombre: 'Emiliano Cáceres', email: 'ecaceres@frm.utn.edu.ar',
-          roles: ['estudiante'], mfa_satisfecho: true, jurisdiccion: 'AR-MZA',
-        },
-        proctor: {
-          id_institucional: 'FRM-DOC-1182', nombre: 'Dra. Carolina Ferreyra', email: 'cferreyra@frm.utn.edu.ar',
-          roles: ['proctor'], mfa_satisfecho: true, jurisdiccion: 'AR',
-        },
-        admin_sistema: {
-          id_institucional: 'FRM-ADM-0021', nombre: 'Lucía Mendoza', email: 'lmendoza@frm.utn.edu.ar',
-          roles: ['admin_sistema'], mfa_satisfecho: true, jurisdiccion: 'AR',
-        },
-      };
-      set({ status: 'authenticated', token: 'demo', principal: DEMO_PRINCIPALS[rol] });
-    }
-  },
 }));

@@ -3,7 +3,7 @@ import { StaffShell } from '../ui/shells';
 import { Button, Card, Icon, SectionTitle } from '../ui/components';
 import { STAFF_NAV } from '../ui/nav';
 import { useNavigate, useRouteParam } from '../lib/router';
-import { API_BASE, USE_REAL_BACKEND } from '../lib/api';
+import { API_BASE } from '../lib/api';
 import { authProvider } from '../lib/authProvider';
 import { TableToolbar, type TableQuery } from '../ui/TableToolbar';
 import {
@@ -81,10 +81,6 @@ export default function ExamDetail() {
 
   const cargarHeader = useCallback(() => {
     if (!examenId) return;
-    if (!USE_REAL_BACKEND) {
-      setExamen({ id: examenId, titulo: 'Examen demo', cantidad_preguntas: 0, comision_nombre: null, materia_nombre: null });
-      return;
-    }
     setHeaderError(null);
     getExamenHeaderFn(API_BASE, authProvider.getToken(), examenId)
       .then(setExamen)
@@ -96,7 +92,7 @@ export default function ExamDetail() {
   }, [cargarHeader]);
 
   const fetchResultados = useCallback(async (q: TableQuery) => {
-    if (!examenId || !USE_REAL_BACKEND) {
+    if (!examenId) {
       setResultados([]);
       setTotal(0);
       return;
@@ -179,20 +175,18 @@ export default function ExamDetail() {
           : undefined
       }
       actions={
-        USE_REAL_BACKEND ? (
-          <Button
-            variant="primary"
-            icon={sincronizando ? undefined : 'sync'}
-            onClick={handleSincronizar}
-            disabled={sincronizando}
-          >
-            {sincronizando
-              ? 'Sincronizando…'
-              : pendientes > 0
-                ? `Sincronizar con Moodle (${pendientes} pendiente${pendientes !== 1 ? 's' : ''})`
-                : 'Sincronizar con Moodle'}
-          </Button>
-        ) : undefined
+        <Button
+          variant="primary"
+          icon={sincronizando ? undefined : 'sync'}
+          onClick={handleSincronizar}
+          disabled={sincronizando}
+        >
+          {sincronizando
+            ? 'Sincronizando…'
+            : pendientes > 0
+              ? `Sincronizar con Moodle (${pendientes} pendiente${pendientes !== 1 ? 's' : ''})`
+              : 'Sincronizar con Moodle'}
+        </Button>
       }
     >
       <div className="space-y-lg animate-in fade-in duration-500">
@@ -247,31 +241,27 @@ export default function ExamDetail() {
           </div>
         )}
 
-        {USE_REAL_BACKEND && (
-          <PreguntasSeleccionSection
-            examenId={examenId}
-            onSeleccionGuardada={(cantidad) =>
-              setExamen((prev) => (prev ? { ...prev, cantidad_preguntas: cantidad } : prev))
-            }
-          />
-        )}
+        <PreguntasSeleccionSection
+          examenId={examenId}
+          onSeleccionGuardada={(cantidad) =>
+            setExamen((prev) => (prev ? { ...prev, cantidad_preguntas: cantidad } : prev))
+          }
+        />
 
-        {USE_REAL_BACKEND && (
-          <ComisionSection
-            examenId={examenId}
-            materiaActual={examen?.materia_nombre}
-            comisionActual={examen?.comision_nombre}
-            onAsociada={cargarHeader}
-          />
-        )}
+        <ComisionSection
+          examenId={examenId}
+          materiaActual={examen?.materia_nombre}
+          comisionActual={examen?.comision_nombre}
+          onAsociada={cargarHeader}
+        />
 
-        {USE_REAL_BACKEND && <DestinoMoodleSection examenId={examenId} />}
+        <DestinoMoodleSection examenId={examenId} />
 
-        {USE_REAL_BACKEND && <ConfiguracionExamenSection examenId={examenId} />}
+        <ConfiguracionExamenSection examenId={examenId} />
 
         {/* Tabla de resultados */}
         <Card>
-          <SectionTitle sub={USE_REAL_BACKEND ? `${total} resultado${total !== 1 ? 's' : ''}` : 'Modo demo — sin datos reales'}>
+          <SectionTitle sub={`${total} resultado${total !== 1 ? 's' : ''}`}>
             Alumnos que rindieron
           </SectionTitle>
 
@@ -291,28 +281,21 @@ export default function ExamDetail() {
               onChange={setQuery}
               placeholder="Buscar por alumno…"
               filterDefs={filterDefs}
-              total={USE_REAL_BACKEND ? total : undefined}
+              total={total}
               loading={cargandoTabla}
             />
           </div>
 
-          {!USE_REAL_BACKEND && (
-            <div className="text-center py-xl text-on-surface-variant space-y-base">
-              <Icon name="sync_disabled" className="text-[40px] text-outline" />
-              <p className="text-label-md">Conectá el backend real para ver los resultados.</p>
-            </div>
-          )}
+          {cargandoTabla && !resultados.length && <TableSkeleton />}
 
-          {USE_REAL_BACKEND && cargandoTabla && !resultados.length && <TableSkeleton />}
-
-          {USE_REAL_BACKEND && errorTabla && (
+          {errorTabla && (
             <div className="flex items-center gap-sm text-error bg-error-container/40 rounded-xl px-md py-sm text-label-sm">
               <Icon name="error" className="text-[18px] shrink-0" fill />
               {errorTabla}
             </div>
           )}
 
-          {USE_REAL_BACKEND && !cargandoTabla && !errorTabla && resultados.length === 0 && (
+          {!cargandoTabla && !errorTabla && resultados.length === 0 && (
             <div className="text-center py-xl text-on-surface-variant space-y-base">
               <Icon name="search_off" className="text-[40px] text-outline" />
               <p className="text-label-md">
@@ -323,7 +306,7 @@ export default function ExamDetail() {
             </div>
           )}
 
-          {USE_REAL_BACKEND && resultados.length > 0 && (
+          {resultados.length > 0 && (
             <div className="overflow-x-auto -mx-lg px-lg">
               <table className="w-full text-left min-w-[600px]">
                 <thead>

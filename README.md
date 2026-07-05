@@ -23,8 +23,8 @@ cd frontend && npm install && npm run dev
 ```
 
 El frontend usa `frontend/.env.development` (commiteado): apunta a
-`http://localhost:8000/api/v1`, con `VITE_AUTH_PROVIDER=jwt` y demo/bypass
-apagados. Para frenar: `./scripts/dev-down.ps1` (agregá `-v` para resetear la DB).
+`http://localhost:8000/api/v1`, con `VITE_AUTH_PROVIDER=jwt` y los bypass de
+test apagados. Para frenar: `./scripts/dev-down.ps1` (agregá `-v` para resetear la DB).
 
 **Usuarios de prueba (seed idempotente, estilo producción):**
 
@@ -98,7 +98,6 @@ El auth se selecciona con `VITE_AUTH_PROVIDER` (frontend) y `AUTH_PROVIDER` (bac
 |---|---|
 | `jwt` (default) | Formulario de login propio; llama `POST /api/v1/auth/login` |
 | `keycloak` | Redirect OIDC PKCE a Keycloak (C-06, conservado) |
-| `demo` | Selector de rol sin red (Vercel demo) |
 
 ### Seed de usuarios de prueba (local/staging)
 

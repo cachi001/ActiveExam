@@ -7,7 +7,6 @@
  *   - login() delega al provider y actualiza el store.
  *   - logout() delega al provider y limpia el store.
  *   - hasRole() retorna true/false según los roles del principal.
- *   - loginDemo() → DemoAdapter.loginConRol() llamado.
  *
  * El provider se mockea — no hay red ni Keycloak.
  * Zustand crea un nuevo store por describe block para evitar state leakage.
@@ -15,7 +14,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AuthProvider, AuthStatus } from './auth/provider';
-import type { Principal, Rol } from './types';
+import type { Principal } from './types';
 
 // ---------------------------------------------------------------------------
 // Mock del provider activo (JwtAdapter-like)
@@ -155,29 +154,5 @@ describe('authStore.hasRole()', () => {
     useAuth.getState().hydrateFromProvider(provider);
 
     expect(useAuth.getState().hasRole(['estudiante'])).toBe(false);
-  });
-});
-
-describe('authStore.loginDemo()', () => {
-  it('llama loginConRol en el DemoAdapter y actualiza el store', () => {
-    // OJO: NO spreadear el mock — `getPrincipal` es un closure que lee el
-    // `_principal` del objeto ORIGINAL; un spread crea otro objeto y el closure
-    // seguiría leyendo null. Mutamos el MISMO objeto que el closure observa.
-    const provider = _makeMockProvider(null, null);
-    const loginConRol = vi.fn().mockImplementation(() => {
-      // Simular que el DemoAdapter, al loguear, deja el principal en el provider.
-      (provider as { _principal: Principal | null })._principal = _fakeEstudiante();
-    });
-    (provider as { loginConRol?: (r: Rol) => void }).loginConRol = loginConRol;
-
-    useAuth.getState().hydrateFromProvider(provider);
-    // Antes de loginDemo no hay principal → unauthenticated.
-    expect(useAuth.getState().status).toBe('unauthenticated');
-
-    useAuth.getState().loginDemo('estudiante');
-
-    expect(loginConRol).toHaveBeenCalledWith('estudiante');
-    // loginDemo → loginConRol setea el principal → re-hidrata → authenticated.
-    expect(useAuth.getState().status).toBe('authenticated');
   });
 });

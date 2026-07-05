@@ -166,83 +166,6 @@ function FormularioJwt() {
 }
 
 // ---------------------------------------------------------------------------
-// Selector de rol demo (provider demo — comportamiento existente)
-// ---------------------------------------------------------------------------
-
-function SelectorRolDemo() {
-  const navigate = useNavigate();
-  const status = useAuth((s) => s.status);
-  const principal = useAuth((s) => s.principal);
-  const loginDemo = useAuth((s) => s.loginDemo);
-
-  useEffect(() => {
-    if (status === 'authenticated' && principal) {
-      navigate(homePorRol(principal.roles));
-    }
-  }, [status, principal, navigate]);
-
-  return (
-    <div className="min-h-screen grid lg:grid-cols-2 bg-surface">
-      <aside className="hidden lg:flex flex-col justify-between p-xxl bg-gradient-to-br from-primary to-primary-700 text-on-primary relative overflow-hidden">
-        <span className="pointer-events-none absolute -top-16 -right-16 w-72 h-72 rounded-full bg-white/10" aria-hidden />
-        <span className="pointer-events-none absolute bottom-10 -left-20 w-80 h-80 rounded-full bg-white/5" aria-hidden />
-        <div className="flex items-center gap-sm relative">
-          <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
-            <Icon name="verified_user" className="text-[24px]" fill />
-          </div>
-          <span className="font-headline text-title-lg">Active Exam</span>
-        </div>
-        <div className="relative max-w-md">
-          <h2 className="font-headline text-display-lg leading-tight">Integridad académica.</h2>
-          <p className="text-body-lg text-white/80 mt-md">
-            Supervisión de exámenes remotos con evidencia de cadena de custodia y decisión disciplinaria siempre humana.
-          </p>
-        </div>
-        <div className="relative flex items-center gap-xs text-label-sm text-white/70">
-          <Icon name="lock" className="text-[18px]" fill />
-          Tu privacidad está protegida
-        </div>
-      </aside>
-
-      <main className="flex flex-col items-center px-lg py-xl lg:overflow-y-auto lg:h-screen">
-        <div className="w-full max-w-sm flex flex-col gap-lg animate-in fade-in slide-in-from-bottom-4 duration-700 my-auto">
-          <header className="flex flex-col items-center gap-md text-center">
-            <div className="w-14 h-14 rounded-2xl bg-primary text-on-primary flex items-center justify-center shadow-sm lg:hidden">
-              <Icon name="verified_user" className="text-[28px]" fill />
-            </div>
-            <div>
-              <h1 className="font-headline text-headline-md text-on-surface tracking-tight">Iniciar sesión</h1>
-              <p className="text-label-md text-on-surface-variant mt-xs">
-                Accedé a la plataforma de exámenes supervisados.
-              </p>
-            </div>
-          </header>
-
-          <section className="flex flex-col gap-lg">
-            <div className="flex items-center gap-sm pb-md border-b border-outline-variant/60">
-              <div className="w-11 h-11 rounded-xl bg-primary-fixed text-primary flex items-center justify-center shrink-0">
-                <Icon name="account_balance" className="text-[22px]" fill />
-              </div>
-              <div className="min-w-0">
-                <p className="text-label-sm text-on-surface-variant">Tu institución</p>
-                <p className="text-body-md font-semibold text-on-surface truncate">{INSTITUTION.nombre}</p>
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-sm">
-              <Button variant="primary" onClick={() => loginDemo('estudiante')} className="w-full">Estudiante</Button>
-              <Button variant="outline" onClick={() => loginDemo('proctor')} className="w-full">Proctor</Button>
-              <Button variant="outline" onClick={() => loginDemo('admin_sistema')} className="w-full">Administrador</Button>
-            </div>
-          </section>
-
-        </div>
-      </main>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Login con Keycloak (comportamiento existente C-06)
 // ---------------------------------------------------------------------------
 
@@ -329,7 +252,6 @@ function LoginKeycloak() {
 // ---------------------------------------------------------------------------
 
 export default function Login() {
-  if (AUTH_PROVIDER_TYPE === 'demo') return <SelectorRolDemo />;
   if (AUTH_PROVIDER_TYPE === 'keycloak') return <LoginKeycloak />;
   // Default: jwt — formulario de login propio (C-55)
   return <FormularioJwt />;

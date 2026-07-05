@@ -2,7 +2,6 @@
 
 interface ImportMetaEnv {
   readonly VITE_API_BASE?: string;
-  readonly VITE_USE_REAL_BACKEND?: string;
   readonly VITE_BIOMETRIC_VALIDITY_MONTHS?: string;
   readonly VITE_ENABLE_DNI_SCAN?: string;
   // Identidad institucional (C-27)

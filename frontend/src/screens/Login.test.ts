@@ -1,5 +1,5 @@
 /**
- * Tests de lógica de Login (C-55, FormularioJwt / SelectorRolDemo / LoginKeycloak).
+ * Tests de lógica de Login (C-55, FormularioJwt / LoginKeycloak).
  *
  * Verifica la lógica de selección de proveedor y el routing post-login sin
  * renderizar el componente (no requiere @testing-library/react ni jsdom).
@@ -8,7 +8,7 @@
  *   - homePorRol(): calcula la ruta correcta para cada rol.
  *   - FormularioJwt integra correctamente con authStore: login exitoso → estado authenticated.
  *   - Manejo de error de login: el store permanece unauthenticated.
- *   - Cada proveedor (jwt / demo / keycloak) selecciona la variante correcta.
+ *   - Cada proveedor (jwt / keycloak) selecciona la variante correcta.
  *
  * NOTA: el render de JSX requeriría @testing-library/react (no instalado en MVP).
  * Estos tests cubren la lógica pura; los render tests se agregan cuando se
@@ -62,20 +62,17 @@ describe('homePorRol()', () => {
 describe('AUTH_PROVIDER_TYPE selección de variante', () => {
   it('provider "jwt" → debería renderizar FormularioJwt (lógica de selector)', () => {
     // La lógica de Login() es:
-    //   if (AUTH_PROVIDER_TYPE === 'demo') return <SelectorRolDemo>
     //   if (AUTH_PROVIDER_TYPE === 'keycloak') return <LoginKeycloak>
     //   return <FormularioJwt>  ← default JWT
 
     // Verificamos la tabla de decisión de la función pura.
     function selectProvider(type: string): string {
-      if (type === 'demo') return 'SelectorRolDemo';
       if (type === 'keycloak') return 'LoginKeycloak';
       return 'FormularioJwt';
     }
 
     expect(selectProvider('jwt')).toBe('FormularioJwt');
     expect(selectProvider('keycloak')).toBe('LoginKeycloak');
-    expect(selectProvider('demo')).toBe('SelectorRolDemo');
     // default / cualquier otro → FormularioJwt
     expect(selectProvider('unknown')).toBe('FormularioJwt');
   });

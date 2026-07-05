@@ -9,7 +9,7 @@ import { HelpButton } from '../ui/HelpButton';
 import { StudentShell } from '../ui/shells';
 import { useNavigate } from '../lib/router';
 import { useApp } from '../lib/store';
-import { api, USE_REAL_BACKEND } from '../lib/api';
+import { api } from '../lib/api';
 import AcuseExamen from './AcuseExamen';
 import type { Inscripcion, Examen, ExamenContenidoResumen, NotaExamen, EstadoEnrollment } from '../lib/types';
 import { InscripcionCard } from './alumno/components/InscripcionCard';
@@ -111,15 +111,13 @@ export default function AlumnoMisExamenes() {
         api.misInscripciones(),
         api.getEnrollment(),
       ];
-      const extraFetches = USE_REAL_BACKEND
-        ? [api.listarExamenesContenido(), api.misNotas()] as const
-        : [];
+      const extraFetches = [api.listarExamenesContenido(), api.misNotas()] as const;
       const [insc, enrollment, ...extra] = await Promise.all([...baseFetches, ...extraFetches]);
       if (cancelado) return;
       setInscripciones(insc);
       setEnrollmentLocal(enrollment);
       setEnrollmentStatus(enrollment);
-      if (USE_REAL_BACKEND && extra.length === 2) {
+      if (extra.length === 2) {
         setExamenesImportados(extra[0] as ExamenContenidoResumen[]);
         setNotas(extra[1] as NotaExamen[]);
       }
@@ -273,7 +271,7 @@ export default function AlumnoMisExamenes() {
 
             {/* C-69: Tus notas — nota académica + estado de cola de revisión por eventos.
                 Solo con backend real y solo si el alumno ya rindió algún examen. */}
-            {USE_REAL_BACKEND && notas.length > 0 && (
+            {notas.length > 0 && (
               <section>
                 <div className="flex items-center gap-sm mb-md">
                   <Icon name="grade" className="text-[20px] text-primary" />
@@ -287,8 +285,8 @@ export default function AlumnoMisExamenes() {
               </section>
             )}
 
-            {/* C-69: Catálogo de exámenes importados (Moodle XML) — solo con backend real. */}
-            {USE_REAL_BACKEND && (
+            {/* C-69: Catálogo de exámenes importados (Moodle XML). */}
+            {(
               <section>
                 {examenesImportados.length > 0 && (
                   <div className="flex items-center gap-sm mb-md">

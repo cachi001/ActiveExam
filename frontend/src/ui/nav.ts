@@ -33,8 +33,6 @@ export interface StaffNavItem {
 export const STAFF_NAV: StaffNavItem[] = [
   { to: '/admin',                       icon: 'space_dashboard', label: 'Dashboard',               group: 'main',   roles: ADMIN },
   { to: '/admin/examenes',              icon: 'quiz',            label: 'Exámenes',                group: 'main',   roles: ADMIN },
-  { to: '/admin/reportes',              icon: 'analytics',       label: 'Reportes y analítica',    group: 'main',   roles: ADMIN },
-  { to: '/admin/auditoria',             icon: 'policy',          label: 'Auditoría y privacidad',  group: 'main',   roles: ADMIN },
   // Bloque "proctoring": las 3 vistas de sesiones van juntas y al FINAL del grupo
   // main (justo arriba del divider), en orden de flujo: vivo → cola → grabadas.
   // Visibles para proctor + admin (SUPERVISION).

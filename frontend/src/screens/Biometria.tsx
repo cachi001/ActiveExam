@@ -3,7 +3,7 @@ import { StudentShell } from '../ui/shells';
 import { Icon, Button, Card } from '../ui/components';
 import { useNavigate } from '../lib/router';
 import { useApp } from '../lib/store';
-import { api, USE_REAL_BACKEND } from '../lib/api';
+import { api } from '../lib/api';
 import { Term } from '../ui/Term';
 import { BiometricCapture } from '../ui/BiometricCapture';
 import { computeFaceDescriptor } from '../vision/faceEmbedding';
@@ -33,11 +33,6 @@ export default function Biometria() {
   const navigate = useNavigate();
   // Sesión de proctoring activa para el envío biométrico (C-46, D6).
   const proctoringSessionId = useApp((s) => s.proctoringSessionId);
-  // Referencia biométrica 128-d local (solo se usa en modo DEMO).
-  // En modo real es null por diseño (C-56): el embedding se guarda cifrado en el backend.
-  // NO se loguea (Ley 25.326, dato sensible).
-  const biometriaReferencia = useApp((s) => s.biometriaReferencia);
-
   const [fase, setFase] = useState<Fase>('preparar');
   const [resultado, setResultado] = useState<{ distancia: number; umbral: number } | null>(null);
   const [reintentos, setReintentos] = useState(0);
@@ -47,9 +42,7 @@ export default function Biometria() {
   // si USE_REAL_BACKEND (C-59). En demo: mantener el gate por biometriaReferencia local.
   // ---------------------------------------------------------------------------
   useEffect(() => {
-    if (!USE_REAL_BACKEND) return; // Demo: el gate lo maneja el render (biometriaReferencia local).
-
-    // Modo real (C-59): consultar el estado del backend antes de mostrar el botón de inicio.
+    // C-59: consultar el estado del backend antes de mostrar el botón de inicio.
     let canceled = false;
     void (async () => {
       try {
@@ -90,13 +83,6 @@ export default function Biometria() {
     retosResueltos: string[],
     virtualCameraDetected: boolean,
   ) => {
-    // 6.2 RAMA DEMO: gate de enrolamiento por referencia local.
-    // En modo real NO se aplica este gate (biometriaReferencia es null por diseño).
-    if (!USE_REAL_BACKEND && (!biometriaReferencia || biometriaReferencia.length === 0)) {
-      setFase('no_enrolado');
-      return;
-    }
-
     setFase('verificando');
 
     // C-67: descriptor 128-d del rostro vivo, probando los frames candidatos hasta
@@ -111,29 +97,23 @@ export default function Biometria() {
 
     let r: { distancia: number; es_match: boolean; umbral: number } | null = null;
 
-    if (USE_REAL_BACKEND) {
-      // 6.2 Rama real (C-59): solo manda el embedding vivo; el backend identifica por JWT.
-      // biometriaReferencia es null intencionalmente y NO se referencia aquí.
-      // 6.4 El embedding vivo es dato sensible (Ley 25.326): NO se loguea.
-      try {
-        r = await api.verificarBiometriaReferencia(vivo);
-      } catch (err) {
-        // 6.3 Distinguir 404 (sin referencia) de error de red.
-        const statusCode = (err as { status?: number })?.status ??
-          (err instanceof Response ? err.status : undefined);
-        if (statusCode === 404) {
-          // 6.3 Sin referencia vigente -> enviar a enrollment.
-          setFase('no_enrolado');
-          return;
-        }
-        // Error de red u otro: tratar como reintento honesto.
-        setFase('reintento');
-        setReintentos((n) => n + 1);
+    // C-59: solo manda el embedding vivo; el backend identifica por JWT.
+    // 6.4 El embedding vivo es dato sensible (Ley 25.326): NO se loguea.
+    try {
+      r = await api.verificarBiometriaReferencia(vivo);
+    } catch (err) {
+      // 6.3 Distinguir 404 (sin referencia) de error de red.
+      const statusCode = (err as { status?: number })?.status ??
+        (err instanceof Response ? err.status : undefined);
+      if (statusCode === 404) {
+        // 6.3 Sin referencia vigente -> enviar a enrollment.
+        setFase('no_enrolado');
         return;
       }
-    } else {
-      // Rama demo: comparación coseno local con el embedding de referencia del store.
-      r = await api.verificarBiometria(vivo, biometriaReferencia ?? []);
+      // Error de red u otro: tratar como reintento honesto.
+      setFase('reintento');
+      setReintentos((n) => n + 1);
+      return;
     }
 
     if (!r) {
@@ -191,22 +171,18 @@ export default function Biometria() {
     setFase('verificando');
 
     let r: { distancia: number; es_match: boolean; umbral: number } | null = null;
-    if (USE_REAL_BACKEND) {
-      try {
-        r = await api.verificarBiometriaReferencia(FAKE_EMBEDDING_128D);
-      } catch (err) {
-        const statusCode = (err as { status?: number })?.status ??
-          (err instanceof Response ? err.status : undefined);
-        if (statusCode === 404) {
-          setFase('no_enrolado');
-          return;
-        }
-        setFase('reintento');
-        setReintentos((n) => n + 1);
+    try {
+      r = await api.verificarBiometriaReferencia(FAKE_EMBEDDING_128D);
+    } catch (err) {
+      const statusCode = (err as { status?: number })?.status ??
+        (err instanceof Response ? err.status : undefined);
+      if (statusCode === 404) {
+        setFase('no_enrolado');
         return;
       }
-    } else {
-      r = await api.verificarBiometria(FAKE_EMBEDDING_128D, biometriaReferencia ?? FAKE_EMBEDDING_128D);
+      setFase('reintento');
+      setReintentos((n) => n + 1);
+      return;
     }
 
     if (!r) {
@@ -289,32 +265,19 @@ export default function Biometria() {
 
             {fase === 'preparar' && (
               <div className="text-center space-y-md">
-                {/* 6.1/6.2: En modo real el gate fue validado por el useEffect (estado del backend).
-                    Si la fase llegó aquí es porque tiene referencia vigente (o es demo con referencia).
-                    En demo sin referencia local: mostrar CTA a /perfil. */}
-                {USE_REAL_BACKEND || biometriaReferencia ? (
-                  <>
-                    <p className="text-body-md text-on-surface-variant leading-relaxed">
-                      Ubicá tu rostro dentro del óvalo, con buena luz y sin nada que lo tape (gorra,
-                      anteojos oscuros, barbijo). Incluye <strong>tres gestos simples</strong>: hacé cada uno
-                      {' '}<strong>despacio y sostenelo unos segundos</strong> hasta que se complete, para
-                      confirmar que sos una persona real.
-                    </p>
-                    <Button icon="photo_camera" onClick={() => { unlockAudio(); setFase('capturando'); }}>Iniciar verificación</Button>
-                    {SKIP_BIOMETRIC_CAPTURE && (
-                      <Button icon="developer_mode" onClick={() => { void handleSkipVerificacion(); }}>
-                        Saltear verificación (dev, sin cámara)
-                      </Button>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <p className="text-body-md text-on-surface-variant">
-                      No encontramos una referencia biométrica registrada. Completá la captura de referencia
-                      en tu perfil antes de verificar tu identidad.
-                    </p>
-                    <Button icon="account_circle" variant="outline" onClick={() => navigate('/perfil')}>Ir a mi perfil</Button>
-                  </>
+                {/* 6.1/6.2: El gate fue validado por el useEffect (estado del backend).
+                    Si la fase llegó aquí es porque tiene referencia vigente. */}
+                <p className="text-body-md text-on-surface-variant leading-relaxed">
+                  Ubicá tu rostro dentro del óvalo, con buena luz y sin nada que lo tape (gorra,
+                  anteojos oscuros, barbijo). Incluye <strong>tres gestos simples</strong>: hacé cada uno
+                  {' '}<strong>despacio y sostenelo unos segundos</strong> hasta que se complete, para
+                  confirmar que sos una persona real.
+                </p>
+                <Button icon="photo_camera" onClick={() => { unlockAudio(); setFase('capturando'); }}>Iniciar verificación</Button>
+                {SKIP_BIOMETRIC_CAPTURE && (
+                  <Button icon="developer_mode" onClick={() => { void handleSkipVerificacion(); }}>
+                    Saltear verificación (dev, sin cámara)
+                  </Button>
                 )}
               </div>
             )}

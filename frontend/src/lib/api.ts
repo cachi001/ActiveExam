@@ -7,7 +7,6 @@
 
 import type {
   Principal, Rol, ConsentTextResponse, ConsentResponse, Examen,
-  VerifyIdentityResponse, SesionEnVivo, SesionRevision, ResumenReportes,
   EventoSesion, DesafioActivo, Severidad, TipoEvento,
   Materia, Comision, Inscripcion, EstadoInscripcion,
   EstadoEnrollment, AcuseConsentimiento, BloqueConsentimiento, ReferenciasBiometrica, EscaneDNI, VigenciaReferencia,
@@ -29,34 +28,12 @@ import { INSTITUTION } from '../config/institution';
 import { authProvider } from './authProvider';
 
 export const API_BASE = (import.meta.env.VITE_API_BASE as string) || '/api/v1';
-export const USE_REAL_BACKEND = import.meta.env.VITE_USE_REAL_BACKEND === '1';
 
 const delay = (ms = 350) => new Promise((r) => setTimeout(r, ms));
 
 // ---------------------------------------------------------------------------
-// C-15 — Estado demo en memoria para chat y pausas (modo sin backend).
-// Coherente con el contrato del backend para que la demo funcione end-to-end.
+// Catálogo académico local (usado por joinExamInfo en las pantallas de proctoring)
 // ---------------------------------------------------------------------------
-/** Mensajes de chat por sesión (key = session_id). */
-const CHAT_DEMO = new Map<string, MensajeChat[]>();
-/** Pausas por sesión (key = session_id), más recientes primero al leer. */
-const PAUSAS_DEMO = new Map<string, Pausa[]>();
-/** Observaciones del proctor por sesión (key = session_id), asc por creada_en (C-15 3.2). */
-const OBS_DEMO = new Map<string, ObservacionProctor[]>();
-let _chatSeq = 0;
-let _pausaSeq = 0;
-let _obsSeq = 0;
-
-// ---------------------------------------------------------------------------
-// Datos demo (en memoria)
-// ---------------------------------------------------------------------------
-
-const FOTOS = {
-  julian: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=200&auto=format&fit=crop&q=80',
-  martina: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200&auto=format&fit=crop&q=80',
-  tomas: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&auto=format&fit=crop&q=80',
-  sofia: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=200&auto=format&fit=crop&q=80',
-};
 
 export const PRINCIPALES: Record<Rol, Principal> = {
   estudiante: {
@@ -97,31 +74,8 @@ export let EXAMENES: ExamenConComision[] = [
   },
 ];
 
-/**
- * Actualiza el examen demo con los valores de la config efectiva.
- * Llamar cuando se cargue o invalide la config efectiva para que el examen
- * de prueba (EXAMEN_RENDIBLE_ID) refleje los defaults globales actualizados.
- * Solo aplica en modo demo (USE_REAL_BACKEND=0), donde EXAMENES es la fuente de datos.
- */
-export function patchDemoExamenFromConfig(cfg: {
-  umbral_cola_revision: number;
-  detectores_activos: string[];
-  retencion_dias_default: number;
-}): void {
-  EXAMENES = EXAMENES.map((e) =>
-    e.id === EXAMEN_RENDIBLE_ID
-      ? {
-          ...e,
-          umbral_score: cfg.umbral_cola_revision,
-          detectores: cfg.detectores_activos as TipoEvento[],
-          retencion_dias: cfg.retencion_dias_default,
-        }
-      : e,
-  );
-}
-
 // ---------------------------------------------------------------------------
-// Portal del alumno — datos demo (C-21)
+// Portal del alumno — catálogo académico local (C-21)
 // ---------------------------------------------------------------------------
 
 // 2.2 Materias UTN FRM
@@ -139,18 +93,6 @@ export const COMISIONES: Comision[] = [
   { id: 'COM-FIS1-2B', materia_id: 'MAT-FIS1', nombre: 'Comisión 2B', docente: 'Dr. Alejandro Torres', horario: 'Miércoles y Viernes 08:00–10:00' },
   { id: 'COM-PROG-1A', materia_id: 'MAT-PROG', nombre: 'Comisión 1A', docente: 'Ing. Valeria Romero', horario: 'Martes y Jueves 16:00–18:00' },
   { id: 'COM-PROG-1B', materia_id: 'MAT-PROG', nombre: 'Comisión 1B', docente: 'Lic. Sebastián Díaz', horario: 'Lunes y Miércoles 18:00–20:00' },
-];
-
-// 2.5 Inscripción demo del alumno: una sola, en estado `habilitado`, apuntando al
-// único examen rendible (mismo examen que Login setea como `examenActivo`). Así el
-// botón "Rendir" lleva al flujo de examen con ese `examenActivo` sin clutter.
-let MIS_INSCRIPCIONES: Inscripcion[] = [
-  {
-    id: 'INS-001', examen_id: EXAMEN_RENDIBLE_ID, comision_id: 'COM-AMAT-1A',
-    materia_id: 'MAT-AMAT', nombre_examen: 'Examen Final — Análisis Matemático I',
-    nombre_materia: 'Análisis Matemático I', fecha: '2026-05-30T14:00:00',
-    estado: 'habilitado',
-  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -302,13 +244,6 @@ export const DESAFIOS: DesafioActivo[] = [
   { id: 'sonreír', label: 'Sonreír' },
 ];
 
-const SESIONES_VIVO: SesionEnVivo[] = [
-  { id: 'SESS-00392', estudiante: 'Emiliano Cáceres', legajo: '23.491.002', estado: 'rindiendo', score: 0, anomalias: 0, ultima_senal: 'Foco activo', foto: FOTOS.julian, es_propia: true },
-  { id: 'SESS-00393', estudiante: 'Martina Rossi', legajo: '25.102.894', estado: 'rindiendo', score: 72, anomalias: 4, ultima_senal: 'Mirada desviada', foto: FOTOS.martina },
-  { id: 'SESS-00394', estudiante: 'Tomás Galdámez', legajo: '24.894.201', estado: 'escalado', score: 94, anomalias: 6, ultima_senal: 'Múltiples rostros', foto: FOTOS.tomas },
-  { id: 'SESS-00395', estudiante: 'Sofía Álvarez', legajo: '23.951.302', estado: 'rindiendo', score: 15, anomalias: 1, ultima_senal: 'Pérdida de foco', foto: FOTOS.sofia },
-];
-
 const DESC_EVENTO: Record<TipoEvento, string> = {
   rostro_ausente: 'No se detectó rostro en el encuadre por más de 3 segundos.',
   multiples_rostros: 'Se detectaron múltiples rostros simultáneos en cámara.',
@@ -322,45 +257,6 @@ const DESC_EVENTO: Record<TipoEvento, string> = {
 };
 
 export function descripcionEvento(t: TipoEvento): string { return DESC_EVENTO[t]; }
-
-const COLA_REVISION: SesionRevision[] = [
-  {
-    id: 'S-93041', estudiante: 'Tomás Galdámez', legajo: '24.894.201', examen: 'Anatomía I',
-    catedra: 'Cátedra B', score: 94, fecha: '30/05/2026', duracion: '42 min', foto: FOTOS.tomas,
-    decision: 'pendiente',
-    eventos: [
-      { id: 'EV-1', tipo: 'multiples_rostros', severidad: 'alta', ts_backend: '2026-05-30T16:12:04', descripcion: DESC_EVENTO.multiples_rostros, tiene_evidencia: true, evidencia_object_key: 'clip_tomas_01.webm' },
-      { id: 'EV-2', tipo: 'monitor_adicional', severidad: 'alta', ts_backend: '2026-05-30T16:15:22', descripcion: DESC_EVENTO.monitor_adicional, tiene_evidencia: true, evidencia_object_key: 'clip_tomas_02.webm' },
-      { id: 'EV-3', tipo: 'perdida_de_foco', severidad: 'baja', ts_backend: '2026-05-30T16:21:40', descripcion: DESC_EVENTO.perdida_de_foco, tiene_evidencia: false },
-    ],
-    cadena_custodia: { hash_cliente: 'c892fa3e…', rehash_backend: 'c892fa3e…', coincide: true, firma_maestra: 'a07f…ed25', algoritmo_firma: 'Ed25519' },
-  },
-  {
-    id: 'S-92891', estudiante: 'Martina Rossi', legajo: '25.102.894', examen: 'Anatomía I',
-    catedra: 'Cátedra B', score: 72, fecha: '30/05/2026', duracion: '58 min', foto: FOTOS.martina,
-    decision: 'pendiente',
-    eventos: [
-      { id: 'EV-4', tipo: 'mirada_desviada_sostenida', severidad: 'media', ts_backend: '2026-05-30T15:44:12', descripcion: DESC_EVENTO.mirada_desviada_sostenida, tiene_evidencia: true, evidencia_object_key: 'clip_martina_01.webm' },
-      { id: 'EV-5', tipo: 'rostro_ausente', severidad: 'media', ts_backend: '2026-05-30T15:58:30', descripcion: DESC_EVENTO.rostro_ausente, tiene_evidencia: true, evidencia_object_key: 'clip_martina_02.webm' },
-    ],
-    cadena_custodia: { hash_cliente: 'f41b09…', rehash_backend: 'f41b09…', coincide: true, firma_maestra: 'b13c…ed25', algoritmo_firma: 'Ed25519' },
-  },
-];
-
-const REPORTES: ResumenReportes = {
-  examenes_totales: 24, sesiones_totales: 1284, tasa_flag: 12.4, falsos_positivos: 31.2,
-  tiempo_medio_revision: '4 min 12 s',
-  distribucion_severidad: [
-    { severidad: 'baja', cantidad: 612 }, { severidad: 'media', cantidad: 184 },
-    { severidad: 'alta', cantidad: 73 }, { severidad: 'critica', cantidad: 18 },
-  ],
-  tendencia_semanal: [
-    { semana: 'Sem 1', flaggeadas: 28, revisadas: 25 },
-    { semana: 'Sem 2', flaggeadas: 41, revisadas: 39 },
-    { semana: 'Sem 3', flaggeadas: 33, revisadas: 33 },
-    { semana: 'Sem 4', flaggeadas: 52, revisadas: 47 },
-  ],
-};
 
 const CONSENT_TEXT: ConsentTextResponse = {
   // Alineada con la versión del backend real ('v1') para que demo y real coincidan
@@ -398,7 +294,6 @@ async function ensureConsentVersionSynced(): Promise<void> {
   // SIEMPRE re-sincroniza la versión vigente desde el backend (no cachear por sesión):
   // si el admin publica una versión nueva mientras el alumno está logueado, el gate
   // del inicio debe detectarlo SIN que tenga que ir al perfil y volver. Es un GET chico.
-  if (!USE_REAL_BACKEND) return;
   try {
     const texto = normalizarConsentText(await realFetch<unknown>('/consent/text', { method: 'GET' }));
     if (texto.version) _consentVersionVigente = texto.version;
@@ -421,7 +316,7 @@ async function syncEnrollmentState(): Promise<EstadoEnrollment> {
   // recalcular el perfil, para no invalidar un acuse real ('v1' vs mock).
   await ensureConsentVersionSynced();
 
-  if (USE_REAL_BACKEND) {
+  {
     const token = authProvider.getToken?.() ?? '';
     const headers = { Authorization: `Bearer ${token}` };
     const [consentResp, biometriaResp] = await Promise.all([
@@ -470,10 +365,6 @@ async function syncEnrollmentState(): Promise<EstadoEnrollment> {
     commitEnrollment(next);
     return { ...enrollmentAlumno };
   }
-
-  // Modo demo: sin servidor; recalcular desde el estado en memoria.
-  commitEnrollment(enrollmentAlumno);
-  return { ...enrollmentAlumno };
 }
 
 /**
@@ -491,28 +382,8 @@ export function resetEnrollmentCache(): void {
 }
 
 // ---------------------------------------------------------------------------
-// API pública (modo demo). Cada método simula latencia de red.
+// API pública. Cada método pega al backend real.
 // ---------------------------------------------------------------------------
-
-/**
- * Distancia coseno entre dos embeddings (1 - similitud coseno). Rango [0, 2];
- * 0 = idénticos. Usada SOLO en modo mock para reproducir el contrato del backend
- * (que compara server-side). Vectores de distinta longitud o nulos → 1 (neutro).
- */
-function distanciaCoseno(a: number[], b: number[]): number {
-  if (!a?.length || !b?.length || a.length !== b.length) return 1;
-  let dot = 0;
-  let normA = 0;
-  let normB = 0;
-  for (let i = 0; i < a.length; i++) {
-    dot += a[i] * b[i];
-    normA += a[i] * a[i];
-    normB += b[i] * b[i];
-  }
-  if (normA === 0 || normB === 0) return 1;
-  const sim = dot / (Math.sqrt(normA) * Math.sqrt(normB));
-  return 1 - sim;
-}
 
 // El token sale del provider activo (authProvider.getToken()). El 3er parámetro
 // legacy se ignora (los callers históricos pasaban 'demo'); se mantiene por
@@ -618,44 +489,19 @@ function normalizarConsentText(raw: unknown): ConsentTextResponse {
 }
 
 export const api = {
-  modoDemo: !USE_REAL_BACKEND,
-
-  async login(rol: Rol): Promise<Principal> {
-    await delay(450);
-    return PRINCIPALES[rol];
-  },
-
   async getConsentText(token = 'demo'): Promise<ConsentTextResponse> {
-    if (USE_REAL_BACKEND) {
-      // El backend devuelve `bloques` como dict[str, str]; normalizamos a array.
-      try {
-        const texto = normalizarConsentText(await realFetch<unknown>('/consent/text', { method: 'GET' }, token));
-        // Sincronizar la versión vigente para el gate de perfil (evita falso "renovación").
-        _consentVersionVigente = texto.version || _consentVersionVigente;
-        return texto;
-      } catch { /* fallback demo */ }
-    }
-    await delay(0);
-    _consentVersionVigente = CONSENT_TEXT.version;
-    return CONSENT_TEXT;
+    // El backend devuelve `bloques` como dict[str, str]; normalizamos a array.
+    const texto = normalizarConsentText(await realFetch<unknown>('/consent/text', { method: 'GET' }, token));
+    // Sincronizar la versión vigente para el gate de perfil (evita falso "renovación").
+    _consentVersionVigente = texto.version || _consentVersionVigente;
+    return texto;
   },
 
   async recordConsent(examId: string, token = 'demo'): Promise<ConsentResponse> {
-    if (USE_REAL_BACKEND) {
-      try {
-        return await realFetch<ConsentResponse>('/consent', {
-          method: 'POST',
-          body: JSON.stringify({ exam_id: examId, version_texto: CONSENT_TEXT.version, affirmative_action: true }),
-        }, token);
-      } catch { /* fallback */ }
-    }
-    await delay(400);
-    return {
-      id: `CONS-${Math.floor(Math.random() * 1e6).toString(36)}`,
-      user_id: PRINCIPALES.estudiante.id_institucional, exam_id: examId,
-      version_texto: CONSENT_TEXT.version, timestamp: new Date().toISOString(),
-      hash: 'sha256:' + Math.random().toString(16).slice(2, 10),
-    };
+    return await realFetch<ConsentResponse>('/consent', {
+      method: 'POST',
+      body: JSON.stringify({ exam_id: examId, version_texto: CONSENT_TEXT.version, affirmative_action: true }),
+    }, token);
   },
 
   /**
@@ -672,20 +518,15 @@ export const api = {
    * la verificación (evita capturar el embedding vivo solo para descubrir que no hay ref).
    */
   async estadoReferenciaBiometrica(): Promise<{ tiene_referencia_vigente: boolean }> {
-    if (USE_REAL_BACKEND) {
-      try {
-        return await realFetch<{ tiene_referencia_vigente: boolean }>(
-          '/proctoring/biometria/referencia/estado',
-          { method: 'GET' },
-        );
-      } catch {
-        // Si el endpoint falla (ej. red), asumir sin referencia para no bloquear.
-        return { tiene_referencia_vigente: false };
-      }
+    try {
+      return await realFetch<{ tiene_referencia_vigente: boolean }>(
+        '/proctoring/biometria/referencia/estado',
+        { method: 'GET' },
+      );
+    } catch {
+      // Si el endpoint falla (ej. red), asumir sin referencia para no bloquear.
+      return { tiene_referencia_vigente: false };
     }
-    // Demo: derivar del estado local de enrollment.
-    const capturada = enrollmentAlumno.biometria?.captura_completada ?? false;
-    return { tiene_referencia_vigente: capturada };
   },
 
   /**
@@ -752,164 +593,71 @@ export const api = {
    */
   async verificarBiometria(
     embeddingVivo: number[],
-    embeddingReferencia: number[],
+    _embeddingReferencia: number[],
     umbral?: number,
   ): Promise<{ distancia: number; es_match: boolean; umbral: number } | null> {
-    if (USE_REAL_BACKEND) {
-      // Rama real (C-59): solo envía el embedding vivo; el backend hace el resto.
-      // embeddingReferencia se ignora intencionalmente (es null en modo real, C-56).
-      try {
-        return await this.verificarBiometriaReferencia(embeddingVivo, umbral);
-      } catch {
-        return null;
-      }
+    // Rama real (C-59): solo envía el embedding vivo; el backend hace el resto.
+    // embeddingReferencia se ignora intencionalmente (es null en modo real, C-56).
+    try {
+      return await this.verificarBiometriaReferencia(embeddingVivo, umbral);
+    } catch {
+      return null;
     }
-
-    // Rama demo: distancia coseno local entre los descriptores 128-d.
-    await delay(900);
-    const u = umbral ?? 0.35;
-    const distancia = distanciaCoseno(embeddingVivo, embeddingReferencia);
-    return { distancia, es_match: distancia < u, umbral: u };
   },
 
-  async verifyIdentity(_sessionId: string, distancia = 0.31): Promise<VerifyIdentityResponse> {
-    await delay(900);
-    const ok = distancia < 0.5;
-    return {
-      veredicto: ok ? 'verificado' : 'reintento',
-      distancia, reintentos_restantes: ok ? 0 : 2,
-      clave_sesion_emitida: ok, escalado_a_proctor: false,
-    };
-  },
-
-  async listExams(): Promise<Examen[]> { await delay(300); return [...EXAMENES]; },
-  async getExam(id: string): Promise<Examen | undefined> { await delay(200); return EXAMENES.find((e) => e.id === id); },
-  async saveExam(exam: Examen): Promise<Examen> {
-    await delay(400);
-    const i = EXAMENES.findIndex((e) => e.id === exam.id);
-    if (i >= 0) EXAMENES[i] = exam; else EXAMENES = [exam, ...EXAMENES];
-    return exam;
-  },
-
-  async liveSessions(): Promise<SesionEnVivo[]> { await delay(250); return SESIONES_VIVO.map((s) => ({ ...s })); },
-
-  async reviewQueue(): Promise<SesionRevision[]> {
-    await delay(300);
-    return COLA_REVISION.filter((s) => s.decision === 'pendiente').map((s) => ({ ...s }));
-  },
-  async resolveReview(id: string, decision: SesionRevision['decision']): Promise<void> {
-    await delay(300);
-    const s = COLA_REVISION.find((x) => x.id === id);
-    if (s) s.decision = decision;
-  },
-
-  async reportes(): Promise<ResumenReportes> { await delay(350); return REPORTES; },
+  /** No hay catálogo de exámenes "rendibles" server-side; los callers toleran undefined. */
+  async getExam(_id: string): Promise<Examen | undefined> { return undefined; },
 
   // -------------------------------------------------------------------------
-  // Portal del alumno — API mock (C-21)
+  // Portal del alumno — API (C-21)
   // -------------------------------------------------------------------------
 
-  /** 2.7 Materias disponibles. Con backend real (C-69): GET /exam-content/materias.
-   * En modo demo (sin backend) devuelve el catálogo en memoria como fallback. */
+  /** 2.7 Materias disponibles (C-69): GET /exam-content/materias. */
   async materiasDisponibles(): Promise<Materia[]> {
-    if (USE_REAL_BACKEND) {
-      const { listarMateriasFn } = await import('./examContentBrowse');
-      return listarMateriasFn(API_BASE, authProvider.getToken());
-    }
-    await delay(300);
-    return [...MATERIAS];
+    const { listarMateriasFn } = await import('./examContentBrowse');
+    return listarMateriasFn(API_BASE, authProvider.getToken());
   },
 
   /** Periodos académicos válidos para una comisión.
    * GET /exam-content/periodos → [{value, label}] (sin auth). */
   async listarPeriodos(): Promise<{ value: string; label: string }[]> {
-    if (USE_REAL_BACKEND) {
-      return realFetch<{ value: string; label: string }[]>('/exam-content/periodos', { method: 'GET' });
-    }
-    return [
-      { value: '1C', label: '1er cuatrimestre' },
-      { value: '2C', label: '2do cuatrimestre' },
-    ];
+    return realFetch<{ value: string; label: string }[]>('/exam-content/periodos', { method: 'GET' });
   },
 
-  /** 2.8 Comisiones de una materia. Con backend real (C-69):
-   * GET /exam-content/materias/{id}/comisiones. Demo: fallback en memoria. */
+  /** 2.8 Comisiones de una materia (C-69):
+   * GET /exam-content/materias/{id}/comisiones. */
   async comisionesDeMateria(materiaId: string): Promise<Comision[]> {
-    if (USE_REAL_BACKEND) {
-      const { listarComisionesFn } = await import('./examContentBrowse');
-      return listarComisionesFn(API_BASE, authProvider.getToken(), materiaId);
-    }
-    await delay(250);
-    return COMISIONES.filter((c) => c.materia_id === materiaId);
+    const { listarComisionesFn } = await import('./examContentBrowse');
+    return listarComisionesFn(API_BASE, authProvider.getToken(), materiaId);
   },
 
-  /** 2.9 Exámenes de una comisión (contenido importado de Moodle). Con backend real
-   * (C-69): GET /exam-content/comisiones/{id}/examenes → ExamenContenidoResumen[].
-   * Demo: mapea los exámenes en memoria al mismo shape (sin inventar inscripciones). */
+  /** 2.9 Exámenes de una comisión (contenido importado de Moodle) (C-69):
+   * GET /exam-content/comisiones/{id}/examenes → ExamenContenidoResumen[]. */
   async examenesDeComision(comisionId: string): Promise<ExamenContenidoResumen[]> {
-    if (USE_REAL_BACKEND) {
-      const { listarExamenesDeComisionFn } = await import('./examContentBrowse');
-      return listarExamenesDeComisionFn(API_BASE, authProvider.getToken(), comisionId);
-    }
-    await delay(250);
-    return EXAMENES.filter((e) => e.comision_id === comisionId).map((e) => ({
-      id: e.id,
-      titulo: e.nombre,
-      cantidad_preguntas: 0,
-      comision_id: e.comision_id ?? null,
-    }));
-  },
-
-  /** 2.10 Inscribe al alumno a un examen. Idempotente: retorna la inscripción existente si ya existe. */
-  async inscribir(examenId: string): Promise<Inscripcion> {
-    await delay(400);
-    const existente = MIS_INSCRIPCIONES.find((i) => i.examen_id === examenId);
-    if (existente) return { ...existente };
-    const examen = EXAMENES.find((e) => e.id === examenId);
-    const comision = examen?.comision_id ? COMISIONES.find((c) => c.id === examen.comision_id) : undefined;
-    const materia = comision ? MATERIAS.find((m) => m.id === comision.materia_id) : undefined;
-    const nueva: Inscripcion = {
-      id: `INS-${Date.now().toString(36)}`,
-      examen_id: examenId,
-      comision_id: comision?.id ?? '',
-      materia_id: materia?.id ?? '',
-      nombre_examen: examen?.nombre ?? examenId,
-      nombre_materia: materia?.nombre ?? '',
-      fecha: examen?.inicio ?? '',
-      estado: 'inscripto',
-    };
-    MIS_INSCRIPCIONES = [nueva, ...MIS_INSCRIPCIONES];
-    return { ...nueva };
+    const { listarExamenesDeComisionFn } = await import('./examContentBrowse');
+    return listarExamenesDeComisionFn(API_BASE, authProvider.getToken(), comisionId);
   },
 
   /** 2.11 Retorna las inscripciones del alumno.
-   * En modo real (USE_REAL_BACKEND=1) NO existe el modelo de inscripción: el alumno
-   * rinde directamente los exámenes de contenido importados (Moodle XML). Devolvemos
-   * [] para no mostrar el examen demo de matemática ni la sección de inscripciones. */
+   * NO existe el modelo de inscripción: el alumno rinde directamente los exámenes de
+   * contenido importados (Moodle XML). Devolvemos [] (sin sección de inscripciones). */
   async misInscripciones(): Promise<Inscripcion[]> {
-    if (USE_REAL_BACKEND) return [];
-    await delay(250);
-    return [...MIS_INSCRIPCIONES];
+    return [];
   },
 
   /**
    * Lista las notas académicas de los exámenes rendidos por el alumno (C-69).
-   * Real (USE_REAL_BACKEND=1): GET /api/v1/exam-content/mis-notas →
-   *   { items: NotaExamen[], total }. La nota se calcula y el estado de cola de
-   *   revisión lo decide el backend (fuente de verdad); el cliente solo la muestra.
-   * Demo (USE_REAL_BACKEND=0): [] — no hay corrección server-side en modo demo.
-   * Degradación silenciosa: un error de red retorna [] sin propagar.
+   * GET /api/v1/exam-content/mis-notas → { items: NotaExamen[], total }. La nota se
+   * calcula y el estado de cola de revisión lo decide el backend (fuente de verdad);
+   * el cliente solo la muestra. Degradación silenciosa: un error de red retorna [].
    */
   async misNotas(): Promise<NotaExamen[]> {
-    if (USE_REAL_BACKEND) {
-      try {
-        const resp = await realFetch<MisNotasResponse>('/exam-content/mis-notas', { method: 'GET' });
-        return resp.items ?? [];
-      } catch {
-        return [];
-      }
+    try {
+      const resp = await realFetch<MisNotasResponse>('/exam-content/mis-notas', { method: 'GET' });
+      return resp.items ?? [];
+    } catch {
+      return [];
     }
-    return [];
   },
 
   // -------------------------------------------------------------------------
@@ -1090,19 +838,14 @@ export const api = {
    */
   async solicitarViaAlternativa(examId: string): Promise<{ estado: string; puede_rendir: boolean }> {
     await delay(400);
-    if (USE_REAL_BACKEND) {
-      const token = authProvider.getToken?.() ?? '';
-      const resp = await fetch(`${API_BASE}/consent/alternative`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ exam_id: examId }),
-      });
-      if (!resp.ok) throw new Error(`solicitarViaAlternativa: ${resp.status}`);
-      return resp.json();
-    }
-    // Mock demo: guardar estado de vía alternativa pendiente
-    _estadosViaAlternativa.set(examId, 'pendiente_proctor');
-    return { estado: 'pendiente_proctor', puede_rendir: false };
+    const token = authProvider.getToken?.() ?? '';
+    const resp = await fetch(`${API_BASE}/consent/alternative`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ exam_id: examId }),
+    });
+    if (!resp.ok) throw new Error(`solicitarViaAlternativa: ${resp.status}`);
+    return resp.json();
   },
 
   /**
@@ -1111,24 +854,19 @@ export const api = {
    */
   async estadoViaAlternativa(examId: string): Promise<{ estado: string } | null> {
     await delay(150);
-    if (USE_REAL_BACKEND) {
-      const token = authProvider.getToken?.() ?? '';
-      const resp = await fetch(`${API_BASE}/consent/gate?exam_id=${encodeURIComponent(examId)}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!resp.ok) return null;
-      const data = await resp.json();
-      if (
-        data.resolucion === 'via_alternativa_pendiente' ||
-        data.resolucion === 'via_alternativa_habilitada'
-      ) {
-        return { estado: data.resolucion };
-      }
-      return null;
+    const token = authProvider.getToken?.() ?? '';
+    const resp = await fetch(`${API_BASE}/consent/gate?exam_id=${encodeURIComponent(examId)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    if (
+      data.resolucion === 'via_alternativa_pendiente' ||
+      data.resolucion === 'via_alternativa_habilitada'
+    ) {
+      return { estado: data.resolucion };
     }
-    // Mock demo
-    const estado = _estadosViaAlternativa.get(examId);
-    return estado != null ? { estado } : null;
+    return null;
   },
 
   /**
@@ -1156,8 +894,7 @@ export const api = {
     // capturada" pero el servidor nunca la recibía → luego en el examen
     // estadoReferenciaBiometrica devolvía false y aparecía "no enrolado".
     // Ahora fallamos fuerte para que la UI muestre error y el alumno reintente.
-    if (USE_REAL_BACKEND) {
-      if (!params.embedding || params.embedding.length !== 128) {
+    if (!params.embedding || params.embedding.length !== 128) {
         throw new Error(
           'No se pudo extraer el descriptor facial de la captura. ' +
             'Asegurate de que tu rostro esté bien encuadrado, con buena luz, ' +
@@ -1199,24 +936,6 @@ export const api = {
         }
         throw new Error(`No se pudo guardar la referencia: ${msg}`);
       }
-    }
-    // Modo demo (USE_REAL_BACKEND=0 o embedding nulo/incompleto).
-    await delay(600);
-    const ahora = new Date().toISOString();
-    const expiracion = calcularExpiracion(ahora, BIOMETRIC_VALIDITY_MONTHS);
-    const ref: ReferenciasBiometrica & { referencia_id?: string } = {
-      captura_completada: true,
-      imagen: params.imagen,
-      embedding: params.embedding,
-      fecha_captura: ahora,
-      fecha_expiracion: expiracion,
-      vigencia_meses: BIOMETRIC_VALIDITY_MONTHS,
-      version_motor: VISION_ENGINE_VERSION,
-      vigencia: calcularVigencia(expiracion, false),
-      renovacion_anticipada_requerida: false,
-    };
-    commitEnrollment({ ...enrollmentAlumno, biometria: ref });
-    return ref;
   },
 
   /**
@@ -1277,39 +996,30 @@ export const api = {
    * @returns foto_referencia_id (UUID opaco) en modo real, undefined en demo.
    */
   async guardarFotoPerfil(dataUrl: string): Promise<string | undefined> {
-    if (USE_REAL_BACKEND) {
-      try {
-        const data = await realFetch<{ foto_referencia_id: string }>(
-          '/enrollment/foto-perfil',
-          {
-            method: 'POST',
-            body: JSON.stringify({ imagen_base64: dataUrl }),
-          },
-        );
-        // En modo real el dataUrl no se persiste en el store (solo el ID opaco).
-        return data.foto_referencia_id;
-      } catch (err) {
-        // Propagar el error para que el componente pueda mostrar el mensaje y reintentar.
-        throw new Error(`Error al guardar foto de perfil: ${err instanceof Error ? err.message : String(err)}`);
-      }
+    try {
+      const data = await realFetch<{ foto_referencia_id: string }>(
+        '/enrollment/foto-perfil',
+        {
+          method: 'POST',
+          body: JSON.stringify({ imagen_base64: dataUrl }),
+        },
+      );
+      // El dataUrl no se persiste en el store (solo el ID opaco).
+      return data.foto_referencia_id;
+    } catch (err) {
+      // Propagar el error para que el componente pueda mostrar el mensaje y reintentar.
+      throw new Error(`Error al guardar foto de perfil: ${err instanceof Error ? err.message : String(err)}`);
     }
-    // Modo demo: guardar en memoria de la sesión (sin persistencia real).
-    await delay(300);
-    PRINCIPALES.estudiante = { ...PRINCIPALES.estudiante, foto_perfil: dataUrl };
-    try { localStorage.setItem(LS_FOTO, dataUrl); } catch { /* ignore */ }
-    return undefined;
   },
 
   // -------------------------------------------------------------------------
-  // Backend slim de proctoring — C-46 (dual real/mock)
-  // Todos los métodos: con USE_REAL_BACKEND=1 llaman al backend slim C-45;
-  // con USE_REAL_BACKEND=0 (default Vercel) retornan datos mock sin HTTP.
+  // Backend slim de proctoring — C-46
+  // Todos los métodos llaman al backend slim C-45.
   // -------------------------------------------------------------------------
 
   /**
    * Crea una sesión de proctoring en el backend slim (C-46).
    * Real: POST /proctoring/sessions
-   * Mock: objeto simulado con delay 200ms
    */
   async crearSesionProctoring(
     modo: string,
@@ -1317,34 +1027,22 @@ export const api = {
     examId?: string,
     examenContenidoId?: string | null,
   ): Promise<{ id: string; creada_en: string; examen_contenido_id?: string | null }> {
-    if (USE_REAL_BACKEND) {
-      try {
-        // C-69: enviamos examen_contenido_id para que la sesión REGISTRE server-side
-        // contra qué examen de contenido (Moodle XML) rinde el alumno. NULLABLE: una
-        // sesión de prueba (sin contenido) sigue siendo válida.
-        return await realFetch<{ id: string; creada_en: string; examen_contenido_id?: string | null }>(
-          '/proctoring/sessions',
-          {
-            method: 'POST',
-            body: JSON.stringify({
-              modo,
-              etiqueta,
-              exam_id: examId,
-              examen_contenido_id: examenContenidoId ?? null,
-            }),
-          },
-          'demo',
-        );
-      } catch {
-        /* fallback mock */
-      }
-    }
-    await delay(200);
-    return {
-      id: 'mock-session-' + Date.now(),
-      creada_en: new Date().toISOString(),
-      examen_contenido_id: examenContenidoId ?? null,
-    };
+    // C-69: enviamos examen_contenido_id para que la sesión REGISTRE server-side
+    // contra qué examen de contenido (Moodle XML) rinde el alumno. NULLABLE: una
+    // sesión de prueba (sin contenido) sigue siendo válida.
+    return await realFetch<{ id: string; creada_en: string; examen_contenido_id?: string | null }>(
+      '/proctoring/sessions',
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          modo,
+          etiqueta,
+          exam_id: examId,
+          examen_contenido_id: examenContenidoId ?? null,
+        }),
+      },
+      'demo',
+    );
   },
 
   /**
@@ -1378,24 +1076,20 @@ export const api = {
       baseline: 'bajo', baja: 'bajo', media: 'medio', alta: 'alto', critica: 'critico',
     };
     const body = { ...payload, severidad: SEVERIDAD_BACKEND[payload.severidad] ?? payload.severidad };
-    if (USE_REAL_BACKEND) {
-      try {
-        return await realFetch<{
-          evento_id: string;
-          veredicto_reinferencia: VeredictoReinferencia;
-          face_count_servidor: number;
-          screenshot_sha256: string;
-        }>(
-          `/proctoring/sessions/${sessionId}/events`,
-          { method: 'POST', body: JSON.stringify(body) },
-          'demo',
-        );
-      } catch {
-        return null;
-      }
+    try {
+      return await realFetch<{
+        evento_id: string;
+        veredicto_reinferencia: VeredictoReinferencia;
+        face_count_servidor: number;
+        screenshot_sha256: string;
+      }>(
+        `/proctoring/sessions/${sessionId}/events`,
+        { method: 'POST', body: JSON.stringify(body) },
+        'demo',
+      );
+    } catch {
+      return null;
     }
-    // Mock: retorna null (no simula veredicto — el harness lo muestra como "sin red")
-    return null;
   },
 
   /**
@@ -1412,28 +1106,24 @@ export const api = {
       resultado: string;
     },
   ): Promise<{ ok: boolean }> {
-    if (USE_REAL_BACKEND) {
-      try {
-        // El backend espera `embedding` como STRING (columna Text, dato sensible).
-        // El cliente lo arma como number[] → serializamos a JSON string. Sin esto el
-        // backend devolvía 422 y la verificación biométrica NO se guardaba en la sesión.
-        const payload = {
-          liveness_ok: bio.liveness_ok,
-          retos_resueltos: bio.retos_resueltos,
-          resultado: bio.resultado,
-          ...(bio.embedding !== undefined ? { embedding: JSON.stringify(bio.embedding) } : {}),
-        };
-        return await realFetch<{ ok: boolean }>(
-          `/proctoring/sessions/${sessionId}/biometria`,
-          { method: 'POST', body: JSON.stringify(payload) },
-          'demo',
-        );
-      } catch {
-        return { ok: true };
-      }
+    try {
+      // El backend espera `embedding` como STRING (columna Text, dato sensible).
+      // El cliente lo arma como number[] → serializamos a JSON string. Sin esto el
+      // backend devolvía 422 y la verificación biométrica NO se guardaba en la sesión.
+      const payload = {
+        liveness_ok: bio.liveness_ok,
+        retos_resueltos: bio.retos_resueltos,
+        resultado: bio.resultado,
+        ...(bio.embedding !== undefined ? { embedding: JSON.stringify(bio.embedding) } : {}),
+      };
+      return await realFetch<{ ok: boolean }>(
+        `/proctoring/sessions/${sessionId}/biometria`,
+        { method: 'POST', body: JSON.stringify(payload) },
+        'demo',
+      );
+    } catch {
+      return { ok: true };
     }
-    await delay(150);
-    return { ok: true };
   },
 
   /**
@@ -1445,19 +1135,15 @@ export const api = {
     sessionId: string,
   ): Promise<{ id: string; finalizada_en: string } | null> {
     if (!sessionId) return null;
-    if (USE_REAL_BACKEND) {
-      try {
-        return await realFetch<{ id: string; finalizada_en: string }>(
-          `/proctoring/sessions/${sessionId}/finalizar`,
-          { method: 'PATCH' },
-          'demo',
-        );
-      } catch {
-        return null;
-      }
+    try {
+      return await realFetch<{ id: string; finalizada_en: string }>(
+        `/proctoring/sessions/${sessionId}/finalizar`,
+        { method: 'PATCH' },
+        'demo',
+      );
+    } catch {
+      return null;
     }
-    // Mock: simular finalización exitosa
-    return { id: sessionId, finalizada_en: new Date().toISOString() };
   },
 
   /**
@@ -1479,23 +1165,19 @@ export const api = {
     respuestas: { pregunta_id: string; opcion_elegida_id: string }[],
   ): Promise<{ session_id: string; respuestas_guardadas: number } | null> {
     if (!sessionId) return null;
-    if (USE_REAL_BACKEND) {
-      try {
-        // H4 (seguridad): NO se envía identidad del cliente. El backend usa la
-        // identidad del alumno persistida server-side al crear la sesión (JWT);
-        // SubmitRespuestasIn rechaza (extra='forbid') cualquier campo extra.
-        const body = { respuestas };
-        return await realFetch<{ session_id: string; respuestas_guardadas: number }>(
-          `/proctoring/sessions/${sessionId}/respuestas`,
-          { method: 'POST', body: JSON.stringify(body) },
-          'demo',
-        );
-      } catch {
-        return null;
-      }
+    try {
+      // H4 (seguridad): NO se envía identidad del cliente. El backend usa la
+      // identidad del alumno persistida server-side al crear la sesión (JWT);
+      // SubmitRespuestasIn rechaza (extra='forbid') cualquier campo extra.
+      const body = { respuestas };
+      return await realFetch<{ session_id: string; respuestas_guardadas: number }>(
+        `/proctoring/sessions/${sessionId}/respuestas`,
+        { method: 'POST', body: JSON.stringify(body) },
+        'demo',
+      );
+    } catch {
+      return null;
     }
-    // Mock/degradado: no-op (no hay corrección server-side en modo demo).
-    return null;
   },
 
   /**
@@ -1508,100 +1190,31 @@ export const api = {
     sessionId: string,
   ): Promise<SesionProctoringDetalle | null> {
     if (!sessionId) return null;
-    if (USE_REAL_BACKEND) {
-      try {
-        return await realFetch<SesionProctoringDetalle>(
-          `/proctoring/sessions/${sessionId}`,
-          { method: 'GET' },
-          'demo',
-        );
-      } catch {
-        return null;
-      }
+    try {
+      return await realFetch<SesionProctoringDetalle>(
+        `/proctoring/sessions/${sessionId}`,
+        { method: 'GET' },
+        'demo',
+      );
+    } catch {
+      return null;
     }
-    // Mock: retorna null (Cierre.tsx usa fallback del store)
-    return null;
   },
 
   /**
    * Lista todas las sesiones de proctoring del backend slim (C-46).
    * Real: GET /proctoring/sessions
-   * Mock: dos sesiones de ejemplo con datos plausibles
    */
   async listarSesionesProctoring(): Promise<SesionProctoringResumen[]> {
-    if (USE_REAL_BACKEND) {
-      try {
-        return await realFetch<SesionProctoringResumen[]>(
-          '/proctoring/sessions',
-          { method: 'GET' },
-          'demo',
-        );
-      } catch {
-        /* fallback mock */
-      }
+    try {
+      return await realFetch<SesionProctoringResumen[]>(
+        '/proctoring/sessions',
+        { method: 'GET' },
+        'demo',
+      );
+    } catch {
+      return [];
     }
-    await delay(300);
-    const ahora = new Date();
-    const hace1h = new Date(ahora.getTime() - 3600 * 1000).toISOString();
-    const hace30m = new Date(ahora.getTime() - 1800 * 1000).toISOString();
-    const hace10m = new Date(ahora.getTime() - 600 * 1000).toISOString();
-    const hace5m = new Date(ahora.getTime() - 300 * 1000).toISOString();
-    const hace20m = new Date(ahora.getTime() - 1200 * 1000).toISOString();
-    return [
-      {
-        // Sesión de alto riesgo (score ≥ umbral de cola): la cola de revisión la prioriza.
-        // exam_id apunta al examen real del catálogo para que el join muestre materia/comisión.
-        id: 'mock-session-examen-altoriesgo-003',
-        modo: 'examen',
-        etiqueta: 'Persona en banca 12',
-        creada_en: hace10m,
-        total_eventos: 5,
-        total_discrepancias: 2,
-        score: 72,
-        exam_id: EXAMEN_RENDIBLE_ID,
-      },
-      {
-        // Segunda persona de alto riesgo en el mismo examen (puebla el nivel "Personas").
-        id: 'mock-session-examen-altoriesgo-004',
-        modo: 'examen',
-        etiqueta: 'Persona en banca 04',
-        creada_en: hace5m,
-        total_eventos: 9,
-        total_discrepancias: 4,
-        score: 84,
-        exam_id: EXAMEN_RENDIBLE_ID,
-      },
-      {
-        // Tercera persona de alto riesgo en el mismo examen.
-        id: 'mock-session-examen-altoriesgo-005',
-        modo: 'examen',
-        etiqueta: 'Persona en banca 21',
-        creada_en: hace20m,
-        total_eventos: 4,
-        total_discrepancias: 1,
-        score: 67,
-        exam_id: EXAMEN_RENDIBLE_ID,
-      },
-      {
-        id: 'mock-session-diagnostico-001',
-        modo: 'diagnostico',
-        etiqueta: 'Prueba de detección local',
-        creada_en: hace1h,
-        total_eventos: 7,
-        total_discrepancias: 2,
-        score: 38,
-      },
-      {
-        id: 'mock-session-examen-002',
-        modo: 'examen',
-        etiqueta: 'Persona en banca 08',
-        creada_en: hace30m,
-        total_eventos: 3,
-        total_discrepancias: 0,
-        score: 12,
-        exam_id: EXAMEN_RENDIBLE_ID,
-      },
-    ];
   },
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -1618,28 +1231,11 @@ export const api = {
     autor: AutorChat,
     texto: string,
   ): Promise<MensajeChat> {
-    if (USE_REAL_BACKEND) {
-      try {
-        return await realFetch<MensajeChat>(
-          `/proctoring/sessions/${sessionId}/chat`,
-          { method: 'POST', body: JSON.stringify({ autor, texto }) },
-          'demo',
-        );
-      } catch {
-        /* fallback mock */
-      }
-    }
-    await delay(120);
-    const msg: MensajeChat = {
-      id: `mock-chat-${++_chatSeq}`,
-      autor,
-      texto,
-      creado_en: new Date().toISOString(),
-    };
-    const lista = CHAT_DEMO.get(sessionId) ?? [];
-    lista.push(msg);
-    CHAT_DEMO.set(sessionId, lista);
-    return msg;
+    return await realFetch<MensajeChat>(
+      `/proctoring/sessions/${sessionId}/chat`,
+      { method: 'POST', body: JSON.stringify({ autor, texto }) },
+      'demo',
+    );
   },
 
   /**
@@ -1649,22 +1245,16 @@ export const api = {
    * Mock o fallo: filtra la lista en memoria.
    */
   async listarMensajesChat(sessionId: string, desde?: string): Promise<MensajeChat[]> {
-    if (USE_REAL_BACKEND) {
-      try {
-        const qs = desde ? `?desde=${encodeURIComponent(desde)}` : '';
-        return await realFetch<MensajeChat[]>(
-          `/proctoring/sessions/${sessionId}/chat${qs}`,
-          { method: 'GET' },
-          'demo',
-        );
-      } catch {
-        /* fallback mock */
-      }
+    try {
+      const qs = desde ? `?desde=${encodeURIComponent(desde)}` : '';
+      return await realFetch<MensajeChat[]>(
+        `/proctoring/sessions/${sessionId}/chat${qs}`,
+        { method: 'GET' },
+        'demo',
+      );
+    } catch {
+      return [];
     }
-    await delay(80);
-    const lista = CHAT_DEMO.get(sessionId) ?? [];
-    const filtrada = desde ? lista.filter((m) => m.creado_en > desde) : lista;
-    return [...filtrada].sort((a, b) => a.creado_en.localeCompare(b.creado_en));
   },
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -1677,32 +1267,11 @@ export const api = {
    * Mock o fallo: crea la pausa en memoria.
    */
   async solicitarPausa(sessionId: string, motivo: string): Promise<Pausa> {
-    if (USE_REAL_BACKEND) {
-      try {
-        return await realFetch<Pausa>(
-          `/proctoring/sessions/${sessionId}/pausas`,
-          { method: 'POST', body: JSON.stringify({ motivo }) },
-          'demo',
-        );
-      } catch {
-        /* fallback mock */
-      }
-    }
-    await delay(150);
-    const pausa: Pausa = {
-      id: `mock-pausa-${++_pausaSeq}`,
-      motivo,
-      estado: 'solicitada',
-      solicitada_en: new Date().toISOString(),
-      resuelta_en: null,
-      proctor_actor: null,
-      inicio_en: null,
-      fin_en: null,
-    };
-    const lista = PAUSAS_DEMO.get(sessionId) ?? [];
-    lista.push(pausa);
-    PAUSAS_DEMO.set(sessionId, lista);
-    return pausa;
+    return await realFetch<Pausa>(
+      `/proctoring/sessions/${sessionId}/pausas`,
+      { method: 'POST', body: JSON.stringify({ motivo }) },
+      'demo',
+    );
   },
 
   /**
@@ -1712,20 +1281,15 @@ export const api = {
    * Mock o fallo: lista en memoria ordenada desc.
    */
   async listarPausas(sessionId: string): Promise<Pausa[]> {
-    if (USE_REAL_BACKEND) {
-      try {
-        return await realFetch<Pausa[]>(
-          `/proctoring/sessions/${sessionId}/pausas`,
-          { method: 'GET' },
-          'demo',
-        );
-      } catch {
-        /* fallback mock */
-      }
+    try {
+      return await realFetch<Pausa[]>(
+        `/proctoring/sessions/${sessionId}/pausas`,
+        { method: 'GET' },
+        'demo',
+      );
+    } catch {
+      return [];
     }
-    await delay(80);
-    const lista = PAUSAS_DEMO.get(sessionId) ?? [];
-    return [...lista].sort((a, b) => b.solicitada_en.localeCompare(a.solicitada_en));
   },
 
   /**
@@ -1735,33 +1299,15 @@ export const api = {
    * Mock o fallo: arma la cola desde el estado en memoria.
    */
   async listarPausasPendientes(): Promise<PausaPendiente[]> {
-    if (USE_REAL_BACKEND) {
-      try {
-        return await realFetch<PausaPendiente[]>(
-          '/proctoring/pausas/pendientes',
-          { method: 'GET' },
-          'demo',
-        );
-      } catch {
-        /* fallback mock */
-      }
+    try {
+      return await realFetch<PausaPendiente[]>(
+        '/proctoring/pausas/pendientes',
+        { method: 'GET' },
+        'demo',
+      );
+    } catch {
+      return [];
     }
-    await delay(80);
-    const pendientes: PausaPendiente[] = [];
-    for (const [sessionId, lista] of PAUSAS_DEMO.entries()) {
-      for (const p of lista) {
-        if (p.estado === 'solicitada') {
-          pendientes.push({
-            id: p.id,
-            session_id: sessionId,
-            etiqueta: null,
-            motivo: p.motivo,
-            solicitada_en: p.solicitada_en,
-          });
-        }
-      }
-    }
-    return pendientes.sort((a, b) => a.solicitada_en.localeCompare(b.solicitada_en));
   },
 
   /**
@@ -1777,44 +1323,17 @@ export const api = {
     proctorActor?: string | null,
     motivoRechazo?: string | null,
   ): Promise<Pausa> {
-    if (USE_REAL_BACKEND) {
-      // El motivo solo viaja al rechazar (al aprobar el backend lo ignora/None).
-      const body: Record<string, unknown> = {
-        accion,
-        proctor_actor: proctorActor ?? null,
-      };
-      if (accion === 'rechazar') body.motivo_rechazo = motivoRechazo ?? null;
-      // Sin fallback: una resolución que dispara 409 NO debe simularse como OK.
-      return await realFetch<Pausa>(
-        `/proctoring/pausas/${pausaId}`,
-        { method: 'PATCH', body: JSON.stringify(body) },
-        'demo',
-      );
-    }
-    await delay(150);
-    for (const lista of PAUSAS_DEMO.values()) {
-      const p = lista.find((x) => x.id === pausaId);
-      if (!p) continue;
-      if (p.estado !== 'solicitada') {
-        const err = new Error('La pausa ya no está pendiente') as Error & { status?: number };
-        err.status = 409;
-        throw err;
-      }
-      const ahora = new Date().toISOString();
-      p.estado = accion === 'aprobar' ? 'aprobada' : 'rechazada';
-      p.resuelta_en = ahora;
-      p.proctor_actor = proctorActor ?? null;
-      if (accion === 'aprobar') {
-        p.inicio_en = ahora;
-        p.motivo_rechazo = null;
-      } else {
-        p.motivo_rechazo = motivoRechazo ?? null;
-      }
-      return p;
-    }
-    const err = new Error('Pausa no encontrada') as Error & { status?: number };
-    err.status = 409;
-    throw err;
+    // El motivo solo viaja al rechazar (al aprobar el backend lo ignora/None).
+    const body: Record<string, unknown> = {
+      accion,
+      proctor_actor: proctorActor ?? null,
+    };
+    if (accion === 'rechazar') body.motivo_rechazo = motivoRechazo ?? null;
+    return await realFetch<Pausa>(
+      `/proctoring/pausas/${pausaId}`,
+      { method: 'PATCH', body: JSON.stringify(body) },
+      'demo',
+    );
   },
 
   /**
@@ -1824,29 +1343,11 @@ export const api = {
    * Mock o fallo: muta la pausa en memoria.
    */
   async finalizarPausa(pausaId: string): Promise<Pausa> {
-    if (USE_REAL_BACKEND) {
-      return await realFetch<Pausa>(
-        `/proctoring/pausas/${pausaId}/finalizar`,
-        { method: 'PATCH' },
-        'demo',
-      );
-    }
-    await delay(120);
-    for (const lista of PAUSAS_DEMO.values()) {
-      const p = lista.find((x) => x.id === pausaId);
-      if (!p) continue;
-      if (p.estado !== 'aprobada') {
-        const err = new Error('La pausa no estaba activa') as Error & { status?: number };
-        err.status = 409;
-        throw err;
-      }
-      p.estado = 'finalizada';
-      p.fin_en = new Date().toISOString();
-      return p;
-    }
-    const err = new Error('Pausa no encontrada') as Error & { status?: number };
-    err.status = 409;
-    throw err;
+    return await realFetch<Pausa>(
+      `/proctoring/pausas/${pausaId}/finalizar`,
+      { method: 'PATCH' },
+      'demo',
+    );
   },
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -1863,28 +1364,11 @@ export const api = {
     texto: string,
     proctorActor?: string | null,
   ): Promise<ObservacionProctor> {
-    if (USE_REAL_BACKEND) {
-      try {
-        return await realFetch<ObservacionProctor>(
-          `/proctoring/sessions/${sessionId}/observaciones`,
-          { method: 'POST', body: JSON.stringify({ texto, proctor_actor: proctorActor ?? null }) },
-          'demo',
-        );
-      } catch {
-        /* fallback mock */
-      }
-    }
-    await delay(120);
-    const obs: ObservacionProctor = {
-      id: `mock-obs-${++_obsSeq}`,
-      texto,
-      proctor_actor: proctorActor ?? null,
-      creada_en: new Date().toISOString(),
-    };
-    const lista = OBS_DEMO.get(sessionId) ?? [];
-    lista.push(obs);
-    OBS_DEMO.set(sessionId, lista);
-    return obs;
+    return await realFetch<ObservacionProctor>(
+      `/proctoring/sessions/${sessionId}/observaciones`,
+      { method: 'POST', body: JSON.stringify({ texto, proctor_actor: proctorActor ?? null }) },
+      'demo',
+    );
   },
 
   /**
@@ -1893,19 +1377,15 @@ export const api = {
    * Mock o fallo: lista en memoria.
    */
   async listarObservacionesProctor(sessionId: string): Promise<ObservacionProctor[]> {
-    if (USE_REAL_BACKEND) {
-      try {
-        return await realFetch<ObservacionProctor[]>(
-          `/proctoring/sessions/${sessionId}/observaciones`,
-          { method: 'GET' },
-          'demo',
-        );
-      } catch {
-        /* fallback mock */
-      }
+    try {
+      return await realFetch<ObservacionProctor[]>(
+        `/proctoring/sessions/${sessionId}/observaciones`,
+        { method: 'GET' },
+        'demo',
+      );
+    } catch {
+      return [];
     }
-    await delay(80);
-    return [...(OBS_DEMO.get(sessionId) ?? [])];
   },
 
   /**
@@ -1919,118 +1399,42 @@ export const api = {
     motivo: string,
     proctorActor?: string | null,
   ): Promise<CierreForzado> {
-    if (USE_REAL_BACKEND) {
-      return await realFetch<CierreForzado>(
-        `/proctoring/sessions/${sessionId}/cerrar-forzado`,
-        { method: 'PATCH', body: JSON.stringify({ motivo, proctor_actor: proctorActor ?? null }) },
-        'demo',
-      );
-    }
-    await delay(150);
-    const ahora = new Date().toISOString();
-    return {
-      id: sessionId,
-      finalizada_en: ahora,
-      cierre_forzado_en: ahora,
-      cierre_forzado_por: proctorActor ?? null,
-      cierre_forzado_motivo: motivo,
-    };
+    return await realFetch<CierreForzado>(
+      `/proctoring/sessions/${sessionId}/cerrar-forzado`,
+      { method: 'PATCH', body: JSON.stringify({ motivo, proctor_actor: proctorActor ?? null }) },
+      'demo',
+    );
   },
 
   /**
    * Obtiene el detalle completo de una sesión de proctoring (C-46).
    * Real: GET /proctoring/sessions/{id}
-   * Mock: sesión con eventos variados, veredictos y biometría simulada
    *
    * DATO SENSIBLE (Ley 25.326): screenshot_base64 en los eventos — no loguear.
    */
   async getSesionProctoring(id: string): Promise<SesionProctoringDetalle> {
-    if (USE_REAL_BACKEND) {
-      try {
-        return await realFetch<SesionProctoringDetalle>(
-          `/proctoring/sessions/${id}`,
-          { method: 'GET' },
-          'demo',
-        );
-      } catch {
-        /* fallback mock */
-      }
-    }
-    await delay(300);
-    const ahora = new Date();
-    return {
-      id,
-      modo: 'diagnostico',
-      etiqueta: 'Prueba de detección local',
-      creada_en: new Date(ahora.getTime() - 3600 * 1000).toISOString(),
-      total_eventos: 3,
-      total_discrepancias: 1,
-      score: 38,
-      eventos: [
-        {
-          evento_id: 'ev-mock-001',
-          tipo: 'multiples_rostros',
-          severidad: 'alta',
-          ts_cliente: new Date(ahora.getTime() - 3000 * 1000).toISOString(),
-          payload: { face_count: 2 },
-          screenshot_base64: null, // mock no incluye imagen real
-          screenshot_sha256: null,
-          face_count_cliente: 2,
-          veredicto_reinferencia: 'coincide',
-          face_count_servidor: 2,
-        },
-        {
-          evento_id: 'ev-mock-002',
-          tipo: 'mirada_desviada_sostenida',
-          severidad: 'media',
-          ts_cliente: new Date(ahora.getTime() - 2500 * 1000).toISOString(),
-          payload: { sostenido_ms: 2600 },
-          screenshot_base64: null,
-          screenshot_sha256: null,
-          face_count_cliente: 1,
-          veredicto_reinferencia: 'discrepancia',
-          face_count_servidor: 0,
-        },
-        {
-          evento_id: 'ev-mock-003',
-          tipo: 'rostro_ausente',
-          severidad: 'media',
-          ts_cliente: new Date(ahora.getTime() - 1800 * 1000).toISOString(),
-          payload: { sostenido_ms: 3200 },
-          screenshot_base64: null,
-          screenshot_sha256: null,
-          face_count_cliente: 0,
-          veredicto_reinferencia: 'sin_referencia',
-          face_count_servidor: 0,
-        },
-      ],
-      biometria: {
-        liveness_ok: true,
-        retos_resueltos: ['parpadear', 'girar_izquierda'],
-        resultado: 'verificado',
-      },
-    };
+    return await realFetch<SesionProctoringDetalle>(
+      `/proctoring/sessions/${id}`,
+      { method: 'GET' },
+      'demo',
+    );
   },
 
   /**
    * Elimina una sesión de proctoring (C-46). Real: DELETE /proctoring/sessions/{id} (204).
-   * Mock o fallo: retorna { ok:false } sin romper.
+   * Fallo de red: retorna { ok:false } sin romper.
    */
   async eliminarSesionProctoring(id: string): Promise<{ ok: boolean }> {
-    if (USE_REAL_BACKEND) {
-      try {
-        const token = authProvider.getToken();
-        const res = await fetch(`${API_BASE}/proctoring/sessions/${id}`, {
-          method: 'DELETE',
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
-        return { ok: res.ok };
-      } catch {
-        return { ok: false };
-      }
+    try {
+      const token = authProvider.getToken();
+      const res = await fetch(`${API_BASE}/proctoring/sessions/${id}`, {
+        method: 'DELETE',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      return { ok: res.ok };
+    } catch {
+      return { ok: false };
     }
-    await delay(200);
-    return { ok: true }; // mock: simula éxito
   },
 
   // -------------------------------------------------------------------------
@@ -2043,19 +1447,15 @@ export const api = {
    * Mock: retorna null (sin foto demo).
    */
   async obtenerFotoPerfil(): Promise<string | null> {
-    if (USE_REAL_BACKEND) {
-      try {
-        const data = await realFetch<{ imagen_base64: string }>(
-          '/enrollment/foto-perfil',
-          { method: 'GET' },
-        );
-        return data.imagen_base64;
-      } catch {
-        return null;
-      }
+    try {
+      const data = await realFetch<{ imagen_base64: string }>(
+        '/enrollment/foto-perfil',
+        { method: 'GET' },
+      );
+      return data.imagen_base64;
+    } catch {
+      return null;
     }
-    await delay(150);
-    try { return localStorage.getItem(LS_FOTO); } catch { return null; } // demo: foto persistida
   },
 
   /**
@@ -2064,19 +1464,15 @@ export const api = {
    * Mock: retorna null.
    */
   async obtenerFotoPerfilDeUsuario(usuarioId: string): Promise<string | null> {
-    if (USE_REAL_BACKEND) {
-      try {
-        const data = await realFetch<{ imagen_base64: string }>(
-          `/enrollment/foto-perfil/${usuarioId}`,
-          { method: 'GET' },
-        );
-        return data.imagen_base64;
-      } catch {
-        return null;
-      }
+    try {
+      const data = await realFetch<{ imagen_base64: string }>(
+        `/enrollment/foto-perfil/${usuarioId}`,
+        { method: 'GET' },
+      );
+      return data.imagen_base64;
+    } catch {
+      return null;
     }
-    await delay(150);
-    return null; // mock: sin foto
   },
 
   // -------------------------------------------------------------------------
@@ -2093,39 +1489,14 @@ export const api = {
     offset = 0,
     filtros?: { rol?: string; estado?: string; q?: string },
   ): Promise<ListarUsuariosResponse> {
-    if (USE_REAL_BACKEND) {
-      const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
-      if (filtros?.rol) params.set('rol', filtros.rol);
-      if (filtros?.estado) params.set('estado', filtros.estado);
-      if (filtros?.q) params.set('q', filtros.q);
-      return await realFetch<ListarUsuariosResponse>(
-        `/users/?${params.toString()}`,
-        { method: 'GET' },
-      );
-    }
-    await delay(300);
-    const MOCK_ITEMS: UsuarioAdmin[] = [
-      { id: 'u1', id_institucional: 'FRM-ADM-0021', email: 'lmendoza@frm.utn.edu.ar', nombre: 'Lucía', apellido: 'Mendoza', roles: ['admin_sistema'], auth_provider: 'local', eliminado_en: null },
-      { id: 'u2', id_institucional: 'FRM-DOC-1182', email: 'cferreyra@frm.utn.edu.ar', nombre: 'Carolina', apellido: 'Ferreyra', roles: ['proctor'], auth_provider: 'local', eliminado_en: null },
-      { id: 'u3', id_institucional: 'FRM-23-4912', email: 'ecaceres@frm.utn.edu.ar', nombre: 'Emiliano', apellido: 'Cáceres', roles: ['estudiante'], auth_provider: 'local', eliminado_en: null },
-      { id: 'u4', id_institucional: 'FRM-23-0099', email: 'blopez@frm.utn.edu.ar', nombre: 'Bruno', apellido: 'López', roles: ['estudiante'], auth_provider: 'local', eliminado_en: '2026-04-10T10:00:00Z' },
-    ];
-    // Filtrado demo server-side simulado
-    let items = [...MOCK_ITEMS];
-    if (filtros?.rol) items = items.filter((u) => u.roles.includes(filtros.rol!));
-    if (filtros?.estado === 'activo') items = items.filter((u) => !u.eliminado_en);
-    else if (filtros?.estado === 'inactivo') items = items.filter((u) => !!u.eliminado_en);
-    if (filtros?.q) {
-      const q = filtros.q.toLowerCase();
-      items = items.filter((u) =>
-        [u.nombre, u.apellido, u.email, u.id_institucional]
-          .filter(Boolean)
-          .some((v) => (v ?? '').toLowerCase().includes(q)),
-      );
-    }
-    const total = items.length;
-    const pageItems = items.slice(offset, offset + limit);
-    return { items: pageItems, total, limit, offset };
+    const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+    if (filtros?.rol) params.set('rol', filtros.rol);
+    if (filtros?.estado) params.set('estado', filtros.estado);
+    if (filtros?.q) params.set('q', filtros.q);
+    return await realFetch<ListarUsuariosResponse>(
+      `/users/?${params.toString()}`,
+      { method: 'GET' },
+    );
   },
 
   /**
@@ -2134,16 +1505,12 @@ export const api = {
    * Mock: no-op (demo sin persistencia real de baja).
    */
   async reactivarUsuario(usuarioId: string): Promise<void> {
-    if (USE_REAL_BACKEND) {
-      const token = authProvider.getToken();
-      const res = await fetch(`${API_BASE}/users/${usuarioId}/reactivar`, {
-        method: 'POST',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return;
-    }
-    await delay(300);
+    const token = authProvider.getToken();
+    const res = await fetch(`${API_BASE}/users/${usuarioId}/reactivar`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
   },
 
   /**
@@ -2158,22 +1525,10 @@ export const api = {
     nombre?: string;
     apellido?: string;
   }): Promise<UsuarioAdmin> {
-    if (USE_REAL_BACKEND) {
-      return await realFetch<UsuarioAdmin>(
-        '/users/',
-        { method: 'POST', body: JSON.stringify(body) },
-      );
-    }
-    await delay(400);
-    return {
-      id: 'u-' + Date.now().toString(36),
-      id_institucional: body.id_institucional,
-      email: body.email,
-      nombre: body.nombre ?? null,
-      apellido: body.apellido ?? null,
-      roles: body.roles,
-      auth_provider: 'local',
-    };
+    return await realFetch<UsuarioAdmin>(
+      '/users/',
+      { method: 'POST', body: JSON.stringify(body) },
+    );
   },
 
   /**
@@ -2184,22 +1539,10 @@ export const api = {
     usuarioId: string,
     body: { email?: string; nombre?: string; apellido?: string; roles?: string[] },
   ): Promise<UsuarioAdmin> {
-    if (USE_REAL_BACKEND) {
-      return await realFetch<UsuarioAdmin>(
-        `/users/${usuarioId}`,
-        { method: 'PUT', body: JSON.stringify(body) },
-      );
-    }
-    await delay(350);
-    return {
-      id: usuarioId,
-      id_institucional: '',
-      email: body.email ?? '',
-      nombre: body.nombre ?? null,
-      apellido: body.apellido ?? null,
-      roles: body.roles ?? [],
-      auth_provider: 'local',
-    };
+    return await realFetch<UsuarioAdmin>(
+      `/users/${usuarioId}`,
+      { method: 'PUT', body: JSON.stringify(body) },
+    );
   },
 
   /**
@@ -2207,16 +1550,12 @@ export const api = {
    * Real: DELETE /users/{usuarioId} → 204 sin cuerpo.
    */
   async eliminarUsuario(usuarioId: string): Promise<void> {
-    if (USE_REAL_BACKEND) {
-      const token = authProvider.getToken();
-      const res = await fetch(`${API_BASE}/users/${usuarioId}`, {
-        method: 'DELETE',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return;
-    }
-    await delay(300);
+    const token = authProvider.getToken();
+    const res = await fetch(`${API_BASE}/users/${usuarioId}`, {
+      method: 'DELETE',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
   },
 
   // -------------------------------------------------------------------------
@@ -2235,41 +1574,11 @@ export const api = {
    * Mock: defaults del catalogo.
    */
   async obtenerScoringWeights(): Promise<{ weights: Record<string, number> }> {
-    if (USE_REAL_BACKEND) {
-      return await realFetch<{ weights: Record<string, number> }>('/scoring/weights', { method: 'GET' });
-    }
-    await delay(150);
-    return {
-      weights: {
-        rostro_ausente: 20,
-        multiples_rostros: 50,
-        mirada_desviada_sostenida: 20,
-        perdida_de_foco: 5,
-        cambio_pestana: 20,
-        monitor_adicional: 50,
-        salida_pantalla_completa: 20,
-        copiar_pegar: 20,
-      },
-    };
+    return await realFetch<{ weights: Record<string, number> }>('/scoring/weights', { method: 'GET' });
   },
 
   async listarScoringConfig(): Promise<{ items: EventoScoreConfig[] }> {
-    if (USE_REAL_BACKEND) {
-      return await realFetch<{ items: EventoScoreConfig[] }>('/scoring/config', { method: 'GET' });
-    }
-    await delay(200);
-    return {
-      items: [
-        { tipo_evento: 'rostro_ausente', severidad: 'media', peso: 20, descripcion: 'No se detecto rostro en el encuadre por mas de 3 segundos.', activo: true, updated_at: '' },
-        { tipo_evento: 'multiples_rostros', severidad: 'alta', peso: 50, descripcion: 'Se detectaron multiples rostros simultaneos en camara.', activo: true, updated_at: '' },
-        { tipo_evento: 'mirada_desviada_sostenida', severidad: 'media', peso: 20, descripcion: 'Patron de mirada sostenido hacia un punto fijo fuera de pantalla.', activo: true, updated_at: '' },
-        { tipo_evento: 'perdida_de_foco', severidad: 'baja', peso: 5, descripcion: 'La ventana del examen perdio el foco del sistema operativo.', activo: true, updated_at: '' },
-        { tipo_evento: 'cambio_pestana', severidad: 'media', peso: 20, descripcion: 'El estudiante cambio o abrio otra pestana durante el examen.', activo: true, updated_at: '' },
-        { tipo_evento: 'monitor_adicional', severidad: 'alta', peso: 50, descripcion: 'Se detecto un segundo monitor conectado al equipo.', activo: true, updated_at: '' },
-        { tipo_evento: 'salida_pantalla_completa', severidad: 'media', peso: 20, descripcion: 'El estudiante salio del modo de pantalla completa.', activo: true, updated_at: '' },
-        { tipo_evento: 'copiar_pegar', severidad: 'media', peso: 20, descripcion: 'Se detecto una accion de copiar o pegar (sin capturar contenido).', activo: true, updated_at: '' },
-      ],
-    };
+    return await realFetch<{ items: EventoScoreConfig[] }>('/scoring/config', { method: 'GET' });
   },
 
   /**
@@ -2281,21 +1590,10 @@ export const api = {
     tipoEvento: string,
     body: { severidad?: string; peso?: number; descripcion?: string | null; activo?: boolean },
   ): Promise<EventoScoreConfig> {
-    if (USE_REAL_BACKEND) {
-      return await realFetch<EventoScoreConfig>(
-        `/scoring/config/${encodeURIComponent(tipoEvento)}`,
-        { method: 'PATCH', body: JSON.stringify(body) },
-      );
-    }
-    await delay(250);
-    return {
-      tipo_evento: tipoEvento,
-      severidad: body.severidad ?? 'media',
-      peso: body.peso ?? 20,
-      descripcion: body.descripcion ?? null,
-      activo: body.activo ?? true,
-      updated_at: new Date().toISOString(),
-    };
+    return await realFetch<EventoScoreConfig>(
+      `/scoring/config/${encodeURIComponent(tipoEvento)}`,
+      { method: 'PATCH', body: JSON.stringify(body) },
+    );
   },
 
   // -------------------------------------------------------------------------
@@ -2308,21 +1606,10 @@ export const api = {
    * Mock: busca en el listado demo.
    */
   async obtenerDetalleUsuario(id: string): Promise<UsuarioAdmin & { eliminado_en?: string | null }> {
-    if (USE_REAL_BACKEND) {
-      return await realFetch<UsuarioAdmin & { eliminado_en?: string | null }>(
-        `/users/${id}`,
-        { method: 'GET' },
-      );
-    }
-    await delay(200);
-    const MOCK: (UsuarioAdmin & { eliminado_en?: string | null })[] = [
-      { id: 'u1', id_institucional: 'FRM-ADM-0021', email: 'lmendoza@frm.utn.edu.ar', nombre: 'Lucía', apellido: 'Mendoza', roles: ['admin_sistema'], auth_provider: 'local', eliminado_en: null },
-      { id: 'u2', id_institucional: 'FRM-DOC-1182', email: 'cferreyra@frm.utn.edu.ar', nombre: 'Carolina', apellido: 'Ferreyra', roles: ['proctor'], auth_provider: 'local', eliminado_en: null },
-      { id: 'u3', id_institucional: 'FRM-23-4912', email: 'ecaceres@frm.utn.edu.ar', nombre: 'Emiliano', apellido: 'Cáceres', roles: ['estudiante'], auth_provider: 'local', eliminado_en: null },
-    ];
-    const found = MOCK.find((u) => u.id === id);
-    if (!found) throw new Error('HTTP 404');
-    return found;
+    return await realFetch<UsuarioAdmin & { eliminado_en?: string | null }>(
+      `/users/${id}`,
+      { method: 'GET' },
+    );
   },
 
   /**
@@ -2336,25 +1623,12 @@ export const api = {
     hash_texto: string | null;
     timestamp: string | null;
   }> {
-    if (USE_REAL_BACKEND) {
-      return await realFetch<{
-        estado: 'otorgado' | 'revocado' | null;
-        version_texto: string | null;
-        hash_texto: string | null;
-        timestamp: string | null;
-      }>(`/users/${id}/consent-profile`, { method: 'GET' });
-    }
-    await delay(200);
-    // Demo: usuario u3 (estudiante) tiene consentimiento otorgado
-    if (id === 'u3') {
-      return {
-        estado: 'otorgado',
-        version_texto: 'v1',
-        hash_texto: 'sha256:9f2ba31c4e7d0821',
-        timestamp: '2026-05-28T14:32:00Z',
-      };
-    }
-    return { estado: null, version_texto: null, hash_texto: null, timestamp: null };
+    return await realFetch<{
+      estado: 'otorgado' | 'revocado' | null;
+      version_texto: string | null;
+      hash_texto: string | null;
+      timestamp: string | null;
+    }>(`/users/${id}/consent-profile`, { method: 'GET' });
   },
 
   /**
@@ -2371,39 +1645,15 @@ export const api = {
     foto_hash: string | null;
     foto_created_at: string | null;
   }> {
-    if (USE_REAL_BACKEND) {
-      return await realFetch<{
-        tiene_referencia_vigente: boolean;
-        algoritmo: string | null;
-        fecha_expiracion: string | null;
-        created_at: string | null;
-        tiene_foto: boolean;
-        foto_hash: string | null;
-        foto_created_at: string | null;
-      }>(`/users/${id}/biometria/referencia/estado`, { method: 'GET' });
-    }
-    await delay(200);
-    // Demo: usuario u3 tiene referencia vigente
-    if (id === 'u3') {
-      return {
-        tiene_referencia_vigente: true,
-        algoritmo: 'mediapipe-face-mesh-v1',
-        fecha_expiracion: '2028-05-28T14:33:00Z',
-        created_at: '2026-05-28T14:33:00Z',
-        tiene_foto: true,
-        foto_hash: 'sha256:4a7f3b9c1d2e8f05',
-        foto_created_at: '2026-05-28T14:33:00Z',
-      };
-    }
-    return {
-      tiene_referencia_vigente: false,
-      algoritmo: null,
-      fecha_expiracion: null,
-      created_at: null,
-      tiene_foto: false,
-      foto_hash: null,
-      foto_created_at: null,
-    };
+    return await realFetch<{
+      tiene_referencia_vigente: boolean;
+      algoritmo: string | null;
+      fecha_expiracion: string | null;
+      created_at: string | null;
+      tiene_foto: boolean;
+      foto_hash: string | null;
+      foto_created_at: string | null;
+    }>(`/users/${id}/biometria/referencia/estado`, { method: 'GET' });
   },
 
   // -------------------------------------------------------------------------
@@ -2423,18 +1673,10 @@ export const api = {
     password: string;
     password_confirmacion: string;
   }): Promise<{ id: string; id_institucional: string; email: string }> {
-    if (USE_REAL_BACKEND) {
-      return await realFetch<{ id: string; id_institucional: string; email: string }>(
-        '/auth/register',
-        { method: 'POST', body: JSON.stringify(body) },
-      );
-    }
-    await delay(500);
-    return {
-      id: 'u-' + Date.now().toString(36),
-      id_institucional: body.id_institucional,
-      email: body.email,
-    };
+    return await realFetch<{ id: string; id_institucional: string; email: string }>(
+      '/auth/register',
+      { method: 'POST', body: JSON.stringify(body) },
+    );
   },
 
   // -------------------------------------------------------------------------
@@ -2447,14 +1689,10 @@ export const api = {
    * Mock: devuelve la versión demo como única entrada.
    */
   async listarVersionesConsentimiento(): Promise<{ version: string; hash_texto: string }[]> {
-    if (USE_REAL_BACKEND) {
-      return await realFetch<{ version: string; hash_texto: string }[]>(
-        '/consent/text/versions',
-        { method: 'GET' },
-      );
-    }
-    await delay(150);
-    return [{ version: CONSENT_TEXT.version, hash_texto: CONSENT_TEXT.hash_texto }];
+    return await realFetch<{ version: string; hash_texto: string }[]>(
+      '/consent/text/versions',
+      { method: 'GET' },
+    );
   },
 
   /**
@@ -2471,27 +1709,11 @@ export const api = {
     version: string;
     bloques: Array<{ titulo: string; cuerpo: string }>;
   }): Promise<{ version: string; bloques: BloqueConsentimiento[]; hash_texto: string }> {
-    if (USE_REAL_BACKEND) {
-      const raw = await realFetch<unknown>(
-        '/consent/text/versions',
-        { method: 'POST', body: JSON.stringify(params) },
-      );
-      return normalizarConsentText(raw);
-    }
-    await delay(400);
-    // Demo: actualizar el CONSENT_TEXT en memoria para que getConsentText
-    // devuelva los bloques nuevos en esta sesión.
-    const bloquesNuevos: BloqueConsentimiento[] = params.bloques.map((b, i) => ({
-      titulo: b.titulo,
-      cuerpo: b.cuerpo,
-      icono: CONSENT_TEXT.bloques[i]?.icono ?? 'info',
-    }));
-    const hashDemo = 'sha256:' + Math.random().toString(16).slice(2, 18);
-    // Mutar el objeto demo para que getConsentText lo devuelva en próximas llamadas.
-    CONSENT_TEXT.version = params.version;
-    CONSENT_TEXT.hash_texto = hashDemo;
-    CONSENT_TEXT.bloques = bloquesNuevos;
-    return { version: params.version, bloques: bloquesNuevos, hash_texto: hashDemo };
+    const raw = await realFetch<unknown>(
+      '/consent/text/versions',
+      { method: 'POST', body: JSON.stringify(params) },
+    );
+    return normalizarConsentText(raw);
   },
 
   // -------------------------------------------------------------------------
@@ -2522,48 +1744,7 @@ export const api = {
     chat_habilitado?: boolean;
     pausas_habilitadas?: boolean;
   }> {
-    if (USE_REAL_BACKEND) {
-      return await realFetch('/config/effective', { method: 'GET' });
-    }
-    await delay(150);
-    return {
-      version: 1,
-      face_absent_ms: 3000,
-      multiple_faces_frames: 5,
-      gaze_deviation_threshold: 0.20,
-      gaze_sustained_ms: 2500,
-      gaze_fixation_tolerance: 0.25,
-      umbral_cola_revision: 70,
-      retencion_dias_default: 30,
-      consent_version_vigente: 'v1',
-      chat_habilitado: true,
-      pausas_habilitadas: true,
-      detectores_activos: [
-        'rostro_ausente', 'multiples_rostros', 'mirada_desviada_sostenida',
-        'perdida_de_foco', 'cambio_pestana', 'monitor_adicional',
-        'salida_pantalla_completa', 'copiar_pegar',
-      ],
-      scoring_weights: {
-        rostro_ausente: 20,
-        multiples_rostros: 50,
-        mirada_desviada_sostenida: 20,
-        perdida_de_foco: 5,
-        cambio_pestana: 20,
-        monitor_adicional: 50,
-        salida_pantalla_completa: 20,
-        copiar_pegar: 20,
-      },
-      scoring_severidades: {
-        rostro_ausente: 'media',
-        multiples_rostros: 'alta',
-        mirada_desviada_sostenida: 'media',
-        perdida_de_foco: 'baja',
-        cambio_pestana: 'media',
-        monitor_adicional: 'alta',
-        salida_pantalla_completa: 'media',
-        copiar_pegar: 'baja',
-      },
-    };
+    return await realFetch('/config/effective', { method: 'GET' });
   },
 
   /**
@@ -2601,13 +1782,7 @@ export const api = {
     chat_habilitado?: boolean;
     pausas_habilitadas?: boolean;
   }> {
-    if (USE_REAL_BACKEND) {
-      return await realFetch('/config', { method: 'PATCH', body: JSON.stringify(body) });
-    }
-    await delay(350);
-    // Demo: echo con los cambios aplicados sobre los defaults
-    const base = await api.obtenerConfigEfectiva();
-    return { ...base, ...body, version: base.version + 1 };
+    return await realFetch('/config', { method: 'PATCH', body: JSON.stringify(body) });
   },
 
   // -------------------------------------------------------------------------
@@ -2622,7 +1797,7 @@ export const api = {
    * REEMPLAZA la implementación anterior que solo guardaba en localStorage.
    */
   async registrarConsentimientoPerfil(versionTexto: string, viaAlternativa = false): Promise<AcuseConsentimiento> {
-    if (USE_REAL_BACKEND && !viaAlternativa) {
+    if (!viaAlternativa) {
       // Consentimiento directo: POST al backend server-side (Ley 25.326, append-only).
       const data = await realFetch<{
         estado: string;
@@ -2665,20 +1840,7 @@ export const api = {
     hash_texto: string | null;
     timestamp: string | null;
   }> {
-    if (USE_REAL_BACKEND) {
-      return await realFetch('/consent/profile', { method: 'GET' });
-    }
-    await delay(150);
-    const acuse = enrollmentAlumno.consentimiento;
-    if (!acuse) {
-      return { estado: 'inexistente', version_texto: null, hash_texto: null, timestamp: null };
-    }
-    return {
-      estado: 'otorgado',
-      version_texto: acuse.version,
-      hash_texto: acuse.hash ?? null,
-      timestamp: acuse.timestamp,
-    };
+    return await realFetch('/consent/profile', { method: 'GET' });
   },
 
   // -------------------------------------------------------------------------
@@ -2688,24 +1850,17 @@ export const api = {
   /**
    * Lista los exámenes de contenido importados desde Moodle XML (C-69).
    *
-   * Real (USE_REAL_BACKEND=1): GET /api/v1/exam-content
-   *   Devuelve [{id, titulo, cantidad_preguntas}] en orden alfabético.
+   * GET /api/v1/exam-content → [{id, titulo, cantidad_preguntas}] en orden alfabético.
    *   Cualquier principal autenticado puede consultar el catálogo.
    *   D3: es_correcta NUNCA en la respuesta.
    *
-   * Demo (USE_REAL_BACKEND=0): devuelve [] — en modo demo los exámenes son
-   *   estáticos en memoria (EXAMENES); el catálogo real no aplica.
-   *
-   * Degradación silenciosa: un error de red retorna [] sin propagar.
+   * Degradación silenciosa: un error de red retorna [] sin propagar (lo maneja
+   * listarExamenesContenidoFn).
    */
   async listarExamenesContenido(): Promise<ExamenContenidoResumen[]> {
-    if (USE_REAL_BACKEND) {
-      const { listarExamenesContenidoFn } = await import('./examContentCatalog');
-      const token = authProvider.getToken();
-      return listarExamenesContenidoFn(API_BASE, token);
-    }
-    // Demo: sin backend real, no hay exámenes importados en el catálogo.
-    return [];
+    const { listarExamenesContenidoFn } = await import('./examContentCatalog');
+    const token = authProvider.getToken();
+    return listarExamenesContenidoFn(API_BASE, token);
   },
 
   /**
@@ -2719,16 +1874,7 @@ export const api = {
     hash_texto: string | null;
     timestamp: string | null;
   }> {
-    if (USE_REAL_BACKEND) {
-      return await realFetch('/consent/profile/revoke', { method: 'POST' });
-    }
-    await delay(300);
-    return {
-      estado: 'revocado',
-      version_texto: enrollmentAlumno.consentimiento?.version ?? 'v1',
-      hash_texto: null,
-      timestamp: new Date().toISOString(),
-    };
+    return await realFetch('/consent/profile/revoke', { method: 'POST' });
   },
 };
 

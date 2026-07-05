@@ -149,27 +149,3 @@ describe('formatDuracionExamen', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// 5. Contrato: en modo demo la API NO tiene datos reales de inscripciones
-// ---------------------------------------------------------------------------
-
-describe('contrato API — modo demo', () => {
-  it('api.modoDemo refleja el flag USE_REAL_BACKEND del entorno de test', async () => {
-    const { api } = await import('../lib/api');
-    // En el entorno de tests (sin VITE_USE_REAL_BACKEND=1), modoDemo debe ser true.
-    // Esto confirma que los dashboards en modo real usarán rutas distintas.
-    expect(typeof api.modoDemo).toBe('boolean');
-  });
-
-  it('api.listarExamenesContenido devuelve [] en modo demo (sin backend real)', async () => {
-    const { api } = await import('../lib/api');
-    if (api.modoDemo) {
-      const resultado = await api.listarExamenesContenido();
-      // En modo demo, el catálogo real no aplica → array vacío (vacío honesto).
-      expect(resultado).toEqual([]);
-    } else {
-      // En modo real la respuesta depende del backend; el test es solo informativo.
-      expect(true).toBe(true);
-    }
-  });
-});

@@ -2,7 +2,6 @@
 
 Endpoints:
 - POST /sessions/{id}/biometria         → 200/404 (sin auth, demo)
-- POST /biometria/verificar             → 200 (stateless, demo-only, sin auth)
 - POST /biometria/verificar-referencia  → 200/404/422/500 (stateful, auth estudiante, C-59)
 - GET  /biometria/referencia/estado     → 200 (auth estudiante, C-59)
 
@@ -24,9 +23,7 @@ from app.application.biometrics.verificar_referencia_vigente import (
 from app.application.proctoring import biometria_service
 from app.domain.auth.identity import AuthenticatedPrincipal
 from app.domain.biometrics.matching import (
-    UMBRAL_COSENO_DEFECTO,
     EmbeddingInvalidoError,
-    comparar_identidad,
 )
 from app.infrastructure.crypto.embedding_encryption import (
     EmbeddingEncryptionError,
@@ -36,8 +33,6 @@ from app.presentation.api.v1.proctoring.biometria.schemas import (
     BiometriaOut,
     EstadoReferenciaOut,
     GuardarBiometriaIn,
-    VerificarIdentidadIn,
-    VerificarIdentidadOut,
     VerificarReferenciaIn,
     VerificarReferenciaOut,
 )
@@ -89,49 +84,6 @@ def create_biometria_router(
             embedding=body.embedding,
         )
         return BiometriaOut(ok=True)
-
-    # -------------------------------------------------------------------------
-    # POST /biometria/verificar — DEMO-ONLY, stateless, sin auth, sin DB
-    #
-    # Conservado para retrocompat (C-45). El cliente manda ambos embeddings.
-    # NO usar en produccion: el embedding de referencia viaja al cliente,
-    # lo que viola Ley 25.326 / regla dura #7.
-    # Para produccion usar POST /biometria/verificar-referencia (C-59).
-    # -------------------------------------------------------------------------
-
-    @router.post(
-        "/biometria/verificar",
-        response_model=VerificarIdentidadOut,
-        summary="[DEMO-ONLY] Verificacion biometrica 1:1 stateless (sin DB, sin auth)",
-        description=(
-            "Endpoint stateless de retrocompat (C-45). Recibe ambos embeddings del cliente "
-            "y compara por distancia coseno sin consultar la DB. "
-            "**SOLO para modo demo** (VITE_USE_REAL_BACKEND=0). "
-            "En produccion usar POST /biometria/verificar-referencia (C-59, stateful, autenticado)."
-        ),
-    )
-    async def verificar_identidad(
-        body: VerificarIdentidadIn,
-    ) -> VerificarIdentidadOut:
-        """Compara dos embeddings faciales por distancia coseno (RN-BIO-01/02/03).
-
-        Endpoint stateless: no persiste ni consulta la DB.
-        Ley 25.326: ambos embeddings son dato sensible; no se loguean.
-        """
-        umbral = body.umbral if body.umbral is not None else UMBRAL_COSENO_DEFECTO
-        try:
-            resultado = comparar_identidad(
-                body.embedding_vivo,
-                body.embedding_referencia,
-                umbral=umbral,
-            )
-        except EmbeddingInvalidoError as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
-        return VerificarIdentidadOut(
-            distancia=resultado.distancia,
-            es_match=resultado.es_match,
-            umbral=resultado.umbral,
-        )
 
     # -------------------------------------------------------------------------
     # C-59: endpoints stateful autenticados (solo si se inyectaron las deps)

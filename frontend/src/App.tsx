@@ -21,8 +21,6 @@ const Revisor               = lazy(() => import('./screens/Revisor'));
 const SessionDetail         = lazy(() => import('./screens/SessionDetail'));
 const AdminDashboard        = lazy(() => import('./screens/AdminDashboard'));
 const ExamList              = lazy(() => import('./screens/ExamList'));
-const Reports               = lazy(() => import('./screens/Reports'));
-const AuditPrivacy          = lazy(() => import('./screens/AuditPrivacy'));
 const AlumnoDashboard       = lazy(() => import('./screens/AlumnoDashboard'));
 const AlumnoMaterias        = lazy(() => import('./screens/AlumnoMaterias'));
 const AlumnoMisExamenes     = lazy(() => import('./screens/AlumnoMisExamenes'));
@@ -81,8 +79,6 @@ export default function App() {
     '/admin/examenes': g(<ExamList />, ADMIN),
     '/admin/examenes/importar': g(<MoodleImportPage />, ADMIN),
     '/admin/examenes/:id': g(<ExamDetail />, ADMIN),
-    '/admin/reportes': g(<Reports />, ADMIN),
-    '/admin/auditoria': g(<AuditPrivacy />, ADMIN),
     '/admin/detection-test': g(<AdminDetectionHarness />, ADMIN),
     '/admin/proctoring-sessions': g(<ProctoringRevisor />, ADMIN),
     '/admin/proctoring-session-detail': g(<ProctoringSessionDetail />, SUPERVISION),

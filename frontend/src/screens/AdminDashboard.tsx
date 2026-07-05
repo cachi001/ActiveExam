@@ -62,8 +62,8 @@ export default function AdminDashboard() {
             sesiones supervisadas, tasa de flag y tiempo medio de revisión.
           </p>
           <p>
-            Desde acá llegás a configurar exámenes, ver reportes, auditoría y gestión de
-            usuarios. La supervisión en vivo y la cola de revisión están en el menú lateral.
+            Desde acá llegás a configurar exámenes y gestión de usuarios. La supervisión
+            en vivo y la cola de revisión están en el menú lateral.
           </p>
         </HelpButton>
       }
@@ -117,8 +117,6 @@ export default function AdminDashboard() {
               <h2 className="text-[16px] font-semibold text-on-surface leading-tight">Acciones rápidas</h2>
             </div>
             <div className="p-md flex flex-col gap-2">
-              <AccionRapida to="/admin/reportes" icon="analytics" label="Ver reportes" />
-              <AccionRapida to="/admin/auditoria" icon="policy" label="Auditoría" />
               <AccionRapida to="/admin/usuarios" icon="manage_accounts" label="Usuarios" />
               <AccionRapida to="/admin/materias" icon="school" label="Materias y comisiones" />
             </div>

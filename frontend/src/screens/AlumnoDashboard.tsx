@@ -12,7 +12,7 @@
 //
 // FUENTES DE DATOS (modo demo, USE_REAL_BACKEND=0):
 //   • Todo viene de api.misInscripciones() (datos en memoria)
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Card, Button, Icon, LoadingSpinner } from '../ui/components';
 import { HelpButton } from '../ui/HelpButton';
 import { StudentShell } from '../ui/shells';
@@ -21,9 +21,8 @@ import { useApp } from '../lib/store';
 import { api } from '../lib/api';
 import { INSTITUTION } from '../config/institution';
 import { nombreCompleto } from '../lib/types';
-import type { Inscripcion, EstadoEnrollment, ExamenContenidoResumen } from '../lib/types';
+import type { EstadoEnrollment, ExamenContenidoResumen } from '../lib/types';
 import { QuickAccessCard } from './alumno/components/QuickAccessCard';
-import { ExamenProximoCard } from './alumno/components/ExamenProximoCard';
 import { examenContenidoSubtitulo } from './dashboards.helpers';
 
 const VIGENCIA_LABEL: Record<string, string> = {
@@ -37,10 +36,7 @@ export default function AlumnoDashboard() {
   const navigate = useNavigate();
   const principal = useApp((s) => s.principal);
 
-  // Demo mode: inscripciones del alumno (datos en memoria).
-  const [inscripciones, setInscripciones] = useState<Inscripcion[]>([]);
-
-  // Modo real: datos del catálogo oficial (sin inscripciones inventadas).
+  // Datos del catálogo oficial (sin inscripciones inventadas).
   const [materiasCount, setMateriasCount] = useState(0);
   const [examenesDisponibles, setExamenesDisponibles] = useState<ExamenContenidoResumen[]>([]);
 
@@ -49,56 +45,29 @@ export default function AlumnoDashboard() {
   const [enrollment, setEnrollment] = useState<EstadoEnrollment | null>(null);
   const [cargando, setCargando] = useState(true);
 
-  const modoDemo = api.modoDemo;
-
   useEffect(() => {
     let cancelado = false;
     (async () => {
-      if (modoDemo) {
-        // Modo demo: usar datos en memoria (MIS_INSCRIPCIONES)
-        const [insc, gate, enr] = await Promise.all([
-          api.misInscripciones(),
-          api.puedeRendir(),
-          api.getEnrollment(),
-        ]);
-        if (cancelado) return;
-        setInscripciones(insc);
-        setPuedeRendir(gate.puede);
-        setGateCodigo(gate.codigo ?? null);
-        setEnrollment(enr);
-      } else {
-        // Modo real: fuentes reales; sin inscripciones (no hay endpoint en slim)
-        const [materias, examenes, gate, enr] = await Promise.all([
-          api.materiasDisponibles(),
-          api.listarExamenesContenido(),
-          api.puedeRendir(),
-          api.getEnrollment(),
-        ]);
-        if (cancelado) return;
-        setMateriasCount(materias.length);
-        setExamenesDisponibles(examenes);
-        setPuedeRendir(gate.puede);
-        setGateCodigo(gate.codigo ?? null);
-        setEnrollment(enr);
-      }
+      // Fuentes reales; sin inscripciones (no hay endpoint en slim)
+      const [materias, examenes, gate, enr] = await Promise.all([
+        api.materiasDisponibles(),
+        api.listarExamenesContenido(),
+        api.puedeRendir(),
+        api.getEnrollment(),
+      ]);
+      if (cancelado) return;
+      setMateriasCount(materias.length);
+      setExamenesDisponibles(examenes);
+      setPuedeRendir(gate.puede);
+      setGateCodigo(gate.codigo ?? null);
+      setEnrollment(enr);
       setCargando(false);
     })();
     return () => { cancelado = true; };
-  }, [modoDemo]);
+  }, []);
 
-  // Demo: derivar counts desde inscripciones en memoria
-  const proximos = useMemo(
-    () => inscripciones.filter((i) => i.estado === 'inscripto' || i.estado === 'habilitado'),
-    [inscripciones],
-  );
-  const materiasDeInscripciones = useMemo(
-    () => new Set(inscripciones.map((i) => i.materia_id)).size,
-    [inscripciones],
-  );
-
-  // Valores de display: modo real usa catálogo real; modo demo usa inscripciones.
-  const displayMateriasCount = modoDemo ? materiasDeInscripciones : materiasCount;
-  const displayExamenesCount = modoDemo ? inscripciones.length : examenesDisponibles.length;
+  const displayMateriasCount = materiasCount;
+  const displayExamenesCount = examenesDisponibles.length;
 
   const renderHeader = (centered = false) => (
     <header className={centered ? 'text-center' : ''}>
@@ -209,7 +178,7 @@ export default function AlumnoDashboard() {
           />
           <ContadorPersonal
             icon="assignment"
-            label={modoDemo ? 'Mis exámenes' : 'Exámenes disponibles'}
+            label="Exámenes disponibles"
             value={displayExamenesCount}
           />
         </div>
@@ -219,7 +188,7 @@ export default function AlumnoDashboard() {
           <section className="flex-1 min-w-0">
             <div className="flex items-center justify-between mb-md">
               <h2 className="text-[16px] font-semibold text-on-surface">
-                {modoDemo ? 'Próximos exámenes' : 'Exámenes disponibles'}
+                Exámenes disponibles
               </h2>
               <button
                 onClick={() => navigate('/alumno/mis-examenes')}
@@ -230,21 +199,7 @@ export default function AlumnoDashboard() {
             </div>
 
             {cargando ? (
-              <LoadingSpinner size="sm" label={modoDemo ? 'Cargando inscripciones…' : 'Cargando catálogo…'} />
-            ) : modoDemo ? (
-              proximos.length === 0 ? (
-                <Card className="text-center py-2xl min-h-[320px] flex flex-col items-center justify-center">
-                  <Icon name="event_busy" className="text-[44px] text-on-surface-variant mb-md" />
-                  <p className="text-[14px] text-on-surface-variant">No tenés exámenes próximos.</p>
-                  <Button variant="outline" size="sm" onClick={() => navigate('/alumno/materias')} className="mt-md" icon="add_circle">
-                    Inscribite a un examen
-                  </Button>
-                </Card>
-              ) : (
-                <div className="space-y-sm">
-                  {proximos.map((insc) => <ExamenProximoCard key={insc.id} inscripcion={insc} />)}
-                </div>
-              )
+              <LoadingSpinner size="sm" label="Cargando catálogo…" />
             ) : (
               examenesDisponibles.length === 0 ? (
                 <Card className="text-center py-2xl min-h-[320px] flex flex-col items-center justify-center">

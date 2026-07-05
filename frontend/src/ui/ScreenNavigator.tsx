@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Icon } from './components';
 import { useRouter } from '../lib/router';
 import { useApp } from '../lib/store';
-import { api, PRINCIPALES } from '../lib/api';
+import { PRINCIPALES } from '../lib/api';
 import type { Rol } from '../lib/types';
 
 interface Item { to: string; label: string; rol?: Rol; }
@@ -43,8 +43,6 @@ const GRUPOS: Group[] = [
     titulo: 'Administración', icon: 'admin_panel_settings', items: [
       { to: '/admin', label: 'Dashboard', rol: 'admin_sistema' },
       { to: '/admin/examenes', label: 'Listado de exámenes' },
-      { to: '/admin/reportes', label: 'Reportes y analítica' },
-      { to: '/admin/auditoria', label: 'Auditoría y privacidad' },
       { to: '/admin/detection-test', label: 'Test de detección', rol: 'admin_sistema' },
     ],
   },
@@ -75,7 +73,7 @@ export function ScreenNavigator() {
         <div className="fixed bottom-20 right-5 z-[100] w-80 max-h-[70vh] overflow-y-auto rounded-xl bg-surface-container-lowest border border-outline-variant/60 shadow-card-lg p-md animate-in fade-in slide-in-from-bottom-4">
           <div className="flex items-center justify-between mb-sm px-base">
             <span className="font-headline text-title-lg text-on-surface">Pantallas</span>
-            <span className="text-label-sm text-on-surface-variant">{api.modoDemo ? 'Modo simulación' : 'Backend real'}</span>
+            <span className="text-label-sm text-on-surface-variant">Backend real</span>
           </div>
           {GRUPOS.map((g) => (
             <div key={g.titulo} className="mb-sm">

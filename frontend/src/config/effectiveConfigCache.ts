@@ -16,7 +16,7 @@
  *   resetEffectiveConfigCache();
  */
 
-import { api, patchDemoExamenFromConfig } from '../lib/api';
+import { api } from '../lib/api';
 import { seedScoringWeights, seedScoringSeveridades, resetScoringWeightsCache as _resetScoringWeightsCache } from '../proctoring/scoringWeights';
 import type { Severidad } from '../lib/types';
 import { seedUmbralAlto } from '../screens/proctoring/helpers';
@@ -80,12 +80,6 @@ export async function loadEffectiveConfig(): Promise<void> {
       // Siembra el umbral de riesgo alto desde la config efectiva.
       // nivelRiesgo() y las vistas usan getUmbralAlto() en lugar del const hardcodeado.
       seedUmbralAlto(data.umbral_cola_revision);
-      // En modo demo, actualiza el examen demo para que refleje la config actualizada.
-      patchDemoExamenFromConfig({
-        umbral_cola_revision: data.umbral_cola_revision,
-        detectores_activos: data.detectores_activos,
-        retencion_dias_default: data.retencion_dias_default,
-      });
     } catch (err) {
       console.warn('[effectiveConfig] No se pudo cargar la config efectiva; usando fallback.', err);
       _cache = null;

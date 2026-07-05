@@ -1,10 +1,9 @@
 /**
  * Interfaz AuthProvider — puerto de autenticación (C-55, D6).
  *
- * Tres adapters implementan esta interfaz:
+ * Dos adapters implementan esta interfaz:
  *   - JwtAdapter    (VITE_AUTH_PROVIDER=jwt)      → formulario + POST /auth/login
  *   - KeycloakAdapter (VITE_AUTH_PROVIDER=keycloak) → flujo OIDC PKCE existente
- *   - DemoAdapter   (VITE_AUTH_PROVIDER=demo)     → selector de roles sin red
  *
  * El singleton del provider activo se resuelve en lib/authProvider.ts.
  * authStore y api.ts dependen de esta interfaz, no de Keycloak directamente.

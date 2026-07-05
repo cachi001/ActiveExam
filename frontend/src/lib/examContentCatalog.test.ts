@@ -45,38 +45,7 @@ describe('1.1 ExamenContenidoResumen — tipo de dominio', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 2. RED: listarExamenesContenido() en modo demo devuelve []
-// ---------------------------------------------------------------------------
-
-describe('2.1 listarExamenesContenido() — modo demo', () => {
-  it('devuelve [] sin hacer fetch cuando USE_REAL_BACKEND=false', async () => {
-    // En modo demo (sin backend), el catálogo de exámenes importados está vacío.
-    // Importamos con vi.doMock para controlar USE_REAL_BACKEND.
-    const fetchSpy = vi.spyOn(globalThis, 'fetch');
-
-    // Importar el módulo que aporta la función a testear.
-    // El modo demo se simula importando sin VITE_USE_REAL_BACKEND (default: demo).
-    const { api } = await import('./api');
-
-    // En modo demo modoDemo=true → listarExamenesContenido devuelve []
-    if (api.modoDemo) {
-      const resultado = await api.listarExamenesContenido();
-      expect(resultado).toEqual([]);
-      expect(fetchSpy).not.toHaveBeenCalledWith(
-        expect.stringContaining('exam-content'),
-        expect.anything(),
-      );
-    } else {
-      // Si USE_REAL_BACKEND=1 en el entorno de test, saltamos esta verificación.
-      expect(true).toBe(true); // pass
-    }
-
-    fetchSpy.mockRestore();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// 3. GREEN: listarExamenesContenido() en modo real llama a GET /exam-content
+// 3. GREEN: listarExamenesContenido() llama a GET /exam-content
 // ---------------------------------------------------------------------------
 
 describe('3.1 listarExamenesContenido() — modo real', () => {
