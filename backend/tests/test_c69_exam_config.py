@@ -78,11 +78,12 @@ _TABLES_TO_CREATE = [
 
 
 def _valores_ok(**overrides):
+    # C-69: apertura y cierre son OBLIGATORIOS → los defaults incluyen una ventana válida.
     base = dict(
         tiempo_limite_min=60,
         intentos_permitidos=1,
-        apertura=None,
-        cierre=None,
+        apertura=datetime(2026, 1, 1, 9, 0, tzinfo=timezone.utc),
+        cierre=datetime(2026, 1, 1, 11, 0, tzinfo=timezone.utc),
         nota_maxima=10.0,
         nota_aprobacion=6.0,
     )
@@ -295,6 +296,8 @@ async def test_get_config_devuelve_defaults(admin_app, factory):
         "nota_maxima": 10.0,
         "nota_aprobacion": 6.0,
         "mezclar_preguntas": False,
+        "mostrar_nota": "al_cerrar",
+        "revision_habilitada": False,
     }
 
 
@@ -343,6 +346,14 @@ async def test_patch_config_parcial_preserva_el_resto(admin_app, factory):
     """Update parcial: solo cambia el campo enviado; el resto queda igual."""
     examen_id = await _crear_examen_simple(factory)
     async with _admin_client(admin_app) as c:
+        # Ventana válida primero (apertura/cierre son obligatorios, C-69).
+        await c.patch(
+            f"/api/v1/exam-content/{examen_id}/config",
+            json={
+                "apertura": "2026-03-01T09:00:00+00:00",
+                "cierre": "2026-03-01T11:00:00+00:00",
+            },
+        )
         resp = await c.patch(
             f"/api/v1/exam-content/{examen_id}/config",
             json={"tiempo_limite_min": 30},
@@ -350,28 +361,42 @@ async def test_patch_config_parcial_preserva_el_resto(admin_app, factory):
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body["tiempo_limite_min"] == 30
-    # El resto conserva los defaults
+    # El resto conserva los defaults / lo seteado antes
     assert body["intentos_permitidos"] == 1
     assert body["nota_maxima"] == 10.0
     assert body["nota_aprobacion"] == 6.0
     assert body["mezclar_preguntas"] is False
+    assert body["apertura"].startswith("2026-03-01T09:00:00")
+    assert body["cierre"].startswith("2026-03-01T11:00:00")
 
 
 @pytest.mark.asyncio
-async def test_patch_config_null_limpia_ventana(admin_app, factory):
-    """Enviar null explícito limpia el campo nullable (tiempo/apertura/cierre)."""
+async def test_patch_config_fechas_obligatorias(admin_app, factory):
+    """C-69: tiempo sigue siendo nullable, pero apertura/cierre son OBLIGATORIOS."""
     examen_id = await _crear_examen_simple(factory)
     async with _admin_client(admin_app) as c:
-        await c.patch(
+        r0 = await c.patch(
             f"/api/v1/exam-content/{examen_id}/config",
-            json={"tiempo_limite_min": 60},
+            json={
+                "apertura": "2026-03-01T09:00:00+00:00",
+                "cierre": "2026-03-01T11:00:00+00:00",
+                "tiempo_limite_min": 60,
+            },
         )
-        resp = await c.patch(
+        assert r0.status_code == 200, r0.text
+        # tiempo → null: OK (sigue siendo nullable = sin límite).
+        r1 = await c.patch(
             f"/api/v1/exam-content/{examen_id}/config",
             json={"tiempo_limite_min": None},
         )
-    assert resp.status_code == 200, resp.text
-    assert resp.json()["tiempo_limite_min"] is None
+        assert r1.status_code == 200, r1.text
+        assert r1.json()["tiempo_limite_min"] is None
+        # apertura → null: RECHAZADO (obligatoria).
+        r2 = await c.patch(
+            f"/api/v1/exam-content/{examen_id}/config",
+            json={"apertura": None},
+        )
+        assert r2.status_code == 422, r2.text
 
 
 @pytest.mark.asyncio
@@ -510,8 +535,8 @@ async def test_nota_sobre_nota_maxima_configurable(factory):
 
 
 @pytest.mark.asyncio
-async def test_nota_redondea_a_dos_decimales(factory):
-    """1/3 correctas sobre 10 → 3.33 (redondeo a 2 decimales)."""
+async def test_nota_redondea_a_entero(factory):
+    """1/3 correctas sobre 10 = 3.33 → 3 (redondeo a entero, ROUND_HALF_UP, estilo Moodle)."""
     examen_id, pids, correctas = await _crear_examen_con_n_preguntas(
         factory, n=3, nota_maxima=10.0
     )
@@ -520,7 +545,7 @@ async def test_nota_redondea_a_dos_decimales(factory):
         nota = await calcular_nota_academica(
             db=s, examen_contenido_id=examen_id, respuestas=respuestas
         )
-    assert nota == pytest.approx(3.33)
+    assert nota == pytest.approx(3.0)
 
 
 # ---------------------------------------------------------------------------

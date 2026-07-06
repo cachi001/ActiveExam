@@ -109,6 +109,7 @@ export function obtenerOCrearSesion(
   examenId: string,
   nombre: string | undefined,
   examenContenidoId?: string | null,
+  onError?: (err: unknown) => void,
 ): Promise<string | null> {
   const enVuelo = sesionEnCreacion.get(examenId);
   if (enVuelo) return enVuelo;
@@ -117,13 +118,61 @@ export function obtenerOCrearSesion(
     // contra qué contenido (Moodle XML) rinde el alumno (vínculo REAL en proctoring_session).
     .crearSesionProctoring('examen', nombre, examenId, examenContenidoId)
     .then((s) => s.id)
-    .catch(() => {
+    .catch((err) => {
       // La creación falló: liberar la entrada para permitir reintento futuro.
       sesionEnCreacion.delete(examenId);
+      // Surface la causa al hook para que Examen.tsx bloquee la entrada al examen
+      // en vez de dejar al alumno respondiendo en el vacío (sin sesión → nada se
+      // guarda ni se califica). `setSessionError` de useState es estable entre el
+      // doble montaje de StrictMode, así que el callback siempre apunta al mismo
+      // setter del fiber vivo.
+      onError?.(err);
       return null;
     });
   sesionEnCreacion.set(examenId, p);
   return p;
+}
+
+/** Motivo por el que NO se pudo iniciar la sesión de examen (bloquea la entrada). */
+export interface SessionInitError {
+  /** status HTTP del fallo (409 intentos, 403 ventana, otro/undefined = red/desconocido). */
+  status?: number;
+  /** Título corto para el overlay bloqueante. */
+  titulo: string;
+  /** Explicación en lenguaje claro para el alumno. */
+  mensaje: string;
+  /** true si reintentar tiene sentido (fallo de red), false si es una regla de negocio. */
+  reintentable: boolean;
+}
+
+/** Mapea el error de creación de sesión a un motivo legible para el alumno. */
+export function mapearSessionInitError(err: unknown): SessionInitError {
+  const status = (err as { status?: number } | null)?.status;
+  if (status === 409) {
+    return {
+      status,
+      titulo: 'Sin intentos disponibles',
+      mensaje:
+        'Ya agotaste los intentos permitidos para este examen. Si creés que es un error, contactá a tu docente.',
+      reintentable: false,
+    };
+  }
+  if (status === 403) {
+    return {
+      status,
+      titulo: 'Examen fuera de horario',
+      mensaje:
+        'Este examen está fuera de la ventana de rendición (todavía no abrió o ya cerró). Revisá la fecha y el horario con tu docente.',
+      reintentable: false,
+    };
+  }
+  return {
+    status,
+    titulo: 'No pudimos iniciar tu examen',
+    mensaje:
+      'Hubo un problema al iniciar la sesión de examen. Revisá tu conexión a internet y volvé a intentar.',
+    reintentable: true,
+  };
 }
 
 /** Test-only: limpia la guarda de idempotencia de módulo entre casos de test. */
@@ -161,6 +210,12 @@ export interface ExamProctoringState {
   eventos: EventoSesion[];
   /** true si hay un monitor adicional conectado AHORA mismo (polling, no historial). */
   extraMonitorActive: boolean;
+  /**
+   * Motivo por el que NO se pudo iniciar la sesión de examen, o null si todo OK.
+   * Cuando NO es null, Examen.tsx bloquea la entrada al examen (no se puede rendir
+   * sin sesión: las respuestas no se guardarían ni se calcularía la nota).
+   */
+  sessionError: SessionInitError | null;
 }
 
 export interface UseExamProctoringResult extends ExamProctoringState {
@@ -193,6 +248,7 @@ export function useExamProctoring(
   // Estado en vivo del monitor adicional. Refleja la ultima lectura del polling
   // (cada 5s). Examen.tsx lo usa para bloquear la rendicion mientras este `true`.
   const [extraMonitorActive, setExtraMonitorActive] = useState(false);
+  const [sessionError, setSessionError] = useState<SessionInitError | null>(null);
 
   // ------ Refs del motor / pipeline / loop ------
   const engineRef = useRef<VisionEngine | null>(null);
@@ -482,6 +538,10 @@ export function useExamProctoring(
           examen.id,
           nombreAlumnoRef.current || examen.nombre,
           examen.examen_contenido_id,
+          // Si la creación falla (409 intentos agotados, 403 fuera de ventana, red),
+          // surface el motivo: Examen.tsx bloquea la entrada en vez de dejar una
+          // rendición fantasma que no guarda respuestas ni calcula nota.
+          (err) => setSessionError(mapearSessionInitError(err)),
         ).then(
           (id) => {
             if (cancelled || !id) return id ?? null;
@@ -577,7 +637,7 @@ export function useExamProctoring(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [examen?.id]);
 
-  return { sessionId, score, eventCount, activo, eventos, extraMonitorActive, detener };
+  return { sessionId, score, eventCount, activo, eventos, extraMonitorActive, sessionError, detener };
 }
 
 // ---------------------------------------------------------------------------

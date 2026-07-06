@@ -141,6 +141,19 @@ class ExamenContenidoModel(Base):
         nullable=False,
         server_default="false",
     )
+    # Visibilidad de resultados (migración 0036, gate estilo Moodle "Review options").
+    mostrar_nota: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        server_default="al_cerrar",
+        comment="Cuándo se muestra la nota: 'al_cerrar' | 'inmediata'.",
+    )
+    revision_habilitada: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        server_default="false",
+        comment="Si el alumno puede ver la corrección (solo después del cierre).",
+    )
 
     preguntas: Mapped[list[PreguntaExamenModel]] = relationship(
         "PreguntaExamenModel",

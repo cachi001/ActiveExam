@@ -21,6 +21,7 @@ from app.application.moodle.resultados_query import (
     listar_mis_notas,
     listar_resultados_examen,
 )
+from app.application.moodle.revision_query import obtener_revision
 from app.application.moodle.writeback_service import (
     MoodleWritebackService,
     WritebackEstado,
@@ -78,13 +79,16 @@ from app.presentation.api.v1.exam_content.schemas import (
     MoodleTargetResponse,
     OmitidaItemResponse,
     OpcionRendicionResponse,
+    OpcionRevisionResponse,
     PeriodoEnum,
     PreguntaPoolItemResponse,
     PreguntaRendicionResponse,
+    PreguntaRevisionResponse,
     PreguntasPoolResponse,
     PreguntasSeleccionRequest,
     ResultadoAlumnoResponse,
     ResultadosExamenPaginadosResponse,
+    RevisionExamenResponse,
     SincronizarMoodleResponse,
 )
 
@@ -800,6 +804,8 @@ def create_exam_content_router(
             nota_maxima=examen.nota_maxima,
             nota_aprobacion=examen.nota_aprobacion,
             mezclar_preguntas=examen.mezclar_preguntas,
+            mostrar_nota=examen.mostrar_nota,
+            revision_habilitada=examen.revision_habilitada,
         )
 
     @router.get(
@@ -1242,6 +1248,9 @@ def create_exam_taking_router(
                     umbral_revision=r.umbral_revision,
                     eventos=r.eventos,
                     finalizada_en=r.finalizada_en,
+                    nota_visible=r.nota_visible,
+                    revision_disponible=r.revision_disponible,
+                    cierre=r.cierre,
                 )
                 for r in items
             ],
@@ -1378,6 +1387,77 @@ def create_exam_taking_router(
             )
 
         return _resumen_to_response(resumen)
+
+    @router.get(
+        "/{examen_id}/revision",
+        response_model=RevisionExamenResponse,
+        summary="Revisión post-examen del alumno (corrección + contadores)",
+    )
+    async def revisar_examen(
+        examen_id: str,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    ) -> RevisionExamenResponse:
+        """Devuelve la corrección del intento FINALIZADO del alumno para este examen.
+
+        Excepción a D3: expone es_correcta, pero SOLO al dueño (la query filtra por
+        idnumber/email del JWT) y SOLO con el intento ya finalizado — como las
+        "Review options" de Moodle. 404 si el alumno no tiene un intento finalizado.
+        """
+        if session_factory is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Persistencia no inicializada.",
+            )
+
+        async with session_factory() as session:
+            rev = await obtener_revision(
+                db=session,
+                examen_contenido_id=examen_id,
+                alumno_idnumber=principal.id_institucional or "",
+                alumno_email=principal.email or "",
+            )
+
+        if rev is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"error": "revision_no_disponible", "examen_id": examen_id},
+            )
+
+        return RevisionExamenResponse(
+            examen_id=rev.examen_id,
+            titulo=rev.titulo,
+            nota=rev.nota,
+            nota_maxima=rev.nota_maxima,
+            aprobado=rev.aprobado,
+            total_preguntas=rev.total_preguntas,
+            correctas=rev.correctas,
+            incorrectas=rev.incorrectas,
+            sin_responder=rev.sin_responder,
+            finalizada_en=rev.finalizada_en,
+            disponible=rev.disponible,
+            revision_disponible=rev.revision_disponible,
+            cierre=rev.cierre,
+            preguntas=[
+                PreguntaRevisionResponse(
+                    id=p.id,
+                    enunciado=p.enunciado,
+                    orden=p.orden,
+                    respondida=p.respondida,
+                    acertada=p.acertada,
+                    opciones=[
+                        OpcionRevisionResponse(
+                            id=o.id,
+                            texto=o.texto,
+                            orden=o.orden,
+                            es_correcta=o.es_correcta,
+                            elegida=o.elegida,
+                        )
+                        for o in p.opciones
+                    ],
+                )
+                for p in rev.preguntas
+            ],
+        )
 
     @router.get(
         "/{examen_id}",

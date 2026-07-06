@@ -13,7 +13,7 @@ interface Props {
  */
 export function ExamenCamaraPanel({ videoRef }: Props) {
   return (
-    <div className="rounded-2xl border border-outline-variant/50 bg-white p-md space-y-sm h-full flex flex-col">
+    <div className="space-y-sm">
       <p className="text-label-sm font-semibold text-on-surface-variant uppercase tracking-wide">
         Tu cámara
       </p>

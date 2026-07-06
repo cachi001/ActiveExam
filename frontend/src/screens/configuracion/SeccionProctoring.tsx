@@ -31,12 +31,15 @@ interface Estado {
   // C-69 admin-sync: interruptores de los canales del alumno.
   chatHabilitado: boolean;
   pausasHabilitadas: boolean;
+  // C-69: límite de duración de la pausa autorizada (minutos).
+  pausaMaxMin: number;
 }
 
 function estadosIguales(a: Estado, b: Estado): boolean {
   return a.umbral === b.umbral &&
     a.chatHabilitado === b.chatHabilitado &&
     a.pausasHabilitadas === b.pausasHabilitadas &&
+    a.pausaMaxMin === b.pausaMaxMin &&
     a.detectores.length === b.detectores.length &&
     a.detectores.every((d) => b.detectores.includes(d));
 }
@@ -46,6 +49,7 @@ const ESTADO_DEFAULT: Estado = {
   detectores: DETECTORES_DEFAULT,
   chatHabilitado: true,
   pausasHabilitadas: true,
+  pausaMaxMin: 10,
 };
 
 export default function SeccionProctoring() {
@@ -65,6 +69,7 @@ export default function SeccionProctoring() {
           // Degradación segura: si el backend no los manda, se asumen habilitados.
           chatHabilitado: cfg.chat_habilitado ?? true,
           pausasHabilitadas: cfg.pausas_habilitadas ?? true,
+          pausaMaxMin: cfg.pausa_max_min ?? 10,
         };
         setEstado(cargado);
         setInicial(cargado);
@@ -86,6 +91,7 @@ export default function SeccionProctoring() {
         detectores_activos: estado.detectores,
         chat_habilitado: estado.chatHabilitado,
         pausas_habilitadas: estado.pausasHabilitadas,
+        pausa_max_min: estado.pausaMaxMin,
       });
       // Invalida el cache de config efectiva para que el examen y el harness
       // carguen la nueva config en la próxima sesión (task 4.5).
@@ -113,7 +119,10 @@ export default function SeccionProctoring() {
     <div className="space-y-lg">
       {/* El título y el subtítulo ya los pone el header de la página + el tab;
           cada card tiene su propio SectionTitle. Sin intro redundante acá. */}
-      <div className="grid lg:grid-cols-2 gap-lg items-start">
+      <div className="grid lg:grid-cols-3 gap-lg items-start">
+        {/* Columna izquierda: umbral + canales del alumno apilados (llena el alto
+            de los detectores, sin espacio muerto en desktop). */}
+        <div className="lg:col-span-1 space-y-lg min-w-0">
         <Card className="space-y-md min-w-0 flex flex-col">
           <SectionTitle sub="A partir de qué puntaje de riesgo una sesión entra a revisión humana">
             Umbral de revisión
@@ -159,7 +168,54 @@ export default function SeccionProctoring() {
           </p>
         </Card>
 
-        <Card className="space-y-md min-w-0 flex flex-col">
+        {/* Canales del alumno — debajo del umbral, en la columna izquierda. */}
+        <Card className="space-y-md min-w-0">
+          <SectionTitle sub="Qué herramientas de comunicación y ayuda tiene el alumno mientras rinde">
+            Canales del alumno
+          </SectionTitle>
+          <div className="grid grid-cols-1 gap-2">
+            <ToggleRow
+              label="Chat entre proctor y alumno"
+              description="Habilita el canal de mensajes en vivo entre el alumno que rinde y el proctor que supervisa. Si lo desactivás, no aparece el chat ni del lado del alumno ni del proctor."
+              on={estado.chatHabilitado}
+              onToggle={() => setEstado((p) => ({ ...p, chatHabilitado: !p.chatHabilitado }))}
+            />
+            <ToggleRow
+              label="Pausas solicitadas por el alumno"
+              description="Permite que el alumno pida una pausa durante el examen para que el proctor la autorice. Si lo desactivás, el alumno no ve el botón de pausa y el proctor no recibe solicitudes."
+              on={estado.pausasHabilitadas}
+              onToggle={() => setEstado((p) => ({ ...p, pausasHabilitadas: !p.pausasHabilitadas }))}
+            />
+            {estado.pausasHabilitadas && (
+              <div className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl border border-outline-variant/60 bg-surface-container-low/50">
+                <div className="min-w-0">
+                  <p className="text-label-md font-semibold text-on-surface">Duración máxima de la pausa</p>
+                  <p className="text-[11px] text-on-surface-variant leading-snug mt-0.5">
+                    Al vencer, el examen se reanuda solo (evita usar la pausa para hacer tiempo).
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <input
+                    type="number"
+                    min={1}
+                    max={120}
+                    inputMode="numeric"
+                    aria-label="Duración máxima de la pausa en minutos"
+                    disabled={guardando}
+                    value={estado.pausaMaxMin}
+                    onChange={(e) => setEstado((p) => ({ ...p, pausaMaxMin: Math.max(1, Math.min(120, Number(e.target.value) || 1)) }))}
+                    className="w-20 text-[14px] px-3 py-2 rounded-lg border border-outline-variant bg-white focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                  />
+                  <span className="text-label-sm text-on-surface-variant">min</span>
+                </div>
+              </div>
+            )}
+          </div>
+        </Card>
+        </div>
+
+        {/* Detectores — 2/3 del ancho a la derecha, en 2 columnas. */}
+        <Card className="lg:col-span-2 space-y-md min-w-0 flex flex-col">
           <SectionTitle sub="Qué situaciones vigila el sistema por defecto durante el examen">
             Detectores activos
           </SectionTitle>
@@ -169,27 +225,6 @@ export default function SeccionProctoring() {
           />
         </Card>
       </div>
-
-      {/* C-69 admin-sync: canales del alumno durante el examen. */}
-      <Card className="space-y-md">
-        <SectionTitle sub="Qué herramientas de comunicación y ayuda tiene disponibles el alumno mientras rinde">
-          Canales del alumno
-        </SectionTitle>
-        <div className="grid lg:grid-cols-2 gap-2">
-          <ToggleRow
-            label="Chat entre proctor y alumno"
-            description="Habilita el canal de mensajes en vivo entre el alumno que rinde y el proctor que supervisa. Si lo desactivás, no aparece el chat ni del lado del alumno ni del proctor."
-            on={estado.chatHabilitado}
-            onToggle={() => setEstado((p) => ({ ...p, chatHabilitado: !p.chatHabilitado }))}
-          />
-          <ToggleRow
-            label="Pausas solicitadas por el alumno"
-            description="Permite que el alumno pida una pausa durante el examen para que el proctor la autorice. Si lo desactivás, el alumno no ve el botón de pausa y el proctor no recibe solicitudes."
-            on={estado.pausasHabilitadas}
-            onToggle={() => setEstado((p) => ({ ...p, pausasHabilitadas: !p.pausasHabilitadas }))}
-          />
-        </div>
-      </Card>
 
       {/* C: Footer dirty-aware */}
       {dirty && (

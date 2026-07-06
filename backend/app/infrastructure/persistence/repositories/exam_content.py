@@ -61,6 +61,8 @@ class ExamenContenidoSqlRepository:
             nota_maxima=examen.nota_maxima,
             nota_aprobacion=examen.nota_aprobacion,
             mezclar_preguntas=examen.mezclar_preguntas,
+            mostrar_nota=examen.mostrar_nota,
+            revision_habilitada=examen.revision_habilitada,
         )
         for i, pregunta in enumerate(examen.preguntas):
             p_model = PreguntaExamenModel(
@@ -438,6 +440,8 @@ class ExamenContenidoSqlRepository:
             nota_maxima=float(model.nota_maxima),
             nota_aprobacion=float(model.nota_aprobacion),
             mezclar_preguntas=model.mezclar_preguntas,
+            mostrar_nota=model.mostrar_nota,
+            revision_habilitada=model.revision_habilitada,
             preguntas=preguntas,
         )
 

@@ -5,7 +5,18 @@
  * a la derecha, nombre+descripción a la izquierda. Que respiren.
  */
 import { TIPO_EVENTO_LABEL } from '../../../lib/api';
+import { Icon } from '../../../ui/components';
 import type { TipoEvento } from '../../../lib/types';
+
+// Eventos que capturan un SCREENSHOT cuando se disparan (el frame de la cámara ES
+// la prueba). El resto NO adjunta imagen — el registro del evento + timestamp ya es
+// la evidencia (privacidad L2.5 / regla dura #7). DEBE coincidir con
+// EVENTOS_CON_EVIDENCIA_VISUAL en useExamProctoring.ts.
+const CAPTURA_SCREENSHOT: Set<string> = new Set([
+  'rostro_ausente',
+  'multiples_rostros',
+  'mirada_desviada_sostenida',
+]);
 
 // Orden por grupos lógicos: primero lo que ve la cámara, después el
 // comportamiento en el navegador, y al final hardware/conectividad.
@@ -52,7 +63,7 @@ export default function DetectoresSelector({ value, onChange }: DetectoresSelect
       <p className="text-label-sm text-on-surface-variant">
         <span className="font-semibold text-on-surface">{value.length}</span> de {DETECTORES.length} detectores activos
       </p>
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-2">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
         {DETECTORES.map((d) => {
           const on = value.includes(d);
           return (
@@ -69,7 +80,7 @@ export default function DetectoresSelector({ value, onChange }: DetectoresSelect
                   : 'bg-error-container/30 border-error/30'
               }`}
             >
-              {/* Nombre + descripción a la izquierda */}
+              {/* Nombre + descripción + si captura imagen, a la izquierda */}
               <div className="flex-1 min-w-0">
                 <p className="text-label-md font-semibold text-on-surface truncate">
                   {TIPO_EVENTO_LABEL[d]}
@@ -77,6 +88,19 @@ export default function DetectoresSelector({ value, onChange }: DetectoresSelect
                 <p className="text-[11px] text-on-surface-variant leading-snug mt-0.5">
                   {DETECTOR_DESC[d] ?? ''}
                 </p>
+                <span
+                  className={`mt-1.5 inline-flex items-center gap-1 text-[10px] font-medium rounded-full px-2 py-0.5 ${
+                    CAPTURA_SCREENSHOT.has(d)
+                      ? 'bg-primary-fixed text-primary'
+                      : 'bg-surface-container text-on-surface-variant'
+                  }`}
+                >
+                  <Icon
+                    name={CAPTURA_SCREENSHOT.has(d) ? 'photo_camera' : 'no_photography'}
+                    className="text-[12px]"
+                  />
+                  {CAPTURA_SCREENSHOT.has(d) ? 'Captura imagen' : 'Sin imagen'}
+                </span>
               </div>
               {/* Switch a la derecha (presentacional; el click es del botón contenedor) */}
               <span

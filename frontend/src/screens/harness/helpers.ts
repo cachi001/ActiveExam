@@ -63,11 +63,11 @@ export const SEVERITY_BADGE_COLORS: Record<Severidad, string> = {
  * visualmente sin recargar (las cards grises deprimian la lectura).
  */
 export const SEVERITY_CARD_COLORS: Record<Severidad, string> = {
-  baseline: 'bg-surface-container-low/60 border-outline-variant/40 border-l-4 border-l-outline-variant',
-  baja: 'bg-blue-50 border-blue-200 border-l-4 border-l-blue-500',
-  media: 'bg-warning-container/40 border-warning/30 border-l-4 border-l-warning',
-  alta: 'bg-error-container/40 border-error/30 border-l-4 border-l-error',
-  critica: 'bg-error/15 border-error/50 border-l-4 border-l-error',
+  baseline: 'bg-surface-container-low/60 border-outline-variant/40',
+  baja: 'bg-blue-50 border-blue-200',
+  media: 'bg-warning-container/40 border-warning/30',
+  alta: 'bg-error-container/40 border-error/30',
+  critica: 'bg-error/15 border-error/50',
 };
 
 // NOTA (c-68 task 5.3): SEVERITY_RANGES (pesos hardcodeados 0/5/20/50/100) fue

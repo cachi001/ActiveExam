@@ -10,11 +10,13 @@ nota académica, estado del envío a Moodle y la marca de actualización.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.application.proctoring.scoring import calcular_score
+from app.domain.exam_content.visibilidad import nota_visible, revision_visible
 from app.infrastructure.persistence.models.exam_content import ExamenContenidoModel
 from app.infrastructure.persistence.models.moodle_writeback import (
     MoodleWritebackEstadoModel,
@@ -241,6 +243,11 @@ class MiNota:
     umbral_revision: float | None
     eventos: int
     finalizada_en: object | None  # datetime tz-aware (lo serializa Pydantic)
+    # Visibilidad de resultados (C-69). Si nota_visible=False, ``nota`` viene None
+    # (no se filtra el número) y la UI muestra "disponible al cerrar (cierre)".
+    nota_visible: bool
+    revision_disponible: bool
+    cierre: object | None  # datetime tz-aware o None
 
 
 async def _umbral_cola_revision(db: AsyncSession) -> int:
@@ -316,6 +323,9 @@ async def listar_mis_notas(
             ExamenContenidoModel.titulo.label("examen_titulo"),
             ExamenContenidoModel.nota_maxima,
             ExamenContenidoModel.nota_aprobacion,
+            ExamenContenidoModel.cierre,
+            ExamenContenidoModel.mostrar_nota,
+            ExamenContenidoModel.revision_habilitada,
             MoodleWritebackEstadoModel.nota,
             MoodleWritebackEstadoModel.estado,
         )
@@ -360,24 +370,38 @@ async def listar_mis_notas(
     pesos = await _pesos_vivos_por_tipo(db)
     umbral = await _umbral_cola_revision(db)
 
+    ahora = datetime.now(tz=timezone.utc)
     items: list[MiNota] = []
     for r in rows:
         evs = eventos_por_sesion.get(r.session_id, [])
         score = calcular_score(evs, pesos_por_tipo=pesos)
-        nota = float(r.nota) if r.nota is not None else None
+        nota_real = float(r.nota) if r.nota is not None else None
         nota_aprobacion = (
             float(r.nota_aprobacion) if r.nota_aprobacion is not None else None
         )
+        # Gate de visibilidad (C-69): si la nota aún no es visible NO se filtra el
+        # número al cliente (nota=None); la UI muestra "disponible al cerrar".
+        visible = nota_visible(
+            mostrar_nota=r.mostrar_nota, cierre=r.cierre, ahora=ahora
+        )
+        rev_disp = revision_visible(
+            revision_habilitada=r.revision_habilitada,
+            mostrar_nota=r.mostrar_nota,
+            cierre=r.cierre,
+            ahora=ahora,
+        )
+        nota_out = nota_real if visible else None
         aprobado = (
-            nota is not None
+            visible
+            and nota_real is not None
             and nota_aprobacion is not None
-            and nota >= nota_aprobacion
+            and nota_real >= nota_aprobacion
         )
         items.append(
             MiNota(
                 examen_id=r.examen_contenido_id or "",
                 examen_titulo=r.examen_titulo or "",
-                nota=nota,
+                nota=nota_out,
                 nota_maxima=float(r.nota_maxima) if r.nota_maxima is not None else None,
                 aprobado=aprobado,
                 estado_moodle=estado_moodle_display(
@@ -388,6 +412,9 @@ async def listar_mis_notas(
                 umbral_revision=float(umbral),
                 eventos=len(evs),
                 finalizada_en=r.finalizada_en,
+                nota_visible=visible,
+                revision_disponible=rev_disp,
+                cierre=r.cierre,
             )
         )
     return items, len(items)

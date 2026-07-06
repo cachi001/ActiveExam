@@ -135,12 +135,65 @@ export interface NotaExamen {
   nota_maxima?: number | null;
   /** true si la nota alcanza la nota de aprobación (decidido server-side). */
   aprobado?: boolean | null;
+  /** C-69: si la nota ya se puede mostrar. Si false, `nota` viene null y se muestra
+   *  "disponible al cerrar el examen (cierre)". */
+  nota_visible?: boolean;
+  /** C-69: si la revisión (respuestas correctas) está disponible ahora. */
+  revision_disponible?: boolean;
+  /** C-69: ISO de la fecha de cierre del examen (para el mensaje de disponibilidad). */
+  cierre?: string | null;
 }
 
 /** C-69: respuesta paginada del endpoint de notas del alumno. */
 export interface MisNotasResponse {
   items: NotaExamen[];
   total: number;
+}
+
+/**
+ * C-69: revisión post-examen. A DIFERENCIA de la rendición, acá SÍ viaja
+ * `es_correcta` (excepción a D3: solo el dueño, solo con el intento finalizado —
+ * como las "Review options" de Moodle). Read-only, para que el alumno vea su
+ * corrección.
+ */
+export interface OpcionRevision {
+  id: string;
+  texto: string;
+  orden: number;
+  es_correcta: boolean;
+  /** true si el alumno eligió esta opción. */
+  elegida: boolean;
+}
+
+export interface PreguntaRevision {
+  id: string;
+  enunciado: string;
+  orden: number;
+  opciones: OpcionRevision[];
+  /** true si el alumno respondió (eligió alguna opción). */
+  respondida: boolean;
+  /** true si eligió la correcta. */
+  acertada: boolean;
+}
+
+export interface RevisionExamen {
+  examen_id: string;
+  titulo: string;
+  nota: number | null;
+  nota_maxima: number | null;
+  aprobado: boolean;
+  total_preguntas: number;
+  correctas: number;
+  incorrectas: number;
+  sin_responder: number;
+  finalizada_en: string | null;
+  preguntas: PreguntaRevision[];
+  /** C-69: si false, la NOTA aún no es visible (sin resultados hasta el cierre). */
+  disponible?: boolean;
+  /** C-69: si false, van los contadores pero NO el detalle pregunta-por-pregunta. */
+  revision_disponible?: boolean;
+  /** C-69: ISO de la fecha de cierre del examen (para el mensaje de disponibilidad). */
+  cierre?: string | null;
 }
 
 export interface DesafioActivo {

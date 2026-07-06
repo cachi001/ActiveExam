@@ -46,13 +46,17 @@ export function ExamenImportadoCard({ contenido, rindiendo, gate, perfilCompleto
         <Button variant="primary" size="sm" onClick={onCompletarPerfil} icon="manage_accounts">
           Completar perfil
         </Button>
+      ) : bloqueado ? (
+        // Si el alumno no puede rendir (intentos agotados / fuera de ventana) NO
+        // mostramos un botón deshabilitado: el motivo (lock + texto) ya lo explica.
+        null
       ) : (
         <Button
           variant="primary"
           size="sm"
           onClick={onRendir}
-          disabled={rindiendo || bloqueado}
-          icon={rindiendo ? undefined : bloqueado ? 'lock' : 'play_arrow'}
+          disabled={rindiendo}
+          icon={rindiendo ? undefined : 'play_arrow'}
         >
           {rindiendo ? 'Verificando…' : 'Rendir'}
         </Button>

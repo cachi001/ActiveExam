@@ -9,6 +9,7 @@ D3: es_correcta vive en la DB server-side, NUNCA viaja al cliente.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from decimal import ROUND_HALF_UP, Decimal
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -39,11 +40,18 @@ async def calcular_nota_academica(
 ) -> float:
     """Calcula la nota académica (0..nota_maxima) de un alumno dado su examen.
 
-    Fórmula: nota = (respuestas_correctas / total_preguntas) * nota_maxima,
-    redondeada a 2 decimales. ``nota_maxima`` se lee server-side desde la config
-    POR EXAMEN (examen_contenido.nota_maxima, migración 0032); default 10 si el
-    examen no existe. Si el examen no existe, no tiene preguntas, o las respuestas
-    están vacías → 0.
+    Fórmula (idéntica a Moodle): nota = (respuestas_correctas / total_preguntas) *
+    nota_maxima, **redondeada al entero más cercano** con ROUND_HALF_UP (0.5→1,
+    6.5→7) — el mismo redondeo que Moodle aplica con "Posiciones decimales = 0".
+    Se redondea a entero para no mostrarle al alumno notas fraccionadas sin sentido
+    (ej. 1 de 20 correctas daba 0.5): la nota académica se expresa como entero 0..10.
+    El aprobado/desaprobado se decide después sobre ESTA nota ya redondeada
+    (resultados_query: nota >= nota_aprobacion), como en Moodle.
+
+    ``nota_maxima`` se lee server-side desde la config POR EXAMEN
+    (examen_contenido.nota_maxima, migración 0032); default 10 si el examen no
+    existe. Si el examen no existe, no tiene preguntas, o las respuestas están
+    vacías → 0.
 
     Opción B (pool de preguntas): SOLO cuentan las preguntas seleccionadas por el
     docente (``seleccionada=True``) — tanto el total como las correctas. Una
@@ -89,6 +97,11 @@ async def calcular_nota_academica(
         )
     )
     nota_maxima = nota_maxima_row.scalar_one_or_none()
-    escala = float(nota_maxima) if nota_maxima is not None else _NOTA_MAXIMA_DEFAULT
+    escala = Decimal(str(nota_maxima)) if nota_maxima is not None else Decimal(str(_NOTA_MAXIMA_DEFAULT))
 
-    return round((correctas / total_preguntas) * escala, 2)
+    # Redondeo a entero con ROUND_HALF_UP (Decimal exacto, sin sorpresas de binario
+    # flotante — Python round() usa banker's rounding: round(0.5)=0, no queremos eso).
+    nota = (Decimal(correctas) / Decimal(total_preguntas) * escala).quantize(
+        Decimal("1"), rounding=ROUND_HALF_UP
+    )
+    return float(nota)

@@ -107,6 +107,9 @@ class ExamenContenido:
     nota_maxima: float = 10.0
     nota_aprobacion: float = 6.0
     mezclar_preguntas: bool = False
+    # Visibilidad de resultados (migración 0036, gate estilo Moodle "Review options").
+    mostrar_nota: str = "al_cerrar"  # 'al_cerrar' | 'inmediata'
+    revision_habilitada: bool = False
 
 
 @dataclass(frozen=True, slots=True)

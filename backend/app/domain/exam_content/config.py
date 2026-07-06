@@ -45,7 +45,14 @@ def validar_config_examen(
         raise ConfigExamenInvalidaError(
             f"tiempo_limite_min debe ser null o > 0; se recibió {tiempo_limite_min}."
         )
-    if apertura is not None and cierre is not None and not (apertura < cierre):
+    # C-69 (visibilidad de resultados): apertura y cierre son OBLIGATORIOS. El gate de
+    # "mostrar nota/revisión al cerrar" depende de una fecha de cierre; sin ella el
+    # alumno nunca vería la nota. Un examen siempre va de una fecha/hora a otra.
+    if apertura is None or cierre is None:
         raise ConfigExamenInvalidaError(
-            "apertura debe ser anterior a cierre cuando ambos están seteados."
+            "apertura y cierre son obligatorios (el examen va de una fecha/hora a otra)."
+        )
+    if not (apertura < cierre):
+        raise ConfigExamenInvalidaError(
+            "apertura debe ser anterior a cierre."
         )

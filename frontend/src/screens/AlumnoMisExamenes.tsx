@@ -274,7 +274,7 @@ export default function AlumnoMisExamenes() {
             {notas.length > 0 && (
               <section>
                 <div className="flex items-center gap-sm mb-md">
-                  <Icon name="grade" className="text-[20px] text-primary" />
+                  <Icon name="school" className="text-[20px] text-on-surface-variant" />
                   <h2 className="text-[16px] font-semibold text-on-surface">Tus notas</h2>
                 </div>
                 <div className="space-y-sm">

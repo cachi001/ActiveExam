@@ -417,6 +417,11 @@ class ConfiguracionSistemaModel(Base):
     pausas_habilitadas: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="true"
     )
+    # Límite de duración de una pausa autorizada, en minutos (C-69). Al vencer, la
+    # pausa se reanuda sola (evita usar la pausa para hacer tiempo / copiarse).
+    pausa_max_min: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="10"
+    )
     # Version monotonica (ETag). Cada edicion exitosa la incrementa.
     version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
     updated_at: Mapped[str] = mapped_column(

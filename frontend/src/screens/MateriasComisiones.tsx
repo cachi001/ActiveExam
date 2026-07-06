@@ -109,12 +109,9 @@ export default function MateriasComisiones() {
 
   // ── Acordeón ──────────────────────────────────────────────────────────────
 
-  async function toggleExpand(materiaId: string) {
-    if (expandida === materiaId) {
-      setExpandida(null);
-      if (formComision?.materiaId === materiaId) cerrarFormComision();
-      return;
-    }
+  // Master-detail: seleccionar una materia carga sus comisiones en el panel derecho.
+  async function seleccionarMateria(materiaId: string) {
+    if (formComision && formComision.materiaId !== materiaId) cerrarFormComision();
     setExpandida(materiaId);
     if (!comisionesPorMateria[materiaId]) {
       setCargandoComisiones((prev) => ({ ...prev, [materiaId]: true }));
@@ -129,6 +126,13 @@ export default function MateriasComisiones() {
       }
     }
   }
+  const toggleExpand = seleccionarMateria;
+
+  // Auto-seleccionar la primera materia para que el panel derecho no quede vacío.
+  useEffect(() => {
+    if (!expandida && materias.length > 0) void seleccionarMateria(materias[0].id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [materias]);
 
   // ── Formulario de materia ─────────────────────────────────────────────────
 
@@ -289,59 +293,46 @@ export default function MateriasComisiones() {
           />
         )}
 
-        <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/60 shadow-card overflow-hidden">
-          <div className="px-4 py-3 border-b border-outline-variant/40 flex items-center gap-2">
-            <Icon name="school" className="text-[16px] text-primary shrink-0" />
-            <h2 className="text-[13px] font-semibold text-on-surface">
-              Materias
-              {!cargandoMaterias && (
-                <span className="text-on-surface-variant font-normal ml-1">({materias.length})</span>
-              )}
-            </h2>
+        {cargandoMaterias ? (
+          <div className="py-16 text-center text-on-surface-variant">
+            <Icon name="progress_activity" className="ae-spin text-[28px] text-outline" />
           </div>
-
-          {cargandoMaterias ? (
-            <div className="py-12 text-center text-on-surface-variant">
-              <Icon name="progress_activity" className="ae-spin text-[28px] text-outline" />
-            </div>
-          ) : materias.length === 0 ? (
-            <div className="py-12 text-center text-on-surface-variant space-y-base">
-              <Icon name="school" className="text-[36px] text-outline" />
-              <p className="text-[13px]">No hay materias registradas. Creá la primera usando el botón de arriba.</p>
-            </div>
-          ) : (
-            <div className="divide-y divide-outline-variant/30">
-              {materias.map((m) => {
-                const estaExpandida = expandida === m.id;
-                const comisiones = comisionesPorMateria[m.id];
-                const cargando = cargandoComisiones[m.id];
-                const mostrarFormComision = formComision?.materiaId === m.id;
-
-                return (
-                  <div key={m.id}>
-                    <div className="flex items-center gap-3 px-4 py-3.5 hover:bg-surface-container-low transition-colors group">
+        ) : materias.length === 0 ? (
+          <div className="py-16 text-center text-on-surface-variant space-y-base rounded-xl border border-outline-variant/60 bg-surface-container-lowest">
+            <Icon name="school" className="text-[36px] text-outline" />
+            <p className="text-[13px]">No hay materias registradas. Creá la primera usando el botón de arriba.</p>
+          </div>
+        ) : (
+          // Master-detail: materias a la izquierda, comisiones de la seleccionada a la derecha.
+          <div className="grid lg:grid-cols-3 gap-lg items-start">
+            {/* Columna izquierda: lista de materias (seleccionables). */}
+            <div className="lg:col-span-1 rounded-xl border border-outline-variant/60 bg-surface-container-lowest shadow-card overflow-hidden">
+              <div className="px-4 py-3 border-b border-outline-variant/40 flex items-center gap-2">
+                <Icon name="school" className="text-[16px] text-on-surface-variant shrink-0" />
+                <h2 className="text-[13px] font-semibold text-on-surface">
+                  Materias <span className="text-on-surface-variant font-normal">({materias.length})</span>
+                </h2>
+              </div>
+              <div className="divide-y divide-outline-variant/30">
+                {materias.map((m) => {
+                  const sel = expandida === m.id;
+                  return (
+                    <div
+                      key={m.id}
+                      className={`flex items-center gap-3 px-4 py-3 transition-colors group ${
+                        sel ? 'bg-primary-fixed/50' : 'hover:bg-surface-container-low'
+                      }`}
+                    >
                       <button
                         type="button"
-                        aria-label={estaExpandida ? `Colapsar ${m.nombre}` : `Expandir ${m.nombre}`}
-                        aria-expanded={estaExpandida}
-                        onClick={() => void toggleExpand(m.id)}
-                        className="w-7 h-7 rounded-md flex items-center justify-center text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-colors shrink-0"
+                        onClick={() => void seleccionarMateria(m.id)}
+                        className="flex-1 min-w-0 text-left"
                       >
-                        <Icon name={estaExpandida ? 'keyboard_arrow_down' : 'keyboard_arrow_right'} className="text-[20px]" />
-                      </button>
-                      <div className="w-8 h-8 rounded-lg bg-primary-fixed text-on-primary-fixed-variant flex items-center justify-center shrink-0">
-                        <Icon name="school" className="text-[16px]" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <button
-                          type="button"
-                          onClick={() => void toggleExpand(m.id)}
-                          className="text-[13px] font-semibold text-on-surface group-hover:text-primary transition-colors truncate text-left w-full"
-                        >
+                        <p className={`text-[13px] font-semibold truncate ${sel ? 'text-primary' : 'text-on-surface'}`}>
                           {m.nombre}
-                        </button>
+                        </p>
                         <p className="text-[11px] font-mono text-on-surface-variant mt-0.5">{m.codigo}</p>
-                      </div>
+                      </button>
                       <ActionMenu
                         ariaLabel={`Acciones de ${m.nombre}`}
                         items={[
@@ -350,33 +341,62 @@ export default function MateriasComisiones() {
                         ]}
                       />
                     </div>
-
-                    {estaExpandida && (
-                      <ComisionesAccordionBody
-                        materiaId={m.id}
-                        cargando={cargando}
-                        comisiones={comisiones}
-                        mostrarFormComision={mostrarFormComision}
-                        formComision={mostrarFormComision ? formComision : null}
-                        setFormComision={setFormComision}
-                        enviandoComision={enviandoComision}
-                        errorFormComision={errorFormComision}
-                        primerInputComisionRef={primerInputComisionRef}
-                        periodos={periodos}
-                        onSubmitComision={handleSubmitComision}
-                        onCancelarComision={cerrarFormComision}
-                        abrirCrearComision={abrirCrearComision}
-                        abrirEditarComision={abrirEditarComision}
-                        comisionExpandida={comisionExpandida}
-                        toggleComision={toggleComision}
-                      />
-                    )}
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
-          )}
-        </div>
+
+            {/* Columna derecha: comisiones de la materia seleccionada. */}
+            <div className="lg:col-span-2 rounded-xl border border-outline-variant/60 bg-surface-container-lowest shadow-card overflow-hidden min-w-0">
+              {(() => {
+                const m = materias.find((x) => x.id === expandida);
+                if (!m) {
+                  return (
+                    <div className="py-16 text-center text-on-surface-variant text-[13px]">
+                      Elegí una materia para ver sus comisiones.
+                    </div>
+                  );
+                }
+                const mostrarFormComision = formComision?.materiaId === m.id;
+                return (
+                  <>
+                    <div className="px-4 py-3 border-b border-outline-variant/40 flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <h2 className="text-[13px] font-semibold text-on-surface truncate">
+                          Comisiones de {m.nombre}
+                        </h2>
+                        <p className="text-[11px] text-on-surface-variant">
+                          {(comisionesPorMateria[m.id]?.length ?? 0)} comisión(es)
+                        </p>
+                      </div>
+                      <Button variant="outline" size="sm" icon="add" onClick={() => abrirCrearComision(m.id)}>
+                        Nueva comisión
+                      </Button>
+                    </div>
+                    <ComisionesAccordionBody
+                      materiaId={m.id}
+                      cargando={cargandoComisiones[m.id]}
+                      comisiones={comisionesPorMateria[m.id]}
+                      mostrarFormComision={mostrarFormComision}
+                      formComision={mostrarFormComision ? formComision : null}
+                      setFormComision={setFormComision}
+                      enviandoComision={enviandoComision}
+                      errorFormComision={errorFormComision}
+                      primerInputComisionRef={primerInputComisionRef}
+                      periodos={periodos}
+                      onSubmitComision={handleSubmitComision}
+                      onCancelarComision={cerrarFormComision}
+                      abrirCrearComision={abrirCrearComision}
+                      abrirEditarComision={abrirEditarComision}
+                      comisionExpandida={comisionExpandida}
+                      toggleComision={toggleComision}
+                    />
+                  </>
+                );
+              })()}
+            </div>
+          </div>
+        )}
       </div>
     </StaffShell>
   );

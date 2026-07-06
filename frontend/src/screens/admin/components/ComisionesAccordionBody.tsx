@@ -287,14 +287,6 @@ export function ComisionesAccordionBody({
         </>
       ) : null}
 
-      {/* Botón "Nueva comisión" al pie */}
-      {comisiones && comisiones.length > 0 && !mostrarFormComision && (
-        <div className="px-8 py-3 border-t border-outline-variant/20">
-          <Button variant="ghost" size="sm" icon="add" onClick={() => abrirCrearComision(materiaId)}>
-            Nueva comisión
-          </Button>
-        </div>
-      )}
     </div>
   );
 }

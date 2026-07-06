@@ -280,9 +280,13 @@ async def _seed_contenido(factory) -> None:
                 comision_id=comision.id,
                 tiempo_limite_min=40,
                 intentos_permitidos=2,
-                # Hora de inicio visible; ventana abierta (sin cierre) => on-demand.
+                # Ventana de rendición (obligatoria): de tal fecha/hora a tal otra.
                 apertura=datetime(2026, 3, 1, 9, 0, tzinfo=timezone.utc),
-                cierre=None,
+                cierre=datetime(2026, 3, 1, 11, 0, tzinfo=timezone.utc),
+                # Demo: nota al cerrar + revisión habilitada (el cierre ya pasó, así
+                # que la nota y la revisión se ven).
+                mostrar_nota="al_cerrar",
+                revision_habilitada=True,
             )
             for i, pd in enumerate(parseo.preguntas):
                 pregunta = PreguntaExamenModel(

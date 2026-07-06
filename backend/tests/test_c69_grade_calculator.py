@@ -269,6 +269,69 @@ async def test_respuesta_a_deseleccionada_no_cuenta(session):
 
 
 # ---------------------------------------------------------------------------
+# Redondeo a entero (ROUND_HALF_UP, como Moodle): la nota nunca es fraccionada
+# ---------------------------------------------------------------------------
+
+
+async def _crear_examen_n_preguntas(
+    db: AsyncSession, n: int
+) -> tuple[str, list[tuple[str, str]]]:
+    """Crea un examen de ``n`` preguntas multichoice (todas seleccionadas).
+
+    Devuelve (examen_id, [(pregunta_id, opcion_correcta_id), ...]).
+    """
+    examen = ExamenContenidoModel(titulo=f"Parcial {n} preguntas")
+    db.add(examen)
+    await db.flush()
+
+    pares: list[tuple[str, str]] = []
+    for i in range(n):
+        p = PreguntaExamenModel(
+            examen_id=examen.id, enunciado=f"P{i}", tipo="multichoice", orden=i
+        )
+        db.add(p)
+        await db.flush()
+        oc = OpcionRespuestaModel(pregunta_id=p.id, texto="C", es_correcta=True, orden=0)
+        ow = OpcionRespuestaModel(pregunta_id=p.id, texto="W", es_correcta=False, orden=1)
+        db.add_all([oc, ow])
+        await db.flush()
+        pares.append((p.id, oc.id))
+    return examen.id, pares
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("n_preguntas", "n_correctas", "esperado"),
+    [
+        (20, 1, 1.0),   # 1/20*10 = 0.5 → 1 (half up). Antes mostraba 0.5 (sin sentido).
+        (20, 3, 2.0),   # 3/20*10 = 1.5 → 2 (half up)
+        (20, 11, 6.0),  # 11/20*10 = 5.5 → 6 (half up) → aprueba con nota_aprobacion=6
+        (20, 13, 7.0),  # 13/20*10 = 6.5 → 7 (half up)
+        (20, 20, 10.0), # perfecto
+        (3, 1, 3.0),    # 1/3*10 = 3.33… → 3 (half down)
+        (3, 2, 7.0),    # 2/3*10 = 6.66… → 7 (half up)
+    ],
+)
+async def test_nota_redondea_a_entero_half_up(
+    session, n_preguntas, n_correctas, esperado
+):
+    """La nota se redondea SIEMPRE a entero (ROUND_HALF_UP) — nunca fraccionada."""
+    examen_id, pares = await _crear_examen_n_preguntas(session, n_preguntas)
+    respuestas = [
+        RespuestaAlumno(pregunta_id=pid, opcion_elegida_id=cid)
+        for (pid, cid) in pares[:n_correctas]
+    ]
+
+    nota = await calcular_nota_academica(
+        db=session, examen_contenido_id=examen_id, respuestas=respuestas
+    )
+
+    assert nota == pytest.approx(esperado)
+    # La nota es un entero exacto (sin parte fraccionada).
+    assert nota == int(nota)
+
+
+# ---------------------------------------------------------------------------
 # L2.5: la nota no incorpora score de proctoring (7.13)
 # ---------------------------------------------------------------------------
 

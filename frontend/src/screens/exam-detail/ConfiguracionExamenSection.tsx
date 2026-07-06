@@ -26,6 +26,8 @@ interface ConfigForm {
   notaMaxima: string;
   notaAprobacion: string;
   mezclarPreguntas: boolean;
+  mostrarNota: 'al_cerrar' | 'inmediata';
+  revisionHabilitada: boolean;
 }
 
 const INPUT_CLS =
@@ -42,6 +44,8 @@ function configToForm(cfg: ExamConfig): ConfigForm {
     notaMaxima: String(cfg.nota_maxima ?? 10),
     notaAprobacion: String(cfg.nota_aprobacion ?? 6),
     mezclarPreguntas: !!cfg.mezclar_preguntas,
+    mostrarNota: cfg.mostrar_nota ?? 'al_cerrar',
+    revisionHabilitada: !!cfg.revision_habilitada,
   };
 }
 
@@ -67,10 +71,13 @@ function validarConfig(form: ConfigForm): string | null {
   if (aprob > max) {
     return 'La nota de aprobación no puede ser mayor que la nota máxima.';
   }
-  if (form.apertura && form.cierre) {
-    if (new Date(form.apertura).getTime() >= new Date(form.cierre).getTime()) {
-      return 'La fecha de apertura debe ser anterior a la de cierre.';
-    }
+  // C-69: apertura y cierre son OBLIGATORIOS (el gate de "mostrar nota al cerrar"
+  // depende de la fecha de cierre; el examen va de una fecha/hora a otra).
+  if (!form.apertura || !form.cierre) {
+    return 'La fecha de inicio y de cierre son obligatorias.';
+  }
+  if (new Date(form.apertura).getTime() >= new Date(form.cierre).getTime()) {
+    return 'La fecha de inicio debe ser anterior a la de cierre.';
   }
   return null;
 }
@@ -84,6 +91,8 @@ function formToPatch(form: ConfigForm): ExamConfig {
     nota_maxima: Number(form.notaMaxima),
     nota_aprobacion: Number(form.notaAprobacion),
     mezclar_preguntas: form.mezclarPreguntas,
+    mostrar_nota: form.mostrarNota,
+    revision_habilitada: form.revisionHabilitada,
   };
 }
 
@@ -224,10 +233,11 @@ export function ConfiguracionExamenSection({ examenId }: { examenId: string }) {
 
           <div className="grid sm:grid-cols-2 gap-5">
             <div>
-              <label className={LABEL_CLS} htmlFor="cfg-apertura">Apertura (opcional)</label>
+              <label className={LABEL_CLS} htmlFor="cfg-apertura">Inicio del examen *</label>
               <input
                 id="cfg-apertura"
                 type="datetime-local"
+                required
                 className={INPUT_CLS}
                 value={form.apertura}
                 disabled={guardando}
@@ -235,10 +245,11 @@ export function ConfiguracionExamenSection({ examenId }: { examenId: string }) {
               />
             </div>
             <div>
-              <label className={LABEL_CLS} htmlFor="cfg-cierre">Cierre (opcional)</label>
+              <label className={LABEL_CLS} htmlFor="cfg-cierre">Cierre del examen *</label>
               <input
                 id="cfg-cierre"
                 type="datetime-local"
+                required
                 className={INPUT_CLS}
                 value={form.cierre}
                 disabled={guardando}
@@ -246,6 +257,10 @@ export function ConfiguracionExamenSection({ examenId }: { examenId: string }) {
               />
             </div>
           </div>
+          <p className="-mt-3 text-label-sm text-on-surface-variant">
+            El examen va de una fecha/hora a otra (obligatorio). La nota y la revisión se
+            publican según el cierre.
+          </p>
 
           <div className="grid sm:grid-cols-2 gap-5">
             <div>
@@ -276,6 +291,49 @@ export function ConfiguracionExamenSection({ examenId }: { examenId: string }) {
                 onChange={(e) => update('notaAprobacion', e.target.value)}
               />
             </div>
+          </div>
+
+          <div>
+            <label className={LABEL_CLS} htmlFor="cfg-mostrar-nota">¿Cuándo se muestra la nota al alumno?</label>
+            <select
+              id="cfg-mostrar-nota"
+              className={INPUT_CLS}
+              value={form.mostrarNota}
+              disabled={guardando}
+              onChange={(e) => update('mostrarNota', e.target.value as ConfigForm['mostrarNota'])}
+            >
+              <option value="al_cerrar">Al cerrar el examen (recomendado)</option>
+              <option value="inmediata">Inmediatamente al entregar</option>
+            </select>
+            <p className="mt-1.5 text-label-sm text-on-surface-variant">
+              "Al cerrar" evita que se filtren resultados mientras otros rinden: la nota
+              aparece sola después de la fecha de cierre.
+            </p>
+          </div>
+
+          <div className="flex items-center justify-between gap-md border border-outline-variant rounded-none px-4 py-3">
+            <div className="min-w-0">
+              <p className="text-label-md font-semibold text-on-surface">Permitir revisión de respuestas</p>
+              <p className="text-label-sm text-on-surface-variant mt-0.5">
+                El alumno puede ver la corrección (respuestas correctas), solo después del cierre.
+                Apagalo para no exponer las respuestas.
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={form.revisionHabilitada}
+              aria-label="Permitir revisión de respuestas"
+              disabled={guardando}
+              onClick={() => update('revisionHabilitada', !form.revisionHabilitada)}
+              className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors disabled:opacity-50
+                ${form.revisionHabilitada ? 'bg-primary' : 'bg-surface-container-high'}`}
+            >
+              <span
+                className={`inline-block h-5 w-5 transform rounded-full bg-surface shadow transition-transform
+                  ${form.revisionHabilitada ? 'translate-x-6' : 'translate-x-1'}`}
+              />
+            </button>
           </div>
 
           <div className="flex items-center justify-between gap-md border border-outline-variant rounded-none px-4 py-3">

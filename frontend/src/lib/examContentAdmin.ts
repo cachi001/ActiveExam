@@ -293,6 +293,12 @@ export interface ExamConfig {
   nota_aprobacion: number;
   /** Si true, las preguntas se muestran en orden aleatorio estable por sesión. */
   mezclar_preguntas: boolean;
+  /** C-69: cuándo se muestra la nota al alumno. 'al_cerrar' (después del cierre) |
+   *  'inmediata' (al entregar). */
+  mostrar_nota: 'al_cerrar' | 'inmediata';
+  /** C-69: si el alumno puede revisar la corrección (respuestas correctas). Solo se
+   *  muestra después del cierre. */
+  revision_habilitada: boolean;
 }
 
 /** Lee la configuración del examen. Admin-only. GET /exam-content/{id}/config */

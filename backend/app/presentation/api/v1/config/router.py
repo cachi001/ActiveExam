@@ -70,6 +70,7 @@ class ConfigEfectivaResponse(_Strict):
     detectores_activos: list[str]
     chat_habilitado: bool
     pausas_habilitadas: bool
+    pausa_max_min: int
     scoring_weights: dict[str, int]
     scoring_severidades: dict[str, str] = {}
 
@@ -92,6 +93,7 @@ class EditarConfigRequest(_Strict):
     # Toggles globales de la rendicion (C-69).
     chat_habilitado: bool | None = None
     pausas_habilitadas: bool | None = None
+    pausa_max_min: int | None = Field(default=None, ge=1, le=120)
 
 
 # ---------------------------------------------------------------------------
@@ -132,6 +134,7 @@ def _to_response(e: ConfigEfectiva) -> ConfigEfectivaResponse:
         detectores_activos=list(e.detectores_activos),
         chat_habilitado=e.chat_habilitado,
         pausas_habilitadas=e.pausas_habilitadas,
+        pausa_max_min=e.pausa_max_min,
         scoring_weights=dict(e.scoring_weights),
         scoring_severidades=dict(e.scoring_severidades),
     )
@@ -154,6 +157,7 @@ def _snapshot(cfg) -> dict:
         "consent_version_vigente": cfg.consent_version_vigente,
         "chat_habilitado": cfg.chat_habilitado,
         "pausas_habilitadas": cfg.pausas_habilitadas,
+        "pausa_max_min": cfg.pausa_max_min,
     }
 
 

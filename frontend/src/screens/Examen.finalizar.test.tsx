@@ -172,13 +172,29 @@ async function seleccionarPrimeraOpcion(): Promise<void> {
   });
 }
 
+function botonPorTexto(texto: string): HTMLButtonElement | null {
+  return (
+    Array.from(container.querySelectorAll('button')).find((b) =>
+      b.textContent?.includes(texto),
+    ) as HTMLButtonElement | undefined
+  ) ?? null;
+}
+
 async function clickFinalizar(): Promise<void> {
+  // 1) "Terminar intento" ahora abre el modal de confirmación (no entrega directo:
+  //    nunca finalizar el examen por un click accidental).
   const btn = botonFinalizar();
   expect(btn).not.toBeNull();
   await act(async () => {
     btn!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
   });
-  // Flush microtasks del finalizar async (await del POST → detener → navigate).
+  // 2) Confirmar la entrega en el modal.
+  const confirmar = botonPorTexto('Sí, entregar');
+  expect(confirmar).not.toBeNull();
+  await act(async () => {
+    confirmar!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  });
+  // Flush microtasks del entregar async (await del POST → detener → navigate).
   await act(async () => {});
 }
 
@@ -216,6 +232,23 @@ describe('C-69 §7 — entrega: respuestas antes de finalizar', () => {
     await seleccionarPrimeraOpcion();
     await clickFinalizar();
 
+    expect(navigate).toHaveBeenCalledWith('/cierre');
+  });
+
+  it('si el POST de respuestas FALLA en la entrega manual, NO finaliza ni navega (no le terminamos el examen al alumno)', async () => {
+    enviarRespuestasProctoring.mockRejectedValueOnce(new Error('red caída'));
+    await montar();
+    await seleccionarPrimeraOpcion();
+    await clickFinalizar();
+
+    // Se intentó el POST, pero al fallar no se llamó detener() ni navigate().
+    expect(enviarRespuestasProctoring).toHaveBeenCalledTimes(1);
+    expect(detener).not.toHaveBeenCalled();
+    expect(navigate).not.toHaveBeenCalled();
+
+    // El intento sigue vivo: un segundo intento de entrega vuelve a POSTear.
+    enviarRespuestasProctoring.mockResolvedValueOnce(null);
+    await clickFinalizar();
     expect(navigate).toHaveBeenCalledWith('/cierre');
   });
 });

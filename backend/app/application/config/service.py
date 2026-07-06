@@ -44,6 +44,8 @@ class ConfigEfectiva:
     # Toggles globales de la rendicion (C-69).
     chat_habilitado: bool = True
     pausas_habilitadas: bool = True
+    # Límite de duración de una pausa autorizada (minutos). Al vencer se reanuda sola.
+    pausa_max_min: int = 10
     # Pesos de scoring por tipo de evento (solo tipos activos).
     scoring_weights: dict[str, int] = field(default_factory=dict)
     # Severidad configurada por tipo de evento (solo tipos activos). El cliente la usa
@@ -91,6 +93,7 @@ class ConfigService:
             detectores_activos=tuple(cfg.detectores_activos or ()),
             chat_habilitado=bool(cfg.chat_habilitado),
             pausas_habilitadas=bool(cfg.pausas_habilitadas),
+            pausa_max_min=int(cfg.pausa_max_min),
             scoring_weights=pesos,
             scoring_severidades=severidades,
         )

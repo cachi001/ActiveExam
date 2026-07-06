@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -122,6 +123,60 @@ class ExamenRendicionResponse(BaseModel):
     mezclar_preguntas: bool = False
     nota_maxima: float = 10.0
     nota_aprobacion: float = 6.0
+
+
+# ---------------------------------------------------------------------------
+# Schemas de REVISIÓN post-examen — SÍ exponen es_correcta (excepción a D3):
+# solo al dueño y con el intento YA FINALIZADO (como "Review options" de Moodle).
+# ---------------------------------------------------------------------------
+
+
+class OpcionRevisionResponse(BaseModel):
+    """Opción en la revisión: marca la correcta y la que eligió el alumno."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    texto: str
+    orden: int
+    es_correcta: bool
+    elegida: bool
+
+
+class PreguntaRevisionResponse(BaseModel):
+    """Pregunta en la revisión con su corrección."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    enunciado: str
+    orden: int
+    opciones: list[OpcionRevisionResponse]
+    respondida: bool
+    acertada: bool
+
+
+class RevisionExamenResponse(BaseModel):
+    """Revisión completa del intento finalizado del alumno (corrección + contadores)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    examen_id: str
+    titulo: str
+    nota: float | None = None
+    nota_maxima: float | None = None
+    aprobado: bool = False
+    total_preguntas: int
+    correctas: int
+    incorrectas: int
+    sin_responder: int
+    finalizada_en: datetime | None = None
+    preguntas: list[PreguntaRevisionResponse]
+    # Visibilidad (C-69). disponible=False → sin resultados (nota no visible aún).
+    # revision_disponible=False → contadores sí, preguntas vacío (corrección oculta).
+    disponible: bool = True
+    revision_disponible: bool = True
+    cierre: datetime | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -353,7 +408,7 @@ class MoodleTargetResponse(BaseModel):
 
 
 class ExamenConfigResponse(BaseModel):
-    """Los 7 campos de configuración de un examen (GET /{id}/config)."""
+    """Los campos de configuración de un examen (GET /{id}/config)."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -364,6 +419,9 @@ class ExamenConfigResponse(BaseModel):
     nota_maxima: float
     nota_aprobacion: float
     mezclar_preguntas: bool
+    # Visibilidad de resultados (C-69, migración 0036).
+    mostrar_nota: str = "al_cerrar"
+    revision_habilitada: bool = False
 
 
 class ExamenConfigPatchRequest(BaseModel):
@@ -383,6 +441,9 @@ class ExamenConfigPatchRequest(BaseModel):
     nota_maxima: float | None = None
     nota_aprobacion: float | None = None
     mezclar_preguntas: bool | None = None
+    # Visibilidad de resultados (C-69). mostrar_nota: 'al_cerrar' | 'inmediata'.
+    mostrar_nota: Literal["al_cerrar", "inmediata"] | None = None
+    revision_habilitada: bool | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -460,6 +521,11 @@ class MiNotaResponse(BaseModel):
     umbral_revision: float | None = None
     eventos: int
     finalizada_en: datetime | None = None
+    # Visibilidad de resultados (C-69). Si nota_visible=False, ``nota`` viene None y
+    # la UI muestra "disponible al cerrar el examen (cierre)".
+    nota_visible: bool = True
+    revision_disponible: bool = False
+    cierre: datetime | None = None
 
 
 class MisNotasResponse(BaseModel):

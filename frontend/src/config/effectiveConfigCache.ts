@@ -40,6 +40,8 @@ export interface ConfigEfectivaSnapshot {
   // ante la duda, se muestra el chat y la pausa, no se ocultan por error).
   chat_habilitado: boolean;
   pausas_habilitadas: boolean;
+  // C-69: límite de duración de una pausa autorizada, en minutos (default 10).
+  pausa_max_min?: number;
 }
 
 // Cache en memoria — nulo hasta que se carga.

@@ -15,9 +15,11 @@
  * (flag en_pausa_autorizada) y los excluye del score. Este componente solo toca UI.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Card, Button, Icon } from '../ui/components';
 import { useToast } from '../ui/toast';
 import { api } from '../lib/api';
+import { getEffectiveConfig } from '../config/effectiveConfigCache';
 import type { Pausa } from '../lib/types';
 
 /** Intervalo de polling del estado de la pausa (ms). */
@@ -98,6 +100,12 @@ export function PausaAlumno({
   }, [activa, inicioEn]);
 
   const abrirSolicitud = () => {
+    // Sin sesión de supervisión no se puede pedir pausa: avisamos en vez de abrir un
+    // modal cuyo botón fallaría en silencio (síntoma "no deja solicitar pausas").
+    if (!sessionId) {
+      toast.info('Esperá a que inicie la supervisión para poder pedir una pausa.');
+      return;
+    }
     setMotivo('');
     // Al pedir otra pausa, dejamos de mostrar el aviso del rechazo anterior.
     if (pausa?.estado === 'rechazada') setRechazoCerrado(pausa.id);
@@ -106,7 +114,11 @@ export function PausaAlumno({
 
   const confirmarSolicitud = async () => {
     const m = motivo.trim();
-    if (!m || !sessionId || pidiendo) return;
+    if (!m || pidiendo) return;
+    if (!sessionId) {
+      toast.error('No se pudo solicitar la pausa: la supervisión todavía no inició.');
+      return;
+    }
     setPidiendo(true);
     try {
       const p = await api.solicitarPausa(sessionId, m);
@@ -134,6 +146,19 @@ export function PausaAlumno({
       setReanudando(false);
     }
   };
+
+  // C-69: límite de duración de la pausa. Al vencer, se reanuda sola (evita usar la
+  // pausa para hacer tiempo / copiarse). El límite viene de la config del sistema.
+  const pausaMaxMin = getEffectiveConfig()?.pausa_max_min ?? 10;
+  const pausaMaxSeg = pausaMaxMin * 60;
+  const restanteSeg = Math.max(0, Math.ceil(pausaMaxSeg - transcurrido));
+  useEffect(() => {
+    if (activa && transcurrido >= pausaMaxSeg && !reanudando) {
+      toast.info('Se alcanzó el límite de la pausa. El examen se reanuda automáticamente.');
+      void reanudar();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activa, transcurrido, pausaMaxSeg]);
 
   const estado = pausa?.estado;
   const esperando = estado === 'solicitada';
@@ -196,54 +221,66 @@ export function PausaAlumno({
               Si necesitás interrumpir el examen (ir al baño, una urgencia), pedí una pausa.
               El proctor la aprueba; durante la pausa la supervisión sigue activa.
             </p>
-            <Button variant="outline" size="sm" icon="pause_circle" onClick={abrirSolicitud}>
+            <Button variant="secondary" size="sm" onClick={abrirSolicitud} disabled={!sessionId}>
               Solicitar pausa
             </Button>
+            {!sessionId && (
+              <p className="text-label-sm text-on-surface-variant/70">
+                Disponible cuando inicie la supervisión.
+              </p>
+            )}
           </>
         )}
       </Card>
 
-      {/* Banner de pausa ACTIVA: full-width, bien visible, con timer y reanudar.
-          Se ancla DEBAJO del topbar (top-14 = 56px = TOPBAR_H del StudentShell) en
-          vez de top-0, para no tapar el logo/menú. El contenido del examen recibe
-          padding-top cuando está activo (Examen.tsx, vía onActivaChange) para que
-          tampoco quede tapado a 1366px. z-40 lo deja por DEBAJO de los modales
-          bloqueantes (monitor z-100, alerta z-90) pero sobre el contenido. */}
-      {activa && (
+      {/* Pausa ACTIVA: overlay BLOQUEANTE que TAPA todo el examen hasta reanudar.
+          z-[100] (igual que el monitor bloqueante): el alumno no ve ni interactúa
+          con las preguntas mientras está en pausa (no puede espiar el examen). */}
+      {activa && createPortal(
         <div
-          role="status"
+          role="alertdialog"
+          aria-modal="true"
           aria-live="polite"
-          className="fixed inset-x-0 top-14 z-40 bg-primary text-on-primary shadow-lg animate-in fade-in slide-in-from-top"
+          aria-label="Pausa autorizada en curso"
+          className="fixed inset-0 z-[100] bg-inverse-surface/90 backdrop-blur-md flex items-center justify-center p-lg animate-in fade-in"
         >
-          <div className="max-w-5xl mx-auto flex items-center justify-between gap-md px-lg py-sm">
-            <div className="flex items-center gap-sm">
-              <Icon name="pause_circle" className="text-[24px]" fill />
-              <div>
-                <p className="font-bold text-label-md leading-tight">PAUSA AUTORIZADA en curso</p>
-                <p className="text-label-sm opacity-90 leading-tight">
-                  La supervisión sigue activa. El tiempo de pausa queda registrado.
-                </p>
-              </div>
+          <Card className="max-w-lg w-full text-center space-y-lg">
+            <div className="w-20 h-20 rounded-full bg-primary-container text-primary flex items-center justify-center mx-auto">
+              <Icon name="pause_circle" className="text-[44px]" fill />
             </div>
-            <div className="flex items-center gap-md">
-              <span className="font-mono font-bold text-title-lg tabular-nums">{mmss(transcurrido)}</span>
-              <Button
-                variant="secondary"
-                size="sm"
-                icon="play_circle"
-                onClick={() => void reanudar()}
-                disabled={reanudando}
-              >
-                {reanudando ? 'Reanudando…' : 'Reanudar examen'}
-              </Button>
+            <div className="space-y-base">
+              <h2 className="font-headline text-headline-md text-on-surface">Pausa autorizada en curso</h2>
+              <p className="text-body-md text-on-surface-variant">
+                El examen está en pausa. Reanudalo cuando estés listo/a para seguir.
+              </p>
             </div>
-          </div>
-        </div>
+            <div className="font-mono font-bold text-display-sm text-on-surface tabular-nums">
+              {mmss(transcurrido)}
+            </div>
+            <p className="text-label-md text-warning font-medium">
+              Se reanuda sola en {mmss(restanteSeg)} (máximo {pausaMaxMin} min de pausa).
+            </p>
+            <p className="text-label-sm text-on-surface-variant">
+              La supervisión sigue activa y el tiempo de pausa queda registrado.
+            </p>
+            <Button
+              icon="play_circle"
+              onClick={() => void reanudar()}
+              disabled={reanudando}
+              className="w-full"
+            >
+              {reanudando ? 'Reanudando…' : 'Reanudar examen'}
+            </Button>
+          </Card>
+        </div>,
+        document.body,
       )}
 
-      {/* Modal simple para capturar el motivo de la pausa. */}
-      {modalMotivo && (
-        <div className="fixed inset-0 z-[95] bg-inverse-surface/60 backdrop-blur-sm flex items-center justify-center p-lg animate-in fade-in">
+      {/* Modal para capturar el motivo. Portalizado a <body> para escapar cualquier
+          ancestro con transform (el `animate-in` del examen contendría el `fixed` y
+          dejaría una franja sin cubrir arriba). */}
+      {modalMotivo && createPortal(
+        <div className="fixed inset-0 z-[95] bg-inverse-surface/80 flex items-center justify-center p-lg animate-in fade-in">
           <Card className="max-w-md w-full space-y-md">
             <div className="space-y-base">
               <h3 className="font-headline text-headline-md text-on-surface">Solicitar pausa</h3>
@@ -257,7 +294,7 @@ export function PausaAlumno({
               rows={3}
               autoFocus
               placeholder="Ej.: necesito ir al baño"
-              className="w-full px-sm py-base text-label-md rounded-xl border border-outline-variant bg-surface-container-lowest focus:border-primary-container outline-none resize-none"
+              className="w-full px-4 py-3 text-label-md rounded-lg border border-outline-variant bg-surface-container-lowest focus:border-primary-container outline-none resize-none"
             />
             <div className="flex gap-base justify-end">
               <Button variant="outline" size="sm" onClick={() => setModalMotivo(false)} disabled={pidiendo}>
@@ -273,7 +310,8 @@ export function PausaAlumno({
               </Button>
             </div>
           </Card>
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   );

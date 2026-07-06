@@ -9,7 +9,7 @@ import { useNavigate } from '../lib/router';
 import { useApp } from '../lib/store';
 import { api } from '../lib/api';
 import type { Materia, Comision, Examen, ExamenContenidoResumen } from '../lib/types';
-import { MateriaCard } from './alumno/components/MateriaCard';
+import { ComisionRow } from './alumno/components/ComisionRow';
 
 /** Detectores por defecto para exámenes importados (sin config de examen-config). */
 const DETECTORES_SLIM = [
@@ -42,14 +42,17 @@ export default function AlumnoMaterias() {
   }, []);
 
   const seleccionarMateria = async (materia: Materia) => {
-    if (materiaSeleccionada?.id === materia.id) {
-      setMateriaSeleccionada(null); setComisionSeleccionada(null); setComisiones([]); setExamenes([]);
-      return;
-    }
-    setMateriaSeleccionada(materia); setComisionSeleccionada(null); setExamenes([]); setCargandoComisiones(true);
+    if (materiaSeleccionada?.id === materia.id) return; // master-detail: seleccionar, no togglear
+    setMateriaSeleccionada(materia); setComisionSeleccionada(null); setExamenes([]); setComisiones([]); setCargandoComisiones(true);
     const coms = await api.comisionesDeMateria(materia.id);
     setComisiones(coms); setCargandoComisiones(false);
   };
+
+  // Auto-seleccionar la primera materia para que el panel derecho no quede vacío.
+  useEffect(() => {
+    if (!materiaSeleccionada && materias.length > 0) void seleccionarMateria(materias[0]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [materias]);
 
   const seleccionarComision = async (comision: Comision) => {
     if (comisionSeleccionada?.id === comision.id) { setComisionSeleccionada(null); setExamenes([]); return; }
@@ -95,14 +98,14 @@ export default function AlumnoMaterias() {
 
   return (
     <StudentShell>
-      <div className="max-w-2xl lg:max-w-5xl xl:max-w-6xl space-y-xl">
+      <div className="w-full space-y-lg">
         <BackButton onClick={() => navigate('/alumno')} />
         <header>
           <div className="flex items-center gap-sm">
-            <h1 className="text-[22px] sm:text-[24px] font-semibold text-on-surface tracking-tight">Materias disponibles</h1>
+            <h1 className="text-[22px] sm:text-[24px] font-semibold text-on-surface tracking-tight">Mis materias</h1>
             <HelpButton title="Materias">
               <p>
-                Explorá el catálogo de <strong>materias y comisiones</strong>: entrá a una materia
+                Explorá el catálogo de <strong>materias y comisiones</strong>: elegí una materia
                 para ver sus comisiones; entrá a una comisión para ver los exámenes disponibles.
               </p>
               <p>
@@ -111,15 +114,15 @@ export default function AlumnoMaterias() {
               </p>
             </HelpButton>
           </div>
-          <p className="text-[13px] text-on-surface-variant mt-1">Seleccioná una materia para ver sus comisiones y exámenes disponibles.</p>
+          <p className="text-[13px] text-on-surface-variant mt-1">Elegí una materia para ver sus comisiones y exámenes disponibles.</p>
         </header>
 
         {cargandoMaterias ? (
-          <div className="min-h-[60vh] flex items-center justify-center">
+          <div className="min-h-[50vh] flex items-center justify-center">
             <LoadingSpinner label="Cargando materias…" />
           </div>
         ) : materias.length === 0 ? (
-          <div className="min-h-[340px] flex items-center justify-center">
+          <div className="min-h-[340px] flex items-center justify-center rounded-2xl border border-outline-variant/50 bg-surface-container-lowest">
             <div className="flex flex-col items-center text-center gap-md max-w-sm">
               <div className="w-16 h-16 rounded-2xl bg-primary-fixed text-primary flex items-center justify-center">
                 <Icon name="menu_book" className="text-[32px]" />
@@ -133,23 +136,78 @@ export default function AlumnoMaterias() {
             </div>
           </div>
         ) : (
-          <div className="space-y-sm">
-            {materias.map((materia) => (
-              <MateriaCard
-                key={materia.id}
-                materia={materia}
-                activa={materiaSeleccionada?.id === materia.id}
-                cargandoComisiones={cargandoComisiones}
-                comisiones={comisiones}
-                comisionSeleccionada={comisionSeleccionada}
-                cargandoExamenes={cargandoExamenes}
-                examenes={examenes}
-                rindiendoId={rindiendoId}
-                onSelect={() => seleccionarMateria(materia)}
-                onSelectComision={seleccionarComision}
-                onRendir={rendirExamen}
-              />
-            ))}
+          // Master-detail: materias a la izquierda, comisiones/exámenes de la elegida a la derecha.
+          <div className="grid lg:grid-cols-3 gap-lg items-start">
+            {/* Izquierda: materias */}
+            <div className="lg:col-span-1 rounded-2xl border border-outline-variant/50 bg-surface-container-lowest overflow-hidden">
+              <div className="px-4 py-3 border-b border-outline-variant/40 flex items-center gap-2">
+                <Icon name="menu_book" className="text-[16px] text-on-surface-variant shrink-0" />
+                <h2 className="text-[13px] font-semibold text-on-surface">
+                  Materias <span className="text-on-surface-variant font-normal">({materias.length})</span>
+                </h2>
+              </div>
+              <div className="divide-y divide-outline-variant/30">
+                {materias.map((materia) => {
+                  const sel = materiaSeleccionada?.id === materia.id;
+                  return (
+                    <button
+                      key={materia.id}
+                      onClick={() => void seleccionarMateria(materia)}
+                      className={`w-full flex items-center gap-3 px-4 py-3.5 text-left transition-colors ${
+                        sel ? 'bg-primary-fixed/50' : 'hover:bg-surface-container-low'
+                      }`}
+                    >
+                      <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${sel ? 'bg-primary text-on-primary' : 'bg-secondary-container text-on-secondary'}`}>
+                        <Icon name="school" className="text-[18px]" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className={`text-[14px] font-semibold leading-tight truncate ${sel ? 'text-primary' : 'text-on-surface'}`}>
+                          {materia.nombre}
+                        </p>
+                        <p className="text-[12px] text-on-surface-variant leading-tight mt-0.5 truncate">{materia.codigo}</p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Derecha: comisiones + exámenes de la materia elegida */}
+            <div className="lg:col-span-2 rounded-2xl border border-outline-variant/50 bg-surface-container-lowest overflow-hidden min-w-0">
+              {!materiaSeleccionada ? (
+                <div className="py-16 text-center text-on-surface-variant text-[13px]">
+                  Elegí una materia para ver sus comisiones.
+                </div>
+              ) : (
+                <>
+                  <div className="px-4 py-3 border-b border-outline-variant/40">
+                    <h2 className="text-[13px] font-semibold text-on-surface truncate">
+                      Comisiones de {materiaSeleccionada.nombre}
+                    </h2>
+                  </div>
+                  <div className="p-4 space-y-sm">
+                    {cargandoComisiones ? (
+                      <LoadingSpinner size="sm" label="Cargando comisiones…" />
+                    ) : comisiones.length === 0 ? (
+                      <p className="text-[13px] text-on-surface-variant px-1 py-2">No hay comisiones disponibles.</p>
+                    ) : (
+                      comisiones.map((comision) => (
+                        <ComisionRow
+                          key={comision.id}
+                          comision={comision}
+                          activa={comisionSeleccionada?.id === comision.id}
+                          cargandoExamenes={cargandoExamenes}
+                          examenes={examenes}
+                          rindiendoId={rindiendoId}
+                          onSelect={() => seleccionarComision(comision)}
+                          onRendir={rendirExamen}
+                        />
+                      ))
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         )}
       </div>

@@ -25,12 +25,11 @@ export function ExamenPreguntaCard({
   const mm = segRestantes !== null ? String(Math.floor(segRestantes / 60)).padStart(2, '0') : '00';
   const ss = segRestantes !== null ? String(segRestantes % 60).padStart(2, '0') : '00';
   const urgente = segRestantes !== null && segRestantes < 300;
-  const progresoPct = total > 0 ? Math.round((respondidas.size / total) * 100) : 0;
 
   return (
     <Card className="space-y-md">
-      {/* Encabezado: pregunta actual + progreso + timer (dentro de la card) */}
-      <div className="space-y-sm border-b border-outline-variant/40 pb-md">
+      {/* Encabezado: pregunta actual + timer (dentro de la card) */}
+      <div className="border-b border-outline-variant/40 pb-md">
         <div className="flex items-start justify-between gap-md flex-wrap">
           <div>
             <p className="text-title-md font-bold text-on-surface leading-tight">
@@ -52,12 +51,6 @@ export function ExamenPreguntaCard({
               <Icon name="timer_off" className="text-[18px]" /> Sin límite
             </span>
           ) : null}
-        </div>
-        <div className="h-1.5 rounded-full bg-surface-container overflow-hidden">
-          <div
-            className="h-full rounded-full bg-primary transition-[width] duration-300"
-            style={{ width: `${progresoPct}%` }}
-          />
         </div>
       </div>
 

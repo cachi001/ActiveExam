@@ -20,6 +20,7 @@ import { MonitorBloqueante } from './examen/MonitorBloqueante';
 import { AlertaCritica } from './examen/AlertaCritica';
 import { LockdownOverlay } from './examen/LockdownOverlay';
 import { ExamenPreguntaCard } from './examen/ExamenPreguntaCard';
+import { ExamenErrorInicio } from './examen/ExamenErrorInicio';
 import { ExamenCamaraPanel } from './examen/ExamenCamaraPanel';
 import { IntegridadPanel } from './examen/IntegridadPanel';
 import { QuestionNavigator } from './alumno/components/QuestionNavigator';
@@ -61,7 +62,14 @@ export default function Examen() {
     });
   }, []);
 
-  const { sessionId, score, eventCount, activo, eventos, extraMonitorActive, detener } = useExamProctoring(videoRef, examen);
+  const { sessionId, score, eventCount, activo, eventos, extraMonitorActive, sessionError, detener } = useExamProctoring(videoRef, examen);
+
+  // Entrega: confirmación previa (nunca finalizar por un click accidental) + estado
+  // de envío + error de entrega (si el POST de respuestas falla NO se navega a /cierre,
+  // así no le "terminamos" el examen al alumno sin haber guardado nada).
+  const [confirmandoEntrega, setConfirmandoEntrega] = useState(false);
+  const [entregando, setEntregando] = useState(false);
+  const [errorEntrega, setErrorEntrega] = useState(false);
 
   useEffect(() => {
     navigator.mediaDevices?.getUserMedia({ video: true }).then((s) => {
@@ -117,9 +125,22 @@ export default function Examen() {
     return () => lockdown.detener();
   }, []);
 
-  const finalizar = async () => {
+  /**
+   * Entrega el intento: envía las respuestas server-side (para calcular la nota) y
+   * finaliza la sesión, luego navega a /cierre.
+   *
+   * `porTiempo=false` (entrega manual): si el POST de respuestas FALLA, NO se navega
+   * a /cierre — se libera el guard y se muestra el error para que el alumno reintente.
+   * Terminarle el examen sin haber guardado nada sería el peor resultado posible.
+   *
+   * `porTiempo=true` (tiempo agotado): no podemos retener al alumno pasado el límite,
+   * así que se navega a /cierre aunque el POST falle (best-effort).
+   */
+  const entregar = async (porTiempo = false) => {
     if (entregadoRef.current) return;
     entregadoRef.current = true;
+    setEntregando(true);
+    setErrorEntrega(false);
     try {
       if (sessionId) {
         const items = Object.entries(respuestas).map(([pregunta_id, opcion_elegida_id]) => ({
@@ -129,16 +150,23 @@ export default function Examen() {
         await api.enviarRespuestasProctoring(sessionId, items);
       }
     } catch {
-      // degradación silenciosa
-    } finally {
-      detener();
-      navigate('/cierre');
+      if (!porTiempo) {
+        // Entrega manual fallida: revertir para permitir reintento. No finalizamos.
+        entregadoRef.current = false;
+        setEntregando(false);
+        setErrorEntrega(true);
+        return;
+      }
+      // Por tiempo: seguimos a /cierre igual (degradación best-effort).
     }
+    setConfirmandoEntrega(false);
+    detener();
+    navigate('/cierre');
   };
 
   useEffect(() => {
     if (segRestantes === 0 && typeof tiempoLimiteMin === 'number' && tiempoLimiteMin > 0) {
-      void finalizar();
+      void entregar(true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [segRestantes, tiempoLimiteMin]);
@@ -152,6 +180,18 @@ export default function Examen() {
   const total = preguntas.length;
   const preguntaActual = preguntaEnIndice(preguntas, indiceActual);
   const respondidas = indicesRespondidos(preguntas, respuestas);
+  const sinResponder = total - respondidas.size;
+
+  // No se pudo iniciar la sesión (intentos agotados, fuera de ventana, red): bloqueamos
+  // la entrada. Rendir sin sesión es imposible de forma segura — las respuestas no se
+  // guardarían ni se calcularía la nota. Antes el alumno entraba a un examen fantasma.
+  if (sessionError) {
+    return (
+      <StudentShell locked>
+        <ExamenErrorInicio error={sessionError} onVolver={() => navigate('/alumno/mis-examenes')} />
+      </StudentShell>
+    );
+  }
 
   return (
     <StudentShell locked>
@@ -175,17 +215,20 @@ export default function Examen() {
               onSiguiente={() => setIndiceActual((i) => avanzarPregunta(i, total))}
             />
 
-            {/* Canal del proctor + pausa — debajo del cuestionario, lado a lado */}
-            {(pausasHabilitadas || chatHabilitado) && (
-              <div className="grid md:grid-cols-2 gap-md items-start">
-                {chatHabilitado && (
-                  <ChatBox sessionId={sessionId} yo="alumno" titulo="Canal con el proctor" altura="h-[160px]" />
-                )}
-                {pausasHabilitadas && (
-                  <PausaAlumno sessionId={sessionId} onActivaChange={setPausaActiva} />
-                )}
-              </div>
-            )}
+            {/* Canal del proctor + supervisión en vivo. Si el chat está apagado, la
+                supervisión ocupa todo el ancho (sin hueco). */}
+            <div className={`grid gap-md items-start ${chatHabilitado ? 'md:grid-cols-2' : 'grid-cols-1'}`}>
+              {chatHabilitado && (
+                <ChatBox sessionId={sessionId} yo="alumno" titulo="Canal con el proctor" altura="h-[160px]" />
+              )}
+              <IntegridadPanel
+                activo={activo}
+                eventCount={eventCount}
+                score={score}
+                eventos={eventos}
+                examen={examen}
+              />
+            </div>
           </main>
 
           <aside className="w-full lg:w-[400px] shrink-0 lg:sticky lg:top-6 space-y-md">
@@ -204,23 +247,73 @@ export default function Examen() {
                   respondidas={respondidas}
                   onIr={setIndiceActual}
                 />
-                <Button variant="secondary" onClick={finalizar} className="w-full mt-base">
+                <Button
+                  variant="secondary"
+                  onClick={() => { setErrorEntrega(false); setConfirmandoEntrega(true); }}
+                  className="w-full mt-base"
+                >
                   Terminar intento
                 </Button>
               </Card>
             )}
 
-            {/* Supervisión (score + eventos) — debajo */}
-            <IntegridadPanel
-              activo={activo}
-              eventCount={eventCount}
-              score={score}
-              eventos={eventos}
-              examen={examen}
-            />
+            {/* Pausa autorizada */}
+            {pausasHabilitadas && (
+              <PausaAlumno sessionId={sessionId} onActivaChange={setPausaActiva} />
+            )}
           </aside>
         </div>
       </div>
+
+      {confirmandoEntrega && (
+        <div
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby="confirmar-entrega-titulo"
+          className="fixed inset-0 z-[95] bg-inverse-surface/80 backdrop-blur-md flex items-center justify-center p-lg animate-in fade-in"
+        >
+          <Card className="max-w-md w-full space-y-md">
+            <div className="space-y-base">
+              <h3 id="confirmar-entrega-titulo" className="font-headline text-headline-md text-on-surface">
+                ¿Entregar el examen?
+              </h3>
+              <p className="text-body-md text-on-surface-variant">
+                Respondiste <strong>{respondidas.size} de {total}</strong> preguntas.
+                {sinResponder > 0 && (
+                  <> Te {sinResponder === 1 ? 'queda' : 'quedan'} <strong>{sinResponder} sin responder</strong>.</>
+                )}
+              </p>
+              <p className="text-label-sm text-on-surface-variant">
+                Una vez que entregás <strong>no vas a poder volver a cambiar tus respuestas</strong>.
+              </p>
+              {errorEntrega && (
+                <div role="alert" className="rounded-xl border border-error/40 bg-error-container/60 px-sm py-base text-label-sm text-on-error-container">
+                  No pudimos entregar tu examen. Revisá tu conexión e intentá de nuevo — tus
+                  respuestas siguen acá, no se perdió nada.
+                </div>
+              )}
+            </div>
+            <div className="flex gap-base justify-end">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setConfirmandoEntrega(false)}
+                disabled={entregando}
+              >
+                Seguir en el examen
+              </Button>
+              <Button
+                size="sm"
+                icon={entregando ? undefined : 'check'}
+                onClick={() => void entregar(false)}
+                disabled={entregando}
+              >
+                {entregando ? 'Entregando…' : 'Sí, entregar'}
+              </Button>
+            </div>
+          </Card>
+        </div>
+      )}
 
       {alerta && <AlertaCritica ev={alerta} onClose={() => setAlerta(null)} />}
       {extraMonitorActive && <MonitorBloqueante />}

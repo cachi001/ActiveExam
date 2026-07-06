@@ -22,7 +22,7 @@ import type {
   // C-69: catálogo de exámenes de contenido importados
   ExamenContenidoResumen,
   // C-69: notas académicas del alumno + estado de cola de revisión
-  NotaExamen, MisNotasResponse,
+  NotaExamen, MisNotasResponse, RevisionExamen,
 } from './types';
 import { INSTITUTION } from '../config/institution';
 import { authProvider } from './authProvider';
@@ -657,6 +657,24 @@ export const api = {
       return resp.items ?? [];
     } catch {
       return [];
+    }
+  },
+
+  /**
+   * C-69: revisión post-examen del alumno para un examen. Devuelve la corrección
+   * (es_correcta + la opción elegida) del intento FINALIZADO del alumno.
+   * Real: GET /exam-content/{examen_id}/revision → 200 revisión; 404 si el alumno
+   * no tiene un intento finalizado para ese examen.
+   * Devuelve null en 404/error (la UI muestra "revisión no disponible").
+   */
+  async revisionExamen(examenId: string): Promise<RevisionExamen | null> {
+    try {
+      return await realFetch<RevisionExamen>(
+        `/exam-content/${examenId}/revision`,
+        { method: 'GET' },
+      );
+    } catch {
+      return null;
     }
   },
 
@@ -1743,6 +1761,7 @@ export const api = {
     // acá; el cache normaliza a `true` (degradación segura) si vienen ausentes.
     chat_habilitado?: boolean;
     pausas_habilitadas?: boolean;
+    pausa_max_min?: number;
   }> {
     return await realFetch('/config/effective', { method: 'GET' });
   },
@@ -1767,6 +1786,7 @@ export const api = {
     // solicitadas por el alumno desde la Configuración del sistema.
     chat_habilitado?: boolean;
     pausas_habilitadas?: boolean;
+    pausa_max_min?: number;
   }): Promise<{
     version: number;
     face_absent_ms: number;
