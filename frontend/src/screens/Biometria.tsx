@@ -210,7 +210,7 @@ export default function Biometria() {
 
   return (
     <StudentShell step={3} backTo="/consentimiento">
-      <div className="max-w-2xl lg:max-w-4xl mx-auto space-y-lg animate-in fade-in duration-500">
+      <div className="max-w-2xl lg:max-w-4xl space-y-lg animate-in fade-in duration-500">
         <div className="text-center space-y-base">
           <div className="w-14 h-14 rounded-2xl bg-primary-fixed text-primary flex items-center justify-center mx-auto">
             <Icon name="face" className="text-[28px]" fill />

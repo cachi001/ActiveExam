@@ -95,7 +95,7 @@ export default function AlumnoMaterias() {
 
   return (
     <StudentShell>
-      <div className="max-w-2xl lg:max-w-5xl xl:max-w-6xl mx-auto space-y-xl">
+      <div className="max-w-2xl lg:max-w-5xl xl:max-w-6xl space-y-xl">
         <BackButton onClick={() => navigate('/alumno')} />
         <header>
           <div className="flex items-center gap-sm">

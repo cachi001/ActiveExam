@@ -113,7 +113,7 @@ export default function Consent() {
   if (texto === null) {
     return (
       <StudentShell step={2} backTo="/requisitos">
-        <div className="max-w-3xl lg:max-w-5xl mx-auto">
+        <div className="max-w-3xl lg:max-w-5xl">
           <LoadingSpinner label="Cargando consentimiento…" />
         </div>
       </StudentShell>
@@ -122,7 +122,7 @@ export default function Consent() {
 
   return (
     <StudentShell step={2} backTo="/requisitos">
-      <div className="max-w-3xl lg:max-w-5xl mx-auto space-y-lg animate-in fade-in duration-500">
+      <div className="max-w-3xl lg:max-w-5xl space-y-lg animate-in fade-in duration-500">
         <div className="text-center space-y-base">
           <div className="w-14 h-14 rounded-2xl bg-primary-fixed text-primary flex items-center justify-center mx-auto">
             <Icon name="description" className="text-[28px]" />
