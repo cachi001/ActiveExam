@@ -160,7 +160,7 @@ export default function Examen() {
         {/* Preguntas (izquierda) + rail derecho: cámara arriba, luego números +
             Terminar intento, y abajo Supervisión. */}
         <div className="flex flex-col lg:flex-row gap-lg items-start">
-          <main className="flex-1 min-w-0 w-full">
+          <main className="flex-1 min-w-0 w-full space-y-lg">
             <ExamenPreguntaCard
               preguntaActual={preguntaActual}
               indiceActual={indiceActual}
@@ -174,6 +174,18 @@ export default function Examen() {
               onAnterior={() => setIndiceActual((i) => retrocederPregunta(i))}
               onSiguiente={() => setIndiceActual((i) => avanzarPregunta(i, total))}
             />
+
+            {/* Canal del proctor + pausa — debajo del cuestionario, lado a lado */}
+            {(pausasHabilitadas || chatHabilitado) && (
+              <div className="grid md:grid-cols-2 gap-md items-start">
+                {chatHabilitado && (
+                  <ChatBox sessionId={sessionId} yo="alumno" titulo="Canal con el proctor" altura="h-[160px]" />
+                )}
+                {pausasHabilitadas && (
+                  <PausaAlumno sessionId={sessionId} onActivaChange={setPausaActiva} />
+                )}
+              </div>
+            )}
           </main>
 
           <aside className="w-full lg:w-[400px] shrink-0 lg:sticky lg:top-6 space-y-md">
@@ -208,18 +220,6 @@ export default function Examen() {
             />
           </aside>
         </div>
-
-        {/* Chat con el proctor + pausas — debajo de las preguntas */}
-        {(pausasHabilitadas || chatHabilitado) && (
-          <div className="grid md:grid-cols-2 gap-md items-start mt-lg">
-            {pausasHabilitadas && (
-              <PausaAlumno sessionId={sessionId} onActivaChange={setPausaActiva} />
-            )}
-            {chatHabilitado && (
-              <ChatBox sessionId={sessionId} yo="alumno" titulo="Canal con el proctor" altura="h-[160px]" />
-            )}
-          </div>
-        )}
       </div>
 
       {alerta && <AlertaCritica ev={alerta} onClose={() => setAlerta(null)} />}
