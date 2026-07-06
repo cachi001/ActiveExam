@@ -1,0 +1,1094 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<quiz>
+<!-- question: 0  -->
+  <question type="category">
+    <category>
+      <text>$course$/top/Programación 1</text>
+    </category>
+    <info format="html">
+      <text></text>
+    </info>
+    <idnumber></idnumber>
+  </question>
+
+<!-- question: 26  -->
+  <question type="multichoice">
+    <name>
+      <text>Algoritmos - complejidad</text>
+    </name>
+    <questiontext format="html">
+      <text>¿Qué notación se usa comúnmente para expresar la complejidad temporal de un algoritmo?</text>
+    </questiontext>
+    <generalfeedback format="html">
+      <text></text>
+    </generalfeedback>
+    <defaultgrade>1.0000000</defaultgrade>
+    <penalty>0.3333333</penalty>
+    <hidden>0</hidden>
+    <idnumber></idnumber>
+    <single>true</single>
+    <shuffleanswers>true</shuffleanswers>
+    <answernumbering>abc</answernumbering>
+    <showstandardinstruction>1</showstandardinstruction>
+    <correctfeedback format="html">
+      <text></text>
+    </correctfeedback>
+    <partiallycorrectfeedback format="html">
+      <text></text>
+    </partiallycorrectfeedback>
+    <incorrectfeedback format="html">
+      <text></text>
+    </incorrectfeedback>
+    <answer fraction="100" format="html">
+      <text>Notación Big-O (O)</text>
+      <feedback format="html">
+        <text>Correcto.</text>
+      </feedback>
+    </answer>
+    <answer fraction="0" format="html">
+      <text>Notación hexadecimal</text>
+      <feedback format="html">
+        <text>Incorrecto.</text>
+      </feedback>
+    </answer>
+    <answer fraction="0" format="html">
+      <text>Notación científica</text>
+      <feedback format="html">
+        <text>Incorrecto.</text>
+      </feedback>
+    </answer>
+    <answer fraction="0" format="html">
+      <text>Notación BNF</text>
+      <feedback format="html">
+        <text>BNF es para gramáticas.</text>
+      </feedback>
+    </answer>
+  </question>
+
+<!-- question: 17  -->
+  <question type="multichoice">
+    <name>
+      <text>Arrays - acceso</text>
+    </name>
+    <questiontext format="html">
+      <text>Dado el array arr = [10, 20, 30, 40], ¿qué valor tiene arr[2]?</text>
+    </questiontext>
+    <generalfeedback format="html">
+      <text></text>
+    </generalfeedback>
+    <defaultgrade>1.0000000</defaultgrade>
+    <penalty>0.3333333</penalty>
+    <hidden>0</hidden>
+    <idnumber></idnumber>
+    <single>true</single>
+    <shuffleanswers>true</shuffleanswers>
+    <answernumbering>abc</answernumbering>
+    <showstandardinstruction>1</showstandardinstruction>
+    <correctfeedback format="html">
+      <text></text>
+    </correctfeedback>
+    <partiallycorrectfeedback format="html">
+      <text></text>
+    </partiallycorrectfeedback>
+    <incorrectfeedback format="html">
+      <text></text>
+    </incorrectfeedback>
+    <answer fraction="100" format="html">
+      <text>30</text>
+      <feedback format="html">
+        <text>Correcto. Los índices empiezan en 0.</text>
+      </feedback>
+    </answer>
+    <answer fraction="0" format="html">
+      <text>20</text>
+      <feedback format="html">
+        <text>Ese sería arr[1].</text>
+      </feedback>
+    </answer>
+    <answer fraction="0" format="html">
+      <text>40</text>
+      <feedback format="html">
+        <text>Ese sería arr[3].</text>
+      </feedback>
+    </answer>
+    <answer fraction="0" format="html">
+      <text>10</text>
+      <feedback format="html">
+        <text>Ese sería arr[0].</text>
+      </feedback>
+    </answer>
+  </question>
+
+<!-- question: 15  -->
+  <question type="multichoice">
+    <name>
+      <text>Bucles - for</text>
+    </name>
+    <questiontext format="html">
+      <text><![CDATA[¿Cuántas veces ejecuta el cuerpo el siguiente bucle? for(i=0; i<5; i++)]]></text>
+    </questiontext>
+    <generalfeedback format="html">
+      <text></text>
+    </generalfeedback>
+    <defaultgrade>1.0000000</defaultgrade>
+    <penalty>0.3333333</penalty>
+    <hidden>0</hidden>
+    <idnumber></idnumber>
+    <single>true</single>
+    <shuffleanswers>true</shuffleanswers>
+    <answernumbering>abc</answernumbering>
+    <showstandardinstruction>1</showstandardinstruction>
+    <correctfeedback format="html">
+      <text></text>
+    </correctfeedback>
+    <partiallycorrectfeedback format="html">
+      <text></text>
+    </partiallycorrectfeedback>
+    <incorrectfeedback format="html">
+      <text></text>
+    </incorrectfeedback>
+    <answer fraction="100" format="html">
+      <text>5 veces</text>
+      <feedback format="html">
+        <text>Correcto: i toma valores 0,1,2,3,4.</text>
+      </feedback>
+    </answer>
+    <answer fraction="0" format="html">
+      <text>4 veces</text>
+      <feedback format="html">
+        <text>Incorrecto.</text>
+      </feedback>
+    </answer>
+    <answer fraction="0" format="html">
+      <text>6 veces</text>
+      <feedback format="html">
+        <text>Incorrecto.</text>
+      </feedback>
+    </answer>
+    <answer fraction="0" format="html">
+      <text>Infinitas veces</text>
+      <feedback format="html">
+        <text>Incorrecto, el bucle termina.</text>
+      </feedback>
+    </answer>
+  </question>
+
+<!-- question: 19  -->
+  <question type="multichoice">
+    <name>
+      <text>Bucles - while</text>
+    </name>
+    <questiontext format="html">
+      <text>¿Cuándo se usa preferentemente un bucle while en lugar de un for?</text>
+    </questiontext>
+    <generalfeedback format="html">
+      <text></text>
+    </generalfeedback>
+    <defaultgrade>1.0000000</defaultgrade>
+    <penalty>0.3333333</penalty>
+    <hidden>0</hidden>
+    <idnumber></idnumber>
+    <single>true</single>
+    <shuffleanswers>true</shuffleanswers>
+    <answernumbering>abc</answernumbering>
+    <showstandardinstruction>1</showstandardinstruction>
+    <correctfeedback format="html">
+      <text></text>
+    </correctfeedback>
+    <partiallycorrectfeedback format="html">
+      <text></text>
+    </partiallycorrectfeedback>
+    <incorrectfeedback format="html">
+      <text></text>
+    </incorrectfeedback>
+    <answer fraction="100" format="html">
+      <text>Cuando no se conoce de antemano el número de iteraciones</text>
+      <feedback format="html">
+        <text>Correcto.</text>
+      </feedback>
+    </answer>
+    <answer fraction="0" format="html">
+      <text>Cuando se necesita iterar exactamente N veces</text>
+      <feedback format="html">
+        <text>Para eso es más claro usar for.</text>
+      </feedback>
+    </answer>
+    <answer fraction="0" format="html">
+      <text>Cuando hay que recorrer un array</text>
+      <feedback format="html">
+        <text>for es más idiomático para arrays.</text>
+      </feedback>
+    </answer>
+    <answer fraction="0" format="html">
+      <text>Nunca, while y for son equivalentes siempre</text>
+      <feedback format="html">
+        <text>Incorrecto.</text>
+      </feedback>
+    </answer>
+  </question>
+
+<!-- question: 27  -->
+  <question type="multichoice">
+    <name>
+      <text>Búsqueda lineal - complejidad</text>
+    </name>
+    <questiontext format="html">
+      <text>¿Cuál es la complejidad en el peor caso de la búsqueda lineal sobre un arreglo de n elementos?</text>
+    </questiontext>
+    <generalfeedback format="html">
+      <text></text>
+    </generalfeedback>
+    <defaultgrade>1.0000000</defaultgrade>
+    <penalty>0.3333333</penalty>
+    <hidden>0</hidden>
+    <idnumber></idnumber>
+    <single>true</single>
+    <shuffleanswers>true</shuffleanswers>
+    <answernumbering>abc</answernumbering>
+    <showstandardinstruction>1</showstandardinstruction>
+    <correctfeedback format="html">
+      <text></text>
+    </correctfeedback>
+    <partiallycorrectfeedback format="html">
+      <text></text>
+    </partiallycorrectfeedback>
+    <incorrectfeedback format="html">
+      <text></text>
+    </incorrectfeedback>
+    <answer fraction="100" format="html">
+      <text>O(n)</text>
+      <feedback format="html">
+        <text>Correcto: hay que recorrer todos los elementos.</text>
+      </feedback>
+    </answer>
+    <answer fraction="0" format="html">
+      <text>O(1)</text>
+      <feedback format="html">
+        <text>O(1) sería acceso directo.</text>
+      </feedback>
+    </answer>
+    <answer fraction="0" format="html">
+      <text>O(log n)</text>
+      <feedback format="html">
+        <text>Eso es búsqueda binaria.</text>
+      </feedback>
+    </answer>
+    <answer fraction="0" format="html">
+      <text>O(n²)</text>
+      <feedback format="html">
+        <text>Eso corresponde a algoritmos cuadráticos.</text>
+      </feedback>
+    </answer>
+  </question>
+
+<!-- question: 32  -->
+  <question type="multichoice">
+    <name>
+      <text>Depuración - debugging</text>
+    </name>
+    <questiontext format="html">
+      <text><![CDATA[¿Qué es un "breakpoint" en el contexto de la depuración de programas?]]></text>
+    </questiontext>
+    <generalfeedback format="html">
+      <text></text>
+    </generalfeedback>
+    <defaultgrade>1.0000000</defaultgrade>
+    <penalty>0.3333333</penalty>
+    <hidden>0</hidden>
+    <idnumber></idnumber>
+    <single>true</single>
+    <shuffleanswers>true</shuffleanswers>
+    <answernumbering>abc</answernumbering>
+    <showstandardinstruction>1</showstandardinstruction>
+    <correctfeedback format="html">
+      <text></text>
+    </correctfeedback>
+    <partiallycorrectfeedback format="html">
+      <text></text>
+    </partiallycorrectfeedback>
+    <incorrectfeedback format="html">
+      <text></text>
+    </incorrectfeedback>
+    <answer fraction="100" format="html">
+      <text>Un punto de interrupción donde la ejecución se pausa para inspeccionar el estado</text>
+      <feedback format="html">
+        <text>Correcto.</text>
+      </feedback>
+    </answer>
+    <answer fraction="0" format="html">
+      <text>Un error de compilación que detiene el programa</text>
+      <feedback format="html">
+        <text>Incorrecto.</text>
+      </feedback>
+    </answer>
+    <answer fraction="0" format="html">
+      <text>Una línea de código que genera una excepción</text>
+      <feedback format="html">
+        <text>Incorrecto.</text>
+      </feedback>
+    </answer>
+    <answer fraction="0" format="html">
+      <text>Un comentario especial que el compilador ignora</text>
+      <feedback format="html">
+        <text>Incorrecto.</text>
+      </feedback>
+    </answer>
+  </question>
+
+<!-- question: 14  -->
+  <question type="multichoice">
+    <name>
+      <text>Estructuras de control - if</text>
+    </name>
+    <questiontext format="html">
+      <text>¿Qué estructura de control se usa para tomar decisiones basadas en una condición?</text>
+    </questiontext>
+    <generalfeedback format="html">
+      <text></text>
+    </generalfeedback>
+    <defaultgrade>1.0000000</defaultgrade>
+    <penalty>0.3333333</penalty>
+    <hidden>0</hidden>
+    <idnumber></idnumber>
+    <single>true</single>
+    <shuffleanswers>true</shuffleanswers>
+    <answernumbering>abc</answernumbering>
+    <showstandardinstruction>1</showstandardinstruction>
+    <correctfeedback format="html">
+      <text></text>
+    </correctfeedback>
+    <partiallycorrectfeedback format="html">
+      <text></text>
+    </partiallycorrectfeedback>
+    <incorrectfeedback format="html">
+      <text></text>
+    </incorrectfeedback>
+    <answer fraction="100" format="html">
+      <text>if / else</text>
+      <feedback format="html">
+        <text>Correcto. if/else evalúa una condición.</text>
+      </feedback>
+    </answer>
+    <answer fraction="0" format="html">
+      <text>for</text>
+      <feedback format="html">
+        <text>for es un bucle de repetición.</text>
+      </feedback>
+    </answer>
+    <answer fraction="0" format="html">
+      <text>while</text>
+      <feedback format="html">
+        <text>while es un bucle condicional.</text>
+      </feedback>
+    </answer>
+    <answer fraction="0" format="html">
+      <text>switch</text>
+      <feedback format="html">
+        <text>switch evalúa múltiples casos, pero if/else es la respuesta más directa.</text>
+      </feedback>
+    </answer>
+  </question>
+
+<!-- question: 31  -->
+  <question type="multichoice">
+    <name>
+      <text>Estructuras de datos - cola</text>
+    </name>
+    <questiontext format="html">
+      <text>¿Cuál es la diferencia principal entre una pila (stack) y una cola (queue)?</text>
+    </questiontext>
+    <generalfeedback format="html">
+      <text></text>
+    </generalfeedback>
+    <defaultgrade>1.0000000</defaultgrade>
+    <penalty>0.3333333</penalty>
+    <hidden>0</hidden>
+    <idnumber></idnumber>
+    <single>true</single>
+    <shuffleanswers>true</shuffleanswers>
+    <answernumbering>abc</answernumbering>
+    <showstandardinstruction>1</showstandardinstruction>
+    <correctfeedback format="html">
+      <text></text>
+    </correctfeedback>
+    <partiallycorrectfeedback format="html">
+      <text></text>
+    </partiallycorrectfeedback>
+    <incorrectfeedback format="html">
+      <text></text>
+    </incorrectfeedback>
+    <answer fraction="100" format="html">
+      <text>La pila es LIFO y la cola es FIFO</text>
+      <feedback format="html">
+        <text>Correcto.</text>
+      </feedback>
+    </answer>
+    <answer fraction="0" format="html">
+      <text>La pila permite acceso aleatorio y la cola no</text>
+      <feedback format="html">
+        <text>Ninguna de las dos permite acceso aleatorio eficiente.</text>
+      </feedback>
+    </answer>
+    <answer fraction="0" format="html">
+      <text>La cola es LIFO y la pila es FIFO</text>
+      <feedback format="html">
+        <text>Es al revés.</text>
+      </feedback>
+    </answer>
+    <answer fraction="0" format="html">
+      <text>No hay diferencia, son lo mismo</text>
+      <feedback format="html">
+        <text>Son estructuras distintas.</text>
+      </feedback>
+    </answer>
+  </question>
+
+<!-- question: 30  -->
+  <question type="multichoice">
+    <name>
+      <text>Estructuras de datos - pila</text>
+    </name>
+    <questiontext format="html">
+      <text>¿Qué política de acceso sigue una pila (stack)?</text>
+    </questiontext>
+    <generalfeedback format="html">
+      <text></text>
+    </generalfeedback>
+    <defaultgrade>1.0000000</defaultgrade>
+    <penalty>0.3333333</penalty>
+    <hidden>0</hidden>
+    <idnumber></idnumber>
+    <single>true</single>
+    <shuffleanswers>true</shuffleanswers>
+    <answernumbering>abc</answernumbering>
+    <showstandardinstruction>1</showstandardinstruction>
+    <correctfeedback format="html">
+      <text></text>
+    </correctfeedback>
+    <partiallycorrectfeedback format="html">
+      <text></text>
+    </partiallycorrectfeedback>
+    <incorrectfeedback format="html">
+      <text></text>
+    </incorrectfeedback>
+    <answer fraction="100" format="html">
+      <text>LIFO (Last In, First Out)</text>
+      <feedback format="html">
+        <text>Correcto: el último en entrar es el primero en salir.</text>
+      </feedback>
+    </answer>
+    <answer fraction="0" format="html">
+      <text>FIFO (First In, First Out)</text>
+      <feedback format="html">
+        <text>FIFO es la política de una cola (queue).</text>
+      </feedback>
+    </answer>
+    <answer fraction="0" format="html">
+      <text>Acceso aleatorio</text>
+      <feedback format="html">
+        <text>Eso es un arreglo.</text>
+      </feedback>
+    </answer>
+    <answer fraction="0" format="html">
+      <text>Prioridad por valor</text>
+      <feedback format="html">
+        <text>Eso es una cola de prioridad.</text>
+      </feedback>
+    </answer>
+  </question>
+
+<!-- question: 16  -->
+  <question type="multichoice">
+    <name>
+      <text>Funciones - definición</text>
+    </name>
+    <questiontext format="html">
+      <text>¿Para qué sirve una función en programación?</text>
+    </questiontext>
+    <generalfeedback format="html">
+      <text></text>
+    </generalfeedback>
+    <defaultgrade>1.0000000</defaultgrade>
+    <penalty>0.3333333</penalty>
+    <hidden>0</hidden>
+    <idnumber></idnumber>
+    <single>true</single>
+    <shuffleanswers>true</shuffleanswers>
+    <answernumbering>abc</answernumbering>
+    <showstandardinstruction>1</showstandardinstruction>
+    <correctfeedback format="html">
+      <text></text>
+    </correctfeedback>
+    <partiallycorrectfeedback format="html">
+      <text></text>
+    </partiallycorrectfeedback>
+    <incorrectfeedback format="html">
+      <text></text>
+    </incorrectfeedback>
+    <answer fraction="100" format="html">
+      <text>Para agrupar un bloque de código reutilizable con un nombre</text>
+      <feedback format="html">
+        <text>Correcto.</text>
+      </feedback>
+    </answer>
+    <answer fraction="0" format="html">
+      <text>Para declarar variables globales</text>
+      <feedback format="html">
+        <text>Incorrecto.</text>
+      </feedback>
+    </answer>
+    <answer fraction="0" format="html">
+      <text>Para detener la ejecución del programa</text>
+      <feedback format="html">
+        <text>Incorrecto.</text>
+      </feedback>
+    </answer>
+    <answer fraction="0" format="html">
+      <text>Para importar librerías</text>
+      <feedback format="html">
+        <text>Incorrecto.</text>
+      </feedback>
+    </answer>
+  </question>
+
+<!-- question: 20  -->
+  <question type="multichoice">
+    <name>
+      <text>Lógica booleana - AND</text>
+    </name>
+    <questiontext format="html">
+      <text>¿Cuál es el resultado de (True AND False)?</text>
+    </questiontext>
+    <generalfeedback format="html">
+      <text></text>
+    </generalfeedback>
+    <defaultgrade>1.0000000</defaultgrade>
+    <penalty>0.3333333</penalty>
+    <hidden>0</hidden>
+    <idnumber></idnumber>
+    <single>true</single>
+    <shuffleanswers>true</shuffleanswers>
+    <answernumbering>abc</answernumbering>
+    <showstandardinstruction>1</showstandardinstruction>
+    <correctfeedback format="html">
+      <text></text>
+    </correctfeedback>
+    <partiallycorrectfeedback format="html">
+      <text></text>
+    </partiallycorrectfeedback>
+    <incorrectfeedback format="html">
+      <text></text>
+    </incorrectfeedback>
+    <answer fraction="100" format="html">
+      <text>False</text>
+      <feedback format="html">
+        <text>Correcto. AND requiere que ambos operandos sean verdaderos.</text>
+      </feedback>
+    </answer>
+    <answer fraction="0" format="html">
+      <text>True</text>
+      <feedback format="html">
+        <text>Incorrecto.</text>
+      </feedback>
+    </answer>
+    <answer fraction="0" format="html">
+      <text>Depende del lenguaje</text>
+      <feedback format="html">
+        <text>No depende: AND es universal.</text>
+      </feedback>
+    </answer>
+    <answer fraction="0" format="html">
+      <text>Error de compilación</text>
+      <feedback format="html">
+        <text>Incorrecto.</text>
+      </feedback>
+    </answer>
+  </question>
+
+<!-- question: 18  -->
+  <question type="multichoice">
+    <name>
+      <text>Operadores - módulo</text>
+    </name>
+    <questiontext format="html">
+      <text>¿Qué resultado da la expresión 17 % 5?</text>
+    </questiontext>
+    <generalfeedback format="html">
+      <text></text>
+    </generalfeedback>
+    <defaultgrade>1.0000000</defaultgrade>
+    <penalty>0.3333333</penalty>
+    <hidden>0</hidden>
+    <idnumber></idnumber>
+    <single>true</single>
+    <shuffleanswers>true</shuffleanswers>
+    <answernumbering>abc</answernumbering>
+    <showstandardinstruction>1</showstandardinstruction>
+    <correctfeedback format="html">
+      <text></text>
+    </correctfeedback>
+    <partiallycorrectfeedback format="html">
+      <text></text>
+    </partiallycorrectfeedback>
+    <incorrectfeedback format="html">
+      <text></text>
+    </incorrectfeedback>
+    <answer fraction="100" format="html">
+      <text>2</text>
+      <feedback format="html">
+        <text>Correcto: 17 = 5×3 + 2.</text>
+      </feedback>
+    </answer>
+    <answer fraction="0" format="html">
+      <text>3</text>
+      <feedback format="html">
+        <text>Incorrecto.</text>
+      </feedback>
+    </answer>
+    <answer fraction="0" format="html">
+      <text>5</text>
+      <feedback format="html">
+        <text>Incorrecto.</text>
+      </feedback>
+    </answer>
+    <answer fraction="0" format="html">
+      <text>0</text>
+      <feedback format="html">
+        <text>Incorrecto.</text>
+      </feedback>
+    </answer>
+  </question>
+
+<!-- question: 28  -->
+  <question type="multichoice">
+    <name>
+      <text>Ordenamiento - burbuja</text>
+    </name>
+    <questiontext format="html">
+      <text>En el algoritmo de ordenamiento burbuja (bubble sort), ¿qué se hace en cada pasada?</text>
+    </questiontext>
+    <generalfeedback format="html">
+      <text></text>
+    </generalfeedback>
+    <defaultgrade>1.0000000</defaultgrade>
+    <penalty>0.3333333</penalty>
+    <hidden>0</hidden>
+    <idnumber></idnumber>
+    <single>true</single>
+    <shuffleanswers>true</shuffleanswers>
+    <answernumbering>abc</answernumbering>
+    <showstandardinstruction>1</showstandardinstruction>
+    <correctfeedback format="html">
+      <text></text>
+    </correctfeedback>
+    <partiallycorrectfeedback format="html">
+      <text></text>
+    </partiallycorrectfeedback>
+    <incorrectfeedback format="html">
+      <text></text>
+    </incorrectfeedback>
+    <answer fraction="100" format="html">
+      <text>Se comparan e intercambian elementos adyacentes si están en orden incorrecto</text>
+      <feedback format="html">
+        <text>Correcto.</text>
+      </feedback>
+    </answer>
+    <answer fraction="0" format="html">
+      <text>Se divide el arreglo en dos mitades</text>
+      <feedback format="html">
+        <text>Eso es merge sort.</text>
+      </feedback>
+    </answer>
+    <answer fraction="0" format="html">
+      <text>Se selecciona el mínimo y se coloca al inicio</text>
+      <feedback format="html">
+        <text>Eso es selection sort.</text>
+      </feedback>
+    </answer>
+    <answer fraction="0" format="html">
+      <text>Se inserta cada elemento en su posición correcta desde el inicio</text>
+      <feedback format="html">
+        <text>Eso es insertion sort.</text>
+      </feedback>
+    </answer>
+  </question>
+
+<!-- question: 22  -->
+  <question type="multichoice">
+    <name>
+      <text>Paradigmas - POO</text>
+    </name>
+    <questiontext format="html">
+      <text>¿Cuál de los siguientes es un principio de la Programación Orientada a Objetos?</text>
+    </questiontext>
+    <generalfeedback format="html">
+      <text></text>
+    </generalfeedback>
+    <defaultgrade>1.0000000</defaultgrade>
+    <penalty>0.3333333</penalty>
+    <hidden>0</hidden>
+    <idnumber></idnumber>
+    <single>true</single>
+    <shuffleanswers>true</shuffleanswers>
+    <answernumbering>abc</answernumbering>
+    <showstandardinstruction>1</showstandardinstruction>
+    <correctfeedback format="html">
+      <text></text>
+    </correctfeedback>
+    <partiallycorrectfeedback format="html">
+      <text></text>
+    </partiallycorrectfeedback>
+    <incorrectfeedback format="html">
+      <text></text>
+    </incorrectfeedback>
+    <answer fraction="100" format="html">
+      <text>Encapsulamiento</text>
+      <feedback format="html">
+        <text>Correcto. El encapsulamiento es uno de los 4 pilares de POO.</text>
+      </feedback>
+    </answer>
+    <answer fraction="0" format="html">
+      <text>Compilación</text>
+      <feedback format="html">
+        <text>La compilación es un proceso, no un principio de POO.</text>
+      </feedback>
+    </answer>
+    <answer fraction="0" format="html">
+      <text>Indexación</text>
+      <feedback format="html">
+        <text>No es un principio de POO.</text>
+      </feedback>
+    </answer>
+    <answer fraction="0" format="html">
+      <text>Recursividad</text>
+      <feedback format="html">
+        <text>Es una técnica, no un principio de POO.</text>
+      </feedback>
+    </answer>
+  </question>
+
+<!-- question: 23  -->
+  <question type="multichoice">
+    <name>
+      <text>Pseudocódigo - asignación</text>
+    </name>
+    <questiontext format="html">
+      <text>En pseudocódigo, la instrucción x ← x + 1 significa:</text>
+    </questiontext>
+    <generalfeedback format="html">
+      <text></text>
+    </generalfeedback>
+    <defaultgrade>1.0000000</defaultgrade>
+    <penalty>0.3333333</penalty>
+    <hidden>0</hidden>
+    <idnumber></idnumber>
+    <single>true</single>
+    <shuffleanswers>true</shuffleanswers>
+    <answernumbering>abc</answernumbering>
+    <showstandardinstruction>1</showstandardinstruction>
+    <correctfeedback format="html">
+      <text></text>
+    </correctfeedback>
+    <partiallycorrectfeedback format="html">
+      <text></text>
+    </partiallycorrectfeedback>
+    <incorrectfeedback format="html">
+      <text></text>
+    </incorrectfeedback>
+    <answer fraction="100" format="html">
+      <text>Incrementar el valor de x en 1</text>
+      <feedback format="html">
+        <text>Correcto.</text>
+      </feedback>
+    </answer>
+    <answer fraction="0" format="html">
+      <text>Comparar x con x+1</text>
+      <feedback format="html">
+        <text>Incorrecto, ← es asignación.</text>
+      </feedback>
+    </answer>
+    <answer fraction="0" format="html">
+      <text>Declarar una variable nueva llamada x+1</text>
+      <feedback format="html">
+        <text>Incorrecto.</text>
+      </feedback>
+    </answer>
+    <answer fraction="0" format="html">
+      <text>Intercambiar x con 1</text>
+      <feedback format="html">
+        <text>Incorrecto.</text>
+      </feedback>
+    </answer>
+  </question>
+
+<!-- question: 29  -->
+  <question type="multichoice">
+    <name>
+      <text>Punteros - concepto</text>
+    </name>
+    <questiontext format="html">
+      <text>¿Qué almacena un puntero en lenguajes como C?</text>
+    </questiontext>
+    <generalfeedback format="html">
+      <text></text>
+    </generalfeedback>
+    <defaultgrade>1.0000000</defaultgrade>
+    <penalty>0.3333333</penalty>
+    <hidden>0</hidden>
+    <idnumber></idnumber>
+    <single>true</single>
+    <shuffleanswers>true</shuffleanswers>
+    <answernumbering>abc</answernumbering>
+    <showstandardinstruction>1</showstandardinstruction>
+    <correctfeedback format="html">
+      <text></text>
+    </correctfeedback>
+    <partiallycorrectfeedback format="html">
+      <text></text>
+    </partiallycorrectfeedback>
+    <incorrectfeedback format="html">
+      <text></text>
+    </incorrectfeedback>
+    <answer fraction="100" format="html">
+      <text>La dirección de memoria de otra variable</text>
+      <feedback format="html">
+        <text>Correcto.</text>
+      </feedback>
+    </answer>
+    <answer fraction="0" format="html">
+      <text>El valor de la variable a la que apunta</text>
+      <feedback format="html">
+        <text>Eso sería la variable en sí.</text>
+      </feedback>
+    </answer>
+    <answer fraction="0" format="html">
+      <text>El nombre de la variable</text>
+      <feedback format="html">
+        <text>Incorrecto.</text>
+      </feedback>
+    </answer>
+    <answer fraction="0" format="html">
+      <text>El tipo de dato de la variable</text>
+      <feedback format="html">
+        <text>Incorrecto.</text>
+      </feedback>
+    </answer>
+  </question>
+
+<!-- question: 21  -->
+  <question type="multichoice">
+    <name>
+      <text>Recursividad - concepto</text>
+    </name>
+    <questiontext format="html">
+      <text>¿Qué característica define a una función recursiva?</text>
+    </questiontext>
+    <generalfeedback format="html">
+      <text></text>
+    </generalfeedback>
+    <defaultgrade>1.0000000</defaultgrade>
+    <penalty>0.3333333</penalty>
+    <hidden>0</hidden>
+    <idnumber></idnumber>
+    <single>true</single>
+    <shuffleanswers>true</shuffleanswers>
+    <answernumbering>abc</answernumbering>
+    <showstandardinstruction>1</showstandardinstruction>
+    <correctfeedback format="html">
+      <text></text>
+    </correctfeedback>
+    <partiallycorrectfeedback format="html">
+      <text></text>
+    </partiallycorrectfeedback>
+    <incorrectfeedback format="html">
+      <text></text>
+    </incorrectfeedback>
+    <answer fraction="100" format="html">
+      <text>Se llama a sí misma durante su ejecución</text>
+      <feedback format="html">
+        <text>Correcto.</text>
+      </feedback>
+    </answer>
+    <answer fraction="0" format="html">
+      <text>Retorna siempre un entero</text>
+      <feedback format="html">
+        <text>Incorrecto.</text>
+      </feedback>
+    </answer>
+    <answer fraction="0" format="html">
+      <text>No tiene parámetros</text>
+      <feedback format="html">
+        <text>Incorrecto.</text>
+      </feedback>
+    </answer>
+    <answer fraction="0" format="html">
+      <text>Solo puede ser llamada una vez</text>
+      <feedback format="html">
+        <text>Incorrecto.</text>
+      </feedback>
+    </answer>
+  </question>
+
+<!-- question: 24  -->
+  <question type="multichoice">
+    <name>
+      <text>Strings - longitud</text>
+    </name>
+    <questiontext format="html">
+      <text><![CDATA[¿Cuántos caracteres tiene la cadena "Hola"?]]></text>
+    </questiontext>
+    <generalfeedback format="html">
+      <text></text>
+    </generalfeedback>
+    <defaultgrade>1.0000000</defaultgrade>
+    <penalty>0.3333333</penalty>
+    <hidden>0</hidden>
+    <idnumber></idnumber>
+    <single>true</single>
+    <shuffleanswers>true</shuffleanswers>
+    <answernumbering>abc</answernumbering>
+    <showstandardinstruction>1</showstandardinstruction>
+    <correctfeedback format="html">
+      <text></text>
+    </correctfeedback>
+    <partiallycorrectfeedback format="html">
+      <text></text>
+    </partiallycorrectfeedback>
+    <incorrectfeedback format="html">
+      <text></text>
+    </incorrectfeedback>
+    <answer fraction="100" format="html">
+      <text>4</text>
+      <feedback format="html">
+        <text>Correcto: H-o-l-a.</text>
+      </feedback>
+    </answer>
+    <answer fraction="0" format="html">
+      <text>5</text>
+      <feedback format="html">
+        <text>Incorrecto.</text>
+      </feedback>
+    </answer>
+    <answer fraction="0" format="html">
+      <text>3</text>
+      <feedback format="html">
+        <text>Incorrecto.</text>
+      </feedback>
+    </answer>
+    <answer fraction="0" format="html">
+      <text>Depende del encoding</text>
+      <feedback format="html">
+        <text>Para ASCII básico son 4.</text>
+      </feedback>
+    </answer>
+  </question>
+
+<!-- question: 25  -->
+  <question type="multichoice">
+    <name>
+      <text>Variables - scope</text>
+    </name>
+    <questiontext format="html">
+      <text>Una variable declarada dentro de una función es accesible:</text>
+    </questiontext>
+    <generalfeedback format="html">
+      <text></text>
+    </generalfeedback>
+    <defaultgrade>1.0000000</defaultgrade>
+    <penalty>0.3333333</penalty>
+    <hidden>0</hidden>
+    <idnumber></idnumber>
+    <single>true</single>
+    <shuffleanswers>true</shuffleanswers>
+    <answernumbering>abc</answernumbering>
+    <showstandardinstruction>1</showstandardinstruction>
+    <correctfeedback format="html">
+      <text></text>
+    </correctfeedback>
+    <partiallycorrectfeedback format="html">
+      <text></text>
+    </partiallycorrectfeedback>
+    <incorrectfeedback format="html">
+      <text></text>
+    </incorrectfeedback>
+    <answer fraction="100" format="html">
+      <text>Solo dentro de esa función (scope local)</text>
+      <feedback format="html">
+        <text>Correcto.</text>
+      </feedback>
+    </answer>
+    <answer fraction="0" format="html">
+      <text>En todo el programa</text>
+      <feedback format="html">
+        <text>Eso sería una variable global.</text>
+      </feedback>
+    </answer>
+    <answer fraction="0" format="html">
+      <text>Solo en el módulo donde está la función</text>
+      <feedback format="html">
+        <text>Incorrecto en la mayoría de los casos.</text>
+      </feedback>
+    </answer>
+    <answer fraction="0" format="html">
+      <text>En cualquier función del mismo archivo</text>
+      <feedback format="html">
+        <text>Incorrecto.</text>
+      </feedback>
+    </answer>
+  </question>
+
+<!-- question: 13  -->
+  <question type="multichoice">
+    <name>
+      <text>Variables y tipos de datos - entero</text>
+    </name>
+    <questiontext format="html">
+      <text>¿Cuál de los siguientes es un tipo de dato entero en la mayoría de los lenguajes de programación?</text>
+    </questiontext>
+    <generalfeedback format="html">
+      <text></text>
+    </generalfeedback>
+    <defaultgrade>1.0000000</defaultgrade>
+    <penalty>0.3333333</penalty>
+    <hidden>0</hidden>
+    <idnumber></idnumber>
+    <single>true</single>
+    <shuffleanswers>true</shuffleanswers>
+    <answernumbering>abc</answernumbering>
+    <showstandardinstruction>1</showstandardinstruction>
+    <correctfeedback format="html">
+      <text></text>
+    </correctfeedback>
+    <partiallycorrectfeedback format="html">
+      <text></text>
+    </partiallycorrectfeedback>
+    <incorrectfeedback format="html">
+      <text></text>
+    </incorrectfeedback>
+    <answer fraction="100" format="html">
+      <text>int</text>
+      <feedback format="html">
+        <text>Correcto. int representa números enteros.</text>
+      </feedback>
+    </answer>
+    <answer fraction="0" format="html">
+      <text>float</text>
+      <feedback format="html">
+        <text>float representa números decimales.</text>
+      </feedback>
+    </answer>
+    <answer fraction="0" format="html">
+      <text>char</text>
+      <feedback format="html">
+        <text>char representa un carácter.</text>
+      </feedback>
+    </answer>
+    <answer fraction="0" format="html">
+      <text>bool</text>
+      <feedback format="html">
+        <text>bool representa verdadero/falso.</text>
+      </feedback>
+    </answer>
+  </question>
+
+</quiz>

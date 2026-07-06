@@ -191,6 +191,118 @@ async def _ejecutar_seed(
 
     print(f"\nSeed completado: {creados} creados, {existentes} ya existentes.")
 
+    # Contenido académico demo: materia + comisión + examen (idempotente).
+    await _seed_contenido(factory)
+
+
+async def _seed_contenido(factory) -> None:
+    """Siembra contenido académico demo (idempotente).
+
+    Programación 1 → Comisión 1 → "Examen de Programación 1", cuyas preguntas se
+    importan del Moodle XML ``scripts/fixtures/programacion-1.xml`` (mismo parser
+    que el endpoint /moodle-import). El examen se rinde on-demand pero tiene HORA
+    DE INICIO visible (apertura); ventana abierta (sin cierre). 2 intentos, 40 min.
+    """
+    from datetime import datetime, timezone
+
+    from app.application.exam_content.moodle_parser import parse_moodle_xml
+    from app.infrastructure.persistence.models.exam_content import (
+        ComisionModel,
+        ExamenContenidoModel,
+        MateriaModel,
+        OpcionRespuestaModel,
+        PreguntaExamenModel,
+    )
+
+    MATERIA_CODIGO = "PROG1"
+    MATERIA_NOMBRE = "Programación 1"
+    COMISION_CODIGO = "C1"
+    COMISION_NOMBRE = "Comisión 1"
+    EXAMEN_TITULO = "Examen de Programación 1"
+    XML_PATH = os.path.join(os.path.dirname(__file__), "fixtures", "programacion-1.xml")
+
+    async with factory() as session:
+        # 1. Materia (idempotente por codigo único).
+        materia = (
+            await session.execute(
+                select(MateriaModel).where(MateriaModel.codigo == MATERIA_CODIGO)
+            )
+        ).scalar_one_or_none()
+        if materia is None:
+            materia = MateriaModel(codigo=MATERIA_CODIGO, nombre=MATERIA_NOMBRE)
+            session.add(materia)
+            await session.flush()  # obtener materia.id para la FK de comisión
+            print(f"  [create] materia {MATERIA_NOMBRE} ({MATERIA_CODIGO})")
+        else:
+            print(f"  [skip] materia ya existe: {MATERIA_CODIGO}")
+
+        # 2. Comisión (idempotente por (materia_id, codigo)).
+        comision = (
+            await session.execute(
+                select(ComisionModel).where(
+                    ComisionModel.materia_id == materia.id,
+                    ComisionModel.codigo == COMISION_CODIGO,
+                )
+            )
+        ).scalar_one_or_none()
+        if comision is None:
+            comision = ComisionModel(
+                materia_id=materia.id,
+                codigo=COMISION_CODIGO,
+                nombre=COMISION_NOMBRE,
+                periodo="1C",
+                anio=2026,
+            )
+            session.add(comision)
+            await session.flush()  # obtener comision.id para la FK del examen
+            print(f"  [create] comision {COMISION_NOMBRE} ({COMISION_CODIGO})")
+        else:
+            print(f"  [skip] comision ya existe: {COMISION_CODIGO}")
+
+        # 3. Examen (idempotente por (titulo, comision_id)).
+        examen = (
+            await session.execute(
+                select(ExamenContenidoModel).where(
+                    ExamenContenidoModel.titulo == EXAMEN_TITULO,
+                    ExamenContenidoModel.comision_id == comision.id,
+                )
+            )
+        ).scalar_one_or_none()
+        if examen is not None:
+            print(f"  [skip] examen ya existe: {EXAMEN_TITULO}")
+        elif not os.path.exists(XML_PATH):
+            print(f"  [skip] fixture no encontrado: {XML_PATH} (examen no importado)")
+        else:
+            with open(XML_PATH, "rb") as f:
+                parseo = parse_moodle_xml(f.read())
+            examen = ExamenContenidoModel(
+                titulo=EXAMEN_TITULO,
+                comision_id=comision.id,
+                tiempo_limite_min=40,
+                intentos_permitidos=2,
+                # Hora de inicio visible; ventana abierta (sin cierre) => on-demand.
+                apertura=datetime(2026, 3, 1, 9, 0, tzinfo=timezone.utc),
+                cierre=None,
+            )
+            for i, pd in enumerate(parseo.preguntas):
+                pregunta = PreguntaExamenModel(
+                    enunciado=pd.enunciado,
+                    tipo=pd.tipo,
+                    orden=i,
+                    seleccionada=True,
+                )
+                for j, op in enumerate(pd.opciones):
+                    pregunta.opciones.append(
+                        OpcionRespuestaModel(
+                            texto=op.texto, es_correcta=op.es_correcta, orden=j
+                        )
+                    )
+                examen.preguntas.append(pregunta)
+            session.add(examen)
+            print(f"  [create] examen {EXAMEN_TITULO} ({len(parseo.preguntas)} preguntas del XML)")
+
+        await session.commit()
+
 
 if __name__ == "__main__":
     if _SLIM_FLAG:
