@@ -25,7 +25,7 @@ import { IntegridadPanel } from './examen/IntegridadPanel';
 import { QuestionNavigator } from './alumno/components/QuestionNavigator';
 import { PausaAlumno } from './PausaAlumno';
 import { ChatBox } from '../ui/ChatBox';
-import { Card } from '../ui/components';
+import { Card, Button } from '../ui/components';
 
 export default function Examen() {
   const navigate = useNavigate();
@@ -173,50 +173,60 @@ export default function Examen() {
           </div>
         </div>
 
-        <div className="space-y-lg">
-          {/* Pregunta (timer + progreso dentro de la card) */}
-          <ExamenPreguntaCard
-            preguntaActual={preguntaActual}
-            indiceActual={indiceActual}
-            total={total}
-            cargandoPreguntas={cargandoPreguntas}
-            respuestas={respuestas}
-            respondidas={respondidas}
-            segRestantes={segRestantes}
-            tiempoLimiteMin={tiempoLimiteMin}
-            onSeleccionarOpcion={(pid, oid) => setRespuestas((prev) => ({ ...prev, [pid]: oid }))}
-            onAnterior={() => setIndiceActual((i) => retrocederPregunta(i))}
-            onSiguiente={() => setIndiceActual((i) => avanzarPregunta(i, total))}
-            onFinalizar={finalizar}
-          />
+        {/* Preguntas (izquierda) + navegador con "Terminar intento" (derecha) */}
+        <div className="flex flex-col lg:flex-row gap-lg items-start">
+          <main className="flex-1 min-w-0 w-full">
+            <ExamenPreguntaCard
+              preguntaActual={preguntaActual}
+              indiceActual={indiceActual}
+              total={total}
+              cargandoPreguntas={cargandoPreguntas}
+              respuestas={respuestas}
+              respondidas={respondidas}
+              segRestantes={segRestantes}
+              tiempoLimiteMin={tiempoLimiteMin}
+              onSeleccionarOpcion={(pid, oid) => setRespuestas((prev) => ({ ...prev, [pid]: oid }))}
+              onAnterior={() => setIndiceActual((i) => retrocederPregunta(i))}
+              onSiguiente={() => setIndiceActual((i) => avanzarPregunta(i, total))}
+            />
+          </main>
 
-          {/* Navegador de preguntas (números centrados) */}
           {total > 0 && (
-            <Card className="space-y-sm">
-              <h3 className="text-label-sm font-semibold text-on-surface-variant uppercase tracking-wide">
-                Preguntas
-              </h3>
-              <QuestionNavigator
-                total={total}
-                indiceActual={indiceActual}
-                respondidas={respondidas}
-                onIr={setIndiceActual}
-              />
-            </Card>
-          )}
-
-          {/* Chat con el proctor + pausas — debajo de las preguntas */}
-          {(pausasHabilitadas || chatHabilitado) && (
-            <div className="grid md:grid-cols-2 gap-md items-start">
-              {pausasHabilitadas && (
-                <PausaAlumno sessionId={sessionId} onActivaChange={setPausaActiva} />
-              )}
-              {chatHabilitado && (
-                <ChatBox sessionId={sessionId} yo="alumno" titulo="Canal con el proctor" altura="h-[160px]" />
-              )}
-            </div>
+            <aside className="w-full lg:w-[340px] shrink-0 lg:sticky lg:top-6">
+              <Card className="space-y-md">
+                <h3 className="text-label-sm font-semibold text-on-surface-variant uppercase tracking-wide">
+                  Preguntas
+                </h3>
+                <QuestionNavigator
+                  total={total}
+                  indiceActual={indiceActual}
+                  respondidas={respondidas}
+                  onIr={setIndiceActual}
+                />
+                <Button
+                  variant="success"
+                  icon="check_circle"
+                  onClick={finalizar}
+                  className="w-full mt-base"
+                >
+                  Terminar intento
+                </Button>
+              </Card>
+            </aside>
           )}
         </div>
+
+        {/* Chat con el proctor + pausas — debajo de las preguntas */}
+        {(pausasHabilitadas || chatHabilitado) && (
+          <div className="grid md:grid-cols-2 gap-md items-start mt-lg">
+            {pausasHabilitadas && (
+              <PausaAlumno sessionId={sessionId} onActivaChange={setPausaActiva} />
+            )}
+            {chatHabilitado && (
+              <ChatBox sessionId={sessionId} yo="alumno" titulo="Canal con el proctor" altura="h-[160px]" />
+            )}
+          </div>
+        )}
       </div>
 
       {alerta && <AlertaCritica ev={alerta} onClose={() => setAlerta(null)} />}

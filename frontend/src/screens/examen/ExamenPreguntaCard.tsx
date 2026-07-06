@@ -15,13 +15,12 @@ interface Props {
   onSeleccionarOpcion: (preguntaId: string, opcionId: string) => void;
   onAnterior: () => void;
   onSiguiente: () => void;
-  onFinalizar: () => void;
 }
 
 export function ExamenPreguntaCard({
   preguntaActual, indiceActual, total, cargandoPreguntas,
   respuestas, respondidas, segRestantes, tiempoLimiteMin,
-  onSeleccionarOpcion, onAnterior, onSiguiente, onFinalizar,
+  onSeleccionarOpcion, onAnterior, onSiguiente,
 }: Props) {
   const mm = segRestantes !== null ? String(Math.floor(segRestantes / 60)).padStart(2, '0') : '00';
   const ss = segRestantes !== null ? String(segRestantes % 60).padStart(2, '0') : '00';
@@ -102,20 +101,17 @@ export function ExamenPreguntaCard({
         </div>
       )}
 
-      {/* Botones de navegación */}
+      {/* Navegación entre preguntas (el botón de entregar vive en el panel de la derecha) */}
       <div className="flex items-center justify-between border-t border-outline-variant/40 pt-md gap-sm">
         {puedeIrAnterior(indiceActual) ? (
           <Button variant="outline" icon="arrow_back" onClick={onAnterior}>Anterior</Button>
         ) : (
           <div />
         )}
-        <Button variant="outline" icon="check_circle" onClick={onFinalizar}>
-          Terminar intento
-        </Button>
         {puedeIrSiguiente(indiceActual, total) ? (
           <Button icon="arrow_forward" onClick={onSiguiente}>Siguiente</Button>
         ) : (
-          <Button icon="check_circle" onClick={onFinalizar}>Finalizar y entregar</Button>
+          <div />
         )}
       </div>
 

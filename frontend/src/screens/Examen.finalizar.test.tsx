@@ -6,7 +6,7 @@
  * y verifica la cadena de entrega de extremo a extremo:
  *
  *   1. El alumno selecciona una opción.
- *   2. Hace clic en "Finalizar y entregar".
+ *   2. Hace clic en "Terminar intento".
  *   3. Las respuestas se POSTean ANTES de finalizar la sesión (para que el backend
  *      calcule la nota server-side) y ANTES de navegar a /cierre.
  *
@@ -73,7 +73,7 @@ vi.mock('../lib/api', () => ({
 vi.mock('../config/effectiveConfigCache', () => ({ getEffectiveConfig: () => null, loadEffectiveConfig: () => Promise.resolve(null), resetEffectiveConfigCache: () => {} }));
 vi.mock('../proctoring/scoringWeights', () => ({ pesoEvento: () => 0 }));
 
-// Una sola pregunta con dos opciones: deja el botón "Finalizar y entregar" visible
+// Una sola pregunta con dos opciones: deja el botón "Terminar intento" visible
 // (no hay "Siguiente" en la última/única pregunta).
 vi.mock('../lib/examTakingApi', () => ({
   fetchExamenParaRendir: () =>
@@ -135,7 +135,7 @@ let root: Root;
 function botonFinalizar(): HTMLButtonElement | null {
   return (
     Array.from(container.querySelectorAll('button')).find((b) =>
-      b.textContent?.includes('Finalizar y entregar'),
+      b.textContent?.includes('Terminar intento'),
     ) as HTMLButtonElement | undefined
   ) ?? null;
 }
