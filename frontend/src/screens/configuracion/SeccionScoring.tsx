@@ -140,8 +140,8 @@ export default function SeccionScoring() {
 
   if (cargando) {
     return (
-      <div className="grid md:grid-cols-2 gap-md max-w-4xl">
-        {Array.from({ length: 6 }).map((_, i) => (
+      <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-md">
+        {Array.from({ length: 8 }).map((_, i) => (
           <div key={i} className="h-[120px] rounded-2xl border border-outline-variant/40 bg-white animate-pulse" />
         ))}
       </div>
@@ -158,7 +158,7 @@ export default function SeccionScoring() {
   }
 
   return (
-    <div className="space-y-lg max-w-4xl">
+    <div className="space-y-lg">
       {/* Título + chips de rangos por severidad (compactos, una sola línea) */}
       <div className="space-y-sm">
         <div>
@@ -177,12 +177,12 @@ export default function SeccionScoring() {
       </div>
 
       {/* Aviso inline al inicio: los pesos solo afectan cálculos futuros. */}
-      <div className="flex items-center gap-2.5 rounded-xl bg-surface-container border border-outline-variant/40 px-4 py-3 text-[13px] text-on-surface-variant">
+      <div className="flex items-center gap-2.5 rounded-xl bg-primary-fixed border border-primary/20 px-4 py-3 text-[13px] text-on-surface">
         <Icon name="info" className="text-[20px] text-primary shrink-0" fill />
         <span>Cambiar los pesos no modifica eventos pasados; solo afecta el cálculo del score en futuros exámenes.</span>
       </div>
 
-      <div className="grid md:grid-cols-2 gap-md min-w-0">
+      <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-md min-w-0">
         {configs.map((cfg) => {
           const editado = tieneEdicion(cfg.tipo_evento);
           const sev = severidadEditable(valorActual(cfg, 'severidad') as Severidad);

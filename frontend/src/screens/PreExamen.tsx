@@ -3,8 +3,8 @@ import { StudentShell } from '../ui/shells';
 import { Icon, Button, Card } from '../ui/components';
 import { useNavigate } from '../lib/router';
 import { useApp } from '../lib/store';
-import { api } from '../lib/api';
-import type { ExamenContenidoResumen } from '../lib/types';
+import { api, TIPO_EVENTO_LABEL, descripcionEvento } from '../lib/api';
+import type { ExamenContenidoResumen, TipoEvento } from '../lib/types';
 
 function formatFecha(iso: string | null | undefined): string {
   if (!iso) return '—';
@@ -27,6 +27,8 @@ export default function PreExamen() {
   const navigate = useNavigate();
   const examen = useApp((s) => s.examenActivo);
   const [contenido, setContenido] = useState<ExamenContenidoResumen | null>(null);
+  // Detectores activos de la config del sistema → eventos que se registrarán.
+  const [detectores, setDetectores] = useState<string[]>([]);
 
   useEffect(() => {
     const id = examen?.examen_contenido_id;
@@ -36,6 +38,13 @@ export default function PreExamen() {
       if (found) setContenido(found);
     }).catch(() => {});
   }, [examen?.examen_contenido_id]);
+
+  // Qué eventos se registran durante el examen (config efectiva del sistema).
+  useEffect(() => {
+    api.obtenerConfigEfectiva()
+      .then((cfg) => setDetectores(cfg.detectores_activos ?? []))
+      .catch(() => {});
+  }, []);
 
   if (!examen) {
     return (
@@ -65,7 +74,7 @@ export default function PreExamen() {
 
   return (
     <StudentShell step={4} backTo="/sala-espera">
-      <div className="max-w-2xl mx-auto space-y-lg animate-in fade-in duration-300">
+      <div className="max-w-3xl mx-auto space-y-lg animate-in fade-in duration-300">
 
         <div className="text-center space-y-base">
           <p className="text-label-sm uppercase tracking-widest text-primary font-semibold">{materia}</p>
@@ -81,6 +90,30 @@ export default function PreExamen() {
           <InfoCard icon="replay" label="Intentos" value={intentosLabel} />
           <InfoCard icon="calendar_today" label="Ventana" value={ventanaLabel} />
         </div>
+
+        {detectores.length > 0 && (
+          <Card className="space-y-sm">
+            <div className="flex items-center gap-sm">
+              <Icon name="visibility" className="text-primary text-[20px]" fill />
+              <p className="text-label-md font-bold text-on-surface">Qué se registra durante el examen</p>
+            </div>
+            <p className="text-body-sm text-on-surface-variant">
+              La supervisión es automática. Se registran estas señales para la revisión humana posterior
+              (el sistema nunca sanciona solo):
+            </p>
+            <ul className="grid sm:grid-cols-2 gap-sm">
+              {detectores.map((d) => (
+                <li key={d} className="flex items-start gap-sm p-sm rounded-lg bg-surface-container-low">
+                  <Icon name="fiber_manual_record" className="text-primary text-[10px] shrink-0 mt-1.5" fill />
+                  <div className="min-w-0">
+                    <p className="text-label-md font-semibold text-on-surface">{TIPO_EVENTO_LABEL[d as TipoEvento] ?? d}</p>
+                    <p className="text-[12px] text-on-surface-variant leading-snug">{descripcionEvento(d as TipoEvento)}</p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        )}
 
         <Card className="space-y-sm bg-secondary-container/40 border-secondary/20">
           <div className="flex items-center gap-sm">
