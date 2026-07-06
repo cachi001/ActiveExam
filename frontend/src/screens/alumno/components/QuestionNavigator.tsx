@@ -28,7 +28,7 @@ export function QuestionNavigator({
   onIr,
 }: QuestionNavigatorProps) {
   return (
-    <div className="flex flex-wrap gap-base py-sm">
+    <div className="flex flex-wrap justify-center gap-base py-sm">
       {Array.from({ length: total }, (_, i) => {
         const numero = i + 1;
         const esActual = i === indiceActual;

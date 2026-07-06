@@ -30,9 +30,9 @@ import type { PreguntaRendicion } from '../lib/examTakingApi';
 const here = dirname(fileURLToPath(import.meta.url));
 const examenSource = readFileSync(join(here, 'Examen.tsx'), 'utf8');
 const apiSource = readFileSync(join(here, '..', 'lib', 'examTakingApi.ts'), 'utf8');
-// El panel de señales de integridad se componentizó a examen/ProctoringPanel.tsx:
+// El panel de señales de integridad se componentizó a examen/IntegridadPanel.tsx:
 // ahí viven SEV_CARD/SEV_ICON y el render de eventos.
-const panelSource = readFileSync(join(here, 'examen', 'ProctoringPanel.tsx'), 'utf8');
+const panelSource = readFileSync(join(here, 'examen', 'IntegridadPanel.tsx'), 'utf8');
 
 // ---------------------------------------------------------------------------
 // 4.1 RED: toast.show NO se llama ante eventos de proctoring

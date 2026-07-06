@@ -75,6 +75,17 @@ import { hashClip } from '../features/biometria/clipCustody';
 const MAX_EVENTOS = 30;
 
 /**
+ * Tipos de evento que adjuntan imagen de evidencia (el frame de la cámara ES la
+ * prueba). El resto (eventos de sistema/comportamiento) NO captura screenshot:
+ * el registro del evento ya es la evidencia (privacidad L2.5, regla dura #7).
+ */
+const EVENTOS_CON_EVIDENCIA_VISUAL = new Set<string>([
+  'rostro_ausente',
+  'multiples_rostros',
+  'mirada_desviada_sostenida',
+]);
+
+/**
  * Guarda de idempotencia para la CREACIÓN de sesión, a nivel de MÓDULO (sobrevive
  * a los re-montajes del effect en React.StrictMode dev, que monta→desmonta→monta).
  *
@@ -254,9 +265,16 @@ export function useExamProctoring(
       sessionIdRef.current ??
       (sessionPromiseRef.current ? await sessionPromiseRef.current : null);
     if (!sid) return;
-    const screenshot = videoRef.current
-      ? captureVideoFrame(videoRef.current, 0.7)
-      : null;
+    // Gate de evidencia (privacidad L2.5, regla dura #7): solo se captura una imagen
+    // para eventos de VISIÓN, donde el frame de la cámara ES la prueba. Los eventos de
+    // sistema/comportamiento (copiar_pegar, cambio_pestana, perdida_de_foco,
+    // salida_pantalla_completa, monitor_adicional, corte_conectividad) NO adjuntan
+    // screenshot: el registro del evento + timestamp ya es la evidencia. Menos capturas
+    // = mejor privacidad (menos imágenes del alumno) y menos storage/ancho de banda.
+    const screenshot =
+      EVENTOS_CON_EVIDENCIA_VISUAL.has(rawEvent.tipo) && videoRef.current
+        ? captureVideoFrame(videoRef.current, 0.7)
+        : null;
     const faceCountCliente =
       rawEvent.payload?.face_count != null
         ? Number(rawEvent.payload.face_count)
