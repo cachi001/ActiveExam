@@ -157,23 +157,8 @@ export default function Examen() {
     <StudentShell locked>
       <div className={`w-full animate-in fade-in duration-500 transition-[padding] ${pausaActiva ? 'pt-16' : ''}`}>
 
-        {/* Cámara grande + Integridad, arriba (ocupan el ancho) */}
-        <div className="flex flex-col lg:flex-row gap-md items-stretch mb-lg">
-          <div className="w-full lg:w-[560px] shrink-0">
-            <ExamenCamaraPanel videoRef={videoRef} />
-          </div>
-          <div className="flex-1 min-w-0">
-            <IntegridadPanel
-              activo={activo}
-              eventCount={eventCount}
-              score={score}
-              eventos={eventos}
-              examen={examen}
-            />
-          </div>
-        </div>
-
-        {/* Preguntas (izquierda) + navegador con "Terminar intento" (derecha) */}
+        {/* Preguntas (izquierda) + rail derecho: cámara arriba, luego números +
+            Terminar intento, y abajo Supervisión. */}
         <div className="flex flex-col lg:flex-row gap-lg items-start">
           <main className="flex-1 min-w-0 w-full">
             <ExamenPreguntaCard
@@ -191,8 +176,12 @@ export default function Examen() {
             />
           </main>
 
-          {total > 0 && (
-            <aside className="w-full lg:w-[340px] shrink-0 lg:sticky lg:top-6">
+          <aside className="w-full lg:w-[400px] shrink-0 lg:sticky lg:top-6 space-y-md">
+            {/* Cámara — arriba a la derecha */}
+            <ExamenCamaraPanel videoRef={videoRef} />
+
+            {/* Números de preguntas + Terminar intento */}
+            {total > 0 && (
               <Card className="space-y-md">
                 <h3 className="text-label-sm font-semibold text-on-surface-variant uppercase tracking-wide">
                   Preguntas
@@ -203,17 +192,21 @@ export default function Examen() {
                   respondidas={respondidas}
                   onIr={setIndiceActual}
                 />
-                <Button
-                  variant="success"
-                  icon="check_circle"
-                  onClick={finalizar}
-                  className="w-full mt-base"
-                >
+                <Button variant="secondary" onClick={finalizar} className="w-full mt-base">
                   Terminar intento
                 </Button>
               </Card>
-            </aside>
-          )}
+            )}
+
+            {/* Supervisión (score + eventos) — debajo */}
+            <IntegridadPanel
+              activo={activo}
+              eventCount={eventCount}
+              score={score}
+              eventos={eventos}
+              examen={examen}
+            />
+          </aside>
         </div>
 
         {/* Chat con el proctor + pausas — debajo de las preguntas */}

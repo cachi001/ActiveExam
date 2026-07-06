@@ -35,7 +35,7 @@ export function IntegridadPanel({ activo, eventCount, score, eventos, examen }: 
     <Card className="space-y-sm h-full">
       <div className="flex items-center justify-between">
         <h3 className="text-label-sm font-semibold text-on-surface-variant uppercase tracking-wide">
-          Integridad
+          Supervisión
         </h3>
         <div className="flex items-center gap-xs">
           <span className={`w-2 h-2 rounded-full ${activo ? 'bg-success animate-pulse' : 'bg-on-surface-variant'}`} />
