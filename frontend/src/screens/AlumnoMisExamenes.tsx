@@ -163,7 +163,7 @@ export default function AlumnoMisExamenes() {
       examen_contenido_id: contenido.id,         // KEY: permite que Examen.tsx cargue preguntas
     };
     setExamenActivo(examen);
-    navigate('/requisitos');
+    navigate('/pre-examen');
   };
 
   const handleRendir = async (inscripcion: Inscripcion) => {
@@ -193,7 +193,7 @@ export default function AlumnoMisExamenes() {
         };
       }
       setExamenActivo(examen);
-      navigate('/requisitos');
+      navigate('/pre-examen');
     } else {
       setGatesPorExamen((prev) => ({ ...prev, [inscripcion.examen_id]: gate }));
     }

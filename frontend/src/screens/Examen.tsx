@@ -22,6 +22,9 @@ import { LockdownOverlay } from './examen/LockdownOverlay';
 import { ExamenPreguntaCard } from './examen/ExamenPreguntaCard';
 import { ProctoringPanel } from './examen/ProctoringPanel';
 import { ExamenTopBar } from './examen/ExamenTopBar';
+import { ExamenCamaraPanel } from './examen/ExamenCamaraPanel';
+import { QuestionNavigator } from './alumno/components/QuestionNavigator';
+import { Card } from '../ui/components';
 
 export default function Examen() {
   const navigate = useNavigate();
@@ -151,13 +154,10 @@ export default function Examen() {
 
   return (
     <StudentShell locked>
-      <div className={`mx-auto w-full max-w-[1400px] animate-in fade-in duration-500 transition-[padding] ${pausaActiva ? 'pt-16' : ''}`}>
+      <div className={`mx-auto w-full max-w-[1500px] animate-in fade-in duration-500 transition-[padding] ${pausaActiva ? 'pt-16' : ''}`}>
 
-        {/* Barra superior sticky: progreso + timer + cámara (PiP in-flow) */}
+        {/* Barra superior sticky: progreso + timer (la cámara vive en el sidebar) */}
         <ExamenTopBar
-          videoRef={videoRef}
-          activo={activo}
-          eventCount={eventCount}
           indiceActual={indiceActual}
           total={total}
           respondidas={respondidas}
@@ -166,26 +166,41 @@ export default function Examen() {
           stickyOffsetClass={pausaActiva ? 'top-16' : 'top-0'}
         />
 
-        <div className="grid lg:grid-cols-3 gap-lg items-start">
-          {/* Pregunta: 2/3 del ancho en desktop */}
-          <div className="lg:col-span-2">
+        <div className="flex flex-col lg:flex-row gap-lg items-start">
+          {/* Pregunta: columna principal, ocupa todo el ancho libre */}
+          <main className="flex-1 min-w-0 w-full">
             <ExamenPreguntaCard
               preguntaActual={preguntaActual}
               indiceActual={indiceActual}
               total={total}
               cargandoPreguntas={cargandoPreguntas}
               respuestas={respuestas}
-              respondidas={respondidas}
               onSeleccionarOpcion={(pid, oid) => setRespuestas((prev) => ({ ...prev, [pid]: oid }))}
               onAnterior={() => setIndiceActual((i) => retrocederPregunta(i))}
               onSiguiente={() => setIndiceActual((i) => avanzarPregunta(i, total))}
               onFinalizar={finalizar}
-              onIr={setIndiceActual}
             />
-          </div>
+          </main>
 
-          {/* Sidebar: integridad + chat/pausa — sticky para seguir visible al scrollear */}
-          <div className="lg:sticky lg:top-24">
+          {/* Sidebar: cámara grande + navegador de preguntas + integridad + pausa/chat.
+              Sticky para seguir visible al scrollear. */}
+          <aside className="w-full lg:w-[380px] shrink-0 lg:sticky lg:top-24 space-y-md">
+            <ExamenCamaraPanel videoRef={videoRef} activo={activo} eventCount={eventCount} />
+
+            {total > 0 && (
+              <Card className="space-y-sm">
+                <h3 className="text-label-sm font-semibold text-on-surface-variant uppercase tracking-wide">
+                  Preguntas
+                </h3>
+                <QuestionNavigator
+                  total={total}
+                  indiceActual={indiceActual}
+                  respondidas={respondidas}
+                  onIr={setIndiceActual}
+                />
+              </Card>
+            )}
+
             <ProctoringPanel
               activo={activo}
               eventCount={eventCount}
@@ -197,7 +212,7 @@ export default function Examen() {
               pausasHabilitadas={pausasHabilitadas}
               onActivaChange={setPausaActiva}
             />
-          </div>
+          </aside>
         </div>
       </div>
 

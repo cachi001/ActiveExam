@@ -1,5 +1,4 @@
 import { Button, Card } from '../../ui/components';
-import { QuestionNavigator } from '../alumno/components/QuestionNavigator';
 import { puedeIrAnterior, puedeIrSiguiente } from '../ExamenLogic';
 import { soportaFullscreen, MENSAJE_LIMITE_FULLSCREEN } from '../../proctoring/fullscreenLockdown';
 import type { ExamenRendicion } from '../../lib/examTakingApi';
@@ -10,18 +9,16 @@ interface Props {
   total: number;
   cargandoPreguntas: boolean;
   respuestas: Record<string, string>;
-  respondidas: Set<number>;
   onSeleccionarOpcion: (preguntaId: string, opcionId: string) => void;
   onAnterior: () => void;
   onSiguiente: () => void;
   onFinalizar: () => void;
-  onIr: (indice: number) => void;
 }
 
 export function ExamenPreguntaCard({
   preguntaActual, indiceActual, total, cargandoPreguntas,
-  respuestas, respondidas,
-  onSeleccionarOpcion, onAnterior, onSiguiente, onFinalizar, onIr,
+  respuestas,
+  onSeleccionarOpcion, onAnterior, onSiguiente, onFinalizar,
 }: Props) {
   return (
     <Card className="space-y-md">
@@ -36,7 +33,7 @@ export function ExamenPreguntaCard({
           </p>
         )}
         {preguntaActual && (
-          <h2 className="font-headline text-title-lg text-on-surface leading-snug max-w-2xl">
+          <h2 className="font-headline text-title-lg text-on-surface leading-snug">
             {preguntaActual.enunciado}
           </h2>
         )}
@@ -44,7 +41,7 @@ export function ExamenPreguntaCard({
 
       {/* Opciones */}
       {preguntaActual && (
-        <div className="space-y-sm max-w-2xl">
+        <div className="space-y-sm">
           {preguntaActual.opciones.map((op) => {
             const seleccionada = respuestas[preguntaActual.id] === op.id;
             return (
@@ -64,21 +61,6 @@ export function ExamenPreguntaCard({
               </label>
             );
           })}
-        </div>
-      )}
-
-      {/* Navegador de preguntas — dentro de la card, separado de las opciones */}
-      {total > 0 && (
-        <div className="border-t border-outline-variant/30 pt-md space-y-xs">
-          <p className="text-label-xs uppercase tracking-wide text-on-surface-variant">
-            Navegación rápida
-          </p>
-          <QuestionNavigator
-            total={total}
-            indiceActual={indiceActual}
-            respondidas={respondidas}
-            onIr={onIr}
-          />
         </div>
       )}
 

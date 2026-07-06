@@ -50,7 +50,7 @@ export default function SalaEspera() {
           </div>
         </Card>
 
-        <Button icon="play_arrow" onClick={() => navigate('/pre-examen')} className="mx-auto">Ver detalles del examen</Button>
+        <Button icon="play_arrow" onClick={() => navigate('/examen')} className="mx-auto">Comenzar examen</Button>
 
         <p className="text-label-sm text-on-surface-variant">
           Al comenzar, todo el análisis ocurre en tu propio dispositivo. No se graba tu examen: solo se avisa al equipo si se detecta algo para revisar.
