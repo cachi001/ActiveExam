@@ -38,6 +38,7 @@ from app.application.enrollment.guardar_embedding_referencia import (
     DimensionError,
     GuardarEmbeddingReferenciaService,
 )
+from app.domain.biometrics.embedding_integrity import EmbeddingIntegridadError
 from app.application.enrollment.guardar_foto_perfil import GuardarFotoPerfilService
 from app.application.enrollment.guardar_foto_perfil_slim import GuardarFotoPerfilSlimService
 from app.domain.auth.identity import AuthenticatedPrincipal
@@ -191,7 +192,9 @@ async def guardar_embedding_referencia(
 
     El embedding crudo NUNCA se loguea ni se persiste en claro.
     HTTP 401 sin token. HTTP 403 con rol incorrecto.
-    HTTP 422 si el embedding no tiene 128 dimensiones.
+    HTTP 422 si el embedding no tiene 128 dimensiones o no supera la validación
+    de integridad de entrada (C-70): no-finitos, norma cero, magnitud absurda o
+    el vector FAKE de desarrollo.
     """
     # Idem foto-perfil: usar el UUID del sub, no el id_institucional.
     if not principal.subject:
@@ -224,7 +227,7 @@ async def guardar_embedding_referencia(
                 user_agent=client_ua,
             )
             await session.commit()
-    except DimensionError as exc:
+    except (DimensionError, EmbeddingIntegridadError) as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=str(exc),

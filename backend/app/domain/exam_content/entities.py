@@ -161,6 +161,10 @@ class Comision:
     periodo: str | None = None
     anio: int | None = None
     id: str | None = None
+    # C-70: código de matriculación (enrolment key). None en el dominio hasta que
+    # la capa de aplicación lo autogenere/valide antes de persistir; el modelo ORM
+    # lo exige NOT NULL. Se guarda tal cual (solo strip externo, case-sensitive).
+    codigo_matriculacion: str | None = None
 
     def __post_init__(self) -> None:
         if not (self.materia_id and self.materia_id.strip()):

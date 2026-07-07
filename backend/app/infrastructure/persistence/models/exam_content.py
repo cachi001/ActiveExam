@@ -67,9 +67,17 @@ class ComisionModel(Base):
     nombre: Mapped[str] = mapped_column(Text, nullable=False)
     periodo: Mapped[str | None] = mapped_column(String(32), nullable=True)
     anio: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # C-70 (modelo enrolment-key de Moodle): código único global con el que el
+    # alumno se auto-matricula. Autogenerado ({materia.codigo}-{sufijo}) o provisto
+    # por el docente; único entre TODAS las comisiones (no por materia). Se guarda
+    # EXACTAMENTE como se tipeó (solo strip externo): unicidad case-sensitive.
+    codigo_matriculacion: Mapped[str] = mapped_column(String(80), nullable=False)
 
     __table_args__ = (
         UniqueConstraint("materia_id", "codigo", name="uq_comision_materia_codigo"),
+        UniqueConstraint(
+            "codigo_matriculacion", name="uq_comision_codigo_matriculacion"
+        ),
         Index("ix_comision_materia_id", "materia_id"),
     )
 

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from app.application.exam_content.codigo_matriculacion import generar_codigo_libre
 from app.application.exam_content.errors import (
     ComisionNoEncontradaError,
     ExamenNoEncontradoError,
@@ -73,14 +74,22 @@ class AsociacionComisionService:
         existente = await self._materia_repo.obtener_por_codigo(materia.codigo)
         materia_persistida = existente or await self._materia_repo.guardar(materia)
 
-        comision = Comision(
-            codigo=comision_codigo,
-            nombre=comision_nombre,
-            materia_id=materia_persistida.id,
-            periodo=periodo,
-            anio=anio,
+        # C-70: la comisión NO puede persistirse sin codigo_matriculacion (NOT NULL).
+        # Se autogenera {materia.codigo}-{sufijo} con reintento ante colisión (23505).
+        async def _persistir(cod_matriculacion: str) -> Comision:
+            comision = Comision(
+                codigo=comision_codigo,
+                nombre=comision_nombre,
+                materia_id=materia_persistida.id,
+                periodo=periodo,
+                anio=anio,
+                codigo_matriculacion=cod_matriculacion,
+            )
+            return await self._comision_repo.guardar(comision)
+
+        comision_persistida = await generar_codigo_libre(
+            _persistir, materia_persistida.codigo
         )
-        comision_persistida = await self._comision_repo.guardar(comision)
 
         examen_asociado: str | None = None
         if examen_id is not None:

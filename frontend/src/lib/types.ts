@@ -646,6 +646,8 @@ export interface Comision {
   codigo?: string;
   periodo?: string | null;
   anio?: number | null;
+  // C-70: código de matriculación (enrolment key) que el alumno usa para unirse.
+  codigo_matriculacion?: string;
 }
 
 /** Alumno inscripto a una comisión, con su estado de elegibilidad para rendir

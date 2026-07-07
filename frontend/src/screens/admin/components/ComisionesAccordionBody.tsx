@@ -134,6 +134,53 @@ export function ComisionesAccordionBody({
               </div>
             </div>
 
+            {/* C-70: código de matriculación (enrolment key) — editable + copiar. */}
+            <div>
+              <label htmlFor="comision-codmatricula" className={LABEL_CLASS}>
+                Código de matriculación
+              </label>
+              <div className="flex gap-2">
+                <input
+                  id="comision-codmatricula"
+                  name="comision-codmatricula"
+                  type="text"
+                  disabled={enviandoComision}
+                  placeholder={
+                    formComision.modo === 'crear'
+                      ? 'Se autogenera si lo dejás vacío (ej. PROG1-7K2Q)'
+                      : ''
+                  }
+                  value={formComision.codigoMatriculacion}
+                  onChange={(e) =>
+                    setFormComision((prev) =>
+                      prev ? { ...prev, codigoMatriculacion: e.target.value } : prev,
+                    )
+                  }
+                  className={`${INPUT_CLASS} font-mono`}
+                />
+                {formComision.codigoMatriculacion.trim() && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={enviandoComision}
+                    onClick={() =>
+                      void navigator.clipboard?.writeText(
+                        formComision.codigoMatriculacion.trim(),
+                      )
+                    }
+                  >
+                    <Icon name="content_copy" className="text-[18px]" />
+                    Copiar
+                  </Button>
+                )}
+              </div>
+              <p className="text-[11px] text-on-surface-variant mt-1">
+                El alumno usa este código para unirse a la comisión (como la clave de
+                matriculación de Moodle).
+              </p>
+            </div>
+
             {errorFormComision && (
               <div
                 role="alert"

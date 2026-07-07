@@ -12,7 +12,10 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 
 from app.application.exam_content.asociacion_service import AsociacionComisionService
-from app.application.exam_content.inscripcion_service import InscripcionService
+from app.application.exam_content.inscripcion_service import (
+    AutoMatriculacionService,
+    InscripcionService,
+)
 from app.application.exam_content.materia_comision_service import (
     MateriaComisionService,
 )
@@ -27,6 +30,7 @@ from app.application.moodle.writeback_service import (
     WritebackEstado,
 )
 from app.application.exam_content.errors import (
+    CodigoMatriculacionInvalidoError,
     ComisionNoEncontradaError,
     ExamenNoEncontradoError,
     InscripcionNoEncontradaError,
@@ -42,6 +46,7 @@ from app.domain.auth.roles import Rol
 from app.domain.exam_content.config import validar_config_examen
 from app.domain.exam_content.entities import Materia
 from app.domain.exam_content.errors import (
+    CodigoMatriculacionDuplicadoError,
     ComisionDuplicadaError,
     ConfigExamenInvalidaError,
     ExamenContenidoError,
@@ -69,6 +74,8 @@ from app.presentation.api.v1.exam_content.schemas import (
     ExamenRendicionResponse,
     ImportReporteResponse,
     InscribirAlumnoRequest,
+    InscribirPorCodigoRequest,
+    InscribirPorCodigoResponse,
     InscripcionResponse,
     MateriaActualizarRequest,
     MateriaCrearRequest,
@@ -297,6 +304,7 @@ def create_exam_content_router(
                 nombre=result.comision.nombre,
                 periodo=result.comision.periodo,
                 anio=result.comision.anio,
+                codigo_matriculacion=result.comision.codigo_matriculacion,
             ),
             examen_id=result.examen_id,
         )
@@ -463,6 +471,7 @@ def create_exam_content_router(
                     nombre=body.nombre,
                     periodo=body.periodo,
                     anio=body.anio,
+                    codigo_matriculacion=body.codigo_matriculacion,
                 )
                 await session.commit()
             except MateriaNoEncontradaError as exc:
@@ -474,7 +483,7 @@ def create_exam_content_router(
                         "materia_id": materia_id,
                     },
                 ) from exc
-            except ComisionDuplicadaError as exc:
+            except (ComisionDuplicadaError, CodigoMatriculacionDuplicadoError) as exc:
                 await session.rollback()
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
@@ -494,6 +503,7 @@ def create_exam_content_router(
             nombre=comision.nombre,
             periodo=comision.periodo,
             anio=comision.anio,
+            codigo_matriculacion=comision.codigo_matriculacion,
         )
 
     @router.patch(
@@ -522,6 +532,7 @@ def create_exam_content_router(
                     nombre=body.nombre,
                     periodo=body.periodo,
                     anio=body.anio,
+                    codigo_matriculacion=body.codigo_matriculacion,
                 )
                 await session.commit()
             except ComisionNoEncontradaError as exc:
@@ -532,6 +543,12 @@ def create_exam_content_router(
                         "error": "comision_no_encontrada",
                         "comision_id": comision_id,
                     },
+                ) from exc
+            except CodigoMatriculacionDuplicadoError as exc:
+                await session.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={"error": "duplicado", "mensaje": str(exc)},
                 ) from exc
             except ExamenContenidoError as exc:
                 await session.rollback()
@@ -547,6 +564,53 @@ def create_exam_content_router(
             nombre=comision.nombre,
             periodo=comision.periodo,
             anio=comision.anio,
+            codigo_matriculacion=comision.codigo_matriculacion,
+        )
+
+    # -----------------------------------------------------------------------
+    # Rotación del código de matriculación (C-70, D5) — admin-only.
+    # Regenera un código único y reemplaza el anterior; las inscripciones
+    # existentes quedan INTACTAS (rotar no desmatricula a nadie).
+    # -----------------------------------------------------------------------
+
+    @router.post(
+        "/comisiones/{comision_id}/rotar-codigo",
+        response_model=ComisionResponse,
+        status_code=status.HTTP_200_OK,
+        summary="Rotar (regenerar) el código de matriculación de una comisión",
+    )
+    async def rotar_codigo_matriculacion(comision_id: str) -> ComisionResponse:
+        """Genera un nuevo código único y reemplaza el vigente. 404 si la comisión
+        no existe. Las inscripciones existentes NO se tocan."""
+        if session_factory is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Persistencia no inicializada.",
+            )
+
+        async with session_factory() as session:
+            service = _build_materia_comision_service(session)
+            try:
+                comision = await service.rotar_codigo_matriculacion(comision_id)
+                await session.commit()
+            except ComisionNoEncontradaError as exc:
+                await session.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail={
+                        "error": "comision_no_encontrada",
+                        "comision_id": comision_id,
+                    },
+                ) from exc
+
+        return ComisionResponse(
+            id=comision.id,
+            materia_id=comision.materia_id,
+            codigo=comision.codigo,
+            nombre=comision.nombre,
+            periodo=comision.periodo,
+            anio=comision.anio,
+            codigo_matriculacion=comision.codigo_matriculacion,
         )
 
     # -----------------------------------------------------------------------
@@ -1197,6 +1261,78 @@ def create_exam_taking_router(
         )
 
     # -----------------------------------------------------------------------
+    # Auto-matriculación por código (C-70, D3) — auth-only (rol estudiante).
+    # El alumno postea un codigo_matriculacion y se une a esa comisión. El
+    # usuario_id sale del principal (JWT sub), NUNCA del body (cliente no
+    # confiable). Idempotente: ya-inscripto → respuesta amistosa sin duplicar.
+    # No altera el gate puede_rendir (solo set-membership).
+    # -----------------------------------------------------------------------
+
+    @router.post(
+        "/inscribirme",
+        response_model=InscribirPorCodigoResponse,
+        status_code=status.HTTP_200_OK,
+        summary="Auto-matricularse a una comisión con un código (enrolment key)",
+    )
+    async def inscribirme_por_codigo(
+        body: InscribirPorCodigoRequest,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    ) -> InscribirPorCodigoResponse:
+        """El alumno autenticado se auto-matricula a la comisión del código.
+
+        422 'codigo_invalido' si el código es vacío/malformado; 404 'codigo_invalido'
+        si no mapea a ninguna comisión (sin crear inscripción). Idempotente: si ya
+        estaba inscripto responde ya_inscripto=True (200) sin duplicar.
+        """
+        if session_factory is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Persistencia no inicializada.",
+            )
+        if not principal.subject:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token no porta un subject (sub) válido.",
+            )
+        # Vacío/malformado → 422 (validación); no-existente → 404 (abajo, del service).
+        if not body.codigo_matriculacion.strip():
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={"error": "codigo_invalido", "mensaje": "El código es vacío."},
+            )
+
+        from app.infrastructure.persistence.repositories.exam_content import (
+            ComisionSqlRepository,
+            InscripcionSqlRepository,
+            MateriaSqlRepository,
+        )
+
+        async with session_factory() as session:
+            service = AutoMatriculacionService(
+                comision_repo=ComisionSqlRepository(session),
+                materia_repo=MateriaSqlRepository(session),
+                inscripcion_repo=InscripcionSqlRepository(session),
+            )
+            try:
+                result = await service.inscribir_por_codigo(
+                    body.codigo_matriculacion, principal.subject
+                )
+                await session.commit()
+            except CodigoMatriculacionInvalidoError as exc:
+                await session.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail={"error": "codigo_invalido", "mensaje": str(exc)},
+                ) from exc
+
+        return InscribirPorCodigoResponse(
+            comision_id=result.comision_id,
+            comision_nombre=result.comision_nombre,
+            materia_nombre=result.materia_nombre,
+            ya_inscripto=result.ya_inscripto,
+        )
+
+    # -----------------------------------------------------------------------
     # "Mis notas" del alumno (C-69, student-facing). Cualquier principal
     # autenticado ve SOLO sus notas finalizadas (identificado por el JWT:
     # id_institucional -> alumno_idnumber, email -> alumno_email). Ruta estática
@@ -1321,6 +1457,7 @@ def create_exam_taking_router(
                 nombre=c.nombre,
                 periodo=c.periodo,
                 anio=c.anio,
+                codigo_matriculacion=c.codigo_matriculacion,
             )
             for c in comisiones
         ]

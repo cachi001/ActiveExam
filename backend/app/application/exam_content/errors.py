@@ -29,3 +29,11 @@ class UsuarioNoEncontradoError(Exception):
 
 class InscripcionNoEncontradaError(Exception):
     """No existe una inscripción del usuario a la comisión indicada."""
+
+
+class CodigoMatriculacionInvalidoError(Exception):
+    """El codigo_matriculacion enviado no corresponde a ninguna comisión (C-70).
+
+    Se eleva en la auto-matriculación del alumno cuando el código no mapea a una
+    comisión existente. El endpoint lo traduce a 404 (no se crea ninguna inscripción).
+    """

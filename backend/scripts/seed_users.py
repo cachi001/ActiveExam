@@ -218,6 +218,8 @@ async def _seed_contenido(factory) -> None:
     MATERIA_NOMBRE = "Programación 1"
     COMISION_CODIGO = "C1"
     COMISION_NOMBRE = "Comisión 1"
+    # C-70: código de matriculación de demo (enrolment key) para la Comisión C1.
+    COMISION_MATRICULACION = "PROG1-C1"
     EXAMEN_TITULO = "Examen de Programación 1"
     XML_PATH = os.path.join(os.path.dirname(__file__), "fixtures", "programacion-1.xml")
 
@@ -252,6 +254,7 @@ async def _seed_contenido(factory) -> None:
                 nombre=COMISION_NOMBRE,
                 periodo="1C",
                 anio=2026,
+                codigo_matriculacion=COMISION_MATRICULACION,
             )
             session.add(comision)
             await session.flush()  # obtener comision.id para la FK del examen

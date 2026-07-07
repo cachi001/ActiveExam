@@ -269,6 +269,8 @@ class ComisionResponse(BaseModel):
     nombre: str
     periodo: str | None = None
     anio: int | None = None
+    # C-70: código de matriculación (enrolment key) — el docente lo comparte.
+    codigo_matriculacion: str
 
 
 class AltaInlineResponse(BaseModel):
@@ -305,6 +307,9 @@ class ComisionCrearRequest(BaseModel):
     nombre: str
     periodo: PeriodoEnum | None = None
     anio: int | None = None
+    # C-70: código de matriculación opcional. Si no viene → se autogenera único
+    # ({materia.codigo}-{sufijo}); si viene → se usa tal cual (unicidad al persistir).
+    codigo_matriculacion: str | None = None
 
 
 class ComisionActualizarRequest(BaseModel):
@@ -316,6 +321,9 @@ class ComisionActualizarRequest(BaseModel):
     nombre: str
     periodo: PeriodoEnum | None = None
     anio: int | None = None
+    # C-70: el docente puede fijar/editar el código de matriculación (unicidad al
+    # persistir). None → no se toca el código vigente.
+    codigo_matriculacion: str | None = None
 
 
 class AsociarComisionRequest(BaseModel):
@@ -352,6 +360,34 @@ class InscripcionResponse(BaseModel):
     id: str
     usuario_id: str
     comision_id: str
+
+
+class InscribirPorCodigoRequest(BaseModel):
+    """Body del POST /inscribirme: el alumno se auto-matricula con un código (C-70).
+
+    El ``usuario_id`` NO viaja en el body — sale del principal autenticado (D3,
+    cliente no confiable). Solo el código de matriculación.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    codigo_matriculacion: str
+
+
+class InscribirPorCodigoResponse(BaseModel):
+    """Resultado de la auto-matriculación por código (C-70).
+
+    ``ya_inscripto`` = True cuando el alumno ya estaba matriculado en esa comisión
+    (respuesta idempotente amistosa, no error). ``comision_*``/``materia_nombre``
+    identifican a qué quedó (o ya estaba) matriculado.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    comision_id: str
+    comision_nombre: str
+    materia_nombre: str
+    ya_inscripto: bool
 
 
 class AlumnoElegibilidadResponse(BaseModel):

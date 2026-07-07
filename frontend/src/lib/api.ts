@@ -638,6 +638,13 @@ export const api = {
     return listarExamenesDeComisionFn(API_BASE, authProvider.getToken(), comisionId);
   },
 
+  /** C-70: el alumno se auto-matricula a una comisión con un código (enrolment key).
+   *  Lanza Error con `.status` (404/422) si el código es inválido. */
+  async inscribirmePorCodigo(codigo: string) {
+    const { inscribirmePorCodigoFn } = await import('./examContentBrowse');
+    return inscribirmePorCodigoFn(API_BASE, authProvider.getToken(), codigo);
+  },
+
   /** 2.11 Retorna las inscripciones del alumno.
    * NO existe el modelo de inscripción: el alumno rinde directamente los exámenes de
    * contenido importados (Moodle XML). Devolvemos [] (sin sección de inscripciones). */

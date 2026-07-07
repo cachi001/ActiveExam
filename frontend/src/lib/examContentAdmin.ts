@@ -39,6 +39,8 @@ export interface ComisionResponse {
   nombre: string;
   periodo: string | null;
   anio: number | null;
+  // C-70: código de matriculación (enrolment key) que el docente comparte.
+  codigo_matriculacion: string;
 }
 
 export interface AltaInlineResponse {
@@ -178,6 +180,8 @@ export async function crearComision(
     nombre: string;
     periodo?: string | null;
     anio?: number | null;
+    // C-70: opcional. Si se omite/vacía, el backend autogenera uno único.
+    codigo_matriculacion?: string | null;
   },
 ): Promise<ComisionResponse> {
   const res = await fetch(
@@ -200,6 +204,8 @@ export async function actualizarComision(
     nombre: string;
     periodo?: string | null;
     anio?: number | null;
+    // C-70: opcional. Si viene (no vacío), fija/edita el código (unicidad → 409).
+    codigo_matriculacion?: string | null;
   },
 ): Promise<ComisionResponse> {
   const res = await fetch(
@@ -208,6 +214,23 @@ export async function actualizarComision(
       method: 'PATCH',
       headers: authHeaders(),
       body: JSON.stringify(data),
+    },
+  );
+  if (!res.ok) return throwAdminError(res);
+  return res.json() as Promise<ComisionResponse>;
+}
+
+/** Rota (regenera) el código de matriculación de una comisión. Admin-only.
+ *  POST /exam-content/comisiones/{comisionId}/rotar-codigo.  404 → no existe.
+ *  Las inscripciones existentes NO se tocan. */
+export async function rotarCodigoMatriculacion(
+  comisionId: string,
+): Promise<ComisionResponse> {
+  const res = await fetch(
+    `/api/v1/exam-content/comisiones/${encodeURIComponent(comisionId)}/rotar-codigo`,
+    {
+      method: 'POST',
+      headers: authHeaders(),
     },
   );
   if (!res.ok) return throwAdminError(res);

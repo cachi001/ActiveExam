@@ -1,7 +1,7 @@
 // Portal del alumno — Exploración Materia → Comisión → Examen (C-21)
 // C-69: datos REALES desde el backend (materias/comisiones/exámenes importados de Moodle).
 //       El leaf es un examen de contenido: el alumno lo rinde directo (sin inscripción demo).
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { BackButton, LoadingSpinner, Icon } from '../ui/components';
 import { HelpButton } from '../ui/HelpButton';
 import { StudentShell } from '../ui/shells';
@@ -29,6 +29,10 @@ export default function AlumnoMaterias() {
   const [cargandoComisiones, setCargandoComisiones] = useState(false);
   const [cargandoExamenes, setCargandoExamenes] = useState(false);
   const [rindiendoId, setRindiendoId] = useState<string | null>(null);
+  // C-70: auto-matriculación por código (enrolment key).
+  const [codigoJoin, setCodigoJoin] = useState('');
+  const [uniendo, setUniendo] = useState(false);
+  const [joinMsg, setJoinMsg] = useState<{ tipo: 'ok' | 'error'; texto: string } | null>(null);
 
   useEffect(() => {
     let cancelado = false;
@@ -40,6 +44,42 @@ export default function AlumnoMaterias() {
     })();
     return () => { cancelado = true; };
   }, []);
+
+  const unirmePorCodigo = async (e: FormEvent) => {
+    e.preventDefault();
+    const codigo = codigoJoin.trim();
+    if (!codigo || uniendo) return;
+    setUniendo(true);
+    setJoinMsg(null);
+    try {
+      const r = await api.inscribirmePorCodigo(codigo);
+      setJoinMsg({
+        tipo: 'ok',
+        texto: r.ya_inscripto
+          ? `Ya estabas matriculado en ${r.materia_nombre} · ${r.comision_nombre}.`
+          : `¡Listo! Te uniste a ${r.materia_nombre} · ${r.comision_nombre}.`,
+      });
+      setCodigoJoin('');
+      // Refrescar el catálogo (y las comisiones de la materia abierta) por si aparece algo nuevo.
+      const mats = await api.materiasDisponibles();
+      setMaterias(mats);
+      if (materiaSeleccionada) {
+        const coms = await api.comisionesDeMateria(materiaSeleccionada.id);
+        setComisiones(coms);
+      }
+    } catch (err) {
+      const e2 = err as Error & { status?: number };
+      setJoinMsg({
+        tipo: 'error',
+        texto:
+          e2.status === 404 || e2.status === 422
+            ? 'Ese código no es válido. Revisalo con tu docente.'
+            : 'No se pudo procesar el código. Intentá de nuevo.',
+      });
+    } finally {
+      setUniendo(false);
+    }
+  };
 
   const seleccionarMateria = async (materia: Materia) => {
     if (materiaSeleccionada?.id === materia.id) return; // master-detail: seleccionar, no togglear
@@ -116,6 +156,60 @@ export default function AlumnoMaterias() {
           </div>
           <p className="text-[13px] text-on-surface-variant mt-1">Elegí una materia para ver sus comisiones y exámenes disponibles.</p>
         </header>
+
+        {/* C-70: unirse a una comisión con un código de matriculación (enrolment key). */}
+        <div className="rounded-2xl border border-outline-variant/50 bg-surface-container-lowest p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <Icon name="vpn_key" className="text-[16px] text-on-surface-variant shrink-0" />
+            <h2 className="text-[13px] font-semibold text-on-surface">Unirme con un código</h2>
+            <HelpButton title="Unirme con un código">
+              <p>
+                Si tu docente te compartió un <strong>código de matriculación</strong> (por ejemplo
+                <em> PROG1-7K2Q</em>), ingresalo acá para unirte a esa comisión.
+              </p>
+              <p>Unirte no habilita a rendir por sí solo: seguís necesitando tu perfil (consentimiento y biometría) al día.</p>
+            </HelpButton>
+          </div>
+          <form onSubmit={unirmePorCodigo} className="flex flex-col sm:flex-row gap-2">
+            <input
+              type="text"
+              value={codigoJoin}
+              disabled={uniendo}
+              onChange={(e) => setCodigoJoin(e.target.value)}
+              placeholder="Ej. PROG1-7K2Q"
+              aria-label="Código de matriculación"
+              className="flex-1 rounded-md border border-outline-variant bg-surface px-3 py-2.5 text-sm font-mono text-on-surface outline-none transition-colors hover:border-outline focus:border-primary focus:ring-1 focus:ring-primary/30 disabled:opacity-50"
+            />
+            <button
+              type="submit"
+              disabled={uniendo || !codigoJoin.trim()}
+              className="inline-flex items-center justify-center gap-2 rounded-md bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary transition-colors hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {uniendo ? (
+                <>
+                  <Icon name="progress_activity" className="ae-spin text-[18px]" />
+                  Uniéndote…
+                </>
+              ) : (
+                <>
+                  <Icon name="add" className="text-[18px]" />
+                  Unirme
+                </>
+              )}
+            </button>
+          </form>
+          {joinMsg && (
+            <p
+              role="status"
+              className={`mt-2 text-[12px] flex items-center gap-1.5 ${
+                joinMsg.tipo === 'ok' ? 'text-primary' : 'text-error'
+              }`}
+            >
+              <Icon name={joinMsg.tipo === 'ok' ? 'check_circle' : 'error'} className="text-[15px] shrink-0" fill />
+              {joinMsg.texto}
+            </p>
+          )}
+        </div>
 
         {cargandoMaterias ? (
           <div className="min-h-[50vh] flex items-center justify-center">

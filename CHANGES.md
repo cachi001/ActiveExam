@@ -109,6 +109,19 @@
 
 ---
 
+## 🔵 Prioridad — Examen en plataforma (Moodle + lockdown) — fuera del roadmap original
+
+> Línea de trabajo **revivida por DD-20** (examen operado EN la plataforma con import Moodle XML + lockdown + write-back de nota), nacida fuera del plan original de 65 changes. **c-69** entregó la rendición completa (import, config por examen, rendición robusta, nota entera estilo Moodle, revisión, gate de visibilidad de resultados) y está **archivado** (2026-07-07). **c-70** es su sucesor directo: matriculación por código estilo Moodle (enrolment key). Registrado a mano (no vino del `/roadmap-generator`); regenerar el roadmap formalmente cuando se cierre.
+
+| Change | Progreso | Qué es / scope | Dep | Gov |
+|--------|----------|----------------|-----|-----|
+| **c-69** `examen-plataforma-moodle-lockdown` | ✅ archivado (2026-07-07) | Examen operado en la plataforma: import Moodle XML → pool de preguntas seleccionable, config por examen (timer/ventana/intentos/nota/shuffle), rendición robusta (sesión anti-zombie), nota entera ROUND_HALF_UP estilo Moodle, revisión post-examen, gate de visibilidad de resultados (Review options), write-back de nota a Moodle. | c-68 ✓ | MEDIO |
+| **c-70** `matriculacion-por-codigo` | 0/30 | **Modelo enrolment-key de Moodle**: cada comisión gana un `codigo_matriculacion` único (autogenerado `{materia}-{sufijo}`, editable/rotable por el docente). El alumno se auto-matricula posteando el código (`POST /api/v1/exam-content/inscribirme`, auth-only, `usuario_id` del principal — NUNCA del body). Idempotente ante ya-inscripto; coexiste con la inscripción manual; NO altera el gate `puede_rendir`. Migración slim `0038` aditiva en dos pasos con backfill. Frontend docente (código + copiar) + alumno (unirse con código). **Incluye hardening del enrollment biométrico contra inyección de embedding.** | c-69 ✓ | ALTO (endpoint de acceso + toca biometría) |
+
+**Leer antes**: `openspec/changes/c-70-matriculacion-por-codigo/` (proposal/design/specs/tasks), `04_modelo_de_datos.md` §comisión/inscripción, `05_reglas_de_negocio.md` §RN-BIO (embedding = dato sensible, cliente no confiable).
+
+---
+
 ## Árbol de dependencias (pendientes)
 
 ```

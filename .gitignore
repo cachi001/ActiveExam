@@ -47,3 +47,6 @@ infra/docker-compose/docker-compose.dev.local.yml
 # Engram: dump cross-project del capturador (NO versionar — filtra data de otros
 # proyectos en un repo público). Los chunks/ y manifest.json sí se versionan.
 .engram/all_projects.json
+
+# Test venv efímero (C-70)
+backend/.venv-test/

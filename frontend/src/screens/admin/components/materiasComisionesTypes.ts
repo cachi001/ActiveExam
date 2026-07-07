@@ -22,6 +22,9 @@ export interface FormComision {
   nombre: string;
   periodo: string;
   anio: string;
+  // C-70: código de matriculación (enrolment key). Vacío en alta → el backend
+  // autogenera uno; en edición se muestra el vigente y es editable.
+  codigoMatriculacion: string;
 }
 
 export const FORM_COMISION_VACIO: Omit<FormComision, 'materiaId'> = {
@@ -31,6 +34,7 @@ export const FORM_COMISION_VACIO: Omit<FormComision, 'materiaId'> = {
   nombre: '',
   periodo: '',
   anio: '',
+  codigoMatriculacion: '',
 };
 
 export function mensajeDeError(err: unknown, contexto: 'materia' | 'comision'): string {

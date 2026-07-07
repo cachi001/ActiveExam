@@ -57,3 +57,36 @@ export function listarExamenesDeComisionFn(
     token,
   );
 }
+
+/** Resultado de la auto-matriculación por código (C-70). */
+export interface InscripcionPorCodigoResult {
+  comision_id: string;
+  comision_nombre: string;
+  materia_nombre: string;
+  ya_inscripto: boolean;
+}
+
+/**
+ * POST /exam-content/inscribirme → el alumno se auto-matricula con un código (C-70).
+ * A diferencia de los GET del catálogo, NO degrada en silencio: lanza un Error con
+ * `.status` (404/422 = código inválido) para que la UI muestre el mensaje correcto.
+ * 200 → resultado (incluye `ya_inscripto` para el caso idempotente).
+ */
+export async function inscribirmePorCodigoFn(
+  apiBase: string,
+  token: string | undefined,
+  codigoMatriculacion: string,
+): Promise<InscripcionPorCodigoResult> {
+  const res = await fetch(`${apiBase}/exam-content/inscribirme`, {
+    method: 'POST',
+    headers: buildHeaders(token),
+    body: JSON.stringify({ codigo_matriculacion: codigoMatriculacion }),
+  });
+  if (!res.ok) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const body: any = await res.json().catch(() => ({}));
+    const msg: string = body?.detail?.mensaje ?? body?.detail ?? `Error ${res.status}`;
+    throw Object.assign(new Error(msg), { status: res.status });
+  }
+  return (await res.json()) as InscripcionPorCodigoResult;
+}

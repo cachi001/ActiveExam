@@ -55,3 +55,12 @@ class InscripcionDuplicadaError(ExamenContenidoError):
 
     Viola la unicidad de (usuario_id, comision_id) de la tabla inscripcion.
     """
+
+
+class CodigoMatriculacionDuplicadoError(ExamenContenidoError):
+    """Ya existe una comisión con ese codigo_matriculacion (C-70).
+
+    Viola la unicidad GLOBAL de comision.codigo_matriculacion
+    (uq_comision_codigo_matriculacion). En la autogeneración se reintenta con otro
+    sufijo; en un código provisto por el docente se rechaza (409).
+    """

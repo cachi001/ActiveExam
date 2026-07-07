@@ -16,10 +16,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from app.application.exam_content.errors import (
+    CodigoMatriculacionInvalidoError,
     ComisionNoEncontradaError,
     InscripcionNoEncontradaError,
     UsuarioNoEncontradoError,
 )
+from app.domain.exam_content.errors import InscripcionDuplicadaError
 
 
 @dataclass(frozen=True)
@@ -40,6 +42,72 @@ class AlumnoElegibilidad:
     biometria_vigente: bool
     puede_rendir: bool
     razon: str | None
+
+
+@dataclass(frozen=True)
+class InscripcionPorCodigoResult:
+    """Resultado de la auto-matriculación por código (C-70).
+
+    ``ya_inscripto`` = True cuando el alumno ya estaba inscripto en esa comisión
+    (idempotente, no error). Los ``*_nombre`` identifican a qué quedó matriculado.
+    """
+
+    comision_id: str
+    comision_nombre: str
+    materia_nombre: str
+    ya_inscripto: bool
+
+
+class AutoMatriculacionService:
+    """Caso de uso ESTUDIANTE: auto-matriculación a una comisión por código (C-70, D4).
+
+    Reutiliza los repos existentes sin duplicar lógica de elegibilidad: la
+    matriculación es solo set-membership; el gate ``puede_rendir`` (consentimiento +
+    biometría, server-side) NO se toca. El ``usuario_id`` lo provee el caller desde
+    el principal autenticado — NUNCA del body (regla dura #6, cliente no confiable).
+    """
+
+    def __init__(self, comision_repo, materia_repo, inscripcion_repo) -> None:
+        self._comision_repo = comision_repo
+        self._materia_repo = materia_repo
+        self._inscripcion_repo = inscripcion_repo
+
+    async def inscribir_por_codigo(
+        self, codigo_matriculacion: str, usuario_id: str
+    ) -> InscripcionPorCodigoResult:
+        """Matricula al alumno a la comisión cuyo código coincide (idempotente).
+
+        Raises:
+            CodigoMatriculacionInvalidoError: el código es vacío/malformado o no
+                mapea a ninguna comisión (→ 404/422 en el endpoint; sin inscripción).
+        """
+        codigo = (codigo_matriculacion or "").strip()
+        if not codigo:
+            raise CodigoMatriculacionInvalidoError("El código de matriculación es vacío.")
+
+        comision = await self._comision_repo.obtener_por_codigo_matriculacion(codigo)
+        if comision is None:
+            raise CodigoMatriculacionInvalidoError(
+                f"El código {codigo!r} no corresponde a ninguna comisión."
+            )
+
+        materia = await self._materia_repo.obtener(comision.materia_id)
+        materia_nombre = materia.nombre if materia is not None else ""
+
+        # Idempotente: si ya está inscripto, el repo eleva InscripcionDuplicadaError
+        # (rollback interno). No es error para el alumno: respuesta amistosa.
+        try:
+            await self._inscripcion_repo.inscribir(usuario_id, comision.id)
+            ya_inscripto = False
+        except InscripcionDuplicadaError:
+            ya_inscripto = True
+
+        return InscripcionPorCodigoResult(
+            comision_id=comision.id,
+            comision_nombre=comision.nombre,
+            materia_nombre=materia_nombre,
+            ya_inscripto=ya_inscripto,
+        )
 
 
 def _razon(consentimiento_vigente: bool, biometria_vigente: bool) -> str | None:

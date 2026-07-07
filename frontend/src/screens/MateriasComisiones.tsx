@@ -197,6 +197,7 @@ export default function MateriasComisiones() {
       nombre: c.nombre,
       periodo: c.periodo ?? '',
       anio: c.anio != null ? String(c.anio) : '',
+      codigoMatriculacion: c.codigo_matriculacion ?? '',
     });
     setErrorFormComision(null);
     setTimeout(() => primerInputComisionRef.current?.focus(), 80);
@@ -221,6 +222,7 @@ export default function MateriasComisiones() {
           nombre: formComision.nombre,
           periodo: periodoVal,
           anio: anioNum,
+          codigo_matriculacion: formComision.codigoMatriculacion.trim() || null,
         });
         setComisionesPorMateria((prev) => ({
           ...prev,
@@ -232,6 +234,7 @@ export default function MateriasComisiones() {
           nombre: formComision.nombre,
           periodo: periodoVal,
           anio: anioNum,
+          codigo_matriculacion: formComision.codigoMatriculacion.trim() || null,
         });
         setComisionesPorMateria((prev) => {
           const list = prev[formComision.materiaId] ?? [];
@@ -239,7 +242,13 @@ export default function MateriasComisiones() {
             ...prev,
             [formComision.materiaId]: list.map((c) =>
               c.id === formComision.comisionId
-                ? { ...c, nombre: actualizada.nombre, periodo: actualizada.periodo, anio: actualizada.anio }
+                ? {
+                    ...c,
+                    nombre: actualizada.nombre,
+                    periodo: actualizada.periodo,
+                    anio: actualizada.anio,
+                    codigo_matriculacion: actualizada.codigo_matriculacion,
+                  }
                 : c,
             ),
           };

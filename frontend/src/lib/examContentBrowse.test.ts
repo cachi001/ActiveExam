@@ -45,6 +45,59 @@ describe('examContentBrowse — listarMateriasFn', () => {
   });
 });
 
+describe('examContentBrowse — inscribirmePorCodigoFn (C-70)', () => {
+  let fetchSpy: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => { fetchSpy = vi.spyOn(globalThis, 'fetch'); });
+  afterEach(() => { fetchSpy.mockRestore(); });
+
+  it('POST /exam-content/inscribirme con el código en el body y token', async () => {
+    fetchSpy.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        comision_id: 'c1', comision_nombre: 'Comisión 1', materia_nombre: 'Prog 1', ya_inscripto: false,
+      }),
+    } as Response);
+
+    const { inscribirmePorCodigoFn } = await import('./examContentBrowse');
+    const res = await inscribirmePorCodigoFn('/api/v1', 'tok', 'PROG1-7K2Q');
+
+    expect(res.ya_inscripto).toBe(false);
+    expect(res.comision_nombre).toBe('Comisión 1');
+    expect(fetchSpy).toHaveBeenCalledWith(
+      '/api/v1/exam-content/inscribirme',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ codigo_matriculacion: 'PROG1-7K2Q' }),
+        headers: expect.objectContaining({ Authorization: 'Bearer tok' }),
+      }),
+    );
+  });
+
+  it('idempotente: ya_inscripto=true cuando ya estaba matriculado', async () => {
+    fetchSpy.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        comision_id: 'c1', comision_nombre: 'Comisión 1', materia_nombre: 'Prog 1', ya_inscripto: true,
+      }),
+    } as Response);
+    const { inscribirmePorCodigoFn } = await import('./examContentBrowse');
+    const res = await inscribirmePorCodigoFn('/api/v1', 'tok', 'PROG1-7K2Q');
+    expect(res.ya_inscripto).toBe(true);
+  });
+
+  it('código inválido (404) lanza Error con .status = 404', async () => {
+    fetchSpy.mockResolvedValueOnce({
+      ok: false, status: 404, json: async () => ({ detail: { error: 'codigo_invalido' } }),
+    } as Response);
+    const { inscribirmePorCodigoFn } = await import('./examContentBrowse');
+    await expect(inscribirmePorCodigoFn('/api/v1', 'tok', 'NO-EXISTE')).rejects.toMatchObject({
+      status: 404,
+    });
+  });
+});
+
 describe('examContentBrowse — listarComisionesFn', () => {
   let fetchSpy: ReturnType<typeof vi.spyOn>;
   beforeEach(() => { fetchSpy = vi.spyOn(globalThis, 'fetch'); });

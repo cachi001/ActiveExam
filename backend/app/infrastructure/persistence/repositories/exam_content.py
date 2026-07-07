@@ -17,6 +17,7 @@ from app.domain.exam_content.entities import (
     PreguntaSeleccionItem,
 )
 from app.domain.exam_content.errors import (
+    CodigoMatriculacionDuplicadoError,
     ComisionDuplicadaError,
     InscripcionDuplicadaError,
     MateriaDuplicadaError,
@@ -39,6 +40,22 @@ _PG_UNIQUE_VIOLATION = "23505"
 
 def _es_violacion_unicidad(exc: IntegrityError) -> bool:
     return getattr(getattr(exc, "orig", None), "sqlstate", None) == _PG_UNIQUE_VIOLATION
+
+
+def _nombre_constraint(exc: IntegrityError) -> str | None:
+    """Nombre del constraint violado (asyncpg lo expone en constraint_name).
+
+    SQLAlchemy envuelve el error de asyncpg: la excepción original de asyncpg
+    (con ``constraint_name``) suele quedar en ``exc.orig.__cause__``. Se consulta
+    de forma defensiva para distinguir CUÁL unique se violó (materia+codigo vs.
+    codigo_matriculacion) sin acoplarse a la estructura exacta del driver.
+    """
+    orig = getattr(exc, "orig", None)
+    causa = getattr(orig, "__cause__", None)
+    return (
+        getattr(causa, "constraint_name", None)
+        or getattr(orig, "constraint_name", None)
+    )
 
 
 class ExamenContenidoSqlRepository:
@@ -517,13 +534,23 @@ class ComisionSqlRepository:
         self._db = db
 
     async def guardar(self, comision: Comision) -> Comision:
-        """Persiste una comisión; único (materia_id, codigo) → ComisionDuplicadaError."""
+        """Persiste una comisión.
+
+        Unicidad (C-70): distingue CUÁL constraint se violó:
+        - (materia_id, codigo) → ComisionDuplicadaError.
+        - codigo_matriculacion (global) → CodigoMatriculacionDuplicadoError
+          (el alta con autogeneración la reintenta; un código provisto → 409).
+
+        Requiere ``comision.codigo_matriculacion`` ya resuelto (autogenerado o
+        provisto) por la capa de aplicación — el modelo lo exige NOT NULL.
+        """
         model = ComisionModel(
             materia_id=comision.materia_id,
             codigo=comision.codigo,
             nombre=comision.nombre,
             periodo=comision.periodo,
             anio=comision.anio,
+            codigo_matriculacion=comision.codigo_matriculacion,
         )
         self._db.add(model)
         try:
@@ -531,11 +558,63 @@ class ComisionSqlRepository:
         except IntegrityError as exc:
             await self._db.rollback()
             if _es_violacion_unicidad(exc):
+                if _nombre_constraint(exc) == "uq_comision_codigo_matriculacion":
+                    raise CodigoMatriculacionDuplicadoError(
+                        f"Ya existe una comisión con codigo_matriculacion "
+                        f"{comision.codigo_matriculacion!r}."
+                    ) from exc
                 raise ComisionDuplicadaError(
                     f"Ya existe una comisión con codigo {comision.codigo!r} en esa materia."
                 ) from exc
             raise
         return self._to_entity(model)
+
+    async def obtener_por_codigo_matriculacion(self, codigo: str) -> Comision | None:
+        """Lookup GLOBAL de una comisión por su codigo_matriculacion (C-70).
+
+        Comparación EXACTA (case-sensitive): el código se guarda tal cual se tipeó.
+        Devuelve None si ningún registro coincide.
+        """
+        result = await self._db.execute(
+            select(ComisionModel).where(
+                ComisionModel.codigo_matriculacion == codigo
+            )
+        )
+        model = result.scalar_one_or_none()
+        if model is None:
+            return None
+        return self._to_entity(model)
+
+    async def actualizar_codigo_matriculacion(
+        self, comision_id: str, nuevo_codigo: str
+    ) -> Comision | None:
+        """Reemplaza el codigo_matriculacion de una comisión (rotación, C-70).
+
+        NO toca las inscripciones (rotar no desmatricula a nadie). Devuelve la
+        comisión actualizada, o None si no existe.
+
+        Raises:
+            CodigoMatriculacionDuplicadoError: el nuevo código ya pertenece a otra
+                comisión (viola uq_comision_codigo_matriculacion).
+        """
+        try:
+            result = await self._db.execute(
+                update(ComisionModel)
+                .where(ComisionModel.id == comision_id)
+                .values(codigo_matriculacion=nuevo_codigo)
+                .returning(ComisionModel.id)
+            )
+        except IntegrityError as exc:
+            await self._db.rollback()
+            if _es_violacion_unicidad(exc):
+                raise CodigoMatriculacionDuplicadoError(
+                    f"Ya existe una comisión con codigo_matriculacion {nuevo_codigo!r}."
+                ) from exc
+            raise
+        if result.scalar_one_or_none() is None:
+            return None
+        await self._db.flush()
+        return await self.obtener(comision_id)
 
     async def listar_por_materia(self, materia_id: str) -> list[Comision]:
         """Lista las comisiones de una materia (orden alfabético por nombre)."""
@@ -584,6 +663,7 @@ class ComisionSqlRepository:
             nombre=model.nombre,
             periodo=model.periodo,
             anio=model.anio,
+            codigo_matriculacion=model.codigo_matriculacion,
         )
 
 
@@ -637,6 +717,23 @@ class InscripcionSqlRepository:
             )
         )
         return result.scalar_one_or_none() is not None
+
+    async def obtener_usuario_id_por_institucional(
+        self, id_institucional: str
+    ) -> str | None:
+        """Resuelve usuario.id (FK) desde el id_institucional del principal (C-70).
+
+        Devuelve None si no hay un usuario ACTIVO (no dado de baja) con ese
+        id_institucional. Se usa en la auto-matriculación: el usuario_id sale del
+        principal autenticado, NUNCA del body (cliente = sensor no confiable).
+        """
+        result = await self._db.execute(
+            select(UsuarioModel.id).where(
+                UsuarioModel.id_institucional == id_institucional,
+                UsuarioModel.eliminado_en.is_(None),
+            )
+        )
+        return result.scalar_one_or_none()
 
     async def usuario_existe(self, usuario_id: str) -> bool:
         """True si existe un usuario ACTIVO (no dado de baja) con ese id."""

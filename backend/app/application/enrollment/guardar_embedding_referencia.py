@@ -24,6 +24,10 @@ from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.domain.biometrics.embedding_integrity import (
+    EmbeddingIntegridadError,
+    validar_integridad_embedding,
+)
 from app.infrastructure.crypto.embedding_encryption import EmbeddingEncryptionService
 from app.infrastructure.persistence.repositories.biometric_reference import (
     EmbeddingReferenciaRepository,
@@ -89,6 +93,9 @@ class GuardarEmbeddingReferenciaService:
 
         Raises:
             DimensionError: si el embedding no tiene exactamente 128 dimensiones.
+            EmbeddingIntegridadError: si el embedding no supera la validación de
+                integridad de entrada (C-70): no-finitos, norma cero, magnitud
+                absurda o el vector FAKE de desarrollo.
         """
         # 1. Validar dimension (RN-BIO: el embedding de referencia debe ser 128-d).
         if len(embedding) != EMBEDDING_DIMENSION:
@@ -96,6 +103,11 @@ class GuardarEmbeddingReferenciaService:
                 f"El embedding debe tener exactamente {EMBEDDING_DIMENSION} dimensiones, "
                 f"recibido: {len(embedding)}."
             )
+
+        # 1b. Integridad de entrada (C-70, regla dura #6: cliente no confiable).
+        # Corta la inyección trivial ANTES de cifrar/persistir. No verifica
+        # identidad (eso sería re-inferencia server-side, fuera de alcance).
+        validar_integridad_embedding(embedding)
 
         # 2. Cifrar at-rest (el plaintext nunca se persiste).
         embedding_cifrado = self._encryption.encrypt(embedding)
