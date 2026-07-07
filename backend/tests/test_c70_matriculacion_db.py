@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import os
 import uuid
+from datetime import datetime, timezone
 
 import pytest
 import pytest_asyncio
@@ -20,7 +21,10 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
-from app.application.exam_content.errors import CodigoMatriculacionInvalidoError
+from app.application.exam_content.errors import (
+    CodigoMatriculacionInvalidoError,
+    PerfilIncompletoError,
+)
 from app.application.exam_content.inscripcion_service import AutoMatriculacionService
 from app.application.exam_content.materia_comision_service import MateriaComisionService
 from app.domain.exam_content.entities import Materia
@@ -31,14 +35,31 @@ from app.infrastructure.persistence.models.exam_content import (  # noqa: F401
     MateriaModel,
 )
 from app.infrastructure.persistence.models.inscripcion import InscripcionModel
-from app.infrastructure.persistence.models.transactional import UsuarioModel
+from app.infrastructure.persistence.models.transactional import (
+    ConsentimientoPerfilModel,
+    EmbeddingReferenciaModel,
+    UsuarioModel,
+)
+from app.infrastructure.persistence.repositories.biometric_reference import (
+    EmbeddingReferenciaRepository,
+)
+from app.infrastructure.persistence.repositories.consent_perfil import (
+    ConsentimientoPerfilSqlRepository,
+)
 from app.infrastructure.persistence.repositories.exam_content import (
     ComisionSqlRepository,
     InscripcionSqlRepository,
     MateriaSqlRepository,
 )
 
-_TABLES = (InscripcionModel, ComisionModel, MateriaModel, UsuarioModel)
+_TABLES = (
+    InscripcionModel,
+    ComisionModel,
+    MateriaModel,
+    ConsentimientoPerfilModel,
+    EmbeddingReferenciaModel,
+    UsuarioModel,
+)
 
 
 @pytest.fixture(scope="module")
@@ -52,8 +73,12 @@ def db_url():
 @pytest_asyncio.fixture(scope="module")
 async def engine(db_url):
     eng = create_async_engine(db_url, pool_pre_ping=True, future=True, poolclass=NullPool)
+    _DROP = (
+        "inscripcion", "comision", "materia",
+        "consentimiento_perfil", "embedding_referencia", "usuario",
+    )
     async with eng.begin() as conn:
-        for name in ("inscripcion", "comision", "materia", "usuario"):
+        for name in _DROP:
             await conn.execute(text(f'DROP TABLE IF EXISTS "{name}" CASCADE'))
         await conn.run_sync(
             Base.metadata.create_all,
@@ -61,7 +86,7 @@ async def engine(db_url):
         )
     yield eng
     async with eng.begin() as conn:
-        for name in ("inscripcion", "comision", "materia", "usuario"):
+        for name in _DROP:
             await conn.execute(text(f'DROP TABLE IF EXISTS "{name}" CASCADE'))
     await eng.dispose()
 
@@ -89,6 +114,8 @@ def _auto(session) -> AutoMatriculacionService:
         comision_repo=ComisionSqlRepository(session),
         materia_repo=MateriaSqlRepository(session),
         inscripcion_repo=InscripcionSqlRepository(session),
+        consent_repo=ConsentimientoPerfilSqlRepository(session),
+        embedding_repo=EmbeddingReferenciaRepository(session),
     )
 
 
@@ -100,7 +127,34 @@ async def _crear_materia(session, codigo="PROG1") -> str:
     return materia.id
 
 
-async def _crear_alumno(session) -> str:
+async def _perfil_completo(session, usuario_id: str) -> None:
+    """Da al alumno un perfil completo: consentimiento 'otorgado' + biometría vigente."""
+    ahora = datetime(2026, 7, 7, tzinfo=timezone.utc)
+    session.add(
+        ConsentimientoPerfilModel(
+            id=str(uuid.uuid4()),
+            usuario_id=usuario_id,
+            version_texto="v1",
+            hash_texto="h" * 64,
+            timestamp=ahora,
+            estado="otorgado",
+            hash_registro="r" * 64,
+        )
+    )
+    session.add(
+        EmbeddingReferenciaModel(
+            id=str(uuid.uuid4()),
+            usuario_id=usuario_id,
+            embedding_cifrado="cifrado-de-prueba",
+            algoritmo="face-api-128d",
+            fecha_captura=ahora,
+            vigente=True,
+        )
+    )
+    await session.flush()
+
+
+async def _crear_alumno(session, *, con_perfil: bool = True) -> str:
     uid = str(uuid.uuid4())
     session.add(
         UsuarioModel(
@@ -112,6 +166,8 @@ async def _crear_alumno(session) -> str:
         )
     )
     await session.flush()
+    if con_perfil:
+        await _perfil_completo(session, uid)
     return uid
 
 
@@ -179,6 +235,22 @@ async def test_inscribir_por_codigo_inexistente_rechaza_sin_crear(session):
     alumno = await _crear_alumno(session)
     with pytest.raises(CodigoMatriculacionInvalidoError):
         await _auto(session).inscribir_por_codigo("NO-EXISTE", alumno)
+
+
+@pytest.mark.asyncio
+async def test_inscribir_sin_perfil_completo_rechaza(session):
+    # Gate C-71: sin perfil (sin consentimiento ni biometría) NO se puede matricular.
+    materia_id = await _crear_materia(session, "GATE1")
+    await _svc(session).crear_comision(
+        materia_id=materia_id, codigo="C1", nombre="C1",
+        codigo_matriculacion="GATE1-K",
+    )
+    alumno = await _crear_alumno(session, con_perfil=False)
+    with pytest.raises(PerfilIncompletoError):
+        await _auto(session).inscribir_por_codigo("GATE1-K", alumno)
+    # No se creó inscripción.
+    comision = await ComisionSqlRepository(session).obtener_por_codigo_matriculacion("GATE1-K")
+    assert not await InscripcionSqlRepository(session).existe(alumno, comision.id)
 
 
 @pytest.mark.asyncio

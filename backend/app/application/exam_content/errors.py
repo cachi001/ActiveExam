@@ -37,3 +37,17 @@ class CodigoMatriculacionInvalidoError(Exception):
     Se eleva en la auto-matriculación del alumno cuando el código no mapea a una
     comisión existente. El endpoint lo traduce a 404 (no se crea ninguna inscripción).
     """
+
+
+class PerfilIncompletoError(Exception):
+    """El alumno intentó matricularse sin el perfil completo (C-71).
+
+    Regla del owner: TODO (matricularse, rendir) requiere el perfil completo =
+    consentimiento vigente 'otorgado' + referencia biométrica vigente, resuelto
+    server-side (el gate no se puede saltear desde el cliente). El endpoint lo
+    traduce a 403 y NO crea inscripción. ``razon`` describe qué falta.
+    """
+
+    def __init__(self, razon: str) -> None:
+        super().__init__(razon)
+        self.razon = razon

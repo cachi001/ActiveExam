@@ -37,6 +37,7 @@ from app.application.exam_content.errors import (
     MateriaNoEncontradaError,
     MoodleXmlInvalidoError,
     MoodleXmlVacioError,
+    PerfilIncompletoError,
     UsuarioNoEncontradoError,
 )
 from app.application.exam_content.import_service import ImportacionMoodleService
@@ -1301,6 +1302,12 @@ def create_exam_taking_router(
                 detail={"error": "codigo_invalido", "mensaje": "El código es vacío."},
             )
 
+        from app.infrastructure.persistence.repositories.biometric_reference import (
+            EmbeddingReferenciaRepository,
+        )
+        from app.infrastructure.persistence.repositories.consent_perfil import (
+            ConsentimientoPerfilSqlRepository,
+        )
         from app.infrastructure.persistence.repositories.exam_content import (
             ComisionSqlRepository,
             InscripcionSqlRepository,
@@ -1312,12 +1319,20 @@ def create_exam_taking_router(
                 comision_repo=ComisionSqlRepository(session),
                 materia_repo=MateriaSqlRepository(session),
                 inscripcion_repo=InscripcionSqlRepository(session),
+                consent_repo=ConsentimientoPerfilSqlRepository(session),
+                embedding_repo=EmbeddingReferenciaRepository(session),
             )
             try:
                 result = await service.inscribir_por_codigo(
                     body.codigo_matriculacion, principal.subject
                 )
                 await session.commit()
+            except PerfilIncompletoError as exc:
+                await session.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail={"error": "perfil_incompleto", "mensaje": exc.razon},
+                ) from exc
             except CodigoMatriculacionInvalidoError as exc:
                 await session.rollback()
                 raise HTTPException(

@@ -5,7 +5,6 @@ import './index.css'
 import { authProvider, AUTH_PROVIDER_TYPE } from './lib/authProvider'
 import { useAuth } from './lib/authStore'
 import { useApp } from './lib/store'
-import { AUTH_BYPASS } from './lib/devConfig'
 import { registerModelCacheWorker } from './lib/modelPersistence'
 
 // C-67 fix: cachear de forma persistente los modelos de IA (MediaPipe + face-api)
@@ -59,11 +58,7 @@ authProvider.init()
     useAuth.setState({ status: 'unauthenticated' })
   })
   .finally(() => {
-    // Bypass de desarrollo: si no quedó sesión real y el bypass está activo,
-    // inyecta un principal dev. Inerte en producción.
-    if (AUTH_BYPASS && useAuth.getState().status !== 'authenticated') {
-      console.info('[auth] AUTH_BYPASS activo: navegando con principal dev')
-      useAuth.getState().enableDevBypass()
-    }
+    // Sin bypass: si no hay sesión real, la app muestra el login. No hay atajo
+    // para navegar sin autenticarse (ni en dev ni en prod).
     render()
   })

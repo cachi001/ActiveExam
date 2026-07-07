@@ -33,13 +33,19 @@ export default function AlumnoMaterias() {
   const [codigoJoin, setCodigoJoin] = useState('');
   const [uniendo, setUniendo] = useState(false);
   const [joinMsg, setJoinMsg] = useState<{ tipo: 'ok' | 'error'; texto: string } | null>(null);
+  // C-71: gate de perfil — sin perfil completo no se puede matricular (server-side + UX).
+  const [perfilCompleto, setPerfilCompleto] = useState<boolean | null>(null);
 
   useEffect(() => {
     let cancelado = false;
     (async () => {
-      const mats = await api.materiasDisponibles();
+      const [mats, gate] = await Promise.all([
+        api.materiasDisponibles(),
+        api.puedeRendir().catch(() => ({ puede: false })),
+      ]);
       if (cancelado) return;
       setMaterias(mats);
+      setPerfilCompleto(gate.puede);
       setCargandoMaterias(false);
     })();
     return () => { cancelado = true; };
@@ -69,13 +75,21 @@ export default function AlumnoMaterias() {
       }
     } catch (err) {
       const e2 = err as Error & { status?: number };
-      setJoinMsg({
-        tipo: 'error',
-        texto:
-          e2.status === 404 || e2.status === 422
-            ? 'Ese código no es válido. Revisalo con tu docente.'
-            : 'No se pudo procesar el código. Intentá de nuevo.',
-      });
+      if (e2.status === 403) {
+        setPerfilCompleto(false);
+        setJoinMsg({
+          tipo: 'error',
+          texto: 'Primero completá tu perfil (consentimiento y biometría) para poder matricularte.',
+        });
+      } else {
+        setJoinMsg({
+          tipo: 'error',
+          texto:
+            e2.status === 404 || e2.status === 422
+              ? 'Ese código no es válido. Revisalo con tu docente.'
+              : 'No se pudo procesar el código. Intentá de nuevo.',
+        });
+      }
     } finally {
       setUniendo(false);
     }
@@ -170,11 +184,26 @@ export default function AlumnoMaterias() {
               <p>Unirte no habilita a rendir por sí solo: seguís necesitando tu perfil (consentimiento y biometría) al día.</p>
             </HelpButton>
           </div>
+          {perfilCompleto === false && (
+            <div role="alert" className="mb-2 flex items-center gap-2 rounded-md bg-error-container text-error p-2.5 text-[12px]">
+              <Icon name="lock" className="text-[15px] shrink-0" fill />
+              <span className="flex-1">
+                Para matricularte necesitás completar tu perfil (consentimiento y biometría) primero.
+              </span>
+              <button
+                type="button"
+                onClick={() => navigate('/alumno/perfil')}
+                className="font-semibold underline shrink-0"
+              >
+                Completar perfil
+              </button>
+            </div>
+          )}
           <form onSubmit={unirmePorCodigo} className="flex flex-col sm:flex-row gap-2">
             <input
               type="text"
               value={codigoJoin}
-              disabled={uniendo}
+              disabled={uniendo || perfilCompleto === false}
               onChange={(e) => setCodigoJoin(e.target.value)}
               placeholder="Ej. PROG1-7K2Q"
               aria-label="Código de matriculación"
@@ -182,7 +211,7 @@ export default function AlumnoMaterias() {
             />
             <button
               type="submit"
-              disabled={uniendo || !codigoJoin.trim()}
+              disabled={uniendo || !codigoJoin.trim() || perfilCompleto === false}
               className="inline-flex items-center justify-center gap-2 rounded-md bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary transition-colors hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {uniendo ? (

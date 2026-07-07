@@ -1,8 +1,6 @@
 import { lazy, Suspense, type ReactNode } from 'react';
 import { RouterProvider, Routes } from './lib/router';
-import { ScreenNavigator } from './ui/ScreenNavigator';
 import { ToastProvider, Toaster } from './ui/toast';
-import { DEV_TOOLS_ENABLED } from './lib/devConfig';
 import { RequireAuth } from './lib/auth/RequireAuth';
 import type { Rol } from './lib/types';
 import { LoadingSpinner } from './ui/components';
@@ -103,7 +101,6 @@ export default function App() {
         <Suspense fallback={<PageFallback />}>
           <Routes routes={routes} fallback={<Login />} />
         </Suspense>
-        {DEV_TOOLS_ENABLED && <ScreenNavigator />}
       </RouterProvider>
       <Toaster />
     </ToastProvider>

@@ -19,6 +19,7 @@ from app.application.exam_content.errors import (
     CodigoMatriculacionInvalidoError,
     ComisionNoEncontradaError,
     InscripcionNoEncontradaError,
+    PerfilIncompletoError,
     UsuarioNoEncontradoError,
 )
 from app.domain.exam_content.errors import InscripcionDuplicadaError
@@ -67,23 +68,55 @@ class AutoMatriculacionService:
     el principal autenticado — NUNCA del body (regla dura #6, cliente no confiable).
     """
 
-    def __init__(self, comision_repo, materia_repo, inscripcion_repo) -> None:
+    def __init__(
+        self,
+        comision_repo,
+        materia_repo,
+        inscripcion_repo,
+        consent_repo,
+        embedding_repo,
+    ) -> None:
         self._comision_repo = comision_repo
         self._materia_repo = materia_repo
         self._inscripcion_repo = inscripcion_repo
+        self._consent_repo = consent_repo
+        self._embedding_repo = embedding_repo
+
+    async def _asegurar_perfil_completo(self, usuario_id: str) -> None:
+        """Gate C-71: el alumno DEBE tener el perfil completo para matricularse.
+
+        Perfil completo = consentimiento vigente 'otorgado' + referencia biométrica
+        vigente (server-side; no se puede saltear desde el cliente). Mismo criterio
+        que ``puede_rendir``. Eleva PerfilIncompletoError si falta algo.
+        """
+        consentimiento = await self._consent_repo.vigente(usuario_id)
+        consentimiento_ok = (
+            consentimiento is not None and consentimiento.estado == "otorgado"
+        )
+        biometria_ok = await self._embedding_repo.obtener_vigente(usuario_id) is not None
+        if not (consentimiento_ok and biometria_ok):
+            razon = _razon(consentimiento_ok, biometria_ok) or "Perfil incompleto"
+            raise PerfilIncompletoError(razon)
 
     async def inscribir_por_codigo(
         self, codigo_matriculacion: str, usuario_id: str
     ) -> InscripcionPorCodigoResult:
         """Matricula al alumno a la comisión cuyo código coincide (idempotente).
 
+        Gate C-71: exige el perfil completo (consentimiento + biometría) ANTES de
+        matricular — la matriculación no se permite sin perfil (server-side).
+
         Raises:
+            PerfilIncompletoError: el alumno no tiene el perfil completo (→ 403).
             CodigoMatriculacionInvalidoError: el código es vacío/malformado o no
                 mapea a ninguna comisión (→ 404/422 en el endpoint; sin inscripción).
         """
         codigo = (codigo_matriculacion or "").strip()
         if not codigo:
             raise CodigoMatriculacionInvalidoError("El código de matriculación es vacío.")
+
+        # Gate de perfil PRIMERO: sin perfil no se matricula (regla del owner).
+        await self._asegurar_perfil_completo(usuario_id)
 
         comision = await self._comision_repo.obtener_por_codigo_matriculacion(codigo)
         if comision is None:

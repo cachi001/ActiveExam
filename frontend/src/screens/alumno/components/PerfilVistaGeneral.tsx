@@ -1,7 +1,6 @@
 import { BackButton } from '../../../ui/components';
 import { HelpButton } from '../../../ui/HelpButton';
 import { ENABLE_DNI_SCAN } from '../../../lib/api';
-import { DEV_TOOLS_ENABLED } from '../../../lib/devConfig';
 import { PerfilHeaderCard } from './PerfilHeaderCard';
 import { PerfilBannerEstado } from './PerfilBannerEstado';
 import { RequisitoConsentimiento } from './RequisitoConsentimiento';
@@ -102,7 +101,7 @@ export function PerfilVistaGeneral({
         biometriaCaducada={biometriaCaducada}
         biometriaRenovacionRequerida={biometriaRenovacionRequerida}
         consentimientoOk={consentimientoOk}
-        devToolsEnabled={DEV_TOOLS_ENABLED}
+        devToolsEnabled={false}
         onCapturar={onIniciarEnrollment}
         onRenovar={onRenovarBiometria}
         onSimularDeriva={onSimularDeriva}

@@ -66,12 +66,6 @@ interface AuthState {
 
   /** True si el principal tiene AL MENOS uno de los roles dados. */
   hasRole: (roles: Rol[]) => boolean;
-
-  /**
-   * Bypass de desarrollo: inyecta un principal dev con los 3 roles para navegar
-   * la app sin auth. SOLO se llama si AUTH_BYPASS está activo (dev). Ver devConfig.
-   */
-  enableDevBypass: () => void;
 }
 
 // Guardamos referencia al provider activo para que login/logout puedan delegar.
@@ -155,18 +149,4 @@ export const useAuth = create<AuthState>((set, get) => ({
     const p = get().principal;
     return !!p && roles.some((r) => p.roles.includes(r));
   },
-
-  enableDevBypass: () =>
-    set({
-      status: 'authenticated',
-      token: null,
-      principal: {
-        id_institucional: 'DEV-LOCAL',
-        nombre: 'Dev (bypass)',
-        email: 'dev@local',
-        roles: ['estudiante', 'proctor', 'admin_sistema'],
-        mfa_satisfecho: true,
-        jurisdiccion: 'AR',
-      },
-    }),
 }));
