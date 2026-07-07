@@ -261,6 +261,21 @@ async def _seed_contenido(factory) -> None:
             print(f"  [create] comision {COMISION_NOMBRE} ({COMISION_CODIGO})")
         else:
             print(f"  [skip] comision ya existe: {COMISION_CODIGO}")
+            # C-70: converger el código de matriculación demo a PROG1-C1 (idempotente).
+            # Si la comisión preexistía, la migración 0038 le puso un código aleatorio;
+            # lo fijamos al demo salvo que otro registro ya lo tenga (unicidad global).
+            if comision.codigo_matriculacion != COMISION_MATRICULACION:
+                conflicto = (
+                    await session.execute(
+                        select(ComisionModel.id).where(
+                            ComisionModel.codigo_matriculacion == COMISION_MATRICULACION,
+                            ComisionModel.id != comision.id,
+                        )
+                    )
+                ).scalar_one_or_none()
+                if conflicto is None:
+                    comision.codigo_matriculacion = COMISION_MATRICULACION
+                    print(f"  [update] codigo_matriculacion -> {COMISION_MATRICULACION}")
 
         # 3. Examen (idempotente por (titulo, comision_id)).
         examen = (
