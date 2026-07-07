@@ -33,7 +33,7 @@ La marca de opción correcta SHALL almacenarse y permanecer del lado del servido
 - **THEN** la proyección no incluye la marca de opción correcta de ninguna opción
 
 ### Requirement: Modelo persistente de materia y comisión
-El sistema SHALL persistir **materia** (con `codigo` único y `nombre`) y **comisión** (con `codigo`, `nombre`, una FK obligatoria a su materia y, opcionalmente, período/cuatrimestre y año). Una comisión SHALL pertenecer a **exactamente una** materia. La combinación (`materia_id`, `codigo`) de una comisión SHALL ser única. Materia y comisión son un requisito real del producto (se modelan y persisten, NO se difieren a otro change), pero su asociación con un examen es **opcional en el MVP** (ver requisito siguiente). La migración SHALL ser **aditiva** (rama slim, no toca tablas existentes), siguiendo el patrón de `0023`.
+El sistema SHALL persistir **materia** (con `codigo` único y `nombre`) y **comisión** (con `codigo`, `nombre`, una FK obligatoria a su materia, opcionalmente período/cuatrimestre y año, y un `codigo_matriculacion` **único** a nivel global). Una comisión SHALL pertenecer a **exactamente una** materia. La combinación (`materia_id`, `codigo`) de una comisión SHALL ser única. El `codigo_matriculacion` SHALL ser único entre todas las comisiones, SHALL autogenerarse a partir del `codigo` de la materia con un sufijo aleatorio corto cuando no se provee, y SHALL ser editable por el docente (ver capability `matriculacion-por-codigo`). Materia y comisión son un requisito real del producto (se modelan y persisten, NO se difieren a otro change), pero su asociación con un examen es **opcional en el MVP** (ver requisito siguiente). La migración que agrega `codigo_matriculacion` SHALL ser **aditiva** (rama slim, no toca tablas existentes) y **en dos pasos** para poder aplicar unicidad sobre filas existentes: agregar la columna nullable, backfillear un código único por comisión existente y luego aplicar la restricción `UNIQUE`.
 
 #### Scenario: Persistir una materia con sus comisiones
 - **WHEN** se crea una materia y una comisión que la referencia
@@ -46,6 +46,16 @@ El sistema SHALL persistir **materia** (con `codigo` único y `nombre`) y **comi
 #### Scenario: Una comisión no puede existir sin materia
 - **WHEN** se intenta persistir una comisión sin materia asociada
 - **THEN** el sistema rechaza la operación: toda comisión pertenece a exactamente una materia
+
+#### Scenario: La comisión persiste un código de matriculación único
+- **WHEN** se crea una comisión (con o sin `codigo_matriculacion` provisto)
+- **THEN** la comisión queda persistida con un `codigo_matriculacion` no nulo y único entre todas las comisiones
+
+#### Scenario: Migración aditiva en dos pasos backfillea las comisiones existentes
+- **WHEN** se aplica la migración que agrega `codigo_matriculacion` sobre una base con comisiones preexistentes
+- **THEN** cada comisión existente recibe un `codigo_matriculacion` único generado durante el backfill
+- **THEN** la restricción `UNIQUE` queda aplicada sin violar la unicidad de las filas backfilleadas
+- **THEN** el `alembic downgrade` remueve la columna sin afectar otras tablas
 
 ### Requirement: La asociación examen→comisión es opcional en el MVP
 Un examen de contenido SHALL tener una FK a comisión que es **NULLABLE**. Un examen SIN comisión asignada SHALL ser un estado **válido** (estado MVP): el examen se puede importar, persistir y rendir sin comisión ni materia. Cuando un examen TIENE comisión, SHALL referenciar **exactamente una**, y a través de ella SHALL derivar transitivamente su materia. El admin PUEDE asignar (o cambiar) la comisión de un examen después de importarlo.
