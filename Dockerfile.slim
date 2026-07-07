@@ -58,11 +58,19 @@ ENV PYTHONUNBUFFERED=1
 # ignora PGOPTIONS, asi que el runtime no queda con timeouts agresivos.
 ENV PGOPTIONS="-c lock_timeout=15000 -c statement_timeout=120000"
 
-# CMD: primero migrar (branch slim, sin TimescaleDB), luego servir.
-# Marcadores [1/2]/[2/2] para ver EXACTAMENTE donde se queda si algo falla:
-# si ves [1/2] pero no [2/2], el problema es la migracion; si ves [2/2] pero
+# CMD: migrar (branch slim, sin TimescaleDB) -> seed idempotente -> servir.
+# Marcadores [1/3]/[2/3]/[3/3] para ver EXACTAMENTE donde se queda si algo falla:
+# si ves [1/3] pero no [3/3], el problema es la migracion; si ves [3/3] pero
 # no "Uvicorn running", el problema es el arranque del server.
-CMD echo ">>> [1/2] migrando DB (alembic slim@head)..." && \
+#
+# El seed [2/3] es IDEMPOTENTE (no duplica) y NO-FATAL: siembra los usuarios demo
+# + Programacion 1 / Comision 1 / "Examen de Programacion 1" (preguntas del XML).
+# Si faltan las SEED_*_PASSWORD el seed aborta con exit!=0, pero el '|| echo' evita
+# que tumbe el arranque: el server levanta igual. Asi un seed incompleto NUNCA
+# brickea el deploy; solo faltaria el contenido demo hasta setear las passwords.
+CMD echo ">>> [1/3] migrando DB (alembic slim@head)..." && \
     alembic -c alembic.ini upgrade slim@head && \
-    echo ">>> [2/2] migracion OK -> levantando uvicorn en ${PORT:-8000}" && \
+    echo ">>> [2/3] migracion OK -> seed idempotente (usuarios + Programacion 1 / Comision 1 / examen)..." && \
+    (python scripts/seed_users.py --slim || echo ">>> WARN: seed incompleto (revisar SEED_*_PASSWORD) — el server arranca igual") && \
+    echo ">>> [3/3] -> levantando uvicorn en ${PORT:-8000}" && \
     uvicorn app.main_slim:app --host 0.0.0.0 --port ${PORT:-8000}
