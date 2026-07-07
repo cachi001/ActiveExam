@@ -280,12 +280,13 @@ async def _seed_contenido(factory) -> None:
                 comision_id=comision.id,
                 tiempo_limite_min=40,
                 intentos_permitidos=2,
-                # Ventana de rendición (obligatoria): de tal fecha/hora a tal otra.
-                apertura=datetime(2026, 3, 1, 9, 0, tzinfo=timezone.utc),
-                cierre=datetime(2026, 3, 1, 11, 0, tzinfo=timezone.utc),
-                # Demo: nota al cerrar + revisión habilitada (el cierre ya pasó, así
-                # que la nota y la revisión se ven).
-                mostrar_nota="al_cerrar",
+                # Ventana de rendición (obligatoria): abierta y rendible ya. Editable
+                # luego desde el panel del docente. Cierre lejano para el demo.
+                apertura=datetime(2026, 7, 7, 9, 0, tzinfo=timezone.utc),
+                cierre=datetime(2026, 12, 31, 23, 0, tzinfo=timezone.utc),
+                # Demo: nota INMEDIATA (se ve al entregar, sin esperar el cierre) +
+                # revisión habilitada.
+                mostrar_nota="inmediata",
                 revision_habilitada=True,
             )
             for i, pd in enumerate(parseo.preguntas):
