@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { API_BASE } from '../../lib/api';
 import {
   altaInlineMateriaComision,
   getMoodleTarget,
@@ -102,7 +103,7 @@ export default function MoodleImportPage() {
     if (cmid.trim()) formData.append('moodle_cmid', cmid.trim());
 
     try {
-      const resp = await fetch('/api/v1/exam-content/moodle-import', {
+      const resp = await fetch(`${API_BASE}/exam-content/moodle-import`, {
         method: 'POST',
         body: formData,
       });

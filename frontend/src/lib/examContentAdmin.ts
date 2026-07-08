@@ -12,6 +12,7 @@
  */
 
 import { authProvider } from './authProvider';
+import { API_BASE } from './api';
 import type { AlumnoInscripto } from './types';
 
 export interface MateriaInline {
@@ -81,7 +82,7 @@ export async function altaInlineMateriaComision(
   comision: ComisionInline,
   examenId?: string | null,
 ): Promise<AltaInlineResponse> {
-  const res = await fetch('/api/v1/exam-content/materias-comisiones', {
+  const res = await fetch(`${API_BASE}/exam-content/materias-comisiones`, {
     method: 'POST',
     headers: authHeaders(),
     body: JSON.stringify({
@@ -104,7 +105,7 @@ export async function asociarExamenAComision(
   examenId: string,
   comisionId: string,
 ): Promise<AsociarComisionResponse> {
-  const res = await fetch(`/api/v1/exam-content/${examenId}/comision`, {
+  const res = await fetch(`${API_BASE}/exam-content/${examenId}/comision`, {
     method: 'POST',
     headers: authHeaders(),
     body: JSON.stringify({ comision_id: comisionId }),
@@ -143,7 +144,7 @@ export async function crearMateria(data: {
   codigo: string;
   nombre: string;
 }): Promise<MateriaResponse> {
-  const res = await fetch('/api/v1/exam-content/materias', {
+  const res = await fetch(`${API_BASE}/exam-content/materias`, {
     method: 'POST',
     headers: authHeaders(),
     body: JSON.stringify(data),
@@ -246,7 +247,7 @@ export async function setMoodleTarget(
   examenId: string,
   target: MoodleTarget,
 ): Promise<MoodleTargetResponse> {
-  const res = await fetch(`/api/v1/exam-content/${examenId}/moodle-target`, {
+  const res = await fetch(`${API_BASE}/exam-content/${examenId}/moodle-target`, {
     method: 'POST',
     headers: authHeaders(),
     body: JSON.stringify(target),
@@ -283,7 +284,7 @@ export function buildMoodleTarget(courseIdInput: string, cmidInput: string): Moo
 
 /** Lee el destino de la nota en Moodle de un examen importado. */
 export async function getMoodleTarget(examenId: string): Promise<MoodleTargetResponse> {
-  const res = await fetch(`/api/v1/exam-content/${examenId}/moodle-target`, {
+  const res = await fetch(`${API_BASE}/exam-content/${examenId}/moodle-target`, {
     method: 'GET',
     headers: authHeaders(),
   });
@@ -326,7 +327,7 @@ export interface ExamConfig {
 
 /** Lee la configuración del examen. Admin-only. GET /exam-content/{id}/config */
 export async function getExamConfig(examenId: string): Promise<ExamConfig> {
-  const res = await fetch(`/api/v1/exam-content/${examenId}/config`, {
+  const res = await fetch(`${API_BASE}/exam-content/${examenId}/config`, {
     method: 'GET',
     headers: authHeaders(),
   });
@@ -347,7 +348,7 @@ export async function setExamConfig(
   examenId: string,
   patch: Partial<ExamConfig>,
 ): Promise<ExamConfig> {
-  const res = await fetch(`/api/v1/exam-content/${examenId}/config`, {
+  const res = await fetch(`${API_BASE}/exam-content/${examenId}/config`, {
     method: 'PATCH',
     headers: authHeaders(),
     body: JSON.stringify(patch),
@@ -389,7 +390,7 @@ export interface PreguntasExamenResponse {
  * GET /api/v1/exam-content/{examenId}/preguntas
  */
 export async function getPreguntasExamen(examenId: string): Promise<PreguntasExamenResponse> {
-  const res = await fetch(`/api/v1/exam-content/${examenId}/preguntas`, {
+  const res = await fetch(`${API_BASE}/exam-content/${examenId}/preguntas`, {
     method: 'GET',
     headers: authHeaders(),
   });
@@ -411,7 +412,7 @@ export async function setPreguntasSeleccion(
   examenId: string,
   seleccionadasIds: string[],
 ): Promise<{ seleccionadas: number }> {
-  const res = await fetch(`/api/v1/exam-content/${examenId}/preguntas-seleccion`, {
+  const res = await fetch(`${API_BASE}/exam-content/${examenId}/preguntas-seleccion`, {
     method: 'PATCH',
     headers: authHeaders(),
     body: JSON.stringify({ seleccionadas: seleccionadasIds }),

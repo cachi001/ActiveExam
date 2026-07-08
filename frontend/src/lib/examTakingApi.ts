@@ -10,6 +10,7 @@
  */
 
 import { authProvider } from './authProvider';
+import { API_BASE } from './api';
 
 /** Opción de respuesta para la rendición (D3: campo de respuesta correcta ausente). */
 export interface OpcionRendicion {
@@ -53,7 +54,7 @@ export async function fetchExamenParaRendir(
   examenContenidoId: string,
 ): Promise<ExamenRendicion | null> {
   const token = authProvider.getToken();
-  const res = await fetch(`/api/v1/exam-content/${examenContenidoId}`, {
+  const res = await fetch(`${API_BASE}/exam-content/${examenContenidoId}`, {
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),

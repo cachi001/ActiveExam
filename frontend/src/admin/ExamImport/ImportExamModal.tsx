@@ -18,7 +18,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon, Button } from '../../ui/components';
-import { api } from '../../lib/api';
+import { api, API_BASE } from '../../lib/api';
 import { authProvider } from '../../lib/authProvider';
 import {
   altaInlineMateriaComision,
@@ -208,7 +208,7 @@ export function ImportExamModal({ abierto, onCerrar, onImportado }: ImportExamMo
       if (cmid.trim()) formData.append('moodle_cmid', cmid.trim());
 
       const token = authProvider.getToken();
-      const resp = await fetch('/api/v1/exam-content/moodle-import', {
+      const resp = await fetch(`${API_BASE}/exam-content/moodle-import`, {
         method: 'POST',
         // No seteamos Content-Type: el browser fija el boundary del multipart.
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
