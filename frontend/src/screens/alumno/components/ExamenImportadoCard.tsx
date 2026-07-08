@@ -1,7 +1,8 @@
 import { Card, Button, Icon } from '../../../ui/components';
 import type { ExamenContenidoResumen } from '../../../lib/types';
+import type { GateImportado } from '../gateExamenImportado';
 
-export interface GateImportado { habilitado: boolean; motivo?: string; }
+export type { GateImportado };
 
 export interface ExamenImportadoCardProps {
   contenido: ExamenContenidoResumen;
@@ -17,6 +18,9 @@ export function ExamenImportadoCard({ contenido, rindiendo, gate, perfilCompleto
   const tiempo = contenido.tiempo_limite_min;
   const faltaPerfil = !perfilCompleto;
   const inerte = faltaPerfil || bloqueado;
+  // Intentos restantes (solo si el examen los limita). Se muestra cuando el alumno
+  // TODAVÍA puede rendir, para que sepa cuántos le quedan antes de agotarlos.
+  const restantes = gate.permitidos != null ? Math.max(0, gate.permitidos - gate.usados) : null;
   return (
     <Card className="flex items-center justify-between gap-md p-md">
       <div className="flex items-start gap-sm min-w-0">
@@ -35,9 +39,13 @@ export function ExamenImportadoCard({ contenido, rindiendo, gate, perfilCompleto
             <p className="text-[12px] text-warning mt-1 flex items-center gap-1">
               <Icon name="manage_accounts" className="text-[14px]" fill /> Completá tu perfil para poder rendir.
             </p>
-          ) : bloqueado && gate.motivo && (
+          ) : bloqueado && gate.motivo ? (
             <p className="text-[12px] text-error mt-1 flex items-center gap-1">
               <Icon name="lock" className="text-[14px]" fill /> {gate.motivo}
+            </p>
+          ) : restantes != null && (
+            <p className="text-[12px] text-on-surface-variant mt-1 flex items-center gap-1">
+              <Icon name="replay" className="text-[14px]" /> Te queda{restantes === 1 ? '' : 'n'} {restantes} de {gate.permitidos} intento{gate.permitidos === 1 ? '' : 's'}.
             </p>
           )}
         </div>

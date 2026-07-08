@@ -192,7 +192,11 @@ export const useApp = create<AppState>((set) => ({
   setRevisionSeleccionada: (revisionSeleccionada) => set({ revisionSeleccionada }),
   pushAnomalia: (e) => set((s) => ({ anomaliasVivo: [e, ...s.anomaliasVivo].slice(0, 50) })),
   addScore: (delta) => set((s) => ({ scorePropio: Math.min(100, s.scorePropio + delta) })),
-  resetSesion: () => { persistExamenActivo(null); set({ anomaliasVivo: [], scorePropio: 0, examenActivo: null }); },
+  // Resetea TODO el estado por-intento. `proctoringSessionId`/`proctoringExamId` deben
+  // limpiarse acá: si no, el intento 2 reusa la sesión FINALIZADA del intento 1 (Consent
+  // solo crea sesión `if (!proctoringSessionId)`), sus respuestas se rechazan (409) y la
+  // revisión muestra las del intento 1. Cada intento tiene que nacer con sesión nueva.
+  resetSesion: () => { persistExamenActivo(null); set({ anomaliasVivo: [], scorePropio: 0, examenActivo: null, proctoringSessionId: null, proctoringExamId: null }); },
   setEnrollmentStatus: (e) => set({ enrollmentStatus: e, isProfileComplete: e.perfil_completo }),
   clearEnrollment: () => set({ enrollmentStatus: null, isProfileComplete: false }),
   setFotoPerfil: (dataUrl) => set((s) => ({

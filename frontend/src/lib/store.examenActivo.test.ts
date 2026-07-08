@@ -69,3 +69,28 @@ describe('store — persistencia de examenActivo en sessionStorage', () => {
     expect(sessionStorage.getItem(KEY)).toBeNull();
   });
 });
+
+describe('store — reset de la sesión de proctoring entre intentos', () => {
+  beforeEach(() => {
+    useApp.getState().setProctoringSessionId(null);
+    useApp.getState().setProctoringExamId(null);
+    useApp.getState().setExamenActivo(null);
+    sessionStorage.clear();
+  });
+
+  // Bug real de corrección: `resetSesion` reseteaba scorePropio/anomalías/examenActivo
+  // pero NO `proctoringSessionId`. El intento 2 reusaba la sesión FINALIZADA del intento
+  // 1 (Consent solo crea sesión `if (!proctoringSessionId)`), las respuestas del intento
+  // 2 se rechazaban (409 sesión finalizada) y la revisión mostraba las respuestas del
+  // intento 1. resetSesion debe dejar la sesión en null para que cada intento nazca limpio.
+  it('resetSesion limpia proctoringSessionId y proctoringExamId', () => {
+    useApp.getState().setProctoringSessionId('sesion-intento-1');
+    useApp.getState().setProctoringExamId('EX-TEST-1');
+    expect(useApp.getState().proctoringSessionId).toBe('sesion-intento-1');
+
+    useApp.getState().resetSesion();
+
+    expect(useApp.getState().proctoringSessionId).toBeNull();
+    expect(useApp.getState().proctoringExamId).toBeNull();
+  });
+});

@@ -13,56 +13,11 @@ import { api } from '../lib/api';
 import AcuseExamen from './AcuseExamen';
 import type { Inscripcion, Examen, ExamenContenidoResumen, NotaExamen, EstadoEnrollment } from '../lib/types';
 import { InscripcionCard } from './alumno/components/InscripcionCard';
-import { ExamenImportadoCard, type GateImportado } from './alumno/components/ExamenImportadoCard';
+import { ExamenImportadoCard } from './alumno/components/ExamenImportadoCard';
+import { gateExamenImportado } from './alumno/gateExamenImportado';
 import { NotaCard } from './alumno/components/NotaCard';
 
 interface GatePorExamen { puede: boolean; codigo?: string; razon?: string; }
-
-/** Formatea un ISO 8601 a fecha+hora legible (es-AR). */
-function formatFechaHora(iso: string): string {
-  try {
-    return new Intl.DateTimeFormat('es-AR', {
-      day: '2-digit', month: '2-digit', year: 'numeric',
-      hour: '2-digit', minute: '2-digit',
-    }).format(new Date(iso));
-  } catch {
-    return iso;
-  }
-}
-
-/**
- * Gate de "Rendir" para un examen importado (C-69 config):
- * 1. Ventana: antes de `apertura` → "Disponible desde…"; después de `cierre` → "Cerrado el…".
- * 2. Intentos: si el alumno ya rindió `intentos_permitidos` veces (contando ítems de
- *    `misNotas()` de ese examen) → bloqueado con "Ya rendiste este examen (n/intentos)".
- * Función pura (acepta `ahora` inyectable) para poder testearla sin reloj real.
- */
-function gateExamenImportado(
-  contenido: ExamenContenidoResumen,
-  notas: NotaExamen[],
-  ahora: number = Date.now(),
-): GateImportado {
-  if (contenido.apertura) {
-    const ap = new Date(contenido.apertura).getTime();
-    if (!Number.isNaN(ap) && ahora < ap) {
-      return { habilitado: false, motivo: `Disponible desde ${formatFechaHora(contenido.apertura)}` };
-    }
-  }
-  if (contenido.cierre) {
-    const ci = new Date(contenido.cierre).getTime();
-    if (!Number.isNaN(ci) && ahora > ci) {
-      return { habilitado: false, motivo: `Cerrado el ${formatFechaHora(contenido.cierre)}` };
-    }
-  }
-  const permitidos = contenido.intentos_permitidos ?? null;
-  if (permitidos !== null && permitidos >= 1) {
-    const usados = notas.filter((n) => n.examen_id === contenido.id).length;
-    if (usados >= permitidos) {
-      return { habilitado: false, motivo: `Ya rendiste este examen (${usados}/${permitidos})` };
-    }
-  }
-  return { habilitado: true };
-}
 
 /** Detectores por defecto para exámenes importados (sin config de examen-config). */
 const DETECTORES_SLIM = [
@@ -74,6 +29,11 @@ export default function AlumnoMisExamenes() {
   const navigate = useNavigate();
   const setEnrollmentStatus = useApp((s) => s.setEnrollmentStatus);
   const setExamenActivo = useApp((s) => s.setExamenActivo);
+  // Red de seguridad del bug "intento 2 muestra respuestas del intento 1": al arrancar
+  // una rendición nueva limpiamos la sesión previa, así Consent crea SIEMPRE una sesión
+  // nueva (crea solo `if (!proctoringSessionId)`). Cubre el caso de no pasar por el
+  // "Volver al inicio" de Cierre (que llama resetSesion). Ver store.resetSesion.
+  const setProctoringSessionId = useApp((s) => s.setProctoringSessionId);
   // C-69: si el perfil (consentimiento + biometría) no está completo, la card del
   // examen muestra "Completar perfil" en vez de "Rendir".
   // Fix estado-fresco: NO derivar de la store (`enrollmentStatus`), que puede tener un
@@ -162,6 +122,7 @@ export default function AlumnoMisExamenes() {
       rindiendo: 0,
       examen_contenido_id: contenido.id,         // KEY: permite que Examen.tsx cargue preguntas
     };
+    setProctoringSessionId(null); // intento nuevo → sesión nueva (no reusar la finalizada)
     setExamenActivo(examen);
     navigate('/pre-examen');
   };
@@ -192,6 +153,7 @@ export default function AlumnoMisExamenes() {
           rindiendo: 0,
         };
       }
+      setProctoringSessionId(null); // intento nuevo → sesión nueva (no reusar la finalizada)
       setExamenActivo(examen);
       navigate('/pre-examen');
     } else {
