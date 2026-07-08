@@ -207,6 +207,10 @@ class PreguntasPoolResponse(BaseModel):
     items: list[PreguntaPoolItemResponse]
     total: int
     seleccionadas: int
+    # True si el examen ya tiene un intento FINALIZADO: la selección queda CONGELADA
+    # (cambiarla alteraría retroactivamente la nota, que cuenta solo las seleccionadas).
+    # La UI usa esto para deshabilitar el editor de selección con un aviso.
+    bloqueada: bool = False
 
 
 class PreguntasSeleccionRequest(BaseModel):

@@ -33,17 +33,26 @@ from app.infrastructure.persistence.models.exam_content import (  # noqa: F401
     OpcionRespuestaModel,
     PreguntaExamenModel,
 )
+from app.infrastructure.persistence.models.proctoring import (  # noqa: F401
+    ProctoringSessionModel,
+)
 from app.infrastructure.persistence.repositories.exam_content import (
     ExamenContenidoSqlRepository,
 )
 from app.presentation.api.v1.exam_content.router import create_exam_content_router
 from tests.proctoring.conftest import _build_test_jwt_validator, auth_headers
 
-_TABLES_TO_DROP = ["opcion_respuesta", "pregunta_examen", "examen_contenido"]
+_TABLES_TO_DROP = [
+    "proctoring_session",
+    "opcion_respuesta",
+    "pregunta_examen",
+    "examen_contenido",
+]
 _TABLES_TO_CREATE = [
     ExamenContenidoModel.__table__,
     PreguntaExamenModel.__table__,
     OpcionRespuestaModel.__table__,
+    ProctoringSessionModel.__table__,
 ]
 
 
@@ -123,6 +132,24 @@ async def _crear_examen(factory, n: int = 3) -> tuple[str, list[str]]:
         await s.commit()
     ids = [p.id for p in sorted(guardado.preguntas, key=lambda p: p.orden)]
     return guardado.id, ids
+
+
+async def _finalizar_intento(factory, examen_id: str) -> None:
+    """Inserta una sesión de examen YA FINALIZADA vinculada al examen.
+
+    Congela la selección (política: bloqueo al primer intento finalizado).
+    """
+    from datetime import datetime, timezone
+
+    async with factory() as s:
+        s.add(
+            ProctoringSessionModel(
+                modo="examen",
+                examen_contenido_id=examen_id,
+                finalizada_en=datetime.now(tz=timezone.utc),
+            )
+        )
+        await s.commit()
 
 
 # ---------------------------------------------------------------------------
@@ -296,6 +323,62 @@ async def test_seleccion_extra_forbid_422(app, factory):
             json={"seleccionadas": [ids[0]], "campo_extra": "x"},
         )
     assert resp.status_code == 422, resp.text
+
+
+@pytest.mark.asyncio
+async def test_seleccion_bloqueada_por_intento_finalizado_409(app, factory):
+    """Con un intento FINALIZADO, cambiar la selección devuelve 409 y NO muta."""
+    examen_id, ids = await _crear_examen(factory, n=3)
+    await _finalizar_intento(factory, examen_id)
+    async with _admin_client(app) as c:
+        resp = await c.patch(
+            f"/api/v1/exam-content/{examen_id}/preguntas-seleccion",
+            json={"seleccionadas": [ids[0]]},
+        )
+    assert resp.status_code == 409, resp.text
+    assert resp.json()["detail"]["error"] == "seleccion_bloqueada"
+    # No mutó: las 3 siguen seleccionadas (no se aplicó el cambio a solo ids[0]).
+    async with factory() as s:
+        rows = (
+            await s.execute(
+                select(PreguntaExamenModel.seleccionada).where(
+                    PreguntaExamenModel.examen_id == examen_id
+                )
+            )
+        ).scalars().all()
+    assert all(rows) and len(rows) == 3
+
+
+@pytest.mark.asyncio
+async def test_pool_flag_bloqueada_refleja_intento_finalizado(app, factory):
+    """GET /preguntas expone bloqueada=false antes de rendir y true tras finalizar."""
+    examen_id, _ids = await _crear_examen(factory, n=3)
+    async with _admin_client(app) as c:
+        resp = await c.get(f"/api/v1/exam-content/{examen_id}/preguntas")
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["bloqueada"] is False
+
+    await _finalizar_intento(factory, examen_id)
+    async with _admin_client(app) as c:
+        resp = await c.get(f"/api/v1/exam-content/{examen_id}/preguntas")
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["bloqueada"] is True
+
+
+@pytest.mark.asyncio
+async def test_seleccion_no_bloqueada_por_sesion_en_vivo(app, factory):
+    """Una sesión SIN finalizar (en vivo) NO bloquea: se puede seguir ajustando."""
+    examen_id, ids = await _crear_examen(factory, n=3)
+    async with factory() as s:
+        s.add(ProctoringSessionModel(modo="examen", examen_contenido_id=examen_id))
+        await s.commit()
+    async with _admin_client(app) as c:
+        resp = await c.patch(
+            f"/api/v1/exam-content/{examen_id}/preguntas-seleccion",
+            json={"seleccionadas": [ids[0]]},
+        )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["seleccionadas"] == 1
 
 
 @pytest.mark.asyncio

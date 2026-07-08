@@ -971,7 +971,7 @@ def create_exam_content_router(
     # D3: es_correcta NUNCA viaja; el docente identifica la pregunta por enunciado.
     # -----------------------------------------------------------------------
 
-    def _pool_to_response(items) -> PreguntasPoolResponse:
+    def _pool_to_response(items, bloqueada: bool = False) -> PreguntasPoolResponse:
         return PreguntasPoolResponse(
             items=[
                 PreguntaPoolItemResponse(
@@ -985,7 +985,32 @@ def create_exam_content_router(
             ],
             total=len(items),
             seleccionadas=sum(1 for p in items if p.seleccionada),
+            bloqueada=bloqueada,
         )
+
+    async def _seleccion_bloqueada(session, examen_id: str) -> bool:
+        """True si el examen ya tiene >= 1 intento FINALIZADO.
+
+        Regla de negocio (política elegida): la selección de preguntas se puede
+        editar libremente hasta que un alumno finaliza un intento; a partir de ahí
+        queda CONGELADA. Cambiarla después alteraría retroactivamente la nota —
+        grade_calculator cuenta solo las preguntas seleccionadas (opción B).
+        """
+        from sqlalchemy import select as _select
+
+        from app.infrastructure.persistence.models.proctoring import (
+            ProctoringSessionModel,
+        )
+
+        row = await session.execute(
+            _select(ProctoringSessionModel.id)
+            .where(
+                ProctoringSessionModel.examen_contenido_id == examen_id,
+                ProctoringSessionModel.finalizada_en.isnot(None),
+            )
+            .limit(1)
+        )
+        return row.first() is not None
 
     @router.get(
         "/{examen_id}/preguntas",
@@ -1012,14 +1037,14 @@ def create_exam_content_router(
             items = await ExamenContenidoSqlRepository(session).listar_preguntas(
                 examen_id
             )
+            if items is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail={"error": "examen_no_encontrado", "examen_id": examen_id},
+                )
+            bloqueada = await _seleccion_bloqueada(session, examen_id)
 
-        if items is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail={"error": "examen_no_encontrado", "examen_id": examen_id},
-            )
-
-        return _pool_to_response(items)
+        return _pool_to_response(items, bloqueada=bloqueada)
 
     @router.patch(
         "/{examen_id}/preguntas-seleccion",
@@ -1047,6 +1072,21 @@ def create_exam_content_router(
 
         async with session_factory() as session:
             repo = ExamenContenidoSqlRepository(session)
+            # Candado: si ya hay un intento finalizado, la selección está congelada.
+            # 409 (no 422): no es un body inválido, es un conflicto con el estado del
+            # examen (ya se calcularon notas sobre la selección vigente).
+            if await _seleccion_bloqueada(session, examen_id):
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={
+                        "error": "seleccion_bloqueada",
+                        "mensaje": (
+                            "No se puede cambiar la selección de preguntas: este examen "
+                            "ya tiene intentos finalizados y cambiarla alteraría notas ya "
+                            "calculadas."
+                        ),
+                    },
+                )
             try:
                 items = await repo.actualizar_seleccion(examen_id, body.seleccionadas)
             except SeleccionInvalidaError as exc:
