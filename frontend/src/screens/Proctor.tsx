@@ -29,7 +29,8 @@ import { ExamenVivoGroup } from './proctoring/ExamenVivoGroup';
 import { ResumenVivo } from './proctoring/ResumenVivo';
 import { ListaSkeleton, ListaVaciaVivo } from './proctoring/ListaEstados';
 import { IndicadorVivo } from './proctoring/IndicadorVivo';
-import { joinExamInfo, type ExamInfo } from './proctoring/helpers';
+import { type ExamInfo } from './proctoring/helpers';
+import { examInfoDeSesion } from './proctoring/colaAgregacion';
 import { PausasPendientes } from './proctoring/PausasPendientes';
 
 export const PROCTOR_NAV = STAFF_NAV;
@@ -141,7 +142,7 @@ export default function Proctor() {
     const porExamen = new Map<string, { examInfo: ExamInfo | null; sesiones: SesionProctoringResumen[] }>();
     for (const s of examen) {
       const key = s.exam_id!;
-      if (!porExamen.has(key)) porExamen.set(key, { examInfo: joinExamInfo(s.exam_id), sesiones: [] });
+      if (!porExamen.has(key)) porExamen.set(key, { examInfo: examInfoDeSesion(s), sesiones: [] });
       porExamen.get(key)!.sesiones.push(s);
     }
     // Ordena los grupos por su riesgo máximo (el examen más caliente, arriba).

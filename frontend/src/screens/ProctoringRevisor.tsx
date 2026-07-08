@@ -24,7 +24,8 @@ import { SesionCard } from './proctoring/SesionCard';
 import { ResumenSesiones } from './proctoring/ResumenSesiones';
 import { ListaSkeleton, ListaVacia } from './proctoring/ListaEstados';
 import { GrabadasExamenGroup } from './proctoring/GrabadasExamenGroup';
-import { joinExamInfo, type ExamInfo } from './proctoring/helpers';
+import { type ExamInfo } from './proctoring/helpers';
+import { examInfoDeSesion } from './proctoring/colaAgregacion';
 
 const PROCTORING_DETAIL_ROUTE = '/admin/proctoring-session-detail';
 
@@ -80,7 +81,7 @@ export default function ProctoringRevisor() {
     for (const s of sesiones) {
       const key = s.exam_id ?? '__sin_examen__';
       if (!map.has(key)) {
-        map.set(key, { examId: s.exam_id ?? null, examInfo: joinExamInfo(s.exam_id), sesiones: [] });
+        map.set(key, { examId: s.exam_id ?? null, examInfo: examInfoDeSesion(s), sesiones: [] });
       }
       map.get(key)!.sesiones.push(s);
     }

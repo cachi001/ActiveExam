@@ -382,6 +382,13 @@ export interface PreguntasExamenResponse {
   items: PreguntaSeleccion[];
   total: number;
   seleccionadas: number;
+  /**
+   * true si el examen ya tiene ≥ 1 intento FINALIZADO: la selección quedó
+   * CONGELADA. Cambiarla alteraría notas ya calculadas (grade_calculator cuenta
+   * solo las seleccionadas), por eso el PATCH devuelve 409. La UI usa este flag
+   * para deshabilitar el editor ANTES de que el docente intente guardar.
+   */
+  bloqueada?: boolean;
 }
 
 /**

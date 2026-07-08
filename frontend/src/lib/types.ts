@@ -528,6 +528,16 @@ export interface SesionProctoringResumen {
    * Aditivo: las sesiones de harness sin examen real lo dejan null/undefined.
    */
   exam_id?: string | null;
+  /**
+   * Contexto académico resuelto SERVER-SIDE (examen_contenido → comisión → materia).
+   * Se prefiere sobre el catálogo mock del frontend: un examen importado real vive en
+   * la base, no en los arrays de api.ts. NULL si la sesión no tiene contenido vinculado
+   * o el examen no está asociado a comisión/materia.
+   */
+  examen_contenido_id?: string | null;
+  examen_titulo?: string | null;
+  comision_nombre?: string | null;
+  materia_nombre?: string | null;
 }
 
 /**

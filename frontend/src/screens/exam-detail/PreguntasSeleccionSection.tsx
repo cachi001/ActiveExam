@@ -19,6 +19,7 @@ interface Props {
 export function PreguntasSeleccionSection({ examenId, onSeleccionGuardada }: Props) {
   const [preguntas, setPreguntas] = useState<PreguntaSeleccion[]>([]);
   const [total, setTotal] = useState(0);
+  const [bloqueada, setBloqueada] = useState(false);
   const [cargando, setCargando] = useState(true);
   const [errorCarga, setErrorCarga] = useState<string | null>(null);
 
@@ -33,10 +34,12 @@ export function PreguntasSeleccionSection({ examenId, onSeleccionGuardada }: Pro
       const resp = await getPreguntasExamen(examenId);
       setPreguntas(resp.items);
       setTotal(resp.total);
+      setBloqueada(resp.bloqueada ?? false);
     } catch (err: unknown) {
       setErrorCarga(err instanceof Error ? err.message : 'No se pudieron cargar las preguntas.');
       setPreguntas([]);
       setTotal(0);
+      setBloqueada(false);
     } finally {
       setCargando(false);
     }
@@ -62,7 +65,7 @@ export function PreguntasSeleccionSection({ examenId, onSeleccionGuardada }: Pro
   }
 
   async function guardar() {
-    if (ningunaMarcada) return;
+    if (ningunaMarcada || bloqueada) return;
     setGuardando(true);
     setOkGuardado(false);
     setErrorGuardar(null);
@@ -89,7 +92,7 @@ export function PreguntasSeleccionSection({ examenId, onSeleccionGuardada }: Pro
               : `${seleccionadas} de ${total} pregunta${total !== 1 ? 's' : ''} seleccionada${seleccionadas !== 1 ? 's' : ''}`
         }
         action={
-          !cargando && !errorCarga && preguntas.length > 0 ? (
+          !cargando && !errorCarga && preguntas.length > 0 && !bloqueada ? (
             <div className="flex items-center gap-xs">
               <Button variant="ghost" size="sm" onClick={() => setTodas(true)} disabled={guardando}>
                 Seleccionar todas
@@ -133,6 +136,16 @@ export function PreguntasSeleccionSection({ examenId, onSeleccionGuardada }: Pro
 
       {!cargando && !errorCarga && preguntas.length > 0 && (
         <div className="space-y-md">
+          {bloqueada && (
+            <div className="flex items-start gap-sm text-warning bg-warning-container rounded-xl px-md py-sm text-label-sm">
+              <Icon name="lock" className="text-[18px] shrink-0 mt-0.5" fill />
+              <span>
+                Selección <strong>congelada</strong>: este examen ya tiene intentos
+                finalizados. Cambiar qué preguntas lo componen alteraría notas ya
+                calculadas, por eso quedó bloqueada.
+              </span>
+            </div>
+          )}
           {okGuardado && (
             <div className="flex items-center gap-sm text-success bg-success-container rounded-xl px-md py-sm text-label-sm">
               <Icon name="check_circle" className="text-[18px] shrink-0" fill />
@@ -150,7 +163,8 @@ export function PreguntasSeleccionSection({ examenId, onSeleccionGuardada }: Pro
             {preguntas.map((p) => (
               <li key={p.id}>
                 <label
-                  className={`flex items-start gap-sm p-md rounded-xl border cursor-pointer select-none transition-colors
+                  className={`flex items-start gap-sm p-md rounded-xl border select-none transition-colors
+                    ${bloqueada ? 'cursor-not-allowed opacity-90' : 'cursor-pointer'}
                     ${p.seleccionada
                       ? 'border-primary/40 bg-primary-fixed/30'
                       : 'border-outline-variant/40 hover:bg-surface-container-low'}`}
@@ -159,8 +173,8 @@ export function PreguntasSeleccionSection({ examenId, onSeleccionGuardada }: Pro
                     type="checkbox"
                     checked={p.seleccionada}
                     onChange={() => toggle(p.id)}
-                    disabled={guardando}
-                    className="w-4 h-4 accent-primary mt-0.5 shrink-0"
+                    disabled={guardando || bloqueada}
+                    className="w-4 h-4 accent-primary mt-0.5 shrink-0 disabled:cursor-not-allowed"
                   />
                   <div className="min-w-0 flex-1">
                     <p className="text-label-md text-on-surface line-clamp-2 break-words">
@@ -178,23 +192,25 @@ export function PreguntasSeleccionSection({ examenId, onSeleccionGuardada }: Pro
             ))}
           </ul>
 
-          {ningunaMarcada && (
+          {ningunaMarcada && !bloqueada && (
             <div className="flex items-center gap-sm text-warning bg-warning-container rounded-xl px-md py-sm text-label-sm">
               <Icon name="info" className="text-[18px] shrink-0" fill />
               Tenés que dejar al menos 1 pregunta.
             </div>
           )}
 
-          <div className="flex justify-end">
-            <Button
-              variant="primary"
-              icon={guardando ? undefined : 'save'}
-              onClick={guardar}
-              disabled={guardando || ningunaMarcada}
-            >
-              {guardando ? 'Guardando…' : 'Guardar selección'}
-            </Button>
-          </div>
+          {!bloqueada && (
+            <div className="flex justify-end">
+              <Button
+                variant="primary"
+                icon={guardando ? undefined : 'save'}
+                onClick={guardar}
+                disabled={guardando || ningunaMarcada}
+              >
+                {guardando ? 'Guardando…' : 'Guardar selección'}
+              </Button>
+            </div>
+          )}
         </div>
       )}
     </Card>

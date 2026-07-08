@@ -104,6 +104,14 @@ class SesionResumen(BaseModel):
     total_eventos: int
     total_discrepancias: int
     score: int
+    # Contexto academico resuelto server-side (examen_contenido -> comision ->
+    # materia). El frontend los usa para agrupar la Cola de revision y etiquetar las
+    # sesiones grabadas SIN depender de catalogos mock. NULL si la sesion no tiene
+    # contenido vinculado o el examen no esta asociado a comision/materia.
+    examen_contenido_id: str | None = None
+    examen_titulo: str | None = None
+    comision_nombre: str | None = None
+    materia_nombre: str | None = None
 
 
 class SesionDetalle(BaseModel):

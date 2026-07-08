@@ -236,6 +236,10 @@ def create_sessions_router(
                 total_eventos=s.total_eventos,
                 total_discrepancias=s.total_discrepancias,
                 score=s.score,
+                examen_contenido_id=s.examen_contenido_id,
+                examen_titulo=s.examen_titulo,
+                comision_nombre=s.comision_nombre,
+                materia_nombre=s.materia_nombre,
             )
             for s in sesiones
         ]

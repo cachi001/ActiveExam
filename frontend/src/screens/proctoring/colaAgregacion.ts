@@ -13,6 +13,30 @@ import { joinExamInfo, type ExamInfo } from './helpers';
 
 /** Nombre sentinela para sesiones sin examen del catálogo resoluble. */
 export const SIN_EXAMEN = 'Sin examen asociado';
+/** Sentinela cuando el examen existe pero no está asociado a una materia/comisión. */
+export const SIN_MATERIA = 'Sin materia asignada';
+export const SIN_COMISION = 'Sin comisión asignada';
+
+/**
+ * Resuelve el contexto académico de una sesión PREFIRIENDO lo que resolvió el backend
+ * (examen_contenido → comisión → materia). Solo cae al catálogo mock local para
+ * sesiones viejas/harness que traen `exam_id` del catálogo pero sin contexto server-side.
+ *
+ * Bug que arregla: antes SIEMPRE se usaba `joinExamInfo(exam_id)` contra arrays mock;
+ * un examen importado real (que vive en la base, no en el mock) nunca resolvía y todo
+ * salía "Sin examen asociado".
+ */
+export function examInfoDeSesion(s: SesionProctoringResumen): ExamInfo | null {
+  if (s.examen_titulo || s.examen_contenido_id) {
+    return {
+      examNombre: s.examen_titulo ?? SIN_EXAMEN,
+      materiaNombre: s.materia_nombre ?? SIN_MATERIA,
+      comisionNombre: s.comision_nombre ?? SIN_COMISION,
+      docente: '',
+    };
+  }
+  return joinExamInfo(s.exam_id);
+}
 
 /** Un nodo de un nivel del drill-down (materia, comisión o examen). */
 export interface NodoCola {
@@ -32,12 +56,12 @@ export interface SesionEnriquecida {
 
 /** Nombre de materia de una sesión enriquecida (sentinela si no hay info). */
 function materiaDe(item: SesionEnriquecida): string {
-  return item.info?.materiaNombre ?? SIN_EXAMEN;
+  return item.info?.materiaNombre ?? SIN_MATERIA;
 }
 
 /** Nombre de comisión de una sesión enriquecida (sentinela si no hay info). */
 function comisionDe(item: SesionEnriquecida): string {
-  return item.info?.comisionNombre ?? SIN_EXAMEN;
+  return item.info?.comisionNombre ?? SIN_COMISION;
 }
 
 /** Nombre de examen de una sesión enriquecida (sentinela si no hay info). */
@@ -56,9 +80,9 @@ export function enriquecerYFiltrar(
   return sesiones
     // Solo sesiones vinculadas a un examen real: las de diagnóstico / sin examen
     // (ej. "Grabar sesión" del Test de detección) NO entran a la cola de revisión.
-    .filter((s) => s.score >= umbral && s.exam_id != null)
+    .filter((s) => s.score >= umbral && (s.exam_id != null || s.examen_contenido_id != null))
     .sort((a, b) => b.score - a.score || b.total_discrepancias - a.total_discrepancias)
-    .map((sesion) => ({ sesion, info: joinExamInfo(sesion.exam_id) }));
+    .map((sesion) => ({ sesion, info: examInfoDeSesion(sesion) }));
 }
 
 /**

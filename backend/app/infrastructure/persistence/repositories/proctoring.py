@@ -47,6 +47,14 @@ class SesionResumenData:
     total_discrepancias: int
     score: int
     ultimo_evento_en: Any
+    # Contexto academico resuelto server-side desde examen_contenido_id
+    # (examen_contenido -> comision -> materia). NULL si la sesion no tiene contenido
+    # vinculado o si el examen no esta asociado a una comision/materia. La Cola de
+    # revision los usa para agrupar SIN depender de catalogos mock del frontend.
+    examen_contenido_id: str | None = None
+    examen_titulo: str | None = None
+    comision_nombre: str | None = None
+    materia_nombre: str | None = None
 
 
 class ProctoringRepository:
@@ -210,6 +218,13 @@ class ProctoringRepository:
         if cambios:
             await self._db.commit()
 
+        # Contexto academico por examen_contenido_id (examen_contenido -> comision ->
+        # materia). Resuelto server-side para que la Cola de revision NO dependa de
+        # catalogos mock del frontend (bug "Sin examen asociado" en todos lados).
+        ctx_por_contenido = await self._contexto_academico(
+            [s.examen_contenido_id for s in sesiones if s.examen_contenido_id]
+        )
+
         return [
             SesionResumenData(
                 id=s.id,
@@ -223,9 +238,50 @@ class ProctoringRepository:
                 # Cap a 100 (igual que el detalle y el cliente): el score es 0..100.
                 score=min(100, score_por_sesion.get(s.id, 0)),
                 ultimo_evento_en=ultimo_por_sesion.get(s.id) or s.creada_en,
+                examen_contenido_id=s.examen_contenido_id,
+                examen_titulo=ctx_por_contenido.get(s.examen_contenido_id, (None, None, None))[0],
+                comision_nombre=ctx_por_contenido.get(s.examen_contenido_id, (None, None, None))[1],
+                materia_nombre=ctx_por_contenido.get(s.examen_contenido_id, (None, None, None))[2],
             )
             for s in sesiones
         ]
+
+    async def _contexto_academico(
+        self, contenido_ids: list[str]
+    ) -> dict[str, tuple[str | None, str | None, str | None]]:
+        """Mapea examen_contenido_id -> (examen_titulo, comision_nombre, materia_nombre).
+
+        LEFT JOIN a comision y materia: un examen sin comision asociada (comision_id
+        NULL) resuelve el titulo del examen pero deja comision/materia en None.
+        """
+        if not contenido_ids:
+            return {}
+
+        from app.infrastructure.persistence.models.exam_content import (
+            ComisionModel,
+            ExamenContenidoModel,
+            MateriaModel,
+        )
+
+        stmt = (
+            select(
+                ExamenContenidoModel.id,
+                ExamenContenidoModel.titulo,
+                ComisionModel.nombre.label("comision_nombre"),
+                MateriaModel.nombre.label("materia_nombre"),
+            )
+            .select_from(ExamenContenidoModel)
+            .outerjoin(
+                ComisionModel, ComisionModel.id == ExamenContenidoModel.comision_id
+            )
+            .outerjoin(MateriaModel, MateriaModel.id == ComisionModel.materia_id)
+            .where(ExamenContenidoModel.id.in_(set(contenido_ids)))
+        )
+        rows = await self._db.execute(stmt)
+        return {
+            row.id: (row.titulo, row.comision_nombre, row.materia_nombre)
+            for row in rows
+        }
 
     async def finalizar_sesion(self, session_id: str) -> ProctoringSessionModel | None:
         """Setea finalizada_en = now() si y solo si es NULL.
