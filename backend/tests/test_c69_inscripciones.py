@@ -185,6 +185,9 @@ async def _crear_comision(factory, *, codigo_materia: str, codigo_comision: str)
             materia_id=materia.id,
             codigo=codigo_comision,
             nombre="Comisión",
+            # C-70 hizo codigo_matriculacion NOT NULL + UNIQUE; el sufijo aleatorio
+            # evita colisiones entre tests que reusan los mismos códigos.
+            codigo_matriculacion=f"{codigo_materia}-{codigo_comision}-{uuid.uuid4().hex[:6]}",
         )
         s.add(comision)
         await s.commit()
