@@ -1304,6 +1304,7 @@ def create_exam_taking_router(
 
         from app.infrastructure.persistence.repositories.biometric_reference import (
             EmbeddingReferenciaRepository,
+            FotoReferenciaRepository,
         )
         from app.infrastructure.persistence.repositories.consent_perfil import (
             ConsentimientoPerfilSqlRepository,
@@ -1321,6 +1322,7 @@ def create_exam_taking_router(
                 inscripcion_repo=InscripcionSqlRepository(session),
                 consent_repo=ConsentimientoPerfilSqlRepository(session),
                 embedding_repo=EmbeddingReferenciaRepository(session),
+                foto_repo=FotoReferenciaRepository(session),
             )
             try:
                 result = await service.inscribir_por_codigo(

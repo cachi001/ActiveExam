@@ -38,10 +38,12 @@ from app.infrastructure.persistence.models.inscripcion import InscripcionModel
 from app.infrastructure.persistence.models.transactional import (
     ConsentimientoPerfilModel,
     EmbeddingReferenciaModel,
+    FotoReferenciaModel,
     UsuarioModel,
 )
 from app.infrastructure.persistence.repositories.biometric_reference import (
     EmbeddingReferenciaRepository,
+    FotoReferenciaRepository,
 )
 from app.infrastructure.persistence.repositories.consent_perfil import (
     ConsentimientoPerfilSqlRepository,
@@ -58,6 +60,7 @@ _TABLES = (
     MateriaModel,
     ConsentimientoPerfilModel,
     EmbeddingReferenciaModel,
+    FotoReferenciaModel,
     UsuarioModel,
 )
 
@@ -75,7 +78,7 @@ async def engine(db_url):
     eng = create_async_engine(db_url, pool_pre_ping=True, future=True, poolclass=NullPool)
     _DROP = (
         "inscripcion", "comision", "materia",
-        "consentimiento_perfil", "embedding_referencia", "usuario",
+        "consentimiento_perfil", "embedding_referencia", "foto_referencia", "usuario",
     )
     async with eng.begin() as conn:
         for name in _DROP:
@@ -116,6 +119,7 @@ def _auto(session) -> AutoMatriculacionService:
         inscripcion_repo=InscripcionSqlRepository(session),
         consent_repo=ConsentimientoPerfilSqlRepository(session),
         embedding_repo=EmbeddingReferenciaRepository(session),
+        foto_repo=FotoReferenciaRepository(session),
     )
 
 
@@ -127,8 +131,10 @@ async def _crear_materia(session, codigo="PROG1") -> str:
     return materia.id
 
 
-async def _perfil_completo(session, usuario_id: str) -> None:
-    """Da al alumno un perfil completo: consentimiento 'otorgado' + biometría vigente."""
+async def _perfil_completo(session, usuario_id: str, *, con_foto: bool = True) -> None:
+    """Da al alumno un perfil completo: consentimiento 'otorgado' + biometría vigente
+    + foto de perfil vigente (``con_foto=False`` deja la foto sin cargar, para probar
+    el gate de foto obligatoria)."""
     ahora = datetime(2026, 7, 7, tzinfo=timezone.utc)
     session.add(
         ConsentimientoPerfilModel(
@@ -151,6 +157,17 @@ async def _perfil_completo(session, usuario_id: str) -> None:
             vigente=True,
         )
     )
+    if con_foto:
+        session.add(
+            FotoReferenciaModel(
+                id=str(uuid.uuid4()),
+                usuario_id=usuario_id,
+                uri_storage="test/foto.jpg",
+                hash_sha256="f" * 64,
+                bucket="test-bucket",
+                vigente=True,
+            )
+        )
     await session.flush()
 
 
@@ -250,6 +267,26 @@ async def test_inscribir_sin_perfil_completo_rechaza(session):
         await _auto(session).inscribir_por_codigo("GATE1-K", alumno)
     # No se creó inscripción.
     comision = await ComisionSqlRepository(session).obtener_por_codigo_matriculacion("GATE1-K")
+    assert not await InscripcionSqlRepository(session).existe(alumno, comision.id)
+
+
+@pytest.mark.asyncio
+async def test_inscribir_sin_foto_rechaza(session):
+    # Foto obligatoria server-side: con consentimiento + biometría PERO sin foto de
+    # perfil, la matriculación se rechaza (no se puede saltear por API).
+    materia_id = await _crear_materia(session, "FOTO1")
+    await _svc(session).crear_comision(
+        materia_id=materia_id, codigo="C1", nombre="C1",
+        codigo_matriculacion="FOTO1-K",
+    )
+    alumno = await _crear_alumno(session, con_perfil=False)
+    await _perfil_completo(session, alumno, con_foto=False)
+
+    with pytest.raises(PerfilIncompletoError) as exc:
+        await _auto(session).inscribir_por_codigo("FOTO1-K", alumno)
+    assert "foto" in str(exc.value.razon).lower()
+    # No se creó inscripción.
+    comision = await ComisionSqlRepository(session).obtener_por_codigo_matriculacion("FOTO1-K")
     assert not await InscripcionSqlRepository(session).existe(alumno, comision.id)
 
 

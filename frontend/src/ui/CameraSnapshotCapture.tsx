@@ -15,7 +15,7 @@
  * Demo: dataURL en memoria. Server-side: cifrado AES-256-GCM, eliminado al egreso.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from './components';
 
@@ -42,6 +42,13 @@ export interface CameraSnapshotCaptureProps {
   scannerCorners?: boolean;
   /** facingMode de la cámara: 'user' (frontal) o 'environment' (trasera, para DNI en móvil). Default: 'user'. */
   facingMode?: ConstrainDOMString;
+  /**
+   * Si es true, este paso NO se puede saltear: ante error de cámara NO se ofrece
+   * "Continuar sin foto", solo "Reintentar" y "Cancelar" (volver atrás). Se usa para
+   * la foto de perfil, que el dueño definió como obligatoria. Default: false (DNI,
+   * que sí es opcional y conserva el "Continuar sin foto").
+   */
+  requerido?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -62,6 +69,7 @@ export function CameraSnapshotCapture({
   jpegQuality = 0.85,
   scannerCorners = false,
   facingMode = 'user',
+  requerido = false,
   onCapture,
   onCancel,
 }: CameraSnapshotCaptureProps) {
@@ -76,15 +84,21 @@ export function CameraSnapshotCapture({
   const [previewDataUrl, setPreviewDataUrl] = useState<string | null>(null);
   const [errorMsg, setErrorMsg]           = useState<string | null>(null);
 
-  // ---------------------------------------------------------------------------
-  // Task 4.1 + 4.2 + 4.3: useEffect de montaje — getUserMedia + cleanup
-  // ---------------------------------------------------------------------------
-  useEffect(() => {
-    let cancelado = false;
+  // Guard de desmontaje: evita setState tras desmontar y deja libre la cámara si
+  // getUserMedia resuelve después del cleanup.
+  const desmontadoRef = useRef(false);
 
+  // ---------------------------------------------------------------------------
+  // iniciarCamara — arranca (o reintenta) getUserMedia. Reutilizable desde el
+  // botón "Reintentar" del estado de error.
+  // ---------------------------------------------------------------------------
+  const iniciarCamara = useCallback(() => {
+    setErrorMsg(null);
+    setPreviewDataUrl(null);
+    setFase('capturando');
     navigator.mediaDevices?.getUserMedia({ video: { facingMode } })
       .then((stream) => {
-        if (cancelado) { stream.getTracks().forEach((t) => t.stop()); return; }
+        if (desmontadoRef.current) { stream.getTracks().forEach((t) => t.stop()); return; }
         streamRef.current = stream;
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
@@ -92,17 +106,23 @@ export function CameraSnapshotCapture({
         }
       })
       .catch((err: Error) => {
-        if (!cancelado) {
-          setErrorMsg(`Sin acceso a la cámara: ${err?.message ?? 'permiso denegado'}`);
-          setFase('error');
-        }
+        if (desmontadoRef.current) return;
+        setErrorMsg(`Sin acceso a la cámara: ${err?.message ?? 'permiso denegado'}`);
+        setFase('error');
       });
+  }, [facingMode]);
 
-    // Task 4.3: cleanup
+  // ---------------------------------------------------------------------------
+  // Task 4.1 + 4.2 + 4.3: montaje — getUserMedia + cleanup
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    desmontadoRef.current = false;
+    iniciarCamara();
     return () => {
-      cancelado = true;
+      desmontadoRef.current = true;
       streamRef.current?.getTracks().forEach((t) => t.stop());
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ---------------------------------------------------------------------------
@@ -178,18 +198,40 @@ export function CameraSnapshotCapture({
           <p className="font-headline text-title-lg text-neutral-900">Sin acceso a la cámara</p>
           <p className="text-body-sm text-neutral-600">{errorMsg}</p>
           <p className="text-label-sm text-neutral-500">
-            Habilitá el permiso de cámara en tu navegador y volvé a intentarlo, o continuá sin foto.
+            {requerido
+              ? 'Este paso necesita tu cámara. Habilitá el permiso en tu navegador y reintentá.'
+              : 'Habilitá el permiso de cámara en tu navegador y volvé a intentarlo, o continuá sin foto.'}
           </p>
-          {/* Sin cámara disponible (o no querés usarla ahora): este paso no bloquea
-              el resto del perfil, así que el botón para seguir es la acción
-              PRINCIPAL acá — no un link chiquito escondido. */}
-          <button
-            onClick={handleCancel}
-            className="inline-flex items-center gap-2 bg-neutral-900 hover:bg-neutral-700 text-white font-semibold text-sm px-6 py-3 rounded-full transition-colors"
-          >
-            <Icon name="arrow_forward" className="text-[18px]" />
-            Continuar sin foto
-          </button>
+          <div className="flex flex-col items-center gap-3 pt-1">
+            {/* Reintentar: vuelve a pedir la cámara sin recargar la pantalla. Es la
+                acción PRINCIPAL — más aún cuando el paso es requerido. */}
+            <button
+              onClick={iniciarCamara}
+              className="inline-flex items-center gap-2 bg-neutral-900 hover:bg-neutral-700 text-white font-semibold text-sm px-6 py-3 rounded-full transition-colors"
+            >
+              <Icon name="refresh" className="text-[18px]" />
+              Reintentar
+            </button>
+            {requerido ? (
+              /* Requerido (foto de perfil): NO se puede saltear. Solo se permite
+                 volver atrás — no avanzar sin foto. */
+              <button
+                onClick={handleCancel}
+                className="text-sm text-neutral-500 hover:text-neutral-900 transition-colors px-4 py-2"
+              >
+                Cancelar
+              </button>
+            ) : (
+              /* Opcional (DNI): conserva el camino para seguir sin capturar. */
+              <button
+                onClick={handleCancel}
+                className="inline-flex items-center gap-2 text-neutral-500 hover:text-neutral-900 font-medium text-sm px-4 py-2 transition-colors"
+              >
+                <Icon name="arrow_forward" className="text-[18px]" />
+                Continuar sin foto
+              </button>
+            )}
+          </div>
         </div>
       </div>,
       document.body,

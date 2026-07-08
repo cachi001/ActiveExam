@@ -147,11 +147,12 @@ export default function StudentProfile() {
   };
 
   /**
-   * Task 7.4 — Handler al cancelar la foto de perfil (C-37).
-   * El paso NO bloquea el enrollment: si cancela, avanza a biometría igualmente.
+   * Handler al cancelar la foto de perfil.
+   * La foto ahora es OBLIGATORIA (decisión del dueño): cancelar NO avanza a biometría
+   * (eso era un salteo encubierto), sino que vuelve a la vista general del perfil. Para
+   * llegar a biometría hay que pasar el paso de foto capturando una — no hay atajo.
    */
-  const handleFotoCancelada = () =>
-    setPaso(enrollment?.biometria?.captura_completada ? 'perfil' : 'biometria');
+  const handleFotoCancelada = () => setPaso('perfil');
 
   const handleBiometriaCapturada = async (_ref: ReferenciasBiometrica) => {
     await cargarEnrollment();

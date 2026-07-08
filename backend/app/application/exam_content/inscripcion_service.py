@@ -75,28 +75,34 @@ class AutoMatriculacionService:
         inscripcion_repo,
         consent_repo,
         embedding_repo,
+        foto_repo,
     ) -> None:
         self._comision_repo = comision_repo
         self._materia_repo = materia_repo
         self._inscripcion_repo = inscripcion_repo
         self._consent_repo = consent_repo
         self._embedding_repo = embedding_repo
+        self._foto_repo = foto_repo
 
     async def _asegurar_perfil_completo(self, usuario_id: str) -> None:
-        """Gate C-71: el alumno DEBE tener el perfil completo para matricularse.
+        """Gate C-71 (+ foto obligatoria): el alumno DEBE tener el perfil completo
+        para matricularse.
 
         Perfil completo = consentimiento vigente 'otorgado' + referencia biométrica
-        vigente (server-side; no se puede saltear desde el cliente). Mismo criterio
-        que ``puede_rendir``. Eleva PerfilIncompletoError si falta algo.
+        vigente + **foto de perfil de referencia** (server-side; no se puede saltear
+        desde el cliente — decisión del dueño: la foto es obligatoria). Eleva
+        PerfilIncompletoError describiendo qué falta.
         """
         consentimiento = await self._consent_repo.vigente(usuario_id)
         consentimiento_ok = (
             consentimiento is not None and consentimiento.estado == "otorgado"
         )
         biometria_ok = await self._embedding_repo.obtener_vigente(usuario_id) is not None
-        if not (consentimiento_ok and biometria_ok):
-            razon = _razon(consentimiento_ok, biometria_ok) or "Perfil incompleto"
-            raise PerfilIncompletoError(razon)
+        foto_ok = await self._foto_repo.obtener_vigente(usuario_id) is not None
+        if not (consentimiento_ok and biometria_ok and foto_ok):
+            raise PerfilIncompletoError(
+                _razon_matricula(consentimiento_ok, biometria_ok, foto_ok)
+            )
 
     async def inscribir_por_codigo(
         self, codigo_matriculacion: str, usuario_id: str
@@ -152,6 +158,25 @@ def _razon(consentimiento_vigente: bool, biometria_vigente: bool) -> str | None:
     if not consentimiento_vigente:
         return "Falta consentimiento"
     return "Falta biometría"
+
+
+def _razon_matricula(
+    consentimiento_vigente: bool, biometria_vigente: bool, foto_vigente: bool
+) -> str:
+    """Texto de qué falta para matricularse (consentimiento + biometría + foto).
+
+    Se llama solo cuando falta al menos uno, así que nunca devuelve None.
+    """
+    faltantes: list[str] = []
+    if not consentimiento_vigente:
+        faltantes.append("consentimiento")
+    if not biometria_vigente:
+        faltantes.append("biometría")
+    if not foto_vigente:
+        faltantes.append("foto de perfil")
+    if len(faltantes) == 1:
+        return f"Falta {faltantes[0]}"
+    return "Falta " + ", ".join(faltantes[:-1]) + " y " + faltantes[-1]
 
 
 class InscripcionService:

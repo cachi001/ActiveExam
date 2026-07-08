@@ -66,6 +66,7 @@ export function EnrollmentFotoPerfilStep({
 
       <CameraSnapshotCapture
         shape="oval"
+        requerido
         instruction="Posicioná tu cara dentro del óvalo y presioná Capturar"
         contextLabel="Foto de perfil"
         onCapture={onCapture}
