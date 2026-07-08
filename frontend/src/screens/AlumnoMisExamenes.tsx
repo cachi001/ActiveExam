@@ -217,6 +217,19 @@ export default function AlumnoMisExamenes() {
     );
   }
 
+  // Loading a pantalla completa: centrado en TODO el ancho del contenido (no dentro
+  // de la columna max-w pegada a la izquierda, que dejaba el spinner corrido). Mismo
+  // patrón que StudentProfile.
+  if (cargando) {
+    return (
+      <StudentShell>
+        <div className="min-h-[calc(100dvh-13rem)] flex items-center justify-center">
+          <LoadingSpinner label="Cargando tus exámenes…" />
+        </div>
+      </StudentShell>
+    );
+  }
+
   return (
     <StudentShell>
       <div className="max-w-2xl lg:max-w-5xl xl:max-w-6xl space-y-xl">
@@ -247,11 +260,7 @@ export default function AlumnoMisExamenes() {
             En modo real no existe el modelo de inscripción (misInscripciones() = []),
             así que esta sección queda oculta y el alumno ve solo los exámenes
             disponibles + sus notas más abajo. */}
-        {cargando ? (
-          <div className="min-h-[40vh] flex items-center justify-center">
-            <LoadingSpinner label="Cargando tus exámenes…" />
-          </div>
-        ) : (
+        {(
           <>
             {inscripciones.length > 0 && (
               <div className="space-y-sm">

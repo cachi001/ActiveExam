@@ -6,20 +6,12 @@ import { BackButton, LoadingSpinner, Icon } from '../ui/components';
 import { HelpButton } from '../ui/HelpButton';
 import { StudentShell } from '../ui/shells';
 import { useNavigate } from '../lib/router';
-import { useApp } from '../lib/store';
 import { api } from '../lib/api';
-import type { Materia, Comision, Examen, ExamenContenidoResumen } from '../lib/types';
+import type { Materia, Comision, ExamenContenidoResumen } from '../lib/types';
 import { ComisionRow } from './alumno/components/ComisionRow';
-
-/** Detectores por defecto para exámenes importados (sin config de examen-config). */
-const DETECTORES_SLIM = [
-  'rostro_ausente', 'multiples_rostros', 'mirada_desviada_sostenida',
-  'perdida_de_foco', 'cambio_pestana', 'salida_pantalla_completa',
-] as const;
 
 export default function AlumnoMaterias() {
   const navigate = useNavigate();
-  const setExamenActivo = useApp((s) => s.setExamenActivo);
   const [materias, setMaterias] = useState<Materia[]>([]);
   const [comisiones, setComisiones] = useState<Comision[]>([]);
   const [examenes, setExamenes] = useState<ExamenContenidoResumen[]>([]);
@@ -28,7 +20,6 @@ export default function AlumnoMaterias() {
   const [cargandoMaterias, setCargandoMaterias] = useState(true);
   const [cargandoComisiones, setCargandoComisiones] = useState(false);
   const [cargandoExamenes, setCargandoExamenes] = useState(false);
-  const [rindiendoId, setRindiendoId] = useState<string | null>(null);
   // C-70: auto-matriculación por código (enrolment key).
   const [codigoJoin, setCodigoJoin] = useState('');
   const [uniendo, setUniendo] = useState(false);
@@ -115,41 +106,6 @@ export default function AlumnoMaterias() {
     setExamenes(exams); setCargandoExamenes(false);
   };
 
-  /**
-   * C-69: rendir un examen de contenido importado. Verifica el gate de perfil
-   * (sin examen_id → solo perfil), setea examenActivo con examen_contenido_id
-   * (para que Examen.tsx cargue las preguntas reales) y navega a /requisitos.
-   */
-  const rendirExamen = async (examenContenidoId: string) => {
-    const contenido = examenes.find((e) => e.id === examenContenidoId);
-    if (!contenido) return;
-    setRindiendoId(examenContenidoId);
-    const gate = await api.puedeRendir();
-    setRindiendoId(null);
-    if (!gate.puede) {
-      navigate('/alumno/perfil');
-      return;
-    }
-    const examen: Examen = {
-      id: contenido.id,
-      nombre: contenido.titulo,
-      catedra: contenido.materia_nombre ?? '',
-      estado: 'en_curso',
-      inicio: new Date().toISOString(),
-      // Duración real del examen (config del docente); 0 = sin límite, coherente
-      // con lo que Examen.tsx va a leer server-side vía fetchExamenParaRendir.
-      duracion_min: contenido.tiempo_limite_min ?? 0,
-      umbral_score: 70,
-      detectores: [...DETECTORES_SLIM],
-      retencion_dias: 365,
-      inscriptos: 0,
-      rindiendo: 0,
-      examen_contenido_id: contenido.id,
-    };
-    setExamenActivo(examen);
-    navigate('/requisitos');
-  };
-
   return (
     <StudentShell>
       <div className="w-full space-y-lg">
@@ -160,11 +116,11 @@ export default function AlumnoMaterias() {
             <HelpButton title="Materias">
               <p>
                 Explorá el catálogo de <strong>materias y comisiones</strong>: elegí una materia
-                para ver sus comisiones; entrá a una comisión para ver los exámenes disponibles.
+                para ver sus comisiones; entrá a una comisión para ver su información.
               </p>
               <p>
-                Cada examen se rinde directamente: al tocar <em>Rendir</em> verificamos tu perfil
-                (consentimiento y biometría) y te llevamos a los requisitos previos.
+                Esta pantalla es informativa: los exámenes se rinden desde <em>Mis exámenes</em>,
+                donde verificamos tu perfil (consentimiento y biometría) antes de empezar.
               </p>
             </HelpButton>
           </div>
@@ -321,9 +277,8 @@ export default function AlumnoMaterias() {
                           activa={comisionSeleccionada?.id === comision.id}
                           cargandoExamenes={cargandoExamenes}
                           examenes={examenes}
-                          rindiendoId={rindiendoId}
                           onSelect={() => seleccionarComision(comision)}
-                          onRendir={rendirExamen}
+                          onIrAExamenes={() => navigate('/alumno/mis-examenes')}
                         />
                       ))
                     )}

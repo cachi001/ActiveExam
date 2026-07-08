@@ -10,10 +10,10 @@ interface MateriaCardProps {
   comisionSeleccionada: Comision | null;
   cargandoExamenes: boolean;
   examenes: ExamenContenidoResumen[];
-  rindiendoId: string | null;
   onSelect: () => void;
   onSelectComision: (c: Comision) => void;
-  onRendir: (examenId: string) => void;
+  /** Navega a "Mis exámenes" (la comisión es solo informativa; se rinde allí). */
+  onIrAExamenes: () => void;
 }
 
 export function MateriaCard({
@@ -24,10 +24,9 @@ export function MateriaCard({
   comisionSeleccionada,
   cargandoExamenes,
   examenes,
-  rindiendoId,
   onSelect,
   onSelectComision,
-  onRendir,
+  onIrAExamenes,
 }: MateriaCardProps) {
   return (
     <div>
@@ -70,9 +69,8 @@ export function MateriaCard({
                 activa={comisionSeleccionada?.id === comision.id}
                 cargandoExamenes={cargandoExamenes}
                 examenes={examenes}
-                rindiendoId={rindiendoId}
                 onSelect={() => onSelectComision(comision)}
-                onRendir={onRendir}
+                onIrAExamenes={onIrAExamenes}
               />
             ))
           )}

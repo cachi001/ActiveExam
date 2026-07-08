@@ -1,4 +1,4 @@
-import { Card, Button, Icon, LoadingSpinner } from '../../../ui/components';
+import { Card, Icon, LoadingSpinner } from '../../../ui/components';
 import type { Comision, ExamenContenidoResumen } from '../../../lib/types';
 
 interface ComisionRowProps {
@@ -6,9 +6,9 @@ interface ComisionRowProps {
   activa: boolean;
   cargandoExamenes: boolean;
   examenes: ExamenContenidoResumen[];
-  rindiendoId: string | null;
   onSelect: () => void;
-  onRendir: (examenId: string) => void;
+  /** Navega a "Mis exámenes", donde se rinde (la comisión es solo informativa). */
+  onIrAExamenes: () => void;
 }
 
 /** Subtítulo de la comisión: usa docente/horario (demo) o codigo/periodo/año (real, C-69). */
@@ -20,16 +20,32 @@ function subtituloComision(comision: Comision): string {
   return [comision.codigo, periodo].filter(Boolean).join(' · ');
 }
 
+/** Fila de dato de la comisión (ícono + etiqueta + valor). */
+function Dato({ icon, label, value }: { icon: string; label: string; value: string }) {
+  return (
+    <div className="flex items-center gap-2 text-[13px]">
+      <Icon name={icon} className="text-[16px] text-on-surface-variant shrink-0" />
+      <span className="text-on-surface-variant">{label}:</span>
+      <span className="text-on-surface font-medium min-w-0 truncate">{value}</span>
+    </div>
+  );
+}
+
+/**
+ * Fila de comisión en "Mis materias". Al abrirla muestra SOLO información de la
+ * comisión (decisión del dueño): la rendición NO vive acá, se hace desde "Mis
+ * exámenes". Por eso no hay botón "Rendir" — solo datos + un acceso a rendir.
+ */
 export function ComisionRow({
   comision,
   activa,
   cargandoExamenes,
   examenes,
-  rindiendoId,
   onSelect,
-  onRendir,
+  onIrAExamenes,
 }: ComisionRowProps) {
   const subtitulo = subtituloComision(comision);
+  const periodo = [comision.periodo, comision.anio].filter(Boolean).join(' ');
 
   return (
     <div>
@@ -62,37 +78,49 @@ export function ComisionRow({
       </button>
 
       {activa && (
-        <div className="mt-sm ml-lg space-y-sm">
-          {cargandoExamenes ? (
-            <LoadingSpinner size="sm" label="Cargando exámenes…" />
-          ) : examenes.length === 0 ? (
-            <p className="text-label-md text-on-surface-variant px-md py-sm">No hay exámenes en esta comisión.</p>
-          ) : (
-            examenes.map((examen) => (
-              <Card key={examen.id} className="flex items-center justify-between gap-md p-md">
-                <div className="flex items-start gap-sm min-w-0">
-                  <div className="w-9 h-9 rounded-md bg-primary-fixed text-primary flex items-center justify-center shrink-0 mt-0.5">
-                    <Icon name="assignment" className="text-[18px]" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-[14px] font-medium text-on-surface leading-tight truncate">{examen.titulo}</p>
-                    <p className="text-[12px] text-on-surface-variant mt-0.5">
-                      {examen.cantidad_preguntas} {examen.cantidad_preguntas === 1 ? 'pregunta' : 'preguntas'}
-                    </p>
-                  </div>
+        <div className="mt-sm ml-lg">
+          <Card className="p-md space-y-md">
+            {/* Datos de la comisión (solo lectura) */}
+            <div className="space-y-1.5">
+              {comision.docente && <Dato icon="person" label="Docente" value={comision.docente} />}
+              {comision.horario && <Dato icon="schedule" label="Horario" value={comision.horario} />}
+              {periodo && <Dato icon="event" label="Período" value={periodo} />}
+              {comision.codigo && <Dato icon="tag" label="Código" value={comision.codigo} />}
+              {!comision.docente && !comision.horario && !periodo && !comision.codigo && (
+                <p className="text-[13px] text-on-surface-variant">
+                  Todavía no hay información adicional de esta comisión.
+                </p>
+              )}
+            </div>
+
+            {/* Exámenes: solo cantidad. Se rinden desde "Mis exámenes". */}
+            <div className="pt-sm border-t border-surface-200">
+              {cargandoExamenes ? (
+                <LoadingSpinner size="sm" label="Cargando…" />
+              ) : (
+                <div className="flex items-center justify-between gap-md">
+                  <p className="text-[13px] text-on-surface-variant inline-flex items-center gap-2">
+                    <Icon name="assignment" className="text-[16px]" />
+                    {examenes.length === 0
+                      ? 'Sin exámenes disponibles'
+                      : `${examenes.length} ${examenes.length === 1 ? 'examen disponible' : 'exámenes disponibles'}`}
+                  </p>
+                  {examenes.length > 0 && (
+                    <button
+                      onClick={onIrAExamenes}
+                      className="text-[13px] text-primary hover:underline font-semibold shrink-0"
+                    >
+                      Ir a rendir →
+                    </button>
+                  )}
                 </div>
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={() => onRendir(examen.id)}
-                  disabled={rindiendoId === examen.id}
-                  icon={rindiendoId === examen.id ? undefined : 'play_arrow'}
-                >
-                  {rindiendoId === examen.id ? 'Verificando…' : 'Rendir'}
-                </Button>
-              </Card>
-            ))
-          )}
+              )}
+            </div>
+
+            <p className="text-[12px] text-on-surface-variant">
+              Los exámenes se rinden desde <strong>Mis exámenes</strong>.
+            </p>
+          </Card>
         </div>
       )}
     </div>

@@ -195,12 +195,19 @@ export function BiometricCapture({ challenges, onComplete, onCancel }: Biometric
   }, [fase, procesarCompletadoRef, setTonoOvalo, setProgreso]);
 
   const handleCancel = useCallback(() => {
+    // 1. Frenar loop + timers (sincrónico, barato) para que el engine no se use tras liberarlo.
     if (rafHandleRef.current !== null) { cancelAnimationFrame(rafHandleRef.current); rafHandleRef.current = null; }
     if (cooldownTimerRef.current !== null) { clearTimeout(cooldownTimerRef.current); cooldownTimerRef.current = null; }
-    void disposeEnrollmentEngine();
-    if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+    // 2. Liberar la cámara y CERRAR el overlay YA. No esperamos el teardown pesado.
     streamRef.current?.getTracks().forEach((t) => t.stop());
     onCancel();
+    // 3. Teardown pesado en segundo plano: `dispose()` del motor MediaPipe cierra los
+    //    landmarkers WASM de forma SÍNCRONA (bloquea el hilo unos cientos de ms). Si corre
+    //    antes de onCancel, el cierre "tarda demasiado". Diferirlo un tick lo hace instantáneo.
+    setTimeout(() => {
+      void disposeEnrollmentEngine();
+      if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+    }, 0);
   }, [onCancel, rafHandleRef, cooldownTimerRef, streamRef]);
 
   const reacquireCamera = useCallback(async () => {
