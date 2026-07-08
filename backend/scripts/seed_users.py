@@ -42,7 +42,7 @@ import asyncio
 import os
 import sys
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 # Asegurarse de que el script puede importar app (corre desde backend/).
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -287,7 +287,43 @@ async def _seed_contenido(factory) -> None:
             )
         ).scalar_one_or_none()
         if examen is not None:
-            print(f"  [skip] examen ya existe: {EXAMEN_TITULO}")
+            # Backfill idempotente: si el examen existe pero quedó SIN preguntas
+            # (creado por una versión previa del seed, o import incompleto), importarlas
+            # ahora del XML y asociarlas al examen existente. Sin esto, el "[skip]" dejaba
+            # el examen en 0 preguntas para siempre (bug: "0 preguntas" al rendir).
+            n_preguntas = (
+                await session.execute(
+                    select(func.count(PreguntaExamenModel.id)).where(
+                        PreguntaExamenModel.examen_id == examen.id
+                    )
+                )
+            ).scalar_one()
+            if n_preguntas > 0:
+                print(f"  [skip] examen ya existe con {n_preguntas} preguntas: {EXAMEN_TITULO}")
+            elif not os.path.exists(XML_PATH):
+                print(f"  [skip] examen sin preguntas y falta el fixture: {XML_PATH}")
+            else:
+                with open(XML_PATH, "rb") as f:
+                    parseo = parse_moodle_xml(f.read())
+                for i, pd in enumerate(parseo.preguntas):
+                    pregunta = PreguntaExamenModel(
+                        examen_id=examen.id,
+                        enunciado=pd.enunciado,
+                        tipo=pd.tipo,
+                        orden=i,
+                        seleccionada=True,
+                    )
+                    for j, op in enumerate(pd.opciones):
+                        pregunta.opciones.append(
+                            OpcionRespuestaModel(
+                                texto=op.texto, es_correcta=op.es_correcta, orden=j
+                            )
+                        )
+                    session.add(pregunta)
+                print(
+                    f"  [backfill] {len(parseo.preguntas)} preguntas importadas al "
+                    f"examen existente {EXAMEN_TITULO}"
+                )
         elif not os.path.exists(XML_PATH):
             print(f"  [skip] fixture no encontrado: {XML_PATH} (examen no importado)")
         else:
