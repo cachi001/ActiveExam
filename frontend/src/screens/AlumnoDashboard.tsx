@@ -124,7 +124,7 @@ export default function AlumnoDashboard() {
     ];
     return (
       <StudentShell>
-        <div className="max-w-2xl mx-auto min-h-[calc(100dvh-13rem)] flex flex-col gap-lg">
+        <div className="w-full min-h-[calc(100dvh-13rem)] flex flex-col gap-lg">
           {renderHeader(false)}
           <div className="flex-1 flex items-center justify-center">
             <div className="w-full max-w-xl bg-warning-container border border-warning-200 rounded-lg p-lg sm:p-xl flex flex-col items-center text-center gap-md">
