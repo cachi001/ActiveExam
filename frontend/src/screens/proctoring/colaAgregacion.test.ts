@@ -3,9 +3,11 @@ import {
   examInfoDeSesion,
   enriquecerYFiltrar,
   materiasEnRiesgo,
+  subtituloExamen,
   SIN_MATERIA,
   SIN_COMISION,
 } from './colaAgregacion';
+import type { ExamInfo } from './helpers';
 import type { SesionProctoringResumen } from '../../lib/types';
 
 const base = (over: Partial<SesionProctoringResumen>): SesionProctoringResumen => ({
@@ -71,5 +73,33 @@ describe('enriquecerYFiltrar — el examen importado real ya NO cae en "Sin exam
   it('descarta las sesiones bajo el umbral', () => {
     const sesiones = [base({ id: 's1', score: 50, examen_contenido_id: 'c-1', examen_titulo: 'X' })];
     expect(enriquecerYFiltrar(sesiones, 70)).toHaveLength(0);
+  });
+});
+
+describe('subtituloExamen — subtítulo del header de supervisión en vivo', () => {
+  const info = (over: Partial<ExamInfo>): ExamInfo => ({
+    examNombre: 'Programación 1',
+    materiaNombre: 'Programación',
+    comisionNombre: 'Comisión A',
+    docente: 'Ing. Romero',
+    ...over,
+  });
+
+  it('junta materia · comisión · docente cuando están todos', () => {
+    expect(subtituloExamen(info({}))).toBe('Programación · Comisión A · Ing. Romero');
+  });
+
+  it('omite el docente vacío (contexto server-side no lo trae)', () => {
+    expect(subtituloExamen(info({ docente: '' }))).toBe('Programación · Comisión A');
+  });
+
+  it('descarta los sentinelas de materia/comisión sin asignar', () => {
+    expect(
+      subtituloExamen(info({ materiaNombre: SIN_MATERIA, comisionNombre: SIN_COMISION, docente: '' })),
+    ).toBe('');
+  });
+
+  it('info null → cadena vacía', () => {
+    expect(subtituloExamen(null)).toBe('');
   });
 });

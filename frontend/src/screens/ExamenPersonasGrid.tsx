@@ -23,9 +23,9 @@ import {
   scoreCardSurface,
   scoreTextColor,
   nivelRiesgo,
-  joinExamInfo,
   INNER_CHIP_BG,
 } from './proctoring/helpers';
+import { examInfoDeSesion, subtituloExamen } from './proctoring/colaAgregacion';
 
 const POLL_MS = 4000;
 const DETALLE_ROUTE = '/admin/proctoring-session-detail';
@@ -43,7 +43,14 @@ export default function ExamenPersonasGrid() {
   const toastRef = useRef(toast);
   toastRef.current = toast;
 
-  const examInfo = useMemo(() => joinExamInfo(examId), [examId]);
+  // Contexto académico del header resuelto SERVER-SIDE (examen_contenido → comisión
+  // → materia), tomado de las propias sesiones — igual que la Cola de Revisión. Un
+  // examen importado real vive en la base, no en el catálogo mock de api.ts, así que
+  // NO se joinea con joinExamInfo(examId): se prefiere lo que ya trae cada sesión.
+  const examInfo = useMemo(
+    () => (personas.length > 0 ? examInfoDeSesion(personas[0]) : null),
+    [personas],
+  );
 
   const refrescar = useCallback(async () => {
     if (enVuelo.current) return;
@@ -100,9 +107,9 @@ export default function ExamenPersonasGrid() {
               <h1 className="font-headline text-headline-md text-on-surface tracking-tight truncate">
                 {examInfo?.examNombre ?? 'Examen en curso'}
               </h1>
-              {examInfo && (
+              {subtituloExamen(examInfo) && (
                 <p className="text-body-md text-on-surface-variant mt-base">
-                  {examInfo.comisionNombre} · {examInfo.docente}
+                  {subtituloExamen(examInfo)}
                 </p>
               )}
             </div>
