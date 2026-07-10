@@ -38,6 +38,24 @@ export function examInfoDeSesion(s: SesionProctoringResumen): ExamInfo | null {
   return joinExamInfo(s.exam_id);
 }
 
+/**
+ * Arma el subtítulo del header de "Supervisión en vivo" a partir del contexto
+ * académico de una sesión: `materia · comisión · docente`, salteando las partes
+ * vacías o sentinela (una sesión sin materia/comisión asignada no debe mostrar
+ * "Sin materia asignada" en el header, ni dejar un " · " colgando por el docente
+ * vacío que trae el contexto server-side).
+ *
+ * PURA: sin red, sin hooks. Retorna '' si no hay info o si nada aporta.
+ */
+export function subtituloExamen(info: ExamInfo | null): string {
+  if (!info) return '';
+  const sentinelas = new Set([SIN_EXAMEN, SIN_MATERIA, SIN_COMISION]);
+  return [info.materiaNombre, info.comisionNombre, info.docente]
+    .map((p) => p?.trim() ?? '')
+    .filter((p) => p !== '' && !sentinelas.has(p))
+    .join(' · ');
+}
+
 /** Un nodo de un nivel del drill-down (materia, comisión o examen). */
 export interface NodoCola {
   /** Clave estable para React keys y para bajar de nivel (= nombre, único por nivel). */
