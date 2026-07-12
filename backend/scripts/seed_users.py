@@ -1,9 +1,10 @@
 #!/usr/bin/env python
 """Seed de usuarios de prueba con credencial local (C-55 / c-57).
 
-Crea 3 usuarios demo (uno por cada rol MVP: estudiante, proctor, admin_sistema)
+Crea 6 usuarios demo: 4 estudiantes (EST-001..004) + 1 proctor + 1 admin_sistema,
 con passwords hasheados (bcrypt 12r). Es IDEMPOTENTE: verifica la existencia
-antes de insertar (no duplica si ya existen).
+antes de insertar (no duplica si ya existen). Los 4 estudiantes pueblan la cola
+de revisión con sesiones distinguibles.
 
 MODOS:
   - Modo full (default): usa ``app.config.Settings`` (requiere todas las vars
@@ -31,9 +32,14 @@ USO (modo full — stack completo):
     python scripts/seed_users.py
 
 CREDENCIALES SEED (para probar el login — identificadores estilo produccion):
-    Estudiante: id_institucional=EST-001   | email=estudiante@activeexam.local
-    Proctor:    id_institucional=PROC-001  | email=proctor@activeexam.local
-    Admin:      id_institucional=ADMIN-001 | email=admin@activeexam.local
+    Estudiante:   id_institucional=EST-001   | email=estudiante@activeexam.local
+    Estudiante 2: id_institucional=EST-002   | email=estudiante2@activeexam.local (Ana García)
+    Estudiante 3: id_institucional=EST-003   | email=estudiante3@activeexam.local (Bruno López)
+    Estudiante 4: id_institucional=EST-004   | email=estudiante4@activeexam.local (Carla Díaz)
+    Proctor:      id_institucional=PROC-001  | email=proctor@activeexam.local
+    Admin:        id_institucional=ADMIN-001 | email=admin@activeexam.local
+
+    Los 4 estudiantes comparten SEED_ESTUDIANTE_PASSWORD.
 """
 
 from __future__ import annotations
@@ -138,6 +144,30 @@ async def _ejecutar_seed(
             "roles": ["estudiante"],
             "nombre": "Estudiante",
             "apellido": "Prueba",
+        },
+        {
+            "id_institucional": "EST-002",
+            "email": "estudiante2@activeexam.local",
+            "password": pw_estudiante,
+            "roles": ["estudiante"],
+            "nombre": "Ana",
+            "apellido": "García",
+        },
+        {
+            "id_institucional": "EST-003",
+            "email": "estudiante3@activeexam.local",
+            "password": pw_estudiante,
+            "roles": ["estudiante"],
+            "nombre": "Bruno",
+            "apellido": "López",
+        },
+        {
+            "id_institucional": "EST-004",
+            "email": "estudiante4@activeexam.local",
+            "password": pw_estudiante,
+            "roles": ["estudiante"],
+            "nombre": "Carla",
+            "apellido": "Díaz",
         },
         {
             "id_institucional": "PROC-001",
