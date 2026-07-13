@@ -23,7 +23,6 @@ interface InscripcionCardProps {
   gate: GatePorExamen | undefined;
   verificando: boolean;
   onRendir: () => void;
-  onCompletarAcuse: () => void;
   onIrAPerfil: () => void;
 }
 
@@ -32,7 +31,6 @@ export function InscripcionCard({
   gate,
   verificando,
   onRendir,
-  onCompletarAcuse,
   onIrAPerfil,
 }: InscripcionCardProps) {
   const config = ESTADO_CONFIG[inscripcion.estado];
@@ -79,20 +77,6 @@ export function InscripcionCard({
                 </span>
               ) : 'Rendir'}
             </Button>
-          ) : codigoGate === 'acuse_examen_faltante' ? (
-            <>
-              <p className="text-label-sm text-on-surface-variant flex-1 min-w-0">
-                Falta confirmar tu participación en este examen.
-              </p>
-              <Button
-                variant="secondary"
-                onClick={onCompletarAcuse}
-                icon="assignment_turned_in"
-                className="h-10 shrink-0"
-              >
-                Confirmar participación
-              </Button>
-            </>
           ) : (
             <>
               <p className="text-label-sm text-on-surface-variant flex-1 min-w-0">

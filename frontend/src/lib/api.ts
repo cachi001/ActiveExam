@@ -10,7 +10,6 @@ import type {
   EventoSesion, DesafioActivo, Severidad, TipoEvento,
   Materia, Comision, Inscripcion, EstadoInscripcion,
   EstadoEnrollment, AcuseConsentimiento, BloqueConsentimiento, ReferenciasBiometrica, EscaneDNI, VigenciaReferencia,
-  AcuseExamen,
   SesionProctoringResumen, SesionProctoringDetalle, EventoProctoringDetalle,
   BiometriaDetalle, VeredictoReinferencia,
   // C-15: chat bidireccional + pausa autorizada + acciones del proctor
@@ -193,45 +192,6 @@ function recalcularPerfilCompleto(e: EstadoEnrollment): EstadoEnrollment {
 // Acuses por-examen — C-26
 // ---------------------------------------------------------------------------
 
-/**
- * Versión del texto del acuse por-examen (independiente de la versión de perfil).
- * Un cambio en este valor re-dispara el acuse para los exámenes afectados.
- */
-export const ACUSE_EXAMEN_VERSION = '2026.1';
-
-/**
- * Alcance de monitoreo que se muestra al alumno en el paso de acuse por-examen.
- * En producción vendría de la configuración del examen (C-07).
- */
-export const ALCANCE_MONITOREO: { icono: string; label: string; descripcion: string }[] = [
-  {
-    icono: 'videocam',
-    label: 'Tu cámara',
-    descripcion: 'Se analiza la imagen en vivo para confirmar que sos vos y que estás presente. Se registra un aviso si no se te ve, si aparece otra persona en cámara, o si mirás mucho rato hacia afuera de la pantalla. No se graba video: solo se guarda una captura puntual cuando pasa algo de eso.',
-  },
-  {
-    icono: 'desktop_windows',
-    label: 'La ventana del examen',
-    descripcion: 'Se detecta si minimizás o salís de la ventana del examen, si salís de pantalla completa, o si cambiás o abrís otra pestaña. No se graba la pantalla: solo se guarda una captura puntual ante uno de esos eventos.',
-  },
-  {
-    icono: 'devices',
-    label: 'Monitores y dispositivos',
-    descripcion: 'Se detecta si tenés un segundo monitor conectado al equipo. El examen pide usar una sola pantalla.',
-  },
-  {
-    icono: 'content_paste',
-    label: 'Acciones en el equipo',
-    descripcion: 'Se detecta si copiás o pegás durante el examen (se registra que ocurrió, nunca el contenido de lo que copiás).',
-  },
-];
-
-/**
- * Estado en memoria de los acuses por examen del alumno.
- * Clave: examen_id. Valor: AcuseExamen inmutable (idempotente por par estudiante/examen).
- */
-let ACUSES_POR_EXAMEN: Map<string, AcuseExamen> = new Map();
-
 export const DESAFIOS: DesafioActivo[] = [
   // Legacy (C-09)
   { id: 'girar_izquierda', label: 'Girar a la izquierda' },
@@ -377,7 +337,6 @@ async function syncEnrollmentState(): Promise<EstadoEnrollment> {
 export function resetEnrollmentCache(): void {
   enrollmentAlumno = { consentimiento: null, biometria: null, dni: null, perfil_completo: false };
   try { localStorage.removeItem(LS_ENROLLMENT); } catch { /* ignore */ }
-  ACUSES_POR_EXAMEN.clear();
   _estadosViaAlternativa.clear();
 }
 
@@ -690,12 +649,10 @@ export const api = {
   // -------------------------------------------------------------------------
 
   /**
-   * Gate EN CAPAS (C-26): el alumno puede rendir si:
-   * 1. Perfil completo (consentimiento de perfil vigente o vía alternativa + biometría vigente) — C-22.
-   * 2. Acuse por-examen presente y afirmativo para ESE examenId — C-26.
-   *
-   * Los códigos de C-22 se preservan intactos. El nuevo código `acuse_examen_faltante`
-   * solo aparece cuando (1) pasa pero falta (2). El gate NUNCA sanciona: deriva/flaggea (L2.5).
+   * Gate de rendición (C-22): el alumno puede rendir si tiene el PERFIL COMPLETO
+   * (consentimiento de perfil vigente o vía alternativa + biometría vigente). El
+   * consentimiento de perfil es el único gate de consentimiento — el acuse
+   * por-examen se eliminó por redundante. El gate NUNCA sanciona: deriva/flaggea (L2.5).
    */
   async puedeRendir(examenId?: string): Promise<{ puede: boolean; razon?: string; codigo?: string }> {
     await delay(200);
@@ -718,16 +675,7 @@ export const api = {
         };
       }
       if (estadoAlt === 'via_alternativa_habilitada' || estadoAlt === 'habilitado_por_proctor') {
-        // Proctor habilitó — puede rendir sin biometría. Saltar gate de biometría.
-        // Aún se verifica el acuse por-examen (capa 2).
-        const acuse = ACUSES_POR_EXAMEN.get(examenId);
-        if (!acuse || !acuse.afirmativo) {
-          return {
-            puede: false,
-            codigo: 'acuse_examen_faltante',
-            razon: 'Falta el acuse de consentimiento para este examen. Confirmá tu participación antes de rendir.',
-          };
-        }
+        // Proctor habilitó — puede rendir sin biometría.
         return { puede: true };
       }
     }
@@ -735,16 +683,6 @@ export const api = {
     const estadoAltPerfil = _estadosViaAlternativa.get('perfil');
     if (estadoAltPerfil === 'via_alternativa_habilitada' || estadoAltPerfil === 'habilitado_por_proctor') {
       // El proctor habilitó el perfil — puede rendir sin biometría (C-63 D-04)
-      if (examenId) {
-        const acuse = ACUSES_POR_EXAMEN.get(examenId);
-        if (!acuse || !acuse.afirmativo) {
-          return {
-            puede: false,
-            codigo: 'acuse_examen_faltante',
-            razon: 'Falta el acuse de consentimiento para este examen. Confirmá tu participación antes de rendir.',
-          };
-        }
-      }
       return { puede: true };
     }
 
@@ -790,58 +728,12 @@ export const api = {
       };
     }
 
-    // Capa 2: acuse por-examen (C-26) — solo se evalúa si el perfil está completo
-    if (examenId) {
-      const acuse = ACUSES_POR_EXAMEN.get(examenId);
-      if (!acuse || !acuse.afirmativo) {
-        return {
-          puede: false,
-          codigo: 'acuse_examen_faltante',
-          razon: 'Falta el acuse de consentimiento para este examen. Confirmá tu participación antes de rendir.',
-        };
-      }
-    }
-
+    // El perfil completo (Capa 1) es el único gate de consentimiento. El acuse
+    // por-examen se eliminó por redundante: el consentimiento de perfil ya
+    // verifica y bloquea la rendición.
     return { puede: true };
   },
 
-  /**
-   * Registra el acuse por-examen (C-26). Idempotente por (estudiante, examen):
-   * si ya existe un acuse afirmativo para ese examenId, retorna el existente sin duplicar.
-   * El acuse NO captura biometría ni re-presenta el consentimiento de perfil.
-   *
-   * Demo: hash simulado sobre (examen_id + version + timestamp).
-   * Server-side: SHA-256 firmado por clave maestra (C-12) — el cliente es sensor no confiable.
-   */
-  async registrarAcuseExamen(examenId: string, params: { afirmativo: boolean }): Promise<AcuseExamen> {
-    await delay(350);
-    // Idempotente: retorna el existente si ya hay un acuse afirmativo
-    const existente = ACUSES_POR_EXAMEN.get(examenId);
-    if (existente && existente.afirmativo) return { ...existente };
-
-    const timestamp = new Date().toISOString();
-    // Demo: hash simulado. Server-side: SHA-256 sobre (estudiante, examen, version,
-    // alcance_monitoreo, timestamp) firmado por clave maestra (C-12).
-    const hash = 'sha256:' + Math.random().toString(16).slice(2, 18);
-    const acuse: AcuseExamen = {
-      examen_id: examenId,
-      version: ACUSE_EXAMEN_VERSION,
-      timestamp,
-      hash,
-      afirmativo: params.afirmativo,
-    };
-    ACUSES_POR_EXAMEN.set(examenId, acuse);
-    return { ...acuse };
-  },
-
-  /**
-   * Retorna el acuse por-examen existente para ese examenId, o null si no hay.
-   * Permite que las pantallas consulten el estado del acuse sin llamar a puedeRendir.
-   */
-  async getAcuseExamen(examenId: string): Promise<AcuseExamen | null> {
-    await delay(150);
-    return ACUSES_POR_EXAMEN.get(examenId) ?? null;
-  },
 
   /** Retorna el estado de enrollment completo del perfil (C-22). */
   async getEnrollment(): Promise<EstadoEnrollment> {
@@ -1925,7 +1817,6 @@ export const TIPO_EVENTO_LABEL: Record<TipoEvento, string> = {
 export type {
   EventoSesion, Materia, Comision, Inscripcion, EstadoInscripcion,
   EstadoEnrollment, AcuseConsentimiento, ReferenciasBiometrica, EscaneDNI, VigenciaReferencia,
-  AcuseExamen,
   // C-46: tipos de proctoring (re-export desde types.ts)
   SesionProctoringResumen, SesionProctoringDetalle, EventoProctoringDetalle,
   BiometriaDetalle, VeredictoReinferencia,

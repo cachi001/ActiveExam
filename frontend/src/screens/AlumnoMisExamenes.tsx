@@ -1,6 +1,5 @@
 // Portal del alumno — Mis inscripciones a exámenes (C-21)
 // C-22: puedeRendir usa estado tipado real (sin parseo por substring).
-// C-26: gate en capas — muestra "Completar acuse del examen" cuando falta el acuse por-examen.
 // C-58: setExamenActivo antes de navegar a /requisitos (fix bug examenActivo null).
 // C-69: catálogo de exámenes importados (Moodle XML) visible cuando USE_REAL_BACKEND=1.
 import { useEffect, useState } from 'react';
@@ -10,7 +9,6 @@ import { StudentShell } from '../ui/shells';
 import { useNavigate } from '../lib/router';
 import { useApp } from '../lib/store';
 import { api } from '../lib/api';
-import AcuseExamen from './AcuseExamen';
 import type { Inscripcion, Examen, ExamenContenidoResumen, NotaExamen, EstadoEnrollment } from '../lib/types';
 import { InscripcionCard } from './alumno/components/InscripcionCard';
 import { ExamenImportadoCard } from './alumno/components/ExamenImportadoCard';
@@ -45,10 +43,8 @@ export default function AlumnoMisExamenes() {
   const [inscripciones, setInscripciones] = useState<Inscripcion[]>([]);
   const [cargando, setCargando] = useState(true);
   const [verificandoId, setVerificandoId] = useState<string | null>(null);
-  // C-26: resultado del gate EN CAPAS por examen_id (perfil + acuse)
+  // Resultado del gate de perfil por examen_id (el perfil es el único gate de consentimiento)
   const [gatesPorExamen, setGatesPorExamen] = useState<Record<string, GatePorExamen>>({});
-  // C-26: examen_id para el que se está completando el acuse desde Mis Exámenes
-  const [examenCompletandoAcuse, setExamenCompletandoAcuse] = useState<string | null>(null);
   // C-69: catálogo de exámenes importados (Moodle XML) — solo cuando USE_REAL_BACKEND=1
   const [examenesImportados, setExamenesImportados] = useState<ExamenContenidoResumen[]>([]);
   const [rindiendoImportadoId, setRindiendoImportadoId] = useState<string | null>(null);
@@ -161,24 +157,6 @@ export default function AlumnoMisExamenes() {
     }
   };
 
-  const handleAcuseCompletado = async () => {
-    if (!examenCompletandoAcuse) return;
-    const examenId = examenCompletandoAcuse;
-    setExamenCompletandoAcuse(null);
-    const gate = await api.puedeRendir(examenId);
-    setGatesPorExamen((prev) => ({ ...prev, [examenId]: gate }));
-  };
-
-  if (examenCompletandoAcuse) {
-    return (
-      <AcuseExamen
-        examenId={examenCompletandoAcuse}
-        onConfirmado={handleAcuseCompletado}
-        onCancelar={() => setExamenCompletandoAcuse(null)}
-      />
-    );
-  }
-
   // Loading a pantalla completa: centrado en TODO el ancho del contenido (no dentro
   // de la columna max-w pegada a la izquierda, que dejaba el spinner corrido). Mismo
   // patrón que StudentProfile.
@@ -233,7 +211,6 @@ export default function AlumnoMisExamenes() {
                     gate={gatesPorExamen[insc.examen_id]}
                     verificando={verificandoId === insc.id}
                     onRendir={() => handleRendir(insc)}
-                    onCompletarAcuse={() => setExamenCompletandoAcuse(insc.examen_id)}
                     onIrAPerfil={() => navigate('/alumno/perfil')}
                   />
                 ))}
