@@ -536,6 +536,14 @@
       "sessions": 0,
       "memories": 7,
       "prompts": 0
+    },
+    {
+      "id": "32d134d7",
+      "created_by": "Emiliano",
+      "created_at": "2026-07-13T05:20:22Z",
+      "sessions": 0,
+      "memories": 27,
+      "prompts": 0
     }
   ]
 }
