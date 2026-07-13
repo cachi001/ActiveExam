@@ -27,7 +27,7 @@ export default function SalaEspera() {
   const materia = examen?.catedra || materiaFetched || '—';
 
   return (
-    <StudentShell step={4} backTo="/biometria">
+    <StudentShell step={3} backTo="/biometria">
       <div className="max-w-xl lg:max-w-2xl mx-auto space-y-lg text-center animate-in zoom-in duration-500">
         <div className="w-20 h-20 rounded-full bg-success-container text-success flex items-center justify-center mx-auto">
           <Icon name="how_to_reg" className="text-[40px]" fill />

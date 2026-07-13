@@ -110,7 +110,7 @@ export default function EquipmentCheck() {
           </div>
           <div className="flex gap-sm">
             <Button variant="outline" icon="refresh" onClick={correr}>Reintentar</Button>
-            <Button icon="arrow_forward" disabled={enCurso} onClick={() => navigate('/consentimiento')}>
+            <Button icon="arrow_forward" disabled={enCurso} onClick={() => navigate('/biometria')}>
               Continuar
             </Button>
           </div>

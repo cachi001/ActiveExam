@@ -17,14 +17,14 @@ try {
 }
 
 // ---------------------------------------------------------------------------
-// Persistencia del examen activo en sessionStorage (fix bug paso 2 — Consent)
+// Persistencia del examen activo en sessionStorage
 // ---------------------------------------------------------------------------
-// El flujo de rendición (Mis exámenes → /requisitos → /consentimiento → /biometria
+// El flujo de rendición (Mis exámenes → /requisitos → /biometria → /sala-espera
 // → examen → cierre) lleía `examenActivo` SOLO de la memoria del store Zustand. Una
 // recarga de página entre pasos (común en mobile) reinicia el módulo y `examenActivo`
-// volvía a null → en Consent el handler `aceptar()` (guard `if (!acepto || !examen)`)
-// quedaba inerte y el paso 2 no avanzaba. Persistimos el examen seleccionado en
-// sessionStorage para rehidratarlo al reiniciarse el store; `resetSesion()` lo limpia.
+// volvía a null → los guards de cada paso (`if (!examen)`) quedaban inertes y el flujo
+// no avanzaba. Persistimos el examen seleccionado en sessionStorage para rehidratarlo
+// al reiniciarse el store; `resetSesion()` lo limpia.
 const _EXAMEN_ACTIVO_KEY = 'ae_examen_activo';
 
 function loadExamenActivo(): Examen | null {

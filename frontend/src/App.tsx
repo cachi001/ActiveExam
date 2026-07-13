@@ -7,7 +7,6 @@ import { LoadingSpinner } from './ui/components';
 
 const Login                 = lazy(() => import('./screens/Login'));
 const EquipmentCheck        = lazy(() => import('./screens/EquipmentCheck'));
-const Consent               = lazy(() => import('./screens/Consent'));
 const Biometria             = lazy(() => import('./screens/Biometria'));
 const SalaEspera            = lazy(() => import('./screens/SalaEspera'));
 const PreExamen             = lazy(() => import('./screens/PreExamen'));
@@ -60,7 +59,6 @@ export default function App() {
 
     // Flujo de examen del estudiante
     '/requisitos': g(<EquipmentCheck />, ESTUDIANTE),
-    '/consentimiento': g(<Consent />, ESTUDIANTE),
     '/biometria': g(<Biometria />, ESTUDIANTE),
     '/sala-espera': g(<SalaEspera />, ESTUDIANTE),
     '/pre-examen': g(<PreExamen />, ESTUDIANTE),
