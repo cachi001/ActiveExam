@@ -47,6 +47,56 @@ class IntentosAgotadosError(EnforcementError):
     mensaje: str
 
 
+@dataclass
+class NoInscriptoError(EnforcementError):
+    """El alumno no esta inscripto en la comision del examen (gate C-71)."""
+
+    examen_contenido_id: str
+    mensaje: str
+
+
+async def verificar_inscripcion(
+    db: AsyncSession,
+    *,
+    examen_contenido_id: str,
+    alumno_idnumber: str,
+) -> None:
+    """Backstop server-side de inscripcion (C-71): el alumno debe estar inscripto
+    en la comision del examen para poder rendirlo.
+
+    Resuelve la comision del ``examen_contenido`` y verifica que exista inscripcion
+    para el ``alumno_idnumber`` (id_institucional del principal). Si el examen no
+    tiene comision (comision_id NULL) NO se exige inscripcion (edge case: examen
+    suelto sin comision). ``NoInscriptoError`` -> 403 en el caller. El cliente es
+    sensor no confiable: este control es independiente del filtrado del catalogo.
+    """
+    comision_id = (
+        await db.execute(
+            select(ExamenContenidoModel.comision_id).where(
+                ExamenContenidoModel.id == examen_contenido_id
+            )
+        )
+    ).scalar_one_or_none()
+    if comision_id is None:
+        return
+
+    from app.infrastructure.persistence.repositories.exam_content import (
+        InscripcionSqlRepository,
+    )
+
+    inscripto = await InscripcionSqlRepository(db).esta_inscripto_institucional(
+        alumno_idnumber, comision_id
+    )
+    if not inscripto:
+        raise NoInscriptoError(
+            examen_contenido_id=examen_contenido_id,
+            mensaje=(
+                "No estas inscripto en la comision de este examen. Matriculate con "
+                "el codigo de la comision para poder rendir."
+            ),
+        )
+
+
 async def verificar_enforcement(
     db: AsyncSession,
     *,

@@ -101,6 +101,17 @@ from app.presentation.api.v1.exam_content.schemas import (
 )
 
 
+# Gate de inscripción (C-71): los roles de gestión ven TODO el catálogo/materias;
+# el alumno ve solo lo de sus comisiones inscriptas.
+_ROLES_STAFF = frozenset(
+    {"admin_sistema", "admin_examenes", "proctor", "revisor", "coordinador", "auditor"}
+)
+
+
+def _es_staff(principal: AuthenticatedPrincipal) -> bool:
+    return bool(set(principal.roles or []) & _ROLES_STAFF)
+
+
 def _resumen_to_response(r) -> ExamenContenidoResumenResponse:
     """Mapea un ExamenContenidoResumen de dominio al schema de respuesta (D3)."""
     return ExamenContenidoResumenResponse(
@@ -1286,12 +1297,22 @@ def create_exam_taking_router(
 
         from app.infrastructure.persistence.repositories.exam_content import (
             ExamenContenidoSqlRepository,
+            InscripcionSqlRepository,
         )
 
+        # Gate de inscripción (C-71): el alumno ve SOLO los exámenes de las comisiones
+        # donde está inscripto; los roles de gestión (admin/proctor/...) ven todo el
+        # catálogo. El filtro es server-side por el id_institucional del principal.
         async with session_factory() as session:
             repo = ExamenContenidoSqlRepository(session)
+            if _es_staff(principal):
+                comision_ids = None
+            else:
+                comision_ids = await InscripcionSqlRepository(
+                    session
+                ).comision_ids_inscriptas(principal.id_institucional)
             resumenes, total = await repo.listar_paginado(
-                q=q, page=page, page_size=page_size
+                q=q, page=page, page_size=page_size, comision_ids=comision_ids
             )
 
         return ExamenesContenidoPaginadosResponse(
@@ -1472,11 +1493,19 @@ def create_exam_taking_router(
             )
 
         from app.infrastructure.persistence.repositories.exam_content import (
+            InscripcionSqlRepository,
             MateriaSqlRepository,
         )
 
+        # Gate de inscripción (C-71): el alumno ve SOLO las materias donde tiene
+        # comisión inscripta; staff ve todas.
         async with session_factory() as session:
-            materias = await MateriaSqlRepository(session).listar()
+            if _es_staff(principal):
+                materias = await MateriaSqlRepository(session).listar()
+            else:
+                materias = await InscripcionSqlRepository(session).materias_inscriptas(
+                    principal.id_institucional
+                )
 
         return [
             MateriaResponse(id=m.id, codigo=m.codigo, nombre=m.nombre) for m in materias
@@ -1499,12 +1528,20 @@ def create_exam_taking_router(
 
         from app.infrastructure.persistence.repositories.exam_content import (
             ComisionSqlRepository,
+            InscripcionSqlRepository,
         )
 
+        # Gate de inscripción (C-71): el alumno ve SOLO sus comisiones inscriptas de
+        # esa materia; staff ve todas las comisiones de la materia.
         async with session_factory() as session:
-            comisiones = await ComisionSqlRepository(session).listar_por_materia(
-                materia_id
-            )
+            if _es_staff(principal):
+                comisiones = await ComisionSqlRepository(session).listar_por_materia(
+                    materia_id
+                )
+            else:
+                comisiones = await InscripcionSqlRepository(
+                    session
+                ).comisiones_inscriptas_de_materia(principal.id_institucional, materia_id)
 
         return [
             ComisionResponse(

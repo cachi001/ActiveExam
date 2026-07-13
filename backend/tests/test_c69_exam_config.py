@@ -666,7 +666,11 @@ async def test_catalogo_expone_ventana_e_intentos(taking_app, factory):
         examen_id = examen.id
         await s.commit()
 
-    async with _student_client(taking_app) as c:
+    # C-71: el catálogo del ALUMNO se filtra por inscripción (no ve exámenes sin
+    # comisión / de comisiones no inscriptas). Este test verifica la EXPOSICIÓN de
+    # campos (ventana/intentos) del catálogo, no la visibilidad por rol → usa un
+    # cliente staff, que ve todo el catálogo.
+    async with _admin_client(taking_app) as c:
         resp = await c.get(f"/api/v1/exam-content?q=Catálogo ventana")
     assert resp.status_code == 200, resp.text
     items = {it["id"]: it for it in resp.json()["items"]}

@@ -203,17 +203,28 @@ class ExamenContenidoSqlRepository:
         q: str | None = None,
         page: int = 1,
         page_size: int = 1000,
+        comision_ids: list[str] | None = None,
     ) -> tuple[list[ExamenContenidoResumen], int]:
         """Lista paginada + búsqueda serverside del catálogo (tarea 4, admin-sync).
 
         Filtra por título/materia/comisión (q, ILIKE) SIEMPRE en SQL. Orden estable
         alfabético por título. Devuelve (items_de_la_pagina, total_global_filtrado).
         El total cuenta los exámenes que matchean el filtro, no solo la página.
+
+        Gate de inscripción (C-71): ``comision_ids`` restringe el catálogo a esas
+        comisiones (alumno → sus comisiones inscriptas). ``None`` = sin restricción
+        (admin ve todo). Lista vacía = alumno sin inscripciones → catálogo vacío.
         """
         page = max(1, page)
         page_size = max(1, page_size)
 
+        # Alumno sin inscripciones: catálogo vacío (no ve ningún examen).
+        if comision_ids is not None and not comision_ids:
+            return [], 0
+
         base = self._filtro_q(self._stmt_resumen(), q)
+        if comision_ids is not None:
+            base = base.where(ExamenContenidoModel.comision_id.in_(comision_ids))
 
         # total = cantidad de grupos (exámenes) que matchean el filtro
         total_stmt = select(func.count()).select_from(base.subquery())
@@ -717,6 +728,74 @@ class InscripcionSqlRepository:
             )
         )
         return result.scalar_one_or_none() is not None
+
+    async def esta_inscripto_institucional(
+        self, id_institucional: str, comision_id: str
+    ) -> bool:
+        """True si el alumno (por id_institucional del JWT) está inscripto a la comisión.
+
+        Gate de inscripción (C-71): resuelve id_institucional → usuario.id (JOIN
+        usuario) y verifica la fila en inscripcion. La identidad del alumno es el
+        id_institucional del principal, nunca un dato del cliente (regla dura #6).
+        """
+        result = await self._db.execute(
+            select(InscripcionModel.id)
+            .join(UsuarioModel, UsuarioModel.id == InscripcionModel.usuario_id)
+            .where(
+                UsuarioModel.id_institucional == id_institucional,
+                UsuarioModel.eliminado_en.is_(None),
+                InscripcionModel.comision_id == comision_id,
+            )
+        )
+        return result.scalar_one_or_none() is not None
+
+    async def comision_ids_inscriptas(self, id_institucional: str) -> list[str]:
+        """Lista los comision_id donde el alumno (por id_institucional) está inscripto.
+
+        Se usa para filtrar el catálogo de exámenes/materias del alumno (C-71).
+        """
+        result = await self._db.execute(
+            select(InscripcionModel.comision_id)
+            .join(UsuarioModel, UsuarioModel.id == InscripcionModel.usuario_id)
+            .where(
+                UsuarioModel.id_institucional == id_institucional,
+                UsuarioModel.eliminado_en.is_(None),
+            )
+        )
+        return list(result.scalars().all())
+
+    async def materias_inscriptas(self, id_institucional: str) -> list[MateriaModel]:
+        """Materias (distintas) donde el alumno tiene alguna comisión inscripta (C-71)."""
+        result = await self._db.execute(
+            select(MateriaModel)
+            .join(ComisionModel, ComisionModel.materia_id == MateriaModel.id)
+            .join(InscripcionModel, InscripcionModel.comision_id == ComisionModel.id)
+            .join(UsuarioModel, UsuarioModel.id == InscripcionModel.usuario_id)
+            .where(
+                UsuarioModel.id_institucional == id_institucional,
+                UsuarioModel.eliminado_en.is_(None),
+            )
+            .distinct()
+            .order_by(MateriaModel.nombre)
+        )
+        return list(result.scalars().all())
+
+    async def comisiones_inscriptas_de_materia(
+        self, id_institucional: str, materia_id: str
+    ) -> list[ComisionModel]:
+        """Comisiones de una materia donde el alumno está inscripto (C-71)."""
+        result = await self._db.execute(
+            select(ComisionModel)
+            .join(InscripcionModel, InscripcionModel.comision_id == ComisionModel.id)
+            .join(UsuarioModel, UsuarioModel.id == InscripcionModel.usuario_id)
+            .where(
+                UsuarioModel.id_institucional == id_institucional,
+                UsuarioModel.eliminado_en.is_(None),
+                ComisionModel.materia_id == materia_id,
+            )
+            .order_by(ComisionModel.codigo)
+        )
+        return list(result.scalars().all())
 
     async def obtener_usuario_id_por_institucional(
         self, id_institucional: str
