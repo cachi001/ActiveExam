@@ -228,3 +228,26 @@ class SubmitRespuestasOut(BaseModel):
 
     session_id: str
     respuestas_guardadas: int
+
+
+class RespuestaGuardadaOut(BaseModel):
+    """Una respuesta ya guardada de la sesion (para reanudacion, GET .../respuestas)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    pregunta_id: str
+    opcion_elegida_id: str
+
+
+class ListarRespuestasOut(BaseModel):
+    """Respuesta de GET /sessions/{id}/respuestas → 200.
+
+    Vuln reload/restart: al reanudar una sesion activa (misma id, mismo timer), el
+    cliente necesita recuperar lo que YA habia contestado antes del F5. Solo el
+    DUEÑO de la sesion puede leerlas (mismo gate de propiedad que submit_respuestas).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    session_id: str
+    respuestas: list[RespuestaGuardadaOut]

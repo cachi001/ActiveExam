@@ -62,7 +62,7 @@ export default function Examen() {
     });
   }, []);
 
-  const { sessionId, score, eventCount, activo, eventos, extraMonitorActive, sessionError, detener } = useExamProctoring(videoRef, examen);
+  const { sessionId, sessionCreadaEn, score, eventCount, activo, eventos, extraMonitorActive, sessionError, detener } = useExamProctoring(videoRef, examen);
 
   // Entrega: confirmación previa (nunca finalizar por un click accidental) + estado
   // de envío + error de entrega (si el POST de respuestas falla NO se navega a /cierre,
@@ -96,13 +96,31 @@ export default function Examen() {
         if (!data) return;
         setPreguntasRaw(data.preguntas);
         setMezclar(!!data.mezclar_preguntas);
-        const tl = data.tiempo_limite_min ?? null;
-        setTiempoLimiteMin(tl);
-        setSegRestantes(tl !== null && tl > 0 ? tl * 60 : null);
+        setTiempoLimiteMin(data.tiempo_limite_min ?? null);
+        // segRestantes se calcula en el efecto de abajo, anclado a sessionCreadaEn
+        // (server-autoritativa) — no acá, para no regalarle tiempo extra a un F5.
       })
       .catch(() => {})
       .finally(() => setCargandoPreguntas(false));
   }, [examen?.examen_contenido_id]);
+
+  // Vuln reload: ancla el countdown a la `creada_en` de la sesión de proctoring
+  // (server-autoritativa), NO a la hora de montaje de este componente. Sin esto,
+  // recargar la página a mitad de examen le regalaba `tiempo_limite_min` COMPLETOS
+  // de nuevo al alumno (timer reseteado) cada vez. `sessionCreadaEn` puede resolver
+  // después de `tiempoLimiteMin` (dos fetches async independientes); si todavía no
+  // llegó, se usa "ahora" como fallback transitorio — este efecto se auto-corrige
+  // apenas `sessionCreadaEn` cambia.
+  useEffect(() => {
+    if (tiempoLimiteMin === null || tiempoLimiteMin === undefined || tiempoLimiteMin <= 0) {
+      setSegRestantes(null);
+      return;
+    }
+    const anclaMs = sessionCreadaEn ? new Date(sessionCreadaEn).getTime() : Date.now();
+    const transcurridoSeg = Math.floor((Date.now() - anclaMs) / 1000);
+    const totalSeg = tiempoLimiteMin * 60;
+    setSegRestantes(Math.max(0, totalSeg - transcurridoSeg));
+  }, [tiempoLimiteMin, sessionCreadaEn]);
 
   const lastAlertaId = useRef<string | null>(null);
   useEffect(() => {
@@ -124,6 +142,61 @@ export default function Examen() {
     lockdown.iniciar().catch(() => {});
     return () => lockdown.detener();
   }, []);
+
+  // Vuln reload — restauración: al reanudar una sesión (nueva o REANUDADA por el
+  // backend idempotente tras un F5), traemos lo que el alumno ya había contestado
+  // y lo mezclamos en `respuestas`. Sin esto, un F5 devolvía la misma sesión pero
+  // con el examen en blanco (las respuestas vivían solo en React state, perdidas
+  // al recargar). `respuestasHidratadasRef` evita que el submit incremental de
+  // abajo dispare un POST espurio ANTES de que esta restauración termine.
+  const respuestasHidratadasRef = useRef(false);
+  useEffect(() => {
+    if (!sessionId) return;
+    respuestasHidratadasRef.current = false;
+    (async () => {
+      try {
+        const guardadas = await api.obtenerRespuestasProctoring(sessionId);
+        if (guardadas.length > 0) {
+          setRespuestas((prev) => {
+            const restauradas = { ...prev };
+            for (const r of guardadas) restauradas[r.pregunta_id] = r.opcion_elegida_id;
+            return restauradas;
+          });
+        }
+      } catch {
+        // Degradación silenciosa (R3): si falla, el alumno sigue con lo que tenga
+        // en memoria — no bloquea el examen.
+      } finally {
+        respuestasHidratadasRef.current = true;
+      }
+    })();
+  }, [sessionId]);
+
+  // Vuln reload — submit incremental: guarda las respuestas server-side en CADA
+  // cambio (debounced 800ms), no solo al entregar. Antes, `respuestas` vivía SOLO
+  // en React state y se perdía por completo ante un F5 (o un cierre de pestaña).
+  // Con esto, aunque el alumno recargue a mitad de examen, lo último que contestó
+  // ya está persistido y se restaura por el efecto de arriba. Fire-and-forget
+  // (degradación silenciosa): un fallo de red acá no debe romper el examen — la
+  // entrega final (`entregar`) reintenta el POST completo igual.
+  const submitTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!sessionId) return;
+    if (!respuestasHidratadasRef.current) return; // aún restaurando: no pisar con {}
+    if (submitTimeoutRef.current) clearTimeout(submitTimeoutRef.current);
+    submitTimeoutRef.current = setTimeout(() => {
+      const items = Object.entries(respuestas).map(([pregunta_id, opcion_elegida_id]) => ({
+        pregunta_id,
+        opcion_elegida_id,
+      }));
+      if (items.length === 0) return;
+      void api.enviarRespuestasProctoring(sessionId, items);
+    }, 800);
+    return () => {
+      if (submitTimeoutRef.current) clearTimeout(submitTimeoutRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [respuestas, sessionId]);
 
   /**
    * Entrega el intento: envía las respuestas server-side (para calcular la nota) y

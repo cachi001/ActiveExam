@@ -43,6 +43,43 @@ async def crear_sesion(
     )
 
 
+async def crear_o_reanudar_sesion(
+    db: AsyncSession,
+    modo: str,
+    exam_id: str | None = None,
+    etiqueta: str | None = None,
+    examen_contenido_id: str | None = None,
+    alumno_idnumber: str | None = None,
+    alumno_email: str | None = None,
+) -> ProctoringSessionModel:
+    """Crea una sesion, o REANUDA la activa existente (anti-zombie, reload durante examen).
+
+    Solo aplica la busqueda de reanudacion cuando hay ``examen_contenido_id`` Y
+    ``alumno_idnumber`` (la sesion 'test' sin vinculo no tiene forma de identificar
+    "la misma rendicion" — cada POST crea una fila nueva, como antes).
+
+    Si el alumno ya tiene una sesion ACTIVA (``finalizada_en IS NULL``) para ese
+    examen, se devuelve ESA MISMA fila (misma id, misma creada_en) en vez de crear
+    una nueva. Esto es lo que rompe el ciclo "F5 -> sesion zombie": recargar la
+    pagina vuelve a pasar por acá y encuentra la sesion ya abierta, así que el
+    timer (creada_en) y las respuestas ya guardadas (via GET .../respuestas) se
+    pueden restaurar en el cliente en vez de perderse.
+    """
+    repo = ProctoringRepository(db)
+    if examen_contenido_id is not None and alumno_idnumber:
+        activa = await repo.obtener_sesion_activa(alumno_idnumber, examen_contenido_id)
+        if activa is not None:
+            return activa
+    return await repo.crear_sesion(
+        modo=modo,
+        exam_id=exam_id,
+        etiqueta=etiqueta,
+        examen_contenido_id=examen_contenido_id,
+        alumno_idnumber=alumno_idnumber,
+        alumno_email=alumno_email,
+    )
+
+
 async def listar_sesiones(db: AsyncSession) -> list[SesionResumenData]:
     """Lista todas las sesiones con total_eventos, total_discrepancias y score."""
     repo = ProctoringRepository(db)

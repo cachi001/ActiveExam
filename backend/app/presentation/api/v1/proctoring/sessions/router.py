@@ -44,8 +44,10 @@ from app.presentation.api.v1.proctoring.sessions.schemas import (
     CrearSesionOut,
     EventoDetalle,
     FinalizarSesionOut,
+    ListarRespuestasOut,
     ObservacionIn,
     ObservacionOut,
+    RespuestaGuardadaOut,
     SesionDetalle,
     SesionResumen,
     SubmitRespuestasIn,
@@ -198,7 +200,7 @@ def create_sessions_router(
                     },
                 ) from exc
 
-        sesion = await session_service.crear_sesion(
+        sesion = await session_service.crear_o_reanudar_sesion(
             db=db,
             modo=body.modo,
             exam_id=body.exam_id,
@@ -379,6 +381,49 @@ def create_sessions_router(
         # sesión de DB del request (get_db no auto-commitea).
         await db.commit()
         return SubmitRespuestasOut(session_id=session_id, respuestas_guardadas=n)
+
+    @router.get(
+        "/sessions/{session_id}/respuestas",
+        response_model=ListarRespuestasOut,
+        summary="Obtener las respuestas ya guardadas de la sesion (reanudacion, dueño)",
+    )
+    async def obtener_respuestas(
+        session_id: str,
+        db: Annotated[AsyncSession, Depends(get_db)],
+        principal: Annotated[AuthenticatedPrincipal, Depends(require_autenticado)],
+    ) -> ListarRespuestasOut:
+        """Devuelve las respuestas ya persistidas de la sesion (vuln reload/restart).
+
+        Al reanudar una sesion ACTIVA (creada antes de un F5), el cliente necesita
+        recuperar lo que ya habia contestado para no reiniciar el intento con las
+        respuestas en blanco. Gateado al DUEÑO de la sesion (mismo criterio de
+        ``_principal_es_dueno`` que ``submit_respuestas``/``finalizar_sesion``):
+        404 (no 403) tanto si no existe como si no es del alumno autenticado, para
+        no revelar la existencia de sesiones ajenas.
+        """
+        sesion_model = (
+            await db.execute(
+                select(ProctoringSessionModel).where(
+                    ProctoringSessionModel.id == session_id
+                )
+            )
+        ).scalar_one_or_none()
+        if sesion_model is None or not _principal_es_dueno(sesion_model, principal):
+            raise HTTPException(
+                status_code=http_status.HTTP_404_NOT_FOUND,
+                detail=f"Sesion {session_id!r} no encontrada",
+            )
+        repo = RespuestaAlumnoRepository(db)
+        rows = await repo.listar_por_sesion(session_id)
+        return ListarRespuestasOut(
+            session_id=session_id,
+            respuestas=[
+                RespuestaGuardadaOut(
+                    pregunta_id=r.pregunta_id, opcion_elegida_id=r.opcion_elegida_id
+                )
+                for r in rows
+            ],
+        )
 
     @router.patch(
         "/sessions/{session_id}/finalizar",
