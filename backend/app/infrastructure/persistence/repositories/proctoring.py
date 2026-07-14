@@ -99,6 +99,36 @@ class ProctoringRepository:
         await self._db.refresh(sesion)
         return sesion
 
+    async def obtener_sesion_activa(
+        self, alumno_idnumber: str, examen_contenido_id: str
+    ) -> ProctoringSessionModel | None:
+        """Sesion ACTIVA (finalizada_en IS NULL) del alumno para ese examen_contenido.
+
+        Anti-zombie (recarga de pagina durante la rendicion): antes de CREAR una
+        sesion nueva, el caller consulta esto — si existe, se REUSA (misma id y
+        misma creada_en) en vez de crear una fila nueva. Sin este chequeo, cada F5
+        durante el examen creaba una sesion de proctoring nueva y dejaba la
+        anterior "zombie" (en vivo para siempre, sin contar como intento porque el
+        enforcement de intentos solo cuenta finalizadas) — timer reseteado,
+        respuestas perdidas e intentos efectivamente infinitos.
+
+        Si hay mas de una activa (no deberia, pero no lo garantiza un UNIQUE
+        constraint), se toma la MAS VIEJA (primera creada): es la que el alumno
+        viene rindiendo desde el principio; sus respuestas ya guardadas son las
+        que hay que preservar.
+        """
+        stmt = (
+            select(ProctoringSessionModel)
+            .where(
+                ProctoringSessionModel.alumno_idnumber == alumno_idnumber,
+                ProctoringSessionModel.examen_contenido_id == examen_contenido_id,
+                ProctoringSessionModel.finalizada_en.is_(None),
+            )
+            .order_by(ProctoringSessionModel.creada_en.asc())
+        )
+        result = await self._db.execute(stmt)
+        return result.scalars().first()
+
     async def obtener_sesion(self, session_id: str) -> ProctoringSessionModel | None:
         """Obtiene una sesion por ID con sus eventos y biometria (eager load)."""
         stmt = (

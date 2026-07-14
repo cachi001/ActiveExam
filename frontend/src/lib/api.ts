@@ -1098,6 +1098,32 @@ export const api = {
   },
 
   /**
+   * Obtiene las respuestas YA guardadas de una sesión (vuln reload/restart).
+   *
+   * Al reanudar una sesión ACTIVA (el backend devuelve la misma sesión ante un
+   * reload, en vez de crear una zombie), el cliente usa esto para restaurar el
+   * estado `respuestas` de Examen.tsx en vez de volver a arrancar en blanco.
+   *
+   * Real: GET /proctoring/sessions/{sessionId}/respuestas
+   * Mock o fallo: retorna [] (degradación silenciosa — no bloquea el examen;
+   * en el peor caso el alumno re-contesta lo que ya había contestado).
+   */
+  async obtenerRespuestasProctoring(
+    sessionId: string,
+  ): Promise<{ pregunta_id: string; opcion_elegida_id: string }[]> {
+    if (!sessionId) return [];
+    try {
+      const data = await realFetch<{
+        session_id: string;
+        respuestas: { pregunta_id: string; opcion_elegida_id: string }[];
+      }>(`/proctoring/sessions/${sessionId}/respuestas`, { method: 'GET' }, 'demo');
+      return data.respuestas;
+    } catch {
+      return [];
+    }
+  },
+
+  /**
    * Obtiene el detalle de una sesión de proctoring (C-64).
    * Real: GET /proctoring/sessions/{sessionId}
    * Mock o fallo: retorna null sin propagar.

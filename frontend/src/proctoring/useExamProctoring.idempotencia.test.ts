@@ -98,4 +98,38 @@ describe('useExamProctoring — guarda de idempotencia de creación de sesión',
     await expect(obtenerOCrearSesion('examen-C', undefined)).resolves.toBe('sesion-ok');
     expect(spy).toHaveBeenCalledTimes(2);
   });
+
+  // Vuln reload: el timer se ancla a la `creada_en` de la sesión (nueva o REANUDADA
+  // por el backend idempotente). `onCreadaEn` propaga esa fecha al caller.
+  it('invoca onCreadaEn con la creada_en devuelta por el backend', async () => {
+    vi.spyOn(api, 'crearSesionProctoring').mockResolvedValue({
+      id: 'sesion-1',
+      creada_en: '2026-07-13T10:00:00Z',
+    } as Awaited<ReturnType<typeof api.crearSesionProctoring>>);
+
+    const onCreadaEn = vi.fn();
+    await obtenerOCrearSesion('examen-D', undefined, null, undefined, onCreadaEn);
+
+    expect(onCreadaEn).toHaveBeenCalledWith('2026-07-13T10:00:00Z');
+  });
+
+  it('en un reload (backend reanuda la sesión activa), onCreadaEn recibe la creada_en ORIGINAL', async () => {
+    // Simula lo que hace el backend idempotente: la 2da llamada (post-F5, guarda
+    // de módulo ya liberada por un montaje nuevo) devuelve la MISMA creada_en que
+    // la primera, no una nueva.
+    vi.spyOn(api, 'crearSesionProctoring').mockResolvedValue({
+      id: 'sesion-reanudada',
+      creada_en: '2026-07-13T09:00:00Z',
+    } as Awaited<ReturnType<typeof api.crearSesionProctoring>>);
+
+    const onCreadaEn1 = vi.fn();
+    await obtenerOCrearSesion('examen-E', undefined, null, undefined, onCreadaEn1);
+    __resetSesionEnCreacionParaTest(); // simula el remount tras el F5
+
+    const onCreadaEn2 = vi.fn();
+    await obtenerOCrearSesion('examen-E', undefined, null, undefined, onCreadaEn2);
+
+    expect(onCreadaEn1).toHaveBeenCalledWith('2026-07-13T09:00:00Z');
+    expect(onCreadaEn2).toHaveBeenCalledWith('2026-07-13T09:00:00Z');
+  });
 });
