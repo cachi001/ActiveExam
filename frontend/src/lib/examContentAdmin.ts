@@ -160,7 +160,7 @@ export async function actualizarMateria(
   data: { nombre: string },
 ): Promise<MateriaResponse> {
   const res = await fetch(
-    `/api/v1/exam-content/materias/${encodeURIComponent(materiaId)}`,
+    `${API_BASE}/exam-content/materias/${encodeURIComponent(materiaId)}`,
     {
       method: 'PATCH',
       headers: authHeaders(),
@@ -186,7 +186,7 @@ export async function crearComision(
   },
 ): Promise<ComisionResponse> {
   const res = await fetch(
-    `/api/v1/exam-content/materias/${encodeURIComponent(materiaId)}/comisiones`,
+    `${API_BASE}/exam-content/materias/${encodeURIComponent(materiaId)}/comisiones`,
     {
       method: 'POST',
       headers: authHeaders(),
@@ -210,7 +210,7 @@ export async function actualizarComision(
   },
 ): Promise<ComisionResponse> {
   const res = await fetch(
-    `/api/v1/exam-content/comisiones/${encodeURIComponent(comisionId)}`,
+    `${API_BASE}/exam-content/comisiones/${encodeURIComponent(comisionId)}`,
     {
       method: 'PATCH',
       headers: authHeaders(),
@@ -228,7 +228,7 @@ export async function rotarCodigoMatriculacion(
   comisionId: string,
 ): Promise<ComisionResponse> {
   const res = await fetch(
-    `/api/v1/exam-content/comisiones/${encodeURIComponent(comisionId)}/rotar-codigo`,
+    `${API_BASE}/exam-content/comisiones/${encodeURIComponent(comisionId)}/rotar-codigo`,
     {
       method: 'POST',
       headers: authHeaders(),
@@ -453,7 +453,7 @@ export async function listarAlumnosDeComision(
   comisionId: string,
 ): Promise<AlumnoInscripto[]> {
   const res = await fetch(
-    `/api/v1/exam-content/comisiones/${encodeURIComponent(comisionId)}/alumnos`,
+    `${API_BASE}/exam-content/comisiones/${encodeURIComponent(comisionId)}/alumnos`,
     {
       method: 'GET',
       headers: authHeaders(),
@@ -471,7 +471,7 @@ export async function inscribirAlumno(
   usuarioId: string,
 ): Promise<InscripcionAlumnoResponse> {
   const res = await fetch(
-    `/api/v1/exam-content/comisiones/${encodeURIComponent(comisionId)}/inscripciones`,
+    `${API_BASE}/exam-content/comisiones/${encodeURIComponent(comisionId)}/inscripciones`,
     {
       method: 'POST',
       headers: authHeaders(),
@@ -490,7 +490,7 @@ export async function eliminarInscripcion(
   usuarioId: string,
 ): Promise<void> {
   const res = await fetch(
-    `/api/v1/exam-content/comisiones/${encodeURIComponent(comisionId)}/inscripciones/${encodeURIComponent(usuarioId)}`,
+    `${API_BASE}/exam-content/comisiones/${encodeURIComponent(comisionId)}/inscripciones/${encodeURIComponent(usuarioId)}`,
     {
       method: 'DELETE',
       headers: authHeaders(),
