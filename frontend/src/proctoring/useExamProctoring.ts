@@ -110,14 +110,22 @@ export function obtenerOCrearSesion(
   nombre: string | undefined,
   examenContenidoId?: string | null,
   onError?: (err: unknown) => void,
+  onCreadaEn?: (creadaEn: string) => void,
 ): Promise<string | null> {
   const enVuelo = sesionEnCreacion.get(examenId);
   if (enVuelo) return enVuelo;
   const p = api
     // C-69: propagamos examen_contenido_id para que la sesión registre server-side
     // contra qué contenido (Moodle XML) rinde el alumno (vínculo REAL en proctoring_session).
+    // Vuln reload: el backend es idempotente — si el alumno ya tiene una sesión ACTIVA
+    // para este examen (p.ej. tras un F5), esto devuelve ESA MISMA sesión (misma
+    // `creada_en`) en vez de crear una zombie. `onCreadaEn` propaga esa fecha para
+    // anclar el timer del examen a la creación ORIGINAL.
     .crearSesionProctoring('examen', nombre, examenId, examenContenidoId)
-    .then((s) => s.id)
+    .then((s) => {
+      onCreadaEn?.(s.creada_en);
+      return s.id;
+    })
     .catch((err) => {
       // La creación falló: liberar la entrada para permitir reintento futuro.
       sesionEnCreacion.delete(examenId);
@@ -200,6 +208,13 @@ interface ExamenInfo {
 export interface ExamProctoringState {
   /** id de la sesión backend (real o mock). null hasta que resuelve. */
   sessionId: string | null;
+  /**
+   * `creada_en` (ISO) de la sesión, server-autoritativa. Vuln reload: Examen.tsx
+   * ancla el countdown a esta fecha (creación ORIGINAL de la sesión) en vez de a
+   * la hora de montaje del componente — así un F5 a mitad de examen no le regala
+   * tiempo extra al alumno. null hasta que la sesión resuelve.
+   */
+  sessionCreadaEn: string | null;
   /** score de riesgo acumulado (0..100). Prioriza, NO sanciona. */
   score: number;
   /** cantidad de eventos discretos detectados en la sesión. */
@@ -234,13 +249,18 @@ export function useExamProctoring(
   examen?: ExamenInfo | null,
 ): UseExamProctoringResult {
   const setProctoringSessionId = useApp((s) => s.setProctoringSessionId);
+  const setProctoringSessionCreadaEn = useApp((s) => s.setProctoringSessionCreadaEn);
   const principal = useApp((s) => s.principal);
   const addScore = useApp((s) => s.addScore);
   // C-64 D1: si Consent.tsx ya creó la sesión anticipada, reutilizarla — no crear otra.
   const existingSessionId = useApp((s) => s.proctoringSessionId);
+  // Vuln reload: `creada_en` persistida junto al id (sessionStorage). Sobrevive a un
+  // F5 y permite anclar el timer a la creación ORIGINAL sin volver a golpear el backend.
+  const existingSessionCreadaEn = useApp((s) => s.proctoringSessionCreadaEn);
 
   // ------ Estado observable ------
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [sessionCreadaEn, setSessionCreadaEn] = useState<string | null>(null);
   const [score, setScore] = useState(0);
   const [eventCount, setEventCount] = useState(0);
   const [activo, setActivo] = useState(false);
@@ -521,6 +541,9 @@ export function useExamProctoring(
       if (existingSessionId) {
         sessionIdRef.current = existingSessionId;
         setSessionId(existingSessionId);
+        // Ancla el timer a la creada_en YA persistida (sobrevive al F5): no hace
+        // falta golpear el backend de nuevo para tener esta fecha.
+        setSessionCreadaEn(existingSessionCreadaEn);
         sessionPromiseRef.current = Promise.resolve(existingSessionId);
       } else if (examen?.id) {
         // Abrir sesión en el backend (fire-and-forget; sessionPromiseRef permite que
@@ -542,6 +565,9 @@ export function useExamProctoring(
           // surface el motivo: Examen.tsx bloquea la entrada en vez de dejar una
           // rendición fantasma que no guarda respuestas ni calcula nota.
           (err) => setSessionError(mapearSessionInitError(err)),
+          // Persistir la creada_en junto al id: sobrevive a un F5 posterior y evita
+          // que el reload tenga que volver a pedirla (ver rama existingSessionId).
+          (creadaEn) => { setSessionCreadaEn(creadaEn); setProctoringSessionCreadaEn(creadaEn); },
         ).then(
           (id) => {
             if (cancelled || !id) return id ?? null;
@@ -637,7 +663,7 @@ export function useExamProctoring(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [examen?.id]);
 
-  return { sessionId, score, eventCount, activo, eventos, extraMonitorActive, sessionError, detener };
+  return { sessionId, sessionCreadaEn, score, eventCount, activo, eventos, extraMonitorActive, sessionError, detener };
 }
 
 // ---------------------------------------------------------------------------

@@ -47,6 +47,63 @@ function persistExamenActivo(e: Examen | null): void {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Persistencia de la sesión de proctoring activa en sessionStorage
+// ---------------------------------------------------------------------------
+// VULN CRÍTICA (reload durante la rendición): `proctoringSessionId` vivía SOLO en
+// memoria de Zustand. Recargar la página durante el examen lo volvía a `null`, y
+// `useExamProctoring` crea sesión `if (!proctoringSessionId)` → el reload disparaba
+// un POST /sessions nuevo. El backend ahora es idempotente (reanuda la sesión ACTIVA
+// del alumno+examen en vez de crear otra), pero persistir acá evita el POST duplicado
+// en primer lugar y es lo que permite que `useExamProctoring` reutilice la sesión sin
+// ida y vuelta al backend. Mismo patrón que `_EXAMEN_ACTIVO_KEY` arriba.
+const _PROCTORING_SESSION_ID_KEY = 'ae_proctoring_session_id';
+
+function loadProctoringSessionId(): string | null {
+  try {
+    if (typeof sessionStorage === 'undefined') return null;
+    return sessionStorage.getItem(_PROCTORING_SESSION_ID_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function persistProctoringSessionId(id: string | null): void {
+  try {
+    if (typeof sessionStorage === 'undefined') return;
+    if (id) sessionStorage.setItem(_PROCTORING_SESSION_ID_KEY, id);
+    else sessionStorage.removeItem(_PROCTORING_SESSION_ID_KEY);
+  } catch {
+    // sessionStorage no disponible → degradar silenciosamente.
+  }
+}
+
+// `creada_en` (ISO) de la sesión de proctoring — timer server-autoritativo.
+// Se persiste junto al id: al reanudar tras un F5, `useExamProctoring` reusa el
+// id sin volver a golpear el backend (ver comentario de `proctoringSessionId`
+// más abajo), así que necesita esta fecha YA guardada para anclar la cuenta
+// regresiva a la creación ORIGINAL de la sesión, no a la hora del remount.
+const _PROCTORING_SESSION_CREADA_EN_KEY = 'ae_proctoring_session_creada_en';
+
+function loadProctoringSessionCreadaEn(): string | null {
+  try {
+    if (typeof sessionStorage === 'undefined') return null;
+    return sessionStorage.getItem(_PROCTORING_SESSION_CREADA_EN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function persistProctoringSessionCreadaEn(creadaEn: string | null): void {
+  try {
+    if (typeof sessionStorage === 'undefined') return;
+    if (creadaEn) sessionStorage.setItem(_PROCTORING_SESSION_CREADA_EN_KEY, creadaEn);
+    else sessionStorage.removeItem(_PROCTORING_SESSION_CREADA_EN_KEY);
+  } catch {
+    // sessionStorage no disponible → degradar silenciosamente.
+  }
+}
+
 interface AppState {
   principal: Principal | null;
   rol: Rol | null;
@@ -79,6 +136,14 @@ interface AppState {
    * D6 del design.md: Zustand evita prop drilling entre componentes no relacionados.
    */
   proctoringSessionId: string | null;
+
+  /**
+   * `creada_en` (ISO, del backend) de la sesión de proctoring activa. Vuln reload:
+   * el timer del examen se ancla a ESTA fecha (server-autoritativa), no a la hora
+   * de montaje del componente — así un F5 a mitad de examen no le regala tiempo
+   * extra al alumno. Se persiste junto a `proctoringSessionId` (sessionStorage).
+   */
+  proctoringSessionCreadaEn: string | null;
 
   /**
    * ID del examen seleccionado en supervisión en vivo para ver el grid de personas
@@ -149,6 +214,8 @@ interface AppState {
   setFotoPerfil: (dataUrl: string) => void;
   /** C-46: setea el ID de la sesión de proctoring activa (o null para limpiarla). */
   setProctoringSessionId: (id: string | null) => void;
+  /** Setea la `creada_en` de la sesión activa — ancla del timer server-autoritativo. */
+  setProctoringSessionCreadaEn: (creadaEn: string | null) => void;
   /** Setea el examen seleccionado para ver su grid de personas en vivo. */
   setProctoringExamId: (id: string | null) => void;
   /** Setea la ruta de origen para el "Volver" del detalle de sesión. */
@@ -177,7 +244,11 @@ export const useApp = create<AppState>((set) => ({
   revisionSeleccionada: null,
   enrollmentStatus: null,
   isProfileComplete: false,
-  proctoringSessionId: null,
+  // Rehidratar la sesión de proctoring activa desde sessionStorage (sobrevive un
+  // reload durante la rendición — vuln crítica: sin esto, useExamProctoring creaba
+  // una sesión nueva en cada F5).
+  proctoringSessionId: loadProctoringSessionId(),
+  proctoringSessionCreadaEn: loadProctoringSessionCreadaEn(),
   proctoringExamId: null,
   proctoringDetailBackRoute: null,
   decisionesRevisor: {},
@@ -196,13 +267,29 @@ export const useApp = create<AppState>((set) => ({
   // limpiarse acá: si no, el intento 2 reusa la sesión FINALIZADA del intento 1 (Consent
   // solo crea sesión `if (!proctoringSessionId)`), sus respuestas se rechazan (409) y la
   // revisión muestra las del intento 1. Cada intento tiene que nacer con sesión nueva.
-  resetSesion: () => { persistExamenActivo(null); set({ anomaliasVivo: [], scorePropio: 0, examenActivo: null, proctoringSessionId: null, proctoringExamId: null }); },
+  resetSesion: () => {
+    persistExamenActivo(null);
+    persistProctoringSessionId(null);
+    persistProctoringSessionCreadaEn(null);
+    set({
+      anomaliasVivo: [],
+      scorePropio: 0,
+      examenActivo: null,
+      proctoringSessionId: null,
+      proctoringSessionCreadaEn: null,
+      proctoringExamId: null,
+    });
+  },
   setEnrollmentStatus: (e) => set({ enrollmentStatus: e, isProfileComplete: e.perfil_completo }),
   clearEnrollment: () => set({ enrollmentStatus: null, isProfileComplete: false }),
   setFotoPerfil: (dataUrl) => set((s) => ({
     principal: s.principal ? { ...s.principal, foto_perfil: dataUrl } : s.principal,
   })),
-  setProctoringSessionId: (id) => set({ proctoringSessionId: id }),
+  setProctoringSessionId: (id) => { persistProctoringSessionId(id); set({ proctoringSessionId: id }); },
+  setProctoringSessionCreadaEn: (creadaEn) => {
+    persistProctoringSessionCreadaEn(creadaEn);
+    set({ proctoringSessionCreadaEn: creadaEn });
+  },
   setProctoringExamId: (id) => set({ proctoringExamId: id }),
   setProctoringDetailBackRoute: (route) => set({ proctoringDetailBackRoute: route }),
   setDecisionRevisor: (id, decision) =>
