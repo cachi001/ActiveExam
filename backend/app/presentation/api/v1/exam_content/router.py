@@ -9,7 +9,16 @@ Taking router (student-facing):
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Request,
+    UploadFile,
+    status,
+)
 
 from app.application.exam_content.asociacion_service import AsociacionComisionService
 from app.application.exam_content.inscripcion_service import (
@@ -73,7 +82,9 @@ from app.presentation.api.v1.exam_content.schemas import (
     ExamenContenidoResumenResponse,
     ExamenesContenidoPaginadosResponse,
     ExamenRendicionResponse,
+    CapturaFirmadaResponse,
     ImportReporteResponse,
+    InformeDevolucionResponse,
     InscribirAlumnoRequest,
     InscribirPorCodigoRequest,
     InscribirPorCodigoResponse,
@@ -97,6 +108,7 @@ from app.presentation.api.v1.exam_content.schemas import (
     ResultadoAlumnoResponse,
     ResultadosExamenPaginadosResponse,
     RevisionExamenResponse,
+    SenalAnalisisResponse,
     SincronizarMoodleResponse,
 )
 
@@ -1250,6 +1262,7 @@ def create_exam_taking_router(
     session_factory=None,
     *,
     writeback_svc: MoodleWritebackService | None = None,
+    presign_service=None,
 ) -> APIRouter:
     """Router de lectura de examen para la rendición del alumno (C-69, D3).
 
@@ -1465,10 +1478,107 @@ def create_exam_taking_router(
                     nota_visible=r.nota_visible,
                     revision_disponible=r.revision_disponible,
                     cierre=r.cierre,
+                    session_id=r.session_id,
+                    nota_anulada=r.nota_anulada,
+                    veredicto=r.veredicto,
+                    informe_disponible=r.informe_disponible,
                 )
                 for r in items
             ],
             total=total,
+        )
+
+    @router.get(
+        "/mis-notas/{session_id}/informe",
+        response_model=InformeDevolucionResponse,
+        summary="Informe de devolución (SOLO nota anulada por fraude) — C-71 D12",
+    )
+    async def informe_devolucion(
+        session_id: str,
+        request: Request,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    ) -> InformeDevolucionResponse:
+        """Informe de devolución del alumno para SU sesión anulada por fraude.
+
+        Minimización (Ley 25.326): solo existe si la nota del titular fue anulada
+        por fraude; en cualquier otro caso (sesión ajena, sin anulación) → 404 sin
+        revelar evidencia. Cada acceso se audita como ejercicio del derecho de
+        acceso del titular (RN-DSR-01)."""
+        from app.application.review.informe_service import build_informe_devolucion
+        from app.infrastructure.storage.presign import StoragePresignService
+
+        factory = session_factory or getattr(
+            request.app.state, "session_factory", None
+        )
+        if factory is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Persistencia no inicializada.",
+            )
+        presign = presign_service or getattr(
+            request.app.state, "presign_service", None
+        )
+        if presign is None:
+            # Fallback determinista: el contrato de la URL firmada (expira 15 min)
+            # no depende del SDK real de storage en el MVP slim.
+            presign = StoragePresignService(endpoint="", bucket="evidence")
+
+        async with factory() as session:
+            informe = await build_informe_devolucion(
+                db=session,
+                session_id=session_id,
+                titular_idnumber=principal.id_institucional or "",
+                presign=presign,
+            )
+            if informe is None:
+                # Minimización: no se revela si la sesión existe o no.
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Informe no disponible.",
+                )
+            # Audit del acceso del TITULAR como derecho de acceso (Ley 25.326).
+            from app.domain.audit_chain import AuditEntry
+            from app.infrastructure.persistence.repositories.audit_log import (
+                AuditLogSqlRepository,
+            )
+
+            await AuditLogSqlRepository(session).append(
+                AuditEntry(
+                    actor=principal.id_institucional or "titular",
+                    timestamp="",
+                    ip=request.client.host if request.client else "",
+                    user_agent=request.headers.get("user-agent", ""),
+                    accion="derecho_acceso.informe_devolucion",
+                    evidencia_id=session_id,
+                    proposito=(
+                        "Ejercicio del derecho de acceso del titular al informe de "
+                        "devolución de su sesión anulada (Ley 25.326, RN-DSR-01)."
+                    ),
+                )
+            )
+            await session.commit()
+
+        return InformeDevolucionResponse(
+            session_id=informe.session_id,
+            decision=informe.decision,
+            resolucion=informe.resolucion,
+            motivo=informe.motivo,
+            senales=[
+                SenalAnalisisResponse(
+                    tipo=s.tipo,
+                    severidad=s.severidad,
+                    ocurrencias=s.ocurrencias,
+                    face_count_servidor=s.face_count_servidor,
+                    veredicto_reinferencia=s.veredicto_reinferencia,
+                )
+                for s in informe.senales
+            ],
+            capturas=[
+                CapturaFirmadaResponse(
+                    object_key=c.object_key, url=c.url, expires_in=c.expires_in
+                )
+                for c in informe.capturas
+            ],
         )
 
     # -----------------------------------------------------------------------

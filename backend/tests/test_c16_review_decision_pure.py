@@ -1,7 +1,13 @@
-"""Tests puros del servicio de decision del revisor (c-16 slim).
+"""Tests puros del servicio de decision del revisor (c-16, evolucionado
+c-71 slice 2 D6/D7).
 
-Verifica RN-RV-07 (inmutabilidad de la decision terminal) y la regla L2.5
-(NUNCA sancion automatica — solo registro del juicio humano).
+Verifica RN-RV-07 (inmutabilidad de la decision terminal de REVISION) y la
+regla L2.5 (NUNCA sancion automatica — solo registro del juicio humano).
+
+Modelo de dos fases (D6): la fase de revision emite `sin_hallazgos` |
+`aprobado` | `caso_abierto`. `caso_abierto` es terminal de la revision (no
+se puede volver a revisar) pero NO valida ni anula la nota todavia — eso lo
+decide la fase de resolucion (`resolver_caso`, fuera de este servicio).
 """
 
 from __future__ import annotations
@@ -14,7 +20,7 @@ from app.application.review.service import (
     DecisionAlreadyMadeError,
     ReviewDecisionService,
 )
-from app.domain.review.decision import DecisionTerminal, ReviewDecisionRecord
+from app.domain.review.decision import DecisionRevision, ReviewDecisionRecord
 
 
 @dataclass
@@ -30,7 +36,7 @@ class FakeRepo:
         self,
         session_id: str,
         *,
-        decision: DecisionTerminal,
+        decision: DecisionRevision,
         actor: str,
         observaciones: str | None,
     ) -> str:
@@ -60,7 +66,7 @@ def _make_service(records: dict | None = None):
         records={
             "s1": ReviewDecisionRecord(
                 session_id="s1",
-                decision=DecisionTerminal.PENDIENTE,
+                decision=DecisionRevision.PENDIENTE,
                 actor=None,
                 decision_at=None,
                 observaciones=None,
@@ -77,17 +83,47 @@ def _make_service(records: dict | None = None):
 # ---------------------------------------------------------------------------
 
 
-def test_decision_terminal_enum_tiene_4_estados_y_pendiente_no_es_terminal() -> None:
+def test_decision_revision_tiene_4_estados_y_pendiente_no_es_terminal() -> None:
     from app.domain.review.decision import es_terminal
 
-    assert DecisionTerminal.PENDIENTE.value == "pendiente"
-    assert DecisionTerminal.DESCARTADA.value == "descartada"
-    assert DecisionTerminal.ESCALADA.value == "escalada"
-    assert DecisionTerminal.DERIVADA.value == "derivada"
-    assert not es_terminal(DecisionTerminal.PENDIENTE)
-    assert es_terminal(DecisionTerminal.DESCARTADA)
-    assert es_terminal(DecisionTerminal.ESCALADA)
-    assert es_terminal(DecisionTerminal.DERIVADA)
+    assert DecisionRevision.PENDIENTE.value == "pendiente"
+    assert DecisionRevision.SIN_HALLAZGOS.value == "sin_hallazgos"
+    assert DecisionRevision.APROBADO.value == "aprobado"
+    assert DecisionRevision.CASO_ABIERTO.value == "caso_abierto"
+    assert not es_terminal(DecisionRevision.PENDIENTE)
+    assert es_terminal(DecisionRevision.SIN_HALLAZGOS)
+    assert es_terminal(DecisionRevision.APROBADO)
+    assert es_terminal(DecisionRevision.CASO_ABIERTO)
+
+
+def test_escalada_ya_no_existe_como_miembro_del_enum() -> None:
+    """D6: `escalada` se dropea del modelo unificado (sin downstream)."""
+    assert not hasattr(DecisionRevision, "ESCALADA")
+    with pytest.raises(ValueError):
+        DecisionRevision("escalada")
+
+
+def test_mapeo_legado_descartada_derivada_escalada() -> None:
+    """D6: valores viejos (c-16 slim) se traducen al modelo nuevo."""
+    assert DecisionRevision.desde_valor_legado("pendiente") is DecisionRevision.PENDIENTE
+    assert (
+        DecisionRevision.desde_valor_legado("descartada")
+        is DecisionRevision.SIN_HALLAZGOS
+    )
+    assert (
+        DecisionRevision.desde_valor_legado("derivada") is DecisionRevision.CASO_ABIERTO
+    )
+    assert (
+        DecisionRevision.desde_valor_legado("escalada") is DecisionRevision.CASO_ABIERTO
+    )
+
+
+def test_caso_abierto_no_valida_la_nota_sin_hallazgos_y_aprobado_si() -> None:
+    from app.domain.review.decision import valida_la_nota
+
+    assert valida_la_nota(DecisionRevision.SIN_HALLAZGOS) is True
+    assert valida_la_nota(DecisionRevision.APROBADO) is True
+    assert valida_la_nota(DecisionRevision.CASO_ABIERTO) is False
 
 
 @pytest.mark.asyncio
@@ -95,21 +131,38 @@ async def test_decide_persiste_y_audita_la_primera_decision() -> None:
     service, repo, auditor = _make_service()
     result = await service.decide(
         "s1",
-        decision=DecisionTerminal.DESCARTADA,
+        decision=DecisionRevision.SIN_HALLAZGOS,
         actor="revisor-1",
         observaciones="sin evidencia relevante",
     )
-    assert result.previous == DecisionTerminal.PENDIENTE
-    assert result.new == DecisionTerminal.DESCARTADA
+    assert result.previous == DecisionRevision.PENDIENTE
+    assert result.new == DecisionRevision.SIN_HALLAZGOS
     assert result.actor == "revisor-1"
-    assert repo.persisted == [("s1", "descartada", "revisor-1", "sin evidencia relevante")]
+    assert repo.persisted == [
+        ("s1", "sin_hallazgos", "revisor-1", "sin evidencia relevante")
+    ]
     assert auditor.calls == [
         (
             "s1",
             "revisor-1",
-            "descartada",
+            "sin_hallazgos",
             "review.decide: registro inmutable de decision terminal (RN-RV-07, L2.5)",
         )
+    ]
+
+
+@pytest.mark.asyncio
+async def test_decide_caso_abierto_persiste_como_derivacion_sin_validar_nota() -> None:
+    service, repo, _ = _make_service()
+    result = await service.decide(
+        "s1",
+        decision=DecisionRevision.CASO_ABIERTO,
+        actor="revisor-2",
+        observaciones="hay senales para resolver",
+    )
+    assert result.new == DecisionRevision.CASO_ABIERTO
+    assert repo.persisted == [
+        ("s1", "caso_abierto", "revisor-2", "hay senales para resolver")
     ]
 
 
@@ -119,7 +172,7 @@ async def test_decide_rechaza_pendiente_porque_no_es_terminal() -> None:
     with pytest.raises(ValueError, match="no es terminal"):
         await service.decide(
             "s1",
-            decision=DecisionTerminal.PENDIENTE,
+            decision=DecisionRevision.PENDIENTE,
             actor="r",
             observaciones=None,
         )
@@ -131,7 +184,7 @@ async def test_decide_sesion_inexistente_lanza_error() -> None:
     with pytest.raises(ValueError, match="no encontrada"):
         await service.decide(
             "no-existe",
-            decision=DecisionTerminal.DESCARTADA,
+            decision=DecisionRevision.SIN_HALLAZGOS,
             actor="r",
             observaciones=None,
         )
@@ -144,7 +197,7 @@ async def test_decide_inmutable_lanza_error_y_audita_intento() -> None:
         records={
             "s2": ReviewDecisionRecord(
                 session_id="s2",
-                decision=DecisionTerminal.DERIVADA,
+                decision=DecisionRevision.CASO_ABIERTO,
                 actor="revisor-original",
                 decision_at="2026-06-10T10:00:00+00:00",
                 observaciones=None,
@@ -154,19 +207,19 @@ async def test_decide_inmutable_lanza_error_y_audita_intento() -> None:
     with pytest.raises(DecisionAlreadyMadeError) as exc:
         await service.decide(
             "s2",
-            decision=DecisionTerminal.DESCARTADA,
+            decision=DecisionRevision.SIN_HALLAZGOS,
             actor="revisor-malicioso",
             observaciones="trato de cambiarla",
         )
-    assert exc.value.current == DecisionTerminal.DERIVADA
+    assert exc.value.current == DecisionRevision.CASO_ABIERTO
     # No se persistio
-    assert ("s2", "descartada", "revisor-malicioso", "trato de cambiarla") not in repo.persisted
-    # Pero el intento quedo en el audit log con propopsito de rechazo
+    assert ("s2", "sin_hallazgos", "revisor-malicioso", "trato de cambiarla") not in repo.persisted
+    # Pero el intento quedo en el audit log con proposito de rechazo
     assert auditor.calls == [
         (
             "s2",
             "revisor-malicioso",
-            "derivada",  # decision actual, NO la intentada
+            "caso_abierto",  # decision actual, NO la intentada
             "review.decide: intento de cambiar decision terminal — RECHAZADO",
         )
     ]

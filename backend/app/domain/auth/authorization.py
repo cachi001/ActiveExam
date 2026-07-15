@@ -20,6 +20,7 @@ Sin framework ni infraestructura (D1) -> testeable sin DB ni red.
 
 from __future__ import annotations
 
+from app.domain.auth.capabilities import tiene_capacidad
 from app.domain.auth.errors import (
     ForbiddenError,
     MfaRequiredError,
@@ -56,6 +57,19 @@ def exigir_roles(
     if not principal.tiene_algun_rol(permitidos):
         raise ForbiddenError(
             "El principal no posee ninguno de los roles requeridos."
+        )
+
+
+def exigir_capacidad(principal: AuthenticatedPrincipal, capacidad: str) -> None:
+    """Exige que el principal tenga la ``capacidad`` (c-71 slice 2, D8).
+
+    Config-driven: la capacidad se resuelve contra ``CAPABILITY_ROLES``
+    (dominio de ``capabilities``), no contra una lista de roles hardcodeada
+    en el endpoint. Reasignar la capacidad a otro rol es un cambio de ese
+    mapa, no de este guard."""
+    if not any(tiene_capacidad(rol, capacidad) for rol in principal.roles):
+        raise ForbiddenError(
+            f"El principal no posee la capacidad {capacidad!r}."
         )
 
 

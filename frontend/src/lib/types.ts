@@ -142,6 +142,14 @@ export interface NotaExamen {
   revision_disponible?: boolean;
   /** C-69: ISO de la fecha de cierre del examen (para el mensaje de disponibilidad). */
   cierre?: string | null;
+  /** C-71 slice 2 (D11b/D12): veredicto de resolución, visto por PULL. */
+  session_id?: string;
+  /** true si la nota fue anulada por fraude (efecto derivado del último acto). */
+  nota_anulada?: boolean;
+  /** 'anulado_por_fraude' cuando la nota fue anulada; si no, null. */
+  veredicto?: string | null;
+  /** true SOLO si la nota fue anulada por fraude → habilita el informe de devolución. */
+  informe_disponible?: boolean;
 }
 
 /** C-69: respuesta paginada del endpoint de notas del alumno. */
@@ -278,7 +286,8 @@ export interface SesionRevision {
   fecha: string;
   duracion: string;
   foto: string;
-  decision: 'pendiente' | 'descartada' | 'escalada' | 'derivada';
+  // C-71 slice 2: modelo de decisión unificado (dos fases, sin `escalada`).
+  decision: DecisionRevisor;
   eventos: EventoSesion[];
   cadena_custodia: {
     hash_cliente: string;
@@ -511,16 +520,71 @@ export interface SesionProctoringResumen {
 }
 
 /**
- * Decisión humana de un revisor sobre una sesión de la cola de revisión.
+ * Modelo de decisión de DOS FASES (C-71 slice 2, D6/D7) — espeja el backend.
+ * `escalada` fue DROPEADA (sin downstream); "escalar a otra autoridad" se cubre
+ * por la separación de capacidad (resolver_caso).
  *
  * El sistema nunca sanciona automáticamente: el score solo prioriza para revisión.
- * La decisión disciplinaria es siempre del revisor humano; la plataforma la registra.
+ * La decisión es siempre humana; la plataforma la registra de forma inmutable.
  */
-export type DecisionRevisor =
-  | 'aprobado'
-  | 'flaggeado_para_sumario'
-  | 'sin_hallazgos'
-  | 'pendiente';
+
+/** Fase 1 — Revisión (capacidad `revisar_sesion`). Terminal de la revisión. */
+export type DecisionRevision =
+  | 'sin_hallazgos'   // falso positivo; valida la nota
+  | 'aprobado'        // revisado, legítimo; valida la nota
+  | 'caso_abierto';   // derivación: hay algo que resolver (habilita la fase 2)
+
+/** Fase 2 — Resolución (capacidad `resolver_caso`). Solo si el caso está abierto. */
+export type DecisionResolucion =
+  | 'anulado_por_fraude'  // anula la nota (reversible por acto compensatorio)
+  | 'caso_descartado';    // cierra el caso validando la nota
+
+/**
+ * Unión de todas las decisiones humanas posibles (dos fases) + estado inicial.
+ * Reemplaza el modelo plano anterior (aprobado/flaggeado_para_sumario/…), cerrando
+ * el gap con el backend.
+ */
+export type DecisionRevisor = DecisionRevision | DecisionResolucion | 'pendiente';
+
+/** Etiquetas legibles derivadas de los valores del backend (fase 1). */
+export const DECISION_REVISION_LABEL: Record<DecisionRevision, string> = {
+  sin_hallazgos: 'Sin observaciones',
+  aprobado: 'Aprobada con nota',
+  caso_abierto: 'Abrir caso (derivar)',
+};
+
+/** Etiquetas legibles derivadas de los valores del backend (fase 2). */
+export const DECISION_RESOLUCION_LABEL: Record<DecisionResolucion, string> = {
+  anulado_por_fraude: 'Anular la nota por fraude',
+  caso_descartado: 'Descartar el caso',
+};
+
+/**
+ * Informe de devolución del alumno (C-71 slice 2, D12). Solo existe cuando la
+ * nota fue anulada por fraude (minimización, Ley 25.326).
+ */
+export interface SenalAnalisis {
+  tipo: string;
+  severidad: string;
+  ocurrencias: number;
+  face_count_servidor?: number | null;
+  veredicto_reinferencia: string;
+}
+
+export interface CapturaFirmada {
+  object_key: string;
+  url: string;
+  expires_in: number;
+}
+
+export interface InformeDevolucion {
+  session_id: string;
+  decision: string;
+  resolucion: string;
+  motivo?: string | null;
+  senales: SenalAnalisis[];
+  capturas: CapturaFirmada[];
+}
 
 /**
  * Detalle completo de una sesión de proctoring (para la vista de revisión).

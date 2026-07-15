@@ -44,6 +44,7 @@ from app.infrastructure.persistence.models.moodle_writeback import (  # noqa: F4
     RespuestaAlumnoModel,
 )
 from app.infrastructure.persistence.models.proctoring import (  # noqa: F401
+    ProctoringEventModel,
     ProctoringSessionModel,
 )
 from app.presentation.api.v1.exam_content.router import create_exam_content_router
@@ -70,6 +71,7 @@ _TABLES_TO_CREATE = [
     PreguntaExamenModel.__table__,
     OpcionRespuestaModel.__table__,
     ProctoringSessionModel.__table__,
+    ProctoringEventModel.__table__,
     RespuestaAlumnoModel.__table__,
     MoodleWritebackEstadoModel.__table__,
     MoodleWritebackAuditModel.__table__,

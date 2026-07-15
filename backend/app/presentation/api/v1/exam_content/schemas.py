@@ -566,6 +566,14 @@ class MiNotaResponse(BaseModel):
     nota_visible: bool = True
     revision_disponible: bool = False
     cierre: datetime | None = None
+    # Veredicto de resolución (C-71 slice 2, D11b/D12). El alumno lo ve por PULL.
+    # ``nota_anulada``: efecto derivado del último acto (reversible, hook c-18).
+    # ``informe_disponible``: True SOLO si la nota fue anulada por fraude —
+    # habilita el informe de devolución (minimización, Ley 25.326).
+    session_id: str
+    nota_anulada: bool = False
+    veredicto: str | None = None
+    informe_disponible: bool = False
 
 
 class MisNotasResponse(BaseModel):
@@ -575,3 +583,43 @@ class MisNotasResponse(BaseModel):
 
     items: list[MiNotaResponse]
     total: int
+
+
+class SenalAnalisisResponse(BaseModel):
+    """Una señal (detector) re-inferida server-side, agregada por tipo (C-71 D12)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    tipo: str
+    severidad: str
+    ocurrencias: int
+    face_count_servidor: int | None = None
+    veredicto_reinferencia: str
+
+
+class CapturaFirmadaResponse(BaseModel):
+    """Captura de evidencia accesible por URL firmada (expira 15 min, C-71 D12)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    object_key: str
+    url: str
+    expires_in: int
+
+
+class InformeDevolucionResponse(BaseModel):
+    """Informe de devolución del alumno (SOLO nota anulada por fraude, C-71 D12).
+
+    Disclosure de debido proceso: decisión + motivo + análisis por señal
+    (server-side) + capturas firmadas. Minimización: este recurso solo existe
+    para sesiones anuladas por fraude del propio titular (Ley 25.326).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    session_id: str
+    decision: str
+    resolucion: str
+    motivo: str | None = None
+    senales: list[SenalAnalisisResponse]
+    capturas: list[CapturaFirmadaResponse]

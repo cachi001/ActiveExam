@@ -22,6 +22,8 @@ import type {
   ExamenContenidoResumen,
   // C-69: notas académicas del alumno + estado de cola de revisión
   NotaExamen, MisNotasResponse, RevisionExamen,
+  // C-71 slice 2: informe de devolución del alumno (solo nota anulada por fraude)
+  InformeDevolucion,
 } from './types';
 import { INSTITUTION } from '../config/institution';
 import { authProvider } from './authProvider';
@@ -623,6 +625,24 @@ export const api = {
       return resp.items ?? [];
     } catch {
       return [];
+    }
+  },
+
+  /**
+   * C-71 slice 2 (D12): informe de devolución del alumno para SU sesión anulada
+   * por fraude. GET /exam-content/mis-notas/{sessionId}/informe. Solo existe si la
+   * nota del titular fue anulada por fraude (minimización, Ley 25.326); en cualquier
+   * otro caso el backend responde 404 → devolvemos null. El acceso queda auditado
+   * server-side como ejercicio del derecho de acceso del titular (RN-DSR-01).
+   */
+  async informeDevolucion(sessionId: string): Promise<InformeDevolucion | null> {
+    try {
+      return await realFetch<InformeDevolucion>(
+        `/exam-content/mis-notas/${encodeURIComponent(sessionId)}/informe`,
+        { method: 'GET' },
+      );
+    } catch {
+      return null;
     }
   },
 

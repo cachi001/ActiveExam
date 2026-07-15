@@ -65,14 +65,17 @@ function PersonaCard({
 export function ColaNivelPersonas({
   personas,
   selId,
+  puedeResolver,
   onSeleccionar,
   onResolver,
   onVerDetalle,
 }: {
   personas: SesionEnriquecida[];
   selId: string | null;
+  /** Capacidad `resolver_caso` (front-hides; el backend deniega igual). */
+  puedeResolver: boolean;
   onSeleccionar: (id: string) => void;
-  onResolver: (id: string, decision: DecisionRevisor) => void;
+  onResolver: (id: string, decision: DecisionRevisor, motivo: string, evidenciaRef?: string) => void;
   onVerDetalle: (id: string) => void;
 }) {
   const seleccionada = personas.find((p) => p.sesion.id === selId) ?? null;
@@ -115,7 +118,10 @@ export function ColaNivelPersonas({
               <ColaPanelDecision
                 sesion={seleccionada.sesion}
                 info={seleccionada.info}
-                onResolver={(d) => onResolver(seleccionada.sesion.id, d)}
+                puedeResolver={puedeResolver}
+                onResolver={(d, motivo, evidenciaRef) =>
+                  onResolver(seleccionada.sesion.id, d, motivo, evidenciaRef)
+                }
                 onVerDetalle={() => onVerDetalle(seleccionada.sesion.id)}
               />
             ) : (

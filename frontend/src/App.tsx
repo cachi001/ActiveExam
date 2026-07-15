@@ -13,6 +13,7 @@ const PreExamen             = lazy(() => import('./screens/PreExamen'));
 const Examen                = lazy(() => import('./screens/Examen'));
 const Cierre                = lazy(() => import('./screens/Cierre'));
 const ExamenRevision        = lazy(() => import('./screens/ExamenRevision'));
+const InformeDevolucionAlumno = lazy(() => import('./screens/InformeDevolucionAlumno'));
 const Proctor               = lazy(() => import('./screens/Proctor'));
 const ExamenPersonasGrid    = lazy(() => import('./screens/ExamenPersonasGrid'));
 const Revisor               = lazy(() => import('./screens/Revisor'));
@@ -65,6 +66,7 @@ export default function App() {
     '/examen': g(<Examen />, ESTUDIANTE),
     '/cierre': g(<Cierre />, ESTUDIANTE),
     '/alumno/revision/:examenId': g(<ExamenRevision />, ESTUDIANTE),
+    '/alumno/informe/:sessionId': g(<InformeDevolucionAlumno />, ESTUDIANTE),
 
     // Supervisión en vivo (proctor + admin)
     '/proctor': g(<Proctor />, SUPERVISION),

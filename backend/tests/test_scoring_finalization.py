@@ -199,3 +199,23 @@ def test_ningun_path_produce_veredicto_solo_estado() -> None:
     res = asyncio.run(svc.consolidar("sess-1"))
     assert repo_s.sesion.estado in (EstadoSesion.FLAGGEADA, EstadoSesion.CERRADA)
     assert not hasattr(res, "sancion") and not hasattr(res, "veredicto")
+
+
+def test_score_maximo_no_produce_anulado_por_fraude_c71() -> None:
+    """c-71 slice 2, D13 / regla dura #5: NO existe transicion automatica
+    score/umbral -> `anulado_por_fraude`. Un score al tope solo PRIORIZA la
+    cola (FLAGGEADA); la anulacion es siempre un acto humano con `resolver_caso`
+    (ReviewResolutionService.resolve), jamas un efecto de la consolidacion."""
+    from app.domain.review.decision import DecisionResolucion
+
+    svc, repo_s, _ = _service(
+        _sesion(EstadoSesion.FINALIZADA), _eventos_severos(50), umbral=5.0
+    )
+    res = asyncio.run(svc.consolidar("sess-1"))
+    # Score al tope (cap) -> priorizada, nunca anulada.
+    assert res.score_final == SCORE_CAP
+    assert repo_s.sesion.estado is EstadoSesion.FLAGGEADA
+    # El resultado del cierre no expone ninguna resolucion/anulacion.
+    assert not hasattr(res, "resolucion")
+    for valor in (v.value for v in DecisionResolucion):
+        assert valor not in repr(res)

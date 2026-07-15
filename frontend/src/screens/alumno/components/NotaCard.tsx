@@ -1,4 +1,4 @@
-import { Card, Button } from '../../../ui/components';
+import { Card, Button, Icon } from '../../../ui/components';
 import { useNavigate } from '../../../lib/router';
 import type { NotaExamen } from '../../../lib/types';
 
@@ -48,6 +48,14 @@ export function NotaCard({ nota }: { nota: NotaExamen }) {
         </p>
       )}
 
+      {/* C-71 slice 2 (D12): informe de devolución SOLO si la nota fue anulada por fraude. */}
+      {nota.nota_anulada && (
+        <p className="text-[12px] text-error font-medium inline-flex items-center gap-xs">
+          <Icon name="block" className="text-[14px]" />
+          Nota anulada por fraude
+        </p>
+      )}
+
       {nota.examen_id && nota.revision_disponible && (
         <Button
           variant="ghost"
@@ -57,6 +65,18 @@ export function NotaCard({ nota }: { nota: NotaExamen }) {
           className="-ml-sm"
         >
           Revisar mis respuestas
+        </Button>
+      )}
+
+      {nota.informe_disponible && nota.session_id && (
+        <Button
+          variant="ghost"
+          size="sm"
+          icon="gavel"
+          onClick={() => navigate(`/alumno/informe/${nota.session_id}`)}
+          className="-ml-sm text-error"
+        >
+          Ver informe de devolución
         </Button>
       )}
     </Card>
