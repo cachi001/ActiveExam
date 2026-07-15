@@ -53,7 +53,10 @@ from app.application.exam_content.import_service import ImportacionMoodleService
 from app.application.exam_content.taking_service import LecturaExamenService, proyectar_examen
 from app.domain.auth.identity import AuthenticatedPrincipal
 from app.domain.auth.roles import Rol
-from app.domain.exam_content.config import validar_config_examen
+from app.domain.exam_content.config import (
+    campos_congelados_en_cambio,
+    validar_config_examen,
+)
 from app.domain.exam_content.entities import Materia
 from app.domain.exam_content.errors import (
     CodigoMatriculacionDuplicadoError,
@@ -883,7 +886,7 @@ def create_exam_content_router(
     # config; PATCH la actualiza parcialmente (extra='forbid', validaciones → 422).
     # -----------------------------------------------------------------------
 
-    def _config_to_response(examen) -> ExamenConfigResponse:
+    def _config_to_response(examen, *, bloqueada: bool = False) -> ExamenConfigResponse:
         return ExamenConfigResponse(
             tiempo_limite_min=examen.tiempo_limite_min,
             intentos_permitidos=examen.intentos_permitidos,
@@ -894,6 +897,7 @@ def create_exam_content_router(
             mezclar_preguntas=examen.mezclar_preguntas,
             mostrar_nota=examen.mostrar_nota,
             revision_habilitada=examen.revision_habilitada,
+            bloqueada=bloqueada,
         )
 
     @router.get(
@@ -915,14 +919,14 @@ def create_exam_content_router(
 
         async with session_factory() as session:
             examen = await ExamenContenidoSqlRepository(session).obtener(examen_id)
+            if examen is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail={"error": "examen_no_encontrado", "examen_id": examen_id},
+                )
+            ya_rendido = await _seleccion_bloqueada(session, examen_id)
 
-        if examen is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail={"error": "examen_no_encontrado", "examen_id": examen_id},
-            )
-
-        return _config_to_response(examen)
+        return _config_to_response(examen, bloqueada=ya_rendido)
 
     @router.patch(
         "/{examen_id}/config",
@@ -962,6 +966,28 @@ def create_exam_content_router(
                     detail={"error": "examen_no_encontrado", "examen_id": examen_id},
                 )
 
+            # Candado: si el examen ya tiene >= 1 intento finalizado, los campos
+            # de mecánica/nota quedan CONGELADOS (cambiarlos alteraría notas ya
+            # calculadas / la equidad de quienes rindieron). Los controles de
+            # publicación (mostrar_nota, revision_habilitada) siguen editables.
+            ya_rendido = await _seleccion_bloqueada(session, examen_id)
+            congelados = campos_congelados_en_cambio(cambios, ya_rendido=ya_rendido)
+            if congelados:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={
+                        "error": "config_congelada",
+                        "mensaje": (
+                            "El examen ya tiene intentos finalizados: no se pueden "
+                            "modificar los campos de mecánica/nota "
+                            f"({', '.join(sorted(congelados))}). Solo se puede "
+                            "cambiar la publicación de resultados (mostrar_nota, "
+                            "revision_habilitada)."
+                        ),
+                        "campos": sorted(congelados),
+                    },
+                )
+
             # Merge: campo enviado → su valor; ausente → el valor actual del examen.
             def _merged(campo: str):
                 return cambios[campo] if campo in cambios else getattr(actual, campo)
@@ -984,7 +1010,7 @@ def create_exam_content_router(
             examen = await repo.actualizar_config(examen_id, cambios)
             await session.commit()
 
-        return _config_to_response(examen)
+        return _config_to_response(examen, bloqueada=ya_rendido)
 
     # -----------------------------------------------------------------------
     # Pool de preguntas seleccionables (C-69, opción B) — admin-only, SIN MFA.

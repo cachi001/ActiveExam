@@ -298,6 +298,7 @@ async def test_get_config_devuelve_defaults(admin_app, factory):
         "mezclar_preguntas": False,
         "mostrar_nota": "al_cerrar",
         "revision_habilitada": False,
+        "bloqueada": False,
     }
 
 

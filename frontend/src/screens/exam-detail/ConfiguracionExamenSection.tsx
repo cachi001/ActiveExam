@@ -17,7 +17,7 @@ function localInputToIso(local: string): string | null {
   return d.toISOString();
 }
 
-interface ConfigForm {
+export interface ConfigForm {
   sinLimite: boolean;
   tiempoLimiteMin: string;
   intentosPermitidos: string;
@@ -82,7 +82,15 @@ function validarConfig(form: ConfigForm): string | null {
   return null;
 }
 
-function formToPatch(form: ConfigForm): ExamConfig {
+export function formToPatch(form: ConfigForm, bloqueada: boolean): Partial<ExamConfig> {
+  // Con el examen ya rendido, los campos de mecánica/nota están congelados en el
+  // backend (409). Mandamos SOLO la publicación de resultados para no gatillar el
+  // rechazo con valores sin cambios.
+  const publicacion: Partial<ExamConfig> = {
+    mostrar_nota: form.mostrarNota,
+    revision_habilitada: form.revisionHabilitada,
+  };
+  if (bloqueada) return publicacion;
   return {
     tiempo_limite_min: form.sinLimite ? null : Number(form.tiempoLimiteMin),
     intentos_permitidos: Number(form.intentosPermitidos),
@@ -91,13 +99,13 @@ function formToPatch(form: ConfigForm): ExamConfig {
     nota_maxima: Number(form.notaMaxima),
     nota_aprobacion: Number(form.notaAprobacion),
     mezclar_preguntas: form.mezclarPreguntas,
-    mostrar_nota: form.mostrarNota,
-    revision_habilitada: form.revisionHabilitada,
+    ...publicacion,
   };
 }
 
 export function ConfiguracionExamenSection({ examenId }: { examenId: string }) {
   const [form, setForm] = useState<ConfigForm | null>(null);
+  const [bloqueada, setBloqueada] = useState(false);
   const [cargando, setCargando] = useState(true);
   const [errorCarga, setErrorCarga] = useState<string | null>(null);
 
@@ -111,6 +119,7 @@ export function ConfiguracionExamenSection({ examenId }: { examenId: string }) {
     try {
       const cfg = await getExamConfig(examenId);
       setForm(configToForm(cfg));
+      setBloqueada(!!cfg.bloqueada);
     } catch (err: unknown) {
       setErrorCarga(err instanceof Error ? err.message : 'No se pudo cargar la configuración.');
       setForm(null);
@@ -141,8 +150,9 @@ export function ConfiguracionExamenSection({ examenId }: { examenId: string }) {
     setOkGuardado(false);
     setErrorGuardar(null);
     try {
-      const cfg = await setExamConfig(examenId, formToPatch(form));
+      const cfg = await setExamConfig(examenId, formToPatch(form, bloqueada));
       setForm(configToForm(cfg));
+      setBloqueada(!!cfg.bloqueada);
       setOkGuardado(true);
     } catch (err: unknown) {
       setErrorGuardar(err instanceof Error ? err.message : 'No se pudo guardar la configuración.');
@@ -179,6 +189,17 @@ export function ConfiguracionExamenSection({ examenId }: { examenId: string }) {
 
       {!cargando && !errorCarga && form && (
         <div className="space-y-5">
+          {bloqueada && (
+            <div className="flex items-start gap-sm text-on-surface bg-warning-container/50 border border-warning/40 rounded-none px-4 py-3 text-label-sm">
+              <Icon name="lock" className="text-[18px] shrink-0 text-warning" fill />
+              <span>
+                Este examen ya tiene intentos finalizados. La configuración de
+                mecánica y nota (tiempo, intentos, ventana, notas, mezclar) quedó
+                <strong> congelada</strong> para no alterar notas ya calculadas. Solo
+                podés cambiar cuándo se publica la nota y si se permite la revisión.
+              </span>
+            </div>
+          )}
           {okGuardado && (
             <div className="flex items-center gap-sm text-success bg-success-container rounded-none px-4 py-3 text-label-sm">
               <Icon name="check_circle" className="text-[18px] shrink-0" fill />
@@ -202,7 +223,7 @@ export function ConfiguracionExamenSection({ examenId }: { examenId: string }) {
               className={INPUT_CLS}
               placeholder="Ej. 60"
               value={form.tiempoLimiteMin}
-              disabled={form.sinLimite || guardando}
+              disabled={form.sinLimite || guardando || bloqueada}
               onChange={(e) => update('tiempoLimiteMin', e.target.value)}
             />
             <label className="mt-2 inline-flex items-center gap-sm cursor-pointer select-none text-label-md text-on-surface-variant">
@@ -210,7 +231,7 @@ export function ConfiguracionExamenSection({ examenId }: { examenId: string }) {
                 type="checkbox"
                 className="w-4 h-4 accent-primary"
                 checked={form.sinLimite}
-                disabled={guardando}
+                disabled={guardando || bloqueada}
                 onChange={(e) => update('sinLimite', e.target.checked)}
               />
               Sin límite de tiempo
@@ -226,7 +247,7 @@ export function ConfiguracionExamenSection({ examenId }: { examenId: string }) {
               inputMode="numeric"
               className={INPUT_CLS}
               value={form.intentosPermitidos}
-              disabled={guardando}
+              disabled={guardando || bloqueada}
               onChange={(e) => update('intentosPermitidos', e.target.value)}
             />
           </div>
@@ -240,7 +261,7 @@ export function ConfiguracionExamenSection({ examenId }: { examenId: string }) {
                 required
                 className={INPUT_CLS}
                 value={form.apertura}
-                disabled={guardando}
+                disabled={guardando || bloqueada}
                 onChange={(e) => update('apertura', e.target.value)}
               />
             </div>
@@ -252,7 +273,7 @@ export function ConfiguracionExamenSection({ examenId }: { examenId: string }) {
                 required
                 className={INPUT_CLS}
                 value={form.cierre}
-                disabled={guardando}
+                disabled={guardando || bloqueada}
                 onChange={(e) => update('cierre', e.target.value)}
               />
             </div>
@@ -273,7 +294,7 @@ export function ConfiguracionExamenSection({ examenId }: { examenId: string }) {
                 inputMode="decimal"
                 className={INPUT_CLS}
                 value={form.notaMaxima}
-                disabled={guardando}
+                disabled={guardando || bloqueada}
                 onChange={(e) => update('notaMaxima', e.target.value)}
               />
             </div>
@@ -287,7 +308,7 @@ export function ConfiguracionExamenSection({ examenId }: { examenId: string }) {
                 inputMode="decimal"
                 className={INPUT_CLS}
                 value={form.notaAprobacion}
-                disabled={guardando}
+                disabled={guardando || bloqueada}
                 onChange={(e) => update('notaAprobacion', e.target.value)}
               />
             </div>
@@ -348,7 +369,7 @@ export function ConfiguracionExamenSection({ examenId }: { examenId: string }) {
               role="switch"
               aria-checked={form.mezclarPreguntas}
               aria-label="Mezclar preguntas"
-              disabled={guardando}
+              disabled={guardando || bloqueada}
               onClick={() => update('mezclarPreguntas', !form.mezclarPreguntas)}
               className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors disabled:opacity-50
                 ${form.mezclarPreguntas ? 'bg-primary' : 'bg-surface-container-high'}`}

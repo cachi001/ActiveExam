@@ -462,6 +462,9 @@ class ExamenConfigResponse(BaseModel):
     # Visibilidad de resultados (C-69, migración 0036).
     mostrar_nota: str = "al_cerrar"
     revision_habilitada: bool = False
+    # True si el examen ya tiene >= 1 intento finalizado: la config de
+    # mecánica/nota queda CONGELADA (el front deshabilita esos campos).
+    bloqueada: bool = False
 
 
 class ExamenConfigPatchRequest(BaseModel):

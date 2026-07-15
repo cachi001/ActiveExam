@@ -323,6 +323,10 @@ export interface ExamConfig {
   /** C-69: si el alumno puede revisar la corrección (respuestas correctas). Solo se
    *  muestra después del cierre. */
   revision_habilitada: boolean;
+  /** True si el examen ya tiene >= 1 intento finalizado: la config de
+   *  mecánica/nota queda CONGELADA (el editor deshabilita esos campos). Solo se
+   *  puede cambiar la publicación de resultados. */
+  bloqueada?: boolean;
 }
 
 /** Lee la configuración del examen. Admin-only. GET /exam-content/{id}/config */
