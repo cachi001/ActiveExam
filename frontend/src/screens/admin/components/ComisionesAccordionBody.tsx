@@ -242,6 +242,7 @@ export function ComisionesAccordionBody({
                   <th className="text-left text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider px-4 py-2">Nombre</th>
                   <th className="text-left text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider px-4 py-2">Período</th>
                   <th className="text-left text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider px-4 py-2">Año</th>
+                  <th className="text-left text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider px-4 py-2">Cód. matriculación</th>
                   <th className="text-right text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider px-4 py-2">Acciones</th>
                 </tr>
               </thead>
@@ -270,6 +271,15 @@ export function ComisionesAccordionBody({
                         <td className="px-4 py-3 text-[13px] text-on-surface">{c.nombre}</td>
                         <td className="px-4 py-3 text-[13px] text-on-surface-variant">{c.periodo ?? '—'}</td>
                         <td className="px-4 py-3 text-[13px] text-on-surface-variant tabular-nums">{c.anio ?? '—'}</td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          {c.codigo_matriculacion ? (
+                            <span className="font-mono text-[12px] text-primary bg-primary-container/40 px-2 py-0.5 rounded-md">
+                              {c.codigo_matriculacion}
+                            </span>
+                          ) : (
+                            <span className="text-[13px] text-on-surface-variant">—</span>
+                          )}
+                        </td>
                         <td className="px-4 py-3 text-right">
                           <ActionMenu
                             ariaLabel={`Acciones de ${c.nombre}`}
@@ -282,7 +292,7 @@ export function ComisionesAccordionBody({
                       </tr>
                       {comExpandida && (
                         <tr>
-                          <td colSpan={5} className="p-0">
+                          <td colSpan={6} className="p-0">
                             <AlumnosComisionPanel comisionId={c.id} comisionNombre={c.nombre} />
                           </td>
                         </tr>
@@ -315,6 +325,12 @@ export function ComisionesAccordionBody({
                       <p className="text-[11px] text-on-surface-variant font-mono mt-0.5">
                         {c.codigo ?? '—'}{c.periodo ? ` · ${c.periodo}` : ''}{c.anio ? ` · ${c.anio}` : ''}
                       </p>
+                      {c.codigo_matriculacion && (
+                        <p className="text-[11px] mt-0.5">
+                          <span className="text-on-surface-variant">Matriculación: </span>
+                          <span className="font-mono text-primary">{c.codigo_matriculacion}</span>
+                        </p>
+                      )}
                     </div>
                     <ActionMenu
                       ariaLabel={`Acciones de ${c.nombre}`}

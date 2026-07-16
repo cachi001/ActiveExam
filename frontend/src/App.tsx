@@ -7,13 +7,13 @@ import { LoadingSpinner } from './ui/components';
 
 const Login                 = lazy(() => import('./screens/Login'));
 const EquipmentCheck        = lazy(() => import('./screens/EquipmentCheck'));
-const Consent               = lazy(() => import('./screens/Consent'));
 const Biometria             = lazy(() => import('./screens/Biometria'));
 const SalaEspera            = lazy(() => import('./screens/SalaEspera'));
 const PreExamen             = lazy(() => import('./screens/PreExamen'));
 const Examen                = lazy(() => import('./screens/Examen'));
 const Cierre                = lazy(() => import('./screens/Cierre'));
 const ExamenRevision        = lazy(() => import('./screens/ExamenRevision'));
+const InformeDevolucionAlumno = lazy(() => import('./screens/InformeDevolucionAlumno'));
 const Proctor               = lazy(() => import('./screens/Proctor'));
 const ExamenPersonasGrid    = lazy(() => import('./screens/ExamenPersonasGrid'));
 const Revisor               = lazy(() => import('./screens/Revisor'));
@@ -60,13 +60,13 @@ export default function App() {
 
     // Flujo de examen del estudiante
     '/requisitos': g(<EquipmentCheck />, ESTUDIANTE),
-    '/consentimiento': g(<Consent />, ESTUDIANTE),
     '/biometria': g(<Biometria />, ESTUDIANTE),
     '/sala-espera': g(<SalaEspera />, ESTUDIANTE),
     '/pre-examen': g(<PreExamen />, ESTUDIANTE),
     '/examen': g(<Examen />, ESTUDIANTE),
     '/cierre': g(<Cierre />, ESTUDIANTE),
     '/alumno/revision/:examenId': g(<ExamenRevision />, ESTUDIANTE),
+    '/alumno/informe/:sessionId': g(<InformeDevolucionAlumno />, ESTUDIANTE),
 
     // Supervisión en vivo (proctor + admin)
     '/proctor': g(<Proctor />, SUPERVISION),

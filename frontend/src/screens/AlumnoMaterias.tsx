@@ -207,9 +207,10 @@ export default function AlumnoMaterias() {
                 <Icon name="menu_book" className="text-[32px]" />
               </div>
               <div className="space-y-1">
-                <p className="text-[16px] font-semibold text-on-surface">No hay materias disponibles</p>
+                <p className="text-[16px] font-semibold text-on-surface">No estás matriculado en ninguna materia</p>
                 <p className="text-[13px] text-on-surface-variant leading-relaxed">
-                  Cuando un administrador importe exámenes y los asocie a una comisión, van a aparecer acá.
+                  Unite con el código que te da tu docente (usá "Unirme con un código", arriba).
+                  Cuando te matricules, tu materia y sus exámenes van a aparecer acá.
                 </p>
               </div>
             </div>

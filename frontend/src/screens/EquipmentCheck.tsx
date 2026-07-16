@@ -2,8 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { StudentShell } from '../ui/shells';
 import { Icon, Button, Card } from '../ui/components';
 import { useNavigate } from '../lib/router';
+import { puedeContinuar, type EstadoRequisito } from './equipmentGate';
 
-type Estado = 'pendiente' | 'verificando' | 'ok' | 'falla';
+type Estado = EstadoRequisito;
 interface Chk { id: string; label: string; desc: string; icon: string; estado: Estado; }
 
 export default function EquipmentCheck() {
@@ -55,7 +56,7 @@ export default function EquipmentCheck() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const listo = checks.every((c) => c.estado === 'ok');
+  const listo = puedeContinuar(checks);
   const fallas = checks.filter((c) => c.estado === 'falla').length;
   const enCurso = checks.some((c) => c.estado === 'verificando' || c.estado === 'pendiente');
 
@@ -106,11 +107,11 @@ export default function EquipmentCheck() {
           <div className="text-label-md text-on-surface-variant">
             {enCurso ? 'Verificando equipo…'
               : listo ? <span className="text-success font-semibold inline-flex items-center gap-base"><Icon name="check_circle" className="text-[18px]" fill /> Todo en orden</span>
-              : <span className="text-warning font-semibold inline-flex items-center gap-base"><Icon name="warning" className="text-[18px]" fill /> {fallas} requisito(s) con observaciones — podés continuar</span>}
+              : <span className="text-error font-semibold inline-flex items-center gap-base"><Icon name="error" className="text-[18px]" fill /> {fallas} requisito(s) sin cumplir — resolvelos para poder continuar</span>}
           </div>
           <div className="flex gap-sm">
             <Button variant="outline" icon="refresh" onClick={correr}>Reintentar</Button>
-            <Button icon="arrow_forward" disabled={enCurso} onClick={() => navigate('/consentimiento')}>
+            <Button icon="arrow_forward" disabled={!listo} onClick={() => navigate('/biometria')}>
               Continuar
             </Button>
           </div>

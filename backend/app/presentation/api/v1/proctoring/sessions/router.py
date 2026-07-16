@@ -19,7 +19,9 @@ from app.application.proctoring import observacion_service, session_service
 from app.application.proctoring.enforcement import (
     FueraDeVentanaError,
     IntentosAgotadosError,
+    NoInscriptoError,
     verificar_enforcement,
+    verificar_inscripcion,
 )
 from app.application.proctoring.finalizar_con_writeback import (
     finalizar_sesion_con_writeback,
@@ -198,6 +200,20 @@ def create_sessions_router(
                         "intentos_permitidos": exc.intentos_permitidos,
                         "rendidos": exc.rendidos,
                     },
+                ) from exc
+
+            # Gate de inscripción (C-71): backstop server-side — el alumno debe estar
+            # inscripto en la comisión del examen para poder crear la sesión.
+            try:
+                await verificar_inscripcion(
+                    db,
+                    examen_contenido_id=body.examen_contenido_id,
+                    alumno_idnumber=principal.id_institucional,
+                )
+            except NoInscriptoError as exc:
+                raise HTTPException(
+                    status_code=http_status.HTTP_403_FORBIDDEN,
+                    detail={"error": "no_inscripto", "mensaje": exc.mensaje},
                 ) from exc
 
         sesion = await session_service.crear_o_reanudar_sesion(

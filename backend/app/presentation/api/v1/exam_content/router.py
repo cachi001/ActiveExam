@@ -9,7 +9,16 @@ Taking router (student-facing):
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Request,
+    UploadFile,
+    status,
+)
 
 from app.application.exam_content.asociacion_service import AsociacionComisionService
 from app.application.exam_content.inscripcion_service import (
@@ -44,7 +53,10 @@ from app.application.exam_content.import_service import ImportacionMoodleService
 from app.application.exam_content.taking_service import LecturaExamenService, proyectar_examen
 from app.domain.auth.identity import AuthenticatedPrincipal
 from app.domain.auth.roles import Rol
-from app.domain.exam_content.config import validar_config_examen
+from app.domain.exam_content.config import (
+    campos_congelados_en_cambio,
+    validar_config_examen,
+)
 from app.domain.exam_content.entities import Materia
 from app.domain.exam_content.errors import (
     CodigoMatriculacionDuplicadoError,
@@ -73,7 +85,9 @@ from app.presentation.api.v1.exam_content.schemas import (
     ExamenContenidoResumenResponse,
     ExamenesContenidoPaginadosResponse,
     ExamenRendicionResponse,
+    CapturaFirmadaResponse,
     ImportReporteResponse,
+    InformeDevolucionResponse,
     InscribirAlumnoRequest,
     InscribirPorCodigoRequest,
     InscribirPorCodigoResponse,
@@ -97,8 +111,20 @@ from app.presentation.api.v1.exam_content.schemas import (
     ResultadoAlumnoResponse,
     ResultadosExamenPaginadosResponse,
     RevisionExamenResponse,
+    SenalAnalisisResponse,
     SincronizarMoodleResponse,
 )
+
+
+# Gate de inscripción (C-71): los roles de gestión ven TODO el catálogo/materias;
+# el alumno ve solo lo de sus comisiones inscriptas.
+_ROLES_STAFF = frozenset(
+    {"admin_sistema", "admin_examenes", "proctor", "revisor", "coordinador", "auditor"}
+)
+
+
+def _es_staff(principal: AuthenticatedPrincipal) -> bool:
+    return bool(set(principal.roles or []) & _ROLES_STAFF)
 
 
 def _resumen_to_response(r) -> ExamenContenidoResumenResponse:
@@ -860,7 +886,7 @@ def create_exam_content_router(
     # config; PATCH la actualiza parcialmente (extra='forbid', validaciones → 422).
     # -----------------------------------------------------------------------
 
-    def _config_to_response(examen) -> ExamenConfigResponse:
+    def _config_to_response(examen, *, bloqueada: bool = False) -> ExamenConfigResponse:
         return ExamenConfigResponse(
             tiempo_limite_min=examen.tiempo_limite_min,
             intentos_permitidos=examen.intentos_permitidos,
@@ -871,6 +897,7 @@ def create_exam_content_router(
             mezclar_preguntas=examen.mezclar_preguntas,
             mostrar_nota=examen.mostrar_nota,
             revision_habilitada=examen.revision_habilitada,
+            bloqueada=bloqueada,
         )
 
     @router.get(
@@ -892,14 +919,14 @@ def create_exam_content_router(
 
         async with session_factory() as session:
             examen = await ExamenContenidoSqlRepository(session).obtener(examen_id)
+            if examen is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail={"error": "examen_no_encontrado", "examen_id": examen_id},
+                )
+            ya_rendido = await _seleccion_bloqueada(session, examen_id)
 
-        if examen is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail={"error": "examen_no_encontrado", "examen_id": examen_id},
-            )
-
-        return _config_to_response(examen)
+        return _config_to_response(examen, bloqueada=ya_rendido)
 
     @router.patch(
         "/{examen_id}/config",
@@ -939,6 +966,28 @@ def create_exam_content_router(
                     detail={"error": "examen_no_encontrado", "examen_id": examen_id},
                 )
 
+            # Candado: si el examen ya tiene >= 1 intento finalizado, los campos
+            # de mecánica/nota quedan CONGELADOS (cambiarlos alteraría notas ya
+            # calculadas / la equidad de quienes rindieron). Los controles de
+            # publicación (mostrar_nota, revision_habilitada) siguen editables.
+            ya_rendido = await _seleccion_bloqueada(session, examen_id)
+            congelados = campos_congelados_en_cambio(cambios, ya_rendido=ya_rendido)
+            if congelados:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={
+                        "error": "config_congelada",
+                        "mensaje": (
+                            "El examen ya tiene intentos finalizados: no se pueden "
+                            "modificar los campos de mecánica/nota "
+                            f"({', '.join(sorted(congelados))}). Solo se puede "
+                            "cambiar la publicación de resultados (mostrar_nota, "
+                            "revision_habilitada)."
+                        ),
+                        "campos": sorted(congelados),
+                    },
+                )
+
             # Merge: campo enviado → su valor; ausente → el valor actual del examen.
             def _merged(campo: str):
                 return cambios[campo] if campo in cambios else getattr(actual, campo)
@@ -961,7 +1010,7 @@ def create_exam_content_router(
             examen = await repo.actualizar_config(examen_id, cambios)
             await session.commit()
 
-        return _config_to_response(examen)
+        return _config_to_response(examen, bloqueada=ya_rendido)
 
     # -----------------------------------------------------------------------
     # Pool de preguntas seleccionables (C-69, opción B) — admin-only, SIN MFA.
@@ -1239,6 +1288,7 @@ def create_exam_taking_router(
     session_factory=None,
     *,
     writeback_svc: MoodleWritebackService | None = None,
+    presign_service=None,
 ) -> APIRouter:
     """Router de lectura de examen para la rendición del alumno (C-69, D3).
 
@@ -1286,12 +1336,22 @@ def create_exam_taking_router(
 
         from app.infrastructure.persistence.repositories.exam_content import (
             ExamenContenidoSqlRepository,
+            InscripcionSqlRepository,
         )
 
+        # Gate de inscripción (C-71): el alumno ve SOLO los exámenes de las comisiones
+        # donde está inscripto; los roles de gestión (admin/proctor/...) ven todo el
+        # catálogo. El filtro es server-side por el id_institucional del principal.
         async with session_factory() as session:
             repo = ExamenContenidoSqlRepository(session)
+            if _es_staff(principal):
+                comision_ids = None
+            else:
+                comision_ids = await InscripcionSqlRepository(
+                    session
+                ).comision_ids_inscriptas(principal.id_institucional)
             resumenes, total = await repo.listar_paginado(
-                q=q, page=page, page_size=page_size
+                q=q, page=page, page_size=page_size, comision_ids=comision_ids
             )
 
         return ExamenesContenidoPaginadosResponse(
@@ -1444,10 +1504,107 @@ def create_exam_taking_router(
                     nota_visible=r.nota_visible,
                     revision_disponible=r.revision_disponible,
                     cierre=r.cierre,
+                    session_id=r.session_id,
+                    nota_anulada=r.nota_anulada,
+                    veredicto=r.veredicto,
+                    informe_disponible=r.informe_disponible,
                 )
                 for r in items
             ],
             total=total,
+        )
+
+    @router.get(
+        "/mis-notas/{session_id}/informe",
+        response_model=InformeDevolucionResponse,
+        summary="Informe de devolución (SOLO nota anulada por fraude) — C-71 D12",
+    )
+    async def informe_devolucion(
+        session_id: str,
+        request: Request,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    ) -> InformeDevolucionResponse:
+        """Informe de devolución del alumno para SU sesión anulada por fraude.
+
+        Minimización (Ley 25.326): solo existe si la nota del titular fue anulada
+        por fraude; en cualquier otro caso (sesión ajena, sin anulación) → 404 sin
+        revelar evidencia. Cada acceso se audita como ejercicio del derecho de
+        acceso del titular (RN-DSR-01)."""
+        from app.application.review.informe_service import build_informe_devolucion
+        from app.infrastructure.storage.presign import StoragePresignService
+
+        factory = session_factory or getattr(
+            request.app.state, "session_factory", None
+        )
+        if factory is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Persistencia no inicializada.",
+            )
+        presign = presign_service or getattr(
+            request.app.state, "presign_service", None
+        )
+        if presign is None:
+            # Fallback determinista: el contrato de la URL firmada (expira 15 min)
+            # no depende del SDK real de storage en el MVP slim.
+            presign = StoragePresignService(endpoint="", bucket="evidence")
+
+        async with factory() as session:
+            informe = await build_informe_devolucion(
+                db=session,
+                session_id=session_id,
+                titular_idnumber=principal.id_institucional or "",
+                presign=presign,
+            )
+            if informe is None:
+                # Minimización: no se revela si la sesión existe o no.
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Informe no disponible.",
+                )
+            # Audit del acceso del TITULAR como derecho de acceso (Ley 25.326).
+            from app.domain.audit_chain import AuditEntry
+            from app.infrastructure.persistence.repositories.audit_log import (
+                AuditLogSqlRepository,
+            )
+
+            await AuditLogSqlRepository(session).append(
+                AuditEntry(
+                    actor=principal.id_institucional or "titular",
+                    timestamp="",
+                    ip=request.client.host if request.client else "",
+                    user_agent=request.headers.get("user-agent", ""),
+                    accion="derecho_acceso.informe_devolucion",
+                    evidencia_id=session_id,
+                    proposito=(
+                        "Ejercicio del derecho de acceso del titular al informe de "
+                        "devolución de su sesión anulada (Ley 25.326, RN-DSR-01)."
+                    ),
+                )
+            )
+            await session.commit()
+
+        return InformeDevolucionResponse(
+            session_id=informe.session_id,
+            decision=informe.decision,
+            resolucion=informe.resolucion,
+            motivo=informe.motivo,
+            senales=[
+                SenalAnalisisResponse(
+                    tipo=s.tipo,
+                    severidad=s.severidad,
+                    ocurrencias=s.ocurrencias,
+                    face_count_servidor=s.face_count_servidor,
+                    veredicto_reinferencia=s.veredicto_reinferencia,
+                )
+                for s in informe.senales
+            ],
+            capturas=[
+                CapturaFirmadaResponse(
+                    object_key=c.object_key, url=c.url, expires_in=c.expires_in
+                )
+                for c in informe.capturas
+            ],
         )
 
     # -----------------------------------------------------------------------
@@ -1472,11 +1629,19 @@ def create_exam_taking_router(
             )
 
         from app.infrastructure.persistence.repositories.exam_content import (
+            InscripcionSqlRepository,
             MateriaSqlRepository,
         )
 
+        # Gate de inscripción (C-71): el alumno ve SOLO las materias donde tiene
+        # comisión inscripta; staff ve todas.
         async with session_factory() as session:
-            materias = await MateriaSqlRepository(session).listar()
+            if _es_staff(principal):
+                materias = await MateriaSqlRepository(session).listar()
+            else:
+                materias = await InscripcionSqlRepository(session).materias_inscriptas(
+                    principal.id_institucional
+                )
 
         return [
             MateriaResponse(id=m.id, codigo=m.codigo, nombre=m.nombre) for m in materias
@@ -1499,12 +1664,20 @@ def create_exam_taking_router(
 
         from app.infrastructure.persistence.repositories.exam_content import (
             ComisionSqlRepository,
+            InscripcionSqlRepository,
         )
 
+        # Gate de inscripción (C-71): el alumno ve SOLO sus comisiones inscriptas de
+        # esa materia; staff ve todas las comisiones de la materia.
         async with session_factory() as session:
-            comisiones = await ComisionSqlRepository(session).listar_por_materia(
-                materia_id
-            )
+            if _es_staff(principal):
+                comisiones = await ComisionSqlRepository(session).listar_por_materia(
+                    materia_id
+                )
+            else:
+                comisiones = await InscripcionSqlRepository(
+                    session
+                ).comisiones_inscriptas_de_materia(principal.id_institucional, materia_id)
 
         return [
             ComisionResponse(

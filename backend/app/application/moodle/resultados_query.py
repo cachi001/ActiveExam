@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.application.proctoring.scoring import calcular_score
 from app.domain.exam_content.visibilidad import nota_visible, revision_visible
+from app.domain.review.decision import nota_esta_anulada
 from app.infrastructure.persistence.models.exam_content import ExamenContenidoModel
 from app.infrastructure.persistence.models.moodle_writeback import (
     MoodleWritebackEstadoModel,
@@ -181,6 +182,13 @@ async def listar_estados_sincronizables(
 
     Las 'enviado' se excluyen (idempotencia: no se re-mandan).
 
+    C-71 slice 2 (D15): además se RETIENEN (hold) las sesiones cuyo estado de
+    revisión no habilita el envío — flaggeada/`caso_abierto`/`anulado_por_fraude`.
+    El gate se evalúa aquí, ANTES del envío (este es el único punto donde el
+    estado pasa a 'enviado', en el sync manual del admin), de modo que una sesión
+    problemática nunca alcanza 'enviado'. Release si resuelta limpia
+    (`sin_hallazgos`/`aprobado`/`caso_descartado`) o si nunca se flaggeó.
+
     D12 (parte B): refresca el destino (moodle_courseid/cmid) de cada fila desde el
     valor ACTUAL del examen, para que un admin que fija el target DESPUÉS de finalizar
     sincronice al curso correcto. NULL en el examen → la fila queda NULL y el cliente
@@ -188,7 +196,12 @@ async def listar_estados_sincronizables(
     el commit del caller lo persiste.
     """
     stmt = (
-        select(MoodleWritebackEstadoModel)
+        select(
+            MoodleWritebackEstadoModel,
+            ProctoringSessionModel.id.label("sid"),
+            ProctoringSessionModel.decision,
+            ProctoringSessionModel.resolucion,
+        )
         .join(
             ProctoringSessionModel,
             ProctoringSessionModel.id == MoodleWritebackEstadoModel.session_id,
@@ -200,7 +213,45 @@ async def listar_estados_sincronizables(
             ),
         )
     )
-    filas = list((await db.execute(stmt)).scalars().all())
+    rows = (await db.execute(stmt)).all()
+    if not rows:
+        return []
+
+    # Score por sesión (flaggeada = score >= umbral) para el gate D15.
+    session_ids = [r.sid for r in rows]
+    ev_rows = (
+        await db.execute(
+            select(
+                ProctoringEventModel.session_id,
+                ProctoringEventModel.tipo,
+                ProctoringEventModel.severidad,
+            ).where(ProctoringEventModel.session_id.in_(session_ids))
+        )
+    ).all()
+    eventos_por_sesion: dict[str, list] = {}
+    for ev in ev_rows:
+        eventos_por_sesion.setdefault(ev.session_id, []).append(ev)
+    pesos = await _pesos_vivos_por_tipo(db)
+    umbral = await _umbral_cola_revision(db)
+
+    from app.domain.review.decision import (
+        DecisionResolucion,
+        DecisionRevision,
+        writeback_en_hold,
+    )
+
+    filas: list[MoodleWritebackEstadoModel] = []
+    for r in rows:
+        estado = r[0]
+        score = calcular_score(eventos_por_sesion.get(r.sid, []), pesos_por_tipo=pesos)
+        flaggeada = score >= umbral
+        decision = _parse_decision_val(r.decision)
+        resolucion = _parse_resolucion_val(r.resolucion)
+        if writeback_en_hold(
+            flaggeada=flaggeada, decision=decision, resolucion=resolucion
+        ):
+            continue  # hold: no se envía (D15)
+        filas.append(estado)
 
     courseid, cmid = await obtener_target_examen(db=db, examen_id=examen_id)
     for fila in filas:
@@ -208,6 +259,21 @@ async def listar_estados_sincronizables(
         fila.moodle_cmid = cmid
 
     return filas
+
+
+def _parse_decision_val(value: str | None):
+    """Convierte el string persistido en ``DecisionRevision`` (pendiente si falta)."""
+    from app.domain.review.decision import DecisionRevision
+
+    if value is None:
+        return DecisionRevision.PENDIENTE
+    try:
+        return DecisionRevision(value)
+    except ValueError:
+        try:
+            return DecisionRevision.desde_valor_legado(value)
+        except ValueError:
+            return DecisionRevision.PENDIENTE
 
 
 # ===========================================================================
@@ -248,6 +314,13 @@ class MiNota:
     nota_visible: bool
     revision_disponible: bool
     cierre: object | None  # datetime tz-aware o None
+    # Veredicto de resolución (C-71 slice 2, D11b). El alumno lo ve por PULL.
+    session_id: str
+    nota_anulada: bool  # efecto DERIVADO del último acto (D10b)
+    veredicto: str | None  # 'anulado_por_fraude' cuando la nota fue anulada; si no, None
+    # Informe de devolución disponible SOLO cuando la nota fue anulada por fraude
+    # (D12, minimización Ley 25.326). El resto de los casos: no se expone evidencia.
+    informe_disponible: bool
 
 
 async def _umbral_cola_revision(db: AsyncSession) -> int:
@@ -320,6 +393,7 @@ async def listar_mis_notas(
             ProctoringSessionModel.id.label("session_id"),
             ProctoringSessionModel.examen_contenido_id,
             ProctoringSessionModel.finalizada_en,
+            ProctoringSessionModel.resolucion,
             ExamenContenidoModel.titulo.label("examen_titulo"),
             ExamenContenidoModel.nota_maxima,
             ExamenContenidoModel.nota_aprobacion,
@@ -369,6 +443,7 @@ async def listar_mis_notas(
 
     pesos = await _pesos_vivos_por_tipo(db)
     umbral = await _umbral_cola_revision(db)
+    restituidas = await _sesiones_con_restitucion(db, session_ids)
 
     ahora = datetime.now(tz=timezone.utc)
     items: list[MiNota] = []
@@ -397,6 +472,11 @@ async def listar_mis_notas(
             and nota_aprobacion is not None
             and nota_real >= nota_aprobacion
         )
+        # Veredicto de resolución (C-71 slice 2): estado efectivo DERIVADO del
+        # último acto (D10b). anulada = resolucion 'anulado_por_fraude' Y sin
+        # acto compensatorio de restitución posterior (nota_restituida).
+        resolucion = _parse_resolucion_val(r.resolucion)
+        anulada = nota_esta_anulada(resolucion, r.session_id in restituidas)
         items.append(
             MiNota(
                 examen_id=r.examen_contenido_id or "",
@@ -415,6 +495,46 @@ async def listar_mis_notas(
                 nota_visible=visible,
                 revision_disponible=rev_disp,
                 cierre=r.cierre,
+                session_id=r.session_id,
+                nota_anulada=anulada,
+                veredicto="anulado_por_fraude" if anulada else None,
+                informe_disponible=anulada,
             )
         )
     return items, len(items)
+
+
+def _parse_resolucion_val(value: str | None):
+    """Convierte el string persistido en ``DecisionResolucion`` o None."""
+    from app.domain.review.decision import DecisionResolucion
+
+    if value is None:
+        return None
+    try:
+        return DecisionResolucion(value)
+    except ValueError:
+        return None
+
+
+async def _sesiones_con_restitucion(
+    db: AsyncSession, session_ids: list[str]
+) -> set[str]:
+    """Sesiones con un acto compensatorio `nota_restituida` en el audit log.
+
+    D10b: la reversión de una anulación es un acto append-only en el audit_log
+    (`review.decision.nota_restituida`), NUNCA un UPDATE. Degradación graceful:
+    si el audit_log no está disponible, se asume que no hubo restituciones."""
+    if not session_ids:
+        return set()
+    from app.infrastructure.persistence.models.audit_log import AuditLogModel
+
+    try:
+        rows = await db.execute(
+            select(AuditLogModel.evidencia_id).where(
+                AuditLogModel.evidencia_id.in_(session_ids),
+                AuditLogModel.accion == "review.decision.nota_restituida",
+            )
+        )
+        return {r[0] for r in rows.all()}
+    except Exception:  # noqa: BLE001 — degradación: sin audit, no hay restituciones
+        return set()

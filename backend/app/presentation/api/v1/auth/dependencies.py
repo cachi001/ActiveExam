@@ -85,6 +85,23 @@ def require_roles(*roles: Rol):
     return _guard
 
 
+def require_capability(capacidad: str):
+    """Factory de dependencia: exige la ``capacidad`` indicada (403 si no,
+    c-71 slice 2 D8). Config-driven via ``CAPABILITY_ROLES`` -- reasignar la
+    capacidad a otro rol no requiere tocar el endpoint que usa este guard."""
+
+    async def _guard(
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    ) -> AuthenticatedPrincipal:
+        try:
+            authorization.exigir_capacidad(principal, capacidad)
+        except ForbiddenError as exc:
+            raise _forbidden(str(exc)) from exc
+        return principal
+
+    return _guard
+
+
 async def require_mfa(
     principal: AuthenticatedPrincipal = Depends(get_current_principal),
 ) -> AuthenticatedPrincipal:

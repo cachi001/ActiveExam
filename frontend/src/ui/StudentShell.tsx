@@ -119,7 +119,7 @@ export function StudentShell({
   const [collapsed, toggleCollapsed] = useSidebarCollapsed();
   const [confirmandoLogout, setConfirmandoLogout] = useState(false);
 
-  const PASOS_EXAMEN = ['Requisitos', 'Consentimiento', 'Verificación', 'Sala'];
+  const PASOS_EXAMEN = ['Requisitos', 'Verificación', 'Sala'];
   const pasosWizard: WizardPaso[] = PASOS_EXAMEN.map((label, i) => ({
     label,
     estado:

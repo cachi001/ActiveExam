@@ -19,10 +19,13 @@ import { HelpButton } from '../ui/HelpButton';
 import { api } from '../lib/api';
 import { loadEffectiveConfig, getEffectiveConfig, resetEffectiveConfigCache } from '../config/effectiveConfigCache';
 import { useApp } from '../lib/store';
+import { useAuth } from '../lib/authStore';
+import { tieneCapacidad } from '../lib/capabilities';
 import { useNavigate } from '../lib/router';
 import { STAFF_NAV } from '../ui/nav';
 import { useToast } from '../ui/toast';
 import type { DecisionRevisor } from '../lib/types';
+import { DECISION_REVISION_LABEL, DECISION_RESOLUCION_LABEL } from '../lib/types';
 import { ColaBreadcrumb, type ColaPath, type ColaNivel } from './proctoring/ColaBreadcrumb';
 import { ColaNivelGrid } from './proctoring/ColaNivelGrid';
 import { ColaNivelPersonas } from './proctoring/ColaNivelPersonas';
@@ -41,11 +44,10 @@ export const REVISOR_NAV = STAFF_NAV;
 const UMBRAL_FALLBACK = 70;
 const PROCTORING_DETAIL_ROUTE = '/admin/proctoring-session-detail';
 
-/** Etiqueta legible de cada decisión (para el toast de confirmación). */
+/** Etiqueta legible de cada decisión (para el toast). Derivada del backend. */
 const DECISION_LABEL: Record<DecisionRevisor, string> = {
-  sin_hallazgos: 'Sin observaciones',
-  aprobado: 'Aprobada con nota',
-  flaggeado_para_sumario: 'Enviada a revisión formal',
+  ...DECISION_REVISION_LABEL,
+  ...DECISION_RESOLUCION_LABEL,
   pendiente: 'Pendiente',
 };
 
@@ -55,6 +57,9 @@ export default function Revisor() {
   const setProctoringSessionId = useApp((s) => s.setProctoringSessionId);
   const setProctoringDetailBackRoute = useApp((s) => s.setProctoringDetailBackRoute);
   const setDecisionRevisor = useApp((s) => s.setDecisionRevisor);
+  const principal = useAuth((s) => s.principal);
+  // Capacidad `resolver_caso` (front-hides; el backend deniega igual, D8/regla #6).
+  const puedeResolver = tieneCapacidad(principal?.roles ?? [], 'resolver_caso');
 
   const [items, setItems] = useState<SesionEnriquecida[]>([]);
   const [umbral, setUmbral] = useState(UMBRAL_FALLBACK);
@@ -105,13 +110,21 @@ export default function Revisor() {
     });
   };
 
-  const resolver = (id: string, decision: DecisionRevisor) => {
+  const resolver = (
+    id: string,
+    decision: DecisionRevisor,
+    _motivo: string,
+    _evidenciaRef?: string,
+  ) => {
     setDecisionRevisor(id, decision);
     toast.success(
       `Decisión registrada: ${DECISION_LABEL[decision]}. El score prioriza; el revisor decide.`,
     );
-    setItems((prev) => prev.filter((i) => i.sesion.id !== id));
-    setPersonaSelId(null);
+    // `caso_abierto` deriva: no cierra la sesión (queda para la fase 2/resolución).
+    if (decision !== 'caso_abierto') {
+      setItems((prev) => prev.filter((i) => i.sesion.id !== id));
+      setPersonaSelId(null);
+    }
   };
 
   const verDetalle = (id: string) => {
@@ -234,6 +247,7 @@ export default function Revisor() {
               <ColaNivelPersonas
                 personas={personas}
                 selId={personaSelId}
+                puedeResolver={puedeResolver}
                 onSeleccionar={setPersonaSelId}
                 onResolver={resolver}
                 onVerDetalle={verDetalle}

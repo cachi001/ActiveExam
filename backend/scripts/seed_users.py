@@ -33,9 +33,9 @@ USO (modo full — stack completo):
 
 CREDENCIALES SEED (para probar el login — identificadores estilo produccion):
     Estudiante:   id_institucional=EST-001   | email=estudiante@activeexam.local
-    Estudiante 2: id_institucional=EST-002   | email=estudiante2@activeexam.local (Ana García)
-    Estudiante 3: id_institucional=EST-003   | email=estudiante3@activeexam.local (Bruno López)
-    Estudiante 4: id_institucional=EST-004   | email=estudiante4@activeexam.local (Carla Díaz)
+    Estudiante 2: id_institucional=EST-002   | email=estudiante2@activeexam.local (Estudiante Prueba2)
+    Estudiante 3: id_institucional=EST-003   | email=estudiante3@activeexam.local (Estudiante Prueba3)
+    Estudiante 4: id_institucional=EST-004   | email=estudiante4@activeexam.local (Estudiante Prueba4)
     Proctor:      id_institucional=PROC-001  | email=proctor@activeexam.local
     Admin:        id_institucional=ADMIN-001 | email=admin@activeexam.local
 
@@ -150,24 +150,24 @@ async def _ejecutar_seed(
             "email": "estudiante2@activeexam.local",
             "password": pw_estudiante,
             "roles": ["estudiante"],
-            "nombre": "Ana",
-            "apellido": "García",
+            "nombre": "Estudiante",
+            "apellido": "Prueba2",
         },
         {
             "id_institucional": "EST-003",
             "email": "estudiante3@activeexam.local",
             "password": pw_estudiante,
             "roles": ["estudiante"],
-            "nombre": "Bruno",
-            "apellido": "López",
+            "nombre": "Estudiante",
+            "apellido": "Prueba3",
         },
         {
             "id_institucional": "EST-004",
             "email": "estudiante4@activeexam.local",
             "password": pw_estudiante,
             "roles": ["estudiante"],
-            "nombre": "Carla",
-            "apellido": "Díaz",
+            "nombre": "Estudiante",
+            "apellido": "Prueba4",
         },
         {
             "id_institucional": "PROC-001",
@@ -189,6 +189,7 @@ async def _ejecutar_seed(
 
     creados = 0
     existentes = 0
+    actualizados = 0
 
     async with factory() as session:
         for datos in usuarios_seed:
@@ -198,9 +199,28 @@ async def _ejecutar_seed(
                     UsuarioModel.id_institucional == datos["id_institucional"]
                 )
             )
-            if result.scalar_one_or_none() is not None:
-                print(f"  [skip] Usuario ya existe: {datos['id_institucional']}")
-                existentes += 1
+            existente = result.scalar_one_or_none()
+            if existente is not None:
+                # Convergencia no-destructiva de nombre/apellido: si el seed cambió
+                # el nombre de un usuario que ya existe (p. ej. renombrar los EST de
+                # prueba), lo actualizamos en vez de saltearlo. No toca password,
+                # email, roles ni datos que el usuario pueda haber editado.
+                cambios = []
+                if existente.nombre != datos.get("nombre"):
+                    existente.nombre = datos.get("nombre")
+                    cambios.append("nombre")
+                if existente.apellido != datos.get("apellido"):
+                    existente.apellido = datos.get("apellido")
+                    cambios.append("apellido")
+                if cambios:
+                    print(
+                        f"  [update] {datos['id_institucional']} -> "
+                        f"{datos.get('nombre')} {datos.get('apellido')} ({', '.join(cambios)})"
+                    )
+                    actualizados += 1
+                else:
+                    print(f"  [skip] Usuario ya existe: {datos['id_institucional']}")
+                    existentes += 1
                 continue
 
             usuario = UsuarioModel(
@@ -219,10 +239,81 @@ async def _ejecutar_seed(
 
         await session.commit()
 
-    print(f"\nSeed completado: {creados} creados, {existentes} ya existentes.")
+    print(
+        f"\nSeed completado: {creados} creados, {actualizados} actualizados, "
+        f"{existentes} ya existentes."
+    )
 
     # Contenido académico demo: materia + comisión + examen (idempotente).
     await _seed_contenido(factory)
+
+    # Matriculación demo: los estudiantes seed quedan inscriptos a la Comisión C1
+    # (idempotente). Con el gate de inscripción (C-71), sin esto no verían el examen.
+    await _seed_matriculaciones(factory)
+
+
+async def _seed_matriculaciones(factory) -> None:
+    """Matricula a los estudiantes seed (EST-001..004) en la Comisión C1 (idempotente).
+
+    Con el gate de inscripción (C-71) el alumno solo ve/rinde exámenes de las
+    comisiones donde está inscripto. Los estudiantes demo quedan inscriptos a C1
+    para que el "Examen de Programación 1" les sea visible y rendible.
+    """
+    from app.infrastructure.persistence.models.exam_content import (
+        ComisionModel,
+        MateriaModel,
+    )
+    from app.infrastructure.persistence.models.inscripcion import InscripcionModel
+    from app.infrastructure.persistence.models.transactional import UsuarioModel
+
+    MATERIA_CODIGO = "PROG1"
+    COMISION_CODIGO = "C1"
+    ESTUDIANTES = ["EST-001", "EST-002", "EST-003", "EST-004"]
+
+    async with factory() as session:
+        # Comisión C1 de PROG1 (creada por _seed_contenido).
+        comision = (
+            await session.execute(
+                select(ComisionModel)
+                .join(MateriaModel, MateriaModel.id == ComisionModel.materia_id)
+                .where(
+                    MateriaModel.codigo == MATERIA_CODIGO,
+                    ComisionModel.codigo == COMISION_CODIGO,
+                )
+            )
+        ).scalar_one_or_none()
+        if comision is None:
+            print("  [skip] matriculación: no existe la comisión PROG1/C1 todavía")
+            return
+
+        creadas = 0
+        for idn in ESTUDIANTES:
+            usuario = (
+                await session.execute(
+                    select(UsuarioModel).where(UsuarioModel.id_institucional == idn)
+                )
+            ).scalar_one_or_none()
+            if usuario is None:
+                continue
+            existe = (
+                await session.execute(
+                    select(InscripcionModel.id).where(
+                        InscripcionModel.usuario_id == usuario.id,
+                        InscripcionModel.comision_id == comision.id,
+                    )
+                )
+            ).scalar_one_or_none()
+            if existe is not None:
+                print(f"  [skip] matriculación ya existe: {idn} -> {COMISION_CODIGO}")
+                continue
+            session.add(
+                InscripcionModel(usuario_id=usuario.id, comision_id=comision.id)
+            )
+            print(f"  [create] matriculación {idn} -> {MATERIA_CODIGO}/{COMISION_CODIGO}")
+            creadas += 1
+
+        await session.commit()
+    print(f"\nMatriculaciones: {creadas} creadas.")
 
 
 async def _seed_contenido(factory) -> None:
