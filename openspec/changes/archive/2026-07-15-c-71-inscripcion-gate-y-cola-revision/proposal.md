@@ -8,11 +8,11 @@ Hoy un alumno **ve y puede rendir CUALQUIER examen del catálogo sin estar inscr
 
 Resultado: la inscripción por código (C-70) es hoy **decorativa** — no restringe nada. La tabla `inscripcion` en prod tiene 0 filas y aun así los alumnos ven el examen demo.
 
-> **Alcance de C-71**: este change agrupa el trabajo que influye en el flujo de examen. Se implementa por slices: **(1) gate de inscripción**, **(2) Cola de Revisión + transparencia al alumno** y **(3) Sesiones Grabadas**.
+> **Alcance de C-71 (entregado)**: este change agrupó el trabajo que influye en el flujo de examen, en **dos slices**: **(1) gate de inscripción** y **(2) Cola de Revisión + transparencia al alumno**. Ambos entregados, commiteados y archivados.
 >
 > - **Slice 1 — gate de inscripción: HECHO y commiteado** (commit `cd076f8`). Todo lo de esta sección "What/Capabilities/Impact" de más abajo corresponde al slice 1 y ya está en `main`. Se conserva como registro; no se re-implementa.
-> - **Slice 2 — Cola de Revisión + transparencia al alumno: EN PLANIFICACIÓN** (este documento lo amplía ahora). Ver la sección **"Slice 2"** al final.
-> - **Slice 3 — Sesiones Grabadas: PENDIENTE**. Se especifica (specs/tasks) al encararlo; no se toca acá.
+> - **Slice 2 — Cola de Revisión + transparencia al alumno: HECHO y commiteado** (`11a21df`). Ver la sección **"Slice 2"** al final.
+> - **Sesiones Grabadas — REASIGNADO a C-72.** Contemplado originalmente como "slice 3" de C-71, se movió al change **C-72 `integridad-rendicion-serverside`** para no dejar scope sin entregar en un change archivado. **No formó parte de C-71.**
 
 ## What Changes (Slice 1 — HECHO, commit `cd076f8`)
 
@@ -92,4 +92,4 @@ La Cola de Revisión (`frontend/src/screens/proctoring/ColaPanelDecision.tsx`) h
 ## Fronteras explícitas (Slice 2)
 
 - **NO incluye la apelación formal** — es el change aparte **`c-18 verificacion-cadena-apelacion`** (roadmap, 0/20). Slice 2 solo deja el **hook**: la anulación es reversible + notificada al alumno, para que c-18 tenga de dónde agarrarse. No se duplica scope de c-18 (no se construye el flujo de apelación, ni la revisión de cadena de custodia end-to-end).
-- **NO incluye Sesiones Grabadas** — es el slice 3 de este mismo change, pendiente.
+- **NO incluye Sesiones Grabadas** — reasignado al change **C-72 `integridad-rendicion-serverside`** (ya no es parte de C-71).

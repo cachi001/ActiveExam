@@ -27,7 +27,7 @@ Nota de identidad: `inscripcion.usuario_id` es el UUID de `usuario`, pero el flu
 - No cambiar el mecanismo de matriculación por código (C-70 queda igual).
 - No tocar el gate de perfil (consentimiento + biometría) — solo se le SUMA la condición de inscripción.
 - No agregar migración (la tabla `inscripcion` ya existe).
-- Sin relación con el acuse por-examen (eliminado). Este slice (gate de inscripción) es la PRIMERA parte de C-71; la Cola de Revisión y las Sesiones Grabadas son slices posteriores del mismo change (se especifican al encararlos).
+- Sin relación con el acuse por-examen (eliminado). Este slice (gate de inscripción) es la PRIMERA parte de C-71; la Cola de Revisión es el slice 2 del mismo change. (Las Sesiones Grabadas, contempladas al inicio como slice posterior, se reasignaron a **C-72** y no formaron parte de C-71.)
 
 ## Decisions
 
@@ -93,7 +93,7 @@ Piezas reutilizables: `ReviewDecisionService` + su patrón de audit con propósi
 
 **Non-Goals:**
 - **NO** construir el flujo de apelación formal ni la verificación de cadena de custodia end-to-end → `c-18`. Slice 2 solo deja el hook (reversible + notificado).
-- **NO** Sesiones Grabadas (slice 3).
+- **NO** Sesiones Grabadas → reasignado a **C-72** (ya no es parte de C-71).
 - **NO** introducir un rol nuevo en el enum `Rol` ahora (la remapeabilidad de `resolver_caso` se resuelve por config del map de capacidades, sin tocar el enum ni los routers).
 - **NO** re-infierir/re-hashear evidencia nueva: se reusa lo que el pipeline ya produce server-side (regla #6 ya satisfecha aguas arriba); transparencia solo lo EXPONE al titular.
 

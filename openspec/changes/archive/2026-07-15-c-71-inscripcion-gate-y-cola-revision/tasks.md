@@ -103,4 +103,4 @@
 ## 15. Cierre (Slice 2)
 
 - [x] 15.1 Suite backend afectada (review + capabilities + informe + write-back gate + migración) verde, sin mocks de DB: 60 tests c71/review/scoring verdes contra Postgres real; c69 review/writeback/sync 45 verdes (2 fallas pre-existentes conocidas en test_c69_mis_notas::aprobado, confirmadas por stash, ajenas a c71); auth 22 verdes. Frontend: 691 tests verdes + typecheck limpio.
-- [x] 15.2 Confirmar fronteras: apelación formal queda para c-18 (solo hook acá — `revertir_anulacion` acto compensatorio append-only + veredicto reversible expuesto por pull en MiNota); Sesiones Grabadas = slice 3 (no tocado); `caso_disciplinario` NO cableada (solo aparece en comentarios de dsr/retention; slim no tiene la tabla)
+- [x] 15.2 Confirmar fronteras: apelación formal queda para c-18 (solo hook acá — `revertir_anulacion` acto compensatorio append-only + veredicto reversible expuesto por pull en MiNota); Sesiones Grabadas = REASIGNADO a C-72 (fuera de C-71, no tocado acá); `caso_disciplinario` NO cableada (solo aparece en comentarios de dsr/retention; slim no tiene la tabla)
