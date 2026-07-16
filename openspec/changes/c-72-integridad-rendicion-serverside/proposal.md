@@ -63,3 +63,41 @@ Además, la reapertura del examen (cerrar todo y volver) **no deja rastro**: el 
 **Riesgo principal**: peso mal calibrado de `recarga_pagina` inunda la cola de revisión con víctimas de mala conectividad (corte de luz, wifi, crash), castigando al alumno con peor infraestructura y saturando a los revisores humanos — el recurso más escaso del proyecto (C-02, SU-03). Mitigación: severidad baja por defecto, peso ajustable desde `evento_score_config` sin tocar código, y la duración de ausencia como señal real en vez de la recarga en sí.
 
 **No cambia**: la decisión disciplinaria sigue siendo humana (L2.5, regla dura #5). El deadline es una regla académica ("lapiceras abajo"), no una sanción por sospecha — por eso se enforcea duro, a diferencia de los eventos del catálogo, que solo priorizan.
+
+---
+
+# Ampliación (scope decidido por el owner)
+
+## Why (ampliación)
+
+Cuatro líneas de trabajo se suman a C-72 por decisión del owner, todas del mismo dominio (integridad y revisión de la rendición). Van con **tasks explícitas** (§9–§12): la lección de C-71 slice 3 fue que el scope bundleado sin tasks propias se pierde.
+
+## What Changes (ampliación)
+
+- **Registro de sesión (ex "Sesiones Grabadas")**: se renombra el concepto — **NO es video** (RN-CC-01/RN-CO-03 prohíben video continuo), es el **expediente revisable** de una sesión (screenshots + chat + anotaciones + eventos). El expediente **ya está casi construido** (`ProctoringSessionDetail.tsx`, `SessionDetail.tsx`, ruta `/admin/proctoring-sessions`); esta línea es **auditoría y tie-off** + darle spec, no feature nueva.
+- **Ocultar eventos sin captura**: la lista del expediente deja de mostrar eventos sin evidencia asociada (duplicados navegador/servidor sin sentido para el revisor). El campo `tiene_evidencia` ya existe; se aplica como filtro de vista.
+- **StatCards — consistencia + layout**: se normalizan las descripciones (hoy cambian demasiado entre pantallas) y se reorganiza. UX, sin cambio de contrato de datos.
+- **Timeout del pedido de pausa**: una pausa `'solicitada'` sin responder expira por antigüedad (umbral configurable) y se cancela al finalizar la sesión, para que no ensucie el panel de supervisión en vivo. Distinto de `pausa_max_min` (duración de una pausa ya aprobada).
+
+## Capabilities (ampliación)
+
+### New Capabilities
+- `session-record-dossier`: el expediente revisable de una sesión de proctoring (evidencia discreta: screenshots, chat, anotaciones, eventos), completo y coherente por tipo de sesión (examen vs test), **sin video**. La lista de eventos oculta los que no tienen evidencia asociada.
+- `pause-request-timeout`: una solicitud de pausa sin resolver expira por antigüedad y se cancela al finalizar la sesión, saliendo de la cola de pendientes del proctor.
+
+### Modified Capabilities
+- `suspicious-activity-catalog`: (ya en el scope base) — sin cambios por la ampliación.
+
+## Impact (ampliación)
+
+**Frontend**
+- `frontend/src/screens/SessionDetail.tsx` — la lista de eventos (`:50`) aplica el filtro `tiene_evidencia`.
+- `frontend/src/screens/ProctoringSessionDetail.tsx` — verificación/tie-off del expediente de examen; ocultar eventos sin evidencia.
+- `frontend/src/screens/proctoring/StatCard.tsx` y sus usos — normalizar descripciones + layout.
+
+**Backend**
+- `app/application/proctoring/chat_pausa_service.py` — expirar pausas `'solicitada'` viejas (timeout) + cancelar pendientes al finalizar la sesión.
+- `app/presentation/api/v1/proctoring/chat_pausa/router.py` — `listar_pausas_pendientes` excluye las expiradas (naturalmente, al no ser ya `'solicitada'`).
+- Constante de timeout del pedido configurable por env (default conservador), en la línea de la gracia (§1.8).
+
+**Gobernanza**: la expiración de una pausa es acto del sistema que **no sanciona ni exime** (L2.5, regla #5) — solo limpia. El expediente NO incorpora video (RN-CC-01/RN-CO-03). El filtro de eventos es de vista: el dato crudo y su cadena de custodia se conservan íntegros (regla #6).

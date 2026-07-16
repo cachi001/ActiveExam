@@ -86,3 +86,52 @@
 - [ ] 8.6 Suite de frontend completa en verde
 - [ ] 8.7 Medir cuántas sesiones activas vencidas existen antes de activar cualquier cierre masivo
 - [ ] 8.8 `openspec validate` del change en verde
+
+---
+
+# Ampliación (scope del owner) — tasks explícitas
+
+## 9. Ocultar eventos sin captura de cámara (expediente)
+
+- [ ] 9.1 Test: la lista de eventos del expediente NO muestra eventos con `tiene_evidencia === false`
+- [ ] 9.2 Test: un evento CON evidencia sí se muestra (no ocultar de más)
+- [ ] 9.3 Test: el contador/subtítulo de "con evidencia" sigue coherente con la lista filtrada
+- [ ] 9.4 Aplicar el filtro `tiene_evidencia` a la lista de eventos en `SessionDetail.tsx:50` (hoy solo lo usa el subtítulo `:44`)
+- [ ] 9.5 Aplicar el mismo filtro en `ProctoringSessionDetail.tsx` (expediente de examen) donde liste eventos
+- [ ] 9.6 Test: el filtro es de vista — el dato crudo (evidencia/no-evidencia) no se altera
+
+## 10. Registro de sesión (ex "Sesiones Grabadas") — tie-off + renombre
+
+- [ ] 10.1 Renombrar el concepto en la UI: "Sesiones grabadas" → "Registro de sesión" / "Expediente" en labels y navegación (`/admin/proctoring-sessions` y BACK_LABELS)
+- [ ] 10.2 Test: el expediente de una sesión de EXAMEN incluye screenshots + chat + anotaciones del proctor + eventos (con evidencia)
+- [ ] 10.3 Test: el expediente de una sesión de TEST incluye screenshots + eventos + statcards (sin chat/anotaciones si no aplica)
+- [ ] 10.4 Verificar (tie-off) que `ProctoringSessionDetail.tsx` y `SessionDetail.tsx` cubren ambos tipos de sesión de forma coherente; documentar en el detalle que NO hay video (RN-CC-01/RN-CO-03)
+- [ ] 10.5 Test: ningún camino del expediente referencia grabación de video / `MediaRecorder` (guardrail contra la interpretación peligrosa del nombre viejo)
+- [ ] 10.6 Suite de frontend del expediente en verde
+
+## 11. StatCards — consistencia + layout
+
+- [ ] 11.1 Inventariar los usos de `StatCard` (dashboard, lista en vivo, `SessionDetail`, detalle) y las descripciones (`sub`) que hoy varían para la misma métrica
+- [ ] 11.2 Test: métricas equivalentes usan la misma etiqueta y descripción entre pantallas (fuente única de labels de stats)
+- [ ] 11.3 Normalizar el vocabulario de las statcards (mismas métricas → mismo `label`/`sub`)
+- [ ] 11.4 Reorganizar el layout de las statcards según lo pedido (consistencia visual entre pantallas)
+- [ ] 11.5 Test/verificación visual: typecheck verde + suite de frontend verde tras el reordenamiento
+
+## 12. Timeout del pedido de pausa
+
+- [ ] 12.1 Test integración (DB real): una pausa `'solicitada'` más vieja que el umbral pasa a `'expirada'` y sale de `listar_pausas_pendientes`
+- [ ] 12.2 Test integración: una pausa `'solicitada'` dentro del umbral sigue pendiente (no expira antes de tiempo)
+- [ ] 12.3 Test integración: al finalizar (manual) una sesión con una pausa `'solicitada'`, esa pausa queda `'expirada'`
+- [ ] 12.4 Test integración: al auto-finalizar (§4) una sesión con pausa `'solicitada'`, esa pausa queda `'expirada'`
+- [ ] 12.5 Test: la expiración NO aprueba ni rechaza (no abre ventana, no setea `inicio_en`); es acto del sistema (L2.5)
+- [ ] 12.6 Constante de timeout del pedido configurable por env (default conservador); documentar que es distinto de `pausa_max_min`
+- [ ] 12.7 Implementar la expiración por antigüedad en `chat_pausa_service.py` (lazy al listar pendientes y/o al tocar la sesión)
+- [ ] 12.8 Implementar la cancelación de pendientes en el camino de finalización de sesión (manual y auto)
+- [ ] 12.9 Test integración: doble expiración es idempotente (no re-muta una pausa ya `'expirada'`)
+- [ ] 12.10 Frontend: el panel de supervisión en vivo no muestra pausas expiradas; test de que desaparecen de la cola
+
+## 13. Cierre de la ampliación
+
+- [ ] 13.1 `openspec validate` del change en verde tras la ampliación
+- [ ] 13.2 Suite backend (chat_pausa + finalización) y frontend (expediente + statcards) en verde, sin mocks de DB
+- [ ] 13.3 Confirmar fronteras: registro de sesión = expediente revisable, NO video; el filtro de eventos es de vista, no borrado

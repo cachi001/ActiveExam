@@ -124,4 +124,37 @@ El rechazo es **atómico**: un PATCH mixto (campo congelado + campo libre) se re
 - **Valor exacto de la gracia** (60 vs 90s): arrancar en 60s y medir. Requiere dato de latencia real de la población.
 - **Umbral rápida/tardía** (~30s propuesto): calibrable, debería surgir de la distribución real de ausencias. Arrancar conservador.
 - **Mecanismo del barrido**: depende de C-03 (Postgres-como-cola vs. RabbitMQ+Celery). El lazy no depende de C-03 — implementar lazy ahora, barrido después. **No asumir arquitectura de cola antes de C-03** (regla dura de dominio #4).
-- **Ausencias legítimas por pausa autorizada**: existe `proctor_pausa_autorizada` y `eventos_en_pausa_autorizada` en scoring. ¿La pausa autorizada por el proctor debe extender el deadline efectivo? Hoy el scoring ya descuenta eventos en pausa; el deadline no la contempla. Si un proctor pausa legítimamente a un alumno, congelar su reloj parece correcto — pero abre la puerta a que la pausa sea el nuevo botón de pausa. **Decisión pendiente del owner.**
+- **Umbral del timeout del pedido de pausa** (ver ampliación §D-A4): arrancar conservador (default configurable por env) y medir contra el tiempo real de respuesta del proctor.
+
+## Decisiones cerradas (antes Open Questions)
+
+- **La pausa autorizada NO extiende el deadline efectivo** (resuelto con el owner). El reloj sigue corriendo aunque el proctor apruebe una pausa. Consistente con la §5.8 (reanudar no extiende ni pausa) y con el objetivo de integridad del change: `deadline_efectivo = min(cierre, creada_en + tiempo_limite_min)` NO depende de ventanas de pausa. La justicia ante interrupciones legítimas ya la da el **scoring** (contextualiza/excluye los eventos en pausa autorizada), no el reloj. Alternativa descartada (congelar el reloj durante la pausa): abre el vector "pausa = nuevo botón de pausa" y complica el cálculo del deadline con ventanas que restar.
+
+---
+
+# Ampliación (scope decidido por el owner) — registro de sesión + UX + timeout de pausa
+
+> Estas 4 líneas de trabajo se suman a C-72 por decisión del owner. Van con **tasks explícitas** (§9–§12): la lección de C-71 slice 3 fue que el scope sin tasks propias se pierde.
+
+## D-A1 — "Registro de sesión" (ex "Sesiones Grabadas"): renombre + tie-off, NO feature nueva
+
+**El nombre "Sesiones Grabadas" es peligroso**: sugiere video y alguien lo implementaría con `MediaRecorder`, violando RN-CC-01/RN-CO-03 (*"no se graba video continuo bajo ninguna circunstancia"*). Se renombra el concepto a **registro de sesión / expediente de sesión**: el conjunto revisable de evidencia discreta de una sesión de proctoring — screenshots, chat proctor↔alumno, anotaciones del proctor y eventos discretos. **NO es video.**
+
+El expediente **ya está casi construido** y disperso entre c-15/c-16/c-69, sin que nadie lo cerrara: `ProctoringSessionDetail.tsx` (examen: `DetalleHeader` + `EventoCard` + `BiometriaCard` + `ChatBox` + `ObservacionesProctor` + `PausaSesionPanel`/`PausasHistorial`) y `SessionDetail.tsx` (test: StatCards + eventos + cadena de custodia), con la ruta `/admin/proctoring-sessions` ya etiquetada. Esta línea es **auditoría y tie-off**, no construcción: verificar que el expediente es completo y coherente por tipo de sesión (examen vs test) y darle spec al concepto que hoy no la tiene. **Alternativa descartada:** rehacer un expediente nuevo → duplica lo existente.
+
+## D-A2 — Ocultar eventos sin captura de cámara
+
+Hay eventos duplicados navegador/servidor (p. ej. "el navegador manda un rostro y el servidor también") que **no tienen evidencia asociada** — ruido sin sentido para el revisor. El campo `tiene_evidencia` **ya existe** (`lib/types.ts`) y `SessionDetail.tsx:44` ya lo usa para el subtítulo del StatCard, pero la **lista de eventos (`:50`) los muestra todos**. La regla: la UI del expediente SHALL ocultar de la lista los eventos sin evidencia asociada. Es filtro de presentación, no borrado (la evidencia/no-evidencia sigue en el dato). **Alternativa descartada:** filtrar server-side → el dato crudo se conserva íntegro (cadena de custodia); el filtro es de vista.
+
+## D-A3 — StatCards: consistencia y layout
+
+`StatCard.tsx` es un componente único reutilizado en dashboard, lista en vivo y detalle. El problema NO es el componente sino la **inconsistencia de las descripciones (`sub`) entre pantallas** y la organización. Se normaliza el vocabulario de las stats (mismas métricas → misma etiqueta/descripción) y se ordena el layout. UX, sin cambio de contrato de datos.
+
+## D-A4 — Timeout del pedido de pausa
+
+Hoy `solicitar_pausa` crea una pausa `estado='solicitada'` que vive para siempre hasta que el proctor la resuelva. `listar_pausas_pendientes` (poll del proctor) devuelve TODAS las `'solicitada'` de todas las sesiones. Problema del owner: si el alumno pide una pausa, el proctor no responde y el alumno finaliza el examen, **el pedido pendiente sobrevive y ensucia el panel de supervisión en vivo**. Dos reglas nuevas:
+
+1. **Timeout**: una pausa `'solicitada'` cuya antigüedad supera un umbral (configurable por env, default conservador) SHALL transicionar a un estado terminal (`'expirada'`) y salir de la cola de pendientes. Es cancelación del PEDIDO sin responder — distinto de `pausa_max_min`, que limita la DURACIÓN de una pausa ya aprobada.
+2. **Cancelación al finalizar**: al finalizar (manual o automática) una sesión con pausas `'solicitada'` pendientes, esas pausas SHALL cancelarse (`'expirada'`) — no tiene sentido una pausa pendiente sobre una sesión cerrada.
+
+La transición a `'expirada'` es un acto del sistema, no una sanción (L2.5): no aprueba ni rechaza, solo limpia. **Alternativa descartada:** borrar la fila → pierde el rastro de que se pidió; se conserva como estado terminal.
