@@ -41,9 +41,9 @@
 
 ## 5. Evento de reanudación server-side (H-4)
 
-- [ ] 5.1 Registrar `recarga_pagina` (baja) y `reanudacion_tardia` (media) como `TipoEvento` del dominio con descripción y etiqueta
+- [x] 5.1 Registrar `recarga_pagina` (baja) y `reanudacion_tardia` (media) como `TipoEvento` del dominio con descripción y etiqueta
 - [ ] 5.2 Migración Alembic: sembrar ambos tipos en `evento_score_config` con peso CONSERVADOR y `activo=true`
-- [ ] 5.3 Test puro: la clasificación por duración de ausencia elige `recarga_pagina` bajo el umbral y `reanudacion_tardia` por encima
+- [x] 5.3 Test puro: la clasificación por duración de ausencia elige `recarga_pagina` bajo el umbral y `reanudacion_tardia` por encima
 - [ ] 5.4 Test integración: reanudar una sesión activa emite el evento server-side, sin que el cliente reporte nada
 - [ ] 5.5 Test integración: crear una sesión nueva (sin activa previa) NO emite evento de reanudación
 - [ ] 5.6 Test integración: el evento registra la duración de ausencia medida server-side
