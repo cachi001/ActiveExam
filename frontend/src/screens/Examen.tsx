@@ -26,7 +26,20 @@ import { IntegridadPanel } from './examen/IntegridadPanel';
 import { QuestionNavigator } from './alumno/components/QuestionNavigator';
 import { PausaAlumno } from './PausaAlumno';
 import { ChatBox } from '../ui/ChatBox';
-import { Card, Button } from '../ui/components';
+import { Card, Button, Icon } from '../ui/components';
+
+// C-72 sección 7: mensajes al alumno cuando el backend rechaza guardar respuestas
+// (409). Distintos entre sí; alineados con Moodle (auto-entrega + aviso claro).
+const MENSAJE_409: Record<string, string> = {
+  tiempo_agotado:
+    'Se agotó el tiempo del examen. Ya no se pueden guardar respuestas. Se conservaron las que enviaste dentro del plazo.',
+  sesion_finalizada: 'Este examen ya fue entregado. No se puede modificar.',
+};
+
+function codigo409(e: unknown): string | undefined {
+  const code = (e as { code?: string } | null)?.code;
+  return code === 'tiempo_agotado' || code === 'sesion_finalizada' ? code : undefined;
+}
 
 export default function Examen() {
   const navigate = useNavigate();
@@ -70,6 +83,9 @@ export default function Examen() {
   const [confirmandoEntrega, setConfirmandoEntrega] = useState(false);
   const [entregando, setEntregando] = useState(false);
   const [errorEntrega, setErrorEntrega] = useState(false);
+  // C-72 sección 7: mensaje de "se acabó el tiempo" / "ya finalizado" cuando el
+  // backend rechaza guardar respuestas (409). NUNCA pérdida silenciosa.
+  const [mensajeTiempo, setMensajeTiempo] = useState<string | null>(null);
 
   useEffect(() => {
     navigator.mediaDevices?.getUserMedia({ video: true }).then((s) => {
@@ -190,7 +206,12 @@ export default function Examen() {
         opcion_elegida_id,
       }));
       if (items.length === 0) return;
-      void api.enviarRespuestasProctoring(sessionId, items);
+      // C-72 sección 7: si el backend rechaza por plazo (409), mostrar el aviso —
+      // el alumno se entera de que se acabó el tiempo, sin pérdida silenciosa.
+      api.enviarRespuestasProctoring(sessionId, items).catch((e) => {
+        const code = codigo409(e);
+        if (code) setMensajeTiempo(MENSAJE_409[code]);
+      });
     }, 800);
     return () => {
       if (submitTimeoutRef.current) clearTimeout(submitTimeoutRef.current);
@@ -222,15 +243,20 @@ export default function Examen() {
         }));
         await api.enviarRespuestasProctoring(sessionId, items);
       }
-    } catch {
-      if (!porTiempo) {
-        // Entrega manual fallida: revertir para permitir reintento. No finalizamos.
+    } catch (e) {
+      const code = codigo409(e);
+      if (code) {
+        // C-72 sección 7: se acabó el tiempo o ya se entregó. Reintentar no sirve —
+        // se muestra el aviso y se cierra (el backend ya finalizó la sesión).
+        setMensajeTiempo(MENSAJE_409[code]);
+      } else if (!porTiempo) {
+        // Error de RED en entrega manual: revertir para permitir reintento. No finalizamos.
         entregadoRef.current = false;
         setEntregando(false);
         setErrorEntrega(true);
         return;
       }
-      // Por tiempo: seguimos a /cierre igual (degradación best-effort).
+      // 409 de plazo, o entrega por tiempo: seguimos a /cierre igual (best-effort).
     }
     setConfirmandoEntrega(false);
     detener();
@@ -269,6 +295,19 @@ export default function Examen() {
   return (
     <StudentShell locked>
       <div className={`w-full animate-in fade-in duration-500 transition-[padding] ${pausaActiva ? 'pt-16' : ''}`}>
+
+        {/* C-72 sección 7: aviso de tiempo agotado / examen ya entregado. El backend
+            rechazó guardar respuestas (409); el alumno se entera sin perder su trabajo. */}
+        {mensajeTiempo && (
+          <div
+            role="alert"
+            className="mb-lg rounded-xl border border-warning/50 bg-warning-container/70 px-md py-base
+              text-label-md text-on-warning-container flex items-start gap-sm"
+          >
+            <Icon name="timer_off" className="text-[20px] shrink-0" fill />
+            <span>{mensajeTiempo}</span>
+          </div>
+        )}
 
         {/* Preguntas (izquierda) + rail derecho: cámara arriba, luego números +
             Terminar intento, y abajo Supervisión. */}

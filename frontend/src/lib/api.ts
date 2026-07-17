@@ -382,8 +382,25 @@ async function realFetch<T>(path: string, init: RequestInit, _legacyToken?: stri
   if (!res.ok) {
     // Adjuntamos el status code para que los callers puedan ramificar (p.ej. el
     // 409 de "pausa ya resuelta" en C-15) sin parsear el mensaje a mano.
-    const err = new Error(`HTTP ${res.status}`) as Error & { status?: number };
+    const err = new Error(`HTTP ${res.status}`) as Error & {
+      status?: number;
+      code?: string;
+      mensaje?: string;
+    };
     err.status = res.status;
+    // Adjuntar el código de error del backend ({detail:{error, mensaje}}) para que
+    // los callers distingan casos con el mismo status (C-72: tiempo_agotado vs
+    // sesion_finalizada, ambos 409). Body no-JSON → solo status.
+    try {
+      const body = await res.clone().json();
+      const detail = body?.detail;
+      if (detail && typeof detail === 'object') {
+        if (typeof detail.error === 'string') err.code = detail.error;
+        if (typeof detail.mensaje === 'string') err.mensaje = detail.mensaje;
+      }
+    } catch {
+      /* body vacío o no-JSON: se conserva solo el status */
+    }
     throw err;
   }
   return res.json() as Promise<T>;
@@ -1112,7 +1129,12 @@ export const api = {
         { method: 'POST', body: JSON.stringify(body) },
         'demo',
       );
-    } catch {
+    } catch (e) {
+      // C-72 sección 7: los rechazos de PLAZO se PROPAGAN para que el alumno vea el
+      // mensaje (nunca pérdida silenciosa). Otros errores (red, mock) degradan a null
+      // para no romper el cierre del examen.
+      const code = (e as { code?: string })?.code;
+      if (code === 'tiempo_agotado' || code === 'sesion_finalizada') throw e;
       return null;
     }
   },

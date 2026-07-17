@@ -69,10 +69,10 @@
 
 ## 7. Frontend
 
-- [ ] 7.1 Test: manejo de `409 tiempo_agotado` al guardar respuestas — mensaje claro, sin pérdida silenciosa
-- [ ] 7.2 Test: `409 sesion_finalizada` muestra un mensaje distinto de `tiempo_agotado`
-- [ ] 7.3 Implementar el manejo de ambos 409 en el flujo de rendición
-- [ ] 7.4 Test: el timer muestra el límite nominal y la gracia NO se expone ni se deriva de la API
+- [x] 7.1 Test: manejo de `409 tiempo_agotado` al guardar respuestas — mensaje claro, sin pérdida silenciosa
+- [x] 7.2 Test: `409 sesion_finalizada` muestra un mensaje distinto de `tiempo_agotado`
+- [x] 7.3 Implementar el manejo de ambos 409 en el flujo de rendición
+- [x] 7.4 Test: el timer muestra el límite nominal y la gracia NO se expone ni se deriva de la API
 - [ ] 7.5 Etiquetas y descripciones de UI para `recarga_pagina` y `reanudacion_tardia`
 - [ ] 7.6 Test: la duración de ausencia es visible en el contexto de revisión de la sesión
 - [ ] 7.7 UI de config: deshabilitar los congelados y explicar que `cierre`/`intentos_permitidos` solo se pueden ampliar
