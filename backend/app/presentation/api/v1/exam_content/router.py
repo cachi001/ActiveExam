@@ -54,7 +54,7 @@ from app.application.exam_content.taking_service import LecturaExamenService, pr
 from app.domain.auth.identity import AuthenticatedPrincipal
 from app.domain.auth.roles import Rol
 from app.domain.exam_content.config import (
-    campos_congelados_en_cambio,
+    cambios_bloqueados,
     validar_config_examen,
 )
 from app.domain.exam_content.entities import Materia
@@ -887,6 +887,12 @@ def create_exam_content_router(
     # -----------------------------------------------------------------------
 
     def _config_to_response(examen, *, bloqueada: bool = False) -> ExamenConfigResponse:
+        # C-72 sección 6: si ya fue rendido, expone el detalle direccional para la UI.
+        from app.domain.exam_content.config import (
+            CAMPOS_DIRECCIONALES,
+            CONGELADO_DURO,
+        )
+
         return ExamenConfigResponse(
             tiempo_limite_min=examen.tiempo_limite_min,
             intentos_permitidos=examen.intentos_permitidos,
@@ -898,6 +904,8 @@ def create_exam_content_router(
             mostrar_nota=examen.mostrar_nota,
             revision_habilitada=examen.revision_habilitada,
             bloqueada=bloqueada,
+            campos_congelados=sorted(CONGELADO_DURO) if bloqueada else [],
+            campos_solo_ampliables=sorted(CAMPOS_DIRECCIONALES) if bloqueada else [],
         )
 
     @router.get(
@@ -971,18 +979,26 @@ def create_exam_content_router(
             # calculadas / la equidad de quienes rindieron). Los controles de
             # publicación (mostrar_nota, revision_habilitada) siguen editables.
             ya_rendido = await _seleccion_bloqueada(session, examen_id)
-            congelados = campos_congelados_en_cambio(cambios, ya_rendido=ya_rendido)
+            # Candado DIRECCIONAL (C-72 sección 6): congelado duro (nota/mecánica) →
+            # siempre bloqueado; `cierre` solo se puede EXTENDER, `intentos_permitidos`
+            # solo AUMENTAR (aflojar ayuda, apretar perjudica a quien ya rindió); libres
+            # (mostrar_nota, revision_habilitada) siempre. Compara contra el valor vigente.
+            vigente = {campo: getattr(actual, campo) for campo in cambios}
+            congelados = cambios_bloqueados(
+                cambios=cambios, vigente=vigente, ya_rendido=ya_rendido
+            )
             if congelados:
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
                     detail={
                         "error": "config_congelada",
                         "mensaje": (
-                            "El examen ya tiene intentos finalizados: no se pueden "
-                            "modificar los campos de mecánica/nota "
-                            f"({', '.join(sorted(congelados))}). Solo se puede "
-                            "cambiar la publicación de resultados (mostrar_nota, "
-                            "revision_habilitada)."
+                            "El examen ya tiene intentos finalizados. No se pueden "
+                            "modificar los campos de mecánica/nota, ni acortar la "
+                            "ventana (`cierre`) o reducir los intentos "
+                            f"({', '.join(sorted(congelados))}). Se puede EXTENDER el "
+                            "cierre, AUMENTAR los intentos y publicar resultados "
+                            "(mostrar_nota, revision_habilitada)."
                         ),
                         "campos": sorted(congelados),
                     },

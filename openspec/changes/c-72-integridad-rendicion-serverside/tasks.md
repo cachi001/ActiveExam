@@ -60,12 +60,12 @@
 - [x] 6.4 Test puro: `mostrar_nota` y `revision_habilitada` se permiten siempre
 - [x] 6.5 Test puro: examen sin intentos finalizados admite cualquier cambio
 - [x] 6.6 Reemplazar `CAMPOS_CONGELADOS_POST_RENDICION` por el modelo de tres grupos en `app/domain/exam_content/config.py` (modelo nuevo en uso; binario queda como shim deprecado hasta el rewire del router §6.10)
-- [ ] 6.7 Test integración: `PATCH /config` extendiendo `cierre` en examen rendido → 200 y persistido
-- [ ] 6.8 Test integración: `PATCH /config` acortando `cierre` en examen rendido → `409 config_congelada`
-- [ ] 6.9 Test integración: PATCH mixto (congelado + libre) → 409 y el campo libre NO se persiste (atómico)
-- [ ] 6.10 Implementar la regla direccional en `PATCH /config` (`exam_content/router.py`), comparando contra el valor vigente
-- [ ] 6.11 `GET /config` expone qué campos están congelados y cuáles admiten solo ampliación
-- [ ] 6.12 Test integración: examen sin rendiciones reporta que ningún campo está congelado
+- [x] 6.7 Test integración: `PATCH /config` extendiendo `cierre` en examen rendido → 200 y persistido
+- [x] 6.8 Test integración: `PATCH /config` acortando `cierre` en examen rendido → `409 config_congelada`
+- [x] 6.9 Test integración: PATCH mixto (congelado + libre) → 409 y el campo libre NO se persiste (atómico)
+- [x] 6.10 Implementar la regla direccional en `PATCH /config` (`exam_content/router.py`), comparando contra el valor vigente
+- [x] 6.11 `GET /config` expone qué campos están congelados y cuáles admiten solo ampliación
+- [x] 6.12 Test integración: examen sin rendiciones reporta que ningún campo está congelado
 
 ## 7. Frontend
 

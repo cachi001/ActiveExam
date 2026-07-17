@@ -465,6 +465,10 @@ class ExamenConfigResponse(BaseModel):
     # True si el examen ya tiene >= 1 intento finalizado: la config de
     # mecánica/nota queda CONGELADA (el front deshabilita esos campos).
     bloqueada: bool = False
+    # C-72 sección 6 (candado direccional): detalle para que el front sepa qué
+    # deshabilitar y qué solo se puede ampliar. Vacíos si el examen no fue rendido.
+    campos_congelados: list[str] = []          # congelado duro: no editables
+    campos_solo_ampliables: list[str] = []     # cierre (extender), intentos (aumentar)
 
 
 class ExamenConfigPatchRequest(BaseModel):
