@@ -20,7 +20,7 @@ import { loadEffectiveConfig } from '../config/effectiveConfigCache';
 import type { SesionProctoringResumen } from '../lib/types';
 import {
   formatFechaRelativa,
-  scoreCardSurface,
+  scoreCardAcento,
   scoreTextColor,
   nivelRiesgo,
   INNER_CHIP_BG,
@@ -180,7 +180,7 @@ function PersonaCard({
           onAbrir(sesion);
         }
       }}
-      className={`group cursor-pointer rounded-2xl border ${scoreCardSurface(sesion.score)}
+      className={`group cursor-pointer rounded-2xl border ${scoreCardAcento(sesion.score)}
         p-md shadow-card transition-all duration-200
         hover:shadow-card-lg hover:-translate-y-px focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40
         ${alto ? 'ring-1 ring-error/30' : ''}`}

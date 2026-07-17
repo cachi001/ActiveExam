@@ -119,6 +119,19 @@ export function scoreCardSurface(score: number): string {
   return `${scoreSoftBg(score)} ${scoreSoftBorder(score)}`;
 }
 
+/** C-72: acento de riesgo para las cards del Registro de sesiones. En vez de teñir
+ * TODO el fondo (que se veía poco profesional), deja el fondo limpio y pone un borde
+ * IZQUIERDO grueso de color por riesgo (rojo alto / ámbar medio / verde bajo). La
+ * sombra y el hover los pone la card. */
+export function scoreCardAcento(score: number): string {
+  const nivel = nivelRiesgo(score);
+  const borde =
+    nivel === 'alto' ? 'border-l-error'
+    : nivel === 'medio' ? 'border-l-warning'
+    : 'border-l-success';
+  return `bg-surface-container-lowest border-outline-variant/60 border-l-4 ${borde}`;
+}
+
 /** Solo el fondo claro tintado por riesgo (para filas/elementos sin borde propio). */
 export function scoreSoftBg(score: number): string {
   const nivel = nivelRiesgo(score);
