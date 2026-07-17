@@ -611,3 +611,74 @@ async def test_lazy_luego_manual_un_solo_cierre(
     assert fin.status_code == 200, fin.text
     assert fin.json()["finalizada_en"] == fin1.isoformat().replace("+00:00", "Z") or fin.json()["finalizada_en"] is not None
     assert len(await _writeback_estado(db, sid)) == 1  # una sola nota
+
+
+# ---------------------------------------------------------------------------
+# Sección 5 — Evento de reanudación server-side (H-4)
+# ---------------------------------------------------------------------------
+
+async def _eventos_reanudacion(db: AsyncSession, sid: str):
+    await db.commit()
+    return (
+        await db.execute(
+            select(ProctoringEventModel).where(
+                ProctoringEventModel.session_id == sid,
+                ProctoringEventModel.tipo.in_(["recarga_pagina", "reanudacion_tardia"]),
+            )
+        )
+    ).scalars().all()
+
+
+# 5.4 + 5.6 — reanudar una sesión activa emite el evento server-side, con la
+# duración de ausencia medida por el servidor
+async def test_reanudar_emite_evento_server_side(
+    client: AsyncClient, db: AsyncSession
+) -> None:
+    # sesión EN PLAZO (no se auto-finaliza), pero con 5 min desde que arrancó → tardía
+    examen_id, _p, _o = await _crear_examen(
+        db, tiempo_limite_min=40, cierre=_now() + timedelta(hours=4)
+    )
+    sid = await _crear_sesion(
+        db, examen_contenido_id=examen_id, creada_en=_now() - timedelta(minutes=5)
+    )
+    r = await client.post(
+        f"{_BASE}/sessions", json={"modo": "examen", "examen_contenido_id": examen_id}
+    )
+    assert r.status_code == 201, r.text
+    assert r.json()["id"] == sid  # reanudó
+    evs = await _eventos_reanudacion(db, sid)
+    assert len(evs) == 1
+    assert evs[0].tipo == "reanudacion_tardia"  # 5 min > umbral 30s
+    # 5.6: la duración de ausencia quedó registrada server-side
+    assert evs[0].payload["ausencia_seg"] >= 250  # ~300s
+
+
+# 5.5 — crear una sesión NUEVA (sin activa previa) NO emite evento de reanudación
+async def test_sesion_nueva_no_emite_evento(
+    client: AsyncClient, db: AsyncSession
+) -> None:
+    examen_id, _p, _o = await _crear_examen(
+        db, tiempo_limite_min=40, cierre=_now() + timedelta(hours=4)
+    )
+    r = await client.post(
+        f"{_BASE}/sessions", json={"modo": "examen", "examen_contenido_id": examen_id}
+    )
+    assert r.status_code == 201, r.text
+    assert await _eventos_reanudacion(db, r.json()["id"]) == []
+
+
+# 5.8 — reanudar conserva creada_en (no extiende ni pausa el reloj)
+async def test_reanudar_conserva_creada_en(
+    client: AsyncClient, db: AsyncSession
+) -> None:
+    examen_id, _p, _o = await _crear_examen(
+        db, tiempo_limite_min=40, cierre=_now() + timedelta(hours=4)
+    )
+    creada = _now() - timedelta(minutes=5)
+    sid = await _crear_sesion(db, examen_contenido_id=examen_id, creada_en=creada)
+    r = await client.post(
+        f"{_BASE}/sessions", json={"modo": "examen", "examen_contenido_id": examen_id}
+    )
+    assert r.json()["id"] == sid
+    # el timer se ancla a la creada_en ORIGINAL (no se resetea al reanudar)
+    assert r.json()["creada_en"].startswith(creada.isoformat()[:16])

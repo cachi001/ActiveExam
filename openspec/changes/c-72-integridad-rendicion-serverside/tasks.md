@@ -42,15 +42,15 @@
 ## 5. Evento de reanudación server-side (H-4)
 
 - [x] 5.1 Registrar `recarga_pagina` (baja) y `reanudacion_tardia` (media) como `TipoEvento` del dominio con descripción y etiqueta
-- [ ] 5.2 Migración Alembic: sembrar ambos tipos en `evento_score_config` con peso CONSERVADOR y `activo=true`
+- [x] 5.2 Migración Alembic: sembrar ambos tipos en `evento_score_config` con peso CONSERVADOR y `activo=true`
 - [x] 5.3 Test puro: la clasificación por duración de ausencia elige `recarga_pagina` bajo el umbral y `reanudacion_tardia` por encima
-- [ ] 5.4 Test integración: reanudar una sesión activa emite el evento server-side, sin que el cliente reporte nada
-- [ ] 5.5 Test integración: crear una sesión nueva (sin activa previa) NO emite evento de reanudación
-- [ ] 5.6 Test integración: el evento registra la duración de ausencia medida server-side
-- [ ] 5.7 Implementar la emisión en la rama de resume de `crear_o_reanudar_sesion` (`session_service.py:46`)
-- [ ] 5.8 Test integración: reanudar conserva `creada_en` y el deadline efectivo (no extiende ni pausa)
-- [ ] 5.9 Test integración: reanudar dentro del plazo restaura las respuestas ya persistidas
-- [ ] 5.10 Test: el peso sembrado por sí solo NO empuja una sesión sobre el umbral de encolado a revisión
+- [x] 5.4 Test integración: reanudar una sesión activa emite el evento server-side, sin que el cliente reporte nada
+- [x] 5.5 Test integración: crear una sesión nueva (sin activa previa) NO emite evento de reanudación
+- [x] 5.6 Test integración: el evento registra la duración de ausencia medida server-side
+- [x] 5.7 Implementar la emisión en la rama de resume de `crear_o_reanudar_sesion` (`session_service.py:46`)
+- [x] 5.8 Test integración: reanudar conserva `creada_en` y el deadline efectivo (no extiende ni pausa)
+- [x] 5.9 Test integración: reanudar dentro del plazo restaura las respuestas ya persistidas
+- [x] 5.10 Test: el peso sembrado por sí solo NO empuja una sesión sobre el umbral de encolado a revisión
 
 ## 6. Candado direccional de configuración (H-5)
 

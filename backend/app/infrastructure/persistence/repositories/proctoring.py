@@ -374,6 +374,18 @@ class ProctoringRepository:
     # Events
     # -------------------------------------------------------------------------
 
+    async def ultimo_evento_ts_backend(self, session_id: str) -> datetime | None:
+        """ts_backend del ÚLTIMO evento de la sesión (hora del servidor), o None si
+        no hay eventos. C-72 sección 5: mide la ausencia (now - último evento) para
+        clasificar la reanudación. Server-side, nunca hora del cliente (regla #6)."""
+        return (
+            await self._db.execute(
+                select(func.max(ProctoringEventModel.ts_backend)).where(
+                    ProctoringEventModel.session_id == session_id
+                )
+            )
+        ).scalar_one_or_none()
+
     async def crear_evento(
         self,
         session_id: str,

@@ -7,14 +7,49 @@ duplicacion con el repositorio.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.application.proctoring.scoring import calcular_score
+from app.domain.events.reanudacion import clasificar_reanudacion
+from app.domain.events.schema import TipoEvento
 from app.infrastructure.persistence.models.proctoring import ProctoringSessionModel
+
+# Severidad en el vocabulario del CATÁLOGO (evento_score_config / frontend usan
+# "baja"/"media"/"alta"/"critica"), no el del enum de dominio ("baseline"...).
+_SEVERIDAD_CATALOGO_REANUDACION = {
+    TipoEvento.RECARGA_PAGINA: "baja",
+    TipoEvento.REANUDACION_TARDIA: "media",
+}
 from app.infrastructure.persistence.repositories.proctoring import (
     ProctoringRepository,
     SesionResumenData,
 )
+
+
+async def _emitir_evento_reanudacion(
+    repo: ProctoringRepository, sesion: ProctoringSessionModel
+) -> None:
+    """Emite SERVER-SIDE el evento de reanudación (C-72 sección 5, H-4).
+
+    La ausencia se mide como el tiempo desde el último evento de la sesión (o desde
+    ``creada_en`` si no hubo eventos), con hora del servidor — el cliente no reporta
+    nada, así que un navegador modificado no puede suprimir el evento (regla #6). La
+    duración clasifica entre recarga rápida y reanudación tardía y queda en el payload.
+    """
+    ahora = datetime.now(timezone.utc)
+    ultimo = await repo.ultimo_evento_ts_backend(sesion.id)
+    referencia = ultimo or sesion.creada_en
+    ausencia_seg = max(0.0, (ahora - referencia).total_seconds())
+    tipo = clasificar_reanudacion(ausencia_seg)
+    await repo.crear_evento(
+        session_id=sesion.id,
+        tipo=tipo.value,
+        severidad=_SEVERIDAD_CATALOGO_REANUDACION[tipo],
+        ts_cliente=ahora,  # server-side: no hay reporte del cliente
+        payload={"ausencia_seg": round(ausencia_seg, 1), "origen": "server"},
+    )
 
 
 async def crear_sesion(
@@ -69,6 +104,10 @@ async def crear_o_reanudar_sesion(
     if examen_contenido_id is not None and alumno_idnumber:
         activa = await repo.obtener_sesion_activa(alumno_idnumber, examen_contenido_id)
         if activa is not None:
+            # C-72 sección 5 (H-4): reabrir una sesión activa emite el evento de
+            # reanudación server-side. Solo en el resume — crear una sesión nueva
+            # (rama de abajo) NO emite (no hubo reapertura).
+            await _emitir_evento_reanudacion(repo, activa)
             return activa
     return await repo.crear_sesion(
         modo=modo,
