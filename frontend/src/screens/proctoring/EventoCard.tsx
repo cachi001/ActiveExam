@@ -42,8 +42,12 @@ export function EventoCard({ evento }: { evento: EventoProctoringDetalle }) {
   const tipoLabel = TIPO_EVENTO_LABEL[evento.tipo as TipoEvento] ?? humanizarLabel(evento.tipo);
   const fcCliente = evento.face_count_cliente ?? null;
   const fcServidor = evento.face_count_servidor ?? null;
-  const hayFaceCount = fcCliente !== null || fcServidor !== null;
   const discrepanciaFC = fcCliente !== null && fcServidor !== null && fcCliente !== fcServidor;
+  // C-72 sección 9: el bloque de conteo cliente/servidor solo aporta señal cuando
+  // NO coinciden (el cliente pudo mentir, regla #6) Y hay captura para inspeccionar
+  // la discrepancia. Coinciden o sin imagen → ruido, se oculta. El evento NO se oculta.
+  const hayCaptura = !!evento.screenshot_base64;
+  const mostrarConteo = discrepanciaFC && hayCaptura;
   const sha = evento.screenshot_sha256;
   const payload = payloadEntries(evento.payload);
 
@@ -109,8 +113,8 @@ export function EventoCard({ evento }: { evento: EventoProctoringDetalle }) {
             </div>
           )}
 
-          {/* Face count cliente vs servidor */}
-          {hayFaceCount && (
+          {/* Face count cliente vs servidor — solo con discrepancia Y captura (C-72 §9) */}
+          {mostrarConteo && (
             <div className="flex items-center gap-sm flex-wrap">
               <span className="text-label-sm text-on-surface-variant">Rostros detectados:</span>
               <span className="inline-flex items-center gap-base px-sm py-px rounded-lg

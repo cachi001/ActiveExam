@@ -96,13 +96,13 @@
 
 > Contexto: los 9 `TipoEvento` son anomalías (el evento ES la evidencia) → **NO se oculta ningún evento**. El ruido real es el bloque "Navegador: N / Servidor: N" (`EventoCard.tsx:119-124`), que hoy se muestra aunque cliente y servidor coincidan y aunque no haya captura. Regla: mostrarlo SOLO con discrepancia (`cliente ≠ servidor`) **Y** captura asociada.
 
-- [ ] 9.1 Test: el bloque de conteo cliente/servidor NO se muestra cuando `fcCliente === fcServidor` (coinciden)
-- [ ] 9.2 Test: el bloque NO se muestra cuando hay discrepancia pero NO hay captura asociada (nada que inspeccionar)
-- [ ] 9.3 Test: el bloque SÍ se muestra cuando hay discrepancia (`fcCliente !== fcServidor`) Y hay captura
-- [ ] 9.4 Test: TODOS los eventos se siguen listando — ningún evento se oculta por el conteo (`copiar_pegar`, `cambio_pestana`, `perdida_de_foco`, etc. siempre visibles: el evento es la evidencia)
-- [ ] 9.5 Implementar la condición en `EventoCard.tsx` (combinar `discrepanciaFC` `:46` con el indicador de captura) — reemplaza `hayFaceCount` como condición de render del bloque de conteo
-- [ ] 9.6 Verificar el comportamiento en ambos expedientes (`SessionDetail.tsx`, `ProctoringSessionDetail.tsx`); la verificación del servidor (`veredicto_reinferencia`) se sigue mostrando aparte cuando flaggea (no se toca)
-- [ ] 9.7 Test: es cambio de VISTA — el dato crudo (`face_count_cliente`/`face_count_servidor`, evidencia) se conserva íntegro server-side
+- [x] 9.1 Test: el bloque de conteo cliente/servidor NO se muestra cuando `fcCliente === fcServidor` (coinciden)
+- [x] 9.2 Test: el bloque NO se muestra cuando hay discrepancia pero NO hay captura asociada (nada que inspeccionar)
+- [x] 9.3 Test: el bloque SÍ se muestra cuando hay discrepancia (`fcCliente !== fcServidor`) Y hay captura
+- [x] 9.4 Test: TODOS los eventos se siguen listando — ningún evento se oculta por el conteo (`copiar_pegar`, `cambio_pestana`, `perdida_de_foco`, etc. siempre visibles: el evento es la evidencia)
+- [x] 9.5 Implementar la condición en `EventoCard.tsx` (combinar `discrepanciaFC` `:46` con el indicador de captura) — reemplaza `hayFaceCount` como condición de render del bloque de conteo
+- [x] 9.6 Verificar el comportamiento en ambos expedientes (`SessionDetail.tsx`, `ProctoringSessionDetail.tsx`); la verificación del servidor (`veredicto_reinferencia`) se sigue mostrando aparte cuando flaggea (no se toca)
+- [x] 9.7 Test: es cambio de VISTA — el dato crudo (`face_count_cliente`/`face_count_servidor`, evidencia) se conserva íntegro server-side
 
 ## 10. Registro de sesión (ex "Sesiones Grabadas") — tie-off + renombre
 
