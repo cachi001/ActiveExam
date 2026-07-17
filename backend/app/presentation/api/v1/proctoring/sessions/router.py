@@ -16,6 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.application.proctoring import observacion_service, session_service
+from app.application.proctoring.auto_finalizacion import auto_finalizar_si_vencida
 from app.application.proctoring.enforcement import (
     FueraDeVentanaError,
     IntentosAgotadosError,
@@ -227,6 +228,10 @@ def create_sessions_router(
             alumno_idnumber=principal.id_institucional or None,
             alumno_email=principal.email or None,
         )
+        # Auto-finalización lazy (C-72 §4, H-3): si el alumno "vuelve" a una sesión
+        # cuyo deadline ya venció (aunque la ventana siga abierta), se cierra sola y
+        # se puntúa con lo respondido. No puede seguir rindiendo una sesión vencida.
+        await auto_finalizar_si_vencida(db, sesion, writeback_svc=writeback_svc)
         return CrearSesionOut(
             id=sesion.id,
             creada_en=sesion.creada_en,

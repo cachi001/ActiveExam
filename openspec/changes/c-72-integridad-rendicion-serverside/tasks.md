@@ -31,13 +31,13 @@
 
 ## 4. Auto-finalización lazy (H-3)
 
-- [ ] 4.1 Test integración: alumno vuelve pasado el deadline → su sesión queda finalizada y no puede seguir respondiendo
-- [ ] 4.2 Test integración: sesión auto-finalizada se puntúa con las respuestas persistidas (14 de 20 → nota sobre 14, NO cero)
-- [ ] 4.3 Test integración: sesión auto-finalizada sin ninguna respuesta → cierre consistente, nota sobre cero respuestas
-- [ ] 4.4 Test integración: el write-back de una auto-finalizada sigue el mismo camino (y el mismo gate de revisión) que la manual
-- [ ] 4.5 Implementar el cierre lazy al tocar una sesión vencida (reanudar / responder / consultar)
-- [ ] 4.6 Test integración: doble cierre lazy es idempotente — no muta `finalizada_en` ni duplica write-back
-- [ ] 4.7 Test integración: carrera cierre lazy vs. finalización manual → un único cierre, una única nota
+- [x] 4.1 Test integración: alumno vuelve pasado el deadline → su sesión queda finalizada y no puede seguir respondiendo
+- [x] 4.2 Test integración: sesión auto-finalizada se puntúa con las respuestas persistidas (14 de 20 → nota sobre 14, NO cero)
+- [x] 4.3 Test integración: sesión auto-finalizada sin ninguna respuesta → cierre consistente, nota sobre cero respuestas
+- [x] 4.4 Test integración: el write-back de una auto-finalizada sigue el mismo camino (y el mismo gate de revisión) que la manual
+- [x] 4.5 Implementar el cierre lazy al tocar una sesión vencida (reanudar / responder / consultar)
+- [x] 4.6 Test integración: doble cierre lazy es idempotente — no muta `finalizada_en` ni duplica write-back
+- [x] 4.7 Test integración: carrera cierre lazy vs. finalización manual → un único cierre, una única nota
 
 ## 5. Evento de reanudación server-side (H-4)
 

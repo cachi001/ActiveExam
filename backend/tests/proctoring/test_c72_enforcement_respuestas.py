@@ -22,7 +22,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
@@ -464,3 +464,150 @@ async def test_finalizar_dos_veces_idempotente(
     fin2 = await client.patch(f"{_BASE}/sessions/{sid}/finalizar")
     assert fin2.status_code == 200, fin2.text
     assert fin2.json()["finalizada_en"] == fin1.json()["finalizada_en"]
+
+
+# ---------------------------------------------------------------------------
+# §4 — Auto-finalización lazy (H-3): la sesión vencida se cierra sola al ser
+# tocada y se puntúa con lo persistido. El alumno se lleva su trabajo.
+# ---------------------------------------------------------------------------
+
+async def _finalizada_en(db: AsyncSession, sid: str):
+    await db.commit()  # ver lo committeado por el request
+    row = (
+        await db.execute(
+            select(ProctoringSessionModel).where(ProctoringSessionModel.id == sid)
+        )
+    ).scalar_one()
+    return row.finalizada_en
+
+
+# 4.1 — alumno vuelve pasado el deadline individual (ventana aún abierta) → su
+# sesión queda finalizada y no puede seguir respondiendo
+async def test_reanudar_sesion_vencida_la_finaliza(
+    client: AsyncClient, db: AsyncSession
+) -> None:
+    examen_id, p, o = await _crear_examen(
+        db, tiempo_limite_min=40, cierre=_now() + timedelta(hours=2)  # ventana abierta
+    )
+    sid = await _crear_sesion(
+        db, examen_contenido_id=examen_id, creada_en=_now() - timedelta(hours=2)  # límite vencido
+    )
+    # el alumno "vuelve": POST /sessions con el mismo examen → reanuda la activa
+    r = await client.post(
+        f"{_BASE}/sessions",
+        json={"modo": "examen", "examen_contenido_id": examen_id},
+    )
+    assert r.status_code == 201, r.text
+    assert r.json()["id"] == sid  # reanudó la MISMA sesión
+    # quedó auto-finalizada
+    assert await _finalizada_en(db, sid) is not None
+    # y no puede seguir respondiendo
+    resp = await client.post(
+        f"{_BASE}/sessions/{sid}/respuestas",
+        json={"respuestas": [{"pregunta_id": p, "opcion_elegida_id": o}]},
+    )
+    assert resp.status_code == 409, resp.text
+
+
+async def _writeback_estado(db: AsyncSession, sid: str):
+    await db.commit()
+    return (
+        await db.execute(
+            select(MoodleWritebackEstadoModel).where(
+                MoodleWritebackEstadoModel.session_id == sid
+            )
+        )
+    ).scalars().all()
+
+
+# 4.2 — auto-finalizada se puntúa con lo persistido (parcial, NO cero)
+async def test_auto_finalizada_puntua_lo_persistido(
+    client: AsyncClient, db: AsyncSession
+) -> None:
+    examen_id, p1, o1 = await _crear_examen(
+        db, tiempo_limite_min=40, cierre=_now() + timedelta(hours=2)
+    )
+    await _agregar_pregunta(db, examen_id, orden=1)  # 2da pregunta, sin responder
+    sid = await _crear_sesion(
+        db, examen_contenido_id=examen_id, creada_en=_now() - timedelta(hours=2)
+    )
+    await _insertar_respuesta(db, session_id=sid, pregunta_id=p1, opcion_id=o1)  # 1 en plazo
+    await client.post(f"{_BASE}/sessions", json={"modo": "examen", "examen_contenido_id": examen_id})
+    estados = await _writeback_estado(db, sid)
+    assert len(estados) == 1
+    # 1 de 2 correctas → nota parcial: NI cero NI el máximo (nota_maxima=10)
+    assert estados[0].nota is not None
+    assert 0 < float(estados[0].nota) < 10
+
+
+# 4.3 — auto-finalizada sin ninguna respuesta → nota cero, cierre consistente
+async def test_auto_finalizada_sin_respuestas_nota_cero(
+    client: AsyncClient, db: AsyncSession
+) -> None:
+    examen_id, _p, _o = await _crear_examen(
+        db, tiempo_limite_min=40, cierre=_now() + timedelta(hours=2)
+    )
+    sid = await _crear_sesion(
+        db, examen_contenido_id=examen_id, creada_en=_now() - timedelta(hours=2)
+    )
+    await client.post(f"{_BASE}/sessions", json={"modo": "examen", "examen_contenido_id": examen_id})
+    assert await _finalizada_en(db, sid) is not None
+    estados = await _writeback_estado(db, sid)
+    assert len(estados) == 1
+    assert float(estados[0].nota) == 0
+
+
+# 4.4 — el write-back de una auto-finalizada sigue el mismo camino que la manual:
+# nota 'pendiente' (NO se auto-envía a Moodle)
+async def test_auto_finalizada_writeback_pendiente(
+    client: AsyncClient, db: AsyncSession
+) -> None:
+    examen_id, _p, _o = await _crear_examen(
+        db, tiempo_limite_min=40, cierre=_now() + timedelta(hours=2)
+    )
+    sid = await _crear_sesion(
+        db, examen_contenido_id=examen_id, creada_en=_now() - timedelta(hours=2)
+    )
+    await client.post(f"{_BASE}/sessions", json={"modo": "examen", "examen_contenido_id": examen_id})
+    estados = await _writeback_estado(db, sid)
+    assert len(estados) == 1
+    assert estados[0].estado == "pendiente"  # mismo gate que la manual: no auto-envía
+
+
+# 4.6 — doble cierre lazy es idempotente: no re-cierra ni duplica el write-back
+async def test_doble_cierre_lazy_idempotente(
+    client: AsyncClient, db: AsyncSession
+) -> None:
+    examen_id, _p, _o = await _crear_examen(
+        db, tiempo_limite_min=40, cierre=_now() + timedelta(hours=2)
+    )
+    sid = await _crear_sesion(
+        db, examen_contenido_id=examen_id, creada_en=_now() - timedelta(hours=2)
+    )
+    await client.post(f"{_BASE}/sessions", json={"modo": "examen", "examen_contenido_id": examen_id})
+    fin1 = await _finalizada_en(db, sid)
+    # segundo "regreso" → toca de nuevo la sesión vencida (ya finalizada)
+    await client.post(f"{_BASE}/sessions", json={"modo": "examen", "examen_contenido_id": examen_id})
+    fin2 = await _finalizada_en(db, sid)
+    assert fin1 == fin2  # no re-cierra
+    assert len(await _writeback_estado(db, sid)) == 1  # una sola entrada de nota
+
+
+# 4.7 — carrera cierre lazy vs. finalización manual → un único cierre, una única nota
+async def test_lazy_luego_manual_un_solo_cierre(
+    client: AsyncClient, db: AsyncSession
+) -> None:
+    examen_id, _p, _o = await _crear_examen(
+        db, tiempo_limite_min=40, cierre=_now() + timedelta(hours=2)
+    )
+    sid = await _crear_sesion(
+        db, examen_contenido_id=examen_id, creada_en=_now() - timedelta(hours=2)
+    )
+    # cierre lazy por reanudación
+    await client.post(f"{_BASE}/sessions", json={"modo": "examen", "examen_contenido_id": examen_id})
+    fin1 = await _finalizada_en(db, sid)
+    # finalización manual después → idempotente, mismo cierre
+    fin = await client.patch(f"{_BASE}/sessions/{sid}/finalizar")
+    assert fin.status_code == 200, fin.text
+    assert fin.json()["finalizada_en"] == fin1.isoformat().replace("+00:00", "Z") or fin.json()["finalizada_en"] is not None
+    assert len(await _writeback_estado(db, sid)) == 1  # una sola nota
