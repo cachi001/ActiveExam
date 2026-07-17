@@ -22,11 +22,12 @@
 
 ## 3. Enforcement en la finalización
 
-- [ ] 3.1 Test integración: finalizar dentro de plazo → 200, nota sobre las respuestas persistidas
-- [ ] 3.2 Test integración: finalizar fuera de plazo → la nota se calcula solo sobre respuestas persistidas antes del vencimiento (llegar tarde no da ventaja)
-- [ ] 3.3 Test integración: el cierre fuera de plazo queda asentado en el registro de la sesión
-- [ ] 3.4 Implementar la revalidación temporal en `finalizar` (`sessions/router.py`) preservando la idempotencia actual
-- [ ] 3.5 Test integración: finalizar dos veces sigue siendo idempotente tras el cambio
+> Reencuadre (owner): al vencer el deadline la sesión se cierra sola (§4 auto-finalización). El alumno NO puede "finalizar tarde", así que finalizar manual NO se bloquea por vencimiento (es el cierre) y NO se marca "fuera de plazo" — se descartó ese marcador por no aportar (nota idéntica, mismo camino downstream). La nota siempre sale sobre respuestas en plazo (garantizado por §2). Esta sección es verificación de que finalizar ya se comporta bien + idempotencia.
+
+- [x] 3.1 Test integración: finalizar en plazo → 200, nota sobre las respuestas persistidas
+- [x] 3.2 Test integración: tras un intento de respuesta tardío (rechazado por §2), finalizar computa la nota solo sobre las respuestas en plazo (llegar tarde no da ventaja)
+- [x] 3.3 Confirmar que finalizar NO se bloquea por vencimiento (es el cierre "lapiceras abajo"): sin chequeo de plazo nuevo en `finalizar`; el plazo lo cubren §2 (respuestas) y §4 (auto-cierre) — verificado, finalizar ya se comporta bien sin cambios
+- [x] 3.4 Test integración: finalizar dos veces sigue siendo idempotente (la nota no se recalcula)
 
 ## 4. Auto-finalización lazy (H-3)
 

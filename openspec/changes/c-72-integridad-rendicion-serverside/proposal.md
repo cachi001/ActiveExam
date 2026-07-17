@@ -17,7 +17,7 @@ Además, la reapertura del examen (cerrar todo y volver) **no deja rastro**: el 
 
 - **Deadline efectivo server-side**: el vencimiento de una rendición pasa a ser `min(cierre_del_examen, creada_en + tiempo_limite_min)`, calculado con hora del servidor. El alumno que arranca 11:50 en una ventana que cierra 12:00 tiene 10 minutos, no 40.
 - **`POST /sessions/{id}/respuestas` rechaza fuera de plazo** con `409 tiempo_agotado`. **BREAKING** para cualquier cliente que hoy asuma que siempre acepta.
-- **`PATCH /sessions/{id}/finalizar` revalida el estado temporal**: finalizar tarde es idempotente y no re-abre la corrección; nunca certifica una nota fuera de plazo sin dejarlo asentado.
+- **`PATCH /sessions/{id}/finalizar` no se bloquea por vencimiento** (es el cierre "lapiceras abajo"): es idempotente, no re-abre la corrección, y computa la nota solo sobre respuestas en plazo (§2 impide las tardías). El cierre de una sesión vencida sin intervención del alumno lo hace la auto-finalización.
 - **Margen de gracia invisible** (~60-90s, configurable): tolerancia server-side a latencia de red y desfasaje de reloj. **NO se expone al cliente y la UI sigue cortando en el límite nominal** — si el alumno la ve, la gracia se convierte en el nuevo límite.
 - **Auto-finalización de sesiones abandonadas**: al vencer el deadline efectivo, la sesión se finaliza y **se puntúa con las respuestas ya guardadas**. El alumno se lleva lo que hizo en vez de perder todo.
 - **Candado de configuración direccional** (reemplaza al binario): aflojar se puede, apretar no, y lo que toca la nota nunca.

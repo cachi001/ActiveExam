@@ -1,29 +1,24 @@
 ## ADDED Requirements
 
-### Requirement: La finalización revalida el estado temporal de la rendición
+### Requirement: La finalización computa la nota solo sobre las respuestas en plazo
 
-La finalización de una sesión SHALL evaluar el deadline efectivo con hora del servidor y SHALL registrar si el cierre ocurrió dentro o fuera de plazo. Una finalización fuera de plazo SHALL NOT ampliar el conjunto de respuestas puntuables: la nota SHALL calcularse exclusivamente sobre las respuestas persistidas **antes** del vencimiento, de modo que llegar tarde a finalizar NO SHALL otorgar ninguna ventaja.
+La finalización de una sesión SHALL calcular la nota exclusivamente sobre las respuestas persistidas dentro del plazo. Como el envío de respuestas fuera de plazo ya se rechaza (deadline enforcement), al finalizar NO existen respuestas tardías que puntuar: llegar tarde a finalizar NO SHALL otorgar ninguna ventaja. La finalización manual NO SHALL bloquearse por el vencimiento del deadline — es el acto de cierre ("lapiceras abajo"); el cierre de una sesión vencida sin intervención del alumno lo realiza la auto-finalización.
 
 #### Scenario: Finalización dentro de plazo
 
 - **WHEN** el alumno finaliza su sesión antes del deadline efectivo
 - **THEN** la sesión se cierra y la nota se calcula sobre las respuestas persistidas
 
-#### Scenario: Finalización tardía no otorga ventaja
+#### Scenario: Un intento tardío no agranda la nota
 
-- **WHEN** el alumno finaliza su sesión después del deadline efectivo
-- **THEN** la sesión se cierra y la nota se calcula únicamente sobre las respuestas persistidas antes del vencimiento
+- **WHEN** un envío de respuestas posterior al deadline fue rechazado y luego el alumno finaliza la sesión
+- **THEN** la nota se calcula únicamente sobre las respuestas persistidas en plazo
 
-#### Scenario: El cierre fuera de plazo queda asentado
+### Requirement: La finalización es idempotente
 
-- **WHEN** una sesión se finaliza después de su deadline efectivo
-- **THEN** el sistema deja registro de que el cierre ocurrió fuera de plazo, disponible para el revisor humano
+La finalización SHALL ser idempotente: finalizar una sesión ya finalizada SHALL NOT recalcular ni re-certificar la nota, de modo que re-finalizar un intento ya entregado no pueda alterar la nota.
 
-### Requirement: La finalización nunca certifica una nota de una rendición cerrada sin registro
+#### Scenario: Doble finalización no recalcula
 
-El sistema SHALL NOT calcular y certificar la nota de una rendición cuya ventana ya cerró sin dejar constancia del hecho. La certificación de una nota SHALL ser un acto trazable: el estado temporal en que se produjo el cierre SHALL formar parte del registro de la sesión.
-
-#### Scenario: Nota certificada con la ventana cerrada queda trazada
-
-- **WHEN** se finaliza una sesión cuya ventana de examen ya cerró y se calcula su nota
-- **THEN** el registro de la sesión refleja que el cierre ocurrió con la ventana cerrada
+- **WHEN** se finaliza dos veces la misma sesión
+- **THEN** la segunda finalización responde sin modificar `finalizada_en` ni recalcular la nota

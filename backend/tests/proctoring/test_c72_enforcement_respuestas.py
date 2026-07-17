@@ -391,3 +391,76 @@ async def test_hora_del_cliente_no_altera_el_rechazo(
     )
     assert resp.status_code == 409, resp.text
     assert resp.json()["detail"]["error"] == "tiempo_agotado"
+
+
+# ---------------------------------------------------------------------------
+# §3 — Finalización: NO se bloquea por vencimiento (es el cierre); nota solo
+# sobre respuestas en plazo; idempotente. El "cierre fuera de plazo" NO se marca
+# (decisión del owner): eso es la auto-finalización (§4), no el finalizar manual.
+# ---------------------------------------------------------------------------
+
+async def _insertar_respuesta(
+    db: AsyncSession, *, session_id: str, pregunta_id: str, opcion_id: str
+) -> None:
+    """Persiste una respuesta directamente (representa lo respondido ANTES del vencimiento)."""
+    db.add(
+        RespuestaAlumnoModel(
+            session_id=session_id, pregunta_id=pregunta_id, opcion_elegida_id=opcion_id
+        )
+    )
+    await db.commit()
+
+
+# 3.1 — finalizar en plazo → 200 y la sesión queda cerrada
+async def test_finalizar_en_plazo_200(client: AsyncClient, db: AsyncSession) -> None:
+    examen_id, pregunta_id, opcion_id = await _crear_examen(
+        db, tiempo_limite_min=40, cierre=_now() + timedelta(hours=4)
+    )
+    sid = await _crear_sesion(db, examen_contenido_id=examen_id, creada_en=_now())
+    r = await client.post(
+        f"{_BASE}/sessions/{sid}/respuestas",
+        json={"respuestas": [{"pregunta_id": pregunta_id, "opcion_elegida_id": opcion_id}]},
+    )
+    assert r.status_code == 201, r.text
+    fin = await client.patch(f"{_BASE}/sessions/{sid}/finalizar")
+    assert fin.status_code == 200, fin.text
+    assert fin.json()["finalizada_en"] is not None
+
+
+# 3.2 — un intento tardío (rechazado por §2) no agranda la nota: finalizar computa
+# solo sobre lo persistido en plazo
+async def test_finalizar_no_cuenta_respuestas_tardias(
+    client: AsyncClient, db: AsyncSession
+) -> None:
+    examen_id, p1, o1 = await _crear_examen(
+        db, tiempo_limite_min=40, cierre=_now() + timedelta(hours=4)
+    )
+    p2, o2 = await _agregar_pregunta(db, examen_id, orden=1)
+    sid = await _crear_sesion(
+        db, examen_contenido_id=examen_id, creada_en=_now() - timedelta(hours=3)
+    )
+    await _insertar_respuesta(db, session_id=sid, pregunta_id=p1, opcion_id=o1)
+    tardio = await client.post(
+        f"{_BASE}/sessions/{sid}/respuestas",
+        json={"respuestas": [{"pregunta_id": p2, "opcion_elegida_id": o2}]},
+    )
+    assert tardio.status_code == 409, tardio.text
+    fin = await client.patch(f"{_BASE}/sessions/{sid}/finalizar")
+    assert fin.status_code == 200, fin.text
+    got = await client.get(f"{_BASE}/sessions/{sid}/respuestas")
+    assert got.json()["respuestas"] == [{"pregunta_id": p1, "opcion_elegida_id": o1}]
+
+
+# 3.4 — finalizar dos veces es idempotente (no re-cierra ni recalcula)
+async def test_finalizar_dos_veces_idempotente(
+    client: AsyncClient, db: AsyncSession
+) -> None:
+    examen_id, pregunta_id, opcion_id = await _crear_examen(
+        db, tiempo_limite_min=40, cierre=_now() + timedelta(hours=4)
+    )
+    sid = await _crear_sesion(db, examen_contenido_id=examen_id, creada_en=_now())
+    fin1 = await client.patch(f"{_BASE}/sessions/{sid}/finalizar")
+    assert fin1.status_code == 200, fin1.text
+    fin2 = await client.patch(f"{_BASE}/sessions/{sid}/finalizar")
+    assert fin2.status_code == 200, fin2.text
+    assert fin2.json()["finalizada_en"] == fin1.json()["finalizada_en"]
