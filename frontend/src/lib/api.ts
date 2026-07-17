@@ -216,6 +216,8 @@ const DESC_EVENTO: Record<TipoEvento, string> = {
   salida_pantalla_completa: 'El estudiante salió del modo de pantalla completa durante el examen.',
   copiar_pegar: 'Se detectó una acción de copiar o pegar durante el examen (sin capturar contenido).',
   corte_conectividad_prolongado: 'Corte de conectividad prolongado (> 5 min) con el canal de eventos.',
+  recarga_pagina: 'El estudiante recargó la página y volvió enseguida (reapertura benigna).',
+  reanudacion_tardia: 'El estudiante reanudó la rendición tras una ausencia prolongada.',
 };
 
 export function descripcionEvento(t: TipoEvento): string { return DESC_EVENTO[t]; }
@@ -1880,6 +1882,9 @@ export const TIPO_EVENTO_LABEL: Record<TipoEvento, string> = {
   salida_pantalla_completa: 'Salida de pantalla completa',
   copiar_pegar: 'Copiar / Pegar',
   corte_conectividad_prolongado: 'Corte de conectividad',
+  // C-72: reapertura de la rendición (el alumno recargó / volvió tras ausentarse).
+  recarga_pagina: 'Recarga de página',
+  reanudacion_tardia: 'Reanudación tardía',
 };
 
 export type {

@@ -22,7 +22,10 @@ export type TipoEvento =
   | 'monitor_adicional'
   | 'salida_pantalla_completa'
   | 'copiar_pegar'
-  | 'corte_conectividad_prolongado';
+  | 'corte_conectividad_prolongado'
+  // C-72: reapertura de la rendición (emitidos server-side al reanudar).
+  | 'recarga_pagina'
+  | 'reanudacion_tardia';
 
 export interface Principal {
   id_institucional: string;
