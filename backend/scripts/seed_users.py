@@ -253,11 +253,12 @@ async def _ejecutar_seed(
 
 
 async def _seed_matriculaciones(factory) -> None:
-    """Matricula a los estudiantes seed (EST-001..004) en la Comisión C1 (idempotente).
+    """Matricula SOLO a EST-001 en la Comisión C1 (idempotente).
 
     Con el gate de inscripción (C-71) el alumno solo ve/rinde exámenes de las
-    comisiones donde está inscripto. Los estudiantes demo quedan inscriptos a C1
-    para que el "Examen de Programación 1" les sea visible y rendible.
+    comisiones donde está inscripto. EST-001 queda inscripto para poder rendir el
+    "Examen de Programación 1" (demo del gate). EST-002..004 quedan LIBRES a
+    propósito, para demostrar el flujo de inscripción desde el panel del docente.
     """
     from app.infrastructure.persistence.models.exam_content import (
         ComisionModel,
@@ -268,7 +269,12 @@ async def _seed_matriculaciones(factory) -> None:
 
     MATERIA_CODIGO = "PROG1"
     COMISION_CODIGO = "C1"
-    ESTUDIANTES = ["EST-001", "EST-002", "EST-003", "EST-004"]
+    # Solo EST-001 queda inscripto: así hay UN alumno que puede rendir (demo del gate
+    # de inscripción, C-71). EST-002..004 quedan LIBRES a propósito, para poder
+    # demostrar el flujo de inscripción desde el panel del docente (si estuvieran los
+    # 4 inscriptos, el picker los mostraría todos como "Ya inscripto" y no habría a
+    # quién inscribir).
+    ESTUDIANTES = ["EST-001"]
 
     async with factory() as session:
         # Comisión C1 de PROG1 (creada por _seed_contenido).
