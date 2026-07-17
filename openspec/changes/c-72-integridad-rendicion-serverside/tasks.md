@@ -1,13 +1,13 @@
 ## 1. Deadline efectivo — dominio puro
 
-- [ ] 1.1 Test puro: `deadline_efectivo(creada_en, tiempo_limite_min, cierre)` devuelve `creada_en + limite` cuando el límite vence antes que la ventana
-- [ ] 1.2 Test puro: devuelve `cierre` cuando la ventana cierra antes que el límite individual (arranque tardío)
-- [ ] 1.3 Test puro: devuelve `cierre` cuando `tiempo_limite_min is None`
-- [ ] 1.4 Implementar `deadline_efectivo` puro en `app/domain/exam_content/` (sin DB, sin I/O)
-- [ ] 1.5 Test puro: `vencido(deadline, ahora, gracia_seg)` — False antes del deadline, False dentro de la gracia, True pasada la gracia
-- [ ] 1.6 Test puro: bordes exactos de `vencido` (justo en el deadline, justo en el fin de la gracia)
-- [ ] 1.7 Implementar `vencido` puro con la gracia como parámetro explícito (nunca leída del cliente)
-- [ ] 1.8 Constante de gracia configurable por env con default 60s; documentar que es tolerancia a latencia, NO tiempo de examen
+- [x] 1.1 Test puro: `deadline_efectivo(creada_en, tiempo_limite_min, cierre)` devuelve `creada_en + limite` cuando el límite vence antes que la ventana
+- [x] 1.2 Test puro: devuelve `cierre` cuando la ventana cierra antes que el límite individual (arranque tardío)
+- [x] 1.3 Test puro: devuelve `cierre` cuando `tiempo_limite_min is None`
+- [x] 1.4 Implementar `deadline_efectivo` puro en `app/domain/exam_content/` (sin DB, sin I/O)
+- [x] 1.5 Test puro: `vencido(deadline, ahora, gracia_seg)` — False antes del deadline, False dentro de la gracia, True pasada la gracia
+- [x] 1.6 Test puro: bordes exactos de `vencido` (justo en el deadline, justo en el fin de la gracia)
+- [x] 1.7 Implementar `vencido` puro con la gracia como parámetro explícito (nunca leída del cliente)
+- [x] 1.8 Constante de gracia configurable por env con default 60s; documentar que es tolerancia a latencia, NO tiempo de examen
 
 ## 2. Enforcement en el envío de respuestas (H-1 / H-2)
 
