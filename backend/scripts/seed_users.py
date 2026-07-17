@@ -32,7 +32,7 @@ USO (modo full — stack completo):
     python scripts/seed_users.py
 
 CREDENCIALES SEED (para probar el login — identificadores estilo produccion):
-    Estudiante:   id_institucional=EST-001   | email=estudiante@activeexam.local
+    Estudiante:   id_institucional=EST-001   | email=estudiante@activeexam.local (Estudiante Prueba1)
     Estudiante 2: id_institucional=EST-002   | email=estudiante2@activeexam.local (Estudiante Prueba2)
     Estudiante 3: id_institucional=EST-003   | email=estudiante3@activeexam.local (Estudiante Prueba3)
     Estudiante 4: id_institucional=EST-004   | email=estudiante4@activeexam.local (Estudiante Prueba4)
@@ -143,7 +143,7 @@ async def _ejecutar_seed(
             "password": pw_estudiante,
             "roles": ["estudiante"],
             "nombre": "Estudiante",
-            "apellido": "Prueba",
+            "apellido": "Prueba1",
         },
         {
             "id_institucional": "EST-002",

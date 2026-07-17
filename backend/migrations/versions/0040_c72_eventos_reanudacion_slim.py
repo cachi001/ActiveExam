@@ -13,11 +13,13 @@ PROPOSITO (C-72 seccion 5, H-4):
   Agrega los dos tipos de evento de REAPERTURA de la rendicion, emitidos
   server-side al reanudar una sesion activa (session_service.crear_o_reanudar_sesion):
     - recarga_pagina      severidad baja,  peso 2  -> recarga rapida, benigna.
-    - reanudacion_tardia  severidad media, peso 10 -> ausencia larga, merece mirada.
+    - reanudacion_tardia  severidad media, peso 11 -> ausencia larga, merece mirada.
 
-  Pesos CONSERVADORES a proposito: por si solos NO empujan una sesion sobre el
-  umbral de encolado a revision (RN-SC). Son SENAL para el revisor humano, nunca
-  sancion automatica (regla dura #5). Ajustables por admin sin redeploy.
+  Pesos CONSERVADORES a proposito, y dentro del rango por severidad que impone el
+  CHECK de la migracion 0021 (baja [1-10], media [11-30]): peso 11 es el MINIMO de
+  'media'. Por si solos NO empujan una sesion sobre el umbral de encolado a revision
+  (RN-SC). Son SENAL para el revisor humano, nunca sancion automatica (regla dura
+  #5). Ajustables por admin sin redeploy.
 
   INSERT idempotente (ON CONFLICT DO NOTHING): seguro en re-runs.
 
@@ -47,7 +49,7 @@ _SEEDS = [
     (
         "reanudacion_tardia",
         "media",
-        10,
+        11,
         "El estudiante reanudo la rendicion tras una ausencia prolongada.",
     ),
 ]
