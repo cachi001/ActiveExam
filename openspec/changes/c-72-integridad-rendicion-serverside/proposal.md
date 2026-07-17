@@ -75,14 +75,14 @@ Cuatro líneas de trabajo se suman a C-72 por decisión del owner, todas del mis
 ## What Changes (ampliación)
 
 - **Registro de sesión (ex "Sesiones Grabadas")**: se renombra el concepto — **NO es video** (RN-CC-01/RN-CO-03 prohíben video continuo), es el **expediente revisable** de una sesión (screenshots + chat + anotaciones + eventos). El expediente **ya está casi construido** (`ProctoringSessionDetail.tsx`, `SessionDetail.tsx`, ruta `/admin/proctoring-sessions`); esta línea es **auditoría y tie-off** + darle spec, no feature nueva.
-- **Ocultar eventos sin captura**: la lista del expediente deja de mostrar eventos sin evidencia asociada (duplicados navegador/servidor sin sentido para el revisor). El campo `tiene_evidencia` ya existe; se aplica como filtro de vista.
+- **Limpiar el ruido del conteo de rostros**: ningún evento se oculta (los 9 tipos son anomalías donde el evento ES la evidencia — copiar/pegar, pestaña, foco…). Lo que se limpia es el bloque "Navegador: N / Servidor: N" de cada tarjeta: se muestra SOLO con discrepancia (cliente ≠ servidor) Y captura asociada; si coinciden o no hay imagen para inspeccionar, se oculta.
 - **StatCards — consistencia + layout**: se normalizan las descripciones (hoy cambian demasiado entre pantallas) y se reorganiza. UX, sin cambio de contrato de datos.
 - **Timeout del pedido de pausa**: una pausa `'solicitada'` sin responder expira por antigüedad (umbral configurable) y se cancela al finalizar la sesión, para que no ensucie el panel de supervisión en vivo. Distinto de `pausa_max_min` (duración de una pausa ya aprobada).
 
 ## Capabilities (ampliación)
 
 ### New Capabilities
-- `session-record-dossier`: el expediente revisable de una sesión de proctoring (evidencia discreta: screenshots, chat, anotaciones, eventos), completo y coherente por tipo de sesión (examen vs test), **sin video**. La lista de eventos oculta los que no tienen evidencia asociada.
+- `session-record-dossier`: el expediente revisable de una sesión de proctoring (evidencia discreta: screenshots, chat, anotaciones, eventos), completo y coherente por tipo de sesión (examen vs test), **sin video**. Todos los eventos se listan (el evento es la evidencia); el bloque de conteo de rostros cliente/servidor se muestra solo con discrepancia y captura.
 - `pause-request-timeout`: una solicitud de pausa sin resolver expira por antigüedad y se cancela al finalizar la sesión, saliendo de la cola de pendientes del proctor.
 
 ### Modified Capabilities
@@ -91,8 +91,8 @@ Cuatro líneas de trabajo se suman a C-72 por decisión del owner, todas del mis
 ## Impact (ampliación)
 
 **Frontend**
-- `frontend/src/screens/SessionDetail.tsx` — la lista de eventos (`:50`) aplica el filtro `tiene_evidencia`.
-- `frontend/src/screens/ProctoringSessionDetail.tsx` — verificación/tie-off del expediente de examen; ocultar eventos sin evidencia.
+- `frontend/src/screens/proctoring/EventoCard.tsx` — el bloque de conteo cliente/servidor (`:119-124`) se muestra solo con discrepancia (`discrepanciaFC` `:46`) Y captura; ningún evento se oculta.
+- `frontend/src/screens/SessionDetail.tsx` y `ProctoringSessionDetail.tsx` — verificación/tie-off del expediente (examen vs test); todos los eventos se siguen listando.
 - `frontend/src/screens/proctoring/StatCard.tsx` y sus usos — normalizar descripciones + layout.
 
 **Backend**

@@ -19,21 +19,40 @@ El sistema SHALL exponer, para cada sesión de proctoring, un **expediente revis
 - **WHEN** se recorre cualquier vista del expediente de sesión
 - **THEN** no existe reproducción ni referencia a grabación de video continuo de la sesión
 
-### Requirement: La lista de eventos oculta los eventos sin evidencia
+### Requirement: Todos los eventos discretos se listan; el evento es la evidencia
 
-La UI del expediente SHALL ocultar de la lista de eventos aquellos que no tienen evidencia asociada (`tiene_evidencia` falso), por ser ruido sin valor para el revisor (p. ej. eventos duplicados navegador/servidor sin captura). El ocultamiento SHALL ser un filtro de **presentación**: el dato crudo y su cadena de custodia SHALL conservarse íntegros server-side (regla dura #6).
+La UI del expediente SHALL listar todos los eventos discretos de la sesión sin ocultar ninguno por carecer de captura de cámara. Cada tipo de evento (`copiar_pegar`, `cambio_pestana`, `perdida_de_foco`, `monitor_adicional`, `salida_pantalla_completa`, `corte_conectividad_prolongado`, `rostro_ausente`, `multiples_rostros`, `mirada_desviada_sostenida`) es una anomalía discreta cuyo solo acontecimiento constituye la evidencia: el sistema SHALL NOT suprimir un evento por no tener screenshot asociado.
 
-#### Scenario: Evento sin evidencia no se lista
+#### Scenario: Evento sin captura de cámara se lista igual
 
-- **WHEN** una sesión tiene un evento con `tiene_evidencia` falso
-- **THEN** ese evento NO aparece en la lista de eventos del expediente
+- **WHEN** una sesión tiene un evento `copiar_pegar` sin screenshot de cámara asociado
+- **THEN** ese evento aparece en la lista del expediente, porque el hecho de haber pegado es en sí la evidencia
 
-#### Scenario: Evento con evidencia se lista
+#### Scenario: Ningún tipo de evento se oculta por falta de captura
 
-- **WHEN** una sesión tiene un evento con evidencia asociada
-- **THEN** ese evento aparece en la lista del expediente
+- **WHEN** se listan los eventos de una sesión
+- **THEN** los eventos de foco, pestaña, monitor y conectividad aparecen aunque no tengan imagen adjunta
 
-#### Scenario: El filtro no altera el dato
+### Requirement: El conteo de rostros cliente/servidor se muestra solo con discrepancia y captura
 
-- **WHEN** la UI oculta un evento sin evidencia
-- **THEN** el registro server-side de ese evento y su cadena de custodia permanecen sin cambios
+El bloque de reconciliación del conteo de rostros (navegador vs. servidor) de una tarjeta de evento SHALL mostrarse únicamente cuando el conteo del cliente difiere del conteo del servidor (`face_count_cliente ≠ face_count_servidor`) **y** existe una captura asociada que permite inspeccionar la discrepancia. Cuando cliente y servidor coinciden, o cuando no hay captura, el bloque SHALL ocultarse por no aportar señal revisable. Esto SHALL ser un cambio de presentación: el conteo crudo de cliente y servidor SHALL conservarse íntegro server-side (regla dura #6).
+
+#### Scenario: Discrepancia con captura se muestra
+
+- **WHEN** un evento tiene `face_count_cliente = 2`, `face_count_servidor = 1` y una captura asociada
+- **THEN** el bloque de conteo cliente/servidor se muestra, para que el revisor inspeccione la imagen
+
+#### Scenario: Coincidencia normal no se muestra
+
+- **WHEN** un evento tiene `face_count_cliente = 1` y `face_count_servidor = 1` (coinciden)
+- **THEN** el bloque de conteo no se muestra: no hay nada que reconciliar
+
+#### Scenario: Discrepancia sin captura no se muestra
+
+- **WHEN** un evento tiene una discrepancia de conteo pero no hay captura asociada
+- **THEN** el bloque de conteo no se muestra, porque no hay imagen para inspeccionar la discrepancia
+
+#### Scenario: El dato crudo se conserva
+
+- **WHEN** la UI oculta el bloque de conteo por coincidencia o falta de captura
+- **THEN** los valores `face_count_cliente` y `face_count_servidor` permanecen sin cambios en el registro server-side

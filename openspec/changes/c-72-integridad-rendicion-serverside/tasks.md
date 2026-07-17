@@ -91,14 +91,17 @@
 
 # Ampliación (scope del owner) — tasks explícitas
 
-## 9. Ocultar eventos sin captura de cámara (expediente)
+## 9. Bloque de conteo de rostros: mostrar solo con discrepancia Y captura
 
-- [ ] 9.1 Test: la lista de eventos del expediente NO muestra eventos con `tiene_evidencia === false`
-- [ ] 9.2 Test: un evento CON evidencia sí se muestra (no ocultar de más)
-- [ ] 9.3 Test: el contador/subtítulo de "con evidencia" sigue coherente con la lista filtrada
-- [ ] 9.4 Aplicar el filtro `tiene_evidencia` a la lista de eventos en `SessionDetail.tsx:50` (hoy solo lo usa el subtítulo `:44`)
-- [ ] 9.5 Aplicar el mismo filtro en `ProctoringSessionDetail.tsx` (expediente de examen) donde liste eventos
-- [ ] 9.6 Test: el filtro es de vista — el dato crudo (evidencia/no-evidencia) no se altera
+> Contexto: los 9 `TipoEvento` son anomalías (el evento ES la evidencia) → **NO se oculta ningún evento**. El ruido real es el bloque "Navegador: N / Servidor: N" (`EventoCard.tsx:119-124`), que hoy se muestra aunque cliente y servidor coincidan y aunque no haya captura. Regla: mostrarlo SOLO con discrepancia (`cliente ≠ servidor`) **Y** captura asociada.
+
+- [ ] 9.1 Test: el bloque de conteo cliente/servidor NO se muestra cuando `fcCliente === fcServidor` (coinciden)
+- [ ] 9.2 Test: el bloque NO se muestra cuando hay discrepancia pero NO hay captura asociada (nada que inspeccionar)
+- [ ] 9.3 Test: el bloque SÍ se muestra cuando hay discrepancia (`fcCliente !== fcServidor`) Y hay captura
+- [ ] 9.4 Test: TODOS los eventos se siguen listando — ningún evento se oculta por el conteo (`copiar_pegar`, `cambio_pestana`, `perdida_de_foco`, etc. siempre visibles: el evento es la evidencia)
+- [ ] 9.5 Implementar la condición en `EventoCard.tsx` (combinar `discrepanciaFC` `:46` con el indicador de captura) — reemplaza `hayFaceCount` como condición de render del bloque de conteo
+- [ ] 9.6 Verificar el comportamiento en ambos expedientes (`SessionDetail.tsx`, `ProctoringSessionDetail.tsx`); la verificación del servidor (`veredicto_reinferencia`) se sigue mostrando aparte cuando flaggea (no se toca)
+- [ ] 9.7 Test: es cambio de VISTA — el dato crudo (`face_count_cliente`/`face_count_servidor`, evidencia) se conserva íntegro server-side
 
 ## 10. Registro de sesión (ex "Sesiones Grabadas") — tie-off + renombre
 
