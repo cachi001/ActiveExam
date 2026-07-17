@@ -20,8 +20,10 @@ from app.application.proctoring.enforcement import (
     FueraDeVentanaError,
     IntentosAgotadosError,
     NoInscriptoError,
+    TiempoAgotadoError,
     verificar_enforcement,
     verificar_inscripcion,
+    verificar_plazo,
 )
 from app.application.proctoring.finalizar_con_writeback import (
     finalizar_sesion_con_writeback,
@@ -385,6 +387,24 @@ def create_sessions_router(
                     "mensaje": "No se pueden modificar las respuestas de una sesión ya finalizada.",
                 },
             )
+        # Enforcement de PLAZO (C-72 §2, H-1/H-2): revalidar el reloj server-side en
+        # cada envío. El cliente es sensor no confiable (regla #6): sin esto la sesión
+        # abierta acepta respuestas fuera de tiempo / con la ventana cerrada.
+        if sesion_model.examen_contenido_id is not None:
+            from datetime import datetime, timezone
+
+            try:
+                await verificar_plazo(
+                    db,
+                    examen_contenido_id=sesion_model.examen_contenido_id,
+                    creada_en=sesion_model.creada_en,
+                    ahora=datetime.now(timezone.utc),
+                )
+            except TiempoAgotadoError as exc:
+                raise HTTPException(
+                    status_code=http_status.HTTP_409_CONFLICT,
+                    detail={"error": "tiempo_agotado", "mensaje": exc.mensaje},
+                ) from exc
         repo = RespuestaAlumnoRepository(db)
         n = await repo.guardar_respuestas(
             session_id=session_id,

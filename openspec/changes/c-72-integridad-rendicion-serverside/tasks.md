@@ -11,14 +11,14 @@
 
 ## 2. Enforcement en el envío de respuestas (H-1 / H-2)
 
-- [ ] 2.1 Test integración (DB real): `POST /sessions/{id}/respuestas` con límite vencido → `409 tiempo_agotado`, nada persistido
-- [ ] 2.2 Test integración: `POST /respuestas` con la ventana del examen cerrada → `409 tiempo_agotado`, nada persistido
-- [ ] 2.3 Test integración: `POST /respuestas` dentro del plazo → 201 y respuesta persistida (no romper el camino feliz)
-- [ ] 2.4 Test integración: respuesta que llega dentro de la gracia → 201 y persistida
-- [ ] 2.5 Test integración: lote fuera de plazo con varias respuestas → ninguna se persiste (rechazo atómico)
-- [ ] 2.6 Test integración: el error distingue `tiempo_agotado` de `sesion_finalizada`
-- [ ] 2.7 Implementar la validación de plazo en `submit_respuestas` (`sessions/router.py`), cargando config del examen + `creada_en`
-- [ ] 2.8 Test integración: la hora declarada por el cliente no altera el rechazo (se usa hora del servidor)
+- [x] 2.1 Test integración (DB real): `POST /sessions/{id}/respuestas` con límite vencido → `409 tiempo_agotado`, nada persistido
+- [x] 2.2 Test integración: `POST /respuestas` con la ventana del examen cerrada → `409 tiempo_agotado`, nada persistido
+- [x] 2.3 Test integración: `POST /respuestas` dentro del plazo → 201 y respuesta persistida (no romper el camino feliz)
+- [x] 2.4 Test integración: respuesta que llega dentro de la gracia → 201 y persistida
+- [x] 2.5 Test integración: lote fuera de plazo con varias respuestas → ninguna se persiste (rechazo atómico)
+- [x] 2.6 Test integración: el error distingue `tiempo_agotado` de `sesion_finalizada`
+- [x] 2.7 Implementar la validación de plazo en `submit_respuestas` (`sessions/router.py`), cargando config del examen + `creada_en`
+- [x] 2.8 Test integración: la hora declarada por el cliente no altera el rechazo (se usa hora del servidor)
 
 ## 3. Enforcement en la finalización
 
