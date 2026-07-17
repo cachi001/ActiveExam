@@ -32,6 +32,10 @@ from app.infrastructure.persistence.models.exam_content import (  # noqa: F401
     OpcionRespuestaModel,
     PreguntaExamenModel,
 )
+from app.infrastructure.persistence.models.chat_pausa import (  # noqa: F401
+    MensajeChatModel,
+    PausaAutorizadaModel,
+)
 from app.infrastructure.persistence.models.moodle_writeback import (  # noqa: F401
     MoodleWritebackAuditModel,
     MoodleWritebackEstadoModel,
@@ -53,6 +57,8 @@ _DROP = [
     "moodle_writeback_audit",
     "moodle_writeback_estado",
     "respuesta_alumno",
+    "mensaje_chat",
+    "pausa_autorizada",
     "opcion_respuesta",
     "pregunta_examen",
     "examen_contenido",
@@ -68,6 +74,8 @@ _CREATE = [
     ProctoringEventModel.__table__,
     ProctoringBiometriaModel.__table__,
     RespuestaAlumnoModel.__table__,
+    PausaAutorizadaModel.__table__,
+    MensajeChatModel.__table__,
     MoodleWritebackEstadoModel.__table__,
     MoodleWritebackAuditModel.__table__,
 ]

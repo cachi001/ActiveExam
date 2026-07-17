@@ -123,15 +123,15 @@
 
 ## 12. Timeout del pedido de pausa
 
-- [ ] 12.1 Test integración (DB real): una pausa `'solicitada'` más vieja que el umbral pasa a `'expirada'` y sale de `listar_pausas_pendientes`
-- [ ] 12.2 Test integración: una pausa `'solicitada'` dentro del umbral sigue pendiente (no expira antes de tiempo)
-- [ ] 12.3 Test integración: al finalizar (manual) una sesión con una pausa `'solicitada'`, esa pausa queda `'expirada'`
-- [ ] 12.4 Test integración: al auto-finalizar (§4) una sesión con pausa `'solicitada'`, esa pausa queda `'expirada'`
-- [ ] 12.5 Test: la expiración NO aprueba ni rechaza (no abre ventana, no setea `inicio_en`); es acto del sistema (L2.5)
-- [ ] 12.6 Constante de timeout del pedido configurable por env (default conservador); documentar que es distinto de `pausa_max_min`
-- [ ] 12.7 Implementar la expiración por antigüedad en `chat_pausa_service.py` (lazy al listar pendientes y/o al tocar la sesión)
-- [ ] 12.8 Implementar la cancelación de pendientes en el camino de finalización de sesión (manual y auto)
-- [ ] 12.9 Test integración: doble expiración es idempotente (no re-muta una pausa ya `'expirada'`)
+- [x] 12.1 Test integración (DB real): una pausa `'solicitada'` más vieja que el umbral pasa a `'expirada'` y sale de `listar_pausas_pendientes`
+- [x] 12.2 Test integración: una pausa `'solicitada'` dentro del umbral sigue pendiente (no expira antes de tiempo)
+- [x] 12.3 Test integración: al finalizar (manual) una sesión con una pausa `'solicitada'`, esa pausa queda `'expirada'`
+- [x] 12.4 Test integración: al auto-finalizar (§4) una sesión con pausa `'solicitada'`, esa pausa queda `'expirada'`
+- [x] 12.5 Test: la expiración NO aprueba ni rechaza (no abre ventana, no setea `inicio_en`); es acto del sistema (L2.5)
+- [x] 12.6 Constante de timeout del pedido configurable por env (default conservador); documentar que es distinto de `pausa_max_min`
+- [x] 12.7 Implementar la expiración por antigüedad en `chat_pausa_service.py` (lazy al listar pendientes y/o al tocar la sesión)
+- [x] 12.8 Implementar la cancelación de pendientes en el camino de finalización de sesión (manual y auto)
+- [x] 12.9 Test integración: doble expiración es idempotente (no re-muta una pausa ya `'expirada'`)
 - [ ] 12.10 Frontend: el panel de supervisión en vivo no muestra pausas expiradas; test de que desaparecen de la cola
 
 ## 13. Cierre de la ampliación
