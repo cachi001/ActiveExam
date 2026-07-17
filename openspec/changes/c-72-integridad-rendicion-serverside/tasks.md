@@ -79,14 +79,14 @@
 
 ## 8. Verificación y cierre
 
-- [ ] 8.1 Reproducir el repro original: sesión envejecida 3h en examen de 40' → `POST /respuestas` ahora devuelve 409 (antes 201)
-- [ ] 8.2 Reproducir: examen cerrado hace 1 día → `POST /respuestas` devuelve 409 (antes 201)
-- [ ] 8.3 Reproducir: `PATCH /finalizar` fuera de plazo ya no certifica nota con respuestas tardías (antes 200)
-- [ ] 8.4 Verificar que `POST /sessions` con examen cerrado sigue devolviendo 403 (no romper lo que ya andaba)
-- [ ] 8.5 Correr los tests de integración POR ARCHIVO con DB fresca (no juntos — teardowns con `DROP TABLE CASCADE` dan falsos negativos)
+- [x] 8.1 Reproducir el repro original: sesión envejecida 3h en examen de 40' → `POST /respuestas` ahora devuelve 409 (antes 201)
+- [x] 8.2 Reproducir: examen cerrado hace 1 día → `POST /respuestas` devuelve 409 (antes 201)
+- [x] 8.3 Reproducir: `PATCH /finalizar` fuera de plazo ya no certifica nota con respuestas tardías (antes 200)
+- [x] 8.4 Verificar que `POST /sessions` con examen cerrado sigue devolviendo 403 (no romper lo que ya andaba)
+- [x] 8.5 Correr los tests de integración POR ARCHIVO con DB fresca (no juntos — teardowns con `DROP TABLE CASCADE` dan falsos negativos)
 - [ ] 8.6 Suite de frontend completa en verde
 - [ ] 8.7 Medir cuántas sesiones activas vencidas existen antes de activar cualquier cierre masivo
-- [ ] 8.8 `openspec validate` del change en verde
+- [x] 8.8 `openspec validate` del change en verde
 
 ---
 
