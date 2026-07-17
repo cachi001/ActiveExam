@@ -115,7 +115,7 @@ export function ColaPanelDecision({
             onChange={(e) => setMotivo(e.target.value)}
             rows={2}
             placeholder="Ej.: revisé las 3 señales y corresponden a un falso positivo."
-            className="w-full rounded-xl border border-outline-variant/60 bg-white p-sm text-body-md
+            className="w-full rounded-xl border border-outline-variant/60 bg-white p-sm text-body-md resize-none
               focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
           />
         </FormField>

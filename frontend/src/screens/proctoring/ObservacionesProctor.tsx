@@ -115,7 +115,7 @@ export function ObservacionesProctor({
             disabled={!sessionId || guardando}
             rows={4}
             placeholder={sessionId ? 'Anotá una observación para la revisión humana…' : 'No disponible'}
-            className="w-full px-sm py-base text-label-md rounded-xl border border-outline-variant bg-surface-container-lowest focus:border-primary-container outline-none disabled:opacity-50 resize-y min-h-[88px]"
+            className="w-full px-sm py-base text-label-md rounded-xl border border-outline-variant bg-surface-container-lowest focus:border-primary-container outline-none disabled:opacity-50 resize-none min-h-[88px]"
           />
           <div className="flex justify-end">
             <Button
