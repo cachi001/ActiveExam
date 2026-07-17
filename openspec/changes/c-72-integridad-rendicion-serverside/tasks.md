@@ -53,12 +53,12 @@
 
 ## 6. Candado direccional de configuración (H-5)
 
-- [ ] 6.1 Test puro: los campos del grupo congelado duro se rechazan siempre en examen ya rendido
-- [ ] 6.2 Test puro: `cierre` posterior al vigente se permite; anterior se rechaza
-- [ ] 6.3 Test puro: `intentos_permitidos` mayor al vigente se permite; menor se rechaza
-- [ ] 6.4 Test puro: `mostrar_nota` y `revision_habilitada` se permiten siempre
-- [ ] 6.5 Test puro: examen sin intentos finalizados admite cualquier cambio
-- [ ] 6.6 Reemplazar `CAMPOS_CONGELADOS_POST_RENDICION` por el modelo de tres grupos en `app/domain/exam_content/config.py`
+- [x] 6.1 Test puro: los campos del grupo congelado duro se rechazan siempre en examen ya rendido
+- [x] 6.2 Test puro: `cierre` posterior al vigente se permite; anterior se rechaza
+- [x] 6.3 Test puro: `intentos_permitidos` mayor al vigente se permite; menor se rechaza
+- [x] 6.4 Test puro: `mostrar_nota` y `revision_habilitada` se permiten siempre
+- [x] 6.5 Test puro: examen sin intentos finalizados admite cualquier cambio
+- [x] 6.6 Reemplazar `CAMPOS_CONGELADOS_POST_RENDICION` por el modelo de tres grupos en `app/domain/exam_content/config.py` (modelo nuevo en uso; binario queda como shim deprecado hasta el rewire del router §6.10)
 - [ ] 6.7 Test integración: `PATCH /config` extendiendo `cierre` en examen rendido → 200 y persistido
 - [ ] 6.8 Test integración: `PATCH /config` acortando `cierre` en examen rendido → `409 config_congelada`
 - [ ] 6.9 Test integración: PATCH mixto (congelado + libre) → 409 y el campo libre NO se persiste (atómico)
