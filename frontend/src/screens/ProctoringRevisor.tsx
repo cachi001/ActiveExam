@@ -100,10 +100,10 @@ export default function ProctoringRevisor() {
   return (
     <StaffShell
       nav={STAFF_NAV}
-      title="Sesiones grabadas"
+      title="Registro de sesiones"
       subtitle="Historial de sesiones de proctoring ya finalizadas. Para sesiones en curso, usá Supervisión en vivo; para acotar por riesgo, la Cola de revisión."
       help={
-        <HelpButton title="Sesiones grabadas">
+        <HelpButton title="Registro de sesiones">
           <p>
             Listado histórico de sesiones de proctoring <strong>ya finalizadas</strong>.
             Las que siguen en curso aparecen en <em>Supervisión en vivo</em>; para
@@ -122,7 +122,7 @@ export default function ProctoringRevisor() {
         {!cargando && sesiones.length > 0 && <ResumenSesiones sesiones={sesiones} />}
 
         {/* Lista agrupada por examen (colapsable), igual que supervisión en vivo.
-            Sin header repetido: el título de la página ya dice "Sesiones grabadas" y
+            Sin header repetido: el título de la página ya dice "Registro de sesiones" y
             el conteo lo muestra ResumenSesiones (arriba). */}
         <div className="space-y-md">
           {cargando && <Card className="space-y-md"><ListaSkeleton /></Card>}

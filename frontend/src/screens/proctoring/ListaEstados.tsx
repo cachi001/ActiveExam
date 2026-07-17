@@ -46,7 +46,7 @@ export function ListaVacia() {
         flex items-center justify-center mb-base border border-surface-200">
         <Icon name="video_library" className="text-[32px]" />
       </div>
-      <p className="font-headline text-title-lg text-on-surface">Todavía no hay sesiones grabadas</p>
+      <p className="font-headline text-title-lg text-on-surface">Todavía no hay sesiones registradas</p>
       <p className="text-body-md text-on-surface-variant max-w-sm">
         Iniciá el harness de diagnóstico y presioná <strong>Grabar sesión</strong> para registrar
         eventos y revisarlos acá.

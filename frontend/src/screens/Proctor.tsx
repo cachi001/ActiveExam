@@ -164,7 +164,7 @@ export default function Proctor() {
         <HelpButton title="Supervisión en vivo">
           <p>
             Acá ves las sesiones de proctoring <strong>en curso</strong> agrupadas por examen.
-            Las sesiones que ya finalizaron viven en <em>Sesiones grabadas</em>.
+            Las sesiones que ya finalizaron viven en <em>Registro de sesiones</em>.
           </p>
           <p>
             Los exámenes con mayor riesgo aparecen arriba. Click en un examen para ver el grid

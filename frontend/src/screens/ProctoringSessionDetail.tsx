@@ -34,7 +34,7 @@ import { PausasHistorial } from './proctoring/PausasHistorial';
 const BACK_LABELS: Record<string, string> = {
   '/proctor': 'Volver a supervisión en vivo',
   '/proctor/examen': 'Volver al examen',
-  '/admin/proctoring-sessions': 'Volver a sesiones grabadas',
+  '/admin/proctoring-sessions': 'Volver a Registro de sesiones',
   '/revisor': 'Volver a la cola de revisión',
 };
 
