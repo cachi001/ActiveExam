@@ -9,7 +9,7 @@
  * FUNCIONES PURAS: sin React, sin hooks, sin llamadas HTTP. Operan sobre arrays.
  */
 import type { SesionProctoringResumen } from '../../lib/types';
-import { joinExamInfo, type ExamInfo } from './helpers';
+import { type ExamInfo } from './helpers';
 
 /** Nombre sentinela para sesiones sin examen del catálogo resoluble. */
 export const SIN_EXAMEN = 'Sin examen asociado';
@@ -18,13 +18,9 @@ export const SIN_MATERIA = 'Sin materia asignada';
 export const SIN_COMISION = 'Sin comisión asignada';
 
 /**
- * Resuelve el contexto académico de una sesión PREFIRIENDO lo que resolvió el backend
- * (examen_contenido → comisión → materia). Solo cae al catálogo mock local para
- * sesiones viejas/harness que traen `exam_id` del catálogo pero sin contexto server-side.
- *
- * Bug que arregla: antes SIEMPRE se usaba `joinExamInfo(exam_id)` contra arrays mock;
- * un examen importado real (que vive en la base, no en el mock) nunca resolvía y todo
- * salía "Sin examen asociado".
+ * Resuelve el contexto académico de una sesión a partir de lo que resolvió el backend
+ * (examen_contenido → comisión → materia). Si la sesión no trae contexto server-side
+ * (sesión de harness sin examen real), no hay nada que mostrar → null.
  */
 export function examInfoDeSesion(s: SesionProctoringResumen): ExamInfo | null {
   if (s.examen_titulo || s.examen_contenido_id) {
@@ -35,7 +31,7 @@ export function examInfoDeSesion(s: SesionProctoringResumen): ExamInfo | null {
       docente: '',
     };
   }
-  return joinExamInfo(s.exam_id);
+  return null;
 }
 
 /**

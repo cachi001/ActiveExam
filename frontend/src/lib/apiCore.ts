@@ -6,8 +6,8 @@
 // Los esquemas y enums coinciden con app/presentation/api/v1/* del backend.
 
 import type {
-  Principal, Rol, ConsentTextResponse, Examen, DesafioActivo, TipoEvento,
-  Materia, Comision, EstadoEnrollment, AcuseConsentimiento, BloqueConsentimiento,
+  Principal, Rol, ConsentTextResponse, DesafioActivo,
+  EstadoEnrollment, AcuseConsentimiento, BloqueConsentimiento,
   ReferenciasBiometrica, VigenciaReferencia,
 } from './types';
 import { INSTITUTION } from '../config/institution';
@@ -37,49 +37,6 @@ export const PRINCIPALES: Record<Rol, Principal> = {
   },
 };
 
-const DETECTORES_DEFAULT: TipoEvento[] = [
-  'rostro_ausente', 'multiples_rostros', 'mirada_desviada_sostenida',
-  'perdida_de_foco', 'cambio_pestana', 'monitor_adicional',
-  'salida_pantalla_completa', 'copiar_pegar',
-];
-
-type ExamenConComision = Examen & { comision_id?: string };
-
-// Un único examen "rendible" para probar el flujo completo sin clutter.
-// `estado: 'en_curso'` → es el que Login.tsx selecciona como `examenActivo`.
-const EXAMEN_RENDIBLE_ID = `EX-${INSTITUTION.idPrefix}-AMAT-I`;
-
-// Exportados para que el catálogo académico pueda joinearse desde la UI
-// (joinExamInfo en screens/proctoring/helpers.ts). Lectura pura, sin mutación externa.
-export let EXAMENES: ExamenConComision[] = [
-  {
-    id: EXAMEN_RENDIBLE_ID, nombre: 'Examen Final — Análisis Matemático I', catedra: 'Cátedra B',
-    estado: 'en_curso', inicio: '2026-05-30T14:00:00', duracion_min: 60,
-    umbral_score: 70, detectores: DETECTORES_DEFAULT, retencion_dias: 30,
-    inscriptos: 48, rindiendo: 4, comision_id: 'COM-AMAT-1A',
-  },
-];
-
-// ---------------------------------------------------------------------------
-// Portal del alumno — catálogo académico local (C-21)
-// ---------------------------------------------------------------------------
-
-// 2.2 Materias UTN FRM
-export const MATERIAS: Materia[] = [
-  { id: 'MAT-AMAT', nombre: 'Análisis Matemático I', codigo: 'CB101', descripcion: 'Funciones, límites, derivadas e integrales. Fundamentos del cálculo diferencial e integral.' },
-  { id: 'MAT-FIS1', nombre: 'Física I', codigo: 'CB102', descripcion: 'Mecánica clásica, cinemática, dinámica y termodinámica básica.' },
-  { id: 'MAT-PROG', nombre: 'Programación I', codigo: 'SIS101', descripcion: 'Introducción a la programación estructurada. Algoritmos, estructuras de datos básicas.' },
-];
-
-// 2.3 Comisiones (≥2 por materia)
-export const COMISIONES: Comision[] = [
-  { id: 'COM-AMAT-1A', materia_id: 'MAT-AMAT', nombre: 'Comisión 1A', docente: 'Dr. Roberto Fernández', horario: 'Lunes y Miércoles 08:00–10:00' },
-  { id: 'COM-AMAT-1B', materia_id: 'MAT-AMAT', nombre: 'Comisión 1B', docente: 'Dra. Laura Giménez', horario: 'Martes y Jueves 10:00–12:00' },
-  { id: 'COM-FIS1-2A', materia_id: 'MAT-FIS1', nombre: 'Comisión 2A', docente: 'Ing. Carlos Pérez', horario: 'Lunes y Viernes 14:00–16:00' },
-  { id: 'COM-FIS1-2B', materia_id: 'MAT-FIS1', nombre: 'Comisión 2B', docente: 'Dr. Alejandro Torres', horario: 'Miércoles y Viernes 08:00–10:00' },
-  { id: 'COM-PROG-1A', materia_id: 'MAT-PROG', nombre: 'Comisión 1A', docente: 'Ing. Valeria Romero', horario: 'Martes y Jueves 16:00–18:00' },
-  { id: 'COM-PROG-1B', materia_id: 'MAT-PROG', nombre: 'Comisión 1B', docente: 'Lic. Sebastián Díaz', horario: 'Lunes y Miércoles 18:00–20:00' },
-];
 
 // ---------------------------------------------------------------------------
 // Enrollment biométrico del perfil — C-22
@@ -444,8 +401,6 @@ function normalizarConsentText(raw: unknown): ConsentTextResponse {
 // ── Exports internos para el objeto `api` (./api) — refactor c-76 ──────────────
 export {
   delay,
-  DETECTORES_DEFAULT,
-  EXAMEN_RENDIBLE_ID,
   VISION_ENGINE_VERSION,
   LS_ENROLLMENT,
   LS_FOTO,
@@ -466,7 +421,6 @@ export {
   CONSENT_TEXT,
   enrollmentAlumno,
 };
-export type { ExamenConComision };
 
 /** Setters del estado mutable del módulo: los ES-module bindings no se pueden
  * reasignar desde otro archivo, así que el objeto `api` muta vía estos. */
