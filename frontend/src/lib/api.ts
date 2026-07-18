@@ -7,7 +7,7 @@
 
 import type {
   Principal, Rol, ConsentTextResponse, ConsentResponse, Examen,
-  EventoSesion, DesafioActivo, Severidad, TipoEvento,
+  EventoSesion, DesafioActivo, TipoEvento,
   Materia, Comision, Inscripcion, EstadoInscripcion,
   EstadoEnrollment, AcuseConsentimiento, BloqueConsentimiento, ReferenciasBiometrica, EscaneDNI, VigenciaReferencia,
   SesionProctoringResumen, SesionProctoringDetalle, EventoProctoringDetalle,
@@ -208,21 +208,9 @@ export const DESAFIOS: DesafioActivo[] = [
   { id: 'sonreír', label: 'Sonreír' },
 ];
 
-const DESC_EVENTO: Record<TipoEvento, string> = {
-  rostro_ausente: 'No se detectó rostro en el encuadre por más de 3 segundos.',
-  multiples_rostros: 'Se detectaron múltiples rostros simultáneos en cámara.',
-  mirada_desviada_sostenida: 'Patrón de mirada sostenido hacia un punto fijo fuera de pantalla.',
-  perdida_de_foco: 'El estudiante minimizó la ventana o la ventana perdió el foco del sistema operativo.',
-  cambio_pestana: 'El estudiante cambió o abrió otra pestaña del navegador durante el examen.',
-  monitor_adicional: 'Se detectó un segundo monitor conectado al equipo.',
-  salida_pantalla_completa: 'El estudiante salió del modo de pantalla completa durante el examen.',
-  copiar_pegar: 'Se detectó una acción de copiar o pegar durante el examen (sin capturar contenido).',
-  corte_conectividad_prolongado: 'Corte de conectividad prolongado (> 5 min) con el canal de eventos.',
-  recarga_pagina: 'El estudiante recargó la página y volvió enseguida (reapertura benigna).',
-  reanudacion_tardia: 'El estudiante reanudó la rendición tras una ausencia prolongada.',
-};
-
-export function descripcionEvento(t: TipoEvento): string { return DESC_EVENTO[t]; }
+// Mapas de presentación (DESC_EVENTO/descripcionEvento/SEVERIDAD_LABEL/
+// TIPO_EVENTO_LABEL) movidos a ./apiLabels — se re-exportan al final del archivo
+// para no romper los imports existentes desde '../lib/api'.
 
 const CONSENT_TEXT: ConsentTextResponse = {
   // Alineada con la versión del backend real ('v1') para que demo y real coincidan
@@ -1912,25 +1900,8 @@ export const api = {
   },
 };
 
-// Helpers de presentación
-export const SEVERIDAD_LABEL: Record<Severidad, string> = {
-  baseline: 'Base', baja: 'Baja', media: 'Media', alta: 'Alta', critica: 'Crítica',
-};
-
-export const TIPO_EVENTO_LABEL: Record<TipoEvento, string> = {
-  rostro_ausente: 'Rostro ausente',
-  multiples_rostros: 'Múltiples rostros',
-  mirada_desviada_sostenida: 'Mirada desviada sostenida',
-  perdida_de_foco: 'Pérdida de foco',
-  cambio_pestana: 'Cambio de pestaña',
-  monitor_adicional: 'Monitor adicional',
-  salida_pantalla_completa: 'Salida de pantalla completa',
-  copiar_pegar: 'Copiar / Pegar',
-  corte_conectividad_prolongado: 'Corte de conectividad',
-  // C-72: reapertura de la rendición (el alumno recargó / volvió tras ausentarse).
-  recarga_pagina: 'Recarga de página',
-  reanudacion_tardia: 'Reanudación tardía',
-};
+// Helpers de presentación (definidos en ./apiLabels; re-export para compat).
+export { DESC_EVENTO, descripcionEvento, SEVERIDAD_LABEL, TIPO_EVENTO_LABEL } from './apiLabels';
 
 export type {
   EventoSesion, Materia, Comision, Inscripcion, EstadoInscripcion,
