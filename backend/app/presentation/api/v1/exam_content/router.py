@@ -1005,7 +1005,7 @@ def create_exam_content_router(
     def _config_to_response(examen, *, bloqueada: bool = False) -> ExamenConfigResponse:
         # C-72 sección 6: si ya fue rendido, expone el detalle direccional para la UI.
         from app.domain.exam_content.config import (
-            CAMPOS_DIRECCIONALES,
+            CAMPOS_SOLO_AMPLIABLES,
             CONGELADO_DURO,
         )
 
@@ -1021,7 +1021,7 @@ def create_exam_content_router(
             revision_habilitada=examen.revision_habilitada,
             bloqueada=bloqueada,
             campos_congelados=sorted(CONGELADO_DURO) if bloqueada else [],
-            campos_solo_ampliables=sorted(CAMPOS_DIRECCIONALES) if bloqueada else [],
+            campos_solo_ampliables=sorted(CAMPOS_SOLO_AMPLIABLES) if bloqueada else [],
         )
 
     @router.get(

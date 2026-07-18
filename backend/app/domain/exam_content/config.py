@@ -59,6 +59,11 @@ CONGELADO_DURO: frozenset[str] = frozenset(
 CAMPOS_DIRECCIONALES: frozenset[str] = frozenset(
     {"cierre", "intentos_permitidos", "revision_habilitada", "mostrar_nota"}
 )
+# Subconjunto de los direccionales que solo se pueden AMPLIAR (extender la ventana /
+# aumentar los intentos). Los otros direccionales (publicación) solo se AFLOJAN — no
+# son "ampliables" en el mismo sentido, por eso el GET /config los distingue: este set
+# es lo que la UI muestra como "solo se puede ampliar".
+CAMPOS_SOLO_AMPLIABLES: frozenset[str] = frozenset({"cierre", "intentos_permitidos"})
 CAMPOS_LIBRES: frozenset[str] = frozenset()
 
 
