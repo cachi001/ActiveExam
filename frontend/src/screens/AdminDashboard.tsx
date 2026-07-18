@@ -11,6 +11,7 @@ import { StaffShell } from '../ui/shells';
 import { Icon, Card, LoadingSpinner } from '../ui/components';
 import { HelpButton } from '../ui/HelpButton';
 import { StatCard } from './proctoring/StatCard';
+import { statProps } from './proctoring/statCatalog';
 import { Link } from '../lib/router';
 import { api } from '../lib/api';
 import { STAFF_NAV } from '../ui/nav';
@@ -74,7 +75,7 @@ export default function AdminDashboard() {
             no hay sesiones se muestra 0 / 0% (no "—"). */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-md">
           <StatCard icon="assignment" label="Exámenes" value={cargando ? '…' : examenes.length} sub="importados" tono="primary" />
-          <StatCard icon="groups" label="Sesiones" value={totalSesiones ?? '…'} sub="registradas" tono="success" />
+          <StatCard {...statProps('sesiones', totalSesiones ?? '…')} />
           <StatCard icon="flag" label="Cola de revisión" value={sesiones === null ? '…' : flagged} sub="sesiones en revisión" tono="warning" />
         </div>
 

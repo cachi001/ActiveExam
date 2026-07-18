@@ -29,7 +29,7 @@ import { formatRostrosConOrigen } from '../../lib/faceCountLabel';
  * - traduce claves a etiquetas humanas (sostenido_ms → "Duración")
  * - formatea valores: ms → "3 s" / "1 min 5 s", booleanos → "Sí/No", floats → 2 decimales.
  */
-const KEYS_OCULTAS = new Set(['face_count', 'face_count_cliente', 'face_count_servidor', 'trigger_evidence']);
+const KEYS_OCULTAS = new Set(['face_count', 'face_count_cliente', 'face_count_servidor', 'trigger_evidence', 'origen']);
 
 function payloadEntries(payload: Record<string, unknown> | undefined): [string, string][] {
   if (!payload) return [];

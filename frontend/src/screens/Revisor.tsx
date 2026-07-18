@@ -51,6 +51,42 @@ const DECISION_LABEL: Record<DecisionRevisor, string> = {
   pendiente: 'Pendiente',
 };
 
+/**
+ * Preservación de navegación (C-72 backlog UX #5). Al ir a "Ver detalle completo"
+ * el componente se desmonta; sin esto, al volver caías en el nivel raíz (Materias)
+ * en vez de donde estabas. Guardamos el nivel + la persona seleccionada y los
+ * restauramos UNA sola vez (restore-once): así el ida-y-vuelta al detalle preserva
+ * el contexto, pero una entrada fresca desde el menú lateral arranca en la raíz.
+ */
+const NAV_KEY = 'revisor:nav';
+
+function leerNavGuardada(): { path: ColaPath; personaSelId: string | null } | null {
+  try {
+    const raw = sessionStorage.getItem(NAV_KEY);
+    return raw ? (JSON.parse(raw) as { path: ColaPath; personaSelId: string | null }) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Acorta el recorrido (C-72 backlog UX #8): sigue los niveles que tienen UNA sola
+ * opción desde la raíz hacia abajo, para caer directo en las personas en riesgo sin
+ * clickear pantallas de una sola card. Se aplica SOLO en la carga inicial (no al
+ * volver del detalle): así el botón "Volver" nunca queda atrapado re-colapsando.
+ */
+function caminoAutoColapsado(items: SesionEnriquecida[]): ColaPath {
+  const materias = materiasEnRiesgo(items);
+  if (materias.length !== 1) return {};
+  const materia = materias[0].nombre;
+  const comisiones = comisionesEnRiesgo(items, materia);
+  if (comisiones.length !== 1) return { materia };
+  const comision = comisiones[0].nombre;
+  const examenes = examenesEnRiesgo(items, materia, comision);
+  if (examenes.length !== 1) return { materia, comision };
+  return { materia, comision, examen: examenes[0].nombre };
+}
+
 export default function Revisor() {
   const navigate = useNavigate();
   const toast = useToast();
@@ -64,10 +100,18 @@ export default function Revisor() {
   const [items, setItems] = useState<SesionEnriquecida[]>([]);
   const [umbral, setUmbral] = useState(UMBRAL_FALLBACK);
   const [cargando, setCargando] = useState(true);
-  const [path, setPath] = useState<ColaPath>({});
-  const [personaSelId, setPersonaSelId] = useState<string | null>(null);
+  // Restauramos el nivel/persona si venimos de "Ver detalle completo" (restore-once).
+  const [path, setPath] = useState<ColaPath>(() => leerNavGuardada()?.path ?? {});
+  const [personaSelId, setPersonaSelId] = useState<string | null>(
+    () => leerNavGuardada()?.personaSelId ?? null,
+  );
 
   useEffect(() => {
+    // Capturamos si venimos de restaurar navegación ANTES de consumir la clave.
+    const restaurado = leerNavGuardada();
+    // Ya restauramos la navegación en los initializers; consumimos la clave para
+    // que sea restore-once (una entrada fresca desde el menú arranca en la raíz).
+    try { sessionStorage.removeItem(NAV_KEY); } catch { /* ignore */ }
     setCargando(true);
     (async () => {
       // El umbral de la cola sale de la config del sistema (no un valor fijo).
@@ -82,7 +126,14 @@ export default function Revisor() {
       setUmbral(u);
       try {
         const data = await api.listarSesionesProctoring();
-        setItems(enriquecerYFiltrar(data, u));
+        const enriched = enriquecerYFiltrar(data, u);
+        setItems(enriched);
+        // #8: entrada fresca (no venimos del detalle) → saltamos los niveles de una
+        // sola opción para acortar el recorrido hasta las personas en riesgo.
+        if (!restaurado?.path?.materia) {
+          const auto = caminoAutoColapsado(enriched);
+          if (auto.materia) setPath(auto);
+        }
       } catch {
         setItems([]);
       } finally {
@@ -110,12 +161,44 @@ export default function Revisor() {
     });
   };
 
-  const resolver = (
+  /**
+   * Registra la decisión del revisor pegando al backend REAL (C-71 endpoints).
+   * Rutea fase 1 (`decide`) vs fase 2 (`resolve`). Devuelve `true` solo si el
+   * backend confirmó: recién ahí la UI refleja el cambio (el panel abre la fase 2
+   * o el item sale de la cola). Un fallo (409 inmutable, 403 sin atribución) NO
+   * muta nada — el juicio humano vive en el servidor, no en el navegador (regla #6).
+   */
+  const resolver = async (
     id: string,
     decision: DecisionRevisor,
-    _motivo: string,
-    _evidenciaRef?: string,
-  ) => {
+    motivo: string,
+    evidenciaRef?: string,
+  ): Promise<boolean> => {
+    try {
+      if (decision === 'anulado_por_fraude' || decision === 'caso_descartado') {
+        await api.resolverCaso(id, decision, motivo, evidenciaRef);
+      } else if (
+        decision === 'sin_hallazgos' ||
+        decision === 'aprobado' ||
+        decision === 'caso_abierto'
+      ) {
+        await api.decidirRevision(id, decision, motivo);
+      } else {
+        return false; // 'pendiente' no es una acción registrable
+      }
+    } catch (e) {
+      const status = (e as { status?: number })?.status;
+      if (status === 409) {
+        toast.error('Esta sesión ya tenía una decisión registrada (es inmutable). Recargá la cola.');
+      } else if (status === 403) {
+        toast.error('No tenés la atribución para registrar esta decisión.');
+      } else {
+        toast.error('No se pudo registrar la decisión. Reintentá en un momento.');
+      }
+      return false;
+    }
+
+    // Éxito confirmado por el backend: recién ahora reflejamos en la UI.
     setDecisionRevisor(id, decision);
     toast.success(
       `Decisión registrada: ${DECISION_LABEL[decision]}. El score prioriza; el revisor decide.`,
@@ -125,9 +208,14 @@ export default function Revisor() {
       setItems((prev) => prev.filter((i) => i.sesion.id !== id));
       setPersonaSelId(null);
     }
+    return true;
   };
 
   const verDetalle = (id: string) => {
+    // Guardamos el nivel + la persona para restaurarlos al volver del detalle (#5).
+    try {
+      sessionStorage.setItem(NAV_KEY, JSON.stringify({ path, personaSelId: id }));
+    } catch { /* ignore */ }
     setProctoringSessionId(id);
     setProctoringDetailBackRoute('/revisor');
     navigate(PROCTORING_DETAIL_ROUTE);

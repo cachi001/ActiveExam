@@ -245,6 +245,9 @@ const PAYLOAD_KEY_LABELS: Record<string, string> = {
   duracion_ms: 'Duración',
   tiempo_ms: 'Tiempo',
   ms: 'Duración',
+  // C-72 sección 7.6: duración de la ausencia en una reanudación (segundos, medida
+  // server-side). El revisor la lee para dimensionar cuánto estuvo fuera el alumno.
+  ausencia_seg: 'Duración de ausencia',
   face_count: 'Rostros',
   faces: 'Rostros',
   rostros: 'Rostros',
@@ -330,6 +333,10 @@ export function formatPayloadValue(key: string, value: unknown): string {
   if (value === null || value === undefined) return '—';
   const esMs = key === 'ms' || /_ms$/.test(key);
   if (esMs && typeof value === 'number') return formatDuracionMs(value);
+  // Claves en SEGUNDOS (p. ej. `ausencia_seg`): reusar el mismo formateo legible
+  // (ms) pasando a ms, para que "75 s" se lea "1 min 15 s" como el resto.
+  const esSeg = key === 'seg' || /_seg$/.test(key);
+  if (esSeg && typeof value === 'number') return formatDuracionMs(value * 1000);
   if (
     key === 'gaze' &&
     typeof value === 'object' &&

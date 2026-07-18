@@ -285,6 +285,38 @@ describe('examContentAdmin — actualizarMateria', () => {
     const err = await promise.catch((e: unknown) => e as Error & { status?: number });
     expect(err.status).toBe(404);
   });
+
+  it('incluye codigo en el body cuando se edita el código de la materia', async () => {
+    const mock = { id: 'mat-2', codigo: 'CB999', nombre: 'Física I' };
+    fetchSpy.mockResolvedValueOnce({ ok: true, status: 200, json: async () => mock } as Response);
+
+    const { actualizarMateria } = await import('./examContentAdmin');
+    const res = await actualizarMateria('mat-2', { nombre: 'Física I', codigo: 'CB999' });
+
+    expect(res.codigo).toBe('CB999');
+    expect(fetchSpy).toHaveBeenCalledWith(
+      '/api/v1/exam-content/materias/mat-2',
+      expect.objectContaining({
+        method: 'PATCH',
+        body: JSON.stringify({ nombre: 'Física I', codigo: 'CB999' }),
+      }),
+    );
+  });
+
+  it('lanza error con status=409 si el codigo nuevo ya existe', async () => {
+    fetchSpy.mockResolvedValueOnce({
+      ok: false,
+      status: 409,
+      json: async () => ({ detail: { error: 'duplicado', mensaje: 'ya existe' } }),
+    } as Response);
+
+    const { actualizarMateria } = await import('./examContentAdmin');
+    const promise = actualizarMateria('mat-2', { nombre: 'Física I', codigo: 'CB101' });
+
+    await expect(promise).rejects.toThrow();
+    const err = await promise.catch((e: unknown) => e as Error & { status?: number });
+    expect(err.status).toBe(409);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -600,5 +632,74 @@ describe('examContentAdmin — eliminarInscripcion', () => {
     await expect(promise).rejects.toThrow('no_inscripto');
     const err = await promise.catch((e: unknown) => e as Error & { status?: number });
     expect(err.status).toBe(404);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// eliminarMateria / eliminarComision — borrado con guard 100% vacío (C-72 §16)
+// ---------------------------------------------------------------------------
+
+describe('examContentAdmin — eliminarMateria / eliminarComision', () => {
+  let fetchSpy: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => {
+    fetchSpy = vi.spyOn(globalThis, 'fetch');
+  });
+  afterEach(() => {
+    fetchSpy.mockRestore();
+  });
+
+  it('eliminarMateria: DELETE al endpoint con token; 204 resuelve sin error', async () => {
+    fetchSpy.mockResolvedValueOnce({ ok: true, status: 204, json: async () => ({}) } as Response);
+
+    const { eliminarMateria } = await import('./examContentAdmin');
+    await expect(eliminarMateria('mat-9')).resolves.toBeUndefined();
+    expect(fetchSpy).toHaveBeenCalledWith(
+      '/api/v1/exam-content/materias/mat-9',
+      expect.objectContaining({
+        method: 'DELETE',
+        headers: expect.objectContaining({ Authorization: 'Bearer tok' }),
+      }),
+    );
+  });
+
+  it('eliminarMateria: 409 con inscriptos/exámenes lanza error con status=409', async () => {
+    fetchSpy.mockResolvedValueOnce({
+      ok: false,
+      status: 409,
+      json: async () => ({ detail: { error: 'materia_no_vacia', mensaje: 'tiene inscriptos' } }),
+    } as Response);
+
+    const { eliminarMateria } = await import('./examContentAdmin');
+    const promise = eliminarMateria('mat-9');
+
+    await expect(promise).rejects.toThrow();
+    const err = await promise.catch((e: unknown) => e as Error & { status?: number });
+    expect(err.status).toBe(409);
+  });
+
+  it('eliminarComision: DELETE al endpoint; 204 resuelve sin error', async () => {
+    fetchSpy.mockResolvedValueOnce({ ok: true, status: 204, json: async () => ({}) } as Response);
+
+    const { eliminarComision } = await import('./examContentAdmin');
+    await expect(eliminarComision('com-9')).resolves.toBeUndefined();
+    expect(fetchSpy).toHaveBeenCalledWith(
+      '/api/v1/exam-content/comisiones/com-9',
+      expect.objectContaining({ method: 'DELETE' }),
+    );
+  });
+
+  it('eliminarComision: 409 lanza error con status=409', async () => {
+    fetchSpy.mockResolvedValueOnce({
+      ok: false,
+      status: 409,
+      json: async () => ({ detail: { error: 'comision_no_vacia', mensaje: 'tiene alumnos' } }),
+    } as Response);
+
+    const { eliminarComision } = await import('./examContentAdmin');
+    const promise = eliminarComision('com-9');
+
+    await expect(promise).rejects.toThrow();
+    const err = await promise.catch((e: unknown) => e as Error & { status?: number });
+    expect(err.status).toBe(409);
   });
 });

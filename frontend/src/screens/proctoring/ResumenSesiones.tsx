@@ -6,6 +6,7 @@
  */
 import type { SesionProctoringResumen } from '../../lib/types';
 import { StatCard } from './StatCard';
+import { statProps } from './statCatalog';
 
 export function ResumenSesiones({ sesiones }: { sesiones: SesionProctoringResumen[] }) {
   const totalSesiones = sesiones.length;
@@ -14,9 +15,9 @@ export function ResumenSesiones({ sesiones }: { sesiones: SesionProctoringResume
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-3 gap-md">
-      <StatCard icon="video_library" label="Sesiones" value={totalSesiones} sub="registradas en total" tono="primary" />
-      <StatCard icon="notifications" label="Eventos" value={totalEventos} sub="detectados" tono="info" />
-      <StatCard icon="rule" label="Discrepancias" value={totalDiscrepancias} sub="verificadas en server" tono="warning" />
+      <StatCard {...statProps('sesiones', totalSesiones, 'registradas en total')} />
+      <StatCard {...statProps('eventos', totalEventos)} />
+      <StatCard {...statProps('discrepancias', totalDiscrepancias)} />
     </div>
   );
 }

@@ -24,6 +24,8 @@ import type {
   NotaExamen, MisNotasResponse, RevisionExamen,
   // C-71 slice 2: informe de devolución del alumno (solo nota anulada por fraude)
   InformeDevolucion,
+  // C-71 slice 2: decisión del revisor (dos fases) — cableado de la cola (C-72 backlog UX)
+  DecisionRevision, DecisionResolucion,
 } from './types';
 import { INSTITUTION } from '../config/institution';
 import { authProvider } from './authProvider';
@@ -1390,6 +1392,49 @@ export const api = {
       `/proctoring/sessions/${sessionId}/cerrar-forzado`,
       { method: 'PATCH', body: JSON.stringify({ motivo, proctor_actor: proctorActor ?? null }) },
       'demo',
+    );
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // C-71 slice 2 — Decisión del revisor (dos fases). El sistema NUNCA sanciona
+  // automáticamente (L2.5, regla #5): estos endpoints registran el juicio humano
+  // de forma INMUTABLE (RN-RV-07). Un segundo intento devuelve 409.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Registra la decisión de REVISIÓN (fase 1) sobre una sesión (capacidad `revisar_sesion`).
+   * Real: POST /review/session/{id}/decide → 200; 409 si ya había decisión (inmutable).
+   * El `motivo` viaja como `observaciones`: el fundamento queda en el audit inmutable.
+   * `caso_abierto` deriva a la fase 2 (no valida ni anula la nota).
+   */
+  async decidirRevision(
+    sessionId: string,
+    decision: DecisionRevision,
+    motivo: string,
+  ): Promise<{ session_id: string; previous: string; new: string; actor: string; decision_at: string }> {
+    return await realFetch(
+      `/review/session/${sessionId}/decide`,
+      { method: 'POST', body: JSON.stringify({ decision, observaciones: motivo }) },
+    );
+  },
+
+  /**
+   * Registra el VEREDICTO de resolución (fase 2) de un caso abierto (capacidad `resolver_caso`).
+   * Real: POST /review/session/{id}/resolve → 200; 409 si ya resuelto o el caso no está abierto.
+   * `motivo` obligatorio; `evidenciaRef` obligatorio si `anulado_por_fraude` (D11).
+   */
+  async resolverCaso(
+    sessionId: string,
+    resolucion: DecisionResolucion,
+    motivo: string,
+    evidenciaRef?: string,
+  ): Promise<{ session_id: string; resolucion: string; actor: string; resolucion_at: string; nota_anulada: boolean }> {
+    return await realFetch(
+      `/review/session/${sessionId}/resolve`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ resolucion, motivo, evidencia_ref: evidenciaRef ?? null }),
+      },
     );
   },
 

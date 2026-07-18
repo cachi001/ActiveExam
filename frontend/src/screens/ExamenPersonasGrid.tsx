@@ -11,6 +11,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StaffShell } from '../ui/shells';
 import { Card, Icon, SectionTitle } from '../ui/components';
 import { StatCard } from './proctoring/StatCard';
+import { statProps } from './proctoring/statCatalog';
 import { STAFF_NAV } from '../ui/nav';
 import { useToast } from '../ui/toast';
 import { useNavigate } from '../lib/router';
@@ -123,8 +124,8 @@ export default function ExamenPersonasGrid() {
         {/* Resumen del examen */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-md">
           <StatCard icon="group" label="Personas" value={personas.length} sub="rindiendo" tono="primary" />
-          <StatCard icon="notifications" label="Eventos" value={eventos} sub="detectados" tono="info" />
-          <StatCard icon="priority_high" label="Riesgo alto" value={riesgoAlto} sub="superan el umbral" tono="error" />
+          <StatCard {...statProps('eventos', eventos)} />
+          <StatCard {...statProps('riesgoAlto', riesgoAlto)} />
         </div>
 
         {/* Grid de personas */}

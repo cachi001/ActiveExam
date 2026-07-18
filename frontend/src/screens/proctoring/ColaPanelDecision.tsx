@@ -2,8 +2,9 @@
  * ColaPanelDecision — Panel de decisión del revisor (C-71 slice 2, D6/D9/D11).
  *
  * Modelo de DOS FASES:
- *  - Fase 1 (revisión, capacidad `revisar_sesion`): sin_hallazgos / aprobado /
- *    abrir caso (derivar). Cada decisión exige un MOTIVO no vacío (D11).
+ *  - Fase 1 (revisión, capacidad `revisar_sesion`): APROBAR con nota (verde) o
+ *    ANULAR examen (rojo → `caso_abierto`, abre la fase 2). Cada decisión exige un
+ *    MOTIVO no vacío (D11). Se pega al backend antes de reflejar nada en la UI.
  *  - Fase 2 (resolución, capacidad `resolver_caso`): SOLO si el caso está abierto —
  *    ANULAR la nota por fraude (destacado, danger) o descartar el caso. Anular exige
  *    motivo + evidencia. El botón de anulación se habilita SOLO con la capacidad
@@ -21,7 +22,7 @@ import type {
   SesionProctoringResumen,
 } from '../../lib/types';
 import type { ExamInfo } from './helpers';
-import { scoreTextColor } from './helpers';
+import { scoreTextColor, formatFecha, formatFechaRelativa, modoLabel } from './helpers';
 
 export function ColaPanelDecision({
   sesion,
@@ -34,31 +35,34 @@ export function ColaPanelDecision({
   info: ExamInfo | null;
   /** Capacidad `resolver_caso` (front-hides; el backend deniega igual). */
   puedeResolver: boolean;
-  /** Registra una decisión (fase 1 o 2) con su motivo obligatorio (+ evidencia si anula). */
-  onResolver: (decision: DecisionRevisor, motivo: string, evidenciaRef?: string) => void;
+  /** Registra una decisión (fase 1 o 2). Resuelve `true` solo si el backend la confirmó. */
+  onResolver: (decision: DecisionRevisor, motivo: string, evidenciaRef?: string) => Promise<boolean>;
   onVerDetalle: () => void;
 }) {
   const [motivo, setMotivo] = useState('');
   const [evidenciaRef, setEvidenciaRef] = useState('');
   const [casoAbierto, setCasoAbierto] = useState(false);
+  const [enviando, setEnviando] = useState(false);
 
   const motivoOk = motivo.trim().length > 0;
 
-  const revisar = (d: DecisionRevision) => {
-    if (!motivoOk) return;
-    if (d === 'caso_abierto') {
-      // Deriva: abre la fase 2 en el propio panel (no valida ni anula la nota).
-      onResolver('caso_abierto', motivo.trim());
-      setCasoAbierto(true);
-      return;
-    }
-    onResolver(d, motivo.trim());
+  const revisar = async (d: DecisionRevision) => {
+    if (!motivoOk || enviando) return;
+    setEnviando(true);
+    const ok = await onResolver(d, motivo.trim());
+    setEnviando(false);
+    // La fase 2 SOLO se abre si el backend confirmó la derivación (no optimista):
+    // si falló (409 inmutable / 403 sin atribución), el caso nunca se abrió.
+    if (ok && d === 'caso_abierto') setCasoAbierto(true);
   };
 
-  const resolver = (d: DecisionResolucion) => {
-    if (!motivoOk || !puedeResolver) return;
+  const resolver = async (d: DecisionResolucion) => {
+    if (!motivoOk || !puedeResolver || enviando) return;
     if (d === 'anulado_por_fraude' && evidenciaRef.trim().length === 0) return;
-    onResolver(d, motivo.trim(), evidenciaRef.trim() || undefined);
+    setEnviando(true);
+    await onResolver(d, motivo.trim(), evidenciaRef.trim() || undefined);
+    setEnviando(false);
+    // Éxito → el padre saca la sesión de la cola y este panel se desmonta.
   };
 
   return (
@@ -80,24 +84,50 @@ export function ColaPanelDecision({
         </span>
       </div>
 
-      <div className="grid grid-cols-2 gap-sm">
-        <Metrica label="Señales registradas" valor={String(sesion.total_eventos ?? 0)} />
-        <Metrica
-          label="Diferencias con el servidor"
-          valor={String(sesion.total_discrepancias ?? 0)}
-          clase={(sesion.total_discrepancias ?? 0) > 0 ? 'text-error' : 'text-on-surface'}
-        />
+      {/* Resumen del EXPEDIENTE (C-72 backlog #6). Solo datos NO sensibles: métricas
+          agregadas + ventana temporal + contexto. Las capturas del alumno (dato
+          sensible, Ley 25.326 / regla #7) NO se listan acá: viven solo en el detalle
+          completo. El botón de abajo lleva al expediente con la evidencia. */}
+      <div className="space-y-sm">
+        <div className="grid grid-cols-2 gap-sm">
+          <Metrica label="Señales registradas" valor={String(sesion.total_eventos ?? 0)} />
+          <Metrica
+            label="Diferencias con el servidor"
+            valor={String(sesion.total_discrepancias ?? 0)}
+            clase={(sesion.total_discrepancias ?? 0) > 0 ? 'text-error' : 'text-on-surface'}
+          />
+        </div>
+
+        <dl className="rounded-xl bg-white border border-outline-variant/60 p-sm space-y-base text-label-sm">
+          <ResumenFila label="Modalidad" valor={modoLabel(sesion.modo)} />
+          <ResumenFila label="Inicio" valor={formatFecha(sesion.creada_en)} />
+          <ResumenFila
+            label={sesion.finalizada_en ? 'Finalizada' : 'Última señal'}
+            valor={
+              sesion.finalizada_en
+                ? formatFecha(sesion.finalizada_en)
+                : formatFechaRelativa(sesion.ultimo_evento_en ?? sesion.creada_en)
+            }
+          />
+          <ResumenFila
+            label="Estado"
+            valor={sesion.finalizada_en ? 'Cerrada' : 'En curso'}
+            valorClase={sesion.finalizada_en ? 'text-on-surface-variant' : 'text-primary font-semibold'}
+          />
+        </dl>
       </div>
 
-      <button
-        type="button"
+      {/* Ver detalle completo — botón real (antes era un link discreto). Lleva al
+          expediente con la evidencia sensible (capturas), gated en su propia vista. */}
+      <Button
+        variant="secondary"
+        icon="folder_open"
+        iconRight="arrow_forward"
         onClick={onVerDetalle}
-        className="inline-flex items-center gap-base text-label-md font-semibold text-on-surface-variant
-          hover:text-on-surface transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
+        className="w-full justify-center"
       >
         Ver detalle completo
-        <Icon name="arrow_forward" className="text-[18px]" />
-      </button>
+      </Button>
 
       <div className="border-t border-outline-variant/40 pt-md space-y-md">
         <SectionTitle sub="El sistema solo ordena por prioridad. La decisión es siempre tuya.">
@@ -120,34 +150,26 @@ export function ColaPanelDecision({
           />
         </FormField>
 
-        {/* Fase 1 — Revisión. */}
-        <div className="grid gap-sm sm:grid-cols-3">
+        {/* Fase 1 — Revisión. Dos veredictos: aprobar (verde) o abrir el caso
+            hacia la anulación (rojo). El motivo es SIEMPRE obligatorio (D11). */}
+        <div className="grid gap-sm sm:grid-cols-2">
           <Button
-            variant="outline"
-            icon="done"
-            disabled={!motivoOk}
-            onClick={() => revisar('sin_hallazgos')}
-            className="justify-center"
-          >
-            Sin observaciones
-          </Button>
-          <Button
-            variant="secondary"
+            variant="success"
             icon="verified"
-            disabled={!motivoOk}
+            disabled={!motivoOk || enviando}
             onClick={() => revisar('aprobado')}
             className="justify-center"
           >
             Aprobar con nota
           </Button>
           <Button
-            variant="outline"
+            variant="danger"
             icon="gavel"
-            disabled={!motivoOk}
+            disabled={!motivoOk || enviando}
             onClick={() => revisar('caso_abierto')}
             className="justify-center"
           >
-            Abrir caso (derivar)
+            Anular examen
           </Button>
         </div>
 
@@ -178,7 +200,7 @@ export function ColaPanelDecision({
                   <Button
                     variant="outline"
                     icon="check_circle"
-                    disabled={!motivoOk}
+                    disabled={!motivoOk || enviando}
                     onClick={() => resolver('caso_descartado')}
                     className="justify-center"
                   >
@@ -188,7 +210,7 @@ export function ColaPanelDecision({
                   <Button
                     variant="danger"
                     icon="block"
-                    disabled={!motivoOk || evidenciaRef.trim().length === 0}
+                    disabled={!motivoOk || enviando || evidenciaRef.trim().length === 0}
                     onClick={() => resolver('anulado_por_fraude')}
                     className="justify-center font-bold ring-2 ring-error/30"
                   >
@@ -223,6 +245,24 @@ function Metrica({
     <div className="rounded-xl bg-white border border-outline-variant/60 p-sm">
       <p className="text-label-sm uppercase tracking-wide text-on-surface-variant">{label}</p>
       <p className={`font-headline text-title-lg font-bold ${clase}`}>{valor}</p>
+    </div>
+  );
+}
+
+/** Fila etiqueta→valor del resumen del expediente (dato no sensible). */
+function ResumenFila({
+  label,
+  valor,
+  valorClase = 'text-on-surface',
+}: {
+  label: string;
+  valor: string;
+  valorClase?: string;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-md">
+      <dt className="text-on-surface-variant">{label}</dt>
+      <dd className={`font-medium text-right truncate ${valorClase}`}>{valor}</dd>
     </div>
   );
 }

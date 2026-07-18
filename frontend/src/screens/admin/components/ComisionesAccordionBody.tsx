@@ -21,6 +21,7 @@ interface ComisionesAccordionBodyProps {
   onCancelarComision: () => void;
   abrirCrearComision: (materiaId: string) => void;
   abrirEditarComision: (materiaId: string, c: Comision) => void;
+  abrirEliminarComision: (c: Comision) => void;
   comisionExpandida: string | null;
   toggleComision: (id: string) => void;
 }
@@ -40,6 +41,7 @@ export function ComisionesAccordionBody({
   onCancelarComision,
   abrirCrearComision,
   abrirEditarComision,
+  abrirEliminarComision,
   comisionExpandida,
   toggleComision,
 }: ComisionesAccordionBodyProps) {
@@ -286,6 +288,7 @@ export function ComisionesAccordionBody({
                             items={[
                               { label: comExpandida ? 'Ocultar alumnos' : 'Ver alumnos', icon: 'groups', onClick: () => toggleComision(c.id) },
                               { label: 'Editar comisión', icon: 'edit', onClick: () => abrirEditarComision(materiaId, c) },
+                              { label: 'Eliminar comisión', icon: 'delete', danger: true, onClick: () => abrirEliminarComision(c) },
                             ]}
                           />
                         </td>
@@ -337,6 +340,7 @@ export function ComisionesAccordionBody({
                       items={[
                         { label: comExpandida ? 'Ocultar alumnos' : 'Ver alumnos', icon: 'groups', onClick: () => toggleComision(c.id) },
                         { label: 'Editar comisión', icon: 'edit', onClick: () => abrirEditarComision(materiaId, c) },
+                        { label: 'Eliminar comisión', icon: 'delete', danger: true, onClick: () => abrirEliminarComision(c) },
                       ]}
                     />
                   </div>

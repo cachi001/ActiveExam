@@ -617,8 +617,12 @@ export interface MensajeChat {
 
 // ── Pausa autorizada (C-15) ───────────────────────────────────────────────
 
-/** Estado del ciclo de vida de una solicitud de pausa. */
-export type EstadoPausa = 'solicitada' | 'aprobada' | 'rechazada' | 'finalizada';
+/**
+ * Estado del ciclo de vida de una solicitud de pausa.
+ * `expirada`: el sistema la cerró por timeout o al finalizar la sesión sin que el
+ * proctor la respondiera (C-72 sección 12). NO es aprobación ni rechazo (L2.5).
+ */
+export type EstadoPausa = 'solicitada' | 'aprobada' | 'rechazada' | 'finalizada' | 'expirada';
 
 /** Acción del proctor al resolver una pausa solicitada. */
 export type AccionPausa = 'aprobar' | 'rechazar';
@@ -678,6 +682,9 @@ export interface Materia {
   nombre: string;
   codigo: string;
   descripcion?: string;
+  // C-72 §17: estado de la materia (true = activa; false = congelada). Opcional
+  // por compat con respuestas viejas; se asume activa si no viene.
+  activa?: boolean;
 }
 
 /** Comisión: instancia de cursado de una Materia.
