@@ -1,0 +1,79 @@
+# =============================================================================
+# ActiveExam — STAGING en EasyPanel (VPS). Stack SLIM: backend FastAPI + Postgres.
+#
+# El frontend va en Vercel (SPA), NO acá — este compose solo levanta el backend y
+# su base. El tiempo real (SSE) vive DENTRO del backend: no hay ws_gateway ni Redis.
+#
+# EasyPanel: crear un servicio Compose apuntando a este archivo, cargar las env vars
+# del panel (ver staging.env.example) y exponer el backend por Traefik (puerto 8000).
+#
+# GOTCHAS EasyPanel (aprendidos):
+#  - Usar ${VAR:-default}, NUNCA ${VAR:?error} (falla en parse time, antes del override).
+#  - Backend DEBE escuchar en 0.0.0.0 (no 127.0.0.1) o Traefik no lo alcanza.
+#  - `exec` antes de uvicorn: propaga SIGTERM (shutdown limpio).
+#  - DATABASE_URL se define como variable ÚNICA en el panel; su password DEBE
+#    coincidir con POSTGRES_PASSWORD. Si la password tiene @ : / → URL-encodearla.
+# =============================================================================
+
+name: activeexam-staging
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      # No sensibles → hardcodeados. La password sí viene del panel (override).
+      POSTGRES_USER: proctoring
+      POSTGRES_DB: proctoring
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme_staging}
+    volumes:
+      # PERSISTENTE (a diferencia del dev, que usa tmpfs efímero).
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U proctoring -d proctoring"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+
+  backend:
+    build:
+      context: ../..            # raíz del repo (Dockerfile.slim copia backend/ + mediapipe)
+      dockerfile: Dockerfile.slim
+    environment:
+      # DATABASE_URL como variable ÚNICA (definida en el panel). El default local
+      # sirve para un `docker compose up` de prueba; en EasyPanel lo pisa el override.
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://proctoring:changeme_staging@postgres:5432/proctoring}
+      # Origen del frontend en Vercel (para CORS). Cargar la URL real en el panel.
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-https://TU-FRONT.vercel.app}
+      # SECRETOS — obligatorios, cargar en el panel (NUNCA commitear valores reales).
+      JWT_OWN_SECRET: ${JWT_OWN_SECRET:-CAMBIAME_jwt_secret_staging}
+      EMBEDDING_ENCRYPTION_KEY: ${EMBEDDING_ENCRYPTION_KEY:-CAMBIAME_fernet_key}
+      PORT: "8000"
+      ENVIRONMENT: staging
+      # Passwords del seed (idempotente). Cargar valores propios en el panel.
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-CAMBIAME_admin}
+      SEED_ESTUDIANTE_PASSWORD: ${SEED_ESTUDIANTE_PASSWORD:-CAMBIAME_estudiante}
+      SEED_PROCTOR_PASSWORD: ${SEED_PROCTOR_PASSWORD:-CAMBIAME_proctor}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # EasyPanel expone este puerto por Traefik (configurar dominio → 8000).
+    ports:
+      - "8000:8000"
+    # Migrar (alembic slim@head) → seed idempotente → servir. `exec` para SIGTERM.
+    command:
+      - sh
+      - -c
+      - >
+        alembic -c alembic.ini upgrade slim@head &&
+        python scripts/seed_users.py --slim &&
+        exec uvicorn app.main_slim:app --host 0.0.0.0 --port 8000 --workers 2 --timeout-keep-alive 30
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/api/v1/proctoring/health').status==200 else 1)\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 90s
+
+volumes:
+  pgdata:
