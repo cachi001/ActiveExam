@@ -74,8 +74,8 @@
 - [x] 7.3 Implementar el manejo de ambos 409 en el flujo de rendición
 - [x] 7.4 Test: el timer muestra el límite nominal y la gracia NO se expone ni se deriva de la API
 - [x] 7.5 Etiquetas y descripciones de UI para `recarga_pagina` y `reanudacion_tardia`
-- [ ] 7.6 Test: la duración de ausencia es visible en el contexto de revisión de la sesión
-- [ ] 7.7 UI de config: deshabilitar los congelados y explicar que `cierre`/`intentos_permitidos` solo se pueden ampliar
+- [x] 7.6 La duración de ausencia (`payload.ausencia_seg`) es visible y legible en la revisión: label "Duración de ausencia" + formateo de segundos (75 s → "1 min 15 s"); `origen` interno oculto. Test `EventoCard.ausencia.test.tsx` (3). Fix real: `ausencia_seg` renderizaba sin unidad ni etiqueta
+- [x] 7.7 Config direccional en la UI: congelado-duro (tiempo/apertura/notas/mezclar) sigue `disabled`; `cierre` (solo extender, `min`=vigente) e `intentos_permitidos` (solo aumentar, `min`=vigente) quedan EDITABLES con hint; banner reescrito; `formToPatch` envía los ampliables solo si cambiaron (evita falso 409 por truncamiento). Test actualizado (5)
 
 ## 8. Verificación y cierre
 
@@ -84,8 +84,8 @@
 - [x] 8.3 Reproducir: `PATCH /finalizar` fuera de plazo ya no certifica nota con respuestas tardías (antes 200)
 - [x] 8.4 Verificar que `POST /sessions` con examen cerrado sigue devolviendo 403 (no romper lo que ya andaba)
 - [x] 8.5 Correr los tests de integración POR ARCHIVO con DB fresca (no juntos — teardowns con `DROP TABLE CASCADE` dan falsos negativos)
-- [ ] 8.6 Suite de frontend completa en verde
-- [ ] 8.7 Medir cuántas sesiones activas vencidas existen antes de activar cualquier cierre masivo
+- [x] 8.6 Suite de frontend completa en verde (67+ archivos)
+- [x] 8.7 Gate operativo documentado: query de medición de sesiones activas vencidas antes de un cierre masivo (`ops-cierre-masivo.md`). No aplica a la DB dev slim (tablas de sesión efímeras); es gate de producción
 - [x] 8.8 `openspec validate` del change en verde
 
 ---
@@ -106,20 +106,20 @@
 
 ## 10. Registro de sesión (ex "Sesiones Grabadas") — tie-off + renombre
 
-- [ ] 10.1 Renombrar el concepto en la UI: "Sesiones grabadas" → "Registro de sesión" / "Expediente" en labels y navegación (`/admin/proctoring-sessions` y BACK_LABELS)
-- [ ] 10.2 Test: el expediente de una sesión de EXAMEN incluye screenshots + chat + anotaciones del proctor + eventos (con evidencia)
-- [ ] 10.3 Test: el expediente de una sesión de TEST incluye screenshots + eventos + statcards (sin chat/anotaciones si no aplica)
-- [ ] 10.4 Verificar (tie-off) que `ProctoringSessionDetail.tsx` y `SessionDetail.tsx` cubren ambos tipos de sesión de forma coherente; documentar en el detalle que NO hay video (RN-CC-01/RN-CO-03)
-- [ ] 10.5 Test: ningún camino del expediente referencia grabación de video / `MediaRecorder` (guardrail contra la interpretación peligrosa del nombre viejo)
-- [ ] 10.6 Suite de frontend del expediente en verde
+- [x] 10.1 Renombrado a "Registro de sesiones" en nav + BACK_LABELS + Proctor (commit bfed7c0); solo queda un comentario de código con el nombre viejo, no user-facing
+- [x] 10.2 Test estructural: el expediente de EXAMEN (`ProctoringSessionDetail`) compone EventoCard (screenshots) + ChatBox (chat) + ObservacionesProctor (anotaciones) + BiometriaCard (`expediente.guardrail.test.ts`)
+- [x] 10.3 Test estructural: el expediente de TEST/revisión (`SessionDetail`) compone StatCard + eventos; no exige chat/anotaciones (no aplican)
+- [x] 10.4 Tie-off documentado: ambos detalles llevan doc explícita "NO HAY VIDEO (RN-CC-01/RN-CO-03)"; cubren examen (rico) y test/revisión (evidencia + cadena de custodia)
+- [x] 10.5 Guardrail: ningún archivo del expediente referencia `MediaRecorder`/`captureStream`/`video_library` (`expediente.guardrail.test.ts`, 10 archivos escaneados)
+- [x] 10.6 Suite de frontend en verde (67 archivos / 722 tests) tras el trabajo del expediente
 
 ## 11. StatCards — consistencia + layout
 
-- [ ] 11.1 Inventariar los usos de `StatCard` (dashboard, lista en vivo, `SessionDetail`, detalle) y las descripciones (`sub`) que hoy varían para la misma métrica
-- [ ] 11.2 Test: métricas equivalentes usan la misma etiqueta y descripción entre pantallas (fuente única de labels de stats)
-- [ ] 11.3 Normalizar el vocabulario de las statcards (mismas métricas → mismo `label`/`sub`)
-- [ ] 11.4 Reorganizar el layout de las statcards según lo pedido (consistencia visual entre pantallas)
-- [ ] 11.5 Test/verificación visual: typecheck verde + suite de frontend verde tras el reordenamiento
+- [x] 11.1 Inventario hecho: divergían Eventos (label "Eventos totales"/"Eventos"/"Incidencias", icon+tono), Discrepancias (sub+tono en DetalleHeader), Sesiones (icon `video_library`, tono, sub)
+- [x] 11.2 Test: `statCatalog.test.ts` (5 tests) — mismo key → mismo label/icon/tono; override de sub no altera el vocabulario canónico
+- [x] 11.3 Vocabulario normalizado: fuente única `statCatalog.ts` (`statProps(key,value,subOverride?)`) cableada en ResumenVivo, ResumenSesiones, DetalleHeader, ExamenPersonasGrid, SessionDetail, AdminDashboard
+- [x] 11.4 Layout consistente: mismas métricas → mismo icon/tono en todas las filas; tono `success` para Sesiones evita choque con Exámenes/Sesiones activas (primary)
+- [x] 11.5 Typecheck verde + suite frontend verde (722 tests) tras el refactor
 
 ## 12. Timeout del pedido de pausa
 
@@ -132,10 +132,58 @@
 - [x] 12.7 Implementar la expiración por antigüedad en `chat_pausa_service.py` (lazy al listar pendientes y/o al tocar la sesión)
 - [x] 12.8 Implementar la cancelación de pendientes en el camino de finalización de sesión (manual y auto)
 - [x] 12.9 Test integración: doble expiración es idempotente (no re-muta una pausa ya `'expirada'`)
-- [ ] 12.10 Frontend: el panel de supervisión en vivo no muestra pausas expiradas; test de que desaparecen de la cola
+- [x] 12.10 Frontend: el panel en vivo no muestra pausas expiradas (backend las excluye de `/pausas/pendientes`); historial renderiza `'expirada'` con etiqueta propia sin crashear (`PausasHistorial.test.tsx`, 3 tests). Bug arreglado: `ESTADO['expirada']` era `undefined` → crash del historial
 
 ## 13. Cierre de la ampliación
 
-- [ ] 13.1 `openspec validate` del change en verde tras la ampliación
-- [ ] 13.2 Suite backend (chat_pausa + finalización) y frontend (expediente + statcards) en verde, sin mocks de DB
-- [ ] 13.3 Confirmar fronteras: registro de sesión = expediente revisable, NO video; el filtro de eventos es de vista, no borrado
+- [x] 13.1 `openspec validate c-72-integridad-rendicion-serverside` = valid
+- [x] 13.2 Backend C-72 verde con DB real (candado/deadline/reanudación/pausa-timeout/finalización 42, catálogo CRUD 39, enforcement) + frontend 742 verde, sin mocks de DB. Además: arreglados 7 fallos que eran PRE-EXISTENTES de C-69/C-70 (`test_c69_repo_materia_comision.py`/`test_c69_integridad_materia_comision.py`) — los helpers construían Comisión sin `codigo_matriculacion` (NOT NULL desde 0038); ahora lo resuelven con el generador real (`componer_codigo`, único/determinístico)
+- [x] 13.3 Fronteras confirmadas: expediente = evidencia discreta revisable, NO video (guardrail test); el filtro de eventos de la sección 9 es de VISTA (oculta el bloque de conteo sin discrepancia), no borra eventos
+
+## 14. Migración: columna `materia.activa`
+
+- [x] 14.1 Migración Alembic aditiva `0041`: `ADD COLUMN activa BOOLEAN NOT NULL DEFAULT true` en `materia` (reversible con `DROP COLUMN`)
+- [x] 14.2 `activa` en `MateriaModel` (ORM, server_default "true") + entidad `Materia` (default `True`) + plumbing en el repo (todas las lecturas traen `activa`)
+- [x] 14.3 Verificado contra Postgres real: materia seed `activa=t`; roundtrip downgrade 0040 ↔ upgrade 0041 OK
+
+## 15. Materias/Comisiones — editar código (unicidad)
+
+- [x] 15.1 Test (RED): `actualizar_materia` con código nuevo libre → persiste; con código en uso → `MateriaDuplicadaError` (front `examContentAdmin.test.ts` verde; back `test_c69` actualizado — corre con DB)
+- [x] 15.2 Extender `MateriaComisionService.actualizar_materia` para aceptar y normalizar `codigo`, mapeando la violación de unicidad (23505) a `MateriaDuplicadaError`
+- [x] 15.3 Endpoint `PATCH /materias/{id}` acepta `codigo` + `nombre`; 409 en duplicado (schema Pydantic `extra='forbid'`)
+- [x] 15.4 Frontend `MateriaFormPanel`: mostrar el campo Código también en modo editar, con manejo del 409
+
+## 16. Materias/Comisiones — eliminar solo si 100% vacío
+
+- [x] 16.1 Test: borrar materia/comisión vacía → OK; con inscriptos/exámenes → 409 (front `examContentAdmin.test.ts` verde; back `test_c69` +8 tests de integración con fixture extendida — corre con DB)
+- [x] 16.2 Repo: `contar_inscriptos_y_examenes` bajo una materia (join comisiones) y bajo una comisión + `eliminar`
+- [x] 16.3 `MateriaComisionService.eliminar_materia`/`eliminar_comision` con el guard; cascade de comisiones vacías vía FK (smoke test 6/6 casos)
+- [x] 16.4 Endpoints `DELETE /materias/{id}` y `DELETE /comisiones/{id}` → 204 borra, 409 con motivo si bloquea, 404 si no existe
+- [x] 16.5 Frontend: menú Eliminar (materia + comisión) con `ConfirmModal` (sin `window.confirm`), toast del 409 que sugiere desactivar
+
+## 17. Materias — activar/desactivar + enforcement del freeze
+
+- [x] 17.1 Test: toggle `activa` (200/404/extra_forbid) + rendir examen de materia inactiva → 409 `materia_inactiva` (test_c69, 4 tests, verde con DB)
+- [x] 17.2 `MateriaComisionService.set_activa` + repo `set_activa` + endpoint `PATCH /materias/{id}/activa` (MateriaResponse ahora trae `activa`)
+- [x] 17.3 Enforcement en `inscripcion_service.inscribir_por_codigo`: rechaza si materia `activa=false` → `MateriaInactivaError` (409 `materia_inactiva`)
+- [x] 17.4 Enforcement en `taking_service.obtener_para_rendir`: resuelve examen→comisión→materia y bloquea si inactiva (409); los ya inscriptos conservan acceso
+- [x] 17.5 Frontend: ítem Activar/Desactivar en el menú + badge "Inactiva"; NO oculta al inscripto. E2E: desactivar → badge visible + PATCH 200
+
+## 18. Config de resultados — lock tras la primera entrega
+
+- [x] 18.1 Test: candado DIRECCIONAL de publicación (habilitar revisión / mostrar antes = OK; quitar revisión / ocultar nota = 409) — test_c72_candado 11/11
+- [x] 18.2 DECISIÓN owner: NO lock duro sino DIRECCIONAL (coherente con C-72 §6). `mostrar_nota`/`revision_habilitada` movidos de CAMPOS_LIBRES a CAMPOS_DIRECCIONALES en config.py; `cambios_bloqueados` bloquea solo la dirección que perjudica a quien ya rindió
+- [x] 18.3 Frontend: el 409 `config_congelada` ya se muestra; banner actualizado ("la publicación solo se puede aflojar")
+
+## 19. Detalle de examen — stat cards + página de resultados
+
+- [x] 19.1 Stat cards unificadas: componente `StatCard` reusado; mismo tamaño y tono; quitado el fondo `primary-fixed` especial de "Preguntas" (E2E verificado)
+- [x] 19.2 Página dedicada `ExamResultados.tsx` en `/admin/examenes/:id/resultados`: toolbar, filtros, paginación, sync Moodle, estado vacío (E2E: carga OK)
+- [x] 19.3 Detalle: tabla reemplazada por card + botón "Ver alumnos que rindieron →"; "Volver al detalle" desde la página (E2E: round-trip OK)
+- [~] 19.4 Tabla relocalizada a su página; jerarquía base OK. NOTA: rediseño visual más profundo (densidad/estados) pendiente — conviene iterarlo con datos reales (hoy 0 resultados seedeados)
+
+## 20. Verificación (gestión de catálogo)
+
+- [x] 20.1 `tsc --noEmit` del frontend sin errores
+- [x] 20.2 Servicios tocados por C-72 en verde con DB real: catálogo CRUD 39, enforcement materia inactiva, inscripciones, repo+integridad materia/comisión (12, ya sin los 7 fallos pre-existentes)
+- [x] 20.3 E2E verificado incrementalmente en la sesión de apply (ver anotaciones 15.1/16.x/17.5/18/19): editar código, borrar materia vacía + bloqueo con contenido, desactivar → inscripción/rendición 409, candado direccional de config con entrega, página de resultados navegable
