@@ -23,6 +23,23 @@ class MateriaNoEncontradaError(Exception):
     """No existe una materia con el id indicado."""
 
 
+class MateriaNoVaciaError(Exception):
+    """La materia tiene inscriptos y/o exámenes: no se puede eliminar (C-72 §16).
+
+    Solo se permite borrar materias 100% vacías; si tiene contenido o gente, se
+    ofrece desactivar en su lugar.
+    """
+
+
+class ComisionNoVaciaError(Exception):
+    """La comisión tiene inscriptos y/o exámenes: no se puede eliminar (C-72 §16)."""
+
+
+class MateriaInactivaError(Exception):
+    """La materia está desactivada (congelada): no admite inscripciones nuevas ni
+    iniciar rendición (C-72 §17). Los ya inscriptos conservan su acceso."""
+
+
 class UsuarioNoEncontradoError(Exception):
     """No existe un usuario activo con el id indicado."""
 

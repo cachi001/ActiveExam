@@ -17,8 +17,12 @@ Ley 25.326: el screenshot se trata como dato sensible en todos los logs y coment
 from __future__ import annotations
 
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from fastapi import HTTPException
+
+if TYPE_CHECKING:
+    from app.infrastructure.crypto.evidence_encryption import EvidenceCipher
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.application.proctoring.integridad import sha256_hex
@@ -40,6 +44,7 @@ async def ingestar_evento(
     payload: dict | None = None,
     screenshot_base64: str | None = None,
     face_count_cliente: int | None = None,
+    cipher: "EvidenceCipher | None" = None,
     # C-64 D2: screenshot_sha256_cliente se acepta en el schema IngestEventoIn pero
     # NO se persiste aquí porque ProctoringEventModel no tiene esa columna.
     # El campo no genera 422 (el schema lo acepta); la comparación cliente vs servidor
@@ -72,21 +77,28 @@ async def ingestar_evento(
     if sesion is None:
         raise HTTPException(status_code=404, detail=f"Sesion {session_id!r} no encontrada")
 
-    # 2. Integridad liviana (D9): SHA-256 del screenshot base64
-    # PRODUCCION: cadena de custodia completa (HMAC clave maestra + WORM + firma encadenada)
+    # 2. Integridad liviana (D9): SHA-256 del screenshot base64 EN CLARO (el hash
+    # identifica el contenido original; se calcula antes de cifrar).
     screenshot_sha256 = sha256_hex(screenshot_base64)
 
-    # 3. Re-inferencia server-side (D8): NO importamos mediapipe aqui — usamos el puerto
+    # 3. Re-inferencia server-side (D8): NO importamos mediapipe aqui — usamos el puerto.
+    # Corre sobre el plaintext en memoria (nunca se persiste en claro si hay cipher).
     resultado = reinferencia.evaluar(screenshot_base64, face_count_cliente)
 
-    # 4. Persistir evento con todos los campos
+    # 4. Cifrado at-rest de la evidencia sensible (Ley 25.326, regla #7). Si hay
+    # cipher, se persiste el ciphertext; sin cipher (tests/legacy) va en claro.
+    screenshot_a_guardar = (
+        cipher.encrypt(screenshot_base64) if cipher is not None else screenshot_base64
+    )
+
+    # 5. Persistir evento con todos los campos
     return await repo.crear_evento(
         session_id=session_id,
         tipo=tipo,
         severidad=severidad,
         ts_cliente=ts_cliente,
         payload=payload,
-        screenshot_b64=screenshot_base64,
+        screenshot_b64=screenshot_a_guardar,
         screenshot_sha256=screenshot_sha256,
         face_count_cliente=face_count_cliente,
         face_count_servidor=resultado.face_count_servidor,

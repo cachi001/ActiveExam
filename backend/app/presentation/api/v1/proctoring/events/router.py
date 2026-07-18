@@ -23,11 +23,15 @@ from app.presentation.api.v1.proctoring.events.schemas import (
 )
 
 
-def create_events_router(get_db, get_reinferencia, *, require_autenticado) -> APIRouter:
+def create_events_router(
+    get_db, get_reinferencia, *, require_autenticado, cipher=None
+) -> APIRouter:
     """Factory del router de eventos. Recibe dependencias de DB y re-inferencia.
 
     ``require_autenticado``: guard de auth (cualquier token valido) — el alumno
     ingesta sus eventos de deteccion. Lo inyecta el router padre.
+    ``cipher``: EvidenceCipher para cifrar el screenshot at-rest (Ley 25.326). None
+    → se persiste en claro (tests/legacy).
     """
     router = APIRouter()
 
@@ -64,6 +68,7 @@ def create_events_router(get_db, get_reinferencia, *, require_autenticado) -> AP
             payload=body.payload,
             screenshot_base64=body.screenshot_base64,
             face_count_cliente=body.face_count_cliente,
+            cipher=cipher,
         )
         return IngestEventoOut(
             evento_id=evento.id,

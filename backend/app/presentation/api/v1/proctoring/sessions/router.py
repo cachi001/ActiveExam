@@ -141,6 +141,7 @@ def create_sessions_router(
     require_proctor_o_admin,
     require_admin,
     writeback_svc: MoodleWritebackService | None = None,
+    cipher=None,
 ) -> APIRouter:
     """Factory del router de sesiones. Recibe la dependencia de DB inyectada.
 
@@ -312,7 +313,11 @@ def create_sessions_router(
                 ts_cliente=e.ts_cliente,
                 ts_backend=e.ts_backend,
                 payload=e.payload,
-                screenshot_base64=e.screenshot_b64,
+                # Descifrado at-rest de la evidencia (Ley 25.326). Sin cipher o si el
+                # registro es legacy en claro, decrypt lo devuelve tal cual.
+                screenshot_base64=(
+                    cipher.decrypt(e.screenshot_b64) if cipher is not None else e.screenshot_b64
+                ),
                 screenshot_sha256=e.screenshot_sha256,
                 face_count_cliente=e.face_count_cliente,
                 face_count_servidor=e.face_count_servidor,

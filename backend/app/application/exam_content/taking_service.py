@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from app.application.exam_content.errors import MateriaInactivaError
 from app.domain.exam_content.entities import ExamenContenido
 from app.domain.exam_content.ports import AbstractExamenContenidoRepository
 
@@ -92,12 +93,43 @@ def proyectar_examen(examen: ExamenContenido) -> ExamenRendicion:
 class LecturaExamenService:
     """Servicio de lectura de examen para la rendición del alumno."""
 
-    def __init__(self, repo: AbstractExamenContenidoRepository) -> None:
+    def __init__(
+        self,
+        repo: AbstractExamenContenidoRepository,
+        comision_repo=None,
+        materia_repo=None,
+    ) -> None:
         self._repo = repo
+        # Opcionales: si se proveen, se aplica el freeze de materia desactivada
+        # (C-72 §17). None → sin chequeo (compat con callers/tests que solo leen).
+        self._comision_repo = comision_repo
+        self._materia_repo = materia_repo
 
     async def obtener_para_rendir(self, examen_id: str) -> ExamenRendicion | None:
-        """Devuelve la proyección sin es_correcta, o None si el examen no existe."""
+        """Devuelve la proyección sin es_correcta, o None si el examen no existe.
+
+        Freeze (C-72 §17): si el examen pertenece a una comisión de una materia
+        DESACTIVADA, eleva ``MateriaInactivaError`` (no se puede iniciar la rendición).
+        """
         examen = await self._repo.obtener(examen_id)
         if examen is None:
             return None
+        await self._verificar_materia_activa(examen)
         return proyectar_examen(examen)
+
+    async def _verificar_materia_activa(self, examen: ExamenContenido) -> None:
+        # Sin repos de contexto no hay chequeo; un examen sin comisión (D11) tampoco
+        # tiene materia que congelar.
+        if self._comision_repo is None or self._materia_repo is None:
+            return
+        if not examen.comision_id:
+            return
+        comision = await self._comision_repo.obtener(examen.comision_id)
+        if comision is None:
+            return
+        materia = await self._materia_repo.obtener(comision.materia_id)
+        if materia is not None and not materia.activa:
+            raise MateriaInactivaError(
+                f"La materia {materia.nombre!r} está desactivada: no se puede "
+                "iniciar la rendición de sus exámenes."
+            )

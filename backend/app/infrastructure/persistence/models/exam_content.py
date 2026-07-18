@@ -42,6 +42,11 @@ class MateriaModel(Base):
     )
     codigo: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
     nombre: Mapped[str] = mapped_column(Text, nullable=False)
+    # C-72 §17: estado de la materia. false = "congelada" (sin inscripciones nuevas,
+    # sin iniciar exámenes). DEFAULT true por la migración 0041 (aditiva).
+    activa: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="true"
+    )
 
 
 class ComisionModel(Base):

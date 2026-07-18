@@ -32,6 +32,7 @@ from app.application.moodle.writeback_service import MoodleWritebackService
 from app.config_slim import get_slim_settings
 from app.infrastructure.auth.slim_wiring import build_slim_jwt_validator
 from app.infrastructure.crypto.embedding_encryption import EmbeddingEncryptionService
+from app.infrastructure.crypto.evidence_encryption import EvidenceCipher
 from app.infrastructure.moodle.client import MoodleClientConfig, MoodleRestClient
 from app.infrastructure.persistence.session_slim import (
     create_slim_engine,
@@ -96,6 +97,9 @@ def create_slim_app() -> FastAPI:
 
     # Servicio de cifrado de embeddings con clave slim (sin cargar Settings del full).
     embedding_encryption = EmbeddingEncryptionService(_key=settings.embedding_encryption_key)
+    # Cifrado at-rest de la evidencia (screenshots) — MISMA clave, dato sensible
+    # Ley 25.326 / regla #7. Antes se guardaba en claro.
+    evidence_encryption = EvidenceCipher(key=settings.embedding_encryption_key)
 
     # Servicio de write-back de nota a Moodle (C-69, D7/D10).
     # Si moodle_base_url no está configurado, el write-back queda deshabilitado.
@@ -155,6 +159,7 @@ def create_slim_app() -> FastAPI:
         reinferencia=reinferencia_adapter,
         embedding_encryption=embedding_encryption,
         writeback_svc=_writeback_svc,
+        evidence_encryption=evidence_encryption,
     )
     app.include_router(proctoring_router, prefix="/api/v1/proctoring")
 

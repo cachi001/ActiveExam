@@ -36,13 +36,17 @@ CAMPOS_CONGELADOS_POST_RENDICION: frozenset[str] = frozenset(
 )
 
 
-# C-72 §6 — Candado DIRECCIONAL post-rendición (reemplaza el binario de arriba).
-# Tres grupos según qué le hace el cambio a quienes YA rindieron:
+# C-72 §6 + §18 — Candado DIRECCIONAL post-rendición (reemplaza el binario de arriba).
+# Grupos según qué le hace el cambio a quienes YA rindieron:
 #   - CONGELADO DURO: reescribe retroactivamente la nota o la equidad → cualquier
 #     cambio se bloquea.
 #   - DIRECCIONAL: aflojar ayuda al alumno, apretar lo perjudica → se bloquea solo
-#     al apretar (`cierre` solo se puede EXTENDER; `intentos_permitidos` solo AUMENTAR).
-#   - LIBRE: publicar/ocultar resultados es un acto legítimo posterior → siempre permitido.
+#     al apretar. `cierre` solo EXTENDER; `intentos_permitidos` solo AUMENTAR;
+#     `revision_habilitada` solo HABILITAR (true, no quitar); `mostrar_nota` solo
+#     MOSTRAR ANTES (al_cerrar→inmediata, no ocultar la nota que se iba a ver).
+#   - LIBRE: sin campos (§18 movió los de publicación a direccionales: cambiar lo
+#     que ve quien ya entregó, en la dirección que perjudica, altera las reglas del
+#     juego a posteriori).
 CONGELADO_DURO: frozenset[str] = frozenset(
     {
         "nota_maxima",
@@ -52,8 +56,10 @@ CONGELADO_DURO: frozenset[str] = frozenset(
         "apertura",
     }
 )
-CAMPOS_DIRECCIONALES: frozenset[str] = frozenset({"cierre", "intentos_permitidos"})
-CAMPOS_LIBRES: frozenset[str] = frozenset({"mostrar_nota", "revision_habilitada"})
+CAMPOS_DIRECCIONALES: frozenset[str] = frozenset(
+    {"cierre", "intentos_permitidos", "revision_habilitada", "mostrar_nota"}
+)
+CAMPOS_LIBRES: frozenset[str] = frozenset()
 
 
 def cambios_bloqueados(
@@ -82,7 +88,17 @@ def cambios_bloqueados(
             # solo se puede AUMENTAR: menos intentos que el vigente aprieta → bloqueado
             if nuevo < vigente["intentos_permitidos"]:
                 bloqueados.add(campo)
-        # CAMPOS_LIBRES y cualquier otro campo no declarado → permitido
+        elif campo == "revision_habilitada":
+            # solo HABILITAR (false→true) es generoso; quitar la revisión que el
+            # alumno iba a ver (true→false) lo perjudica → bloqueado (§18)
+            if vigente["revision_habilitada"] is True and nuevo is False:
+                bloqueados.add(campo)
+        elif campo == "mostrar_nota":
+            # solo MOSTRAR ANTES (al_cerrar→inmediata) es generoso; ocultar la nota
+            # que se iba a ver ya (inmediata→al_cerrar) perjudica → bloqueado (§18)
+            if vigente["mostrar_nota"] == "inmediata" and nuevo != "inmediata":
+                bloqueados.add(campo)
+        # cualquier otro campo no declarado → permitido
     return frozenset(bloqueados)
 
 

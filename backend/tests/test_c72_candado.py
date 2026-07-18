@@ -1,9 +1,9 @@
 """C-72 §6 — Candado direccional de configuración (dominio puro).
 
-Corre SIN base de datos. El candado post-rendición deja de ser binario y pasa
-a tres grupos: CONGELADO DURO (cualquier cambio → bloqueado), DIRECCIONAL
-(`cierre` solo extender, `intentos_permitidos` solo aumentar) y LIBRE
-(`mostrar_nota`, `revision_habilitada`, siempre permitidos).
+Corre SIN base de datos. El candado post-rendición: CONGELADO DURO (cualquier
+cambio → bloqueado) y DIRECCIONAL — `cierre` solo extender, `intentos_permitidos`
+solo aumentar, `revision_habilitada` solo habilitar, `mostrar_nota` solo mostrar
+antes (§18: publicar/ocultar resultados también es direccional, no libre).
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ _VIGENTE = {
     "apertura": _dt(10),
     "cierre": _dt(20),
     "intentos_permitidos": 1,
-    "mostrar_nota": False,
+    "mostrar_nota": "al_cerrar",
     "revision_habilitada": False,
 }
 
@@ -74,13 +74,49 @@ def test_intentos_menor_bloqueado():
     assert "intentos_permitidos" in bloq
 
 
-# --- 6.4 libres siempre permitidos ---
+# --- 6.4 / §18 publicación DIRECCIONAL (solo la dirección generosa) ---
 
-def test_libres_siempre_permitidos():
+def test_habilitar_revision_permitido():
+    # false→true: darle la revisión al alumno es generoso → permitido
     bloq = cambios_bloqueados(
-        cambios={"mostrar_nota": True, "revision_habilitada": True},
-        vigente=_VIGENTE,
-        ya_rendido=True,
+        cambios={"revision_habilitada": True}, vigente=_VIGENTE, ya_rendido=True
+    )
+    assert "revision_habilitada" not in bloq
+
+
+def test_quitar_revision_bloqueado():
+    # true→false: sacarle la revisión que iba a ver → bloqueado
+    vigente = {**_VIGENTE, "revision_habilitada": True}
+    bloq = cambios_bloqueados(
+        cambios={"revision_habilitada": False}, vigente=vigente, ya_rendido=True
+    )
+    assert "revision_habilitada" in bloq
+
+
+def test_mostrar_nota_antes_permitido():
+    # al_cerrar→inmediata: mostrar la nota antes es generoso → permitido
+    bloq = cambios_bloqueados(
+        cambios={"mostrar_nota": "inmediata"}, vigente=_VIGENTE, ya_rendido=True
+    )
+    assert "mostrar_nota" not in bloq
+
+
+def test_ocultar_nota_bloqueado():
+    # inmediata→al_cerrar: ocultar la nota que se iba a ver ya → bloqueado
+    vigente = {**_VIGENTE, "mostrar_nota": "inmediata"}
+    bloq = cambios_bloqueados(
+        cambios={"mostrar_nota": "al_cerrar"}, vigente=vigente, ya_rendido=True
+    )
+    assert "mostrar_nota" in bloq
+
+
+def test_publicacion_direccional_sin_rendir_permitido():
+    # sin rendir, cualquier dirección se permite
+    vigente = {**_VIGENTE, "revision_habilitada": True, "mostrar_nota": "inmediata"}
+    bloq = cambios_bloqueados(
+        cambios={"revision_habilitada": False, "mostrar_nota": "al_cerrar"},
+        vigente=vigente,
+        ya_rendido=False,
     )
     assert bloq == frozenset()
 

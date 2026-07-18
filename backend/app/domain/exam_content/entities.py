@@ -138,6 +138,8 @@ class Materia:
     codigo: str
     nombre: str
     id: str | None = None
+    # C-72 §17: estado de la materia (true = activa; false = congelada).
+    activa: bool = True
 
     def __post_init__(self) -> None:
         if not (self.codigo and self.codigo.strip()):

@@ -41,9 +41,12 @@ from app.application.moodle.writeback_service import (
 from app.application.exam_content.errors import (
     CodigoMatriculacionInvalidoError,
     ComisionNoEncontradaError,
+    ComisionNoVaciaError,
     ExamenNoEncontradoError,
     InscripcionNoEncontradaError,
     MateriaNoEncontradaError,
+    MateriaInactivaError,
+    MateriaNoVaciaError,
     MoodleXmlInvalidoError,
     MoodleXmlVacioError,
     PerfilIncompletoError,
@@ -92,6 +95,7 @@ from app.presentation.api.v1.exam_content.schemas import (
     InscribirPorCodigoRequest,
     InscribirPorCodigoResponse,
     InscripcionResponse,
+    MateriaActivaRequest,
     MateriaActualizarRequest,
     MateriaCrearRequest,
     MateriaResponse,
@@ -323,6 +327,7 @@ def create_exam_content_router(
                 id=result.materia.id,
                 codigo=result.materia.codigo,
                 nombre=result.materia.nombre,
+                activa=result.materia.activa,
             ),
             comision=ComisionResponse(
                 id=result.comision.id,
@@ -425,20 +430,21 @@ def create_exam_content_router(
                 ) from exc
 
         return MateriaResponse(
-            id=materia.id, codigo=materia.codigo, nombre=materia.nombre
+            id=materia.id, codigo=materia.codigo, nombre=materia.nombre, activa=materia.activa
         )
 
     @router.patch(
         "/materias/{materia_id}",
         response_model=MateriaResponse,
-        summary="Actualizar el nombre de una materia (codigo inmutable)",
+        summary="Actualizar nombre y/o codigo de una materia",
     )
     async def actualizar_materia(
         materia_id: str,
         body: MateriaActualizarRequest,
     ) -> MateriaResponse:
-        """Actualiza el nombre de una materia. 404 'materia_no_encontrada' si no
-        existe; 422 'validacion_dominio' si el nombre es vacío. El codigo NO se toca."""
+        """Actualiza el nombre y (opcionalmente) el codigo de una materia. 404
+        'materia_no_encontrada' si no existe; 409 'duplicado' si el codigo nuevo ya
+        está en uso; 422 'validacion_dominio' si nombre/codigo son vacíos."""
         if session_factory is None:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -448,7 +454,9 @@ def create_exam_content_router(
         async with session_factory() as session:
             service = _build_materia_comision_service(session)
             try:
-                materia = await service.actualizar_materia(materia_id, body.nombre)
+                materia = await service.actualizar_materia(
+                    materia_id, body.nombre, body.codigo
+                )
                 await session.commit()
             except MateriaNoEncontradaError as exc:
                 await session.rollback()
@@ -459,6 +467,12 @@ def create_exam_content_router(
                         "materia_id": materia_id,
                     },
                 ) from exc
+            except MateriaDuplicadaError as exc:
+                await session.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={"error": "duplicado", "mensaje": str(exc)},
+                ) from exc
             except ExamenContenidoError as exc:
                 await session.rollback()
                 raise HTTPException(
@@ -467,7 +481,74 @@ def create_exam_content_router(
                 ) from exc
 
         return MateriaResponse(
-            id=materia.id, codigo=materia.codigo, nombre=materia.nombre
+            id=materia.id, codigo=materia.codigo, nombre=materia.nombre, activa=materia.activa
+        )
+
+    @router.delete(
+        "/materias/{materia_id}",
+        status_code=status.HTTP_204_NO_CONTENT,
+        response_model=None,
+        summary="Eliminar una materia (solo si está 100% vacía)",
+    )
+    async def eliminar_materia(materia_id: str) -> None:
+        """Elimina una materia SOLO si no tiene inscriptos ni exámenes. 404 si no
+        existe; 409 'materia_no_vacia' si tiene contenido (se sugiere desactivar)."""
+        if session_factory is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Persistencia no inicializada.",
+            )
+        async with session_factory() as session:
+            service = _build_materia_comision_service(session)
+            try:
+                await service.eliminar_materia(materia_id)
+                await session.commit()
+            except MateriaNoEncontradaError as exc:
+                await session.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail={"error": "materia_no_encontrada", "materia_id": materia_id},
+                ) from exc
+            except MateriaNoVaciaError as exc:
+                await session.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={"error": "materia_no_vacia", "mensaje": str(exc)},
+                ) from exc
+
+    @router.patch(
+        "/materias/{materia_id}/activa",
+        response_model=MateriaResponse,
+        summary="Activar o desactivar una materia (freeze)",
+    )
+    async def set_activa_materia(
+        materia_id: str,
+        body: MateriaActivaRequest,
+    ) -> MateriaResponse:
+        """Activa (true) o desactiva (false) una materia. Desactivar = congelar:
+        corta inscripciones nuevas y bloquea iniciar rendición. 404 si no existe."""
+        if session_factory is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Persistencia no inicializada.",
+            )
+        async with session_factory() as session:
+            service = _build_materia_comision_service(session)
+            try:
+                materia = await service.set_activa(materia_id, body.activa)
+                await session.commit()
+            except MateriaNoEncontradaError as exc:
+                await session.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail={"error": "materia_no_encontrada", "materia_id": materia_id},
+                ) from exc
+
+        return MateriaResponse(
+            id=materia.id,
+            codigo=materia.codigo,
+            nombre=materia.nombre,
+            activa=materia.activa,
         )
 
     @router.post(
@@ -593,6 +674,41 @@ def create_exam_content_router(
             anio=comision.anio,
             codigo_matriculacion=comision.codigo_matriculacion,
         )
+
+    @router.delete(
+        "/comisiones/{comision_id}",
+        status_code=status.HTTP_204_NO_CONTENT,
+        response_model=None,
+        summary="Eliminar una comisión (solo si está vacía)",
+    )
+    async def eliminar_comision(comision_id: str) -> None:
+        """Elimina una comisión SOLO si no tiene inscriptos ni exámenes. 404 si no
+        existe; 409 'comision_no_vacia' si tiene contenido."""
+        if session_factory is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Persistencia no inicializada.",
+            )
+        async with session_factory() as session:
+            service = _build_materia_comision_service(session)
+            try:
+                await service.eliminar_comision(comision_id)
+                await session.commit()
+            except ComisionNoEncontradaError as exc:
+                await session.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail={
+                        "error": "comision_no_encontrada",
+                        "comision_id": comision_id,
+                    },
+                ) from exc
+            except ComisionNoVaciaError as exc:
+                await session.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={"error": "comision_no_vacia", "mensaje": str(exc)},
+                ) from exc
 
     # -----------------------------------------------------------------------
     # Rotación del código de matriculación (C-70, D5) — admin-only.
@@ -976,13 +1092,13 @@ def create_exam_content_router(
 
             # Candado: si el examen ya tiene >= 1 intento finalizado, los campos
             # de mecánica/nota quedan CONGELADOS (cambiarlos alteraría notas ya
-            # calculadas / la equidad de quienes rindieron). Los controles de
-            # publicación (mostrar_nota, revision_habilitada) siguen editables.
+            # calculadas / la equidad de quienes rindieron).
             ya_rendido = await _seleccion_bloqueada(session, examen_id)
-            # Candado DIRECCIONAL (C-72 sección 6): congelado duro (nota/mecánica) →
-            # siempre bloqueado; `cierre` solo se puede EXTENDER, `intentos_permitidos`
-            # solo AUMENTAR (aflojar ayuda, apretar perjudica a quien ya rindió); libres
-            # (mostrar_nota, revision_habilitada) siempre. Compara contra el valor vigente.
+            # Candado DIRECCIONAL (C-72 §6 + §18): congelado duro (nota/mecánica) →
+            # siempre bloqueado; direccionales solo se pueden AFLOJAR — `cierre` solo
+            # EXTENDER, `intentos_permitidos` solo AUMENTAR, `revision_habilitada` solo
+            # HABILITAR, `mostrar_nota` solo MOSTRAR ANTES (apretar perjudica a quien ya
+            # rindió). Compara contra el valor vigente.
             vigente = {campo: getattr(actual, campo) for campo in cambios}
             congelados = cambios_bloqueados(
                 cambios=cambios, vigente=vigente, ya_rendido=ya_rendido
@@ -994,11 +1110,11 @@ def create_exam_content_router(
                         "error": "config_congelada",
                         "mensaje": (
                             "El examen ya tiene intentos finalizados. No se pueden "
-                            "modificar los campos de mecánica/nota, ni acortar la "
-                            "ventana (`cierre`) o reducir los intentos "
-                            f"({', '.join(sorted(congelados))}). Se puede EXTENDER el "
-                            "cierre, AUMENTAR los intentos y publicar resultados "
-                            "(mostrar_nota, revision_habilitada)."
+                            "modificar los campos de mecánica/nota, ni cambiar en la "
+                            "dirección que perjudica a quien ya rindió "
+                            f"({', '.join(sorted(congelados))}). Sí se puede AFLOJAR: "
+                            "extender el cierre, aumentar los intentos, habilitar la "
+                            "revisión o mostrar la nota antes."
                         ),
                         "campos": sorted(congelados),
                     },
@@ -1457,6 +1573,12 @@ def create_exam_taking_router(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail={"error": "codigo_invalido", "mensaje": str(exc)},
                 ) from exc
+            except MateriaInactivaError as exc:
+                await session.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={"error": "materia_inactiva", "mensaje": str(exc)},
+                ) from exc
 
         return InscribirPorCodigoResponse(
             comision_id=result.comision_id,
@@ -1660,7 +1782,8 @@ def create_exam_taking_router(
                 )
 
         return [
-            MateriaResponse(id=m.id, codigo=m.codigo, nombre=m.nombre) for m in materias
+            MateriaResponse(id=m.id, codigo=m.codigo, nombre=m.nombre, activa=m.activa)
+            for m in materias
         ]
 
     @router.get(
@@ -1862,13 +1985,26 @@ def create_exam_taking_router(
             )
 
         from app.infrastructure.persistence.repositories.exam_content import (
+            ComisionSqlRepository,
             ExamenContenidoSqlRepository,
+            MateriaSqlRepository,
         )
 
         async with session_factory() as session:
             repo = ExamenContenidoSqlRepository(session)
-            service = LecturaExamenService(repo)
-            rendicion = await service.obtener_para_rendir(examen_id)
+            # Repos de contexto para el freeze de materia desactivada (C-72 §17).
+            service = LecturaExamenService(
+                repo,
+                comision_repo=ComisionSqlRepository(session),
+                materia_repo=MateriaSqlRepository(session),
+            )
+            try:
+                rendicion = await service.obtener_para_rendir(examen_id)
+            except MateriaInactivaError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={"error": "materia_inactiva", "mensaje": str(exc)},
+                ) from exc
 
         if rendicion is None:
             raise HTTPException(

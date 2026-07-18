@@ -19,6 +19,7 @@ from app.application.exam_content.errors import (
     CodigoMatriculacionInvalidoError,
     ComisionNoEncontradaError,
     InscripcionNoEncontradaError,
+    MateriaInactivaError,
     PerfilIncompletoError,
     UsuarioNoEncontradoError,
 )
@@ -132,6 +133,14 @@ class AutoMatriculacionService:
 
         materia = await self._materia_repo.obtener(comision.materia_id)
         materia_nombre = materia.nombre if materia is not None else ""
+
+        # Freeze (C-72 §17): una materia desactivada NO admite inscripciones nuevas.
+        # Los ya inscriptos conservan su acceso (esto solo bloquea altas nuevas).
+        if materia is not None and not materia.activa:
+            raise MateriaInactivaError(
+                f"La materia {materia.nombre!r} está desactivada y no admite "
+                "inscripciones nuevas."
+            )
 
         # Idempotente: si ya está inscripto, el repo eleva InscripcionDuplicadaError
         # (rollback interno). No es error para el alumno: respuesta amistosa.
