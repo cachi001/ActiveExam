@@ -26,7 +26,7 @@ import { proctoringApi } from './apiProctoring';
 
 // Re-export para compat: consumidores importaban estos desde './api'.
 export {
-  API_BASE, PRINCIPALES, DESAFIOS,
+  API_BASE, DESAFIOS,
   BIOMETRIC_VALIDITY_MONTHS, ENABLE_DNI_SCAN, resetEnrollmentCache,
 } from './apiCore';
 

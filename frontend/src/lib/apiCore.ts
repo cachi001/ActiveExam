@@ -6,11 +6,10 @@
 // Los esquemas y enums coinciden con app/presentation/api/v1/* del backend.
 
 import type {
-  Principal, Rol, ConsentTextResponse, DesafioActivo,
+  ConsentTextResponse, DesafioActivo,
   EstadoEnrollment, AcuseConsentimiento, BloqueConsentimiento,
   ReferenciasBiometrica, VigenciaReferencia,
 } from './types';
-import { INSTITUTION } from '../config/institution';
 import { authProvider } from './authProvider';
 
 export const API_BASE = (import.meta.env.VITE_API_BASE as string) || '/api/v1';
@@ -20,22 +19,6 @@ const delay = (ms = 350) => new Promise((r) => setTimeout(r, ms));
 // ---------------------------------------------------------------------------
 // Catálogo académico local (usado por joinExamInfo en las pantallas de proctoring)
 // ---------------------------------------------------------------------------
-
-export const PRINCIPALES: Record<Rol, Principal> = {
-  estudiante: {
-    id_institucional: 'FRM-23-4912', nombre: 'Emiliano Cáceres',
-    email: 'ecaceres@frm.utn.edu.ar', roles: ['estudiante'],
-    mfa_satisfecho: true, jurisdiccion: 'AR-MZA',
-  },
-  proctor: {
-    id_institucional: `${INSTITUTION.idPrefix}-DOC-1182`, nombre: 'Dra. Carolina Ferreyra',
-    email: `cferreyra@${INSTITUTION.dominioEmail}`, roles: ['proctor'], mfa_satisfecho: true, jurisdiccion: 'AR',
-  },
-  admin_sistema: {
-    id_institucional: `${INSTITUTION.idPrefix}-ADM-0021`, nombre: 'Lucía Mendoza',
-    email: `lmendoza@${INSTITUTION.dominioEmail}`, roles: ['admin_sistema'], mfa_satisfecho: true, jurisdiccion: 'AR',
-  },
-};
 
 
 // ---------------------------------------------------------------------------
@@ -105,12 +88,6 @@ function commitEnrollment(e: EstadoEnrollment): EstadoEnrollment {
   persistEnrollment();
   return enrollmentAlumno;
 }
-
-// Restaurar la foto de perfil persistida (demo) al avatar del estudiante.
-try {
-  const fotoLS = localStorage.getItem(LS_FOTO);
-  if (fotoLS) PRINCIPALES.estudiante = { ...PRINCIPALES.estudiante, foto_perfil: fotoLS };
-} catch { /* ignore */ }
 
 /**
  * Estado in-memory de las solicitudes de vía alternativa (C-63).
