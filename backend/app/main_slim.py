@@ -245,6 +245,15 @@ def create_slim_app() -> FastAPI:
         tags=["exam-content"],
     )
 
+    # Estadísticas institucionales (C-20 re-alcanzado): conteos + riesgo + distribución.
+    from app.presentation.api.v1.stats.router import create_stats_router
+
+    app.include_router(
+        create_stats_router(session_factory=session_factory),
+        prefix="/api/v1/stats",
+        tags=["stats"],
+    )
+
     return app
 
 
