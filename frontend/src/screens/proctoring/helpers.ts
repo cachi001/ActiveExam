@@ -6,7 +6,6 @@
  * de líneas. NADA de hardcodear umbrales en cada tarjeta: la fuente es este archivo.
  */
 import type { VeredictoReinferencia } from '../../lib/types';
-import { EXAMENES, COMISIONES, MATERIAS } from '../../lib/api';
 
 /**
  * Umbral "alto" sembrable desde la config efectiva.
@@ -117,6 +116,19 @@ export function scoreAccentBorder(score: number): string {
  */
 export function scoreCardSurface(score: number): string {
   return `${scoreSoftBg(score)} ${scoreSoftBorder(score)}`;
+}
+
+/** C-72: acento de riesgo para las cards del Registro de sesiones. En vez de teñir
+ * TODO el fondo (que se veía poco profesional), deja el fondo limpio y pone un borde
+ * IZQUIERDO grueso de color por riesgo (rojo alto / ámbar medio / verde bajo). La
+ * sombra y el hover los pone la card. */
+export function scoreCardAcento(score: number): string {
+  const nivel = nivelRiesgo(score);
+  const borde =
+    nivel === 'alto' ? 'border-l-error'
+    : nivel === 'medio' ? 'border-l-warning'
+    : 'border-l-success';
+  return `bg-surface-container-lowest border-outline-variant/60 border-l-4 ${borde}`;
 }
 
 /** Solo el fondo claro tintado por riesgo (para filas/elementos sin borde propio). */
@@ -232,6 +244,9 @@ const PAYLOAD_KEY_LABELS: Record<string, string> = {
   duracion_ms: 'Duración',
   tiempo_ms: 'Tiempo',
   ms: 'Duración',
+  // C-72 sección 7.6: duración de la ausencia en una reanudación (segundos, medida
+  // server-side). El revisor la lee para dimensionar cuánto estuvo fuera el alumno.
+  ausencia_seg: 'Duración de ausencia',
   face_count: 'Rostros',
   faces: 'Rostros',
   rostros: 'Rostros',
@@ -317,6 +332,10 @@ export function formatPayloadValue(key: string, value: unknown): string {
   if (value === null || value === undefined) return '—';
   const esMs = key === 'ms' || /_ms$/.test(key);
   if (esMs && typeof value === 'number') return formatDuracionMs(value);
+  // Claves en SEGUNDOS (p. ej. `ausencia_seg`): reusar el mismo formateo legible
+  // (ms) pasando a ms, para que "75 s" se lea "1 min 15 s" como el resto.
+  const esSeg = key === 'seg' || /_seg$/.test(key);
+  if (esSeg && typeof value === 'number') return formatDuracionMs(value * 1000);
   if (
     key === 'gaze' &&
     typeof value === 'object' &&
@@ -348,31 +367,3 @@ export interface ExamInfo {
   docente: string;
 }
 
-/**
- * Joinea un `exam_id` con el catálogo académico local (examen → comisión → materia).
- *
- * Función PURA: opera sobre los arrays importados de `api.ts`, sin llamadas HTTP,
- * sin hooks, sin acceso al store. Retorna null si el id es falsy o si cualquier
- * eslabón del lookup no existe (sesión de harness sin examen real).
- */
-export function joinExamInfo(examId: string | null | undefined): ExamInfo | null {
-  if (!examId) return null;
-  try {
-    const examen = EXAMENES.find((e) => e.id === examId);
-    if (!examen) return null;
-    const comision = examen.comision_id
-      ? COMISIONES.find((c) => c.id === examen.comision_id)
-      : undefined;
-    if (!comision) return null;
-    const materia = MATERIAS.find((m) => m.id === comision.materia_id);
-    if (!materia) return null;
-    return {
-      examNombre: examen.nombre,
-      materiaNombre: materia.nombre,
-      comisionNombre: comision.nombre,
-      docente: comision.docente ?? '',
-    };
-  } catch {
-    return null;
-  }
-}

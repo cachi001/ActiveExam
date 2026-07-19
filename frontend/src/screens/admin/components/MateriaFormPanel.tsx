@@ -28,33 +28,32 @@ export function MateriaFormPanel({
       </SectionTitle>
       <form onSubmit={onSubmit} className="space-y-md mt-md">
         <div className="grid sm:grid-cols-2 gap-md">
-          {form.modo === 'crear' && (
-            <div>
-              <label htmlFor="materia-codigo" className={LABEL_CLASS}>
-                Código <span aria-hidden="true">*</span>
-              </label>
-              <input
-                ref={primerInputRef}
-                id="materia-codigo"
-                name="materia-codigo"
-                type="text"
-                required
-                disabled={enviando}
-                placeholder="Ej. CB101"
-                value={form.codigo}
-                onChange={(e) =>
-                  setForm((prev) => prev ? { ...prev, codigo: e.target.value } : prev)
-                }
-                className={INPUT_CLASS}
-              />
-            </div>
-          )}
-          <div className={form.modo === 'editar' ? 'sm:col-span-2' : ''}>
+          {/* Código: editable tanto al crear como al editar. Es único (no la
+              identidad de la fila): un duplicado lo rechaza el backend (409). */}
+          <div>
+            <label htmlFor="materia-codigo" className={LABEL_CLASS}>
+              Código <span aria-hidden="true">*</span>
+            </label>
+            <input
+              ref={primerInputRef}
+              id="materia-codigo"
+              name="materia-codigo"
+              type="text"
+              required
+              disabled={enviando}
+              placeholder="Ej. CB101"
+              value={form.codigo}
+              onChange={(e) =>
+                setForm((prev) => prev ? { ...prev, codigo: e.target.value } : prev)
+              }
+              className={INPUT_CLASS}
+            />
+          </div>
+          <div>
             <label htmlFor="materia-nombre" className={LABEL_CLASS}>
               Nombre <span aria-hidden="true">*</span>
             </label>
             <input
-              ref={form.modo === 'editar' ? primerInputRef : undefined}
               id="materia-nombre"
               name="materia-nombre"
               type="text"

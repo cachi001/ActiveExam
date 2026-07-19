@@ -75,7 +75,13 @@ export function ColaNivelPersonas({
   /** Capacidad `resolver_caso` (front-hides; el backend deniega igual). */
   puedeResolver: boolean;
   onSeleccionar: (id: string) => void;
-  onResolver: (id: string, decision: DecisionRevisor, motivo: string, evidenciaRef?: string) => void;
+  /** Registra la decisión; resuelve `true` solo si el backend la confirmó. */
+  onResolver: (
+    id: string,
+    decision: DecisionRevisor,
+    motivo: string,
+    evidenciaRef?: string,
+  ) => Promise<boolean>;
   onVerDetalle: (id: string) => void;
 }) {
   const seleccionada = personas.find((p) => p.sesion.id === selId) ?? null;
@@ -122,6 +128,7 @@ export function ColaNivelPersonas({
                 onResolver={(d, motivo, evidenciaRef) =>
                   onResolver(seleccionada.sesion.id, d, motivo, evidenciaRef)
                 }
+                key={seleccionada.sesion.id}
                 onVerDetalle={() => onVerDetalle(seleccionada.sesion.id)}
               />
             ) : (

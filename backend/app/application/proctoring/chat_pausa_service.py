@@ -16,9 +16,10 @@ documentada (ver tasks 6.3.3).
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+import os
+from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.infrastructure.persistence.models.chat_pausa import (
@@ -112,13 +113,64 @@ async def listar_pausas_de_sesion(
     return list(result.scalars().all())
 
 
+def _timeout_pausa_seg() -> int:
+    """Timeout (seg) del PEDIDO de pausa sin responder, desde env
+    ``PAUSA_REQUEST_TIMEOUT_SEG`` (default 120). Distinto de ``pausa_max_min``, que
+    limita la DURACION de una pausa YA aprobada."""
+    try:
+        return int(os.getenv("PAUSA_REQUEST_TIMEOUT_SEG", "120"))
+    except ValueError:
+        return 120
+
+
+async def expirar_solicitudes_vencidas(
+    db: AsyncSession, *, ahora: datetime | None = None, timeout_seg: int | None = None
+) -> int:
+    """Expira las pausas 'solicitada' mas viejas que el timeout -> 'expirada' (C-72
+    seccion 12). Devuelve cuantas expiro. Es un acto del SISTEMA: NO aprueba ni
+    rechaza (L2.5, regla #5) — solo limpia la cola del proctor. Idempotente."""
+    ahora = ahora or _ahora()
+    if timeout_seg is None:
+        timeout_seg = _timeout_pausa_seg()
+    limite = ahora - timedelta(seconds=timeout_seg)
+    result = await db.execute(
+        update(PausaAutorizadaModel)
+        .where(
+            PausaAutorizadaModel.estado == "solicitada",
+            PausaAutorizadaModel.solicitada_en < limite,
+        )
+        .values(estado="expirada", resuelta_en=ahora)
+    )
+    await db.commit()
+    return result.rowcount
+
+
+async def cancelar_solicitudes_de_sesion(db: AsyncSession, session_id: str) -> int:
+    """Cancela ('expirada') las pausas 'solicitada' pendientes de una sesion al
+    finalizar (manual o auto). Una sesion cerrada no debe dejar pausas colgadas en
+    el panel del proctor. Idempotente (solo toca 'solicitada')."""
+    result = await db.execute(
+        update(PausaAutorizadaModel)
+        .where(
+            PausaAutorizadaModel.session_id == session_id,
+            PausaAutorizadaModel.estado == "solicitada",
+        )
+        .values(estado="expirada", resuelta_en=_ahora())
+    )
+    await db.commit()
+    return result.rowcount
+
+
 async def listar_pausas_pendientes(
     db: AsyncSession,
 ) -> list[tuple[PausaAutorizadaModel, str | None]]:
     """Lista las pausas 'solicitada' de TODAS las sesiones (poll del proctor).
 
-    Devuelve tuplas (pausa, etiqueta_de_la_sesion) ordenadas por solicitada_en asc
-    (las mas antiguas primero — la cola del proctor las resuelve por antiguedad)."""
+    Antes de listar, EXPIRA las vencidas por timeout (C-72 seccion 12): las que el
+    proctor no respondio a tiempo salen de la cola. Devuelve tuplas (pausa,
+    etiqueta_de_la_sesion) ordenadas por solicitada_en asc (las mas antiguas
+    primero — la cola del proctor las resuelve por antiguedad)."""
+    await expirar_solicitudes_vencidas(db)
     stmt = (
         select(PausaAutorizadaModel, ProctoringSessionModel.etiqueta)
         .join(

@@ -13,17 +13,16 @@ eleva ``ConfigExamenInvalidaError`` ante la primera violación.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from datetime import datetime
+from typing import Any
 
 from app.domain.exam_content.errors import ConfigExamenInvalidaError
 
-# Campos de configuración que se CONGELAN una vez que el examen tiene >= 1
-# intento finalizado: cambiarlos alteraría RETROACTIVAMENTE la nota o la equidad
-# de quienes ya rindieron (mismo espíritu que el candado de selección de
-# preguntas). Los controles de PUBLICACIÓN de resultados (mostrar_nota,
-# revision_habilitada) quedan FUERA: liberar/ocultar la nota es un acto legítimo
-# posterior a la rendición.
+# DEPRECADO (C-72 §6): candado BINARIO. Reemplazado por el modelo de tres grupos
+# (`cambios_bloqueados` + CONGELADO_DURO/CAMPOS_DIRECCIONALES/CAMPOS_LIBRES, más
+# abajo). Se conserva como shim hasta que el router de `PATCH /config` migre al
+# modelo direccional (§6.10, integración). No agregar usos nuevos.
 CAMPOS_CONGELADOS_POST_RENDICION: frozenset[str] = frozenset(
     {
         "tiempo_limite_min",
@@ -35,6 +34,77 @@ CAMPOS_CONGELADOS_POST_RENDICION: frozenset[str] = frozenset(
         "mezclar_preguntas",
     }
 )
+
+
+# C-72 §6 + §18 — Candado DIRECCIONAL post-rendición (reemplaza el binario de arriba).
+# Grupos según qué le hace el cambio a quienes YA rindieron:
+#   - CONGELADO DURO: reescribe retroactivamente la nota o la equidad → cualquier
+#     cambio se bloquea.
+#   - DIRECCIONAL: aflojar ayuda al alumno, apretar lo perjudica → se bloquea solo
+#     al apretar. `cierre` solo EXTENDER; `intentos_permitidos` solo AUMENTAR;
+#     `revision_habilitada` solo HABILITAR (true, no quitar); `mostrar_nota` solo
+#     MOSTRAR ANTES (al_cerrar→inmediata, no ocultar la nota que se iba a ver).
+#   - LIBRE: sin campos (§18 movió los de publicación a direccionales: cambiar lo
+#     que ve quien ya entregó, en la dirección que perjudica, altera las reglas del
+#     juego a posteriori).
+CONGELADO_DURO: frozenset[str] = frozenset(
+    {
+        "nota_maxima",
+        "nota_aprobacion",
+        "tiempo_limite_min",
+        "mezclar_preguntas",
+        "apertura",
+    }
+)
+CAMPOS_DIRECCIONALES: frozenset[str] = frozenset(
+    {"cierre", "intentos_permitidos", "revision_habilitada", "mostrar_nota"}
+)
+# Subconjunto de los direccionales que solo se pueden AMPLIAR (extender la ventana /
+# aumentar los intentos). Los otros direccionales (publicación) solo se AFLOJAN — no
+# son "ampliables" en el mismo sentido, por eso el GET /config los distingue: este set
+# es lo que la UI muestra como "solo se puede ampliar".
+CAMPOS_SOLO_AMPLIABLES: frozenset[str] = frozenset({"cierre", "intentos_permitidos"})
+CAMPOS_LIBRES: frozenset[str] = frozenset()
+
+
+def cambios_bloqueados(
+    *,
+    cambios: Mapping[str, Any],
+    vigente: Mapping[str, Any],
+    ya_rendido: bool,
+) -> frozenset[str]:
+    """Subconjunto de ``cambios`` (campo → nuevo valor) bloqueado por el candado.
+
+    ``vigente`` mapea campo → valor actual (para decidir la dirección). Si el examen
+    aún no fue rendido, nada se bloquea. Los campos direccionales se bloquean SOLO al
+    apretar: ``cierre`` menor al vigente (acortar la ventana) o ``intentos_permitidos``
+    menor al vigente (quitar intentos)."""
+    if not ya_rendido:
+        return frozenset()
+    bloqueados: set[str] = set()
+    for campo, nuevo in cambios.items():
+        if campo in CONGELADO_DURO:
+            bloqueados.add(campo)
+        elif campo == "cierre":
+            # solo se puede EXTENDER: un cierre anterior al vigente aprieta → bloqueado
+            if nuevo < vigente["cierre"]:
+                bloqueados.add(campo)
+        elif campo == "intentos_permitidos":
+            # solo se puede AUMENTAR: menos intentos que el vigente aprieta → bloqueado
+            if nuevo < vigente["intentos_permitidos"]:
+                bloqueados.add(campo)
+        elif campo == "revision_habilitada":
+            # solo HABILITAR (false→true) es generoso; quitar la revisión que el
+            # alumno iba a ver (true→false) lo perjudica → bloqueado (§18)
+            if vigente["revision_habilitada"] is True and nuevo is False:
+                bloqueados.add(campo)
+        elif campo == "mostrar_nota":
+            # solo MOSTRAR ANTES (al_cerrar→inmediata) es generoso; ocultar la nota
+            # que se iba a ver ya (inmediata→al_cerrar) perjudica → bloqueado (§18)
+            if vigente["mostrar_nota"] == "inmediata" and nuevo != "inmediata":
+                bloqueados.add(campo)
+        # cualquier otro campo no declarado → permitido
+    return frozenset(bloqueados)
 
 
 def campos_congelados_en_cambio(

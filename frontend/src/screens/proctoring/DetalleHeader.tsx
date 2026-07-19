@@ -8,6 +8,7 @@
 import { Icon, Card, Badge } from '../../ui/components';
 import type { SesionProctoringDetalle } from '../../lib/types';
 import { StatCard } from './StatCard';
+import { statProps } from './statCatalog';
 import {
   formatFecha,
   scoreTextColor,
@@ -62,10 +63,10 @@ export function DetalleHeader({ detalle }: { detalle: SesionProctoringDetalle })
           sub={NIVEL_LABEL[nivel]}
           tono={nivel === 'alto' ? 'error' : nivel === 'medio' ? 'warning' : 'success'}
         />
-        <StatCard icon="notifications" label="Eventos" value={totalEventos} sub="en la sesión" tono="info" />
-        {/* tono fijo `primary`: el del Score es semántico (error/warning/success), así
-            esta card nunca queda del mismo color que el Score. */}
-        <StatCard icon="rule" label="Discrepancias" value={totalDiscrepancias} sub="el servidor no coincidió" tono="primary" />
+        <StatCard {...statProps('eventos', totalEventos, 'en la sesión')} />
+        {/* Vocabulario canónico (statCatalog): Discrepancias es `warning` en TODAS
+            las pantallas. El Score de al lado es una card semántica aparte (gauge). */}
+        <StatCard {...statProps('discrepancias', totalDiscrepancias)} />
       </div>
 
       {/* Gauge de score */}

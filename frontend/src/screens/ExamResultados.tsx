@@ -1,0 +1,265 @@
+/**
+ * ExamResultados — Página dedicada a los alumnos que rindieron un examen (C-72 §19).
+ *
+ * Ruta: /admin/examenes/:id/resultados. Antes esta tabla colgaba al final del
+ * detalle del examen; ahora tiene su propia pantalla, con buscador, filtros,
+ * paginación y la sincronización con Moodle. Un breadcrumb/volver lleva al detalle.
+ */
+import { useCallback, useEffect, useState } from 'react';
+import { StaffShell } from '../ui/shells';
+import { Button, Card, Icon, SectionTitle } from '../ui/components';
+import { STAFF_NAV } from '../ui/nav';
+import { useNavigate, useRouteParam } from '../lib/router';
+import { API_BASE } from '../lib/api';
+import { authProvider } from '../lib/authProvider';
+import { TableToolbar, type TableQuery } from '../ui/TableToolbar';
+import {
+  getExamenHeaderFn,
+  listarResultadosFn,
+  sincronizarMoodleFn,
+  type ResultadoExamen,
+} from '../lib/examContentResultados';
+import type { ExamenContenidoResumen } from '../lib/types';
+import { EstadoBadge } from './exam-detail/EstadoBadge';
+import { SyncResultBanner, type SyncResult } from './exam-detail/SyncResultBanner';
+
+function alumnoDisplay(r: ResultadoExamen): string {
+  if (r.alumno_nombre) return r.alumno_nombre;
+  return r.alumno_idnumber || r.alumno_email;
+}
+
+function formatFecha(iso: string): string {
+  try {
+    return new Intl.DateTimeFormat('es-AR', {
+      day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit',
+    }).format(new Date(iso));
+  } catch {
+    return iso;
+  }
+}
+
+function TableSkeleton() {
+  return (
+    <div className="space-y-2 animate-pulse">
+      {[1, 2, 3, 4, 5].map((i) => (
+        <div key={i} className="h-12 bg-surface-container-high rounded-lg" />
+      ))}
+    </div>
+  );
+}
+
+const PAGE_SIZE_DEFAULT = 25;
+
+export default function ExamResultados() {
+  const navigate = useNavigate();
+  const examenId = useRouteParam('id');
+
+  const [examen, setExamen] = useState<ExamenContenidoResumen | null>(null);
+  const [query, setQuery] = useState<TableQuery>({
+    q: '',
+    filters: { estado: '' },
+    page: 1,
+    page_size: PAGE_SIZE_DEFAULT,
+  });
+  const [resultados, setResultados] = useState<ResultadoExamen[]>([]);
+  const [total, setTotal] = useState(0);
+  const [cargandoTabla, setCargandoTabla] = useState(false);
+  const [errorTabla, setErrorTabla] = useState<string | null>(null);
+
+  const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
+  const [sincronizando, setSincronizando] = useState(false);
+  const [errorSync, setErrorSync] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!examenId) return;
+    getExamenHeaderFn(API_BASE, authProvider.getToken(), examenId)
+      .then(setExamen)
+      .catch(() => { /* el título cae al fallback */ });
+  }, [examenId]);
+
+  const fetchResultados = useCallback(async (q: TableQuery) => {
+    if (!examenId) {
+      setResultados([]);
+      setTotal(0);
+      return;
+    }
+    setCargandoTabla(true);
+    setErrorTabla(null);
+    try {
+      const resp = await listarResultadosFn(API_BASE, authProvider.getToken(), examenId, {
+        q: q.q || undefined,
+        estado: q.filters['estado'] || undefined,
+        page: q.page,
+        page_size: q.page_size,
+      });
+      setResultados(resp.items);
+      setTotal(resp.total);
+    } catch (err: unknown) {
+      setErrorTabla(err instanceof Error ? err.message : 'Error al cargar los resultados.');
+      setResultados([]);
+    } finally {
+      setCargandoTabla(false);
+    }
+  }, [examenId]);
+
+  useEffect(() => {
+    fetchResultados(query);
+  }, [query, fetchResultados]);
+
+  async function handleSincronizar() {
+    if (!examenId) return;
+    setSincronizando(true);
+    setErrorSync(null);
+    setSyncResult(null);
+    try {
+      const result = await sincronizarMoodleFn(API_BASE, authProvider.getToken(), examenId);
+      setSyncResult(result);
+      setQuery((q) => ({ ...q }));
+    } catch (err: unknown) {
+      setErrorSync(err instanceof Error ? err.message : 'Error al sincronizar con Moodle.');
+    } finally {
+      setSincronizando(false);
+    }
+  }
+
+  const pendientes = resultados.filter((r) => r.estado_moodle === 'pendiente').length;
+
+  const filterDefs = [
+    {
+      key: 'estado',
+      label: 'Estado',
+      placeholder: 'Todos los estados',
+      options: [
+        { value: 'pendiente', label: 'Pendiente de sincronizar' },
+        { value: 'enviado',   label: 'Sincronizado en Moodle' },
+        { value: 'fallido',   label: 'Falló' },
+        { value: 'sin_token', label: 'Sin token' },
+      ],
+    },
+  ];
+
+  const volverAlDetalle = () =>
+    navigate(examenId ? `/admin/examenes/${examenId}` : '/admin/examenes');
+
+  return (
+    <StaffShell
+      nav={STAFF_NAV}
+      title={examen?.titulo ? `Alumnos que rindieron — ${examen.titulo}` : 'Alumnos que rindieron'}
+      subtitle={
+        examen
+          ? [examen.materia_nombre, examen.comision_nombre].filter(Boolean).join(' · ') || undefined
+          : undefined
+      }
+      actions={
+        <Button
+          variant="primary"
+          icon={sincronizando ? undefined : 'sync'}
+          onClick={handleSincronizar}
+          disabled={sincronizando}
+        >
+          {sincronizando
+            ? 'Sincronizando…'
+            : pendientes > 0
+              ? `Sincronizar con Moodle (${pendientes} pendiente${pendientes !== 1 ? 's' : ''})`
+              : 'Sincronizar con Moodle'}
+        </Button>
+      }
+    >
+      <div className="space-y-lg animate-in fade-in duration-500">
+        <Button variant="ghost" icon="arrow_back" size="sm" onClick={volverAlDetalle}>
+          Volver al detalle del examen
+        </Button>
+
+        <Card>
+          <SectionTitle sub={`${total} resultado${total !== 1 ? 's' : ''}`}>
+            Alumnos que rindieron
+          </SectionTitle>
+
+          {syncResult && (
+            <SyncResultBanner result={syncResult} onClose={() => setSyncResult(null)} />
+          )}
+          {errorSync && (
+            <div className="flex items-center gap-sm text-error bg-error-container/40 rounded-xl px-md py-sm text-label-sm mb-md">
+              <Icon name="error" className="text-[18px] shrink-0" fill />
+              {errorSync}
+            </div>
+          )}
+
+          <div className="mb-md">
+            <TableToolbar
+              query={query}
+              onChange={setQuery}
+              placeholder="Buscar por alumno…"
+              filterDefs={filterDefs}
+              total={total}
+              loading={cargandoTabla}
+            />
+          </div>
+
+          {cargandoTabla && !resultados.length && <TableSkeleton />}
+
+          {errorTabla && (
+            <div className="flex items-center gap-sm text-error bg-error-container/40 rounded-xl px-md py-sm text-label-sm">
+              <Icon name="error" className="text-[18px] shrink-0" fill />
+              {errorTabla}
+            </div>
+          )}
+
+          {!cargandoTabla && !errorTabla && resultados.length === 0 && (
+            <div className="text-center py-xl text-on-surface-variant space-y-base">
+              <Icon name="search_off" className="text-[40px] text-outline" />
+              <p className="text-label-md">
+                {query.q || query.filters['estado']
+                  ? 'Ningún resultado coincide con los filtros.'
+                  : 'Este examen no tiene resultados todavía.'}
+              </p>
+            </div>
+          )}
+
+          {resultados.length > 0 && (
+            <div className="overflow-x-auto -mx-lg px-lg">
+              <table className="w-full text-left min-w-[600px]">
+                <thead>
+                  <tr className="text-label-sm uppercase tracking-wide text-on-surface-variant border-b border-outline-variant/40">
+                    <th className="py-sm pr-md font-semibold">Alumno</th>
+                    <th className="py-sm pr-md font-semibold text-right">Nota</th>
+                    <th className="py-sm pr-md font-semibold">Estado Moodle</th>
+                    <th className="py-sm font-semibold">Actualizado</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {resultados.map((r) => (
+                    <tr
+                      key={r.session_id}
+                      className={`border-b border-outline-variant/20 transition-colors
+                        ${cargandoTabla ? 'opacity-50' : 'hover:bg-surface-container-low'}`}
+                    >
+                      <td className="py-sm pr-md">
+                        <p className="text-label-md font-semibold text-on-surface">{alumnoDisplay(r)}</p>
+                        {r.alumno_nombre && (
+                          <p className="text-label-sm text-on-surface-variant">{r.alumno_email}</p>
+                        )}
+                      </td>
+                      <td className="py-sm pr-md text-right tabular-nums">
+                        {r.nota !== null
+                          ? <span className="font-semibold text-on-surface">{r.nota}</span>
+                          : <span className="text-outline text-label-sm">—</span>}
+                      </td>
+                      <td className="py-sm pr-md">
+                        <EstadoBadge estado={r.estado_moodle} />
+                      </td>
+                      <td className="py-sm text-label-sm text-on-surface-variant">
+                        {formatFecha(r.actualizado_en)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
+      </div>
+    </StaffShell>
+  );
+}

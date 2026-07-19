@@ -46,6 +46,19 @@ from app.infrastructure.persistence.repositories.exam_content import (
     ExamenContenidoSqlRepository,
     MateriaSqlRepository,
 )
+from app.application.exam_content.codigo_matriculacion import componer_codigo
+import itertools
+
+# `codigo_matriculacion` es NOT NULL (migración 0038): en producción lo autogenera
+# el servicio antes de tocar el repo. Estos tests van al repo directo, así que lo
+# resuelven acá — único y determinístico (T001, T002, …) para no colisionar en la
+# constraint global uq_comision_codigo_matriculacion.
+_cm_seq = itertools.count(1)
+
+
+def _cm(materia_codigo: str) -> str:
+    return componer_codigo(materia_codigo, f"T{next(_cm_seq):03d}")
+
 
 # Orden de drop (hijas primero) y de create (padres primero) por las FKs.
 _NEW_TABLES = (
@@ -156,6 +169,7 @@ async def test_guardar_y_recuperar_comision(session):
             materia_id=materia.id,
             periodo="1C",
             anio=2026,
+            codigo_matriculacion=_cm(materia.codigo),
         )
     )
     assert guardada.id is not None
@@ -175,11 +189,11 @@ async def test_comision_unique_materia_codigo_rechaza_duplicado(session):
     materia = await materia_repo.guardar(Materia(codigo="QUI-301", nombre="Química"))
 
     await comision_repo.guardar(
-        Comision(codigo="C-1", nombre="Comisión 1", materia_id=materia.id)
+        Comision(codigo="C-1", nombre="Comisión 1", materia_id=materia.id, codigo_matriculacion=_cm(materia.codigo))
     )
     with pytest.raises(ComisionDuplicadaError):
         await comision_repo.guardar(
-            Comision(codigo="C-1", nombre="Comisión 1 bis", materia_id=materia.id)
+            Comision(codigo="C-1", nombre="Comisión 1 bis", materia_id=materia.id, codigo_matriculacion=_cm(materia.codigo))
         )
 
 
@@ -191,10 +205,10 @@ async def test_comision_mismo_codigo_otra_materia_se_permite(session):
     m2 = await materia_repo.guardar(Materia(codigo="MAT-B", nombre="Mat B"))
 
     c1 = await comision_repo.guardar(
-        Comision(codigo="C-X", nombre="CX en A", materia_id=m1.id)
+        Comision(codigo="C-X", nombre="CX en A", materia_id=m1.id, codigo_matriculacion=_cm(m1.codigo))
     )
     c2 = await comision_repo.guardar(
-        Comision(codigo="C-X", nombre="CX en B", materia_id=m2.id)
+        Comision(codigo="C-X", nombre="CX en B", materia_id=m2.id, codigo_matriculacion=_cm(m2.codigo))
     )
     assert c1.id != c2.id
 
@@ -240,7 +254,7 @@ async def test_examen_con_comision_deriva_materia_transitivamente(session):
 
     materia = await materia_repo.guardar(Materia(codigo="TR-1", nombre="Transitiva"))
     comision = await comision_repo.guardar(
-        Comision(codigo="C-T", nombre="Com T", materia_id=materia.id)
+        Comision(codigo="C-T", nombre="Com T", materia_id=materia.id, codigo_matriculacion=_cm(materia.codigo))
     )
     examen = await examen_repo.guardar(_examen(comision_id=comision.id))
 
@@ -266,7 +280,7 @@ async def test_fk_examen_comision_set_null_al_borrar_comision(session):
 
     materia = await materia_repo.guardar(Materia(codigo="SN-1", nombre="SetNull"))
     comision = await comision_repo.guardar(
-        Comision(codigo="C-SN", nombre="Com SN", materia_id=materia.id)
+        Comision(codigo="C-SN", nombre="Com SN", materia_id=materia.id, codigo_matriculacion=_cm(materia.codigo))
     )
     examen = await examen_repo.guardar(_examen(comision_id=comision.id))
     await session.commit()

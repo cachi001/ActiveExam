@@ -15,12 +15,14 @@ rendicion puede ARRANCAR segun la configuracion academica del examen.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from datetime import datetime
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.domain.exam_content.deadline import deadline_efectivo, vencido
 from app.infrastructure.persistence.models.exam_content import ExamenContenidoModel
 from app.infrastructure.persistence.models.proctoring import ProctoringSessionModel
 
@@ -53,6 +55,71 @@ class NoInscriptoError(EnforcementError):
 
     examen_contenido_id: str
     mensaje: str
+
+
+@dataclass
+class TiempoAgotadoError(EnforcementError):
+    """El plazo de la rendicion vencio (deadline efectivo pasado + gracia, C-72)."""
+
+    deadline: datetime
+    mensaje: str
+
+
+def gracia_seg_default() -> int:
+    """Gracia (seg) del deadline, desde el env ``DEADLINE_GRACIA_SEG`` (default 60).
+
+    Mismo contrato que ``SlimSettings.deadline_gracia_seg`` (misma variable de
+    entorno), pero resoluble SIN instanciar los Settings completos — el hot path de
+    la rendicion no debe depender de toda la config de arranque. Tolerancia a
+    latencia, NO tiempo de examen; nunca se lee del cliente (regla dura #6)."""
+    try:
+        return int(os.getenv("DEADLINE_GRACIA_SEG", "60"))
+    except ValueError:
+        return 60
+
+
+async def verificar_plazo(
+    db: AsyncSession,
+    *,
+    examen_contenido_id: str,
+    creada_en: datetime,
+    ahora: datetime,
+    gracia_seg: int | None = None,
+) -> None:
+    """Revalida el PLAZO de una rendicion en curso (C-72 §2, H-1/H-2).
+
+    A diferencia de ``verificar_enforcement`` (que corre al CREAR la sesion), esto
+    se llama en cada mutacion de la rendicion (enviar respuestas, finalizar). El
+    deadline efectivo = min(cierre, creada_en + tiempo_limite_min); si ``ahora``
+    (hora del servidor) paso el deadline mas la gracia -> ``TiempoAgotadoError``.
+
+    Solo aplica cuando el examen tiene ``cierre`` (ventana definida). ``ahora`` y
+    ``creada_en`` deben ser timezone-aware en UTC; ``ahora`` NUNCA es la hora del
+    cliente (regla dura #6). Si el examen no existe, no aplica plazo.
+    """
+    config = (
+        await db.execute(
+            select(
+                ExamenContenidoModel.tiempo_limite_min,
+                ExamenContenidoModel.cierre,
+            ).where(ExamenContenidoModel.id == examen_contenido_id)
+        )
+    ).one_or_none()
+    if config is None:
+        return
+    tiempo_limite_min, cierre = config
+    if cierre is None:
+        return
+    if gracia_seg is None:
+        gracia_seg = gracia_seg_default()
+    deadline = deadline_efectivo(
+        creada_en=creada_en, tiempo_limite_min=tiempo_limite_min, cierre=cierre
+    )
+    if vencido(deadline=deadline, ahora=ahora, gracia_seg=gracia_seg):
+        raise TiempoAgotadoError(
+            deadline=deadline,
+            mensaje="Se agoto el tiempo de esta rendicion. Ya no se pueden enviar respuestas.",
+        )
 
 
 async def verificar_inscripcion(

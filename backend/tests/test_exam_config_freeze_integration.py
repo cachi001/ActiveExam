@@ -208,3 +208,76 @@ async def test_get_config_expone_bloqueada_tras_rendicion(app, factory):
     async with _admin_client(app) as c:
         r_despues = await c.get(f"/api/v1/exam-content/{examen_id}/config")
     assert r_despues.json()["bloqueada"] is True
+
+
+# ---------------------------------------------------------------------------
+# C-72 sección 6 — candado DIRECCIONAL: cierre solo extender, intentos solo
+# aumentar; congelado duro siempre; libres siempre. Reemplaza al binario.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_rendido_permite_extender_cierre_200(app, factory):
+    examen_id = await _crear_examen(factory)
+    async with _admin_client(app) as c:
+        await c.patch(f"/api/v1/exam-content/{examen_id}/config", json=_CONFIG_VALIDA)
+    await _finalizar_intento(factory, examen_id)
+    async with _admin_client(app) as c:
+        r = await c.patch(
+            f"/api/v1/exam-content/{examen_id}/config",
+            json={"cierre": "2027-06-30T20:00:00+00:00"},  # posterior al vigente (2026-12-31)
+        )
+    assert r.status_code == 200, r.text
+    assert r.json()["cierre"].startswith("2027-06-30")
+
+
+@pytest.mark.asyncio
+async def test_rendido_acortar_cierre_409(app, factory):
+    examen_id = await _crear_examen(factory)
+    async with _admin_client(app) as c:
+        await c.patch(f"/api/v1/exam-content/{examen_id}/config", json=_CONFIG_VALIDA)
+    await _finalizar_intento(factory, examen_id)
+    async with _admin_client(app) as c:
+        r = await c.patch(
+            f"/api/v1/exam-content/{examen_id}/config",
+            json={"cierre": "2026-06-30T20:00:00+00:00"},  # anterior al vigente → aprieta
+        )
+    assert r.status_code == 409, r.text
+    assert r.json()["detail"]["error"] == "config_congelada"
+    assert "cierre" in r.json()["detail"]["campos"]
+
+
+@pytest.mark.asyncio
+async def test_rendido_patch_mixto_congelado_y_libre_es_atomico(app, factory):
+    examen_id = await _crear_examen(factory)
+    async with _admin_client(app) as c:
+        await c.patch(f"/api/v1/exam-content/{examen_id}/config", json=_CONFIG_VALIDA)
+    await _finalizar_intento(factory, examen_id)
+    async with _admin_client(app) as c:
+        # nota_maxima (congelado duro) + revision_habilitada (libre) en el mismo PATCH
+        r = await c.patch(
+            f"/api/v1/exam-content/{examen_id}/config",
+            json={"nota_maxima": 20.0, "revision_habilitada": True},
+        )
+        assert r.status_code == 409, r.text
+        assert "nota_maxima" in r.json()["detail"]["campos"]
+        # atómico: el campo libre NO se persistió
+        g = await c.get(f"/api/v1/exam-content/{examen_id}/config")
+    assert g.json()["revision_habilitada"] is False
+
+
+@pytest.mark.asyncio
+async def test_get_config_expone_campos_congelados_y_ampliables(app, factory):
+    examen_id = await _crear_examen(factory)
+    async with _admin_client(app) as c:
+        await c.patch(f"/api/v1/exam-content/{examen_id}/config", json=_CONFIG_VALIDA)
+        # 6.12: sin rendiciones → ningún campo congelado
+        antes = (await c.get(f"/api/v1/exam-content/{examen_id}/config")).json()
+    assert antes["campos_congelados"] == []
+    assert antes["campos_solo_ampliables"] == []
+
+    await _finalizar_intento(factory, examen_id)
+    async with _admin_client(app) as c:
+        despues = (await c.get(f"/api/v1/exam-content/{examen_id}/config")).json()
+    # 6.11: tras rendición, expone el detalle direccional
+    assert "nota_maxima" in despues["campos_congelados"]
+    assert set(despues["campos_solo_ampliables"]) == {"cierre", "intentos_permitidos"}

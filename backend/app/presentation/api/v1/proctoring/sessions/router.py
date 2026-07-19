@@ -16,12 +16,15 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.application.proctoring import observacion_service, session_service
+from app.application.proctoring.auto_finalizacion import auto_finalizar_si_vencida
 from app.application.proctoring.enforcement import (
     FueraDeVentanaError,
     IntentosAgotadosError,
     NoInscriptoError,
+    TiempoAgotadoError,
     verificar_enforcement,
     verificar_inscripcion,
+    verificar_plazo,
 )
 from app.application.proctoring.finalizar_con_writeback import (
     finalizar_sesion_con_writeback,
@@ -138,6 +141,7 @@ def create_sessions_router(
     require_proctor_o_admin,
     require_admin,
     writeback_svc: MoodleWritebackService | None = None,
+    cipher=None,
 ) -> APIRouter:
     """Factory del router de sesiones. Recibe la dependencia de DB inyectada.
 
@@ -225,6 +229,10 @@ def create_sessions_router(
             alumno_idnumber=principal.id_institucional or None,
             alumno_email=principal.email or None,
         )
+        # Auto-finalización lazy (C-72 §4, H-3): si el alumno "vuelve" a una sesión
+        # cuyo deadline ya venció (aunque la ventana siga abierta), se cierra sola y
+        # se puntúa con lo respondido. No puede seguir rindiendo una sesión vencida.
+        await auto_finalizar_si_vencida(db, sesion, writeback_svc=writeback_svc)
         return CrearSesionOut(
             id=sesion.id,
             creada_en=sesion.creada_en,
@@ -305,7 +313,11 @@ def create_sessions_router(
                 ts_cliente=e.ts_cliente,
                 ts_backend=e.ts_backend,
                 payload=e.payload,
-                screenshot_base64=e.screenshot_b64,
+                # Descifrado at-rest de la evidencia (Ley 25.326). Sin cipher o si el
+                # registro es legacy en claro, decrypt lo devuelve tal cual.
+                screenshot_base64=(
+                    cipher.decrypt(e.screenshot_b64) if cipher is not None else e.screenshot_b64
+                ),
                 screenshot_sha256=e.screenshot_sha256,
                 face_count_cliente=e.face_count_cliente,
                 face_count_servidor=e.face_count_servidor,
@@ -385,6 +397,24 @@ def create_sessions_router(
                     "mensaje": "No se pueden modificar las respuestas de una sesión ya finalizada.",
                 },
             )
+        # Enforcement de PLAZO (C-72 §2, H-1/H-2): revalidar el reloj server-side en
+        # cada envío. El cliente es sensor no confiable (regla #6): sin esto la sesión
+        # abierta acepta respuestas fuera de tiempo / con la ventana cerrada.
+        if sesion_model.examen_contenido_id is not None:
+            from datetime import datetime, timezone
+
+            try:
+                await verificar_plazo(
+                    db,
+                    examen_contenido_id=sesion_model.examen_contenido_id,
+                    creada_en=sesion_model.creada_en,
+                    ahora=datetime.now(timezone.utc),
+                )
+            except TiempoAgotadoError as exc:
+                raise HTTPException(
+                    status_code=http_status.HTTP_409_CONFLICT,
+                    detail={"error": "tiempo_agotado", "mensaje": exc.mensaje},
+                ) from exc
         repo = RespuestaAlumnoRepository(db)
         n = await repo.guardar_respuestas(
             session_id=session_id,

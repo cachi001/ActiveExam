@@ -21,6 +21,9 @@ const ESTADO: Record<
   aprobada: { tone: 'success', label: 'Aprobada', card: 'bg-green-50 border-green-200', icon: 'check_circle', text: 'text-success', iconBg: 'bg-success-container' },
   rechazada: { tone: 'error', label: 'Rechazada', card: 'bg-red-50 border-red-200', icon: 'cancel', text: 'text-on-error-container', iconBg: 'bg-error-container' },
   finalizada: { tone: 'neutral', label: 'Finalizada', card: 'bg-surface-container-low border-surface-200', icon: 'history', text: 'text-on-surface-variant', iconBg: 'bg-surface-container-high' },
+  // El sistema la cerró por timeout / fin de sesión sin respuesta del proctor
+  // (C-72 sección 12). Tono neutro: NO es un veredicto (L2.5), solo caducó.
+  expirada: { tone: 'neutral', label: 'No respondida a tiempo', card: 'bg-surface-container-low border-surface-200', icon: 'timer_off', text: 'text-on-surface-variant', iconBg: 'bg-surface-container-high' },
 };
 
 /** Card tintada con el color suave del estado (no blanca). */

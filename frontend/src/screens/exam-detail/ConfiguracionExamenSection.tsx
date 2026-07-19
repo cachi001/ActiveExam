@@ -82,15 +82,31 @@ function validarConfig(form: ConfigForm): string | null {
   return null;
 }
 
-export function formToPatch(form: ConfigForm, bloqueada: boolean): Partial<ExamConfig> {
-  // Con el examen ya rendido, los campos de mecánica/nota están congelados en el
-  // backend (409). Mandamos SOLO la publicación de resultados para no gatillar el
-  // rechazo con valores sin cambios.
+export function formToPatch(
+  form: ConfigForm,
+  bloqueada: boolean,
+  original?: ConfigForm,
+): Partial<ExamConfig> {
+  // Candado DIRECCIONAL (C-72 secciones 6/18): con el examen ya rendido, la mecánica y
+  // la nota (CONGELADO_DURO: tiempo, apertura, notas, mezclar) están congeladas en el
+  // backend (409). La publicación es direccional (solo aflojar) → siempre se manda.
   const publicacion: Partial<ExamConfig> = {
     mostrar_nota: form.mostrarNota,
     revision_habilitada: form.revisionHabilitada,
   };
-  if (bloqueada) return publicacion;
+  if (bloqueada) {
+    const patch: Partial<ExamConfig> = { ...publicacion };
+    // `cierre` (solo EXTENDER) e `intentos_permitidos` (solo AUMENTAR) son ampliables:
+    // se envían SOLO si el docente los cambió, para no gatillar un falso 409 por
+    // truncar la precisión de una fecha que en realidad no tocó.
+    if (original && form.cierre !== original.cierre) {
+      patch.cierre = localInputToIso(form.cierre);
+    }
+    if (original && form.intentosPermitidos !== original.intentosPermitidos) {
+      patch.intentos_permitidos = Number(form.intentosPermitidos);
+    }
+    return patch;
+  }
   return {
     tiempo_limite_min: form.sinLimite ? null : Number(form.tiempoLimiteMin),
     intentos_permitidos: Number(form.intentosPermitidos),
@@ -105,6 +121,9 @@ export function formToPatch(form: ConfigForm, bloqueada: boolean): Partial<ExamC
 
 export function ConfiguracionExamenSection({ examenId }: { examenId: string }) {
   const [form, setForm] = useState<ConfigForm | null>(null);
+  // Config tal como vino del backend: baseline para saber si el docente amplió
+  // `cierre`/`intentos_permitidos` (candado direccional) al guardar bloqueado.
+  const [original, setOriginal] = useState<ConfigForm | null>(null);
   const [bloqueada, setBloqueada] = useState(false);
   const [cargando, setCargando] = useState(true);
   const [errorCarga, setErrorCarga] = useState<string | null>(null);
@@ -118,7 +137,9 @@ export function ConfiguracionExamenSection({ examenId }: { examenId: string }) {
     setErrorCarga(null);
     try {
       const cfg = await getExamConfig(examenId);
-      setForm(configToForm(cfg));
+      const f = configToForm(cfg);
+      setForm(f);
+      setOriginal(f);
       setBloqueada(!!cfg.bloqueada);
     } catch (err: unknown) {
       setErrorCarga(err instanceof Error ? err.message : 'No se pudo cargar la configuración.');
@@ -150,8 +171,10 @@ export function ConfiguracionExamenSection({ examenId }: { examenId: string }) {
     setOkGuardado(false);
     setErrorGuardar(null);
     try {
-      const cfg = await setExamConfig(examenId, formToPatch(form, bloqueada));
-      setForm(configToForm(cfg));
+      const cfg = await setExamConfig(examenId, formToPatch(form, bloqueada, original ?? undefined));
+      const f = configToForm(cfg);
+      setForm(f);
+      setOriginal(f);
       setBloqueada(!!cfg.bloqueada);
       setOkGuardado(true);
     } catch (err: unknown) {
@@ -193,10 +216,13 @@ export function ConfiguracionExamenSection({ examenId }: { examenId: string }) {
             <div className="flex items-start gap-sm text-on-surface bg-warning-container/50 border border-warning/40 rounded-none px-4 py-3 text-label-sm">
               <Icon name="lock" className="text-[18px] shrink-0 text-warning" fill />
               <span>
-                Este examen ya tiene intentos finalizados. La configuración de
-                mecánica y nota (tiempo, intentos, ventana, notas, mezclar) quedó
-                <strong> congelada</strong> para no alterar notas ya calculadas. Solo
-                podés cambiar cuándo se publica la nota y si se permite la revisión.
+                Este examen ya tiene intentos finalizados. La mecánica y la nota
+                (tiempo, apertura, notas, mezclar) quedaron <strong>congeladas</strong>
+                para no alterar notas ya calculadas. Lo único que se puede mover es
+                <strong> a favor del alumno</strong>: <strong>extender</strong> el cierre,
+                <strong> aumentar</strong> los intentos, y aflojar la publicación
+                (habilitar revisión / adelantar la nota). Nunca apretar lo que ya iba a
+                tener.
               </span>
             </div>
           )}
@@ -243,13 +269,19 @@ export function ConfiguracionExamenSection({ examenId }: { examenId: string }) {
             <input
               id="cfg-intentos"
               type="number"
-              min={1}
+              // Bloqueado: solo se pueden AUMENTAR (min = los intentos vigentes).
+              min={bloqueada ? Number(original?.intentosPermitidos ?? 1) : 1}
               inputMode="numeric"
               className={INPUT_CLS}
               value={form.intentosPermitidos}
-              disabled={guardando || bloqueada}
+              disabled={guardando}
               onChange={(e) => update('intentosPermitidos', e.target.value)}
             />
+            {bloqueada && (
+              <p className="mt-1.5 text-label-sm text-on-surface-variant">
+                Con el examen ya rendido, los intentos solo se pueden <strong>aumentar</strong>.
+              </p>
+            )}
           </div>
 
           <div className="grid sm:grid-cols-2 gap-5">
@@ -271,11 +303,18 @@ export function ConfiguracionExamenSection({ examenId }: { examenId: string }) {
                 id="cfg-cierre"
                 type="datetime-local"
                 required
+                // Bloqueado: el cierre solo se puede EXTENDER (min = el cierre vigente).
+                min={bloqueada ? original?.cierre : undefined}
                 className={INPUT_CLS}
                 value={form.cierre}
-                disabled={guardando || bloqueada}
+                disabled={guardando}
                 onChange={(e) => update('cierre', e.target.value)}
               />
+              {bloqueada && (
+                <p className="mt-1.5 text-label-sm text-on-surface-variant">
+                  Con el examen ya rendido, el cierre solo se puede <strong>extender</strong>.
+                </p>
+              )}
             </div>
           </div>
           <p className="-mt-3 text-label-sm text-on-surface-variant">

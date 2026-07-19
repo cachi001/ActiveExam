@@ -27,8 +27,12 @@ import {
   actualizarMateria,
   crearComision,
   actualizarComision,
+  eliminarMateria,
+  eliminarComision,
+  setMateriaActiva,
 } from '../lib/examContentAdmin';
 import type { Materia, Comision } from '../lib/types';
+import { ConfirmModal } from '../ui/ConfirmModal';
 import { MateriaFormPanel } from './admin/components/MateriaFormPanel';
 import { ComisionesAccordionBody } from './admin/components/ComisionesAccordionBody';
 import {
@@ -73,6 +77,67 @@ export default function MateriasComisiones() {
     { value: '1C', label: '1er cuatrimestre' },
     { value: '2C', label: '2do cuatrimestre' },
   ]);
+
+  // ── Borrado (solo si 100% vacío; el backend es la autoridad) ───────────────
+  const [confirmarBorrado, setConfirmarBorrado] = useState<
+    { tipo: 'materia' | 'comision'; id: string; nombre: string; materiaId?: string } | null
+  >(null);
+  const [borrando, setBorrando] = useState(false);
+
+  // Activar / desactivar (freeze) una materia. La materia inactiva no se oculta
+  // al alumno inscripto; solo corta inscripciones nuevas y bloquea rendir (server-side).
+  async function toggleActivaMateria(m: Materia) {
+    const nuevoEstado = !(m.activa ?? true);
+    try {
+      const actualizada = await setMateriaActiva(m.id, nuevoEstado);
+      setMaterias((prev) =>
+        prev.map((x) => (x.id === m.id ? { ...x, activa: actualizada.activa ?? nuevoEstado } : x)),
+      );
+      toast.success(nuevoEstado ? 'Materia activada.' : 'Materia desactivada (congelada).');
+    } catch {
+      toast.error('No se pudo cambiar el estado de la materia.');
+    }
+  }
+
+  async function confirmarEliminar() {
+    if (!confirmarBorrado) return;
+    const target = confirmarBorrado;
+    setBorrando(true);
+    try {
+      if (target.tipo === 'materia') {
+        await eliminarMateria(target.id);
+        setMaterias((prev) => prev.filter((m) => m.id !== target.id));
+        setComisionesPorMateria((prev) => {
+          const next = { ...prev };
+          delete next[target.id];
+          return next;
+        });
+        if (expandida === target.id) setExpandida(null);
+        toast.success('Materia eliminada.');
+      } else if (target.materiaId) {
+        await eliminarComision(target.id);
+        const mid = target.materiaId;
+        setComisionesPorMateria((prev) => ({
+          ...prev,
+          [mid]: (prev[mid] ?? []).filter((c) => c.id !== target.id),
+        }));
+        toast.success('Comisión eliminada.');
+      }
+      setConfirmarBorrado(null);
+    } catch (err) {
+      const status = (err as { status?: number })?.status;
+      // 409: tiene inscriptos/exámenes → el mensaje del backend sugiere desactivar.
+      toast.error(
+        status === 409
+          ? (err as Error).message ||
+              'No se puede eliminar: tiene inscriptos o exámenes. Desactivala en su lugar.'
+          : 'No se pudo eliminar. Reintentá en un momento.',
+      );
+      setConfirmarBorrado(null);
+    } finally {
+      setBorrando(false);
+    }
+  }
 
   useEffect(() => {
     api.listarPeriodos().then(setPeriodos).catch(() => {/* usa fallback */});
@@ -164,9 +229,16 @@ export default function MateriasComisiones() {
         setMaterias((prev) => [...prev, { ...nueva }]);
         toast.success('Materia creada correctamente.');
       } else if (formMateria.modo === 'editar' && formMateria.id) {
-        const actualizada = await actualizarMateria(formMateria.id, { nombre: formMateria.nombre });
+        const actualizada = await actualizarMateria(formMateria.id, {
+          nombre: formMateria.nombre,
+          codigo: formMateria.codigo,
+        });
         setMaterias((prev) =>
-          prev.map((m) => (m.id === formMateria.id ? { ...m, nombre: actualizada.nombre } : m)),
+          prev.map((m) =>
+            m.id === formMateria.id
+              ? { ...m, nombre: actualizada.nombre, codigo: actualizada.codigo }
+              : m,
+          ),
         );
         toast.success('Materia actualizada correctamente.');
       }
@@ -337,8 +409,14 @@ export default function MateriasComisiones() {
                         onClick={() => void seleccionarMateria(m.id)}
                         className="flex-1 min-w-0 text-left"
                       >
-                        <p className={`text-[13px] font-semibold truncate ${sel ? 'text-primary' : 'text-on-surface'}`}>
-                          {m.nombre}
+                        <p className={`text-[13px] font-semibold truncate flex items-center gap-2 ${sel ? 'text-primary' : 'text-on-surface'}`}>
+                          <span className="truncate">{m.nombre}</span>
+                          {m.activa === false && (
+                            <span className="shrink-0 inline-flex items-center gap-1 rounded-full bg-outline-variant/40 text-on-surface-variant px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide">
+                              <Icon name="pause_circle" className="text-[12px]" />
+                              Inactiva
+                            </span>
+                          )}
                         </p>
                         <p className="text-[11px] font-mono text-on-surface-variant mt-0.5">{m.codigo}</p>
                       </button>
@@ -347,6 +425,16 @@ export default function MateriasComisiones() {
                         items={[
                           { label: 'Editar materia', icon: 'edit', onClick: () => abrirEditarMateria(m) },
                           { label: 'Nueva comisión', icon: 'add_circle', onClick: () => abrirCrearComision(m.id) },
+                          m.activa === false
+                            ? { label: 'Activar materia', icon: 'play_circle', onClick: () => void toggleActivaMateria(m) }
+                            : { label: 'Desactivar materia', icon: 'pause_circle', onClick: () => void toggleActivaMateria(m) },
+                          {
+                            label: 'Eliminar materia',
+                            icon: 'delete',
+                            danger: true,
+                            onClick: () =>
+                              setConfirmarBorrado({ tipo: 'materia', id: m.id, nombre: m.nombre }),
+                          },
                         ]}
                       />
                     </div>
@@ -397,6 +485,14 @@ export default function MateriasComisiones() {
                       onCancelarComision={cerrarFormComision}
                       abrirCrearComision={abrirCrearComision}
                       abrirEditarComision={abrirEditarComision}
+                      abrirEliminarComision={(c) =>
+                        setConfirmarBorrado({
+                          tipo: 'comision',
+                          id: c.id,
+                          nombre: c.nombre,
+                          materiaId: m.id,
+                        })
+                      }
                       comisionExpandida={comisionExpandida}
                       toggleComision={toggleComision}
                     />
@@ -407,6 +503,22 @@ export default function MateriasComisiones() {
           </div>
         )}
       </div>
+
+      <ConfirmModal
+        abierto={confirmarBorrado !== null}
+        variante="danger"
+        titulo={confirmarBorrado?.tipo === 'materia' ? 'Eliminar materia' : 'Eliminar comisión'}
+        mensaje={
+          <>
+            ¿Seguro que querés eliminar {confirmarBorrado?.tipo === 'materia' ? 'la materia' : 'la comisión'}{' '}
+            <strong>«{confirmarBorrado?.nombre}»</strong>? Esta acción no se puede deshacer. Solo se
+            permite si no tiene inscriptos ni exámenes.
+          </>
+        }
+        textoConfirmar={borrando ? 'Eliminando…' : 'Eliminar'}
+        onConfirmar={() => void confirmarEliminar()}
+        onCancelar={() => { if (!borrando) setConfirmarBorrado(null); }}
+      />
     </StaffShell>
   );
 }

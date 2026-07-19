@@ -1,7 +1,16 @@
+/**
+ * SessionDetail — Expediente de una sesión desde la COLA DE REVISIÓN (revisor).
+ *
+ * Muestra statcards + eventos discretos + cadena de custodia criptográfica. NO
+ * incluye chat/anotaciones (no aplican a este flujo de revisión). NO HAY VIDEO
+ * (RN-CC-01 / RN-CO-03): evidencia discreta revisable, nunca una grabación; ver el
+ * guardrail en `proctoring/expediente.guardrail.test.ts`.
+ */
 import { useState } from 'react';
 import { StaffShell } from '../ui/shells';
 import { Icon, Card, Avatar, Badge, SeverityBadge, Button, SectionTitle } from '../ui/components';
 import { StatCard } from './proctoring/StatCard';
+import { statProps } from './proctoring/statCatalog';
 import { REVISOR_NAV } from './Revisor';
 import { useApp } from '../lib/store';
 import { useNavigate } from '../lib/router';
@@ -41,7 +50,7 @@ export default function SessionDetail() {
         <div className="grid sm:grid-cols-3 gap-md">
           <StatCard icon="schedule" label="Duración" value={sel.duracion} sub="del examen" tono="primary" />
           <StatCard icon="event" label="Fecha" value={sel.fecha} sub="de rendición" tono="info" />
-          <StatCard icon="warning" label="Incidencias" value={sel.eventos.length} sub={`${sel.eventos.filter((e) => e.tiene_evidencia).length} con evidencia`} tono="warning" />
+          <StatCard {...statProps('eventos', sel.eventos.length, `${sel.eventos.filter((e) => e.tiene_evidencia).length} con evidencia`)} />
         </div>
 
         <div className="grid lg:grid-cols-2 gap-lg">

@@ -38,7 +38,7 @@ export const STAFF_NAV: StaffNavItem[] = [
   // Visibles para proctor + admin (SUPERVISION).
   { to: '/proctor',                     icon: 'visibility',      label: 'Supervisión en vivo',     group: 'main',   roles: SUPERVISION },
   { to: '/revisor',                     icon: 'gavel',           label: 'Cola de revisión',        group: 'main',   roles: SUPERVISION },
-  { to: '/admin/proctoring-sessions',   icon: 'video_library',   label: 'Sesiones grabadas',       group: 'main',   roles: SUPERVISION },
+  { to: '/admin/proctoring-sessions',   icon: 'history',         label: 'Registro de sesiones',    group: 'main',   roles: SUPERVISION },
   // Administración: separadas con divider. Solo admin.
   { to: '/admin/usuarios',              icon: 'manage_accounts', label: 'Usuarios',                group: 'config', roles: ADMIN },
   { to: '/admin/materias',              icon: 'school',          label: 'Materias y comisiones',   group: 'config', roles: ADMIN },

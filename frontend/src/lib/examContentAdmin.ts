@@ -31,6 +31,7 @@ export interface MateriaResponse {
   id: string;
   codigo: string;
   nombre: string;
+  activa?: boolean;
 }
 
 export interface ComisionResponse {
@@ -153,11 +154,12 @@ export async function crearMateria(data: {
   return res.json() as Promise<MateriaResponse>;
 }
 
-/** Actualiza el nombre de una materia existente. Admin-only.
- *  PATCH /exam-content/materias/{materiaId}.  404 → no existe. */
+/** Actualiza una materia existente (nombre y/o código). Admin-only.
+ *  PATCH /exam-content/materias/{materiaId}.  404 → no existe  |  409 → código
+ *  duplicado (si se edita el código a uno ya en uso). */
 export async function actualizarMateria(
   materiaId: string,
-  data: { nombre: string },
+  data: { nombre: string; codigo?: string },
 ): Promise<MateriaResponse> {
   const res = await fetch(
     `${API_BASE}/exam-content/materias/${encodeURIComponent(materiaId)}`,
@@ -169,6 +171,44 @@ export async function actualizarMateria(
   );
   if (!res.ok) return throwAdminError(res);
   return res.json() as Promise<MateriaResponse>;
+}
+
+/** Activa o desactiva una materia (freeze). Admin-only.
+ *  PATCH /exam-content/materias/{materiaId}/activa.  404 → no existe. */
+export async function setMateriaActiva(
+  materiaId: string,
+  activa: boolean,
+): Promise<MateriaResponse> {
+  const res = await fetch(
+    `${API_BASE}/exam-content/materias/${encodeURIComponent(materiaId)}/activa`,
+    {
+      method: 'PATCH',
+      headers: authHeaders(),
+      body: JSON.stringify({ activa }),
+    },
+  );
+  if (!res.ok) return throwAdminError(res);
+  return res.json() as Promise<MateriaResponse>;
+}
+
+/** Elimina una materia. Admin-only. DELETE /exam-content/materias/{materiaId}.
+ *  204 → borrada  |  404 → no existe  |  409 → tiene inscriptos/exámenes (no se borra). */
+export async function eliminarMateria(materiaId: string): Promise<void> {
+  const res = await fetch(
+    `${API_BASE}/exam-content/materias/${encodeURIComponent(materiaId)}`,
+    { method: 'DELETE', headers: authHeaders() },
+  );
+  if (!res.ok) await throwAdminError(res);
+}
+
+/** Elimina una comisión. Admin-only. DELETE /exam-content/comisiones/{comisionId}.
+ *  204 → borrada  |  404 → no existe  |  409 → tiene inscriptos/exámenes (no se borra). */
+export async function eliminarComision(comisionId: string): Promise<void> {
+  const res = await fetch(
+    `${API_BASE}/exam-content/comisiones/${encodeURIComponent(comisionId)}`,
+    { method: 'DELETE', headers: authHeaders() },
+  );
+  if (!res.ok) await throwAdminError(res);
 }
 
 /** Crea una comisión bajo una materia. Admin-only.

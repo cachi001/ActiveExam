@@ -128,7 +128,7 @@ export default function SeccionConsentimiento() {
 
   if (cargando) {
     return (
-      <div className="space-y-lg max-w-4xl">
+      <div className="space-y-lg max-w-6xl">
         {Array.from({ length: 3 }).map((_, i) => (
           <div key={i} className="h-[140px] rounded-2xl border border-outline-variant/40 bg-white animate-pulse" />
         ))}
@@ -137,7 +137,7 @@ export default function SeccionConsentimiento() {
   }
 
   return (
-    <div className="space-y-lg max-w-4xl">
+    <div className="space-y-lg max-w-6xl">
       {/* Título de la sección */}
       <div>
         <h2 className="font-headline text-title-xl text-on-surface tracking-tight">Consentimiento</h2>

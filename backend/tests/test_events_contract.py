@@ -32,6 +32,10 @@ def test_tipos_del_dominio_son_los_de_rn_ev_04() -> None:
         "tampering_camara_virtual",
         "corte_conectividad",
         "heartbeat",
+        # C-72 sección 5: reanudación de una rendición clasificada por la duración
+        # de la ausencia (medida server-side).
+        "recarga_pagina",
+        "reanudacion_tardia",
     }
     assert {t.value for t in TipoEvento} == esperados
 

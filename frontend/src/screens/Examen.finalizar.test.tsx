@@ -235,6 +235,28 @@ describe('C-69 §7 — entrega: respuestas antes de finalizar', () => {
     expect(navigate).toHaveBeenCalledWith('/cierre');
   });
 
+  // C-72 sección 7: los 409 de plazo se muestran al alumno, sin pérdida silenciosa.
+  it('7.1 un 409 tiempo_agotado muestra el aviso de tiempo agotado', async () => {
+    const err = new Error('HTTP 409') as Error & { code?: string };
+    err.code = 'tiempo_agotado';
+    enviarRespuestasProctoring.mockRejectedValueOnce(err);
+    await montar();
+    await seleccionarPrimeraOpcion();
+    await clickFinalizar();
+    expect(container.textContent).toContain('Se agotó el tiempo');
+  });
+
+  it('7.2 un 409 sesion_finalizada muestra un mensaje DISTINTO de tiempo_agotado', async () => {
+    const err = new Error('HTTP 409') as Error & { code?: string };
+    err.code = 'sesion_finalizada';
+    enviarRespuestasProctoring.mockRejectedValueOnce(err);
+    await montar();
+    await seleccionarPrimeraOpcion();
+    await clickFinalizar();
+    expect(container.textContent).toContain('ya fue entregado');
+    expect(container.textContent).not.toContain('Se agotó el tiempo');
+  });
+
   it('si el POST de respuestas FALLA en la entrega manual, NO finaliza ni navega (no le terminamos el examen al alumno)', async () => {
     enviarRespuestasProctoring.mockRejectedValueOnce(new Error('red caída'));
     await montar();

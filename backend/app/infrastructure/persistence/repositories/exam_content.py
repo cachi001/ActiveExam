@@ -493,7 +493,7 @@ class MateriaSqlRepository:
                     f"Ya existe una materia con codigo {materia.codigo!r}."
                 ) from exc
             raise
-        return Materia(id=model.id, codigo=model.codigo, nombre=model.nombre)
+        return Materia(id=model.id, codigo=model.codigo, nombre=model.nombre, activa=model.activa)
 
     async def listar(self) -> list[Materia]:
         """Lista todas las materias (id, codigo, nombre), orden alfabético por nombre."""
@@ -501,7 +501,7 @@ class MateriaSqlRepository:
             select(MateriaModel).order_by(MateriaModel.nombre)
         )
         return [
-            Materia(id=m.id, codigo=m.codigo, nombre=m.nombre)
+            Materia(id=m.id, codigo=m.codigo, nombre=m.nombre, activa=m.activa)
             for m in result.scalars().all()
         ]
 
@@ -509,7 +509,7 @@ class MateriaSqlRepository:
         model = await self._db.get(MateriaModel, materia_id)
         if model is None:
             return None
-        return Materia(id=model.id, codigo=model.codigo, nombre=model.nombre)
+        return Materia(id=model.id, codigo=model.codigo, nombre=model.nombre, activa=model.activa)
 
     async def obtener_por_codigo(self, codigo: str) -> Materia | None:
         result = await self._db.execute(
@@ -518,24 +518,90 @@ class MateriaSqlRepository:
         model = result.scalar_one_or_none()
         if model is None:
             return None
-        return Materia(id=model.id, codigo=model.codigo, nombre=model.nombre)
+        return Materia(id=model.id, codigo=model.codigo, nombre=model.nombre, activa=model.activa)
 
-    async def actualizar(self, materia_id: str, *, nombre: str) -> Materia | None:
-        """Actualiza el nombre de una materia (codigo inmutable).
+    async def actualizar(
+        self, materia_id: str, *, nombre: str, codigo: str | None = None
+    ) -> Materia | None:
+        """Actualiza el nombre y (opcionalmente) el codigo de una materia.
 
-        Devuelve la materia actualizada, o None si no existe. No valida: la
-        validación de dominio la hace el caller (capa de aplicación) antes.
+        Devuelve la materia actualizada, o None si no existe. No valida dominio: la
+        validación y el chequeo de unicidad los hace el caller (capa de aplicación).
+        El codigo único es un backstop de carrera: si colisiona → MateriaDuplicadaError.
+        """
+        values: dict[str, str] = {"nombre": nombre}
+        if codigo is not None:
+            values["codigo"] = codigo
+        try:
+            result = await self._db.execute(
+                update(MateriaModel)
+                .where(MateriaModel.id == materia_id)
+                .values(**values)
+                .returning(MateriaModel.id)
+            )
+            if result.scalar_one_or_none() is None:
+                return None
+            await self._db.flush()
+        except IntegrityError as exc:
+            await self._db.rollback()
+            if _es_violacion_unicidad(exc):
+                raise MateriaDuplicadaError(
+                    f"Ya existe una materia con codigo {codigo!r}."
+                ) from exc
+            raise
+        return await self.obtener(materia_id)
+
+    async def set_activa(self, materia_id: str, activa: bool) -> Materia | None:
+        """Setea el estado `activa` de una materia (C-72 §17).
+
+        Devuelve la materia actualizada, o None si no existe.
         """
         result = await self._db.execute(
             update(MateriaModel)
             .where(MateriaModel.id == materia_id)
-            .values(nombre=nombre)
+            .values(activa=activa)
             .returning(MateriaModel.id)
         )
         if result.scalar_one_or_none() is None:
             return None
         await self._db.flush()
         return await self.obtener(materia_id)
+
+    async def contar_inscriptos_y_examenes(self, materia_id: str) -> tuple[int, int]:
+        """Cuenta (inscriptos, examenes) bajo TODAS las comisiones de la materia.
+
+        Insumo del guard de borrado (C-72 §16): una materia solo se elimina si
+        ambos contadores son 0.
+        """
+        inscriptos = await self._db.scalar(
+            select(func.count())
+            .select_from(InscripcionModel)
+            .join(ComisionModel, InscripcionModel.comision_id == ComisionModel.id)
+            .where(ComisionModel.materia_id == materia_id)
+        )
+        examenes = await self._db.scalar(
+            select(func.count())
+            .select_from(ExamenContenidoModel)
+            .join(ComisionModel, ExamenContenidoModel.comision_id == ComisionModel.id)
+            .where(ComisionModel.materia_id == materia_id)
+        )
+        return int(inscriptos or 0), int(examenes or 0)
+
+    async def eliminar(self, materia_id: str) -> bool:
+        """Borra la materia (sus comisiones vacías caen por el FK ON DELETE CASCADE).
+
+        Devuelve True si borró, False si no existía. El guard de "vacío" lo aplica
+        la capa de aplicación ANTES; acá solo se ejecuta el borrado.
+        """
+        result = await self._db.execute(
+            delete(MateriaModel)
+            .where(MateriaModel.id == materia_id)
+            .returning(MateriaModel.id)
+        )
+        borrado = result.scalar_one_or_none() is not None
+        if borrado:
+            await self._db.flush()
+        return borrado
 
 
 class ComisionSqlRepository:
@@ -665,6 +731,35 @@ class ComisionSqlRepository:
             return None
         await self._db.flush()
         return await self.obtener(comision_id)
+
+    async def contar_inscriptos_y_examenes(self, comision_id: str) -> tuple[int, int]:
+        """Cuenta (inscriptos, examenes) de la comisión. Insumo del guard de borrado."""
+        inscriptos = await self._db.scalar(
+            select(func.count())
+            .select_from(InscripcionModel)
+            .where(InscripcionModel.comision_id == comision_id)
+        )
+        examenes = await self._db.scalar(
+            select(func.count())
+            .select_from(ExamenContenidoModel)
+            .where(ExamenContenidoModel.comision_id == comision_id)
+        )
+        return int(inscriptos or 0), int(examenes or 0)
+
+    async def eliminar(self, comision_id: str) -> bool:
+        """Borra la comisión. Devuelve True si borró, False si no existía.
+
+        El guard de "vacía" lo aplica la capa de aplicación ANTES.
+        """
+        result = await self._db.execute(
+            delete(ComisionModel)
+            .where(ComisionModel.id == comision_id)
+            .returning(ComisionModel.id)
+        )
+        borrado = result.scalar_one_or_none() is not None
+        if borrado:
+            await self._db.flush()
+        return borrado
 
     def _to_entity(self, model: ComisionModel) -> Comision:
         return Comision(

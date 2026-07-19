@@ -8,6 +8,11 @@
  * Ley 25.326: screenshot_base64 NO se loguea en consola ni se persiste en localStorage.
  * Cliente = sensor no confiable: face_count_servidor y veredicto_reinferencia del servidor
  * son la fuente de verdad (se muestran siempre junto a los datos del cliente).
+ *
+ * NO HAY VIDEO (RN-CC-01 / RN-CO-03): el expediente es evidencia DISCRETA revisable
+ * —screenshots puntuales + eventos + chat + anotaciones + biometría—, nunca una
+ * grabación continua. El nombre viejo "Sesiones grabadas" era engañoso; ver el
+ * guardrail en `proctoring/expediente.guardrail.test.ts`.
  */
 
 import { useEffect, useState } from 'react';
@@ -34,7 +39,7 @@ import { PausasHistorial } from './proctoring/PausasHistorial';
 const BACK_LABELS: Record<string, string> = {
   '/proctor': 'Volver a supervisión en vivo',
   '/proctor/examen': 'Volver al examen',
-  '/admin/proctoring-sessions': 'Volver a sesiones grabadas',
+  '/admin/proctoring-sessions': 'Volver a Registro de sesiones',
   '/revisor': 'Volver a la cola de revisión',
 };
 

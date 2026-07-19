@@ -39,6 +39,17 @@ from app.infrastructure.persistence.repositories.exam_content import (
     ExamenContenidoSqlRepository,
     MateriaSqlRepository,
 )
+from app.application.exam_content.codigo_matriculacion import componer_codigo
+import itertools
+
+# `codigo_matriculacion` NOT NULL (0038): en producción lo autogenera el servicio;
+# estos tests van al repo directo, así que lo resuelven acá (único/determinístico).
+_cm_seq = itertools.count(1)
+
+
+def _cm(materia_codigo: str) -> str:
+    return componer_codigo(materia_codigo, f"T{next(_cm_seq):03d}")
+
 
 _NEW_TABLES = (
     "opcion_respuesta",
@@ -122,6 +133,7 @@ async def test_comision_con_materia_inexistente_es_rechazada_por_fk(session):
                 codigo="C-ORPH",
                 nombre="Huérfana",
                 materia_id="00000000-0000-0000-0000-000000000000",
+                codigo_matriculacion=_cm("ORPH"),
             )
         )
 
@@ -134,10 +146,10 @@ async def test_reasociar_examen_deja_exactamente_una_comision(session):
 
     materia = await materia_repo.guardar(Materia(codigo="RE-1", nombre="Reasoc"))
     c1 = await comision_repo.guardar(
-        Comision(codigo="C-1", nombre="Uno", materia_id=materia.id)
+        Comision(codigo="C-1", nombre="Uno", materia_id=materia.id, codigo_matriculacion=_cm(materia.codigo))
     )
     c2 = await comision_repo.guardar(
-        Comision(codigo="C-2", nombre="Dos", materia_id=materia.id)
+        Comision(codigo="C-2", nombre="Dos", materia_id=materia.id, codigo_matriculacion=_cm(materia.codigo))
     )
     examen = await examen_repo.guardar(_examen(comision_id=c1.id))
 
@@ -156,7 +168,7 @@ async def test_examen_se_puede_desasociar_a_null(session):
 
     materia = await materia_repo.guardar(Materia(codigo="DS-1", nombre="Desasoc"))
     comision = await comision_repo.guardar(
-        Comision(codigo="C-D", nombre="ComD", materia_id=materia.id)
+        Comision(codigo="C-D", nombre="ComD", materia_id=materia.id, codigo_matriculacion=_cm(materia.codigo))
     )
     examen = await examen_repo.guardar(_examen(comision_id=comision.id))
 

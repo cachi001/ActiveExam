@@ -34,6 +34,11 @@ class TipoEvento(str, Enum):
     TAMPERING_CAMARA_VIRTUAL = "tampering_camara_virtual"
     CORTE_CONECTIVIDAD = "corte_conectividad"
     HEARTBEAT = "heartbeat"
+    # C-72 sección 5 (H-4): reapertura de la rendición, emitidos SERVER-SIDE en el
+    # resume (el cliente no los puede suprimir). Peso conservador — no son fraude
+    # por sí solos, solo señal para el revisor humano.
+    RECARGA_PAGINA = "recarga_pagina"
+    REANUDACION_TARDIA = "reanudacion_tardia"
 
 
 class Severidad(str, Enum):
@@ -59,6 +64,10 @@ _SEVERIDAD_POR_TIPO: dict[TipoEvento, Severidad] = {
     TipoEvento.TAMPERING_CAMARA_VIRTUAL: Severidad.ALTA,
     TipoEvento.CORTE_CONECTIVIDAD: Severidad.CRITICA,
     TipoEvento.HEARTBEAT: Severidad.BASELINE,
+    # Recarga = baja (baseline): recargar la página es común y benigno. Reanudación
+    # tardía = media: una ausencia larga merece una mirada, sin ser fraude por sí sola.
+    TipoEvento.RECARGA_PAGINA: Severidad.BASELINE,
+    TipoEvento.REANUDACION_TARDIA: Severidad.MEDIA,
 }
 
 

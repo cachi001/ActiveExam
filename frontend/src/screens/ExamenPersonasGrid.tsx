@@ -11,6 +11,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StaffShell } from '../ui/shells';
 import { Card, Icon, SectionTitle } from '../ui/components';
 import { StatCard } from './proctoring/StatCard';
+import { statProps } from './proctoring/statCatalog';
 import { STAFF_NAV } from '../ui/nav';
 import { useToast } from '../ui/toast';
 import { useNavigate } from '../lib/router';
@@ -20,7 +21,7 @@ import { loadEffectiveConfig } from '../config/effectiveConfigCache';
 import type { SesionProctoringResumen } from '../lib/types';
 import {
   formatFechaRelativa,
-  scoreCardSurface,
+  scoreCardAcento,
   scoreTextColor,
   nivelRiesgo,
   INNER_CHIP_BG,
@@ -123,8 +124,8 @@ export default function ExamenPersonasGrid() {
         {/* Resumen del examen */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-md">
           <StatCard icon="group" label="Personas" value={personas.length} sub="rindiendo" tono="primary" />
-          <StatCard icon="notifications" label="Eventos" value={eventos} sub="detectados" tono="info" />
-          <StatCard icon="priority_high" label="Riesgo alto" value={riesgoAlto} sub="superan el umbral" tono="error" />
+          <StatCard {...statProps('eventos', eventos)} />
+          <StatCard {...statProps('riesgoAlto', riesgoAlto)} />
         </div>
 
         {/* Grid de personas */}
@@ -180,7 +181,7 @@ function PersonaCard({
           onAbrir(sesion);
         }
       }}
-      className={`group cursor-pointer rounded-2xl border ${scoreCardSurface(sesion.score)}
+      className={`group cursor-pointer rounded-2xl border ${scoreCardAcento(sesion.score)}
         p-md shadow-card transition-all duration-200
         hover:shadow-card-lg hover:-translate-y-px focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40
         ${alto ? 'ring-1 ring-error/30' : ''}`}

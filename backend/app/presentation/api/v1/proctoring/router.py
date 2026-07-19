@@ -36,6 +36,7 @@ def create_proctoring_router(
     reinferencia: ReinferenciaPort,
     embedding_encryption: EmbeddingEncryptionService | None = None,
     writeback_svc: MoodleWritebackService | None = None,
+    evidence_encryption=None,
 ) -> APIRouter:
     """Factory del router principal de proctoring.
 
@@ -108,6 +109,7 @@ def create_proctoring_router(
         require_proctor_o_admin=_require_proctor_o_admin,
         require_admin=_require_admin,
         writeback_svc=writeback_svc,
+        cipher=evidence_encryption,
     )
     router.include_router(sessions_router)
 
@@ -115,6 +117,7 @@ def create_proctoring_router(
         get_db,
         get_reinferencia,
         require_autenticado=_require_autenticado,
+        cipher=evidence_encryption,
     )
     router.include_router(events_router)
 

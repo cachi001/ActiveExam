@@ -262,6 +262,8 @@ class MateriaResponse(BaseModel):
     id: str
     codigo: str
     nombre: str
+    # C-72 §17: estado de la materia (true = activa; false = congelada).
+    activa: bool = True
 
 
 class ComisionResponse(BaseModel):
@@ -294,12 +296,26 @@ class MateriaCrearRequest(BaseModel):
     nombre: str
 
 
+class MateriaActivaRequest(BaseModel):
+    """Body del PATCH /materias/{id}/activa: activar (true) o desactivar (false)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    activa: bool
+
+
 class MateriaActualizarRequest(BaseModel):
-    """Body del PATCH /materias/{id}: solo el nombre es mutable (codigo inmutable)."""
+    """Body del PATCH /materias/{id}: nombre y (opcionalmente) codigo.
+
+    `codigo` es editable: no es la identidad de la fila (esa es el id UUID) sino un
+    atributo único. Si se omite, el codigo vigente se preserva. Un codigo repetido
+    lo rechaza el service con 409 'duplicado'.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     nombre: str
+    codigo: str | None = None
 
 
 class ComisionCrearRequest(BaseModel):
@@ -465,6 +481,10 @@ class ExamenConfigResponse(BaseModel):
     # True si el examen ya tiene >= 1 intento finalizado: la config de
     # mecánica/nota queda CONGELADA (el front deshabilita esos campos).
     bloqueada: bool = False
+    # C-72 sección 6 (candado direccional): detalle para que el front sepa qué
+    # deshabilitar y qué solo se puede ampliar. Vacíos si el examen no fue rendido.
+    campos_congelados: list[str] = []          # congelado duro: no editables
+    campos_solo_ampliables: list[str] = []     # cierre (extender), intentos (aumentar)
 
 
 class ExamenConfigPatchRequest(BaseModel):

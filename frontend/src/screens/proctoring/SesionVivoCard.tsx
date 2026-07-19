@@ -15,7 +15,7 @@ import type { SesionProctoringResumen } from '../../lib/types';
 import {
   formatFechaRelativa,
   formatFecha,
-  scoreCardSurface,
+  scoreCardAcento,
   scoreTextColor,
   modoBadgeTone,
   modoLabel,
@@ -45,7 +45,7 @@ export function SesionVivoCard({
           onAbrir(sesion);
         }
       }}
-      className={`group relative cursor-pointer rounded-xl border ${scoreCardSurface(sesion.score)}
+      className={`group relative cursor-pointer rounded-xl border ${scoreCardAcento(sesion.score)}
         p-md pr-10 shadow-card transition-all duration-200
         hover:shadow-card-lg hover:-translate-y-px
         focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40

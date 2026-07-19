@@ -12,7 +12,7 @@ Reglas verificadas (por endpoint: happy path + errores):
 - 404 'materia_no_encontrada' / 'comision_no_encontrada' cuando el id no existe.
 - 422 'validacion_dominio' con codigo/nombre vacíos; 422 extra='forbid'.
 - PATCH persiste de verdad (se re-lee desde la DB).
-- codigo inmutable: el PATCH NO permite tocar el codigo (extra='forbid' → 422).
+- codigo EDITABLE: el PATCH permite cambiar el codigo; duplicado → 409 (C-72 §15).
 
 Requieren DATABASE_URL para los tests funcionales; los tests de 403 no necesitan DB.
 """
@@ -37,6 +37,12 @@ from app.infrastructure.persistence.models.exam_content import (  # noqa: F401
     OpcionRespuestaModel,
     PreguntaExamenModel,
 )
+from app.infrastructure.persistence.models.inscripcion import (  # noqa: F401
+    InscripcionModel,
+)
+from app.infrastructure.persistence.models.transactional import (  # noqa: F401
+    UsuarioModel,
+)
 from app.presentation.api.v1.exam_content.router import (
     create_exam_content_router,
     create_exam_taking_router,
@@ -44,11 +50,13 @@ from app.presentation.api.v1.exam_content.router import (
 from tests.proctoring.conftest import _build_test_jwt_validator, auth_headers
 
 _NEW_TABLES = (
+    "inscripcion",
     "opcion_respuesta",
     "pregunta_examen",
     "examen_contenido",
     "comision",
     "materia",
+    "usuario",
 )
 _FK_EXAMEN_COMISION = "fk_examen_contenido_comision"
 _INEXISTENTE = "00000000-0000-0000-0000-000000000000"
@@ -94,11 +102,13 @@ async def db_engine(db_url):
         await conn.run_sync(
             Base.metadata.create_all,
             tables=[
+                UsuarioModel.__table__,
                 MateriaModel.__table__,
                 ComisionModel.__table__,
                 ExamenContenidoModel.__table__,
                 PreguntaExamenModel.__table__,
                 OpcionRespuestaModel.__table__,
+                InscripcionModel.__table__,
             ],
         )
         await conn.execute(
@@ -223,8 +233,9 @@ async def test_crear_materia_201(client_admin):
     assert data["id"]
     assert data["codigo"] == "ALG-CRUD-1"
     assert data["nombre"] == "Álgebra"
-    # Sólo id/codigo/nombre — extra='forbid' del response.
-    assert set(data.keys()) == {"id", "codigo", "nombre"}
+    # id/codigo/nombre + activa (C-72 §17); una materia nueva nace activa.
+    assert set(data.keys()) == {"id", "codigo", "nombre", "activa"}
+    assert data["activa"] is True
 
 
 @pytest.mark.asyncio
@@ -282,7 +293,7 @@ async def test_actualizar_materia_200_persiste(client_admin):
     assert resp.status_code == 200, resp.text
     data = resp.json()
     assert data["id"] == materia_id
-    assert data["codigo"] == "UPD-MAT-1"  # codigo inmutable
+    assert data["codigo"] == "UPD-MAT-1"  # sin codigo en el body → se preserva
     assert data["nombre"] == "Nombre nuevo"
 
     # Re-lectura: el cambio se persistió en la DB.
@@ -314,14 +325,45 @@ async def test_actualizar_materia_nombre_vacio_422(client_admin):
 
 
 @pytest.mark.asyncio
-async def test_actualizar_materia_codigo_no_mutable_422(client_admin):
-    """El codigo es inmutable: enviarlo en el PATCH viola extra='forbid' → 422."""
-    materia_id = await _crear_materia(client_admin, "UPD-INM-1", "Algo")
+async def test_actualizar_materia_codigo_editable_200(client_admin):
+    """El codigo AHORA es editable: PATCH con codigo nuevo libre → 200 y persiste."""
+    materia_id = await _crear_materia(client_admin, "UPD-COD-1", "Algo")
     resp = await client_admin.patch(
         f"/api/v1/exam-content/materias/{materia_id}",
-        json={"nombre": "Nuevo", "codigo": "OTRO"},
+        json={"nombre": "Algo", "codigo": "UPD-COD-2"},
     )
-    assert resp.status_code == 422
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["codigo"] == "UPD-COD-2"
+
+    # Re-lectura: el codigo nuevo quedó persistido.
+    listado = await client_admin.get("/api/v1/exam-content/materias")
+    materias = {m["id"]: m for m in listado.json()}
+    assert materias[materia_id]["codigo"] == "UPD-COD-2"
+
+
+@pytest.mark.asyncio
+async def test_actualizar_materia_codigo_duplicado_409(client_admin):
+    """Editar el codigo a uno ya en uso por OTRA materia → 409 'duplicado'."""
+    await _crear_materia(client_admin, "UPD-DUP-A", "A")
+    materia_b = await _crear_materia(client_admin, "UPD-DUP-B", "B")
+    resp = await client_admin.patch(
+        f"/api/v1/exam-content/materias/{materia_b}",
+        json={"nombre": "B", "codigo": "UPD-DUP-A"},
+    )
+    assert resp.status_code == 409, resp.text
+    assert resp.json()["detail"]["error"] == "duplicado"
+
+
+@pytest.mark.asyncio
+async def test_actualizar_materia_sin_codigo_preserva_200(client_admin):
+    """PATCH con solo nombre (sin codigo) preserva el codigo vigente → 200."""
+    materia_id = await _crear_materia(client_admin, "UPD-PRE-1", "Nombre viejo")
+    resp = await client_admin.patch(
+        f"/api/v1/exam-content/materias/{materia_id}",
+        json={"nombre": "Nombre nuevo"},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["codigo"] == "UPD-PRE-1"  # preservado
 
 
 # ---------------------------------------------------------------------------
@@ -502,3 +544,168 @@ async def test_actualizar_comision_extra_forbid_422(client_admin):
         json={"nombre": "Nuevo", "codigo": "OTRO"},
     )
     assert resp.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# DELETE /materias/{id} y /comisiones/{id} — borrado solo si 100% vacío (C-72 §16)
+# ---------------------------------------------------------------------------
+
+
+async def _insertar_examen(factory, comision_id: str) -> None:
+    async with factory() as s:
+        await s.execute(
+            text("INSERT INTO examen_contenido (titulo, comision_id) VALUES (:t, :c)"),
+            {"t": "Examen de prueba", "c": comision_id},
+        )
+        await s.commit()
+
+
+async def _insertar_inscripto(factory, comision_id: str) -> None:
+    async with factory() as s:
+        r = await s.execute(
+            text(
+                "INSERT INTO usuario (id_institucional, email) VALUES (:i, :e) "
+                "RETURNING id"
+            ),
+            {"i": f"leg-{comision_id[:8]}", "e": "a@u.edu"},
+        )
+        uid = r.scalar_one()
+        await s.execute(
+            text("INSERT INTO inscripcion (usuario_id, comision_id) VALUES (:u, :c)"),
+            {"u": uid, "c": comision_id},
+        )
+        await s.commit()
+
+
+@pytest.mark.asyncio
+async def test_eliminar_materia_vacia_204(client_admin):
+    materia_id = await _crear_materia(client_admin, "DEL-MAT-1", "Vacía")
+    resp = await client_admin.delete(f"/api/v1/exam-content/materias/{materia_id}")
+    assert resp.status_code == 204, resp.text
+    listado = await client_admin.get("/api/v1/exam-content/materias")
+    assert materia_id not in {m["id"] for m in listado.json()}
+
+
+@pytest.mark.asyncio
+async def test_eliminar_materia_con_comision_vacia_cascade_204(client_admin):
+    materia_id = await _crear_materia(client_admin, "DEL-MAT-2", "Con comisión vacía")
+    await _crear_comision(client_admin, materia_id, "1A")
+    resp = await client_admin.delete(f"/api/v1/exam-content/materias/{materia_id}")
+    assert resp.status_code == 204, resp.text
+
+
+@pytest.mark.asyncio
+async def test_eliminar_materia_con_examen_409(client_admin, factory):
+    materia_id = await _crear_materia(client_admin, "DEL-MAT-3", "Con examen")
+    com = await _crear_comision(client_admin, materia_id, "1A")
+    await _insertar_examen(factory, com["id"])
+    resp = await client_admin.delete(f"/api/v1/exam-content/materias/{materia_id}")
+    assert resp.status_code == 409, resp.text
+    assert resp.json()["detail"]["error"] == "materia_no_vacia"
+
+
+@pytest.mark.asyncio
+async def test_eliminar_materia_con_inscripto_409(client_admin, factory):
+    materia_id = await _crear_materia(client_admin, "DEL-MAT-4", "Con inscripto")
+    com = await _crear_comision(client_admin, materia_id, "1A")
+    await _insertar_inscripto(factory, com["id"])
+    resp = await client_admin.delete(f"/api/v1/exam-content/materias/{materia_id}")
+    assert resp.status_code == 409, resp.text
+    assert resp.json()["detail"]["error"] == "materia_no_vacia"
+
+
+@pytest.mark.asyncio
+async def test_eliminar_materia_inexistente_404(client_admin):
+    resp = await client_admin.delete(f"/api/v1/exam-content/materias/{_INEXISTENTE}")
+    assert resp.status_code == 404, resp.text
+
+
+@pytest.mark.asyncio
+async def test_eliminar_comision_vacia_204(client_admin):
+    materia_id = await _crear_materia(client_admin, "DEL-COM-1", "M")
+    com = await _crear_comision(client_admin, materia_id, "1A")
+    resp = await client_admin.delete(f"/api/v1/exam-content/comisiones/{com['id']}")
+    assert resp.status_code == 204, resp.text
+
+
+@pytest.mark.asyncio
+async def test_eliminar_comision_con_examen_409(client_admin, factory):
+    materia_id = await _crear_materia(client_admin, "DEL-COM-2", "M")
+    com = await _crear_comision(client_admin, materia_id, "1A")
+    await _insertar_examen(factory, com["id"])
+    resp = await client_admin.delete(f"/api/v1/exam-content/comisiones/{com['id']}")
+    assert resp.status_code == 409, resp.text
+    assert resp.json()["detail"]["error"] == "comision_no_vacia"
+
+
+@pytest.mark.asyncio
+async def test_eliminar_comision_inexistente_404(client_admin):
+    resp = await client_admin.delete(f"/api/v1/exam-content/comisiones/{_INEXISTENTE}")
+    assert resp.status_code == 404, resp.text
+
+
+# ---------------------------------------------------------------------------
+# PATCH /materias/{id}/activa + freeze de rendición (C-72 §17)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_set_activa_desactiva_y_activa_200(client_admin):
+    materia_id = await _crear_materia(client_admin, "ACT-1", "M")
+    # Desactivar
+    r1 = await client_admin.patch(
+        f"/api/v1/exam-content/materias/{materia_id}/activa", json={"activa": False}
+    )
+    assert r1.status_code == 200, r1.text
+    assert r1.json()["activa"] is False
+    # Reactivar
+    r2 = await client_admin.patch(
+        f"/api/v1/exam-content/materias/{materia_id}/activa", json={"activa": True}
+    )
+    assert r2.status_code == 200, r2.text
+    assert r2.json()["activa"] is True
+
+
+@pytest.mark.asyncio
+async def test_set_activa_inexistente_404(client_admin):
+    r = await client_admin.patch(
+        f"/api/v1/exam-content/materias/{_INEXISTENTE}/activa", json={"activa": False}
+    )
+    assert r.status_code == 404, r.text
+
+
+@pytest.mark.asyncio
+async def test_set_activa_extra_forbid_422(client_admin):
+    materia_id = await _crear_materia(client_admin, "ACT-2", "M")
+    r = await client_admin.patch(
+        f"/api/v1/exam-content/materias/{materia_id}/activa",
+        json={"activa": False, "otro": 1},
+    )
+    assert r.status_code == 422, r.text
+
+
+@pytest.mark.asyncio
+async def test_rendir_examen_bloqueado_si_materia_inactiva_409(client_admin, factory):
+    materia_id = await _crear_materia(client_admin, "FRZ-1", "Congelable")
+    com = await _crear_comision(client_admin, materia_id, "1A")
+    # Insertar examen y capturar su id
+    async with factory() as s:
+        r = await s.execute(
+            text(
+                "INSERT INTO examen_contenido (titulo, comision_id) "
+                "VALUES (:t, :c) RETURNING id"
+            ),
+            {"t": "Examen congelable", "c": com["id"]},
+        )
+        examen_id = r.scalar_one()
+        await s.commit()
+    # Con materia activa: se puede leer para rendir.
+    ok = await client_admin.get(f"/api/v1/exam-content/{examen_id}")
+    assert ok.status_code == 200, ok.text
+    # Desactivar la materia → rendir queda bloqueado (409 materia_inactiva).
+    await client_admin.patch(
+        f"/api/v1/exam-content/materias/{materia_id}/activa", json={"activa": False}
+    )
+    blocked = await client_admin.get(f"/api/v1/exam-content/{examen_id}")
+    assert blocked.status_code == 409, blocked.text
+    assert blocked.json()["detail"]["error"] == "materia_inactiva"

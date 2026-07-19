@@ -89,6 +89,13 @@ async def finalizar_sesion_con_writeback(
     if sesion is None:
         return None
 
+    # C-72 sección 12: al cerrar la sesión (manual o auto), cancelar cualquier pedido
+    # de pausa 'solicitada' sin resolver — no debe quedar colgado en el panel del
+    # proctor. Idempotente (solo toca 'solicitada'). Paso normal del cierre.
+    from app.application.proctoring import chat_pausa_service
+
+    await chat_pausa_service.cancelar_solicitudes_de_sesion(db, session_id)
+
     # D12 (parte B): destino del write-back POR EXAMEN. Se resuelve desde el examen
     # vinculado a la sesión (examen_contenido_id). Si el examen no tiene destino
     # propio (NULL), se cae al global (iniciar_writeback/write_grade lo resuelven).

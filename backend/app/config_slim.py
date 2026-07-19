@@ -58,6 +58,13 @@ class SlimSettings(BaseSettings):
     access_token_ttl_seconds: int = 900      # 15 minutos
     refresh_token_ttl_seconds: int = 604800  # 7 dias
 
+    # --- Integridad de rendición (C-72 §1.8) ---
+    # Gracia del deadline efectivo: tolerancia a latencia de red y desfasaje de
+    # reloj, NO tiempo de examen. Es tolerancia server-side invisible; NUNCA se
+    # expone al cliente ni se lee de él (regla dura #6). La UI corta en el límite
+    # nominal. Default conservador 60s (arrancar acá y medir — design Open Q).
+    deadline_gracia_seg: int = 60
+
     # --- Biometria (c-57) ---
     embedding_encryption_key: str  # Obligatorio. Clave Fernet. Sin default.
 
