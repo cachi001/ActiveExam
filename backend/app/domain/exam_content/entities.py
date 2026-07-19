@@ -97,6 +97,7 @@ class ExamenContenido:
     # si quedan en None, el write-back usa el valor global de config_slim (fallback).
     moodle_courseid: int | None = None
     moodle_cmid: int | None = None
+    moodle_component: str | None = None
     # Configuración del examen POR EXAMEN (migración 0032). ActiveExam la opera; el
     # alumno rinde con estos parámetros. Defaults compat: 1 intento, nota sobre 10,
     # aprueba con 6, sin ventana ni límite, sin mezclar.

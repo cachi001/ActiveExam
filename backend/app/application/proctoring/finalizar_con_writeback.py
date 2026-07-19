@@ -30,14 +30,15 @@ logger = logging.getLogger(__name__)
 
 async def _resolver_target_examen(
     db: AsyncSession, examen_contenido_id: str | None
-) -> tuple[int | None, int | None]:
-    """Devuelve (moodle_courseid, moodle_cmid) del examen vinculado, o (None, None).
+) -> tuple[int | None, int | None, str | None]:
+    """Devuelve (moodle_courseid, moodle_cmid, moodle_component) del examen, o (None,)*3.
 
-    D12 (parte B): el destino del write-back es POR EXAMEN. Si la sesión no tiene
-    examen vinculado o el examen no existe, devuelve (None, None) → fallback global.
+    D12 (parte B): el destino del write-back es POR EXAMEN. C-73: incluye el component
+    ('mod_assign'|'mod_quiz'). Si la sesión no tiene examen vinculado o el examen no
+    existe, devuelve (None, None, None) → fallback global.
     """
     if not examen_contenido_id:
-        return None, None
+        return None, None, None
 
     from sqlalchemy import select
 
@@ -49,12 +50,13 @@ async def _resolver_target_examen(
         select(
             ExamenContenidoModel.moodle_courseid,
             ExamenContenidoModel.moodle_cmid,
+            ExamenContenidoModel.moodle_component,
         ).where(ExamenContenidoModel.id == examen_contenido_id)
     )
     target = row.one_or_none()
     if target is None:
-        return None, None
-    return target.moodle_courseid, target.moodle_cmid
+        return None, None, None
+    return target.moodle_courseid, target.moodle_cmid, target.moodle_component
 
 
 async def finalizar_sesion_con_writeback(
@@ -99,7 +101,7 @@ async def finalizar_sesion_con_writeback(
     # D12 (parte B): destino del write-back POR EXAMEN. Se resuelve desde el examen
     # vinculado a la sesión (examen_contenido_id). Si el examen no tiene destino
     # propio (NULL), se cae al global (iniciar_writeback/write_grade lo resuelven).
-    moodle_courseid, moodle_cmid = await _resolver_target_examen(
+    moodle_courseid, moodle_cmid, moodle_component = await _resolver_target_examen(
         db, sesion.examen_contenido_id
     )
 
@@ -115,6 +117,7 @@ async def finalizar_sesion_con_writeback(
                     alumno_email=alumno_email,
                     moodle_courseid=moodle_courseid,
                     moodle_cmid=moodle_cmid,
+                    moodle_component=moodle_component,
                 )
             else:
                 await persistir_nota_pendiente(
@@ -125,6 +128,7 @@ async def finalizar_sesion_con_writeback(
                     alumno_email=alumno_email,
                     moodle_courseid=moodle_courseid,
                     moodle_cmid=moodle_cmid,
+                    moodle_component=moodle_component,
                 )
             # finalizar_sesion ya commiteó la sesión; el persist de la nota corre
             # después con solo flush, así que necesita su propio commit o se pierde.

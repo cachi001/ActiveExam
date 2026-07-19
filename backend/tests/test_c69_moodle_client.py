@@ -177,6 +177,46 @@ async def test_write_grade_fallback_a_config_cuando_none(client):
     assert "activityid=99" in content
 
 
+@pytest.mark.asyncio
+@respx.mock
+async def test_write_grade_component_por_defecto_mod_assign(client):
+    """Sin component explícito, el payload usa mod_assign (compat con exámenes previos)."""
+    captured = {}
+
+    def capture(request, **kwargs):
+        captured["content"] = request.content.decode()
+        return Response(200, json={"warnings": []})
+
+    respx.post("https://moodle.example.com/webservice/rest/server.php").mock(
+        side_effect=capture
+    )
+
+    await client.write_grade(moodle_userid=7, nota=8.5)
+
+    assert "component=mod_assign" in captured["content"]
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_write_grade_component_mod_quiz(client):
+    """Con component='mod_quiz', el payload apunta al módulo quiz (devolución de nota en cuestionarios)."""
+    captured = {}
+
+    def capture(request, **kwargs):
+        captured["content"] = request.content.decode()
+        return Response(200, json={"warnings": []})
+
+    respx.post("https://moodle.example.com/webservice/rest/server.php").mock(
+        side_effect=capture
+    )
+
+    await client.write_grade(moodle_userid=7, nota=77.0, component="mod_quiz")
+
+    content = captured["content"]
+    assert "component=mod_quiz" in content
+    assert "component=mod_assign" not in content
+
+
 def test_config_extra_forbid():
     """MoodleClientConfig tiene extra='forbid' (Pydantic)."""
     import pydantic

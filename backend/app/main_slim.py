@@ -111,6 +111,7 @@ def create_slim_app() -> FastAPI:
             ws_token=settings.moodle_ws_token,
             courseid=settings.moodle_courseid,
             cmid=settings.moodle_cmid,
+            component=settings.moodle_component,
         )
         _writeback_svc = MoodleWritebackService(moodle_client=MoodleRestClient(config=_moodle_config))
 

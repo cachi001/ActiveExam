@@ -101,6 +101,9 @@ class MoodleWritebackEstadoModel(Base):
     intento: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     moodle_courseid: Mapped[int | None] = mapped_column(Integer, nullable=True)
     moodle_cmid: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # C-73: 'mod_assign'|'mod_quiz' del destino; se persiste para el envío manual del
+    # admin (ejecutar_writeback lo pasa a write_grade). NULL = fallback global.
+    moodle_component: Mapped[str | None] = mapped_column(String(32), nullable=True)
     moodle_userid: Mapped[int | None] = mapped_column(Integer, nullable=True)
     error_detalle: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[str] = mapped_column(

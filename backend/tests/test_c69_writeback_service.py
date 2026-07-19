@@ -193,6 +193,91 @@ async def test_writeback_idempotente_no_duplica(session, writeback_svc):
     assert push_count[0] == 1  # sigue siendo 1 — idempotente
 
 
+# ---------------------------------------------------------------------------
+# C-73: component por examen (mod_assign / mod_quiz) — devolver nota en cuestionarios
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_writeback_persiste_component_por_examen(session, writeback_svc):
+    """C-73: el component ('mod_quiz') se persiste en el estado para el envío manual."""
+    session_id = await _crear_sesion(session)
+    await writeback_svc.iniciar_writeback(
+        db=session,
+        session_id=session_id,
+        nota=77.0,
+        alumno_idnumber="legajo1",
+        alumno_email="a@b.com",
+        moodle_component="mod_quiz",
+    )
+    row = await session.execute(
+        select(MoodleWritebackEstadoModel).where(
+            MoodleWritebackEstadoModel.session_id == session_id
+        )
+    )
+    assert row.scalar_one().moodle_component == "mod_quiz"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_writeback_component_none_cae_a_global(session, writeback_svc):
+    """C-73: sin component explícito, cae al global del cliente (mod_assign)."""
+    session_id = await _crear_sesion(session)
+    await writeback_svc.iniciar_writeback(
+        db=session,
+        session_id=session_id,
+        nota=5.0,
+        alumno_idnumber="legajo1",
+        alumno_email="a@b.com",
+    )
+    row = await session.execute(
+        select(MoodleWritebackEstadoModel).where(
+            MoodleWritebackEstadoModel.session_id == session_id
+        )
+    )
+    assert row.scalar_one().moodle_component == "mod_assign"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_ejecutar_writeback_usa_component_por_examen(session, writeback_svc):
+    """C-73: ejecutar_writeback pasa el component persistido (mod_quiz) al write_grade,
+    SIN pisarlo con el global al re-llamar iniciar internamente."""
+    session_id = await _crear_sesion(session)
+    # 1) al finalizar: se persiste el destino con component mod_quiz
+    await writeback_svc.iniciar_writeback(
+        db=session,
+        session_id=session_id,
+        nota=77.0,
+        alumno_idnumber="legajo1",
+        alumno_email="a@b.com",
+        moodle_component="mod_quiz",
+    )
+    captured = {}
+
+    def side_effect(request, **kwargs):
+        content = request.content.decode()
+        if "core_user_get_users_by_field" in content or "field=idnumber" in content:
+            return Response(200, json=[{"id": 7}])
+        if "core_grades_update_grades" in content:
+            captured["content"] = content
+        return Response(200, json={"warnings": []})
+
+    respx.post(f"{BASE}/webservice/rest/server.php").mock(side_effect=side_effect)
+
+    # 2) el admin dispara el sync (sin component) — no debe pisar el mod_quiz
+    await writeback_svc.ejecutar_writeback(
+        db=session,
+        session_id=session_id,
+        nota=77.0,
+        alumno_idnumber="legajo1",
+        alumno_email="a@b.com",
+    )
+    assert "component=mod_quiz" in captured["content"]
+    assert "component=mod_assign" not in captured["content"]
+
+
 @pytest.mark.asyncio
 @respx.mock
 async def test_writeback_fallido_queda_reintenable(session, writeback_svc):

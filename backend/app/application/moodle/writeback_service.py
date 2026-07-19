@@ -54,6 +54,7 @@ async def persistir_nota_pendiente(
     alumno_email: str,
     moodle_courseid: int | None = None,
     moodle_cmid: int | None = None,
+    moodle_component: str | None = None,
 ) -> MoodleWritebackEstadoModel:
     """Crea (o actualiza) el registro de estado en 'pendiente' con la nota calculada.
 
@@ -79,12 +80,16 @@ async def persistir_nota_pendiente(
             intento=0,
             moodle_courseid=moodle_courseid,
             moodle_cmid=moodle_cmid,
+            moodle_component=moodle_component,
         )
         db.add(estado)
         await db.flush()
         return estado
 
     # Ya existe (fallido o pendiente) — actualizar nota y volver a pendiente
+    # NO tocar el destino (courseid/cmid/component): se fija en la CREATE (al finalizar
+    # la sesión) y se preserva. ejecutar_writeback re-llama iniciar sin destino, y no
+    # debe pisar el component por-examen con el global. Igual que courseid/cmid.
     existing.nota = nota
     existing.alumno_idnumber = alumno_idnumber
     existing.alumno_email = alumno_email
@@ -113,11 +118,13 @@ class MoodleWritebackService:
         alumno_email: str,
         moodle_courseid: int | None = None,
         moodle_cmid: int | None = None,
+        moodle_component: str | None = None,
     ) -> MoodleWritebackEstadoModel:
         """Crea (o actualiza) el registro de estado en 'pendiente' con la nota calculada.
 
         D12 (parte B): moodle_courseid/cmid son el destino POR EXAMEN (autoritativo).
         Si vienen None, se cae al global del cliente (compat con exámenes sin destino).
+        C-73: moodle_component ('mod_assign'|'mod_quiz') idem — None cae al global.
 
         Si ya existe un estado 'enviado' para esta sesión, lo devuelve tal cual
         (idempotente: no sobrescribe una nota ya enviada).
@@ -128,6 +135,9 @@ class MoodleWritebackService:
         target_cmid = (
             moodle_cmid if moodle_cmid is not None else self._client._config.cmid
         )
+        target_component = (
+            moodle_component if moodle_component is not None else self._client._config.component
+        )
         return await persistir_nota_pendiente(
             db=db,
             session_id=session_id,
@@ -136,6 +146,7 @@ class MoodleWritebackService:
             alumno_email=alumno_email,
             moodle_courseid=target_courseid,
             moodle_cmid=target_cmid,
+            moodle_component=target_component,
         )
 
     async def ejecutar_writeback(
@@ -189,6 +200,7 @@ class MoodleWritebackService:
                 nota=float(estado.nota),
                 courseid=estado.moodle_courseid,
                 cmid=estado.moodle_cmid,
+                component=estado.moodle_component,
             )
         except MoodleGradeWriteError as exc:
             await self._registrar_fallo(

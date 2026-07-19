@@ -157,22 +157,23 @@ async def listar_resultados_examen(
 
 async def obtener_target_examen(
     *, db: AsyncSession, examen_id: str
-) -> tuple[int | None, int | None]:
-    """Destino de write-back POR EXAMEN actual (moodle_courseid, moodle_cmid).
+) -> tuple[int | None, int | None, str | None]:
+    """Destino de write-back POR EXAMEN actual (moodle_courseid, moodle_cmid, component).
 
-    D12 (parte B). Devuelve (None, None) si el examen no existe o no tiene destino
-    propio (en cuyo caso el write-back cae al global).
+    D12 (parte B) + C-73. Devuelve (None, None, None) si el examen no existe o no tiene
+    destino propio (en cuyo caso el write-back cae al global).
     """
     row = await db.execute(
         select(
             ExamenContenidoModel.moodle_courseid,
             ExamenContenidoModel.moodle_cmid,
+            ExamenContenidoModel.moodle_component,
         ).where(ExamenContenidoModel.id == examen_id)
     )
     target = row.one_or_none()
     if target is None:
-        return None, None
-    return target.moodle_courseid, target.moodle_cmid
+        return None, None, None
+    return target.moodle_courseid, target.moodle_cmid, target.moodle_component
 
 
 async def listar_estados_sincronizables(
@@ -253,10 +254,11 @@ async def listar_estados_sincronizables(
             continue  # hold: no se envía (D15)
         filas.append(estado)
 
-    courseid, cmid = await obtener_target_examen(db=db, examen_id=examen_id)
+    courseid, cmid, component = await obtener_target_examen(db=db, examen_id=examen_id)
     for fila in filas:
         fila.moodle_courseid = courseid
         fila.moodle_cmid = cmid
+        fila.moodle_component = component
 
     return filas
 

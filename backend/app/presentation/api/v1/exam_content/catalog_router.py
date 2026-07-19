@@ -128,11 +128,13 @@ def create_exam_content_router(
         titulo: str | None = Form(default=None),
         moodle_courseid: int | None = Form(default=None),
         moodle_cmid: int | None = Form(default=None),
+        moodle_component: str | None = Form(default=None),
     ) -> ImportReporteResponse:
         """Importa un archivo Moodle XML y crea el examen de contenido.
 
         D12 (parte B): moodle_courseid/moodle_cmid son opcionales y fijan el destino
         del write-back de nota POR EXAMEN. Si se omiten, el write-back usa el global.
+        C-73: moodle_component ('mod_assign'|'mod_quiz') idem — omitido usa el global.
         """
 
         xml_bytes = await file.read()
@@ -157,6 +159,7 @@ def create_exam_content_router(
                     titulo=titulo,
                     moodle_courseid=moodle_courseid,
                     moodle_cmid=moodle_cmid,
+                    moodle_component=moodle_component,
                 )
                 await session.commit()
             except MoodleXmlInvalidoError as exc:

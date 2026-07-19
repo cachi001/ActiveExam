@@ -23,6 +23,7 @@ class MoodleClientConfig(BaseModel):
     ws_token: str
     courseid: int
     cmid: int
+    component: str = "mod_assign"  # C-73: módulo destino global ('mod_assign'|'mod_quiz')
 
 
 class MoodleGradeWriteError(Exception):
@@ -45,11 +46,17 @@ class MoodleRestClient:
         nota: float,
         courseid: int | None = None,
         cmid: int | None = None,
+        component: str | None = None,
     ) -> None:
         """Escribe la nota del alumno en Moodle vía core_grades_update_grades.
 
         D12 (parte B): courseid/cmid son el destino POR EXAMEN. Si se pasan, se usan;
         si son None, se cae al global de config (compat con exámenes sin destino).
+
+        component: módulo de la actividad destino en Moodle ('mod_assign' para tareas,
+        'mod_quiz' para cuestionarios). El write-back es a nivel del grade item, así que
+        funciona con cualquier tipo; el component debe coincidir con la actividad real
+        (validado E2E en campustest). Default 'mod_assign' (compat con exámenes previos).
 
         Raises:
             MoodleGradeWriteError: si Moodle devuelve un error, token inválido,
@@ -60,6 +67,7 @@ class MoodleRestClient:
         # Destino: valor por examen si vino; si no, fallback al global de config.
         target_courseid = courseid if courseid is not None else self._config.courseid
         target_cmid = cmid if cmid is not None else self._config.cmid
+        target_component = component if component is not None else self._config.component
 
         # Payload del WS. El token va en wstoken (protocolo Moodle REST WS).
         # NUNCA se loguea ni aparece en campos de audit.
@@ -69,7 +77,7 @@ class MoodleRestClient:
             "moodlewsrestformat": "json",
             "source": "activeexam",
             "courseid": str(target_courseid),
-            "component": "mod_assign",
+            "component": target_component,
             "activityid": str(target_cmid),
             "itemnumber": "0",
             "grades[0][studentid]": str(moodle_userid),

@@ -42,6 +42,7 @@ class ImportacionMoodleService:
         *,
         moodle_courseid: int | None = None,
         moodle_cmid: int | None = None,
+        moodle_component: str | None = None,
     ) -> ImportReport:
         """Parsea XML, valida preguntas y persiste el examen.
 
@@ -79,6 +80,7 @@ class ImportacionMoodleService:
             comision_id=None,  # D11: se asocia en sección 6
             moodle_courseid=moodle_courseid,  # D12: destino por examen (None = global)
             moodle_cmid=moodle_cmid,
+            moodle_component=moodle_component,  # C-73: mod_assign|mod_quiz (None = global)
         )
         guardado = await self._repo.guardar(examen)
 

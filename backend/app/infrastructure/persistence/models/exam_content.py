@@ -116,6 +116,14 @@ class ExamenContenidoModel(Base):
         nullable=True,
         comment="D12: course-module de calificación por examen; NULL = fallback global.",
     )
+    # C-73: módulo de la actividad destino ('mod_assign' | 'mod_quiz'). NULL = fallback
+    # global (config.moodle_component, default 'mod_assign'). Los cuestionarios requieren
+    # 'mod_quiz'; las tareas 'mod_assign' (validado E2E en campustest).
+    moodle_component: Mapped[str | None] = mapped_column(
+        String(32),
+        nullable=True,
+        comment="C-73: 'mod_assign'|'mod_quiz' del destino por examen; NULL = fallback global.",
+    )
 
     # Configuración del examen POR EXAMEN (migración 0032). ActiveExam la opera;
     # el alumno rinde con estos parámetros (timer/ventana/intentos/shuffle/nota).
