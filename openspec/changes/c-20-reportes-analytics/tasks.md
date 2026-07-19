@@ -1,40 +1,72 @@
-# Tasks — C-20 `reportes-analytics`
+# Tasks — C-20 `reportes-analytics` (estadísticas standalone, sin dependencias)
 
-> Implementa los reportes post-examen, la distribución estadística/outliers, las métricas de calidad del detector, los exports y el sumario institucional. **Principios inviolables**: los reportes INFORMAN y AGREGAN, nunca emiten veredicto/acción (RN-SC-01, DD-01); PII minimizada por diseño (Ley 25.326). El Done de cada tarea es un test verde.
+> **REVISIÓN (2026-07-19)**: C-20 se DESACOPLA de C-13/C-16. Ya no espera los
+> continuous aggregates ni las decisiones humanas: computa las **métricas sobre los
+> datos que YA existen** (exam_content, materia, comisión, proctoring_session,
+> proctoring_event + scoring config). Es un **informe/dashboard de métricas reales**
+> (cantidad de exámenes/materias/comisiones/sesiones, personas en riesgo, distribución
+> de scores), que reemplaza la página vieja hardcodeada.
+>
+> **Principios inviolables (se mantienen)**: los reportes INFORMAN y AGREGAN, nunca
+> emiten veredicto/acción (RN-SC-01, DD-01, L2.5). "Persona en riesgo" = score por
+> encima del umbral = **señal de priorización para revisión humana, NO acusación**.
+> PII minimizada: agregado por defecto (Ley 25.326). El Done de cada tarea es un test verde.
 
-## 1. Capa de lectura/agregación sobre datos consolidados (CQRS-lite)
+## 1. Capa de métricas agregadas sobre datos existentes (backend, sin C-13/C-16)
 
-- [ ] 1.1 Definir las lecturas de reporting sobre los **continuous aggregates** de C-13 y las decisiones de C-16 (solo-lectura, no recorrer la hypertable cruda); Done: test de lectura desde agregados consolidados
-- [ ] 1.2 Garantizar que la capa de reporte **no muta** scores ni decisiones (solo lee); Done: test de invariancia (scores/decisiones inalterados tras generar reportes)
+- [ ] 1.1 Servicio de agregación que lee SOLO tablas ya existentes (exam_content, materia,
+      comisión, proctoring_session, proctoring_event) — sin depender de continuous
+      aggregates de TimescaleDB ni de decisiones de C-16; Done: test de conteos sobre DB real
+- [ ] 1.2 **Conteos globales**: cantidad de exámenes (exam_content), materias, comisiones,
+      sesiones totales y por estado terminal (activa/finalizada/anulada); Done: test de cada conteo
+- [ ] 1.3 **Score por sesión on-demand**: reutilizar `calcular_score` (eventos + pesos de
+      scoring config) para derivar el score de cada sesión sin tabla nueva; Done: test de score agregado
+- [ ] 1.4 La capa de métricas **no muta** nada (solo lee); Done: test de invariancia
 
-## 2. Reporte por examen y por estudiante (capability `post-exam-reports`)
+## 2. Métricas de riesgo y distribución (capability `statistical-distribution-analytics`)
 
-- [ ] 2.1 Reporte **por examen**: distribución de scores + conteo de sesiones por estado terminal; Done: test de agregación por examen sobre datos consolidados
-- [ ] 2.2 Confirmar que el reporte por examen es **agregado, sin PII** por defecto; Done: test de ausencia de PII en el reporte por examen
-- [ ] 2.3 Reporte **por estudiante**: línea de tiempo agregada (score final, eventos por severidad, decisiones humanas); Done: test de reporte nominal por estudiante
-- [ ] 2.4 Gate de acceso nominal: **RBAC contextual** (jurisdicción) + escritura en **audit log** del acceso a datos personales (Ley 25.326); Done: test acceso dentro de jurisdicción auditado / fuera de jurisdicción rechazado
+- [ ] 2.1 **Personas/sesiones en riesgo**: sesiones con score ≥ umbral (de config), como
+      CONTEO agregado y señal de priorización — nunca veredicto; Done: test de conteo de riesgo
+- [ ] 2.2 **Distribución de scores** (histograma/buckets + percentiles) sobre las sesiones
+      del período/examen; Done: test de distribución
+- [ ] 2.3 Filtros del informe: por examen, por materia, por comisión, por rango de fechas;
+      Done: test de agregación filtrada
+- [ ] 2.4 Contrato de salida: el "riesgo" es prioridad ordinal / señal, jamás culpa (RN-SC-01);
+      Done: test de contrato (señal, no veredicto)
 
-## 3. Distribución estadística, outliers y calidad del detector (capability `statistical-distribution-analytics`)
+## 3. Endpoint(s) + esquemas (capability `post-exam-reports`)
 
-- [ ] 3.1 Exponer la **distribución estadística** de scores por examen (histograma/percentiles); Done: test de distribución sobre agregados consolidados
-- [ ] 3.2 **Detección de outliers** con criterio estadístico **configurable y relativo a la distribución** del examen; Done: test de identificación de atípicos por criterio configurable
-- [ ] 3.3 Exponer el outlier como **prioridad ordinal / señal de revisión**, jamás veredicto; Done: test de contrato de salida (señal, no culpa)
-- [ ] 3.4 **Métricas de calidad del detector** (tasa de flaggeadas descartadas por el humano, etc.) leyendo decisiones de C-16; Done: test de cálculo de la métrica de calidad
-- [ ] 3.5 Confirmar que la métrica de calidad **NO** dispara recalibración automática de umbrales (RN-SC-05); Done: test de ausencia de auto-ajuste de umbrales
+- [ ] 3.1 Endpoint `GET /api/v1/stats/resumen` → sumario institucional (conteos + riesgo +
+      distribución), RBAC (admin_sistema/coordinador); Done: test del endpoint (200 con rol, 403 sin rol)
+- [ ] 3.2 Schemas Pydantic con `extra='forbid'`; agregado SIN PII por defecto (nombres solo
+      con permiso + audit); Done: test de ausencia de PII en el agregado
+- [ ] 3.3 Degradación segura: sin datos → ceros legítimos (no error); un fallo no rompe la
+      página; Done: test de resultado vacío vs error
 
-## 4. Exports y sumario institucional (capability `report-exports-and-summary`)
+## 4. Página de estadísticas real (frontend, reemplaza la hardcodeada)
 
-- [ ] 4.1 **Exports** (CSV/JSON) de reportes/agregados; Done: test de export de reporte agregado
-- [ ] 4.2 Export **agregado sin PII** por defecto; export **nominal** solo con RBAC contextual + audit; Done: test export agregado sin PII / export nominal con permiso auditado / sin permiso rechazado
-- [ ] 4.3 **Sumario institucional** del período (volumen, distribución global, tasa de revisión, decisiones agregadas); Done: test de sumario agregado del período
-- [ ] 4.4 Confirmar que el sumario **no** emite veredictos ni rankings nominales de estudiantes; Done: test de ausencia de veredicto/ranking nominal en el sumario
+- [ ] 4.1 Quitar/retirar la página vieja hardcodeada; Done: test de que no queda data mock
+- [ ] 4.2 Nueva página de estadísticas: stat cards (exámenes/materias/comisiones/sesiones/
+      en riesgo) + gráfico de distribución de scores, consumiendo `/stats/resumen`; Done:
+      test de render con datos reales del endpoint (mock del fetch, no de la DB)
+- [ ] 4.3 Contrato de carga resiliente (C-73): cargando/error/vacío-real/cargado; un fetch
+      fallido NO se muestra como "0"; Done: test de estados de carga
+- [ ] 4.4 Filtros en la UI (examen/materia/comisión/fechas) cableados al endpoint; Done: test de filtros
 
 ## 5. Garantías transversales de gobernanza y privacidad
 
-- [ ] 5.1 Verificar que **ningún path** de reporte/outlier/métrica/export emite sanción, veredicto ni acción automática (RN-SC-01, RN-RV-07, RN-DSR-04, DD-01); Done: test exhaustivo de no-veredicto/no-acción
-- [ ] 5.2 Verificar la **minimización de PII** transversal: agregado por defecto, nominal restringido + auditado (Ley 25.326); Done: test transversal de minimización de PII
+- [ ] 5.1 Verificar que ningún path del informe emite sanción/veredicto/acción automática
+      (RN-SC-01, RN-DSR-04, DD-01); Done: test de no-veredicto
+- [ ] 5.2 Minimización de PII: agregado por defecto, nominal restringido + auditado
+      (Ley 25.326); Done: test transversal de minimización
 
-## 6. Observabilidad y cierre
+## 6. Cierre
 
-- [ ] 6.1 Instrumentar la **distribución de score** y la **calidad del detector** como métricas de negocio (`14` §Niveles de métricas, nivel 1); Done: métricas visibles en Prometheus/Grafana
-- [ ] 6.2 Documentar que los reportes son insumo de **calibración de umbrales en Fase 2** (RN-SC-05) — decisión humana, no automática; Done: contrato de calibración documentado
+- [ ] 6.1 `tsc --noEmit` frontend + suite backend (por-archivo) y frontend en verde
+- [ ] 6.2 `openspec validate c-20-reportes-analytics` en verde
+
+> **Diferido a Fase 2 (cuando existan C-13/C-16)** — NO bloquea este change:
+> reportes nominales por estudiante con línea de tiempo, métricas de calidad del detector
+> (falsos positivos leyendo decisiones humanas), exports CSV/JSON y recalibración de umbrales.
+> Se re-incorporan como tasks cuando el score final consolidado (C-13) y las decisiones
+> humanas (C-16) estén disponibles.

@@ -1,6 +1,8 @@
 # Proposal — C-20 `reportes-analytics`
 
-> **Naturaleza del change**: feature de **Fase 2** (refinamiento), governance **MEDIO**, frontend + backend. Implementa los **reportes post-examen y analytics** (US-016, FR-15): reportes por examen y por estudiante, distribución estadística para detectar outliers, métricas de calidad del detector, exports y sumario institucional. **Principio inviolable (L2.5, RN-SC-01, DD-01)**: los reportes **INFORMAN y AGREGAN, NUNCA emiten veredicto ni acción automática**. **Depende de C-13** (score final) y **C-16** (decisiones humanas de revisión). Requiere un producto estable.
+> **Naturaleza del change**: feature de **Fase 2** (refinamiento), governance **MEDIO**, frontend + backend. Implementa los **reportes post-examen y analytics** (US-016, FR-15): reportes por examen y por estudiante, distribución estadística para detectar outliers, métricas de calidad del detector, exports y sumario institucional. **Principio inviolable (L2.5, RN-SC-01, DD-01)**: los reportes **INFORMAN y AGREGAN, NUNCA emiten veredicto ni acción automática**.
+
+> **REVISIÓN 2026-07-19 — DESACOPLE**: este change se re-alcanzó para **NO depender de C-13 ni C-16**. Las estadísticas se computan sobre los datos que YA existen (exam_content, materia, comisión, proctoring_session/event + scoring config): conteos (exámenes/materias/comisiones/sesiones), personas en riesgo (score ≥ umbral), y distribución de scores. Reemplaza la página vieja hardcodeada por una con datos reales. Los reportes que SÍ requieren el score final consolidado (C-13) o las decisiones humanas (C-16) — reportes nominales por estudiante, métricas de calidad del detector (falsos positivos), exports, recalibración — quedan **diferidos a Fase 2** y no bloquean este change.
 
 ## Why
 
