@@ -1,9 +1,8 @@
-// Capa de API del MVP. Por defecto funciona en MODO DEMO (datos en memoria, sin
-// backend) para poder probar el flujo completo standalone. Si se define
-// VITE_API_BASE + VITE_USE_REAL_BACKEND=1, las llamadas marcadas como reales
-// (consentimiento, biometría) pasan por fetch al FastAPI real.
-//
-// Los esquemas y enums coinciden con app/presentation/api/v1/* del backend.
+// Núcleo de la capa de API del MVP: `realFetch` (fetch autenticado al FastAPI real),
+// el cache en memoria del enrollment y los helpers de consentimiento/biometría.
+// TODA llamada pega al backend real (`VITE_API_BASE`, default `/api/v1`); no hay
+// modo demo (ver api.realonly.test.ts). Los esquemas y enums coinciden con
+// app/presentation/api/v1/* del backend.
 
 import type {
   ConsentTextResponse, DesafioActivo,
@@ -15,11 +14,6 @@ import { authProvider } from './authProvider';
 export const API_BASE = (import.meta.env.VITE_API_BASE as string) || '/api/v1';
 
 const delay = (ms = 350) => new Promise((r) => setTimeout(r, ms));
-
-// ---------------------------------------------------------------------------
-// Catálogo académico local (usado por joinExamInfo en las pantallas de proctoring)
-// ---------------------------------------------------------------------------
-
 
 // ---------------------------------------------------------------------------
 // Enrollment biométrico del perfil — C-22
@@ -59,33 +53,20 @@ function calcularVigencia(fechaExpiracion: string, renovacionAnticipada: boolean
 
 /**
  * Estado in-memory del enrollment del alumno (C-22).
- * Reemplaza el antiguo `perfilAlumno = { consentimiento_ok, biometria_ok }`.
+ * Cache de trabajo en memoria: la fuente de verdad es el backend
+ * (`syncEnrollmentState` lo rehidrata desde `/consent/profile` +
+ * `/proctoring/biometria/referencia/estado`). NO se persiste en el cliente:
+ * regla dura #6 (cliente = sensor no confiable) y #7 (Ley 25.326) — un cache en
+ * localStorage puede mentir tras un reset de DB o un cambio de usuario en el mismo
+ * browser, así que el gate NUNCA debe decidir con él.
  */
-// Demo: persistir el enrollment y la foto en localStorage para que NO se pierdan
-// al recargar la página (el mock vive en memoria; sin esto, consentimiento/foto se borran).
-const LS_ENROLLMENT = 'ae_demo_enrollment';
-const LS_FOTO = 'ae_demo_foto_perfil';
+let enrollmentAlumno: EstadoEnrollment = {
+  consentimiento: null, biometria: null, dni: null, perfil_completo: false,
+};
 
-function loadEnrollmentFromLS(): EstadoEnrollment {
-  try {
-    const raw = localStorage.getItem(LS_ENROLLMENT);
-    if (raw) return JSON.parse(raw) as EstadoEnrollment;
-  } catch { /* ignore */ }
-  return { consentimiento: null, biometria: null, dni: null, perfil_completo: false };
-}
-
-let enrollmentAlumno: EstadoEnrollment = loadEnrollmentFromLS();
-
-/** Persiste el enrollment del alumno (demo: sobrevive recargas). */
-function persistEnrollment(): void {
-  try { localStorage.setItem(LS_ENROLLMENT, JSON.stringify(enrollmentAlumno)); } catch { /* ignore */ }
-}
-
-/** Asigna + recalcula perfil_completo + persiste, en un solo paso. */
+/** Asigna + recalcula perfil_completo, en un solo paso (cache en memoria). */
 function commitEnrollment(e: EstadoEnrollment): EstadoEnrollment {
-  const next = recalcularPerfilCompleto(e);
-  enrollmentAlumno = next;
-  persistEnrollment();
+  enrollmentAlumno = recalcularPerfilCompleto(e);
   return enrollmentAlumno;
 }
 
@@ -129,27 +110,15 @@ export const DESAFIOS: DesafioActivo[] = [
 // TIPO_EVENTO_LABEL) movidos a ./apiLabels — se re-exportan al final del archivo
 // para no romper los imports existentes desde '../lib/api'.
 
-const CONSENT_TEXT: ConsentTextResponse = {
-  // Alineada con la versión del backend real ('v1') para que demo y real coincidan
-  // y la versión del consentimiento se muestre igual en todo el sistema.
-  version: 'v1',
-  hash_texto: 'sha256:9f2b…a31',
-  bloques: [
-    { icono: 'help', titulo: '¿Qué datos recolectamos?', cuerpo: 'Video de tu cámara y captura de pantalla durante el examen, y un descriptor facial para verificar tu identidad. El descriptor biométrico se trata como dato sensible.' },
-    { icono: 'memory', titulo: '¿Cómo se procesan?', cuerpo: 'El análisis de visión corre localmente en tu navegador (Web Worker). Solo se envían señales discretas firmadas y, ante incidencias graves, clips cortos de evidencia. El backend re-infiere y firma toda la evidencia.' },
-    { icono: 'dns', titulo: '¿Dónde se almacenan?', cuerpo: 'En infraestructura self-hosted de la universidad, cifrada en reposo, con cadena de custodia criptográfica. Soberanía de datos completa.' },
-    { icono: 'schedule', titulo: '¿Cuánto tiempo?', cuerpo: 'La evidencia se conserva 30 días y luego se elimina automáticamente. El embedding biométrico se elimina al egreso, salvo apelación o hold disciplinario.' },
-    { icono: 'gavel', titulo: 'Tus derechos', cuerpo: 'El sistema nunca sanciona automáticamente: solo prioriza para revisión humana. Podés acceder, rectificar y solicitar la eliminación de tus datos.' },
-  ],
-};
+// Versión de consentimiento por defecto hasta que el backend responda. El TEXTO del
+// consentimiento SIEMPRE viene del backend (`/consent/text`); acá sólo vive el
+// fallback de la cadena de versión. `getConsentText` / `ensureConsentVersionSynced`
+// la reemplazan con la versión REAL vigente. El gate de perfil compara el acuse
+// guardado contra ESTA (nunca contra un texto mock): si no, un acuse real jamás
+// coincidiría con un default distinto y el perfil quedaría eternamente "incompleto".
+const CONSENT_VERSION_FALLBACK = 'v1';
 
-// Versión vigente del texto de consentimiento. En modo demo es la del mock
-// (`CONSENT_TEXT.version`); con backend real, `getConsentText` la actualiza con la
-// versión que devuelve el catálogo del backend (p. ej. "v1"). El gate de perfil
-// compara la versión del acuse contra ESTA, no contra la constante mock — si no,
-// real backend ("v1") nunca coincide con el mock ("2026.1") y el perfil queda
-// eternamente "incompleto: renovación del consentimiento".
-let _consentVersionVigente: string = CONSENT_TEXT.version;
+let _consentVersionVigente: string = CONSENT_VERSION_FALLBACK;
 function consentVersionVigente(): string {
   return _consentVersionVigente;
 }
@@ -239,15 +208,14 @@ async function syncEnrollmentState(): Promise<EstadoEnrollment> {
 }
 
 /**
- * Invalida el enrollment cacheado del alumno (cache en memoria + localStorage +
- * acuses por-examen + estados de vía alternativa). Se llama al iniciar/cerrar sesión
+ * Invalida el enrollment cacheado del alumno (cache en memoria + acuses por-examen
+ * + estados de vía alternativa). Se llama al iniciar/cerrar sesión
  * para que un usuario NO herede el `perfil_completo` (ni los acuses) del usuario
  * anterior en el mismo browser. El siguiente `getEnrollment`/`puedeRendir` lo
  * reconstruye desde el servidor (modo real).
  */
 export function resetEnrollmentCache(): void {
   enrollmentAlumno = { consentimiento: null, biometria: null, dni: null, perfil_completo: false };
-  try { localStorage.removeItem(LS_ENROLLMENT); } catch { /* ignore */ }
   _estadosViaAlternativa.clear();
 }
 
@@ -379,12 +347,8 @@ function normalizarConsentText(raw: unknown): ConsentTextResponse {
 export {
   delay,
   VISION_ENGINE_VERSION,
-  LS_ENROLLMENT,
-  LS_FOTO,
   calcularExpiracion,
   calcularVigencia,
-  loadEnrollmentFromLS,
-  persistEnrollment,
   commitEnrollment,
   recalcularPerfilCompleto,
   _estadosViaAlternativa,
@@ -395,7 +359,6 @@ export {
   BLOQUE_META,
   inferirIconoBloque,
   normalizarConsentText,
-  CONSENT_TEXT,
   enrollmentAlumno,
 };
 
