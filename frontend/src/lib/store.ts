@@ -1,7 +1,7 @@
 // Estado de sesión de la demo, compartido entre pantallas (rol activo, examen
 // seleccionado, anomalías generadas durante el examen que el panel del proctor refleja).
 import { create } from 'zustand';
-import type { Principal, Rol, EventoSesion, Examen, SesionRevision, EstadoEnrollment, DecisionRevisor } from './types';
+import type { EventoSesion, Examen, SesionRevision, EstadoEnrollment, DecisionRevisor } from './types';
 
 // C-56: la clave `activeexam_bio_ref` (embedding crudo en localStorage) queda eliminada.
 // El embedding ya no se persiste en el cliente: el backend devuelve un `referencia_id`
@@ -105,8 +105,6 @@ function persistProctoringSessionCreadaEn(creadaEn: string | null): void {
 }
 
 interface AppState {
-  principal: Principal | null;
-  rol: Rol | null;
   examenActivo: Examen | null;
   // anomalías acumuladas durante el examen del estudiante (alimenta panel proctor)
   anomaliasVivo: EventoSesion[];
@@ -194,7 +192,6 @@ interface AppState {
    */
   biometriaReferencia: number[] | null;
 
-  setPrincipal: (p: Principal | null, rol: Rol | null) => void;
   setExamenActivo: (e: Examen | null) => void;
   setRevisionSeleccionada: (s: SesionRevision | null) => void;
   pushAnomalia: (e: EventoSesion) => void;
@@ -207,11 +204,6 @@ interface AppState {
    * usuario nuevo NO herede el `perfil_completo` del usuario anterior en el mismo browser.
    */
   clearEnrollment: () => void;
-  /**
-   * Actualiza la foto de perfil del principal en el store (C-37).
-   * Sin error si principal es null.
-   */
-  setFotoPerfil: (dataUrl: string) => void;
   /** C-46: setea el ID de la sesión de proctoring activa (o null para limpiarla). */
   setProctoringSessionId: (id: string | null) => void;
   /** Setea la `creada_en` de la sesión activa — ancla del timer server-autoritativo. */
@@ -235,8 +227,6 @@ interface AppState {
 }
 
 export const useApp = create<AppState>((set) => ({
-  principal: null,
-  rol: null,
   // Rehidratar el examen activo desde sessionStorage (sobrevive recargas entre pasos).
   examenActivo: loadExamenActivo(),
   anomaliasVivo: [],
@@ -258,7 +248,6 @@ export const useApp = create<AppState>((set) => ({
   biometrico_referencia_id: null,
   biometriaReferencia: null,
 
-  setPrincipal: (principal, rol) => set({ principal, rol }),
   setExamenActivo: (examenActivo) => { persistExamenActivo(examenActivo); set({ examenActivo }); },
   setRevisionSeleccionada: (revisionSeleccionada) => set({ revisionSeleccionada }),
   pushAnomalia: (e) => set((s) => ({ anomaliasVivo: [e, ...s.anomaliasVivo].slice(0, 50) })),
@@ -282,9 +271,6 @@ export const useApp = create<AppState>((set) => ({
   },
   setEnrollmentStatus: (e) => set({ enrollmentStatus: e, isProfileComplete: e.perfil_completo }),
   clearEnrollment: () => set({ enrollmentStatus: null, isProfileComplete: false }),
-  setFotoPerfil: (dataUrl) => set((s) => ({
-    principal: s.principal ? { ...s.principal, foto_perfil: dataUrl } : s.principal,
-  })),
   setProctoringSessionId: (id) => { persistProctoringSessionId(id); set({ proctoringSessionId: id }); },
   setProctoringSessionCreadaEn: (creadaEn) => {
     persistProctoringSessionCreadaEn(creadaEn);

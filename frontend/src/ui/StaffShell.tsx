@@ -2,7 +2,6 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { Icon } from './components';
 import { Link, useRouter } from '../lib/router';
-import { useApp } from '../lib/store';
 import { useAuth } from '../lib/authStore';
 import { ConfirmModal } from './ConfirmModal';
 import type { StaffNavItem } from './nav';
@@ -26,7 +25,7 @@ function LogoFull({ showText = true }: { showText?: boolean }) {
 }
 
 function UserMenu() {
-  const principal = useApp((s) => s.principal);
+  const principal = useAuth((s) => s.principal);
   const logout = useAuth((s) => s.logout);
   const [open, setOpen] = useState(false);
   const [confirmandoLogout, setConfirmandoLogout] = useState(false);

@@ -24,6 +24,7 @@ import { STAFF_NAV } from '../ui/nav';
 import { useToast } from '../ui/toast';
 import { useNavigate } from '../lib/router';
 import { useApp } from '../lib/store';
+import { useAuth } from '../lib/authStore';
 import { api } from '../lib/api';
 import type { SesionProctoringDetalle } from '../lib/types';
 import { loadEffectiveConfig, getEffectiveConfig } from '../config/effectiveConfigCache';
@@ -60,9 +61,9 @@ export default function ProctoringSessionDetail() {
   const navigate = useNavigate();
   const toast = useToast();
   const sessionId = useApp((s) => s.proctoringSessionId);
-  const rol = useApp((s) => s.rol);
+  const rol = useAuth((s) => s.principal?.roles[0] ?? null);
   // Identidad del proctor → se registra como proctor_actor al resolver una pausa.
-  const proctorActor = useApp((s) => s.principal?.email ?? null);
+  const proctorActor = useAuth((s) => s.principal?.email ?? null);
   // C-15: el proctor puede abrir el detalle para chatear/supervisar, pero NO
   // borrar evidencia (regla dura #6: cadena de custodia). El borrado y la lista
   // admin quedan reservados a admin_sistema; el proctor vuelve a su panel.

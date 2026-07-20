@@ -66,6 +66,9 @@ interface AuthState {
 
   /** True si el principal tiene AL MENOS uno de los roles dados. */
   hasRole: (roles: Rol[]) => boolean;
+
+  /** Actualiza la foto de perfil del principal (fuente única — C-73). Sin efecto si no hay principal. */
+  setFotoPerfil: (dataUrl: string) => void;
 }
 
 // Guardamos referencia al provider activo para que login/logout puedan delegar.
@@ -149,4 +152,7 @@ export const useAuth = create<AuthState>((set, get) => ({
     const p = get().principal;
     return !!p && roles.some((r) => p.roles.includes(r));
   },
+
+  setFotoPerfil: (dataUrl) =>
+    set((s) => ({ principal: s.principal ? { ...s.principal, foto_perfil: dataUrl } : s.principal })),
 }));

@@ -26,6 +26,7 @@ import { LoadingSpinner } from '../ui/components';
 import { StudentShell } from '../ui/shells';
 import { useNavigate } from '../lib/router';
 import { useApp } from '../lib/store';
+import { useAuth } from '../lib/authStore';
 import { api, ENABLE_DNI_SCAN } from '../lib/api';
 import { EnrollmentConsentStep } from './enrollment/EnrollmentConsentStep';
 import { EnrollmentBiometricStep } from './enrollment/EnrollmentBiometricStep';
@@ -55,9 +56,9 @@ type PasoEnrollment =
 
 export default function StudentProfile() {
   const navigate = useNavigate();
-  const principal = useApp((s) => s.principal);
+  const principal = useAuth((s) => s.principal);
   const setEnrollmentStatus = useApp((s) => s.setEnrollmentStatus);
-  const setFotoPerfil = useApp((s) => s.setFotoPerfil);
+  const setFotoPerfil = useAuth((s) => s.setFotoPerfil);
 
   const [enrollment, setEnrollment] = useState<EstadoEnrollment | null>(null);
   const [paso, setPaso] = useState<PasoEnrollment>('cargando');

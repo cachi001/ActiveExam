@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { Icon, BackButton } from './components';
 import { Link, useRouter, useNavigate } from '../lib/router';
-import { useApp } from '../lib/store';
 import { nombreCompleto } from '../lib/types';
 import { useAuth } from '../lib/authStore';
 import { api } from '../lib/api';
@@ -22,7 +21,7 @@ const STUDENT_NAV: StudentNavItem[] = [
 ];
 
 function StudentUserMenu({ onLogoutClick }: { onLogoutClick: () => void }) {
-  const principal = useApp((s) => s.principal);
+  const principal = useAuth((s) => s.principal);
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   // Ver nota en UserMenu: el overlay fixed no sirve por el backdrop-blur del topbar.
@@ -113,8 +112,8 @@ export function StudentShell({
   const logout = useAuth((s) => s.logout);
   const navigate = useNavigate();
   const { path } = useRouter();
-  const principal = useApp((s) => s.principal);
-  const setFotoPerfil = useApp((s) => s.setFotoPerfil);
+  const principal = useAuth((s) => s.principal);
+  const setFotoPerfil = useAuth((s) => s.setFotoPerfil);
   const isDesktop = useIsDesktop();
   const [collapsed, toggleCollapsed] = useSidebarCollapsed();
   const [confirmandoLogout, setConfirmandoLogout] = useState(false);
