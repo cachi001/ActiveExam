@@ -1,4 +1,5 @@
-import { Icon, Avatar, Button } from '../../../ui/components';
+import type { ReactNode } from 'react';
+import { Icon, Avatar } from '../../../ui/components';
 import { ActionMenu } from '../../../ui/ActionMenu';
 import { RolBadge, EstadoSwitch } from './UsuarioHelpers';
 import type { UsuarioAdmin } from '../../../lib/types';
@@ -8,27 +9,27 @@ interface UsuarioTableProps {
   fotos: Record<string, string>;
   cargando: boolean;
   total: number;
-  totalPaginas: number;
-  paginaActual: number;
   esPropioUsuario: (u: UsuarioAdmin) => boolean;
   onVerDetalle: (u: UsuarioAdmin) => void;
   onEditar: (u: UsuarioAdmin) => void;
   onToggleEstado: (u: UsuarioAdmin) => void;
-  onIrPagina: (p: number) => void;
+  /** Slot a la derecha del header (p. ej. el selector "Por página"). */
+  headerRight?: ReactNode;
 }
 
 export function UsuarioTable({
-  usuarios, fotos, cargando, total, totalPaginas, paginaActual,
-  esPropioUsuario, onVerDetalle, onEditar, onToggleEstado, onIrPagina,
+  usuarios, fotos, cargando, total,
+  esPropioUsuario, onVerDetalle, onEditar, onToggleEstado, headerRight,
 }: UsuarioTableProps) {
   return (
     <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/60 shadow-card overflow-hidden">
       <div className="px-4 py-3 border-b border-outline-variant/40 flex items-center gap-2">
-        <Icon name="group" className="text-[16px] text-primary shrink-0" />
+        <Icon name="group" className="text-[16px] text-on-surface-variant shrink-0" />
         <h2 className="text-[13px] font-semibold text-on-surface">
           Usuarios
           <span className="text-on-surface-variant font-normal ml-1">({total})</span>
         </h2>
+        {headerRight && <div className="ml-auto">{headerRight}</div>}
       </div>
 
       {cargando ? (
@@ -150,20 +151,6 @@ export function UsuarioTable({
             ))}
           </div>
         </>
-      )}
-
-      {totalPaginas > 1 && (
-        <div className="px-4 py-3 flex items-center justify-between border-t border-outline-variant/40">
-          <Button size="sm" variant="ghost" icon="chevron_left" disabled={paginaActual <= 1} onClick={() => onIrPagina(paginaActual - 1)}>
-            Anterior
-          </Button>
-          <span className="text-[11px] text-on-surface-variant">
-            Página {paginaActual} de {totalPaginas}
-          </span>
-          <Button size="sm" variant="ghost" iconRight="chevron_right" disabled={paginaActual >= totalPaginas} onClick={() => onIrPagina(paginaActual + 1)}>
-            Siguiente
-          </Button>
-        </div>
       )}
     </div>
   );

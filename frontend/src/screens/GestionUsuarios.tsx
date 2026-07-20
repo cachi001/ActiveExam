@@ -10,7 +10,7 @@
  * propio usuario logueado (anti-lockout).
  */
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { StaffShell } from '../ui/shells';
 import { Button } from '../ui/components';
 import { HelpButton } from '../ui/HelpButton';
@@ -21,10 +21,11 @@ import { useNavigate } from '../lib/router';
 import { useAuth } from '../lib/authStore';
 import { api } from '../lib/api';
 import type { UsuarioAdmin } from '../lib/types';
-import { FORM_VACIO, type ModoFormulario, type FormState } from './admin/components/UsuarioHelpers';
+import { FORM_VACIO, OPCIONES_ROL, OPCIONES_ESTADO, type ModoFormulario, type FormState } from './admin/components/UsuarioHelpers';
 import { UsuarioFormPanel } from './admin/components/UsuarioFormPanel';
-import { UsuarioFiltros } from './admin/components/UsuarioFiltros';
 import { UsuarioTable } from './admin/components/UsuarioTable';
+import { FiltrosPanel } from '../ui/FiltrosPanel';
+import { Pagination, PageSizeSelect } from '../ui/Pagination';
 
 export default function GestionUsuarios() {
   const toast = useToast();
@@ -34,13 +35,20 @@ export default function GestionUsuarios() {
   const [usuarios, setUsuarios] = useState<UsuarioAdmin[]>([]);
   const [total, setTotal] = useState(0);
   const [cargando, setCargando] = useState(true);
-  const PAGE_SIZE = 20;
+  const [pageSize, setPageSize] = useState(5);
+  // Ref siempre-actual del pageSize para que cargarUsuarios (useCallback estable)
+  // lea el valor vigente sin tener que pasarlo por cada call-site.
+  const pageSizeRef = useRef(pageSize);
+  pageSizeRef.current = pageSize;
   const [offset, setOffset] = useState(0);
 
+  // Aplicado (lo que se busca) vs borrador (lo que se edita en el panel).
   const [filtroRol, setFiltroRol] = useState('');
   const [filtroEstado, setFiltroEstado] = useState('activo');
   const [filtroQ, setFiltroQ] = useState('');
-  const [qInput, setQInput] = useState('');
+  const [borrRol, setBorrRol] = useState('');
+  const [borrEstado, setBorrEstado] = useState('activo');
+  const [borrQ, setBorrQ] = useState('');
 
   const [fotos, setFotos] = useState<Record<string, string>>({});
 
@@ -55,7 +63,7 @@ export default function GestionUsuarios() {
   const cargarUsuarios = useCallback(async (o: number, rol: string, estado: string, q: string) => {
     setCargando(true);
     try {
-      const data = await api.listarUsuarios(PAGE_SIZE, o, {
+      const data = await api.listarUsuarios(pageSizeRef.current, o, {
         rol: rol || undefined,
         estado: estado !== 'todos' ? estado : undefined,
         q: q || undefined,
@@ -86,22 +94,28 @@ export default function GestionUsuarios() {
 
   useEffect(() => { cargarUsuarios(0, filtroRol, filtroEstado, filtroQ); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  function aplicarFiltros(rol: string, estado: string, q: string) {
+  const hayCambiosFiltros =
+    borrRol !== filtroRol || borrEstado !== filtroEstado || borrQ.trim() !== filtroQ;
+  const hayFiltrosActivos = Boolean(borrRol) || borrEstado !== 'activo' || Boolean(borrQ);
+
+  function aplicarFiltros() {
+    const q = borrQ.trim();
+    setFiltroRol(borrRol);
+    setFiltroEstado(borrEstado);
+    setFiltroQ(q);
     setOffset(0);
-    cargarUsuarios(0, rol, estado, q);
+    cargarUsuarios(0, borrRol, borrEstado, q);
   }
 
-  function handleFiltroRol(v: string) { setFiltroRol(v); aplicarFiltros(v, filtroEstado, filtroQ); }
-  function handleFiltroEstado(v: string) { setFiltroEstado(v); aplicarFiltros(filtroRol, v, filtroQ); }
-
-  function handleQChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const v = e.target.value;
-    setQInput(v);
-    if (!v) { setFiltroQ(''); aplicarFiltros(filtroRol, filtroEstado, ''); }
-  }
-
-  function handleQKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === 'Enter') { setFiltroQ(qInput); aplicarFiltros(filtroRol, filtroEstado, qInput); }
+  function limpiarFiltros() {
+    setBorrRol('');
+    setBorrEstado('activo');
+    setBorrQ('');
+    setFiltroRol('');
+    setFiltroEstado('activo');
+    setFiltroQ('');
+    setOffset(0);
+    cargarUsuarios(0, '', 'activo', '');
   }
 
   function abrirCrear() {
@@ -190,13 +204,20 @@ export default function GestionUsuarios() {
     }
   }
 
-  const totalPaginas = Math.ceil(total / PAGE_SIZE);
-  const paginaActual = Math.floor(offset / PAGE_SIZE) + 1;
+  const totalPaginas = Math.ceil(total / pageSize);
+  const paginaActual = Math.floor(offset / pageSize) + 1;
 
   function irPagina(p: number) {
-    const nuevoOffset = (p - 1) * PAGE_SIZE;
+    const nuevoOffset = (p - 1) * pageSize;
     setOffset(nuevoOffset);
     cargarUsuarios(nuevoOffset, filtroRol, filtroEstado, filtroQ);
+  }
+
+  function cambiarPageSize(size: number) {
+    pageSizeRef.current = size;
+    setPageSize(size);
+    setOffset(0);
+    cargarUsuarios(0, filtroRol, filtroEstado, filtroQ);
   }
 
   function esPropioUsuario(u: UsuarioAdmin): boolean {
@@ -233,29 +254,73 @@ export default function GestionUsuarios() {
           />
         )}
 
-        <UsuarioFiltros
-          filtroRol={filtroRol}
-          filtroEstado={filtroEstado}
-          qInput={qInput}
-          onFiltroRol={handleFiltroRol}
-          onFiltroEstado={handleFiltroEstado}
-          onQChange={handleQChange}
-          onQKeyDown={handleQKeyDown}
-        />
+        <FiltrosPanel
+          onAplicar={aplicarFiltros}
+          onLimpiar={limpiarFiltros}
+          hayFiltros={hayFiltrosActivos}
+          hayCambios={hayCambiosFiltros}
+          aplicarDeshabilitado={cargando}
+        >
+          <label className="flex flex-col gap-1 text-[12px] font-medium text-on-surface-variant">
+            Rol
+            <select
+              value={borrRol}
+              onChange={(e) => setBorrRol(e.target.value)}
+              className="min-w-[160px] rounded-md border border-surface-300 bg-white px-3 py-2 text-[13px] text-on-surface focus:border-primary focus:outline-none"
+            >
+              {OPCIONES_ROL.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 text-[12px] font-medium text-on-surface-variant">
+            Estado
+            <select
+              value={borrEstado}
+              onChange={(e) => setBorrEstado(e.target.value)}
+              className="min-w-[140px] rounded-md border border-surface-300 bg-white px-3 py-2 text-[13px] text-on-surface focus:border-primary focus:outline-none"
+            >
+              {OPCIONES_ESTADO.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 text-[12px] font-medium text-on-surface-variant">
+            Buscar
+            <input
+              type="text"
+              value={borrQ}
+              placeholder="Nombre, email o legajo…"
+              onChange={(e) => setBorrQ(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') aplicarFiltros();
+              }}
+              className="min-w-[220px] rounded-md border border-surface-300 bg-white px-3 py-2 text-[13px] text-on-surface focus:border-primary focus:outline-none"
+            />
+          </label>
+        </FiltrosPanel>
 
         <UsuarioTable
           usuarios={usuarios}
           fotos={fotos}
           cargando={cargando}
           total={total}
-          totalPaginas={totalPaginas}
-          paginaActual={paginaActual}
           esPropioUsuario={esPropioUsuario}
           onVerDetalle={(u) => navigate(`/admin/usuarios/${u.id}`)}
           onEditar={abrirEditar}
           onToggleEstado={handleToggleEstado}
-          onIrPagina={irPagina}
+          headerRight={<PageSizeSelect value={pageSize} onChange={cambiarPageSize} />}
         />
+
+        {total > 0 && (
+          <Pagination
+            currentPage={paginaActual}
+            totalPages={totalPaginas}
+            totalElements={total}
+            pageSize={pageSize}
+            onPageChange={irPagina}
+          />
+        )}
       </div>
 
       <ConfirmModal

@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
 import { StaffShell } from '../ui/shells';
-import { Icon, Card, Button, SectionTitle, LoadingSpinner } from '../ui/components';
+import { Icon, Card, Button, LoadingSpinner } from '../ui/components';
 import { HelpButton } from '../ui/HelpButton';
 import { ADMIN_NAV } from './AdminDashboard';
 import { useNavigate } from '../lib/router';
 import { API_BASE } from '../lib/api';
 import { authProvider } from '../lib/authProvider';
-import { TableToolbar, type TableQuery } from '../ui/TableToolbar';
+import { type TableQuery } from '../ui/TableToolbar';
+import { FiltrosPanel } from '../ui/FiltrosPanel';
+import { Pagination, PageSizeSelect } from '../ui/Pagination';
 import { ActionMenu } from '../ui/ActionMenu';
 import { listarExamenesContenidoPaginadoFn } from '../lib/examContentCatalog';
 import { ImportExamModal } from '../admin/ExamImport/ImportExamModal';
@@ -33,6 +35,8 @@ export default function ExamList() {
   const [importados, setImportados] = useState<ExamenContenidoResumen[]>([]);
   const [totalImportados, setTotalImportados] = useState(0);
   const [cargando, setCargando] = useState(true);
+  // Borrador de búsqueda: se edita libre y recién se aplica con "Aplicar filtros".
+  const [borradorQ, setBorradorQ] = useState('');
 
   const fetchImportados = useCallback(async (q: TableQuery) => {
     setCargando(true);
@@ -68,12 +72,24 @@ export default function ExamList() {
   };
 
   const hayResultados = importados.length > 0;
+  const aplicarBusqueda = () => setQuery((q) => ({ ...q, q: borradorQ.trim(), page: 1 }));
+  const limpiarBusqueda = () => {
+    setBorradorQ('');
+    setQuery((q) => ({ ...q, q: '', page: 1 }));
+  };
+  const hayCambiosBusqueda = borradorQ.trim() !== query.q;
+  const totalPaginas = Math.max(1, Math.ceil(totalImportados / query.page_size));
 
   return (
     <StaffShell
       nav={ADMIN_NAV}
       title="Listado de exámenes"
       subtitle="Gestioná las evaluaciones supervisadas: estado, umbral de revisión e inscriptos."
+      actions={
+        <Button icon="upload" onClick={() => setImportOpen(true)} size="sm">
+          Importar examen
+        </Button>
+      }
       help={
         <HelpButton title="Exámenes">
           <p>
@@ -89,26 +105,40 @@ export default function ExamList() {
       }
     >
       <div className="space-y-lg animate-in fade-in duration-500">
-        <Card>
-          <SectionTitle
-            sub={`${totalImportados} ${totalImportados === 1 ? 'examen' : 'exámenes'}`}
-            action={
-              <Button icon="upload" onClick={() => setImportOpen(true)} className="shrink-0">
-                Importar examen
-              </Button>
-            }
-          >
-            Listado
-          </SectionTitle>
+        {/* Filtros FUERA de la card. */}
+        <FiltrosPanel
+          onAplicar={aplicarBusqueda}
+          onLimpiar={limpiarBusqueda}
+          hayFiltros={Boolean(borradorQ || query.q)}
+          hayCambios={hayCambiosBusqueda}
+          aplicarDeshabilitado={cargando}
+        >
+          <label className="flex flex-col gap-1 text-[12px] font-medium text-on-surface-variant">
+            Buscar
+            <input
+              type="text"
+              value={borradorQ}
+              placeholder="Nombre, materia o comisión…"
+              onChange={(e) => setBorradorQ(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') aplicarBusqueda();
+              }}
+              className="min-w-[240px] rounded-md border border-surface-300 bg-white px-3 py-2 text-[13px] text-on-surface focus:border-primary focus:outline-none"
+            />
+          </label>
+        </FiltrosPanel>
 
-          <div className="mb-md">
-            <TableToolbar
-              query={query}
-              onChange={setQuery}
-              placeholder="Buscar por nombre, materia o comisión…"
-              total={totalImportados}
-              pageSizeOptions={PAGE_SIZE_OPTIONS}
-              loading={cargando}
+        <Card>
+          <div className="flex items-center gap-2 mb-md pb-md border-b border-outline-variant/40">
+            <Icon name="quiz" className="text-[18px] text-on-surface-variant" fill />
+            <h2 className="text-[15px] font-semibold text-on-surface">
+              Exámenes <span className="text-on-surface-variant font-normal">({totalImportados})</span>
+            </h2>
+            <PageSizeSelect
+              className="ml-auto"
+              value={query.page_size}
+              onChange={(ps) => setQuery((q) => ({ ...q, page_size: ps, page: 1 }))}
+              options={PAGE_SIZE_OPTIONS}
             />
           </div>
 
@@ -154,7 +184,6 @@ export default function ExamList() {
                       >
                         <td className="py-sm pr-md">
                           <p className="text-label-md font-semibold text-on-surface">{e.titulo}</p>
-                          <p className="text-label-sm text-on-surface-variant font-mono text-[11px]">{e.id}</p>
                         </td>
                         <td className="py-sm pr-md text-label-md text-on-surface-variant">
                           {e.materia_nombre ?? <span className="text-outline italic text-label-sm">sin materia</span>}
@@ -196,7 +225,6 @@ export default function ExamList() {
                       className="flex-1 min-w-0 text-left"
                     >
                       <p className="text-label-md font-semibold text-on-surface truncate">{e.titulo}</p>
-                      <p className="text-label-sm text-on-surface-variant font-mono text-[11px] truncate mt-0.5">{e.id}</p>
                       <div className="mt-2 space-y-0.5 text-label-sm text-on-surface-variant">
                         <p>
                           <span className="text-outline">Materia:</span>{' '}
@@ -226,6 +254,17 @@ export default function ExamList() {
           )}
 
         </Card>
+
+        {/* Paginación server-side FUERA de la card (igual que Usuarios). */}
+        {totalImportados > 0 && (
+          <Pagination
+            currentPage={query.page}
+            totalPages={totalPaginas}
+            totalElements={totalImportados}
+            pageSize={query.page_size}
+            onPageChange={(p) => setQuery((q) => ({ ...q, page: p }))}
+          />
+        )}
       </div>
 
       <ImportExamModal

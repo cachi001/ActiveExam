@@ -14,6 +14,7 @@ import { StatCard } from './proctoring/StatCard';
 import { statProps } from './proctoring/statCatalog';
 import { Link } from '../lib/router';
 import { api } from '../lib/api';
+import { useAsyncData } from '../lib/useAsyncData';
 import { STAFF_NAV } from '../ui/nav';
 import type { ExamenContenidoResumen, SesionProctoringResumen } from '../lib/types';
 import { examenContenidoSubtitulo, formatVentanaExamen, formatDuracionExamen } from './dashboards.helpers';
@@ -23,18 +24,16 @@ import { loadEffectiveConfig, getEffectiveConfig } from '../config/effectiveConf
 export const ADMIN_NAV = STAFF_NAV;
 
 export default function AdminDashboard() {
-  const [examenes, setExamenes] = useState<ExamenContenidoResumen[]>([]);
-  const [cargando, setCargando] = useState(true);
+  // Contrato de carga resiliente (C-73): si el fetch del catálogo FALLA, se
+  // muestra estado de error con reintentar — NUNCA "0 exámenes" fantasma.
+  const examenesState = useAsyncData(() => api.listarExamenesContenido(), []);
+  const examenes = examenesState.data ?? [];
   // Sesiones reales (GET /proctoring/sessions) + tasa de flag derivada del umbral
   // de cola de revisión. null = todavía cargando; [] = sin sesiones → 0 / 0%.
   const [sesiones, setSesiones] = useState<SesionProctoringResumen[] | null>(null);
   const [umbral, setUmbral] = useState(70);
 
   useEffect(() => {
-    api.listarExamenesContenido()
-      .then(setExamenes)
-      .finally(() => setCargando(false));
-
     void (async () => {
       try {
         await loadEffectiveConfig();
@@ -74,7 +73,19 @@ export default function AdminDashboard() {
         {/* Stat cards con datos reales (catálogo + sesiones de proctoring). Cuando
             no hay sesiones se muestra 0 / 0% (no "—"). */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-md">
-          <StatCard icon="assignment" label="Exámenes" value={cargando ? '…' : examenes.length} sub="importados" tono="primary" />
+          <StatCard
+            icon="assignment"
+            label="Exámenes"
+            value={
+              examenesState.status === 'loading'
+                ? '…'
+                : examenesState.status === 'error'
+                  ? '—'
+                  : examenes.length
+            }
+            sub="importados"
+            tono="primary"
+          />
           <StatCard {...statProps('sesiones', totalSesiones ?? '…')} />
           <StatCard icon="flag" label="Cola de revisión" value={sesiones === null ? '…' : flagged} sub="sesiones en revisión" tono="warning" />
         </div>
@@ -94,9 +105,21 @@ export default function AdminDashboard() {
                 </Link>
               </div>
               <div className="divide-y divide-surface-200">
-                {cargando ? (
+                {examenesState.status === 'loading' ? (
                   <div className="px-lg py-xl flex items-center justify-center">
                     <LoadingSpinner size="sm" label="Cargando exámenes…" />
+                  </div>
+                ) : examenesState.status === 'error' ? (
+                  <div className="px-lg py-xl flex flex-col items-center text-center gap-md text-on-surface-variant">
+                    <Icon name="error" className="text-[36px] text-error" fill />
+                    <p className="text-[14px]">No se pudo cargar el catálogo de exámenes.</p>
+                    <button
+                      type="button"
+                      onClick={examenesState.retry}
+                      className="inline-flex items-center gap-2 px-4 py-2 rounded-md border border-surface-200 bg-white text-[14px] font-medium hover:bg-primary/5"
+                    >
+                      <Icon name="refresh" className="text-[16px]" /> Reintentar
+                    </button>
                   </div>
                 ) : examenes.length === 0 ? (
                   <div className="px-lg py-xl flex flex-col items-center text-center gap-md text-on-surface-variant">

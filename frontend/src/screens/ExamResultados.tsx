@@ -12,7 +12,9 @@ import { STAFF_NAV } from '../ui/nav';
 import { useNavigate, useRouteParam } from '../lib/router';
 import { API_BASE } from '../lib/api';
 import { authProvider } from '../lib/authProvider';
-import { TableToolbar, type TableQuery } from '../ui/TableToolbar';
+import { type TableQuery } from '../ui/TableToolbar';
+import { FiltrosPanel } from '../ui/FiltrosPanel';
+import { Pagination, PageSizeSelect } from '../ui/Pagination';
 import {
   getExamenHeaderFn,
   listarResultadosFn,
@@ -49,7 +51,7 @@ function TableSkeleton() {
   );
 }
 
-const PAGE_SIZE_DEFAULT = 25;
+const PAGE_SIZE_DEFAULT = 5;
 
 export default function ExamResultados() {
   const navigate = useNavigate();
@@ -66,6 +68,9 @@ export default function ExamResultados() {
   const [total, setTotal] = useState(0);
   const [cargandoTabla, setCargandoTabla] = useState(false);
   const [errorTabla, setErrorTabla] = useState<string | null>(null);
+  // Borrador de filtros (se aplican con "Aplicar filtros").
+  const [borrQ, setBorrQ] = useState('');
+  const [borrEstado, setBorrEstado] = useState('');
 
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
   const [sincronizando, setSincronizando] = useState(false);
@@ -125,19 +130,24 @@ export default function ExamResultados() {
 
   const pendientes = resultados.filter((r) => r.estado_moodle === 'pendiente').length;
 
-  const filterDefs = [
-    {
-      key: 'estado',
-      label: 'Estado',
-      placeholder: 'Todos los estados',
-      options: [
-        { value: 'pendiente', label: 'Pendiente de sincronizar' },
-        { value: 'enviado',   label: 'Sincronizado en Moodle' },
-        { value: 'fallido',   label: 'Falló' },
-        { value: 'sin_token', label: 'Sin token' },
-      ],
-    },
+  const ESTADO_OPCIONES = [
+    { value: 'pendiente', label: 'Pendiente de sincronizar' },
+    { value: 'enviado',   label: 'Sincronizado en Moodle' },
+    { value: 'fallido',   label: 'Falló' },
+    { value: 'sin_token', label: 'Sin token' },
   ];
+
+  const aplicarFiltros = () =>
+    setQuery((q) => ({ ...q, q: borrQ.trim(), filters: { estado: borrEstado }, page: 1 }));
+  const limpiarFiltros = () => {
+    setBorrQ('');
+    setBorrEstado('');
+    setQuery((q) => ({ ...q, q: '', filters: { estado: '' }, page: 1 }));
+  };
+  const hayCambiosFiltros =
+    borrQ.trim() !== query.q || borrEstado !== (query.filters['estado'] ?? '');
+  const hayFiltrosActivos = Boolean(borrQ || borrEstado);
+  const totalPaginas = Math.max(1, Math.ceil(total / query.page_size));
 
   const volverAlDetalle = () =>
     navigate(examenId ? `/admin/examenes/${examenId}` : '/admin/examenes');
@@ -172,7 +182,15 @@ export default function ExamResultados() {
         </Button>
 
         <Card>
-          <SectionTitle sub={`${total} resultado${total !== 1 ? 's' : ''}`}>
+          <SectionTitle
+            sub={`${total} resultado${total !== 1 ? 's' : ''}`}
+            action={
+              <PageSizeSelect
+                value={query.page_size}
+                onChange={(ps) => setQuery((q) => ({ ...q, page_size: ps, page: 1 }))}
+              />
+            }
+          >
             Alumnos que rindieron
           </SectionTitle>
 
@@ -187,14 +205,40 @@ export default function ExamResultados() {
           )}
 
           <div className="mb-md">
-            <TableToolbar
-              query={query}
-              onChange={setQuery}
-              placeholder="Buscar por alumno…"
-              filterDefs={filterDefs}
-              total={total}
-              loading={cargandoTabla}
-            />
+            <FiltrosPanel
+              onAplicar={aplicarFiltros}
+              onLimpiar={limpiarFiltros}
+              hayFiltros={hayFiltrosActivos}
+              hayCambios={hayCambiosFiltros}
+              aplicarDeshabilitado={cargandoTabla}
+            >
+              <label className="flex flex-col gap-1 text-[12px] font-medium text-on-surface-variant">
+                Buscar
+                <input
+                  type="text"
+                  value={borrQ}
+                  placeholder="Buscar por alumno…"
+                  onChange={(e) => setBorrQ(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') aplicarFiltros();
+                  }}
+                  className="min-w-[220px] rounded-md border border-surface-300 bg-white px-3 py-2 text-[13px] text-on-surface focus:border-primary focus:outline-none"
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-[12px] font-medium text-on-surface-variant">
+                Estado
+                <select
+                  value={borrEstado}
+                  onChange={(e) => setBorrEstado(e.target.value)}
+                  className="min-w-[180px] rounded-md border border-surface-300 bg-white px-3 py-2 text-[13px] text-on-surface focus:border-primary focus:outline-none"
+                >
+                  <option value="">Todos los estados</option>
+                  {ESTADO_OPCIONES.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </label>
+            </FiltrosPanel>
           </div>
 
           {cargandoTabla && !resultados.length && <TableSkeleton />}
@@ -256,6 +300,18 @@ export default function ExamResultados() {
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {total > 0 && (
+            <div className="mt-md">
+              <Pagination
+                currentPage={query.page}
+                totalPages={totalPaginas}
+                totalElements={total}
+                pageSize={query.page_size}
+                onPageChange={(p) => setQuery((q) => ({ ...q, page: p }))}
+              />
             </div>
           )}
         </Card>
