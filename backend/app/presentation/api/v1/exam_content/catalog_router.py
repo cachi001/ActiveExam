@@ -13,9 +13,13 @@ from fastapi import (
     File,
     Form,
     HTTPException,
+    Request,
     UploadFile,
     status,
 )
+
+from app.application.audit.service import registrar_seguro
+from app.domain.auth.identity import AuthenticatedPrincipal
 
 from app.application.exam_content.asociacion_service import AsociacionComisionService
 from app.application.exam_content.errors import (
@@ -60,6 +64,7 @@ from app.domain.exam_content.errors import (
     SeleccionInvalidaError,
 )
 from app.presentation.api.v1.auth.dependencies import (
+    get_current_principal,
     require_roles,
 )
 from app.presentation.api.v1.exam_content.schemas import (
@@ -124,11 +129,13 @@ def create_exam_content_router(
         status_code=status.HTTP_201_CREATED,
     )
     async def importar_moodle(
+        request: Request,
         file: UploadFile = File(...),
         titulo: str | None = Form(default=None),
         moodle_courseid: int | None = Form(default=None),
         moodle_cmid: int | None = Form(default=None),
         moodle_component: str | None = Form(default=None),
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
     ) -> ImportReporteResponse:
         """Importa un archivo Moodle XML y crea el examen de contenido.
 
@@ -175,6 +182,15 @@ def create_exam_content_router(
             except Exception:
                 await session.rollback()
                 raise
+
+        await registrar_seguro(
+            session_factory,
+            actor=principal.email,
+            accion="examen.import",
+            ip=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            proposito=f"Cargó el examen «{titulo or 'sin título'}» ({report.importadas} preguntas)",
+        )
 
         return ImportReporteResponse(
             examen_id=report.examen_id,
@@ -333,7 +349,11 @@ def create_exam_content_router(
         status_code=status.HTTP_201_CREATED,
         summary="Crear una materia (gestión independiente del import)",
     )
-    async def crear_materia(body: MateriaCrearRequest) -> MateriaResponse:
+    async def crear_materia(
+        body: MateriaCrearRequest,
+        request: Request,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    ) -> MateriaResponse:
         """Crea una materia. 409 'duplicado' si el codigo ya existe; 422
         'validacion_dominio' si codigo/nombre son vacíos o inválidos."""
         if session_factory is None:
@@ -359,6 +379,15 @@ def create_exam_content_router(
                     status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                     detail={"error": "validacion_dominio", "mensaje": str(exc)},
                 ) from exc
+
+        await registrar_seguro(
+            session_factory,
+            actor=principal.email,
+            accion="materia.create",
+            ip=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            proposito=f"Creó la materia {materia.nombre} ({materia.codigo})",
+        )
 
         return MateriaResponse(
             id=materia.id, codigo=materia.codigo, nombre=materia.nombre, activa=materia.activa
@@ -491,6 +520,8 @@ def create_exam_content_router(
     async def crear_comision(
         materia_id: str,
         body: ComisionCrearRequest,
+        request: Request,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
     ) -> ComisionResponse:
         """Crea una comisión en la materia. 404 'materia_no_encontrada' si la materia
         no existe; 409 'duplicado' si (materia_id, codigo) ya existe; 422
@@ -534,6 +565,15 @@ def create_exam_content_router(
                     status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                     detail={"error": "validacion_dominio", "mensaje": str(exc)},
                 ) from exc
+
+        await registrar_seguro(
+            session_factory,
+            actor=principal.email,
+            accion="comision.create",
+            ip=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            proposito=f"Creó la comisión {comision.nombre} ({comision.codigo})",
+        )
 
         return ComisionResponse(
             id=comision.id,

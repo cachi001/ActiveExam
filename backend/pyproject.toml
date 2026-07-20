@@ -35,6 +35,9 @@ dependencies = [
     "opentelemetry-sdk==1.29.0",
     "opentelemetry-exporter-otlp-proto-grpc==1.29.0",
     "opentelemetry-instrumentation-fastapi==0.50b0",
+    # Export PDF de estadísticas institucionales (C-20). Python puro (sin libs de
+    # sistema): entra limpio en la imagen slim runtime (pip install .).
+    "fpdf2==2.8.1",
 ]
 
 [project.optional-dependencies]

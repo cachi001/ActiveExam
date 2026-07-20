@@ -32,6 +32,7 @@ export interface StaffNavItem {
 
 export const STAFF_NAV: StaffNavItem[] = [
   { to: '/admin',                       icon: 'space_dashboard', label: 'Dashboard',               group: 'main',   roles: ADMIN },
+  { to: '/admin/estadisticas',          icon: 'insights',        label: 'Estadísticas',            group: 'main',   roles: ADMIN },
   { to: '/admin/examenes',              icon: 'quiz',            label: 'Exámenes',                group: 'main',   roles: ADMIN },
   // Bloque "proctoring": las 3 vistas de sesiones van juntas y al FINAL del grupo
   // main (justo arriba del divider), en orden de flujo: vivo → cola → grabadas.
@@ -43,6 +44,7 @@ export const STAFF_NAV: StaffNavItem[] = [
   { to: '/admin/usuarios',              icon: 'manage_accounts', label: 'Usuarios',                group: 'config', roles: ADMIN },
   { to: '/admin/materias',              icon: 'school',          label: 'Materias y comisiones',   group: 'config', roles: ADMIN },
   { to: '/admin/detection-test',        icon: 'bug_report',      label: 'Test de detección',       group: 'config', roles: ADMIN },
+  { to: '/admin/auditoria',             icon: 'verified_user',   label: 'Auditoría',               group: 'config', roles: ADMIN },
   { to: '/admin/configuracion',         icon: 'settings',        label: 'Configuración',           group: 'config', roles: ADMIN },
 ];
 

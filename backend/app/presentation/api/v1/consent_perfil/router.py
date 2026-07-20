@@ -128,12 +128,24 @@ async def otorgar(
             estado=ESTADO_OTORGADO,
         )
         await session.commit()
-        return ConsentPerfilResponse(
-            estado=fila.estado,
-            version_texto=fila.version_texto,
-            hash_texto=fila.hash_texto,
-            timestamp=str(fila.timestamp),
-        )
+
+    from app.application.audit.service import registrar_seguro
+
+    await registrar_seguro(
+        factory,
+        actor=principal.id_institucional or principal.email,
+        accion="consent.otorgado",
+        ip=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+        proposito=f"Aceptó el consentimiento (versión {body.version_texto})",
+    )
+
+    return ConsentPerfilResponse(
+        estado=fila.estado,
+        version_texto=fila.version_texto,
+        hash_texto=fila.hash_texto,
+        timestamp=str(fila.timestamp),
+    )
 
 
 # ---------------------------------------------------------------------------

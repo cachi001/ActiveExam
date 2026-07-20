@@ -66,6 +66,7 @@ async def presign_clip(
 
 @router.post("/verify", response_model=VerifyIdentityResponse)
 async def verify_identity(
+    request: Request,
     body: VerifyIdentityRequest,
     service: VerifyIdentityService = Depends(get_verify_service),
     principal: AuthenticatedPrincipal = Depends(get_current_principal),
@@ -103,6 +104,18 @@ async def verify_identity(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail=str(exc)
         ) from exc
+
+    # Registro de actividad (best-effort): el alumno pasó la verificación biométrica.
+    from app.application.audit.service import registrar_seguro
+
+    await registrar_seguro(
+        getattr(request.app.state, "session_factory", None),
+        actor=principal.id_institucional or principal.email,
+        accion="biometria.verificacion",
+        ip=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+        proposito=f"Verificación biométrica: {outcome.veredicto.value}",
+    )
 
     return VerifyIdentityResponse(
         veredicto=outcome.veredicto.value,

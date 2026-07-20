@@ -731,3 +731,86 @@ export interface Inscripcion {
   fecha: string;
   estado: EstadoInscripcion;
 }
+
+// ---------------------------------------------------------------------------
+// Estadísticas institucionales agregadas — C-20 (GET /stats/resumen)
+// ---------------------------------------------------------------------------
+
+/**
+ * Sumario institucional agregado (sin PII). Espeja `ResumenStatsResponse` del
+ * backend (app/presentation/api/v1/stats/router.py). L2.5: `sesiones_en_riesgo`
+ * es una SEÑAL DE PRIORIZACIÓN para la revisión humana, NUNCA un veredicto.
+ * `distribucion_scores` mapea el label del bucket → cantidad de sesiones.
+ */
+export interface MateriaStat {
+  materia_id: string;
+  nombre: string;
+  sesiones: number;
+  en_riesgo: number;
+}
+
+export interface EventoStat {
+  tipo: string;
+  cantidad: number;
+}
+
+export interface DiaStat {
+  fecha: string; // YYYY-MM-DD
+  sesiones: number;
+}
+
+export interface ResumenStats {
+  total_examenes: number;
+  total_materias: number;
+  total_comisiones: number;
+  total_sesiones: number;
+  sesiones_finalizadas: number;
+  sesiones_en_riesgo: number;
+  umbral_riesgo: number;
+  distribucion_scores: Record<string, number>;
+  // Desgloses (C-20 ampliado). Opcionales por compat con el contrato de carga
+  // resiliente y los tests que arman ResumenStats a mano; el backend real siempre
+  // los envía. La UI degrada a lista/mapa vacío si faltan.
+  por_materia?: MateriaStat[];
+  top_eventos?: EventoStat[];
+  por_dia?: DiaStat[];
+  decisiones?: Record<string, number>;
+}
+
+/** Filtros de la vista de estadísticas (query params del backend). */
+export interface FiltrosStats {
+  materia_id?: string;
+  comision_id?: string;
+  examen_id?: string;
+  desde?: string; // ISO
+  hasta?: string; // ISO
+}
+
+// Auditoría (C-20) — registro de actividad (GET /admin/audit-log)
+export interface AuditEvento {
+  id: string;
+  actor: string;
+  /** "Nombre Apellido" resuelto del usuario (null si no se pudo resolver). */
+  actor_nombre: string | null;
+  accion: string;
+  timestamp: string;
+  ip: string | null;
+  user_agent: string | null;
+  proposito: string | null;
+}
+
+export interface AuditLogResponse {
+  items: AuditEvento[];
+  total: number;
+  limit: number;
+  offset: number;
+  /** La cadena de custodia (hash encadenado) sigue íntegra. */
+  cadena_valida: boolean;
+}
+
+export interface AuditFiltros {
+  actor?: string;
+  accion?: string;
+  desde?: string; // ISO
+  hasta?: string; // ISO
+}

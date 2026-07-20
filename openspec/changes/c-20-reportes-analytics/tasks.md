@@ -45,12 +45,17 @@
 
 ## 4. Página de estadísticas real (frontend, reemplaza la hardcodeada)
 
-- [ ] 4.1 Quitar/retirar la página vieja hardcodeada; Done: test de que no queda data mock
-- [ ] 4.2 Nueva página de estadísticas: stat cards (exámenes/materias/comisiones/sesiones/
-      en riesgo) + gráfico de distribución de scores, consumiendo `/stats/resumen`; Done:
-      test de render con datos reales del endpoint (mock del fetch, no de la DB)
-- [ ] 4.3 Contrato de carga resiliente (C-73): cargando/error/vacío-real/cargado; un fetch
-      fallido NO se muestra como "0"; Done: test de estados de carga
+- [x] 4.1 N/A — no existía una página de estadísticas hardcodeada separada. El
+      `AdminDashboard` ya consumía datos reales; las métricas nuevas (materias/
+      comisiones/distribución) no se mostraban en ningún lado. Decisión del owner:
+      página NUEVA dedicada `/admin/estadisticas`, dejando el Dashboard operativo intacto.
+- [x] 4.2 Nueva página de estadísticas: stat cards (exámenes/materias/comisiones/sesiones/
+      en riesgo) + gráfico de distribución de scores, consumiendo `/stats/resumen`. Done:
+      `EstadisticasBody.test.tsx` (render con datos del endpoint, mock del fetch) +
+      `apiStats.test.ts` (capa API, mock del fetch, no de la DB).
+- [x] 4.3 Contrato de carga resiliente (C-73): cargando/error/vacío-real/cargado; un fetch
+      fallido NO se muestra como "0". Done: `EstadisticasBody.test.tsx` (5 casos de estado,
+      incluye "error nunca degrada a 0").
 - [ ] 4.4 Filtros en la UI (examen/materia/comisión/fechas) cableados al endpoint; Done: test de filtros
 
 ## 5. Garantías transversales de gobernanza y privacidad

@@ -19,6 +19,8 @@ const ExamenPersonasGrid    = lazy(() => import('./screens/ExamenPersonasGrid'))
 const Revisor               = lazy(() => import('./screens/Revisor'));
 const SessionDetail         = lazy(() => import('./screens/SessionDetail'));
 const AdminDashboard        = lazy(() => import('./screens/AdminDashboard'));
+const EstadisticasInstitucionales = lazy(() => import('./screens/EstadisticasInstitucionales'));
+const Auditoria             = lazy(() => import('./screens/Auditoria'));
 const ExamList              = lazy(() => import('./screens/ExamList'));
 const AlumnoDashboard       = lazy(() => import('./screens/AlumnoDashboard'));
 const AlumnoMaterias        = lazy(() => import('./screens/AlumnoMaterias'));
@@ -77,6 +79,8 @@ export default function App() {
     '/revisor': g(<Revisor />, SUPERVISION),
     '/revisor/detalle': g(<SessionDetail />, SUPERVISION),
     '/admin': g(<AdminDashboard />, ADMIN),
+    '/admin/estadisticas': g(<EstadisticasInstitucionales />, ADMIN),
+    '/admin/auditoria': g(<Auditoria />, ADMIN),
     '/admin/examenes': g(<ExamList />, ADMIN),
     '/admin/examenes/importar': g(<MoodleImportPage />, ADMIN),
     '/admin/examenes/:id/resultados': g(<ExamResultados />, ADMIN),

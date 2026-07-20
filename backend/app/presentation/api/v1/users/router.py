@@ -245,6 +245,17 @@ async def crear_usuario(
                 detail="Ya existe un usuario con ese email o id_institucional.",
             ) from exc
 
+    from app.application.audit.service import registrar_seguro
+
+    await registrar_seguro(
+        session_factory,
+        actor=_principal.email,
+        accion="user.create",
+        ip=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+        proposito=f"Alta de usuario {usuario.email} (roles: {', '.join(body.roles)})",
+    )
+
     return _usuario_to_response(usuario)
 
 
@@ -465,6 +476,18 @@ async def eliminar_usuario(
         )
 
         await session.commit()
+        usuario_email = usuario.email
+
+    from app.application.audit.service import registrar_seguro
+
+    await registrar_seguro(
+        session_factory,
+        actor=principal.email,
+        accion="user.delete",
+        ip=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+        proposito=f"Baja de usuario {usuario_email}",
+    )
 
 
 # ---------------------------------------------------------------------------

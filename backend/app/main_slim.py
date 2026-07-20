@@ -254,6 +254,14 @@ def create_slim_app() -> FastAPI:
         tags=["stats"],
     )
 
+    from app.presentation.api.v1.admin.audit_router import create_audit_router
+
+    app.include_router(
+        create_audit_router(session_factory=session_factory),
+        prefix="/api/v1/admin",
+        tags=["audit"],
+    )
+
     return app
 
 

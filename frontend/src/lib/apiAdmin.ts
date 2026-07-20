@@ -6,9 +6,93 @@ import { API_BASE, realFetch, normalizarConsentText } from './apiCore';
 import { authProvider } from './authProvider';
 import type {
   UsuarioAdmin, ListarUsuariosResponse, EventoScoreConfig, BloqueConsentimiento,
+  ResumenStats, FiltrosStats, AuditLogResponse, AuditFiltros,
 } from './types';
 
+/** Query string de los filtros de stats (omite las claves vacías). */
+function statsQuery(filtros?: FiltrosStats): string {
+  if (!filtros) return '';
+  const p = new URLSearchParams();
+  if (filtros.materia_id) p.set('materia_id', filtros.materia_id);
+  if (filtros.comision_id) p.set('comision_id', filtros.comision_id);
+  if (filtros.examen_id) p.set('examen_id', filtros.examen_id);
+  if (filtros.desde) p.set('desde', filtros.desde);
+  if (filtros.hasta) p.set('hasta', filtros.hasta);
+  const s = p.toString();
+  return s ? `?${s}` : '';
+}
+
+/** Descarga autenticada de un export de stats (CSV/PDF) como Blob. Un fallo se
+ * PROPAGA (no descarga un archivo vacío). */
+async function descargarStats(path: string, filtros?: FiltrosStats): Promise<Blob> {
+  const token = authProvider.getToken();
+  const res = await fetch(`${API_BASE}${path}${statsQuery(filtros)}`, {
+    method: 'GET',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) throw Object.assign(new Error(`HTTP ${res.status}`), { status: res.status });
+  return await res.blob();
+}
+
 export const adminApi = {
+
+  // -------------------------------------------------------------------------
+  // Estadísticas institucionales — C-20
+  // -------------------------------------------------------------------------
+
+  /**
+   * Sumario institucional agregado (admin_sistema / coordinador) — C-20.
+   * Real: GET /api/v1/stats/resumen → conteos + riesgo + distribución de scores.
+   * Un fallo (403/red) se PROPAGA como error; la página lo muestra como error,
+   * nunca como datos en cero (contrato de carga resiliente C-73).
+   */
+  async obtenerResumenStats(filtros?: FiltrosStats): Promise<ResumenStats> {
+    return await realFetch<ResumenStats>(`/stats/resumen${statsQuery(filtros)}`, { method: 'GET' });
+  },
+
+  /**
+   * Descarga el sumario como CSV (admin_sistema / coordinador) — C-20.
+   * Real: GET /api/v1/stats/export.csv (con Authorization). Devuelve el Blob para
+   * que la pantalla dispare la descarga; un fallo se PROPAGA (no descarga vacío).
+   */
+  async descargarResumenCsv(filtros?: FiltrosStats): Promise<Blob> {
+    return await descargarStats('/stats/export.csv', filtros);
+  },
+
+  /**
+   * Descarga el sumario como Excel (.xlsx) con gráficos nativos — C-20.
+   * Real: GET /api/v1/stats/export.xlsx (con Authorization). Un fallo se PROPAGA.
+   */
+  async descargarResumenExcel(filtros?: FiltrosStats): Promise<Blob> {
+    return await descargarStats('/stats/export.xlsx', filtros);
+  },
+
+  /**
+   * Registro de actividad / auditoría (admin_sistema) — C-20.
+   * Real: GET /api/v1/admin/audit-log (paginado + filtrado). Un fallo se PROPAGA;
+   * la página lo muestra como error, nunca como datos vacíos falsos.
+   */
+  async obtenerAuditLog(
+    filtros?: AuditFiltros,
+    limit = 50,
+    offset = 0,
+  ): Promise<AuditLogResponse> {
+    const p = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+    if (filtros?.actor) p.set('actor', filtros.actor);
+    if (filtros?.accion) p.set('accion', filtros.accion);
+    if (filtros?.desde) p.set('desde', filtros.desde);
+    if (filtros?.hasta) p.set('hasta', filtros.hasta);
+    return await realFetch<AuditLogResponse>(`/admin/audit-log?${p.toString()}`, { method: 'GET' });
+  },
+
+  /**
+   * Descarga el sumario como PDF (admin_sistema / coordinador) — C-20.
+   * Real: GET /api/v1/stats/export.pdf (con Authorization). Devuelve el Blob para
+   * que la pantalla dispare la descarga; un fallo se PROPAGA.
+   */
+  async descargarResumenPdf(filtros?: FiltrosStats): Promise<Blob> {
+    return await descargarStats('/stats/export.pdf', filtros);
+  },
   // -------------------------------------------------------------------------
   // Gestión de usuarios (admin) — C-61 (task 6.4)
   // -------------------------------------------------------------------------
