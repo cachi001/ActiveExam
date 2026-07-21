@@ -8,11 +8,11 @@
  *   - RN-CO-05: vía alternativa sin biometría
  *   - Re-disparo al cambiar la versión del texto (spec informed-consent-presentation)
  */
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Icon, Button, Card, LoadingSpinner } from '../../ui/components';
 import { api } from '../../lib/api';
+import { useAsyncData } from '../../lib/useAsyncData';
 import { Term } from '../../ui/Term';
-import type { ConsentTextResponse } from '../../lib/types';
 import type { AcuseConsentimiento } from '../../lib/types';
 
 interface Props {
@@ -25,15 +25,14 @@ interface Props {
 }
 
 export function EnrollmentConsentStep({ acuseActual, onConsentido, soloLectura = false }: Props) {
-  const [texto, setTexto] = useState<ConsentTextResponse | null>(null);
   const [acepto, setAcepto] = useState(false); // RN-CO-02: NUNCA pre-marcado
   const [guardando, setGuardando] = useState(false);
 
-  // C-58 D3: sin estado cargandoTexto — render progresivo: el layout aparece de una,
-  // los bloques se rellenan cuando llega el texto (texto?.bloques ?? []).
-  useEffect(() => {
-    api.getConsentText().then(setTexto);
-  }, []);
+  // Contrato de carga resiliente (C-73): un fallo del fetch NO puede degradar a
+  // un "Cargando…" eterno (patrón viejo `.then(setTexto)` sin `.catch`). El
+  // estado distingue loading/ready/error, y el error ofrece reintentar.
+  const textoState = useAsyncData(() => api.getConsentText(), []);
+  const texto = textoState.data;
 
   /** ¿Es un re-consentimiento por cambio de versión? */
   const esRenovacion = acuseActual !== null && texto !== null && acuseActual.version !== texto.version;
@@ -45,6 +44,23 @@ export function EnrollmentConsentStep({ acuseActual, onConsentido, soloLectura =
     setGuardando(false);
     onConsentido(acuse);
   };
+
+  // C-73: un fallo de carga muestra error + reintento, nunca un spinner eterno.
+  if (textoState.status === 'error') {
+    return (
+      <Card className="flex items-start gap-sm bg-error-container/40 border-error/40">
+        <Icon name="cloud_off" className="text-error text-[20px] shrink-0 mt-px" fill />
+        <div className="min-w-0 space-y-sm">
+          <p className="text-body-md text-on-surface">
+            No pudimos cargar el texto de consentimiento. Revisá tu conexión y probá de nuevo.
+          </p>
+          <Button variant="outline" icon="refresh" onClick={textoState.retry}>
+            Reintentar
+          </Button>
+        </div>
+      </Card>
+    );
+  }
 
   // c-66: bloquear render hasta tener `texto` (mismo fix que Consent.tsx).
   if (texto === null) {
