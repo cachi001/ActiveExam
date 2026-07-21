@@ -5,6 +5,7 @@ import {
   getMoodleTarget,
   setMoodleTarget,
 } from '../../lib/examContentAdmin';
+import { invalidateCache } from '../../lib/useCachedData';
 
 interface OmitidaItem {
   tipo: string;
@@ -110,6 +111,10 @@ export default function MoodleImportPage() {
       if (resp.ok) {
         const created: ImportReport = await resp.json();
         setReport(created);
+        // La lista compartida de exámenes quedó obsoleta: la leen AdminDashboard
+        // y otras pantallas vía useCachedData('examenes-contenido'). Invalidamos
+        // para que revaliden con el examen recién importado (C-73, sección 5.4).
+        invalidateCache('examenes-contenido');
         // Pre-cargar el destino ya persistido (si el import lo guardó) para que el
         // formulario de edición refleje lo existente.
         try {

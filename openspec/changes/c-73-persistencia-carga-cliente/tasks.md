@@ -5,12 +5,12 @@
 
 ## 1. Contrato de carga resiliente (base del stat "0")
 
-- [ ] 1.1 Test (RED): un helper/hook `useAsyncData` (o `AsyncState<T>`) expone `status:
+- [x] 1.1 Test (RED): un helper/hook `useAsyncData` (o `AsyncState<T>`) expone `status:
       'loading'|'error'|'ready'`; ante rechazo del fetch queda en `error` (no `ready` con dato vacío)
-- [ ] 1.2 Implementar el helper/hook mínimo para pasar el test
-- [ ] 1.3 Triangular: éxito con lista → `ready` con data; éxito vacío → `ready` con `[]`;
+- [x] 1.2 Implementar el helper/hook mínimo para pasar el test
+- [x] 1.3 Triangular: éxito con lista → `ready` con data; éxito vacío → `ready` con `[]`;
       fallo → `error` con posibilidad de `retry()`
-- [ ] 1.4 Test: `retry()` re-dispara el fetch y transiciona `loading → ready/error`
+- [x] 1.4 Test: `retry()` re-dispara el fetch y transiciona `loading → ready/error`
 
 ## 2. Arreglar el bug del stat "0" (AdminDashboard como caso de prueba)
 
@@ -18,40 +18,40 @@
       muestra "0" en la stat de Exámenes — muestra estado de error + reintento
 - [ ] 2.2 Test: con la lista cargando → placeholder; con éxito y 1 examen → "1"; con
       éxito y 0 → "0" legítimo
-- [ ] 2.3 Migrar AdminDashboard al contrato de carga (reemplazar `.then(set).finally(...)`
+- [x] 2.3 Migrar AdminDashboard al contrato de carga (reemplazar `.then(set).finally(...)`
       sin `.catch` por el hook); verificar que ningún camino pinta el vacío inicial como dato
 - [ ] 2.4 Inventariar las demás pantallas con el patrón `.then(set).finally(...)` sin
       `.catch` y migrarlas (o listar las que quedan como deuda explícita)
 
 ## 3. Persistencia selectiva del store (Zustand `persist`)
 
-- [ ] 3.1 Test (RED): tras "recargar" (rehidratar el store desde el storage simulado),
+- [x] 3.1 Test (RED): tras "recargar" (rehidratar el store desde el storage simulado),
       el `rol` y las preferencias de UI persisten; biometría y token NO aparecen en lo serializado
-- [ ] 3.2 Envolver el store con `persist` + `partialize` allowlist (rol + UI); elegir
+- [x] 3.2 Envolver el store con `persist` + `partialize` allowlist (rol + UI); elegir
       `sessionStorage`/`localStorage` y documentar por qué
-- [ ] 3.3 Test: `partialize` es un allowlist explícito — agregar un campo sensible al
+- [x] 3.3 Test: `partialize` es un allowlist explícito — agregar un campo sensible al
       state NO lo filtra al storage (guardrail de privacidad, Ley 25.326)
-- [ ] 3.4 Versionar la clave (`version` + `migrate`): estado de shape viejo se descarta
+- [x] 3.4 Versionar la clave (`version` + `migrate`): estado de shape viejo se descarta
       sin romper; test de que un blob incompatible no crashea el arranque
 
 ## 4. Única fuente de verdad del principal
 
-- [ ] 4.1 Test: las pantallas leen el principal desde `authStore` (fuente única); no
+- [x] 4.1 Test: las pantallas leen el principal desde `authStore` (fuente única); no
       queda una copia divergente en `store.ts`
-- [ ] 4.2 Quitar la duplicación de `principal` (unificar en authStore o un selector);
+- [x] 4.2 Quitar la duplicación de `principal` (unificar en authStore o un selector);
       migrar los consumidores
-- [ ] 4.3 Test de regresión: login/logout limpia el estado del usuario anterior (no se
+- [x] 4.3 Test de regresión: login/logout limpia el estado del usuario anterior (no se
       hereda rol/principal/enrollment entre usuarios en el mismo browser)
 
 ## 5. Cache liviano de lectura (stale-while-revalidate)
 
-- [ ] 5.1 Test (RED): volver a una query ya cargada sirve lo último bueno de inmediato
+- [x] 5.1 Test (RED): volver a una query ya cargada sirve lo último bueno de inmediato
       y dispara una revalidación en background
-- [ ] 5.2 Implementar el cache por clave (hook propio liviano; evaluar y JUSTIFICAR si
+- [x] 5.2 Implementar el cache por clave (hook propio liviano; evaluar y JUSTIFICAR si
       se suma una lib mínima, respetando el objetivo de bundle < 500 KB)
-- [ ] 5.3 Test: el estado que debe ser fresco (rendición/supervisión en vivo) NO se
+- [x] 5.3 Test: el estado que debe ser fresco (rendición/supervisión en vivo) NO se
       sirve del cache stale
-- [ ] 5.4 Invalidación en mutación: tras una escritura, la query afectada se revalida
+- [x] 5.4 Invalidación en mutación: tras una escritura, la query afectada se revalida
 
 ## 6. Verificación y cierre
 

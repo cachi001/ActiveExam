@@ -14,7 +14,7 @@ import { StatCard } from './proctoring/StatCard';
 import { statProps } from './proctoring/statCatalog';
 import { Link } from '../lib/router';
 import { api } from '../lib/api';
-import { useAsyncData } from '../lib/useAsyncData';
+import { useCachedData } from '../lib/useCachedData';
 import { STAFF_NAV } from '../ui/nav';
 import type { ExamenContenidoResumen, SesionProctoringResumen } from '../lib/types';
 import { examenContenidoSubtitulo, formatVentanaExamen, formatDuracionExamen } from './dashboards.helpers';
@@ -26,7 +26,10 @@ export const ADMIN_NAV = STAFF_NAV;
 export default function AdminDashboard() {
   // Contrato de carga resiliente (C-73): si el fetch del catálogo FALLA, se
   // muestra estado de error con reintentar — NUNCA "0 exámenes" fantasma.
-  const examenesState = useAsyncData(() => api.listarExamenesContenido(), []);
+  // Cache stale-while-revalidate (sección 5): volver al dashboard sirve la lista
+  // al instante y revalida en background. La clave 'examenes-contenido' la
+  // invalida el import de exámenes (MoodleImportPage) tras una alta.
+  const examenesState = useCachedData('examenes-contenido', () => api.listarExamenesContenido(), []);
   const examenes = examenesState.data ?? [];
   // Sesiones reales (GET /proctoring/sessions) + tasa de flag derivada del umbral
   // de cola de revisión. null = todavía cargando; [] = sin sesiones → 0 / 0%.
