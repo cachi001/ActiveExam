@@ -59,12 +59,15 @@
 
 ## 6. Verificación y cierre
 
-- [ ] 6.1 `tsc --noEmit` del frontend sin errores
-- [ ] 6.2 Suite de frontend completa en verde (vitest), incluidos los tests nuevos
+- [x] 6.1 `tsc --noEmit` del frontend sin errores
+- [x] 6.2 Suite de frontend completa en verde (vitest), incluidos los tests nuevos
+      (791 tests, 79 archivos)
 - [ ] 6.3 E2E manual: recargar en varias páginas mantiene sesión sin parpadeo; matar la
       red y entrar a AdminDashboard muestra ERROR (no "0"); navegar ida/vuelta no
-      refetchea en frío
-- [ ] 6.4 `openspec validate c-73-persistencia-carga-cliente` en verde
+      refetchea en frío.
+      Verificado en vivo (Playwright): navegar ida/vuelta (Dashboard→Usuarios→Dashboard)
+      sirve la lista del cache al instante, sin parpadeo. FALTA: el caso de matar la red.
+- [x] 6.4 `openspec validate c-73-persistencia-carga-cliente` en verde
 
 ## 7. Moodle — configurar y validar el write-back contra el campus real
 
