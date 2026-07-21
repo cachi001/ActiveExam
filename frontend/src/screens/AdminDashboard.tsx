@@ -17,7 +17,7 @@ import { api } from '../lib/api';
 import { useCachedData } from '../lib/useCachedData';
 import { STAFF_NAV } from '../ui/nav';
 import type { ExamenContenidoResumen, SesionProctoringResumen } from '../lib/types';
-import { examenContenidoSubtitulo, formatVentanaExamen, formatDuracionExamen } from './dashboards.helpers';
+import { examenContenidoSubtitulo, formatVentanaExamen, formatDuracionExamen, statExamenesValue } from './dashboards.helpers';
 import { loadEffectiveConfig, getEffectiveConfig } from '../config/effectiveConfigCache';
 
 // alias para mantener compatibilidad con las pantallas que ya lo importan
@@ -79,13 +79,7 @@ export default function AdminDashboard() {
           <StatCard
             icon="assignment"
             label="Exámenes"
-            value={
-              examenesState.status === 'loading'
-                ? '…'
-                : examenesState.status === 'error'
-                  ? '—'
-                  : examenes.length
-            }
+            value={statExamenesValue(examenesState.status, examenes.length)}
             sub="importados"
             tono="primary"
           />

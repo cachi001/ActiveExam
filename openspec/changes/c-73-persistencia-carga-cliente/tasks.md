@@ -14,10 +14,11 @@
 
 ## 2. Arreglar el bug del stat "0" (AdminDashboard como caso de prueba)
 
-- [ ] 2.1 Test (RED): con `api.listarExamenesContenido` rechazando, AdminDashboard NO
-      muestra "0" en la stat de Exámenes — muestra estado de error + reintento
-- [ ] 2.2 Test: con la lista cargando → placeholder; con éxito y 1 examen → "1"; con
-      éxito y 0 → "0" legítimo
+- [x] 2.1 Test (RED): con `api.listarExamenesContenido` rechazando, AdminDashboard NO
+      muestra "0" en la stat de Exámenes — muestra estado de error + reintento.
+      Lógica extraída a helper puro `statExamenesValue` (error → '—', nunca 0 fantasma).
+- [x] 2.2 Test: con la lista cargando → placeholder; con éxito y 1 examen → "1"; con
+      éxito y 0 → "0" legítimo (helper `statExamenesValue`: loading/idle → '…', ready → cantidad).
 - [x] 2.3 Migrar AdminDashboard al contrato de carga (reemplazar `.then(set).finally(...)`
       sin `.catch` por el hook); verificar que ningún camino pinta el vacío inicial como dato
 - [x] 2.4 Inventariar las demás pantallas con el patrón `.then(set).finally(...)` sin

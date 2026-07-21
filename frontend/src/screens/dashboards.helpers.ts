@@ -3,6 +3,19 @@
  * Exportadas separadas de los componentes para ser testeables sin DOM.
  */
 import type { ExamenContenidoResumen } from '../lib/types';
+import type { AsyncStatus } from '../lib/useAsyncData';
+
+/**
+ * Valor a mostrar en la stat "Exámenes" del AdminDashboard según el estado de
+ * carga (C-73). Regla dura: un fetch en `error` NUNCA muestra "0" (dato fantasma)
+ * — devuelve un marcador de error. `loading`/`idle` → placeholder; `ready` → la
+ * cantidad real (incluye el 0 legítimo).
+ */
+export function statExamenesValue(status: AsyncStatus, cantidad: number): string | number {
+  if (status === 'error') return '—';
+  if (status === 'loading' || status === 'idle') return '…';
+  return cantidad;
+}
 
 /**
  * Construye la línea de subtítulo para un ExamenContenidoResumen en el listado.
