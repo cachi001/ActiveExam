@@ -61,6 +61,16 @@ services:
       SEED_ADMIN_PASSWORD: Admin123
       SEED_ESTUDIANTE_PASSWORD: Estudiante123
       SEED_PROCTOR_PASSWORD: Proctor123
+      # Moodle write-back (C-69/C-73): se INTERPOLAN desde el .env de la raíz
+      # (docker compose --env-file .env ...). El token NUNCA se hornea en la imagen
+      # ni se versiona: vive solo en el .env gitignoreado. Vacío = write-back off.
+      # base_url NO es secreta (URL pública del campus) → default a campustest.
+      # El TOKEN sí es secreto → solo del .env, nunca default en el repo.
+      MOODLE_BASE_URL: ${MOODLE_BASE_URL:-https://campustest.frm.utn.edu.ar}
+      MOODLE_WS_TOKEN: ${MOODLE_WS_TOKEN:-}
+      MOODLE_COURSEID: ${MOODLE_COURSEID:-0}
+      MOODLE_CMID: ${MOODLE_CMID:-0}
+      MOODLE_COMPONENT: ${MOODLE_COMPONENT:-mod_assign}
     depends_on:
       postgres:
         condition: service_healthy
