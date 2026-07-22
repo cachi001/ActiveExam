@@ -19,6 +19,7 @@ from fastapi import (
 )
 
 from app.application.audit.service import registrar_seguro
+from app.application.audit.acciones import AccionAuditoria
 from app.domain.auth.identity import AuthenticatedPrincipal
 
 from app.application.exam_content.asociacion_service import AsociacionComisionService
@@ -186,7 +187,7 @@ def create_exam_content_router(
         await registrar_seguro(
             session_factory,
             actor=principal.email,
-            accion="examen.import",
+            accion=AccionAuditoria.EXAMEN_IMPORTACION,
             ip=request.client.host if request.client else None,
             user_agent=request.headers.get("user-agent"),
             proposito=f"Cargó el examen «{titulo or 'sin título'}» ({report.importadas} preguntas)",
@@ -383,7 +384,7 @@ def create_exam_content_router(
         await registrar_seguro(
             session_factory,
             actor=principal.email,
-            accion="materia.create",
+            accion=AccionAuditoria.MATERIA_ALTA,
             ip=request.client.host if request.client else None,
             user_agent=request.headers.get("user-agent"),
             proposito=f"Creó la materia {materia.nombre} ({materia.codigo})",
@@ -401,6 +402,8 @@ def create_exam_content_router(
     async def actualizar_materia(
         materia_id: str,
         body: MateriaActualizarRequest,
+        request: Request,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
     ) -> MateriaResponse:
         """Actualiza el nombre y (opcionalmente) el codigo de una materia. 404
         'materia_no_encontrada' si no existe; 409 'duplicado' si el codigo nuevo ya
@@ -440,6 +443,15 @@ def create_exam_content_router(
                     detail={"error": "validacion_dominio", "mensaje": str(exc)},
                 ) from exc
 
+        await registrar_seguro(
+            session_factory,
+            actor=principal.email,
+            accion=AccionAuditoria.MATERIA_EDICION,
+            ip=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            proposito=f"Editó la materia {materia.nombre} ({materia.codigo})",
+        )
+
         return MateriaResponse(
             id=materia.id, codigo=materia.codigo, nombre=materia.nombre, activa=materia.activa
         )
@@ -450,7 +462,11 @@ def create_exam_content_router(
         response_model=None,
         summary="Eliminar una materia (solo si está 100% vacía)",
     )
-    async def eliminar_materia(materia_id: str) -> None:
+    async def eliminar_materia(
+        materia_id: str,
+        request: Request,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    ) -> None:
         """Elimina una materia SOLO si no tiene inscriptos ni exámenes. 404 si no
         existe; 409 'materia_no_vacia' si tiene contenido (se sugiere desactivar)."""
         if session_factory is None:
@@ -476,6 +492,15 @@ def create_exam_content_router(
                     detail={"error": "materia_no_vacia", "mensaje": str(exc)},
                 ) from exc
 
+        await registrar_seguro(
+            session_factory,
+            actor=principal.email,
+            accion=AccionAuditoria.MATERIA_BAJA,
+            ip=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            proposito=f"Eliminó la materia {materia_id}",
+        )
+
     @router.patch(
         "/materias/{materia_id}/activa",
         response_model=MateriaResponse,
@@ -484,6 +509,8 @@ def create_exam_content_router(
     async def set_activa_materia(
         materia_id: str,
         body: MateriaActivaRequest,
+        request: Request,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
     ) -> MateriaResponse:
         """Activa (true) o desactiva (false) una materia. Desactivar = congelar:
         corta inscripciones nuevas y bloquea iniciar rendición. 404 si no existe."""
@@ -503,6 +530,15 @@ def create_exam_content_router(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail={"error": "materia_no_encontrada", "materia_id": materia_id},
                 ) from exc
+
+        await registrar_seguro(
+            session_factory,
+            actor=principal.email,
+            accion=AccionAuditoria.MATERIA_ACTIVACION,
+            ip=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            proposito=f"{'Activó' if body.activa else 'Desactivó'} la materia {materia.nombre}",
+        )
 
         return MateriaResponse(
             id=materia.id,
@@ -569,7 +605,7 @@ def create_exam_content_router(
         await registrar_seguro(
             session_factory,
             actor=principal.email,
-            accion="comision.create",
+            accion=AccionAuditoria.COMISION_ALTA,
             ip=request.client.host if request.client else None,
             user_agent=request.headers.get("user-agent"),
             proposito=f"Creó la comisión {comision.nombre} ({comision.codigo})",
@@ -593,6 +629,8 @@ def create_exam_content_router(
     async def actualizar_comision(
         comision_id: str,
         body: ComisionActualizarRequest,
+        request: Request,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
     ) -> ComisionResponse:
         """Actualiza nombre/periodo/anio de una comisión. 404 'comision_no_encontrada'
         si no existe; 422 'validacion_dominio' si el nombre es vacío. El codigo y la
@@ -636,6 +674,15 @@ def create_exam_content_router(
                     detail={"error": "validacion_dominio", "mensaje": str(exc)},
                 ) from exc
 
+        await registrar_seguro(
+            session_factory,
+            actor=principal.email,
+            accion=AccionAuditoria.COMISION_EDICION,
+            ip=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            proposito=f"Editó la comisión {comision.nombre} ({comision.codigo})",
+        )
+
         return ComisionResponse(
             id=comision.id,
             materia_id=comision.materia_id,
@@ -652,7 +699,11 @@ def create_exam_content_router(
         response_model=None,
         summary="Eliminar una comisión (solo si está vacía)",
     )
-    async def eliminar_comision(comision_id: str) -> None:
+    async def eliminar_comision(
+        comision_id: str,
+        request: Request,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    ) -> None:
         """Elimina una comisión SOLO si no tiene inscriptos ni exámenes. 404 si no
         existe; 409 'comision_no_vacia' si tiene contenido."""
         if session_factory is None:
@@ -680,6 +731,15 @@ def create_exam_content_router(
                     status_code=status.HTTP_409_CONFLICT,
                     detail={"error": "comision_no_vacia", "mensaje": str(exc)},
                 ) from exc
+
+        await registrar_seguro(
+            session_factory,
+            actor=principal.email,
+            accion=AccionAuditoria.COMISION_BAJA,
+            ip=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            proposito=f"Eliminó la comisión {comision_id}",
+        )
 
     # -----------------------------------------------------------------------
     # Rotación del código de matriculación (C-70, D5) — admin-only.
@@ -763,6 +823,8 @@ def create_exam_content_router(
     async def inscribir_alumno(
         comision_id: str,
         body: InscribirAlumnoRequest,
+        request: Request,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
     ) -> InscripcionResponse:
         """Inscribe un alumno a una comisión.
 
@@ -800,6 +862,15 @@ def create_exam_content_router(
                     detail={"error": "duplicado", "mensaje": str(exc)},
                 ) from exc
 
+        await registrar_seguro(
+            session_factory,
+            actor=principal.email,
+            accion=AccionAuditoria.INSCRIPCION_ALTA,
+            ip=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            proposito=f"Inscribió al alumno {body.usuario_id} en la comisión {comision_id}",
+        )
+
         return InscripcionResponse(
             id=inscripcion.id,
             usuario_id=inscripcion.usuario_id,
@@ -812,7 +883,12 @@ def create_exam_content_router(
         response_model=None,
         summary="Eliminar la inscripción de un alumno a una comisión",
     )
-    async def eliminar_inscripcion(comision_id: str, usuario_id: str) -> None:
+    async def eliminar_inscripcion(
+        comision_id: str,
+        usuario_id: str,
+        request: Request,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    ) -> None:
         """Da de baja la inscripción del alumno a la comisión.
 
         204 si se eliminó; 404 'inscripcion_no_encontrada' si no existía.
@@ -838,6 +914,15 @@ def create_exam_content_router(
                         "usuario_id": usuario_id,
                     },
                 ) from exc
+
+        await registrar_seguro(
+            session_factory,
+            actor=principal.email,
+            accion=AccionAuditoria.INSCRIPCION_BAJA,
+            ip=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            proposito=f"Quitó al alumno {usuario_id} de la comisión {comision_id}",
+        )
 
     @router.get(
         "/comisiones/{comision_id}/alumnos",

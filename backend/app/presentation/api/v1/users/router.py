@@ -25,6 +25,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.domain.auth.identity import AuthenticatedPrincipal
+from app.application.audit.acciones import AccionAuditoria
 from app.domain.auth.roles import Rol
 from app.infrastructure.auth.hashing import hashear_password
 from app.infrastructure.persistence.models.transactional import (
@@ -250,7 +251,7 @@ async def crear_usuario(
     await registrar_seguro(
         session_factory,
         actor=_principal.email,
-        accion="user.create",
+        accion=AccionAuditoria.USUARIO_ALTA,
         ip=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
         proposito=f"Alta de usuario {usuario.email} (roles: {', '.join(body.roles)})",
@@ -407,6 +408,17 @@ async def editar_usuario(
                 detail="Ya existe un usuario con ese email.",
             ) from exc
 
+    from app.application.audit.service import registrar_seguro
+
+    await registrar_seguro(
+        session_factory,
+        actor=principal.email,
+        accion=AccionAuditoria.USUARIO_EDICION,
+        ip=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+        proposito=f"Editó el usuario {usuario.email}",
+    )
+
     return _usuario_to_response(usuario)
 
 
@@ -483,7 +495,7 @@ async def eliminar_usuario(
     await registrar_seguro(
         session_factory,
         actor=principal.email,
-        accion="user.delete",
+        accion=AccionAuditoria.USUARIO_BAJA,
         ip=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
         proposito=f"Baja de usuario {usuario_email}",
@@ -542,6 +554,17 @@ async def reactivar_usuario(
         )
         await session.commit()
         await session.refresh(usuario)
+
+    from app.application.audit.service import registrar_seguro
+
+    await registrar_seguro(
+        session_factory,
+        actor=principal.email,
+        accion=AccionAuditoria.USUARIO_REACTIVACION,
+        ip=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+        proposito=f"Reactivó el usuario {usuario.email}",
+    )
 
     return UsuarioDetalleResponse(
         id=str(usuario.id),

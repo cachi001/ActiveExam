@@ -20,21 +20,53 @@ const SIN_FILTRO: AuditFiltros = {};
 const PAGE_SIZE_DEFAULT = 5;
 
 /** Etiqueta + color + ícono legible de cada acción (los códigos son dot-namespaced). */
+// Catálogo de display: mapea cada acción REAL auditada por el backend a su
+// etiqueta/color/ícono. Debe reflejar lo que efectivamente se registra
+// (app/application/**/registrar(...)) — nada de acciones fantasma.
 const ACCION_META: Array<{ match: (a: string) => boolean; label: string; color: string; icon: string }> = [
   { match: (a) => a === 'materia.create', label: 'Creó materia', color: '#10b981', icon: 'school' },
   { match: (a) => a === 'comision.create', label: 'Creó comisión', color: '#06b6d4', icon: 'groups' },
-  { match: (a) => a === 'examen.create' || a.startsWith('examen.import'), label: 'Cargó examen', color: '#2563eb', icon: 'quiz' },
-  { match: (a) => a.startsWith('biometria'), label: 'Verificación biométrica', color: '#8b5cf6', icon: 'face' },
-  { match: (a) => a.startsWith('consent'), label: 'Aceptó consentimiento', color: '#0d9488', icon: 'fact_check' },
+  { match: (a) => a.startsWith('examen.'), label: 'Cargó examen', color: '#2563eb', icon: 'fact_check' },
+  { match: (a) => a.startsWith('biometria') || a.startsWith('enrollment'), label: 'Verificación biométrica', color: '#8b5cf6', icon: 'face' },
+  { match: (a) => a.startsWith('consent'), label: 'Consentimiento', color: '#0d9488', icon: 'fact_check' },
   { match: (a) => a === 'user.create', label: 'Alta de usuario', color: '#059669', icon: 'person_add' },
-  { match: (a) => a === 'user.delete', label: 'Baja de usuario', color: '#ef4444', icon: 'person_remove' },
   { match: (a) => a === 'user.update', label: 'Editó usuario', color: '#8b5cf6', icon: 'manage_accounts' },
-  { match: (a) => a === 'config_update' || a.startsWith('config'), label: 'Cambió configuración', color: '#f59e0b', icon: 'settings' },
+  { match: (a) => a === 'user.delete', label: 'Baja de usuario', color: '#ef4444', icon: 'person_remove' },
+  { match: (a) => a === 'user.reactivate', label: 'Reactivó usuario', color: '#10b981', icon: 'restart_alt' },
+  { match: (a) => a.startsWith('config'), label: 'Cambió configuración', color: '#f59e0b', icon: 'settings' },
   { match: (a) => a.startsWith('review.decision'), label: 'Decisión de revisión', color: '#d97706', icon: 'gavel' },
+  { match: (a) => a === 'acceso_evidencia', label: 'Acceso a evidencia', color: '#0ea5e9', icon: 'folder_open' },
+  { match: (a) => a === 'deposito_evidencia', label: 'Depósito de evidencia', color: '#2563eb', icon: 'inventory_2' },
+  { match: (a) => a === 'manipulacion_detectada', label: 'Manipulación detectada', color: '#ef4444', icon: 'gpp_maybe' },
+  { match: (a) => a.startsWith('firma_maestra') || a.startsWith('verify_chain'), label: 'Cadena de custodia', color: '#7c3aed', icon: 'verified_user' },
+  { match: (a) => a.startsWith('retention'), label: 'Retención / eliminación', color: '#64748b', icon: 'auto_delete' },
+  { match: (a) => a.startsWith('dsr') || a.startsWith('derecho_acceso'), label: 'Derechos del titular', color: '#0d9488', icon: 'policy' },
 ];
 function accionMeta(accion: string): { label: string; color: string; icon: string } {
   return ACCION_META.find((m) => m.match(accion)) ?? { label: accion, color: '#64748b', icon: 'bolt' };
 }
+
+/** Opciones del filtro de acción (SELECT). El `value` es el substring que el
+ * backend matchea (accion ILIKE %value%), no la acción exacta. */
+const ACCION_OPCIONES: Array<{ value: string; label: string }> = [
+  { value: 'user.create', label: 'Alta de usuario' },
+  { value: 'user.update', label: 'Editó usuario' },
+  { value: 'user.delete', label: 'Baja de usuario' },
+  { value: 'materia', label: 'Materias' },
+  { value: 'comision', label: 'Comisiones' },
+  { value: 'examen', label: 'Exámenes' },
+  { value: 'biometria', label: 'Verificación biométrica' },
+  { value: 'enrollment', label: 'Renovación biométrica' },
+  { value: 'consent', label: 'Consentimiento' },
+  { value: 'config', label: 'Configuración' },
+  { value: 'review.decision', label: 'Decisiones de revisión' },
+  { value: 'acceso_evidencia', label: 'Acceso a evidencia' },
+  { value: 'deposito_evidencia', label: 'Depósito de evidencia' },
+  { value: 'manipulacion', label: 'Manipulación detectada' },
+  { value: 'verify_chain', label: 'Cadena de custodia' },
+  { value: 'retention', label: 'Retención / eliminación' },
+  { value: 'dsr', label: 'Derechos del titular' },
+];
 
 function fmtFecha(iso: string): string {
   const d = new Date(iso.replace(' ', 'T'));
@@ -192,18 +224,21 @@ export default function Auditoria() {
               value={borrador.actor ?? ''}
               placeholder="email o parte…"
               onChange={(e) => setCampo({ actor: e.target.value || undefined })}
-              className="min-w-[180px] rounded-md border border-surface-300 bg-white px-3 py-2 text-[13px] text-on-surface focus:border-primary focus:outline-none"
+              className="min-w-[180px] rounded-md border border-surface-300 bg-white px-3 py-2 text-[13px] text-on-surface focus:border-surface-500 focus:outline-none"
             />
           </label>
           <label className="flex flex-col gap-1 text-[12px] font-medium text-on-surface-variant">
             Acción
-            <input
-              type="text"
+            <select
               value={borrador.accion ?? ''}
-              placeholder="ej: login, export, user…"
               onChange={(e) => setCampo({ accion: e.target.value || undefined })}
-              className="min-w-[160px] rounded-md border border-surface-300 bg-white px-3 py-2 text-[13px] text-on-surface focus:border-primary focus:outline-none"
-            />
+              className="min-w-[180px] rounded-md border border-surface-300 bg-white px-3 py-2 text-[13px] text-on-surface focus:border-surface-500 focus:outline-none"
+            >
+              <option value="">Todas las acciones</option>
+              {ACCION_OPCIONES.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
           </label>
           <label className="flex flex-col gap-1 text-[12px] font-medium text-on-surface-variant">
             Desde
@@ -211,7 +246,7 @@ export default function Auditoria() {
               type="date"
               value={borrador.desde?.slice(0, 10) ?? ''}
               onChange={(e) => setCampo({ desde: e.target.value ? `${e.target.value}T00:00:00` : undefined })}
-              className="rounded-md border border-surface-300 bg-white px-3 py-2 text-[13px] text-on-surface focus:border-primary focus:outline-none"
+              className="rounded-md border border-surface-300 bg-white px-3 py-2 text-[13px] text-on-surface focus:border-surface-500 focus:outline-none"
             />
           </label>
           <label className="flex flex-col gap-1 text-[12px] font-medium text-on-surface-variant">
@@ -220,7 +255,7 @@ export default function Auditoria() {
               type="date"
               value={borrador.hasta?.slice(0, 10) ?? ''}
               onChange={(e) => setCampo({ hasta: e.target.value ? `${e.target.value}T23:59:59` : undefined })}
-              className="rounded-md border border-surface-300 bg-white px-3 py-2 text-[13px] text-on-surface focus:border-primary focus:outline-none"
+              className="rounded-md border border-surface-300 bg-white px-3 py-2 text-[13px] text-on-surface focus:border-surface-500 focus:outline-none"
             />
           </label>
         </FiltrosPanel>
