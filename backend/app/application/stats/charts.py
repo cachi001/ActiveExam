@@ -14,6 +14,7 @@ import matplotlib
 matplotlib.use("Agg")  # backend sin display (container)
 import matplotlib.pyplot as plt  # noqa: E402
 
+from app.application.stats.labels import etiqueta_evento  # noqa: E402
 from app.application.stats.resumen_service import ResumenStats  # noqa: E402
 
 # Paleta por banda de score (igual que el frontend).
@@ -24,19 +25,6 @@ _INDIGO = "#6366f1"
 _AZUL = "#3b82f6"
 _ROJO = "#ef4444"
 
-ETIQUETA_EVENTO = {
-    "rostro_ausente": "Rostro ausente",
-    "multiples_rostros": "Múltiples rostros",
-    "mirada_desviada_sostenida": "Mirada desviada",
-    "perdida_de_foco": "Pérdida de foco",
-    "cambio_pestana": "Cambio de pestaña",
-    "salida_pantalla_completa": "Salió pantalla completa",
-    "copiar_pegar": "Copiar / pegar",
-    "monitor_adicional": "Monitor adicional",
-    "corte_conectividad_prolongado": "Corte de conexión",
-    "reanudacion_tardia": "Reanudación tardía",
-    "recarga_pagina": "Recarga de página",
-}
 DECISION_LABEL = {
     "sin_revisar": "Sin revisar",
     "pendiente": "Pendiente",
@@ -116,7 +104,7 @@ def _ax_top_eventos(ax, r: ResumenStats) -> None:
         _sin_datos(ax, "Detectores más frecuentes")
         return
     items = list(reversed(items))
-    nombres = [ETIQUETA_EVENTO.get(e.tipo, e.tipo.replace("_", " ")) for e in items]
+    nombres = [etiqueta_evento(e.tipo) for e in items]
     ax.barh(nombres, [e.cantidad for e in items], color=_TEAL)
     ax.set_title("Detectores más frecuentes", fontsize=11, fontweight="bold", loc="left")
     ax.spines[["top", "right"]].set_visible(False)

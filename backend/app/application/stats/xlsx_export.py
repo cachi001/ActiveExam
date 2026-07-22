@@ -16,24 +16,11 @@ from openpyxl.drawing.image import Image as XLImage
 from openpyxl.styles import Alignment, Font, PatternFill
 
 from app.application.stats.charts import dashboard_png
+from app.application.stats.labels import etiqueta_evento
 from app.application.stats.resumen_service import FiltrosStats, ResumenStats
 
 ORDEN_BANDAS = ["0-24", "25-49", "50-69", "70-100"]
 COLOR_BANDA_HEX = {"0-24": "10B981", "25-49": "3B82F6", "50-69": "F59E0B", "70-100": "EF4444"}
-
-ETIQUETA_EVENTO = {
-    "rostro_ausente": "Rostro ausente",
-    "multiples_rostros": "Múltiples rostros",
-    "mirada_desviada_sostenida": "Mirada desviada",
-    "perdida_de_foco": "Pérdida de foco",
-    "cambio_pestana": "Cambio de pestaña",
-    "salida_pantalla_completa": "Salió pantalla completa",
-    "copiar_pegar": "Copiar / pegar",
-    "monitor_adicional": "Monitor adicional",
-    "corte_conectividad_prolongado": "Corte de conexión",
-    "reanudacion_tardia": "Reanudación tardía",
-    "recarga_pagina": "Recarga de página",
-}
 DECISION_LABEL = {
     "sin_revisar": "Sin revisar",
     "pendiente": "Pendiente",
@@ -164,7 +151,7 @@ def resumen_a_xlsx(r: ResumenStats, filtros: FiltrosStats | None = None) -> byte
         wb,
         "Detectores",
         ["Detector", "Cantidad"],
-        [(ETIQUETA_EVENTO.get(e.tipo, e.tipo.replace("_", " ")), e.cantidad) for e in (r.top_eventos or [])],
+        [(etiqueta_evento(e.tipo), e.cantidad) for e in (r.top_eventos or [])],
         "Detectores más frecuentes",
     )
 

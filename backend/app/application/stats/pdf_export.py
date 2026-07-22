@@ -14,25 +14,12 @@ from datetime import datetime, timezone
 from fpdf import FPDF
 
 from app.application.stats.charts import dashboard_png
+from app.application.stats.labels import etiqueta_evento
 from app.application.stats.resumen_service import FiltrosStats, ResumenStats
 
 _AZUL = (0, 75, 168)
 _GRIS = (71, 85, 105)
 _ZEBRA = (241, 245, 249)
-
-ETIQUETA_EVENTO = {
-    "rostro_ausente": "Rostro ausente",
-    "multiples_rostros": "Múltiples rostros",
-    "mirada_desviada_sostenida": "Mirada desviada",
-    "perdida_de_foco": "Pérdida de foco",
-    "cambio_pestana": "Cambio de pestaña",
-    "salida_pantalla_completa": "Salió de pantalla completa",
-    "copiar_pegar": "Copiar / pegar",
-    "monitor_adicional": "Monitor adicional",
-    "corte_conectividad_prolongado": "Corte de conexión",
-    "reanudacion_tardia": "Reanudación tardía",
-    "recarga_pagina": "Recarga de página",
-}
 DECISION_LABEL = {
     "sin_revisar": "Sin revisar",
     "pendiente": "Pendiente",
@@ -179,7 +166,7 @@ def resumen_a_pdf(r: ResumenStats, filtros: FiltrosStats | None = None) -> bytes
             pdf,
             "Eventos detectados con más frecuencia",
             ("Evento", "Veces"),
-            [(ETIQUETA_EVENTO.get(e.tipo, e.tipo.replace("_", " ")), e.cantidad) for e in r.top_eventos],
+            [(etiqueta_evento(e.tipo), e.cantidad) for e in r.top_eventos],
         )
 
     if r.decisiones:
