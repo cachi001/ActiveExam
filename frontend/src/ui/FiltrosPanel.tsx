@@ -59,9 +59,8 @@ export function FiltrosPanel({
             <button
               type="button"
               onClick={onLimpiar}
-              className="inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-[13px] font-medium text-on-surface-variant hover:bg-surface-100"
+              className="rounded-md px-3 py-2 text-[13px] font-medium text-on-surface-variant hover:bg-surface-100"
             >
-              <Icon name="filter_alt_off" className="text-[16px]" />
               Limpiar
             </button>
           )}
@@ -70,9 +69,8 @@ export function FiltrosPanel({
               type="button"
               onClick={onAplicar}
               disabled={aplicarDeshabilitado}
-              className="inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-[13px] font-semibold text-white hover:bg-primary-700 disabled:opacity-60"
+              className="rounded-md bg-primary px-4 py-2 text-[13px] font-semibold text-white hover:bg-primary-700 disabled:opacity-60"
             >
-              <Icon name="check" className="text-[16px]" />
               Aplicar filtros
             </button>
           )}

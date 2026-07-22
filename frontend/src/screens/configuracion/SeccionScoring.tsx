@@ -20,7 +20,7 @@ import { Icon, Button } from '../../ui/components';
 import { useToast } from '../../ui/toast';
 import { api, SEVERIDAD_LABEL, TIPO_EVENTO_LABEL } from '../../lib/api';
 import type { EventoScoreConfig, Severidad, TipoEvento } from '../../lib/types';
-import { SEVERITY_BADGE_COLORS, SEVERITY_CARD_COLORS } from '../harness/helpers';
+import { SEVERITY_BADGE_COLORS } from '../harness/helpers';
 import { resetEffectiveConfigCache } from '../../config/effectiveConfigCache';
 
 // baseline NO es un evento: es el piso 0 del score, no se elige por evento.
@@ -30,6 +30,15 @@ import {
 } from '../../config/severityRanges';
 
 const SEVERIDADES: SeveridadEditable[] = ['baja', 'media', 'alta', 'critica'];
+
+/** Color por severidad, usado por la barrita-acento corta de la card y el punto
+ * de la leyenda de rangos (mismo lenguaje visual). */
+const SEVERITY_DOT: Record<SeveridadEditable, string> = {
+  baja: 'bg-blue-400',
+  media: 'bg-amber-400',
+  alta: 'bg-red-500',
+  critica: 'bg-red-700',
+};
 
 /** Devuelve el peso ajustado al rango de la severidad dada. */
 function ajustarPesoARango(peso: number, severidad: SeveridadEditable): number {
@@ -52,10 +61,6 @@ export default function SeccionScoring() {
   const [cargando, setCargando] = useState(true);
   const [guardando, setGuardando] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, Partial<EventoScoreConfig>>>({});
-  // Texto en progreso del input de peso (permite vaciar/tipear libre sin clampear
-  // en cada tecla; el clamp al rango se aplica en onBlur). Sin esto, borrar un
-  // digito o tipear un valor intermedio salta al min/max y no se puede llegar a 8.
-  const [pesoText, setPesoText] = useState<Record<string, string>>({});
 
   useEffect(() => { cargar(); }, []);
 
@@ -110,11 +115,6 @@ export default function SeccionScoring() {
         delete next[cfg.tipo_evento];
         return next;
       });
-      setPesoText((prev) => {
-        const next = { ...prev };
-        delete next[cfg.tipo_evento];
-        return next;
-      });
       // Invalida ambos caches: scoring weights + config efectiva completa (task 4.5).
       resetEffectiveConfigCache();
       toast.success(`Guardado: ${TIPO_EVENTO_LABEL[cfg.tipo_evento as TipoEvento] ?? cfg.tipo_evento}`);
@@ -127,11 +127,6 @@ export default function SeccionScoring() {
 
   function descartar(tipo: string) {
     setDrafts((prev) => {
-      const next = { ...prev };
-      delete next[tipo];
-      return next;
-    });
-    setPesoText((prev) => {
       const next = { ...prev };
       delete next[tipo];
       return next;
@@ -159,30 +154,39 @@ export default function SeccionScoring() {
 
   return (
     <div className="space-y-lg">
-      {/* Título + chips de rangos por severidad (compactos, una sola línea) */}
-      <div className="space-y-sm">
+      {/* Encabezado editorial + leyenda de rangos. */}
+      <div className="space-y-4">
         <div>
-          <h2 className="font-headline text-title-xl text-on-surface tracking-tight">Scoring</h2>
-          <p className="text-[13px] text-on-surface-variant mt-1">
-            Cuántos puntos suma cada tipo de evento al score de riesgo.
+          <h2 className="font-headline text-[24px] font-bold text-on-surface tracking-tight leading-tight">Scoring</h2>
+          <p className="text-[13.5px] text-on-surface-variant leading-relaxed max-w-2xl mt-2">
+            Definí cuántos puntos suma cada tipo de evento al <strong>score de riesgo</strong> y su
+            severidad. El on/off de cada evento se maneja en <strong>Parámetros generales →
+            Detectores</strong>; acá solo ajustás el peso.
           </p>
         </div>
-        <div className="flex items-center gap-1.5 flex-wrap text-[12px]">
-          <span className="text-on-surface-variant">Rangos:</span>
-          <span className="inline-flex items-baseline gap-1.5 px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 font-semibold"><span>Baja</span><span className="font-normal tabular-nums opacity-80">1–10</span></span>
-          <span className="inline-flex items-baseline gap-1.5 px-2 py-0.5 rounded-full bg-warning-container text-warning font-semibold"><span>Media</span><span className="font-normal tabular-nums opacity-80">11–30</span></span>
-          <span className="inline-flex items-baseline gap-1.5 px-2 py-0.5 rounded-full bg-error-container text-on-error-container font-semibold"><span>Alta</span><span className="font-normal tabular-nums opacity-80">31–60</span></span>
-          <span className="inline-flex items-baseline gap-1.5 px-2 py-0.5 rounded-full bg-error text-on-error font-semibold"><span>Crítica</span><span className="font-normal tabular-nums opacity-80">61–100</span></span>
+        {/* Leyenda de rangos: punto de color + nombre + rango. Limpia y alineada. */}
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 pt-3 border-t border-outline-variant/40">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant">Rangos de puntaje</span>
+          {SEVERIDADES.map((s) => {
+            const { min, max } = rangoDeSeveridad(s);
+            return (
+              <span key={s} className="inline-flex items-center gap-2 text-[12.5px]">
+                <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${SEVERITY_DOT[s]}`} aria-hidden />
+                <span className="font-semibold text-on-surface">{SEVERIDAD_LABEL[s]}</span>
+                <span className="text-on-surface-variant tabular-nums">{min}–{max}</span>
+              </span>
+            );
+          })}
         </div>
       </div>
 
       {/* Aviso inline al inicio: los pesos solo afectan cálculos futuros. */}
-      <div className="flex items-center gap-2.5 rounded-xl bg-primary-fixed border border-primary/20 px-4 py-3 text-[13px] text-on-surface">
-        <Icon name="info" className="text-[20px] text-primary shrink-0" fill />
+      <div className="flex items-center gap-2.5 rounded-xl bg-blue-50 border border-blue-200 px-4 py-3 text-[13px] text-blue-900">
+        <Icon name="info" className="text-[20px] text-blue-600 shrink-0" fill />
         <span>Cambiar los pesos no modifica eventos pasados; solo afecta el cálculo del score en futuros exámenes.</span>
       </div>
 
-      <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-md min-w-0">
+      <div className="grid sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-lg min-w-0">
         {configs.map((cfg) => {
           const editado = tieneEdicion(cfg.tipo_evento);
           const sev = severidadEditable(valorActual(cfg, 'severidad') as Severidad);
@@ -191,10 +195,10 @@ export default function SeccionScoring() {
           return (
             <div
               key={cfg.tipo_evento}
-              className={`rounded-2xl border shadow-card p-5 transition-colors min-w-0 flex flex-col gap-3 ${SEVERITY_CARD_COLORS[sev]} ${
-                editado ? 'ring-2 ring-primary/40' : ''
-              }`}
+              className="relative overflow-hidden rounded-2xl border border-outline-variant/50 bg-white shadow-card hover:shadow-lg p-6 transition-shadow min-w-0 flex flex-col gap-4"
             >
+              {/* Línea fina de color arriba, recortada por las esquinas redondeadas. */}
+              <div className={`absolute top-0 left-0 right-0 h-1 ${SEVERITY_DOT[sev]}`} aria-hidden />
               {/* Cabecera: badge de severidad + nombre. El on/off del evento vive en
                   Parámetros generales → Detectores (un solo interruptor). Acá solo se
                   configura cuánto pesa y su severidad. */}
@@ -219,7 +223,7 @@ export default function SeccionScoring() {
                   <select
                     value={sev}
                     onChange={(e) => setSeveridad(cfg, e.target.value as SeveridadEditable)}
-                    className="text-[13px] px-2.5 py-1.5 rounded-xl border border-outline-variant bg-white hover:border-outline focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors"
+                    className="text-[13px] px-2.5 py-1.5 rounded-xl border border-outline-variant bg-white hover:border-outline focus:outline-none focus:border-surface-500 transition-colors"
                     disabled={isGuardando}
                     aria-label={`Severidad de ${cfg.tipo_evento}`}
                   >
@@ -233,35 +237,20 @@ export default function SeccionScoring() {
                   <span className="text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant" title={`Puntos que suma este evento al score (rango permitido para severidad ${SEVERIDAD_LABEL[sev]}: ${rangoDeSeveridad(sev).min}–${rangoDeSeveridad(sev).max})`}>
                     Impacto ({rangoDeSeveridad(sev).min}–{rangoDeSeveridad(sev).max} pts)
                   </span>
-                  <input
-                    type="number"
-                    min={rangoDeSeveridad(sev).min}
-                    max={rangoDeSeveridad(sev).max}
-                    value={pesoText[cfg.tipo_evento] ?? String(peso)}
-                    onChange={(e) => {
-                      const text = e.target.value;
-                      setPesoText((p) => ({ ...p, [cfg.tipo_evento]: text }));
-                      // Guardamos el valor tipeado SIN clampear (el clamp es en onBlur),
-                      // para poder llegar a valores intermedios como 8.
-                      const raw = parseInt(text, 10);
-                      if (!isNaN(raw)) setDraft(cfg.tipo_evento, 'peso', raw);
-                    }}
-                    onBlur={() => {
-                      // Al salir del campo: clampeamos al rango de la severidad y
-                      // sincronizamos el texto al valor final (o al actual si quedó vacío).
-                      const parsed = parseInt(pesoText[cfg.tipo_evento] ?? '', 10);
-                      const ajustado = ajustarPesoARango(isNaN(parsed) ? peso : parsed, sev);
-                      setDraft(cfg.tipo_evento, 'peso', ajustado);
-                      setPesoText((p) => {
-                        const next = { ...p };
-                        delete next[cfg.tipo_evento];
-                        return next;
-                      });
-                    }}
-                    className="w-full px-2.5 py-1.5 text-[13px] rounded-xl border border-outline-variant bg-white font-mono hover:border-outline focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors"
+                  <select
+                    value={String(peso)}
+                    onChange={(e) => setDraft(cfg.tipo_evento, 'peso', parseInt(e.target.value, 10))}
+                    className="w-full px-2.5 py-1.5 text-[13px] rounded-xl border border-outline-variant bg-white font-mono hover:border-outline focus:outline-none focus:border-surface-500 transition-colors"
                     disabled={isGuardando}
                     aria-label={`Impacto en el score de ${cfg.tipo_evento} (rango ${rangoDeSeveridad(sev).min} a ${rangoDeSeveridad(sev).max} puntos)`}
-                  />
+                  >
+                    {Array.from(
+                      { length: rangoDeSeveridad(sev).max - rangoDeSeveridad(sev).min + 1 },
+                      (_, k) => rangoDeSeveridad(sev).min + k,
+                    ).map((n) => (
+                      <option key={n} value={n}>{n}</option>
+                    ))}
+                  </select>
                 </label>
               </div>
 
@@ -269,7 +258,7 @@ export default function SeccionScoring() {
                   Guardar = primary (color institucional #004BA8). */}
               {editado && (
                 <div className="flex items-center justify-end gap-1.5 pt-1">
-                  <Button size="sm" variant="outline" onClick={() => descartar(cfg.tipo_evento)} disabled={isGuardando}>
+                  <Button size="sm" variant="ghost" onClick={() => descartar(cfg.tipo_evento)} disabled={isGuardando}>
                     Descartar
                   </Button>
                   <Button size="sm" variant="primary" icon="save" onClick={() => guardar(cfg)} disabled={isGuardando}>

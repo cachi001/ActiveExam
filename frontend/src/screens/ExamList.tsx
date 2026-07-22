@@ -98,8 +98,9 @@ export default function ExamList() {
           </p>
           <p>
             Los detectores, umbrales y pesos se configuran de forma global en
-            <em> Configuración del sistema</em>. Hacé clic en "Detalle" para ver los
-            alumnos que rindieron y sincronizar notas con Moodle.
+            <em> Configuración del sistema</em>. Hacé clic en un examen (o en
+            "Alumnos que rindieron") para ver quiénes lo rindieron y sincronizar
+            notas con Moodle.
           </p>
         </HelpButton>
       }
@@ -123,14 +124,14 @@ export default function ExamList() {
               onKeyDown={(e) => {
                 if (e.key === 'Enter') aplicarBusqueda();
               }}
-              className="min-w-[240px] rounded-md border border-surface-300 bg-white px-3 py-2 text-[13px] text-on-surface focus:border-primary focus:outline-none"
+              className="min-w-[240px] rounded-md border border-surface-300 bg-white px-3 py-2 text-[13px] text-on-surface focus:border-surface-500 focus:outline-none"
             />
           </label>
         </FiltrosPanel>
 
         <Card>
           <div className="flex items-center gap-2 mb-md pb-md border-b border-outline-variant/40">
-            <Icon name="quiz" className="text-[18px] text-on-surface-variant" fill />
+            <Icon name="fact_check" className="text-[18px] text-on-surface-variant" fill />
             <h2 className="text-[15px] font-semibold text-on-surface">
               Exámenes <span className="text-on-surface-variant font-normal">({totalImportados})</span>
             </h2>
@@ -167,7 +168,7 @@ export default function ExamList() {
                 <table className="w-full text-left">
                   <thead>
                     <tr className="text-label-sm uppercase tracking-wide text-on-surface-variant border-b border-outline-variant/40">
-                      <th className="py-sm pr-md font-semibold">Examen</th>
+                      <th className="py-sm pl-sm pr-md font-semibold">Examen</th>
                       <th className="py-sm pr-md font-semibold">Materia</th>
                       <th className="py-sm pr-md font-semibold">Comisión</th>
                       <th className="py-sm px-md font-semibold text-center">Preguntas</th>
@@ -179,10 +180,10 @@ export default function ExamList() {
                       <tr
                         key={e.id}
                         className={`border-b border-outline-variant/20 transition-colors
-                          ${cargando ? 'opacity-50' : 'hover:bg-surface-container-low cursor-pointer'}`}
-                        onClick={!cargando ? () => navigate(`/admin/examenes/${e.id}`) : undefined}
+                          ${cargando ? 'opacity-50' : 'hover:bg-primary/5 cursor-pointer'}`}
+                        onClick={!cargando ? () => navigate(`/admin/examenes/${e.id}/resultados`) : undefined}
                       >
-                        <td className="py-sm pr-md">
+                        <td className="py-sm pl-sm pr-md">
                           <p className="text-label-md font-semibold text-on-surface">{e.titulo}</p>
                         </td>
                         <td className="py-sm pr-md text-label-md text-on-surface-variant">
@@ -199,7 +200,8 @@ export default function ExamList() {
                             <ActionMenu
                               ariaLabel={`Acciones de ${e.titulo}`}
                               items={[
-                                { label: 'Ver detalle', icon: 'open_in_new', onClick: () => navigate(`/admin/examenes/${e.id}`) },
+                                { label: 'Alumnos que rindieron', icon: 'groups', onClick: () => navigate(`/admin/examenes/${e.id}/resultados`) },
+                                { label: 'Detalle del examen', icon: 'open_in_new', onClick: () => navigate(`/admin/examenes/${e.id}`) },
                                 { label: 'Configurar / vincular', icon: 'settings', onClick: importar },
                               ]}
                             />
@@ -221,7 +223,7 @@ export default function ExamList() {
                   >
                     <button
                       type="button"
-                      onClick={!cargando ? () => navigate(`/admin/examenes/${e.id}`) : undefined}
+                      onClick={!cargando ? () => navigate(`/admin/examenes/${e.id}/resultados`) : undefined}
                       className="flex-1 min-w-0 text-left"
                     >
                       <p className="text-label-md font-semibold text-on-surface truncate">{e.titulo}</p>

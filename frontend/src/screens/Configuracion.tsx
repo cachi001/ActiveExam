@@ -58,7 +58,7 @@ export default function Configuracion() {
               <button
                 key={t.id}
                 onClick={() => setTab(t.id)}
-                className={`inline-flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium border-b-2 -mb-px whitespace-nowrap shrink-0 transition-colors ${
+                className={`inline-flex items-center gap-1.5 px-4 first:pl-0 py-2.5 text-[13px] font-medium border-b-2 -mb-px whitespace-nowrap shrink-0 transition-colors ${
                   active
                     ? 'border-primary text-primary'
                     : 'border-transparent text-on-surface-variant hover:text-on-surface'

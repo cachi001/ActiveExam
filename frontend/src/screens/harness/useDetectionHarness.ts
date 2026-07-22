@@ -58,6 +58,7 @@ import { useHarnessLifecycle } from './useHarnessLifecycle';
 export function useDetectionHarness() {
   // ------ Store ------
   const anomaliasVivo = useApp((s) => s.anomaliasVivo);
+  const limpiarAnomalias = useApp((s) => s.limpiarAnomalias);
   const pushAnomalia = useApp((s) => s.pushAnomalia);
   const setProctoringSessionId = useApp((s) => s.setProctoringSessionId);
 
@@ -479,6 +480,7 @@ export function useDetectionHarness() {
     setDetectoresActivos,
     // store
     anomaliasVivo,
+    limpiarAnomalias,
     // panel propósito
     propositoPanelOpen,
     setPropositoPanelOpen,

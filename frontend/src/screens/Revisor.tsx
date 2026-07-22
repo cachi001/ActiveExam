@@ -259,7 +259,7 @@ export default function Revisor() {
 
         {cargando && (
           <Card className="text-center py-xl text-on-surface-variant space-y-base">
-            <Icon name="hourglass_empty" className="text-[32px] animate-pulse" />
+            <Icon name="progress_activity" className="text-[32px] ae-spin" />
             <p className="text-label-md">Cargando cola…</p>
           </Card>
         )}

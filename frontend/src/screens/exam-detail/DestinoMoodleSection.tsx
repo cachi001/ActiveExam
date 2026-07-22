@@ -3,9 +3,9 @@ import { Button, Card, Icon, SectionTitle } from '../../ui/components';
 import { getMoodleTarget, setMoodleTarget, buildMoodleTarget } from '../../lib/examContentAdmin';
 
 const SOFT_INPUT_CLS =
-  'w-full rounded-md border border-outline-variant bg-surface px-3 py-2.5 text-sm ' +
-  'text-on-surface outline-none transition-colors hover:border-outline focus:border-primary ' +
-  'disabled:opacity-50 disabled:cursor-not-allowed';
+  'w-full rounded-lg border border-surface-300 bg-white px-3 py-2.5 text-sm shadow-sm ' +
+  'text-on-surface transition-colors hover:border-surface-400 focus:border-surface-500 focus:outline-none ' +
+  'disabled:bg-surface-100 disabled:text-on-surface-variant disabled:border-surface-200 disabled:shadow-none disabled:cursor-not-allowed';
 const SOFT_LABEL_CLS = 'block text-sm font-medium text-on-surface';
 
 export function DestinoMoodleSection({ examenId }: { examenId: string }) {

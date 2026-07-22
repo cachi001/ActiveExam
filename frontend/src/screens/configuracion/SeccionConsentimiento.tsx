@@ -128,7 +128,7 @@ export default function SeccionConsentimiento() {
 
   if (cargando) {
     return (
-      <div className="space-y-lg max-w-6xl">
+      <div className="space-y-lg">
         {Array.from({ length: 3 }).map((_, i) => (
           <div key={i} className="h-[140px] rounded-2xl border border-outline-variant/40 bg-white animate-pulse" />
         ))}
@@ -137,19 +137,19 @@ export default function SeccionConsentimiento() {
   }
 
   return (
-    <div className="space-y-lg max-w-6xl">
-      {/* Título de la sección */}
-      <div>
-        <h2 className="font-headline text-title-xl text-on-surface tracking-tight">Consentimiento</h2>
-        <p className="text-[13px] text-on-surface-variant mt-1">
-          Texto que los alumnos leen y confirman antes de rendir. Publicar una nueva versión obliga a todos
-          los alumnos a leer y confirmar el texto actualizado.
+    <div className="space-y-lg">
+      {/* Encabezado editorial: título con peso + descripción + divisor. */}
+      <div className="pb-4 border-b border-outline-variant/40">
+        <h2 className="font-headline text-[24px] font-bold text-on-surface tracking-tight leading-tight">Consentimiento</h2>
+        <p className="text-[13.5px] text-on-surface-variant leading-relaxed max-w-2xl mt-2">
+          Texto que los alumnos leen y confirman antes de rendir. Publicar una versión nueva
+          obliga a todos a leer y confirmar el texto actualizado.
         </p>
       </div>
 
-      {/* Versión vigente actual */}
-      <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-surface-container border border-outline-variant/60">
-        <Icon name="article" className="text-[20px] text-on-surface-variant shrink-0 mt-0.5" />
+      {/* Versión vigente actual — banner soft (sin gris fuerte). */}
+      <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-blue-50 border border-blue-200">
+        <Icon name="article" className="text-[20px] text-blue-600 shrink-0 mt-0.5" />
         <div className="space-y-0.5">
           <p className="text-[13px] font-semibold text-on-surface">
             Versión activa: <span className="font-mono">{version}</span>
@@ -162,11 +162,11 @@ export default function SeccionConsentimiento() {
 
       {/* Campo de nueva versión */}
       <Card className="flex items-end gap-md">
-        <div className="flex-1 space-y-base">
-          <label className="text-label-sm font-semibold text-on-surface block">
+        <div className="flex-1 space-y-2.5">
+          <label className="text-label-md font-semibold text-on-surface block">
             Versión a publicar
           </label>
-          <p className="text-[11px] text-on-surface-variant">
+          <p className="text-[12px] text-on-surface-variant leading-relaxed">
             Cada versión es permanente e inmutable. Si cambiás el texto, debés publicarlo bajo
             una versión nueva (ej. v2, v1.1, 2026-06).
           </p>
@@ -175,7 +175,7 @@ export default function SeccionConsentimiento() {
             value={nuevaVersion}
             onChange={(e) => setNuevaVersion(e.target.value)}
             placeholder="ej. v2, v1.1, 2026-06"
-            className="w-full px-sm py-base rounded-xl border border-outline-variant bg-white font-mono text-label-md focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors"
+            className="w-full mt-1 px-4 py-2.5 rounded-xl border border-outline-variant bg-white font-mono text-label-md focus:outline-none focus:border-surface-500 transition-colors"
           />
         </div>
         {versionCambio && (
@@ -197,15 +197,16 @@ export default function SeccionConsentimiento() {
         </div>
       )}
 
+      <div className="grid lg:grid-cols-2 gap-lg items-stretch">
       {bloques.map((b, i) => (
-        <Card key={i} className="space-y-sm flex flex-col">
+        <Card key={i} className="h-full space-y-sm flex flex-col">
           <div className="flex items-start gap-sm">
             <input
               type="text"
               value={b.titulo}
               onChange={(e) => setBloque(i, 'titulo', e.target.value)}
               placeholder={`Título de la cláusula ${i + 1}`}
-              className="flex-1 min-w-0 text-title-md font-headline text-on-surface bg-white rounded-lg border border-outline-variant px-3 py-1.5 hover:border-outline focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30 transition-colors"
+              className="flex-1 min-w-0 text-title-md font-headline text-on-surface bg-white rounded-lg border border-outline-variant px-3 py-1.5 hover:border-outline focus:border-surface-500 focus:outline-none transition-colors"
               aria-label={`Título de la cláusula ${i + 1}`}
             />
             <button
@@ -223,17 +224,18 @@ export default function SeccionConsentimiento() {
             ref={autoGrow}
             value={b.cuerpo}
             onChange={(e) => { setBloque(i, 'cuerpo', e.target.value); autoGrow(e.target); }}
-            className="w-full text-[13px] text-on-surface-variant bg-white rounded-xl border border-outline-variant p-sm min-h-[7rem] overflow-hidden resize-none focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors"
+            className="w-full text-[13px] text-on-surface-variant bg-white rounded-xl border border-outline-variant p-sm min-h-[7rem] overflow-hidden resize-none focus:outline-none focus:border-surface-500 transition-colors"
             aria-label={`Cuerpo de la cláusula ${i + 1}`}
           />
         </Card>
       ))}
+      </div>
 
       {/* Agregar una nueva cláusula al consentimiento */}
       <button
         type="button"
         onClick={agregarBloque}
-        className="w-full flex items-center justify-center gap-sm py-3 rounded-xl border border-primary/50 bg-primary/5 text-primary hover:bg-primary/10 hover:border-primary transition-colors text-label-md font-semibold"
+        className="w-full flex items-center justify-center gap-sm py-3 rounded-xl border border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100 hover:border-blue-400 transition-colors text-label-md font-semibold"
       >
         <Icon name="add" className="text-[18px]" />
         Agregar cláusula

@@ -22,7 +22,7 @@ const VARIANTS: Record<Variant, string> = {
   primary: 'bg-primary text-on-primary hover:bg-primary-700 active:bg-primary-800 shadow-sm',
   secondary: 'bg-surface-container text-on-surface hover:bg-surface-container-high active:bg-surface-container-highest',
   ghost: 'bg-transparent text-on-surface-variant hover:bg-surface-container active:bg-surface-container-high',
-  outline: 'bg-surface-container-lowest text-on-surface border border-outline-variant shadow-sm hover:bg-surface-container-low hover:border-outline',
+  outline: 'bg-surface-container-lowest text-on-surface border border-surface-300 shadow-sm hover:bg-surface-container-low hover:border-surface-400',
   danger: 'bg-error-600 text-on-error hover:bg-error-500 active:bg-error shadow-sm',
   success: 'bg-success-600 text-on-primary hover:bg-success-500 active:bg-success shadow-sm',
 };

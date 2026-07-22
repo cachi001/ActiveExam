@@ -30,8 +30,12 @@ export interface ConfigForm {
   revisionHabilitada: boolean;
 }
 
+// Input moderno: EDITABLE = fondo blanco + borde limpio (se ve que se puede
+// tocar); BLOQUEADO (disabled) = fondo gris claro + texto atenuado + cursor
+// not-allowed (se nota que NO se puede cambiar). Focus gris (sin azul).
 const INPUT_CLS =
-  'w-full rounded-none border border-outline-variant bg-surface px-4 py-3 text-body-md text-on-surface placeholder:text-on-surface-variant focus:border-primary focus:outline-none transition-colors';
+  'w-full rounded-lg border border-surface-300 bg-white px-4 py-2.5 text-body-md text-on-surface placeholder:text-on-surface-variant shadow-sm hover:border-surface-400 focus:border-surface-500 focus:outline-none transition-colors ' +
+  'disabled:bg-surface-100 disabled:text-on-surface-variant disabled:border-surface-200 disabled:shadow-none disabled:cursor-not-allowed';
 const LABEL_CLS = 'block text-label-md font-semibold text-on-surface mb-1.5';
 
 function configToForm(cfg: ExamConfig): ConfigForm {
@@ -213,7 +217,7 @@ export function ConfiguracionExamenSection({ examenId }: { examenId: string }) {
       {!cargando && !errorCarga && form && (
         <div className="space-y-5">
           {bloqueada && (
-            <div className="flex items-start gap-sm text-on-surface bg-warning-container/50 border border-warning/40 rounded-none px-4 py-3 text-label-sm">
+            <div className="flex items-start gap-sm text-on-surface bg-warning-container/50 border border-warning/40 rounded-lg px-4 py-3 text-label-sm">
               <Icon name="lock" className="text-[18px] shrink-0 text-warning" fill />
               <span>
                 Este examen ya tiene intentos finalizados. La mecánica y la nota
@@ -227,13 +231,13 @@ export function ConfiguracionExamenSection({ examenId }: { examenId: string }) {
             </div>
           )}
           {okGuardado && (
-            <div className="flex items-center gap-sm text-success bg-success-container rounded-none px-4 py-3 text-label-sm">
+            <div className="flex items-center gap-sm text-success bg-success-container rounded-lg px-4 py-3 text-label-sm">
               <Icon name="check_circle" className="text-[18px] shrink-0" fill />
               Configuración guardada.
             </div>
           )}
           {errorGuardar && (
-            <div className="flex items-center gap-sm text-error bg-error-container/40 rounded-none px-4 py-3 text-label-sm">
+            <div className="flex items-center gap-sm text-error bg-error-container/40 rounded-lg px-4 py-3 text-label-sm">
               <Icon name="error" className="text-[18px] shrink-0" fill />
               {errorGuardar}
             </div>
@@ -371,7 +375,7 @@ export function ConfiguracionExamenSection({ examenId }: { examenId: string }) {
             </p>
           </div>
 
-          <div className="flex items-center justify-between gap-md border border-outline-variant rounded-none px-4 py-3">
+          <div className="flex items-center justify-between gap-md border border-outline-variant rounded-lg px-4 py-3">
             <div className="min-w-0">
               <p className="text-label-md font-semibold text-on-surface">Permitir revisión de respuestas</p>
               <p className="text-label-sm text-on-surface-variant mt-0.5">
@@ -390,13 +394,13 @@ export function ConfiguracionExamenSection({ examenId }: { examenId: string }) {
                 ${form.revisionHabilitada ? 'bg-primary' : 'bg-surface-container-high'}`}
             >
               <span
-                className={`inline-block h-5 w-5 transform rounded-full bg-surface shadow transition-transform
+                className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform
                   ${form.revisionHabilitada ? 'translate-x-6' : 'translate-x-1'}`}
               />
             </button>
           </div>
 
-          <div className="flex items-center justify-between gap-md border border-outline-variant rounded-none px-4 py-3">
+          <div className="flex items-center justify-between gap-md border border-outline-variant rounded-lg px-4 py-3">
             <div className="min-w-0">
               <p className="text-label-md font-semibold text-on-surface">Mezclar preguntas</p>
               <p className="text-label-sm text-on-surface-variant mt-0.5">
@@ -414,7 +418,7 @@ export function ConfiguracionExamenSection({ examenId }: { examenId: string }) {
                 ${form.mezclarPreguntas ? 'bg-primary' : 'bg-surface-container-high'}`}
             >
               <span
-                className={`inline-block h-5 w-5 transform rounded-full bg-surface shadow transition-transform
+                className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform
                   ${form.mezclarPreguntas ? 'translate-x-6' : 'translate-x-1'}`}
               />
             </button>

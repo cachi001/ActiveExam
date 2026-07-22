@@ -117,12 +117,21 @@ export default function SeccionProctoring() {
 
   return (
     <div className="space-y-lg">
-      {/* El título y el subtítulo ya los pone el header de la página + el tab;
-          cada card tiene su propio SectionTitle. Sin intro redundante acá. */}
-      <div className="grid lg:grid-cols-3 gap-lg items-start">
-        {/* Columna izquierda: umbral + canales del alumno apilados (llena el alto
-            de los detectores, sin espacio muerto en desktop). */}
-        <div className="lg:col-span-1 space-y-lg min-w-0">
+      {/* Encabezado editorial: título con peso + descripción + divisor. */}
+      <div className="pb-4 border-b border-outline-variant/40">
+        <h2 className="font-headline text-[24px] font-bold text-on-surface tracking-tight leading-tight">Parámetros generales</h2>
+        <p className="text-[13.5px] text-on-surface-variant leading-relaxed max-w-2xl mt-2">
+          Definí el comportamiento por defecto del examen: a partir de qué puntaje una sesión
+          entra a revisión humana, qué detectores se vigilan y qué canales de comunicación
+          tiene el alumno mientras rinde.
+        </p>
+      </div>
+      {/* items-stretch: las dos columnas quedan igualadas en alto aunque a los
+          detectores les sobre espacio (se equiparan con la columna derecha). */}
+      <div className="grid lg:grid-cols-3 gap-lg items-stretch">
+        {/* Columna DERECHA (order-2): umbral + canales del alumno apilados. En
+            desktop van a la derecha; los detectores ocupan los 2/3 de la izquierda. */}
+        <div className="lg:col-span-1 lg:order-2 space-y-lg min-w-0">
         <Card className="space-y-md min-w-0 flex flex-col">
           <SectionTitle sub="A partir de qué puntaje de riesgo una sesión entra a revisión humana">
             Umbral de revisión
@@ -204,7 +213,7 @@ export default function SeccionProctoring() {
                     disabled={guardando}
                     value={estado.pausaMaxMin}
                     onChange={(e) => setEstado((p) => ({ ...p, pausaMaxMin: Math.max(1, Math.min(120, Number(e.target.value) || 1)) }))}
-                    className="w-20 text-[14px] px-3 py-2 rounded-lg border border-outline-variant bg-white focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                    className="w-20 text-[14px] px-3 py-2 rounded-lg border border-outline-variant bg-white focus:outline-none focus:border-surface-500"
                   />
                   <span className="text-label-sm text-on-surface-variant">min</span>
                 </div>
@@ -214,8 +223,8 @@ export default function SeccionProctoring() {
         </Card>
         </div>
 
-        {/* Detectores — 2/3 del ancho a la derecha, en 2 columnas. */}
-        <Card className="lg:col-span-2 space-y-md min-w-0 flex flex-col">
+        {/* Detectores — 2/3 del ancho a la IZQUIERDA (order-1), en 2 columnas. */}
+        <Card className="lg:col-span-2 lg:order-1 h-full space-y-md min-w-0 flex flex-col">
           <SectionTitle sub="Qué situaciones vigila el sistema por defecto durante el examen">
             Detectores activos
           </SectionTitle>

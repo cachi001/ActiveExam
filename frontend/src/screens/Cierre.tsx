@@ -121,7 +121,7 @@ export default function Cierre() {
                 ))
               ) : (
                 <div className="px-lg py-8 text-center text-on-surface-variant">
-                  <Icon name="hourglass_top" className="text-[24px] ae-spin" />
+                  <Icon name="progress_activity" className="text-[24px] ae-spin" />
                   <p className="mt-base text-label-md">Corrigiendo tu examen…</p>
                 </div>
               )}
@@ -190,7 +190,7 @@ export default function Cierre() {
                 </>
               ) : (
                 <div className="py-base text-on-surface-variant">
-                  <Icon name="hourglass_top" className="text-[24px] ae-spin" />
+                  <Icon name="progress_activity" className="text-[24px] ae-spin" />
                   <p className="mt-base text-label-md">Calculando tu nota…</p>
                 </div>
               )}

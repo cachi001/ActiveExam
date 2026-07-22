@@ -195,6 +195,7 @@ interface AppState {
   setExamenActivo: (e: Examen | null) => void;
   setRevisionSeleccionada: (s: SesionRevision | null) => void;
   pushAnomalia: (e: EventoSesion) => void;
+  limpiarAnomalias: () => void;
   addScore: (delta: number) => void;
   resetSesion: () => void;
   /** Actualiza el estado de enrollment en el store (llamar tras cada api.getEnrollment()). */
@@ -251,6 +252,7 @@ export const useApp = create<AppState>((set) => ({
   setExamenActivo: (examenActivo) => { persistExamenActivo(examenActivo); set({ examenActivo }); },
   setRevisionSeleccionada: (revisionSeleccionada) => set({ revisionSeleccionada }),
   pushAnomalia: (e) => set((s) => ({ anomaliasVivo: [e, ...s.anomaliasVivo].slice(0, 50) })),
+  limpiarAnomalias: () => set({ anomaliasVivo: [] }),
   addScore: (delta) => set((s) => ({ scorePropio: Math.min(100, s.scorePropio + delta) })),
   // Resetea TODO el estado por-intento. `proctoringSessionId`/`proctoringExamId` deben
   // limpiarse acá: si no, el intento 2 reusa la sesión FINALIZADA del intento 1 (Consent

@@ -94,7 +94,40 @@ export const SUSPICIOUS_ACTIVITY_CATALOG: readonly CatalogEntry[] = [
     label: 'Copiar / Pegar',
     descripcion: 'Se detectó una acción de copiar o pegar durante el examen (sin capturar contenido).',
   },
+  {
+    tipo: 'corte_conectividad_prolongado',
+    severidad: 'critica',
+    categoria: 'navegador',
+    label: 'Corte de conectividad',
+    descripcion: 'Se perdió la conexión con el servidor de monitoreo por un período prolongado.',
+  },
+  {
+    tipo: 'reanudacion_tardia',
+    severidad: 'media',
+    categoria: 'navegador',
+    label: 'Reanudación tardía',
+    descripcion: 'El estudiante reanudó la rendición tras una ausencia prolongada.',
+  },
+  {
+    tipo: 'recarga_pagina',
+    severidad: 'baja',
+    categoria: 'navegador',
+    label: 'Recarga de página',
+    descripcion: 'El estudiante recargó la página y volvió enseguida (reapertura benigna).',
+  },
 ] as const;
+
+/**
+ * Eventos que ADJUNTAN un screenshot cuando se disparan (el frame de la cámara ES
+ * la evidencia). El resto no adjunta imagen — el registro + timestamp ya es la
+ * evidencia (privacidad L2.5 / regla dura #7). Fuente única; debe coincidir con
+ * EVENTOS_CON_EVIDENCIA_VISUAL (useExamProctoring) y el selector de detectores.
+ */
+export const EVENTOS_CON_IMAGEN: ReadonlySet<string> = new Set([
+  'rostro_ausente',
+  'multiples_rostros',
+  'mirada_desviada_sostenida',
+]);
 
 /** Mapa tipo → entrada del catalogo para lookups O(1). */
 export const CATALOG_BY_TIPO: Readonly<Record<TipoEvento, CatalogEntry>> =
