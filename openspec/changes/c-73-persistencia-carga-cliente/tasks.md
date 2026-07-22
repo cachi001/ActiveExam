@@ -75,18 +75,30 @@
 > El write-back ya existe (C-69); acá se OPERA contra el campus real. Tests de backend
 > con DB real (no mocks de DB). El envío real a Moodle se prueba contra `campustest`.
 
-- [ ] 7.1 Documentar/parametrizar la config del campus real (`MOODLE_BASE_URL`,
+- [~] 7.1 Documentar/parametrizar la config del campus real (`MOODLE_BASE_URL`,
       `MOODLE_WS_TOKEN`, `courseid`, `cmid`) desde el secret manager / entorno; confirmar
-      que el token no aparece en repo/imagen/logs (grep de guardrail)
-- [ ] 7.2 Test (RED→GREEN): con `MOODLE_BASE_URL` vacío, la finalización persiste la nota
-      en estado sincronizable y NO rompe ningún flujo (degradación segura ya existente, fijar contrato)
+      que el token no aparece en repo/imagen/logs (grep de guardrail).
+      GUARDRAIL ✅: grep de token literal en el repo → limpio (los únicos literales viven
+      en tests con `# noqa: S106` y valores falsos). Config ya parametrizada en
+      `config_slim.py` (vars opcionales, default vacío = write-back off). FALTA: documentar
+      los valores reales del campus (se hace en la sesión en vivo con el owner).
+- [x] 7.2 Test (RED→GREEN): con `MOODLE_BASE_URL` vacío, la finalización persiste la nota
+      en estado sincronizable y NO rompe ningún flujo (degradación segura ya existente, fijar contrato).
+      Extraído el wiring inline de `create_app` a factory puro `build_writeback_svc`/
+      `build_moodle_config` (`app/infrastructure/moodle/wiring.py`); contrato clavado en
+      `tests/test_c73_writeback_wiring.py` (4 tests: base_url vacío → None → degrada a
+      `persistir_nota_pendiente`; seteado → svc real con token/curso/cm/component). Refactor
+      preserva comportamiento; `main_slim` ahora consume el factory (sin duplicación).
 - [ ] 7.3 Validación E2E contra `campustest.frm.utn.edu.ar` con un usuario de prueba: la
       nota calculada llega a la libreta del usuario correcto (idnumber→email); el intento
       queda auditado sin el token
 - [ ] 7.4 Verificar el caso de identidad no resoluble contra el campus real (no escribe a
       un usuario arbitrario; queda fallido/pendiente de revisión)
-- [ ] 7.5 Confirmar L2.5: lo sincronizado es solo la nota académica (respuestas correctas);
-      ningún flag/score de proctoring se escribe como nota
+- [x] 7.5 Confirmar L2.5: lo sincronizado es solo la nota académica (respuestas correctas);
+      ningún flag/score de proctoring se escribe como nota.
+      Clavado en `test_c69_session_finalizar_writeback::test_l2_5_nota_no_incluye_proctoring`:
+      la firma de `ejecutar_writeback` acepta `nota` y NO expone `score`/`flags`/
+      `proctoring_*`. El score de proctoring nunca entra al write-back.
 
 ## 8. Moodle — funciones de lectura (definir en la sesión en vivo)
 

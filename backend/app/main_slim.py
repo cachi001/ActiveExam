@@ -28,12 +28,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
-from app.application.moodle.writeback_service import MoodleWritebackService
 from app.config_slim import get_slim_settings
 from app.infrastructure.auth.slim_wiring import build_slim_jwt_validator
 from app.infrastructure.crypto.embedding_encryption import EmbeddingEncryptionService
 from app.infrastructure.crypto.evidence_encryption import EvidenceCipher
-from app.infrastructure.moodle.client import MoodleClientConfig, MoodleRestClient
+from app.infrastructure.moodle.wiring import build_writeback_svc
 from app.infrastructure.persistence.session_slim import (
     create_slim_engine,
     create_slim_session_factory,
@@ -103,17 +102,9 @@ def create_slim_app() -> FastAPI:
 
     # Servicio de write-back de nota a Moodle (C-69, D7/D10).
     # Si moodle_base_url no está configurado, el write-back queda deshabilitado.
-    # El token se toma de settings.moodle_ws_token — NUNCA se loguea.
-    _writeback_svc: MoodleWritebackService | None = None
-    if settings.moodle_base_url:
-        _moodle_config = MoodleClientConfig(
-            base_url=settings.moodle_base_url,
-            ws_token=settings.moodle_ws_token,
-            courseid=settings.moodle_courseid,
-            cmid=settings.moodle_cmid,
-            component=settings.moodle_component,
-        )
-        _writeback_svc = MoodleWritebackService(moodle_client=MoodleRestClient(config=_moodle_config))
+    # El token se toma de settings.moodle_ws_token — NUNCA se loguea. Contrato de
+    # cableado (empty base_url → None) clavado en test_c73_writeback_wiring.
+    _writeback_svc = build_writeback_svc(settings)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
