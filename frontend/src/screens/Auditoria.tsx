@@ -25,47 +25,101 @@ const PAGE_SIZE_DEFAULT = 5;
 // (app/application/**/registrar(...)) — nada de acciones fantasma.
 const ACCION_META: Array<{ match: (a: string) => boolean; label: string; color: string; icon: string }> = [
   { match: (a) => a === 'materia.create', label: 'Creó materia', color: '#10b981', icon: 'school' },
+  { match: (a) => a === 'materia.update', label: 'Editó materia', color: '#8b5cf6', icon: 'edit' },
+  { match: (a) => a === 'materia.delete', label: 'Eliminó materia', color: '#ef4444', icon: 'delete' },
+  { match: (a) => a === 'materia.set_activa', label: 'Cambió el estado de la materia', color: '#f59e0b', icon: 'toggle_on' },
   { match: (a) => a === 'comision.create', label: 'Creó comisión', color: '#06b6d4', icon: 'groups' },
+  { match: (a) => a === 'comision.update', label: 'Editó comisión', color: '#8b5cf6', icon: 'edit' },
+  { match: (a) => a === 'comision.delete', label: 'Eliminó comisión', color: '#ef4444', icon: 'delete' },
+  { match: (a) => a === 'inscripcion.create', label: 'Inscribió alumno', color: '#10b981', icon: 'person_add' },
+  { match: (a) => a === 'inscripcion.delete', label: 'Dio de baja inscripción', color: '#ef4444', icon: 'person_remove' },
+  // Mutaciones de examen: específicas ANTES del genérico examen.* (orden importa).
+  { match: (a) => a === 'examen.moodle_target', label: 'Fijó destino Moodle', color: '#0891b2', icon: 'link' },
+  { match: (a) => a === 'examen.config_update', label: 'Cambió config del examen', color: '#f59e0b', icon: 'tune' },
+  { match: (a) => a === 'examen.seleccion_preguntas', label: 'Cambió preguntas del examen', color: '#2563eb', icon: 'quiz' },
+  { match: (a) => a === 'moodle.sync', label: 'Sincronizó a Moodle', color: '#7c3aed', icon: 'sync' },
   { match: (a) => a.startsWith('examen.'), label: 'Cargó examen', color: '#2563eb', icon: 'fact_check' },
-  { match: (a) => a.startsWith('biometria') || a.startsWith('enrollment'), label: 'Verificación biométrica', color: '#8b5cf6', icon: 'face' },
+  { match: (a) => a.startsWith('enrollment'), label: 'Renovó la foto de referencia', color: '#8b5cf6', icon: 'photo_camera' },
+  { match: (a) => a.startsWith('biometria'), label: 'Verificó la identidad', color: '#8b5cf6', icon: 'face' },
   { match: (a) => a.startsWith('consent'), label: 'Consentimiento', color: '#0d9488', icon: 'fact_check' },
   { match: (a) => a === 'user.create', label: 'Alta de usuario', color: '#059669', icon: 'person_add' },
   { match: (a) => a === 'user.update', label: 'Editó usuario', color: '#8b5cf6', icon: 'manage_accounts' },
   { match: (a) => a === 'user.delete', label: 'Baja de usuario', color: '#ef4444', icon: 'person_remove' },
-  { match: (a) => a === 'user.reactivate', label: 'Reactivó usuario', color: '#10b981', icon: 'restart_alt' },
+  { match: (a) => a === 'user.reactivate', label: 'Cambió el estado del usuario', color: '#10b981', icon: 'toggle_on' },
   { match: (a) => a.startsWith('config'), label: 'Cambió configuración', color: '#f59e0b', icon: 'settings' },
   { match: (a) => a.startsWith('review.decision'), label: 'Decisión de revisión', color: '#d97706', icon: 'gavel' },
-  { match: (a) => a === 'acceso_evidencia', label: 'Acceso a evidencia', color: '#0ea5e9', icon: 'folder_open' },
-  { match: (a) => a === 'deposito_evidencia', label: 'Depósito de evidencia', color: '#2563eb', icon: 'inventory_2' },
-  { match: (a) => a === 'manipulacion_detectada', label: 'Manipulación detectada', color: '#ef4444', icon: 'gpp_maybe' },
-  { match: (a) => a.startsWith('firma_maestra') || a.startsWith('verify_chain'), label: 'Cadena de custodia', color: '#7c3aed', icon: 'verified_user' },
-  { match: (a) => a.startsWith('retention'), label: 'Retención / eliminación', color: '#64748b', icon: 'auto_delete' },
-  { match: (a) => a.startsWith('dsr') || a.startsWith('derecho_acceso'), label: 'Derechos del titular', color: '#0d9488', icon: 'policy' },
+  { match: (a) => a === 'acceso_evidencia', label: 'Consultó evidencia', color: '#0ea5e9', icon: 'folder_open' },
+  { match: (a) => a === 'deposito_evidencia', label: 'Guardó evidencia', color: '#2563eb', icon: 'inventory_2' },
+  { match: (a) => a === 'manipulacion_detectada', label: 'Detectó una anomalía', color: '#ef4444', icon: 'gpp_maybe' },
+  { match: (a) => a.startsWith('firma_maestra') || a.startsWith('verify_chain'), label: 'Verificó la integridad', color: '#7c3aed', icon: 'verified_user' },
+  { match: (a) => a.startsWith('retention'), label: 'Retención o borrado de datos', color: '#64748b', icon: 'auto_delete' },
+  { match: (a) => a.startsWith('dsr') || a.startsWith('derecho_acceso'), label: 'Pedido del titular de los datos', color: '#0d9488', icon: 'policy' },
 ];
 function accionMeta(accion: string): { label: string; color: string; icon: string } {
   return ACCION_META.find((m) => m.match(accion)) ?? { label: accion, color: '#64748b', icon: 'bolt' };
 }
 
-/** Opciones del filtro de acción (SELECT). El `value` es el substring que el
- * backend matchea (accion ILIKE %value%), no la acción exacta. */
-const ACCION_OPCIONES: Array<{ value: string; label: string }> = [
-  { value: 'user.create', label: 'Alta de usuario' },
-  { value: 'user.update', label: 'Editó usuario' },
-  { value: 'user.delete', label: 'Baja de usuario' },
-  { value: 'materia', label: 'Materias' },
-  { value: 'comision', label: 'Comisiones' },
-  { value: 'examen', label: 'Exámenes' },
-  { value: 'biometria', label: 'Verificación biométrica' },
-  { value: 'enrollment', label: 'Renovación biométrica' },
-  { value: 'consent', label: 'Consentimiento' },
-  { value: 'config', label: 'Configuración' },
-  { value: 'review.decision', label: 'Decisiones de revisión' },
-  { value: 'acceso_evidencia', label: 'Acceso a evidencia' },
-  { value: 'deposito_evidencia', label: 'Depósito de evidencia' },
-  { value: 'manipulacion', label: 'Manipulación detectada' },
-  { value: 'verify_chain', label: 'Cadena de custodia' },
-  { value: 'retention', label: 'Retención / eliminación' },
-  { value: 'dsr', label: 'Derechos del titular' },
+/** Filtro en DOS pasos: primero la ENTIDAD (sobre qué se actuó), luego la ACCIÓN
+ * (qué se hizo). Todo en castellano llano — sin tecnicismos. El `value` es el
+ * patrón que matchea el backend (accion ILIKE %value%); si lleva coma, el backend
+ * combina los patrones con OR (una entidad que agrupa varios tipos de acción). */
+type OpcionAccion = { value: string; label: string };
+type Entidad = { value: string; label: string; acciones: OpcionAccion[] };
+const ENTIDADES: Entidad[] = [
+  { value: 'user', label: 'Usuarios', acciones: [
+    { value: 'user.create', label: 'Creó' },
+    { value: 'user.update', label: 'Editó' },
+    { value: 'user.delete', label: 'Eliminó' },
+    { value: 'user.reactivate', label: 'Cambió el estado' },
+  ] },
+  { value: 'materia', label: 'Materias', acciones: [
+    { value: 'materia.create', label: 'Creó' },
+    { value: 'materia.update', label: 'Editó' },
+    { value: 'materia.delete', label: 'Eliminó' },
+    { value: 'materia.set_activa', label: 'Cambió el estado' },
+  ] },
+  { value: 'comision', label: 'Comisiones', acciones: [
+    { value: 'comision.create', label: 'Creó' },
+    { value: 'comision.update', label: 'Editó' },
+    { value: 'comision.delete', label: 'Eliminó' },
+  ] },
+  { value: 'inscripcion', label: 'Inscripciones', acciones: [
+    { value: 'inscripcion.create', label: 'Inscribió un alumno' },
+    { value: 'inscripcion.delete', label: 'Dio de baja' },
+  ] },
+  { value: 'examen', label: 'Exámenes', acciones: [
+    { value: 'examen.import', label: 'Importó' },
+    { value: 'examen.config_update', label: 'Cambió la configuración' },
+    { value: 'examen.seleccion_preguntas', label: 'Cambió las preguntas' },
+    { value: 'examen.moodle_target', label: 'Vinculó con Moodle' },
+  ] },
+  { value: 'moodle.sync', label: 'Envío de notas a Moodle', acciones: [
+    { value: 'moodle.sync', label: 'Envió notas' },
+  ] },
+  { value: 'config', label: 'Configuración del sistema', acciones: [
+    { value: 'config', label: 'Cambió ajustes' },
+  ] },
+  { value: 'biometria,enrollment', label: 'Verificación de identidad', acciones: [
+    { value: 'biometria', label: 'Verificó el rostro' },
+    { value: 'enrollment', label: 'Renovó la foto de referencia' },
+  ] },
+  { value: 'consent', label: 'Consentimiento', acciones: [
+    { value: 'consent.otorgado', label: 'Aceptó' },
+    { value: 'consent_alternative', label: 'Eligió otra vía' },
+  ] },
+  { value: 'review', label: 'Revisión de exámenes', acciones: [
+    { value: 'review.decision', label: 'Tomó una decisión' },
+  ] },
+  { value: 'acceso_evidencia,deposito_evidencia,manipulacion,firma_maestra,verify_chain', label: 'Evidencia y seguridad', acciones: [
+    { value: 'acceso_evidencia', label: 'Consultó evidencia' },
+    { value: 'deposito_evidencia', label: 'Guardó evidencia' },
+    { value: 'manipulacion', label: 'Detectó una anomalía' },
+    { value: 'verify_chain,firma_maestra', label: 'Verificó la integridad' },
+  ] },
+  { value: 'dsr,derecho_acceso,retention', label: 'Privacidad de datos', acciones: [
+    { value: 'dsr,derecho_acceso', label: 'Pedido del titular de los datos' },
+    { value: 'retention', label: 'Retención o borrado' },
+  ] },
 ];
 
 function fmtFecha(iso: string): string {
@@ -123,8 +177,23 @@ export default function Auditoria() {
   const [error, setError] = useState<string | null>(null);
   const [borrador, setBorrador] = useState<AuditFiltros>(SIN_FILTRO);
   const [filtros, setFiltros] = useState<AuditFiltros>(SIN_FILTRO);
+  // Filtro en dos pasos: entidad (value) + acción (value). El `accion` del
+  // borrador se compone a partir de ellos (acción elegida, o la entidad completa).
+  const [entidadSel, setEntidadSel] = useState('');
+  const [accionSel, setAccionSel] = useState('');
   const [offset, setOffset] = useState(0);
   const [pageSize, setPageSize] = useState(PAGE_SIZE_DEFAULT);
+  const entidadActual = ENTIDADES.find((e) => e.value === entidadSel) ?? null;
+
+  const elegirEntidad = (value: string) => {
+    setEntidadSel(value);
+    setAccionSel('');
+    setBorrador((p) => ({ ...p, accion: value || undefined }));
+  };
+  const elegirAccion = (value: string) => {
+    setAccionSel(value);
+    setBorrador((p) => ({ ...p, accion: value || entidadSel || undefined }));
+  };
 
   const cargar = useCallback((f: AuditFiltros, off: number, size: number) => {
     setCargando(true);
@@ -163,6 +232,8 @@ export default function Auditoria() {
   };
   const limpiar = () => {
     setBorrador(SIN_FILTRO);
+    setEntidadSel('');
+    setAccionSel('');
     setOffset(0);
     setFiltros(SIN_FILTRO);
   };
@@ -182,7 +253,7 @@ export default function Auditoria() {
     <StaffShell
       nav={STAFF_NAV}
       title="Auditoría"
-      subtitle="Registro de actividad de la plataforma: quién hizo qué y cuándo. Inalterable (cadena de custodia)."
+      subtitle="Registro de actividad de la plataforma: quién hizo qué y cuándo. El registro no se puede alterar."
       help={
         <HelpButton title="Auditoría">
           <p>
@@ -204,12 +275,12 @@ export default function Auditoria() {
           {data.cadena_valida ? (
             <span className="inline-flex items-center gap-1.5 rounded-full bg-success-50 px-3 py-1 text-[12.5px] font-semibold text-success-700 border border-success-200">
               <Icon name="verified_user" className="text-[15px]" fill />
-              Cadena de custodia íntegra
+              Registro verificado, sin alteraciones
             </span>
           ) : (
             <span className="inline-flex items-center gap-1.5 rounded-full bg-error-50 px-3 py-1 text-[12.5px] font-semibold text-error-700 border border-error-200">
               <Icon name="gpp_bad" className="text-[15px]" fill />
-              Cadena alterada — revisar
+              Registro alterado — revisar
             </span>
           )}
         </div>
@@ -228,15 +299,29 @@ export default function Auditoria() {
             />
           </label>
           <label className="flex flex-col gap-1 text-[12px] font-medium text-on-surface-variant">
-            Acción
+            Entidad
             <select
-              value={borrador.accion ?? ''}
-              onChange={(e) => setCampo({ accion: e.target.value || undefined })}
+              value={entidadSel}
+              onChange={(e) => elegirEntidad(e.target.value)}
               className="min-w-[180px] rounded-md border border-surface-300 bg-white px-3 py-2 text-[13px] text-on-surface focus:border-surface-500 focus:outline-none"
             >
-              <option value="">Todas las acciones</option>
-              {ACCION_OPCIONES.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
+              <option value="">Todas las entidades</option>
+              {ENTIDADES.map((e) => (
+                <option key={e.value} value={e.value}>{e.label}</option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 text-[12px] font-medium text-on-surface-variant">
+            Acción
+            <select
+              value={accionSel}
+              onChange={(e) => elegirAccion(e.target.value)}
+              disabled={!entidadActual}
+              className="min-w-[180px] rounded-md border border-surface-300 bg-white px-3 py-2 text-[13px] text-on-surface focus:border-surface-500 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <option value="">{entidadActual ? 'Todas las acciones' : 'Elegí una entidad primero'}</option>
+              {entidadActual?.acciones.map((a) => (
+                <option key={a.value} value={a.value}>{a.label}</option>
               ))}
             </select>
           </label>
