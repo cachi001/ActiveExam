@@ -18,6 +18,7 @@ from fastapi import (
 
 from app.application.exam_content.errors import (
     CodigoMatriculacionInvalidoError,
+    ComisionInactivaError,
     MateriaInactivaError,
     PerfilIncompletoError,
 )
@@ -220,6 +221,12 @@ def create_exam_taking_router(
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
                     detail={"error": "materia_inactiva", "mensaje": str(exc)},
+                ) from exc
+            except ComisionInactivaError as exc:
+                await session.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={"error": "comision_inactiva", "mensaje": str(exc)},
                 ) from exc
 
         return InscribirPorCodigoResponse(
@@ -469,6 +476,7 @@ def create_exam_taking_router(
                 periodo=c.periodo,
                 anio=c.anio,
                 codigo_matriculacion=c.codigo_matriculacion,
+                activa=c.activa,
             )
             for c in comisiones
         ]
@@ -646,6 +654,11 @@ def create_exam_taking_router(
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
                     detail={"error": "materia_inactiva", "mensaje": str(exc)},
+                ) from exc
+            except ComisionInactivaError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={"error": "comision_inactiva", "mensaje": str(exc)},
                 ) from exc
 
         if rendicion is None:

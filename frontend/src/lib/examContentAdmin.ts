@@ -43,6 +43,8 @@ export interface ComisionResponse {
   anio: number | null;
   // C-70: código de matriculación (enrolment key) que el docente comparte.
   codigo_matriculacion: string;
+  // C-72 §17: true = activa; false = desactivada (baja lógica).
+  activa?: boolean;
 }
 
 export interface AltaInlineResponse {
@@ -199,6 +201,24 @@ export async function eliminarMateria(materiaId: string): Promise<void> {
     { method: 'DELETE', headers: authHeaders() },
   );
   if (!res.ok) await throwAdminError(res);
+}
+
+/** Activa o desactiva una comisión (baja lógica). Admin-only.
+ *  PATCH /exam-content/comisiones/{comisionId}/activa.  404 → no existe. */
+export async function setComisionActiva(
+  comisionId: string,
+  activa: boolean,
+): Promise<ComisionResponse> {
+  const res = await fetch(
+    `${API_BASE}/exam-content/comisiones/${encodeURIComponent(comisionId)}/activa`,
+    {
+      method: 'PATCH',
+      headers: authHeaders(),
+      body: JSON.stringify({ activa }),
+    },
+  );
+  if (!res.ok) return throwAdminError(res);
+  return res.json() as Promise<ComisionResponse>;
 }
 
 /** Elimina una comisión. Admin-only. DELETE /exam-content/comisiones/{comisionId}.

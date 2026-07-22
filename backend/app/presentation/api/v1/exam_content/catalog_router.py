@@ -75,6 +75,7 @@ from app.presentation.api.v1.exam_content.schemas import (
     AlumnoElegibilidadResponse,
     AsociarComisionRequest,
     AsociarComisionResponse,
+    ComisionActivaRequest,
     ComisionActualizarRequest,
     ComisionCrearRequest,
     ComisionResponse,
@@ -286,6 +287,7 @@ def create_exam_content_router(
                 periodo=result.comision.periodo,
                 anio=result.comision.anio,
                 codigo_matriculacion=result.comision.codigo_matriculacion,
+                activa=result.comision.activa,
             ),
             examen_id=result.examen_id,
         )
@@ -620,6 +622,7 @@ def create_exam_content_router(
             periodo=comision.periodo,
             anio=comision.anio,
             codigo_matriculacion=comision.codigo_matriculacion,
+            activa=comision.activa,
         )
 
     @router.patch(
@@ -692,6 +695,66 @@ def create_exam_content_router(
             periodo=comision.periodo,
             anio=comision.anio,
             codigo_matriculacion=comision.codigo_matriculacion,
+            activa=comision.activa,
+        )
+
+    @router.patch(
+        "/comisiones/{comision_id}/activa",
+        response_model=ComisionResponse,
+        summary="Activar o desactivar una comisión (baja lógica / freeze)",
+    )
+    async def set_activa_comision(
+        comision_id: str,
+        body: ComisionActivaRequest,
+        request: Request,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    ) -> ComisionResponse:
+        """Activa (true) o desactiva (false) una comisión. Desactivar = congelar SOLO
+        esa comisión: corta inscripciones nuevas por su código y bloquea iniciar sus
+        exámenes; la materia y las demás comisiones siguen igual. No desmatricula a
+        nadie. Es la alternativa al DELETE cuando la comisión no está vacía. 404 si no
+        existe."""
+        if session_factory is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Persistencia no inicializada.",
+            )
+        async with session_factory() as session:
+            service = _build_materia_comision_service(session)
+            try:
+                comision = await service.set_activa_comision(comision_id, body.activa)
+                await session.commit()
+            except ComisionNoEncontradaError as exc:
+                await session.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail={
+                        "error": "comision_no_encontrada",
+                        "comision_id": comision_id,
+                    },
+                ) from exc
+
+        await registrar_seguro(
+            session_factory,
+            actor=principal.email,
+            accion=AccionAuditoria.COMISION_ACTIVACION,
+            ip=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            proposito=(
+                f"{'Activó' if body.activa else 'Desactivó'} la comisión "
+                f"{comision.nombre} ({comision.codigo})"
+            ),
+        )
+
+        return ComisionResponse(
+            id=comision.id,
+            materia_id=comision.materia_id,
+            codigo=comision.codigo,
+            nombre=comision.nombre,
+            periodo=comision.periodo,
+            anio=comision.anio,
+            codigo_matriculacion=comision.codigo_matriculacion,
+            activa=comision.activa,
         )
 
     @router.delete(
@@ -786,6 +849,7 @@ def create_exam_content_router(
             periodo=comision.periodo,
             anio=comision.anio,
             codigo_matriculacion=comision.codigo_matriculacion,
+            activa=comision.activa,
         )
 
     # -----------------------------------------------------------------------

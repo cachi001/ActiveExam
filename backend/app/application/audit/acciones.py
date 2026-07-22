@@ -27,6 +27,7 @@ class AccionAuditoria(StrEnum):
     COMISION_ALTA = "comision.create"
     COMISION_EDICION = "comision.update"
     COMISION_BAJA = "comision.delete"
+    COMISION_ACTIVACION = "comision.set_activa"
     EXAMEN_IMPORTACION = "examen.import"
     EXAMEN_MOODLE_TARGET = "examen.moodle_target"
     EXAMEN_CONFIG_ACTUALIZACION = "examen.config_update"

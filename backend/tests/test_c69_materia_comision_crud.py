@@ -709,3 +709,150 @@ async def test_rendir_examen_bloqueado_si_materia_inactiva_409(client_admin, fac
     blocked = await client_admin.get(f"/api/v1/exam-content/{examen_id}")
     assert blocked.status_code == 409, blocked.text
     assert blocked.json()["detail"]["error"] == "materia_inactiva"
+
+
+# ---------------------------------------------------------------------------
+# PATCH /comisiones/{id}/activa + freeze de rendición por comisión (C-72 §17)
+#
+# Espejo del freeze de materia, un nivel más abajo: desactivar UNA comisión
+# congela solo esa comisión (no toda la materia). Baja lógica: es la alternativa
+# al DELETE cuando la comisión NO está vacía.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_comision_nace_activa(client_admin):
+    materia_id = await _crear_materia(client_admin, "CACT-0", "M")
+    com = await _crear_comision(client_admin, materia_id, "1A")
+    assert com["activa"] is True
+
+
+@pytest.mark.asyncio
+async def test_set_activa_comision_desactiva_y_activa_200(client_admin):
+    materia_id = await _crear_materia(client_admin, "CACT-1", "M")
+    com = await _crear_comision(client_admin, materia_id, "1A")
+    r1 = await client_admin.patch(
+        f"/api/v1/exam-content/comisiones/{com['id']}/activa", json={"activa": False}
+    )
+    assert r1.status_code == 200, r1.text
+    assert r1.json()["activa"] is False
+    r2 = await client_admin.patch(
+        f"/api/v1/exam-content/comisiones/{com['id']}/activa", json={"activa": True}
+    )
+    assert r2.status_code == 200, r2.text
+    assert r2.json()["activa"] is True
+
+
+@pytest.mark.asyncio
+async def test_set_activa_comision_persiste(client_admin):
+    """La baja lógica se relee desde la DB (no es solo el eco del PATCH)."""
+    materia_id = await _crear_materia(client_admin, "CACT-2", "M")
+    com = await _crear_comision(client_admin, materia_id, "1A")
+    await client_admin.patch(
+        f"/api/v1/exam-content/comisiones/{com['id']}/activa", json={"activa": False}
+    )
+    listado = await client_admin.get(
+        f"/api/v1/exam-content/materias/{materia_id}/comisiones"
+    )
+    assert listado.status_code == 200, listado.text
+    fila = next(c for c in listado.json() if c["id"] == com["id"])
+    assert fila["activa"] is False
+
+
+@pytest.mark.asyncio
+async def test_set_activa_comision_inexistente_404(client_admin):
+    r = await client_admin.patch(
+        f"/api/v1/exam-content/comisiones/{_INEXISTENTE}/activa", json={"activa": False}
+    )
+    assert r.status_code == 404, r.text
+    assert r.json()["detail"]["error"] == "comision_no_encontrada"
+
+
+@pytest.mark.asyncio
+async def test_set_activa_comision_extra_forbid_422(client_admin):
+    materia_id = await _crear_materia(client_admin, "CACT-3", "M")
+    com = await _crear_comision(client_admin, materia_id, "1A")
+    r = await client_admin.patch(
+        f"/api/v1/exam-content/comisiones/{com['id']}/activa",
+        json={"activa": False, "otro": 1},
+    )
+    assert r.status_code == 422, r.text
+
+
+@pytest.mark.asyncio
+async def test_set_activa_comision_estudiante_403(client_noauth):
+    r = await client_noauth.patch(
+        f"/api/v1/exam-content/comisiones/{_INEXISTENTE}/activa",
+        json={"activa": False},
+        headers=auth_headers(["estudiante"]),
+    )
+    assert r.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_rendir_examen_bloqueado_si_comision_inactiva_409(client_admin, factory):
+    materia_id = await _crear_materia(client_admin, "CFRZ-1", "Materia activa")
+    com = await _crear_comision(client_admin, materia_id, "1A")
+    async with factory() as s:
+        r = await s.execute(
+            text(
+                "INSERT INTO examen_contenido (titulo, comision_id) "
+                "VALUES (:t, :c) RETURNING id"
+            ),
+            {"t": "Examen de comisión congelable", "c": com["id"]},
+        )
+        examen_id = r.scalar_one()
+        await s.commit()
+    ok = await client_admin.get(f"/api/v1/exam-content/{examen_id}")
+    assert ok.status_code == 200, ok.text
+    # La MATERIA sigue activa; se congela SOLO la comisión.
+    await client_admin.patch(
+        f"/api/v1/exam-content/comisiones/{com['id']}/activa", json={"activa": False}
+    )
+    blocked = await client_admin.get(f"/api/v1/exam-content/{examen_id}")
+    assert blocked.status_code == 409, blocked.text
+    assert blocked.json()["detail"]["error"] == "comision_inactiva"
+
+
+@pytest.mark.asyncio
+async def test_comision_desactivada_no_bloquea_examen_de_otra_comision(
+    client_admin, factory
+):
+    """Aislamiento: congelar la comisión A no toca los exámenes de la comisión B."""
+    materia_id = await _crear_materia(client_admin, "CFRZ-2", "M")
+    com_a = await _crear_comision(client_admin, materia_id, "1A")
+    com_b = await _crear_comision(client_admin, materia_id, "1B")
+    async with factory() as s:
+        r = await s.execute(
+            text(
+                "INSERT INTO examen_contenido (titulo, comision_id) "
+                "VALUES (:t, :c) RETURNING id"
+            ),
+            {"t": "Examen de B", "c": com_b["id"]},
+        )
+        examen_b = r.scalar_one()
+        await s.commit()
+    await client_admin.patch(
+        f"/api/v1/exam-content/comisiones/{com_a['id']}/activa", json={"activa": False}
+    )
+    resp = await client_admin.get(f"/api/v1/exam-content/{examen_b}")
+    assert resp.status_code == 200, resp.text
+
+
+@pytest.mark.asyncio
+async def test_eliminar_comision_con_inscripto_409_sugiere_desactivar(
+    client_admin, factory
+):
+    """El DELETE sigue bloqueado con contenido: la baja lógica es la salida."""
+    materia_id = await _crear_materia(client_admin, "CACT-4", "M")
+    com = await _crear_comision(client_admin, materia_id, "1A")
+    await _insertar_inscripto(factory, com["id"])
+    resp = await client_admin.delete(f"/api/v1/exam-content/comisiones/{com['id']}")
+    assert resp.status_code == 409, resp.text
+    assert resp.json()["detail"]["error"] == "comision_no_vacia"
+    # Pero SÍ se puede desactivar.
+    off = await client_admin.patch(
+        f"/api/v1/exam-content/comisiones/{com['id']}/activa", json={"activa": False}
+    )
+    assert off.status_code == 200, off.text
+    assert off.json()["activa"] is False

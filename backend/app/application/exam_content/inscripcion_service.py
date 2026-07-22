@@ -17,6 +17,7 @@ from dataclasses import dataclass
 
 from app.application.exam_content.errors import (
     CodigoMatriculacionInvalidoError,
+    ComisionInactivaError,
     ComisionNoEncontradaError,
     InscripcionConActividadError,
     InscripcionNoEncontradaError,
@@ -130,6 +131,14 @@ class AutoMatriculacionService:
         if comision is None:
             raise CodigoMatriculacionInvalidoError(
                 f"El código {codigo!r} no corresponde a ninguna comisión."
+            )
+
+        # Freeze a nivel comisión (baja lógica, C-72 §17): una comisión desactivada
+        # NO admite inscripciones nuevas, aunque su materia siga activa.
+        if not comision.activa:
+            raise ComisionInactivaError(
+                f"La comisión {comision.nombre!r} está desactivada y no admite "
+                "inscripciones nuevas."
             )
 
         materia = await self._materia_repo.obtener(comision.materia_id)

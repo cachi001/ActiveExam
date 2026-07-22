@@ -168,6 +168,9 @@ class Comision:
     # la capa de aplicación lo autogenere/valide antes de persistir; el modelo ORM
     # lo exige NOT NULL. Se guarda tal cual (solo strip externo, case-sensitive).
     codigo_matriculacion: str | None = None
+    # C-72 §17 (nivel comisión): true = activa; false = congelada. Congelar UNA
+    # comisión no congela la materia ni las demás comisiones.
+    activa: bool = True
 
     def __post_init__(self) -> None:
         if not (self.materia_id and self.materia_id.strip()):

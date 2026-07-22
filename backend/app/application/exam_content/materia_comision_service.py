@@ -228,6 +228,24 @@ class MateriaComisionService:
             assert actualizada is not None  # existía: lo verificamos arriba
         return actualizada
 
+    async def set_activa_comision(self, comision_id: str, activa: bool) -> Comision:
+        """Activa o desactiva una comisión (baja lógica, C-72 §17).
+
+        Desactivar = congelar SOLO esa comisión: corta inscripciones nuevas por su
+        código de matriculación y bloquea iniciar la rendición de sus exámenes. La
+        materia y las demás comisiones quedan intactas. Es la alternativa al DELETE
+        cuando la comisión no está vacía.
+
+        Raises:
+            ComisionNoEncontradaError: la comisión no existe.
+        """
+        actual = await self._comision_repo.obtener(comision_id)
+        if actual is None:
+            raise ComisionNoEncontradaError(f"Comisión {comision_id!r} no existe.")
+        actualizada = await self._comision_repo.set_activa(comision_id, activa)
+        assert actualizada is not None  # existía: lo verificamos arriba
+        return actualizada
+
     async def eliminar_comision(self, comision_id: str) -> None:
         """Elimina una comisión SOLO si está vacía (0 inscriptos y 0 exámenes).
 

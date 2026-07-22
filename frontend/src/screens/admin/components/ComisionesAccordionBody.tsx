@@ -22,6 +22,8 @@ interface ComisionesAccordionBodyProps {
   abrirCrearComision: (materiaId: string) => void;
   abrirEditarComision: (materiaId: string, c: Comision) => void;
   abrirEliminarComision: (c: Comision) => void;
+  /** Baja lógica: activa/desactiva la comisión (C-72 §17). */
+  onToggleActivaComision: (c: Comision) => void;
   comisionExpandida: string | null;
   toggleComision: (id: string) => void;
 }
@@ -42,6 +44,7 @@ export function ComisionesAccordionBody({
   abrirCrearComision,
   abrirEditarComision,
   abrirEliminarComision,
+  onToggleActivaComision,
   comisionExpandida,
   toggleComision,
 }: ComisionesAccordionBodyProps) {
@@ -270,7 +273,17 @@ export function ComisionesAccordionBody({
                             </span>
                           </div>
                         </td>
-                        <td className="px-4 py-3 text-[13px] text-on-surface">{c.nombre}</td>
+                        <td className="px-4 py-3 text-[13px] text-on-surface">
+                          <span className="inline-flex items-center gap-2">
+                            <span>{c.nombre}</span>
+                            {c.activa === false && (
+                              <span className="shrink-0 inline-flex items-center gap-1 rounded-full bg-outline-variant/40 text-on-surface-variant px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide">
+                                <Icon name="pause_circle" className="text-[12px]" />
+                                Inactiva
+                              </span>
+                            )}
+                          </span>
+                        </td>
                         <td className="px-4 py-3 text-[13px] text-on-surface-variant">{c.periodo ?? '—'}</td>
                         <td className="px-4 py-3 text-[13px] text-on-surface-variant tabular-nums">{c.anio ?? '—'}</td>
                         <td className="px-4 py-3 whitespace-nowrap">
@@ -288,6 +301,9 @@ export function ComisionesAccordionBody({
                             items={[
                               { label: comExpandida ? 'Ocultar alumnos' : 'Ver alumnos', icon: 'groups', onClick: () => toggleComision(c.id) },
                               { label: 'Editar comisión', icon: 'edit', onClick: () => abrirEditarComision(materiaId, c) },
+                              c.activa === false
+                                ? { label: 'Activar comisión', icon: 'play_circle', onClick: () => onToggleActivaComision(c) }
+                                : { label: 'Desactivar comisión', icon: 'pause_circle', onClick: () => onToggleActivaComision(c) },
                               { label: 'Eliminar comisión', icon: 'delete', danger: true, onClick: () => abrirEliminarComision(c) },
                             ]}
                           />
@@ -324,7 +340,15 @@ export function ComisionesAccordionBody({
                       <Icon name={comExpandida ? 'keyboard_arrow_down' : 'keyboard_arrow_right'} className="text-[18px]" />
                     </button>
                     <div className="min-w-0 flex-1">
-                      <p className="text-[13px] font-medium text-on-surface truncate">{c.nombre}</p>
+                      <p className="text-[13px] font-medium text-on-surface truncate flex items-center gap-2">
+                        <span className="truncate">{c.nombre}</span>
+                        {c.activa === false && (
+                          <span className="shrink-0 inline-flex items-center gap-1 rounded-full bg-outline-variant/40 text-on-surface-variant px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide">
+                            <Icon name="pause_circle" className="text-[12px]" />
+                            Inactiva
+                          </span>
+                        )}
+                      </p>
                       <p className="text-[11px] text-on-surface-variant font-mono mt-0.5">
                         {c.codigo ?? '—'}{c.periodo ? ` · ${c.periodo}` : ''}{c.anio ? ` · ${c.anio}` : ''}
                       </p>
@@ -340,6 +364,9 @@ export function ComisionesAccordionBody({
                       items={[
                         { label: comExpandida ? 'Ocultar alumnos' : 'Ver alumnos', icon: 'groups', onClick: () => toggleComision(c.id) },
                         { label: 'Editar comisión', icon: 'edit', onClick: () => abrirEditarComision(materiaId, c) },
+                        c.activa === false
+                          ? { label: 'Activar comisión', icon: 'play_circle', onClick: () => onToggleActivaComision(c) }
+                          : { label: 'Desactivar comisión', icon: 'pause_circle', onClick: () => onToggleActivaComision(c) },
                         { label: 'Eliminar comisión', icon: 'delete', danger: true, onClick: () => abrirEliminarComision(c) },
                       ]}
                     />

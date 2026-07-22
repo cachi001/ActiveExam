@@ -31,6 +31,7 @@ const ACCION_META: Array<{ match: (a: string) => boolean; label: string; color: 
   { match: (a) => a === 'comision.create', label: 'Creó comisión', color: '#06b6d4', icon: 'groups' },
   { match: (a) => a === 'comision.update', label: 'Editó comisión', color: '#8b5cf6', icon: 'edit' },
   { match: (a) => a === 'comision.delete', label: 'Eliminó comisión', color: '#ef4444', icon: 'delete' },
+  { match: (a) => a === 'comision.set_activa', label: 'Cambió el estado de la comisión', color: '#f59e0b', icon: 'toggle_on' },
   { match: (a) => a === 'inscripcion.create', label: 'Inscribió alumno', color: '#10b981', icon: 'person_add' },
   { match: (a) => a === 'inscripcion.delete', label: 'Dio de baja inscripción', color: '#ef4444', icon: 'person_remove' },
   // Mutaciones de examen: específicas ANTES del genérico examen.* (orden importa).
@@ -82,6 +83,7 @@ const ENTIDADES: Entidad[] = [
     { value: 'comision.create', label: 'Creó' },
     { value: 'comision.update', label: 'Editó' },
     { value: 'comision.delete', label: 'Eliminó' },
+    { value: 'comision.set_activa', label: 'Cambió el estado' },
   ] },
   { value: 'inscripcion', label: 'Inscripciones', acciones: [
     { value: 'inscripcion.create', label: 'Inscribió un alumno' },

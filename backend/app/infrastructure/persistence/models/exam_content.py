@@ -77,6 +77,12 @@ class ComisionModel(Base):
     # por el docente; único entre TODAS las comisiones (no por materia). Se guarda
     # EXACTAMENTE como se tipeó (solo strip externo): unicidad case-sensitive.
     codigo_matriculacion: Mapped[str] = mapped_column(String(80), nullable=False)
+    # C-72 §17 (nivel comisión): estado de la comisión. false = "congelada" (sin
+    # inscripciones nuevas, sin iniciar exámenes de ESA comisión; la materia sigue
+    # activa). DEFAULT true por la migración 0043 (aditiva).
+    activa: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="true"
+    )
 
     __table_args__ = (
         UniqueConstraint("materia_id", "codigo", name="uq_comision_materia_codigo"),

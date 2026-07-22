@@ -30,6 +30,7 @@ import {
   eliminarMateria,
   eliminarComision,
   setMateriaActiva,
+  setComisionActiva,
 } from '../lib/examContentAdmin';
 import type { Materia, Comision } from '../lib/types';
 import { ConfirmModal } from '../ui/ConfirmModal';
@@ -96,6 +97,25 @@ export default function MateriasComisiones() {
       toast.success(nuevoEstado ? 'Materia activada.' : 'Materia desactivada (congelada).');
     } catch {
       toast.error('No se pudo cambiar el estado de la materia.');
+    }
+  }
+
+  // Activar / desactivar (baja lógica) una comisión. Congela SOLO esa comisión:
+  // corta inscripciones nuevas por su código y bloquea iniciar sus exámenes. No
+  // desmatricula a nadie. Es la salida cuando el borrado está bloqueado.
+  async function toggleActivaComision(materiaId: string, c: Comision) {
+    const nuevoEstado = !(c.activa ?? true);
+    try {
+      const actualizada = await setComisionActiva(c.id, nuevoEstado);
+      setComisionesPorMateria((prev) => ({
+        ...prev,
+        [materiaId]: (prev[materiaId] ?? []).map((x) =>
+          x.id === c.id ? { ...x, activa: actualizada.activa ?? nuevoEstado } : x,
+        ),
+      }));
+      toast.success(nuevoEstado ? 'Comisión activada.' : 'Comisión desactivada (congelada).');
+    } catch {
+      toast.error('No se pudo cambiar el estado de la comisión.');
     }
   }
 
@@ -493,6 +513,7 @@ export default function MateriasComisiones() {
                           materiaId: m.id,
                         })
                       }
+                      onToggleActivaComision={(c) => void toggleActivaComision(m.id, c)}
                       comisionExpandida={comisionExpandida}
                       toggleComision={toggleComision}
                     />

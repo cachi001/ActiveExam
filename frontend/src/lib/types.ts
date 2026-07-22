@@ -702,6 +702,9 @@ export interface Comision {
   anio?: number | null;
   // C-70: código de matriculación (enrolment key) que el alumno usa para unirse.
   codigo_matriculacion?: string;
+  // C-72 §17: false = comisión desactivada (baja lógica). No admite inscripciones
+  // nuevas ni iniciar sus exámenes; los ya inscriptos conservan su acceso.
+  activa?: boolean;
 }
 
 /** Alumno inscripto a una comisión, con su estado de elegibilidad para rendir

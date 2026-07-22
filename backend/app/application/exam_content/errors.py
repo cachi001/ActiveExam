@@ -40,6 +40,15 @@ class MateriaInactivaError(Exception):
     iniciar rendición (C-72 §17). Los ya inscriptos conservan su acceso."""
 
 
+class ComisionInactivaError(Exception):
+    """La comisión está desactivada (congelada): no admite inscripciones nuevas por
+    su código de matriculación ni iniciar la rendición de sus exámenes (C-72 §17).
+
+    Espejo de ``MateriaInactivaError`` un nivel más abajo: congelar UNA comisión no
+    congela la materia ni las demás comisiones. Los ya inscriptos conservan su acceso.
+    """
+
+
 class UsuarioNoEncontradoError(Exception):
     """No existe un usuario activo con el id indicado."""
 

@@ -277,6 +277,8 @@ class ComisionResponse(BaseModel):
     anio: int | None = None
     # C-70: código de matriculación (enrolment key) — el docente lo comparte.
     codigo_matriculacion: str
+    # C-72 §17 (nivel comisión): true = activa; false = congelada (baja lógica).
+    activa: bool = True
 
 
 class AltaInlineResponse(BaseModel):
@@ -330,6 +332,14 @@ class ComisionCrearRequest(BaseModel):
     # C-70: código de matriculación opcional. Si no viene → se autogenera único
     # ({materia.codigo}-{sufijo}); si viene → se usa tal cual (unicidad al persistir).
     codigo_matriculacion: str | None = None
+
+
+class ComisionActivaRequest(BaseModel):
+    """Body del PATCH /comisiones/{id}/activa: activar (true) o desactivar (false)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    activa: bool
 
 
 class ComisionActualizarRequest(BaseModel):

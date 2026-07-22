@@ -734,6 +734,23 @@ class ComisionSqlRepository:
         await self._db.flush()
         return await self.obtener(comision_id)
 
+    async def set_activa(self, comision_id: str, activa: bool) -> Comision | None:
+        """Setea el estado `activa` de una comisión (baja lógica, C-72 §17).
+
+        Devuelve la comisión actualizada, o None si no existe. No desmatricula ni
+        borra nada: solo cambia el flag.
+        """
+        result = await self._db.execute(
+            update(ComisionModel)
+            .where(ComisionModel.id == comision_id)
+            .values(activa=activa)
+            .returning(ComisionModel.id)
+        )
+        if result.scalar_one_or_none() is None:
+            return None
+        await self._db.flush()
+        return await self.obtener(comision_id)
+
     async def contar_inscriptos_y_examenes(self, comision_id: str) -> tuple[int, int]:
         """Cuenta (inscriptos, examenes) de la comisión. Insumo del guard de borrado."""
         inscriptos = await self._db.scalar(
@@ -772,6 +789,7 @@ class ComisionSqlRepository:
             periodo=model.periodo,
             anio=model.anio,
             codigo_matriculacion=model.codigo_matriculacion,
+            activa=model.activa,
         )
 
 
