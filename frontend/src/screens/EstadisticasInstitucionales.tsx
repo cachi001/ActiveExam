@@ -7,7 +7,7 @@
 // muestra como error con reintentar — NUNCA como datos en cero.
 //
 // Filtros: se editan en un borrador y recién se disparan al presionar "Aplicar
-// filtros" (panel genérico FiltrosPanel). Export CSV/PDF son acciones de la
+// filtros" (panel genérico FiltrosPanel). Export Excel/PDF son acciones de la
 // pantalla (fuera del panel de filtros) y usan los filtros ya aplicados.
 import { useCallback, useEffect, useState } from 'react';
 import { StaffShell } from '../ui/shells';
@@ -131,7 +131,7 @@ export default function EstadisticasInstitucionales() {
             sesiones se supervisaron y cómo se reparten los scores.
           </p>
           <p>
-            Podés filtrar por materia y por fechas, y descargar todo en CSV o PDF.
+            Podés filtrar por materia y por fechas, y descargar todo en Excel o PDF.
             El conteo <strong>&laquo;en riesgo&raquo;</strong> es una señal para
             PRIORIZAR la revisión humana — nunca una sanción ni un veredicto.
           </p>
@@ -146,7 +146,7 @@ export default function EstadisticasInstitucionales() {
           disabled={exportando !== null || cargando}
           className="inline-flex items-center gap-1.5 rounded-md bg-success-600 px-4 py-2 text-[13px] font-semibold text-white hover:bg-success-700 disabled:opacity-60"
         >
-          <Icon name={exportando === 'excel' ? 'hourglass_top' : 'grid_on'} className="text-[16px]" fill />
+          <Icon name={exportando === 'excel' ? 'progress_activity' : 'grid_on'} className={`text-[16px] ${exportando === 'excel' ? 'ae-spin' : ''}`} fill />
           {exportando === 'excel' ? 'Exportando…' : 'Exportar Excel'}
         </button>
         <button
@@ -155,7 +155,7 @@ export default function EstadisticasInstitucionales() {
           disabled={exportando !== null || cargando}
           className="inline-flex items-center gap-1.5 rounded-md bg-error-600 px-4 py-2 text-[13px] font-semibold text-white hover:bg-error-700 disabled:opacity-60"
         >
-          <Icon name={exportando === 'pdf' ? 'hourglass_top' : 'picture_as_pdf'} className="text-[16px]" fill />
+          <Icon name={exportando === 'pdf' ? 'progress_activity' : 'picture_as_pdf'} className={`text-[16px] ${exportando === 'pdf' ? 'ae-spin' : ''}`} fill />
           {exportando === 'pdf' ? 'Exportando…' : 'Exportar PDF'}
         </button>
       </div>
@@ -174,7 +174,7 @@ export default function EstadisticasInstitucionales() {
             <select
               value={borrador.materia_id ?? ''}
               onChange={(e) => setCampo({ materia_id: e.target.value || undefined })}
-              className="min-w-[200px] rounded-md border border-surface-300 bg-white px-3 py-2 text-[13px] text-on-surface focus:border-primary focus:outline-none"
+              className="min-w-[200px] rounded-md border border-surface-300 bg-white px-3 py-2 text-[13px] text-on-surface focus:border-surface-500 focus:outline-none"
             >
               <option value="">Todas las materias</option>
               {materiasOpts.map((m) => (
@@ -188,7 +188,7 @@ export default function EstadisticasInstitucionales() {
             <select
               value={borrador.comision_id ?? ''}
               onChange={(e) => setCampo({ comision_id: e.target.value || undefined })}
-              className="min-w-[180px] rounded-md border border-surface-300 bg-white px-3 py-2 text-[13px] text-on-surface focus:border-primary focus:outline-none"
+              className="min-w-[180px] rounded-md border border-surface-300 bg-white px-3 py-2 text-[13px] text-on-surface focus:border-surface-500 focus:outline-none"
             >
               <option value="">Todas las comisiones</option>
               {comisionesOpts.map((c) => (
@@ -202,7 +202,7 @@ export default function EstadisticasInstitucionales() {
             <select
               value={borrador.examen_id ?? ''}
               onChange={(e) => setCampo({ examen_id: e.target.value || undefined })}
-              className="min-w-[200px] rounded-md border border-surface-300 bg-white px-3 py-2 text-[13px] text-on-surface focus:border-primary focus:outline-none"
+              className="min-w-[200px] rounded-md border border-surface-300 bg-white px-3 py-2 text-[13px] text-on-surface focus:border-surface-500 focus:outline-none"
             >
               <option value="">Todos los exámenes</option>
               {catalogo.map((e) => (
@@ -217,7 +217,7 @@ export default function EstadisticasInstitucionales() {
               type="date"
               value={borrador.desde?.slice(0, 10) ?? ''}
               onChange={(e) => setCampo({ desde: e.target.value ? `${e.target.value}T00:00:00` : undefined })}
-              className="rounded-md border border-surface-300 bg-white px-3 py-2 text-[13px] text-on-surface focus:border-primary focus:outline-none"
+              className="rounded-md border border-surface-300 bg-white px-3 py-2 text-[13px] text-on-surface focus:border-surface-500 focus:outline-none"
             />
           </label>
 
@@ -227,7 +227,7 @@ export default function EstadisticasInstitucionales() {
               type="date"
               value={borrador.hasta?.slice(0, 10) ?? ''}
               onChange={(e) => setCampo({ hasta: e.target.value ? `${e.target.value}T23:59:59` : undefined })}
-              className="rounded-md border border-surface-300 bg-white px-3 py-2 text-[13px] text-on-surface focus:border-primary focus:outline-none"
+              className="rounded-md border border-surface-300 bg-white px-3 py-2 text-[13px] text-on-surface focus:border-surface-500 focus:outline-none"
             />
           </label>
         </FiltrosPanel>

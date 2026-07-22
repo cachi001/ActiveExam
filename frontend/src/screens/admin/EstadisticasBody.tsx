@@ -52,30 +52,17 @@ export function EstadisticasBody({ cargando, error, data, onReintentar }: Estadi
     );
   }
 
-  const finalizadasPct = pctSobreTotal(data.sesiones_finalizadas, data.total_sesiones);
-
   return (
     <div className="space-y-lg animate-in fade-in duration-500">
       {/* Stat cards con datos reales del endpoint. Cero acá es honesto (el fetch
-          fue OK); un fallo se ramifica arriba como error, no como estas cards. */}
+          fue OK); un fallo se ramifica arriba como error, no como estas cards.
+          Sin descripciones: solo el número, para lectura limpia de un vistazo. */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-md">
-        <StatCard icon="assignment" label="Exámenes" value={data.total_examenes} sub="importados" tono="primary" />
-        <StatCard icon="school" label="Materias" value={data.total_materias} sub="en el catálogo" tono="violet" />
-        <StatCard icon="groups" label="Comisiones" value={data.total_comisiones} sub="activas" tono="cyan" />
-        <StatCard
-          icon="videocam"
-          label="Sesiones"
-          value={data.total_sesiones}
-          sub={`${data.sesiones_finalizadas} finalizadas (${finalizadasPct}%)`}
-          tono="success"
-        />
-        <StatCard
-          icon="flag"
-          label="En riesgo"
-          value={data.sesiones_en_riesgo}
-          sub={`score ≥ ${data.umbral_riesgo} · a revisar`}
-          tono="warning"
-        />
+        <StatCard icon="assignment" label="Exámenes" value={data.total_examenes} tono="primary" />
+        <StatCard icon="school" label="Materias" value={data.total_materias} tono="violet" />
+        <StatCard icon="groups" label="Comisiones" value={data.total_comisiones} tono="cyan" />
+        <StatCard icon="videocam" label="Sesiones" value={data.total_sesiones} tono="success" />
+        <StatCard icon="flag" label="En riesgo" value={data.sesiones_en_riesgo} tono="error" />
       </div>
 
       <GraficosScores data={data} />
@@ -108,12 +95,13 @@ function GraficosScores({ data }: { data: ResumenStats }) {
   return (
     <div className="space-y-lg">
       {sinDatos && (
-        <div className="flex items-center gap-3 rounded-2xl border border-surface-200 bg-surface-50 px-lg py-3 text-[13px] text-on-surface-variant">
-          <Icon name="info" className="text-[20px] text-primary shrink-0" />
-          <p>
-            Todavía no hay sesiones rendidas. El catálogo y las métricas de sesiones
-            se poblarán a medida que se supervisen exámenes; los paneles de abajo
-            muestran la estructura completa del tablero.
+        <div className="flex items-start gap-3 rounded-xl border border-blue-200 bg-blue-50 px-lg py-4 text-[13.5px] text-blue-900">
+          <Icon name="info" className="text-[22px] text-blue-600 shrink-0 mt-0.5" fill />
+          <p className="leading-relaxed">
+            <span className="font-semibold">Todavía no hay sesiones rendidas.</span>{' '}
+            El catálogo y las métricas de sesiones se poblarán a medida que se
+            supervisen exámenes; los paneles de abajo muestran la estructura completa
+            del tablero.
           </p>
         </div>
       )}
@@ -378,9 +366,9 @@ function RoscaComposicion({ data }: { data: ResumenStats }) {
   return (
     <Card padded={false}>
       <div className="px-lg py-md border-b border-surface-200">
-        <h2 className="text-[16px] font-semibold text-on-surface leading-tight">Composición por banda</h2>
+        <h2 className="text-[16px] font-semibold text-on-surface leading-tight">Sesiones por nivel de score</h2>
         <p className="text-[12.5px] text-on-surface-variant mt-0.5">
-          Proporción de sesiones en cada rango de score.
+          Cómo se reparten las sesiones entre los niveles de score.
         </p>
       </div>
       <div className="px-lg py-lg flex flex-col sm:flex-row items-center gap-lg">
@@ -406,11 +394,8 @@ function RoscaComposicion({ data }: { data: ResumenStats }) {
             )}
           </svg>
           <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-            <span className="text-[28px] font-bold text-on-surface leading-none tabular-nums">{data.total_sesiones}</span>
+            <span className="text-[30px] font-bold text-on-surface leading-none tabular-nums">{data.total_sesiones}</span>
             <span className="text-[11px] text-on-surface-variant mt-1">sesiones</span>
-            <span className="text-[12px] font-semibold mt-1.5" style={{ color: COLOR_BANDA['70-100'] }}>
-              {pctRiesgo}% prioriza revisión
-            </span>
           </div>
         </div>
 
@@ -425,6 +410,14 @@ function RoscaComposicion({ data }: { data: ResumenStats }) {
             </li>
           ))}
         </ul>
+      </div>
+      {/* Pie con el % que prioriza revisión — fuera de la rosca para que no choque. */}
+      <div className="px-lg py-3 border-t border-surface-200 flex items-center gap-2 text-[12.5px]">
+        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: COLOR_BANDA['70-100'] }} aria-hidden />
+        <span className="text-on-surface-variant">
+          <span className="font-semibold text-on-surface tabular-nums">{pctRiesgo}%</span> de las
+          sesiones priorizan la revisión humana
+        </span>
       </div>
     </Card>
   );
@@ -443,7 +436,7 @@ function BarrasDistribucion({ data }: { data: ResumenStats }) {
       <div className="px-lg py-md border-b border-surface-200">
         <h2 className="text-[16px] font-semibold text-on-surface leading-tight">Distribución de scores</h2>
         <p className="text-[12.5px] text-on-surface-variant mt-0.5">
-          Sesiones por rango. La banda ≥ {data.umbral_riesgo} prioriza la revisión humana.
+          Sesiones por rango de score. Desde {data.umbral_riesgo} priorizan la revisión humana.
         </p>
       </div>
       <div className="px-lg py-lg">

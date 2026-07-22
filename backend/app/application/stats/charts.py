@@ -65,7 +65,7 @@ def _sin_datos(ax, titulo: str) -> None:
 def _ax_composicion(ax, r: ResumenStats) -> None:
     valores = [r.distribucion_scores.get(b, 0) for b in ORDEN_BANDAS]
     if sum(valores) == 0:
-        _sin_datos(ax, "Composición por banda")
+        _sin_datos(ax, "Sesiones por nivel de score")
         return
     colores = [COLOR_BANDA[b] for b in ORDEN_BANDAS]
     datos = [(b, v, c) for b, v, c in zip(ORDEN_BANDAS, valores, colores) if v > 0]
@@ -78,7 +78,7 @@ def _ax_composicion(ax, r: ResumenStats) -> None:
         wedgeprops={"width": 0.42, "edgecolor": "white"},
         textprops={"fontsize": 8},
     )
-    ax.set_title("Composición por banda", fontsize=11, fontweight="bold", loc="left")
+    ax.set_title("Sesiones por nivel de score", fontsize=11, fontweight="bold", loc="left")
 
 
 def _ax_distribucion(ax, r: ResumenStats) -> None:

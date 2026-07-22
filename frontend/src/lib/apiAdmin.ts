@@ -22,7 +22,7 @@ function statsQuery(filtros?: FiltrosStats): string {
   return s ? `?${s}` : '';
 }
 
-/** Descarga autenticada de un export de stats (CSV/PDF) como Blob. Un fallo se
+/** Descarga autenticada de un export de stats (PDF/Excel) como Blob. Un fallo se
  * PROPAGA (no descarga un archivo vacío). */
 async function descargarStats(path: string, filtros?: FiltrosStats): Promise<Blob> {
   const token = authProvider.getToken();
@@ -48,15 +48,6 @@ export const adminApi = {
    */
   async obtenerResumenStats(filtros?: FiltrosStats): Promise<ResumenStats> {
     return await realFetch<ResumenStats>(`/stats/resumen${statsQuery(filtros)}`, { method: 'GET' });
-  },
-
-  /**
-   * Descarga el sumario como CSV (admin_sistema / coordinador) — C-20.
-   * Real: GET /api/v1/stats/export.csv (con Authorization). Devuelve el Blob para
-   * que la pantalla dispare la descarga; un fallo se PROPAGA (no descarga vacío).
-   */
-  async descargarResumenCsv(filtros?: FiltrosStats): Promise<Blob> {
-    return await descargarStats('/stats/export.csv', filtros);
   },
 
   /**

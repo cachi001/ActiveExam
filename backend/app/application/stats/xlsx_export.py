@@ -12,8 +12,10 @@ import io
 from openpyxl import Workbook
 from openpyxl.chart import BarChart, PieChart, Reference
 from openpyxl.chart.series import DataPoint
+from openpyxl.drawing.image import Image as XLImage
 from openpyxl.styles import Alignment, Font, PatternFill
 
+from app.application.stats.charts import dashboard_png
 from app.application.stats.resumen_service import FiltrosStats, ResumenStats
 
 ORDEN_BANDAS = ["0-24", "25-49", "50-69", "70-100"]
@@ -75,10 +77,24 @@ def resumen_a_xlsx(r: ResumenStats, filtros: FiltrosStats | None = None) -> byte
     """Serializa el sumario a un .xlsx con tablas + gráficos nativos (bytes)."""
     wb = Workbook()
 
+    # --- Hoja Panel: portada visual con el MISMO dashboard rico del PDF
+    #     (matplotlib → PNG embebido). Garantiza que el Excel "muestre gráficos"
+    #     lindos y consistentes en cualquier visor, no solo los nativos básicos.
+    panel = wb.active
+    panel.title = "Panel"
+    panel["A1"] = "ActiveExam · Estadísticas"
+    panel["A1"].font = Font(bold=True, size=14, color=_AZUL)
+    panel["A2"] = f"Filtros: {_filtros_txt(r, filtros)}"
+    panel["A2"].font = Font(italic=True, color="475569")
+    img = XLImage(io.BytesIO(dashboard_png(r)))
+    ratio = (img.height / img.width) if img.width else 0.6
+    img.width = 1080
+    img.height = int(1080 * ratio)
+    panel.add_image(img, "A4")
+
     # --- Hoja Resumen ---
-    ws = wb.active
-    ws.title = "Resumen"
-    ws["A1"] = "ActiveExam · Estadísticas institucionales"
+    ws = wb.create_sheet("Resumen")
+    ws["A1"] = "ActiveExam · Estadísticas"
     ws["A1"].font = Font(bold=True, size=14, color=_AZUL)
     ws["A2"] = f"Filtros: {_filtros_txt(r, filtros)}"
     ws["A2"].font = Font(italic=True, color="475569")
@@ -127,7 +143,7 @@ def resumen_a_xlsx(r: ResumenStats, filtros: FiltrosStats | None = None) -> byte
     ws.add_chart(barras, "D4")
 
     torta = PieChart()
-    torta.title = "Composición por banda"
+    torta.title = "Sesiones por nivel de score"
     torta.add_data(datos, titles_from_data=True)
     torta.set_categories(cats)
     torta.height = 7

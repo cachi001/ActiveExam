@@ -7,6 +7,8 @@ existen — sin depender de C-13/C-16.
 
 from __future__ import annotations
 
+import dataclasses
+import json
 import os
 from datetime import UTC, datetime
 
@@ -34,7 +36,10 @@ from app.infrastructure.persistence.models.transactional import (  # noqa: F401
     ConfiguracionSistemaModel,
     EventoScoreConfigModel,
 )
-from app.presentation.api.v1.stats.router import create_stats_router
+from app.presentation.api.v1.stats.router import (
+    ResumenStatsResponse,
+    create_stats_router,
+)
 from tests.proctoring.conftest import (
     _TEST_JWT_AUDIENCE,
     _TEST_JWT_ISSUER,
@@ -380,20 +385,6 @@ async def test_endpoint_resumen_incluye_agregaciones_nuevas(app_stats):
 
 
 @pytest.mark.asyncio
-async def test_endpoint_export_csv(app_stats):
-    async with AsyncClient(
-        transport=ASGITransport(app=app_stats),
-        base_url="http://test",
-        headers={"Authorization": f"Bearer {_token(['admin_sistema'])}"},
-    ) as c:
-        resp = await c.get("/api/v1/stats/export.csv")
-    assert resp.status_code == 200, resp.text
-    assert resp.headers["content-type"].startswith("text/csv")
-    assert "attachment" in resp.headers.get("content-disposition", "")
-    assert "total_sesiones" in resp.text
-
-
-@pytest.mark.asyncio
 async def test_endpoint_export_pdf(app_stats):
     async with AsyncClient(
         transport=ASGITransport(app=app_stats),
@@ -432,3 +423,151 @@ async def test_endpoint_export_xlsx(app_stats):
     assert "Resumen" in wb.sheetnames
     assert "Por materia" in wb.sheetnames
     assert len(wb["Resumen"]._charts) >= 1  # distribución + composición
+
+
+# ---------------------------------------------------------------------------
+# Gobernanza L2.5 + privacidad (Ley 25.326): invariancia, no-veredicto, PII.
+# Términos prohibidos = cualquier campo que implique un JUICIO automático.
+# ---------------------------------------------------------------------------
+
+_TERMINOS_VEREDICTO = {
+    "veredicto",
+    "sancion",
+    "sanción",
+    "culpable",
+    "acusacion",
+    "acusación",
+    "decision_automatica",
+    "penalizacion",
+    "castigo",
+    "fraude",
+}
+# Claves que delatarían PII a nivel de individuo en un agregado institucional.
+_CLAVES_PII = {
+    "email",
+    "dni",
+    "legajo",
+    "nombre_estudiante",
+    "apellido",
+    "estudiante",
+    "alumno",
+    "usuario_id",
+    "sub",
+}
+
+_TABLAS_INVARIANZA = [
+    "examen_contenido",
+    "comision",
+    "materia",
+    "proctoring_session",
+    "proctoring_event",
+    "configuracion_sistema",
+    "evento_score_config",
+]
+
+
+def _claves_recursivas(obj) -> set[str]:
+    """Todas las claves (en minúscula) que aparecen en un JSON anidado."""
+    claves: set[str] = set()
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            claves.add(k.lower())
+            claves |= _claves_recursivas(v)
+    elif isinstance(obj, list):
+        for v in obj:
+            claves |= _claves_recursivas(v)
+    return claves
+
+
+@pytest.mark.asyncio
+async def test_capa_no_muta_nada_invariancia(session):
+    """Task 1.4: la capa SOLO lee — llamarla no cambia ninguna fila."""
+    await _seed(session)
+
+    async def _snapshot() -> dict[str, int]:
+        conteos = {}
+        for t in _TABLAS_INVARIANZA:
+            conteos[t] = int(
+                (await session.execute(text(f'SELECT count(*) FROM "{t}"'))).scalar_one()
+            )
+        return conteos
+
+    antes = await _snapshot()
+    await obtener_resumen(session)
+    await obtener_resumen(session, FiltrosStats(materia_id="no-es-uuid"))
+    despues = await _snapshot()
+
+    assert antes == despues  # ni un INSERT/UPDATE/DELETE
+
+
+@pytest.mark.asyncio
+async def test_contrato_riesgo_es_senal_no_veredicto(session):
+    """Task 2.4: el 'riesgo' es un CONTEO agregado (int), nunca un veredicto.
+
+    El dataclass del sumario no tiene ningún campo de juicio/sanción."""
+    await _seed(session)
+    r = await obtener_resumen(session)
+
+    assert isinstance(r.sesiones_en_riesgo, int)  # conteo, no booleano de culpa
+    assert isinstance(r.umbral_riesgo, int)
+    campos = {f.name for f in dataclasses.fields(r)}
+    assert _TERMINOS_VEREDICTO.isdisjoint(campos), campos
+
+
+@pytest.mark.asyncio
+async def test_endpoint_resumen_no_expone_veredicto(app_stats):
+    """Task 5.1 (transversal): ningún path del informe emite veredicto/acción."""
+    async with AsyncClient(
+        transport=ASGITransport(app=app_stats),
+        base_url="http://test",
+        headers={"Authorization": f"Bearer {_token(['admin_sistema'])}"},
+    ) as c:
+        resp = await c.get("/api/v1/stats/resumen")
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+
+    claves = _claves_recursivas(body)
+    assert _TERMINOS_VEREDICTO.isdisjoint(claves), claves
+    # El riesgo llega como conteo entero (señal de priorización), no como fallo.
+    assert isinstance(body["sesiones_en_riesgo"], int)
+
+
+@pytest.mark.asyncio
+async def test_endpoint_resumen_sin_pii_y_forbid(app_stats):
+    """Task 3.2: el agregado no expone PII y el schema rechaza campos extra."""
+    # El schema de salida es un allowlist estricto (extra='forbid').
+    assert ResumenStatsResponse.model_config.get("extra") == "forbid"
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app_stats),
+        base_url="http://test",
+        headers={"Authorization": f"Bearer {_token(['admin_sistema'])}"},
+    ) as c:
+        resp = await c.get("/api/v1/stats/resumen")
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+
+    # Ningún email en el agregado (marcador barato pero efectivo de PII).
+    assert "@" not in json.dumps(body, ensure_ascii=False)
+    assert _CLAVES_PII.isdisjoint(_claves_recursivas(body))
+
+
+@pytest.mark.asyncio
+async def test_minimizacion_pii_en_desgloses(session):
+    """Task 5.2 (transversal): aun con sesiones sembradas, los desgloses agregan
+    y NO exponen identidad individual — solo id de catálogo + conteos."""
+    await _seed_filtros(session)
+    r = await obtener_resumen(session)
+
+    assert r.por_materia  # hay desglose que revisar
+    for m in r.por_materia:
+        assert {f.name for f in dataclasses.fields(m)} == {
+            "materia_id",
+            "nombre",
+            "sesiones",
+            "en_riesgo",
+        }
+    for e in r.top_eventos:
+        assert {f.name for f in dataclasses.fields(e)} == {"tipo", "cantidad"}
+    for d in r.por_dia:
+        assert {f.name for f in dataclasses.fields(d)} == {"fecha", "sesiones"}

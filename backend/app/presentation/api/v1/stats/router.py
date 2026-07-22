@@ -1,17 +1,15 @@
 """Router de estadísticas institucionales (C-20 re-alcanzado, standalone).
 
 GET /api/v1/stats/resumen     → sumario agregado (conteos + riesgo + desgloses).
-GET /api/v1/stats/export.csv  → el mismo sumario como CSV descargable.
+GET /api/v1/stats/export.pdf  → el mismo sumario como PDF descargable.
+GET /api/v1/stats/export.xlsx → el mismo sumario como Excel descargable.
 
-Ambos aceptan filtros por query param (materia_id / comision_id / examen_id /
+Todos aceptan filtros por query param (materia_id / comision_id / examen_id /
 desde / hasta). RBAC: admin_sistema / coordinador (vista institucional). Agregado
 SIN PII. L2.5: el "riesgo" prioriza la revisión humana, NUNCA emite veredicto.
 """
 
 from __future__ import annotations
-
-import csv
-import io
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from pydantic import BaseModel, ConfigDict
@@ -96,31 +94,6 @@ def _to_response(r: ResumenStats) -> ResumenStatsResponse:
     )
 
 
-def _resumen_a_csv(r: ResumenStats) -> str:
-    """Serializa el sumario a un CSV tidy (seccion, detalle, valor)."""
-    buf = io.StringIO()
-    w = csv.writer(buf)
-    w.writerow(["seccion", "detalle", "valor"])
-    w.writerow(["resumen", "total_examenes", r.total_examenes])
-    w.writerow(["resumen", "total_materias", r.total_materias])
-    w.writerow(["resumen", "total_comisiones", r.total_comisiones])
-    w.writerow(["resumen", "total_sesiones", r.total_sesiones])
-    w.writerow(["resumen", "sesiones_finalizadas", r.sesiones_finalizadas])
-    w.writerow(["resumen", "sesiones_en_riesgo", r.sesiones_en_riesgo])
-    w.writerow(["resumen", "umbral_riesgo", r.umbral_riesgo])
-    for rango, n in r.distribucion_scores.items():
-        w.writerow(["distribucion_scores", rango, n])
-    for m in r.por_materia:
-        w.writerow(["por_materia", f"{m.nombre} (en riesgo {m.en_riesgo})", m.sesiones])
-    for e in r.top_eventos:
-        w.writerow(["top_eventos", e.tipo, e.cantidad])
-    for d in r.por_dia:
-        w.writerow(["por_dia", d.fecha, d.sesiones])
-    for clave, n in r.decisiones.items():
-        w.writerow(["decisiones", clave, n])
-    return buf.getvalue()
-
-
 def create_stats_router(session_factory=None) -> APIRouter:
     """Factory del router de stats (permite inyectar session_factory en tests)."""
     router = APIRouter(
@@ -165,25 +138,6 @@ def create_stats_router(session_factory=None) -> APIRouter:
         async with factory() as db:
             r = await obtener_resumen(db, filtros)
         return _to_response(r)
-
-    @router.get("/export.csv")
-    async def export_csv(
-        request: Request,
-        materia_id: str | None = Query(default=None),
-        comision_id: str | None = Query(default=None),
-        examen_id: str | None = Query(default=None),
-        desde: str | None = Query(default=None),
-        hasta: str | None = Query(default=None),
-    ) -> Response:
-        factory = _factory(request)
-        filtros = _filtros(materia_id, comision_id, examen_id, desde, hasta)
-        async with factory() as db:
-            r = await obtener_resumen(db, filtros)
-        return Response(
-            content=_resumen_a_csv(r),
-            media_type="text/csv",
-            headers={"Content-Disposition": 'attachment; filename="estadisticas.csv"'},
-        )
 
     @router.get("/export.pdf")
     async def export_pdf(
