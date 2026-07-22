@@ -48,6 +48,12 @@ class InscripcionNoEncontradaError(Exception):
     """No existe una inscripción del usuario a la comisión indicada."""
 
 
+class InscripcionConActividadError(Exception):
+    """El alumno ya rindió (tiene una sesión de examen en la comisión): no se puede
+    dar de baja la inscripción, porque huerfanaría la sesión/evidencia/nota
+    (cadena de custodia). Se conserva el registro; la baja queda bloqueada."""
+
+
 class CodigoMatriculacionInvalidoError(Exception):
     """El codigo_matriculacion enviado no corresponde a ninguna comisión (C-70).
 

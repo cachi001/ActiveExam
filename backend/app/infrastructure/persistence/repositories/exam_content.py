@@ -816,6 +816,38 @@ class InscripcionSqlRepository:
         await self._db.flush()
         return (result.rowcount or 0) > 0
 
+    async def alumno_rindio_en_comision(self, usuario_id: str, comision_id: str) -> bool:
+        """True si el alumno tiene alguna sesión de proctoring en un examen de la comisión.
+
+        Guarda de baja de inscripción: si hay actividad, la baja se bloquea para no
+        huerfanar la sesión/evidencia/nota (cadena de custodia). Cruza
+        ``usuario.id_institucional`` con ``proctoring_session.alumno_idnumber`` sobre
+        los exámenes cuya ``comision_id`` es la de la inscripción.
+        """
+        from app.infrastructure.persistence.models.proctoring import (
+            ProctoringSessionModel,
+        )
+
+        idnumber = (
+            select(UsuarioModel.id_institucional)
+            .where(UsuarioModel.id == usuario_id)
+            .scalar_subquery()
+        )
+        examenes_de_comision = select(ExamenContenidoModel.id).where(
+            ExamenContenidoModel.comision_id == comision_id
+        )
+        n = (
+            await self._db.execute(
+                select(func.count())
+                .select_from(ProctoringSessionModel)
+                .where(
+                    ProctoringSessionModel.alumno_idnumber == idnumber,
+                    ProctoringSessionModel.examen_contenido_id.in_(examenes_de_comision),
+                )
+            )
+        ).scalar_one()
+        return int(n or 0) > 0
+
     async def existe(self, usuario_id: str, comision_id: str) -> bool:
         """True si el alumno ya está inscripto a la comisión."""
         result = await self._db.execute(

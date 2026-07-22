@@ -28,6 +28,14 @@ class AccionAuditoria(StrEnum):
     COMISION_EDICION = "comision.update"
     COMISION_BAJA = "comision.delete"
     EXAMEN_IMPORTACION = "examen.import"
+    EXAMEN_MOODLE_TARGET = "examen.moodle_target"
+    EXAMEN_CONFIG_ACTUALIZACION = "examen.config_update"
+    EXAMEN_SELECCION_PREGUNTAS = "examen.seleccion_preguntas"
+
+    # ── Write-back de nota a Moodle (cadena de custodia — regla dura #6, L2.5) ──
+    # La sincronización manual del admin ESCRIBE una nota académica real en el
+    # campus. Debe quedar trazada (quién sincronizó qué examen y con qué resultado).
+    MOODLE_SYNC = "moodle.sync"
 
     # ── Inscripciones ────────────────────────────────────────────────────
     INSCRIPCION_ALTA = "inscripcion.create"

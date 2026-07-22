@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from app.application.exam_content.errors import (
     CodigoMatriculacionInvalidoError,
     ComisionNoEncontradaError,
+    InscripcionConActividadError,
     InscripcionNoEncontradaError,
     MateriaInactivaError,
     PerfilIncompletoError,
@@ -219,11 +220,20 @@ class InscripcionService:
         return await self._inscripcion_repo.inscribir(usuario_id, comision_id)
 
     async def eliminar(self, comision_id: str, usuario_id: str) -> None:
-        """Elimina la inscripción del alumno a la comisión.
+        """Da de baja la inscripción del alumno a la comisión.
+
+        Guarda (cadena de custodia): si el alumno YA rindió en la comisión, la baja
+        se bloquea — borrarla huerfanaría la sesión/evidencia/nota.
 
         Raises:
+            InscripcionConActividadError: el alumno tiene actividad (ya rindió).
             InscripcionNoEncontradaError: no existía la inscripción.
         """
+        if await self._inscripcion_repo.alumno_rindio_en_comision(usuario_id, comision_id):
+            raise InscripcionConActividadError(
+                f"El alumno {usuario_id!r} ya rindió en la comisión {comision_id!r}: "
+                "no se puede dar de baja la inscripción (se conserva la evidencia)."
+            )
         eliminada = await self._inscripcion_repo.eliminar(usuario_id, comision_id)
         if not eliminada:
             raise InscripcionNoEncontradaError(

@@ -27,6 +27,7 @@ from app.application.exam_content.errors import (
     ComisionNoEncontradaError,
     ComisionNoVaciaError,
     ExamenNoEncontradoError,
+    InscripcionConActividadError,
     InscripcionNoEncontradaError,
     MateriaNoEncontradaError,
     MateriaNoVaciaError,
@@ -904,6 +905,20 @@ def create_exam_content_router(
             try:
                 await service.eliminar(comision_id, usuario_id)
                 await session.commit()
+            except InscripcionConActividadError as exc:
+                await session.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={
+                        "error": "inscripcion_con_actividad",
+                        "mensaje": (
+                            "El alumno ya rindió en esta comisión. No se puede dar de "
+                            "baja la inscripción para no perder la evidencia de su examen."
+                        ),
+                        "comision_id": comision_id,
+                        "usuario_id": usuario_id,
+                    },
+                ) from exc
             except InscripcionNoEncontradaError as exc:
                 await session.rollback()
                 raise HTTPException(
@@ -996,6 +1011,8 @@ def create_exam_content_router(
     async def fijar_moodle_target(
         examen_id: str,
         body: MoodleTargetRequest,
+        request: Request,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
     ) -> MoodleTargetResponse:
         """Fija moodle_courseid/cmid del examen (D12). 404 si el examen no existe.
 
@@ -1013,6 +1030,19 @@ def create_exam_content_router(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail={"error": "examen_no_encontrado", "examen_id": examen_id},
             )
+
+        # El destino Moodle decide a qué libreta va la nota → se audita (cadena de custodia).
+        await registrar_seguro(
+            session_factory,
+            actor=principal.email,
+            accion=AccionAuditoria.EXAMEN_MOODLE_TARGET,
+            ip=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            proposito=(
+                f"Fijó destino Moodle del examen {examen_id}: "
+                f"course={examen.moodle_courseid} cm={examen.moodle_cmid}"
+            ),
+        )
 
         return MoodleTargetResponse(
             examen_id=examen.id,
@@ -1116,6 +1146,8 @@ def create_exam_content_router(
     async def actualizar_config_examen(
         examen_id: str,
         body: ExamenConfigPatchRequest,
+        request: Request,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
     ) -> ExamenConfigResponse:
         """Actualiza parcialmente los 7 campos de config (solo los presentes).
 
@@ -1197,6 +1229,19 @@ def create_exam_content_router(
 
             examen = await repo.actualizar_config(examen_id, cambios)
             await session.commit()
+
+        # La config define mecánica/nota del examen → cambios auditados (qué campos).
+        await registrar_seguro(
+            session_factory,
+            actor=principal.email,
+            accion=AccionAuditoria.EXAMEN_CONFIG_ACTUALIZACION,
+            ip=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            proposito=(
+                f"Actualizó config del examen {examen_id}: "
+                f"{', '.join(sorted(cambios)) or '(sin cambios)'}"
+            ),
+        )
 
         return _config_to_response(examen, bloqueada=ya_rendido)
 
@@ -1291,6 +1336,8 @@ def create_exam_content_router(
     async def fijar_seleccion_preguntas(
         examen_id: str,
         body: PreguntasSeleccionRequest,
+        request: Request,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
     ) -> PreguntasPoolResponse:
         """Marca seleccionada=true para los ids dados, false para el resto del pool.
 
@@ -1339,6 +1386,19 @@ def create_exam_content_router(
                     detail={"error": "examen_no_encontrado", "examen_id": examen_id},
                 )
             await session.commit()
+
+        # La selección determina QUÉ preguntas forman el examen → cambio auditado.
+        await registrar_seguro(
+            session_factory,
+            actor=principal.email,
+            accion=AccionAuditoria.EXAMEN_SELECCION_PREGUNTAS,
+            ip=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            proposito=(
+                f"Fijó la selección de preguntas del examen {examen_id}: "
+                f"{len(body.seleccionadas)} seleccionada(s)"
+            ),
+        )
 
         return _pool_to_response(items)
 
@@ -1414,7 +1474,11 @@ def create_exam_content_router(
         response_model=SincronizarMoodleResponse,
         summary="Sincronizar manualmente las notas pendientes/fallidas del examen a Moodle",
     )
-    async def sincronizar_moodle(examen_id: str) -> SincronizarMoodleResponse:
+    async def sincronizar_moodle(
+        examen_id: str,
+        request: Request,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    ) -> SincronizarMoodleResponse:
         """Envía a Moodle las notas en estado 'pendiente'/'fallido' del examen.
 
         Idempotente: las 'enviado' NO se re-mandan (las excluye la query). Si Moodle
@@ -1435,6 +1499,19 @@ def create_exam_content_router(
 
             # Moodle no configurado: no se puede enviar. No crashea — sin_token.
             if writeback_svc is None:
+                # Auditar el INTENTO: hubo una acción humana de sincronización aunque
+                # no se escribiera ninguna nota (sin token). Trazabilidad L2.5.
+                await registrar_seguro(
+                    session_factory,
+                    actor=principal.email,
+                    accion=AccionAuditoria.MOODLE_SYNC,
+                    ip=request.client.host if request.client else None,
+                    user_agent=request.headers.get("user-agent"),
+                    proposito=(
+                        f"Intentó sincronizar el examen {examen_id} a Moodle sin token "
+                        f"configurado ({total} nota(s) quedan pendientes)"
+                    ),
+                )
                 return SincronizarMoodleResponse(
                     enviadas=0,
                     fallidas=0,
@@ -1461,6 +1538,20 @@ def create_exam_content_router(
                 else:
                     fallidas += 1
             await session.commit()
+
+        # Se ESCRIBIERON notas académicas reales en Moodle → cadena de custodia
+        # (regla dura #6, L2.5): queda quién sincronizó, qué examen y el resultado.
+        await registrar_seguro(
+            session_factory,
+            actor=principal.email,
+            accion=AccionAuditoria.MOODLE_SYNC,
+            ip=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            proposito=(
+                f"Sincronizó el examen {examen_id} a Moodle: "
+                f"{enviadas} enviada(s), {fallidas} fallida(s) de {total}"
+            ),
+        )
 
         return SincronizarMoodleResponse(
             enviadas=enviadas,

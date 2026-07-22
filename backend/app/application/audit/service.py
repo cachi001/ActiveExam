@@ -11,15 +11,18 @@ L2.5 / DD-07: el audit log es tamper-evident; acá solo se AGREGA y se LEE.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.audit_chain import AuditEntry
 from app.infrastructure.persistence.models.audit_log import AuditLogModel
 from app.infrastructure.persistence.repositories.audit_log import AuditLogSqlRepository
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -116,6 +119,14 @@ async def registrar_seguro(
             await session.commit()
         return True
     except Exception:
+        # Best-effort para el caller, PERO no silencioso: un fallo de auditoría es
+        # un evento serio (se pierde una entrada de la cadena de custodia). Se loguea
+        # a ERROR con la acción/actor para que sea observable (nunca se propaga).
+        logger.exception(
+            "Fallo al registrar auditoría (accion=%s, actor=%s) — la operación no se bloquea",
+            accion,
+            actor,
+        )
         return False
 
 
@@ -124,7 +135,13 @@ def _conditions(filtros: AuditFiltros) -> list:
     if filtros.actor:
         conds.append(AuditLogModel.actor.ilike(f"%{filtros.actor}%"))
     if filtros.accion:
-        conds.append(AuditLogModel.accion.ilike(f"%{filtros.accion}%"))
+        # Una "entidad" del filtro puede agrupar varios tipos de acción: se pasan
+        # separados por coma y se combinan con OR (los códigos nunca llevan coma).
+        patrones = [p.strip() for p in filtros.accion.split(",") if p.strip()]
+        if len(patrones) == 1:
+            conds.append(AuditLogModel.accion.ilike(f"%{patrones[0]}%"))
+        elif patrones:
+            conds.append(or_(*(AuditLogModel.accion.ilike(f"%{p}%") for p in patrones)))
     desde = _parse_dt(filtros.desde)
     hasta = _parse_dt(filtros.hasta)
     if desde is not None:

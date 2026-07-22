@@ -136,6 +136,17 @@ async def test_filtro_por_accion(session):
 
 
 @pytest.mark.asyncio
+async def test_filtro_por_accion_multi_patron_or(session):
+    # Una "entidad" del filtro de la UI puede agrupar varios tipos de acción
+    # (p. ej. "Evidencia" = acceso + depósito + …). El filtro acepta varios
+    # patrones separados por coma y los combina con OR.
+    await _sembrar(session)  # auth.login, user.create, stats.export.pdf
+    pag = await listar_auditoria(session, AuditFiltros(accion="user.create,stats.export"))
+    assert pag.total == 2
+    assert {i.accion for i in pag.items} == {"user.create", "stats.export.pdf"}
+
+
+@pytest.mark.asyncio
 async def test_filtro_por_actor(session):
     await _sembrar(session)
     pag = await listar_auditoria(session, AuditFiltros(actor="coord"))
