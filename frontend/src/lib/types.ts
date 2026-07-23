@@ -1,13 +1,23 @@
 // Tipos de dominio del MVP ActiveExam. Calcados de los schemas del backend
 // (app/presentation/api/v1/*). Nombres y enums en español, igual que la API real.
 
-// Modelo de roles MVP (3 roles). admin_sistema es el rol administrativo único:
-// configura exámenes, ve reportes/auditoría Y resuelve la cola de revisión
-// (antes 'revisor'). Alineado con el realm de Keycloak (C-52).
+// Roles del sistema. ESPEJA EXACTAMENTE el enum `Rol` del backend
+// (app/domain/auth/roles.py) — es la MISMA lista, no un subconjunto.
+//
+// Antes esto declaraba un "modelo MVP de 3 roles" mientras el backend ya tenía 7.
+// La consecuencia no era cosmética: el backend reserva `resolver_caso` al rol
+// `revisor`, pero el frontend ni siquiera conocía ese rol, así que la ruta
+// /revisor lo rechazaba con "Sin permisos" — nadie podía anular un examen por
+// fraude. Si el backend agrega un rol, va acá también.
 export type Rol =
   | 'estudiante'
   | 'proctor'
-  | 'admin_sistema';
+  | 'revisor'
+  | 'coordinador'
+  | 'docente'
+  | 'admin_examenes'
+  | 'admin_sistema'
+  | 'auditor';
 
 export type Severidad = 'baseline' | 'baja' | 'media' | 'alta' | 'critica';
 
@@ -578,6 +588,11 @@ export interface CapturaFirmada {
   object_key: string;
   url: string;
   expires_in: number;
+  /** De qué señal salió la captura (código del evento; se muestra traducido). */
+  tipo_evento?: string | null;
+  severidad?: string | null;
+  /** Momento del evento, para ubicar la captura en la línea de tiempo. */
+  ocurrio_en?: string | null;
 }
 
 export interface InformeDevolucion {

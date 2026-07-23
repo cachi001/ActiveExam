@@ -1,8 +1,13 @@
 import { Badge } from '../../../ui/components';
-import { getRolLabel, ROL_LABELS, ROLES_VALIDOS } from '../../../lib/constants/roles';
+import {
+  getRolLabel,
+  ROL_DESCRIPCIONES,
+  ROL_LABELS,
+  ROLES_VALIDOS,
+} from '../../../lib/constants/roles';
 import type { UsuarioAdmin } from '../../../lib/types';
 
-export { ROL_LABELS, ROLES_VALIDOS };
+export { ROL_DESCRIPCIONES, ROL_LABELS, ROLES_VALIDOS };
 
 export type ModoFormulario = 'crear' | 'editar';
 

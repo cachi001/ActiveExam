@@ -23,9 +23,35 @@ from app.domain.auth.roles import Rol
 
 # capacidad -> conjunto de roles que la poseen. Dato de config, no logica.
 CAPABILITY_ROLES: dict[str, frozenset[Rol]] = {
+    # --- Circuito de revision humana (L2.5) ---------------------------------
     "revisar_sesion": frozenset({Rol.REVISOR, Rol.COORDINADOR, Rol.ADMIN_SISTEMA}),
     # HOY: concentracion en revisor. Remapeable por config (D8), sin refactor.
     "resolver_caso": frozenset({Rol.REVISOR}),
+    # --- Gestion academica ---------------------------------------------------
+    # Alta/edicion de examenes, materias y comisiones. El DOCENTE vive aca: es su
+    # trabajo. El revisor NO la tiene — quien juzga el fraude no edita el examen.
+    "gestionar_academico": frozenset(
+        {Rol.DOCENTE, Rol.ADMIN_EXAMENES, Rol.COORDINADOR, Rol.ADMIN_SISTEMA}
+    ),
+    # Ver las notas y sincronizarlas a Moodle: el docente necesita cerrar la nota
+    # de su materia.
+    "gestionar_notas": frozenset(
+        {Rol.DOCENTE, Rol.ADMIN_EXAMENES, Rol.COORDINADOR, Rol.ADMIN_SISTEMA}
+    ),
+    # --- Administracion del sistema -----------------------------------------
+    # Umbrales, detectores, retencion. Deliberadamente SIN docente: la
+    # configuracion define como se detecta el fraude; quien dicta la materia no
+    # debe poder aflojarla para su propio examen.
+    "configurar_sistema": frozenset({Rol.ADMIN_SISTEMA}),
+    # Alta/baja de usuarios y asignacion de roles: solo admin del sistema.
+    "gestionar_usuarios": frozenset({Rol.ADMIN_SISTEMA}),
+    # Registro inmutable: lo lee quien audita, no quien opera.
+    "ver_auditoria": frozenset({Rol.AUDITOR, Rol.ADMIN_SISTEMA}),
+    # --- Supervision en vivo -------------------------------------------------
+    # Mirar sesiones en curso. Sin docente: es evidencia biometrica en vivo.
+    "supervisar_vivo": frozenset(
+        {Rol.PROCTOR, Rol.REVISOR, Rol.COORDINADOR, Rol.ADMIN_SISTEMA}
+    ),
 }
 
 

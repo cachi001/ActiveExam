@@ -5,7 +5,8 @@ GET /api/v1/stats/export.pdf  → el mismo sumario como PDF descargable.
 GET /api/v1/stats/export.xlsx → el mismo sumario como Excel descargable.
 
 Todos aceptan filtros por query param (materia_id / comision_id / examen_id /
-desde / hasta). RBAC: admin_sistema / coordinador (vista institucional). Agregado
+desde / hasta). RBAC: capacidad `gestionar_academico` (docente, admin_examenes, coordinador,
+admin_sistema) — vista institucional. Agregado
 SIN PII. L2.5: el "riesgo" prioriza la revisión humana, NUNCA emite veredicto.
 """
 
@@ -21,8 +22,7 @@ from app.application.stats.resumen_service import (
     obtener_resumen,
 )
 from app.application.stats.xlsx_export import resumen_a_xlsx
-from app.domain.auth.roles import Rol
-from app.presentation.api.v1.auth.dependencies import require_roles
+from app.presentation.api.v1.auth.dependencies import require_capability
 
 __all__ = ["create_stats_router"]
 
@@ -96,8 +96,10 @@ def _to_response(r: ResumenStats) -> ResumenStatsResponse:
 
 def create_stats_router(session_factory=None) -> APIRouter:
     """Factory del router de stats (permite inyectar session_factory en tests)."""
+    # Estadisticas institucionales: agregados SIN PII. Las ve quien gestiona lo
+    # academico (incluido el docente, que necesita el rendimiento de su materia).
     router = APIRouter(
-        dependencies=[Depends(require_roles(Rol.ADMIN_SISTEMA, Rol.COORDINADOR))]
+        dependencies=[Depends(require_capability("gestionar_academico"))]
     )
 
     def _factory(request: Request):

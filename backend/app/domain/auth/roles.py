@@ -24,6 +24,12 @@ class Rol(str, enum.Enum):
     ADMIN_EXAMENES = "admin_examenes"
     ADMIN_SISTEMA = "admin_sistema"
     AUDITOR = "auditor"
+    # Gestion academica SIN poder de supervision: carga y administra examenes,
+    # materias y comisiones de lo suyo. NO revisa sesiones, NO resuelve casos, NO
+    # toca la configuracion del sistema ni la auditoria. Es el rol de quien dicta
+    # la materia, no el de quien juzga la integridad de la rendicion — mantener
+    # esa separacion es lo que evita que quien pone la nota decida el fraude.
+    DOCENTE = "docente"
 
 
 # Roles que EXIGEN MFA: todo el que accede a evidencia o administracion (`03`,
@@ -36,11 +42,19 @@ ROLES_CON_MFA: frozenset[Rol] = frozenset(
         Rol.ADMIN_EXAMENES,
         Rol.ADMIN_SISTEMA,
         Rol.AUDITOR,
+        # El docente administra contenido academico (examenes con sus preguntas y
+        # respuestas correctas): es acceso de administracion, exige MFA.
+        Rol.DOCENTE,
     }
 )
 
-# Roles administrativos de examen (admin-only para CRUD de Examen, usado por C-07).
-ROLES_ADMIN_EXAMEN: frozenset[Rol] = frozenset({Rol.ADMIN_EXAMENES, Rol.ADMIN_SISTEMA})
+# Roles administrativos de examen (CRUD de Examen, usado por C-07). El docente
+# entra aca: cargar y configurar los examenes de su materia es exactamente su
+# trabajo. Lo que NO gana por estar aca es supervision ni configuracion del
+# sistema — eso vive en CAPABILITY_ROLES, no en esta lista.
+ROLES_ADMIN_EXAMEN: frozenset[Rol] = frozenset(
+    {Rol.ADMIN_EXAMENES, Rol.ADMIN_SISTEMA, Rol.DOCENTE}
+)
 
 
 def parse_rol(valor: str) -> Rol | None:

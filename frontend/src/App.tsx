@@ -38,10 +38,19 @@ const MoodleImportPage      = lazy(() => import('./admin/ExamImport/MoodleImport
 const Configuracion         = lazy(() => import('./screens/Configuracion'));
 const Registro              = lazy(() => import('./screens/Registro'));
 
-// Roles por área (modelo MVP: estudiante, proctor, admin_sistema).
+// Roles por área. DEBE espejar ui/nav.ts (si un item se ve en el menú y la ruta
+// lo rechaza, o al reves, el usuario come un "Sin permisos" desde su propio menu)
+// y CAPABILITY_ROLES del backend (si la ruta deja pasar y el endpoint responde
+// 403, la accion falla en silencio).
 const ESTUDIANTE: Rol[] = ['estudiante'];
-const SUPERVISION: Rol[] = ['proctor', 'admin_sistema'];
+// Incluye 'revisor': es el unico rol con la capacidad `resolver_caso` del backend
+// y hasta ahora la ruta /revisor lo dejaba afuera.
+const SUPERVISION: Rol[] = ['proctor', 'revisor', 'coordinador', 'admin_sistema'];
+// Area del docente: examenes, materias, comisiones y notas. Sin supervision,
+// sin auditoria, sin configuracion.
+const ACADEMICO: Rol[] = ['docente', 'admin_examenes', 'coordinador', 'admin_sistema'];
 const ADMIN: Rol[] = ['admin_sistema'];
+const AUDITORIA: Rol[] = ['auditor', 'admin_sistema'];
 
 /** Envuelve una pantalla en el guard de auth/rol. */
 function g(node: ReactNode, roles: Rol[]): ReactNode {
@@ -78,18 +87,18 @@ export default function App() {
     // Revisión académica + administración
     '/revisor': g(<Revisor />, SUPERVISION),
     '/revisor/detalle': g(<SessionDetail />, SUPERVISION),
-    '/admin': g(<AdminDashboard />, ADMIN),
-    '/admin/estadisticas': g(<EstadisticasInstitucionales />, ADMIN),
-    '/admin/auditoria': g(<Auditoria />, ADMIN),
-    '/admin/examenes': g(<ExamList />, ADMIN),
-    '/admin/examenes/importar': g(<MoodleImportPage />, ADMIN),
-    '/admin/examenes/:id/resultados': g(<ExamResultados />, ADMIN),
-    '/admin/examenes/:id': g(<ExamDetail />, ADMIN),
+    '/admin': g(<AdminDashboard />, [...ACADEMICO, 'proctor', 'revisor', 'auditor']),
+    '/admin/estadisticas': g(<EstadisticasInstitucionales />, ACADEMICO),
+    '/admin/auditoria': g(<Auditoria />, AUDITORIA),
+    '/admin/examenes': g(<ExamList />, ACADEMICO),
+    '/admin/examenes/importar': g(<MoodleImportPage />, ACADEMICO),
+    '/admin/examenes/:id/resultados': g(<ExamResultados />, ACADEMICO),
+    '/admin/examenes/:id': g(<ExamDetail />, ACADEMICO),
     '/admin/detection-test': g(<AdminDetectionHarness />, ADMIN),
-    '/admin/proctoring-sessions': g(<ProctoringRevisor />, ADMIN),
+    '/admin/proctoring-sessions': g(<ProctoringRevisor />, SUPERVISION),
     '/admin/proctoring-session-detail': g(<ProctoringSessionDetail />, SUPERVISION),
     '/admin/usuarios': g(<GestionUsuarios />, ADMIN),
-    '/admin/materias': g(<MateriasComisiones />, ADMIN),
+    '/admin/materias': g(<MateriasComisiones />, ACADEMICO),
     '/admin/usuarios/:id': g(<DetalleUsuario />, ADMIN),
     '/admin/configuracion': g(<Configuracion />, ADMIN),
 

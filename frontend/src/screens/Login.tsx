@@ -6,10 +6,22 @@ import type { Rol } from '../lib/types';
 import { INSTITUTION } from '../config/institution';
 import { AUTH_PROVIDER_TYPE } from '../lib/authProvider';
 
-/** Home de cada rol tras el login. admin_sistema centraliza administración + revisión. */
+/** Home de cada rol tras el login.
+ *
+ * Todo rol de staff debe tener su destino explícito. Antes solo contemplaba
+ * admin y proctor, así que revisor/docente/auditor caían al `/alumno` final y
+ * aterrizaban en el panel de estudiante — con la sensación de que su cuenta
+ * "no servía". El orden va del rol más específico al más general.
+ */
 function homePorRol(roles: Rol[]): string {
   if (roles.includes('admin_sistema')) return '/admin';
   if (roles.includes('proctor')) return '/proctor';
+  // El revisor entra directo a la cola: es su única tarea.
+  if (roles.includes('revisor')) return '/revisor';
+  if (roles.includes('coordinador')) return '/admin';
+  // Docente y admin de exámenes arrancan en su listado de exámenes.
+  if (roles.includes('docente') || roles.includes('admin_examenes')) return '/admin/examenes';
+  if (roles.includes('auditor')) return '/admin/auditoria';
   return '/alumno';
 }
 

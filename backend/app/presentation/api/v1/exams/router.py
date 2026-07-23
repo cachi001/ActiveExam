@@ -1,7 +1,7 @@
 """Router de configuracion de examen (FastAPI, C-07).
 
 Toda la superficie es ADMIN-ONLY + MFA: las dependencias de C-06
-(``require_roles(ADMIN_EXAMENES)`` + ``require_mfa``) se aplican a nivel de router,
+(``require_capability("gestionar_academico")`` + ``require_mfa``) se aplican a nivel de router,
 de modo que un rol no-admin -> 403 y un admin sin MFA -> 403, SIN logica de
 autorizacion propia en C-07 (D1, single source of truth en C-06).
 
@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from app.application.exam_config.service import ExamConfigInput, ExamConfigService
 from app.domain.auth.roles import Rol
 from app.domain.exam_config.errors import InvalidExamConfigError
-from app.presentation.api.v1.auth.dependencies import require_mfa, require_roles
+from app.presentation.api.v1.auth.dependencies import require_capability, require_mfa
 from app.presentation.api.v1.exams.dependencies import (
     get_exam_service,
     get_presign_service,
@@ -34,10 +34,12 @@ from app.presentation.api.v1.exams.schemas import (
 )
 from app.infrastructure.storage.presign import PresignService
 
-# Guards admin-only + MFA (C-06) a nivel de router: aplican a TODOS los endpoints.
+# Guards por capacidad + MFA (C-06) a nivel de router: aplican a TODOS los
+# endpoints. `gestionar_academico` cubre docente/admin_examenes/coordinador/
+# admin_sistema; reasignarla es un cambio de CAPABILITY_ROLES, no de este archivo.
 router = APIRouter(
     dependencies=[
-        Depends(require_roles(Rol.ADMIN_EXAMENES)),
+        Depends(require_capability("gestionar_academico")),
         Depends(require_mfa),
     ]
 )
