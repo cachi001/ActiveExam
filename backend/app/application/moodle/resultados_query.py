@@ -47,6 +47,10 @@ class ResultadoAlumno:
     nota: float | None
     estado_moodle: str
     actualizado_en: object | None  # datetime tz-aware (lo serializa Pydantic)
+    # Por que la nota NO se va a sincronizar: en_riesgo | caso_abierto | anulada.
+    # None = nada la retiene. Es ortogonal a `estado_moodle`: una fila retenida
+    # sigue estando 'pendiente' en la tabla, pero apretar "Sincronizar" no la manda.
+    retenido_por: str | None = None
 
 
 def estado_moodle_display(db_estado: str | None, *, moodle_configurado: bool) -> str:
@@ -138,6 +142,13 @@ async def listar_resultados_examen(
     )
     rows = (await db.execute(page_stmt)).all()
 
+    # Motivo de RETENCION por fila. La nota de una sesion en riesgo NO se sincroniza
+    # (gate D15, mismo `writeback_en_hold` que usa el envio), pero su estado seguia
+    # mostrandose como "pendiente": indistinguible de una nota que solo falta mandar.
+    # El admin apretaba "Sincronizar (2 pendientes)", se enviaba 1 y nada explicaba
+    # por que. Se calcula aca para que la UI pueda marcarla.
+    retenciones = await _motivos_retencion(db, [row.session_id for row in rows])
+
     items = [
         ResultadoAlumno(
             session_id=row.session_id,
@@ -149,10 +160,74 @@ async def listar_resultados_examen(
                 row.estado, moodle_configurado=moodle_configurado
             ),
             actualizado_en=row.updated_at or row.finalizada_en,
+            retenido_por=retenciones.get(row.session_id),
         )
         for row in rows
     ]
     return items, int(total)
+
+
+async def _motivos_retencion(
+    db: AsyncSession, session_ids: list[str]
+) -> dict[str, str]:
+    """``{session_id: motivo}`` para las sesiones cuya nota esta retenida.
+
+    Motivos, en castellano llano porque salen tal cual a la pantalla:
+      - "en_riesgo"      : supero el umbral y todavia nadie la reviso.
+      - "caso_abierto"   : un revisor la derivo y falta el veredicto.
+      - "anulada"        : anulada por fraude — la nota no se sincroniza.
+    Una sesion sin retencion no aparece en el dict.
+    """
+    if not session_ids:
+        return {}
+
+    from app.domain.review.decision import writeback_en_hold
+
+    rows = (
+        await db.execute(
+            select(
+                ProctoringSessionModel.id,
+                ProctoringSessionModel.decision,
+                ProctoringSessionModel.resolucion,
+            ).where(ProctoringSessionModel.id.in_(session_ids))
+        )
+    ).all()
+
+    ev_rows = (
+        await db.execute(
+            select(
+                ProctoringEventModel.session_id,
+                ProctoringEventModel.tipo,
+                ProctoringEventModel.severidad,
+            ).where(ProctoringEventModel.session_id.in_(session_ids))
+        )
+    ).all()
+    eventos_por_sesion: dict[str, list] = {}
+    for ev in ev_rows:
+        eventos_por_sesion.setdefault(ev.session_id, []).append(ev)
+
+    pesos = await _pesos_vivos_por_tipo(db)
+    umbral = await _umbral_cola_revision(db)
+
+    motivos: dict[str, str] = {}
+    for row in rows:
+        score = calcular_score(
+            eventos_por_sesion.get(row.id, []), pesos_por_tipo=pesos
+        )
+        flaggeada = score >= umbral
+        decision = _parse_decision_val(row.decision)
+        resolucion = _parse_resolucion_val(row.resolucion)
+        if not writeback_en_hold(
+            flaggeada=flaggeada, decision=decision, resolucion=resolucion
+        ):
+            continue
+        if resolucion is not None and str(row.resolucion) == "anulado_por_fraude":
+            motivos[row.id] = "anulada"
+        elif str(row.decision) == "caso_abierto":
+            motivos[row.id] = "caso_abierto"
+        else:
+            motivos[row.id] = "en_riesgo"
+    return motivos
 
 
 async def obtener_target_examen(
@@ -396,6 +471,10 @@ async def listar_mis_notas(
             ProctoringSessionModel.examen_contenido_id,
             ProctoringSessionModel.finalizada_en,
             ProctoringSessionModel.resolucion,
+            # `decision` viaja para saber si la revisión YA ocurrió: sin esto,
+            # "en cola de revisión" se calculaba solo por score y quedaba pegado
+            # para siempre, aun con el caso ya resuelto.
+            ProctoringSessionModel.decision,
             ExamenContenidoModel.titulo.label("examen_titulo"),
             ExamenContenidoModel.nota_maxima,
             ExamenContenidoModel.nota_aprobacion,
@@ -489,7 +568,14 @@ async def listar_mis_notas(
                 estado_moodle=estado_moodle_display(
                     r.estado, moodle_configurado=moodle_configurado
                 ),
-                en_cola_revision=score >= umbral,
+                # "En cola" = supera el umbral Y TODAVÍA NO tiene decisión humana.
+                # Antes era solo `score >= umbral`, así que después de resolver el
+                # caso el alumno seguía leyendo "un docente la revisará y confirmará
+                # tu nota" al lado de "Nota anulada por fraude": dos mensajes que se
+                # contradicen, justo cuando más claridad necesita.
+                en_cola_revision=(
+                    score >= umbral and _revision_pendiente(r.decision)
+                ),
                 score=float(score),
                 umbral_revision=float(umbral),
                 eventos=len(evs),
@@ -540,3 +626,14 @@ async def _sesiones_con_restitucion(
         return {r[0] for r in rows.all()}
     except Exception:  # noqa: BLE001 — degradación: sin audit, no hay restituciones
         return set()
+
+
+def _revision_pendiente(decision_val: str | None) -> bool:
+    """``True`` si la sesion TODAVIA no fue revisada por una persona.
+
+    El import va adentro por la misma razon que en ``_parse_decision_val``: este
+    modulo se importa desde varios routers y el enum vive en dominio.
+    """
+    from app.domain.review.decision import DecisionRevision
+
+    return _parse_decision_val(decision_val) is DecisionRevision.PENDIENTE

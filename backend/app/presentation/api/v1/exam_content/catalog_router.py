@@ -67,7 +67,7 @@ from app.domain.exam_content.errors import (
 )
 from app.presentation.api.v1.auth.dependencies import (
     get_current_principal,
-    require_roles,
+    require_capability,
 )
 from app.presentation.api.v1.exam_content.schemas import (
     AltaInlineRequest,
@@ -100,6 +100,32 @@ from app.presentation.api.v1.exam_content.schemas import (
 )
 
 
+async def _titulo_examen(session_factory, examen_id: str) -> str:
+    """Titulo visible del examen para los mensajes de auditoria.
+
+    El audit log lo lee una PERSONA: un UUID no le dice nada. Cae al id solo si el
+    examen no existe (no vale romper una auditoria por no poder leer un nombre).
+    """
+    from sqlalchemy import select
+
+    from app.infrastructure.persistence.models.exam_content import (
+        ExamenContenidoModel,
+    )
+
+    try:
+        async with session_factory() as session:
+            titulo = (
+                await session.execute(
+                    select(ExamenContenidoModel.titulo).where(
+                        ExamenContenidoModel.id == examen_id
+                    )
+                )
+            ).scalar_one_or_none()
+        return titulo or examen_id
+    except Exception:  # noqa: BLE001 — nunca romper el flujo por el nombre
+        return examen_id
+
+
 def create_exam_content_router(
     session_factory=None,
     *,
@@ -110,9 +136,14 @@ def create_exam_content_router(
     writeback_svc: servicio de write-back a Moodle (None = Moodle no configurado;
     la sincronización manual responde 'sin_token' sin crashear).
     """
+    # Gate por CAPACIDAD, no por lista de roles: el catalogo academico (examenes,
+    # materias, comisiones, notas) lo maneja quien tiene `gestionar_academico` —
+    # hoy docente, admin_examenes, coordinador y admin_sistema. Con la lista
+    # hardcodeada anterior el docente veia las pantallas pero comia 403 al operar,
+    # que es el mismo desfasaje que dejaba la cola de revision inalcanzable.
     router = APIRouter(
         dependencies=[
-            Depends(require_roles(Rol.ADMIN_EXAMENES, Rol.ADMIN_SISTEMA)),
+            Depends(require_capability("gestionar_academico")),
         ]
     )
 
@@ -1102,9 +1133,11 @@ def create_exam_content_router(
             accion=AccionAuditoria.EXAMEN_MOODLE_TARGET,
             ip=request.client.host if request.client else None,
             user_agent=request.headers.get("user-agent"),
+            # El registro lo lee una persona: va el TITULO del examen, no su UUID.
+            # `titulo` es el nombre visible; si el objeto no lo trae, cae al id.
             proposito=(
-                f"Fijó destino Moodle del examen {examen_id}: "
-                f"course={examen.moodle_courseid} cm={examen.moodle_cmid}"
+                f"Fijó destino Moodle del examen «{getattr(examen, 'titulo', None) or examen_id}»: "
+                f"curso {examen.moodle_courseid}, actividad {examen.moodle_cmid}"
             ),
         )
 
@@ -1520,6 +1553,7 @@ def create_exam_content_router(
                     nota=r.nota,
                     estado_moodle=r.estado_moodle,
                     actualizado_en=r.actualizado_en,
+                    retenido_por=r.retenido_por,
                 )
                 for r in items
             ],
@@ -1555,6 +1589,9 @@ def create_exam_content_router(
                 detail="Persistencia no inicializada.",
             )
 
+        # El titulo, para que la auditoria la lea una persona y no un UUID.
+        titulo_examen = await _titulo_examen(session_factory, examen_id)
+
         async with session_factory() as session:
             pendientes = await listar_estados_sincronizables(
                 db=session, examen_id=examen_id
@@ -1572,7 +1609,7 @@ def create_exam_content_router(
                     ip=request.client.host if request.client else None,
                     user_agent=request.headers.get("user-agent"),
                     proposito=(
-                        f"Intentó sincronizar el examen {examen_id} a Moodle sin token "
+                        f"Intentó sincronizar las notas del examen «{titulo_examen}» a Moodle sin token "
                         f"configurado ({total} nota(s) quedan pendientes)"
                     ),
                 )
@@ -1612,7 +1649,7 @@ def create_exam_content_router(
             ip=request.client.host if request.client else None,
             user_agent=request.headers.get("user-agent"),
             proposito=(
-                f"Sincronizó el examen {examen_id} a Moodle: "
+                f"Sincronizó las notas del examen «{titulo_examen}» a Moodle: "
                 f"{enviadas} enviada(s), {fallidas} fallida(s) de {total}"
             ),
         )

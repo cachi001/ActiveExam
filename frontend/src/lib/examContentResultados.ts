@@ -19,6 +19,12 @@ export interface ResultadoExamen {
   nota: number | null;
   estado_moodle: EstadoMoodle;
   actualizado_en: string;
+  /**
+   * Motivo por el que la nota queda RETENIDA y no se sincroniza (gate D15):
+   * 'en_riesgo' | 'caso_abierto' | 'anulada'. `null`/ausente = nada la retiene.
+   * Es ortogonal a `estado_moodle`: una fila retenida sigue en 'pendiente'.
+   */
+  retenido_por?: string | null;
 }
 
 export interface ResultadosPaginados {

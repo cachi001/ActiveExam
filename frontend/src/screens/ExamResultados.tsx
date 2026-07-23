@@ -128,7 +128,13 @@ export default function ExamResultados() {
     }
   }
 
-  const pendientes = resultados.filter((r) => r.estado_moodle === 'pendiente').length;
+  // Las RETENIDAS no cuentan como pendientes: el botón prometía "Sincronizar
+  // (2 pendientes)", el backend mandaba 1 (la otra la frena el gate de riesgo) y
+  // nada explicaba la diferencia. El contador ahora dice lo que realmente va a pasar.
+  const pendientes = resultados.filter(
+    (r) => r.estado_moodle === 'pendiente' && !r.retenido_por,
+  ).length;
+  const retenidas = resultados.filter((r) => r.retenido_por).length;
 
   const ESTADO_OPCIONES = [
     { value: 'pendiente', label: 'Pendiente de sincronizar' },
@@ -180,6 +186,23 @@ export default function ExamResultados() {
         <Button variant="ghost" icon="arrow_back" size="sm" onClick={volverAlDetalle}>
           Volver al detalle del examen
         </Button>
+
+        {/* Aviso de notas frenadas. Sin esto, el admin sincroniza, ve que algunas
+            filas no se movieron y no tiene forma de saber que fue a propósito. */}
+        {retenidas > 0 && (
+          <div className="flex items-start gap-sm rounded-lg border border-error-200 bg-error-50 p-md">
+            <Icon name="gavel" className="text-[20px] text-error-600 shrink-0 mt-0.5" />
+            <div className="min-w-0">
+              <p className="text-[14px] font-semibold text-on-surface">
+                {retenidas} nota{retenidas !== 1 ? 's' : ''} retenida{retenidas !== 1 ? 's' : ''} por revisión
+              </p>
+              <p className="text-[13px] text-on-surface-variant leading-snug mt-0.5">
+                Corresponden a exámenes que superaron el umbral de riesgo o están en revisión.
+                No se envían a Moodle hasta que una persona decida. Están marcadas en rojo en la tabla.
+              </p>
+            </div>
+          </div>
+        )}
 
         <Card>
           <SectionTitle
@@ -291,7 +314,7 @@ export default function ExamResultados() {
                           : <span className="text-outline text-label-sm">—</span>}
                       </td>
                       <td className="py-sm pr-md">
-                        <EstadoBadge estado={r.estado_moodle} />
+                        <EstadoBadge estado={r.estado_moodle} retenidoPor={r.retenido_por} />
                       </td>
                       <td className="py-sm text-label-sm text-on-surface-variant">
                         {formatFecha(r.actualizado_en)}

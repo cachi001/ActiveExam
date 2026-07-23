@@ -539,6 +539,9 @@ class ResultadoAlumnoResponse(BaseModel):
     alumno_nombre: str | None = None
     nota: float | None = None
     estado_moodle: str  # pendiente | enviado | fallido | sin_token
+    # Motivo por el que la nota queda RETENIDA y no se sincroniza (gate D15):
+    # en_riesgo | caso_abierto | anulada. None = nada la retiene.
+    retenido_por: str | None = None
     actualizado_en: datetime | None = None
 
 
@@ -631,13 +634,21 @@ class SenalAnalisisResponse(BaseModel):
 
 
 class CapturaFirmadaResponse(BaseModel):
-    """Captura de evidencia accesible por URL firmada (expira 15 min, C-71 D12)."""
+    """Captura de evidencia accesible por URL firmada (C-71 D12).
+
+    Incluye de QUÉ evento salió: sin eso el alumno recibe una lista de imágenes
+    numeradas que no puede relacionar con ninguna de las señales que se le
+    imputan — y son justamente la prueba con la que tendría que defenderse.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     object_key: str
     url: str
     expires_in: int
+    tipo_evento: str | None = None
+    severidad: str | None = None
+    ocurrio_en: object | None = None
 
 
 class InformeDevolucionResponse(BaseModel):

@@ -15,7 +15,13 @@ import { StudentShell } from '../ui/shells';
 import { Card, Icon, LoadingSpinner, BackButton, SectionTitle, Badge } from '../ui/components';
 import { api } from '../lib/api';
 import { useRouteParam, useNavigate } from '../lib/router';
-import type { InformeDevolucion } from '../lib/types';
+import {
+  SEVERIDAD_TONE,
+  severidadLabel,
+  tipoEventoLabel,
+  veredictoReinferenciaLabel,
+} from '../lib/apiLabels';
+import type { InformeDevolucion, Severidad } from '../lib/types';
 
 export default function InformeDevolucionAlumno() {
   const sessionId = useRouteParam('sessionId');
@@ -99,17 +105,26 @@ export default function InformeDevolucionAlumno() {
                         border-outline-variant/60 bg-white p-sm flex-wrap"
                     >
                       <div className="min-w-0">
-                        <p className="text-label-md font-semibold text-on-surface">{s.tipo}</p>
+                        {/* Nombre legible, NUNCA el código interno: esta es la
+                            pantalla con la que el alumno entiende (y puede
+                            discutir) lo que se registró en su examen. */}
+                        <p className="text-label-md font-semibold text-on-surface">
+                          {tipoEventoLabel(s.tipo)}
+                        </p>
                         <p className="text-label-sm text-on-surface-variant">
                           {s.ocurrencias} {s.ocurrencias === 1 ? 'ocurrencia' : 'ocurrencias'}
-                          {' · '}re-inferencia: {s.veredicto_reinferencia}
+                          {' · '}
+                          {veredictoReinferenciaLabel(s.veredicto_reinferencia)}
                           {s.face_count_servidor != null
-                            ? ` · rostros (servidor): ${s.face_count_servidor}`
+                            ? ` · rostros detectados por el servidor: ${s.face_count_servidor}`
                             : ''}
                         </p>
                       </div>
-                      <Badge tone={s.severidad === 'critico' || s.severidad === 'alta' ? 'error' : 'neutral'}>
-                        {s.severidad}
+                      {/* El color acompaña a la palabra: "Alta" en rojo y "Baja"
+                          en verde se distinguen sin leer. Antes todo lo que no
+                          fuera alta/critico salía gris e indistinguible. */}
+                      <Badge tone={SEVERIDAD_TONE[s.severidad as Severidad] ?? 'neutral'} dot>
+                        {severidadLabel(s.severidad)}
                       </Badge>
                     </div>
                   ))}
@@ -118,7 +133,12 @@ export default function InformeDevolucionAlumno() {
             </Card>
 
             <Card className="space-y-md">
-              <SectionTitle sub="Enlaces temporales (expiran a los 15 minutos).">
+              {/* El texto anterior era "Enlaces temporales (expiran a los 15
+                  minutos)" y se leía como que LA PRUEBA se borra en 15 minutos.
+                  Lo que caduca es el enlace de acceso, por seguridad; la
+                  evidencia queda guardada. Decirlo mal, en la pantalla donde el
+                  alumno se defiende, es hacerle creer que tiene que apurarse. */}
+              <SectionTitle sub="Las imágenes quedan guardadas. Por seguridad, el enlace de acceso caduca a los 15 minutos: si vence, volvé a abrir esta página y se genera uno nuevo.">
                 Capturas de evidencia
               </SectionTitle>
               {informe.capturas.length === 0 ? (
@@ -126,20 +146,44 @@ export default function InformeDevolucionAlumno() {
               ) : (
                 <ul className="space-y-sm">
                   {informe.capturas.map((c, i) => (
-                    <li key={`${c.object_key}-${i}`}>
-                      <a
-                        href={c.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-base text-label-md font-semibold text-primary
-                          hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
-                      >
-                        <Icon name="image" className="text-[18px]" />
-                        Ver captura {i + 1}
-                        <span className="text-label-sm text-on-surface-variant">
-                          (expira en {Math.round(c.expires_in / 60)} min)
-                        </span>
-                      </a>
+                    <li
+                      key={`${c.object_key}-${i}`}
+                      className="flex items-center justify-between gap-md rounded-xl border
+                        border-outline-variant/60 bg-white p-sm flex-wrap"
+                    >
+                      <div className="min-w-0">
+                        {/* Cada captura dice DE QUÉ señal salió y CUÁNDO. Antes
+                            eran "Ver captura 1, 2, 3": imposible relacionarlas
+                            con lo que se le imputa al alumno. */}
+                        <p className="text-label-md font-semibold text-on-surface">
+                          {c.tipo_evento ? tipoEventoLabel(c.tipo_evento) : `Captura ${i + 1}`}
+                        </p>
+                        {c.ocurrio_en && (
+                          <p className="text-label-sm text-on-surface-variant">
+                            {new Date(c.ocurrio_en).toLocaleString('es-AR', {
+                              day: '2-digit', month: '2-digit', year: 'numeric',
+                              hour: '2-digit', minute: '2-digit',
+                            })}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-sm shrink-0">
+                        {c.severidad && (
+                          <Badge tone={SEVERIDAD_TONE[c.severidad as Severidad] ?? 'neutral'} dot>
+                            {severidadLabel(c.severidad)}
+                          </Badge>
+                        )}
+                        <a
+                          href={c.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-base text-label-md font-semibold text-primary
+                            hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
+                        >
+                          <Icon name="image" className="text-[18px]" />
+                          Ver imagen
+                        </a>
+                      </div>
                     </li>
                   ))}
                 </ul>

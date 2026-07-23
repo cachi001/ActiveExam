@@ -40,11 +40,19 @@ class SenalAnalisis:
 
 @dataclass(frozen=True, slots=True)
 class CapturaFirmada:
-    """Una captura de evidencia accesible por URL firmada (expira 15 min)."""
+    """Una captura de evidencia accesible por URL firmada.
+
+    Lleva DE QUÉ EVENTO salió: una lista de "Ver captura 1, 2, 3" no le sirve a
+    nadie para defenderse — el alumno necesita saber qué señal disparó cada
+    imagen y en qué momento, que es justamente lo que se le está imputando.
+    """
 
     object_key: str
     url: str
     expires_in: int
+    tipo_evento: str | None = None
+    severidad: str | None = None
+    ocurrio_en: object | None = None  # datetime tz-aware; lo serializa Pydantic
 
 
 @dataclass(frozen=True, slots=True)
@@ -108,13 +116,18 @@ async def build_informe_devolucion(
                 ProctoringEventModel.face_count_servidor,
                 ProctoringEventModel.veredicto_reinferencia,
                 ProctoringEventModel.screenshot_sha256,
-            ).where(ProctoringEventModel.session_id == session_id)
+                # Momento del evento: sin esto la captura no se puede ubicar en
+                # la línea de tiempo del examen.
+                ProctoringEventModel.ts_backend,
+            )
+            .where(ProctoringEventModel.session_id == session_id)
+            .order_by(ProctoringEventModel.ts_backend)
         )
     ).all()
 
     agregado: dict[str, dict] = {}
     capturas: list[CapturaFirmada] = []
-    for tipo, severidad, face_count, veredicto, sha in ev_rows:
+    for tipo, severidad, face_count, veredicto, sha, ts in ev_rows:
         clave = f"{tipo}|{severidad}"
         acc = agregado.setdefault(
             clave,
@@ -136,6 +149,9 @@ async def build_informe_devolucion(
                     object_key=firmada.object_key,
                     url=firmada.url,
                     expires_in=firmada.expires_in,
+                    tipo_evento=tipo,
+                    severidad=severidad,
+                    ocurrio_en=ts,
                 )
             )
 
