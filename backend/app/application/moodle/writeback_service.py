@@ -354,6 +354,123 @@ class MoodleWritebackService:
         )
         return True
 
+    async def restituir_nota(
+        self,
+        *,
+        db: AsyncSession,
+        session_id: str,
+        actor: str,
+        motivo: str,
+    ) -> float | None:
+        """Devuelve a Moodle la nota REAL de un examen cuya anulación se revirtió.
+
+        Es el espejo de ``anular_nota``: si la anulación no llegaba a la libreta el
+        alumno conservaba una nota que ya no le correspondía, y si la restitución no
+        llega, se queda con un 0 que tampoco le corresponde — con el agravante de
+        que acá ya se le dio la razón.
+
+        La nota se RECALCULA desde las respuestas persistidas en vez de leerla del
+        historial: el cálculo es la fuente de verdad y no depende de parsear el
+        texto de una entrada de auditoría. Si el examen se recorrigió mientras
+        tanto, restituye la nota vigente, que es la correcta.
+
+        Como en la anulación, no propaga excepciones: el acto compensatorio ya
+        quedó asentado en el audit log y es lo que define el estado efectivo de la
+        nota; si Moodle falla, queda 'fallido' y se reintenta desde la pantalla de
+        sincronización.
+
+        Returns:
+            La nota restituida, o None si no había nada que restituir o falló.
+        """
+        from app.application.moodle.grade_calculator import (
+            RespuestaAlumno,
+            calcular_nota_academica,
+        )
+        from app.infrastructure.persistence.models.moodle_writeback import (
+            RespuestaAlumnoModel,
+        )
+        from app.infrastructure.persistence.models.proctoring import (
+            ProctoringSessionModel,
+        )
+
+        estado = await self._get_estado(db, session_id)
+        if estado is None:
+            return None
+
+        sesion = await db.get(ProctoringSessionModel, session_id)
+        if sesion is None or not sesion.examen_contenido_id:
+            return None
+
+        respuestas = [
+            RespuestaAlumno(
+                pregunta_id=r.pregunta_id, opcion_elegida_id=r.opcion_elegida_id
+            )
+            for r in (
+                await db.execute(
+                    select(RespuestaAlumnoModel).where(
+                        RespuestaAlumnoModel.session_id == session_id
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        ]
+        nota = await calcular_nota_academica(
+            db=db,
+            examen_contenido_id=sesion.examen_contenido_id,
+            respuestas=respuestas,
+        )
+
+        nota_anulada = float(estado.nota)
+        estado.nota = nota
+        estado.estado = WritebackEstado.PENDIENTE
+        await db.flush()
+
+        try:
+            moodle_userid = await self._mapper.resolve(
+                idnumber=estado.alumno_idnumber,
+                email=estado.alumno_email,
+            )
+        except Exception as exc:  # noqa: BLE001
+            await self._registrar_fallo(
+                db=db, estado=estado, moodle_userid=None, error=str(exc)
+            )
+            return None
+
+        try:
+            await self._client.write_grade(
+                moodle_userid=moodle_userid,
+                nota=nota,
+                courseid=estado.moodle_courseid,
+                cmid=estado.moodle_cmid,
+                component=estado.moodle_component,
+                nota_maxima=await self._nota_maxima_del_examen(db, session_id),
+            )
+        except MoodleGradeWriteError as exc:
+            await self._registrar_fallo(
+                db=db, estado=estado, moodle_userid=moodle_userid, error=str(exc)
+            )
+            return None
+
+        estado.estado = WritebackEstado.ENVIADO
+        estado.moodle_userid = moodle_userid
+        estado.intento += 1
+        estado.error_detalle = None
+        await db.flush()
+
+        await self._auditar(
+            db=db,
+            session_id=session_id,
+            estado=estado,
+            moodle_userid=moodle_userid,
+            resultado="restituido",
+            error_detalle=(
+                f"Restitucion tras revertir la anulacion: nota {nota_anulada:g} -> "
+                f"{nota:g}. actor={actor} | motivo={motivo}"
+            ),
+        )
+        return nota
+
     async def _registrar_fallo(
         self,
         *,

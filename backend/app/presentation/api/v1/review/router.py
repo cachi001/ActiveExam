@@ -13,6 +13,8 @@ caso para la fase 2 (resolucion, `resolver_caso`, `POST .../resolve`).
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -35,6 +37,8 @@ from app.infrastructure.persistence.repositories.review import (
     SqlSessionReviewRepository,
 )
 from app.presentation.api.v1.auth.dependencies import require_capability
+
+_log = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -284,6 +288,12 @@ async def resolve_session(
                     )
                     await s2.commit()
                 except Exception:  # noqa: BLE001 — el veredicto ya es firme
+                    # Se LOGUEA: tragar el error dejaba el efecto sobre la nota
+                    # fallando en silencio, y desde afuera solo se veia un False
+                    # sin causa. El veredicto sigue firme; esto es diagnostico.
+                    _log.exception(
+                        "Fallo el efecto en Moodle al anular la sesion %s", session_id
+                    )
                     await s2.rollback()
                     nota_anulada_en_moodle = False
 
@@ -295,4 +305,99 @@ async def resolve_session(
         nota_anulada=result.nota_anulada,
         nota_anulada_en_moodle=nota_anulada_en_moodle,
         nota_legal=_NOTA_RESOLVE,
+    )
+
+
+class RestituirRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    motivo: str  # obligatorio: por que se revierte (apelacion, error, etc.)
+
+
+class RestituirResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    session_id: str
+    actor: str
+    nota_restituida: float | None
+    nota_restituida_en_moodle: bool
+    nota_legal: str
+
+
+_NOTA_RESTITUIR = (
+    "Acto compensatorio APPEND-ONLY (RN-RV-06): NO borra ni modifica la anulacion "
+    "original — la cadena de custodia se rompe si se reescribe el pasado. Registra "
+    "un acto nuevo; el estado efectivo de la nota se deriva del ULTIMO acto."
+)
+
+
+@router.post(
+    "/session/{session_id}/restituir",
+    response_model=RestituirResponse,
+    summary="Revierte una anulacion y devuelve la nota (capacidad resolver_caso)",
+)
+async def restituir_nota(
+    session_id: str,
+    body: RestituirRequest,
+    request: Request,
+    principal: AuthenticatedPrincipal = Depends(_require_resolver),
+) -> RestituirResponse:
+    """Restituye la nota de un examen anulado — la via de la APELACION.
+
+    Existia `revertir_anulacion` en el servicio pero sin endpoint: si a un alumno se
+    le daba la razon, no habia por donde devolverle la nota. Es el espejo del hook
+    de anulacion, y sin el la anulacion era irreversible en los hechos.
+    """
+    actor = principal.subject or "unknown"
+    factory = _get_session_factory(request)
+
+    async with factory() as s:
+        svc = ReviewResolutionService(
+            repo=SqlSessionReviewRepository(s),
+            auditor=SqlReviewAuditor(s),
+        )
+        try:
+            await svc.revertir_anulacion(session_id, actor=actor, motivo=body.motivo)
+        except MotivoRequeridoError as exc:
+            await s.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+            ) from exc
+        except ValueError as exc:
+            await s.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND
+                if "no encontrada" in str(exc)
+                else status.HTTP_409_CONFLICT,
+                detail=str(exc),
+            ) from exc
+        await s.commit()
+
+    # El efecto en Moodle va aparte del acto compensatorio, por lo mismo que en la
+    # anulacion: el acto ya quedo asentado y es lo que define el estado efectivo.
+    nota_restituida: float | None = None
+    writeback_svc = getattr(request.app.state, "writeback_svc", None)
+    if writeback_svc is not None:
+        async with factory() as s2:
+            try:
+                nota_restituida = await writeback_svc.restituir_nota(
+                    db=s2,
+                    session_id=session_id,
+                    actor=actor,
+                    motivo=body.motivo.strip(),
+                )
+                await s2.commit()
+            except Exception:  # noqa: BLE001 — la reversion ya es firme
+                _log.exception(
+                    "Fallo la restitucion de la nota en Moodle para la sesion %s",
+                    session_id,
+                )
+                await s2.rollback()
+
+    return RestituirResponse(
+        session_id=session_id,
+        actor=actor,
+        nota_restituida=nota_restituida,
+        nota_restituida_en_moodle=nota_restituida is not None,
+        nota_legal=_NOTA_RESTITUIR,
     )
