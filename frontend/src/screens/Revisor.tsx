@@ -19,13 +19,8 @@ import { HelpButton } from '../ui/HelpButton';
 import { api } from '../lib/api';
 import { loadEffectiveConfig, getEffectiveConfig, resetEffectiveConfigCache } from '../config/effectiveConfigCache';
 import { useApp } from '../lib/store';
-import { useAuth } from '../lib/authStore';
-import { tieneCapacidad } from '../lib/capabilities';
 import { useNavigate } from '../lib/router';
 import { STAFF_NAV } from '../ui/nav';
-import { useToast } from '../ui/toast';
-import type { DecisionRevisor } from '../lib/types';
-import { DECISION_REVISION_LABEL, DECISION_RESOLUCION_LABEL } from '../lib/types';
 import { ColaBreadcrumb, type ColaPath, type ColaNivel } from './proctoring/ColaBreadcrumb';
 import { ColaNivelGrid } from './proctoring/ColaNivelGrid';
 import { ColaNivelPersonas } from './proctoring/ColaNivelPersonas';
@@ -43,13 +38,6 @@ export const REVISOR_NAV = STAFF_NAV;
 /** Umbral por defecto si la config efectiva del sistema no cargó. */
 const UMBRAL_FALLBACK = 70;
 const PROCTORING_DETAIL_ROUTE = '/admin/proctoring-session-detail';
-
-/** Etiqueta legible de cada decisión (para el toast). Derivada del backend. */
-const DECISION_LABEL: Record<DecisionRevisor, string> = {
-  ...DECISION_REVISION_LABEL,
-  ...DECISION_RESOLUCION_LABEL,
-  pendiente: 'Pendiente',
-};
 
 /**
  * Preservación de navegación (C-72 backlog UX #5). Al ir a "Ver detalle completo"
@@ -92,13 +80,8 @@ function caminoAutoColapsado(items: SesionEnriquecida[]): ColaPath {
 
 export default function Revisor() {
   const navigate = useNavigate();
-  const toast = useToast();
   const setProctoringSessionId = useApp((s) => s.setProctoringSessionId);
   const setProctoringDetailBackRoute = useApp((s) => s.setProctoringDetailBackRoute);
-  const setDecisionRevisor = useApp((s) => s.setDecisionRevisor);
-  const principal = useAuth((s) => s.principal);
-  // Capacidad `resolver_caso` (front-hides; el backend deniega igual, D8/regla #6).
-  const puedeResolver = tieneCapacidad(principal?.roles ?? [], 'resolver_caso');
 
   const [items, setItems] = useState<SesionEnriquecida[]>([]);
   const [umbral, setUmbral] = useState(UMBRAL_FALLBACK);
@@ -164,55 +147,6 @@ export default function Revisor() {
     });
   };
 
-  /**
-   * Registra la decisión del revisor pegando al backend REAL (C-71 endpoints).
-   * Rutea fase 1 (`decide`) vs fase 2 (`resolve`). Devuelve `true` solo si el
-   * backend confirmó: recién ahí la UI refleja el cambio (el panel abre la fase 2
-   * o el item sale de la cola). Un fallo (409 inmutable, 403 sin atribución) NO
-   * muta nada — el juicio humano vive en el servidor, no en el navegador (regla #6).
-   */
-  const resolver = async (
-    id: string,
-    decision: DecisionRevisor,
-    motivo: string,
-    evidenciaRef?: string,
-  ): Promise<boolean> => {
-    try {
-      if (decision === 'anulado_por_fraude' || decision === 'caso_descartado') {
-        await api.resolverCaso(id, decision, motivo, evidenciaRef);
-      } else if (
-        decision === 'sin_hallazgos' ||
-        decision === 'aprobado' ||
-        decision === 'caso_abierto'
-      ) {
-        await api.decidirRevision(id, decision, motivo);
-      } else {
-        return false; // 'pendiente' no es una acción registrable
-      }
-    } catch (e) {
-      const status = (e as { status?: number })?.status;
-      if (status === 409) {
-        toast.error('Esta sesión ya tenía una decisión registrada (es inmutable). Recargá la cola.');
-      } else if (status === 403) {
-        toast.error('No tenés la atribución para registrar esta decisión.');
-      } else {
-        toast.error('No se pudo registrar la decisión. Reintentá en un momento.');
-      }
-      return false;
-    }
-
-    // Éxito confirmado por el backend: recién ahora reflejamos en la UI.
-    setDecisionRevisor(id, decision);
-    toast.success(
-      `Decisión registrada: ${DECISION_LABEL[decision]}. El score prioriza; el revisor decide.`,
-    );
-    // `caso_abierto` deriva: no cierra la sesión (queda para la fase 2/resolución).
-    if (decision !== 'caso_abierto') {
-      setItems((prev) => prev.filter((i) => i.sesion.id !== id));
-      setPersonaSelId(null);
-    }
-    return true;
-  };
 
   const verDetalle = (id: string) => {
     // Guardamos el nivel + la persona para restaurarlos al volver del detalle (#5).
@@ -360,12 +294,9 @@ export default function Revisor() {
               <ColaNivelPersonas
                 personas={personas}
                 selId={personaSelId}
-                puedeResolver={puedeResolver}
                 // Un solo click abre el caso en el detalle: la lista es para
                 // ELEGIR a quién revisar, el detalle para DECIDIR.
                 onSeleccionar={abrirCaso}
-                onResolver={resolver}
-                onVerDetalle={abrirCaso}
               />
             )}
           </>

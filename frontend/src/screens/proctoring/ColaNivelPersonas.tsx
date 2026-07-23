@@ -1,17 +1,16 @@
 /**
  * ColaNivelPersonas — Nivel hoja del drill-down: las personas (sesiones de proctoring)
  * en riesgo de un examen puntual. Cada card = una persona, con score / señales /
- * diferencias y un botón para seleccionarla. La persona seleccionada despliega el
- * panel de decisión (ColaPanelDecision) debajo de su card.
+ * diferencias. Un click ABRE EL CASO en el detalle completo: la lista es para
+ * elegir a quién revisar, el expediente para decidir (la decisión es inmutable y
+ * exige mirar la evidencia, cosa que un panel lateral angosto no permite).
  *
  * Layout: stack vertical con gaps (space-y-sm); las métricas usan flex-wrap. Sin
  * elementos absolutos: nada se monta sobre el texto a 1440/1280/1024px.
  */
 import { Card, Badge, Icon, SectionTitle } from '../../ui/components';
-import type { DecisionRevisor } from '../../lib/types';
 import { formatFechaRelativa } from './helpers';
 import type { SesionEnriquecida } from './colaAgregacion';
-import { ColaPanelDecision } from './ColaPanelDecision';
 
 function PersonaCard({
   item,
@@ -65,26 +64,14 @@ function PersonaCard({
 export function ColaNivelPersonas({
   personas,
   selId,
-  puedeResolver,
   onSeleccionar,
-  onResolver,
-  onVerDetalle,
 }: {
   personas: SesionEnriquecida[];
+  /** Solo resalta la fila abierta al volver del detalle. */
   selId: string | null;
-  /** Capacidad `resolver_caso` (front-hides; el backend deniega igual). */
-  puedeResolver: boolean;
+  /** Abre el caso en el expediente, donde se decide. */
   onSeleccionar: (id: string) => void;
-  /** Registra la decisión; resuelve `true` solo si el backend la confirmó. */
-  onResolver: (
-    id: string,
-    decision: DecisionRevisor,
-    motivo: string,
-    evidenciaRef?: string,
-  ) => Promise<boolean>;
-  onVerDetalle: (id: string) => void;
 }) {
-  const seleccionada = personas.find((p) => p.sesion.id === selId) ?? null;
 
   return (
     <section className="space-y-md">
@@ -107,39 +94,16 @@ export function ColaNivelPersonas({
           </p>
         </Card>
       ) : (
-        <div className="grid lg:grid-cols-2 gap-lg items-start">
-          <div className="space-y-sm">
-            {personas.map((item) => (
-              <PersonaCard
-                key={item.sesion.id}
-                item={item}
-                seleccionada={selId === item.sesion.id}
-                onSeleccionar={() => onSeleccionar(item.sesion.id)}
-              />
-            ))}
-          </div>
+        <div className="space-y-sm">
+          {personas.map((item) => (
+            <PersonaCard
+              key={item.sesion.id}
+              item={item}
+              seleccionada={selId === item.sesion.id}
+              onSeleccionar={() => onSeleccionar(item.sesion.id)}
+            />
+          ))}
 
-          <div>
-            {seleccionada ? (
-              <ColaPanelDecision
-                sesion={seleccionada.sesion}
-                info={seleccionada.info}
-                puedeResolver={puedeResolver}
-                onResolver={(d, motivo, evidenciaRef) =>
-                  onResolver(seleccionada.sesion.id, d, motivo, evidenciaRef)
-                }
-                key={seleccionada.sesion.id}
-                onVerDetalle={() => onVerDetalle(seleccionada.sesion.id)}
-              />
-            ) : (
-              <Card className="text-center py-xl space-y-base text-on-surface-variant">
-                <Icon name="touch_app" className="text-[40px]" />
-                <p className="text-label-md">
-                  Seleccioná una persona de la lista para ver su detalle y decidir.
-                </p>
-              </Card>
-            )}
-          </div>
         </div>
       )}
     </section>
