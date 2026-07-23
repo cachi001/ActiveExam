@@ -92,6 +92,13 @@ class ResolveResponse(BaseModel):
     actor: str
     resolucion_at: str
     nota_anulada: bool
+    # Efecto del hook c-18 en Moodle. Distingue tres casos que NO son lo mismo:
+    #   True  → Moodle confirmo el 0 en la libreta.
+    #   False → se intento y no se pudo (sin identidad, Moodle caido): queda
+    #           'fallido' y hay que reintentar la sincronizacion.
+    #   None  → no aplicaba (la resolucion no anula, o Moodle no esta configurado).
+    # Sin esta distincion, la UI no puede avisar que la nota sigue viva en Moodle.
+    nota_anulada_en_moodle: bool | None = None
     nota_legal: str
 
 
@@ -255,11 +262,37 @@ async def resolve_session(
             ) from exc
         await s.commit()
 
+    # Hook c-18: si el veredicto anula la nota, el efecto tiene que llegar a Moodle.
+    # Sin esto la anulacion vivia SOLO en ActiveExam y el alumno conservaba en la
+    # libreta la nota ya sincronizada — se anulaba por fraude y el 10 seguia puesto.
+    #
+    # Va DESPUES del commit y en su propia transaccion a proposito: la decision
+    # humana ya esta registrada y es inmutable (RN-RV-07), asi que un Moodle caido
+    # no puede tumbarla ni dejarla a medias. Si el push falla, el estado queda
+    # 'fallido' con el detalle y se reintenta desde la pantalla de sincronizacion.
+    nota_anulada_en_moodle: bool | None = None
+    if result.nota_anulada:
+        writeback_svc = getattr(request.app.state, "writeback_svc", None)
+        if writeback_svc is not None:
+            async with factory() as s2:
+                try:
+                    nota_anulada_en_moodle = await writeback_svc.anular_nota(
+                        db=s2,
+                        session_id=session_id,
+                        actor=actor,
+                        motivo=body.motivo.strip(),
+                    )
+                    await s2.commit()
+                except Exception:  # noqa: BLE001 — el veredicto ya es firme
+                    await s2.rollback()
+                    nota_anulada_en_moodle = False
+
     return ResolveResponse(
         session_id=result.session_id,
         resolucion=result.resolucion.value,
         actor=result.actor,
         resolucion_at=result.resolucion_at,
         nota_anulada=result.nota_anulada,
+        nota_anulada_en_moodle=nota_anulada_en_moodle,
         nota_legal=_NOTA_RESOLVE,
     )

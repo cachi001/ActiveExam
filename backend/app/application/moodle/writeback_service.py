@@ -108,6 +108,40 @@ class MoodleWritebackService:
         self._client = moodle_client
         self._mapper = MoodleIdentityMapper(moodle_client=moodle_client)
 
+    async def _nota_maxima_del_examen(
+        self, db: AsyncSession, session_id: str
+    ) -> float | None:
+        """Escala sobre la que ActiveExam califico esta sesion (``nota_maxima``).
+
+        Viaja al cliente para convertir la nota a la escala del item de Moodle: sin
+        ella, un 8 sobre 10 se escribia como 8 sobre 100. Se resuelve por la sesion
+        porque `moodle_writeback_estado` guarda la nota pero no su escala.
+
+        None si no se puede determinar — el cliente entonces envia sin convertir
+        (comportamiento previo), que es lo correcto para una sesion sin examen
+        asociado (no hay escala de origen que convertir).
+        """
+        from app.infrastructure.persistence.models.exam_content import (
+            ExamenContenidoModel,
+        )
+        from app.infrastructure.persistence.models.proctoring import (
+            ProctoringSessionModel,
+        )
+
+        try:
+            result = await db.execute(
+                select(ExamenContenidoModel.nota_maxima)
+                .join(
+                    ProctoringSessionModel,
+                    ProctoringSessionModel.examen_contenido_id == ExamenContenidoModel.id,
+                )
+                .where(ProctoringSessionModel.id == session_id)
+            )
+            nota_maxima = result.scalar_one_or_none()
+        except Exception:  # noqa: BLE001 — sin escala se envia sin convertir
+            return None
+        return float(nota_maxima) if nota_maxima else None
+
     async def iniciar_writeback(
         self,
         *,
@@ -201,6 +235,9 @@ class MoodleWritebackService:
                 courseid=estado.moodle_courseid,
                 cmid=estado.moodle_cmid,
                 component=estado.moodle_component,
+                # Escala de ORIGEN: el cliente la usa para convertir a la del item
+                # de Moodle (que suele ser 100). Sin esto un 8/10 iba como 8/100.
+                nota_maxima=await self._nota_maxima_del_examen(db, session_id),
             )
         except MoodleGradeWriteError as exc:
             await self._registrar_fallo(
@@ -226,6 +263,96 @@ class MoodleWritebackService:
             resultado="ok",
             error_detalle=None,
         )
+
+    async def anular_nota(
+        self,
+        *,
+        db: AsyncSession,
+        session_id: str,
+        actor: str,
+        motivo: str,
+    ) -> bool:
+        """Escribe **0** en Moodle como efecto de una anulacion por fraude (hook c-18).
+
+        Es el acto COMPENSATORIO de la resolucion `anulado_por_fraude`: sin esto la
+        anulacion queda en ActiveExam y el alumno conserva en la libreta de Moodle la
+        nota que ya se le habia sincronizado.
+
+        A diferencia de ``ejecutar_writeback``, este metodo NO respeta el corte por
+        'enviado' — al contrario, su caso normal es pisar una nota ya enviada. Por eso
+        es un metodo aparte y no un parametro: forzar un reenvio no puede quedar al
+        alcance del camino normal, donde la idempotencia es justamente la proteccion.
+
+        APPEND-ONLY donde importa: la fila de `moodle_writeback_estado` refleja el
+        estado VIGENTE (nota 0), y el historial completo (la nota original, este acto
+        y su resultado) queda en `moodle_writeback_audit`, que solo acumula.
+
+        Nunca propaga excepciones: la resolucion humana ya esta registrada y es
+        inmutable; si Moodle no responde, se persiste 'fallido' con el detalle y el
+        admin puede reintentar desde la pantalla de sincronizacion.
+
+        Returns:
+            True si Moodle confirmo el 0; False si no habia nota que anular o fallo.
+        """
+        estado = await self._get_estado(db, session_id)
+        if estado is None:
+            # Nunca hubo nota sincronizada para esta sesion: no hay nada que anular.
+            return False
+
+        nota_previa = float(estado.nota)
+        estado.nota = 0
+        estado.estado = WritebackEstado.PENDIENTE
+        await db.flush()
+
+        try:
+            moodle_userid = await self._mapper.resolve(
+                idnumber=estado.alumno_idnumber,
+                email=estado.alumno_email,
+            )
+        except Exception as exc:  # noqa: BLE001 — identidad no resoluble: queda fallido
+            await self._registrar_fallo(
+                db=db, estado=estado, moodle_userid=None, error=str(exc)
+            )
+            return False
+
+        try:
+            # 0 es 0 en cualquier escala, pero se pasa igual para que la anulacion
+            # recorra EXACTAMENTE el mismo camino que un envio normal: si mañana la
+            # nota de anulacion deja de ser 0, no hay que acordarse de este detalle.
+            await self._client.write_grade(
+                moodle_userid=moodle_userid,
+                nota=0.0,
+                courseid=estado.moodle_courseid,
+                cmid=estado.moodle_cmid,
+                component=estado.moodle_component,
+                nota_maxima=await self._nota_maxima_del_examen(db, session_id),
+            )
+        except MoodleGradeWriteError as exc:
+            await self._registrar_fallo(
+                db=db, estado=estado, moodle_userid=moodle_userid, error=str(exc)
+            )
+            return False
+
+        estado.estado = WritebackEstado.ENVIADO
+        estado.moodle_userid = moodle_userid
+        estado.intento += 1
+        estado.error_detalle = None
+        await db.flush()
+
+        # El resultado deja rastro de QUE se anulo, QUIEN y POR QUE: sin la nota
+        # previa el registro no permitiria reconstruir el efecto del acto.
+        await self._auditar(
+            db=db,
+            session_id=session_id,
+            estado=estado,
+            moodle_userid=moodle_userid,
+            resultado="anulado",
+            error_detalle=(
+                f"Anulacion por fraude: nota {nota_previa:g} -> 0. "
+                f"actor={actor} | motivo={motivo}"
+            ),
+        )
+        return True
 
     async def _registrar_fallo(
         self,

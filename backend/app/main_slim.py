@@ -115,6 +115,10 @@ def create_slim_app() -> FastAPI:
         app.state.refresh_store = None   # No-op: auth/router.py crea DbStore por request.
         app.state.profile_photo_storage = profile_photo_storage
         app.state.embedding_encryption = embedding_encryption
+        # El router de review es global (no se construye por factory), asi que toma
+        # el write-back del state: lo necesita para el hook c-18 — anular por fraude
+        # debe escribir el 0 en la libreta de Moodle. None = Moodle sin configurar.
+        app.state.writeback_svc = _writeback_svc
         yield
         await engine.dispose()
 

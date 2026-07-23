@@ -99,9 +99,15 @@ async def calcular_nota_academica(
     nota_maxima = nota_maxima_row.scalar_one_or_none()
     escala = Decimal(str(nota_maxima)) if nota_maxima is not None else Decimal(str(_NOTA_MAXIMA_DEFAULT))
 
-    # Redondeo a entero con ROUND_HALF_UP (Decimal exacto, sin sorpresas de binario
-    # flotante — Python round() usa banker's rounding: round(0.5)=0, no queremos eso).
+    # DOS decimales, alineado con Moodle: la libreta formatea las notas con 2
+    # decimales, asi que redondear a entero de este lado desalineaba las escalas —
+    # 15/20 sobre 10 es 7,5 y se convertia en 8, medio punto regalado que Moodle
+    # nunca pidio. La conversion a la escala del item destino la hace el cliente
+    # (write_grade) leyendo el grademax real.
+    #
+    # ROUND_HALF_UP y Decimal a proposito: el round() de Python usa banker's
+    # rounding (round(0.5) = 0), que en notas se lee como un error.
     nota = (Decimal(correctas) / Decimal(total_preguntas) * escala).quantize(
-        Decimal("1"), rounding=ROUND_HALF_UP
+        Decimal("0.01"), rounding=ROUND_HALF_UP
     )
     return float(nota)
