@@ -59,6 +59,9 @@ const DECISION_LABEL: Record<DecisionRevisor, string> = {
  * el contexto, pero una entrada fresca desde el menú lateral arranca en la raíz.
  */
 const NAV_KEY = 'revisor:nav';
+/** Cola de casos del examen abierto: permite pasar al siguiente desde el detalle
+ *  sin volver a la lista. Se guarda al abrir un caso y la lee SessionDetail. */
+export const COLA_KEY = 'revisor:cola';
 
 function leerNavGuardada(): { path: ColaPath; personaSelId: string | null } | null {
   try {
@@ -221,6 +224,28 @@ export default function Revisor() {
     navigate(PROCTORING_DETAIL_ROUTE);
   };
 
+  /**
+   * Elegir a una persona lleva DIRECTO al detalle, con la decisión ahí.
+   *
+   * Antes abría un panel lateral y el detalle era otro click aparte. Para anular
+   * hay que mirar la evidencia — las capturas ahora dicen de qué señal son y
+   * cuándo — y ese panel angosto invitaba a decidir sin abrirla. La decisión
+   * además es inmutable: merece la pantalla completa, no un costado.
+   *
+   * Se lleva la COLA de ids del examen actual: en el detalle se recorre caso por
+   * caso sin volver a la lista. Con 20 personas en riesgo, obligar a volver
+   * después de cada una convierte la revisión en un trámite de clicks.
+   */
+  const abrirCaso = (id: string) => {
+    try {
+      sessionStorage.setItem(
+        COLA_KEY,
+        JSON.stringify({ ids: personas.map((p) => p.sesion.id), actual: id }),
+      );
+    } catch { /* ignore */ }
+    verDetalle(id);
+  };
+
   const personas = useMemo(
     () =>
       path.materia && path.comision && path.examen
@@ -336,9 +361,11 @@ export default function Revisor() {
                 personas={personas}
                 selId={personaSelId}
                 puedeResolver={puedeResolver}
-                onSeleccionar={setPersonaSelId}
+                // Un solo click abre el caso en el detalle: la lista es para
+                // ELEGIR a quién revisar, el detalle para DECIDIR.
+                onSeleccionar={abrirCaso}
                 onResolver={resolver}
-                onVerDetalle={verDetalle}
+                onVerDetalle={abrirCaso}
               />
             )}
           </>

@@ -1,26 +1,26 @@
 /**
  * ColaPanelDecision — Panel de decisión del revisor (C-71 slice 2, D6/D9/D11).
  *
- * Modelo de DOS FASES:
- *  - Fase 1 (revisión, capacidad `revisar_sesion`): APROBAR con nota (verde) o
- *    ANULAR examen (rojo → `caso_abierto`, abre la fase 2). Cada decisión exige un
- *    MOTIVO no vacío (D11). Se pega al backend antes de reflejar nada en la UI.
- *  - Fase 2 (resolución, capacidad `resolver_caso`): SOLO si el caso está abierto —
- *    ANULAR la nota por fraude (destacado, danger) o descartar el caso. Anular exige
- *    motivo + evidencia. El botón de anulación se habilita SOLO con la capacidad
- *    `resolver_caso`; el backend igual lo verifica (backstop, D8/regla #6).
+ * UNA decisión, dos salidas: **Aprobar con nota** o **Anular examen**. Ambas
+ * exigen MOTIVO (D11); anular exige además la referencia a la evidencia.
+ *
+ * El backend mantiene el modelo de DOS FASES (revisión → resolución): es lo que
+ * da la trazabilidad y permite que mañana resuelva otra autoridad. Pero el
+ * revisor no tiene por qué ver esa mecánica: antes la UI la exponía como cuatro
+ * botones en dos pasos ("Aprobar con nota / Anular examen", y después "Descartar
+ * el caso / Anular la nota por fraude"), pares que decían casi lo mismo — y con
+ * el agravante de que "Anular examen" NO anulaba, solo derivaba. Acá las fases se
+ * encadenan solas.
+ *
+ * Quien NO tiene `resolver_caso` (admin, coordinador) ve "Derivar a un revisor"
+ * en lugar de anular: ofrecerle anular garantizaba un 403.
  *
  * El sistema solo prioriza y ordena; la decisión es siempre humana, nunca automática.
  * Reusa Card/Button/Icon/SectionTitle/FormField del design system. Sin window.confirm.
  */
 import { useState } from 'react';
 import { Card, Button, Icon, SectionTitle, FormField } from '../../ui/components';
-import type {
-  DecisionRevisor,
-  DecisionRevision,
-  DecisionResolucion,
-  SesionProctoringResumen,
-} from '../../lib/types';
+import type { DecisionRevisor, SesionProctoringResumen } from '../../lib/types';
 import type { ExamInfo } from './helpers';
 import { scoreTextColor, formatFecha, formatFechaRelativa, modoLabel } from './helpers';
 
@@ -41,28 +41,43 @@ export function ColaPanelDecision({
 }) {
   const [motivo, setMotivo] = useState('');
   const [evidenciaRef, setEvidenciaRef] = useState('');
-  const [casoAbierto, setCasoAbierto] = useState(false);
   const [enviando, setEnviando] = useState(false);
 
   const motivoOk = motivo.trim().length > 0;
 
-  const revisar = async (d: DecisionRevision) => {
+  /** Valida la nota. Cierra la revisión sin abrir caso — no hace falta fase 2. */
+  const aprobar = async () => {
     if (!motivoOk || enviando) return;
     setEnviando(true);
-    const ok = await onResolver(d, motivo.trim());
+    await onResolver('aprobado', motivo.trim());
     setEnviando(false);
-    // La fase 2 SOLO se abre si el backend confirmó la derivación (no optimista):
-    // si falló (409 inmutable / 403 sin atribución), el caso nunca se abrió.
-    if (ok && d === 'caso_abierto') setCasoAbierto(true);
   };
 
-  const resolver = async (d: DecisionResolucion) => {
-    if (!motivoOk || !puedeResolver || enviando) return;
-    if (d === 'anulado_por_fraude' && evidenciaRef.trim().length === 0) return;
+  /** Deriva sin resolver: única salida para quien no tiene `resolver_caso`. */
+  const derivar = async () => {
+    if (!motivoOk || enviando) return;
     setEnviando(true);
-    await onResolver(d, motivo.trim(), evidenciaRef.trim() || undefined);
+    await onResolver('caso_abierto', motivo.trim());
     setEnviando(false);
-    // Éxito → el padre saca la sesión de la cola y este panel se desmonta.
+  };
+
+  /**
+   * Anula: encadena las DOS fases del backend en un solo acto del revisor.
+   *
+   * Se abre el caso y, SOLO si el backend lo confirmó, se emite el veredicto.
+   * Si la primera falla (409 por decisión ya registrada, 403 sin atribución) no
+   * se sigue: emitir un veredicto sobre un caso que nunca se abrió devolvería un
+   * 409 y dejaría a la persona sin entender qué pasó.
+   */
+  const anular = async () => {
+    if (!motivoOk || !puedeResolver || enviando) return;
+    if (evidenciaRef.trim().length === 0) return;
+    setEnviando(true);
+    const abierto = await onResolver('caso_abierto', motivo.trim());
+    if (abierto) {
+      await onResolver('anulado_por_fraude', motivo.trim(), evidenciaRef.trim());
+    }
+    setEnviando(false);
   };
 
   return (
@@ -150,82 +165,71 @@ export function ColaPanelDecision({
           />
         </FormField>
 
-        {/* Fase 1 — Revisión. Dos veredictos: aprobar (verde) o abrir el caso
-            hacia la anulación (rojo). El motivo es SIEMPRE obligatorio (D11). */}
+        {/* Para anular hace falta señalar QUÉ prueba lo fundamenta. Se pide junto
+            al motivo y no en un segundo paso: es parte de la misma decisión. */}
+        <FormField
+          label="Referencia de evidencia (obligatoria para anular)"
+          hint="Qué captura o momento fundamenta la anulación. Abrí «Ver detalle completo» para verlas con su fecha y señal."
+        >
+          <input
+            type="text"
+            value={evidenciaRef}
+            onChange={(e) => setEvidenciaRef(e.target.value)}
+            placeholder="Ej.: múltiples rostros, 23/07 11:16"
+            className="w-full rounded-xl border border-outline-variant/60 bg-white p-sm text-body-md
+              focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+          />
+        </FormField>
+
+        {/* UNA sola decisión, dos salidas. Antes eran cuatro botones en dos pasos:
+            "Aprobar con nota / Anular examen" y luego "Descartar el caso / Anular la
+            nota por fraude" — pares que decían casi lo mismo. Peor: "Anular examen"
+            NO anulaba, solo derivaba, y la anulación real estaba en el segundo panel.
+            Un botón que promete una cosa y hace otra.
+            El modelo de dos fases sigue vivo en el backend (da la trazabilidad y el
+            caso de dos autoridades); acá se encadena solo. */}
         <div className="grid gap-sm sm:grid-cols-2">
           <Button
             variant="success"
             icon="verified"
             disabled={!motivoOk || enviando}
-            onClick={() => revisar('aprobado')}
+            onClick={() => aprobar()}
             className="justify-center"
           >
             Aprobar con nota
           </Button>
-          <Button
-            variant="danger"
-            icon="gavel"
-            disabled={!motivoOk || enviando}
-            onClick={() => revisar('caso_abierto')}
-            className="justify-center"
-          >
-            Anular examen
-          </Button>
+          {puedeResolver ? (
+            <Button
+              variant="danger"
+              icon="gavel"
+              disabled={!motivoOk || enviando || evidenciaRef.trim().length === 0}
+              onClick={() => anular()}
+              className="justify-center font-bold ring-2 ring-error/30"
+            >
+              Anular examen
+            </Button>
+          ) : (
+            // Sin `resolver_caso` no se puede emitir el veredicto: lo único
+            // disponible es derivar. Mostrar "Anular examen" a quien no puede
+            // anular garantiza un 403 y una persona confundida.
+            <Button
+              variant="outline"
+              icon="forward_to_inbox"
+              disabled={!motivoOk || enviando}
+              onClick={() => derivar()}
+              className="justify-center"
+            >
+              Derivar a un revisor
+            </Button>
+          )}
         </div>
 
-        {/* Fase 2 — Resolución. Solo visible con caso abierto; el veredicto de
-            anulación se habilita SOLO con la capacidad resolver_caso. */}
-        {casoAbierto && (
-          <div className="border-t border-outline-variant/40 pt-md space-y-md">
-            <SectionTitle sub="Caso abierto: la nota no cambia hasta que se resuelva.">
-              Resolución del caso
-            </SectionTitle>
-
-            {puedeResolver ? (
-              <>
-                <FormField
-                  label="Referencia de evidencia (obligatoria para anular)"
-                  hint="Identificador del clip/captura que fundamenta la anulación."
-                >
-                  <input
-                    type="text"
-                    value={evidenciaRef}
-                    onChange={(e) => setEvidenciaRef(e.target.value)}
-                    placeholder="Ej.: clip-42"
-                    className="w-full rounded-xl border border-outline-variant/60 bg-white p-sm text-body-md
-                      focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-                  />
-                </FormField>
-                <div className="grid gap-sm sm:grid-cols-2">
-                  <Button
-                    variant="outline"
-                    icon="check_circle"
-                    disabled={!motivoOk || enviando}
-                    onClick={() => resolver('caso_descartado')}
-                    className="justify-center"
-                  >
-                    Descartar el caso
-                  </Button>
-                  {/* Botón de anulación DESTACADO y diferenciado (danger). */}
-                  <Button
-                    variant="danger"
-                    icon="block"
-                    disabled={!motivoOk || enviando || evidenciaRef.trim().length === 0}
-                    onClick={() => resolver('anulado_por_fraude')}
-                    className="justify-center font-bold ring-2 ring-error/30"
-                  >
-                    Anular la nota por fraude
-                  </Button>
-                </div>
-              </>
-            ) : (
-              <p className="text-label-sm text-on-surface-variant inline-flex items-center gap-base">
-                <Icon name="lock" className="text-[16px]" />
-                No tenés la atribución para resolver el caso (anular o descartar). Queda
-                derivado para la autoridad con esa capacidad.
-              </p>
-            )}
-          </div>
+        {!puedeResolver && (
+          <p className="text-label-sm text-on-surface-variant inline-flex items-center gap-base">
+            <Icon name="lock" className="text-[16px]" />
+            No tenés la atribución para anular. Podés aprobar la nota o derivar el caso
+            a quien sí la tenga.
+          </p>
         )}
       </div>
     </Card>

@@ -15,7 +15,7 @@
  * guardrail en `proctoring/expediente.guardrail.test.ts`.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { StaffShell } from '../ui/shells';
 import { Icon, Card, SectionTitle, Button } from '../ui/components';
 import { HelpButton } from '../ui/HelpButton';
@@ -26,15 +26,20 @@ import { useNavigate } from '../lib/router';
 import { useApp } from '../lib/store';
 import { useAuth } from '../lib/authStore';
 import { api } from '../lib/api';
-import type { SesionProctoringDetalle } from '../lib/types';
+import type { DecisionRevisor, SesionProctoringDetalle } from '../lib/types';
+import { tieneCapacidad } from '../lib/capabilities';
 import { loadEffectiveConfig, getEffectiveConfig } from '../config/effectiveConfigCache';
 import { DetalleHeader } from './proctoring/DetalleHeader';
+import { DecisionRevisorForm } from './proctoring/DecisionRevisorForm';
 import { EventoCard } from './proctoring/EventoCard';
 import { BiometriaCard } from './proctoring/BiometriaCard';
 import { ChatBox } from '../ui/ChatBox';
 import { ObservacionesProctor } from './proctoring/ObservacionesProctor';
 import { PausaSesionPanel } from './proctoring/PausaSesionPanel';
 import { PausasHistorial } from './proctoring/PausasHistorial';
+
+/** Ruta de esta misma pantalla: se re-navega a ella al pasar de caso en la cola. */
+const RUTA_PROPIA = '/admin/proctoring-session-detail';
 
 /** Texto del "Volver" según la ruta de origen guardada en el store. */
 const BACK_LABELS: Record<string, string> = {
@@ -61,7 +66,9 @@ export default function ProctoringSessionDetail() {
   const navigate = useNavigate();
   const toast = useToast();
   const sessionId = useApp((s) => s.proctoringSessionId);
+  const setProctoringSessionId = useApp((s) => s.setProctoringSessionId);
   const rol = useAuth((s) => s.principal?.roles[0] ?? null);
+  const rolesPrincipal = useAuth((s) => s.principal?.roles);
   // Identidad del proctor → se registra como proctor_actor al resolver una pausa.
   const proctorActor = useAuth((s) => s.principal?.email ?? null);
   // C-15: el proctor puede abrir el detalle para chatear/supervisar, pero NO
@@ -74,6 +81,32 @@ export default function ProctoringSessionDetail() {
   const detailBackRoute = useApp((s) => s.proctoringDetailBackRoute);
   const backRoute = detailBackRoute ?? (esAdmin ? '/admin/proctoring-sessions' : '/proctor');
   const backLabel = BACK_LABELS[backRoute] ?? 'Volver';
+  // Cola de casos del examen que se está revisando (la deja Revisor.tsx al abrir
+  // un caso). Permite pasar al siguiente SIN volver a la lista: con 20 personas
+  // en riesgo, obligar a volver después de cada una convierte la revisión en un
+  // trámite de clicks. Vacío = se entró por otro camino (no hay cola que recorrer).
+  const cola = useMemo<string[]>(() => {
+    try {
+      const raw = sessionStorage.getItem('revisor:cola');
+      const parsed = raw ? JSON.parse(raw) : null;
+      return Array.isArray(parsed?.ids) ? parsed.ids : [];
+    } catch {
+      return [];
+    }
+  }, []);
+  const indiceEnCola = sessionId ? cola.indexOf(sessionId) : -1;
+  const hayCola = indiceEnCola >= 0 && cola.length > 1;
+
+  /** Abre otro caso de la misma cola sin pasar por la lista. */
+  const irACaso = (indice: number) => {
+    const id = cola[indice];
+    if (!id) return;
+    setProctoringSessionId(id);
+    // El efecto de carga depende de `sessionId`: cambiarlo alcanza para recargar
+    // el detalle sin salir de la pantalla.
+    navigate(RUTA_PROPIA);
+  };
+
   const [detalle, setDetalle] = useState<SesionProctoringDetalle | null>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -152,6 +185,56 @@ export default function ProctoringSessionDetail() {
   // lectura). En vivo: chat/observaciones/pausa accionables. Grabada: historial.
   const esVivo = Boolean(detalle && !detalle.finalizada_en) && !cerrada;
 
+  // Solo se decide viniendo de la cola de revisión. Desde "Registro de sesiones"
+  // o supervisión en vivo esta pantalla es consulta: meter ahí los botones de
+  // anular invitaría a decidir fuera del circuito.
+  const vieneDeLaCola = backRoute === '/revisor';
+  const puedeResolver = tieneCapacidad(rolesPrincipal ?? [], 'resolver_caso');
+
+  /** Registra la decisión contra el backend. `true` solo si el backend confirmó. */
+  const registrarDecision = async (
+    decision: DecisionRevisor,
+    motivo: string,
+    evidenciaRef?: string,
+  ): Promise<boolean> => {
+    if (!sessionId) return false;
+    try {
+      if (decision === 'anulado_por_fraude' || decision === 'caso_descartado') {
+        await api.resolverCaso(sessionId, decision, motivo, evidenciaRef);
+      } else if (
+        decision === 'sin_hallazgos' ||
+        decision === 'aprobado' ||
+        decision === 'caso_abierto'
+      ) {
+        await api.decidirRevision(sessionId, decision, motivo);
+      } else {
+        // 'pendiente' es el estado PREVIO a decidir, no una decisión registrable.
+        return false;
+      }
+      return true;
+    } catch (e) {
+      const status = (e as { status?: number })?.status;
+      if (status === 409) {
+        toast.error('Esta sesión ya tenía una decisión registrada (es inmutable).');
+      } else if (status === 403) {
+        toast.error('No tenés la atribución para registrar esta decisión.');
+      } else {
+        toast.error('No se pudo registrar la decisión. Reintentá en un momento.');
+      }
+      return false;
+    }
+  };
+
+  /** Tras decidir: pasa al caso siguiente; si era el último, vuelve a la cola. */
+  const siguienteCasoOVolver = () => {
+    toast.success('Decisión registrada. El score prioriza; la decisión es tuya.');
+    if (hayCola && indiceEnCola < cola.length - 1) {
+      irACaso(indiceEnCola + 1);
+    } else {
+      navigate(backRoute);
+    }
+  };
+
   return (
     <StaffShell
       nav={STAFF_NAV}
@@ -200,8 +283,38 @@ export default function ProctoringSessionDetail() {
       }
     >
       <div className="space-y-lg animate-in fade-in duration-500">
-        {/* Volver a la lista */}
-        <VolverLink onClick={() => navigate(backRoute)} label={backLabel} />
+        {/* Volver a la lista + recorrido de la cola */}
+        <div className="flex items-center justify-between gap-md flex-wrap">
+          <VolverLink onClick={() => navigate(backRoute)} label={backLabel} />
+
+          {/* Con varios casos en riesgo, pasar al siguiente sin volver a la lista.
+              Es la diferencia entre revisar 20 personas y clickear 60 veces. */}
+          {hayCola && (
+            <div className="flex items-center gap-sm">
+              <span className="text-label-sm text-on-surface-variant tabular-nums">
+                Caso {indiceEnCola + 1} de {cola.length}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                icon="chevron_left"
+                disabled={indiceEnCola <= 0}
+                onClick={() => irACaso(indiceEnCola - 1)}
+              >
+                Anterior
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={indiceEnCola >= cola.length - 1}
+                onClick={() => irACaso(indiceEnCola + 1)}
+              >
+                Siguiente
+                <Icon name="chevron_right" className="text-[16px]" />
+              </Button>
+            </div>
+          )}
+        </div>
 
         {/* Estado de carga */}
         {cargando && (
@@ -229,6 +342,19 @@ export default function ProctoringSessionDetail() {
         {!cargando && !error && detalle && (
           <>
             <DetalleHeader detalle={detalle} />
+
+            {/* Decisión del revisor, JUNTO al expediente. Solo cuando se entró
+                desde la cola (`backRoute`) y la sesión está cerrada: no se decide
+                sobre un examen en curso, ni desde el registro histórico. */}
+            {vieneDeLaCola && !esVivo && (
+              <Card>
+                <DecisionRevisorForm
+                  puedeResolver={puedeResolver}
+                  onResolver={registrarDecision}
+                  onDecidido={siguienteCasoOVolver}
+                />
+              </Card>
+            )}
 
             {/* Pausa: EN VIVO el proctor la resuelve acá; GRABADA muestra el
                 historial de todas las pausas como evidencia (solo lectura).
