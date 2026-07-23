@@ -23,6 +23,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from app.domain.events.schema import Severidad
+
 # Fallback por severidad (RN-GLB-03 — solo si la config persistida no esta). Los
 # valores son el centro del rango institucional definido en
 # ``app/domain/scoring/risk_score.SEVERITY_RANGES``:
@@ -31,11 +33,16 @@ from datetime import datetime
 #   alta    [31-60]  -> 45
 #   critica [61-100] -> 80
 # baseline no es un evento (no suma al score).
+#
+# Las claves salen del ENUM, no de literales: una tabla de pesos escrita a mano se
+# desincroniza del vocabulario sin que nada falle (un ``.get`` que no matchea
+# devuelve 0 y el score se cae en silencio). Indexar por ``Severidad`` hace que un
+# valor inventado reviente al importar el modulo, no en produccion.
 PESOS_SEVERIDAD: dict[str, int] = {
-    "baja": 5,
-    "media": 20,
-    "alta": 45,
-    "critica": 80,
+    Severidad.BAJA.value: 5,
+    Severidad.MEDIA.value: 20,
+    Severidad.ALTA.value: 45,
+    Severidad.CRITICA.value: 80,
 }
 
 # Tope del score (igual que el cliente y la finalizacion de produccion). El score

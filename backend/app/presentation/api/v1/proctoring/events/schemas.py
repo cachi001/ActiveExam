@@ -7,19 +7,30 @@ Ley 25.326: screenshot_base64 es dato sensible.
 from __future__ import annotations
 
 from datetime import datetime
-from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.domain.events.schema import Severidad
 
-class SeveridadEnum(str, Enum):
-    """Severidades validas para eventos de proctoring (alineadas con riskWeights del frontend)."""
+# La severidad del borde HTTP es EL MISMO enum que el del dominio. Antes habia aca
+# un enum propio con el vocabulario en MASCULINO (bajo/medio/alto/critico) mientras
+# el resto del sistema — dominio, ``evento_score_config``, el catalogo del cliente y
+# las tablas de peso — habla en FEMENINO (baja/media/alta/critica). El cliente
+# posteaba "alta" y este borde respondia 422: NINGUN evento de deteccion del cliente
+# llegaba a persistirse. Un solo enum compartido hace imposible que las dos capas
+# se separen otra vez.
+SeveridadEnum = Severidad
 
-    bajo = "bajo"
-    medio = "medio"
-    alto = "alto"
-    critico = "critico"
+# Alias historicos aceptados SOLO en la entrada, para no rechazar a un cliente que
+# todavia mande el vocabulario viejo. Se normalizan al canonico antes de validar, asi
+# nada masculino entra a la base.
+_ALIAS_SEVERIDAD: dict[str, str] = {
+    "bajo": Severidad.BAJA.value,
+    "medio": Severidad.MEDIA.value,
+    "alto": Severidad.ALTA.value,
+    "critico": Severidad.CRITICA.value,
+}
 
 
 class IngestEventoIn(BaseModel):
@@ -33,7 +44,15 @@ class IngestEventoIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     tipo: str = Field(..., description="Tipo de evento (ej. 'FACE_ABSENT', 'MULTIPLE_FACES')")
-    severidad: SeveridadEnum = Field(..., description="Severidad del evento")
+    severidad: Severidad = Field(..., description="Severidad del evento")
+
+    @field_validator("severidad", mode="before")
+    @classmethod
+    def _normalizar_severidad(cls, v: Any) -> Any:
+        """Traduce los alias masculinos historicos al vocabulario canonico."""
+        if isinstance(v, str):
+            return _ALIAS_SEVERIDAD.get(v, v)
+        return v
     ts_cliente: datetime = Field(..., description="Timestamp del cliente (no confiable)")
     payload: dict | None = Field(None, description="Datos adicionales del evento")
     screenshot_base64: str | None = Field(
