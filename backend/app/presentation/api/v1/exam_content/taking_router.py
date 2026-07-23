@@ -34,6 +34,7 @@ from app.application.moodle.writeback_service import (
     MoodleWritebackService,
 )
 from app.domain.auth.identity import AuthenticatedPrincipal
+from app.domain.exam_content.barajado import barajar_opciones
 from app.presentation.api.v1.auth.dependencies import (
     get_current_principal,
 )
@@ -388,7 +389,12 @@ def create_exam_taking_router(
             ],
             capturas=[
                 CapturaFirmadaResponse(
-                    object_key=c.object_key, url=c.url, expires_in=c.expires_in
+                    object_key=c.object_key,
+                    url=c.url,
+                    expires_in=c.expires_in,
+                    tipo_evento=c.tipo_evento,
+                    severidad=c.severidad,
+                    ocurrio_en=c.ocurrio_en,
                 )
                 for c in informe.capturas
             ],
@@ -600,15 +606,25 @@ def create_exam_taking_router(
                     orden=p.orden,
                     respondida=p.respondida,
                     acertada=p.acertada,
+                    # MISMA semilla que en la rendicion: el alumno tiene que revisar
+                    # sus respuestas con las opciones en el MISMO orden en que las
+                    # contesto. Con el orden original veria la lista movida respecto
+                    # de lo que recuerda y no podria seguir su propio razonamiento.
                     opciones=[
                         OpcionRevisionResponse(
                             id=o.id,
                             texto=o.texto,
-                            orden=o.orden,
+                            orden=posicion,
                             es_correcta=o.es_correcta,
                             elegida=o.elegida,
                         )
-                        for o in p.opciones
+                        for posicion, o in enumerate(
+                            barajar_opciones(
+                                list(p.opciones),
+                                alumno=principal.subject or principal.email or "",
+                                pregunta_id=p.id,
+                            )
+                        )
                     ],
                 )
                 for p in rev.preguntas
@@ -667,6 +683,18 @@ def create_exam_taking_router(
                 detail={"error": "examen_no_encontrado", "examen_id": examen_id},
             )
 
+        # Las opciones se barajan POR ALUMNO antes de salir del backend. El XML de
+        # Moodle deja la correcta en la posicion 0 al importar, asi que servirlas en
+        # su orden original permite aprobar marcando siempre la primera sin leer la
+        # pregunta (comprobado: 20/20 con ese patron). El barajado es determinista:
+        # el mismo alumno ve SIEMPRE el mismo orden (recargar no le mueve las
+        # opciones), y dos alumnos ven ordenes distintos.
+        #
+        # `orden` se REEMPLAZA por la posicion barajada: mandar el orden original
+        # dejaria la pista servida — bastaria ordenar por ese campo en el cliente
+        # para reconstruir cual venia primera. Es un indice de presentacion, no un
+        # identificador; la correccion es por `id` de opcion, que no cambia.
+        alumno = principal.subject or principal.email or ""
         return ExamenRendicionResponse(
             id=rendicion.id,
             titulo=rendicion.titulo,
@@ -684,9 +712,13 @@ def create_exam_taking_router(
                         OpcionRendicionResponse(
                             id=o.id,
                             texto=o.texto,
-                            orden=o.orden,
+                            orden=posicion,
                         )
-                        for o in p.opciones
+                        for posicion, o in enumerate(
+                            barajar_opciones(
+                                list(p.opciones), alumno=alumno, pregunta_id=p.id
+                            )
+                        )
                     ],
                 )
                 for p in rendicion.preguntas
