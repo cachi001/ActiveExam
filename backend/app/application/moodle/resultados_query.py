@@ -67,6 +67,8 @@ def estado_moodle_display(db_estado: str | None, *, moodle_configurado: bool) ->
 
 def _base_stmt(examen_id: str):
     """Sesiones FINALIZADAS del examen + su estado de write-back (LEFT JOIN)."""
+    from app.infrastructure.persistence.models.transactional import UsuarioModel
+
     return (
         select(
             ProctoringSessionModel.id.label("session_id"),
@@ -76,11 +78,23 @@ def _base_stmt(examen_id: str):
             MoodleWritebackEstadoModel.nota,
             MoodleWritebackEstadoModel.estado,
             MoodleWritebackEstadoModel.updated_at,
+            # Nombre real de la persona. La tabla mostraba el legajo ("EST-001")
+            # porque este campo se dejó en None como "enhancement futuro": quien
+            # revisa notas trabaja con personas, no con identificadores internos.
+            UsuarioModel.nombre.label("usuario_nombre"),
+            UsuarioModel.apellido.label("usuario_apellido"),
         )
         .select_from(ProctoringSessionModel)
         .outerjoin(
             MoodleWritebackEstadoModel,
             MoodleWritebackEstadoModel.session_id == ProctoringSessionModel.id,
+        )
+        # OUTER: sin usuario en la tabla (o con la identidad solo en la sesión) la
+        # fila igual tiene que salir — perder un resultado por no poder mostrar un
+        # nombre sería peor que mostrar el legajo.
+        .outerjoin(
+            UsuarioModel,
+            UsuarioModel.id_institucional == MoodleWritebackEstadoModel.alumno_idnumber,
         )
         .where(
             ProctoringSessionModel.examen_contenido_id == examen_id,
@@ -90,13 +104,20 @@ def _base_stmt(examen_id: str):
 
 
 def _aplicar_filtros(stmt, *, q: str | None, estado: str | None):
-    """Búsqueda por alumno (idnumber/email) y filtro por estado — SIEMPRE en SQL."""
+    """Búsqueda por alumno (nombre/legajo/email) y filtro por estado — SIEMPRE en SQL."""
+    from app.infrastructure.persistence.models.transactional import UsuarioModel
+
     if q:
         patron = f"%{q.strip()}%"
+        # El nombre entra en la búsqueda: ahora que la tabla muestra "Apellido,
+        # Nombre", buscar por lo que se ve en pantalla tiene que funcionar — si no,
+        # se escribe el apellido y no aparece nada.
         stmt = stmt.where(
             or_(
                 MoodleWritebackEstadoModel.alumno_idnumber.ilike(patron),
                 MoodleWritebackEstadoModel.alumno_email.ilike(patron),
+                UsuarioModel.nombre.ilike(patron),
+                UsuarioModel.apellido.ilike(patron),
             )
         )
     if estado:
@@ -154,7 +175,10 @@ async def listar_resultados_examen(
             session_id=row.session_id,
             alumno_idnumber=row.alumno_idnumber,
             alumno_email=row.alumno_email,
-            alumno_nombre=None,  # identidad por idnumber/email; nombre = enhancement futuro
+            alumno_nombre=_nombre_completo(
+                getattr(row, "usuario_nombre", None),
+                getattr(row, "usuario_apellido", None),
+            ),
             nota=float(row.nota) if row.nota is not None else None,
             estado_moodle=estado_moodle_display(
                 row.estado, moodle_configurado=moodle_configurado
@@ -637,3 +661,17 @@ def _revision_pendiente(decision_val: str | None) -> bool:
     from app.domain.review.decision import DecisionRevision
 
     return _parse_decision_val(decision_val) is DecisionRevision.PENDIENTE
+
+
+def _nombre_completo(nombre: str | None, apellido: str | None) -> str | None:
+    """``"Apellido, Nombre"`` para listados. None si no hay ninguno de los dos.
+
+    Formato apellido-primero porque la tabla se lee y se ordena por apellido, que
+    es como se busca a una persona en un listado academico. None deja que la UI
+    caiga al legajo, que es mejor que una celda vacia.
+    """
+    nombre = (nombre or "").strip()
+    apellido = (apellido or "").strip()
+    if apellido and nombre:
+        return f"{apellido}, {nombre}"
+    return apellido or nombre or None

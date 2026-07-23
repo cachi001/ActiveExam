@@ -240,7 +240,7 @@ export default function ExamResultados() {
                 <input
                   type="text"
                   value={borrQ}
-                  placeholder="Buscar por alumno…"
+                  placeholder="Nombre, apellido, legajo o email…"
                   onChange={(e) => setBorrQ(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') aplicarFiltros();
