@@ -56,3 +56,60 @@ def etiqueta_evento(tipo: str) -> str:
 def etiqueta_decision(decision: str) -> str:
     """Etiqueta legible de un estado de revisión (o humaniza si es desconocido)."""
     return ETIQUETA_DECISION.get(decision, humanizar(decision))
+
+
+# --- Acciones del registro de auditoría -------------------------------------
+# El export de auditoría lo lee una persona (y eventualmente un organismo de
+# control): nunca debe salir "moodle.sync" ni "review.decision.aprobado".
+# Cubre AccionAuditoria; los prefijos variables se resuelven en etiqueta_accion().
+ETIQUETA_ACCION: dict[str, str] = {
+    "user.create": "Alta de usuario",
+    "user.update": "Editó usuario",
+    "user.delete": "Baja de usuario",
+    "user.reactivate": "Cambió el estado del usuario",
+    "materia.create": "Creó materia",
+    "materia.update": "Editó materia",
+    "materia.delete": "Eliminó materia",
+    "materia.set_activa": "Cambió el estado de la materia",
+    "comision.create": "Creó comisión",
+    "comision.update": "Editó comisión",
+    "comision.delete": "Eliminó comisión",
+    "comision.set_activa": "Cambió el estado de la comisión",
+    "examen.import": "Cargó un examen",
+    "examen.moodle_target": "Fijó destino de la nota en Moodle",
+    "examen.config_update": "Cambió la configuración del examen",
+    "examen.seleccion_preguntas": "Cambió las preguntas del examen",
+    "moodle.sync": "Sincronizó notas a Moodle",
+    "inscripcion.create": "Inscribió a un alumno",
+    "inscripcion.delete": "Dio de baja una inscripción",
+    "config_update": "Cambió la configuración del sistema",
+    "consent.otorgado": "Otorgó el consentimiento",
+    "consent_alternative_chosen": "Eligió la vía alternativa",
+    "biometria.verificacion": "Verificó la identidad",
+    "enrollment.embedding_referencia.renovacion": "Renovó la foto de referencia",
+    "acceso_evidencia": "Accedió a evidencia",
+    "deposito_evidencia": "Depositó evidencia",
+    "manipulacion_detectada": "Detectó manipulación de evidencia",
+    "firma_maestra_y_reinferencia": "Firmó y re-infirió evidencia",
+    "retention.session.deleted": "Eliminó una sesión por retención",
+    "retention.session.hold_deferred": "Difirió la eliminación por un hold",
+    "retention.biometric.egress": "Eliminó el dato biométrico al egreso",
+    "derecho_acceso.informe_devolucion": "Entregó el informe al alumno",
+}
+
+
+def etiqueta_accion(accion: str) -> str:
+    """Etiqueta legible de una acción de auditoría.
+
+    Los prefijos con sufijo variable se resuelven acá: ``review.decision.<x>``
+    lleva el veredicto en el sufijo y ``verify_chain.<x>`` el resultado de la
+    verificación, así que no pueden estar en un mapa plano.
+    """
+    if not accion:
+        return ""
+    if accion.startswith("review.decision."):
+        sufijo = accion.removeprefix("review.decision.")
+        return f"Decisión de revisión: {etiqueta_decision(sufijo).lower()}"
+    if accion.startswith("verify_chain."):
+        return "Verificó la cadena de custodia"
+    return ETIQUETA_ACCION.get(accion, humanizar(accion))

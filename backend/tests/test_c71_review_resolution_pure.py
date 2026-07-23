@@ -110,7 +110,10 @@ async def test_anular_caso_abierto_persiste_audita_y_anula_la_nota() -> None:
     assert len(auditor.calls) == 1
     accion, proposito = auditor.calls[0][2], auditor.calls[0][3]
     assert accion == "anulado_por_fraude"
-    assert "resolve" in proposito
+    # Distinguible del acto de REVISAR (RN-RV-06): aquel dice "Revisó la sesión…",
+    # este habla de veredicto. Se afirma la palabra que lleva ese significado, no la
+    # redacción entera — el texto es castellano llano y puede reescribirse.
+    assert "veredicto" in proposito
     # Baranda (b): motivo + referencia a la evidencia quedan en el audit log
     assert "copia detectada en 3 clips" in proposito
     assert "clip-42" in proposito

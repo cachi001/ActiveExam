@@ -146,7 +146,7 @@ async def test_decide_persiste_y_audita_la_primera_decision() -> None:
             "s1",
             "revisor-1",
             "sin_hallazgos",
-            "review.decide: registro inmutable de decision terminal (RN-RV-07, L2.5)",
+            "Revisó la sesión y registró su decisión",
         )
     ]
 
@@ -220,6 +220,7 @@ async def test_decide_inmutable_lanza_error_y_audita_intento() -> None:
             "s2",
             "revisor-malicioso",
             "caso_abierto",  # decision actual, NO la intentada
-            "review.decide: intento de cambiar decision terminal — RECHAZADO",
+            "Intentó cambiar una decisión ya registrada — RECHAZADO "
+            "(las decisiones no se pueden modificar)",
         )
     ]

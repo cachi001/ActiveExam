@@ -28,9 +28,10 @@ class DecisionAlreadyMadeError(Exception):
         self.current = current
 
 
-_PURPOSE = (
-    "review.decide: registro inmutable de decision terminal (RN-RV-07, L2.5)"
-)
+# Texto que va al registro de auditoria: lo lee una PERSONA, no un log. Antes decia
+# "review.decide: registro inmutable de decision terminal (RN-RV-07, L2.5)" — el
+# nombre del endpoint y la sigla de la regla no le dicen nada a quien audita.
+_PURPOSE = "Revisó la sesión y registró su decisión"
 
 
 @dataclass
@@ -64,7 +65,8 @@ class ReviewDecisionService:
                 actor=actor,
                 decision=record.decision.value,
                 proposito=(
-                    "review.decide: intento de cambiar decision terminal — RECHAZADO"
+                    "Intentó cambiar una decisión ya registrada — RECHAZADO "
+                    "(las decisiones no se pueden modificar)"
                 ),
             )
             raise DecisionAlreadyMadeError(session_id, record.decision)

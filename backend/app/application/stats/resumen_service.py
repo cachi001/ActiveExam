@@ -37,6 +37,7 @@ from app.infrastructure.persistence.models.exam_content import (
     ExamenContenidoModel,
     MateriaModel,
 )
+from app.infrastructure.persistence.models.inscripcion import InscripcionModel
 from app.infrastructure.persistence.models.proctoring import (
     ProctoringEventModel,
     ProctoringSessionModel,
@@ -84,6 +85,36 @@ class DiaStat:
 
 
 @dataclass(frozen=True, slots=True)
+class ComisionCatalogo:
+    """Una comisión del catálogo con su volumen real (inscriptos y exámenes)."""
+
+    id: str
+    codigo: str
+    nombre: str
+    activa: bool
+    periodo: str | None
+    anio: int | None
+    inscriptos: int
+    examenes: int
+
+
+@dataclass(frozen=True, slots=True)
+class MateriaCatalogo:
+    """Una materia del catálogo con TODAS sus comisiones.
+
+    A diferencia de ``MateriaStat`` (que se agrega desde las SESIONES y por lo tanto
+    omite lo que todavía no se rindió), esto es el INVENTARIO: qué hay dado de alta
+    hoy, se haya usado o no. Una materia recién creada aparece acá con 0 sesiones.
+    """
+
+    id: str
+    codigo: str
+    nombre: str
+    activa: bool
+    comisiones: list[ComisionCatalogo] = field(default_factory=list)
+
+
+@dataclass(frozen=True, slots=True)
 class ResumenStats:
     """Sumario institucional agregado (sin PII)."""
 
@@ -99,10 +130,154 @@ class ResumenStats:
     top_eventos: list[EventoStat] = field(default_factory=list)
     por_dia: list[DiaStat] = field(default_factory=list)
     decisiones: dict[str, int] = field(default_factory=dict)
+    catalogo: list[MateriaCatalogo] = field(default_factory=list)
+
+
+async def _catalogo_materias(db: AsyncSession) -> list[MateriaCatalogo]:
+    """Inventario del catálogo: materias con sus comisiones, inscriptos y exámenes.
+
+    Es una foto de lo DADO DE ALTA, no de lo rendido: responde "qué materias y
+    comisiones existen hoy" — que es justamente lo que el desglose por sesiones no
+    puede mostrar (una comisión sin nadie que haya rendido no aparece ahí).
+
+    Dos queries agregadas (no N+1): una cuenta inscriptos por comisión y otra
+    exámenes por comisión; después se arma el árbol en memoria. El catálogo es de
+    cientos de filas, no de millones.
+    """
+    inscriptos_por_comision = {
+        cid: total
+        for cid, total in (
+            await db.execute(
+                select(InscripcionModel.comision_id, func.count())
+                .group_by(InscripcionModel.comision_id)
+            )
+        ).all()
+    }
+    examenes_por_comision = {
+        cid: total
+        for cid, total in (
+            await db.execute(
+                select(ExamenContenidoModel.comision_id, func.count())
+                .where(ExamenContenidoModel.comision_id.is_not(None))
+                .group_by(ExamenContenidoModel.comision_id)
+            )
+        ).all()
+    }
+
+    filas = (
+        await db.execute(
+            select(MateriaModel, ComisionModel)
+            .outerjoin(ComisionModel, ComisionModel.materia_id == MateriaModel.id)
+            .order_by(MateriaModel.nombre, ComisionModel.codigo)
+        )
+    ).all()
+
+    materias: dict[str, dict] = {}
+    for materia, comision in filas:
+        entrada = materias.setdefault(
+            materia.id,
+            {
+                "id": materia.id,
+                "codigo": materia.codigo,
+                "nombre": materia.nombre,
+                "activa": bool(materia.activa),
+                "comisiones": [],
+            },
+        )
+        # outerjoin: una materia SIN comisiones trae la fila con comision=None.
+        if comision is None:
+            continue
+        entrada["comisiones"].append(
+            ComisionCatalogo(
+                id=comision.id,
+                codigo=comision.codigo,
+                nombre=comision.nombre,
+                activa=bool(getattr(comision, "activa", True)),
+                periodo=comision.periodo,
+                anio=comision.anio,
+                inscriptos=int(inscriptos_por_comision.get(comision.id, 0)),
+                examenes=int(examenes_por_comision.get(comision.id, 0)),
+            )
+        )
+
+    return [MateriaCatalogo(**datos) for datos in materias.values()]
 
 
 async def _count(db: AsyncSession, model) -> int:
     return int((await db.execute(select(func.count()).select_from(model))).scalar_one())
+
+
+async def _contar_catalogo(
+    db: AsyncSession, filtros: FiltrosStats
+) -> tuple[int, int, int]:
+    """``(examenes, materias, comisiones)`` DENTRO del alcance de los filtros.
+
+    Antes eran conteos globales: al filtrar por una materia, las tarjetas seguían
+    mostrando el inventario entero. Se notaba con un id inexistente — "0 sesiones"
+    junto a "1 materia, 1 examen" — pero el problema real aparece con varias
+    materias cargadas: el tablero dice "12 exámenes" mientras el resto de la
+    pantalla habla de una sola materia. Un número que no responde al filtro que la
+    persona acaba de aplicar es un número en el que no se puede confiar.
+
+    Sin filtros de catálogo (solo fechas, o ninguno) devuelve los totales globales:
+    las fechas acotan la ACTIVIDAD, no el inventario — un examen existe se haya
+    rendido o no en ese rango.
+    """
+    examenes_stmt = select(func.count()).select_from(ExamenContenidoModel)
+    materias_stmt = select(func.count()).select_from(MateriaModel)
+    comisiones_stmt = select(func.count()).select_from(ComisionModel)
+
+    if filtros.examen_contenido_id:
+        # El examen manda: define su comisión y, a través de ella, su materia.
+        examenes_stmt = examenes_stmt.where(
+            ExamenContenidoModel.id == filtros.examen_contenido_id
+        )
+        comisiones_stmt = comisiones_stmt.where(
+            ComisionModel.id.in_(
+                select(ExamenContenidoModel.comision_id).where(
+                    ExamenContenidoModel.id == filtros.examen_contenido_id
+                )
+            )
+        )
+        materias_stmt = materias_stmt.where(
+            MateriaModel.id.in_(
+                select(ComisionModel.materia_id).join(
+                    ExamenContenidoModel,
+                    ExamenContenidoModel.comision_id == ComisionModel.id,
+                ).where(ExamenContenidoModel.id == filtros.examen_contenido_id)
+            )
+        )
+    elif filtros.comision_id:
+        examenes_stmt = examenes_stmt.where(
+            ExamenContenidoModel.comision_id == filtros.comision_id
+        )
+        comisiones_stmt = comisiones_stmt.where(
+            ComisionModel.id == filtros.comision_id
+        )
+        materias_stmt = materias_stmt.where(
+            MateriaModel.id.in_(
+                select(ComisionModel.materia_id).where(
+                    ComisionModel.id == filtros.comision_id
+                )
+            )
+        )
+    elif filtros.materia_id:
+        comisiones_de_materia = select(ComisionModel.id).where(
+            ComisionModel.materia_id == filtros.materia_id
+        )
+        examenes_stmt = examenes_stmt.where(
+            ExamenContenidoModel.comision_id.in_(comisiones_de_materia)
+        )
+        comisiones_stmt = comisiones_stmt.where(
+            ComisionModel.materia_id == filtros.materia_id
+        )
+        materias_stmt = materias_stmt.where(MateriaModel.id == filtros.materia_id)
+
+    return (
+        int((await db.execute(examenes_stmt)).scalar_one()),
+        int((await db.execute(materias_stmt)).scalar_one()),
+        int((await db.execute(comisiones_stmt)).scalar_one()),
+    )
 
 
 def _parse_dt(valor: str) -> datetime | None:
@@ -188,10 +363,11 @@ async def obtener_resumen(
     filtros = filtros or FiltrosStats()
     conds = _session_conditions(filtros)
 
-    # Catálogo: contexto global (no se filtra).
-    total_examenes = await _count(db, ExamenContenidoModel)
-    total_materias = await _count(db, MateriaModel)
-    total_comisiones = await _count(db, ComisionModel)
+    # Catálogo ACOTADO al filtro: las tarjetas tienen que hablar del mismo recorte
+    # que el resto de la pantalla (ver _contar_catalogo).
+    total_examenes, total_materias, total_comisiones = await _contar_catalogo(
+        db, filtros
+    )
 
     umbral = await _umbral_cola_revision(db)
     pesos = await _pesos_vivos_por_tipo(db)
@@ -310,4 +486,5 @@ async def obtener_resumen(
         top_eventos=top_eventos,
         por_dia=por_dia,
         decisiones=dec_agg,
+        catalogo=await _catalogo_materias(db),
     )

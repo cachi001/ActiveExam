@@ -77,6 +77,31 @@ export const adminApi = {
   },
 
   /**
+   * Descarga el registro de auditoría con LOS MISMOS filtros que la pantalla.
+   * Lo que se ve es lo que sale en el archivo — un export que ignora los filtros
+   * aplicados no sirve para responder "qué pasó entre estas dos fechas".
+   * Real: GET /api/v1/admin/audit-log/export.{xlsx|pdf}
+   */
+  async exportarAuditoria(
+    formato: 'xlsx' | 'pdf',
+    filtros?: AuditFiltros,
+  ): Promise<Blob> {
+    const p = new URLSearchParams();
+    if (filtros?.actor) p.set('actor', filtros.actor);
+    if (filtros?.accion) p.set('accion', filtros.accion);
+    if (filtros?.desde) p.set('desde', filtros.desde);
+    if (filtros?.hasta) p.set('hasta', filtros.hasta);
+    const qs = p.toString();
+    const token = authProvider.getToken();
+    const res = await fetch(
+      `${API_BASE}/admin/audit-log/export.${formato}${qs ? `?${qs}` : ''}`,
+      { method: 'GET', headers: token ? { Authorization: `Bearer ${token}` } : {} },
+    );
+    if (!res.ok) throw Object.assign(new Error(`HTTP ${res.status}`), { status: res.status });
+    return await res.blob();
+  },
+
+  /**
    * Descarga el sumario como PDF (admin_sistema / coordinador) — C-20.
    * Real: GET /api/v1/stats/export.pdf (con Authorization). Devuelve el Blob para
    * que la pantalla dispare la descarga; un fallo se PROPAGA.

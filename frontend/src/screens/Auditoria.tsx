@@ -185,6 +185,7 @@ export default function Auditoria() {
   const [accionSel, setAccionSel] = useState('');
   const [offset, setOffset] = useState(0);
   const [pageSize, setPageSize] = useState(PAGE_SIZE_DEFAULT);
+  const [exportando, setExportando] = useState<'xlsx' | 'pdf' | null>(null);
   const entidadActual = ENTIDADES.find((e) => e.value === entidadSel) ?? null;
 
   const elegirEntidad = (value: string) => {
@@ -195,6 +196,28 @@ export default function Auditoria() {
   const elegirAccion = (value: string) => {
     setAccionSel(value);
     setBorrador((p) => ({ ...p, accion: value || entidadSel || undefined }));
+  };
+
+  /** Descarga el registro con los filtros APLICADOS y dispara el guardado. */
+  const exportar = async (formato: 'xlsx' | 'pdf') => {
+    setExportando(formato);
+    try {
+      const blob = await api.exportarAuditoria(formato, filtros);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `auditoria.${formato}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      // Liberar el object URL: sin esto el blob queda retenido en memoria
+      // mientras viva la pestaña, y estos archivos no son chicos.
+      URL.revokeObjectURL(url);
+    } catch {
+      setError('No se pudo generar el archivo. Reintentá en un momento.');
+    } finally {
+      setExportando(null);
+    }
   };
 
   const cargar = useCallback((f: AuditFiltros, off: number, size: number) => {
@@ -271,6 +294,30 @@ export default function Auditoria() {
         </HelpButton>
       }
     >
+      {/* Export del registro. Descarga lo MISMO que se está viendo: usa `filtros`
+          (los aplicados), no `borrador` — si tomara el borrador, el archivo saldría
+          con un recorte que la persona todavía no confirmó en pantalla. */}
+      <div className="mb-md flex justify-end gap-2">
+        <button
+          type="button"
+          onClick={() => exportar('xlsx')}
+          disabled={exportando !== null || cargando}
+          className="inline-flex items-center gap-1.5 rounded-md bg-success-600 px-4 py-2 text-[13px] font-semibold text-white hover:bg-success-700 disabled:opacity-60"
+        >
+          <Icon name={exportando === 'xlsx' ? 'progress_activity' : 'grid_on'} className={`text-[16px] ${exportando === 'xlsx' ? 'ae-spin' : ''}`} fill />
+          {exportando === 'xlsx' ? 'Exportando…' : 'Exportar Excel'}
+        </button>
+        <button
+          type="button"
+          onClick={() => exportar('pdf')}
+          disabled={exportando !== null || cargando}
+          className="inline-flex items-center gap-1.5 rounded-md bg-error-600 px-4 py-2 text-[13px] font-semibold text-white hover:bg-error-700 disabled:opacity-60"
+        >
+          <Icon name={exportando === 'pdf' ? 'progress_activity' : 'picture_as_pdf'} className={`text-[16px] ${exportando === 'pdf' ? 'ae-spin' : ''}`} fill />
+          {exportando === 'pdf' ? 'Exportando…' : 'Exportar PDF'}
+        </button>
+      </div>
+
       {/* Estado de la cadena de custodia */}
       {data && (
         <div className="mb-md flex justify-end">
@@ -355,7 +402,7 @@ export default function Auditoria() {
           <button
             type="button"
             onClick={() => cargar(filtros, offset, pageSize)}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-md border border-surface-200 bg-white text-[14px] font-medium hover:bg-primary/5"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-md border border-surface-200 bg-white text-[14px] font-medium hover:bg-primary-50"
           >
             <Icon name="refresh" className="text-[16px]" /> Reintentar
           </button>

@@ -7,9 +7,10 @@ append-only e inmutable (trigger de la base); acá no se muta nada.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from pydantic import BaseModel, ConfigDict
 
+from app.application.audit.export import auditoria_a_pdf, auditoria_a_xlsx
 from app.application.audit.service import AuditFiltros, listar_auditoria
 from app.domain.auth.roles import Rol
 from app.presentation.api.v1.auth.dependencies import require_roles
@@ -80,6 +81,65 @@ def create_audit_router(session_factory=None) -> APIRouter:
             limit=limit,
             offset=offset,
             cadena_valida=pagina.cadena_valida,
+        )
+
+    # Tope de filas por export. Un pedido sin filtros sobre un registro de años
+    # no puede tumbar el proceso armando el archivo en memoria; quien necesite
+    # más, acota el período (que es como se audita de todos modos).
+    _MAX_EXPORT = 5000
+
+    async def _entradas_para_export(
+        request: Request,
+        actor: str | None,
+        accion: str | None,
+        desde: str | None,
+        hasta: str | None,
+    ):
+        factory = session_factory or getattr(request.app.state, "session_factory", None)
+        if factory is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Persistencia no inicializada (session_factory).",
+            )
+        filtros = AuditFiltros(actor=actor, accion=accion, desde=desde, hasta=hasta)
+        async with factory() as db:
+            pagina = await listar_auditoria(db, filtros, limit=_MAX_EXPORT, offset=0)
+        return pagina.items
+
+    @router.get("/audit-log/export.xlsx", summary="Exportar auditoría a Excel")
+    async def exportar_xlsx(
+        request: Request,
+        actor: str | None = Query(default=None),
+        accion: str | None = Query(default=None),
+        desde: str | None = Query(default=None),
+        hasta: str | None = Query(default=None),
+    ) -> Response:
+        entradas = await _entradas_para_export(request, actor, accion, desde, hasta)
+        return Response(
+            content=auditoria_a_xlsx(
+                entradas, actor=actor, accion=accion, desde=desde, hasta=hasta
+            ),
+            media_type=(
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            ),
+            headers={"Content-Disposition": 'attachment; filename="auditoria.xlsx"'},
+        )
+
+    @router.get("/audit-log/export.pdf", summary="Exportar auditoría a PDF")
+    async def exportar_pdf(
+        request: Request,
+        actor: str | None = Query(default=None),
+        accion: str | None = Query(default=None),
+        desde: str | None = Query(default=None),
+        hasta: str | None = Query(default=None),
+    ) -> Response:
+        entradas = await _entradas_para_export(request, actor, accion, desde, hasta)
+        return Response(
+            content=auditoria_a_pdf(
+                entradas, actor=actor, accion=accion, desde=desde, hasta=hasta
+            ),
+            media_type="application/pdf",
+            headers={"Content-Disposition": 'attachment; filename="auditoria.pdf"'},
         )
 
     return router

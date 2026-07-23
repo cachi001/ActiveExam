@@ -61,10 +61,11 @@ class EvidenciaRequeridaError(ValueError):
     """`anulado_por_fraude` exige evidencia adjunta (D11, baranda b)."""
 
 
-_PURPOSE = (
-    "review.resolve: veredicto humano de resolucion (RN-RV-06/07, L2.5) — "
-    "acto distinto del de revisar"
-)
+# Castellano llano: el registro de auditoria lo lee una persona (y eventualmente un
+# organismo de control), no el equipo que escribio el endpoint. Antes era
+# "review.resolve: veredicto humano de resolucion (RN-RV-06/07, L2.5) — acto
+# distinto del de revisar".
+_PURPOSE = "Resolvió el caso y emitió el veredicto sobre el examen"
 
 
 @dataclass
@@ -104,7 +105,7 @@ class ReviewResolutionService:
                 actor=actor,
                 decision=record.resolucion.value,
                 proposito=(
-                    "review.resolve: intento de cambiar resolucion — RECHAZADO"
+                    "Intentó cambiar un veredicto ya emitido — RECHAZADO (los veredictos no se pueden modificar)"
                 ),
             )
             raise ResolucionAlreadyMadeError(session_id, record.resolucion)
@@ -165,7 +166,7 @@ class ReviewResolutionService:
             actor=actor,
             decision="nota_restituida",
             proposito=(
-                "review.revert: acto compensatorio append-only que restituye la "
-                f"nota (hook c-18) | motivo: {motivo.strip()}"
+                "Restituyó la nota de un examen que había sido anulado"
+                f" | motivo: {motivo.strip()}"
             ),
         )

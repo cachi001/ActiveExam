@@ -145,6 +145,36 @@ class SqlSessionReviewRepository(SessionReviewRepository):
 class SqlReviewAuditor(ReviewAuditor):
     def __init__(self, session: AsyncSession) -> None:
         self._audit = AuditLogSqlRepository(session)
+        self._session = session
+
+    async def _actor_legible(self, actor: str) -> str:
+        """Traduce el subject del JWT (un UUID) al email de la persona.
+
+        El resto del sistema audita con el email y en la pantalla se leia
+        "7a15e938-3fd9-48b3-aea4-eeb90ad09bbe" justo en las entradas mas
+        sensibles — las decisiones sobre exámenes. Quien audita necesita saber
+        QUIEN decidio, no su id interno.
+
+        La traduccion se hace ACA y no aguas arriba a proposito: `decision_actor`
+        en `proctoring_session` sigue guardando el subject, que es el identificador
+        estable (el email puede cambiar). El audit muestra; la sesion identifica.
+
+        Si el subject no resuelve a un usuario, se devuelve tal cual: una entrada
+        de auditoria nunca se pierde por no poder embellecer un nombre.
+        """
+        from sqlalchemy import select
+
+        from app.infrastructure.persistence.models.transactional import UsuarioModel
+
+        try:
+            email = (
+                await self._session.execute(
+                    select(UsuarioModel.email).where(UsuarioModel.id == actor)
+                )
+            ).scalar_one_or_none()
+        except Exception:  # noqa: BLE001 — nunca romper la auditoria por esto
+            return actor
+        return email or actor
 
     async def log_decision(
         self,
@@ -156,7 +186,7 @@ class SqlReviewAuditor(ReviewAuditor):
     ) -> None:
         await self._audit.append(
             AuditEntry(
-                actor=actor,
+                actor=await self._actor_legible(actor),
                 timestamp="",
                 ip="",
                 user_agent="",
