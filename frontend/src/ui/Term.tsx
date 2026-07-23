@@ -65,7 +65,7 @@ export function Term({ termKey, children, className = '' }: TermProps) {
         tabIndex={0}
         aria-label={`Ver definición de ${entry.label}`}
         onClick={handleClick}
-        className="text-[10px] font-bold text-primary bg-primary/10 hover:bg-primary/20 w-4 h-4 rounded-full inline-flex items-center justify-center leading-none shrink-0 translate-y-[1px] focus:outline-none focus:ring-1 focus:ring-primary"
+        className="text-[10px] font-bold text-primary bg-primary/10 hover:bg-primary-100 w-4 h-4 rounded-full inline-flex items-center justify-center leading-none shrink-0 translate-y-[1px] focus:outline-none focus:ring-1 focus:ring-primary"
       >
         ?
       </button>

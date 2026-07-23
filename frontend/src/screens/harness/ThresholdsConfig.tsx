@@ -163,7 +163,7 @@ export default function ThresholdsConfig({
                   className={`flex-1 py-sm px-base rounded-xl border text-label-sm font-medium transition-colors ${
                     gazeDeviationLabel === opt.value
                       ? 'bg-primary text-on-primary border-primary'
-                      : 'bg-white text-on-surface border-outline-variant hover:border-primary/50'
+                      : 'bg-white text-on-surface border-outline-variant hover:border-primary-200'
                   }`}
                 >
                   {opt.label}
@@ -219,7 +219,7 @@ export default function ThresholdsConfig({
                   className={`flex-1 py-sm px-base rounded-xl border text-label-sm font-medium transition-colors ${
                     gazeFixationLabel === opt.value
                       ? 'bg-primary text-on-primary border-primary'
-                      : 'bg-white text-on-surface border-outline-variant hover:border-primary/50'
+                      : 'bg-white text-on-surface border-outline-variant hover:border-primary-200'
                   }`}
                 >
                   {opt.label}

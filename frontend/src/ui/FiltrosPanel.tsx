@@ -69,7 +69,7 @@ export function FiltrosPanel({
               type="button"
               onClick={onAplicar}
               disabled={aplicarDeshabilitado}
-              className="rounded-md bg-primary px-4 py-2 text-[13px] font-semibold text-white hover:bg-primary-700 disabled:opacity-60"
+              className="rounded-md bg-primary px-4 py-2 text-[13px] font-semibold text-white hover:bg-primary-500 disabled:opacity-60"
             >
               Aplicar filtros
             </button>

@@ -214,7 +214,7 @@ export default function MoodleImportPage() {
           disabled={!file || loading}
           className="w-full py-sm px-md rounded-xl bg-primary text-on-primary
             text-label-md font-semibold shadow-sm
-            hover:bg-primary-700 active:bg-primary-800
+            hover:bg-primary-500 active:bg-primary-700
             disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
           {loading ? 'Importando…' : 'Importar'}
@@ -310,7 +310,7 @@ export default function MoodleImportPage() {
               !comisionCodigo.trim() ||
               !comisionNombre.trim()
             }
-            className="w-full py-sm px-md rounded-xl bg-primary text-on-primary text-label-md font-semibold shadow-sm hover:bg-primary-700 active:bg-primary-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            className="w-full py-sm px-md rounded-xl bg-primary text-on-primary text-label-md font-semibold shadow-sm hover:bg-primary-500 active:bg-primary-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
             {asocLoading ? 'Asociando…' : 'Asociar comisión'}
           </button>
@@ -367,7 +367,7 @@ export default function MoodleImportPage() {
           <button
             type="submit"
             disabled={targetLoading}
-            className="w-full py-sm px-md rounded-xl bg-primary text-on-primary text-label-md font-semibold shadow-sm hover:bg-primary-700 active:bg-primary-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            className="w-full py-sm px-md rounded-xl bg-primary text-on-primary text-label-md font-semibold shadow-sm hover:bg-primary-500 active:bg-primary-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
             {targetLoading ? 'Guardando…' : 'Guardar destino'}
           </button>

@@ -6,7 +6,7 @@
 // FUENTES DE DATOS:
 //   • Exámenes: GET /api/v1/exam-content → ExamenContenidoResumen[] (catálogo real).
 //   • Sesiones supervisadas / Tasa de flag: SIN endpoint real en slim → "—" (vacío honesto).
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { StaffShell } from '../ui/shells';
 import { Icon, Card, LoadingSpinner } from '../ui/components';
 import { HelpButton } from '../ui/HelpButton';
@@ -14,8 +14,9 @@ import { StatCard } from './proctoring/StatCard';
 import { statProps } from './proctoring/statCatalog';
 import { Link } from '../lib/router';
 import { api } from '../lib/api';
+import { useAuth } from '../lib/authStore';
 import { useCachedData } from '../lib/useCachedData';
-import { STAFF_NAV } from '../ui/nav';
+import { STAFF_NAV, navItemsParaRoles } from '../ui/nav';
 import type { ExamenContenidoResumen, SesionProctoringResumen } from '../lib/types';
 import { examenContenidoSubtitulo, formatVentanaExamen, formatDuracionExamen, statExamenesValue } from './dashboards.helpers';
 import { loadEffectiveConfig, getEffectiveConfig } from '../config/effectiveConfigCache';
@@ -29,6 +30,24 @@ export default function AdminDashboard() {
   // Cache stale-while-revalidate (sección 5): volver al dashboard sirve la lista
   // al instante y revalida en background. La clave 'examenes-contenido' la
   // invalida el import de exámenes (MoodleImportPage) tras una alta.
+  // Acciones rápidas: se DERIVAN de la navegación (STAFF_NAV) filtrada por los
+  // roles del usuario. Antes eran dos <AccionRapida> hardcodeadas, así que cada
+  // pantalla nueva que se sumaba al sistema quedaba afuera del panel y encima
+  // podía ofrecer un destino sin permiso. Se excluye el propio dashboard.
+  const roles = useAuth((s) => s.principal?.roles);
+  // Atajos CURADOS: lo que el admin toca todos los días, no el mapa entero del
+  // sistema (para eso está la barra lateral, que ya los lista todos). El orden es
+  // el de uso real: cargar/configurar exámenes → armar materias y comisiones →
+  // dar de alta gente. Se cruza con los roles para no ofrecer un destino que el
+  // usuario no puede abrir.
+  const ATAJOS = ['/admin/examenes', '/admin/materias', '/admin/usuarios'];
+  const accionesRapidas = useMemo(() => {
+    const permitidos = navItemsParaRoles(roles);
+    return ATAJOS.map((ruta) => permitidos.find((i) => i.to === ruta)).filter(
+      (i): i is NonNullable<typeof i> => Boolean(i),
+    );
+  }, [roles]);
+
   const examenesState = useCachedData('examenes-contenido', () => api.listarExamenesContenido(), []);
   const examenes = examenesState.data ?? [];
   // Sesiones reales (GET /proctoring/sessions) + tasa de flag derivada del umbral
@@ -113,7 +132,7 @@ export default function AdminDashboard() {
                     <button
                       type="button"
                       onClick={examenesState.retry}
-                      className="inline-flex items-center gap-2 px-4 py-2 rounded-md border border-surface-200 bg-white text-[14px] font-medium hover:bg-primary/5"
+                      className="inline-flex items-center gap-2 px-4 py-2 rounded-md border border-surface-200 bg-white text-[14px] font-medium hover:bg-primary-50"
                     >
                       <Icon name="refresh" className="text-[16px]" /> Reintentar
                     </button>
@@ -138,8 +157,9 @@ export default function AdminDashboard() {
               <h2 className="text-[16px] font-semibold text-on-surface leading-tight">Acciones rápidas</h2>
             </div>
             <div className="p-md flex flex-col gap-2">
-              <AccionRapida to="/admin/usuarios" icon="manage_accounts" label="Usuarios" />
-              <AccionRapida to="/admin/materias" icon="school" label="Materias y comisiones" />
+              {accionesRapidas.map((item) => (
+                <AccionRapida key={item.to} to={item.to} icon={item.icon} label={item.label} />
+              ))}
             </div>
           </Card>
         </div>
@@ -154,41 +174,51 @@ function ExamenContenidoRow({ examen }: { examen: ExamenContenidoResumen }) {
   return (
     <Link
       to="/admin/examenes"
-      className="flex items-center justify-between gap-4 px-lg py-4 hover:bg-surface-50 transition-colors"
+      className="group flex items-center justify-between gap-4 px-lg py-5 hover:bg-primary-50 transition-colors"
     >
       <div className="flex items-center gap-4 min-w-0">
-        <div className="w-8 h-8 rounded-md bg-primary-fixed text-on-primary-fixed-variant flex items-center justify-center shrink-0">
-          <Icon name="assignment" className="text-[16px]" />
+        <div className="w-12 h-12 rounded-lg bg-primary-fixed text-primary-700 flex items-center justify-center shrink-0 transition-colors group-hover:bg-primary group-hover:text-on-primary">
+          <Icon name="assignment" className="text-[24px]" />
         </div>
         <div className="min-w-0">
-          <p className="text-[15px] font-semibold text-on-surface truncate leading-snug">{examen.titulo}</p>
-          <p className="text-[13px] text-on-surface-variant truncate leading-snug mt-0.5">{subtitulo}</p>
-          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[12px] text-on-surface-variant">
+          <p className="text-[17px] font-semibold text-on-surface truncate leading-snug">{examen.titulo}</p>
+          <p className="text-[14px] text-on-surface-variant truncate leading-snug mt-1">{subtitulo}</p>
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-0.5 text-[13px] text-on-surface-variant">
             <span className="inline-flex items-center gap-1 min-w-0">
-              <Icon name="event" className="text-[14px] shrink-0" />
+              <Icon name="event" className="text-[16px] shrink-0" />
               <span className="truncate">{formatVentanaExamen(examen.apertura, examen.cierre)}</span>
             </span>
             <span className="inline-flex items-center gap-1 shrink-0">
-              <Icon name="schedule" className="text-[14px]" />
+              <Icon name="schedule" className="text-[16px]" />
               {formatDuracionExamen(examen.tiempo_limite_min)}
             </span>
           </div>
         </div>
       </div>
-      <span className="text-[12px] text-on-surface-variant shrink-0 tabular-nums self-start mt-0.5">{examen.cantidad_preguntas} preg.</span>
+      <span className="shrink-0 self-start rounded-full bg-surface-100 px-3 py-1 text-[13px] font-medium text-on-surface-variant tabular-nums">
+        {examen.cantidad_preguntas} preguntas
+      </span>
     </Link>
   );
 }
 
 function AccionRapida({ to, icon, label }: { to: string; icon: string; label: string }) {
+  // El ícono va en un chip azul claro en vez de gris suelto: da un punto de color
+  // por fila y hace que la columna se lea como accionable y no como texto muerto.
+  // El chevron recién se tiñe en hover, para que no compita con el ícono.
   return (
     <Link
       to={to}
-      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-md border border-surface-200 bg-white text-on-surface text-[14px] font-medium hover:bg-primary/5 hover:border-primary/50 transition-colors"
+      className="group w-full flex items-center gap-3 px-3 py-2.5 rounded-md border border-surface-200 bg-white text-on-surface text-[14px] font-medium hover:bg-primary-50 hover:border-primary-200 transition-colors"
     >
-      <Icon name={icon} className="text-[16px] text-on-surface-variant" />
-      {label}
-      <Icon name="chevron_right" className="text-[14px] text-on-surface-variant ml-auto" />
+      <span className="w-7 h-7 rounded-md bg-primary-fixed text-primary-700 flex items-center justify-center shrink-0 transition-colors group-hover:bg-primary group-hover:text-on-primary">
+        <Icon name={icon} className="text-[16px]" />
+      </span>
+      <span className="truncate">{label}</span>
+      <Icon
+        name="chevron_right"
+        className="text-[16px] text-on-surface-variant ml-auto shrink-0 transition-colors group-hover:text-primary"
+      />
     </Link>
   );
 }

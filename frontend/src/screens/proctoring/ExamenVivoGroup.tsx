@@ -89,7 +89,7 @@ export function ExamenVivoGroup({
             type="button"
             onClick={() => onAbrirExamen!(examId!)}
             className="shrink-0 inline-flex items-center gap-base rounded-md px-2 py-1 text-label-md font-semibold text-primary
-              hover:bg-primary/5 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+              hover:bg-primary-50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
           >
             <span className="hidden sm:inline">Ver personas</span>
             <Icon name="arrow_forward" className="text-[20px]" />
@@ -134,7 +134,7 @@ export function ExamenVivoGroup({
               type="button"
               onClick={() => examId && onAbrirExamen?.(examId)}
               className="w-full flex items-center justify-center gap-base px-md py-sm border-t border-outline-variant/40
-                text-label-md font-semibold text-primary hover:bg-primary/5 transition-colors"
+                text-label-md font-semibold text-primary hover:bg-primary-50 transition-colors"
             >
               Ver las {personas} personas
               <Icon name="arrow_forward" className="text-[18px]" />

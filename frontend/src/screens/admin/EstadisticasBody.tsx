@@ -35,7 +35,7 @@ export function EstadisticasBody({ cargando, error, data, onReintentar }: Estadi
         <button
           type="button"
           onClick={onReintentar}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-md border border-surface-200 bg-white text-on-surface text-[14px] font-medium hover:bg-primary/5 hover:border-primary/50 transition-colors"
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-md border border-surface-200 bg-white text-on-surface text-[14px] font-medium hover:bg-primary-50 hover:border-primary-200 transition-colors"
         >
           <Icon name="refresh" className="text-[16px]" />
           Reintentar

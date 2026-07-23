@@ -180,7 +180,7 @@ export default function ExamList() {
                       <tr
                         key={e.id}
                         className={`border-b border-outline-variant/20 transition-colors
-                          ${cargando ? 'opacity-50' : 'hover:bg-primary/5 cursor-pointer'}`}
+                          ${cargando ? 'opacity-50' : 'hover:bg-primary-50 cursor-pointer'}`}
                         onClick={!cargando ? () => navigate(`/admin/examenes/${e.id}/resultados`) : undefined}
                       >
                         <td className="py-sm pl-sm pr-md">

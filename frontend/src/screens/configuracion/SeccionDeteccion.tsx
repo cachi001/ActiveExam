@@ -197,7 +197,7 @@ export default function SeccionDeteccion() {
                   className={`flex-1 py-sm px-base rounded-xl border text-label-sm font-medium transition-colors ${
                     friendly.gaze_deviation_label === opt.value
                       ? 'bg-primary text-on-primary border-primary'
-                      : 'bg-white text-on-surface border-outline-variant hover:border-primary/50'
+                      : 'bg-white text-on-surface border-outline-variant hover:border-primary-200'
                   }`}
                 >
                   {opt.label}
@@ -253,7 +253,7 @@ export default function SeccionDeteccion() {
                   className={`flex-1 py-sm px-base rounded-xl border text-label-sm font-medium transition-colors ${
                     friendly.gaze_fixation_label === opt.value
                       ? 'bg-primary text-on-primary border-primary'
-                      : 'bg-white text-on-surface border-outline-variant hover:border-primary/50'
+                      : 'bg-white text-on-surface border-outline-variant hover:border-primary-200'
                   }`}
                 >
                   {opt.label}
