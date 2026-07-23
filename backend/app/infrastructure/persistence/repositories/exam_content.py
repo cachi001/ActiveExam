@@ -37,6 +37,25 @@ from app.infrastructure.persistence.models.transactional import UsuarioModel
 # (p. ej. foreign_key_violation 23503) NO se mapean a "duplicado": se re-elevan.
 _PG_UNIQUE_VIOLATION = "23505"
 
+# --- Orden alfabético en castellano, independiente del contenedor ------------
+# `ORDER BY <texto>` usa la colación de la base, que depende de la libc de la
+# IMAGEN: dev corre postgres:16-alpine (musl, sin locales reales → orden por bytes,
+# "Álgebra" cae DESPUÉS de "Zoología") y prod corre timescaledb sobre glibc (orden
+# correcto). O sea: el mismo listado se ordena distinto según dónde corra.
+#
+# Se normaliza el texto en SQL antes de ordenar: minúsculas + tildes plegadas. Es
+# SQL portable puro (sin extensión `unaccent` ni colaciones ICU, que pueden no
+# existir en una imagen dada), así que el resultado es IDÉNTICO en cualquier motor
+# Postgres. La ñ se pliega a n: acepta el orden n < ñ < o de la RAE con una
+# diferencia solo entre palabras que difieran ÚNICAMENTE por la ñ.
+_ACENTOS = "áàäâãéèëêíìïîóòöôõúùüûñçÁÀÄÂÃÉÈËÊÍÌÏÎÓÒÖÔÕÚÙÜÛÑÇ"
+_SIN_ACENTOS = "aaaaaeeeeiiiiooooouuuuncAAAAAEEEEIIIIOOOOOUUUUNC"
+
+
+def _orden_alfabetico(columna):
+    """Clave de ordenamiento alfabético estable para nombres/títulos en castellano."""
+    return func.lower(func.translate(columna, _ACENTOS, _SIN_ACENTOS))
+
 
 def _es_violacion_unicidad(exc: IntegrityError) -> bool:
     return getattr(getattr(exc, "orig", None), "sqlstate", None) == _PG_UNIQUE_VIOLATION
@@ -181,7 +200,7 @@ class ExamenContenidoSqlRepository:
         Orden estable: alfabético ascendente por titulo.
         D3: es_correcta no expuesta (solo metadatos del examen).
         """
-        stmt = self._stmt_resumen().order_by(ExamenContenidoModel.titulo)
+        stmt = self._stmt_resumen().order_by(_orden_alfabetico(ExamenContenidoModel.titulo))
         result = await self._db.execute(stmt)
         return [self._row_to_resumen(row) for row in result.all()]
 
@@ -232,7 +251,7 @@ class ExamenContenidoSqlRepository:
         total = (await self._db.execute(total_stmt)).scalar_one()
 
         page_stmt = (
-            base.order_by(ExamenContenidoModel.titulo)
+            base.order_by(_orden_alfabetico(ExamenContenidoModel.titulo))
             .offset((page - 1) * page_size)
             .limit(page_size)
         )
@@ -261,7 +280,7 @@ class ExamenContenidoSqlRepository:
         stmt = (
             self._stmt_resumen()
             .where(ExamenContenidoModel.comision_id == comision_id)
-            .order_by(ExamenContenidoModel.titulo)
+            .order_by(_orden_alfabetico(ExamenContenidoModel.titulo))
         )
         result = await self._db.execute(stmt)
         return [self._row_to_resumen(row) for row in result.all()]
@@ -500,7 +519,7 @@ class MateriaSqlRepository:
     async def listar(self) -> list[Materia]:
         """Lista todas las materias (id, codigo, nombre), orden alfabético por nombre."""
         result = await self._db.execute(
-            select(MateriaModel).order_by(MateriaModel.nombre)
+            select(MateriaModel).order_by(_orden_alfabetico(MateriaModel.nombre))
         )
         return [
             Materia(id=m.id, codigo=m.codigo, nombre=m.nombre, activa=m.activa)
@@ -700,7 +719,7 @@ class ComisionSqlRepository:
         result = await self._db.execute(
             select(ComisionModel)
             .where(ComisionModel.materia_id == materia_id)
-            .order_by(ComisionModel.nombre)
+            .order_by(_orden_alfabetico(ComisionModel.nombre))
         )
         return [self._to_entity(m) for m in result.scalars().all()]
 
@@ -912,9 +931,17 @@ class InscripcionSqlRepository:
         return list(result.scalars().all())
 
     async def materias_inscriptas(self, id_institucional: str) -> list[MateriaModel]:
-        """Materias (distintas) donde el alumno tiene alguna comisión inscripta (C-71)."""
+        """Materias (distintas) donde el alumno tiene alguna comisión inscripta (C-71).
+
+        La clave de orden va TAMBIÉN en el SELECT: con ``DISTINCT``, Postgres exige
+        que toda expresión del ORDER BY esté en la lista de selección
+        (InvalidColumnReference si no). Es determinista igual: la clave se deriva de
+        ``nombre``, así que no agrega filas al conjunto distinto.
+        """
+        orden = _orden_alfabetico(MateriaModel.nombre).label("_orden_alfabetico")
         result = await self._db.execute(
             select(MateriaModel)
+            .add_columns(orden)
             .join(ComisionModel, ComisionModel.materia_id == MateriaModel.id)
             .join(InscripcionModel, InscripcionModel.comision_id == ComisionModel.id)
             .join(UsuarioModel, UsuarioModel.id == InscripcionModel.usuario_id)
@@ -923,8 +950,10 @@ class InscripcionSqlRepository:
                 UsuarioModel.eliminado_en.is_(None),
             )
             .distinct()
-            .order_by(MateriaModel.nombre)
+            .order_by(orden)
         )
+        # scalars() toma la primera columna de cada fila = la entidad MateriaModel;
+        # la clave de orden viaja solo para satisfacer el DISTINCT.
         return list(result.scalars().all())
 
     async def comisiones_inscriptas_de_materia(
