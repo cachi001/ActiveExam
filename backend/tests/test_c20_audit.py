@@ -24,35 +24,9 @@ from app.application.audit.service import (
 from app.infrastructure.persistence.base import Base
 from app.infrastructure.persistence.models.audit_log import AuditLogModel  # noqa: F401
 
-# Cada sentencia por separado (el cuerpo $$...$$ lleva ';' adentro, no se puede splitear).
-_DDL_STMTS = [
-    "CREATE EXTENSION IF NOT EXISTS pgcrypto",
-    """
-    CREATE OR REPLACE FUNCTION audit_log_encadenar() RETURNS trigger LANGUAGE plpgsql AS $$
-    DECLARE
-        v_prev text;
-        v_genesis constant text := repeat('0', 64);
-    BEGIN
-        SELECT hash_self INTO v_prev FROM audit_log ORDER BY timestamp DESC, id DESC LIMIT 1;
-        IF v_prev IS NULL THEN v_prev := v_genesis; END IF;
-        NEW.hash_prev := v_prev;
-        NEW.hash_self := encode(digest(concat_ws('|',
-            NEW.actor,
-            to_char(NEW.timestamp AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
-            host(NEW.ip),
-            coalesce(NEW.user_agent, ''),
-            NEW.accion,
-            coalesce(NEW.evidencia_id::text, ''),
-            coalesce(NEW.proposito, ''),
-            NEW.hash_prev
-        ), 'sha256'), 'hex');
-        RETURN NEW;
-    END; $$
-    """,
-    "DROP TRIGGER IF EXISTS trg_audit_log_encadenar ON audit_log",
-    "CREATE TRIGGER trg_audit_log_encadenar BEFORE INSERT ON audit_log "
-    "FOR EACH ROW EXECUTE FUNCTION audit_log_encadenar()",
-]
+# DDL compartida (tabla + los 2 triggers de la cadena de hash). Estaba duplicada
+# aca y en test_c73_examen_audit_wiring.py; ahora vive en un solo lugar.
+from tests._audit_schema import DDL_TRIGGERS as _DDL_STMTS
 
 
 @pytest.fixture(scope="module")
@@ -90,8 +64,11 @@ async def engine(db_url):
         for stmt in _DDL_STMTS:
             await conn.execute(text(stmt))
     yield eng
-    async with eng.begin() as conn:
-        await conn.execute(text('DROP TABLE IF EXISTS "audit_log" CASCADE'))
+    # NO se dropea audit_log al terminar: este modulo la re-crea CON sus dos
+    # triggers en el setup, pero los modulos que corren despues la necesitan y no
+    # la crean. Dropearla los dejaba sin tabla, y recrearla desde el modelo daria
+    # una audit_log SIN la cadena de hash (hash_self lo materializa el trigger),
+    # o sea tests de auditoria pasando contra una tabla que no encadena nada.
     await eng.dispose()
 
 

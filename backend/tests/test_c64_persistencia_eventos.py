@@ -40,15 +40,41 @@ def _setup_db_tables(url: str) -> None:
         ProctoringSessionModel,
     )
 
+    # proctoring_session tiene FK a examen_contenido (C-69). Sin importar y crear
+    # esa cadena (materia → comision → examen_contenido), SQLAlchemy ni siquiera
+    # puede resolver la FK: NoReferencedTableError al construir la tabla.
+    from app.infrastructure.persistence.models.exam_content import (  # noqa: F401
+        ComisionModel,
+        ExamenContenidoModel,
+        MateriaModel,
+    )
+
+    # Finalizar una sesión expira las pausas pendientes (C-69): toca pausa_autorizada.
+    from app.infrastructure.persistence.models.chat_pausa import (  # noqa: F401
+        MensajeChatModel,
+        PausaAutorizadaModel,
+    )
+
     async def _run() -> None:
         engine = create_async_engine(url, pool_pre_ping=True, future=True, poolclass=NullPool)
         async with engine.begin() as conn:
+            await conn.execute(text("DROP TABLE IF EXISTS mensaje_chat CASCADE"))
+            await conn.execute(text("DROP TABLE IF EXISTS pausa_autorizada CASCADE"))
             await conn.execute(text("DROP TABLE IF EXISTS proctoring_biometria CASCADE"))
             await conn.execute(text("DROP TABLE IF EXISTS proctoring_event CASCADE"))
             await conn.execute(text("DROP TABLE IF EXISTS proctoring_session CASCADE"))
+            await conn.execute(text("DROP TABLE IF EXISTS examen_contenido CASCADE"))
+            await conn.execute(text("DROP TABLE IF EXISTS comision CASCADE"))
+            await conn.execute(text("DROP TABLE IF EXISTS materia CASCADE"))
+            # Orden por dependencia de FK: materia → comision → examen_contenido.
+            await conn.run_sync(MateriaModel.__table__.create)
+            await conn.run_sync(ComisionModel.__table__.create)
+            await conn.run_sync(ExamenContenidoModel.__table__.create)
             await conn.run_sync(ProctoringSessionModel.__table__.create)
             await conn.run_sync(ProctoringEventModel.__table__.create)
             await conn.run_sync(ProctoringBiometriaModel.__table__.create)
+            await conn.run_sync(PausaAutorizadaModel.__table__.create)
+            await conn.run_sync(MensajeChatModel.__table__.create)
         await engine.dispose()
 
     asyncio.run(_run())

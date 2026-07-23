@@ -47,6 +47,9 @@ from app.infrastructure.persistence.models.exam_content import (  # noqa: F401
     OpcionRespuestaModel,
     PreguntaExamenModel,
 )
+from app.infrastructure.persistence.models.proctoring import (  # noqa: F401
+    ProctoringSessionModel,
+)
 from app.infrastructure.persistence.repositories.exam_content import (
     ExamenContenidoSqlRepository,
 )
@@ -57,6 +60,7 @@ from app.presentation.api.v1.exam_content.router import (
 from tests.proctoring.conftest import _build_test_jwt_validator, auth_headers
 
 _TABLES_TO_DROP = [
+    "proctoring_session",
     "opcion_respuesta",
     "pregunta_examen",
     "examen_contenido",
@@ -69,6 +73,10 @@ _TABLES_TO_CREATE = [
     ExamenContenidoModel.__table__,
     PreguntaExamenModel.__table__,
     OpcionRespuestaModel.__table__,
+    # El freeze de config (C-72) mira si el examen ya tuvo intentos, o sea consulta
+    # proctoring_session. Sin esta tabla el archivo solo pasa contra una DB ya
+    # migrada — dependencia oculta del entorno.
+    ProctoringSessionModel.__table__,
 ]
 
 
@@ -299,6 +307,10 @@ async def test_get_config_devuelve_defaults(admin_app, factory):
         "mostrar_nota": "al_cerrar",
         "revision_habilitada": False,
         "bloqueada": False,
+        # Freeze de config (C-72): qué campos quedan bloqueados o solo ampliables
+        # una vez que el examen tuvo actividad. Sin intentos, ambos vacíos.
+        "campos_congelados": [],
+        "campos_solo_ampliables": [],
     }
 
 

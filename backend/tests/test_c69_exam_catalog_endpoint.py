@@ -31,6 +31,14 @@ from app.infrastructure.persistence.models.exam_content import (  # noqa: F401
     OpcionRespuestaModel,
     PreguntaExamenModel,
 )
+# El gate de inscripción (C-71) que aplica el listado consulta inscripcion+usuario:
+# sin esas tablas el endpoint revienta con UndefinedTable.
+from app.infrastructure.persistence.models.inscripcion import (  # noqa: F401
+    InscripcionModel,
+)
+from app.infrastructure.persistence.models.transactional import (  # noqa: F401
+    UsuarioModel,
+)
 from app.infrastructure.persistence.repositories.exam_content import (
     ExamenContenidoSqlRepository,
 )
@@ -40,11 +48,13 @@ from tests.proctoring.conftest import _build_test_jwt_validator, auth_headers
 
 # El handler GET "" hace LEFT JOIN a comision/materia (D11): deben existir.
 _NEW_TABLES = (
+    "inscripcion",
     "opcion_respuesta",
     "pregunta_examen",
     "examen_contenido",
     "comision",
     "materia",
+    "usuario",
 )
 
 
@@ -93,11 +103,13 @@ async def db_engine(db_url):
         await conn.run_sync(
             Base.metadata.create_all,
             tables=[
+                UsuarioModel.__table__,
                 MateriaModel.__table__,
                 ComisionModel.__table__,
                 ExamenContenidoModel.__table__,
                 PreguntaExamenModel.__table__,
                 OpcionRespuestaModel.__table__,
+                InscripcionModel.__table__,
             ],
         )
     yield eng
@@ -119,12 +131,19 @@ async def app_student(db_engine):
 
 
 @pytest_asyncio.fixture
-async def client_student(app_student):
+async def client_catalogo(app_student):
+    """Cliente con rol de gestión: ve TODO el catálogo.
+
+    Este archivo verifica el CONTRATO del listado (shape, orden, contenido), no el
+    gate de inscripción de C-71 — con rol 'estudiante' el catálogo vuelve vacío por
+    diseño (solo ve sus comisiones inscriptas) y no habría nada que contrastar.
+    El gate tiene su propia cobertura en test_c71_catalogo_filtrado.py.
+    """
     app, _ = app_student
     async with AsyncClient(
         transport=ASGITransport(app=app),
         base_url="http://test",
-        headers=auth_headers(["estudiante"]),
+        headers=auth_headers(["admin_examenes"]),
     ) as c:
         yield c
 
@@ -179,9 +198,9 @@ async def test_listar_sin_auth_devuelve_401(client_noauth):
 
 
 @pytest.mark.asyncio
-async def test_listar_vacio_devuelve_lista_vacia(client_student):
+async def test_listar_vacio_devuelve_lista_vacia(client_catalogo):
     """GET /api/v1/exam-content/ con BD vacía → 200 + lista vacía."""
-    resp = await client_student.get("/api/v1/exam-content/")
+    resp = await client_catalogo.get("/api/v1/exam-content/")
     assert resp.status_code == 200, resp.text
     body = resp.json()
     # Contrato paginado (C-69 admin-sync, tarea 4): { items, total, page, page_size }
@@ -193,14 +212,14 @@ async def test_listar_vacio_devuelve_lista_vacia(client_student):
 
 
 @pytest.mark.asyncio
-async def test_listar_devuelve_examen_importado(client_student, factory):
+async def test_listar_devuelve_examen_importado(client_catalogo, factory):
     """GET /api/v1/exam-content/ devuelve los exámenes importados con id, titulo, cantidad_preguntas."""
     async with factory() as session:
         repo = ExamenContenidoSqlRepository(session)
         guardado = await repo.guardar(_examen_con_preguntas("Parcial de Prueba", 3))
         await session.commit()
 
-    resp = await client_student.get("/api/v1/exam-content/")
+    resp = await client_catalogo.get("/api/v1/exam-content/")
     assert resp.status_code == 200, resp.text
     data = resp.json()["items"]
     assert isinstance(data, list)
@@ -217,7 +236,7 @@ async def test_listar_devuelve_examen_importado(client_student, factory):
 
 
 @pytest.mark.asyncio
-async def test_listar_shape_tiene_solo_campos_permitidos(client_student, factory):
+async def test_listar_shape_tiene_solo_campos_permitidos(client_catalogo, factory):
     """Cada item del catálogo tiene solo {id, titulo, cantidad_preguntas}.
 
     D3: es_correcta NUNCA presente. Pydantic extra='forbid' garantiza
@@ -228,7 +247,7 @@ async def test_listar_shape_tiene_solo_campos_permitidos(client_student, factory
         await repo.guardar(_examen_con_preguntas("Examen Shape Test", 2))
         await session.commit()
 
-    resp = await client_student.get("/api/v1/exam-content/")
+    resp = await client_catalogo.get("/api/v1/exam-content/")
     assert resp.status_code == 200, resp.text
     data = resp.json()["items"]
 
@@ -243,7 +262,7 @@ async def test_listar_shape_tiene_solo_campos_permitidos(client_student, factory
 
 
 @pytest.mark.asyncio
-async def test_listar_orden_alfabetico(client_student, factory):
+async def test_listar_orden_alfabetico(client_catalogo, factory):
     """GET /api/v1/exam-content/ devuelve exámenes ordenados alfabéticamente por titulo."""
     async with factory() as session:
         repo = ExamenContenidoSqlRepository(session)
@@ -252,7 +271,7 @@ async def test_listar_orden_alfabetico(client_student, factory):
         await repo.guardar(_examen_con_preguntas("Matemáticas Discretas", 1))
         await session.commit()
 
-    resp = await client_student.get("/api/v1/exam-content/")
+    resp = await client_catalogo.get("/api/v1/exam-content/")
     assert resp.status_code == 200, resp.text
     data = resp.json()["items"]
 
@@ -270,10 +289,10 @@ async def test_listar_orden_alfabetico(client_student, factory):
 
 
 @pytest.mark.asyncio
-async def test_listar_dos_requests_orden_idempotente(client_student):
+async def test_listar_dos_requests_orden_idempotente(client_catalogo):
     """Dos requests al listado devuelven el mismo orden (idempotencia)."""
-    r1 = await client_student.get("/api/v1/exam-content/")
-    r2 = await client_student.get("/api/v1/exam-content/")
+    r1 = await client_catalogo.get("/api/v1/exam-content/")
+    r2 = await client_catalogo.get("/api/v1/exam-content/")
     assert r1.status_code == 200
     assert r2.status_code == 200
     assert r1.json() == r2.json(), "El listado debe ser determinístico entre requests"

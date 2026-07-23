@@ -196,8 +196,12 @@ def _client(app, idnumber: str, email: str):
 
 
 async def _crear_examen(factory, titulo: str) -> str:
+    # mostrar_nota='inmediata': el default del modelo es 'al_cerrar' y, sin fecha de
+    # cierre, la nota NUNCA se vuelve visible (gate de visibilidad C-69) — el
+    # endpoint devolvería nota=None y estos tests no podrían verificar el número.
+    # La visibilidad tiene su cobertura propia en el dominio (visibilidad.py).
     async with factory() as s:
-        examen = ExamenContenidoModel(titulo=titulo)
+        examen = ExamenContenidoModel(titulo=titulo, mostrar_nota="inmediata")
         s.add(examen)
         await s.flush()
         examen_id = examen.id
@@ -368,6 +372,9 @@ async def _crear_examen_con_config(
             titulo=titulo,
             nota_maxima=nota_maxima,
             nota_aprobacion=nota_aprobacion,
+            # Idem _crear_examen: sin esto el gate de visibilidad (C-69) devuelve
+            # nota=None y aprobado=False, y no se puede verificar la escala.
+            mostrar_nota="inmediata",
         )
         s.add(examen)
         await s.flush()

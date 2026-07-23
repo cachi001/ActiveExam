@@ -36,6 +36,14 @@ from app.infrastructure.persistence.models.exam_content import (  # noqa: F401
     OpcionRespuestaModel,
     PreguntaExamenModel,
 )
+# El gate de inscripción (C-71) que aplica el listado consulta inscripcion+usuario:
+# sin esas tablas el endpoint revienta con UndefinedTable.
+from app.infrastructure.persistence.models.inscripcion import (  # noqa: F401
+    InscripcionModel,
+)
+from app.infrastructure.persistence.models.transactional import (  # noqa: F401
+    UsuarioModel,
+)
 from app.infrastructure.persistence.repositories.exam_content import (
     ComisionSqlRepository,
     ExamenContenidoSqlRepository,
@@ -45,11 +53,13 @@ from app.presentation.api.v1.exam_content.router import create_exam_taking_route
 from tests.proctoring.conftest import _build_test_jwt_validator, auth_headers
 
 _NEW_TABLES = (
+    "inscripcion",
     "opcion_respuesta",
     "pregunta_examen",
     "examen_contenido",
     "comision",
     "materia",
+    "usuario",
 )
 
 
@@ -70,11 +80,13 @@ async def db_engine(db_url):
         await conn.run_sync(
             Base.metadata.create_all,
             tables=[
+                UsuarioModel.__table__,
                 MateriaModel.__table__,
                 ComisionModel.__table__,
                 ExamenContenidoModel.__table__,
                 PreguntaExamenModel.__table__,
                 OpcionRespuestaModel.__table__,
+                InscripcionModel.__table__,
             ],
         )
     yield eng
@@ -101,6 +113,23 @@ async def client_student(app_student):
         transport=ASGITransport(app=app),
         base_url="http://test",
         headers=auth_headers(["estudiante"]),
+    ) as c:
+        yield c
+
+
+@pytest_asyncio.fixture
+async def client_staff(app_student):
+    """Cliente con rol de gestión: ve TODO el catálogo, sin gate de inscripción.
+
+    Necesario para verificar la FORMA del resumen sobre un examen SIN comisión:
+    el gate de C-71 se lo oculta al alumno por diseño (un examen sin comisión no
+    pertenece a ninguna de sus comisiones inscriptas).
+    """
+    app, _ = app_student
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+        headers=auth_headers(["admin_examenes"]),
     ) as c:
         yield c
 
@@ -165,10 +194,29 @@ async def _seed(factory):
         )
         comision = await comision_repo.guardar(
             Comision(codigo=f"1A-{tag}", nombre="Comisión 1A", materia_id=materia.id,
-                     periodo="1C", anio=2026)
+                     periodo="1C", anio=2026, codigo_matriculacion=f"AM-{tag}-1A")
         )
         examen = await examen_repo.guardar(_examen(f"Parcial 1 [{tag}]", comision.id, n=3))
         await examen_repo.guardar(_examen(f"Examen Suelto [{tag}]", None, n=1))
+        # Gate de inscripción (C-71): el alumno ve SOLO lo de sus comisiones
+        # inscriptas. El token de test lleva id_institucional='estudiante', así que
+        # hay que materializar ese usuario e inscribirlo — si no, estos listados
+        # vuelven vacíos (comportamiento correcto del gate, no un bug).
+        alumno_id = await session.scalar(
+            text(
+                "INSERT INTO usuario (id_institucional, email, roles) "
+                "VALUES ('estudiante', 'estudiante@uni.edu', '[\"estudiante\"]'::jsonb) "
+                "ON CONFLICT (id_institucional) DO UPDATE SET email = EXCLUDED.email "
+                "RETURNING id"
+            )
+        )
+        await session.execute(
+            text(
+                "INSERT INTO inscripcion (usuario_id, comision_id) "
+                "VALUES (:u, :c) ON CONFLICT DO NOTHING"
+            ),
+            {"u": alumno_id, "c": comision.id},
+        )
         await session.commit()
     return {
         "materia_id": materia.id,
@@ -205,7 +253,8 @@ async def test_materias_lista(client_student, factory):
     item = next(m for m in data if m["id"] == ids["materia_id"])
     assert item["codigo"] == ids["materia_codigo"]
     assert item["nombre"] == "Análisis Matemático"
-    assert set(item.keys()) == {"id", "codigo", "nombre"}
+    # `activa` (C-72 §17): estado de la materia — se agregó al schema después.
+    assert set(item.keys()) == {"id", "codigo", "nombre", "activa"}
 
 
 # ---------------------------------------------------------------------------
@@ -266,9 +315,14 @@ async def test_examenes_de_comision(client_student, factory):
 
 
 @pytest.mark.asyncio
-async def test_listado_examenes_incluye_materia_y_comision(client_student, factory):
+async def test_listado_examenes_incluye_materia_y_comision(client_staff, factory):
+    """El resumen del catálogo trae comision/materia derivadas (D11), y las deja en
+    None cuando el examen no tiene comisión.
+
+    Va con cliente STAFF a propósito: el examen suelto (sin comisión) no le es
+    visible al alumno por el gate de inscripción (C-71) — eso se cubre aparte."""
     ids = await _seed(factory)
-    resp = await client_student.get("/api/v1/exam-content")
+    resp = await client_staff.get("/api/v1/exam-content")
     assert resp.status_code == 200, resp.text
     # Contrato paginado (C-69 admin-sync, tarea 4): { items, total, page, page_size }
     data = resp.json()["items"]
