@@ -9,12 +9,14 @@ import { useCallback, useEffect, useState } from 'react';
 import { StaffShell } from '../ui/shells';
 import { Button, Card, Icon, SectionTitle } from '../ui/components';
 import { STAFF_NAV } from '../ui/nav';
-import { useNavigate, useRouteParam } from '../lib/router';
+import { useRouteParam } from '../lib/router';
 import { API_BASE } from '../lib/api';
 import { authProvider } from '../lib/authProvider';
 import { type TableQuery } from '../ui/TableToolbar';
 import { FiltrosPanel } from '../ui/FiltrosPanel';
 import { Pagination, PageSizeSelect } from '../ui/Pagination';
+import { RefreshBar } from '../ui/RefreshBar';
+import { useAutoRefresh } from '../lib/useAutoRefresh';
 import {
   getExamenHeaderFn,
   listarResultadosFn,
@@ -24,6 +26,16 @@ import {
 import type { ExamenContenidoResumen } from '../lib/types';
 import { EstadoBadge } from './exam-detail/EstadoBadge';
 import { SyncResultBanner, type SyncResult } from './exam-detail/SyncResultBanner';
+
+function traducirErrorApi(err: unknown, contexto: 'carga' | 'sinc'): string {
+  const status = (err as { status?: number })?.status;
+  if (status === 401) return 'Tu sesión expiró. Cerrá sesión, volvé a entrar y reintentá.';
+  if (status === 403) return 'No tenés permiso para acceder a esta información.';
+  if (status === 404) return 'No se encontró el recurso solicitado.';
+  if (status && status >= 500) return 'Error en el servidor. Intentá de nuevo en unos instantes.';
+  if (contexto === 'sinc') return 'No se pudo completar la sincronización. Revisá tu conexión.';
+  return 'No se pudieron cargar los resultados. Revisá tu conexión.';
+}
 
 function alumnoDisplay(r: ResultadoExamen): string {
   if (r.alumno_nombre) return r.alumno_nombre;
@@ -45,7 +57,7 @@ function TableSkeleton() {
   return (
     <div className="space-y-2 animate-pulse">
       {[1, 2, 3, 4, 5].map((i) => (
-        <div key={i} className="h-12 bg-surface-container-high rounded-lg" />
+        <div key={i} className="h-12 bg-surface-100 rounded-lg" />
       ))}
     </div>
   );
@@ -54,7 +66,6 @@ function TableSkeleton() {
 const PAGE_SIZE_DEFAULT = 5;
 
 export default function ExamResultados() {
-  const navigate = useNavigate();
   const examenId = useRouteParam('id');
 
   const [examen, setExamen] = useState<ExamenContenidoResumen | null>(null);
@@ -68,6 +79,7 @@ export default function ExamResultados() {
   const [total, setTotal] = useState(0);
   const [cargandoTabla, setCargandoTabla] = useState(false);
   const [errorTabla, setErrorTabla] = useState<string | null>(null);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<number | undefined>();
   // Borrador de filtros (se aplican con "Aplicar filtros").
   const [borrQ, setBorrQ] = useState('');
   const [borrEstado, setBorrEstado] = useState('');
@@ -100,8 +112,9 @@ export default function ExamResultados() {
       });
       setResultados(resp.items);
       setTotal(resp.total);
+      setLastUpdatedAt(Date.now());
     } catch (err: unknown) {
-      setErrorTabla(err instanceof Error ? err.message : 'Error al cargar los resultados.');
+      setErrorTabla(traducirErrorApi(err, 'carga'));
       setResultados([]);
     } finally {
       setCargandoTabla(false);
@@ -111,6 +124,9 @@ export default function ExamResultados() {
   useEffect(() => {
     fetchResultados(query);
   }, [query, fetchResultados]);
+
+  // Auto-refresh cada 5 min (las notas/estado de sincronización cambian solos).
+  useAutoRefresh(() => fetchResultados(query), undefined, !cargandoTabla);
 
   async function handleSincronizar() {
     if (!examenId) return;
@@ -122,7 +138,7 @@ export default function ExamResultados() {
       setSyncResult(result);
       setQuery((q) => ({ ...q }));
     } catch (err: unknown) {
-      setErrorSync(err instanceof Error ? err.message : 'Error al sincronizar con Moodle.');
+      setErrorSync(traducirErrorApi(err, 'sinc'));
     } finally {
       setSincronizando(false);
     }
@@ -155,8 +171,7 @@ export default function ExamResultados() {
   const hayFiltrosActivos = Boolean(borrQ || borrEstado);
   const totalPaginas = Math.max(1, Math.ceil(total / query.page_size));
 
-  const volverAlDetalle = () =>
-    navigate(examenId ? `/admin/examenes/${examenId}` : '/admin/examenes');
+  const volver = () => window.history.back();
 
   return (
     <StaffShell
@@ -183,9 +198,16 @@ export default function ExamResultados() {
       }
     >
       <div className="space-y-lg animate-in fade-in duration-500">
-        <Button variant="ghost" icon="arrow_back" size="sm" onClick={volverAlDetalle}>
-          Volver al detalle del examen
+        <Button variant="ghost" icon="arrow_back" size="sm" onClick={volver}>
+          Volver
         </Button>
+
+        <RefreshBar
+          texto="Alumnos que rindieron"
+          lastUpdatedAt={lastUpdatedAt}
+          cargando={cargandoTabla}
+          onActualizar={() => fetchResultados(query)}
+        />
 
         {/* Aviso de notas frenadas. Sin esto, el admin sincroniza, ve que algunas
             filas no se movieron y no tiene forma de saber que fue a propósito. */}
@@ -203,6 +225,7 @@ export default function ExamResultados() {
             </div>
           </div>
         )}
+
 
         <Card>
           <SectionTitle
@@ -263,6 +286,7 @@ export default function ExamResultados() {
               </label>
             </FiltrosPanel>
           </div>
+
 
           {cargandoTabla && !resultados.length && <TableSkeleton />}
 
@@ -325,19 +349,16 @@ export default function ExamResultados() {
               </table>
             </div>
           )}
-
-          {total > 0 && (
-            <div className="mt-md">
-              <Pagination
-                currentPage={query.page}
-                totalPages={totalPaginas}
-                totalElements={total}
-                pageSize={query.page_size}
-                onPageChange={(p) => setQuery((q) => ({ ...q, page: p }))}
-              />
-            </div>
-          )}
         </Card>
+
+        {/* Paginación FUERA de la card — siempre visible */}
+        <Pagination
+          currentPage={query.page}
+          totalPages={totalPaginas}
+          totalElements={total}
+          pageSize={query.page_size}
+          onPageChange={(p) => setQuery((q) => ({ ...q, page: p }))}
+        />
       </div>
     </StaffShell>
   );

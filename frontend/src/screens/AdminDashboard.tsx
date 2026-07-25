@@ -54,20 +54,33 @@ export default function AdminDashboard() {
   // de cola de revisión. null = todavía cargando; [] = sin sesiones → 0 / 0%.
   const [sesiones, setSesiones] = useState<SesionProctoringResumen[] | null>(null);
   const [umbral, setUmbral] = useState(70);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<number | undefined>();
+  const [refrescando, setRefrescando] = useState(false);
 
-  useEffect(() => {
-    void (async () => {
-      try {
-        await loadEffectiveConfig();
-        setUmbral(getEffectiveConfig()?.umbral_cola_revision ?? 70);
-      } catch { /* sin red: umbral por defecto */ }
-      try {
-        setSesiones(await api.listarSesionesProctoring());
-      } catch {
-        setSesiones([]);
-      }
-    })();
+  const cargarSesiones = useCallback(async () => {
+    try {
+      await loadEffectiveConfig();
+      setUmbral(getEffectiveConfig()?.umbral_cola_revision ?? 70);
+    } catch { /* sin red: umbral por defecto */ }
+    try {
+      setSesiones(await api.listarSesionesProctoring());
+    } catch {
+      setSesiones([]);
+    }
+    setLastUpdatedAt(Date.now());
   }, []);
+
+  useEffect(() => { void cargarSesiones(); }, [cargarSesiones]);
+
+  // Recarga completa (catálogo + sesiones) para el botón / auto-refresh cada 5 min.
+  const recargar = useCallback(async () => {
+    setRefrescando(true);
+    examenesState.retry();
+    await cargarSesiones();
+    setRefrescando(false);
+  }, [cargarSesiones, examenesState]);
+
+  useAutoRefresh(recargar, undefined, !refrescando);
 
   const totalSesiones = sesiones?.length ?? null;
   const flagged = sesiones ? sesiones.filter((s) => (s.score ?? 0) >= umbral).length : 0;
@@ -91,6 +104,11 @@ export default function AdminDashboard() {
       }
     >
       <div className="space-y-lg animate-in fade-in duration-500">
+        <RefreshBar
+          lastUpdatedAt={lastUpdatedAt}
+          cargando={refrescando}
+          onActualizar={recargar}
+        />
 
         {/* Stat cards con datos reales (catálogo + sesiones de proctoring). Cuando
             no hay sesiones se muestra 0 / 0% (no "—"). */}

@@ -31,13 +31,17 @@ DECISION_LABEL = {
     "sin_hallazgos": "Sin hallazgos",
     "aprobado": "Aprobado",
     "caso_abierto": "Caso abierto",
+    "anulado_por_fraude": "Anulado por fraude",
+    "caso_descartado": "Caso descartado",
 }
 DECISION_COLOR = {
     "sin_revisar": "#94a3b8",
     "pendiente": "#3b82f6",
     "sin_hallazgos": "#10b981",
     "aprobado": "#10b981",
-    "caso_abierto": "#ef4444",
+    "caso_abierto": "#f59e0b",
+    "anulado_por_fraude": "#ef4444",
+    "caso_descartado": "#10b981",
 }
 
 
@@ -98,6 +102,23 @@ def _ax_por_materia(ax, r: ResumenStats) -> None:
     ax.tick_params(labelsize=8)
 
 
+def _ax_por_comision(ax, r: ResumenStats) -> None:
+    items = list(r.por_comision or [])[:8]
+    if not items:
+        _sin_datos(ax, "Sesiones por comisión")
+        return
+    items.reverse()
+    nombres = [c.nombre[:22] for c in items]
+    seguras = [c.sesiones - c.en_riesgo for c in items]
+    riesgo = [c.en_riesgo for c in items]
+    ax.barh(nombres, seguras, color=_AZUL, label="Otras")
+    ax.barh(nombres, riesgo, left=seguras, color=_ROJO, label="En riesgo")
+    ax.set_title("Sesiones por comisión", fontsize=11, fontweight="bold", loc="left")
+    ax.legend(fontsize=7, loc="lower right")
+    ax.spines[["top", "right"]].set_visible(False)
+    ax.tick_params(labelsize=8)
+
+
 def _ax_top_eventos(ax, r: ResumenStats) -> None:
     items = list(r.top_eventos or [])[:8]
     if not items:
@@ -129,6 +150,32 @@ def _ax_decisiones(ax, r: ResumenStats) -> None:
     ax.set_title("Estado de revisión", fontsize=11, fontweight="bold", loc="left")
 
 
+def _ax_elegibilidad(ax, r: ResumenStats) -> None:
+    el = r.elegibilidad
+    if not el or el.total_inscriptos == 0:
+        _sin_datos(ax, "Habilitación para rendir")
+        return
+    labels = ["Pueden rendir", "No pueden rendir"]
+    valores = [el.pueden_rendir, el.no_pueden_rendir]
+    colors = ["#10b981", "#ef4444"]
+    filtrados = [(l, v, c) for l, v, c in zip(labels, valores, colors) if v > 0]
+    ax.pie(
+        [d[1] for d in filtrados],
+        labels=[d[0] for d in filtrados],
+        colors=[d[2] for d in filtrados],
+        autopct="%1.0f%%",
+        startangle=90,
+        wedgeprops={"width": 0.42, "edgecolor": "white"},
+        textprops={"fontsize": 8},
+    )
+    ax.set_title(
+        f"Habilitación para rendir  (n={el.total_inscriptos})",
+        fontsize=11,
+        fontweight="bold",
+        loc="left",
+    )
+
+
 def _ax_por_dia(ax, r: ResumenStats) -> None:
     items = list(r.por_dia or [])
     if not items:
@@ -147,14 +194,16 @@ def _ax_por_dia(ax, r: ResumenStats) -> None:
 
 
 def dashboard_png(r: ResumenStats) -> bytes:
-    """Un PNG con los 6 gráficos (grid 3x2) para embeber en el PDF."""
-    fig, axes = plt.subplots(3, 2, figsize=(9.6, 11.0))
+    """Un PNG con los 8 gráficos (grid 4x2) para embeber en el PDF."""
+    fig, axes = plt.subplots(4, 2, figsize=(9.6, 14.0))
     _ax_composicion(axes[0][0], r)
-    _ax_distribucion(axes[0][1], r)
+    _ax_decisiones(axes[0][1], r)
     _ax_top_eventos(axes[1][0], r)
-    _ax_decisiones(axes[1][1], r)
-    _ax_por_materia(axes[2][0], r)
+    _ax_por_materia(axes[1][1], r)
+    _ax_por_comision(axes[2][0], r)
     _ax_por_dia(axes[2][1], r)
+    _ax_elegibilidad(axes[3][0], r)
+    axes[3][1].set_visible(False)
     fig.tight_layout(pad=2.0)
     buf = io.BytesIO()
     fig.savefig(buf, format="png", dpi=140, bbox_inches="tight")

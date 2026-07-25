@@ -18,8 +18,10 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { StaffShell } from '../ui/shells';
 import { Icon, Button } from '../ui/components';
 import { HelpButton } from '../ui/HelpButton';
-import { ActionMenu } from '../ui/ActionMenu';
+import { ActionMenu, type ActionItem } from '../ui/ActionMenu';
+import { RefreshBar } from '../ui/RefreshBar';
 import { STAFF_NAV } from '../ui/nav';
+import { useAutoRefresh } from '../lib/useAutoRefresh';
 import { useToast } from '../ui/toast';
 import { api } from '../lib/api';
 import {
@@ -50,6 +52,7 @@ export default function MateriasComisiones() {
   // ── Materias ──────────────────────────────────────────────────────────────
   const [materias, setMaterias] = useState<Materia[]>([]);
   const [cargandoMaterias, setCargandoMaterias] = useState(true);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<number | undefined>();
 
   // ── Acordeón ──────────────────────────────────────────────────────────────
   const [expandida, setExpandida] = useState<string | null>(null);
@@ -170,6 +173,7 @@ export default function MateriasComisiones() {
     try {
       const data = await api.materiasDisponibles();
       setMaterias(data);
+      setLastUpdatedAt(Date.now());
     } catch {
       toast.error('No se pudo cargar la lista de materias.');
     } finally {
@@ -179,6 +183,9 @@ export default function MateriasComisiones() {
   }, []);
 
   useEffect(() => { void cargarMaterias(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-refresh cada 5 min: los conteos de inscriptos/exámenes pueden cambiar.
+  useAutoRefresh(() => void cargarMaterias(), undefined, !cargandoMaterias);
 
   // Escape cierra el formulario activo
   useEffect(() => {
@@ -381,6 +388,12 @@ export default function MateriasComisiones() {
       }
     >
       <div className="space-y-lg animate-in fade-in duration-500">
+        <RefreshBar
+          texto="Materias y comisiones"
+          lastUpdatedAt={lastUpdatedAt}
+          cargando={cargandoMaterias}
+          onActualizar={() => void cargarMaterias()}
+        />
 
         {formMateria && (
           <MateriaFormPanel
@@ -448,13 +461,17 @@ export default function MateriasComisiones() {
                           m.activa === false
                             ? { label: 'Activar materia', icon: 'play_circle', onClick: () => void toggleActivaMateria(m) }
                             : { label: 'Desactivar materia', icon: 'pause_circle', onClick: () => void toggleActivaMateria(m) },
-                          {
-                            label: 'Eliminar materia',
-                            icon: 'delete',
-                            danger: true,
-                            onClick: () =>
-                              setConfirmarBorrado({ tipo: 'materia', id: m.id, nombre: m.nombre }),
-                          },
+                          // "Eliminar" solo si la materia está VACÍA (0 inscriptos y 0 exámenes),
+                          // mismo criterio que el guard del backend (evita ofrecer un 409 seguro).
+                          ...(((m.total_inscriptos ?? 0) === 0 && (m.total_examenes ?? 0) === 0)
+                            ? [{
+                                label: 'Eliminar materia',
+                                icon: 'delete',
+                                danger: true,
+                                onClick: () =>
+                                  setConfirmarBorrado({ tipo: 'materia', id: m.id, nombre: m.nombre }),
+                              } as ActionItem]
+                            : []),
                         ]}
                       />
                     </div>

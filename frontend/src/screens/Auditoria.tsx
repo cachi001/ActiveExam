@@ -1,61 +1,129 @@
-// Página de Auditoría / registro de actividad (C-20). Vista SOLO-LECTURA del
-// audit_log inmutable (append-only + cadena de hash): quién hizo qué y cuándo.
-//
-// Contrato de carga resiliente (C-73): cargando / error / vacío-real / cargado.
-// Los filtros se editan en un borrador y se aplican con "Aplicar filtros"
-// (panel genérico FiltrosPanel). El badge de cadena avisa si la integridad se
-// rompió (tamper-evident). Nada acá muta el registro.
+// Auditoría — registro de actividad del sistema (C-20).
+// Filtros: Módulo (lista completa estática) + Tipo de acción (4 valores fijos).
+// Click en una actividad navega al detalle de la entidad (si entidad_id existe)
+// o al listado del módulo. Registro inalterable (cadena de hash append-only).
 import { useCallback, useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { StaffShell } from '../ui/shells';
 import { HelpButton } from '../ui/HelpButton';
 import { Icon, Card, LoadingSpinner } from '../ui/components';
 import { FiltrosPanel } from '../ui/FiltrosPanel';
 import { Pagination } from '../ui/Pagination';
+import { RefreshBar } from '../ui/RefreshBar';
 import { STAFF_NAV } from '../ui/nav';
 import { api } from '../lib/api';
+import { useAutoRefresh } from '../lib/useAutoRefresh';
 import { configDiff } from './auditoria.helpers';
-import type { AuditFiltros, AuditLogResponse } from '../lib/types';
+import type { AuditFiltros, AuditEvento, AuditLogResponse } from '../lib/types';
 
 const SIN_FILTRO: AuditFiltros = {};
 const PAGE_SIZE_DEFAULT = 5;
 
-/** Etiqueta + color + ícono legible de cada acción (los códigos son dot-namespaced). */
-// Catálogo de display: mapea cada acción REAL auditada por el backend a su
-// etiqueta/color/ícono. Debe reflejar lo que efectivamente se registra
-// (app/application/**/registrar(...)) — nada de acciones fantasma.
+// Lista completa de módulos del sistema — siempre visible aunque no haya actividad.
+const TODOS_MODULOS = [
+  { value: 'USUARIOS',      label: 'Usuarios' },
+  { value: 'MATERIAS',      label: 'Materias' },
+  { value: 'EXAMENES',      label: 'Exámenes' },
+  { value: 'SESIONES',      label: 'Sesiones' },
+  { value: 'CONSENTIMIENTO',label: 'Consentimiento' },
+  { value: 'BIOMETRIA',     label: 'Biometría' },
+  { value: 'EVIDENCIA',     label: 'Evidencia' },
+  { value: 'REVISION',      label: 'Revisión' },
+  { value: 'MOODLE',        label: 'Moodle' },
+  { value: 'CONFIGURACION', label: 'Configuración' },
+] as const;
+
+/**
+ * Acciones reales por módulo. Cada opción mapea a uno o varios patrones de la
+ * columna `accion` (dot-notation, ya poblada en el 100% de las filas). El filtro
+ * los envía separados por coma y el backend los combina con OR.
+ *
+ * Criterio (sin redundancia): se usan los verbos GENÉRICOS (Crear/Editar/Eliminar/
+ * Cambio de estado) como base y SOLO se agrega una acción específica donde un
+ * genérico no la puede expresar (ej.: sincronizar a Moodle no es CRUD). No se
+ * inventan acciones que el sistema no registra.
+ */
+interface OpcionAccion { label: string; accion: string }
+
+const ACCIONES_POR_MODULO: Record<string, OpcionAccion[]> = {
+  USUARIOS: [
+    { label: 'Crear',           accion: 'user.create' },
+    { label: 'Editar',          accion: 'user.update' },   // incluye cambio de contraseña
+    { label: 'Eliminar',        accion: 'user.delete' },
+    { label: 'Cambio de estado', accion: 'user.reactivate' },
+  ],
+  MATERIAS: [
+    { label: 'Crear',           accion: 'materia.create,comision.create,inscripcion.create' },
+    { label: 'Editar',          accion: 'materia.update,comision.update' },
+    { label: 'Eliminar',        accion: 'materia.delete,comision.delete,inscripcion.delete' },
+    { label: 'Cambio de estado', accion: 'materia.set_activa' },
+  ],
+  EXAMENES: [
+    { label: 'Importar examen', accion: 'examen.import' },
+    { label: 'Editar',          accion: 'examen.moodle_target,examen.config_update,examen.seleccion_preguntas' },
+  ],
+  MOODLE: [
+    { label: 'Sincronizar nota', accion: 'moodle.sync' },
+  ],
+  CONSENTIMIENTO: [
+    { label: 'Otorgó consentimiento', accion: 'consent.otorgado' },
+    { label: 'Eligió vía alternativa', accion: 'consent_alternative_chosen' },
+  ],
+  BIOMETRIA: [
+    { label: 'Verificó identidad',      accion: 'biometria.verificacion' },
+    { label: 'Renovó foto de referencia', accion: 'enrollment.embedding_referencia.renovacion' },
+  ],
+  EVIDENCIA: [
+    { label: 'Consultó evidencia', accion: 'acceso_evidencia' },
+    { label: 'Guardó evidencia',   accion: 'deposito_evidencia' },
+    { label: 'Detectó anomalía',   accion: 'manipulacion_detectada' },
+    { label: 'Verificó integridad', accion: 'firma_maestra,verify_chain.' },
+    { label: 'Retención / borrado', accion: 'retention.' },
+    { label: 'Derecho del titular', accion: 'dsr.,derecho_acceso.' },
+  ],
+  REVISION: [
+    { label: 'Decisión de revisión', accion: 'review.decision.' },
+  ],
+  CONFIGURACION: [
+    { label: 'Editar', accion: 'config_update,config.' },
+  ],
+  // SESIONES: sin acciones específicas propias — el filtro por módulo alcanza.
+};
+
+/** Etiqueta + color + ícono por acción dot-notation (detalle). */
 const ACCION_META: Array<{ match: (a: string) => boolean; label: string; color: string; icon: string }> = [
   { match: (a) => a === 'materia.create', label: 'Creó materia', color: '#10b981', icon: 'school' },
   { match: (a) => a === 'materia.update', label: 'Editó materia', color: '#8b5cf6', icon: 'edit' },
   { match: (a) => a === 'materia.delete', label: 'Eliminó materia', color: '#ef4444', icon: 'delete' },
-  { match: (a) => a === 'materia.set_activa', label: 'Cambió el estado de la materia', color: '#f59e0b', icon: 'toggle_on' },
+  { match: (a) => a === 'materia.set_activa', label: 'Cambió estado de materia', color: '#f59e0b', icon: 'toggle_on' },
   { match: (a) => a === 'comision.create', label: 'Creó comisión', color: '#06b6d4', icon: 'groups' },
   { match: (a) => a === 'comision.update', label: 'Editó comisión', color: '#8b5cf6', icon: 'edit' },
   { match: (a) => a === 'comision.delete', label: 'Eliminó comisión', color: '#ef4444', icon: 'delete' },
   { match: (a) => a === 'comision.set_activa', label: 'Cambió el estado de la comisión', color: '#f59e0b', icon: 'toggle_on' },
   { match: (a) => a === 'inscripcion.create', label: 'Inscribió alumno', color: '#10b981', icon: 'person_add' },
   { match: (a) => a === 'inscripcion.delete', label: 'Dio de baja inscripción', color: '#ef4444', icon: 'person_remove' },
-  // Mutaciones de examen: específicas ANTES del genérico examen.* (orden importa).
   { match: (a) => a === 'examen.moodle_target', label: 'Fijó destino Moodle', color: '#0891b2', icon: 'link' },
   { match: (a) => a === 'examen.config_update', label: 'Cambió config del examen', color: '#f59e0b', icon: 'tune' },
-  { match: (a) => a === 'examen.seleccion_preguntas', label: 'Cambió preguntas del examen', color: '#2563eb', icon: 'quiz' },
+  { match: (a) => a === 'examen.seleccion_preguntas', label: 'Cambió preguntas', color: '#2563eb', icon: 'quiz' },
   { match: (a) => a === 'moodle.sync', label: 'Sincronizó a Moodle', color: '#7c3aed', icon: 'sync' },
   { match: (a) => a.startsWith('examen.'), label: 'Cargó examen', color: '#2563eb', icon: 'fact_check' },
-  { match: (a) => a.startsWith('enrollment'), label: 'Renovó la foto de referencia', color: '#8b5cf6', icon: 'photo_camera' },
-  { match: (a) => a.startsWith('biometria'), label: 'Verificó la identidad', color: '#8b5cf6', icon: 'face' },
+  { match: (a) => a.startsWith('enrollment'), label: 'Renovó foto de referencia', color: '#8b5cf6', icon: 'photo_camera' },
+  { match: (a) => a.startsWith('biometria'), label: 'Verificó identidad', color: '#8b5cf6', icon: 'face' },
   { match: (a) => a.startsWith('consent'), label: 'Consentimiento', color: '#0d9488', icon: 'fact_check' },
   { match: (a) => a === 'user.create', label: 'Alta de usuario', color: '#059669', icon: 'person_add' },
   { match: (a) => a === 'user.update', label: 'Editó usuario', color: '#8b5cf6', icon: 'manage_accounts' },
   { match: (a) => a === 'user.delete', label: 'Baja de usuario', color: '#ef4444', icon: 'person_remove' },
-  { match: (a) => a === 'user.reactivate', label: 'Cambió el estado del usuario', color: '#10b981', icon: 'toggle_on' },
+  { match: (a) => a === 'user.reactivate', label: 'Cambió estado de usuario', color: '#10b981', icon: 'toggle_on' },
   { match: (a) => a.startsWith('config'), label: 'Cambió configuración', color: '#f59e0b', icon: 'settings' },
   { match: (a) => a.startsWith('review.decision'), label: 'Decisión de revisión', color: '#d97706', icon: 'gavel' },
   { match: (a) => a === 'acceso_evidencia', label: 'Consultó evidencia', color: '#0ea5e9', icon: 'folder_open' },
   { match: (a) => a === 'deposito_evidencia', label: 'Guardó evidencia', color: '#2563eb', icon: 'inventory_2' },
-  { match: (a) => a === 'manipulacion_detectada', label: 'Detectó una anomalía', color: '#ef4444', icon: 'gpp_maybe' },
-  { match: (a) => a.startsWith('firma_maestra') || a.startsWith('verify_chain'), label: 'Verificó la integridad', color: '#7c3aed', icon: 'verified_user' },
-  { match: (a) => a.startsWith('retention'), label: 'Retención o borrado de datos', color: '#64748b', icon: 'auto_delete' },
-  { match: (a) => a.startsWith('dsr') || a.startsWith('derecho_acceso'), label: 'Pedido del titular de los datos', color: '#0d9488', icon: 'policy' },
+  { match: (a) => a === 'manipulacion_detectada', label: 'Detectó anomalía', color: '#ef4444', icon: 'gpp_maybe' },
+  { match: (a) => a.startsWith('firma_maestra') || a.startsWith('verify_chain'), label: 'Verificó integridad', color: '#7c3aed', icon: 'verified_user' },
+  { match: (a) => a.startsWith('retention'), label: 'Retención / borrado', color: '#64748b', icon: 'auto_delete' },
+  { match: (a) => a.startsWith('dsr') || a.startsWith('derecho_acceso'), label: 'Derecho del titular', color: '#0d9488', icon: 'policy' },
 ];
+
 function accionMeta(accion: string): { label: string; color: string; icon: string } {
   return ACCION_META.find((m) => m.match(accion)) ?? { label: accion, color: '#64748b', icon: 'bolt' };
 }
@@ -124,38 +192,47 @@ const ENTIDADES: Entidad[] = [
   ] },
 ];
 
+/** Ruta de navegación según módulo + entidad_id. */
+function navegarA(evento: AuditEvento): string | null {
+  if (!evento.entidad_id) {
+    switch (evento.modulo) {
+      case 'USUARIOS': return '/admin/usuarios';
+      case 'MATERIAS': return '/admin/materias';
+      case 'EXAMENES': return '/admin/examenes';
+      case 'SESIONES': return '/admin/proctoring-sessions';
+      case 'MOODLE': return '/admin/examenes';
+      case 'CONFIGURACION': return '/admin/configuracion';
+      default: return null;
+    }
+  }
+  switch (evento.entidad) {
+    case 'USUARIO': return `/admin/usuarios/${evento.entidad_id}`;
+    case 'EXAMEN': return `/admin/examenes/${evento.entidad_id}/resultados`;
+    case 'SESION': return '/admin/proctoring-sessions';
+    case 'MATERIA':
+    case 'COMISION':
+    case 'INSCRIPCION': return '/admin/materias';
+    default: return null;
+  }
+}
+
 function fmtFecha(iso: string): string {
   const d = new Date(iso.replace(' ', 'T'));
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'medium' });
 }
 
-/** Propósito de una entrada: texto plano, salvo las acciones de config, que se
- * resumen como "Cambió N parámetros" con el detalle antes→después colapsable
- * (en vez de volcar el JSON crudo). */
 function Proposito({ proposito }: { proposito: string }) {
   const cambios = configDiff(proposito);
-
-  // No es un diff de config → texto tal cual.
   if (cambios === null) {
-    return (
-      <p className="mt-1.5 text-[13.5px] text-on-surface" title={proposito}>
-        {proposito}
-      </p>
-    );
+    return <p className="mt-1.5 text-[13.5px] text-on-surface" title={proposito}>{proposito}</p>;
   }
-
-  // Config sin cambios efectivos (raro): mensaje neutro, sin JSON.
   if (cambios.length === 0) {
     return <p className="mt-1.5 text-[13.5px] text-on-surface-variant">Guardó la configuración sin cambios.</p>;
   }
-
   return (
     <details className="mt-1.5 group">
       <summary className="flex cursor-pointer list-none items-center gap-1.5 text-[13.5px] text-on-surface">
-        <Icon
-          name="expand_more"
-          className="text-[18px] text-on-surface-variant transition-transform group-open:rotate-180"
-        />
+        <Icon name="expand_more" className="text-[18px] text-on-surface-variant transition-transform group-open:rotate-180" />
         Cambió <strong className="font-semibold">{cambios.length}</strong>{' '}
         {cambios.length === 1 ? 'parámetro' : 'parámetros'}
       </summary>
@@ -174,18 +251,16 @@ function Proposito({ proposito }: { proposito: string }) {
 }
 
 export default function Auditoria() {
+  const navigate = useNavigate();
   const [data, setData] = useState<AuditLogResponse | null>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [borrador, setBorrador] = useState<AuditFiltros>(SIN_FILTRO);
   const [filtros, setFiltros] = useState<AuditFiltros>(SIN_FILTRO);
-  // Filtro en dos pasos: entidad (value) + acción (value). El `accion` del
-  // borrador se compone a partir de ellos (acción elegida, o la entidad completa).
-  const [entidadSel, setEntidadSel] = useState('');
-  const [accionSel, setAccionSel] = useState('');
   const [offset, setOffset] = useState(0);
   const [pageSize, setPageSize] = useState(PAGE_SIZE_DEFAULT);
   const [exportando, setExportando] = useState<'xlsx' | 'pdf' | null>(null);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<number | undefined>();
   const entidadActual = ENTIDADES.find((e) => e.value === entidadSel) ?? null;
 
   const elegirEntidad = (value: string) => {
@@ -225,10 +300,7 @@ export default function Auditoria() {
     setError(null);
     api
       .obtenerAuditLog(f, size, off)
-      .then((r) => {
-        setData(r);
-        setError(null);
-      })
+      .then((r) => { setData(r); setError(null); setLastUpdatedAt(Date.now()); })
       .catch((e: unknown) => {
         const status = (e as { status?: number })?.status;
         setData(null);
@@ -241,30 +313,20 @@ export default function Auditoria() {
       .finally(() => setCargando(false));
   }, []);
 
-  useEffect(() => {
-    cargar(filtros, offset, pageSize);
-  }, [cargar, filtros, offset, pageSize]);
+  useEffect(() => { cargar(filtros, offset, pageSize); }, [cargar, filtros, offset, pageSize]);
 
-  const cambiarPageSize = (size: number) => {
-    setOffset(0);
-    setPageSize(size);
-  };
+  // Auto-refresh cada 5 min (el registro es append-only: refrescar trae lo nuevo).
+  useAutoRefresh(() => cargar(filtros, offset, pageSize), undefined, !cargando);
 
+  const cambiarPageSize = (size: number) => { setOffset(0); setPageSize(size); };
   const setCampo = (parche: Partial<AuditFiltros>) => setBorrador((p) => ({ ...p, ...parche }));
-  const aplicar = () => {
-    setOffset(0);
-    setFiltros(borrador);
-  };
-  const limpiar = () => {
-    setBorrador(SIN_FILTRO);
-    setEntidadSel('');
-    setAccionSel('');
-    setOffset(0);
-    setFiltros(SIN_FILTRO);
-  };
-  const hayFiltros = Boolean(borrador.actor || borrador.accion || borrador.desde || borrador.hasta);
+  const aplicar = () => { setOffset(0); setFiltros(borrador); };
+  const limpiar = () => { setBorrador(SIN_FILTRO); setOffset(0); setFiltros(SIN_FILTRO); };
+
+  const hayFiltros = Boolean(borrador.actor || borrador.modulo || borrador.accion || borrador.desde || borrador.hasta);
   const hayCambios =
     (borrador.actor ?? '') !== (filtros.actor ?? '') ||
+    (borrador.modulo ?? '') !== (filtros.modulo ?? '') ||
     (borrador.accion ?? '') !== (filtros.accion ?? '') ||
     (borrador.desde ?? '') !== (filtros.desde ?? '') ||
     (borrador.hasta ?? '') !== (filtros.hasta ?? '');
@@ -273,6 +335,11 @@ export default function Auditoria() {
   const totalPaginas = Math.max(1, Math.ceil(total / pageSize));
   const paginaActual = Math.floor(offset / pageSize) + 1;
   const irAPagina = (n: number) => setOffset((Math.max(1, Math.min(n, totalPaginas)) - 1) * pageSize);
+
+  const handleClickActividad = (e: AuditEvento) => {
+    const ruta = navegarA(e);
+    if (ruta) navigate(ruta);
+  };
 
   return (
     <StaffShell
@@ -283,8 +350,8 @@ export default function Auditoria() {
         <HelpButton title="Auditoría">
           <p>
             Todo lo importante que pasa en la plataforma queda asentado acá:
-            inicios de sesión, altas y bajas de usuarios, cambios de
-            configuración, decisiones de revisión y descargas de reportes.
+            altas y bajas de usuarios, cambios de configuración, decisiones de
+            revisión y descargas de reportes.
           </p>
           <p>
             El registro es <strong>inalterable</strong>: cada entrada se encadena
@@ -294,6 +361,13 @@ export default function Auditoria() {
         </HelpButton>
       }
     >
+      <RefreshBar
+        texto="Auditoría"
+        lastUpdatedAt={lastUpdatedAt}
+        cargando={cargando}
+        onActualizar={() => cargar(filtros, offset, pageSize)}
+      />
+
       {/* Export del registro. Descarga lo MISMO que se está viendo: usa `filtros`
           (los aplicados), no `borrador` — si tomara el borrador, el archivo saldría
           con un recorte que la persona todavía no confirmó en pantalla. */}
@@ -338,39 +412,43 @@ export default function Auditoria() {
       <div className="mb-lg">
         <FiltrosPanel onAplicar={aplicar} onLimpiar={limpiar} hayFiltros={hayFiltros} hayCambios={hayCambios} aplicarDeshabilitado={cargando}>
           <label className="flex flex-col gap-1 text-[12px] font-medium text-on-surface-variant">
-            Actor (usuario)
+            Actor
             <input
               type="text"
               value={borrador.actor ?? ''}
-              placeholder="email o parte…"
+              placeholder="Email o legajo institucional"
               onChange={(e) => setCampo({ actor: e.target.value || undefined })}
               className="min-w-[180px] rounded-md border border-surface-300 bg-white px-3 py-2 text-[13px] text-on-surface focus:border-surface-500 focus:outline-none"
             />
           </label>
           <label className="flex flex-col gap-1 text-[12px] font-medium text-on-surface-variant">
-            Entidad
+            Módulo
             <select
-              value={entidadSel}
-              onChange={(e) => elegirEntidad(e.target.value)}
+              value={borrador.modulo ?? ''}
+              onChange={(e) => {
+                const mod = e.target.value || undefined;
+                // Al cambiar de módulo, la acción elegida deja de aplicar → se resetea.
+                setCampo({ modulo: mod, accion: undefined });
+              }}
               className="min-w-[180px] rounded-md border border-surface-300 bg-white px-3 py-2 text-[13px] text-on-surface focus:border-surface-500 focus:outline-none"
             >
-              <option value="">Todas las entidades</option>
-              {ENTIDADES.map((e) => (
-                <option key={e.value} value={e.value}>{e.label}</option>
+              <option value="">Todos los módulos</option>
+              {TODOS_MODULOS.map((m) => (
+                <option key={m.value} value={m.value}>{m.label}</option>
               ))}
             </select>
           </label>
           <label className="flex flex-col gap-1 text-[12px] font-medium text-on-surface-variant">
             Acción
             <select
-              value={accionSel}
-              onChange={(e) => elegirAccion(e.target.value)}
-              disabled={!entidadActual}
-              className="min-w-[180px] rounded-md border border-surface-300 bg-white px-3 py-2 text-[13px] text-on-surface focus:border-surface-500 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+              value={borrador.accion ?? ''}
+              onChange={(e) => setCampo({ accion: e.target.value || undefined })}
+              disabled={!borrador.modulo || (ACCIONES_POR_MODULO[borrador.modulo]?.length ?? 0) === 0}
+              className="min-w-[180px] rounded-md border border-surface-300 bg-white px-3 py-2 text-[13px] text-on-surface focus:border-surface-500 focus:outline-none disabled:opacity-50"
             >
-              <option value="">{entidadActual ? 'Todas las acciones' : 'Elegí una entidad primero'}</option>
-              {entidadActual?.acciones.map((a) => (
-                <option key={a.value} value={a.value}>{a.label}</option>
+              <option value="">Todas las acciones</option>
+              {(borrador.modulo ? ACCIONES_POR_MODULO[borrador.modulo] ?? [] : []).map((a) => (
+                <option key={a.accion} value={a.accion}>{a.label}</option>
               ))}
             </select>
           </label>
@@ -420,17 +498,17 @@ export default function Auditoria() {
         </Card>
       ) : (
         <>
-          {/* Tarjetas de actividad, en columna vertical (una por acción). */}
           <div className="flex flex-col gap-3">
             {data.items.map((e) => {
               const meta = accionMeta(e.accion);
               const nombre = e.actor_nombre ?? e.actor;
+              const ruta = navegarA(e);
               return (
                 <div
                   key={e.id}
-                  className="flex items-start gap-4 rounded-2xl border border-surface-200 bg-white px-6 py-5 shadow-card"
+                  onClick={() => handleClickActividad(e)}
+                  className={`flex items-start gap-4 rounded-2xl border border-surface-200 bg-white px-6 py-5 shadow-card transition-colors ${ruta ? 'cursor-pointer hover:bg-surface-50' : ''}`}
                 >
-                  {/* Ícono de la acción */}
                   <span
                     className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full"
                     style={{ backgroundColor: `${meta.color}1a`, color: meta.color }}
@@ -441,15 +519,27 @@ export default function Auditoria() {
 
                   <div className="min-w-0 flex-1">
                     <div className="flex items-start justify-between gap-3">
-                      <span
-                        className="inline-flex items-center rounded-full px-3 py-1 text-[12px] font-semibold"
-                        style={{ backgroundColor: `${meta.color}1a`, color: meta.color }}
-                      >
-                        {meta.label}
-                      </span>
-                      <span className="shrink-0 text-[12.5px] text-on-surface-variant tabular-nums whitespace-nowrap">
-                        {fmtFecha(e.timestamp)}
-                      </span>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span
+                          className="inline-flex items-center rounded-full px-3 py-1 text-[12px] font-semibold"
+                          style={{ backgroundColor: `${meta.color}1a`, color: meta.color }}
+                        >
+                          {meta.label}
+                        </span>
+                        {e.modulo && (
+                          <span className="inline-flex items-center rounded-full bg-surface-100 px-2.5 py-0.5 text-[11px] font-medium text-on-surface-variant">
+                            {e.modulo.charAt(0) + e.modulo.slice(1).toLowerCase()}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {ruta && (
+                          <Icon name="open_in_new" className="text-[15px] text-on-surface-variant" />
+                        )}
+                        <span className="text-[12.5px] text-on-surface-variant tabular-nums whitespace-nowrap">
+                          {fmtFecha(e.timestamp)}
+                        </span>
+                      </div>
                     </div>
 
                     <p className="mt-2.5 text-[15px] font-semibold text-on-surface truncate" title={nombre}>
@@ -467,7 +557,6 @@ export default function Auditoria() {
             })}
           </div>
 
-          {/* Paginación (componente compartido: primera/última + página N de M). */}
           <div className="mt-lg">
             <Pagination
               currentPage={paginaActual}

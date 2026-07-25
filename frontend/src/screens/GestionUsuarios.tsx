@@ -15,7 +15,9 @@ import { StaffShell } from '../ui/shells';
 import { Button } from '../ui/components';
 import { HelpButton } from '../ui/HelpButton';
 import { ConfirmModal } from '../ui/ConfirmModal';
+import { RefreshBar } from '../ui/RefreshBar';
 import { STAFF_NAV } from '../ui/nav';
+import { useAutoRefresh } from '../lib/useAutoRefresh';
 import { useToast } from '../ui/toast';
 import { useNavigate } from '../lib/router';
 import { useAuth } from '../lib/authStore';
@@ -41,6 +43,7 @@ export default function GestionUsuarios() {
   const pageSizeRef = useRef(pageSize);
   pageSizeRef.current = pageSize;
   const [offset, setOffset] = useState(0);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<number | undefined>();
 
   // Aplicado (lo que se busca) vs borrador (lo que se edita en el panel).
   const [filtroRol, setFiltroRol] = useState('');
@@ -70,6 +73,7 @@ export default function GestionUsuarios() {
       });
       setUsuarios(data.items);
       setTotal(data.total);
+      setLastUpdatedAt(Date.now());
       for (const u of data.items) {
         if (!fotos[u.id]) {
           api.obtenerFotoPerfilDeUsuario(u.id).then((foto) => {
@@ -93,6 +97,9 @@ export default function GestionUsuarios() {
   }, []);
 
   useEffect(() => { cargarUsuarios(0, filtroRol, filtroEstado, filtroQ); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-refresh cada 5 min conservando página y filtros actuales.
+  useAutoRefresh(() => cargarUsuarios(offset, filtroRol, filtroEstado, filtroQ), undefined, !cargando);
 
   const hayCambiosFiltros =
     borrRol !== filtroRol || borrEstado !== filtroEstado || borrQ.trim() !== filtroQ;
@@ -152,9 +159,13 @@ export default function GestionUsuarios() {
     setEnviando(true);
     try {
       if (modoForm === 'crear') {
-        if (form.password.length < 8) { setFormError('La contraseña debe tener al menos 8 caracteres.'); return; }
-        await api.crearUsuario({ id_institucional: form.id_institucional, email: form.email, password: form.password, roles, nombre: form.nombre || undefined, apellido: form.apellido || undefined });
-        toast.success('Usuario creado correctamente.');
+        if (form.password && form.password.length < 8) { setFormError('La contraseña debe tener al menos 8 caracteres.'); return; }
+        const resp = await api.crearUsuario({ id_institucional: form.id_institucional, email: form.email, password: form.password || undefined, roles, nombre: form.nombre || undefined, apellido: form.apellido || undefined });
+        if (resp.password_generada) {
+          toast.success(`Usuario creado. Contraseña temporal: ${resp.password_generada}`);
+        } else {
+          toast.success('Usuario creado correctamente.');
+        }
       } else if (modoForm === 'editar' && editando) {
         await api.editarUsuario(editando.id, { email: form.email || undefined, nombre: form.nombre || undefined, apellido: form.apellido || undefined, roles });
         toast.success('Usuario actualizado correctamente.');
@@ -240,6 +251,12 @@ export default function GestionUsuarios() {
       actions={<Button icon="person_add" onClick={abrirCrear} size="sm">Nuevo usuario</Button>}
     >
       <div className="space-y-lg animate-in fade-in duration-500">
+        <RefreshBar
+          texto="Gestión de usuarios"
+          lastUpdatedAt={lastUpdatedAt}
+          cargando={cargando}
+          onActualizar={() => cargarUsuarios(offset, filtroRol, filtroEstado, filtroQ)}
+        />
         {modoForm && (
           <UsuarioFormPanel
             modoForm={modoForm}
@@ -312,15 +329,13 @@ export default function GestionUsuarios() {
           headerRight={<PageSizeSelect value={pageSize} onChange={cambiarPageSize} />}
         />
 
-        {total > 0 && (
-          <Pagination
-            currentPage={paginaActual}
-            totalPages={totalPaginas}
-            totalElements={total}
-            pageSize={pageSize}
-            onPageChange={irPagina}
-          />
-        )}
+        <Pagination
+          currentPage={paginaActual}
+          totalPages={totalPaginas}
+          totalElements={total}
+          pageSize={pageSize}
+          onPageChange={irPagina}
+        />
       </div>
 
       <ConfirmModal

@@ -12,8 +12,10 @@
  * Ley 25.326: ningún nivel lista screenshots; el dato sensible vive solo en
  * ProctoringSessionDetail.
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { StaffShell } from '../ui/shells';
+import { RefreshBar } from '../ui/RefreshBar';
+import { useAutoRefresh } from '../lib/useAutoRefresh';
 import { Icon, Card, Button } from '../ui/components';
 import { HelpButton } from '../ui/HelpButton';
 import { api } from '../lib/api';
@@ -86,6 +88,8 @@ export default function Revisor() {
   const [items, setItems] = useState<SesionEnriquecida[]>([]);
   const [umbral, setUmbral] = useState(UMBRAL_FALLBACK);
   const [cargando, setCargando] = useState(true);
+  const [refrescando, setRefrescando] = useState(false);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<number | undefined>();
   // Restauramos el nivel/persona si venimos de "Ver detalle completo" (restore-once).
   const [path, setPath] = useState<ColaPath>(() => leerNavGuardada()?.path ?? {});
   const [personaSelId, setPersonaSelId] = useState<string | null>(
@@ -114,6 +118,7 @@ export default function Revisor() {
         const data = await api.listarSesionesProctoring();
         const enriched = enriquecerYFiltrar(data, u);
         setItems(enriched);
+        setLastUpdatedAt(Date.now());
         // #8: entrada fresca (no venimos del detalle) → saltamos los niveles de una
         // sola opción para acortar el recorrido hasta las personas en riesgo.
         if (!restaurado?.path?.materia) {
@@ -127,6 +132,21 @@ export default function Revisor() {
       }
     })();
   }, []);
+
+  // Recarga liviana para el botón / auto-refresh: re-trae las sesiones y re-filtra
+  // con el umbral vigente, SIN colapsar el árbol ni tocar la navegación actual.
+  const recargarSesiones = useCallback(async () => {
+    setRefrescando(true);
+    try {
+      const data = await api.listarSesionesProctoring();
+      setItems(enriquecerYFiltrar(data, umbral));
+      setLastUpdatedAt(Date.now());
+    } catch { /* mantiene lo que había */ }
+    finally { setRefrescando(false); }
+  }, [umbral]);
+
+  // Auto-refresh cada 5 min: la cola cambia a medida que se rinden exámenes.
+  useAutoRefresh(recargarSesiones, undefined, !cargando);
 
   // Navegación del breadcrumb: recorta el path al nivel pedido.
   const irA = (nivel: ColaNivel) => {
@@ -215,6 +235,12 @@ export default function Revisor() {
       }
     >
       <div className="space-y-lg animate-in fade-in duration-500">
+        <RefreshBar
+          texto="Cola de revisión"
+          lastUpdatedAt={lastUpdatedAt}
+          cargando={refrescando}
+          onActualizar={recargarSesiones}
+        />
 
         {cargando && (
           <Card className="text-center py-xl text-on-surface-variant space-y-base">

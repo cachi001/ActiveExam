@@ -9,10 +9,9 @@
 // humana, nunca un veredicto ni una sanción automática.
 import { Card, Icon, LoadingSpinner } from '../../ui/components';
 import { StatCard } from '../proctoring/StatCard';
-import type { ResumenStats } from '../../lib/types';
+import type { ResumenStats, ComisionStat } from '../../lib/types';
 import {
   alturasRelativas,
-  distribucionBuckets,
   donutSegmentos,
   pctSobreTotal,
   segmentosDonut,
@@ -65,6 +64,8 @@ export function EstadisticasBody({ cargando, error, data, onReintentar }: Estadi
         <StatCard icon="flag" label="En riesgo" value={data.sesiones_en_riesgo} tono="error" />
       </div>
 
+      <PadronElegibilidad data={data} />
+
       <GraficosScores data={data} />
     </div>
   );
@@ -99,25 +100,144 @@ function GraficosScores({ data }: { data: ResumenStats }) {
           <Icon name="info" className="text-[22px] text-blue-600 shrink-0 mt-0.5" fill />
           <p className="leading-relaxed">
             <span className="font-semibold">Todavía no hay sesiones rendidas.</span>{' '}
-            El catálogo y las métricas de sesiones se poblarán a medida que se
-            supervisen exámenes; los paneles de abajo muestran la estructura completa
-            del tablero.
+            Los gráficos se poblarán a medida que los alumnos rindan exámenes y se registren sesiones;
+            los paneles de abajo muestran la estructura completa del tablero.
           </p>
         </div>
       )}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-lg">
         <RoscaComposicion data={data} />
-        <BarrasDistribucion data={data} />
-      </div>
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-lg">
-        <TopEventos data={data} />
         <DonutDecisiones data={data} />
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-lg">
         <SesionesPorMateria data={data} />
+        <SesionesPorComision data={data} />
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-lg">
+        <TopEventos data={data} />
         <ActividadPorDia data={data} />
       </div>
     </div>
+  );
+}
+
+/**
+ * Habilitación del padrón para PODER RENDIR. Rosca SVG (Pueden / No pueden)
+ * + barras horizontales de motivos de bloqueo. Mismo estilo visual que
+ * DonutDecisiones para coherencia del dashboard.
+ */
+function PadronElegibilidad({ data }: { data: ResumenStats }) {
+  const e = data.elegibilidad ?? {
+    total_inscriptos: 0,
+    con_consentimiento: 0,
+    sin_consentimiento: 0,
+    con_biometria: 0,
+    sin_biometria: 0,
+    pueden_rendir: 0,
+    no_pueden_rendir: 0,
+  };
+  const total = e.total_inscriptos;
+
+  const size = 176;
+  const stroke = 26;
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+
+  const fracPueden = total > 0 ? e.pueden_rendir / total : 0;
+  const fracNo     = total > 0 ? e.no_pueden_rendir / total : 0;
+
+  const segs = [
+    { key: 'pueden',    label: 'Pueden rendir',     valor: e.pueden_rendir,    fraccion: fracPueden, inicio: 0,          color: '#10b981' },
+    { key: 'no_pueden', label: 'No pueden rendir',  valor: e.no_pueden_rendir, fraccion: fracNo,     inicio: fracPueden, color: '#ef4444' },
+  ];
+
+  const bloqueos = [
+    { key: 'consent',  label: 'Sin consentimiento', valor: e.sin_consentimiento, icon: 'fact_check', color: '#f59e0b' },
+    { key: 'bio',      label: 'Sin biometría',      valor: e.sin_biometria,      icon: 'face',       color: '#f59e0b' },
+  ];
+
+  return (
+    <Card padded={false}>
+      <ChartHead
+        titulo="Habilitación para rendir"
+        bajada="Requisito previo para iniciar un examen: consentimiento vigente + biometría de referencia."
+      />
+      {total === 0 ? (
+        <ChartVacio icono="how_to_reg" texto="No hay alumnos inscriptos para el filtro seleccionado." />
+      ) : (
+        <div className="px-lg py-lg flex flex-col sm:flex-row items-center gap-lg">
+          {/* Rosca SVG */}
+          <div className="relative shrink-0" style={{ width: size, height: size }}>
+            <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="-rotate-90">
+              <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#eef1f5" strokeWidth={stroke} />
+              {segs.map((s) =>
+                s.fraccion > 0 ? (
+                  <circle
+                    key={s.key}
+                    cx={size / 2} cy={size / 2} r={r}
+                    fill="none"
+                    stroke={s.color}
+                    strokeWidth={stroke}
+                    strokeDasharray={`${s.fraccion * c} ${c}`}
+                    strokeDashoffset={-s.inicio * c}
+                  >
+                    <title>{`${s.label}: ${s.valor} · ${Math.round(s.fraccion * 100)}%`}</title>
+                  </circle>
+                ) : null,
+              )}
+            </svg>
+            <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+              <span className="text-[28px] font-bold text-on-surface leading-none tabular-nums">{total}</span>
+              <span className="text-[11px] text-on-surface-variant mt-1">inscriptos</span>
+            </div>
+          </div>
+
+          {/* Leyenda + desglose de motivos de bloqueo */}
+          <div className="flex-1 min-w-0 space-y-4 w-full">
+            {/* Leyenda principal */}
+            <ul className="space-y-2">
+              {segs.map((s) => (
+                <li key={s.key} className="flex items-center gap-2.5 text-[12.5px]">
+                  <span className="w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: s.color }} aria-hidden />
+                  <span className="text-on-surface font-medium">{s.label}</span>
+                  <span className="ml-auto text-on-surface font-semibold tabular-nums">{s.valor}</span>
+                  <span className="text-on-surface-variant tabular-nums w-10 text-right">{Math.round(s.fraccion * 100)}%</span>
+                </li>
+              ))}
+            </ul>
+
+            <div className="border-t border-surface-200" />
+
+            {/* Motivos de bloqueo como barras horizontales */}
+            <p className="text-[11px] font-semibold text-on-surface-variant uppercase tracking-wide">Motivos de bloqueo</p>
+            <div className="space-y-3">
+              {bloqueos.map((b) => {
+                const pct = total > 0 ? (b.valor / total) * 100 : 0;
+                return (
+                  <div key={b.key} className="text-[12px]">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="flex items-center gap-1.5 text-on-surface">
+                        <Icon name={b.icon} className="text-[14px] text-amber-600 shrink-0" fill />
+                        {b.label}
+                      </span>
+                      <span className="text-on-surface-variant tabular-nums">
+                        {b.valor} · {Math.round(pct)}%
+                      </span>
+                    </div>
+                    <div className="h-3 w-full bg-surface-100 rounded-sm overflow-hidden">
+                      <div
+                        className="h-full rounded-sm"
+                        style={{ width: `${Math.max(pct, b.valor > 0 ? 2 : 0)}%`, backgroundColor: b.color }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+    </Card>
   );
 }
 
@@ -199,7 +319,9 @@ const DECISION_META: Record<string, { label: string; color: string }> = {
   pendiente: { label: 'Pendiente', color: '#3b82f6' },
   sin_hallazgos: { label: 'Sin hallazgos', color: '#10b981' },
   aprobado: { label: 'Aprobado', color: '#10b981' },
-  caso_abierto: { label: 'Caso abierto', color: '#ef4444' },
+  caso_abierto: { label: 'Caso abierto', color: '#f59e0b' },
+  anulado_por_fraude: { label: 'Anulado por fraude', color: '#ef4444' },
+  caso_descartado: { label: 'Caso descartado', color: '#10b981' },
 };
 function decisionMeta(clave: string): { label: string; color: string } {
   return DECISION_META[clave] ?? { label: clave.replace(/_/g, ' '), color: '#8b5cf6' };
@@ -224,9 +346,9 @@ function DonutDecisiones({ data }: { data: ResumenStats }) {
 
   return (
     <Card padded={false}>
-      <ChartHead titulo="Estado de revisión" bajada="En qué punto del circuito humano está cada sesión." />
+      <ChartHead titulo="Estado de revisión" bajada="Estado de la revisión humana de cada sesión. Pendiente: sin veredicto aún. Sin hallazgos / Aprobado: falso positivo — nota validada. Anulado por fraude: nota anulada, devuelve 0." />
       {total === 0 ? (
-        <ChartVacio icono="fact_check" texto="Todavía no hay sesiones para revisar." />
+        <ChartVacio icono="fact_check" texto="Ninguna sesión ha pasado por revisión humana todavía." />
       ) : (
         <div className="px-lg py-lg flex flex-col sm:flex-row items-center gap-lg">
           <div className="relative shrink-0" style={{ width: size, height: size }}>
@@ -280,9 +402,9 @@ function SesionesPorMateria({ data }: { data: ResumenStats }) {
   const alturas = alturasRelativas(items.map((m) => m.sesiones));
   return (
     <Card padded={false}>
-      <ChartHead titulo="Sesiones por materia" bajada="Volumen supervisado y cuántas priorizan revisión (en rojo)." />
+      <ChartHead titulo="Sesiones por materia" bajada="Cantidad de sesiones de examen registradas por materia. Las que superan el umbral de score se muestran en rojo y priorizan la revisión humana." />
       {items.length === 0 ? (
-        <ChartVacio icono="school" texto="Todavía no hay sesiones asociadas a materias." />
+        <ChartVacio icono="school" texto="Aún no hay sesiones de examen registradas." />
       ) : (
         <div className="px-lg py-lg space-y-3">
           {items.map((m, i) => {
@@ -310,6 +432,41 @@ function SesionesPorMateria({ data }: { data: ResumenStats }) {
   );
 }
 
+function SesionesPorComision({ data }: { data: ResumenStats }) {
+  const items = (data.por_comision ?? []) as ComisionStat[];
+  const alturas = alturasRelativas(items.map((c) => c.sesiones));
+  return (
+    <Card padded={false}>
+      <ChartHead titulo="Sesiones por comisión" bajada="Cantidad de sesiones de examen registradas por comisión. Las que superan el umbral se muestran en rojo." />
+      {items.length === 0 ? (
+        <ChartVacio icono="groups" texto="Aún no hay sesiones de examen registradas." />
+      ) : (
+        <div className="px-lg py-lg space-y-3">
+          {items.map((c, i) => {
+            const pctRiesgo = c.sesiones > 0 ? (c.en_riesgo / c.sesiones) * 100 : 0;
+            return (
+              <div key={c.comision_id} className="text-[12.5px]">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-on-surface font-medium truncate" title={c.nombre}>{c.nombre}</span>
+                  <span className="text-on-surface-variant tabular-nums">
+                    {c.sesiones} · <span style={{ color: '#ef4444' }}>{c.en_riesgo} en riesgo</span>
+                  </span>
+                </div>
+                <div className="h-5 bg-surface-100 rounded-sm overflow-hidden" style={{ width: `${Math.max(alturas[i], 4)}%` }}>
+                  <div className="h-full flex">
+                    <div className="h-full" style={{ width: `${100 - pctRiesgo}%`, backgroundColor: '#0d9488' }} />
+                    <div className="h-full" style={{ width: `${pctRiesgo}%`, backgroundColor: '#ef4444' }} />
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 /**
  * Actividad por día (área SVG): sesiones creadas por jornada. Da la evolución en
  * el tiempo del volumen supervisado.
@@ -320,9 +477,9 @@ function ActividadPorDia({ data }: { data: ResumenStats }) {
   const maxV = Math.max(0, ...items.map((d) => d.sesiones));
   return (
     <Card padded={false}>
-      <ChartHead titulo="Actividad por día" bajada="Sesiones supervisadas por jornada." />
+      <ChartHead titulo="Actividad por día" bajada="Cantidad de sesiones de examen registradas por día. Muestra el volumen de actividad a lo largo del tiempo." />
       {items.length === 0 ? (
-        <ChartVacio icono="calendar_month" texto="Todavía no hay actividad registrada." />
+        <ChartVacio icono="calendar_month" texto="Aún no hay sesiones registradas." />
       ) : (
         <div className="px-lg py-lg">
           <div className="flex items-end justify-between gap-1.5 h-40">
@@ -418,47 +575,6 @@ function RoscaComposicion({ data }: { data: ResumenStats }) {
           <span className="font-semibold text-on-surface tabular-nums">{pctRiesgo}%</span> de las
           sesiones priorizan la revisión humana
         </span>
-      </div>
-    </Card>
-  );
-}
-
-/**
- * Barras verticales de distribución por bucket. La barra más poblada llega al
- * 100% de la altura; cada banda usa su color vivo. Con la banda de riesgo (>=
- * umbral) el color rojo PRIORIZA la lectura, sin emitir juicio.
- */
-function BarrasDistribucion({ data }: { data: ResumenStats }) {
-  const bars = distribucionBuckets(data.distribucion_scores, data.umbral_riesgo);
-
-  return (
-    <Card padded={false}>
-      <div className="px-lg py-md border-b border-surface-200">
-        <h2 className="text-[16px] font-semibold text-on-surface leading-tight">Distribución de scores</h2>
-        <p className="text-[12.5px] text-on-surface-variant mt-0.5">
-          Sesiones por rango de score. Desde {data.umbral_riesgo} priorizan la revisión humana.
-        </p>
-      </div>
-      <div className="px-lg py-lg">
-        <div className="flex items-end justify-around gap-md h-48">
-          {bars.map((b) => (
-            <div key={b.rango} className="flex flex-col items-center gap-2 flex-1 min-w-0 h-full justify-end">
-              <span className="text-[13px] font-semibold text-on-surface tabular-nums">{b.valor}</span>
-              <div className="w-full flex items-end justify-center" style={{ height: '100%' }}>
-                <div
-                  className="w-full max-w-[64px] rounded-t-md transition-all"
-                  style={{
-                    height: `${b.pct}%`,
-                    minHeight: b.valor > 0 ? 4 : 0,
-                    backgroundColor: COLOR_BANDA[b.rango],
-                  }}
-                  aria-label={`${b.valor} sesiones con score ${b.rango}`}
-                />
-              </div>
-              <span className="text-[12px] text-on-surface-variant tabular-nums">{b.rango}</span>
-            </div>
-          ))}
-        </div>
       </div>
     </Card>
   );
