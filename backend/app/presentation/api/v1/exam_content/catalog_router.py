@@ -55,7 +55,7 @@ from app.domain.exam_content.config import (
     cambios_bloqueados,
     validar_config_examen,
 )
-from app.domain.exam_content.entities import Materia
+from app.domain.exam_content.entities import Materia, PoliticaIntentos
 from app.domain.exam_content.errors import (
     CodigoMatriculacionDuplicadoError,
     ComisionDuplicadaError,
@@ -1223,6 +1223,7 @@ def create_exam_content_router(
             mezclar_preguntas=examen.mezclar_preguntas,
             mostrar_nota=examen.mostrar_nota,
             revision_habilitada=examen.revision_habilitada,
+            politica_intentos=examen.politica_intentos,
             bloqueada=bloqueada,
             campos_congelados=sorted(CONGELADO_DURO) if bloqueada else [],
             campos_solo_ampliables=sorted(CAMPOS_SOLO_AMPLIABLES) if bloqueada else [],
@@ -1592,6 +1593,52 @@ def create_exam_content_router(
     # Dispara el write-back de las notas pendientes/fallidas del examen.
     # -----------------------------------------------------------------------
 
+    def _aplicar_politica(
+        filas: list,
+        politica: PoliticaIntentos,
+    ) -> list:
+        """Dado el set de filas sincronizables, devuelve las que SE DEBEN ENVIAR.
+
+        - MANUAL     → todas (el admin eligió sincronizar cada sesión a mano).
+        - MAS_ALTA   → por alumno, solo la fila con la nota más alta.
+        - ULTIMO     → por alumno, solo la fila de la sesión más reciente
+                       (usa el session_id como proxy de orden de creación, que
+                       es un UUID v4 temporal o un timestamp implícito; si la
+                       tabla tuviera created_at lo usaríamos, pero session_id
+                       es suficientemente estable para dev — en prod se puede
+                       mejorar con created_at en la migración siguiente).
+        - PRIMERO    → por alumno, solo la fila de la sesión más antigua.
+
+        La deduplicación es por `alumno_idnumber` (legajo). Si es None, se trata
+        cada fila como alumno distinto (no hay forma de deduplicar sin identidad).
+        """
+        if politica == PoliticaIntentos.MANUAL:
+            return filas
+
+        # Agrupa por alumno
+        grupos: dict[str, list] = {}
+        sin_id: list = []
+        for f in filas:
+            key = f.alumno_idnumber
+            if key is None:
+                sin_id.append(f)
+            else:
+                grupos.setdefault(key, []).append(f)
+
+        resultado: list = list(sin_id)
+        for intentos in grupos.values():
+            if len(intentos) == 1:
+                resultado.append(intentos[0])
+                continue
+            if politica == PoliticaIntentos.MAS_ALTA:
+                elegida = max(intentos, key=lambda f: float(f.nota or 0))
+            elif politica == PoliticaIntentos.PRIMERO:
+                elegida = min(intentos, key=lambda f: f.session_id)
+            else:  # ULTIMO
+                elegida = max(intentos, key=lambda f: f.session_id)
+            resultado.append(elegida)
+        return resultado
+
     @router.post(
         "/{examen_id}/sincronizar-moodle",
         response_model=SincronizarMoodleResponse,
@@ -1650,6 +1697,20 @@ def create_exam_content_router(
                         "'pendiente'; configurá MOODLE_BASE_URL/MOODLE_WS_TOKEN para enviar."
                     ),
                 )
+
+            # Aplica la política de intentos: filtra qué notas enviar cuando
+            # un alumno tiene múltiples sesiones pendientes para el mismo examen.
+            from app.infrastructure.persistence.repositories.exam_content import (
+                ExamenContenidoSqlRepository,
+            )
+            examen_cfg = await ExamenContenidoSqlRepository(session).obtener(examen_id)
+            politica = (
+                examen_cfg.politica_intentos
+                if examen_cfg is not None
+                else PoliticaIntentos.MAS_ALTA
+            )
+            pendientes = _aplicar_politica(pendientes, politica)
+            total = len(pendientes)
 
             enviadas = 0
             fallidas = 0

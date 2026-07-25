@@ -497,6 +497,7 @@ class ExamenContenidoSqlRepository:
             mezclar_preguntas=model.mezclar_preguntas,
             mostrar_nota=model.mostrar_nota,
             revision_habilitada=model.revision_habilitada,
+            politica_intentos=model.politica_intentos,
             preguntas=preguntas,
         )
 

@@ -128,70 +128,6 @@ function accionMeta(accion: string): { label: string; color: string; icon: strin
   return ACCION_META.find((m) => m.match(accion)) ?? { label: accion, color: '#64748b', icon: 'bolt' };
 }
 
-/** Filtro en DOS pasos: primero la ENTIDAD (sobre qué se actuó), luego la ACCIÓN
- * (qué se hizo). Todo en castellano llano — sin tecnicismos. El `value` es el
- * patrón que matchea el backend (accion ILIKE %value%); si lleva coma, el backend
- * combina los patrones con OR (una entidad que agrupa varios tipos de acción). */
-type OpcionAccion = { value: string; label: string };
-type Entidad = { value: string; label: string; acciones: OpcionAccion[] };
-const ENTIDADES: Entidad[] = [
-  { value: 'user', label: 'Usuarios', acciones: [
-    { value: 'user.create', label: 'Creó' },
-    { value: 'user.update', label: 'Editó' },
-    { value: 'user.delete', label: 'Eliminó' },
-    { value: 'user.reactivate', label: 'Cambió el estado' },
-  ] },
-  { value: 'materia', label: 'Materias', acciones: [
-    { value: 'materia.create', label: 'Creó' },
-    { value: 'materia.update', label: 'Editó' },
-    { value: 'materia.delete', label: 'Eliminó' },
-    { value: 'materia.set_activa', label: 'Cambió el estado' },
-  ] },
-  { value: 'comision', label: 'Comisiones', acciones: [
-    { value: 'comision.create', label: 'Creó' },
-    { value: 'comision.update', label: 'Editó' },
-    { value: 'comision.delete', label: 'Eliminó' },
-    { value: 'comision.set_activa', label: 'Cambió el estado' },
-  ] },
-  { value: 'inscripcion', label: 'Inscripciones', acciones: [
-    { value: 'inscripcion.create', label: 'Inscribió un alumno' },
-    { value: 'inscripcion.delete', label: 'Dio de baja' },
-  ] },
-  { value: 'examen', label: 'Exámenes', acciones: [
-    { value: 'examen.import', label: 'Importó' },
-    { value: 'examen.config_update', label: 'Cambió la configuración' },
-    { value: 'examen.seleccion_preguntas', label: 'Cambió las preguntas' },
-    { value: 'examen.moodle_target', label: 'Vinculó con Moodle' },
-  ] },
-  { value: 'moodle.sync', label: 'Envío de notas a Moodle', acciones: [
-    { value: 'moodle.sync', label: 'Envió notas' },
-  ] },
-  { value: 'config', label: 'Configuración del sistema', acciones: [
-    { value: 'config', label: 'Cambió ajustes' },
-  ] },
-  { value: 'biometria,enrollment', label: 'Verificación de identidad', acciones: [
-    { value: 'biometria', label: 'Verificó el rostro' },
-    { value: 'enrollment', label: 'Renovó la foto de referencia' },
-  ] },
-  { value: 'consent', label: 'Consentimiento', acciones: [
-    { value: 'consent.otorgado', label: 'Aceptó' },
-    { value: 'consent_alternative', label: 'Eligió otra vía' },
-  ] },
-  { value: 'review', label: 'Revisión de exámenes', acciones: [
-    { value: 'review.decision', label: 'Tomó una decisión' },
-  ] },
-  { value: 'acceso_evidencia,deposito_evidencia,manipulacion,firma_maestra,verify_chain', label: 'Evidencia y seguridad', acciones: [
-    { value: 'acceso_evidencia', label: 'Consultó evidencia' },
-    { value: 'deposito_evidencia', label: 'Guardó evidencia' },
-    { value: 'manipulacion', label: 'Detectó una anomalía' },
-    { value: 'verify_chain,firma_maestra', label: 'Verificó la integridad' },
-  ] },
-  { value: 'dsr,derecho_acceso,retention', label: 'Privacidad de datos', acciones: [
-    { value: 'dsr,derecho_acceso', label: 'Pedido del titular de los datos' },
-    { value: 'retention', label: 'Retención o borrado' },
-  ] },
-];
-
 /** Ruta de navegación según módulo + entidad_id. */
 function navegarA(evento: AuditEvento): string | null {
   if (!evento.entidad_id) {
@@ -261,17 +197,6 @@ export default function Auditoria() {
   const [pageSize, setPageSize] = useState(PAGE_SIZE_DEFAULT);
   const [exportando, setExportando] = useState<'xlsx' | 'pdf' | null>(null);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<number | undefined>();
-  const entidadActual = ENTIDADES.find((e) => e.value === entidadSel) ?? null;
-
-  const elegirEntidad = (value: string) => {
-    setEntidadSel(value);
-    setAccionSel('');
-    setBorrador((p) => ({ ...p, accion: value || undefined }));
-  };
-  const elegirAccion = (value: string) => {
-    setAccionSel(value);
-    setBorrador((p) => ({ ...p, accion: value || entidadSel || undefined }));
-  };
 
   /** Descarga el registro con los filtros APLICADOS y dispara el guardado. */
   const exportar = async (formato: 'xlsx' | 'pdf') => {

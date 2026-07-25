@@ -29,9 +29,9 @@ export type Capacidad =
 /** capacidad → conjunto de roles que la poseen (dato de config, no lógica). */
 const CAPABILITY_ROLES: Record<Capacidad, readonly Rol[]> = {
   revisar_sesion: ["revisor", "coordinador", "admin_sistema"],
-  // Veredicto (anular/descartar): SOLO el revisor. Quien dicta la materia o
-  // administra el sistema no decide el fraude.
-  resolver_caso: ["revisor"],
+  // Veredicto (anular/descartar): revisor como autoridad instructora;
+  // admin_sistema como autoridad máxima del sistema.
+  resolver_caso: ["revisor", "admin_sistema"],
   gestionar_academico: ["docente", "admin_examenes", "coordinador", "admin_sistema"],
   gestionar_notas: ["docente", "admin_examenes", "coordinador", "admin_sistema"],
   configurar_sistema: ["admin_sistema"],

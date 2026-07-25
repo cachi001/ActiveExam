@@ -350,6 +350,7 @@ export default function ProctoringSessionDetail() {
               <Card>
                 <DecisionRevisorForm
                   puedeResolver={puedeResolver}
+                  eventos={detalle.eventos}
                   onResolver={registrarDecision}
                   onDecidido={siguienteCasoOVolver}
                 />

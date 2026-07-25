@@ -28,6 +28,7 @@ export interface ConfigForm {
   mezclarPreguntas: boolean;
   mostrarNota: 'al_cerrar' | 'inmediata';
   revisionHabilitada: boolean;
+  politicaIntentos: 'mas_alta' | 'ultimo' | 'primero' | 'manual';
 }
 
 // Input moderno: EDITABLE = fondo blanco + borde limpio (se ve que se puede
@@ -50,6 +51,7 @@ function configToForm(cfg: ExamConfig): ConfigForm {
     mezclarPreguntas: !!cfg.mezclar_preguntas,
     mostrarNota: cfg.mostrar_nota ?? 'al_cerrar',
     revisionHabilitada: !!cfg.revision_habilitada,
+    politicaIntentos: cfg.politica_intentos ?? 'mas_alta',
   };
 }
 
@@ -97,6 +99,7 @@ export function formToPatch(
   const publicacion: Partial<ExamConfig> = {
     mostrar_nota: form.mostrarNota,
     revision_habilitada: form.revisionHabilitada,
+    politica_intentos: form.politicaIntentos,
   };
   if (bloqueada) {
     const patch: Partial<ExamConfig> = { ...publicacion };
@@ -372,6 +375,27 @@ export function ConfiguracionExamenSection({ examenId }: { examenId: string }) {
             <p className="mt-1.5 text-label-sm text-on-surface-variant">
               "Al cerrar" evita que se filtren resultados mientras otros rinden: la nota
               aparece sola después de la fecha de cierre.
+            </p>
+          </div>
+
+          <div>
+            <label className={LABEL_CLS} htmlFor="cfg-politica-intentos">
+              Nota a enviar a Moodle (cuando hay más de un intento)
+            </label>
+            <select
+              id="cfg-politica-intentos"
+              className={INPUT_CLS}
+              value={form.politicaIntentos}
+              disabled={guardando}
+              onChange={(e) => update('politicaIntentos', e.target.value as ConfigForm['politicaIntentos'])}
+            >
+              <option value="mas_alta">La nota más alta (recomendado)</option>
+              <option value="ultimo">El último intento</option>
+              <option value="primero">El primer intento</option>
+              <option value="manual">Manual — el admin elige cuál sincronizar</option>
+            </select>
+            <p className="mt-1.5 text-label-sm text-on-surface-variant">
+              Si el alumno rinde más de una vez, esto define qué nota llega a la libreta de Moodle al sincronizar.
             </p>
           </div>
 

@@ -6,10 +6,12 @@
 // FUENTES DE DATOS:
 //   • Exámenes: GET /api/v1/exam-content → ExamenContenidoResumen[] (catálogo real).
 //   • Sesiones supervisadas / Tasa de flag: SIN endpoint real en slim → "—" (vacío honesto).
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { StaffShell } from '../ui/shells';
 import { Icon, Card, LoadingSpinner } from '../ui/components';
 import { HelpButton } from '../ui/HelpButton';
+import { RefreshBar } from '../ui/RefreshBar';
+import { useAutoRefresh } from '../lib/useAutoRefresh';
 import { StatCard } from './proctoring/StatCard';
 import { statProps } from './proctoring/statCatalog';
 import { Link } from '../lib/router';

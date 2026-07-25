@@ -25,8 +25,9 @@ from app.domain.auth.roles import Rol
 CAPABILITY_ROLES: dict[str, frozenset[Rol]] = {
     # --- Circuito de revision humana (L2.5) ---------------------------------
     "revisar_sesion": frozenset({Rol.REVISOR, Rol.COORDINADOR, Rol.ADMIN_SISTEMA}),
-    # HOY: concentracion en revisor. Remapeable por config (D8), sin refactor.
-    "resolver_caso": frozenset({Rol.REVISOR}),
+    # Revisor es quien instruye; admin_sistema puede anular como autoridad
+    # máxima del sistema (supervisión, demo, emergencia).
+    "resolver_caso": frozenset({Rol.REVISOR, Rol.ADMIN_SISTEMA}),
     # --- Gestion academica ---------------------------------------------------
     # Alta/edicion de examenes, materias y comisiones. El DOCENTE vive aca: es su
     # trabajo. El revisor NO la tiene — quien juzga el fraude no edita el examen.

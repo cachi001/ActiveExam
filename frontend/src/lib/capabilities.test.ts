@@ -11,10 +11,9 @@ import { describe, expect, it } from "vitest";
 import { tieneCapacidad } from "./capabilities";
 
 describe("tieneCapacidad — gating por capacidad (front-hides)", () => {
-  it("resolver_caso es EXCLUSIVA del revisor", () => {
-    // Quien pone la nota o administra el sistema no decide el fraude.
+  it("resolver_caso corresponde al revisor y al admin_sistema", () => {
     expect(tieneCapacidad(["revisor"], "resolver_caso")).toBe(true);
-    expect(tieneCapacidad(["admin_sistema"], "resolver_caso")).toBe(false);
+    expect(tieneCapacidad(["admin_sistema"], "resolver_caso")).toBe(true);
     expect(tieneCapacidad(["docente"], "resolver_caso")).toBe(false);
   });
 

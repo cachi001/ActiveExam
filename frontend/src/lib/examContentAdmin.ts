@@ -383,6 +383,8 @@ export interface ExamConfig {
   /** C-69: si el alumno puede revisar la corrección (respuestas correctas). Solo se
    *  muestra después del cierre. */
   revision_habilitada: boolean;
+  /** C-73: qué nota se envía a Moodle cuando hay múltiples intentos. */
+  politica_intentos: 'mas_alta' | 'ultimo' | 'primero' | 'manual';
   /** True si el examen ya tiene >= 1 intento finalizado: la config de
    *  mecánica/nota queda CONGELADA (el editor deshabilita esos campos). Solo se
    *  puede cambiar la publicación de resultados. */

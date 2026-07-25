@@ -11,6 +11,7 @@ from enum import Enum
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
+from app.domain.exam_content.entities import PoliticaIntentos
 
 
 class PeriodoEnum(str, Enum):
@@ -496,6 +497,7 @@ class ExamenConfigResponse(BaseModel):
     # Visibilidad de resultados (C-69, migración 0036).
     mostrar_nota: str = "al_cerrar"
     revision_habilitada: bool = False
+    politica_intentos: PoliticaIntentos = PoliticaIntentos.MAS_ALTA
     # True si el examen ya tiene >= 1 intento finalizado: la config de
     # mecánica/nota queda CONGELADA (el front deshabilita esos campos).
     bloqueada: bool = False
@@ -525,6 +527,7 @@ class ExamenConfigPatchRequest(BaseModel):
     # Visibilidad de resultados (C-69). mostrar_nota: 'al_cerrar' | 'inmediata'.
     mostrar_nota: Literal["al_cerrar", "inmediata"] | None = None
     revision_habilitada: bool | None = None
+    politica_intentos: PoliticaIntentos | None = None
 
 
 # ---------------------------------------------------------------------------

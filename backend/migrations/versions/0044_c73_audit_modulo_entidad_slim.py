@@ -1,11 +1,11 @@
-"""0043 - audit_log: modulo + entidad + tipo_accion + entidad_id (C-73).
+"""0044 - audit_log: modulo + entidad + tipo_accion + entidad_id (C-73).
 
-Revision ID: 0043
-Revises: 0042 (branch slim)
+Revision ID: 0044
+Revises: 0043 (branch slim)
 Create Date: 2026-07-24
 
 RAMA: slim
-  down_revision = "0042"
+  down_revision = "0043"
 
 PROPOSITO:
   Alinea audit_log con el modelo ActividadAuditoria del sistema de referencia.
@@ -25,14 +25,14 @@ PROPOSITO:
   Llamadas futuras a registrar() deben proveer los cuatro campos.
 
 ROLLBACK:
-  alembic downgrade slim@0042 -> DROP los 4 índices + columnas.
+  alembic downgrade slim@0043 -> DROP los 4 índices + columnas.
 """
 
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0043"
-down_revision = "0042"
+revision = "0044"
+down_revision = "0043"
 branch_labels = None
 depends_on = None
 

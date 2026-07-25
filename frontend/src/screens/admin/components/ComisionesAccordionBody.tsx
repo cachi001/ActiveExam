@@ -44,7 +44,6 @@ export function ComisionesAccordionBody({
   abrirCrearComision,
   abrirEditarComision,
   abrirEliminarComision,
-  onToggleActivaComision,
   comisionExpandida,
   toggleComision,
 }: ComisionesAccordionBodyProps) {

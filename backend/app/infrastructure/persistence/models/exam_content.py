@@ -181,6 +181,13 @@ class ExamenContenidoModel(Base):
         server_default="false",
         comment="Si el alumno puede ver la corrección (solo después del cierre).",
     )
+    # C-73: política de calificación cuando el alumno tiene múltiples intentos.
+    # 'mas_alta' | 'ultimo' | 'primero' | 'manual'. Default: 'mas_alta'.
+    politica_intentos: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        server_default="mas_alta",
+    )
 
     preguntas: Mapped[list[PreguntaExamenModel]] = relationship(
         "PreguntaExamenModel",

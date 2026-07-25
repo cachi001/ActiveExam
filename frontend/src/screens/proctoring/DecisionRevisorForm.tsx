@@ -2,39 +2,58 @@
  * DecisionRevisorForm — el acto de decidir sobre una sesión revisada.
  *
  * UNA decisión, dos salidas: **Aprobar con nota** o **Anular examen**. Ambas
- * exigen MOTIVO; anular exige además la referencia a la evidencia.
- *
- * Vive junto al expediente (detalle de sesión) y no en un panel lateral: para
- * anular hay que MIRAR la evidencia, y la decisión es inmutable. El backend
- * mantiene el modelo de dos fases (revisión → resolución) porque es lo que da la
- * trazabilidad y permite que mañana resuelva otra autoridad; acá se encadenan
- * solas, así el revisor ve una sola decisión y no la mecánica interna.
+ * exigen MOTIVO; anular exige además seleccionar al menos una captura de
+ * evidencia de la lista de eventos de la sesión.
  */
 import { useState } from 'react';
 import { Button, Icon, SectionTitle, FormField } from '../../ui/components';
-import type { DecisionRevisor } from '../../lib/types';
+import type { DecisionRevisor, EventoProctoringDetalle } from '../../lib/types';
+import { TIPO_EVENTO_LABEL } from '../../lib/api';
+import { formatFecha, humanizarLabel } from './helpers';
 
 export function DecisionRevisorForm({
   puedeResolver,
+  eventos,
   onResolver,
   onDecidido,
 }: {
-  /** Capacidad `resolver_caso` (el backend deniega igual: esto solo evita el 403). */
   puedeResolver: boolean;
-  /** Registra la decisión; resuelve `true` solo si el backend la confirmó. */
+  /** Lista de eventos de la sesión para seleccionar como evidencia. */
+  eventos?: EventoProctoringDetalle[];
   onResolver: (
     decision: DecisionRevisor,
     motivo: string,
     evidenciaRef?: string,
   ) => Promise<boolean>;
-  /** Se llama tras una decisión confirmada (p. ej. pasar al caso siguiente). */
   onDecidido?: () => void;
 }) {
   const [motivo, setMotivo] = useState('');
-  const [evidenciaRef, setEvidenciaRef] = useState('');
+  const [seleccionados, setSeleccionados] = useState<Set<string>>(new Set());
   const [enviando, setEnviando] = useState(false);
 
   const motivoOk = motivo.trim().length > 0;
+  const hayEvidencia = seleccionados.size > 0;
+
+  const toggleEvento = (id: string) => {
+    setSeleccionados((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  /** Construye el string de evidenciaRef a partir de los eventos seleccionados. */
+  const buildEvidenciaRef = (): string => {
+    if (!eventos) return '';
+    return eventos
+      .filter((ev) => seleccionados.has(ev.evento_id))
+      .map((ev) => {
+        const label = TIPO_EVENTO_LABEL[ev.tipo as keyof typeof TIPO_EVENTO_LABEL] ?? humanizarLabel(ev.tipo);
+        return `${label} (${formatFecha(ev.ts_cliente, true)}) [${ev.evento_id.slice(0, 8)}]`;
+      })
+      .join('; ');
+  };
 
   const aprobar = async () => {
     if (!motivoOk || enviando) return;
@@ -52,23 +71,20 @@ export function DecisionRevisorForm({
     if (ok) onDecidido?.();
   };
 
-  /**
-   * Anula encadenando las dos fases. Solo emite el veredicto si la apertura del
-   * caso fue confirmada: resolver un caso que nunca se abrió devuelve 409 y deja
-   * a la persona sin entender qué pasó.
-   */
   const anular = async () => {
-    if (!motivoOk || !puedeResolver || enviando) return;
-    if (evidenciaRef.trim().length === 0) return;
+    if (!motivoOk || !puedeResolver || enviando || !hayEvidencia) return;
     setEnviando(true);
     const abierto = await onResolver('caso_abierto', motivo.trim());
     let ok = false;
     if (abierto) {
-      ok = await onResolver('anulado_por_fraude', motivo.trim(), evidenciaRef.trim());
+      ok = await onResolver('anulado_por_fraude', motivo.trim(), buildEvidenciaRef());
     }
     setEnviando(false);
     if (ok) onDecidido?.();
   };
+
+  const eventosConCaptura = (eventos ?? []).filter((ev) => ev.screenshot_base64);
+  const eventosSinCaptura = (eventos ?? []).filter((ev) => !ev.screenshot_base64);
 
   return (
     <div className="space-y-md">
@@ -91,20 +107,87 @@ export function DecisionRevisorForm({
         />
       </FormField>
 
-      {puedeResolver && (
-        <FormField
-          label="Referencia de evidencia (obligatoria para anular)"
-          hint="Qué captura o momento fundamenta la anulación. Las señales y sus capturas están más abajo, con su fecha."
-        >
-          <input
-            type="text"
-            value={evidenciaRef}
-            onChange={(e) => setEvidenciaRef(e.target.value)}
-            placeholder="Ej.: múltiples rostros, 23/07 11:16"
-            className="w-full rounded-xl border border-outline-variant/60 bg-white p-sm text-body-md
-              focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-          />
-        </FormField>
+      {/* Selector de evidencia — solo visible para quienes pueden anular */}
+      {puedeResolver && (eventos ?? []).length > 0 && (
+        <div className="space-y-sm">
+          <div className="flex items-center justify-between">
+            <p className="text-label-sm font-semibold text-on-surface-variant uppercase tracking-wide">
+              Capturas de evidencia
+            </p>
+            <p className="text-label-sm text-on-surface-variant">
+              {seleccionados.size > 0
+                ? `${seleccionados.size} seleccionada${seleccionados.size !== 1 ? 's' : ''}`
+                : 'Seleccioná al menos una para anular'}
+            </p>
+          </div>
+
+          {/* Eventos con captura — grilla de thumbnails */}
+          {eventosConCaptura.length > 0 && (
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-sm">
+              {eventosConCaptura.map((ev) => {
+                const sel = seleccionados.has(ev.evento_id);
+                const label = TIPO_EVENTO_LABEL[ev.tipo as keyof typeof TIPO_EVENTO_LABEL] ?? humanizarLabel(ev.tipo);
+                return (
+                  <button
+                    key={ev.evento_id}
+                    type="button"
+                    onClick={() => toggleEvento(ev.evento_id)}
+                    className={`relative rounded-xl border-2 overflow-hidden text-left transition-all ${
+                      sel
+                        ? 'border-error ring-2 ring-error/30'
+                        : 'border-outline-variant/40 hover:border-outline'
+                    }`}
+                  >
+                    <img
+                      src={ev.screenshot_base64 ?? ''}
+                      alt={label}
+                      className="w-full h-20 object-cover"
+                    />
+                    <div className="p-xs bg-surface-container-low space-y-xs">
+                      <p className="text-label-sm font-medium text-on-surface leading-tight line-clamp-1">{label}</p>
+                      <p className="text-label-xs text-on-surface-variant">{formatFecha(ev.ts_cliente, true)}</p>
+                    </div>
+                    {sel && (
+                      <span className="absolute top-xs right-xs bg-error text-on-error rounded-full w-5 h-5 flex items-center justify-center">
+                        <Icon name="check" className="text-[14px]" />
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Eventos sin captura — lista compacta */}
+          {eventosSinCaptura.length > 0 && (
+            <div className="space-y-xs">
+              {eventosSinCaptura.map((ev) => {
+                const sel = seleccionados.has(ev.evento_id);
+                const label = TIPO_EVENTO_LABEL[ev.tipo as keyof typeof TIPO_EVENTO_LABEL] ?? humanizarLabel(ev.tipo);
+                return (
+                  <label
+                    key={ev.evento_id}
+                    className={`flex items-center gap-sm px-sm py-xs rounded-lg border cursor-pointer transition-all ${
+                      sel
+                        ? 'border-error/50 bg-error-container/30'
+                        : 'border-outline-variant/40 hover:bg-surface-container-low'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={sel}
+                      onChange={() => toggleEvento(ev.evento_id)}
+                      className="accent-error w-4 h-4 shrink-0"
+                    />
+                    <Icon name="warning" className="text-[16px] text-warning shrink-0" fill />
+                    <span className="text-label-sm text-on-surface flex-1">{label}</span>
+                    <span className="text-label-xs text-on-surface-variant whitespace-nowrap">{formatFecha(ev.ts_cliente, true)}</span>
+                  </label>
+                );
+              })}
+            </div>
+          )}
+        </div>
       )}
 
       <div className="grid gap-sm sm:grid-cols-2">
@@ -121,15 +204,13 @@ export function DecisionRevisorForm({
           <Button
             variant="danger"
             icon="gavel"
-            disabled={!motivoOk || enviando || evidenciaRef.trim().length === 0}
+            disabled={!motivoOk || enviando || !hayEvidencia}
             onClick={anular}
             className="justify-center font-bold ring-2 ring-error/30"
           >
             Anular examen
           </Button>
         ) : (
-          // Sin `resolver_caso` lo único posible es derivar: mostrar "Anular"
-          // a quien no puede anular garantiza un 403 y una persona confundida.
           <Button
             variant="outline"
             icon="forward_to_inbox"

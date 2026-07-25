@@ -11,6 +11,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
+from enum import Enum
+
+
+class PoliticaIntentos(str, Enum):
+    """Qué nota se envía a Moodle cuando el alumno tiene múltiples intentos."""
+    MAS_ALTA = "mas_alta"
+    ULTIMO   = "ultimo"
+    PRIMERO  = "primero"
+    MANUAL   = "manual"
+
 
 from app.domain.exam_content.errors import (
     ComisionInvalidaError,
@@ -111,6 +121,7 @@ class ExamenContenido:
     # Visibilidad de resultados (migración 0036, gate estilo Moodle "Review options").
     mostrar_nota: str = "al_cerrar"  # 'al_cerrar' | 'inmediata'
     revision_habilitada: bool = False
+    politica_intentos: PoliticaIntentos = PoliticaIntentos.MAS_ALTA
 
 
 @dataclass(frozen=True, slots=True)
