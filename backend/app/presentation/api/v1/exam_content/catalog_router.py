@@ -19,7 +19,7 @@ from fastapi import (
 )
 
 from app.application.audit.service import registrar_seguro
-from app.application.audit.acciones import AccionAuditoria
+from app.application.audit.acciones import AccionAuditoria, ModuloAuditoria
 from app.domain.auth.identity import AuthenticatedPrincipal
 
 from app.application.exam_content.asociacion_service import AsociacionComisionService
@@ -221,6 +221,8 @@ def create_exam_content_router(
             session_factory,
             actor=principal.email,
             accion=AccionAuditoria.EXAMEN_IMPORTACION,
+            modulo=ModuloAuditoria.EXAMENES,
+            entidad_id=str(report.examen_id),
             ip=request.client.host if request.client else None,
             user_agent=request.headers.get("user-agent"),
             proposito=f"Cargó el examen «{titulo or 'sin título'}» ({report.importadas} preguntas)",
@@ -419,6 +421,8 @@ def create_exam_content_router(
             session_factory,
             actor=principal.email,
             accion=AccionAuditoria.MATERIA_ALTA,
+            modulo=ModuloAuditoria.MATERIAS,
+            entidad_id=str(materia.id),
             ip=request.client.host if request.client else None,
             user_agent=request.headers.get("user-agent"),
             proposito=f"Creó la materia {materia.nombre} ({materia.codigo})",
@@ -481,6 +485,8 @@ def create_exam_content_router(
             session_factory,
             actor=principal.email,
             accion=AccionAuditoria.MATERIA_EDICION,
+            modulo=ModuloAuditoria.MATERIAS,
+            entidad_id=str(materia_id),
             ip=request.client.host if request.client else None,
             user_agent=request.headers.get("user-agent"),
             proposito=f"Editó la materia {materia.nombre} ({materia.codigo})",
@@ -530,6 +536,8 @@ def create_exam_content_router(
             session_factory,
             actor=principal.email,
             accion=AccionAuditoria.MATERIA_BAJA,
+            modulo=ModuloAuditoria.MATERIAS,
+            entidad_id=str(materia_id),
             ip=request.client.host if request.client else None,
             user_agent=request.headers.get("user-agent"),
             proposito=f"Eliminó la materia {materia_id}",
@@ -569,6 +577,8 @@ def create_exam_content_router(
             session_factory,
             actor=principal.email,
             accion=AccionAuditoria.MATERIA_ACTIVACION,
+            modulo=ModuloAuditoria.MATERIAS,
+            entidad_id=str(materia_id),
             ip=request.client.host if request.client else None,
             user_agent=request.headers.get("user-agent"),
             proposito=f"{'Activó' if body.activa else 'Desactivó'} la materia {materia.nombre}",
@@ -640,6 +650,8 @@ def create_exam_content_router(
             session_factory,
             actor=principal.email,
             accion=AccionAuditoria.COMISION_ALTA,
+            modulo=ModuloAuditoria.MATERIAS,
+            entidad_id=str(comision.id),
             ip=request.client.host if request.client else None,
             user_agent=request.headers.get("user-agent"),
             proposito=f"Creó la comisión {comision.nombre} ({comision.codigo})",
@@ -713,6 +725,8 @@ def create_exam_content_router(
             session_factory,
             actor=principal.email,
             accion=AccionAuditoria.COMISION_EDICION,
+            modulo=ModuloAuditoria.MATERIAS,
+            entidad_id=str(comision_id),
             ip=request.client.host if request.client else None,
             user_agent=request.headers.get("user-agent"),
             proposito=f"Editó la comisión {comision.nombre} ({comision.codigo})",
@@ -831,6 +845,8 @@ def create_exam_content_router(
             session_factory,
             actor=principal.email,
             accion=AccionAuditoria.COMISION_BAJA,
+            modulo=ModuloAuditoria.MATERIAS,
+            entidad_id=str(comision_id),
             ip=request.client.host if request.client else None,
             user_agent=request.headers.get("user-agent"),
             proposito=f"Eliminó la comisión {comision_id}",
@@ -962,6 +978,8 @@ def create_exam_content_router(
             session_factory,
             actor=principal.email,
             accion=AccionAuditoria.INSCRIPCION_ALTA,
+            modulo=ModuloAuditoria.EXAMENES,
+            entidad_id=str(inscripcion.id),
             ip=request.client.host if request.client else None,
             user_agent=request.headers.get("user-agent"),
             proposito=f"Inscribió al alumno {body.usuario_id} en la comisión {comision_id}",
@@ -1029,6 +1047,7 @@ def create_exam_content_router(
             session_factory,
             actor=principal.email,
             accion=AccionAuditoria.INSCRIPCION_BAJA,
+            modulo=ModuloAuditoria.EXAMENES,
             ip=request.client.host if request.client else None,
             user_agent=request.headers.get("user-agent"),
             proposito=f"Quitó al alumno {usuario_id} de la comisión {comision_id}",
@@ -1131,6 +1150,8 @@ def create_exam_content_router(
             session_factory,
             actor=principal.email,
             accion=AccionAuditoria.EXAMEN_MOODLE_TARGET,
+            modulo=ModuloAuditoria.EXAMENES,
+            entidad_id=str(examen_id),
             ip=request.client.host if request.client else None,
             user_agent=request.headers.get("user-agent"),
             # El registro lo lee una persona: va el TITULO del examen, no su UUID.
@@ -1332,6 +1353,8 @@ def create_exam_content_router(
             session_factory,
             actor=principal.email,
             accion=AccionAuditoria.EXAMEN_CONFIG_ACTUALIZACION,
+            modulo=ModuloAuditoria.EXAMENES,
+            entidad_id=str(examen_id),
             ip=request.client.host if request.client else None,
             user_agent=request.headers.get("user-agent"),
             proposito=(
@@ -1489,6 +1512,8 @@ def create_exam_content_router(
             session_factory,
             actor=principal.email,
             accion=AccionAuditoria.EXAMEN_SELECCION_PREGUNTAS,
+            modulo=ModuloAuditoria.EXAMENES,
+            entidad_id=str(examen_id),
             ip=request.client.host if request.client else None,
             user_agent=request.headers.get("user-agent"),
             proposito=(
@@ -1606,6 +1631,8 @@ def create_exam_content_router(
                     session_factory,
                     actor=principal.email,
                     accion=AccionAuditoria.MOODLE_SYNC,
+                    modulo=ModuloAuditoria.MOODLE,
+                    entidad_id=str(examen_id),
                     ip=request.client.host if request.client else None,
                     user_agent=request.headers.get("user-agent"),
                     proposito=(
@@ -1646,6 +1673,8 @@ def create_exam_content_router(
             session_factory,
             actor=principal.email,
             accion=AccionAuditoria.MOODLE_SYNC,
+            modulo=ModuloAuditoria.MOODLE,
+            entidad_id=str(examen_id),
             ip=request.client.host if request.client else None,
             user_agent=request.headers.get("user-agent"),
             proposito=(

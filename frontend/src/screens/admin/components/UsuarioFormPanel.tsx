@@ -75,16 +75,15 @@ export function UsuarioFormPanel({
           />
           {modoForm === 'crear' && (
             <TextField
-              label="Contraseña"
+              label="Contraseña (opcional)"
               name="password"
               type="password"
               value={form.password}
               onChange={cambiarTexto('password')}
               icon="lock"
-              required
               disabled={enviando}
-              placeholder="Mínimo 8 caracteres"
-              hint="Mínimo 8 caracteres."
+              placeholder="Dejar vacío para generar automáticamente"
+              hint="Si no la completás, el sistema genera una contraseña segura y te la muestra al crear."
             />
           )}
         </div>

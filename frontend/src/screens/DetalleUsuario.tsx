@@ -74,7 +74,7 @@ function SectionSkeleton() {
   return (
     <div className="space-y-3 animate-pulse">
       {[1, 2, 3].map((i) => (
-        <div key={i} className="h-5 bg-surface-container-high rounded-lg w-3/4" />
+        <div key={i} className="h-5 bg-surface-50 rounded-lg w-3/4" />
       ))}
     </div>
   );
@@ -226,7 +226,7 @@ export default function DetalleUsuario() {
             const c = consent.data;
             if (!c.estado) {
               return (
-                <div className="flex items-center gap-2 text-on-surface-variant bg-surface-container rounded-lg px-3 py-3">
+                <div className="flex items-center gap-2 text-on-surface-variant bg-surface-50 rounded-lg px-3 py-3">
                   <Icon name="info" className="text-[18px] shrink-0" />
                   <span className="text-[13px]">Sin consentimiento registrado para este usuario.</span>
                 </div>
@@ -246,7 +246,7 @@ export default function DetalleUsuario() {
                   c.hash_texto
                     ? (
                       <span
-                        className="font-mono text-[11px] bg-surface-container px-2 py-0.5 rounded-md truncate max-w-[260px] inline-block"
+                        className="font-mono text-[11px] bg-surface-50 px-2 py-0.5 rounded-md truncate max-w-[260px] inline-block"
                         title={c.hash_texto}
                       >
                         {c.hash_texto.slice(0, 28)}…
@@ -280,7 +280,7 @@ export default function DetalleUsuario() {
                       className="w-28 h-28 rounded-2xl object-cover border border-outline-variant/50 shadow-sm"
                     />
                   ) : (
-                    <div className="w-28 h-28 rounded-2xl bg-surface-container-high border border-outline-variant/40 flex flex-col items-center justify-center gap-1 text-on-surface-variant">
+                    <div className="w-28 h-28 rounded-2xl bg-surface-50 border border-outline-variant/40 flex flex-col items-center justify-center gap-1 text-on-surface-variant">
                       <Icon name="face" className="text-[32px]" />
                       <span className="text-[11px]">{b.tiene_foto ? 'Cargando…' : 'Sin foto'}</span>
                     </div>
@@ -313,7 +313,7 @@ export default function DetalleUsuario() {
                   {b.foto_hash && (
                     <DataRow label="Hash de la foto" value={
                       <span
-                        className="font-mono text-[11px] bg-surface-container px-2 py-0.5 rounded-md truncate max-w-[260px] inline-block"
+                        className="font-mono text-[11px] bg-surface-50 px-2 py-0.5 rounded-md truncate max-w-[260px] inline-block"
                         title={b.foto_hash}
                       >
                         {b.foto_hash.slice(0, 28)}…

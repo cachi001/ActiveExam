@@ -62,12 +62,14 @@ export async function listarExamenesContenidoFn(
 export async function listarExamenesContenidoPaginadoFn(
   apiBase: string,
   token: string | undefined,
-  params: { q?: string; page?: number; page_size?: number } = {},
+  params: { q?: string; page?: number; page_size?: number; materia_id?: string; comision_id?: string } = {},
 ): Promise<CatalogoExamenesPaginado> {
   const qs = new URLSearchParams();
   if (params.q) qs.set('q', params.q);
   if (params.page !== undefined) qs.set('page', String(params.page));
   if (params.page_size !== undefined) qs.set('page_size', String(params.page_size));
+  if (params.materia_id) qs.set('materia_id', params.materia_id);
+  if (params.comision_id) qs.set('comision_id', params.comision_id);
   const qStr = qs.toString();
   const fallback: CatalogoExamenesPaginado = {
     items: [],

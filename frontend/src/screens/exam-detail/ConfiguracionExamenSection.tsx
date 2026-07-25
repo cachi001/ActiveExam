@@ -197,7 +197,7 @@ export function ConfiguracionExamenSection({ examenId }: { examenId: string }) {
       {cargando && (
         <div className="space-y-3 animate-pulse">
           {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-12 bg-surface-container-high rounded-lg" />
+            <div key={i} className="h-12 bg-surface-100 rounded-lg" />
           ))}
         </div>
       )}
@@ -391,7 +391,7 @@ export function ConfiguracionExamenSection({ examenId }: { examenId: string }) {
               disabled={guardando}
               onClick={() => update('revisionHabilitada', !form.revisionHabilitada)}
               className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors disabled:opacity-50
-                ${form.revisionHabilitada ? 'bg-primary' : 'bg-surface-container-high'}`}
+                ${form.revisionHabilitada ? 'bg-primary' : 'bg-surface-200'}`}
             >
               <span
                 className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform
@@ -415,7 +415,7 @@ export function ConfiguracionExamenSection({ examenId }: { examenId: string }) {
               disabled={guardando || bloqueada}
               onClick={() => update('mezclarPreguntas', !form.mezclarPreguntas)}
               className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors disabled:opacity-50
-                ${form.mezclarPreguntas ? 'bg-primary' : 'bg-surface-container-high'}`}
+                ${form.mezclarPreguntas ? 'bg-primary' : 'bg-surface-200'}`}
             >
               <span
                 className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform
@@ -424,16 +424,18 @@ export function ConfiguracionExamenSection({ examenId }: { examenId: string }) {
             </button>
           </div>
 
-          <div className="flex justify-end">
-            <Button
-              variant="primary"
-              icon={guardando ? undefined : 'save'}
-              onClick={guardar}
-              disabled={guardando}
-            >
-              {guardando ? 'Guardando…' : 'Guardar configuración'}
-            </Button>
-          </div>
+          {original && JSON.stringify(form) !== JSON.stringify(original) && (
+            <div className="flex justify-end">
+              <Button
+                variant="primary"
+                icon={guardando ? undefined : 'save'}
+                onClick={guardar}
+                disabled={guardando}
+              >
+                {guardando ? 'Guardando…' : 'Guardar configuración'}
+              </Button>
+            </div>
+          )}
         </div>
       )}
     </Card>

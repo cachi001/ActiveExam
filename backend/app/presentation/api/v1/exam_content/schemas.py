@@ -264,6 +264,10 @@ class MateriaResponse(BaseModel):
     nombre: str
     # C-72 §17: estado de la materia (true = activa; false = congelada).
     activa: bool = True
+    # Conteos para que la UI oculte "Eliminar" cuando la materia NO está vacía
+    # (mismo criterio que el guard de borrado: se elimina solo con ambos en 0).
+    total_inscriptos: int = 0
+    total_examenes: int = 0
 
 
 class ComisionResponse(BaseModel):
@@ -279,6 +283,10 @@ class ComisionResponse(BaseModel):
     codigo_matriculacion: str
     # C-72 §17 (nivel comisión): true = activa; false = congelada (baja lógica).
     activa: bool = True
+    # Conteos para que la UI oculte "Eliminar" cuando la comisión NO está vacía
+    # (mismo criterio que el guard de borrado: se elimina solo con ambos en 0).
+    total_inscriptos: int = 0
+    total_examenes: int = 0
 
 
 class AltaInlineResponse(BaseModel):

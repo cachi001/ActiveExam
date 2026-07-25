@@ -11,6 +11,8 @@ const SOFT_LABEL_CLS = 'block text-sm font-medium text-on-surface';
 export function DestinoMoodleSection({ examenId }: { examenId: string }) {
   const [courseId, setCourseId] = useState('');
   const [cmid, setCmid] = useState('');
+  const [originalCourseId, setOriginalCourseId] = useState('');
+  const [originalCmid, setOriginalCmid] = useState('');
 
   const [cargando, setCargando] = useState(true);
   const [errorCarga, setErrorCarga] = useState<string | null>(null);
@@ -24,8 +26,12 @@ export function DestinoMoodleSection({ examenId }: { examenId: string }) {
     setErrorCarga(null);
     try {
       const t = await getMoodleTarget(examenId);
-      setCourseId(t.moodle_courseid != null ? String(t.moodle_courseid) : '');
-      setCmid(t.moodle_cmid != null ? String(t.moodle_cmid) : '');
+      const cid = t.moodle_courseid != null ? String(t.moodle_courseid) : '';
+      const cm = t.moodle_cmid != null ? String(t.moodle_cmid) : '';
+      setCourseId(cid);
+      setCmid(cm);
+      setOriginalCourseId(cid);
+      setOriginalCmid(cm);
     } catch (err: unknown) {
       setErrorCarga(err instanceof Error ? err.message : 'No se pudo cargar el destino de Moodle.');
     } finally {
@@ -56,8 +62,12 @@ export function DestinoMoodleSection({ examenId }: { examenId: string }) {
     setErrorGuardar(null);
     try {
       const res = await setMoodleTarget(examenId, buildMoodleTarget(courseId, cmid));
-      setCourseId(res.moodle_courseid != null ? String(res.moodle_courseid) : '');
-      setCmid(res.moodle_cmid != null ? String(res.moodle_cmid) : '');
+      const cid = res.moodle_courseid != null ? String(res.moodle_courseid) : '';
+      const cm = res.moodle_cmid != null ? String(res.moodle_cmid) : '';
+      setCourseId(cid);
+      setCmid(cm);
+      setOriginalCourseId(cid);
+      setOriginalCmid(cm);
       setOk(true);
     } catch (err: unknown) {
       setErrorGuardar(err instanceof Error ? err.message : 'No se pudo guardar el destino de Moodle.');
@@ -66,6 +76,7 @@ export function DestinoMoodleSection({ examenId }: { examenId: string }) {
     }
   }
 
+  const hayCambios = courseId !== originalCourseId || cmid !== originalCmid;
   const vacio = courseId.trim() === '' && cmid.trim() === '';
 
   return (
@@ -77,7 +88,7 @@ export function DestinoMoodleSection({ examenId }: { examenId: string }) {
       {cargando && (
         <div className="space-y-3 animate-pulse">
           {[1, 2].map((i) => (
-            <div key={i} className="h-12 bg-surface-container-high rounded-lg" />
+            <div key={i} className="h-12 bg-surface-100 rounded-lg" />
           ))}
         </div>
       )}
@@ -151,26 +162,28 @@ export function DestinoMoodleSection({ examenId }: { examenId: string }) {
             </div>
           </div>
 
-          <div className="flex justify-end gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              icon="backspace"
-              onClick={limpiar}
-              disabled={guardando || vacio}
-            >
-              Limpiar destino
-            </Button>
-            <Button
-              variant="primary"
-              size="sm"
-              icon={guardando ? undefined : 'save'}
-              onClick={guardar}
-              disabled={guardando}
-            >
-              {guardando ? 'Guardando…' : 'Guardar destino'}
-            </Button>
-          </div>
+          {hayCambios && (
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                icon="backspace"
+                onClick={limpiar}
+                disabled={guardando || vacio}
+              >
+                Limpiar destino
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                icon={guardando ? undefined : 'save'}
+                onClick={guardar}
+                disabled={guardando}
+              >
+                {guardando ? 'Guardando…' : 'Guardar destino'}
+              </Button>
+            </div>
+          )}
         </div>
       )}
     </Card>

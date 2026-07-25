@@ -15,10 +15,11 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import distinct, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.audit_chain import AuditEntry
+from app.domain.entities.actividad_auditoria import ActividadAuditoria
 from app.infrastructure.persistence.models.audit_log import AuditLogModel
 from app.infrastructure.persistence.repositories.audit_log import AuditLogSqlRepository
 
@@ -28,26 +29,17 @@ logger = logging.getLogger(__name__)
 @dataclass(frozen=True, slots=True)
 class AuditFiltros:
     actor: str | None = None
-    accion: str | None = None
+    modulo: str | None = None
+    entidad: str | None = None
+    tipo_accion: str | None = None
+    accion: str | None = None  # búsqueda libre en el campo detalle (dot-notation)
     desde: str | None = None  # ISO 8601 (timestamp >=)
     hasta: str | None = None  # ISO 8601 (timestamp <=)
 
 
 @dataclass(frozen=True, slots=True)
-class AuditEvento:
-    id: str
-    actor: str
-    accion: str
-    timestamp: str
-    ip: str | None
-    user_agent: str | None
-    proposito: str | None
-    actor_nombre: str | None = None  # "Nombre Apellido" resuelto del usuario (si existe)
-
-
-@dataclass(frozen=True, slots=True)
 class AuditPagina:
-    items: list[AuditEvento]
+    items: list[ActividadAuditoria]
     total: int
     cadena_valida: bool
 
@@ -70,6 +62,10 @@ async def registrar(
     user_agent: str | None = None,
     proposito: str | None = None,
     evidencia_id: str | None = None,
+    modulo: str | None = None,
+    entidad: str | None = None,
+    entidad_id: str | None = None,
+    tipo_accion: str | None = None,
 ) -> None:
     """Registra una acción en el audit log (append-only, el motor encadena el hash).
 
@@ -85,6 +81,10 @@ async def registrar(
             accion=accion,
             evidencia_id=evidencia_id,
             proposito=proposito or "",
+            modulo=modulo,
+            entidad=entidad,
+            entidad_id=entidad_id,
+            tipo_accion=tipo_accion,
         )
     )
 
@@ -97,6 +97,10 @@ async def registrar_seguro(
     ip: str | None = None,
     user_agent: str | None = None,
     proposito: str | None = None,
+    modulo: str | None = None,
+    entidad: str | None = None,
+    entidad_id: str | None = None,
+    tipo_accion: str | None = None,
 ) -> bool:
     """Registra una acción en una sesión PROPIA, best-effort.
 
@@ -115,6 +119,10 @@ async def registrar_seguro(
                 ip=ip,
                 user_agent=user_agent,
                 proposito=proposito,
+                modulo=modulo,
+                entidad=entidad,
+                entidad_id=entidad_id,
+                tipo_accion=tipo_accion,
             )
             await session.commit()
         return True
@@ -134,13 +142,18 @@ def _conditions(filtros: AuditFiltros) -> list:
     conds: list = []
     if filtros.actor:
         conds.append(AuditLogModel.actor.ilike(f"%{filtros.actor}%"))
+    if filtros.modulo:
+        conds.append(AuditLogModel.modulo == filtros.modulo)
+    if filtros.entidad:
+        conds.append(AuditLogModel.entidad == filtros.entidad)
+    if filtros.tipo_accion:
+        conds.append(AuditLogModel.tipo_accion == filtros.tipo_accion)
     if filtros.accion:
-        # Una "entidad" del filtro puede agrupar varios tipos de acción: se pasan
-        # separados por coma y se combinan con OR (los códigos nunca llevan coma).
+        # Una opción del filtro de la UI puede agrupar varias acciones dot-notation
+        # (p. ej. "Crear" en Materias = materia.create + comision.create + …). Se
+        # aceptan varios patrones separados por coma y se combinan con OR.
         patrones = [p.strip() for p in filtros.accion.split(",") if p.strip()]
-        if len(patrones) == 1:
-            conds.append(AuditLogModel.accion.ilike(f"%{patrones[0]}%"))
-        elif patrones:
+        if patrones:
             conds.append(or_(*(AuditLogModel.accion.ilike(f"%{p}%") for p in patrones)))
     desde = _parse_dt(filtros.desde)
     hasta = _parse_dt(filtros.hasta)
@@ -186,15 +199,19 @@ async def listar_auditoria(
     nombres = await _resolver_nombres(session, {r.actor for r in rows})
 
     items = [
-        AuditEvento(
+        ActividadAuditoria(
             id=str(r.id),
             actor=r.actor,
-            accion=r.accion,
+            actor_nombre=nombres.get(r.actor),
             timestamp=str(r.timestamp),
+            accion=r.accion,
+            tipo_accion=r.tipo_accion,
+            modulo=r.modulo,
+            entidad=r.entidad,
+            entidad_id=r.entidad_id,
             ip=str(r.ip) if r.ip is not None else None,
             user_agent=r.user_agent,
             proposito=r.proposito,
-            actor_nombre=nombres.get(r.actor),
         )
         for r in rows
     ]
@@ -202,6 +219,16 @@ async def listar_auditoria(
     cadena_valida = await AuditLogSqlRepository(session).verificar_cadena()
 
     return AuditPagina(items=items, total=total, cadena_valida=cadena_valida)
+
+
+async def listar_modulos(session: AsyncSession) -> list[str]:
+    """Devuelve los módulos distintos que tienen al menos una entrada en el audit log."""
+    result = await session.execute(
+        select(distinct(AuditLogModel.modulo))
+        .where(AuditLogModel.modulo.isnot(None))
+        .order_by(AuditLogModel.modulo)
+    )
+    return [row for (row,) in result.all()]
 
 
 async def _resolver_nombres(session: AsyncSession, actores: set[str]) -> dict[str, str]:

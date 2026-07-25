@@ -36,6 +36,8 @@ ETIQUETA_DECISION: dict[str, str] = {
     "sin_hallazgos": "Sin hallazgos",
     "aprobado": "Aprobado",
     "caso_abierto": "Caso abierto",
+    "anulado_por_fraude": "Anulado por fraude",
+    "caso_descartado": "Caso descartado",
 }
 
 

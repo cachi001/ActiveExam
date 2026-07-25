@@ -30,6 +30,10 @@ class AuditLogModel(Base):
     ip: Mapped[str | None] = mapped_column(INET, nullable=True)
     user_agent: Mapped[str | None] = mapped_column(Text, nullable=True)
     accion: Mapped[str] = mapped_column(String(255), nullable=False)
+    modulo: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    entidad: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    entidad_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    tipo_accion: Mapped[str | None] = mapped_column(String(32), nullable=True)
     evidencia_id: Mapped[str | None] = mapped_column(
         UUID(as_uuid=False), ForeignKey("evidencia.id"), nullable=True
     )

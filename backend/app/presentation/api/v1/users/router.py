@@ -16,6 +16,8 @@ Reglas duras:
 
 from __future__ import annotations
 
+import secrets
+import string
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -25,7 +27,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.domain.auth.identity import AuthenticatedPrincipal
-from app.application.audit.acciones import AccionAuditoria
+from app.application.audit.acciones import AccionAuditoria, EntidadAuditoria, ModuloAuditoria, TipoAccionAuditoria
 from app.domain.auth.roles import Rol
 from app.infrastructure.auth.hashing import hashear_password
 from app.infrastructure.persistence.models.transactional import (
@@ -55,15 +57,15 @@ class CrearUsuarioRequest(BaseModel):
 
     id_institucional: str
     email: str
-    password: str
+    password: str | None = None  # None → se genera automáticamente
     roles: list[str]
     nombre: str | None = None
     apellido: str | None = None
 
     @field_validator("password")
     @classmethod
-    def password_minimo_8(cls, v: str) -> str:
-        if len(v) < 8:  # noqa: PLR2004
+    def password_minimo_8(cls, v: str | None) -> str | None:
+        if v is not None and len(v) < 8:  # noqa: PLR2004
             raise ValueError("El password debe tener al menos 8 caracteres.")
         return v
 
@@ -114,6 +116,7 @@ class UsuarioResponse(BaseModel):
     roles: list[str]
     auth_provider: str
     eliminado_en: str | None
+    password_generada: str | None = None  # solo en POST cuando el admin no proveyó password
 
 
 class ListarUsuariosResponse(BaseModel):
@@ -222,7 +225,12 @@ async def crear_usuario(
     """
     session_factory = _get_session_factory(request)
 
-    password_hash = hashear_password(body.password)
+    # Si el admin no proveyó contraseña, generamos una segura aleatoria.
+    alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
+    password_plain = body.password or "".join(secrets.choice(alphabet) for _ in range(16))
+    password_hash = hashear_password(password_plain)
+    password_devolver = None if body.password else password_plain
+
     usuario = UsuarioModel(
         id_institucional=body.id_institucional,
         email=body.email,
@@ -252,12 +260,17 @@ async def crear_usuario(
         session_factory,
         actor=_principal.email,
         accion=AccionAuditoria.USUARIO_ALTA,
+        modulo=ModuloAuditoria.USUARIOS,
+        entidad=EntidadAuditoria.USUARIO,
+        tipo_accion=TipoAccionAuditoria.CREAR,
+        entidad_id=str(usuario.id),
         ip=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
         proposito=f"Alta de usuario {usuario.email} (roles: {', '.join(body.roles)})",
     )
 
-    return _usuario_to_response(usuario)
+    resp = _usuario_to_response(usuario)
+    return resp.model_copy(update={"password_generada": password_devolver})
 
 
 # ---------------------------------------------------------------------------
@@ -414,6 +427,10 @@ async def editar_usuario(
         session_factory,
         actor=principal.email,
         accion=AccionAuditoria.USUARIO_EDICION,
+        modulo=ModuloAuditoria.USUARIOS,
+        entidad=EntidadAuditoria.USUARIO,
+        tipo_accion=TipoAccionAuditoria.EDITAR,
+        entidad_id=str(usuario.id),
         ip=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
         proposito=f"Editó el usuario {usuario.email}",
@@ -496,6 +513,10 @@ async def eliminar_usuario(
         session_factory,
         actor=principal.email,
         accion=AccionAuditoria.USUARIO_BAJA,
+        modulo=ModuloAuditoria.USUARIOS,
+        entidad=EntidadAuditoria.USUARIO,
+        tipo_accion=TipoAccionAuditoria.ELIMINAR,
+        entidad_id=str(usuario_id),
         ip=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
         proposito=f"Baja de usuario {usuario_email}",
@@ -561,6 +582,8 @@ async def reactivar_usuario(
         session_factory,
         actor=principal.email,
         accion=AccionAuditoria.USUARIO_REACTIVACION,
+        modulo=ModuloAuditoria.USUARIOS,
+        entidad_id=str(usuario_id),
         ip=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
         proposito=f"Reactivó el usuario {usuario.email}",

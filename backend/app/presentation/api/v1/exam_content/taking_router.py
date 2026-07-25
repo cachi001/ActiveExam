@@ -94,6 +94,8 @@ def create_exam_taking_router(
         q: str | None = None,
         page: int = 1,
         page_size: int = 1000,
+        materia_id: str | None = None,
+        comision_id: str | None = None,
     ) -> ExamenesContenidoPaginadosResponse:
         """Lista paginada de exámenes de contenido (catálogo del alumno/admin).
 
@@ -127,7 +129,12 @@ def create_exam_taking_router(
                     session
                 ).comision_ids_inscriptas(principal.id_institucional)
             resumenes, total = await repo.listar_paginado(
-                q=q, page=page, page_size=page_size, comision_ids=comision_ids
+                q=q,
+                page=page,
+                page_size=page_size,
+                comision_ids=comision_ids,
+                filtro_materia_id=materia_id if _es_staff(principal) else None,
+                filtro_comision_id=comision_id if _es_staff(principal) else None,
             )
 
         return ExamenesContenidoPaginadosResponse(
@@ -428,16 +435,27 @@ def create_exam_taking_router(
 
         # Gate de inscripción (C-71): el alumno ve SOLO las materias donde tiene
         # comisión inscripta; staff ve todas.
+        conteos: dict[str, tuple[int, int]] = {}
         async with session_factory() as session:
             if _es_staff(principal):
-                materias = await MateriaSqlRepository(session).listar()
+                repo = MateriaSqlRepository(session)
+                materias = await repo.listar()
+                # Conteos por materia para que la UI oculte "Eliminar" si no está vacía.
+                conteos = await repo.contar_inscriptos_y_examenes_todas()
             else:
                 materias = await InscripcionSqlRepository(session).materias_inscriptas(
                     principal.id_institucional
                 )
 
         return [
-            MateriaResponse(id=m.id, codigo=m.codigo, nombre=m.nombre, activa=m.activa)
+            MateriaResponse(
+                id=m.id,
+                codigo=m.codigo,
+                nombre=m.nombre,
+                activa=m.activa,
+                total_inscriptos=conteos.get(m.id, (0, 0))[0],
+                total_examenes=conteos.get(m.id, (0, 0))[1],
+            )
             for m in materias
         ]
 
@@ -463,11 +481,13 @@ def create_exam_taking_router(
 
         # Gate de inscripción (C-71): el alumno ve SOLO sus comisiones inscriptas de
         # esa materia; staff ve todas las comisiones de la materia.
+        conteos: dict[str, tuple[int, int]] = {}
         async with session_factory() as session:
             if _es_staff(principal):
-                comisiones = await ComisionSqlRepository(session).listar_por_materia(
-                    materia_id
-                )
+                repo = ComisionSqlRepository(session)
+                comisiones = await repo.listar_por_materia(materia_id)
+                # Conteos por comisión para que la UI oculte "Eliminar" si no está vacía.
+                conteos = await repo.contar_inscriptos_y_examenes_por_materia(materia_id)
             else:
                 comisiones = await InscripcionSqlRepository(
                     session
@@ -483,6 +503,8 @@ def create_exam_taking_router(
                 anio=c.anio,
                 codigo_matriculacion=c.codigo_matriculacion,
                 activa=c.activa,
+                total_inscriptos=conteos.get(c.id, (0, 0))[0],
+                total_examenes=conteos.get(c.id, (0, 0))[1],
             )
             for c in comisiones
         ]

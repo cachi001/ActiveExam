@@ -51,6 +51,10 @@ def _to_domain(m: AuditLogModel) -> AuditEntry:
         accion=m.accion,
         evidencia_id=m.evidencia_id,
         proposito=m.proposito or "",
+        modulo=m.modulo,
+        entidad=m.entidad,
+        entidad_id=m.entidad_id,
+        tipo_accion=m.tipo_accion,
         hash_prev=m.hash_prev,
     )
 
@@ -70,6 +74,10 @@ class AuditLogSqlRepository(AuditLogRepository):
             ip=_normalizar_ip(entity.ip),
             user_agent=entity.user_agent or None,
             accion=entity.accion,
+            modulo=entity.modulo,
+            entidad=entity.entidad,
+            entidad_id=entity.entidad_id,
+            tipo_accion=entity.tipo_accion,
             evidencia_id=entity.evidencia_id,
             proposito=entity.proposito or None,
             hash_prev="",  # placeholder; el trigger lo sobreescribe

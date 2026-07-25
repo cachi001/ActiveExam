@@ -147,7 +147,7 @@ export default function SeccionScoring() {
     return (
       <div className="rounded-2xl border border-outline-variant/60 bg-white py-12 text-center text-on-surface-variant space-y-base">
         <Icon name="rule_settings" className="text-[32px] text-outline" />
-        <p className="text-[13px]">No hay configuración. ¿Aplicaste la migración 0011?</p>
+        <p className="text-[13px]">No hay configuración de scoring cargada. Contactá al administrador del sistema.</p>
       </div>
     );
   }

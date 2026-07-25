@@ -42,6 +42,10 @@ from app.infrastructure.persistence.models.proctoring import (
     ProctoringEventModel,
     ProctoringSessionModel,
 )
+from app.infrastructure.persistence.models.transactional import (
+    ConsentimientoPerfilModel,
+    EmbeddingReferenciaModel,
+)
 
 # Cuántos tipos de evento devolver en el "top" (los detectores que más disparan).
 TOP_EVENTOS_N = 8
@@ -66,6 +70,34 @@ class MateriaStat:
     nombre: str
     sesiones: int
     en_riesgo: int
+
+
+@dataclass(frozen=True, slots=True)
+class ComisionStat:
+    """Sesiones (y cuántas en riesgo) de una comisión."""
+
+    comision_id: str
+    nombre: str
+    sesiones: int
+    en_riesgo: int
+
+
+@dataclass(frozen=True, slots=True)
+class ElegibilidadStats:
+    """Estado de habilitación del padrón de inscriptos para PODER RENDIR.
+
+    Un alumno solo puede rendir si tiene consentimiento vigente (otorgado) Y
+    biometría de referencia vigente. Sin alguno, queda BLOQUEADO. Es la señal
+    operativa más importante antes de un examen: cuántos NO van a poder rendir y
+    por qué (falta consentimiento, falta biometría, o ambas)."""
+
+    total_inscriptos: int = 0
+    con_consentimiento: int = 0
+    sin_consentimiento: int = 0
+    con_biometria: int = 0
+    sin_biometria: int = 0
+    pueden_rendir: int = 0
+    no_pueden_rendir: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,10 +159,12 @@ class ResumenStats:
     umbral_riesgo: int
     distribucion_scores: dict[str, int]
     por_materia: list[MateriaStat] = field(default_factory=list)
+    por_comision: list[ComisionStat] = field(default_factory=list)
     top_eventos: list[EventoStat] = field(default_factory=list)
     por_dia: list[DiaStat] = field(default_factory=list)
     decisiones: dict[str, int] = field(default_factory=dict)
     catalogo: list[MateriaCatalogo] = field(default_factory=list)
+    elegibilidad: "ElegibilidadStats" = field(default_factory=lambda: ElegibilidadStats())
 
 
 async def _catalogo_materias(db: AsyncSession) -> list[MateriaCatalogo]:
@@ -346,6 +380,110 @@ def _session_conditions(filtros: FiltrosStats) -> list:
     return conds
 
 
+def _inscriptos_conditions(filtros: FiltrosStats) -> list:
+    """WHERE sobre InscripcionModel según materia/comisión/examen.
+
+    El rango de fechas NO aplica: la elegibilidad es un SNAPSHOT del padrón
+    (quién está inscripto hoy y si puede rendir), no una serie temporal.
+    """
+    conds: list = []
+    if filtros.examen_contenido_id:
+        if _es_uuid(filtros.examen_contenido_id):
+            conds.append(
+                InscripcionModel.comision_id.in_(
+                    select(ExamenContenidoModel.comision_id).where(
+                        ExamenContenidoModel.id == filtros.examen_contenido_id
+                    )
+                )
+            )
+        else:
+            conds.append(false())
+    if filtros.comision_id:
+        if _es_uuid(filtros.comision_id):
+            conds.append(InscripcionModel.comision_id == filtros.comision_id)
+        else:
+            conds.append(false())
+    if filtros.materia_id:
+        if _es_uuid(filtros.materia_id):
+            conds.append(
+                InscripcionModel.comision_id.in_(
+                    select(ComisionModel.id).where(
+                        ComisionModel.materia_id == filtros.materia_id
+                    )
+                )
+            )
+        else:
+            conds.append(false())
+    return conds
+
+
+async def _elegibilidad(db: AsyncSession, filtros: FiltrosStats) -> ElegibilidadStats:
+    """Cuántos inscriptos pueden / NO pueden rendir (falta consentimiento y/o biometría).
+
+    Mismo criterio que ``listar_alumnos_con_elegibilidad`` (consentimiento vigente
+    'otorgado' + embedding de referencia vigente), pero AGREGADO por conjuntos para
+    no hacer N+1: 3 queries (padrón, biometría vigente, último consentimiento por
+    usuario) e intersección en Python.
+    """
+    conds = _inscriptos_conditions(filtros)
+    usuario_ids = list(
+        (
+            await db.execute(
+                select(InscripcionModel.usuario_id).where(*conds).distinct()
+            )
+        )
+        .scalars()
+        .all()
+    )
+    total = len(usuario_ids)
+    if total == 0:
+        return ElegibilidadStats()
+
+    # Biometría: usuarios con embedding de referencia vigente.
+    bio_set = set(
+        (
+            await db.execute(
+                select(EmbeddingReferenciaModel.usuario_id)
+                .where(
+                    EmbeddingReferenciaModel.vigente.is_(True),
+                    EmbeddingReferenciaModel.usuario_id.in_(usuario_ids),
+                )
+                .distinct()
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    # Consentimiento: última fila por usuario (append-only) → estado 'otorgado'.
+    consent_rows = (
+        await db.execute(
+            select(
+                ConsentimientoPerfilModel.usuario_id, ConsentimientoPerfilModel.estado
+            )
+            .where(ConsentimientoPerfilModel.usuario_id.in_(usuario_ids))
+            .distinct(ConsentimientoPerfilModel.usuario_id)
+            .order_by(
+                ConsentimientoPerfilModel.usuario_id,
+                ConsentimientoPerfilModel.timestamp.desc(),
+                ConsentimientoPerfilModel.id.desc(),
+            )
+        )
+    ).all()
+    consent_ok = {uid for uid, estado in consent_rows if estado == "otorgado"}
+
+    pueden = len(bio_set & consent_ok)
+    return ElegibilidadStats(
+        total_inscriptos=total,
+        con_consentimiento=len(consent_ok),
+        sin_consentimiento=total - len(consent_ok),
+        con_biometria=len(bio_set),
+        sin_biometria=total - len(bio_set),
+        pueden_rendir=pueden,
+        no_pueden_rendir=total - pueden,
+    )
+
+
 def _bucket(score: int) -> str:
     if score < 25:
         return "0-24"
@@ -372,6 +510,9 @@ async def obtener_resumen(
     umbral = await _umbral_cola_revision(db)
     pesos = await _pesos_vivos_por_tipo(db)
 
+    # Elegibilidad del padrón (snapshot): quién puede / NO puede rendir.
+    elegibilidad = await _elegibilidad(db, filtros)
+
     # Sesiones que pasan el filtro, con las columnas que alimentan los desgloses.
     ses_rows = (
         await db.execute(
@@ -381,6 +522,7 @@ async def obtener_resumen(
                 ProctoringSessionModel.creada_en,
                 ProctoringSessionModel.finalizada_en,
                 ProctoringSessionModel.decision,
+                ProctoringSessionModel.resolucion,
             ).where(*conds)
         )
     ).all()
@@ -419,6 +561,7 @@ async def obtener_resumen(
     # Mapa examen_contenido_id → (materia_id, nombre) para el desglose por materia.
     ec_ids = {r.examen_contenido_id for r in ses_rows if r.examen_contenido_id}
     ec_a_materia: dict[str, tuple[str, str]] = {}
+    ec_a_comision: dict[str, tuple[str, str]] = {}
     if ec_ids:
         mrows = (
             await db.execute(
@@ -426,17 +569,21 @@ async def obtener_resumen(
                     ExamenContenidoModel.id,
                     MateriaModel.id,
                     MateriaModel.nombre,
+                    ComisionModel.id,
+                    ComisionModel.nombre,
                 )
                 .join(ComisionModel, ExamenContenidoModel.comision_id == ComisionModel.id)
                 .join(MateriaModel, ComisionModel.materia_id == MateriaModel.id)
                 .where(ExamenContenidoModel.id.in_(ec_ids))
             )
         ).all()
-        for ec_id, mid, nombre in mrows:
-            ec_a_materia[ec_id] = (mid, nombre)
+        for ec_id, mid, materia_nombre, cid, comision_nombre in mrows:
+            ec_a_materia[ec_id] = (mid, materia_nombre)
+            ec_a_comision[ec_id] = (cid, comision_nombre)
 
     # Agregados en Python sobre las filas ya cargadas (sin más viajes a la DB).
     materia_agg: dict[str, list] = {}  # mid → [nombre, sesiones, en_riesgo]
+    comision_agg: dict[str, list] = {}  # cid → [nombre, sesiones, en_riesgo]
     dia_agg: dict[str, int] = {}
     dec_agg: dict[str, int] = {}
     for r in ses_rows:
@@ -448,6 +595,14 @@ async def obtener_resumen(
             agg[1] += 1
             if score_por_sesion[r.id] >= umbral:
                 agg[2] += 1
+        # por comisión
+        cc = ec_a_comision.get(r.examen_contenido_id)
+        if cc is not None:
+            cid, comision_nombre = cc
+            cagg = comision_agg.setdefault(cid, [comision_nombre, 0, 0])
+            cagg[1] += 1
+            if score_por_sesion[r.id] >= umbral:
+                cagg[2] += 1
         # por día
         if r.creada_en is not None:
             fecha = (
@@ -457,7 +612,10 @@ async def obtener_resumen(
             )
             dia_agg[fecha] = dia_agg.get(fecha, 0) + 1
         # por decisión de revisión (None = todavía sin revisar)
-        clave = r.decision or "sin_revisar"
+        if r.resolucion == "anulado_por_fraude":
+            clave = "anulado_por_fraude"
+        else:
+            clave = r.decision or "sin_revisar"
         dec_agg[clave] = dec_agg.get(clave, 0) + 1
 
     por_materia = [
@@ -465,6 +623,12 @@ async def obtener_resumen(
         for mid, v in materia_agg.items()
     ]
     por_materia.sort(key=lambda m: (-m.sesiones, m.nombre))
+
+    por_comision = [
+        ComisionStat(comision_id=cid, nombre=v[0], sesiones=v[1], en_riesgo=v[2])
+        for cid, v in comision_agg.items()
+    ]
+    por_comision.sort(key=lambda c: (-c.sesiones, c.nombre))
 
     top_eventos = [
         EventoStat(tipo=t, cantidad=c)
@@ -483,8 +647,10 @@ async def obtener_resumen(
         umbral_riesgo=umbral,
         distribucion_scores=dist,
         por_materia=por_materia,
+        por_comision=por_comision,
         top_eventos=top_eventos,
         por_dia=por_dia,
         decisiones=dec_agg,
         catalogo=await _catalogo_materias(db),
+        elegibilidad=elegibilidad,
     )

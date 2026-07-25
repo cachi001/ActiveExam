@@ -83,7 +83,7 @@ export function UsuarioTable({
                       {u.email}
                     </td>
                     <td className="px-4 py-3.5 whitespace-nowrap">
-                      <span className="font-mono text-[12px] text-on-surface-variant bg-surface-container px-2 py-0.5 rounded-md">
+                      <span className="font-mono text-[12px] text-on-surface-variant bg-surface-100 border border-outline-variant/40 px-2 py-0.5 rounded-md">
                         {u.id_institucional}
                       </span>
                     </td>

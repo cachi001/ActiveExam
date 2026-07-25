@@ -32,7 +32,7 @@ function StatCard({
 }) {
   return (
     <Card className="flex items-start gap-sm !p-md">
-      <div className="w-10 h-10 rounded-xl bg-surface-container-high text-on-surface-variant flex items-center justify-center shrink-0">
+      <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
         <Icon name={icon} className="text-[20px]" />
       </div>
       <div className="min-w-0 flex-1">
@@ -152,7 +152,7 @@ export default function ExamDetail() {
         {/* Acceso a la página dedicada de resultados (antes era una tabla al final). */}
         <Card className="flex items-center justify-between gap-md flex-wrap">
           <div className="flex items-center gap-sm min-w-0">
-            <div className="w-10 h-10 rounded-xl bg-surface-container-high text-on-surface-variant flex items-center justify-center shrink-0">
+            <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
               <Icon name="groups" className="text-[20px]" />
             </div>
             <div className="min-w-0">

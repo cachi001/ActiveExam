@@ -224,6 +224,8 @@ class ExamenContenidoSqlRepository:
         page: int = 1,
         page_size: int = 1000,
         comision_ids: list[str] | None = None,
+        filtro_materia_id: str | None = None,
+        filtro_comision_id: str | None = None,
     ) -> tuple[list[ExamenContenidoResumen], int]:
         """Lista paginada + búsqueda serverside del catálogo (tarea 4, admin-sync).
 
@@ -245,6 +247,10 @@ class ExamenContenidoSqlRepository:
         base = self._filtro_q(self._stmt_resumen(), q)
         if comision_ids is not None:
             base = base.where(ExamenContenidoModel.comision_id.in_(comision_ids))
+        if filtro_materia_id is not None:
+            base = base.where(ComisionModel.materia_id == filtro_materia_id)
+        if filtro_comision_id is not None:
+            base = base.where(ExamenContenidoModel.comision_id == filtro_comision_id)
 
         # total = cantidad de grupos (exámenes) que matchean el filtro
         total_stmt = select(func.count()).select_from(base.subquery())
@@ -608,6 +614,37 @@ class MateriaSqlRepository:
         )
         return int(inscriptos or 0), int(examenes or 0)
 
+    async def contar_inscriptos_y_examenes_todas(self) -> dict[str, tuple[int, int]]:
+        """(inscriptos, examenes) por materia, para TODAS las materias en 2 queries.
+
+        Evita el N+1 del listado: la UI necesita saber por materia si tiene
+        inscriptos/exámenes para OCULTAR el botón de eliminar. Materias sin
+        inscriptos ni exámenes no aparecen en los mapas → se resuelven a (0, 0).
+        """
+        ins_rows = (
+            await self._db.execute(
+                select(ComisionModel.materia_id, func.count(InscripcionModel.id))
+                .select_from(ComisionModel)
+                .join(InscripcionModel, InscripcionModel.comision_id == ComisionModel.id)
+                .group_by(ComisionModel.materia_id)
+            )
+        ).all()
+        ex_rows = (
+            await self._db.execute(
+                select(ComisionModel.materia_id, func.count(ExamenContenidoModel.id))
+                .select_from(ComisionModel)
+                .join(ExamenContenidoModel, ExamenContenidoModel.comision_id == ComisionModel.id)
+                .group_by(ComisionModel.materia_id)
+            )
+        ).all()
+        ex_map = {mid: int(n or 0) for mid, n in ex_rows}
+        out: dict[str, tuple[int, int]] = {}
+        for mid, n in ins_rows:
+            out[mid] = (int(n or 0), ex_map.get(mid, 0))
+        for mid, n in ex_map.items():
+            out.setdefault(mid, (0, n))
+        return out
+
     async def eliminar(self, materia_id: str) -> bool:
         """Borra la materia (sus comisiones vacías caen por el FK ON DELETE CASCADE).
 
@@ -783,6 +820,39 @@ class ComisionSqlRepository:
             .where(ExamenContenidoModel.comision_id == comision_id)
         )
         return int(inscriptos or 0), int(examenes or 0)
+
+    async def contar_inscriptos_y_examenes_por_materia(
+        self, materia_id: str
+    ) -> dict[str, tuple[int, int]]:
+        """(inscriptos, examenes) por comisión de una materia, en 2 queries.
+
+        Evita el N+1 del listado: la UI oculta el botón de eliminar en las
+        comisiones que tienen inscriptos/exámenes. Comisiones vacías no aparecen
+        en los mapas → se resuelven a (0, 0) en el caller.
+        """
+        ins_rows = (
+            await self._db.execute(
+                select(InscripcionModel.comision_id, func.count(InscripcionModel.id))
+                .join(ComisionModel, InscripcionModel.comision_id == ComisionModel.id)
+                .where(ComisionModel.materia_id == materia_id)
+                .group_by(InscripcionModel.comision_id)
+            )
+        ).all()
+        ex_rows = (
+            await self._db.execute(
+                select(ExamenContenidoModel.comision_id, func.count(ExamenContenidoModel.id))
+                .join(ComisionModel, ExamenContenidoModel.comision_id == ComisionModel.id)
+                .where(ComisionModel.materia_id == materia_id)
+                .group_by(ExamenContenidoModel.comision_id)
+            )
+        ).all()
+        ex_map = {cid: int(n or 0) for cid, n in ex_rows}
+        out: dict[str, tuple[int, int]] = {}
+        for cid, n in ins_rows:
+            out[cid] = (int(n or 0), ex_map.get(cid, 0))
+        for cid, n in ex_map.items():
+            out.setdefault(cid, (0, n))
+        return out
 
     async def eliminar(self, comision_id: str) -> bool:
         """Borra la comisión. Devuelve True si borró, False si no existía.

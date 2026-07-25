@@ -47,8 +47,8 @@ function estadosIguales(a: Estado, b: Estado): boolean {
 const ESTADO_DEFAULT: Estado = {
   umbral: 70,
   detectores: DETECTORES_DEFAULT,
-  chatHabilitado: true,
-  pausasHabilitadas: true,
+  chatHabilitado: false,
+  pausasHabilitadas: false,
   pausaMaxMin: 10,
 };
 
@@ -66,9 +66,9 @@ export default function SeccionProctoring() {
         const cargado: Estado = {
           umbral: cfg.umbral_cola_revision,
           detectores: cfg.detectores_activos as TipoEvento[],
-          // Degradación segura: si el backend no los manda, se asumen habilitados.
-          chatHabilitado: cfg.chat_habilitado ?? true,
-          pausasHabilitadas: cfg.pausas_habilitadas ?? true,
+          // Degradación segura: si el backend no los manda, se asumen desactivados.
+          chatHabilitado: cfg.chat_habilitado ?? false,
+          pausasHabilitadas: cfg.pausas_habilitadas ?? false,
           pausaMaxMin: cfg.pausa_max_min ?? 10,
         };
         setEstado(cargado);

@@ -35,6 +35,12 @@ class AuditEntry:
     accion: str
     evidencia_id: str | None
     proposito: str
+    # Campos de clasificación — NO incluidos en el hash (son metadata de clasificación,
+    # no parte de la cadena de custodia). NULL para entradas históricas pre-migración 0043.
+    modulo: str | None = None
+    entidad: str | None = None
+    entidad_id: str | None = None
+    tipo_accion: str | None = None
     hash_prev: str = GENESIS_HASH
 
 

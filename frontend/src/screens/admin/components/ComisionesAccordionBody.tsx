@@ -1,7 +1,7 @@
 import type React from 'react';
 import { Fragment } from 'react';
 import { Icon, Button } from '../../../ui/components';
-import { ActionMenu } from '../../../ui/ActionMenu';
+import { ActionMenu, type ActionItem } from '../../../ui/ActionMenu';
 import type { Comision } from '../../../lib/types';
 import { AlumnosComisionPanel } from './AlumnosComisionPanel';
 import { INPUT_CLASS, LABEL_CLASS, type FormComision } from './materiasComisionesTypes';
@@ -48,6 +48,19 @@ export function ComisionesAccordionBody({
   comisionExpandida,
   toggleComision,
 }: ComisionesAccordionBodyProps) {
+  // Acciones del menú kebab por comisión. "Eliminar" solo aparece si la comisión
+  // está VACÍA (0 inscriptos y 0 exámenes), mismo criterio que el guard del backend:
+  // ofrecer un borrado que el servidor va a rechazar con 409 es un dead-end para el usuario.
+  const accionesComision = (c: Comision, comExpandida: boolean): ActionItem[] => {
+    const vacia = (c.total_inscriptos ?? 0) === 0 && (c.total_examenes ?? 0) === 0;
+    return [
+      { label: comExpandida ? 'Ocultar alumnos' : 'Ver alumnos', icon: 'groups', onClick: () => toggleComision(c.id) },
+      { label: 'Editar comisión', icon: 'edit', onClick: () => abrirEditarComision(materiaId, c) },
+      ...(vacia
+        ? [{ label: 'Eliminar comisión', icon: 'delete', danger: true, onClick: () => abrirEliminarComision(c) } as ActionItem]
+        : []),
+    ];
+  };
   return (
     <div className="bg-surface-container-low border-t border-outline-variant/20">
       {/* Formulario de comisión */}
@@ -268,7 +281,7 @@ export function ComisionesAccordionBody({
                             >
                               <Icon name={comExpandida ? 'keyboard_arrow_down' : 'keyboard_arrow_right'} className="text-[18px]" />
                             </button>
-                            <span className="font-mono text-[12px] text-on-surface-variant bg-surface-container px-2 py-0.5 rounded-md">
+                            <span className="font-mono text-[12px] text-on-surface-variant bg-surface-100 border border-outline-variant/40 px-2 py-0.5 rounded-md">
                               {c.codigo ?? '—'}
                             </span>
                           </div>
@@ -298,14 +311,7 @@ export function ComisionesAccordionBody({
                         <td className="px-4 py-3 text-right">
                           <ActionMenu
                             ariaLabel={`Acciones de ${c.nombre}`}
-                            items={[
-                              { label: comExpandida ? 'Ocultar alumnos' : 'Ver alumnos', icon: 'groups', onClick: () => toggleComision(c.id) },
-                              { label: 'Editar comisión', icon: 'edit', onClick: () => abrirEditarComision(materiaId, c) },
-                              c.activa === false
-                                ? { label: 'Activar comisión', icon: 'play_circle', onClick: () => onToggleActivaComision(c) }
-                                : { label: 'Desactivar comisión', icon: 'pause_circle', onClick: () => onToggleActivaComision(c) },
-                              { label: 'Eliminar comisión', icon: 'delete', danger: true, onClick: () => abrirEliminarComision(c) },
-                            ]}
+                            items={accionesComision(c, comExpandida)}
                           />
                         </td>
                       </tr>
@@ -361,14 +367,7 @@ export function ComisionesAccordionBody({
                     </div>
                     <ActionMenu
                       ariaLabel={`Acciones de ${c.nombre}`}
-                      items={[
-                        { label: comExpandida ? 'Ocultar alumnos' : 'Ver alumnos', icon: 'groups', onClick: () => toggleComision(c.id) },
-                        { label: 'Editar comisión', icon: 'edit', onClick: () => abrirEditarComision(materiaId, c) },
-                        c.activa === false
-                          ? { label: 'Activar comisión', icon: 'play_circle', onClick: () => onToggleActivaComision(c) }
-                          : { label: 'Desactivar comisión', icon: 'pause_circle', onClick: () => onToggleActivaComision(c) },
-                        { label: 'Eliminar comisión', icon: 'delete', danger: true, onClick: () => abrirEliminarComision(c) },
-                      ]}
+                      items={accionesComision(c, comExpandida)}
                     />
                   </div>
                   {comExpandida && (

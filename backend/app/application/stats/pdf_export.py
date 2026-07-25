@@ -26,6 +26,8 @@ DECISION_LABEL = {
     "sin_hallazgos": "Sin hallazgos",
     "aprobado": "Aprobado",
     "caso_abierto": "Caso abierto",
+    "anulado_por_fraude": "Anulado por fraude",
+    "caso_descartado": "Caso descartado",
 }
 
 
@@ -146,6 +148,20 @@ def resumen_a_pdf(r: ResumenStats, filtros: FiltrosStats | None = None) -> bytes
         ],
     )
 
+    el = r.elegibilidad
+    _tabla(
+        pdf,
+        "Habilitación para rendir (padrón de inscriptos)",
+        ("Métrica", "Alumnos"),
+        [
+            ("Inscriptos", el.total_inscriptos),
+            ("Pueden rendir", el.pueden_rendir),
+            ("No pueden rendir", el.no_pueden_rendir),
+            ("Sin consentimiento", el.sin_consentimiento),
+            ("Sin biometría", el.sin_biometria),
+        ],
+    )
+
     _tabla(
         pdf,
         "Distribución de scores",
@@ -159,6 +175,14 @@ def resumen_a_pdf(r: ResumenStats, filtros: FiltrosStats | None = None) -> bytes
             "Sesiones por materia",
             ("Materia", "Sesiones (en riesgo)"),
             [(m.nombre, f"{m.sesiones}  ({m.en_riesgo} en riesgo)") for m in r.por_materia],
+        )
+
+    if r.por_comision:
+        _tabla(
+            pdf,
+            "Sesiones por comisión",
+            ("Comisión", "Sesiones (en riesgo)"),
+            [(c.nombre, f"{c.sesiones}  ({c.en_riesgo} en riesgo)") for c in r.por_comision],
         )
 
     if r.top_eventos:

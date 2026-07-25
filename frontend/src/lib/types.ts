@@ -256,6 +256,8 @@ export interface UsuarioAdmin {
   auth_provider: string;
   /** null = activo; ISO string = dado de baja (soft-delete). */
   eliminado_en?: string | null;
+  /** Solo presente en POST cuando el admin no proveyó contraseña: la temporal generada. */
+  password_generada?: string | null;
 }
 
 /** Respuesta paginada de GET /api/v1/users/. */
@@ -700,6 +702,10 @@ export interface Materia {
   // C-72 §17: estado de la materia (true = activa; false = congelada). Opcional
   // por compat con respuestas viejas; se asume activa si no viene.
   activa?: boolean;
+  // Conteos para ocultar "Eliminar" si la materia NO está vacía (staff). Opcionales
+  // por compat; ausentes = 0 (no bloquea).
+  total_inscriptos?: number;
+  total_examenes?: number;
 }
 
 /** Comisión: instancia de cursado de una Materia.
@@ -720,6 +726,10 @@ export interface Comision {
   // C-72 §17: false = comisión desactivada (baja lógica). No admite inscripciones
   // nuevas ni iniciar sus exámenes; los ya inscriptos conservan su acceso.
   activa?: boolean;
+  // Conteos para ocultar "Eliminar" si la comisión NO está vacía (staff). Opcionales
+  // por compat; ausentes = 0 (no bloquea).
+  total_inscriptos?: number;
+  total_examenes?: number;
 }
 
 /** Alumno inscripto a una comisión, con su estado de elegibilidad para rendir
@@ -767,9 +777,27 @@ export interface MateriaStat {
   en_riesgo: number;
 }
 
+export interface ComisionStat {
+  comision_id: string;
+  nombre: string;
+  sesiones: number;
+  en_riesgo: number;
+}
+
 export interface EventoStat {
   tipo: string;
   cantidad: number;
+}
+
+/** Padrón de inscriptos y su habilitación para PODER RENDIR (consentimiento + biometría). */
+export interface ElegibilidadStats {
+  total_inscriptos: number;
+  con_consentimiento: number;
+  sin_consentimiento: number;
+  con_biometria: number;
+  sin_biometria: number;
+  pueden_rendir: number;
+  no_pueden_rendir: number;
 }
 
 export interface DiaStat {
@@ -790,9 +818,11 @@ export interface ResumenStats {
   // resiliente y los tests que arman ResumenStats a mano; el backend real siempre
   // los envía. La UI degrada a lista/mapa vacío si faltan.
   por_materia?: MateriaStat[];
+  por_comision?: ComisionStat[];
   top_eventos?: EventoStat[];
   por_dia?: DiaStat[];
   decisiones?: Record<string, number>;
+  elegibilidad?: ElegibilidadStats;
 }
 
 /** Filtros de la vista de estadísticas (query params del backend). */
@@ -810,7 +840,11 @@ export interface AuditEvento {
   actor: string;
   /** "Nombre Apellido" resuelto del usuario (null si no se pudo resolver). */
   actor_nombre: string | null;
-  accion: string;
+  accion: string;          // detalle dot-notation (user.create, materia.delete…)
+  tipo_accion: string | null; // CREAR / EDITAR / ELIMINAR / CAMBIO_ESTADO
+  modulo: string | null;      // USUARIOS / MATERIAS / EXAMENES / …
+  entidad: string | null;     // USUARIO / EXAMEN / SESION / …
+  entidad_id: string | null;  // UUID de la entidad afectada
   timestamp: string;
   ip: string | null;
   user_agent: string | null;
@@ -828,7 +862,9 @@ export interface AuditLogResponse {
 
 export interface AuditFiltros {
   actor?: string;
-  accion?: string;
-  desde?: string; // ISO
-  hasta?: string; // ISO
+  modulo?: string;
+  tipo_accion?: string;
+  accion?: string;  // búsqueda libre en el detalle dot-notation
+  desde?: string;   // ISO
+  hasta?: string;   // ISO
 }

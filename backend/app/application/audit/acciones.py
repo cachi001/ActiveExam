@@ -10,6 +10,54 @@ from __future__ import annotations
 from enum import StrEnum
 
 
+class ModuloAuditoria(StrEnum):
+    """Módulos de dominio para filtrar el audit log en la UI."""
+
+    USUARIOS = "USUARIOS"
+    MATERIAS = "MATERIAS"
+    EXAMENES = "EXAMENES"
+    SESIONES = "SESIONES"
+    CONSENTIMIENTO = "CONSENTIMIENTO"
+    BIOMETRIA = "BIOMETRIA"
+    EVIDENCIA = "EVIDENCIA"
+    REVISION = "REVISION"
+    MOODLE = "MOODLE"
+    CONFIGURACION = "CONFIGURACION"
+
+
+class EntidadAuditoria(StrEnum):
+    """Tipo de entidad de dominio afectada por la acción auditada.
+
+    Permite navegar al detalle de la entidad desde la pantalla de Auditoría
+    (combinado con ``entidad_id``).
+    """
+
+    USUARIO = "USUARIO"
+    MATERIA = "MATERIA"
+    COMISION = "COMISION"
+    EXAMEN = "EXAMEN"
+    INSCRIPCION = "INSCRIPCION"
+    SESION = "SESION"
+    CONSENTIMIENTO = "CONSENTIMIENTO"
+    BIOMETRIA = "BIOMETRIA"
+    EVIDENCIA = "EVIDENCIA"
+    CONFIGURACION = "CONFIGURACION"
+    SISTEMA = "SISTEMA"
+
+
+class TipoAccionAuditoria(StrEnum):
+    """Tipo de acción simplificado para filtrado en la UI (cuatro valores canónicos).
+
+    El campo ``accion`` existente conserva el detalle dot-notation (user.create,
+    materia.delete…); este enum es la capa de clasificación para los filtros.
+    """
+
+    CREAR = "CREAR"
+    EDITAR = "EDITAR"
+    ELIMINAR = "ELIMINAR"
+    CAMBIO_ESTADO = "CAMBIO_ESTADO"
+
+
 class AccionAuditoria(StrEnum):
     """Acciones auditadas del sistema, agrupadas por dominio."""
 

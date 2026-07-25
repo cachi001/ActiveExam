@@ -154,7 +154,7 @@ export function Badge({ children, tone = 'neutral', dot = false, className = '' 
   children: ReactNode; tone?: 'neutral' | 'primary' | 'success' | 'warning' | 'error'; dot?: boolean; className?: string;
 }) {
   const tones = {
-    neutral: 'bg-surface-container-high text-on-surface-variant',
+    neutral: 'bg-surface-100 text-on-surface-variant',
     primary: 'bg-primary-fixed text-on-primary-fixed-variant',
     success: 'bg-success-container text-success',
     warning: 'bg-warning-container text-warning',

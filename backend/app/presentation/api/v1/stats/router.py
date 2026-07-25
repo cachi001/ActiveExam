@@ -36,6 +36,29 @@ class MateriaStatOut(BaseModel):
     en_riesgo: int
 
 
+class ComisionStatOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    comision_id: str
+    nombre: str
+    sesiones: int
+    en_riesgo: int
+
+
+class ElegibilidadStatsOut(BaseModel):
+    """Padrón de inscriptos y cuántos pueden / NO pueden rendir."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    total_inscriptos: int
+    con_consentimiento: int
+    sin_consentimiento: int
+    con_biometria: int
+    sin_biometria: int
+    pueden_rendir: int
+    no_pueden_rendir: int
+
+
 class EventoStatOut(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -64,9 +87,11 @@ class ResumenStatsResponse(BaseModel):
     umbral_riesgo: int
     distribucion_scores: dict[str, int]
     por_materia: list[MateriaStatOut]
+    por_comision: list[ComisionStatOut]
     top_eventos: list[EventoStatOut]
     por_dia: list[DiaStatOut]
     decisiones: dict[str, int]
+    elegibilidad: ElegibilidadStatsOut
 
 
 def _to_response(r: ResumenStats) -> ResumenStatsResponse:
@@ -88,9 +113,27 @@ def _to_response(r: ResumenStats) -> ResumenStatsResponse:
             )
             for m in r.por_materia
         ],
+        por_comision=[
+            ComisionStatOut(
+                comision_id=c.comision_id,
+                nombre=c.nombre,
+                sesiones=c.sesiones,
+                en_riesgo=c.en_riesgo,
+            )
+            for c in r.por_comision
+        ],
         top_eventos=[EventoStatOut(tipo=e.tipo, cantidad=e.cantidad) for e in r.top_eventos],
         por_dia=[DiaStatOut(fecha=d.fecha, sesiones=d.sesiones) for d in r.por_dia],
         decisiones=r.decisiones,
+        elegibilidad=ElegibilidadStatsOut(
+            total_inscriptos=r.elegibilidad.total_inscriptos,
+            con_consentimiento=r.elegibilidad.con_consentimiento,
+            sin_consentimiento=r.elegibilidad.sin_consentimiento,
+            con_biometria=r.elegibilidad.con_biometria,
+            sin_biometria=r.elegibilidad.sin_biometria,
+            pueden_rendir=r.elegibilidad.pueden_rendir,
+            no_pueden_rendir=r.elegibilidad.no_pueden_rendir,
+        ),
     )
 
 

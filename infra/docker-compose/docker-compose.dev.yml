@@ -23,6 +23,7 @@ services:
   #     TimescaleDB, a diferencia del stack full). -----------------------------
   postgres:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_USER: proctoring
       POSTGRES_PASSWORD: dev-only-change-me
@@ -71,6 +72,7 @@ services:
       MOODLE_COURSEID: ${MOODLE_COURSEID:-0}
       MOODLE_CMID: ${MOODLE_CMID:-0}
       MOODLE_COMPONENT: ${MOODLE_COMPONENT:-mod_assign}
+    restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy

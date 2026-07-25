@@ -70,10 +70,16 @@ export const adminApi = {
   ): Promise<AuditLogResponse> {
     const p = new URLSearchParams({ limit: String(limit), offset: String(offset) });
     if (filtros?.actor) p.set('actor', filtros.actor);
+    if (filtros?.modulo) p.set('modulo', filtros.modulo);
+    if (filtros?.tipo_accion) p.set('tipo_accion', filtros.tipo_accion);
     if (filtros?.accion) p.set('accion', filtros.accion);
     if (filtros?.desde) p.set('desde', filtros.desde);
     if (filtros?.hasta) p.set('hasta', filtros.hasta);
     return await realFetch<AuditLogResponse>(`/admin/audit-log?${p.toString()}`, { method: 'GET' });
+  },
+
+  async obtenerAuditModulos(): Promise<string[]> {
+    return await realFetch<string[]>('/admin/audit-modulos', { method: 'GET' });
   },
 
   /**
@@ -154,7 +160,7 @@ export const adminApi = {
   async crearUsuario(body: {
     id_institucional: string;
     email: string;
-    password: string;
+    password?: string;
     roles: string[];
     nombre?: string;
     apellido?: string;
