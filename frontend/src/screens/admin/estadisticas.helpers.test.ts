@@ -41,6 +41,18 @@ describe('distribucionBuckets', () => {
     expect(bars[3].pct).toBe(100);
   });
 
+  it('respeta las bandas que manda el backend cuando el umbral no es 70', () => {
+    // BUG: con bandas fijas ('70-100'), un umbral de 80 no marcaba NINGUNA banda
+    // como riesgo (70 >= 80 = false) mientras la tarjeta contaba sesiones en
+    // riesgo. El backend ahora arranca la última banda EN el umbral.
+    const bars = distribucionBuckets(
+      { '0-24': 1, '25-49': 1, '50-79': 2, '80-100': 1 },
+      80,
+    );
+    expect(bars.map((b) => b.rango)).toEqual(['0-24', '25-49', '50-79', '80-100']);
+    expect(bars.map((b) => b.enRiesgo)).toEqual([false, false, false, true]);
+  });
+
   it('todo en cero → pct 0 (no NaN por división por cero)', () => {
     const bars = distribucionBuckets(
       { '0-24': 0, '25-49': 0, '50-69': 0, '70-100': 0 },
@@ -74,6 +86,17 @@ describe('donutSegmentos', () => {
       50,
     );
     expect(segs.map((s) => s.enRiesgo)).toEqual([false, false, true, true]);
+  });
+
+  it('con umbral 80 la última banda (80-100) es la única de riesgo', () => {
+    const segs = donutSegmentos(
+      { '0-24': 1, '25-49': 1, '50-79': 2, '80-100': 1 },
+      80,
+    );
+    expect(segs.map((s) => s.rango)).toEqual(['0-24', '25-49', '50-79', '80-100']);
+    expect(segs.map((s) => s.enRiesgo)).toEqual([false, false, false, true]);
+    // Total = 5 → la banda de riesgo es 1/5 de la rosca.
+    expect(segs[3].fraccion).toBe(0.2);
   });
 
   it('todo en cero → fracción y pct 0, sin NaN', () => {

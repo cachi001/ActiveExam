@@ -29,6 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.application.moodle.resultados_query import (
     _pesos_vivos_por_tipo,
+    _tipos_desactivados,
     _umbral_cola_revision,
 )
 from app.application.proctoring.scoring import calcular_score
@@ -117,36 +118,6 @@ class DiaStat:
 
 
 @dataclass(frozen=True, slots=True)
-class ComisionCatalogo:
-    """Una comisión del catálogo con su volumen real (inscriptos y exámenes)."""
-
-    id: str
-    codigo: str
-    nombre: str
-    activa: bool
-    periodo: str | None
-    anio: int | None
-    inscriptos: int
-    examenes: int
-
-
-@dataclass(frozen=True, slots=True)
-class MateriaCatalogo:
-    """Una materia del catálogo con TODAS sus comisiones.
-
-    A diferencia de ``MateriaStat`` (que se agrega desde las SESIONES y por lo tanto
-    omite lo que todavía no se rindió), esto es el INVENTARIO: qué hay dado de alta
-    hoy, se haya usado o no. Una materia recién creada aparece acá con 0 sesiones.
-    """
-
-    id: str
-    codigo: str
-    nombre: str
-    activa: bool
-    comisiones: list[ComisionCatalogo] = field(default_factory=list)
-
-
-@dataclass(frozen=True, slots=True)
 class ResumenStats:
     """Sumario institucional agregado (sin PII)."""
 
@@ -163,78 +134,7 @@ class ResumenStats:
     top_eventos: list[EventoStat] = field(default_factory=list)
     por_dia: list[DiaStat] = field(default_factory=list)
     decisiones: dict[str, int] = field(default_factory=dict)
-    catalogo: list[MateriaCatalogo] = field(default_factory=list)
     elegibilidad: "ElegibilidadStats" = field(default_factory=lambda: ElegibilidadStats())
-
-
-async def _catalogo_materias(db: AsyncSession) -> list[MateriaCatalogo]:
-    """Inventario del catálogo: materias con sus comisiones, inscriptos y exámenes.
-
-    Es una foto de lo DADO DE ALTA, no de lo rendido: responde "qué materias y
-    comisiones existen hoy" — que es justamente lo que el desglose por sesiones no
-    puede mostrar (una comisión sin nadie que haya rendido no aparece ahí).
-
-    Dos queries agregadas (no N+1): una cuenta inscriptos por comisión y otra
-    exámenes por comisión; después se arma el árbol en memoria. El catálogo es de
-    cientos de filas, no de millones.
-    """
-    inscriptos_por_comision = {
-        cid: total
-        for cid, total in (
-            await db.execute(
-                select(InscripcionModel.comision_id, func.count())
-                .group_by(InscripcionModel.comision_id)
-            )
-        ).all()
-    }
-    examenes_por_comision = {
-        cid: total
-        for cid, total in (
-            await db.execute(
-                select(ExamenContenidoModel.comision_id, func.count())
-                .where(ExamenContenidoModel.comision_id.is_not(None))
-                .group_by(ExamenContenidoModel.comision_id)
-            )
-        ).all()
-    }
-
-    filas = (
-        await db.execute(
-            select(MateriaModel, ComisionModel)
-            .outerjoin(ComisionModel, ComisionModel.materia_id == MateriaModel.id)
-            .order_by(MateriaModel.nombre, ComisionModel.codigo)
-        )
-    ).all()
-
-    materias: dict[str, dict] = {}
-    for materia, comision in filas:
-        entrada = materias.setdefault(
-            materia.id,
-            {
-                "id": materia.id,
-                "codigo": materia.codigo,
-                "nombre": materia.nombre,
-                "activa": bool(materia.activa),
-                "comisiones": [],
-            },
-        )
-        # outerjoin: una materia SIN comisiones trae la fila con comision=None.
-        if comision is None:
-            continue
-        entrada["comisiones"].append(
-            ComisionCatalogo(
-                id=comision.id,
-                codigo=comision.codigo,
-                nombre=comision.nombre,
-                activa=bool(getattr(comision, "activa", True)),
-                periodo=comision.periodo,
-                anio=comision.anio,
-                inscriptos=int(inscriptos_por_comision.get(comision.id, 0)),
-                examenes=int(examenes_por_comision.get(comision.id, 0)),
-            )
-        )
-
-    return [MateriaCatalogo(**datos) for datos in materias.values()]
 
 
 async def _count(db: AsyncSession, model) -> int:
@@ -260,6 +160,17 @@ async def _contar_catalogo(
     examenes_stmt = select(func.count()).select_from(ExamenContenidoModel)
     materias_stmt = select(func.count()).select_from(MateriaModel)
     comisiones_stmt = select(func.count()).select_from(ComisionModel)
+
+    # Las columnas de id son UUID: un valor malformado revienta el cast en la DB
+    # (DataError → 500). ``_session_conditions`` ya lo filtraba a vacío, pero acá
+    # no, así que un id basura en la query string tiraba la pantalla entera en vez
+    # de devolver un resumen vacío. Un filtro invalido no matchea nada: 0.
+    if not all(
+        _es_uuid(v)
+        for v in (filtros.examen_contenido_id, filtros.comision_id, filtros.materia_id)
+        if v
+    ):
+        return (0, 0, 0)
 
     if filtros.examen_contenido_id:
         # El examen manda: define su comisión y, a través de ella, su materia.
@@ -312,6 +223,52 @@ async def _contar_catalogo(
         int((await db.execute(materias_stmt)).scalar_one()),
         int((await db.execute(comisiones_stmt)).scalar_one()),
     )
+
+
+async def describir_alcance(db: AsyncSession, filtros: FiltrosStats | None) -> str:
+    """Texto legible del recorte aplicado, para la cabecera de los exports.
+
+    Resuelve los NOMBRES contra la base a partir de los ids del filtro. Antes los
+    exports derivaban la materia de ``por_materia[0]`` (la materia con más
+    sesiones, no la filtrada — y "materia filtrada" cuando no había sesiones) y ni
+    siquiera mencionaban los filtros de comisión y examen: un informe descargado
+    con un recorte aplicado no decía de qué recorte hablaba.
+    """
+    if filtros is None:
+        return "Todo el período (sin filtros)"
+    partes: list[str] = []
+
+    if filtros.materia_id and _es_uuid(filtros.materia_id):
+        nombre = (
+            await db.execute(
+                select(MateriaModel.nombre).where(MateriaModel.id == filtros.materia_id)
+            )
+        ).scalar_one_or_none()
+        partes.append(f"Materia: {nombre or 'no encontrada'}")
+    if filtros.comision_id and _es_uuid(filtros.comision_id):
+        nombre = (
+            await db.execute(
+                select(ComisionModel.nombre).where(
+                    ComisionModel.id == filtros.comision_id
+                )
+            )
+        ).scalar_one_or_none()
+        partes.append(f"Comisión: {nombre or 'no encontrada'}")
+    if filtros.examen_contenido_id and _es_uuid(filtros.examen_contenido_id):
+        titulo = (
+            await db.execute(
+                select(ExamenContenidoModel.titulo).where(
+                    ExamenContenidoModel.id == filtros.examen_contenido_id
+                )
+            )
+        ).scalar_one_or_none()
+        partes.append(f"Examen: {titulo or 'no encontrado'}")
+    if filtros.desde:
+        partes.append(f"desde {filtros.desde[:10]}")
+    if filtros.hasta:
+        partes.append(f"hasta {filtros.hasta[:10]}")
+
+    return " · ".join(partes) if partes else "Todo el período (sin filtros)"
 
 
 def _parse_dt(valor: str) -> datetime | None:
@@ -484,14 +441,40 @@ async def _elegibilidad(db: AsyncSession, filtros: FiltrosStats) -> Elegibilidad
     )
 
 
-def _bucket(score: int) -> str:
-    if score < 25:
-        return "0-24"
-    if score < 50:
-        return "25-49"
-    if score < 70:
-        return "50-69"
-    return "70-100"
+# Cortes fijos de las bandas bajas. El corte ALTO no es fijo: es el umbral vivo.
+_CORTES_BAJOS = (25, 50)
+
+
+def bandas_de_score(umbral: int) -> list[str]:
+    """Etiquetas de las bandas de score, con la ÚLTIMA arrancando en ``umbral``.
+
+    El umbral de cola de revisión es configurable (piso de producto 70, hasta 90).
+    Con bandas fijas ``70-100``, un umbral de 80 dejaba la banda "de riesgo"
+    mezclando sesiones en riesgo (85) y fuera de riesgo (75), y la UI —que marca
+    la banda con ``límite_inferior >= umbral``— no marcaba NINGUNA. Haciendo que
+    la última banda arranque exactamente en el umbral, "última banda" y "prioriza
+    revisión humana" pasan a ser lo mismo por construcción.
+
+    Los cortes bajos (25, 50) se conservan mientras queden por debajo del umbral,
+    así el default 70 sigue dando las bandas de siempre y no hay churn visual.
+    """
+    cortes = [c for c in _CORTES_BAJOS if c < umbral] + [umbral]
+    etiquetas: list[str] = []
+    lo = 0
+    for corte in cortes:
+        etiquetas.append(f"{lo}-{corte - 1}")
+        lo = corte
+    etiquetas.append(f"{lo}-100")
+    return etiquetas
+
+
+def banda_de_score(score: int, bandas: list[str]) -> str:
+    """Etiqueta de la banda donde cae ``score`` (bordes inclusivos)."""
+    for etiqueta in bandas:
+        hi = int(etiqueta.split("-")[1])
+        if score <= hi:
+            return etiqueta
+    return bandas[-1]
 
 
 async def obtener_resumen(
@@ -509,6 +492,8 @@ async def obtener_resumen(
 
     umbral = await _umbral_cola_revision(db)
     pesos = await _pesos_vivos_por_tipo(db)
+    # Tipos APAGADOS por el admin: pesan 0 (no caen al fallback por severidad).
+    desactivados = await _tipos_desactivados(db)
 
     # Elegibilidad del padrón (snapshot): quién puede / NO puede rendir.
     elegibilidad = await _elegibilidad(db, filtros)
@@ -547,16 +532,23 @@ async def obtener_resumen(
             eventos_por_sesion.setdefault(r.session_id, []).append(r)
             tipo_counts[r.tipo] = tipo_counts.get(r.tipo, 0) + 1
 
-    # Score por sesión con la MISMA función que la Cola de Revisión.
-    dist = {"0-24": 0, "25-49": 0, "50-69": 0, "70-100": 0}
+    # Score por sesión con la MISMA función que la Cola de Revisión. Las bandas se
+    # derivan del umbral VIVO: la última arranca en él, así la banda de riesgo del
+    # gráfico y el conteo "en riesgo" no pueden desalinearse.
+    bandas = bandas_de_score(umbral)
+    dist = {etiqueta: 0 for etiqueta in bandas}
     en_riesgo = 0
     score_por_sesion: dict[str, int] = {}
     for r in ses_rows:
-        score = calcular_score(eventos_por_sesion.get(r.id, []), pesos_por_tipo=pesos)
+        score = calcular_score(
+            eventos_por_sesion.get(r.id, []),
+            pesos_por_tipo=pesos,
+            tipos_desactivados=desactivados,
+        )
         score_por_sesion[r.id] = score
         if score >= umbral:
             en_riesgo += 1
-        dist[_bucket(score)] += 1
+        dist[banda_de_score(score, bandas)] += 1
 
     # Mapa examen_contenido_id → (materia_id, nombre) para el desglose por materia.
     ec_ids = {r.examen_contenido_id for r in ses_rows if r.examen_contenido_id}
@@ -652,6 +644,5 @@ async def obtener_resumen(
         top_eventos=top_eventos,
         por_dia=por_dia,
         decisiones=dec_agg,
-        catalogo=await _catalogo_materias(db),
         elegibilidad=elegibilidad,
     )

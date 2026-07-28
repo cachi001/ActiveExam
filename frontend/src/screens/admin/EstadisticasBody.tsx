@@ -71,21 +71,25 @@ export function EstadisticasBody({ cargando, error, data, onReintentar }: Estadi
   );
 }
 
-/** Color vivo por banda de score, COMPARTIDO por la rosca y las barras para que
- * ambos gráficos "lean" igual: verde (bajo) → azul → ámbar → rojo (riesgo). */
-const COLOR_BANDA: Record<string, string> = {
-  '0-24': '#10b981',   // emerald — actividad baja
-  '25-49': '#3b82f6',  // blue
-  '50-69': '#f59e0b',  // amber
-  '70-100': '#ef4444', // red — banda que prioriza revisión
-};
-/** Etiqueta base por banda; si el segmento tiene enRiesgo=true se reemplaza por "Prioriza revisión". */
-const ETIQUETA_BANDA: Record<string, string> = {
-  '0-24': 'Bajo',
-  '25-49': 'Moderado',
-  '50-69': 'Alto',
-  '70-100': 'Alto',
-};
+/** Paleta por banda de score, de menor a mayor: verde (bajo) → azul → ámbar →
+ * rojo (riesgo). Se aplica por POSICIÓN, no por etiqueta: las bandas no son fijas
+ * — la última arranca en el umbral vivo, así que puede ser "80-100" y no "70-100".
+ * La última banda es siempre la roja (la que prioriza revisión humana). */
+const PALETA_BANDAS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444'];
+/** Etiquetas de menor a mayor; la última se reemplaza por "Prioriza revisión"
+ * cuando el segmento viene con enRiesgo=true. */
+const ETIQUETAS_BANDAS = ['Bajo', 'Moderado', 'Alto', 'Alto'];
+
+/** Color/etiqueta de la banda en la posición `i` de `n` bandas. Se alinean por el
+ * FINAL, para que la última banda conserve siempre el rojo y el rótulo más alto. */
+function colorBanda(i: number, n: number): string {
+  const offset = PALETA_BANDAS.length - n;
+  return PALETA_BANDAS[i + offset] ?? PALETA_BANDAS[PALETA_BANDAS.length - 1];
+}
+function etiquetaBanda(i: number, n: number): string {
+  const offset = ETIQUETAS_BANDAS.length - n;
+  return ETIQUETAS_BANDAS[i + offset] ?? 'Alto';
+}
 
 /** Zona de gráficos: el dashboard COMPLETO siempre visible. Cada tarjeta resuelve
  * su propio "sin datos" adentro (no se colapsa todo a una sola card). Con 0
@@ -533,7 +537,7 @@ function RoscaComposicion({ data }: { data: ResumenStats }) {
         <div className="relative shrink-0" style={{ width: size, height: size }}>
           <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="-rotate-90">
             <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#eef1f5" strokeWidth={stroke} />
-            {segs.map((s) =>
+            {segs.map((s, i) =>
               s.fraccion > 0 ? (
                 <circle
                   key={s.rango}
@@ -541,12 +545,12 @@ function RoscaComposicion({ data }: { data: ResumenStats }) {
                   cy={size / 2}
                   r={r}
                   fill="none"
-                  stroke={COLOR_BANDA[s.rango]}
+                  stroke={colorBanda(i, segs.length)}
                   strokeWidth={stroke}
                   strokeDasharray={`${s.fraccion * c} ${c}`}
                   strokeDashoffset={-s.inicio * c}
                 >
-                  <title>{`${s.enRiesgo ? 'Prioriza revisión' : ETIQUETA_BANDA[s.rango]} (${s.rango}): ${s.valor} · ${s.pct}%`}</title>
+                  <title>{`${s.enRiesgo ? 'Prioriza revisión' : etiquetaBanda(i, segs.length)} (${s.rango}): ${s.valor} · ${s.pct}%`}</title>
                 </circle>
               ) : null,
             )}
@@ -558,11 +562,11 @@ function RoscaComposicion({ data }: { data: ResumenStats }) {
         </div>
 
         <ul className="flex-1 min-w-0 space-y-2 w-full">
-          {segs.map((s) => (
+          {segs.map((s, i) => (
             <li key={s.rango} className="flex items-center gap-2.5 text-[12.5px]">
-              <span className="w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: COLOR_BANDA[s.rango] }} aria-hidden />
+              <span className="w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: colorBanda(i, segs.length) }} aria-hidden />
               <span className={`text-on-surface font-medium${s.enRiesgo ? ' font-semibold' : ''}`}>
-                {s.enRiesgo ? 'Prioriza revisión' : ETIQUETA_BANDA[s.rango]}
+                {s.enRiesgo ? 'Prioriza revisión' : etiquetaBanda(i, segs.length)}
               </span>
               <span className="text-on-surface-variant tabular-nums">{s.rango}</span>
               <span className="ml-auto text-on-surface font-semibold tabular-nums">{s.valor}</span>

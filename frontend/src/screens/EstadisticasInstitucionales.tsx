@@ -54,6 +54,10 @@ export default function EstadisticasInstitucionales() {
   const [catalogo, setCatalogo] = useState<ExamenContenidoResumen[]>([]);
 
   const [exportando, setExportando] = useState<'excel' | 'pdf' | null>(null);
+  // Error del EXPORT, separado del error de carga: un export fallido no puede
+  // tumbar el tablero ya cargado (EstadisticasBody prioriza `error` y reemplaza
+  // los datos por la pantalla de error). Se avisa arriba y los datos quedan.
+  const [errorExport, setErrorExport] = useState<string | null>(null);
 
   // Cargar materias una vez
   useEffect(() => {
@@ -140,6 +144,7 @@ export default function EstadisticasInstitucionales() {
 
   const exportar = async (formato: 'excel' | 'pdf') => {
     setExportando(formato);
+    setErrorExport(null);
     try {
       const blob =
         formato === 'pdf'
@@ -155,7 +160,7 @@ export default function EstadisticasInstitucionales() {
       a.remove();
       URL.revokeObjectURL(url);
     } catch {
-      setError(`No se pudo exportar el ${formato === 'pdf' ? 'PDF' : 'Excel'}. Intentá de nuevo.`);
+      setErrorExport(`No se pudo exportar el ${formato === 'pdf' ? 'PDF' : 'Excel'}. Intentá de nuevo.`);
     } finally {
       setExportando(null);
     }
@@ -209,6 +214,22 @@ export default function EstadisticasInstitucionales() {
           {exportando === 'pdf' ? 'Exportando…' : 'Exportar PDF'}
         </button>
       </div>
+
+      {/* Falla de export: se avisa acá, SIN tumbar el tablero ya cargado. */}
+      {errorExport && (
+        <div className="mb-md flex items-center gap-2 rounded-md border border-error-200 bg-error-50 px-4 py-2.5 text-[13px] text-error-700">
+          <Icon name="error" className="text-[16px] shrink-0" fill />
+          <span className="flex-1">{errorExport}</span>
+          <button
+            type="button"
+            onClick={() => setErrorExport(null)}
+            className="shrink-0 rounded p-0.5 hover:bg-error-100"
+            aria-label="Cerrar aviso"
+          >
+            <Icon name="close" className="text-[16px]" />
+          </button>
+        </div>
+      )}
 
       {/* RefreshBar — rango aplicado + hora de última carga + botón actualizar */}
       <RefreshBar

@@ -5,8 +5,21 @@
 // veredictos ni acciones (L2.5, RN-SC-01, DD-01): la banda "en riesgo" es una
 // señal de PRIORIZACIÓN para la revisión humana.
 
-/** Orden canónico de los buckets de score (espeja el backend). */
-export const ORDEN_BUCKETS = ['0-24', '25-49', '50-69', '70-100'] as const;
+/**
+ * Bandas de score en el orden que las manda el backend (menor a mayor).
+ *
+ * Las bandas NO son fijas: la última arranca exactamente en el umbral de revisión,
+ * que es configurable (piso 70, hasta 90). Con etiquetas hardcodeadas `70-100`, un
+ * umbral de 80 dejaba la banda alta mezclando sesiones en riesgo y fuera de riesgo,
+ * y `enRiesgo` (límite inferior >= umbral) daba false para TODAS — la rosca perdía
+ * la marca de riesgo mientras la tarjeta seguía contando sesiones en riesgo.
+ *
+ * El backend construye el dict ya ordenado y JSON preserva ese orden, así que acá
+ * se lee tal cual viene en vez de asumir qué etiquetas existen.
+ */
+export function bandasDe(dist: Record<string, number>): string[] {
+  return Object.keys(dist);
+}
 
 export interface BucketBar {
   /** Rango del bucket, p.ej. "70-100". */
@@ -34,8 +47,9 @@ export function distribucionBuckets(
   dist: Record<string, number>,
   umbral: number,
 ): BucketBar[] {
-  const max = Math.max(0, ...ORDEN_BUCKETS.map((r) => dist[r] ?? 0));
-  return ORDEN_BUCKETS.map((rango) => {
+  const bandas = bandasDe(dist);
+  const max = Math.max(0, ...bandas.map((r) => dist[r] ?? 0));
+  return bandas.map((rango) => {
     const valor = dist[rango] ?? 0;
     return {
       rango,
@@ -111,9 +125,10 @@ export function donutSegmentos(
   dist: Record<string, number>,
   umbral: number,
 ): DonutSegment[] {
-  const total = ORDEN_BUCKETS.reduce((acc, r) => acc + (dist[r] ?? 0), 0);
+  const bandas = bandasDe(dist);
+  const total = bandas.reduce((acc, r) => acc + (dist[r] ?? 0), 0);
   let acumulado = 0;
-  return ORDEN_BUCKETS.map((rango) => {
+  return bandas.map((rango) => {
     const valor = dist[rango] ?? 0;
     const fraccion = total > 0 ? valor / total : 0;
     const seg: DonutSegment = {

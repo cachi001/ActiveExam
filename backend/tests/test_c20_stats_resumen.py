@@ -163,15 +163,23 @@ async def test_resumen_conteos_y_riesgo(session):
 
 @pytest.mark.asyncio
 async def test_resumen_distribucion_scores(session):
-    """La distribución ubica ses1 en 50-69 y ses2/ses3 en 0-24."""
+    """La distribución ubica ses1 en la banda de riesgo y ses2/ses3 en 0-24.
+
+    Las bandas se derivan del UMBRAL vivo (acá 40), no de cortes fijos: la última
+    arranca exactamente en el umbral. Antes las bandas eran 0-24/25-49/50-69/70-100
+    pase lo que pase, así que con umbral 40 la sesión de score 50 caía en "50-69"
+    mientras la banda "25-49" —que también contiene scores en riesgo (45)— no
+    quedaba marcada. Ahora "banda alta" y "prioriza revisión" son lo mismo."""
     await _seed(session)
 
     r = await obtener_resumen(session)
 
-    assert r.distribucion_scores["50-69"] == 1
+    assert list(r.distribucion_scores.keys()) == ["0-24", "25-39", "40-100"]
+    assert r.distribucion_scores["40-100"] == 1  # ses1 (score 50) — en riesgo
     assert r.distribucion_scores["0-24"] == 2
-    assert r.distribucion_scores["25-49"] == 0
-    assert r.distribucion_scores["70-100"] == 0
+    assert r.distribucion_scores["25-39"] == 0
+    # La banda alta coincide EXACTAMENTE con el conteo de sesiones en riesgo.
+    assert r.distribucion_scores["40-100"] == r.sesiones_en_riesgo
 
 
 @pytest.mark.asyncio
@@ -288,8 +296,15 @@ async def test_por_dia_y_decisiones(session):
     r = await obtener_resumen(session)
     por_dia = {d.fecha: d.sesiones for d in r.por_dia}
     assert por_dia == {"2026-07-01": 1, "2026-07-02": 2}
+    # `decisiones` describe la COLA DE REVISIÓN, no el padrón entero: solo entran
+    # las sesiones con score >= umbral (las que efectivamente van a revisión
+    # humana). Las que nunca la necesitaron no cuentan como "sin revisar" — si no,
+    # el donut de "Estado de revisión" quedaría dominado por sesiones limpias que
+    # nadie tiene que mirar. Este test pedía las 3 sesiones; el servicio acota a la
+    # cola desde que se documentó ese criterio.
     assert r.decisiones.get("caso_abierto") == 1
-    assert r.decisiones.get("sin_revisar") == 2
+    assert r.decisiones.get("sin_revisar") is None
+    assert sum(r.decisiones.values()) == r.sesiones_en_riesgo
 
 
 @pytest.mark.asyncio
@@ -422,7 +437,14 @@ async def test_endpoint_export_xlsx(app_stats):
     wb = load_workbook(_io.BytesIO(resp.content))
     assert "Resumen" in wb.sheetnames
     assert "Por materia" in wb.sheetnames
-    assert len(wb["Resumen"]._charts) >= 1  # distribución + composición
+    # Los gráficos NO viven en "Resumen" (que es la tabla de totales): cada hoja de
+    # datos lleva el suyo cuando tiene filas, y "Panel" abre con el dashboard
+    # completo como imagen. El test pedía un gráfico en "Resumen" desde antes de esa
+    # reorganización. Se afirma sobre el libro entero para no atarse a qué hojas
+    # tienen datos en el fixture (una hoja vacía escribe "Sin datos", sin gráfico).
+    assert "Panel" in wb.sheetnames
+    assert len(wb["Panel"]._images) >= 1
+    assert sum(len(wb[h]._charts) for h in wb.sheetnames) >= 1
 
 
 # ---------------------------------------------------------------------------

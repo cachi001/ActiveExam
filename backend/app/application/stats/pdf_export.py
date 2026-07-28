@@ -31,7 +31,11 @@ DECISION_LABEL = {
 }
 
 
-def _filtros_txt(r: ResumenStats, filtros: FiltrosStats | None) -> str:
+def _filtros_txt(filtros: FiltrosStats | None, alcance: str | None) -> str:
+    """Alcance del informe. ``alcance`` viene resuelto contra la base (nombres
+    reales de materia/comisión/examen); el fallback solo cubre el caso sin filtros."""
+    if alcance:
+        return alcance
     activos = filtros and any(
         [
             filtros.materia_id,
@@ -41,20 +45,10 @@ def _filtros_txt(r: ResumenStats, filtros: FiltrosStats | None) -> str:
             filtros.hasta,
         ]
     )
-    if not activos:
-        return "Todo el período (sin filtros)"
-    partes: list[str] = []
-    if filtros and filtros.materia_id:
-        nombre = r.por_materia[0].nombre if r.por_materia else "materia filtrada"
-        partes.append(f"Materia: {nombre}")
-    if filtros and filtros.desde:
-        partes.append(f"desde {filtros.desde[:10]}")
-    if filtros and filtros.hasta:
-        partes.append(f"hasta {filtros.hasta[:10]}")
-    return " · ".join(partes) or "Filtrado"
+    return "Filtrado" if activos else "Todo el período (sin filtros)"
 
 
-def _portada(pdf: FPDF, r: ResumenStats, filtros: FiltrosStats | None) -> None:
+def _portada(pdf: FPDF, filtros: FiltrosStats | None, alcance: str | None) -> None:
     pdf.add_page()
     # Marca institucional discreta arriba (sin redundancia).
     pdf.set_y(20)
@@ -83,7 +77,10 @@ def _portada(pdf: FPDF, r: ResumenStats, filtros: FiltrosStats | None) -> None:
     pdf.set_text_color(*_GRIS)
     generado = datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M UTC")
     pdf.cell(0, 6, f"Generado: {generado}", align="C", new_x="LMARGIN", new_y="NEXT")
-    pdf.cell(0, 6, f"Alcance: {_filtros_txt(r, filtros)}", align="C", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(
+        0, 6, f"Alcance: {_filtros_txt(filtros, alcance)}", align="C",
+        new_x="LMARGIN", new_y="NEXT",
+    )
     pdf.set_text_color(0, 0, 0)
 
 
@@ -123,12 +120,20 @@ def _tabla(pdf: FPDF, titulo: str, headers: tuple[str, str], filas: list[tuple[o
     pdf.ln(6)
 
 
-def resumen_a_pdf(r: ResumenStats, filtros: FiltrosStats | None = None) -> bytes:
-    """Serializa el sumario a un informe PDF formal (bytes)."""
+def resumen_a_pdf(
+    r: ResumenStats,
+    filtros: FiltrosStats | None = None,
+    alcance: str | None = None,
+) -> bytes:
+    """Serializa el sumario a un informe PDF formal (bytes).
+
+    ``alcance``: descripción del recorte con los nombres ya resueltos contra la
+    base (``describir_alcance``). El export no toca la DB.
+    """
     pdf = FPDF()
     pdf.set_auto_page_break(auto=True, margin=15)
 
-    _portada(pdf, r, filtros)
+    _portada(pdf, filtros, alcance)
 
     # --- Página de datos ---
     pdf.add_page()

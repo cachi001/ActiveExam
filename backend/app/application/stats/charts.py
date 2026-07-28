@@ -17,9 +17,11 @@ import matplotlib.pyplot as plt  # noqa: E402
 from app.application.stats.labels import etiqueta_evento  # noqa: E402
 from app.application.stats.resumen_service import ResumenStats  # noqa: E402
 
-# Paleta por banda de score (igual que el frontend).
-COLOR_BANDA = {"0-24": "#10b981", "25-49": "#3b82f6", "50-69": "#f59e0b", "70-100": "#ef4444"}
-ORDEN_BANDAS = ["0-24", "25-49", "50-69", "70-100"]
+# Paleta por banda de score, de menor a mayor (igual que el frontend). Se aplica
+# por POSICIÓN, no por etiqueta: las bandas ya no son fijas — la última arranca en
+# el umbral vivo (ver ``bandas_de_score``), así que "70-100" puede ser "80-100".
+# La última banda es SIEMPRE la roja (la que prioriza revisión humana).
+PALETA_BANDAS = ["#10b981", "#3b82f6", "#f59e0b", "#ef4444"]
 _TEAL = "#0d9488"
 _INDIGO = "#6366f1"
 _AZUL = "#3b82f6"
@@ -45,6 +47,22 @@ DECISION_COLOR = {
 }
 
 
+def bandas_y_colores(r: ResumenStats) -> tuple[list[str], list[int], list[str]]:
+    """``(etiquetas, valores, colores)`` de las bandas, en el orden que vino el dict.
+
+    El servicio construye ``distribucion_scores`` ya ordenado de menor a mayor, así
+    que acá no se reordena ni se asume qué etiquetas existen: solo se le asigna
+    color por posición, reservando el rojo para la última (la banda de riesgo).
+    """
+    etiquetas = list(r.distribucion_scores.keys())
+    valores = [r.distribucion_scores[e] for e in etiquetas]
+    n = len(etiquetas)
+    colores = PALETA_BANDAS[-n:] if n <= len(PALETA_BANDAS) else (
+        [PALETA_BANDAS[0]] * (n - len(PALETA_BANDAS)) + PALETA_BANDAS
+    )
+    return etiquetas, valores, colores
+
+
 def _sin_datos(ax, titulo: str) -> None:
     ax.set_title(titulo, fontsize=11, fontweight="bold", loc="left")
     ax.text(0.5, 0.5, "Sin datos", ha="center", va="center", color="#94a3b8", fontsize=10)
@@ -55,12 +73,11 @@ def _sin_datos(ax, titulo: str) -> None:
 
 
 def _ax_composicion(ax, r: ResumenStats) -> None:
-    valores = [r.distribucion_scores.get(b, 0) for b in ORDEN_BANDAS]
+    etiquetas, valores, colores = bandas_y_colores(r)
     if sum(valores) == 0:
         _sin_datos(ax, "Sesiones por nivel de score")
         return
-    colores = [COLOR_BANDA[b] for b in ORDEN_BANDAS]
-    datos = [(b, v, c) for b, v, c in zip(ORDEN_BANDAS, valores, colores) if v > 0]
+    datos = [(b, v, c) for b, v, c in zip(etiquetas, valores, colores) if v > 0]
     ax.pie(
         [d[1] for d in datos],
         labels=[d[0] for d in datos],
@@ -74,8 +91,8 @@ def _ax_composicion(ax, r: ResumenStats) -> None:
 
 
 def _ax_distribucion(ax, r: ResumenStats) -> None:
-    valores = [r.distribucion_scores.get(b, 0) for b in ORDEN_BANDAS]
-    ax.bar(ORDEN_BANDAS, valores, color=[COLOR_BANDA[b] for b in ORDEN_BANDAS])
+    etiquetas, valores, colores = bandas_y_colores(r)
+    ax.bar(etiquetas, valores, color=colores)
     ax.set_title("Distribución de scores", fontsize=11, fontweight="bold", loc="left")
     for i, v in enumerate(valores):
         if v:

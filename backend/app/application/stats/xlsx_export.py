@@ -45,26 +45,20 @@ DECISION_LABEL = {
     "anulado_por_fraude": "Anulado por fraude",
     "caso_descartado":  "Caso descartado",
 }
-ORDEN_BANDAS = ["0-24", "25-49", "50-69", "70-100"]
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
-def _filtros_txt(r: ResumenStats, filtros: FiltrosStats | None) -> str:
+def _filtros_txt(filtros: FiltrosStats | None, alcance: str | None) -> str:
+    """Alcance del informe. ``alcance`` viene resuelto contra la base (nombres
+    reales de materia/comisión/examen); el fallback solo cubre el caso sin filtros."""
+    if alcance:
+        return alcance
     activos = filtros and any([
         filtros.materia_id, filtros.comision_id,
         filtros.examen_contenido_id, filtros.desde, filtros.hasta,
     ])
-    if not activos:
-        return "Sin filtros — todo el período disponible"
-    partes: list[str] = []
-    if filtros and filtros.materia_id:
-        partes.append(f"Materia: {r.por_materia[0].nombre if r.por_materia else 'filtrada'}")
-    if filtros and filtros.desde:
-        partes.append(f"Desde: {filtros.desde[:10]}")
-    if filtros and filtros.hasta:
-        partes.append(f"Hasta: {filtros.hasta[:10]}")
-    return " · ".join(partes) or "Filtrado"
+    return "Filtrado" if activos else "Sin filtros — todo el período disponible"
 
 
 def _auto_width(ws, col_idx: int, min_w: float = 10.0, max_w: float = 55.0) -> None:
@@ -200,8 +194,16 @@ def _grafico_torta(
 
 # ── Export principal ──────────────────────────────────────────────────────────
 
-def resumen_a_xlsx(r: ResumenStats, filtros: FiltrosStats | None = None) -> bytes:
-    """Serializa el sumario a un .xlsx profesional con tablas + gráficos."""
+def resumen_a_xlsx(
+    r: ResumenStats,
+    filtros: FiltrosStats | None = None,
+    alcance: str | None = None,
+) -> bytes:
+    """Serializa el sumario a un .xlsx profesional con tablas + gráficos.
+
+    ``alcance``: descripción del recorte con los nombres ya resueltos contra la
+    base (``describir_alcance``). El export no toca la DB.
+    """
     wb = Workbook()
 
     # ── Hoja Panel ────────────────────────────────────────────────────────────
@@ -215,7 +217,7 @@ def resumen_a_xlsx(r: ResumenStats, filtros: FiltrosStats | None = None) -> byte
     panel["A1"].font = Font(bold=True, size=15, color=_AZUL, name="Calibri")
     panel.row_dimensions[1].height = 26
 
-    panel["A2"] = _filtros_txt(r, filtros)
+    panel["A2"] = _filtros_txt(filtros, alcance)
     panel["A2"].font = Font(italic=True, size=10, color="64748B", name="Calibri")
 
     panel["A3"] = f"Generado: {datetime.now().strftime('%d/%m/%Y  %H:%M')}"
@@ -231,7 +233,7 @@ def resumen_a_xlsx(r: ResumenStats, filtros: FiltrosStats | None = None) -> byte
 
     # ── Hoja Resumen ──────────────────────────────────────────────────────────
     ws = wb.create_sheet("Resumen")
-    _titulo_hoja(ws, "Resumen del período", _filtros_txt(r, filtros))
+    _titulo_hoja(ws, "Resumen del período", _filtros_txt(filtros, alcance))
 
     metricas = [
         ("Exámenes",             r.total_examenes),
@@ -276,7 +278,9 @@ def resumen_a_xlsx(r: ResumenStats, filtros: FiltrosStats | None = None) -> byte
     # ── Hoja Scores ───────────────────────────────────────────────────────────
     ws_sc = wb.create_sheet("Scores")
     _titulo_hoja(ws_sc, "Distribución de scores")
-    dist_filas = [(b, r.distribucion_scores.get(b, 0)) for b in ORDEN_BANDAS]
+    # Las bandas ya vienen ordenadas de menor a mayor desde el servicio, con la
+    # última arrancando en el umbral vivo — no se asume ninguna etiqueta fija.
+    dist_filas = list(r.distribucion_scores.items())
     hdr_sc, ult_sc = _tabla(ws_sc, 3, ["Rango de score", "Sesiones"], dist_filas, col_nums={2})
     _auto_width(ws_sc, 1, min_w=20)
     _auto_width(ws_sc, 2, min_w=14)

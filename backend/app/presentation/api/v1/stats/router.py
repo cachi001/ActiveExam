@@ -19,6 +19,7 @@ from app.application.stats.pdf_export import resumen_a_pdf
 from app.application.stats.resumen_service import (
     FiltrosStats,
     ResumenStats,
+    describir_alcance,
     obtener_resumen,
 )
 from app.application.stats.xlsx_export import resumen_a_xlsx
@@ -197,8 +198,9 @@ def create_stats_router(session_factory=None) -> APIRouter:
         filtros = _filtros(materia_id, comision_id, examen_id, desde, hasta)
         async with factory() as db:
             r = await obtener_resumen(db, filtros)
+            alcance = await describir_alcance(db, filtros)
         return Response(
-            content=resumen_a_pdf(r, filtros),
+            content=resumen_a_pdf(r, filtros, alcance=alcance),
             media_type="application/pdf",
             headers={"Content-Disposition": 'attachment; filename="estadisticas.pdf"'},
         )
@@ -216,8 +218,9 @@ def create_stats_router(session_factory=None) -> APIRouter:
         filtros = _filtros(materia_id, comision_id, examen_id, desde, hasta)
         async with factory() as db:
             r = await obtener_resumen(db, filtros)
+            alcance = await describir_alcance(db, filtros)
         return Response(
-            content=resumen_a_xlsx(r, filtros),
+            content=resumen_a_xlsx(r, filtros, alcance=alcance),
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             headers={"Content-Disposition": 'attachment; filename="estadisticas.xlsx"'},
         )

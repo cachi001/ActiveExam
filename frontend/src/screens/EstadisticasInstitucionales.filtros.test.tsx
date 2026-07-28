@@ -17,10 +17,15 @@ vi.mock('../ui/shells', () => ({
 }));
 
 // api mockeado: no hay red. obtenerResumenStats es el espía del cableado.
+// El selector de materias se puebla desde `materiasDisponibles` (catálogo real),
+// NO desde el desglose `por_materia` del resumen: una materia sin sesiones
+// rendidas también tiene que poder filtrarse.
 vi.mock('../lib/api', () => ({
   api: {
     obtenerResumenStats: vi.fn(),
     listarExamenesContenido: vi.fn(),
+    materiasDisponibles: vi.fn(),
+    comisionesDeMateria: vi.fn(),
   },
 }));
 
@@ -35,8 +40,8 @@ const RESUMEN: ResumenStats = {
   sesiones_finalizadas: 2,
   sesiones_en_riesgo: 1,
   umbral_riesgo: 40,
-  distribucion_scores: { '0-24': 2, '25-49': 0, '50-69': 1, '70-100': 0 },
-  // El primer fetch (sin filtro) puebla el selector de materias con este desglose.
+  // Bandas: la última arranca en el umbral vivo (acá 40), no en un 70 fijo.
+  distribucion_scores: { '0-24': 2, '25-39': 0, '40-100': 1 },
   por_materia: [{ materia_id: 'm-1', nombre: 'Álgebra', sesiones: 2, en_riesgo: 1 }],
   top_eventos: [],
   por_dia: [],
@@ -46,6 +51,10 @@ const RESUMEN: ResumenStats = {
 beforeEach(() => {
   vi.mocked(api.obtenerResumenStats).mockResolvedValue(RESUMEN);
   vi.mocked(api.listarExamenesContenido).mockResolvedValue([]);
+  vi.mocked(api.materiasDisponibles).mockResolvedValue([
+    { id: 'm-1', nombre: 'Álgebra' } as never,
+  ]);
+  vi.mocked(api.comisionesDeMateria).mockResolvedValue([]);
 });
 
 afterEach(() => {
