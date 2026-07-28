@@ -30,6 +30,7 @@ import {
 } from '../../config/severityRanges';
 
 const SEVERIDADES: SeveridadEditable[] = ['baja', 'media', 'alta', 'critica'];
+const SEV_ORDER: Record<string, number> = { critica: 0, alta: 1, media: 2, baja: 3 };
 
 /** Color por severidad, usado por la barrita-acento corta de la card y el punto
  * de la leyenda de rangos (mismo lenguaje visual). */
@@ -166,7 +167,7 @@ export default function SeccionScoring() {
         </div>
         {/* Leyenda de rangos: punto de color + nombre + rango. Limpia y alineada. */}
         <div className="flex flex-wrap items-center gap-x-6 gap-y-2 pt-3 border-t border-outline-variant/40">
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant">Rangos de puntaje</span>
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant">Escala de severidad</span>
           {SEVERIDADES.map((s) => {
             const { min, max } = rangoDeSeveridad(s);
             return (
@@ -187,7 +188,9 @@ export default function SeccionScoring() {
       </div>
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-lg min-w-0">
-        {configs.map((cfg) => {
+        {[...configs]
+          .sort((a, b) => (SEV_ORDER[severidadEditable(a.severidad)] ?? 4) - (SEV_ORDER[severidadEditable(b.severidad)] ?? 4))
+          .map((cfg) => {
           const editado = tieneEdicion(cfg.tipo_evento);
           const sev = severidadEditable(valorActual(cfg, 'severidad') as Severidad);
           const peso = valorActual(cfg, 'peso') as number;

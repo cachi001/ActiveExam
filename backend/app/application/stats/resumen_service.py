@@ -611,12 +611,13 @@ async def obtener_resumen(
                 else str(r.creada_en)[:10]
             )
             dia_agg[fecha] = dia_agg.get(fecha, 0) + 1
-        # por decisión de revisión (None = todavía sin revisar)
-        if r.resolucion == "anulado_por_fraude":
-            clave = "anulado_por_fraude"
-        else:
-            clave = r.decision or "sin_revisar"
-        dec_agg[clave] = dec_agg.get(clave, 0) + 1
+        # por decisión de revisión — solo sesiones en cola de riesgo (score >= umbral)
+        if score_por_sesion[r.id] >= umbral:
+            if r.resolucion == "anulado_por_fraude":
+                clave = "anulado_por_fraude"
+            else:
+                clave = r.decision or "sin_revisar"
+            dec_agg[clave] = dec_agg.get(clave, 0) + 1
 
     por_materia = [
         MateriaStat(materia_id=mid, nombre=v[0], sesiones=v[1], en_riesgo=v[2])

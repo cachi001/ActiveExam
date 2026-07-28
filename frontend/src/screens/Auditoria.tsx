@@ -13,6 +13,7 @@ import { RefreshBar } from '../ui/RefreshBar';
 import { STAFF_NAV } from '../ui/nav';
 import { api } from '../lib/api';
 import { useAutoRefresh } from '../lib/useAutoRefresh';
+import { useApp } from '../lib/store';
 import { configDiff } from './auditoria.helpers';
 import type { AuditFiltros, AuditEvento, AuditLogResponse } from '../lib/types';
 
@@ -21,17 +22,31 @@ const PAGE_SIZE_DEFAULT = 5;
 
 // Lista completa de módulos del sistema — siempre visible aunque no haya actividad.
 const TODOS_MODULOS = [
-  { value: 'USUARIOS',      label: 'Usuarios' },
-  { value: 'MATERIAS',      label: 'Materias' },
-  { value: 'EXAMENES',      label: 'Exámenes' },
-  { value: 'SESIONES',      label: 'Sesiones' },
+  { value: 'USUARIOS',      label: 'Gestión de usuarios' },
+  { value: 'MATERIAS',      label: 'Materias y comisiones' },
+  { value: 'EXAMENES',      label: 'Catálogo de exámenes' },
+  { value: 'SESIONES',      label: 'Sesiones de examen' },
   { value: 'CONSENTIMIENTO',label: 'Consentimiento' },
-  { value: 'BIOMETRIA',     label: 'Biometría' },
-  { value: 'EVIDENCIA',     label: 'Evidencia' },
-  { value: 'REVISION',      label: 'Revisión' },
-  { value: 'MOODLE',        label: 'Moodle' },
-  { value: 'CONFIGURACION', label: 'Configuración' },
+  { value: 'BIOMETRIA',     label: 'Registro biométrico' },
+  { value: 'EVIDENCIA',     label: 'Evidencia de sesiones' },
+  { value: 'REVISION',      label: 'Cola de revisión' },
+  { value: 'MOODLE',        label: 'Integración Moodle' },
+  { value: 'CONFIGURACION', label: 'Configuración del sistema' },
 ] as const;
+
+/** Nombre amigable del módulo para mostrar en los badges de la card. */
+const MODULE_LABEL: Record<string, string> = {
+  USUARIOS: 'Gestión de usuarios',
+  MATERIAS: 'Materias y comisiones',
+  EXAMENES: 'Catálogo de exámenes',
+  SESIONES: 'Sesiones de examen',
+  CONSENTIMIENTO: 'Consentimiento',
+  BIOMETRIA: 'Registro biométrico',
+  EVIDENCIA: 'Evidencia de sesiones',
+  REVISION: 'Cola de revisión',
+  MOODLE: 'Integración Moodle',
+  CONFIGURACION: 'Configuración del sistema',
+};
 
 /**
  * Acciones reales por módulo. Cada opción mapea a uno o varios patrones de la
@@ -70,7 +85,8 @@ const ACCIONES_POR_MODULO: Record<string, OpcionAccion[]> = {
     { label: 'Eligió vía alternativa', accion: 'consent_alternative_chosen' },
   ],
   BIOMETRIA: [
-    { label: 'Verificó identidad',      accion: 'biometria.verificacion' },
+    { label: 'Verificó identidad',       accion: 'biometria.verificacion' },
+    { label: 'Registró foto de referencia', accion: 'enrollment.embedding_referencia.alta' },
     { label: 'Renovó foto de referencia', accion: 'enrollment.embedding_referencia.renovacion' },
   ],
   EVIDENCIA: [
@@ -107,6 +123,7 @@ const ACCION_META: Array<{ match: (a: string) => boolean; label: string; color: 
   { match: (a) => a === 'examen.seleccion_preguntas', label: 'Cambió preguntas', color: '#2563eb', icon: 'quiz' },
   { match: (a) => a === 'moodle.sync', label: 'Sincronizó a Moodle', color: '#7c3aed', icon: 'sync' },
   { match: (a) => a.startsWith('examen.'), label: 'Cargó examen', color: '#2563eb', icon: 'fact_check' },
+  { match: (a) => a === 'enrollment.embedding_referencia.alta', label: 'Registró foto de referencia', color: '#8b5cf6', icon: 'photo_camera' },
   { match: (a) => a.startsWith('enrollment'), label: 'Renovó foto de referencia', color: '#8b5cf6', icon: 'photo_camera' },
   { match: (a) => a.startsWith('biometria'), label: 'Verificó identidad', color: '#8b5cf6', icon: 'face' },
   { match: (a) => a.startsWith('consent'), label: 'Consentimiento', color: '#0d9488', icon: 'fact_check' },
@@ -128,23 +145,37 @@ function accionMeta(accion: string): { label: string; color: string; icon: strin
   return ACCION_META.find((m) => m.match(accion)) ?? { label: accion, color: '#64748b', icon: 'bolt' };
 }
 
-/** Ruta de navegación según módulo + entidad_id. */
+
+/** Ruta de navegación según módulo + entidad_id.
+ * Cuando modulo es null (entradas antiguas) cae en la heurística por accion. */
 function navegarA(evento: AuditEvento): string | null {
   if (!evento.entidad_id) {
+    // Primero: módulo explícito.
     switch (evento.modulo) {
       case 'USUARIOS': return '/admin/usuarios';
       case 'MATERIAS': return '/admin/materias';
       case 'EXAMENES': return '/admin/examenes';
-      case 'SESIONES': return '/admin/proctoring-sessions';
+      case 'SESIONES':
+      case 'BIOMETRIA':
+      case 'CONSENTIMIENTO':
+      case 'EVIDENCIA': return '/admin/proctoring-sessions';
+      case 'REVISION': return '/revisor';
       case 'MOODLE': return '/admin/examenes';
       case 'CONFIGURACION': return '/admin/configuracion';
-      default: return null;
     }
+    // Fallback: derivar la ruta del patrón de acción (para entradas sin modulo).
+    const a = evento.accion ?? '';
+    if (a.startsWith('config')) return '/admin/configuracion';
+    if (a.startsWith('user.')) return '/admin/usuarios';
+    if (a.startsWith('materia.') || a.startsWith('comision.') || a.startsWith('inscripcion.')) return '/admin/materias';
+    if (a.startsWith('examen.') || a === 'moodle.sync') return '/admin/examenes';
+    if (a.startsWith('review.') || a.startsWith('enrollment') || a.startsWith('biometria') || a.startsWith('consent')) return '/admin/proctoring-sessions';
+    return null;
   }
   switch (evento.entidad) {
     case 'USUARIO': return `/admin/usuarios/${evento.entidad_id}`;
     case 'EXAMEN': return `/admin/examenes/${evento.entidad_id}/resultados`;
-    case 'SESION': return '/admin/proctoring-sessions';
+    case 'SESION': return '/admin/proctoring-session-detail';  // handleClickActividad sets store
     case 'MATERIA':
     case 'COMISION':
     case 'INSCRIPCION': return '/admin/materias';
@@ -261,7 +292,16 @@ export default function Auditoria() {
   const paginaActual = Math.floor(offset / pageSize) + 1;
   const irAPagina = (n: number) => setOffset((Math.max(1, Math.min(n, totalPaginas)) - 1) * pageSize);
 
+  const setProctoringSessionId = useApp((s) => s.setProctoringSessionId);
+  const setProctoringDetailBackRoute = useApp((s) => s.setProctoringDetailBackRoute);
+
   const handleClickActividad = (e: AuditEvento) => {
+    if (e.entidad === 'SESION' && e.entidad_id) {
+      setProctoringSessionId(e.entidad_id);
+      setProctoringDetailBackRoute('/admin/auditoria');
+      navigate('/admin/proctoring-session-detail');
+      return;
+    }
     const ruta = navegarA(e);
     if (ruta) navigate(ruta);
   };
@@ -453,13 +493,16 @@ export default function Auditoria() {
                         </span>
                         {e.modulo && (
                           <span className="inline-flex items-center rounded-full bg-surface-100 px-2.5 py-0.5 text-[11px] font-medium text-on-surface-variant">
-                            {e.modulo.charAt(0) + e.modulo.slice(1).toLowerCase()}
+                            {MODULE_LABEL[e.modulo] ?? (e.modulo.charAt(0) + e.modulo.slice(1).toLowerCase())}
                           </span>
                         )}
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
                         {ruta && (
-                          <Icon name="open_in_new" className="text-[15px] text-on-surface-variant" />
+                          <span className="inline-flex items-center gap-1 text-[12px] font-medium text-primary">
+                            <span>{e.entidad_id ? 'Ver detalle' : 'Ver módulo'}</span>
+                            <Icon name="open_in_new" className="text-[14px]" />
+                          </span>
                         )}
                         <span className="text-[12.5px] text-on-surface-variant tabular-nums whitespace-nowrap">
                           {fmtFecha(e.timestamp)}

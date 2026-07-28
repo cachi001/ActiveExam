@@ -274,7 +274,7 @@ export function CameraSnapshotCapture({
                 autoPlay
                 muted
                 playsInline
-                className="absolute inset-0 w-full h-full object-cover"
+                className="absolute inset-0 w-full h-full object-cover bg-neutral-100"
                 style={{ transform: facingMode === 'user' ? 'scaleX(-1)' : undefined }}
                 aria-label="Vista de cámara para foto de perfil"
               />
@@ -300,7 +300,7 @@ export function CameraSnapshotCapture({
               autoPlay
               muted
               playsInline
-              className="absolute inset-0 w-full h-full object-cover"
+              className="absolute inset-0 w-full h-full object-cover bg-neutral-100"
               style={{ transform: facingMode === 'user' ? 'scaleX(-1)' : undefined }}
               aria-label="Vista de cámara para escaneo de documento"
             />

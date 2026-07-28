@@ -8,6 +8,8 @@
 //   • Sesiones supervisadas / Tasa de flag: SIN endpoint real en slim → "—" (vacío honesto).
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { StaffShell } from '../ui/shells';
+import { RefreshBar } from '../ui/RefreshBar';
+import { useAutoRefresh } from '../lib/useAutoRefresh';
 import { Icon, Card, LoadingSpinner } from '../ui/components';
 import { HelpButton } from '../ui/HelpButton';
 import { RefreshBar } from '../ui/RefreshBar';
@@ -135,8 +137,8 @@ export default function AdminDashboard() {
                   <h2 className="text-[16px] font-semibold text-on-surface leading-tight">Exámenes</h2>
                   <p className="text-[12.5px] text-on-surface-variant mt-0.5">Catálogo de exámenes importados</p>
                 </div>
-                <Link to="/admin/examenes" className="inline-flex items-center gap-1 text-[13px] font-medium text-primary hover:underline">
-                  Ver todos
+                <Link to="/admin/examenes" className="inline-flex items-center gap-1 text-[13px] font-medium text-primary group">
+                  <span className="group-hover:underline">Ver todos</span>
                   <Icon name="arrow_forward" className="text-[16px]" />
                 </Link>
               </div>

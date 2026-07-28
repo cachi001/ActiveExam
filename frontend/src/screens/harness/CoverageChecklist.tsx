@@ -30,6 +30,8 @@ import type { LegendRow } from './buildLegendModel';
 import type { CoverageEntry, MonitorPermission } from './types';
 import type { Severidad } from '../../lib/types';
 
+const SEV_ORDER: Record<string, number> = { critica: 0, alta: 1, media: 2, baja: 3 };
+
 /** Color de la línea-acento superior por severidad (card blanca). */
 const SEV_LINEA: Record<SeveridadEditable, string> = {
   baja: 'bg-blue-400',
@@ -78,6 +80,13 @@ export default function CoverageChecklist({
   const captured = testableCatalog.filter((e) => coverage[e.tipo]);
   const allDone = testableCatalog.length > 0 && captured.length === testableCatalog.length;
 
+  // Catálogo ordenado por severidad (crítica primero) usando la config viva o fallback al catálogo.
+  const sortedCatalog = [...SUSPICIOUS_ACTIVITY_CATALOG].sort((a, b) => {
+    const sevA = (legendByTipo.get(a.tipo)?.severidad ?? a.severidad) as string;
+    const sevB = (legendByTipo.get(b.tipo)?.severidad ?? b.severidad) as string;
+    return (SEV_ORDER[sevA] ?? 4) - (SEV_ORDER[sevB] ?? 4);
+  });
+
   return (
     <Card className="space-y-md">
       <div className="flex items-start justify-between gap-md flex-wrap">
@@ -100,7 +109,7 @@ export default function CoverageChecklist({
           al peso, así el admin solo elige el número y la severidad sigue. */}
       {editable && (
         <div className="flex items-center gap-sm flex-wrap text-[12px] text-on-surface-variant border-b border-outline-variant/40 pb-sm">
-          <span className="font-semibold text-on-surface">Rangos por severidad:</span>
+          <span className="font-semibold text-on-surface">Escala de severidad:</span>
           {RANGOS_SEVERIDAD.map((r) => (
             <span
               key={r.sev}
@@ -127,7 +136,7 @@ export default function CoverageChecklist({
 
       {/* Bento grid: 1 col en mobile, 2 en sm, 3 en xl. Sin scroll vertical eterno. */}
       <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-md">
-        {SUSPICIOUS_ACTIVITY_CATALOG.map((entry) => {
+        {sortedCatalog.map((entry) => {
           const cap = coverage[entry.tipo];
           const isUntestable = entry.requiereApiOpcional && monitorPermission === 'unsupported';
           const liveRow = legendByTipo.get(entry.tipo);
@@ -141,7 +150,7 @@ export default function CoverageChecklist({
             pesoVivo != null && editable
               ? severidadParaPeso(pesoVivo)
               : (sevSistema === 'baseline' ? 'media' : sevSistema as SeveridadEditable);
-          const editableEsteEvento = editable && !!liveRow && liveRow.activo && !isUntestable;
+          const editableEsteEvento = editable && !!liveRow && !isUntestable;
           return (
             <div
               key={entry.tipo}
@@ -201,8 +210,9 @@ export default function CoverageChecklist({
                   {EVENTOS_CON_IMAGEN.has(entry.tipo) ? 'Captura imagen' : 'Sin imagen'}
                 </span>
                 {liveRow && !liveRow.activo && (
-                  <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded bg-surface-container-high text-on-surface-variant">
-                    Inactivo
+                  <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">
+                    <Icon name="pause_circle" className="text-[11px]" />
+                    Desactivado
                   </span>
                 )}
                 {isUntestable ? (

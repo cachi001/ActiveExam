@@ -232,8 +232,8 @@ async def listar_modulos(session: AsyncSession) -> list[str]:
 
 
 async def _resolver_nombres(session: AsyncSession, actores: set[str]) -> dict[str, str]:
-    """Mapa actor → 'Nombre Apellido'. El actor puede ser email o id_institucional;
-    se busca por ambos. Usuarios sin nombre (seed/federados) quedan fuera del mapa.
+    """Mapa actor → 'Nombre Apellido'. El actor puede ser email, id_institucional o UUID;
+    se busca por los tres. Usuarios sin nombre (seed/federados) quedan fuera del mapa.
 
     Best-effort dentro de un SAVEPOINT: si la tabla `usuario` no está disponible
     (entorno acotado / test aislado), degrada a mapa vacío sin romper la lectura
@@ -247,6 +247,7 @@ async def _resolver_nombres(session: AsyncSession, actores: set[str]) -> dict[st
             rows = (
                 await session.execute(
                     select(
+                        UsuarioModel.id,
                         UsuarioModel.email,
                         UsuarioModel.id_institucional,
                         UsuarioModel.nombre,
@@ -254,13 +255,14 @@ async def _resolver_nombres(session: AsyncSession, actores: set[str]) -> dict[st
                     ).where(
                         UsuarioModel.email.in_(actores)
                         | UsuarioModel.id_institucional.in_(actores)
+                        | UsuarioModel.id.in_(actores)
                     )
                 )
             ).all()
     except Exception:
         return {}
     mapa: dict[str, str] = {}
-    for email, idinst, nombre, apellido in rows:
+    for uid, email, idinst, nombre, apellido in rows:
         completo = " ".join(p for p in (nombre, apellido) if p).strip()
         if not completo:
             continue
@@ -268,4 +270,6 @@ async def _resolver_nombres(session: AsyncSession, actores: set[str]) -> dict[st
             mapa[email] = completo
         if idinst in actores:
             mapa[idinst] = completo
+        if uid in actores:
+            mapa[uid] = completo
     return mapa

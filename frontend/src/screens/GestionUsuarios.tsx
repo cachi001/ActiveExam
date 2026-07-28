@@ -47,10 +47,10 @@ export default function GestionUsuarios() {
 
   // Aplicado (lo que se busca) vs borrador (lo que se edita en el panel).
   const [filtroRol, setFiltroRol] = useState('');
-  const [filtroEstado, setFiltroEstado] = useState('activo');
+  const [filtroEstado, setFiltroEstado] = useState('todos');
   const [filtroQ, setFiltroQ] = useState('');
   const [borrRol, setBorrRol] = useState('');
-  const [borrEstado, setBorrEstado] = useState('activo');
+  const [borrEstado, setBorrEstado] = useState('todos');
   const [borrQ, setBorrQ] = useState('');
 
   const [fotos, setFotos] = useState<Record<string, string>>({});

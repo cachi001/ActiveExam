@@ -127,6 +127,8 @@ export const EVENTOS_CON_IMAGEN: ReadonlySet<string> = new Set([
   'rostro_ausente',
   'multiples_rostros',
   'mirada_desviada_sostenida',
+  'monitor_adicional',
+  'reanudacion_tardia',
 ]);
 
 /** Mapa tipo → entrada del catalogo para lookups O(1). */

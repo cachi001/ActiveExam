@@ -112,7 +112,10 @@ class GuardarEmbeddingReferenciaService:
         # 2. Cifrar at-rest (el plaintext nunca se persiste).
         embedding_cifrado = self._encryption.encrypt(embedding)
 
-        # 3. Marcar embeddings anteriores como no vigentes (invariante: solo uno vigente).
+        # 3a. Detectar si ya existia un embedding vigente (para distinguir alta vs renovacion).
+        tenia_referencia_previa = await self._repo.obtener_vigente(usuario_id) is not None
+
+        # 3b. Marcar embeddings anteriores como no vigentes (invariante: solo uno vigente).
         await self._repo.marcar_anteriores_no_vigentes(usuario_id)
 
         # 4. Crear el nuevo registro vigente (embedding ya cifrado).
@@ -129,15 +132,22 @@ class GuardarEmbeddingReferenciaService:
         if audit_repo is not None:
             from app.domain.audit_chain import AuditEntry
 
+            if tenia_referencia_previa:
+                accion_audit = "enrollment.embedding_referencia.renovacion"
+                proposito_audit = f"Renovacion de referencia biometrica. Origen: {origen}"
+            else:
+                accion_audit = "enrollment.embedding_referencia.alta"
+                proposito_audit = f"Alta inicial de referencia biometrica. Origen: {origen}"
+
             await audit_repo.append(
                 AuditEntry(
                     actor=usuario_id,
                     timestamp="",  # el trigger DB completa el timestamp real
                     ip=ip,
                     user_agent=user_agent,
-                    accion="enrollment.embedding_referencia.renovacion",
+                    accion=accion_audit,
                     evidencia_id=None,
-                    proposito=f"Renovacion de referencia biometrica. Origen: {origen}",
+                    proposito=proposito_audit,
                 )
             )
 

@@ -95,11 +95,12 @@ export function DecisionRevisorForm({
       <FormField
         label="Motivo (obligatorio)"
         hint="Fundamento de la decisión. Queda en el registro inmutable de auditoría."
-        error={!motivoOk ? 'Escribí un motivo para poder registrar la decisión.' : undefined}
+        error={motivoTouched && !motivoOk ? 'Escribí un motivo para poder registrar la decisión.' : undefined}
       >
         <textarea
           value={motivo}
           onChange={(e) => setMotivo(e.target.value)}
+          onBlur={() => setMotivoTouched(true)}
           rows={2}
           placeholder="Ej.: revisé las 3 señales y corresponden a un falso positivo."
           className="w-full rounded-xl border border-outline-variant/60 bg-white p-sm text-body-md resize-none
@@ -206,7 +207,7 @@ export function DecisionRevisorForm({
             icon="gavel"
             disabled={!motivoOk || enviando || !hayEvidencia}
             onClick={anular}
-            className="justify-center font-bold ring-2 ring-error/30"
+            className="justify-center font-bold"
           >
             Anular examen
           </Button>

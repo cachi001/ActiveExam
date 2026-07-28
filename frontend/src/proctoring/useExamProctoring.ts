@@ -84,6 +84,8 @@ const EVENTOS_CON_EVIDENCIA_VISUAL = new Set<string>([
   'rostro_ausente',
   'multiples_rostros',
   'mirada_desviada_sostenida',
+  'monitor_adicional',
+  'reanudacion_tardia',
 ]);
 
 /**

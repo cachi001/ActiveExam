@@ -79,11 +79,12 @@ const COLOR_BANDA: Record<string, string> = {
   '50-69': '#f59e0b',  // amber
   '70-100': '#ef4444', // red — banda que prioriza revisión
 };
+/** Etiqueta base por banda; si el segmento tiene enRiesgo=true se reemplaza por "Prioriza revisión". */
 const ETIQUETA_BANDA: Record<string, string> = {
   '0-24': 'Bajo',
   '25-49': 'Moderado',
   '50-69': 'Alto',
-  '70-100': 'Prioriza revisión',
+  '70-100': 'Alto',
 };
 
 /** Zona de gráficos: el dashboard COMPLETO siempre visible. Cada tarjeta resuelve
@@ -545,7 +546,7 @@ function RoscaComposicion({ data }: { data: ResumenStats }) {
                   strokeDasharray={`${s.fraccion * c} ${c}`}
                   strokeDashoffset={-s.inicio * c}
                 >
-                  <title>{`${ETIQUETA_BANDA[s.rango]} (${s.rango}): ${s.valor} · ${s.pct}%`}</title>
+                  <title>{`${s.enRiesgo ? 'Prioriza revisión' : ETIQUETA_BANDA[s.rango]} (${s.rango}): ${s.valor} · ${s.pct}%`}</title>
                 </circle>
               ) : null,
             )}
@@ -560,7 +561,9 @@ function RoscaComposicion({ data }: { data: ResumenStats }) {
           {segs.map((s) => (
             <li key={s.rango} className="flex items-center gap-2.5 text-[12.5px]">
               <span className="w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: COLOR_BANDA[s.rango] }} aria-hidden />
-              <span className="text-on-surface font-medium">{ETIQUETA_BANDA[s.rango]}</span>
+              <span className={`text-on-surface font-medium${s.enRiesgo ? ' font-semibold' : ''}`}>
+                {s.enRiesgo ? 'Prioriza revisión' : ETIQUETA_BANDA[s.rango]}
+              </span>
               <span className="text-on-surface-variant tabular-nums">{s.rango}</span>
               <span className="ml-auto text-on-surface font-semibold tabular-nums">{s.valor}</span>
               <span className="text-on-surface-variant tabular-nums w-10 text-right">{s.pct}%</span>
@@ -570,10 +573,10 @@ function RoscaComposicion({ data }: { data: ResumenStats }) {
       </div>
       {/* Pie con el % que prioriza revisión — fuera de la rosca para que no choque. */}
       <div className="px-lg py-3 border-t border-surface-200 flex items-center gap-2 text-[12.5px]">
-        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: COLOR_BANDA['70-100'] }} aria-hidden />
+        <span className="w-2.5 h-2.5 rounded-full shrink-0 bg-[#ef4444]" aria-hidden />
         <span className="text-on-surface-variant">
-          <span className="font-semibold text-on-surface tabular-nums">{pctRiesgo}%</span> de las
-          sesiones priorizan la revisión humana
+          <span className="font-semibold text-on-surface tabular-nums">{pctRiesgo}%</span>{' '}
+          priorizan revisión humana (score ≥ {data.umbral_riesgo ?? 70})
         </span>
       </div>
     </Card>
