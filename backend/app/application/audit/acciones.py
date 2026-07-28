@@ -123,3 +123,49 @@ class AccionAuditoria(StrEnum):
 PREFIJO_REVISION_DECISION = "review.decision."
 PREFIJO_VERIFY_CHAIN = "verify_chain."
 PREFIJO_DSR = "dsr."
+
+
+def modulo_de_accion(accion: str | None) -> str | None:
+    """Deriva el módulo de auditoría a partir del prefijo de la ``accion``.
+
+    Fuente ÚNICA de la clasificación accion → módulo. Se usa como FALLBACK en el
+    ``append`` del repositorio: cuando un caller construye el ``AuditEntry`` sin
+    pasar ``modulo`` (muchos lo hacían directo, dejando modulo=NULL → la entrada NO
+    aparecía al filtrar por su módulo en Auditoría), el prefijo determinístico de la
+    acción lo resuelve acá. Devuelve None solo si la acción no matchea ninguna
+    familia conocida (se registra igual, sin módulo).
+    """
+    a = accion or ""
+    if a.startswith("user."):
+        return ModuloAuditoria.USUARIOS
+    if a.startswith(("materia.", "comision.", "inscripcion.")):
+        return ModuloAuditoria.MATERIAS
+    if a == "moodle.sync":
+        return ModuloAuditoria.MOODLE
+    if a.startswith("examen."):
+        return ModuloAuditoria.EXAMENES
+    if a.startswith("config"):
+        return ModuloAuditoria.CONFIGURACION
+    if a.startswith("consent"):
+        return ModuloAuditoria.CONSENTIMIENTO
+    if a.startswith(("biometria", "enrollment")):
+        return ModuloAuditoria.BIOMETRIA
+    if a.startswith(PREFIJO_REVISION_DECISION):
+        return ModuloAuditoria.REVISION
+    # Evidencia y cadena de custodia: acceso/depósito de evidencia, manipulación,
+    # firma maestra, verificación de cadena, retención/borrado y derechos del titular
+    # (DSR) — el frontend los agrupa todos bajo "Evidencia de sesiones".
+    if a.startswith(
+        (
+            "acceso_evidencia",
+            "deposito_evidencia",
+            "manipulacion_detectada",
+            "firma_maestra",
+            PREFIJO_VERIFY_CHAIN,
+            "retention",
+            PREFIJO_DSR,
+            "derecho_acceso",
+        )
+    ):
+        return ModuloAuditoria.EVIDENCIA
+    return None

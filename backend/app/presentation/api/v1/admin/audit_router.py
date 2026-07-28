@@ -124,6 +124,7 @@ def create_audit_router(session_factory=None) -> APIRouter:
     async def _entradas_para_export(
         request: Request,
         actor: str | None,
+        modulo: str | None,
         accion: str | None,
         desde: str | None,
         hasta: str | None,
@@ -134,7 +135,11 @@ def create_audit_router(session_factory=None) -> APIRouter:
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Persistencia no inicializada (session_factory).",
             )
-        filtros = AuditFiltros(actor=actor, accion=accion, desde=desde, hasta=hasta)
+        # El export respeta LOS MISMOS filtros que el listado: si se filtró por
+        # módulo en pantalla, el archivo NO puede traer todo el registro.
+        filtros = AuditFiltros(
+            actor=actor, modulo=modulo, accion=accion, desde=desde, hasta=hasta
+        )
         async with factory() as db:
             pagina = await listar_auditoria(db, filtros, limit=_MAX_EXPORT, offset=0)
         return pagina.items
@@ -143,14 +148,22 @@ def create_audit_router(session_factory=None) -> APIRouter:
     async def exportar_xlsx(
         request: Request,
         actor: str | None = Query(default=None),
+        modulo: str | None = Query(default=None),
         accion: str | None = Query(default=None),
         desde: str | None = Query(default=None),
         hasta: str | None = Query(default=None),
     ) -> Response:
-        entradas = await _entradas_para_export(request, actor, accion, desde, hasta)
+        entradas = await _entradas_para_export(
+            request, actor, modulo, accion, desde, hasta
+        )
         return Response(
             content=auditoria_a_xlsx(
-                entradas, actor=actor, accion=accion, desde=desde, hasta=hasta
+                entradas,
+                actor=actor,
+                accion=accion,
+                modulo=modulo,
+                desde=desde,
+                hasta=hasta,
             ),
             media_type=(
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -162,14 +175,22 @@ def create_audit_router(session_factory=None) -> APIRouter:
     async def exportar_pdf(
         request: Request,
         actor: str | None = Query(default=None),
+        modulo: str | None = Query(default=None),
         accion: str | None = Query(default=None),
         desde: str | None = Query(default=None),
         hasta: str | None = Query(default=None),
     ) -> Response:
-        entradas = await _entradas_para_export(request, actor, accion, desde, hasta)
+        entradas = await _entradas_para_export(
+            request, actor, modulo, accion, desde, hasta
+        )
         return Response(
             content=auditoria_a_pdf(
-                entradas, actor=actor, accion=accion, desde=desde, hasta=hasta
+                entradas,
+                actor=actor,
+                accion=accion,
+                modulo=modulo,
+                desde=desde,
+                hasta=hasta,
             ),
             media_type="application/pdf",
             headers={"Content-Disposition": 'attachment; filename="auditoria.pdf"'},

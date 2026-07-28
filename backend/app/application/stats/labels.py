@@ -10,6 +10,8 @@ código desconocido en vez de mostrarlo tal cual.
 
 from __future__ import annotations
 
+import json
+
 from app.domain.events.schema import TipoEvento
 
 # Cubre TODOS los miembros de TipoEvento (si se agrega uno, agregar su etiqueta).
@@ -67,7 +69,8 @@ def etiqueta_decision(decision: str) -> str:
 ETIQUETA_ACCION: dict[str, str] = {
     "user.create": "Alta de usuario",
     "user.update": "Editó usuario",
-    "user.delete": "Baja de usuario",
+    # Baja de usuario = baja LÓGICA (soft-delete) = cambio de estado, NO eliminación.
+    "user.delete": "Cambió el estado del usuario",
     "user.reactivate": "Cambió el estado del usuario",
     "materia.create": "Creó materia",
     "materia.update": "Editó materia",
@@ -115,3 +118,100 @@ def etiqueta_accion(accion: str) -> str:
     if accion.startswith("verify_chain."):
         return "Verificó la cadena de custodia"
     return ETIQUETA_ACCION.get(accion, humanizar(accion))
+
+
+# --- Módulos del registro de auditoría --------------------------------------
+# Fuente única del nombre legible del módulo (espeja TODOS_MODULOS del front).
+# El export y cualquier reporte deben mostrar "Integración Moodle", nunca "MOODLE".
+ETIQUETA_MODULO: dict[str, str] = {
+    "USUARIOS": "Gestión de usuarios",
+    "MATERIAS": "Materias y comisiones",
+    "EXAMENES": "Catálogo de exámenes",
+    "SESIONES": "Sesiones de examen",
+    "CONSENTIMIENTO": "Consentimiento",
+    "BIOMETRIA": "Registro biométrico",
+    "EVIDENCIA": "Evidencia de sesiones",
+    "REVISION": "Cola de revisión",
+    "MOODLE": "Integración Moodle",
+    "CONFIGURACION": "Configuración del sistema",
+}
+
+
+def etiqueta_modulo(modulo: str | None) -> str:
+    """Etiqueta legible de un módulo de auditoría (o humaniza si es desconocido)."""
+    if not modulo:
+        return ""
+    return ETIQUETA_MODULO.get(modulo, humanizar(modulo))
+
+
+# --- Detalle (propósito) del registro de auditoría --------------------------
+# Un cambio de configuración se guarda como propósito JSON {before, after}. En la
+# pantalla se diffea a "Cambió N parámetros"; en el export hay que resumirlo a
+# texto legible en vez de volcar el JSON crudo (que en el archivo se lee como
+# basura). Port del helper `configDiff`/`labelConfig` del front (auditoria.helpers.ts).
+_LABEL_CONFIG: dict[str, str] = {
+    "chat_habilitado": "Chat proctor–alumno",
+    "pausas_habilitadas": "Pausas del alumno",
+    "pausa_max_min": "Duración máx. de pausa (min)",
+    "umbral_cola_revision": "Umbral de revisión",
+    "detectores_activos": "Detectores activos",
+    "retencion_dias_default": "Retención por defecto (días)",
+    "consent_version_vigente": "Versión de consentimiento",
+    "face_absent_ms": "Rostro ausente (ms)",
+    "multiple_faces_frames": "Múltiples rostros (frames)",
+    "gaze_deviation_threshold": "Umbral de mirada desviada",
+    "gaze_sustained_ms": "Mirada desviada sostenida (ms)",
+    "gaze_fixation_tolerance": "Tolerancia de fijación",
+}
+
+
+def _label_config(key: str) -> str:
+    return _LABEL_CONFIG.get(key, key.replace("_", " "))
+
+
+def _fmt_valor_config(valor: object) -> str:
+    """bool → Sí/No, lista → 'N ítems', dict → JSON, None → '—'."""
+    if valor is None:
+        return "—"
+    if isinstance(valor, bool):
+        return "Sí" if valor else "No"
+    if isinstance(valor, list):
+        return f"{len(valor)} ítem" + ("" if len(valor) == 1 else "s")
+    if isinstance(valor, dict):
+        return json.dumps(valor, ensure_ascii=False)
+    return str(valor)
+
+
+def detalle_legible(proposito: str | None) -> str:
+    """Detalle del propósito para el export/reporte.
+
+    Un cambio de config llega como JSON ``{before, after}`` → se resume a
+    "Cambió — Param: antes → después; …". Cualquier otro propósito (texto plano)
+    se devuelve tal cual. Nunca vuelca el JSON crudo.
+    """
+    if not proposito:
+        return ""
+    try:
+        parsed = json.loads(proposito)
+    except (ValueError, TypeError):
+        return proposito
+    if not isinstance(parsed, dict) or "before" not in parsed or "after" not in parsed:
+        return proposito
+    before = parsed.get("before") or {}
+    after = parsed.get("after") or {}
+    if not isinstance(before, dict) or not isinstance(after, dict):
+        return proposito
+    cambios: list[str] = []
+    for key in sorted(set(before) | set(after)):
+        if key == "version":  # metadato, no es un parámetro configurable
+            continue
+        antes = before.get(key)
+        despues = after.get(key)
+        if antes != despues:
+            cambios.append(
+                f"{_label_config(key)}: "
+                f"{_fmt_valor_config(antes)} → {_fmt_valor_config(despues)}"
+            )
+    if not cambios:
+        return "Guardó la configuración sin cambios."
+    return "Cambió — " + "; ".join(cambios)

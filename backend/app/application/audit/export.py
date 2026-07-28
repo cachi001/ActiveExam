@@ -21,15 +21,33 @@ from fpdf import FPDF
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 
-from app.application.stats.labels import etiqueta_accion
+from app.application.stats.labels import (
+    detalle_legible,
+    etiqueta_accion,
+    etiqueta_modulo,
+)
 
 _AZUL = "004BA8"
 _HDR_FILL = PatternFill("solid", fgColor=_AZUL)
 _HDR_FONT = Font(bold=True, color="FFFFFF")
 
-_COLUMNAS = ["Fecha y hora", "Usuario", "Acción", "Detalle", "IP"]
+# La IP NO se exporta: es dato sensible (Ley 25.326). El registro de auditoría se
+# entrega a un organismo de control con "quién hizo qué y cuándo" — la dirección
+# de red del actor no hace falta y su exposición es un riesgo de privacidad.
+_COLUMNAS = ["Fecha y hora", "Usuario", "Módulo", "Acción", "Detalle"]
 # Anchos pensados para que "Detalle" (el texto largo) no quede cortado en Excel.
-_ANCHOS = [20, 34, 34, 80, 16]
+_ANCHOS = [18, 40, 24, 34, 84]
+
+
+def _usuario(e) -> str:
+    """Identidad del actor para el reporte: 'Nombre (identificador)' o, si no hay
+    nombre resuelto, el identificador solo. NUNCA queda en blanco — un audit con la
+    columna "Usuario" vacía no dice quién hizo la acción."""
+    nombre = getattr(e, "actor_nombre", None)
+    actor = getattr(e, "actor", "") or ""
+    if nombre and nombre != actor:
+        return f"{nombre} ({actor})"
+    return nombre or actor
 
 
 def _fecha_legible(iso: str | None) -> str:
@@ -54,13 +72,17 @@ def _rango_texto(desde: str | None, hasta: str | None) -> str:
     return "Período: todo el registro"
 
 
-def _filtros_texto(actor: str | None, accion: str | None) -> str:
+def _filtros_texto(
+    actor: str | None, accion: str | None, modulo: str | None = None
+) -> str:
     partes = []
     if actor:
         partes.append(f"Usuario: {actor}")
+    if modulo:
+        partes.append(f"Módulo: {etiqueta_modulo(modulo)}")
     if accion:
         partes.append(f"Acción: {etiqueta_accion(accion)}")
-    return " · ".join(partes) if partes else "Sin filtros de usuario ni acción"
+    return " · ".join(partes) if partes else "Sin filtros de usuario, módulo ni acción"
 
 
 def auditoria_a_xlsx(
@@ -68,6 +90,7 @@ def auditoria_a_xlsx(
     *,
     actor: str | None = None,
     accion: str | None = None,
+    modulo: str | None = None,
     desde: str | None = None,
     hasta: str | None = None,
 ) -> bytes:
@@ -81,7 +104,7 @@ def auditoria_a_xlsx(
     ws["A1"] = "Registro de auditoría — Active Exam"
     ws["A1"].font = Font(bold=True, size=14, color=_AZUL)
     ws["A2"] = _rango_texto(desde, hasta)
-    ws["A3"] = _filtros_texto(actor, accion)
+    ws["A3"] = _filtros_texto(actor, accion, modulo)
     ws["A4"] = f"Generado: {datetime.now().strftime('%d/%m/%Y %H:%M')}"
     ws["A5"] = f"Entradas exportadas: {len(entradas)}"
 
@@ -95,14 +118,10 @@ def auditoria_a_xlsx(
 
     for j, e in enumerate(entradas, start=fila_encabezado + 1):
         ws.cell(row=j, column=1, value=_fecha_legible(getattr(e, "timestamp", None)))
-        ws.cell(
-            row=j,
-            column=2,
-            value=getattr(e, "actor_nombre", None) or getattr(e, "actor", "") or "",
-        )
-        ws.cell(row=j, column=3, value=etiqueta_accion(getattr(e, "accion", "") or ""))
-        ws.cell(row=j, column=4, value=getattr(e, "proposito", None) or "")
-        ws.cell(row=j, column=5, value=getattr(e, "ip", None) or "")
+        ws.cell(row=j, column=2, value=_usuario(e))
+        ws.cell(row=j, column=3, value=etiqueta_modulo(getattr(e, "modulo", None)))
+        ws.cell(row=j, column=4, value=etiqueta_accion(getattr(e, "accion", "") or ""))
+        ws.cell(row=j, column=5, value=detalle_legible(getattr(e, "proposito", None)))
 
     buf = io.BytesIO()
     wb.save(buf)
@@ -119,6 +138,7 @@ def auditoria_a_pdf(
     *,
     actor: str | None = None,
     accion: str | None = None,
+    modulo: str | None = None,
     desde: str | None = None,
     hasta: str | None = None,
 ) -> bytes:
@@ -136,7 +156,7 @@ def auditoria_a_pdf(
     pdf.set_font("Helvetica", "", 9)
     pdf.set_text_color(80, 80, 80)
     pdf.cell(0, 5, _txt(_rango_texto(desde, hasta)), new_x="LMARGIN", new_y="NEXT")
-    pdf.cell(0, 5, _txt(_filtros_texto(actor, accion)), new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 5, _txt(_filtros_texto(actor, accion, modulo)), new_x="LMARGIN", new_y="NEXT")
     pdf.cell(
         0,
         5,
@@ -149,7 +169,8 @@ def auditoria_a_pdf(
     )
     pdf.ln(3)
 
-    anchos = [32, 55, 55, 118, 22]
+    # Sin IP: 5 columnas. Anchos suman ~273mm (A4 apaisado menos márgenes).
+    anchos = [30, 55, 42, 52, 94]
     pdf.set_font("Helvetica", "B", 9)
     pdf.set_fill_color(0, 75, 168)
     pdf.set_text_color(255, 255, 255)
@@ -168,10 +189,10 @@ def auditoria_a_pdf(
             relleno = True
         valores = [
             _fecha_legible(getattr(e, "timestamp", None)),
-            getattr(e, "actor_nombre", None) or getattr(e, "actor", "") or "",
+            _usuario(e),
+            etiqueta_modulo(getattr(e, "modulo", None)),
             etiqueta_accion(getattr(e, "accion", "") or ""),
-            getattr(e, "proposito", None) or "",
-            getattr(e, "ip", None) or "",
+            detalle_legible(getattr(e, "proposito", None)),
         ]
         for ancho, valor in zip(anchos, valores):
             # Recorte por ancho de columna: el PDF es una tabla, no un volcado.

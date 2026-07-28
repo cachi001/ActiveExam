@@ -22,7 +22,9 @@ const DETECTORES_DEFAULT: TipoEvento[] = [
   'rostro_ausente', 'multiples_rostros', 'mirada_desviada_sostenida', 'perdida_de_foco', 'monitor_adicional',
 ];
 
-const UMBRAL_MIN = 30;
+// Piso de producto (decisión del owner): el umbral de revisión NO baja de 70.
+// El backend lo valida server-side (Field ge=70); acá el slider ni deja elegir menos.
+const UMBRAL_MIN = 70;
 const UMBRAL_MAX = 90;
 
 interface Estado {

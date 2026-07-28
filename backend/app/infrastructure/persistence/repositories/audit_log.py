@@ -69,12 +69,21 @@ class AuditLogSqlRepository(AuditLogRepository):
         # hash_prev/hash_self los completa el trigger BEFORE INSERT (002); aqui
         # no se calcula la cadena en la aplicacion para que la fuente de verdad
         # sea el motor.
+        #
+        # FALLBACK de clasificación: si el caller no seteó `modulo` (muchos
+        # construían el AuditEntry directo, dejando modulo=NULL → la entrada no
+        # aparecía al filtrar por su módulo en Auditoría), se deriva del prefijo de
+        # la acción. `modulo` NO entra en el hash (es metadata de clasificación),
+        # así que completarlo acá no afecta la cadena de custodia.
+        from app.application.audit.acciones import modulo_de_accion
+
+        modulo = entity.modulo or modulo_de_accion(entity.accion)
         row = AuditLogModel(
             actor=entity.actor,
             ip=_normalizar_ip(entity.ip),
             user_agent=entity.user_agent or None,
             accion=entity.accion,
-            modulo=entity.modulo,
+            modulo=modulo,
             entidad=entity.entidad,
             entidad_id=entity.entidad_id,
             tipo_accion=entity.tipo_accion,

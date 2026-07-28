@@ -515,11 +515,14 @@ async def eliminar_usuario(
         accion=AccionAuditoria.USUARIO_BAJA,
         modulo=ModuloAuditoria.USUARIOS,
         entidad=EntidadAuditoria.USUARIO,
-        tipo_accion=TipoAccionAuditoria.ELIMINAR,
+        # BAJA LÓGICA (soft-delete: setea eliminado_en, NO borra la fila) → es un
+        # CAMBIO DE ESTADO, no una ELIMINACIÓN. "Eliminar" se reserva para el borrado
+        # físico definitivo (que en usuarios no existe).
+        tipo_accion=TipoAccionAuditoria.CAMBIO_ESTADO,
         entidad_id=str(usuario_id),
         ip=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
-        proposito=f"Baja de usuario {usuario_email}",
+        proposito=f"El usuario {usuario_email} pasó de Activo a Inactivo (baja lógica)",
     )
 
 
@@ -583,10 +586,14 @@ async def reactivar_usuario(
         actor=principal.email,
         accion=AccionAuditoria.USUARIO_REACTIVACION,
         modulo=ModuloAuditoria.USUARIOS,
+        entidad=EntidadAuditoria.USUARIO,
+        # Reactivar (limpiar eliminado_en) también es un CAMBIO DE ESTADO — el reverso
+        # de la baja lógica. No es una acción de una familia aparte.
+        tipo_accion=TipoAccionAuditoria.CAMBIO_ESTADO,
         entidad_id=str(usuario_id),
         ip=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
-        proposito=f"Reactivó el usuario {usuario.email}",
+        proposito=f"El usuario {usuario.email} pasó de Inactivo a Activo",
     )
 
     return UsuarioDetalleResponse(

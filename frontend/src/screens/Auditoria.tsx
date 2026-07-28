@@ -64,8 +64,9 @@ const ACCIONES_POR_MODULO: Record<string, OpcionAccion[]> = {
   USUARIOS: [
     { label: 'Crear',           accion: 'user.create' },
     { label: 'Editar',          accion: 'user.update' },   // incluye cambio de contraseña
-    { label: 'Eliminar',        accion: 'user.delete' },
-    { label: 'Cambio de estado', accion: 'user.reactivate' },
+    // Baja de usuario = baja LÓGICA (soft-delete). Ella y la reactivación son ambas
+    // "cambio de estado". No hay "Eliminar" (borrado físico) para usuarios.
+    { label: 'Cambio de estado', accion: 'user.delete,user.reactivate' },
   ],
   MATERIAS: [
     { label: 'Crear',           accion: 'materia.create,comision.create,inscripcion.create' },
@@ -129,7 +130,7 @@ const ACCION_META: Array<{ match: (a: string) => boolean; label: string; color: 
   { match: (a) => a.startsWith('consent'), label: 'Consentimiento', color: '#0d9488', icon: 'fact_check' },
   { match: (a) => a === 'user.create', label: 'Alta de usuario', color: '#059669', icon: 'person_add' },
   { match: (a) => a === 'user.update', label: 'Editó usuario', color: '#8b5cf6', icon: 'manage_accounts' },
-  { match: (a) => a === 'user.delete', label: 'Baja de usuario', color: '#ef4444', icon: 'person_remove' },
+  { match: (a) => a === 'user.delete', label: 'Cambió estado de usuario', color: '#f59e0b', icon: 'toggle_off' },
   { match: (a) => a === 'user.reactivate', label: 'Cambió estado de usuario', color: '#10b981', icon: 'toggle_on' },
   { match: (a) => a.startsWith('config'), label: 'Cambió configuración', color: '#f59e0b', icon: 'settings' },
   { match: (a) => a.startsWith('review.decision'), label: 'Decisión de revisión', color: '#d97706', icon: 'gavel' },
