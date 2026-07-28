@@ -32,7 +32,9 @@ from app.config_slim import get_slim_settings
 from app.infrastructure.auth.slim_wiring import build_slim_jwt_validator
 from app.infrastructure.crypto.embedding_encryption import EmbeddingEncryptionService
 from app.infrastructure.crypto.evidence_encryption import EvidenceCipher
-from app.infrastructure.moodle.wiring import build_writeback_svc
+from app.application.moodle.credencial_service import MoodleCredencialResolver
+from app.infrastructure.crypto.secret_encryption import SecretCipher
+from app.infrastructure.moodle.wiring import build_writeback_svc_dinamico
 from app.infrastructure.persistence.session_slim import (
     create_slim_engine,
     create_slim_session_factory,
@@ -100,11 +102,26 @@ def create_slim_app() -> FastAPI:
     # Ley 25.326 / regla #7. Antes se guardaba en claro.
     evidence_encryption = EvidenceCipher(key=settings.embedding_encryption_key)
 
+    # Credencial de servicio de Moodle (migración 0047): vive en la base con el
+    # token CIFRADO y la administra el admin del sistema. Mientras la tabla esté
+    # vacía se cae a las variables de entorno (MOODLE_*), así que un despliegue
+    # existente no cambia de comportamiento.
+    _moodle_credenciales = MoodleCredencialResolver(
+        session_factory=session_factory,
+        cipher=SecretCipher(key=settings.embedding_encryption_key),
+        env_base_url=settings.moodle_base_url,
+        env_token=settings.moodle_ws_token,
+        env_courseid=settings.moodle_courseid,
+        env_cmid=settings.moodle_cmid,
+        env_component=settings.moodle_component,
+    )
+
     # Servicio de write-back de nota a Moodle (C-69, D7/D10).
-    # Si moodle_base_url no está configurado, el write-back queda deshabilitado.
-    # El token se toma de settings.moodle_ws_token — NUNCA se loguea. Contrato de
-    # cableado (empty base_url → None) clavado en test_c73_writeback_wiring.
-    _writeback_svc = build_writeback_svc(settings)
+    # La credencial se resuelve en CADA llamada: rotar el token desde la UI toma
+    # efecto sin reiniciar. Si no hay credencial, el propio push falla y la nota
+    # queda 'pendiente' (mismo camino que un fallo de red) — la finalización del
+    # examen nunca se bloquea por Moodle.
+    _writeback_svc = build_writeback_svc_dinamico(_moodle_credenciales)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -119,6 +136,9 @@ def create_slim_app() -> FastAPI:
         # el write-back del state: lo necesita para el hook c-18 — anular por fraude
         # debe escribir el 0 en la libreta de Moodle. None = Moodle sin configurar.
         app.state.writeback_svc = _writeback_svc
+        # El router de configuración lo usa para leer/guardar la credencial y para
+        # invalidar el cache cuando el admin la cambia.
+        app.state.moodle_credenciales = _moodle_credenciales
         yield
         await engine.dispose()
 

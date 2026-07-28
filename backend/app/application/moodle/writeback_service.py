@@ -163,14 +163,14 @@ class MoodleWritebackService:
         Si ya existe un estado 'enviado' para esta sesión, lo devuelve tal cual
         (idempotente: no sobrescribe una nota ya enviada).
         """
+        # Config VIGENTE (puede venir de la base y haber cambiado en caliente).
+        cfg = await self._client._resolver_config()
         target_courseid = (
-            moodle_courseid if moodle_courseid is not None else self._client._config.courseid
+            moodle_courseid if moodle_courseid is not None else cfg.courseid
         )
-        target_cmid = (
-            moodle_cmid if moodle_cmid is not None else self._client._config.cmid
-        )
+        target_cmid = moodle_cmid if moodle_cmid is not None else cfg.cmid
         target_component = (
-            moodle_component if moodle_component is not None else self._client._config.component
+            moodle_component if moodle_component is not None else cfg.component
         )
         return await persistir_nota_pendiente(
             db=db,
@@ -481,7 +481,7 @@ class MoodleWritebackService:
     ) -> None:
         """Marca el estado como 'fallido' y audita el intento sin el token."""
         # Limpiar el token del mensaje de error por si acaso
-        error_limpio = self._sanitizar_error(error)
+        error_limpio = await self._sanitizar_error(error)
 
         estado.estado = WritebackEstado.FALLIDO
         estado.intento += 1
@@ -522,9 +522,18 @@ class MoodleWritebackService:
         db.add(audit)
         await db.flush()
 
-    def _sanitizar_error(self, error: str) -> str:
-        """Elimina el token del mensaje de error antes de guardarlo."""
-        token = self._client._config.ws_token
+    async def _sanitizar_error(self, error: str) -> str:
+        """Elimina el token del mensaje de error antes de guardarlo.
+
+        Resuelve el token VIGENTE (puede venir de la base y haber rotado): con la
+        config estatica, tras una rotacion se redactaba el token viejo y el nuevo
+        se escribia tal cual en el audit log.
+        """
+        try:
+            cfg = await self._client._resolver_config()
+            token = cfg.ws_token
+        except Exception:  # noqa: BLE001 — redactar nunca puede romper el guardado
+            token = ""
         if token and token in error:
             error = error.replace(token, "[REDACTED]")
         return error

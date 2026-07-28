@@ -94,6 +94,9 @@ export const adminApi = {
   ): Promise<Blob> {
     const p = new URLSearchParams();
     if (filtros?.actor) p.set('actor', filtros.actor);
+    // El módulo IBA sin enviarse: filtrabas por "Integración Moodle" y el archivo
+    // salía con TODO el registro. Ahora el export respeta el filtro de módulo.
+    if (filtros?.modulo) p.set('modulo', filtros.modulo);
     if (filtros?.accion) p.set('accion', filtros.accion);
     if (filtros?.desde) p.set('desde', filtros.desde);
     if (filtros?.hasta) p.set('hasta', filtros.hasta);
@@ -426,4 +429,53 @@ export const adminApi = {
   }> {
     return await realFetch('/config', { method: 'PATCH', body: JSON.stringify(body) });
   },
+
+  // -------------------------------------------------------------------------
+  // Credencial de servicio de Moodle (token cifrado en la base)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Estado de la credencial de Moodle. El token NUNCA viaja: solo si está
+   * configurado y sus últimos 4 caracteres, para reconocer cuál se cargó.
+   * Real: GET /api/v1/config/moodle  (solo admin_sistema)
+   */
+  async obtenerCredencialMoodle(): Promise<CredencialMoodle> {
+    return await realFetch('/config/moodle', { method: 'GET' });
+  },
+
+  /**
+   * Guarda la credencial. Omitir `token` deja el guardado intacto (permite
+   * corregir el curso o la actividad sin volver a tipear el secreto).
+   * Real: PUT /api/v1/config/moodle
+   */
+  async guardarCredencialMoodle(body: {
+    base_url?: string;
+    token?: string;
+    courseid?: number;
+    cmid?: number;
+    component?: 'mod_assign' | 'mod_quiz';
+  }): Promise<CredencialMoodle> {
+    return await realFetch('/config/moodle', { method: 'PUT', body: JSON.stringify(body) });
+  },
+
+  /** Borra el token guardado. Real: DELETE /api/v1/config/moodle/token */
+  async borrarTokenMoodle(): Promise<CredencialMoodle> {
+    return await realFetch('/config/moodle/token', { method: 'DELETE' });
+  },
 };
+
+/** Estado de la credencial de Moodle tal como lo expone la API (SIN el token). */
+export interface CredencialMoodle {
+  base_url: string;
+  courseid: number;
+  cmid: number;
+  component: 'mod_assign' | 'mod_quiz';
+  /** True si hay un token utilizable (guardado en la base o heredado del entorno). */
+  token_configurado: boolean;
+  /** Últimos 4 caracteres del token guardado. null si viene del entorno. */
+  token_pista: string | null;
+  /** 'db' | 'env' | 'sin_configurar'. */
+  origen: string;
+  actualizado_en: string | null;
+  actualizado_por: string | null;
+}

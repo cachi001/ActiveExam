@@ -517,3 +517,35 @@ class ConsentTextoVersionModel(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     created_by: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
+
+class MoodleCredencialModel(Base):
+    """Credencial de servicio de Moodle (singleton, migracion 0047).
+
+    UNA fila (id=1): la credencial es INSTITUCIONAL, no por docente — el write-back
+    de notas lo hace una cuenta de servicio del campus, y repartir tokens por
+    docente multiplicaria los secretos a rotar sin ganar nada.
+
+    ``token_cifrado`` guarda el token de Web Services cifrado con Fernet
+    (``SecretCipher``), NUNCA en claro. La API jamas lo devuelve: para que el admin
+    reconozca cual cargo se expone ``token_pista`` (ultimos 4 caracteres).
+
+    Mientras la tabla este vacia, el resolver cae a las variables de entorno
+    (MOODLE_*), asi que un despliegue existente sigue funcionando sin tocar nada.
+    """
+
+    __tablename__ = "moodle_credencial"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    base_url: Mapped[str] = mapped_column(String(500), nullable=False, default="")
+    token_cifrado: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    token_pista: Mapped[Optional[str]] = mapped_column(String(8), nullable=True)
+    courseid: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    cmid: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    component: Mapped[str] = mapped_column(
+        String(50), nullable=False, default="mod_assign"
+    )
+    actualizado_en: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    actualizado_por: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)

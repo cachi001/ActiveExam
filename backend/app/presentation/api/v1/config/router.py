@@ -10,7 +10,7 @@ Endpoints:
 Reglas duras:
 - ``extra='forbid'`` en todos los schemas.
 - Edicion restringida a ``admin_sistema`` con MFA (RN-AU-05).
-- ``umbral_cola_revision`` validado en [0, 100]; umbrales en rangos coherentes.
+- ``umbral_cola_revision`` validado en [70, 100] (piso de producto); umbrales coherentes.
 - L2.5: la config alimenta PRIORIZACION; nunca sancion automatica.
 
 Patron: usa ``request.app.state.session_factory`` (igual que scoring/router.py).
@@ -22,9 +22,14 @@ import json
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.application.audit.acciones import (
+    EntidadAuditoria,
+    ModuloAuditoria,
+    TipoAccionAuditoria,
+)
 from app.application.config.service import ConfigEfectiva, ConfigService
 from app.domain.audit_chain import AuditEntry
 from app.domain.auth.identity import AuthenticatedPrincipal
@@ -86,7 +91,10 @@ class EditarConfigRequest(_Strict):
     gaze_deviation_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
     gaze_sustained_ms: int | None = Field(default=None, ge=0, le=600000)
     gaze_fixation_tolerance: float | None = Field(default=None, ge=0.0, le=1.0)
-    umbral_cola_revision: int | None = Field(default=None, ge=0, le=100)
+    # Piso de producto: el umbral de revisión NO puede bajar de 70 (decisión del
+    # owner). Server-side sí o sí — el cliente es sensor no confiable (regla dura #6):
+    # el slider del front también pisa en 70, pero la garantía vive acá.
+    umbral_cola_revision: int | None = Field(default=None, ge=70, le=100)
     detectores_activos: list[str] | None = None
     retencion_dias_default: int | None = Field(default=None, ge=0, le=36500)
     consent_version_vigente: str | None = None
@@ -251,6 +259,12 @@ async def editar_config(
                 proposito=json.dumps(
                     {"before": before, "after": after}, ensure_ascii=False
                 ),
+                # Clasificación para el filtro/export de Auditoría: sin esto el cambio
+                # de config quedaba con modulo=NULL y NO aparecía al filtrar por
+                # "Configuración del sistema".
+                modulo=ModuloAuditoria.CONFIGURACION,
+                entidad=EntidadAuditoria.CONFIGURACION,
+                tipo_accion=TipoAccionAuditoria.EDITAR,
             )
         )
         await session.commit()
@@ -260,3 +274,172 @@ async def editar_config(
     svc.invalidate()
     efectiva = await svc.get_efectiva()
     return _to_response(efectiva)
+
+
+# ---------------------------------------------------------------------------
+# Credencial de servicio de Moodle (migración 0047) — SOLO admin_sistema.
+#
+# El token de Web Services es un SECRETO: se guarda cifrado (Fernet) y NUNCA sale
+# por la API. La lectura devuelve si hay token y sus últimos 4 caracteres, para que
+# el admin reconozca cuál cargó sin poder reconstruirlo. Tampoco se audita el valor:
+# el rastro dice QUÉ campos se tocaron y quién, jamás el secreto.
+# ---------------------------------------------------------------------------
+
+ACCION_MOODLE_CREDENCIAL = "moodle_credencial_update"
+
+
+class MoodleCredencialResponse(BaseModel):
+    """Estado de la credencial SIN el token (nunca se devuelve)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    base_url: str
+    courseid: int
+    cmid: int
+    component: str
+    #: True si hay un token utilizable (en la base o, si la base está vacía, en el entorno).
+    token_configurado: bool
+    #: Últimos 4 caracteres del token guardado. None si el token viene del entorno.
+    token_pista: str | None = None
+    #: "db" | "env" | "sin_configurar" — de dónde sale la credencial vigente.
+    origen: str
+    actualizado_en: str | None = None
+    actualizado_por: str | None = None
+
+
+class GuardarMoodleCredencialRequest(BaseModel):
+    """Body del PUT. Todos los campos opcionales (update parcial).
+
+    ``token`` ausente = NO se toca el token guardado (para poder corregir el
+    courseid sin re-tipear el secreto). Para borrarlo está DELETE.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    base_url: str | None = None
+    token: str | None = Field(default=None, min_length=8, max_length=512)
+    courseid: int | None = Field(default=None, ge=0)
+    cmid: int | None = Field(default=None, ge=0)
+    component: str | None = None
+
+    @field_validator("component")
+    @classmethod
+    def component_valido(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        if v not in {"mod_assign", "mod_quiz"}:
+            raise ValueError("component debe ser 'mod_assign' o 'mod_quiz'.")
+        return v
+
+
+def _resolver_credenciales(request: Request):
+    resolver = getattr(request.app.state, "moodle_credenciales", None)
+    if resolver is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Credenciales de Moodle no inicializadas.",
+        )
+    return resolver
+
+
+def _a_response(estado) -> MoodleCredencialResponse:
+    return MoodleCredencialResponse(
+        base_url=estado.base_url,
+        courseid=estado.courseid,
+        cmid=estado.cmid,
+        component=estado.component,
+        token_configurado=estado.token_configurado,
+        token_pista=estado.token_pista,
+        origen=estado.origen,
+        actualizado_en=estado.actualizado_en,
+        actualizado_por=estado.actualizado_por,
+    )
+
+
+async def _auditar_credencial(
+    request: Request, principal: AuthenticatedPrincipal, proposito: str
+) -> None:
+    """Deja rastro del cambio de credencial. NUNCA registra el token."""
+    session_factory = _get_session_factory(request)
+    async with session_factory() as session:
+        await AuditLogSqlRepository(session).append(
+            AuditEntry(
+                actor=principal.id_institucional,
+                timestamp=_now_iso(),
+                ip="",
+                user_agent="",
+                accion=ACCION_MOODLE_CREDENCIAL,
+                evidencia_id=None,
+                proposito=proposito,
+            )
+        )
+        await session.commit()
+
+
+@router.get("/moodle", response_model=MoodleCredencialResponse)
+async def leer_credencial_moodle(
+    request: Request,
+    _principal: AuthenticatedPrincipal = Depends(_require_admin),
+) -> MoodleCredencialResponse:
+    """Estado de la credencial de Moodle. El token NO se devuelve."""
+    resolver = _resolver_credenciales(request)
+    return _a_response(await resolver.estado())
+
+
+@router.put("/moodle", response_model=MoodleCredencialResponse)
+async def guardar_credencial_moodle(
+    body: GuardarMoodleCredencialRequest,
+    request: Request,
+    principal: AuthenticatedPrincipal = Depends(_require_admin),
+) -> MoodleCredencialResponse:
+    """Guarda la credencial (token cifrado at-rest). 400 si el body viene vacío."""
+    if all(
+        v is None
+        for v in (body.base_url, body.token, body.courseid, body.cmid, body.component)
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El body debe incluir al menos un campo a actualizar.",
+        )
+
+    resolver = _resolver_credenciales(request)
+    estado = await resolver.guardar(
+        base_url=body.base_url,
+        token=body.token,
+        courseid=body.courseid,
+        cmid=body.cmid,
+        component=body.component,
+        actor=principal.id_institucional,
+    )
+
+    # Qué se tocó, nunca con qué valor de token.
+    campos = [
+        nombre
+        for nombre, valor in (
+            ("base_url", body.base_url),
+            ("courseid", body.courseid),
+            ("cmid", body.cmid),
+            ("component", body.component),
+        )
+        if valor is not None
+    ]
+    if body.token:
+        campos.append("token (reemplazado)")
+    await _auditar_credencial(
+        request, principal, f"Actualizó la credencial de Moodle: {', '.join(campos)}"
+    )
+    return _a_response(estado)
+
+
+@router.delete("/moodle/token", response_model=MoodleCredencialResponse)
+async def borrar_token_moodle(
+    request: Request,
+    principal: AuthenticatedPrincipal = Depends(_require_admin),
+) -> MoodleCredencialResponse:
+    """Borra el token guardado. El write-back deja de escribir hasta cargar otro."""
+    resolver = _resolver_credenciales(request)
+    estado = await resolver.borrar_token(actor=principal.id_institucional)
+    await _auditar_credencial(
+        request, principal, "Eliminó el token de Moodle guardado"
+    )
+    return _a_response(estado)

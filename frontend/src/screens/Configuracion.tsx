@@ -17,14 +17,16 @@ import SeccionProctoring from './configuracion/SeccionProctoring';
 import SeccionScoring from './configuracion/SeccionScoring';
 import SeccionDeteccion from './configuracion/SeccionDeteccion';
 import SeccionConsentimiento from './configuracion/SeccionConsentimiento';
+import SeccionMoodle from './configuracion/SeccionMoodle';
 
-type TabId = 'proctoring' | 'scoring' | 'deteccion' | 'consentimiento';
+type TabId = 'proctoring' | 'scoring' | 'deteccion' | 'consentimiento' | 'moodle';
 
 const TABS: { id: TabId; label: string; icon: string }[] = [
   { id: 'proctoring', label: 'Parámetros generales', icon: 'tune' },
   { id: 'scoring', label: 'Scoring', icon: 'speed' },
   { id: 'deteccion', label: 'Detección', icon: 'visibility' },
   { id: 'consentimiento', label: 'Consentimiento', icon: 'gavel' },
+  { id: 'moodle', label: 'Campus (Moodle)', icon: 'sync_alt' },
 ];
 
 const AYUDA = (
@@ -77,6 +79,7 @@ export default function Configuracion() {
           {tab === 'scoring' && <SeccionScoring />}
           {tab === 'deteccion' && <SeccionDeteccion />}
           {tab === 'consentimiento' && <SeccionConsentimiento />}
+          {tab === 'moodle' && <SeccionMoodle />}
         </div>
       </div>
     </StaffShell>

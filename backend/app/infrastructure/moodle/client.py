@@ -7,6 +7,7 @@ Schema Pydantic extra='forbid'.
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable
 
 import httpx
 from pydantic import BaseModel, ConfigDict
@@ -36,8 +37,39 @@ class MoodleRestClient:
     El token nunca se loguea: se usa sólo en el campo wstoken del form-data.
     """
 
-    def __init__(self, config: MoodleClientConfig) -> None:
-        self._config = config
+    def __init__(
+        self,
+        config: MoodleClientConfig | None = None,
+        *,
+        config_provider: "Callable[[], Awaitable[MoodleClientConfig]] | None" = None,
+    ) -> None:
+        """Config fija, o un ``config_provider`` que la resuelve en cada llamada.
+
+        El provider existe porque la credencial ahora vive en la base y el admin
+        puede rotarla en caliente (migracion 0047): con la config congelada al
+        arrancar, cambiar el token exigia reiniciar el backend. El provider se
+        consulta por llamada y el resolver cachea, asi que no agrega viajes a la DB.
+        """
+        if config is None and config_provider is None:
+            raise ValueError("MoodleRestClient necesita config o config_provider.")
+        self._config_estatico = config
+        self._config_provider = config_provider
+
+    async def _resolver_config(self) -> MoodleClientConfig:
+        """Config vigente para esta llamada (provider si hay, si no la estatica)."""
+        if self._config_provider is not None:
+            return await self._config_provider()
+        assert self._config_estatico is not None
+        return self._config_estatico
+
+    @property
+    def _config(self) -> MoodleClientConfig:
+        """Config estatica. Solo para consumidores sincronicos (p.ej. la redaccion
+        del token en los mensajes de error). Con provider puro devuelve una config
+        vacia: quien necesite el valor vivo debe usar ``_resolver_config``."""
+        if self._config_estatico is not None:
+            return self._config_estatico
+        return MoodleClientConfig(base_url="", ws_token="", courseid=0, cmid=0)
 
     async def write_grade(
         self,
@@ -63,12 +95,13 @@ class MoodleRestClient:
             MoodleGradeWriteError: si Moodle devuelve un error, token inválido,
                 fallo de red o respuesta HTTP no-2xx.
         """
-        url = f"{self._config.base_url.rstrip('/')}/webservice/rest/server.php"
+        cfg = await self._resolver_config()
+        url = f"{cfg.base_url.rstrip('/')}/webservice/rest/server.php"
 
         # Destino: valor por examen si vino; si no, fallback al global de config.
-        target_courseid = courseid if courseid is not None else self._config.courseid
-        target_cmid = cmid if cmid is not None else self._config.cmid
-        target_component = component if component is not None else self._config.component
+        target_courseid = courseid if courseid is not None else cfg.courseid
+        target_cmid = cmid if cmid is not None else cfg.cmid
+        target_component = component if component is not None else cfg.component
 
         # CONVERSION DE ESCALA. ActiveExam califica sobre `nota_maxima` (10 por
         # defecto) y el item de Moodle suele venir sobre 100: mandar el numero crudo
@@ -87,7 +120,7 @@ class MoodleRestClient:
         # Payload del WS. El token va en wstoken (protocolo Moodle REST WS).
         # NUNCA se loguea ni aparece en campos de audit.
         data = {
-            "wstoken": self._config.ws_token,
+            "wstoken": cfg.ws_token,
             "wsfunction": "core_grades_update_grades",
             "moodlewsrestformat": "json",
             "source": "activeexam",
@@ -131,9 +164,10 @@ class MoodleRestClient:
         Devuelve el userid si hay exactamente un match, None si no hay match.
         Raises MoodleGradeWriteError si hay múltiples matches o error de red/WS.
         """
-        url = f"{self._config.base_url.rstrip('/')}/webservice/rest/server.php"
+        cfg = await self._resolver_config()
+        url = f"{cfg.base_url.rstrip('/')}/webservice/rest/server.php"
         data = {
-            "wstoken": self._config.ws_token,
+            "wstoken": cfg.ws_token,
             "wsfunction": "core_user_get_users_by_field",
             "moodlewsrestformat": "json",
             "field": "idnumber",
@@ -173,9 +207,10 @@ class MoodleRestClient:
 
     async def lookup_userid_by_email(self, email: str) -> int | None:
         """Busca el userid de Moodle por email. None si no hay match único."""
-        url = f"{self._config.base_url.rstrip('/')}/webservice/rest/server.php"
+        cfg = await self._resolver_config()
+        url = f"{cfg.base_url.rstrip('/')}/webservice/rest/server.php"
         data = {
-            "wstoken": self._config.ws_token,
+            "wstoken": cfg.ws_token,
             "wsfunction": "core_user_get_users_by_field",
             "moodlewsrestformat": "json",
             "field": "email",
@@ -238,12 +273,13 @@ class MoodleRestClient:
                 la escala equivocada la nota queda MAL en la libreta, y una nota
                 faltante es preferible a una nota incorrecta.
         """
-        url = f"{self._config.base_url.rstrip('/')}/webservice/rest/server.php"
-        target_courseid = courseid if courseid is not None else self._config.courseid
-        target_cmid = cmid if cmid is not None else self._config.cmid
+        cfg = await self._resolver_config()
+        url = f"{cfg.base_url.rstrip('/')}/webservice/rest/server.php"
+        target_courseid = courseid if courseid is not None else cfg.courseid
+        target_cmid = cmid if cmid is not None else cfg.cmid
 
         data = {
-            "wstoken": self._config.ws_token,
+            "wstoken": cfg.ws_token,
             "wsfunction": "gradereport_user_get_grade_items",
             "moodlewsrestformat": "json",
             "courseid": str(target_courseid),
