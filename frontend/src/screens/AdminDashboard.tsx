@@ -12,8 +12,6 @@ import { RefreshBar } from '../ui/RefreshBar';
 import { useAutoRefresh } from '../lib/useAutoRefresh';
 import { Icon, Card, LoadingSpinner } from '../ui/components';
 import { HelpButton } from '../ui/HelpButton';
-import { RefreshBar } from '../ui/RefreshBar';
-import { useAutoRefresh } from '../lib/useAutoRefresh';
 import { StatCard } from './proctoring/StatCard';
 import { statProps } from './proctoring/statCatalog';
 import { Link } from '../lib/router';

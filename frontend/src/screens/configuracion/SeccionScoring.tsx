@@ -189,7 +189,7 @@ export default function SeccionScoring() {
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-lg min-w-0">
         {[...configs]
-          .sort((a, b) => (SEV_ORDER[severidadEditable(a.severidad)] ?? 4) - (SEV_ORDER[severidadEditable(b.severidad)] ?? 4))
+          .sort((a, b) => (SEV_ORDER[severidadEditable(a.severidad as Severidad)] ?? 4) - (SEV_ORDER[severidadEditable(b.severidad as Severidad)] ?? 4))
           .map((cfg) => {
           const editado = tieneEdicion(cfg.tipo_evento);
           const sev = severidadEditable(valorActual(cfg, 'severidad') as Severidad);

@@ -28,6 +28,7 @@ export function DecisionRevisorForm({
   onDecidido?: () => void;
 }) {
   const [motivo, setMotivo] = useState('');
+  const [motivoTouched, setMotivoTouched] = useState(false);
   const [seleccionados, setSeleccionados] = useState<Set<string>>(new Set());
   const [enviando, setEnviando] = useState(false);
 
