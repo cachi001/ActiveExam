@@ -182,7 +182,7 @@ export default function DetalleUsuario() {
                       className="w-20 h-20 rounded-2xl object-cover border border-outline-variant/40 shadow-sm"
                     />
                   ) : (
-                    <div className="w-20 h-20 rounded-2xl bg-secondary-container text-on-secondary flex items-center justify-center font-bold text-[32px] shadow-sm">
+                    <div className="w-20 h-20 rounded-2xl bg-primary text-on-primary flex items-center justify-center font-bold text-[32px] shadow-sm">
                       {(u.nombre ?? u.email).charAt(0).toUpperCase()}
                     </div>
                   )}
@@ -213,6 +213,9 @@ export default function DetalleUsuario() {
             );
           })()}
         </Card>
+
+        {/* ── Secciones 2 y 3: solo para estudiantes ── */}
+        {(usuario.status !== 'ok' || usuario.data.roles.includes('estudiante')) && (<>
 
         {/* ── Sección 2: Consentimiento de perfil ── */}
         <Card>
@@ -290,19 +293,20 @@ export default function DetalleUsuario() {
 
                 {/* Metadatos */}
                 <div className="flex-1 min-w-0 divide-y divide-outline-variant/30">
-                  <DataRow label="Referencia vigente" value={
+                  <DataRow label="Estado" value={
                     <Badge tone={b.tiene_referencia_vigente ? 'success' : 'neutral'} dot>
-                      {b.tiene_referencia_vigente ? 'Sí' : 'No'}
+                      {b.tiene_referencia_vigente ? 'Referencia vigente' : 'Sin referencia registrada'}
                     </Badge>
                   } />
-                  <DataRow label="Algoritmo" value={b.algoritmo ?? '—'} />
-                  <DataRow label="Fecha de creación" value={formatFecha(b.created_at)} />
+                  {b.created_at && (
+                    <DataRow label="Fecha de captura" value={formatFecha(b.created_at)} />
+                  )}
                   <DataRow
-                    label="Fecha de expiración"
+                    label="Vencimiento"
                     value={
                       b.fecha_expiracion
                         ? formatFecha(b.fecha_expiracion)
-                        : <span className="text-on-surface-variant italic">Sin expiración (vigente mientras no se renueve)</span>
+                        : <span className="text-on-surface-variant italic">Sin vencimiento (vigente mientras no se renueve)</span>
                     }
                   />
                   <DataRow label="Foto registrada" value={
@@ -310,6 +314,9 @@ export default function DetalleUsuario() {
                       {b.tiene_foto ? 'Sí' : 'No'}
                     </Badge>
                   } />
+                  {b.foto_created_at && (
+                    <DataRow label="Fecha de la foto" value={formatFecha(b.foto_created_at)} />
+                  )}
                   {b.foto_hash && (
                     <DataRow label="Hash de la foto" value={
                       <span
@@ -319,9 +326,6 @@ export default function DetalleUsuario() {
                         {b.foto_hash.slice(0, 28)}…
                       </span>
                     } />
-                  )}
-                  {b.foto_created_at && (
-                    <DataRow label="Fecha de la foto" value={formatFecha(b.foto_created_at)} />
                   )}
                 </div>
               </div>
@@ -335,6 +339,8 @@ export default function DetalleUsuario() {
             </p>
           </div>
         </Card>
+
+        </>)}
       </div>
     </StaffShell>
   );

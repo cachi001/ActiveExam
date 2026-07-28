@@ -64,7 +64,7 @@ export function UsuarioTable({
                         {fotos[u.id] ? (
                           <Avatar src={fotos[u.id]} alt={`Foto de ${u.nombre ?? u.email}`} size={34} />
                         ) : (
-                          <div className="w-8 h-8 rounded-full bg-secondary-container text-on-secondary flex items-center justify-center font-semibold text-[13px] shrink-0">
+                          <div className="w-8 h-8 rounded-full bg-primary text-on-primary flex items-center justify-center font-semibold text-[13px] shrink-0">
                             {(u.nombre ?? u.email).charAt(0).toUpperCase()}
                           </div>
                         )}
@@ -117,7 +117,7 @@ export function UsuarioTable({
                 {fotos[u.id] ? (
                   <Avatar src={fotos[u.id]} alt={`Foto de ${u.nombre ?? u.email}`} size={40} />
                 ) : (
-                  <div className="w-10 h-10 rounded-full bg-secondary-container text-on-secondary flex items-center justify-center font-semibold text-[14px] shrink-0">
+                  <div className="w-10 h-10 rounded-full bg-primary text-on-primary flex items-center justify-center font-semibold text-[14px] shrink-0">
                     {(u.nombre ?? u.email).charAt(0).toUpperCase()}
                   </div>
                 )}

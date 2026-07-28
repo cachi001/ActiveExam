@@ -3,7 +3,7 @@ import { TextField } from '../../../ui/TextField';
 import {
   ROL_DESCRIPCIONES,
   ROL_LABELS,
-  ROLES_VALIDOS,
+  ROLES_FORMULARIO,
   type ModoFormulario,
   type FormState,
 } from './UsuarioHelpers';
@@ -94,7 +94,7 @@ export function UsuarioFormPanel({
               poder hacer esa persona, y quien lo elige tiene que ver la consecuencia
               sin ir a leer el código. En grilla de 2 para que no quede una lista larga. */}
           <div className="grid gap-sm sm:grid-cols-2 items-stretch">
-            {ROLES_VALIDOS.map((rol) => (
+            {ROLES_FORMULARIO.map((rol) => (
               <label
                 key={rol}
                 className="flex h-full items-start gap-sm cursor-pointer select-none rounded-md border border-surface-200 p-sm hover:bg-primary-50 hover:border-primary-200 transition-colors"

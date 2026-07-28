@@ -29,7 +29,7 @@ interface Props {
 export function IntegridadPanel({ activo, eventCount, score, eventos, examen }: Props) {
   const umbral = getEffectiveConfig()?.umbral_cola_revision ?? examen?.umbral_score ?? 70;
   const enRiesgo = score >= umbral;
-  const ultimosEventos = eventos.slice(-4);
+  const ultimosEventos = eventos.slice(0, 4);
 
   return (
     <Card className="space-y-sm h-full">
