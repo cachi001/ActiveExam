@@ -107,8 +107,6 @@ def writeback_svc():
     config = MoodleClientConfig(
         base_url=BASE,
         ws_token="token_secreto",  # noqa: S106
-        courseid=10,
-        cmid=5,
     )
     return MoodleWritebackService(moodle_client=MoodleRestClient(config=config))
 
@@ -238,8 +236,14 @@ async def test_finalizar_resuelve_target_por_examen(session, writeback_svc):
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_finalizar_examen_sin_target_cae_a_global(session, writeback_svc):
-    """D12: si el examen no tiene destino propio (NULL), el estado guarda el global."""
+async def test_finalizar_examen_sin_target_no_inventa_destino(session, writeback_svc):
+    """Sin destino propio, la nota se guarda pero SIN destino — no se hereda ninguno.
+
+    Antes caia al `courseid`/`cmid` global del cliente, con lo cual la nota de este
+    examen terminaba en la libreta de la materia a la que apuntara ese global, y la
+    fila figuraba como enviada. Ahora la nota se conserva (el alumno no pierde su
+    calificacion) y queda retenida como "sin_destino" hasta que alguien configure el
+    examen: un bloqueo visible en lugar de un desvio mudo."""
     respx.post(f"{BASE}/webservice/rest/server.php")
 
     examen_id = await _crear_examen(session)  # sin courseid/cmid
@@ -256,8 +260,9 @@ async def test_finalizar_examen_sin_target_cae_a_global(session, writeback_svc):
 
     estado = await _estado(session, session_id)
     assert estado is not None
-    assert estado.moodle_courseid == 10  # global de config
-    assert estado.moodle_cmid == 5
+    assert estado.moodle_courseid is None
+    assert estado.moodle_cmid is None
+    assert float(estado.nota) == 7.0  # la nota NO se pierde
 
 
 @pytest.mark.asyncio

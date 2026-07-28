@@ -42,8 +42,6 @@ export default function SeccionMoodle() {
 
   const [baseUrl, setBaseUrl] = useState('');
   const [token, setToken] = useState('');
-  const [courseid, setCourseid] = useState('');
-  const [cmid, setCmid] = useState('');
   const [component, setComponent] = useState<'mod_assign' | 'mod_quiz'>('mod_assign');
 
   const [guardando, setGuardando] = useState(false);
@@ -53,8 +51,6 @@ export default function SeccionMoodle() {
   const aplicar = useCallback((c: CredencialMoodle) => {
     setCred(c);
     setBaseUrl(c.base_url ?? '');
-    setCourseid(String(c.courseid ?? 0));
-    setCmid(String(c.cmid ?? 0));
     setComponent(c.component ?? 'mod_assign');
     setToken('');
   }, []);
@@ -86,8 +82,6 @@ export default function SeccionMoodle() {
         base_url: baseUrl.trim(),
         // Vacío = no tocar el token guardado.
         ...(token.trim() ? { token: token.trim() } : {}),
-        courseid: Number(courseid) || 0,
-        cmid: Number(cmid) || 0,
         component,
       });
       aplicar(c);
@@ -222,40 +216,8 @@ export default function SeccionMoodle() {
             </p>
           </div>
 
-          <div className="grid sm:grid-cols-2 gap-5">
-            <div>
-              <label className={LABEL_CLS} htmlFor="moodle-courseid">Curso por defecto (ID)</label>
-              <input
-                id="moodle-courseid"
-                type="number"
-                min={0}
-                inputMode="numeric"
-                className={INPUT_CLS}
-                value={courseid}
-                disabled={guardando}
-                onChange={(e) => setCourseid(e.target.value)}
-              />
-            </div>
-            <div>
-              <label className={LABEL_CLS} htmlFor="moodle-cmid">Actividad por defecto (ID)</label>
-              <input
-                id="moodle-cmid"
-                type="number"
-                min={0}
-                inputMode="numeric"
-                className={INPUT_CLS}
-                value={cmid}
-                disabled={guardando}
-                onChange={(e) => setCmid(e.target.value)}
-              />
-            </div>
-          </div>
-          <p className="-mt-3 text-label-sm text-on-surface-variant">
-            Se usan solo cuando un examen no tiene su propio destino configurado.
-          </p>
-
           <div>
-            <label className={LABEL_CLS} htmlFor="moodle-component">Tipo de actividad</label>
+            <label className={LABEL_CLS} htmlFor="moodle-component">Tipo de actividad habitual</label>
             <select
               id="moodle-component"
               className={INPUT_CLS}
@@ -266,6 +228,11 @@ export default function SeccionMoodle() {
               <option value="mod_assign">Tarea (mod_assign)</option>
               <option value="mod_quiz">Cuestionario (mod_quiz)</option>
             </select>
+            <p className="mt-1.5 text-label-sm text-on-surface-variant">
+              Es solo el valor por defecto. El curso y la actividad donde va cada nota se
+              configuran <strong>en cada examen</strong>: no hay un destino único para toda
+              la institución.
+            </p>
           </div>
 
           <div className="flex justify-between items-center gap-md pt-2 border-t border-outline-variant/40">

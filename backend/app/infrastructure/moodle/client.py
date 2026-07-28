@@ -16,19 +16,42 @@ logger = logging.getLogger(__name__)
 
 
 class MoodleClientConfig(BaseModel):
-    """Config del cliente Moodle REST. extra='forbid' — regla dura de código."""
+    """Credencial del campus. extra='forbid' — regla dura de código.
+
+    Acá va SOLO lo que es institucional: una URL de campus y una cuenta de servicio.
+    El DESTINO (curso y actividad) NO vive acá: es de cada examen. Antes había un
+    `courseid`/`cmid` global que se usaba como fallback, y eso convertía "examen sin
+    destino configurado" en "nota escrita en la libreta de otra materia", sin error
+    visible — el write-back reportaba 'enviado'.
+
+    `component` sí es un default institucional razonable (con qué tipo de actividad
+    trabaja la institución); cada examen puede sobreescribirlo.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     base_url: str
     ws_token: str
-    courseid: int
-    cmid: int
-    component: str = "mod_assign"  # C-73: módulo destino global ('mod_assign'|'mod_quiz')
+    component: str = "mod_assign"  # 'mod_assign' | 'mod_quiz'
 
 
 class MoodleGradeWriteError(Exception):
     """Fallo en el write-back de la nota a Moodle (red, token inválido, error WS)."""
+
+
+class MoodleDestinoNoConfiguradoError(MoodleGradeWriteError):
+    """El examen no tiene curso/actividad de destino en el campus.
+
+    Es un error EXPLÍCITO a propósito: antes se caía a un destino global y la nota
+    terminaba en la libreta equivocada sin que nadie se enterara. Preferimos que la
+    nota quede retenida y visible a que se escriba en otra materia.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            "El examen no tiene configurado el curso y la actividad de destino en "
+            "el campus. Cargalos en el examen para poder enviar la nota."
+        )
 
 
 class MoodleRestClient:
@@ -69,7 +92,7 @@ class MoodleRestClient:
         vacia: quien necesite el valor vivo debe usar ``_resolver_config``."""
         if self._config_estatico is not None:
             return self._config_estatico
-        return MoodleClientConfig(base_url="", ws_token="", courseid=0, cmid=0)
+        return MoodleClientConfig(base_url="", ws_token="")
 
     async def write_grade(
         self,
@@ -83,8 +106,10 @@ class MoodleRestClient:
     ) -> None:
         """Escribe la nota del alumno en Moodle vía core_grades_update_grades.
 
-        D12 (parte B): courseid/cmid son el destino POR EXAMEN. Si se pasan, se usan;
-        si son None, se cae al global de config (compat con exámenes sin destino).
+        D12 (parte B): courseid/cmid son el destino POR EXAMEN y son OBLIGATORIOS.
+        Ya no hay fallback a un destino global: sin destino se eleva
+        MoodleDestinoNoConfiguradoError en vez de escribir en la libreta de otra
+        materia.
 
         component: módulo de la actividad destino en Moodle ('mod_assign' para tareas,
         'mod_quiz' para cuestionarios). El write-back es a nivel del grade item, así que
@@ -98,10 +123,14 @@ class MoodleRestClient:
         cfg = await self._resolver_config()
         url = f"{cfg.base_url.rstrip('/')}/webservice/rest/server.php"
 
-        # Destino: valor por examen si vino; si no, fallback al global de config.
-        target_courseid = courseid if courseid is not None else cfg.courseid
-        target_cmid = cmid if cmid is not None else cfg.cmid
-        target_component = component if component is not None else cfg.component
+        # Destino OBLIGATORIO por examen. Sin fallback global: escribir en un curso
+        # que no es el del examen es peor que no escribir (ver
+        # MoodleDestinoNoConfiguradoError).
+        if not courseid or not cmid:
+            raise MoodleDestinoNoConfiguradoError()
+        target_courseid = courseid
+        target_cmid = cmid
+        target_component = component if component is not None else cfg.component  # default institucional
 
         # CONVERSION DE ESCALA. ActiveExam califica sobre `nota_maxima` (10 por
         # defecto) y el item de Moodle suele venir sobre 100: mandar el numero crudo
@@ -275,8 +304,13 @@ class MoodleRestClient:
         """
         cfg = await self._resolver_config()
         url = f"{cfg.base_url.rstrip('/')}/webservice/rest/server.php"
-        target_courseid = courseid if courseid is not None else cfg.courseid
-        target_cmid = cmid if cmid is not None else cfg.cmid
+        # Destino OBLIGATORIO por examen. Sin fallback global: escribir en un curso
+        # que no es el del examen es peor que no escribir (ver
+        # MoodleDestinoNoConfiguradoError).
+        if not courseid or not cmid:
+            raise MoodleDestinoNoConfiguradoError()
+        target_courseid = courseid
+        target_cmid = cmid
 
         data = {
             "wstoken": cfg.ws_token,

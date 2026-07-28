@@ -111,8 +111,6 @@ def create_slim_app() -> FastAPI:
         cipher=SecretCipher(key=settings.embedding_encryption_key),
         env_base_url=settings.moodle_base_url,
         env_token=settings.moodle_ws_token,
-        env_courseid=settings.moodle_courseid,
-        env_cmid=settings.moodle_cmid,
         env_component=settings.moodle_component,
     )
 

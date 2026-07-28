@@ -163,12 +163,15 @@ class MoodleWritebackService:
         Si ya existe un estado 'enviado' para esta sesión, lo devuelve tal cual
         (idempotente: no sobrescribe una nota ya enviada).
         """
-        # Config VIGENTE (puede venir de la base y haber cambiado en caliente).
+        # Destino: SOLO el del examen. No hay fallback a un destino global — no
+        # existe un curso "por defecto" correcto para todos los examenes, y caer a
+        # uno escribia la nota en la libreta de otra materia sin avisar. Sin destino
+        # la nota se persiste igual (queda 'pendiente' y visible), pero no se manda.
+        target_courseid = moodle_courseid
+        target_cmid = moodle_cmid
+        # `component` SI tiene un default institucional razonable (con que tipo de
+        # actividad trabaja la institucion); el examen puede sobreescribirlo.
         cfg = await self._client._resolver_config()
-        target_courseid = (
-            moodle_courseid if moodle_courseid is not None else cfg.courseid
-        )
-        target_cmid = moodle_cmid if moodle_cmid is not None else cfg.cmid
         target_component = (
             moodle_component if moodle_component is not None else cfg.component
         )

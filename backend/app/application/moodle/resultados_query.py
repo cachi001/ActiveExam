@@ -200,7 +200,12 @@ async def _motivos_retencion(
       - "en_riesgo"      : supero el umbral y todavia nadie la reviso.
       - "caso_abierto"   : un revisor la derivo y falta el veredicto.
       - "anulada"        : anulada por fraude — la nota no se sincroniza.
+      - "sin_destino"    : el examen no tiene curso/actividad en el campus.
     Una sesion sin retencion no aparece en el dict.
+
+    "sin_destino" existe porque el destino dejo de tener fallback global: antes, un
+    examen sin destino propio mandaba la nota al curso global (la libreta equivocada)
+    y la fila se veia como enviada. Ahora se retiene y se dice por que.
     """
     if not session_ids:
         return {}
@@ -216,6 +221,26 @@ async def _motivos_retencion(
             ).where(ProctoringSessionModel.id.in_(session_ids))
         )
     ).all()
+
+    # Sesiones cuyo examen no tiene destino en el campus: la nota no puede salir.
+    sin_destino = {
+        sid
+        for sid, courseid, cmid in (
+            await db.execute(
+                select(
+                    ProctoringSessionModel.id,
+                    ExamenContenidoModel.moodle_courseid,
+                    ExamenContenidoModel.moodle_cmid,
+                )
+                .outerjoin(
+                    ExamenContenidoModel,
+                    ExamenContenidoModel.id == ProctoringSessionModel.examen_contenido_id,
+                )
+                .where(ProctoringSessionModel.id.in_(session_ids))
+            )
+        ).all()
+        if not courseid or not cmid
+    }
 
     ev_rows = (
         await db.execute(
@@ -247,6 +272,9 @@ async def _motivos_retencion(
         if not writeback_en_hold(
             flaggeada=flaggeada, decision=decision, resolucion=resolucion
         ):
+            # Sin hold de revision, pero puede faltar el destino: igual no sale.
+            if row.id in sin_destino:
+                motivos[row.id] = "sin_destino"
             continue
         if resolucion is not None and str(row.resolucion) == "anulado_por_fraude":
             motivos[row.id] = "anulada"

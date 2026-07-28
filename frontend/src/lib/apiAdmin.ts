@@ -451,8 +451,6 @@ export const adminApi = {
   async guardarCredencialMoodle(body: {
     base_url?: string;
     token?: string;
-    courseid?: number;
-    cmid?: number;
     component?: 'mod_assign' | 'mod_quiz';
   }): Promise<CredencialMoodle> {
     return await realFetch('/config/moodle', { method: 'PUT', body: JSON.stringify(body) });
@@ -467,8 +465,7 @@ export const adminApi = {
 /** Estado de la credencial de Moodle tal como lo expone la API (SIN el token). */
 export interface CredencialMoodle {
   base_url: string;
-  courseid: number;
-  cmid: number;
+  /** Tipo de actividad por defecto. El DESTINO (curso + actividad) es de cada examen. */
   component: 'mod_assign' | 'mod_quiz';
   /** True si hay un token utilizable (guardado en la base o heredado del entorno). */
   token_configurado: boolean;

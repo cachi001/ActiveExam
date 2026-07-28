@@ -25,6 +25,14 @@ const RETENCION_CONFIG: Record<string, { label: string; detalle: string }> = {
     label: 'Anulada por fraude',
     detalle: 'El examen fue anulado por decisión humana. La nota enviada a Moodle es 0.',
   },
+  // No es una retención por revisión: es configuración que falta. Se muestra igual
+  // de visible porque el efecto es el mismo (la nota no llega a la libreta) y antes
+  // esto no se veía: la nota se escribía en el curso global, o sea en otra materia.
+  sin_destino: {
+    label: 'Falta el destino en el campus',
+    detalle:
+      'Este examen no tiene cargado el curso y la actividad de Moodle donde va la nota. Configuralos en el examen (sección «Destino en Moodle») y volvé a sincronizar.',
+  },
 };
 
 export function EstadoBadge({

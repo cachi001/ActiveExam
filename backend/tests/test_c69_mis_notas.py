@@ -147,7 +147,7 @@ async def seed_config(factory):
 
 def _moodle_svc() -> MoodleWritebackService:
     config = MoodleClientConfig(
-        base_url="https://moodle.test", ws_token="tok", courseid=10, cmid=5  # noqa: S106
+        base_url="https://moodle.test", ws_token="tok"  # noqa: S106
     )
     return MoodleWritebackService(moodle_client=MoodleRestClient(config=config))
 

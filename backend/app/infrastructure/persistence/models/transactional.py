@@ -526,6 +526,11 @@ class MoodleCredencialModel(Base):
     de notas lo hace una cuenta de servicio del campus, y repartir tokens por
     docente multiplicaria los secretos a rotar sin ganar nada.
 
+    NO guarda curso ni actividad de destino: eso es de cada examen
+    (`examen_contenido.moodle_courseid`/`moodle_cmid`). Un destino global convertia
+    "examen sin destino" en "nota escrita en la libreta de otra materia" (migracion
+    0048). `component` si es un default institucional, sobreescribible por examen.
+
     ``token_cifrado`` guarda el token de Web Services cifrado con Fernet
     (``SecretCipher``), NUNCA en claro. La API jamas lo devuelve: para que el admin
     reconozca cual cargo se expone ``token_pista`` (ultimos 4 caracteres).
@@ -540,8 +545,6 @@ class MoodleCredencialModel(Base):
     base_url: Mapped[str] = mapped_column(String(500), nullable=False, default="")
     token_cifrado: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     token_pista: Mapped[Optional[str]] = mapped_column(String(8), nullable=True)
-    courseid: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    cmid: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     component: Mapped[str] = mapped_column(
         String(50), nullable=False, default="mod_assign"
     )

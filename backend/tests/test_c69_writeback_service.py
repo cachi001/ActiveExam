@@ -96,8 +96,6 @@ def moodle_client():
     config = MoodleClientConfig(
         base_url=BASE,
         ws_token="token_secreto",  # noqa: S106
-        courseid=10,
-        cmid=5,
     )
     return MoodleRestClient(config=config)
 
@@ -112,6 +110,34 @@ async def _crear_sesion(db: AsyncSession) -> str:
     db.add(sesion)
     await db.flush()
     return sesion.id
+
+
+async def _crear_sesion_con_destino(
+    db: AsyncSession, *, courseid: int = 10, cmid: int = 5
+) -> str:
+    """Sesion cuyo examen YA tiene destino en el campus.
+
+    Los tests que ejercitan el push necesitan un destino explicito: desde que se
+    elimino el `courseid`/`cmid` global (que mandaba las notas sin destino a la
+    libreta equivocada), sin destino no se escribe nada. Se siembra el estado con el
+    destino porque `persistir_nota_pendiente` preserva el destino de la fila ya
+    creada — es el mismo camino que usa la finalizacion real del examen.
+    """
+    session_id = await _crear_sesion(db)
+    db.add(
+        MoodleWritebackEstadoModel(
+            session_id=session_id,
+            alumno_idnumber="pendiente",
+            alumno_email="pendiente@test.local",
+            nota=0.0,
+            estado="pendiente",
+            intento=0,
+            moodle_courseid=courseid,
+            moodle_cmid=cmid,
+        )
+    )
+    await db.flush()
+    return session_id
 
 
 # ---------------------------------------------------------------------------
@@ -158,7 +184,7 @@ async def test_writeback_crea_estado_pendiente(session, writeback_svc):
 @respx.mock
 async def test_writeback_idempotente_no_duplica(session, writeback_svc):
     """D10: reintento sobre una nota ya 'enviado' NO duplica el push a Moodle."""
-    session_id = await _crear_sesion(session)
+    session_id = await _crear_sesion_con_destino(session)
     push_count = [0]
 
     def side_effect(request, **kwargs):
@@ -209,6 +235,8 @@ async def test_writeback_persiste_component_por_examen(session, writeback_svc):
         nota=77.0,
         alumno_idnumber="legajo1",
         alumno_email="a@b.com",
+        moodle_courseid=10,
+        moodle_cmid=5,
         moodle_component="mod_quiz",
     )
     row = await session.execute(
@@ -252,6 +280,8 @@ async def test_ejecutar_writeback_usa_component_por_examen(session, writeback_sv
         nota=77.0,
         alumno_idnumber="legajo1",
         alumno_email="a@b.com",
+        moodle_courseid=10,
+        moodle_cmid=5,
         moodle_component="mod_quiz",
     )
     captured = {}
@@ -284,7 +314,7 @@ async def test_writeback_fallido_queda_reintenable(session, writeback_svc):
     """D10: fallo de red deja estado 'fallido' reintenable con la misma nota."""
     import httpx
 
-    session_id = await _crear_sesion(session)
+    session_id = await _crear_sesion_con_destino(session)
 
     call_count = [0]
 
@@ -369,8 +399,13 @@ async def test_iniciar_writeback_persiste_target_por_examen(session, writeback_s
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_iniciar_writeback_fallback_global_cuando_none(session, writeback_svc):
-    """D12: sin target (None) el estado guarda el global del cliente (courseid=10, cmid=5)."""
+async def test_iniciar_writeback_sin_target_queda_sin_destino(session, writeback_svc):
+    """Sin target del examen, el estado queda SIN destino — no se inventa uno global.
+
+    Antes se copiaba el courseid/cmid global del cliente, con lo cual la nota salia
+    hacia la libreta de otra materia. Ahora la nota se persiste igual (el alumno no
+    pierde su calificacion) pero sin destino: queda retenida como "sin_destino" y
+    visible en la pantalla de resultados hasta que alguien configure el examen."""
     session_id = await _crear_sesion(session)
 
     await writeback_svc.iniciar_writeback(
@@ -388,8 +423,10 @@ async def test_iniciar_writeback_fallback_global_cuando_none(session, writeback_
             )
         )
     ).scalar_one()
-    assert estado.moodle_courseid == 10  # global de config
-    assert estado.moodle_cmid == 5
+    assert estado.moodle_courseid is None
+    assert estado.moodle_cmid is None
+    # La nota SI se guarda: no se pierde por no tener a donde mandarla.
+    assert float(estado.nota) == 7.0
 
 
 @pytest.mark.asyncio
@@ -478,7 +515,7 @@ async def test_moodle_caido_no_bloquea_finalizacion(session, writeback_svc):
 @respx.mock
 async def test_auditoria_registra_intento_exitoso(session, writeback_svc):
     """7.11-7.12: cada intento exitoso deja una entrada de audit sin token."""
-    session_id = await _crear_sesion(session)
+    session_id = await _crear_sesion_con_destino(session)
 
     def side_effect(request, **kwargs):
         content = request.content.decode()

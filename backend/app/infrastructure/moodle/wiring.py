@@ -20,8 +20,6 @@ class _MoodleSettings(Protocol):
 
     moodle_base_url: str
     moodle_ws_token: str
-    moodle_courseid: int
-    moodle_cmid: int
     moodle_component: str
 
 
@@ -35,8 +33,6 @@ def build_moodle_config(settings: _MoodleSettings) -> MoodleClientConfig | None:
     return MoodleClientConfig(
         base_url=settings.moodle_base_url,
         ws_token=settings.moodle_ws_token,
-        courseid=settings.moodle_courseid,
-        cmid=settings.moodle_cmid,
         component=settings.moodle_component,
     )
 
@@ -63,8 +59,6 @@ def build_writeback_svc_dinamico(resolver) -> MoodleWritebackService:
         return MoodleClientConfig(
             base_url=cred.base_url,
             ws_token=cred.ws_token,
-            courseid=cred.courseid,
-            cmid=cred.cmid,
             component=cred.component,
         )
 

@@ -294,8 +294,6 @@ class MoodleCredencialResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     base_url: str
-    courseid: int
-    cmid: int
     component: str
     #: True si hay un token utilizable (en la base o, si la base está vacía, en el entorno).
     token_configurado: bool
@@ -311,15 +309,13 @@ class GuardarMoodleCredencialRequest(BaseModel):
     """Body del PUT. Todos los campos opcionales (update parcial).
 
     ``token`` ausente = NO se toca el token guardado (para poder corregir el
-    courseid sin re-tipear el secreto). Para borrarlo está DELETE.
+    URL sin re-tipear el secreto). Para borrarlo está DELETE.
     """
 
     model_config = ConfigDict(extra="forbid")
 
     base_url: str | None = None
     token: str | None = Field(default=None, min_length=8, max_length=512)
-    courseid: int | None = Field(default=None, ge=0)
-    cmid: int | None = Field(default=None, ge=0)
     component: str | None = None
 
     @field_validator("component")
@@ -345,8 +341,6 @@ def _resolver_credenciales(request: Request):
 def _a_response(estado) -> MoodleCredencialResponse:
     return MoodleCredencialResponse(
         base_url=estado.base_url,
-        courseid=estado.courseid,
-        cmid=estado.cmid,
         component=estado.component,
         token_configurado=estado.token_configurado,
         token_pista=estado.token_pista,
@@ -393,10 +387,7 @@ async def guardar_credencial_moodle(
     principal: AuthenticatedPrincipal = Depends(_require_admin),
 ) -> MoodleCredencialResponse:
     """Guarda la credencial (token cifrado at-rest). 400 si el body viene vacío."""
-    if all(
-        v is None
-        for v in (body.base_url, body.token, body.courseid, body.cmid, body.component)
-    ):
+    if all(v is None for v in (body.base_url, body.token, body.component)):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="El body debe incluir al menos un campo a actualizar.",
@@ -406,8 +397,6 @@ async def guardar_credencial_moodle(
     estado = await resolver.guardar(
         base_url=body.base_url,
         token=body.token,
-        courseid=body.courseid,
-        cmid=body.cmid,
         component=body.component,
         actor=principal.id_institucional,
     )
@@ -417,8 +406,6 @@ async def guardar_credencial_moodle(
         nombre
         for nombre, valor in (
             ("base_url", body.base_url),
-            ("courseid", body.courseid),
-            ("cmid", body.cmid),
             ("component", body.component),
         )
         if valor is not None

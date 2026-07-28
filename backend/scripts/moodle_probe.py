@@ -97,7 +97,7 @@ async def main() -> int:
     # 2) Identidad read-only con el código de producción (si hay email de prueba)
     if probe_email:
         client = MoodleRestClient(
-            config=MoodleClientConfig(base_url=base_url, ws_token=token, courseid=0, cmid=0)
+            config=MoodleClientConfig(base_url=base_url, ws_token=token)
         )
         try:
             uid = await client.lookup_userid_by_email(probe_email)

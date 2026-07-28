@@ -11,6 +11,7 @@ import respx
 from httpx import Response
 
 from app.infrastructure.moodle.client import (
+    MoodleDestinoNoConfiguradoError,
     MoodleClientConfig,
     MoodleGradeWriteError,
     MoodleRestClient,
@@ -27,8 +28,6 @@ def config():
     return MoodleClientConfig(
         base_url="https://moodle.example.com",
         ws_token="test_token_never_logged",  # noqa: S106
-        courseid=42,
-        cmid=99,
     )
 
 
@@ -53,6 +52,8 @@ async def test_write_grade_ok(client):
     await client.write_grade(
         moodle_userid=7,
         nota=8.5,
+        courseid=42,
+        cmid=99,
     )
     # No exception = success
 
@@ -73,7 +74,7 @@ async def test_write_grade_error_moodle_exception(client):
     )
 
     with pytest.raises(MoodleGradeWriteError) as exc_info:
-        await client.write_grade(moodle_userid=7, nota=8.5)
+        await client.write_grade(moodle_userid=7, nota=8.5, courseid=42, cmid=99)
 
     assert "invalidtoken" in str(exc_info.value).lower() or "token" in str(exc_info.value).lower()
 
@@ -89,7 +90,7 @@ async def test_write_grade_network_error(client):
     )
 
     with pytest.raises(MoodleGradeWriteError):
-        await client.write_grade(moodle_userid=7, nota=8.5)
+        await client.write_grade(moodle_userid=7, nota=8.5, courseid=42, cmid=99)
 
 
 @pytest.mark.asyncio
@@ -101,7 +102,7 @@ async def test_write_grade_http_500(client):
     )
 
     with pytest.raises(MoodleGradeWriteError):
-        await client.write_grade(moodle_userid=7, nota=8.5)
+        await client.write_grade(moodle_userid=7, nota=8.5, courseid=42, cmid=99)
 
 
 @pytest.mark.asyncio
@@ -123,7 +124,7 @@ async def test_token_not_in_request_body_as_plaintext(client):
         side_effect=capture
     )
 
-    await client.write_grade(moodle_userid=7, nota=8.5)
+    await client.write_grade(moodle_userid=7, nota=8.5, courseid=42, cmid=99)
 
     assert "wstoken" in captured["content"]
     # El token real está en wstoken, pero no en campos de audit/log separados
@@ -146,35 +147,39 @@ async def test_write_grade_usa_target_por_examen(client):
         side_effect=capture
     )
 
-    # config global es courseid=42, cmid=99; el examen apunta a 1000/2000
+    # El destino es SIEMPRE el del examen: no hay global con el que confundirse.
     await client.write_grade(moodle_userid=7, nota=8.5, courseid=1000, cmid=2000)
 
     content = captured["content"]
     assert "courseid=1000" in content
     assert "activityid=2000" in content
-    assert "courseid=42" not in content
-    assert "activityid=99" not in content
 
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_write_grade_fallback_a_config_cuando_none(client):
-    """D12: sin courseid/cmid (None) cae al global de config (compat exámenes viejos)."""
-    captured = {}
+async def test_write_grade_sin_destino_no_escribe_en_ningun_lado(client):
+    """Sin courseid/cmid NO se escribe: se eleva MoodleDestinoNoConfiguradoError.
+
+    Antes esto caia a un `courseid`/`cmid` global de la config, asi que un examen sin
+    destino propio mandaba la nota al curso global — la libreta de OTRA materia — y la
+    operacion figuraba como exitosa. Un destino equivocado es peor que ningun destino:
+    ahora falla explicito y la nota queda retenida y visible.
+    """
+    llamado = {"n": 0}
 
     def capture(request, **kwargs):
-        captured["content"] = request.content.decode()
+        llamado["n"] += 1
         return Response(200, json={"warnings": []})
 
     respx.post("https://moodle.example.com/webservice/rest/server.php").mock(
         side_effect=capture
     )
 
-    await client.write_grade(moodle_userid=7, nota=8.5)  # sin target → global
+    with pytest.raises(MoodleDestinoNoConfiguradoError):
+        await client.write_grade(moodle_userid=7, nota=8.5)
 
-    content = captured["content"]
-    assert "courseid=42" in content
-    assert "activityid=99" in content
+    # Lo importante: NO se hizo ninguna llamada a Moodle.
+    assert llamado["n"] == 0
 
 
 @pytest.mark.asyncio
@@ -191,7 +196,7 @@ async def test_write_grade_component_por_defecto_mod_assign(client):
         side_effect=capture
     )
 
-    await client.write_grade(moodle_userid=7, nota=8.5)
+    await client.write_grade(moodle_userid=7, nota=8.5, courseid=42, cmid=99)
 
     assert "component=mod_assign" in captured["content"]
 
@@ -210,7 +215,9 @@ async def test_write_grade_component_mod_quiz(client):
         side_effect=capture
     )
 
-    await client.write_grade(moodle_userid=7, nota=77.0, component="mod_quiz")
+    await client.write_grade(
+        moodle_userid=7, nota=77.0, courseid=42, cmid=99, component="mod_quiz"
+    )
 
     content = captured["content"]
     assert "component=mod_quiz" in content
@@ -225,7 +232,5 @@ def test_config_extra_forbid():
         MoodleClientConfig(
             base_url="https://moodle.example.com",
             ws_token="tok",  # noqa: S106
-            courseid=1,
-            cmid=1,
             campo_extra_invalido="valor",  # debe fallar
         )

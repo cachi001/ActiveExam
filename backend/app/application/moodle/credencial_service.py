@@ -1,7 +1,7 @@
 """Resolucion de la credencial de servicio de Moodle (DB cifrada > entorno).
 
-La credencial (base_url + token de Web Services + destino global) dejo de vivir
-solo en variables de entorno: ahora la administra el admin del sistema y se guarda
+La credencial (base_url + token de Web Services + tipo de actividad por defecto)
+dejo de vivir solo en variables de entorno: ahora la administra el admin del sistema y se guarda
 en `moodle_credencial` con el token CIFRADO (migracion 0047).
 
 PRECEDENCIA: si hay fila en la base CON token, manda la base. Si no, se cae a las
@@ -30,8 +30,6 @@ class CredencialMoodle:
 
     base_url: str
     ws_token: str
-    courseid: int
-    cmid: int
     component: str
     #: De donde salio: "db" | "env" | "sin_configurar". Para diagnostico y UI.
     origen: str
@@ -47,8 +45,6 @@ class EstadoCredencial:
     """Vista SEGURA de la credencial para la API (sin el token)."""
 
     base_url: str
-    courseid: int
-    cmid: int
     component: str
     token_configurado: bool
     token_pista: str | None
@@ -72,8 +68,6 @@ class MoodleCredencialResolver:
         cipher: SecretCipher,
         env_base_url: str = "",
         env_token: str = "",
-        env_courseid: int = 0,
-        env_cmid: int = 0,
         env_component: str = "mod_assign",
     ) -> None:
         self._factory = session_factory
@@ -81,8 +75,6 @@ class MoodleCredencialResolver:
         self._env = CredencialMoodle(
             base_url=env_base_url,
             ws_token=env_token,
-            courseid=env_courseid,
-            cmid=env_cmid,
             component=env_component,
             origen="env" if env_base_url and env_token else "sin_configurar",
         )
@@ -104,8 +96,6 @@ class MoodleCredencialResolver:
                 resuelta = CredencialMoodle(
                     base_url=fila.base_url or self._env.base_url,
                     ws_token=token,
-                    courseid=fila.courseid,
-                    cmid=fila.cmid,
                     component=fila.component or "mod_assign",
                     origen="db",
                 )
@@ -118,8 +108,6 @@ class MoodleCredencialResolver:
         if fila is not None and fila.token_cifrado:
             return EstadoCredencial(
                 base_url=fila.base_url,
-                courseid=fila.courseid,
-                cmid=fila.cmid,
                 component=fila.component,
                 token_configurado=True,
                 token_pista=fila.token_pista,
@@ -130,8 +118,6 @@ class MoodleCredencialResolver:
         # Sin fila util: lo que rige es el entorno (o nada).
         return EstadoCredencial(
             base_url=fila.base_url if fila is not None and fila.base_url else self._env.base_url,
-            courseid=fila.courseid if fila is not None else self._env.courseid,
-            cmid=fila.cmid if fila is not None else self._env.cmid,
             component=fila.component if fila is not None else self._env.component,
             token_configurado=bool(self._env.ws_token),
             token_pista=None,
@@ -145,15 +131,13 @@ class MoodleCredencialResolver:
         *,
         base_url: str | None = None,
         token: str | None = None,
-        courseid: int | None = None,
-        cmid: int | None = None,
         component: str | None = None,
         actor: str | None = None,
     ) -> EstadoCredencial:
         """Upsert de la credencial. ``token=None`` NO borra el token existente.
 
-        Para no obligar al admin a re-tipear el token cada vez que corrige el
-        courseid: solo se reescribe si viene uno nuevo. Se guarda cifrado.
+        Para no obligar al admin a re-tipear el token cada vez que corrige la URL:
+        solo se reescribe si viene uno nuevo. Se guarda cifrado.
         """
         from app.infrastructure.crypto.secret_encryption import pista_de_secreto
 
@@ -161,10 +145,6 @@ class MoodleCredencialResolver:
             fila = await self._obtener_o_crear(session)
             if base_url is not None:
                 fila.base_url = base_url.rstrip("/")
-            if courseid is not None:
-                fila.courseid = courseid
-            if cmid is not None:
-                fila.cmid = cmid
             if component is not None:
                 fila.component = component
             if token:
@@ -201,7 +181,7 @@ class MoodleCredencialResolver:
         )
         fila = result.scalar_one_or_none()
         if fila is None:
-            fila = MoodleCredencialModel(id=1, base_url="", courseid=0, cmid=0)
+            fila = MoodleCredencialModel(id=1, base_url="")
             session.add(fila)
             await session.flush()
         return fila

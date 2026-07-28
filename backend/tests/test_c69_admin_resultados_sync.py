@@ -107,7 +107,7 @@ async def factory(engine):
 
 def _moodle_svc() -> MoodleWritebackService:
     config = MoodleClientConfig(
-        base_url=BASE, ws_token="token_secreto", courseid=10, cmid=5  # noqa: S106
+        base_url=BASE, ws_token="token_secreto"  # noqa: S106
     )
     return MoodleWritebackService(moodle_client=MoodleRestClient(config=config))
 
@@ -140,9 +140,20 @@ def _admin_client(app):
     )
 
 
-async def _crear_examen(factory) -> str:
+async def _crear_examen(factory, *, courseid: int | None = 10, cmid: int | None = 5) -> str:
+    """Examen CON destino en el campus por defecto.
+
+    Desde que se elimino el destino global, un examen sin `moodle_courseid`/`cmid` no
+    sincroniza: la nota queda retenida como "sin_destino". Los tests del camino feliz
+    necesitan por tanto un examen configurado — que es la situacion real de cualquier
+    examen que se vaya a sincronizar. Pasar courseid=None sirve para ejercitar
+    justamente el caso sin destino."""
     async with factory() as s:
-        examen = ExamenContenidoModel(titulo=f"Parcial {uuid.uuid4().hex[:6]}")
+        examen = ExamenContenidoModel(
+            titulo=f"Parcial {uuid.uuid4().hex[:6]}",
+            moodle_courseid=courseid,
+            moodle_cmid=cmid,
+        )
         s.add(examen)
         await s.flush()
         examen_id = examen.id
@@ -159,7 +170,13 @@ async def _crear_sesion_con_nota(
     nota: float,
     estado: str = WritebackEstado.PENDIENTE,
     finalizada: bool = True,
+    courseid: int | None = 10,
+    cmid: int | None = 5,
 ) -> str:
+    """Sesion finalizada con su fila de write-back.
+
+    El destino viaja en la fila de estado (se fija al finalizar el examen y se
+    preserva despues). Sin destino la nota no sale: ya no hay global al que caer."""
     from datetime import datetime, timezone
 
     async with factory() as s:
@@ -176,6 +193,8 @@ async def _crear_sesion_con_nota(
             nota=nota,
             estado=estado,
             intento=0,
+            moodle_courseid=courseid,
+            moodle_cmid=cmid,
         )
         s.add(fila)
         await s.commit()
@@ -314,6 +333,23 @@ async def test_sincronizar_envia_pendientes(app_con_moodle, factory):
         content = request.content.decode()
         if "core_user_get_users_by_field" in content or "field=idnumber" in content:
             return Response(200, json=[{"id": 123}])
+        # El write-back lee el grademax REAL del item para convertir la escala (un
+        # 8/10 no puede irse como 8/100). Sin este item, el cliente no resuelve el
+        # destino y la nota queda 'fallido'.
+        if "gradereport_user_get_grade_items" in content:
+            return Response(
+                200,
+                json={
+                    "usergrades": [
+                        {
+                            "gradeitems": [
+                                {"cmid": 5, "grademax": 10.0},
+                                {"cmid": 111, "grademax": 10.0},
+                            ]
+                        }
+                    ]
+                },
+            )
         if "core_grades_update_grades" in content:
             push_count[0] += 1
         return Response(200, json={"warnings": []})
@@ -346,7 +382,7 @@ async def test_sincronizar_envia_pendientes(app_con_moodle, factory):
 @respx.mock
 async def test_sincronizar_usa_target_seteado_despues_de_finalizar(app_con_moodle, factory):
     """D12: un admin que fija el target DESPUÉS de finalizar sincroniza al curso correcto."""
-    examen_id = await _crear_examen(factory)  # sin destino al crear
+    examen_id = await _crear_examen(factory, courseid=None, cmid=None)  # sin destino al crear
     await _crear_sesion_con_nota(
         factory, examen_id, idnumber="LATE-1", email="late@u.edu", nota=7.0
     )
@@ -370,6 +406,23 @@ async def test_sincronizar_usa_target_seteado_despues_de_finalizar(app_con_moodl
         content = request.content.decode()
         if "core_user_get_users_by_field" in content or "field=idnumber" in content:
             return Response(200, json=[{"id": 321}])
+        # El write-back lee el grademax REAL del item para convertir la escala (un
+        # 8/10 no puede irse como 8/100). Sin este item, el cliente no resuelve el
+        # destino y la nota queda 'fallido'.
+        if "gradereport_user_get_grade_items" in content:
+            return Response(
+                200,
+                json={
+                    "usergrades": [
+                        {
+                            "gradeitems": [
+                                {"cmid": 5, "grademax": 10.0},
+                                {"cmid": 111, "grademax": 10.0},
+                            ]
+                        }
+                    ]
+                },
+            )
         if "core_grades_update_grades" in content:
             captured["grade"] = content
         return Response(200, json={"warnings": []})

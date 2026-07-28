@@ -23,8 +23,6 @@ def _settings(**overrides):
     base = {
         "moodle_base_url": "",
         "moodle_ws_token": "",
-        "moodle_courseid": 0,
-        "moodle_cmid": 0,
         "moodle_component": "mod_assign",
     }
     base.update(overrides)
@@ -42,8 +40,6 @@ def test_base_url_seteado_construye_servicio():
         _settings(
             moodle_base_url="https://campustest.frm.utn.edu.ar",
             moodle_ws_token="tok",  # noqa: S106
-            moodle_courseid=10,
-            moodle_cmid=5,
         )
     )
     assert isinstance(svc, MoodleWritebackService)
@@ -54,20 +50,21 @@ def test_config_vacio_es_none():
     assert build_moodle_config(_settings(moodle_base_url="")) is None
 
 
-def test_config_lleva_token_y_destino_del_entorno():
-    """El config queda cableado con el token/curso/cm/component del entorno."""
+def test_config_lleva_credencial_del_entorno_sin_destino():
+    """El config lleva SOLO la credencial: URL, token y tipo de actividad.
+
+    El curso y la actividad NO son configuracion institucional — son de cada examen.
+    Tenerlos aca los convertia en un fallback silencioso hacia la libreta equivocada."""
     cfg = build_moodle_config(
         _settings(
             moodle_base_url="https://campustest.frm.utn.edu.ar",
             moodle_ws_token="tok_secreto",  # noqa: S106
-            moodle_courseid=8080,
-            moodle_cmid=42,
             moodle_component="mod_quiz",
         )
     )
     assert cfg is not None
     assert cfg.base_url == "https://campustest.frm.utn.edu.ar"
     assert cfg.ws_token == "tok_secreto"  # noqa: S105
-    assert cfg.courseid == 8080
-    assert cfg.cmid == 42
     assert cfg.component == "mod_quiz"
+    assert not hasattr(cfg, "courseid")
+    assert not hasattr(cfg, "cmid")
