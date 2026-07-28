@@ -163,11 +163,16 @@ class ExamenContenidoModel(Base):
         nullable=False,
         server_default="6",
     )
+    # Siempre true (migracion 0046): el orden aleatorio por alumno es integridad de
+    # la rendicion, no una preferencia del docente. Se conserva la columna para no
+    # romper lecturas ni el historial, pero ya no se edita.
     mezclar_preguntas: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,
-        server_default="false",
+        server_default="true",
     )
+    # Tope de preguntas del examen (migracion 0046). None = sin tope.
+    limite_preguntas: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # Visibilidad de resultados (migración 0036, gate estilo Moodle "Review options").
     mostrar_nota: Mapped[str] = mapped_column(
         String(20),

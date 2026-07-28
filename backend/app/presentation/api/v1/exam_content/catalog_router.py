@@ -29,6 +29,7 @@ from app.application.exam_content.errors import (
     ExamenNoEncontradoError,
     InscripcionConActividadError,
     InscripcionNoEncontradaError,
+    LimitePreguntasExcedidoError,
     MateriaNoEncontradaError,
     MateriaNoVaciaError,
     MoodleXmlInvalidoError,
@@ -169,6 +170,7 @@ def create_exam_content_router(
         moodle_courseid: int | None = Form(default=None),
         moodle_cmid: int | None = Form(default=None),
         moodle_component: str | None = Form(default=None),
+        limite_preguntas: int | None = Form(default=None, ge=1),
         principal: AuthenticatedPrincipal = Depends(get_current_principal),
     ) -> ImportReporteResponse:
         """Importa un archivo Moodle XML y crea el examen de contenido.
@@ -201,8 +203,20 @@ def create_exam_content_router(
                     moodle_courseid=moodle_courseid,
                     moodle_cmid=moodle_cmid,
                     moodle_component=moodle_component,
+                    limite_preguntas=limite_preguntas,
                 )
                 await session.commit()
+            except LimitePreguntasExcedidoError as exc:
+                await session.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail={
+                        "error": "limite_preguntas_excedido",
+                        "mensaje": str(exc),
+                        "importables": exc.importables,
+                        "limite": exc.limite,
+                    },
+                ) from exc
             except MoodleXmlInvalidoError as exc:
                 raise HTTPException(
                     status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -581,7 +595,10 @@ def create_exam_content_router(
             entidad_id=str(materia_id),
             ip=request.client.host if request.client else None,
             user_agent=request.headers.get("user-agent"),
-            proposito=f"{'Activó' if body.activa else 'Desactivó'} la materia {materia.nombre}",
+            proposito=(
+                f"La materia {materia.nombre} pasó de "
+                f"{'Inactiva a Activa' if body.activa else 'Activa a Inactiva'}"
+            ),
         )
 
         return MateriaResponse(
@@ -786,8 +803,8 @@ def create_exam_content_router(
             ip=request.client.host if request.client else None,
             user_agent=request.headers.get("user-agent"),
             proposito=(
-                f"{'Activó' if body.activa else 'Desactivó'} la comisión "
-                f"{comision.nombre} ({comision.codigo})"
+                f"La comisión {comision.nombre} ({comision.codigo}) pasó de "
+                f"{'Inactiva a Activa' if body.activa else 'Activa a Inactiva'}"
             ),
         )
 
@@ -1221,6 +1238,7 @@ def create_exam_content_router(
             nota_maxima=examen.nota_maxima,
             nota_aprobacion=examen.nota_aprobacion,
             mezclar_preguntas=examen.mezclar_preguntas,
+            limite_preguntas=examen.limite_preguntas,
             mostrar_nota=examen.mostrar_nota,
             revision_habilitada=examen.revision_habilitada,
             politica_intentos=examen.politica_intentos,
@@ -1287,6 +1305,11 @@ def create_exam_content_router(
 
         # Solo los campos REALMENTE enviados (distingue "ausente" de "null explícito").
         cambios = body.model_dump(exclude_unset=True)
+
+        # Tope de preguntas: 0 es la forma de SACAR el tope (el schema no acepta
+        # negativos y `null` ya significa "no lo toques" en un PATCH parcial).
+        if cambios.get("limite_preguntas") == 0:
+            cambios["limite_preguntas"] = None
 
         async with session_factory() as session:
             repo = ExamenContenidoSqlRepository(session)
@@ -1490,6 +1513,27 @@ def create_exam_content_router(
                             "ya tiene intentos finalizados y cambiarla alteraría notas ya "
                             "calculadas."
                         ),
+                    },
+                )
+            # Tope de preguntas del examen: la selección no puede excederlo. Se
+            # valida acá (y no solo en la UI) porque es el único punto por el que
+            # pasa cualquier cambio de selección.
+            examen_cfg = await repo.obtener(examen_id)
+            tope = getattr(examen_cfg, "limite_preguntas", None) if examen_cfg else None
+            if tope is not None and len(body.seleccionadas) > tope:
+                await session.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail={
+                        "error": "limite_preguntas_excedido",
+                        "mensaje": (
+                            f"Este examen admite como máximo {tope} pregunta(s) y se "
+                            f"seleccionaron {len(body.seleccionadas)}. Quitá "
+                            f"{len(body.seleccionadas) - tope} o subí el tope en la "
+                            "configuración del examen."
+                        ),
+                        "limite": tope,
+                        "seleccionadas": len(body.seleccionadas),
                     },
                 )
             try:

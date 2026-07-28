@@ -11,6 +11,23 @@ class MoodleXmlVacioError(Exception):
     """El XML es válido pero no contiene preguntas de tipo soportado."""
 
 
+class LimitePreguntasExcedidoError(Exception):
+    """El XML trae más preguntas válidas de las que el examen admite.
+
+    No se truncan: importar en silencio las primeras N dejaría al docente con un
+    examen distinto del que subió, sin enterarse de cuáles se perdieron. Se
+    rechaza la importación entera con el conteo para que decida.
+    """
+
+    def __init__(self, importables: int, limite: int) -> None:
+        super().__init__(
+            f"El archivo trae {importables} preguntas válidas y el tope es {limite}. "
+            f"Quitá {importables - limite} del archivo o subí el tope."
+        )
+        self.importables = importables
+        self.limite = limite
+
+
 class ExamenNoEncontradoError(Exception):
     """No existe un examen de contenido con el id indicado."""
 

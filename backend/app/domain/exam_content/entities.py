@@ -117,7 +117,11 @@ class ExamenContenido:
     cierre: datetime | None = None  # None = sin cierre
     nota_maxima: float = 10.0
     nota_aprobacion: float = 6.0
-    mezclar_preguntas: bool = False
+    # Siempre true: el orden aleatorio por alumno protege la integridad de la
+    # rendicion y no altera la nota (solo cambia el ORDEN, no que preguntas entran).
+    mezclar_preguntas: bool = True
+    # Tope de preguntas del examen. None = sin tope.
+    limite_preguntas: int | None = None
     # Visibilidad de resultados (migración 0036, gate estilo Moodle "Review options").
     mostrar_nota: str = "al_cerrar"  # 'al_cerrar' | 'inmediata'
     revision_habilitada: bool = False

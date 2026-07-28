@@ -375,8 +375,11 @@ export interface ExamConfig {
   nota_maxima: number;
   /** Nota mínima para aprobar (debe ser ≤ nota_maxima). */
   nota_aprobacion: number;
-  /** Si true, las preguntas se muestran en orden aleatorio estable por sesión. */
+  /** Siempre true: el orden aleatorio por alumno es obligatorio (no editable). Se
+   *  expone para poder informarlo en la UI. */
   mezclar_preguntas: boolean;
+  /** Tope de preguntas del examen. null = sin tope. Al escribirlo, 0 = sacar el tope. */
+  limite_preguntas: number | null;
   /** C-69: cuándo se muestra la nota al alumno. 'al_cerrar' (después del cierre) |
    *  'inmediata' (al entregar). */
   mostrar_nota: 'al_cerrar' | 'inmediata';

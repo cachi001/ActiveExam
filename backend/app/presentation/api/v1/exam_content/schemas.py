@@ -10,7 +10,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from app.domain.exam_content.entities import PoliticaIntentos
 
 
@@ -493,7 +493,10 @@ class ExamenConfigResponse(BaseModel):
     cierre: datetime | None = None
     nota_maxima: float
     nota_aprobacion: float
+    # Siempre true (migración 0046). Se sigue exponiendo para que la UI pueda
+    # informarlo, pero ya no es editable.
     mezclar_preguntas: bool
+    limite_preguntas: int | None = None
     # Visibilidad de resultados (C-69, migración 0036).
     mostrar_nota: str = "al_cerrar"
     revision_habilitada: bool = False
@@ -523,7 +526,11 @@ class ExamenConfigPatchRequest(BaseModel):
     cierre: datetime | None = None
     nota_maxima: float | None = None
     nota_aprobacion: float | None = None
-    mezclar_preguntas: bool | None = None
+    # `mezclar_preguntas` NO se acepta: es siempre true (migracion 0046). Con
+    # extra='forbid', mandarlo devuelve 422 en vez de aceptarlo en silencio.
+    # Tope de preguntas del examen. None en el body = no se toca; para sacar el
+    # tope se manda 0 (se normaliza a NULL en la capa de aplicacion).
+    limite_preguntas: int | None = Field(default=None, ge=0)
     # Visibilidad de resultados (C-69). mostrar_nota: 'al_cerrar' | 'inmediata'.
     mostrar_nota: Literal["al_cerrar", "inmediata"] | None = None
     revision_habilitada: bool | None = None

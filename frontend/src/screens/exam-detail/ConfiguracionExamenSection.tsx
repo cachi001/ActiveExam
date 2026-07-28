@@ -25,7 +25,8 @@ export interface ConfigForm {
   cierre: string;
   notaMaxima: string;
   notaAprobacion: string;
-  mezclarPreguntas: boolean;
+  /** Tope de preguntas del examen. Cadena vacía = sin tope. */
+  limitePreguntas: string;
   mostrarNota: 'al_cerrar' | 'inmediata';
   revisionHabilitada: boolean;
   politicaIntentos: 'mas_alta' | 'ultimo' | 'primero' | 'manual';
@@ -48,7 +49,7 @@ function configToForm(cfg: ExamConfig): ConfigForm {
     cierre: isoToLocalInput(cfg.cierre),
     notaMaxima: String(cfg.nota_maxima ?? 10),
     notaAprobacion: String(cfg.nota_aprobacion ?? 6),
-    mezclarPreguntas: !!cfg.mezclar_preguntas,
+    limitePreguntas: cfg.limite_preguntas != null ? String(cfg.limite_preguntas) : '',
     mostrarNota: cfg.mostrar_nota ?? 'al_cerrar',
     revisionHabilitada: !!cfg.revision_habilitada,
     politicaIntentos: cfg.politica_intentos ?? 'mas_alta',
@@ -77,6 +78,12 @@ function validarConfig(form: ConfigForm): string | null {
   if (aprob > max) {
     return 'La nota de aprobación no puede ser mayor que la nota máxima.';
   }
+  if (form.limitePreguntas.trim() !== '') {
+    const tope = Number(form.limitePreguntas);
+    if (!Number.isInteger(tope) || tope < 1) {
+      return 'El máximo de preguntas debe ser un número entero mayor a 0 (o dejalo vacío para no poner tope).';
+    }
+  }
   // C-69: apertura y cierre son OBLIGATORIOS (el gate de "mostrar nota al cerrar"
   // depende de la fecha de cierre; el examen va de una fecha/hora a otra).
   if (!form.apertura || !form.cierre) {
@@ -100,6 +107,9 @@ export function formToPatch(
     mostrar_nota: form.mostrarNota,
     revision_habilitada: form.revisionHabilitada,
     politica_intentos: form.politicaIntentos,
+    // Vacío = sacar el tope. El backend interpreta 0 como "sin tope" (en un PATCH
+    // parcial `null` significaría "no lo toques").
+    limite_preguntas: form.limitePreguntas.trim() === '' ? 0 : Number(form.limitePreguntas),
   };
   if (bloqueada) {
     const patch: Partial<ExamConfig> = { ...publicacion };
@@ -121,7 +131,8 @@ export function formToPatch(
     cierre: localInputToIso(form.cierre),
     nota_maxima: Number(form.notaMaxima),
     nota_aprobacion: Number(form.notaAprobacion),
-    mezclar_preguntas: form.mezclarPreguntas,
+    // `mezclar_preguntas` NO se manda: es siempre true server-side y el PATCH lo
+    // rechaza (extra='forbid').
     ...publicacion,
   };
 }
@@ -424,28 +435,43 @@ export function ConfiguracionExamenSection({ examenId }: { examenId: string }) {
             </button>
           </div>
 
-          <div className="flex items-center justify-between gap-md border border-outline-variant rounded-lg px-4 py-3">
+          <div>
+            <label className={LABEL_CLS} htmlFor="cfg-limite-preguntas">
+              Máximo de preguntas del examen
+            </label>
+            <input
+              id="cfg-limite-preguntas"
+              type="number"
+              min={1}
+              inputMode="numeric"
+              className={INPUT_CLS}
+              placeholder="Sin tope"
+              value={form.limitePreguntas}
+              disabled={guardando}
+              onChange={(e) => update('limitePreguntas', e.target.value)}
+            />
+            <p className="mt-1.5 text-label-sm text-on-surface-variant">
+              Cuántas preguntas puede tener este examen como máximo. Dejalo vacío para no
+              poner tope. Si al elegir las preguntas te pasás de este número, no te va a
+              dejar guardar.
+            </p>
+          </div>
+
+          {/* Mezclar preguntas ya no es opcional: el orden aleatorio protege la
+              integridad de la rendición y no cambia la nota (solo el orden). Se
+              informa, no se ofrece apagar. */}
+          <div className="flex items-start gap-sm border border-outline-variant rounded-lg px-4 py-3">
+            <Icon name="shuffle" className="text-[18px] shrink-0 mt-0.5 text-on-surface-variant" />
             <div className="min-w-0">
-              <p className="text-label-md font-semibold text-on-surface">Mezclar preguntas</p>
+              <p className="text-label-md font-semibold text-on-surface">
+                Las preguntas se mezclan siempre
+              </p>
               <p className="text-label-sm text-on-surface-variant mt-0.5">
-                Cada alumno ve las preguntas en un orden aleatorio (la nota no depende del orden).
+                Cada alumno ve las preguntas en un orden distinto, para que no se puedan
+                copiar entre compañeros. Todos rinden las mismas preguntas y la nota no
+                depende del orden.
               </p>
             </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={form.mezclarPreguntas}
-              aria-label="Mezclar preguntas"
-              disabled={guardando || bloqueada}
-              onClick={() => update('mezclarPreguntas', !form.mezclarPreguntas)}
-              className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors disabled:opacity-50
-                ${form.mezclarPreguntas ? 'bg-primary' : 'bg-surface-200'}`}
-            >
-              <span
-                className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform
-                  ${form.mezclarPreguntas ? 'translate-x-6' : 'translate-x-1'}`}
-              />
-            </button>
           </div>
 
           {original && JSON.stringify(form) !== JSON.stringify(original) && (
