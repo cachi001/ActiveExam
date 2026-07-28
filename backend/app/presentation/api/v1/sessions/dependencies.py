@@ -29,7 +29,15 @@ def _build_pesos_provider(config_service: ConfigService):
         # scoring_weights es dict[str, int] (peso por tipo). Lo casteamos a float
         # para alinear con la API de PesosScore (que usa floats).
         por_tipo = {tipo: float(peso) for tipo, peso in efectiva.scoring_weights.items()}
-        return PesosScore(por_tipo=por_tipo), efectiva.version
+        # Los tipos APAGADOS viajan aparte: pesan 0 en el cierre. Sin esto, un
+        # detector desactivado en la UI seguia sumando su peso por severidad en el
+        # score que se persiste.
+        return (
+            PesosScore(
+                por_tipo=por_tipo, desactivados=efectiva.scoring_desactivados
+            ),
+            efectiva.version,
+        )
 
     return provider
 

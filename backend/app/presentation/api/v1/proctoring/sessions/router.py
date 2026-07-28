@@ -111,6 +111,29 @@ async def _pesos_vivos_por_tipo(db: AsyncSession) -> dict[str, int] | None:
         return None
 
 
+async def _tipos_desactivados(db: AsyncSession) -> frozenset[str]:
+    """Tipos con fila en evento_score_config pero ``activo=False`` (pesan 0).
+
+    Apagado != desconocido: el apagado lo decidio el admin y vale 0; el tipo sin
+    fila degrada por severidad (RN-GLB-03). Sin esta lista los dos se veian igual.
+    Set vacio si la tabla no esta disponible (no se apaga nada)."""
+    from sqlalchemy import select
+
+    from app.infrastructure.persistence.models.transactional import (
+        EventoScoreConfigModel,
+    )
+
+    try:
+        result = await db.execute(
+            select(EventoScoreConfigModel.tipo_evento).where(
+                EventoScoreConfigModel.activo.is_(False)
+            )
+        )
+        return frozenset(result.scalars().all())
+    except Exception:  # noqa: BLE001 — sin config, no se apaga nada
+        return frozenset()
+
+
 async def _ventanas_pausa_aprobada(db: AsyncSession, session_id: str) -> list:
     """Ventanas de pausa APROBADA de la sesion (estados 'aprobada' y 'finalizada').
 
@@ -293,6 +316,7 @@ def create_sessions_router(
         # cae al fallback por severidad (degradacion graceful, RN-GLB-03). L2.5:
         # el score solo prioriza la revision humana.
         pesos_por_tipo = await _pesos_vivos_por_tipo(db)
+        desactivados = await _tipos_desactivados(db)
 
         # C-15 (6.4): contextualizacion del score. Los eventos que caen dentro de
         # una ventana de pausa AUTORIZADA (aprobada/finalizada) se EXCLUYEN del
@@ -303,7 +327,11 @@ def create_sessions_router(
         eventos_para_score = [
             e for e in sesion.eventos if e.id not in ids_en_pausa
         ]
-        score = calcular_score(eventos_para_score, pesos_por_tipo=pesos_por_tipo)
+        score = calcular_score(
+            eventos_para_score,
+            pesos_por_tipo=pesos_por_tipo,
+            tipos_desactivados=desactivados,
+        )
 
         eventos = [
             EventoDetalle(

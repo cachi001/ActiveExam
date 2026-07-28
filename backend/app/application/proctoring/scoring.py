@@ -51,7 +51,9 @@ SCORE_CAP = 100
 
 
 def calcular_score(
-    eventos: list, pesos_por_tipo: dict[str, int] | None = None
+    eventos: list,
+    pesos_por_tipo: dict[str, int] | None = None,
+    tipos_desactivados: frozenset[str] | set[str] | None = None,
 ) -> int:
     """Calcula el score de riesgo de una sesion sumando pesos por evento.
 
@@ -64,8 +66,13 @@ def calcular_score(
     Args:
         eventos: Lista de objetos duck-typed con ``severidad`` (y opcionalmente
             ``tipo``). Acepta ProctoringEventModel.
-        pesos_por_tipo: Mapa ``{tipo_evento: peso}`` vivo desde la config. None =
-            sin config (fallback por severidad).
+        pesos_por_tipo: Mapa ``{tipo_evento: peso}`` de los tipos ACTIVOS en la
+            config. None = sin config (fallback por severidad).
+        tipos_desactivados: Tipos con fila en ``evento_score_config`` pero
+            ``activo=False``. Pesan 0 — el admin los apago a proposito. Es
+            distinto de "tipo ausente de la config" (desconocido), que SI degrada
+            por severidad: sin esta distincion, apagar un detector y estrenar uno
+            nuevo se comportaban igual.
 
     Returns:
         Score entero >= 0. Score 0 si no hay eventos o el peso no se resuelve.
@@ -74,12 +81,21 @@ def calcular_score(
         L2.5: el score SOLO prioriza la revision humana. El backend nunca sanciona.
     """
     pesos = pesos_por_tipo or {}
+    desactivados = tipos_desactivados or frozenset()
     total = 0
     for e in eventos:
         tipo = getattr(e, "tipo", "")
+        if tipo and tipo in desactivados:
+            # Tipo APAGADO por el admin: pesa 0, no cae al fallback. Sin esto,
+            # desactivarlo lo dejaba sumando igual server-side mientras el cliente
+            # lo trataba como 0 — dos scores distintos para la misma sesion.
+            continue
         if tipo and tipo in pesos:
             total += pesos[tipo]
         else:
+            # Tipo DESCONOCIDO para la config (sin fila en evento_score_config) o
+            # config no disponible: red de seguridad por severidad (RN-GLB-03). Un
+            # detector nuevo no puede quedar valiendo 0 en silencio.
             total += PESOS_SEVERIDAD.get(getattr(e, "severidad", ""), 0)
     # Cap a 100: el score es 0..100 (coincide con el cliente y la finalizacion).
     return min(SCORE_CAP, total)

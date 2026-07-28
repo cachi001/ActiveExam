@@ -166,6 +166,28 @@ class ProctoringRepository:
             return {}
         return {tipo: int(peso) for tipo, peso in filas.all()}
 
+    async def _tipos_desactivados(self) -> frozenset[str]:
+        """Tipos con fila en ``evento_score_config`` pero ``activo=False``: pesan 0.
+
+        Apagado != desconocido. El apagado lo decidio el admin y no debe sumar; el
+        tipo SIN fila (detector nuevo) sigue cayendo a la red de seguridad por
+        severidad (RN-GLB-03). Antes ambos se veian igual —ausentes del mapa de
+        pesos— y desactivar un detector lo dejaba sumando su peso por severidad.
+        """
+        from app.infrastructure.persistence.models.transactional import (
+            EventoScoreConfigModel,
+        )
+
+        try:
+            filas = await self._db.execute(
+                select(EventoScoreConfigModel.tipo_evento).where(
+                    EventoScoreConfigModel.activo.is_(False)
+                )
+            )
+        except Exception:
+            return frozenset()
+        return frozenset(filas.scalars().all())
+
     async def listar_sesiones(self) -> list[SesionResumenData]:
         """Lista todas las sesiones con total_eventos, total_discrepancias y score.
 
@@ -183,6 +205,7 @@ class ProctoringRepository:
         misma sesion daba 75 en el detalle y 0 en la lista.
         """
         pesos_por_tipo = await self._pesos_vivos_por_tipo()
+        desactivados = await self._tipos_desactivados()
 
         # Subquery: eventos agrupados por session_id
         stmt = select(ProctoringSessionModel).order_by(
@@ -248,6 +271,9 @@ class ProctoringRepository:
         score_por_sesion: dict[str, int] = {}
         for row in score_result:
             sid = row.session_id
+            if row.tipo in desactivados:
+                # Apagado por el admin: no suma (y no cae al fallback).
+                continue
             peso = pesos_por_tipo.get(row.tipo)
             if peso is None:
                 peso = PESOS_SEVERIDAD.get(row.severidad, 0)

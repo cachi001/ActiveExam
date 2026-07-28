@@ -231,12 +231,15 @@ async def _motivos_retencion(
         eventos_por_sesion.setdefault(ev.session_id, []).append(ev)
 
     pesos = await _pesos_vivos_por_tipo(db)
+    desactivados = await _tipos_desactivados(db)
     umbral = await _umbral_cola_revision(db)
 
     motivos: dict[str, str] = {}
     for row in rows:
         score = calcular_score(
-            eventos_por_sesion.get(row.id, []), pesos_por_tipo=pesos
+            eventos_por_sesion.get(row.id, []),
+            pesos_por_tipo=pesos,
+            tipos_desactivados=desactivados,
         )
         flaggeada = score >= umbral
         decision = _parse_decision_val(row.decision)
@@ -332,6 +335,7 @@ async def listar_estados_sincronizables(
     for ev in ev_rows:
         eventos_por_sesion.setdefault(ev.session_id, []).append(ev)
     pesos = await _pesos_vivos_por_tipo(db)
+    desactivados = await _tipos_desactivados(db)
     umbral = await _umbral_cola_revision(db)
 
     from app.domain.review.decision import (
@@ -343,7 +347,11 @@ async def listar_estados_sincronizables(
     filas: list[MoodleWritebackEstadoModel] = []
     for r in rows:
         estado = r[0]
-        score = calcular_score(eventos_por_sesion.get(r.sid, []), pesos_por_tipo=pesos)
+        score = calcular_score(
+            eventos_por_sesion.get(r.sid, []),
+            pesos_por_tipo=pesos,
+            tipos_desactivados=desactivados,
+        )
         flaggeada = score >= umbral
         decision = _parse_decision_val(r.decision)
         resolucion = _parse_resolucion_val(r.resolucion)
@@ -464,6 +472,30 @@ async def _pesos_vivos_por_tipo(db: AsyncSession) -> dict[str, int] | None:
         return None
 
 
+async def _tipos_desactivados(db: AsyncSession) -> frozenset[str]:
+    """Tipos con fila en evento_score_config pero ``activo=False``.
+
+    Se consulta aparte de los pesos porque "apagado" y "desconocido" NO son lo
+    mismo para el score: el apagado pesa 0 (el admin lo decidio), el desconocido
+    degrada por severidad (RN-GLB-03). Sin esta lista, ambos se veian igual —
+    ausentes del mapa de pesos— y desactivar un detector no lo desactivaba.
+
+    Set vacio si la tabla no esta disponible (degradacion graceful: nada se apaga)."""
+    from app.infrastructure.persistence.models.transactional import (
+        EventoScoreConfigModel,
+    )
+
+    try:
+        result = await db.execute(
+            select(EventoScoreConfigModel.tipo_evento).where(
+                EventoScoreConfigModel.activo.is_(False)
+            )
+        )
+        return frozenset(result.scalars().all())
+    except Exception:  # noqa: BLE001 — sin config, no se apaga nada
+        return frozenset()
+
+
 async def listar_mis_notas(
     *,
     db: AsyncSession,
@@ -547,6 +579,7 @@ async def listar_mis_notas(
         eventos_por_sesion.setdefault(ev.session_id, []).append(ev)
 
     pesos = await _pesos_vivos_por_tipo(db)
+    desactivados = await _tipos_desactivados(db)
     umbral = await _umbral_cola_revision(db)
     restituidas = await _sesiones_con_restitucion(db, session_ids)
 
@@ -554,7 +587,9 @@ async def listar_mis_notas(
     items: list[MiNota] = []
     for r in rows:
         evs = eventos_por_sesion.get(r.session_id, [])
-        score = calcular_score(evs, pesos_por_tipo=pesos)
+        score = calcular_score(
+            evs, pesos_por_tipo=pesos, tipos_desactivados=desactivados
+        )
         nota_real = float(r.nota) if r.nota is not None else None
         nota_aprobacion = (
             float(r.nota_aprobacion) if r.nota_aprobacion is not None else None

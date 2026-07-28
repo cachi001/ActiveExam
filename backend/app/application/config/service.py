@@ -51,6 +51,10 @@ class ConfigEfectiva:
     # Severidad configurada por tipo de evento (solo tipos activos). El cliente la usa
     # para mostrar la severidad VIGENTE (no la del catalogo hardcodeado).
     scoring_severidades: dict[str, str] = field(default_factory=dict)
+    # Tipos con fila en ``evento_score_config`` pero ``activo=False``: pesan 0 en el
+    # score. Se expone aparte de ``scoring_weights`` porque "apagado" y "desconocido"
+    # exigen tratos distintos (0 vs. fallback por severidad).
+    scoring_desactivados: frozenset[str] = field(default_factory=frozenset)
 
 
 class ConfigService:
@@ -80,6 +84,7 @@ class ConfigService:
             cfg = await repo.ensure_singleton()
             await session.commit()
         pesos, severidades = await self._scoring_activos(session)
+        desactivados = await self._scoring_desactivados(session)
         return ConfigEfectiva(
             version=cfg.version,
             face_absent_ms=cfg.face_absent_ms,
@@ -96,6 +101,7 @@ class ConfigService:
             pausa_max_min=int(cfg.pausa_max_min),
             scoring_weights=pesos,
             scoring_severidades=severidades,
+            scoring_desactivados=desactivados,
         )
 
     async def _scoring_activos(
@@ -113,3 +119,16 @@ class ConfigService:
         pesos = {row.tipo_evento: row.peso for row in rows}
         severidades = {row.tipo_evento: row.severidad for row in rows}
         return pesos, severidades
+
+    async def _scoring_desactivados(self, session: AsyncSession) -> frozenset[str]:
+        """Tipos con fila en ``evento_score_config`` pero ``activo=False``.
+
+        El score los trata como peso 0. Es distinto de un tipo SIN fila (detector
+        nuevo), que degrada por severidad: sin separar los dos casos, apagar un
+        detector en la UI no lo apagaba en el score server-side."""
+        result = await session.execute(
+            select(EventoScoreConfigModel.tipo_evento).where(
+                EventoScoreConfigModel.activo.is_(False)
+            )
+        )
+        return frozenset(result.scalars().all())

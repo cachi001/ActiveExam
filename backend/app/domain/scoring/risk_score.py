@@ -67,11 +67,16 @@ _FACTOR_CORRELACION_DEFAULT = 1.5
 class PesosScore:
     """Configuracion de pesos del score (configurable por institucion, RN-SC-05).
 
-    Dos fuentes posibles, prioridad de uso en ``peso_evento``:
-    1. ``por_tipo[ev.tipo]`` — peso especifico configurado en ``evento_score_config``
+    Prioridad de uso en ``peso_evento``:
+    1. ``desactivados`` — tipos que el admin APAGO (``activo=False``): pesan 0.
+    2. ``por_tipo[ev.tipo]`` — peso especifico configurado en ``evento_score_config``
        (lo que el admin edita en la UI de Scoring). Es la fuente *normal*.
-    2. ``severidad[ev.severidad]`` — fallback cuando ``por_tipo`` no esta presente o
-       el tipo del evento no esta mapeado (graceful degradation, RN-GLB-03).
+    3. ``severidad[ev.severidad]`` — fallback cuando ``por_tipo`` no esta presente o
+       el tipo del evento es DESCONOCIDO para la config (graceful degradation,
+       RN-GLB-03).
+
+    Apagado y desconocido NO son lo mismo: sin (1), desactivar un detector lo dejaba
+    cayendo al fallback por severidad y sumando igual.
 
     Antes de unificar (config-driven-scoring v2) el sistema usaba SOLO ``severidad``,
     lo que dejaba la UI de pesos por tipo desconectada del flujo de cierre."""
@@ -82,6 +87,8 @@ class PesosScore:
     # Peso por TIPO de evento (config viva, ``evento_score_config``). None = sin
     # config; se cae al fallback por severidad.
     por_tipo: dict[str, float] | None = None
+    # Tipos con fila en ``evento_score_config`` pero ``activo=False``. Pesan 0.
+    desactivados: frozenset[str] = field(default_factory=frozenset)
     bono_persistencia: float = _BONO_PERSISTENCIA_DEFAULT
     factor_correlacion: float = _FACTOR_CORRELACION_DEFAULT
     # Ventana de correlacion en milisegundos: eventos de distinto tipo dentro de esta
@@ -103,12 +110,20 @@ class EventoScore:
 def peso_evento(ev: EventoScore, pesos: PesosScore = PesosScore()) -> float:
     """Peso de un evento: base x (1 + bono por persistencia sostenida).
 
-    El peso base sale de ``pesos.por_tipo[ev.tipo]`` si esta presente (config viva
-    desde ``evento_score_config``, lo que el admin edita en la UI), o cae al
-    fallback ``pesos.severidad[ev.severidad]`` (graceful degradation, RN-GLB-03).
+    Tres casos, no dos:
+    1. Tipo en ``pesos.desactivados`` (fila en ``evento_score_config`` con
+       ``activo=False``): pesa 0. El admin lo apago a proposito. Antes caia al
+       fallback por severidad, asi que desactivarlo lo dejaba sumando igual en el
+       score de cierre mientras el cliente lo trataba como 0.
+    2. Tipo en ``pesos.por_tipo``: ese peso (config viva, lo que el admin edita).
+    3. Tipo DESCONOCIDO para la config, o sin config: fallback
+       ``pesos.severidad[ev.severidad]`` (graceful degradation, RN-GLB-03). Un
+       detector nuevo sin fila sembrada no puede quedar valiendo 0 en silencio.
 
     Un pico aislado (persistencia=1) pesa su base; un patron sostenido
     (persistencia>1) pesa mas, escalado por el bono (RN-SC-02/RN-SC-03)."""
+    if ev.tipo in pesos.desactivados:
+        return 0.0
     if pesos.por_tipo is not None and ev.tipo in pesos.por_tipo:
         base = pesos.por_tipo[ev.tipo]
     else:
