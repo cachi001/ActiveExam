@@ -39,6 +39,13 @@ CAPABILITY_ROLES: dict[str, frozenset[Rol]] = {
     "gestionar_notas": frozenset(
         {Rol.DOCENTE, Rol.ADMIN_EXAMENES, Rol.COORDINADOR, Rol.ADMIN_SISTEMA}
     ),
+    # Asignar el docente a cargo de una comision (C-73 §9). Deliberadamente SIN
+    # DOCENTE: quien queda a cargo decide quien devuelve la nota a Moodle y que
+    # examenes puede tocar. Si el docente pudiera asignarse solo, la pertenencia
+    # dejaria de ser un control (se auto-otorgaria el acceso que el control niega).
+    "asignar_docente": frozenset(
+        {Rol.ADMIN_EXAMENES, Rol.COORDINADOR, Rol.ADMIN_SISTEMA}
+    ),
     # --- Administracion del sistema -----------------------------------------
     # Umbrales, detectores, retencion. Deliberadamente SIN docente: la
     # configuracion define como se detecta el fraude; quien dicta la materia no

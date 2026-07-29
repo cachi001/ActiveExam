@@ -52,11 +52,14 @@
     -webkit-backdrop-filter: blur(12px);
     border: 1px solid rgba(199, 196, 214, 0.4);
   }
+  /* Superficies mas cuadradas y limpias: el borde define el contenedor (hairline
+     nitido, no al 40%) y la sombra deja de competir con el. Radio 8px en vez de
+     12px — a 12px las tarjetas se leen "burbuja"; a 8px, institucional. */
   .card {
-    @apply bg-surface-container-lowest rounded-xl border border-outline-variant/40 shadow-card;
+    @apply bg-surface-container-lowest rounded-md border border-outline-variant;
   }
   .input {
-    @apply bg-surface-container-low border border-outline-variant rounded-xl px-sm py-base text-label-md text-on-surface outline-none transition-colors;
+    @apply bg-surface-container-lowest border border-outline-variant rounded-md px-sm py-base text-label-md text-on-surface outline-none transition-colors;
   }
   .input:focus {
     @apply border-primary-container;

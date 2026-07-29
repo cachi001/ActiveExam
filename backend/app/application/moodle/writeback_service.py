@@ -98,15 +98,115 @@ async def persistir_nota_pendiente(
     return existing
 
 
+def _es_token_invalido(exc: Exception) -> bool:
+    """``True`` si Moodle rechazó la CREDENCIAL (no el dato).
+
+    Se mira el texto porque el cliente ya normaliza el error de Moodle a
+    ``MoodleGradeWriteError``. Distinguirlo importa: un token inválido se arregla
+    recargando la credencial, mientras que un destino mal configurado no.
+    """
+    texto = str(exc).lower()
+    # `invalidtoken` es el errorcode; el resto son los textos que devuelve Moodle
+    # segun el idioma del campus. El de campustest (es_AR) es "Ficha (token) no
+    # valida - ficha no encontrada": mirar solo el errorcode en ingles no alcanza.
+    marcas = (
+        "invalidtoken",
+        "accessexception",
+        "ficha (token)",
+        "token no",
+        "invalid token",
+    )
+    return any(m in texto for m in marcas)
+
+
 class MoodleWritebackService:
     """Orquesta el write-back de la nota académica a Moodle con idempotencia y auditoría.
 
     El token NO se almacena ni se loguea — vive sólo en MoodleRestClient.config.
     """
 
-    def __init__(self, moodle_client: MoodleRestClient) -> None:
+    def __init__(
+        self,
+        moodle_client: MoodleRestClient,
+        credencial_docente=None,
+    ) -> None:
         self._client = moodle_client
         self._mapper = MoodleIdentityMapper(moodle_client=moodle_client)
+        # C-73 §10.4: CredencialDocenteService. Sin él, `ejecutar_writeback` no puede
+        # identificar al docente y retiene la nota en vez de mandarla sin dueño.
+        # La anulación por fraude (`anular_nota`) SÍ sigue usando la institucional: la
+        # decide un revisor, no el docente, y firmarla con la credencial del profesor
+        # atribuiría a otra persona una sanción que no tomó.
+        self._cred_docente = credencial_docente
+
+    async def _credencial_para(
+        self, db: AsyncSession, session_id: str
+    ) -> tuple[str | None, str | None, str | None]:
+        """Credencial del DOCENTE con la que se devuelve ESTA nota (C-73 §10.4).
+
+        Deriva sesion -> examen -> comision -> docente y devuelve
+        ``(token, docente_id, nombre_visible)``.
+
+        ``nombre_visible`` es "Nombre Apellido" — es lo que termina en la columna
+        *Fuente* de la libreta de Moodle, y ahi lo lee una PERSONA. Un legajo obliga a
+        ir a buscar de quien es; el nombre se entiende solo. Cae al legajo unicamente
+        si el usuario no tiene nombre cargado.
+
+        NO HAY RESPALDO INSTITUCIONAL PARA ESTE CAMINO. Si el docente no tiene
+        credencial usable, la nota NO se manda: sin identidad del docente, la nota
+        llega a la libreta sin dueno y eso es exactamente el problema que este cambio
+        vino a resolver. Peor aun, saldria en silencio: el docente creeria que la
+        mando el. Se retiene y se muestra por que (motivo `sin_credencial_docente`),
+        que es un bloqueo visible en vez de una firma equivocada.
+        """
+        if self._cred_docente is None:
+            return None, None, None
+
+        from app.infrastructure.persistence.models.exam_content import (
+            ComisionModel,
+            ExamenContenidoModel,
+        )
+        from app.infrastructure.persistence.models.proctoring import (  # noqa: F401
+            ProctoringSessionModel,
+        )
+
+        from app.infrastructure.persistence.models.transactional import UsuarioModel
+
+        fila = (
+            await db.execute(
+                select(
+                    ComisionModel.docente_id,
+                    UsuarioModel.id_institucional,
+                    UsuarioModel.nombre,
+                    UsuarioModel.apellido,
+                )
+                .select_from(ProctoringSessionModel)
+                .join(
+                    ExamenContenidoModel,
+                    # OJO: la columna es `examen_contenido_id`, no `examen_id`.
+                    ExamenContenidoModel.id
+                    == ProctoringSessionModel.examen_contenido_id,
+                )
+                .join(
+                    ComisionModel,
+                    ComisionModel.id == ExamenContenidoModel.comision_id,
+                )
+                .outerjoin(UsuarioModel, UsuarioModel.id == ComisionModel.docente_id)
+                .where(ProctoringSessionModel.id == session_id)
+            )
+        ).first()
+
+        if not fila or not fila[0]:
+            return None, None, None
+
+        docente_id, legajo, nombre, apellido = fila[0], fila[1], fila[2], fila[3]
+        # "Nombre Apellido"; si el usuario no los tiene cargados, el legajo.
+        visible = " ".join(p for p in (nombre, apellido) if p).strip() or legajo
+        token = await self._cred_docente.token_de(docente_id)
+        if not token:
+            # Tiene docente, pero no conectó su cuenta o su token está caído.
+            return None, docente_id, visible
+        return token, docente_id, visible
 
     async def _nota_maxima_del_examen(
         self, db: AsyncSession, session_id: str
@@ -213,12 +313,50 @@ class MoodleWritebackService:
         if estado.estado == WritebackEstado.ENVIADO:
             return  # ya enviado, no duplicar
 
-        # Paso 2: resolver identidad en Moodle
+        # Paso 2: credencial del DOCENTE a cargo de la comision.
+        #
+        # C-73 §10.4: la nota SIEMPRE sale con la credencial del docente. No hay
+        # respaldo institucional para este camino, y es a proposito: una nota escrita
+        # con la cuenta de servicio llega a la libreta sin dueno identificable —el
+        # problema que este cambio vino a resolver— y ademas sale en silencio, con el
+        # docente creyendo que la mando el.
+        #
+        # VA ANTES DEL MAPEO DE IDENTIDAD (C-73 Fase 2) por dos razones: el mapeo
+        # ahora se hace CON este token, y si no hay credencial no tiene sentido
+        # molestar a Moodle para despues retener la nota igual.
+        token_docente, docente_id, docente_nombre = await self._credencial_para(
+            db, session_id
+        )
+
+        if not token_docente:
+            # Bloqueo VISIBLE en vez de firma equivocada. La nota queda pendiente y
+            # la pantalla de resultados explica por que (motivo `sin_credencial_docente`).
+            # Se destraba sola en cuanto el docente conecta su cuenta y se re-sincroniza.
+            await self._registrar_fallo(
+                db=db,
+                estado=estado,
+                moodle_userid=None,
+                error=(
+                    "sin_credencial_docente: la comisión no tiene docente a cargo con "
+                    "su cuenta del campus conectada. La nota no se envía para que no "
+                    "quede en la libreta sin responsable."
+                ),
+            )
+            return
+
+        # Paso 3: resolver la identidad del alumno en Moodle.
+        #
+        # C-73 Fase 2: con el curso del examen y el token del docente, la resolucion
+        # se hace entre los MATRICULADOS del curso — sin credencial institucional (que
+        # en campustest esta muerta) y con el alcance que impone Moodle: el docente no
+        # ve cursos donde no da clase.
         moodle_userid: int | None = None
         try:
             moodle_userid = await self._mapper.resolve(
                 idnumber=alumno_idnumber,
                 email=alumno_email,
+                courseid=estado.moodle_courseid,
+                ws_token=token_docente,
             )
         except (IdentityResolutionError, Exception) as exc:
             await self._registrar_fallo(
@@ -229,10 +367,18 @@ class MoodleWritebackService:
             )
             return
 
-        # Paso 3: push de la nota a Moodle. Destino POR EXAMEN persistido en el estado
-        # (D12); si está NULL, write_grade cae al global de config.
+        nota_maxima = await self._nota_maxima_del_examen(db, session_id)
+        # C-73 §10.6: la atribucion nombra al DOCENTE. Va con NOMBRE Y APELLIDO porque
+        # la columna *Fuente* del historial de calificaciones la lee una persona: un
+        # legajo obliga a ir a buscar de quien es.
+        source = f"activeexam:{docente_nombre}" if docente_nombre else "activeexam"
+
         try:
-            await self._client.write_grade(
+            # C-73 Fase 1: `escribir_nota` rutea segun el component. Para una TAREA usa
+            # `mod_assign_save_grade` (servicio movil de fabrica): el docente escribe
+            # con SU token y la columna *Calificador* de la libreta dice su nombre, sin
+            # que nadie configure nada en el campus. Verificado E2E en campustest.
+            await self._client.escribir_nota(
                 moodle_userid=moodle_userid,
                 nota=float(estado.nota),
                 courseid=estado.moodle_courseid,
@@ -240,9 +386,17 @@ class MoodleWritebackService:
                 component=estado.moodle_component,
                 # Escala de ORIGEN: el cliente la usa para convertir a la del item
                 # de Moodle (que suele ser 100). Sin esto un 8/10 iba como 8/100.
-                nota_maxima=await self._nota_maxima_del_examen(db, session_id),
+                nota_maxima=nota_maxima,
+                ws_token=token_docente,
+                source=source,
             )
         except MoodleGradeWriteError as exc:
+            # C-73 §10.5: token revocado o vencido. Se marca la credencial como CAIDA
+            # para poder avisarle al docente, y la nota queda pendiente: NO se
+            # reintenta con la institucional, porque eso la firmaria con otra
+            # identidad sin que nadie se entere.
+            if _es_token_invalido(exc) and self._cred_docente and docente_id:
+                await self._cred_docente.marcar_caida(docente_id)
             await self._registrar_fallo(
                 db=db,
                 estado=estado,
@@ -250,6 +404,11 @@ class MoodleWritebackService:
                 error=str(exc),
             )
             return
+
+        # Sello de uso exitoso: permite diagnosticar "hace meses que no sincroniza"
+        # sin leer logs.
+        if self._cred_docente and docente_id:
+            await self._cred_docente.marcar_uso(docente_id)
 
         # Paso 4: marcar como enviado y auditar éxito
         estado.estado = WritebackEstado.ENVIADO
@@ -322,7 +481,9 @@ class MoodleWritebackService:
             # 0 es 0 en cualquier escala, pero se pasa igual para que la anulacion
             # recorra EXACTAMENTE el mismo camino que un envio normal: si mañana la
             # nota de anulacion deja de ser 0, no hay que acordarse de este detalle.
-            await self._client.write_grade(
+            # Sin `ws_token`: el 0 por fraude lo firma la INSTITUCION a proposito — lo
+            # decide un revisor, no el docente.
+            await self._client.escribir_nota(
                 moodle_userid=moodle_userid,
                 nota=0.0,
                 courseid=estado.moodle_courseid,
@@ -441,7 +602,9 @@ class MoodleWritebackService:
             return None
 
         try:
-            await self._client.write_grade(
+            # Como la anulacion: la restitucion la resuelve un revisor, no el docente,
+            # asi que va con la credencial institucional (sin `ws_token`).
+            await self._client.escribir_nota(
                 moodle_userid=moodle_userid,
                 nota=nota,
                 courseid=estado.moodle_courseid,

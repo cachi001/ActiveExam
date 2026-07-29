@@ -706,6 +706,10 @@ export interface Materia {
   // por compat; ausentes = 0 (no bloquea).
   total_inscriptos?: number;
   total_examenes?: number;
+  // C-73 §9: docente a cargo. Es quien devuelve las notas de esta comisión al campus
+  // con SU cuenta. Sin docente asignado las notas quedan retenidas.
+  docente_id?: string | null;
+  docente_nombre?: string | null;
 }
 
 /** Comisión: instancia de cursado de una Materia.
@@ -730,6 +734,10 @@ export interface Comision {
   // por compat; ausentes = 0 (no bloquea).
   total_inscriptos?: number;
   total_examenes?: number;
+  // C-73 §9: docente a cargo. Es quien devuelve las notas de esta comisión al campus
+  // con SU cuenta. Sin docente asignado las notas quedan retenidas.
+  docente_id?: string | null;
+  docente_nombre?: string | null;
 }
 
 /** Alumno inscripto a una comisión, con su estado de elegibilidad para rendir

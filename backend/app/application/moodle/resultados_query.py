@@ -201,6 +201,10 @@ async def _motivos_retencion(
       - "caso_abierto"   : un revisor la derivo y falta el veredicto.
       - "anulada"        : anulada por fraude — la nota no se sincroniza.
       - "sin_destino"    : el examen no tiene curso/actividad en el campus.
+      - "sin_credencial_docente": la comision no tiene docente a cargo, o el docente
+        no conecto su cuenta del campus (o su token se cayo). La nota NO se manda con
+        la cuenta institucional a proposito: llegaria a la libreta sin responsable
+        identificable, y en silencio. Se destraba sola cuando el docente conecta.
     Una sesion sin retencion no aparece en el dict.
 
     "sin_destino" existe porque el destino dejo de tener fallback global: antes, un
@@ -223,6 +227,41 @@ async def _motivos_retencion(
     ).all()
 
     # Sesiones cuyo examen no tiene destino en el campus: la nota no puede salir.
+    # C-73 §10.4: sesiones cuyo docente a cargo no tiene credencial usable. La nota
+    # SIEMPRE debe salir con la identidad del docente que la devuelve; sin ella se
+    # retiene en vez de firmarla con la cuenta de servicio.
+    from app.infrastructure.persistence.models.exam_content import ComisionModel
+    from app.infrastructure.persistence.models.transactional import (
+        MoodleCredencialDocenteModel,
+    )
+
+    sin_credencial = {
+        sid
+        for sid, token_cifrado, estado_cred in (
+            await db.execute(
+                select(
+                    ProctoringSessionModel.id,
+                    MoodleCredencialDocenteModel.token_cifrado,
+                    MoodleCredencialDocenteModel.estado,
+                )
+                .outerjoin(
+                    ExamenContenidoModel,
+                    ExamenContenidoModel.id
+                    == ProctoringSessionModel.examen_contenido_id,
+                )
+                .outerjoin(
+                    ComisionModel, ComisionModel.id == ExamenContenidoModel.comision_id
+                )
+                .outerjoin(
+                    MoodleCredencialDocenteModel,
+                    MoodleCredencialDocenteModel.usuario_id == ComisionModel.docente_id,
+                )
+                .where(ProctoringSessionModel.id.in_(session_ids))
+            )
+        ).all()
+        if not token_cifrado or estado_cred != "activa"
+    }
+
     sin_destino = {
         sid
         for sid, courseid, cmid in (
@@ -275,6 +314,8 @@ async def _motivos_retencion(
             # Sin hold de revision, pero puede faltar el destino: igual no sale.
             if row.id in sin_destino:
                 motivos[row.id] = "sin_destino"
+            elif row.id in sin_credencial:
+                motivos[row.id] = "sin_credencial_docente"
             continue
         if resolucion is not None and str(row.resolucion) == "anulado_por_fraude":
             motivos[row.id] = "anulada"

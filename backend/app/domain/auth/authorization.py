@@ -128,3 +128,44 @@ def puede_acceder_a_evidencia(principal: AuthenticatedPrincipal) -> None:
         raise ForbiddenError("El rol no tiene acceso a evidencia (`03`).")
     if not principal.mfa_satisfecho:
         raise MfaRequiredError("El acceso a evidencia exige MFA (`03`/`08`).")
+
+
+# Roles con alcance institucional: NO estan limitados por la pertenencia a una
+# comision. Un coordinador o un admin operan sobre cualquier examen por diseno
+# (escala/operacion global); el docente, no.
+_ROLES_SIN_LIMITE_DE_PERTENENCIA: frozenset[Rol] = frozenset(
+    {Rol.ADMIN_SISTEMA, Rol.ADMIN_EXAMENES, Rol.COORDINADOR}
+)
+
+
+def autorizar_docente_sobre_examen(
+    principal: AuthenticatedPrincipal,
+    docente_id_del_examen: str | None,
+) -> None:
+    """Pertenencia del DOCENTE sobre un examen (C-73 §9).
+
+    El rol DOCENTE administra "lo suyo": los examenes de las comisiones que tiene a
+    cargo. Hasta C-73 esa regla estaba ESCRITA (ver el comentario de ``Rol.DOCENTE``
+    en ``roles.py``) pero no se aplicaba, porque los guards eran por CAPACIDAD
+    (``gestionar_academico``) y no habia contra que validar la propiedad: la comision
+    no tenia docente. Con ``comision.docente_id`` ya se puede.
+
+    Por que importa: sin esta validacion, un docente puede fijar el destino Moodle del
+    examen de OTRA comision y mandar esa nota a la libreta que quiera. No es un
+    permiso de mas; es escribir en la libreta de una materia ajena.
+
+    ``docente_id_del_examen`` es la derivacion examen -> comision -> docente. ``None``
+    (examen sin comision, o comision sin docente) NO habilita al docente: si no hay
+    dueno, no puede reclamarlo — solo pasan los roles de alcance institucional.
+
+    No decide nada sobre integridad academica (L2.5): esto es control de acceso."""
+    if principal.tiene_algun_rol(_ROLES_SIN_LIMITE_DE_PERTENENCIA):
+        return
+    if not principal.tiene_rol(Rol.DOCENTE):
+        raise ForbiddenError("Se requiere rol docente (o alcance institucional).")
+    if docente_id_del_examen is None:
+        raise ForbiddenError(
+            "El examen no tiene docente a cargo: solo un rol institucional puede operarlo."
+        )
+    if principal.subject != docente_id_del_examen:
+        raise ForbiddenError("El examen pertenece a la comision de otro docente.")

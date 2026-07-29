@@ -51,6 +51,8 @@ class EstadoCredencial:
     origen: str
     actualizado_en: str | None
     actualizado_por: str | None
+    #: Shortname del servicio externo del campus (C-73 §10). No es secreto.
+    service_shortname: str = ""
 
 
 class MoodleCredencialResolver:
@@ -114,6 +116,7 @@ class MoodleCredencialResolver:
                 origen="db",
                 actualizado_en=str(fila.actualizado_en) if fila.actualizado_en else None,
                 actualizado_por=fila.actualizado_por,
+                service_shortname=fila.service_shortname or "",
             )
         # Sin fila util: lo que rige es el entorno (o nada).
         return EstadoCredencial(
@@ -124,6 +127,13 @@ class MoodleCredencialResolver:
             origen=self._env.origen,
             actualizado_en=None,
             actualizado_por=None,
+            # OJO: `service_shortname` vive en la fila AUNQUE no haya token
+            # institucional cargado. Son cosas independientes: el token es la
+            # credencial de servicio (respaldo, solo para anulaciones) y el shortname
+            # es lo que necesitan los DOCENTES para conectar su propia cuenta. Si no
+            # se devolviera acá, el admin lo cargaba, la pantalla lo mostraba vacío y
+            # parecía que no se guardó.
+            service_shortname=(fila.service_shortname or "") if fila is not None else "",
         )
 
     async def guardar(
@@ -132,6 +142,7 @@ class MoodleCredencialResolver:
         base_url: str | None = None,
         token: str | None = None,
         component: str | None = None,
+        service_shortname: str | None = None,
         actor: str | None = None,
     ) -> EstadoCredencial:
         """Upsert de la credencial. ``token=None`` NO borra el token existente.
@@ -147,6 +158,10 @@ class MoodleCredencialResolver:
                 fila.base_url = base_url.rstrip("/")
             if component is not None:
                 fila.component = component
+            if service_shortname is not None:
+                # C-73 §10: sin esto ningun docente puede canjear su contrasena por un
+                # token; `login/token.php` exige `service=`.
+                fila.service_shortname = service_shortname.strip()
             if token:
                 fila.token_cifrado = self._cipher.encrypt(token)
                 fila.token_pista = pista_de_secreto(token)

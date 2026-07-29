@@ -32,6 +32,7 @@ export interface CatalogoExamenesPaginado {
 export async function listarExamenesContenidoFn(
   apiBase: string,
   token: string | undefined,
+  strict = false,
 ): Promise<ExamenContenidoResumen[]> {
   try {
     const res = await fetch(`${apiBase}/exam-content`, {
@@ -41,13 +42,20 @@ export async function listarExamenesContenidoFn(
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
     });
-    if (!res.ok) return [];
+    if (!res.ok) {
+      if (strict) throw new Error(`HTTP ${res.status}`);
+      return [];
+    }
     const body = await res.json();
     // Forma paginada { items, ... } o, por tolerancia, un array plano legacy.
     if (Array.isArray(body)) return body as ExamenContenidoResumen[];
     return (body?.items ?? []) as ExamenContenidoResumen[];
-  } catch {
-    // Error de red o de parseo: degradación silenciosa (no bloquea el flujo).
+  } catch (e) {
+    // `strict` PROPAGA el fallo. Sin él, un error de red devolvía [] y la pantalla
+    // mostraba "0 exámenes" — indistinguible de "no hay exámenes". El helper
+    // `statExamenesValue` no podía arreglarlo porque el error moría acá, una capa
+    // más abajo: el hook recibía un ÉXITO con lista vacía.
+    if (strict) throw e;
     return [];
   }
 }

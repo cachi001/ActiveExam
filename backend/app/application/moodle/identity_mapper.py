@@ -25,12 +25,33 @@ class MoodleIdentityMapper:
     def __init__(self, moodle_client: MoodleRestClient) -> None:
         self._client = moodle_client
 
-    async def resolve(self, *, idnumber: str, email: str) -> int:
+    async def resolve(
+        self,
+        *,
+        idnumber: str,
+        email: str,
+        courseid: int | None = None,
+        ws_token: str | None = None,
+    ) -> int:
         """Devuelve el userid de Moodle. Lanza IdentityResolutionError si no puede.
+
+        DOS CAMINOS (C-73 Fase 2):
+
+        1. Con ``courseid`` Y ``ws_token`` (el token del docente) resuelve entre los
+           MATRICULADOS del curso. Es el camino preferido: no necesita credencial
+           institucional —que hoy en campustest esta muerta— y el alcance lo impone
+           Moodle (un docente no ve cursos donde no da clase).
+
+        2. Sin esos datos cae al camino institucional
+           (``core_user_get_users_by_field``). Lo usan la anulacion por fraude y la
+           restitucion, que las decide un revisor y van con la credencial de la
+           institucion a proposito.
 
         Args:
             idnumber: el id_institucional del alumno (legajo/padrón).
             email: el email institucional del alumno.
+            courseid: curso destino en Moodle. Habilita el camino 1.
+            ws_token: token del docente. Habilita el camino 1.
 
         Returns:
             El userid (int) de Moodle del alumno.
@@ -38,6 +59,34 @@ class MoodleIdentityMapper:
         Raises:
             IdentityResolutionError: si no se puede resolver un usuario único.
         """
+        if courseid and ws_token:
+            try:
+                userid = await self._client.lookup_userid_en_curso(
+                    courseid=courseid,
+                    idnumber=idnumber,
+                    email=email,
+                    ws_token=ws_token,
+                )
+            except MoodleGradeWriteError as exc:
+                raise IdentityResolutionError(
+                    f"Error al buscar al alumno entre los matriculados del curso "
+                    f"{courseid}: {exc}"
+                ) from exc
+
+            if userid is not None:
+                return userid
+
+            # NO se cae al camino institucional. No seria un rescate: escribir la nota
+            # de alguien que no esta matriculado falla igual del otro lado. Caer solo
+            # cambiaria un diagnostico accionable por un error opaco de Moodle, y
+            # reintroduciria la dependencia del token institucional que este camino
+            # vino a eliminar.
+            raise IdentityResolutionError(
+                f"El alumno (idnumber={idnumber!r}, email={email!r}) no esta "
+                f"matriculado en el curso {courseid} del campus. Verificá la "
+                "matriculación en Moodle o el destino configurado en el examen."
+            )
+
         # Intento 1: por idnumber
         if idnumber:
             try:

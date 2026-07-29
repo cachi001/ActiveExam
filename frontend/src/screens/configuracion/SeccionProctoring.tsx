@@ -260,8 +260,14 @@ export default function SeccionProctoring() {
 
 /**
  * ToggleRow — fila con nombre + descripción a la izquierda y un switch a la
- * derecha. Mismo lenguaje visual que DetectoresSelector (verde = activo,
- * rojo = inactivo) para que el admin lo lea de un vistazo.
+ * derecha.
+ *
+ * El CONTENEDOR es neutro y el estado lo lleva SOLO el switch. Antes la tarjeta
+ * entera se teñía (verde = activo / rojo = inactivo) y con nueve detectores en
+ * grilla el resultado era un muro de color: el ojo no encontraba dónde mirar y el
+ * rojo leía como "error" cuando apagar un detector es una decisión legítima. Con
+ * el contenedor neutro, lo que salta a la vista es justamente lo excepcional — el
+ * detector apagado — en vez de los ocho que están bien.
  */
 function ToggleRow({
   label,
@@ -281,17 +287,21 @@ function ToggleRow({
       aria-checked={on}
       aria-label={`${label} — ${on ? 'activado' : 'desactivado'}`}
       onClick={onToggle}
-      className={`group flex items-center gap-3 px-4 py-3 rounded-xl border text-left transition-colors min-w-0 focus:outline-none focus:ring-2 focus:ring-outline-variant ${
-        on ? 'bg-success-container/40 border-success/40' : 'bg-error-container/30 border-error/30'
+      className={`group flex items-center gap-3 px-4 py-3 rounded-md border text-left transition-colors min-w-0 focus:outline-none focus:ring-2 focus:ring-outline-variant ${
+        on
+          ? 'bg-surface-container-lowest border-outline-variant hover:border-outline'
+          : 'bg-surface-container-low border-outline-variant'
       }`}
     >
       <div className="flex-1 min-w-0">
-        <p className="text-label-md font-semibold text-on-surface">{label}</p>
+        <p className={`text-label-md font-semibold ${on ? 'text-on-surface' : 'text-on-surface-variant'}`}>
+          {label}
+        </p>
         <p className="text-[11px] text-on-surface-variant leading-snug mt-0.5">{description}</p>
       </div>
       <span
         className={`relative shrink-0 inline-flex h-6 w-11 rounded-full border-2 border-transparent transition-colors duration-200 ${
-          on ? 'bg-success-600' : 'bg-error-600'
+          on ? 'bg-success-600' : 'bg-outline'
         }`}
       >
         <span

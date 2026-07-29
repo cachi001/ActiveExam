@@ -53,7 +53,10 @@ export const STAFF_NAV: StaffNavItem[] = [
   { to: '/admin/materias',              icon: 'school',          label: 'Materias y comisiones',   group: 'config', roles: ACADEMICO },
   { to: '/admin/detection-test',        icon: 'bug_report',      label: 'Test de detección',       group: 'config', roles: ADMIN },
   { to: '/admin/auditoria',             icon: 'verified_user',   label: 'Auditoría',               group: 'config', roles: AUDITORIA },
-  { to: '/admin/configuracion',         icon: 'settings',        label: 'Configuración',           group: 'config', roles: ADMIN },
+  // C-73 §10.8: el docente entra a Configuración, pero SOLO ve la pestaña del
+  // campus (su cuenta personal). El gating de las secciones que definen cómo se
+  // detecta el fraude vive dentro de la pantalla, no en la ruta.
+  { to: '/admin/configuracion',         icon: 'settings',        label: 'Configuración',           group: 'config', roles: ACADEMICO },
 ];
 
 /** Filtra los items de navegación visibles para un conjunto de roles del usuario. */

@@ -32,6 +32,7 @@ from app.config_slim import get_slim_settings
 from app.infrastructure.auth.slim_wiring import build_slim_jwt_validator
 from app.infrastructure.crypto.embedding_encryption import EmbeddingEncryptionService
 from app.infrastructure.crypto.evidence_encryption import EvidenceCipher
+from app.application.moodle.credencial_docente_service import CredencialDocenteService
 from app.application.moodle.credencial_service import MoodleCredencialResolver
 from app.infrastructure.crypto.secret_encryption import SecretCipher
 from app.infrastructure.moodle.wiring import build_writeback_svc_dinamico
@@ -114,12 +115,22 @@ def create_slim_app() -> FastAPI:
         env_component=settings.moodle_component,
     )
 
+    # Credencial PERSONAL de cada docente (C-73 §10, migración 0050). Es la vía
+    # principal del write-back: la nota se devuelve con la identidad del docente a
+    # cargo de la comisión. La institucional de arriba queda como respaldo.
+    _credencial_docente = CredencialDocenteService(
+        session_factory=session_factory,
+        cipher=SecretCipher(key=settings.embedding_encryption_key),
+    )
+
     # Servicio de write-back de nota a Moodle (C-69, D7/D10).
     # La credencial se resuelve en CADA llamada: rotar el token desde la UI toma
     # efecto sin reiniciar. Si no hay credencial, el propio push falla y la nota
     # queda 'pendiente' (mismo camino que un fallo de red) — la finalización del
     # examen nunca se bloquea por Moodle.
-    _writeback_svc = build_writeback_svc_dinamico(_moodle_credenciales)
+    _writeback_svc = build_writeback_svc_dinamico(
+        _moodle_credenciales, credencial_docente=_credencial_docente
+    )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -137,6 +148,8 @@ def create_slim_app() -> FastAPI:
         # El router de configuración lo usa para leer/guardar la credencial y para
         # invalidar el cache cuando el admin la cambia.
         app.state.moodle_credenciales = _moodle_credenciales
+        # C-73 §10: credencial personal del docente (la vía principal del write-back).
+        app.state.credencial_docente = _credencial_docente
         yield
         await engine.dispose()
 

@@ -76,6 +76,9 @@ class AccionAuditoria(StrEnum):
     COMISION_EDICION = "comision.update"
     COMISION_BAJA = "comision.delete"
     COMISION_ACTIVACION = "comision.set_activa"
+    # C-73 §9: quién queda a cargo de la comisión decide quién devuelve la nota a
+    # Moodle y qué exámenes puede tocar ese docente. Se audita como cambio sensible.
+    COMISION_DOCENTE = "comision.set_docente"
     EXAMEN_IMPORTACION = "examen.import"
     EXAMEN_MOODLE_TARGET = "examen.moodle_target"
     EXAMEN_CONFIG_ACTUALIZACION = "examen.config_update"

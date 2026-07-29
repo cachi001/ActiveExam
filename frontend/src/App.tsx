@@ -100,7 +100,10 @@ export default function App() {
     '/admin/usuarios': g(<GestionUsuarios />, ADMIN),
     '/admin/materias': g(<MateriasComisiones />, ACADEMICO),
     '/admin/usuarios/:id': g(<DetalleUsuario />, ADMIN),
-    '/admin/configuracion': g(<Configuracion />, ADMIN),
+    // C-73 §10.8: deja de ser admin-only. El docente entra pero SOLO ve la pestaña
+    // del campus (su cuenta personal); las secciones que definen cómo se detecta el
+    // fraude siguen siendo de admin_sistema — el gating fino vive en la pantalla.
+    '/admin/configuracion': g(<Configuracion />, ACADEMICO),
 
     // Portal del alumno — C-21
     '/alumno': g(<AlumnoDashboard />, ESTUDIANTE),

@@ -228,14 +228,18 @@ export const proctoringApi = {
    * Lista todas las sesiones de proctoring del backend slim (C-46).
    * Real: GET /proctoring/sessions
    */
-  async listarSesionesProctoring(): Promise<SesionProctoringResumen[]> {
+  async listarSesionesProctoring(strict = false): Promise<SesionProctoringResumen[]> {
     try {
       return await realFetch<SesionProctoringResumen[]>(
         '/proctoring/sessions',
         { method: 'GET' },
         'demo',
       );
-    } catch {
+    } catch (e) {
+      // `strict` PROPAGA el fallo. Sin él, un error de red devolvía [] y el panel
+      // mostraba "0 sesiones registradas": un cero por caída indistinguible de un
+      // cero real. Quien no pasa `strict` conserva la degradación tolerante.
+      if (strict) throw e;
       return [];
     }
   },

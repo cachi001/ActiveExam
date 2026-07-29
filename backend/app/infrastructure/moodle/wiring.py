@@ -45,7 +45,9 @@ def build_writeback_svc(settings: _MoodleSettings) -> MoodleWritebackService | N
     return MoodleWritebackService(moodle_client=MoodleRestClient(config=config))
 
 
-def build_writeback_svc_dinamico(resolver) -> MoodleWritebackService:
+def build_writeback_svc_dinamico(
+    resolver, credencial_docente=None
+) -> MoodleWritebackService:
     """Write-back cuya credencial se resuelve en CADA llamada (migración 0047).
 
     ``resolver``: ``MoodleCredencialResolver``. El servicio se construye siempre
@@ -63,5 +65,8 @@ def build_writeback_svc_dinamico(resolver) -> MoodleWritebackService:
         )
 
     return MoodleWritebackService(
-        moodle_client=MoodleRestClient(config_provider=_provider)
+        moodle_client=MoodleRestClient(config_provider=_provider),
+        # C-73 §10.4: con esto la nota se devuelve con la credencial del docente a
+        # cargo; sin esto (None) todo va por la institucional, como antes.
+        credencial_docente=credencial_docente,
     )

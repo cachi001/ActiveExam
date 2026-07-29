@@ -83,6 +83,15 @@ class ComisionModel(Base):
     activa: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="true"
     )
+    # C-73 §9 (migración 0049): docente a cargo de la comisión. Es el eslabón que
+    # vuelve DERIVABLE quién devuelve la nota (examen.comision_id → comision.docente_id)
+    # y contra qué se valida "lo suyo" del rol DOCENTE. NULL = comisión sin docente
+    # asignado: no rompe nada, el write-back cae a la cuenta de servicio institucional.
+    docente_id: Mapped[str | None] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("usuario.id", ondelete="SET NULL"),
+        nullable=True,
+    )
 
     __table_args__ = (
         UniqueConstraint("materia_id", "codigo", name="uq_comision_materia_codigo"),
@@ -90,6 +99,7 @@ class ComisionModel(Base):
             "codigo_matriculacion", name="uq_comision_codigo_matriculacion"
         ),
         Index("ix_comision_materia_id", "materia_id"),
+        Index("ix_comision_docente_id", "docente_id"),
     )
 
 

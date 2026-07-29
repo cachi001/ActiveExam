@@ -872,6 +872,65 @@ class ComisionSqlRepository:
             await self._db.flush()
         return borrado
 
+    async def asignar_docente(
+        self, comision_id: str, docente_id: str | None
+    ) -> Comision | None:
+        """Asigna (o desasigna con ``None``) el docente a cargo. C-73 §9.
+
+        Devuelve ``None`` si la comisión no existe. No valida que el usuario tenga
+        rol DOCENTE: eso es regla de aplicación, no de persistencia."""
+        result = await self._db.execute(
+            update(ComisionModel)
+            .where(ComisionModel.id == comision_id)
+            .values(docente_id=docente_id)
+            .returning(ComisionModel)
+        )
+        model = result.scalar_one_or_none()
+        if model is None:
+            return None
+        await self._db.flush()
+        return self._to_entity(model)
+
+    async def nombres_de_docentes(self, ids: list[str]) -> dict[str, str]:
+        """id de usuario -> nombre visible, para las comisiones de un listado. C-73 §9.
+
+        Una sola query para todo el listado (no N+1). Cae al legajo cuando el usuario
+        no tiene nombre cargado — usuarios federados/seed viejos pueden no tenerlo, y
+        mostrar un UUID en pantalla no le sirve a nadie."""
+        limpios = [i for i in dict.fromkeys(ids) if i]
+        if not limpios:
+            return {}
+        result = await self._db.execute(
+            select(
+                UsuarioModel.id,
+                UsuarioModel.nombre,
+                UsuarioModel.apellido,
+                UsuarioModel.id_institucional,
+            ).where(UsuarioModel.id.in_(limpios))
+        )
+        nombres: dict[str, str] = {}
+        for uid, nombre, apellido, legajo in result.all():
+            completo = " ".join(p for p in (nombre, apellido) if p).strip()
+            nombres[uid] = completo or legajo
+        return nombres
+
+    async def docente_de_examen(self, examen_id: str) -> str | None:
+        """Docente a cargo de la comisión a la que pertenece el examen. C-73 §9.
+
+        Es la derivación `examen.comision_id → comision.docente_id`, y es la ÚNICA
+        fuente de "de quién es este examen". Devuelve ``None`` cuando el examen no
+        existe, no tiene comisión, o la comisión no tiene docente asignado — los tres
+        casos significan lo mismo para quien llama: no hay dueño identificable."""
+        result = await self._db.execute(
+            select(ComisionModel.docente_id)
+            .join(
+                ExamenContenidoModel,
+                ExamenContenidoModel.comision_id == ComisionModel.id,
+            )
+            .where(ExamenContenidoModel.id == examen_id)
+        )
+        return result.scalar_one_or_none()
+
     def _to_entity(self, model: ComisionModel) -> Comision:
         return Comision(
             id=model.id,
@@ -882,6 +941,7 @@ class ComisionSqlRepository:
             anio=model.anio,
             codigo_matriculacion=model.codigo_matriculacion,
             activa=model.activa,
+            docente_id=model.docente_id,
         )
 
 

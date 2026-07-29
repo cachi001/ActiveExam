@@ -50,11 +50,17 @@ export default function AdminDashboard() {
     );
   }, [roles]);
 
-  const examenesState = useCachedData('examenes-contenido', () => api.listarExamenesContenido(), []);
+  // `strict`: sin esto un fallo de red devolvía [] y la tarjeta mostraba "0
+  // exámenes importados" con la base llena. El hook necesita VER el error para
+  // poder pintar '—' en vez de un cero que parece un dato.
+  const examenesState = useCachedData('examenes-contenido', () => api.listarExamenesContenido(true), []);
   const examenes = examenesState.data ?? [];
   // Sesiones reales (GET /proctoring/sessions) + tasa de flag derivada del umbral
   // de cola de revisión. null = todavía cargando; [] = sin sesiones → 0 / 0%.
   const [sesiones, setSesiones] = useState<SesionProctoringResumen[] | null>(null);
+  // Falló la carga de sesiones. Distinto de `[]` (sin sesiones): un cero real y un
+  // cero por caída se veían igual, y el admin no tenía cómo notar la diferencia.
+  const [sesionesError, setSesionesError] = useState(false);
   const [umbral, setUmbral] = useState(70);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<number | undefined>();
   const [refrescando, setRefrescando] = useState(false);
@@ -65,9 +71,11 @@ export default function AdminDashboard() {
       setUmbral(getEffectiveConfig()?.umbral_cola_revision ?? 70);
     } catch { /* sin red: umbral por defecto */ }
     try {
-      setSesiones(await api.listarSesionesProctoring());
+      setSesiones(await api.listarSesionesProctoring(true));
+      setSesionesError(false);
     } catch {
-      setSesiones([]);
+      // NO se degrada a []: eso pintaba "0 sesiones registradas" con el backend caído.
+      setSesionesError(true);
     }
     setLastUpdatedAt(Date.now());
   }, []);
@@ -122,8 +130,18 @@ export default function AdminDashboard() {
             sub="importados"
             tono="primary"
           />
-          <StatCard {...statProps('sesiones', totalSesiones ?? '…')} />
-          <StatCard icon="flag" label="Cola de revisión" value={sesiones === null ? '…' : flagged} sub="sesiones en revisión" tono="warning" />
+          {/* '—' cuando la carga falló: un cero por caída no puede verse igual que
+              un cero real. */}
+          <StatCard
+            {...statProps('sesiones', sesionesError ? '—' : (totalSesiones ?? '…'))}
+          />
+          <StatCard
+            icon="flag"
+            label="Cola de revisión"
+            value={sesionesError ? '—' : sesiones === null ? '…' : flagged}
+            sub="sesiones en revisión"
+            tono="warning"
+          />
         </div>
 
         <div className="grid lg:grid-cols-3 gap-lg">

@@ -186,6 +186,10 @@ class Comision:
     # C-72 §17 (nivel comisión): true = activa; false = congelada. Congelar UNA
     # comisión no congela la materia ni las demás comisiones.
     activa: bool = True
+    # C-73 §9: docente a cargo. None = sin asignar (no rompe: el write-back de sus
+    # exámenes cae a la credencial institucional). Es el dato del que se DERIVA quién
+    # devuelve la nota y contra el que se valida la pertenencia del rol DOCENTE.
+    docente_id: str | None = None
 
     def __post_init__(self) -> None:
         if not (self.materia_id and self.materia_id.strip()):

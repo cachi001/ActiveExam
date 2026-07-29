@@ -100,9 +100,107 @@ def moodle_client():
     return MoodleRestClient(config=config)
 
 
+class _ServicioConDocenteResuelto(MoodleWritebackService):
+    """Servicio de write-back con la identidad del docente YA resuelta.
+
+    POR QUE EXISTE (C-73): desde que la nota sale con la credencial del DOCENTE, si no
+    hay docente resoluble el servicio RETIENE la nota (motivo `sin_credencial_docente`)
+    y nunca llega a Moodle. Eso es correcto y deliberado — pero deja a estos tests sin
+    poder ejercitar lo que vinieron a verificar, que es la MECANICA del write-back:
+    idempotencia, reintento, auditoria y destino por examen.
+
+    Resolver al docente de verdad exigiria sembrar la cadena
+    sesion -> examen_contenido -> comision -> usuario, o sea traer las tablas `comision`
+    y `usuario` (con sus FKs) a un fixture que hoy solo crea las de proctoring. Seria
+    montar media base para probar algo ortogonal.
+
+    El gate de credencial NO queda sin cobertura: lo prueba
+    `tests/test_c73_credencial_en_writeback.py`, que es su lugar.
+
+    Se sobreescribe el resolvedor, NUNCA la base de datos (regla dura de codigo #4).
+    """
+
+    async def _credencial_para(self, db, session_id):
+        return "token_del_docente", "docente-test-1", "Laura Fernández"  # noqa: S106
+
+
 @pytest.fixture
 def writeback_svc(moodle_client):
-    return MoodleWritebackService(moodle_client=moodle_client)
+    return _ServicioConDocenteResuelto(moodle_client=moodle_client)
+
+
+# cmids que usan los tests de este archivo. `mod_assign_get_assignments` devuelve
+# TODAS las tareas del curso y el filtrado por cmid lo hace el cliente, asi que
+# alcanza con publicarlas juntas en una sola respuesta.
+_CMIDS_DE_PRUEBA = (5, 56, 303)
+
+
+def _assignment_id_de(cmid: int) -> int:
+    """assign.id simulado para un cmid. A proposito NO es igual al cmid.
+
+    Si el mock devolviera el mismo numero, un bug que usara el cmid donde va el
+    instance id pasaria los tests sin que nadie se enterara.
+    """
+    return 900 + cmid
+
+
+def _respuesta_assignments() -> Response:
+    """Respuesta de `mod_assign_get_assignments`: tareas numericas sobre 100.
+
+    Hace falta desde C-73 Fase 1: el camino por defecto (`mod_assign`) resuelve
+    cmid -> assign.id ANTES de escribir. Un mock que solo contestaba
+    `core_grades_update_grades` dejaba esa resolucion sin respuesta util y el
+    write-back fallaba con "no es una tarea del curso".
+    """
+    return Response(
+        200,
+        json={
+            "courses": [
+                {
+                    "id": 10,
+                    "assignments": [
+                        {"cmid": c, "id": _assignment_id_de(c), "grade": 100}
+                        for c in _CMIDS_DE_PRUEBA
+                    ],
+                }
+            ]
+        },
+    )
+
+
+# Identidades que usan los tests de este archivo, con el userid de Moodle que cada uno
+# espera. Desde C-73 Fase 2 el mapeo de identidad se hace entre los MATRICULADOS del
+# curso (`core_enrol_get_enrolled_users`) con el token del docente, en vez de
+# `core_user_get_users_by_field` con el institucional. Como el matcheo es por idnumber
+# exacto, alcanza con publicar todas juntas en una respuesta.
+_MATRICULADOS_DE_PRUEBA = (
+    (7, "legajo1", "a@b.com"),
+    (42, "legajo2", "b@b.com"),
+    (99, "legajo3", "c@c.com"),
+    (55, "legajo5", "e@e.com"),
+    (77, "legZ", "z@z.com"),
+)
+
+
+def _respuesta_matriculados() -> Response:
+    """Respuesta de `core_enrol_get_enrolled_users` con los alumnos de los tests."""
+    return Response(
+        200,
+        json=[
+            {"id": uid, "idnumber": idn, "email": mail}
+            for uid, idn, mail in _MATRICULADOS_DE_PRUEBA
+        ],
+    )
+
+
+def _es_push_de_nota(content: str) -> bool:
+    """True si el request es la ESCRITURA de la nota, por cualquiera de los caminos.
+
+    `mod_assign_save_grade` (tareas, camino nuevo) o `core_grades_update_grades`
+    (cuestionarios, camino viejo). Contar solo uno haria que la idempotencia
+    pareciera cumplirse cuando en realidad se estaria escribiendo por el otro.
+    """
+    return "mod_assign_save_grade" in content or "core_grades_update_grades" in content
 
 
 async def _crear_sesion(db: AsyncSession) -> str:
@@ -189,11 +287,15 @@ async def test_writeback_idempotente_no_duplica(session, writeback_svc):
 
     def side_effect(request, **kwargs):
         content = request.content.decode()
+        if "core_enrol_get_enrolled_users" in content:
+            return _respuesta_matriculados()
         if "core_user_get_users_by_field" in content or "field=idnumber" in content:
             return Response(200, json=[{"id": 42}])
-        if "core_grades_update_grades" in content:
+        if "mod_assign_get_assignments" in content:
+            return _respuesta_assignments()
+        if _es_push_de_nota(content):
             push_count[0] += 1
-            return Response(200, json={"warnings": []})
+            return Response(200, text="null")
         return Response(200, json={"warnings": []})
 
     respx.post(f"{BASE}/webservice/rest/server.php").mock(side_effect=side_effect)
@@ -288,6 +390,8 @@ async def test_ejecutar_writeback_usa_component_por_examen(session, writeback_sv
 
     def side_effect(request, **kwargs):
         content = request.content.decode()
+        if "core_enrol_get_enrolled_users" in content:
+            return _respuesta_matriculados()
         if "core_user_get_users_by_field" in content or "field=idnumber" in content:
             return Response(200, json=[{"id": 7}])
         if "core_grades_update_grades" in content:
@@ -320,12 +424,19 @@ async def test_writeback_fallido_queda_reintenable(session, writeback_svc):
 
     def side_effect(request, **kwargs):
         content = request.content.decode()
+        if "core_enrol_get_enrolled_users" in content:
+            return _respuesta_matriculados()
         if "core_user_get_users_by_field" in content or "field=idnumber" in content:
             return Response(200, json=[{"id": 99}])
+        if "mod_assign_get_assignments" in content:
+            # La resolucion del assignment no cuenta como intento de push: lo que
+            # este test ejercita es que un fallo de RED al escribir deja la nota
+            # reintenable, no que se caiga la resolucion.
+            return _respuesta_assignments()
         call_count[0] += 1
         if call_count[0] == 1:
             raise httpx.ConnectError("Network down")
-        return Response(200, json={"warnings": []})
+        return Response(200, text="null")
 
     respx.post(f"{BASE}/webservice/rest/server.php").mock(side_effect=side_effect)
 
@@ -438,10 +549,16 @@ async def test_ejecutar_writeback_pushea_al_target_por_examen(session, writeback
 
     def side_effect(request, **kwargs):
         content = request.content.decode()
+        if "core_enrol_get_enrolled_users" in content:
+            return _respuesta_matriculados()
         if "core_user_get_users_by_field" in content or "field=idnumber" in content:
             return Response(200, json=[{"id": 77}])
-        if "core_grades_update_grades" in content:
+        if "mod_assign_get_assignments" in content:
+            captured["resolve"] = content
+            return _respuesta_assignments()
+        if _es_push_de_nota(content):
             captured["grade"] = content
+            return Response(200, text="null")
         return Response(200, json={"warnings": []})
 
     respx.post(f"{BASE}/webservice/rest/server.php").mock(side_effect=side_effect)
@@ -464,9 +581,17 @@ async def test_ejecutar_writeback_pushea_al_target_por_examen(session, writeback
         alumno_email="z@z.com",
     )
 
+    # El destino por examen se verifica en los DOS pasos del camino de tareas:
+    # la resolucion pregunta por el curso del examen, y la escritura va al
+    # assign.id de ESE cmid. Antes se miraba `courseid=`/`activityid=` del payload
+    # de `core_grades_update_grades`; `mod_assign_save_grade` no los lleva (el
+    # assignment ya identifica curso y actividad), asi que se comprueba donde
+    # ahora vive el dato.
+    assert "resolve" in captured
+    assert "courseids%5B0%5D=4040" in captured["resolve"]
+
     assert "grade" in captured
-    assert "courseid=4040" in captured["grade"]
-    assert "activityid=303" in captured["grade"]
+    assert f"assignmentid={_assignment_id_de(303)}" in captured["grade"]
 
 
 # ---------------------------------------------------------------------------
@@ -519,8 +644,14 @@ async def test_auditoria_registra_intento_exitoso(session, writeback_svc):
 
     def side_effect(request, **kwargs):
         content = request.content.decode()
+        if "core_enrol_get_enrolled_users" in content:
+            return _respuesta_matriculados()
         if "core_user_get_users_by_field" in content or "field=idnumber" in content:
             return Response(200, json=[{"id": 55}])
+        if "mod_assign_get_assignments" in content:
+            return _respuesta_assignments()
+        if _es_push_de_nota(content):
+            return Response(200, text="null")
         return Response(200, json={"warnings": []})
 
     respx.post(f"{BASE}/webservice/rest/server.php").mock(side_effect=side_effect)

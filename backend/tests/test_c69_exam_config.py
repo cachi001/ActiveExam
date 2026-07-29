@@ -271,14 +271,17 @@ async def test_repo_guardar_y_leer_config(factory):
 
 @pytest.mark.asyncio
 async def test_repo_defaults_compat(factory):
-    """Un examen creado sin config toma los defaults (1 intento, 10/6, sin mezclar)."""
+    """Un examen creado sin config toma los defaults (1 intento, 10/6, mezclando).
+
+    `mezclar_preguntas` es True por diseño desde la migración 0046 (mezclar siempre
+    ON): ya no es una preferencia del docente."""
     examen_id = await _crear_examen_simple(factory)
     async with factory() as s:
         leido = await ExamenContenidoSqlRepository(s).obtener(examen_id)
     assert leido.intentos_permitidos == 1
     assert leido.nota_maxima == pytest.approx(10.0)
     assert leido.nota_aprobacion == pytest.approx(6.0)
-    assert leido.mezclar_preguntas is False
+    assert leido.mezclar_preguntas is True
     assert leido.tiempo_limite_min is None
     assert leido.apertura is None
     assert leido.cierre is None
@@ -303,7 +306,9 @@ async def test_get_config_devuelve_defaults(admin_app, factory):
         "cierre": None,
         "nota_maxima": 10.0,
         "nota_aprobacion": 6.0,
-        "mezclar_preguntas": False,
+        "mezclar_preguntas": True,
+        "limite_preguntas": None,
+        "politica_intentos": "mas_alta",
         "mostrar_nota": "al_cerrar",
         "revision_habilitada": False,
         "bloqueada": False,
@@ -315,7 +320,7 @@ async def test_get_config_devuelve_defaults(admin_app, factory):
 
 
 @pytest.mark.asyncio
-async def test_patch_config_setea_los_siete_campos(admin_app, factory):
+async def test_patch_config_setea_los_campos_editables(admin_app, factory):
     examen_id = await _crear_examen_simple(factory)
     payload = {
         "tiempo_limite_min": 45,
@@ -324,7 +329,6 @@ async def test_patch_config_setea_los_siete_campos(admin_app, factory):
         "cierre": "2026-03-01T12:00:00+00:00",
         "nota_maxima": 20.0,
         "nota_aprobacion": 11.0,
-        "mezclar_preguntas": True,
     }
     async with _admin_client(admin_app) as c:
         resp = await c.patch(
@@ -378,7 +382,7 @@ async def test_patch_config_parcial_preserva_el_resto(admin_app, factory):
     assert body["intentos_permitidos"] == 1
     assert body["nota_maxima"] == 10.0
     assert body["nota_aprobacion"] == 6.0
-    assert body["mezclar_preguntas"] is False
+    assert body["mezclar_preguntas"] is True
     assert body["apertura"].startswith("2026-03-01T09:00:00")
     assert body["cierre"].startswith("2026-03-01T11:00:00")
 
@@ -548,7 +552,7 @@ async def test_nota_sobre_nota_maxima_configurable(factory):
 
 
 @pytest.mark.asyncio
-async def test_nota_redondea_a_entero(factory):
+async def test_nota_conserva_dos_decimales(factory):
     """1/3 correctas sobre 10 = 3.33 → 3 (redondeo a entero, ROUND_HALF_UP, estilo Moodle)."""
     examen_id, pids, correctas = await _crear_examen_con_n_preguntas(
         factory, n=3, nota_maxima=10.0
@@ -558,7 +562,9 @@ async def test_nota_redondea_a_entero(factory):
         nota = await calcular_nota_academica(
             db=s, examen_contenido_id=examen_id, respuestas=respuestas
         )
-    assert nota == pytest.approx(3.0)
+    # Dos decimales a propósito: la nota se escala al grademax real del ítem
+    # destino en Moodle, y redondear antes de escalar perdería precisión.
+    assert nota == pytest.approx(3.33)
 
 
 # ---------------------------------------------------------------------------

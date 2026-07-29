@@ -105,11 +105,82 @@ async def factory(engine):
     return async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
 
 
+class _ServicioConDocenteResuelto(MoodleWritebackService):
+    """Write-back con la identidad del docente ya resuelta.
+
+    C-73: sin docente resoluble la nota se RETIENE (`sin_credencial_docente`) y no
+    llega a Moodle — correcto y deliberado, pero deja a estos tests sin poder
+    verificar lo que vinieron a verificar: que el endpoint de sincronizacion cuente
+    bien enviadas/fallidas/sin_token y sea idempotente.
+
+    El gate de credencial lo cubre `tests/test_c73_credencial_en_writeback.py`.
+    Se sobreescribe el resolvedor, NUNCA la base (regla dura de codigo #4).
+    """
+
+    async def _credencial_para(self, db, session_id):
+        return "token_del_docente", "docente-test-1", "Laura Fernández"  # noqa: S106
+
+
+# El camino por defecto (`mod_assign`, C-73 Fase 1) resuelve cmid -> assign.id antes
+# de escribir, asi que los mocks tienen que contestar `mod_assign_get_assignments`.
+_CMIDS_DE_PRUEBA = (5, 111)
+
+
+def _assignment_id_de(cmid: int) -> int:
+    """assign.id simulado. Distinto del cmid a proposito: si fueran iguales, un bug
+    que usara el cmid donde va el instance id pasaria inadvertido."""
+    return 900 + cmid
+
+
+def _respuesta_assignments() -> Response:
+    return Response(
+        200,
+        json={
+            "courses": [
+                {
+                    "id": 10,
+                    "assignments": [
+                        {"cmid": c, "id": _assignment_id_de(c), "grade": 10}
+                        for c in _CMIDS_DE_PRUEBA
+                    ],
+                }
+            ]
+        },
+    )
+
+
+def _es_push_de_nota(content: str) -> bool:
+    """La escritura de la nota por cualquiera de los dos caminos."""
+    return "mod_assign_save_grade" in content or "core_grades_update_grades" in content
+
+
+# Desde C-73 Fase 2 la identidad se resuelve entre los MATRICULADOS del curso
+# (`core_enrol_get_enrolled_users`, token del docente) y no con
+# `core_user_get_users_by_field` + credencial institucional. Los dos tests que
+# sincronizan esperan userids 123 y 321; se publican todas las identidades juntas
+# porque el matcheo es por idnumber exacto.
+_MATRICULADOS_DE_PRUEBA = (
+    (123, "SYNC-1", "s1@u.edu"),
+    (123, "SYNC-2", "s2@u.edu"),
+    (321, "LATE-1", "late@u.edu"),
+)
+
+
+def _respuesta_matriculados() -> Response:
+    return Response(
+        200,
+        json=[
+            {"id": uid, "idnumber": idn, "email": mail}
+            for uid, idn, mail in _MATRICULADOS_DE_PRUEBA
+        ],
+    )
+
+
 def _moodle_svc() -> MoodleWritebackService:
     config = MoodleClientConfig(
         base_url=BASE, ws_token="token_secreto"  # noqa: S106
     )
-    return MoodleWritebackService(moodle_client=MoodleRestClient(config=config))
+    return _ServicioConDocenteResuelto(moodle_client=MoodleRestClient(config=config))
 
 
 def _build_app(factory, *, writeback_svc):
@@ -331,6 +402,8 @@ async def test_sincronizar_envia_pendientes(app_con_moodle, factory):
 
     def side_effect(request, **kwargs):
         content = request.content.decode()
+        if "core_enrol_get_enrolled_users" in content:
+            return _respuesta_matriculados()
         if "core_user_get_users_by_field" in content or "field=idnumber" in content:
             return Response(200, json=[{"id": 123}])
         # El write-back lee el grademax REAL del item para convertir la escala (un
@@ -350,7 +423,9 @@ async def test_sincronizar_envia_pendientes(app_con_moodle, factory):
                     ]
                 },
             )
-        if "core_grades_update_grades" in content:
+        if "mod_assign_get_assignments" in content:
+            return _respuesta_assignments()
+        if _es_push_de_nota(content):
             push_count[0] += 1
         return Response(200, json={"warnings": []})
 
@@ -404,6 +479,8 @@ async def test_sincronizar_usa_target_seteado_despues_de_finalizar(app_con_moodl
 
     def side_effect(request, **kwargs):
         content = request.content.decode()
+        if "core_enrol_get_enrolled_users" in content:
+            return _respuesta_matriculados()
         if "core_user_get_users_by_field" in content or "field=idnumber" in content:
             return Response(200, json=[{"id": 321}])
         # El write-back lee el grademax REAL del item para convertir la escala (un
@@ -423,7 +500,10 @@ async def test_sincronizar_usa_target_seteado_despues_de_finalizar(app_con_moodl
                     ]
                 },
             )
-        if "core_grades_update_grades" in content:
+        if "mod_assign_get_assignments" in content:
+            captured["resolve"] = content
+            return _respuesta_assignments()
+        if _es_push_de_nota(content):
             captured["grade"] = content
         return Response(200, json={"warnings": []})
 
@@ -434,9 +514,15 @@ async def test_sincronizar_usa_target_seteado_despues_de_finalizar(app_con_moodl
     assert resp.status_code == 200, resp.text
     assert resp.json()["enviadas"] == 1
 
+    # El destino fijado DESPUES de finalizar es el que se usa. Se verifica en los dos
+    # pasos del camino de tareas: `mod_assign_save_grade` no lleva courseid/activityid
+    # (el assignment ya identifica curso y actividad), asi que el curso se comprueba en
+    # la resolucion y la actividad en el assign.id resuelto para el cmid 111.
+    assert "resolve" in captured
+    assert "courseids%5B0%5D=9999" in captured["resolve"]
+
     assert "grade" in captured
-    assert "courseid=9999" in captured["grade"]  # destino fijado tras finalizar
-    assert "activityid=111" in captured["grade"]
+    assert f"assignmentid={_assignment_id_de(111)}" in captured["grade"]
 
 
 @pytest.mark.asyncio

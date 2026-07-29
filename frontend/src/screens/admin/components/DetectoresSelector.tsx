@@ -74,10 +74,10 @@ export default function DetectoresSelector({ value, onChange }: DetectoresSelect
               aria-checked={on}
               aria-label={`${TIPO_EVENTO_LABEL[d]} — ${on ? 'activado' : 'desactivado'}`}
               onClick={() => toggle(d)}
-              className={`group flex items-center gap-3 px-4 py-3 rounded-xl border text-left transition-colors min-w-0 focus:outline-none focus:ring-2 focus:ring-outline-variant ${
+              className={`group flex items-center gap-3 px-4 py-3 rounded-md border text-left transition-colors min-w-0 focus:outline-none focus:ring-2 focus:ring-outline-variant ${
                 on
-                  ? 'bg-success-container/40 border-success/40'
-                  : 'bg-error-container/30 border-error/30'
+                  ? 'bg-surface-container-lowest border-outline-variant hover:border-outline'
+                  : 'bg-surface-container-low border-outline-variant'
               }`}
             >
               {/* Nombre + descripción + si captura imagen, a la izquierda */}
@@ -105,7 +105,7 @@ export default function DetectoresSelector({ value, onChange }: DetectoresSelect
               {/* Switch a la derecha (presentacional; el click es del botón contenedor) */}
               <span
                 className={`relative shrink-0 inline-flex h-6 w-11 rounded-full border-2 border-transparent transition-colors duration-200 ${
-                  on ? 'bg-success-600' : 'bg-error-600'
+                  on ? 'bg-success-600' : 'bg-outline'
                 }`}
               >
                 <span

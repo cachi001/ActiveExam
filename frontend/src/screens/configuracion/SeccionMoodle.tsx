@@ -1,36 +1,49 @@
 /**
- * SeccionMoodle — credencial de servicio del campus (Moodle).
+ * SeccionMoodle — conexión institucional con el campus (Moodle).
  *
- * Es UNA credencial institucional, no una por docente: el envío de notas lo hace
- * una cuenta de servicio del campus. El token se guarda CIFRADO en la base y la
- * API nunca lo devuelve, así que acá solo se puede ver si hay uno cargado y sus
- * últimos 4 caracteres — para reconocer cuál es sin poder leerlo.
+ * OJO con lo que hace el token institucional: desde C-73 la NOTA ya NO se manda con
+ * él, sino con la credencial del docente a cargo (`MiCuentaCampus`), para que en la
+ * libreta figure quién la puso. Al token institucional le quedan dos trabajos que la
+ * cuenta de un docente no puede hacer:
+ *   1. resolver la identidad del alumno en el campus (`MoodleIdentityMapper`, por
+ *      idnumber → email). Sin esto la nota no se puede dirigir a nadie y queda retenida.
+ *   2. escribir el 0 de `anular_nota`: la anulación por fraude la decide un revisor,
+ *      y firmarla con la cuenta del profesor le atribuiría una sanción que no tomó.
+ *
+ * `base_url` y `service_shortname` además son estructurales: sin ellos ningún docente
+ * puede canjear su contraseña por un token (ver backend `token_exchange.py`).
+ *
+ * El token se guarda CIFRADO y la API nunca lo devuelve: acá solo se ve si hay uno
+ * cargado y sus últimos 4 caracteres, para reconocer cuál es sin poder leerlo.
  */
 import { useCallback, useEffect, useState } from 'react';
-import { Button, Card, Icon, SectionTitle } from '../../ui/components';
+import { Button, Icon } from '../../ui/components';
 import { HelpButton } from '../../ui/HelpButton';
 import { adminApi, type CredencialMoodle } from '../../lib/apiAdmin';
 
-const INPUT_CLS =
-  'w-full rounded-lg border border-surface-300 bg-white px-4 py-2.5 text-body-md text-on-surface placeholder:text-on-surface-variant shadow-sm hover:border-surface-400 focus:border-surface-500 focus:outline-none transition-colors ' +
-  'disabled:bg-surface-100 disabled:text-on-surface-variant disabled:border-surface-200 disabled:shadow-none disabled:cursor-not-allowed';
-const LABEL_CLS = 'block text-label-md font-semibold text-on-surface mb-1.5';
+// Mismo sistema visual que `MiCuentaCampus`: la clase `.input` de index.css y
+// labels `label-sm`. Antes esta sección tenía inputs propios más grandes y labels
+// en negrita, y las dos mitades de la misma tarjeta no parecían la misma pantalla.
+const INPUT_CLS = 'input w-full mt-1';
+const LABEL_CLS = 'text-label-sm text-on-surface-variant';
 
 const AYUDA = (
-  <HelpButton title="¿Qué es esto?">
+  <HelpButton title="La conexión de la institución con el campus">
     <p>
-      Para que las notas de los exámenes lleguen solas a la libreta del campus, el
-      sistema necesita una <strong className="text-on-surface">llave de acceso</strong> (un
-      “token”) que le da el campus. Es una sola llave para toda la institución.
+      Estos datos son de toda la institución, no de una persona: <strong>a qué campus</strong>{' '}
+      se conecta el sistema y <strong>con qué servicio</strong>. Sin ellos, ningún docente
+      puede conectar su cuenta.
     </p>
     <p>
-      La llave se guarda <strong className="text-on-surface">cifrada</strong>: una vez que la
-      cargás, nadie puede volver a verla desde acá — ni vos. Solo se muestran los
-      últimos 4 caracteres para que sepas cuál está puesta.
+      La <strong className="text-on-surface">llave de acceso</strong> (un “token”) la usa el
+      sistema para dos cosas que no puede hacer con la cuenta de un docente: encontrar a
+      cada alumno en el campus, y poner un 0 cuando se anula un examen por fraude.
     </p>
     <p>
-      Si la llave cambia (por seguridad se rota cada tanto), pegás la nueva acá y listo:
-      no hace falta reiniciar nada ni tocar el servidor.
+      La llave se guarda <strong className="text-on-surface">cifrada</strong>: una vez cargada
+      nadie puede volver a verla desde acá — ni vos. Solo se muestran los últimos 4
+      caracteres para reconocer cuál está puesta. Si el campus la rota, pegás la nueva y
+      listo: no hace falta reiniciar nada.
     </p>
   </HelpButton>
 );
@@ -43,6 +56,7 @@ export default function SeccionMoodle() {
   const [baseUrl, setBaseUrl] = useState('');
   const [token, setToken] = useState('');
   const [component, setComponent] = useState<'mod_assign' | 'mod_quiz'>('mod_assign');
+  const [servicio, setServicio] = useState('');
 
   const [guardando, setGuardando] = useState(false);
   const [ok, setOk] = useState(false);
@@ -52,6 +66,7 @@ export default function SeccionMoodle() {
     setCred(c);
     setBaseUrl(c.base_url ?? '');
     setComponent(c.component ?? 'mod_assign');
+    setServicio(c.service_shortname ?? '');
     setToken('');
   }, []);
 
@@ -83,6 +98,7 @@ export default function SeccionMoodle() {
         // Vacío = no tocar el token guardado.
         ...(token.trim() ? { token: token.trim() } : {}),
         component,
+        service_shortname: servicio.trim(),
       });
       aplicar(c);
       setOk(true);
@@ -107,10 +123,16 @@ export default function SeccionMoodle() {
   }
 
   return (
-    <Card>
-      <SectionTitle sub="Llave de acceso al campus para enviar las notas. Se guarda cifrada.">
-        Conexión con el campus (Moodle) {AYUDA}
-      </SectionTitle>
+    <div>
+      <div className="mb-md">
+        <h3 className="text-title-md font-semibold text-on-surface flex items-center gap-1.5">
+          Conexión de la institución
+          {AYUDA}
+        </h3>
+        <p className="text-label-sm text-on-surface-variant mt-0.5">
+          Se configura una vez y vale para todos los docentes.
+        </p>
+      </div>
 
       {cargando && (
         <div className="space-y-3 animate-pulse">
@@ -162,8 +184,9 @@ export default function SeccionMoodle() {
                 <>
                   <p className="font-semibold">Todavía no hay llave</p>
                   <p className="text-on-surface-variant mt-0.5">
-                    Sin llave, las notas se calculan y quedan guardadas, pero no se envían al
-                    campus.
+                    Sin llave el sistema no puede encontrar a los alumnos en el campus: las
+                    notas se calculan y quedan guardadas, pero no viajan — aunque el docente
+                    ya haya conectado su cuenta.
                   </p>
                 </>
               )}
@@ -183,56 +206,73 @@ export default function SeccionMoodle() {
             </div>
           )}
 
-          <div>
-            <label className={LABEL_CLS} htmlFor="moodle-url">Dirección del campus</label>
-            <input
-              id="moodle-url"
-              type="url"
-              className={INPUT_CLS}
-              placeholder="https://campus.miuniversidad.edu.ar"
-              value={baseUrl}
-              disabled={guardando}
-              onChange={(e) => setBaseUrl(e.target.value)}
-            />
-          </div>
+          {/* Sin `<p>` de ayuda bajo cada campo: todo eso vive en el HelpButton del
+              encabezado. Repetirlo abajo duplicaba el texto y hacía que la sección
+              pesara el triple que la de arriba. Solo queda la aclaración que cambia
+              lo que el usuario TIENE QUE HACER. */}
+          <div className="grid gap-md">
+            <div>
+              <label className={LABEL_CLS} htmlFor="moodle-url">Dirección del campus</label>
+              <input
+                id="moodle-url"
+                type="url"
+                className={INPUT_CLS}
+                placeholder="https://campus.miuniversidad.edu.ar"
+                value={baseUrl}
+                disabled={guardando}
+                onChange={(e) => setBaseUrl(e.target.value)}
+              />
+            </div>
 
-          <div>
-            <label className={LABEL_CLS} htmlFor="moodle-token">
-              Llave de acceso {cred.token_configurado && '(dejala vacía para no cambiarla)'}
-            </label>
-            <input
-              id="moodle-token"
-              type="password"
-              autoComplete="off"
-              className={INPUT_CLS}
-              placeholder={cred.token_configurado ? '••••••••••••••••' : 'Pegá acá la llave que te dio el campus'}
-              value={token}
-              disabled={guardando}
-              onChange={(e) => setToken(e.target.value)}
-            />
-            <p className="mt-1.5 text-label-sm text-on-surface-variant">
-              Se guarda cifrada. No vas a poder volver a verla: si la perdés, pedí una nueva
-              al campus y pegala acá.
-            </p>
-          </div>
+            <div>
+              <label className={LABEL_CLS} htmlFor="moodle-token">
+                Llave de acceso {cred.token_configurado && '· dejala vacía para no cambiarla'}
+              </label>
+              <input
+                id="moodle-token"
+                type="password"
+                autoComplete="off"
+                className={INPUT_CLS}
+                placeholder={cred.token_configurado ? '••••••••••••••••' : 'Pegá acá la llave que te dio el campus'}
+                value={token}
+                disabled={guardando}
+                onChange={(e) => setToken(e.target.value)}
+              />
+            </div>
 
-          <div>
-            <label className={LABEL_CLS} htmlFor="moodle-component">Tipo de actividad habitual</label>
-            <select
-              id="moodle-component"
-              className={INPUT_CLS}
-              value={component}
-              disabled={guardando}
-              onChange={(e) => setComponent(e.target.value as 'mod_assign' | 'mod_quiz')}
-            >
-              <option value="mod_assign">Tarea (mod_assign)</option>
-              <option value="mod_quiz">Cuestionario (mod_quiz)</option>
-            </select>
-            <p className="mt-1.5 text-label-sm text-on-surface-variant">
-              Es solo el valor por defecto. El curso y la actividad donde va cada nota se
-              configuran <strong>en cada examen</strong>: no hay un destino único para toda
-              la institución.
-            </p>
+            <div>
+              <label className={LABEL_CLS} htmlFor="moodle-servicio">
+                Nombre del servicio del campus
+              </label>
+              <input
+                id="moodle-servicio"
+                className={INPUT_CLS}
+                placeholder="ej: activeexam"
+                value={servicio}
+                disabled={guardando}
+                onChange={(e) => setServicio(e.target.value)}
+              />
+              <p className="mt-1 text-label-sm text-on-surface-variant">
+                Sin esto los docentes no pueden conectar su cuenta.
+              </p>
+            </div>
+
+            <div>
+              <label className={LABEL_CLS} htmlFor="moodle-component">Tipo de actividad habitual</label>
+              <select
+                id="moodle-component"
+                className={INPUT_CLS}
+                value={component}
+                disabled={guardando}
+                onChange={(e) => setComponent(e.target.value as 'mod_assign' | 'mod_quiz')}
+              >
+                <option value="mod_assign">Tarea (mod_assign)</option>
+                <option value="mod_quiz">Cuestionario (mod_quiz)</option>
+              </select>
+              <p className="mt-1 text-label-sm text-on-surface-variant">
+                Solo el valor por defecto: el destino real se elige en cada examen.
+              </p>
+            </div>
           </div>
 
           <div className="flex justify-between items-center gap-md pt-2 border-t border-outline-variant/40">
@@ -249,6 +289,6 @@ export default function SeccionMoodle() {
           </div>
         </div>
       )}
-    </Card>
+    </div>
   );
 }

@@ -1,9 +1,11 @@
 import type React from 'react';
-import { Fragment } from 'react';
+import { Fragment, useState } from 'react';
 import { Icon, Button } from '../../../ui/components';
 import { ActionMenu, type ActionItem } from '../../../ui/ActionMenu';
 import type { Comision } from '../../../lib/types';
 import { AlumnosComisionPanel } from './AlumnosComisionPanel';
+import { AsignarDocenteDialog } from './AsignarDocenteDialog';
+import { useAuth } from '../../../lib/authStore';
 import { INPUT_CLASS, LABEL_CLASS, type FormComision } from './materiasComisionesTypes';
 
 interface ComisionesAccordionBodyProps {
@@ -47,6 +49,10 @@ export function ComisionesAccordionBody({
   comisionExpandida,
   toggleComision,
 }: ComisionesAccordionBodyProps) {
+  // C-73 §9.5: docente a cargo de la comisión.
+  const esAdmin = useAuth((st) => st.hasRole)(['admin_sistema']);
+  const [asignando, setAsignando] = useState<Comision | null>(null);
+  const [docenteLocal, setDocenteLocal] = useState<Record<string, string | null>>({});
   // Acciones del menú kebab por comisión. "Eliminar" solo aparece si la comisión
   // está VACÍA (0 inscriptos y 0 exámenes), mismo criterio que el guard del backend:
   // ofrecer un borrado que el servidor va a rechazar con 409 es un dead-end para el usuario.
@@ -55,6 +61,15 @@ export function ComisionesAccordionBody({
     return [
       { label: comExpandida ? 'Ocultar alumnos' : 'Ver alumnos', icon: 'groups', onClick: () => toggleComision(c.id) },
       { label: 'Editar comisión', icon: 'edit', onClick: () => abrirEditarComision(materiaId, c) },
+      // Solo admin_sistema: la lista de usuarios (de donde sale el selector) es
+      // admin-only, así que ofrecérselo a otro rol daría un diálogo vacío.
+      ...(esAdmin
+        ? [{
+            label: c.docente_id ? 'Cambiar docente a cargo' : 'Asignar docente a cargo',
+            icon: 'person',
+            onClick: () => setAsignando(c),
+          } as ActionItem]
+        : []),
       ...(vacia
         ? [{ label: 'Eliminar comisión', icon: 'delete', danger: true, onClick: () => abrirEliminarComision(c) } as ActionItem]
         : []),
@@ -260,6 +275,7 @@ export function ComisionesAccordionBody({
                   <th className="text-left text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider px-4 py-2">Período</th>
                   <th className="text-left text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider px-4 py-2">Año</th>
                   <th className="text-left text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider px-4 py-2">Cód. matriculación</th>
+                  <th className="text-left text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider px-4 py-2">Docente a cargo</th>
                   <th className="text-right text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider px-4 py-2">Acciones</th>
                 </tr>
               </thead>
@@ -307,6 +323,21 @@ export function ComisionesAccordionBody({
                             <span className="text-[13px] text-on-surface-variant">—</span>
                           )}
                         </td>
+                        {/* Docente a cargo: sin él las notas de esta comisión NO se
+                            sincronizan al campus. Se avisa acá, donde se gestiona la
+                            comisión, y no cuando el alumno ya rindió. */}
+                        <td className="px-4 py-3 whitespace-nowrap text-[13px]">
+                          {docenteLocal[c.id] ?? c.docente_nombre ? (
+                            <span className="text-on-surface">
+                              {docenteLocal[c.id] ?? c.docente_nombre}
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-error">
+                              <Icon name="person_off" className="text-[14px]" />
+                              sin asignar
+                            </span>
+                          )}
+                        </td>
                         <td className="px-4 py-3 text-right">
                           <ActionMenu
                             ariaLabel={`Acciones de ${c.nombre}`}
@@ -316,7 +347,7 @@ export function ComisionesAccordionBody({
                       </tr>
                       {comExpandida && (
                         <tr>
-                          <td colSpan={6} className="p-0">
+                          <td colSpan={7} className="p-0">
                             <AlumnosComisionPanel comisionId={c.id} comisionNombre={c.nombre} />
                           </td>
                         </tr>
@@ -363,6 +394,19 @@ export function ComisionesAccordionBody({
                           <span className="font-mono text-primary">{c.codigo_matriculacion}</span>
                         </p>
                       )}
+                      {/* Sin docente a cargo, las notas de esta comisión NO se
+                          sincronizan al campus. Se avisa acá —donde se gestiona la
+                          comisión— y no cuando el alumno ya rindió. */}
+                      <p className="text-[11px] mt-0.5">
+                        <span className="text-on-surface-variant">Docente: </span>
+                        {docenteLocal[c.id] ?? c.docente_nombre ? (
+                          <span className="text-on-surface">
+                            {docenteLocal[c.id] ?? c.docente_nombre}
+                          </span>
+                        ) : (
+                          <span className="text-error">sin asignar</span>
+                        )}
+                      </p>
                     </div>
                     <ActionMenu
                       ariaLabel={`Acciones de ${c.nombre}`}
@@ -379,6 +423,18 @@ export function ComisionesAccordionBody({
         </>
       ) : null}
 
+      {/* C-73 §9.5 — quién queda a cargo decide con qué cuenta se devuelven las notas. */}
+      {asignando && (
+        <AsignarDocenteDialog
+          comisionId={asignando.id}
+          comisionNombre={asignando.nombre}
+          docenteActualId={asignando.docente_id}
+          onCerrar={() => setAsignando(null)}
+          onAsignado={(_id, nombre) =>
+            setDocenteLocal((prev) => ({ ...prev, [asignando.id]: nombre }))
+          }
+        />
+      )}
     </div>
   );
 }

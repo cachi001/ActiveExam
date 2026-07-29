@@ -8,9 +8,9 @@
  *
  * El título vive en el contenido (lo renderiza StaffShell). Solo admin_sistema.
  */
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { StaffShell } from '../ui/shells';
-import { Icon } from '../ui/components';
+import { Card, Icon } from '../ui/components';
 import { STAFF_NAV } from '../ui/nav';
 import { HelpButton } from '../ui/HelpButton';
 import SeccionProctoring from './configuracion/SeccionProctoring';
@@ -18,15 +18,22 @@ import SeccionScoring from './configuracion/SeccionScoring';
 import SeccionDeteccion from './configuracion/SeccionDeteccion';
 import SeccionConsentimiento from './configuracion/SeccionConsentimiento';
 import SeccionMoodle from './configuracion/SeccionMoodle';
+import MiCuentaCampus from './configuracion/MiCuentaCampus';
+import { useAuth } from '../lib/authStore';
 
 type TabId = 'proctoring' | 'scoring' | 'deteccion' | 'consentimiento' | 'moodle';
 
-const TABS: { id: TabId; label: string; icon: string }[] = [
-  { id: 'proctoring', label: 'Parámetros generales', icon: 'tune' },
-  { id: 'scoring', label: 'Scoring', icon: 'speed' },
-  { id: 'deteccion', label: 'Detección', icon: 'visibility' },
-  { id: 'consentimiento', label: 'Consentimiento', icon: 'gavel' },
-  { id: 'moodle', label: 'Campus (Moodle)', icon: 'sync_alt' },
+// `soloAdmin: true` = define CÓMO se detecta el fraude. El docente no entra ahí:
+// quien dicta la materia no debe poder aflojar la detección de su propio examen
+// (misma razón por la que la capacidad `configurar_sistema` no incluye a DOCENTE).
+// La pestaña del campus SÍ la ve, porque su cuenta personal vive ahí y es lo que
+// hace que sus notas puedan viajar.
+const TABS: { id: TabId; label: string; icon: string; soloAdmin: boolean }[] = [
+  { id: 'proctoring', label: 'Parámetros generales', icon: 'tune', soloAdmin: true },
+  { id: 'scoring', label: 'Scoring', icon: 'speed', soloAdmin: true },
+  { id: 'deteccion', label: 'Detección', icon: 'visibility', soloAdmin: true },
+  { id: 'consentimiento', label: 'Consentimiento', icon: 'gavel', soloAdmin: true },
+  { id: 'moodle', label: 'Campus (Moodle)', icon: 'sync_alt', soloAdmin: false },
 ];
 
 const AYUDA = (
@@ -42,19 +49,26 @@ const AYUDA = (
 );
 
 export default function Configuracion() {
-  const [tab, setTab] = useState<TabId>('proctoring');
+  const hasRole = useAuth((s) => s.hasRole);
+  const esAdmin = hasRole(['admin_sistema']);
+  const tabs = useMemo(() => TABS.filter((t) => esAdmin || !t.soloAdmin), [esAdmin]);
+  const [tab, setTab] = useState<TabId>(esAdmin ? 'proctoring' : 'moodle');
 
   return (
     <StaffShell
       nav={STAFF_NAV}
       title="Configuración del sistema"
-      subtitle="Ajustes globales del proctoring. Los cambios se aplican a partir del próximo examen."
+      subtitle={
+        esAdmin
+          ? 'Ajustes globales del proctoring. Los cambios se aplican a partir del próximo examen.'
+          : 'Conectá tu cuenta del campus para que las notas de tus comisiones puedan viajar.'
+      }
       help={AYUDA}
     >
       <div className="animate-in fade-in duration-500">
         {/* Tabs de sección — una sola fila; scroll horizontal en mobile */}
         <div className="border-b border-outline-variant/60 flex overflow-x-auto no-scrollbar">
-          {TABS.map((t) => {
+          {tabs.map((t) => {
             const active = tab === t.id;
             return (
               <button
@@ -75,11 +89,40 @@ export default function Configuracion() {
 
         {/* Contenido de la sección activa */}
         <div className="pt-lg">
-          {tab === 'proctoring' && <SeccionProctoring />}
-          {tab === 'scoring' && <SeccionScoring />}
-          {tab === 'deteccion' && <SeccionDeteccion />}
-          {tab === 'consentimiento' && <SeccionConsentimiento />}
-          {tab === 'moodle' && <SeccionMoodle />}
+          {esAdmin && tab === 'proctoring' && <SeccionProctoring />}
+          {esAdmin && tab === 'scoring' && <SeccionScoring />}
+          {esAdmin && tab === 'deteccion' && <SeccionDeteccion />}
+          {esAdmin && tab === 'consentimiento' && <SeccionConsentimiento />}
+          {tab === 'moodle' && (
+            /* UNA sola tarjeta. Antes eran dos, y las dos decían "configurá el campus":
+               el usuario no sabía cuál usar, y encima tenían anchos distintos. Ahora es
+               un bloque con la cuenta personal arriba y, para el admin, la configuración
+               institucional debajo de un separador. */
+            <div className="space-y-lg">
+              {/* Encabezado editorial, igual que el resto de las pestañas. Sin esto
+                  la sección arrancaba con un h2 chico y todo se leía hundido. */}
+              <div className="pb-4 border-b border-outline-variant/40">
+                <h2 className="font-headline text-[24px] font-bold text-on-surface tracking-tight leading-tight">
+                  Campus (Moodle)
+                </h2>
+                <p className="text-[13.5px] text-on-surface-variant leading-relaxed max-w-2xl mt-2">
+                  {esAdmin
+                    ? 'Conectá tu cuenta para que tus notas viajen con tu nombre, y definí a qué campus se conecta la institución.'
+                    : 'Conectá tu cuenta del campus para que las notas de tus comisiones puedan viajar.'}
+                </p>
+              </div>
+              <Card>
+                {/* Al admin no se le repite la dirección del campus: la edita abajo. */}
+                <MiCuentaCampus mostrarCampus={!esAdmin} />
+                {esAdmin && (
+                  <>
+                    <hr className="my-lg border-t border-outline-variant" />
+                    <SeccionMoodle />
+                  </>
+                )}
+              </Card>
+            </div>
+          )}
         </div>
       </div>
     </StaffShell>

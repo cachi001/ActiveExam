@@ -23,6 +23,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.application.audit.acciones import (
@@ -40,8 +41,10 @@ from app.infrastructure.persistence.repositories.audit_log import (
 from app.infrastructure.persistence.repositories.config_sistema import (
     ConfiguracionSistemaSqlRepository,
 )
+from app.infrastructure.persistence.models.transactional import MoodleCredencialModel
 from app.presentation.api.v1.auth.dependencies import (
     get_current_principal,
+    require_capability,
     require_mfa,
     require_roles,
 )
@@ -303,6 +306,9 @@ class MoodleCredencialResponse(BaseModel):
     origen: str
     actualizado_en: str | None = None
     actualizado_por: str | None = None
+    #: Nombre del servicio externo del campus. Sin esto, ningún docente puede
+    #: conectar su cuenta: `login/token.php` exige `service=`.
+    service_shortname: str = ""
 
 
 class GuardarMoodleCredencialRequest(BaseModel):
@@ -317,6 +323,7 @@ class GuardarMoodleCredencialRequest(BaseModel):
     base_url: str | None = None
     token: str | None = Field(default=None, min_length=8, max_length=512)
     component: str | None = None
+    service_shortname: str | None = Field(default=None, max_length=100)
 
     @field_validator("component")
     @classmethod
@@ -347,6 +354,7 @@ def _a_response(estado) -> MoodleCredencialResponse:
         origen=estado.origen,
         actualizado_en=estado.actualizado_en,
         actualizado_por=estado.actualizado_por,
+        service_shortname=getattr(estado, "service_shortname", "") or "",
     )
 
 
@@ -387,7 +395,10 @@ async def guardar_credencial_moodle(
     principal: AuthenticatedPrincipal = Depends(_require_admin),
 ) -> MoodleCredencialResponse:
     """Guarda la credencial (token cifrado at-rest). 400 si el body viene vacío."""
-    if all(v is None for v in (body.base_url, body.token, body.component)):
+    if all(
+        v is None
+        for v in (body.base_url, body.token, body.component, body.service_shortname)
+    ):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="El body debe incluir al menos un campo a actualizar.",
@@ -398,6 +409,7 @@ async def guardar_credencial_moodle(
         base_url=body.base_url,
         token=body.token,
         component=body.component,
+        service_shortname=body.service_shortname,
         actor=principal.id_institucional,
     )
 
@@ -430,3 +442,177 @@ async def borrar_token_moodle(
         request, principal, "Eliminó el token de Moodle guardado"
     )
     return _a_response(estado)
+
+
+# ---------------------------------------------------------------------------
+# Credencial PERSONAL de Moodle del docente (C-73 §10.3)
+#
+# Guardada por `gestionar_notas`, NO por admin: el docente es justamente quien
+# tiene que poder cargar la suya. El revisor NO tiene esa capacidad — quien juzga
+# la integridad no devuelve notas.
+#
+# Cada docente solo toca LA SUYA: el usuario sale del token (`principal.subject`),
+# nunca de la URL ni del body. Así no existe el endpoint "editar la credencial de
+# otro", que sería un robo de identidad con pasos extra.
+# ---------------------------------------------------------------------------
+
+_require_notas = require_capability("gestionar_notas")
+
+
+class MiCredencialMoodleResponse(BaseModel):
+    """Vista SEGURA de la credencial propia. El token NUNCA se devuelve."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    configurada: bool
+    moodle_username: str | None = None
+    #: Últimos 4 caracteres, para reconocer cuál cargó sin exponerla.
+    token_pista: str | None = None
+    #: "activa" | "caida". `caida` = Moodle rechazó el token (revocado o vencido).
+    estado: str | None = None
+    actualizado_en: str | None = None
+    ultimo_uso_en: str | None = None
+    #: URL del campus (institucional, solo lectura para el docente).
+    base_url: str = ""
+
+
+class GuardarMiCredencialRequest(BaseModel):
+    """Body del PUT. Dos formas de cargarla, según lo que habilite el campus.
+
+    - ``password``: la canjeamos por un token y la descartamos. NUNCA se guarda.
+    - ``token``: el docente pega uno ya emitido por el admin del campus. Con esta
+      vía su contraseña no pasa ni de paso por nuestro servidor.
+
+    Exactamente una de las dos.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    moodle_username: str = Field(min_length=1, max_length=255)
+    password: str | None = Field(default=None, min_length=1, max_length=512)
+    token: str | None = Field(default=None, min_length=8, max_length=512)
+
+
+def _servicio_credencial_docente(request: Request):
+    svc = getattr(request.app.state, "credencial_docente", None)
+    if svc is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Credenciales de docente no inicializadas.",
+        )
+    return svc
+
+
+def _a_response_docente(estado, base_url: str = "") -> MiCredencialMoodleResponse:
+    return MiCredencialMoodleResponse(
+        configurada=estado.configurada,
+        moodle_username=estado.moodle_username,
+        token_pista=estado.token_pista,
+        estado=estado.estado,
+        actualizado_en=estado.actualizado_en,
+        ultimo_uso_en=estado.ultimo_uso_en,
+        base_url=base_url,
+    )
+
+
+def _usuario_del_token(principal: AuthenticatedPrincipal) -> str:
+    """Id del usuario dueño de la credencial. Sale del token, no del request."""
+    if not principal.subject:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="El token no identifica al usuario.",
+        )
+    return principal.subject
+
+
+@router.get("/moodle/mi-credencial", response_model=MiCredencialMoodleResponse)
+async def leer_mi_credencial_moodle(
+    request: Request,
+    principal: AuthenticatedPrincipal = Depends(_require_notas),
+) -> MiCredencialMoodleResponse:
+    """Estado de MI conexión con el campus. El token no se devuelve nunca."""
+    svc = _servicio_credencial_docente(request)
+    estado = await svc.estado(_usuario_del_token(principal))
+    credencial = await _resolver_credenciales(request).resolver()
+    return _a_response_docente(estado, base_url=credencial.base_url)
+
+
+@router.put("/moodle/mi-credencial", response_model=MiCredencialMoodleResponse)
+async def guardar_mi_credencial_moodle(
+    body: GuardarMiCredencialRequest,
+    request: Request,
+    principal: AuthenticatedPrincipal = Depends(_require_notas),
+) -> MiCredencialMoodleResponse:
+    """Conecta al docente con el campus. La contraseña NO se guarda: se canjea."""
+    if bool(body.password) == bool(body.token):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Enviá la contraseña del campus o un token, no ambos.",
+        )
+
+    svc = _servicio_credencial_docente(request)
+    usuario_id = _usuario_del_token(principal)
+    institucional = await _resolver_credenciales(request).resolver()
+
+    if body.token:
+        estado = await svc.guardar_token(
+            usuario_id=usuario_id,
+            moodle_username=body.moodle_username,
+            token=body.token,
+        )
+        como = "con un token emitido por el campus"
+    else:
+        from app.application.moodle.token_exchange import TokenExchangeError
+
+        fila = await _leer_service_shortname(request)
+        try:
+            estado = await svc.guardar_con_password(
+                usuario_id=usuario_id,
+                moodle_username=body.moodle_username,
+                password=body.password or "",
+                base_url=institucional.base_url,
+                service_shortname=fila,
+            )
+        except TokenExchangeError as exc:
+            # El mensaje de estos errores está redactado para el docente y NUNCA
+            # incluye la contraseña (garantizado por test en token_exchange).
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={"error": "canje_fallido", "mensaje": str(exc)},
+            ) from exc
+        como = "canjeando su contraseña por un token"
+
+    # Se audita el hecho, jamás el secreto ni el usuario de campus.
+    await _auditar_credencial(
+        request, principal, f"Conectó su cuenta del campus ({como})"
+    )
+    return _a_response_docente(estado, base_url=institucional.base_url)
+
+
+@router.delete("/moodle/mi-credencial", response_model=MiCredencialMoodleResponse)
+async def borrar_mi_credencial_moodle(
+    request: Request,
+    principal: AuthenticatedPrincipal = Depends(_require_notas),
+) -> MiCredencialMoodleResponse:
+    """Desconecta al docente del campus. Idempotente.
+
+    OJO (procedimiento de baja): esto borra el token de NUESTRA base, no el de
+    Moodle. Los tokens de Moodle sobreviven al cambio de contraseña, así que dar de
+    baja a alguien de verdad exige borrarlo también en el campus.
+    """
+    svc = _servicio_credencial_docente(request)
+    estado = await svc.borrar(_usuario_del_token(principal))
+    await _auditar_credencial(request, principal, "Desconectó su cuenta del campus")
+    return _a_response_docente(estado)
+
+
+async def _leer_service_shortname(request: Request) -> str:
+    """Shortname del servicio externo del campus (config institucional, no secreto)."""
+    session_factory = _get_session_factory(request)
+    async with session_factory() as session:
+        fila = (
+            await session.execute(
+                select(MoodleCredencialModel).where(MoodleCredencialModel.id == 1)
+            )
+        ).scalar_one_or_none()
+    return (fila.service_shortname if fila else "") or ""

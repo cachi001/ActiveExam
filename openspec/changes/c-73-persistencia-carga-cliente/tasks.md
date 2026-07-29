@@ -63,11 +63,25 @@
 - [x] 6.1 `tsc --noEmit` del frontend sin errores
 - [x] 6.2 Suite de frontend completa en verde (vitest), incluidos los tests nuevos
       (791 tests, 79 archivos)
-- [ ] 6.3 E2E manual: recargar en varias páginas mantiene sesión sin parpadeo; matar la
+- [x] 6.3 E2E manual: recargar en varias páginas mantiene sesión sin parpadeo; matar la
       red y entrar a AdminDashboard muestra ERROR (no "0"); navegar ida/vuelta no
       refetchea en frío.
-      Verificado en vivo (Playwright): navegar ida/vuelta (Dashboard→Usuarios→Dashboard)
-      sirve la lista del cache al instante, sin parpadeo. FALTA: el caso de matar la red.
+      Verificado en vivo (Playwright): navegar ida/vuelta sirve del cache sin parpadeo.
+      RED CAÍDA — BUG REAL ENCONTRADO Y ARREGLADO. Con el backend detenido el panel
+      mostraba "0 exámenes importados / 0 sesiones / 0 en revisión" TENIENDO datos en la
+      base. El helper `statExamenesValue` (tarea 2.1) era correcto pero inútil: el error
+      moría UNA CAPA MÁS ABAJO. `listarExamenesContenidoFn` y `listarSesionesProctoring`
+      atrapaban el fallo y devolvían `[]` ("degradación silenciosa", decía el comentario),
+      así que el hook recibía un ÉXITO con lista vacía y el cero era, para él, legítimo.
+      Además `AdminDashboard` hacía `catch { setSesiones([]) }`, el mismo antipatrón.
+      FIX: modo `strict` en ambas funciones de API (propaga el fallo; sin él se conserva
+      la tolerancia para las pantallas del alumno) + estado `sesionesError` en el panel.
+      VERIFICADO: con el backend caído las 3 tarjetas muestran `—` y el catálogo dice
+      "No se pudo cargar el catálogo de exámenes" con botón Reintentar. Con cache previo,
+      sirve el último dato bueno (no lo degrada), que es la filosofía del change.
+      DEUDA EXPLÍCITA: las pantallas del ALUMNO (AlumnoDashboard, AlumnoMisExamenes)
+      siguen usando el modo tolerante y mostrarían "sin exámenes" ante un fallo de red.
+      No se tocaron para no desestabilizarlas antes del E2E de Moodle.
 - [x] 6.4 `openspec validate c-73-persistencia-carga-cliente` en verde
 
 ## 7. Moodle — configurar y validar el write-back contra el campus real
@@ -100,13 +114,199 @@
       la firma de `ejecutar_writeback` acepta `nota` y NO expone `score`/`flags`/
       `proctoring_*`. El score de proctoring nunca entra al write-back.
 
-## 8. Moodle — funciones de lectura (definir en la sesión en vivo)
+## 8. Moodle — mapeo del campus real (CERRADA en sesión en vivo 2026-07-29)
 
-> BLOQUEADA por la exploración en vivo del campus (owner presente + credenciales +
-> Playwright). Recién ahí se convierten en tareas concretas con sus WS exactas.
+> Desbloqueada y ejecutada con el owner presente + Playwright + credenciales.
 
-- [ ] 8.1 Sesión en vivo: explorar `campustest` con Playwright y mapear las Web Services
-      disponibles (padrón/participantes, disponibilidad de examen, identidad, grade items)
-- [ ] 8.2 Decidir con el owner qué funciones de lectura necesita el proctoring y priorizarlas
-- [ ] 8.3 Reescribir 8.x como tareas concretas (por función elegida) con TDD y dato de
-      Moodle tratado como no confiable (validado en el borde, server-side)
+- [x] 8.1 Sesión en vivo: mapeo de `campustest.frm.utn.edu.ar`. HALLAZGOS:
+      - Login **sin SSO**: solo usuario/contraseña + "¿Olvidó su contraseña?" → **cuentas locales**.
+      - `/webservice/rest/server.php` → 200 `invalidtoken` ⇒ **REST habilitado**. La ÚNICA
+        credencial que acepta un WS es `wstoken`; no existe función que acepte contraseña.
+      - `/login/token.php` → 200 (valida user+pass; con credenciales falsas → `invalidlogin`)
+        ⇒ **canje contraseña→token disponible**. Acepta `service=<shortname>`, así que el
+        token derivado queda **acotado a las funciones de nuestro servicio externo**.
+      - `/local/oauth2/login.php` → **404** ⇒ NO hay OAuth2 delegado (requeriría plugin de
+        terceros). Descartado el flujo "el docente autoriza sin dar contraseña".
+      - Los tokens de Moodle **NO se invalidan al cambiar la contraseña** (CVE-2016-7038) ⇒
+        guardar el token es MÁS estable que guardar la contraseña. Contracara: dar de baja a
+        un docente exige **borrar su token** en Moodle (cambiar la clave no alcanza).
+- [x] 8.2 Decisión del owner: el write-back debe llevar **la identidad del docente**, no la de
+      una cuenta de servicio anónima. Validado contra otro sistema de referencia, que ya
+      hace write-back con credenciales por docente y tiene el vínculo docente↔comisión.
+      Ajuste técnico adoptado: se canjea la contraseña por token y se guarda **solo el token**.
+- [x] 8.3 Reescritas como secciones 9 (vínculo docente↔comisión), 10 (credencial personal) y
+      11 (E2E completo). Las funciones de LECTURA para proctoring quedan fuera de c-73.
+
+## 9. Vínculo docente↔comisión (habilita atribución Y autorización)
+
+> Hoy la cadena está cortada: `comision` no tiene docente a cargo, `inscripcion` no tiene rol
+> y `examen_contenido.comision_id` es nullable. Sin este eslabón no hay a quién atribuir la
+> nota ni contra qué validar la pertenencia. El rol `DOCENTE` y las capacidades
+> (`gestionar_academico`, `gestionar_notas`, y `configurar_sistema` SIN docente) YA existen.
+
+- [x] 9.1 Migración: `comision.docente_id` (FK → `usuario`, nullable en la migración para no
+      romper filas existentes). Backfill NO automático: se asigna desde la UI.
+      HECHO: `0049_comision_docente_a_cargo.py` (FK ON DELETE SET NULL + índice
+      `ix_comision_docente_id`) + `ComisionModel.docente_id` + `Comision.docente_id` en el
+      dominio. Aplicada a dev y a la base de test; datos de dev preservados.
+- [x] 9.2 Test (RED→GREEN, DB real): `ComisionResponse` expone el docente a cargo; asignar y
+      reasignar docente persiste. Triangular: comisión sin docente → `None` (no rompe).
+      HECHO: `ComisionResponse.docente_id` + `docente_nombre` (resuelto server-side con
+      `nombres_de_docentes()`, UNA query para todo el listado — sin N+1; cae al legajo si
+      el usuario no tiene nombre). El listado de comisiones lo devuelve poblado.
+- [x] 9.3 Test (RED): un `DOCENTE` que NO es el de la comisión recibe **403** al fijar el
+      destino Moodle de ese examen. Hoy pasa (la guarda es `require_capability`, no
+      pertenencia) — este test debe fallar primero. Triangular: el docente propio → 200;
+      `ADMIN_SISTEMA`/`COORDINADOR` → 200 (no limitados por pertenencia).
+      HECHO (TDD): `tests/test_c73_pertenencia_docente.py`, 4 casos. RED confirmado (los 2
+      de denegación fallaban con 200) → GREEN con `autorizar_docente_sobre_examen`
+      (dominio puro) + `ComisionSqlRepository.docente_de_examen` + `_exigir_pertenencia`
+      en el endpoint. 4/4 verde; sin regresiones (17 verdes en las suites del endpoint y
+      del dominio materia/comisión). Cuarto caso: examen SIN docente no lo puede reclamar
+      un docente — solo rol institucional.
+- [x] 9.4 Aplicar la misma validación de pertenencia al resto de escrituras del examen
+      (importar/editar/borrar): "de lo suyo" según el comentario del rol `DOCENTE`.
+      HECHO: `_exigir_pertenencia` en los 4 endpoints con alcance de examen —
+      `POST /{id}/moodle-target`, `POST /{id}/sincronizar-moodle` (el más sensible: empuja
+      notas al campus), `PATCH /{id}/config` y `PATCH /{id}/preguntas-seleccion`.
+- [x] 9.5 UI admin: asignar docente a comisión en Materias y comisiones (solo
+      `gestionar_usuarios`/`gestionar_academico` de admin, no el docente a sí mismo).
+      BACKEND HECHO: `PUT /comisiones/{id}/docente` + nueva capacidad `asignar_docente`
+      ({ADMIN_EXAMENES, COORDINADOR, ADMIN_SISTEMA} — deliberadamente SIN docente: si se
+      autoasignara, la pertenencia dejaría de ser un control). Valida existencia, baja
+      lógica y rol docente (422); `null` desasigna; audita `COMISION_DOCENTE`.
+      `tests/test_c73_asignar_docente.py` 7/7 verde. FALTA: la pantalla.
+
+## 10. Credencial personal de Moodle del docente
+
+> El docente carga usuario+contraseña UNA vez; se canjea en `login/token.php?service=…` y se
+> persiste **solo el token**, cifrado con el `SecretCipher` ya existente (Fernet, sin fallback
+> a texto plano). La contraseña NUNCA se persiste ni se loguea ni se audita.
+
+- [x] 10.1 Migración: tabla `moodle_credencial_docente` (usuario_id UNIQUE, token cifrado,
+      token_pista, moodle_username, estado `activa|caida`, timestamps). Sin columna de contraseña.
+      HECHO: migración 0050 + `MoodleCredencialDocenteModel`. PK = usuario_id (una por
+      docente), FK ON DELETE CASCADE, `ultimo_uso_en` para diagnóstico. SIN columna de
+      contraseña a propósito: que el esquema no tenga dónde guardarla es la garantía más
+      barata de que nadie la guarde por accidente. Suma `moodle_credencial.service_shortname`
+      (lo exige `login/token.php?service=`). Aplicada a dev y test.
+- [x] 10.2 Test (RED→GREEN): servicio de canje — user+pass → `login/token.php` → token.
+      Triangular: `invalidlogin` → error tipado sin filtrar la contraseña; red caída → error
+      tipado; éxito → persiste token cifrado + pista, y la contraseña no queda en memoria del
+      objeto persistido.
+      HECHO: `app/application/moodle/token_exchange.py` + 8 tests verdes (MockTransport de
+      httpx — no se mockea DB). Distingue `CredencialesInvalidasError` de
+      `ServicioNoHabilitadoError` porque el arreglo es distinto: una la resuelve el docente,
+      la otra el admin del campus (lista blanca). Dos guardrails: la contraseña no aparece en
+      `str()` ni `repr()` de NINGÚN error, y sin `service_shortname` falla ANTES de salir a
+      la red (un token sin acotar no se pide).
+- [x] 10.3 Endpoints `GET/PUT/DELETE /api/v1/config/moodle/mi-credencial` con capacidad
+      `gestionar_notas` (el docente la tiene; el revisor NO). El GET nunca devuelve el token,
+      solo `token_pista` + `moodle_username` + estado. Auditar alta/baja SIN el secreto.
+      HECHO: `CredencialDocenteService` (9 tests verdes) + los 3 endpoints, cableados en
+      `main_slim` (`app.state.credencial_docente`). El usuario sale de `principal.subject`
+      (el TOKEN), nunca de la URL ni del body: no existe "editar la credencial de otro".
+      El PUT acepta `password` (canje) O `token` pegado, nunca ambos (400).
+      SMOKE E2E contra el backend real: GET sin cargar → `configurada:false` · PUT con token
+      → `token_pista:"1234"` y en la DB queda `gAAAAA...` (Fernet); buscar el literal del
+      token en la tabla devuelve 0 filas · DELETE idempotente (200 dos veces) · password+token
+      juntos → 400 · estudiante → 403.
+- [x] 10.4 Test (RED): al sincronizar, la credencial se resuelve
+      **docente de la comisión del examen → fallback cuenta de servicio institucional**.
+      Triangular: docente con credencial activa → se usa la suya; docente sin credencial →
+      institucional; credencial `caida` → institucional + aviso.
+      HECHO: `_credencial_para()` deriva sesión→examen→comisión→docente y pide su token.
+      `write_grade`/`get_grademax` aceptan `ws_token`. La escala se lee con la MISMA
+      credencial que escribe (leerla con otra puede leer un ítem que ese docente no ve).
+      DECISIÓN DEL OWNER (corrige el diseño inicial): **NO hay respaldo institucional
+      para el write-back de una nota**. Sin credencial del docente la nota se RETIENE con
+      motivo `sin_credencial_docente` (visible en la pantalla de resultados, con el texto
+      que explica qué hacer). Mandarla con la cuenta de servicio la dejaría en la libreta
+      sin responsable —el problema que este change vino a resolver— y encima en silencio.
+      La anulación por fraude SÍ sigue usando la institucional: la decide un revisor, y
+      firmarla con la cuenta del docente le atribuiría una sanción que no tomó.
+- [x] 10.5 Test (RED): respuesta `invalidtoken` de Moodle marca la credencial como `caida`
+      (no borra el token) y el docente ve que debe recargarla. NO debe fallar en silencio.
+      HECHO: ante token inválido se marca `caida` y la nota queda pendiente (NO se
+      reintenta con la institucional: firmaría con otra identidad sin que nadie se entere).
+      `caida` se comporta como ausente (no se reintenta un token ya rechazado) pero sigue
+      VISIBLE para poder avisarle al docente.
+      BUG REAL ENCONTRADO POR EL TEST: la detección miraba solo el errorcode inglés
+      `invalidtoken`, pero campustest responde en español —"Ficha (token) no válida"—, así
+      que un token vencido NO se habría detectado nunca: la nota quedaba fallida en
+      silencio. Ahora reconoce ambos idiomas.
+- [x] 10.6 Atribución: `source` del payload deja de ser `"activeexam"` fijo y pasa a incluir
+      examen y docente (queda en el historial de calificaciones de Moodle). Test de que el
+      token NUNCA aparece en `source`, logs ni auditoría.
+      HECHO: `source` = `activeexam:doc=<legajo>` — nombra AL DOCENTE, no el modo. En el
+      historial de calificaciones de Moodle queda con qué legajo se devolvió cada nota, que
+      es la vinculación real con el campus. 5 tests verdes (respx, sin mocks de DB).
+      BUG REAL: `_credencial_para` usaba `ProctoringSessionModel.examen_id`, columna que NO
+      existe (es `examen_contenido_id`) — habría explotado en runtime.
+- [x] 10.7 UI — Configuración con secciones por capacidad. El `DOCENTE` entra a Configuración
+      y ve **únicamente** "Campus (Moodle)": la URL del campus (solo lectura, institucional) y
+      **sus** credenciales. NO ve Parámetros generales, Scoring, Detección ni Consentimiento
+      (`configurar_sistema` es admin-only por diseño). El `ADMIN_SISTEMA` ve todas las
+      secciones + la credencial institucional. Estado mostrado como "Conectado como X ·
+      ****abcd" con botón de verificar y de desconectar.
+- [x] 10.8 Test de ruta/gating (frontend): `/admin/configuracion` deja de ser ADMIN-only y
+      pasa a exigir capacidad por sección. Un `DOCENTE` que fuerza la URL de una sección
+      admin no la ve; un `ESTUDIANTE` sigue sin entrar.
+      HECHO: ruta de ADMIN → ACADEMICO; las 4 pestañas de config quedan `soloAdmin` y el
+      contenido además se condiciona (no basta ocultar la pestaña). `Configuración` sumada
+      al sidebar del docente (antes solo se llegaba tipeando la URL).
+      VERIFICADO EN PLAYWRIGHT con un docente real (DOC-001): ve SOLO "Campus (Moodle)",
+      con subtítulo propio; el estudiante sigue sin entrar (403 en la API).
+      + Campo "Nombre del servicio del campus" (`service_shortname`) en la sección del
+      admin: sin él ningún docente puede conectarse y no había dónde cargarlo.
+      SMOKE E2E CONTRA EL CAMPUS REAL: docente → PUT mi-credencial con credenciales falsas
+      → canje en `login/token.php` de campustest → Moodle devuelve `invalidlogin` → la
+      pantalla muestra "Usuario o contraseña incorrectos en el campus".
+
+## 11. E2E COMPLETO contra el campus real (devolución y sincronización de notas)
+
+> Recorrido entero con datos reales, no por partes. Requiere: servicio externo del campus con
+> `core_grades_update_grades` habilitado y NO restringido a lista blanca (si lo está, ningún
+> docente puede sacar su token).
+
+- [x] 11.1 Configuración del campus (UNA vez, NO por docente). RESUELTA Y VERIFICADA.
+      El servicio externo y el token institucional YA EXISTÍAN desde C-69 — no había que
+      crear nada. Datos reales: servicio **"API Moodle Proctoring"**, shortname
+      **`api_moodle`**, 8 funciones (incluye `core_grades_update_grades`,
+      `gradereport_user_get_grade_items`, `core_user_get_users_by_field`).
+      LO QUE FALTABA, y costó encontrarlo:
+      a) `restrictedusers` estaba en true → cada docente había que agregarlo a mano.
+         DESTILDADO.
+      b) Otorgar `moodle/webservice:createtoken` al rol **Profesor** NO FUNCIONA: los
+         docentes tienen ese rol en CONTEXTO DE CURSO y `login/token.php` evalúa la
+         capacidad en CONTEXTO SISTEMA → devuelve `cannotcreatetoken` con credenciales
+         correctas. Este fue el callejón sin salida.
+      c) LA SOLUCIÓN: `moodle/webservice:createtoken` al rol **"Usuario identificado"**
+         (roleid 7). Una casilla, una vez, para siempre. `webservice/rest:use` y
+         `createmobiletoken` ya venían marcadas de fábrica.
+      VERIFICADO E2E CONTRA EL CAMPUS REAL con `profesor_prueba`:
+      · saca su token con usuario+contraseña, sin habilitación previa;
+      · el token expone 8 funciones (no las 437 del servicio móvil);
+      · escribe nota en el curso donde ES profesor → `0` (OK);
+      · MISMO token en un curso AJENO → `errorcoursecontextnotvalid`. **La autorización
+        la impone Moodle, no nuestro código.**
+      · Historial de calificación del curso: **Calificador = "Profesor Prueba"**,
+        **Fuente = `activeexam:doc=PROF-PRUEBA-001`**.
+      PENDIENTE DE POLÍTICA (no técnico): si `createtoken` a todos los usuarios
+      identificados es aceptable en producción. Riesgo verificado como bajo (un alumno
+      puede sacar token pero NO puede calificar), pero lo decide el campus.
+
+- [ ] 11.2 Docente carga sus credenciales en Configuración → Campus (Moodle) → canje OK →
+      estado "Conectado como …". Verificar en la DB que quedó el TOKEN y NO la contraseña.
+- [ ] 11.3 Examen vinculado a la comisión del docente, con curso + actividad del campus real.
+      Verificar el 403 de pertenencia con un docente de OTRA comisión.
+- [ ] 11.4 Alumno rinde el examen completo → se calcula la nota → sincronización.
+- [ ] 11.5 Verificar **en la libreta de Moodle**: la nota llegó al alumno correcto, con la
+      escala correcta (`grademax`), y el historial de calificaciones muestra la atribución
+      del docente.
+- [ ] 11.6 Caso de identidad no resoluble: NO escribe a un usuario arbitrario; queda fallido
+      y visible (cierra 7.4).
+- [ ] 11.7 Caso sin credencial del docente: la nota igual sale por la cuenta de servicio
+      institucional (degradación, no bloqueo).
+- [ ] 11.8 Auditoría del recorrido completo: figura quién sincronizó y con qué credencial
+      (personal vs institucional), y el token no aparece en ningún registro ni export.

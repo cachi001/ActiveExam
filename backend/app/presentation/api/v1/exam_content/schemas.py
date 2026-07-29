@@ -288,6 +288,12 @@ class ComisionResponse(BaseModel):
     # (mismo criterio que el guard de borrado: se elimina solo con ambos en 0).
     total_inscriptos: int = 0
     total_examenes: int = 0
+    # C-73 §9: docente a cargo. Es quien devuelve la nota de los exámenes de esta
+    # comisión y contra quién se valida "lo suyo" del rol DOCENTE. None = sin asignar
+    # (el write-back cae a la credencial institucional). El nombre viaja resuelto para
+    # que la UI no tenga que pedir el usuario aparte.
+    docente_id: str | None = None
+    docente_nombre: str | None = None
 
 
 class AltaInlineResponse(BaseModel):
@@ -341,6 +347,18 @@ class ComisionCrearRequest(BaseModel):
     # C-70: código de matriculación opcional. Si no viene → se autogenera único
     # ({materia.codigo}-{sufijo}); si viene → se usa tal cual (unicidad al persistir).
     codigo_matriculacion: str | None = None
+
+
+class ComisionDocenteRequest(BaseModel):
+    """Body del PUT /comisiones/{id}/docente: asigna el docente a cargo (C-73 §9).
+
+    ``docente_id = None`` DESASIGNA. No es un caso de error: una comisión puede quedar
+    sin docente (el write-back de sus exámenes cae a la credencial institucional).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    docente_id: str | None = None
 
 
 class ComisionActivaRequest(BaseModel):
