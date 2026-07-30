@@ -43,6 +43,7 @@ class EstadoCredencialDocente:
     estado: str | None
     actualizado_en: str | None
     ultimo_uso_en: str | None
+    base_url: str | None = None
 
 
 _SIN_CREDENCIAL = EstadoCredencialDocente(
@@ -52,6 +53,7 @@ _SIN_CREDENCIAL = EstadoCredencialDocente(
     estado=None,
     actualizado_en=None,
     ultimo_uso_en=None,
+    base_url=None,
 )
 
 
@@ -89,6 +91,7 @@ class CredencialDocenteService:
             estado=fila.estado,
             actualizado_en=_iso(fila.actualizado_en),
             ultimo_uso_en=_iso(fila.ultimo_uso_en),
+            base_url=fila.base_url or None,
         )
 
     async def token_de(self, usuario_id: str) -> str | None:
@@ -127,10 +130,16 @@ class CredencialDocenteService:
             usuario_id=usuario_id,
             moodle_username=moodle_username,
             token=obtenido.token,
+            base_url=base_url,
         )
 
     async def guardar_token(
-        self, *, usuario_id: str, moodle_username: str, token: str
+        self,
+        *,
+        usuario_id: str,
+        moodle_username: str,
+        token: str,
+        base_url: str | None = None,
     ) -> EstadoCredencialDocente:
         """Persiste un token ya obtenido (canjeado o emitido por el admin del campus)."""
         cifrado = self._cipher.encrypt(token)
@@ -145,6 +154,7 @@ class CredencialDocenteService:
                     token_cifrado=cifrado,
                     token_pista=pista,
                     estado=ESTADO_ACTIVA,
+                    base_url=base_url or None,
                 )
                 session.add(fila)
             else:
@@ -155,6 +165,8 @@ class CredencialDocenteService:
                 # docente cuando le avisamos que se le cayo.
                 fila.estado = ESTADO_ACTIVA
                 fila.actualizado_en = ahora
+                if base_url:
+                    fila.base_url = base_url
             await session.commit()
         return await self.estado(usuario_id)
 

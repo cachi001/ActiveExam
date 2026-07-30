@@ -254,6 +254,7 @@ export default function SeccionProctoring() {
           </div>
         </div>
       )}
+
     </div>
   );
 }

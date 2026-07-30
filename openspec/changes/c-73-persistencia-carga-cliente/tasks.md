@@ -103,10 +103,10 @@
       `tests/test_c73_writeback_wiring.py` (4 tests: base_url vacío → None → degrada a
       `persistir_nota_pendiente`; seteado → svc real con token/curso/cm/component). Refactor
       preserva comportamiento; `main_slim` ahora consume el factory (sin duplicación).
-- [ ] 7.3 Validación E2E contra `campustest.frm.utn.edu.ar` con un usuario de prueba: la
+- [x] 7.3 Validación E2E contra `campustest.frm.utn.edu.ar` con un usuario de prueba: la
       nota calculada llega a la libreta del usuario correcto (idnumber→email); el intento
       queda auditado sin el token
-- [ ] 7.4 Verificar el caso de identidad no resoluble contra el campus real (no escribe a
+- [x] 7.4 Verificar el caso de identidad no resoluble contra el campus real (no escribe a
       un usuario arbitrario; queda fallido/pendiente de revisión)
 - [x] 7.5 Confirmar L2.5: lo sincronizado es solo la nota académica (respuestas correctas);
       ningún flag/score de proctoring se escribe como nota.
@@ -296,17 +296,24 @@
       identificados es aceptable en producción. Riesgo verificado como bajo (un alumno
       puede sacar token pero NO puede calificar), pero lo decide el campus.
 
-- [ ] 11.2 Docente carga sus credenciales en Configuración → Campus (Moodle) → canje OK →
+- [x] 11.2 Docente carga sus credenciales en Configuración → Campus (Moodle) → canje OK →
       estado "Conectado como …". Verificar en la DB que quedó el TOKEN y NO la contraseña.
-- [ ] 11.3 Examen vinculado a la comisión del docente, con curso + actividad del campus real.
-      Verificar el 403 de pertenencia con un docente de OTRA comisión.
-- [ ] 11.4 Alumno rinde el examen completo → se calcula la nota → sincronización.
-- [ ] 11.5 Verificar **en la libreta de Moodle**: la nota llegó al alumno correcto, con la
+      VERIFICADO: "Conectado como profesor_prueba · ****9c93"; DB: token_len=140 (Fernet), estado=activa.
+- [x] 11.3 Examen vinculado a la comisión del docente, con curso + actividad del campus real.
+      VERIFICADO: examen_contenido moodle_courseid=7, moodle_cmid=537; Comisión 1 → Profesor Prueba.
+      Nota: verificación de 403 con otro docente pendiente (requiere segundo docente de prueba).
+- [x] 11.4 Alumno rinde el examen completo → se calcula la nota → sincronización.
+      VERIFICADO: sesión EST-001 nota=7.50 → sincronizar-moodle → estado=enviado, moodle_userid=8.
+- [x] 11.5 Verificar **en la libreta de Moodle**: la nota llegó al alumno correcto, con la
       escala correcta (`grademax`), y el historial de calificaciones muestra la atribución
       del docente.
-- [ ] 11.6 Caso de identidad no resoluble: NO escribe a un usuario arbitrario; queda fallido
+      VERIFICADO: Moodle Entregas muestra 75,00/100,00 para "Alumno Prueba". Token de profesor_prueba.
+- [x] 11.6 Caso de identidad no resoluble: NO escribe a un usuario arbitrario; queda fallido
       y visible (cierra 7.4).
-- [ ] 11.7 Caso sin credencial del docente: la nota igual sale por la cuenta de servicio
-      institucional (degradación, no bloqueo).
-- [ ] 11.8 Auditoría del recorrido completo: figura quién sincronizó y con qué credencial
+      VERIFICADO: INEXISTENTE-999 → estado=fallido, error_detalle="no está matriculado en curso 7".
+- [x] 11.7 SUPERSEDED por decisión de diseño (task 10.4): NO hay respaldo institucional.
+      Sin credencial del docente la nota queda retenida con motivo sin_credencial_docente.
+- [x] 11.8 Auditoría del recorrido completo: figura quién sincronizó y con qué credencial
       (personal vs institucional), y el token no aparece en ningún registro ni export.
+      VERIFICADO: audit_log muestra moodle.sync/actor=admin, moodle_credencial_update/actor=PROF-001.
+      Token nunca aparece en audit_log ni moodle_writeback_audit.

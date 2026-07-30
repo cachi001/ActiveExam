@@ -1,50 +1,44 @@
 /**
- * MiCuentaCampus — la conexión personal del docente con el campus (C-73 §10.7).
+ * MiCuentaCampus — la conexión personal del docente con el campus.
  *
- * Por qué existe: la nota SIEMPRE se devuelve a Moodle con la cuenta del docente a
- * cargo de la comisión, para que en la libreta figure quién la puso. Sin esta
- * conexión, las notas de sus comisiones quedan retenidas — no se mandan con una
- * cuenta institucional, porque eso las dejaría sin responsable.
+ * Por qué existe: la nota SIEMPRE se devuelve a Moodle con la cuenta del docente
+ * a cargo de la comisión, para que en la libreta figure quién la puso. Sin esta
+ * conexión, las notas de sus comisiones quedan retenidas.
  *
- * La contraseña NO se guarda: se canjea una vez por un token del campus y se
- * descarta. Por eso el campo se vacía apenas se guarda.
+ * La contraseña NO se guarda: se canjea por un token y se descarta.
+ * Cada docente ingresa su propia URL del campus + usuario + contraseña.
  */
 import { useCallback, useEffect, useState } from 'react';
 import { adminApi, type MiCuentaCampus as Estado } from '../../lib/apiAdmin';
 import { Button, Icon } from '../../ui/components';
 import { HelpButton } from '../../ui/HelpButton';
 
-type Modo = 'password' | 'token';
+const LABEL = 'block text-[13px] font-medium text-on-surface mb-1.5';
+const HINT  = 'mt-1.5 text-[12px] text-on-surface-variant/70 leading-relaxed';
 
 const AYUDA = (
   <HelpButton title="Conectar tu cuenta del campus">
     <p>
-      Cuando un alumno tuyo termina un examen, la nota se manda al campus <strong>con tu
-      cuenta</strong>. Así, en la libreta figura que la nota la pusiste vos y no un sistema
-      anónimo.
+      Cuando un alumno tuyo termina un examen, la nota se manda al campus <strong>con
+      tu cuenta</strong>. Así, en la libreta figura que la nota la pusiste vos y no
+      un sistema anónimo.
     </p>
     <p>
       Por eso necesitás conectarte una vez. Mientras no lo hagas, las notas de tus
       comisiones se calculan y se guardan, pero <strong>no viajan al campus</strong>.
     </p>
     <p>
-      <strong>Tu contraseña no se guarda.</strong> Se usa una sola vez para pedirle al campus
-      una llave de acceso, y esa llave es lo único que queda guardado (cifrado). Si cambiás
-      la contraseña del campus, esto sigue funcionando.
+      <strong>Tu contraseña no se guarda.</strong> Se usa una sola vez para pedirle
+      al campus una llave de acceso, y esa llave es lo único que queda guardado
+      (cifrado). Si cambiás la contraseña del campus, esto sigue funcionando.
     </p>
   </HelpButton>
 );
 
-export default function MiCuentaCampus({
-  mostrarCampus = true,
-}: {
-  /** El admin ve la dirección del campus en la sección institucional; repetirla
-   *  acá daba dos campos iguales en la misma pantalla. */
-  mostrarCampus?: boolean;
-}) {
+export default function MiCuentaCampus() {
   const [estado, setEstado] = useState<Estado | null>(null);
   const [cargando, setCargando] = useState(true);
-  const [modo, setModo] = useState<Modo>('password');
+  const [campusUrl, setCampusUrl] = useState('');
   const [usuario, setUsuario] = useState('');
   const [secreto, setSecreto] = useState('');
   const [guardando, setGuardando] = useState(false);
@@ -53,6 +47,7 @@ export default function MiCuentaCampus({
 
   const aplicar = useCallback((e: Estado) => {
     setEstado(e);
+    setCampusUrl(e.base_url ?? '');
     setUsuario(e.moodle_username ?? '');
     setSecreto('');
   }, []);
@@ -64,14 +59,13 @@ export default function MiCuentaCampus({
       .then((e) => vivo && aplicar(e))
       .catch(() => vivo && setError('No se pudo leer el estado de tu conexión.'))
       .finally(() => vivo && setCargando(false));
-    return () => {
-      vivo = false;
-    };
+    return () => { vivo = false; };
   }, [aplicar]);
 
   async function guardar() {
     setError(null);
     setOk(null);
+    if (!campusUrl.trim()) { setError('Ingresá la dirección de tu campus.'); return; }
     if (!usuario.trim() || !secreto.trim()) {
       setError('Completá tu usuario del campus y la contraseña.');
       return;
@@ -80,16 +74,12 @@ export default function MiCuentaCampus({
     try {
       const e = await adminApi.guardarMiCuentaCampus({
         moodle_username: usuario.trim(),
-        ...(modo === 'password' ? { password: secreto } : { token: secreto }),
+        base_url: campusUrl.trim(),
+        password: secreto,
       });
       aplicar(e);
       setOk('Tu cuenta quedó conectada.');
     } catch (err) {
-      // `realFetch` adjunta `mensaje` del {detail:{error,mensaje}} del backend. Se
-      // muestra TAL CUAL porque está redactado para el docente y distingue casos con
-      // arreglos distintos: "usuario o contraseña incorrectos" lo resuelve él, y
-      // "el campus no habilita este servicio" lo resuelve el admin del campus.
-      // Nunca incluye la contraseña (garantizado por test en token_exchange).
       const e = err as { mensaje?: string; status?: number };
       setError(
         e.mensaje ??
@@ -117,7 +107,7 @@ export default function MiCuentaCampus({
   }
 
   if (cargando) {
-    return <div className="h-[180px] bg-surface-container-low rounded-md animate-pulse" />;
+    return <div className="h-[200px] bg-surface-container-low rounded animate-pulse" />;
   }
 
   const conectada = estado?.configurada && estado.estado === 'activa';
@@ -125,136 +115,110 @@ export default function MiCuentaCampus({
 
   return (
     <div>
-      <div className="mb-md">
-        <h3 className="text-title-md font-semibold text-on-surface flex items-center gap-1.5">
-          Tu cuenta del campus
-          {AYUDA}
-        </h3>
-        <p className="text-label-sm text-on-surface-variant mt-0.5">
-          En la libreta figura que la nota la pusiste vos.
-        </p>
+      {/* Encabezado */}
+      <div className="flex items-center gap-1.5 mb-1">
+        <h3 className="text-[15px] font-semibold text-on-surface">Tu cuenta del campus</h3>
+        {AYUDA}
       </div>
+      <p className={HINT}>En la libreta figura que la nota la pusiste vos.</p>
 
-      {/* Estado actual — lo primero que se lee */}
+      {/* Estado de conexión */}
       <div
-        className={`flex items-center gap-sm rounded-md border px-md py-sm mb-md ${
+        className={`mt-4 flex items-start gap-3 rounded border px-4 py-3 text-[13px] ${
           conectada
-            ? 'border-success/40 bg-success-container/30'
+            ? 'border-success/30 bg-success-container/20 text-on-surface'
             : caida
-              ? 'border-error/40 bg-error-container/30'
-              : 'border-outline-variant bg-surface-container-low'
+              ? 'border-error/30 bg-error-container/20 text-on-surface'
+              : 'border-outline-variant/60 bg-[#f4f5f6] text-on-surface-variant'
         }`}
       >
         <Icon
-          name={conectada ? 'link' : caida ? 'link_off' : 'info'}
-          className={
+          name={conectada ? 'check_circle' : caida ? 'link_off' : 'info'}
+          className={`text-[16px] shrink-0 mt-0.5 ${
             conectada ? 'text-success' : caida ? 'text-error' : 'text-on-surface-variant'
-          }
+          }`}
+          fill={conectada || caida}
         />
-        <div className="min-w-0">
+        <span>
           {conectada && (
-            <p className="text-label-md text-on-surface">
+            <>
               Conectado como <strong>{estado?.moodle_username}</strong>
               {estado?.token_pista && (
                 <span className="text-on-surface-variant"> · ****{estado.token_pista}</span>
               )}
-            </p>
+            </>
           )}
-          {caida && (
-            <p className="text-label-md text-on-surface">
-              El campus dejó de aceptar tu llave. Volvé a conectarte para que tus notas
-              puedan viajar.
-            </p>
-          )}
-          {!estado?.configurada && (
-            <p className="text-label-md text-on-surface">
-              Todavía no conectaste tu cuenta. Tus notas se guardan, pero no llegan al
-              campus.
-            </p>
-          )}
-        </div>
+          {caida && 'El campus dejó de aceptar tu llave. Volvé a conectarte.'}
+          {!estado?.configurada && 'Todavía no conectaste tu cuenta. Tus notas se guardan, pero no llegan al campus.'}
+        </span>
       </div>
 
-      <div className="grid gap-md">
-        {mostrarCampus && (
-          <div>
-            <label className="text-label-sm text-on-surface-variant" htmlFor="campus-url">
-              Campus
-            </label>
-            <input
-              id="campus-url"
-              className="input w-full mt-1 bg-surface-container-low text-on-surface-variant"
-              value={estado?.base_url || ''}
-              readOnly
-            />
-          </div>
-        )}
+      {/* Formulario */}
+      <div className="mt-6 space-y-5">
+        <div>
+          <label className={LABEL} htmlFor="campus-url">Dirección del campus</label>
+          <input
+            id="campus-url"
+            type="url"
+            className="input w-full"
+            placeholder="https://campus.miuniversidad.edu.ar"
+            value={campusUrl}
+            onChange={(e) => setCampusUrl(e.target.value)}
+            disabled={guardando}
+            autoComplete="off"
+          />
+          <p className={HINT}>La URL de tu Moodle institucional.</p>
+        </div>
 
         <div>
-          <label className="text-label-sm text-on-surface-variant" htmlFor="campus-user">
-            Tu usuario del campus
-          </label>
+          <label className={LABEL} htmlFor="campus-user">Tu usuario del campus</label>
           <input
             id="campus-user"
-            className="input w-full mt-1"
+            className="input w-full"
             value={usuario}
             onChange={(e) => setUsuario(e.target.value)}
+            disabled={guardando}
             autoComplete="off"
           />
         </div>
 
         <div>
-          <div className="flex items-center justify-between">
-            <label className="text-label-sm text-on-surface-variant" htmlFor="campus-secret">
-              {modo === 'password' ? 'Tu contraseña del campus' : 'Llave que te dieron'}
-            </label>
-            <button
-              type="button"
-              className="text-label-sm text-primary hover:underline"
-              onClick={() => {
-                setModo(modo === 'password' ? 'token' : 'password');
-                setSecreto('');
-              }}
-            >
-              {modo === 'password' ? 'Tengo una llave' : 'Usar mi contraseña'}
-            </button>
-          </div>
+          <label className={LABEL} htmlFor="campus-secret">Tu contraseña del campus</label>
           <input
             id="campus-secret"
             type="password"
-            className="input w-full mt-1"
+            className="input w-full"
             value={secreto}
             onChange={(e) => setSecreto(e.target.value)}
+            disabled={guardando}
             autoComplete="new-password"
-            placeholder={modo === 'password' ? '••••••••' : 'Pegá la llave acá'}
+            placeholder="••••••••"
           />
+          <p className={HINT}>Tu contraseña no se guarda: se usa una vez para obtener una llave de acceso.</p>
         </div>
 
         {error && (
-          <p className="text-label-sm text-error flex items-center gap-1.5">
-            <Icon name="error" className="text-[16px]" />
+          <p className="text-[12.5px] text-error flex items-center gap-1.5">
+            <Icon name="error" className="text-[15px]" fill />
             {error}
           </p>
         )}
         {ok && (
-          <p className="text-label-sm text-success flex items-center gap-1.5">
-            <Icon name="check_circle" className="text-[16px]" />
+          <p className="text-[12.5px] text-success flex items-center gap-1.5">
+            <Icon name="check_circle" className="text-[15px]" fill />
             {ok}
           </p>
         )}
 
-        <div className="flex items-center gap-sm">
+        <div className="flex items-center gap-sm pt-1">
           <Button
             variant="primary"
+            size="sm"
             icon={guardando ? undefined : 'link'}
             onClick={guardar}
             disabled={guardando}
           >
-            {guardando
-              ? 'Conectando…'
-              : estado?.configurada
-                ? 'Volver a conectar'
-                : 'Conectar'}
+            {guardando ? 'Conectando…' : estado?.configurada ? 'Volver a conectar' : 'Conectar'}
           </Button>
           {estado?.configurada && (
             <Button variant="ghost" size="sm" onClick={desconectar} disabled={guardando}>

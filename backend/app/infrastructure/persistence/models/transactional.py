@@ -605,3 +605,5 @@ class MoodleCredencialDocenteModel(Base):
     ultimo_uso_en: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # C-73 ext (migr 0051): URL del campus per-docente. NULL = usar la institucional.
+    base_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)

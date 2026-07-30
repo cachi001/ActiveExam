@@ -59,10 +59,10 @@
     @apply bg-surface-container-lowest rounded-md border border-outline-variant;
   }
   .input {
-    @apply bg-surface-container-lowest border border-outline-variant rounded-md px-sm py-base text-label-md text-on-surface outline-none transition-colors;
+    @apply bg-[#f7f8f9] border border-outline-variant rounded-md px-[14px] py-[10px] text-[14px] text-on-surface outline-none transition-colors placeholder:text-on-surface-variant/40;
   }
   .input:focus {
-    @apply border-primary-container;
+    @apply bg-white border-primary ring-2 ring-primary/10;
   }
 }
 

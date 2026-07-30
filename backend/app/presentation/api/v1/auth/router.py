@@ -18,7 +18,7 @@ import os
 import re
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel, ConfigDict, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -447,3 +447,63 @@ async def registrar(
         apellido=usuario.apellido or "",
         roles=usuario.roles,
     )
+
+
+# ---------------------------------------------------------------------------
+# PUT /auth/change-password — cambio de contraseña propio (cualquier usuario local)
+# ---------------------------------------------------------------------------
+
+
+class CambiarContrasenaRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    contrasena_actual: str
+    contrasena_nueva: str = Field(min_length=8, max_length=512)
+
+
+class CambiarContrasenaResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    ok: bool
+
+
+@router.put("/change-password", response_model=CambiarContrasenaResponse)
+async def cambiar_contrasena(
+    body: CambiarContrasenaRequest,
+    request: Request,
+    principal: AuthenticatedPrincipal = Depends(get_current_principal),
+) -> CambiarContrasenaResponse:
+    """Cambia la contraseña propia. Solo para cuentas con auth_provider='local'.
+
+    Verifica la contraseña actual antes de aceptar la nueva (no se puede usar
+    un token robado para resetear la clave sin saber la actual).
+    Mensaje genérico en todos los fallos para no revelar información.
+    """
+    session_factory = getattr(request.app.state, "session_factory", None)
+    if not session_factory:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Base de datos no disponible.",
+        )
+
+    async with session_factory() as session:
+        result = await session.execute(
+            select(UsuarioModel).where(UsuarioModel.id == principal.subject)
+        )
+        usuario = result.scalar_one_or_none()
+
+        if not usuario or not usuario.password_hash or usuario.auth_provider != "local":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No podés cambiar la contraseña de esta cuenta.",
+            )
+
+        if not verificar_password(body.contrasena_actual, usuario.password_hash):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="La contraseña actual es incorrecta.",
+            )
+
+        usuario.password_hash = hashear_password(body.contrasena_nueva)
+        await session.commit()
+
+    return CambiarContrasenaResponse(ok=True)

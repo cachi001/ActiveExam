@@ -491,6 +491,9 @@ class GuardarMiCredencialRequest(BaseModel):
     moodle_username: str = Field(min_length=1, max_length=255)
     password: str | None = Field(default=None, min_length=1, max_length=512)
     token: str | None = Field(default=None, min_length=8, max_length=512)
+    # URL del campus propia del docente (migracion 0051). Si se omite, el backend
+    # cae al `base_url` de la credencial institucional como fallback.
+    base_url: str | None = Field(default=None, max_length=512)
 
 
 def _servicio_credencial_docente(request: Request):
@@ -503,7 +506,7 @@ def _servicio_credencial_docente(request: Request):
     return svc
 
 
-def _a_response_docente(estado, base_url: str = "") -> MiCredencialMoodleResponse:
+def _a_response_docente(estado, base_url_fallback: str = "") -> MiCredencialMoodleResponse:
     return MiCredencialMoodleResponse(
         configurada=estado.configurada,
         moodle_username=estado.moodle_username,
@@ -511,7 +514,7 @@ def _a_response_docente(estado, base_url: str = "") -> MiCredencialMoodleRespons
         estado=estado.estado,
         actualizado_en=estado.actualizado_en,
         ultimo_uso_en=estado.ultimo_uso_en,
-        base_url=base_url,
+        base_url=estado.base_url or base_url_fallback,
     )
 
 
@@ -534,7 +537,7 @@ async def leer_mi_credencial_moodle(
     svc = _servicio_credencial_docente(request)
     estado = await svc.estado(_usuario_del_token(principal))
     credencial = await _resolver_credenciales(request).resolver()
-    return _a_response_docente(estado, base_url=credencial.base_url)
+    return _a_response_docente(estado, base_url_fallback=credencial.base_url)
 
 
 @router.put("/moodle/mi-credencial", response_model=MiCredencialMoodleResponse)
@@ -553,12 +556,15 @@ async def guardar_mi_credencial_moodle(
     svc = _servicio_credencial_docente(request)
     usuario_id = _usuario_del_token(principal)
     institucional = await _resolver_credenciales(request).resolver()
+    # URL efectiva: la que el docente ingresó, o la institucional como fallback.
+    base_url_efectiva = (body.base_url or "").strip() or institucional.base_url
 
     if body.token:
         estado = await svc.guardar_token(
             usuario_id=usuario_id,
             moodle_username=body.moodle_username,
             token=body.token,
+            base_url=base_url_efectiva,
         )
         como = "con un token emitido por el campus"
     else:
@@ -570,7 +576,7 @@ async def guardar_mi_credencial_moodle(
                 usuario_id=usuario_id,
                 moodle_username=body.moodle_username,
                 password=body.password or "",
-                base_url=institucional.base_url,
+                base_url=base_url_efectiva,
                 service_shortname=fila,
             )
         except TokenExchangeError as exc:
@@ -586,7 +592,7 @@ async def guardar_mi_credencial_moodle(
     await _auditar_credencial(
         request, principal, f"Conectó su cuenta del campus ({como})"
     )
-    return _a_response_docente(estado, base_url=institucional.base_url)
+    return _a_response_docente(estado, base_url_fallback=institucional.base_url)
 
 
 @router.delete("/moodle/mi-credencial", response_model=MiCredencialMoodleResponse)
@@ -603,7 +609,8 @@ async def borrar_mi_credencial_moodle(
     svc = _servicio_credencial_docente(request)
     estado = await svc.borrar(_usuario_del_token(principal))
     await _auditar_credencial(request, principal, "Desconectó su cuenta del campus")
-    return _a_response_docente(estado)
+    institucional = await _resolver_credenciales(request).resolver()
+    return _a_response_docente(estado, base_url_fallback=institucional.base_url)
 
 
 async def _leer_service_shortname(request: Request) -> str:

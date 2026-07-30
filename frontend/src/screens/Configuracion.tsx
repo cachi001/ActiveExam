@@ -17,8 +17,8 @@ import SeccionProctoring from './configuracion/SeccionProctoring';
 import SeccionScoring from './configuracion/SeccionScoring';
 import SeccionDeteccion from './configuracion/SeccionDeteccion';
 import SeccionConsentimiento from './configuracion/SeccionConsentimiento';
-import SeccionMoodle from './configuracion/SeccionMoodle';
 import MiCuentaCampus from './configuracion/MiCuentaCampus';
+import SeccionSeguridad from './configuracion/SeccionSeguridad';
 import { useAuth } from '../lib/authStore';
 
 type TabId = 'proctoring' | 'scoring' | 'deteccion' | 'consentimiento' | 'moodle';
@@ -94,32 +94,20 @@ export default function Configuracion() {
           {esAdmin && tab === 'deteccion' && <SeccionDeteccion />}
           {esAdmin && tab === 'consentimiento' && <SeccionConsentimiento />}
           {tab === 'moodle' && (
-            /* UNA sola tarjeta. Antes eran dos, y las dos decían "configurá el campus":
-               el usuario no sabía cuál usar, y encima tenían anchos distintos. Ahora es
-               un bloque con la cuenta personal arriba y, para el admin, la configuración
-               institucional debajo de un separador. */
             <div className="space-y-lg">
-              {/* Encabezado editorial, igual que el resto de las pestañas. Sin esto
-                  la sección arrancaba con un h2 chico y todo se leía hundido. */}
               <div className="pb-4 border-b border-outline-variant/40">
                 <h2 className="font-headline text-[24px] font-bold text-on-surface tracking-tight leading-tight">
                   Campus (Moodle)
                 </h2>
                 <p className="text-[13.5px] text-on-surface-variant leading-relaxed max-w-2xl mt-2">
-                  {esAdmin
-                    ? 'Conectá tu cuenta para que tus notas viajen con tu nombre, y definí a qué campus se conecta la institución.'
-                    : 'Conectá tu cuenta del campus para que las notas de tus comisiones puedan viajar.'}
+                  Conectá tu cuenta del campus para que las notas de tus comisiones puedan viajar.
                 </p>
               </div>
               <Card>
-                {/* Al admin no se le repite la dirección del campus: la edita abajo. */}
-                <MiCuentaCampus mostrarCampus={!esAdmin} />
-                {esAdmin && (
-                  <>
-                    <hr className="my-lg border-t border-outline-variant" />
-                    <SeccionMoodle />
-                  </>
-                )}
+                <MiCuentaCampus />
+              </Card>
+              <Card>
+                <SeccionSeguridad />
               </Card>
             </div>
           )}
