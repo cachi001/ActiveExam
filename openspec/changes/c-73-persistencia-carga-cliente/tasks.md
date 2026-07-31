@@ -317,3 +317,65 @@
       (personal vs institucional), y el token no aparece en ningún registro ni export.
       VERIFICADO: audit_log muestra moodle.sync/actor=admin, moodle_credencial_update/actor=PROF-001.
       Token nunca aparece en audit_log ni moodle_writeback_audit.
+
+## 12. Revalidación periódica de la credencial docente (nunca guardar la contraseña)
+
+> Decisión (2026-07-31): NO se adopta el modelo de `active-ia-correcion-automatica`
+> (guardar `password_encrypted` + re-auth automática cada 50 min). Un token filtrado
+> solo compromete las funciones del web service; una contraseña filtrada compromete
+> la cuenta completa de Moodle y, si el docente reutiliza contraseñas, potencialmente
+> ActiveExam también — con una sola master key de cifrado del backend. En cambio: la
+> credencial (token) vence sola a los 30 días desde la última vez que se demostró
+> conocer la contraseña vigente, sin persistirla nunca. Reutiliza `actualizado_en`
+> (ya se pisa en cada `guardar_token`/`guardar_con_password` exitoso — no hace falta
+> columna nueva).
+
+- [ ] 12.1 Test (RED): helper puro `esta_vencida(actualizado_en, ahora, dias=30) -> bool`
+      en `credencial_docente_service.py`. Triangular: recién guardada → False; a los 29
+      días → False; a los 30 días exactos → True; a los 60 → True.
+- [ ] 12.2 `estado()` y `token_de()` devuelven `vencida` (no `activa`) cuando
+      `esta_vencida()` da True, aunque la columna diga `activa` — el vencimiento es
+      calculado, no un job en background que reescribe filas. `token_de()` trata
+      `vencida` igual que `caida`: devuelve `None` (no reintenta con un token viejo).
+- [ ] 12.3 Test: sincronizar una nota con credencial vencida NO reintenta con el token
+      guardado — falla igual que hoy con `caida`, mensaje distinto: "tu conexión con
+      el campus venció, volvé a cargar tu contraseña" (no sugiere que Moodle la revocó,
+      porque no fue Moodle).
+- [ ] 12.4 UI (`MiCuentaCampus.tsx`): estado "Conectado como X" pasa a avisar la
+      antigüedad ("Conectado hace 25 días · vence en 5") cuando falten ≤7 días, y a
+      "Venció, volvé a conectarte" cuando ya pasó — mismo flujo de PUT que hoy, no es
+      un caso nuevo, solo copy distinto de `caida`.
+- [ ] 12.5 Test: `GuardarMiCredencialRequest` con password renueva `actualizado_en` a
+      "ahora" (ya lo hace `guardar_token`) — verificar explícitamente que esto reinicia
+      la cuenta de los 30 días, no solo que guarda el token.
+
+## 13. Fix de auditoría — credencial docente quedaba con `modulo=NULL`
+
+> Bug real encontrado (2026-07-31), independiente de la sección 12 pero se arrastra a
+> los eventos nuevos si no se corrige antes: `_auditar_credencial` (config/router.py:361)
+> usa `accion="moodle_credencial_update"` (guion bajo) sin pasar `modulo=` explícito.
+> `modulo_de_accion()` (audit/acciones.py:131) solo matchea `a == "moodle.sync"` (con
+> punto) — nunca "moodle_credencial_update". Resultado actual: estas entradas NUNCA
+> aparecen filtrando por módulo "MOODLE" en Auditoría. Separar de una además de
+> "Configuración → Campus Moodle" (que es `modulo=CONFIGURACION`, institucional):
+> `modulo=MOODLE` + `entidad=USUARIO` (personal del docente) vs `modulo=CONFIGURACION`
+> + `entidad=CONFIGURACION` (institucional) — filtrando por módulo quedan separados
+> sin ambigüedad.
+
+- [ ] 13.1 Test (RED): reproducir el bug — auditar con `accion="moodle_credencial_update"`
+      sin `modulo=` explícito y verificar que `modulo_de_accion()` devuelve `None` hoy.
+- [ ] 13.2 Agregar a `AccionAuditoria` (acciones.py) los 4 eventos reales en vez del
+      string suelto `ACCION_MOODLE_CREDENCIAL`: `MOODLE_CREDENCIAL_CONECTAR`,
+      `MOODLE_CREDENCIAL_DESCONECTAR`, `MOODLE_CREDENCIAL_RENOVAR` (12.5),
+      `MOODLE_CREDENCIAL_VENCIDA` (evento pasivo, se registra la primera vez que
+      `estado()`/`token_de()` detectan vencimiento — una sola vez, no en cada lectura).
+- [ ] 13.3 `_auditar_credencial` pasa `modulo=ModuloAuditoria.MOODLE`,
+      `entidad=EntidadAuditoria.USUARIO`, `entidad_id=usuario_id` explícitos (mismo
+      patrón que ya usa el bloque de config institucional en la línea 268-269).
+- [ ] 13.4 Test: filtrar Auditoría por módulo "MOODLE" trae conectar/desconectar/
+      renovar/vencida del docente; filtrar por "CONFIGURACION" trae SOLO los cambios
+      institucionales (token global, service_shortname) — nunca se mezclan.
+- [ ] 13.5 Migración de datos: las filas históricas con `accion="moodle_credencial_update"`
+      y `modulo IS NULL` quedan así (no se re-escribe audit log — regla dura de
+      inmutabilidad de evidencia); el fix aplica solo hacia adelante. Documentar esto
+      en el PR para que no se lea como "no funcionó".
