@@ -34,6 +34,7 @@ from app.infrastructure.crypto.embedding_encryption import EmbeddingEncryptionSe
 from app.infrastructure.crypto.evidence_encryption import EvidenceCipher
 from app.application.moodle.credencial_docente_service import CredencialDocenteService
 from app.application.moodle.credencial_service import MoodleCredencialResolver
+from app.application.moodle.intentos_fallidos_tracker import IntentosFallidosTracker
 from app.infrastructure.crypto.secret_encryption import SecretCipher
 from app.infrastructure.moodle.wiring import build_writeback_svc_dinamico
 from app.infrastructure.persistence.session_slim import (
@@ -123,6 +124,12 @@ def create_slim_app() -> FastAPI:
         cipher=SecretCipher(key=settings.embedding_encryption_key),
     )
 
+    # Contador en memoria de intentos fallidos de conexión (C-73, seguridad):
+    # avisa si alguien prueba varias contraseñas seguidas contra la cuenta de
+    # un docente. En memoria a propósito (ver docstring del módulo) — no es un
+    # registro forense, es una señal de patrón sospechoso reciente.
+    _intentos_fallidos_docentes = IntentosFallidosTracker()
+
     # Servicio de write-back de nota a Moodle (C-69, D7/D10).
     # La credencial se resuelve en CADA llamada: rotar el token desde la UI toma
     # efecto sin reiniciar. Si no hay credencial, el propio push falla y la nota
@@ -150,6 +157,8 @@ def create_slim_app() -> FastAPI:
         app.state.moodle_credenciales = _moodle_credenciales
         # C-73 §10: credencial personal del docente (la vía principal del write-back).
         app.state.credencial_docente = _credencial_docente
+        # C-73 §13: contador de intentos fallidos (en memoria, ver arriba).
+        app.state.moodle_intentos_fallidos = _intentos_fallidos_docentes
         yield
         await engine.dispose()
 

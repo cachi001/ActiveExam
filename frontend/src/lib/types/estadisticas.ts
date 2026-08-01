@@ -84,6 +84,8 @@ export interface AuditEvento {
   actor: string;
   /** "Nombre Apellido" resuelto del usuario (null si no se pudo resolver). */
   actor_nombre: string | null;
+  /** Email resuelto del usuario (null si no se pudo resolver) — solo el legajo no alcanza para dar seguimiento. */
+  actor_email: string | null;
   accion: string;          // detalle dot-notation (user.create, materia.delete…)
   tipo_accion: string | null; // CREAR / EDITAR / ELIMINAR / CAMBIO_ESTADO
   modulo: string | null;      // USUARIOS / MATERIAS / EXAMENES / …

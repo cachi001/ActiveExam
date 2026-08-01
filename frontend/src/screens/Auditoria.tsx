@@ -30,7 +30,7 @@ const TODOS_MODULOS = [
   { value: 'BIOMETRIA',     label: 'Registro biométrico' },
   { value: 'EVIDENCIA',     label: 'Evidencia de sesiones' },
   { value: 'REVISION',      label: 'Cola de revisión' },
-  { value: 'MOODLE',        label: 'Integración Moodle' },
+  { value: 'MOODLE',        label: 'Campus (Moodle)' },
   { value: 'CONFIGURACION', label: 'Configuración del sistema' },
 ] as const;
 
@@ -44,7 +44,7 @@ const MODULE_LABEL: Record<string, string> = {
   BIOMETRIA: 'Registro biométrico',
   EVIDENCIA: 'Evidencia de sesiones',
   REVISION: 'Cola de revisión',
-  MOODLE: 'Integración Moodle',
+  MOODLE: 'Campus (Moodle)',
   CONFIGURACION: 'Configuración del sistema',
 };
 
@@ -73,6 +73,7 @@ const ACCIONES_POR_MODULO: Record<string, OpcionAccion[]> = {
     { label: 'Editar',          accion: 'materia.update,comision.update' },
     { label: 'Eliminar',        accion: 'materia.delete,comision.delete,inscripcion.delete' },
     { label: 'Cambio de estado', accion: 'materia.set_activa' },
+    { label: 'Asignar docente',  accion: 'comision.set_docente' },
   ],
   EXAMENES: [
     { label: 'Importar examen', accion: 'examen.import' },
@@ -80,6 +81,10 @@ const ACCIONES_POR_MODULO: Record<string, OpcionAccion[]> = {
   ],
   MOODLE: [
     { label: 'Sincronizar nota', accion: 'moodle.sync' },
+    { label: 'Conectar cuenta del campus', accion: 'moodle_credencial.conectar' },
+    { label: 'Renovar cuenta del campus', accion: 'moodle_credencial.renovar' },
+    { label: 'Desconectar cuenta del campus', accion: 'moodle_credencial.desconectar' },
+    { label: 'Intentos fallidos repetidos', accion: 'moodle_credencial.intentos_fallidos' },
   ],
   CONSENTIMIENTO: [
     { label: 'Otorgó consentimiento', accion: 'consent.otorgado' },
@@ -117,12 +122,17 @@ const ACCION_META: Array<{ match: (a: string) => boolean; label: string; color: 
   { match: (a) => a === 'comision.update', label: 'Editó comisión', color: '#8b5cf6', icon: 'edit' },
   { match: (a) => a === 'comision.delete', label: 'Eliminó comisión', color: '#ef4444', icon: 'delete' },
   { match: (a) => a === 'comision.set_activa', label: 'Cambió el estado de la comisión', color: '#f59e0b', icon: 'toggle_on' },
+  { match: (a) => a === 'comision.set_docente', label: 'Asignó docente a la comisión', color: '#06b6d4', icon: 'assignment_ind' },
   { match: (a) => a === 'inscripcion.create', label: 'Inscribió alumno', color: '#10b981', icon: 'person_add' },
   { match: (a) => a === 'inscripcion.delete', label: 'Dio de baja inscripción', color: '#ef4444', icon: 'person_remove' },
   { match: (a) => a === 'examen.moodle_target', label: 'Fijó destino Moodle', color: '#0891b2', icon: 'link' },
   { match: (a) => a === 'examen.config_update', label: 'Cambió config del examen', color: '#f59e0b', icon: 'tune' },
   { match: (a) => a === 'examen.seleccion_preguntas', label: 'Cambió preguntas', color: '#2563eb', icon: 'quiz' },
   { match: (a) => a === 'moodle.sync', label: 'Sincronizó a Moodle', color: '#7c3aed', icon: 'sync' },
+  { match: (a) => a === 'moodle_credencial.conectar', label: 'Conectó su cuenta del campus', color: '#2563eb', icon: 'link' },
+  { match: (a) => a === 'moodle_credencial.renovar', label: 'Renovó su cuenta del campus', color: '#2563eb', icon: 'autorenew' },
+  { match: (a) => a === 'moodle_credencial.desconectar', label: 'Desconectó su cuenta del campus', color: '#f59e0b', icon: 'link_off' },
+  { match: (a) => a === 'moodle_credencial.intentos_fallidos', label: 'Intentos fallidos repetidos', color: '#ef4444', icon: 'gpp_maybe' },
   { match: (a) => a.startsWith('examen.'), label: 'Cargó examen', color: '#2563eb', icon: 'fact_check' },
   { match: (a) => a === 'enrollment.embedding_referencia.alta', label: 'Registró foto de referencia', color: '#8b5cf6', icon: 'photo_camera' },
   { match: (a) => a.startsWith('enrollment'), label: 'Renovó foto de referencia', color: '#8b5cf6', icon: 'photo_camera' },
@@ -140,6 +150,8 @@ const ACCION_META: Array<{ match: (a: string) => boolean; label: string; color: 
   { match: (a) => a.startsWith('firma_maestra') || a.startsWith('verify_chain'), label: 'Verificó integridad', color: '#7c3aed', icon: 'verified_user' },
   { match: (a) => a.startsWith('retention'), label: 'Retención / borrado', color: '#64748b', icon: 'auto_delete' },
   { match: (a) => a.startsWith('dsr') || a.startsWith('derecho_acceso'), label: 'Derecho del titular', color: '#0d9488', icon: 'policy' },
+  { match: (a) => a === 'auditoria.export.xlsx', label: 'Exportó auditoría a Excel', color: '#059669', icon: 'grid_on' },
+  { match: (a) => a === 'auditoria.export.pdf', label: 'Exportó auditoría a PDF', color: '#dc2626', icon: 'picture_as_pdf' },
 ];
 
 function accionMeta(accion: string): { label: string; color: string; icon: string } {
@@ -468,6 +480,10 @@ export default function Auditoria() {
             {data.items.map((e) => {
               const meta = accionMeta(e.accion);
               const nombre = e.actor_nombre ?? e.actor;
+              // Nombre + email da seguimiento real; el legajo solo no alcanza.
+              // Si no hay nombre resuelto, el legajo ya va como línea principal
+              // — no hace falta repetirlo abajo.
+              const subtexto = e.actor_nombre ? (e.actor_email ?? e.actor) : null;
               const ruta = navegarA(e);
               return (
                 <div
@@ -493,7 +509,7 @@ export default function Auditoria() {
                           {meta.label}
                         </span>
                         {e.modulo && (
-                          <span className="inline-flex items-center rounded-full bg-surface-100 px-2.5 py-0.5 text-[11px] font-medium text-on-surface-variant">
+                          <span className="inline-flex items-center rounded-full bg-primary-fixed px-2.5 py-0.5 text-[11px] font-medium text-primary">
                             {MODULE_LABEL[e.modulo] ?? (e.modulo.charAt(0) + e.modulo.slice(1).toLowerCase())}
                           </span>
                         )}
@@ -511,14 +527,21 @@ export default function Auditoria() {
                       </div>
                     </div>
 
-                    <p className="mt-2.5 text-[15px] font-semibold text-on-surface truncate" title={nombre}>
-                      {nombre}
-                    </p>
-                    {e.actor_nombre && (
-                      <p className="text-[12.5px] text-on-surface-variant truncate" title={e.actor}>
-                        {e.actor}
-                      </p>
-                    )}
+                    <div className="mt-2.5 flex items-center gap-2">
+                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-surface-200 text-on-surface-variant">
+                        <Icon name="person" className="text-[16px]" fill />
+                      </span>
+                      <div className="min-w-0">
+                        <p className="text-[15px] font-semibold text-on-surface truncate" title={nombre}>
+                          {nombre}
+                        </p>
+                        {subtexto && (
+                          <p className="text-[12.5px] text-on-surface-variant truncate" title={subtexto}>
+                            {subtexto}
+                          </p>
+                        )}
+                      </div>
+                    </div>
                     {e.proposito && <Proposito proposito={e.proposito} />}
                   </div>
                 </div>

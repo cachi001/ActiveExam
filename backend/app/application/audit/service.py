@@ -195,14 +195,15 @@ async def listar_auditoria(
         )
     ).scalars().all()
 
-    # Resolver actor → "Nombre Apellido" (el actor es email o id_institucional).
-    nombres = await _resolver_nombres(session, {r.actor for r in rows})
+    # Resolver actor → ("Nombre Apellido", email) (el actor es email o id_institucional).
+    info_actores = await _resolver_nombres(session, {r.actor for r in rows})
 
     items = [
         ActividadAuditoria(
             id=str(r.id),
             actor=r.actor,
-            actor_nombre=nombres.get(r.actor),
+            actor_nombre=(info_actores.get(r.actor) or (None, None))[0],
+            actor_email=(info_actores.get(r.actor) or (None, None))[1],
             timestamp=str(r.timestamp),
             accion=r.accion,
             tipo_accion=r.tipo_accion,
@@ -231,16 +232,46 @@ async def listar_modulos(session: AsyncSession) -> list[str]:
     return [row for (row,) in result.all()]
 
 
-async def _resolver_nombres(session: AsyncSession, actores: set[str]) -> dict[str, str]:
-    """Mapa actor → 'Nombre Apellido'. El actor puede ser email, id_institucional o UUID;
-    se busca por los tres. Usuarios sin nombre (seed/federados) quedan fuera del mapa.
+async def _resolver_nombres(
+    session: AsyncSession, actores: set[str]
+) -> dict[str, tuple[str, str]]:
+    """Mapa actor → ("Nombre Apellido", email). El actor puede ser email,
+    id_institucional (legajo) o UUID; se busca por los tres. Usuarios sin
+    nombre (seed/federados) quedan fuera del mapa.
+
+    BUG REAL que esto corrige: `UsuarioModel.id` es UUID en la base. Filtrar
+    esa columna con `.in_(actores)` mandándole el set COMPLETO (que en el caso
+    normal son legajos tipo "DOC-001", no UUIDs) hacía que asyncpg fallara al
+    castear el parámetro -> DataError -> el `except Exception: return {}` de
+    abajo lo silenciaba SIEMPRE. Resultado: actor_nombre/actor_email nunca se
+    resolvían para el caso normal (actor = legajo), y ningún test lo notó
+    porque nadie afirmaba sobre el resultado, solo que no rompiera.
+    Arreglo: solo se compara `id` contra los valores de `actores` que
+    efectivamente parsean como UUID.
 
     Best-effort dentro de un SAVEPOINT: si la tabla `usuario` no está disponible
     (entorno acotado / test aislado), degrada a mapa vacío sin romper la lectura
     del audit log ni la sesión."""
     if not actores:
         return {}
+    import uuid as _uuid
+
     from app.infrastructure.persistence.models.transactional import UsuarioModel
+
+    uuids_validos = set()
+    for a in actores:
+        try:
+            _uuid.UUID(a)
+        except (ValueError, AttributeError, TypeError):
+            continue
+        uuids_validos.add(a)
+
+    condiciones = [
+        UsuarioModel.email.in_(actores),
+        UsuarioModel.id_institucional.in_(actores),
+    ]
+    if uuids_validos:
+        condiciones.append(UsuarioModel.id.in_(uuids_validos))
 
     try:
         async with session.begin_nested():
@@ -252,24 +283,21 @@ async def _resolver_nombres(session: AsyncSession, actores: set[str]) -> dict[st
                         UsuarioModel.id_institucional,
                         UsuarioModel.nombre,
                         UsuarioModel.apellido,
-                    ).where(
-                        UsuarioModel.email.in_(actores)
-                        | UsuarioModel.id_institucional.in_(actores)
-                        | UsuarioModel.id.in_(actores)
-                    )
+                    ).where(or_(*condiciones))
                 )
             ).all()
     except Exception:
         return {}
-    mapa: dict[str, str] = {}
+    mapa: dict[str, tuple[str, str]] = {}
     for uid, email, idinst, nombre, apellido in rows:
         completo = " ".join(p for p in (nombre, apellido) if p).strip()
         if not completo:
             continue
+        info = (completo, email or "")
         if email in actores:
-            mapa[email] = completo
+            mapa[email] = info
         if idinst in actores:
-            mapa[idinst] = completo
+            mapa[idinst] = info
         if uid in actores:
-            mapa[uid] = completo
+            mapa[uid] = info
     return mapa

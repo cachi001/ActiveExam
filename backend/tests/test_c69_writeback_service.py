@@ -121,7 +121,7 @@ class _ServicioConDocenteResuelto(MoodleWritebackService):
     """
 
     async def _credencial_para(self, db, session_id):
-        return "token_del_docente", "docente-test-1", "Laura Fernández"  # noqa: S106
+        return "token_del_docente", "docente-test-1", "Laura Fernández", None  # noqa: S106
 
 
 @pytest.fixture

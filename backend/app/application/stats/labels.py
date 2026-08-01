@@ -80,17 +80,23 @@ ETIQUETA_ACCION: dict[str, str] = {
     "comision.update": "Editó comisión",
     "comision.delete": "Eliminó comisión",
     "comision.set_activa": "Cambió el estado de la comisión",
+    "comision.set_docente": "Asignó docente a la comisión",
     "examen.import": "Cargó un examen",
     "examen.moodle_target": "Fijó destino de la nota en Moodle",
     "examen.config_update": "Cambió la configuración del examen",
     "examen.seleccion_preguntas": "Cambió las preguntas del examen",
     "moodle.sync": "Sincronizó notas a Moodle",
+    "moodle_credencial.conectar": "Conectó su cuenta del campus",
+    "moodle_credencial.renovar": "Renovó su cuenta del campus",
+    "moodle_credencial.desconectar": "Desconectó su cuenta del campus",
+    "moodle_credencial.intentos_fallidos": "Intentos fallidos repetidos en el campus",
     "inscripcion.create": "Inscribió a un alumno",
     "inscripcion.delete": "Dio de baja una inscripción",
     "config_update": "Cambió la configuración del sistema",
     "consent.otorgado": "Otorgó el consentimiento",
     "consent_alternative_chosen": "Eligió la vía alternativa",
     "biometria.verificacion": "Verificó la identidad",
+    "enrollment.embedding_referencia.alta": "Registró la foto de referencia",
     "enrollment.embedding_referencia.renovacion": "Renovó la foto de referencia",
     "acceso_evidencia": "Accedió a evidencia",
     "deposito_evidencia": "Depositó evidencia",
@@ -100,6 +106,8 @@ ETIQUETA_ACCION: dict[str, str] = {
     "retention.session.hold_deferred": "Difirió la eliminación por un hold",
     "retention.biometric.egress": "Eliminó el dato biométrico al egreso",
     "derecho_acceso.informe_devolucion": "Entregó el informe al alumno",
+    "auditoria.export.xlsx": "Exportó el registro de auditoría a Excel",
+    "auditoria.export.pdf": "Exportó el registro de auditoría a PDF",
 }
 
 
@@ -122,7 +130,7 @@ def etiqueta_accion(accion: str) -> str:
 
 # --- Módulos del registro de auditoría --------------------------------------
 # Fuente única del nombre legible del módulo (espeja TODOS_MODULOS del front).
-# El export y cualquier reporte deben mostrar "Integración Moodle", nunca "MOODLE".
+# El export y cualquier reporte deben mostrar "Campus (Moodle)", nunca "MOODLE".
 ETIQUETA_MODULO: dict[str, str] = {
     "USUARIOS": "Gestión de usuarios",
     "MATERIAS": "Materias y comisiones",
@@ -132,7 +140,7 @@ ETIQUETA_MODULO: dict[str, str] = {
     "BIOMETRIA": "Registro biométrico",
     "EVIDENCIA": "Evidencia de sesiones",
     "REVISION": "Cola de revisión",
-    "MOODLE": "Integración Moodle",
+    "MOODLE": "Campus (Moodle)",
     "CONFIGURACION": "Configuración del sistema",
 }
 

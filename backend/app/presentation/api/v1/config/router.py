@@ -27,11 +27,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.application.audit.acciones import (
+    AccionAuditoria,
     EntidadAuditoria,
     ModuloAuditoria,
     TipoAccionAuditoria,
 )
 from app.application.config.service import ConfigEfectiva, ConfigService
+from app.application.moodle.credencial_docente_service import ESTADO_ACTIVA
 from app.domain.audit_chain import AuditEntry
 from app.domain.auth.identity import AuthenticatedPrincipal
 from app.domain.auth.roles import Rol
@@ -359,9 +361,19 @@ def _a_response(estado) -> MoodleCredencialResponse:
 
 
 async def _auditar_credencial(
-    request: Request, principal: AuthenticatedPrincipal, proposito: str
+    request: Request,
+    principal: AuthenticatedPrincipal,
+    proposito: str,
+    accion: str = ACCION_MOODLE_CREDENCIAL,
 ) -> None:
-    """Deja rastro del cambio de credencial. NUNCA registra el token."""
+    """Deja rastro del cambio de credencial PERSONAL del docente. NUNCA el token.
+
+    `modulo=MOODLE` + `entidad=USUARIO` explícitos (C-73 §13): antes quedaba
+    modulo=NULL (invisible al filtrar Auditoría por MOODLE) y además, sin esto,
+    se hubiera confundido con `modulo=CONFIGURACION` de la credencial
+    institucional del campus (ver el bloque de arriba, línea ~268) — son cosas
+    distintas: esta es cada docente con SU propia cuenta.
+    """
     session_factory = _get_session_factory(request)
     async with session_factory() as session:
         await AuditLogSqlRepository(session).append(
@@ -370,9 +382,12 @@ async def _auditar_credencial(
                 timestamp=_now_iso(),
                 ip="",
                 user_agent="",
-                accion=ACCION_MOODLE_CREDENCIAL,
+                accion=accion,
                 evidencia_id=None,
                 proposito=proposito,
+                modulo=ModuloAuditoria.MOODLE,
+                entidad=EntidadAuditoria.USUARIO,
+                entidad_id=_usuario_del_token(principal),
             )
         )
         await session.commit()
@@ -496,6 +511,13 @@ class GuardarMiCredencialRequest(BaseModel):
     base_url: str | None = Field(default=None, max_length=512)
 
 
+def _intentos_fallidos(request: Request):
+    """`IntentosFallidosTracker` en memoria (app.state). `None` si no está
+    cableado — degrada sin romper: es una señal de seguridad extra, no una
+    dependencia dura del flujo de conectar la cuenta."""
+    return getattr(request.app.state, "moodle_intentos_fallidos", None)
+
+
 def _servicio_credencial_docente(request: Request):
     svc = getattr(request.app.state, "credencial_docente", None)
     if svc is None:
@@ -558,6 +580,9 @@ async def guardar_mi_credencial_moodle(
     institucional = await _resolver_credenciales(request).resolver()
     # URL efectiva: la que el docente ingresó, o la institucional como fallback.
     base_url_efectiva = (body.base_url or "").strip() or institucional.base_url
+    # Estado ANTES de escribir (C-73 §12/§13): una vez guardado ya no se puede
+    # saber si había algo antes, ni si hacía falta.
+    estado_previo = await svc.estado(usuario_id)
 
     if body.token:
         estado = await svc.guardar_token(
@@ -566,7 +591,6 @@ async def guardar_mi_credencial_moodle(
             token=body.token,
             base_url=base_url_efectiva,
         )
-        como = "con un token emitido por el campus"
     else:
         from app.application.moodle.token_exchange import TokenExchangeError
 
@@ -580,18 +604,55 @@ async def guardar_mi_credencial_moodle(
                 service_shortname=fila,
             )
         except TokenExchangeError as exc:
+            # Contador en memoria (C-73, seguridad): no cada typo individual,
+            # solo cuando se acumulan varios seguidos — señal de alguien
+            # probando contraseñas, no un registro forense de cada fallo.
+            tracker = _intentos_fallidos(request)
+            if tracker is not None and tracker.registrar_fallo(usuario_id):
+                await _auditar_credencial(
+                    request,
+                    principal,
+                    "Varios intentos fallidos seguidos conectando su cuenta del campus",
+                    accion=AccionAuditoria.MOODLE_CREDENCIAL_INTENTOS_FALLIDOS,
+                )
             # El mensaje de estos errores está redactado para el docente y NUNCA
             # incluye la contraseña (garantizado por test en token_exchange).
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail={"error": "canje_fallido", "mensaje": str(exc)},
             ) from exc
-        como = "canjeando su contraseña por un token"
 
-    # Se audita el hecho, jamás el secreto ni el usuario de campus.
-    await _auditar_credencial(
-        request, principal, f"Conectó su cuenta del campus ({como})"
+    # Un intento correcto borra los fallos previos: no se arrastran a la
+    # próxima tanda.
+    tracker = _intentos_fallidos(request)
+    if tracker is not None:
+        tracker.resetear(usuario_id)
+
+    # Se audita el hecho, jamás la contraseña ni el token. El detalle dice CON
+    # QUÉ CUENTA y QUÉ CAMPUS — cómo se obtuvo el token (contraseña vs. pegado
+    # a mano) es un detalle técnico que no aporta nada a quien lee Auditoría y
+    # generaba confusión ("¿canjeó? ¿con un token si fue por contraseña?").
+    # RENOVAR significa "hacía falta" (C-73 §13): si ya estaba activa y sana,
+    # cargarla de nuevo no es un evento de seguridad distinto — no se audita,
+    # solo se extiende el plazo en silencio (evita ensuciar Auditoría con
+    # renovaciones sin motivo cada vez que alguien reingresa su contraseña).
+    detalle = (
+        f"Usuario del campus: {body.moodle_username} · Campus: {base_url_efectiva}"
     )
+    if not estado_previo.configurada:
+        await _auditar_credencial(
+            request,
+            principal,
+            f"Conectó su cuenta del campus. {detalle}",
+            accion=AccionAuditoria.MOODLE_CREDENCIAL_CONECTAR,
+        )
+    elif estado_previo.estado != ESTADO_ACTIVA:
+        await _auditar_credencial(
+            request,
+            principal,
+            f"Renovó su cuenta del campus. {detalle}",
+            accion=AccionAuditoria.MOODLE_CREDENCIAL_RENOVAR,
+        )
     return _a_response_docente(estado, base_url_fallback=institucional.base_url)
 
 
@@ -608,7 +669,12 @@ async def borrar_mi_credencial_moodle(
     """
     svc = _servicio_credencial_docente(request)
     estado = await svc.borrar(_usuario_del_token(principal))
-    await _auditar_credencial(request, principal, "Desconectó su cuenta del campus")
+    await _auditar_credencial(
+        request,
+        principal,
+        "Desconectó su cuenta del campus",
+        accion=AccionAuditoria.MOODLE_CREDENCIAL_DESCONECTAR,
+    )
     institucional = await _resolver_credenciales(request).resolver()
     return _a_response_docente(estado, base_url_fallback=institucional.base_url)
 

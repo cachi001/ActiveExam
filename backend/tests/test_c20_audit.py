@@ -128,6 +128,49 @@ async def test_filtro_por_accion_multi_patron_or(session):
 
 
 @pytest.mark.asyncio
+async def test_actor_nombre_y_email_se_resuelven_cuando_actor_es_legajo(session):
+    """BUG REAL: `_resolver_nombres` hacía `UsuarioModel.id.in_(actores)` con el
+    actor tal cual (legajo, ej. "DOC-DEMO-001") — asyncpg intenta castearlo a
+    UUID para esa columna y explota con DataError. El `except Exception: return
+    {}` de afuera lo silenciaba: `actor_nombre` quedaba SIEMPRE None para
+    cualquier actor que fuera legajo (el caso normal), sin que ningún test lo
+    hubiera notado."""
+    import uuid
+
+    from app.infrastructure.persistence.models.transactional import UsuarioModel
+
+    legajo = f"DOC-TEST-{uuid.uuid4().hex[:6]}"
+    u = UsuarioModel(
+        id_institucional=legajo,
+        email=f"{legajo.lower()}@uni.edu",
+        nombre="Laura",
+        apellido="Fernández",
+    )
+    session.add(u)
+    await session.flush()
+    await session.commit()
+    try:
+        await registrar(
+            session, actor=legajo, accion="moodle_credencial.conectar",
+            proposito="Conectó su cuenta del campus",
+        )
+        await session.commit()
+
+        pag = await listar_auditoria(session, AuditFiltros(actor=legajo))
+
+        assert pag.total == 1
+        item = pag.items[0]
+        assert item.actor == legajo
+        assert item.actor_nombre == "Laura Fernández"
+        assert item.actor_email == f"{legajo.lower()}@uni.edu"
+    finally:
+        await session.execute(
+            text("DELETE FROM usuario WHERE id_institucional = :l"), {"l": legajo}
+        )
+        await session.commit()
+
+
+@pytest.mark.asyncio
 async def test_filtro_por_actor(session):
     await _sembrar(session)
     pag = await listar_auditoria(session, AuditFiltros(actor="coord"))

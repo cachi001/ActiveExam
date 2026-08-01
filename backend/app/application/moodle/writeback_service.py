@@ -18,6 +18,7 @@ from enum import StrEnum
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.application.moodle.credencial_docente_service import ESTADO_ACTIVA
 from app.application.moodle.identity_mapper import IdentityResolutionError, MoodleIdentityMapper
 from app.infrastructure.moodle.client import MoodleGradeWriteError, MoodleRestClient
 from app.infrastructure.persistence.models.moodle_writeback import (
@@ -26,6 +27,34 @@ from app.infrastructure.persistence.models.moodle_writeback import (
 )
 
 logger = logging.getLogger(__name__)
+
+#: Por que `_credencial_para` no trajo un token, y que decirle al docente en cada
+#: caso (C-73 §12). Los tres primeros ya existian implicitos en el mensaje unico
+#: de antes; `caida` y `vencida` se separan porque el remedio es el mismo (volver
+#: a conectar) pero la CAUSA no: una la tumbo Moodle, la otra vencio por tiempo
+#: sin que nadie la haya rechazado.
+MENSAJE_POR_MOTIVO_BLOQUEO: dict[str, str] = {
+    "sin_docente": (
+        "sin_credencial_docente: la comisión no tiene docente a cargo con "
+        "su cuenta del campus conectada. La nota no se envía para que no "
+        "quede en la libreta sin responsable."
+    ),
+    "sin_credencial_docente": (
+        "sin_credencial_docente: la comisión no tiene docente a cargo con "
+        "su cuenta del campus conectada. La nota no se envía para que no "
+        "quede en la libreta sin responsable."
+    ),
+    "caida": (
+        "credencial_caida: el campus dejó de aceptar la conexión del docente. "
+        "Volvé a conectarte en Configuración → Campus (Moodle) para reintentar."
+    ),
+    "vencida": (
+        "credencial_vencida: pasaron 30 días desde que el docente conectó su "
+        "cuenta del campus. Por seguridad, tiene que volver a cargar su "
+        "contraseña en Configuración → Campus (Moodle) — no fue el campus quien "
+        "rechazó la conexión, venció por tiempo."
+    ),
+}
 
 
 class WritebackEstado(StrEnum):
@@ -141,11 +170,14 @@ class MoodleWritebackService:
 
     async def _credencial_para(
         self, db: AsyncSession, session_id: str
-    ) -> tuple[str | None, str | None, str | None]:
+    ) -> tuple[str | None, str | None, str | None, str | None]:
         """Credencial del DOCENTE con la que se devuelve ESTA nota (C-73 §10.4).
 
         Deriva sesion -> examen -> comision -> docente y devuelve
-        ``(token, docente_id, nombre_visible)``.
+        ``(token, docente_id, nombre_visible, motivo_bloqueo)``. ``motivo_bloqueo``
+        es ``None`` cuando hay token; si no, una de
+        ``"sin_docente"|"sin_credencial_docente"|"caida"|"vencida"`` (C-73 §12) —
+        indexa a `MENSAJE_POR_MOTIVO_BLOQUEO` para el mensaje que ve el docente.
 
         ``nombre_visible`` es "Nombre Apellido" — es lo que termina en la columna
         *Fuente* de la libreta de Moodle, y ahi lo lee una PERSONA. Un legajo obliga a
@@ -160,7 +192,7 @@ class MoodleWritebackService:
         que es un bloqueo visible en vez de una firma equivocada.
         """
         if self._cred_docente is None:
-            return None, None, None
+            return None, None, None, "sin_docente"
 
         from app.infrastructure.persistence.models.exam_content import (
             ComisionModel,
@@ -197,16 +229,20 @@ class MoodleWritebackService:
         ).first()
 
         if not fila or not fila[0]:
-            return None, None, None
+            return None, None, None, "sin_docente"
 
         docente_id, legajo, nombre, apellido = fila[0], fila[1], fila[2], fila[3]
         # "Nombre Apellido"; si el usuario no los tiene cargados, el legajo.
         visible = " ".join(p for p in (nombre, apellido) if p).strip() or legajo
+        cred_estado = await self._cred_docente.estado(docente_id)
+        if not cred_estado.configurada:
+            return None, docente_id, visible, "sin_credencial_docente"
+        if cred_estado.estado != ESTADO_ACTIVA:
+            # `caida` o `vencida` (C-73 §12) — motivo distinto, remedio igual
+            # (reconectar), pero el mensaje tiene que decir la causa correcta.
+            return None, docente_id, visible, cred_estado.estado
         token = await self._cred_docente.token_de(docente_id)
-        if not token:
-            # Tiene docente, pero no conectó su cuenta o su token está caído.
-            return None, docente_id, visible
-        return token, docente_id, visible
+        return token, docente_id, visible, None
 
     async def _nota_maxima_del_examen(
         self, db: AsyncSession, session_id: str
@@ -324,22 +360,22 @@ class MoodleWritebackService:
         # VA ANTES DEL MAPEO DE IDENTIDAD (C-73 Fase 2) por dos razones: el mapeo
         # ahora se hace CON este token, y si no hay credencial no tiene sentido
         # molestar a Moodle para despues retener la nota igual.
-        token_docente, docente_id, docente_nombre = await self._credencial_para(
-            db, session_id
+        token_docente, docente_id, docente_nombre, motivo_bloqueo = (
+            await self._credencial_para(db, session_id)
         )
 
         if not token_docente:
             # Bloqueo VISIBLE en vez de firma equivocada. La nota queda pendiente y
-            # la pantalla de resultados explica por que (motivo `sin_credencial_docente`).
-            # Se destraba sola en cuanto el docente conecta su cuenta y se re-sincroniza.
+            # la pantalla de resultados explica por que — el motivo correcto, no
+            # siempre "nunca conectó" (C-73 §12: puede haberse caído o vencido).
+            # Se destraba sola en cuanto el docente (re)conecta su cuenta.
             await self._registrar_fallo(
                 db=db,
                 estado=estado,
                 moodle_userid=None,
-                error=(
-                    "sin_credencial_docente: la comisión no tiene docente a cargo con "
-                    "su cuenta del campus conectada. La nota no se envía para que no "
-                    "quede en la libreta sin responsable."
+                error=MENSAJE_POR_MOTIVO_BLOQUEO.get(
+                    motivo_bloqueo or "sin_credencial_docente",
+                    MENSAJE_POR_MOTIVO_BLOQUEO["sin_credencial_docente"],
                 ),
             )
             return

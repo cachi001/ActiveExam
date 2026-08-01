@@ -17,7 +17,7 @@ import SeccionProctoring from './configuracion/SeccionProctoring';
 import SeccionScoring from './configuracion/SeccionScoring';
 import SeccionDeteccion from './configuracion/SeccionDeteccion';
 import SeccionConsentimiento from './configuracion/SeccionConsentimiento';
-import MiCuentaCampus from './configuracion/MiCuentaCampus';
+import MiCuentaCampus, { MiCuentaCampusAyuda } from './configuracion/MiCuentaCampus';
 import SeccionSeguridad from './configuracion/SeccionSeguridad';
 import { useAuth } from '../lib/authStore';
 
@@ -58,58 +58,66 @@ export default function Configuracion() {
     <StaffShell
       nav={STAFF_NAV}
       title="Configuración del sistema"
+      // Docente: la única sección que ve es "Campus (Moodle)", que ya trae su
+      // propio título + explicación en la card de abajo — repetir la misma
+      // frase acá arriba era ruido, no contexto nuevo.
       subtitle={
         esAdmin
           ? 'Ajustes globales del proctoring. Los cambios se aplican a partir del próximo examen.'
-          : 'Conectá tu cuenta del campus para que las notas de tus comisiones puedan viajar.'
+          : undefined
       }
       help={AYUDA}
     >
       <div className="animate-in fade-in duration-500">
-        {/* Tabs de sección — una sola fila; scroll horizontal en mobile */}
-        <div className="border-b border-outline-variant/60 flex overflow-x-auto no-scrollbar">
-          {tabs.map((t) => {
-            const active = tab === t.id;
-            return (
-              <button
-                key={t.id}
-                onClick={() => setTab(t.id)}
-                className={`inline-flex items-center gap-1.5 px-4 first:pl-0 py-2.5 text-[13px] font-medium border-b-2 -mb-px whitespace-nowrap shrink-0 transition-colors ${
-                  active
-                    ? 'border-primary text-primary'
-                    : 'border-transparent text-on-surface-variant hover:text-on-surface'
-                }`}
-              >
-                <Icon name={t.icon} className="text-[16px]" />
-                {t.label}
-              </button>
-            );
-          })}
-        </div>
+        {/* Tabs de sección — solo tiene sentido si hay más de una opción. Un
+            docente solo ve "Campus (Moodle)": mostrarle un selector de una sola
+            pestaña es ruido, va directo al contenido. */}
+        {tabs.length > 1 && (
+          <div className="border-b border-outline-variant/60 flex overflow-x-auto no-scrollbar">
+            {tabs.map((t) => {
+              const active = tab === t.id;
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => setTab(t.id)}
+                  className={`px-4 first:pl-0 py-2.5 text-[13px] font-medium border-b-2 -mb-px whitespace-nowrap shrink-0 transition-colors ${
+                    active
+                      ? 'border-primary text-primary'
+                      : 'border-transparent text-on-surface-variant hover:text-on-surface'
+                  }`}
+                >
+                  {t.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {/* Contenido de la sección activa */}
-        <div className="pt-lg">
+        <div className={tabs.length > 1 ? 'pt-lg' : ''}>
           {esAdmin && tab === 'proctoring' && <SeccionProctoring />}
           {esAdmin && tab === 'scoring' && <SeccionScoring />}
           {esAdmin && tab === 'deteccion' && <SeccionDeteccion />}
           {esAdmin && tab === 'consentimiento' && <SeccionConsentimiento />}
           {tab === 'moodle' && (
-            <div className="space-y-lg">
+            <Card className="space-y-lg">
               <div className="pb-4 border-b border-outline-variant/40">
-                <h2 className="font-headline text-[24px] font-bold text-on-surface tracking-tight leading-tight">
-                  Campus (Moodle)
-                </h2>
-                <p className="text-[13.5px] text-on-surface-variant leading-relaxed max-w-2xl mt-2">
+                <div className="flex items-center gap-1.5">
+                  <Icon name="sync_alt" className="text-[20px] text-on-surface" />
+                  <h2 className="font-headline text-[24px] font-bold text-on-surface tracking-tight leading-tight">
+                    Campus (Moodle)
+                  </h2>
+                  {MiCuentaCampusAyuda}
+                </div>
+                <p className="text-[13.5px] text-on-surface-variant leading-relaxed max-w-2xl mt-1">
                   Conectá tu cuenta del campus para que las notas de tus comisiones puedan viajar.
                 </p>
               </div>
-              <Card>
-                <MiCuentaCampus />
-              </Card>
-              <Card>
+              <MiCuentaCampus />
+              <div className="pt-lg border-t border-outline-variant/40">
                 <SeccionSeguridad />
-              </Card>
-            </div>
+              </div>
+            </Card>
           )}
         </div>
       </div>

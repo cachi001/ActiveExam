@@ -89,6 +89,19 @@ class AccionAuditoria(StrEnum):
     # campus. Debe quedar trazada (quién sincronizó qué examen y con qué resultado).
     MOODLE_SYNC = "moodle.sync"
 
+    # ── Credencial PERSONAL de Moodle del docente (C-73 §13) ──────────────
+    # Distinta de la config institucional del campus (modulo=CONFIGURACION,
+    # ver CONFIG_ACTUALIZACION): esto es cada docente conectando/renovando SU
+    # propia cuenta. Reemplaza el string suelto "moodle_credencial_update" (guion
+    # bajo, sin modulo — quedaba invisible al filtrar Auditoría por MOODLE).
+    MOODLE_CREDENCIAL_CONECTAR = "moodle_credencial.conectar"
+    MOODLE_CREDENCIAL_DESCONECTAR = "moodle_credencial.desconectar"
+    MOODLE_CREDENCIAL_RENOVAR = "moodle_credencial.renovar"
+    #: Umbral de intentos fallidos SEGUIDOS alcanzado (IntentosFallidosTracker,
+    #: en memoria — no hay tabla de intentos). Señal de "alguien está probando
+    #: contraseñas", no un registro de cada fallo individual.
+    MOODLE_CREDENCIAL_INTENTOS_FALLIDOS = "moodle_credencial.intentos_fallidos"
+
     # ── Inscripciones ────────────────────────────────────────────────────
     INSCRIPCION_ALTA = "inscripcion.create"
     INSCRIPCION_BAJA = "inscripcion.delete"
@@ -118,6 +131,12 @@ class AccionAuditoria(StrEnum):
     # ── Derechos del titular (DSR) ───────────────────────────────────────
     DSR_ACCESO_INFORME = "derecho_acceso.informe_devolucion"
 
+    # ── Export del propio registro de auditoría ──────────────────────────
+    # Descargar el registro completo es en sí una acción sensible (se lleva
+    # datos de quién-hizo-qué del sistema): tiene que quedar su propio rastro.
+    AUDITORIA_EXPORT_XLSX = "auditoria.export.xlsx"
+    AUDITORIA_EXPORT_PDF = "auditoria.export.pdf"
+
 
 # Prefijos de acciones DINÁMICAS (llevan un sufijo variable). Se componen así:
 #   f"{PREFIJO_REVISION_DECISION}{decision}" -> "review.decision.caso_abierto"
@@ -143,7 +162,7 @@ def modulo_de_accion(accion: str | None) -> str | None:
         return ModuloAuditoria.USUARIOS
     if a.startswith(("materia.", "comision.", "inscripcion.")):
         return ModuloAuditoria.MATERIAS
-    if a == "moodle.sync":
+    if a == "moodle.sync" or a.startswith("moodle_credencial."):
         return ModuloAuditoria.MOODLE
     if a.startswith("examen."):
         return ModuloAuditoria.EXAMENES

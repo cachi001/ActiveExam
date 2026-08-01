@@ -12,11 +12,16 @@ import { useCallback, useEffect, useState } from 'react';
 import { adminApi, type MiCuentaCampus as Estado } from '../../lib/apiAdmin';
 import { Button, Icon } from '../../ui/components';
 import { HelpButton } from '../../ui/HelpButton';
+import { useToast } from '../../ui/toast';
+import { avisoConexion } from './miCuentaCampus.helpers';
 
 const LABEL = 'block text-[13px] font-medium text-on-surface mb-1.5';
 const HINT  = 'mt-1.5 text-[12px] text-on-surface-variant/70 leading-relaxed';
 
-const AYUDA = (
+// Se usa en el encabezado de la card contenedora (Configuracion.tsx), no acá:
+// el título "Campus (Moodle)" ya vive afuera, un segundo título adentro era
+// redundante.
+export const MiCuentaCampusAyuda = (
   <HelpButton title="Conectar tu cuenta del campus">
     <p>
       Cuando un alumno tuyo termina un examen, la nota se manda al campus <strong>con
@@ -36,6 +41,7 @@ const AYUDA = (
 );
 
 export default function MiCuentaCampus() {
+  const toast = useToast();
   const [estado, setEstado] = useState<Estado | null>(null);
   const [cargando, setCargando] = useState(true);
   const [campusUrl, setCampusUrl] = useState('');
@@ -78,15 +84,18 @@ export default function MiCuentaCampus() {
         password: secreto,
       });
       aplicar(e);
-      setOk('Tu cuenta quedó conectada.');
+      const msg = 'Tu cuenta quedó conectada.';
+      setOk(msg);
+      toast.success(msg);
     } catch (err) {
       const e = err as { mensaje?: string; status?: number };
-      setError(
+      const msg =
         e.mensaje ??
-          (e.status === 403
-            ? 'No tenés permiso para conectar una cuenta del campus.'
-            : 'No se pudo conectar con el campus. Revisá los datos.'),
-      );
+        (e.status === 403
+          ? 'No tenés permiso para conectar una cuenta del campus.'
+          : 'No se pudo conectar con el campus. Revisá los datos.');
+      setError(msg);
+      toast.error(msg);
     } finally {
       setGuardando(false);
     }
@@ -98,9 +107,13 @@ export default function MiCuentaCampus() {
     setGuardando(true);
     try {
       aplicar(await adminApi.desconectarMiCuentaCampus());
-      setOk('Tu cuenta quedó desconectada.');
+      const msg = 'Tu cuenta quedó desconectada.';
+      setOk(msg);
+      toast.success(msg);
     } catch {
-      setError('No se pudo desconectar.');
+      const msg = 'No se pudo desconectar.';
+      setError(msg);
+      toast.error(msg);
     } finally {
       setGuardando(false);
     }
@@ -110,47 +123,50 @@ export default function MiCuentaCampus() {
     return <div className="h-[200px] bg-surface-container-low rounded animate-pulse" />;
   }
 
-  const conectada = estado?.configurada && estado.estado === 'activa';
-  const caida = estado?.configurada && estado.estado === 'caida';
+  const aviso = avisoConexion(estado?.estado ?? null, estado?.actualizado_en ?? null);
+  const conectada = aviso.tipo === 'ok' || aviso.tipo === 'por_vencer';
+  const caida = aviso.tipo === 'caida';
+  const vencida = aviso.tipo === 'vencida';
+  const porVencer = aviso.tipo === 'por_vencer';
 
   return (
     <div>
-      {/* Encabezado */}
-      <div className="flex items-center gap-1.5 mb-1">
-        <h3 className="text-[15px] font-semibold text-on-surface">Tu cuenta del campus</h3>
-        {AYUDA}
-      </div>
-      <p className={HINT}>En la libreta figura que la nota la pusiste vos.</p>
-
       {/* Estado de conexión */}
       <div
-        className={`mt-4 flex items-start gap-3 rounded border px-4 py-3 text-[13px] ${
-          conectada
-            ? 'border-success/30 bg-success-container/20 text-on-surface'
-            : caida
-              ? 'border-error/30 bg-error-container/20 text-on-surface'
-              : 'border-outline-variant/60 bg-[#f4f5f6] text-on-surface-variant'
+        className={`flex items-start gap-3 rounded border px-4 py-3 text-[13px] ${
+          porVencer
+            ? 'border-warning-200/60 bg-warning-container/20 text-on-surface'
+            : conectada
+              ? 'border-success/30 bg-success-container/20 text-on-surface'
+              : caida || vencida
+                ? 'border-error/30 bg-error-container/20 text-on-surface'
+                : 'border-outline-variant/60 bg-[#f4f5f6] text-on-surface-variant'
         }`}
       >
         <Icon
-          name={conectada ? 'check_circle' : caida ? 'link_off' : 'info'}
+          name={porVencer ? 'error' : conectada ? 'check_circle' : vencida ? 'lock_clock' : caida ? 'link_off' : 'info'}
           className={`text-[16px] shrink-0 mt-0.5 ${
-            conectada ? 'text-success' : caida ? 'text-error' : 'text-on-surface-variant'
+            porVencer ? 'text-warning-500' : conectada ? 'text-success' : caida || vencida ? 'text-error' : 'text-on-surface-variant'
           }`}
-          fill={conectada || caida}
+          fill={conectada || caida || vencida || porVencer}
         />
-        <span>
-          {conectada && (
-            <>
-              Conectado como <strong>{estado?.moodle_username}</strong>
-              {estado?.token_pista && (
-                <span className="text-on-surface-variant"> · ****{estado.token_pista}</span>
-              )}
-            </>
+        <div className="min-w-0">
+          {/* El usuario del campus ya se ve abajo en el formulario — repetirlo
+              acá era redundante. Y si dejó de estar conectado (caída/vencida),
+              decir "conectado como" no tiene sentido: ya no lo está. */}
+          {aviso.tipo === 'ok' && <span>Conectado.</span>}
+          {porVencer && aviso.tipo === 'por_vencer' && (
+            <span>
+              En {aviso.diasRestantes} {aviso.diasRestantes === 1 ? 'día' : 'días'}{' '}
+              vencen tus credenciales y vas a tener que volver a ingresarlas por seguridad.
+            </span>
           )}
-          {caida && 'El campus dejó de aceptar tu llave. Volvé a conectarte.'}
-          {!estado?.configurada && 'Todavía no conectaste tu cuenta. Tus notas se guardan, pero no llegan al campus.'}
-        </span>
+          {caida && <span>El campus dejó de aceptar tu llave. Volvé a conectarte.</span>}
+          {vencida && <span>Tu acceso venció por seguridad, volvé a ingresar tus credenciales.</span>}
+          {!estado?.configurada && (
+            <span>Todavía no conectaste tu cuenta. Tus notas se guardan, pero no llegan al campus.</span>
+          )}
+        </div>
       </div>
 
       {/* Formulario */}

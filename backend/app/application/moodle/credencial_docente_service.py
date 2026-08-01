@@ -18,7 +18,7 @@ DOS FORMAS DE CARGARLA, porque no todos los campus habilitan lo mismo:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
@@ -31,6 +31,21 @@ from app.infrastructure.persistence.models.transactional import (
 
 ESTADO_ACTIVA = "activa"
 ESTADO_CAIDA = "caida"
+#: Vencida por tiempo (C-73 §12): distinto de `caida` (Moodle la rechazo). Se
+#: calcula al leer, no se persiste — evita depender de un job en background.
+ESTADO_VENCIDA = "vencida"
+
+#: Dias sin volver a demostrar la contrasena vigente antes de forzar reconexion.
+#: No guardamos la contrasena (ver docstring del modulo), asi que esto es la unica
+#: forma de comprobar que sigue siendo la correcta: pedirla de nuevo.
+DIAS_VENCIMIENTO_CREDENCIAL = 30
+
+
+def esta_vencida(
+    actualizado_en: datetime, ahora: datetime, dias: int = DIAS_VENCIMIENTO_CREDENCIAL
+) -> bool:
+    """True si pasaron >= `dias` desde la ultima vez que se demostro la contrasena vigente."""
+    return ahora - actualizado_en >= timedelta(days=dias)
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,22 +103,34 @@ class CredencialDocenteService:
             configurada=True,
             moodle_username=fila.moodle_username,
             token_pista=fila.token_pista,
-            estado=fila.estado,
+            estado=self._estado_efectivo(fila),
             actualizado_en=_iso(fila.actualizado_en),
             ultimo_uso_en=_iso(fila.ultimo_uso_en),
             base_url=fila.base_url or None,
         )
 
     async def token_de(self, usuario_id: str) -> str | None:
-        """Token EN CLARO del docente, o ``None`` si no tiene o esta caida.
+        """Token EN CLARO del docente, o ``None`` si no tiene, esta caida o vencio.
 
-        Una credencial `caida` se trata como ausente a proposito: reintentar con un
-        token que Moodle ya rechazo solo produce el mismo error N veces. Quien llama
-        cae al respaldo institucional."""
+        Una credencial `caida` o `vencida` se trata como ausente a proposito:
+        reintentar con un token que Moodle ya rechazo (o cuya contrasena de origen
+        no se revalido hace >= 30 dias) solo produce el mismo error N veces. Quien
+        llama cae al respaldo institucional."""
         fila = await self._leer(usuario_id)
-        if fila is None or fila.estado != ESTADO_ACTIVA:
+        if fila is None or self._estado_efectivo(fila) != ESTADO_ACTIVA:
             return None
         return self._cipher.decrypt(fila.token_cifrado)
+
+    @staticmethod
+    def _estado_efectivo(fila: MoodleCredencialDocenteModel) -> str:
+        """`vencida` es CALCULADA al leer, no una columna: `caida` (Moodle la
+        rechazo) prevalece sobre la antiguedad — el motivo correcto para avisarle
+        al docente es el que realmente paso."""
+        if fila.estado != ESTADO_ACTIVA:
+            return fila.estado
+        if esta_vencida(fila.actualizado_en, datetime.now(timezone.utc)):
+            return ESTADO_VENCIDA
+        return fila.estado
 
     # -- escritura ---------------------------------------------------------
 

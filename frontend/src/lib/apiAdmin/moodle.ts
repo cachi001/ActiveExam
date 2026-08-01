@@ -88,7 +88,11 @@ export interface MiCuentaCampus {
   moodle_username: string | null;
   /** Últimos 4 caracteres, para reconocer cuál cargué. */
   token_pista: string | null;
-  /** 'activa' | 'caida'. `caida` = el campus rechazó el token: hay que recargarlo. */
+  /**
+   * 'activa' | 'caida' | 'vencida'. `caida` = el campus rechazó el token; `vencida`
+   * = pasaron 30 días desde que se demostró la contraseña vigente (C-73 §12) —
+   * en ambos casos hay que recargarla, pero el motivo es distinto.
+   */
   estado: string | null;
   actualizado_en: string | null;
   ultimo_uso_en: string | null;

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import os
 import uuid
+from datetime import datetime, timedelta, timezone
 
 import pytest
 import pytest_asyncio
@@ -21,8 +22,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import NullPool
 
 from app.application.moodle.credencial_docente_service import (
+    DIAS_VENCIMIENTO_CREDENCIAL,
     ESTADO_CAIDA,
+    ESTADO_VENCIDA,
     CredencialDocenteService,
+    esta_vencida,
 )
 from app.infrastructure.crypto.secret_encryption import SecretCipher
 from app.infrastructure.persistence.models.transactional import (
@@ -33,6 +37,35 @@ from app.infrastructure.persistence.models.transactional import (
 # Clave Fernet válida de test (no es un secreto de producción).
 _KEY = "VXqRzW9ksjWE2eCa752juwQdOtAPCrYVnratlmHj7b0="
 _TOKEN = "t0ken-de-moodle-abcd"  # noqa: S105
+
+
+# ---------------------------------------------------------------------------
+# esta_vencida() — pura, sin DB (C-73 §12: revalidacion cada 30 dias)
+# ---------------------------------------------------------------------------
+
+
+def test_esta_vencida_recien_guardada_no_vencio():
+    ahora = datetime(2026, 8, 1, tzinfo=timezone.utc)
+    actualizado_en = ahora
+    assert esta_vencida(actualizado_en, ahora) is False
+
+
+def test_esta_vencida_a_los_29_dias_no_vencio():
+    actualizado_en = datetime(2026, 7, 1, tzinfo=timezone.utc)
+    ahora = actualizado_en + timedelta(days=29)
+    assert esta_vencida(actualizado_en, ahora) is False
+
+
+def test_esta_vencida_a_los_30_dias_exactos_vencio():
+    actualizado_en = datetime(2026, 7, 1, tzinfo=timezone.utc)
+    ahora = actualizado_en + timedelta(days=DIAS_VENCIMIENTO_CREDENCIAL)
+    assert esta_vencida(actualizado_en, ahora) is True
+
+
+def test_esta_vencida_a_los_60_dias_vencio():
+    actualizado_en = datetime(2026, 6, 1, tzinfo=timezone.utc)
+    ahora = actualizado_en + timedelta(days=60)
+    assert esta_vencida(actualizado_en, ahora) is True
 
 
 @pytest.fixture(scope="module")
@@ -184,6 +217,96 @@ async def test_marcar_uso_sella_el_ultimo_uso(service, docente_id):
     assert (await service.estado(docente_id)).ultimo_uso_en is None
     await service.marcar_uso(docente_id)
     assert (await service.estado(docente_id)).ultimo_uso_en is not None
+
+
+async def _envejecer_credencial(factory, docente_id, dias: int) -> None:
+    """Retrasa `actualizado_en` para simular una credencial con antiguedad dada."""
+    async with factory() as s:
+        await s.execute(
+            text(
+                "UPDATE moodle_credencial_docente SET actualizado_en = "
+                ":ts WHERE usuario_id = :uid"
+            ),
+            {
+                "ts": datetime.now(timezone.utc) - timedelta(days=dias),
+                "uid": docente_id,
+            },
+        )
+        await s.commit()
+
+
+@pytest.mark.asyncio
+async def test_credencial_vencida_a_los_30_dias_estado_dice_vencida(
+    service, factory, docente_id
+):
+    await service.guardar_token(
+        usuario_id=docente_id, moodle_username="jperez", token=_TOKEN
+    )
+    await _envejecer_credencial(factory, docente_id, DIAS_VENCIMIENTO_CREDENCIAL)
+
+    estado = await service.estado(docente_id)
+    assert estado.estado == ESTADO_VENCIDA
+
+
+@pytest.mark.asyncio
+async def test_credencial_vencida_token_de_devuelve_none_sin_reintentar(
+    service, factory, docente_id
+):
+    """Igual que `caida`: no reintenta con un token cuya contrasena de origen
+    ya no esta demostrada como vigente."""
+    await service.guardar_token(
+        usuario_id=docente_id, moodle_username="jperez", token=_TOKEN
+    )
+    await _envejecer_credencial(factory, docente_id, DIAS_VENCIMIENTO_CREDENCIAL)
+
+    assert await service.token_de(docente_id) is None
+
+
+@pytest.mark.asyncio
+async def test_credencial_a_los_29_dias_todavia_activa(service, factory, docente_id):
+    await service.guardar_token(
+        usuario_id=docente_id, moodle_username="jperez", token=_TOKEN
+    )
+    await _envejecer_credencial(factory, docente_id, DIAS_VENCIMIENTO_CREDENCIAL - 1)
+
+    estado = await service.estado(docente_id)
+    assert estado.estado == "activa"
+    assert await service.token_de(docente_id) == _TOKEN
+
+
+@pytest.mark.asyncio
+async def test_credencial_caida_prevalece_sobre_vencida(service, factory, docente_id):
+    """Si Moodle ya la rechazo, importa poco que ademas sea vieja: el mensaje
+    correcto es 'se cayo', no 'vencio', porque fue Moodle quien la tumbo."""
+    await service.guardar_token(
+        usuario_id=docente_id, moodle_username="jperez", token=_TOKEN
+    )
+    await service.marcar_caida(docente_id)
+    await _envejecer_credencial(factory, docente_id, DIAS_VENCIMIENTO_CREDENCIAL)
+
+    estado = await service.estado(docente_id)
+    assert estado.estado == ESTADO_CAIDA
+
+
+@pytest.mark.asyncio
+async def test_recargar_una_credencial_vencida_reinicia_el_contador_de_30_dias(
+    service, factory, docente_id
+):
+    """Renovar (guardar_token de nuevo) es la UNICA forma de demostrar la
+    contrasena vigente sin persistirla — tiene que pisar `actualizado_en`."""
+    await service.guardar_token(
+        usuario_id=docente_id, moodle_username="jperez", token=_TOKEN
+    )
+    await _envejecer_credencial(factory, docente_id, DIAS_VENCIMIENTO_CREDENCIAL)
+    assert (await service.estado(docente_id)).estado == ESTADO_VENCIDA
+
+    nuevo = "t0ken-renovado-zzzz"  # noqa: S105
+    estado = await service.guardar_token(
+        usuario_id=docente_id, moodle_username="jperez", token=nuevo
+    )
+    assert estado.estado == "activa"
+    assert (await service.estado(docente_id)).estado == "activa"
+    assert await service.token_de(docente_id) == nuevo
 
 
 @pytest.mark.asyncio

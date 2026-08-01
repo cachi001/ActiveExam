@@ -11,11 +11,18 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from pydantic import BaseModel, ConfigDict
 
+from app.application.audit.acciones import AccionAuditoria
 from app.application.audit.export import auditoria_a_pdf, auditoria_a_xlsx
-from app.application.audit.service import AuditFiltros, listar_auditoria, listar_modulos
+from app.application.audit.service import (
+    AuditFiltros,
+    listar_auditoria,
+    listar_modulos,
+    registrar_seguro,
+)
 from app.domain.entities.actividad_auditoria import ActividadAuditoria
+from app.domain.auth.identity import AuthenticatedPrincipal
 from app.domain.auth.roles import Rol
-from app.presentation.api.v1.auth.dependencies import require_roles
+from app.presentation.api.v1.auth.dependencies import get_current_principal, require_roles
 
 __all__ = ["create_audit_router"]
 
@@ -26,6 +33,7 @@ class AuditEventoOut(BaseModel):
     id: str
     actor: str
     actor_nombre: str | None
+    actor_email: str | None
     accion: str
     tipo_accion: str | None
     modulo: str | None
@@ -85,6 +93,7 @@ def create_audit_router(session_factory=None) -> APIRouter:
                 id=e.id,
                 actor=e.actor,
                 actor_nombre=e.actor_nombre,
+                actor_email=e.actor_email,
                 accion=e.accion,
                 tipo_accion=e.tipo_accion,
                 modulo=e.modulo,
@@ -152,10 +161,19 @@ def create_audit_router(session_factory=None) -> APIRouter:
         accion: str | None = Query(default=None),
         desde: str | None = Query(default=None),
         hasta: str | None = Query(default=None),
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
     ) -> Response:
         entradas = await _entradas_para_export(
             request, actor, modulo, accion, desde, hasta
         )
+        factory = session_factory or getattr(request.app.state, "session_factory", None)
+        if factory is not None:
+            await registrar_seguro(
+                factory,
+                actor=principal.id_institucional,
+                accion=AccionAuditoria.AUDITORIA_EXPORT_XLSX,
+                proposito=f"Exportó el registro de auditoría a Excel ({len(entradas)} filas)",
+            )
         return Response(
             content=auditoria_a_xlsx(
                 entradas,
@@ -168,7 +186,11 @@ def create_audit_router(session_factory=None) -> APIRouter:
             media_type=(
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             ),
-            headers={"Content-Disposition": 'attachment; filename="auditoria.xlsx"'},
+            headers={
+                "Content-Disposition": (
+                    f'attachment; filename="auditoria_{_fecha_archivo()}.xlsx"'
+                )
+            },
         )
 
     @router.get("/audit-log/export.pdf", summary="Exportar auditoría a PDF")
@@ -179,10 +201,19 @@ def create_audit_router(session_factory=None) -> APIRouter:
         accion: str | None = Query(default=None),
         desde: str | None = Query(default=None),
         hasta: str | None = Query(default=None),
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
     ) -> Response:
         entradas = await _entradas_para_export(
             request, actor, modulo, accion, desde, hasta
         )
+        factory = session_factory or getattr(request.app.state, "session_factory", None)
+        if factory is not None:
+            await registrar_seguro(
+                factory,
+                actor=principal.id_institucional,
+                accion=AccionAuditoria.AUDITORIA_EXPORT_PDF,
+                proposito=f"Exportó el registro de auditoría a PDF ({len(entradas)} filas)",
+            )
         return Response(
             content=auditoria_a_pdf(
                 entradas,
@@ -193,7 +224,19 @@ def create_audit_router(session_factory=None) -> APIRouter:
                 hasta=hasta,
             ),
             media_type="application/pdf",
-            headers={"Content-Disposition": 'attachment; filename="auditoria.pdf"'},
+            headers={
+                "Content-Disposition": (
+                    f'attachment; filename="auditoria_{_fecha_archivo()}.pdf"'
+                )
+            },
         )
 
     return router
+
+
+def _fecha_archivo() -> str:
+    """Fecha de HOY para el nombre del archivo exportado (AAAA-MM-DD) — un
+    'auditoria.xlsx' genérico se pisa entre descargas y no dice de cuándo es."""
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d")

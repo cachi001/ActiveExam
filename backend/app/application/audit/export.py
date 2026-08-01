@@ -40,14 +40,17 @@ _ANCHOS = [18, 40, 24, 34, 84]
 
 
 def _usuario(e) -> str:
-    """Identidad del actor para el reporte: 'Nombre (identificador)' o, si no hay
-    nombre resuelto, el identificador solo. NUNCA queda en blanco — un audit con la
-    columna "Usuario" vacía no dice quién hizo la acción."""
+    """Identidad del actor para el reporte: 'Nombre (email)' — el email hace
+    más seguimiento que el legajo — o el identificador solo si no hay nombre
+    resuelto. NUNCA queda en blanco — un audit con la columna "Usuario" vacía
+    no dice quién hizo la acción."""
     nombre = getattr(e, "actor_nombre", None)
     actor = getattr(e, "actor", "") or ""
-    if nombre and nombre != actor:
-        return f"{nombre} ({actor})"
-    return nombre or actor
+    email = getattr(e, "actor_email", None)
+    identificador = email if email and email != actor else actor
+    if nombre and nombre != identificador:
+        return f"{nombre} ({identificador})"
+    return nombre or identificador
 
 
 def _fecha_legible(iso: str | None) -> str:
@@ -128,9 +131,34 @@ def auditoria_a_xlsx(
     return buf.getvalue()
 
 
+# FPDF con fuente core (Helvetica) solo soporta latin-1. Las rayas/puntos
+# suspensivos/flechas tipográficas que usan labels.py y los propósitos NO
+# entran en latin-1 y quedaban como "?" (BUG real: "Registro de auditoría ?
+# Active Exam", "canjeando su contraseña ?", "Cambió ? Param: antes ?
+# después"). Se transliteran a su equivalente ASCII ANTES del encode — Excel
+# no tiene este problema (openpyxl es UTF-8 nativo), así que esto es
+# exclusivo de este módulo de PDF.
+_REEMPLAZOS_PDF_LATIN1 = {
+    "—": "-",
+    "–": "-",
+    "…": "...",
+    "→": "->",
+    "«": '"',
+    "»": '"',
+    "‘": "'",
+    "’": "'",
+    "“": '"',
+    "”": '"',
+}
+
+
 def _txt(valor: str) -> str:
-    """FPDF core usa latin-1: se reemplaza lo que no entra en vez de reventar."""
-    return (valor or "").encode("latin-1", "replace").decode("latin-1")
+    """FPDF core usa latin-1: translitera lo tipográfico común y reemplaza lo
+    que aun así no entra (en vez de reventar)."""
+    texto = valor or ""
+    for feo, equivalente in _REEMPLAZOS_PDF_LATIN1.items():
+        texto = texto.replace(feo, equivalente)
+    return texto.encode("latin-1", "replace").decode("latin-1")
 
 
 def auditoria_a_pdf(
@@ -198,7 +226,7 @@ def auditoria_a_pdf(
             # Recorte por ancho de columna: el PDF es una tabla, no un volcado.
             # El archivo completo sin recortes es el Excel.
             maximo = int(ancho / 1.7)
-            texto = valor if len(valor) <= maximo else valor[: maximo - 1] + "…"
+            texto = valor if len(valor) <= maximo else valor[: maximo - 3] + "..."
             pdf.cell(ancho, 6, _txt(texto), border=0, fill=relleno, align="L")
         pdf.ln(6)
 

@@ -20,6 +20,7 @@ class ActividadAuditoria:
     id: str
     actor: str                  # email o id_institucional del actor
     actor_nombre: str | None    # "Nombre Apellido" resuelto (best-effort)
+    actor_email: str | None     # email resuelto (best-effort) — el legajo solo no alcanza para dar seguimiento
     timestamp: str              # ISO 8601
     accion: str                 # detalle dot-notation (user.create, materia.delete…)
     tipo_accion: str | None     # CREAR / EDITAR / ELIMINAR / CAMBIO_ESTADO

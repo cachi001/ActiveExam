@@ -12,6 +12,7 @@ import io
 from datetime import datetime, timezone
 
 from fpdf import FPDF
+from PIL import Image
 
 from app.application.stats.charts import dashboard_png
 from app.application.stats.labels import etiqueta_evento
@@ -48,31 +49,38 @@ def _filtros_txt(filtros: FiltrosStats | None, alcance: str | None) -> str:
     return "Filtrado" if activos else "Todo el período (sin filtros)"
 
 
-def _portada(pdf: FPDF, filtros: FiltrosStats | None, alcance: str | None) -> None:
+def _portada(pdf: FPDF, r: ResumenStats, filtros: FiltrosStats | None, alcance: str | None) -> None:
+    """Portada con contenido real (no una hoja casi vacía con el título
+    flotando): banda de color arriba + KPIs clave para que la primera página
+    ya diga algo, igual que un informe institucional formal."""
     pdf.add_page()
-    # Marca institucional discreta arriba (sin redundancia).
-    pdf.set_y(20)
-    pdf.set_font("Helvetica", "B", 11)
-    pdf.set_text_color(*_AZUL)
-    pdf.cell(0, 6, "ActiveExam", new_x="LMARGIN", new_y="NEXT")
-    pdf.set_font("Helvetica", "", 8)
-    pdf.set_text_color(*_GRIS)
-    pdf.cell(0, 5, "Plataforma de proctoring", new_x="LMARGIN", new_y="NEXT")
 
-    # Título centrado verticalmente (sin subtítulo, sin íconos).
-    pdf.set_y(pdf.h * 0.40)
-    pdf.set_font("Helvetica", "B", 26)
+    # Banda superior de color con la marca y el título — reemplaza el "logo
+    # discreto arriba + título flotando a mitad de página" de antes, que
+    # dejaba ~180mm de blanco puro en una A4 vertical.
+    ancho_pagina = pdf.w
+    pdf.set_fill_color(*_AZUL)
+    pdf.rect(0, 0, ancho_pagina, 62, style="F")
+    pdf.set_y(16)
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.cell(0, 6, "ActiveExam", align="C", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", "", 9)
+    pdf.cell(0, 5, "Plataforma de proctoring", align="C", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_y(30)
+    pdf.set_font("Helvetica", "B", 28)
+    pdf.cell(0, 14, "Estadísticas institucionales", align="C", new_x="LMARGIN", new_y="NEXT")
+
+    # KPIs clave debajo de la banda: la portada ya adelanta el número más
+    # importante en vez de ser una hoja de puro título.
+    pdf.set_y(80)
     pdf.set_text_color(*_AZUL)
-    pdf.cell(0, 14, "Estadísticas", align="C", new_x="LMARGIN", new_y="NEXT")
-    # Regla corta centrada bajo el título.
-    pdf.set_draw_color(*_AZUL)
-    pdf.set_line_width(0.6)
-    cx = pdf.w / 2
-    y = pdf.get_y() + 2
-    pdf.line(cx - 25, y, cx + 25, y)
+    _kpi_portada(pdf, "Exámenes", r.total_examenes)
+    _kpi_portada(pdf, "Sesiones", r.total_sesiones)
+    _kpi_portada(pdf, f"En riesgo (score {r.umbral_riesgo}+)", r.sesiones_en_riesgo)
 
     # Metadata al pie de la portada.
-    pdf.set_y(pdf.h - 42)
+    pdf.set_y(pdf.h - 30)
     pdf.set_font("Helvetica", "", 10)
     pdf.set_text_color(*_GRIS)
     generado = datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M UTC")
@@ -82,6 +90,17 @@ def _portada(pdf: FPDF, filtros: FiltrosStats | None, alcance: str | None) -> No
         new_x="LMARGIN", new_y="NEXT",
     )
     pdf.set_text_color(0, 0, 0)
+
+
+def _kpi_portada(pdf: FPDF, etiqueta: str, valor: object) -> None:
+    """Una fila 'Etiqueta ......... Valor' grande, centrada, en la portada."""
+    pdf.set_font("Helvetica", "B", 20)
+    pdf.cell(0, 11, str(valor), align="C", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", "", 10)
+    pdf.set_text_color(*_GRIS)
+    pdf.cell(0, 7, etiqueta, align="C", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_text_color(*_AZUL)
+    pdf.ln(3)
 
 
 def _titulo_pagina(pdf: FPDF, texto: str) -> None:
@@ -133,7 +152,7 @@ def resumen_a_pdf(
     pdf = FPDF()
     pdf.set_auto_page_break(auto=True, margin=15)
 
-    _portada(pdf, filtros, alcance)
+    _portada(pdf, r, filtros, alcance)
 
     # --- Página de datos ---
     pdf.add_page()
@@ -207,9 +226,22 @@ def resumen_a_pdf(
         )
 
     # --- Página de gráficos ---
+    # BUG REAL que esto corrige: el dashboard (6 paneles + dona) escalado al
+    # ancho completo de la página es MÁS ALTO que el espacio libre bajo el
+    # título — FPDF no corta la imagen, empuja la imagen COMPLETA a la
+    # página siguiente. Resultado: una hoja "Gráficos" con el título y nada
+    # más, casi en blanco. Se escala la imagen para que entre siempre debajo
+    # del título en la MISMA hoja — nunca hay una página huérfana.
+    png_bytes = dashboard_png(r)
+    ancho = pdf.w - pdf.l_margin - pdf.r_margin
+    with Image.open(io.BytesIO(png_bytes)) as im:
+        alto = ancho * (im.height / im.width)
+
     pdf.add_page()
     _titulo_pagina(pdf, "Gráficos")
-    ancho = pdf.w - pdf.l_margin - pdf.r_margin
-    pdf.image(io.BytesIO(dashboard_png(r)), w=ancho)
+    espacio_libre = pdf.h - pdf.b_margin - pdf.get_y()
+    if alto > espacio_libre:
+        ancho *= espacio_libre / alto
+    pdf.image(io.BytesIO(png_bytes), w=ancho)
 
     return bytes(pdf.output())

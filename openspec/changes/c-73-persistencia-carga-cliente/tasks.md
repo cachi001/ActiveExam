@@ -330,24 +330,43 @@
 > (ya se pisa en cada `guardar_token`/`guardar_con_password` exitoso — no hace falta
 > columna nueva).
 
-- [ ] 12.1 Test (RED): helper puro `esta_vencida(actualizado_en, ahora, dias=30) -> bool`
+- [x] 12.1 Test (RED): helper puro `esta_vencida(actualizado_en, ahora, dias=30) -> bool`
       en `credencial_docente_service.py`. Triangular: recién guardada → False; a los 29
       días → False; a los 30 días exactos → True; a los 60 → True.
-- [ ] 12.2 `estado()` y `token_de()` devuelven `vencida` (no `activa`) cuando
+      HECHO: 4 tests verdes, sin DB (función pura).
+- [x] 12.2 `estado()` y `token_de()` devuelven `vencida` (no `activa`) cuando
       `esta_vencida()` da True, aunque la columna diga `activa` — el vencimiento es
       calculado, no un job en background que reescribe filas. `token_de()` trata
       `vencida` igual que `caida`: devuelve `None` (no reintenta con un token viejo).
-- [ ] 12.3 Test: sincronizar una nota con credencial vencida NO reintenta con el token
+      HECHO: `_estado_efectivo()` calcula `vencida` a partir de `actualizado_en`;
+      `caida` prevalece sobre `vencida` (si Moodle ya la rechazó, el motivo correcto
+      es ese, no la antigüedad). 4 tests nuevos verdes (30 días exacto, 29 días
+      todavía activa, token_de→None cuando vencida, caida prevalece).
+- [x] 12.3 Test: sincronizar una nota con credencial vencida NO reintenta con el token
       guardado — falla igual que hoy con `caida`, mensaje distinto: "tu conexión con
       el campus venció, volvé a cargar tu contraseña" (no sugiere que Moodle la revocó,
       porque no fue Moodle).
-- [ ] 12.4 UI (`MiCuentaCampus.tsx`): estado "Conectado como X" pasa a avisar la
+      HECHO: `_credencial_para` devuelve un 4to valor `motivo_bloqueo`
+      (`sin_docente|sin_credencial_docente|caida|vencida`); `MENSAJE_POR_MOTIVO_BLOQUEO`
+      en writeback_service.py separa el mensaje de cada uno. 8 tests nuevos verdes
+      (motivo por escenario + que el mensaje de vencida no sugiera rechazo de Moodle).
+      Actualizados los 2 subclasses de test que sobreescribían `_credencial_para` con
+      el contrato viejo de 3 valores (test_c69_writeback_service.py,
+      test_c69_admin_resultados_sync.py).
+- [x] 12.4 UI (`MiCuentaCampus.tsx`): estado "Conectado como X" pasa a avisar la
       antigüedad ("Conectado hace 25 días · vence en 5") cuando falten ≤7 días, y a
       "Venció, volvé a conectarte" cuando ya pasó — mismo flujo de PUT que hoy, no es
       un caso nuevo, solo copy distinto de `caida`.
-- [ ] 12.5 Test: `GuardarMiCredencialRequest` con password renueva `actualizado_en` a
+      HECHO: helper puro `avisoConexion()` en `miCuentaCampus.helpers.ts` (7 tests
+      verdes RED→GREEN→TRIANGULATE, sin DOM). Banner nuevo estado `por_vencer`
+      (ámbar, token `warning`) y `vencida` (rojo, mensaje distinto de `caida`: no
+      sugiere que el campus la rechazó).
+- [x] 12.5 Test: `GuardarMiCredencialRequest` con password renueva `actualizado_en` a
       "ahora" (ya lo hace `guardar_token`) — verificar explícitamente que esto reinicia
       la cuenta de los 30 días, no solo que guarda el token.
+      HECHO: `test_recargar_una_credencial_vencida_reinicia_el_contador_de_30_dias` —
+      confirma comportamiento YA existente en `guardar_token` (candado de regresión,
+      no requirió código nuevo).
 
 ## 13. Fix de auditoría — credencial docente quedaba con `modulo=NULL`
 
@@ -362,20 +381,76 @@
 > + `entidad=CONFIGURACION` (institucional) — filtrando por módulo quedan separados
 > sin ambigüedad.
 
-- [ ] 13.1 Test (RED): reproducir el bug — auditar con `accion="moodle_credencial_update"`
+- [x] 13.1 Test (RED): reproducir el bug — auditar con `accion="moodle_credencial_update"`
       sin `modulo=` explícito y verificar que `modulo_de_accion()` devuelve `None` hoy.
-- [ ] 13.2 Agregar a `AccionAuditoria` (acciones.py) los 4 eventos reales en vez del
+      HECHO: `test_el_string_viejo_moodle_credencial_update_no_tenia_modulo` — documenta
+      el bug tal cual estaba, no se corrige ese string puntual (ver 13.5).
+- [x] 13.2 Agregar a `AccionAuditoria` (acciones.py) los eventos reales en vez del
       string suelto `ACCION_MOODLE_CREDENCIAL`: `MOODLE_CREDENCIAL_CONECTAR`,
-      `MOODLE_CREDENCIAL_DESCONECTAR`, `MOODLE_CREDENCIAL_RENOVAR` (12.5),
-      `MOODLE_CREDENCIAL_VENCIDA` (evento pasivo, se registra la primera vez que
-      `estado()`/`token_de()` detectan vencimiento — una sola vez, no en cada lectura).
-- [ ] 13.3 `_auditar_credencial` pasa `modulo=ModuloAuditoria.MOODLE`,
+      `MOODLE_CREDENCIAL_DESCONECTAR`, `MOODLE_CREDENCIAL_RENOVAR` (12.5).
+      REDUCIDO DE ALCANCE: se descartó `MOODLE_CREDENCIAL_VENCIDA` como evento pasivo
+      de auditoría — hubiera exigido trackear "ya se auditó este vencimiento" en la
+      tabla (una columna nueva) solo para no escribir una fila por cada GET de estado
+      (que es lectura frecuente). El vencimiento YA queda registrado por sesión de
+      sync fallida en `moodle_writeback_audit`/`error_detalle` (sección 12.3) — no
+      hacía falta un segundo mecanismo de auditoría para lo mismo.
+- [x] 13.3 `_auditar_credencial` pasa `modulo=ModuloAuditoria.MOODLE`,
       `entidad=EntidadAuditoria.USUARIO`, `entidad_id=usuario_id` explícitos (mismo
       patrón que ya usa el bloque de config institucional en la línea 268-269).
-- [ ] 13.4 Test: filtrar Auditoría por módulo "MOODLE" trae conectar/desconectar/
-      renovar/vencida del docente; filtrar por "CONFIGURACION" trae SOLO los cambios
+      Los 2 call-sites (PUT conecta/renueva según `estado.configurada` ANTES de
+      escribir; DELETE desconecta) pasan la `accion` correcta.
+- [x] 13.4 Test: filtrar Auditoría por módulo "MOODLE" trae conectar/desconectar/
+      renovar del docente; filtrar por "CONFIGURACION" trae SOLO los cambios
       institucionales (token global, service_shortname) — nunca se mezclan.
-- [ ] 13.5 Migración de datos: las filas históricas con `accion="moodle_credencial_update"`
+      HECHO: endpoint real (PUT/DELETE `/config/moodle/mi-credencial`) contra DB real,
+      7 tests verdes entre los dos archivos nuevos. GOTCHA encontrado en el propio
+      test: `audit_log.id` es UUID aleatorio — `ORDER BY id` NO da orden cronológico,
+      hay que ordenar por `timestamp`.
+- [x] 13.5 Migración de datos: las filas históricas con `accion="moodle_credencial_update"`
       y `modulo IS NULL` quedan así (no se re-escribe audit log — regla dura de
       inmutabilidad de evidencia); el fix aplica solo hacia adelante. Documentar esto
       en el PR para que no se lea como "no funcionó".
+      DISCOVERY (no relacionado al código, de infraestructura local): la DB de dev
+      compartida tenía DRIFT de schema — le faltaban las columnas de la migración
+      0044 (`modulo`/`entidad`/`entidad_id`/`tipo_accion` en `audit_log`) y el FK
+      `ON DELETE CASCADE` de la migración 0050 (`moodle_credencial_docente.usuario_id`),
+      porque nunca se había corrido `alembic upgrade slim@head` contra ese contenedor
+      Postgres (persistente hace 6 días, sin contenedor `backend` que migrara). Se
+      aplicó el DDL exacto de esas 2 migraciones a mano (aditivo, sin pérdida de
+      datos) y se hizo `alembic stamp slim@0051` para dejar la DB consistente con
+      el head real. Confirmado contra el propio historial de Alembic que 0044→0051
+      es una cadena lineal única (rama `slim`) — no había ninguna otra fuente que
+      ya resolviera esto.
+
+## 14. Ajustes de UX y semántica de auditoría (revisión en vivo contra la app corriendo)
+
+> Surgidos probando C-73 §12/§13 con Playwright contra backend+frontend+DB reales
+> (no solo tests). TDD igual que el resto: RED→GREEN, sin mocks de DB.
+
+- [x] 14.1 UI `MiCuentaCampus.tsx`: card única "Campus (Moodle)" (antes: título
+      duplicado "Tu cuenta del campus" adentro de la card Y "Campus (Moodle)"
+      afuera). Sin negrita en el nombre de usuario, sin mostrar `token_pista`
+      (causaba confusión — se leía como si fuera parte de la contraseña, NUNCA
+      lo fue). Textos finales: activa → "Conectado."; por vencer → "En N días
+      vencen tus credenciales..."; vencida → "Tu acceso venció por seguridad,
+      volvé a ingresar tus credenciales." (sin mencionar al campus, no fue él).
+      Íconos: `error` (círculo ámbar sólido) para por vencer, `lock_clock` para
+      vencida — ninguno usa el triángulo de "warning" (leía como alarma).
+      Pestañas de Configuración sin ícono; ocultas por completo si solo hay
+      una (docente: va directo a la card, sin selector inútil).
+- [x] 14.2 Toast (`useToast`) con el mismo mensaje que el error/éxito inline en
+      conectar/renovar/desconectar — verificado en vivo que aparece.
+- [x] 14.3 Semántica de `RENOVAR` redefinida: solo se audita si la credencial
+      previa estaba `caida` o `vencida` (es decir, hacía falta reconectar). Si
+      ya estaba `activa` y sana, recargarla NO genera fila nueva — evita
+      ensuciar Auditoría con renovaciones sin motivo cada vez que alguien
+      reingresa la contraseña "por las dudas". 6 tests verdes.
+- [x] 14.4 `IntentosFallidosTracker` — contador EN MEMORIA (sin tabla nueva a
+      propósito, decisión explícita tras discutir alternativas) de intentos
+      fallidos SEGUIDOS por `usuario_id`. Al llegar a 5 audita
+      `MOODLE_CREDENCIAL_INTENTOS_FALLIDOS` una vez y se reinicia (vuelve a
+      disparar tras otra tanda de 5). Un intento correcto borra el contador.
+      Cableado en `main_slim.py` (`app.state.moodle_intentos_fallidos`).
+      Trade-off aceptado: se pierde el conteo si el backend reinicia — es una
+      señal de patrón reciente, no un registro forense. 5 tests puros +
+      3 tests de integración contra el endpoint real (respx mockea el canje).
