@@ -704,6 +704,14 @@
       "sessions": 0,
       "memories": 1,
       "prompts": 0
+    },
+    {
+      "id": "a8cd6b0b",
+      "created_by": "oriana jaja",
+      "created_at": "2026-08-01T06:25:37Z",
+      "sessions": 0,
+      "memories": 2,
+      "prompts": 0
     }
   ]
 }
