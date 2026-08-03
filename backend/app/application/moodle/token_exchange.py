@@ -25,6 +25,17 @@ from dataclasses import dataclass
 
 import httpx
 
+#: Nombre ESTANDAR del web service que expone la app movil de Moodle. No es
+#: secreto (es publico y documentado por Moodle) y es el UNICO servicio externo
+#: que usa este sistema para el canje password->token del docente (C-73 §10.2,
+#: fix post-cierre): antes se leia de una fila institucional
+#: (`moodle_credencial.service_shortname`) que quedaba vacia en todo ambiente
+#: porque la UI de admin que la cargaba se desconecto del arbol de componentes,
+#: dejando a TODOS los docentes sin poder conectar su cuenta. Ahora es el
+#: default; la fila institucional puede seguir pisandolo como override manual
+#: si algun dia hace falta apuntar a un campus con otro servicio externo.
+SERVICE_SHORTNAME_MOODLE_MOBILE = "moodle_mobile_app"
+
 
 class TokenExchangeError(Exception):
     """Falla del canje. Su ``str`` NUNCA incluye la contrasena."""

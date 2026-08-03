@@ -34,6 +34,7 @@ from app.application.audit.acciones import (
 )
 from app.application.config.service import ConfigEfectiva, ConfigService
 from app.application.moodle.credencial_docente_service import ESTADO_ACTIVA
+from app.application.moodle.token_exchange import SERVICE_SHORTNAME_MOODLE_MOBILE
 from app.domain.audit_chain import AuditEntry
 from app.domain.auth.identity import AuthenticatedPrincipal
 from app.domain.auth.roles import Rol
@@ -594,14 +595,21 @@ async def guardar_mi_credencial_moodle(
     else:
         from app.application.moodle.token_exchange import TokenExchangeError
 
-        fila = await _leer_service_shortname(request)
+        # Default: constante `moodle_mobile_app` (C-73, fix post-cierre) — NO
+        # depende de configuracion de admin ni de una fila en base. Si el
+        # admin SI cargo un `service_shortname` propio en la fila
+        # institucional (`/config/moodle`), ese es un override manual y gana
+        # sobre la constante: permite apuntar a un campus con un servicio
+        # externo distinto sin re-deploy.
+        override_institucional = await _leer_service_shortname(request)
+        service_shortname = override_institucional or SERVICE_SHORTNAME_MOODLE_MOBILE
         try:
             estado = await svc.guardar_con_password(
                 usuario_id=usuario_id,
                 moodle_username=body.moodle_username,
                 password=body.password or "",
                 base_url=base_url_efectiva,
-                service_shortname=fila,
+                service_shortname=service_shortname,
             )
         except TokenExchangeError as exc:
             # Contador en memoria (C-73, seguridad): no cada typo individual,
