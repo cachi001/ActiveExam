@@ -91,26 +91,52 @@ migraciones `0026`–`0051`.
 
 ## Decisions
 
-*(pendientes de definir en la siguiente iteración de diseño — este documento
-por ahora deja constancia de la investigación y el problema; las decisiones de
-modelo de datos concretas —nueva tabla vs. remodelado de `examen_contenido`,
-forma exacta de la tabla de categorías, forma exacta del sub-modelo de
-blanks— se toman antes de escribir `tasks.md` / arrancar el `apply`.)*
+Resueltas con criterio de mínimo riesgo/blast-radius: capa nueva ADITIVA sobre
+las tablas actuales, sin remodelar `examen_contenido`/`pregunta_examen` (evita
+el escenario BREAKING de la sección Risks). Se puede iterar hacia la
+separación completa banco/examen en un change futuro si hace falta.
 
-Puntos que van a necesitar una decisión explícita:
-1. ¿`examen_contenido` deja de ser 1:1 con "un import" y pasa a ser "un
-   armado" que referencia preguntas del banco por FK? ¿O el banco vive como
-   una capa nueva encima de las tablas actuales sin tocarlas?
-2. Forma de la tabla de categorías: ¿autoreferencial simple (`categoria_padre_id`)
-   o con `ruta`/`path` materializado para queries eficientes?
-3. Forma del sub-modelo de cloze: ¿tabla nueva `pregunta_cloze_blank` con FK
-   propia a `opcion_respuesta`, o extender `pregunta_examen` con
-   auto-referencia (pregunta padre / blanks hijos)?
-4. API del armado aleatorio: ¿un endpoint que recibe `{categoria_id: N, ...}`
-   y persiste el resultado inmediatamente (consistente con el resto del
-   sistema — config y selección son estado persistente, no calculado
-   on-the-fly), confirmado como la opción coherente con la arquitectura
-   actual (D12, `mezclar_preguntas` fijo, congelamiento post-intento).
+1. **`examen_contenido` NO cambia de rol.** El banco de preguntas vive como
+   metadata ADITIVA sobre `pregunta_examen`: columna nueva `categoria_id`
+   (nullable, FK a `categoria_pregunta`). Nada se remodela ni se migra de
+   forma destructiva — un examen ya importado sigue funcionando idéntico,
+   simplemente sus preguntas quedan con `categoria_id = NULL` ("Sin
+   clasificar") hasta que el import (o un admin) las categorice.
+2. **Tabla de categorías: autoreferencial simple.** `categoria_pregunta` (id,
+   materia_id FK, nombre, categoria_padre_id nullable self-FK). Sin `ruta`/
+   `path` materializado — a la escala de una materia (decenas de categorías,
+   no miles) un recorrido recursivo simple alcanza; agregar `path` sin un caso
+   de uso concreto que lo necesite sería sobre-ingeniería. Responde la Open
+   Question de profundidad: soporta anidamiento arbitrario por construcción
+   (no hay límite de 2 niveles fijo).
+3. **Cloze: tabla nueva `pregunta_cloze_blank`** (id, pregunta_id FK a
+   `pregunta_examen`, orden, tipo [`multichoice`|`shortanswer`|`numerical`],
+   texto_antes, texto_despues) + `opcion_cloze_blank` (id, blank_id FK, texto,
+   es_correcta, peso). Separada de `opcion_respuesta` (que sigue siendo
+   exclusiva del modelo plano 1 pregunta → N opciones) para no forzarla a
+   cargar con sub-estructura que no le corresponde. `Pregunta.tipo="cloze"`
+   no tiene filas en `opcion_respuesta`, tiene N filas en
+   `pregunta_cloze_blank`.
+4. **API del armado aleatorio: persiste inmediatamente.** `POST
+   /{examen_id}/sortear-preguntas` recibe `{categoria_ids: [...],
+   cantidad_por_categoria: N}`, sortea UNA vez server-side y marca
+   `seleccionada=true` en esas filas de `pregunta_examen` — reusa el `409` de
+   `_seleccion_bloqueada` que ya existe para la selección manual (mismo
+   candado, no hay selección manual Y sorteo compitiendo). Consistente con que
+   config/selección en este sistema siempre es estado persistente, nunca
+   calculado on-the-fly (D12).
+5. **Preguntas ya importadas sin categoría**: quedan con `categoria_id = NULL`
+   indefinidamente — la UI del banco las agrupa bajo un bucket fijo "Sin
+   clasificar" por materia. Sin migración de datos ni re-clasificación
+   forzada (responde la Open Question correspondiente).
+6. **El armado aleatorio permite mezclar categorías desde el arranque**: el
+   payload ya es una lista (`categoria_ids`), no una sola — "5 de Unidad 1 + 5
+   de Unidad 2" es el caso normal, no una extensión futura.
+7. **Pantalla nueva, separada del flujo de examen** (confirmado explícitamente
+   por el owner): el banco de preguntas por categoría tiene su propia página
+   (`/admin/banco-preguntas`), independiente de la pantalla de creación/edición
+   de examen. La pantalla de examen solo consume categorías (para el sorteo),
+   no las administra.
 
 ## Risks / Trade-offs
 
