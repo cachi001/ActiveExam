@@ -124,16 +124,18 @@ async def _seed(s: AsyncSession) -> None:
             codigo_matriculacion="M1-C1",
         )
     )
-    s.add_all([ExamenContenidoModel(titulo="E1"), ExamenContenidoModel(titulo="E2")])
+    e1 = ExamenContenidoModel(titulo="E1")
+    s.add_all([e1, ExamenContenidoModel(titulo="E2")])
+    await s.flush()
 
     # sesión 1: finalizada + 1 evento rostro_ausente (score 50 >= 40 -> en riesgo)
-    ses1 = ProctoringSessionModel(modo="examen")
+    ses1 = ProctoringSessionModel(modo="examen", examen_contenido_id=e1.id)
     ses1.finalizada_en = datetime.now(UTC)
     # sesión 2: finalizada, sin eventos (score 0)
-    ses2 = ProctoringSessionModel(modo="examen")
+    ses2 = ProctoringSessionModel(modo="examen", examen_contenido_id=e1.id)
     ses2.finalizada_en = datetime.now(UTC)
     # sesión 3: NO finalizada, sin eventos
-    ses3 = ProctoringSessionModel(modo="examen")
+    ses3 = ProctoringSessionModel(modo="examen", examen_contenido_id=e1.id)
     s.add_all([ses1, ses2, ses3])
     await s.flush()
     s.add(
@@ -180,6 +182,32 @@ async def test_resumen_distribucion_scores(session):
     assert r.distribucion_scores["25-39"] == 0
     # La banda alta coincide EXACTAMENTE con el conteo de sesiones en riesgo.
     assert r.distribucion_scores["40-100"] == r.sesiones_en_riesgo
+
+
+@pytest.mark.asyncio
+async def test_sesiones_de_diagnostico_no_cuentan(session):
+    """Sesiones sin examen vinculado (Test de detección de Configuración,
+    'Grabar sesión') NO deben sumar a ninguna métrica — no son un examen
+    rendido. Mismo criterio que ya aplica la Cola de Revisión."""
+    await _seed(session)
+    diagnostico = ProctoringSessionModel(modo="examen", examen_contenido_id=None)
+    diagnostico.finalizada_en = datetime.now(UTC)
+    session.add(diagnostico)
+    await session.flush()
+    session.add(
+        ProctoringEventModel(
+            session_id=diagnostico.id, tipo="rostro_ausente", severidad="alta",
+            ts_cliente=datetime.now(UTC),
+        )
+    )
+    await session.commit()
+
+    r = await obtener_resumen(session)
+
+    # Sigue siendo 3 (ses1/ses2/ses3 del seed real) — la de diagnóstico no suma.
+    assert r.total_sesiones == 3
+    assert r.sesiones_finalizadas == 2
+    assert r.sesiones_en_riesgo == 1
 
 
 @pytest.mark.asyncio
@@ -238,7 +266,7 @@ async def _seed_filtros(s: AsyncSession) -> dict[str, str]:
     sa1 = ProctoringSessionModel(modo="examen", examen_contenido_id=e1.id)
     sa1.creada_en = dia1
     sa1.finalizada_en = dia1
-    sa1.decision = "caso_abierto"
+    sa1.decision = "anulado"
     sa2 = ProctoringSessionModel(modo="examen", examen_contenido_id=e1.id)
     sa2.creada_en = dia2
     sa2.finalizada_en = dia2
@@ -302,7 +330,7 @@ async def test_por_dia_y_decisiones(session):
     # el donut de "Estado de revisión" quedaría dominado por sesiones limpias que
     # nadie tiene que mirar. Este test pedía las 3 sesiones; el servicio acota a la
     # cola desde que se documentó ese criterio.
-    assert r.decisiones.get("caso_abierto") == 1
+    assert r.decisiones.get("anulado") == 1
     assert r.decisiones.get("sin_revisar") is None
     assert sum(r.decisiones.values()) == r.sesiones_en_riesgo
 

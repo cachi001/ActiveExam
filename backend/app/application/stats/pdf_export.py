@@ -24,11 +24,8 @@ _ZEBRA = (241, 245, 249)
 DECISION_LABEL = {
     "sin_revisar": "Sin revisar",
     "pendiente": "Pendiente",
-    "sin_hallazgos": "Sin hallazgos",
     "aprobado": "Aprobado",
-    "caso_abierto": "Caso abierto",
-    "anulado_por_fraude": "Anulado por fraude",
-    "caso_descartado": "Caso descartado",
+    "anulado": "Anulado por fraude",
 }
 
 
@@ -50,37 +47,32 @@ def _filtros_txt(filtros: FiltrosStats | None, alcance: str | None) -> str:
 
 
 def _portada(pdf: FPDF, r: ResumenStats, filtros: FiltrosStats | None, alcance: str | None) -> None:
-    """Portada con contenido real (no una hoja casi vacía con el título
-    flotando): banda de color arriba + KPIs clave para que la primera página
-    ya diga algo, igual que un informe institucional formal."""
+    """Portada institucional: fondo blanco, sin bandas ni gradientes, sin
+    subtítulo, sin íconos, título centrado verticalmente. SIN resumen de
+    estadísticas — es solo portada, los datos van en la página de Resumen
+    (preferencia fija y explícita del owner, no renegociable)."""
     pdf.add_page()
 
-    # Banda superior de color con la marca y el título — reemplaza el "logo
-    # discreto arriba + título flotando a mitad de página" de antes, que
-    # dejaba ~180mm de blanco puro en una A4 vertical.
-    ancho_pagina = pdf.w
-    pdf.set_fill_color(*_AZUL)
-    pdf.rect(0, 0, ancho_pagina, 62, style="F")
-    pdf.set_y(16)
-    pdf.set_text_color(255, 255, 255)
+    # Marca institucional discreta arriba (sin redundancia, sin subtítulo).
+    pdf.set_y(20)
     pdf.set_font("Helvetica", "B", 11)
-    pdf.cell(0, 6, "ActiveExam", align="C", new_x="LMARGIN", new_y="NEXT")
-    pdf.set_font("Helvetica", "", 9)
-    pdf.cell(0, 5, "Plataforma de proctoring", align="C", new_x="LMARGIN", new_y="NEXT")
-    pdf.set_y(30)
-    pdf.set_font("Helvetica", "B", 28)
-    pdf.cell(0, 14, "Estadísticas institucionales", align="C", new_x="LMARGIN", new_y="NEXT")
-
-    # KPIs clave debajo de la banda: la portada ya adelanta el número más
-    # importante en vez de ser una hoja de puro título.
-    pdf.set_y(80)
     pdf.set_text_color(*_AZUL)
-    _kpi_portada(pdf, "Exámenes", r.total_examenes)
-    _kpi_portada(pdf, "Sesiones", r.total_sesiones)
-    _kpi_portada(pdf, f"En riesgo (score {r.umbral_riesgo}+)", r.sesiones_en_riesgo)
+    pdf.cell(0, 6, "ActiveExam", align="C", new_x="LMARGIN", new_y="NEXT")
+
+    # Título centrado verticalmente (sin subtítulo, sin íconos).
+    pdf.set_y(pdf.h * 0.40)
+    pdf.set_font("Helvetica", "B", 26)
+    pdf.set_text_color(*_AZUL)
+    pdf.cell(0, 14, "Estadísticas institucionales", align="C", new_x="LMARGIN", new_y="NEXT")
+    # Regla corta centrada bajo el título.
+    pdf.set_draw_color(*_AZUL)
+    pdf.set_line_width(0.6)
+    cx = pdf.w / 2
+    y = pdf.get_y() + 2
+    pdf.line(cx - 25, y, cx + 25, y)
 
     # Metadata al pie de la portada.
-    pdf.set_y(pdf.h - 30)
+    pdf.set_y(pdf.h - 42)
     pdf.set_font("Helvetica", "", 10)
     pdf.set_text_color(*_GRIS)
     generado = datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M UTC")
@@ -90,17 +82,6 @@ def _portada(pdf: FPDF, r: ResumenStats, filtros: FiltrosStats | None, alcance: 
         new_x="LMARGIN", new_y="NEXT",
     )
     pdf.set_text_color(0, 0, 0)
-
-
-def _kpi_portada(pdf: FPDF, etiqueta: str, valor: object) -> None:
-    """Una fila 'Etiqueta ......... Valor' grande, centrada, en la portada."""
-    pdf.set_font("Helvetica", "B", 20)
-    pdf.cell(0, 11, str(valor), align="C", new_x="LMARGIN", new_y="NEXT")
-    pdf.set_font("Helvetica", "", 10)
-    pdf.set_text_color(*_GRIS)
-    pdf.cell(0, 7, etiqueta, align="C", new_x="LMARGIN", new_y="NEXT")
-    pdf.set_text_color(*_AZUL)
-    pdf.ln(3)
 
 
 def _titulo_pagina(pdf: FPDF, texto: str) -> None:
@@ -166,7 +147,7 @@ def resumen_a_pdf(
             ("Exámenes", r.total_examenes),
             ("Materias", r.total_materias),
             ("Comisiones", r.total_comisiones),
-            ("Sesiones", r.total_sesiones),
+            ("Sesiones iniciadas", r.total_sesiones),
             ("Sesiones finalizadas", r.sesiones_finalizadas),
             (f"En riesgo (score {r.umbral_riesgo} o más)", r.sesiones_en_riesgo),
         ],

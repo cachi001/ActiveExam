@@ -30,20 +30,14 @@ _ROJO = "#ef4444"
 DECISION_LABEL = {
     "sin_revisar": "Sin revisar",
     "pendiente": "Pendiente",
-    "sin_hallazgos": "Sin hallazgos",
     "aprobado": "Aprobado",
-    "caso_abierto": "Caso abierto",
-    "anulado_por_fraude": "Anulado por fraude",
-    "caso_descartado": "Caso descartado",
+    "anulado": "Anulado por fraude",
 }
 DECISION_COLOR = {
     "sin_revisar": "#94a3b8",
     "pendiente": "#3b82f6",
-    "sin_hallazgos": "#10b981",
     "aprobado": "#10b981",
-    "caso_abierto": "#f59e0b",
-    "anulado_por_fraude": "#ef4444",
-    "caso_descartado": "#10b981",
+    "anulado": "#ef4444",
 }
 
 

@@ -318,15 +318,12 @@ function TopEventos({ data }: { data: ResumenStats }) {
   );
 }
 
-/** Etiqueta + color de cada decisión de revisión. */
+/** Etiqueta + color de cada decisión de revisión (modelo de un solo paso). */
 const DECISION_META: Record<string, { label: string; color: string }> = {
   sin_revisar: { label: 'Sin revisar', color: '#94a3b8' },
   pendiente: { label: 'Pendiente', color: '#3b82f6' },
-  sin_hallazgos: { label: 'Sin hallazgos', color: '#10b981' },
   aprobado: { label: 'Aprobado', color: '#10b981' },
-  caso_abierto: { label: 'Caso abierto', color: '#f59e0b' },
-  anulado_por_fraude: { label: 'Anulado por fraude', color: '#ef4444' },
-  caso_descartado: { label: 'Caso descartado', color: '#10b981' },
+  anulado: { label: 'Anulado por fraude', color: '#ef4444' },
 };
 function decisionMeta(clave: string): { label: string; color: string } {
   return DECISION_META[clave] ?? { label: clave.replace(/_/g, ' '), color: '#8b5cf6' };
@@ -351,7 +348,7 @@ function DonutDecisiones({ data }: { data: ResumenStats }) {
 
   return (
     <Card padded={false}>
-      <ChartHead titulo="Estado de revisión" bajada="Estado de la revisión humana de cada sesión. Pendiente: sin veredicto aún. Sin hallazgos / Aprobado: falso positivo — nota validada. Anulado por fraude: nota anulada, devuelve 0." />
+      <ChartHead titulo="Estado de revisión" bajada="Estado de la revisión humana de cada sesión. Pendiente: sin decisión aún. Aprobado: falso positivo — nota validada. Anulado por fraude: nota anulada, devuelve 0." />
       {total === 0 ? (
         <ChartVacio icono="fact_check" texto="Ninguna sesión ha pasado por revisión humana todavía." />
       ) : (

@@ -39,11 +39,8 @@ _BORDE_HDR = Border(left=_MEDIUM, right=_MEDIUM, top=_MEDIUM, bottom=_MEDIUM)
 DECISION_LABEL = {
     "sin_revisar":      "Sin revisar",
     "pendiente":        "Pendiente",
-    "sin_hallazgos":    "Sin hallazgos",
     "aprobado":         "Aprobado",
-    "caso_abierto":     "Caso abierto",
-    "anulado_por_fraude": "Anulado por fraude",
-    "caso_descartado":  "Caso descartado",
+    "anulado":          "Anulado por fraude",
 }
 
 

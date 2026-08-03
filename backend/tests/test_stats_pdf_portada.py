@@ -1,7 +1,8 @@
 """Portada del PDF de estadísticas (C-20): antes era casi una hoja en blanco
 (logo chico arriba + título flotando a mitad de página, sin contenido real).
-Ahora lleva una banda de color + KPIs — se prueba que el PDF sigue generando
-bytes válidos con la nueva portada.
+Ahora el título centrado (fondo blanco, sin banda de color ni subtítulo —
+estilo institucional fijo) lleva el resumen de KPIs debajo — se prueba que el
+PDF sigue generando bytes válidos con la nueva portada.
 
 Pura (sin DB): construye un ResumenStats mínimo a mano.
 """

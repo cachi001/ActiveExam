@@ -295,8 +295,14 @@ def _session_conditions(filtros: FiltrosStats) -> list:
     Para materia/comisión resuelve el vínculo sesión → examen_contenido →
     comisión → materia con subconsultas de `examen_contenido_id IN (...)`. Un id
     malformado (no-UUID) NO rompe: filtra a vacío (nada matchea), no un 500.
+
+    SIEMPRE excluye sesiones de diagnóstico (sin examen vinculado, ej. "Grabar
+    sesión" del Test de detección de Configuración): no son un examen rendido,
+    contarlas infla "Sesiones iniciadas"/distribución de scores con actividad
+    que no tiene nada que ver con exámenes reales. Mismo criterio que ya aplica
+    la Cola de Revisión (`enriquecerYFiltrar`, frontend).
     """
-    conds: list = []
+    conds: list = [ProctoringSessionModel.examen_contenido_id.is_not(None)]
     if filtros.examen_contenido_id:
         if _es_uuid(filtros.examen_contenido_id):
             conds.append(ProctoringSessionModel.examen_contenido_id == filtros.examen_contenido_id)
@@ -507,7 +513,6 @@ async def obtener_resumen(
                 ProctoringSessionModel.creada_en,
                 ProctoringSessionModel.finalizada_en,
                 ProctoringSessionModel.decision,
-                ProctoringSessionModel.resolucion,
             ).where(*conds)
         )
     ).all()
@@ -605,10 +610,7 @@ async def obtener_resumen(
             dia_agg[fecha] = dia_agg.get(fecha, 0) + 1
         # por decisión de revisión — solo sesiones en cola de riesgo (score >= umbral)
         if score_por_sesion[r.id] >= umbral:
-            if r.resolucion == "anulado_por_fraude":
-                clave = "anulado_por_fraude"
-            else:
-                clave = r.decision or "sin_revisar"
+            clave = r.decision or "sin_revisar"
             dec_agg[clave] = dec_agg.get(clave, 0) + 1
 
     por_materia = [
