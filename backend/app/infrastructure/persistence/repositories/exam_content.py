@@ -664,6 +664,23 @@ class MateriaSqlRepository:
             await self._db.flush()
         return borrado
 
+    async def materias_a_cargo(self, docente_id: str) -> list[Materia]:
+        """Materias (distintas) donde el docente dado dicta alguna comisión (C-73 §9).
+
+        Contraparte de ``InscripcionSqlRepository.materias_inscriptas`` pero para
+        el rol DOCENTE — filtra por ``comision.docente_id``, no por inscripción.
+        """
+        orden = _orden_alfabetico(MateriaModel.nombre).label("_orden_alfabetico")
+        result = await self._db.execute(
+            select(MateriaModel)
+            .add_columns(orden)
+            .join(ComisionModel, ComisionModel.materia_id == MateriaModel.id)
+            .where(ComisionModel.docente_id == docente_id)
+            .distinct()
+            .order_by(orden)
+        )
+        return list(result.scalars().all())
+
 
 class ComisionSqlRepository:
     """CRUD async para la tabla comision (C-69 sección 6, D11)."""
@@ -930,6 +947,33 @@ class ComisionSqlRepository:
             .where(ExamenContenidoModel.id == examen_id)
         )
         return result.scalar_one_or_none()
+
+    async def comision_ids_a_cargo(self, docente_id: str) -> list[str]:
+        """Comisiones donde el docente dado es el titular (comision.docente_id).
+
+        Contraparte de ``InscripcionSqlRepository.comision_ids_inscriptas`` pero
+        para el rol DOCENTE (C-73 §9): un docente no se "inscribe" a su propia
+        comisión como alumno, así que el gate de catálogo necesita esta fuente
+        distinta — "lo que dicta", no "lo que cursa".
+        """
+        result = await self._db.execute(
+            select(ComisionModel.id).where(ComisionModel.docente_id == docente_id)
+        )
+        return list(result.scalars().all())
+
+    async def listar_a_cargo_de_materia(
+        self, docente_id: str, materia_id: str
+    ) -> list[Comision]:
+        """Comisiones de una materia donde el docente dado es el titular (C-73 §9)."""
+        result = await self._db.execute(
+            select(ComisionModel)
+            .where(
+                ComisionModel.materia_id == materia_id,
+                ComisionModel.docente_id == docente_id,
+            )
+            .order_by(_orden_alfabetico(ComisionModel.nombre))
+        )
+        return [self._to_entity(m) for m in result.scalars().all()]
 
     def _to_entity(self, model: ComisionModel) -> Comision:
         return Comision(

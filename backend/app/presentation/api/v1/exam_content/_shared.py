@@ -20,6 +20,17 @@ def _es_staff(principal: AuthenticatedPrincipal) -> bool:
     return bool(set(principal.roles or []) & _ROLES_STAFF)
 
 
+def _es_docente(principal: AuthenticatedPrincipal) -> bool:
+    """True si el principal tiene el rol DOCENTE (gestión académica "de lo suyo").
+
+    Bug real (verificación E2E de C-73): el docente NO es staff (ve TODO) ni
+    alumno (ve solo sus inscripciones) — ve lo que DICTA (comision.docente_id).
+    Sin esta rama, los 3 endpoints de listado (catálogo/materias/comisiones)
+    caían al gate de inscripción del alumno y el docente veía siempre vacío.
+    """
+    return "docente" in set(principal.roles or [])
+
+
 def _resumen_to_response(r) -> ExamenContenidoResumenResponse:
     """Mapea un ExamenContenidoResumen de dominio al schema de respuesta (D3)."""
     return ExamenContenidoResumenResponse(

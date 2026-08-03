@@ -38,7 +38,11 @@ from app.domain.exam_content.barajado import barajar_opciones
 from app.presentation.api.v1.auth.dependencies import (
     get_current_principal,
 )
-from app.presentation.api.v1.exam_content._shared import _es_staff, _resumen_to_response
+from app.presentation.api.v1.exam_content._shared import (
+    _es_docente,
+    _es_staff,
+    _resumen_to_response,
+)
 from app.presentation.api.v1.exam_content.schemas import (
     CapturaFirmadaResponse,
     ComisionResponse,
@@ -113,6 +117,7 @@ def create_exam_taking_router(
             )
 
         from app.infrastructure.persistence.repositories.exam_content import (
+            ComisionSqlRepository,
             ExamenContenidoSqlRepository,
             InscripcionSqlRepository,
         )
@@ -120,10 +125,16 @@ def create_exam_taking_router(
         # Gate de inscripción (C-71): el alumno ve SOLO los exámenes de las comisiones
         # donde está inscripto; los roles de gestión (admin/proctor/...) ven todo el
         # catálogo. El filtro es server-side por el id_institucional del principal.
+        # C-73 §9: el docente ve lo que DICTA (comision.docente_id), ni todo (staff)
+        # ni "sus inscripciones" (alumno, siempre vacío para un docente).
         async with session_factory() as session:
             repo = ExamenContenidoSqlRepository(session)
             if _es_staff(principal):
                 comision_ids = None
+            elif _es_docente(principal):
+                comision_ids = await ComisionSqlRepository(session).comision_ids_a_cargo(
+                    principal.subject or ""
+                )
             else:
                 comision_ids = await InscripcionSqlRepository(
                     session
@@ -433,7 +444,8 @@ def create_exam_taking_router(
         )
 
         # Gate de inscripción (C-71): el alumno ve SOLO las materias donde tiene
-        # comisión inscripta; staff ve todas.
+        # comisión inscripta; staff ve todas. C-73 §9: el docente ve las materias
+        # donde dicta alguna comisión (comision.docente_id), no todas ni "inscriptas".
         conteos: dict[str, tuple[int, int]] = {}
         async with session_factory() as session:
             if _es_staff(principal):
@@ -441,6 +453,10 @@ def create_exam_taking_router(
                 materias = await repo.listar()
                 # Conteos por materia para que la UI oculte "Eliminar" si no está vacía.
                 conteos = await repo.contar_inscriptos_y_examenes_todas()
+            elif _es_docente(principal):
+                materias = await MateriaSqlRepository(session).materias_a_cargo(
+                    principal.subject or ""
+                )
             else:
                 materias = await InscripcionSqlRepository(session).materias_inscriptas(
                     principal.id_institucional
@@ -479,7 +495,8 @@ def create_exam_taking_router(
         )
 
         # Gate de inscripción (C-71): el alumno ve SOLO sus comisiones inscriptas de
-        # esa materia; staff ve todas las comisiones de la materia.
+        # esa materia; staff ve todas las comisiones de la materia. C-73 §9: el
+        # docente ve SOLO las comisiones de esa materia donde él es el titular.
         conteos: dict[str, tuple[int, int]] = {}
         nombres_docentes: dict[str, str] = {}
         async with session_factory() as session:
@@ -488,6 +505,10 @@ def create_exam_taking_router(
                 comisiones = await repo.listar_por_materia(materia_id)
                 # Conteos por comisión para que la UI oculte "Eliminar" si no está vacía.
                 conteos = await repo.contar_inscriptos_y_examenes_por_materia(materia_id)
+            elif _es_docente(principal):
+                comisiones = await repo.listar_a_cargo_de_materia(
+                    principal.subject or "", materia_id
+                )
             else:
                 comisiones = await InscripcionSqlRepository(
                     session
