@@ -7,18 +7,16 @@
  * es más permisivo, muestra un botón que el backend rechaza con 403; si es más
  * restrictivo, esconde una acción que la persona sí podía hacer.
  *
- * Antes decía `resolver_caso: ["admin_sistema"]` "adaptado al modelo de 3 roles
- * del MVP donde el rol revisor está colapsado en admin_sistema" — un colapso que
- * el backend NUNCA hizo: allá `resolver_caso` siempre fue exclusiva de `revisor`.
- * Con esa divergencia, al admin se le habilitaban los botones de anulación y cada
- * click moría en 403, mientras el revisor —el único autorizado— ni entraba.
+ * `resolver_caso` (capacidad separada para el veredicto de una segunda fase)
+ * DESAPARECIÓ: el modelo de dos fases fue rechazado explícitamente por el
+ * owner del proyecto. `revisar_sesion` cubre TODO el acto — aprobar y anular,
+ * en un solo paso — porque no hay segunda instancia que gatear aparte.
  * Al tocar este mapa, tocar el del backend en el mismo commit.
  */
 import type { Rol } from "./types";
 
 export type Capacidad =
   | "revisar_sesion"
-  | "resolver_caso"
   | "gestionar_academico"
   | "gestionar_notas"
   | "configurar_sistema"
@@ -29,9 +27,6 @@ export type Capacidad =
 /** capacidad → conjunto de roles que la poseen (dato de config, no lógica). */
 const CAPABILITY_ROLES: Record<Capacidad, readonly Rol[]> = {
   revisar_sesion: ["revisor", "coordinador", "admin_sistema"],
-  // Veredicto (anular/descartar): revisor como autoridad instructora;
-  // admin_sistema como autoridad máxima del sistema.
-  resolver_caso: ["revisor", "admin_sistema"],
   gestionar_academico: ["docente", "admin_examenes", "coordinador", "admin_sistema"],
   gestionar_notas: ["docente", "admin_examenes", "coordinador", "admin_sistema"],
   configurar_sistema: ["admin_sistema"],

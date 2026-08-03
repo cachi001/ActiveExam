@@ -1,9 +1,10 @@
-"""Proyección del veredicto de anulación en MiNota (c-71 slice 2, D11b/D12).
+"""Proyección del veredicto de anulación en MiNota (c-71 slice 2, D11b/D12,
+modelo de un solo paso).
 
 El alumno ve el veredicto por PULL en GET /mis-notas. Verifica contra DB real
 (sin mocks, regla #4) que:
-- resolución `anulado_por_fraude` (sin restitución) → nota_anulada + informe_disponible + veredicto;
-- resolución `caso_descartado` / sin resolución → nota NO anulada, informe NO disponible (minimización);
+- decision `anulado` (sin restitución) → nota_anulada + informe_disponible + veredicto;
+- decision `aprobado` / sin decisión → nota NO anulada, informe NO disponible (minimización);
 - un acto compensatorio `nota_restituida` posterior deriva el estado a NO anulada (D10b).
 """
 
@@ -13,13 +14,12 @@ import os
 import uuid
 
 import pytest
-from sqlalchemy import delete, update
+from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.application.moodle.resultados_query import listar_mis_notas
-from app.application.review.resolution_service import ReviewResolutionService
 from app.application.review.service import ReviewDecisionService
-from app.domain.review.decision import DecisionResolucion, DecisionRevision
+from app.domain.review.decision import DecisionSesion
 from app.infrastructure.persistence.models.exam_content import (  # noqa: F401
     ExamenContenidoModel,
 )
@@ -72,28 +72,16 @@ async def _sesion_finalizada_con_nota(factory, idnumber: str, email: str) -> str
         return sid
 
 
-async def _abrir_y_resolver(factory, sid: str, resolucion: DecisionResolucion) -> None:
+async def _decidir(factory, sid: str, decision: DecisionSesion, *, evidencia_ids=None) -> None:
     async with factory() as s:
         await ReviewDecisionService(
             repo=SqlSessionReviewRepository(s), auditor=SqlReviewAuditor(s)
         ).decide(
             sid,
-            decision=DecisionRevision.CASO_ABIERTO,
+            decision=decision,
             actor="revisor-1",
-            observaciones="derivado",
-        )
-        await s.commit()
-    async with factory() as s:
-        await ReviewResolutionService(
-            repo=SqlSessionReviewRepository(s), auditor=SqlReviewAuditor(s)
-        ).resolve(
-            sid,
-            resolucion=resolucion,
-            actor="autoridad-1",
-            motivo="motivo de resolucion",
-            evidencia_ref="clip-1"
-            if resolucion is DecisionResolucion.ANULADO_POR_FRAUDE
-            else None,
+            motivo="motivo de la decision",
+            evidencia_ids=evidencia_ids or [],
         )
         await s.commit()
 
@@ -121,16 +109,16 @@ async def _get_minota(factory, idnumber: str, email: str, sid: str):
 
 @pytest.mark.requires_stack
 @pytest.mark.asyncio
-async def test_anulado_por_fraude_proyecta_veredicto_e_informe() -> None:
+async def test_anulado_proyecta_veredicto_e_informe() -> None:
     factory = _factory()
     idn, email = _idn(), f"{_idn()}@u.edu"
     sid = await _sesion_finalizada_con_nota(factory, idn, email)
     try:
-        await _abrir_y_resolver(factory, sid, DecisionResolucion.ANULADO_POR_FRAUDE)
+        await _decidir(factory, sid, DecisionSesion.ANULADO, evidencia_ids=["evt-1"])
         mn = await _get_minota(factory, idn, email, sid)
         assert mn is not None
         assert mn.nota_anulada is True
-        assert mn.veredicto == "anulado_por_fraude"
+        assert mn.veredicto == "anulado"
         assert mn.informe_disponible is True
     finally:
         await _cleanup(factory, sid)
@@ -138,12 +126,12 @@ async def test_anulado_por_fraude_proyecta_veredicto_e_informe() -> None:
 
 @pytest.mark.requires_stack
 @pytest.mark.asyncio
-async def test_caso_descartado_no_expone_informe_minimizacion() -> None:
+async def test_aprobado_no_expone_informe_minimizacion() -> None:
     factory = _factory()
     idn, email = _idn(), f"{_idn()}@u.edu"
     sid = await _sesion_finalizada_con_nota(factory, idn, email)
     try:
-        await _abrir_y_resolver(factory, sid, DecisionResolucion.CASO_DESCARTADO)
+        await _decidir(factory, sid, DecisionSesion.APROBADO)
         mn = await _get_minota(factory, idn, email, sid)
         assert mn is not None
         assert mn.nota_anulada is False
@@ -155,7 +143,7 @@ async def test_caso_descartado_no_expone_informe_minimizacion() -> None:
 
 @pytest.mark.requires_stack
 @pytest.mark.asyncio
-async def test_sin_resolucion_no_expone_informe() -> None:
+async def test_sin_decision_no_expone_informe() -> None:
     factory = _factory()
     idn, email = _idn(), f"{_idn()}@u.edu"
     sid = await _sesion_finalizada_con_nota(factory, idn, email)
@@ -175,17 +163,17 @@ async def test_restitucion_posterior_deriva_a_no_anulada() -> None:
     idn, email = _idn(), f"{_idn()}@u.edu"
     sid = await _sesion_finalizada_con_nota(factory, idn, email)
     try:
-        await _abrir_y_resolver(factory, sid, DecisionResolucion.ANULADO_POR_FRAUDE)
+        await _decidir(factory, sid, DecisionSesion.ANULADO, evidencia_ids=["evt-1"])
         # Acto compensatorio append-only (hook c-18): restituye la nota.
         async with factory() as s:
-            await ReviewResolutionService(
+            await ReviewDecisionService(
                 repo=SqlSessionReviewRepository(s), auditor=SqlReviewAuditor(s)
             ).revertir_anulacion(sid, actor="c18", motivo="apelacion exitosa")
             await s.commit()
         mn = await _get_minota(factory, idn, email, sid)
         assert mn is not None
-        # La columna resolucion sigue 'anulado_por_fraude' (append-only, no UPDATE)
-        # pero el estado DERIVADO del último acto es: NO anulada.
+        # La columna `decision` sigue 'anulado' (append-only, no UPDATE) pero el
+        # estado DERIVADO del último acto es: NO anulada.
         assert mn.nota_anulada is False
         assert mn.informe_disponible is False
     finally:

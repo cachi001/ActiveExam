@@ -139,7 +139,7 @@ class AccionAuditoria(StrEnum):
 
 
 # Prefijos de acciones DINÁMICAS (llevan un sufijo variable). Se componen así:
-#   f"{PREFIJO_REVISION_DECISION}{decision}" -> "review.decision.caso_abierto"
+#   f"{PREFIJO_REVISION_DECISION}{decision}" -> "review.decision.anulado"
 #   f"{PREFIJO_VERIFY_CHAIN}{status}"        -> "verify_chain.ok"
 #   f"{PREFIJO_DSR}{tipo}"                   -> "dsr.rectification"
 PREFIJO_REVISION_DECISION = "review.decision."

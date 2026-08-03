@@ -382,7 +382,6 @@ def create_exam_taking_router(
         return InformeDevolucionResponse(
             session_id=informe.session_id,
             decision=informe.decision,
-            resolucion=informe.resolucion,
             motivo=informe.motivo,
             senales=[
                 SenalAnalisisResponse(

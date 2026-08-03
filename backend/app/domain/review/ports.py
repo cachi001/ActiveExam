@@ -1,19 +1,14 @@
-"""Puertos del dominio review (c-16 slim; resolucion c-71 slice 2)."""
+"""Puertos del dominio review (modelo de un solo paso)."""
 
 from __future__ import annotations
 
 from typing import Protocol
 
-from app.domain.review.decision import (
-    DecisionResolucion,
-    DecisionTerminal,
-    ResolutionRecord,
-    ReviewDecisionRecord,
-)
+from app.domain.review.decision import DecisionSesion, ReviewDecisionRecord
 
 
 class SessionReviewRepository(Protocol):
-    """Lee y persiste la decision en proctoring_session (4 columnas slim)."""
+    """Lee y persiste la decision en proctoring_session (columnas slim)."""
 
     async def get_decision(
         self, session_id: str
@@ -23,29 +18,12 @@ class SessionReviewRepository(Protocol):
         self,
         session_id: str,
         *,
-        decision: DecisionTerminal,
+        decision: DecisionSesion,
         actor: str,
-        observaciones: str | None,
+        motivo: str | None,
+        evidencia_ids: list[str],
     ) -> str:
         """Persiste la decision atomicamente. Devuelve decision_at ISO 8601."""
-        ...
-
-    async def get_resolution(
-        self, session_id: str
-    ) -> ResolutionRecord | None:
-        """Lee el estado de RESOLUCION (fase 2) de la sesion, o None si no existe
-        la sesion. Un record con ``resolucion=None`` = caso sin resolver."""
-        ...
-
-    async def persist_resolution(
-        self,
-        session_id: str,
-        *,
-        resolucion: DecisionResolucion,
-        actor: str,
-        motivo: str,
-    ) -> str:
-        """Persiste la resolucion atomicamente. Devuelve resolucion_at ISO 8601."""
         ...
 
 

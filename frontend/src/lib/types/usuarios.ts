@@ -67,7 +67,7 @@ export interface SesionRevision {
   fecha: string;
   duracion: string;
   foto: string;
-  // C-71 slice 2: modelo de decisión unificado (dos fases, sin `escalada`).
+  // C-71 slice 2: modelo de decisión de UN SOLO PASO (aprobado | anulado | pendiente).
   decision: DecisionRevisor;
   eventos: EventoSesion[];
   cadena_custodia: {

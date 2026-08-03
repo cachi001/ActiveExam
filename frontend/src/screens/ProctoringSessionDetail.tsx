@@ -189,28 +189,22 @@ export default function ProctoringSessionDetail() {
   // o supervisión en vivo esta pantalla es consulta: meter ahí los botones de
   // anular invitaría a decidir fuera del circuito.
   const vieneDeLaCola = backRoute === '/revisor';
-  const puedeResolver = tieneCapacidad(rolesPrincipal ?? [], 'resolver_caso');
+  const puedeResolver = tieneCapacidad(rolesPrincipal ?? [], 'revisar_sesion');
 
-  /** Registra la decisión contra el backend. `true` solo si el backend confirmó. */
+  /** Registra la decisión contra el backend, en UN SOLO PASO. `true` solo si el
+   * backend confirmó. */
   const registrarDecision = async (
     decision: DecisionRevisor,
     motivo: string,
-    evidenciaRef?: string,
+    evidenciaIds?: string[],
   ): Promise<boolean> => {
     if (!sessionId) return false;
+    if (decision !== 'aprobado' && decision !== 'anulado') {
+      // 'pendiente' es el estado PREVIO a decidir, no una decisión registrable.
+      return false;
+    }
     try {
-      if (decision === 'anulado_por_fraude' || decision === 'caso_descartado') {
-        await api.resolverCaso(sessionId, decision, motivo, evidenciaRef);
-      } else if (
-        decision === 'sin_hallazgos' ||
-        decision === 'aprobado' ||
-        decision === 'caso_abierto'
-      ) {
-        await api.decidirRevision(sessionId, decision, motivo);
-      } else {
-        // 'pendiente' es el estado PREVIO a decidir, no una decisión registrable.
-        return false;
-      }
+      await api.decidirSesion(sessionId, decision, motivo, evidenciaIds ?? []);
       return true;
     } catch (e) {
       const status = (e as { status?: number })?.status;

@@ -576,7 +576,7 @@ class ResultadoAlumnoResponse(BaseModel):
     nota: float | None = None
     estado_moodle: str  # pendiente | enviado | fallido | sin_token
     # Motivo por el que la nota queda RETENIDA y no se sincroniza (gate D15):
-    # en_riesgo | caso_abierto | anulada. None = nada la retiene.
+    # en_riesgo | anulada. None = nada la retiene.
     retenido_por: str | None = None
     actualizado_en: datetime | None = None
 
@@ -688,18 +688,18 @@ class CapturaFirmadaResponse(BaseModel):
 
 
 class InformeDevolucionResponse(BaseModel):
-    """Informe de devolución del alumno (SOLO nota anulada por fraude, C-71 D12).
+    """Informe de devolución del alumno (SOLO nota anulada, C-71 D12, un solo paso).
 
     Disclosure de debido proceso: decisión + motivo + análisis por señal
-    (server-side) + capturas firmadas. Minimización: este recurso solo existe
-    para sesiones anuladas por fraude del propio titular (Ley 25.326).
+    (server-side) + capturas firmadas (SOLO la evidencia que el revisor eligió
+    al decidir, no toda la sesión). Minimización: este recurso solo existe
+    para sesiones anuladas del propio titular (Ley 25.326).
     """
 
     model_config = ConfigDict(extra="forbid")
 
     session_id: str
     decision: str
-    resolucion: str
     motivo: str | None = None
     senales: list[SenalAnalisisResponse]
     capturas: list[CapturaFirmadaResponse]

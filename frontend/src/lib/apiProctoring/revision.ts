@@ -5,43 +5,31 @@
 import { realFetch, API_BASE } from '../apiCore';
 import { authProvider } from '../authProvider';
 import type {
-  DecisionRevision, DecisionResolucion, SesionProctoringDetalle,
+  DecisionSesion, SesionProctoringDetalle,
 } from '../types';
 
 export const revisionApi = {
   /**
-   * Registra la decisión de REVISIÓN (fase 1) sobre una sesión (capacidad `revisar_sesion`).
-   * Real: POST /review/session/{id}/decide → 200; 409 si ya había decisión (inmutable).
-   * El `motivo` viaja como `observaciones`: el fundamento queda en el audit inmutable.
-   * `caso_abierto` deriva a la fase 2 (no valida ni anula la nota).
+   * Registra la decisión TERMINAL sobre una sesión, en un solo acto (capacidad
+   * `revisar_sesion`). Real: POST /review/session/{id}/decide → 200; 409 si ya
+   * había decisión (inmutable). `motivo` obligatorio no vacío y `evidenciaIds`
+   * (al menos un event_id) obligatorio cuando `decision === 'anulado'` (D11).
+   * No hay una segunda instancia de resolución: quien revisa decide.
    */
-  async decidirRevision(
+  async decidirSesion(
     sessionId: string,
-    decision: DecisionRevision,
+    decision: DecisionSesion,
     motivo: string,
-  ): Promise<{ session_id: string; previous: string; new: string; actor: string; decision_at: string }> {
+    evidenciaIds: string[] = [],
+  ): Promise<{
+    session_id: string; previous: string; new: string; actor: string;
+    decision_at: string; nota_anulada: boolean; nota_anulada_en_moodle: boolean | null;
+  }> {
     return await realFetch(
       `/review/session/${sessionId}/decide`,
-      { method: 'POST', body: JSON.stringify({ decision, observaciones: motivo }) },
-    );
-  },
-
-  /**
-   * Registra el VEREDICTO de resolución (fase 2) de un caso abierto (capacidad `resolver_caso`).
-   * Real: POST /review/session/{id}/resolve → 200; 409 si ya resuelto o el caso no está abierto.
-   * `motivo` obligatorio; `evidenciaRef` obligatorio si `anulado_por_fraude` (D11).
-   */
-  async resolverCaso(
-    sessionId: string,
-    resolucion: DecisionResolucion,
-    motivo: string,
-    evidenciaRef?: string,
-  ): Promise<{ session_id: string; resolucion: string; actor: string; resolucion_at: string; nota_anulada: boolean }> {
-    return await realFetch(
-      `/review/session/${sessionId}/resolve`,
       {
         method: 'POST',
-        body: JSON.stringify({ resolucion, motivo, evidencia_ref: evidenciaRef ?? null }),
+        body: JSON.stringify({ decision, motivo, evidencia_ids: evidenciaIds }),
       },
     );
   },

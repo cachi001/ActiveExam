@@ -17,10 +17,6 @@ const RETENCION_CONFIG: Record<string, { label: string; detalle: string }> = {
     label: 'Retenida · supera el umbral de riesgo',
     detalle: 'La sesión superó el umbral de riesgo y todavía no la revisó una persona. La nota no se envía hasta que haya decisión.',
   },
-  caso_abierto: {
-    label: 'Retenida · caso abierto',
-    detalle: 'Un revisor derivó el caso y falta el veredicto. La nota no se envía hasta que se resuelva.',
-  },
   anulada: {
     label: 'Anulada por fraude',
     detalle: 'El examen fue anulado por decisión humana. La nota enviada a Moodle es 0.',

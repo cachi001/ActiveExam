@@ -43,8 +43,9 @@ const Registro              = lazy(() => import('./screens/Registro'));
 // y CAPABILITY_ROLES del backend (si la ruta deja pasar y el endpoint responde
 // 403, la accion falla en silencio).
 const ESTUDIANTE: Rol[] = ['estudiante'];
-// Incluye 'revisor': es el unico rol con la capacidad `resolver_caso` del backend
-// y hasta ahora la ruta /revisor lo dejaba afuera.
+// Incluye 'revisor': es quien tiene la capacidad `revisar_sesion` del backend
+// (decide en un solo paso, incluida la anulación) y hasta ahora la ruta
+// /revisor lo dejaba afuera.
 const SUPERVISION: Rol[] = ['proctor', 'revisor', 'coordinador', 'admin_sistema'];
 // Area del docente: examenes, materias, comisiones y notas. Sin supervision,
 // sin auditoria, sin configuracion.

@@ -201,12 +201,13 @@ def test_ningun_path_produce_veredicto_solo_estado() -> None:
     assert not hasattr(res, "sancion") and not hasattr(res, "veredicto")
 
 
-def test_score_maximo_no_produce_anulado_por_fraude_c71() -> None:
-    """c-71 slice 2, D13 / regla dura #5: NO existe transicion automatica
-    score/umbral -> `anulado_por_fraude`. Un score al tope solo PRIORIZA la
-    cola (FLAGGEADA); la anulacion es siempre un acto humano con `resolver_caso`
-    (ReviewResolutionService.resolve), jamas un efecto de la consolidacion."""
-    from app.domain.review.decision import DecisionResolucion
+def test_score_maximo_no_produce_anulado_c71() -> None:
+    """c-71 slice 2 (D13) / regla dura #5: NO existe transicion automatica
+    score/umbral -> `anulado`. Un score al tope solo PRIORIZA la cola
+    (FLAGGEADA); la anulacion es siempre un acto humano en un solo paso
+    (ReviewDecisionService.decide con decision=ANULADO), jamas un efecto de
+    la consolidacion."""
+    from app.domain.review.decision import DecisionSesion
 
     svc, repo_s, _ = _service(
         _sesion(EstadoSesion.FINALIZADA), _eventos_severos(50), umbral=5.0
@@ -215,7 +216,9 @@ def test_score_maximo_no_produce_anulado_por_fraude_c71() -> None:
     # Score al tope (cap) -> priorizada, nunca anulada.
     assert res.score_final == SCORE_CAP
     assert repo_s.sesion.estado is EstadoSesion.FLAGGEADA
-    # El resultado del cierre no expone ninguna resolucion/anulacion.
+    # El resultado del cierre no expone ninguna decision de revision/anulacion
+    # (el campo `decision` que SI tiene es `DecisionEncolado`, un concepto
+    # distinto — el estado FLAGGEADA/CERRADA de la cola, no el veredicto).
     assert not hasattr(res, "resolucion")
-    for valor in (v.value for v in DecisionResolucion):
+    for valor in (v.value for v in DecisionSesion):
         assert valor not in repr(res)

@@ -1,15 +1,19 @@
 /**
- * DecisionRevisorForm — el acto de decidir sobre una sesión revisada.
+ * DecisionRevisorForm — el acto de decidir sobre una sesión revisada, EN UN
+ * SOLO PASO (sin segunda instancia de "resolución" ni "caso abierto").
  *
  * UNA decisión, dos salidas: **Aprobar con nota** o **Anular examen**. Ambas
  * exigen MOTIVO; anular exige además seleccionar al menos una captura de
- * evidencia de la lista de eventos de la sesión.
+ * evidencia de la lista de eventos de la sesión — esa selección viaja
+ * ESTRUCTURADA (lista de `event_id`, no texto libre) y es lo único que
+ * después ve el alumno en su informe de devolución.
  */
 import { useState } from 'react';
 import { Button, Icon, SectionTitle, FormField } from '../../ui/components';
 import type { DecisionRevisor, EventoProctoringDetalle } from '../../lib/types';
 import { TIPO_EVENTO_LABEL } from '../../lib/api';
 import { formatFecha, humanizarLabel } from './helpers';
+import { ScreenshotMiniatura } from './ScreenshotMiniatura';
 
 export function DecisionRevisorForm({
   puedeResolver,
@@ -23,7 +27,7 @@ export function DecisionRevisorForm({
   onResolver: (
     decision: DecisionRevisor,
     motivo: string,
-    evidenciaRef?: string,
+    evidenciaIds?: string[],
   ) => Promise<boolean>;
   onDecidido?: () => void;
 }) {
@@ -44,18 +48,6 @@ export function DecisionRevisorForm({
     });
   };
 
-  /** Construye el string de evidenciaRef a partir de los eventos seleccionados. */
-  const buildEvidenciaRef = (): string => {
-    if (!eventos) return '';
-    return eventos
-      .filter((ev) => seleccionados.has(ev.evento_id))
-      .map((ev) => {
-        const label = TIPO_EVENTO_LABEL[ev.tipo as keyof typeof TIPO_EVENTO_LABEL] ?? humanizarLabel(ev.tipo);
-        return `${label} (${formatFecha(ev.ts_cliente, true)}) [${ev.evento_id.slice(0, 8)}]`;
-      })
-      .join('; ');
-  };
-
   const aprobar = async () => {
     if (!motivoOk || enviando) return;
     setEnviando(true);
@@ -64,22 +56,10 @@ export function DecisionRevisorForm({
     if (ok) onDecidido?.();
   };
 
-  const derivar = async () => {
-    if (!motivoOk || enviando) return;
-    setEnviando(true);
-    const ok = await onResolver('caso_abierto', motivo.trim());
-    setEnviando(false);
-    if (ok) onDecidido?.();
-  };
-
   const anular = async () => {
     if (!motivoOk || !puedeResolver || enviando || !hayEvidencia) return;
     setEnviando(true);
-    const abierto = await onResolver('caso_abierto', motivo.trim());
-    let ok = false;
-    if (abierto) {
-      ok = await onResolver('anulado_por_fraude', motivo.trim(), buildEvidenciaRef());
-    }
+    const ok = await onResolver('anulado', motivo.trim(), Array.from(seleccionados));
     setEnviando(false);
     if (ok) onDecidido?.();
   };
@@ -123,38 +103,41 @@ export function DecisionRevisorForm({
             </p>
           </div>
 
-          {/* Eventos con captura — grilla de thumbnails */}
+          {/* Eventos con captura — grilla de miniaturas (click amplía SIN recortar;
+              el checkbox de la esquina selecciona como evidencia del veredicto). */}
           {eventosConCaptura.length > 0 && (
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-sm">
               {eventosConCaptura.map((ev) => {
                 const sel = seleccionados.has(ev.evento_id);
                 const label = TIPO_EVENTO_LABEL[ev.tipo as keyof typeof TIPO_EVENTO_LABEL] ?? humanizarLabel(ev.tipo);
                 return (
-                  <button
+                  <div
                     key={ev.evento_id}
-                    type="button"
-                    onClick={() => toggleEvento(ev.evento_id)}
-                    className={`relative rounded-xl border-2 overflow-hidden text-left transition-all ${
+                    className={`relative rounded-xl border-2 overflow-hidden transition-all ${
                       sel
                         ? 'border-error ring-2 ring-error/30'
                         : 'border-outline-variant/40 hover:border-outline'
                     }`}
                   >
-                    <img
-                      src={ev.screenshot_base64 ?? ''}
-                      alt={label}
-                      className="w-full h-20 object-cover"
-                    />
+                    <ScreenshotMiniatura base64={ev.screenshot_base64} />
                     <div className="p-xs bg-surface-container-low space-y-xs">
                       <p className="text-label-sm font-medium text-on-surface leading-tight line-clamp-1">{label}</p>
                       <p className="text-label-xs text-on-surface-variant">{formatFecha(ev.ts_cliente, true)}</p>
                     </div>
-                    {sel && (
-                      <span className="absolute top-xs right-xs bg-error text-on-error rounded-full w-5 h-5 flex items-center justify-center">
-                        <Icon name="check" className="text-[14px]" />
-                      </span>
-                    )}
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => toggleEvento(ev.evento_id)}
+                      aria-pressed={sel}
+                      aria-label={sel ? 'Quitar de la evidencia' : 'Elegir como evidencia'}
+                      className={`absolute top-xs right-xs rounded-full w-6 h-6 flex items-center justify-center transition-colors ${
+                        sel
+                          ? 'bg-error text-on-error'
+                          : 'bg-surface-container-lowest/90 text-on-surface-variant border border-outline-variant/60'
+                      }`}
+                    >
+                      <Icon name={sel ? 'check' : 'add'} className="text-[14px]" />
+                    </button>
+                  </div>
                 );
               })}
             </div>
@@ -202,7 +185,7 @@ export function DecisionRevisorForm({
         >
           Aprobar con nota
         </Button>
-        {puedeResolver ? (
+        {puedeResolver && (
           <Button
             variant="danger"
             icon="gavel"
@@ -212,24 +195,13 @@ export function DecisionRevisorForm({
           >
             Anular examen
           </Button>
-        ) : (
-          <Button
-            variant="outline"
-            icon="forward_to_inbox"
-            disabled={!motivoOk || enviando}
-            onClick={derivar}
-            className="justify-center"
-          >
-            Derivar a un revisor
-          </Button>
         )}
       </div>
 
       {!puedeResolver && (
         <p className="text-label-sm text-on-surface-variant inline-flex items-center gap-base">
           <Icon name="lock" className="text-[16px]" />
-          No tenés la atribución para anular. Podés aprobar la nota o derivar el caso a
-          quien sí la tenga.
+          No tenés la atribución para anular. Podés aprobar la nota.
         </p>
       )}
     </div>

@@ -1,18 +1,14 @@
 """Capa de capacidades config-driven (capacidad -> roles), c-71 slice 2 D8.
 
-Reemplaza el `require_roles` hardcodeado por endpoint para las dos acciones
-de la Cola de Revision:
+Reemplaza el `require_roles` hardcodeado por endpoint para la accion de la
+Cola de Revision:
 
-- ``revisar_sesion``: revisar la sesion y derivarla (abrir el caso) o
-  cerrarla sin hallazgos/aprobada.
-- ``resolver_caso``: emitir el veredicto (anular por fraude / descartar el
-  caso) sobre un caso ya abierto.
-
-HOY ambas capacidades recaen (total o parcialmente) sobre el mismo rol
-REVISOR -- decision de *deployment* (concentracion), no de *modelo*. Mover
-``resolver_caso`` a otra autoridad manana es un cambio de ESTE mapa, sin
-tocar routers ni logica (mismo espiritu que ``ROLES_CON_MFA`` en
-``roles.py``).
+- ``revisar_sesion``: decision TERMINAL de la sesion, en un solo acto —
+  aprobar o anular. NO hay una capacidad separada para "resolver" un caso
+  abierto: el owner del proyecto rechazo explicitamente el modelo de dos
+  fases ("no existe el caso abierto, nunca dije que era un estado y no lo
+  va a ser"; confirmado: "si, un solo paso: quien revisa decide", sin
+  segunda instancia). Quien tiene `revisar_sesion` puede aprobar Y anular.
 
 Sin framework ni infraestructura (D1): dominio puro, testeable sin DB/red.
 """
@@ -25,9 +21,6 @@ from app.domain.auth.roles import Rol
 CAPABILITY_ROLES: dict[str, frozenset[Rol]] = {
     # --- Circuito de revision humana (L2.5) ---------------------------------
     "revisar_sesion": frozenset({Rol.REVISOR, Rol.COORDINADOR, Rol.ADMIN_SISTEMA}),
-    # Revisor es quien instruye; admin_sistema puede anular como autoridad
-    # máxima del sistema (supervisión, demo, emergencia).
-    "resolver_caso": frozenset({Rol.REVISOR, Rol.ADMIN_SISTEMA}),
     # --- Gestion academica ---------------------------------------------------
     # Alta/edicion de examenes, materias y comisiones. El DOCENTE vive aca: es su
     # trabajo. El revisor NO la tiene — quien juzga el fraude no edita el examen.

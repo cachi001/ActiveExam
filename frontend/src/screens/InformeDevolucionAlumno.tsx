@@ -2,7 +2,7 @@
  * InformeDevolucionAlumno — Informe de devolución del alumno (C-71 slice 2, D12).
  *
  * Ruta: /alumno/informe/:sessionId. Alcanzable desde MiNota SOLO cuando el
- * veredicto es `anulado_por_fraude` (transparencia acotada / debido proceso).
+ * veredicto es `anulado` (transparencia acotada / debido proceso).
  *
  * Consume GET /exam-content/mis-notas/{sessionId}/informe (scoped al titular). Si
  * la nota no fue anulada por fraude, el backend responde 404 → mostramos "no

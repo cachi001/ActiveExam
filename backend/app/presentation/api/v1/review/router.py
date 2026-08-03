@@ -1,14 +1,18 @@
-"""Router de revision (c-16 slim, modelo evolucionado c-71 slice 2 D6).
+"""Router de revision — modelo de UN SOLO PASO (colapsa c-16 + c-71 slice 2).
 
 POST /api/v1/review/session/{session_id}/decide
-  Body: { decision: 'sin_hallazgos' | 'aprobado' | 'caso_abierto', observaciones?: str }
-  Roles: revisor | coordinador | admin_sistema | proctor
+  Body: { decision: 'aprobado' | 'anulado', motivo?: str, evidencia_ids?: [str] }
+  Roles: revisor | coordinador | admin_sistema | proctor (capacidad `revisar_sesion`)
 
-Persiste la decision de REVISION (fase 1) en proctoring_session (columnas
-decision/decision_actor/decision_at/decision_observaciones agregadas en
-migracion 0013). Inmutable una vez seteada (RN-RV-07): segundo intento →
-409 Conflict. `caso_abierto` NO valida ni anula la nota: solo deriva el
-caso para la fase 2 (resolucion, `resolver_caso`, `POST .../resolve`).
+Persiste la decision TERMINAL, en un unico acto, en proctoring_session
+(columnas decision/decision_actor/decision_at/decision_motivo/decision_evidencia_ids).
+Inmutable una vez seteada (RN-RV-07): segundo intento → 409 Conflict.
+
+`anulado` exige motivo no vacio + al menos un `event_id` en `evidencia_ids`
+(D11): sin esto no queda registrado NI por que NI con que se anulo una nota.
+No existe una segunda fase de "resolucion" — el owner del proyecto lo
+rechazo explicitamente ("no existe el caso abierto"): quien revisa decide,
+en el mismo acto.
 """
 
 from __future__ import annotations
@@ -19,19 +23,14 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.application.review.resolution_service import (
-    CasoNoAbiertoError,
-    EvidenciaRequeridaError,
-    MotivoRequeridoError,
-    ResolucionAlreadyMadeError,
-    ReviewResolutionService,
-)
 from app.application.review.service import (
     DecisionAlreadyMadeError,
+    EvidenciaRequeridaError,
+    MotivoRequeridoError,
     ReviewDecisionService,
 )
 from app.domain.auth.identity import AuthenticatedPrincipal
-from app.domain.review.decision import DecisionResolucion, DecisionTerminal
+from app.domain.review.decision import DecisionSesion
 from app.infrastructure.persistence.repositories.review import (
     SqlReviewAuditor,
     SqlSessionReviewRepository,
@@ -43,11 +42,10 @@ _log = logging.getLogger(__name__)
 router = APIRouter()
 
 # D8: gating por capacidad config-driven, no por lista de roles hardcodeada.
-# El proctor sigue con acceso de lectura a la cola (fuera de este endpoint de
-# escritura); el `decide` (fase 1) exige `revisar_sesion`; el `resolve` (fase 2,
-# veredicto) exige `resolver_caso` — hoy ambas concentradas en el revisor.
+# `revisar_sesion` cubre TODO el acto — decidir y, si corresponde, anular —
+# porque ya no hay una capacidad separada `resolver_caso` (no hay segunda
+# instancia que gatear aparte).
 _require_revisor = require_capability("revisar_sesion")
-_require_resolver = require_capability("resolver_caso")
 
 
 # ---------------------------------------------------------------------------
@@ -58,8 +56,9 @@ _require_resolver = require_capability("resolver_caso")
 class DecideRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    decision: str  # 'sin_hallazgos' | 'aprobado' | 'caso_abierto'
-    observaciones: str | None = None
+    decision: str  # 'aprobado' | 'anulado'
+    motivo: str | None = None  # obligatorio no vacio si decision='anulado' (D11)
+    evidencia_ids: list[str] = []  # obligatoria no vacia si decision='anulado' (D11)
 
 
 class DecideResponse(BaseModel):
@@ -70,61 +69,38 @@ class DecideResponse(BaseModel):
     new: str
     actor: str
     decision_at: str
-    nota_legal: str
-
-
-_NOTA = (
-    "Decision terminal del revisor (RN-RV-07 — INMUTABLE). El sistema NUNCA "
-    "sanciona automaticamente (L2.5): este endpoint registra el juicio humano "
-    "sobre la sesion. Cambios posteriores requieren un nuevo proceso (apelacion)."
-)
-
-
-class ResolveRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    resolucion: str  # 'anulado_por_fraude' | 'caso_descartado'
-    motivo: str  # obligatorio no vacio (D11)
-    evidencia_ref: str | None = None  # obligatorio si anulado_por_fraude (D11)
-
-
-class ResolveResponse(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    session_id: str
-    resolucion: str
-    actor: str
-    resolucion_at: str
     nota_anulada: bool
     # Efecto del hook c-18 en Moodle. Distingue tres casos que NO son lo mismo:
     #   True  → Moodle confirmo el 0 en la libreta.
     #   False → se intento y no se pudo (sin identidad, Moodle caido): queda
     #           'fallido' y hay que reintentar la sincronizacion.
-    #   None  → no aplicaba (la resolucion no anula, o Moodle no esta configurado).
-    # Sin esta distincion, la UI no puede avisar que la nota sigue viva en Moodle.
+    #   None  → no aplicaba (la decision no anula, o Moodle no esta configurado).
     nota_anulada_en_moodle: bool | None = None
     nota_legal: str
 
 
-_NOTA_RESOLVE = (
-    "Veredicto de resolucion (RN-RV-06/07 — INMUTABLE, capacidad resolver_caso). "
-    "El sistema NUNCA anula automaticamente (L2.5, regla #5): la anulacion es un "
-    "acto humano explicito. El efecto sobre la nota es reversible por acto "
-    "compensatorio append-only (hook c-18)."
+_NOTA = (
+    "Decision terminal del revisor (RN-RV-07 — INMUTABLE, un solo acto, sin "
+    "segunda instancia). El sistema NUNCA sanciona automaticamente (L2.5): este "
+    "endpoint registra el juicio humano sobre la sesion. Cambios posteriores "
+    "requieren un nuevo proceso (apelacion / restitucion)."
 )
 
 
-def _parse_resolucion(value: str) -> DecisionResolucion:
+def _parse_decision(value: str) -> DecisionSesion:
     try:
-        return DecisionResolucion(value)
+        decision = DecisionSesion(value)
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=(
-                f"resolucion invalida: {value!r}. Validas: "
-                "anulado_por_fraude, caso_descartado."
-            ),
+            detail=f"decision invalida: {value!r}. Validas: aprobado, anulado.",
         ) from exc
+    if decision is DecisionSesion.PENDIENTE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="decision invalida: 'pendiente' no es una decision terminal.",
+        )
+    return decision
 
 
 # ---------------------------------------------------------------------------
@@ -142,19 +118,6 @@ def _get_session_factory(request: Request) -> async_sessionmaker[AsyncSession]:
     return factory
 
 
-def _parse_decision(value: str) -> DecisionTerminal:
-    try:
-        return DecisionTerminal(value)
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=(
-                f"decision invalida: {value!r}. Validas: "
-                "sin_hallazgos, aprobado, caso_abierto."
-            ),
-        ) from exc
-
-
 # ---------------------------------------------------------------------------
 # Endpoint
 # ---------------------------------------------------------------------------
@@ -163,7 +126,7 @@ def _parse_decision(value: str) -> DecisionTerminal:
 @router.post(
     "/session/{session_id}/decide",
     response_model=DecideResponse,
-    summary="Decision terminal del revisor (inmutable) — c-16 slim",
+    summary="Decision terminal del revisor, un solo paso (inmutable)",
 )
 async def decide_session(
     session_id: str,
@@ -185,69 +148,12 @@ async def decide_session(
                 session_id,
                 decision=decision,
                 actor=actor,
-                observaciones=body.observaciones,
+                motivo=body.motivo,
+                evidencia_ids=body.evidencia_ids,
             )
         except DecisionAlreadyMadeError as exc:
             # Audit del intento ya quedo dentro del service
             await s.commit()
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT, detail=str(exc)
-            ) from exc
-        except ValueError as exc:
-            await s.rollback()
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND
-                if "no encontrada" in str(exc)
-                else status.HTTP_400_BAD_REQUEST,
-                detail=str(exc),
-            ) from exc
-        await s.commit()
-
-    return DecideResponse(
-        session_id=result.session_id,
-        previous=result.previous.value,
-        new=result.new.value,
-        actor=result.actor,
-        decision_at=result.decision_at,
-        nota_legal=_NOTA,
-    )
-
-
-@router.post(
-    "/session/{session_id}/resolve",
-    response_model=ResolveResponse,
-    summary="Veredicto de resolucion (capacidad resolver_caso) — c-71 slice 2",
-)
-async def resolve_session(
-    session_id: str,
-    body: ResolveRequest,
-    request: Request,
-    principal: AuthenticatedPrincipal = Depends(_require_resolver),
-) -> ResolveResponse:
-    resolucion = _parse_resolucion(body.resolucion)
-    actor = principal.subject or "unknown"
-
-    factory = _get_session_factory(request)
-    async with factory() as s:
-        svc = ReviewResolutionService(
-            repo=SqlSessionReviewRepository(s),
-            auditor=SqlReviewAuditor(s),
-        )
-        try:
-            result = await svc.resolve(
-                session_id,
-                resolucion=resolucion,
-                actor=actor,
-                motivo=body.motivo,
-                evidencia_ref=body.evidencia_ref,
-            )
-        except ResolucionAlreadyMadeError as exc:
-            await s.commit()  # el intento quedo auditado dentro del service
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT, detail=str(exc)
-            ) from exc
-        except CasoNoAbiertoError as exc:
-            await s.rollback()
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT, detail=str(exc)
             ) from exc
@@ -266,7 +172,7 @@ async def resolve_session(
             ) from exc
         await s.commit()
 
-    # Hook c-18: si el veredicto anula la nota, el efecto tiene que llegar a Moodle.
+    # Hook c-18: si la decision anula la nota, el efecto tiene que llegar a Moodle.
     # Sin esto la anulacion vivia SOLO en ActiveExam y el alumno conservaba en la
     # libreta la nota ya sincronizada — se anulaba por fraude y el 10 seguia puesto.
     #
@@ -284,7 +190,7 @@ async def resolve_session(
                         db=s2,
                         session_id=session_id,
                         actor=actor,
-                        motivo=body.motivo.strip(),
+                        motivo=(body.motivo or "").strip(),
                     )
                     await s2.commit()
                 except Exception:  # noqa: BLE001 — el veredicto ya es firme
@@ -297,14 +203,15 @@ async def resolve_session(
                     await s2.rollback()
                     nota_anulada_en_moodle = False
 
-    return ResolveResponse(
+    return DecideResponse(
         session_id=result.session_id,
-        resolucion=result.resolucion.value,
+        previous=result.previous.value,
+        new=result.new.value,
         actor=result.actor,
-        resolucion_at=result.resolucion_at,
+        decision_at=result.decision_at,
         nota_anulada=result.nota_anulada,
         nota_anulada_en_moodle=nota_anulada_en_moodle,
-        nota_legal=_NOTA_RESOLVE,
+        nota_legal=_NOTA,
     )
 
 
@@ -334,25 +241,24 @@ _NOTA_RESTITUIR = (
 @router.post(
     "/session/{session_id}/restituir",
     response_model=RestituirResponse,
-    summary="Revierte una anulacion y devuelve la nota (capacidad resolver_caso)",
+    summary="Revierte una anulacion y devuelve la nota (capacidad revisar_sesion)",
 )
 async def restituir_nota(
     session_id: str,
     body: RestituirRequest,
     request: Request,
-    principal: AuthenticatedPrincipal = Depends(_require_resolver),
+    principal: AuthenticatedPrincipal = Depends(_require_revisor),
 ) -> RestituirResponse:
     """Restituye la nota de un examen anulado — la via de la APELACION.
 
-    Existia `revertir_anulacion` en el servicio pero sin endpoint: si a un alumno se
-    le daba la razon, no habia por donde devolverle la nota. Es el espejo del hook
-    de anulacion, y sin el la anulacion era irreversible en los hechos.
+    Es el espejo del hook de anulacion, y sin el la anulacion era irreversible
+    en los hechos.
     """
     actor = principal.subject or "unknown"
     factory = _get_session_factory(request)
 
     async with factory() as s:
-        svc = ReviewResolutionService(
+        svc = ReviewDecisionService(
             repo=SqlSessionReviewRepository(s),
             auditor=SqlReviewAuditor(s),
         )

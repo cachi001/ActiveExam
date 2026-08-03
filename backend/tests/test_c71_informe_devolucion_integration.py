@@ -1,10 +1,12 @@
-"""Informe de devolución al alumno (c-71 slice 2, D12) — HTTP contra DB real.
+"""Informe de devolución al alumno (c-71 slice 2, D12) — HTTP contra DB real,
+modelo de un solo paso.
 
 Verifica (sin mocks de DB, regla #4):
-- con `anulado_por_fraude`: el titular ve capturas (URL firmada 15 min) +
-  análisis por señal + decisión + motivo de SU sesión;
+- con `anulado`: el titular ve capturas (URL firmada 15 min) SOLO de la
+  evidencia que el revisor eligió al decidir + análisis por señal + decisión
+  + motivo de SU sesión;
 - sesión ajena → 404 (sin revelar evidencia);
-- `caso_descartado` / sin flag → 404 (minimización, Ley 25.326);
+- `aprobado` / sin flag → 404 (minimización, Ley 25.326);
 - cada acceso del titular queda auditado como derecho de acceso (RN-DSR-01).
 """
 
@@ -21,9 +23,8 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.application.review.resolution_service import ReviewResolutionService
 from app.application.review.service import ReviewDecisionService
-from app.domain.review.decision import DecisionResolucion, DecisionRevision
+from app.domain.review.decision import DecisionSesion
 from app.infrastructure.auth.verifiers import encode_hs256
 from app.infrastructure.persistence.models.audit_log import AuditLogModel
 from app.infrastructure.persistence.models.exam_content import (  # noqa: F401
@@ -105,7 +106,8 @@ def _client(app, idnumber: str) -> AsyncClient:
     )
 
 
-async def _sesion_con_evento(factory, idnumber: str) -> str:
+async def _sesion_con_dos_eventos(factory, idnumber: str) -> tuple[str, str, str]:
+    """Sesion con DOS eventos con screenshot; devuelve (session_id, event_id_1, event_id_2)."""
     async with factory() as s:
         sesion = ProctoringSessionModel(
             modo="examen", etiqueta=f"c71i-{_idn()}", alumno_idnumber=idnumber
@@ -114,40 +116,39 @@ async def _sesion_con_evento(factory, idnumber: str) -> str:
         s.add(sesion)
         await s.flush()
         sid = sesion.id
-        s.add(
-            ProctoringEventModel(
-                session_id=sid,
-                tipo="multiples_rostros",
-                severidad="critico",
-                ts_cliente=datetime.now(timezone.utc),
-                face_count_servidor=2,
-                veredicto_reinferencia="discrepancia",
-                screenshot_sha256="a" * 64,
-            )
+        ev1 = ProctoringEventModel(
+            session_id=sid,
+            tipo="multiples_rostros",
+            severidad="critico",
+            ts_cliente=datetime.now(timezone.utc),
+            face_count_servidor=2,
+            veredicto_reinferencia="discrepancia",
+            screenshot_sha256="a" * 64,
         )
+        ev2 = ProctoringEventModel(
+            session_id=sid,
+            tipo="ausencia",
+            severidad="media",
+            ts_cliente=datetime.now(timezone.utc),
+            face_count_servidor=0,
+            veredicto_reinferencia="coincide",
+            screenshot_sha256="b" * 64,
+        )
+        s.add_all([ev1, ev2])
         await s.commit()
-        return sid
+        return sid, ev1.id, ev2.id
 
 
-async def _abrir_y_resolver(factory, sid, resolucion) -> None:
+async def _decidir(factory, sid, decision, *, evidencia_ids=None) -> None:
     async with factory() as s:
         await ReviewDecisionService(
             repo=SqlSessionReviewRepository(s), auditor=SqlReviewAuditor(s)
         ).decide(
-            sid, decision=DecisionRevision.CASO_ABIERTO, actor="rev", observaciones="d"
-        )
-        await s.commit()
-    async with factory() as s:
-        await ReviewResolutionService(
-            repo=SqlSessionReviewRepository(s), auditor=SqlReviewAuditor(s)
-        ).resolve(
             sid,
-            resolucion=resolucion,
+            decision=decision,
             actor="autoridad",
             motivo="copia confirmada",
-            evidencia_ref="clip-1"
-            if resolucion is DecisionResolucion.ANULADO_POR_FRAUDE
-            else None,
+            evidencia_ids=evidencia_ids or [],
         )
         await s.commit()
 
@@ -165,20 +166,20 @@ async def _cleanup(factory, sid) -> None:
 async def test_titular_ve_informe_con_capturas_firmadas_y_senales(app) -> None:
     application, factory = app
     idn = _idn()
-    sid = await _sesion_con_evento(factory, idn)
+    sid, ev1, _ev2 = await _sesion_con_dos_eventos(factory, idn)
     try:
-        await _abrir_y_resolver(factory, sid, DecisionResolucion.ANULADO_POR_FRAUDE)
+        await _decidir(factory, sid, DecisionSesion.ANULADO, evidencia_ids=[ev1])
         async with _client(application, idn) as c:
             resp = await c.get(f"/api/v1/exam-content/mis-notas/{sid}/informe")
         assert resp.status_code == 200, resp.text
         body = resp.json()
-        assert body["resolucion"] == "anulado_por_fraude"
-        assert body["decision"] == "caso_abierto"
+        assert body["decision"] == "anulado"
         assert body["motivo"] == "copia confirmada"
-        assert len(body["senales"]) == 1
-        assert body["senales"][0]["tipo"] == "multiples_rostros"
-        assert body["senales"][0]["veredicto_reinferencia"] == "discrepancia"
+        # Analisis por señal: ambos tipos de evento aparecen (contexto completo).
+        assert len(body["senales"]) == 2
+        # Pero las CAPTURAS se filtran a SOLO la evidencia elegida por el revisor.
         assert len(body["capturas"]) == 1
+        assert body["capturas"][0]["tipo_evento"] == "multiples_rostros"
         # URL firmada que expira en 15 min (900 s).
         assert body["capturas"][0]["expires_in"] == 900
         # Cada acceso del titular queda auditado como derecho de acceso.
@@ -200,12 +201,12 @@ async def test_titular_ve_informe_con_capturas_firmadas_y_senales(app) -> None:
 
 @pytest.mark.requires_stack
 @pytest.mark.asyncio
-async def test_caso_descartado_no_expone_informe_minimizacion(app) -> None:
+async def test_aprobado_no_expone_informe_minimizacion(app) -> None:
     application, factory = app
     idn = _idn()
-    sid = await _sesion_con_evento(factory, idn)
+    sid, _ev1, _ev2 = await _sesion_con_dos_eventos(factory, idn)
     try:
-        await _abrir_y_resolver(factory, sid, DecisionResolucion.CASO_DESCARTADO)
+        await _decidir(factory, sid, DecisionSesion.APROBADO)
         async with _client(application, idn) as c:
             resp = await c.get(f"/api/v1/exam-content/mis-notas/{sid}/informe")
         assert resp.status_code == 404
@@ -218,9 +219,9 @@ async def test_caso_descartado_no_expone_informe_minimizacion(app) -> None:
 async def test_sesion_ajena_no_se_expone(app) -> None:
     application, factory = app
     dueno, intruso = _idn(), _idn()
-    sid = await _sesion_con_evento(factory, dueno)
+    sid, ev1, _ev2 = await _sesion_con_dos_eventos(factory, dueno)
     try:
-        await _abrir_y_resolver(factory, sid, DecisionResolucion.ANULADO_POR_FRAUDE)
+        await _decidir(factory, sid, DecisionSesion.ANULADO, evidencia_ids=[ev1])
         async with _client(application, intruso) as c:
             resp = await c.get(f"/api/v1/exam-content/mis-notas/{sid}/informe")
         assert resp.status_code == 404
@@ -230,10 +231,10 @@ async def test_sesion_ajena_no_se_expone(app) -> None:
 
 @pytest.mark.requires_stack
 @pytest.mark.asyncio
-async def test_sin_resolucion_no_expone_informe(app) -> None:
+async def test_sin_decision_no_expone_informe(app) -> None:
     application, factory = app
     idn = _idn()
-    sid = await _sesion_con_evento(factory, idn)
+    sid, _ev1, _ev2 = await _sesion_con_dos_eventos(factory, idn)
     try:
         async with _client(application, idn) as c:
             resp = await c.get(f"/api/v1/exam-content/mis-notas/{sid}/informe")

@@ -90,43 +90,27 @@ export interface SesionProctoringResumen {
 }
 
 /**
- * Modelo de decisión de DOS FASES (C-71 slice 2, D6/D7) — espeja el backend.
- * `escalada` fue DROPEADA (sin downstream); "escalar a otra autoridad" se cubre
- * por la separación de capacidad (resolver_caso).
+ * Modelo de decisión de UN SOLO PASO (C-71 slice 2, colapsado) — espeja el
+ * backend. El modelo de dos fases (con `caso_abierto` como derivación a una
+ * segunda instancia de resolución) fue rechazado explícitamente por el owner
+ * del proyecto: quien revisa decide, en el mismo acto, sin segunda instancia.
  *
  * El sistema nunca sanciona automáticamente: el score solo prioriza para revisión.
  * La decisión es siempre humana; la plataforma la registra de forma inmutable.
  */
 
-/** Fase 1 — Revisión (capacidad `revisar_sesion`). Terminal de la revisión. */
-export type DecisionRevision =
-  | 'sin_hallazgos'   // falso positivo; valida la nota
-  | 'aprobado'        // revisado, legítimo; valida la nota
-  | 'caso_abierto';   // derivación: hay algo que resolver (habilita la fase 2)
+/** Decisión terminal (capacidad `revisar_sesion`), un solo acto. */
+export type DecisionSesion =
+  | 'aprobado'  // falso positivo o no amerita sanción; valida la nota
+  | 'anulado';  // fraude determinado en el mismo acto; anula la nota (evidencia obligatoria)
 
-/** Fase 2 — Resolución (capacidad `resolver_caso`). Solo si el caso está abierto. */
-export type DecisionResolucion =
-  | 'anulado_por_fraude'  // anula la nota (reversible por acto compensatorio)
-  | 'caso_descartado';    // cierra el caso validando la nota
+/** Unión con el estado inicial. */
+export type DecisionRevisor = DecisionSesion | 'pendiente';
 
-/**
- * Unión de todas las decisiones humanas posibles (dos fases) + estado inicial.
- * Reemplaza el modelo plano anterior (aprobado/flaggeado_para_sumario/…), cerrando
- * el gap con el backend.
- */
-export type DecisionRevisor = DecisionRevision | DecisionResolucion | 'pendiente';
-
-/** Etiquetas legibles derivadas de los valores del backend (fase 1). */
-export const DECISION_REVISION_LABEL: Record<DecisionRevision, string> = {
-  sin_hallazgos: 'Sin observaciones',
-  aprobado: 'Aprobada con nota',
-  caso_abierto: 'Abrir caso (derivar)',
-};
-
-/** Etiquetas legibles derivadas de los valores del backend (fase 2). */
-export const DECISION_RESOLUCION_LABEL: Record<DecisionResolucion, string> = {
-  anulado_por_fraude: 'Anular la nota por fraude',
-  caso_descartado: 'Descartar el caso',
+/** Etiquetas legibles derivadas de los valores del backend. */
+export const DECISION_SESION_LABEL: Record<DecisionSesion, string> = {
+  aprobado: 'Aprobar (valida la nota)',
+  anulado: 'Anular la nota por fraude',
 };
 
 /**
@@ -155,7 +139,6 @@ export interface CapturaFirmada {
 export interface InformeDevolucion {
   session_id: string;
   decision: string;
-  resolucion: string;
   motivo?: string | null;
   senales: SenalAnalisis[];
   capturas: CapturaFirmada[];

@@ -16,9 +16,10 @@ import type { Rol } from '../lib/types';
 // Política de roles por área (espeja App.tsx y CAPABILITY_ROLES del backend).
 //
 // SUPERVISION incluye a 'revisor' — parece obvio, pero faltaba: la ruta /revisor
-// admitía solo proctor+admin, mientras el backend reserva `resolver_caso` al
-// revisor. Resultado: el admin entraba pero recibía 403 al resolver, y el revisor
-// tenía el permiso pero no podía entrar. Nadie podía anular por fraude.
+// admitía solo proctor+admin, mientras el backend reserva `revisar_sesion`
+// (decidir en un solo paso, incluida la anulación) al revisor. Resultado: el
+// admin entraba pero recibía 403 al decidir, y el revisor tenía el permiso
+// pero no podía entrar. Nadie podía anular por fraude.
 //
 // ACADEMICO es el área del DOCENTE: exámenes, materias y comisiones — lo suyo.
 // Queda deliberadamente FUERA de supervisión, auditoría y configuración: quien
