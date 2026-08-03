@@ -1,22 +1,38 @@
 /**
  * Capa de capacidades del frontend (C-71 slice 2, D8) — config-driven.
  *
- * El front SOLO oculta; el backend DECIDE (backstop server-side: `require_capability`
- * en el router de review). Este mapa espeja `CAPABILITY_ROLES` del backend, adaptado
- * al modelo de 3 roles del MVP donde el rol `revisor` está colapsado en `admin_sistema`
- * (ver `types.ts` §Rol). Reasignar una capacidad a otro rol es un cambio de ESTE mapa,
- * sin tocar los componentes que lo consultan.
+ * El front SOLO oculta; el backend DECIDE (backstop server-side:
+ * `require_capability`). Por eso este mapa tiene que ser una COPIA EXACTA de
+ * `CAPABILITY_ROLES` en `backend/app/domain/auth/capabilities.py`: si el front
+ * es más permisivo, muestra un botón que el backend rechaza con 403; si es más
+ * restrictivo, esconde una acción que la persona sí podía hacer.
+ *
+ * `resolver_caso` (capacidad separada para el veredicto de una segunda fase)
+ * DESAPARECIÓ: el modelo de dos fases fue rechazado explícitamente por el
+ * owner del proyecto. `revisar_sesion` cubre TODO el acto — aprobar y anular,
+ * en un solo paso — porque no hay segunda instancia que gatear aparte.
+ * Al tocar este mapa, tocar el del backend en el mismo commit.
  */
 import type { Rol } from "./types";
 
-export type Capacidad = "revisar_sesion" | "resolver_caso";
+export type Capacidad =
+  | "revisar_sesion"
+  | "gestionar_academico"
+  | "gestionar_notas"
+  | "configurar_sistema"
+  | "gestionar_usuarios"
+  | "ver_auditoria"
+  | "supervisar_vivo";
 
 /** capacidad → conjunto de roles que la poseen (dato de config, no lógica). */
 const CAPABILITY_ROLES: Record<Capacidad, readonly Rol[]> = {
-  // El staff que revisa la cola (admin_sistema = revisor en el modelo colapsado).
-  revisar_sesion: ["admin_sistema"],
-  // Veredicto (anular/descartar). HOY concentrado en el mismo rol; remapeable.
-  resolver_caso: ["admin_sistema"],
+  revisar_sesion: ["revisor", "coordinador", "admin_sistema"],
+  gestionar_academico: ["docente", "admin_examenes", "coordinador", "admin_sistema"],
+  gestionar_notas: ["docente", "admin_examenes", "coordinador", "admin_sistema"],
+  configurar_sistema: ["admin_sistema"],
+  gestionar_usuarios: ["admin_sistema"],
+  ver_auditoria: ["auditor", "admin_sistema"],
+  supervisar_vivo: ["proctor", "revisor", "coordinador", "admin_sistema"],
 };
 
 /**

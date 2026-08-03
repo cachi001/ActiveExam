@@ -60,21 +60,29 @@ export function AlumnosComisionPanel({
 
   useEffect(() => { void cargar(); }, [cargar]);
 
-  async function handleInscribir(usuarioId: string) {
+  async function handleInscribir(usuarioIds: string[]) {
+    if (usuarioIds.length === 0) return;
     setInscribiendo(true);
-    try {
-      await inscribirAlumno(comisionId, usuarioId);
-      toast.success('Alumno inscripto correctamente.');
-      setPickerAbierto(false);
-      await cargar();
-    } catch (err) {
-      const e = err as Error & { status?: number };
-      if (e.status === 409) toast.error('Ese alumno ya está inscripto en la comisión.');
-      else if (e.status === 404) toast.error('No se encontró la comisión o el alumno.');
-      else toast.error('No se pudo inscribir al alumno.');
-    } finally {
-      setInscribiendo(false);
+    let ok = 0;
+    let yaEstaban = 0;
+    let fallaron = 0;
+    // No hay endpoint batch: inscribimos uno por uno y resumimos el resultado.
+    for (const id of usuarioIds) {
+      try {
+        await inscribirAlumno(comisionId, id);
+        ok++;
+      } catch (err) {
+        const e = err as Error & { status?: number };
+        if (e.status === 409) yaEstaban++;
+        else fallaron++;
+      }
     }
+    setPickerAbierto(false);
+    setInscribiendo(false);
+    await cargar();
+    if (ok > 0) toast.success(`${ok} alumno${ok === 1 ? '' : 's'} inscripto${ok === 1 ? '' : 's'} correctamente.`);
+    if (yaEstaban > 0) toast.error(`${yaEstaban} ya ${yaEstaban === 1 ? 'estaba inscripto' : 'estaban inscriptos'}.`);
+    if (fallaron > 0) toast.error(`${fallaron} no se ${fallaron === 1 ? 'pudo' : 'pudieron'} inscribir.`);
   }
 
   async function handleQuitar() {
@@ -98,7 +106,7 @@ export function AlumnosComisionPanel({
     <div className="px-8 py-4 bg-surface-container-lowest/60 border-t border-outline-variant/20 space-y-3">
       <div className="flex items-center justify-between gap-3">
         <h4 className="text-[12px] font-semibold text-on-surface-variant uppercase tracking-wide flex items-center gap-2">
-          <Icon name="groups" className="text-[16px] text-primary" />
+          <Icon name="groups" className="text-[16px] text-on-surface-variant" />
           Alumnos inscriptos
           {alumnos && (
             <span className="font-normal normal-case text-on-surface-variant">({alumnos.length})</span>
@@ -192,7 +200,7 @@ export function AlumnosComisionPanel({
         comisionNombre={comisionNombre}
         yaInscriptos={inscriptosIds}
         inscribiendo={inscribiendo}
-        onConfirmar={(usuarioId) => void handleInscribir(usuarioId)}
+        onConfirmar={(usuarioIds) => void handleInscribir(usuarioIds)}
         onCancelar={() => setPickerAbierto(false)}
       />
 

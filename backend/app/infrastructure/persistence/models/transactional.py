@@ -517,3 +517,93 @@ class ConsentTextoVersionModel(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     created_by: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
+
+class MoodleCredencialModel(Base):
+    """Credencial de servicio de Moodle (singleton, migracion 0047).
+
+    UNA fila (id=1): es la credencial INSTITUCIONAL del campus.
+
+    DESDE C-73 §10 ES EL RESPALDO, NO LA VIA PRINCIPAL. La nota la devuelve el
+    DOCENTE a cargo de la comision con SU credencial personal
+    (`moodle_credencial_docente`), porque escribir todo con una cuenta de servicio
+    deja la libreta sin saber quien puso cada nota y obliga a replicar de este lado
+    los permisos que Moodle ya sabe imponer. Esta credencial se usa cuando la
+    comision no tiene docente asignado o el docente todavia no cargo la suya: la nota
+    sale igual, firmada como institucional (degradacion, no bloqueo).
+
+    NO guarda curso ni actividad de destino: eso es de cada examen
+    (`examen_contenido.moodle_courseid`/`moodle_cmid`). Un destino global convertia
+    "examen sin destino" en "nota escrita en la libreta de otra materia" (migracion
+    0048). `component` si es un default institucional, sobreescribible por examen.
+
+    ``token_cifrado`` guarda el token de Web Services cifrado con Fernet
+    (``SecretCipher``), NUNCA en claro. La API jamas lo devuelve: para que el admin
+    reconozca cual cargo se expone ``token_pista`` (ultimos 4 caracteres).
+
+    Mientras la tabla este vacia, el resolver cae a las variables de entorno
+    (MOODLE_*), asi que un despliegue existente sigue funcionando sin tocar nada.
+    """
+
+    __tablename__ = "moodle_credencial"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    base_url: Mapped[str] = mapped_column(String(500), nullable=False, default="")
+    token_cifrado: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    token_pista: Mapped[Optional[str]] = mapped_column(String(8), nullable=True)
+    component: Mapped[str] = mapped_column(
+        String(50), nullable=False, default="mod_assign"
+    )
+    actualizado_en: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    actualizado_por: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    # C-73 §10 (migracion 0050): shortname del servicio externo del campus. Hace falta
+    # para canjear contrasena por token (`login/token.php?service=`), que es la unica
+    # forma de obtener un token acotado a las funciones que ese servicio declara.
+    service_shortname: Mapped[str] = mapped_column(
+        String(100), nullable=False, default=""
+    )
+
+
+class MoodleCredencialDocenteModel(Base):
+    """Credencial personal de Moodle de UN docente (migracion 0050, C-73 §10).
+
+    Con esta credencial se devuelven las notas de las comisiones que ese docente tiene
+    a cargo, de modo que en la libreta la nota figure puesta POR EL y que sea Moodle
+    —no nuestro codigo— quien impida escribir donde no da clase.
+
+    NO GUARDA LA CONTRASENA, y el esquema no tiene donde hacerlo. La contrasena se usa
+    UNA vez para canjearla por un token en `login/token.php` y se descarta. Guardar el
+    token es ademas mas estable: los tokens de Moodle sobreviven al cambio de
+    contrasena (CVE-2016-7038), asi que rotar la clave no rompe la sincronizacion.
+
+    ``estado='caida'`` marca que Moodle respondio `invalidtoken` (revocado o vencido).
+    No se borra el token: se marca, para poder avisarle a la persona en vez de fallar
+    en silencio.
+    """
+
+    __tablename__ = "moodle_credencial_docente"
+
+    usuario_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("usuario.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    moodle_username: Mapped[str] = mapped_column(String(255), nullable=False)
+    token_cifrado: Mapped[str] = mapped_column(Text, nullable=False)
+    token_pista: Mapped[Optional[str]] = mapped_column(String(8), nullable=True)
+    estado: Mapped[str] = mapped_column(
+        String(16), nullable=False, server_default="activa"
+    )
+    creado_en: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    actualizado_en: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    ultimo_uso_en: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # C-73 ext (migr 0051): URL del campus per-docente. NULL = usar la institucional.
+    base_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)

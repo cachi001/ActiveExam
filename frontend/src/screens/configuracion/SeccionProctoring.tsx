@@ -22,7 +22,9 @@ const DETECTORES_DEFAULT: TipoEvento[] = [
   'rostro_ausente', 'multiples_rostros', 'mirada_desviada_sostenida', 'perdida_de_foco', 'monitor_adicional',
 ];
 
-const UMBRAL_MIN = 30;
+// Piso de producto (decisión del owner): el umbral de revisión NO baja de 70.
+// El backend lo valida server-side (Field ge=70); acá el slider ni deja elegir menos.
+const UMBRAL_MIN = 70;
 const UMBRAL_MAX = 90;
 
 interface Estado {
@@ -47,8 +49,8 @@ function estadosIguales(a: Estado, b: Estado): boolean {
 const ESTADO_DEFAULT: Estado = {
   umbral: 70,
   detectores: DETECTORES_DEFAULT,
-  chatHabilitado: true,
-  pausasHabilitadas: true,
+  chatHabilitado: false,
+  pausasHabilitadas: false,
   pausaMaxMin: 10,
 };
 
@@ -66,9 +68,9 @@ export default function SeccionProctoring() {
         const cargado: Estado = {
           umbral: cfg.umbral_cola_revision,
           detectores: cfg.detectores_activos as TipoEvento[],
-          // Degradación segura: si el backend no los manda, se asumen habilitados.
-          chatHabilitado: cfg.chat_habilitado ?? true,
-          pausasHabilitadas: cfg.pausas_habilitadas ?? true,
+          // Degradación segura: si el backend no los manda, se asumen desactivados.
+          chatHabilitado: cfg.chat_habilitado ?? false,
+          pausasHabilitadas: cfg.pausas_habilitadas ?? false,
           pausaMaxMin: cfg.pausa_max_min ?? 10,
         };
         setEstado(cargado);
@@ -117,12 +119,21 @@ export default function SeccionProctoring() {
 
   return (
     <div className="space-y-lg">
-      {/* El título y el subtítulo ya los pone el header de la página + el tab;
-          cada card tiene su propio SectionTitle. Sin intro redundante acá. */}
-      <div className="grid lg:grid-cols-3 gap-lg items-start">
-        {/* Columna izquierda: umbral + canales del alumno apilados (llena el alto
-            de los detectores, sin espacio muerto en desktop). */}
-        <div className="lg:col-span-1 space-y-lg min-w-0">
+      {/* Encabezado editorial: título con peso + descripción + divisor. */}
+      <div className="pb-4 border-b border-outline-variant/40">
+        <h2 className="font-headline text-[24px] font-bold text-on-surface tracking-tight leading-tight">Parámetros generales</h2>
+        <p className="text-[13.5px] text-on-surface-variant leading-relaxed max-w-2xl mt-2">
+          Definí el comportamiento por defecto del examen: a partir de qué puntaje una sesión
+          entra a revisión humana, qué detectores se vigilan y qué canales de comunicación
+          tiene el alumno mientras rinde.
+        </p>
+      </div>
+      {/* items-stretch: las dos columnas quedan igualadas en alto aunque a los
+          detectores les sobre espacio (se equiparan con la columna derecha). */}
+      <div className="grid lg:grid-cols-3 gap-lg items-stretch">
+        {/* Columna DERECHA (order-2): umbral + canales del alumno apilados. En
+            desktop van a la derecha; los detectores ocupan los 2/3 de la izquierda. */}
+        <div className="lg:col-span-1 lg:order-2 space-y-lg min-w-0">
         <Card className="space-y-md min-w-0 flex flex-col">
           <SectionTitle sub="A partir de qué puntaje de riesgo una sesión entra a revisión humana">
             Umbral de revisión
@@ -204,7 +215,7 @@ export default function SeccionProctoring() {
                     disabled={guardando}
                     value={estado.pausaMaxMin}
                     onChange={(e) => setEstado((p) => ({ ...p, pausaMaxMin: Math.max(1, Math.min(120, Number(e.target.value) || 1)) }))}
-                    className="w-20 text-[14px] px-3 py-2 rounded-lg border border-outline-variant bg-white focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                    className="w-20 text-[14px] px-3 py-2 rounded-lg border border-outline-variant bg-white focus:outline-none focus:border-surface-500"
                   />
                   <span className="text-label-sm text-on-surface-variant">min</span>
                 </div>
@@ -214,8 +225,8 @@ export default function SeccionProctoring() {
         </Card>
         </div>
 
-        {/* Detectores — 2/3 del ancho a la derecha, en 2 columnas. */}
-        <Card className="lg:col-span-2 space-y-md min-w-0 flex flex-col">
+        {/* Detectores — 2/3 del ancho a la IZQUIERDA (order-1), en 2 columnas. */}
+        <Card className="lg:col-span-2 lg:order-1 h-full space-y-md min-w-0 flex flex-col">
           <SectionTitle sub="Qué situaciones vigila el sistema por defecto durante el examen">
             Detectores activos
           </SectionTitle>
@@ -243,14 +254,21 @@ export default function SeccionProctoring() {
           </div>
         </div>
       )}
+
     </div>
   );
 }
 
 /**
  * ToggleRow — fila con nombre + descripción a la izquierda y un switch a la
- * derecha. Mismo lenguaje visual que DetectoresSelector (verde = activo,
- * rojo = inactivo) para que el admin lo lea de un vistazo.
+ * derecha.
+ *
+ * El CONTENEDOR es neutro y el estado lo lleva SOLO el switch. Antes la tarjeta
+ * entera se teñía (verde = activo / rojo = inactivo) y con nueve detectores en
+ * grilla el resultado era un muro de color: el ojo no encontraba dónde mirar y el
+ * rojo leía como "error" cuando apagar un detector es una decisión legítima. Con
+ * el contenedor neutro, lo que salta a la vista es justamente lo excepcional — el
+ * detector apagado — en vez de los ocho que están bien.
  */
 function ToggleRow({
   label,
@@ -270,17 +288,21 @@ function ToggleRow({
       aria-checked={on}
       aria-label={`${label} — ${on ? 'activado' : 'desactivado'}`}
       onClick={onToggle}
-      className={`group flex items-center gap-3 px-4 py-3 rounded-xl border text-left transition-colors min-w-0 focus:outline-none focus:ring-2 focus:ring-outline-variant ${
-        on ? 'bg-success-container/40 border-success/40' : 'bg-error-container/30 border-error/30'
+      className={`group flex items-center gap-3 px-4 py-3 rounded-md border text-left transition-colors min-w-0 focus:outline-none focus:ring-2 focus:ring-outline-variant ${
+        on
+          ? 'bg-surface-container-lowest border-outline-variant hover:border-outline'
+          : 'bg-surface-container-low border-outline-variant'
       }`}
     >
       <div className="flex-1 min-w-0">
-        <p className="text-label-md font-semibold text-on-surface">{label}</p>
+        <p className={`text-label-md font-semibold ${on ? 'text-on-surface' : 'text-on-surface-variant'}`}>
+          {label}
+        </p>
         <p className="text-[11px] text-on-surface-variant leading-snug mt-0.5">{description}</p>
       </div>
       <span
         className={`relative shrink-0 inline-flex h-6 w-11 rounded-full border-2 border-transparent transition-colors duration-200 ${
-          on ? 'bg-success-600' : 'bg-error-600'
+          on ? 'bg-success-600' : 'bg-outline'
         }`}
       >
         <span

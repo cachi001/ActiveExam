@@ -34,3 +34,12 @@ Pillow==11.0.0
 # Tradeoff: imagen Docker mas grande / cold start mas lento que opencv-python-headless,
 # pero necesario para comparacion apples-to-apples cliente-vs-servidor (D8).
 mediapipe>=0.10.14
+
+# Export PDF de estadisticas institucionales (C-20). Python puro (sin libs de
+# sistema): entra limpio en la imagen slim runtime.
+fpdf2==2.8.1
+# Export Excel (.xlsx) con graficos NATIVOS de Excel (BarChart/PieChart). Python puro.
+openpyxl==3.1.5
+# Render de graficos (PNG) que se embeben en el PDF. Ya viene transitivo de
+# mediapipe, pero lo declaramos porque el export PDF lo usa DIRECTO (backend Agg).
+matplotlib>=3.7

@@ -3,12 +3,13 @@ import { StudentShell } from '../ui/shells';
 import { Icon, Button, Card } from '../ui/components';
 import { useNavigate } from '../lib/router';
 import { useApp } from '../lib/store';
+import { useAuth } from '../lib/authStore';
 import { api } from '../lib/api';
 import { nombreCompleto } from '../lib/types';
 
 export default function SalaEspera() {
   const navigate = useNavigate();
-  const principal = useApp((s) => s.principal);
+  const principal = useAuth((s) => s.principal);
   const examen = useApp((s) => s.examenActivo);
 
   // Si catedra no está en el store (navegación directa o store stale),

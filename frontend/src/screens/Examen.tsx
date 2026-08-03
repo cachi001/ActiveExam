@@ -138,15 +138,17 @@ export default function Examen() {
     setSegRestantes(Math.max(0, totalSeg - transcurridoSeg));
   }, [tiempoLimiteMin, sessionCreadaEn]);
 
-  const lastAlertaId = useRef<string | null>(null);
+  const lastAlertaTsByTipo = useRef<Record<string, number>>({});
+  const ALERTA_COOLDOWN_MS = 120_000;
   useEffect(() => {
     const critico = eventos.find(
       (e) => (e.severidad === 'alta' || e.severidad === 'critica') && e.tipo !== 'monitor_adicional',
     );
-    if (critico && critico.id !== lastAlertaId.current) {
-      lastAlertaId.current = critico.id;
-      setAlerta(critico);
-    }
+    if (!critico) return;
+    const lastTs = lastAlertaTsByTipo.current[critico.tipo] ?? 0;
+    if (Date.now() - lastTs < ALERTA_COOLDOWN_MS) return;
+    lastAlertaTsByTipo.current[critico.tipo] = Date.now();
+    setAlerta(critico);
   }, [eventos]);
 
   useEffect(() => {

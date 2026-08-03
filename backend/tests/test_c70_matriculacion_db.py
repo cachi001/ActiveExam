@@ -23,6 +23,7 @@ from sqlalchemy.pool import NullPool
 
 from app.application.exam_content.errors import (
     CodigoMatriculacionInvalidoError,
+    ComisionInactivaError,
     PerfilIncompletoError,
 )
 from app.application.exam_content.inscripcion_service import AutoMatriculacionService
@@ -345,3 +346,38 @@ async def test_inscripcion_manual_coexiste_y_codigo_no_duplica(session):
     # Luego el mismo alumno usa el código: idempotente, no duplica.
     result = await _auto(session).inscribir_por_codigo("COEX1-J", alumno)
     assert result.ya_inscripto is True
+
+
+@pytest.mark.asyncio
+async def test_inscribir_por_codigo_comision_inactiva_rechaza_sin_crear(session):
+    """Baja lógica (C-72 §17): una comisión desactivada no admite altas nuevas."""
+    materia_id = await _crear_materia(session, "FRZC1")
+    comision = await _svc(session).crear_comision(
+        materia_id=materia_id, codigo="C1", nombre="Comisión congelada",
+        codigo_matriculacion="FRZC1-JOIN",
+    )
+    await _svc(session).set_activa_comision(comision.id, False)
+    alumno = await _crear_alumno(session)
+
+    with pytest.raises(ComisionInactivaError):
+        await _auto(session).inscribir_por_codigo("FRZC1-JOIN", alumno)
+    assert not await InscripcionSqlRepository(session).existe(alumno, comision.id)
+
+
+@pytest.mark.asyncio
+async def test_inscribir_por_codigo_tras_reactivar_comision_funciona(session):
+    """Reactivar deshace el freeze: la misma alta que fallaba ahora entra."""
+    materia_id = await _crear_materia(session, "FRZC2")
+    comision = await _svc(session).crear_comision(
+        materia_id=materia_id, codigo="C1", nombre="Comisión reactivable",
+        codigo_matriculacion="FRZC2-JOIN",
+    )
+    await _svc(session).set_activa_comision(comision.id, False)
+    alumno = await _crear_alumno(session)
+    with pytest.raises(ComisionInactivaError):
+        await _auto(session).inscribir_por_codigo("FRZC2-JOIN", alumno)
+
+    await _svc(session).set_activa_comision(comision.id, True)
+    result = await _auto(session).inscribir_por_codigo("FRZC2-JOIN", alumno)
+    assert result.ya_inscripto is False
+    assert await InscripcionSqlRepository(session).existe(alumno, comision.id)

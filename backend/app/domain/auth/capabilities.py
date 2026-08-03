@@ -1,18 +1,14 @@
 """Capa de capacidades config-driven (capacidad -> roles), c-71 slice 2 D8.
 
-Reemplaza el `require_roles` hardcodeado por endpoint para las dos acciones
-de la Cola de Revision:
+Reemplaza el `require_roles` hardcodeado por endpoint para la accion de la
+Cola de Revision:
 
-- ``revisar_sesion``: revisar la sesion y derivarla (abrir el caso) o
-  cerrarla sin hallazgos/aprobada.
-- ``resolver_caso``: emitir el veredicto (anular por fraude / descartar el
-  caso) sobre un caso ya abierto.
-
-HOY ambas capacidades recaen (total o parcialmente) sobre el mismo rol
-REVISOR -- decision de *deployment* (concentracion), no de *modelo*. Mover
-``resolver_caso`` a otra autoridad manana es un cambio de ESTE mapa, sin
-tocar routers ni logica (mismo espiritu que ``ROLES_CON_MFA`` en
-``roles.py``).
+- ``revisar_sesion``: decision TERMINAL de la sesion, en un solo acto —
+  aprobar o anular. NO hay una capacidad separada para "resolver" un caso
+  abierto: el owner del proyecto rechazo explicitamente el modelo de dos
+  fases ("no existe el caso abierto, nunca dije que era un estado y no lo
+  va a ser"; confirmado: "si, un solo paso: quien revisa decide", sin
+  segunda instancia). Quien tiene `revisar_sesion` puede aprobar Y anular.
 
 Sin framework ni infraestructura (D1): dominio puro, testeable sin DB/red.
 """
@@ -23,9 +19,40 @@ from app.domain.auth.roles import Rol
 
 # capacidad -> conjunto de roles que la poseen. Dato de config, no logica.
 CAPABILITY_ROLES: dict[str, frozenset[Rol]] = {
+    # --- Circuito de revision humana (L2.5) ---------------------------------
     "revisar_sesion": frozenset({Rol.REVISOR, Rol.COORDINADOR, Rol.ADMIN_SISTEMA}),
-    # HOY: concentracion en revisor. Remapeable por config (D8), sin refactor.
-    "resolver_caso": frozenset({Rol.REVISOR}),
+    # --- Gestion academica ---------------------------------------------------
+    # Alta/edicion de examenes, materias y comisiones. El DOCENTE vive aca: es su
+    # trabajo. El revisor NO la tiene — quien juzga el fraude no edita el examen.
+    "gestionar_academico": frozenset(
+        {Rol.DOCENTE, Rol.ADMIN_EXAMENES, Rol.COORDINADOR, Rol.ADMIN_SISTEMA}
+    ),
+    # Ver las notas y sincronizarlas a Moodle: el docente necesita cerrar la nota
+    # de su materia.
+    "gestionar_notas": frozenset(
+        {Rol.DOCENTE, Rol.ADMIN_EXAMENES, Rol.COORDINADOR, Rol.ADMIN_SISTEMA}
+    ),
+    # Asignar el docente a cargo de una comision (C-73 §9). Deliberadamente SIN
+    # DOCENTE: quien queda a cargo decide quien devuelve la nota a Moodle y que
+    # examenes puede tocar. Si el docente pudiera asignarse solo, la pertenencia
+    # dejaria de ser un control (se auto-otorgaria el acceso que el control niega).
+    "asignar_docente": frozenset(
+        {Rol.ADMIN_EXAMENES, Rol.COORDINADOR, Rol.ADMIN_SISTEMA}
+    ),
+    # --- Administracion del sistema -----------------------------------------
+    # Umbrales, detectores, retencion. Deliberadamente SIN docente: la
+    # configuracion define como se detecta el fraude; quien dicta la materia no
+    # debe poder aflojarla para su propio examen.
+    "configurar_sistema": frozenset({Rol.ADMIN_SISTEMA}),
+    # Alta/baja de usuarios y asignacion de roles: solo admin del sistema.
+    "gestionar_usuarios": frozenset({Rol.ADMIN_SISTEMA}),
+    # Registro inmutable: lo lee quien audita, no quien opera.
+    "ver_auditoria": frozenset({Rol.AUDITOR, Rol.ADMIN_SISTEMA}),
+    # --- Supervision en vivo -------------------------------------------------
+    # Mirar sesiones en curso. Sin docente: es evidencia biometrica en vivo.
+    "supervisar_vivo": frozenset(
+        {Rol.PROCTOR, Rol.REVISOR, Rol.COORDINADOR, Rol.ADMIN_SISTEMA}
+    ),
 }
 
 

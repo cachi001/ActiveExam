@@ -18,11 +18,15 @@ export function Icon({ name, className = '', fill = false, style }: {
 }
 
 type Variant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'outline' | 'success';
+// REGLA DE HOVER: el hover ACLARA, el active oscurece. Es la convención que ya
+// seguían danger y success (error-600 → error-500); primary era el único que iba
+// al revés (oscurecía a primary-700), lo que hacía que el azul institucional
+// —ya de por sí profundo— se viera casi negro al pasar el mouse.
 const VARIANTS: Record<Variant, string> = {
-  primary: 'bg-primary text-on-primary hover:bg-primary-700 active:bg-primary-800 shadow-sm',
+  primary: 'bg-primary text-on-primary hover:bg-primary-500 active:bg-primary-700 shadow-sm',
   secondary: 'bg-surface-container text-on-surface hover:bg-surface-container-high active:bg-surface-container-highest',
-  ghost: 'bg-transparent text-on-surface-variant hover:bg-surface-container active:bg-surface-container-high',
-  outline: 'bg-surface-container-lowest text-on-surface border border-outline-variant shadow-sm hover:bg-surface-container-low hover:border-outline',
+  ghost: 'bg-transparent text-on-surface-variant hover:bg-primary-50 hover:text-primary active:bg-primary-100',
+  outline: 'bg-surface-container-lowest text-on-surface border border-surface-300 shadow-sm hover:bg-primary-50 hover:border-primary-200 active:bg-primary-100',
   danger: 'bg-error-600 text-on-error hover:bg-error-500 active:bg-error shadow-sm',
   success: 'bg-success-600 text-on-primary hover:bg-success-500 active:bg-success shadow-sm',
 };
@@ -150,7 +154,7 @@ export function Badge({ children, tone = 'neutral', dot = false, className = '' 
   children: ReactNode; tone?: 'neutral' | 'primary' | 'success' | 'warning' | 'error'; dot?: boolean; className?: string;
 }) {
   const tones = {
-    neutral: 'bg-surface-container-high text-on-surface-variant',
+    neutral: 'bg-surface-100 text-on-surface-variant',
     primary: 'bg-primary-fixed text-on-primary-fixed-variant',
     success: 'bg-success-container text-success',
     warning: 'bg-warning-container text-warning',

@@ -25,13 +25,19 @@ export interface ConfigForm {
   cierre: string;
   notaMaxima: string;
   notaAprobacion: string;
-  mezclarPreguntas: boolean;
+  /** Tope de preguntas del examen. Cadena vacía = sin tope. */
+  limitePreguntas: string;
   mostrarNota: 'al_cerrar' | 'inmediata';
   revisionHabilitada: boolean;
+  politicaIntentos: 'mas_alta' | 'ultimo' | 'primero' | 'manual';
 }
 
+// Input moderno: EDITABLE = fondo blanco + borde limpio (se ve que se puede
+// tocar); BLOQUEADO (disabled) = fondo gris claro + texto atenuado + cursor
+// not-allowed (se nota que NO se puede cambiar). Focus gris (sin azul).
 const INPUT_CLS =
-  'w-full rounded-none border border-outline-variant bg-surface px-4 py-3 text-body-md text-on-surface placeholder:text-on-surface-variant focus:border-primary focus:outline-none transition-colors';
+  'w-full rounded-lg border border-surface-300 bg-white px-4 py-2.5 text-body-md text-on-surface placeholder:text-on-surface-variant shadow-sm hover:border-surface-400 focus:border-surface-500 focus:outline-none transition-colors ' +
+  'disabled:bg-surface-100 disabled:text-on-surface-variant disabled:border-surface-200 disabled:shadow-none disabled:cursor-not-allowed';
 const LABEL_CLS = 'block text-label-md font-semibold text-on-surface mb-1.5';
 
 function configToForm(cfg: ExamConfig): ConfigForm {
@@ -43,9 +49,10 @@ function configToForm(cfg: ExamConfig): ConfigForm {
     cierre: isoToLocalInput(cfg.cierre),
     notaMaxima: String(cfg.nota_maxima ?? 10),
     notaAprobacion: String(cfg.nota_aprobacion ?? 6),
-    mezclarPreguntas: !!cfg.mezclar_preguntas,
+    limitePreguntas: cfg.limite_preguntas != null ? String(cfg.limite_preguntas) : '',
     mostrarNota: cfg.mostrar_nota ?? 'al_cerrar',
     revisionHabilitada: !!cfg.revision_habilitada,
+    politicaIntentos: cfg.politica_intentos ?? 'mas_alta',
   };
 }
 
@@ -71,6 +78,12 @@ function validarConfig(form: ConfigForm): string | null {
   if (aprob > max) {
     return 'La nota de aprobación no puede ser mayor que la nota máxima.';
   }
+  if (form.limitePreguntas.trim() !== '') {
+    const tope = Number(form.limitePreguntas);
+    if (!Number.isInteger(tope) || tope < 1) {
+      return 'El máximo de preguntas debe ser un número entero mayor a 0 (o dejalo vacío para no poner tope).';
+    }
+  }
   // C-69: apertura y cierre son OBLIGATORIOS (el gate de "mostrar nota al cerrar"
   // depende de la fecha de cierre; el examen va de una fecha/hora a otra).
   if (!form.apertura || !form.cierre) {
@@ -93,6 +106,10 @@ export function formToPatch(
   const publicacion: Partial<ExamConfig> = {
     mostrar_nota: form.mostrarNota,
     revision_habilitada: form.revisionHabilitada,
+    politica_intentos: form.politicaIntentos,
+    // Vacío = sacar el tope. El backend interpreta 0 como "sin tope" (en un PATCH
+    // parcial `null` significaría "no lo toques").
+    limite_preguntas: form.limitePreguntas.trim() === '' ? 0 : Number(form.limitePreguntas),
   };
   if (bloqueada) {
     const patch: Partial<ExamConfig> = { ...publicacion };
@@ -114,7 +131,8 @@ export function formToPatch(
     cierre: localInputToIso(form.cierre),
     nota_maxima: Number(form.notaMaxima),
     nota_aprobacion: Number(form.notaAprobacion),
-    mezclar_preguntas: form.mezclarPreguntas,
+    // `mezclar_preguntas` NO se manda: es siempre true server-side y el PATCH lo
+    // rechaza (extra='forbid').
     ...publicacion,
   };
 }
@@ -193,7 +211,7 @@ export function ConfiguracionExamenSection({ examenId }: { examenId: string }) {
       {cargando && (
         <div className="space-y-3 animate-pulse">
           {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-12 bg-surface-container-high rounded-lg" />
+            <div key={i} className="h-12 bg-surface-100 rounded-lg" />
           ))}
         </div>
       )}
@@ -213,7 +231,7 @@ export function ConfiguracionExamenSection({ examenId }: { examenId: string }) {
       {!cargando && !errorCarga && form && (
         <div className="space-y-5">
           {bloqueada && (
-            <div className="flex items-start gap-sm text-on-surface bg-warning-container/50 border border-warning/40 rounded-none px-4 py-3 text-label-sm">
+            <div className="flex items-start gap-sm text-on-surface bg-warning-container/50 border border-warning/40 rounded-lg px-4 py-3 text-label-sm">
               <Icon name="lock" className="text-[18px] shrink-0 text-warning" fill />
               <span>
                 Este examen ya tiene intentos finalizados. La mecánica y la nota
@@ -227,13 +245,13 @@ export function ConfiguracionExamenSection({ examenId }: { examenId: string }) {
             </div>
           )}
           {okGuardado && (
-            <div className="flex items-center gap-sm text-success bg-success-container rounded-none px-4 py-3 text-label-sm">
+            <div className="flex items-center gap-sm text-success bg-success-container rounded-lg px-4 py-3 text-label-sm">
               <Icon name="check_circle" className="text-[18px] shrink-0" fill />
               Configuración guardada.
             </div>
           )}
           {errorGuardar && (
-            <div className="flex items-center gap-sm text-error bg-error-container/40 rounded-none px-4 py-3 text-label-sm">
+            <div className="flex items-center gap-sm text-error bg-error-container/40 rounded-lg px-4 py-3 text-label-sm">
               <Icon name="error" className="text-[18px] shrink-0" fill />
               {errorGuardar}
             </div>
@@ -371,7 +389,28 @@ export function ConfiguracionExamenSection({ examenId }: { examenId: string }) {
             </p>
           </div>
 
-          <div className="flex items-center justify-between gap-md border border-outline-variant rounded-none px-4 py-3">
+          <div>
+            <label className={LABEL_CLS} htmlFor="cfg-politica-intentos">
+              Nota a enviar a Moodle (cuando hay más de un intento)
+            </label>
+            <select
+              id="cfg-politica-intentos"
+              className={INPUT_CLS}
+              value={form.politicaIntentos}
+              disabled={guardando}
+              onChange={(e) => update('politicaIntentos', e.target.value as ConfigForm['politicaIntentos'])}
+            >
+              <option value="mas_alta">La nota más alta (recomendado)</option>
+              <option value="ultimo">El último intento</option>
+              <option value="primero">El primer intento</option>
+              <option value="manual">Manual — el admin elige cuál sincronizar</option>
+            </select>
+            <p className="mt-1.5 text-label-sm text-on-surface-variant">
+              Si el alumno rinde más de una vez, esto define qué nota llega a la libreta de Moodle al sincronizar.
+            </p>
+          </div>
+
+          <div className="flex items-center justify-between gap-md border border-outline-variant rounded-lg px-4 py-3">
             <div className="min-w-0">
               <p className="text-label-md font-semibold text-on-surface">Permitir revisión de respuestas</p>
               <p className="text-label-sm text-on-surface-variant mt-0.5">
@@ -387,49 +426,66 @@ export function ConfiguracionExamenSection({ examenId }: { examenId: string }) {
               disabled={guardando}
               onClick={() => update('revisionHabilitada', !form.revisionHabilitada)}
               className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors disabled:opacity-50
-                ${form.revisionHabilitada ? 'bg-primary' : 'bg-surface-container-high'}`}
+                ${form.revisionHabilitada ? 'bg-primary' : 'bg-surface-200'}`}
             >
               <span
-                className={`inline-block h-5 w-5 transform rounded-full bg-surface shadow transition-transform
+                className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform
                   ${form.revisionHabilitada ? 'translate-x-6' : 'translate-x-1'}`}
               />
             </button>
           </div>
 
-          <div className="flex items-center justify-between gap-md border border-outline-variant rounded-none px-4 py-3">
-            <div className="min-w-0">
-              <p className="text-label-md font-semibold text-on-surface">Mezclar preguntas</p>
-              <p className="text-label-sm text-on-surface-variant mt-0.5">
-                Cada alumno ve las preguntas en un orden aleatorio (la nota no depende del orden).
-              </p>
-            </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={form.mezclarPreguntas}
-              aria-label="Mezclar preguntas"
-              disabled={guardando || bloqueada}
-              onClick={() => update('mezclarPreguntas', !form.mezclarPreguntas)}
-              className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors disabled:opacity-50
-                ${form.mezclarPreguntas ? 'bg-primary' : 'bg-surface-container-high'}`}
-            >
-              <span
-                className={`inline-block h-5 w-5 transform rounded-full bg-surface shadow transition-transform
-                  ${form.mezclarPreguntas ? 'translate-x-6' : 'translate-x-1'}`}
-              />
-            </button>
+          <div>
+            <label className={LABEL_CLS} htmlFor="cfg-limite-preguntas">
+              Máximo de preguntas del examen
+            </label>
+            <input
+              id="cfg-limite-preguntas"
+              type="number"
+              min={1}
+              inputMode="numeric"
+              className={INPUT_CLS}
+              placeholder="Sin tope"
+              value={form.limitePreguntas}
+              disabled={guardando}
+              onChange={(e) => update('limitePreguntas', e.target.value)}
+            />
+            <p className="mt-1.5 text-label-sm text-on-surface-variant">
+              Cuántas preguntas puede tener este examen como máximo. Dejalo vacío para no
+              poner tope. Si al elegir las preguntas te pasás de este número, no te va a
+              dejar guardar.
+            </p>
           </div>
 
-          <div className="flex justify-end">
-            <Button
-              variant="primary"
-              icon={guardando ? undefined : 'save'}
-              onClick={guardar}
-              disabled={guardando}
-            >
-              {guardando ? 'Guardando…' : 'Guardar configuración'}
-            </Button>
+          {/* Mezclar preguntas ya no es opcional: el orden aleatorio protege la
+              integridad de la rendición y no cambia la nota (solo el orden). Se
+              informa, no se ofrece apagar. */}
+          <div className="flex items-start gap-sm border border-outline-variant rounded-lg px-4 py-3">
+            <Icon name="shuffle" className="text-[18px] shrink-0 mt-0.5 text-on-surface-variant" />
+            <div className="min-w-0">
+              <p className="text-label-md font-semibold text-on-surface">
+                Las preguntas se mezclan siempre
+              </p>
+              <p className="text-label-sm text-on-surface-variant mt-0.5">
+                Cada alumno ve las preguntas en un orden distinto, para que no se puedan
+                copiar entre compañeros. Todos rinden las mismas preguntas y la nota no
+                depende del orden.
+              </p>
+            </div>
           </div>
+
+          {original && JSON.stringify(form) !== JSON.stringify(original) && (
+            <div className="flex justify-end">
+              <Button
+                variant="primary"
+                icon={guardando ? undefined : 'save'}
+                onClick={guardar}
+                disabled={guardando}
+              >
+                {guardando ? 'Guardando…' : 'Guardar configuración'}
+              </Button>
+            </div>
+          )}
         </div>
       )}
     </Card>

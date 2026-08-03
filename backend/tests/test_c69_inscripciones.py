@@ -35,10 +35,14 @@ from sqlalchemy.pool import NullPool
 from app.infrastructure.persistence.base import Base
 from app.infrastructure.persistence.models.exam_content import (  # noqa: F401 -- registra tablas
     ComisionModel,
+    ExamenContenidoModel,
     MateriaModel,
 )
 from app.infrastructure.persistence.models.inscripcion import (  # noqa: F401 -- registra tabla
     InscripcionModel,
+)
+from app.infrastructure.persistence.models.proctoring import (  # noqa: F401 -- registra tabla
+    ProctoringSessionModel,
 )
 from app.infrastructure.persistence.models.transactional import (  # noqa: F401 -- registra tablas
     ConsentimientoPerfilModel,
@@ -56,6 +60,8 @@ from tests.proctoring.conftest import _build_test_jwt_validator, auth_headers
 
 # Orden de DROP (CASCADE cubre las FKs). Las tablas hijas primero por prolijidad.
 _TABLES = (
+    "proctoring_session",
+    "examen_contenido",
     "inscripcion",
     "embedding_referencia",
     "consentimiento_perfil",
@@ -115,6 +121,8 @@ async def db_engine(db_url):
                 InscripcionModel.__table__,
                 ConsentimientoPerfilModel.__table__,
                 EmbeddingReferenciaModel.__table__,
+                ExamenContenidoModel.__table__,
+                ProctoringSessionModel.__table__,
             ],
         )
     yield eng
@@ -303,6 +311,50 @@ async def test_eliminar_inscripcion_204(client_admin, factory):
     )
     assert alumnos.status_code == 200
     assert all(a["usuario_id"] != usuario_id for a in alumnos.json())
+
+
+@pytest.mark.asyncio
+async def test_eliminar_inscripcion_bloqueada_si_ya_rindio_409(client_admin, factory):
+    # Guarda de cadena de custodia: si el alumno YA rindió en la comisión (tiene una
+    # sesión de examen), la baja se bloquea (409) para no huerfanar la evidencia.
+    comision_id = await _crear_comision(
+        factory, codigo_materia="MAT-88", codigo_comision="C-88"
+    )
+    usuario_id = await _crear_usuario(
+        factory, id_institucional="A-88", email="rindio@uni.edu"
+    )
+    alta = await client_admin.post(
+        f"/api/v1/exam-content/comisiones/{comision_id}/inscripciones",
+        json={"usuario_id": usuario_id},
+    )
+    assert alta.status_code == 201, alta.text
+
+    # El alumno rinde: examen de la comisión + sesión con su id_institucional.
+    async with factory() as s:
+        examen = ExamenContenidoModel(titulo="Parcial", comision_id=comision_id)
+        s.add(examen)
+        await s.flush()
+        s.add(
+            ProctoringSessionModel(
+                modo="examen",
+                etiqueta="test",
+                examen_contenido_id=examen.id,
+                alumno_idnumber="A-88",
+            )
+        )
+        await s.commit()
+
+    resp = await client_admin.delete(
+        f"/api/v1/exam-content/comisiones/{comision_id}/inscripciones/{usuario_id}"
+    )
+    assert resp.status_code == 409, resp.text
+    assert resp.json()["detail"]["error"] == "inscripcion_con_actividad"
+
+    # La inscripción SIGUE (no se borró).
+    alumnos = await client_admin.get(
+        f"/api/v1/exam-content/comisiones/{comision_id}/alumnos"
+    )
+    assert any(a["usuario_id"] == usuario_id for a in alumnos.json())
 
 
 @pytest.mark.asyncio

@@ -274,10 +274,10 @@ export const api = {
    * Degradación silenciosa: un error de red retorna [] sin propagar (lo maneja
    * listarExamenesContenidoFn).
    */
-  async listarExamenesContenido(): Promise<ExamenContenidoResumen[]> {
+  async listarExamenesContenido(strict = false): Promise<ExamenContenidoResumen[]> {
     const { listarExamenesContenidoFn } = await import('./examContentCatalog');
     const token = authProvider.getToken();
-    return listarExamenesContenidoFn(API_BASE, token);
+    return listarExamenesContenidoFn(API_BASE, token, strict);
   },
 
   /**

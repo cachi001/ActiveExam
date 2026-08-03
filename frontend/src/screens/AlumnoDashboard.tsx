@@ -17,7 +17,7 @@ import { Card, Button, Icon, LoadingSpinner } from '../ui/components';
 import { HelpButton } from '../ui/HelpButton';
 import { StudentShell } from '../ui/shells';
 import { useNavigate } from '../lib/router';
-import { useApp } from '../lib/store';
+import { useAuth } from '../lib/authStore';
 import { api } from '../lib/api';
 import { INSTITUTION } from '../config/institution';
 import { nombreCompleto } from '../lib/types';
@@ -34,7 +34,7 @@ const VIGENCIA_LABEL: Record<string, string> = {
 
 export default function AlumnoDashboard() {
   const navigate = useNavigate();
-  const principal = useApp((s) => s.principal);
+  const principal = useAuth((s) => s.principal);
 
   // Datos del catálogo oficial (sin inscripciones inventadas).
   const [materiasCount, setMateriasCount] = useState(0);

@@ -1,4 +1,5 @@
-"""Tests puros de la capa de capacidades config-driven (c-71 slice 2, D8).
+"""Tests puros de la capa de capacidades config-driven (c-71 slice 2, D8;
+modelo colapsado a UN SOLO PASO — no hay capacidad `resolver_caso` separada).
 
 `tiene_capacidad(rol, capacidad)` resuelve desde el mapa `CAPABILITY_ROLES`
 (capacidad -> conjunto de roles), sin infra ni FastAPI. Verifica que la
@@ -16,33 +17,38 @@ def test_revisor_tiene_capacidad_revisar_sesion() -> None:
     assert tiene_capacidad(Rol.REVISOR, "revisar_sesion") is True
 
 
-def test_estudiante_no_tiene_capacidad_resolver_caso() -> None:
-    assert tiene_capacidad(Rol.ESTUDIANTE, "resolver_caso") is False
+def test_estudiante_no_tiene_capacidad_revisar_sesion() -> None:
+    assert tiene_capacidad(Rol.ESTUDIANTE, "revisar_sesion") is False
 
 
-def test_revisor_tiene_capacidad_resolver_caso_hoy_concentrada() -> None:
-    assert tiene_capacidad(Rol.REVISOR, "resolver_caso") is True
-
-
-def test_coordinador_no_tiene_resolver_caso_hoy() -> None:
-    """Hoy `resolver_caso` esta concentrada solo en revisor (D8)."""
-    assert tiene_capacidad(Rol.COORDINADOR, "resolver_caso") is False
+def test_revisar_sesion_cubre_todo_el_acto_incluida_la_anulacion() -> None:
+    """No hay una capacidad separada para anular: quien revisa decide, en el
+    mismo acto (aprobar o anular), sin segunda instancia (D8 colapsado)."""
+    assert tiene_capacidad(Rol.REVISOR, "revisar_sesion") is True
+    assert tiene_capacidad(Rol.COORDINADOR, "revisar_sesion") is True
+    assert tiene_capacidad(Rol.ADMIN_SISTEMA, "revisar_sesion") is True
 
 
 def test_capacidad_desconocida_deniega_por_defecto() -> None:
     assert tiene_capacidad(Rol.ADMIN_SISTEMA, "capacidad_inexistente") is False
 
 
+def test_resolver_caso_ya_no_existe_como_capacidad_del_mapa() -> None:
+    """El modelo de dos fases (con una capacidad de resolucion separada) fue
+    rechazado explicitamente por el owner del proyecto."""
+    assert "resolver_caso" not in CAPABILITY_ROLES
+
+
 def test_reasignar_capacidad_en_el_mapa_cambia_el_gating_sin_tocar_endpoint(
     monkeypatch,
 ) -> None:
-    """Remapear `resolver_caso` a otro rol es un cambio de config del mapa,
+    """Remapear `revisar_sesion` a otro rol es un cambio de config del mapa,
     no requiere tocar `tiene_capacidad` ni los endpoints que la invocan."""
     nuevo_mapa = dict(CAPABILITY_ROLES)
-    nuevo_mapa["resolver_caso"] = frozenset({Rol.COORDINADOR})
+    nuevo_mapa["revisar_sesion"] = frozenset({Rol.COORDINADOR})
     monkeypatch.setattr(
         "app.domain.auth.capabilities.CAPABILITY_ROLES", nuevo_mapa
     )
 
-    assert tiene_capacidad(Rol.COORDINADOR, "resolver_caso") is True
-    assert tiene_capacidad(Rol.REVISOR, "resolver_caso") is False
+    assert tiene_capacidad(Rol.COORDINADOR, "revisar_sesion") is True
+    assert tiene_capacidad(Rol.REVISOR, "revisar_sesion") is False

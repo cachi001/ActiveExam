@@ -30,11 +30,8 @@ export default function Cierre() {
     })();
   }, []);
 
-  useEffect(() => {
-    if (!proctoringSessionId) return;
-    void api.finalizarSesionProctoring(proctoringSessionId).catch(() => null);
-  }, [proctoringSessionId]);
-
+  // Finaliza primero; recién después sondea misNotas para evitar race condition
+  // (misNotas INNER JOINs moodle_writeback_estado que solo existe tras finalizar).
   useEffect(() => {
     if (!examen) return;
     const objetivoId = examen.examen_contenido_id ?? examen.id;
@@ -49,11 +46,16 @@ export default function Cierre() {
       const match = notas.find((n) => n.examen_id === objetivoId);
       if (match) setNota(match);
       if (rev) setRevision(rev);
-      if ((!match || !rev) && ++intentos < 5) setTimeout(buscar, 1500);
+      if ((!match || !rev) && ++intentos < 8) setTimeout(buscar, 1500);
     };
-    void buscar();
+    void (async () => {
+      if (proctoringSessionId) {
+        await api.finalizarSesionProctoring(proctoringSessionId).catch(() => null);
+      }
+      if (!cancelado) void buscar();
+    })();
     return () => { cancelado = true; };
-  }, [examen]);
+  }, [examen, proctoringSessionId]);
 
   const umbralEfectivo = nota?.umbral_revision ?? umbralRevision ?? examen?.umbral_score ?? 70;
   const irARevision = nota ? nota.en_cola_revision : score >= umbralEfectivo;
@@ -121,7 +123,7 @@ export default function Cierre() {
                 ))
               ) : (
                 <div className="px-lg py-8 text-center text-on-surface-variant">
-                  <Icon name="hourglass_top" className="text-[24px] ae-spin" />
+                  <Icon name="progress_activity" className="text-[24px] ae-spin" />
                   <p className="mt-base text-label-md">Corrigiendo tu examen…</p>
                 </div>
               )}
@@ -190,7 +192,7 @@ export default function Cierre() {
                 </>
               ) : (
                 <div className="py-base text-on-surface-variant">
-                  <Icon name="hourglass_top" className="text-[24px] ae-spin" />
+                  <Icon name="progress_activity" className="text-[24px] ae-spin" />
                   <p className="mt-base text-label-md">Calculando tu nota…</p>
                 </div>
               )}

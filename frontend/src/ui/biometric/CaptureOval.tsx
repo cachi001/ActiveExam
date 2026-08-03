@@ -115,7 +115,7 @@ export const CaptureOval = forwardRef<HTMLVideoElement, CaptureOvalProps>(
               autoPlay
               muted
               playsInline
-              className="absolute inset-0 w-full h-full object-cover"
+              className="absolute inset-0 w-full h-full object-cover bg-neutral-100"
               style={{ transform: 'scaleX(-1)' }}
               aria-label="Vista de cámara para captura biométrica"
             />

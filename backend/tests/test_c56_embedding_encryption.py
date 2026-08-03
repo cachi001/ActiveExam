@@ -25,6 +25,36 @@ from app.infrastructure.crypto.embedding_encryption import (
 )
 
 
+# Settings del modo FULL exige 8 campos sin default (storage_*, keycloak_*,
+# jwt_audience, database_url). EmbeddingEncryptionService() sin `_key` los toca vía
+# get_settings(), así que sin estas variables el test explota con ValidationError
+# aunque no use nada de eso. Se inyectan dummies para que el archivo sea HERMÉTICO,
+# como promete su docstring ("no requieren DB ni stack. Deben pasar siempre").
+_ENV_REQUERIDO_FULL = {
+    "DATABASE_URL": "postgresql+asyncpg://u:p@localhost:5432/db",
+    "STORAGE_ENDPOINT": "http://localhost:9000",
+    "STORAGE_ACCESS_KEY": "test-access-key",
+    "STORAGE_SECRET_KEY": "test-secret-key",
+    "STORAGE_BUCKET_EVIDENCE": "evidencia-test",
+    "KEYCLOAK_ISSUER": "http://localhost:8080/realms/test",
+    "KEYCLOAK_JWKS_URL": "http://localhost:8080/realms/test/protocol/openid-connect/certs",
+    "JWT_AUDIENCE": "proctoring-api",
+    "OTEL_EXPORTER_OTLP_ENDPOINT": "http://localhost:4317",
+}
+
+
+@pytest.fixture(autouse=True)
+def _settings_full_minimas(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Completa las env vars requeridas por Settings y limpia su cache."""
+    from app import config as cfg
+
+    for clave, valor in _ENV_REQUERIDO_FULL.items():
+        monkeypatch.setenv(clave, valor)
+    cfg.get_settings.cache_clear()
+    yield
+    cfg.get_settings.cache_clear()
+
+
 def _fernet_key() -> str:
     """Genera una clave Fernet valida para tests."""
     return Fernet.generate_key().decode("ascii")

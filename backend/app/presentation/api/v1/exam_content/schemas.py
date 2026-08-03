@@ -10,7 +10,8 @@ from datetime import datetime
 from enum import Enum
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
+from app.domain.exam_content.entities import PoliticaIntentos
 
 
 class PeriodoEnum(str, Enum):
@@ -264,6 +265,10 @@ class MateriaResponse(BaseModel):
     nombre: str
     # C-72 §17: estado de la materia (true = activa; false = congelada).
     activa: bool = True
+    # Conteos para que la UI oculte "Eliminar" cuando la materia NO está vacía
+    # (mismo criterio que el guard de borrado: se elimina solo con ambos en 0).
+    total_inscriptos: int = 0
+    total_examenes: int = 0
 
 
 class ComisionResponse(BaseModel):
@@ -277,6 +282,18 @@ class ComisionResponse(BaseModel):
     anio: int | None = None
     # C-70: código de matriculación (enrolment key) — el docente lo comparte.
     codigo_matriculacion: str
+    # C-72 §17 (nivel comisión): true = activa; false = congelada (baja lógica).
+    activa: bool = True
+    # Conteos para que la UI oculte "Eliminar" cuando la comisión NO está vacía
+    # (mismo criterio que el guard de borrado: se elimina solo con ambos en 0).
+    total_inscriptos: int = 0
+    total_examenes: int = 0
+    # C-73 §9: docente a cargo. Es quien devuelve la nota de los exámenes de esta
+    # comisión y contra quién se valida "lo suyo" del rol DOCENTE. None = sin asignar
+    # (el write-back cae a la credencial institucional). El nombre viaja resuelto para
+    # que la UI no tenga que pedir el usuario aparte.
+    docente_id: str | None = None
+    docente_nombre: str | None = None
 
 
 class AltaInlineResponse(BaseModel):
@@ -330,6 +347,26 @@ class ComisionCrearRequest(BaseModel):
     # C-70: código de matriculación opcional. Si no viene → se autogenera único
     # ({materia.codigo}-{sufijo}); si viene → se usa tal cual (unicidad al persistir).
     codigo_matriculacion: str | None = None
+
+
+class ComisionDocenteRequest(BaseModel):
+    """Body del PUT /comisiones/{id}/docente: asigna el docente a cargo (C-73 §9).
+
+    ``docente_id = None`` DESASIGNA. No es un caso de error: una comisión puede quedar
+    sin docente (el write-back de sus exámenes cae a la credencial institucional).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    docente_id: str | None = None
+
+
+class ComisionActivaRequest(BaseModel):
+    """Body del PATCH /comisiones/{id}/activa: activar (true) o desactivar (false)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    activa: bool
 
 
 class ComisionActualizarRequest(BaseModel):
@@ -474,10 +511,14 @@ class ExamenConfigResponse(BaseModel):
     cierre: datetime | None = None
     nota_maxima: float
     nota_aprobacion: float
+    # Siempre true (migración 0046). Se sigue exponiendo para que la UI pueda
+    # informarlo, pero ya no es editable.
     mezclar_preguntas: bool
+    limite_preguntas: int | None = None
     # Visibilidad de resultados (C-69, migración 0036).
     mostrar_nota: str = "al_cerrar"
     revision_habilitada: bool = False
+    politica_intentos: PoliticaIntentos = PoliticaIntentos.MAS_ALTA
     # True si el examen ya tiene >= 1 intento finalizado: la config de
     # mecánica/nota queda CONGELADA (el front deshabilita esos campos).
     bloqueada: bool = False
@@ -503,10 +544,15 @@ class ExamenConfigPatchRequest(BaseModel):
     cierre: datetime | None = None
     nota_maxima: float | None = None
     nota_aprobacion: float | None = None
-    mezclar_preguntas: bool | None = None
+    # `mezclar_preguntas` NO se acepta: es siempre true (migracion 0046). Con
+    # extra='forbid', mandarlo devuelve 422 en vez de aceptarlo en silencio.
+    # Tope de preguntas del examen. None en el body = no se toca; para sacar el
+    # tope se manda 0 (se normaliza a NULL en la capa de aplicacion).
+    limite_preguntas: int | None = Field(default=None, ge=0)
     # Visibilidad de resultados (C-69). mostrar_nota: 'al_cerrar' | 'inmediata'.
     mostrar_nota: Literal["al_cerrar", "inmediata"] | None = None
     revision_habilitada: bool | None = None
+    politica_intentos: PoliticaIntentos | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -529,6 +575,9 @@ class ResultadoAlumnoResponse(BaseModel):
     alumno_nombre: str | None = None
     nota: float | None = None
     estado_moodle: str  # pendiente | enviado | fallido | sin_token
+    # Motivo por el que la nota queda RETENIDA y no se sincroniza (gate D15):
+    # en_riesgo | anulada. None = nada la retiene.
+    retenido_por: str | None = None
     actualizado_en: datetime | None = None
 
 
@@ -621,28 +670,36 @@ class SenalAnalisisResponse(BaseModel):
 
 
 class CapturaFirmadaResponse(BaseModel):
-    """Captura de evidencia accesible por URL firmada (expira 15 min, C-71 D12)."""
+    """Captura de evidencia accesible por URL firmada (C-71 D12).
+
+    Incluye de QUÉ evento salió: sin eso el alumno recibe una lista de imágenes
+    numeradas que no puede relacionar con ninguna de las señales que se le
+    imputan — y son justamente la prueba con la que tendría que defenderse.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     object_key: str
     url: str
     expires_in: int
+    tipo_evento: str | None = None
+    severidad: str | None = None
+    ocurrio_en: object | None = None
 
 
 class InformeDevolucionResponse(BaseModel):
-    """Informe de devolución del alumno (SOLO nota anulada por fraude, C-71 D12).
+    """Informe de devolución del alumno (SOLO nota anulada, C-71 D12, un solo paso).
 
     Disclosure de debido proceso: decisión + motivo + análisis por señal
-    (server-side) + capturas firmadas. Minimización: este recurso solo existe
-    para sesiones anuladas por fraude del propio titular (Ley 25.326).
+    (server-side) + capturas firmadas (SOLO la evidencia que el revisor eligió
+    al decidir, no toda la sesión). Minimización: este recurso solo existe
+    para sesiones anuladas del propio titular (Ley 25.326).
     """
 
     model_config = ConfigDict(extra="forbid")
 
     session_id: str
     decision: str
-    resolucion: str
     motivo: str | None = None
     senales: list[SenalAnalisisResponse]
     capturas: list[CapturaFirmadaResponse]

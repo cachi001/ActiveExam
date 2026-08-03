@@ -4,7 +4,6 @@ import App from './App.tsx'
 import './index.css'
 import { authProvider, AUTH_PROVIDER_TYPE } from './lib/authProvider'
 import { useAuth } from './lib/authStore'
-import { useApp } from './lib/store'
 import { registerModelCacheWorker } from './lib/modelPersistence'
 
 // C-67 fix: cachear de forma persistente los modelos de IA (MediaPipe + face-api)
@@ -25,13 +24,6 @@ if (fonts) {
 } else {
   markIconsReady();
 }
-
-// Espeja el principal de auth (useAuth, fuente de verdad) hacia useApp, que es lo
-// que leen las pantallas legacy (Hola {nombre}, sidebar, etc.). Suscripto ANTES del
-// init para capturar la hidratación inicial. Evita migrar cada pantalla a useAuth.
-useAuth.subscribe((state) => {
-  useApp.getState().setPrincipal(state.principal, state.principal?.roles[0] ?? null)
-})
 
 function render() {
   ReactDOM.createRoot(document.getElementById('root')!).render(

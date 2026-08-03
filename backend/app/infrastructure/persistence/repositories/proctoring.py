@@ -18,6 +18,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.application.proctoring.scoring import PESOS_SEVERIDAD, SCORE_CAP
 from app.infrastructure.persistence.models.proctoring import (
     ProctoringBiometriaModel,
     ProctoringEventModel,
@@ -142,13 +143,69 @@ class ProctoringRepository:
         result = await self._db.execute(stmt)
         return result.scalar_one_or_none()
 
+    async def _pesos_vivos_por_tipo(self) -> dict[str, int]:
+        """Peso vivo por tipo de evento desde ``evento_score_config`` (solo activos).
+
+        Misma fuente que consume el endpoint del detalle de sesion: es lo que hace
+        que lista y detalle den el MISMO numero. Si la tabla no esta disponible
+        devuelve ``{}`` y el llamador cae a la red de seguridad por severidad
+        (degradacion graceful, RN-GLB-03) — nunca rompe el listado.
+        """
+        from app.infrastructure.persistence.models.transactional import (
+            EventoScoreConfigModel,
+        )
+
+        try:
+            filas = await self._db.execute(
+                select(
+                    EventoScoreConfigModel.tipo_evento,
+                    EventoScoreConfigModel.peso,
+                ).where(EventoScoreConfigModel.activo.is_(True))
+            )
+        except Exception:
+            return {}
+        return {tipo: int(peso) for tipo, peso in filas.all()}
+
+    async def _tipos_desactivados(self) -> frozenset[str]:
+        """Tipos con fila en ``evento_score_config`` pero ``activo=False``: pesan 0.
+
+        Apagado != desconocido. El apagado lo decidio el admin y no debe sumar; el
+        tipo SIN fila (detector nuevo) sigue cayendo a la red de seguridad por
+        severidad (RN-GLB-03). Antes ambos se veian igual —ausentes del mapa de
+        pesos— y desactivar un detector lo dejaba sumando su peso por severidad.
+        """
+        from app.infrastructure.persistence.models.transactional import (
+            EventoScoreConfigModel,
+        )
+
+        try:
+            filas = await self._db.execute(
+                select(EventoScoreConfigModel.tipo_evento).where(
+                    EventoScoreConfigModel.activo.is_(False)
+                )
+            )
+        except Exception:
+            return frozenset()
+        return frozenset(filas.scalars().all())
+
     async def listar_sesiones(self) -> list[SesionResumenData]:
         """Lista todas las sesiones con total_eventos, total_discrepancias y score.
 
-        El score se calcula con pesos por severidad (D5, alineado con riskWeights
-        del frontend): critico=100, alto=50, medio=20, bajo=5. L2.5: solo prioriza.
+        El score usa la MISMA fuente que el detalle de sesion: peso vivo por TIPO
+        desde ``evento_score_config``, y si el tipo no esta configurado, la red de
+        seguridad por severidad (``PESOS_SEVERIDAD``). L2.5: solo prioriza.
+
+        Antes esta funcion tenia su propia tabla de pesos escrita a mano, indexada
+        por severidades en MASCULINO ("alto"/"medio"/"bajo") que no existen: el
+        vocabulario canonico es femenino (enum ``Severidad``). Ningun evento
+        matcheaba, el ``.get(..., 0)`` devolvia 0 y TODA sesion listaba score 0 —
+        con lo cual la cola de revision, que filtra por ``score >= umbral`` sobre
+        esta lista, nunca se poblaba y ninguna sesion llegaba a revision humana.
+        El detalle, que si usaba la fuente comun, mostraba el score correcto: la
+        misma sesion daba 75 en el detalle y 0 en la lista.
         """
-        pesos = {"critico": 100, "alto": 50, "medio": 20, "bajo": 5}
+        pesos_por_tipo = await self._pesos_vivos_por_tipo()
+        desactivados = await self._tipos_desactivados()
 
         # Subquery: eventos agrupados por session_id
         stmt = select(ProctoringSessionModel).order_by(
@@ -193,22 +250,38 @@ class ProctoringRepository:
             row.session_id: row.discrepancias for row in disc_result
         }
 
-        # Calcular score por sesion (SUM pesos por severidad)
+        # Calcular score por sesion. Se agrupa por (sesion, TIPO, severidad) porque
+        # el peso vivo se define por tipo de evento; la severidad viaja para poder
+        # caer a la red de seguridad cuando el tipo no esta en la config.
         score_stmt = (
             select(
                 ProctoringEventModel.session_id,
+                ProctoringEventModel.tipo,
                 ProctoringEventModel.severidad,
                 func.count(ProctoringEventModel.id).label("cnt"),
             )
             .where(ProctoringEventModel.session_id.in_(session_ids))
-            .group_by(ProctoringEventModel.session_id, ProctoringEventModel.severidad)
+            .group_by(
+                ProctoringEventModel.session_id,
+                ProctoringEventModel.tipo,
+                ProctoringEventModel.severidad,
+            )
         )
         score_result = await self._db.execute(score_stmt)
         score_por_sesion: dict[str, int] = {}
         for row in score_result:
             sid = row.session_id
-            peso = pesos.get(row.severidad, 0)
+            if row.tipo in desactivados:
+                # Apagado por el admin: no suma (y no cae al fallback).
+                continue
+            peso = pesos_por_tipo.get(row.tipo)
+            if peso is None:
+                peso = PESOS_SEVERIDAD.get(row.severidad, 0)
             score_por_sesion[sid] = score_por_sesion.get(sid, 0) + peso * row.cnt
+        # Cap 0..100, igual que el detalle y el cliente.
+        score_por_sesion = {
+            sid: min(SCORE_CAP, total) for sid, total in score_por_sesion.items()
+        }
 
         # Ultimo evento por sesion (max ts_backend). Permite (a) diferenciar
         # actividad reciente de calma en la UI y (b) auto-finalizar sesiones

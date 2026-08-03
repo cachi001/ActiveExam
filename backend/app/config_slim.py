@@ -76,6 +76,7 @@ class SlimSettings(BaseSettings):
     moodle_ws_token: str = ""         # Token de Web Services de Moodle (secreto)
     moodle_courseid: int = 0          # ID del curso destino en Moodle
     moodle_cmid: int = 0              # ID del ítem de calificación (cm) en Moodle
+    moodle_component: str = "mod_assign"  # C-73: módulo destino global ('mod_assign'|'mod_quiz')
 
     @field_validator("database_url")
     @classmethod

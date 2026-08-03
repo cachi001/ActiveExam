@@ -77,6 +77,21 @@ class ComisionModel(Base):
     # por el docente; único entre TODAS las comisiones (no por materia). Se guarda
     # EXACTAMENTE como se tipeó (solo strip externo): unicidad case-sensitive.
     codigo_matriculacion: Mapped[str] = mapped_column(String(80), nullable=False)
+    # C-72 §17 (nivel comisión): estado de la comisión. false = "congelada" (sin
+    # inscripciones nuevas, sin iniciar exámenes de ESA comisión; la materia sigue
+    # activa). DEFAULT true por la migración 0043 (aditiva).
+    activa: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="true"
+    )
+    # C-73 §9 (migración 0049): docente a cargo de la comisión. Es el eslabón que
+    # vuelve DERIVABLE quién devuelve la nota (examen.comision_id → comision.docente_id)
+    # y contra qué se valida "lo suyo" del rol DOCENTE. NULL = comisión sin docente
+    # asignado: no rompe nada, el write-back cae a la cuenta de servicio institucional.
+    docente_id: Mapped[str | None] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("usuario.id", ondelete="SET NULL"),
+        nullable=True,
+    )
 
     __table_args__ = (
         UniqueConstraint("materia_id", "codigo", name="uq_comision_materia_codigo"),
@@ -84,6 +99,7 @@ class ComisionModel(Base):
             "codigo_matriculacion", name="uq_comision_codigo_matriculacion"
         ),
         Index("ix_comision_materia_id", "materia_id"),
+        Index("ix_comision_docente_id", "docente_id"),
     )
 
 
@@ -115,6 +131,14 @@ class ExamenContenidoModel(Base):
         Integer,
         nullable=True,
         comment="D12: course-module de calificación por examen; NULL = fallback global.",
+    )
+    # C-73: módulo de la actividad destino ('mod_assign' | 'mod_quiz'). NULL = fallback
+    # global (config.moodle_component, default 'mod_assign'). Los cuestionarios requieren
+    # 'mod_quiz'; las tareas 'mod_assign' (validado E2E en campustest).
+    moodle_component: Mapped[str | None] = mapped_column(
+        String(32),
+        nullable=True,
+        comment="C-73: 'mod_assign'|'mod_quiz' del destino por examen; NULL = fallback global.",
     )
 
     # Configuración del examen POR EXAMEN (migración 0032). ActiveExam la opera;
@@ -149,11 +173,16 @@ class ExamenContenidoModel(Base):
         nullable=False,
         server_default="6",
     )
+    # Siempre true (migracion 0046): el orden aleatorio por alumno es integridad de
+    # la rendicion, no una preferencia del docente. Se conserva la columna para no
+    # romper lecturas ni el historial, pero ya no se edita.
     mezclar_preguntas: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,
-        server_default="false",
+        server_default="true",
     )
+    # Tope de preguntas del examen (migracion 0046). None = sin tope.
+    limite_preguntas: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # Visibilidad de resultados (migración 0036, gate estilo Moodle "Review options").
     mostrar_nota: Mapped[str] = mapped_column(
         String(20),
@@ -166,6 +195,13 @@ class ExamenContenidoModel(Base):
         nullable=False,
         server_default="false",
         comment="Si el alumno puede ver la corrección (solo después del cierre).",
+    )
+    # C-73: política de calificación cuando el alumno tiene múltiples intentos.
+    # 'mas_alta' | 'ultimo' | 'primero' | 'manual'. Default: 'mas_alta'.
+    politica_intentos: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        server_default="mas_alta",
     )
 
     preguntas: Mapped[list[PreguntaExamenModel]] = relationship(

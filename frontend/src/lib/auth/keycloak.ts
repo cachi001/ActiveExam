@@ -13,6 +13,7 @@
  * server-side. Acá solo lo transportamos y lo mapeamos a Principal para la UI.
  */
 import Keycloak from 'keycloak-js';
+import { ROLES_VALIDOS } from '../constants/roles';
 import type { Principal, Rol } from '../types';
 
 const KC_URL = (import.meta.env.VITE_KEYCLOAK_URL as string) ?? 'http://localhost:8080';
@@ -21,8 +22,10 @@ const KC_CLIENT = (import.meta.env.VITE_KEYCLOAK_CLIENT_ID as string) ?? 'procto
 
 export const keycloak = new Keycloak({ url: KC_URL, realm: KC_REALM, clientId: KC_CLIENT });
 
-/** Roles válidos del modelo MVP. Cualquier rol de Keycloak fuera de esto se ignora. */
-const ROLES_VALIDOS: readonly Rol[] = ['estudiante', 'proctor', 'admin_sistema'];
+// Roles válidos: fuente única en `lib/constants/roles` (espeja el enum `Rol` del
+// backend). Cualquier rol de Keycloak fuera de esa lista se ignora — por eso la
+// lista NO se redeclara acá: una copia desactualizada degrada al usuario a
+// estudiante en silencio (ver el mismo caso en adapters/jwt.ts).
 
 /**
  * Inicializa Keycloak con check-sso silencioso (no fuerza login al cargar la app;

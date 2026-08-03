@@ -23,19 +23,26 @@ function StatCard({
   icon,
   label,
   children,
+  loading = false,
 }: {
   icon: string;
   label: string;
   children: React.ReactNode;
+  loading?: boolean;
 }) {
   return (
     <Card className="flex items-start gap-sm !p-md">
-      <div className="w-10 h-10 rounded-xl bg-surface-container-high text-on-surface-variant flex items-center justify-center shrink-0">
+      <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
         <Icon name={icon} className="text-[20px]" />
       </div>
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         <p className="text-label-sm text-on-surface-variant uppercase tracking-wide">{label}</p>
-        {children}
+        {loading ? (
+          // Mientras carga: skeleton, NO un guión. (pref. del owner)
+          <div className="mt-1.5 h-5 w-20 max-w-full rounded bg-surface-200 animate-pulse" />
+        ) : (
+          children
+        )}
       </div>
     </Card>
   );
@@ -63,6 +70,9 @@ export default function ExamDetail() {
   useEffect(() => {
     cargarHeader();
   }, [cargarHeader]);
+
+  // Cargando = todavía sin datos y sin error → las stat cards muestran skeleton.
+  const cargando = !examen && !headerError;
 
   if (!examenId) {
     return (
@@ -95,20 +105,20 @@ export default function ExamDetail() {
 
         {/* Header stats — tarjetas consistentes */}
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-md">
-          <StatCard icon="quiz" label="Preguntas">
+          <StatCard icon="quiz" label="Preguntas" loading={cargando}>
             <p className="font-headline text-title-lg text-on-surface tabular-nums">
-              {examen?.cantidad_preguntas ?? '—'}
+              {examen?.cantidad_preguntas ?? 0}
             </p>
           </StatCard>
-          <StatCard icon="menu_book" label="Materia">
+          <StatCard icon="menu_book" label="Materia" loading={cargando}>
             <p className="text-label-md text-on-surface truncate">
-              {examen?.materia_nombre ?? <span className="text-outline italic">— sin materia</span>}
+              {examen?.materia_nombre ?? <span className="text-outline italic">Sin materia</span>}
             </p>
           </StatCard>
           <div className="col-span-2 sm:col-span-1">
-            <StatCard icon="group" label="Comisión">
+            <StatCard icon="group" label="Comisión" loading={cargando}>
               <p className="text-label-md text-on-surface truncate">
-                {examen?.comision_nombre ?? <span className="text-outline italic">— sin comisión</span>}
+                {examen?.comision_nombre ?? <span className="text-outline italic">Sin comisión</span>}
               </p>
             </StatCard>
           </div>
@@ -142,7 +152,7 @@ export default function ExamDetail() {
         {/* Acceso a la página dedicada de resultados (antes era una tabla al final). */}
         <Card className="flex items-center justify-between gap-md flex-wrap">
           <div className="flex items-center gap-sm min-w-0">
-            <div className="w-10 h-10 rounded-xl bg-surface-container-high text-on-surface-variant flex items-center justify-center shrink-0">
+            <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
               <Icon name="groups" className="text-[20px]" />
             </div>
             <div className="min-w-0">

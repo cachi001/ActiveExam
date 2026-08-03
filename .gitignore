@@ -50,3 +50,8 @@ infra/docker-compose/docker-compose.dev.local.yml
 
 # Test venv efímero (C-70)
 backend/.venv-test/
+
+# Documentación de trabajo (guías de Moodle, PDFs/DOCX de discovery, capturas).
+# Decisión del owner: NADA de docs/ se versiona — son material de consulta local,
+# pesado y a menudo con datos del campus.
+docs/

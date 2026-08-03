@@ -8,7 +8,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from app.application.exam_content.errors import MateriaInactivaError
+from app.application.exam_content.errors import (
+    ComisionInactivaError,
+    MateriaInactivaError,
+)
 from app.domain.exam_content.entities import ExamenContenido
 from app.domain.exam_content.ports import AbstractExamenContenidoRepository
 
@@ -108,8 +111,9 @@ class LecturaExamenService:
     async def obtener_para_rendir(self, examen_id: str) -> ExamenRendicion | None:
         """Devuelve la proyección sin es_correcta, o None si el examen no existe.
 
-        Freeze (C-72 §17): si el examen pertenece a una comisión de una materia
-        DESACTIVADA, eleva ``MateriaInactivaError`` (no se puede iniciar la rendición).
+        Freeze (C-72 §17): si el examen pertenece a una COMISIÓN desactivada eleva
+        ``ComisionInactivaError``; si su MATERIA está desactivada eleva
+        ``MateriaInactivaError``. En ambos casos no se puede iniciar la rendición.
         """
         examen = await self._repo.obtener(examen_id)
         if examen is None:
@@ -127,6 +131,12 @@ class LecturaExamenService:
         comision = await self._comision_repo.obtener(examen.comision_id)
         if comision is None:
             return
+        # Freeze a nivel comisión (baja lógica): congela SOLO sus exámenes.
+        if not comision.activa:
+            raise ComisionInactivaError(
+                f"La comisión {comision.nombre!r} está desactivada: no se puede "
+                "iniciar la rendición de sus exámenes."
+            )
         materia = await self._materia_repo.obtener(comision.materia_id)
         if materia is not None and not materia.activa:
             raise MateriaInactivaError(

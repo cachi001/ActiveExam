@@ -11,6 +11,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
+from enum import Enum
+
+
+class PoliticaIntentos(str, Enum):
+    """Qué nota se envía a Moodle cuando el alumno tiene múltiples intentos."""
+    MAS_ALTA = "mas_alta"
+    ULTIMO   = "ultimo"
+    PRIMERO  = "primero"
+    MANUAL   = "manual"
+
 
 from app.domain.exam_content.errors import (
     ComisionInvalidaError,
@@ -97,6 +107,7 @@ class ExamenContenido:
     # si quedan en None, el write-back usa el valor global de config_slim (fallback).
     moodle_courseid: int | None = None
     moodle_cmid: int | None = None
+    moodle_component: str | None = None
     # Configuración del examen POR EXAMEN (migración 0032). ActiveExam la opera; el
     # alumno rinde con estos parámetros. Defaults compat: 1 intento, nota sobre 10,
     # aprueba con 6, sin ventana ni límite, sin mezclar.
@@ -106,10 +117,15 @@ class ExamenContenido:
     cierre: datetime | None = None  # None = sin cierre
     nota_maxima: float = 10.0
     nota_aprobacion: float = 6.0
-    mezclar_preguntas: bool = False
+    # Siempre true: el orden aleatorio por alumno protege la integridad de la
+    # rendicion y no altera la nota (solo cambia el ORDEN, no que preguntas entran).
+    mezclar_preguntas: bool = True
+    # Tope de preguntas del examen. None = sin tope.
+    limite_preguntas: int | None = None
     # Visibilidad de resultados (migración 0036, gate estilo Moodle "Review options").
     mostrar_nota: str = "al_cerrar"  # 'al_cerrar' | 'inmediata'
     revision_habilitada: bool = False
+    politica_intentos: PoliticaIntentos = PoliticaIntentos.MAS_ALTA
 
 
 @dataclass(frozen=True, slots=True)
@@ -167,6 +183,13 @@ class Comision:
     # la capa de aplicación lo autogenere/valide antes de persistir; el modelo ORM
     # lo exige NOT NULL. Se guarda tal cual (solo strip externo, case-sensitive).
     codigo_matriculacion: str | None = None
+    # C-72 §17 (nivel comisión): true = activa; false = congelada. Congelar UNA
+    # comisión no congela la materia ni las demás comisiones.
+    activa: bool = True
+    # C-73 §9: docente a cargo. None = sin asignar (no rompe: el write-back de sus
+    # exámenes cae a la credencial institucional). Es el dato del que se DERIVA quién
+    # devuelve la nota y contra el que se valida la pertenencia del rol DOCENTE.
+    docente_id: str | None = None
 
     def __post_init__(self) -> None:
         if not (self.materia_id and self.materia_id.strip()):

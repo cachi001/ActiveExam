@@ -1,6 +1,8 @@
 # Plataforma de Proctoring para Evaluaciones Remotas — Base de Conocimiento
 
-Base de conocimiento canónica generada a partir del documento de discovery del proyecto (`docs/Discovery_Proctoring_Evaluaciones_Remotas.pdf`, 89 páginas).
+Base de conocimiento canónica generada a partir del documento de discovery del proyecto (`Discovery_Proctoring_Evaluaciones_Remotas.pdf`, 89 páginas).
+
+> El documento fuente **no se versiona**: `docs/` está en `.gitignore` (decisión del owner). Vive solo en la máquina de quien lo tenga. Esta KB es la fuente de verdad versionada del dominio.
 
 ## Índice de Archivos
 

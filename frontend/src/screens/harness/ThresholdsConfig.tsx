@@ -35,7 +35,7 @@ interface ThresholdsConfigProps {
 
 /** Clase base de los inputs de número — igual que SeccionDeteccion. */
 const INPUT_CLASS =
-  'w-full px-sm py-base text-label-md rounded-xl border border-outline-variant bg-white font-mono focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors';
+  'w-full px-sm py-base text-label-md rounded-xl border border-outline-variant bg-white font-mono focus:outline-none focus:border-surface-500 transition-colors';
 
 export default function ThresholdsConfig({
   configDraft,
@@ -74,9 +74,9 @@ export default function ThresholdsConfig({
   }
 
   return (
-    <Card className="space-y-md">
+    <Card className="space-y-md flex-1 flex flex-col">
       <SectionTitle sub="Arrancan desde la Configuración del sistema. Cambialos para probar cómo reacciona la detección en vivo — se aplican al instante.">
-        Umbrales de prueba
+        Umbrales de detección
       </SectionTitle>
 
       {/* Sub-sección: Rostro en cámara */}
@@ -163,7 +163,7 @@ export default function ThresholdsConfig({
                   className={`flex-1 py-sm px-base rounded-xl border text-label-sm font-medium transition-colors ${
                     gazeDeviationLabel === opt.value
                       ? 'bg-primary text-on-primary border-primary'
-                      : 'bg-white text-on-surface border-outline-variant hover:border-primary/50'
+                      : 'bg-white text-on-surface border-outline-variant hover:border-primary-200'
                   }`}
                 >
                   {opt.label}
@@ -219,7 +219,7 @@ export default function ThresholdsConfig({
                   className={`flex-1 py-sm px-base rounded-xl border text-label-sm font-medium transition-colors ${
                     gazeFixationLabel === opt.value
                       ? 'bg-primary text-on-primary border-primary'
-                      : 'bg-white text-on-surface border-outline-variant hover:border-primary/50'
+                      : 'bg-white text-on-surface border-outline-variant hover:border-primary-200'
                   }`}
                 >
                   {opt.label}

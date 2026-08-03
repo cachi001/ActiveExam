@@ -15,8 +15,6 @@ import {
   COPY_VERIFICADO_PRINCIPAL,
   COPY_VERIFICANDO_PRINCIPAL,
   COPY_REINTENTO_PRINCIPAL,
-  COPY_L25_GUARANTEE,
-  intentosRestantesMsg,
 } from './BiometriaLogic';
 
 // Fases de la pantalla.
@@ -26,7 +24,7 @@ import {
 // En modo demo se deriva de biometriaReferencia local.
 type Fase = 'preparar' | 'capturando' | 'verificando' | 'verificado' | 'reintento' | 'no_enrolado' | 'sin_rostro';
 
-const MAX_REINTENTOS = 2;
+// Sin límite de reintentos — el alumno reintenta hasta verificar o abandonar.
 
 export default function Biometria() {
   const navigate = useNavigate();
@@ -34,7 +32,7 @@ export default function Biometria() {
   const proctoringSessionId = useApp((s) => s.proctoringSessionId);
   const [fase, setFase] = useState<Fase>('preparar');
   const [resultado, setResultado] = useState<{ distancia: number; umbral: number } | null>(null);
-  const [reintentos, setReintentos] = useState(0);
+  const [reintentos, setReintentos] = useState(0); // solo para mostrar el conteo, sin límite
 
   // ---------------------------------------------------------------------------
   // 6.1 Al montar en fase `preparar`: consultar el estado de referencia del backend
@@ -161,8 +159,6 @@ export default function Biometria() {
     setFase('preparar');
   };
 
-  const sinIntentos = reintentos >= MAX_REINTENTOS;
-
   return (
     <StudentShell step={2} backTo="/requisitos">
       <div className="max-w-2xl lg:max-w-4xl space-y-lg animate-in fade-in duration-500">
@@ -248,11 +244,6 @@ export default function Biometria() {
                 {/* 6.2 / 6.4: copy principal en lenguaje claro — fuente: COPY_VERIFICADO_PRINCIPAL */}
                 <p className="text-body-md text-on-surface-variant">{COPY_VERIFICADO_PRINCIPAL}</p>
 
-                {/* 6.6: garantía L2.5 — decisión siempre humana — fuente: COPY_L25_GUARANTEE */}
-                <p className="text-label-sm text-on-surface-variant/80 max-w-sm mx-auto">
-                  {COPY_L25_GUARANTEE}
-                </p>
-
                 {/* 6.5: valores técnicos en detalle OPCIONAL colapsado. Nunca en el copy principal.
                     Embedding nunca se muestra (dato sensible, Ley 25.326). */}
                 {resultado && (
@@ -297,15 +288,11 @@ export default function Biometria() {
                 {/* 6.3 / 6.4: copy principal en lenguaje claro — fuente: COPY_REINTENTO_PRINCIPAL */}
                 <p className="text-body-md text-on-surface">{COPY_REINTENTO_PRINCIPAL}</p>
 
-                {/* 6.3: intentos restantes — sin jerga, sin "distancia" ni "umbral" */}
-                <p className="text-label-sm text-on-surface-variant">
-                  {intentosRestantesMsg(MAX_REINTENTOS - reintentos)}
-                </p>
-
-                {/* 6.6: garantía L2.5 */}
-                <p className="text-label-sm text-on-surface-variant/80 max-w-sm mx-auto">
-                  {COPY_L25_GUARANTEE}
-                </p>
+                {reintentos > 0 && (
+                  <p className="text-label-sm text-on-surface-variant">
+                    Intento {reintentos + 1} — podés seguir intentando.
+                  </p>
+                )}
 
                 {/* 6.5: valores técnicos en detalle OPCIONAL colapsado.
                     Nunca en el copy principal. Embedding nunca se muestra. */}
@@ -337,14 +324,8 @@ export default function Biometria() {
                   </details>
                 )}
 
-                {/* 6.3: opciones — reintentar o escalar a persona. Sin avance automático. */}
                 <div className="flex gap-sm justify-center flex-wrap">
-                  {!sinIntentos && (
-                    <Button variant="outline" icon="refresh" onClick={() => setFase('capturando')}>Reintentar</Button>
-                  )}
-                  <Button variant="ghost" icon="support_agent" onClick={() => navigate('/sala-espera')}>
-                    Hablar con una persona del equipo
-                  </Button>
+                  <Button variant="outline" icon="refresh" onClick={() => setFase('capturando')}>Reintentar</Button>
                 </div>
               </div>
             )}

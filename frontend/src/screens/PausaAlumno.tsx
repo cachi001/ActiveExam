@@ -175,7 +175,7 @@ export function PausaAlumno({
 
         {esperando ? (
           <div className="flex items-center gap-sm text-on-surface-variant py-base">
-            <Icon name="hourglass_top" className="text-[20px] text-warning ae-spin" />
+            <Icon name="progress_activity" className="text-[20px] text-warning ae-spin" />
             <p className="text-label-sm">Esperando aprobación del proctor…</p>
           </div>
         ) : activa ? (

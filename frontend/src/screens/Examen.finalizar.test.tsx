@@ -61,6 +61,14 @@ vi.mock('../lib/store', () => {
   return { useApp: (selector: (s: typeof state) => unknown) => selector(state) };
 });
 
+// Auth: el principal (identidad del alumno para el write-back) es fuente única en useAuth (C-73).
+vi.mock('../lib/authStore', () => {
+  const authState = {
+    principal: { id_institucional: 'LU-123', email: 'alumno@uni.edu', nombre: 'Ana', roles: [] },
+  };
+  return { useAuth: (selector: (s: typeof authState) => unknown) => selector(authState) };
+});
+
 // Router: navigate registra su invocación.
 vi.mock('../lib/router', () => ({ useNavigate: () => navigate }));
 

@@ -42,9 +42,20 @@ class TipoEvento(str, Enum):
 
 
 class Severidad(str, Enum):
-    """Severidades del dominio (RN-EV-04)."""
+    """Severidades del dominio (RN-EV-04).
+
+    Vocabulario CANONICO del proyecto, en femenino. Es la MISMA lista que fijan el
+    CHECK de ``evento_score_config``, ``PESOS_SEVERIDAD`` (application/proctoring/
+    scoring.py) y el catalogo del cliente. Cualquier tabla de pesos se indexa por
+    estos valores — escribirlos a mano en masculino ("alto", "medio") produce un
+    score 0 silencioso, que es como la cola de revision quedo vacia.
+
+    ``BAJA`` existia en la DB, en la config y en el cliente, pero faltaba aca: el
+    enum no describia el vocabulario real.
+    """
 
     BASELINE = "baseline"
+    BAJA = "baja"
     MEDIA = "media"
     ALTA = "alta"
     CRITICA = "critica"

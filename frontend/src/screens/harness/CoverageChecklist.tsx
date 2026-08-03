@@ -17,18 +17,28 @@
  */
 
 import { Icon, Card, SectionTitle, Button } from '../../ui/components';
-import { SUSPICIOUS_ACTIVITY_CATALOG } from '../../proctoring/suspiciousActivityCatalog';
-import { SEVERITY_BADGE_COLORS, SEVERITY_CARD_COLORS } from './helpers';
+import { SUSPICIOUS_ACTIVITY_CATALOG, EVENTOS_CON_IMAGEN } from '../../proctoring/suspiciousActivityCatalog';
+import { SEVERITY_BADGE_COLORS } from './helpers';
 import {
   RANGOS_SEVERIDAD,
   SEV_LABEL,
   severidadParaPeso,
-  clampPeso,
+  rangoDeSeveridad,
   type SeveridadEditable,
 } from '../../config/severityRanges';
 import type { LegendRow } from './buildLegendModel';
 import type { CoverageEntry, MonitorPermission } from './types';
 import type { Severidad } from '../../lib/types';
+
+const SEV_ORDER: Record<string, number> = { critica: 0, alta: 1, media: 2, baja: 3 };
+
+/** Color de la línea-acento superior por severidad (card blanca). */
+const SEV_LINEA: Record<SeveridadEditable, string> = {
+  baja: 'bg-blue-400',
+  media: 'bg-amber-400',
+  alta: 'bg-red-500',
+  critica: 'bg-red-700',
+};
 
 interface CoverageChecklistProps {
   coverage: Partial<Record<string, CoverageEntry>>;
@@ -70,6 +80,13 @@ export default function CoverageChecklist({
   const captured = testableCatalog.filter((e) => coverage[e.tipo]);
   const allDone = testableCatalog.length > 0 && captured.length === testableCatalog.length;
 
+  // Catálogo ordenado por severidad (crítica primero) usando la config viva o fallback al catálogo.
+  const sortedCatalog = [...SUSPICIOUS_ACTIVITY_CATALOG].sort((a, b) => {
+    const sevA = (legendByTipo.get(a.tipo)?.severidad ?? a.severidad) as string;
+    const sevB = (legendByTipo.get(b.tipo)?.severidad ?? b.severidad) as string;
+    return (SEV_ORDER[sevA] ?? 4) - (SEV_ORDER[sevB] ?? 4);
+  });
+
   return (
     <Card className="space-y-md">
       <div className="flex items-start justify-between gap-md flex-wrap">
@@ -92,7 +109,7 @@ export default function CoverageChecklist({
           al peso, así el admin solo elige el número y la severidad sigue. */}
       {editable && (
         <div className="flex items-center gap-sm flex-wrap text-[12px] text-on-surface-variant border-b border-outline-variant/40 pb-sm">
-          <span className="font-semibold text-on-surface">Rangos por severidad:</span>
+          <span className="font-semibold text-on-surface">Escala de severidad:</span>
           {RANGOS_SEVERIDAD.map((r) => (
             <span
               key={r.sev}
@@ -119,7 +136,7 @@ export default function CoverageChecklist({
 
       {/* Bento grid: 1 col en mobile, 2 en sm, 3 en xl. Sin scroll vertical eterno. */}
       <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-md">
-        {SUSPICIOUS_ACTIVITY_CATALOG.map((entry) => {
+        {sortedCatalog.map((entry) => {
           const cap = coverage[entry.tipo];
           const isUntestable = entry.requiereApiOpcional && monitorPermission === 'unsupported';
           const liveRow = legendByTipo.get(entry.tipo);
@@ -133,16 +150,20 @@ export default function CoverageChecklist({
             pesoVivo != null && editable
               ? severidadParaPeso(pesoVivo)
               : (sevSistema === 'baseline' ? 'media' : sevSistema as SeveridadEditable);
-          const editableEsteEvento = editable && !!liveRow && liveRow.activo && !isUntestable;
-          const cardColor = isUntestable
-            ? 'bg-surface-container border-outline-variant/40 opacity-60'
-            : `${SEVERITY_CARD_COLORS[sevVisible]}`;
-
+          const editableEsteEvento = editable && !!liveRow && !isUntestable;
           return (
             <div
               key={entry.tipo}
-              className={`flex flex-col gap-sm p-md rounded-xl border text-label-sm h-full ${cardColor}`}
+              className={`relative overflow-hidden flex flex-col gap-sm p-md rounded-xl border text-label-sm h-full ${
+                isUntestable
+                  ? 'bg-surface-50 border-outline-variant/40 opacity-70'
+                  : 'bg-white border-outline-variant/50 shadow-sm'
+              }`}
             >
+              {/* Línea de color arriba por severidad (card blanca moderna, sin fondo de color). */}
+              {!isUntestable && (
+                <div className={`absolute top-0 left-0 right-0 h-1 ${SEV_LINEA[sevVisible]}`} aria-hidden />
+              )}
               {/* Header: ícono de cobertura + nombre + estado */}
               <div className="flex items-start gap-sm">
                 <Icon
@@ -174,9 +195,24 @@ export default function CoverageChecklist({
                     <span className="tabular-nums font-normal opacity-80">+{pesoVivo}</span>
                   )}
                 </span>
+                {/* ¿Adjunta screenshot al dispararse? (no es lo mismo para todos) */}
+                <span
+                  className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded font-medium leading-none ${
+                    EVENTOS_CON_IMAGEN.has(entry.tipo)
+                      ? 'bg-blue-50 text-blue-700'
+                      : 'bg-surface-container text-on-surface-variant'
+                  }`}
+                >
+                  <Icon
+                    name={EVENTOS_CON_IMAGEN.has(entry.tipo) ? 'photo_camera' : 'no_photography'}
+                    className="text-[12px]"
+                  />
+                  {EVENTOS_CON_IMAGEN.has(entry.tipo) ? 'Captura imagen' : 'Sin imagen'}
+                </span>
                 {liveRow && !liveRow.activo && (
-                  <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded bg-surface-container-high text-on-surface-variant">
-                    Inactivo
+                  <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">
+                    <Icon name="pause_circle" className="text-[11px]" />
+                    Desactivado
                   </span>
                 )}
                 {isUntestable ? (
@@ -194,19 +230,20 @@ export default function CoverageChecklist({
               {editableEsteEvento && pesoVivo != null && (
                 <div className="flex items-center gap-1.5 mt-auto pt-sm border-t border-outline-variant/30">
                   <span className="text-[11px] text-on-surface-variant">Suma al score:</span>
-                  <input
-                    type="number"
-                    min={1}
-                    max={100}
-                    value={pesoVivo}
-                    onChange={(e) => {
-                      const raw = parseInt(e.target.value, 10);
-                      if (isNaN(raw)) return;
-                      onOverrideChange?.(entry.tipo, clampPeso(raw));
-                    }}
-                    className="w-16 px-1.5 py-0.5 text-[12px] rounded-md border border-outline-variant bg-white font-mono focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors"
-                    aria-label={`Peso de ${entry.label} (1 a 100 puntos)`}
-                  />
+                  {/* Select acotado al rango de SU severidad (no cualquier valor libre). */}
+                  <select
+                    value={String(pesoVivo)}
+                    onChange={(e) => onOverrideChange?.(entry.tipo, parseInt(e.target.value, 10))}
+                    className="px-1.5 py-0.5 text-[12px] rounded-md border border-outline-variant bg-white font-mono focus:outline-none focus:border-surface-500 transition-colors"
+                    aria-label={`Peso de ${entry.label} (rango ${rangoDeSeveridad(sevVisible).min}–${rangoDeSeveridad(sevVisible).max}, severidad ${SEV_LABEL[sevVisible]})`}
+                  >
+                    {Array.from(
+                      { length: rangoDeSeveridad(sevVisible).max - rangoDeSeveridad(sevVisible).min + 1 },
+                      (_, k) => rangoDeSeveridad(sevVisible).min + k,
+                    ).map((n) => (
+                      <option key={n} value={n}>{n}</option>
+                    ))}
+                  </select>
                   <span className="text-[11px] text-on-surface-variant">pts</span>
                 </div>
               )}

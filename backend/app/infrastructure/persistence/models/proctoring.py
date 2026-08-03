@@ -109,12 +109,14 @@ class ProctoringSessionModel(Base):
         comment="Motivo operativo del cierre forzado (NO veredicto disciplinario).",
     )
 
-    # c-16: decision terminal de REVISION (fase 1) del revisor (slim,
-    # migration 0013; modelo evolucionado c-71 slice 2 D6). NULLABLE — None =
-    # sin revisar todavia. Una vez seteada, es INMUTABLE (RN-RV-07).
+    # c-16: decision terminal del revisor, UN SOLO PASO (slim, migration 0013;
+    # modelo colapsado a 3 estados — el owner del proyecto rechazo explicitamente
+    # el modelo de dos fases con `caso_abierto`: "no existe el caso abierto,
+    # nunca dije que era un estado y no lo va a ser"). NULLABLE — None = sin
+    # revisar todavia. Una vez seteada (aprobado/anulado), es INMUTABLE (RN-RV-07).
     decision: Mapped[str | None] = mapped_column(
         String(32), nullable=True,
-        comment="'pendiente' | 'sin_hallazgos' | 'aprobado' | 'caso_abierto' | NULL"
+        comment="'pendiente' | 'aprobado' | 'anulado' | NULL"
     )
     decision_actor: Mapped[str | None] = mapped_column(
         String(255), nullable=True,
@@ -123,29 +125,18 @@ class ProctoringSessionModel(Base):
     decision_at: Mapped[str | None] = mapped_column(
         DateTime(timezone=True), nullable=True,
     )
-    decision_observaciones: Mapped[str | None] = mapped_column(
+    decision_motivo: Mapped[str | None] = mapped_column(
         String(1024), nullable=True,
+        comment="Motivo del veredicto. Obligatorio no vacio cuando decision='anulado' (D11, RN-RV-06)",
     )
-
-    # c-71 slice 2 (D9/D10/D11): estado de RESOLUCION (fase 2), solo valido si
-    # `decision == 'caso_abierto'`. NULLABLE — None = sin resolver todavia
-    # (o revision no derivo caso). INMUTABLE una vez seteada (mismo RN-RV-07);
-    # la reversibilidad se hace por acto compensatorio en audit_log (D10b),
-    # NUNCA por UPDATE de estas columnas.
-    resolucion: Mapped[str | None] = mapped_column(
-        String(32), nullable=True,
-        comment="'anulado_por_fraude' | 'caso_descartado' | NULL",
-    )
-    resolucion_actor: Mapped[str | None] = mapped_column(
-        String(255), nullable=True,
-        comment="Subject del JWT de quien resolvio (capacidad resolver_caso)",
-    )
-    resolucion_at: Mapped[str | None] = mapped_column(
-        DateTime(timezone=True), nullable=True,
-    )
-    resolucion_motivo: Mapped[str | None] = mapped_column(
-        String(1024), nullable=True,
-        comment="Motivo obligatorio del veredicto (D11, RN-RV-06)",
+    decision_evidencia_ids: Mapped[list[str] | None] = mapped_column(
+        JSONB, nullable=True,
+        comment=(
+            "Lista ESTRUCTURADA de proctoring_event.id elegidos por el revisor "
+            "como evidencia del veredicto (no texto libre). Obligatoria y no "
+            "vacia cuando decision='anulado'; filtra las capturas que ve el "
+            "alumno en su informe de devolucion (D12)."
+        ),
     )
 
     eventos: Mapped[list[ProctoringEventModel]] = relationship(

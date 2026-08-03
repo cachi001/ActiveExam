@@ -37,6 +37,14 @@ from app.infrastructure.persistence.models.exam_content import (  # noqa: F401
     OpcionRespuestaModel,
     PreguntaExamenModel,
 )
+# El gate de inscripción (C-71) que aplica el listado consulta inscripcion+usuario:
+# sin esas tablas el endpoint revienta con UndefinedTable.
+from app.infrastructure.persistence.models.inscripcion import (  # noqa: F401
+    InscripcionModel,
+)
+from app.infrastructure.persistence.models.transactional import (  # noqa: F401
+    UsuarioModel,
+)
 from app.infrastructure.persistence.repositories.exam_content import (
     ComisionSqlRepository,
     ExamenContenidoSqlRepository,
@@ -45,7 +53,15 @@ from app.infrastructure.persistence.repositories.exam_content import (
 from app.presentation.api.v1.exam_content.router import create_exam_taking_router
 from tests.proctoring.conftest import _build_test_jwt_validator, auth_headers
 
-_TABLES = ("opcion_respuesta", "pregunta_examen", "examen_contenido", "comision", "materia")
+_TABLES = (
+    "inscripcion",
+    "opcion_respuesta",
+    "pregunta_examen",
+    "examen_contenido",
+    "comision",
+    "materia",
+    "usuario",
+)
 
 
 @pytest.fixture(scope="module")
@@ -65,11 +81,13 @@ async def db_engine(db_url):
         await conn.run_sync(
             Base.metadata.create_all,
             tables=[
+                UsuarioModel.__table__,
                 MateriaModel.__table__,
                 ComisionModel.__table__,
                 ExamenContenidoModel.__table__,
                 PreguntaExamenModel.__table__,
                 OpcionRespuestaModel.__table__,
+                InscripcionModel.__table__,
             ],
         )
     yield eng
@@ -96,7 +114,11 @@ async def client(app_and_factory):
     async with AsyncClient(
         transport=ASGITransport(app=app),
         base_url="http://test",
-        headers=auth_headers(["estudiante"]),
+        # Rol de gestión: estos tests verifican la FORMA de la paginación y el
+        # filtro server-side del catálogo, no el gate de inscripción (C-71). Con
+        # rol 'estudiante' el gate filtra a las comisiones inscriptas y el total
+        # daría 0, que es el comportamiento correcto pero no lo que se prueba acá.
+        headers=auth_headers(["admin_examenes"]),
     ) as c:
         yield c
 
@@ -134,7 +156,8 @@ async def _seed(factory, titulos_con_materia: list[tuple[str, str | None]]) -> s
         )
         comision = await ComisionSqlRepository(session).guardar(
             Comision(codigo=f"C1-{tag}", nombre=f"ComisionAlfa {tag}",
-                     materia_id=materia.id, periodo="1C", anio=2026)
+                     materia_id=materia.id, periodo="1C", anio=2026,
+                     codigo_matriculacion=f"FIS-{tag}-C1")
         )
         repo = ExamenContenidoSqlRepository(session)
         for titulo, _materia_marker in titulos_con_materia:

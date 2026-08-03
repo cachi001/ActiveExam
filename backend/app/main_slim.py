@@ -28,12 +28,15 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
-from app.application.moodle.writeback_service import MoodleWritebackService
 from app.config_slim import get_slim_settings
 from app.infrastructure.auth.slim_wiring import build_slim_jwt_validator
 from app.infrastructure.crypto.embedding_encryption import EmbeddingEncryptionService
 from app.infrastructure.crypto.evidence_encryption import EvidenceCipher
-from app.infrastructure.moodle.client import MoodleClientConfig, MoodleRestClient
+from app.application.moodle.credencial_docente_service import CredencialDocenteService
+from app.application.moodle.credencial_service import MoodleCredencialResolver
+from app.application.moodle.intentos_fallidos_tracker import IntentosFallidosTracker
+from app.infrastructure.crypto.secret_encryption import SecretCipher
+from app.infrastructure.moodle.wiring import build_writeback_svc_dinamico
 from app.infrastructure.persistence.session_slim import (
     create_slim_engine,
     create_slim_session_factory,
@@ -101,18 +104,40 @@ def create_slim_app() -> FastAPI:
     # Ley 25.326 / regla #7. Antes se guardaba en claro.
     evidence_encryption = EvidenceCipher(key=settings.embedding_encryption_key)
 
+    # Credencial de servicio de Moodle (migración 0047): vive en la base con el
+    # token CIFRADO y la administra el admin del sistema. Mientras la tabla esté
+    # vacía se cae a las variables de entorno (MOODLE_*), así que un despliegue
+    # existente no cambia de comportamiento.
+    _moodle_credenciales = MoodleCredencialResolver(
+        session_factory=session_factory,
+        cipher=SecretCipher(key=settings.embedding_encryption_key),
+        env_base_url=settings.moodle_base_url,
+        env_token=settings.moodle_ws_token,
+        env_component=settings.moodle_component,
+    )
+
+    # Credencial PERSONAL de cada docente (C-73 §10, migración 0050). Es la vía
+    # principal del write-back: la nota se devuelve con la identidad del docente a
+    # cargo de la comisión. La institucional de arriba queda como respaldo.
+    _credencial_docente = CredencialDocenteService(
+        session_factory=session_factory,
+        cipher=SecretCipher(key=settings.embedding_encryption_key),
+    )
+
+    # Contador en memoria de intentos fallidos de conexión (C-73, seguridad):
+    # avisa si alguien prueba varias contraseñas seguidas contra la cuenta de
+    # un docente. En memoria a propósito (ver docstring del módulo) — no es un
+    # registro forense, es una señal de patrón sospechoso reciente.
+    _intentos_fallidos_docentes = IntentosFallidosTracker()
+
     # Servicio de write-back de nota a Moodle (C-69, D7/D10).
-    # Si moodle_base_url no está configurado, el write-back queda deshabilitado.
-    # El token se toma de settings.moodle_ws_token — NUNCA se loguea.
-    _writeback_svc: MoodleWritebackService | None = None
-    if settings.moodle_base_url:
-        _moodle_config = MoodleClientConfig(
-            base_url=settings.moodle_base_url,
-            ws_token=settings.moodle_ws_token,
-            courseid=settings.moodle_courseid,
-            cmid=settings.moodle_cmid,
-        )
-        _writeback_svc = MoodleWritebackService(moodle_client=MoodleRestClient(config=_moodle_config))
+    # La credencial se resuelve en CADA llamada: rotar el token desde la UI toma
+    # efecto sin reiniciar. Si no hay credencial, el propio push falla y la nota
+    # queda 'pendiente' (mismo camino que un fallo de red) — la finalización del
+    # examen nunca se bloquea por Moodle.
+    _writeback_svc = build_writeback_svc_dinamico(
+        _moodle_credenciales, credencial_docente=_credencial_docente
+    )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -123,6 +148,17 @@ def create_slim_app() -> FastAPI:
         app.state.refresh_store = None   # No-op: auth/router.py crea DbStore por request.
         app.state.profile_photo_storage = profile_photo_storage
         app.state.embedding_encryption = embedding_encryption
+        # El router de review es global (no se construye por factory), asi que toma
+        # el write-back del state: lo necesita para el hook c-18 — anular por fraude
+        # debe escribir el 0 en la libreta de Moodle. None = Moodle sin configurar.
+        app.state.writeback_svc = _writeback_svc
+        # El router de configuración lo usa para leer/guardar la credencial y para
+        # invalidar el cache cuando el admin la cambia.
+        app.state.moodle_credenciales = _moodle_credenciales
+        # C-73 §10: credencial personal del docente (la vía principal del write-back).
+        app.state.credencial_docente = _credencial_docente
+        # C-73 §13: contador de intentos fallidos (en memoria, ver arriba).
+        app.state.moodle_intentos_fallidos = _intentos_fallidos_docentes
         yield
         await engine.dispose()
 
@@ -242,6 +278,23 @@ def create_slim_app() -> FastAPI:
         ),
         prefix="/api/v1/exam-content",
         tags=["exam-content"],
+    )
+
+    # Estadísticas institucionales (C-20 re-alcanzado): conteos + riesgo + distribución.
+    from app.presentation.api.v1.stats.router import create_stats_router
+
+    app.include_router(
+        create_stats_router(session_factory=session_factory),
+        prefix="/api/v1/stats",
+        tags=["stats"],
+    )
+
+    from app.presentation.api.v1.admin.audit_router import create_audit_router
+
+    app.include_router(
+        create_audit_router(session_factory=session_factory),
+        prefix="/api/v1/admin",
+        tags=["audit"],
     )
 
     return app

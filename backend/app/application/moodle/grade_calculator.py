@@ -41,12 +41,13 @@ async def calcular_nota_academica(
     """Calcula la nota académica (0..nota_maxima) de un alumno dado su examen.
 
     Fórmula (idéntica a Moodle): nota = (respuestas_correctas / total_preguntas) *
-    nota_maxima, **redondeada al entero más cercano** con ROUND_HALF_UP (0.5→1,
+    nota_maxima, **con dos decimales** y ROUND_HALF_UP (0.5→1,
     6.5→7) — el mismo redondeo que Moodle aplica con "Posiciones decimales = 0".
-    Se redondea a entero para no mostrarle al alumno notas fraccionadas sin sentido
-    (ej. 1 de 20 correctas daba 0.5): la nota académica se expresa como entero 0..10.
-    El aprobado/desaprobado se decide después sobre ESTA nota ya redondeada
-    (resultados_query: nota >= nota_aprobacion), como en Moodle.
+    NO se redondea a entero: la nota se ESCALA después al `grademax` real del ítem
+    destino en Moodle (ver `write_grade`), y redondear antes de escalar perdería
+    precisión — un 3 sobre 10 llegaría como 30 sobre 100 en vez de 33,33. El
+    aprobado/desaprobado se decide sobre ESTA nota (resultados_query:
+    nota >= nota_aprobacion), como en Moodle.
 
     ``nota_maxima`` se lee server-side desde la config POR EXAMEN
     (examen_contenido.nota_maxima, migración 0032); default 10 si el examen no
@@ -99,9 +100,15 @@ async def calcular_nota_academica(
     nota_maxima = nota_maxima_row.scalar_one_or_none()
     escala = Decimal(str(nota_maxima)) if nota_maxima is not None else Decimal(str(_NOTA_MAXIMA_DEFAULT))
 
-    # Redondeo a entero con ROUND_HALF_UP (Decimal exacto, sin sorpresas de binario
-    # flotante — Python round() usa banker's rounding: round(0.5)=0, no queremos eso).
+    # DOS decimales, alineado con Moodle: la libreta formatea las notas con 2
+    # decimales, asi que redondear a entero de este lado desalineaba las escalas —
+    # 15/20 sobre 10 es 7,5 y se convertia en 8, medio punto regalado que Moodle
+    # nunca pidio. La conversion a la escala del item destino la hace el cliente
+    # (write_grade) leyendo el grademax real.
+    #
+    # ROUND_HALF_UP y Decimal a proposito: el round() de Python usa banker's
+    # rounding (round(0.5) = 0), que en notas se lee como un error.
     nota = (Decimal(correctas) / Decimal(total_preguntas) * escala).quantize(
-        Decimal("1"), rounding=ROUND_HALF_UP
+        Decimal("0.01"), rounding=ROUND_HALF_UP
     )
     return float(nota)

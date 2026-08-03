@@ -18,6 +18,7 @@ interface Props {
 
 export function PreguntasSeleccionSection({ examenId, onSeleccionGuardada }: Props) {
   const [preguntas, setPreguntas] = useState<PreguntaSeleccion[]>([]);
+  const [seleccionOriginal, setSeleccionOriginal] = useState<Record<string, boolean>>({});
   const [total, setTotal] = useState(0);
   const [bloqueada, setBloqueada] = useState(false);
   const [cargando, setCargando] = useState(true);
@@ -33,6 +34,7 @@ export function PreguntasSeleccionSection({ examenId, onSeleccionGuardada }: Pro
     try {
       const resp = await getPreguntasExamen(examenId);
       setPreguntas(resp.items);
+      setSeleccionOriginal(Object.fromEntries(resp.items.map((p) => [p.id, p.seleccionada])));
       setTotal(resp.total);
       setBloqueada(resp.bloqueada ?? false);
     } catch (err: unknown) {
@@ -51,6 +53,7 @@ export function PreguntasSeleccionSection({ examenId, onSeleccionGuardada }: Pro
 
   const seleccionadas = preguntas.filter((p) => p.seleccionada).length;
   const ningunaMarcada = seleccionadas === 0;
+  const hayCambiosSeleccion = preguntas.some((p) => p.seleccionada !== (seleccionOriginal[p.id] ?? false));
 
   function toggle(id: string) {
     setOkGuardado(false);
@@ -72,6 +75,7 @@ export function PreguntasSeleccionSection({ examenId, onSeleccionGuardada }: Pro
     const ids = preguntas.filter((p) => p.seleccionada).map((p) => p.id);
     try {
       const res = await setPreguntasSeleccion(examenId, ids);
+      setSeleccionOriginal(Object.fromEntries(preguntas.map((p) => [p.id, p.seleccionada])));
       setOkGuardado(true);
       onSeleccionGuardada(res.seleccionadas);
     } catch (err: unknown) {
@@ -110,7 +114,7 @@ export function PreguntasSeleccionSection({ examenId, onSeleccionGuardada }: Pro
       {cargando && (
         <div className="space-y-2 animate-pulse">
           {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-14 bg-surface-container-high rounded-lg" />
+            <div key={i} className="h-14 bg-surface-100 rounded-lg" />
           ))}
         </div>
       )}
@@ -199,7 +203,7 @@ export function PreguntasSeleccionSection({ examenId, onSeleccionGuardada }: Pro
             </div>
           )}
 
-          {!bloqueada && (
+          {!bloqueada && hayCambiosSeleccion && (
             <div className="flex justify-end">
               <Button
                 variant="primary"

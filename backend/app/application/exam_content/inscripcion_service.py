@@ -17,7 +17,9 @@ from dataclasses import dataclass
 
 from app.application.exam_content.errors import (
     CodigoMatriculacionInvalidoError,
+    ComisionInactivaError,
     ComisionNoEncontradaError,
+    InscripcionConActividadError,
     InscripcionNoEncontradaError,
     MateriaInactivaError,
     PerfilIncompletoError,
@@ -131,6 +133,14 @@ class AutoMatriculacionService:
                 f"El código {codigo!r} no corresponde a ninguna comisión."
             )
 
+        # Freeze a nivel comisión (baja lógica, C-72 §17): una comisión desactivada
+        # NO admite inscripciones nuevas, aunque su materia siga activa.
+        if not comision.activa:
+            raise ComisionInactivaError(
+                f"La comisión {comision.nombre!r} está desactivada y no admite "
+                "inscripciones nuevas."
+            )
+
         materia = await self._materia_repo.obtener(comision.materia_id)
         materia_nombre = materia.nombre if materia is not None else ""
 
@@ -219,11 +229,20 @@ class InscripcionService:
         return await self._inscripcion_repo.inscribir(usuario_id, comision_id)
 
     async def eliminar(self, comision_id: str, usuario_id: str) -> None:
-        """Elimina la inscripción del alumno a la comisión.
+        """Da de baja la inscripción del alumno a la comisión.
+
+        Guarda (cadena de custodia): si el alumno YA rindió en la comisión, la baja
+        se bloquea — borrarla huerfanaría la sesión/evidencia/nota.
 
         Raises:
+            InscripcionConActividadError: el alumno tiene actividad (ya rindió).
             InscripcionNoEncontradaError: no existía la inscripción.
         """
+        if await self._inscripcion_repo.alumno_rindio_en_comision(usuario_id, comision_id):
+            raise InscripcionConActividadError(
+                f"El alumno {usuario_id!r} ya rindió en la comisión {comision_id!r}: "
+                "no se puede dar de baja la inscripción (se conserva la evidencia)."
+            )
         eliminada = await self._inscripcion_repo.eliminar(usuario_id, comision_id)
         if not eliminada:
             raise InscripcionNoEncontradaError(

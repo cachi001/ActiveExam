@@ -15,6 +15,8 @@ from datetime import datetime, timezone
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.application.moodle.writeback_service import MoodleWritebackService
+from app.application.proctoring.auto_finalizacion import auto_finalizar_si_vencida
 from app.application.proctoring.scoring import calcular_score
 from app.domain.exam_content.visibilidad import nota_visible, revision_visible
 from app.domain.review.decision import nota_esta_anulada
@@ -47,6 +49,10 @@ class ResultadoAlumno:
     nota: float | None
     estado_moodle: str
     actualizado_en: object | None  # datetime tz-aware (lo serializa Pydantic)
+    # Por que la nota NO se va a sincronizar: en_riesgo | anulada.
+    # None = nada la retiene. Es ortogonal a `estado_moodle`: una fila retenida
+    # sigue estando 'pendiente' en la tabla, pero apretar "Sincronizar" no la manda.
+    retenido_por: str | None = None
 
 
 def estado_moodle_display(db_estado: str | None, *, moodle_configurado: bool) -> str:
@@ -63,6 +69,8 @@ def estado_moodle_display(db_estado: str | None, *, moodle_configurado: bool) ->
 
 def _base_stmt(examen_id: str):
     """Sesiones FINALIZADAS del examen + su estado de write-back (LEFT JOIN)."""
+    from app.infrastructure.persistence.models.transactional import UsuarioModel
+
     return (
         select(
             ProctoringSessionModel.id.label("session_id"),
@@ -72,11 +80,23 @@ def _base_stmt(examen_id: str):
             MoodleWritebackEstadoModel.nota,
             MoodleWritebackEstadoModel.estado,
             MoodleWritebackEstadoModel.updated_at,
+            # Nombre real de la persona. La tabla mostraba el legajo ("EST-001")
+            # porque este campo se dejó en None como "enhancement futuro": quien
+            # revisa notas trabaja con personas, no con identificadores internos.
+            UsuarioModel.nombre.label("usuario_nombre"),
+            UsuarioModel.apellido.label("usuario_apellido"),
         )
         .select_from(ProctoringSessionModel)
         .outerjoin(
             MoodleWritebackEstadoModel,
             MoodleWritebackEstadoModel.session_id == ProctoringSessionModel.id,
+        )
+        # OUTER: sin usuario en la tabla (o con la identidad solo en la sesión) la
+        # fila igual tiene que salir — perder un resultado por no poder mostrar un
+        # nombre sería peor que mostrar el legajo.
+        .outerjoin(
+            UsuarioModel,
+            UsuarioModel.id_institucional == MoodleWritebackEstadoModel.alumno_idnumber,
         )
         .where(
             ProctoringSessionModel.examen_contenido_id == examen_id,
@@ -86,13 +106,20 @@ def _base_stmt(examen_id: str):
 
 
 def _aplicar_filtros(stmt, *, q: str | None, estado: str | None):
-    """Búsqueda por alumno (idnumber/email) y filtro por estado — SIEMPRE en SQL."""
+    """Búsqueda por alumno (nombre/legajo/email) y filtro por estado — SIEMPRE en SQL."""
+    from app.infrastructure.persistence.models.transactional import UsuarioModel
+
     if q:
         patron = f"%{q.strip()}%"
+        # El nombre entra en la búsqueda: ahora que la tabla muestra "Apellido,
+        # Nombre", buscar por lo que se ve en pantalla tiene que funcionar — si no,
+        # se escribe el apellido y no aparece nada.
         stmt = stmt.where(
             or_(
                 MoodleWritebackEstadoModel.alumno_idnumber.ilike(patron),
                 MoodleWritebackEstadoModel.alumno_email.ilike(patron),
+                UsuarioModel.nombre.ilike(patron),
+                UsuarioModel.apellido.ilike(patron),
             )
         )
     if estado:
@@ -104,6 +131,30 @@ def _aplicar_filtros(stmt, *, q: str | None, estado: str | None):
     return stmt
 
 
+async def _auto_finalizar_vencidas_del_examen(
+    db: AsyncSession, examen_id: str, *, writeback_svc: MoodleWritebackService | None
+) -> None:
+    """Cierra LAZY las sesiones del examen que vencieron y siguen sin finalizar.
+
+    Gap C-73: el lazy-finalize (`auto_finalizar_si_vencida`, C-72 §4) solo se
+    disparaba desde el lado alumno (crear/reanudar sesión). Una sesión abandonada
+    quedaba `finalizada_en = NULL` para siempre — invisible acá (que solo lista
+    FINALIZADAS) pero seguía contando en "Sesiones iniciadas". Se detecta y cierra
+    ACÁ, antes de armar la respuesta, para que el docente que mira Resultados
+    nunca vea un examen eternamente "en curso". Reusa el MISMO camino de
+    finalización + write-back que la finalización manual (mismo gate de revisión).
+    Sin volumen de sesiones activas nunca (LAZY, no barrido — regla dura #4).
+    """
+    rows = await db.execute(
+        select(ProctoringSessionModel).where(
+            ProctoringSessionModel.examen_contenido_id == examen_id,
+            ProctoringSessionModel.finalizada_en.is_(None),
+        )
+    )
+    for sesion in rows.scalars().all():
+        await auto_finalizar_si_vencida(db, sesion, writeback_svc=writeback_svc)
+
+
 async def listar_resultados_examen(
     *,
     db: AsyncSession,
@@ -113,6 +164,7 @@ async def listar_resultados_examen(
     page: int = 1,
     page_size: int = 20,
     moodle_configurado: bool = True,
+    writeback_svc: MoodleWritebackService | None = None,
 ) -> tuple[list[ResultadoAlumno], int]:
     """Lista paginada de alumnos que rindieron el examen + total global filtrado.
 
@@ -121,6 +173,8 @@ async def listar_resultados_examen(
     """
     page = max(1, page)
     page_size = max(1, page_size)
+
+    await _auto_finalizar_vencidas_del_examen(db, examen_id, writeback_svc=writeback_svc)
 
     base = _aplicar_filtros(_base_stmt(examen_id), q=q, estado=estado)
 
@@ -138,41 +192,181 @@ async def listar_resultados_examen(
     )
     rows = (await db.execute(page_stmt)).all()
 
+    # Motivo de RETENCION por fila. La nota de una sesion en riesgo NO se sincroniza
+    # (gate D15, mismo `writeback_en_hold` que usa el envio), pero su estado seguia
+    # mostrandose como "pendiente": indistinguible de una nota que solo falta mandar.
+    # El admin apretaba "Sincronizar (2 pendientes)", se enviaba 1 y nada explicaba
+    # por que. Se calcula aca para que la UI pueda marcarla.
+    retenciones = await _motivos_retencion(db, [row.session_id for row in rows])
+
     items = [
         ResultadoAlumno(
             session_id=row.session_id,
             alumno_idnumber=row.alumno_idnumber,
             alumno_email=row.alumno_email,
-            alumno_nombre=None,  # identidad por idnumber/email; nombre = enhancement futuro
+            alumno_nombre=_nombre_completo(
+                getattr(row, "usuario_nombre", None),
+                getattr(row, "usuario_apellido", None),
+            ),
             nota=float(row.nota) if row.nota is not None else None,
             estado_moodle=estado_moodle_display(
                 row.estado, moodle_configurado=moodle_configurado
             ),
             actualizado_en=row.updated_at or row.finalizada_en,
+            retenido_por=retenciones.get(row.session_id),
         )
         for row in rows
     ]
     return items, int(total)
 
 
+async def _motivos_retencion(
+    db: AsyncSession, session_ids: list[str]
+) -> dict[str, str]:
+    """``{session_id: motivo}`` para las sesiones cuya nota esta retenida.
+
+    Motivos, en castellano llano porque salen tal cual a la pantalla:
+      - "en_riesgo"      : supero el umbral y todavia nadie la reviso.
+      - "anulada"        : anulada por fraude — la nota no se sincroniza.
+      - "sin_destino"    : el examen no tiene curso/actividad en el campus.
+      - "sin_credencial_docente": la comision no tiene docente a cargo, o el docente
+        no conecto su cuenta del campus (o su token se cayo). La nota NO se manda con
+        la cuenta institucional a proposito: llegaria a la libreta sin responsable
+        identificable, y en silencio. Se destraba sola cuando el docente conecta.
+    Una sesion sin retencion no aparece en el dict.
+
+    "sin_destino" existe porque el destino dejo de tener fallback global: antes, un
+    examen sin destino propio mandaba la nota al curso global (la libreta equivocada)
+    y la fila se veia como enviada. Ahora se retiene y se dice por que.
+    """
+    if not session_ids:
+        return {}
+
+    from app.domain.review.decision import DecisionSesion, writeback_en_hold
+
+    rows = (
+        await db.execute(
+            select(
+                ProctoringSessionModel.id,
+                ProctoringSessionModel.decision,
+            ).where(ProctoringSessionModel.id.in_(session_ids))
+        )
+    ).all()
+
+    # Sesiones cuyo examen no tiene destino en el campus: la nota no puede salir.
+    # C-73 §10.4: sesiones cuyo docente a cargo no tiene credencial usable. La nota
+    # SIEMPRE debe salir con la identidad del docente que la devuelve; sin ella se
+    # retiene en vez de firmarla con la cuenta de servicio.
+    from app.infrastructure.persistence.models.exam_content import ComisionModel
+    from app.infrastructure.persistence.models.transactional import (
+        MoodleCredencialDocenteModel,
+    )
+
+    sin_credencial = {
+        sid
+        for sid, token_cifrado, estado_cred in (
+            await db.execute(
+                select(
+                    ProctoringSessionModel.id,
+                    MoodleCredencialDocenteModel.token_cifrado,
+                    MoodleCredencialDocenteModel.estado,
+                )
+                .outerjoin(
+                    ExamenContenidoModel,
+                    ExamenContenidoModel.id
+                    == ProctoringSessionModel.examen_contenido_id,
+                )
+                .outerjoin(
+                    ComisionModel, ComisionModel.id == ExamenContenidoModel.comision_id
+                )
+                .outerjoin(
+                    MoodleCredencialDocenteModel,
+                    MoodleCredencialDocenteModel.usuario_id == ComisionModel.docente_id,
+                )
+                .where(ProctoringSessionModel.id.in_(session_ids))
+            )
+        ).all()
+        if not token_cifrado or estado_cred != "activa"
+    }
+
+    sin_destino = {
+        sid
+        for sid, courseid, cmid in (
+            await db.execute(
+                select(
+                    ProctoringSessionModel.id,
+                    ExamenContenidoModel.moodle_courseid,
+                    ExamenContenidoModel.moodle_cmid,
+                )
+                .outerjoin(
+                    ExamenContenidoModel,
+                    ExamenContenidoModel.id == ProctoringSessionModel.examen_contenido_id,
+                )
+                .where(ProctoringSessionModel.id.in_(session_ids))
+            )
+        ).all()
+        if not courseid or not cmid
+    }
+
+    ev_rows = (
+        await db.execute(
+            select(
+                ProctoringEventModel.session_id,
+                ProctoringEventModel.tipo,
+                ProctoringEventModel.severidad,
+            ).where(ProctoringEventModel.session_id.in_(session_ids))
+        )
+    ).all()
+    eventos_por_sesion: dict[str, list] = {}
+    for ev in ev_rows:
+        eventos_por_sesion.setdefault(ev.session_id, []).append(ev)
+
+    pesos = await _pesos_vivos_por_tipo(db)
+    desactivados = await _tipos_desactivados(db)
+    umbral = await _umbral_cola_revision(db)
+
+    motivos: dict[str, str] = {}
+    for row in rows:
+        score = calcular_score(
+            eventos_por_sesion.get(row.id, []),
+            pesos_por_tipo=pesos,
+            tipos_desactivados=desactivados,
+        )
+        flaggeada = score >= umbral
+        decision = _parse_decision_val(row.decision)
+        if not writeback_en_hold(flaggeada=flaggeada, decision=decision):
+            # Sin hold de revision, pero puede faltar el destino: igual no sale.
+            if row.id in sin_destino:
+                motivos[row.id] = "sin_destino"
+            elif row.id in sin_credencial:
+                motivos[row.id] = "sin_credencial_docente"
+            continue
+        if decision is DecisionSesion.ANULADO:
+            motivos[row.id] = "anulada"
+        else:
+            motivos[row.id] = "en_riesgo"
+    return motivos
+
+
 async def obtener_target_examen(
     *, db: AsyncSession, examen_id: str
-) -> tuple[int | None, int | None]:
-    """Destino de write-back POR EXAMEN actual (moodle_courseid, moodle_cmid).
+) -> tuple[int | None, int | None, str | None]:
+    """Destino de write-back POR EXAMEN actual (moodle_courseid, moodle_cmid, component).
 
-    D12 (parte B). Devuelve (None, None) si el examen no existe o no tiene destino
-    propio (en cuyo caso el write-back cae al global).
+    D12 (parte B) + C-73. Devuelve (None, None, None) si el examen no existe o no tiene
+    destino propio (en cuyo caso el write-back cae al global).
     """
     row = await db.execute(
         select(
             ExamenContenidoModel.moodle_courseid,
             ExamenContenidoModel.moodle_cmid,
+            ExamenContenidoModel.moodle_component,
         ).where(ExamenContenidoModel.id == examen_id)
     )
     target = row.one_or_none()
     if target is None:
-        return None, None
-    return target.moodle_courseid, target.moodle_cmid
+        return None, None, None
+    return target.moodle_courseid, target.moodle_cmid, target.moodle_component
 
 
 async def listar_estados_sincronizables(
@@ -182,12 +376,12 @@ async def listar_estados_sincronizables(
 
     Las 'enviado' se excluyen (idempotencia: no se re-mandan).
 
-    C-71 slice 2 (D15): además se RETIENEN (hold) las sesiones cuyo estado de
-    revisión no habilita el envío — flaggeada/`caso_abierto`/`anulado_por_fraude`.
+    C-71 slice 2 (D15), modelo colapsado a un solo paso: además se RETIENEN
+    (hold) las sesiones flaggeadas y sin decidir, o decididas como `anulado`.
     El gate se evalúa aquí, ANTES del envío (este es el único punto donde el
     estado pasa a 'enviado', en el sync manual del admin), de modo que una sesión
-    problemática nunca alcanza 'enviado'. Release si resuelta limpia
-    (`sin_hallazgos`/`aprobado`/`caso_descartado`) o si nunca se flaggeó.
+    problemática nunca alcanza 'enviado'. Release si la decisión fue `aprobado`
+    o si la sesión nunca se flaggeó.
 
     D12 (parte B): refresca el destino (moodle_courseid/cmid) de cada fila desde el
     valor ACTUAL del examen, para que un admin que fija el target DESPUÉS de finalizar
@@ -200,7 +394,6 @@ async def listar_estados_sincronizables(
             MoodleWritebackEstadoModel,
             ProctoringSessionModel.id.label("sid"),
             ProctoringSessionModel.decision,
-            ProctoringSessionModel.resolucion,
         )
         .join(
             ProctoringSessionModel,
@@ -232,48 +425,44 @@ async def listar_estados_sincronizables(
     for ev in ev_rows:
         eventos_por_sesion.setdefault(ev.session_id, []).append(ev)
     pesos = await _pesos_vivos_por_tipo(db)
+    desactivados = await _tipos_desactivados(db)
     umbral = await _umbral_cola_revision(db)
 
-    from app.domain.review.decision import (
-        DecisionResolucion,
-        DecisionRevision,
-        writeback_en_hold,
-    )
+    from app.domain.review.decision import writeback_en_hold
 
     filas: list[MoodleWritebackEstadoModel] = []
     for r in rows:
         estado = r[0]
-        score = calcular_score(eventos_por_sesion.get(r.sid, []), pesos_por_tipo=pesos)
+        score = calcular_score(
+            eventos_por_sesion.get(r.sid, []),
+            pesos_por_tipo=pesos,
+            tipos_desactivados=desactivados,
+        )
         flaggeada = score >= umbral
         decision = _parse_decision_val(r.decision)
-        resolucion = _parse_resolucion_val(r.resolucion)
-        if writeback_en_hold(
-            flaggeada=flaggeada, decision=decision, resolucion=resolucion
-        ):
+        if writeback_en_hold(flaggeada=flaggeada, decision=decision):
             continue  # hold: no se envía (D15)
         filas.append(estado)
 
-    courseid, cmid = await obtener_target_examen(db=db, examen_id=examen_id)
+    courseid, cmid, component = await obtener_target_examen(db=db, examen_id=examen_id)
     for fila in filas:
         fila.moodle_courseid = courseid
         fila.moodle_cmid = cmid
+        fila.moodle_component = component
 
     return filas
 
 
 def _parse_decision_val(value: str | None):
-    """Convierte el string persistido en ``DecisionRevision`` (pendiente si falta)."""
-    from app.domain.review.decision import DecisionRevision
+    """Convierte el string persistido en ``DecisionSesion`` (pendiente si falta)."""
+    from app.domain.review.decision import DecisionSesion
 
     if value is None:
-        return DecisionRevision.PENDIENTE
+        return DecisionSesion.PENDIENTE
     try:
-        return DecisionRevision(value)
+        return DecisionSesion(value)
     except ValueError:
-        try:
-            return DecisionRevision.desde_valor_legado(value)
-        except ValueError:
-            return DecisionRevision.PENDIENTE
+        return DecisionSesion.PENDIENTE
 
 
 # ===========================================================================
@@ -317,7 +506,7 @@ class MiNota:
     # Veredicto de resolución (C-71 slice 2, D11b). El alumno lo ve por PULL.
     session_id: str
     nota_anulada: bool  # efecto DERIVADO del último acto (D10b)
-    veredicto: str | None  # 'anulado_por_fraude' cuando la nota fue anulada; si no, None
+    veredicto: str | None  # 'anulado' cuando la nota fue anulada; si no, None
     # Informe de devolución disponible SOLO cuando la nota fue anulada por fraude
     # (D12, minimización Ley 25.326). El resto de los casos: no se expone evidencia.
     informe_disponible: bool
@@ -363,6 +552,30 @@ async def _pesos_vivos_por_tipo(db: AsyncSession) -> dict[str, int] | None:
         return None
 
 
+async def _tipos_desactivados(db: AsyncSession) -> frozenset[str]:
+    """Tipos con fila en evento_score_config pero ``activo=False``.
+
+    Se consulta aparte de los pesos porque "apagado" y "desconocido" NO son lo
+    mismo para el score: el apagado pesa 0 (el admin lo decidio), el desconocido
+    degrada por severidad (RN-GLB-03). Sin esta lista, ambos se veian igual —
+    ausentes del mapa de pesos— y desactivar un detector no lo desactivaba.
+
+    Set vacio si la tabla no esta disponible (degradacion graceful: nada se apaga)."""
+    from app.infrastructure.persistence.models.transactional import (
+        EventoScoreConfigModel,
+    )
+
+    try:
+        result = await db.execute(
+            select(EventoScoreConfigModel.tipo_evento).where(
+                EventoScoreConfigModel.activo.is_(False)
+            )
+        )
+        return frozenset(result.scalars().all())
+    except Exception:  # noqa: BLE001 — sin config, no se apaga nada
+        return frozenset()
+
+
 async def listar_mis_notas(
     *,
     db: AsyncSession,
@@ -393,7 +606,10 @@ async def listar_mis_notas(
             ProctoringSessionModel.id.label("session_id"),
             ProctoringSessionModel.examen_contenido_id,
             ProctoringSessionModel.finalizada_en,
-            ProctoringSessionModel.resolucion,
+            # `decision` viaja para saber si la revisión YA ocurrió (y con qué
+            # veredicto): sin esto, "en cola de revisión" se calculaba solo por
+            # score y quedaba pegado para siempre, aun con el caso ya decidido.
+            ProctoringSessionModel.decision,
             ExamenContenidoModel.titulo.label("examen_titulo"),
             ExamenContenidoModel.nota_maxima,
             ExamenContenidoModel.nota_aprobacion,
@@ -442,6 +658,7 @@ async def listar_mis_notas(
         eventos_por_sesion.setdefault(ev.session_id, []).append(ev)
 
     pesos = await _pesos_vivos_por_tipo(db)
+    desactivados = await _tipos_desactivados(db)
     umbral = await _umbral_cola_revision(db)
     restituidas = await _sesiones_con_restitucion(db, session_ids)
 
@@ -449,7 +666,9 @@ async def listar_mis_notas(
     items: list[MiNota] = []
     for r in rows:
         evs = eventos_por_sesion.get(r.session_id, [])
-        score = calcular_score(evs, pesos_por_tipo=pesos)
+        score = calcular_score(
+            evs, pesos_por_tipo=pesos, tipos_desactivados=desactivados
+        )
         nota_real = float(r.nota) if r.nota is not None else None
         nota_aprobacion = (
             float(r.nota_aprobacion) if r.nota_aprobacion is not None else None
@@ -472,11 +691,11 @@ async def listar_mis_notas(
             and nota_aprobacion is not None
             and nota_real >= nota_aprobacion
         )
-        # Veredicto de resolución (C-71 slice 2): estado efectivo DERIVADO del
-        # último acto (D10b). anulada = resolucion 'anulado_por_fraude' Y sin
+        # Veredicto de decisión (modelo de un solo paso): estado efectivo
+        # DERIVADO del último acto (D10b). anulada = decision 'anulado' Y sin
         # acto compensatorio de restitución posterior (nota_restituida).
-        resolucion = _parse_resolucion_val(r.resolucion)
-        anulada = nota_esta_anulada(resolucion, r.session_id in restituidas)
+        decision_mi_nota = _parse_decision_val(r.decision)
+        anulada = nota_esta_anulada(decision_mi_nota, r.session_id in restituidas)
         items.append(
             MiNota(
                 examen_id=r.examen_contenido_id or "",
@@ -487,7 +706,14 @@ async def listar_mis_notas(
                 estado_moodle=estado_moodle_display(
                     r.estado, moodle_configurado=moodle_configurado
                 ),
-                en_cola_revision=score >= umbral,
+                # "En cola" = supera el umbral Y TODAVÍA NO tiene decisión humana.
+                # Antes era solo `score >= umbral`, así que después de resolver el
+                # caso el alumno seguía leyendo "un docente la revisará y confirmará
+                # tu nota" al lado de "Nota anulada por fraude": dos mensajes que se
+                # contradicen, justo cuando más claridad necesita.
+                en_cola_revision=(
+                    score >= umbral and _revision_pendiente(r.decision)
+                ),
                 score=float(score),
                 umbral_revision=float(umbral),
                 eventos=len(evs),
@@ -497,23 +723,11 @@ async def listar_mis_notas(
                 cierre=r.cierre,
                 session_id=r.session_id,
                 nota_anulada=anulada,
-                veredicto="anulado_por_fraude" if anulada else None,
+                veredicto="anulado" if anulada else None,
                 informe_disponible=anulada,
             )
         )
     return items, len(items)
-
-
-def _parse_resolucion_val(value: str | None):
-    """Convierte el string persistido en ``DecisionResolucion`` o None."""
-    from app.domain.review.decision import DecisionResolucion
-
-    if value is None:
-        return None
-    try:
-        return DecisionResolucion(value)
-    except ValueError:
-        return None
 
 
 async def _sesiones_con_restitucion(
@@ -538,3 +752,28 @@ async def _sesiones_con_restitucion(
         return {r[0] for r in rows.all()}
     except Exception:  # noqa: BLE001 — degradación: sin audit, no hay restituciones
         return set()
+
+
+def _revision_pendiente(decision_val: str | None) -> bool:
+    """``True`` si la sesion TODAVIA no fue revisada por una persona.
+
+    El import va adentro por la misma razon que en ``_parse_decision_val``: este
+    modulo se importa desde varios routers y el enum vive en dominio.
+    """
+    from app.domain.review.decision import DecisionSesion
+
+    return _parse_decision_val(decision_val) is DecisionSesion.PENDIENTE
+
+
+def _nombre_completo(nombre: str | None, apellido: str | None) -> str | None:
+    """``"Apellido, Nombre"`` para listados. None si no hay ninguno de los dos.
+
+    Formato apellido-primero porque la tabla se lee y se ordena por apellido, que
+    es como se busca a una persona en un listado academico. None deja que la UI
+    caiga al legajo, que es mejor que una celda vacia.
+    """
+    nombre = (nombre or "").strip()
+    apellido = (apellido or "").strip()
+    if apellido and nombre:
+        return f"{apellido}, {nombre}"
+    return apellido or nombre or None

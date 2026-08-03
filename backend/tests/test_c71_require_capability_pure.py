@@ -1,4 +1,6 @@
-"""Tests puros de `require_capability` (c-71 slice 2, D8).
+"""Tests puros de `require_capability` (c-71 slice 2, D8; modelo de un solo
+paso — el guard de revision cubre TODO el acto, no hay guard separado para
+anular).
 
 Se invoca el guard directamente (sin FastAPI real, igual que el resto del
 RBAC contextual de C-06): pasando el ``principal`` explicito se evita el
@@ -20,16 +22,16 @@ def _principal(*roles: Rol) -> AuthenticatedPrincipal:
 
 
 @pytest.mark.asyncio
-async def test_revisor_pasa_el_guard_de_resolver_caso() -> None:
-    guard = require_capability("resolver_caso")
+async def test_revisor_pasa_el_guard_de_revisar_sesion() -> None:
+    guard = require_capability("revisar_sesion")
     principal = _principal(Rol.REVISOR)
     result = await guard(principal=principal)
     assert result is principal
 
 
 @pytest.mark.asyncio
-async def test_estudiante_no_pasa_el_guard_de_resolver_caso() -> None:
-    guard = require_capability("resolver_caso")
+async def test_estudiante_no_pasa_el_guard_de_revisar_sesion() -> None:
+    guard = require_capability("revisar_sesion")
     principal = _principal(Rol.ESTUDIANTE)
     with pytest.raises(HTTPException) as exc:
         await guard(principal=principal)

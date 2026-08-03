@@ -43,6 +43,8 @@ export interface ComisionResponse {
   anio: number | null;
   // C-70: código de matriculación (enrolment key) que el docente comparte.
   codigo_matriculacion: string;
+  // C-72 §17: true = activa; false = desactivada (baja lógica).
+  activa?: boolean;
 }
 
 export interface AltaInlineResponse {
@@ -201,6 +203,24 @@ export async function eliminarMateria(materiaId: string): Promise<void> {
   if (!res.ok) await throwAdminError(res);
 }
 
+/** Activa o desactiva una comisión (baja lógica). Admin-only.
+ *  PATCH /exam-content/comisiones/{comisionId}/activa.  404 → no existe. */
+export async function setComisionActiva(
+  comisionId: string,
+  activa: boolean,
+): Promise<ComisionResponse> {
+  const res = await fetch(
+    `${API_BASE}/exam-content/comisiones/${encodeURIComponent(comisionId)}/activa`,
+    {
+      method: 'PATCH',
+      headers: authHeaders(),
+      body: JSON.stringify({ activa }),
+    },
+  );
+  if (!res.ok) return throwAdminError(res);
+  return res.json() as Promise<ComisionResponse>;
+}
+
 /** Elimina una comisión. Admin-only. DELETE /exam-content/comisiones/{comisionId}.
  *  204 → borrada  |  404 → no existe  |  409 → tiene inscriptos/exámenes (no se borra). */
 export async function eliminarComision(comisionId: string): Promise<void> {
@@ -355,14 +375,19 @@ export interface ExamConfig {
   nota_maxima: number;
   /** Nota mínima para aprobar (debe ser ≤ nota_maxima). */
   nota_aprobacion: number;
-  /** Si true, las preguntas se muestran en orden aleatorio estable por sesión. */
+  /** Siempre true: el orden aleatorio por alumno es obligatorio (no editable). Se
+   *  expone para poder informarlo en la UI. */
   mezclar_preguntas: boolean;
+  /** Tope de preguntas del examen. null = sin tope. Al escribirlo, 0 = sacar el tope. */
+  limite_preguntas: number | null;
   /** C-69: cuándo se muestra la nota al alumno. 'al_cerrar' (después del cierre) |
    *  'inmediata' (al entregar). */
   mostrar_nota: 'al_cerrar' | 'inmediata';
   /** C-69: si el alumno puede revisar la corrección (respuestas correctas). Solo se
    *  muestra después del cierre. */
   revision_habilitada: boolean;
+  /** C-73: qué nota se envía a Moodle cuando hay múltiples intentos. */
+  politica_intentos: 'mas_alta' | 'ultimo' | 'primero' | 'manual';
   /** True si el examen ya tiene >= 1 intento finalizado: la config de
    *  mecánica/nota queda CONGELADA (el editor deshabilita esos campos). Solo se
    *  puede cambiar la publicación de resultados. */

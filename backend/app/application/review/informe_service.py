@@ -1,10 +1,16 @@
-"""Informe de devolución al alumno (c-71 slice 2, D12).
+"""Informe de devolución al alumno (c-71 slice 2 D12, modelo de un solo paso).
 
 Disclosure de debido proceso: se expone al alumno la evidencia AUTORITATIVA
-server-side de SU sesión ÚNICAMENTE cuando la nota fue `anulado_por_fraude`
-(minimización, Ley 25.326). El informe incluye: análisis por señal (qué indicó
-cada detector, re-inferido server-side — NUNCA el buffer del cliente, regla #6),
-capturas vía URL firmada 15 min, la decisión y el motivo.
+server-side de SU sesión ÚNICAMENTE cuando la nota fue `anulado` (minimización,
+Ley 25.326). El informe incluye: análisis por señal (qué indicó cada detector,
+re-inferido server-side — NUNCA el buffer del cliente, regla #6), capturas vía
+URL firmada 15 min, la decisión y el motivo.
+
+Las capturas se filtran a la evidencia ESTRUCTURADA que el revisor eligió al
+decidir (`decision_evidencia_ids`, lista de `proctoring_event.id`) — NO a
+todos los eventos de la sesión. Antes de este cambio el informe mostraba
+TODA la evidencia de la sesión sin importar qué había elegido el revisor,
+lo que revelaba señales que el veredicto ni siquiera invocó.
 
 Scope: SOLO la sesión del propio titular (RBAC estudiante, `03`). Sesión ajena
 o sin anulación efectiva → None (el endpoint traduce a 404, sin revelar la
@@ -19,7 +25,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.application.moodle.resultados_query import _sesiones_con_restitucion
-from app.domain.review.decision import nota_esta_anulada
+from app.domain.review.decision import DecisionSesion, nota_esta_anulada
 from app.infrastructure.persistence.models.proctoring import (
     ProctoringEventModel,
     ProctoringSessionModel,
@@ -40,11 +46,19 @@ class SenalAnalisis:
 
 @dataclass(frozen=True, slots=True)
 class CapturaFirmada:
-    """Una captura de evidencia accesible por URL firmada (expira 15 min)."""
+    """Una captura de evidencia accesible por URL firmada.
+
+    Lleva DE QUÉ EVENTO salió: una lista de "Ver captura 1, 2, 3" no le sirve a
+    nadie para defenderse — el alumno necesita saber qué señal disparó cada
+    imagen y en qué momento, que es justamente lo que se le está imputando.
+    """
 
     object_key: str
     url: str
     expires_in: int
+    tipo_evento: str | None = None
+    severidad: str | None = None
+    ocurrio_en: object | None = None  # datetime tz-aware; lo serializa Pydantic
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,8 +66,7 @@ class InformeDevolucion:
     """Informe de devolución completo (solo para sesión anulada del titular)."""
 
     session_id: str
-    decision: str  # fase 1 (caso_abierto)
-    resolucion: str  # 'anulado_por_fraude'
+    decision: str  # 'anulado'
     motivo: str | None
     senales: list[SenalAnalisis]
     capturas: list[CapturaFirmada]
@@ -75,8 +88,8 @@ async def build_informe_devolucion(
                 ProctoringSessionModel.id,
                 ProctoringSessionModel.alumno_idnumber,
                 ProctoringSessionModel.decision,
-                ProctoringSessionModel.resolucion,
-                ProctoringSessionModel.resolucion_motivo,
+                ProctoringSessionModel.decision_motivo,
+                ProctoringSessionModel.decision_evidencia_ids,
             ).where(ProctoringSessionModel.id == session_id)
         )
     ).first()
@@ -87,34 +100,40 @@ async def build_informe_devolucion(
     if not titular_idnumber or row[1] != titular_idnumber:
         return None
 
-    from app.domain.review.decision import DecisionResolucion
-
     try:
-        resolucion = DecisionResolucion(row[3]) if row[3] is not None else None
+        decision = DecisionSesion(row[2]) if row[2] is not None else DecisionSesion.PENDIENTE
     except ValueError:
-        resolucion = None
+        decision = DecisionSesion.PENDIENTE
 
     restituidas = await _sesiones_con_restitucion(db, [session_id])
-    if not nota_esta_anulada(resolucion, session_id in restituidas):
+    if not nota_esta_anulada(decision, session_id in restituidas):
         # Minimización (Ley 25.326): sin anulación efectiva no se expone evidencia.
         return None
+
+    evidencia_ids = set(row[4] or [])
 
     # Análisis por señal: re-inferencia server-side ya persistida (regla #6).
     ev_rows = (
         await db.execute(
             select(
+                ProctoringEventModel.id,
                 ProctoringEventModel.tipo,
                 ProctoringEventModel.severidad,
                 ProctoringEventModel.face_count_servidor,
                 ProctoringEventModel.veredicto_reinferencia,
                 ProctoringEventModel.screenshot_sha256,
-            ).where(ProctoringEventModel.session_id == session_id)
+                # Momento del evento: sin esto la captura no se puede ubicar en
+                # la línea de tiempo del examen.
+                ProctoringEventModel.ts_backend,
+            )
+            .where(ProctoringEventModel.session_id == session_id)
+            .order_by(ProctoringEventModel.ts_backend)
         )
     ).all()
 
     agregado: dict[str, dict] = {}
     capturas: list[CapturaFirmada] = []
-    for tipo, severidad, face_count, veredicto, sha in ev_rows:
+    for evento_id, tipo, severidad, face_count, veredicto, sha, ts in ev_rows:
         clave = f"{tipo}|{severidad}"
         acc = agregado.setdefault(
             clave,
@@ -127,7 +146,9 @@ async def build_informe_devolucion(
             },
         )
         acc["ocurrencias"] += 1
-        if sha:
+        # Solo se muestran las capturas ELEGIDAS por el revisor como evidencia
+        # del veredicto — no todo lo que ocurrió en la sesión.
+        if sha and evento_id in evidencia_ids:
             firmada = presign.presign_download(
                 object_key=sha, expires_in=DOWNLOAD_EXPIRES_SECONDS
             )
@@ -136,6 +157,9 @@ async def build_informe_devolucion(
                     object_key=firmada.object_key,
                     url=firmada.url,
                     expires_in=firmada.expires_in,
+                    tipo_evento=tipo,
+                    severidad=severidad,
+                    ocurrio_en=ts,
                 )
             )
 
@@ -153,8 +177,7 @@ async def build_informe_devolucion(
     return InformeDevolucion(
         session_id=session_id,
         decision=row[2] or "",
-        resolucion=resolucion.value,
-        motivo=row[4],
+        motivo=row[3],
         senales=senales,
         capturas=capturas,
     )

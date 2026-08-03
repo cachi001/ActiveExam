@@ -15,6 +15,7 @@
  * warning visible (task 10.3) pero NO bloquea el acceso (MVP).
  */
 import type { AuthProvider, AuthStatus } from '../provider';
+import { ROLES_VALIDOS } from '../../constants/roles';
 import type { Principal, Rol } from '../../types';
 
 const STORAGE_KEY = 'jwt_access_token';
@@ -23,8 +24,14 @@ const STORAGE_REFRESH_KEY = 'jwt_refresh_token';
 
 const API_BASE = (import.meta.env.VITE_API_BASE as string) || '/api/v1';
 
-/** Roles válidos del modelo MVP. */
-const ROLES_VALIDOS: readonly Rol[] = ['estudiante', 'proctor', 'admin_sistema'];
+// Roles válidos: se leen de la fuente única (`lib/constants/roles`), que espeja el
+// enum `Rol` del backend. NO redeclarar la lista acá.
+//
+// Tenía su propia copia con solo 3 roles. Como abajo el fallback convierte una
+// lista vacía en `['estudiante']`, cualquier rol fuera de esa copia — docente,
+// revisor, auditor, coordinador — se filtraba y la persona entraba al sistema
+// COMO ESTUDIANTE, en silencio: sin error, sin aviso, con el panel de alumno. Un
+// revisor legítimo perdía sus permisos por una lista desactualizada.
 
 /** Decodifica el payload del JWT SIN verificar la firma (solo para leer claims). */
 function _decodePayload(token: string): Record<string, unknown> | null {
@@ -44,6 +51,15 @@ function _principalFromClaims(claims: Record<string, unknown>): Principal | null
   const realmAccess = claims['realm_access'] as { roles?: string[] } | undefined;
   const realmRoles = realmAccess?.roles ?? [];
   const roles = [...new Set(realmRoles.filter((r): r is Rol => ROLES_VALIDOS.includes(r as Rol)))];
+  // Un rol que el token trae pero el front no reconoce es un BUG de sincronización
+  // con el backend, no un usuario sin permisos: avisar fuerte en dev en vez de
+  // degradarlo a estudiante sin que nadie se entere.
+  if (import.meta.env.DEV && realmRoles.length > 0 && roles.length === 0) {
+    console.error(
+      `[auth] El token trae roles que el frontend no conoce: ${realmRoles.join(', ')}. ` +
+        `Agregalos a lib/constants/roles.ts y a lib/types.ts §Rol (deben espejar el enum Rol del backend).`,
+    );
+  }
 
   const idInstitucional =
     (claims['preferred_username'] as string | undefined) ||

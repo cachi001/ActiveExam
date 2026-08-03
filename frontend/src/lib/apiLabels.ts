@@ -40,3 +40,42 @@ export const TIPO_EVENTO_LABEL: Record<TipoEvento, string> = {
   recarga_pagina: 'Recarga de página',
   reanudacion_tardia: 'Reanudación tardía',
 };
+
+/** Tono del Badge por severidad — el color DEBE acompañar a la palabra.
+ *
+ * Una lista donde "alta" y "baja" se ven idénticas obliga a leer cada fila para
+ * entender la gravedad. El color hace el trabajo de un vistazo, y en la pantalla
+ * del alumno importa todavía más: es el material con el que puede defenderse.
+ */
+export const SEVERIDAD_TONE: Record<Severidad, 'neutral' | 'success' | 'warning' | 'error'> = {
+  baseline: 'neutral',
+  baja: 'success',
+  media: 'warning',
+  alta: 'error',
+  critica: 'error',
+};
+
+/** Etiqueta legible de la re-inferencia server-side (RN-EV: el cliente no decide). */
+export const VEREDICTO_REINFERENCIA_LABEL: Record<string, string> = {
+  no_evaluado: 'No se volvió a analizar',
+  coincide: 'Confirmado por el servidor',
+  discrepancia: 'El servidor no coincide con lo detectado',
+};
+
+/** Etiqueta de severidad, tolerante a un valor desconocido (nunca lo muestra crudo). */
+export function severidadLabel(s: string): string {
+  return (SEVERIDAD_LABEL as Record<string, string>)[s]
+    ?? (s ? s.charAt(0).toUpperCase() + s.slice(1) : '');
+}
+
+/** Etiqueta de tipo de evento, tolerante a un tipo que el front no conozca. */
+export function tipoEventoLabel(t: string): string {
+  return (TIPO_EVENTO_LABEL as Record<string, string>)[t]
+    ?? (t ? t.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase()) : '');
+}
+
+/** Etiqueta del veredicto de re-inferencia, sin snake_case a la vista. */
+export function veredictoReinferenciaLabel(v: string): string {
+  return VEREDICTO_REINFERENCIA_LABEL[v]
+    ?? (v ? v.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase()) : '');
+}

@@ -9,12 +9,14 @@
  * Ley 25.326: no se persiste screenshot_base64 en este componente (solo se lista).
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { StaffShell } from '../ui/shells';
 import { Card } from '../ui/components';
 import { HelpButton } from '../ui/HelpButton';
 import { ConfirmModal } from '../ui/ConfirmModal';
+import { RefreshBar } from '../ui/RefreshBar';
 import { STAFF_NAV } from '../ui/nav';
+import { useAutoRefresh } from '../lib/useAutoRefresh';
 import { useToast } from '../ui/toast';
 import { useNavigate } from '../lib/router';
 import { useApp } from '../lib/store';
@@ -36,20 +38,26 @@ export default function ProctoringRevisor() {
   const setProctoringDetailBackRoute = useApp((s) => s.setProctoringDetailBackRoute);
   const [sesiones, setSesiones] = useState<SesionProctoringResumen[]>([]);
   const [cargando, setCargando] = useState(true);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<number | undefined>();
   // Sesión pendiente de confirmación de borrado (null = modal cerrado).
   const [aBorrar, setABorrar] = useState<SesionProctoringResumen | null>(null);
 
-  useEffect(() => {
+  const cargar = useCallback(() => {
     setCargando(true);
     api
       .listarSesionesProctoring()
       // Sesiones grabadas = solo las ya finalizadas. Las que siguen en vivo se
       // ven en "Supervisión en vivo" para no duplicar y para que esta lista sea
       // realmente histórica (criterio del proctor).
-      .then((data) => setSesiones(data.filter((s) => s.finalizada_en)))
+      .then((data) => { setSesiones(data.filter((s) => s.finalizada_en)); setLastUpdatedAt(Date.now()); })
       .catch(() => setSesiones([]))
       .finally(() => setCargando(false));
   }, []);
+
+  useEffect(() => { cargar(); }, [cargar]);
+
+  // Auto-refresh cada 5 min: aparecen sesiones a medida que se finalizan.
+  useAutoRefresh(cargar, undefined, !cargando);
 
   const handleAbrir = (sesion: SesionProctoringResumen) => {
     setProctoringSessionId(sesion.id);
@@ -117,6 +125,12 @@ export default function ProctoringRevisor() {
       }
     >
       <div className="space-y-lg animate-in fade-in duration-500">
+        <RefreshBar
+          texto="Registro de sesiones"
+          lastUpdatedAt={lastUpdatedAt}
+          cargando={cargando}
+          onActualizar={cargar}
+        />
 
         {/* Resumen agregado */}
         {!cargando && sesiones.length > 0 && <ResumenSesiones sesiones={sesiones} />}

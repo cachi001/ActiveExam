@@ -11,19 +11,35 @@
 import type { ReactNode } from 'react';
 import { Icon } from '../../ui/components';
 
-export type StatTono = 'neutral' | 'success' | 'warning' | 'error' | 'primary' | 'info';
+export type StatTono =
+  | 'neutral'
+  | 'success'
+  | 'warning'
+  | 'error'
+  | 'primary'
+  | 'info'
+  | 'violet'
+  | 'cyan'
+  | 'rose';
 export type StatSize = 'sm' | 'md';
 
 /** Fondo en gradiente por tono. Paletas vivas tipo "dashboard moderno". `neutral`
  * usa slate-500/600 (gris medio legible) — el slate-900 anterior se sentía negro
- * pesado en el panel y no encaja con el resto de la paleta. */
+ * pesado en el panel y no encaja con el resto de la paleta.
+ *
+ * `violet` / `cyan` / `rose` son gradientes vivos explícitos (hex) para las stat
+ * cards del panel de estadísticas, donde hacía falta más color y variedad que la
+ * que dan los tokens semánticos (evita dos cards con el mismo teal / un gris apagado). */
 const TONO_BG: Record<StatTono, string> = {
-  primary: 'bg-gradient-to-br from-primary-500 to-primary-700',
+  primary: 'bg-gradient-to-br from-[#2563eb] to-[#1e40af]',
   info: 'bg-gradient-to-br from-info-500 to-info-600',
   success: 'bg-gradient-to-br from-success-500 to-success-600',
   warning: 'bg-gradient-to-br from-warning-500 to-warning-600',
   error: 'bg-gradient-to-br from-error-500 to-error-600',
   neutral: 'bg-gradient-to-br from-surface-500 to-surface-600',
+  violet: 'bg-gradient-to-br from-[#8b5cf6] to-[#6d28d9]',
+  cyan: 'bg-gradient-to-br from-[#06b6d4] to-[#0e7490]',
+  rose: 'bg-gradient-to-br from-[#f43f5e] to-[#be123c]',
 };
 
 /** Tamaños: `md` (Dashboard) prominente; `sm` (default) para sub-páginas de

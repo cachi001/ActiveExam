@@ -1,16 +1,15 @@
-"""Tests de integración del review.decide contra slim DB real (c-16,
-evolucionado c-71 slice 2 D6).
+"""Tests de integración del review.decide contra slim DB real — UN SOLO PASO
+(colapsa c-16 + c-71 slice 2).
 
-Cubre migración 0013 (columnas decision_* en proctoring_session) + servicio +
-inmutabilidad (RN-RV-07). Usa el modelo de dos fases (sin_hallazgos/aprobado/
-caso_abierto) post migración 0039.
+Cubre migración 0052 (columnas decision_motivo/decision_evidencia_ids en
+proctoring_session, dropea resolucion_*) + servicio + inmutabilidad (RN-RV-07)
+contra Postgres real (sin mocks de DB, regla dura #4).
 """
 
 from __future__ import annotations
 
 import os
 import uuid
-from datetime import datetime, timezone
 
 import pytest
 from sqlalchemy import delete, select
@@ -20,7 +19,7 @@ from app.application.review.service import (
     DecisionAlreadyMadeError,
     ReviewDecisionService,
 )
-from app.domain.review.decision import DecisionRevision
+from app.domain.review.decision import DecisionSesion
 from app.infrastructure.persistence.models.audit_log import AuditLogModel
 
 # Importar los modelos referenciados por FKs de proctoring_session para que el
@@ -80,7 +79,7 @@ def _build_service(s: AsyncSession) -> ReviewDecisionService:
 
 @pytest.mark.requires_stack
 @pytest.mark.asyncio
-async def test_decide_persiste_columnas_y_audita() -> None:
+async def test_decide_aprobado_persiste_columnas_y_audita() -> None:
     factory = _factory()
     sesion_id = await _crear_sesion(factory)
     try:
@@ -88,13 +87,14 @@ async def test_decide_persiste_columnas_y_audita() -> None:
             svc = _build_service(s)
             result = await svc.decide(
                 sesion_id,
-                decision=DecisionRevision.SIN_HALLAZGOS,
+                decision=DecisionSesion.APROBADO,
                 actor="revisor-1",
-                observaciones="cero evidencia",
+                motivo="cero evidencia",
             )
             await s.commit()
-        assert result.previous == DecisionRevision.PENDIENTE
-        assert result.new == DecisionRevision.SIN_HALLAZGOS
+        assert result.previous == DecisionSesion.PENDIENTE
+        assert result.new == DecisionSesion.APROBADO
+        assert result.nota_anulada is False
         # Verificar columnas persistidas
         async with factory() as s:
             row = (
@@ -103,23 +103,60 @@ async def test_decide_persiste_columnas_y_audita() -> None:
                         ProctoringSessionModel.decision,
                         ProctoringSessionModel.decision_actor,
                         ProctoringSessionModel.decision_at,
-                        ProctoringSessionModel.decision_observaciones,
+                        ProctoringSessionModel.decision_motivo,
+                        ProctoringSessionModel.decision_evidencia_ids,
                     ).where(ProctoringSessionModel.id == sesion_id)
                 )
             ).first()
             assert row is not None
-            assert row[0] == "sin_hallazgos"
+            assert row[0] == "aprobado"
             assert row[1] == "revisor-1"
             assert row[2] is not None
             assert row[3] == "cero evidencia"
+            assert row[4] is None
             # Audit log
             audit = await s.execute(
                 select(AuditLogModel.id).where(
-                    AuditLogModel.accion == "review.decision.sin_hallazgos",
+                    AuditLogModel.accion == "review.decision.aprobado",
                     AuditLogModel.evidencia_id == sesion_id,
                 )
             )
             assert len(audit.all()) == 1
+    finally:
+        await _cleanup(factory, sesion_id)
+
+
+@pytest.mark.requires_stack
+@pytest.mark.asyncio
+async def test_decide_anulado_persiste_motivo_y_evidencia_estructurada() -> None:
+    factory = _factory()
+    sesion_id = await _crear_sesion(factory)
+    try:
+        async with factory() as s:
+            svc = _build_service(s)
+            result = await svc.decide(
+                sesion_id,
+                decision=DecisionSesion.ANULADO,
+                actor="revisor-1",
+                motivo="copia detectada",
+                evidencia_ids=["evt-a", "evt-b"],
+            )
+            await s.commit()
+        assert result.nota_anulada is True
+        async with factory() as s:
+            row = (
+                await s.execute(
+                    select(
+                        ProctoringSessionModel.decision,
+                        ProctoringSessionModel.decision_motivo,
+                        ProctoringSessionModel.decision_evidencia_ids,
+                    ).where(ProctoringSessionModel.id == sesion_id)
+                )
+            ).first()
+            assert row is not None
+            assert row[0] == "anulado"
+            assert row[1] == "copia detectada"
+            assert row[2] == ["evt-a", "evt-b"]
     finally:
         await _cleanup(factory, sesion_id)
 
@@ -135,9 +172,10 @@ async def test_decide_inmutable_segundo_intento_falla_y_audita_rechazo() -> None
             svc = _build_service(s)
             await svc.decide(
                 sesion_id,
-                decision=DecisionRevision.CASO_ABIERTO,
+                decision=DecisionSesion.ANULADO,
                 actor="r1",
-                observaciones=None,
+                motivo="fraude",
+                evidencia_ids=["evt-1"],
             )
             await s.commit()
         # Segunda → DecisionAlreadyMadeError
@@ -146,12 +184,12 @@ async def test_decide_inmutable_segundo_intento_falla_y_audita_rechazo() -> None
             with pytest.raises(DecisionAlreadyMadeError):
                 await svc.decide(
                     sesion_id,
-                    decision=DecisionRevision.SIN_HALLAZGOS,
+                    decision=DecisionSesion.APROBADO,
                     actor="r-malicioso",
-                    observaciones="intento cambiar",
+                    motivo="intento cambiar",
                 )
             await s.commit()
-        # Verificar: la decision en DB sigue siendo derivada + 2 entradas en audit
+        # Verificar: la decision en DB sigue siendo anulado + 2 entradas en audit
         async with factory() as s:
             row = (
                 await s.execute(
@@ -160,13 +198,61 @@ async def test_decide_inmutable_segundo_intento_falla_y_audita_rechazo() -> None
                     )
                 )
             ).first()
-            assert row is not None and row[0] == "caso_abierto"
+            assert row is not None and row[0] == "anulado"
             audit = await s.execute(
                 select(AuditLogModel.accion).where(
                     AuditLogModel.evidencia_id == sesion_id
                 )
             )
-            acciones = {r[0] for r in audit.all()}
-            assert "review.decision.caso_abierto" in acciones  # ambas: la inicial Y el rechazo
+            acciones = [r[0] for r in audit.all()]
+            assert acciones.count("review.decision.anulado") == 2  # inicial + rechazo
+    finally:
+        await _cleanup(factory, sesion_id)
+
+
+@pytest.mark.requires_stack
+@pytest.mark.asyncio
+async def test_revertir_anulacion_es_append_only_contra_db_real() -> None:
+    factory = _factory()
+    sesion_id = await _crear_sesion(factory)
+    try:
+        async with factory() as s:
+            svc = _build_service(s)
+            await svc.decide(
+                sesion_id,
+                decision=DecisionSesion.ANULADO,
+                actor="autoridad-1",
+                motivo="fraude confirmado",
+                evidencia_ids=["evt-9"],
+            )
+            await s.commit()
+        async with factory() as s:
+            svc = _build_service(s)
+            await svc.revertir_anulacion(
+                sesion_id, actor="c18-apelacion", motivo="apelacion exitosa"
+            )
+            await s.commit()
+        async with factory() as s:
+            # La columna `decision` NO se muta (append-only): sigue 'anulado'.
+            row = (
+                await s.execute(
+                    select(ProctoringSessionModel.decision).where(
+                        ProctoringSessionModel.id == sesion_id
+                    )
+                )
+            ).first()
+            assert row is not None and row[0] == "anulado"
+            acciones = {
+                r[0]
+                for r in (
+                    await s.execute(
+                        select(AuditLogModel.accion).where(
+                            AuditLogModel.evidencia_id == sesion_id
+                        )
+                    )
+                ).all()
+            }
+            assert "review.decision.anulado" in acciones
+            assert "review.decision.nota_restituida" in acciones
     finally:
         await _cleanup(factory, sesion_id)

@@ -32,7 +32,11 @@ export function NotaCard({ nota }: { nota: NotaExamen }) {
               aprobado ? 'bg-success-container text-success' : 'bg-error-container text-on-error-container'
             }`}
           >
-            {aprobado ? 'Aprobado' : 'Desaprobado'}{enRevision ? ' (preliminar)' : ''} · {notaTxt}
+            {/* "(preliminar)" solo mientras la revisión está PENDIENTE. Con el
+                caso resuelto la nota es definitiva — seguir diciendo preliminar
+                le hace creer al alumno que todavía puede cambiar. */}
+            {aprobado ? 'Aprobado' : 'Desaprobado'}
+            {enRevision && !nota.nota_anulada ? ' (preliminar)' : ''} · {notaTxt}
           </span>
         ) : (
           <span className="shrink-0 inline-flex items-center text-[12px] font-medium rounded-full px-sm py-0.5 bg-surface-container-high text-on-surface-variant">
@@ -41,43 +45,64 @@ export function NotaCard({ nota }: { nota: NotaExamen }) {
         )}
       </div>
 
-      {enRevision && (
+      {/* El aviso de "en cola" y el de anulación son EXCLUYENTES: si el caso ya
+          se resolvió no puede seguir diciendo que falta revisarlo. El backend ya
+          apaga `en_cola_revision` al haber decisión; esta guarda es la red por si
+          llegara un dato viejo cacheado. */}
+      {enRevision && !nota.nota_anulada && (
         <p className="text-[12px] text-on-surface-variant">
           En cola de revisión por los eventos registrados durante la supervisión. Un docente la
           revisará y confirmará tu nota.
         </p>
       )}
 
-      {/* C-71 slice 2 (D12): informe de devolución SOLO si la nota fue anulada por fraude. */}
+      {/* Anulación: bloque propio con fondo y borde, no un renglón suelto. Antes
+          era un <p> pegado al botón de abajo y se leía como un error de la
+          pantalla. Es la peor noticia que da esta card: necesita su espacio. */}
       {nota.nota_anulada && (
-        <p className="text-[12px] text-error font-medium inline-flex items-center gap-xs">
-          <Icon name="block" className="text-[14px]" />
-          Nota anulada por fraude
-        </p>
+        <div className="flex items-start gap-sm rounded-lg border border-error-200 bg-error-50 px-sm py-sm">
+          <Icon name="block" className="text-[18px] text-error-600 shrink-0 mt-0.5" fill />
+          <div className="min-w-0">
+            <p className="text-[13px] font-semibold text-error-700 leading-tight">
+              Nota anulada por fraude
+            </p>
+            <p className="text-[12px] text-on-surface-variant leading-snug mt-0.5">
+              La decisión la tomó una persona tras revisar tu sesión. Podés ver el motivo
+              en el informe de devolución.
+            </p>
+          </div>
+        </div>
       )}
 
-      {nota.examen_id && nota.revision_disponible && (
-        <Button
-          variant="ghost"
-          size="sm"
-          icon="fact_check"
-          onClick={() => navigate(`/alumno/revision/${nota.examen_id}`)}
-          className="-ml-sm"
-        >
-          Revisar mis respuestas
-        </Button>
-      )}
+      {/* Acciones agrupadas y separadas del contenido: sin esto el botón quedaba
+          pegado al texto de arriba. */}
+      {((nota.examen_id && nota.revision_disponible) ||
+        (nota.informe_disponible && nota.session_id)) && (
+        <div className="flex flex-wrap items-center gap-xs pt-xs">
+          {nota.examen_id && nota.revision_disponible && (
+            <Button
+              variant="ghost"
+              size="sm"
+              icon="fact_check"
+              onClick={() => navigate(`/alumno/revision/${nota.examen_id}`)}
+              className="-ml-sm"
+            >
+              Revisar mis respuestas
+            </Button>
+          )}
 
-      {nota.informe_disponible && nota.session_id && (
-        <Button
-          variant="ghost"
-          size="sm"
-          icon="gavel"
-          onClick={() => navigate(`/alumno/informe/${nota.session_id}`)}
-          className="-ml-sm text-error"
-        >
-          Ver informe de devolución
-        </Button>
+          {nota.informe_disponible && nota.session_id && (
+            <Button
+              variant="ghost"
+              size="sm"
+              icon="gavel"
+              onClick={() => navigate(`/alumno/informe/${nota.session_id}`)}
+              className="text-error"
+            >
+              Ver informe de devolución
+            </Button>
+          )}
+        </div>
       )}
     </Card>
   );

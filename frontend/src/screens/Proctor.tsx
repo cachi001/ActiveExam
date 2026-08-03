@@ -21,6 +21,7 @@ import { STAFF_NAV } from '../ui/nav';
 import { useToast } from '../ui/toast';
 import { useNavigate } from '../lib/router';
 import { useApp } from '../lib/store';
+import { useAuth } from '../lib/authStore';
 import { api } from '../lib/api';
 import { loadEffectiveConfig, getEffectiveConfig } from '../config/effectiveConfigCache';
 import type { SesionProctoringResumen } from '../lib/types';
@@ -54,7 +55,7 @@ export default function Proctor() {
   const setProctoringDetailBackRoute = useApp((s) => s.setProctoringDetailBackRoute);
   // Identidad del proctor logueado → se registra como proctor_actor al resolver
   // una pausa (C-15). Email como subject estable; null si no hay sesión.
-  const proctorActor = useApp((s) => s.principal?.email ?? null);
+  const proctorActor = useAuth((s) => s.principal?.email ?? null);
 
   const [sesiones, setSesiones] = useState<SesionProctoringResumen[]>([]);
   const [cargaInicial, setCargaInicial] = useState(true);

@@ -22,9 +22,10 @@ const form: ConfigForm = {
   cierre: '2026-12-31T20:00',
   notaMaxima: '10',
   notaAprobacion: '6',
-  mezclarPreguntas: false,
+  limitePreguntas: '',
   mostrarNota: 'al_cerrar',
   revisionHabilitada: true,
+  politicaIntentos: 'mas_alta',
 };
 
 describe('formToPatch', () => {
@@ -32,13 +33,22 @@ describe('formToPatch', () => {
     const patch = formToPatch(form, false, form);
     expect(patch).toHaveProperty('tiempo_limite_min', 40);
     expect(patch).toHaveProperty('nota_maxima', 10);
-    expect(patch).toHaveProperty('mezclar_preguntas', false);
     expect(patch).toHaveProperty('mostrar_nota', 'al_cerrar');
+    // `mezclar_preguntas` ya NO se manda: es siempre true server-side y el PATCH
+    // lo rechaza (extra='forbid'). Dejó de ser una opción del docente.
+    expect(patch).not.toHaveProperty('mezclar_preguntas');
+    // Tope vacío = sacar el tope; el backend interpreta 0 como NULL.
+    expect(patch).toHaveProperty('limite_preguntas', 0);
   });
 
   it('bloqueado sin tocar cierre/intentos envía SOLO publicación', () => {
     const patch = formToPatch(form, true, form);
-    expect(Object.keys(patch).sort()).toEqual(['mostrar_nota', 'revision_habilitada']);
+    expect(Object.keys(patch).sort()).toEqual([
+      'limite_preguntas',
+      'mostrar_nota',
+      'politica_intentos',
+      'revision_habilitada',
+    ]);
   });
 
   it('bloqueado: si el docente EXTIENDE el cierre, se envía cierre', () => {

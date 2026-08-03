@@ -1,9 +1,10 @@
-"""Gate del write-back a Moodle por estado de revisión (c-71 slice 2, D15).
+"""Gate del write-back a Moodle por estado de revisión (c-71 slice 2, D15,
+modelo de un solo paso).
 
 Contra DB real (sin mocks, regla #4): `listar_estados_sincronizables` — el único
 punto donde una nota pasa a 'enviado' (sync manual del admin) — RETIENE las
-sesiones flaggeadas/`caso_abierto`/`anulado_por_fraude` y LIBERA las resueltas
-limpias o nunca flaggeadas.
+sesiones flaggeadas sin decidir o `anulado`, y LIBERA las `aprobado` o nunca
+flaggeadas.
 """
 
 from __future__ import annotations
@@ -17,9 +18,8 @@ from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.application.moodle.resultados_query import listar_estados_sincronizables
-from app.application.review.resolution_service import ReviewResolutionService
 from app.application.review.service import ReviewDecisionService
-from app.domain.review.decision import DecisionResolucion, DecisionRevision
+from app.domain.review.decision import DecisionSesion
 from app.infrastructure.persistence.models.exam_content import (  # noqa: F401
     ExamenContenidoModel,
 )
@@ -132,27 +132,16 @@ async def _crear_sesion(
         return sid
 
 
-async def _decidir(factory, sid, decision) -> None:
+async def _decidir(factory, sid, decision, *, evidencia_ids=None) -> None:
     async with factory() as s:
         await ReviewDecisionService(
             repo=SqlSessionReviewRepository(s), auditor=SqlReviewAuditor(s)
-        ).decide(sid, decision=decision, actor="rev", observaciones="x")
-        await s.commit()
-
-
-async def _resolver(factory, sid, resolucion) -> None:
-    await _decidir(factory, sid, DecisionRevision.CASO_ABIERTO)
-    async with factory() as s:
-        await ReviewResolutionService(
-            repo=SqlSessionReviewRepository(s), auditor=SqlReviewAuditor(s)
-        ).resolve(
+        ).decide(
             sid,
-            resolucion=resolucion,
-            actor="autoridad",
-            motivo="motivo",
-            evidencia_ref="clip"
-            if resolucion is DecisionResolucion.ANULADO_POR_FRAUDE
-            else None,
+            decision=decision,
+            actor="rev",
+            motivo="x",
+            evidencia_ids=evidencia_ids or [],
         )
         await s.commit()
 
@@ -195,35 +184,22 @@ async def test_flaggeada_retiene_sin_flag_envia() -> None:
 
 @pytest.mark.requires_stack
 @pytest.mark.asyncio
-async def test_caso_abierto_retiene_resolucion_limpia_libera() -> None:
+async def test_aprobado_libera_anulado_nunca_se_envia() -> None:
     factory = _factory()
     await _seed_config(factory)
     eid = await _crear_examen(factory)
-    abierta = await _crear_sesion(factory, eid, flaggeada=True)
-    descartada = await _crear_sesion(factory, eid, flaggeada=True)
-    try:
-        await _decidir(factory, abierta, DecisionRevision.CASO_ABIERTO)
-        await _resolver(factory, descartada, DecisionResolucion.CASO_DESCARTADO)
-        ids = await _sincronizables_ids(factory, eid)
-        assert abierta not in ids  # caso_abierto -> hold
-        assert descartada in ids  # resuelta limpia -> release
-    finally:
-        await _cleanup(factory, eid, [abierta, descartada])
-
-
-@pytest.mark.requires_stack
-@pytest.mark.asyncio
-async def test_anulado_por_fraude_nunca_se_envia() -> None:
-    factory = _factory()
-    await _seed_config(factory)
-    eid = await _crear_examen(factory)
+    aprobada = await _crear_sesion(factory, eid, flaggeada=True)
     anulada = await _crear_sesion(factory, eid, flaggeada=True)
     try:
-        await _resolver(factory, anulada, DecisionResolucion.ANULADO_POR_FRAUDE)
+        await _decidir(factory, aprobada, DecisionSesion.APROBADO)
+        await _decidir(
+            factory, anulada, DecisionSesion.ANULADO, evidencia_ids=["evt-1"]
+        )
         ids = await _sincronizables_ids(factory, eid)
-        assert anulada not in ids  # anulado_por_fraude -> nunca se envía
+        assert aprobada in ids  # revisión limpia -> release
+        assert anulada not in ids  # anulado -> nunca se envía
     finally:
-        await _cleanup(factory, eid, [anulada])
+        await _cleanup(factory, eid, [aprobada, anulada])
 
 
 @pytest.mark.requires_stack
@@ -236,8 +212,8 @@ async def test_revision_limpia_libera_un_hold_previo() -> None:
     try:
         # Antes de revisar: flaggeada -> hold.
         assert sid not in await _sincronizables_ids(factory, eid)
-        # Revisión limpia (sin_hallazgos) -> libera.
-        await _decidir(factory, sid, DecisionRevision.SIN_HALLAZGOS)
+        # Revisión limpia (aprobado) -> libera, en el MISMO acto.
+        await _decidir(factory, sid, DecisionSesion.APROBADO)
         assert sid in await _sincronizables_ids(factory, eid)
     finally:
         await _cleanup(factory, eid, [sid])

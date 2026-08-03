@@ -18,7 +18,7 @@
  */
 
 import { StaffShell } from '../ui/shells';
-import { Icon, Card, Badge, SectionTitle } from '../ui/components';
+import { Icon, Card, Badge, SectionTitle, Button } from '../ui/components';
 import { HelpButton } from '../ui/HelpButton';
 import { STAFF_NAV } from '../ui/nav';
 import { DEFAULT_CONFIG } from '../proctoring/stateTransitionRules';
@@ -38,7 +38,7 @@ import EventLog from './harness/EventLog';
 import CoverageChecklist from './harness/CoverageChecklist';
 
 const AYUDA = (
-  <HelpButton title="¿Para qué sirve esta prueba?">
+  <HelpButton title="¿Para qué sirve esta pantalla?">
     <p>
       Sirve para comprobar que el sistema detecta bien las situaciones sospechosas <strong className="text-on-surface">antes</strong> de
       usarlo en un examen real. Al encender la cámara, el sistema analiza en vivo lo que ve —tu rostro,
@@ -119,13 +119,13 @@ export default function AdminDetectionHarness() {
     <StaffShell nav={STAFF_NAV} title="Test de detección" subtitle="Probá el motor de detección en vivo — herramienta diagnóstica, no afecta exámenes reales ni guarda datos." help={AYUDA}>
       <div className="space-y-lg animate-in fade-in duration-300">
 
-        {/* Aviso de importancia (una sola vez, arriba de todo): todo es de prueba, no toca la config real */}
-        <Card className="flex items-start gap-sm bg-warning-container/60">
-          <Icon name="info" className="text-[20px] shrink-0 mt-px text-warning" fill />
-          <p className="text-label-sm text-on-surface">
-            Todo lo que cambies en esta pantalla es <strong>solo para esta prueba</strong> y no modifica la configuración real. Para cambiar lo que se aplica a los exámenes, andá a <strong>Configuración</strong>.
+        {/* Aviso (una sola vez, arriba de todo): todo es de prueba, no toca la config real. */}
+        <div className="flex items-start gap-3 rounded-xl border border-blue-200 bg-blue-50 px-lg py-3">
+          <Icon name="info" className="text-[20px] shrink-0 mt-0.5 text-blue-600" fill />
+          <p className="text-[13px] text-blue-900 leading-relaxed">
+            Los cambios de esta pantalla son <strong>solo para este diagnóstico</strong> y no modifican la configuración real. Para cambiar lo que se aplica a los exámenes, andá a <strong>Configuración</strong>.
           </p>
-        </Card>
+        </div>
 
         <HarnessHeader
           engineMode={h.engineMode}
@@ -140,16 +140,13 @@ export default function AdminDetectionHarness() {
           onRetryEngine={handleRetryEngine}
         />
 
-        {/* ================================================================
-            GRID PRINCIPAL
-            Layout: cámara protagonista (2/3 de ancho) + panel lateral (1/3).
-            Fila superior: cámara grande a la izquierda, medidor de riesgo a la derecha.
-            Fila inferior: señales/config a la izquierda, log/cobertura a la derecha.
-        ================================================================ */}
-        <div className="grid lg:grid-cols-3 gap-lg">
-
-          {/* ---- Cámara (2 cols) — protagonista visual ---- */}
-          <div className="lg:col-span-2 space-y-lg">
+        {/* ============================================================
+            Fila 1 — dos columnas parejas:
+              Izquierda: cámara (protagonista) + Log de eventos DEBAJO.
+              Derecha:   medidor de riesgo + buffer (reseteable) + señales.
+        ============================================================ */}
+        <div className="grid lg:grid-cols-2 gap-lg items-stretch">
+          <div className="flex flex-col gap-lg">
             <CameraPanel
               videoRef={h.videoRef}
               engineMode={h.engineMode}
@@ -160,16 +157,21 @@ export default function AdminDetectionHarness() {
               showFullMesh={h.showFullMesh}
               setShowFullMesh={h.setShowFullMesh}
             />
-
-            {/* Señales de visión debajo de la cámara (el panel de "señales de
-                entorno" se removió: los detectores de contexto se controlan en la
-                sección "Detectores (para esta prueba)" más abajo). */}
-            <VisionSignalsPanel
-              rawSignals={h.rawSignals}
-              engineMode={h.engineMode}
+            <EventLog
+              logEntries={h.logEntries}
+              filteredEntries={h.filteredEntries}
+              logTruncated={h.logTruncated}
+              isFilterActive={h.isFilterActive}
+              severityFilter={h.severityFilter}
+              expandedPayloads={h.expandedPayloads}
+              setExpandedPayloads={h.setExpandedPayloads}
               harnessState={h.harnessState}
+              elapsed={h.elapsed}
+              sessionStart={h.sessionStart}
+              onToggleSeverityFilter={h.toggleSeverityFilter}
+              onShowAllSeverities={h.showAllSeverities}
+              onExportLog={h.exportLog}
             />
-
             <ThresholdsConfig
               configDraft={h.configDraft}
               configErrors={h.configErrors}
@@ -177,32 +179,14 @@ export default function AdminDetectionHarness() {
               onConfigChange={h.applyConfigChange}
               onRestoreSystem={handleRestoreSystem}
             />
-
-            {/* Detectores para esta prueba — arrancan desde la Configuración del
-                sistema; togglealos para ver cómo reacciona la detección en vivo.
-                Mismo selector (rojo=off / verde=on) que Configuración. */}
-            <Card className="space-y-md">
-              <SectionTitle sub="Arrancan desde la Configuración del sistema. Desactivá uno para que deje de registrarse en esta prueba (no toca la config real).">
-                Detectores (para esta prueba)
-              </SectionTitle>
-              <DetectoresSelector
-                value={(h.detectoresActivos ?? []) as TipoEvento[]}
-                onChange={(d) => h.setDetectoresActivos(d)}
-              />
-            </Card>
           </div>
-
-          {/* ---- Panel lateral (1 col): medidor de riesgo + leyenda + store + log + cobertura ---- */}
           <div className="space-y-lg">
-
             <RiskMeter
               harnessScore={h.harnessScore}
               riskThreshold={h.riskThreshold}
               onThresholdChange={h.setRiskThreshold}
               onResetScore={() => h.setHarnessScore(0)}
             />
-
-            {/* Contador del store (tasks 7.1, 7.2) */}
             <Card className="space-y-md">
               <SectionTitle sub="Eventos recientes en memoria (máx. 50); los más viejos se descartan cuando se llena.">
                 Buffer de eventos
@@ -223,23 +207,32 @@ export default function AdminDetectionHarness() {
                   <Badge tone="warning" dot>Store lleno — overflow activo</Badge>
                 )}
               </div>
+              <div className="flex justify-end pt-sm border-t border-outline-variant/40">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon="restart_alt"
+                  onClick={() => h.limpiarAnomalias()}
+                  disabled={h.anomaliasVivo.length === 0}
+                >
+                  Vaciar buffer
+                </Button>
+              </div>
             </Card>
-
-            <EventLog
-              logEntries={h.logEntries}
-              filteredEntries={h.filteredEntries}
-              logTruncated={h.logTruncated}
-              isFilterActive={h.isFilterActive}
-              severityFilter={h.severityFilter}
-              expandedPayloads={h.expandedPayloads}
-              setExpandedPayloads={h.setExpandedPayloads}
+            <VisionSignalsPanel
+              rawSignals={h.rawSignals}
+              engineMode={h.engineMode}
               harnessState={h.harnessState}
-              elapsed={h.elapsed}
-              sessionStart={h.sessionStart}
-              onToggleSeverityFilter={h.toggleSeverityFilter}
-              onShowAllSeverities={h.showAllSeverities}
-              onExportLog={h.exportLog}
             />
+            <Card className="space-y-md">
+              <SectionTitle sub="Arrancan desde la Configuración del sistema. Desactivá uno para que deje de registrarse (no toca la config real).">
+                Detectores activos
+              </SectionTitle>
+              <DetectoresSelector
+                value={(h.detectoresActivos ?? []) as TipoEvento[]}
+                onChange={(d) => h.setDetectoresActivos(d)}
+              />
+            </Card>
           </div>
         </div>
 

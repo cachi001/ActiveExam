@@ -23,6 +23,7 @@ from app.domain.auth.roles import Rol
 from app.infrastructure.crypto.embedding_encryption import EmbeddingEncryptionService
 from app.presentation.api.v1.auth.dependencies import (
     get_current_principal,
+    require_capability,
     require_roles,
 )
 from app.presentation.api.v1.proctoring.biometria.router import create_biometria_router
@@ -79,11 +80,15 @@ def create_proctoring_router(
     #
     #  - require_autenticado: cualquier token valido (el alumno opera su sesion:
     #    crear, eventos, chat, pausas, finalizar). 401 si falta/invalido.
-    #  - require_proctor_o_admin: vista del proctor (lista/detalle de sesiones,
+    #  - require_proctor_o_admin: vista de supervision (lista/detalle de sesiones,
     #    poll de pausas pendientes, aprobar/rechazar). 403 si es estudiante.
     #  - require_admin: cadena de custodia (DELETE de sesion — JAMAS proctor).
     _require_autenticado = get_current_principal
-    _require_proctor_o_admin = require_roles(Rol.PROCTOR, Rol.ADMIN_SISTEMA)
+    # Gate por CAPACIDAD: `supervisar_vivo` incluye al REVISOR, que antes quedaba
+    # afuera de la lista de roles. No es un detalle: la Cola de revision se arma
+    # con GET /proctoring/sessions, asi que el unico rol autorizado a resolver un
+    # caso recibia 403 al pedir la lista de casos que tiene que resolver.
+    _require_proctor_o_admin = require_capability("supervisar_vivo")
     _require_admin = require_roles(Rol.ADMIN_SISTEMA)
 
     # --- Health ---

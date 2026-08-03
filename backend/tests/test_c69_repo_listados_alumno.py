@@ -150,9 +150,15 @@ async def test_comisiones_por_materia_solo_de_esa_materia(session):
     comision_repo = ComisionSqlRepository(session)
     m1 = await materia_repo.guardar(Materia(codigo="MA-1", nombre="Materia 1"))
     m2 = await materia_repo.guardar(Materia(codigo="MA-2", nombre="Materia 2"))
-    await comision_repo.guardar(Comision(codigo="C1", nombre="Com 1", materia_id=m1.id))
-    await comision_repo.guardar(Comision(codigo="C2", nombre="Com 2", materia_id=m1.id))
-    await comision_repo.guardar(Comision(codigo="CX", nombre="Com X", materia_id=m2.id))
+    await comision_repo.guardar(
+        Comision(codigo="C1", nombre="Com 1", materia_id=m1.id, codigo_matriculacion="MA1-C1")
+    )
+    await comision_repo.guardar(
+        Comision(codigo="C2", nombre="Com 2", materia_id=m1.id, codigo_matriculacion="MA1-C2")
+    )
+    await comision_repo.guardar(
+        Comision(codigo="CX", nombre="Com X", materia_id=m2.id, codigo_matriculacion="MA2-CX")
+    )
     await session.flush()
 
     de_m1 = await comision_repo.listar_por_materia(m1.id)
@@ -178,8 +184,8 @@ async def test_examenes_por_comision_filtra_por_comision(session):
     examen_repo = ExamenContenidoSqlRepository(session)
 
     materia = await materia_repo.guardar(Materia(codigo="EX-M", nombre="Examen Mat"))
-    com_a = await comision_repo.guardar(Comision(codigo="A", nombre="Com A", materia_id=materia.id))
-    com_b = await comision_repo.guardar(Comision(codigo="B", nombre="Com B", materia_id=materia.id))
+    com_a = await comision_repo.guardar(Comision(codigo="A", nombre="Com A", materia_id=materia.id, codigo_matriculacion="EX-A"))
+    com_b = await comision_repo.guardar(Comision(codigo="B", nombre="Com B", materia_id=materia.id, codigo_matriculacion="EX-B"))
     await examen_repo.guardar(_examen("Parcial A1", com_a.id, n=3))
     await examen_repo.guardar(_examen("Parcial A2", com_a.id, n=1))
     await examen_repo.guardar(_examen("Parcial B1", com_b.id, n=2))
@@ -199,7 +205,7 @@ async def test_examenes_por_comision_sin_examenes_devuelve_vacio(session):
     comision_repo = ComisionSqlRepository(session)
     examen_repo = ExamenContenidoSqlRepository(session)
     materia = await materia_repo.guardar(Materia(codigo="EMP-M", nombre="Empty"))
-    com = await comision_repo.guardar(Comision(codigo="E", nombre="Com E", materia_id=materia.id))
+    com = await comision_repo.guardar(Comision(codigo="E", nombre="Com E", materia_id=materia.id, codigo_matriculacion="EX-E"))
     await session.flush()
     assert await examen_repo.listar_por_comision(com.id) == []
 
@@ -217,7 +223,7 @@ async def test_listar_examen_con_comision_incluye_materia_y_comision(session):
 
     materia = await materia_repo.guardar(Materia(codigo="ENR-M", nombre="Análisis Matemático"))
     com = await comision_repo.guardar(
-        Comision(codigo="1A", nombre="Comisión 1A", materia_id=materia.id)
+        Comision(codigo="1A", nombre="Comisión 1A", materia_id=materia.id, codigo_matriculacion="EX-1A")
     )
     guardado = await examen_repo.guardar(_examen("Parcial Enriquecido", com.id, n=2))
     await session.flush()

@@ -13,8 +13,34 @@ import {
   examenContenidoSubtitulo,
   formatVentanaExamen,
   formatDuracionExamen,
+  statExamenesValue,
 } from './dashboards.helpers';
 import type { ExamenContenidoResumen } from '../lib/types';
+
+// ---------------------------------------------------------------------------
+// statExamenesValue — valor de la stat "Exámenes" del AdminDashboard (C-73 2.1/2.2).
+// Lo crítico: un fetch en ERROR NUNCA muestra "0" (dato fantasma); muestra un
+// marcador de error. Cargando → placeholder; ready → la cantidad (0 legítimo).
+// ---------------------------------------------------------------------------
+describe('statExamenesValue', () => {
+  it('error → marcador de error, NUNCA 0 fantasma', () => {
+    const v = statExamenesValue('error', 0);
+    expect(v).toBe('—');
+    expect(v).not.toBe(0);
+    expect(v).not.toBe('0');
+  });
+
+  it('cargando (loading/idle) → placeholder, no un número', () => {
+    expect(statExamenesValue('loading', 0)).toBe('…');
+    expect(statExamenesValue('idle', 0)).toBe('…');
+  });
+
+  it('ready → la cantidad real (incluye 0 legítimo y N)', () => {
+    expect(statExamenesValue('ready', 0)).toBe(0); // 0 real, no fantasma
+    expect(statExamenesValue('ready', 1)).toBe(1);
+    expect(statExamenesValue('ready', 7)).toBe(7);
+  });
+});
 
 // ---------------------------------------------------------------------------
 // 1. RED → GREEN: caso feliz con materia y comision

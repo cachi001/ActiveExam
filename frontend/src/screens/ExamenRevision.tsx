@@ -120,7 +120,7 @@ export default function ExamenRevision() {
 
         {cargando ? (
           <Card className="text-center py-2xl text-on-surface-variant">
-            <Icon name="hourglass_top" className="text-[28px] ae-spin" />
+            <Icon name="progress_activity" className="text-[28px] ae-spin" />
             <p className="mt-base text-label-md">Cargando tu revisión…</p>
           </Card>
         ) : !revision ? (

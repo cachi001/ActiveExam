@@ -37,6 +37,25 @@ from app.infrastructure.persistence.models.transactional import UsuarioModel
 # (p. ej. foreign_key_violation 23503) NO se mapean a "duplicado": se re-elevan.
 _PG_UNIQUE_VIOLATION = "23505"
 
+# --- Orden alfabético en castellano, independiente del contenedor ------------
+# `ORDER BY <texto>` usa la colación de la base, que depende de la libc de la
+# IMAGEN: dev corre postgres:16-alpine (musl, sin locales reales → orden por bytes,
+# "Álgebra" cae DESPUÉS de "Zoología") y prod corre timescaledb sobre glibc (orden
+# correcto). O sea: el mismo listado se ordena distinto según dónde corra.
+#
+# Se normaliza el texto en SQL antes de ordenar: minúsculas + tildes plegadas. Es
+# SQL portable puro (sin extensión `unaccent` ni colaciones ICU, que pueden no
+# existir en una imagen dada), así que el resultado es IDÉNTICO en cualquier motor
+# Postgres. La ñ se pliega a n: acepta el orden n < ñ < o de la RAE con una
+# diferencia solo entre palabras que difieran ÚNICAMENTE por la ñ.
+_ACENTOS = "áàäâãéèëêíìïîóòöôõúùüûñçÁÀÄÂÃÉÈËÊÍÌÏÎÓÒÖÔÕÚÙÜÛÑÇ"
+_SIN_ACENTOS = "aaaaaeeeeiiiiooooouuuuncAAAAAEEEEIIIIOOOOOUUUUNC"
+
+
+def _orden_alfabetico(columna):
+    """Clave de ordenamiento alfabético estable para nombres/títulos en castellano."""
+    return func.lower(func.translate(columna, _ACENTOS, _SIN_ACENTOS))
+
 
 def _es_violacion_unicidad(exc: IntegrityError) -> bool:
     return getattr(getattr(exc, "orig", None), "sqlstate", None) == _PG_UNIQUE_VIOLATION
@@ -71,6 +90,7 @@ class ExamenContenidoSqlRepository:
             comision_id=examen.comision_id,
             moodle_courseid=examen.moodle_courseid,
             moodle_cmid=examen.moodle_cmid,
+            moodle_component=examen.moodle_component,
             tiempo_limite_min=examen.tiempo_limite_min,
             intentos_permitidos=examen.intentos_permitidos,
             apertura=examen.apertura,
@@ -78,6 +98,7 @@ class ExamenContenidoSqlRepository:
             nota_maxima=examen.nota_maxima,
             nota_aprobacion=examen.nota_aprobacion,
             mezclar_preguntas=examen.mezclar_preguntas,
+            limite_preguntas=examen.limite_preguntas,
             mostrar_nota=examen.mostrar_nota,
             revision_habilitada=examen.revision_habilitada,
         )
@@ -180,7 +201,7 @@ class ExamenContenidoSqlRepository:
         Orden estable: alfabético ascendente por titulo.
         D3: es_correcta no expuesta (solo metadatos del examen).
         """
-        stmt = self._stmt_resumen().order_by(ExamenContenidoModel.titulo)
+        stmt = self._stmt_resumen().order_by(_orden_alfabetico(ExamenContenidoModel.titulo))
         result = await self._db.execute(stmt)
         return [self._row_to_resumen(row) for row in result.all()]
 
@@ -204,6 +225,8 @@ class ExamenContenidoSqlRepository:
         page: int = 1,
         page_size: int = 1000,
         comision_ids: list[str] | None = None,
+        filtro_materia_id: str | None = None,
+        filtro_comision_id: str | None = None,
     ) -> tuple[list[ExamenContenidoResumen], int]:
         """Lista paginada + búsqueda serverside del catálogo (tarea 4, admin-sync).
 
@@ -225,13 +248,17 @@ class ExamenContenidoSqlRepository:
         base = self._filtro_q(self._stmt_resumen(), q)
         if comision_ids is not None:
             base = base.where(ExamenContenidoModel.comision_id.in_(comision_ids))
+        if filtro_materia_id is not None:
+            base = base.where(ComisionModel.materia_id == filtro_materia_id)
+        if filtro_comision_id is not None:
+            base = base.where(ExamenContenidoModel.comision_id == filtro_comision_id)
 
         # total = cantidad de grupos (exámenes) que matchean el filtro
         total_stmt = select(func.count()).select_from(base.subquery())
         total = (await self._db.execute(total_stmt)).scalar_one()
 
         page_stmt = (
-            base.order_by(ExamenContenidoModel.titulo)
+            base.order_by(_orden_alfabetico(ExamenContenidoModel.titulo))
             .offset((page - 1) * page_size)
             .limit(page_size)
         )
@@ -260,7 +287,7 @@ class ExamenContenidoSqlRepository:
         stmt = (
             self._stmt_resumen()
             .where(ExamenContenidoModel.comision_id == comision_id)
-            .order_by(ExamenContenidoModel.titulo)
+            .order_by(_orden_alfabetico(ExamenContenidoModel.titulo))
         )
         result = await self._db.execute(stmt)
         return [self._row_to_resumen(row) for row in result.all()]
@@ -461,6 +488,7 @@ class ExamenContenidoSqlRepository:
             comision_id=model.comision_id,
             moodle_courseid=model.moodle_courseid,
             moodle_cmid=model.moodle_cmid,
+            moodle_component=model.moodle_component,
             tiempo_limite_min=model.tiempo_limite_min,
             intentos_permitidos=model.intentos_permitidos,
             apertura=model.apertura,
@@ -468,8 +496,10 @@ class ExamenContenidoSqlRepository:
             nota_maxima=float(model.nota_maxima),
             nota_aprobacion=float(model.nota_aprobacion),
             mezclar_preguntas=model.mezclar_preguntas,
+            limite_preguntas=model.limite_preguntas,
             mostrar_nota=model.mostrar_nota,
             revision_habilitada=model.revision_habilitada,
+            politica_intentos=model.politica_intentos,
             preguntas=preguntas,
         )
 
@@ -498,7 +528,7 @@ class MateriaSqlRepository:
     async def listar(self) -> list[Materia]:
         """Lista todas las materias (id, codigo, nombre), orden alfabético por nombre."""
         result = await self._db.execute(
-            select(MateriaModel).order_by(MateriaModel.nombre)
+            select(MateriaModel).order_by(_orden_alfabetico(MateriaModel.nombre))
         )
         return [
             Materia(id=m.id, codigo=m.codigo, nombre=m.nombre, activa=m.activa)
@@ -587,6 +617,37 @@ class MateriaSqlRepository:
         )
         return int(inscriptos or 0), int(examenes or 0)
 
+    async def contar_inscriptos_y_examenes_todas(self) -> dict[str, tuple[int, int]]:
+        """(inscriptos, examenes) por materia, para TODAS las materias en 2 queries.
+
+        Evita el N+1 del listado: la UI necesita saber por materia si tiene
+        inscriptos/exámenes para OCULTAR el botón de eliminar. Materias sin
+        inscriptos ni exámenes no aparecen en los mapas → se resuelven a (0, 0).
+        """
+        ins_rows = (
+            await self._db.execute(
+                select(ComisionModel.materia_id, func.count(InscripcionModel.id))
+                .select_from(ComisionModel)
+                .join(InscripcionModel, InscripcionModel.comision_id == ComisionModel.id)
+                .group_by(ComisionModel.materia_id)
+            )
+        ).all()
+        ex_rows = (
+            await self._db.execute(
+                select(ComisionModel.materia_id, func.count(ExamenContenidoModel.id))
+                .select_from(ComisionModel)
+                .join(ExamenContenidoModel, ExamenContenidoModel.comision_id == ComisionModel.id)
+                .group_by(ComisionModel.materia_id)
+            )
+        ).all()
+        ex_map = {mid: int(n or 0) for mid, n in ex_rows}
+        out: dict[str, tuple[int, int]] = {}
+        for mid, n in ins_rows:
+            out[mid] = (int(n or 0), ex_map.get(mid, 0))
+        for mid, n in ex_map.items():
+            out.setdefault(mid, (0, n))
+        return out
+
     async def eliminar(self, materia_id: str) -> bool:
         """Borra la materia (sus comisiones vacías caen por el FK ON DELETE CASCADE).
 
@@ -602,6 +663,23 @@ class MateriaSqlRepository:
         if borrado:
             await self._db.flush()
         return borrado
+
+    async def materias_a_cargo(self, docente_id: str) -> list[Materia]:
+        """Materias (distintas) donde el docente dado dicta alguna comisión (C-73 §9).
+
+        Contraparte de ``InscripcionSqlRepository.materias_inscriptas`` pero para
+        el rol DOCENTE — filtra por ``comision.docente_id``, no por inscripción.
+        """
+        orden = _orden_alfabetico(MateriaModel.nombre).label("_orden_alfabetico")
+        result = await self._db.execute(
+            select(MateriaModel)
+            .add_columns(orden)
+            .join(ComisionModel, ComisionModel.materia_id == MateriaModel.id)
+            .where(ComisionModel.docente_id == docente_id)
+            .distinct()
+            .order_by(orden)
+        )
+        return list(result.scalars().all())
 
 
 class ComisionSqlRepository:
@@ -698,7 +776,7 @@ class ComisionSqlRepository:
         result = await self._db.execute(
             select(ComisionModel)
             .where(ComisionModel.materia_id == materia_id)
-            .order_by(ComisionModel.nombre)
+            .order_by(_orden_alfabetico(ComisionModel.nombre))
         )
         return [self._to_entity(m) for m in result.scalars().all()]
 
@@ -732,6 +810,23 @@ class ComisionSqlRepository:
         await self._db.flush()
         return await self.obtener(comision_id)
 
+    async def set_activa(self, comision_id: str, activa: bool) -> Comision | None:
+        """Setea el estado `activa` de una comisión (baja lógica, C-72 §17).
+
+        Devuelve la comisión actualizada, o None si no existe. No desmatricula ni
+        borra nada: solo cambia el flag.
+        """
+        result = await self._db.execute(
+            update(ComisionModel)
+            .where(ComisionModel.id == comision_id)
+            .values(activa=activa)
+            .returning(ComisionModel.id)
+        )
+        if result.scalar_one_or_none() is None:
+            return None
+        await self._db.flush()
+        return await self.obtener(comision_id)
+
     async def contar_inscriptos_y_examenes(self, comision_id: str) -> tuple[int, int]:
         """Cuenta (inscriptos, examenes) de la comisión. Insumo del guard de borrado."""
         inscriptos = await self._db.scalar(
@@ -745,6 +840,39 @@ class ComisionSqlRepository:
             .where(ExamenContenidoModel.comision_id == comision_id)
         )
         return int(inscriptos or 0), int(examenes or 0)
+
+    async def contar_inscriptos_y_examenes_por_materia(
+        self, materia_id: str
+    ) -> dict[str, tuple[int, int]]:
+        """(inscriptos, examenes) por comisión de una materia, en 2 queries.
+
+        Evita el N+1 del listado: la UI oculta el botón de eliminar en las
+        comisiones que tienen inscriptos/exámenes. Comisiones vacías no aparecen
+        en los mapas → se resuelven a (0, 0) en el caller.
+        """
+        ins_rows = (
+            await self._db.execute(
+                select(InscripcionModel.comision_id, func.count(InscripcionModel.id))
+                .join(ComisionModel, InscripcionModel.comision_id == ComisionModel.id)
+                .where(ComisionModel.materia_id == materia_id)
+                .group_by(InscripcionModel.comision_id)
+            )
+        ).all()
+        ex_rows = (
+            await self._db.execute(
+                select(ExamenContenidoModel.comision_id, func.count(ExamenContenidoModel.id))
+                .join(ComisionModel, ExamenContenidoModel.comision_id == ComisionModel.id)
+                .where(ComisionModel.materia_id == materia_id)
+                .group_by(ExamenContenidoModel.comision_id)
+            )
+        ).all()
+        ex_map = {cid: int(n or 0) for cid, n in ex_rows}
+        out: dict[str, tuple[int, int]] = {}
+        for cid, n in ins_rows:
+            out[cid] = (int(n or 0), ex_map.get(cid, 0))
+        for cid, n in ex_map.items():
+            out.setdefault(cid, (0, n))
+        return out
 
     async def eliminar(self, comision_id: str) -> bool:
         """Borra la comisión. Devuelve True si borró, False si no existía.
@@ -761,6 +889,92 @@ class ComisionSqlRepository:
             await self._db.flush()
         return borrado
 
+    async def asignar_docente(
+        self, comision_id: str, docente_id: str | None
+    ) -> Comision | None:
+        """Asigna (o desasigna con ``None``) el docente a cargo. C-73 §9.
+
+        Devuelve ``None`` si la comisión no existe. No valida que el usuario tenga
+        rol DOCENTE: eso es regla de aplicación, no de persistencia."""
+        result = await self._db.execute(
+            update(ComisionModel)
+            .where(ComisionModel.id == comision_id)
+            .values(docente_id=docente_id)
+            .returning(ComisionModel)
+        )
+        model = result.scalar_one_or_none()
+        if model is None:
+            return None
+        await self._db.flush()
+        return self._to_entity(model)
+
+    async def nombres_de_docentes(self, ids: list[str]) -> dict[str, str]:
+        """id de usuario -> nombre visible, para las comisiones de un listado. C-73 §9.
+
+        Una sola query para todo el listado (no N+1). Cae al legajo cuando el usuario
+        no tiene nombre cargado — usuarios federados/seed viejos pueden no tenerlo, y
+        mostrar un UUID en pantalla no le sirve a nadie."""
+        limpios = [i for i in dict.fromkeys(ids) if i]
+        if not limpios:
+            return {}
+        result = await self._db.execute(
+            select(
+                UsuarioModel.id,
+                UsuarioModel.nombre,
+                UsuarioModel.apellido,
+                UsuarioModel.id_institucional,
+            ).where(UsuarioModel.id.in_(limpios))
+        )
+        nombres: dict[str, str] = {}
+        for uid, nombre, apellido, legajo in result.all():
+            completo = " ".join(p for p in (nombre, apellido) if p).strip()
+            nombres[uid] = completo or legajo
+        return nombres
+
+    async def docente_de_examen(self, examen_id: str) -> str | None:
+        """Docente a cargo de la comisión a la que pertenece el examen. C-73 §9.
+
+        Es la derivación `examen.comision_id → comision.docente_id`, y es la ÚNICA
+        fuente de "de quién es este examen". Devuelve ``None`` cuando el examen no
+        existe, no tiene comisión, o la comisión no tiene docente asignado — los tres
+        casos significan lo mismo para quien llama: no hay dueño identificable."""
+        result = await self._db.execute(
+            select(ComisionModel.docente_id)
+            .join(
+                ExamenContenidoModel,
+                ExamenContenidoModel.comision_id == ComisionModel.id,
+            )
+            .where(ExamenContenidoModel.id == examen_id)
+        )
+        return result.scalar_one_or_none()
+
+    async def comision_ids_a_cargo(self, docente_id: str) -> list[str]:
+        """Comisiones donde el docente dado es el titular (comision.docente_id).
+
+        Contraparte de ``InscripcionSqlRepository.comision_ids_inscriptas`` pero
+        para el rol DOCENTE (C-73 §9): un docente no se "inscribe" a su propia
+        comisión como alumno, así que el gate de catálogo necesita esta fuente
+        distinta — "lo que dicta", no "lo que cursa".
+        """
+        result = await self._db.execute(
+            select(ComisionModel.id).where(ComisionModel.docente_id == docente_id)
+        )
+        return list(result.scalars().all())
+
+    async def listar_a_cargo_de_materia(
+        self, docente_id: str, materia_id: str
+    ) -> list[Comision]:
+        """Comisiones de una materia donde el docente dado es el titular (C-73 §9)."""
+        result = await self._db.execute(
+            select(ComisionModel)
+            .where(
+                ComisionModel.materia_id == materia_id,
+                ComisionModel.docente_id == docente_id,
+            )
+            .order_by(_orden_alfabetico(ComisionModel.nombre))
+        )
+        return [self._to_entity(m) for m in result.scalars().all()]
+
     def _to_entity(self, model: ComisionModel) -> Comision:
         return Comision(
             id=model.id,
@@ -770,6 +984,8 @@ class ComisionSqlRepository:
             periodo=model.periodo,
             anio=model.anio,
             codigo_matriculacion=model.codigo_matriculacion,
+            activa=model.activa,
+            docente_id=model.docente_id,
         )
 
 
@@ -813,6 +1029,38 @@ class InscripcionSqlRepository:
         )
         await self._db.flush()
         return (result.rowcount or 0) > 0
+
+    async def alumno_rindio_en_comision(self, usuario_id: str, comision_id: str) -> bool:
+        """True si el alumno tiene alguna sesión de proctoring en un examen de la comisión.
+
+        Guarda de baja de inscripción: si hay actividad, la baja se bloquea para no
+        huerfanar la sesión/evidencia/nota (cadena de custodia). Cruza
+        ``usuario.id_institucional`` con ``proctoring_session.alumno_idnumber`` sobre
+        los exámenes cuya ``comision_id`` es la de la inscripción.
+        """
+        from app.infrastructure.persistence.models.proctoring import (
+            ProctoringSessionModel,
+        )
+
+        idnumber = (
+            select(UsuarioModel.id_institucional)
+            .where(UsuarioModel.id == usuario_id)
+            .scalar_subquery()
+        )
+        examenes_de_comision = select(ExamenContenidoModel.id).where(
+            ExamenContenidoModel.comision_id == comision_id
+        )
+        n = (
+            await self._db.execute(
+                select(func.count())
+                .select_from(ProctoringSessionModel)
+                .where(
+                    ProctoringSessionModel.alumno_idnumber == idnumber,
+                    ProctoringSessionModel.examen_contenido_id.in_(examenes_de_comision),
+                )
+            )
+        ).scalar_one()
+        return int(n or 0) > 0
 
     async def existe(self, usuario_id: str, comision_id: str) -> bool:
         """True si el alumno ya está inscripto a la comisión."""
@@ -860,9 +1108,17 @@ class InscripcionSqlRepository:
         return list(result.scalars().all())
 
     async def materias_inscriptas(self, id_institucional: str) -> list[MateriaModel]:
-        """Materias (distintas) donde el alumno tiene alguna comisión inscripta (C-71)."""
+        """Materias (distintas) donde el alumno tiene alguna comisión inscripta (C-71).
+
+        La clave de orden va TAMBIÉN en el SELECT: con ``DISTINCT``, Postgres exige
+        que toda expresión del ORDER BY esté en la lista de selección
+        (InvalidColumnReference si no). Es determinista igual: la clave se deriva de
+        ``nombre``, así que no agrega filas al conjunto distinto.
+        """
+        orden = _orden_alfabetico(MateriaModel.nombre).label("_orden_alfabetico")
         result = await self._db.execute(
             select(MateriaModel)
+            .add_columns(orden)
             .join(ComisionModel, ComisionModel.materia_id == MateriaModel.id)
             .join(InscripcionModel, InscripcionModel.comision_id == ComisionModel.id)
             .join(UsuarioModel, UsuarioModel.id == InscripcionModel.usuario_id)
@@ -871,8 +1127,10 @@ class InscripcionSqlRepository:
                 UsuarioModel.eliminado_en.is_(None),
             )
             .distinct()
-            .order_by(MateriaModel.nombre)
+            .order_by(orden)
         )
+        # scalars() toma la primera columna de cada fila = la entidad MateriaModel;
+        # la clave de orden viaja solo para satisfacer el DISTINCT.
         return list(result.scalars().all())
 
     async def comisiones_inscriptas_de_materia(

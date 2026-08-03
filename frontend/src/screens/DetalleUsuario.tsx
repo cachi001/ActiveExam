@@ -74,7 +74,7 @@ function SectionSkeleton() {
   return (
     <div className="space-y-3 animate-pulse">
       {[1, 2, 3].map((i) => (
-        <div key={i} className="h-5 bg-surface-container-high rounded-lg w-3/4" />
+        <div key={i} className="h-5 bg-surface-50 rounded-lg w-3/4" />
       ))}
     </div>
   );
@@ -182,7 +182,7 @@ export default function DetalleUsuario() {
                       className="w-20 h-20 rounded-2xl object-cover border border-outline-variant/40 shadow-sm"
                     />
                   ) : (
-                    <div className="w-20 h-20 rounded-2xl bg-secondary-container text-on-secondary flex items-center justify-center font-bold text-[32px] shadow-sm">
+                    <div className="w-20 h-20 rounded-2xl bg-primary text-on-primary flex items-center justify-center font-bold text-[32px] shadow-sm">
                       {(u.nombre ?? u.email).charAt(0).toUpperCase()}
                     </div>
                   )}
@@ -214,6 +214,9 @@ export default function DetalleUsuario() {
           })()}
         </Card>
 
+        {/* ── Secciones 2 y 3: solo para estudiantes ── */}
+        {(usuario.status !== 'ok' || usuario.data.roles.includes('estudiante')) && (<>
+
         {/* ── Sección 2: Consentimiento de perfil ── */}
         <Card>
           <SectionTitle sub="Estado del consentimiento informado de perfil del usuario.">
@@ -226,7 +229,7 @@ export default function DetalleUsuario() {
             const c = consent.data;
             if (!c.estado) {
               return (
-                <div className="flex items-center gap-2 text-on-surface-variant bg-surface-container rounded-lg px-3 py-3">
+                <div className="flex items-center gap-2 text-on-surface-variant bg-surface-50 rounded-lg px-3 py-3">
                   <Icon name="info" className="text-[18px] shrink-0" />
                   <span className="text-[13px]">Sin consentimiento registrado para este usuario.</span>
                 </div>
@@ -246,7 +249,7 @@ export default function DetalleUsuario() {
                   c.hash_texto
                     ? (
                       <span
-                        className="font-mono text-[11px] bg-surface-container px-2 py-0.5 rounded-md truncate max-w-[260px] inline-block"
+                        className="font-mono text-[11px] bg-surface-50 px-2 py-0.5 rounded-md truncate max-w-[260px] inline-block"
                         title={c.hash_texto}
                       >
                         {c.hash_texto.slice(0, 28)}…
@@ -280,7 +283,7 @@ export default function DetalleUsuario() {
                       className="w-28 h-28 rounded-2xl object-cover border border-outline-variant/50 shadow-sm"
                     />
                   ) : (
-                    <div className="w-28 h-28 rounded-2xl bg-surface-container-high border border-outline-variant/40 flex flex-col items-center justify-center gap-1 text-on-surface-variant">
+                    <div className="w-28 h-28 rounded-2xl bg-surface-50 border border-outline-variant/40 flex flex-col items-center justify-center gap-1 text-on-surface-variant">
                       <Icon name="face" className="text-[32px]" />
                       <span className="text-[11px]">{b.tiene_foto ? 'Cargando…' : 'Sin foto'}</span>
                     </div>
@@ -290,19 +293,20 @@ export default function DetalleUsuario() {
 
                 {/* Metadatos */}
                 <div className="flex-1 min-w-0 divide-y divide-outline-variant/30">
-                  <DataRow label="Referencia vigente" value={
+                  <DataRow label="Estado" value={
                     <Badge tone={b.tiene_referencia_vigente ? 'success' : 'neutral'} dot>
-                      {b.tiene_referencia_vigente ? 'Sí' : 'No'}
+                      {b.tiene_referencia_vigente ? 'Referencia vigente' : 'Sin referencia registrada'}
                     </Badge>
                   } />
-                  <DataRow label="Algoritmo" value={b.algoritmo ?? '—'} />
-                  <DataRow label="Fecha de creación" value={formatFecha(b.created_at)} />
+                  {b.created_at && (
+                    <DataRow label="Fecha de captura" value={formatFecha(b.created_at)} />
+                  )}
                   <DataRow
-                    label="Fecha de expiración"
+                    label="Vencimiento"
                     value={
                       b.fecha_expiracion
                         ? formatFecha(b.fecha_expiracion)
-                        : <span className="text-on-surface-variant italic">Sin expiración (vigente mientras no se renueve)</span>
+                        : <span className="text-on-surface-variant italic">Sin vencimiento (vigente mientras no se renueve)</span>
                     }
                   />
                   <DataRow label="Foto registrada" value={
@@ -310,18 +314,18 @@ export default function DetalleUsuario() {
                       {b.tiene_foto ? 'Sí' : 'No'}
                     </Badge>
                   } />
+                  {b.foto_created_at && (
+                    <DataRow label="Fecha de la foto" value={formatFecha(b.foto_created_at)} />
+                  )}
                   {b.foto_hash && (
                     <DataRow label="Hash de la foto" value={
                       <span
-                        className="font-mono text-[11px] bg-surface-container px-2 py-0.5 rounded-md truncate max-w-[260px] inline-block"
+                        className="font-mono text-[11px] bg-surface-50 px-2 py-0.5 rounded-md truncate max-w-[260px] inline-block"
                         title={b.foto_hash}
                       >
                         {b.foto_hash.slice(0, 28)}…
                       </span>
                     } />
-                  )}
-                  {b.foto_created_at && (
-                    <DataRow label="Fecha de la foto" value={formatFecha(b.foto_created_at)} />
                   )}
                 </div>
               </div>
@@ -335,6 +339,8 @@ export default function DetalleUsuario() {
             </p>
           </div>
         </Card>
+
+        </>)}
       </div>
     </StaffShell>
   );

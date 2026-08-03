@@ -154,6 +154,7 @@ def token_for(
     mfa: bool = True,
     username: str | None = None,
     email: str = "test@uni.edu",
+    subject: str = "test-subject",
 ) -> str:
     """Emite un JWT HS256 de test con los roles dados (claims shape Keycloak).
 
@@ -171,7 +172,7 @@ def token_for(
     claims: dict = {
         "iss": _TEST_JWT_ISSUER,
         "aud": _TEST_JWT_AUDIENCE,
-        "sub": "test-subject",
+        "sub": subject,
         "preferred_username": username or ("+".join(roles) or "anon"),
         "email": email,
         "exp": 9999999999,
@@ -188,10 +189,17 @@ def auth_headers(
     mfa: bool = True,
     username: str | None = None,
     email: str = "test@uni.edu",
+    subject: str = "test-subject",
 ) -> dict[str, str]:
-    """Header Authorization Bearer con un token de test para los roles dados."""
+    """Header Authorization Bearer con un token de test para los roles dados.
+
+    ``subject`` fija el claim ``sub``, del que el dominio deriva
+    ``principal.subject`` = id del usuario. Necesario para los tests de PERTENENCIA
+    (C-73 §9): dos docentes distintos son dos ``sub`` distintos."""
     return {
-        "Authorization": f"Bearer {token_for(roles, mfa=mfa, username=username, email=email)}"
+        "Authorization": (
+            f"Bearer {token_for(roles, mfa=mfa, username=username, email=email, subject=subject)}"
+        )
     }
 
 

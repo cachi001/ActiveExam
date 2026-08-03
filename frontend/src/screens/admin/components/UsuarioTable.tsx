@@ -1,4 +1,5 @@
-import { Icon, Avatar, Button } from '../../../ui/components';
+import type { ReactNode } from 'react';
+import { Icon, Avatar } from '../../../ui/components';
 import { ActionMenu } from '../../../ui/ActionMenu';
 import { RolBadge, EstadoSwitch } from './UsuarioHelpers';
 import type { UsuarioAdmin } from '../../../lib/types';
@@ -8,27 +9,27 @@ interface UsuarioTableProps {
   fotos: Record<string, string>;
   cargando: boolean;
   total: number;
-  totalPaginas: number;
-  paginaActual: number;
   esPropioUsuario: (u: UsuarioAdmin) => boolean;
   onVerDetalle: (u: UsuarioAdmin) => void;
   onEditar: (u: UsuarioAdmin) => void;
   onToggleEstado: (u: UsuarioAdmin) => void;
-  onIrPagina: (p: number) => void;
+  /** Slot a la derecha del header (p. ej. el selector "Por página"). */
+  headerRight?: ReactNode;
 }
 
 export function UsuarioTable({
-  usuarios, fotos, cargando, total, totalPaginas, paginaActual,
-  esPropioUsuario, onVerDetalle, onEditar, onToggleEstado, onIrPagina,
+  usuarios, fotos, cargando, total,
+  esPropioUsuario, onVerDetalle, onEditar, onToggleEstado, headerRight,
 }: UsuarioTableProps) {
   return (
     <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/60 shadow-card overflow-hidden">
       <div className="px-4 py-3 border-b border-outline-variant/40 flex items-center gap-2">
-        <Icon name="group" className="text-[16px] text-primary shrink-0" />
+        <Icon name="group" className="text-[16px] text-on-surface-variant shrink-0" />
         <h2 className="text-[13px] font-semibold text-on-surface">
           Usuarios
           <span className="text-on-surface-variant font-normal ml-1">({total})</span>
         </h2>
+        {headerRight && <div className="ml-auto">{headerRight}</div>}
       </div>
 
       {cargando ? (
@@ -63,7 +64,7 @@ export function UsuarioTable({
                         {fotos[u.id] ? (
                           <Avatar src={fotos[u.id]} alt={`Foto de ${u.nombre ?? u.email}`} size={34} />
                         ) : (
-                          <div className="w-8 h-8 rounded-full bg-secondary-container text-on-secondary flex items-center justify-center font-semibold text-[13px] shrink-0">
+                          <div className="w-8 h-8 rounded-full bg-primary text-on-primary flex items-center justify-center font-semibold text-[13px] shrink-0">
                             {(u.nombre ?? u.email).charAt(0).toUpperCase()}
                           </div>
                         )}
@@ -82,7 +83,7 @@ export function UsuarioTable({
                       {u.email}
                     </td>
                     <td className="px-4 py-3.5 whitespace-nowrap">
-                      <span className="font-mono text-[12px] text-on-surface-variant bg-surface-container px-2 py-0.5 rounded-md">
+                      <span className="font-mono text-[12px] text-on-surface-variant bg-surface-100 border border-outline-variant/40 px-2 py-0.5 rounded-md">
                         {u.id_institucional}
                       </span>
                     </td>
@@ -116,7 +117,7 @@ export function UsuarioTable({
                 {fotos[u.id] ? (
                   <Avatar src={fotos[u.id]} alt={`Foto de ${u.nombre ?? u.email}`} size={40} />
                 ) : (
-                  <div className="w-10 h-10 rounded-full bg-secondary-container text-on-secondary flex items-center justify-center font-semibold text-[14px] shrink-0">
+                  <div className="w-10 h-10 rounded-full bg-primary text-on-primary flex items-center justify-center font-semibold text-[14px] shrink-0">
                     {(u.nombre ?? u.email).charAt(0).toUpperCase()}
                   </div>
                 )}
@@ -150,20 +151,6 @@ export function UsuarioTable({
             ))}
           </div>
         </>
-      )}
-
-      {totalPaginas > 1 && (
-        <div className="px-4 py-3 flex items-center justify-between border-t border-outline-variant/40">
-          <Button size="sm" variant="ghost" icon="chevron_left" disabled={paginaActual <= 1} onClick={() => onIrPagina(paginaActual - 1)}>
-            Anterior
-          </Button>
-          <span className="text-[11px] text-on-surface-variant">
-            Página {paginaActual} de {totalPaginas}
-          </span>
-          <Button size="sm" variant="ghost" iconRight="chevron_right" disabled={paginaActual >= totalPaginas} onClick={() => onIrPagina(paginaActual + 1)}>
-            Siguiente
-          </Button>
-        </div>
       )}
     </div>
   );

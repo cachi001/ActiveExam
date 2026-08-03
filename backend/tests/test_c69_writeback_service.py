@@ -96,15 +96,111 @@ def moodle_client():
     config = MoodleClientConfig(
         base_url=BASE,
         ws_token="token_secreto",  # noqa: S106
-        courseid=10,
-        cmid=5,
     )
     return MoodleRestClient(config=config)
 
 
+class _ServicioConDocenteResuelto(MoodleWritebackService):
+    """Servicio de write-back con la identidad del docente YA resuelta.
+
+    POR QUE EXISTE (C-73): desde que la nota sale con la credencial del DOCENTE, si no
+    hay docente resoluble el servicio RETIENE la nota (motivo `sin_credencial_docente`)
+    y nunca llega a Moodle. Eso es correcto y deliberado — pero deja a estos tests sin
+    poder ejercitar lo que vinieron a verificar, que es la MECANICA del write-back:
+    idempotencia, reintento, auditoria y destino por examen.
+
+    Resolver al docente de verdad exigiria sembrar la cadena
+    sesion -> examen_contenido -> comision -> usuario, o sea traer las tablas `comision`
+    y `usuario` (con sus FKs) a un fixture que hoy solo crea las de proctoring. Seria
+    montar media base para probar algo ortogonal.
+
+    El gate de credencial NO queda sin cobertura: lo prueba
+    `tests/test_c73_credencial_en_writeback.py`, que es su lugar.
+
+    Se sobreescribe el resolvedor, NUNCA la base de datos (regla dura de codigo #4).
+    """
+
+    async def _credencial_para(self, db, session_id):
+        return "token_del_docente", "docente-test-1", "Laura Fernández", None  # noqa: S106
+
+
 @pytest.fixture
 def writeback_svc(moodle_client):
-    return MoodleWritebackService(moodle_client=moodle_client)
+    return _ServicioConDocenteResuelto(moodle_client=moodle_client)
+
+
+# cmids que usan los tests de este archivo. `mod_assign_get_assignments` devuelve
+# TODAS las tareas del curso y el filtrado por cmid lo hace el cliente, asi que
+# alcanza con publicarlas juntas en una sola respuesta.
+_CMIDS_DE_PRUEBA = (5, 56, 303)
+
+
+def _assignment_id_de(cmid: int) -> int:
+    """assign.id simulado para un cmid. A proposito NO es igual al cmid.
+
+    Si el mock devolviera el mismo numero, un bug que usara el cmid donde va el
+    instance id pasaria los tests sin que nadie se enterara.
+    """
+    return 900 + cmid
+
+
+def _respuesta_assignments() -> Response:
+    """Respuesta de `mod_assign_get_assignments`: tareas numericas sobre 100.
+
+    Hace falta desde C-73 Fase 1: el camino por defecto (`mod_assign`) resuelve
+    cmid -> assign.id ANTES de escribir. Un mock que solo contestaba
+    `core_grades_update_grades` dejaba esa resolucion sin respuesta util y el
+    write-back fallaba con "no es una tarea del curso".
+    """
+    return Response(
+        200,
+        json={
+            "courses": [
+                {
+                    "id": 10,
+                    "assignments": [
+                        {"cmid": c, "id": _assignment_id_de(c), "grade": 100}
+                        for c in _CMIDS_DE_PRUEBA
+                    ],
+                }
+            ]
+        },
+    )
+
+
+# Identidades que usan los tests de este archivo, con el userid de Moodle que cada uno
+# espera. Desde C-73 Fase 2 el mapeo de identidad se hace entre los MATRICULADOS del
+# curso (`core_enrol_get_enrolled_users`) con el token del docente, en vez de
+# `core_user_get_users_by_field` con el institucional. Como el matcheo es por idnumber
+# exacto, alcanza con publicar todas juntas en una respuesta.
+_MATRICULADOS_DE_PRUEBA = (
+    (7, "legajo1", "a@b.com"),
+    (42, "legajo2", "b@b.com"),
+    (99, "legajo3", "c@c.com"),
+    (55, "legajo5", "e@e.com"),
+    (77, "legZ", "z@z.com"),
+)
+
+
+def _respuesta_matriculados() -> Response:
+    """Respuesta de `core_enrol_get_enrolled_users` con los alumnos de los tests."""
+    return Response(
+        200,
+        json=[
+            {"id": uid, "idnumber": idn, "email": mail}
+            for uid, idn, mail in _MATRICULADOS_DE_PRUEBA
+        ],
+    )
+
+
+def _es_push_de_nota(content: str) -> bool:
+    """True si el request es la ESCRITURA de la nota, por cualquiera de los caminos.
+
+    `mod_assign_save_grade` (tareas, camino nuevo) o `core_grades_update_grades`
+    (cuestionarios, camino viejo). Contar solo uno haria que la idempotencia
+    pareciera cumplirse cuando en realidad se estaria escribiendo por el otro.
+    """
+    return "mod_assign_save_grade" in content or "core_grades_update_grades" in content
 
 
 async def _crear_sesion(db: AsyncSession) -> str:
@@ -112,6 +208,34 @@ async def _crear_sesion(db: AsyncSession) -> str:
     db.add(sesion)
     await db.flush()
     return sesion.id
+
+
+async def _crear_sesion_con_destino(
+    db: AsyncSession, *, courseid: int = 10, cmid: int = 5
+) -> str:
+    """Sesion cuyo examen YA tiene destino en el campus.
+
+    Los tests que ejercitan el push necesitan un destino explicito: desde que se
+    elimino el `courseid`/`cmid` global (que mandaba las notas sin destino a la
+    libreta equivocada), sin destino no se escribe nada. Se siembra el estado con el
+    destino porque `persistir_nota_pendiente` preserva el destino de la fila ya
+    creada — es el mismo camino que usa la finalizacion real del examen.
+    """
+    session_id = await _crear_sesion(db)
+    db.add(
+        MoodleWritebackEstadoModel(
+            session_id=session_id,
+            alumno_idnumber="pendiente",
+            alumno_email="pendiente@test.local",
+            nota=0.0,
+            estado="pendiente",
+            intento=0,
+            moodle_courseid=courseid,
+            moodle_cmid=cmid,
+        )
+    )
+    await db.flush()
+    return session_id
 
 
 # ---------------------------------------------------------------------------
@@ -158,16 +282,20 @@ async def test_writeback_crea_estado_pendiente(session, writeback_svc):
 @respx.mock
 async def test_writeback_idempotente_no_duplica(session, writeback_svc):
     """D10: reintento sobre una nota ya 'enviado' NO duplica el push a Moodle."""
-    session_id = await _crear_sesion(session)
+    session_id = await _crear_sesion_con_destino(session)
     push_count = [0]
 
     def side_effect(request, **kwargs):
         content = request.content.decode()
+        if "core_enrol_get_enrolled_users" in content:
+            return _respuesta_matriculados()
         if "core_user_get_users_by_field" in content or "field=idnumber" in content:
             return Response(200, json=[{"id": 42}])
-        if "core_grades_update_grades" in content:
+        if "mod_assign_get_assignments" in content:
+            return _respuesta_assignments()
+        if _es_push_de_nota(content):
             push_count[0] += 1
-            return Response(200, json={"warnings": []})
+            return Response(200, text="null")
         return Response(200, json={"warnings": []})
 
     respx.post(f"{BASE}/webservice/rest/server.php").mock(side_effect=side_effect)
@@ -193,24 +321,122 @@ async def test_writeback_idempotente_no_duplica(session, writeback_svc):
     assert push_count[0] == 1  # sigue siendo 1 — idempotente
 
 
+# ---------------------------------------------------------------------------
+# C-73: component por examen (mod_assign / mod_quiz) — devolver nota en cuestionarios
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_writeback_persiste_component_por_examen(session, writeback_svc):
+    """C-73: el component ('mod_quiz') se persiste en el estado para el envío manual."""
+    session_id = await _crear_sesion(session)
+    await writeback_svc.iniciar_writeback(
+        db=session,
+        session_id=session_id,
+        nota=77.0,
+        alumno_idnumber="legajo1",
+        alumno_email="a@b.com",
+        moodle_courseid=10,
+        moodle_cmid=5,
+        moodle_component="mod_quiz",
+    )
+    row = await session.execute(
+        select(MoodleWritebackEstadoModel).where(
+            MoodleWritebackEstadoModel.session_id == session_id
+        )
+    )
+    assert row.scalar_one().moodle_component == "mod_quiz"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_writeback_component_none_cae_a_global(session, writeback_svc):
+    """C-73: sin component explícito, cae al global del cliente (mod_assign)."""
+    session_id = await _crear_sesion(session)
+    await writeback_svc.iniciar_writeback(
+        db=session,
+        session_id=session_id,
+        nota=5.0,
+        alumno_idnumber="legajo1",
+        alumno_email="a@b.com",
+    )
+    row = await session.execute(
+        select(MoodleWritebackEstadoModel).where(
+            MoodleWritebackEstadoModel.session_id == session_id
+        )
+    )
+    assert row.scalar_one().moodle_component == "mod_assign"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_ejecutar_writeback_usa_component_por_examen(session, writeback_svc):
+    """C-73: ejecutar_writeback pasa el component persistido (mod_quiz) al write_grade,
+    SIN pisarlo con el global al re-llamar iniciar internamente."""
+    session_id = await _crear_sesion(session)
+    # 1) al finalizar: se persiste el destino con component mod_quiz
+    await writeback_svc.iniciar_writeback(
+        db=session,
+        session_id=session_id,
+        nota=77.0,
+        alumno_idnumber="legajo1",
+        alumno_email="a@b.com",
+        moodle_courseid=10,
+        moodle_cmid=5,
+        moodle_component="mod_quiz",
+    )
+    captured = {}
+
+    def side_effect(request, **kwargs):
+        content = request.content.decode()
+        if "core_enrol_get_enrolled_users" in content:
+            return _respuesta_matriculados()
+        if "core_user_get_users_by_field" in content or "field=idnumber" in content:
+            return Response(200, json=[{"id": 7}])
+        if "core_grades_update_grades" in content:
+            captured["content"] = content
+        return Response(200, json={"warnings": []})
+
+    respx.post(f"{BASE}/webservice/rest/server.php").mock(side_effect=side_effect)
+
+    # 2) el admin dispara el sync (sin component) — no debe pisar el mod_quiz
+    await writeback_svc.ejecutar_writeback(
+        db=session,
+        session_id=session_id,
+        nota=77.0,
+        alumno_idnumber="legajo1",
+        alumno_email="a@b.com",
+    )
+    assert "component=mod_quiz" in captured["content"]
+    assert "component=mod_assign" not in captured["content"]
+
+
 @pytest.mark.asyncio
 @respx.mock
 async def test_writeback_fallido_queda_reintenable(session, writeback_svc):
     """D10: fallo de red deja estado 'fallido' reintenable con la misma nota."""
     import httpx
 
-    session_id = await _crear_sesion(session)
+    session_id = await _crear_sesion_con_destino(session)
 
     call_count = [0]
 
     def side_effect(request, **kwargs):
         content = request.content.decode()
+        if "core_enrol_get_enrolled_users" in content:
+            return _respuesta_matriculados()
         if "core_user_get_users_by_field" in content or "field=idnumber" in content:
             return Response(200, json=[{"id": 99}])
+        if "mod_assign_get_assignments" in content:
+            # La resolucion del assignment no cuenta como intento de push: lo que
+            # este test ejercita es que un fallo de RED al escribir deja la nota
+            # reintenable, no que se caiga la resolucion.
+            return _respuesta_assignments()
         call_count[0] += 1
         if call_count[0] == 1:
             raise httpx.ConnectError("Network down")
-        return Response(200, json={"warnings": []})
+        return Response(200, text="null")
 
     respx.post(f"{BASE}/webservice/rest/server.php").mock(side_effect=side_effect)
 
@@ -284,8 +510,13 @@ async def test_iniciar_writeback_persiste_target_por_examen(session, writeback_s
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_iniciar_writeback_fallback_global_cuando_none(session, writeback_svc):
-    """D12: sin target (None) el estado guarda el global del cliente (courseid=10, cmid=5)."""
+async def test_iniciar_writeback_sin_target_queda_sin_destino(session, writeback_svc):
+    """Sin target del examen, el estado queda SIN destino — no se inventa uno global.
+
+    Antes se copiaba el courseid/cmid global del cliente, con lo cual la nota salia
+    hacia la libreta de otra materia. Ahora la nota se persiste igual (el alumno no
+    pierde su calificacion) pero sin destino: queda retenida como "sin_destino" y
+    visible en la pantalla de resultados hasta que alguien configure el examen."""
     session_id = await _crear_sesion(session)
 
     await writeback_svc.iniciar_writeback(
@@ -303,8 +534,10 @@ async def test_iniciar_writeback_fallback_global_cuando_none(session, writeback_
             )
         )
     ).scalar_one()
-    assert estado.moodle_courseid == 10  # global de config
-    assert estado.moodle_cmid == 5
+    assert estado.moodle_courseid is None
+    assert estado.moodle_cmid is None
+    # La nota SI se guarda: no se pierde por no tener a donde mandarla.
+    assert float(estado.nota) == 7.0
 
 
 @pytest.mark.asyncio
@@ -316,10 +549,16 @@ async def test_ejecutar_writeback_pushea_al_target_por_examen(session, writeback
 
     def side_effect(request, **kwargs):
         content = request.content.decode()
+        if "core_enrol_get_enrolled_users" in content:
+            return _respuesta_matriculados()
         if "core_user_get_users_by_field" in content or "field=idnumber" in content:
             return Response(200, json=[{"id": 77}])
-        if "core_grades_update_grades" in content:
+        if "mod_assign_get_assignments" in content:
+            captured["resolve"] = content
+            return _respuesta_assignments()
+        if _es_push_de_nota(content):
             captured["grade"] = content
+            return Response(200, text="null")
         return Response(200, json={"warnings": []})
 
     respx.post(f"{BASE}/webservice/rest/server.php").mock(side_effect=side_effect)
@@ -342,9 +581,17 @@ async def test_ejecutar_writeback_pushea_al_target_por_examen(session, writeback
         alumno_email="z@z.com",
     )
 
+    # El destino por examen se verifica en los DOS pasos del camino de tareas:
+    # la resolucion pregunta por el curso del examen, y la escritura va al
+    # assign.id de ESE cmid. Antes se miraba `courseid=`/`activityid=` del payload
+    # de `core_grades_update_grades`; `mod_assign_save_grade` no los lleva (el
+    # assignment ya identifica curso y actividad), asi que se comprueba donde
+    # ahora vive el dato.
+    assert "resolve" in captured
+    assert "courseids%5B0%5D=4040" in captured["resolve"]
+
     assert "grade" in captured
-    assert "courseid=4040" in captured["grade"]
-    assert "activityid=303" in captured["grade"]
+    assert f"assignmentid={_assignment_id_de(303)}" in captured["grade"]
 
 
 # ---------------------------------------------------------------------------
@@ -393,12 +640,18 @@ async def test_moodle_caido_no_bloquea_finalizacion(session, writeback_svc):
 @respx.mock
 async def test_auditoria_registra_intento_exitoso(session, writeback_svc):
     """7.11-7.12: cada intento exitoso deja una entrada de audit sin token."""
-    session_id = await _crear_sesion(session)
+    session_id = await _crear_sesion_con_destino(session)
 
     def side_effect(request, **kwargs):
         content = request.content.decode()
+        if "core_enrol_get_enrolled_users" in content:
+            return _respuesta_matriculados()
         if "core_user_get_users_by_field" in content or "field=idnumber" in content:
             return Response(200, json=[{"id": 55}])
+        if "mod_assign_get_assignments" in content:
+            return _respuesta_assignments()
+        if _es_push_de_nota(content):
+            return Response(200, text="null")
         return Response(200, json={"warnings": []})
 
     respx.post(f"{BASE}/webservice/rest/server.php").mock(side_effect=side_effect)

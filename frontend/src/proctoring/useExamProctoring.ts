@@ -34,6 +34,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { RefObject } from 'react';
 import { api } from '../lib/api';
 import { useApp } from '../lib/store';
+import { useAuth } from '../lib/authStore';
 import { captureVideoFrame } from '../lib/videoFrameCapture';
 import { MediaPipeVisionEngine } from '../vision/MediaPipeVisionEngine';
 import type { VisionEngine } from '../vision/VisionEngine';
@@ -83,6 +84,8 @@ const EVENTOS_CON_EVIDENCIA_VISUAL = new Set<string>([
   'rostro_ausente',
   'multiples_rostros',
   'mirada_desviada_sostenida',
+  'monitor_adicional',
+  'reanudacion_tardia',
 ]);
 
 /**
@@ -250,7 +253,7 @@ export function useExamProctoring(
 ): UseExamProctoringResult {
   const setProctoringSessionId = useApp((s) => s.setProctoringSessionId);
   const setProctoringSessionCreadaEn = useApp((s) => s.setProctoringSessionCreadaEn);
-  const principal = useApp((s) => s.principal);
+  const principal = useAuth((s) => s.principal);
   const addScore = useApp((s) => s.addScore);
   // C-64 D1: si Consent.tsx ya creó la sesión anticipada, reutilizarla — no crear otra.
   const existingSessionId = useApp((s) => s.proctoringSessionId);

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Icon } from '../components';
 import { Link } from '../../lib/router';
+import { useUiPrefs } from '../../lib/useUiPrefs';
 import type { StaffNavItem } from '../nav';
 
 export const TOPBAR_H = 56;
@@ -23,17 +24,11 @@ export function useIsDesktop() {
   return isDesktop;
 }
 
+// Delegado al store persistido `useUiPrefs` (C-73): la preferencia sobrevive la
+// recarga vía `persist` (allowlist), en vez del localStorage crudo de antes.
 export function useSidebarCollapsed(): [boolean, () => void] {
-  const [collapsed, setCollapsed] = useState<boolean>(() => {
-    try { return localStorage.getItem(LS_SIDEBAR_COLLAPSED) === '1'; } catch { return false; }
-  });
-  const toggle = () => {
-    setCollapsed((v) => {
-      const next = !v;
-      try { localStorage.setItem(LS_SIDEBAR_COLLAPSED, next ? '1' : '0'); } catch { /* noop */ }
-      return next;
-    });
-  };
+  const collapsed = useUiPrefs((s) => s.sidebarColapsado);
+  const toggle = useUiPrefs((s) => s.toggleSidebar);
   return [collapsed, toggle];
 }
 

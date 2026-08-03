@@ -96,23 +96,25 @@ export default function SeccionDeteccion() {
 
   if (cargando) {
     return (
-      <div className="h-[300px] rounded-2xl border border-outline-variant/40 bg-white animate-pulse max-w-4xl" />
+      <div className="h-[300px] rounded-2xl border border-outline-variant/40 bg-white animate-pulse" />
     );
   }
 
   return (
-    <div className="space-y-lg max-w-4xl">
-      {/* B: Título propio de la sección */}
-      <div>
-        <h2 className="font-headline text-title-xl text-on-surface tracking-tight">Detección</h2>
-        <p className="text-[13px] text-on-surface-variant mt-1">
-          Cuándo y con qué tolerancia el motor marca cada situación. Más tiempo equivale a menos falsas alarmas;
-          mayor sensibilidad avisa con menos margen. Por defecto, valores conservadores para evitar molestias innecesarias.
+    <div className="space-y-lg">
+      {/* Encabezado editorial: título con peso + descripción + divisor. */}
+      <div className="pb-4 border-b border-outline-variant/40">
+        <h2 className="font-headline text-[24px] font-bold text-on-surface tracking-tight leading-tight">Detección</h2>
+        <p className="text-[13.5px] text-on-surface-variant leading-relaxed max-w-2xl mt-2">
+          Cuándo y con qué tolerancia el motor marca cada situación. Más tiempo equivale a menos
+          falsas alarmas; mayor sensibilidad avisa con menos margen. Por defecto, valores
+          conservadores para evitar molestias innecesarias.
         </p>
       </div>
-
-      {/* F: Sub-sección "Rostro en cámara" */}
-      <Card className="space-y-md">
+      {/* Sub-secciones lado a lado en desktop, igualadas en alto (items-stretch). */}
+      <div className="grid lg:grid-cols-2 gap-lg items-stretch">
+      {/* Sub-sección "Rostro en cámara" */}
+      <Card className="h-full space-y-md">
         <SectionTitle sub="Cuándo el sistema alerta por ausencia o exceso de personas en cámara">
           Rostro en cámara
         </SectionTitle>
@@ -139,7 +141,7 @@ export default function SeccionDeteccion() {
                 const v = parseFloat(e.target.value);
                 if (!isNaN(v)) setFriendly((p) => ({ ...p, face_absent_seg: v }));
               }}
-              className="w-full px-sm py-base text-label-md rounded-xl border border-outline-variant bg-white font-mono focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors"
+              className="w-full px-sm py-base text-label-md rounded-xl border border-outline-variant bg-white font-mono focus:outline-none focus:border-surface-500 transition-colors"
             />
           </div>
 
@@ -163,14 +165,14 @@ export default function SeccionDeteccion() {
                 const v = parseInt(e.target.value, 10);
                 if (!isNaN(v)) setFriendly((p) => ({ ...p, multiple_faces_display: v }));
               }}
-              className="w-full px-sm py-base text-label-md rounded-xl border border-outline-variant bg-white font-mono focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors"
+              className="w-full px-sm py-base text-label-md rounded-xl border border-outline-variant bg-white font-mono focus:outline-none focus:border-surface-500 transition-colors"
             />
           </div>
         </div>
       </Card>
 
       {/* F: Sub-sección "Mirada" */}
-      <Card className="space-y-md">
+      <Card className="h-full space-y-md">
         <SectionTitle sub="Tolerancia y tiempo antes de alertar por mirada fuera de pantalla">
           Mirada
         </SectionTitle>
@@ -195,7 +197,7 @@ export default function SeccionDeteccion() {
                   className={`flex-1 py-sm px-base rounded-xl border text-label-sm font-medium transition-colors ${
                     friendly.gaze_deviation_label === opt.value
                       ? 'bg-primary text-on-primary border-primary'
-                      : 'bg-white text-on-surface border-outline-variant hover:border-primary/50'
+                      : 'bg-white text-on-surface border-outline-variant hover:border-primary-200'
                   }`}
                 >
                   {opt.label}
@@ -228,7 +230,7 @@ export default function SeccionDeteccion() {
                 const v = parseFloat(e.target.value);
                 if (!isNaN(v)) setFriendly((p) => ({ ...p, gaze_sustained_seg: v }));
               }}
-              className="w-full px-sm py-base text-label-md rounded-xl border border-outline-variant bg-white font-mono focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors"
+              className="w-full px-sm py-base text-label-md rounded-xl border border-outline-variant bg-white font-mono focus:outline-none focus:border-surface-500 transition-colors"
             />
           </div>
 
@@ -251,7 +253,7 @@ export default function SeccionDeteccion() {
                   className={`flex-1 py-sm px-base rounded-xl border text-label-sm font-medium transition-colors ${
                     friendly.gaze_fixation_label === opt.value
                       ? 'bg-primary text-on-primary border-primary'
-                      : 'bg-white text-on-surface border-outline-variant hover:border-primary/50'
+                      : 'bg-white text-on-surface border-outline-variant hover:border-primary-200'
                   }`}
                 >
                   {opt.label}
@@ -265,15 +267,12 @@ export default function SeccionDeteccion() {
         </div>
       </Card>
 
-      {/* C: Footer dirty-aware con Restaurar defaults como botón outline (C+F) */}
-      <div className="flex items-center justify-between gap-sm pt-sm border-t border-outline-variant/40">
-        {/* Restaurar defaults: siempre visible, estilo outline (C: no texto pelado) */}
-        <Button variant="outline" icon="restart_alt" onClick={restaurarDefaults} disabled={guardando}>
-          Restaurar defaults
-        </Button>
+      </div>
 
-        {dirty ? (
-          <div className="flex items-center gap-sm">
+      {/* C: Footer dirty-aware con Restaurar defaults como botón outline (C+F) */}
+      <div className="flex items-center justify-end gap-sm pt-sm border-t border-outline-variant/40">
+        {dirty && (
+          <>
             <div className="flex items-center gap-xs text-[12px] text-on-surface-variant mr-1">
               <Icon name="edit" className="text-[14px]" />
               Cambios sin guardar
@@ -284,8 +283,12 @@ export default function SeccionDeteccion() {
             <Button variant="primary" icon="save" onClick={guardar} disabled={guardando}>
               {guardando ? 'Guardando…' : 'Guardar umbrales'}
             </Button>
-          </div>
-        ) : null}
+          </>
+        )}
+        {/* Restaurar defaults: a la derecha del todo, estilo outline. */}
+        <Button variant="outline" icon="restart_alt" onClick={restaurarDefaults} disabled={guardando}>
+          Restaurar defaults
+        </Button>
       </div>
     </div>
   );

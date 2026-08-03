@@ -1,6 +1,12 @@
 import { Icon, Card, SectionTitle, Button } from '../../../ui/components';
 import { TextField } from '../../../ui/TextField';
-import { ROL_LABELS, ROLES_VALIDOS, type ModoFormulario, type FormState } from './UsuarioHelpers';
+import {
+  ROL_DESCRIPCIONES,
+  ROL_LABELS,
+  ROLES_FORMULARIO,
+  type ModoFormulario,
+  type FormState,
+} from './UsuarioHelpers';
 import type { UsuarioAdmin } from '../../../lib/types';
 
 interface UsuarioFormPanelProps {
@@ -69,33 +75,43 @@ export function UsuarioFormPanel({
           />
           {modoForm === 'crear' && (
             <TextField
-              label="Contraseña"
+              label="Contraseña (opcional)"
               name="password"
               type="password"
               value={form.password}
               onChange={cambiarTexto('password')}
               icon="lock"
-              required
               disabled={enviando}
-              placeholder="Mínimo 8 caracteres"
-              hint="Mínimo 8 caracteres."
+              placeholder="Dejar vacío para generar automáticamente"
+              hint="Si no la completás, el sistema genera una contraseña segura y te la muestra al crear."
             />
           )}
         </div>
 
         <div>
           <p className="text-label-sm text-on-surface-variant mb-sm">Roles</p>
-          <div className="flex flex-wrap gap-md">
-            {ROLES_VALIDOS.map((rol) => (
-              <label key={rol} className="flex items-center gap-xs cursor-pointer select-none">
+          {/* Una fila por rol con su descripción: elegir un rol es decidir qué va a
+              poder hacer esa persona, y quien lo elige tiene que ver la consecuencia
+              sin ir a leer el código. En grilla de 2 para que no quede una lista larga. */}
+          <div className="grid gap-sm sm:grid-cols-2 items-stretch">
+            {ROLES_FORMULARIO.map((rol) => (
+              <label
+                key={rol}
+                className="flex h-full items-start gap-sm cursor-pointer select-none rounded-md border border-surface-200 p-sm hover:bg-primary-50 hover:border-primary-200 transition-colors"
+              >
                 <input
                   type="checkbox"
                   checked={form.roles.includes(rol)}
                   onChange={() => toggleRol(rol)}
                   disabled={enviando}
-                  className="w-4 h-4 accent-primary"
+                  className="w-4 h-4 accent-primary mt-0.5 shrink-0"
                 />
-                <span className="text-label-md text-on-surface">{ROL_LABELS[rol]}</span>
+                <span className="min-w-0">
+                  <span className="block text-label-md text-on-surface">{ROL_LABELS[rol]}</span>
+                  <span className="block text-[12px] leading-snug text-on-surface-variant mt-0.5">
+                    {ROL_DESCRIPCIONES[rol]}
+                  </span>
+                </span>
               </label>
             ))}
           </div>

@@ -5,6 +5,7 @@ import {
   getMoodleTarget,
   setMoodleTarget,
 } from '../../lib/examContentAdmin';
+import { invalidateCache } from '../../lib/useCachedData';
 
 interface OmitidaItem {
   tipo: string;
@@ -110,6 +111,10 @@ export default function MoodleImportPage() {
       if (resp.ok) {
         const created: ImportReport = await resp.json();
         setReport(created);
+        // La lista compartida de exámenes quedó obsoleta: la leen AdminDashboard
+        // y otras pantallas vía useCachedData('examenes-contenido'). Invalidamos
+        // para que revaliden con el examen recién importado (C-73, sección 5.4).
+        invalidateCache('examenes-contenido');
         // Pre-cargar el destino ya persistido (si el import lo guardó) para que el
         // formulario de edición refleje lo existente.
         try {
@@ -209,7 +214,7 @@ export default function MoodleImportPage() {
           disabled={!file || loading}
           className="w-full py-sm px-md rounded-xl bg-primary text-on-primary
             text-label-md font-semibold shadow-sm
-            hover:bg-primary-700 active:bg-primary-800
+            hover:bg-primary-500 active:bg-primary-700
             disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
           {loading ? 'Importando…' : 'Importar'}
@@ -305,7 +310,7 @@ export default function MoodleImportPage() {
               !comisionCodigo.trim() ||
               !comisionNombre.trim()
             }
-            className="w-full py-sm px-md rounded-xl bg-primary text-on-primary text-label-md font-semibold shadow-sm hover:bg-primary-700 active:bg-primary-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            className="w-full py-sm px-md rounded-xl bg-primary text-on-primary text-label-md font-semibold shadow-sm hover:bg-primary-500 active:bg-primary-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
             {asocLoading ? 'Asociando…' : 'Asociar comisión'}
           </button>
@@ -362,7 +367,7 @@ export default function MoodleImportPage() {
           <button
             type="submit"
             disabled={targetLoading}
-            className="w-full py-sm px-md rounded-xl bg-primary text-on-primary text-label-md font-semibold shadow-sm hover:bg-primary-700 active:bg-primary-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            className="w-full py-sm px-md rounded-xl bg-primary text-on-primary text-label-md font-semibold shadow-sm hover:bg-primary-500 active:bg-primary-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
             {targetLoading ? 'Guardando…' : 'Guardar destino'}
           </button>

@@ -18,6 +18,7 @@ from fastapi import (
 
 from app.application.exam_content.errors import (
     CodigoMatriculacionInvalidoError,
+    ComisionInactivaError,
     MateriaInactivaError,
     PerfilIncompletoError,
 )
@@ -33,10 +34,15 @@ from app.application.moodle.writeback_service import (
     MoodleWritebackService,
 )
 from app.domain.auth.identity import AuthenticatedPrincipal
+from app.domain.exam_content.barajado import barajar_opciones
 from app.presentation.api.v1.auth.dependencies import (
     get_current_principal,
 )
-from app.presentation.api.v1.exam_content._shared import _es_staff, _resumen_to_response
+from app.presentation.api.v1.exam_content._shared import (
+    _es_docente,
+    _es_staff,
+    _resumen_to_response,
+)
 from app.presentation.api.v1.exam_content.schemas import (
     CapturaFirmadaResponse,
     ComisionResponse,
@@ -92,6 +98,8 @@ def create_exam_taking_router(
         q: str | None = None,
         page: int = 1,
         page_size: int = 1000,
+        materia_id: str | None = None,
+        comision_id: str | None = None,
     ) -> ExamenesContenidoPaginadosResponse:
         """Lista paginada de exámenes de contenido (catálogo del alumno/admin).
 
@@ -109,6 +117,7 @@ def create_exam_taking_router(
             )
 
         from app.infrastructure.persistence.repositories.exam_content import (
+            ComisionSqlRepository,
             ExamenContenidoSqlRepository,
             InscripcionSqlRepository,
         )
@@ -116,16 +125,27 @@ def create_exam_taking_router(
         # Gate de inscripción (C-71): el alumno ve SOLO los exámenes de las comisiones
         # donde está inscripto; los roles de gestión (admin/proctor/...) ven todo el
         # catálogo. El filtro es server-side por el id_institucional del principal.
+        # C-73 §9: el docente ve lo que DICTA (comision.docente_id), ni todo (staff)
+        # ni "sus inscripciones" (alumno, siempre vacío para un docente).
         async with session_factory() as session:
             repo = ExamenContenidoSqlRepository(session)
             if _es_staff(principal):
                 comision_ids = None
+            elif _es_docente(principal):
+                comision_ids = await ComisionSqlRepository(session).comision_ids_a_cargo(
+                    principal.subject or ""
+                )
             else:
                 comision_ids = await InscripcionSqlRepository(
                     session
                 ).comision_ids_inscriptas(principal.id_institucional)
             resumenes, total = await repo.listar_paginado(
-                q=q, page=page, page_size=page_size, comision_ids=comision_ids
+                q=q,
+                page=page,
+                page_size=page_size,
+                comision_ids=comision_ids,
+                filtro_materia_id=materia_id if _es_staff(principal) else None,
+                filtro_comision_id=comision_id if _es_staff(principal) else None,
             )
 
         return ExamenesContenidoPaginadosResponse(
@@ -220,6 +240,12 @@ def create_exam_taking_router(
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
                     detail={"error": "materia_inactiva", "mensaje": str(exc)},
+                ) from exc
+            except ComisionInactivaError as exc:
+                await session.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={"error": "comision_inactiva", "mensaje": str(exc)},
                 ) from exc
 
         return InscribirPorCodigoResponse(
@@ -367,7 +393,6 @@ def create_exam_taking_router(
         return InformeDevolucionResponse(
             session_id=informe.session_id,
             decision=informe.decision,
-            resolucion=informe.resolucion,
             motivo=informe.motivo,
             senales=[
                 SenalAnalisisResponse(
@@ -381,7 +406,12 @@ def create_exam_taking_router(
             ],
             capturas=[
                 CapturaFirmadaResponse(
-                    object_key=c.object_key, url=c.url, expires_in=c.expires_in
+                    object_key=c.object_key,
+                    url=c.url,
+                    expires_in=c.expires_in,
+                    tipo_evento=c.tipo_evento,
+                    severidad=c.severidad,
+                    ocurrio_en=c.ocurrio_en,
                 )
                 for c in informe.capturas
             ],
@@ -414,17 +444,33 @@ def create_exam_taking_router(
         )
 
         # Gate de inscripción (C-71): el alumno ve SOLO las materias donde tiene
-        # comisión inscripta; staff ve todas.
+        # comisión inscripta; staff ve todas. C-73 §9: el docente ve las materias
+        # donde dicta alguna comisión (comision.docente_id), no todas ni "inscriptas".
+        conteos: dict[str, tuple[int, int]] = {}
         async with session_factory() as session:
             if _es_staff(principal):
-                materias = await MateriaSqlRepository(session).listar()
+                repo = MateriaSqlRepository(session)
+                materias = await repo.listar()
+                # Conteos por materia para que la UI oculte "Eliminar" si no está vacía.
+                conteos = await repo.contar_inscriptos_y_examenes_todas()
+            elif _es_docente(principal):
+                materias = await MateriaSqlRepository(session).materias_a_cargo(
+                    principal.subject or ""
+                )
             else:
                 materias = await InscripcionSqlRepository(session).materias_inscriptas(
                     principal.id_institucional
                 )
 
         return [
-            MateriaResponse(id=m.id, codigo=m.codigo, nombre=m.nombre, activa=m.activa)
+            MateriaResponse(
+                id=m.id,
+                codigo=m.codigo,
+                nombre=m.nombre,
+                activa=m.activa,
+                total_inscriptos=conteos.get(m.id, (0, 0))[0],
+                total_examenes=conteos.get(m.id, (0, 0))[1],
+            )
             for m in materias
         ]
 
@@ -449,16 +495,29 @@ def create_exam_taking_router(
         )
 
         # Gate de inscripción (C-71): el alumno ve SOLO sus comisiones inscriptas de
-        # esa materia; staff ve todas las comisiones de la materia.
+        # esa materia; staff ve todas las comisiones de la materia. C-73 §9: el
+        # docente ve SOLO las comisiones de esa materia donde él es el titular.
+        conteos: dict[str, tuple[int, int]] = {}
+        nombres_docentes: dict[str, str] = {}
         async with session_factory() as session:
+            repo = ComisionSqlRepository(session)
             if _es_staff(principal):
-                comisiones = await ComisionSqlRepository(session).listar_por_materia(
-                    materia_id
+                comisiones = await repo.listar_por_materia(materia_id)
+                # Conteos por comisión para que la UI oculte "Eliminar" si no está vacía.
+                conteos = await repo.contar_inscriptos_y_examenes_por_materia(materia_id)
+            elif _es_docente(principal):
+                comisiones = await repo.listar_a_cargo_de_materia(
+                    principal.subject or "", materia_id
                 )
             else:
                 comisiones = await InscripcionSqlRepository(
                     session
                 ).comisiones_inscriptas_de_materia(principal.id_institucional, materia_id)
+            # C-73 §9: el nombre del docente a cargo viaja resuelto, en UNA query para
+            # todo el listado. Sin esto la UI tendría que pedir el usuario por comisión.
+            nombres_docentes = await repo.nombres_de_docentes(
+                [c.docente_id for c in comisiones if c.docente_id]
+            )
 
         return [
             ComisionResponse(
@@ -469,6 +528,11 @@ def create_exam_taking_router(
                 periodo=c.periodo,
                 anio=c.anio,
                 codigo_matriculacion=c.codigo_matriculacion,
+                activa=c.activa,
+                total_inscriptos=conteos.get(c.id, (0, 0))[0],
+                total_examenes=conteos.get(c.id, (0, 0))[1],
+                docente_id=c.docente_id,
+                docente_nombre=nombres_docentes.get(c.docente_id or ""),
             )
             for c in comisiones
         ]
@@ -592,15 +656,25 @@ def create_exam_taking_router(
                     orden=p.orden,
                     respondida=p.respondida,
                     acertada=p.acertada,
+                    # MISMA semilla que en la rendicion: el alumno tiene que revisar
+                    # sus respuestas con las opciones en el MISMO orden en que las
+                    # contesto. Con el orden original veria la lista movida respecto
+                    # de lo que recuerda y no podria seguir su propio razonamiento.
                     opciones=[
                         OpcionRevisionResponse(
                             id=o.id,
                             texto=o.texto,
-                            orden=o.orden,
+                            orden=posicion,
                             es_correcta=o.es_correcta,
                             elegida=o.elegida,
                         )
-                        for o in p.opciones
+                        for posicion, o in enumerate(
+                            barajar_opciones(
+                                list(p.opciones),
+                                alumno=principal.subject or principal.email or "",
+                                pregunta_id=p.id,
+                            )
+                        )
                     ],
                 )
                 for p in rev.preguntas
@@ -647,6 +721,11 @@ def create_exam_taking_router(
                     status_code=status.HTTP_409_CONFLICT,
                     detail={"error": "materia_inactiva", "mensaje": str(exc)},
                 ) from exc
+            except ComisionInactivaError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={"error": "comision_inactiva", "mensaje": str(exc)},
+                ) from exc
 
         if rendicion is None:
             raise HTTPException(
@@ -654,6 +733,18 @@ def create_exam_taking_router(
                 detail={"error": "examen_no_encontrado", "examen_id": examen_id},
             )
 
+        # Las opciones se barajan POR ALUMNO antes de salir del backend. El XML de
+        # Moodle deja la correcta en la posicion 0 al importar, asi que servirlas en
+        # su orden original permite aprobar marcando siempre la primera sin leer la
+        # pregunta (comprobado: 20/20 con ese patron). El barajado es determinista:
+        # el mismo alumno ve SIEMPRE el mismo orden (recargar no le mueve las
+        # opciones), y dos alumnos ven ordenes distintos.
+        #
+        # `orden` se REEMPLAZA por la posicion barajada: mandar el orden original
+        # dejaria la pista servida — bastaria ordenar por ese campo en el cliente
+        # para reconstruir cual venia primera. Es un indice de presentacion, no un
+        # identificador; la correccion es por `id` de opcion, que no cambia.
+        alumno = principal.subject or principal.email or ""
         return ExamenRendicionResponse(
             id=rendicion.id,
             titulo=rendicion.titulo,
@@ -671,9 +762,13 @@ def create_exam_taking_router(
                         OpcionRendicionResponse(
                             id=o.id,
                             texto=o.texto,
-                            orden=o.orden,
+                            orden=posicion,
                         )
-                        for o in p.opciones
+                        for posicion, o in enumerate(
+                            barajar_opciones(
+                                list(p.opciones), alumno=alumno, pregunta_id=p.id
+                            )
+                        )
                     ],
                 )
                 for p in rendicion.preguntas

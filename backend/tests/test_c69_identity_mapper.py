@@ -27,8 +27,6 @@ def config():
     return MoodleClientConfig(
         base_url=BASE,
         ws_token="tok",  # noqa: S106
-        courseid=1,
-        cmid=1,
     )
 
 

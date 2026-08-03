@@ -50,7 +50,7 @@ export function ScreenshotMiniatura({ base64 }: { base64: string | null | undefi
           src={base64}
           alt="Captura del evento"
           style={{ height: 88, width: 120, objectFit: 'cover', display: 'block' }}
-          className="bg-inverse-surface"
+          className="bg-surface-container-lowest"
         />
         <span className="absolute inset-0 flex items-center justify-center bg-black/0
           group-hover:bg-black/30 transition-colors">
@@ -78,7 +78,7 @@ export function ScreenshotMiniatura({ base64 }: { base64: string | null | undefi
               <img
                 src={base64}
                 alt="Captura ampliada del evento"
-                className="w-full rounded-2xl border border-outline-variant/40 shadow-card-lg"
+                className="w-full max-h-[80vh] object-contain rounded-2xl border border-outline-variant/40 shadow-card-lg"
               />
               <button
                 type="button"

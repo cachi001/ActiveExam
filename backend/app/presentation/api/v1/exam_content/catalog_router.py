@@ -13,16 +13,23 @@ from fastapi import (
     File,
     Form,
     HTTPException,
+    Request,
     UploadFile,
     status,
 )
+
+from app.application.audit.service import registrar_seguro
+from app.application.audit.acciones import AccionAuditoria, ModuloAuditoria
+from app.domain.auth.identity import AuthenticatedPrincipal
 
 from app.application.exam_content.asociacion_service import AsociacionComisionService
 from app.application.exam_content.errors import (
     ComisionNoEncontradaError,
     ComisionNoVaciaError,
     ExamenNoEncontradoError,
+    InscripcionConActividadError,
     InscripcionNoEncontradaError,
+    LimitePreguntasExcedidoError,
     MateriaNoEncontradaError,
     MateriaNoVaciaError,
     MoodleXmlInvalidoError,
@@ -49,7 +56,7 @@ from app.domain.exam_content.config import (
     cambios_bloqueados,
     validar_config_examen,
 )
-from app.domain.exam_content.entities import Materia
+from app.domain.exam_content.entities import Materia, PoliticaIntentos
 from app.domain.exam_content.errors import (
     CodigoMatriculacionDuplicadoError,
     ComisionDuplicadaError,
@@ -60,7 +67,8 @@ from app.domain.exam_content.errors import (
     SeleccionInvalidaError,
 )
 from app.presentation.api.v1.auth.dependencies import (
-    require_roles,
+    get_current_principal,
+    require_capability,
 )
 from app.presentation.api.v1.exam_content.schemas import (
     AltaInlineRequest,
@@ -68,8 +76,10 @@ from app.presentation.api.v1.exam_content.schemas import (
     AlumnoElegibilidadResponse,
     AsociarComisionRequest,
     AsociarComisionResponse,
+    ComisionActivaRequest,
     ComisionActualizarRequest,
     ComisionCrearRequest,
+    ComisionDocenteRequest,
     ComisionResponse,
     ExamenConfigPatchRequest,
     ExamenConfigResponse,
@@ -92,6 +102,32 @@ from app.presentation.api.v1.exam_content.schemas import (
 )
 
 
+async def _titulo_examen(session_factory, examen_id: str) -> str:
+    """Titulo visible del examen para los mensajes de auditoria.
+
+    El audit log lo lee una PERSONA: un UUID no le dice nada. Cae al id solo si el
+    examen no existe (no vale romper una auditoria por no poder leer un nombre).
+    """
+    from sqlalchemy import select
+
+    from app.infrastructure.persistence.models.exam_content import (
+        ExamenContenidoModel,
+    )
+
+    try:
+        async with session_factory() as session:
+            titulo = (
+                await session.execute(
+                    select(ExamenContenidoModel.titulo).where(
+                        ExamenContenidoModel.id == examen_id
+                    )
+                )
+            ).scalar_one_or_none()
+        return titulo or examen_id
+    except Exception:  # noqa: BLE001 — nunca romper el flujo por el nombre
+        return examen_id
+
+
 def create_exam_content_router(
     session_factory=None,
     *,
@@ -102,9 +138,14 @@ def create_exam_content_router(
     writeback_svc: servicio de write-back a Moodle (None = Moodle no configurado;
     la sincronización manual responde 'sin_token' sin crashear).
     """
+    # Gate por CAPACIDAD, no por lista de roles: el catalogo academico (examenes,
+    # materias, comisiones, notas) lo maneja quien tiene `gestionar_academico` —
+    # hoy docente, admin_examenes, coordinador y admin_sistema. Con la lista
+    # hardcodeada anterior el docente veia las pantallas pero comia 403 al operar,
+    # que es el mismo desfasaje que dejaba la cola de revision inalcanzable.
     router = APIRouter(
         dependencies=[
-            Depends(require_roles(Rol.ADMIN_EXAMENES, Rol.ADMIN_SISTEMA)),
+            Depends(require_capability("gestionar_academico")),
         ]
     )
 
@@ -124,15 +165,20 @@ def create_exam_content_router(
         status_code=status.HTTP_201_CREATED,
     )
     async def importar_moodle(
+        request: Request,
         file: UploadFile = File(...),
         titulo: str | None = Form(default=None),
         moodle_courseid: int | None = Form(default=None),
         moodle_cmid: int | None = Form(default=None),
+        moodle_component: str | None = Form(default=None),
+        limite_preguntas: int | None = Form(default=None, ge=1),
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
     ) -> ImportReporteResponse:
         """Importa un archivo Moodle XML y crea el examen de contenido.
 
         D12 (parte B): moodle_courseid/moodle_cmid son opcionales y fijan el destino
         del write-back de nota POR EXAMEN. Si se omiten, el write-back usa el global.
+        C-73: moodle_component ('mod_assign'|'mod_quiz') idem — omitido usa el global.
         """
 
         xml_bytes = await file.read()
@@ -157,8 +203,21 @@ def create_exam_content_router(
                     titulo=titulo,
                     moodle_courseid=moodle_courseid,
                     moodle_cmid=moodle_cmid,
+                    moodle_component=moodle_component,
+                    limite_preguntas=limite_preguntas,
                 )
                 await session.commit()
+            except LimitePreguntasExcedidoError as exc:
+                await session.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail={
+                        "error": "limite_preguntas_excedido",
+                        "mensaje": str(exc),
+                        "importables": exc.importables,
+                        "limite": exc.limite,
+                    },
+                ) from exc
             except MoodleXmlInvalidoError as exc:
                 raise HTTPException(
                     status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -172,6 +231,17 @@ def create_exam_content_router(
             except Exception:
                 await session.rollback()
                 raise
+
+        await registrar_seguro(
+            session_factory,
+            actor=principal.email,
+            accion=AccionAuditoria.EXAMEN_IMPORTACION,
+            modulo=ModuloAuditoria.EXAMENES,
+            entidad_id=str(report.examen_id),
+            ip=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            proposito=f"Cargó el examen «{titulo or 'sin título'}» ({report.importadas} preguntas)",
+        )
 
         return ImportReporteResponse(
             examen_id=report.examen_id,
@@ -265,6 +335,7 @@ def create_exam_content_router(
                 periodo=result.comision.periodo,
                 anio=result.comision.anio,
                 codigo_matriculacion=result.comision.codigo_matriculacion,
+                activa=result.comision.activa,
             ),
             examen_id=result.examen_id,
         )
@@ -330,7 +401,11 @@ def create_exam_content_router(
         status_code=status.HTTP_201_CREATED,
         summary="Crear una materia (gestión independiente del import)",
     )
-    async def crear_materia(body: MateriaCrearRequest) -> MateriaResponse:
+    async def crear_materia(
+        body: MateriaCrearRequest,
+        request: Request,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    ) -> MateriaResponse:
         """Crea una materia. 409 'duplicado' si el codigo ya existe; 422
         'validacion_dominio' si codigo/nombre son vacíos o inválidos."""
         if session_factory is None:
@@ -357,6 +432,17 @@ def create_exam_content_router(
                     detail={"error": "validacion_dominio", "mensaje": str(exc)},
                 ) from exc
 
+        await registrar_seguro(
+            session_factory,
+            actor=principal.email,
+            accion=AccionAuditoria.MATERIA_ALTA,
+            modulo=ModuloAuditoria.MATERIAS,
+            entidad_id=str(materia.id),
+            ip=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            proposito=f"Creó la materia {materia.nombre} ({materia.codigo})",
+        )
+
         return MateriaResponse(
             id=materia.id, codigo=materia.codigo, nombre=materia.nombre, activa=materia.activa
         )
@@ -369,6 +455,8 @@ def create_exam_content_router(
     async def actualizar_materia(
         materia_id: str,
         body: MateriaActualizarRequest,
+        request: Request,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
     ) -> MateriaResponse:
         """Actualiza el nombre y (opcionalmente) el codigo de una materia. 404
         'materia_no_encontrada' si no existe; 409 'duplicado' si el codigo nuevo ya
@@ -408,6 +496,17 @@ def create_exam_content_router(
                     detail={"error": "validacion_dominio", "mensaje": str(exc)},
                 ) from exc
 
+        await registrar_seguro(
+            session_factory,
+            actor=principal.email,
+            accion=AccionAuditoria.MATERIA_EDICION,
+            modulo=ModuloAuditoria.MATERIAS,
+            entidad_id=str(materia_id),
+            ip=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            proposito=f"Editó la materia {materia.nombre} ({materia.codigo})",
+        )
+
         return MateriaResponse(
             id=materia.id, codigo=materia.codigo, nombre=materia.nombre, activa=materia.activa
         )
@@ -418,7 +517,11 @@ def create_exam_content_router(
         response_model=None,
         summary="Eliminar una materia (solo si está 100% vacía)",
     )
-    async def eliminar_materia(materia_id: str) -> None:
+    async def eliminar_materia(
+        materia_id: str,
+        request: Request,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    ) -> None:
         """Elimina una materia SOLO si no tiene inscriptos ni exámenes. 404 si no
         existe; 409 'materia_no_vacia' si tiene contenido (se sugiere desactivar)."""
         if session_factory is None:
@@ -444,6 +547,17 @@ def create_exam_content_router(
                     detail={"error": "materia_no_vacia", "mensaje": str(exc)},
                 ) from exc
 
+        await registrar_seguro(
+            session_factory,
+            actor=principal.email,
+            accion=AccionAuditoria.MATERIA_BAJA,
+            modulo=ModuloAuditoria.MATERIAS,
+            entidad_id=str(materia_id),
+            ip=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            proposito=f"Eliminó la materia {materia_id}",
+        )
+
     @router.patch(
         "/materias/{materia_id}/activa",
         response_model=MateriaResponse,
@@ -452,6 +566,8 @@ def create_exam_content_router(
     async def set_activa_materia(
         materia_id: str,
         body: MateriaActivaRequest,
+        request: Request,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
     ) -> MateriaResponse:
         """Activa (true) o desactiva (false) una materia. Desactivar = congelar:
         corta inscripciones nuevas y bloquea iniciar rendición. 404 si no existe."""
@@ -472,6 +588,20 @@ def create_exam_content_router(
                     detail={"error": "materia_no_encontrada", "materia_id": materia_id},
                 ) from exc
 
+        await registrar_seguro(
+            session_factory,
+            actor=principal.email,
+            accion=AccionAuditoria.MATERIA_ACTIVACION,
+            modulo=ModuloAuditoria.MATERIAS,
+            entidad_id=str(materia_id),
+            ip=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            proposito=(
+                f"La materia {materia.nombre} pasó de "
+                f"{'Inactiva a Activa' if body.activa else 'Activa a Inactiva'}"
+            ),
+        )
+
         return MateriaResponse(
             id=materia.id,
             codigo=materia.codigo,
@@ -488,6 +618,8 @@ def create_exam_content_router(
     async def crear_comision(
         materia_id: str,
         body: ComisionCrearRequest,
+        request: Request,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
     ) -> ComisionResponse:
         """Crea una comisión en la materia. 404 'materia_no_encontrada' si la materia
         no existe; 409 'duplicado' si (materia_id, codigo) ya existe; 422
@@ -532,6 +664,17 @@ def create_exam_content_router(
                     detail={"error": "validacion_dominio", "mensaje": str(exc)},
                 ) from exc
 
+        await registrar_seguro(
+            session_factory,
+            actor=principal.email,
+            accion=AccionAuditoria.COMISION_ALTA,
+            modulo=ModuloAuditoria.MATERIAS,
+            entidad_id=str(comision.id),
+            ip=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            proposito=f"Creó la comisión {comision.nombre} ({comision.codigo})",
+        )
+
         return ComisionResponse(
             id=comision.id,
             materia_id=comision.materia_id,
@@ -540,6 +683,7 @@ def create_exam_content_router(
             periodo=comision.periodo,
             anio=comision.anio,
             codigo_matriculacion=comision.codigo_matriculacion,
+            activa=comision.activa,
         )
 
     @router.patch(
@@ -550,6 +694,8 @@ def create_exam_content_router(
     async def actualizar_comision(
         comision_id: str,
         body: ComisionActualizarRequest,
+        request: Request,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
     ) -> ComisionResponse:
         """Actualiza nombre/periodo/anio de una comisión. 404 'comision_no_encontrada'
         si no existe; 422 'validacion_dominio' si el nombre es vacío. El codigo y la
@@ -593,6 +739,17 @@ def create_exam_content_router(
                     detail={"error": "validacion_dominio", "mensaje": str(exc)},
                 ) from exc
 
+        await registrar_seguro(
+            session_factory,
+            actor=principal.email,
+            accion=AccionAuditoria.COMISION_EDICION,
+            modulo=ModuloAuditoria.MATERIAS,
+            entidad_id=str(comision_id),
+            ip=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            proposito=f"Editó la comisión {comision.nombre} ({comision.codigo})",
+        )
+
         return ComisionResponse(
             id=comision.id,
             materia_id=comision.materia_id,
@@ -601,6 +758,174 @@ def create_exam_content_router(
             periodo=comision.periodo,
             anio=comision.anio,
             codigo_matriculacion=comision.codigo_matriculacion,
+            activa=comision.activa,
+        )
+
+    @router.patch(
+        "/comisiones/{comision_id}/activa",
+        response_model=ComisionResponse,
+        summary="Activar o desactivar una comisión (baja lógica / freeze)",
+    )
+    async def set_activa_comision(
+        comision_id: str,
+        body: ComisionActivaRequest,
+        request: Request,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    ) -> ComisionResponse:
+        """Activa (true) o desactiva (false) una comisión. Desactivar = congelar SOLO
+        esa comisión: corta inscripciones nuevas por su código y bloquea iniciar sus
+        exámenes; la materia y las demás comisiones siguen igual. No desmatricula a
+        nadie. Es la alternativa al DELETE cuando la comisión no está vacía. 404 si no
+        existe."""
+        if session_factory is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Persistencia no inicializada.",
+            )
+        async with session_factory() as session:
+            service = _build_materia_comision_service(session)
+            try:
+                comision = await service.set_activa_comision(comision_id, body.activa)
+                await session.commit()
+            except ComisionNoEncontradaError as exc:
+                await session.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail={
+                        "error": "comision_no_encontrada",
+                        "comision_id": comision_id,
+                    },
+                ) from exc
+
+        await registrar_seguro(
+            session_factory,
+            actor=principal.email,
+            accion=AccionAuditoria.COMISION_ACTIVACION,
+            ip=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            proposito=(
+                f"La comisión {comision.nombre} ({comision.codigo}) pasó de "
+                f"{'Inactiva a Activa' if body.activa else 'Activa a Inactiva'}"
+            ),
+        )
+
+        return ComisionResponse(
+            id=comision.id,
+            materia_id=comision.materia_id,
+            codigo=comision.codigo,
+            nombre=comision.nombre,
+            periodo=comision.periodo,
+            anio=comision.anio,
+            codigo_matriculacion=comision.codigo_matriculacion,
+            activa=comision.activa,
+        )
+
+    @router.put(
+        "/comisiones/{comision_id}/docente",
+        response_model=ComisionResponse,
+        summary="Asignar (o desasignar) el docente a cargo de una comisión",
+    )
+    async def asignar_docente_comision(
+        comision_id: str,
+        body: ComisionDocenteRequest,
+        request: Request,
+        principal: AuthenticatedPrincipal = Depends(
+            require_capability("asignar_docente")
+        ),
+    ) -> ComisionResponse:
+        """Fija el docente a cargo. ``docente_id=null`` desasigna (C-73 §9).
+
+        Requiere la capacidad `asignar_docente`, que NO tiene el rol DOCENTE: si un
+        docente pudiera asignarse a sí mismo, la validación de pertenencia dejaría de
+        ser un control.
+
+        404 si la comisión no existe. 422 si el usuario no existe, está dado de baja, o
+        no tiene rol docente — poner a cargo a alguien que no dicta la materia haría
+        que la nota se devuelva con una identidad equivocada."""
+        if session_factory is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Persistencia no inicializada.",
+            )
+
+        from sqlalchemy import select
+
+        from app.infrastructure.persistence.models.transactional import UsuarioModel
+        from app.infrastructure.persistence.repositories.exam_content import (
+            ComisionSqlRepository,
+        )
+
+        async with session_factory() as session:
+            if body.docente_id is not None:
+                usuario = (
+                    await session.execute(
+                        select(UsuarioModel).where(UsuarioModel.id == body.docente_id)
+                    )
+                ).scalar_one_or_none()
+                if usuario is None or usuario.eliminado_en is not None:
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail={
+                            "error": "docente_invalido",
+                            "mensaje": "El usuario no existe o está dado de baja.",
+                        },
+                    )
+                if Rol.DOCENTE.value not in (usuario.roles or []):
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail={
+                            "error": "no_es_docente",
+                            "mensaje": "El usuario no tiene rol docente.",
+                        },
+                    )
+
+            repo = ComisionSqlRepository(session)
+            comision = await repo.asignar_docente(comision_id, body.docente_id)
+            if comision is None:
+                await session.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail={
+                        "error": "comision_no_encontrada",
+                        "comision_id": comision_id,
+                    },
+                )
+            nombres = await repo.nombres_de_docentes(
+                [comision.docente_id] if comision.docente_id else []
+            )
+            await session.commit()
+
+        nombre_docente = nombres.get(comision.docente_id or "")
+        await registrar_seguro(
+            session_factory,
+            actor=principal.email,
+            accion=AccionAuditoria.COMISION_DOCENTE,
+            modulo=ModuloAuditoria.MATERIAS,
+            entidad_id=str(comision_id),
+            ip=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            proposito=(
+                f"Asignó a {nombre_docente} como docente a cargo de la comisión "
+                f"{comision.nombre} ({comision.codigo})"
+                if comision.docente_id
+                else (
+                    f"Dejó sin docente a cargo la comisión {comision.nombre} "
+                    f"({comision.codigo})"
+                )
+            ),
+        )
+
+        return ComisionResponse(
+            id=comision.id,
+            materia_id=comision.materia_id,
+            codigo=comision.codigo,
+            nombre=comision.nombre,
+            periodo=comision.periodo,
+            anio=comision.anio,
+            codigo_matriculacion=comision.codigo_matriculacion,
+            activa=comision.activa,
+            docente_id=comision.docente_id,
+            docente_nombre=nombre_docente,
         )
 
     @router.delete(
@@ -609,7 +934,11 @@ def create_exam_content_router(
         response_model=None,
         summary="Eliminar una comisión (solo si está vacía)",
     )
-    async def eliminar_comision(comision_id: str) -> None:
+    async def eliminar_comision(
+        comision_id: str,
+        request: Request,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    ) -> None:
         """Elimina una comisión SOLO si no tiene inscriptos ni exámenes. 404 si no
         existe; 409 'comision_no_vacia' si tiene contenido."""
         if session_factory is None:
@@ -637,6 +966,17 @@ def create_exam_content_router(
                     status_code=status.HTTP_409_CONFLICT,
                     detail={"error": "comision_no_vacia", "mensaje": str(exc)},
                 ) from exc
+
+        await registrar_seguro(
+            session_factory,
+            actor=principal.email,
+            accion=AccionAuditoria.COMISION_BAJA,
+            modulo=ModuloAuditoria.MATERIAS,
+            entidad_id=str(comision_id),
+            ip=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            proposito=f"Eliminó la comisión {comision_id}",
+        )
 
     # -----------------------------------------------------------------------
     # Rotación del código de matriculación (C-70, D5) — admin-only.
@@ -682,6 +1022,7 @@ def create_exam_content_router(
             periodo=comision.periodo,
             anio=comision.anio,
             codigo_matriculacion=comision.codigo_matriculacion,
+            activa=comision.activa,
         )
 
     # -----------------------------------------------------------------------
@@ -720,6 +1061,8 @@ def create_exam_content_router(
     async def inscribir_alumno(
         comision_id: str,
         body: InscribirAlumnoRequest,
+        request: Request,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
     ) -> InscripcionResponse:
         """Inscribe un alumno a una comisión.
 
@@ -757,6 +1100,17 @@ def create_exam_content_router(
                     detail={"error": "duplicado", "mensaje": str(exc)},
                 ) from exc
 
+        await registrar_seguro(
+            session_factory,
+            actor=principal.email,
+            accion=AccionAuditoria.INSCRIPCION_ALTA,
+            modulo=ModuloAuditoria.EXAMENES,
+            entidad_id=str(inscripcion.id),
+            ip=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            proposito=f"Inscribió al alumno {body.usuario_id} en la comisión {comision_id}",
+        )
+
         return InscripcionResponse(
             id=inscripcion.id,
             usuario_id=inscripcion.usuario_id,
@@ -769,7 +1123,12 @@ def create_exam_content_router(
         response_model=None,
         summary="Eliminar la inscripción de un alumno a una comisión",
     )
-    async def eliminar_inscripcion(comision_id: str, usuario_id: str) -> None:
+    async def eliminar_inscripcion(
+        comision_id: str,
+        usuario_id: str,
+        request: Request,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    ) -> None:
         """Da de baja la inscripción del alumno a la comisión.
 
         204 si se eliminó; 404 'inscripcion_no_encontrada' si no existía.
@@ -785,6 +1144,20 @@ def create_exam_content_router(
             try:
                 await service.eliminar(comision_id, usuario_id)
                 await session.commit()
+            except InscripcionConActividadError as exc:
+                await session.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={
+                        "error": "inscripcion_con_actividad",
+                        "mensaje": (
+                            "El alumno ya rindió en esta comisión. No se puede dar de "
+                            "baja la inscripción para no perder la evidencia de su examen."
+                        ),
+                        "comision_id": comision_id,
+                        "usuario_id": usuario_id,
+                    },
+                ) from exc
             except InscripcionNoEncontradaError as exc:
                 await session.rollback()
                 raise HTTPException(
@@ -795,6 +1168,16 @@ def create_exam_content_router(
                         "usuario_id": usuario_id,
                     },
                 ) from exc
+
+        await registrar_seguro(
+            session_factory,
+            actor=principal.email,
+            accion=AccionAuditoria.INSCRIPCION_BAJA,
+            modulo=ModuloAuditoria.EXAMENES,
+            ip=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            proposito=f"Quitó al alumno {usuario_id} de la comisión {comision_id}",
+        )
 
     @router.get(
         "/comisiones/{comision_id}/alumnos",
@@ -859,6 +1242,31 @@ def create_exam_content_router(
             await session.commit()
         return examen
 
+    async def _exigir_pertenencia(principal, examen_id: str) -> None:
+        """C-73 §9: el DOCENTE solo opera los exámenes de SUS comisiones.
+
+        La capacidad (`gestionar_academico`) dice QUÉ puede hacer el rol; esto dice
+        SOBRE QUÉ. Sin esta segunda pregunta, un docente redirige la nota de un examen
+        ajeno a la libreta que quiera. Los roles de alcance institucional no pasan por
+        acá (ver `autorizar_docente_sobre_examen`)."""
+        from app.domain.auth.authorization import autorizar_docente_sobre_examen
+        from app.domain.auth.errors import ForbiddenError
+        from app.infrastructure.persistence.repositories.exam_content import (
+            ComisionSqlRepository,
+        )
+
+        async with session_factory() as session:
+            docente_id = await ComisionSqlRepository(session).docente_de_examen(
+                examen_id
+            )
+        try:
+            autorizar_docente_sobre_examen(principal, docente_id)
+        except ForbiddenError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={"error": "examen_ajeno", "mensaje": str(exc)},
+            ) from exc
+
     @router.post(
         "/{examen_id}/moodle-target",
         response_model=MoodleTargetResponse,
@@ -868,6 +1276,8 @@ def create_exam_content_router(
     async def fijar_moodle_target(
         examen_id: str,
         body: MoodleTargetRequest,
+        request: Request,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
     ) -> MoodleTargetResponse:
         """Fija moodle_courseid/cmid del examen (D12). 404 si el examen no existe.
 
@@ -879,12 +1289,30 @@ def create_exam_content_router(
                 detail="Persistencia no inicializada.",
             )
 
+        await _exigir_pertenencia(principal, examen_id)
         examen = await _set_target(examen_id, body.moodle_courseid, body.moodle_cmid)
         if examen is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail={"error": "examen_no_encontrado", "examen_id": examen_id},
             )
+
+        # El destino Moodle decide a qué libreta va la nota → se audita (cadena de custodia).
+        await registrar_seguro(
+            session_factory,
+            actor=principal.email,
+            accion=AccionAuditoria.EXAMEN_MOODLE_TARGET,
+            modulo=ModuloAuditoria.EXAMENES,
+            entidad_id=str(examen_id),
+            ip=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            # El registro lo lee una persona: va el TITULO del examen, no su UUID.
+            # `titulo` es el nombre visible; si el objeto no lo trae, cae al id.
+            proposito=(
+                f"Fijó destino Moodle del examen «{getattr(examen, 'titulo', None) or examen_id}»: "
+                f"curso {examen.moodle_courseid}, actividad {examen.moodle_cmid}"
+            ),
+        )
 
         return MoodleTargetResponse(
             examen_id=examen.id,
@@ -945,8 +1373,10 @@ def create_exam_content_router(
             nota_maxima=examen.nota_maxima,
             nota_aprobacion=examen.nota_aprobacion,
             mezclar_preguntas=examen.mezclar_preguntas,
+            limite_preguntas=examen.limite_preguntas,
             mostrar_nota=examen.mostrar_nota,
             revision_habilitada=examen.revision_habilitada,
+            politica_intentos=examen.politica_intentos,
             bloqueada=bloqueada,
             campos_congelados=sorted(CONGELADO_DURO) if bloqueada else [],
             campos_solo_ampliables=sorted(CAMPOS_SOLO_AMPLIABLES) if bloqueada else [],
@@ -988,6 +1418,8 @@ def create_exam_content_router(
     async def actualizar_config_examen(
         examen_id: str,
         body: ExamenConfigPatchRequest,
+        request: Request,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
     ) -> ExamenConfigResponse:
         """Actualiza parcialmente los 7 campos de config (solo los presentes).
 
@@ -996,6 +1428,8 @@ def create_exam_content_router(
         [0, nota_maxima]; apertura >= cierre (si ambos seteados); tiempo_limite_min
         <= 0. 404 si el examen no existe.
         """
+
+        await _exigir_pertenencia(principal, examen_id)
         if session_factory is None:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1008,6 +1442,11 @@ def create_exam_content_router(
 
         # Solo los campos REALMENTE enviados (distingue "ausente" de "null explícito").
         cambios = body.model_dump(exclude_unset=True)
+
+        # Tope de preguntas: 0 es la forma de SACAR el tope (el schema no acepta
+        # negativos y `null` ya significa "no lo toques" en un PATCH parcial).
+        if cambios.get("limite_preguntas") == 0:
+            cambios["limite_preguntas"] = None
 
         async with session_factory() as session:
             repo = ExamenContenidoSqlRepository(session)
@@ -1069,6 +1508,21 @@ def create_exam_content_router(
 
             examen = await repo.actualizar_config(examen_id, cambios)
             await session.commit()
+
+        # La config define mecánica/nota del examen → cambios auditados (qué campos).
+        await registrar_seguro(
+            session_factory,
+            actor=principal.email,
+            accion=AccionAuditoria.EXAMEN_CONFIG_ACTUALIZACION,
+            modulo=ModuloAuditoria.EXAMENES,
+            entidad_id=str(examen_id),
+            ip=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            proposito=(
+                f"Actualizó config del examen {examen_id}: "
+                f"{', '.join(sorted(cambios)) or '(sin cambios)'}"
+            ),
+        )
 
         return _config_to_response(examen, bloqueada=ya_rendido)
 
@@ -1163,12 +1617,16 @@ def create_exam_content_router(
     async def fijar_seleccion_preguntas(
         examen_id: str,
         body: PreguntasSeleccionRequest,
+        request: Request,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
     ) -> PreguntasPoolResponse:
         """Marca seleccionada=true para los ids dados, false para el resto del pool.
 
         Valida >= 1 pregunta seleccionada (422 si la lista queda sin ids válidos).
         Ignora ids que no pertenezcan a este examen. 404 si el examen no existe.
         """
+
+        await _exigir_pertenencia(principal, examen_id)
         if session_factory is None:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1196,6 +1654,27 @@ def create_exam_content_router(
                         ),
                     },
                 )
+            # Tope de preguntas del examen: la selección no puede excederlo. Se
+            # valida acá (y no solo en la UI) porque es el único punto por el que
+            # pasa cualquier cambio de selección.
+            examen_cfg = await repo.obtener(examen_id)
+            tope = getattr(examen_cfg, "limite_preguntas", None) if examen_cfg else None
+            if tope is not None and len(body.seleccionadas) > tope:
+                await session.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail={
+                        "error": "limite_preguntas_excedido",
+                        "mensaje": (
+                            f"Este examen admite como máximo {tope} pregunta(s) y se "
+                            f"seleccionaron {len(body.seleccionadas)}. Quitá "
+                            f"{len(body.seleccionadas) - tope} o subí el tope en la "
+                            "configuración del examen."
+                        ),
+                        "limite": tope,
+                        "seleccionadas": len(body.seleccionadas),
+                    },
+                )
             try:
                 items = await repo.actualizar_seleccion(examen_id, body.seleccionadas)
             except SeleccionInvalidaError as exc:
@@ -1211,6 +1690,21 @@ def create_exam_content_router(
                     detail={"error": "examen_no_encontrado", "examen_id": examen_id},
                 )
             await session.commit()
+
+        # La selección determina QUÉ preguntas forman el examen → cambio auditado.
+        await registrar_seguro(
+            session_factory,
+            actor=principal.email,
+            accion=AccionAuditoria.EXAMEN_SELECCION_PREGUNTAS,
+            modulo=ModuloAuditoria.EXAMENES,
+            entidad_id=str(examen_id),
+            ip=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            proposito=(
+                f"Fijó la selección de preguntas del examen {examen_id}: "
+                f"{len(body.seleccionadas)} seleccionada(s)"
+            ),
+        )
 
         return _pool_to_response(items)
 
@@ -1256,6 +1750,7 @@ def create_exam_content_router(
                 page=page,
                 page_size=page_size,
                 moodle_configurado=moodle_configurado,
+                writeback_svc=writeback_svc,
             )
 
         return ResultadosExamenPaginadosResponse(
@@ -1268,6 +1763,7 @@ def create_exam_content_router(
                     nota=r.nota,
                     estado_moodle=r.estado_moodle,
                     actualizado_en=r.actualizado_en,
+                    retenido_por=r.retenido_por,
                 )
                 for r in items
             ],
@@ -1281,23 +1777,78 @@ def create_exam_content_router(
     # Dispara el write-back de las notas pendientes/fallidas del examen.
     # -----------------------------------------------------------------------
 
+    def _aplicar_politica(
+        filas: list,
+        politica: PoliticaIntentos,
+    ) -> list:
+        """Dado el set de filas sincronizables, devuelve las que SE DEBEN ENVIAR.
+
+        - MANUAL     → todas (el admin eligió sincronizar cada sesión a mano).
+        - MAS_ALTA   → por alumno, solo la fila con la nota más alta.
+        - ULTIMO     → por alumno, solo la fila de la sesión más reciente
+                       (usa el session_id como proxy de orden de creación, que
+                       es un UUID v4 temporal o un timestamp implícito; si la
+                       tabla tuviera created_at lo usaríamos, pero session_id
+                       es suficientemente estable para dev — en prod se puede
+                       mejorar con created_at en la migración siguiente).
+        - PRIMERO    → por alumno, solo la fila de la sesión más antigua.
+
+        La deduplicación es por `alumno_idnumber` (legajo). Si es None, se trata
+        cada fila como alumno distinto (no hay forma de deduplicar sin identidad).
+        """
+        if politica == PoliticaIntentos.MANUAL:
+            return filas
+
+        # Agrupa por alumno
+        grupos: dict[str, list] = {}
+        sin_id: list = []
+        for f in filas:
+            key = f.alumno_idnumber
+            if key is None:
+                sin_id.append(f)
+            else:
+                grupos.setdefault(key, []).append(f)
+
+        resultado: list = list(sin_id)
+        for intentos in grupos.values():
+            if len(intentos) == 1:
+                resultado.append(intentos[0])
+                continue
+            if politica == PoliticaIntentos.MAS_ALTA:
+                elegida = max(intentos, key=lambda f: float(f.nota or 0))
+            elif politica == PoliticaIntentos.PRIMERO:
+                elegida = min(intentos, key=lambda f: f.session_id)
+            else:  # ULTIMO
+                elegida = max(intentos, key=lambda f: f.session_id)
+            resultado.append(elegida)
+        return resultado
+
     @router.post(
         "/{examen_id}/sincronizar-moodle",
         response_model=SincronizarMoodleResponse,
         summary="Sincronizar manualmente las notas pendientes/fallidas del examen a Moodle",
     )
-    async def sincronizar_moodle(examen_id: str) -> SincronizarMoodleResponse:
+    async def sincronizar_moodle(
+        examen_id: str,
+        request: Request,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    ) -> SincronizarMoodleResponse:
         """Envía a Moodle las notas en estado 'pendiente'/'fallido' del examen.
 
         Idempotente: las 'enviado' NO se re-mandan (las excluye la query). Si Moodle
         no está configurado (writeback_svc None), NO crashea: devuelve todo como
         'sin_token' y deja las notas en 'pendiente'.
         """
+
+        await _exigir_pertenencia(principal, examen_id)
         if session_factory is None:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Persistencia no inicializada.",
             )
+
+        # El titulo, para que la auditoria la lea una persona y no un UUID.
+        titulo_examen = await _titulo_examen(session_factory, examen_id)
 
         async with session_factory() as session:
             pendientes = await listar_estados_sincronizables(
@@ -1307,6 +1858,21 @@ def create_exam_content_router(
 
             # Moodle no configurado: no se puede enviar. No crashea — sin_token.
             if writeback_svc is None:
+                # Auditar el INTENTO: hubo una acción humana de sincronización aunque
+                # no se escribiera ninguna nota (sin token). Trazabilidad L2.5.
+                await registrar_seguro(
+                    session_factory,
+                    actor=principal.email,
+                    accion=AccionAuditoria.MOODLE_SYNC,
+                    modulo=ModuloAuditoria.MOODLE,
+                    entidad_id=str(examen_id),
+                    ip=request.client.host if request.client else None,
+                    user_agent=request.headers.get("user-agent"),
+                    proposito=(
+                        f"Intentó sincronizar las notas del examen «{titulo_examen}» a Moodle sin token "
+                        f"configurado ({total} nota(s) quedan pendientes)"
+                    ),
+                )
                 return SincronizarMoodleResponse(
                     enviadas=0,
                     fallidas=0,
@@ -1317,6 +1883,20 @@ def create_exam_content_router(
                         "'pendiente'; configurá MOODLE_BASE_URL/MOODLE_WS_TOKEN para enviar."
                     ),
                 )
+
+            # Aplica la política de intentos: filtra qué notas enviar cuando
+            # un alumno tiene múltiples sesiones pendientes para el mismo examen.
+            from app.infrastructure.persistence.repositories.exam_content import (
+                ExamenContenidoSqlRepository,
+            )
+            examen_cfg = await ExamenContenidoSqlRepository(session).obtener(examen_id)
+            politica = (
+                examen_cfg.politica_intentos
+                if examen_cfg is not None
+                else PoliticaIntentos.MAS_ALTA
+            )
+            pendientes = _aplicar_politica(pendientes, politica)
+            total = len(pendientes)
 
             enviadas = 0
             fallidas = 0
@@ -1333,6 +1913,22 @@ def create_exam_content_router(
                 else:
                     fallidas += 1
             await session.commit()
+
+        # Se ESCRIBIERON notas académicas reales en Moodle → cadena de custodia
+        # (regla dura #6, L2.5): queda quién sincronizó, qué examen y el resultado.
+        await registrar_seguro(
+            session_factory,
+            actor=principal.email,
+            accion=AccionAuditoria.MOODLE_SYNC,
+            modulo=ModuloAuditoria.MOODLE,
+            entidad_id=str(examen_id),
+            ip=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            proposito=(
+                f"Sincronizó las notas del examen «{titulo_examen}» a Moodle: "
+                f"{enviadas} enviada(s), {fallidas} fallida(s) de {total}"
+            ),
+        )
 
         return SincronizarMoodleResponse(
             enviadas=enviadas,

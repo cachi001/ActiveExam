@@ -1,17 +1,21 @@
 import { useCallback, useEffect, useState } from 'react';
 import { StaffShell } from '../ui/shells';
-import { Icon, Card, Button, SectionTitle, LoadingSpinner } from '../ui/components';
+import { Icon, Card, Button, LoadingSpinner } from '../ui/components';
 import { HelpButton } from '../ui/HelpButton';
 import { ADMIN_NAV } from './AdminDashboard';
 import { useNavigate } from '../lib/router';
-import { API_BASE } from '../lib/api';
+import { API_BASE, api } from '../lib/api';
 import { authProvider } from '../lib/authProvider';
-import { TableToolbar, type TableQuery } from '../ui/TableToolbar';
+import { type TableQuery } from '../ui/TableToolbar';
+import { FiltrosPanel } from '../ui/FiltrosPanel';
+import { Pagination, PageSizeSelect } from '../ui/Pagination';
+import { RefreshBar } from '../ui/RefreshBar';
+import { useAutoRefresh } from '../lib/useAutoRefresh';
 import { ActionMenu } from '../ui/ActionMenu';
 import { listarExamenesContenidoPaginadoFn } from '../lib/examContentCatalog';
 import { ImportExamModal } from '../admin/ExamImport/ImportExamModal';
 import { useToast } from '../ui/toast';
-import type { ExamenContenidoResumen } from '../lib/types';
+import type { ExamenContenidoResumen, Materia, Comision } from '../lib/types';
 
 const PAGE_SIZE_DEFAULT = 5;
 const PAGE_SIZE_OPTIONS = [5, 10, 15, 20, 50];
@@ -23,6 +27,22 @@ export default function ExamList() {
   // Modal de importación (reemplaza la navegación a /admin/examenes/importar).
   const [importOpen, setImportOpen] = useState(false);
 
+  // ── Filtros de materia/comisión ───────────────────────────────────────────
+  const [materias, setMaterias] = useState<Materia[]>([]);
+  const [comisiones, setComisiones] = useState<Comision[]>([]);
+  const [borradorMateria, setBorradorMateria] = useState('');
+  const [borradorComision, setBorradorComision] = useState('');
+
+  useEffect(() => {
+    api.materiasDisponibles().then(setMaterias).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!borradorMateria) { setComisiones([]); setBorradorComision(''); return; }
+    api.comisionesDeMateria(borradorMateria).then(setComisiones).catch(() => setComisiones([]));
+    setBorradorComision('');
+  }, [borradorMateria]);
+
   // ── Exámenes paginados serverside ────────────────────────────────────────
   const [query, setQuery] = useState<TableQuery>({
     q: '',
@@ -33,6 +53,9 @@ export default function ExamList() {
   const [importados, setImportados] = useState<ExamenContenidoResumen[]>([]);
   const [totalImportados, setTotalImportados] = useState(0);
   const [cargando, setCargando] = useState(true);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<number | undefined>();
+  // Borrador de búsqueda: se edita libre y recién se aplica con "Aplicar filtros".
+  const [borradorQ, setBorradorQ] = useState('');
 
   const fetchImportados = useCallback(async (q: TableQuery) => {
     setCargando(true);
@@ -41,9 +64,12 @@ export default function ExamList() {
         q: q.q || undefined,
         page: q.page,
         page_size: q.page_size,
+        materia_id: q.filters['materia_id'] || undefined,
+        comision_id: q.filters['comision_id'] || undefined,
       });
       setImportados(result.items);
       setTotalImportados(result.total);
+      setLastUpdatedAt(Date.now());
     } finally {
       setCargando(false);
     }
@@ -52,6 +78,9 @@ export default function ExamList() {
   useEffect(() => {
     fetchImportados(query);
   }, [query, fetchImportados]);
+
+  // Auto-refresh cada 5 min conservando la búsqueda/paginación actual.
+  useAutoRefresh(() => fetchImportados(query), undefined, !cargando);
 
   const importar = () => navigate('/admin/examenes/importar');
 
@@ -68,12 +97,37 @@ export default function ExamList() {
   };
 
   const hayResultados = importados.length > 0;
+  const aplicarBusqueda = () =>
+    setQuery((q) => ({
+      ...q,
+      q: borradorQ.trim(),
+      filters: { materia_id: borradorMateria, comision_id: borradorComision },
+      page: 1,
+    }));
+  const limpiarBusqueda = () => {
+    setBorradorQ('');
+    setBorradorMateria('');
+    setBorradorComision('');
+    setComisiones([]);
+    setQuery((q) => ({ ...q, q: '', filters: {}, page: 1 }));
+  };
+  const hayCambiosBusqueda =
+    borradorQ.trim() !== query.q ||
+    borradorMateria !== (query.filters['materia_id'] ?? '') ||
+    borradorComision !== (query.filters['comision_id'] ?? '');
+  const hayFiltrosActivos = Boolean(borradorQ || borradorMateria || query.q || query.filters['materia_id']);
+  const totalPaginas = Math.max(1, Math.ceil(totalImportados / query.page_size));
 
   return (
     <StaffShell
       nav={ADMIN_NAV}
       title="Listado de exámenes"
       subtitle="Gestioná las evaluaciones supervisadas: estado, umbral de revisión e inscriptos."
+      actions={
+        <Button icon="upload" onClick={() => setImportOpen(true)} size="sm">
+          Importar examen
+        </Button>
+      }
       help={
         <HelpButton title="Exámenes">
           <p>
@@ -82,33 +136,81 @@ export default function ExamList() {
           </p>
           <p>
             Los detectores, umbrales y pesos se configuran de forma global en
-            <em> Configuración del sistema</em>. Hacé clic en "Detalle" para ver los
-            alumnos que rindieron y sincronizar notas con Moodle.
+            <em> Configuración del sistema</em>. Hacé clic en un examen (o en
+            "Alumnos que rindieron") para ver quiénes lo rindieron y sincronizar
+            notas con Moodle.
           </p>
         </HelpButton>
       }
     >
       <div className="space-y-lg animate-in fade-in duration-500">
-        <Card>
-          <SectionTitle
-            sub={`${totalImportados} ${totalImportados === 1 ? 'examen' : 'exámenes'}`}
-            action={
-              <Button icon="upload" onClick={() => setImportOpen(true)} className="shrink-0">
-                Importar examen
-              </Button>
-            }
-          >
-            Listado
-          </SectionTitle>
+        <RefreshBar
+          texto="Exámenes"
+          lastUpdatedAt={lastUpdatedAt}
+          cargando={cargando}
+          onActualizar={() => fetchImportados(query)}
+        />
+        {/* Filtros FUERA de la card. */}
+        <FiltrosPanel
+          onAplicar={aplicarBusqueda}
+          onLimpiar={limpiarBusqueda}
+          hayFiltros={hayFiltrosActivos}
+          hayCambios={hayCambiosBusqueda}
+          aplicarDeshabilitado={cargando}
+        >
+          <label className="flex flex-col gap-1 text-[12px] font-medium text-on-surface-variant">
+            Buscar
+            <input
+              type="text"
+              value={borradorQ}
+              placeholder="Nombre, materia o comisión…"
+              onChange={(e) => setBorradorQ(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') aplicarBusqueda();
+              }}
+              className="min-w-[220px] rounded-md border border-surface-300 bg-white px-3 py-2 text-[13px] text-on-surface focus:border-primary focus:outline-none"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-[12px] font-medium text-on-surface-variant">
+            Materia
+            <select
+              value={borradorMateria}
+              onChange={(e) => setBorradorMateria(e.target.value)}
+              className="min-w-[180px] rounded-md border border-surface-300 bg-white px-3 py-2 text-[13px] text-on-surface focus:border-primary focus:outline-none"
+            >
+              <option value="">Todas las materias</option>
+              {materias.map((m) => (
+                <option key={m.id} value={m.id}>{m.nombre}</option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 text-[12px] font-medium text-on-surface-variant">
+            Comisión
+            <select
+              value={borradorComision}
+              onChange={(e) => setBorradorComision(e.target.value)}
+              disabled={!borradorMateria || comisiones.length === 0}
+              className="min-w-[160px] rounded-md border border-surface-300 bg-white px-3 py-2 text-[13px] text-on-surface focus:border-primary focus:outline-none disabled:opacity-50"
+            >
+              <option value="">Todas las comisiones</option>
+              {comisiones.map((c) => (
+                <option key={c.id} value={c.id}>{c.nombre}</option>
+              ))}
+            </select>
+          </label>
+        </FiltrosPanel>
 
-          <div className="mb-md">
-            <TableToolbar
-              query={query}
-              onChange={setQuery}
-              placeholder="Buscar por nombre, materia o comisión…"
-              total={totalImportados}
-              pageSizeOptions={PAGE_SIZE_OPTIONS}
-              loading={cargando}
+        <Card>
+          <div className="flex items-center gap-2 mb-md pb-md border-b border-outline-variant/40">
+            <Icon name="fact_check" className="text-[18px] text-on-surface-variant" fill />
+            <h2 className="text-[15px] font-semibold text-on-surface">
+              Exámenes <span className="text-on-surface-variant font-normal">({totalImportados})</span>
+            </h2>
+            <PageSizeSelect
+              className="ml-auto"
+              value={query.page_size}
+              onChange={(ps) => setQuery((q) => ({ ...q, page_size: ps, page: 1 }))}
+              options={PAGE_SIZE_OPTIONS}
             />
           </div>
 
@@ -122,8 +224,8 @@ export default function ExamList() {
             <div className="text-center py-xl text-on-surface-variant space-y-base">
               <Icon name="search_off" className="text-[40px] text-outline" />
               <p className="text-label-md">
-                {query.q
-                  ? 'Ningún examen coincide con la búsqueda.'
+                {query.q || query.filters['materia_id'] || query.filters['comision_id']
+                  ? 'Ningún examen coincide con los filtros.'
                   : 'Todavía no hay exámenes cargados.'}
               </p>
             </div>
@@ -137,7 +239,7 @@ export default function ExamList() {
                 <table className="w-full text-left">
                   <thead>
                     <tr className="text-label-sm uppercase tracking-wide text-on-surface-variant border-b border-outline-variant/40">
-                      <th className="py-sm pr-md font-semibold">Examen</th>
+                      <th className="py-sm pl-sm pr-md font-semibold">Examen</th>
                       <th className="py-sm pr-md font-semibold">Materia</th>
                       <th className="py-sm pr-md font-semibold">Comisión</th>
                       <th className="py-sm px-md font-semibold text-center">Preguntas</th>
@@ -149,12 +251,11 @@ export default function ExamList() {
                       <tr
                         key={e.id}
                         className={`border-b border-outline-variant/20 transition-colors
-                          ${cargando ? 'opacity-50' : 'hover:bg-surface-container-low cursor-pointer'}`}
-                        onClick={!cargando ? () => navigate(`/admin/examenes/${e.id}`) : undefined}
+                          ${cargando ? 'opacity-50' : 'hover:bg-primary-50 cursor-pointer'}`}
+                        onClick={!cargando ? () => navigate(`/admin/examenes/${e.id}/resultados`) : undefined}
                       >
-                        <td className="py-sm pr-md">
+                        <td className="py-sm pl-sm pr-md">
                           <p className="text-label-md font-semibold text-on-surface">{e.titulo}</p>
-                          <p className="text-label-sm text-on-surface-variant font-mono text-[11px]">{e.id}</p>
                         </td>
                         <td className="py-sm pr-md text-label-md text-on-surface-variant">
                           {e.materia_nombre ?? <span className="text-outline italic text-label-sm">sin materia</span>}
@@ -170,7 +271,8 @@ export default function ExamList() {
                             <ActionMenu
                               ariaLabel={`Acciones de ${e.titulo}`}
                               items={[
-                                { label: 'Ver detalle', icon: 'open_in_new', onClick: () => navigate(`/admin/examenes/${e.id}`) },
+                                { label: 'Alumnos que rindieron', icon: 'groups', onClick: () => navigate(`/admin/examenes/${e.id}/resultados`) },
+                                { label: 'Detalle del examen', icon: 'open_in_new', onClick: () => navigate(`/admin/examenes/${e.id}`) },
                                 { label: 'Configurar / vincular', icon: 'settings', onClick: importar },
                               ]}
                             />
@@ -192,11 +294,10 @@ export default function ExamList() {
                   >
                     <button
                       type="button"
-                      onClick={!cargando ? () => navigate(`/admin/examenes/${e.id}`) : undefined}
+                      onClick={!cargando ? () => navigate(`/admin/examenes/${e.id}/resultados`) : undefined}
                       className="flex-1 min-w-0 text-left"
                     >
                       <p className="text-label-md font-semibold text-on-surface truncate">{e.titulo}</p>
-                      <p className="text-label-sm text-on-surface-variant font-mono text-[11px] truncate mt-0.5">{e.id}</p>
                       <div className="mt-2 space-y-0.5 text-label-sm text-on-surface-variant">
                         <p>
                           <span className="text-outline">Materia:</span>{' '}
@@ -226,6 +327,15 @@ export default function ExamList() {
           )}
 
         </Card>
+
+        {/* Paginación server-side FUERA de la card — siempre visible */}
+        <Pagination
+          currentPage={query.page}
+          totalPages={totalPaginas}
+          totalElements={totalImportados}
+          pageSize={query.page_size}
+          onPageChange={(p) => setQuery((q) => ({ ...q, page: p }))}
+        />
       </div>
 
       <ImportExamModal
