@@ -18,6 +18,7 @@ import { Pagination, PageSizeSelect } from '../ui/Pagination';
 import { RefreshBar } from '../ui/RefreshBar';
 import { useAutoRefresh } from '../lib/useAutoRefresh';
 import {
+  contarRetencionesPorRevision,
   getExamenHeaderFn,
   listarResultadosFn,
   sincronizarMoodleFn,
@@ -150,7 +151,11 @@ export default function ExamResultados() {
   const pendientes = resultados.filter(
     (r) => r.estado_moodle === 'pendiente' && !r.retenido_por,
   ).length;
-  const retenidas = resultados.filter((r) => r.retenido_por).length;
+  // 'sin_destino'/'sin_credencial_docente' son retenciones de CONFIGURACIÓN del
+  // campus, no de revisión: separadas para no decirle al admin que una nota está
+  // "pendiente de revisión por riesgo" cuando el alumno nunca superó el umbral.
+  const { revision: retenidasPorRevision, configuracion: retenidasPorConfig } =
+    contarRetencionesPorRevision(resultados);
 
   const ESTADO_OPCIONES = [
     { value: 'pendiente', label: 'Pendiente de sincronizar' },
@@ -211,16 +216,31 @@ export default function ExamResultados() {
 
         {/* Aviso de notas frenadas. Sin esto, el admin sincroniza, ve que algunas
             filas no se movieron y no tiene forma de saber que fue a propósito. */}
-        {retenidas > 0 && (
+        {retenidasPorRevision > 0 && (
           <div className="flex items-start gap-sm rounded-lg border border-error-200 bg-error-50 p-md">
             <Icon name="gavel" className="text-[20px] text-error-600 shrink-0 mt-0.5" />
             <div className="min-w-0">
               <p className="text-[14px] font-semibold text-on-surface">
-                {retenidas} nota{retenidas !== 1 ? 's' : ''} retenida{retenidas !== 1 ? 's' : ''} por revisión
+                {retenidasPorRevision} nota{retenidasPorRevision !== 1 ? 's' : ''} retenida
+                {retenidasPorRevision !== 1 ? 's' : ''} por revisión
               </p>
               <p className="text-[13px] text-on-surface-variant leading-snug mt-0.5">
                 Corresponden a exámenes que superaron el umbral de riesgo o están en revisión.
                 No se envían a Moodle hasta que una persona decida. Están marcadas en rojo en la tabla.
+              </p>
+            </div>
+          </div>
+        )}
+        {retenidasPorConfig > 0 && (
+          <div className="flex items-start gap-sm rounded-lg border border-warning-200 bg-warning-50 p-md">
+            <Icon name="settings" className="text-[20px] text-warning-600 shrink-0 mt-0.5" />
+            <div className="min-w-0">
+              <p className="text-[14px] font-semibold text-on-surface">
+                {retenidasPorConfig} nota{retenidasPorConfig !== 1 ? 's' : ''} sin sincronizar por configuración
+              </p>
+              <p className="text-[13px] text-on-surface-variant leading-snug mt-0.5">
+                No tienen que ver con el riesgo de la sesión: falta el destino del examen en el campus
+                o la cuenta del docente a cargo. Están marcadas en rojo en la tabla.
               </p>
             </div>
           </div>

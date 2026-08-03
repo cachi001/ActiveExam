@@ -1750,6 +1750,7 @@ def create_exam_content_router(
                 page=page,
                 page_size=page_size,
                 moodle_configurado=moodle_configurado,
+                writeback_svc=writeback_svc,
             )
 
         return ResultadosExamenPaginadosResponse(

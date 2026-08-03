@@ -11,10 +11,11 @@
 // (app/domain/auth/roles.py) — es la MISMA lista, no un subconjunto.
 //
 // Antes esto declaraba un "modelo MVP de 3 roles" mientras el backend ya tenía 7.
-// La consecuencia no era cosmética: el backend reserva `resolver_caso` al rol
-// `revisor`, pero el frontend ni siquiera conocía ese rol, así que la ruta
-// /revisor lo rechazaba con "Sin permisos" — nadie podía anular un examen por
-// fraude. Si el backend agrega un rol, va acá también.
+// La consecuencia no era cosmética: el backend reserva `revisar_sesion` (decidir
+// en un solo paso, incluida la anulación) al rol `revisor`, pero el frontend ni
+// siquiera conocía ese rol, así que la ruta /revisor lo rechazaba con "Sin
+// permisos" — nadie podía anular un examen por fraude. Si el backend agrega un
+// rol, va acá también.
 export type Rol =
   | 'estudiante'
   | 'proctor'
@@ -161,11 +162,11 @@ export interface NotaExamen {
   revision_disponible?: boolean;
   /** C-69: ISO de la fecha de cierre del examen (para el mensaje de disponibilidad). */
   cierre?: string | null;
-  /** C-71 slice 2 (D11b/D12): veredicto de resolución, visto por PULL. */
+  /** C-71 slice 2 (D11b/D12): veredicto de la decisión, visto por PULL. */
   session_id?: string;
-  /** true si la nota fue anulada por fraude (efecto derivado del último acto). */
+  /** true si la nota fue anulada (efecto derivado del último acto). */
   nota_anulada?: boolean;
-  /** 'anulado_por_fraude' cuando la nota fue anulada; si no, null. */
+  /** 'anulado' cuando la nota fue anulada; si no, null. */
   veredicto?: string | null;
   /** true SOLO si la nota fue anulada por fraude → habilita el informe de devolución. */
   informe_disponible?: boolean;

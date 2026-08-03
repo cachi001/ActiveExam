@@ -10,6 +10,7 @@
 
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import type { ResultadoExamen, SincronizarMoodleResponse } from './examContentResultados';
+import { contarRetencionesPorRevision } from './examContentResultados';
 
 // ---------------------------------------------------------------------------
 // 1. RED — tipos de dominio
@@ -243,5 +244,70 @@ describe('4.1 getExamenHeaderFn — normalización de campos', () => {
 
     const { getExamenHeaderFn } = await import('./examContentResultados');
     await expect(getExamenHeaderFn('/api/v1', 'tok', 'no-existe')).rejects.toThrow('HTTP 404');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 5. RED → GREEN → TRIANGULATE: contarRetencionesPorRevision
+//
+// Bug real: el banner "N notas retenidas por revisión" de ExamResultados.tsx
+// contaba TODAS las filas con retenido_por (cualquier motivo) bajo el mismo
+// mensaje "superaron el umbral de riesgo o están en revisión". Pero
+// 'sin_destino' y 'sin_credencial_docente' son retenciones de CONFIGURACIÓN,
+// nada que ver con el score de proctoring ni con una revisión pendiente — un
+// alumno bajo el umbral (aprobado o desaprobado) terminaba mostrado como si
+// su nota estuviera pendiente de revisión humana por riesgo, sin haberlo
+// superado nunca.
+// ---------------------------------------------------------------------------
+
+function _r(retenido_por: string | null): ResultadoExamen {
+  return {
+    session_id: 's-' + Math.random(),
+    alumno_idnumber: 'FRM-1',
+    alumno_email: 'a@b.com',
+    alumno_nombre: null,
+    nota: 7,
+    estado_moodle: 'pendiente',
+    actualizado_en: '2026-01-01T00:00:00',
+    retenido_por,
+  };
+}
+
+describe('5.1 contarRetencionesPorRevision — separa revisión de configuración', () => {
+  it('cuenta en_riesgo y anulada como retención por revisión', () => {
+    const resultados = [_r('en_riesgo'), _r('anulada'), _r(null)];
+    const c = contarRetencionesPorRevision(resultados);
+    expect(c.revision).toBe(2);
+    expect(c.configuracion).toBe(0);
+  });
+
+  it('cuenta sin_destino y sin_credencial_docente como retención de configuración, NO de revisión', () => {
+    const resultados = [_r('sin_destino'), _r('sin_credencial_docente')];
+    const c = contarRetencionesPorRevision(resultados);
+    expect(c.revision).toBe(0);
+    expect(c.configuracion).toBe(2);
+  });
+
+  it('caso mixto: un alumno bajo el umbral retenido solo por sin_destino no cuenta como revisión', () => {
+    // Escenario real del bug: EST-001 aprobó sin superar el umbral pero el
+    // examen no tenía destino Moodle configurado -> quedaba en el contador de
+    // "retenidas por revisión" del banner, mensaje falso para ese alumno.
+    const resultados = [_r('en_riesgo'), _r('sin_destino'), _r('sin_destino'), _r(null)];
+    const c = contarRetencionesPorRevision(resultados);
+    expect(c.revision).toBe(1);
+    expect(c.configuracion).toBe(2);
+  });
+
+  it('anulada cuenta como revisión (es un veredicto humano, no config faltante)', () => {
+    const resultados = [_r('anulada')];
+    const c = contarRetencionesPorRevision(resultados);
+    expect(c.revision).toBe(1);
+    expect(c.configuracion).toBe(0);
+  });
+
+  it('sin resultados retenidos, ambos contadores en 0', () => {
+    const c = contarRetencionesPorRevision([_r(null), _r(null)]);
+    expect(c.revision).toBe(0);
+    expect(c.configuracion).toBe(0);
   });
 });

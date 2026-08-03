@@ -9,7 +9,9 @@ from __future__ import annotations
 
 from app.application.stats.labels import (
     ETIQUETA_EVENTO,
+    ETIQUETA_ESTADO_MOODLE,
     etiqueta_decision,
+    etiqueta_estado_moodle,
     etiqueta_evento,
     humanizar,
 )
@@ -36,5 +38,23 @@ def test_humanizar_vacio_no_rompe():
 
 
 def test_etiqueta_decision_conocida_y_desconocida():
-    assert etiqueta_decision("caso_abierto") == "Caso abierto"
+    assert etiqueta_decision("anulado") == "Anulado por fraude"
     assert "_" not in etiqueta_decision("estado_inventado")
+
+
+def test_etiqueta_estado_moodle_pendiente():
+    assert etiqueta_estado_moodle("pendiente") == "Pendiente de sincronizar"
+
+
+def test_etiqueta_estado_moodle_enviado():
+    assert etiqueta_estado_moodle("enviado") == "Sincronizado en Moodle"
+
+
+def test_etiqueta_estado_moodle_desconocido_se_humaniza():
+    assert etiqueta_estado_moodle("estado_raro") == "Estado raro"
+
+
+def test_todos_los_estados_moodle_cubiertos():
+    # Mismo conjunto que WritebackEstado + el alias de display 'sin_token'
+    # (resultados_query.ESTADO_SIN_TOKEN) — evita drift silencioso con el frontend.
+    assert set(ETIQUETA_ESTADO_MOODLE) == {"pendiente", "enviado", "fallido", "sin_token"}

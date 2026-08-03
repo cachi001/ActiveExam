@@ -31,15 +31,13 @@ ETIQUETA_EVENTO: dict[str, str] = {
     TipoEvento.REANUDACION_TARDIA: "Reanudación tardía",
 }
 
-# Estados de revisión (decisiones humanas) — usados en gráficos y reportes.
+# Estados de revisión (decisiones humanas, modelo de un solo paso) — usados en
+# gráficos y reportes.
 ETIQUETA_DECISION: dict[str, str] = {
     "sin_revisar": "Sin revisar",
     "pendiente": "Pendiente",
-    "sin_hallazgos": "Sin hallazgos",
     "aprobado": "Aprobado",
-    "caso_abierto": "Caso abierto",
-    "anulado_por_fraude": "Anulado por fraude",
-    "caso_descartado": "Caso descartado",
+    "anulado": "Anulado por fraude",
 }
 
 
@@ -60,6 +58,24 @@ def etiqueta_evento(tipo: str) -> str:
 def etiqueta_decision(decision: str) -> str:
     """Etiqueta legible de un estado de revisión (o humaniza si es desconocido)."""
     return ETIQUETA_DECISION.get(decision, humanizar(decision))
+
+
+# Estados de sincronización con Moodle (WritebackEstado + el alias de display
+# 'sin_token' de resultados_query.ESTADO_SIN_TOKEN). FUENTE ÚNICA de las etiquetas
+# que ve el admin en "Alumnos que rindieron" (filtro + badge de estado) — antes el
+# frontend las repetía a mano en dos lugares (ExamResultados.tsx y EstadoBadge.tsx),
+# lo que podía desincronizarse silenciosamente si el backend agregaba un estado.
+ETIQUETA_ESTADO_MOODLE: dict[str, str] = {
+    "pendiente": "Pendiente de sincronizar",
+    "enviado": "Sincronizado en Moodle",
+    "fallido": "Falló",
+    "sin_token": "Sin token",
+}
+
+
+def etiqueta_estado_moodle(estado: str) -> str:
+    """Etiqueta legible de un estado de sincronización con Moodle."""
+    return ETIQUETA_ESTADO_MOODLE.get(estado, humanizar(estado))
 
 
 # --- Acciones del registro de auditoría -------------------------------------

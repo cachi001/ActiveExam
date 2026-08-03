@@ -472,9 +472,9 @@ class MoodleWritebackService:
     ) -> bool:
         """Escribe **0** en Moodle como efecto de una anulacion por fraude (hook c-18).
 
-        Es el acto COMPENSATORIO de la resolucion `anulado_por_fraude`: sin esto la
-        anulacion queda en ActiveExam y el alumno conserva en la libreta de Moodle la
-        nota que ya se le habia sincronizado.
+        Es el acto COMPENSATORIO de la decision `anulado` (modelo de un solo
+        paso): sin esto la anulacion queda en ActiveExam y el alumno conserva
+        en la libreta de Moodle la nota que ya se le habia sincronizado.
 
         A diferencia de ``ejecutar_writeback``, este metodo NO respeta el corte por
         'enviado' — al contrario, su caso normal es pisar una nota ya enviada. Por eso

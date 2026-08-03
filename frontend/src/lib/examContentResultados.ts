@@ -9,6 +9,11 @@
 
 import type { ExamenContenidoResumen } from './types';
 
+// Enum de dominio CERRADO — espeja WritebackEstado (backend/app/application/moodle/
+// writeback_service.py) + el alias de display ESTADO_SIN_TOKEN (resultados_query.py).
+// Las etiquetas legibles de estos 4 valores tienen fuente única en el backend:
+// app/application/stats/labels.py::ETIQUETA_ESTADO_MOODLE (con test de cobertura
+// en tests/test_stats_labels.py que falla si el backend agrega/quita un estado).
 export type EstadoMoodle = 'pendiente' | 'enviado' | 'fallido' | 'sin_token';
 
 export interface ResultadoExamen {
@@ -21,10 +26,43 @@ export interface ResultadoExamen {
   actualizado_en: string;
   /**
    * Motivo por el que la nota queda RETENIDA y no se sincroniza (gate D15):
-   * 'en_riesgo' | 'caso_abierto' | 'anulada'. `null`/ausente = nada la retiene.
+   * 'en_riesgo' | 'anulada'. `null`/ausente = nada la retiene.
    * Es ortogonal a `estado_moodle`: una fila retenida sigue en 'pendiente'.
    */
   retenido_por?: string | null;
+}
+
+// Motivos de retención que SÍ corresponden a una revisión humana pendiente o
+// resuelta (score de proctoring vs umbral, o un veredicto de un revisor).
+// 'sin_destino' y 'sin_credencial_docente' son retenciones de CONFIGURACIÓN
+// del campus — no tienen relación con el riesgo de la sesión ni con revisión
+// alguna. Antes se contaban todas juntas bajo "N notas retenidas por
+// revisión", así que un alumno que aprobó/desaprobó SIN superar el umbral
+// (retenido solo por falta de destino Moodle) se mostraba como si su nota
+// estuviera pendiente de revisión por riesgo — nunca lo estuvo.
+const MOTIVOS_RETENCION_POR_REVISION = new Set(['en_riesgo', 'anulada']);
+
+/**
+ * Separa los resultados retenidos en dos contadores: los que están frenados
+ * por una revisión humana (riesgo/caso/veredicto) y los que están frenados
+ * por configuración faltante del campus (destino, credencial docente).
+ * Un motivo desconocido cuenta como revisión (mismo comportamiento por
+ * defecto que `EstadoBadge` para motivos no mapeados).
+ */
+export function contarRetencionesPorRevision(
+  resultados: Pick<ResultadoExamen, 'retenido_por'>[],
+): { revision: number; configuracion: number } {
+  let revision = 0;
+  let configuracion = 0;
+  for (const r of resultados) {
+    if (!r.retenido_por) continue;
+    if (MOTIVOS_RETENCION_POR_REVISION.has(r.retenido_por)) {
+      revision += 1;
+    } else {
+      configuracion += 1;
+    }
+  }
+  return { revision, configuracion };
 }
 
 export interface ResultadosPaginados {
