@@ -22,7 +22,7 @@ import { HelpButton } from '../ui/HelpButton';
 import { ConfirmModal } from '../ui/ConfirmModal';
 import { STAFF_NAV } from '../ui/nav';
 import { useToast } from '../ui/toast';
-import { useNavigate } from '../lib/router';
+import { useNavigate, useRouteParam } from '../lib/router';
 import { useApp } from '../lib/store';
 import { useAuth } from '../lib/authStore';
 import { api } from '../lib/api';
@@ -46,7 +46,7 @@ const BACK_LABELS: Record<string, string> = {
   '/proctor': 'Volver a supervisión en vivo',
   '/proctor/examen': 'Volver al examen',
   '/admin/proctoring-sessions': 'Volver a Registro de sesiones',
-  '/revisor': 'Volver a la cola de revisión',
+  '/admin/cola-revision': 'Volver a la cola de revisión',
 };
 
 function VolverLink({ onClick, label }: { onClick: () => void; label: string }) {
@@ -65,7 +65,9 @@ function VolverLink({ onClick, label }: { onClick: () => void; label: string }) 
 export default function ProctoringSessionDetail() {
   const navigate = useNavigate();
   const toast = useToast();
-  const sessionId = useApp((s) => s.proctoringSessionId);
+  const sessionIdFromUrl = useRouteParam('id');
+  const sessionIdFromStore = useApp((s) => s.proctoringSessionId);
+  const sessionId = sessionIdFromUrl ?? sessionIdFromStore;
   const setProctoringSessionId = useApp((s) => s.setProctoringSessionId);
   const rol = useAuth((s) => s.principal?.roles[0] ?? null);
   const rolesPrincipal = useAuth((s) => s.principal?.roles);
@@ -104,7 +106,7 @@ export default function ProctoringSessionDetail() {
     setProctoringSessionId(id);
     // El efecto de carga depende de `sessionId`: cambiarlo alcanza para recargar
     // el detalle sin salir de la pantalla.
-    navigate(RUTA_PROPIA);
+    navigate(RUTA_PROPIA + '/' + id);
   };
 
   const [detalle, setDetalle] = useState<SesionProctoringDetalle | null>(null);
@@ -188,7 +190,7 @@ export default function ProctoringSessionDetail() {
   // Solo se decide viniendo de la cola de revisión. Desde "Registro de sesiones"
   // o supervisión en vivo esta pantalla es consulta: meter ahí los botones de
   // anular invitaría a decidir fuera del circuito.
-  const vieneDeLaCola = backRoute === '/revisor';
+  const vieneDeLaCola = backRoute === '/admin/cola-revision';
   const puedeResolver = tieneCapacidad(rolesPrincipal ?? [], 'revisar_sesion');
 
   /** Registra la decisión contra el backend, en UN SOLO PASO. `true` solo si el
@@ -360,6 +362,9 @@ export default function ProctoringSessionDetail() {
                 : <PausasHistorial sessionId={sessionId} />
             )}
 
+            {/* Biometría — arriba del contenido para verla junto al header */}
+            <BiometriaCard biometria={detalle.biometria} />
+
             {/* Eventos (izquierda) + chat del proctor (derecha) en dos columnas.
                 En mobile colapsan a una sola columna (eventos arriba, chat abajo). */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-lg items-start">
@@ -405,9 +410,6 @@ export default function ProctoringSessionDetail() {
                 <ObservacionesProctor sessionId={sessionId} proctorActor={proctorActor} readOnly={!esVivo} />
               </div>
             </div>
-
-            {/* Biometría */}
-            <BiometriaCard biometria={detalle.biometria} />
           </>
         )}
       </div>

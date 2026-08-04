@@ -2,6 +2,7 @@ import { Icon, Button, Card } from '../../ui/components';
 import { puedeIrAnterior, puedeIrSiguiente } from '../ExamenLogic';
 import { soportaFullscreen, MENSAJE_LIMITE_FULLSCREEN } from '../../proctoring/fullscreenLockdown';
 import type { ExamenRendicion } from '../../lib/examTakingApi';
+import { PreguntaCloze } from './PreguntaCloze';
 
 interface Props {
   preguntaActual: ExamenRendicion['preguntas'][number] | null | undefined;
@@ -9,22 +10,29 @@ interface Props {
   total: number;
   cargandoPreguntas: boolean;
   respuestas: Record<string, string>;
+  /** Respuestas para preguntas cloze: preguntaId → { blankId → valor } */
+  respuestasCloze: Record<string, Record<string, string>>;
   respondidas: Set<number>;
   segRestantes: number | null;
   tiempoLimiteMin: number | null | undefined;
   onSeleccionarOpcion: (preguntaId: string, opcionId: string) => void;
+  onRespuestaCloze: (preguntaId: string, blankId: string, valor: string) => void;
   onAnterior: () => void;
   onSiguiente: () => void;
 }
 
 export function ExamenPreguntaCard({
   preguntaActual, indiceActual, total, cargandoPreguntas,
-  respuestas, respondidas, segRestantes, tiempoLimiteMin,
-  onSeleccionarOpcion, onAnterior, onSiguiente,
+  respuestas, respuestasCloze, respondidas, segRestantes, tiempoLimiteMin,
+  onSeleccionarOpcion, onRespuestaCloze, onAnterior, onSiguiente,
 }: Props) {
   const mm = segRestantes !== null ? String(Math.floor(segRestantes / 60)).padStart(2, '0') : '00';
   const ss = segRestantes !== null ? String(segRestantes % 60).padStart(2, '0') : '00';
   const urgente = segRestantes !== null && segRestantes < 300;
+
+  const esCloze = preguntaActual?.tipo === 'cloze';
+  const blanks = preguntaActual?.blanks ?? [];
+  const respuestasClozeActual = preguntaActual ? (respuestasCloze[preguntaActual.id] ?? {}) : {};
 
   return (
     <Card className="space-y-md">
@@ -63,14 +71,14 @@ export function ExamenPreguntaCard({
           No hay preguntas disponibles para este examen.
         </p>
       )}
-      {preguntaActual && (
+      {preguntaActual && !esCloze && (
         <h2 className="font-headline text-title-lg text-on-surface leading-snug">
           {preguntaActual.enunciado}
         </h2>
       )}
 
-      {/* Opciones */}
-      {preguntaActual && (
+      {/* Opciones para preguntas estándar (multichoice / truefalse) */}
+      {preguntaActual && !esCloze && (
         <div className="space-y-sm">
           {preguntaActual.opciones.map((op) => {
             const seleccionada = respuestas[preguntaActual.id] === op.id;
@@ -91,6 +99,35 @@ export function ExamenPreguntaCard({
               </label>
             );
           })}
+        </div>
+      )}
+
+      {/* Pregunta cloze: enunciado + huecos inline */}
+      {preguntaActual && esCloze && blanks.length > 0 && (
+        <div className="space-y-md">
+          {/* Si hay texto en el enunciado (la consigna general antes de los blanks), lo mostramos */}
+          {preguntaActual.enunciado && (
+            <h2 className="font-headline text-title-lg text-on-surface leading-snug">
+              {preguntaActual.enunciado}
+            </h2>
+          )}
+          <PreguntaCloze
+            blanks={blanks}
+            respuestas={respuestasClozeActual}
+            onRespuesta={(blankId, valor) => onRespuestaCloze(preguntaActual.id, blankId, valor)}
+          />
+        </div>
+      )}
+
+      {/* Cloze sin blanks: fallback */}
+      {preguntaActual && esCloze && blanks.length === 0 && (
+        <div className="space-y-md">
+          <h2 className="font-headline text-title-lg text-on-surface leading-snug">
+            {preguntaActual.enunciado}
+          </h2>
+          <p className="text-label-sm text-on-surface-variant italic">
+            Esta pregunta no tiene huecos definidos.
+          </p>
         </div>
       )}
 

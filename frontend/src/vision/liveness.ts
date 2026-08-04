@@ -237,9 +237,8 @@ export function detectVirtualCamera(signals: {
   faceCountStability: number;
 }): boolean {
   const feedLoopLike = signals.interFramePixelVariance < 1e-6;
-  const noJitter = signals.frameRateJitter < 1e-6;
   const tooStable = signals.faceCountStability >= 0.999;
-  return (feedLoopLike && tooStable) || (noJitter && tooStable);
+  return feedLoopLike && tooStable;
 }
 
 /** Conteo de rostros agregado del clip: util para reportar multiples rostros. */

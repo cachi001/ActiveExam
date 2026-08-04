@@ -1,7 +1,7 @@
-"""Modelos ORM para el contenido de examen (C-69, secciones 1-2).
+﻿"""Modelos ORM para el contenido de examen (C-69, secciones 1-2; C-74).
 
-Tablas: examen_contenido, pregunta_examen, opcion_respuesta.
-Aditivas — migración slim 0026.
+Tablas: examen_contenido, pregunta_examen, opcion_respuesta, categoria_pregunta.
+Aditivas — migración slim 0026 (base), 0053-0054 (C-74 categorías).
 
 D3 (regla dura #6): es_correcta vive server-side, NUNCA viaja al cliente.
 D11: comision_id es NULLABLE en examen_contenido (FK a comision se agrega en sección 6).
@@ -28,6 +28,56 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
 from app.infrastructure.persistence.base import Base
+
+
+class CategoriaPreguntaModel(Base):
+    """Categoría del banco de preguntas (C-74, migración 0053).
+
+    Estructura autoreferencial: materia → categoría → subcategoría (anidamiento
+    arbitrario). ON DELETE CASCADE en ambas FKs: borrar la materia borra sus
+    categorías; borrar una categoría borra sus subcategorías en cascada.
+    Las preguntas de una categoría borrada quedan con categoria_id=NULL (SET NULL
+    en 0054), agrupadas bajo "Sin clasificar".
+    """
+
+    __tablename__ = "categoria_pregunta"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        primary_key=True,
+        server_default=func.gen_random_uuid(),
+    )
+    materia_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("materia.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    nombre: Mapped[str] = mapped_column(Text, nullable=False)
+    categoria_padre_id: Mapped[str | None] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("categoria_pregunta.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    creada_en: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+    subcategorias: Mapped[list[CategoriaPreguntaModel]] = relationship(
+        "CategoriaPreguntaModel",
+        back_populates="categoria_padre",
+        cascade="all, delete-orphan",
+    )
+    categoria_padre: Mapped[CategoriaPreguntaModel | None] = relationship(
+        "CategoriaPreguntaModel",
+        back_populates="subcategorias",
+        remote_side="CategoriaPreguntaModel.id",
+    )
+
+    __table_args__ = (
+        Index("ix_categoria_pregunta_materia_padre", "materia_id", "categoria_padre_id"),
+    )
 
 
 class MateriaModel(Base):
@@ -239,6 +289,19 @@ class PreguntaExamenModel(Base):
         server_default="true",
         comment="Opción B: la pregunta forma parte del examen (pool seleccionable).",
     )
+    # C-74 (migración 0054): categoría del banco de preguntas. NULL = Sin clasificar.
+    categoria_id: Mapped[str | None] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("categoria_pregunta.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="C-74: categoría del banco. NULL = Sin clasificar.",
+    )
+    # C-74 D8 (migración 0054): ID de la pregunta en Moodle para sync idempotente.
+    moodle_question_id: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+        comment="C-74 D8: ID en Moodle. Permite re-sync sin duplicar.",
+    )
 
     examen: Mapped[ExamenContenidoModel] = relationship(
         "ExamenContenidoModel", back_populates="preguntas"
@@ -249,9 +312,21 @@ class PreguntaExamenModel(Base):
         cascade="all, delete-orphan",
         order_by="OpcionRespuestaModel.orden",
     )
+    categoria: Mapped[CategoriaPreguntaModel | None] = relationship(
+        "CategoriaPreguntaModel",
+        foreign_keys=[categoria_id],
+        lazy="select",
+    )
+    blanks_cloze: Mapped[list["PreguntaClozeBlankModel"]] = relationship(
+        "PreguntaClozeBlankModel",
+        back_populates="pregunta",
+        cascade="all, delete-orphan",
+        order_by="PreguntaClozeBlankModel.orden",
+    )
 
     __table_args__ = (
         Index("ix_pregunta_examen_examen_id", "examen_id"),
+        Index("ix_pregunta_examen_categoria_id", "categoria_id"),
     )
 
 
@@ -288,4 +363,75 @@ class OpcionRespuestaModel(Base):
 
     __table_args__ = (
         Index("ix_opcion_respuesta_pregunta_id", "pregunta_id"),
+    )
+
+
+class PreguntaClozeBlankModel(Base):
+    """Hueco (blank) de una pregunta cloze (C-74 §5, migración 0055).
+
+    Cada blank corresponde a un {N:TYPE:...} del questiontext de Moodle.
+    orden: posición de aparición en el texto (0-indexed).
+    tipo: 'multichoice' o 'shortanswer'.
+    texto_antes/texto_despues: fragmentos del enunciado que rodean al blank.
+    """
+
+    __tablename__ = "pregunta_cloze_blank"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        primary_key=True,
+        server_default=func.gen_random_uuid(),
+    )
+    pregunta_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("pregunta_examen.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    orden: Mapped[int] = mapped_column(Integer, nullable=False)
+    tipo: Mapped[str] = mapped_column(Text, nullable=False)
+    texto_antes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    texto_despues: Mapped[str | None] = mapped_column(Text, nullable=True)
+    creada_en: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    pregunta: Mapped[PreguntaExamenModel] = relationship(
+        "PreguntaExamenModel", back_populates="blanks_cloze"
+    )
+    opciones_cloze: Mapped[list["OpcionClozeBlancoModel"]] = relationship(
+        "OpcionClozeBlancoModel", back_populates="blank", cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (
+        Index("ix_pregunta_cloze_blank_pregunta_orden", "pregunta_id", "orden"),
+    )
+
+
+class OpcionClozeBlancoModel(Base):
+    """Opción de respuesta de un blank cloze (C-74 §5, migración 0055)."""
+
+    __tablename__ = "opcion_cloze_blank"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        primary_key=True,
+        server_default=func.gen_random_uuid(),
+    )
+    blank_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("pregunta_cloze_blank.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    texto: Mapped[str] = mapped_column(Text, nullable=False)
+    es_correcta: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
+    peso: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+
+    blank: Mapped[PreguntaClozeBlankModel] = relationship(
+        "PreguntaClozeBlankModel", back_populates="opciones_cloze"
+    )
+
+    __table_args__ = (
+        Index("ix_opcion_cloze_blank_blank_id", "blank_id"),
     )

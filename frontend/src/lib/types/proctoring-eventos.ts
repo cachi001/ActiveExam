@@ -119,6 +119,7 @@ export interface ExamenContenidoResumen {
   /** Comisión/materia asociadas (D11, NULLABLE): null si el examen no tiene comisión. */
   comision_id?: string | null;
   comision_nombre?: string | null;
+  materia_id?: string | null;
   materia_nombre?: string | null;
   /** Config aplicada por la plataforma: ventana de rendición (ISO 8601, nullable). */
   apertura?: string | null;

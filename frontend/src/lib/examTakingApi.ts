@@ -19,6 +19,16 @@ export interface OpcionRendicion {
   orden: number;
 }
 
+/** Hueco (blank) de una pregunta cloze para la rendición. */
+export interface BlankRendicion {
+  id: string;
+  orden: number;
+  tipo: string;
+  texto_antes: string;
+  texto_despues: string;
+  opciones: OpcionRendicion[];
+}
+
 /** Pregunta proyectada para la rendición. */
 export interface PreguntaRendicion {
   id: string;
@@ -26,6 +36,8 @@ export interface PreguntaRendicion {
   tipo: string;
   orden: number;
   opciones: OpcionRendicion[];
+  /** Solo presente si tipo === 'cloze'. */
+  blanks?: BlankRendicion[];
 }
 
 /** Examen proyectado para la rendición (sin opciones correctas). */

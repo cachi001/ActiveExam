@@ -172,7 +172,7 @@ function navegarA(evento: AuditEvento): string | null {
       case 'BIOMETRIA':
       case 'CONSENTIMIENTO':
       case 'EVIDENCIA': return '/admin/proctoring-sessions';
-      case 'REVISION': return '/revisor';
+      case 'REVISION': return '/admin/cola-revision';
       case 'MOODLE': return '/admin/examenes';
       case 'CONFIGURACION': return '/admin/configuracion';
     }
@@ -312,7 +312,7 @@ export default function Auditoria() {
     if (e.entidad === 'SESION' && e.entidad_id) {
       setProctoringSessionId(e.entidad_id);
       setProctoringDetailBackRoute('/admin/auditoria');
-      navigate('/admin/proctoring-session-detail');
+      navigate('/admin/proctoring-session-detail/' + e.entidad_id);
       return;
     }
     const ruta = navegarA(e);

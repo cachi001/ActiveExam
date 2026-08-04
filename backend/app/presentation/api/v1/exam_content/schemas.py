@@ -226,6 +226,19 @@ class PreguntasSeleccionRequest(BaseModel):
     seleccionadas: list[str]
 
 
+class SorteoRequest(BaseModel):
+    """Body para armar examen por sorteo aleatorio de categorías (C-74 §3).
+
+    ``categoria_ids``: lista de ids de categorías de las que se sortea.
+    ``cantidad_por_categoria``: cuántas preguntas se sortean de CADA categoría.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    categoria_ids: list[str]
+    cantidad_por_categoria: int
+
+
 # ---------------------------------------------------------------------------
 # Materia + comisión (C-69 sección 6, D11) — endpoints admin
 # ---------------------------------------------------------------------------
@@ -703,3 +716,31 @@ class InformeDevolucionResponse(BaseModel):
     motivo: str | None = None
     senales: list[SenalAnalisisResponse]
     capturas: list[CapturaFirmadaResponse]
+
+
+# ---------------------------------------------------------------------------
+# Sync del banco de preguntas desde Moodle (C-74 §9.4)
+# ---------------------------------------------------------------------------
+
+
+class SyncBancoRequest(BaseModel):
+    """Body del POST /exam-content/moodle/sync-banco.
+
+    ``courseid``: ID del curso en Moodle del que importar el banco.
+    ``materia_id``: UUID de la materia en ActiveExam donde registrar categorías.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    courseid: int
+    materia_id: str
+
+
+class SyncBancoResponse(BaseModel):
+    """Resultado de la sincronización del banco de preguntas desde Moodle."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    categorias_creadas: int
+    preguntas_nuevas: int
+    preguntas_actualizadas: int

@@ -1,10 +1,11 @@
-"""Entidades de dominio para el contenido de examen (C-69).
+﻿"""Entidades de dominio para el contenido de examen (C-69, C-74).
 
 Reglas de dominio (NON-NEGOTIABLE):
 - D3: es_correcta NUNCA sale al cliente; vive server-side.
 - D11: comision_id NULLABLE — un examen sin comisión es válido.
 - multichoice: >= 2 opciones, exactamente 1 correcta.
 - truefalse: exactamente 2 opciones, exactamente 1 correcta.
+- C-74: CategoriaPregunta — estructura autoreferencial, materia_id obligatorio.
 """
 
 from __future__ import annotations
@@ -27,6 +28,23 @@ from app.domain.exam_content.errors import (
     MateriaInvalidaError,
     PreguntaInvalidaError,
 )
+
+
+@dataclass(frozen=True, slots=True)
+class CategoriaPregunta:
+    """Categoría del banco de preguntas (C-74).
+
+    Estructura autoreferencial: materia → categoría → subcategoría (arbitrario).
+    categoria_padre_id=None → categoría raíz de la materia.
+    subcategorias → lista de hijos directos (puede estar vacía).
+    """
+
+    nombre: str
+    materia_id: str
+    id: str | None = None
+    categoria_padre_id: str | None = None
+    creada_en: datetime | None = None
+    subcategorias: tuple[CategoriaPregunta, ...] = field(default_factory=tuple)
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,6 +76,8 @@ class Pregunta:
     # Opción B (pool de preguntas): si el docente la seleccionó para el examen.
     # Default True (compat): una pregunta recién importada cuenta como seleccionada.
     seleccionada: bool = True
+    # C-74: categoría del banco de preguntas (None = "Sin clasificar").
+    categoria_id: str | None = None
 
     def __post_init__(self) -> None:
         self._validar()
@@ -84,6 +104,9 @@ class Pregunta:
                 raise PreguntaInvalidaError(
                     f"truefalse exige exactamente 1 correcta; tiene {correctas}"
                 )
+
+        elif self.tipo in ("cloze", "multianswer"):
+            pass  # blanks y opciones se validan a nivel de blank (tabla separada)
 
         else:
             if correctas < 1:

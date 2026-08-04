@@ -1,22 +1,28 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Badge, Button, Card, Icon, SectionTitle } from '../../ui/components';
-import { getPreguntasExamen, setPreguntasSeleccion, type PreguntaSeleccion } from '../../lib/examContentAdmin';
+import { getPreguntasExamen, setPreguntasSeleccion, sortearPreguntas, type PreguntaSeleccion } from '../../lib/examContentAdmin';
+import { listarCategorias } from '../../lib/apiAdmin/bancoPreguntasApi';
+import type { CategoriaPregunta } from '../../lib/apiAdmin/bancoPreguntasApi';
 
 const TIPO_PREGUNTA_LABEL: Record<string, string> = {
   multichoice: 'Opción múltiple',
   truefalse: 'Verdadero / Falso',
+  cloze: 'Completar texto',
 };
 
 function tipoLabel(tipo: string): string {
   return TIPO_PREGUNTA_LABEL[tipo] ?? tipo;
 }
 
+type ModoSeleccion = 'manual' | 'sorteo';
+
 interface Props {
   examenId: string;
+  materiaId?: string | null;
   onSeleccionGuardada: (cantidad: number) => void;
 }
 
-export function PreguntasSeleccionSection({ examenId, onSeleccionGuardada }: Props) {
+export function PreguntasSeleccionSection({ examenId, materiaId, onSeleccionGuardada }: Props) {
   const [preguntas, setPreguntas] = useState<PreguntaSeleccion[]>([]);
   const [seleccionOriginal, setSeleccionOriginal] = useState<Record<string, boolean>>({});
   const [total, setTotal] = useState(0);
@@ -27,6 +33,18 @@ export function PreguntasSeleccionSection({ examenId, onSeleccionGuardada }: Pro
   const [guardando, setGuardando] = useState(false);
   const [okGuardado, setOkGuardado] = useState(false);
   const [errorGuardar, setErrorGuardar] = useState<string | null>(null);
+
+  // Modo de selección
+  const [modo, setModo] = useState<ModoSeleccion>('manual');
+
+  // Sorteo
+  const [categorias, setCategorias] = useState<CategoriaPregunta[]>([]);
+  const [cargandoCats, setCargandoCats] = useState(false);
+  const [catIdsSeleccionadas, setCatIdsSeleccionadas] = useState<Set<string>>(new Set());
+  const [cantidadPorCategoria, setCantidadPorCategoria] = useState(5);
+  const [ejecutandoSorteo, setEjecutandoSorteo] = useState(false);
+  const [okSorteo, setOkSorteo] = useState<number | null>(null);
+  const [errorSorteo, setErrorSorteo] = useState<string | null>(null);
 
   const cargar = useCallback(async () => {
     setCargando(true);
@@ -50,6 +68,16 @@ export function PreguntasSeleccionSection({ examenId, onSeleccionGuardada }: Pro
   useEffect(() => {
     cargar();
   }, [cargar]);
+
+  // Cargar categorías cuando se cambia al modo sorteo
+  useEffect(() => {
+    if (modo !== 'sorteo' || !materiaId) return;
+    setCargandoCats(true);
+    listarCategorias(materiaId)
+      .then(setCategorias)
+      .catch(() => setCategorias([]))
+      .finally(() => setCargandoCats(false));
+  }, [modo, materiaId]);
 
   const seleccionadas = preguntas.filter((p) => p.seleccionada).length;
   const ningunaMarcada = seleccionadas === 0;
@@ -85,6 +113,35 @@ export function PreguntasSeleccionSection({ examenId, onSeleccionGuardada }: Pro
     }
   }
 
+  function toggleCategoria(id: string) {
+    setCatIdsSeleccionadas((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+    setOkSorteo(null);
+    setErrorSorteo(null);
+  }
+
+  async function ejecutarSorteo() {
+    if (catIdsSeleccionadas.size === 0 || bloqueada) return;
+    setEjecutandoSorteo(true);
+    setOkSorteo(null);
+    setErrorSorteo(null);
+    try {
+      const res = await sortearPreguntas(examenId, Array.from(catIdsSeleccionadas), cantidadPorCategoria);
+      setOkSorteo(res.seleccionadas);
+      onSeleccionGuardada(res.seleccionadas);
+      // Recargar lista para reflejar la nueva selección
+      await cargar();
+    } catch (err: unknown) {
+      setErrorSorteo(err instanceof Error ? err.message : 'No se pudo ejecutar el sorteo.');
+    } finally {
+      setEjecutandoSorteo(false);
+    }
+  }
+
   return (
     <Card>
       <SectionTitle
@@ -96,7 +153,7 @@ export function PreguntasSeleccionSection({ examenId, onSeleccionGuardada }: Pro
               : `${seleccionadas} de ${total} pregunta${total !== 1 ? 's' : ''} seleccionada${seleccionadas !== 1 ? 's' : ''}`
         }
         action={
-          !cargando && !errorCarga && preguntas.length > 0 && !bloqueada ? (
+          !cargando && !errorCarga && preguntas.length > 0 && !bloqueada && modo === 'manual' ? (
             <div className="flex items-center gap-xs">
               <Button variant="ghost" size="sm" onClick={() => setTodas(true)} disabled={guardando}>
                 Seleccionar todas
@@ -110,6 +167,36 @@ export function PreguntasSeleccionSection({ examenId, onSeleccionGuardada }: Pro
       >
         Preguntas del examen
       </SectionTitle>
+
+      {/* Selector de modo (solo cuando no está bloqueada y hay preguntas) */}
+      {!bloqueada && !cargando && !errorCarga && preguntas.length > 0 && (
+        <div className="flex gap-xs mb-md">
+          <button
+            onClick={() => { setModo('manual'); setOkGuardado(false); }}
+            className={`flex items-center gap-xs px-md py-sm rounded-xl text-label-md font-medium transition-colors border ${
+              modo === 'manual'
+                ? 'bg-primary text-on-primary border-primary'
+                : 'bg-surface border-outline-variant text-on-surface hover:bg-surface-100'
+            }`}
+          >
+            <Icon name="checklist" className="text-[16px]" />
+            Selección manual
+          </button>
+          {materiaId && (
+            <button
+              onClick={() => { setModo('sorteo'); setOkGuardado(false); }}
+              className={`flex items-center gap-xs px-md py-sm rounded-xl text-label-md font-medium transition-colors border ${
+                modo === 'sorteo'
+                  ? 'bg-primary text-on-primary border-primary'
+                  : 'bg-surface border-outline-variant text-on-surface hover:bg-surface-100'
+              }`}
+            >
+              <Icon name="shuffle" className="text-[16px]" />
+              Armar por sorteo
+            </button>
+          )}
+        </div>
+      )}
 
       {cargando && (
         <div className="space-y-2 animate-pulse">
@@ -138,7 +225,107 @@ export function PreguntasSeleccionSection({ examenId, onSeleccionGuardada }: Pro
         </div>
       )}
 
-      {!cargando && !errorCarga && preguntas.length > 0 && (
+      {/* Panel de sorteo */}
+      {!cargando && !errorCarga && preguntas.length > 0 && modo === 'sorteo' && (
+        <div className="space-y-md">
+          {bloqueada && (
+            <div className="flex items-start gap-sm text-warning bg-warning-container rounded-xl px-md py-sm text-label-sm">
+              <Icon name="lock" className="text-[18px] shrink-0 mt-0.5" fill />
+              <span>
+                Selección <strong>congelada</strong>: este examen ya tiene intentos finalizados.
+              </span>
+            </div>
+          )}
+
+          {okSorteo !== null && (
+            <div className="flex items-center gap-sm text-success bg-success-container rounded-xl px-md py-sm text-label-sm">
+              <Icon name="check_circle" className="text-[18px] shrink-0" fill />
+              Sorteo ejecutado: {okSorteo} pregunta{okSorteo !== 1 ? 's' : ''} seleccionada{okSorteo !== 1 ? 's' : ''}.
+            </div>
+          )}
+          {errorSorteo && (
+            <div className="flex items-center gap-sm text-error bg-error-container/40 rounded-xl px-md py-sm text-label-sm">
+              <Icon name="error" className="text-[18px] shrink-0" fill />
+              {errorSorteo}
+            </div>
+          )}
+
+          {cargandoCats ? (
+            <div className="space-y-2 animate-pulse">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="h-10 bg-surface-100 rounded-lg" />
+              ))}
+            </div>
+          ) : categorias.length === 0 ? (
+            <div className="flex items-center gap-sm text-on-surface-variant bg-surface-100 rounded-xl px-md py-sm text-label-sm">
+              <Icon name="info" className="text-[18px] shrink-0" />
+              Esta materia no tiene categorías definidas. Creá categorías en el Banco de preguntas primero.
+            </div>
+          ) : (
+            <>
+              <div>
+                <p className="text-label-md font-medium text-on-surface mb-sm">
+                  Categorías a incluir
+                </p>
+                <ul className="space-y-xs">
+                  {categorias.map((cat) => (
+                    <li key={cat.id}>
+                      <label className={`flex items-center gap-sm p-sm rounded-xl border cursor-pointer transition-colors select-none ${
+                        catIdsSeleccionadas.has(cat.id)
+                          ? 'border-primary/40 bg-primary-fixed/30'
+                          : 'border-outline-variant/40 hover:bg-surface-container-low'
+                      }`}>
+                        <input
+                          type="checkbox"
+                          checked={catIdsSeleccionadas.has(cat.id)}
+                          onChange={() => toggleCategoria(cat.id)}
+                          disabled={bloqueada || ejecutandoSorteo}
+                          className="w-4 h-4 accent-primary shrink-0 disabled:cursor-not-allowed"
+                        />
+                        <span className="text-label-md text-on-surface">{cat.nombre}</span>
+                      </label>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="flex items-center gap-sm">
+                <label className="text-label-md text-on-surface font-medium whitespace-nowrap">
+                  Cantidad por categoría
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={cantidadPorCategoria}
+                  onChange={(e) => {
+                    const v = parseInt(e.target.value, 10);
+                    if (!isNaN(v) && v >= 1) setCantidadPorCategoria(v);
+                  }}
+                  disabled={bloqueada || ejecutandoSorteo}
+                  className="w-20 border border-outline-variant rounded-xl px-sm py-xs text-body-md text-center focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50"
+                />
+              </div>
+
+              {!bloqueada && (
+                <div className="flex justify-end">
+                  <Button
+                    variant="primary"
+                    icon={ejecutandoSorteo ? undefined : 'shuffle'}
+                    onClick={ejecutarSorteo}
+                    disabled={ejecutandoSorteo || catIdsSeleccionadas.size === 0}
+                  >
+                    {ejecutandoSorteo ? 'Sorteando…' : 'Ejecutar sorteo'}
+                  </Button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Panel de selección manual */}
+      {!cargando && !errorCarga && preguntas.length > 0 && modo === 'manual' && (
         <div className="space-y-md">
           {bloqueada && (
             <div className="flex items-start gap-sm text-warning bg-warning-container rounded-xl px-md py-sm text-label-sm">

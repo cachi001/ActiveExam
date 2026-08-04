@@ -150,7 +150,7 @@ export function StaffShell({
   return (
     <div className="min-h-screen bg-surface text-on-surface">
       <header
-        className="fixed top-0 left-0 right-0 z-50 border-b border-surface-200/80 bg-white/95 backdrop-blur-sm"
+        className="fixed top-0 left-0 right-0 z-50 border-b border-surface-200 bg-white"
         style={{ height: TOPBAR_H }}
       >
         <div className="h-full px-4 sm:px-6 flex items-center justify-between gap-4">
@@ -221,7 +221,7 @@ export function StaffShell({
       </aside>
 
       <div
-        className="min-h-screen transition-[margin] duration-300 ease-in-out"
+        className="min-h-screen transition-[margin] duration-300 ease-in-out bg-white"
         style={{
           paddingTop: TOPBAR_H,
           marginLeft: isDesktop ? (showAsCollapsed ? SIDEBAR_COLLAPSED : SIDEBAR_EXPANDED) : 0,

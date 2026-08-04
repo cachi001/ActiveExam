@@ -85,13 +85,13 @@ export function AsignarDocenteDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4"
       role="dialog"
       aria-modal="true"
-      aria-label={`Docente a cargo de ${comisionNombre}`}
+      aria-label={`Asignar tutor de ${comisionNombre}`}
     >
       <div className="card w-full max-w-md p-lg">
-        <h2 className="text-title-sm font-semibold text-on-surface">Docente a cargo</h2>
+        <h2 className="text-title-sm font-semibold text-on-surface">Asignar tutor</h2>
         <p className="text-label-sm text-on-surface-variant mt-0.5 mb-md">
           {comisionNombre}
         </p>
@@ -110,7 +110,7 @@ export function AsignarDocenteDialog({
               disabled={guardando}
               onChange={(e) => setSeleccionado(e.target.value)}
             >
-              <option value="">Sin docente asignado</option>
+              <option value="">Sin tutor asignado</option>
               {docentes.map((d) => (
                 <option key={d.id} value={d.id}>
                   {d.nombre}

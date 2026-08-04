@@ -121,10 +121,9 @@ export default function Revisor() {
         setLastUpdatedAt(Date.now());
         // #8: entrada fresca (no venimos del detalle) → saltamos los niveles de una
         // sola opción para acortar el recorrido hasta las personas en riesgo.
-        if (!restaurado?.path?.materia) {
-          const auto = caminoAutoColapsado(enriched);
-          if (auto.materia) setPath(auto);
-        }
+        // No auto-colapsamos: el usuario siempre arranca en la raíz (Materias).
+        // El auto-colapso generaba confusión al mostrar el breadcrumb completo
+        // en el primer render sin que el usuario hubiera navegado nada.
       } catch {
         setItems([]);
       } finally {
@@ -174,8 +173,8 @@ export default function Revisor() {
       sessionStorage.setItem(NAV_KEY, JSON.stringify({ path, personaSelId: id }));
     } catch { /* ignore */ }
     setProctoringSessionId(id);
-    setProctoringDetailBackRoute('/revisor');
-    navigate(PROCTORING_DETAIL_ROUTE);
+    setProctoringDetailBackRoute('/admin/cola-revision');
+    navigate(PROCTORING_DETAIL_ROUTE + '/' + id);
   };
 
   /**

@@ -43,11 +43,12 @@ export const STAFF_NAV: StaffNavItem[] = [
   { to: '/admin',                       icon: 'space_dashboard', label: 'Dashboard',               group: 'main',   roles: [...ACADEMICO, 'proctor', 'revisor', 'auditor'] },
   { to: '/admin/estadisticas',          icon: 'insights',        label: 'Estadísticas',            group: 'main',   roles: ACADEMICO },
   { to: '/admin/examenes',              icon: 'fact_check',      label: 'Exámenes',                group: 'main',   roles: ACADEMICO },
+  { to: '/admin/banco-preguntas',       icon: 'library_books',   label: 'Banco de preguntas',       group: 'main',   roles: ACADEMICO },
   // Bloque "proctoring": las 3 vistas de sesiones van juntas y al FINAL del grupo
   // main (justo arriba del divider), en orden de flujo: vivo → cola → grabadas.
   // Visibles para proctor + admin (SUPERVISION).
   { to: '/proctor',                     icon: 'visibility',      label: 'Supervisión en vivo',     group: 'main',   roles: SUPERVISION },
-  { to: '/revisor',                     icon: 'gavel',           label: 'Cola de revisión',        group: 'main',   roles: SUPERVISION },
+  { to: '/admin/cola-revision',          icon: 'gavel',           label: 'Cola de revisión',        group: 'main',   roles: SUPERVISION },
   { to: '/admin/proctoring-sessions',   icon: 'history',         label: 'Registro de sesiones',    group: 'main',   roles: SUPERVISION },
   // Administración: separadas con divider. Solo admin.
   { to: '/admin/usuarios',              icon: 'manage_accounts', label: 'Usuarios',                group: 'config', roles: ADMIN },

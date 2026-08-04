@@ -133,6 +133,7 @@ export default function ExamDetail() {
 
         <PreguntasSeleccionSection
           examenId={examenId}
+          materiaId={examen?.materia_id}
           onSeleccionGuardada={(cantidad) =>
             setExamen((prev) => (prev ? { ...prev, cantidad_preguntas: cantidad } : prev))
           }

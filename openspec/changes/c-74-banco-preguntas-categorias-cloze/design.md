@@ -86,8 +86,8 @@ migraciones `0026`–`0051`.
   decidió explícitamente que NO: un sorteo único por comisión, todos rinden
   lo mismo.
 - Editar preguntas del banco desde la UI (más allá de categorizarlas) — el
-  banco se sigue poblando por import de XML, no por creación manual de
-  preguntas una por una.
+  banco se puede poblar por import de XML **o por sync desde la API de Moodle**;
+  la creación manual de preguntas una por una no es goal.
 
 ## Decisions
 
@@ -137,6 +137,28 @@ separación completa banco/examen en un change futuro si hace falta.
    (`/admin/banco-preguntas`), independiente de la pantalla de creación/edición
    de examen. La pantalla de examen solo consume categorías (para el sorteo),
    no las administra.
+
+8. **Sync de categorías y preguntas desde la API de Moodle (sin import de XML).**
+   El docente puede sincronizar el banco de preguntas directamente desde un curso
+   de campustest sin necesidad de exportar/importar un XML. Flujo:
+   - `POST /exam-content/moodle/sync-banco/{materia_id}` — recibe el `courseid`
+     de Moodle y llama `core_question_get_bank_categories` (disponible desde
+     Moodle 4.3) para traer la jerarquía de categorías, luego
+     `core_question_get_questions_by_courses` o equivalente para las preguntas
+     de cada categoría.
+   - Persiste en las mismas tablas (`categoria_pregunta`, `pregunta_examen`,
+     `opcion_respuesta`) que el import XML — misma representación interna,
+     origen distinto. El campo `moodle_question_id` (int nullable en
+     `pregunta_examen`) evita duplicados en re-syncs sucesivas.
+   - El sorteo aleatorio (D4/task 3) funciona igual sin importar el origen de
+     las preguntas — toma de `categoria_pregunta`, agnóstico del origen.
+   - La credencial usada es la del docente (`moodle_credencial_docente`, que ya
+     existe de C-73) — el token intercambia por WS y llama con los permisos del
+     docente sobre su propio curso.
+   - WS function a verificar en implementación: `core_question_get_bank_categories`
+     (Moodle 4.3+, disponible en campustest 4.5). Fallback si no está habilitada:
+     parsear el export XML (ya implementado). La pantalla admin muestra ambas
+     opciones.
 
 ## Risks / Trade-offs
 

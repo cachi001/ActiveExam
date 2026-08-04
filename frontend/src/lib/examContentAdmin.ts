@@ -478,6 +478,29 @@ export async function getPreguntasExamen(examenId: string): Promise<PreguntasExa
 }
 
 /**
+ * Arma la selección del examen por sorteo: elige aleatoriamente `cantidadPorCategoria`
+ * preguntas de cada categoría indicada y las marca como seleccionadas. Admin-only.
+ * POST /api/v1/exam-content/{examenId}/sortear-preguntas
+ */
+export async function sortearPreguntas(
+  examenId: string,
+  categoriaIds: string[],
+  cantidadPorCategoria: number,
+): Promise<{ seleccionadas: number }> {
+  const res = await fetch(`${API_BASE}/exam-content/${examenId}/sortear-preguntas`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({ categoria_ids: categoriaIds, cantidad_por_categoria: cantidadPorCategoria }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.detail?.mensaje ?? body?.detail ?? `Error ${res.status}`);
+  }
+  const body = await res.json().catch(() => null);
+  return { seleccionadas: body?.seleccionadas ?? 0 };
+}
+
+/**
  * Define la selección de preguntas del examen: `seleccionadasIds` son los ids
  * INCLUIDOS. El backend rechaza con 422 si la lista queda vacía (un examen no
  * puede quedar sin preguntas). Admin-only. Devuelve los contadores resultantes

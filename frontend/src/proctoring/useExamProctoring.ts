@@ -253,6 +253,8 @@ export function useExamProctoring(
 ): UseExamProctoringResult {
   const setProctoringSessionId = useApp((s) => s.setProctoringSessionId);
   const setProctoringSessionCreadaEn = useApp((s) => s.setProctoringSessionCreadaEn);
+  const biometriaPendientePayload = useApp((s) => s.biometriaPendientePayload);
+  const setBiometriaPendientePayload = useApp((s) => s.setBiometriaPendientePayload);
   const principal = useAuth((s) => s.principal);
   const addScore = useApp((s) => s.addScore);
   // C-64 D1: si Consent.tsx ya creó la sesión anticipada, reutilizarla — no crear otra.
@@ -577,6 +579,12 @@ export function useExamProctoring(
             sessionIdRef.current = id;
             setSessionId(id);
             setProctoringSessionId(id);
+            // Enviar payload biométrico que quedó pendiente de la pantalla /biometria
+            // (la sesión no existía todavía cuando el alumno verificó su identidad).
+            if (biometriaPendientePayload) {
+              void api.enviarBiometriaProctoring(id, biometriaPendientePayload).catch(() => {});
+              setBiometriaPendientePayload(null);
+            }
             return id;
           },
         );

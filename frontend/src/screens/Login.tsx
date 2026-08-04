@@ -17,7 +17,7 @@ function homePorRol(roles: Rol[]): string {
   if (roles.includes('admin_sistema')) return '/admin';
   if (roles.includes('proctor')) return '/proctor';
   // El revisor entra directo a la cola: es su única tarea.
-  if (roles.includes('revisor')) return '/revisor';
+  if (roles.includes('revisor')) return '/admin/cola-revision';
   if (roles.includes('coordinador')) return '/admin';
   // Docente y admin de exámenes arrancan en su listado de exámenes.
   if (roles.includes('docente') || roles.includes('admin_examenes')) return '/admin/examenes';

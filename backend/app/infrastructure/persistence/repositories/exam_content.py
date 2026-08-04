@@ -16,6 +16,7 @@ from app.domain.exam_content.entities import (
     Pregunta,
     PreguntaSeleccionItem,
 )
+from app.application.exam_content.errors import SorteoInsuficienteError
 from app.domain.exam_content.errors import (
     CodigoMatriculacionDuplicadoError,
     ComisionDuplicadaError,
@@ -108,6 +109,7 @@ class ExamenContenidoSqlRepository:
                 tipo=pregunta.tipo,
                 orden=pregunta.orden if pregunta.orden else i,
                 seleccionada=pregunta.seleccionada,
+                categoria_id=pregunta.categoria_id,
             )
             for j, opcion in enumerate(pregunta.opciones):
                 o_model = OpcionRespuestaModel(
@@ -442,6 +444,65 @@ class ExamenContenidoSqlRepository:
                 PreguntaExamenModel.id.notin_(validas),
             )
             .values(seleccionada=False)
+        )
+        await self._db.flush()
+        return await self.listar_preguntas(examen_id)
+
+    async def sortear_por_categorias(
+        self,
+        examen_id: str,
+        categoria_ids: list[str],
+        cantidad_por_categoria: int,
+    ) -> list[PreguntaSeleccionItem] | None:
+        """Sortea N preguntas de cada categoría y las marca seleccionada=true.
+
+        - Devuelve None si el examen no existe.
+        - Eleva SorteoInsuficienteError si alguna categoría tiene < N preguntas.
+        - Eleva SeleccionInvalidaError si la lista de categorías resulta vacía.
+        - Cada llamada produce una selección NUEVA (el sorteo no es idempotente).
+        """
+        if not await self._examen_existe(examen_id):
+            return None
+
+        if not categoria_ids:
+            raise SeleccionInvalidaError("Se requiere al menos 1 categoría para el sorteo.")
+
+        seleccionadas: list[str] = []
+        for cat_id in categoria_ids:
+            disponibles_result = await self._db.execute(
+                select(func.count(PreguntaExamenModel.id)).where(
+                    PreguntaExamenModel.examen_id == examen_id,
+                    PreguntaExamenModel.categoria_id == cat_id,
+                )
+            )
+            disponibles = disponibles_result.scalar_one()
+            if disponibles < cantidad_por_categoria:
+                raise SorteoInsuficienteError(cat_id, disponibles, cantidad_por_categoria)
+
+            elegidas = await self._db.execute(
+                select(PreguntaExamenModel.id)
+                .where(
+                    PreguntaExamenModel.examen_id == examen_id,
+                    PreguntaExamenModel.categoria_id == cat_id,
+                )
+                .order_by(func.random())
+                .limit(cantidad_por_categoria)
+            )
+            seleccionadas.extend(elegidas.scalars().all())
+
+        # Reset todo el examen, luego marca las elegidas.
+        await self._db.execute(
+            update(PreguntaExamenModel)
+            .where(PreguntaExamenModel.examen_id == examen_id)
+            .values(seleccionada=False)
+        )
+        await self._db.execute(
+            update(PreguntaExamenModel)
+            .where(
+                PreguntaExamenModel.examen_id == examen_id,
+                PreguntaExamenModel.id.in_(seleccionadas),
+            )
+            .values(seleccionada=True)
         )
         await self._db.flush()
         return await self.listar_preguntas(examen_id)
@@ -945,6 +1006,24 @@ class ComisionSqlRepository:
                 ExamenContenidoModel.comision_id == ComisionModel.id,
             )
             .where(ExamenContenidoModel.id == examen_id)
+        )
+        return result.scalar_one_or_none()
+
+    async def docente_de_materia(self, materia_id: str) -> str | None:
+        """Docente a cargo de cualquier comisión de la materia. C-74 §4.
+
+        Si la materia tiene múltiples comisiones con docentes distintos, devuelve
+        uno arbitrario — suficiente para el chequeo de pertenencia (si hay docente
+        asignado en alguna comisión de la materia, el caller puede verificar).
+        Devuelve None si ninguna comisión de la materia tiene docente.
+        """
+        result = await self._db.execute(
+            select(ComisionModel.docente_id)
+            .where(
+                ComisionModel.materia_id == materia_id,
+                ComisionModel.docente_id.isnot(None),
+            )
+            .limit(1)
         )
         return result.scalar_one_or_none()
 

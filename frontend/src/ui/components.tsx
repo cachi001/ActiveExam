@@ -71,7 +71,7 @@ export function Card({ children, className = '', padded = true }: { children: Re
   // 2xl + shadow-card previo se acumulaba en pantallas con muchas cards y daba
   // sensación pesada/redonda; el ajuste deja la card legible sin gritar.
   return (
-    <div className={`bg-surface-container-lowest rounded-lg border border-surface-200 ${padded ? 'p-lg' : ''} ${className}`}>
+    <div className={`bg-white rounded-lg border border-surface-200 shadow-sm ${padded ? 'p-lg' : ''} ${className}`}>
       {children}
     </div>
   );

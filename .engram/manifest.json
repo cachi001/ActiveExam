@@ -720,6 +720,14 @@
       "sessions": 0,
       "memories": 5,
       "prompts": 0
+    },
+    {
+      "id": "587bd4ea",
+      "created_by": "Emiliano",
+      "created_at": "2026-08-04T00:01:09Z",
+      "sessions": 0,
+      "memories": 11,
+      "prompts": 0
     }
   ]
 }

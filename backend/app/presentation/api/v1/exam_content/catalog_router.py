@@ -97,8 +97,11 @@ from app.presentation.api.v1.exam_content.schemas import (
     PreguntasPoolResponse,
     PreguntasSeleccionRequest,
     ResultadoAlumnoResponse,
+    SorteoRequest,
     ResultadosExamenPaginadosResponse,
     SincronizarMoodleResponse,
+    SyncBancoRequest,
+    SyncBancoResponse,
 )
 
 
@@ -1267,6 +1270,23 @@ def create_exam_content_router(
                 detail={"error": "examen_ajeno", "mensaje": str(exc)},
             ) from exc
 
+    async def _exigir_pertenencia_materia(principal, materia_id: str) -> None:
+        """C-74: docente solo opera el banco de su propia materia (misma política que examen)."""
+        from app.domain.auth.authorization import autorizar_docente_sobre_examen
+        from app.domain.auth.errors import ForbiddenError
+        from app.infrastructure.persistence.repositories.exam_content import (
+            ComisionSqlRepository,
+        )
+        async with session_factory() as session:
+            docente_id = await ComisionSqlRepository(session).docente_de_materia(materia_id)
+        try:
+            autorizar_docente_sobre_examen(principal, docente_id)
+        except ForbiddenError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={"error": "materia_ajena", "mensaje": str(exc)},
+            ) from exc
+
     @router.post(
         "/{examen_id}/moodle-target",
         response_model=MoodleTargetResponse,
@@ -1551,6 +1571,214 @@ def create_exam_content_router(
             bloqueada=bloqueada,
         )
 
+    # -----------------------------------------------------------------------
+    # Banco de preguntas — categorías (C-74 §4)
+    # -----------------------------------------------------------------------
+
+    @router.get(
+        "/categorias",
+        summary="Listar categorías del banco de preguntas de una materia (C-74 §4)",
+    )
+    async def listar_categorias_banco(
+        materia_id: str,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    ):
+        """Devuelve todas las categorías de la materia, flat (el cliente construye el árbol)."""
+        await _exigir_pertenencia_materia(principal, materia_id)
+        if session_factory is None:
+            raise HTTPException(status_code=500, detail="Persistencia no inicializada.")
+        from app.infrastructure.persistence.repositories.categoria_pregunta import (
+            CategoriaPreguntaSqlRepository,
+        )
+        async with session_factory() as session:
+            cats = await CategoriaPreguntaSqlRepository(session).listar_por_materia(materia_id)
+        return [
+            {
+                "id": c.id,
+                "nombre": c.nombre,
+                "materia_id": c.materia_id,
+                "categoria_padre_id": c.categoria_padre_id,
+                "creada_en": c.creada_en.isoformat() if c.creada_en else None,
+            }
+            for c in cats
+        ]
+
+    @router.post(
+        "/categorias",
+        status_code=201,
+        summary="Crear categoría en el banco de preguntas (C-74 §4)",
+    )
+    async def crear_categoria_banco(
+        body: dict,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    ):
+        materia_id = body.get("materia_id", "")
+        nombre = body.get("nombre", "").strip()
+        padre_id = body.get("categoria_padre_id") or None
+        if not materia_id or not nombre:
+            raise HTTPException(status_code=422, detail="materia_id y nombre son requeridos.")
+        await _exigir_pertenencia_materia(principal, materia_id)
+        if session_factory is None:
+            raise HTTPException(status_code=500, detail="Persistencia no inicializada.")
+        from app.domain.exam_content.entities import CategoriaPregunta
+        from app.infrastructure.persistence.repositories.categoria_pregunta import (
+            CategoriaPreguntaSqlRepository,
+        )
+        async with session_factory() as session:
+            cat = await CategoriaPreguntaSqlRepository(session).crear(
+                CategoriaPregunta(nombre=nombre, materia_id=materia_id, categoria_padre_id=padre_id)
+            )
+            await session.commit()
+        return {
+            "id": cat.id,
+            "nombre": cat.nombre,
+            "materia_id": cat.materia_id,
+            "categoria_padre_id": cat.categoria_padre_id,
+            "creada_en": cat.creada_en.isoformat() if cat.creada_en else None,
+        }
+
+    @router.patch(
+        "/categorias/{categoria_id}",
+        summary="Renombrar categoría del banco de preguntas (C-74 §4)",
+    )
+    async def renombrar_categoria_banco(
+        categoria_id: str,
+        body: dict,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    ):
+        nombre = body.get("nombre", "").strip()
+        if not nombre:
+            raise HTTPException(status_code=422, detail="nombre es requerido.")
+        if session_factory is None:
+            raise HTTPException(status_code=500, detail="Persistencia no inicializada.")
+        from app.infrastructure.persistence.models.exam_content import CategoriaPreguntaModel
+        from app.infrastructure.persistence.repositories.categoria_pregunta import (
+            CategoriaPreguntaSqlRepository,
+        )
+        from sqlalchemy import update as _update
+        async with session_factory() as session:
+            cat = await CategoriaPreguntaSqlRepository(session).obtener(categoria_id)
+            if cat is None:
+                raise HTTPException(status_code=404, detail="categoria_no_encontrada")
+            await _exigir_pertenencia_materia(principal, cat.materia_id)
+            await session.execute(
+                _update(CategoriaPreguntaModel)
+                .where(CategoriaPreguntaModel.id == categoria_id)
+                .values(nombre=nombre)
+            )
+            await session.commit()
+            cat_act = await CategoriaPreguntaSqlRepository(session).obtener(categoria_id)
+        return {
+            "id": cat_act.id,
+            "nombre": cat_act.nombre,
+            "materia_id": cat_act.materia_id,
+            "categoria_padre_id": cat_act.categoria_padre_id,
+        }
+
+    @router.delete(
+        "/categorias/{categoria_id}",
+        status_code=204,
+        summary="Borrar categoría del banco de preguntas (C-74 §4)",
+    )
+    async def borrar_categoria_banco(
+        categoria_id: str,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    ):
+        if session_factory is None:
+            raise HTTPException(status_code=500, detail="Persistencia no inicializada.")
+        from app.infrastructure.persistence.repositories.categoria_pregunta import (
+            CategoriaPreguntaSqlRepository,
+        )
+        async with session_factory() as session:
+            cat = await CategoriaPreguntaSqlRepository(session).obtener(categoria_id)
+            if cat is None:
+                raise HTTPException(status_code=404, detail="categoria_no_encontrada")
+            await _exigir_pertenencia_materia(principal, cat.materia_id)
+            await CategoriaPreguntaSqlRepository(session).borrar(categoria_id)
+            await session.commit()
+
+    # -----------------------------------------------------------------------
+    # Banco de preguntas — listar/mover preguntas del banco (C-74 §4)
+    # -----------------------------------------------------------------------
+
+    @router.get(
+        "/preguntas",
+        summary="Listar preguntas del banco por materia/categoría (C-74 §4)",
+    )
+    async def listar_preguntas_banco(
+        materia_id: str,
+        categoria_id: str | None = None,
+        sin_categoria: bool = False,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    ):
+        """Devuelve preguntas de todos los exámenes de la materia, filtradas por categoría.
+
+        Si ``sin_categoria=true``, devuelve las preguntas con categoria_id=NULL ("Sin clasificar").
+        Si se provee ``categoria_id``, filtra por esa categoría.
+        """
+        await _exigir_pertenencia_materia(principal, materia_id)
+        if session_factory is None:
+            raise HTTPException(status_code=500, detail="Persistencia no inicializada.")
+        from sqlalchemy import select as _select
+        from app.infrastructure.persistence.models.exam_content import (
+            ExamenContenidoModel,
+            PreguntaExamenModel,
+        )
+        from app.infrastructure.persistence.models.exam_content import ComisionModel
+        async with session_factory() as session:
+            stmt = (
+                _select(PreguntaExamenModel)
+                .join(ExamenContenidoModel, PreguntaExamenModel.examen_id == ExamenContenidoModel.id)
+                .outerjoin(ComisionModel, ExamenContenidoModel.comision_id == ComisionModel.id)
+                .where(
+                    (ComisionModel.materia_id == materia_id) |
+                    (ExamenContenidoModel.comision_id.is_(None))
+                )
+            )
+            if sin_categoria:
+                stmt = stmt.where(PreguntaExamenModel.categoria_id.is_(None))
+            elif categoria_id:
+                stmt = stmt.where(PreguntaExamenModel.categoria_id == categoria_id)
+            result = await session.execute(stmt.limit(200))
+            rows = result.scalars().all()
+        return [
+            {
+                "id": r.id,
+                "enunciado": r.enunciado,
+                "tipo": r.tipo,
+                "orden": r.orden,
+                "seleccionada": r.seleccionada,
+                "categoria_id": r.categoria_id,
+            }
+            for r in rows
+        ]
+
+    @router.patch(
+        "/preguntas/{pregunta_id}/categoria",
+        summary="Mover pregunta a una categoría del banco (C-74 §4.3)",
+    )
+    async def mover_pregunta_categoria(
+        pregunta_id: str,
+        body: dict,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    ):
+        nueva_cat_id = body.get("categoria_id") or None
+        if session_factory is None:
+            raise HTTPException(status_code=500, detail="Persistencia no inicializada.")
+        from sqlalchemy import select as _select, update as _update
+        from app.infrastructure.persistence.models.exam_content import PreguntaExamenModel
+        async with session_factory() as session:
+            row = await session.get(PreguntaExamenModel, pregunta_id)
+            if row is None:
+                raise HTTPException(status_code=404, detail="pregunta_no_encontrada")
+            await session.execute(
+                _update(PreguntaExamenModel)
+                .where(PreguntaExamenModel.id == pregunta_id)
+                .values(categoria_id=nueva_cat_id)
+            )
+            await session.commit()
+        return {"pregunta_id": pregunta_id, "categoria_id": nueva_cat_id}
+
     async def _seleccion_bloqueada(session, examen_id: str) -> bool:
         """True si el examen ya tiene >= 1 intento FINALIZADO.
 
@@ -1705,6 +1933,87 @@ def create_exam_content_router(
                 f"{len(body.seleccionadas)} seleccionada(s)"
             ),
         )
+
+        return _pool_to_response(items)
+
+    @router.post(
+        "/{examen_id}/sortear-preguntas",
+        response_model=PreguntasPoolResponse,
+        summary="Armar examen por sorteo aleatorio de categorías (C-74 §3)",
+    )
+    async def sortear_preguntas(
+        examen_id: str,
+        body: SorteoRequest,
+        request: Request,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    ) -> PreguntasPoolResponse:
+        """Sortea N preguntas de cada categoría y marca seleccionada=true.
+
+        - 409 si el examen ya tiene intentos finalizados (mismo candado que selección manual).
+        - 422 si alguna categoría tiene menos preguntas de las pedidas.
+        - 422 si la lista de categorías está vacía.
+        - Cada llamada produce una selección NUEVA (no idempotente).
+        """
+        await _exigir_pertenencia(principal, examen_id)
+        if session_factory is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Persistencia no inicializada.",
+            )
+
+        from app.application.exam_content.errors import SorteoInsuficienteError
+        from app.domain.exam_content.errors import SeleccionInvalidaError
+        from app.infrastructure.persistence.repositories.exam_content import (
+            ExamenContenidoSqlRepository,
+        )
+
+        async with session_factory() as session:
+            repo = ExamenContenidoSqlRepository(session)
+
+            if await _seleccion_bloqueada(session, examen_id):
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={
+                        "error": "seleccion_bloqueada",
+                        "mensaje": (
+                            "No se puede sortear: este examen ya tiene intentos "
+                            "finalizados y cambiar la selección alteraría notas ya "
+                            "calculadas."
+                        ),
+                    },
+                )
+
+            try:
+                items = await repo.sortear_por_categorias(
+                    examen_id,
+                    body.categoria_ids,
+                    body.cantidad_por_categoria,
+                )
+            except SorteoInsuficienteError as exc:
+                await session.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail={
+                        "error": "sorteo_insuficiente",
+                        "mensaje": str(exc),
+                        "categoria_id": exc.categoria_id,
+                        "disponibles": exc.disponibles,
+                        "pedidas": exc.pedidas,
+                    },
+                ) from exc
+            except SeleccionInvalidaError as exc:
+                await session.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail={"error": "seleccion_invalida", "mensaje": str(exc)},
+                ) from exc
+
+            if items is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail={"error": "examen_no_encontrado", "examen_id": examen_id},
+                )
+            await session.commit()
 
         return _pool_to_response(items)
 
@@ -1935,6 +2244,122 @@ def create_exam_content_router(
             fallidas=fallidas,
             sin_token=0,
             total=total,
+        )
+
+    # -----------------------------------------------------------------------
+    # Sincronización del banco de preguntas desde Moodle (C-74 §9.4)
+    # Importa las categorías del banco del curso Moodle a la materia indicada.
+    # Idempotente: segunda sincronización del mismo curso no duplica filas.
+    # -----------------------------------------------------------------------
+
+    @router.post(
+        "/moodle/sync-banco",
+        response_model=SyncBancoResponse,
+        status_code=status.HTTP_200_OK,
+        summary="Sincronizar banco de preguntas desde Moodle (C-74 §9.4)",
+    )
+    async def sync_banco_preguntas(
+        body: SyncBancoRequest,
+        request: Request,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    ) -> SyncBancoResponse:
+        """Importa categorías del banco de preguntas de un curso Moodle.
+
+        El token se obtiene de la credencial docente personal del docente que
+        hace la llamada (``_credencial_para``), igual que en el write-back.
+        Si no tiene credencial propia se cae al token institucional de config.
+
+        Idempotente: re-sincronizar el mismo curso no duplica categorías.
+        422 si ``materia_id`` no corresponde al docente.
+        503 si Moodle no está configurado.
+        """
+        from app.application.exam_content.moodle_sync_service import (
+            MoodleSyncError,
+            sync_banco_desde_moodle,
+        )
+
+        await _exigir_pertenencia_materia(principal, body.materia_id)
+
+        if session_factory is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Persistencia no inicializada.",
+            )
+
+        # Resolver token: preferir credencial docente personal; si no, usar el
+        # token institucional de writeback_svc (si está configurado).
+        token: str | None = None
+        base_url: str | None = None
+
+        from app.infrastructure.persistence.models.transactional import (
+            MoodleCredencialDocenteModel,
+        )
+        from sqlalchemy import select as _select
+
+        async with session_factory() as session:
+            fila_cred = (
+                await session.execute(
+                    _select(MoodleCredencialDocenteModel).where(
+                        MoodleCredencialDocenteModel.usuario_id == principal.usuario_id
+                    )
+                )
+            ).scalar_one_or_none()
+
+        if fila_cred is not None and fila_cred.estado == "activa":
+            from app.infrastructure.crypto.secret_encryption import SecretCipher
+            import os
+
+            secret_key = os.environ.get("SECRET_ENCRYPTION_KEY", "")
+            if secret_key:
+                try:
+                    cipher = SecretCipher(secret_key)
+                    token = cipher.decrypt(fila_cred.token_cifrado)
+                    base_url = fila_cred.base_url
+                except Exception:
+                    token = None
+
+        if token is None and writeback_svc is not None:
+            # Usar el token institucional de la config de writeback
+            try:
+                cfg = await writeback_svc._client._resolver_config()
+                token = cfg.ws_token
+                base_url = cfg.base_url
+            except Exception:
+                token = None
+
+        if not token or not base_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail={
+                    "error": "moodle_sin_token",
+                    "mensaje": (
+                        "No hay credencial Moodle disponible. Configurá tu "
+                        "credencial personal en Configuración → Campus (Moodle) "
+                        "o pedí al administrador que configure el token institucional."
+                    ),
+                },
+            )
+
+        try:
+            async with session_factory() as session:
+                resultado = await sync_banco_desde_moodle(
+                    db=session,
+                    courseid=body.courseid,
+                    materia_id=body.materia_id,
+                    token=token,
+                    base_url=base_url,
+                )
+                await session.commit()
+        except MoodleSyncError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail={"error": "moodle_sync_error", "mensaje": str(exc)},
+            ) from exc
+
+        return SyncBancoResponse(
+            categorias_creadas=resultado["categorias_creadas"],
+            preguntas_nuevas=resultado["preguntas_nuevas"],
+            preguntas_actualizadas=resultado["preguntas_actualizadas"],
         )
 
     return router

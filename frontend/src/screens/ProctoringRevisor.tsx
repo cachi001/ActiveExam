@@ -62,7 +62,7 @@ export default function ProctoringRevisor() {
   const handleAbrir = (sesion: SesionProctoringResumen) => {
     setProctoringSessionId(sesion.id);
     setProctoringDetailBackRoute('/admin/proctoring-sessions');
-    navigate(PROCTORING_DETAIL_ROUTE);
+    navigate(PROCTORING_DETAIL_ROUTE + '/' + sesion.id);
   };
 
   const handleConfirmarBorrado = async () => {
