@@ -62,23 +62,6 @@ function leerNavGuardada(): { path: ColaPath; personaSelId: string | null } | nu
   }
 }
 
-/**
- * Acorta el recorrido (C-72 backlog UX #8): sigue los niveles que tienen UNA sola
- * opción desde la raíz hacia abajo, para caer directo en las personas en riesgo sin
- * clickear pantallas de una sola card. Se aplica SOLO en la carga inicial (no al
- * volver del detalle): así el botón "Volver" nunca queda atrapado re-colapsando.
- */
-function caminoAutoColapsado(items: SesionEnriquecida[]): ColaPath {
-  const materias = materiasEnRiesgo(items);
-  if (materias.length !== 1) return {};
-  const materia = materias[0].nombre;
-  const comisiones = comisionesEnRiesgo(items, materia);
-  if (comisiones.length !== 1) return { materia };
-  const comision = comisiones[0].nombre;
-  const examenes = examenesEnRiesgo(items, materia, comision);
-  if (examenes.length !== 1) return { materia, comision };
-  return { materia, comision, examen: examenes[0].nombre };
-}
 
 export default function Revisor() {
   const navigate = useNavigate();
@@ -97,8 +80,6 @@ export default function Revisor() {
   );
 
   useEffect(() => {
-    // Capturamos si venimos de restaurar navegación ANTES de consumir la clave.
-    const restaurado = leerNavGuardada();
     // Ya restauramos la navegación en los initializers; consumimos la clave para
     // que sea restore-once (una entrada fresca desde el menú arranca en la raíz).
     try { sessionStorage.removeItem(NAV_KEY); } catch { /* ignore */ }
