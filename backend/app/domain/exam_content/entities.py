@@ -1,4 +1,4 @@
-﻿"""Entidades de dominio para el contenido de examen (C-69, C-74).
+"""Entidades de dominio para el contenido de examen (C-69, C-74).
 
 Reglas de dominio (NON-NEGOTIABLE):
 - D3: es_correcta NUNCA sale al cliente; vive server-side.
@@ -61,6 +61,38 @@ class OpcionRespuesta:
 
 
 @dataclass(frozen=True, slots=True)
+class OpcionBlankCloze:
+    """Opción de un hueco (blank) de una pregunta cloze.
+
+    es_correcta: NUNCA se expone al cliente (D3 / regla dura #6). En un blank
+    SHORTANSWER las opciones SON las respuestas aceptadas, así que la proyección
+    de rendición ni siquiera manda la lista.
+    """
+
+    texto: str
+    es_correcta: bool
+    id: str | None = None
+    orden: int = 0
+    peso: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class BlankCloze:
+    """Hueco de una pregunta cloze (C-74 §5).
+
+    Cada blank corresponde a un ``{N:TIPO:...}`` del questiontext de Moodle.
+    texto_antes/texto_despues son los fragmentos del enunciado que lo rodean.
+    """
+
+    id: str | None = None
+    orden: int = 0
+    tipo: str = "shortanswer"
+    texto_antes: str = ""
+    texto_despues: str = ""
+    opciones: tuple[OpcionBlankCloze, ...] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True, slots=True)
 class Pregunta:
     """Pregunta de un examen de contenido.
 
@@ -78,6 +110,8 @@ class Pregunta:
     seleccionada: bool = True
     # C-74: categoría del banco de preguntas (None = "Sin clasificar").
     categoria_id: str | None = None
+    # C-74: huecos de una pregunta cloze. Vacío en el resto de los tipos.
+    blanks: tuple[BlankCloze, ...] = field(default_factory=tuple)
 
     def __post_init__(self) -> None:
         self._validar()

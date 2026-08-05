@@ -308,3 +308,137 @@ async def test_6_3b_clave_ausente_cuenta_como_incorrecto(
 
     # 2/4 blanks correctos → contribución 0.5 → nota 5.0
     assert nota == pytest.approx(5.0, abs=0.01), f"Esperaba 5.0, obtuvo {nota}"
+
+
+# ---------------------------------------------------------------------------
+# Blanks SHORTANSWER: el alumno escribe TEXTO, no elige un id de opción
+# ---------------------------------------------------------------------------
+
+
+@pytest_asyncio.fixture
+async def examen_cloze_shortanswer(session: AsyncSession):
+    """Examen con una cloze de 2 blanks SHORTANSWER.
+
+    blank_0 acepta 'len' o 'length'; blank_1 acepta 'entero'.
+    """
+    examen_id = str(uuid.uuid4())
+    pregunta_id = str(uuid.uuid4())
+    await session.execute(
+        text("INSERT INTO examen_contenido (id, titulo) VALUES (:id, :t)"),
+        {"id": examen_id, "t": "Examen Cloze Shortanswer"},
+    )
+    await session.execute(
+        text(
+            "INSERT INTO pregunta_examen (id, examen_id, enunciado, tipo, orden, seleccionada)"
+            " VALUES (:id, :eid, :e, 'cloze', 0, true)"
+        ),
+        {"id": pregunta_id, "eid": examen_id, "e": "La funcion ___ devuelve un ___"},
+    )
+
+    blank_ids = []
+    for orden, aceptadas in enumerate((("len", "length"), ("entero",))):
+        blank_id = str(uuid.uuid4())
+        blank_ids.append(blank_id)
+        await session.execute(
+            text(
+                "INSERT INTO pregunta_cloze_blank (id, pregunta_id, orden, tipo)"
+                " VALUES (:id, :pid, :o, 'shortanswer')"
+            ),
+            {"id": blank_id, "pid": pregunta_id, "o": orden},
+        )
+        for texto in aceptadas:
+            await session.execute(
+                text(
+                    "INSERT INTO opcion_cloze_blank (id, blank_id, texto, es_correcta, peso)"
+                    " VALUES (:id, :bid, :t, true, 100)"
+                ),
+                {"id": str(uuid.uuid4()), "bid": blank_id, "t": texto},
+            )
+        await session.execute(
+            text(
+                "INSERT INTO opcion_cloze_blank (id, blank_id, texto, es_correcta, peso)"
+                " VALUES (:id, :bid, 'nada', false, 0)"
+            ),
+            {"id": str(uuid.uuid4()), "bid": blank_id},
+        )
+    await session.commit()
+
+    return {"examen_id": examen_id, "pregunta_id": pregunta_id, "blank_ids": blank_ids}
+
+
+async def _nota_shortanswer(session, datos: dict, respuesta: dict[str, str]) -> float:
+    return await calcular_nota_academica(
+        db=session,
+        examen_contenido_id=datos["examen_id"],
+        respuestas=[
+            RespuestaAlumno(
+                pregunta_id=datos["pregunta_id"], respuesta_cloze=respuesta
+            )
+        ],
+    )
+
+
+@pytest.mark.asyncio
+async def test_shortanswer_texto_escrito_se_corrige_por_texto(
+    session: AsyncSession, examen_cloze_shortanswer: dict
+):
+    """RED: en un SHORTANSWER el alumno manda TEXTO, no un id — debe valer."""
+    datos = examen_cloze_shortanswer
+    b0, b1 = datos["blank_ids"]
+
+    nota = await _nota_shortanswer(session, datos, {b0: "len", b1: "entero"})
+
+    assert nota == pytest.approx(10.0, abs=0.01), f"Esperaba 10.0, obtuvo {nota}"
+
+
+@pytest.mark.asyncio
+async def test_shortanswer_ignora_mayusculas_y_espacios(
+    session: AsyncSession, examen_cloze_shortanswer: dict
+):
+    """TRIANGULATE: Moodle corrige el shortanswer sin distinguir may/min ni bordes."""
+    datos = examen_cloze_shortanswer
+    b0, b1 = datos["blank_ids"]
+
+    nota = await _nota_shortanswer(session, datos, {b0: "  LEN ", b1: "Entero"})
+
+    assert nota == pytest.approx(10.0, abs=0.01), f"Esperaba 10.0, obtuvo {nota}"
+
+
+@pytest.mark.asyncio
+async def test_shortanswer_acepta_cualquier_respuesta_valida(
+    session: AsyncSession, examen_cloze_shortanswer: dict
+):
+    """TRIANGULATE: un blank con varias correctas (=len~=length) acepta ambas."""
+    datos = examen_cloze_shortanswer
+    b0, b1 = datos["blank_ids"]
+
+    nota = await _nota_shortanswer(session, datos, {b0: "length", b1: "entero"})
+
+    assert nota == pytest.approx(10.0, abs=0.01), f"Esperaba 10.0, obtuvo {nota}"
+
+
+@pytest.mark.asyncio
+async def test_shortanswer_texto_incorrecto_no_suma(
+    session: AsyncSession, examen_cloze_shortanswer: dict
+):
+    """TRIANGULATE: texto que coincide con una opción incorrecta no suma."""
+    datos = examen_cloze_shortanswer
+    b0, b1 = datos["blank_ids"]
+
+    nota = await _nota_shortanswer(session, datos, {b0: "nada", b1: "entero"})
+
+    # 1 de 2 blanks correctos → 5.0
+    assert nota == pytest.approx(5.0, abs=0.01), f"Esperaba 5.0, obtuvo {nota}"
+
+
+@pytest.mark.asyncio
+async def test_shortanswer_texto_desconocido_no_suma(
+    session: AsyncSession, examen_cloze_shortanswer: dict
+):
+    """TRIANGULATE borde: texto que no coincide con nada cuenta incorrecto."""
+    datos = examen_cloze_shortanswer
+    b0, b1 = datos["blank_ids"]
+
+    nota = await _nota_shortanswer(session, datos, {b0: "cualquiera", b1: ""})
+
+    assert nota == pytest.approx(0.0, abs=0.01), f"Esperaba 0.0, obtuvo {nota}"

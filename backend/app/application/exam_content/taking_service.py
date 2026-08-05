@@ -27,6 +27,18 @@ class OpcionRendicion:
 
 
 @dataclass(frozen=True, slots=True)
+class BlankRendicion:
+    """Hueco cloze proyectado para la rendición (sin la respuesta correcta — D3)."""
+
+    id: str
+    orden: int
+    tipo: str
+    texto_antes: str
+    texto_despues: str
+    opciones: tuple[OpcionRendicion, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class PreguntaRendicion:
     """Pregunta proyectada para la rendición del alumno."""
 
@@ -35,6 +47,31 @@ class PreguntaRendicion:
     tipo: str
     orden: int
     opciones: tuple[OpcionRendicion, ...]
+    # Solo poblado en preguntas cloze; el front las renderiza con estos huecos.
+    blanks: tuple[BlankRendicion, ...] = ()
+
+
+# Tipos de blank donde el alumno ELIGE de una lista. En el resto (shortanswer,
+# numerical) escribe libremente y las opciones son las respuestas aceptadas: D3
+# prohíbe mandarlas.
+_BLANK_CON_OPCIONES = ("multichoice", "multichoice_nocase", "multiresponse")
+
+
+def _proyectar_blank(blank) -> BlankRendicion:
+    expone_opciones = blank.tipo.lower() in _BLANK_CON_OPCIONES
+    return BlankRendicion(
+        id=blank.id or "",
+        orden=blank.orden,
+        tipo=blank.tipo,
+        texto_antes=blank.texto_antes,
+        texto_despues=blank.texto_despues,
+        opciones=tuple(
+            OpcionRendicion(id=o.id or "", texto=o.texto, orden=o.orden)
+            for o in sorted(blank.opciones, key=lambda x: x.orden)
+        )
+        if expone_opciones
+        else (),
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,6 +115,9 @@ def proyectar_examen(examen: ExamenContenido) -> ExamenRendicion:
                 )
                 for o in sorted(p.opciones, key=lambda x: x.orden)
             ),
+            blanks=tuple(
+                _proyectar_blank(b) for b in sorted(p.blanks, key=lambda x: x.orden)
+            ),
         )
         for p in sorted(examen.preguntas, key=lambda x: x.orden)
         if p.seleccionada
@@ -115,7 +155,10 @@ class LecturaExamenService:
         ``ComisionInactivaError``; si su MATERIA está desactivada eleva
         ``MateriaInactivaError``. En ambos casos no se puede iniciar la rendición.
         """
-        examen = await self._repo.obtener(examen_id)
+        # Lectura acotada: filtra las seleccionadas en SQL y trae los blanks cloze.
+        # Fallback a obtener() para dobles de test que solo implementan el mínimo.
+        leer = getattr(self._repo, "obtener_para_rendir", None) or self._repo.obtener
+        examen = await leer(examen_id)
         if examen is None:
             return None
         await self._verificar_materia_activa(examen)

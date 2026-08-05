@@ -39,7 +39,8 @@ export function CrearExamenModal({ abierto, onCerrar, onCreado }: Props) {
   const [materias, setMaterias] = useState<Materia[]>([]);
   const [materiaId, setMateriaId] = useState('');
   const [titulo, setTitulo] = useState('');
-  const [categorias, setCategorias] = useState<CategoriaPregunta[]>([]);
+  // Solo se escribe: el árbol de categorías lo renderiza el selector de tramos.
+  const [, setCategorias] = useState<CategoriaPregunta[]>([]);
   const [tramos, setTramos] = useState<TramoSorteo[]>([]);
   const [cargandoCats, setCargandoCats] = useState(false);
   const [enviando, setEnviando] = useState(false);

@@ -5,13 +5,15 @@ from __future__ import annotations
 from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import selectinload, with_loader_criteria
 
 from app.domain.exam_content.entities import (
+    BlankCloze,
     Comision,
     ExamenContenido,
     ExamenContenidoResumen,
     Materia,
+    OpcionBlankCloze,
     OpcionRespuesta,
     Pregunta,
     PreguntaSeleccionItem,
@@ -29,6 +31,7 @@ from app.infrastructure.persistence.models.exam_content import (
     ExamenContenidoModel,
     MateriaModel,
     OpcionRespuestaModel,
+    PreguntaClozeBlankModel,
     PreguntaExamenModel,
 )
 from app.infrastructure.persistence.models.inscripcion import InscripcionModel
@@ -523,7 +526,43 @@ class ExamenContenidoSqlRepository:
             return None
         return self._to_entity(model)
 
-    def _to_entity(self, model: ExamenContenidoModel) -> ExamenContenido:
+    async def obtener_para_rendir(self, examen_id: str) -> ExamenContenido | None:
+        """Recupera un examen con SOLO las preguntas seleccionadas, y sus blanks.
+
+        `obtener()` trae el pool ENTERO y el filtrado por `seleccionada` ocurría
+        recién en Python: con 232 preguntas importadas para servir 20, la rendición
+        arrastraba miles de filas de opciones al pedo (preguntas y timer salen del
+        mismo GET, así que la pantalla del alumno tardaba en aparecer). Acá el
+        filtro va EN SQL.
+
+        Además hace eager load de `pregunta_cloze_blank` y sus opciones: sin eso las
+        preguntas cloze llegaban al alumno sin huecos que completar.
+        """
+        result = await self._db.execute(
+            select(ExamenContenidoModel)
+            .where(ExamenContenidoModel.id == examen_id)
+            .options(
+                selectinload(ExamenContenidoModel.preguntas).selectinload(
+                    PreguntaExamenModel.opciones
+                ),
+                selectinload(ExamenContenidoModel.preguntas)
+                .selectinload(PreguntaExamenModel.blanks_cloze)
+                .selectinload(PreguntaClozeBlankModel.opciones_cloze),
+                # El filtro viaja al WHERE del SELECT de la relación, no a Python.
+                with_loader_criteria(
+                    PreguntaExamenModel,
+                    PreguntaExamenModel.seleccionada.is_(True),
+                ),
+            )
+        )
+        model = result.scalar_one_or_none()
+        if model is None:
+            return None
+        return self._to_entity(model, con_blanks=True)
+
+    def _to_entity(
+        self, model: ExamenContenidoModel, con_blanks: bool = False
+    ) -> ExamenContenido:
         preguntas = tuple(
             Pregunta(
                 id=p.id,
@@ -531,6 +570,12 @@ class ExamenContenidoSqlRepository:
                 tipo=p.tipo,
                 orden=p.orden,
                 seleccionada=p.seleccionada,
+                # Sin esto la categoría se perdía en el round-trip: el import la
+                # escribía en pregunta_examen, releía la entidad sin categoría y
+                # poblaba pregunta_banco con categoria_id=NULL. Resultado: el
+                # banco entero quedaba "sin clasificar" y el sorteo por categoría
+                # no tenía de dónde sacar.
+                categoria_id=p.categoria_id,
                 opciones=tuple(
                     OpcionRespuesta(
                         id=o.id,
@@ -540,6 +585,9 @@ class ExamenContenidoSqlRepository:
                     )
                     for o in p.opciones
                 ),
+                # Solo cuando vienen eager-loaded: con lazy load acá reventaría
+                # (sesión async).
+                blanks=self._blanks_to_entity(p) if con_blanks else (),
             )
             for p in model.preguntas
         )
@@ -562,6 +610,32 @@ class ExamenContenidoSqlRepository:
             revision_habilitada=model.revision_habilitada,
             politica_intentos=model.politica_intentos,
             preguntas=preguntas,
+        )
+
+    @staticmethod
+    def _blanks_to_entity(pregunta: PreguntaExamenModel) -> tuple[BlankCloze, ...]:
+        """Mapea los huecos cloze de una pregunta ya eager-loaded."""
+        return tuple(
+            BlankCloze(
+                id=b.id,
+                orden=b.orden,
+                tipo=b.tipo,
+                texto_antes=b.texto_antes or "",
+                texto_despues=b.texto_despues or "",
+                opciones=tuple(
+                    OpcionBlankCloze(
+                        id=o.id,
+                        texto=o.texto,
+                        es_correcta=o.es_correcta,
+                        # opcion_cloze_blank no tiene columna `orden`: se usa el
+                        # orden de inserción, que es el del XML de Moodle.
+                        orden=i,
+                        peso=o.peso,
+                    )
+                    for i, o in enumerate(b.opciones_cloze)
+                ),
+            )
+            for b in sorted(pregunta.blanks_cloze, key=lambda x: x.orden)
         )
 
 

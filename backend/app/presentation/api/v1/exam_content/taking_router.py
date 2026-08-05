@@ -49,6 +49,7 @@ from app.presentation.api.v1.exam_content.schemas import (
     ComisionResponse,
     ExamenContenidoResumenResponse,
     ExamenesContenidoPaginadosResponse,
+    BlankRendicionResponse,
     ExamenRendicionResponse,
     InformeDevolucionResponse,
     InscribirPorCodigoRequest,
@@ -783,6 +784,30 @@ def create_exam_taking_router(
                                 list(p.opciones), alumno=alumno, pregunta_id=p.id
                             )
                         )
+                    ],
+                    blanks=[
+                        BlankRendicionResponse(
+                            id=b.id,
+                            orden=b.orden,
+                            tipo=b.tipo,
+                            texto_antes=b.texto_antes,
+                            texto_despues=b.texto_despues,
+                            # Mismo barajado por alumno que en las opciones de
+                            # pregunta: el XML de Moodle deja la correcta primera.
+                            opciones=[
+                                OpcionRendicionResponse(
+                                    id=o.id, texto=o.texto, orden=posicion
+                                )
+                                for posicion, o in enumerate(
+                                    barajar_opciones(
+                                        list(b.opciones),
+                                        alumno=alumno,
+                                        pregunta_id=b.id,
+                                    )
+                                )
+                            ],
+                        )
+                        for b in p.blanks
                     ],
                 )
                 for p in rendicion.preguntas

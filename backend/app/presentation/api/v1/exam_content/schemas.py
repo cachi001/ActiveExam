@@ -95,6 +95,23 @@ class OpcionRendicionResponse(BaseModel):
     # D3: es_correcta AUSENTE — la opción correcta NUNCA viaja al cliente
 
 
+class BlankRendicionResponse(BaseModel):
+    """Hueco de una pregunta cloze para la rendición.
+
+    D3: sin la respuesta correcta. En un blank SHORTANSWER ``opciones`` viene vacío
+    a propósito — sus opciones SON las respuestas aceptadas.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    orden: int
+    tipo: str
+    texto_antes: str
+    texto_despues: str
+    opciones: list[OpcionRendicionResponse]
+
+
 class PreguntaRendicionResponse(BaseModel):
     """Pregunta para la rendición del alumno."""
 
@@ -105,6 +122,8 @@ class PreguntaRendicionResponse(BaseModel):
     tipo: str
     orden: int
     opciones: list[OpcionRendicionResponse]
+    # Solo poblado en preguntas cloze.
+    blanks: list[BlankRendicionResponse] = []
 
 
 class ExamenRendicionResponse(BaseModel):
@@ -262,6 +281,10 @@ class SorteoCategoriaItem(BaseModel):
 
     categoria_id: str | None = None  # None = "Sin clasificar"
     cantidad: int = Field(ge=1)
+    # Elegir "Unidad 1" normalmente significa "todo lo de Unidad 1", incluidos sus
+    # temas. Por eso el default incluye la descendencia completa. En False, sortea
+    # SOLO lo que cuelga directo de esa categoría, sin bajar a las subcategorías.
+    incluir_subcategorias: bool = True
 
 
 class CrearDesdebancoRequest(BaseModel):

@@ -35,7 +35,10 @@ export default function SalaEspera() {
         </div>
         <div className="space-y-base">
           <h2 className="font-headline text-headline-lg text-on-surface">¡Identidad confirmada!</h2>
-          <p className="text-body-md text-on-surface-variant">Tu identidad quedó confirmada de forma segura. Esperá un momento a que te habiliten para empezar.</p>
+          <p className="text-body-md text-on-surface-variant">
+            Tu identidad quedó confirmada de forma segura. Revisá los datos del examen
+            y comenzá cuando estés listo.
+          </p>
         </div>
 
         <Card className="text-left space-y-sm">

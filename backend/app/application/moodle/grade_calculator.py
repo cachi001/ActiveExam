@@ -154,29 +154,54 @@ async def _calcular_fraccion_cloze(
     """
     # Leer todos los blanks de la pregunta
     blanks_result = await db.execute(
-        select(PreguntaClozeBlankModel.id).where(
+        select(PreguntaClozeBlankModel.id, PreguntaClozeBlankModel.tipo).where(
             PreguntaClozeBlankModel.pregunta_id == pregunta_id
         )
     )
-    blank_ids = blanks_result.scalars().all()
-    total_blanks = len(blank_ids)
+    blanks = blanks_result.all()
+    total_blanks = len(blanks)
     if total_blanks == 0:
         return 0.0
 
     blancos_correctos = 0
-    for blank_id in blank_ids:
-        opcion_id = respuesta_cloze.get(blank_id, "")
-        if not opcion_id:
+    for blank_id, tipo in blanks:
+        respuesta = respuesta_cloze.get(blank_id, "")
+        if not respuesta:
             # Blank sin respuesta → incorrecto
             continue
-        correcta_result = await db.execute(
-            select(OpcionClozeBlancoModel.es_correcta).where(
-                OpcionClozeBlancoModel.id == opcion_id,
-                OpcionClozeBlancoModel.blank_id == blank_id,
-            )
-        )
-        es_correcta = correcta_result.scalar_one_or_none()
-        if es_correcta is True:
+        if await _blank_acertado(
+            db=db, blank_id=blank_id, tipo=tipo, respuesta=respuesta
+        ):
             blancos_correctos += 1
 
     return blancos_correctos / total_blanks
+
+
+# En un blank MULTICHOICE el alumno elige de una lista y manda el id de la opción.
+# En SHORTANSWER/NUMERICAL escribe libre y manda TEXTO: ahí las opciones de la DB
+# son las respuestas ACEPTADAS y hay que comparar contra su texto, no contra su id.
+_BLANK_ELIGE_OPCION = ("multichoice", "multichoice_nocase", "multiresponse")
+
+
+async def _blank_acertado(
+    *, db: AsyncSession, blank_id: str, tipo: str, respuesta: str
+) -> bool:
+    """Si la respuesta del alumno acierta ese blank."""
+    if (tipo or "").lower() in _BLANK_ELIGE_OPCION:
+        correcta_result = await db.execute(
+            select(OpcionClozeBlancoModel.es_correcta).where(
+                OpcionClozeBlancoModel.id == respuesta,
+                OpcionClozeBlancoModel.blank_id == blank_id,
+            )
+        )
+        return correcta_result.scalar_one_or_none() is True
+
+    # Texto libre: como Moodle, se ignoran mayúsculas y espacios de los bordes.
+    aceptadas_result = await db.execute(
+        select(OpcionClozeBlancoModel.texto).where(
+            OpcionClozeBlancoModel.blank_id == blank_id,
+            OpcionClozeBlancoModel.es_correcta.is_(True),
+        )
+    )
+    aceptadas = {(t or "").strip().casefold() for t in aceptadas_result.scalars().all()}
+    return respuesta.strip().casefold() in aceptadas
