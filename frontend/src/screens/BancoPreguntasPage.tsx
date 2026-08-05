@@ -160,7 +160,18 @@ function ListaPreguntas({
               >
                 {p.enunciado || '(sin enunciado)'}
               </p>
-              <p className="text-label-xs text-on-surface-variant">{p.tipo}</p>
+              <p className="text-label-xs text-on-surface-variant flex items-center gap-1.5">
+                <span>{p.tipo}</span>
+                {p.categoria_manual && (
+                  <span
+                    className="inline-flex items-center gap-0.5 text-primary"
+                    title="La moviste vos. Ni el import de XML ni el sync desde Moodle la vuelven a cambiar de categoría."
+                  >
+                    <Icon name="push_pin" className="text-[13px]" fill />
+                    Fijada por vos
+                  </span>
+                )}
+              </p>
             </div>
             {moviendoId === p.id ? (
               <div className="flex items-center gap-2">
@@ -302,6 +313,9 @@ function DialogoSyncMoodle({
                 <li>Preguntas nuevas: <strong>{resultado.preguntas_nuevas}</strong></li>
                 <li>Preguntas actualizadas: <strong>{resultado.preguntas_actualizadas}</strong></li>
               </ul>
+              <p className="mt-1 text-on-surface-variant text-label-sm">
+                Nada de lo que ya tenías fue renombrado, movido ni borrado.
+              </p>
             </div>
             <div className="flex justify-end">
               <Button variant="primary" onClick={onCerrar}>Cerrar</Button>
@@ -309,6 +323,15 @@ function DialogoSyncMoodle({
           </div>
         ) : (
           <>
+            <div className="bg-surface-100 rounded-xl px-4 py-3 flex gap-2 text-label-sm text-on-surface-variant">
+              <Icon name="shield" className="text-[18px] text-primary shrink-0" />
+              <span>
+                Solo <strong>agrega</strong> las categorías que falten. No renombra,
+                no mueve ni borra lo que ya organizaste, y las preguntas que moviste
+                a mano se quedan donde las pusiste.
+              </span>
+            </div>
+
             <div className="flex flex-col gap-2">
               <label className="text-label-md font-medium">ID del curso en Moodle</label>
               <input

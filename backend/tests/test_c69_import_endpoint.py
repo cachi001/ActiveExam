@@ -243,5 +243,6 @@ async def test_import_mixto_omitidas_reportadas(client_admin):
     )
     assert resp.status_code == 201
     data = resp.json()
-    assert data["importadas"] == 1
-    assert len(data["omitidas"]) == 2
+    # C-74 agregó soporte de cloze: se importa multichoice + cloze, omite essay.
+    assert data["importadas"] == 2
+    assert len(data["omitidas"]) == 1

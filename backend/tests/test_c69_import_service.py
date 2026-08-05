@@ -123,9 +123,10 @@ async def test_importar_xml_mixto_reporta_omitidas(session):
     xml = (FIXTURES / "mixed_unsupported.xml").read_bytes()
     report = await service.importar(xml)
 
-    assert report.importadas == 1
-    assert len(report.omitidas) == 2
-    assert any(o.tipo in ("cloze", "essay") for o in report.omitidas)
+    # C-74 agregó soporte de cloze: se importa multichoice + cloze, omite essay.
+    assert report.importadas == 2
+    assert len(report.omitidas) == 1
+    assert report.omitidas[0].tipo == "essay"
 
 
 @pytest.mark.asyncio

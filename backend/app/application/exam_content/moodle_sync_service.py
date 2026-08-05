@@ -172,9 +172,18 @@ async def _upsert_categorias(
 ) -> int:
     """Upsert idempotente de categorías del banco de preguntas.
 
-    Estrategia: para cada categoría de Moodle, buscamos por
-    (materia_id, nombre, padre_id). Si no existe la creamos; si existe, la
-    ignoramos (idempotente: re-sync no duplica).
+    Es ADITIVO y NO DESTRUCTIVO: crea las categorías que faltan y nunca renombra,
+    mueve ni borra las que ya están. El árbol que organizó el docente es suyo.
+
+    Identidad de una categoría, en orden (0058):
+
+    1. ``moodle_category_id`` — el ancla fuerte. Sobrevive a que el docente le
+       cambie el nombre localmente. Antes el match era solo por nombre, así que
+       un rename hacía que el sync no la reconociera y creara un duplicado vacío.
+    2. ``(moodle_nombre_origen | nombre, padre_id)`` — para las categorías que
+       vienen de antes de 0058 y todavía no tienen el id de Moodle sellado. Al
+       encontrarlas se les sella, y de ahí en más entran por el camino 1.
+    3. No hay match → se crea.
 
     El árbol se procesa de raíz a hojas: primero las categorías con parent=0
     (o cuyo padre ya fue procesado), luego sus hijos. Hasta 10 pasadas para
@@ -186,21 +195,28 @@ async def _upsert_categorias(
     if not categorias_moodle:
         return 0
 
-    # moodle_id → id interno ya creado (para resolver padre en jerarquía)
+    # moodle_id → id interno ya resuelto (para colgar los hijos de la jerarquía)
     moodle_to_interno: dict[int, str] = {}
 
-    # Cargar categorías existentes de la materia para el lookup de nombre+padre
     existentes_result = await db.execute(
         select(CategoriaPreguntaModel).where(
             CategoriaPreguntaModel.materia_id == materia_id
         )
     )
-    existentes = existentes_result.scalars().all()
+    existentes = list(existentes_result.scalars().all())
 
-    # índice (nombre, padre_id) → id interno para detectar duplicados
-    existentes_idx: dict[tuple[str, str | None], str] = {
-        (row.nombre, row.categoria_padre_id): row.id
+    # Índice fuerte: id de Moodle → fila local.
+    por_moodle_id: dict[int, CategoriaPreguntaModel] = {
+        row.moodle_category_id: row
         for row in existentes
+        if row.moodle_category_id is not None
+    }
+    # Índice de compatibilidad: (nombre de origen, padre) → fila local, solo para
+    # las que todavía no tienen el id de Moodle sellado.
+    por_origen: dict[tuple[str, str | None], CategoriaPreguntaModel] = {
+        (row.moodle_nombre_origen or row.nombre, row.categoria_padre_id): row
+        for row in existentes
+        if row.moodle_category_id is None
     }
 
     creadas = 0
@@ -228,25 +244,40 @@ async def _upsert_categorias(
                 siguiente_ronda.append(cat)
                 continue
 
-            # Idempotencia: ¿ya existe esta categoría con ese nombre y padre?
-            clave = (nombre, padre_interno)
-            if clave in existentes_idx:
-                # Ya existe — registrar el id interno para que los hijos puedan usarlo
-                if moodle_id is not None:
-                    moodle_to_interno[moodle_id] = existentes_idx[clave]
+            # 1. Ancla fuerte: ya la conocemos por su id de Moodle.
+            if moodle_id is not None and moodle_id in por_moodle_id:
+                # No se toca nada: ni nombre (puede estar renombrada a propósito)
+                # ni padre (puede estar reubicada a propósito).
+                moodle_to_interno[moodle_id] = por_moodle_id[moodle_id].id
                 continue
 
-            # Crear la categoría
+            # 2. Compatibilidad: existe sin id sellado → sellarlo y reutilizar.
+            clave = (nombre, padre_interno)
+            if clave in por_origen:
+                fila = por_origen.pop(clave)
+                if moodle_id is not None:
+                    fila.moodle_category_id = moodle_id
+                    por_moodle_id[moodle_id] = fila
+                if fila.moodle_nombre_origen is None:
+                    fila.moodle_nombre_origen = nombre
+                await db.flush()
+                if moodle_id is not None:
+                    moodle_to_interno[moodle_id] = fila.id
+                continue
+
+            # 3. Nueva.
             nueva = CategoriaPreguntaModel(
                 materia_id=materia_id,
                 nombre=nombre,
                 categoria_padre_id=padre_interno,
+                moodle_category_id=moodle_id,
+                moodle_nombre_origen=nombre,
             )
             db.add(nueva)
             await db.flush()  # para obtener el id generado por el servidor
 
-            existentes_idx[clave] = nueva.id
             if moodle_id is not None:
+                por_moodle_id[moodle_id] = nueva
                 moodle_to_interno[moodle_id] = nueva.id
             creadas += 1
 

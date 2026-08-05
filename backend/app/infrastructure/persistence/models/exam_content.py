@@ -55,6 +55,11 @@ class PreguntaBancoModel(Base):
         nullable=True,
     )
     moodle_question_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # 0058: true cuando el docente movió la pregunta de categoría a mano. Import
+    # y sync respetan esa decisión y no vuelven a tocar categoria_id.
+    categoria_manual: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false", default=False
+    )
     creada_en: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -198,6 +203,12 @@ class CategoriaPreguntaModel(Base):
         ForeignKey("categoria_pregunta.id", ondelete="CASCADE"),
         nullable=True,
     )
+    # 0058: identidad estable de la categoría en Moodle. Permite reconocerla en
+    # el sync aunque el docente la haya renombrado localmente.
+    moodle_category_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # 0058: nombre con el que Moodle nombró la categoría. El XML no trae id, así
+    # que el import se ancla acá para no duplicar cuando el docente renombró.
+    moodle_nombre_origen: Mapped[str | None] = mapped_column(Text, nullable=True)
     creada_en: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

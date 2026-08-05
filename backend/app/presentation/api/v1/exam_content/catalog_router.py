@@ -1744,6 +1744,8 @@ def create_exam_content_router(
                 "orden": 0,
                 "seleccionada": True,
                 "categoria_id": r.categoria_id,
+                # 0058: la UI marca con esto qué preguntas ya no las toca Moodle.
+                "categoria_manual": r.categoria_manual,
             }
             for r in rows
         ]
@@ -1757,6 +1759,11 @@ def create_exam_content_router(
         body: dict,
         principal: AuthenticatedPrincipal = Depends(get_current_principal),
     ):
+        """Mueve la pregunta y marca su categoría como decidida por el docente.
+
+        ``categoria_manual=True`` (0058) es lo que después hace que el import de
+        XML y el sync desde Moodle dejen esta pregunta donde el docente la puso.
+        """
         nueva_cat_id = body.get("categoria_id") or None
         if session_factory is None:
             raise HTTPException(status_code=500, detail="Persistencia no inicializada.")
@@ -1766,13 +1773,18 @@ def create_exam_content_router(
             row = await session.get(PreguntaBancoModel, pregunta_id)
             if row is None:
                 raise HTTPException(status_code=404, detail="pregunta_no_encontrada")
+            await _exigir_pertenencia_materia(principal, row.materia_id)
             await session.execute(
                 _update(PreguntaBancoModel)
                 .where(PreguntaBancoModel.id == pregunta_id)
-                .values(categoria_id=nueva_cat_id)
+                .values(categoria_id=nueva_cat_id, categoria_manual=True)
             )
             await session.commit()
-        return {"pregunta_id": pregunta_id, "categoria_id": nueva_cat_id}
+        return {
+            "pregunta_id": pregunta_id,
+            "categoria_id": nueva_cat_id,
+            "categoria_manual": True,
+        }
 
     async def _seleccion_bloqueada(session, examen_id: str) -> bool:
         """True si el examen ya tiene >= 1 intento FINALIZADO.
@@ -2386,26 +2398,82 @@ def create_exam_content_router(
 
         import random
         import uuid as _uuid
-        from sqlalchemy import select as _select, func as _func
+        from sqlalchemy import select as _select
+        from sqlalchemy.orm import selectinload as _selectinload
         from app.infrastructure.persistence.models.exam_content import (
-            PreguntaBancoModel, ExamenContenidoModel, PreguntaExamenModel,
+            BlankBancoModel,
+            CategoriaPreguntaModel,
+            ExamenContenidoModel,
+            OpcionClozeBlancoModel,
+            OpcionRespuestaModel,
+            PreguntaBancoModel,
+            PreguntaClozeBlankModel,
+            PreguntaExamenModel,
         )
 
         async with session_factory() as session:
+            # Árbol de categorías de la materia, para expandir cada tramo a su
+            # descendencia. Una sola consulta: el árbol es chico (decenas de filas)
+            # y así evitamos una consulta recursiva por tramo.
+            hijos_por_padre: dict[str | None, list[str]] = {}
+            cats_result = await session.execute(
+                _select(
+                    CategoriaPreguntaModel.id,
+                    CategoriaPreguntaModel.categoria_padre_id,
+                ).where(CategoriaPreguntaModel.materia_id == body.materia_id)
+            )
+            for cat_id, padre_id in cats_result.all():
+                hijos_por_padre.setdefault(padre_id, []).append(cat_id)
+
+            def _con_descendencia(raiz: str) -> list[str]:
+                """La categoría más todas sus subcategorías, a cualquier profundidad."""
+                acumulado: list[str] = []
+                pendientes = [raiz]
+                vistos: set[str] = set()
+                while pendientes:
+                    actual = pendientes.pop()
+                    if actual in vistos:
+                        continue
+                    vistos.add(actual)
+                    acumulado.append(actual)
+                    pendientes.extend(hijos_por_padre.get(actual, []))
+                return acumulado
+
             # ── Sortear preguntas del banco por cada tramo ──────────────────
             preguntas_sorteadas: list[PreguntaBancoModel] = []
+            # Una pregunta no puede caer dos veces en el mismo examen: con tramos
+            # anidados ("Unidad 1" y además "Unidad 1 / Tema A") el mismo registro
+            # entra en los dos conjuntos.
+            ya_sorteadas: set[str] = set()
 
             for tramo in body.sorteo:
-                stmt = _select(PreguntaBancoModel).where(
-                    PreguntaBancoModel.materia_id == body.materia_id
+                # Las opciones y los blanks viajan con la pregunta: se copian al
+                # examen más abajo, así que se cargan acá de una (sin N+1).
+                stmt = (
+                    _select(PreguntaBancoModel)
+                    .where(PreguntaBancoModel.materia_id == body.materia_id)
+                    .options(
+                        _selectinload(PreguntaBancoModel.opciones_banco),
+                        _selectinload(PreguntaBancoModel.blanks_banco).selectinload(
+                            BlankBancoModel.opciones_blank_banco
+                        ),
+                    )
                 )
                 if tramo.categoria_id is None:
                     stmt = stmt.where(PreguntaBancoModel.categoria_id.is_(None))
+                elif tramo.incluir_subcategorias:
+                    stmt = stmt.where(
+                        PreguntaBancoModel.categoria_id.in_(
+                            _con_descendencia(tramo.categoria_id)
+                        )
+                    )
                 else:
                     stmt = stmt.where(PreguntaBancoModel.categoria_id == tramo.categoria_id)
 
                 result = await session.execute(stmt)
-                disponibles = list(result.scalars().all())
+                disponibles = [
+                    p for p in result.scalars().all() if p.id not in ya_sorteadas
+                ]
 
                 if len(disponibles) < tramo.cantidad:
                     cat_label = tramo.categoria_id or "sin clasificar"
@@ -2423,7 +2491,27 @@ def create_exam_content_router(
                         },
                     )
 
-                preguntas_sorteadas.extend(random.sample(disponibles, tramo.cantidad))
+                elegidas = random.sample(disponibles, tramo.cantidad)
+                preguntas_sorteadas.extend(elegidas)
+                ya_sorteadas.update(p.id for p in elegidas)
+
+            # El tope del examen se valida ANTES de crear nada: es preferible un 422
+            # claro a un examen a medio armar. Mismo criterio que el import de XML
+            # (LimitePreguntasExcedidoError): no se trunca en silencio.
+            if body.limite_preguntas is not None and len(preguntas_sorteadas) > body.limite_preguntas:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail={
+                        "error": "limite_preguntas_excedido",
+                        "mensaje": (
+                            f"El sorteo suma {len(preguntas_sorteadas)} preguntas pero el "
+                            f"examen admite {body.limite_preguntas}. Ajustá las cantidades "
+                            "por categoría o subí el límite."
+                        ),
+                        "sorteadas": len(preguntas_sorteadas),
+                        "limite": body.limite_preguntas,
+                    },
+                )
 
             # ── Crear examen_contenido ───────────────────────────────────────
             examen_id = str(_uuid.uuid4())
@@ -2437,20 +2525,60 @@ def create_exam_content_router(
             session.add(examen)
             await session.flush()
 
-            # ── Crear pregunta_examen desde banco ────────────────────────────
+            # ── Copiar preguntas del banco al examen ─────────────────────────
+            # La pregunta se COPIA, no se referencia: el examen queda congelado
+            # aunque después se edite el banco. Y hay que copiar TAMBIÉN opciones y
+            # blanks — sin ellos la pregunta llega al alumno sin nada que responder
+            # y sin nada con qué calificarla.
             for orden, pb in enumerate(preguntas_sorteadas):
-                pe = PreguntaExamenModel(
-                    id=str(_uuid.uuid4()),
-                    examen_id=examen_id,
-                    enunciado=pb.enunciado,
-                    tipo=pb.tipo,
-                    orden=orden,
-                    seleccionada=True,
-                    categoria_id=pb.categoria_id,
-                    moodle_question_id=pb.moodle_question_id,
-                    pregunta_banco_id=pb.id,
+                pregunta_id = str(_uuid.uuid4())
+                session.add(
+                    PreguntaExamenModel(
+                        id=pregunta_id,
+                        examen_id=examen_id,
+                        enunciado=pb.enunciado,
+                        tipo=pb.tipo,
+                        orden=orden,
+                        seleccionada=True,
+                        categoria_id=pb.categoria_id,
+                        moodle_question_id=pb.moodle_question_id,
+                        pregunta_banco_id=pb.id,
+                    )
                 )
-                session.add(pe)
+
+                for opcion in pb.opciones_banco:
+                    session.add(
+                        OpcionRespuestaModel(
+                            id=str(_uuid.uuid4()),
+                            pregunta_id=pregunta_id,
+                            texto=opcion.texto,
+                            es_correcta=opcion.es_correcta,
+                            orden=opcion.orden,
+                        )
+                    )
+
+                for blank in pb.blanks_banco:
+                    blank_id = str(_uuid.uuid4())
+                    session.add(
+                        PreguntaClozeBlankModel(
+                            id=blank_id,
+                            pregunta_id=pregunta_id,
+                            orden=blank.orden,
+                            tipo=blank.tipo,
+                            texto_antes=blank.texto_antes,
+                            texto_despues=blank.texto_despues,
+                        )
+                    )
+                    for opcion_blank in blank.opciones_blank_banco:
+                        session.add(
+                            OpcionClozeBlancoModel(
+                                id=str(_uuid.uuid4()),
+                                blank_id=blank_id,
+                                texto=opcion_blank.texto,
+                                es_correcta=opcion_blank.es_correcta,
+                                peso=opcion_blank.peso,
+                            )
+                        )
 
             await session.commit()
 
