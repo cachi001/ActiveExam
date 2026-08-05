@@ -56,12 +56,16 @@ export interface EstadoSwitchProps {
 export function EstadoSwitch({ usuario, esPropioUsuario, onToggle }: EstadoSwitchProps) {
   const activo = !usuario.eliminado_en;
   const dotColor = activo ? 'bg-success-600' : 'bg-error-600';
-  const tono = activo ? 'bg-success-100 text-success-800' : 'bg-error-100 text-error-800';
 
+  // Sesión propia: badge estático coloreado (sin punto, sin borde, sin hover) — igual que Badge variant success/error del proyecto de referencia
   if (esPropioUsuario) {
     return (
-      <span className={`inline-flex items-center px-3 py-1.5 rounded-full text-xs font-semibold ${tono}`}>
-        <span className={`w-2 h-2 rounded-full mr-2 ${dotColor}`} />
+      <span
+        title="No podés cambiar tu propio estado"
+        className={`inline-flex items-center font-medium rounded-full px-2.5 py-1 text-sm cursor-default select-none ${
+          activo ? 'bg-success-50 text-success-700' : 'bg-error-50 text-error-700'
+        }`}
+      >
         {activo ? 'Activo' : 'Inactivo'}
       </span>
     );
@@ -72,7 +76,7 @@ export function EstadoSwitch({ usuario, esPropioUsuario, onToggle }: EstadoSwitc
       type="button"
       aria-label={activo ? 'Activo — click para dar de baja' : 'Inactivo — click para reactivar'}
       onClick={() => onToggle(usuario)}
-      className={`inline-flex items-center px-3 py-1.5 rounded-full text-xs font-semibold shadow-sm border transition-colors duration-150 cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-1 ${
+      className={`inline-flex items-center px-3 py-1.5 rounded-full text-xs font-semibold shadow-sm border transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-offset-1 ${
         activo
           ? 'bg-success-100 text-success-800 border-success-200 hover:bg-success-200 focus:ring-success-500'
           : 'bg-error-100 text-error-800 border-error-200 hover:bg-error-200 focus:ring-error-500'

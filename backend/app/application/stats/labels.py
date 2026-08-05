@@ -122,8 +122,6 @@ ETIQUETA_ACCION: dict[str, str] = {
     "retention.session.hold_deferred": "Difirió la eliminación por un hold",
     "retention.biometric.egress": "Eliminó el dato biométrico al egreso",
     "derecho_acceso.informe_devolucion": "Entregó el informe al alumno",
-    "auditoria.export.xlsx": "Exportó el registro de auditoría a Excel",
-    "auditoria.export.pdf": "Exportó el registro de auditoría a PDF",
 }
 
 

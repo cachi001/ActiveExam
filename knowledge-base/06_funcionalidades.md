@@ -233,6 +233,44 @@
 
 **Reglas relacionadas**: RN-SC-04
 
+## Épica 20 (C-74): Banco de preguntas categorizado, cloze y sorteo (FR-01 ext.)
+
+### US-020 — Importar preguntas desde Moodle XML con categorías
+**Como** docente o administrador
+**Quiero** importar un archivo XML de Moodle que preserve las categorías del banco de preguntas y las preguntas cloze (fill-in-the-blank)
+**Para** organizar el banco por temática y reutilizarlo para armar exámenes
+
+**Criterios de aceptación**:
+- [x] CA-1: El import XML crea automáticamente la jerarquía de categorías de Moodle (`$course$/top/...`) en la tabla `categoria_pregunta` de la materia.
+- [x] CA-2: Cada pregunta queda asignada a su categoría correspondiente (o sin categoría si el XML no tiene nodo `category` previo).
+- [x] CA-3: Las preguntas de tipo `cloze`/`multianswer` se parsean con sus blanks y opciones; los tipos `ddwtos` y `matching` se reportan como omitidos.
+- [x] CA-4: La segunda importación del mismo XML es idempotente: no duplica categorías.
+
+### US-021 — Administrar el banco de preguntas categorizado
+**Como** administrador
+**Quiero** ver el árbol de categorías de una materia con la lista de preguntas de cada categoría
+**Para** gestionar el banco sin entrar al flujo de un examen específico
+
+**Criterios de aceptación**:
+- [x] CA-1: Pantalla `/admin/banco-preguntas` con selector de materia → árbol de categorías expandible.
+- [x] CA-2: El bucket "Sin clasificar" aparece al final si tiene preguntas (no se puede eliminar).
+- [x] CA-3: CRUD de categorías (crear / renombrar / borrar); al borrar, las preguntas quedan "Sin clasificar".
+- [x] CA-4: Mover una pregunta de categoría sin recargar la pantalla.
+- [x] CA-5: Botón "Sincronizar desde campus" (courseid Moodle) que llama a la API de categorías de campustest y crea la jerarquía sin importar XML.
+
+### US-022 — Armar examen por sorteo de categorías
+**Como** docente
+**Quiero** seleccionar N categorías y una cantidad por categoría para que el sistema arme el examen eligiendo preguntas al azar
+**Para** generar instancias de examen diferentes en cada sorteo
+
+**Criterios de aceptación**:
+- [x] CA-1: Endpoint `POST /exam-content/{examen_id}/sortear-preguntas` con `{categoria_ids, cantidad_por_categoria}`.
+- [x] CA-2: Si la categoría tiene menos preguntas que las pedidas, devuelve error claro (no trunca en silencio).
+- [x] CA-3: El sorteo no puede ejecutarse sobre un examen con intentos finalizados (409).
+- [x] CA-4: UI en la pantalla de examen: opción "Armar por sorteo" junto a la selección manual.
+
+**Reglas relacionadas**: RN-EX-01, RN-EX-02
+
 ## Épica 17 (Fase 2): Análisis de audio (FR-16)
 **Suposición:** detección de voces múltiples, diferida por privacidad.
 

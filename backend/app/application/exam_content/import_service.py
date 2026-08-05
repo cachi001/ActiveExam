@@ -132,9 +132,30 @@ class ImportacionMoodleService:
 
         session = getattr(self._repo, "_db", None)
         if session is not None:
+            # Persistir blanks cloze en pregunta_examen (instancia exam-específica)
             for pregunta, blanks in zip(guardado.preguntas, blanks_por_pregunta):
                 if blanks:
                     await _persistir_blanks_cloze(session, pregunta.id, blanks)
+
+            # 0057: popular pregunta_banco si se provee materia_id.
+            # Las preguntas del banco son independientes del examen.
+            if materia_id:
+                p_data_list = parse_result.preguntas
+                for p_data, pregunta_guardada in zip(p_data_list, guardado.preguntas):
+                    banco_id = await _upsert_pregunta_banco(
+                        session,
+                        materia_id=materia_id,
+                        p_data=p_data,
+                        categoria_id=pregunta_guardada.categoria_id,
+                    )
+                    if banco_id:
+                        # Vincular instancia de examen con la pregunta del banco
+                        await session.execute(
+                            sa.text(
+                                "UPDATE pregunta_examen SET pregunta_banco_id = :banco_id WHERE id = :pe_id"
+                            ),
+                            {"banco_id": banco_id, "pe_id": pregunta_guardada.id},
+                        )
 
         return ImportReport(
             examen_id=guardado.id,
@@ -183,6 +204,108 @@ def _pregunta_data_to_entity(p: PreguntaData, *, categoria_id: str | None = None
         orden=p.orden,
         categoria_id=categoria_id,
     )
+
+
+async def _upsert_pregunta_banco(
+    session,
+    *,
+    materia_id: str,
+    p_data: "PreguntaData",
+    categoria_id: str | None,
+) -> str | None:
+    """Inserta o actualiza la pregunta en pregunta_banco (idempotente por moodle_question_id).
+
+    Retorna el id del registro en pregunta_banco, o None si falla silenciosamente.
+    """
+    moodle_qid = getattr(p_data, "moodle_question_id", None)
+    banco_id: str | None = None
+
+    if moodle_qid:
+        # Buscar existente por (materia_id, moodle_question_id)
+        row = await session.execute(
+            sa.text(
+                "SELECT id FROM pregunta_banco WHERE materia_id = :mid AND moodle_question_id = :qid"
+            ),
+            {"mid": materia_id, "qid": moodle_qid},
+        )
+        existing = row.fetchone()
+        if existing:
+            banco_id = str(existing[0])
+            # Actualizar enunciado y categoría si cambió
+            await session.execute(
+                sa.text(
+                    "UPDATE pregunta_banco SET enunciado = :enunciado, categoria_id = :cat_id WHERE id = :id"
+                ),
+                {"enunciado": p_data.enunciado, "cat_id": categoria_id, "id": banco_id},
+            )
+            return banco_id
+
+    # Insertar nueva pregunta en el banco
+    banco_id = str(uuid.uuid4())
+    await session.execute(
+        sa.text(
+            "INSERT INTO pregunta_banco (id, materia_id, enunciado, tipo, categoria_id, moodle_question_id) "
+            "VALUES (:id, :materia_id, :enunciado, :tipo, :categoria_id, :moodle_question_id)"
+        ),
+        {
+            "id": banco_id,
+            "materia_id": materia_id,
+            "enunciado": p_data.enunciado,
+            "tipo": p_data.tipo,
+            "categoria_id": categoria_id,
+            "moodle_question_id": moodle_qid,
+        },
+    )
+
+    # Opciones (multichoice / truefalse)
+    for opcion in getattr(p_data, "opciones", []):
+        await session.execute(
+            sa.text(
+                "INSERT INTO opcion_banco (id, pregunta_banco_id, texto, es_correcta, orden) "
+                "VALUES (:id, :pid, :texto, :es_correcta, :orden)"
+            ),
+            {
+                "id": str(uuid.uuid4()),
+                "pid": banco_id,
+                "texto": opcion.texto,
+                "es_correcta": opcion.es_correcta,
+                "orden": opcion.orden,
+            },
+        )
+
+    # Blanks cloze
+    for blank in getattr(p_data, "blanks", []):
+        blank_banco_id = str(uuid.uuid4())
+        await session.execute(
+            sa.text(
+                "INSERT INTO blank_banco (id, pregunta_banco_id, orden, tipo, texto_antes, texto_despues) "
+                "VALUES (:id, :pid, :orden, :tipo, :texto_antes, :texto_despues)"
+            ),
+            {
+                "id": blank_banco_id,
+                "pid": banco_id,
+                "orden": blank.orden,
+                "tipo": blank.tipo,
+                "texto_antes": blank.texto_antes or None,
+                "texto_despues": blank.texto_despues or None,
+            },
+        )
+        for opcion in blank.opciones:
+            await session.execute(
+                sa.text(
+                    "INSERT INTO opcion_blank_banco (id, blank_banco_id, texto, es_correcta, peso) "
+                    "VALUES (:id, :bid, :texto, :es_correcta, :peso)"
+                ),
+                {
+                    "id": str(uuid.uuid4()),
+                    "bid": blank_banco_id,
+                    "texto": opcion.texto,
+                    "es_correcta": opcion.es_correcta,
+                    "peso": opcion.peso,
+                },
+            )
+
+    return banco_id
 
 
 async def _persistir_blanks_cloze(session, pregunta_id: str, blanks: list) -> None:

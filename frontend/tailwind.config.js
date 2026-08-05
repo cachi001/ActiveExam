@@ -141,10 +141,10 @@ export default {
           variant: "#e2e8f0",
           tint: "#2563eb",
           "container-lowest": "#ffffff",
-          "container-low": "#f1f5f9",
-          container: "#e2e8f0",
-          "container-high": "#cbd5e1",
-          "container-highest": "#94a3b8",
+          "container-low": "#eef2f7",
+          container: "#e4eaf2",
+          "container-high": "#d6dfe9",
+          "container-highest": "#c8d3e0",
         },
         "on-surface": "#0f172a",
         "on-surface-variant": "#475569",
@@ -204,8 +204,10 @@ export default {
         "container-max": "1280px",
       },
       boxShadow: {
-        // Sombras sutiles estilo "flat minimalism": apenas perceptibles, sin nubes
-        // difusas. La definición la da el borde, no la sombra.
+        xs: "0 1px 2px 0 rgba(0,0,0,0.05)",
+        sm: "0 1px 3px 0 rgba(0,0,0,0.1), 0 1px 2px -1px rgba(0,0,0,0.1)",
+        md: "0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.1)",
+        lg: "0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -4px rgba(0,0,0,0.1)",
         card: "0 1px 2px 0 rgba(16,24,40,0.04), 0 1px 3px 0 rgba(16,24,40,0.06)",
         "card-lg": "0 2px 4px -1px rgba(16,24,40,0.04), 0 8px 16px -6px rgba(16,24,40,0.08)",
       },

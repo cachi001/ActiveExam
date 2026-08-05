@@ -144,6 +144,20 @@ class OpcionRevisionResponse(BaseModel):
     elegida: bool
 
 
+class BlankRevisionResponse(BaseModel):
+    """Blank (hueco) de una pregunta cloze en la revisión."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    blank_id: str
+    orden: int
+    tipo: str
+    texto_antes: str | None = None
+    texto_despues: str | None = None
+    respuesta_alumno: str | None = None
+    es_correcta: bool
+
+
 class PreguntaRevisionResponse(BaseModel):
     """Pregunta en la revisión con su corrección."""
 
@@ -155,6 +169,8 @@ class PreguntaRevisionResponse(BaseModel):
     opciones: list[OpcionRevisionResponse]
     respondida: bool
     acertada: bool
+    tipo: str = "multichoice"
+    blanks_revisados: list[BlankRevisionResponse] = []
 
 
 class RevisionExamenResponse(BaseModel):
@@ -237,6 +253,40 @@ class SorteoRequest(BaseModel):
 
     categoria_ids: list[str]
     cantidad_por_categoria: int
+
+
+class SorteoCategoriaItem(BaseModel):
+    """Un tramo del sorteo: categoría + cantidad de preguntas a extraer del banco."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    categoria_id: str | None = None  # None = "Sin clasificar"
+    cantidad: int = Field(ge=1)
+
+
+class CrearDesdebancoRequest(BaseModel):
+    """Crea un examen de contenido extrayendo preguntas aleatoriamente del banco.
+
+    El examen se genera en un solo paso: no requiere importar XML ni hacer sorteo
+    por separado. Cada item de ``sorteo`` indica cuántas preguntas extraer de
+    una categoría del banco (None = sin clasificar).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    titulo: str = Field(min_length=1, max_length=200)
+    materia_id: str
+    comision_id: str | None = None
+    sorteo: list[SorteoCategoriaItem] = Field(min_length=1)
+    limite_preguntas: int | None = Field(default=None, ge=1)
+
+
+class CrearDesdebancoResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    examen_id: str
+    titulo: str
+    total_preguntas: int
 
 
 # ---------------------------------------------------------------------------

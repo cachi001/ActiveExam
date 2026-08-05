@@ -44,6 +44,7 @@ from app.presentation.api.v1.exam_content._shared import (
     _resumen_to_response,
 )
 from app.presentation.api.v1.exam_content.schemas import (
+    BlankRevisionResponse,
     CapturaFirmadaResponse,
     ComisionResponse,
     ExamenContenidoResumenResponse,
@@ -656,6 +657,19 @@ def create_exam_taking_router(
                     orden=p.orden,
                     respondida=p.respondida,
                     acertada=p.acertada,
+                    tipo=p.tipo,
+                    blanks_revisados=[
+                        BlankRevisionResponse(
+                            blank_id=b.blank_id,
+                            orden=b.orden,
+                            tipo=b.tipo,
+                            texto_antes=b.texto_antes,
+                            texto_despues=b.texto_despues,
+                            respuesta_alumno=b.respuesta_alumno,
+                            es_correcta=b.es_correcta,
+                        )
+                        for b in p.blanks_revisados
+                    ],
                     # MISMA semilla que en la rendicion: el alumno tiene que revisar
                     # sus respuestas con las opciones en el MISMO orden en que las
                     # contesto. Con el orden original veria la lista movida respecto

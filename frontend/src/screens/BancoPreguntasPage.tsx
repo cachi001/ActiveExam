@@ -25,18 +25,20 @@ import { CategoriasTree } from './banco-preguntas/CategoriasTree';
 function DialogoCategoria({
   titulo,
   valorInicial,
+  placeholder = 'Nombre de la categoría',
   onConfirmar,
   onCancelar,
 }: {
   titulo: string;
   valorInicial: string;
+  placeholder?: string;
   onConfirmar: (nombre: string) => void;
   onCancelar: () => void;
 }) {
   const [nombre, setNombre] = useState(valorInicial);
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="bg-surface rounded-2xl shadow-xl p-6 w-full max-w-sm flex flex-col gap-4">
+      <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm flex flex-col gap-4">
         <h3 className="text-title-md font-semibold">{titulo}</h3>
         <input
           className="border rounded-lg px-3 py-2 text-body-md w-full focus:outline-none focus:ring-2 focus:ring-primary"
@@ -44,7 +46,7 @@ function DialogoCategoria({
           onChange={(e) => setNombre(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && nombre.trim() && onConfirmar(nombre.trim())}
           autoFocus
-          placeholder="Nombre de la categoría"
+          placeholder={placeholder}
         />
         <div className="flex justify-end gap-2">
           <Button variant="ghost" onClick={onCancelar}>Cancelar</Button>
@@ -76,7 +78,7 @@ function DialogoBorrar({
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="bg-surface rounded-2xl shadow-xl p-6 w-full max-w-sm flex flex-col gap-4">
+      <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm flex flex-col gap-4">
         <h3 className="text-title-md font-semibold">Borrar categoría</h3>
         <p className="text-body-md text-on-surface-variant">
           ¿Borrar <strong>{categoria.nombre}</strong>? Las preguntas asociadas quedarán sin
@@ -97,6 +99,8 @@ function DialogoBorrar({
 // Lista de preguntas del bucket seleccionado
 // ---------------------------------------------------------------------------
 
+const PAGE_SIZE = 20;
+
 function ListaPreguntas({
   preguntas,
   categorias,
@@ -111,6 +115,12 @@ function ListaPreguntas({
   onMover: (preguntaId: string, nuevaCatId: string | null) => void;
 }) {
   const [moviendoId, setMoviendoId] = useState<string | null>(null);
+  const [pagina, setPagina] = useState(1);
+
+  // Resetear página al cambiar la lista
+  const totalPaginas = Math.max(1, Math.ceil(preguntas.length / PAGE_SIZE));
+  const paginaActual = Math.min(pagina, totalPaginas);
+  const preguntasPagina = preguntas.slice((paginaActual - 1) * PAGE_SIZE, paginaActual * PAGE_SIZE);
 
   if (cargando) {
     return (
@@ -130,57 +140,109 @@ function ListaPreguntas({
   }
 
   return (
-    <div className="flex flex-col gap-2">
-      {preguntas.map((p) => (
-        <div
-          key={p.id}
-          className="flex items-start gap-3 p-3 rounded-xl border border-outline-variant bg-surface hover:bg-surface-100 transition-colors"
-        >
-          <div className="mt-0.5 w-8 h-8 rounded-lg bg-secondary/10 text-secondary flex items-center justify-center shrink-0">
-            <Icon
-              name={p.tipo === 'truefalse' ? 'toggle_on' : 'quiz'}
-              className="text-[16px]"
-            />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-body-sm line-clamp-2">{p.enunciado || '(sin enunciado)'}</p>
-            <p className="text-label-sm text-on-surface-variant mt-0.5">{p.tipo}</p>
-          </div>
-          {/* Selector de mover a categoría */}
-          {moviendoId === p.id ? (
-            <div className="flex items-center gap-2">
-              <select
-                className="text-body-sm border rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary"
-                defaultValue={categoriaActualId ?? ''}
-                onChange={async (e) => {
-                  const val = e.target.value || null;
-                  await onMover(p.id, val);
-                  setMoviendoId(null);
-                }}
-              >
-                <option value="">Sin clasificar</option>
-                {categorias.map((c) => (
-                  <option key={c.id} value={c.id}>{c.nombre}</option>
-                ))}
-              </select>
-              <button
-                className="p-1 rounded hover:bg-surface-200"
-                onClick={() => setMoviendoId(null)}
-              >
-                <Icon name="close" className="text-[16px]" />
-              </button>
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-2">
+        {preguntasPagina.map((p) => (
+          <div
+            key={p.id}
+            className="flex items-center gap-3 px-4 py-3 rounded-xl border border-surface-200 bg-white hover:bg-surface-50 hover:border-surface-300 transition-all duration-200 shadow-xs"
+          >
+            <div className="w-7 h-7 rounded-lg bg-secondary/10 text-secondary flex items-center justify-center shrink-0">
+              <Icon
+                name={p.tipo === 'truefalse' ? 'toggle_on' : p.tipo === 'cloze' ? 'text_fields' : 'quiz'}
+                className="text-[15px]"
+              />
             </div>
-          ) : (
+            <div className="flex-1 min-w-0">
+              <p
+                className="text-body-sm truncate"
+                title={p.enunciado || '(sin enunciado)'}
+              >
+                {p.enunciado || '(sin enunciado)'}
+              </p>
+              <p className="text-label-xs text-on-surface-variant">{p.tipo}</p>
+            </div>
+            {moviendoId === p.id ? (
+              <div className="flex items-center gap-2">
+                <select
+                  className="text-body-sm border rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary"
+                  defaultValue={categoriaActualId ?? ''}
+                  onChange={async (e) => {
+                    const val = e.target.value || null;
+                    await onMover(p.id, val);
+                    setMoviendoId(null);
+                  }}
+                >
+                  <option value="">Sin clasificar</option>
+                  {categorias.map((c) => (
+                    <option key={c.id} value={c.id}>{c.nombre}</option>
+                  ))}
+                </select>
+                <button
+                  className="p-1 rounded hover:bg-surface-200"
+                  onClick={() => setMoviendoId(null)}
+                >
+                  <Icon name="close" className="text-[16px]" />
+                </button>
+              </div>
+            ) : (
+              <button
+                className="p-1.5 rounded-lg hover:bg-surface-200 text-on-surface-variant"
+                title="Mover a categoría"
+                onClick={() => setMoviendoId(p.id)}
+              >
+                <Icon name="drive_file_move" className="text-[16px]" />
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Paginación */}
+      {totalPaginas > 1 && (
+        <div className="flex items-center justify-between pt-2 border-t border-outline-variant/30">
+          <span className="text-label-sm text-on-surface-variant">
+            {(paginaActual - 1) * PAGE_SIZE + 1}–{Math.min(paginaActual * PAGE_SIZE, preguntas.length)} de {preguntas.length}
+          </span>
+          <div className="flex items-center gap-1">
             <button
-              className="p-1.5 rounded-lg hover:bg-surface-200 text-on-surface-variant"
-              title="Mover a categoría"
-              onClick={() => setMoviendoId(p.id)}
+              className="w-7 h-7 rounded-md flex items-center justify-center text-on-surface-variant hover:bg-surface-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              disabled={paginaActual === 1}
+              onClick={() => setPagina(1)}
+              title="Primera"
             >
-              <Icon name="drive_file_move" className="text-[16px]" />
+              <Icon name="first_page" className="text-[16px]" />
             </button>
-          )}
+            <button
+              className="w-7 h-7 rounded-md flex items-center justify-center text-on-surface-variant hover:bg-surface-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              disabled={paginaActual === 1}
+              onClick={() => setPagina((p) => p - 1)}
+              title="Anterior"
+            >
+              <Icon name="chevron_left" className="text-[16px]" />
+            </button>
+            <span className="text-label-sm px-2">
+              {paginaActual} / {totalPaginas}
+            </span>
+            <button
+              className="w-7 h-7 rounded-md flex items-center justify-center text-on-surface-variant hover:bg-surface-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              disabled={paginaActual === totalPaginas}
+              onClick={() => setPagina((p) => p + 1)}
+              title="Siguiente"
+            >
+              <Icon name="chevron_right" className="text-[16px]" />
+            </button>
+            <button
+              className="w-7 h-7 rounded-md flex items-center justify-center text-on-surface-variant hover:bg-surface-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              disabled={paginaActual === totalPaginas}
+              onClick={() => setPagina(totalPaginas)}
+              title="Última"
+            >
+              <Icon name="last_page" className="text-[16px]" />
+            </button>
+          </div>
         </div>
-      ))}
+      )}
     </div>
   );
 }
@@ -222,7 +284,7 @@ function DialogoSyncMoodle({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="bg-surface rounded-2xl shadow-xl p-6 w-full max-w-sm flex flex-col gap-4">
+      <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm flex flex-col gap-4">
         <div className="flex items-center gap-2">
           <Icon name="sync" className="text-[22px] text-primary" />
           <h3 className="text-title-md font-semibold">Sincronizar desde campus</h3>
@@ -445,7 +507,7 @@ export default function BancoPreguntasPage() {
         </Card>
 
         {materiaId && (
-          <div className="grid grid-cols-1 md:grid-cols-[280px_1fr] gap-4 items-start">
+          <div className="grid grid-cols-1 md:grid-cols-[320px_minmax(0,1fr)] gap-4 items-start">
             {/* Panel izquierdo: árbol de categorías */}
             <Card className="!p-md">
               <p className="text-label-md font-medium mb-3">Categorías</p>
@@ -476,6 +538,7 @@ export default function BancoPreguntasPage() {
                 </p>
               </div>
               <ListaPreguntas
+                key={catSeleccionada ?? '__sin_clasificar__'}
                 preguntas={preguntas}
                 categorias={categorias}
                 categoriaActualId={catSeleccionada}
@@ -497,8 +560,13 @@ export default function BancoPreguntasPage() {
       {/* Diálogos */}
       {dialogoCrear && (
         <DialogoCategoria
-          titulo="Nueva categoría"
+          titulo={
+            dialogoCrear.padreId
+              ? `Nueva subcategoría en "${categorias.find((c) => c.id === dialogoCrear.padreId)?.nombre ?? ''}"`
+              : 'Nueva categoría raíz'
+          }
           valorInicial=""
+          placeholder={dialogoCrear.padreId ? 'Nombre de la subcategoría' : 'Nombre de la categoría'}
           onConfirmar={handleCrear}
           onCancelar={() => setDialogoCrear(null)}
         />

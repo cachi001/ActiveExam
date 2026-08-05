@@ -198,10 +198,16 @@ export default function DetalleUsuario() {
                   <DataRow label="Legajo / ID institucional" value={
                     <span className="font-mono text-[13px]">{u.id_institucional || '—'}</span>
                   } />
-                  <DataRow label="Roles" value={
+                  <DataRow label="Rol" value={
                     u.roles.length > 0
                       ? <div className="flex flex-wrap gap-1">{u.roles.map((r) => <RolBadge key={r} rol={r} />)}</div>
-                      : <span className="text-on-surface-variant">Sin roles</span>
+                      : <span className="text-on-surface-variant">Sin rol asignado</span>
+                  } />
+                  <DataRow label="Fecha de creación" value={formatFecha(u.creado_en)} />
+                  <DataRow label="Último acceso" value={
+                    u.ultimo_acceso_en
+                      ? formatFecha(u.ultimo_acceso_en)
+                      : <span className="text-on-surface-variant italic">Nunca inició sesión</span>
                   } />
                   {esBaja && (
                     <DataRow label="Fecha de baja" value={

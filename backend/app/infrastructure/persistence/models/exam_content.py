@@ -30,6 +30,146 @@ from sqlalchemy.sql import func
 from app.infrastructure.persistence.base import Base
 
 
+class PreguntaBancoModel(Base):
+    """Pregunta del banco de preguntas — dueña de su contenido, ligada a materia (0057).
+
+    Las preguntas del banco NO dependen de ningún examen. Los exámenes referencian
+    preguntas del banco a través de pregunta_examen.pregunta_banco_id.
+    """
+
+    __tablename__ = "pregunta_banco"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    materia_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("materia.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    enunciado: Mapped[str] = mapped_column(Text, nullable=False)
+    tipo: Mapped[str] = mapped_column(String(20), nullable=False)
+    categoria_id: Mapped[str | None] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("categoria_pregunta.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    moodle_question_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    creada_en: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    opciones_banco: Mapped[list["OpcionBancoModel"]] = relationship(
+        "OpcionBancoModel",
+        back_populates="pregunta_banco",
+        cascade="all, delete-orphan",
+        order_by="OpcionBancoModel.orden",
+    )
+    blanks_banco: Mapped[list["BlankBancoModel"]] = relationship(
+        "BlankBancoModel",
+        back_populates="pregunta_banco",
+        cascade="all, delete-orphan",
+        order_by="BlankBancoModel.orden",
+    )
+
+    __table_args__ = (
+        Index("ix_pregunta_banco_materia_id", "materia_id"),
+        Index("ix_pregunta_banco_categoria_id", "categoria_id"),
+        # Partial unique index creado en migración 0057 via raw SQL (postgresql_where
+        # no es aceptado por UniqueConstraint en SA — usar Index con postgresql_where)
+        Index(
+            "uq_pregunta_banco_moodle_question",
+            "materia_id", "moodle_question_id",
+            unique=True,
+            postgresql_where="moodle_question_id IS NOT NULL",
+        ),
+    )
+
+
+class OpcionBancoModel(Base):
+    """Opción de respuesta para una pregunta del banco (multichoice/truefalse)."""
+
+    __tablename__ = "opcion_banco"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    pregunta_banco_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("pregunta_banco.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    texto: Mapped[str] = mapped_column(Text, nullable=False)
+    es_correcta: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    orden: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+
+    pregunta_banco: Mapped[PreguntaBancoModel] = relationship(
+        "PreguntaBancoModel", back_populates="opciones_banco"
+    )
+
+    __table_args__ = (
+        Index("ix_opcion_banco_pregunta_banco_id", "pregunta_banco_id"),
+    )
+
+
+class BlankBancoModel(Base):
+    """Blank de una pregunta cloze del banco."""
+
+    __tablename__ = "blank_banco"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    pregunta_banco_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("pregunta_banco.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    orden: Mapped[int] = mapped_column(Integer, nullable=False)
+    tipo: Mapped[str] = mapped_column(Text, nullable=False)
+    texto_antes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    texto_despues: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    opciones_blank_banco: Mapped[list["OpcionBlankBancoModel"]] = relationship(
+        "OpcionBlankBancoModel",
+        back_populates="blank_banco",
+        cascade="all, delete-orphan",
+    )
+    pregunta_banco: Mapped[PreguntaBancoModel] = relationship(
+        "PreguntaBancoModel", back_populates="blanks_banco"
+    )
+
+    __table_args__ = (
+        Index("ix_blank_banco_pregunta_banco_id", "pregunta_banco_id"),
+    )
+
+
+class OpcionBlankBancoModel(Base):
+    """Opción de un blank cloze del banco."""
+
+    __tablename__ = "opcion_blank_banco"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    blank_banco_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("blank_banco.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    texto: Mapped[str] = mapped_column(Text, nullable=False)
+    es_correcta: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    peso: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+
+    blank_banco: Mapped[BlankBancoModel] = relationship(
+        "BlankBancoModel", back_populates="opciones_blank_banco"
+    )
+
+    __table_args__ = (
+        Index("ix_opcion_blank_banco_blank_banco_id", "blank_banco_id"),
+    )
+
+
 class CategoriaPreguntaModel(Base):
     """Categoría del banco de preguntas (C-74, migración 0053).
 
@@ -301,6 +441,12 @@ class PreguntaExamenModel(Base):
         Integer,
         nullable=True,
         comment="C-74 D8: ID en Moodle. Permite re-sync sin duplicar.",
+    )
+    # 0057: trazabilidad — pregunta del banco de la que proviene esta instancia de examen.
+    pregunta_banco_id: Mapped[str | None] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("pregunta_banco.id", ondelete="SET NULL"),
+        nullable=True,
     )
 
     examen: Mapped[ExamenContenidoModel] = relationship(

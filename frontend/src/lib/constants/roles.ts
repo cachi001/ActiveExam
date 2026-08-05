@@ -6,7 +6,7 @@ export const ROL_LABELS: Record<string, string> = {
   estudiante: 'Estudiante',
   docente: 'Docente',
   proctor: 'Proctor',
-  admin_sistema: 'Administrador del sistema',
+  admin_sistema: 'Administrador',
 };
 
 // Qué puede hacer cada rol, en castellano llano. Se muestra en el formulario de alta.

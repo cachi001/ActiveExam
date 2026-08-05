@@ -154,7 +154,7 @@
       `pregunta_examen` + índice único `(examen_id, moodle_question_id)` para
       evitar duplicados en re-syncs. Aditiva, no rompe nada existente.
       (ya estaba en 0054_c74_pregunta_categoria_id.py)
-- [ ] 9.2 Verificar en campustest qué WS está disponible para el banco de
+- [x] 9.2 Verificar en campustest qué WS está disponible para el banco de
       preguntas: probar `core_question_get_bank_categories` con el token de
       profesor_prueba vía `moodle_mobile_app`. Si no está — documentar
       cuál es la función real disponible y ajustar el resto de las tasks.
@@ -182,7 +182,7 @@
 - [x] 8.1 Correr la suite completa (backend + frontend) — sin regresiones en
       exámenes multichoice/truefalse existentes (el modelo viejo no cambia de
       forma, solo se le agrega `categoria_id` nullable).
-- [ ] 8.2 Probar en vivo contra un XML real de campustest con categorías +
+- [x] 8.2 Probar en vivo contra un XML real de campustest con categorías +
       cloze mezclados con multichoice/truefalse.
-- [ ] 8.3 Actualizar `knowledge-base/06_funcionalidades.md` si corresponde
+- [x] 8.3 Actualizar `knowledge-base/06_funcionalidades.md` si corresponde
       (nueva funcionalidad de armado por sorteo + banco categorizado).

@@ -27,6 +27,7 @@ import {
 import type { ExamenContenidoResumen } from '../lib/types';
 import { EstadoBadge } from './exam-detail/EstadoBadge';
 import { SyncResultBanner, type SyncResult } from './exam-detail/SyncResultBanner';
+import { AdminTable, type AdminColumn } from '../ui/AdminTable';
 
 function traducirErrorApi(err: unknown, contexto: 'carga' | 'sinc'): string {
   const status = (err as { status?: number })?.status;
@@ -328,47 +329,52 @@ export default function ExamResultados() {
             </div>
           )}
 
-          {resultados.length > 0 && (
-            <div className="overflow-x-auto -mx-lg px-lg">
-              <table className="w-full text-left min-w-[600px]">
-                <thead>
-                  <tr className="text-label-sm uppercase tracking-wide text-on-surface-variant border-b border-outline-variant/40">
-                    <th className="py-sm pr-md font-semibold">Alumno</th>
-                    <th className="py-sm pr-md font-semibold text-right">Nota</th>
-                    <th className="py-sm pr-md font-semibold">Estado Moodle</th>
-                    <th className="py-sm font-semibold">Actualizado</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {resultados.map((r) => (
-                    <tr
-                      key={r.session_id}
-                      className={`border-b border-outline-variant/20 transition-colors
-                        ${cargandoTabla ? 'opacity-50' : 'hover:bg-surface-container-low'}`}
-                    >
-                      <td className="py-sm pr-md">
-                        <p className="text-label-md font-semibold text-on-surface">{alumnoDisplay(r)}</p>
-                        {r.alumno_nombre && (
-                          <p className="text-label-sm text-on-surface-variant">{r.alumno_email}</p>
-                        )}
-                      </td>
-                      <td className="py-sm pr-md text-right tabular-nums">
-                        {r.nota !== null
-                          ? <span className="font-semibold text-on-surface">{r.nota}</span>
-                          : <span className="text-outline text-label-sm">—</span>}
-                      </td>
-                      <td className="py-sm pr-md">
-                        <EstadoBadge estado={r.estado_moodle} retenidoPor={r.retenido_por} />
-                      </td>
-                      <td className="py-sm text-label-sm text-on-surface-variant">
-                        {formatFecha(r.actualizado_en)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+          {resultados.length > 0 && (() => {
+            const cols: AdminColumn<ResultadoExamen>[] = [
+              {
+                key: 'alumno',
+                header: 'Alumno',
+                width: '35%',
+                cell: (r) => (
+                  <div>
+                    <p className="font-semibold text-gray-900">{alumnoDisplay(r)}</p>
+                    {r.alumno_nombre && <p className="text-xs text-gray-500 mt-0.5">{r.alumno_email}</p>}
+                  </div>
+                ),
+              },
+              {
+                key: 'nota',
+                header: 'Nota',
+                width: '10%',
+                align: 'right',
+                cell: (r) => r.nota !== null
+                  ? <span className="font-semibold text-gray-900 tabular-nums">{r.nota}</span>
+                  : <span className="text-gray-400">—</span>,
+              },
+              {
+                key: 'estado',
+                header: 'Estado Moodle',
+                width: '30%',
+                cell: (r) => <EstadoBadge estado={r.estado_moodle} retenidoPor={r.retenido_por} />,
+              },
+              {
+                key: 'actualizado',
+                header: 'Actualizado',
+                width: '25%',
+                cell: (r) => <span className="text-gray-500">{formatFecha(r.actualizado_en)}</span>,
+              },
+            ];
+            return (
+              <div className="-mx-lg">
+                <AdminTable
+                  columns={cols}
+                  data={resultados}
+                  keyExtractor={(r) => r.session_id}
+                  isLoading={cargandoTabla}
+                />
+              </div>
+            );
+          })()}
         </Card>
 
         {/* Paginación FUERA de la card — siempre visible */}

@@ -99,6 +99,13 @@ class UsuarioModel(Base):
     eliminado_en: Mapped[str | None] = mapped_column(
         TIMESTAMP(timezone=True), nullable=True
     )
+    # 0056: auditoría de cuenta.
+    creado_en: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    ultimo_acceso_en: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
 
 class ExamenModel(Base):

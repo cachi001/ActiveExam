@@ -203,6 +203,18 @@ export interface PreguntaRevision {
   respondida: boolean;
   /** true si eligió la correcta. */
   acertada: boolean;
+  /** 'multichoice' | 'cloze' — tipo de pregunta. */
+  tipo?: string;
+  /** Blanks de preguntas cloze, en orden. Solo presente si tipo === 'cloze'. */
+  blanks_revisados?: Array<{
+    blank_id: string;
+    orden: number;
+    tipo: string;
+    texto_antes: string | null;
+    texto_despues: string | null;
+    respuesta_alumno: string | null;
+    es_correcta: boolean;
+  }>;
 }
 
 export interface RevisionExamen {

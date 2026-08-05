@@ -46,20 +46,20 @@ function NodoCategoria({
   onRenombrar: (cat: CategoriaPregunta) => void;
   onBorrar: (cat: CategoriaPregunta) => void;
 }) {
-  const [expandido, setExpandido] = useState(true);
+  const [expandido, setExpandido] = useState(false);
   const activo = seleccionada === nodo.id;
 
   return (
     <div style={{ paddingLeft: nivel * 16 }}>
       <div
-        className={`flex items-center gap-1 px-2 py-1.5 rounded-lg cursor-pointer group transition-colors ${
-          activo ? 'bg-primary/15 text-primary font-medium' : 'hover:bg-surface-100'
+        className={`flex items-center gap-1 px-2 py-2 rounded-lg cursor-pointer group transition-all duration-150 ${
+          activo ? 'bg-primary/10 text-primary font-semibold' : 'hover:bg-surface-50 hover:border-surface-200'
         }`}
         onClick={() => onSeleccionar(nodo.id)}
       >
         {nodo.hijos.length > 0 ? (
           <button
-            className="p-0.5 rounded hover:bg-surface-200 shrink-0"
+            className="w-5 h-5 flex items-center justify-center shrink-0"
             onClick={(e) => { e.stopPropagation(); setExpandido(!expandido); }}
             aria-label={expandido ? 'Colapsar' : 'Expandir'}
           >
@@ -68,18 +68,18 @@ function NodoCategoria({
         ) : (
           <span className="w-6 shrink-0" />
         )}
-        <Icon name="folder" className="text-[16px] text-on-surface-variant shrink-0" />
+        <Icon name="folder" className={`text-[16px] shrink-0 ${activo ? 'text-primary' : 'text-on-surface-variant'}`} />
         <span className="flex-1 text-body-sm truncate">{nodo.nombre}</span>
-        <span className="hidden group-hover:flex items-center gap-0.5">
+        <span className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
           <button
-            className="p-0.5 rounded hover:bg-surface-200"
-            title="Subcategoría"
+            className="p-0.5 rounded hover:bg-surface-200 text-on-surface-variant"
+            title="Nueva subcategoría"
             onClick={(e) => { e.stopPropagation(); onCrear(nodo.id); }}
           >
             <Icon name="create_new_folder" className="text-[14px]" />
           </button>
           <button
-            className="p-0.5 rounded hover:bg-surface-200"
+            className="p-0.5 rounded hover:bg-surface-200 text-on-surface-variant"
             title="Renombrar"
             onClick={(e) => { e.stopPropagation(); onRenombrar(nodo); }}
           >
@@ -122,16 +122,21 @@ export function CategoriasTree({
 
   return (
     <div className="flex flex-col gap-1">
-      {/* Bucket "Sin clasificar" — siempre visible al final */}
+      {/* Bucket "Sin clasificar" — siempre visible al tope */}
       <div
-        className={`flex items-center gap-1 px-2 py-1.5 rounded-lg cursor-pointer transition-colors ${
-          seleccionada === null ? 'bg-primary/15 text-primary font-medium' : 'hover:bg-surface-100'
+        className={`flex items-center gap-1 px-2 py-2 rounded-lg cursor-pointer transition-all duration-150 ${
+          seleccionada === null
+            ? 'bg-primary/10 text-primary font-semibold'
+            : 'text-surface-500 hover:bg-surface-50 hover:text-surface-700'
         }`}
         onClick={() => onSeleccionar(null)}
       >
         <span className="w-6 shrink-0" />
-        <Icon name="help_outline" className="text-[16px] text-on-surface-variant shrink-0" />
-        <span className="flex-1 text-body-sm text-on-surface-variant italic">Sin clasificar</span>
+        <Icon
+          name="inbox"
+          className={`text-[16px] shrink-0 ${seleccionada === null ? 'text-primary' : 'text-on-surface-variant'}`}
+        />
+        <span className="flex-1 text-body-sm">Sin clasificar</span>
       </div>
 
       {arbol.map((nodo) => (

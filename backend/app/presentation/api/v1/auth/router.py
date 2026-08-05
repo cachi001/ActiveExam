@@ -17,6 +17,8 @@ from __future__ import annotations
 import os
 import re
 
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy import or_, select
@@ -178,6 +180,9 @@ async def login(
             audience=settings.jwt_audience,
             ttl_seconds=settings.access_token_ttl_seconds,
         )
+
+        # Registrar último acceso.
+        usuario.ultimo_acceso_en = datetime.now(timezone.utc)
 
         # Emitir refresh token persistente en DB.
         db_store = DbRefreshTokenStore(session, ttl_seconds=settings.refresh_token_ttl_seconds)

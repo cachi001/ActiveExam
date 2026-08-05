@@ -221,6 +221,50 @@ export default function ExamenRevision() {
                       </div>
                     </div>
 
+                    {preguntaActual.tipo === 'cloze' ? (
+                      <div className="space-y-md">
+                        {(preguntaActual.blanks_revisados ?? []).map((b) => (
+                          <div key={b.blank_id} className="space-y-base">
+                            <p className="text-label-sm font-semibold text-on-surface-variant uppercase tracking-wide">
+                              Hueco {b.orden + 1}
+                            </p>
+                            <div className="flex flex-wrap items-center gap-xs text-body-md text-on-surface">
+                              {b.texto_antes && (
+                                <span>{b.texto_antes}</span>
+                              )}
+                              <div
+                                className={`inline-flex items-center gap-xs rounded-lg border px-md py-base font-medium ${
+                                  b.respuesta_alumno == null
+                                    ? 'border-outline-variant/50 bg-surface-container text-on-surface-variant'
+                                    : b.es_correcta
+                                    ? 'border-success/50 bg-success-container/40 text-success'
+                                    : 'border-error/50 bg-error-container/40 text-error'
+                                }`}
+                              >
+                                {b.respuesta_alumno == null ? (
+                                  <>
+                                    <Icon name="help" className="text-[16px] shrink-0" />
+                                    <span className="italic">No respondido</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Icon
+                                      name={b.es_correcta ? 'check_circle' : 'cancel'}
+                                      className="text-[16px] shrink-0"
+                                      fill
+                                    />
+                                    <span>{b.respuesta_alumno}</span>
+                                  </>
+                                )}
+                              </div>
+                              {b.texto_despues && (
+                                <span>{b.texto_despues}</span>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
                     <div className="space-y-md">
                       {preguntaActual.opciones.map((o) => {
                         const s = estiloOpcion(o);
@@ -244,6 +288,7 @@ export default function ExamenRevision() {
                         );
                       })}
                     </div>
+                    )}
 
                     <div className="flex items-center justify-between pt-base border-t border-outline-variant/30">
                       <Button

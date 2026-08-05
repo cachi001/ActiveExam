@@ -39,7 +39,7 @@ function headers() {
 
 export async function listarCategorias(materiaId: string): Promise<CategoriaPregunta[]> {
   const res = await fetch(
-    `${API_BASE}/api/v1/exam-content/categorias?materia_id=${encodeURIComponent(materiaId)}`,
+    `${API_BASE}/exam-content/categorias?materia_id=${encodeURIComponent(materiaId)}`,
     { headers: headers() },
   );
   if (!res.ok) throw new Error(`Error ${res.status} al listar categorías`);
@@ -51,7 +51,7 @@ export async function crearCategoria(payload: {
   nombre: string;
   categoria_padre_id?: string | null;
 }): Promise<CategoriaPregunta> {
-  const res = await fetch(`${API_BASE}/api/v1/exam-content/categorias`, {
+  const res = await fetch(`${API_BASE}/exam-content/categorias`, {
     method: 'POST',
     headers: headers(),
     body: JSON.stringify(payload),
@@ -64,7 +64,7 @@ export async function renombrarCategoria(
   categoriaId: string,
   nombre: string,
 ): Promise<CategoriaPregunta> {
-  const res = await fetch(`${API_BASE}/api/v1/exam-content/categorias/${encodeURIComponent(categoriaId)}`, {
+  const res = await fetch(`${API_BASE}/exam-content/categorias/${encodeURIComponent(categoriaId)}`, {
     method: 'PATCH',
     headers: headers(),
     body: JSON.stringify({ nombre }),
@@ -75,7 +75,7 @@ export async function renombrarCategoria(
 
 export async function borrarCategoria(categoriaId: string): Promise<void> {
   const res = await fetch(
-    `${API_BASE}/api/v1/exam-content/categorias/${encodeURIComponent(categoriaId)}`,
+    `${API_BASE}/exam-content/categorias/${encodeURIComponent(categoriaId)}`,
     { method: 'DELETE', headers: headers() },
   );
   if (!res.ok) throw new Error(`Error ${res.status} al borrar categoría`);
@@ -88,7 +88,7 @@ export async function listarPreguntasBanco(
   const params = new URLSearchParams({ materia_id: materiaId });
   if (categoriaId) params.set('categoria_id', categoriaId);
   else params.set('sin_categoria', 'true');
-  const res = await fetch(`${API_BASE}/api/v1/exam-content/preguntas?${params}`, {
+  const res = await fetch(`${API_BASE}/exam-content/preguntas?${params}`, {
     headers: headers(),
   });
   if (!res.ok) throw new Error(`Error ${res.status} al listar preguntas`);
@@ -100,7 +100,7 @@ export async function moverPreguntaCategoria(
   categoriaId: string | null,
 ): Promise<void> {
   const res = await fetch(
-    `${API_BASE}/api/v1/exam-content/preguntas/${encodeURIComponent(preguntaId)}/categoria`,
+    `${API_BASE}/exam-content/preguntas/${encodeURIComponent(preguntaId)}/categoria`,
     {
       method: 'PATCH',
       headers: headers(),
@@ -108,6 +108,46 @@ export async function moverPreguntaCategoria(
     },
   );
   if (!res.ok) throw new Error(`Error ${res.status} al mover pregunta`);
+}
+
+export interface SorteoCategoriaItem {
+  categoria_id: string | null;
+  cantidad: number;
+}
+
+export interface CrearDesdebancoRequest {
+  titulo: string;
+  materia_id: string;
+  comision_id?: string | null;
+  sorteo: SorteoCategoriaItem[];
+  limite_preguntas?: number | null;
+}
+
+export interface CrearDesdebancoResponse {
+  examen_id: string;
+  titulo: string;
+  total_preguntas: number;
+}
+
+export async function crearDesdeBanco(
+  payload: CrearDesdebancoRequest,
+): Promise<CrearDesdebancoResponse> {
+  const res = await fetch(`${API_BASE}/exam-content/crear-desde-banco`, {
+    method: 'POST',
+    headers: headers(),
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const detail = (body as any)?.detail;
+    const msg =
+      typeof detail === 'string'
+        ? detail
+        : detail?.mensaje ?? `Error ${res.status} al crear examen`;
+    throw new Error(msg);
+  }
+  return res.json();
 }
 
 export interface SyncBancoResult {
@@ -124,7 +164,7 @@ export async function sincronizarBancoMoodle(
   materiaId: string,
   courseid: number,
 ): Promise<SyncBancoResult> {
-  const res = await fetch(`${API_BASE}/api/v1/exam-content/moodle/sync-banco`, {
+  const res = await fetch(`${API_BASE}/exam-content/moodle/sync-banco`, {
     method: 'POST',
     headers: headers(),
     body: JSON.stringify({ materia_id: materiaId, courseid }),
