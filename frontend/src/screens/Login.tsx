@@ -20,7 +20,7 @@ function homePorRol(roles: Rol[]): string {
   if (roles.includes('revisor')) return '/admin/cola-revision';
   if (roles.includes('coordinador')) return '/admin';
   // Docente y admin de exámenes arrancan en su listado de exámenes.
-  if (roles.includes('docente') || roles.includes('admin_examenes')) return '/admin/examenes';
+  if (roles.includes('tutor') || roles.includes('admin_examenes')) return '/admin/examenes';
   if (roles.includes('auditor')) return '/admin/auditoria';
   return '/alumno';
 }

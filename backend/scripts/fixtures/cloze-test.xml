@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<quiz>
+  <question type="cloze">
+    <name><text>Cloze Test 1</text></name>
+    <questiontext format="html">
+      <text><![CDATA[<p>El lenguaje {1:SHORTANSWER:=Python} es interpretado y {1:SHORTANSWER:=tipado} dinámicamente.</p>]]></text>
+    </questiontext>
+    <generalfeedback format="html"><text></text></generalfeedback>
+    <penalty>0.3333333</penalty>
+    <hidden>0</hidden>
+    <tags/>
+  </question>
+  <question type="cloze">
+    <name><text>Cloze Test 2</text></name>
+    <questiontext format="html">
+      <text><![CDATA[<p>En Python, una lista se define con {1:MULTICHOICE:=corchetes~paréntesis~llaves} y un diccionario con {1:MULTICHOICE:=llaves~corchetes~paréntesis}.</p>]]></text>
+    </questiontext>
+    <generalfeedback format="html"><text></text></generalfeedback>
+    <penalty>0.3333333</penalty>
+    <hidden>0</hidden>
+    <tags/>
+  </question>
+</quiz>

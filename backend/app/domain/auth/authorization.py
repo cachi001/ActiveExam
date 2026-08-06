@@ -161,8 +161,8 @@ def autorizar_docente_sobre_examen(
     No decide nada sobre integridad academica (L2.5): esto es control de acceso."""
     if principal.tiene_algun_rol(_ROLES_SIN_LIMITE_DE_PERTENENCIA):
         return
-    if not principal.tiene_rol(Rol.DOCENTE):
-        raise ForbiddenError("Se requiere rol docente (o alcance institucional).")
+    if not principal.tiene_rol(Rol.TUTOR):
+        raise ForbiddenError("Se requiere rol tutor (o alcance institucional).")
     if docente_id_del_examen is None:
         raise ForbiddenError(
             "El examen no tiene docente a cargo: solo un rol institucional puede operarlo."

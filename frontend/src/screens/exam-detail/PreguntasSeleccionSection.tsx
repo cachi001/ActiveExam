@@ -3,6 +3,7 @@ import { Badge, Button, Card, Icon, SectionTitle } from '../../ui/components';
 import { getPreguntasExamen, setPreguntasSeleccion, sortearPreguntas, type PreguntaSeleccion } from '../../lib/examContentAdmin';
 import { listarCategorias } from '../../lib/apiAdmin/bancoPreguntasApi';
 import type { CategoriaPregunta } from '../../lib/apiAdmin/bancoPreguntasApi';
+import { limpiarEnunciadoCloze } from '../../lib/cloze';
 
 const TIPO_PREGUNTA_LABEL: Record<string, string> = {
   multichoice: 'Opción múltiple',
@@ -12,6 +13,35 @@ const TIPO_PREGUNTA_LABEL: Record<string, string> = {
 
 function tipoLabel(tipo: string): string {
   return TIPO_PREGUNTA_LABEL[tipo] ?? tipo;
+}
+
+/**
+ * Aplana el listado de categorías a un orden DFS con su nivel de anidamiento,
+ * para mostrar la jerarquía (padre → hijas) en el picker del sorteo.
+ */
+function aplanarConNivel(cats: CategoriaPregunta[]): Array<{ cat: CategoriaPregunta; nivel: number }> {
+  const hijosDe = new Map<string | null, CategoriaPregunta[]>();
+  for (const c of cats) {
+    const key = c.categoria_padre_id ?? null;
+    if (!hijosDe.has(key)) hijosDe.set(key, []);
+    hijosDe.get(key)!.push(c);
+  }
+  const orden: Array<{ cat: CategoriaPregunta; nivel: number }> = [];
+  const idsConocidos = new Set(cats.map((c) => c.id));
+  const visitar = (padreId: string | null, nivel: number) => {
+    for (const c of hijosDe.get(padreId) ?? []) {
+      orden.push({ cat: c, nivel });
+      visitar(c.id, nivel + 1);
+    }
+  };
+  visitar(null, 0);
+  // Categorías cuyo padre no está en la lista (huérfanas) se muestran como raíz.
+  for (const c of cats) {
+    if (c.categoria_padre_id && !idsConocidos.has(c.categoria_padre_id) && !orden.some((o) => o.cat.id === c.id)) {
+      orden.push({ cat: c, nivel: 0 });
+    }
+  }
+  return orden;
 }
 
 type ModoSeleccion = 'manual' | 'sorteo';
@@ -268,13 +298,19 @@ export function PreguntasSeleccionSection({ examenId, materiaId, onSeleccionGuar
                   Categorías a incluir
                 </p>
                 <ul className="space-y-xs">
-                  {categorias.map((cat) => (
+                  {aplanarConNivel(categorias).map(({ cat, nivel }) => (
                     <li key={cat.id}>
-                      <label className={`flex items-center gap-sm p-sm rounded-xl border cursor-pointer transition-colors select-none ${
-                        catIdsSeleccionadas.has(cat.id)
-                          ? 'border-primary/40 bg-primary-fixed/30'
-                          : 'border-outline-variant/40 hover:bg-surface-container-low'
-                      }`}>
+                      <label
+                        style={{ marginLeft: nivel * 20 }}
+                        className={`flex items-center gap-sm p-sm rounded-xl border cursor-pointer transition-colors select-none ${
+                          catIdsSeleccionadas.has(cat.id)
+                            ? 'border-primary/40 bg-primary-fixed/30'
+                            : 'border-outline-variant/40 hover:bg-surface-container-low'
+                        }`}
+                      >
+                        {nivel > 0 && (
+                          <Icon name="subdirectory_arrow_right" className="text-[16px] text-on-surface-variant shrink-0" />
+                        )}
                         <input
                           type="checkbox"
                           checked={catIdsSeleccionadas.has(cat.id)}
@@ -287,6 +323,11 @@ export function PreguntasSeleccionSection({ examenId, materiaId, onSeleccionGuar
                     </li>
                   ))}
                 </ul>
+                <p className="text-label-sm text-on-surface-variant mt-xs flex items-start gap-xs">
+                  <Icon name="info" className="text-[15px] shrink-0 mt-0.5" />
+                  El sorteo toma preguntas solo de las categorías marcadas. Las subcategorías
+                  no se incluyen solas: marcá cada una que quieras sortear.
+                </p>
               </div>
 
               <div className="flex items-center gap-sm">
@@ -369,7 +410,7 @@ export function PreguntasSeleccionSection({ examenId, materiaId, onSeleccionGuar
                   />
                   <div className="min-w-0 flex-1">
                     <p className="text-label-md text-on-surface line-clamp-2 break-words">
-                      {p.enunciado}
+                      {limpiarEnunciadoCloze(p.enunciado)}
                     </p>
                     <div className="flex items-center gap-xs mt-xs flex-wrap">
                       <Badge tone="neutral">{tipoLabel(p.tipo)}</Badge>

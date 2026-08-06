@@ -17,6 +17,8 @@ import {
   type SyncBancoResult,
 } from '../lib/apiAdmin/bancoPreguntasApi';
 import { CategoriasTree } from './banco-preguntas/CategoriasTree';
+import { limpiarEnunciadoCloze } from '../lib/cloze';
+import { HelpButton } from '../ui/HelpButton';
 
 // ---------------------------------------------------------------------------
 // Diálogo inline (crear / renombrar categoría)
@@ -142,7 +144,10 @@ function ListaPreguntas({
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-col gap-2">
-        {preguntasPagina.map((p) => (
+        {preguntasPagina.map((p) => {
+          // Preview sin exponer la respuesta correcta: los campos cloze {..} → "____".
+          const preview = limpiarEnunciadoCloze(p.enunciado) || '(sin enunciado)';
+          return (
           <div
             key={p.id}
             className="flex items-center gap-3 px-4 py-3 rounded-xl border border-surface-200 bg-white hover:bg-surface-50 hover:border-surface-300 transition-all duration-200 shadow-xs"
@@ -156,9 +161,9 @@ function ListaPreguntas({
             <div className="flex-1 min-w-0">
               <p
                 className="text-body-sm truncate"
-                title={p.enunciado || '(sin enunciado)'}
+                title={preview}
               >
-                {p.enunciado || '(sin enunciado)'}
+                {preview}
               </p>
               <p className="text-label-xs text-on-surface-variant flex items-center gap-1.5">
                 <span>{p.tipo}</span>
@@ -206,7 +211,8 @@ function ListaPreguntas({
               </button>
             )}
           </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Paginación */}
@@ -493,17 +499,33 @@ export default function BancoPreguntasPage() {
     : (categorias.find((c) => c.id === catSeleccionada)?.nombre ?? '');
 
   return (
-    <StaffShell nav={STAFF_NAV} title="Banco de preguntas">
-      <div className="max-w-6xl mx-auto px-4 py-8 flex flex-col gap-6">
-        {/* Encabezado */}
-        <div className="flex items-center justify-between gap-md flex-wrap">
-          <div>
-            <h1 className="text-headline-sm font-bold">Banco de preguntas</h1>
-            <p className="text-body-md text-on-surface-variant mt-0.5">
-              Organizá las preguntas por categorías para armar exámenes por sorteo.
-            </p>
-          </div>
-          {materiaId && (
+    <StaffShell
+      nav={STAFF_NAV}
+      title="Banco de preguntas"
+      subtitle="Organizá las preguntas por categorías para armar exámenes por sorteo."
+      help={
+        <HelpButton title="Banco de preguntas">
+          <p>
+            Acá organizás las preguntas de una materia en <strong>categorías</strong> (como
+            carpetas): por tema, por unidad, por dificultad… lo que te sirva.
+          </p>
+          <p>
+            Las preguntas se traen del campus (Moodle) con <strong>Sincronizar desde
+            campus</strong>. El contenido lo manda Moodle, pero la organización la mandás
+            vos: si movés una pregunta a una categoría a mano, queda <strong>fijada</strong> y
+            una nueva sincronización no la vuelve a cambiar de lugar.
+          </p>
+          <p>
+            Después, al crear un examen podés <strong>armarlo por sorteo</strong>: elegís de
+            qué categorías salen las preguntas y cuántas de cada una.
+          </p>
+        </HelpButton>
+      }
+    >
+      <div className="flex flex-col gap-6">
+        {/* Botón de sincronización (arriba a la derecha del contenido) */}
+        {materiaId && (
+          <div className="flex justify-end">
             <Button
               variant="outline"
               icon="sync"
@@ -511,8 +533,8 @@ export default function BancoPreguntasPage() {
             >
               Sincronizar desde campus
             </Button>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Selector de materia */}
         <Card className="!p-md">
@@ -530,8 +552,8 @@ export default function BancoPreguntasPage() {
         </Card>
 
         {materiaId && (
-          <div className="grid grid-cols-1 md:grid-cols-[320px_minmax(0,1fr)] gap-4 items-start">
-            {/* Panel izquierdo: árbol de categorías */}
+          <div className="flex flex-col gap-4">
+            {/* Panel superior: árbol de categorías */}
             <Card className="!p-md">
               <p className="text-label-md font-medium mb-3">Categorías</p>
               {cargandoCats ? (
@@ -550,7 +572,7 @@ export default function BancoPreguntasPage() {
               )}
             </Card>
 
-            {/* Panel derecho: preguntas de la categoría seleccionada */}
+            {/* Panel inferior: preguntas de la categoría seleccionada */}
             <Card className="!p-md">
               <div className="flex items-center justify-between mb-3">
                 <p className="text-label-md font-medium">

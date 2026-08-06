@@ -877,12 +877,12 @@ def create_exam_content_router(
                             "mensaje": "El usuario no existe o está dado de baja.",
                         },
                     )
-                if Rol.DOCENTE.value not in (usuario.roles or []):
+                if Rol.TUTOR.value not in (usuario.roles or []):
                     raise HTTPException(
                         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                         detail={
-                            "error": "no_es_docente",
-                            "mensaje": "El usuario no tiene rol docente.",
+                            "error": "no_es_tutor",
+                            "mensaje": "El usuario no tiene rol tutor.",
                         },
                     )
 
@@ -2293,37 +2293,20 @@ def create_exam_content_router(
                 detail="Persistencia no inicializada.",
             )
 
-        # Resolver token: preferir credencial docente personal; si no, usar el
-        # token institucional de writeback_svc (si está configurado).
+        # Resolver token: preferir credencial docente personal (vía servicio que
+        # usa la clave correcta); si no, usar el token institucional de writeback_svc.
         token: str | None = None
         base_url: str | None = None
 
-        from app.infrastructure.persistence.models.transactional import (
-            MoodleCredencialDocenteModel,
-        )
-        from sqlalchemy import select as _select
-
-        async with session_factory() as session:
-            fila_cred = (
-                await session.execute(
-                    _select(MoodleCredencialDocenteModel).where(
-                        MoodleCredencialDocenteModel.usuario_id == principal.usuario_id
-                    )
-                )
-            ).scalar_one_or_none()
-
-        if fila_cred is not None and fila_cred.estado == "activa":
-            from app.infrastructure.crypto.secret_encryption import SecretCipher
-            import os
-
-            secret_key = os.environ.get("SECRET_ENCRYPTION_KEY", "")
-            if secret_key:
-                try:
-                    cipher = SecretCipher(secret_key)
-                    token = cipher.decrypt(fila_cred.token_cifrado)
-                    base_url = fila_cred.base_url
-                except Exception:
-                    token = None
+        credencial_svc = getattr(request.app.state, "credencial_docente", None)
+        if credencial_svc is not None and principal.subject:
+            try:
+                token = await credencial_svc.token_de(principal.subject)
+                if token:
+                    estado_cred = await credencial_svc.estado(principal.subject)
+                    base_url = estado_cred.base_url
+            except Exception:
+                token = None
 
         if token is None and writeback_svc is not None:
             # Usar el token institucional de la config de writeback

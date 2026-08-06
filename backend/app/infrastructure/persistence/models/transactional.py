@@ -92,6 +92,11 @@ class UsuarioModel(Base):
     auth_provider: Mapped[str] = mapped_column(
         String(32), nullable=False, server_default="keycloak"
     )
+    # 0059: clave temporal. TRUE = el usuario debe cambiar su contraseña en el
+    # próximo login (creado por admin con clave temporal). Se limpia al cambiarla.
+    debe_cambiar_password: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
     # C-61: datos personales (nullable — compatibilidad con usuarios pre-existentes).
     nombre: Mapped[str | None] = mapped_column(String(255), nullable=True)
     apellido: Mapped[str | None] = mapped_column(String(255), nullable=True)

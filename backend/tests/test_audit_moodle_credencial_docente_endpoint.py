@@ -114,7 +114,7 @@ def _client(app, subject: str):
     return AsyncClient(
         transport=ASGITransport(app=app),
         base_url="http://test",
-        headers=auth_headers(["docente"], subject=subject),
+        headers=auth_headers(["tutor"], subject=subject),
     )
 
 

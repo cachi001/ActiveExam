@@ -122,40 +122,43 @@ export default {
         },
         "on-info": "#ffffff",
 
-        // ── SURFACE — slate como base de fondos/bordes ──────────────────────
+        // ── SURFACE — neutros puros (alineado a la referencia active-ia).
+        //   Antes slate (azulado); ahora gris neutro Tailwind, sin tinte.
+        //   Fondo app #fafafa, cards #ffffff, borde #e5e5e5 → contraste sutil.
         surface: {
-          DEFAULT: "#f8fafc",   // slate-50: fondo principal de la app
-          50:  "#f8fafc",
-          100: "#f1f5f9",
-          200: "#e2e8f0",
-          300: "#cbd5e1",
-          400: "#94a3b8",
-          500: "#64748b",
-          600: "#475569",
-          700: "#334155",
-          800: "#1e293b",
-          900: "#0f172a",
+          DEFAULT: "#fafafa",   // neutral-50: fondo principal de la app
+          50:  "#fafafa",
+          100: "#f5f5f5",
+          200: "#e5e5e5",
+          300: "#d4d4d4",
+          400: "#a3a3a3",
+          500: "#737373",
+          600: "#525252",
+          700: "#404040",
+          800: "#262626",
+          900: "#171717",
           // Alias semánticos del design system
-          dim: "#cbd5e1",
+          dim: "#d4d4d4",
           bright: "#ffffff",
-          variant: "#e2e8f0",
+          variant: "#e5e5e5",
           tint: "#2563eb",
           "container-lowest": "#ffffff",
-          "container-low": "#eef2f7",
-          container: "#e4eaf2",
-          "container-high": "#d6dfe9",
-          "container-highest": "#c8d3e0",
+          "container-low": "#f5f5f5",
+          container: "#ededed",
+          "container-high": "#e5e5e5",
+          "container-highest": "#d4d4d4",
         },
-        "on-surface": "#0f172a",
-        "on-surface-variant": "#475569",
-        "inverse-surface": "#1e293b",
-        "inverse-on-surface": "#f1f5f9",
+        // Textos neutros (foreground/muted de la referencia).
+        "on-surface": "#262626",
+        "on-surface-variant": "#737373",
+        "inverse-surface": "#262626",
+        "inverse-on-surface": "#fafafa",
 
         // ── Tokens globales ─────────────────────────────────────────────────
-        background: "#f8fafc",
-        "on-background": "#0f172a",
-        outline: "#64748b",
-        "outline-variant": "#e2e8f0",
+        background: "#fafafa",
+        "on-background": "#262626",
+        outline: "#737373",
+        "outline-variant": "#e5e5e5",
       },
       borderRadius: {
         // Escala mas mesurada (institucional). Cada token bajo un nivel respecto

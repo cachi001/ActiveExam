@@ -44,23 +44,23 @@ export function RequisitoConsentimiento({ consentimiento, versionVigente, onInic
               className={`${desactualizado ? 'text-warning' : 'text-success'} text-[20px] shrink-0`}
               fill
             />
-            <p className="text-label-sm text-on-surface">
-              Aceptaste la <strong>versión {consentimiento.version}</strong> del consentimiento el{' '}
-              <strong>
+            <p className="text-[14px] text-on-surface">
+              Aceptaste la versión <strong className="font-medium">{consentimiento.version}</strong> del consentimiento el{' '}
+              <strong className="font-medium">
                 {new Date(consentimiento.timestamp).toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' })}
               </strong>.
             </p>
           </div>
           {desactualizado && (
             <div className="flex items-start gap-sm bg-warning-container border border-warning-200 rounded-xl p-sm">
-              <Icon name="info" className="text-warning text-[18px] shrink-0 mt-px" fill />
-              <p className="text-label-sm text-on-surface">
-                Hay una nueva versión del consentimiento (<strong>{versionVigente}</strong>) vigente.
+              <Icon name="info" className="text-warning text-[20px] shrink-0 mt-px" fill />
+              <p className="text-[14px] text-on-surface">
+                Hay una nueva versión del consentimiento (<strong className="font-medium">{versionVigente}</strong>) vigente.
                 Necesitás leerla y aceptarla para poder rendir exámenes.
               </p>
             </div>
           )}
-          <div className="flex flex-wrap gap-sm justify-end">
+          <div className="flex flex-wrap gap-sm justify-end pt-1">
             {desactualizado ? (
               <Button size="sm" onClick={onIniciar}>
                 Leer y aceptar versión {versionVigente}
@@ -74,13 +74,15 @@ export function RequisitoConsentimiento({ consentimiento, versionVigente, onInic
         </div>
       ) : (
         <div className="space-y-md">
-          <p className="text-label-sm text-on-surface-variant">
-            Para enrollarte y poder rendir exámenes, necesitás leer y aceptar el uso de tus datos
-            biométricos. El acuse es inmutable e incluye la versión del texto que firmaste.
+          <p className="text-[14px] text-on-surface-variant">
+            Para poder rendir exámenes, necesitás leer y aceptar el uso de tus datos biométricos.
+            Tu aceptación queda guardada junto con la versión del texto que leíste.
           </p>
-          <Button onClick={onIniciar} size="sm">
-            Leer y consentir
-          </Button>
+          <div className="flex justify-end pt-1">
+            <Button onClick={onIniciar} size="sm">
+              Leer y consentir
+            </Button>
+          </div>
         </div>
       )}
     </RequisitoCard>

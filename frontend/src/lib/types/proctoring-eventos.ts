@@ -21,7 +21,7 @@ export type Rol =
   | 'proctor'
   | 'revisor'
   | 'coordinador'
-  | 'docente'
+  | 'tutor'
   | 'admin_examenes'
   | 'admin_sistema'
   | 'auditor';
@@ -58,6 +58,16 @@ export interface Principal {
    * Demo: en memoria de la sesión. Server-side: cifrado AES-256-GCM.
    */
   foto_perfil?: string;
+  /** ISO 8601 — cuándo se creó la cuenta. Viene de GET /auth/me. */
+  creado_en?: string;
+  /** ISO 8601 — último login registrado. Viene de GET /auth/me. */
+  ultimo_acceso_en?: string;
+  /**
+   * True → la cuenta se creó con una clave temporal y el usuario todavía no
+   * definió su propia contraseña. Fuerza la pantalla de cambio obligatorio.
+   * Viene de GET /auth/me.
+   */
+  debe_cambiar_password?: boolean;
 }
 
 /** Nombre completo "Nombre Apellido" (omite el apellido si no está). */

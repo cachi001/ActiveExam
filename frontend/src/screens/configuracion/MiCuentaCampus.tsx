@@ -1,7 +1,7 @@
 /**
- * MiCuentaCampus — la conexión personal del docente con el campus.
+ * MiCuentaCampus — la conexión personal del tutor con el campus.
  *
- * Por qué existe: la nota SIEMPRE se devuelve a Moodle con la cuenta del docente
+ * Por qué existe: la nota SIEMPRE se devuelve a Moodle con la cuenta del tutor
  * a cargo de la comisión, para que en la libreta figure quién la puso. Sin esta
  * conexión, las notas de sus comisiones quedan retenidas.
  *

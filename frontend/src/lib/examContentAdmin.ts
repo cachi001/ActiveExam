@@ -41,7 +41,7 @@ export interface ComisionResponse {
   nombre: string;
   periodo: string | null;
   anio: number | null;
-  // C-70: código de matriculación (enrolment key) que el docente comparte.
+  // C-70: código de matriculación (enrolment key) que el tutor comparte.
   codigo_matriculacion: string;
   // C-72 §17: true = activa; false = desactivada (baja lógica).
   activa?: boolean;
@@ -356,12 +356,12 @@ export async function getMoodleTarget(examenId: string): Promise<MoodleTargetRes
 }
 
 // ---------------------------------------------------------------------------
-// Configuración del examen: el docente la define, la plataforma la aplica.
+// Configuración del examen: el tutor la define, la plataforma la aplica.
 // GET/PATCH /api/v1/exam-content/{id}/config — las validaciones finales son
 // server-side; el cliente sólo valida lo básico para feedback inmediato.
 // ---------------------------------------------------------------------------
 
-/** Configuración de un examen (la define el docente; la aplica la plataforma). */
+/** Configuración de un examen (la define el tutor; la aplica la plataforma). */
 export interface ExamConfig {
   /** Minutos de tiempo límite. null = sin límite (no hay cuenta regresiva). */
   tiempo_limite_min: number | null;
@@ -430,7 +430,7 @@ export async function setExamConfig(
 }
 
 // ---------------------------------------------------------------------------
-// Selección de preguntas del examen (opción B): el docente elige qué preguntas
+// Selección de preguntas del examen (opción B): el tutor elige qué preguntas
 // del pool importado forman el examen. El alumno rinde solo las seleccionadas.
 // ---------------------------------------------------------------------------
 
@@ -455,7 +455,7 @@ export interface PreguntasExamenResponse {
    * true si el examen ya tiene ≥ 1 intento FINALIZADO: la selección quedó
    * CONGELADA. Cambiarla alteraría notas ya calculadas (grade_calculator cuenta
    * solo las seleccionadas), por eso el PATCH devuelve 409. La UI usa este flag
-   * para deshabilitar el editor ANTES de que el docente intente guardar.
+   * para deshabilitar el editor ANTES de que el tutor intente guardar.
    */
   bloqueada?: boolean;
 }

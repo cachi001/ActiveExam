@@ -8,7 +8,7 @@
  * Spec: profile-header-card (C-42)
  */
 import { motion } from 'motion/react';
-import { Button, Card } from '../../../ui/components';
+import { Button, Card, Icon } from '../../../ui/components';
 import type { Principal } from '../../../lib/types';
 import { getRolLabel } from '../../../lib/constants/roles';
 
@@ -48,9 +48,14 @@ const itemVariants = {
 export function PerfilHeaderCard({ principal, onRehacerFoto }: PerfilHeaderCardProps) {
   return (
     <Card>
+      <div className="flex items-center gap-3 mb-8">
+        <Icon name="person" className="text-2xl text-on-surface-variant shrink-0" />
+        <h2 className="text-xl font-semibold text-on-surface">Información Personal</h2>
+      </div>
+
       {/* Fila superior: avatar + nombre + roles + acciones */}
       <motion.div
-        className="flex items-center gap-md mb-lg"
+        className="flex items-center gap-4 mb-8"
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
@@ -63,15 +68,15 @@ export function PerfilHeaderCard({ principal, onRehacerFoto }: PerfilHeaderCardP
             alt={`Foto de perfil de ${[principal.nombre, principal.apellido].filter(Boolean).join(' ')}`}
           />
         ) : (
-          <div className="w-14 h-14 rounded-full bg-primary text-on-primary flex items-center justify-center font-headline text-headline-sm shrink-0">
+          <div className="w-14 h-14 rounded-full bg-primary text-on-primary flex items-center justify-center text-2xl font-semibold shrink-0">
             {principal?.nombre.charAt(0) ?? '?'}
           </div>
         )}
         <div className="min-w-0 flex-1">
-          <p className="text-label-lg font-semibold text-on-surface">
+          <p className="text-[15px] font-medium text-on-surface">
             {[principal?.nombre, principal?.apellido].filter(Boolean).join(' ') || '—'}
           </p>
-          <p className="text-label-sm text-on-surface-variant">{principal?.roles.map(getRolLabel).join(', ') ?? '—'}</p>
+          <p className="text-[13px] text-on-surface-variant mt-0.5">{principal?.roles.map(getRolLabel).join(', ') ?? '—'}</p>
         </div>
         {onRehacerFoto && (
           <Button
@@ -91,18 +96,18 @@ export function PerfilHeaderCard({ principal, onRehacerFoto }: PerfilHeaderCardP
 
       {/* Grid 2×2 de datos personales */}
       <motion.div
-        className="grid grid-cols-1 sm:grid-cols-2 gap-md"
+        className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-6"
         variants={containerVariants}
         initial="hidden"
         animate="visible"
       >
         <motion.div variants={itemVariants}>
-          <p className="text-label-sm text-on-surface-variant uppercase tracking-wide mb-base">Legajo</p>
-          <p className="text-label-md text-on-surface font-semibold">{principal?.id_institucional ?? '—'}</p>
+          <p className="text-[13px] text-on-surface-variant">Legajo</p>
+          <p className="text-[15px] text-on-surface mt-1">{principal?.id_institucional ?? '—'}</p>
         </motion.div>
         <motion.div variants={itemVariants}>
-          <p className="text-label-sm text-on-surface-variant uppercase tracking-wide mb-base">Email institucional</p>
-          <p className="text-label-md text-on-surface font-semibold">{principal?.email ?? '—'}</p>
+          <p className="text-[13px] text-on-surface-variant">Email</p>
+          <p className="text-[15px] text-on-surface mt-1">{principal?.email ?? '—'}</p>
         </motion.div>
       </motion.div>
     </Card>

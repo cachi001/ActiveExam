@@ -29,7 +29,8 @@ class Rol(str, enum.Enum):
     # toca la configuracion del sistema ni la auditoria. Es el rol de quien dicta
     # la materia, no el de quien juzga la integridad de la rendicion — mantener
     # esa separacion es lo que evita que quien pone la nota decida el fraude.
-    DOCENTE = "docente"
+    # (Rol "tutor" — antes llamado "docente"; renombrado en migracion 0060.)
+    TUTOR = "tutor"
 
 
 # Roles que EXIGEN MFA: todo el que accede a evidencia o administracion (`03`,
@@ -42,18 +43,18 @@ ROLES_CON_MFA: frozenset[Rol] = frozenset(
         Rol.ADMIN_EXAMENES,
         Rol.ADMIN_SISTEMA,
         Rol.AUDITOR,
-        # El docente administra contenido academico (examenes con sus preguntas y
+        # El tutor administra contenido academico (examenes con sus preguntas y
         # respuestas correctas): es acceso de administracion, exige MFA.
-        Rol.DOCENTE,
+        Rol.TUTOR,
     }
 )
 
-# Roles administrativos de examen (CRUD de Examen, usado por C-07). El docente
+# Roles administrativos de examen (CRUD de Examen, usado por C-07). El tutor
 # entra aca: cargar y configurar los examenes de su materia es exactamente su
 # trabajo. Lo que NO gana por estar aca es supervision ni configuracion del
 # sistema — eso vive en CAPABILITY_ROLES, no en esta lista.
 ROLES_ADMIN_EXAMEN: frozenset[Rol] = frozenset(
-    {Rol.ADMIN_EXAMENES, Rol.ADMIN_SISTEMA, Rol.DOCENTE}
+    {Rol.ADMIN_EXAMENES, Rol.ADMIN_SISTEMA, Rol.TUTOR}
 )
 
 

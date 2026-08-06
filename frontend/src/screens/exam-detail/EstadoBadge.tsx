@@ -30,12 +30,12 @@ const RETENCION_CONFIG: Record<string, { label: string; detalle: string }> = {
       'Este examen no tiene cargado el curso y la actividad de Moodle donde va la nota. Configuralos en el examen (sección «Destino en Moodle») y volvé a sincronizar.',
   },
   // Tampoco es una retención por revisión. La nota SIEMPRE se devuelve con la cuenta
-  // del docente a cargo: si se mandara con la cuenta institucional quedaría en la
+  // del tutor a cargo: si se mandara con la cuenta institucional quedaría en la
   // libreta sin responsable, y en silencio (el docente creería que la puso él).
   sin_credencial_docente: {
     label: 'Falta conectar la cuenta del campus',
     detalle:
-      'La nota se devuelve al campus con la cuenta del docente a cargo de la comisión, para que en la libreta figure quién la puso. Falta que esa comisión tenga docente asignado y que esa persona conecte su cuenta en Configuración → Campus (Moodle). Apenas la conecte, volvé a sincronizar.',
+      'La nota se devuelve al campus con la cuenta del tutor a cargo de la comisión, para que en la libreta figure quién la puso. Falta que esa comisión tenga tutor asignado y que esa persona conecte su cuenta en Configuración → Campus (Moodle). Apenas la conecte, volvé a sincronizar.',
   },
 };
 

@@ -16,15 +16,15 @@ describe("tieneCapacidad — gating por capacidad (front-hides)", () => {
     expect(tieneCapacidad(["revisor"], "revisar_sesion")).toBe(true);
     expect(tieneCapacidad(["coordinador"], "revisar_sesion")).toBe(true);
     expect(tieneCapacidad(["admin_sistema"], "revisar_sesion")).toBe(true);
-    expect(tieneCapacidad(["docente"], "revisar_sesion")).toBe(false);
+    expect(tieneCapacidad(["tutor"], "revisar_sesion")).toBe(false);
   });
 
   it("el docente gestiona lo académico pero NO revisa ni supervisa", () => {
-    expect(tieneCapacidad(["docente"], "gestionar_academico")).toBe(true);
-    expect(tieneCapacidad(["docente"], "gestionar_notas")).toBe(true);
-    expect(tieneCapacidad(["docente"], "revisar_sesion")).toBe(false);
-    expect(tieneCapacidad(["docente"], "supervisar_vivo")).toBe(false);
-    expect(tieneCapacidad(["docente"], "configurar_sistema")).toBe(false);
+    expect(tieneCapacidad(["tutor"], "gestionar_academico")).toBe(true);
+    expect(tieneCapacidad(["tutor"], "gestionar_notas")).toBe(true);
+    expect(tieneCapacidad(["tutor"], "revisar_sesion")).toBe(false);
+    expect(tieneCapacidad(["tutor"], "supervisar_vivo")).toBe(false);
+    expect(tieneCapacidad(["tutor"], "configurar_sistema")).toBe(false);
   });
 
   it("estudiante no tiene ninguna capacidad de revisión", () => {

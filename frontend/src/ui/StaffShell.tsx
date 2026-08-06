@@ -82,6 +82,13 @@ function UserMenu() {
             <div className="text-sm font-medium text-on-surface truncate">{principal?.nombre ?? 'Invitado'}</div>
             <div className="text-xs text-on-surface-variant truncate">{secundario}</div>
           </div>
+          <Link
+            to="/admin/perfil"
+            onClick={() => setOpen(false)}
+            className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-on-surface hover:bg-surface-50 transition-colors"
+          >
+            <Icon name="manage_accounts" className="text-[18px] text-on-surface-variant" /> Mi perfil
+          </Link>
           <button
             onClick={() => { setOpen(false); setConfirmandoLogout(true); }}
             role="menuitem"
@@ -221,7 +228,7 @@ export function StaffShell({
       </aside>
 
       <div
-        className="min-h-screen transition-[margin] duration-300 ease-in-out bg-white"
+        className="min-h-screen transition-[margin] duration-300 ease-in-out bg-surface"
         style={{
           paddingTop: TOPBAR_H,
           marginLeft: isDesktop ? (showAsCollapsed ? SIDEBAR_COLLAPSED : SIDEBAR_EXPANDED) : 0,

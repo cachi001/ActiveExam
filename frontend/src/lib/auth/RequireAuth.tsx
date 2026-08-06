@@ -9,12 +9,16 @@
  * Uso: <RequireAuth roles={['admin_sistema']}><AdminDashboard /></RequireAuth>
  * Sin `roles` → solo exige sesión iniciada (cualquier rol).
  */
-import { useEffect } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import type { Rol } from '../types';
 import { useAuth } from '../authStore';
 import { useNavigate } from '../router';
 import { Icon, Button } from '../../ui/components';
+
+// Pantalla bloqueante de primer login (clave temporal). Lazy para no cargarla
+// en el bundle inicial de todas las rutas protegidas.
+const CambioClaveObligatorio = lazy(() => import('../../screens/CambioClaveObligatorio'));
 
 export function RequireAuth({ roles, children }: { roles?: Rol[]; children: ReactNode }) {
   const status = useAuth((s) => s.status);
@@ -27,6 +31,16 @@ export function RequireAuth({ roles, children }: { roles?: Rol[]; children: Reac
 
   if (status === 'loading' || status === 'unauthenticated') {
     return <PantallaCarga />;
+  }
+
+  // Primer login con clave temporal: bloquea TODAS las rutas protegidas hasta que
+  // el usuario defina su propia contraseña (antes incluso del check de rol).
+  if (principal?.debe_cambiar_password) {
+    return (
+      <Suspense fallback={<PantallaCarga />}>
+        <CambioClaveObligatorio />
+      </Suspense>
+    );
   }
 
   const tieneRol =

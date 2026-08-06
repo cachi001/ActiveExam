@@ -241,7 +241,7 @@ export default function ExamResultados() {
               </p>
               <p className="text-[13px] text-on-surface-variant leading-snug mt-0.5">
                 No tienen que ver con el riesgo de la sesión: falta el destino del examen en el campus
-                o la cuenta del docente a cargo. Están marcadas en rojo en la tabla.
+                o la cuenta del tutor a cargo. Están marcadas en rojo en la tabla.
               </p>
             </div>
           </div>

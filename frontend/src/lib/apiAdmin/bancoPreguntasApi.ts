@@ -29,7 +29,7 @@ export interface PreguntaBanco {
   seleccionada: boolean;
   categoria_id: string | null;
   /**
-   * true si el docente la movió de categoría a mano. Ni el import de XML ni el
+   * true si el tutor la movió de categoría a mano. Ni el import de XML ni el
    * sync desde Moodle vuelven a recategorizarla (0058).
    */
   categoria_manual: boolean;

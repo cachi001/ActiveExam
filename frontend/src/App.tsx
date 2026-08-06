@@ -38,6 +38,7 @@ const MoodleImportPage      = lazy(() => import('./admin/ExamImport/MoodleImport
 const Configuracion         = lazy(() => import('./screens/Configuracion'));
 const Registro              = lazy(() => import('./screens/Registro'));
 const BancoPreguntasPage    = lazy(() => import('./screens/BancoPreguntasPage'));
+const Perfil                = lazy(() => import('./screens/Perfil'));
 
 // Roles por área. DEBE espejar ui/nav.ts (si un item se ve en el menú y la ruta
 // lo rechaza, o al reves, el usuario come un "Sin permisos" desde su propio menu)
@@ -48,9 +49,9 @@ const ESTUDIANTE: Rol[] = ['estudiante'];
 // (decide en un solo paso, incluida la anulación) y hasta ahora la ruta
 // /revisor lo dejaba afuera.
 const SUPERVISION: Rol[] = ['proctor', 'revisor', 'coordinador', 'admin_sistema'];
-// Area del docente: examenes, materias, comisiones y notas. Sin supervision,
+// Area del tutor: examenes, materias, comisiones y notas. Sin supervision,
 // sin auditoria, sin configuracion.
-const ACADEMICO: Rol[] = ['docente', 'admin_examenes', 'coordinador', 'admin_sistema'];
+const ACADEMICO: Rol[] = ['tutor', 'admin_examenes', 'coordinador', 'admin_sistema'];
 const ADMIN: Rol[] = ['admin_sistema'];
 const AUDITORIA: Rol[] = ['auditor', 'admin_sistema'];
 
@@ -106,7 +107,8 @@ export default function App() {
     // del campus (su cuenta personal); las secciones que definen cómo se detecta el
     // fraude siguen siendo de admin_sistema — el gating fino vive en la pantalla.
     '/admin/banco-preguntas': g(<BancoPreguntasPage />, ACADEMICO),
-    '/admin/configuracion': g(<Configuracion />, ACADEMICO),
+    '/admin/configuracion': g(<Configuracion />, ADMIN),
+    '/admin/perfil': g(<Perfil />, [...ACADEMICO, 'proctor', 'revisor', 'auditor']),
 
     // Portal del alumno — C-21
     '/alumno': g(<AlumnoDashboard />, ESTUDIANTE),

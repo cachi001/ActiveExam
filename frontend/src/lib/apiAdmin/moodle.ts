@@ -50,7 +50,7 @@ export const moodleApi = {
    *
    * Se manda la contraseña (que el backend canjea por un token y descarta) O un
    * token ya emitido por el admin del campus. Nunca las dos.
-   * `base_url` es la URL del campus que eligió el docente; si se omite el backend
+   * `base_url` es la URL del campus que eligió el tutor; si se omite el backend
    * usa la institucional como fallback.
    */
   async guardarMiCuentaCampus(body: {
@@ -70,7 +70,7 @@ export const moodleApi = {
     return await realFetch('/config/moodle/mi-credencial', { method: 'DELETE' });
   },
 
-  /** Asigna (o quita, con null) el docente a cargo de una comisión. C-73 §9.5 */
+  /** Asigna (o quita, con null) el tutor a cargo de una comisión. C-73 §9.5 */
   async asignarDocenteComision(
     comisionId: string,
     docenteId: string | null,

@@ -28,7 +28,7 @@ def _es_docente(principal: AuthenticatedPrincipal) -> bool:
     Sin esta rama, los 3 endpoints de listado (catálogo/materias/comisiones)
     caían al gate de inscripción del alumno y el docente veía siempre vacío.
     """
-    return "docente" in set(principal.roles or [])
+    return "tutor" in set(principal.roles or [])
 
 
 def _resumen_to_response(r) -> ExamenContenidoResumenResponse:

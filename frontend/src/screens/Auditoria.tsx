@@ -73,7 +73,7 @@ const ACCIONES_POR_MODULO: Record<string, OpcionAccion[]> = {
     { label: 'Editar',          accion: 'materia.update,comision.update' },
     { label: 'Eliminar',        accion: 'materia.delete,comision.delete,inscripcion.delete' },
     { label: 'Cambio de estado', accion: 'materia.set_activa' },
-    { label: 'Asignar docente',  accion: 'comision.set_docente' },
+    { label: 'Asignar tutor',  accion: 'comision.set_docente' },
   ],
   EXAMENES: [
     { label: 'Importar examen', accion: 'examen.import' },

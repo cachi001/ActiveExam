@@ -25,12 +25,12 @@ CAPABILITY_ROLES: dict[str, frozenset[Rol]] = {
     # Alta/edicion de examenes, materias y comisiones. El DOCENTE vive aca: es su
     # trabajo. El revisor NO la tiene — quien juzga el fraude no edita el examen.
     "gestionar_academico": frozenset(
-        {Rol.DOCENTE, Rol.ADMIN_EXAMENES, Rol.COORDINADOR, Rol.ADMIN_SISTEMA}
+        {Rol.TUTOR, Rol.ADMIN_EXAMENES, Rol.COORDINADOR, Rol.ADMIN_SISTEMA}
     ),
     # Ver las notas y sincronizarlas a Moodle: el docente necesita cerrar la nota
     # de su materia.
     "gestionar_notas": frozenset(
-        {Rol.DOCENTE, Rol.ADMIN_EXAMENES, Rol.COORDINADOR, Rol.ADMIN_SISTEMA}
+        {Rol.TUTOR, Rol.ADMIN_EXAMENES, Rol.COORDINADOR, Rol.ADMIN_SISTEMA}
     ),
     # Asignar el docente a cargo de una comision (C-73 §9). Deliberadamente SIN
     # DOCENTE: quien queda a cargo decide quien devuelve la nota a Moodle y que

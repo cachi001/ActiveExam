@@ -114,7 +114,7 @@ export function formToPatch(
   if (bloqueada) {
     const patch: Partial<ExamConfig> = { ...publicacion };
     // `cierre` (solo EXTENDER) e `intentos_permitidos` (solo AUMENTAR) son ampliables:
-    // se envían SOLO si el docente los cambió, para no gatillar un falso 409 por
+    // se envían SOLO si el tutor los cambió, para no gatillar un falso 409 por
     // truncar la precisión de una fecha que en realidad no tocó.
     if (original && form.cierre !== original.cierre) {
       patch.cierre = localInputToIso(form.cierre);
@@ -139,7 +139,7 @@ export function formToPatch(
 
 export function ConfiguracionExamenSection({ examenId }: { examenId: string }) {
   const [form, setForm] = useState<ConfigForm | null>(null);
-  // Config tal como vino del backend: baseline para saber si el docente amplió
+  // Config tal como vino del backend: baseline para saber si el tutor amplió
   // `cierre`/`intentos_permitidos` (candado direccional) al guardar bloqueado.
   const [original, setOriginal] = useState<ConfigForm | null>(null);
   const [bloqueada, setBloqueada] = useState(false);
@@ -204,7 +204,7 @@ export function ConfiguracionExamenSection({ examenId }: { examenId: string }) {
 
   return (
     <Card>
-      <SectionTitle sub="La define el docente; la plataforma la aplica al rendir.">
+      <SectionTitle sub="La define el tutor; la plataforma la aplica al rendir.">
         Configuración del examen
       </SectionTitle>
 

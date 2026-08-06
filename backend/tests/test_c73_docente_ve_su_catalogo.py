@@ -2,7 +2,7 @@
 
 Bug real encontrado en verificación E2E de C-73 (Moodle Component Writeback):
 ``_ROLES_STAFF`` (app/presentation/api/v1/exam_content/_shared.py) NO incluye
-"docente" — así que los 3 endpoints de listado (GET /exam-content,
+"tutor" — así que los 3 endpoints de listado (GET /exam-content,
 GET /exam-content/materias, GET /exam-content/materias/{id}/comisiones) tratan
 al docente como si fuera un ALUMNO (gate de inscripción C-71): lo filtran por
 ``comision_ids_inscriptas``, que para un docente siempre es [] (un docente no
@@ -163,7 +163,7 @@ async def test_docente_ve_su_examen_en_el_catalogo(app, factory):
     docente = await _crear_docente(factory, f"DOC-{uuid.uuid4().hex[:6]}")
     _, _, examen_id = await _crear_materia_comision_examen(factory, docente_id=docente)
 
-    async with _client(app, ["docente"], subject=docente) as c:
+    async with _client(app, ["tutor"], subject=docente) as c:
         resp = await c.get("/api/v1/exam-content/")
 
     assert resp.status_code == 200, resp.text
@@ -182,7 +182,7 @@ async def test_docente_no_ve_examen_de_comision_ajena(app, factory):
     ajeno = await _crear_docente(factory, f"DOC-B-{uuid.uuid4().hex[:4]}")
     _, _, examen_id = await _crear_materia_comision_examen(factory, docente_id=dueno)
 
-    async with _client(app, ["docente"], subject=ajeno) as c:
+    async with _client(app, ["tutor"], subject=ajeno) as c:
         resp = await c.get("/api/v1/exam-content/")
 
     assert resp.status_code == 200, resp.text
@@ -200,7 +200,7 @@ async def test_docente_ve_su_materia_en_el_listado(app, factory):
     docente = await _crear_docente(factory, f"DOC-{uuid.uuid4().hex[:6]}")
     materia_id, _, _ = await _crear_materia_comision_examen(factory, docente_id=docente)
 
-    async with _client(app, ["docente"], subject=docente) as c:
+    async with _client(app, ["tutor"], subject=docente) as c:
         resp = await c.get("/api/v1/exam-content/materias")
 
     assert resp.status_code == 200, resp.text
@@ -222,7 +222,7 @@ async def test_docente_ve_su_comision_en_el_listado_de_materia(app, factory):
         factory, docente_id=docente
     )
 
-    async with _client(app, ["docente"], subject=docente) as c:
+    async with _client(app, ["tutor"], subject=docente) as c:
         resp = await c.get(f"/api/v1/exam-content/materias/{materia_id}/comisiones")
 
     assert resp.status_code == 200, resp.text

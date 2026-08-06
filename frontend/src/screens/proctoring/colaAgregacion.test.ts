@@ -89,7 +89,7 @@ describe('subtituloExamen — subtítulo del header de supervisión en vivo', ()
     expect(subtituloExamen(info({}))).toBe('Programación · Comisión A · Ing. Romero');
   });
 
-  it('omite el docente vacío (contexto server-side no lo trae)', () => {
+  it('omite el tutor vacío (contexto server-side no lo trae)', () => {
     expect(subtituloExamen(info({ docente: '' }))).toBe('Programación · Comisión A');
   });
 

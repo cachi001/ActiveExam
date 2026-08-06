@@ -111,7 +111,7 @@ export default function PreExamen() {
                 <p className="text-label-md font-semibold text-on-surface">Examen supervisado</p>
                 <p className="text-body-sm text-on-surface-variant mt-1">
                   Necesitás cámara y pantalla completa. Se registran estas señales para la revisión de un
-                  docente — el sistema nunca sanciona solo.
+                  tutor — el sistema nunca sanciona solo.
                 </p>
               </div>
               {detectores.length > 0 && (

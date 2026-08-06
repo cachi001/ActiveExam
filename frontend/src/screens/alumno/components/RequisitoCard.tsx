@@ -23,24 +23,25 @@ interface RequisitoCardProps {
 
 export function RequisitoCard({ icon, title, badge, action, children, className = '' }: RequisitoCardProps) {
   return (
-    <Card className={`space-y-md ${className}`}>
-      {/* Encabezado: ícono + título + badge. flex-wrap + min-w-0 para que en
-          mobile el badge baje de línea en vez de desbordar a lo ancho. */}
-      <div className="flex items-center justify-between gap-sm flex-wrap">
-        <div className="flex items-center gap-sm min-w-0">
-          <Icon name={icon} className="text-[22px] text-on-surface-variant shrink-0" />
-          <h2 className="font-headline text-title-lg text-on-surface whitespace-nowrap">{title}</h2>
+    <Card className={className}>
+      {/* Encabezado: ícono + título + badge */}
+      <div className="flex items-center justify-between gap-3 flex-wrap mb-7">
+        <div className="flex items-center gap-3 min-w-0">
+          <Icon name={icon} className="text-2xl text-on-surface-variant shrink-0" />
+          <h2 className="text-xl font-semibold text-on-surface whitespace-nowrap">{title}</h2>
         </div>
         <Badge tone={badge.tone} dot className="shrink-0">
           {badge.label}
         </Badge>
       </div>
 
-      {/* Cuerpo: children (detalle del requisito) */}
-      {children}
+      {/* Cuerpo */}
+      <div className="space-y-4">
+        {children}
+      </div>
 
-      {/* Acción: CTA opcional debajo del cuerpo */}
-      {action}
+      {/* Acción */}
+      {action && <div className="mt-4">{action}</div>}
     </Card>
   );
 }

@@ -1,8 +1,8 @@
 /**
- * AsignarDocenteDialog — pone (o quita) el docente a cargo de una comisión.
+ * AsignarDocenteDialog — pone (o quita) el tutor a cargo de una comisión.
  *
  * Por qué importa más de lo que parece: ese docente es quien devuelve las notas de
- * la comisión al campus con SU cuenta, y es contra quien se valida que un docente
+ * la comisión al campus con SU cuenta, y es contra quien se valida que un tutor
  * solo toque los exámenes de lo suyo. Una comisión sin docente no puede sincronizar
  * notas (quedan retenidas con el motivo «Falta conectar la cuenta del campus»).
  *
@@ -39,7 +39,7 @@ export function AsignarDocenteDialog({
     adminApi
       // OJO con la firma: es (limit, offset, filtros). Invertirlos pide 1 resultado
       // salteando los primeros 200, y el selector queda vacío sin ningún error.
-      .listarUsuarios(200, 0, { rol: 'docente', estado: 'activo' })
+      .listarUsuarios(200, 0, { rol: 'tutor', estado: 'activo' })
       .then((r) => {
         if (!vivo) return;
         const items = (r as { items?: unknown[] }).items ?? [];
@@ -77,7 +77,7 @@ export function AsignarDocenteDialog({
       onCerrar();
     } catch (err) {
       const e = err as { mensaje?: string };
-      setError(e.mensaje ?? 'No se pudo asignar el docente.');
+      setError(e.mensaje ?? 'No se pudo asignar el tutor.');
     } finally {
       setGuardando(false);
     }
@@ -101,7 +101,7 @@ export function AsignarDocenteDialog({
         ) : (
           <>
             <label className="text-label-sm text-on-surface-variant" htmlFor="docente-sel">
-              Docente
+              Tutor
             </label>
             <select
               id="docente-sel"
@@ -120,7 +120,7 @@ export function AsignarDocenteDialog({
             </select>
             <p className="text-label-sm text-on-surface-variant mt-1.5">
               Las notas de esta comisión se devuelven al campus con la cuenta de esta
-              persona. Sin docente asignado, las notas no se sincronizan.
+              persona. Sin tutor asignado, las notas no se sincronizan.
             </p>
           </>
         )}

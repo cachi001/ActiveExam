@@ -164,7 +164,7 @@ export function mapearSessionInitError(err: unknown): SessionInitError {
       status,
       titulo: 'Sin intentos disponibles',
       mensaje:
-        'Ya agotaste los intentos permitidos para este examen. Si creés que es un error, contactá a tu docente.',
+        'Ya agotaste los intentos permitidos para este examen. Si creés que es un error, contactá a tu tutor.',
       reintentable: false,
     };
   }
@@ -173,7 +173,7 @@ export function mapearSessionInitError(err: unknown): SessionInitError {
       status,
       titulo: 'Examen fuera de horario',
       mensaje:
-        'Este examen está fuera de la ventana de rendición (todavía no abrió o ya cerró). Revisá la fecha y el horario con tu docente.',
+        'Este examen está fuera de la ventana de rendición (todavía no abrió o ya cerró). Revisá la fecha y el horario con tu tutor.',
       reintentable: false,
     };
   }

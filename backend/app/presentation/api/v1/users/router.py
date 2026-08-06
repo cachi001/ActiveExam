@@ -245,6 +245,9 @@ async def crear_usuario(
         apellido=body.apellido,
         password_hash=password_hash,
         auth_provider="local",
+        # Clave temporal: el usuario debe definir su propia contraseña en el
+        # primer login (RN-AU). Se limpia al cambiarla (PUT /auth/change-password).
+        debe_cambiar_password=True,
         attrs_federados={},
     )
 
