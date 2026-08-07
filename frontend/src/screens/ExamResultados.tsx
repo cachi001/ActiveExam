@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { StaffShell } from '../ui/shells';
 import { Button, Card, Icon, SectionTitle } from '../ui/components';
+import { HelpButton } from '../ui/HelpButton';
 import { STAFF_NAV } from '../ui/nav';
 import { useRouteParam } from '../lib/router';
 import { API_BASE } from '../lib/api';
@@ -185,8 +186,21 @@ export default function ExamResultados() {
       title={examen?.titulo ? `Alumnos que rindieron — ${examen.titulo}` : 'Alumnos que rindieron'}
       subtitle={
         examen
-          ? [examen.materia_nombre, examen.comision_nombre].filter(Boolean).join(' · ') || undefined
-          : undefined
+          ? [examen.materia_nombre, examen.comision_nombre].filter(Boolean).join(' · ') || 'Resultados y sincronización con Moodle.'
+          : 'Resultados y sincronización con Moodle.'
+      }
+      help={
+        <HelpButton title="Alumnos que rindieron">
+          <p>
+            Lista todos los intentos de este examen: nota obtenida, estado de sincronización
+            con Moodle y si la nota está retenida por revisión.
+          </p>
+          <p>
+            <strong>Sincronizar con Moodle</strong> envía las notas pendientes al campus.
+            Las notas retenidas por riesgo no se envían hasta que una persona lo apruebe
+            desde la Cola de revisión.
+          </p>
+        </HelpButton>
       }
       actions={
         <Button

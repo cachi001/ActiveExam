@@ -8,7 +8,7 @@ import { limpiarEnunciadoCloze } from '../../lib/cloze';
 const TIPO_PREGUNTA_LABEL: Record<string, string> = {
   multichoice: 'Opción múltiple',
   truefalse: 'Verdadero / Falso',
-  cloze: 'Completar texto',
+  cloze: 'Cloze',
 };
 
 function tipoLabel(tipo: string): string {
@@ -175,6 +175,7 @@ export function PreguntasSeleccionSection({ examenId, materiaId, onSeleccionGuar
   return (
     <Card>
       <SectionTitle
+        icon="fact_check"
         sub={
           cargando
             ? 'Cargando preguntas…'
@@ -200,29 +201,29 @@ export function PreguntasSeleccionSection({ examenId, materiaId, onSeleccionGuar
 
       {/* Selector de modo (solo cuando no está bloqueada y hay preguntas) */}
       {!bloqueada && !cargando && !errorCarga && preguntas.length > 0 && (
-        <div className="flex gap-xs mb-md">
+        <div className="inline-flex gap-xs mb-md p-xs bg-surface-100 rounded-lg border border-outline-variant">
           <button
             onClick={() => { setModo('manual'); setOkGuardado(false); }}
-            className={`flex items-center gap-xs px-md py-sm rounded-xl text-label-md font-medium transition-colors border ${
+            className={`flex items-center gap-xs px-sm py-xs rounded-md text-label-sm font-medium transition-colors ${
               modo === 'manual'
-                ? 'bg-primary text-on-primary border-primary'
-                : 'bg-surface border-outline-variant text-on-surface hover:bg-surface-100'
+                ? 'bg-white text-on-surface shadow-sm border border-outline-variant'
+                : 'text-on-surface-variant hover:text-on-surface'
             }`}
           >
-            <Icon name="checklist" className="text-[16px]" />
-            Selección manual
+            <Icon name="checklist" className="text-[15px]" />
+            Manual
           </button>
           {materiaId && (
             <button
               onClick={() => { setModo('sorteo'); setOkGuardado(false); }}
-              className={`flex items-center gap-xs px-md py-sm rounded-xl text-label-md font-medium transition-colors border ${
+              className={`flex items-center gap-xs px-sm py-xs rounded-md text-label-sm font-medium transition-colors ${
                 modo === 'sorteo'
-                  ? 'bg-primary text-on-primary border-primary'
-                  : 'bg-surface border-outline-variant text-on-surface hover:bg-surface-100'
+                  ? 'bg-white text-on-surface shadow-sm border border-outline-variant'
+                  : 'text-on-surface-variant hover:text-on-surface'
               }`}
             >
-              <Icon name="shuffle" className="text-[16px]" />
-              Armar por sorteo
+              <Icon name="shuffle" className="text-[15px]" />
+              Por sorteo
             </button>
           )}
         </div>

@@ -23,11 +23,12 @@ export function PreguntaCloze({ blanks, respuestas, onRespuesta }: Props) {
 
   return (
     <div className="text-body-md text-on-surface leading-loose">
-      {ordenados.map((blank) => {
+      {ordenados.map((blank, idx) => {
         const tipoNorm = blank.tipo.toLowerCase();
         const valor = respuestas[blank.id] ?? '';
         const esMultichoice = tipoNorm === 'multichoice' || tipoNorm === 'multichoice_nocase';
         const seleccionado = valor !== '';
+        const esUltimo = idx === ordenados.length - 1;
 
         return (
           <span key={blank.id}>
@@ -64,7 +65,7 @@ export function PreguntaCloze({ blanks, respuestas, onRespuesta }: Props) {
               />
             )}
 
-            {blank.texto_despues && <span>{blank.texto_despues}</span>}
+            {esUltimo && blank.texto_despues && <span>{blank.texto_despues}</span>}
           </span>
         );
       })}

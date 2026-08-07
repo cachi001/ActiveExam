@@ -102,15 +102,9 @@ export function ExamenPreguntaCard({
         </div>
       )}
 
-      {/* Pregunta cloze: enunciado + huecos inline */}
+      {/* Pregunta cloze: huecos inline — el texto completo está embebido en PreguntaCloze */}
       {preguntaActual && esCloze && blanks.length > 0 && (
         <div className="space-y-md">
-          {/* Si hay texto en el enunciado (la consigna general antes de los blanks), lo mostramos */}
-          {preguntaActual.enunciado && (
-            <h2 className="font-headline text-title-lg text-on-surface leading-snug">
-              {preguntaActual.enunciado}
-            </h2>
-          )}
           <PreguntaCloze
             blanks={blanks}
             respuestas={respuestasClozeActual}
