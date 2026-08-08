@@ -50,7 +50,7 @@ export const TextField = forwardRef<HTMLInputElement, TextFieldProps>(
       <div className={`flex flex-col gap-1 ${className}`}>
         <label
           htmlFor={name}
-          className="text-sm font-medium text-on-surface-variant mb-1"
+          className="text-sm font-semibold text-on-surface mb-1"
         >
           {label}
         </label>
@@ -58,8 +58,8 @@ export const TextField = forwardRef<HTMLInputElement, TextFieldProps>(
         <div className="relative">
           {/* Ícono izquierdo */}
           {icon && (
-            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-[20px] flex items-center">
-              <Icon name={icon} className="text-[20px]" />
+            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant flex items-center">
+              <Icon name={icon} className="text-[16px]" />
             </span>
           )}
 
@@ -75,7 +75,7 @@ export const TextField = forwardRef<HTMLInputElement, TextFieldProps>(
             required={required}
             autoComplete={autoComplete}
             className={[
-              'bg-white border border-surface-200 rounded-md py-3 shadow-xs',
+              'bg-white border border-surface-200 rounded-md py-3 shadow-xs text-sm',
               'focus:outline-none focus:ring-4 focus:ring-primary/15 focus:border-primary',
               'hover:border-surface-300 transition-colors duration-150',
               'w-full disabled:opacity-50',

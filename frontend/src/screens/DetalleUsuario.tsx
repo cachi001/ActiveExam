@@ -195,7 +195,7 @@ export default function DetalleUsuario() {
                 <div className="flex-1 min-w-0 divide-y divide-outline-variant/30">
                   <DataRow label="Nombre completo" value={nombreDisplay} />
                   <DataRow label="Email" value={u.email} />
-                  <DataRow label="Legajo / ID institucional" value={
+                  <DataRow label="Legajo" value={
                     <span className="font-mono text-[13px]">{u.id_institucional || '—'}</span>
                   } />
                   <DataRow label="Rol" value={

@@ -51,7 +51,7 @@ export default function Registro() {
    * Registro ABIERTO: se acepta cualquier correo válido, sin validación de dominio.
    */
   function validar(): string | null {
-    if (!form.id_institucional.trim()) return 'El legajo / ID institucional es obligatorio.';
+    if (!form.id_institucional.trim()) return 'El legajo es obligatorio.';
     if (!form.nombre.trim()) return 'El nombre es obligatorio.';
     if (!form.apellido.trim()) return 'El apellido es obligatorio.';
     if (!form.email.trim()) return 'El email es obligatorio.';
@@ -105,12 +105,12 @@ export default function Registro() {
   // ---------------------------------------------------------------------------
 
   return (
-    <div className="lg:h-screen lg:overflow-hidden min-h-screen grid lg:grid-cols-2 bg-surface">
+    <div className="lg:h-screen lg:overflow-hidden min-h-screen grid lg:grid-cols-2 bg-white">
       {/* Panel de marca — solo desktop. Altura fija a viewport para que el form
           (que puede exceder pantalla) no estire el branding del lado izquierdo. */}
       <aside className="hidden lg:flex flex-col justify-between p-xxl bg-gradient-to-br from-primary to-primary-700 text-on-primary relative overflow-hidden lg:h-screen lg:sticky lg:top-0">
         <span className="pointer-events-none absolute -top-16 -right-16 w-72 h-72 rounded-full bg-white/10" aria-hidden />
-        <span className="pointer-events-none absolute bottom-10 -left-20 w-80 h-80 rounded-full bg-white/5" aria-hidden />
+        <span className="pointer-events-none absolute bottom-10 -left-20 w-80 h-80 rounded-full bg-white/10" aria-hidden />
         <div className="flex items-center gap-sm relative">
           <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
             <Icon name="verified_user" className="text-[24px]" fill />
@@ -147,17 +147,6 @@ export default function Registro() {
             </div>
           </header>
 
-          {/* Institución */}
-          <div className="flex items-center gap-sm pb-md border-b border-outline-variant/60">
-            <div className="w-11 h-11 rounded-xl bg-primary-fixed text-primary flex items-center justify-center shrink-0">
-              <Icon name="account_balance" className="text-[22px]" fill />
-            </div>
-            <div className="min-w-0">
-              <p className="text-label-sm text-on-surface-variant">Tu institución</p>
-              <p className="text-body-md font-semibold text-on-surface truncate">{INSTITUTION.nombre}</p>
-            </div>
-          </div>
-
           {/* Éxito */}
           {exito && (
             <div className="flex items-center gap-sm p-md rounded-xl bg-success-container text-on-success-container">
@@ -173,14 +162,14 @@ export default function Registro() {
           {!exito && (
             <form onSubmit={handleSubmit} className="flex flex-col gap-md">
               <TextField
-                label="Legajo / ID institucional"
+                label="Legajo"
                 name="id_institucional"
                 value={form.id_institucional}
                 onChange={cambiar('id_institucional')}
                 icon="badge"
                 required
                 disabled={loading}
-                placeholder={`${INSTITUTION.idPrefix}-23-4912`}
+                placeholder="93847201"
                 autoComplete="off"
               />
 
@@ -209,7 +198,7 @@ export default function Registro() {
               </div>
 
               <TextField
-                label="Email"
+                label="Correo"
                 name="email"
                 type="email"
                 value={form.email}
@@ -217,7 +206,7 @@ export default function Registro() {
                 icon="email"
                 required
                 disabled={loading}
-                placeholder={`usuario@${INSTITUTION.dominioEmail}`}
+                placeholder="Ingresá tu correo"
                 autoComplete="email"
               />
 

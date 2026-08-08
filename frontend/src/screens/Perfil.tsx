@@ -27,8 +27,20 @@ function formatFecha(iso: string | undefined): string {
 function InfoField({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="min-w-0">
-      <p className="text-[12px] font-medium text-on-surface-variant mb-1">{label}</p>
-      <div className="text-[14px] text-on-surface">{children}</div>
+      <p className="text-label-sm text-on-surface-variant mb-1">{label}</p>
+      <div className="text-body-md text-on-surface">{children}</div>
+    </div>
+  );
+}
+
+function SectionTitle({ icon, children, extra }: { icon: string; children: React.ReactNode; extra?: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-2.5 mb-6">
+      <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary-50 text-primary">
+        <Icon name={icon} className="text-[22px]" />
+      </span>
+      <h2 className="text-title-lg text-on-surface">{children}</h2>
+      {extra}
     </div>
   );
 }
@@ -39,23 +51,44 @@ export default function Perfil() {
 
   const tieneMoodle = hasRole(ACADEMICO);
   const nombre  = principal?.nombre ?? '—';
+  const nombreCompleto = [nombre, principal?.apellido].filter(Boolean).join(' ') || '—';
   const inicial = nombre.charAt(0).toUpperCase();
 
   return (
     <StaffShell nav={STAFF_NAV} title="Mi perfil" subtitle="Configuración de tu cuenta">
-      <div className="max-w-2xl space-y-5 animate-in fade-in duration-500">
+      <div className="max-w-4xl space-y-6 animate-in fade-in duration-500">
+
+        {/* Encabezado: avatar al lado del nombre + roles (no como un campo más) */}
+        <Card>
+          <div className="flex items-center gap-5">
+            <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-full bg-primary text-on-primary text-headline-lg font-bold">
+              {principal?.foto_perfil
+                ? <img src={principal.foto_perfil} alt={nombre} className="h-full w-full rounded-full object-cover" />
+                : inicial}
+            </div>
+            <div className="min-w-0">
+              <h2 className="text-headline-md text-on-surface truncate">{nombreCompleto}</h2>
+              <p className="text-body-md text-on-surface-variant truncate">{principal?.email ?? '—'}</p>
+              <div className="mt-2.5 flex flex-wrap gap-1.5">
+                {(principal?.roles ?? []).map((rol) => (
+                  <span
+                    key={rol}
+                    className="inline-flex items-center rounded-full border border-primary/20 bg-primary-50 px-2.5 py-0.5 text-label-sm font-medium text-primary"
+                  >
+                    {ROL_LABEL[rol] ?? rol}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+        </Card>
 
         {/* Información Personal */}
         <Card>
-          <div className="flex items-center gap-2 mb-5">
-            <Icon name="person" className="text-[20px] text-on-surface-variant" />
-            <h2 className="text-[15px] font-semibold text-on-surface">Información Personal</h2>
-          </div>
+          <SectionTitle icon="person">Información Personal</SectionTitle>
 
-          <div className="grid grid-cols-2 gap-x-8 gap-y-5">
-            <InfoField label="Nombre completo">
-              {[nombre, principal?.apellido].filter(Boolean).join(' ')}
-            </InfoField>
+          <div className="grid grid-cols-1 gap-x-10 gap-y-6 sm:grid-cols-2">
+            <InfoField label="Nombre completo">{nombreCompleto}</InfoField>
             <InfoField label="Legajo / Usuario">
               {principal?.id_institucional ?? '—'}
             </InfoField>
@@ -64,29 +97,9 @@ export default function Perfil() {
               {principal?.email ?? '—'}
             </InfoField>
             <InfoField label="Estado">
-              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11.5px] font-medium bg-success-50 text-success-700 border border-success/20">
+              <span className="inline-flex items-center rounded-full border border-success/20 bg-success-50 px-2 py-0.5 text-label-sm font-medium text-success-700">
                 Activo
               </span>
-            </InfoField>
-
-            <InfoField label="Roles">
-              <div className="flex flex-wrap gap-1.5">
-                {(principal?.roles ?? []).map((rol) => (
-                  <span
-                    key={rol}
-                    className="inline-flex items-center px-2 py-0.5 rounded-full text-[11.5px] font-medium bg-primary-50 text-primary border border-primary/20"
-                  >
-                    {ROL_LABEL[rol] ?? rol}
-                  </span>
-                ))}
-              </div>
-            </InfoField>
-            <InfoField label="Avatar">
-              <div className="w-9 h-9 rounded-full bg-primary text-on-primary flex items-center justify-center font-bold text-[15px]">
-                {principal?.foto_perfil
-                  ? <img src={principal.foto_perfil} alt={nombre} className="w-full h-full rounded-full object-cover" />
-                  : inicial}
-              </div>
             </InfoField>
 
             <InfoField label="Fecha de creación">
@@ -101,12 +114,8 @@ export default function Perfil() {
         {/* Cuenta Moodle — solo para roles académicos */}
         {tieneMoodle && (
           <Card>
-            <div className="flex items-center gap-2 mb-5">
-              <Icon name="sync_alt" className="text-[20px] text-on-surface-variant" />
-              <h2 className="text-[15px] font-semibold text-on-surface">Cuenta Moodle</h2>
-              {MiCuentaCampusAyuda}
-            </div>
-            <p className="text-[13px] text-on-surface-variant mb-5">
+            <SectionTitle icon="sync_alt" extra={MiCuentaCampusAyuda}>Cuenta Moodle</SectionTitle>
+            <p className="text-body-md text-on-surface-variant mb-5">
               Conectá tu cuenta del campus para que las notas de tus comisiones puedan viajar.
             </p>
             <MiCuentaCampus />
@@ -115,10 +124,7 @@ export default function Perfil() {
 
         {/* Seguridad */}
         <Card>
-          <div className="flex items-center gap-2 mb-5">
-            <Icon name="lock" className="text-[20px] text-on-surface-variant" />
-            <h2 className="text-[15px] font-semibold text-on-surface">Seguridad</h2>
-          </div>
+          <SectionTitle icon="lock">Seguridad</SectionTitle>
           <SeccionSeguridad />
         </Card>
 

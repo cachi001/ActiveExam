@@ -42,7 +42,6 @@ export default function SeccionSeguridad() {
 
   return (
     <div>
-      <h3 className="text-[15px] font-semibold text-on-surface mb-1">Seguridad</h3>
       <p className={HINT}>Actualizá tu contraseña periódicamente.</p>
 
       {ok && (

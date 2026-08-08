@@ -14,29 +14,29 @@ export default {
         // `primary.container`. Una sola fuente de verdad, escala completa, sin
         // tener que agregar key por key cada vez que se necesita un nuevo paso.
 
-        // ── PRIMARY — azul institucional profundo (#004BA8) ─────────────────
+        // ── PRIMARY — azul (#164DE6) ─────────────────────────────────────────
         primary: {
-          DEFAULT: "#004BA8",   // azul institucional
-          50:  "#e8eff8",
-          100: "#cdddf1",
-          200: "#9bbbe3",
-          300: "#6899d5",
-          400: "#3677c7",
-          500: "#0a5fc0",
-          600: "#004BA8",
-          700: "#003d8a",
-          800: "#002f6c",
-          900: "#00214e",
+          DEFAULT: "#164DE6",   // azul institucional
+          50:  "#eef1fd",
+          100: "#d5dcfb",
+          200: "#abb9f7",
+          300: "#7490f1",
+          400: "#4469eb",
+          500: "#164DE6",
+          600: "#1240c4",
+          700: "#0e33a2",
+          800: "#0b2780",
+          900: "#081c5e",
           // Alias semánticos del design system
-          container: "#0a5fc0",   // bg fuerte (un paso más claro que el default)
-          fixed: "#d6e4f5",       // fondo suave (chips, íconos)
-          "fixed-dim": "#9bbbe3", // borde sobre fixed
+          container: "#4469eb",   // bg fuerte (un paso más claro que el default)
+          fixed: "#d5dcfb",       // fondo suave (chips, íconos)
+          "fixed-dim": "#abb9f7", // borde sobre fixed
         },
         "on-primary": "#ffffff",
-        "on-primary-container": "#d6e4f5",
-        "on-primary-fixed": "#00214e",
-        "on-primary-fixed-variant": "#003d8a",
-        "inverse-primary": "#9bbbe3",
+        "on-primary-container": "#eef1fd",
+        "on-primary-fixed": "#081c5e",
+        "on-primary-fixed-variant": "#0e33a2",
+        "inverse-primary": "#abb9f7",
 
         // ── SECONDARY — misma familia para coherencia ───────────────────────
         secondary: {
@@ -141,7 +141,7 @@ export default {
           dim: "#d4d4d4",
           bright: "#ffffff",
           variant: "#e5e5e5",
-          tint: "#2563eb",
+          tint: "#164DE6",
           "container-lowest": "#ffffff",
           "container-low": "#f5f5f5",
           container: "#ededed",

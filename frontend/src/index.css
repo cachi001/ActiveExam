@@ -58,11 +58,13 @@
   .card {
     @apply bg-surface-container-lowest rounded-md border border-outline-variant;
   }
+  /* Fondo blanco (igual que TextField): el gris de relleno previo (#e8eaed) se
+     leía casi ilegible sobre las cards blancas. El borde define el campo. */
   .input {
-    @apply bg-[#f7f8f9] border border-outline-variant rounded-md px-[14px] py-[10px] text-[14px] text-on-surface outline-none transition-colors placeholder:text-on-surface-variant/40;
+    @apply bg-white border border-surface-300 rounded-md px-[14px] py-[10px] text-[14px] text-on-surface outline-none transition-colors placeholder:text-on-surface-variant/40 hover:border-surface-400;
   }
   .input:focus {
-    @apply bg-white ring-2 ring-primary/20;
+    @apply bg-white border-primary ring-4 ring-primary/15;
   }
 }
 
