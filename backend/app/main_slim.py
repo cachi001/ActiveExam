@@ -60,6 +60,7 @@ from app.presentation.api.v1.exam_content.router import (
     create_exam_taking_router,
     create_periodos_router,
 )
+from app.presentation.api.v1.lti import create_lti_router
 from app.presentation.api.v1.proctoring.router import create_proctoring_router
 from app.presentation.api.v1.scoring.router import router as scoring_router
 from app.presentation.api.v1.users.router import router as users_router
@@ -295,6 +296,18 @@ def create_slim_app() -> FastAPI:
         create_audit_router(session_factory=session_factory),
         prefix="/api/v1/admin",
         tags=["audit"],
+    )
+
+    # LTI 1.3 Tool Provider (C-75): JWKS + registro dinámico + login OIDC + launch.
+    # Endpoints PÚBLICOS (el flujo LTI ocurre antes de tener sesión). La confianza
+    # viene de la allowlist `lti_deployment_confiable` y de la firma del id_token.
+    app.include_router(
+        create_lti_router(
+            session_factory=session_factory,
+            cipher=SecretCipher(key=settings.embedding_encryption_key),
+        ),
+        prefix="/api/v1/lti",
+        tags=["lti"],
     )
 
     return app
