@@ -54,6 +54,7 @@ services:
       SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-CAMBIAME_admin}
       SEED_ESTUDIANTE_PASSWORD: ${SEED_ESTUDIANTE_PASSWORD:-CAMBIAME_estudiante}
       SEED_PROCTOR_PASSWORD: ${SEED_PROCTOR_PASSWORD:-CAMBIAME_proctor}
+      SEED_TUTOR_PASSWORD: ${SEED_TUTOR_PASSWORD:-CAMBIAME_tutor}
     depends_on:
       postgres:
         condition: service_healthy

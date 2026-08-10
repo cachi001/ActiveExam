@@ -38,8 +38,10 @@ CREDENCIALES SEED (para probar el login — identificadores estilo produccion):
     Estudiante 4: id_institucional=EST-004   | email=estudiante4@activeexam.local (Estudiante Prueba4)
     Proctor:      id_institucional=PROC-001  | email=proctor@activeexam.local
     Admin:        id_institucional=ADMIN-001 | email=admin@activeexam.local
+    Tutor:        id_institucional=TUT-001   | email=tutor@activeexam.local (docente de PROG1/C1)
 
-    Los 4 estudiantes comparten SEED_ESTUDIANTE_PASSWORD.
+    Los 4 estudiantes comparten SEED_ESTUDIANTE_PASSWORD. El tutor usa
+    SEED_TUTOR_PASSWORD y queda asignado como docente de la Comisión C1 de PROG1.
 """
 
 from __future__ import annotations
@@ -127,11 +129,12 @@ async def _ejecutar_seed(
     pw_estudiante = os.environ.get("SEED_ESTUDIANTE_PASSWORD")
     pw_proctor = os.environ.get("SEED_PROCTOR_PASSWORD")
     pw_admin = os.environ.get("SEED_ADMIN_PASSWORD")
+    pw_tutor = os.environ.get("SEED_TUTOR_PASSWORD")
 
-    if not all([pw_estudiante, pw_proctor, pw_admin]):
+    if not all([pw_estudiante, pw_proctor, pw_admin, pw_tutor]):
         print(
             "ERROR: Faltan variables de entorno SEED_ESTUDIANTE_PASSWORD, "
-            "SEED_PROCTOR_PASSWORD y/o SEED_ADMIN_PASSWORD.",
+            "SEED_PROCTOR_PASSWORD, SEED_ADMIN_PASSWORD y/o SEED_TUTOR_PASSWORD.",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -184,6 +187,16 @@ async def _ejecutar_seed(
             "roles": ["admin_sistema"],
             "nombre": "Admin",
             "apellido": "Sistema",
+        },
+        {
+            # Tutor (gestión académica) a cargo de la Comisión C1 de PROG1.
+            # Queda asignado como docente_id de la comisión en _seed_docente_comision().
+            "id_institucional": "TUT-001",
+            "email": "tutor@activeexam.local",
+            "password": pw_tutor,
+            "roles": ["tutor"],
+            "nombre": "Tutor",
+            "apellido": "Prueba",
         },
     ]
 
@@ -247,9 +260,63 @@ async def _ejecutar_seed(
     # Contenido académico demo: materia + comisión + examen (idempotente).
     await _seed_contenido(factory)
 
+    # Asignar el tutor seed (TUT-001) como docente a cargo de la Comisión C1
+    # de PROG1 (idempotente). Sin esto, la comisión queda con docente_id NULL.
+    await _seed_docente_comision(factory)
+
     # Matriculación demo: los estudiantes seed quedan inscriptos a la Comisión C1
     # (idempotente). Con el gate de inscripción (C-71), sin esto no verían el examen.
     await _seed_matriculaciones(factory)
+
+
+async def _seed_docente_comision(factory) -> None:
+    """Asigna TUT-001 como docente a cargo de la Comisión C1 de PROG1 (idempotente).
+
+    El tutor es el eslabón que vuelve derivable quién devuelve la nota
+    (examen.comision_id → comision.docente_id) y contra qué se valida "lo suyo"
+    del rol tutor. Sin esta asignación la comisión queda con docente_id NULL.
+    """
+    from app.infrastructure.persistence.models.exam_content import (
+        ComisionModel,
+        MateriaModel,
+    )
+    from app.infrastructure.persistence.models.transactional import UsuarioModel
+
+    MATERIA_CODIGO = "PROG1"
+    COMISION_CODIGO = "C1"
+    TUTOR_ID = "TUT-001"
+
+    async with factory() as session:
+        tutor = (
+            await session.execute(
+                select(UsuarioModel).where(UsuarioModel.id_institucional == TUTOR_ID)
+            )
+        ).scalar_one_or_none()
+        if tutor is None:
+            print(f"  [skip] docente-comisión: no existe el tutor {TUTOR_ID}")
+            return
+
+        comision = (
+            await session.execute(
+                select(ComisionModel)
+                .join(MateriaModel, MateriaModel.id == ComisionModel.materia_id)
+                .where(
+                    MateriaModel.codigo == MATERIA_CODIGO,
+                    ComisionModel.codigo == COMISION_CODIGO,
+                )
+            )
+        ).scalar_one_or_none()
+        if comision is None:
+            print("  [skip] docente-comisión: no existe la comisión PROG1/C1 todavía")
+            return
+
+        if comision.docente_id == tutor.id:
+            print(f"  [skip] {TUTOR_ID} ya es docente de {MATERIA_CODIGO}/{COMISION_CODIGO}")
+            return
+
+        comision.docente_id = tutor.id
+        await session.commit()
+        print(f"  [update] {TUTOR_ID} asignado como docente de {MATERIA_CODIGO}/{COMISION_CODIGO}")
 
 
 async def _seed_matriculaciones(factory) -> None:
