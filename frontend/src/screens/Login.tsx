@@ -3,7 +3,6 @@ import { Icon, Button, TextField } from '../ui/components';
 import { useNavigate, Link } from '../lib/router';
 import { useAuth } from '../lib/authStore';
 import type { Rol } from '../lib/types';
-import { INSTITUTION } from '../config/institution';
 import { AUTH_PROVIDER_TYPE } from '../lib/authProvider';
 
 /** Home de cada rol tras el login.
