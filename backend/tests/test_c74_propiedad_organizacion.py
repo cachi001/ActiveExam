@@ -173,6 +173,16 @@ async def _categorias(session: AsyncSession, materia_id: str):
     return list(result.scalars().all())
 
 
+async def _cat_por_origen(session: AsyncSession, materia_id: str, origen: str):
+    result = await session.execute(
+        select(CategoriaPreguntaModel).where(
+            CategoriaPreguntaModel.materia_id == materia_id,
+            CategoriaPreguntaModel.moodle_nombre_origen == origen,
+        )
+    )
+    return list(result.scalars().all())
+
+
 # ---------------------------------------------------------------------------
 # Import: la pregunta movida a mano se queda donde el docente la puso
 # ---------------------------------------------------------------------------
@@ -257,6 +267,43 @@ async def test_reimport_si_recategoriza_cuando_el_docente_no_toco_nada(
     cats = await _categorias(session, materia_id)
     nombres = {c.nombre for c in cats}
     assert "Unidad 9" in nombres
+
+
+@pytest.mark.asyncio
+async def test_reimport_no_duplica_categoria_renombrada_a_mano(
+    session: AsyncSession, materia_id: str
+):
+    """Renombrar una categoría local NO debe hacer que un re-import la duplique.
+
+    El ancla es ``moodle_nombre_origen``: el import resuelve por el nombre con que
+    Moodle bautizó la categoría, no por el que ve el docente. Si el docente la
+    renombra, sigue siendo la MISMA fila — el re-import con el nombre viejo la
+    reconoce y no crea una duplicada. (Este escenario lo afirmaba el docstring del
+    módulo pero no lo cubría ningún test.)
+    """
+    await _importar(session, materia_id, XML_UNIDAD_1, "Import 1")
+
+    origen = "Unidad 1"
+    cats = await _cat_por_origen(session, materia_id, origen)
+    assert len(cats) == 1, f"se esperaba 1 categoría de origen '{origen}', hay {len(cats)}"
+    cat_id = cats[0].id
+
+    # El docente la renombra — igual que el endpoint renombrar_categoria_banco:
+    # solo toca `nombre`, deja intacto `moodle_nombre_origen`.
+    await session.execute(
+        text("UPDATE categoria_pregunta SET nombre = :n WHERE id = :id"),
+        {"n": "Tema 1", "id": cat_id},
+    )
+    await session.commit()
+
+    # Re-import con el MISMO XML (sigue diciendo "Unidad 1").
+    await _importar(session, materia_id, XML_UNIDAD_1, "Import 2")
+
+    session.expire_all()
+    cats = await _cat_por_origen(session, materia_id, origen)
+    assert len(cats) == 1, "el re-import duplicó la categoría renombrada"
+    assert cats[0].id == cat_id, "el re-import no reconoció la categoría renombrada"
+    assert cats[0].nombre == "Tema 1", "el re-import pisó el nombre local del docente"
 
 
 @pytest.mark.asyncio
