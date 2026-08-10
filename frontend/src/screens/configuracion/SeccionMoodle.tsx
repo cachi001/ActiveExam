@@ -2,15 +2,15 @@
  * SeccionMoodle — conexión institucional con el campus (Moodle).
  *
  * OJO con lo que hace el token institucional: desde C-73 la NOTA ya NO se manda con
- * él, sino con la credencial del docente a cargo (`MiCuentaCampus`), para que en la
+ * él, sino con la credencial del tutor a cargo (`MiCuentaCampus`), para que en la
  * libreta figure quién la puso. Al token institucional le quedan dos trabajos que la
- * cuenta de un docente no puede hacer:
+ * cuenta de un tutor no puede hacer:
  *   1. resolver la identidad del alumno en el campus (`MoodleIdentityMapper`, por
  *      idnumber → email). Sin esto la nota no se puede dirigir a nadie y queda retenida.
  *   2. escribir el 0 de `anular_nota`: la anulación por fraude la decide un revisor,
  *      y firmarla con la cuenta del profesor le atribuiría una sanción que no tomó.
  *
- * `base_url` y `service_shortname` además son estructurales: sin ellos ningún docente
+ * `base_url` y `service_shortname` además son estructurales: sin ellos ningún tutor
  * puede canjear su contraseña por un token (ver backend `token_exchange.py`).
  *
  * El token se guarda CIFRADO y la API nunca lo devuelve: acá solo se ve si hay uno
@@ -31,12 +31,12 @@ const AYUDA = (
   <HelpButton title="La conexión de la institución con el campus">
     <p>
       Estos datos son de toda la institución, no de una persona: <strong>a qué campus</strong>{' '}
-      se conecta el sistema y <strong>con qué servicio</strong>. Sin ellos, ningún docente
+      se conecta el sistema y <strong>con qué servicio</strong>. Sin ellos, ningún tutor
       puede conectar su cuenta.
     </p>
     <p>
       La <strong className="text-on-surface">llave de acceso</strong> (un “token”) la usa el
-      sistema para dos cosas que no puede hacer con la cuenta de un docente: encontrar a
+      sistema para dos cosas que no puede hacer con la cuenta de un tutor: encontrar a
       cada alumno en el campus, y poner un 0 cuando se anula un examen por fraude.
     </p>
     <p>
@@ -130,7 +130,7 @@ export default function SeccionMoodle() {
           {AYUDA}
         </h3>
         <p className="text-label-sm text-on-surface-variant mt-0.5">
-          Se configura una vez y vale para todos los docentes.
+          Se configura una vez y vale para todos los tutores.
         </p>
       </div>
 
@@ -185,7 +185,7 @@ export default function SeccionMoodle() {
                   <p className="font-semibold">Todavía no hay llave</p>
                   <p className="text-on-surface-variant mt-0.5">
                     Sin llave el sistema no puede encontrar a los alumnos en el campus: las
-                    notas se calculan y quedan guardadas, pero no viajan — aunque el docente
+                    notas se calculan y quedan guardadas, pero no viajan — aunque el tutor
                     ya haya conectado su cuenta.
                   </p>
                 </>
@@ -253,7 +253,7 @@ export default function SeccionMoodle() {
                 onChange={(e) => setServicio(e.target.value)}
               />
               <p className="mt-1 text-label-sm text-on-surface-variant">
-                Sin esto los docentes no pueden conectar su cuenta.
+                Sin esto los tutores no pueden conectar su cuenta.
               </p>
             </div>
 

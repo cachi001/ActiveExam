@@ -21,7 +21,7 @@ export type Rol =
   | 'proctor'
   | 'revisor'
   | 'coordinador'
-  | 'docente'
+  | 'tutor'
   | 'admin_examenes'
   | 'admin_sistema'
   | 'auditor';
@@ -58,6 +58,16 @@ export interface Principal {
    * Demo: en memoria de la sesión. Server-side: cifrado AES-256-GCM.
    */
   foto_perfil?: string;
+  /** ISO 8601 — cuándo se creó la cuenta. Viene de GET /auth/me. */
+  creado_en?: string;
+  /** ISO 8601 — último login registrado. Viene de GET /auth/me. */
+  ultimo_acceso_en?: string;
+  /**
+   * True → la cuenta se creó con una clave temporal y el usuario todavía no
+   * definió su propia contraseña. Fuerza la pantalla de cambio obligatorio.
+   * Viene de GET /auth/me.
+   */
+  debe_cambiar_password?: boolean;
 }
 
 /** Nombre completo "Nombre Apellido" (omite el apellido si no está). */
@@ -119,7 +129,10 @@ export interface ExamenContenidoResumen {
   /** Comisión/materia asociadas (D11, NULLABLE): null si el examen no tiene comisión. */
   comision_id?: string | null;
   comision_nombre?: string | null;
+  comision_codigo?: string | null;
+  materia_id?: string | null;
   materia_nombre?: string | null;
+  materia_codigo?: string | null;
   /** Config aplicada por la plataforma: ventana de rendición (ISO 8601, nullable). */
   apertura?: string | null;
   cierre?: string | null;
@@ -202,6 +215,18 @@ export interface PreguntaRevision {
   respondida: boolean;
   /** true si eligió la correcta. */
   acertada: boolean;
+  /** 'multichoice' | 'cloze' — tipo de pregunta. */
+  tipo?: string;
+  /** Blanks de preguntas cloze, en orden. Solo presente si tipo === 'cloze'. */
+  blanks_revisados?: Array<{
+    blank_id: string;
+    orden: number;
+    tipo: string;
+    texto_antes: string | null;
+    texto_despues: string | null;
+    respuesta_alumno: string | null;
+    es_correcta: boolean;
+  }>;
 }
 
 export interface RevisionExamen {

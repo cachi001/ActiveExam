@@ -26,7 +26,7 @@ export function RequisitoDni({ dni, dniOk, dniScanHabilitado, onEscanear }: Requ
       }}
     >
       {dniOk && dni ? (
-        <div className="space-y-sm text-label-sm">
+        <div className="space-y-sm text-[14px]">
           <p className="text-on-surface-variant">
             Frente y dorso registrados el {new Date(dni.fecha_captura).toLocaleDateString('es-AR', {
               day: '2-digit', month: 'long', year: 'numeric',
@@ -36,31 +36,33 @@ export function RequisitoDni({ dni, dniOk, dniScanHabilitado, onEscanear }: Requ
             Se guarda cifrado y protegido, y se usa solo para verificar tu identidad.
           </p>
           {dniScanHabilitado && (
-            <Button
-              variant="ghost"
-              size="sm"
-              icon="refresh"
-              onClick={onEscanear}
-              className="text-label-sm text-on-surface-variant"
-            >
-              Rehacer escaneo
-            </Button>
+            <div className="flex justify-end pt-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                icon="refresh"
+                onClick={onEscanear}
+                className="text-label-sm text-on-surface-variant"
+              >
+                Rehacer escaneo
+              </Button>
+            </div>
           )}
         </div>
       ) : dniScanHabilitado ? (
         <div className="space-y-md">
-          <p className="text-label-sm text-on-surface-variant">
+          <p className="text-[14px] text-on-surface-variant">
             El escaneo del DNI es opcional y no bloquea tu habilitación para rendir.
             Refuerza la verificación de identidad documental.
           </p>
-          <div className="flex justify-end">
+          <div className="flex justify-end pt-1">
             <Button size="sm" icon="badge" onClick={onEscanear}>
               Escanear DNI (opcional)
             </Button>
           </div>
         </div>
       ) : (
-        <p className="text-label-sm text-on-surface-variant">
+        <p className="text-[14px] text-on-surface-variant">
           No disponible en esta versión. No bloquea el perfil completo. Cuando esté activo, tu DNI
           se va a guardar cifrado y protegido.
         </p>

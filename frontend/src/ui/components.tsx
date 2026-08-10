@@ -71,7 +71,7 @@ export function Card({ children, className = '', padded = true }: { children: Re
   // 2xl + shadow-card previo se acumulaba en pantallas con muchas cards y daba
   // sensación pesada/redonda; el ajuste deja la card legible sin gritar.
   return (
-    <div className={`bg-surface-container-lowest rounded-lg border border-surface-200 ${padded ? 'p-lg' : ''} ${className}`}>
+    <div className={`bg-white rounded-lg border border-surface-200 shadow-sm ${padded ? 'p-lg' : ''} ${className}`}>
       {children}
     </div>
   );
@@ -121,12 +121,15 @@ export function BackButton({
   );
 }
 
-export function SectionTitle({ children, sub, action }: { children: ReactNode; sub?: ReactNode; action?: ReactNode }) {
+export function SectionTitle({ children, sub, action, icon }: { children: ReactNode; sub?: ReactNode; action?: ReactNode; icon?: string }) {
   return (
-    <div className="flex items-start justify-between gap-md mb-md">
-      <div>
-        <h2 className="font-headline text-title-lg text-on-surface tracking-tight">{children}</h2>
-        {sub && <p className="text-label-sm text-on-surface-variant mt-base">{sub}</p>}
+    <div className="flex items-start justify-between gap-md mb-lg">
+      <div className="flex items-center gap-sm min-w-0">
+        {icon && <Icon name={icon} className="text-[20px] text-on-surface-variant shrink-0" />}
+        <div className="min-w-0">
+          <h2 className="font-headline text-title-lg text-on-surface tracking-tight">{children}</h2>
+          {sub && <p className="text-label-sm text-on-surface-variant mt-base">{sub}</p>}
+        </div>
       </div>
       {action}
     </div>

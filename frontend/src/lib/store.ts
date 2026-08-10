@@ -2,6 +2,7 @@
 // seleccionado, anomalías generadas durante el examen que el panel del proctor refleja).
 import { create } from 'zustand';
 import type { EventoSesion, Examen, SesionRevision, EstadoEnrollment, DecisionRevisor } from './types';
+import type { BiometriaProctoringPayload } from '../vision/liveness';
 
 // C-56: la clave `activeexam_bio_ref` (embedding crudo en localStorage) queda eliminada.
 // El embedding ya no se persiste en el cliente: el backend devuelve un `referencia_id`
@@ -192,6 +193,14 @@ interface AppState {
    */
   biometriaReferencia: number[] | null;
 
+  /**
+   * Payload biométrico pendiente de envío: se guarda aquí cuando el alumno completa
+   * la verificación biométrica pero aún no existe sesión de proctoring (la sesión se
+   * crea al entrar a /examen). useExamProctoring lo consume y lo envía en cuanto
+   * obtiene el id de sesión, y luego lo limpia.
+   */
+  biometriaPendientePayload: BiometriaProctoringPayload | null;
+
   setExamenActivo: (e: Examen | null) => void;
   setRevisionSeleccionada: (s: SesionRevision | null) => void;
   pushAnomalia: (e: EventoSesion) => void;
@@ -225,6 +234,8 @@ interface AppState {
    * Solo en modo demo. En modo real, usar setBiometricoReferenciaId.
    */
   setBiometriaReferencia: (embedding: number[] | null) => void;
+  /** Guarda el payload biométrico para enviarlo cuando se cree la sesión de proctoring. */
+  setBiometriaPendientePayload: (payload: BiometriaProctoringPayload | null) => void;
 }
 
 export const useApp = create<AppState>((set) => ({
@@ -248,6 +259,7 @@ export const useApp = create<AppState>((set) => ({
   // fue eliminada al inicializar el módulo — ver bloque de limpieza arriba).
   biometrico_referencia_id: null,
   biometriaReferencia: null,
+  biometriaPendientePayload: null,
 
   setExamenActivo: (examenActivo) => { persistExamenActivo(examenActivo); set({ examenActivo }); },
   setRevisionSeleccionada: (revisionSeleccionada) => set({ revisionSeleccionada }),
@@ -269,6 +281,7 @@ export const useApp = create<AppState>((set) => ({
       proctoringSessionId: null,
       proctoringSessionCreadaEn: null,
       proctoringExamId: null,
+      biometriaPendientePayload: null,
     });
   },
   setEnrollmentStatus: (e) => set({ enrollmentStatus: e, isProfileComplete: e.perfil_completo }),
@@ -286,6 +299,7 @@ export const useApp = create<AppState>((set) => ({
   setBiometricoReferenciaId: (id) => set({ biometrico_referencia_id: id }),
   // Solo en modo demo: persiste el descriptor 128-d en memoria (sin localStorage).
   // En modo real (USE_REAL_BACKEND=1) el embedding queda en el backend cifrado at-rest.
+  setBiometriaPendientePayload: (payload) => set({ biometriaPendientePayload: payload }),
   setBiometriaReferencia: (embedding) => {
     // C-56: NO persiste el embedding en localStorage. Solo en memoria de la sesión.
     // La clave `activeexam_bio_ref` fue eliminada (ver bloque de limpieza arriba).

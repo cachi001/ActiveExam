@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class FinalizarSesionOut(BaseModel):
@@ -196,12 +196,31 @@ class CerrarForzadoOut(BaseModel):
 
 
 class RespuestaItem(BaseModel):
-    """Respuesta del alumno para una pregunta (C-69 D8, sección 7)."""
+    """Respuesta del alumno para una pregunta (C-69 D8, sección 7; C-74 §6 cloze).
+
+    Exactamente uno de los dos:
+    - ``opcion_elegida_id``: preguntas multichoice/truefalse.
+    - ``respuesta_cloze``: preguntas cloze/ddwtos — dict ``{blank_id: valor}``,
+      donde ``valor`` es el id de la opción (blank MULTICHOICE) o el texto libre
+      tipeado por el alumno (blank SHORTANSWER).
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     pregunta_id: str
-    opcion_elegida_id: str
+    opcion_elegida_id: str | None = None
+    respuesta_cloze: dict[str, str] | None = None
+
+    @model_validator(mode="after")
+    def _exactamente_uno(self) -> "RespuestaItem":
+        tiene_opcion = self.opcion_elegida_id is not None
+        tiene_cloze = self.respuesta_cloze is not None
+        if tiene_opcion == tiene_cloze:  # ambos ausentes o ambos presentes
+            raise ValueError(
+                "Cada respuesta necesita exactamente uno de "
+                "'opcion_elegida_id' o 'respuesta_cloze'."
+            )
+        return self
 
 
 class SubmitRespuestasIn(BaseModel):
@@ -231,12 +250,16 @@ class SubmitRespuestasOut(BaseModel):
 
 
 class RespuestaGuardadaOut(BaseModel):
-    """Una respuesta ya guardada de la sesion (para reanudacion, GET .../respuestas)."""
+    """Una respuesta ya guardada de la sesion (para reanudacion, GET .../respuestas).
+
+    Mismo contrato exactamente-uno que ``RespuestaItem``.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     pregunta_id: str
-    opcion_elegida_id: str
+    opcion_elegida_id: str | None = None
+    respuesta_cloze: dict[str, str] | None = None
 
 
 class ListarRespuestasOut(BaseModel):

@@ -44,10 +44,13 @@ from app.presentation.api.v1.exam_content._shared import (
     _resumen_to_response,
 )
 from app.presentation.api.v1.exam_content.schemas import (
+    BlankRevisionResponse,
     CapturaFirmadaResponse,
+    ComisionConMateriaResponse,
     ComisionResponse,
     ExamenContenidoResumenResponse,
     ExamenesContenidoPaginadosResponse,
+    BlankRendicionResponse,
     ExamenRendicionResponse,
     InformeDevolucionResponse,
     InscribirPorCodigoRequest,
@@ -538,6 +541,53 @@ def create_exam_taking_router(
         ]
 
     @router.get(
+        "/comisiones",
+        response_model=list[ComisionConMateriaResponse],
+        summary="Listar todas las comisiones, con su materia embebida",
+    )
+    async def listar_todas_comisiones(
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    ) -> list[ComisionConMateriaResponse]:
+        """Selector combinado único ("CÓDIGO - Materia") sin elegir materia primero.
+
+        Staff ve todas las comisiones; docente ve solo las que dicta (across
+        todas sus materias, C-73 §9). No pensado para alumnos.
+        """
+        if session_factory is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Persistencia no inicializada.",
+            )
+        if not (_es_staff(principal) or _es_docente(principal)):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Requiere rol docente o de alcance institucional.",
+            )
+
+        from app.infrastructure.persistence.repositories.exam_content import (
+            ComisionSqlRepository,
+        )
+
+        async with session_factory() as session:
+            repo = ComisionSqlRepository(session)
+            docente_id = None if _es_staff(principal) else (principal.subject or "")
+            filas = await repo.listar_todas_con_materia(docente_id)
+
+        return [
+            ComisionConMateriaResponse(
+                id=c.id,
+                codigo=c.codigo,
+                nombre=c.nombre,
+                periodo=c.periodo,
+                anio=c.anio,
+                materia_id=c.materia_id,
+                materia_nombre=materia_nombre,
+                materia_codigo=materia_codigo,
+            )
+            for c, materia_nombre, materia_codigo in filas
+        ]
+
+    @router.get(
         "/comisiones/{comision_id}/examenes",
         response_model=list[ExamenContenidoResumenResponse],
         summary="Listar exámenes de una comisión",
@@ -656,6 +706,19 @@ def create_exam_taking_router(
                     orden=p.orden,
                     respondida=p.respondida,
                     acertada=p.acertada,
+                    tipo=p.tipo,
+                    blanks_revisados=[
+                        BlankRevisionResponse(
+                            blank_id=b.blank_id,
+                            orden=b.orden,
+                            tipo=b.tipo,
+                            texto_antes=b.texto_antes,
+                            texto_despues=b.texto_despues,
+                            respuesta_alumno=b.respuesta_alumno,
+                            es_correcta=b.es_correcta,
+                        )
+                        for b in p.blanks_revisados
+                    ],
                     # MISMA semilla que en la rendicion: el alumno tiene que revisar
                     # sus respuestas con las opciones en el MISMO orden en que las
                     # contesto. Con el orden original veria la lista movida respecto
@@ -769,6 +832,30 @@ def create_exam_taking_router(
                                 list(p.opciones), alumno=alumno, pregunta_id=p.id
                             )
                         )
+                    ],
+                    blanks=[
+                        BlankRendicionResponse(
+                            id=b.id,
+                            orden=b.orden,
+                            tipo=b.tipo,
+                            texto_antes=b.texto_antes,
+                            texto_despues=b.texto_despues,
+                            # Mismo barajado por alumno que en las opciones de
+                            # pregunta: el XML de Moodle deja la correcta primera.
+                            opciones=[
+                                OpcionRendicionResponse(
+                                    id=o.id, texto=o.texto, orden=posicion
+                                )
+                                for posicion, o in enumerate(
+                                    barajar_opciones(
+                                        list(b.opciones),
+                                        alumno=alumno,
+                                        pregunta_id=b.id,
+                                    )
+                                )
+                            ],
+                        )
+                        for b in p.blanks
                     ],
                 )
                 for p in rendicion.preguntas

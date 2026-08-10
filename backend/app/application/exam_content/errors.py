@@ -28,6 +28,23 @@ class LimitePreguntasExcedidoError(Exception):
         self.limite = limite
 
 
+class SorteoInsuficienteError(Exception):
+    """Una categoría no tiene suficientes preguntas para el sorteo pedido (C-74 §3).
+
+    No se trunca en silencio: el docente decide si agrega más preguntas al banco
+    o baja la cantidad requerida. Incluye el conteo disponible vs. pedido.
+    """
+
+    def __init__(self, categoria_id: str, disponibles: int, pedidas: int) -> None:
+        super().__init__(
+            f"Categoría {categoria_id} tiene {disponibles} pregunta(s) disponibles "
+            f"en este examen, se pidieron {pedidas}."
+        )
+        self.categoria_id = categoria_id
+        self.disponibles = disponibles
+        self.pedidas = pedidas
+
+
 class ExamenNoEncontradoError(Exception):
     """No existe un examen de contenido con el id indicado."""
 

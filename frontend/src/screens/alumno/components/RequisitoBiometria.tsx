@@ -54,28 +54,28 @@ export function RequisitoBiometria({
         <BiometricRenewalStatus referencia={biometria} onRenovar={onRenovar} />
       ) : (
         <div className="space-y-md">
-          <p className="text-label-sm text-on-surface-variant">
+          <p className="text-[14px] text-on-surface-variant">
             La referencia biométrica se captura UNA sola vez en el perfil y es reutilizable en
             todos tus exámenes. Tiene vigencia de{' '}
-            <strong>{biometria?.vigencia_meses ?? 24} meses</strong>.
+            <strong className="font-medium">{biometria?.vigencia_meses ?? 24} meses</strong>.
           </p>
 
-          <div className="text-label-sm text-on-surface-variant bg-white rounded-xl p-sm border border-outline-variant/40">
-            <span className="font-semibold">Privacidad:</span> Tu foto y los datos de tu rostro se guardan
-            <strong> cifrados y protegidos</strong>, y se usan solo para confirmar tu identidad en los exámenes.
+          <div className="text-[14px] text-on-surface-variant bg-white rounded-xl p-sm border border-outline-variant/40">
+            <span className="font-medium text-on-surface">Privacidad:</span> Tu foto y los datos de tu rostro se guardan
+            <strong className="font-medium"> cifrados y protegidos</strong>, y se usan solo para confirmar tu identidad en los exámenes.
           </div>
 
           {/* Sin consentimiento NO mostramos el botón (no un botón disabled):
               solo el aviso de qué falta. El CTA aparece recién cuando se puede tocar. */}
           {consentimientoOk ? (
-            <div className="flex justify-end">
+            <div className="flex justify-end pt-1">
               <Button onClick={onCapturar} size="sm">
                 Capturar referencia biométrica
               </Button>
             </div>
           ) : (
-            <div className="flex items-start gap-xs text-label-sm text-on-surface-variant">
-              <Icon name="info" className="text-[16px] shrink-0 mt-px" />
+            <div className="flex items-start gap-xs text-[14px] text-on-surface-variant">
+              <Icon name="info" className="text-[18px] shrink-0 mt-px" />
               <span>Necesitás completar el consentimiento antes de capturar la referencia.</span>
             </div>
           )}

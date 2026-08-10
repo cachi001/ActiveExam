@@ -17,3 +17,11 @@ class AbstractExamenContenidoRepository(Protocol):
     async def obtener(self, examen_id: str) -> ExamenContenido | None:
         """Recupera un examen por id (con preguntas y opciones)."""
         ...
+
+    async def obtener_para_rendir(self, examen_id: str) -> ExamenContenido | None:
+        """Recupera un examen con SOLO las preguntas seleccionadas, y sus blanks.
+
+        Opcional: los callers usan ``obtener()`` como fallback si el repositorio no
+        lo implementa (dobles de test que solo leen).
+        """
+        ...

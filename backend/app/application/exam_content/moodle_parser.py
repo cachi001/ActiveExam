@@ -1,24 +1,164 @@
-"""Parser de Moodle XML → estructuras de dominio de exam_content (C-69).
+"""Parser de Moodle XML → estructuras de dominio de exam_content (C-69, C-74).
 
-Soporta: multichoice, truefalse.
-Omite: category (silenciosamente), cloze, essay y cualquier tipo desconocido.
+Soporta: multichoice, truefalse, cloze/multianswer, ddwtos (arrastrar y soltar
+en texto — se parsea al mismo modelo de blanks que cloze, ver más abajo).
+Omite: essay, matching y cualquier otro tipo desconocido.
+Trackea: category → categoria_ruta por pregunta (C-74 §2.2).
+
+Cloze (C-74 §5):
+  Sintaxis de blank: {N:TIPO:OPC1~OPC2~...}
+  Tipos soportados: MULTICHOICE, MULTICHOICE_S, SHORTANSWER.
+  Cada opcion puede tener prefijo de correccion:
+    =texto     → 100% correcto
+    %N%texto   → N% de peso (N=100 → correcto)
+    texto      → 0% (incorrecto, sin prefijo)
+  Variantes NO soportadas en esta primera vuelta: NUMERICAL, ESSAY.
+
+ddwtos (drag and drop into text):
+  El questiontext trae placeholders [[N]] y las opciones arrastrables viven en
+  <dragbox><text>...</text></dragbox> aparte, SIN un tag que diga explícitamente
+  qué dragbox va en qué [[N]] — el export de Moodle no lo declara. Se infirió
+  empíricamente cruzando 24 preguntas reales (campus FRM, Programación 1): los
+  primeros N dragboxes, en orden de documento, son la respuesta correcta de
+  [[1]]..[[N]] en ese orden; cualquier dragbox extra es un distractor compartido
+  por todos los blanks. Se normaliza a `tipo="cloze"` con blanks MULTICHOICE —
+  mismo modelo de datos, misma UI de rendición, misma corrección server-side que
+  un cloze común; ddwtos es solo un formato de origen distinto.
+
+_strip_html elimina <tags> pero NO toca {N:TYPE:...} ni [[N]] (usan {} y [[ ]],
+no <>) — los placeholders de cloze y ddwtos sobreviven intactos al strip.
 """
 
 from __future__ import annotations
 
+import html
 import re
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 
 from app.application.exam_content.errors import MoodleXmlInvalidoError, MoodleXmlVacioError
 
-_TIPOS_SOPORTADOS = frozenset({"multichoice", "truefalse"})
+_TIPOS_SOPORTADOS = frozenset({"multichoice", "truefalse", "cloze", "multianswer", "ddwtos"})
+
+_RE_BLANK = re.compile(r"\{(\d+):(MULTICHOICE_S|MULTICHOICE|SHORTANSWER):([^}]*)\}", re.IGNORECASE)
+_RE_OPT_PESO = re.compile(r"^%(\d+)%(.*)$", re.DOTALL)
+_RE_DDWTOS_PLACEHOLDER = re.compile(r"\[\[(\d+)\]\]")
+
+
+@dataclass
+class OpcionClozeDato:
+    """Opcion de un blank dentro de una pregunta cloze."""
+    texto: str
+    es_correcta: bool
+    peso: int
+    orden: int
+
+
+@dataclass
+class BlankData:
+    """Hueco (blank) dentro de un texto cloze."""
+    orden: int
+    tipo: str
+    texto_antes: str
+    texto_despues: str
+    opciones: list[OpcionClozeDato] = field(default_factory=list)
+
+
+def _parse_opcion_cloze(raw: str) -> tuple[str, int]:
+    texto = raw.strip()
+    if texto.startswith("="):
+        return html.unescape(texto[1:].strip()), 100
+    m = _RE_OPT_PESO.match(texto)
+    if m:
+        return html.unescape(m.group(2).strip()), int(m.group(1))
+    return html.unescape(texto), 0
+
+
+def parse_cloze_blanks(texto_cloze: str) -> list[BlankData]:
+    """Extrae los blanks de un texto cloze.
+
+    Materializa los matches primero para poder acceder al anterior/siguiente
+    sin re-ejecutar finditer (iterador de un solo uso).
+    """
+    blanks: list[BlankData] = []
+    matches = list(_RE_BLANK.finditer(texto_cloze))
+
+    for i, m in enumerate(matches):
+        tipo_raw = m.group(2).upper()
+        tipo = "shortanswer" if "SHORT" in tipo_raw else "multichoice"
+
+        opciones: list[OpcionClozeDato] = []
+        for j, opt_raw in enumerate(m.group(3).split("~")):
+            texto_opt, peso = _parse_opcion_cloze(opt_raw)
+            if texto_opt:
+                opciones.append(OpcionClozeDato(
+                    texto=texto_opt,
+                    es_correcta=peso >= 100,
+                    peso=peso,
+                    orden=j,
+                ))
+
+        inicio_anterior = matches[i - 1].end() if i > 0 else 0
+        fin_siguiente = matches[i + 1].start() if i + 1 < len(matches) else len(texto_cloze)
+
+        blanks.append(BlankData(
+            orden=i,
+            tipo=tipo,
+            texto_antes=texto_cloze[inicio_anterior:m.start()],
+            texto_despues=texto_cloze[m.end():fin_siguiente],
+            opciones=opciones,
+        ))
+
+    return blanks
+
+
 _TRUE_FALSE_MAP = {"true": "Verdadero", "false": "Falso"}
 
 
+
+# Tags de bloque: al borrarlos hay que dejar un salto de línea en su lugar, o
+# el texto de dos bloques distintos queda pegado ("...nombre: ")" + "{blank}"
+# sin espacio de por medio si el HTML fuente no trae un salto literal — bug
+# real visto en producción con el export de Moodle de campustest, cuando
+# `<br>` separaba dos blanks dentro del mismo `<p>` sin whitespace alrededor).
+_RE_BLOQUE_A_SALTO = re.compile(
+    r"</?(?:p|div|li|ul|ol|table|thead|tbody|tr|h[1-6])\b[^>]*>|<br\s*/?>",
+    re.IGNORECASE,
+)
+# Celdas de tabla: separador más liviano (espacio), no salto de línea, para
+# que una fila de tabla siga leyéndose como una fila.
+_RE_CELDA_A_ESPACIO = re.compile(r"<t[dh]\b[^>]*>", re.IGNORECASE)
+
+# Marcadores invisibles (Unicode Private Use Area, nunca aparecen en texto
+# real) que delimitan tramos que el autor marcó como código con <code> en
+# Moodle. Sobreviven al strip de tags porque se sustituyen ANTES del strip
+# genérico; el frontend los usa para decidir qué renderizar en monoespaciado,
+# igual que el resaltado que aplica Moodle nativamente a esos mismos <code>.
+CODE_MARCA_INICIO = ""
+CODE_MARCA_FIN = ""
+_RE_CODE_INICIO = re.compile(r"<code\b[^>]*>", re.IGNORECASE)
+_RE_CODE_FIN = re.compile(r"</code>", re.IGNORECASE)
+
+
 def _strip_html(text: str) -> str:
-    """Elimina tags HTML y retorna texto limpio."""
-    return re.sub(r"<[^>]+>", "", text).strip()
+    text = _RE_BLOQUE_A_SALTO.sub("\n", text)
+    text = _RE_CELDA_A_ESPACIO.sub(" ", text)
+    text = _RE_CODE_INICIO.sub(CODE_MARCA_INICIO, text)
+    text = _RE_CODE_FIN.sub(CODE_MARCA_FIN, text)
+    text = re.sub(r"<[^>]+>", "", text)
+    # Decodificar entidades (&lt;, &amp;, &nbsp;...) DESPUÉS de quitar los tags
+    # reales — si se decodificara antes, un "&lt;=" podría convertirse en "<="
+    # y ser confundido por el regex de tags con la apertura de uno.
+    text = html.unescape(text)
+    # &nbsp; (\xa0) es el "línea vacía" que usa Moodle entre bloques — tratarlo
+    # como espacio normal para que colapse igual que una línea en blanco real.
+    text = text.replace("\xa0", " ")
+    # Colapsar espacios/tabs repetidos (sin tocar los saltos de línea que
+    # acabamos de insertar) y líneas en blanco de más.
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r"[ \t]*\n[ \t]*", "\n", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
 
 
 @dataclass
@@ -34,6 +174,8 @@ class PreguntaData:
     tipo: str
     opciones: list[OpcionData] = field(default_factory=list)
     orden: int = 0
+    categoria_ruta: list[str] | None = None
+    blanks: list[BlankData] = field(default_factory=list)
 
 
 @dataclass
@@ -62,11 +204,21 @@ def parse_moodle_xml(xml_bytes: bytes) -> ParseResult:
 
     preguntas: list[PreguntaData] = []
     omitidas: list[PreguntaOmitida] = []
+    categoria_activa: list[str] | None = None
 
     for i, question in enumerate(root.findall("question")):
         tipo = question.get("type", "")
 
         if tipo == "category":
+            cat_el = question.find("category/text")
+            if cat_el is not None and cat_el.text:
+                ruta = cat_el.text.strip()
+                for prefix in ("$course$/top/", "$course$/"):
+                    if ruta.startswith(prefix):
+                        ruta = ruta[len(prefix):]
+                        break
+                segmentos = [s.strip() for s in ruta.split("/") if s.strip()]
+                categoria_activa = segmentos if segmentos else None
             continue
 
         nombre_el = question.find("name/text")
@@ -76,22 +228,120 @@ def parse_moodle_xml(xml_bytes: bytes) -> ParseResult:
             omitidas.append(PreguntaOmitida(tipo=tipo, nombre=nombre))
             continue
 
-        enunciado = _parse_enunciado(question)
-        opciones = _parse_opciones(question, tipo)
-
-        preguntas.append(
-            PreguntaData(
-                enunciado=enunciado,
-                tipo=tipo,
-                opciones=opciones,
-                orden=len(preguntas),
+        if tipo in ("cloze", "multianswer"):
+            preguntas.append(_parse_cloze(question, categoria_activa, len(preguntas)))
+        elif tipo == "ddwtos":
+            parsed = _parse_ddwtos(question, categoria_activa, len(preguntas))
+            if parsed is None:
+                omitidas.append(
+                    PreguntaOmitida(tipo=tipo, nombre=f"{nombre} (sin mapeo de opciones)")
+                )
+            else:
+                preguntas.append(parsed)
+        else:
+            enunciado = _parse_enunciado(question)
+            opciones = _parse_opciones(question, tipo)
+            preguntas.append(
+                PreguntaData(
+                    enunciado=enunciado,
+                    tipo=tipo,
+                    opciones=opciones,
+                    orden=len(preguntas),
+                    categoria_ruta=list(categoria_activa) if categoria_activa else None,
+                )
             )
-        )
 
     if not preguntas:
         raise MoodleXmlVacioError("El XML no contiene preguntas de tipo soportado.")
 
     return ParseResult(preguntas=preguntas, omitidas=omitidas)
+
+
+def _parse_cloze(
+    question: ET.Element,
+    categoria_activa: list[str] | None,
+    orden: int,
+) -> PreguntaData:
+    text_el = question.find("questiontext/text")
+    raw_text = text_el.text if text_el is not None and text_el.text else ""
+    enunciado = _strip_html(raw_text)
+    blanks = parse_cloze_blanks(enunciado)
+    return PreguntaData(
+        enunciado=enunciado,
+        tipo="cloze",
+        opciones=[],
+        orden=orden,
+        categoria_ruta=list(categoria_activa) if categoria_activa else None,
+        blanks=blanks,
+    )
+
+
+def _parse_ddwtos(
+    question: ET.Element,
+    categoria_activa: list[str] | None,
+    orden: int,
+) -> PreguntaData | None:
+    """Parsea una pregunta ddwtos a blanks MULTICHOICE (ver docstring del módulo).
+
+    None si no hay placeholders [[N]] en el texto, o si hay menos dragboxes que
+    placeholders (no alcanza para mapear una respuesta correcta a cada blank) —
+    en ambos casos el caller la reporta como omitida en vez de importar algo
+    potencialmente incorrecto.
+    """
+    text_el = question.find("questiontext/text")
+    raw_text = text_el.text if text_el is not None and text_el.text else ""
+    enunciado = _strip_html(raw_text)
+
+    matches = list(_RE_DDWTOS_PLACEHOLDER.finditer(enunciado))
+    if not matches:
+        return None
+
+    dragboxes: list[str] = []
+    for db in question.findall("dragbox"):
+        db_text_el = db.find("text")
+        texto = db_text_el.text if db_text_el is not None and db_text_el.text else ""
+        dragboxes.append(html.unescape(texto.strip()))
+
+    n = len(matches)
+    if len(dragboxes) < n:
+        return None
+
+    # Los primeros N dragboxes (orden de documento) son la respuesta correcta de
+    # [[1]]..[[N]] en ese orden; el resto son distractores del pool compartido.
+    correctas = dragboxes[:n]
+
+    blanks: list[BlankData] = []
+    for i, m in enumerate(matches):
+        inicio_anterior = matches[i - 1].end() if i > 0 else 0
+        fin_siguiente = matches[i + 1].start() if i + 1 < len(matches) else len(enunciado)
+        correcta_texto = correctas[i]
+        opciones = [
+            OpcionClozeDato(
+                texto=texto,
+                es_correcta=(texto == correcta_texto),
+                peso=100 if texto == correcta_texto else 0,
+                orden=j,
+            )
+            for j, texto in enumerate(dragboxes)
+        ]
+        blanks.append(
+            BlankData(
+                orden=i,
+                tipo="multichoice",
+                texto_antes=enunciado[inicio_anterior:m.start()],
+                texto_despues=enunciado[m.end():fin_siguiente],
+                opciones=opciones,
+            )
+        )
+
+    return PreguntaData(
+        enunciado=enunciado,
+        tipo="cloze",
+        opciones=[],
+        orden=orden,
+        categoria_ruta=list(categoria_activa) if categoria_activa else None,
+        blanks=blanks,
+    )
 
 
 def _parse_enunciado(question: ET.Element) -> str:

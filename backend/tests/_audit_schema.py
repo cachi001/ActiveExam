@@ -3,7 +3,8 @@
 POR QUE EXISTE ESTE ARCHIVO
 ---------------------------
 ``audit_log`` es dominio CRITICO (append-only, tamper-evident). Su definicion real
-vive en la migracion slim 0012 e incluye DOS objetos que el modelo ORM NO describe:
+vive en la migracion slim 0012 (+ columnas modulo/entidad/entidad_id/tipo_accion
+agregadas en 0044, C-73) e incluye DOS objetos que el modelo ORM NO describe:
 
   1. ``audit_log_encadenar()`` + trigger BEFORE INSERT: encadena ``hash_prev`` con
      el ultimo registro y MATERIALIZA ``hash_self`` (sha256). La app NO lo calcula:
@@ -32,6 +33,10 @@ CREATE TABLE IF NOT EXISTS audit_log (
     ip inet,
     user_agent text,
     accion varchar(255) NOT NULL,
+    modulo varchar(64),
+    entidad varchar(64),
+    entidad_id varchar(255),
+    tipo_accion varchar(32),
     evidencia_id uuid,
     proposito text,
     hash_prev varchar(64) NOT NULL DEFAULT '',

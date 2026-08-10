@@ -6,7 +6,7 @@
  *    (enviarlos gatillaría el 409 del backend).
  *  - La publicación (mostrar_nota / revision_habilitada) siempre se envía (direccional).
  *  - `cierre` (solo EXTENDER) e `intentos_permitidos` (solo AUMENTAR) SÍ se pueden
- *    tocar, pero se envían SOLO si el docente los cambió — así un guardado sin tocarlos
+ *    tocar, pero se envían SOLO si el tutor los cambió — así un guardado sin tocarlos
  *    no dispara un falso 409 por truncamiento de precisión.
  * Sin bloqueo, se envía todo.
  */
@@ -35,7 +35,7 @@ describe('formToPatch', () => {
     expect(patch).toHaveProperty('nota_maxima', 10);
     expect(patch).toHaveProperty('mostrar_nota', 'al_cerrar');
     // `mezclar_preguntas` ya NO se manda: es siempre true server-side y el PATCH
-    // lo rechaza (extra='forbid'). Dejó de ser una opción del docente.
+    // lo rechaza (extra='forbid'). Dejó de ser una opción del tutor.
     expect(patch).not.toHaveProperty('mezclar_preguntas');
     // Tope vacío = sacar el tope; el backend interpreta 0 como NULL.
     expect(patch).toHaveProperty('limite_preguntas', 0);
@@ -51,14 +51,14 @@ describe('formToPatch', () => {
     ]);
   });
 
-  it('bloqueado: si el docente EXTIENDE el cierre, se envía cierre', () => {
+  it('bloqueado: si el tutor EXTIENDE el cierre, se envía cierre', () => {
     const editado = { ...form, cierre: '2027-03-01T20:00' };
     const patch = formToPatch(editado, true, form);
     expect(patch).toHaveProperty('cierre');
     expect(patch.cierre).toBe(new Date('2027-03-01T20:00').toISOString());
   });
 
-  it('bloqueado: si el docente SUBE los intentos, se envía intentos_permitidos', () => {
+  it('bloqueado: si el tutor SUBE los intentos, se envía intentos_permitidos', () => {
     const editado = { ...form, intentosPermitidos: '3' };
     const patch = formToPatch(editado, true, form);
     expect(patch).toHaveProperty('intentos_permitidos', 3);

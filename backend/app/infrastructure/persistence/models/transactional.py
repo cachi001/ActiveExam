@@ -92,12 +92,24 @@ class UsuarioModel(Base):
     auth_provider: Mapped[str] = mapped_column(
         String(32), nullable=False, server_default="keycloak"
     )
+    # 0059: clave temporal. TRUE = el usuario debe cambiar su contraseña en el
+    # próximo login (creado por admin con clave temporal). Se limpia al cambiarla.
+    debe_cambiar_password: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
     # C-61: datos personales (nullable — compatibilidad con usuarios pre-existentes).
     nombre: Mapped[str | None] = mapped_column(String(255), nullable=True)
     apellido: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # C-61: baja logica (soft-delete). NULL = activo; NOT NULL = dado de baja.
     eliminado_en: Mapped[str | None] = mapped_column(
         TIMESTAMP(timezone=True), nullable=True
+    )
+    # 0056: auditoría de cuenta.
+    creado_en: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    ultimo_acceso_en: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
 
 

@@ -3,7 +3,6 @@ import { Icon, Button, TextField } from '../ui/components';
 import { useNavigate, Link } from '../lib/router';
 import { useAuth } from '../lib/authStore';
 import type { Rol } from '../lib/types';
-import { INSTITUTION } from '../config/institution';
 import { AUTH_PROVIDER_TYPE } from '../lib/authProvider';
 
 /** Home de cada rol tras el login.
@@ -17,10 +16,10 @@ function homePorRol(roles: Rol[]): string {
   if (roles.includes('admin_sistema')) return '/admin';
   if (roles.includes('proctor')) return '/proctor';
   // El revisor entra directo a la cola: es su única tarea.
-  if (roles.includes('revisor')) return '/revisor';
+  if (roles.includes('revisor')) return '/admin/cola-revision';
   if (roles.includes('coordinador')) return '/admin';
   // Docente y admin de exámenes arrancan en su listado de exámenes.
-  if (roles.includes('docente') || roles.includes('admin_examenes')) return '/admin/examenes';
+  if (roles.includes('tutor') || roles.includes('admin_examenes')) return '/admin/examenes';
   if (roles.includes('auditor')) return '/admin/auditoria';
   return '/alumno';
 }
@@ -62,12 +61,12 @@ function FormularioJwt() {
   }
 
   return (
-    <div className="lg:h-screen lg:overflow-hidden min-h-screen grid lg:grid-cols-2 bg-surface">
+    <div className="lg:h-screen lg:overflow-hidden min-h-screen grid lg:grid-cols-2 bg-white">
       {/* Panel de marca — solo desktop. Altura fija a viewport para que cuando el
           form sea más largo, el branding del lado izquierdo no se estire. */}
       <aside className="hidden lg:flex flex-col justify-between p-xxl bg-gradient-to-br from-primary to-primary-700 text-on-primary relative overflow-hidden lg:h-screen lg:sticky lg:top-0">
         <span className="pointer-events-none absolute -top-16 -right-16 w-72 h-72 rounded-full bg-white/10" aria-hidden />
-        <span className="pointer-events-none absolute bottom-10 -left-20 w-80 h-80 rounded-full bg-white/5" aria-hidden />
+        <span className="pointer-events-none absolute bottom-10 -left-20 w-80 h-80 rounded-full bg-white/10" aria-hidden />
         <div className="flex items-center gap-sm relative">
           <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
             <Icon name="verified_user" className="text-[24px]" fill />
@@ -95,28 +94,17 @@ function FormularioJwt() {
             </div>
             <div>
               <h1 className="font-headline text-headline-md text-on-surface tracking-tight">Iniciar sesión</h1>
-              <p className="text-label-md text-on-surface-variant mt-xs">
+              <p className="text-label-md text-on-surface/60 mt-xs">
                 Accedé a la plataforma de exámenes supervisados.
               </p>
             </div>
           </header>
 
           <section className="flex flex-col gap-lg">
-            {/* Institución */}
-            <div className="flex items-center gap-sm pb-md border-b border-outline-variant/60">
-              <div className="w-11 h-11 rounded-xl bg-primary-fixed text-primary flex items-center justify-center shrink-0">
-                <Icon name="account_balance" className="text-[22px]" fill />
-              </div>
-              <div className="min-w-0">
-                <p className="text-label-sm text-on-surface-variant">Tu institución</p>
-                <p className="text-body-md font-semibold text-on-surface truncate">{INSTITUTION.nombre}</p>
-              </div>
-            </div>
-
             {/* Formulario JWT */}
             <form onSubmit={handleSubmit} className="flex flex-col gap-md">
               <TextField
-                label="Legajo o Email"
+                label="Correo"
                 name="username"
                 type="text"
                 autoComplete="username"
@@ -125,7 +113,7 @@ function FormularioJwt() {
                 disabled={loading}
                 required
                 icon="person"
-                placeholder="Legajo o email institucional"
+                placeholder="Ingresá tu correo"
               />
 
               <TextField
@@ -142,8 +130,8 @@ function FormularioJwt() {
               />
 
               {error && (
-                <div className="flex items-center gap-xs text-error text-body-sm p-sm rounded-lg bg-error-container">
-                  <Icon name="error" className="text-[18px] shrink-0" fill />
+                <div className="flex items-center gap-xs text-error-700 text-label-sm p-sm rounded-lg bg-error-50 border border-error-100">
+                  <Icon name="error" className="text-[16px] shrink-0" fill />
                   {error}
                 </div>
               )}
@@ -196,10 +184,10 @@ function LoginKeycloak() {
   const cargando = status === 'loading';
 
   return (
-    <div className="min-h-screen grid lg:grid-cols-2 bg-surface">
+    <div className="min-h-screen grid lg:grid-cols-2 bg-white">
       <aside className="hidden lg:flex flex-col justify-between p-xxl bg-gradient-to-br from-primary to-primary-700 text-on-primary relative overflow-hidden">
         <span className="pointer-events-none absolute -top-16 -right-16 w-72 h-72 rounded-full bg-white/10" aria-hidden />
-        <span className="pointer-events-none absolute bottom-10 -left-20 w-80 h-80 rounded-full bg-white/5" aria-hidden />
+        <span className="pointer-events-none absolute bottom-10 -left-20 w-80 h-80 rounded-full bg-white/10" aria-hidden />
         <div className="flex items-center gap-sm relative">
           <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
             <Icon name="verified_user" className="text-[24px]" fill />
@@ -226,23 +214,13 @@ function LoginKeycloak() {
             </div>
             <div>
               <h1 className="font-headline text-headline-md text-on-surface tracking-tight">Iniciar sesión</h1>
-              <p className="text-label-md text-on-surface-variant mt-xs">
+              <p className="text-label-md text-on-surface/60 mt-xs">
                 Accedé a la plataforma de exámenes supervisados.
               </p>
             </div>
           </header>
 
           <section className="flex flex-col gap-lg">
-            <div className="flex items-center gap-sm pb-md border-b border-outline-variant/60">
-              <div className="w-11 h-11 rounded-xl bg-primary-fixed text-primary flex items-center justify-center shrink-0">
-                <Icon name="account_balance" className="text-[22px]" fill />
-              </div>
-              <div className="min-w-0">
-                <p className="text-label-sm text-on-surface-variant">Tu institución</p>
-                <p className="text-body-md font-semibold text-on-surface truncate">{INSTITUTION.nombre}</p>
-              </div>
-            </div>
-
             <Button onClick={() => void login()} disabled={cargando} className="w-full">
               {cargando ? (
                 <span className="inline-flex items-center gap-xs"><Icon name="progress_activity" className="ae-spin text-[18px]" /> Conectando…</span>

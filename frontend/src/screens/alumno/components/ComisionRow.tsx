@@ -82,7 +82,7 @@ export function ComisionRow({
           <Card className="p-md space-y-md">
             {/* Datos de la comisión (solo lectura) */}
             <div className="space-y-1.5">
-              {comision.docente && <Dato icon="person" label="Docente" value={comision.docente} />}
+              {comision.docente && <Dato icon="person" label="Tutor" value={comision.docente} />}
               {comision.horario && <Dato icon="schedule" label="Horario" value={comision.horario} />}
               {periodo && <Dato icon="event" label="Período" value={periodo} />}
               {comision.codigo && <Dato icon="tag" label="Código" value={comision.codigo} />}

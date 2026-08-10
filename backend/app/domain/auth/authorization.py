@@ -161,11 +161,57 @@ def autorizar_docente_sobre_examen(
     No decide nada sobre integridad academica (L2.5): esto es control de acceso."""
     if principal.tiene_algun_rol(_ROLES_SIN_LIMITE_DE_PERTENENCIA):
         return
-    if not principal.tiene_rol(Rol.DOCENTE):
-        raise ForbiddenError("Se requiere rol docente (o alcance institucional).")
+    if not principal.tiene_rol(Rol.TUTOR):
+        raise ForbiddenError("Se requiere rol tutor (o alcance institucional).")
     if docente_id_del_examen is None:
         raise ForbiddenError(
             "El examen no tiene docente a cargo: solo un rol institucional puede operarlo."
         )
     if principal.subject != docente_id_del_examen:
         raise ForbiddenError("El examen pertenece a la comision de otro docente.")
+
+
+def autorizar_docente_sobre_materia(
+    principal: AuthenticatedPrincipal,
+    es_docente_de_alguna_comision_de_la_materia: bool,
+) -> None:
+    """Pertenencia del DOCENTE sobre el banco de preguntas de una MATERIA (C-74).
+
+    El banco es compartido por TODAS las comisiones de la materia (no se re-sube
+    por comisión) — por diseño, cualquier docente que dicte AL MENOS una comisión
+    de la materia puede operar su banco. La membresía se resuelve consultando
+    "¿el principal dicta alguna comisión de esta materia?" (booleano, ya evaluado
+    por el caller contra la DB) — NUNCA comparando contra un docente arbitrario de
+    la materia como hacía ``docente_de_materia`` + comparación por igualdad: eso
+    rechazaba con falso negativo a un docente real que solo dicta una comisión
+    distinta de la que la query devolvía primero (bug real, C-74 post-cierre)."""
+    if principal.tiene_algun_rol(_ROLES_SIN_LIMITE_DE_PERTENENCIA):
+        return
+    if not principal.tiene_rol(Rol.TUTOR):
+        raise ForbiddenError("Se requiere rol tutor (o alcance institucional).")
+    if not es_docente_de_alguna_comision_de_la_materia:
+        raise ForbiddenError("La materia no tiene ninguna comisión a cargo de este docente.")
+
+
+def autorizar_docente_sobre_comision(
+    principal: AuthenticatedPrincipal,
+    docente_id_de_la_comision: str | None,
+) -> None:
+    """Pertenencia del DOCENTE sobre una COMISIÓN puntual (C-74 post-cierre).
+
+    Distinto de ``autorizar_docente_sobre_materia``: el banco es materia-wide,
+    pero crear un examen APUNTA a una comisión concreta — un docente que dicta la
+    Comisión 2 de una materia no puede crear un examen para la Comisión 1 de esa
+    misma materia (comisión de otro docente) solo porque comparten materia y banco.
+    Sin este chequeo, ``crear-desde-banco`` solo validaba pertenencia a la MATERIA
+    y dejaba pasar cualquier ``comision_id`` de esa materia (bug real)."""
+    if principal.tiene_algun_rol(_ROLES_SIN_LIMITE_DE_PERTENENCIA):
+        return
+    if not principal.tiene_rol(Rol.TUTOR):
+        raise ForbiddenError("Se requiere rol tutor (o alcance institucional).")
+    if docente_id_de_la_comision is None:
+        raise ForbiddenError(
+            "La comisión no tiene docente a cargo: solo un rol institucional puede operarla."
+        )
+    if principal.subject != docente_id_de_la_comision:
+        raise ForbiddenError("La comisión pertenece a otro docente.")

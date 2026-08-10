@@ -30,6 +30,7 @@ export default function Biometria() {
   const navigate = useNavigate();
   // Sesión de proctoring activa para el envío biométrico (C-46, D6).
   const proctoringSessionId = useApp((s) => s.proctoringSessionId);
+  const setBiometriaPendientePayload = useApp((s) => s.setBiometriaPendientePayload);
   const [fase, setFase] = useState<Fase>('preparar');
   const [resultado, setResultado] = useState<{ distancia: number; umbral: number } | null>(null);
   const [reintentos, setReintentos] = useState(0); // solo para mostrar el conteo, sin límite
@@ -136,8 +137,7 @@ export default function Biometria() {
     // C-49/C-67 Task 5.4: liveness_ok, retos_resueltos y señal de cámara virtual son
     // REALES (no hardcodeados). buildBiometriaProctoringPayload es la función pura
     // testeable que construye el payload desde las señales reales de BiometricCapture.
-    if (verificado && proctoringSessionId) {
-      // El embedding viaja al backend slim para su re-inferencia/firma (C-12).
+    if (verificado) {
       // Dato sensible (Ley 25.326): NO se loguea ni se muestra en UI.
       const payload = buildBiometriaProctoringPayload(
         passiveOk,
@@ -145,9 +145,14 @@ export default function Biometria() {
         virtualCameraDetected,
         vivo ?? undefined,
       );
-      void api.enviarBiometriaProctoring(proctoringSessionId, payload).catch(() => {
-        // Error silencioso: la biometría no debe bloquear el flujo de examen.
-      });
+      if (proctoringSessionId) {
+        // Sesión ya activa (re-verificación durante el examen): envío inmediato.
+        void api.enviarBiometriaProctoring(proctoringSessionId, payload).catch(() => {});
+      } else {
+        // Sin sesión aún (flujo normal: biometría precede a la creación de sesión).
+        // Guardamos el payload para que useExamProctoring lo envíe al crear la sesión.
+        setBiometriaPendientePayload(payload);
+      }
     }
 
     // 6.1 Gate explícito: el examen NO avanza automáticamente tras la verificación.
@@ -247,31 +252,32 @@ export default function Biometria() {
                 {/* 6.5: valores técnicos en detalle OPCIONAL colapsado. Nunca en el copy principal.
                     Embedding nunca se muestra (dato sensible, Ley 25.326). */}
                 {resultado && (
-                  <details className="text-left max-w-sm mx-auto mt-xs rounded-xl border border-outline-variant/40 bg-surface-container-lowest overflow-hidden">
-                    <summary className="cursor-pointer text-label-sm font-medium text-primary select-none px-md py-sm flex items-center gap-xs">
-                      <Icon name="analytics" className="text-[16px]" />
-                      Ver detalle técnico
-                    </summary>
-                    <div className="px-md pb-md pt-base space-y-sm text-label-sm">
+                  <div className="text-left max-w-sm mx-auto mt-xs rounded-xl border border-success/30 bg-success/5 overflow-hidden px-md py-sm space-y-sm">
+                    <p className="text-label-sm font-semibold text-on-surface flex items-center gap-xs">
+                      <Icon name="analytics" className="text-[14px] text-success" />
+                      Detalle de la comparación
+                    </p>
+                    <div className="space-y-xs text-label-sm">
                       <div className="flex items-center justify-between gap-md">
                         <span className="text-on-surface-variant">Coincidencia con tu foto de referencia</span>
-                        <span className="font-semibold text-on-surface tabular-nums">
+                        <span className="font-bold text-success tabular-nums text-base">
                           {Math.round((1 - resultado.distancia) * 100)}%
                         </span>
                       </div>
-                      <div className="flex items-center justify-between gap-md">
-                        <span className="text-on-surface-variant">Mínimo necesario para confirmar</span>
-                        <span className="font-semibold text-on-surface tabular-nums">
+                      <div className="w-full bg-surface-container-high rounded-full h-2 overflow-hidden">
+                        <div
+                          className="h-full rounded-full bg-success transition-all duration-700"
+                          style={{ width: `${Math.min(100, Math.round((1 - resultado.distancia) * 100))}%` }}
+                        />
+                      </div>
+                      <div className="flex items-center justify-between gap-md pt-xs">
+                        <span className="text-on-surface-variant">Mínimo requerido</span>
+                        <span className="font-semibold text-on-surface-variant tabular-nums">
                           {Math.round((1 - resultado.umbral) * 100)}%
                         </span>
                       </div>
-                      <p className="text-on-surface-variant/80 leading-relaxed pt-sm border-t border-outline-variant/30">
-                        Es una comparación uno a uno entre tu rostro en vivo y la foto de referencia que
-                        registraste. Este valor no identifica a nadie por sí solo, y la decisión final
-                        siempre la toma una persona del equipo.
-                      </p>
                     </div>
-                  </details>
+                  </div>
                 )}
 
                 {/* 6.1 / 6.2: botón explícito — el examen NO avanza automáticamente */}
@@ -297,31 +303,32 @@ export default function Biometria() {
                 {/* 6.5: valores técnicos en detalle OPCIONAL colapsado.
                     Nunca en el copy principal. Embedding nunca se muestra. */}
                 {resultado && (
-                  <details className="text-left max-w-sm mx-auto mt-xs rounded-xl border border-outline-variant/40 bg-surface-container-lowest overflow-hidden">
-                    <summary className="cursor-pointer text-label-sm font-medium text-primary select-none px-md py-sm flex items-center gap-xs">
-                      <Icon name="analytics" className="text-[16px]" />
-                      Ver detalle técnico
-                    </summary>
-                    <div className="px-md pb-md pt-base space-y-sm text-label-sm">
+                  <div className="text-left max-w-sm mx-auto mt-xs rounded-xl border border-error/30 bg-error/5 overflow-hidden px-md py-sm space-y-sm">
+                    <p className="text-label-sm font-semibold text-on-surface flex items-center gap-xs">
+                      <Icon name="analytics" className="text-[14px] text-error" />
+                      Detalle de la comparación
+                    </p>
+                    <div className="space-y-xs text-label-sm">
                       <div className="flex items-center justify-between gap-md">
                         <span className="text-on-surface-variant">Coincidencia con tu foto de referencia</span>
-                        <span className="font-semibold text-on-surface tabular-nums">
+                        <span className="font-bold text-error tabular-nums text-base">
                           {Math.round((1 - resultado.distancia) * 100)}%
                         </span>
                       </div>
-                      <div className="flex items-center justify-between gap-md">
-                        <span className="text-on-surface-variant">Mínimo necesario para confirmar</span>
-                        <span className="font-semibold text-on-surface tabular-nums">
+                      <div className="w-full bg-surface-container-high rounded-full h-2 overflow-hidden">
+                        <div
+                          className="h-full rounded-full bg-error transition-all duration-700"
+                          style={{ width: `${Math.min(100, Math.round((1 - resultado.distancia) * 100))}%` }}
+                        />
+                      </div>
+                      <div className="flex items-center justify-between gap-md pt-xs">
+                        <span className="text-on-surface-variant">Mínimo requerido</span>
+                        <span className="font-semibold text-on-surface-variant tabular-nums">
                           {Math.round((1 - resultado.umbral) * 100)}%
                         </span>
                       </div>
-                      <p className="text-on-surface-variant/80 leading-relaxed pt-sm border-t border-outline-variant/30">
-                        Es una comparación uno a uno entre tu rostro en vivo y la foto de referencia que
-                        registraste. Este valor no identifica a nadie por sí solo, y la decisión final
-                        siempre la toma una persona del equipo.
-                      </p>
                     </div>
-                  </details>
+                  </div>
                 )}
 
                 <div className="flex gap-sm justify-center flex-wrap">

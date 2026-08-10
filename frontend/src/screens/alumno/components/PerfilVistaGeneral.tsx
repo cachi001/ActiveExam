@@ -48,7 +48,7 @@ export function PerfilVistaGeneral({
   onEscanearDni,
 }: Props) {
   return (
-    <div className="max-w-2xl lg:max-w-5xl xl:max-w-6xl mx-auto space-y-xl animate-in fade-in duration-300">
+    <div className="max-w-4xl mx-auto space-y-4 sm:space-y-6 animate-in fade-in duration-300">
       <BackButton onClick={() => onNavigate('/alumno')} />
       <header>
         <div className="flex items-center gap-sm">

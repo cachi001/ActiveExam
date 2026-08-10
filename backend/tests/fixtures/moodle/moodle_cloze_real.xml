@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<quiz>
+  <!-- Categoría: Python Básico -->
+  <question type="category">
+    <category>
+      <text>$course$/top/Python Básico</text>
+    </category>
+    <info format="html">
+      <text></text>
+    </info>
+    <idnumber></idnumber>
+  </question>
+
+  <!-- Pregunta cloze 1: blanks MULTICHOICE con prefijo = -->
+  <question type="cloze">
+    <name>
+      <text>Evaluar expresiones booleanas</text>
+    </name>
+    <questiontext format="html">
+      <text><![CDATA[<p>Evaluar <code>5 &gt; 3</code> retorna {1:MULTICHOICE:=True~False} y evaluar <code>2 == 3</code> retorna {2:MULTICHOICE:=False~True}.</p>]]></text>
+    </questiontext>
+    <generalfeedback format="html"><text></text></generalfeedback>
+    <penalty>0.3333333</penalty>
+    <hidden>0</hidden>
+  </question>
+
+  <!-- Pregunta cloze 2: blank MULTICHOICE_S (case-sensitive) y SHORTANSWER -->
+  <question type="cloze">
+    <name>
+      <text>Tipos de datos en Python</text>
+    </name>
+    <questiontext format="html">
+      <text><![CDATA[<p>En Python, <code>type(42)</code> devuelve {1:MULTICHOICE_S:=&lt;class 'int'&gt;~&lt;class 'str'&gt;~&lt;class 'float'&gt;} y la función para obtener la longitud de una lista es {2:SHORTANSWER:=len~=length}.</p>]]></text>
+    </questiontext>
+    <generalfeedback format="html"><text></text></generalfeedback>
+    <penalty>0.3333333</penalty>
+    <hidden>0</hidden>
+  </question>
+
+  <!-- Pregunta cloze 3: blank con prefijo %100% (peso explícito) -->
+  <question type="multianswer">
+    <name>
+      <text>Operadores de comparación</text>
+    </name>
+    <questiontext format="html">
+      <text><![CDATA[<p>El operador {1:MULTICHOICE:%100%>=~%0%>~%0%==} se usa para mayor o igual que, mientras que {2:MULTICHOICE:%100%!=~%0%<>~%0%==} se usa para distinto de.</p>]]></text>
+    </questiontext>
+    <generalfeedback format="html"><text></text></generalfeedback>
+    <penalty>0.3333333</penalty>
+    <hidden>0</hidden>
+  </question>
+
+  <!-- Categoría: Estructuras de Control -->
+  <question type="category">
+    <category>
+      <text>$course$/top/Estructuras de Control</text>
+    </category>
+    <info format="html">
+      <text></text>
+    </info>
+    <idnumber></idnumber>
+  </question>
+
+  <!-- Pregunta multichoice normal para verificar que conviven -->
+  <question type="multichoice">
+    <name>
+      <text>Bucle for básico</text>
+    </name>
+    <questiontext format="html">
+      <text><![CDATA[<p>¿Cuál es la palabra clave para definir un bucle en Python?</p>]]></text>
+    </questiontext>
+    <generalfeedback format="html"><text></text></generalfeedback>
+    <defaultgrade>1.0000000</defaultgrade>
+    <penalty>0.3333333</penalty>
+    <hidden>0</hidden>
+    <single>true</single>
+    <answer fraction="100" format="moodle_auto_format">
+      <text>for</text>
+    </answer>
+    <answer fraction="0" format="moodle_auto_format">
+      <text>loop</text>
+    </answer>
+    <answer fraction="0" format="moodle_auto_format">
+      <text>repeat</text>
+    </answer>
+  </question>
+</quiz>

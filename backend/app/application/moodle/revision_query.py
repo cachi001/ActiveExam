@@ -24,11 +24,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.domain.exam_content.visibilidad import nota_visible, revision_visible
 from app.infrastructure.persistence.models.exam_content import (
     ExamenContenidoModel,
+    OpcionClozeBlancoModel,
     OpcionRespuestaModel,
+    PreguntaClozeBlankModel,
     PreguntaExamenModel,
 )
 from app.infrastructure.persistence.models.moodle_writeback import (
     MoodleWritebackEstadoModel,
+    RespuestaAlumnoClozeModel,
     RespuestaAlumnoModel,
 )
 from app.infrastructure.persistence.models.proctoring import ProctoringSessionModel
@@ -46,6 +49,19 @@ class RevisionOpcion:
 
 
 @dataclass(frozen=True, slots=True)
+class RevisionBlank:
+    """Un blank (hueco) de una pregunta cloze en la revisión."""
+
+    blank_id: str
+    orden: int
+    tipo: str
+    texto_antes: str | None
+    texto_despues: str | None
+    respuesta_alumno: str | None  # texto de lo que respondió (texto de opción o texto libre)
+    es_correcta: bool
+
+
+@dataclass(frozen=True, slots=True)
 class RevisionPregunta:
     """Una pregunta en la revisión con su corrección."""
 
@@ -55,6 +71,8 @@ class RevisionPregunta:
     opciones: tuple[RevisionOpcion, ...]
     respondida: bool
     acertada: bool
+    tipo: str = "multichoice"
+    blanks_revisados: tuple["RevisionBlank", ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -215,41 +233,150 @@ async def obtener_revision(
     ).all()
     elegida_por_pregunta = {r.pregunta_id: r.opcion_elegida_id for r in resp_rows}
 
+    # Respuestas cloze del alumno en ESTA sesión: viven en su propia tabla
+    # (respuesta_alumno_cloze, una fila por blank), NO como JSON embebido en
+    # respuesta_alumno.opcion_elegida_id — ese esquema quedó obsoleto cuando
+    # se separó la tabla dedicada para cloze/ddwtos (ver RespuestaAlumnoClozeModel).
+    resp_cloze_rows = (
+        await db.execute(
+            select(
+                RespuestaAlumnoClozeModel.pregunta_id,
+                RespuestaAlumnoClozeModel.blank_id,
+                RespuestaAlumnoClozeModel.valor,
+            ).where(RespuestaAlumnoClozeModel.session_id == session_id)
+        )
+    ).all()
+    respuestas_cloze_por_pregunta: dict[str, dict[str, str]] = {}
+    for r in resp_cloze_rows:
+        respuestas_cloze_por_pregunta.setdefault(r.pregunta_id, {})[r.blank_id] = r.valor
+
+    # Cargar blanks cloze para las preguntas de tipo 'cloze'.
+    cloze_pregunta_ids = [p.id for p in preg_rows if p.tipo == "cloze"]
+    blanks_por_pregunta: dict[str, list[PreguntaClozeBlankModel]] = {}
+    opciones_cloze_por_blank: dict[str, list[OpcionClozeBlancoModel]] = {}
+    if cloze_pregunta_ids:
+        blank_rows = (
+            await db.execute(
+                select(PreguntaClozeBlankModel)
+                .where(PreguntaClozeBlankModel.pregunta_id.in_(cloze_pregunta_ids))
+                .order_by(PreguntaClozeBlankModel.orden)
+            )
+        ).scalars().all()
+        for b in blank_rows:
+            blanks_por_pregunta.setdefault(b.pregunta_id, []).append(b)
+        blank_ids_all = [b.id for b in blank_rows]
+        if blank_ids_all:
+            opt_cloze_rows = (
+                await db.execute(
+                    select(OpcionClozeBlancoModel)
+                    .where(OpcionClozeBlancoModel.blank_id.in_(blank_ids_all))
+                )
+            ).scalars().all()
+            for oc in opt_cloze_rows:
+                opciones_cloze_por_blank.setdefault(oc.blank_id, []).append(oc)
+
     preguntas: list[RevisionPregunta] = []
     correctas = 0
     sin_responder = 0
     for p in preg_rows:
         elegida_id = elegida_por_pregunta.get(p.id)
-        opciones: list[RevisionOpcion] = []
-        acertada = False
-        for o in opciones_por_pregunta.get(p.id, []):
-            elegida = o.id == elegida_id
-            if elegida and o.es_correcta:
-                acertada = True
-            opciones.append(
-                RevisionOpcion(
-                    id=o.id or "",
-                    texto=o.texto,
-                    orden=o.orden,
-                    es_correcta=bool(o.es_correcta),
-                    elegida=elegida,
+
+        if p.tipo == "cloze":
+            respuesta_cloze = respuestas_cloze_por_pregunta.get(p.id, {})
+
+            blanks_revisados: list[RevisionBlank] = []
+            todos_correctos = True
+            alguno_respondido = False
+            for blank in blanks_por_pregunta.get(p.id, []):
+                valor = respuesta_cloze.get(blank.id, "")
+                if valor:
+                    alguno_respondido = True
+                respuesta_alumno_texto: str | None = None
+                blank_correcto = False
+                if blank.tipo == "multichoice":
+                    # valor = UUID de la OpcionClozeBlancoModel elegida
+                    opciones_blank = opciones_cloze_por_blank.get(blank.id, [])
+                    elegida_opcion = next((oc for oc in opciones_blank if oc.id == valor), None)
+                    if elegida_opcion is not None:
+                        respuesta_alumno_texto = elegida_opcion.texto
+                        blank_correcto = bool(elegida_opcion.es_correcta)
+                    else:
+                        todos_correctos = False
+                else:
+                    # shortanswer: comparar texto case-insensitive contra correctas
+                    respuesta_alumno_texto = valor if valor else None
+                    opciones_blank = opciones_cloze_por_blank.get(blank.id, [])
+                    correctas_blank = [oc.texto for oc in opciones_blank if oc.es_correcta]
+                    if valor and any(valor.strip().lower() == c.strip().lower() for c in correctas_blank):
+                        blank_correcto = True
+                    elif valor:
+                        todos_correctos = False
+                    else:
+                        todos_correctos = False
+                if not valor:
+                    todos_correctos = False
+                blanks_revisados.append(
+                    RevisionBlank(
+                        blank_id=blank.id,
+                        orden=blank.orden,
+                        tipo=blank.tipo,
+                        texto_antes=blank.texto_antes,
+                        texto_despues=blank.texto_despues,
+                        respuesta_alumno=respuesta_alumno_texto,
+                        es_correcta=blank_correcto,
+                    )
+                )
+
+            respondida = alguno_respondido
+            acertada = bool(blanks_revisados) and todos_correctos
+            if not respondida:
+                sin_responder += 1
+            if acertada:
+                correctas += 1
+            preguntas.append(
+                RevisionPregunta(
+                    id=p.id or "",
+                    enunciado=p.enunciado,
+                    orden=p.orden,
+                    opciones=(),
+                    respondida=respondida,
+                    acertada=acertada,
+                    tipo="cloze",
+                    blanks_revisados=tuple(blanks_revisados),
                 )
             )
-        respondida = elegida_id is not None
-        if not respondida:
-            sin_responder += 1
-        if acertada:
-            correctas += 1
-        preguntas.append(
-            RevisionPregunta(
-                id=p.id or "",
-                enunciado=p.enunciado,
-                orden=p.orden,
-                opciones=tuple(opciones),
-                respondida=respondida,
-                acertada=acertada,
+        else:
+            opciones: list[RevisionOpcion] = []
+            acertada = False
+            for o in opciones_por_pregunta.get(p.id, []):
+                elegida = o.id == elegida_id
+                if elegida and o.es_correcta:
+                    acertada = True
+                opciones.append(
+                    RevisionOpcion(
+                        id=o.id or "",
+                        texto=o.texto,
+                        orden=o.orden,
+                        es_correcta=bool(o.es_correcta),
+                        elegida=elegida,
+                    )
+                )
+            respondida = elegida_id is not None
+            if not respondida:
+                sin_responder += 1
+            if acertada:
+                correctas += 1
+            preguntas.append(
+                RevisionPregunta(
+                    id=p.id or "",
+                    enunciado=p.enunciado,
+                    orden=p.orden,
+                    opciones=tuple(opciones),
+                    respondida=respondida,
+                    acertada=acertada,
+                    tipo=p.tipo,
+                )
             )
-        )
 
     total = len(preg_rows)
     incorrectas = total - correctas - sin_responder

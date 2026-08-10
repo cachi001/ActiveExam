@@ -27,7 +27,7 @@ export default function SessionDetail() {
         <Card className="text-center py-xl space-y-md">
           <Icon name="description" className="text-outline text-[48px]" />
           <p className="text-body-md text-on-surface-variant">Seleccioná una sesión desde la cola de revisión.</p>
-          <Button icon="gavel" onClick={() => navigate('/revisor')} className="mx-auto">Ir a la cola</Button>
+          <Button icon="gavel" onClick={() => navigate('/admin/cola-revision')} className="mx-auto">Ir a la cola</Button>
         </Card>
       </StaffShell>
     );
@@ -96,7 +96,7 @@ export default function SessionDetail() {
         </div>
 
         <div className="flex gap-sm">
-          <Button variant="outline" icon="arrow_back" onClick={() => navigate('/revisor')}>Volver a la cola</Button>
+          <Button variant="outline" icon="arrow_back" onClick={() => navigate('/admin/cola-revision')}>Volver a la cola</Button>
           <Button icon="download">Exportar dossier firmado</Button>
         </div>
       </div>

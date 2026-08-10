@@ -38,7 +38,7 @@ export function examInfoDeSesion(s: SesionProctoringResumen): ExamInfo | null {
  * Arma el subtítulo del header de "Supervisión en vivo" a partir del contexto
  * académico de una sesión: `materia · comisión · docente`, salteando las partes
  * vacías o sentinela (una sesión sin materia/comisión asignada no debe mostrar
- * "Sin materia asignada" en el header, ni dejar un " · " colgando por el docente
+ * "Sin materia asignada" en el header, ni dejar un " · " colgando por el tutor
  * vacío que trae el contexto server-side).
  *
  * PURA: sin red, sin hooks. Retorna '' si no hay info o si nada aporta.

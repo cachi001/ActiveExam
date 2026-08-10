@@ -111,7 +111,7 @@ export default function Proctor() {
     setProctoringSessionId(sesion.id);
     // "Volver" del detalle regresa acá (supervisión en vivo), no a grabadas.
     setProctoringDetailBackRoute('/proctor');
-    navigate(PROCTORING_DETAIL_ROUTE);
+    navigate(PROCTORING_DETAIL_ROUTE + '/' + sesion.id);
   };
 
   const handleAbrirExamen = (examId: string) => {

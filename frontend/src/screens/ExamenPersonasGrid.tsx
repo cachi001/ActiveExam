@@ -85,7 +85,7 @@ export default function ExamenPersonasGrid() {
     setProctoringSessionId(s.id);
     // "Volver" del detalle regresa al grid de personas de este examen.
     setProctoringDetailBackRoute('/proctor/examen');
-    navigate(DETALLE_ROUTE);
+    navigate(DETALLE_ROUTE + '/' + s.id);
   };
 
   const eventos = personas.reduce((acc, s) => acc + s.total_eventos, 0);

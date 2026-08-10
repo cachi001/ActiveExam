@@ -35,6 +35,47 @@ class ImportReporteResponse(BaseModel):
     omitidas: list[OmitidaItemResponse]
 
 
+class PreguntaImportadaItemResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enunciado: str
+    tipo: str
+
+
+class ImportarBancoXmlResponse(BaseModel):
+    """Resultado de importar un XML directo al banco de preguntas (sin examen)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    preguntas_nuevas: int
+    preguntas_actualizadas: int
+    omitidas: list[OmitidaItemResponse]
+    nuevas: list[PreguntaImportadaItemResponse] = []
+    actualizadas: list[PreguntaImportadaItemResponse] = []
+
+
+class PreviewCategoriaResponse(BaseModel):
+    """Una categoría del árbol detectado en el XML, con conteo de preguntas por tipo."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    ruta: list[str]
+    preguntas_por_tipo: dict[str, int]
+    preguntas: list[PreguntaImportadaItemResponse] = []
+
+
+class PreviewImportBancoResponse(BaseModel):
+    """Preview del import: qué trae el XML, SIN persistir nada en la DB."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    categorias: list[PreviewCategoriaResponse]
+    sin_categoria_por_tipo: dict[str, int]
+    omitidas: list[OmitidaItemResponse]
+    total_preguntas: int
+    sin_categoria_preguntas: list[PreguntaImportadaItemResponse] = []
+
+
 # ---------------------------------------------------------------------------
 # Schema de catálogo para el alumno — D3: es_correcta AUSENTE
 # ---------------------------------------------------------------------------
@@ -55,7 +96,9 @@ class ExamenContenidoResumenResponse(BaseModel):
     cantidad_preguntas: int
     comision_id: str | None = None
     comision_nombre: str | None = None
+    comision_codigo: str | None = None
     materia_nombre: str | None = None
+    materia_codigo: str | None = None
     # Config por examen para gatear "Rendir" por ventana/intentos (migración 0032).
     apertura: datetime | None = None
     cierre: datetime | None = None
@@ -95,6 +138,23 @@ class OpcionRendicionResponse(BaseModel):
     # D3: es_correcta AUSENTE — la opción correcta NUNCA viaja al cliente
 
 
+class BlankRendicionResponse(BaseModel):
+    """Hueco de una pregunta cloze para la rendición.
+
+    D3: sin la respuesta correcta. En un blank SHORTANSWER ``opciones`` viene vacío
+    a propósito — sus opciones SON las respuestas aceptadas.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    orden: int
+    tipo: str
+    texto_antes: str
+    texto_despues: str
+    opciones: list[OpcionRendicionResponse]
+
+
 class PreguntaRendicionResponse(BaseModel):
     """Pregunta para la rendición del alumno."""
 
@@ -105,6 +165,8 @@ class PreguntaRendicionResponse(BaseModel):
     tipo: str
     orden: int
     opciones: list[OpcionRendicionResponse]
+    # Solo poblado en preguntas cloze.
+    blanks: list[BlankRendicionResponse] = []
 
 
 class ExamenRendicionResponse(BaseModel):
@@ -144,6 +206,20 @@ class OpcionRevisionResponse(BaseModel):
     elegida: bool
 
 
+class BlankRevisionResponse(BaseModel):
+    """Blank (hueco) de una pregunta cloze en la revisión."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    blank_id: str
+    orden: int
+    tipo: str
+    texto_antes: str | None = None
+    texto_despues: str | None = None
+    respuesta_alumno: str | None = None
+    es_correcta: bool
+
+
 class PreguntaRevisionResponse(BaseModel):
     """Pregunta en la revisión con su corrección."""
 
@@ -155,6 +231,8 @@ class PreguntaRevisionResponse(BaseModel):
     opciones: list[OpcionRevisionResponse]
     respondida: bool
     acertada: bool
+    tipo: str = "multichoice"
+    blanks_revisados: list[BlankRevisionResponse] = []
 
 
 class RevisionExamenResponse(BaseModel):
@@ -224,6 +302,65 @@ class PreguntasSeleccionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     seleccionadas: list[str]
+
+
+class SorteoRequest(BaseModel):
+    """Body para armar examen por sorteo aleatorio de categorías (C-74 §3).
+
+    ``categoria_ids``: lista de ids de categorías de las que se sortea.
+    ``cantidad_por_categoria``: cuántas preguntas se sortean de CADA categoría.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    categoria_ids: list[str]
+    cantidad_por_categoria: int
+
+
+class SorteoCategoriaItem(BaseModel):
+    """Un tramo del sorteo: categoría + cantidad de preguntas a extraer del banco."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    categoria_id: str | None = None  # None = "Sin clasificar"
+    cantidad: int = Field(ge=1)
+    # Elegir "Unidad 1" normalmente significa "todo lo de Unidad 1", incluidos sus
+    # temas. Por eso el default incluye la descendencia completa. En False, sortea
+    # SOLO lo que cuelga directo de esa categoría, sin bajar a las subcategorías.
+    incluir_subcategorias: bool = True
+    # None = cualquier tipo de la categoría. Con lista, solo sortea de esos tipos
+    # (ej. ["multichoice"] para dejar afuera las cloze de la misma categoría).
+    tipos: list[str] | None = None
+
+
+class CrearDesdebancoRequest(BaseModel):
+    """Crea un examen de contenido extrayendo preguntas aleatoriamente del banco.
+
+    El examen se genera en un solo paso: no requiere importar XML ni hacer sorteo
+    por separado. Cada item de ``sorteo`` indica cuántas preguntas extraer de
+    una categoría del banco (None = sin clasificar).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    titulo: str = Field(min_length=1, max_length=200)
+    materia_id: str
+    comision_id: str | None = None
+    sorteo: list[SorteoCategoriaItem] = Field(min_length=1)
+    limite_preguntas: int | None = Field(default=None, ge=1)
+    # Escala de calificación: configurable por examen (migración 0061). Default
+    # 100/60 si no se manda — nunca cae silenciosamente en "sobre 10". El docente
+    # puede elegir otra escala acá mismo, al crear, sin un PATCH /config aparte.
+    nota_maxima: float = Field(default=100.0, gt=0)
+    nota_aprobacion: float = Field(default=60.0, ge=0)
+
+
+class CrearDesdebancoResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    examen_id: str
+    titulo: str
+    total_preguntas: int
 
 
 # ---------------------------------------------------------------------------
@@ -302,6 +439,22 @@ class AltaInlineResponse(BaseModel):
     materia: MateriaResponse
     comision: ComisionResponse
     examen_id: str | None = None
+
+
+class ComisionConMateriaResponse(BaseModel):
+    """Comisión + su materia embebida, para un selector combinado único
+    ("CÓDIGO - Materia") que no requiere elegir materia primero."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    codigo: str
+    nombre: str
+    periodo: str | None = None
+    anio: int | None = None
+    materia_id: str
+    materia_nombre: str
+    materia_codigo: str
 
 
 class MateriaCrearRequest(BaseModel):
@@ -703,3 +856,4 @@ class InformeDevolucionResponse(BaseModel):
     motivo: str | None = None
     senales: list[SenalAnalisisResponse]
     capturas: list[CapturaFirmadaResponse]
+

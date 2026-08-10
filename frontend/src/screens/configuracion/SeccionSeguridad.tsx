@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Button, Icon } from '../../ui/components';
 import { adminApi } from '../../lib/apiAdmin';
+import { validarPasswordFuerte, REQUISITOS_PASSWORD } from '../../lib/passwordPolicy';
 
 const LABEL = 'block text-[13px] font-medium text-on-surface mb-1.5';
 const HINT  = 'mt-1.5 text-[12px] text-on-surface-variant/70 leading-relaxed';
@@ -23,7 +24,8 @@ export default function SeccionSeguridad() {
 
   async function guardar() {
     setError(null);
-    if (nueva.length < 8) { setError('La contraseña debe tener al menos 8 caracteres.'); return; }
+    const debilidad = validarPasswordFuerte(nueva);
+    if (debilidad) { setError(debilidad); return; }
     if (nueva !== confirmar) { setError('Las contraseñas no coinciden.'); return; }
     setGuardando(true);
     try {
@@ -40,7 +42,6 @@ export default function SeccionSeguridad() {
 
   return (
     <div>
-      <h3 className="text-[15px] font-semibold text-on-surface mb-1">Seguridad</h3>
       <p className={HINT}>Actualizá tu contraseña periódicamente.</p>
 
       {ok && (
@@ -82,7 +83,7 @@ export default function SeccionSeguridad() {
               disabled={guardando}
               autoComplete="new-password"
             />
-            <p className={HINT}>Mínimo 8 caracteres.</p>
+            <p className={HINT}>{REQUISITOS_PASSWORD}</p>
           </div>
 
           <div>

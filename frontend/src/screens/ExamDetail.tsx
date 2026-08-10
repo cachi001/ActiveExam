@@ -31,15 +31,14 @@ function StatCard({
   loading?: boolean;
 }) {
   return (
-    <Card className="flex items-start gap-sm !p-md">
-      <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
-        <Icon name={icon} className="text-[20px]" />
+    <Card className="flex items-center gap-md !p-lg">
+      <div className="w-11 h-11 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+        <Icon name={icon} className="text-[22px]" />
       </div>
       <div className="min-w-0 flex-1">
         <p className="text-label-sm text-on-surface-variant uppercase tracking-wide">{label}</p>
         {loading ? (
-          // Mientras carga: skeleton, NO un guión. (pref. del owner)
-          <div className="mt-1.5 h-5 w-20 max-w-full rounded bg-surface-200 animate-pulse" />
+          <div className="mt-1.5 h-6 w-24 max-w-full rounded bg-surface-200 animate-pulse" />
         ) : (
           children
         )}
@@ -106,19 +105,19 @@ export default function ExamDetail() {
         {/* Header stats — tarjetas consistentes */}
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-md">
           <StatCard icon="quiz" label="Preguntas" loading={cargando}>
-            <p className="font-headline text-title-lg text-on-surface tabular-nums">
+            <p className="font-headline text-display-sm text-on-surface tabular-nums leading-tight mt-0.5">
               {examen?.cantidad_preguntas ?? 0}
             </p>
           </StatCard>
           <StatCard icon="menu_book" label="Materia" loading={cargando}>
-            <p className="text-label-md text-on-surface truncate">
-              {examen?.materia_nombre ?? <span className="text-outline italic">Sin materia</span>}
+            <p className="text-title-sm font-semibold text-on-surface truncate mt-0.5">
+              {examen?.materia_nombre ?? <span className="text-outline font-normal italic">Sin materia</span>}
             </p>
           </StatCard>
           <div className="col-span-2 sm:col-span-1">
             <StatCard icon="group" label="Comisión" loading={cargando}>
-              <p className="text-label-md text-on-surface truncate">
-                {examen?.comision_nombre ?? <span className="text-outline italic">Sin comisión</span>}
+              <p className="text-title-sm font-semibold text-on-surface truncate mt-0.5">
+                {examen?.comision_nombre ?? <span className="text-outline font-normal italic">Sin comisión</span>}
               </p>
             </StatCard>
           </div>
@@ -133,6 +132,7 @@ export default function ExamDetail() {
 
         <PreguntasSeleccionSection
           examenId={examenId}
+          materiaId={examen?.materia_id}
           onSeleccionGuardada={(cantidad) =>
             setExamen((prev) => (prev ? { ...prev, cantidad_preguntas: cantidad } : prev))
           }

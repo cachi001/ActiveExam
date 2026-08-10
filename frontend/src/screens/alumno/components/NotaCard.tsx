@@ -51,7 +51,7 @@ export function NotaCard({ nota }: { nota: NotaExamen }) {
           llegara un dato viejo cacheado. */}
       {enRevision && !nota.nota_anulada && (
         <p className="text-[12px] text-on-surface-variant">
-          En cola de revisión por los eventos registrados durante la supervisión. Un docente la
+          En cola de revisión por los eventos registrados durante la supervisión. Un tutor la
           revisará y confirmará tu nota.
         </p>
       )}

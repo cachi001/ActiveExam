@@ -29,7 +29,13 @@ export type { AuthStatus };
  */
 async function fetchMyName(
   provider: AuthProvider,
-): Promise<{ nombre?: string; apellido?: string } | null> {
+): Promise<{
+  nombre?: string;
+  apellido?: string;
+  creado_en?: string;
+  ultimo_acceso_en?: string;
+  debe_cambiar_password?: boolean;
+} | null> {
   const token = provider.getToken();
   if (!token) return null;
   try {
@@ -37,10 +43,19 @@ async function fetchMyName(
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!res.ok) return null;
-    const data = (await res.json()) as { nombre?: string | null; apellido?: string | null };
+    const data = (await res.json()) as {
+      nombre?: string | null;
+      apellido?: string | null;
+      creado_en?: string | null;
+      ultimo_acceso_en?: string | null;
+      debe_cambiar_password?: boolean | null;
+    };
     return {
       nombre: data.nombre ?? undefined,
       apellido: data.apellido ?? undefined,
+      creado_en: data.creado_en ?? undefined,
+      ultimo_acceso_en: data.ultimo_acceso_en ?? undefined,
+      debe_cambiar_password: data.debe_cambiar_password ?? undefined,
     };
   } catch {
     return null;
@@ -69,6 +84,9 @@ interface AuthState {
 
   /** Actualiza la foto de perfil del principal (fuente única — C-73). Sin efecto si no hay principal. */
   setFotoPerfil: (dataUrl: string) => void;
+
+  /** Marca que el usuario ya definió su contraseña (limpia el gate de clave temporal). */
+  markPasswordChanged: () => void;
 }
 
 // Guardamos referencia al provider activo para que login/logout puedan delegar.
@@ -91,20 +109,24 @@ export const useAuth = create<AuthState>((set, get) => ({
       // con GET /auth/me para mostrar "Hola, Nombre Apellido" en lugar del
       // legajo. Si la llamada falla, el principal queda como estaba.
       void fetchMyName(provider).then((extra) => {
-        if (!extra || !extra.nombre) return;
+        if (!extra) return;
         const current = get().principal;
         if (!current) return;
-        // Solo actualizamos si lo que tenemos sigue siendo el fallback
-        // (id_institucional). Si el provider ya nos dio un nombre humano
-        // (Keycloak con claim `name`), respetamos eso.
-        if (current.nombre !== current.id_institucional) return;
-        // Guardamos nombre y apellido POR SEPARADO (no combinados): la UI los
-        // une donde corresponde (perfil) y usa solo el nombre en el saludo.
+        // Siempre fusionamos fechas. El nombre solo se actualiza si el principal
+        // todavía tiene el fallback (id_institucional): si el provider ya entregó
+        // un nombre humano (Keycloak con claim `name`), lo respetamos.
+        const nombreActualizado =
+          extra.nombre && current.nombre === current.id_institucional
+            ? extra.nombre
+            : current.nombre;
         set({
           principal: {
             ...current,
-            nombre: extra.nombre,
+            nombre: nombreActualizado,
             apellido: extra.apellido ?? current.apellido,
+            creado_en: extra.creado_en ?? current.creado_en,
+            ultimo_acceso_en: extra.ultimo_acceso_en ?? current.ultimo_acceso_en,
+            debe_cambiar_password: extra.debe_cambiar_password ?? current.debe_cambiar_password,
           },
         });
       });
@@ -155,4 +177,9 @@ export const useAuth = create<AuthState>((set, get) => ({
 
   setFotoPerfil: (dataUrl) =>
     set((s) => ({ principal: s.principal ? { ...s.principal, foto_perfil: dataUrl } : s.principal })),
+
+  markPasswordChanged: () =>
+    set((s) => ({
+      principal: s.principal ? { ...s.principal, debe_cambiar_password: false } : s.principal,
+    })),
 }));

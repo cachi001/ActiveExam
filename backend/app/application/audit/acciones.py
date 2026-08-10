@@ -131,11 +131,6 @@ class AccionAuditoria(StrEnum):
     # ── Derechos del titular (DSR) ───────────────────────────────────────
     DSR_ACCESO_INFORME = "derecho_acceso.informe_devolucion"
 
-    # ── Export del propio registro de auditoría ──────────────────────────
-    # Descargar el registro completo es en sí una acción sensible (se lleva
-    # datos de quién-hizo-qué del sistema): tiene que quedar su propio rastro.
-    AUDITORIA_EXPORT_XLSX = "auditoria.export.xlsx"
-    AUDITORIA_EXPORT_PDF = "auditoria.export.pdf"
 
 
 # Prefijos de acciones DINÁMICAS (llevan un sufijo variable). Se componen así:

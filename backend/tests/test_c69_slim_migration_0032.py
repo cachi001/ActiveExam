@@ -3,8 +3,11 @@
 Verifica con alembic REAL contra Postgres (postgres:16, sin TimescaleDB):
 - `alembic upgrade slim@head` aplica hasta 0032: examen_contenido gana las 7
   columnas de configuración con sus defaults. Una fila preexistente (creada antes
-  de la migración) queda con la config por defecto (1 intento, nota_maxima 10,
-  nota_aprobacion 6, mezclar_preguntas false, ventana/límite NULL).
+  de la migración) queda con la config por defecto (1 intento, nota_maxima 100,
+  nota_aprobacion 60, mezclar_preguntas false, ventana/límite NULL). El default
+  de nota_maxima/nota_aprobacion fue 10/6 hasta la migración 0061, que lo subió
+  a 100/60 (escala 0-100, nunca "sobre 10") — este test corre contra slim@head,
+  así que verifica el default VIGENTE, no el de 0032 en aislamiento.
 - `downgrade slim@0031` dropea las 7 columnas, dejando intacto examen_contenido.
 
 Requiere RUN_STACK_TESTS / DATABASE_URL apuntando a un Postgres sin timescale.
@@ -119,10 +122,10 @@ def test_migracion_0032_agrega_config_con_defaults() -> None:
     assert "timestamp" in cols["apertura"][0]
     assert "timestamp" in cols["cierre"][0]
 
-    # Defaults
+    # Defaults (vigentes en slim@head, post-migración 0061)
     assert "1" in (cols["intentos_permitidos"][2] or "")
-    assert "10" in (cols["nota_maxima"][2] or "")
-    assert "6" in (cols["nota_aprobacion"][2] or "")
+    assert "100" in (cols["nota_maxima"][2] or "")
+    assert "60" in (cols["nota_aprobacion"][2] or "")
     assert "false" in (cols["mezclar_preguntas"][2] or "").lower()
 
     # La fila preexistente toma los defaults (backfill por server_default).
@@ -140,8 +143,8 @@ def test_migracion_0032_agrega_config_con_defaults() -> None:
         assert row[1] == 1  # intentos_permitidos
         assert row[2] is None  # apertura
         assert row[3] is None  # cierre
-        assert float(row[4]) == 10.0  # nota_maxima
-        assert float(row[5]) == 6.0  # nota_aprobacion
+        assert float(row[4]) == 100.0  # nota_maxima
+        assert float(row[5]) == 60.0  # nota_aprobacion
         assert row[6] is False  # mezclar_preguntas
         cur.execute("DELETE FROM examen_contenido WHERE id = %s;", (examen_id,))
         conn.commit()

@@ -162,6 +162,7 @@ export async function getExamenHeaderFn(
     cantidad_preguntas: (data['cantidad_preguntas'] as number) ?? 0,
     comision_id: (data['comision_id'] as string | null) ?? null,
     comision_nombre: (data['comision_nombre'] as string | null) ?? null,
+    materia_id: (data['materia_id'] as string | null) ?? null,
     materia_nombre: (data['materia_nombre'] as string | null) ?? null,
   };
 }

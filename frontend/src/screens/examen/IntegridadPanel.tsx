@@ -47,7 +47,7 @@ export function IntegridadPanel({ activo, eventCount, score, eventos, examen }: 
 
       {enRiesgo && (
         <p className="text-label-xs text-error font-semibold">
-          Tu sesión va a revisión de un docente.
+          Tu sesión va a revisión de un tutor.
         </p>
       )}
 

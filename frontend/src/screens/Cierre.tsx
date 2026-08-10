@@ -146,7 +146,7 @@ export default function Cierre() {
                   </p>
                   <p className="text-label-md text-on-surface-variant mt-0.5">
                     {irARevision
-                      ? <>Tu sesión alcanzó o superó el umbral establecido ({umbralEfectivo} puntos). Un docente la revisará y confirmará tu nota.</>
+                      ? <>Tu sesión alcanzó o superó el umbral establecido ({umbralEfectivo} puntos). Un tutor la revisará y confirmará tu nota.</>
                       : 'Tu sesión no presenta incidencias que requieran revisión adicional.'}
                   </p>
                 </div>

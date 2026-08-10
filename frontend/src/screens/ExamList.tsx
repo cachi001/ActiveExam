@@ -12,8 +12,9 @@ import { Pagination, PageSizeSelect } from '../ui/Pagination';
 import { RefreshBar } from '../ui/RefreshBar';
 import { useAutoRefresh } from '../lib/useAutoRefresh';
 import { ActionMenu } from '../ui/ActionMenu';
+import { AdminTable, type AdminColumn } from '../ui/AdminTable';
 import { listarExamenesContenidoPaginadoFn } from '../lib/examContentCatalog';
-import { ImportExamModal } from '../admin/ExamImport/ImportExamModal';
+import { CrearExamenModal } from '../admin/ExamImport/CrearExamenModal';
 import { useToast } from '../ui/toast';
 import type { ExamenContenidoResumen, Materia, Comision } from '../lib/types';
 
@@ -84,16 +85,10 @@ export default function ExamList() {
 
   const importar = () => navigate('/admin/examenes/importar');
 
-  // Éxito del modal: cerrar + refrescar la lista paginada (nuevo ref de query
-  // → re-dispara el fetch del useEffect, volviendo a la página 1).
-  const onImportado = (importadas: number) => {
+  const onCreado = (_examenId: string, totalPreguntas: number) => {
     setImportOpen(false);
     setQuery((q) => ({ ...q, page: 1 }));
-    toast.success(
-      importadas > 0
-        ? `Examen importado: ${importadas} ${importadas === 1 ? 'pregunta' : 'preguntas'}.`
-        : 'Examen importado correctamente.',
-    );
+    toast.success(`Examen creado con ${totalPreguntas} ${totalPreguntas === 1 ? 'pregunta' : 'preguntas'}.`);
   };
 
   const hayResultados = importados.length > 0;
@@ -122,10 +117,10 @@ export default function ExamList() {
     <StaffShell
       nav={ADMIN_NAV}
       title="Listado de exámenes"
-      subtitle="Gestioná las evaluaciones supervisadas: estado, umbral de revisión e inscriptos."
+      subtitle="Gestioná las evaluaciones supervisadas. Creá exámenes sorteando preguntas del banco."
       actions={
-        <Button icon="upload" onClick={() => setImportOpen(true)} size="sm">
-          Importar examen
+        <Button icon="add" onClick={() => setImportOpen(true)} size="sm">
+          Crear examen
         </Button>
       }
       help={
@@ -201,10 +196,10 @@ export default function ExamList() {
         </FiltrosPanel>
 
         <Card>
-          <div className="flex items-center gap-2 mb-md pb-md border-b border-outline-variant/40">
-            <Icon name="fact_check" className="text-[18px] text-on-surface-variant" fill />
-            <h2 className="text-[15px] font-semibold text-on-surface">
-              Exámenes <span className="text-on-surface-variant font-normal">({totalImportados})</span>
+          <div className="flex items-center gap-2 mb-4 pb-4 border-b border-surface-100">
+            <Icon name="fact_check" className="text-[20px] text-primary" fill />
+            <h2 className="text-base font-semibold text-surface-800">
+              Exámenes <span className="text-surface-400 font-normal text-sm">({totalImportados})</span>
             </h2>
             <PageSizeSelect
               className="ml-auto"
@@ -231,100 +226,97 @@ export default function ExamList() {
             </div>
           )}
 
-          {/* ── Tabla (C-69): exámenes importados ── */}
-          {hayResultados && (
-            <>
-              {/* Desktop: tabla (md+) */}
-              <div className="hidden md:block">
-                <table className="w-full text-left">
-                  <thead>
-                    <tr className="text-label-sm uppercase tracking-wide text-on-surface-variant border-b border-outline-variant/40">
-                      <th className="py-sm pl-sm pr-md font-semibold">Examen</th>
-                      <th className="py-sm pr-md font-semibold">Materia</th>
-                      <th className="py-sm pr-md font-semibold">Comisión</th>
-                      <th className="py-sm px-md font-semibold text-center">Preguntas</th>
-                      <th className="py-sm font-semibold text-center">Acciones</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {importados.map((e) => (
-                      <tr
-                        key={e.id}
-                        className={`border-b border-outline-variant/20 transition-colors
-                          ${cargando ? 'opacity-50' : 'hover:bg-primary-50 cursor-pointer'}`}
-                        onClick={!cargando ? () => navigate(`/admin/examenes/${e.id}/resultados`) : undefined}
-                      >
-                        <td className="py-sm pl-sm pr-md">
-                          <p className="text-label-md font-semibold text-on-surface">{e.titulo}</p>
-                        </td>
-                        <td className="py-sm pr-md text-label-md text-on-surface-variant">
-                          {e.materia_nombre ?? <span className="text-outline italic text-label-sm">sin materia</span>}
-                        </td>
-                        <td className="py-sm pr-md text-label-md text-on-surface-variant">
-                          {e.comision_nombre ?? <span className="text-outline italic text-label-sm">sin comisión</span>}
-                        </td>
-                        <td className="py-sm px-md text-label-md text-on-surface tabular-nums text-center">
-                          {e.cantidad_preguntas}
-                        </td>
-                        <td className="py-sm">
-                          <div className="flex items-center justify-center" onClick={(ev) => ev.stopPropagation()}>
-                            <ActionMenu
-                              ariaLabel={`Acciones de ${e.titulo}`}
-                              items={[
-                                { label: 'Alumnos que rindieron', icon: 'groups', onClick: () => navigate(`/admin/examenes/${e.id}/resultados`) },
-                                { label: 'Detalle del examen', icon: 'open_in_new', onClick: () => navigate(`/admin/examenes/${e.id}`) },
-                                { label: 'Configurar / vincular', icon: 'settings', onClick: importar },
-                              ]}
-                            />
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Mobile: cards apiladas (<md) */}
-              <div className="md:hidden space-y-sm">
-                {importados.map((e) => (
-                  <div
-                    key={e.id}
-                    className={`rounded-xl border border-outline-variant/40 bg-white p-base flex items-start gap-sm transition-colors
-                      ${cargando ? 'opacity-50' : 'active:bg-surface-container-low'}`}
-                  >
-                    <button
-                      type="button"
-                      onClick={!cargando ? () => navigate(`/admin/examenes/${e.id}/resultados`) : undefined}
-                      className="flex-1 min-w-0 text-left"
-                    >
-                      <p className="text-label-md font-semibold text-on-surface truncate">{e.titulo}</p>
-                      <div className="mt-2 space-y-0.5 text-label-sm text-on-surface-variant">
-                        <p>
-                          <span className="text-outline">Materia:</span>{' '}
-                          {e.materia_nombre ?? <span className="text-outline italic">sin materia</span>}
-                        </p>
-                        <p>
-                          <span className="text-outline">Comisión:</span>{' '}
-                          {e.comision_nombre ?? <span className="text-outline italic">sin comisión</span>}
-                        </p>
-                        <p>
-                          <span className="text-outline">Preguntas:</span>{' '}
-                          <span className="text-on-surface tabular-nums">{e.cantidad_preguntas}</span>
-                        </p>
-                      </div>
-                    </button>
+          {/* ── Tabla exámenes ── */}
+          {hayResultados && (() => {
+            const cols: AdminColumn<ExamenContenidoResumen>[] = [
+              {
+                key: 'titulo',
+                header: 'Examen',
+                width: '35%',
+                cell: (e) => <span className="font-semibold text-gray-900">{e.titulo}</span>,
+              },
+              {
+                key: 'materia',
+                header: 'Materia',
+                width: '25%',
+                cell: (e) => e.materia_nombre
+                  ? (
+                    <div className="leading-tight">
+                      <div className="font-semibold text-gray-900">{e.materia_codigo}</div>
+                      <div className="text-gray-500 text-sm">{e.materia_nombre}</div>
+                    </div>
+                  )
+                  : <span className="text-gray-400 italic">Sin materia</span>,
+              },
+              {
+                key: 'comision',
+                header: 'Comisión',
+                width: '20%',
+                cell: (e) => e.comision_nombre
+                  ? (
+                    <div className="leading-tight">
+                      <div className="font-semibold text-gray-900">{e.comision_codigo}</div>
+                      <div className="text-gray-500 text-sm">{e.comision_nombre}</div>
+                    </div>
+                  )
+                  : <span className="text-gray-400 italic">Sin comisión</span>,
+              },
+              {
+                key: 'preguntas',
+                header: 'Preguntas',
+                width: '10%',
+                align: 'center',
+                cell: (e) => <span className="tabular-nums font-medium text-gray-700">{e.cantidad_preguntas}</span>,
+              },
+              {
+                key: 'acciones',
+                header: 'Acciones',
+                width: '10%',
+                align: 'center',
+                cell: (e) => (
+                  <div onClick={(ev) => ev.stopPropagation()}>
                     <ActionMenu
                       ariaLabel={`Acciones de ${e.titulo}`}
                       items={[
-                        { label: 'Ver detalle', icon: 'open_in_new', onClick: () => navigate(`/admin/examenes/${e.id}`) },
+                        { label: 'Alumnos que rindieron', icon: 'groups', onClick: () => navigate(`/admin/examenes/${e.id}/resultados`) },
+                        { label: 'Detalle del examen', icon: 'open_in_new', onClick: () => navigate(`/admin/examenes/${e.id}`) },
                         { label: 'Configurar / vincular', icon: 'settings', onClick: importar },
                       ]}
                     />
                   </div>
-                ))}
-              </div>
-            </>
-          )}
+                ),
+              },
+            ];
+            return (
+              <>
+                <div className="hidden md:block -mx-lg">
+                  <AdminTable
+                    columns={cols}
+                    data={importados}
+                    keyExtractor={(e) => e.id}
+                    isLoading={cargando}
+                    onRowClick={!cargando ? (e) => navigate(`/admin/examenes/${e.id}/resultados`) : undefined}
+                  />
+                </div>
+                {/* Mobile */}
+                <div className="md:hidden divide-y divide-gray-200">
+                  {importados.map((e) => (
+                    <div key={e.id} className={`flex items-start gap-3 px-4 py-4 transition-colors ${cargando ? 'opacity-50' : 'hover:bg-gray-50'}`}>
+                      <button type="button" onClick={!cargando ? () => navigate(`/admin/examenes/${e.id}/resultados`) : undefined} className="flex-1 min-w-0 text-left">
+                        <p className="text-sm font-semibold text-gray-900 truncate">{e.titulo}</p>
+                        <p className="text-sm text-gray-500 mt-1">{e.materia_nombre ?? 'sin materia'}{e.comision_nombre && ` · ${e.comision_nombre}`}</p>
+                        <p className="text-xs text-gray-400 mt-0.5">{e.cantidad_preguntas} preguntas</p>
+                      </button>
+                      <ActionMenu ariaLabel={`Acciones de ${e.titulo}`} items={[
+                        { label: 'Ver detalle', icon: 'open_in_new', onClick: () => navigate(`/admin/examenes/${e.id}`) },
+                        { label: 'Configurar / vincular', icon: 'settings', onClick: importar },
+                      ]} />
+                    </div>
+                  ))}
+                </div>
+              </>
+            );
+          })()}
 
         </Card>
 
@@ -338,10 +330,10 @@ export default function ExamList() {
         />
       </div>
 
-      <ImportExamModal
+      <CrearExamenModal
         abierto={importOpen}
         onCerrar={() => setImportOpen(false)}
-        onImportado={onImportado}
+        onCreado={onCreado}
       />
     </StaffShell>
   );

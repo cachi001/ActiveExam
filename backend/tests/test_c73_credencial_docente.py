@@ -102,7 +102,7 @@ async def docente_id(factory):
         u = UsuarioModel(
             id_institucional=legajo,
             email=f"{legajo.lower()}@uni.edu",
-            roles=["docente"],
+            roles=["tutor"],
         )
         s.add(u)
         await s.flush()

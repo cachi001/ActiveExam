@@ -117,6 +117,8 @@ class UsuarioResponse(BaseModel):
     auth_provider: str
     eliminado_en: str | None
     password_generada: str | None = None  # solo en POST cuando el admin no proveyó password
+    creado_en: str | None = None
+    ultimo_acceso_en: str | None = None
 
 
 class ListarUsuariosResponse(BaseModel):
@@ -145,6 +147,8 @@ class UsuarioDetalleResponse(BaseModel):
     roles: list[str]
     auth_provider: str
     eliminado_en: str | None
+    creado_en: str | None = None
+    ultimo_acceso_en: str | None = None
 
 
 class ConsentProfileAdminResponse(BaseModel):
@@ -204,6 +208,8 @@ def _usuario_to_response(u: UsuarioModel) -> UsuarioResponse:
         roles=u.roles,
         auth_provider=u.auth_provider,
         eliminado_en=str(u.eliminado_en) if u.eliminado_en is not None else None,
+        creado_en=u.creado_en.isoformat() if getattr(u, "creado_en", None) is not None else None,
+        ultimo_acceso_en=u.ultimo_acceso_en.isoformat() if getattr(u, "ultimo_acceso_en", None) is not None else None,
     )
 
 
@@ -239,6 +245,9 @@ async def crear_usuario(
         apellido=body.apellido,
         password_hash=password_hash,
         auth_provider="local",
+        # Clave temporal: el usuario debe definir su propia contraseña en el
+        # primer login (RN-AU). Se limpia al cambiarla (PUT /auth/change-password).
+        debe_cambiar_password=True,
         attrs_federados={},
     )
 
@@ -658,6 +667,8 @@ async def obtener_usuario(
         roles=usuario.roles,
         auth_provider=usuario.auth_provider,
         eliminado_en=str(usuario.eliminado_en) if usuario.eliminado_en is not None else None,
+        creado_en=str(usuario.creado_en) if getattr(usuario, "creado_en", None) is not None else None,
+        ultimo_acceso_en=str(usuario.ultimo_acceso_en) if getattr(usuario, "ultimo_acceso_en", None) is not None else None,
     )
 
 

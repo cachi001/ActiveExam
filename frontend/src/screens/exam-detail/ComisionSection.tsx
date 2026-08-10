@@ -111,6 +111,7 @@ export function ComisionSection({ examenId, materiaActual, comisionActual, onAso
   return (
     <Card>
       <SectionTitle
+        icon="group"
         sub="Materia y comisión a la que pertenece este examen importado."
         action={
           !editando ? (

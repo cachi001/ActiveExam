@@ -140,7 +140,7 @@ export function AlumnosComisionPanel({
           No hay alumnos inscriptos todavía.
         </div>
       ) : alumnos && alumnos.length > 0 ? (
-        <ul className="divide-y divide-outline-variant/20 rounded-lg border border-outline-variant/40 overflow-hidden bg-surface">
+        <ul className="divide-y divide-outline-variant/20 rounded-lg border border-outline-variant/40 overflow-hidden bg-surface max-h-80 overflow-y-auto">
           {alumnos.map((a) => (
             <li key={a.usuario_id} className="px-3 py-3 flex flex-col sm:flex-row sm:items-center gap-3">
               <div className="flex-1 min-w-0">

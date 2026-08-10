@@ -17,6 +17,8 @@ from __future__ import annotations
 import os
 import re
 
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy import or_, select
@@ -24,6 +26,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.domain.auth.identity import AuthenticatedPrincipal
+from app.domain.auth.password_policy import PasswordDebilError, validar_password_fuerte
 from app.domain.auth.roles import Rol
 from app.infrastructure.auth.db_refresh_store import DbRefreshTokenStore
 from app.infrastructure.auth.hashing import hashear_password, verificar_password
@@ -82,6 +85,10 @@ class PrincipalResponse(BaseModel):
     jurisdiccion: str | None = None
     nombre: str | None = None
     apellido: str | None = None
+    creado_en: datetime | None = None
+    ultimo_acceso_en: datetime | None = None
+    # True → el usuario entró con clave temporal y debe definir su contraseña.
+    debe_cambiar_password: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -178,6 +185,9 @@ async def login(
             audience=settings.jwt_audience,
             ttl_seconds=settings.access_token_ttl_seconds,
         )
+
+        # Registrar último acceso.
+        usuario.ultimo_acceso_en = datetime.now(timezone.utc)
 
         # Emitir refresh token persistente en DB.
         db_store = DbRefreshTokenStore(session, ttl_seconds=settings.refresh_token_ttl_seconds)
@@ -290,6 +300,9 @@ async def me(
     """
     nombre: str | None = None
     apellido: str | None = None
+    creado_en: datetime | None = None
+    ultimo_acceso_en: datetime | None = None
+    debe_cambiar_password: bool = False
 
     session_factory = _get_session_factory(request)
     if session_factory is not None and principal.subject is not None:
@@ -303,8 +316,10 @@ async def me(
                 if usuario is not None:
                     nombre = usuario.nombre
                     apellido = usuario.apellido
+                    creado_en = usuario.creado_en
+                    ultimo_acceso_en = usuario.ultimo_acceso_en
+                    debe_cambiar_password = bool(usuario.debe_cambiar_password)
         except Exception:  # noqa: BLE001
-            # Degradación graceful: la DB no responde, devolvemos None en nombre/apellido.
             pass
 
     return PrincipalResponse(
@@ -315,6 +330,9 @@ async def me(
         jurisdiccion=principal.jurisdiccion,
         nombre=nombre,
         apellido=apellido,
+        creado_en=creado_en,
+        ultimo_acceso_en=ultimo_acceso_en,
+        debe_cambiar_password=debe_cambiar_password,
     )
 
 
@@ -367,8 +385,11 @@ class RegistroRequest(BaseModel):
     @field_validator("password")
     @classmethod
     def password_fuerte(cls, v: str) -> str:
-        if len(v) < 8:  # noqa: PLR2004
-            raise ValueError("El password debe tener al menos 8 caracteres.")
+        # Política Media: 8+ con mayúscula, minúscula y dígito (RN-AU).
+        try:
+            validar_password_fuerte(v)
+        except PasswordDebilError as exc:
+            raise ValueError(str(exc)) from exc
         return v
 
     @model_validator(mode="after")
@@ -460,6 +481,16 @@ class CambiarContrasenaRequest(BaseModel):
     contrasena_actual: str
     contrasena_nueva: str = Field(min_length=8, max_length=512)
 
+    @field_validator("contrasena_nueva")
+    @classmethod
+    def nueva_fuerte(cls, v: str) -> str:
+        # Política Media: 8+ con mayúscula, minúscula y dígito (RN-AU).
+        try:
+            validar_password_fuerte(v)
+        except PasswordDebilError as exc:
+            raise ValueError(str(exc)) from exc
+        return v
+
 
 class CambiarContrasenaResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -503,7 +534,16 @@ async def cambiar_contrasena(
                 detail="La contraseña actual es incorrecta.",
             )
 
+        # La nueva no puede ser igual a la actual (evita "cambiar" a la misma clave).
+        if verificar_password(body.contrasena_nueva, usuario.password_hash):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="La nueva contraseña debe ser distinta de la actual.",
+            )
+
         usuario.password_hash = hashear_password(body.contrasena_nueva)
+        # Primer login resuelto: ya definió su propia contraseña.
+        usuario.debe_cambiar_password = False
         await session.commit()
 
     return CambiarContrasenaResponse(ok=True)

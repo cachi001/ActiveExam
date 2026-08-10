@@ -62,6 +62,7 @@ services:
       SEED_ADMIN_PASSWORD: Admin123
       SEED_ESTUDIANTE_PASSWORD: Estudiante123
       SEED_PROCTOR_PASSWORD: Proctor123
+      SEED_TUTOR_PASSWORD: Tutor123
       # Moodle write-back (C-69/C-73): se INTERPOLAN desde el .env de la raíz
       # (docker compose --env-file .env ...). El token NUNCA se hornea en la imagen
       # ni se versiona: vive solo en el .env gitignoreado. Vacío = write-back off.

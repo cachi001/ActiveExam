@@ -271,16 +271,17 @@ async def test_repo_guardar_y_leer_config(factory):
 
 @pytest.mark.asyncio
 async def test_repo_defaults_compat(factory):
-    """Un examen creado sin config toma los defaults (1 intento, 10/6, mezclando).
+    """Un examen creado sin config toma los defaults (1 intento, 100/60, mezclando).
 
     `mezclar_preguntas` es True por diseño desde la migración 0046 (mezclar siempre
-    ON): ya no es una preferencia del docente."""
+    ON): ya no es una preferencia del docente. `nota_maxima`/`nota_aprobacion` son
+    100/60 desde la migración 0061 (escala 0-100, nunca "sobre 10")."""
     examen_id = await _crear_examen_simple(factory)
     async with factory() as s:
         leido = await ExamenContenidoSqlRepository(s).obtener(examen_id)
     assert leido.intentos_permitidos == 1
-    assert leido.nota_maxima == pytest.approx(10.0)
-    assert leido.nota_aprobacion == pytest.approx(6.0)
+    assert leido.nota_maxima == pytest.approx(100.0)
+    assert leido.nota_aprobacion == pytest.approx(60.0)
     assert leido.mezclar_preguntas is True
     assert leido.tiempo_limite_min is None
     assert leido.apertura is None
@@ -304,8 +305,8 @@ async def test_get_config_devuelve_defaults(admin_app, factory):
         "intentos_permitidos": 1,
         "apertura": None,
         "cierre": None,
-        "nota_maxima": 10.0,
-        "nota_aprobacion": 6.0,
+        "nota_maxima": 100.0,
+        "nota_aprobacion": 60.0,
         "mezclar_preguntas": True,
         "limite_preguntas": None,
         "politica_intentos": "mas_alta",
@@ -380,8 +381,8 @@ async def test_patch_config_parcial_preserva_el_resto(admin_app, factory):
     assert body["tiempo_limite_min"] == 30
     # El resto conserva los defaults / lo seteado antes
     assert body["intentos_permitidos"] == 1
-    assert body["nota_maxima"] == 10.0
-    assert body["nota_aprobacion"] == 6.0
+    assert body["nota_maxima"] == 100.0
+    assert body["nota_aprobacion"] == 60.0
     assert body["mezclar_preguntas"] is True
     assert body["apertura"].startswith("2026-03-01T09:00:00")
     assert body["cierre"].startswith("2026-03-01T11:00:00")

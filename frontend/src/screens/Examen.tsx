@@ -8,6 +8,7 @@ import { getEffectiveConfig, loadEffectiveConfig } from '../config/effectiveConf
 import type { EventoSesion } from '../lib/types';
 import { fetchExamenParaRendir } from '../lib/examTakingApi';
 import type { ExamenRendicion } from '../lib/examTakingApi';
+import type { RespuestaEnvio } from '../lib/apiProctoring/respuestas';
 import {
   avanzarPregunta,
   retrocederPregunta,
@@ -41,6 +42,21 @@ function codigo409(e: unknown): string | undefined {
   return code === 'tiempo_agotado' || code === 'sesion_finalizada' ? code : undefined;
 }
 
+/** Arma los items a enviar a POST /respuestas: multichoice + cloze (C-74 §6). */
+function construirItemsRespuestas(
+  respuestas: Record<string, string>,
+  respuestasCloze: Record<string, Record<string, string>>,
+): RespuestaEnvio[] {
+  return [
+    ...Object.entries(respuestas).map(
+      ([pregunta_id, opcion_elegida_id]): RespuestaEnvio => ({ pregunta_id, opcion_elegida_id }),
+    ),
+    ...Object.entries(respuestasCloze)
+      .filter(([, blanks]) => Object.keys(blanks).length > 0)
+      .map(([pregunta_id, blanks]): RespuestaEnvio => ({ pregunta_id, respuesta_cloze: blanks })),
+  ];
+}
+
 export default function Examen() {
   const navigate = useNavigate();
   const examen = useApp((s) => s.examenActivo);
@@ -59,6 +75,8 @@ export default function Examen() {
   const entregadoRef = useRef(false);
   const [indiceActual, setIndiceActual] = useState(0);
   const [respuestas, setRespuestas] = useState<Record<string, string>>({});
+  /** Respuestas cloze: preguntaId → { blankId → valor } */
+  const [respuestasCloze, setRespuestasCloze] = useState<Record<string, Record<string, string>>>({});
 
   const [bloqueado, setBloqueado] = useState(false);
   const lockdownRef = useRef<FullscreenLockdown | null>(null);
@@ -175,11 +193,21 @@ export default function Examen() {
       try {
         const guardadas = await api.obtenerRespuestasProctoring(sessionId);
         if (guardadas.length > 0) {
-          setRespuestas((prev) => {
-            const restauradas = { ...prev };
-            for (const r of guardadas) restauradas[r.pregunta_id] = r.opcion_elegida_id;
-            return restauradas;
-          });
+          const estandar: Record<string, string> = {};
+          const cloze: Record<string, Record<string, string>> = {};
+          for (const r of guardadas) {
+            if (r.respuesta_cloze) {
+              cloze[r.pregunta_id] = r.respuesta_cloze;
+            } else if (r.opcion_elegida_id) {
+              estandar[r.pregunta_id] = r.opcion_elegida_id;
+            }
+          }
+          if (Object.keys(estandar).length > 0) {
+            setRespuestas((prev) => ({ ...prev, ...estandar }));
+          }
+          if (Object.keys(cloze).length > 0) {
+            setRespuestasCloze((prev) => ({ ...prev, ...cloze }));
+          }
         }
       } catch {
         // Degradación silenciosa (R3): si falla, el alumno sigue con lo que tenga
@@ -203,10 +231,7 @@ export default function Examen() {
     if (!respuestasHidratadasRef.current) return; // aún restaurando: no pisar con {}
     if (submitTimeoutRef.current) clearTimeout(submitTimeoutRef.current);
     submitTimeoutRef.current = setTimeout(() => {
-      const items = Object.entries(respuestas).map(([pregunta_id, opcion_elegida_id]) => ({
-        pregunta_id,
-        opcion_elegida_id,
-      }));
+      const items = construirItemsRespuestas(respuestas, respuestasCloze);
       if (items.length === 0) return;
       // C-72 sección 7: si el backend rechaza por plazo (409), mostrar el aviso —
       // el alumno se entera de que se acabó el tiempo, sin pérdida silenciosa.
@@ -219,7 +244,7 @@ export default function Examen() {
       if (submitTimeoutRef.current) clearTimeout(submitTimeoutRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [respuestas, sessionId]);
+  }, [respuestas, respuestasCloze, sessionId]);
 
   /**
    * Entrega el intento: envía las respuestas server-side (para calcular la nota) y
@@ -239,10 +264,7 @@ export default function Examen() {
     setErrorEntrega(false);
     try {
       if (sessionId) {
-        const items = Object.entries(respuestas).map(([pregunta_id, opcion_elegida_id]) => ({
-          pregunta_id,
-          opcion_elegida_id,
-        }));
+        const items = construirItemsRespuestas(respuestas, respuestasCloze);
         await api.enviarRespuestasProctoring(sessionId, items);
       }
     } catch (e) {
@@ -280,7 +302,16 @@ export default function Examen() {
 
   const total = preguntas.length;
   const preguntaActual = preguntaEnIndice(preguntas, indiceActual);
-  const respondidas = indicesRespondidos(preguntas, respuestas);
+  // Para el QuestionNavigator, unificamos respuestas estándar + cloze (al menos un blank)
+  const respuestasCombinadas: Record<string, string> = {
+    ...respuestas,
+    ...Object.fromEntries(
+      Object.entries(respuestasCloze)
+        .filter(([, blanks]) => Object.values(blanks).some(Boolean))
+        .map(([pid]) => [pid, '__cloze__']),
+    ),
+  };
+  const respondidas = indicesRespondidos(preguntas, respuestasCombinadas);
   const sinResponder = total - respondidas.size;
 
   // No se pudo iniciar la sesión (intentos agotados, fuera de ventana, red): bloqueamos
@@ -321,10 +352,17 @@ export default function Examen() {
               total={total}
               cargandoPreguntas={cargandoPreguntas}
               respuestas={respuestas}
+              respuestasCloze={respuestasCloze}
               respondidas={respondidas}
               segRestantes={segRestantes}
               tiempoLimiteMin={tiempoLimiteMin}
               onSeleccionarOpcion={(pid, oid) => setRespuestas((prev) => ({ ...prev, [pid]: oid }))}
+              onRespuestaCloze={(pid, blankId, valor) =>
+                setRespuestasCloze((prev) => ({
+                  ...prev,
+                  [pid]: { ...(prev[pid] ?? {}), [blankId]: valor },
+                }))
+              }
               onAnterior={() => setIndiceActual((i) => retrocederPregunta(i))}
               onSiguiente={() => setIndiceActual((i) => avanzarPregunta(i, total))}
             />

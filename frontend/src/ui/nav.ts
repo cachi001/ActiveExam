@@ -26,7 +26,7 @@ import type { Rol } from '../lib/types';
 // dicta la materia no supervisa la integridad de su propia rendición ni afloja
 // los umbrales con que se la detecta.
 const SUPERVISION: Rol[] = ['proctor', 'revisor', 'coordinador', 'admin_sistema'];
-const ACADEMICO: Rol[] = ['docente', 'admin_examenes', 'coordinador', 'admin_sistema'];
+const ACADEMICO: Rol[] = ['tutor', 'admin_examenes', 'coordinador', 'admin_sistema'];
 const ADMIN: Rol[] = ['admin_sistema'];
 const AUDITORIA: Rol[] = ['auditor', 'admin_sistema'];
 
@@ -43,21 +43,19 @@ export const STAFF_NAV: StaffNavItem[] = [
   { to: '/admin',                       icon: 'space_dashboard', label: 'Dashboard',               group: 'main',   roles: [...ACADEMICO, 'proctor', 'revisor', 'auditor'] },
   { to: '/admin/estadisticas',          icon: 'insights',        label: 'Estadísticas',            group: 'main',   roles: ACADEMICO },
   { to: '/admin/examenes',              icon: 'fact_check',      label: 'Exámenes',                group: 'main',   roles: ACADEMICO },
+  { to: '/admin/banco-preguntas',       icon: 'library_books',   label: 'Banco de preguntas',       group: 'main',   roles: ACADEMICO },
   // Bloque "proctoring": las 3 vistas de sesiones van juntas y al FINAL del grupo
   // main (justo arriba del divider), en orden de flujo: vivo → cola → grabadas.
   // Visibles para proctor + admin (SUPERVISION).
   { to: '/proctor',                     icon: 'visibility',      label: 'Supervisión en vivo',     group: 'main',   roles: SUPERVISION },
-  { to: '/revisor',                     icon: 'gavel',           label: 'Cola de revisión',        group: 'main',   roles: SUPERVISION },
+  { to: '/admin/cola-revision',          icon: 'gavel',           label: 'Cola de revisión',        group: 'main',   roles: SUPERVISION },
   { to: '/admin/proctoring-sessions',   icon: 'history',         label: 'Registro de sesiones',    group: 'main',   roles: SUPERVISION },
   // Administración: separadas con divider. Solo admin.
   { to: '/admin/usuarios',              icon: 'manage_accounts', label: 'Usuarios',                group: 'config', roles: ADMIN },
   { to: '/admin/materias',              icon: 'school',          label: 'Materias y comisiones',   group: 'config', roles: ACADEMICO },
   { to: '/admin/detection-test',        icon: 'bug_report',      label: 'Test de detección',       group: 'config', roles: ADMIN },
   { to: '/admin/auditoria',             icon: 'verified_user',   label: 'Auditoría',               group: 'config', roles: AUDITORIA },
-  // C-73 §10.8: el docente entra a Configuración, pero SOLO ve la pestaña del
-  // campus (su cuenta personal). El gating de las secciones que definen cómo se
-  // detecta el fraude vive dentro de la pantalla, no en la ruta.
-  { to: '/admin/configuracion',         icon: 'settings',        label: 'Configuración',           group: 'config', roles: ACADEMICO },
+  { to: '/admin/configuracion',         icon: 'settings',        label: 'Configuración',           group: 'config', roles: ADMIN },
 ];
 
 /** Filtra los items de navegación visibles para un conjunto de roles del usuario. */

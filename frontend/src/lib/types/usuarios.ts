@@ -24,6 +24,8 @@ export interface UsuarioAdmin {
   eliminado_en?: string | null;
   /** Solo presente en POST cuando el admin no proveyó contraseña: la temporal generada. */
   password_generada?: string | null;
+  creado_en?: string | null;
+  ultimo_acceso_en?: string | null;
 }
 
 /** Respuesta paginada de GET /api/v1/users/. */

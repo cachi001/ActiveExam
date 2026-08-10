@@ -254,7 +254,10 @@ async def test_materias_lista(client_student, factory):
     assert item["codigo"] == ids["materia_codigo"]
     assert item["nombre"] == "Análisis Matemático"
     # `activa` (C-72 §17): estado de la materia — se agregó al schema después.
-    assert set(item.keys()) == {"id", "codigo", "nombre", "activa"}
+    # total_inscriptos/total_examenes: conteos para ocultar "Eliminar" si no está vacía.
+    assert set(item.keys()) == {
+        "id", "codigo", "nombre", "activa", "total_inscriptos", "total_examenes",
+    }
 
 
 # ---------------------------------------------------------------------------

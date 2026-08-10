@@ -140,7 +140,7 @@ def _client(app, roles: list[str]):
 @pytest.mark.asyncio
 async def test_admin_asigna_docente_y_viaja_el_nombre(app, factory):
     _, comision_id = await _crear_materia_y_comision(factory)
-    docente_id = await _crear_usuario(factory, roles=["docente"])
+    docente_id = await _crear_usuario(factory, roles=["tutor"])
 
     async with _client(app, ["admin_sistema"]) as c:
         resp = await c.put(
@@ -159,9 +159,9 @@ async def test_admin_asigna_docente_y_viaja_el_nombre(app, factory):
 async def test_docente_no_puede_asignarse_a_si_mismo(app, factory):
     """El control de pertenencia no sirve si el controlado puede auto-otorgárselo."""
     _, comision_id = await _crear_materia_y_comision(factory)
-    docente_id = await _crear_usuario(factory, roles=["docente"])
+    docente_id = await _crear_usuario(factory, roles=["tutor"])
 
-    async with _client(app, ["docente"]) as c:
+    async with _client(app, ["tutor"]) as c:
         resp = await c.put(
             f"/api/v1/exam-content/comisiones/{comision_id}/docente",
             json={"docente_id": docente_id},
@@ -183,14 +183,14 @@ async def test_no_se_puede_poner_a_cargo_a_quien_no_es_docente(app, factory):
         )
 
     assert resp.status_code == 422, resp.text
-    assert resp.json()["detail"]["error"] == "no_es_docente"
+    assert resp.json()["detail"]["error"] == "no_es_tutor"
 
 
 @pytest.mark.asyncio
 async def test_desasignar_con_null_es_valido(app, factory):
     """Una comisión puede quedar sin docente: no es un error, degrada a institucional."""
     _, comision_id = await _crear_materia_y_comision(factory)
-    docente_id = await _crear_usuario(factory, roles=["docente"])
+    docente_id = await _crear_usuario(factory, roles=["tutor"])
 
     async with _client(app, ["admin_sistema"]) as c:
         await c.put(
@@ -209,7 +209,7 @@ async def test_desasignar_con_null_es_valido(app, factory):
 
 @pytest.mark.asyncio
 async def test_comision_inexistente_404(app, factory):
-    docente_id = await _crear_usuario(factory, roles=["docente"])
+    docente_id = await _crear_usuario(factory, roles=["tutor"])
     async with _client(app, ["admin_sistema"]) as c:
         resp = await c.put(
             f"/api/v1/exam-content/comisiones/{uuid.uuid4()}/docente",
@@ -221,7 +221,7 @@ async def test_comision_inexistente_404(app, factory):
 @pytest.mark.asyncio
 async def test_usuario_dado_de_baja_no_puede_quedar_a_cargo(app, factory):
     _, comision_id = await _crear_materia_y_comision(factory)
-    docente_id = await _crear_usuario(factory, roles=["docente"])
+    docente_id = await _crear_usuario(factory, roles=["tutor"])
     async with factory() as s:
         await s.execute(
             text("UPDATE usuario SET eliminado_en = now() WHERE id = :i"),
@@ -244,7 +244,7 @@ async def test_nombre_cae_al_legajo_si_el_usuario_no_tiene_nombre(app, factory):
     """Usuarios federados/seed viejos pueden no tener nombre: mostrar un UUID no sirve."""
     _, comision_id = await _crear_materia_y_comision(factory)
     docente_id = await _crear_usuario(
-        factory, roles=["docente"], nombre=None, apellido=None
+        factory, roles=["tutor"], nombre=None, apellido=None
     )
 
     async with _client(app, ["admin_sistema"]) as c:

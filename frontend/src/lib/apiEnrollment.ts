@@ -24,7 +24,6 @@ export const enrollmentApi = {
    * por-examen se eliminó por redundante. El gate NUNCA sanciona: deriva/flaggea (L2.5).
    */
   async puedeRendir(examenId?: string): Promise<{ puede: boolean; razon?: string; codigo?: string }> {
-    await delay(200);
     // El gate debe decidir con estado FRESCO del servidor, NO con el cache local
     // (localStorage `ae_demo_enrollment`), que puede mentir tras un reset de DB o un
     // cambio de usuario en el mismo browser → flash de "disponible" stale. syncEnrollmentState
@@ -106,7 +105,6 @@ export const enrollmentApi = {
 
   /** Retorna el estado de enrollment completo del perfil (C-22). */
   async getEnrollment(): Promise<EstadoEnrollment> {
-    await delay(0);
     // En modo REAL la fuente de verdad es el backend: si la DB se reseteó (tmpfs),
     // el cache local en localStorage queda mintiendo "ya hiciste todo". syncEnrollmentState
     // pisa el estado local con lo que dice el servidor en cada carga.
@@ -123,7 +121,6 @@ export const enrollmentApi = {
    * Retorna { estado, puede_rendir } — puede_rendir=false mientras sea pendiente.
    */
   async solicitarViaAlternativa(examId: string): Promise<{ estado: string; puede_rendir: boolean }> {
-    await delay(400);
     const token = authProvider.getToken?.() ?? '';
     const resp = await fetch(`${API_BASE}/consent/alternative`, {
       method: 'POST',
@@ -139,7 +136,6 @@ export const enrollmentApi = {
    * Retorna { estado } si existe, null si no hay solicitud.
    */
   async estadoViaAlternativa(examId: string): Promise<{ estado: string } | null> {
-    await delay(150);
     const token = authProvider.getToken?.() ?? '';
     const resp = await fetch(`${API_BASE}/consent/gate?exam_id=${encodeURIComponent(examId)}`, {
       headers: { Authorization: `Bearer ${token}` },

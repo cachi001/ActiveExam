@@ -1,10 +1,11 @@
-"""Entidades de dominio para el contenido de examen (C-69).
+"""Entidades de dominio para el contenido de examen (C-69, C-74).
 
 Reglas de dominio (NON-NEGOTIABLE):
 - D3: es_correcta NUNCA sale al cliente; vive server-side.
 - D11: comision_id NULLABLE — un examen sin comisión es válido.
 - multichoice: >= 2 opciones, exactamente 1 correcta.
 - truefalse: exactamente 2 opciones, exactamente 1 correcta.
+- C-74: CategoriaPregunta — estructura autoreferencial, materia_id obligatorio.
 """
 
 from __future__ import annotations
@@ -30,6 +31,23 @@ from app.domain.exam_content.errors import (
 
 
 @dataclass(frozen=True, slots=True)
+class CategoriaPregunta:
+    """Categoría del banco de preguntas (C-74).
+
+    Estructura autoreferencial: materia → categoría → subcategoría (arbitrario).
+    categoria_padre_id=None → categoría raíz de la materia.
+    subcategorias → lista de hijos directos (puede estar vacía).
+    """
+
+    nombre: str
+    materia_id: str
+    id: str | None = None
+    categoria_padre_id: str | None = None
+    creada_en: datetime | None = None
+    subcategorias: tuple[CategoriaPregunta, ...] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True, slots=True)
 class OpcionRespuesta:
     """Opción de respuesta de una pregunta.
 
@@ -40,6 +58,38 @@ class OpcionRespuesta:
     es_correcta: bool
     id: str | None = None
     orden: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class OpcionBlankCloze:
+    """Opción de un hueco (blank) de una pregunta cloze.
+
+    es_correcta: NUNCA se expone al cliente (D3 / regla dura #6). En un blank
+    SHORTANSWER las opciones SON las respuestas aceptadas, así que la proyección
+    de rendición ni siquiera manda la lista.
+    """
+
+    texto: str
+    es_correcta: bool
+    id: str | None = None
+    orden: int = 0
+    peso: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class BlankCloze:
+    """Hueco de una pregunta cloze (C-74 §5).
+
+    Cada blank corresponde a un ``{N:TIPO:...}`` del questiontext de Moodle.
+    texto_antes/texto_despues son los fragmentos del enunciado que lo rodean.
+    """
+
+    id: str | None = None
+    orden: int = 0
+    tipo: str = "shortanswer"
+    texto_antes: str = ""
+    texto_despues: str = ""
+    opciones: tuple[OpcionBlankCloze, ...] = field(default_factory=tuple)
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,6 +108,10 @@ class Pregunta:
     # Opción B (pool de preguntas): si el docente la seleccionó para el examen.
     # Default True (compat): una pregunta recién importada cuenta como seleccionada.
     seleccionada: bool = True
+    # C-74: categoría del banco de preguntas (None = "Sin clasificar").
+    categoria_id: str | None = None
+    # C-74: huecos de una pregunta cloze. Vacío en el resto de los tipos.
+    blanks: tuple[BlankCloze, ...] = field(default_factory=tuple)
 
     def __post_init__(self) -> None:
         self._validar()
@@ -85,6 +139,9 @@ class Pregunta:
                     f"truefalse exige exactamente 1 correcta; tiene {correctas}"
                 )
 
+        elif self.tipo in ("cloze", "multianswer"):
+            pass  # blanks y opciones se validan a nivel de blank (tabla separada)
+
         else:
             if correctas < 1:
                 raise PreguntaInvalidaError(
@@ -108,15 +165,15 @@ class ExamenContenido:
     moodle_courseid: int | None = None
     moodle_cmid: int | None = None
     moodle_component: str | None = None
-    # Configuración del examen POR EXAMEN (migración 0032). ActiveExam la opera; el
-    # alumno rinde con estos parámetros. Defaults compat: 1 intento, nota sobre 10,
-    # aprueba con 6, sin ventana ni límite, sin mezclar.
+    # Configuración del examen POR EXAMEN (migración 0032, 0061). ActiveExam la
+    # opera; el alumno rinde con estos parámetros. Defaults: 1 intento, nota sobre
+    # 100, aprueba con 60, sin ventana ni límite, sin mezclar.
     tiempo_limite_min: int | None = None  # None = sin límite
     intentos_permitidos: int = 1
     apertura: datetime | None = None  # None = sin apertura
     cierre: datetime | None = None  # None = sin cierre
-    nota_maxima: float = 10.0
-    nota_aprobacion: float = 6.0
+    nota_maxima: float = 100.0
+    nota_aprobacion: float = 60.0
     # Siempre true: el orden aleatorio por alumno protege la integridad de la
     # rendicion y no altera la nota (solo cambia el ORDEN, no que preguntas entran).
     mezclar_preguntas: bool = True
@@ -219,7 +276,9 @@ class ExamenContenidoResumen:
     cantidad_preguntas: int
     comision_id: str | None = None
     comision_nombre: str | None = None
+    comision_codigo: str | None = None
     materia_nombre: str | None = None
+    materia_codigo: str | None = None
     # Config por examen que el front usa para gatear "Rendir" por ventana/intentos
     # (migración 0032). apertura/cierre/tiempo_limite_min son NULLABLE.
     apertura: datetime | None = None

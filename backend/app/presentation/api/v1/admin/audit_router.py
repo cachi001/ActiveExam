@@ -11,13 +11,11 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from pydantic import BaseModel, ConfigDict
 
-from app.application.audit.acciones import AccionAuditoria
 from app.application.audit.export import auditoria_a_pdf, auditoria_a_xlsx
 from app.application.audit.service import (
     AuditFiltros,
     listar_auditoria,
     listar_modulos,
-    registrar_seguro,
 )
 from app.domain.entities.actividad_auditoria import ActividadAuditoria
 from app.domain.auth.identity import AuthenticatedPrincipal
@@ -161,19 +159,11 @@ def create_audit_router(session_factory=None) -> APIRouter:
         accion: str | None = Query(default=None),
         desde: str | None = Query(default=None),
         hasta: str | None = Query(default=None),
-        principal: AuthenticatedPrincipal = Depends(get_current_principal),
+        _principal: AuthenticatedPrincipal = Depends(get_current_principal),
     ) -> Response:
         entradas = await _entradas_para_export(
             request, actor, modulo, accion, desde, hasta
         )
-        factory = session_factory or getattr(request.app.state, "session_factory", None)
-        if factory is not None:
-            await registrar_seguro(
-                factory,
-                actor=principal.id_institucional,
-                accion=AccionAuditoria.AUDITORIA_EXPORT_XLSX,
-                proposito=f"Exportó el registro de auditoría a Excel ({len(entradas)} filas)",
-            )
         return Response(
             content=auditoria_a_xlsx(
                 entradas,
@@ -201,19 +191,11 @@ def create_audit_router(session_factory=None) -> APIRouter:
         accion: str | None = Query(default=None),
         desde: str | None = Query(default=None),
         hasta: str | None = Query(default=None),
-        principal: AuthenticatedPrincipal = Depends(get_current_principal),
+        _principal: AuthenticatedPrincipal = Depends(get_current_principal),
     ) -> Response:
         entradas = await _entradas_para_export(
             request, actor, modulo, accion, desde, hasta
         )
-        factory = session_factory or getattr(request.app.state, "session_factory", None)
-        if factory is not None:
-            await registrar_seguro(
-                factory,
-                actor=principal.id_institucional,
-                accion=AccionAuditoria.AUDITORIA_EXPORT_PDF,
-                proposito=f"Exportó el registro de auditoría a PDF ({len(entradas)} filas)",
-            )
         return Response(
             content=auditoria_a_pdf(
                 entradas,

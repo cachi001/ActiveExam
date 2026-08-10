@@ -114,7 +114,10 @@ export class JwtAdapter implements AuthProvider {
 
     if (!res.ok) {
       const data = await res.json().catch(() => ({})) as Record<string, unknown>;
-      throw new Error((data['detail'] as string | undefined) || `Error ${res.status}`);
+      const detail = data['detail'] as string | undefined;
+      if (detail) throw new Error(detail);
+      if (res.status === 401 || res.status === 403) throw new Error('Correo o contraseña incorrectos.');
+      throw new Error('No pudimos conectar con el servidor. Intentá de nuevo más tarde.');
     }
 
     const data = await res.json() as { access_token: string; refresh_token: string };

@@ -114,7 +114,7 @@ export function formToPatch(
   if (bloqueada) {
     const patch: Partial<ExamConfig> = { ...publicacion };
     // `cierre` (solo EXTENDER) e `intentos_permitidos` (solo AUMENTAR) son ampliables:
-    // se envían SOLO si el docente los cambió, para no gatillar un falso 409 por
+    // se envían SOLO si el tutor los cambió, para no gatillar un falso 409 por
     // truncar la precisión de una fecha que en realidad no tocó.
     if (original && form.cierre !== original.cierre) {
       patch.cierre = localInputToIso(form.cierre);
@@ -139,7 +139,7 @@ export function formToPatch(
 
 export function ConfiguracionExamenSection({ examenId }: { examenId: string }) {
   const [form, setForm] = useState<ConfigForm | null>(null);
-  // Config tal como vino del backend: baseline para saber si el docente amplió
+  // Config tal como vino del backend: baseline para saber si el tutor amplió
   // `cierre`/`intentos_permitidos` (candado direccional) al guardar bloqueado.
   const [original, setOriginal] = useState<ConfigForm | null>(null);
   const [bloqueada, setBloqueada] = useState(false);
@@ -204,7 +204,7 @@ export function ConfiguracionExamenSection({ examenId }: { examenId: string }) {
 
   return (
     <Card>
-      <SectionTitle sub="La define el docente; la plataforma la aplica al rendir.">
+      <SectionTitle icon="settings" sub="La define el tutor; la plataforma la aplica al rendir.">
         Configuración del examen
       </SectionTitle>
 
@@ -229,7 +229,7 @@ export function ConfiguracionExamenSection({ examenId }: { examenId: string }) {
       )}
 
       {!cargando && !errorCarga && form && (
-        <div className="space-y-5">
+        <div className="space-y-6">
           {bloqueada && (
             <div className="flex items-start gap-sm text-on-surface bg-warning-container/50 border border-warning/40 rounded-lg px-4 py-3 text-label-sm">
               <Icon name="lock" className="text-[18px] shrink-0 text-warning" fill />
@@ -335,10 +335,6 @@ export function ConfiguracionExamenSection({ examenId }: { examenId: string }) {
               )}
             </div>
           </div>
-          <p className="-mt-3 text-label-sm text-on-surface-variant">
-            El examen va de una fecha/hora a otra (obligatorio). La nota y la revisión se
-            publican según el cierre.
-          </p>
 
           <div className="grid sm:grid-cols-2 gap-5">
             <div>
@@ -383,10 +379,6 @@ export function ConfiguracionExamenSection({ examenId }: { examenId: string }) {
               <option value="al_cerrar">Al cerrar el examen (recomendado)</option>
               <option value="inmediata">Inmediatamente al entregar</option>
             </select>
-            <p className="mt-1.5 text-label-sm text-on-surface-variant">
-              "Al cerrar" evita que se filtren resultados mientras otros rinden: la nota
-              aparece sola después de la fecha de cierre.
-            </p>
           </div>
 
           <div>
@@ -405,9 +397,6 @@ export function ConfiguracionExamenSection({ examenId }: { examenId: string }) {
               <option value="primero">El primer intento</option>
               <option value="manual">Manual — el admin elige cuál sincronizar</option>
             </select>
-            <p className="mt-1.5 text-label-sm text-on-surface-variant">
-              Si el alumno rinde más de una vez, esto define qué nota llega a la libreta de Moodle al sincronizar.
-            </p>
           </div>
 
           <div className="flex items-center justify-between gap-md border border-outline-variant rounded-lg px-4 py-3">
@@ -451,9 +440,7 @@ export function ConfiguracionExamenSection({ examenId }: { examenId: string }) {
               onChange={(e) => update('limitePreguntas', e.target.value)}
             />
             <p className="mt-1.5 text-label-sm text-on-surface-variant">
-              Cuántas preguntas puede tener este examen como máximo. Dejalo vacío para no
-              poner tope. Si al elegir las preguntas te pasás de este número, no te va a
-              dejar guardar.
+              Dejalo vacío para no poner tope.
             </p>
           </div>
 

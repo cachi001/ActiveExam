@@ -4,6 +4,7 @@ import { Icon, BackButton } from './components';
 import { Link, useRouter, useNavigate } from '../lib/router';
 import { nombreCompleto } from '../lib/types';
 import { useAuth } from '../lib/authStore';
+import { useApp } from '../lib/store';
 import { api } from '../lib/api';
 import { ConfirmModal } from './ConfirmModal';
 import { WizardStepper, type WizardPaso } from '../screens/enrollment/EnrollmentStepLayout';
@@ -20,11 +21,14 @@ const STUDENT_NAV: StudentNavItem[] = [
   { to: '/alumno/perfil',       icon: 'manage_accounts', label: 'Mi perfil',    short: 'Perfil' },
 ];
 
+/**
+ * Menú de usuario en el header (desktop): avatar + nombre + dropdown con
+ * "Mi perfil" y "Cerrar sesión". Reemplaza al pie de la sidebar — la identidad
+ * y el logout viven arriba a la derecha, como en el StaffShell.
+ */
 function StudentUserMenu({ onLogoutClick }: { onLogoutClick: () => void }) {
   const principal = useAuth((s) => s.principal);
-  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
-  // Ver nota en UserMenu: el overlay fixed no sirve por el backdrop-blur del topbar.
   const wrapperRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -42,6 +46,8 @@ function StudentUserMenu({ onLogoutClick }: { onLogoutClick: () => void }) {
   }, [open]);
 
   if (!principal) return null;
+  const inicial = principal.nombre.charAt(0).toUpperCase();
+  const secundario = principal.email ?? principal.id_institucional ?? 'Estudiante';
 
   return (
     <div ref={wrapperRef} className="relative">
@@ -49,49 +55,68 @@ function StudentUserMenu({ onLogoutClick }: { onLogoutClick: () => void }) {
         onClick={() => setOpen((v) => !v)}
         aria-haspopup="menu"
         aria-expanded={open}
-        className={`flex items-center gap-2 px-2 py-1.5 rounded-md transition-colors hover:bg-surface-50 ${
-          open ? 'bg-surface-50' : ''
-        }`}
+        className={`flex items-center gap-2 px-2 py-1.5 rounded-md transition-colors hover:bg-surface-50 ${open ? 'bg-surface-50' : ''}`}
       >
         {principal.foto_perfil ? (
-          <img src={principal.foto_perfil} alt={principal.nombre} className="w-8 h-8 rounded-full object-cover shrink-0" />
+          <img src={principal.foto_perfil} alt={principal.nombre} className="w-8 h-8 rounded-full object-cover" />
         ) : (
-          <div className="w-8 h-8 rounded-full bg-primary text-on-primary flex items-center justify-center font-semibold text-[13px] shrink-0">
-            {principal.nombre.charAt(0)}
+          <div className="w-8 h-8 rounded-full bg-primary text-on-primary flex items-center justify-center font-semibold text-[13px]">
+            {inicial}
           </div>
         )}
         <div className="hidden lg:block text-left max-w-[180px] leading-tight">
           <div className="text-[12px] font-medium text-on-surface truncate">{nombreCompleto(principal)}</div>
-          <div className="text-[11px] text-on-surface-variant truncate">{principal.id_institucional}</div>
+          <div className="text-[11px] text-on-surface-variant truncate">{secundario}</div>
         </div>
         <Icon name="expand_more" className={`text-[16px] text-on-surface-variant transition-transform hidden lg:block ${open ? 'rotate-180' : ''}`} />
       </button>
 
       {open && (
         <div role="menu" className="absolute right-0 top-full mt-2 z-50 w-56 rounded-lg border border-surface-200 bg-white shadow-lg overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150">
-          <div className="px-4 py-3 border-b border-surface-200 lg:hidden">
+          <div className="px-4 py-3 border-b border-surface-200">
             <div className="text-sm font-medium text-on-surface truncate">{nombreCompleto(principal)}</div>
-            <div className="text-xs text-on-surface-variant truncate">{principal.id_institucional}</div>
+            <div className="text-xs text-on-surface-variant truncate">{secundario}</div>
           </div>
-          <button
-            onClick={() => { setOpen(false); navigate('/alumno/perfil'); }}
-            role="menuitem"
+          <Link
+            to="/alumno/perfil"
+            onClick={() => setOpen(false)}
             className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-on-surface hover:bg-surface-50 transition-colors"
           >
-            <Icon name="manage_accounts" className="text-[18px] text-on-surface-variant" />
-            Mi perfil
-          </button>
+            <Icon name="manage_accounts" className="text-[18px] text-on-surface-variant" /> Mi perfil
+          </Link>
           <button
             onClick={() => { setOpen(false); onLogoutClick(); }}
             role="menuitem"
             className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-error hover:bg-error-container/40 transition-colors"
           >
-            <Icon name="logout" className="text-[18px]" />
-            Cerrar sesión
+            <Icon name="logout" className="text-[18px]" /> Cerrar sesión
           </button>
         </div>
       )}
     </div>
+  );
+}
+
+function HeaderAvatar() {
+  const principal = useAuth((s) => s.principal);
+  if (!principal) return null;
+
+  const inicial = principal.nombre.charAt(0).toUpperCase();
+
+  return (
+    <Link
+      to="/alumno/perfil"
+      className="flex items-center justify-center w-8 h-8 rounded-full hover:opacity-80 transition-opacity"
+      aria-label="Mi perfil"
+    >
+      {principal.foto_perfil ? (
+        <img src={principal.foto_perfil} alt={principal.nombre} className="w-8 h-8 rounded-full object-cover" />
+      ) : (
+        <div className="w-8 h-8 rounded-full bg-primary text-on-primary flex items-center justify-center font-semibold text-[13px]">
+          {inicial}
+        </div>
+      )}
+    </Link>
   );
 }
 
@@ -117,6 +142,33 @@ export function StudentShell({
   const isDesktop = useIsDesktop();
   const [collapsed, toggleCollapsed] = useSidebarCollapsed();
   const [confirmandoLogout, setConfirmandoLogout] = useState(false);
+
+  // Gating de perfil: hasta que el alumno complete el enrollment (consentimiento
+  // + biometría) NO puede navegar por la sidebar/bottom-nav. Se lo funnelea a
+  // completar el perfil desde el dashboard (CTA) o el menú de usuario del header.
+  const enrollmentStatus = useApp((s) => s.enrollmentStatus);
+  const isProfileComplete = useApp((s) => s.isProfileComplete);
+  const setEnrollmentStatus = useApp((s) => s.setEnrollmentStatus);
+
+  // Cargamos el enrollment al montar si el store aún no lo tiene, para que el
+  // lock sea correcto en cualquier pantalla (incluida una recarga o entrada
+  // directa por URL). Otras pantallas también lo setean; es idempotente.
+  useEffect(() => {
+    if (enrollmentStatus === null) {
+      api.getEnrollment().then(setEnrollmentStatus).catch(() => {});
+    }
+  }, [enrollmentStatus, setEnrollmentStatus]);
+
+  // Solo bloqueamos cuando YA sabemos que el perfil está incompleto (evita
+  // parpadear la ausencia de sidebar a un alumno con perfil completo mientras
+  // carga). Durante el lockdown del examen (`locked`) la sidebar ya está oculta.
+  // Mientras el perfil no esté completo NO se muestra la sidebar ni el bottom-nav:
+  // el alumno se funnelea a completarlo (CTA del dashboard / menú de usuario).
+  const perfilBloqueado = !locked && enrollmentStatus !== null && !isProfileComplete;
+
+  // La sidebar/nav se muestran solo si no hay lockdown y el perfil está completo.
+  const mostrarSidebarDesktop = isDesktop && !locked && !perfilBloqueado;
+  const mostrarBottomNav = !locked && !perfilBloqueado;
 
   const PASOS_EXAMEN = ['Requisitos', 'Verificación', 'Sala'];
   const pasosWizard: WizardPaso[] = PASOS_EXAMEN.map((label, i) => ({
@@ -148,7 +200,7 @@ export function StudentShell({
         >
           <div className="h-full px-4 sm:px-6 flex items-center justify-between gap-4">
             <div className="flex items-center gap-3 min-w-0">
-              {isDesktop && (
+              {mostrarSidebarDesktop && (
                 <>
                   <button
                     onClick={toggleCollapsed}
@@ -165,12 +217,16 @@ export function StudentShell({
                 <span className="text-sm font-semibold text-on-surface leading-tight">Active Exam</span>
               </Link>
             </div>
-            <StudentUserMenu onLogoutClick={() => setConfirmandoLogout(true)} />
+            {/* Desktop: menú de usuario (nombre + logout) en el header.
+                Mobile: avatar como link directo al perfil. */}
+            {isDesktop
+              ? <StudentUserMenu onLogoutClick={() => setConfirmandoLogout(true)} />
+              : <HeaderAvatar />}
           </div>
         </header>
       )}
 
-      {isDesktop && !locked && (
+      {mostrarSidebarDesktop && (
         <aside
           className="fixed left-0 bottom-0 z-40 flex flex-col bg-white border-r border-surface-200 transition-[width] duration-300 ease-in-out"
           style={{ top: TOPBAR_H, width: showAsCollapsed ? SIDEBAR_COLLAPSED : SIDEBAR_EXPANDED }}
@@ -186,10 +242,10 @@ export function StudentShell({
       )}
 
       <div
-        className="min-h-screen transition-[margin] duration-300 ease-in-out"
+        className="min-h-screen transition-[margin] duration-300 ease-in-out bg-surface"
         style={{
           paddingTop: locked ? 0 : TOPBAR_H,
-          marginLeft: isDesktop && !locked ? (showAsCollapsed ? SIDEBAR_COLLAPSED : SIDEBAR_EXPANDED) : 0,
+          marginLeft: mostrarSidebarDesktop ? (showAsCollapsed ? SIDEBAR_COLLAPSED : SIDEBAR_EXPANDED) : 0,
         }}
       >
         <main className={`p-4 sm:p-6 ${locked ? '' : 'pb-24 md:pb-6'}`}>
@@ -203,7 +259,7 @@ export function StudentShell({
         </main>
       </div>
 
-      {!locked && (
+      {mostrarBottomNav && (
         <nav className="md:hidden fixed bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur-sm border-t border-surface-200 flex items-stretch justify-around pb-[env(safe-area-inset-bottom)]">
           {STUDENT_NAV.map((item) => {
             const active = path === item.to;

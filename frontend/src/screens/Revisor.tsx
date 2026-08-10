@@ -62,23 +62,6 @@ function leerNavGuardada(): { path: ColaPath; personaSelId: string | null } | nu
   }
 }
 
-/**
- * Acorta el recorrido (C-72 backlog UX #8): sigue los niveles que tienen UNA sola
- * opción desde la raíz hacia abajo, para caer directo en las personas en riesgo sin
- * clickear pantallas de una sola card. Se aplica SOLO en la carga inicial (no al
- * volver del detalle): así el botón "Volver" nunca queda atrapado re-colapsando.
- */
-function caminoAutoColapsado(items: SesionEnriquecida[]): ColaPath {
-  const materias = materiasEnRiesgo(items);
-  if (materias.length !== 1) return {};
-  const materia = materias[0].nombre;
-  const comisiones = comisionesEnRiesgo(items, materia);
-  if (comisiones.length !== 1) return { materia };
-  const comision = comisiones[0].nombre;
-  const examenes = examenesEnRiesgo(items, materia, comision);
-  if (examenes.length !== 1) return { materia, comision };
-  return { materia, comision, examen: examenes[0].nombre };
-}
 
 export default function Revisor() {
   const navigate = useNavigate();
@@ -97,8 +80,6 @@ export default function Revisor() {
   );
 
   useEffect(() => {
-    // Capturamos si venimos de restaurar navegación ANTES de consumir la clave.
-    const restaurado = leerNavGuardada();
     // Ya restauramos la navegación en los initializers; consumimos la clave para
     // que sea restore-once (una entrada fresca desde el menú arranca en la raíz).
     try { sessionStorage.removeItem(NAV_KEY); } catch { /* ignore */ }
@@ -121,10 +102,9 @@ export default function Revisor() {
         setLastUpdatedAt(Date.now());
         // #8: entrada fresca (no venimos del detalle) → saltamos los niveles de una
         // sola opción para acortar el recorrido hasta las personas en riesgo.
-        if (!restaurado?.path?.materia) {
-          const auto = caminoAutoColapsado(enriched);
-          if (auto.materia) setPath(auto);
-        }
+        // No auto-colapsamos: el usuario siempre arranca en la raíz (Materias).
+        // El auto-colapso generaba confusión al mostrar el breadcrumb completo
+        // en el primer render sin que el usuario hubiera navegado nada.
       } catch {
         setItems([]);
       } finally {
@@ -174,8 +154,8 @@ export default function Revisor() {
       sessionStorage.setItem(NAV_KEY, JSON.stringify({ path, personaSelId: id }));
     } catch { /* ignore */ }
     setProctoringSessionId(id);
-    setProctoringDetailBackRoute('/revisor');
-    navigate(PROCTORING_DETAIL_ROUTE);
+    setProctoringDetailBackRoute('/admin/cola-revision');
+    navigate(PROCTORING_DETAIL_ROUTE + '/' + id);
   };
 
   /**

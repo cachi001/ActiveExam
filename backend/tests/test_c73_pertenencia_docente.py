@@ -150,7 +150,7 @@ async def test_docente_ajeno_no_puede_fijar_destino_moodle(app, factory):
     ajeno = await _crear_docente(factory, f"DOC-B-{uuid.uuid4().hex[:4]}")
     examen_id = await _crear_examen_de_comision(factory, docente_id=dueno)
 
-    async with _client(app, ["docente"], subject=ajeno) as c:
+    async with _client(app, ["tutor"], subject=ajeno) as c:
         resp = await c.post(
             f"/api/v1/exam-content/{examen_id}/moodle-target",
             json={"moodle_courseid": 999, "moodle_cmid": 888},
@@ -168,7 +168,7 @@ async def test_docente_dueno_si_puede_fijar_destino_moodle(app, factory):
     dueno = await _crear_docente(factory, f"DOC-C-{uuid.uuid4().hex[:4]}")
     examen_id = await _crear_examen_de_comision(factory, docente_id=dueno)
 
-    async with _client(app, ["docente"], subject=dueno) as c:
+    async with _client(app, ["tutor"], subject=dueno) as c:
         resp = await c.post(
             f"/api/v1/exam-content/{examen_id}/moodle-target",
             json={"moodle_courseid": 12, "moodle_cmid": 34},
@@ -199,7 +199,7 @@ async def test_examen_sin_docente_no_lo_reclama_un_docente(app, factory):
     cualquiera = await _crear_docente(factory, f"DOC-E-{uuid.uuid4().hex[:4]}")
     examen_id = await _crear_examen_de_comision(factory, docente_id=None)
 
-    async with _client(app, ["docente"], subject=cualquiera) as c:
+    async with _client(app, ["tutor"], subject=cualquiera) as c:
         resp = await c.post(
             f"/api/v1/exam-content/{examen_id}/moodle-target",
             json={"moodle_courseid": 1, "moodle_cmid": 2},

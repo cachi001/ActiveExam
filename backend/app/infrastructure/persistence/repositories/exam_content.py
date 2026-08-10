@@ -5,17 +5,20 @@ from __future__ import annotations
 from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import selectinload, with_loader_criteria
 
 from app.domain.exam_content.entities import (
+    BlankCloze,
     Comision,
     ExamenContenido,
     ExamenContenidoResumen,
     Materia,
+    OpcionBlankCloze,
     OpcionRespuesta,
     Pregunta,
     PreguntaSeleccionItem,
 )
+from app.application.exam_content.errors import SorteoInsuficienteError
 from app.domain.exam_content.errors import (
     CodigoMatriculacionDuplicadoError,
     ComisionDuplicadaError,
@@ -28,6 +31,7 @@ from app.infrastructure.persistence.models.exam_content import (
     ExamenContenidoModel,
     MateriaModel,
     OpcionRespuestaModel,
+    PreguntaClozeBlankModel,
     PreguntaExamenModel,
 )
 from app.infrastructure.persistence.models.inscripcion import InscripcionModel
@@ -108,6 +112,7 @@ class ExamenContenidoSqlRepository:
                 tipo=pregunta.tipo,
                 orden=pregunta.orden if pregunta.orden else i,
                 seleccionada=pregunta.seleccionada,
+                categoria_id=pregunta.categoria_id,
             )
             for j, opcion in enumerate(pregunta.opciones):
                 o_model = OpcionRespuestaModel(
@@ -147,7 +152,9 @@ class ExamenContenidoSqlRepository:
                 .label("cantidad_preguntas"),
                 ExamenContenidoModel.comision_id,
                 ComisionModel.nombre.label("comision_nombre"),
+                ComisionModel.codigo.label("comision_codigo"),
                 MateriaModel.nombre.label("materia_nombre"),
+                MateriaModel.codigo.label("materia_codigo"),
                 ExamenContenidoModel.apertura,
                 ExamenContenidoModel.cierre,
                 ExamenContenidoModel.tiempo_limite_min,
@@ -170,7 +177,9 @@ class ExamenContenidoSqlRepository:
                 ExamenContenidoModel.titulo,
                 ExamenContenidoModel.comision_id,
                 ComisionModel.nombre,
+                ComisionModel.codigo,
                 MateriaModel.nombre,
+                MateriaModel.codigo,
                 ExamenContenidoModel.apertura,
                 ExamenContenidoModel.cierre,
                 ExamenContenidoModel.tiempo_limite_min,
@@ -186,7 +195,9 @@ class ExamenContenidoSqlRepository:
             cantidad_preguntas=row.cantidad_preguntas,
             comision_id=row.comision_id,
             comision_nombre=row.comision_nombre,
+            comision_codigo=row.comision_codigo,
             materia_nombre=row.materia_nombre,
+            materia_codigo=row.materia_codigo,
             apertura=row.apertura,
             cierre=row.cierre,
             tiempo_limite_min=row.tiempo_limite_min,
@@ -446,6 +457,65 @@ class ExamenContenidoSqlRepository:
         await self._db.flush()
         return await self.listar_preguntas(examen_id)
 
+    async def sortear_por_categorias(
+        self,
+        examen_id: str,
+        categoria_ids: list[str],
+        cantidad_por_categoria: int,
+    ) -> list[PreguntaSeleccionItem] | None:
+        """Sortea N preguntas de cada categoría y las marca seleccionada=true.
+
+        - Devuelve None si el examen no existe.
+        - Eleva SorteoInsuficienteError si alguna categoría tiene < N preguntas.
+        - Eleva SeleccionInvalidaError si la lista de categorías resulta vacía.
+        - Cada llamada produce una selección NUEVA (el sorteo no es idempotente).
+        """
+        if not await self._examen_existe(examen_id):
+            return None
+
+        if not categoria_ids:
+            raise SeleccionInvalidaError("Se requiere al menos 1 categoría para el sorteo.")
+
+        seleccionadas: list[str] = []
+        for cat_id in categoria_ids:
+            disponibles_result = await self._db.execute(
+                select(func.count(PreguntaExamenModel.id)).where(
+                    PreguntaExamenModel.examen_id == examen_id,
+                    PreguntaExamenModel.categoria_id == cat_id,
+                )
+            )
+            disponibles = disponibles_result.scalar_one()
+            if disponibles < cantidad_por_categoria:
+                raise SorteoInsuficienteError(cat_id, disponibles, cantidad_por_categoria)
+
+            elegidas = await self._db.execute(
+                select(PreguntaExamenModel.id)
+                .where(
+                    PreguntaExamenModel.examen_id == examen_id,
+                    PreguntaExamenModel.categoria_id == cat_id,
+                )
+                .order_by(func.random())
+                .limit(cantidad_por_categoria)
+            )
+            seleccionadas.extend(elegidas.scalars().all())
+
+        # Reset todo el examen, luego marca las elegidas.
+        await self._db.execute(
+            update(PreguntaExamenModel)
+            .where(PreguntaExamenModel.examen_id == examen_id)
+            .values(seleccionada=False)
+        )
+        await self._db.execute(
+            update(PreguntaExamenModel)
+            .where(
+                PreguntaExamenModel.examen_id == examen_id,
+                PreguntaExamenModel.id.in_(seleccionadas),
+            )
+            .values(seleccionada=True)
+        )
+        await self._db.flush()
+        return await self.listar_preguntas(examen_id)
+
     async def obtener(self, examen_id: str) -> ExamenContenido | None:
         """Recupera un examen por id con preguntas y opciones (eager load)."""
         result = await self._db.execute(
@@ -462,7 +532,43 @@ class ExamenContenidoSqlRepository:
             return None
         return self._to_entity(model)
 
-    def _to_entity(self, model: ExamenContenidoModel) -> ExamenContenido:
+    async def obtener_para_rendir(self, examen_id: str) -> ExamenContenido | None:
+        """Recupera un examen con SOLO las preguntas seleccionadas, y sus blanks.
+
+        `obtener()` trae el pool ENTERO y el filtrado por `seleccionada` ocurría
+        recién en Python: con 232 preguntas importadas para servir 20, la rendición
+        arrastraba miles de filas de opciones al pedo (preguntas y timer salen del
+        mismo GET, así que la pantalla del alumno tardaba en aparecer). Acá el
+        filtro va EN SQL.
+
+        Además hace eager load de `pregunta_cloze_blank` y sus opciones: sin eso las
+        preguntas cloze llegaban al alumno sin huecos que completar.
+        """
+        result = await self._db.execute(
+            select(ExamenContenidoModel)
+            .where(ExamenContenidoModel.id == examen_id)
+            .options(
+                selectinload(ExamenContenidoModel.preguntas).selectinload(
+                    PreguntaExamenModel.opciones
+                ),
+                selectinload(ExamenContenidoModel.preguntas)
+                .selectinload(PreguntaExamenModel.blanks_cloze)
+                .selectinload(PreguntaClozeBlankModel.opciones_cloze),
+                # El filtro viaja al WHERE del SELECT de la relación, no a Python.
+                with_loader_criteria(
+                    PreguntaExamenModel,
+                    PreguntaExamenModel.seleccionada.is_(True),
+                ),
+            )
+        )
+        model = result.scalar_one_or_none()
+        if model is None:
+            return None
+        return self._to_entity(model, con_blanks=True)
+
+    def _to_entity(
+        self, model: ExamenContenidoModel, con_blanks: bool = False
+    ) -> ExamenContenido:
         preguntas = tuple(
             Pregunta(
                 id=p.id,
@@ -470,6 +576,12 @@ class ExamenContenidoSqlRepository:
                 tipo=p.tipo,
                 orden=p.orden,
                 seleccionada=p.seleccionada,
+                # Sin esto la categoría se perdía en el round-trip: el import la
+                # escribía en pregunta_examen, releía la entidad sin categoría y
+                # poblaba pregunta_banco con categoria_id=NULL. Resultado: el
+                # banco entero quedaba "sin clasificar" y el sorteo por categoría
+                # no tenía de dónde sacar.
+                categoria_id=p.categoria_id,
                 opciones=tuple(
                     OpcionRespuesta(
                         id=o.id,
@@ -479,6 +591,9 @@ class ExamenContenidoSqlRepository:
                     )
                     for o in p.opciones
                 ),
+                # Solo cuando vienen eager-loaded: con lazy load acá reventaría
+                # (sesión async).
+                blanks=self._blanks_to_entity(p) if con_blanks else (),
             )
             for p in model.preguntas
         )
@@ -501,6 +616,32 @@ class ExamenContenidoSqlRepository:
             revision_habilitada=model.revision_habilitada,
             politica_intentos=model.politica_intentos,
             preguntas=preguntas,
+        )
+
+    @staticmethod
+    def _blanks_to_entity(pregunta: PreguntaExamenModel) -> tuple[BlankCloze, ...]:
+        """Mapea los huecos cloze de una pregunta ya eager-loaded."""
+        return tuple(
+            BlankCloze(
+                id=b.id,
+                orden=b.orden,
+                tipo=b.tipo,
+                texto_antes=b.texto_antes or "",
+                texto_despues=b.texto_despues or "",
+                opciones=tuple(
+                    OpcionBlankCloze(
+                        id=o.id,
+                        texto=o.texto,
+                        es_correcta=o.es_correcta,
+                        # opcion_cloze_blank no tiene columna `orden`: se usa el
+                        # orden de inserción, que es el del XML de Moodle.
+                        orden=i,
+                        peso=o.peso,
+                    )
+                    for i, o in enumerate(b.opciones_cloze)
+                ),
+            )
+            for b in sorted(pregunta.blanks_cloze, key=lambda x: x.orden)
         )
 
 
@@ -780,6 +921,32 @@ class ComisionSqlRepository:
         )
         return [self._to_entity(m) for m in result.scalars().all()]
 
+    async def listar_todas_con_materia(
+        self, docente_id: str | None = None
+    ) -> list[tuple[Comision, str, str]]:
+        """Todas las comisiones (join con materia), para un selector combinado
+        "CÓDIGO - Materia" que no requiere elegir materia primero.
+
+        ``docente_id`` None = todas (staff); provisto = solo las comisiones que
+        dicta ese docente, across todas sus materias (C-73 §9).
+        Devuelve tuplas ``(comision, materia_nombre, materia_codigo)``.
+        """
+        stmt = (
+            select(ComisionModel, MateriaModel.nombre, MateriaModel.codigo)
+            .join(MateriaModel, MateriaModel.id == ComisionModel.materia_id)
+            .order_by(
+                _orden_alfabetico(MateriaModel.nombre),
+                _orden_alfabetico(ComisionModel.nombre),
+            )
+        )
+        if docente_id is not None:
+            stmt = stmt.where(ComisionModel.docente_id == docente_id)
+        result = await self._db.execute(stmt)
+        return [
+            (self._to_entity(comision), materia_nombre, materia_codigo)
+            for comision, materia_nombre, materia_codigo in result.all()
+        ]
+
     async def obtener(self, comision_id: str) -> Comision | None:
         model = await self._db.get(ComisionModel, comision_id)
         if model is None:
@@ -947,6 +1114,26 @@ class ComisionSqlRepository:
             .where(ExamenContenidoModel.id == examen_id)
         )
         return result.scalar_one_or_none()
+
+    async def es_docente_de_materia(self, docente_id: str, materia_id: str) -> bool:
+        """True si el docente dado dicta AL MENOS UNA comisión de la materia.
+
+        Reemplaza al viejo ``docente_de_materia`` (bug real, C-74 post-cierre):
+        ese método devolvía un docente ARBITRARIO de la materia (``.limit(1)``,
+        sin filtrar por quién pregunta) y el caller comparaba identidad contra
+        ESE — un docente real que dicta una comisión distinta de la que la query
+        devolvía primero era rechazado con falso negativo. Acá se filtra
+        directamente por ``docente_id`` — es una pregunta de membresía, no de
+        "quién es el dueño arbitrario"."""
+        result = await self._db.execute(
+            select(ComisionModel.id)
+            .where(
+                ComisionModel.materia_id == materia_id,
+                ComisionModel.docente_id == docente_id,
+            )
+            .limit(1)
+        )
+        return result.scalar_one_or_none() is not None
 
     async def comision_ids_a_cargo(self, docente_id: str) -> list[str]:
         """Comisiones donde el docente dado es el titular (comision.docente_id).

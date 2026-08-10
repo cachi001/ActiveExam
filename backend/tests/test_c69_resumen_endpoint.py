@@ -194,7 +194,9 @@ async def test_resumen_devuelve_metadata_con_comision(client, factory):
         "cantidad_preguntas",
         "comision_id",
         "comision_nombre",
+        "comision_codigo",
         "materia_nombre",
+        "materia_codigo",
         # Config por examen (migración 0032): el front gatea "Rendir" con esto.
         "apertura",
         "cierre",

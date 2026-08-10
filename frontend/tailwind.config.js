@@ -14,29 +14,29 @@ export default {
         // `primary.container`. Una sola fuente de verdad, escala completa, sin
         // tener que agregar key por key cada vez que se necesita un nuevo paso.
 
-        // ── PRIMARY — azul institucional profundo (#004BA8) ─────────────────
+        // ── PRIMARY — azul (#164DE6) ─────────────────────────────────────────
         primary: {
-          DEFAULT: "#004BA8",   // azul institucional
-          50:  "#e8eff8",
-          100: "#cdddf1",
-          200: "#9bbbe3",
-          300: "#6899d5",
-          400: "#3677c7",
-          500: "#0a5fc0",
-          600: "#004BA8",
-          700: "#003d8a",
-          800: "#002f6c",
-          900: "#00214e",
+          DEFAULT: "#164DE6",   // azul institucional
+          50:  "#eef1fd",
+          100: "#d5dcfb",
+          200: "#abb9f7",
+          300: "#7490f1",
+          400: "#4469eb",
+          500: "#164DE6",
+          600: "#1240c4",
+          700: "#0e33a2",
+          800: "#0b2780",
+          900: "#081c5e",
           // Alias semánticos del design system
-          container: "#0a5fc0",   // bg fuerte (un paso más claro que el default)
-          fixed: "#d6e4f5",       // fondo suave (chips, íconos)
-          "fixed-dim": "#9bbbe3", // borde sobre fixed
+          container: "#4469eb",   // bg fuerte (un paso más claro que el default)
+          fixed: "#d5dcfb",       // fondo suave (chips, íconos)
+          "fixed-dim": "#abb9f7", // borde sobre fixed
         },
         "on-primary": "#ffffff",
-        "on-primary-container": "#d6e4f5",
-        "on-primary-fixed": "#00214e",
-        "on-primary-fixed-variant": "#003d8a",
-        "inverse-primary": "#9bbbe3",
+        "on-primary-container": "#eef1fd",
+        "on-primary-fixed": "#081c5e",
+        "on-primary-fixed-variant": "#0e33a2",
+        "inverse-primary": "#abb9f7",
 
         // ── SECONDARY — misma familia para coherencia ───────────────────────
         secondary: {
@@ -94,7 +94,9 @@ export default {
 
         // ── WARNING ─────────────────────────────────────────────────────────
         warning: {
-          DEFAULT: "#b45309",
+          // DEFAULT = 500 (ámbar vivo), no 700 — este es el tono de referencia
+          // usado en la verificación biométrica del alumno (primer ingreso).
+          DEFAULT: "#f59e0b",
           50:  "#fffbeb",
           100: "#fef3c7",
           200: "#fde68a",
@@ -122,40 +124,43 @@ export default {
         },
         "on-info": "#ffffff",
 
-        // ── SURFACE — slate como base de fondos/bordes ──────────────────────
+        // ── SURFACE — neutros puros (alineado a la referencia active-ia).
+        //   Antes slate (azulado); ahora gris neutro Tailwind, sin tinte.
+        //   Fondo app #fafafa, cards #ffffff, borde #e5e5e5 → contraste sutil.
         surface: {
-          DEFAULT: "#f8fafc",   // slate-50: fondo principal de la app
-          50:  "#f8fafc",
-          100: "#f1f5f9",
-          200: "#e2e8f0",
-          300: "#cbd5e1",
-          400: "#94a3b8",
-          500: "#64748b",
-          600: "#475569",
-          700: "#334155",
-          800: "#1e293b",
-          900: "#0f172a",
+          DEFAULT: "#fafafa",   // neutral-50: fondo principal de la app
+          50:  "#fafafa",
+          100: "#f5f5f5",
+          200: "#e5e5e5",
+          300: "#d4d4d4",
+          400: "#a3a3a3",
+          500: "#737373",
+          600: "#525252",
+          700: "#404040",
+          800: "#262626",
+          900: "#171717",
           // Alias semánticos del design system
-          dim: "#cbd5e1",
+          dim: "#d4d4d4",
           bright: "#ffffff",
-          variant: "#e2e8f0",
-          tint: "#2563eb",
+          variant: "#e5e5e5",
+          tint: "#164DE6",
           "container-lowest": "#ffffff",
-          "container-low": "#f1f5f9",
-          container: "#e2e8f0",
-          "container-high": "#cbd5e1",
-          "container-highest": "#94a3b8",
+          "container-low": "#f5f5f5",
+          container: "#ededed",
+          "container-high": "#e5e5e5",
+          "container-highest": "#d4d4d4",
         },
-        "on-surface": "#0f172a",
-        "on-surface-variant": "#475569",
-        "inverse-surface": "#1e293b",
-        "inverse-on-surface": "#f1f5f9",
+        // Textos neutros (foreground/muted de la referencia).
+        "on-surface": "#262626",
+        "on-surface-variant": "#737373",
+        "inverse-surface": "#262626",
+        "inverse-on-surface": "#fafafa",
 
         // ── Tokens globales ─────────────────────────────────────────────────
-        background: "#f8fafc",
-        "on-background": "#0f172a",
-        outline: "#64748b",
-        "outline-variant": "#e2e8f0",
+        background: "#fafafa",
+        "on-background": "#262626",
+        outline: "#737373",
+        "outline-variant": "#e5e5e5",
       },
       borderRadius: {
         // Escala mas mesurada (institucional). Cada token bajo un nivel respecto
@@ -192,6 +197,8 @@ export default {
         "headline-lg": ["32px", { lineHeight: "40px", letterSpacing: "-0.01em", fontWeight: "600" }],
         "headline-md": ["24px", { lineHeight: "32px", fontWeight: "600" }],
         "title-lg": ["20px", { lineHeight: "28px", fontWeight: "600" }],
+        "title-md": ["16px", { lineHeight: "24px", fontWeight: "600" }],
+        "title-sm": ["14px", { lineHeight: "20px", fontWeight: "600" }],
         "body-lg": ["16px", { lineHeight: "24px", fontWeight: "400" }],
         "body-md": ["15px", { lineHeight: "22px", fontWeight: "400" }],
         "label-lg": ["16px", { lineHeight: "24px", letterSpacing: "0.01em", fontWeight: "600" }],
@@ -202,8 +209,10 @@ export default {
         "container-max": "1280px",
       },
       boxShadow: {
-        // Sombras sutiles estilo "flat minimalism": apenas perceptibles, sin nubes
-        // difusas. La definición la da el borde, no la sombra.
+        xs: "0 1px 2px 0 rgba(0,0,0,0.05)",
+        sm: "0 1px 3px 0 rgba(0,0,0,0.1), 0 1px 2px -1px rgba(0,0,0,0.1)",
+        md: "0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.1)",
+        lg: "0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -4px rgba(0,0,0,0.1)",
         card: "0 1px 2px 0 rgba(16,24,40,0.04), 0 1px 3px 0 rgba(16,24,40,0.06)",
         "card-lg": "0 2px 4px -1px rgba(16,24,40,0.04), 0 8px 16px -6px rgba(16,24,40,0.08)",
       },

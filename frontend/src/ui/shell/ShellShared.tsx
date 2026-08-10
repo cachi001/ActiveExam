@@ -34,7 +34,7 @@ export function useSidebarCollapsed(): [boolean, () => void] {
 
 export function LogoMark() {
   return (
-    <div className="w-8 h-8 rounded-lg bg-primary-fixed text-primary flex items-center justify-center shadow-sm shrink-0">
+    <div className="w-8 h-8 rounded-lg bg-primary text-white flex items-center justify-center shrink-0">
       <Icon name="verified_user" className="text-[18px]" fill />
     </div>
   );
@@ -59,8 +59,8 @@ export function SidebarItem({
         collapsed ? 'pl-[13px] pr-2' : 'px-3'
       } ${
         active
-          ? 'bg-primary text-on-primary shadow-sm'
-          : 'text-on-surface-variant hover:bg-surface-50 hover:text-on-surface'
+          ? 'bg-primary/10 text-primary'
+          : 'text-on-surface-variant hover:bg-surface-100 hover:text-on-surface'
       }`}
     >
       <Icon name={item.icon} className="text-[18px] shrink-0" fill={active} />

@@ -34,7 +34,7 @@ export function UsuarioFormPanel({
         <div className="grid sm:grid-cols-2 gap-md">
           {modoForm === 'crear' && (
             <TextField
-              label="ID institucional"
+              label="Legajo"
               name="id_institucional"
               value={form.id_institucional}
               onChange={cambiarTexto('id_institucional')}

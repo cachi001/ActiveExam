@@ -81,7 +81,7 @@ export function DestinoMoodleSection({ examenId }: { examenId: string }) {
 
   return (
     <Card>
-      <SectionTitle sub="A qué curso y actividad de Moodle se le devolverá la nota. Vacío = usa el destino global.">
+      <SectionTitle icon="send" sub="A qué curso y actividad de Moodle se le devolverá la nota. Vacío = usa el destino global.">
         Destino de la nota en Moodle
       </SectionTitle>
 

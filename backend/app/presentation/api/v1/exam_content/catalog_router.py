@@ -83,7 +83,11 @@ from app.presentation.api.v1.exam_content.schemas import (
     ComisionResponse,
     ExamenConfigPatchRequest,
     ExamenConfigResponse,
+    ImportarBancoXmlResponse,
     ImportReporteResponse,
+    PreguntaImportadaItemResponse,
+    PreviewCategoriaResponse,
+    PreviewImportBancoResponse,
     InscribirAlumnoRequest,
     InscripcionResponse,
     MateriaActivaRequest,
@@ -97,8 +101,11 @@ from app.presentation.api.v1.exam_content.schemas import (
     PreguntasPoolResponse,
     PreguntasSeleccionRequest,
     ResultadoAlumnoResponse,
+    SorteoRequest,
     ResultadosExamenPaginadosResponse,
     SincronizarMoodleResponse,
+    CrearDesdebancoRequest,
+    CrearDesdebancoResponse,
 )
 
 
@@ -168,6 +175,7 @@ def create_exam_content_router(
         request: Request,
         file: UploadFile = File(...),
         titulo: str | None = Form(default=None),
+        materia_id: str | None = Form(default=None),
         moodle_courseid: int | None = Form(default=None),
         moodle_cmid: int | None = Form(default=None),
         moodle_component: str | None = Form(default=None),
@@ -201,6 +209,7 @@ def create_exam_content_router(
                 report = await service.importar(
                     xml_bytes,
                     titulo=titulo,
+                    materia_id=materia_id,
                     moodle_courseid=moodle_courseid,
                     moodle_cmid=moodle_cmid,
                     moodle_component=moodle_component,
@@ -249,6 +258,139 @@ def create_exam_content_router(
             omitidas=[
                 OmitidaItemResponse(tipo=o.tipo, nombre=o.nombre, motivo=o.motivo)
                 for o in report.omitidas
+            ],
+        )
+
+    # -----------------------------------------------------------------------
+    # Import XML directo al banco de preguntas — SIN crear examen (C-74).
+    # El banco es el destino; el examen se arma después por separado, sorteando
+    # categorías/tipos desde el banco (crear-desde-banco).
+    # -----------------------------------------------------------------------
+
+    @router.post(
+        "/banco/importar-xml/preview",
+        response_model=PreviewImportBancoResponse,
+        status_code=status.HTTP_200_OK,
+        summary="Preview de un XML antes de importarlo al banco — no persiste nada",
+    )
+    async def preview_importar_banco_xml(
+        file: UploadFile = File(...),
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    ) -> PreviewImportBancoResponse:
+        xml_bytes = await file.read()
+
+        from app.application.exam_content.import_service import preview_import_banco
+
+        try:
+            report = preview_import_banco(xml_bytes)
+        except MoodleXmlInvalidoError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={"error": "xml_invalido", "mensaje": str(exc)},
+            ) from exc
+        except MoodleXmlVacioError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"error": "xml_vacio", "mensaje": str(exc)},
+            ) from exc
+
+        return PreviewImportBancoResponse(
+            categorias=[
+                PreviewCategoriaResponse(
+                    ruta=c.ruta,
+                    preguntas_por_tipo=c.preguntas_por_tipo,
+                    preguntas=[
+                        PreguntaImportadaItemResponse(enunciado=p.enunciado, tipo=p.tipo)
+                        for p in c.preguntas
+                    ],
+                )
+                for c in report.categorias
+            ],
+            sin_categoria_por_tipo=report.sin_categoria_por_tipo,
+            omitidas=[
+                OmitidaItemResponse(tipo=o.tipo, nombre=o.nombre, motivo=o.motivo)
+                for o in report.omitidas
+            ],
+            total_preguntas=report.total_preguntas,
+            sin_categoria_preguntas=[
+                PreguntaImportadaItemResponse(enunciado=p.enunciado, tipo=p.tipo)
+                for p in report.sin_categoria_preguntas
+            ],
+        )
+
+    @router.post(
+        "/banco/importar-xml",
+        response_model=ImportarBancoXmlResponse,
+        status_code=status.HTTP_201_CREATED,
+        summary="Importa un XML de Moodle directo al banco de preguntas, sin crear examen",
+    )
+    async def importar_banco_xml(
+        materia_id: str = Form(...),
+        file: UploadFile = File(...),
+        categorias_excluidas: str | None = Form(default=None),
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    ) -> ImportarBancoXmlResponse:
+        await _exigir_pertenencia_materia(principal, materia_id)
+
+        if session_factory is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Persistencia no inicializada.",
+            )
+
+        xml_bytes = await file.read()
+
+        # categorias_excluidas viaja como JSON de rutas (list[list[str]]), igual
+        # forma que PreviewCategoria.ruta — el docente las destildó en el preview.
+        excluidas_set: set[tuple[str, ...]] | None = None
+        if categorias_excluidas:
+            import json as _json
+
+            try:
+                rutas_crudas = _json.loads(categorias_excluidas)
+                excluidas_set = {tuple(r) for r in rutas_crudas}
+            except (ValueError, TypeError) as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail={"error": "categorias_excluidas_invalido", "mensaje": str(exc)},
+                ) from exc
+
+        from app.application.exam_content.import_service import importar_banco_desde_xml
+
+        async with session_factory() as session:
+            try:
+                report = await importar_banco_desde_xml(
+                    session, xml_bytes, materia_id, categorias_excluidas=excluidas_set
+                )
+                await session.commit()
+            except MoodleXmlInvalidoError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail={"error": "xml_invalido", "mensaje": str(exc)},
+                ) from exc
+            except MoodleXmlVacioError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail={"error": "xml_vacio", "mensaje": str(exc)},
+                ) from exc
+            except Exception:
+                await session.rollback()
+                raise
+
+        return ImportarBancoXmlResponse(
+            preguntas_nuevas=report.preguntas_nuevas,
+            preguntas_actualizadas=report.preguntas_actualizadas,
+            omitidas=[
+                OmitidaItemResponse(tipo=o.tipo, nombre=o.nombre, motivo=o.motivo)
+                for o in report.omitidas
+            ],
+            nuevas=[
+                PreguntaImportadaItemResponse(enunciado=p.enunciado, tipo=p.tipo)
+                for p in report.nuevas
+            ],
+            actualizadas=[
+                PreguntaImportadaItemResponse(enunciado=p.enunciado, tipo=p.tipo)
+                for p in report.actualizadas
             ],
         )
 
@@ -349,7 +491,14 @@ def create_exam_content_router(
     async def asociar_examen_a_comision(
         examen_id: str,
         body: AsociarComisionRequest,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
     ) -> AsociarComisionResponse:
+        """Sin chequeo de pertenencia (bug real, C-74 post-cierre): cualquier
+        docente con `gestionar_academico` podía asociar CUALQUIER examen a
+        CUALQUIER comisión, sin dueño en ninguno de los dos extremos. Ahora exige
+        que el docente dicte la comisión DESTINO (misma política que crear-desde-
+        banco): es esa comisión la que decide a qué libreta va la nota."""
+        await _exigir_pertenencia_comision(principal, body.comision_id)
         if session_factory is None:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -870,12 +1019,12 @@ def create_exam_content_router(
                             "mensaje": "El usuario no existe o está dado de baja.",
                         },
                     )
-                if Rol.DOCENTE.value not in (usuario.roles or []):
+                if Rol.TUTOR.value not in (usuario.roles or []):
                     raise HTTPException(
                         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                         detail={
-                            "error": "no_es_docente",
-                            "mensaje": "El usuario no tiene rol docente.",
+                            "error": "no_es_tutor",
+                            "mensaje": "El usuario no tiene rol tutor.",
                         },
                     )
 
@@ -1267,6 +1416,57 @@ def create_exam_content_router(
                 detail={"error": "examen_ajeno", "mensaje": str(exc)},
             ) from exc
 
+    async def _exigir_pertenencia_materia(principal, materia_id: str) -> None:
+        """C-74: docente solo opera el banco de su propia materia (compartido por
+        todas SUS comisiones de esa materia — el banco no se re-sube por comisión).
+        """
+        from app.domain.auth.authorization import (
+            _ROLES_SIN_LIMITE_DE_PERTENENCIA,
+            autorizar_docente_sobre_materia,
+        )
+        from app.domain.auth.errors import ForbiddenError
+        from app.infrastructure.persistence.repositories.exam_content import (
+            ComisionSqlRepository,
+        )
+        # Corta ANTES de tocar la DB para los roles de alcance institucional: la
+        # query mete `principal.subject` en un WHERE tipado UUID, y ese subject
+        # no es un UUID real para roles que no son docente (staff, tests, etc.) —
+        # evaluarla igual rompe con un error de tipo en vez de simplemente pasar.
+        if principal.tiene_algun_rol(_ROLES_SIN_LIMITE_DE_PERTENENCIA):
+            autorizar_docente_sobre_materia(principal, es_docente_de_alguna_comision_de_la_materia=True)
+            return
+        async with session_factory() as session:
+            es_miembro = await ComisionSqlRepository(session).es_docente_de_materia(
+                principal.subject or "", materia_id
+            )
+        try:
+            autorizar_docente_sobre_materia(principal, es_miembro)
+        except ForbiddenError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={"error": "materia_ajena", "mensaje": str(exc)},
+            ) from exc
+
+    async def _exigir_pertenencia_comision(principal, comision_id: str) -> None:
+        """C-74 post-cierre: un examen apunta a UNA comisión — el docente debe
+        dictar ESA comisión puntual, no alcanza con compartir materia/banco con
+        otro docente que dicta una comisión distinta de la misma materia."""
+        from app.domain.auth.authorization import autorizar_docente_sobre_comision
+        from app.domain.auth.errors import ForbiddenError
+        from app.infrastructure.persistence.repositories.exam_content import (
+            ComisionSqlRepository,
+        )
+        async with session_factory() as session:
+            comision = await ComisionSqlRepository(session).obtener(comision_id)
+        docente_id = comision.docente_id if comision else None
+        try:
+            autorizar_docente_sobre_comision(principal, docente_id)
+        except ForbiddenError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={"error": "comision_ajena", "mensaje": str(exc)},
+            ) from exc
+
     @router.post(
         "/{examen_id}/moodle-target",
         response_model=MoodleTargetResponse,
@@ -1551,6 +1751,217 @@ def create_exam_content_router(
             bloqueada=bloqueada,
         )
 
+    # -----------------------------------------------------------------------
+    # Banco de preguntas — categorías (C-74 §4)
+    # -----------------------------------------------------------------------
+
+    @router.get(
+        "/categorias",
+        summary="Listar categorías del banco de preguntas de una materia (C-74 §4)",
+    )
+    async def listar_categorias_banco(
+        materia_id: str,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    ):
+        """Devuelve todas las categorías de la materia, flat (el cliente construye el árbol)."""
+        await _exigir_pertenencia_materia(principal, materia_id)
+        if session_factory is None:
+            raise HTTPException(status_code=500, detail="Persistencia no inicializada.")
+        from app.infrastructure.persistence.repositories.categoria_pregunta import (
+            CategoriaPreguntaSqlRepository,
+        )
+        async with session_factory() as session:
+            cats = await CategoriaPreguntaSqlRepository(session).listar_por_materia(materia_id)
+        return [
+            {
+                "id": c.id,
+                "nombre": c.nombre,
+                "materia_id": c.materia_id,
+                "categoria_padre_id": c.categoria_padre_id,
+                "creada_en": c.creada_en.isoformat() if c.creada_en else None,
+            }
+            for c in cats
+        ]
+
+    @router.post(
+        "/categorias",
+        status_code=201,
+        summary="Crear categoría en el banco de preguntas (C-74 §4)",
+    )
+    async def crear_categoria_banco(
+        body: dict,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    ):
+        materia_id = body.get("materia_id", "")
+        nombre = body.get("nombre", "").strip()
+        padre_id = body.get("categoria_padre_id") or None
+        if not materia_id or not nombre:
+            raise HTTPException(status_code=422, detail="materia_id y nombre son requeridos.")
+        await _exigir_pertenencia_materia(principal, materia_id)
+        if session_factory is None:
+            raise HTTPException(status_code=500, detail="Persistencia no inicializada.")
+        from app.domain.exam_content.entities import CategoriaPregunta
+        from app.infrastructure.persistence.repositories.categoria_pregunta import (
+            CategoriaPreguntaSqlRepository,
+        )
+        async with session_factory() as session:
+            cat = await CategoriaPreguntaSqlRepository(session).crear(
+                CategoriaPregunta(nombre=nombre, materia_id=materia_id, categoria_padre_id=padre_id)
+            )
+            await session.commit()
+        return {
+            "id": cat.id,
+            "nombre": cat.nombre,
+            "materia_id": cat.materia_id,
+            "categoria_padre_id": cat.categoria_padre_id,
+            "creada_en": cat.creada_en.isoformat() if cat.creada_en else None,
+        }
+
+    @router.patch(
+        "/categorias/{categoria_id}",
+        summary="Renombrar categoría del banco de preguntas (C-74 §4)",
+    )
+    async def renombrar_categoria_banco(
+        categoria_id: str,
+        body: dict,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    ):
+        nombre = body.get("nombre", "").strip()
+        if not nombre:
+            raise HTTPException(status_code=422, detail="nombre es requerido.")
+        if session_factory is None:
+            raise HTTPException(status_code=500, detail="Persistencia no inicializada.")
+        from app.infrastructure.persistence.models.exam_content import CategoriaPreguntaModel
+        from app.infrastructure.persistence.repositories.categoria_pregunta import (
+            CategoriaPreguntaSqlRepository,
+        )
+        from sqlalchemy import update as _update
+        async with session_factory() as session:
+            cat = await CategoriaPreguntaSqlRepository(session).obtener(categoria_id)
+            if cat is None:
+                raise HTTPException(status_code=404, detail="categoria_no_encontrada")
+            await _exigir_pertenencia_materia(principal, cat.materia_id)
+            await session.execute(
+                _update(CategoriaPreguntaModel)
+                .where(CategoriaPreguntaModel.id == categoria_id)
+                .values(nombre=nombre)
+            )
+            await session.commit()
+            cat_act = await CategoriaPreguntaSqlRepository(session).obtener(categoria_id)
+        return {
+            "id": cat_act.id,
+            "nombre": cat_act.nombre,
+            "materia_id": cat_act.materia_id,
+            "categoria_padre_id": cat_act.categoria_padre_id,
+        }
+
+    @router.delete(
+        "/categorias/{categoria_id}",
+        status_code=204,
+        summary="Borrar categoría del banco de preguntas (C-74 §4)",
+    )
+    async def borrar_categoria_banco(
+        categoria_id: str,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    ):
+        if session_factory is None:
+            raise HTTPException(status_code=500, detail="Persistencia no inicializada.")
+        from app.infrastructure.persistence.repositories.categoria_pregunta import (
+            CategoriaPreguntaSqlRepository,
+        )
+        async with session_factory() as session:
+            cat = await CategoriaPreguntaSqlRepository(session).obtener(categoria_id)
+            if cat is None:
+                raise HTTPException(status_code=404, detail="categoria_no_encontrada")
+            await _exigir_pertenencia_materia(principal, cat.materia_id)
+            await CategoriaPreguntaSqlRepository(session).borrar(categoria_id)
+            await session.commit()
+
+    # -----------------------------------------------------------------------
+    # Banco de preguntas — listar/mover preguntas del banco (C-74 §4)
+    # -----------------------------------------------------------------------
+
+    @router.get(
+        "/preguntas",
+        summary="Listar preguntas del banco por materia/categoría (C-74 §4, 0057)",
+    )
+    async def listar_preguntas_banco(
+        materia_id: str,
+        categoria_id: str | None = None,
+        sin_categoria: bool = False,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    ):
+        """Devuelve preguntas de la tabla pregunta_banco para la materia dada.
+
+        Las preguntas del banco son independientes de los exámenes (0057).
+        Si ``sin_categoria=true``, devuelve las preguntas con categoria_id=NULL.
+        Si se provee ``categoria_id``, filtra por esa categoría.
+        """
+        await _exigir_pertenencia_materia(principal, materia_id)
+        if session_factory is None:
+            raise HTTPException(status_code=500, detail="Persistencia no inicializada.")
+        from sqlalchemy import select as _select
+        from app.infrastructure.persistence.models.exam_content import PreguntaBancoModel
+        async with session_factory() as session:
+            stmt = _select(PreguntaBancoModel).where(
+                PreguntaBancoModel.materia_id == materia_id
+            )
+            if sin_categoria:
+                stmt = stmt.where(PreguntaBancoModel.categoria_id.is_(None))
+            elif categoria_id:
+                stmt = stmt.where(PreguntaBancoModel.categoria_id == categoria_id)
+            result = await session.execute(stmt)
+            rows = result.scalars().all()
+        return [
+            {
+                "id": r.id,
+                "enunciado": r.enunciado,
+                "tipo": r.tipo,
+                "orden": 0,
+                "seleccionada": True,
+                "categoria_id": r.categoria_id,
+                # 0058: la UI marca con esto qué preguntas ya no las toca Moodle.
+                "categoria_manual": r.categoria_manual,
+            }
+            for r in rows
+        ]
+
+    @router.patch(
+        "/preguntas/{pregunta_id}/categoria",
+        summary="Mover pregunta del banco a una categoría (C-74 §4.3, 0057)",
+    )
+    async def mover_pregunta_categoria(
+        pregunta_id: str,
+        body: dict,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    ):
+        """Mueve la pregunta y marca su categoría como decidida por el docente.
+
+        ``categoria_manual=True`` (0058) es lo que después hace que el import de
+        XML y el sync desde Moodle dejen esta pregunta donde el docente la puso.
+        """
+        nueva_cat_id = body.get("categoria_id") or None
+        if session_factory is None:
+            raise HTTPException(status_code=500, detail="Persistencia no inicializada.")
+        from sqlalchemy import update as _update
+        from app.infrastructure.persistence.models.exam_content import PreguntaBancoModel
+        async with session_factory() as session:
+            row = await session.get(PreguntaBancoModel, pregunta_id)
+            if row is None:
+                raise HTTPException(status_code=404, detail="pregunta_no_encontrada")
+            await _exigir_pertenencia_materia(principal, row.materia_id)
+            await session.execute(
+                _update(PreguntaBancoModel)
+                .where(PreguntaBancoModel.id == pregunta_id)
+                .values(categoria_id=nueva_cat_id, categoria_manual=True)
+            )
+            await session.commit()
+        return {
+            "pregunta_id": pregunta_id,
+            "categoria_id": nueva_cat_id,
+            "categoria_manual": True,
+        }
+
     async def _seleccion_bloqueada(session, examen_id: str) -> bool:
         """True si el examen ya tiene >= 1 intento FINALIZADO.
 
@@ -1705,6 +2116,87 @@ def create_exam_content_router(
                 f"{len(body.seleccionadas)} seleccionada(s)"
             ),
         )
+
+        return _pool_to_response(items)
+
+    @router.post(
+        "/{examen_id}/sortear-preguntas",
+        response_model=PreguntasPoolResponse,
+        summary="Armar examen por sorteo aleatorio de categorías (C-74 §3)",
+    )
+    async def sortear_preguntas(
+        examen_id: str,
+        body: SorteoRequest,
+        request: Request,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    ) -> PreguntasPoolResponse:
+        """Sortea N preguntas de cada categoría y marca seleccionada=true.
+
+        - 409 si el examen ya tiene intentos finalizados (mismo candado que selección manual).
+        - 422 si alguna categoría tiene menos preguntas de las pedidas.
+        - 422 si la lista de categorías está vacía.
+        - Cada llamada produce una selección NUEVA (no idempotente).
+        """
+        await _exigir_pertenencia(principal, examen_id)
+        if session_factory is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Persistencia no inicializada.",
+            )
+
+        from app.application.exam_content.errors import SorteoInsuficienteError
+        from app.domain.exam_content.errors import SeleccionInvalidaError
+        from app.infrastructure.persistence.repositories.exam_content import (
+            ExamenContenidoSqlRepository,
+        )
+
+        async with session_factory() as session:
+            repo = ExamenContenidoSqlRepository(session)
+
+            if await _seleccion_bloqueada(session, examen_id):
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={
+                        "error": "seleccion_bloqueada",
+                        "mensaje": (
+                            "No se puede sortear: este examen ya tiene intentos "
+                            "finalizados y cambiar la selección alteraría notas ya "
+                            "calculadas."
+                        ),
+                    },
+                )
+
+            try:
+                items = await repo.sortear_por_categorias(
+                    examen_id,
+                    body.categoria_ids,
+                    body.cantidad_por_categoria,
+                )
+            except SorteoInsuficienteError as exc:
+                await session.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail={
+                        "error": "sorteo_insuficiente",
+                        "mensaje": str(exc),
+                        "categoria_id": exc.categoria_id,
+                        "disponibles": exc.disponibles,
+                        "pedidas": exc.pedidas,
+                    },
+                ) from exc
+            except SeleccionInvalidaError as exc:
+                await session.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail={"error": "seleccion_invalida", "mensaje": str(exc)},
+                ) from exc
+
+            if items is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail={"error": "examen_no_encontrado", "examen_id": examen_id},
+                )
+            await session.commit()
 
         return _pool_to_response(items)
 
@@ -1935,6 +2427,246 @@ def create_exam_content_router(
             fallidas=fallidas,
             sin_token=0,
             total=total,
+        )
+
+    # -----------------------------------------------------------------------
+    # Crear examen desde banco de preguntas (C-74 §5)
+    # -----------------------------------------------------------------------
+
+    @router.post(
+        "/crear-desde-banco",
+        response_model=CrearDesdebancoResponse,
+        status_code=status.HTTP_201_CREATED,
+        summary="Crea un examen extrayendo preguntas aleatoriamente del banco (C-74 §5)",
+    )
+    async def crear_desde_banco(
+        body: CrearDesdebancoRequest,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    ) -> CrearDesdebancoResponse:
+        """Crea un examen de contenido en un solo paso.
+
+        Para cada item de ``sorteo``, extrae ``cantidad`` preguntas aleatorias del banco
+        de la categoría indicada (None = sin clasificar). Todas quedan con seleccionada=True.
+
+        Errores:
+        - 422 si alguna categoría tiene menos preguntas disponibles que las pedidas.
+        - 404 si la materia no existe o el usuario no tiene acceso.
+        """
+        await _exigir_pertenencia_materia(principal, body.materia_id)
+        if body.comision_id is not None:
+            await _exigir_pertenencia_comision(principal, body.comision_id)
+        if session_factory is None:
+            raise HTTPException(status_code=500, detail="Persistencia no inicializada.")
+
+        if body.nota_aprobacion > body.nota_maxima:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "error": "config_invalida",
+                    "mensaje": (
+                        f"nota_aprobacion ({body.nota_aprobacion}) no puede superar "
+                        f"nota_maxima ({body.nota_maxima})."
+                    ),
+                },
+            )
+
+        import random
+        import uuid as _uuid
+        from sqlalchemy import select as _select
+        from sqlalchemy.orm import selectinload as _selectinload
+        from app.infrastructure.persistence.models.exam_content import (
+            BlankBancoModel,
+            CategoriaPreguntaModel,
+            ExamenContenidoModel,
+            OpcionClozeBlancoModel,
+            OpcionRespuestaModel,
+            PreguntaBancoModel,
+            PreguntaClozeBlankModel,
+            PreguntaExamenModel,
+        )
+
+        async with session_factory() as session:
+            # Árbol de categorías de la materia, para expandir cada tramo a su
+            # descendencia. Una sola consulta: el árbol es chico (decenas de filas)
+            # y así evitamos una consulta recursiva por tramo.
+            hijos_por_padre: dict[str | None, list[str]] = {}
+            cats_result = await session.execute(
+                _select(
+                    CategoriaPreguntaModel.id,
+                    CategoriaPreguntaModel.categoria_padre_id,
+                ).where(CategoriaPreguntaModel.materia_id == body.materia_id)
+            )
+            for cat_id, padre_id in cats_result.all():
+                hijos_por_padre.setdefault(padre_id, []).append(cat_id)
+
+            def _con_descendencia(raiz: str) -> list[str]:
+                """La categoría más todas sus subcategorías, a cualquier profundidad."""
+                acumulado: list[str] = []
+                pendientes = [raiz]
+                vistos: set[str] = set()
+                while pendientes:
+                    actual = pendientes.pop()
+                    if actual in vistos:
+                        continue
+                    vistos.add(actual)
+                    acumulado.append(actual)
+                    pendientes.extend(hijos_por_padre.get(actual, []))
+                return acumulado
+
+            # ── Sortear preguntas del banco por cada tramo ──────────────────
+            preguntas_sorteadas: list[PreguntaBancoModel] = []
+            # Una pregunta no puede caer dos veces en el mismo examen: con tramos
+            # anidados ("Unidad 1" y además "Unidad 1 / Tema A") el mismo registro
+            # entra en los dos conjuntos.
+            ya_sorteadas: set[str] = set()
+
+            for tramo in body.sorteo:
+                # Las opciones y los blanks viajan con la pregunta: se copian al
+                # examen más abajo, así que se cargan acá de una (sin N+1).
+                stmt = (
+                    _select(PreguntaBancoModel)
+                    .where(PreguntaBancoModel.materia_id == body.materia_id)
+                    .options(
+                        _selectinload(PreguntaBancoModel.opciones_banco),
+                        _selectinload(PreguntaBancoModel.blanks_banco).selectinload(
+                            BlankBancoModel.opciones_blank_banco
+                        ),
+                    )
+                )
+                if tramo.categoria_id is None:
+                    stmt = stmt.where(PreguntaBancoModel.categoria_id.is_(None))
+                elif tramo.incluir_subcategorias:
+                    stmt = stmt.where(
+                        PreguntaBancoModel.categoria_id.in_(
+                            _con_descendencia(tramo.categoria_id)
+                        )
+                    )
+                else:
+                    stmt = stmt.where(PreguntaBancoModel.categoria_id == tramo.categoria_id)
+
+                if tramo.tipos:
+                    stmt = stmt.where(PreguntaBancoModel.tipo.in_(tramo.tipos))
+
+                result = await session.execute(stmt)
+                disponibles = [
+                    p for p in result.scalars().all() if p.id not in ya_sorteadas
+                ]
+
+                if len(disponibles) < tramo.cantidad:
+                    cat_label = tramo.categoria_id or "sin clasificar"
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail={
+                            "error": "sorteo_insuficiente",
+                            "mensaje": (
+                                f"Categoría '{cat_label}': se pidieron {tramo.cantidad} "
+                                f"preguntas pero solo hay {len(disponibles)} disponibles."
+                            ),
+                            "categoria_id": tramo.categoria_id,
+                            "disponibles": len(disponibles),
+                            "pedidas": tramo.cantidad,
+                        },
+                    )
+
+                elegidas = random.sample(disponibles, tramo.cantidad)
+                preguntas_sorteadas.extend(elegidas)
+                ya_sorteadas.update(p.id for p in elegidas)
+
+            # El tope del examen se valida ANTES de crear nada: es preferible un 422
+            # claro a un examen a medio armar. Mismo criterio que el import de XML
+            # (LimitePreguntasExcedidoError): no se trunca en silencio.
+            if body.limite_preguntas is not None and len(preguntas_sorteadas) > body.limite_preguntas:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail={
+                        "error": "limite_preguntas_excedido",
+                        "mensaje": (
+                            f"El sorteo suma {len(preguntas_sorteadas)} preguntas pero el "
+                            f"examen admite {body.limite_preguntas}. Ajustá las cantidades "
+                            "por categoría o subí el límite."
+                        ),
+                        "sorteadas": len(preguntas_sorteadas),
+                        "limite": body.limite_preguntas,
+                    },
+                )
+
+            # ── Crear examen_contenido ───────────────────────────────────────
+            examen_id = str(_uuid.uuid4())
+            examen = ExamenContenidoModel(
+                id=examen_id,
+                titulo=body.titulo,
+                comision_id=body.comision_id,
+                limite_preguntas=body.limite_preguntas,
+                # Escala configurable por examen (migración 0061): default 100/60
+                # si el docente no la manda — nunca cae silenciosamente en "sobre
+                # 10". El docente puede pedir cualquier otra escala en el body.
+                nota_maxima=body.nota_maxima,
+                nota_aprobacion=body.nota_aprobacion,
+            )
+            session.add(examen)
+            await session.flush()
+
+            # ── Copiar preguntas del banco al examen ─────────────────────────
+            # La pregunta se COPIA, no se referencia: el examen queda congelado
+            # aunque después se edite el banco. Y hay que copiar TAMBIÉN opciones y
+            # blanks — sin ellos la pregunta llega al alumno sin nada que responder
+            # y sin nada con qué calificarla.
+            for orden, pb in enumerate(preguntas_sorteadas):
+                pregunta_id = str(_uuid.uuid4())
+                session.add(
+                    PreguntaExamenModel(
+                        id=pregunta_id,
+                        examen_id=examen_id,
+                        enunciado=pb.enunciado,
+                        tipo=pb.tipo,
+                        orden=orden,
+                        seleccionada=True,
+                        categoria_id=pb.categoria_id,
+                        moodle_question_id=pb.moodle_question_id,
+                        pregunta_banco_id=pb.id,
+                    )
+                )
+
+                for opcion in pb.opciones_banco:
+                    session.add(
+                        OpcionRespuestaModel(
+                            id=str(_uuid.uuid4()),
+                            pregunta_id=pregunta_id,
+                            texto=opcion.texto,
+                            es_correcta=opcion.es_correcta,
+                            orden=opcion.orden,
+                        )
+                    )
+
+                for blank in pb.blanks_banco:
+                    blank_id = str(_uuid.uuid4())
+                    session.add(
+                        PreguntaClozeBlankModel(
+                            id=blank_id,
+                            pregunta_id=pregunta_id,
+                            orden=blank.orden,
+                            tipo=blank.tipo,
+                            texto_antes=blank.texto_antes,
+                            texto_despues=blank.texto_despues,
+                        )
+                    )
+                    for opcion_blank in blank.opciones_blank_banco:
+                        session.add(
+                            OpcionClozeBlancoModel(
+                                id=str(_uuid.uuid4()),
+                                blank_id=blank_id,
+                                texto=opcion_blank.texto,
+                                es_correcta=opcion_blank.es_correcta,
+                                peso=opcion_blank.peso,
+                            )
+                        )
+
+            await session.commit()
+
+        return CrearDesdebancoResponse(
+            examen_id=examen_id,
+            titulo=body.titulo,
+            total_preguntas=len(preguntas_sorteadas),
         )
 
     return router

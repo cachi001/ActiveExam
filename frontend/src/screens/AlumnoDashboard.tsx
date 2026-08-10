@@ -128,7 +128,7 @@ export default function AlumnoDashboard() {
           {renderHeader(false)}
           <div className="flex-1 flex items-center justify-center">
             <div className="w-full max-w-xl bg-warning-container border border-warning-200 rounded-lg p-lg sm:p-xl flex flex-col items-center text-center gap-md">
-              <Icon name="warning" className="text-warning text-[32px] shrink-0" fill />
+              <Icon name="error" className="text-warning-500 text-[32px] shrink-0" fill />
               <div className="space-y-base">
                 <p className="text-[18px] font-semibold text-on-surface">Completá tu perfil antes de rendir</p>
                 <p className="text-[13px] text-on-surface-variant max-w-md mx-auto">Antes de poder rendir necesitás completar estos pasos:</p>

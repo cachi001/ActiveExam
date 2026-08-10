@@ -73,12 +73,17 @@ def test_parse_unsupported_omitted():
 
 
 def test_parse_mixed_importadas_y_omitidas():
-    """Verifica recuento exacto de importadas vs omitidas en XML mixto."""
+    """Verifica recuento exacto de importadas vs omitidas en XML mixto.
+
+    C-74 agregó soporte de cloze: desde entonces el cloze del fixture se importa
+    en vez de omitirse. Queda essay como único tipo no soportado del fixture.
+    """
     xml = (FIXTURES / "mixed_unsupported.xml").read_bytes()
     result = parse_moodle_xml(xml)
 
-    assert len(result.preguntas) == 1  # solo el multichoice
-    assert len(result.omitidas) == 2   # cloze + essay
+    assert len(result.preguntas) == 2  # multichoice + cloze (C-74)
+    assert len(result.omitidas) == 1   # essay
+    assert result.omitidas[0].tipo == "essay"
 
 
 def test_truefalse_texto_mapeado():

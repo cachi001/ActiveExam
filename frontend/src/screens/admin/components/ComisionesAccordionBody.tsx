@@ -65,7 +65,7 @@ export function ComisionesAccordionBody({
       // admin-only, así que ofrecérselo a otro rol daría un diálogo vacío.
       ...(esAdmin
         ? [{
-            label: c.docente_id ? 'Cambiar docente a cargo' : 'Asignar docente a cargo',
+            label: c.docente_id ? 'Cambiar tutor' : 'Asignar tutor',
             icon: 'person',
             onClick: () => setAsignando(c),
           } as ActionItem]
@@ -275,7 +275,7 @@ export function ComisionesAccordionBody({
                   <th className="text-left text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider px-4 py-2">Período</th>
                   <th className="text-left text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider px-4 py-2">Año</th>
                   <th className="text-left text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider px-4 py-2">Cód. matriculación</th>
-                  <th className="text-left text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider px-4 py-2">Docente a cargo</th>
+                  <th className="text-left text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider px-4 py-2">Tutor</th>
                   <th className="text-right text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider px-4 py-2">Acciones</th>
                 </tr>
               </thead>
@@ -314,14 +314,8 @@ export function ComisionesAccordionBody({
                         </td>
                         <td className="px-4 py-3 text-[13px] text-on-surface-variant">{c.periodo ?? '—'}</td>
                         <td className="px-4 py-3 text-[13px] text-on-surface-variant tabular-nums">{c.anio ?? '—'}</td>
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          {c.codigo_matriculacion ? (
-                            <span className="font-mono text-[12px] text-primary bg-primary-container/40 px-2 py-0.5 rounded-md">
-                              {c.codigo_matriculacion}
-                            </span>
-                          ) : (
-                            <span className="text-[13px] text-on-surface-variant">—</span>
-                          )}
+                        <td className="px-4 py-3 whitespace-nowrap text-[13px] text-on-surface">
+                          {c.codigo_matriculacion || <span className="text-on-surface-variant">—</span>}
                         </td>
                         {/* Docente a cargo: sin él las notas de esta comisión NO se
                             sincronizan al campus. Se avisa acá, donde se gestiona la
@@ -334,7 +328,7 @@ export function ComisionesAccordionBody({
                           ) : (
                             <span className="inline-flex items-center gap-1 text-error">
                               <Icon name="person_off" className="text-[14px]" />
-                              sin asignar
+                              Sin asignar
                             </span>
                           )}
                         </td>
@@ -391,20 +385,20 @@ export function ComisionesAccordionBody({
                       {c.codigo_matriculacion && (
                         <p className="text-[11px] mt-0.5">
                           <span className="text-on-surface-variant">Matriculación: </span>
-                          <span className="font-mono text-primary">{c.codigo_matriculacion}</span>
+                          <span className="text-on-surface">{c.codigo_matriculacion}</span>
                         </p>
                       )}
                       {/* Sin docente a cargo, las notas de esta comisión NO se
                           sincronizan al campus. Se avisa acá —donde se gestiona la
                           comisión— y no cuando el alumno ya rindió. */}
                       <p className="text-[11px] mt-0.5">
-                        <span className="text-on-surface-variant">Docente: </span>
+                        <span className="text-on-surface-variant">Tutor: </span>
                         {docenteLocal[c.id] ?? c.docente_nombre ? (
                           <span className="text-on-surface">
                             {docenteLocal[c.id] ?? c.docente_nombre}
                           </span>
                         ) : (
-                          <span className="text-error">sin asignar</span>
+                          <span className="text-error">Sin asignar</span>
                         )}
                       </p>
                     </div>

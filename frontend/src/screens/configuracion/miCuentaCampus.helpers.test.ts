@@ -1,6 +1,6 @@
 /**
  * TDD: RED → GREEN → TRIANGULATE
- * Helper puro de aviso de vencimiento de la credencial Moodle del docente (C-73 §12).
+ * Helper puro de aviso de vencimiento de la credencial Moodle del tutor (C-73 §12).
  *
  * La credencial vence a los 30 días desde `actualizado_en` (calculado en el
  * backend, ver `esta_vencida` en credencial_docente_service.py). Acá solo se

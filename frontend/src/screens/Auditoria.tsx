@@ -22,30 +22,30 @@ const PAGE_SIZE_DEFAULT = 5;
 
 // Lista completa de módulos del sistema — siempre visible aunque no haya actividad.
 const TODOS_MODULOS = [
-  { value: 'USUARIOS',      label: 'Gestión de usuarios' },
-  { value: 'MATERIAS',      label: 'Materias y comisiones' },
-  { value: 'EXAMENES',      label: 'Catálogo de exámenes' },
-  { value: 'SESIONES',      label: 'Sesiones de examen' },
+  { value: 'USUARIOS',      label: 'Usuarios' },
+  { value: 'MATERIAS',      label: 'Materias' },
+  { value: 'EXAMENES',      label: 'Exámenes' },
+  { value: 'SESIONES',      label: 'Sesiones' },
   { value: 'CONSENTIMIENTO',label: 'Consentimiento' },
-  { value: 'BIOMETRIA',     label: 'Registro biométrico' },
-  { value: 'EVIDENCIA',     label: 'Evidencia de sesiones' },
-  { value: 'REVISION',      label: 'Cola de revisión' },
-  { value: 'MOODLE',        label: 'Campus (Moodle)' },
-  { value: 'CONFIGURACION', label: 'Configuración del sistema' },
+  { value: 'BIOMETRIA',     label: 'Biometría' },
+  { value: 'EVIDENCIA',     label: 'Evidencia' },
+  { value: 'REVISION',      label: 'Revisión' },
+  { value: 'MOODLE',        label: 'Moodle' },
+  { value: 'CONFIGURACION', label: 'Configuración' },
 ] as const;
 
 /** Nombre amigable del módulo para mostrar en los badges de la card. */
 const MODULE_LABEL: Record<string, string> = {
-  USUARIOS: 'Gestión de usuarios',
-  MATERIAS: 'Materias y comisiones',
-  EXAMENES: 'Catálogo de exámenes',
-  SESIONES: 'Sesiones de examen',
+  USUARIOS: 'Usuarios',
+  MATERIAS: 'Materias',
+  EXAMENES: 'Exámenes',
+  SESIONES: 'Sesiones',
   CONSENTIMIENTO: 'Consentimiento',
-  BIOMETRIA: 'Registro biométrico',
-  EVIDENCIA: 'Evidencia de sesiones',
-  REVISION: 'Cola de revisión',
-  MOODLE: 'Campus (Moodle)',
-  CONFIGURACION: 'Configuración del sistema',
+  BIOMETRIA: 'Biometría',
+  EVIDENCIA: 'Evidencia',
+  REVISION: 'Revisión',
+  MOODLE: 'Moodle',
+  CONFIGURACION: 'Configuración',
 };
 
 /**
@@ -73,7 +73,7 @@ const ACCIONES_POR_MODULO: Record<string, OpcionAccion[]> = {
     { label: 'Editar',          accion: 'materia.update,comision.update' },
     { label: 'Eliminar',        accion: 'materia.delete,comision.delete,inscripcion.delete' },
     { label: 'Cambio de estado', accion: 'materia.set_activa' },
-    { label: 'Asignar docente',  accion: 'comision.set_docente' },
+    { label: 'Asignar tutor',  accion: 'comision.set_docente' },
   ],
   EXAMENES: [
     { label: 'Importar examen', accion: 'examen.import' },
@@ -150,8 +150,6 @@ const ACCION_META: Array<{ match: (a: string) => boolean; label: string; color: 
   { match: (a) => a.startsWith('firma_maestra') || a.startsWith('verify_chain'), label: 'Verificó integridad', color: '#7c3aed', icon: 'verified_user' },
   { match: (a) => a.startsWith('retention'), label: 'Retención / borrado', color: '#64748b', icon: 'auto_delete' },
   { match: (a) => a.startsWith('dsr') || a.startsWith('derecho_acceso'), label: 'Derecho del titular', color: '#0d9488', icon: 'policy' },
-  { match: (a) => a === 'auditoria.export.xlsx', label: 'Exportó auditoría a Excel', color: '#059669', icon: 'grid_on' },
-  { match: (a) => a === 'auditoria.export.pdf', label: 'Exportó auditoría a PDF', color: '#dc2626', icon: 'picture_as_pdf' },
 ];
 
 function accionMeta(accion: string): { label: string; color: string; icon: string } {
@@ -172,7 +170,7 @@ function navegarA(evento: AuditEvento): string | null {
       case 'BIOMETRIA':
       case 'CONSENTIMIENTO':
       case 'EVIDENCIA': return '/admin/proctoring-sessions';
-      case 'REVISION': return '/revisor';
+      case 'REVISION': return '/admin/cola-revision';
       case 'MOODLE': return '/admin/examenes';
       case 'CONFIGURACION': return '/admin/configuracion';
     }
@@ -312,7 +310,7 @@ export default function Auditoria() {
     if (e.entidad === 'SESION' && e.entidad_id) {
       setProctoringSessionId(e.entidad_id);
       setProctoringDetailBackRoute('/admin/auditoria');
-      navigate('/admin/proctoring-session-detail');
+      navigate('/admin/proctoring-session-detail/' + e.entidad_id);
       return;
     }
     const ruta = navegarA(e);
@@ -369,23 +367,6 @@ export default function Auditoria() {
           {exportando === 'pdf' ? 'Exportando…' : 'Exportar PDF'}
         </button>
       </div>
-
-      {/* Estado de la cadena de custodia */}
-      {data && (
-        <div className="mb-md flex justify-end">
-          {data.cadena_valida ? (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-success-50 px-3 py-1 text-[12.5px] font-semibold text-success-700 border border-success-200">
-              <Icon name="verified_user" className="text-[15px]" fill />
-              Registro verificado, sin alteraciones
-            </span>
-          ) : (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-error-50 px-3 py-1 text-[12.5px] font-semibold text-error-700 border border-error-200">
-              <Icon name="gpp_bad" className="text-[15px]" fill />
-              Registro alterado — revisar
-            </span>
-          )}
-        </div>
-      )}
 
       <div className="mb-lg">
         <FiltrosPanel onAplicar={aplicar} onLimpiar={limpiar} hayFiltros={hayFiltros} hayCambios={hayCambios} aplicarDeshabilitado={cargando}>
@@ -467,87 +448,113 @@ export default function Auditoria() {
         <div className="py-2xl flex items-center justify-center">
           <LoadingSpinner size="md" label="Cargando auditoría…" />
         </div>
-      ) : data.items.length === 0 ? (
-        <Card>
-          <div className="py-xl flex flex-col items-center text-center gap-md text-on-surface-variant">
-            <Icon name="history" className="text-[36px]" />
-            <p className="text-[14px]">No hay actividad registrada para estos filtros.</p>
-          </div>
-        </Card>
       ) : (
         <>
-          <div className="flex flex-col gap-3">
-            {data.items.map((e) => {
-              const meta = accionMeta(e.accion);
-              const nombre = e.actor_nombre ?? e.actor;
-              // Nombre + email da seguimiento real; el legajo solo no alcanza.
-              // Si no hay nombre resuelto, el legajo ya va como línea principal
-              // — no hace falta repetirlo abajo.
-              const subtexto = e.actor_nombre ? (e.actor_email ?? e.actor) : null;
-              const ruta = navegarA(e);
-              return (
-                <div
-                  key={e.id}
-                  onClick={() => handleClickActividad(e)}
-                  className={`flex items-start gap-4 rounded-2xl border border-surface-200 bg-white px-6 py-5 shadow-card transition-colors ${ruta ? 'cursor-pointer hover:bg-surface-50' : ''}`}
-                >
-                  <span
-                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full"
-                    style={{ backgroundColor: `${meta.color}1a`, color: meta.color }}
-                    aria-hidden
-                  >
-                    <Icon name={meta.icon} className="text-[22px]" fill />
-                  </span>
+          {/* Banner de cadena alterada: prominente, encima de todo */}
+          {!data.cadena_valida && (
+            <div className="mb-4 flex items-start gap-3 rounded-xl border border-error-300 bg-error-50 px-5 py-4">
+              <Icon name="gpp_bad" className="mt-0.5 shrink-0 text-[22px] text-error-600" fill />
+              <div>
+                <p className="text-[14px] font-semibold text-error-700">Cadena de custodia alterada</p>
+                <p className="mt-0.5 text-[12.5px] text-error-600">
+                  El registro puede haber sido modificado externamente. Revisá los hashes con el administrador del sistema.
+                </p>
+              </div>
+            </div>
+          )}
 
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span
-                          className="inline-flex items-center rounded-full px-3 py-1 text-[12px] font-semibold"
-                          style={{ backgroundColor: `${meta.color}1a`, color: meta.color }}
-                        >
-                          {meta.label}
-                        </span>
-                        {e.modulo && (
-                          <span className="inline-flex items-center rounded-full bg-primary-fixed px-2.5 py-0.5 text-[11px] font-medium text-primary">
-                            {MODULE_LABEL[e.modulo] ?? (e.modulo.charAt(0) + e.modulo.slice(1).toLowerCase())}
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        {ruta && (
-                          <span className="inline-flex items-center gap-1 text-[12px] font-medium text-primary">
-                            <span>{e.entidad_id ? 'Ver detalle' : 'Ver módulo'}</span>
-                            <Icon name="open_in_new" className="text-[14px]" />
-                          </span>
-                        )}
-                        <span className="text-[12.5px] text-on-surface-variant tabular-nums whitespace-nowrap">
-                          {fmtFecha(e.timestamp)}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="mt-2.5 flex items-center gap-2">
-                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-surface-200 text-on-surface-variant">
-                        <Icon name="person" className="text-[16px]" fill />
-                      </span>
-                      <div className="min-w-0">
-                        <p className="text-[15px] font-semibold text-on-surface truncate" title={nombre}>
-                          {nombre}
-                        </p>
-                        {subtexto && (
-                          <p className="text-[12.5px] text-on-surface-variant truncate" title={subtexto}>
-                            {subtexto}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                    {e.proposito && <Proposito proposito={e.proposito} />}
-                  </div>
-                </div>
-              );
-            })}
+          {/* Barra de estado: conteo + verificación cuando todo está bien */}
+          <div className="mb-3 flex items-center justify-between text-[12.5px] text-on-surface-variant">
+            <span>
+              <strong className="text-on-surface tabular-nums">{data.total}</strong>{' '}
+              {data.total === 1 ? 'actividad' : 'actividades'}
+            </span>
+            {data.cadena_valida && (
+              <span className="inline-flex items-center gap-1 text-success-700">
+                <Icon name="verified_user" className="text-[14px]" fill />
+                Registro verificado
+              </span>
+            )}
           </div>
+
+          {data.items.length === 0 ? (
+            <Card>
+              <div className="py-xl flex flex-col items-center text-center gap-md text-on-surface-variant">
+                <Icon name="history" className="text-[36px]" />
+                <p className="text-[14px]">No hay actividad registrada para estos filtros.</p>
+              </div>
+            </Card>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {data.items.map((e) => {
+                const meta = accionMeta(e.accion);
+                const nombre = e.actor_nombre ?? e.actor;
+                const subtexto = e.actor_nombre ? (e.actor_email ?? e.actor) : null;
+                const ruta = navegarA(e);
+                return (
+                  <div
+                    key={e.id}
+                    onClick={() => handleClickActividad(e)}
+                    className={`flex items-start gap-4 rounded-xl border border-surface-200 bg-white px-5 py-4 shadow-xs transition-all duration-200 ${ruta ? 'cursor-pointer hover:shadow-sm hover:border-surface-300' : ''}`}
+                  >
+                    <span
+                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
+                      style={{ backgroundColor: `${meta.color}15`, color: meta.color }}
+                      aria-hidden
+                    >
+                      <Icon name={meta.icon} className="text-[20px]" fill />
+                    </span>
+
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span
+                            className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold"
+                            style={{ backgroundColor: `${meta.color}15`, color: meta.color }}
+                          >
+                            {meta.label}
+                          </span>
+                          {e.modulo && (
+                            <span className="inline-flex items-center rounded-full bg-surface-100 px-2.5 py-0.5 text-xs font-medium text-surface-600">
+                              {MODULE_LABEL[e.modulo] ?? (e.modulo.charAt(0) + e.modulo.slice(1).toLowerCase())}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          {ruta && (
+                            <span className="inline-flex items-center gap-1 text-xs font-medium text-primary">
+                              <span>{e.entidad_id ? 'Ver detalle' : 'Ver módulo'}</span>
+                              <Icon name="open_in_new" className="text-[13px]" />
+                            </span>
+                          )}
+                          <span className="text-xs text-surface-400 tabular-nums whitespace-nowrap">
+                            {fmtFecha(e.timestamp)}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="mt-2 flex items-center gap-2">
+                        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-surface-100 text-surface-500">
+                          <Icon name="person" className="text-[14px]" fill />
+                        </span>
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-surface-800 truncate" title={nombre}>
+                            {nombre}
+                          </p>
+                          {subtexto && (
+                            <p className="text-xs text-surface-400 truncate" title={subtexto}>
+                              {subtexto}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      {e.proposito && <Proposito proposito={e.proposito} />}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
           <div className="mt-lg">
             <Pagination

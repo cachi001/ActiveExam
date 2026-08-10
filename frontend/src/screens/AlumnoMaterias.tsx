@@ -77,7 +77,7 @@ export default function AlumnoMaterias() {
           tipo: 'error',
           texto:
             e2.status === 404 || e2.status === 422
-              ? 'Ese código no es válido. Revisalo con tu docente.'
+              ? 'Ese código no es válido. Revisalo con tu tutor.'
               : 'No se pudo procesar el código. Intentá de nuevo.',
         });
       }
@@ -134,7 +134,7 @@ export default function AlumnoMaterias() {
             <h2 className="text-[13px] font-semibold text-on-surface">Unirme con un código</h2>
             <HelpButton title="Unirme con un código">
               <p>
-                Si tu docente te compartió un <strong>código de matriculación</strong> (por ejemplo
+                Si tu tutor te compartió un <strong>código de matriculación</strong> (por ejemplo
                 <em> PROG1-7K2Q</em>), ingresalo acá para unirte a esa comisión.
               </p>
               <p>Unirte no habilita a rendir por sí solo: seguís necesitando tu perfil (consentimiento y biometría) al día.</p>
@@ -209,7 +209,7 @@ export default function AlumnoMaterias() {
               <div className="space-y-1">
                 <p className="text-[16px] font-semibold text-on-surface">No estás matriculado en ninguna materia</p>
                 <p className="text-[13px] text-on-surface-variant leading-relaxed">
-                  Unite con el código que te da tu docente (usá "Unirme con un código", arriba).
+                  Unite con el código que te da tu tutor (usá "Unirme con un código", arriba).
                   Cuando te matricules, tu materia y sus exámenes van a aparecer acá.
                 </p>
               </div>

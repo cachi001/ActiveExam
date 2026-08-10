@@ -37,6 +37,8 @@ const ExamResultados        = lazy(() => import('./screens/ExamResultados'));
 const MoodleImportPage      = lazy(() => import('./admin/ExamImport/MoodleImportPage'));
 const Configuracion         = lazy(() => import('./screens/Configuracion'));
 const Registro              = lazy(() => import('./screens/Registro'));
+const BancoPreguntasPage    = lazy(() => import('./screens/BancoPreguntasPage'));
+const Perfil                = lazy(() => import('./screens/Perfil'));
 
 // Roles por área. DEBE espejar ui/nav.ts (si un item se ve en el menú y la ruta
 // lo rechaza, o al reves, el usuario come un "Sin permisos" desde su propio menu)
@@ -47,9 +49,9 @@ const ESTUDIANTE: Rol[] = ['estudiante'];
 // (decide en un solo paso, incluida la anulación) y hasta ahora la ruta
 // /revisor lo dejaba afuera.
 const SUPERVISION: Rol[] = ['proctor', 'revisor', 'coordinador', 'admin_sistema'];
-// Area del docente: examenes, materias, comisiones y notas. Sin supervision,
+// Area del tutor: examenes, materias, comisiones y notas. Sin supervision,
 // sin auditoria, sin configuracion.
-const ACADEMICO: Rol[] = ['docente', 'admin_examenes', 'coordinador', 'admin_sistema'];
+const ACADEMICO: Rol[] = ['tutor', 'admin_examenes', 'coordinador', 'admin_sistema'];
 const ADMIN: Rol[] = ['admin_sistema'];
 const AUDITORIA: Rol[] = ['auditor', 'admin_sistema'];
 
@@ -86,8 +88,8 @@ export default function App() {
     '/proctor/examen': g(<ExamenPersonasGrid />, SUPERVISION),
 
     // Revisión académica + administración
-    '/revisor': g(<Revisor />, SUPERVISION),
-    '/revisor/detalle': g(<SessionDetail />, SUPERVISION),
+    '/admin/cola-revision': g(<Revisor />, SUPERVISION),
+    '/admin/cola-revision/detalle': g(<SessionDetail />, SUPERVISION),
     '/admin': g(<AdminDashboard />, [...ACADEMICO, 'proctor', 'revisor', 'auditor']),
     '/admin/estadisticas': g(<EstadisticasInstitucionales />, ACADEMICO),
     '/admin/auditoria': g(<Auditoria />, AUDITORIA),
@@ -97,14 +99,16 @@ export default function App() {
     '/admin/examenes/:id': g(<ExamDetail />, ACADEMICO),
     '/admin/detection-test': g(<AdminDetectionHarness />, ADMIN),
     '/admin/proctoring-sessions': g(<ProctoringRevisor />, SUPERVISION),
-    '/admin/proctoring-session-detail': g(<ProctoringSessionDetail />, SUPERVISION),
+    '/admin/proctoring-session-detail/:id': g(<ProctoringSessionDetail />, SUPERVISION),
     '/admin/usuarios': g(<GestionUsuarios />, ADMIN),
     '/admin/materias': g(<MateriasComisiones />, ACADEMICO),
     '/admin/usuarios/:id': g(<DetalleUsuario />, ADMIN),
     // C-73 §10.8: deja de ser admin-only. El docente entra pero SOLO ve la pestaña
     // del campus (su cuenta personal); las secciones que definen cómo se detecta el
     // fraude siguen siendo de admin_sistema — el gating fino vive en la pantalla.
-    '/admin/configuracion': g(<Configuracion />, ACADEMICO),
+    '/admin/banco-preguntas': g(<BancoPreguntasPage />, ACADEMICO),
+    '/admin/configuracion': g(<Configuracion />, ADMIN),
+    '/admin/perfil': g(<Perfil />, [...ACADEMICO, 'proctor', 'revisor', 'auditor']),
 
     // Portal del alumno — C-21
     '/alumno': g(<AlumnoDashboard />, ESTUDIANTE),
