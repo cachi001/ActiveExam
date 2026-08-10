@@ -198,7 +198,7 @@ def test_6_1b_respuesta_alumno_sin_cloze_funciona_igual():
 async def test_6_2_cloze_3_de_4_correctos_nota_parcial(
     session: AsyncSession, examen_cloze: dict
 ):
-    """6.2 GREEN: cloze 4 blanks, 3 correctos → nota 75% (7.50 sobre 10)."""
+    """6.2 GREEN: cloze 4 blanks, 3 correctos → nota 75% (75.0 sobre 100)."""
     datos = examen_cloze
     blank_ids = datos["blank_ids"]
     correct_ids = datos["correct_opcion_ids"]
@@ -224,15 +224,15 @@ async def test_6_2_cloze_3_de_4_correctos_nota_parcial(
     )
 
     # 1 pregunta en el examen, 3/4 blanks correctos → contribución 0.75 preguntas
-    # nota = (0.75 / 1) * 10 = 7.50
-    assert nota == pytest.approx(7.50, abs=0.01), f"Esperaba 7.50, obtuvo {nota}"
+    # nota = (0.75 / 1) * 100 = 75.0
+    assert nota == pytest.approx(75.0, abs=0.01), f"Esperaba 75.0, obtuvo {nota}"
 
 
 @pytest.mark.asyncio
 async def test_6_2b_cloze_todos_correctos_nota_plena(
     session: AsyncSession, examen_cloze: dict
 ):
-    """6.2 TRIANGULATE: todos los blanks correctos → nota completa 10.0."""
+    """6.2 TRIANGULATE: todos los blanks correctos → nota completa 100.0."""
     datos = examen_cloze
     blank_ids = datos["blank_ids"]
     correct_ids = datos["correct_opcion_ids"]
@@ -250,7 +250,7 @@ async def test_6_2b_cloze_todos_correctos_nota_plena(
         ],
     )
 
-    assert nota == pytest.approx(10.0, abs=0.01), f"Esperaba 10.0, obtuvo {nota}"
+    assert nota == pytest.approx(100.0, abs=0.01), f"Esperaba 100.0, obtuvo {nota}"
 
 
 # ---------------------------------------------------------------------------
@@ -306,8 +306,8 @@ async def test_6_3b_clave_ausente_cuenta_como_incorrecto(
         ],
     )
 
-    # 2/4 blanks correctos → contribución 0.5 → nota 5.0
-    assert nota == pytest.approx(5.0, abs=0.01), f"Esperaba 5.0, obtuvo {nota}"
+    # 2/4 blanks correctos → contribución 0.5 → nota 50.0
+    assert nota == pytest.approx(50.0, abs=0.01), f"Esperaba 50.0, obtuvo {nota}"
 
 
 # ---------------------------------------------------------------------------
@@ -388,7 +388,7 @@ async def test_shortanswer_texto_escrito_se_corrige_por_texto(
 
     nota = await _nota_shortanswer(session, datos, {b0: "len", b1: "entero"})
 
-    assert nota == pytest.approx(10.0, abs=0.01), f"Esperaba 10.0, obtuvo {nota}"
+    assert nota == pytest.approx(100.0, abs=0.01), f"Esperaba 100.0, obtuvo {nota}"
 
 
 @pytest.mark.asyncio
@@ -401,7 +401,7 @@ async def test_shortanswer_ignora_mayusculas_y_espacios(
 
     nota = await _nota_shortanswer(session, datos, {b0: "  LEN ", b1: "Entero"})
 
-    assert nota == pytest.approx(10.0, abs=0.01), f"Esperaba 10.0, obtuvo {nota}"
+    assert nota == pytest.approx(100.0, abs=0.01), f"Esperaba 100.0, obtuvo {nota}"
 
 
 @pytest.mark.asyncio
@@ -414,7 +414,7 @@ async def test_shortanswer_acepta_cualquier_respuesta_valida(
 
     nota = await _nota_shortanswer(session, datos, {b0: "length", b1: "entero"})
 
-    assert nota == pytest.approx(10.0, abs=0.01), f"Esperaba 10.0, obtuvo {nota}"
+    assert nota == pytest.approx(100.0, abs=0.01), f"Esperaba 100.0, obtuvo {nota}"
 
 
 @pytest.mark.asyncio
@@ -427,8 +427,8 @@ async def test_shortanswer_texto_incorrecto_no_suma(
 
     nota = await _nota_shortanswer(session, datos, {b0: "nada", b1: "entero"})
 
-    # 1 de 2 blanks correctos → 5.0
-    assert nota == pytest.approx(5.0, abs=0.01), f"Esperaba 5.0, obtuvo {nota}"
+    # 1 de 2 blanks correctos → 50.0
+    assert nota == pytest.approx(50.0, abs=0.01), f"Esperaba 50.0, obtuvo {nota}"
 
 
 @pytest.mark.asyncio

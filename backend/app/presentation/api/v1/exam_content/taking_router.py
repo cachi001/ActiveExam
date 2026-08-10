@@ -46,6 +46,7 @@ from app.presentation.api.v1.exam_content._shared import (
 from app.presentation.api.v1.exam_content.schemas import (
     BlankRevisionResponse,
     CapturaFirmadaResponse,
+    ComisionConMateriaResponse,
     ComisionResponse,
     ExamenContenidoResumenResponse,
     ExamenesContenidoPaginadosResponse,
@@ -537,6 +538,53 @@ def create_exam_taking_router(
                 docente_nombre=nombres_docentes.get(c.docente_id or ""),
             )
             for c in comisiones
+        ]
+
+    @router.get(
+        "/comisiones",
+        response_model=list[ComisionConMateriaResponse],
+        summary="Listar todas las comisiones, con su materia embebida",
+    )
+    async def listar_todas_comisiones(
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    ) -> list[ComisionConMateriaResponse]:
+        """Selector combinado único ("CÓDIGO - Materia") sin elegir materia primero.
+
+        Staff ve todas las comisiones; docente ve solo las que dicta (across
+        todas sus materias, C-73 §9). No pensado para alumnos.
+        """
+        if session_factory is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Persistencia no inicializada.",
+            )
+        if not (_es_staff(principal) or _es_docente(principal)):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Requiere rol docente o de alcance institucional.",
+            )
+
+        from app.infrastructure.persistence.repositories.exam_content import (
+            ComisionSqlRepository,
+        )
+
+        async with session_factory() as session:
+            repo = ComisionSqlRepository(session)
+            docente_id = None if _es_staff(principal) else (principal.subject or "")
+            filas = await repo.listar_todas_con_materia(docente_id)
+
+        return [
+            ComisionConMateriaResponse(
+                id=c.id,
+                codigo=c.codigo,
+                nombre=c.nombre,
+                periodo=c.periodo,
+                anio=c.anio,
+                materia_id=c.materia_id,
+                materia_nombre=materia_nombre,
+                materia_codigo=materia_codigo,
+            )
+            for c, materia_nombre, materia_codigo in filas
         ]
 
     @router.get(

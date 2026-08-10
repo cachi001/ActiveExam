@@ -100,7 +100,7 @@ async def _crear_examen_con_2_preguntas(db: AsyncSession) -> tuple[str, str, str
 
 @pytest.mark.asyncio
 async def test_nota_perfecta_todas_correctas(session):
-    """El alumno elige la opción correcta en todas las preguntas → nota 10."""
+    """El alumno elige la opción correcta en todas las preguntas → nota 100 (escala default, migración 0061)."""
     examen_id, p1_id, p2_id, c1_id, c2_id = await _crear_examen_con_2_preguntas(session)
 
     respuestas = [
@@ -112,7 +112,7 @@ async def test_nota_perfecta_todas_correctas(session):
         db=session, examen_contenido_id=examen_id, respuestas=respuestas
     )
 
-    assert nota == pytest.approx(10.0)
+    assert nota == pytest.approx(100.0)
 
 
 @pytest.mark.asyncio
@@ -144,7 +144,7 @@ async def test_nota_cero_todas_incorrectas(session):
 
 @pytest.mark.asyncio
 async def test_nota_parcial_mitad_correctas(session):
-    """El alumno acierta la mitad → nota 5.0."""
+    """El alumno acierta la mitad → nota 50.0 (escala default 0-100)."""
     examen_id, p1_id, p2_id, c1_id, c2_id = await _crear_examen_con_2_preguntas(session)
 
     from sqlalchemy import select
@@ -165,7 +165,7 @@ async def test_nota_parcial_mitad_correctas(session):
         db=session, examen_contenido_id=examen_id, respuestas=respuestas
     )
 
-    assert nota == pytest.approx(5.0)
+    assert nota == pytest.approx(50.0)
 
 
 @pytest.mark.asyncio
@@ -231,7 +231,7 @@ async def _crear_examen_pool(
 async def test_total_solo_cuenta_seleccionadas(session):
     """Opción B: el total ignora la deseleccionada.
 
-    Alumno acierta la única seleccionada que responde (p1) → 1/2 seleccionadas = 5.0.
+    Alumno acierta la única seleccionada que responde (p1) → 1/2 seleccionadas = 50.0.
     La pregunta deseleccionada (p3) NO suma al total.
     """
     examen_id, p1_id, p2_id, p3_id, c1_id, c3_id = await _crear_examen_pool(session)
@@ -244,7 +244,7 @@ async def test_total_solo_cuenta_seleccionadas(session):
         db=session, examen_contenido_id=examen_id, respuestas=respuestas
     )
 
-    assert nota == pytest.approx(5.0)
+    assert nota == pytest.approx(50.0)
 
 
 @pytest.mark.asyncio
@@ -252,7 +252,7 @@ async def test_respuesta_a_deseleccionada_no_cuenta(session):
     """Opción B: acertar una pregunta deseleccionada NO suma correctas ni total.
 
     Alumno acierta p1 (seleccionada) y p3 (deseleccionada). Solo p1 cuenta:
-    1 correcta / 2 seleccionadas = 5.0 (la correcta de p3 se ignora).
+    1 correcta / 2 seleccionadas = 50.0 (la correcta de p3 se ignora).
     """
     examen_id, p1_id, p2_id, p3_id, c1_id, c3_id = await _crear_examen_pool(session)
 
@@ -265,7 +265,7 @@ async def test_respuesta_a_deseleccionada_no_cuenta(session):
         db=session, examen_contenido_id=examen_id, respuestas=respuestas
     )
 
-    assert nota == pytest.approx(5.0)
+    assert nota == pytest.approx(50.0)
 
 
 # ---------------------------------------------------------------------------
@@ -303,19 +303,25 @@ async def _crear_examen_n_preguntas(
 @pytest.mark.parametrize(
     ("n_preguntas", "n_correctas", "esperado"),
     [
-        (20, 1, 1.0),   # 1/20*10 = 0.5 → 1 (half up). Antes mostraba 0.5 (sin sentido).
-        (20, 3, 2.0),   # 3/20*10 = 1.5 → 2 (half up)
-        (20, 11, 6.0),  # 11/20*10 = 5.5 → 6 (half up) → aprueba con nota_aprobacion=6
-        (20, 13, 7.0),  # 13/20*10 = 6.5 → 7 (half up)
-        (20, 20, 10.0), # perfecto
-        (3, 1, 3.0),    # 1/3*10 = 3.33… → 3 (half down)
-        (3, 2, 7.0),    # 2/3*10 = 6.66… → 7 (half up)
+        (20, 1, 5.0),      # 1/20*100 = 5.00
+        (20, 3, 15.0),     # 3/20*100 = 15.00
+        (20, 11, 55.0),    # 11/20*100 = 55.00
+        (20, 13, 65.0),    # 13/20*100 = 65.00
+        (20, 20, 100.0),   # perfecto
+        (3, 1, 33.33),     # 1/3*100 = 33.333… → 33.33 (ROUND_HALF_UP a 2 decimales)
+        (3, 2, 66.67),     # 2/3*100 = 66.666… → 66.67 (ROUND_HALF_UP a 2 decimales)
     ],
 )
-async def test_nota_redondea_a_entero_half_up(
+async def test_nota_redondea_a_dos_decimales_half_up(
     session, n_preguntas, n_correctas, esperado
 ):
-    """La nota se redondea SIEMPRE a entero (ROUND_HALF_UP) — nunca fraccionada."""
+    """La nota se calcula con DOS decimales (ROUND_HALF_UP), NO a entero.
+
+    Decisión de diseño (ver docstring de calcular_nota_academica): redondear a
+    entero de este lado, antes de escalar al grademax real del ítem de Moodle,
+    regalaba medio punto (15/20 sobre 10 = 7,5 se convertía en 8). El redondeo a
+    entero — si corresponde — lo hace Moodle o el escalado en write_grade, no acá.
+    """
     examen_id, pares = await _crear_examen_n_preguntas(session, n_preguntas)
     respuestas = [
         RespuestaAlumno(pregunta_id=pid, opcion_elegida_id=cid)
@@ -327,8 +333,6 @@ async def test_nota_redondea_a_entero_half_up(
     )
 
     assert nota == pytest.approx(esperado)
-    # La nota es un entero exacto (sin parte fraccionada).
-    assert nota == int(nota)
 
 
 # ---------------------------------------------------------------------------

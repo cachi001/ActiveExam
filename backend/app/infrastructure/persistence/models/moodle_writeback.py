@@ -68,6 +68,55 @@ class RespuestaAlumnoModel(Base):
     )
 
 
+class RespuestaAlumnoClozeModel(Base):
+    """Respuesta del alumno a un blank de una pregunta cloze/ddwtos, por sesión.
+
+    Separada de `respuesta_alumno` porque esa tabla exige `opcion_elegida_id` NOT
+    NULL con FK a `opcion_respuesta` (multichoice/truefalse) — una pregunta cloze
+    no tiene filas en `opcion_respuesta`, sus opciones viven por-blank en
+    `opcion_cloze_blank`. `valor` guarda el id de esa opción (blank MULTICHOICE) o
+    el texto libre tipeado por el alumno (blank SHORTANSWER) — mismo contrato que
+    `RespuestaAlumno.respuesta_cloze` en `grade_calculator.py`.
+
+    UNIQUE(session_id, blank_id): una respuesta por blank por sesión (upsert).
+    ON DELETE CASCADE desde proctoring_session y pregunta_cloze_blank.
+    """
+
+    __tablename__ = "respuesta_alumno_cloze"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        primary_key=True,
+        server_default=func.gen_random_uuid(),
+    )
+    session_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("proctoring_session.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    pregunta_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("pregunta_examen.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    blank_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("pregunta_cloze_blank.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    valor: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[str] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+    __table_args__ = (
+        UniqueConstraint("session_id", "blank_id", name="uq_respuesta_alumno_cloze_sesion_blank"),
+        Index("ix_respuesta_alumno_cloze_session_id", "session_id"),
+    )
+
+
 class MoodleWritebackEstadoModel(Base):
     """Estado del envío de nota a Moodle por sesión (D10: idempotencia + reintentos).
 

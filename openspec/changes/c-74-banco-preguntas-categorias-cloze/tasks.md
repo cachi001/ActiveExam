@@ -144,38 +144,31 @@
       recargar la página → las 3 respuestas persisten (mismo contrato que hoy
       tiene el autoguardado de preguntas normales).
 
-## 9. Sync de banco de preguntas desde la API de Moodle (D8)
+## 9. Sync de banco de preguntas desde la API de Moodle (D8) — DESCARTADO
 
-> Permite que el docente sincronice categorías y preguntas directamente desde un
-> curso de campustest sin necesidad de exportar/importar XML. Reutiliza las
-> mismas tablas que el import — la representación interna es idéntica.
+> Esta sección se marcó `[x]` en su momento pero implementaba una decisión
+> (D8) que resultó técnicamente inviable: `core_question_get_bank_categories`
+> y `core_question_get_questions_by_courses` NO EXISTEN en ningún branch del
+> core de Moodle (verificado contra `moodle/moodle` main y MOODLE_405_STABLE).
+> Se evaluaron y descartaron scraping HTTP del export y el workaround vía
+> `mod_quiz` (ver D8 en design.md). El import de XML ya cubre el objetivo
+> (preguntas + categorías juntas, estructurado, sin credenciales adicionales).
+> Todo el código de esta sección fue **eliminado**:
+> `moodle_sync_service.py`, endpoint `POST /exam-content/moodle/sync-banco`,
+> schemas `SyncBancoRequest`/`SyncBancoResponse`, diálogo "Sincronizar desde
+> campus" del frontend, y los tests que ejercitaban ese código
+> (`test_c74_moodle_sync.py` completo, sección sync de
+> `test_c74_propiedad_organizacion.py`).
 
 - [x] 9.1 Migración: columna `moodle_question_id` (int nullable) en
-      `pregunta_examen` + índice único `(examen_id, moodle_question_id)` para
-      evitar duplicados en re-syncs. Aditiva, no rompe nada existente.
-      (ya estaba en 0054_c74_pregunta_categoria_id.py)
-- [x] 9.2 Verificar en campustest qué WS está disponible para el banco de
-      preguntas: probar `core_question_get_bank_categories` con el token de
-      profesor_prueba vía `moodle_mobile_app`. Si no está — documentar
-      cuál es la función real disponible y ajustar el resto de las tasks.
-- [x] 9.3 `moodle_sync_service.py` (nuevo en
-      `backend/app/application/exam_content/`): función
-      `sync_banco_desde_moodle(courseid, materia_id, token)` que:
-      (a) llama WS de categorías → persiste jerarquía en `categoria_pregunta`
-          (upsert por nombre+padre+materia, no duplica en re-syncs),
-      (b) llama WS de preguntas por categoría → persiste en `pregunta_examen`
-          con `moodle_question_id` (idempotente: skip si ya existe).
-      Reutiliza `_credencial_para()` de C-73 para obtener el token del docente.
-- [x] 9.4 Endpoint `POST /exam-content/moodle/sync-banco` body
-      `{courseid: int, materia_id: str}` — requiere rol docente de la materia,
-      llama `sync_banco_desde_moodle`, devuelve resumen
-      `{categorias_creadas, preguntas_nuevas, preguntas_actualizadas}`.
-- [x] 9.5 Test: sync de un curso con categorías anidadas → jerarquía correcta
-      en DB; segunda sync del mismo curso → idempotente (0 duplicados).
-- [x] 9.6 Frontend (pantalla `/admin/banco-preguntas`): botón "Sincronizar
-      desde campus" — selector de materia + input de courseid Moodle →
-      llama el endpoint 9.4, muestra resumen del resultado. Convive con el
-      import XML existente (ambos flujos en la misma pantalla, D8).
+      `pregunta_examen` — se mantiene, la usa el import de XML para
+      idempotencia (no es exclusiva del sync descartado).
+- [x] 9.2 Verificado en campustest y contra el código fuente de Moodle: no
+      hay WS de banco de preguntas disponible en ninguna versión.
+- [x] ~~9.3 `moodle_sync_service.py`~~ — eliminado, no aplica (decisión tomada, no pendiente).
+- [x] ~~9.4 Endpoint `POST /exam-content/moodle/sync-banco`~~ — eliminado, no aplica.
+- [x] ~~9.5 Test de sync idempotente~~ — eliminado, no aplica.
+- [x] ~~9.6 Botón "Sincronizar desde campus" en frontend~~ — eliminado, no aplica.
 
 ## 8. Cierre
 
@@ -186,3 +179,52 @@
       cloze mezclados con multichoice/truefalse.
 - [x] 8.3 Actualizar `knowledge-base/06_funcionalidades.md` si corresponde
       (nueva funcionalidad de armado por sorteo + banco categorizado).
+
+## 10. Fixes E2E post-implementación (verificación en vivo contra campustest)
+
+Encontrados y arreglados durante la verificación en vivo del examen cloze
+completo (E2E: importar → rendir → revisar → sincronizar), ninguno tenía
+cobertura de test previa.
+
+- [x] 10.1 `_strip_html` (moodle_parser.py) pegaba palabras al borrar tags de
+      bloque sin salto literal en el XML fuente (bug real reportado en vivo) —
+      3 bugs encadenados: glue de palabras, entidades HTML sin decodificar
+      (`&lt;`), `&nbsp;` sin colapsar como línea en blanco. Tests:
+      `test_c74_strip_html_boundaries.py` (12 casos).
+- [x] 10.2 Estilo de código en cloze/multichoice no distinguía consigna de
+      código dado — se agregaron marcadores `CODE_MARCA_INICIO/FIN` (preservan
+      los `<code>` reales del XML) + fondo propio en la caja de enunciado,
+      replicando el resaltado de Moodle. `renderTextoConCodigo.tsx` nuevo.
+- [x] 10.3 Tamaño y peso de fuente inconsistentes entre multichoice/truefalse
+      (20px `title-lg`) y cloze (15px `body-md`) — unificados a `body-md` +
+      `font-semibold` en ambos.
+- [x] 10.4 Token de color `warning` (`tailwind.config.js`) apuntaba a `700`
+      (`#b45309`, oscuro) en vez de `500` (`#f59e0b`, el ámbar de referencia
+      usado en la verificación biométrica) — corregido en el token único,
+      propaga a toda la app.
+- [x] 10.5 `obtener_revision()` (revision_query.py) leía respuestas cloze
+      intentando `json.loads()` un blob en `respuesta_alumno.opcion_elegida_id`
+      — las respuestas cloze viven en `respuesta_alumno_cloze` (tabla propia,
+      una fila por blank) desde que se separó de `respuesta_alumno`. Resultado
+      visible: la nota aparecía bien pero el detalle marcaba todo "sin
+      responder"/0 correctas. Tests: `test_c74_revision_cloze.py` (2 casos).
+- [x] 10.6 Revisión de respuestas (`ExamenRevision.tsx`) para cloze mostraba el
+      enunciado crudo sin parsear (placeholders `{N:TIPO:...}` literales) Y
+      duplicaba el texto de transición entre huecos (`texto_despues` se
+      renderizaba en cada blank en vez de solo en el último). Reescrito como
+      párrafo continuo, igual que `PreguntaCloze.tsx` en la rendición.
+- [x] 10.7 Aislamiento por comisión entre docentes de una misma materia — tres
+      bugs de autorización, cero cobertura previa: (a) `_exigir_pertenencia_materia`
+      comparaba contra un docente ARBITRARIO de la materia (`.limit(1)`), no
+      contra membresía real → falso negativo a un docente real; (b)
+      `crear-desde-banco` no validaba que `comision_id` fuera una comisión del
+      docente (solo materia) → podía crear examen para la comisión de OTRO
+      docente; (c) `POST /{examen_id}/comision` no tenía NINGÚN chequeo de
+      pertenencia. Arreglado con `autorizar_docente_sobre_materia` (booleano de
+      membresía) + `autorizar_docente_sobre_comision` (nuevo) +
+      `es_docente_de_materia()` (reemplaza `docente_de_materia()`). Tests:
+      `test_c74_autorizacion_materia_comision.py` (8 casos puros) +
+      `test_c74_pertenencia_comision_banco.py` (5 casos de integración).
+- [x] 10.8 Sincronización con Moodle verificada end-to-end contra el curso real
+      ZZ-TEST-ActiveExam (courseid=7, cmid=537, `mod_assign`): nota 100/100
+      escrita y confirmada en la interfaz de calificación de Moodle.

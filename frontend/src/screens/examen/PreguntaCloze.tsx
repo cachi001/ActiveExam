@@ -10,6 +10,7 @@
  */
 
 import type { BlankRendicion } from '../../lib/examTakingApi';
+import { renderTextoConCodigo } from './renderTextoConCodigo';
 
 interface Props {
   blanks: BlankRendicion[];
@@ -22,7 +23,7 @@ export function PreguntaCloze({ blanks, respuestas, onRespuesta }: Props) {
   const ordenados = [...blanks].sort((a, b) => a.orden - b.orden);
 
   return (
-    <div className="text-body-md text-on-surface leading-loose">
+    <div className="text-body-md font-semibold text-on-surface leading-loose whitespace-pre-wrap rounded-xl border border-outline-variant/60 bg-surface-container-low p-md">
       {ordenados.map((blank, idx) => {
         const tipoNorm = blank.tipo.toLowerCase();
         const valor = respuestas[blank.id] ?? '';
@@ -32,7 +33,9 @@ export function PreguntaCloze({ blanks, respuestas, onRespuesta }: Props) {
 
         return (
           <span key={blank.id}>
-            {blank.texto_antes && <span>{blank.texto_antes}</span>}
+            {blank.texto_antes && (
+              <span>{renderTextoConCodigo(blank.texto_antes, `${blank.id}-antes`)}</span>
+            )}
 
             {esMultichoice ? (
               <select
@@ -65,7 +68,9 @@ export function PreguntaCloze({ blanks, respuestas, onRespuesta }: Props) {
               />
             )}
 
-            {esUltimo && blank.texto_despues && <span>{blank.texto_despues}</span>}
+            {esUltimo && blank.texto_despues && (
+              <span>{renderTextoConCodigo(blank.texto_despues, `${blank.id}-despues`)}</span>
+            )}
           </span>
         );
       })}

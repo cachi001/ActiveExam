@@ -278,6 +278,20 @@ export interface Comision {
   docente_nombre?: string | null;
 }
 
+/** Comisión + su materia embebida (GET /exam-content/comisiones, todas). Para un
+ * selector combinado único ("CÓDIGO - Materia") que no requiere elegir materia
+ * primero — reemplaza el patrón de dos selects encadenados. */
+export interface ComisionConMateria {
+  id: string;
+  codigo: string;
+  nombre: string;
+  periodo?: string | null;
+  anio?: number | null;
+  materia_id: string;
+  materia_nombre: string;
+  materia_codigo: string;
+}
+
 /** Alumno inscripto a una comisión, con su estado de elegibilidad para rendir
  *  (C-69). Espeja el item de GET /exam-content/comisiones/{id}/alumnos del
  *  backend: el `puede_rendir` lo decide el servidor combinando consentimiento +

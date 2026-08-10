@@ -367,12 +367,12 @@ class ExamenContenidoModel(Base):
     nota_maxima: Mapped[Decimal] = mapped_column(
         Numeric(5, 2),
         nullable=False,
-        server_default="10",
+        server_default="100",
     )
     nota_aprobacion: Mapped[Decimal] = mapped_column(
         Numeric(5, 2),
         nullable=False,
-        server_default="6",
+        server_default="60",
     )
     # Siempre true (migracion 0046): el orden aleatorio por alumno es integridad de
     # la rendicion, no una preferencia del docente. Se conserva la columna para no

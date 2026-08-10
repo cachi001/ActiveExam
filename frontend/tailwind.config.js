@@ -94,7 +94,9 @@ export default {
 
         // ── WARNING ─────────────────────────────────────────────────────────
         warning: {
-          DEFAULT: "#b45309",
+          // DEFAULT = 500 (ámbar vivo), no 700 — este es el tono de referencia
+          // usado en la verificación biométrica del alumno (primer ingreso).
+          DEFAULT: "#f59e0b",
           50:  "#fffbeb",
           100: "#fef3c7",
           200: "#fde68a",

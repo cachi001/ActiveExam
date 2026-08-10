@@ -42,6 +42,352 @@ class ImportReport:
     omitidas: list[OmitidaItem] = field(default_factory=list)
 
 
+@dataclass
+class PreguntaImportadaItem:
+    enunciado: str
+    tipo: str
+
+
+@dataclass
+class ImportBancoReport:
+    """Resultado de importar un XML directo al banco de preguntas (sin examen)."""
+
+    preguntas_nuevas: int
+    preguntas_actualizadas: int
+    omitidas: list[OmitidaItem] = field(default_factory=list)
+    nuevas: list[PreguntaImportadaItem] = field(default_factory=list)
+    actualizadas: list[PreguntaImportadaItem] = field(default_factory=list)
+
+
+@dataclass
+class PreviewCategoria:
+    ruta: list[str]
+    preguntas_por_tipo: dict[str, int]
+    preguntas: list[PreguntaImportadaItem] = field(default_factory=list)
+
+
+@dataclass
+class PreviewImportBancoReport:
+    """Preview de qué trae un XML — SIN tocar la DB (ni resolver categorías reales,
+    ni upsertear preguntas). Agrupa por la ruta cruda que trae el XML."""
+
+    categorias: list[PreviewCategoria]
+    sin_categoria_por_tipo: dict[str, int]
+    omitidas: list[OmitidaItem]
+    total_preguntas: int
+    sin_categoria_preguntas: list[PreguntaImportadaItem] = field(default_factory=list)
+
+
+def preview_import_banco(xml_bytes: bytes) -> PreviewImportBancoReport:
+    """Parsea el XML y arma el preview: árbol de categorías + conteo por tipo.
+
+    Pura: no abre sesión de DB, no persiste nada. Usa la misma validación de
+    dominio que el import real para que "omitidas" en el preview coincida con
+    lo que después omitiría el import de verdad.
+    """
+    parse_result = parse_moodle_xml(xml_bytes)
+
+    omitidas: list[OmitidaItem] = [
+        OmitidaItem(tipo=o.tipo, nombre=o.nombre, motivo="tipo no soportado")
+        for o in parse_result.omitidas
+    ]
+
+    por_ruta: dict[tuple[str, ...], dict[str, int]] = {}
+    preguntas_por_ruta: dict[tuple[str, ...], list[PreguntaImportadaItem]] = {}
+    sin_categoria: dict[str, int] = {}
+    sin_categoria_preguntas: list[PreguntaImportadaItem] = []
+    total = 0
+
+    for p_data in parse_result.preguntas:
+        try:
+            _pregunta_data_to_entity(p_data, categoria_id=None)
+        except PreguntaInvalidaError as exc:
+            omitidas.append(
+                OmitidaItem(tipo=p_data.tipo, nombre=p_data.enunciado[:60], motivo=str(exc))
+            )
+            continue
+
+        total += 1
+        item = PreguntaImportadaItem(enunciado=p_data.enunciado, tipo=p_data.tipo)
+        if p_data.categoria_ruta:
+            clave = tuple(p_data.categoria_ruta)
+            conteo = por_ruta.setdefault(clave, {})
+            preguntas_por_ruta.setdefault(clave, []).append(item)
+        else:
+            conteo = sin_categoria
+            sin_categoria_preguntas.append(item)
+        conteo[p_data.tipo] = conteo.get(p_data.tipo, 0) + 1
+
+    categorias = [
+        PreviewCategoria(
+            ruta=list(ruta),
+            preguntas_por_tipo=conteo,
+            preguntas=preguntas_por_ruta.get(ruta, []),
+        )
+        for ruta, conteo in por_ruta.items()
+    ]
+
+    return PreviewImportBancoReport(
+        categorias=categorias,
+        sin_categoria_por_tipo=sin_categoria,
+        omitidas=omitidas,
+        total_preguntas=total,
+        sin_categoria_preguntas=sin_categoria_preguntas,
+    )
+
+
+#: Clave sentinel para "sin categoría" en ``categorias_excluidas`` — un ``None``/
+#: tupla vacía no puede ir en un set junto con tuplas de ruta sin ambigüedad
+#: (una ruta real nunca puede colisionar con este string).
+SIN_CATEGORIA_SENTINEL: tuple[str, ...] = ("__sin_categoria__",)
+
+
+async def importar_banco_desde_xml(
+    session,
+    xml_bytes: bytes,
+    materia_id: str,
+    categorias_excluidas: set[tuple[str, ...]] | None = None,
+) -> ImportBancoReport:
+    """Importa un XML de Moodle directo a ``pregunta_banco``/``categoria_pregunta``.
+
+    A diferencia de ``ImportacionMoodleService.importar()``, NO crea ningún
+    ``examen_contenido``: el banco de preguntas es el destino, no un examen. El
+    examen se arma después, por separado, sorteando desde el banco
+    (``crear-desde-banco``).
+
+    ``categorias_excluidas``: rutas (tuplas de segmentos, igual que
+    ``PreviewCategoria.ruta``) que el docente destildó en el preview antes de
+    confirmar — esas preguntas NO se persisten. ``SIN_CATEGORIA_SENTINEL``
+    excluye las preguntas sin categoría. Filtrar ANTES de resolver categorías:
+    si una categoría queda 100% excluida, no se crea vacía en el banco.
+
+    Escritura en LOTES, no pregunta por pregunta (perf): con un banco real de
+    232 preguntas, la versión secuencial (1-2 SELECT + varios INSERT por
+    pregunta, todo awaited uno por uno) tardaba ~55s — cada await es un
+    round-trip de red a Postgres. Acá se resuelve "nueva vs actualizada" con
+    UNA sola consulta que trae todo el banco existente de la materia, y las
+    escrituras van en ~6 sentencias con executemany (una lista de dicts por
+    sentencia) en vez de una sentencia por fila.
+    """
+    parse_result = parse_moodle_xml(xml_bytes)
+
+    omitidas: list[OmitidaItem] = [
+        OmitidaItem(tipo=o.tipo, nombre=o.nombre, motivo="tipo no soportado")
+        for o in parse_result.omitidas
+    ]
+
+    excluidas = categorias_excluidas or set()
+    preguntas_a_procesar = [
+        p_data
+        for p_data in parse_result.preguntas
+        if (tuple(p_data.categoria_ruta) if p_data.categoria_ruta else SIN_CATEGORIA_SENTINEL)
+        not in excluidas
+    ]
+
+    cat_repo = CategoriaPreguntaSqlRepository(session)
+    ruta_memo: dict[tuple[str, ...], str] = {}
+
+    # 1. Validar + resolver categoría por pregunta. La resolución de categoría
+    #    ya está memoizada por ruta (ruta_memo) — barata incluso para cientos
+    #    de preguntas, porque el número de categorías ÚNICAS es chico.
+    validas: list[tuple[PreguntaData, str | None]] = []
+    for p_data in preguntas_a_procesar:
+        categoria_id: str | None = None
+        if p_data.categoria_ruta:
+            categoria_id = await _resolver_ruta(
+                cat_repo, materia_id, p_data.categoria_ruta, ruta_memo
+            )
+        try:
+            _pregunta_data_to_entity(p_data, categoria_id=categoria_id)
+        except PreguntaInvalidaError as exc:
+            omitidas.append(
+                OmitidaItem(tipo=p_data.tipo, nombre=p_data.enunciado[:60], motivo=str(exc))
+            )
+            continue
+        validas.append((p_data, categoria_id))
+
+    if not validas:
+        return ImportBancoReport(preguntas_nuevas=0, preguntas_actualizadas=0, omitidas=omitidas)
+
+    # Deduplicar DENTRO del mismo archivo (mismo criterio de identidad que
+    # _buscar_pregunta_banco: moodle_question_id, si no hay (enunciado, tipo)).
+    # Sin esto, dos preguntas "iguales" en el mismo XML sin id crearían dos
+    # filas nuevas en vez de que la última pise a la primera (como hacía la
+    # versión secuencial, que las veía como "ya existe" en la 2da vuelta).
+    dedup: dict[tuple, tuple[PreguntaData, str | None]] = {}
+    orden_dedup: list[tuple] = []
+    for p_data, categoria_id in validas:
+        moodle_qid = getattr(p_data, "moodle_question_id", None)
+        key = ("qid", moodle_qid) if moodle_qid else ("et", p_data.enunciado, p_data.tipo)
+        if key not in dedup:
+            orden_dedup.append(key)
+        dedup[key] = (p_data, categoria_id)
+    validas = [dedup[k] for k in orden_dedup]
+
+    # 2. UNA consulta: todo lo que ya existe en el banco de esta materia, para
+    #    resolver nueva/actualizada en memoria (antes: 1-2 SELECT por pregunta).
+    existentes_result = await session.execute(
+        sa.text(
+            "SELECT id, moodle_question_id, enunciado, tipo, categoria_manual, categoria_id "
+            "FROM pregunta_banco WHERE materia_id = :mid"
+        ),
+        {"mid": materia_id},
+    )
+    por_qid: dict[int, dict] = {}
+    por_enunciado_tipo: dict[tuple[str, str], dict] = {}
+    for row in existentes_result.mappings():
+        if row["moodle_question_id"] is not None:
+            por_qid.setdefault(row["moodle_question_id"], row)
+        por_enunciado_tipo.setdefault((row["enunciado"], row["tipo"]), row)
+
+    nuevas_rows: list[dict] = []
+    actualizadas_rows: list[dict] = []
+    banco_ids_actualizadas: list[str] = []
+    opciones_rows: list[dict] = []
+    blanks_rows: list[dict] = []
+    blank_opciones_rows: list[dict] = []
+    nuevas_items: list[PreguntaImportadaItem] = []
+    actualizadas_items: list[PreguntaImportadaItem] = []
+
+    for p_data, categoria_id in validas:
+        moodle_qid = getattr(p_data, "moodle_question_id", None)
+        existente = por_qid.get(moodle_qid) if moodle_qid else None
+        if existente is None:
+            existente = por_enunciado_tipo.get((p_data.enunciado, p_data.tipo))
+
+        if existente is not None:
+            # Regla de propiedad (0058): si el docente movió la pregunta a
+            # mano (categoria_manual), Moodle no la vuelve a recategorizar.
+            banco_id = str(existente["id"])
+            cat_final = (
+                existente["categoria_id"] if existente["categoria_manual"] else categoria_id
+            )
+            actualizadas_rows.append(
+                {"id": banco_id, "enunciado": p_data.enunciado, "qid": moodle_qid, "cat_id": cat_final}
+            )
+            banco_ids_actualizadas.append(banco_id)
+            actualizadas_items.append(
+                PreguntaImportadaItem(enunciado=p_data.enunciado, tipo=p_data.tipo)
+            )
+        else:
+            banco_id = str(uuid.uuid4())
+            nuevas_rows.append(
+                {
+                    "id": banco_id,
+                    "materia_id": materia_id,
+                    "enunciado": p_data.enunciado,
+                    "tipo": p_data.tipo,
+                    "categoria_id": categoria_id,
+                    "moodle_question_id": moodle_qid,
+                }
+            )
+            nuevas_items.append(
+                PreguntaImportadaItem(enunciado=p_data.enunciado, tipo=p_data.tipo)
+            )
+
+        for opcion in getattr(p_data, "opciones", []):
+            opciones_rows.append(
+                {
+                    "id": str(uuid.uuid4()),
+                    "pid": banco_id,
+                    "texto": opcion.texto,
+                    "es_correcta": opcion.es_correcta,
+                    "orden": opcion.orden,
+                }
+            )
+
+        for blank in getattr(p_data, "blanks", []):
+            blank_id = str(uuid.uuid4())
+            blanks_rows.append(
+                {
+                    "id": blank_id,
+                    "pid": banco_id,
+                    "orden": blank.orden,
+                    "tipo": blank.tipo,
+                    "texto_antes": blank.texto_antes or None,
+                    "texto_despues": blank.texto_despues or None,
+                }
+            )
+            for opcion in blank.opciones:
+                blank_opciones_rows.append(
+                    {
+                        "id": str(uuid.uuid4()),
+                        "bid": blank_id,
+                        "texto": opcion.texto,
+                        "es_correcta": opcion.es_correcta,
+                        "peso": opcion.peso,
+                    }
+                )
+
+    # 3. Escrituras en lotes — cada bloque es UNA sola sentencia (executemany
+    #    vía lista de dicts), no una sentencia por fila.
+    if actualizadas_rows:
+        await session.execute(
+            sa.text(
+                "UPDATE pregunta_banco SET enunciado = :enunciado, "
+                "moodle_question_id = COALESCE(:qid, moodle_question_id), "
+                "categoria_id = :cat_id WHERE id = :id"
+            ),
+            actualizadas_rows,
+        )
+        # Opciones/blanks se reemplazan enteros (si cambió cuál es la correcta,
+        # quedarnos con la vieja calificaría mal en silencio). IN expanding en
+        # vez de ANY(:ids): forma estándar y portable de SQLAlchemy para listas.
+        ids_stmt = sa.text(
+            "DELETE FROM opcion_banco WHERE pregunta_banco_id IN :ids"
+        ).bindparams(sa.bindparam("ids", expanding=True))
+        await session.execute(ids_stmt, {"ids": banco_ids_actualizadas})
+        ids_stmt = sa.text(
+            "DELETE FROM blank_banco WHERE pregunta_banco_id IN :ids"
+        ).bindparams(sa.bindparam("ids", expanding=True))
+        await session.execute(ids_stmt, {"ids": banco_ids_actualizadas})
+
+    if nuevas_rows:
+        await session.execute(
+            sa.text(
+                "INSERT INTO pregunta_banco "
+                "(id, materia_id, enunciado, tipo, categoria_id, moodle_question_id) "
+                "VALUES (:id, :materia_id, :enunciado, :tipo, :categoria_id, :moodle_question_id)"
+            ),
+            nuevas_rows,
+        )
+
+    if opciones_rows:
+        await session.execute(
+            sa.text(
+                "INSERT INTO opcion_banco (id, pregunta_banco_id, texto, es_correcta, orden) "
+                "VALUES (:id, :pid, :texto, :es_correcta, :orden)"
+            ),
+            opciones_rows,
+        )
+
+    if blanks_rows:
+        await session.execute(
+            sa.text(
+                "INSERT INTO blank_banco (id, pregunta_banco_id, orden, tipo, texto_antes, texto_despues) "
+                "VALUES (:id, :pid, :orden, :tipo, :texto_antes, :texto_despues)"
+            ),
+            blanks_rows,
+        )
+
+    if blank_opciones_rows:
+        await session.execute(
+            sa.text(
+                "INSERT INTO opcion_blank_banco (id, blank_banco_id, texto, es_correcta, peso) "
+                "VALUES (:id, :bid, :texto, :es_correcta, :peso)"
+            ),
+            blank_opciones_rows,
+        )
+
+    return ImportBancoReport(
+        preguntas_nuevas=len(nuevas_rows),
+        nuevas=nuevas_items,
+        actualizadas=actualizadas_items,
+        preguntas_actualizadas=len(actualizadas_rows),
+        omitidas=omitidas,
+    )
+
+
 class ImportacionMoodleService:
     """Caso de uso: importar examen desde Moodle XML."""
 
@@ -142,7 +488,7 @@ class ImportacionMoodleService:
             if materia_id:
                 p_data_list = parse_result.preguntas
                 for p_data, pregunta_guardada in zip(p_data_list, guardado.preguntas):
-                    banco_id = await _upsert_pregunta_banco(
+                    banco_id, _es_nueva = await _upsert_pregunta_banco(
                         session,
                         materia_id=materia_id,
                         p_data=p_data,
@@ -251,7 +597,7 @@ async def _upsert_pregunta_banco(
     materia_id: str,
     p_data: "PreguntaData",
     categoria_id: str | None,
-) -> str | None:
+) -> tuple[str | None, bool]:
     """Inserta o actualiza la pregunta en pregunta_banco. Idempotente.
 
     Regla de propiedad (0058): el contenido lo manda Moodle, la organización la
@@ -259,12 +605,13 @@ async def _upsert_pregunta_banco(
     opciones y blancos desde el XML, pero ``categoria_id`` se deja intacto si
     ``categoria_manual`` está en true — o sea, si el docente la movió a mano.
 
-    Retorna el id del registro en pregunta_banco.
+    Retorna ``(id del registro en pregunta_banco, es_nueva)``.
     """
     moodle_qid = getattr(p_data, "moodle_question_id", None)
     banco_id = await _buscar_pregunta_banco(
         session, materia_id=materia_id, p_data=p_data, moodle_qid=moodle_qid
     )
+    es_nueva = banco_id is None
 
     if banco_id:
         # Existe: refrescamos contenido, respetamos la organización del docente.
@@ -361,7 +708,7 @@ async def _upsert_pregunta_banco(
                 },
             )
 
-    return banco_id
+    return banco_id, es_nueva
 
 
 async def _persistir_blanks_cloze(session, pregunta_id: str, blanks: list) -> None:

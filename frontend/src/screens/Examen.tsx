@@ -8,6 +8,7 @@ import { getEffectiveConfig, loadEffectiveConfig } from '../config/effectiveConf
 import type { EventoSesion } from '../lib/types';
 import { fetchExamenParaRendir } from '../lib/examTakingApi';
 import type { ExamenRendicion } from '../lib/examTakingApi';
+import type { RespuestaEnvio } from '../lib/apiProctoring/respuestas';
 import {
   avanzarPregunta,
   retrocederPregunta,
@@ -39,6 +40,21 @@ const MENSAJE_409: Record<string, string> = {
 function codigo409(e: unknown): string | undefined {
   const code = (e as { code?: string } | null)?.code;
   return code === 'tiempo_agotado' || code === 'sesion_finalizada' ? code : undefined;
+}
+
+/** Arma los items a enviar a POST /respuestas: multichoice + cloze (C-74 §6). */
+function construirItemsRespuestas(
+  respuestas: Record<string, string>,
+  respuestasCloze: Record<string, Record<string, string>>,
+): RespuestaEnvio[] {
+  return [
+    ...Object.entries(respuestas).map(
+      ([pregunta_id, opcion_elegida_id]): RespuestaEnvio => ({ pregunta_id, opcion_elegida_id }),
+    ),
+    ...Object.entries(respuestasCloze)
+      .filter(([, blanks]) => Object.keys(blanks).length > 0)
+      .map(([pregunta_id, blanks]): RespuestaEnvio => ({ pregunta_id, respuesta_cloze: blanks })),
+  ];
 }
 
 export default function Examen() {
@@ -180,15 +196,9 @@ export default function Examen() {
           const estandar: Record<string, string> = {};
           const cloze: Record<string, Record<string, string>> = {};
           for (const r of guardadas) {
-            // Detectar respuestas cloze (JSON serializado como {"blankId": "valor"})
-            if (r.opcion_elegida_id.startsWith('{')) {
-              try {
-                const parsed = JSON.parse(r.opcion_elegida_id) as Record<string, string>;
-                cloze[r.pregunta_id] = parsed;
-              } catch {
-                estandar[r.pregunta_id] = r.opcion_elegida_id;
-              }
-            } else {
+            if (r.respuesta_cloze) {
+              cloze[r.pregunta_id] = r.respuesta_cloze;
+            } else if (r.opcion_elegida_id) {
               estandar[r.pregunta_id] = r.opcion_elegida_id;
             }
           }
@@ -221,19 +231,7 @@ export default function Examen() {
     if (!respuestasHidratadasRef.current) return; // aún restaurando: no pisar con {}
     if (submitTimeoutRef.current) clearTimeout(submitTimeoutRef.current);
     submitTimeoutRef.current = setTimeout(() => {
-      const items: { pregunta_id: string; opcion_elegida_id: string }[] = [
-        ...Object.entries(respuestas).map(([pregunta_id, opcion_elegida_id]) => ({
-          pregunta_id,
-          opcion_elegida_id,
-        })),
-        // Cloze: serializar el mapa de blanks como JSON en opcion_elegida_id
-        ...Object.entries(respuestasCloze)
-          .filter(([, blanks]) => Object.keys(blanks).length > 0)
-          .map(([pregunta_id, blanks]) => ({
-            pregunta_id,
-            opcion_elegida_id: JSON.stringify(blanks),
-          })),
-      ];
+      const items = construirItemsRespuestas(respuestas, respuestasCloze);
       if (items.length === 0) return;
       // C-72 sección 7: si el backend rechaza por plazo (409), mostrar el aviso —
       // el alumno se entera de que se acabó el tiempo, sin pérdida silenciosa.
@@ -266,18 +264,7 @@ export default function Examen() {
     setErrorEntrega(false);
     try {
       if (sessionId) {
-        const items: { pregunta_id: string; opcion_elegida_id: string }[] = [
-          ...Object.entries(respuestas).map(([pregunta_id, opcion_elegida_id]) => ({
-            pregunta_id,
-            opcion_elegida_id,
-          })),
-          ...Object.entries(respuestasCloze)
-            .filter(([, blanks]) => Object.keys(blanks).length > 0)
-            .map(([pregunta_id, blanks]) => ({
-              pregunta_id,
-              opcion_elegida_id: JSON.stringify(blanks),
-            })),
-        ];
+        const items = construirItemsRespuestas(respuestas, respuestasCloze);
         await api.enviarRespuestasProctoring(sessionId, items);
       }
     } catch (e) {

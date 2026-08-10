@@ -26,8 +26,9 @@ from app.infrastructure.persistence.models.exam_content import (
     PreguntaExamenModel,
 )
 
-# Escala por defecto si el examen no existe o no tiene nota_maxima configurada.
-_NOTA_MAXIMA_DEFAULT = 10.0
+# Escala por defecto si el examen no existe o no tiene nota_maxima configurada
+# (migración 0061: escala 0-100, no "sobre 10").
+_NOTA_MAXIMA_DEFAULT = 100.0
 
 
 @dataclass(frozen=True, slots=True)

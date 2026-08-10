@@ -165,15 +165,15 @@ class ExamenContenido:
     moodle_courseid: int | None = None
     moodle_cmid: int | None = None
     moodle_component: str | None = None
-    # Configuración del examen POR EXAMEN (migración 0032). ActiveExam la opera; el
-    # alumno rinde con estos parámetros. Defaults compat: 1 intento, nota sobre 10,
-    # aprueba con 6, sin ventana ni límite, sin mezclar.
+    # Configuración del examen POR EXAMEN (migración 0032, 0061). ActiveExam la
+    # opera; el alumno rinde con estos parámetros. Defaults: 1 intento, nota sobre
+    # 100, aprueba con 60, sin ventana ni límite, sin mezclar.
     tiempo_limite_min: int | None = None  # None = sin límite
     intentos_permitidos: int = 1
     apertura: datetime | None = None  # None = sin apertura
     cierre: datetime | None = None  # None = sin cierre
-    nota_maxima: float = 10.0
-    nota_aprobacion: float = 6.0
+    nota_maxima: float = 100.0
+    nota_aprobacion: float = 60.0
     # Siempre true: el orden aleatorio por alumno protege la integridad de la
     # rendicion y no altera la nota (solo cambia el ORDEN, no que preguntas entran).
     mezclar_preguntas: bool = True
@@ -276,7 +276,9 @@ class ExamenContenidoResumen:
     cantidad_preguntas: int
     comision_id: str | None = None
     comision_nombre: str | None = None
+    comision_codigo: str | None = None
     materia_nombre: str | None = None
+    materia_codigo: str | None = None
     # Config por examen que el front usa para gatear "Rendir" por ventana/intentos
     # (migración 0032). apertura/cierre/tiempo_limite_min son NULLABLE.
     apertura: datetime | None = None

@@ -3,6 +3,7 @@ import { puedeIrAnterior, puedeIrSiguiente } from '../ExamenLogic';
 import { soportaFullscreen, MENSAJE_LIMITE_FULLSCREEN } from '../../proctoring/fullscreenLockdown';
 import type { ExamenRendicion } from '../../lib/examTakingApi';
 import { PreguntaCloze } from './PreguntaCloze';
+import { renderTextoConCodigo } from './renderTextoConCodigo';
 
 interface Props {
   preguntaActual: ExamenRendicion['preguntas'][number] | null | undefined;
@@ -72,8 +73,8 @@ export function ExamenPreguntaCard({
         </p>
       )}
       {preguntaActual && !esCloze && (
-        <h2 className="font-headline text-title-lg text-on-surface leading-snug">
-          {preguntaActual.enunciado}
+        <h2 className="text-body-md font-semibold text-on-surface leading-loose whitespace-pre-wrap rounded-xl border border-outline-variant/60 bg-surface-container-low p-md">
+          {renderTextoConCodigo(preguntaActual.enunciado, preguntaActual.id)}
         </h2>
       )}
 
@@ -116,8 +117,8 @@ export function ExamenPreguntaCard({
       {/* Cloze sin blanks: fallback */}
       {preguntaActual && esCloze && blanks.length === 0 && (
         <div className="space-y-md">
-          <h2 className="font-headline text-title-lg text-on-surface leading-snug">
-            {preguntaActual.enunciado}
+          <h2 className="text-body-md font-semibold text-on-surface leading-loose whitespace-pre-wrap rounded-xl border border-outline-variant/60 bg-surface-container-low p-md">
+            {renderTextoConCodigo(preguntaActual.enunciado, preguntaActual.id)}
           </h2>
           <p className="text-label-sm text-on-surface-variant italic">
             Esta pregunta no tiene huecos definidos.

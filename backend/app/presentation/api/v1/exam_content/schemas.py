@@ -35,6 +35,47 @@ class ImportReporteResponse(BaseModel):
     omitidas: list[OmitidaItemResponse]
 
 
+class PreguntaImportadaItemResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enunciado: str
+    tipo: str
+
+
+class ImportarBancoXmlResponse(BaseModel):
+    """Resultado de importar un XML directo al banco de preguntas (sin examen)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    preguntas_nuevas: int
+    preguntas_actualizadas: int
+    omitidas: list[OmitidaItemResponse]
+    nuevas: list[PreguntaImportadaItemResponse] = []
+    actualizadas: list[PreguntaImportadaItemResponse] = []
+
+
+class PreviewCategoriaResponse(BaseModel):
+    """Una categoría del árbol detectado en el XML, con conteo de preguntas por tipo."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    ruta: list[str]
+    preguntas_por_tipo: dict[str, int]
+    preguntas: list[PreguntaImportadaItemResponse] = []
+
+
+class PreviewImportBancoResponse(BaseModel):
+    """Preview del import: qué trae el XML, SIN persistir nada en la DB."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    categorias: list[PreviewCategoriaResponse]
+    sin_categoria_por_tipo: dict[str, int]
+    omitidas: list[OmitidaItemResponse]
+    total_preguntas: int
+    sin_categoria_preguntas: list[PreguntaImportadaItemResponse] = []
+
+
 # ---------------------------------------------------------------------------
 # Schema de catálogo para el alumno — D3: es_correcta AUSENTE
 # ---------------------------------------------------------------------------
@@ -55,7 +96,9 @@ class ExamenContenidoResumenResponse(BaseModel):
     cantidad_preguntas: int
     comision_id: str | None = None
     comision_nombre: str | None = None
+    comision_codigo: str | None = None
     materia_nombre: str | None = None
+    materia_codigo: str | None = None
     # Config por examen para gatear "Rendir" por ventana/intentos (migración 0032).
     apertura: datetime | None = None
     cierre: datetime | None = None
@@ -285,6 +328,9 @@ class SorteoCategoriaItem(BaseModel):
     # temas. Por eso el default incluye la descendencia completa. En False, sortea
     # SOLO lo que cuelga directo de esa categoría, sin bajar a las subcategorías.
     incluir_subcategorias: bool = True
+    # None = cualquier tipo de la categoría. Con lista, solo sortea de esos tipos
+    # (ej. ["multichoice"] para dejar afuera las cloze de la misma categoría).
+    tipos: list[str] | None = None
 
 
 class CrearDesdebancoRequest(BaseModel):
@@ -302,6 +348,11 @@ class CrearDesdebancoRequest(BaseModel):
     comision_id: str | None = None
     sorteo: list[SorteoCategoriaItem] = Field(min_length=1)
     limite_preguntas: int | None = Field(default=None, ge=1)
+    # Escala de calificación: configurable por examen (migración 0061). Default
+    # 100/60 si no se manda — nunca cae silenciosamente en "sobre 10". El docente
+    # puede elegir otra escala acá mismo, al crear, sin un PATCH /config aparte.
+    nota_maxima: float = Field(default=100.0, gt=0)
+    nota_aprobacion: float = Field(default=60.0, ge=0)
 
 
 class CrearDesdebancoResponse(BaseModel):
@@ -388,6 +439,22 @@ class AltaInlineResponse(BaseModel):
     materia: MateriaResponse
     comision: ComisionResponse
     examen_id: str | None = None
+
+
+class ComisionConMateriaResponse(BaseModel):
+    """Comisión + su materia embebida, para un selector combinado único
+    ("CÓDIGO - Materia") que no requiere elegir materia primero."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    codigo: str
+    nombre: str
+    periodo: str | None = None
+    anio: int | None = None
+    materia_id: str
+    materia_nombre: str
+    materia_codigo: str
 
 
 class MateriaCrearRequest(BaseModel):
@@ -790,30 +857,3 @@ class InformeDevolucionResponse(BaseModel):
     senales: list[SenalAnalisisResponse]
     capturas: list[CapturaFirmadaResponse]
 
-
-# ---------------------------------------------------------------------------
-# Sync del banco de preguntas desde Moodle (C-74 §9.4)
-# ---------------------------------------------------------------------------
-
-
-class SyncBancoRequest(BaseModel):
-    """Body del POST /exam-content/moodle/sync-banco.
-
-    ``courseid``: ID del curso en Moodle del que importar el banco.
-    ``materia_id``: UUID de la materia en ActiveExam donde registrar categorías.
-    """
-
-    model_config = ConfigDict(extra="forbid")
-
-    courseid: int
-    materia_id: str
-
-
-class SyncBancoResponse(BaseModel):
-    """Resultado de la sincronización del banco de preguntas desde Moodle."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    categorias_creadas: int
-    preguntas_nuevas: int
-    preguntas_actualizadas: int

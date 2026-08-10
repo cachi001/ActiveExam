@@ -7,6 +7,21 @@ import type {
   SesionProctoringResumen, SesionProctoringDetalle,
 } from '../types';
 
+/**
+ * Una respuesta del alumno: exactamente uno de los dos campos (C-74 §6).
+ * `opcion_elegida_id` para multichoice/truefalse; `respuesta_cloze` (dict
+ * blankId → valor) para preguntas cloze/ddwtos.
+ */
+export type RespuestaEnvio =
+  | { pregunta_id: string; opcion_elegida_id: string; respuesta_cloze?: undefined }
+  | { pregunta_id: string; respuesta_cloze: Record<string, string>; opcion_elegida_id?: undefined };
+
+export interface RespuestaGuardada {
+  pregunta_id: string;
+  opcion_elegida_id?: string;
+  respuesta_cloze?: Record<string, string>;
+}
+
 export const respuestasApi = {
   /**
    * Envía las respuestas del alumno ANTES de finalizar la sesión (C-69 sección 7).
@@ -24,7 +39,7 @@ export const respuestasApi = {
    */
   async enviarRespuestasProctoring(
     sessionId: string,
-    respuestas: { pregunta_id: string; opcion_elegida_id: string }[],
+    respuestas: RespuestaEnvio[],
   ): Promise<{ session_id: string; respuestas_guardadas: number } | null> {
     if (!sessionId) return null;
     try {
@@ -60,12 +75,12 @@ export const respuestasApi = {
    */
   async obtenerRespuestasProctoring(
     sessionId: string,
-  ): Promise<{ pregunta_id: string; opcion_elegida_id: string }[]> {
+  ): Promise<RespuestaGuardada[]> {
     if (!sessionId) return [];
     try {
       const data = await realFetch<{
         session_id: string;
-        respuestas: { pregunta_id: string; opcion_elegida_id: string }[];
+        respuestas: RespuestaGuardada[];
       }>(`/proctoring/sessions/${sessionId}/respuestas`, { method: 'GET' }, 'demo');
       return data.respuestas;
     } catch {

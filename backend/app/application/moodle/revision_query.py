@@ -31,6 +31,7 @@ from app.infrastructure.persistence.models.exam_content import (
 )
 from app.infrastructure.persistence.models.moodle_writeback import (
     MoodleWritebackEstadoModel,
+    RespuestaAlumnoClozeModel,
     RespuestaAlumnoModel,
 )
 from app.infrastructure.persistence.models.proctoring import ProctoringSessionModel
@@ -232,6 +233,23 @@ async def obtener_revision(
     ).all()
     elegida_por_pregunta = {r.pregunta_id: r.opcion_elegida_id for r in resp_rows}
 
+    # Respuestas cloze del alumno en ESTA sesión: viven en su propia tabla
+    # (respuesta_alumno_cloze, una fila por blank), NO como JSON embebido en
+    # respuesta_alumno.opcion_elegida_id — ese esquema quedó obsoleto cuando
+    # se separó la tabla dedicada para cloze/ddwtos (ver RespuestaAlumnoClozeModel).
+    resp_cloze_rows = (
+        await db.execute(
+            select(
+                RespuestaAlumnoClozeModel.pregunta_id,
+                RespuestaAlumnoClozeModel.blank_id,
+                RespuestaAlumnoClozeModel.valor,
+            ).where(RespuestaAlumnoClozeModel.session_id == session_id)
+        )
+    ).all()
+    respuestas_cloze_por_pregunta: dict[str, dict[str, str]] = {}
+    for r in resp_cloze_rows:
+        respuestas_cloze_por_pregunta.setdefault(r.pregunta_id, {})[r.blank_id] = r.valor
+
     # Cargar blanks cloze para las preguntas de tipo 'cloze'.
     cloze_pregunta_ids = [p.id for p in preg_rows if p.tipo == "cloze"]
     blanks_por_pregunta: dict[str, list[PreguntaClozeBlankModel]] = {}
@@ -264,14 +282,7 @@ async def obtener_revision(
         elegida_id = elegida_por_pregunta.get(p.id)
 
         if p.tipo == "cloze":
-            # Para cloze, elegida_id contiene JSON: {"blankId": valor}
-            import json as _json
-            respuesta_cloze: dict[str, str] = {}
-            if elegida_id:
-                try:
-                    respuesta_cloze = _json.loads(elegida_id)
-                except (ValueError, TypeError):
-                    respuesta_cloze = {}
+            respuesta_cloze = respuestas_cloze_por_pregunta.get(p.id, {})
 
             blanks_revisados: list[RevisionBlank] = []
             todos_correctos = True

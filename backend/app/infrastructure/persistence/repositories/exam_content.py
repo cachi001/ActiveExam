@@ -152,7 +152,9 @@ class ExamenContenidoSqlRepository:
                 .label("cantidad_preguntas"),
                 ExamenContenidoModel.comision_id,
                 ComisionModel.nombre.label("comision_nombre"),
+                ComisionModel.codigo.label("comision_codigo"),
                 MateriaModel.nombre.label("materia_nombre"),
+                MateriaModel.codigo.label("materia_codigo"),
                 ExamenContenidoModel.apertura,
                 ExamenContenidoModel.cierre,
                 ExamenContenidoModel.tiempo_limite_min,
@@ -175,7 +177,9 @@ class ExamenContenidoSqlRepository:
                 ExamenContenidoModel.titulo,
                 ExamenContenidoModel.comision_id,
                 ComisionModel.nombre,
+                ComisionModel.codigo,
                 MateriaModel.nombre,
+                MateriaModel.codigo,
                 ExamenContenidoModel.apertura,
                 ExamenContenidoModel.cierre,
                 ExamenContenidoModel.tiempo_limite_min,
@@ -191,7 +195,9 @@ class ExamenContenidoSqlRepository:
             cantidad_preguntas=row.cantidad_preguntas,
             comision_id=row.comision_id,
             comision_nombre=row.comision_nombre,
+            comision_codigo=row.comision_codigo,
             materia_nombre=row.materia_nombre,
+            materia_codigo=row.materia_codigo,
             apertura=row.apertura,
             cierre=row.cierre,
             tiempo_limite_min=row.tiempo_limite_min,
@@ -915,6 +921,32 @@ class ComisionSqlRepository:
         )
         return [self._to_entity(m) for m in result.scalars().all()]
 
+    async def listar_todas_con_materia(
+        self, docente_id: str | None = None
+    ) -> list[tuple[Comision, str, str]]:
+        """Todas las comisiones (join con materia), para un selector combinado
+        "CÓDIGO - Materia" que no requiere elegir materia primero.
+
+        ``docente_id`` None = todas (staff); provisto = solo las comisiones que
+        dicta ese docente, across todas sus materias (C-73 §9).
+        Devuelve tuplas ``(comision, materia_nombre, materia_codigo)``.
+        """
+        stmt = (
+            select(ComisionModel, MateriaModel.nombre, MateriaModel.codigo)
+            .join(MateriaModel, MateriaModel.id == ComisionModel.materia_id)
+            .order_by(
+                _orden_alfabetico(MateriaModel.nombre),
+                _orden_alfabetico(ComisionModel.nombre),
+            )
+        )
+        if docente_id is not None:
+            stmt = stmt.where(ComisionModel.docente_id == docente_id)
+        result = await self._db.execute(stmt)
+        return [
+            (self._to_entity(comision), materia_nombre, materia_codigo)
+            for comision, materia_nombre, materia_codigo in result.all()
+        ]
+
     async def obtener(self, comision_id: str) -> Comision | None:
         model = await self._db.get(ComisionModel, comision_id)
         if model is None:
@@ -1083,23 +1115,25 @@ class ComisionSqlRepository:
         )
         return result.scalar_one_or_none()
 
-    async def docente_de_materia(self, materia_id: str) -> str | None:
-        """Docente a cargo de cualquier comisión de la materia. C-74 §4.
+    async def es_docente_de_materia(self, docente_id: str, materia_id: str) -> bool:
+        """True si el docente dado dicta AL MENOS UNA comisión de la materia.
 
-        Si la materia tiene múltiples comisiones con docentes distintos, devuelve
-        uno arbitrario — suficiente para el chequeo de pertenencia (si hay docente
-        asignado en alguna comisión de la materia, el caller puede verificar).
-        Devuelve None si ninguna comisión de la materia tiene docente.
-        """
+        Reemplaza al viejo ``docente_de_materia`` (bug real, C-74 post-cierre):
+        ese método devolvía un docente ARBITRARIO de la materia (``.limit(1)``,
+        sin filtrar por quién pregunta) y el caller comparaba identidad contra
+        ESE — un docente real que dicta una comisión distinta de la que la query
+        devolvía primero era rechazado con falso negativo. Acá se filtra
+        directamente por ``docente_id`` — es una pregunta de membresía, no de
+        "quién es el dueño arbitrario"."""
         result = await self._db.execute(
-            select(ComisionModel.docente_id)
+            select(ComisionModel.id)
             .where(
                 ComisionModel.materia_id == materia_id,
-                ComisionModel.docente_id.isnot(None),
+                ComisionModel.docente_id == docente_id,
             )
             .limit(1)
         )
-        return result.scalar_one_or_none()
+        return result.scalar_one_or_none() is not None
 
     async def comision_ids_a_cargo(self, docente_id: str) -> list[str]:
         """Comisiones donde el docente dado es el titular (comision.docente_id).

@@ -118,6 +118,7 @@ export async function moverPreguntaCategoria(
 export interface SorteoCategoriaItem {
   categoria_id: string | null;
   cantidad: number;
+  tipos?: string[] | null;
 }
 
 export interface CrearDesdebancoRequest {
@@ -126,6 +127,9 @@ export interface CrearDesdebancoRequest {
   comision_id?: string | null;
   sorteo: SorteoCategoriaItem[];
   limite_preguntas?: number | null;
+  /** Escala de calificación del examen. Default 100/60 si se omite (nunca "sobre 10"). */
+  nota_maxima?: number;
+  nota_aprobacion?: number;
 }
 
 export interface CrearDesdebancoResponse {
@@ -155,32 +159,100 @@ export async function crearDesdeBanco(
   return res.json();
 }
 
-export interface SyncBancoResult {
-  categorias_creadas: number;
+export interface OmitidaItem {
+  tipo: string;
+  nombre: string;
+  motivo: string;
+}
+
+export interface PreguntaImportadaItem {
+  enunciado: string;
+  tipo: string;
+}
+
+export interface ImportarBancoXmlResult {
   preguntas_nuevas: number;
   preguntas_actualizadas: number;
+  omitidas: OmitidaItem[];
+  nuevas: PreguntaImportadaItem[];
+  actualizadas: PreguntaImportadaItem[];
 }
 
 /**
- * Sincroniza el banco de preguntas de una materia desde el campus Moodle.
- * POST /api/v1/exam-content/moodle/sync-banco
+ * Importa un XML de Moodle directo al banco de preguntas de una materia.
+ * NO crea ningún examen — el banco es el destino. El examen se arma después,
+ * por separado, sorteando categorías/tipos desde acá (crearDesdeBanco).
+ * POST /api/v1/exam-content/banco/importar-xml
  */
-export async function sincronizarBancoMoodle(
+export async function importarBancoXml(
   materiaId: string,
-  courseid: number,
-): Promise<SyncBancoResult> {
-  const res = await fetch(`${API_BASE}/exam-content/moodle/sync-banco`, {
+  file: File,
+  categoriasExcluidas?: string[][],
+): Promise<ImportarBancoXmlResult> {
+  const formData = new FormData();
+  formData.append('materia_id', materiaId);
+  formData.append('file', file);
+  if (categoriasExcluidas && categoriasExcluidas.length > 0) {
+    formData.append('categorias_excluidas', JSON.stringify(categoriasExcluidas));
+  }
+
+  const res = await fetch(`${API_BASE}/exam-content/banco/importar-xml`, {
     method: 'POST',
-    headers: headers(),
-    body: JSON.stringify({ materia_id: materiaId, courseid }),
+    headers: { Authorization: `Bearer ${authProvider.getToken()}` },
+    body: formData,
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const detail = (body as any)?.detail;
-    throw new Error(
-      typeof detail === 'string' ? detail : detail?.mensaje ?? `Error ${res.status} al sincronizar`,
-    );
+    const msg =
+      typeof detail === 'string'
+        ? detail
+        : detail?.mensaje ?? `Error ${res.status} al importar`;
+    throw new Error(msg);
   }
-  return res.json() as Promise<SyncBancoResult>;
+  return res.json();
 }
+
+export interface PreviewCategoria {
+  ruta: string[];
+  preguntas_por_tipo: Record<string, number>;
+  preguntas: PreguntaImportadaItem[];
+}
+
+export interface PreviewImportBancoResult {
+  categorias: PreviewCategoria[];
+  sin_categoria_por_tipo: Record<string, number>;
+  omitidas: OmitidaItem[];
+  total_preguntas: number;
+  sin_categoria_preguntas: PreguntaImportadaItem[];
+}
+
+/**
+ * Preview de un XML antes de importarlo: árbol de categorías + conteo por
+ * tipo. NO persiste nada — solo parsea, para mostrarle al docente qué va a
+ * entrar al banco antes de confirmar.
+ * POST /api/v1/exam-content/banco/importar-xml/preview
+ */
+export async function previewImportarBancoXml(file: File): Promise<PreviewImportBancoResult> {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const res = await fetch(`${API_BASE}/exam-content/banco/importar-xml/preview`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${authProvider.getToken()}` },
+    body: formData,
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const detail = (body as any)?.detail;
+    const msg =
+      typeof detail === 'string'
+        ? detail
+        : detail?.mensaje ?? `Error ${res.status} al previsualizar`;
+    throw new Error(msg);
+  }
+  return res.json();
+}
+

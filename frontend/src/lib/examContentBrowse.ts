@@ -7,7 +7,7 @@
  * D3: la respuesta de exámenes NUNCA incluye es_correcta ni opciones.
  */
 
-import type { Materia, Comision, ExamenContenidoResumen } from './types';
+import type { Materia, Comision, ComisionConMateria, ExamenContenidoResumen } from './types';
 
 function buildHeaders(token: string | undefined): HeadersInit {
   return {
@@ -44,6 +44,15 @@ export function listarComisionesFn(
     `${apiBase}/exam-content/materias/${encodeURIComponent(materiaId)}/comisiones`,
     token,
   );
+}
+
+/** GET /exam-content/comisiones → TODAS las comisiones, con su materia embebida.
+ * Selector combinado único ("CÓDIGO - Materia"), sin elegir materia primero. */
+export function listarTodasComisionesFn(
+  apiBase: string,
+  token: string | undefined,
+): Promise<ComisionConMateria[]> {
+  return getJson<ComisionConMateria>(`${apiBase}/exam-content/comisiones`, token);
 }
 
 /** GET /exam-content/comisiones/{comisionId}/examenes → exámenes importados de la comisión. */

@@ -31,11 +31,12 @@ const CAT_NIVEL3: CategoriaPregunta = {
 const noOp = () => {};
 
 describe('CategoriasTree', () => {
-  it('4.6a renderiza árbol de 3 niveles expandido por defecto', () => {
+  it('4.6a renderiza árbol de 3 niveles, expandiendo cada nivel a mano', () => {
     render(
       <CategoriasTree
         categorias={[CAT_RAIZ, CAT_NIVEL2, CAT_NIVEL3]}
         seleccionada={null}
+        sinClasificarCount={3}
         onSeleccionar={noOp}
         onCrear={noOp}
         onRenombrar={noOp}
@@ -43,9 +44,14 @@ describe('CategoriasTree', () => {
       />,
     );
     expect(screen.getAllByText('Unidad 1').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Tema 1.1').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Subtema 1.1.1').length).toBeGreaterThan(0);
     expect(screen.getAllByText(/sin clasificar/i).length).toBeGreaterThan(0);
+    // Colapsado por defecto: los niveles inferiores solo aparecen al expandir.
+    expect(screen.queryByText('Tema 1.1')).toBeNull();
+    fireEvent.click(screen.getByLabelText('Expandir'));
+    expect(screen.getAllByText('Tema 1.1').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Subtema 1.1.1')).toBeNull();
+    fireEvent.click(screen.getByLabelText('Expandir'));
+    expect(screen.getAllByText('Subtema 1.1.1').length).toBeGreaterThan(0);
   });
 
   it('4.6b seleccionar categoría llama onSeleccionar con su id', () => {
@@ -54,6 +60,7 @@ describe('CategoriasTree', () => {
       <CategoriasTree
         categorias={[CAT_RAIZ, CAT_NIVEL2]}
         seleccionada={null}
+        sinClasificarCount={0}
         onSeleccionar={spy}
         onCrear={noOp}
         onRenombrar={noOp}
@@ -70,6 +77,7 @@ describe('CategoriasTree', () => {
       <CategoriasTree
         categorias={[CAT_RAIZ]}
         seleccionada="a"
+        sinClasificarCount={2}
         onSeleccionar={spy}
         onCrear={noOp}
         onRenombrar={noOp}
@@ -78,5 +86,20 @@ describe('CategoriasTree', () => {
     );
     fireEvent.click(screen.getAllByText(/sin clasificar/i)[0]);
     expect(spy).toHaveBeenCalledWith(null);
+  });
+
+  it('4.6d "Sin clasificar" no se muestra cuando no hay preguntas sin clasificar', () => {
+    render(
+      <CategoriasTree
+        categorias={[CAT_RAIZ]}
+        seleccionada="a"
+        sinClasificarCount={0}
+        onSeleccionar={noOp}
+        onCrear={noOp}
+        onRenombrar={noOp}
+        onBorrar={noOp}
+      />,
+    );
+    expect(screen.queryByText(/sin clasificar/i)).toBeNull();
   });
 });

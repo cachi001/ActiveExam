@@ -138,27 +138,37 @@ separación completa banco/examen en un change futuro si hace falta.
    de examen. La pantalla de examen solo consume categorías (para el sorteo),
    no las administra.
 
-8. **Sync de categorías y preguntas desde la API de Moodle (sin import de XML).**
-   El docente puede sincronizar el banco de preguntas directamente desde un curso
-   de campustest sin necesidad de exportar/importar un XML. Flujo:
-   - `POST /exam-content/moodle/sync-banco/{materia_id}` — recibe el `courseid`
-     de Moodle y llama `core_question_get_bank_categories` (disponible desde
-     Moodle 4.3) para traer la jerarquía de categorías, luego
-     `core_question_get_questions_by_courses` o equivalente para las preguntas
-     de cada categoría.
-   - Persiste en las mismas tablas (`categoria_pregunta`, `pregunta_examen`,
-     `opcion_respuesta`) que el import XML — misma representación interna,
-     origen distinto. El campo `moodle_question_id` (int nullable en
-     `pregunta_examen`) evita duplicados en re-syncs sucesivas.
-   - El sorteo aleatorio (D4/task 3) funciona igual sin importar el origen de
-     las preguntas — toma de `categoria_pregunta`, agnóstico del origen.
-   - La credencial usada es la del docente (`moodle_credencial_docente`, que ya
-     existe de C-73) — el token intercambia por WS y llama con los permisos del
-     docente sobre su propio curso.
-   - WS function a verificar en implementación: `core_question_get_bank_categories`
-     (Moodle 4.3+, disponible en campustest 4.5). Fallback si no está habilitada:
-     parsear el export XML (ya implementado). La pantalla admin muestra ambas
-     opciones.
+8. **DESCARTADO — sync de categorías/preguntas vía API de Moodle. Import de XML
+   es el único camino.** Esta decisión original asumía que existían
+   `core_question_get_bank_categories` y `core_question_get_questions_by_courses`
+   como funciones WS de Moodle "disponibles desde 4.3". Investigación posterior
+   (verificación directa del código fuente de `moodle/moodle`, branches `main` y
+   `MOODLE_405_STABLE`, contra `lib/db/services.php` / `question/classes/external/`)
+   confirmó que **ninguna de las dos existe en ningún branch del core**, en
+   ninguna versión. No es una cuestión de habilitar un permiso: la función no
+   está implementada en Moodle.
+   - Se evaluaron y descartaron también: scraping HTTP autenticado del endpoint
+     de exportación (`question/bank/exportquestions/export.php` — multi-step,
+     depende de parsear `sesskey`/DOM, ya cambió de ruta entre 4.0 y 4.5, y
+     requeriría guardar credenciales de sesión del docente en vez del token WS
+     acotado que usa C-73 hoy) y el workaround vía `mod_quiz_get_attempt_review`
+     sobre un quiz existente (HTML renderizado sin categoría de origen — pierde
+     justo la organización que se busca preservar).
+   - La única vía "limpia" identificada es un **plugin local custom instalado
+     en el Moodle institucional** (expone un WS propio reusando `qformat_xml`
+     internamente) — queda anotado como backlog futuro, condicionado a gestión
+     con TI-UTN, fuera de alcance de C-74.
+   - **El import de XML (`moodle_parser.py` + `ImportacionMoodleService`) ya
+     resuelve el objetivo**: el archivo exportado de Moodle trae categorías
+     (`<question type="category">`) y preguntas juntas, y el parser ya
+     persiste ambas en `categoria_pregunta`/`pregunta_banco` con anclas de
+     idempotencia (`moodle_nombre_origen`, `moodle_question_id`). El sorteo
+     aleatorio (D4/task 3) funciona igual sobre ese banco, agnóstico del
+     origen. No hace falta ningún sync adicional.
+   - Se eliminó el código que implementaba la decisión original:
+     `moodle_sync_service.py`, el endpoint `POST /exam-content/moodle/sync-banco`,
+     schemas `SyncBancoRequest`/`SyncBancoResponse`, el diálogo "Sincronizar
+     desde campus" del frontend y sus tests asociados.
 
 ## Risks / Trade-offs
 

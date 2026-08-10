@@ -234,8 +234,13 @@ async def test_crear_materia_201(client_admin):
     assert data["codigo"] == "ALG-CRUD-1"
     assert data["nombre"] == "Álgebra"
     # id/codigo/nombre + activa (C-72 §17); una materia nueva nace activa.
-    assert set(data.keys()) == {"id", "codigo", "nombre", "activa"}
+    # total_inscriptos/total_examenes: conteos para ocultar "Eliminar" si no está vacía.
+    assert set(data.keys()) == {
+        "id", "codigo", "nombre", "activa", "total_inscriptos", "total_examenes",
+    }
     assert data["activa"] is True
+    assert data["total_inscriptos"] == 0
+    assert data["total_examenes"] == 0
 
 
 @pytest.mark.asyncio

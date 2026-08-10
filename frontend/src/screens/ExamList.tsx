@@ -240,16 +240,26 @@ export default function ExamList() {
                 header: 'Materia',
                 width: '25%',
                 cell: (e) => e.materia_nombre
-                  ? <span className="text-gray-700">{e.materia_nombre}</span>
-                  : <span className="text-gray-400 italic">sin materia</span>,
+                  ? (
+                    <div className="leading-tight">
+                      <div className="font-semibold text-gray-900">{e.materia_codigo}</div>
+                      <div className="text-gray-500 text-sm">{e.materia_nombre}</div>
+                    </div>
+                  )
+                  : <span className="text-gray-400 italic">Sin materia</span>,
               },
               {
                 key: 'comision',
                 header: 'Comisión',
                 width: '20%',
                 cell: (e) => e.comision_nombre
-                  ? <span className="text-gray-700">{e.comision_nombre}</span>
-                  : <span className="text-gray-400 italic">sin comisión</span>,
+                  ? (
+                    <div className="leading-tight">
+                      <div className="font-semibold text-gray-900">{e.comision_codigo}</div>
+                      <div className="text-gray-500 text-sm">{e.comision_nombre}</div>
+                    </div>
+                  )
+                  : <span className="text-gray-400 italic">Sin comisión</span>,
               },
               {
                 key: 'preguntas',

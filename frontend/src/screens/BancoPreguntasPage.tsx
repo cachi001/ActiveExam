@@ -13,12 +13,13 @@ import {
   borrarCategoria,
   listarPreguntasBanco,
   moverPreguntaCategoria,
-  sincronizarBancoMoodle,
-  type SyncBancoResult,
 } from '../lib/apiAdmin/bancoPreguntasApi';
 import { CategoriasTree } from './banco-preguntas/CategoriasTree';
 import { limpiarEnunciadoCloze } from '../lib/cloze';
 import { HelpButton } from '../ui/HelpButton';
+import { Pagination, PageSizeSelect } from '../ui/Pagination';
+import { ImportarBancoModal } from './banco-preguntas/ImportarBancoModal';
+import type { ImportarBancoXmlResult } from '../lib/apiAdmin/bancoPreguntasApi';
 
 // ---------------------------------------------------------------------------
 // Diálogo inline (crear / renombrar categoría)
@@ -101,28 +102,30 @@ function DialogoBorrar({
 // Lista de preguntas del bucket seleccionado
 // ---------------------------------------------------------------------------
 
-const PAGE_SIZE = 20;
-
 function ListaPreguntas({
   preguntas,
   categorias,
   categoriaActualId,
   cargando,
+  pageSize,
   onMover,
 }: {
   preguntas: PreguntaBanco[];
   categorias: CategoriaPregunta[];
   categoriaActualId: string | null;
   cargando: boolean;
+  pageSize: number;
   onMover: (preguntaId: string, nuevaCatId: string | null) => void;
 }) {
   const [moviendoId, setMoviendoId] = useState<string | null>(null);
   const [pagina, setPagina] = useState(1);
 
-  // Resetear página al cambiar la lista
-  const totalPaginas = Math.max(1, Math.ceil(preguntas.length / PAGE_SIZE));
+  // Volver a la página 1 al cambiar cuántas preguntas se ven por página.
+  useEffect(() => setPagina(1), [pageSize]);
+
+  const totalPaginas = Math.max(1, Math.ceil(preguntas.length / pageSize));
   const paginaActual = Math.min(pagina, totalPaginas);
-  const preguntasPagina = preguntas.slice((paginaActual - 1) * PAGE_SIZE, paginaActual * PAGE_SIZE);
+  const preguntasPagina = preguntas.slice((paginaActual - 1) * pageSize, paginaActual * pageSize);
 
   if (cargando) {
     return (
@@ -160,12 +163,12 @@ function ListaPreguntas({
             </div>
             <div className="flex-1 min-w-0">
               <p
-                className="text-body-sm truncate"
+                className="text-label-md truncate"
                 title={preview}
               >
                 {preview}
               </p>
-              <p className="text-label-xs text-on-surface-variant flex items-center gap-1.5">
+              <p className="text-label-sm text-on-surface-variant flex items-center gap-1.5">
                 <span>{p.tipo}</span>
                 {p.categoria_manual && (
                   <span
@@ -181,7 +184,7 @@ function ListaPreguntas({
             {moviendoId === p.id ? (
               <div className="flex items-center gap-2">
                 <select
-                  className="text-body-sm border rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary"
+                  className="text-label-md border rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary"
                   defaultValue={categoriaActualId ?? ''}
                   onChange={async (e) => {
                     const val = e.target.value || null;
@@ -216,167 +219,16 @@ function ListaPreguntas({
       </div>
 
       {/* Paginación */}
-      {totalPaginas > 1 && (
-        <div className="flex items-center justify-between pt-2 border-t border-outline-variant/30">
-          <span className="text-label-sm text-on-surface-variant">
-            {(paginaActual - 1) * PAGE_SIZE + 1}–{Math.min(paginaActual * PAGE_SIZE, preguntas.length)} de {preguntas.length}
-          </span>
-          <div className="flex items-center gap-1">
-            <button
-              className="w-7 h-7 rounded-md flex items-center justify-center text-on-surface-variant hover:bg-surface-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-              disabled={paginaActual === 1}
-              onClick={() => setPagina(1)}
-              title="Primera"
-            >
-              <Icon name="first_page" className="text-[16px]" />
-            </button>
-            <button
-              className="w-7 h-7 rounded-md flex items-center justify-center text-on-surface-variant hover:bg-surface-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-              disabled={paginaActual === 1}
-              onClick={() => setPagina((p) => p - 1)}
-              title="Anterior"
-            >
-              <Icon name="chevron_left" className="text-[16px]" />
-            </button>
-            <span className="text-label-sm px-2">
-              {paginaActual} / {totalPaginas}
-            </span>
-            <button
-              className="w-7 h-7 rounded-md flex items-center justify-center text-on-surface-variant hover:bg-surface-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-              disabled={paginaActual === totalPaginas}
-              onClick={() => setPagina((p) => p + 1)}
-              title="Siguiente"
-            >
-              <Icon name="chevron_right" className="text-[16px]" />
-            </button>
-            <button
-              className="w-7 h-7 rounded-md flex items-center justify-center text-on-surface-variant hover:bg-surface-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-              disabled={paginaActual === totalPaginas}
-              onClick={() => setPagina(totalPaginas)}
-              title="Última"
-            >
-              <Icon name="last_page" className="text-[16px]" />
-            </button>
-          </div>
-        </div>
+      {preguntas.length > 0 && (
+        <Pagination
+          currentPage={paginaActual}
+          totalPages={totalPaginas}
+          totalElements={preguntas.length}
+          pageSize={pageSize}
+          onPageChange={setPagina}
+          className="!px-3 !py-2 text-label-sm"
+        />
       )}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Diálogo de sincronización desde Moodle
-// ---------------------------------------------------------------------------
-
-function DialogoSyncMoodle({
-  materiaId,
-  onCerrar,
-  onSincronizado,
-}: {
-  materiaId: string;
-  onCerrar: () => void;
-  onSincronizado: () => void;
-}) {
-  const [courseid, setCourseid] = useState('');
-  const [sincronizando, setSincronizando] = useState(false);
-  const [resultado, setResultado] = useState<SyncBancoResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  async function handleSincronizar() {
-    const id = parseInt(courseid.trim(), 10);
-    if (isNaN(id) || id <= 0) { setError('Ingresá un ID de curso válido.'); return; }
-    setSincronizando(true);
-    setError(null);
-    setResultado(null);
-    try {
-      const res = await sincronizarBancoMoodle(materiaId, id);
-      setResultado(res);
-      onSincronizado();
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Error al sincronizar.');
-    } finally {
-      setSincronizando(false);
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm flex flex-col gap-4">
-        <div className="flex items-center gap-2">
-          <Icon name="sync" className="text-[22px] text-primary" />
-          <h3 className="text-title-md font-semibold">Sincronizar desde campus</h3>
-        </div>
-
-        {resultado ? (
-          <div className="flex flex-col gap-3">
-            <div className="bg-success-container rounded-xl px-4 py-3 flex flex-col gap-1 text-label-md text-success">
-              <div className="flex items-center gap-2 font-semibold">
-                <Icon name="check_circle" className="text-[18px]" fill />
-                Sincronización completada
-              </div>
-              <ul className="mt-1 space-y-0.5 text-on-surface text-label-sm">
-                <li>Categorías creadas: <strong>{resultado.categorias_creadas}</strong></li>
-                <li>Preguntas nuevas: <strong>{resultado.preguntas_nuevas}</strong></li>
-                <li>Preguntas actualizadas: <strong>{resultado.preguntas_actualizadas}</strong></li>
-              </ul>
-              <p className="mt-1 text-on-surface-variant text-label-sm">
-                Nada de lo que ya tenías fue renombrado, movido ni borrado.
-              </p>
-            </div>
-            <div className="flex justify-end">
-              <Button variant="primary" onClick={onCerrar}>Cerrar</Button>
-            </div>
-          </div>
-        ) : (
-          <>
-            <div className="bg-surface-100 rounded-xl px-4 py-3 flex gap-2 text-label-sm text-on-surface-variant">
-              <Icon name="shield" className="text-[18px] text-primary shrink-0" />
-              <span>
-                Solo <strong>agrega</strong> las categorías que falten. No renombra,
-                no mueve ni borra lo que ya organizaste, y las preguntas que moviste
-                a mano se quedan donde las pusiste.
-              </span>
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <label className="text-label-md font-medium">ID del curso en Moodle</label>
-              <input
-                type="number"
-                min={1}
-                className="border rounded-lg px-3 py-2 text-body-md w-full focus:outline-none focus:ring-2 focus:ring-primary"
-                placeholder="Ej: 42"
-                value={courseid}
-                onChange={(e) => { setCourseid(e.target.value); setError(null); }}
-                onKeyDown={(e) => e.key === 'Enter' && !sincronizando && handleSincronizar()}
-                autoFocus
-                disabled={sincronizando}
-              />
-              <p className="text-label-sm text-on-surface-variant">
-                Podés encontrar el ID en la URL del curso de Moodle: <code className="bg-surface-100 px-1 rounded">…/course/view.php?id=<strong>42</strong></code>
-              </p>
-            </div>
-
-            {error && (
-              <div className="flex items-center gap-2 text-error bg-error-container/40 rounded-xl px-3 py-2 text-label-sm">
-                <Icon name="error" className="text-[16px] shrink-0" fill />
-                {error}
-              </div>
-            )}
-
-            <div className="flex justify-end gap-2">
-              <Button variant="ghost" onClick={onCerrar} disabled={sincronizando}>Cancelar</Button>
-              <Button
-                variant="primary"
-                icon={sincronizando ? undefined : 'sync'}
-                onClick={handleSincronizar}
-                disabled={sincronizando || !courseid.trim()}
-              >
-                {sincronizando ? 'Sincronizando…' : 'Sincronizar'}
-              </Button>
-            </div>
-          </>
-        )}
-      </div>
     </div>
   );
 }
@@ -397,12 +249,14 @@ export default function BancoPreguntasPage() {
   const [catSeleccionada, setCatSeleccionada] = useState<string | null>(null);
   const [preguntas, setPreguntas] = useState<PreguntaBanco[]>([]);
   const [cargandoPregs, setCargandoPregs] = useState(false);
+  const [sinClasificarCount, setSinClasificarCount] = useState(0);
+  const [pageSize, setPageSize] = useState(20);
 
   // Diálogos
   const [dialogoCrear, setDialogoCrear] = useState<{ padreId: string | null } | null>(null);
   const [dialogoRenombrar, setDialogoRenombrar] = useState<CategoriaPregunta | null>(null);
   const [dialogoBorrar, setDialogoBorrar] = useState<CategoriaPregunta | null>(null);
-  const [dialogoSync, setDialogoSync] = useState(false);
+  const [dialogoImportar, setDialogoImportar] = useState(false);
 
   useEffect(() => {
     api.materiasDisponibles().then(setMaterias).catch(() => {});
@@ -411,8 +265,18 @@ export default function BancoPreguntasPage() {
   const cargarCategorias = useCallback(async (mid: string) => {
     setCargandoCats(true);
     try {
-      const cats = await listarCategorias(mid);
+      const [cats, sinClasificar] = await Promise.all([
+        listarCategorias(mid),
+        listarPreguntasBanco(mid, null),
+      ]);
       setCategorias(cats);
+      setSinClasificarCount(sinClasificar.length);
+      // Sin nada sin clasificar, el bucket queda oculto (CategoriasTree) — no
+      // tiene sentido dejar la selección apuntando a un bucket invisible.
+      setCatSeleccionada((prev) => {
+        if (prev !== null) return prev;
+        return sinClasificar.length > 0 ? null : (cats[0]?.id ?? null);
+      });
     } catch {
       toast.error('No se pudieron cargar las categorías.');
     } finally {
@@ -422,9 +286,9 @@ export default function BancoPreguntasPage() {
 
   useEffect(() => {
     if (!materiaId) { setCategorias([]); setCatSeleccionada(null); setPreguntas([]); return; }
-    cargarCategorias(materiaId);
     setCatSeleccionada(null);
     setPreguntas([]);
+    cargarCategorias(materiaId);
   }, [materiaId, cargarCategorias]);
 
   const cargarPreguntas = useCallback(async (mid: string, catId: string | null) => {
@@ -484,6 +348,23 @@ export default function BancoPreguntasPage() {
     }
   }
 
+  function handleImportado(resultado: ImportarBancoXmlResult) {
+    setDialogoImportar(false);
+    const { preguntas_nuevas, preguntas_actualizadas, omitidas } = resultado;
+    const partes = [
+      preguntas_nuevas > 0 ? `${preguntas_nuevas} nueva${preguntas_nuevas !== 1 ? 's' : ''}` : null,
+      preguntas_actualizadas > 0 ? `${preguntas_actualizadas} actualizada${preguntas_actualizadas !== 1 ? 's' : ''}` : null,
+    ].filter(Boolean);
+    toast.success(partes.length > 0 ? `Importado: ${partes.join(', ')}.` : 'Nada nuevo para importar.');
+    if (omitidas.length > 0) {
+      toast.error(`${omitidas.length} pregunta${omitidas.length !== 1 ? 's' : ''} omitida${omitidas.length !== 1 ? 's' : ''} (tipo no soportado o inválida).`);
+    }
+    if (materiaId) {
+      cargarCategorias(materiaId);
+      cargarPreguntas(materiaId, catSeleccionada);
+    }
+  }
+
   async function handleMoverPregunta(preguntaId: string, nuevaCatId: string | null) {
     try {
       await moverPreguntaCategoria(preguntaId, nuevaCatId);
@@ -510,10 +391,10 @@ export default function BancoPreguntasPage() {
             carpetas): por tema, por unidad, por dificultad… lo que te sirva.
           </p>
           <p>
-            Las preguntas se traen del campus (Moodle) con <strong>Sincronizar desde
-            campus</strong>. El contenido lo manda Moodle, pero la organización la mandás
-            vos: si movés una pregunta a una categoría a mano, queda <strong>fijada</strong> y
-            una nueva sincronización no la vuelve a cambiar de lugar.
+            Las preguntas se traen <strong>importando el XML</strong> que exportás del banco
+            de preguntas de Moodle. Ese archivo ya trae las categorías incluidas: al
+            importarlo, la organización queda igual que en Moodle, y después la podés
+            reorganizar a mano.
           </p>
           <p>
             Después, al crear un examen podés <strong>armarlo por sorteo</strong>: elegís de
@@ -523,38 +404,34 @@ export default function BancoPreguntasPage() {
       }
     >
       <div className="flex flex-col gap-6">
-        {/* Botón de sincronización (arriba a la derecha del contenido) */}
-        {materiaId && (
-          <div className="flex justify-end">
+        {/* Materia + árbol de categorías, en la misma card */}
+        <Card className="!p-md">
+          <div className="flex items-end justify-between gap-3 mb-3">
+            <label className="flex-1 max-w-sm">
+              <span className="text-label-md font-medium block mb-2">Materia</span>
+              <select
+                className="border rounded-xl px-3 py-2 text-body-md w-full focus:outline-none focus:ring-2 focus:ring-primary"
+                value={materiaId}
+                onChange={(e) => setMateriaId(e.target.value)}
+              >
+                <option value="">Seleccionar materia</option>
+                {materias.map((m) => (
+                  <option key={m.id} value={m.id}>{m.nombre}</option>
+                ))}
+              </select>
+            </label>
             <Button
               variant="outline"
-              icon="sync"
-              onClick={() => setDialogoSync(true)}
+              icon="upload_file"
+              disabled={!materiaId}
+              onClick={() => setDialogoImportar(true)}
             >
-              Sincronizar desde campus
+              Importar XML
             </Button>
           </div>
-        )}
 
-        {/* Selector de materia */}
-        <Card className="!p-md">
-          <label className="text-label-md font-medium block mb-2">Materia</label>
-          <select
-            className="border rounded-xl px-3 py-2 text-body-md w-full max-w-sm focus:outline-none focus:ring-2 focus:ring-primary"
-            value={materiaId}
-            onChange={(e) => setMateriaId(e.target.value)}
-          >
-            <option value="">— Seleccioná una materia —</option>
-            {materias.map((m) => (
-              <option key={m.id} value={m.id}>{m.nombre}</option>
-            ))}
-          </select>
-        </Card>
-
-        {materiaId && (
-          <div className="flex flex-col gap-4">
-            {/* Panel superior: árbol de categorías */}
-            <Card className="!p-md">
+          {materiaId && (
+            <div className="pt-3 border-t border-outline-variant/30">
               <p className="text-label-md font-medium mb-3">Categorías</p>
               {cargandoCats ? (
                 <div className="flex items-center justify-center py-8">
@@ -564,15 +441,20 @@ export default function BancoPreguntasPage() {
                 <CategoriasTree
                   categorias={categorias}
                   seleccionada={catSeleccionada}
+                  sinClasificarCount={sinClasificarCount}
                   onSeleccionar={setCatSeleccionada}
                   onCrear={(padreId) => setDialogoCrear({ padreId })}
                   onRenombrar={setDialogoRenombrar}
                   onBorrar={setDialogoBorrar}
                 />
               )}
-            </Card>
+            </div>
+          )}
+        </Card>
 
-            {/* Panel inferior: preguntas de la categoría seleccionada */}
+        {materiaId && (
+          <div className="flex flex-col gap-4">
+            {/* Preguntas de la categoría seleccionada */}
             <Card className="!p-md">
               <div className="flex items-center justify-between mb-3">
                 <p className="text-label-md font-medium">
@@ -581,6 +463,9 @@ export default function BancoPreguntasPage() {
                     ({preguntas.length} pregunta{preguntas.length !== 1 ? 's' : ''})
                   </span>
                 </p>
+                {preguntas.length > 0 && (
+                  <PageSizeSelect value={pageSize} onChange={setPageSize} />
+                )}
               </div>
               <ListaPreguntas
                 key={catSeleccionada ?? '__sin_clasificar__'}
@@ -588,6 +473,7 @@ export default function BancoPreguntasPage() {
                 categorias={categorias}
                 categoriaActualId={catSeleccionada}
                 cargando={cargandoPregs}
+                pageSize={pageSize}
                 onMover={handleMoverPregunta}
               />
             </Card>
@@ -631,11 +517,12 @@ export default function BancoPreguntasPage() {
           onCancelar={() => setDialogoBorrar(null)}
         />
       )}
-      {dialogoSync && materiaId && (
-        <DialogoSyncMoodle
+      {materiaId && (
+        <ImportarBancoModal
+          abierto={dialogoImportar}
           materiaId={materiaId}
-          onCerrar={() => setDialogoSync(false)}
-          onSincronizado={() => cargarCategorias(materiaId)}
+          onCerrar={() => setDialogoImportar(false)}
+          onImportado={handleImportado}
         />
       )}
     </StaffShell>

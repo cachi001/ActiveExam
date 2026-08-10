@@ -23,6 +23,8 @@ function buildTree(cats: CategoriaPregunta[]): NodoArbol[] {
 interface Props {
   categorias: CategoriaPregunta[];
   seleccionada: string | null;
+  /** Cuántas preguntas hay sin clasificar. El bucket solo se muestra si es > 0. */
+  sinClasificarCount: number;
   onSeleccionar: (id: string | null) => void;
   onCrear: (padreId: string | null) => void;
   onRenombrar: (cat: CategoriaPregunta) => void;
@@ -113,6 +115,7 @@ function NodoCategoria({
 export function CategoriasTree({
   categorias,
   seleccionada,
+  sinClasificarCount,
   onSeleccionar,
   onCrear,
   onRenombrar,
@@ -122,22 +125,23 @@ export function CategoriasTree({
 
   return (
     <div className="flex flex-col gap-1">
-      {/* Bucket "Sin clasificar" — siempre visible al tope */}
-      <div
-        className={`flex items-center gap-2 px-2 py-2 rounded-lg cursor-pointer transition-all duration-150 ${
-          seleccionada === null
-            ? 'bg-primary/10 text-primary font-medium'
-            : 'text-surface-500 hover:bg-surface-50 hover:text-surface-700'
-        }`}
-        onClick={() => onSeleccionar(null)}
-      >
-        <span className="w-6 shrink-0" />
-        <Icon
-          name="folder_off"
-          className={`text-[16px] shrink-0 ${seleccionada === null ? 'text-primary' : 'text-on-surface-variant'}`}
-        />
-        <span className="flex-1 text-[13px]">Sin clasificar</span>
-      </div>
+      {/* Bucket "Sin clasificar" — solo si hay preguntas sin clasificar, mismo
+          estilo que una categoría normal (no un color aparte). */}
+      {sinClasificarCount > 0 && (
+        <div
+          className={`flex items-center gap-2 px-2 py-2 rounded-lg cursor-pointer transition-all duration-150 ${
+            seleccionada === null ? 'bg-primary/10 text-primary font-medium' : 'hover:bg-surface-50 hover:border-surface-200'
+          }`}
+          onClick={() => onSeleccionar(null)}
+        >
+          <span className="w-6 shrink-0" />
+          <Icon
+            name="folder_off"
+            className={`text-[16px] shrink-0 ${seleccionada === null ? 'text-primary' : 'text-on-surface-variant'}`}
+          />
+          <span className="flex-1 text-[13px] truncate">Sin clasificar</span>
+        </div>
+      )}
 
       {arbol.map((nodo) => (
         <NodoCategoria

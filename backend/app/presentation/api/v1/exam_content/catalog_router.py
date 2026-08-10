@@ -83,7 +83,11 @@ from app.presentation.api.v1.exam_content.schemas import (
     ComisionResponse,
     ExamenConfigPatchRequest,
     ExamenConfigResponse,
+    ImportarBancoXmlResponse,
     ImportReporteResponse,
+    PreguntaImportadaItemResponse,
+    PreviewCategoriaResponse,
+    PreviewImportBancoResponse,
     InscribirAlumnoRequest,
     InscripcionResponse,
     MateriaActivaRequest,
@@ -100,8 +104,6 @@ from app.presentation.api.v1.exam_content.schemas import (
     SorteoRequest,
     ResultadosExamenPaginadosResponse,
     SincronizarMoodleResponse,
-    SyncBancoRequest,
-    SyncBancoResponse,
     CrearDesdebancoRequest,
     CrearDesdebancoResponse,
 )
@@ -260,6 +262,139 @@ def create_exam_content_router(
         )
 
     # -----------------------------------------------------------------------
+    # Import XML directo al banco de preguntas — SIN crear examen (C-74).
+    # El banco es el destino; el examen se arma después por separado, sorteando
+    # categorías/tipos desde el banco (crear-desde-banco).
+    # -----------------------------------------------------------------------
+
+    @router.post(
+        "/banco/importar-xml/preview",
+        response_model=PreviewImportBancoResponse,
+        status_code=status.HTTP_200_OK,
+        summary="Preview de un XML antes de importarlo al banco — no persiste nada",
+    )
+    async def preview_importar_banco_xml(
+        file: UploadFile = File(...),
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    ) -> PreviewImportBancoResponse:
+        xml_bytes = await file.read()
+
+        from app.application.exam_content.import_service import preview_import_banco
+
+        try:
+            report = preview_import_banco(xml_bytes)
+        except MoodleXmlInvalidoError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={"error": "xml_invalido", "mensaje": str(exc)},
+            ) from exc
+        except MoodleXmlVacioError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"error": "xml_vacio", "mensaje": str(exc)},
+            ) from exc
+
+        return PreviewImportBancoResponse(
+            categorias=[
+                PreviewCategoriaResponse(
+                    ruta=c.ruta,
+                    preguntas_por_tipo=c.preguntas_por_tipo,
+                    preguntas=[
+                        PreguntaImportadaItemResponse(enunciado=p.enunciado, tipo=p.tipo)
+                        for p in c.preguntas
+                    ],
+                )
+                for c in report.categorias
+            ],
+            sin_categoria_por_tipo=report.sin_categoria_por_tipo,
+            omitidas=[
+                OmitidaItemResponse(tipo=o.tipo, nombre=o.nombre, motivo=o.motivo)
+                for o in report.omitidas
+            ],
+            total_preguntas=report.total_preguntas,
+            sin_categoria_preguntas=[
+                PreguntaImportadaItemResponse(enunciado=p.enunciado, tipo=p.tipo)
+                for p in report.sin_categoria_preguntas
+            ],
+        )
+
+    @router.post(
+        "/banco/importar-xml",
+        response_model=ImportarBancoXmlResponse,
+        status_code=status.HTTP_201_CREATED,
+        summary="Importa un XML de Moodle directo al banco de preguntas, sin crear examen",
+    )
+    async def importar_banco_xml(
+        materia_id: str = Form(...),
+        file: UploadFile = File(...),
+        categorias_excluidas: str | None = Form(default=None),
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    ) -> ImportarBancoXmlResponse:
+        await _exigir_pertenencia_materia(principal, materia_id)
+
+        if session_factory is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Persistencia no inicializada.",
+            )
+
+        xml_bytes = await file.read()
+
+        # categorias_excluidas viaja como JSON de rutas (list[list[str]]), igual
+        # forma que PreviewCategoria.ruta — el docente las destildó en el preview.
+        excluidas_set: set[tuple[str, ...]] | None = None
+        if categorias_excluidas:
+            import json as _json
+
+            try:
+                rutas_crudas = _json.loads(categorias_excluidas)
+                excluidas_set = {tuple(r) for r in rutas_crudas}
+            except (ValueError, TypeError) as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail={"error": "categorias_excluidas_invalido", "mensaje": str(exc)},
+                ) from exc
+
+        from app.application.exam_content.import_service import importar_banco_desde_xml
+
+        async with session_factory() as session:
+            try:
+                report = await importar_banco_desde_xml(
+                    session, xml_bytes, materia_id, categorias_excluidas=excluidas_set
+                )
+                await session.commit()
+            except MoodleXmlInvalidoError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail={"error": "xml_invalido", "mensaje": str(exc)},
+                ) from exc
+            except MoodleXmlVacioError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail={"error": "xml_vacio", "mensaje": str(exc)},
+                ) from exc
+            except Exception:
+                await session.rollback()
+                raise
+
+        return ImportarBancoXmlResponse(
+            preguntas_nuevas=report.preguntas_nuevas,
+            preguntas_actualizadas=report.preguntas_actualizadas,
+            omitidas=[
+                OmitidaItemResponse(tipo=o.tipo, nombre=o.nombre, motivo=o.motivo)
+                for o in report.omitidas
+            ],
+            nuevas=[
+                PreguntaImportadaItemResponse(enunciado=p.enunciado, tipo=p.tipo)
+                for p in report.nuevas
+            ],
+            actualizadas=[
+                PreguntaImportadaItemResponse(enunciado=p.enunciado, tipo=p.tipo)
+                for p in report.actualizadas
+            ],
+        )
+
+    # -----------------------------------------------------------------------
     # Materia + comisión (C-69 sección 6, D11) — admin-only, SIN MFA.
     # El guard admin está a nivel router (require_roles); la asociación es
     # OPCIONAL: un examen sin comisión sigue siendo válido y rendible.
@@ -356,7 +491,14 @@ def create_exam_content_router(
     async def asociar_examen_a_comision(
         examen_id: str,
         body: AsociarComisionRequest,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
     ) -> AsociarComisionResponse:
+        """Sin chequeo de pertenencia (bug real, C-74 post-cierre): cualquier
+        docente con `gestionar_academico` podía asociar CUALQUIER examen a
+        CUALQUIER comisión, sin dueño en ninguno de los dos extremos. Ahora exige
+        que el docente dicte la comisión DESTINO (misma política que crear-desde-
+        banco): es esa comisión la que decide a qué libreta va la nota."""
+        await _exigir_pertenencia_comision(principal, body.comision_id)
         if session_factory is None:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1275,20 +1417,54 @@ def create_exam_content_router(
             ) from exc
 
     async def _exigir_pertenencia_materia(principal, materia_id: str) -> None:
-        """C-74: docente solo opera el banco de su propia materia (misma política que examen)."""
-        from app.domain.auth.authorization import autorizar_docente_sobre_examen
+        """C-74: docente solo opera el banco de su propia materia (compartido por
+        todas SUS comisiones de esa materia — el banco no se re-sube por comisión).
+        """
+        from app.domain.auth.authorization import (
+            _ROLES_SIN_LIMITE_DE_PERTENENCIA,
+            autorizar_docente_sobre_materia,
+        )
+        from app.domain.auth.errors import ForbiddenError
+        from app.infrastructure.persistence.repositories.exam_content import (
+            ComisionSqlRepository,
+        )
+        # Corta ANTES de tocar la DB para los roles de alcance institucional: la
+        # query mete `principal.subject` en un WHERE tipado UUID, y ese subject
+        # no es un UUID real para roles que no son docente (staff, tests, etc.) —
+        # evaluarla igual rompe con un error de tipo en vez de simplemente pasar.
+        if principal.tiene_algun_rol(_ROLES_SIN_LIMITE_DE_PERTENENCIA):
+            autorizar_docente_sobre_materia(principal, es_docente_de_alguna_comision_de_la_materia=True)
+            return
+        async with session_factory() as session:
+            es_miembro = await ComisionSqlRepository(session).es_docente_de_materia(
+                principal.subject or "", materia_id
+            )
+        try:
+            autorizar_docente_sobre_materia(principal, es_miembro)
+        except ForbiddenError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={"error": "materia_ajena", "mensaje": str(exc)},
+            ) from exc
+
+    async def _exigir_pertenencia_comision(principal, comision_id: str) -> None:
+        """C-74 post-cierre: un examen apunta a UNA comisión — el docente debe
+        dictar ESA comisión puntual, no alcanza con compartir materia/banco con
+        otro docente que dicta una comisión distinta de la misma materia."""
+        from app.domain.auth.authorization import autorizar_docente_sobre_comision
         from app.domain.auth.errors import ForbiddenError
         from app.infrastructure.persistence.repositories.exam_content import (
             ComisionSqlRepository,
         )
         async with session_factory() as session:
-            docente_id = await ComisionSqlRepository(session).docente_de_materia(materia_id)
+            comision = await ComisionSqlRepository(session).obtener(comision_id)
+        docente_id = comision.docente_id if comision else None
         try:
-            autorizar_docente_sobre_examen(principal, docente_id)
+            autorizar_docente_sobre_comision(principal, docente_id)
         except ForbiddenError as exc:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail={"error": "materia_ajena", "mensaje": str(exc)},
+                detail={"error": "comision_ajena", "mensaje": str(exc)},
             ) from exc
 
     @router.post(
@@ -2254,105 +2430,6 @@ def create_exam_content_router(
         )
 
     # -----------------------------------------------------------------------
-    # Sincronización del banco de preguntas desde Moodle (C-74 §9.4)
-    # Importa las categorías del banco del curso Moodle a la materia indicada.
-    # Idempotente: segunda sincronización del mismo curso no duplica filas.
-    # -----------------------------------------------------------------------
-
-    @router.post(
-        "/moodle/sync-banco",
-        response_model=SyncBancoResponse,
-        status_code=status.HTTP_200_OK,
-        summary="Sincronizar banco de preguntas desde Moodle (C-74 §9.4)",
-    )
-    async def sync_banco_preguntas(
-        body: SyncBancoRequest,
-        request: Request,
-        principal: AuthenticatedPrincipal = Depends(get_current_principal),
-    ) -> SyncBancoResponse:
-        """Importa categorías del banco de preguntas de un curso Moodle.
-
-        El token se obtiene de la credencial docente personal del docente que
-        hace la llamada (``_credencial_para``), igual que en el write-back.
-        Si no tiene credencial propia se cae al token institucional de config.
-
-        Idempotente: re-sincronizar el mismo curso no duplica categorías.
-        422 si ``materia_id`` no corresponde al docente.
-        503 si Moodle no está configurado.
-        """
-        from app.application.exam_content.moodle_sync_service import (
-            MoodleSyncError,
-            sync_banco_desde_moodle,
-        )
-
-        await _exigir_pertenencia_materia(principal, body.materia_id)
-
-        if session_factory is None:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Persistencia no inicializada.",
-            )
-
-        # Resolver token: preferir credencial docente personal (vía servicio que
-        # usa la clave correcta); si no, usar el token institucional de writeback_svc.
-        token: str | None = None
-        base_url: str | None = None
-
-        credencial_svc = getattr(request.app.state, "credencial_docente", None)
-        if credencial_svc is not None and principal.subject:
-            try:
-                token = await credencial_svc.token_de(principal.subject)
-                if token:
-                    estado_cred = await credencial_svc.estado(principal.subject)
-                    base_url = estado_cred.base_url
-            except Exception:
-                token = None
-
-        if token is None and writeback_svc is not None:
-            # Usar el token institucional de la config de writeback
-            try:
-                cfg = await writeback_svc._client._resolver_config()
-                token = cfg.ws_token
-                base_url = cfg.base_url
-            except Exception:
-                token = None
-
-        if not token or not base_url:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail={
-                    "error": "moodle_sin_token",
-                    "mensaje": (
-                        "No hay credencial Moodle disponible. Configurá tu "
-                        "credencial personal en Configuración → Campus (Moodle) "
-                        "o pedí al administrador que configure el token institucional."
-                    ),
-                },
-            )
-
-        try:
-            async with session_factory() as session:
-                resultado = await sync_banco_desde_moodle(
-                    db=session,
-                    courseid=body.courseid,
-                    materia_id=body.materia_id,
-                    token=token,
-                    base_url=base_url,
-                )
-                await session.commit()
-        except MoodleSyncError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail={"error": "moodle_sync_error", "mensaje": str(exc)},
-            ) from exc
-
-        return SyncBancoResponse(
-            categorias_creadas=resultado["categorias_creadas"],
-            preguntas_nuevas=resultado["preguntas_nuevas"],
-            preguntas_actualizadas=resultado["preguntas_actualizadas"],
-        )
-
-    # -----------------------------------------------------------------------
     # Crear examen desde banco de preguntas (C-74 §5)
     # -----------------------------------------------------------------------
 
@@ -2376,8 +2453,22 @@ def create_exam_content_router(
         - 404 si la materia no existe o el usuario no tiene acceso.
         """
         await _exigir_pertenencia_materia(principal, body.materia_id)
+        if body.comision_id is not None:
+            await _exigir_pertenencia_comision(principal, body.comision_id)
         if session_factory is None:
             raise HTTPException(status_code=500, detail="Persistencia no inicializada.")
+
+        if body.nota_aprobacion > body.nota_maxima:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "error": "config_invalida",
+                    "mensaje": (
+                        f"nota_aprobacion ({body.nota_aprobacion}) no puede superar "
+                        f"nota_maxima ({body.nota_maxima})."
+                    ),
+                },
+            )
 
         import random
         import uuid as _uuid
@@ -2453,6 +2544,9 @@ def create_exam_content_router(
                 else:
                     stmt = stmt.where(PreguntaBancoModel.categoria_id == tramo.categoria_id)
 
+                if tramo.tipos:
+                    stmt = stmt.where(PreguntaBancoModel.tipo.in_(tramo.tipos))
+
                 result = await session.execute(stmt)
                 disponibles = [
                     p for p in result.scalars().all() if p.id not in ya_sorteadas
@@ -2502,8 +2596,12 @@ def create_exam_content_router(
                 id=examen_id,
                 titulo=body.titulo,
                 comision_id=body.comision_id,
-                activo=False,
                 limite_preguntas=body.limite_preguntas,
+                # Escala configurable por examen (migración 0061): default 100/60
+                # si el docente no la manda — nunca cae silenciosamente en "sobre
+                # 10". El docente puede pedir cualquier otra escala en el body.
+                nota_maxima=body.nota_maxima,
+                nota_aprobacion=body.nota_aprobacion,
             )
             session.add(examen)
             await session.flush()

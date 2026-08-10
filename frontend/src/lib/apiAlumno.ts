@@ -3,7 +3,7 @@
 // informe de devolución y revisión post-examen. Se spreadean en `api` (./api).
 import { API_BASE, realFetch } from './apiCore';
 import { authProvider } from './authProvider';
-import type { Materia, Comision, Inscripcion, ExamenContenidoResumen, NotaExamen, MisNotasResponse, InformeDevolucion, RevisionExamen } from './types';
+import type { Materia, Comision, ComisionConMateria, Inscripcion, ExamenContenidoResumen, NotaExamen, MisNotasResponse, InformeDevolucion, RevisionExamen } from './types';
 
 export const alumnoApi = {
   // -------------------------------------------------------------------------
@@ -27,6 +27,13 @@ export const alumnoApi = {
   async comisionesDeMateria(materiaId: string): Promise<Comision[]> {
     const { listarComisionesFn } = await import('./examContentBrowse');
     return listarComisionesFn(API_BASE, authProvider.getToken(), materiaId);
+  },
+
+  /** GET /exam-content/comisiones → TODAS las comisiones, con su materia embebida.
+   * Selector combinado único ("CÓDIGO - Materia"), sin elegir materia primero. */
+  async comisionesTodas(): Promise<ComisionConMateria[]> {
+    const { listarTodasComisionesFn } = await import('./examContentBrowse');
+    return listarTodasComisionesFn(API_BASE, authProvider.getToken());
   },
 
   /** 2.9 Exámenes de una comisión (contenido importado de Moodle) (C-69):

@@ -314,14 +314,8 @@ export function ComisionesAccordionBody({
                         </td>
                         <td className="px-4 py-3 text-[13px] text-on-surface-variant">{c.periodo ?? '—'}</td>
                         <td className="px-4 py-3 text-[13px] text-on-surface-variant tabular-nums">{c.anio ?? '—'}</td>
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          {c.codigo_matriculacion ? (
-                            <span className="font-mono text-[12px] text-primary bg-primary-container/40 px-2 py-0.5 rounded-md">
-                              {c.codigo_matriculacion}
-                            </span>
-                          ) : (
-                            <span className="text-[13px] text-on-surface-variant">—</span>
-                          )}
+                        <td className="px-4 py-3 whitespace-nowrap text-[13px] text-on-surface">
+                          {c.codigo_matriculacion || <span className="text-on-surface-variant">—</span>}
                         </td>
                         {/* Docente a cargo: sin él las notas de esta comisión NO se
                             sincronizan al campus. Se avisa acá, donde se gestiona la
@@ -391,7 +385,7 @@ export function ComisionesAccordionBody({
                       {c.codigo_matriculacion && (
                         <p className="text-[11px] mt-0.5">
                           <span className="text-on-surface-variant">Matriculación: </span>
-                          <span className="font-mono text-primary">{c.codigo_matriculacion}</span>
+                          <span className="text-on-surface">{c.codigo_matriculacion}</span>
                         </p>
                       )}
                       {/* Sin docente a cargo, las notas de esta comisión NO se

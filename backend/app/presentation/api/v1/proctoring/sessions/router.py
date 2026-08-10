@@ -449,6 +449,18 @@ def create_sessions_router(
             respuestas=[
                 {"pregunta_id": r.pregunta_id, "opcion_elegida_id": r.opcion_elegida_id}
                 for r in body.respuestas
+                if r.opcion_elegida_id is not None
+            ],
+        )
+        # Cloze/ddwtos (C-74 §6): un item de respuesta_cloze trae VARIOS blanks —
+        # se aplana a una fila por blank para el upsert (session_id, blank_id).
+        n += await repo.guardar_respuestas_cloze(
+            session_id=session_id,
+            respuestas=[
+                {"pregunta_id": r.pregunta_id, "blank_id": blank_id, "valor": valor}
+                for r in body.respuestas
+                if r.respuesta_cloze is not None
+                for blank_id, valor in r.respuesta_cloze.items()
             ],
         )
         # El repo hace flush; sin commit las respuestas se pierden al cerrar la
@@ -489,15 +501,22 @@ def create_sessions_router(
             )
         repo = RespuestaAlumnoRepository(db)
         rows = await repo.listar_por_sesion(session_id)
-        return ListarRespuestasOut(
-            session_id=session_id,
-            respuestas=[
-                RespuestaGuardadaOut(
-                    pregunta_id=r.pregunta_id, opcion_elegida_id=r.opcion_elegida_id
-                )
-                for r in rows
-            ],
-        )
+        cloze_rows = await repo.listar_cloze_por_sesion(session_id)
+
+        # Agrupar los blanks cloze por pregunta_id: N filas (una por blank) → un
+        # item por pregunta con su dict {blank_id: valor} completo.
+        cloze_por_pregunta: dict[str, dict[str, str]] = {}
+        for cr in cloze_rows:
+            cloze_por_pregunta.setdefault(cr.pregunta_id, {})[cr.blank_id] = cr.valor
+
+        respuestas = [
+            RespuestaGuardadaOut(pregunta_id=r.pregunta_id, opcion_elegida_id=r.opcion_elegida_id)
+            for r in rows
+        ] + [
+            RespuestaGuardadaOut(pregunta_id=pregunta_id, respuesta_cloze=blanks)
+            for pregunta_id, blanks in cloze_por_pregunta.items()
+        ]
+        return ListarRespuestasOut(session_id=session_id, respuestas=respuestas)
 
     @router.patch(
         "/sessions/{session_id}/finalizar",
@@ -557,6 +576,16 @@ def create_sessions_router(
                 )
                 for r in resp_rows.scalars().all()
             ]
+            # Cloze/ddwtos (C-74 §6): agrupar los blanks por pregunta_id — cada
+            # pregunta cloze es UNA RespuestaAlumno con su dict {blank_id: valor}.
+            cloze_rows = await RespuestaAlumnoRepository(db).listar_cloze_por_sesion(session_id)
+            cloze_por_pregunta: dict[str, dict[str, str]] = {}
+            for cr in cloze_rows:
+                cloze_por_pregunta.setdefault(cr.pregunta_id, {})[cr.blank_id] = cr.valor
+            respuestas.extend(
+                RespuestaAlumno(pregunta_id=pregunta_id, respuesta_cloze=blanks)
+                for pregunta_id, blanks in cloze_por_pregunta.items()
+            )
             nota = await calcular_nota_academica(
                 db=db,
                 examen_contenido_id=sesion_model.examen_contenido_id,

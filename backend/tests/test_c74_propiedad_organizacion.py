@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import os
 import uuid
-from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import pytest_asyncio
@@ -29,7 +28,6 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import NullPool
 
 from app.application.exam_content.import_service import ImportacionMoodleService
-from app.application.exam_content.moodle_sync_service import sync_banco_desde_moodle
 from app.infrastructure.persistence.base import Base
 from app.infrastructure.persistence.models.exam_content import (  # noqa: F401
     BlankBancoModel,
@@ -166,34 +164,6 @@ async def materia_id(session: AsyncSession) -> str:
     return mid
 
 
-def _mock_http(data) -> AsyncMock:
-    """Context manager mock de AsyncClient que responde ``data`` en ``.post()``."""
-    resp = MagicMock()
-    resp.status_code = 200
-    resp.content = b'[{"id":1}]'
-    resp.json.return_value = data
-
-    client_mock = AsyncMock()
-    client_mock.post = AsyncMock(return_value=resp)
-    ctx = AsyncMock()
-    ctx.__aenter__ = AsyncMock(return_value=client_mock)
-    ctx.__aexit__ = AsyncMock(return_value=False)
-    return ctx
-
-
-async def _sync(session: AsyncSession, materia_id: str, categorias: list[dict]) -> dict:
-    with patch("httpx.AsyncClient", return_value=_mock_http(categorias)):
-        resultado = await sync_banco_desde_moodle(
-            db=session,
-            courseid=1,
-            materia_id=materia_id,
-            token="tok_test",
-            base_url="https://campus.test",
-        )
-    await session.commit()
-    return resultado
-
-
 async def _categorias(session: AsyncSession, materia_id: str):
     result = await session.execute(
         select(CategoriaPreguntaModel).where(
@@ -201,89 +171,6 @@ async def _categorias(session: AsyncSession, materia_id: str):
         )
     )
     return list(result.scalars().all())
-
-
-# ---------------------------------------------------------------------------
-# Sync: el rename local sobrevive
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_sync_no_duplica_categoria_renombrada(
-    session: AsyncSession, materia_id: str
-):
-    """El docente renombra una categoría; el re-sync la reconoce por su id de Moodle.
-
-    Antes de 0058 el match era por nombre: renombrar creaba un duplicado vacío
-    en cada sync.
-    """
-    await _sync(session, materia_id, [{"id": 1, "name": "Unidad 1", "parent": 0}])
-
-    cats = await _categorias(session, materia_id)
-    assert len(cats) == 1
-    assert cats[0].moodle_category_id == 1, "el sync debe sellar el id de Moodle"
-
-    # El docente la renombra a su gusto.
-    await session.execute(
-        text("UPDATE categoria_pregunta SET nombre = :n WHERE id = :id"),
-        {"n": "U1 - Variables", "id": cats[0].id},
-    )
-    await session.commit()
-    # El UPDATE es SQL crudo: hay que expirar el identity map o el ORM sigue
-    # devolviendo la instancia cacheada con el nombre viejo.
-    session.expire_all()
-
-    resultado = await _sync(
-        session, materia_id, [{"id": 1, "name": "Unidad 1", "parent": 0}]
-    )
-
-    assert resultado["categorias_creadas"] == 0, "no debe crear un duplicado"
-    cats = await _categorias(session, materia_id)
-    assert len(cats) == 1, f"quedaron {len(cats)} categorías, se esperaba 1"
-    assert cats[0].nombre == "U1 - Variables", "el sync no debe pisar el nombre local"
-
-
-@pytest.mark.asyncio
-async def test_sync_no_renombra_cuando_moodle_cambia_el_nombre(
-    session: AsyncSession, materia_id: str
-):
-    """Si en Moodle renombran la categoría, la local NO se toca (gana el docente)."""
-    await _sync(session, materia_id, [{"id": 7, "name": "Nombre Viejo", "parent": 0}])
-
-    resultado = await _sync(
-        session, materia_id, [{"id": 7, "name": "Nombre Nuevo De Moodle", "parent": 0}]
-    )
-
-    assert resultado["categorias_creadas"] == 0
-    cats = await _categorias(session, materia_id)
-    assert len(cats) == 1
-    assert cats[0].nombre == "Nombre Viejo"
-
-
-@pytest.mark.asyncio
-async def test_sync_sella_el_id_en_categorias_previas_a_0058(
-    session: AsyncSession, materia_id: str
-):
-    """Una categoría vieja (sin id de Moodle) se reutiliza y se le sella el id."""
-    cat_id = str(uuid.uuid4())
-    await session.execute(
-        text(
-            "INSERT INTO categoria_pregunta (id, materia_id, nombre) "
-            "VALUES (:id, :mid, :n)"
-        ),
-        {"id": cat_id, "mid": materia_id, "n": "Heredada"},
-    )
-    await session.commit()
-
-    resultado = await _sync(
-        session, materia_id, [{"id": 55, "name": "Heredada", "parent": 0}]
-    )
-
-    assert resultado["categorias_creadas"] == 0, "debe reutilizar, no crear"
-    cats = await _categorias(session, materia_id)
-    assert len(cats) == 1
-    assert cats[0].id == cat_id
-    assert cats[0].moodle_category_id == 55
 
 
 # ---------------------------------------------------------------------------

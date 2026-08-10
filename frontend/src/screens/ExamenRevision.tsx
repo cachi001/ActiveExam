@@ -15,6 +15,7 @@ import { useNavigate, useRouteParam } from '../lib/router';
 import { useApp } from '../lib/store';
 import { api } from '../lib/api';
 import type { RevisionExamen, OpcionRevision, PreguntaRevision } from '../lib/types';
+import { renderTextoConCodigo } from './examen/renderTextoConCodigo';
 
 /** Estado de una pregunta para color del navegador. */
 type EstadoPregunta = 'correcta' | 'incorrecta' | 'sin_responder';
@@ -211,7 +212,11 @@ export default function ExamenRevision() {
                         {indice + 1}
                       </span>
                       <div className="flex-1 min-w-0 space-y-base">
-                        <p className="text-body-lg font-medium text-on-surface">{preguntaActual.enunciado}</p>
+                        {preguntaActual.tipo !== 'cloze' && (
+                          <p className="text-body-lg font-medium text-on-surface">
+                            {renderTextoConCodigo(preguntaActual.enunciado, preguntaActual.id)}
+                          </p>
+                        )}
                         {!preguntaActual.respondida && (
                           <span className="inline-flex items-center gap-xs text-label-sm font-medium text-warning bg-warning-container/50 rounded-lg px-md py-base">
                             <Icon name="help" className="text-[16px]" fill />
@@ -222,18 +227,16 @@ export default function ExamenRevision() {
                     </div>
 
                     {preguntaActual.tipo === 'cloze' ? (
-                      <div className="space-y-md">
-                        {(preguntaActual.blanks_revisados ?? []).map((b) => (
-                          <div key={b.blank_id} className="space-y-base">
-                            <p className="text-label-sm font-semibold text-on-surface-variant uppercase tracking-wide">
-                              Hueco {b.orden + 1}
-                            </p>
-                            <div className="flex flex-wrap items-center gap-xs text-body-md text-on-surface">
+                      <div className="text-body-md text-on-surface leading-loose whitespace-pre-wrap rounded-xl border border-outline-variant/60 bg-surface-container-low p-md">
+                        {(preguntaActual.blanks_revisados ?? []).map((b, idx, arr) => {
+                          const esUltimo = idx === arr.length - 1;
+                          return (
+                            <span key={b.blank_id}>
                               {b.texto_antes && (
-                                <span>{b.texto_antes}</span>
+                                <span>{renderTextoConCodigo(b.texto_antes, `${b.blank_id}-antes`)}</span>
                               )}
-                              <div
-                                className={`inline-flex items-center gap-xs rounded-lg border px-md py-base font-medium ${
+                              <span
+                                className={`inline-flex items-center gap-xs mx-1 rounded-lg border px-2 py-0.5 font-medium ${
                                   b.respuesta_alumno == null
                                     ? 'border-outline-variant/50 bg-surface-container text-on-surface-variant'
                                     : b.es_correcta
@@ -256,13 +259,13 @@ export default function ExamenRevision() {
                                     <span>{b.respuesta_alumno}</span>
                                   </>
                                 )}
-                              </div>
-                              {b.texto_despues && (
-                                <span>{b.texto_despues}</span>
+                              </span>
+                              {esUltimo && b.texto_despues && (
+                                <span>{renderTextoConCodigo(b.texto_despues, `${b.blank_id}-despues`)}</span>
                               )}
-                            </div>
-                          </div>
-                        ))}
+                            </span>
+                          );
+                        })}
                       </div>
                     ) : (
                     <div className="space-y-md">
