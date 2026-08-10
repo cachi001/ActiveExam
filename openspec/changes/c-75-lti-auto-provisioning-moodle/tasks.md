@@ -1,32 +1,32 @@
 ## 1. Migración y modelos
 
-- [ ] 1.1 Migración `lti_deployment_confiable` (iss, deployment_id, client_id, jwks_uri, context_id→comision_id nullable, activo)
-- [ ] 1.2 Migración `lti_nonce` (nonce, state, iss, expira_en) — mismo patrón TTL que `refresh_tokens`
-- [ ] 1.3 Modelo SQLAlchemy `LtiDeploymentConfiableModel` + `LtiNonceModel`
-- [ ] 1.4 Generación y persistencia cifrada del par de claves RS256 del Tool (reusar mecanismo de cifrado de `moodle_credencial`)
+- [x] 1.1 Migración `lti_deployment_confiable` (iss, deployment_id, client_id, jwks_uri, context_id→comision_id nullable, activo) — `0063`
+- [x] 1.2 Migración `lti_nonce` (nonce, state, iss, expira_en) — mismo patrón TTL que `refresh_tokens` — `0064` (+ `consumido_en` anti-replay)
+- [x] 1.3 Modelo SQLAlchemy `LtiDeploymentConfiableModel` + `LtiNonceModel` (+ `LtiToolKeyModel`) en `models/lti.py`, registrados en `__init__.py` y conftest
+- [x] 1.4 Generación y persistencia cifrada del par de claves RS256 del Tool (`infrastructure/lti/keys.py`, `SecretCipher`; tabla `lti_tool_key` migr `0065`)
 
 ## 2. JWKS y registro dinámico (lti-tool-provider)
 
-- [ ] 2.1 Test: `GET /lti/jwks` devuelve un JWK Set válido con la clave pública vigente
-- [ ] 2.2 Implementar `GET /lti/jwks`
-- [ ] 2.3 Test: `GET /lti/dynamic-registration` devuelve la config IMS esperada (initiate_login_uri, redirect_uris, jwks_uri)
-- [ ] 2.4 Implementar `GET /lti/dynamic-registration`
+- [x] 2.1 Test: `GET /lti/jwks` devuelve un JWK Set válido con la clave pública vigente (+ idempotente)
+- [x] 2.2 Implementar `GET /lti/jwks` (genera el par perezosamente vía `asegurar_tool_key_activa`)
+- [x] 2.3 Test: `GET /lti/dynamic-registration` devuelve la config IMS esperada (initiate_login_uri, redirect_uris, jwks_uri)
+- [x] 2.4 Implementar `GET /lti/dynamic-registration`
 
 ## 3. Login OIDC (lti-tool-provider)
 
-- [ ] 3.1 Test: login desde deployment confiable genera state+nonce persistidos y redirige a Moodle
-- [ ] 3.2 Test: login desde deployment NO confiable se rechaza sin generar state/nonce
-- [ ] 3.3 Implementar `GET /lti/login` (RED→GREEN de 3.1 y 3.2)
-- [ ] 3.4 Job/limpieza de nonces expirados (TTL 5 min)
+- [x] 3.1 Test: login desde deployment confiable genera state+nonce persistidos y redirige a Moodle
+- [x] 3.2 Test: login desde deployment NO confiable se rechaza sin generar state/nonce (403, falla cerrado)
+- [x] 3.3 Implementar `GET /lti/login` (RED→GREEN de 3.1 y 3.2)
+- [x] 3.4 Job/limpieza de nonces expirados (TTL 5 min) — limpieza oportunista en `/lti/login` (DELETE expira_en < now), sin scheduler
 
 ## 4. Validación de launch (lti-tool-provider)
 
-- [ ] 4.1 Test: launch con id_token válido (firma+nonce+aud+exp correctos) se acepta
-- [ ] 4.2 Test: firma inválida → rechazo, sin crear/loguear usuario
-- [ ] 4.3 Test: nonce reusado (replay) → rechazo
-- [ ] 4.4 Test: token expirado → rechazo
-- [ ] 4.5 Test: audiencia (aud) no coincide con client_id registrado → rechazo
-- [ ] 4.6 Implementar `GET /lti/launch` + validación de id_token (RED→GREEN de 4.1-4.5)
+- [x] 4.1 Test: launch con id_token válido (firma+nonce+aud+exp correctos) se acepta (+ consume nonce)
+- [x] 4.2 Test: firma inválida → rechazo, sin crear/loguear usuario
+- [x] 4.3 Test: nonce reusado (replay) → rechazo
+- [x] 4.4 Test: token expirado → rechazo
+- [x] 4.5 Test: audiencia (aud) no coincide con client_id registrado → rechazo
+- [x] 4.6 Implementar `POST /lti/launch` + `validar_launch` (RED→GREEN de 4.1-4.5). NOTA: es POST (response_mode=form_post de LTI), no GET como decía el título de la task
 
 ## 5. JIT provisioning (lti-jit-provisioning)
 
