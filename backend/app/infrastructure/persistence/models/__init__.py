@@ -13,6 +13,11 @@ from app.infrastructure.persistence.models.alternative_request import (
 )
 from app.infrastructure.persistence.models.audit_log import AuditLogModel
 from app.infrastructure.persistence.models.event import EventModel
+from app.infrastructure.persistence.models.lti import (
+    LtiDeploymentConfiableModel,
+    LtiNonceModel,
+    LtiToolKeyModel,
+)
 from app.infrastructure.persistence.models.transactional import (
     AsignacionModel,
     CasoDisciplinarioModel,
@@ -44,6 +49,9 @@ __all__ = [
     "EvidenciaModel",
     "ExamenModel",
     "FotoReferenciaModel",
+    "LtiDeploymentConfiableModel",
+    "LtiNonceModel",
+    "LtiToolKeyModel",
     "SesionModel",
     "SolicitudViaAlternativaModel",
     "UsuarioModel",
