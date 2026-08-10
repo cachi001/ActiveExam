@@ -800,6 +800,14 @@
       "sessions": 0,
       "memories": 3,
       "prompts": 0
+    },
+    {
+      "id": "62d4531d",
+      "created_by": "Emiliano",
+      "created_at": "2026-08-10T23:32:59Z",
+      "sessions": 0,
+      "memories": 3,
+      "prompts": 0
     }
   ]
 }
