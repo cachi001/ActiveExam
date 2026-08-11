@@ -298,13 +298,23 @@ def create_slim_app() -> FastAPI:
         tags=["audit"],
     )
 
-    # LTI 1.3 Tool Provider (C-75): JWKS + registro dinámico + login OIDC + launch.
+    # LTI 1.3 Tool Provider (C-75): JWKS + registro dinámico + login OIDC + launch
+    # + JIT provisioning + emisión de sesión (sección 5).
     # Endpoints PÚBLICOS (el flujo LTI ocurre antes de tener sesión). La confianza
     # viene de la allowlist `lti_deployment_confiable` y de la firma del id_token.
+    # jwt_secret / jwt_issuer / jwt_audience: MISMO emisor que POST /auth/login
+    # (design D4 — un launch LTI válido es prueba de identidad suficiente para
+    # emitir el JWT de sesión sin pedir contraseña).
     app.include_router(
         create_lti_router(
             session_factory=session_factory,
             cipher=SecretCipher(key=settings.embedding_encryption_key),
+            jwt_secret=settings.jwt_own_secret,
+            jwt_issuer=settings.jwt_own_issuer,
+            jwt_audience=settings.jwt_audience,
+            jwt_ttl_seconds=settings.access_token_ttl_seconds,
+            refresh_ttl_seconds=settings.refresh_token_ttl_seconds,
+            frontend_url=settings.frontend_origin,
         ),
         prefix="/api/v1/lti",
         tags=["lti"],

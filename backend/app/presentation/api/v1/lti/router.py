@@ -22,10 +22,15 @@ from fastapi import APIRouter, Form, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy import delete, select
 
+from app.application.lti.jit_provisioning import provisionar_o_recuperar_usuario
 from app.application.lti.launch_validation import (
+    JwksFetcher,
     LaunchInvalidoError,
+    _default_jwks_fetcher,
     validar_launch,
 )
+from app.infrastructure.auth.db_refresh_store import DbRefreshTokenStore
+from app.infrastructure.auth.own_issuer import emitir_jwt_propio
 from app.infrastructure.crypto.secret_encryption import SecretCipher
 from app.infrastructure.lti.keys import asegurar_tool_key_activa
 from app.infrastructure.persistence.models.lti import (
@@ -57,8 +62,38 @@ def _jwks_uri(request: Request) -> str:
     return f"{_base_url(request)}/api/v1/lti/jwks"
 
 
-def create_lti_router(session_factory=None, *, cipher: SecretCipher) -> APIRouter:
-    """Factory del router LTI. ``cipher`` cifra la clave privada del Tool al generarla."""
+def create_lti_router(
+    session_factory=None,
+    *,
+    cipher: SecretCipher,
+    # Sección 5: emisión de sesión tras JIT provisioning.
+    # Si no se proveen, el endpoint /lti/launch devuelve JSON en lugar de redirigir
+    # (retrocompatibilidad para tests de sección 4 que no los pasan).
+    jwt_secret: str | None = None,
+    jwt_issuer: str = "activeexam-auth",
+    jwt_audience: str = "activeexam",
+    jwt_ttl_seconds: int = 900,
+    refresh_ttl_seconds: int = 604800,
+    frontend_url: str = "",
+    # Permite inyectar un fetcher de JWKS en tests sin HTTP a Moodle.
+    jwks_fetcher_override: JwksFetcher | None = None,
+) -> APIRouter:
+    """Factory del router LTI.
+
+    Args:
+        cipher: cifra la clave privada RS256 del Tool al generarla.
+        jwt_secret: secreto HS256 para emitir el JWT de sesión propio tras el
+            launch (mismo que ``JWT_OWN_SECRET`` de ``/auth/login``). Si es None,
+            el endpoint /lti/launch omite JIT + emisión de sesión y devuelve JSON
+            (modo sección 4 — retrocompatibilidad).
+        jwt_issuer: claim ``iss`` del JWT propio (``JWT_OWN_ISSUER``).
+        jwt_audience: claim ``aud`` del JWT propio (``JWT_AUDIENCE``).
+        jwt_ttl_seconds: vida del access token en segundos (default 15 min).
+        refresh_ttl_seconds: vida del refresh token en segundos (default 7 días).
+        frontend_url: URL base del frontend al que redirigir tras el launch
+            exitoso. El token va como query param ``access_token``.
+        jwks_fetcher_override: fetcher alternativo de JWKS (para tests sin HTTP).
+    """
     router = APIRouter()
 
     def _factory(request: Request):
@@ -190,7 +225,10 @@ def create_lti_router(session_factory=None, *, cipher: SecretCipher) -> APIRoute
             f"{auth_url}?{urlencode(params)}", status_code=status.HTTP_302_FOUND
         )
 
-    # -- Sección 4: validación del launch ---------------------------------------
+    # Resuelve el jwks_fetcher a usar: el override (tests) o el de producción (HTTP).
+    _jwks_fetcher = jwks_fetcher_override or _default_jwks_fetcher
+
+    # -- Sección 4 + 5: validación del launch + JIT provisioning + sesión ------
 
     @router.post("/launch", summary="Recibe y valida el launch LTI (id_token firmado)")
     async def lti_launch(
@@ -198,17 +236,23 @@ def create_lti_router(session_factory=None, *, cipher: SecretCipher) -> APIRoute
         id_token: str = Form(...),
         state: str = Form(...),
     ):
-        """Valida el `id_token` (firma contra el JWKS de Moodle + aud/exp + nonce
-        anti-replay). Un launch inválido se rechaza sin crear ni loguear a nadie.
+        """Valida el ``id_token`` (firma + nonce + aud + exp), provisiona JIT al
+        alumno si no existe, emite JWT de sesión propio (mismo emisor que
+        ``POST /auth/login``) y redirige al frontend con el token.
 
-        Sección 4: sólo validación. La Sección 5 reemplaza el éxito por el JIT
-        provisioning + emisión de sesión + redirect al frontend.
+        Un launch inválido se rechaza sin crear ni loguear a nadie (falla cerrado).
+
+        Sección 5: si ``jwt_secret`` no está configurado en la factory, responde
+        JSON (modo retrocompatibilidad de sección 4 — solo tests que no lo pasen).
         """
         factory = _factory(request)
         async with factory() as session:
             try:
                 validado = await validar_launch(
-                    session, id_token=id_token, state=state
+                    session,
+                    id_token=id_token,
+                    state=state,
+                    jwks_fetcher=_jwks_fetcher,
                 )
             except LaunchInvalidoError as exc:
                 codigo = exc.codigo
@@ -219,10 +263,43 @@ def create_lti_router(session_factory=None, *, cipher: SecretCipher) -> APIRoute
                 )
                 raise HTTPException(status_code=http, detail=codigo) from exc
 
-        return {
-            "ok": True,
-            "sub": validado.claims.get("sub"),
-            "iss": validado.claims.get("iss"),
-        }
+            # -- Sección 5: JIT provisioning + emisión de sesión ---------------
+            if jwt_secret is None:
+                # Modo sección 4 (retrocompatibilidad): sin JIT ni sesión.
+                return {
+                    "ok": True,
+                    "sub": validado.claims.get("sub"),
+                    "iss": validado.claims.get("iss"),
+                }
+
+            usuario, _creado = await provisionar_o_recuperar_usuario(
+                session,
+                claims=validado.claims,
+                deployment=validado.deployment,
+            )
+
+            # Emitir JWT de sesión propio (mismo emisor que /auth/login — design D4).
+            access_token = emitir_jwt_propio(
+                usuario,
+                secret=jwt_secret,
+                issuer=jwt_issuer,
+                audience=jwt_audience,
+                ttl_seconds=jwt_ttl_seconds,
+            )
+
+            # Emitir refresh token persistente en DB.
+            db_store = DbRefreshTokenStore(session, ttl_seconds=refresh_ttl_seconds)
+            refresh_jti = await db_store.issue_para_usuario(str(usuario.id))
+
+            await session.commit()
+
+        # Redirect al frontend con los tokens como query params.
+        # El frontend los persiste (mismo mecanismo que un login normal).
+        params = urlencode({
+            "access_token": access_token,
+            "refresh_token": refresh_jti,
+        })
+        redirect_url = f"{frontend_url.rstrip('/')}/lti-login?{params}"
+        return RedirectResponse(redirect_url, status_code=status.HTTP_302_FOUND)
 
     return router

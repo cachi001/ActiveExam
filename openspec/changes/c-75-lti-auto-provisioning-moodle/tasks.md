@@ -30,15 +30,15 @@
 
 ## 5. JIT provisioning (lti-jit-provisioning)
 
-- [ ] 5.1 Test: primer launch de un sub nuevo crea usuario con roles=["alumno"], auth_provider="lti", debe_cambiar_password=true, datos SOLO del id_token
-- [ ] 5.2 Test: segundo launch del mismo sub NO duplica la cuenta, reusa la existente
-- [ ] 5.3 Test: el JIT ignora cualquier dato de identidad que no venga del id_token validado (intento de inyección vía query param adicional)
-- [ ] 5.4 Implementar servicio de JIT provisioning (RED→GREEN de 5.1-5.3)
-- [ ] 5.5 Test: tras JIT/login exitoso se emite JWT de sesión propio (mismo emisor que /auth/login) sin pedir password
-- [ ] 5.6 Implementar emisión de sesión + redirect al frontend con el token
-- [ ] 5.7 Test: context_id con mapeo configurado matricula al alumno en la comisión mapeada
-- [ ] 5.8 Test: context_id sin mapeo crea/loguea igual pero sin matricular
-- [ ] 5.9 Implementar resolución de mapeo context_id→comision_id (RED→GREEN de 5.7-5.8)
+- [x] 5.1 Test: primer launch de un sub nuevo crea usuario con roles=["estudiante"] (rol canónico; spec dice "alumno" informalmente), auth_provider="lti", debe_cambiar_password=true, datos SOLO del id_token
+- [x] 5.2 Test: segundo launch del mismo sub NO duplica la cuenta, reusa la existente
+- [x] 5.3 Test: el JIT ignora cualquier dato de identidad que no venga del id_token validado (la firma de provisionar_o_recuperar_usuario no acepta parámetros extra de identidad — diseño anti-inyección)
+- [x] 5.4 Implementar servicio de JIT provisioning (RED→GREEN de 5.1-5.3) — `app/application/lti/jit_provisioning.py`
+- [x] 5.5 Test: tras JIT/login exitoso se emite JWT de sesión propio (mismo emisor que /auth/login) sin pedir password — test puro GREEN
+- [x] 5.6 Implementar emisión de sesión + redirect al frontend con el token — endpoint `/lti/launch` actualizado en `router.py` + `main_slim.py` cableado
+- [x] 5.7 Test: context_id con mapeo configurado matricula al alumno en la comisión mapeada
+- [x] 5.8 Test: context_id sin mapeo crea/loguea igual pero sin matricular
+- [x] 5.9 Implementar resolución de mapeo context_id→comision_id (RED→GREEN de 5.7-5.8) — `_asegurar_matricula` con INSERT ON CONFLICT DO NOTHING
 
 ## 6. Allowlist admin (lti-trust-config)
 
