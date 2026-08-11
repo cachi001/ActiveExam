@@ -816,6 +816,14 @@
       "sessions": 0,
       "memories": 2,
       "prompts": 0
+    },
+    {
+      "id": "aa26f665",
+      "created_by": "Emiliano",
+      "created_at": "2026-08-11T23:20:01Z",
+      "sessions": 0,
+      "memories": 4,
+      "prompts": 0
     }
   ]
 }
