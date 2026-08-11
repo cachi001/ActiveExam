@@ -6,8 +6,12 @@
  * definió la suya. Hasta que la cambie, no puede acceder a ninguna otra sección
  * (el gate vive en RequireAuth).
  *
- * Pide la contraseña temporal (actual) + la nueva (con nuestros requisitos) +
- * confirmación. Al cambiarla con éxito, limpia el gate y deja pasar.
+ * Dos variantes según el origen de la cuenta:
+ * - Clave temporal (admin): pide la temporal (actual) + la nueva + confirmación.
+ * - LTI (C-75): el alumno entró desde el campus y NUNCA recibió una temporal;
+ *   se le pide sólo la nueva + confirmación. Definirla le permite entrar después
+ *   directo con usuario+contraseña (además del campus).
+ * Al cambiarla con éxito, limpia el gate y deja pasar.
  */
 import { useState } from 'react';
 import { Button, Icon } from '../ui/components';
@@ -20,6 +24,8 @@ const LABEL = 'block text-[13px] font-medium text-on-surface mb-1.5';
 export default function CambioClaveObligatorio() {
   const markPasswordChanged = useAuth((s) => s.markPasswordChanged);
   const logout = useAuth((s) => s.logout);
+  // Usuario LTI en su primer ingreso: no tiene contraseña temporal que pedirle.
+  const esLti = useAuth((s) => s.principal?.auth_provider) === 'lti';
 
   const [actual, setActual] = useState('');
   const [nueva, setNueva] = useState('');
@@ -32,11 +38,15 @@ export default function CambioClaveObligatorio() {
     const debilidad = validarPasswordFuerte(nueva);
     if (debilidad) { setError(debilidad); return; }
     if (nueva !== confirmar) { setError('Las contraseñas no coinciden.'); return; }
-    if (nueva === actual) { setError('La nueva contraseña debe ser distinta de la temporal.'); return; }
+    if (!esLti && nueva === actual) { setError('La nueva contraseña debe ser distinta de la temporal.'); return; }
 
     setGuardando(true);
     try {
-      await cuentaApi.cambiarContrasena({ contrasena_actual: actual, contrasena_nueva: nueva });
+      await cuentaApi.cambiarContrasena({
+        // LTI: sin contraseña actual (nunca la tuvo).
+        ...(esLti ? {} : { contrasena_actual: actual }),
+        contrasena_nueva: nueva,
+      });
       // Éxito: el gate deja de aplicar y el usuario pasa a su pantalla normal.
       markPasswordChanged();
     } catch (err) {
@@ -56,8 +66,9 @@ export default function CambioClaveObligatorio() {
           </div>
           <h1 className="text-headline-sm font-bold">Definí tu contraseña</h1>
           <p className="text-body-md text-on-surface-variant">
-            Ingresaste con una contraseña temporal. Por seguridad, creá tu propia
-            contraseña para continuar.
+            {esLti
+              ? 'Entraste desde el campus. Creá una contraseña para poder ingresar también de forma directa la próxima vez.'
+              : 'Ingresaste con una contraseña temporal. Por seguridad, creá tu propia contraseña para continuar.'}
           </p>
         </div>
 
@@ -65,19 +76,21 @@ export default function CambioClaveObligatorio() {
           className="flex flex-col gap-4"
           onSubmit={(e) => { e.preventDefault(); if (!guardando) guardar(); }}
         >
-          <div>
-            <label className={LABEL} htmlFor="cco-actual">Contraseña temporal</label>
-            <input
-              id="cco-actual"
-              type="password"
-              className="input w-full"
-              value={actual}
-              onChange={(e) => setActual(e.target.value)}
-              disabled={guardando}
-              autoComplete="current-password"
-              autoFocus
-            />
-          </div>
+          {!esLti && (
+            <div>
+              <label className={LABEL} htmlFor="cco-actual">Contraseña temporal</label>
+              <input
+                id="cco-actual"
+                type="password"
+                className="input w-full"
+                value={actual}
+                onChange={(e) => setActual(e.target.value)}
+                disabled={guardando}
+                autoComplete="current-password"
+                autoFocus
+              />
+            </div>
+          )}
 
           <div>
             <label className={LABEL} htmlFor="cco-nueva">Nueva contraseña</label>
@@ -119,7 +132,7 @@ export default function CambioClaveObligatorio() {
             type="submit"
             variant="primary"
             icon={guardando ? undefined : 'check'}
-            disabled={guardando || !actual || !nueva || !confirmar}
+            disabled={guardando || (!esLti && !actual) || !nueva || !confirmar}
             className="w-full justify-center"
           >
             {guardando ? 'Guardando…' : 'Guardar y continuar'}

@@ -33,6 +33,13 @@ from app.infrastructure.persistence.models.lti import (
 CLAIM_DEPLOYMENT_ID = "https://purl.imsglobal.org/spec/lti/claim/deployment_id"
 CLAIM_CONTEXT = "https://purl.imsglobal.org/spec/lti/claim/context"
 
+# Tolerancia de desincronización de reloj entre el Platform (Moodle) y el Tool al
+# validar exp/iat/nbf. OIDC (y por herencia LTI 1.3) recomienda explícitamente
+# admitir un pequeño skew: en la práctica los servidores nunca están perfectamente
+# sincronizados (acá se vio ~60-90 s de drift entre Moodle y el contenedor). El
+# anti-replay real lo da el `nonce` de un solo uso (design D5), no la ventana temporal.
+_CLOCK_SKEW_LEEWAY_SEG = 300
+
 JwksFetcher = Callable[[str], dict]
 
 
@@ -120,6 +127,7 @@ async def validar_launch(
             clave,
             algorithms=["RS256"],
             audience=deployment.client_id,
+            leeway=_CLOCK_SKEW_LEEWAY_SEG,
             options={"require": ["exp", "iat", "nonce", "sub"]},
         )
     except jwt.ExpiredSignatureError as exc:

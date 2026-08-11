@@ -63,19 +63,25 @@ def _id_institucional_lti(deployment_id: str, sub: str) -> str:
     return f"{_LTI_PREFIX}:{deployment_id}:{sub}"
 
 
-def _extraer_nombre(name_claim: str | None) -> tuple[str | None, str | None]:
-    """Parte el claim ``name`` (nombre completo) en nombre y apellido.
+def _extraer_nombre(claims: dict) -> tuple[str | None, str | None]:
+    """Deriva ``(nombre, apellido)`` de los claims OIDC del ``id_token``.
 
-    Estrategia: el primer token es el nombre, el resto es apellido. Si ``name``
-    no viene en el token se devuelve (None, None) — los campos son nullable en
-    ``UsuarioModel``.
+    Moodle emite los claims estándar OIDC ``given_name`` / ``family_name`` además
+    del ``name`` (display name completo). Estrategia:
+
+    - Si vienen ``given_name`` y/o ``family_name`` → se usan tal cual (fuente
+      estructurada, es lo que Moodle manda por defecto).
+    - Si sólo viene ``name`` → se guarda COMPLETO en ``nombre`` (no se parte
+      heurísticamente: "Juan de la Cruz Pérez" no tiene un corte fiable), con
+      ``apellido=None``.
+    - Si no viene nada → ``(None, None)`` (ambos campos son nullable).
     """
-    if not name_claim:
-        return None, None
-    partes = name_claim.strip().split(None, 1)
-    nombre = partes[0] if partes else None
-    apellido = partes[1] if len(partes) > 1 else None
-    return nombre, apellido
+    given = (claims.get("given_name") or "").strip() or None
+    family = (claims.get("family_name") or "").strip() or None
+    if given or family:
+        return given, family
+    name = (claims.get("name") or "").strip() or None
+    return name, None
 
 
 async def provisionar_o_recuperar_usuario(
@@ -124,7 +130,7 @@ async def provisionar_o_recuperar_usuario(
 
     # ---- Crear usuario nuevo ------------------------------------------------
     email = claims.get("email") or ""
-    nombre, apellido = _extraer_nombre(claims.get("name"))
+    nombre, apellido = _extraer_nombre(claims)
 
     # Password aleatorio, no comunicado (patrón "clave temporal" de C-61).
     # El alumno se autentica vía LTI — no necesita este password. Si quiere

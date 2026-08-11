@@ -14,9 +14,12 @@ Sólo Moodle: el endpoint de autorización del Platform se deriva de `iss`
 
 from __future__ import annotations
 
+import logging
 import secrets
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
+
+logger = logging.getLogger("lti")
 
 from fastapi import APIRouter, Form, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
@@ -149,15 +152,15 @@ def create_lti_router(
 
     # -- Sección 3: login OIDC (third-party initiated login) --------------------
 
-    @router.get("/login", summary="Inicio de login OIDC de LTI (third-party)")
-    async def lti_login(
+    async def _login_impl(
         request: Request,
+        *,
         iss: str,
         login_hint: str,
         target_link_uri: str,
-        client_id: str | None = None,
-        lti_deployment_id: str | None = None,
-        lti_message_hint: str | None = None,
+        client_id: str | None,
+        lti_deployment_id: str | None,
+        lti_message_hint: str | None,
     ):
         """Valida que el emisor sea de confianza, persiste state+nonce y redirige al
         endpoint de autorización de Moodle. Falla cerrado si el `iss`/`client_id` no
@@ -225,6 +228,49 @@ def create_lti_router(
             f"{auth_url}?{urlencode(params)}", status_code=status.HTTP_302_FOUND
         )
 
+    # OIDC third-party initiated login: la spec LTI 1.3 permite GET o POST. Moodle
+    # lo envía como POST (form-encoded) desde el iframe del launch; otros Platforms
+    # usan GET. Registramos ambos verbos contra la misma lógica.
+    @router.get("/login", summary="Inicio de login OIDC de LTI (third-party, GET)")
+    async def lti_login_get(
+        request: Request,
+        iss: str,
+        login_hint: str,
+        target_link_uri: str,
+        client_id: str | None = None,
+        lti_deployment_id: str | None = None,
+        lti_message_hint: str | None = None,
+    ):
+        return await _login_impl(
+            request,
+            iss=iss,
+            login_hint=login_hint,
+            target_link_uri=target_link_uri,
+            client_id=client_id,
+            lti_deployment_id=lti_deployment_id,
+            lti_message_hint=lti_message_hint,
+        )
+
+    @router.post("/login", summary="Inicio de login OIDC de LTI (third-party, POST)")
+    async def lti_login_post(
+        request: Request,
+        iss: str = Form(...),
+        login_hint: str = Form(...),
+        target_link_uri: str = Form(...),
+        client_id: str | None = Form(None),
+        lti_deployment_id: str | None = Form(None),
+        lti_message_hint: str | None = Form(None),
+    ):
+        return await _login_impl(
+            request,
+            iss=iss,
+            login_hint=login_hint,
+            target_link_uri=target_link_uri,
+            client_id=client_id,
+            lti_deployment_id=lti_deployment_id,
+            lti_message_hint=lti_message_hint,
+        )
+
     # Resuelve el jwks_fetcher a usar: el override (tests) o el de producción (HTTP).
     _jwks_fetcher = jwks_fetcher_override or _default_jwks_fetcher
 
@@ -256,6 +302,8 @@ def create_lti_router(
                 )
             except LaunchInvalidoError as exc:
                 codigo = exc.codigo
+                # Log de auditoría del rechazo (sin PII: solo el código estable).
+                logger.warning("lti_launch_rechazado codigo=%s", codigo)
                 http = (
                     status.HTTP_403_FORBIDDEN
                     if codigo == "deployment_no_confiable"

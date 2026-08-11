@@ -320,6 +320,16 @@ def create_slim_app() -> FastAPI:
         tags=["lti"],
     )
 
+    # Admin del allowlist LTI (C-75 sección 6): CRUD admin_sistema-only de
+    # `lti_deployment_confiable` — la raíz de confianza del flujo LTI.
+    from app.presentation.api.v1.admin import create_lti_admin_router
+
+    app.include_router(
+        create_lti_admin_router(session_factory=session_factory),
+        prefix="/api/v1/admin",
+        tags=["admin", "lti"],
+    )
+
     return app
 
 

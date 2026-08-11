@@ -193,7 +193,9 @@ async def test_launch_replay_nonce_reusado_se_rechaza(session_factory, _limpiar)
 async def test_launch_token_expirado_se_rechaza(session_factory, _limpiar):
     pem, jwk = _par_rsa()
     await _preparar(session_factory, nonce="N4", state="S4")
-    token = _firmar(pem, _claims(nonce="N4", exp_delta=-10))  # ya vencido
+    # Vencido MÁS allá del leeway de skew (300s): -3600 = 1h. Un vencimiento chico
+    # (< 300s) es tolerado a propósito por _CLOCK_SKEW_LEEWAY_SEG.
+    token = _firmar(pem, _claims(nonce="N4", exp_delta=-3600))
 
     async with session_factory() as s:
         with pytest.raises(LaunchInvalidoError) as exc:

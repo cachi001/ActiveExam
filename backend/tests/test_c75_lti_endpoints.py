@@ -153,6 +153,35 @@ def test_login_confiable_redirige_y_persiste_state_nonce(client, session_factory
     assert filas[0].consumido_en is None
 
 
+def test_login_post_confiable_redirige_y_persiste(client, session_factory):
+    """LTI 1.3 permite el initiate-login por POST (form-encoded). Moodle lo usa así."""
+    iss = "https://campustest.frm.utn.edu.ar"
+    asyncio.run(
+        _insertar_deployment(
+            session_factory, iss=iss, deployment_id="1", client_id="CLIENT123"
+        )
+    )
+
+    r = client.post(
+        "/api/v1/lti/login",
+        data={
+            "iss": iss,
+            "login_hint": "42",
+            "target_link_uri": "https://tool.example/api/v1/lti/launch",
+            "client_id": "CLIENT123",
+            "lti_deployment_id": "1",
+        },
+        follow_redirects=False,
+    )
+    assert r.status_code == 302
+    loc = r.headers["location"]
+    assert loc.startswith(f"{iss}/mod/lti/auth.php?")
+    assert "nonce=" in loc
+
+    filas = asyncio.run(_nonces(session_factory))
+    assert len(filas) == 1
+
+
 def test_login_no_confiable_rechaza_sin_persistir(client, session_factory):
     r = client.get(
         "/api/v1/lti/login",

@@ -128,6 +128,29 @@ export class JwtAdapter implements AuthProvider {
     this._notify('authenticated');
   }
 
+  /**
+   * Adopta una sesión emitida fuera del formulario de login (C-75 §7.1): el
+   * launch LTI valida al alumno en el backend y redirige al frontend con el
+   * access/refresh token ya emitidos. La landing `/lti-login` los pasa acá para
+   * persistirlos con el MISMO mecanismo que un login normal (mismas claves de
+   * sessionStorage, mismo decode de exp/principal). Falla cerrado: si el token
+   * no decodifica, no autentica.
+   */
+  seedSession(accessToken: string, refreshToken?: string): void {
+    this._storeToken(accessToken, refreshToken);
+    const claims = _decodePayload(accessToken);
+    this._principal = claims ? _principalFromClaims(claims) : null;
+    if (this._principal) {
+      this._notify('authenticated');
+    } else {
+      // Token ilegible: no dejamos storage a medias con un principal nulo.
+      sessionStorage.removeItem(STORAGE_KEY);
+      sessionStorage.removeItem(STORAGE_EXPIRES_KEY);
+      sessionStorage.removeItem(STORAGE_REFRESH_KEY);
+      this._notify('unauthenticated');
+    }
+  }
+
   async logout(): Promise<void> {
     sessionStorage.removeItem(STORAGE_KEY);
     sessionStorage.removeItem(STORAGE_EXPIRES_KEY);

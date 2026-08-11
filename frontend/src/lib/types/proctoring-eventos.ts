@@ -68,6 +68,12 @@ export interface Principal {
    * Viene de GET /auth/me.
    */
   debe_cambiar_password?: boolean;
+  /**
+   * Origen de la credencial: "local" | "lti" | "keycloak". Viene de GET /auth/me.
+   * Un usuario "lti" en su primer ingreso no tiene contraseña temporal que
+   * pedirle: el gate de contraseña le muestra sólo "nueva + confirmar" (C-75).
+   */
+  auth_provider?: string;
 }
 
 /** Nombre completo "Nombre Apellido" (omite el apellido si no está). */

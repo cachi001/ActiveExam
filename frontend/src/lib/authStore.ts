@@ -35,6 +35,7 @@ async function fetchMyName(
   creado_en?: string;
   ultimo_acceso_en?: string;
   debe_cambiar_password?: boolean;
+  auth_provider?: string;
 } | null> {
   const token = provider.getToken();
   if (!token) return null;
@@ -49,6 +50,7 @@ async function fetchMyName(
       creado_en?: string | null;
       ultimo_acceso_en?: string | null;
       debe_cambiar_password?: boolean | null;
+      auth_provider?: string | null;
     };
     return {
       nombre: data.nombre ?? undefined,
@@ -56,6 +58,7 @@ async function fetchMyName(
       creado_en: data.creado_en ?? undefined,
       ultimo_acceso_en: data.ultimo_acceso_en ?? undefined,
       debe_cambiar_password: data.debe_cambiar_password ?? undefined,
+      auth_provider: data.auth_provider ?? undefined,
     };
   } catch {
     return null;
@@ -75,6 +78,14 @@ interface AuthState {
 
   /** Inicia sesión con credenciales (JwtAdapter) o redirige al IdP (Keycloak). */
   login: (creds?: { username: string; password: string }) => Promise<void>;
+
+  /**
+   * Adopta una sesión emitida por el backend vía tokens (landing LTI, C-75 §7.1).
+   * Persiste los tokens en el provider e hidrata el store. Devuelve true si quedó
+   * autenticado. Falla cerrado: si el provider no soporta seedSession o el token
+   * no decodifica, no autentica.
+   */
+  loginWithTokens: (accessToken: string, refreshToken?: string) => boolean;
 
   /** Cierra sesión en el provider activo. */
   logout: () => void;
@@ -127,6 +138,7 @@ export const useAuth = create<AuthState>((set, get) => ({
             creado_en: extra.creado_en ?? current.creado_en,
             ultimo_acceso_en: extra.ultimo_acceso_en ?? current.ultimo_acceso_en,
             debe_cambiar_password: extra.debe_cambiar_password ?? current.debe_cambiar_password,
+            auth_provider: extra.auth_provider ?? current.auth_provider,
           },
         });
       });
@@ -154,6 +166,19 @@ export const useAuth = create<AuthState>((set, get) => ({
     useApp.getState().clearEnrollment();
     // Actualizar el store tras login exitoso.
     get().hydrateFromProvider(_activeProvider);
+  },
+
+  loginWithTokens: (accessToken: string, refreshToken?: string) => {
+    if (!_activeProvider || typeof _activeProvider.seedSession !== 'function') {
+      return false;
+    }
+    // Mismo saneamiento que login(): que el alumno LTI no herede el enrollment
+    // cacheado de una sesión previa en la misma pestaña.
+    resetEnrollmentCache();
+    useApp.getState().clearEnrollment();
+    _activeProvider.seedSession(accessToken, refreshToken);
+    get().hydrateFromProvider(_activeProvider);
+    return get().status === 'authenticated';
   },
 
   logout: () => {

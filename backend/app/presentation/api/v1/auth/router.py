@@ -89,6 +89,10 @@ class PrincipalResponse(BaseModel):
     ultimo_acceso_en: datetime | None = None
     # True → el usuario entró con clave temporal y debe definir su contraseña.
     debe_cambiar_password: bool = False
+    # Origen de la credencial: "local" | "lti" | "keycloak". El frontend lo usa
+    # para el gate de "definí tu contraseña": un usuario LTI en su primer ingreso
+    # no tiene contraseña temporal que pedirle (C-75).
+    auth_provider: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -303,6 +307,7 @@ async def me(
     creado_en: datetime | None = None
     ultimo_acceso_en: datetime | None = None
     debe_cambiar_password: bool = False
+    auth_provider: str | None = None
 
     session_factory = _get_session_factory(request)
     if session_factory is not None and principal.subject is not None:
@@ -319,6 +324,7 @@ async def me(
                     creado_en = usuario.creado_en
                     ultimo_acceso_en = usuario.ultimo_acceso_en
                     debe_cambiar_password = bool(usuario.debe_cambiar_password)
+                    auth_provider = usuario.auth_provider
         except Exception:  # noqa: BLE001
             pass
 
@@ -333,6 +339,7 @@ async def me(
         creado_en=creado_en,
         ultimo_acceso_en=ultimo_acceso_en,
         debe_cambiar_password=debe_cambiar_password,
+        auth_provider=auth_provider,
     )
 
 
@@ -478,7 +485,10 @@ async def registrar(
 class CambiarContrasenaRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    contrasena_actual: str
+    # Opcional: en el PRIMER set de un usuario LTI no hay contraseña temporal que
+    # informar (nunca la recibió). Para usuarios local o cambios posteriores es
+    # obligatoria y se verifica.
+    contrasena_actual: str | None = None
     contrasena_nueva: str = Field(min_length=8, max_length=512)
 
     @field_validator("contrasena_nueva")
@@ -503,11 +513,17 @@ async def cambiar_contrasena(
     request: Request,
     principal: AuthenticatedPrincipal = Depends(get_current_principal),
 ) -> CambiarContrasenaResponse:
-    """Cambia la contraseña propia. Solo para cuentas con auth_provider='local'.
+    """Cambia (o define por primera vez) la contraseña propia.
 
-    Verifica la contraseña actual antes de aceptar la nueva (no se puede usar
-    un token robado para resetear la clave sin saber la actual).
-    Mensaje genérico en todos los fallos para no revelar información.
+    Dos caminos:
+    - **Primer set de un usuario LTI** (``auth_provider='lti'`` + ``debe_cambiar_password``):
+      define su contraseña SIN pedir la actual — nunca recibió una temporal; el
+      Bearer de la sesión (emitida tras un launch LTI válido) ya prueba identidad.
+    - **Cualquier otro caso** (usuarios ``local``, o LTI cambiando una clave ya
+      definida): exige y verifica ``contrasena_actual`` (no se puede resetear con
+      un token robado sin saber la clave). Mensaje genérico para no filtrar info.
+
+    Cuentas ``keycloak`` u otras no gestionan su contraseña acá (403).
     """
     session_factory = getattr(request.app.state, "session_factory", None)
     if not session_factory:
@@ -522,24 +538,37 @@ async def cambiar_contrasena(
         )
         usuario = result.scalar_one_or_none()
 
-        if not usuario or not usuario.password_hash or usuario.auth_provider != "local":
+        if not usuario or usuario.auth_provider not in ("local", "lti"):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="No podés cambiar la contraseña de esta cuenta.",
             )
 
-        if not verificar_password(body.contrasena_actual, usuario.password_hash):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="La contraseña actual es incorrecta.",
-            )
+        # ¿Es el primer set de un usuario LTI? En ese caso no hay contraseña actual.
+        lti_primer_set = (
+            usuario.auth_provider == "lti" and bool(usuario.debe_cambiar_password)
+        )
 
-        # La nueva no puede ser igual a la actual (evita "cambiar" a la misma clave).
-        if verificar_password(body.contrasena_nueva, usuario.password_hash):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="La nueva contraseña debe ser distinta de la actual.",
-            )
+        if not lti_primer_set:
+            # Camino normal: exige y verifica la contraseña actual.
+            if not usuario.password_hash:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="No podés cambiar la contraseña de esta cuenta.",
+                )
+            if not body.contrasena_actual or not verificar_password(
+                body.contrasena_actual, usuario.password_hash
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="La contraseña actual es incorrecta.",
+                )
+            # La nueva no puede ser igual a la actual.
+            if verificar_password(body.contrasena_nueva, usuario.password_hash):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="La nueva contraseña debe ser distinta de la actual.",
+                )
 
         usuario.password_hash = hashear_password(body.contrasena_nueva)
         # Primer login resuelto: ya definió su propia contraseña.
