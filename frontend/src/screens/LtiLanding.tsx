@@ -34,10 +34,15 @@ export default function LtiLanding() {
     if (yaProceso.current) return;
     yaProceso.current = true;
 
-    // Los tokens vienen en el fragment (#a=1&b=2), no en la query string.
-    const params = new URLSearchParams(window.location.hash.replace(/^#/, ''));
-    const accessToken = params.get('access_token') ?? '';
-    const refreshToken = params.get('refresh_token') ?? undefined;
+    // Los tokens vienen en el fragment (#a=1&b=2). Fallback a la query string por
+    // si el backend todavía redirige con `?` (imagen sin rebuild): así el login no
+    // se rompe durante el despliegue escalonado front/back.
+    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+    const queryParams = new URLSearchParams(window.location.search);
+    const accessToken =
+      hashParams.get('access_token') ?? queryParams.get('access_token') ?? '';
+    const refreshToken =
+      hashParams.get('refresh_token') ?? queryParams.get('refresh_token') ?? undefined;
 
     if (!accessToken) {
       setError('El enlace de acceso no trae una sesión válida.');
