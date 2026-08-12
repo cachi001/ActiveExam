@@ -24,6 +24,19 @@ export const detalleUsuarioApi = {
   },
 
   /**
+   * Habilita al alumno a rehacer su referencia biométrica UNA vez (admin_sistema).
+   * El alumno no puede rehacerla mientras esté vigente; esto lo destraba. El flag
+   * se consume automáticamente cuando el alumno guarda la nueva referencia.
+   * Real: POST /users/{id}/habilitar-rehacer-biometria
+   */
+  async habilitarRehacerBiometria(id: string): Promise<void> {
+    await realFetch<{ biometria_rehacer_habilitada: boolean }>(
+      `/users/${id}/habilitar-rehacer-biometria`,
+      { method: 'POST' },
+    );
+  },
+
+  /**
    * Consentimiento de perfil de un usuario específico (admin_sistema) — C-68.
    * Real: GET /users/{id}/consent-profile
    * Mock: estado simulado con datos plausibles.

@@ -192,6 +192,15 @@ def create_biometria_router(
 
             service = EstadoReferenciaService(session=db)
             vigente = await service.tiene_referencia_vigente(principal.subject)
-            return EstadoReferenciaOut(tiene_referencia_vigente=vigente)
+
+            # Override admin (un solo uso) para rehacer la referencia vigente.
+            from app.infrastructure.persistence.models.transactional import UsuarioModel
+
+            usuario = await db.get(UsuarioModel, principal.subject)
+            rehacer = bool(usuario and usuario.biometria_rehacer_habilitada)
+
+            return EstadoReferenciaOut(
+                tiene_referencia_vigente=vigente, rehacer_habilitado=rehacer
+            )
 
     return router

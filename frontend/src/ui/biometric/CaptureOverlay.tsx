@@ -80,10 +80,10 @@ export const CaptureOverlay = forwardRef<HTMLDivElement, CaptureOverlayProps>(
     return (
       <div
         ref={containerRef}
-        className="fixed inset-0 z-[60] bg-white flex flex-col items-center justify-center px-6"
+        className="fixed inset-0 z-[60] bg-white flex flex-col px-6"
       >
         {listoParaMostrar && (
-          <div className="absolute top-0 inset-x-0 flex items-center justify-end gap-3 px-5 py-4">
+          <div className="absolute top-0 inset-x-0 flex items-center justify-end gap-3 px-5 py-4 z-10">
             <button
               onClick={onCancel}
               className="shrink-0 inline-flex items-center gap-1 text-sm text-neutral-500 hover:text-neutral-900 transition-colors px-3 py-1.5 rounded-full"
@@ -93,43 +93,54 @@ export const CaptureOverlay = forwardRef<HTMLDivElement, CaptureOverlayProps>(
           </div>
         )}
 
-        {!listoParaMostrar && !motorError && <CaptureLoading />}
+        {/* Región del óvalo: ocupa el espacio ARRIBA del panel inferior y centra
+            el óvalo ahí. Al vivir en su propia región flex-1, su posición NO
+            depende del alto de las instrucciones ni de los carteles de ayuda
+            (antes, con un solo `justify-center`, el cartel amarillo del stallTip
+            empujaba el óvalo hacia arriba al aparecer). */}
+        <div className="flex-1 min-h-0 flex items-center justify-center w-full">
+          {!listoParaMostrar && !motorError && <CaptureLoading />}
 
-        <CaptureOval
-          ref={videoRef}
-          listoParaMostrar={listoParaMostrar}
-          enExito={enExito}
-          motorListo={motorListo}
-          fallbackManual={fallbackManual}
-          progreso={progreso}
-          tono={tonoOvalo}
-        />
-
-        {fallbackManual && !enExito && (
-          <div className="mt-4 w-full max-w-xs bg-amber-50 border border-amber-300 rounded-xl px-3 py-2 text-center">
-            <p className="text-sm text-amber-800">
-              Motor de visión no disponible — <strong>modo de prueba manual</strong>
-            </p>
-          </div>
-        )}
-
-        {listoParaMostrar && (
-          <CaptureProgress
+          <CaptureOval
+            ref={videoRef}
+            listoParaMostrar={listoParaMostrar}
             enExito={enExito}
+            motorListo={motorListo}
             fallbackManual={fallbackManual}
-            retoActualLabel={retoActualLabel}
-            retoActualId={retoActualId}
-            desafios={desafios}
-            resueltos={resueltos}
-            totalResueltos={totalResueltos}
-            totalDesafios={totalDesafios}
-            getLabel={getLabel}
-            onResolverManual={onResolverManual}
-            cooldownActivo={cooldownActivo}
-            retoRecienResueltoLabel={retoRecienResueltoLabel}
-            framingHint={framingHint}
-            stallTip={stallTip}
+            progreso={progreso}
+            tono={tonoOvalo}
           />
+        </div>
+
+        {/* Panel inferior: instrucciones + carteles. Alto estable (los carteles
+            que aparecen/desaparecen scrollean acá adentro, no mueven el óvalo). */}
+        {listoParaMostrar && (
+          <div className="shrink-0 w-full flex flex-col items-center gap-3 pb-8 h-[38vh] max-h-[340px] overflow-y-auto">
+            {fallbackManual && !enExito && (
+              <div className="w-full max-w-xs bg-amber-50 border border-amber-300 rounded-xl px-3 py-2 text-center">
+                <p className="text-sm text-amber-800">
+                  Motor de visión no disponible — <strong>modo de prueba manual</strong>
+                </p>
+              </div>
+            )}
+
+            <CaptureProgress
+              enExito={enExito}
+              fallbackManual={fallbackManual}
+              retoActualLabel={retoActualLabel}
+              retoActualId={retoActualId}
+              desafios={desafios}
+              resueltos={resueltos}
+              totalResueltos={totalResueltos}
+              totalDesafios={totalDesafios}
+              getLabel={getLabel}
+              onResolverManual={onResolverManual}
+              cooldownActivo={cooldownActivo}
+              retoRecienResueltoLabel={retoRecienResueltoLabel}
+              framingHint={framingHint}
+              stallTip={stallTip}
+            />
+          </div>
         )}
       </div>
     );

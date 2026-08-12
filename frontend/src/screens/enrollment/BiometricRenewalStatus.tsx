@@ -144,6 +144,9 @@ export function BiometricRenewalStatus({ referencia, onRenovar }: Props) {
         </div>
       )}
 
+      {/* Mientras la referencia esté VIGENTE, el alumno NO puede rehacerla salvo
+          que un admin lo habilite (override de un solo uso). Con vencimiento /
+          deriva (mostrarBotonRenovar) el botón aparece como renovación normal. */}
       <div className="flex justify-end">
         {config.mostrarBotonRenovar ? (
           <Button
@@ -153,15 +156,23 @@ export function BiometricRenewalStatus({ referencia, onRenovar }: Props) {
           >
             {referencia.vigencia === 'caducada' ? 'Renovar referencia (requerido)' : 'Renovar anticipadamente'}
           </Button>
-        ) : (
+        ) : referencia.rehacer_habilitado ? (
           <Button
             size="sm"
             icon="refresh"
             onClick={handleRenovar}
             disabled={limiteAlcanzado}
           >
-            {limiteAlcanzado ? 'Límite de re-capturas alcanzado' : 'Rehacer captura'}
+            {limiteAlcanzado ? 'Límite de re-capturas alcanzado' : 'Rehacer captura (habilitado por un admin)'}
           </Button>
+        ) : (
+          <div className="flex items-start gap-sm text-label-sm text-on-surface-variant">
+            <Icon name="lock" className="text-[16px] shrink-0 mt-px" />
+            <span>
+              Tu referencia está vigente. Para rehacerla antes de que venza, pedile a un
+              administrador que te habilite una nueva captura.
+            </span>
+          </div>
         )}
       </div>
     </div>

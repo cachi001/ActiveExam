@@ -22,6 +22,9 @@ valores reales del HTTP request.
 
 from __future__ import annotations
 
+import os
+from datetime import datetime, timezone
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.biometrics.embedding_integrity import (
@@ -29,15 +32,46 @@ from app.domain.biometrics.embedding_integrity import (
     validar_integridad_embedding,
 )
 from app.infrastructure.crypto.embedding_encryption import EmbeddingEncryptionService
+from app.infrastructure.persistence.models.transactional import UsuarioModel
 from app.infrastructure.persistence.repositories.biometric_reference import (
     EmbeddingReferenciaRepository,
 )
 
 EMBEDDING_DIMENSION = 128
 
+#: Vigencia de la referencia biométrica en meses. Espeja el front
+#: (VITE_BIOMETRIC_VALIDITY_MONTHS). Env-configurable, sin hardcode duro.
+BIOMETRIC_VALIDITY_MONTHS = int(os.environ.get("BIOMETRIC_VALIDITY_MONTHS", "24"))
+
 
 class DimensionError(ValueError):
     """El vector no tiene la dimension esperada (128)."""
+
+
+class RehacerBiometriaBloqueadoError(Exception):
+    """El alumno ya tiene una referencia vigente (no vencida) y no hay override
+    admin: no puede rehacer la captura hasta que venza o un admin lo habilite."""
+
+
+def _sumar_meses(dt: datetime, meses: int) -> datetime:
+    """Suma ``meses`` calendario a ``dt`` (clamp de día a fin de mes)."""
+    total = dt.month - 1 + meses
+    anio = dt.year + total // 12
+    mes = total % 12 + 1
+    # Clamp del día para meses más cortos (ej. 31 ene → 28/29 feb).
+    dia = min(dt.day, [31, 29 if anio % 4 == 0 and (anio % 100 != 0 or anio % 400 == 0) else 28,
+                       31, 30, 31, 30, 31, 31, 30, 31, 30, 31][mes - 1])
+    return dt.replace(year=anio, month=mes, day=dia)
+
+
+def _referencia_sigue_vigente(fecha_captura: datetime | None) -> bool:
+    """True si la referencia NO venció todavía (captura + vigencia > ahora)."""
+    if fecha_captura is None:
+        return False
+    if fecha_captura.tzinfo is None:
+        fecha_captura = fecha_captura.replace(tzinfo=timezone.utc)
+    expira = _sumar_meses(fecha_captura, BIOMETRIC_VALIDITY_MONTHS)
+    return expira > datetime.now(timezone.utc)
 
 
 class GuardarEmbeddingReferenciaService:
@@ -113,7 +147,24 @@ class GuardarEmbeddingReferenciaService:
         embedding_cifrado = self._encryption.encrypt(embedding)
 
         # 3a. Detectar si ya existia un embedding vigente (para distinguir alta vs renovacion).
-        tenia_referencia_previa = await self._repo.obtener_vigente(usuario_id) is not None
+        referencia_previa = await self._repo.obtener_vigente(usuario_id)
+        tenia_referencia_previa = referencia_previa is not None
+
+        # 3a-bis. Gate de re-captura (pedido del dueño): si la referencia previa
+        # SIGUE VIGENTE (no venció), el alumno no puede rehacerla salvo que un
+        # admin lo haya habilitado. El override es de UN SOLO USO: se consume acá.
+        if referencia_previa is not None and _referencia_sigue_vigente(
+            getattr(referencia_previa, "fecha_captura", None)
+        ):
+            usuario = await self._session.get(UsuarioModel, usuario_id)
+            override = bool(usuario and usuario.biometria_rehacer_habilitada)
+            if not override:
+                raise RehacerBiometriaBloqueadoError(
+                    "La referencia biométrica sigue vigente. Para rehacerla, pedile "
+                    "a un administrador que te habilite una nueva captura."
+                )
+            # Consumir el override (una sola rehecha).
+            usuario.biometria_rehacer_habilitada = False
 
         # 3b. Marcar embeddings anteriores como no vigentes (invariante: solo uno vigente).
         await self._repo.marcar_anteriores_no_vigentes(usuario_id)

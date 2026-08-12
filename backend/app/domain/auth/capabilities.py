@@ -27,6 +27,15 @@ CAPABILITY_ROLES: dict[str, frozenset[Rol]] = {
     "gestionar_academico": frozenset(
         {Rol.TUTOR, Rol.ADMIN_EXAMENES, Rol.COORDINADOR, Rol.ADMIN_SISTEMA}
     ),
+    # Alta/edicion/baja de la ESTRUCTURA academica: materias y comisiones.
+    # Deliberadamente SIN TUTOR: crear materias/comisiones es armar la grilla
+    # institucional, no el trabajo docente. El tutor inscribe y arma examenes
+    # (`gestionar_academico`), pero no da de alta la estructura. Sin este split,
+    # `gestionar_academico` (que el tutor tiene) tambien habilitaba crear
+    # materias/comisiones — over-permiso real detectado por el owner.
+    "gestionar_estructura": frozenset(
+        {Rol.ADMIN_EXAMENES, Rol.COORDINADOR, Rol.ADMIN_SISTEMA}
+    ),
     # Ver las notas y sincronizarlas a Moodle: el docente necesita cerrar la nota
     # de su materia.
     "gestionar_notas": frozenset(

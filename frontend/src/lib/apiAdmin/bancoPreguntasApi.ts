@@ -78,6 +78,31 @@ export async function renombrarCategoria(
   return res.json();
 }
 
+/**
+ * Re-anida una categoría bajo otra (o a raíz si `nuevoPadreId` es null).
+ * PATCH /exam-content/categorias/:id con { categoria_padre_id }.
+ * 409 → ciclo (moverla dentro de sí misma o de una subcategoría suya) o materia distinta.
+ */
+export async function moverCategoria(
+  categoriaId: string,
+  nuevoPadreId: string | null,
+): Promise<CategoriaPregunta> {
+  const res = await fetch(`${API_BASE}/exam-content/categorias/${encodeURIComponent(categoriaId)}`, {
+    method: 'PATCH',
+    headers: headers(),
+    body: JSON.stringify({ categoria_padre_id: nuevoPadreId }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const detail = (body as any)?.detail;
+    const msg =
+      typeof detail === 'string' ? detail : detail?.mensaje ?? `Error ${res.status} al mover categoría`;
+    throw new Error(msg);
+  }
+  return res.json();
+}
+
 export async function borrarCategoria(categoriaId: string): Promise<void> {
   const res = await fetch(
     `${API_BASE}/exam-content/categorias/${encodeURIComponent(categoriaId)}`,

@@ -9,6 +9,18 @@ from app.domain.exam_content.entities import CategoriaPregunta
 from app.infrastructure.persistence.models.exam_content import CategoriaPreguntaModel
 
 
+class CategoriaNoEncontradaError(Exception):
+    """La categoría (origen o destino) no existe."""
+
+
+class CicloCategoriaError(Exception):
+    """Mover la categoría bajo el destino crearía un ciclo (a sí misma o a un descendiente)."""
+
+
+class MateriaDistintaError(Exception):
+    """El destino pertenece a otra materia — no se puede anidar entre materias."""
+
+
 class CategoriaPreguntaSqlRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
@@ -47,6 +59,57 @@ class CategoriaPreguntaSqlRepository:
                 CategoriaPreguntaModel.id == categoria_id
             )
         )
+
+    async def mover(
+        self, categoria_id: str, nuevo_padre_id: str | None
+    ) -> CategoriaPregunta:
+        """Re-anida ``categoria_id`` bajo ``nuevo_padre_id`` (o a raíz si es None).
+
+        Guarda de ciclos: el nuevo padre no puede ser la propia categoría ni
+        ninguno de sus descendientes (moverla ahí desprendería un subárbol y
+        crearía una referencia circular). El destino debe ser de la misma materia.
+        """
+        cat = await self._session.get(CategoriaPreguntaModel, categoria_id)
+        if cat is None:
+            raise CategoriaNoEncontradaError(categoria_id)
+
+        if nuevo_padre_id is not None:
+            if nuevo_padre_id == categoria_id:
+                raise CicloCategoriaError(categoria_id)
+            padre = await self._session.get(CategoriaPreguntaModel, nuevo_padre_id)
+            if padre is None:
+                raise CategoriaNoEncontradaError(nuevo_padre_id)
+            if padre.materia_id != cat.materia_id:
+                raise MateriaDistintaError(nuevo_padre_id)
+            descendientes = await self._descendientes(cat.materia_id, categoria_id)
+            if nuevo_padre_id in descendientes:
+                raise CicloCategoriaError(nuevo_padre_id)
+
+        cat.categoria_padre_id = nuevo_padre_id
+        await self._session.flush()
+        return self._row_to_entity(cat)
+
+    async def _descendientes(self, materia_id: str, categoria_id: str) -> set[str]:
+        """IDs de todas las categorías que cuelgan (a cualquier profundidad) de ``categoria_id``."""
+        result = await self._session.execute(
+            select(
+                CategoriaPreguntaModel.id, CategoriaPreguntaModel.categoria_padre_id
+            ).where(CategoriaPreguntaModel.materia_id == materia_id)
+        )
+        hijos_por_padre: dict[str, list[str]] = {}
+        for cid, padre_id in result.all():
+            if padre_id is not None:
+                hijos_por_padre.setdefault(padre_id, []).append(cid)
+
+        descendientes: set[str] = set()
+        pila = list(hijos_por_padre.get(categoria_id, []))
+        while pila:
+            actual = pila.pop()
+            if actual in descendientes:
+                continue
+            descendientes.add(actual)
+            pila.extend(hijos_por_padre.get(actual, []))
+        return descendientes
 
     async def resolver_o_crear(
         self, materia_id: str, nombre: str, padre_id: str | None

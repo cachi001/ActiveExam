@@ -415,6 +415,7 @@ def create_exam_content_router(
 
     @router.post(
         "/materias-comisiones",
+        dependencies=[Depends(require_capability("gestionar_estructura"))],
         response_model=AltaInlineResponse,
         status_code=status.HTTP_201_CREATED,
         summary="Alta inline de materia + comisión (opcionalmente asocia un examen)",
@@ -546,6 +547,7 @@ def create_exam_content_router(
 
     @router.post(
         "/materias",
+        dependencies=[Depends(require_capability("gestionar_estructura"))],
         response_model=MateriaResponse,
         status_code=status.HTTP_201_CREATED,
         summary="Crear una materia (gestión independiente del import)",
@@ -598,6 +600,7 @@ def create_exam_content_router(
 
     @router.patch(
         "/materias/{materia_id}",
+        dependencies=[Depends(require_capability("gestionar_estructura"))],
         response_model=MateriaResponse,
         summary="Actualizar nombre y/o codigo de una materia",
     )
@@ -662,6 +665,7 @@ def create_exam_content_router(
 
     @router.delete(
         "/materias/{materia_id}",
+        dependencies=[Depends(require_capability("gestionar_estructura"))],
         status_code=status.HTTP_204_NO_CONTENT,
         response_model=None,
         summary="Eliminar una materia (solo si está 100% vacía)",
@@ -709,6 +713,7 @@ def create_exam_content_router(
 
     @router.patch(
         "/materias/{materia_id}/activa",
+        dependencies=[Depends(require_capability("gestionar_estructura"))],
         response_model=MateriaResponse,
         summary="Activar o desactivar una materia (freeze)",
     )
@@ -760,6 +765,7 @@ def create_exam_content_router(
 
     @router.post(
         "/materias/{materia_id}/comisiones",
+        dependencies=[Depends(require_capability("gestionar_estructura"))],
         response_model=ComisionResponse,
         status_code=status.HTTP_201_CREATED,
         summary="Crear una comisión dentro de una materia",
@@ -1819,35 +1825,70 @@ def create_exam_content_router(
 
     @router.patch(
         "/categorias/{categoria_id}",
-        summary="Renombrar categoría del banco de preguntas (C-74 §4)",
+        summary="Editar categoría del banco: renombrar y/o re-anidar (C-74 §4)",
     )
-    async def renombrar_categoria_banco(
+    async def editar_categoria_banco(
         categoria_id: str,
         body: dict,
         principal: AuthenticatedPrincipal = Depends(get_current_principal),
     ):
-        nombre = body.get("nombre", "").strip()
-        if not nombre:
-            raise HTTPException(status_code=422, detail="nombre es requerido.")
+        # Dos acciones combinables: renombrar (nombre) y/o re-anidar
+        # (categoria_padre_id). La clave `categoria_padre_id` presente en el body
+        # dispara el re-anidado (su valor puede ser null → mover a raíz).
+        nombre = body.get("nombre")
+        if nombre is not None:
+            nombre = nombre.strip()
+        reanidar = "categoria_padre_id" in body
+        nuevo_padre_id = body.get("categoria_padre_id") or None
+        if not nombre and not reanidar:
+            raise HTTPException(status_code=422, detail="nombre o categoria_padre_id requerido.")
         if session_factory is None:
             raise HTTPException(status_code=500, detail="Persistencia no inicializada.")
         from app.infrastructure.persistence.models.exam_content import CategoriaPreguntaModel
         from app.infrastructure.persistence.repositories.categoria_pregunta import (
+            CategoriaNoEncontradaError,
             CategoriaPreguntaSqlRepository,
+            CicloCategoriaError,
+            MateriaDistintaError,
         )
         from sqlalchemy import update as _update
         async with session_factory() as session:
-            cat = await CategoriaPreguntaSqlRepository(session).obtener(categoria_id)
+            repo = CategoriaPreguntaSqlRepository(session)
+            cat = await repo.obtener(categoria_id)
             if cat is None:
                 raise HTTPException(status_code=404, detail="categoria_no_encontrada")
             await _exigir_pertenencia_materia(principal, cat.materia_id)
-            await session.execute(
-                _update(CategoriaPreguntaModel)
-                .where(CategoriaPreguntaModel.id == categoria_id)
-                .values(nombre=nombre)
-            )
+            if nombre:
+                await session.execute(
+                    _update(CategoriaPreguntaModel)
+                    .where(CategoriaPreguntaModel.id == categoria_id)
+                    .values(nombre=nombre)
+                )
+            if reanidar:
+                try:
+                    await repo.mover(categoria_id, nuevo_padre_id)
+                except CategoriaNoEncontradaError as exc:
+                    raise HTTPException(
+                        status_code=404, detail="categoria_destino_no_encontrada"
+                    ) from exc
+                except CicloCategoriaError as exc:
+                    raise HTTPException(
+                        status_code=409,
+                        detail={
+                            "error": "ciclo_categoria",
+                            "mensaje": "No podés mover una categoría dentro de sí misma o de una subcategoría suya.",
+                        },
+                    ) from exc
+                except MateriaDistintaError as exc:
+                    raise HTTPException(
+                        status_code=409,
+                        detail={
+                            "error": "materia_distinta",
+                            "mensaje": "La categoría destino es de otra materia.",
+                        },
+                    ) from exc
             await session.commit()
-            cat_act = await CategoriaPreguntaSqlRepository(session).obtener(categoria_id)
+            cat_act = await repo.obtener(categoria_id)
         return {
             "id": cat_act.id,
             "nombre": cat_act.nombre,

@@ -17,6 +17,7 @@ import { StaffShell } from '../ui/shells';
 import { Card, SectionTitle, Badge, Button, Icon } from '../ui/components';
 import { STAFF_NAV } from '../ui/nav';
 import { useNavigate, useRouteParam } from '../lib/router';
+import { legajoVisible } from '../lib/legajo';
 import { api } from '../lib/api';
 import type { UsuarioAdmin } from '../lib/types';
 import { getRolLabel } from '../lib/constants/roles';
@@ -114,6 +115,21 @@ export default function DetalleUsuario() {
   const [consent, setConsent] = useState<SectionState<ConsentData>>({ status: 'loading' });
   const [biometria, setBiometria] = useState<SectionState<BiometriaData>>({ status: 'loading' });
   const [foto, setFoto] = useState<string | null>(null);
+  const [habilitandoRehacer, setHabilitandoRehacer] = useState(false);
+  const [rehacerHabilitadoOk, setRehacerHabilitadoOk] = useState(false);
+
+  async function handleHabilitarRehacerBiometria() {
+    if (!usuarioId) return;
+    setHabilitandoRehacer(true);
+    try {
+      await api.habilitarRehacerBiometria(usuarioId);
+      setRehacerHabilitadoOk(true);
+    } catch {
+      /* el botón vuelve a habilitarse; el alumno igual está protegido server-side */
+    } finally {
+      setHabilitandoRehacer(false);
+    }
+  }
 
   useEffect(() => {
     if (!usuarioId) {
@@ -195,9 +211,11 @@ export default function DetalleUsuario() {
                 <div className="flex-1 min-w-0 divide-y divide-outline-variant/30">
                   <DataRow label="Nombre completo" value={nombreDisplay} />
                   <DataRow label="Email" value={u.email} />
-                  <DataRow label="Legajo" value={
-                    <span className="font-mono text-[13px]">{u.id_institucional || '—'}</span>
-                  } />
+                  {legajoVisible(u.id_institucional) && (
+                    <DataRow label="Legajo" value={
+                      <span className="font-mono text-[13px]">{legajoVisible(u.id_institucional)}</span>
+                    } />
+                  )}
                   <DataRow label="Rol" value={
                     u.roles.length > 0
                       ? <div className="flex flex-wrap gap-1">{u.roles.map((r) => <RolBadge key={r} rol={r} />)}</div>
@@ -337,6 +355,34 @@ export default function DetalleUsuario() {
               </div>
             );
           })()}
+
+          {/* Override admin: habilitar al alumno a rehacer su referencia vigente
+              (una vez). Solo tiene sentido si HAY una referencia vigente. */}
+          {biometria.status === 'ok' && biometria.data.tiene_referencia_vigente && (
+            <div className="mt-md pt-md border-t border-outline-variant/30 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <p className="text-[12px] text-on-surface-variant max-w-md">
+                El alumno no puede rehacer su referencia mientras esté vigente. Podés habilitarle
+                <strong> una nueva captura</strong> (se consume apenas la rehace).
+              </p>
+              {rehacerHabilitadoOk ? (
+                <span className="inline-flex items-center gap-1 text-[13px] text-success shrink-0">
+                  <Icon name="check_circle" className="text-[18px]" fill />
+                  Habilitado — el alumno ya puede rehacerla
+                </span>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  icon="face_retouching_natural"
+                  onClick={() => void handleHabilitarRehacerBiometria()}
+                  disabled={habilitandoRehacer}
+                  className="shrink-0"
+                >
+                  {habilitandoRehacer ? 'Habilitando…' : 'Habilitar rehacer biometría'}
+                </Button>
+              )}
+            </div>
+          )}
 
           <div className="mt-md pt-md border-t border-outline-variant/30">
             <p className="text-[11px] text-on-surface-variant">

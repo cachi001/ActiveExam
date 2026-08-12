@@ -37,6 +37,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.application.enrollment.guardar_embedding_referencia import (
     DimensionError,
     GuardarEmbeddingReferenciaService,
+    RehacerBiometriaBloqueadoError,
 )
 from app.domain.biometrics.embedding_integrity import EmbeddingIntegridadError
 from app.application.enrollment.guardar_foto_perfil import GuardarFotoPerfilService
@@ -231,6 +232,11 @@ async def guardar_embedding_referencia(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=str(exc),
+        ) from exc
+    except RehacerBiometriaBloqueadoError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"error": "rehacer_biometria_bloqueado", "mensaje": str(exc)},
         ) from exc
 
     return EmbeddingReferenciaResponse(referencia_id=UUID(referencia_id))

@@ -31,6 +31,8 @@ from app.infrastructure.persistence.models.exam_content import (  # noqa: F401
 from app.infrastructure.persistence.base import Base
 from app.infrastructure.persistence.repositories.categoria_pregunta import (
     CategoriaPreguntaSqlRepository,
+    CicloCategoriaError,
+    MateriaDistintaError,
 )
 
 _TABLES = [
@@ -208,3 +210,85 @@ async def test_borrar_padre_elimina_subcategorias_en_cascada(
         {"id": hijo.id},
     )
     assert row.fetchone() is None, "El hijo debe haberse borrado en cascada"
+
+
+# ---------------------------------------------------------------------------
+# Re-anidar (mover) una categoría bajo otro padre — drag&drop del banco.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_mover_categoria_bajo_otro_padre(session: AsyncSession, materia_id: str):
+    """RED→GREEN: mover una categoría raíz para que quede bajo otra."""
+    repo = CategoriaPreguntaSqlRepository(session)
+    destino = await repo.crear(CategoriaPregunta(nombre="Prog 1", materia_id=materia_id))
+    suelta = await repo.crear(CategoriaPregunta(nombre="Manejo de errores", materia_id=materia_id))
+    await session.commit()
+
+    movida = await repo.mover(suelta.id, destino.id)
+
+    assert movida.categoria_padre_id == destino.id
+    recargada = await repo.obtener(suelta.id)
+    assert recargada.categoria_padre_id == destino.id
+
+
+@pytest.mark.asyncio
+async def test_mover_categoria_a_raiz(session: AsyncSession, materia_id: str):
+    """TRIANGULATE: mover a raíz (padre None) saca la categoría de su padre."""
+    repo = CategoriaPreguntaSqlRepository(session)
+    padre = await repo.crear(CategoriaPregunta(nombre="Padre", materia_id=materia_id))
+    hijo = await repo.crear(
+        CategoriaPregunta(nombre="Hijo", materia_id=materia_id, categoria_padre_id=padre.id)
+    )
+    await session.commit()
+
+    movida = await repo.mover(hijo.id, None)
+
+    assert movida.categoria_padre_id is None
+
+
+@pytest.mark.asyncio
+async def test_mover_categoria_a_si_misma_rechazado(session: AsyncSession, materia_id: str):
+    """TRIANGULATE (edge): moverse a sí misma es un ciclo → CicloCategoriaError."""
+    repo = CategoriaPreguntaSqlRepository(session)
+    cat = await repo.crear(CategoriaPregunta(nombre="C", materia_id=materia_id))
+    await session.commit()
+
+    with pytest.raises(CicloCategoriaError):
+        await repo.mover(cat.id, cat.id)
+
+
+@pytest.mark.asyncio
+async def test_mover_categoria_a_su_descendiente_rechazado(
+    session: AsyncSession, materia_id: str
+):
+    """TRIANGULATE (edge): mover un ancestro dentro de su descendiente → ciclo."""
+    repo = CategoriaPreguntaSqlRepository(session)
+    abuelo = await repo.crear(CategoriaPregunta(nombre="Abuelo", materia_id=materia_id))
+    padre = await repo.crear(
+        CategoriaPregunta(nombre="Padre", materia_id=materia_id, categoria_padre_id=abuelo.id)
+    )
+    nieto = await repo.crear(
+        CategoriaPregunta(nombre="Nieto", materia_id=materia_id, categoria_padre_id=padre.id)
+    )
+    await session.commit()
+
+    with pytest.raises(CicloCategoriaError):
+        await repo.mover(abuelo.id, nieto.id)
+
+
+@pytest.mark.asyncio
+async def test_mover_categoria_a_otra_materia_rechazado(session: AsyncSession, materia_id: str):
+    """TRIANGULATE (edge): el destino debe ser de la misma materia."""
+    repo = CategoriaPreguntaSqlRepository(session)
+    otra_materia = str(uuid.uuid4())
+    await session.execute(
+        text("INSERT INTO materia (id, codigo, nombre) VALUES (:id, :c, :n)"),
+        {"id": otra_materia, "c": f"OTR-{otra_materia[:8]}", "n": "Otra materia"},
+    )
+    origen = await repo.crear(CategoriaPregunta(nombre="Origen", materia_id=materia_id))
+    ajena = await repo.crear(CategoriaPregunta(nombre="Ajena", materia_id=otra_materia))
+    await session.commit()
+
+    with pytest.raises(MateriaDistintaError):
+        await repo.mover(origen.id, ajena.id)

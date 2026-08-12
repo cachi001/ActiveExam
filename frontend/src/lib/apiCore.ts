@@ -193,7 +193,12 @@ async function syncEnrollmentState(): Promise<EstadoEnrollment> {
       renovacion_anticipada_requerida: false,
     };
     const biometria: ReferenciasBiometrica | null = tieneRefVigente
-      ? { ...biometriaStub, captura_completada: true, vigencia: 'vigente' }
+      ? {
+          ...biometriaStub,
+          captura_completada: true,
+          vigencia: 'vigente',
+          rehacer_habilitado: Boolean(biometriaResp?.rehacer_habilitado),
+        }
       : null;
 
     const next: EstadoEnrollment = {
