@@ -186,6 +186,11 @@ class ExamenRendicionResponse(BaseModel):
     mezclar_preguntas: bool = False
     nota_maxima: float = 10.0
     nota_aprobacion: float = 6.0
+    # Ancla del timer (migración 0067): momento server-autoritativo en que el alumno
+    # empezó a rendir. El frontend cuenta el tiempo restante desde acá, no desde la
+    # creación de la sesión (que puede caer en el consentimiento anticipado). NULL si
+    # el alumno no tiene sesión activa para este examen → el front cae a `creada_en`.
+    examen_iniciado_en: datetime | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -351,7 +356,7 @@ class CrearDesdebancoRequest(BaseModel):
     # Escala de calificación: configurable por examen (migración 0061). Default
     # 100/60 si no se manda — nunca cae silenciosamente en "sobre 10". El docente
     # puede elegir otra escala acá mismo, al crear, sin un PATCH /config aparte.
-    nota_maxima: float = Field(default=100.0, gt=0)
+    nota_maxima: float = Field(default=100.0, gt=0, le=100)
     nota_aprobacion: float = Field(default=60.0, ge=0)
 
 
@@ -695,7 +700,9 @@ class ExamenConfigPatchRequest(BaseModel):
     intentos_permitidos: int | None = None
     apertura: datetime | None = None
     cierre: datetime | None = None
-    nota_maxima: float | None = None
+    # Tope de 100 (le=100): la escala del examen nunca supera 100 (misma regla que
+    # el modal de creación y el form de config del frontend).
+    nota_maxima: float | None = Field(default=None, gt=0, le=100)
     nota_aprobacion: float | None = None
     # `mezclar_preguntas` NO se acepta: es siempre true (migracion 0046). Con
     # extra='forbid', mandarlo devuelve 422 en vez de aceptarlo en silencio.

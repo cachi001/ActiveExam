@@ -763,12 +763,25 @@ def create_exam_taking_router(
                 detail="Persistencia no inicializada.",
             )
 
+        from datetime import datetime, timezone
+
+        from sqlalchemy import select
+
+        from app.infrastructure.persistence.models.proctoring import (
+            ProctoringSessionModel,
+        )
         from app.infrastructure.persistence.repositories.exam_content import (
             ComisionSqlRepository,
             ExamenContenidoSqlRepository,
             MateriaSqlRepository,
         )
 
+        # Ancla del timer (migración 0067): momento en que el alumno empieza a rendir.
+        # Se estampa una sola vez (idempotente) en la sesión activa del alumno para
+        # este examen. Anclar a esto —y no a `creada_en`— evita descontarle al examen
+        # el tiempo del consentimiento/biometría anticipados. F5-safe: al releer, si
+        # ya estaba seteado devuelve el original.
+        examen_iniciado_en = None
         async with session_factory() as session:
             repo = ExamenContenidoSqlRepository(session)
             # Repos de contexto para el freeze de materia desactivada (C-72 §17).
@@ -789,6 +802,26 @@ def create_exam_taking_router(
                     status_code=status.HTTP_409_CONFLICT,
                     detail={"error": "comision_inactiva", "mensaje": str(exc)},
                 ) from exc
+
+            if rendicion is not None and principal.id_institucional:
+                sesion = (
+                    await session.execute(
+                        select(ProctoringSessionModel)
+                        .where(
+                            ProctoringSessionModel.examen_contenido_id == examen_id,
+                            ProctoringSessionModel.alumno_idnumber
+                            == principal.id_institucional,
+                            ProctoringSessionModel.finalizada_en.is_(None),
+                        )
+                        .order_by(ProctoringSessionModel.creada_en.desc())
+                        .limit(1)
+                    )
+                ).scalar_one_or_none()
+                if sesion is not None:
+                    if sesion.examen_iniciado_en is None:
+                        sesion.examen_iniciado_en = datetime.now(timezone.utc)
+                        await session.commit()
+                    examen_iniciado_en = sesion.examen_iniciado_en
 
         if rendicion is None:
             raise HTTPException(
@@ -815,6 +848,7 @@ def create_exam_taking_router(
             mezclar_preguntas=rendicion.mezclar_preguntas,
             nota_maxima=rendicion.nota_maxima,
             nota_aprobacion=rendicion.nota_aprobacion,
+            examen_iniciado_en=examen_iniciado_en,
             preguntas=[
                 PreguntaRendicionResponse(
                     id=p.id,

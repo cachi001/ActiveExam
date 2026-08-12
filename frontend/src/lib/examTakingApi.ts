@@ -53,6 +53,13 @@ export interface ExamenRendicion {
   /** Nota máxima / nota de aprobación de la escala configurada. */
   nota_maxima?: number | null;
   nota_aprobacion?: number | null;
+  /**
+   * Momento server-autoritativo en que el alumno empezó a rendir (ISO). El timer
+   * cuenta el tiempo restante desde acá, NO desde la creación de la sesión (que
+   * puede caer en el consentimiento anticipado y descontarle minutos al examen).
+   * null/ausente (backend viejo o sin sesión activa) → se cae a `creada_en`.
+   */
+  examen_iniciado_en?: string | null;
 }
 
 /**
