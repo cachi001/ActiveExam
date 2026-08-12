@@ -145,6 +145,7 @@ export function CrearExamenModal({ abierto, onCerrar, onCreado }: Props) {
     titulo.trim() !== '' &&
     tramosActivos.length > 0 &&
     notaMaxima > 0 &&
+    notaMaxima <= 100 &&
     notaAprobacion >= 0 &&
     notaAprobacion <= notaMaxima &&
     !enviando;
@@ -245,8 +246,11 @@ export function CrearExamenModal({ abierto, onCerrar, onCreado }: Props) {
               <input
                 type="number"
                 min={1}
+                max={100}
                 value={notaMaxima}
-                onChange={(e) => setNotaMaxima(Math.max(0, parseFloat(e.target.value) || 0))}
+                onChange={(e) =>
+                  setNotaMaxima(Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)))
+                }
                 className={INPUT_CLASS}
               />
             </label>
