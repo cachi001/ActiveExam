@@ -341,13 +341,17 @@ def create_lti_router(
 
             await session.commit()
 
-        # Redirect al frontend con los tokens como query params.
-        # El frontend los persiste (mismo mecanismo que un login normal).
+        # Redirect al frontend con los tokens en el FRAGMENT (#), NO en la query
+        # string. El fragment nunca se envía al servidor: no queda en los logs de
+        # Nginx/uvicorn ni en el header Referer de los sub-recursos de la landing.
+        # La query string sí se logueaba (formato `combined` de Nginx incluye
+        # `$request`) — filtrando un refresh_token bearer válido 7 días. Patrón
+        # equivalente al implicit flow de OAuth. El frontend lee de location.hash.
         params = urlencode({
             "access_token": access_token,
             "refresh_token": refresh_jti,
         })
-        redirect_url = f"{frontend_url.rstrip('/')}/lti-login?{params}"
+        redirect_url = f"{frontend_url.rstrip('/')}/lti-login#{params}"
         return RedirectResponse(redirect_url, status_code=status.HTTP_302_FOUND)
 
     return router

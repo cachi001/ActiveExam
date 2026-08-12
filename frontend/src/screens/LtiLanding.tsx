@@ -3,9 +3,12 @@
  *
  * El backend valida el launch LTI (firma del id_token + allowlist), provisiona JIT
  * al alumno si no existe, emite el JWT de sesión propio (mismo emisor que
- * /auth/login) y redirige acá con los tokens como query params:
+ * /auth/login) y redirige acá con los tokens en el FRAGMENT (#), no en la query:
  *
- *     /lti-login?access_token=...&refresh_token=...
+ *     /lti-login#access_token=...&refresh_token=...
+ *
+ * El fragment NO viaja al servidor: no entra a los logs de Nginx/uvicorn ni al
+ * header Referer. Por eso leemos de `location.hash`, no de `location.search`.
  *
  * Esta pantalla NO decide identidad: sólo adopta los tokens ya emitidos (con el
  * mismo mecanismo que un login normal) y manda al alumno a su dashboard. Si el
@@ -31,7 +34,8 @@ export default function LtiLanding() {
     if (yaProceso.current) return;
     yaProceso.current = true;
 
-    const params = new URLSearchParams(window.location.search);
+    // Los tokens vienen en el fragment (#a=1&b=2), no en la query string.
+    const params = new URLSearchParams(window.location.hash.replace(/^#/, ''));
     const accessToken = params.get('access_token') ?? '';
     const refreshToken = params.get('refresh_token') ?? undefined;
 

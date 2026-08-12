@@ -430,8 +430,16 @@ def test_launch_endpoint_redirige_con_tokens(session_factory):
 
     assert r.status_code == 302
     location = r.headers["location"]
-    assert "access_token=" in location
-    assert "refresh_token=" in location
+    # Los tokens van en el FRAGMENT (#), no en la query string: el fragment no
+    # llega al servidor y no queda en logs/Referer (fuga de credenciales).
+    assert "#" in location
+    fragment = location.split("#", 1)[1]
+    assert "access_token=" in fragment
+    assert "refresh_token=" in fragment
+    # No deben aparecer en la query string (antes del #).
+    query = location.split("#", 1)[0]
+    assert "access_token=" not in query
+    assert "refresh_token=" not in query
 
 
 # ---------------------------------------------------------------------------
