@@ -18,6 +18,7 @@ import type { Rol } from "./types";
 export type Capacidad =
   | "revisar_sesion"
   | "gestionar_academico"
+  | "gestionar_estructura"
   | "gestionar_notas"
   | "configurar_sistema"
   | "gestionar_usuarios"
@@ -28,6 +29,9 @@ export type Capacidad =
 const CAPABILITY_ROLES: Record<Capacidad, readonly Rol[]> = {
   revisar_sesion: ["revisor", "coordinador", "admin_sistema"],
   gestionar_academico: ["tutor", "admin_examenes", "coordinador", "admin_sistema"],
+  // Alta/edición de materias y comisiones: SIN tutor (solo admin). Espeja el
+  // split del backend — el tutor inscribe y arma exámenes, pero no crea estructura.
+  gestionar_estructura: ["admin_examenes", "coordinador", "admin_sistema"],
   gestionar_notas: ["tutor", "admin_examenes", "coordinador", "admin_sistema"],
   configurar_sistema: ["admin_sistema"],
   gestionar_usuarios: ["admin_sistema"],

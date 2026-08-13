@@ -3,9 +3,7 @@
 ## Purpose
 
 Define el endpoint público de auto-registro de estudiantes (`POST /api/v1/auth/register`) y los datos personales asociados (`nombre`, `apellido`). El rol queda forzado a `estudiante` server-side — el cliente NUNCA puede auto-asignarse un rol elevado — el schema rechaza campos extra, el password se hashea con bcrypt y nunca se persiste en claro, y el email debe pertenecer al dominio institucional configurado. Incluye también la pantalla de signup en el frontend que reúsa el input reusable y redirige al login tras un alta exitosa.
-
 ## Requirements
-
 ### Requirement: Auto-registro público de estudiantes
 
 El sistema SHALL exponer `POST /api/v1/auth/register` como endpoint PÚBLICO (sin autenticación) que permite a un estudiante auto-registrarse con sus datos personales. El endpoint MUST forzar el rol a `["estudiante"]` server-side y MUST NOT aceptar un campo `roles` en el body. El schema MUST usar `extra='forbid'`. El password MUST hashearse con bcrypt antes de persistir y el `auth_provider` MUST quedar en `"local"`.
@@ -67,3 +65,13 @@ El frontend SHALL ofrecer una pantalla de registro (signup) enlazada desde el lo
 
 - **WHEN** el usuario completa el registro correctamente
 - **THEN** la UI lo lleva a la pantalla de login para iniciar sesión
+
+### Requirement: Segundo camino de alta — provisioning JIT vía LTI
+
+Además del auto-registro público (`POST /api/v1/auth/register`, rol siempre `estudiante`/local) y el alta manual por admin (`POST /users`, rol elegido por el admin), el sistema SHALL soportar un tercer camino de alta de usuario: JIT provisioning a partir de un launch LTI 1.3 validado (ver capability `lti-jit-provisioning`). Este camino SHALL producir cuentas con `auth_provider="lti"` y rol fijo `["alumno"]` — nunca un rol elegido por el flujo LTI.
+
+#### Scenario: Los tres caminos de alta coexisten sin conflicto
+
+- **WHEN** existen usuarios creados por auto-registro (`local`), por admin (`local`), y por LTI (`lti`)
+- **THEN** todos son usuarios válidos en `usuario`, distinguibles por `auth_provider`, y ninguno de los tres caminos puede asignarse un rol distinto al que su flujo permite (`estudiante` para auto-registro, cualquiera elegido por el admin para alta manual, `alumno` fijo para LTI)
+

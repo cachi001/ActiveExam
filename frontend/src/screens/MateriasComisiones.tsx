@@ -23,6 +23,8 @@ import { RefreshBar } from '../ui/RefreshBar';
 import { STAFF_NAV } from '../ui/nav';
 import { useAutoRefresh } from '../lib/useAutoRefresh';
 import { useToast } from '../ui/toast';
+import { useAuth } from '../lib/authStore';
+import { tieneCapacidad } from '../lib/capabilities';
 import { api } from '../lib/api';
 import {
   crearMateria,
@@ -48,6 +50,12 @@ import {
 
 export default function MateriasComisiones() {
   const toast = useToast();
+
+  // La ESTRUCTURA académica (crear/editar/borrar materias y comisiones) es
+  // admin-only. El tutor puede inscribir y ver, pero no crear estructura — el
+  // backend lo enforcea (`gestionar_estructura`); acá solo ocultamos los botones.
+  const roles = useAuth((s) => s.principal?.roles) ?? [];
+  const puedeEditarEstructura = tieneCapacidad(roles, 'gestionar_estructura');
 
   // ── Materias ──────────────────────────────────────────────────────────────
   const [materias, setMaterias] = useState<Materia[]>([]);
@@ -382,9 +390,11 @@ export default function MateriasComisiones() {
         </HelpButton>
       }
       actions={
-        <Button icon="add" onClick={abrirCrearMateria} size="sm">
-          Nueva materia
-        </Button>
+        puedeEditarEstructura ? (
+          <Button icon="add" onClick={abrirCrearMateria} size="sm">
+            Nueva materia
+          </Button>
+        ) : undefined
       }
     >
       <div className="space-y-lg animate-in fade-in duration-500">
@@ -453,6 +463,7 @@ export default function MateriasComisiones() {
                         </p>
                         <p className="text-[11px] font-mono text-on-surface-variant mt-0.5">{m.codigo}</p>
                       </button>
+                      {puedeEditarEstructura && (
                       <ActionMenu
                         ariaLabel={`Acciones de ${m.nombre}`}
                         items={[
@@ -474,6 +485,7 @@ export default function MateriasComisiones() {
                             : []),
                         ]}
                       />
+                      )}
                     </div>
                   );
                 })}
@@ -503,9 +515,11 @@ export default function MateriasComisiones() {
                           {(comisionesPorMateria[m.id]?.length ?? 0)} comisión(es)
                         </p>
                       </div>
-                      <Button variant="outline" size="sm" icon="add" onClick={() => abrirCrearComision(m.id)}>
-                        Nueva comisión
-                      </Button>
+                      {puedeEditarEstructura && (
+                        <Button variant="outline" size="sm" icon="add" onClick={() => abrirCrearComision(m.id)}>
+                          Nueva comisión
+                        </Button>
+                      )}
                     </div>
                     <ComisionesAccordionBody
                       materiaId={m.id}

@@ -218,6 +218,75 @@ async def test_actualizar_comision_estudiante_403(client_noauth):
 
 
 # ---------------------------------------------------------------------------
+# auth (sin DB) — TUTOR → 403 en estructura académica (C-75 demo fix).
+# El tutor tiene `gestionar_academico` (inscribir, exámenes) pero NO
+# `gestionar_estructura`: no crea/edita/borra materias ni comisiones.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_crear_materia_tutor_403(client_noauth):
+    resp = await client_noauth.post(
+        "/api/v1/exam-content/materias",
+        json={"codigo": "M1", "nombre": "Mat"},
+        headers=auth_headers(["tutor"]),
+    )
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_actualizar_materia_tutor_403(client_noauth):
+    resp = await client_noauth.patch(
+        f"/api/v1/exam-content/materias/{_INEXISTENTE}",
+        json={"nombre": "Nuevo"},
+        headers=auth_headers(["tutor"]),
+    )
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_eliminar_materia_tutor_403(client_noauth):
+    resp = await client_noauth.delete(
+        f"/api/v1/exam-content/materias/{_INEXISTENTE}",
+        headers=auth_headers(["tutor"]),
+    )
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_set_activa_materia_tutor_403(client_noauth):
+    resp = await client_noauth.patch(
+        f"/api/v1/exam-content/materias/{_INEXISTENTE}/activa",
+        json={"activa": False},
+        headers=auth_headers(["tutor"]),
+    )
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_crear_comision_tutor_403(client_noauth):
+    resp = await client_noauth.post(
+        f"/api/v1/exam-content/materias/{_INEXISTENTE}/comisiones",
+        json={"codigo": "C1", "nombre": "Com"},
+        headers=auth_headers(["tutor"]),
+    )
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_alta_inline_materia_comision_tutor_403(client_noauth):
+    resp = await client_noauth.post(
+        "/api/v1/exam-content/materias-comisiones",
+        json={
+            "materia": {"codigo": "M1", "nombre": "Mat"},
+            "comision": {"codigo": "C1", "nombre": "Com"},
+        },
+        headers=auth_headers(["tutor"]),
+    )
+    assert resp.status_code == 403
+
+
+# ---------------------------------------------------------------------------
 # POST /materias
 # ---------------------------------------------------------------------------
 

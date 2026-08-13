@@ -1,19 +1,19 @@
 # CHANGES — Roadmap de pendientes
 
 > Índice **solo de lo que falta** del proyecto **Proctoring** (plataforma self-hosted de supervisión asistida por IA de evaluaciones remotas).
-> Regenerado el **2026-06-11** (sesión 2, post-c-39) a partir del estado real del CLI de OpenSpec (`openspec list --json`), tras higiene masiva: 6 archivados + **4 cancelados** + 1 sincronizado desde rama + 26 specs canónicas regeneradas.
+> Regenerado el **2026-06-11** (sesión 2, post-c-39), última actualización manual **2026-08-13** (sesión post-c-75) a partir del estado real del CLI de OpenSpec (`openspec list --json`).
 > El plan original completo (los 65 changes, hechos y pendientes) quedó archivado en **[CHANGES.legacy.md](CHANGES.legacy.md)**.
 
 ---
 
 ## Cómo usar este documento
 
-1. La **fuente de verdad del progreso es el CLI**: `openspec status --change "<nombre>"`. Un change entra acá si `completedTasks < totalTasks`.
+1. La **fuente de verdad del progreso es el CLI**: `openspec status --change "<nombre>"` / `openspec list --json`. Un change entra acá si `completedTasks < totalTasks`.
 2. Respetá las dependencias: no arranques un change cuyas deps sigan abiertas.
 3. Flujo: `/opsx:propose` (si falta) → `/opsx:apply` → `/opsx:archive`. Al archivar, el change sale de este roadmap.
-4. Regenerá este archivo con `/roadmap-generator` cuando cambie el estado (no lo edites a mano para "tildar").
+4. **Este archivo se desactualiza solo** (archivar un change no lo edita). Antes de confiar en la sección de pendientes, corré `openspec list --json` — es la única fuente que no miente.
 
-> **Foto al 2026-06-13 (sesión 3, post-c-66)**: 65 changes totales · **53 archivados** + **4 cancelados** (sin retomar) · **9 pendientes** (abajo) · **+1 planificado sin crear** (integración LMS/LTI, Fase 2 — ver Prioridad 2).
+> **Foto al 2026-08-13 (post-C-75)**: `openspec list --json` devuelve **solo 3 changes pendientes en todo el proyecto**: `c-01`, `c-03`, `c-15b`. Todo lo demás — incluyendo **c-16 a c-20** (que este archivo tenía listados como "0% sin empezar" desde el 11-jun) y **c-67 a c-75** (nunca reflejados acá) — está **archivado**. Ver "Resumen por estado" al final para el detalle completo de lo que se sumó al archivo desde la última regeneración real (17-jul).
 
 > **Cambios respecto del estado anterior (sesión 2 del 2026-06-11)**:
 > - **Archivados nuevos**: c-66 (UI estudiante onboarding desktop+mobile, frontend-only, todas las 24 tasks completadas — tsc limpio, build verde).
@@ -60,7 +60,7 @@
 
 ## 🟡 Prioridad 1 — MVP camino crítico
 
-> Camino crítico restante: `c-03 → c-15b → c-16 → c-20` (c-10 y el slim de c-15 ya **archivados**). c-17, c-18, c-19 están desbloqueados y pueden correr en paralelo.
+> **Todo el ciclo MVP de revisión/legal ya está archivado**: c-16 (cola-revisión-humana), c-17 (DSR), c-18 (verificación cadena/apelación), c-19 (retención/holds) y c-20 (reportes/analytics) — los 5 con 100% de tasks completas (ver "Resumen por estado"). **Único pendiente real del camino crítico**: `c-03 → c-15b` (tiempo real del panel).
 >
 > **PARTICIÓN 2026-06-24**: c-10 y c-15 se **archivaron por su scope entregado** y lo que dependía de c-03 se movió a un sucesor. c-10: implementación del fan-out completa; la **verificación de SLO bajo carga** (p99<500ms, cero pérdida, e2e, OTEL) se consolidó en **c-03** (su harness es el banco de carga). c-15: se entregó el **slim** (chat/pausa/observaciones/cierre/RBAC vía REST+polling); el **tiempo real** (SSE, priorización por score, alertas <500ms, MFA) pasó a **c-15b**.
 
@@ -69,13 +69,13 @@
 | **c-10** `event-ingestion-transport` | 26/26 | Contrato de evento, WS del estudiante, validación HMAC, persistencia hypertable y **fan-out** (puerto + adaptadores LISTEN/NOTIFY y Redis) entregados. Verificación de SLO bajo carga → **c-03**. | c-03 | ✅ **Archivado** (scope entregado) |
 | **c-15** `panel-proctor-sse` | — | **Slim entregado**: acciones del proctor (chat, observaciones, cierre forzado), pausa autorizada + contextualización de score, RBAC por rol. | c-10 ✓ | ✅ **Archivado** (slim) |
 | **c-15b** `panel-proctor-sse-transport` | 0/10 | Tiempo real: transporte SSE sin sticky + backplane (ganador c-03); priorización por score (continuous aggregates c-13); alertas críticas p99<500ms; reconexión SSE; MFA del panel. | c-03, c-13 | ⛔ Bloqueado por c-03 |
-| **c-16** `cola-revision-humana` | 0/15 | Cola por score + aislada por jurisdicción + audit de acceso + decisión humana terminal inmutable. **Cierre del ciclo MVP.** Consume las **observaciones** del proctor (ya entregadas en el slim de c-15). | c-13, c-15 ✓ (slim) | Desbloqueado por el slim de c-15 (no requiere c-15b) |
-| **c-17** `dsr-derechos-titular` | 0/20 | `POST /api/v1/dsr/{type}` access/rectification/erasure/portability + holds + audit log. | c-06 ✓ | **Listo para arrancar** |
-| **c-18** `verificacion-cadena-apelacion` | 0/20 | `POST /api/v1/evidence/{id}/verify-chain` que re-verifica 4 etapas de firma + emite certificado independiente para perito externo. | c-12 ✓ | **Listo para arrancar** |
-| **c-19** `retencion-holds` | 0/19 | Motor retención automática + holds por caso abierto + archivado a Parquet + eliminación embedding al egreso (Ley 25.326, RN-DSR-02). | c-07 ✓ | **Listo para arrancar** |
-| **c-20** `reportes-analytics` | 0/19 | Reportes post-examen agregados (distribución scores, outliers, métricas calidad detector). **Sin veredictos automáticos.** | c-13 ✓, c-16 | Bloqueado por c-16 |
+| **c-16** `cola-revision-humana` | 15/15 | Cola por score + aislada por jurisdicción + audit de acceso + decisión humana terminal inmutable. | c-13, c-15 ✓ (slim) | ✅ **Archivado** (2026-06-11) |
+| **c-17** `dsr-derechos-titular` | 20/20 | `POST /api/v1/dsr/{type}` access/rectification/erasure/portability + holds + audit log. | c-06 ✓ | ✅ **Archivado** (2026-06-11) |
+| **c-18** `verificacion-cadena-apelacion` | 20/20 | `POST /api/v1/evidence/{id}/verify-chain` que re-verifica 4 etapas de firma + emite certificado independiente para perito externo. | c-12 ✓ | ✅ **Archivado** (2026-06-11) |
+| **c-19** `retencion-holds` | 19/19 | Motor retención automática (slim: `RetentionEngine`, política default **180 días sesiones / 5 años audit log**, endpoints admin `POST /api/v1/admin/retention/{session,biometric}`) + holds por caso abierto (slim: `NullHoldVerifier`, no hay `caso_disciplinario` en slim) + eliminación embedding al egreso (Ley 25.326, RN-DSR-02). **Object Lock/WORM explícitamente fuera de alcance en slim** (sin MinIO — fotos como BYTEA en Postgres). ⚠️ **No hay cron/scheduler wireado** que invoque esos endpoints admin automáticamente — el motor existe pero nadie lo dispara todavía en producción; ver ítem de higiene en Prioridad 2. | c-07 ✓ | ✅ **Archivado** (2026-06-11) |
+| **c-20** `reportes-analytics` | 25/25 | Reportes post-examen agregados (distribución scores, outliers, métricas calidad detector). **Sin veredictos automáticos.** | c-13 ✓, c-16 ✓ | ✅ **Archivado** (2026-08-03) |
 
-**Leer antes**: la KB indicada por change en [CHANGES.legacy.md](CHANGES.legacy.md) (sección FASE 1).
+**Leer antes**: la KB indicada por change en [CHANGES.legacy.md](CHANGES.legacy.md) (sección FASE 1) — o directamente `openspec/changes/archive/2026-06-11-c-1{6,7,8,9}-*/` y `openspec/changes/archive/2026-08-03-c-20-*/` para el detalle real implementado.
 
 ---
 
@@ -120,42 +120,49 @@
 | **c-71** `inscripcion-gate-y-cola-revision` | ✅ archivado (2026-07-15, slices 1+2) | **Change de integridad de examen, entregado en dos slices.** **Slice 1 — gate de inscripción**: el alumno solo VE y solo RINDE exámenes de comisiones donde está inscripto por código. Catálogo (`listar_examenes_contenido`) y "Mis materias/comisiones" filtrados **server-side por rol** (staff ve todo); backstop **403 `no_inscripto`** en `crear_sesion` (cliente no confiable). Cierra el agujero que c-70 dejó abierto. **Slice 2 — Cola de Revisión + transparencia al alumno**: decisión en dos fases (revisar `revisar_sesion` / resolver `resolver_caso`), resolución `anulado_por_fraude` reversible por acto compensatorio append-only, gate de write-back a Moodle por estado de revisión, informe de devolución al alumno (Ley 25.326). Tests verdes (DB real). **Sesiones Grabadas (ex-slice 3) → reasignado a c-72.** | c-70 ✓ | ALTO (control de acceso + notas + disciplina) |
 | **c-72** `integridad-rendicion-serverside` | ✅ archivado (2026-07-18, 121 tasks, 9 specs sincronizados) | **Cerró los agujeros de integridad de la rendición confirmados en vivo (H-1/H-2/H-3): la API rechazaba mal respuestas y `finalizar` fuera de tiempo/ventana.** Server-side: **deadline efectivo** (min(tiempo_limite, fin_ventana)) + **gracia**, **auto-finalización** de sesiones vencidas, **evento de reanudación** (con duración de ausencia), **candado direccional** de config (congelado-duro + cierre/intentos solo ampliar + publicación solo aflojar). Absorbió **Registro de sesiones** (ex-slice 3 de c-71, expediente sin video), **gestión de catálogo** (editar código, borrar solo si vacío, activar/desactivar materia con enforcement), **cifrado at-rest de evidencia** (Fernet, Ley 25.326), statcards unificadas y timeout de pausa. | c-71 ✓ | ALTO/CRÍTICO (integridad de examen, anti-tampering) |
 
-**Leer antes**: el archivo de c-72 en `openspec/changes/archive/2026-07-18-c-72-integridad-rendicion-serverside/` (proposal/design/specs/tasks) y el de c-71 en `openspec/changes/archive/2026-07-15-c-71-inscripcion-gate-y-cola-revision/`, `04_modelo_de_datos.md` §comisión/inscripción/sesión, `05_reglas_de_negocio.md` §RN-BIO (embedding = dato sensible, cliente no confiable) y §RN-SC (integridad de rendición).
+| **c-73** `persistencia-carga-cliente` | ✅ archivado (2026-08-03, PR #25) | Write-back de nota Moodle **por-docente** (no por sistema), modelo de decisión de revisión colapsado a **3 estados en un solo paso** (no dos fases), cierre de auditoría/estadísticas. Specs sincronizadas: `client-session-persistence`, `moodle-campus-integration`, `resilient-data-loading`. | c-72 ✓ | MEDIO |
+| **c-74** `banco-preguntas-categorias-cloze` | ✅ archivado (2026-08-10, PR #26) | Banco de preguntas por categorías + tipo cloze + sorteo + aislamiento por comisión + sync Moodle + seed tutor TUT-001. | c-73 ✓ | MEDIO |
+| **c-75** `lti-auto-provisioning-moodle` | ✅ archivado (2026-08-13) | **Tool Provider LTI 1.3** completo: JWKS + registro dinámico, login OIDC, validación de launch (firma RS256, nonce anti-replay, aud/iss contra allowlist), **JIT provisioning** de alumnos (rol fijo estudiante, matrícula por mapeo `context_id→comisión`), allowlist admin CRUD, landing frontend, contraseña inicial LTI (1er ingreso define, 2do+ directo). Verificado end-to-end contra Moodle real (campustest). Revisión de seguridad enfocada sin hallazgos ≥8/10 de confianza. Specs sincronizadas: `lti-tool-provider`, `lti-jit-provisioning`, `lti-trust-config`, `user-registration`. | c-72 ✓ | CRÍTICO (Auth) |
+
+**Leer antes**: el archivo de c-72 en `openspec/changes/archive/2026-07-18-c-72-integridad-rendicion-serverside/` (proposal/design/specs/tasks), el de c-71 en `openspec/changes/archive/2026-07-15-c-71-inscripcion-gate-y-cola-revision/`, y los de c-73/c-74/c-75 en sus respectivas carpetas `archive/2026-08-*-c-7{3,4,5}-*/`. `04_modelo_de_datos.md` §comisión/inscripción/sesión, `05_reglas_de_negocio.md` §RN-BIO (embedding = dato sensible, cliente no confiable) y §RN-SC (integridad de rendición).
 
 ---
 
-## Árbol de dependencias (pendientes)
+## 🟠 Prioridad — Higiene / deuda técnica identificada (sin change formal todavía)
+
+> Items reales encontrados en sesiones posteriores a C-72 que no tienen change propio. No cuentan en los pendientes del CLI.
+
+| Ítem | Qué es | Gov |
+|------|--------|-----|
+| **Cron de retención** | El motor de C-19 (`RetentionEngine`) existe y sus endpoints admin están montados, pero **no hay ningún cron/scheduler configurado** que los invoque — la retención automática de 180 días no corre sola en producción hoy. | ALTO |
+| **Evidencia a MinIO/WORM** | Screenshots y foto de referencia se guardan hoy como texto/BYTEA en Postgres (marcado "solo demo" en el propio código). Decisión del dueño: **MinIO self-hosted, NO S3** (S3 es pago). Sin change propio — hoy vive implícito en el scope no cubierto de C-19 (que excluyó Object Lock explícitamente por ser slim). | ALTO |
+| **Rename ActiveExam → ActibeExam** | El dueño corrigió (dos veces) que el nombre del producto es **ActibeExam** (con b) en todo el código/UI. | BAJO |
+| **Bug de autorización: tutor crea materias/comisiones** | `gestionar_academico` (que tiene TUTOR) hoy también habilita crear/editar materias y comisiones — debería ser solo `gestionar_estructura` (admin-only). Fix: separar capacidades. | CRÍTICO (Auth) |
+| **Deploy cleanup** | Sacar Keycloak (no se usa, JWT propio + LTI) y otras piezas de referencia sin uso real de docker-compose/env templates antes del deploy productivo. | MEDIO |
+
+---
+
+## Árbol de dependencias (pendientes reales al 2026-08-13)
 
 ```
-c-01-acuerdo-proctoring-dpia (0/23)
-  └── c-03-poc-carga-mensajeria (24/45)   ← absorbe la verificación de SLO bajo carga de c-10
-        └── c-15b-panel-proctor-sse-transport (0/10)   [tiempo real; dep c-03 + c-13]
+c-01-acuerdo-proctoria-dpia (0/23)                      ← gate legal, no-código
+  └── c-03-poc-carga-mensajeria (24/45)                 ← absorbe verificación de SLO de c-10
+        └── c-15b-panel-proctor-sse-transport (0/10)    ← tiempo real; dep c-03 + c-13
               └── (panel en vivo de producción)
+```
 
-c-16-cola-revision-humana (0/15)   ← desbloqueado por el SLIM de c-15 (observaciones); dep c-13
-      └── c-20-reportes-analytics (0/19)
-
-Archivados 2026-06-24 (scope entregado):
-  c-10-event-ingestion-transport  → fan-out implementado; verificación de SLO → c-03
-  c-15-panel-proctor-sse (slim)    → chat/pausa/observaciones/cierre/RBAC (REST+polling)
-
-Desbloqueados hoy (deps ya archivadas — pueden arrancar en paralelo):
-  c-17-dsr-derechos-titular (0/20)         [c-06 ✓]
-  c-18-verificacion-cadena-apelacion (0/20) [c-12 ✓]
-  c-19-retencion-holds (0/19)              [c-07 ✓]
+Eso es **todo lo que queda pendiente en el CLI**. Todo el resto del árbol original (c-10, c-15 slim, c-16 a c-20, c-66 a c-75) está **archivado** — ver tablas arriba.
 
 Planificado sin proponer:
-  integracion-lms-lti (Fase 2, sin número — se le asigna el siguiente libre al proponerlo)
+  integracion-lms-lti (Fase 2, sin número — se le asigna el siguiente libre al proponerlo; **c-75 ya cubrió el Tool Provider LTI 1.3**, esto queda para NRPS/AGS/quizaccess si se retoma)
+
+### Camino crítico restante (2 changes)
+
+```
+c-03 (Bloque 5, host 8+ cores) → c-15b (panel en vivo de producción)
 ```
 
-### Camino crítico restante (4 changes)
-
-```
-c-03 → c-15b → (panel en vivo prod)
-c-16 → c-20            [c-16 ya desbloqueado por el slim de c-15; dep c-13]
-```
-
-(c-01 es gate legal independiente; corre en paralelo, no en serie con el código. c-10 y el slim de c-15 quedaron archivados 2026-06-24.)
+(c-01 es gate legal independiente; corre en paralelo, no en serie con el código.)
 
 ### Plan de ataque con 3 agentes (foto al 2026-06-11 sesión 2)
 
@@ -187,12 +194,15 @@ c-16 → c-20            [c-16 ya desbloqueado por el slim de c-15; dep c-13]
 
 | Bucket | Changes | Tasks totales | Tasks completas |
 |--------|---------|---------------|-----------------|
-| Gate bloqueante (parcial) | c-01, c-03 | 68 | 24 |
+| Gate bloqueante (parcial) | c-01 (0/23), c-03 (24/45) | 68 | 24 |
+| MVP bloqueado por c-03 | c-15b (0/10) | 10 | 0 |
+| **Total pendientes (CLI)** | **3** | **78** | **24** |
 | Archivados 2026-06-24 (scope entregado) | c-10, c-15 (slim) | — | — |
-| MVP bloqueado por c-03 | c-15b | 10 | 0 |
-| MVP sin empezar (0%) | c-16, c-17, c-18, c-19, c-20 | 93 | 0 |
-| **Total pendientes** | **8** | **171** | **24** |
-| Archivados | 53 (c-66 + anteriores) | — | — |
+| Archivados ciclo revisión/legal (2026-06-11 / 2026-08-03) | c-16, c-17, c-18, c-19, c-20 | 99 | 99 |
+| Archivados "examen en plataforma" (2026-07-07 → 2026-08-13) | c-69, c-70, c-71, c-72, c-73, c-74, c-75 | — | — |
+| Archivados (resto: biometría, UI, config, etc.) | c-66, c-67, c-68 + anteriores | — | — |
 | Cancelados (sin retomar) | 4 (c-02, c-39, c-44, c-53) | — | — |
-| **Total universo** | **66** | — | — |
-| Planificado sin crear | integracion-lms-lti (Fase 2, sin número) | — | — |
+| **Total universo (archive/ + pendientes)** | **76** | — | — |
+| Planificado sin crear | integracion-lms-lti (Fase 2, sin número — parcialmente cubierto por c-75) | — | — |
+
+> **Nota de higiene**: este archivo quedó desactualizado entre el 17-jul (último commit real que lo tocó, cierre de c-72) y el 13-ago (esta edición manual). Archivar un change con `openspec archive` **no** actualiza `CHANGES.md` automáticamente — es un paso aparte. Si volvés a ver esta nota vieja en una sesión futura, corré `openspec list --json` antes de confiar en las tablas de arriba.

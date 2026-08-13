@@ -73,7 +73,7 @@ export function CaptureProgress({
     !enExito && !cooldownActivo && retoActualId ? SUB_INSTRUCCION_RETO[retoActualId] : null;
 
   return (
-    <div className="mt-8 text-center space-y-3 w-full max-w-xs" role="status" aria-live="polite">
+    <div className="mt-3 text-center space-y-3 w-full max-w-xs" role="status" aria-live="polite">
       {/* Confirmación visual del paso completado durante el cooldown */}
       {!enExito && cooldownActivo && retoRecienResueltoLabel && (
         <div className="flex flex-col items-center gap-1 animate-in fade-in duration-200">

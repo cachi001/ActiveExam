@@ -6,7 +6,7 @@ export const ROL_LABELS: Record<string, string> = {
   estudiante: 'Estudiante',
   tutor: 'Tutor',
   proctor: 'Proctor',
-  admin_sistema: 'Administrador',
+  admin_sistema: 'Admin',
   // Legacy: cuentas viejas que todavía tuvieran el valor "docente" (pre-migración 0060).
   docente: 'Tutor',
 };
@@ -14,7 +14,7 @@ export const ROL_LABELS: Record<string, string> = {
 // Qué puede hacer cada rol, en castellano llano. Se muestra en el formulario de alta.
 export const ROL_DESCRIPCIONES: Record<string, string> = {
   estudiante: 'Rinde exámenes. Solo ve lo suyo.',
-  tutor: 'Carga y configura exámenes, materias y comisiones, y cierra notas.',
+  tutor: 'Carga y configura exámenes, inscribe alumnos y cierra notas. No crea materias ni comisiones.',
   proctor: 'Supervisa exámenes en vivo y registra observaciones. No decide sanciones.',
   admin_sistema: 'Acceso total, incluida la configuración del sistema y los usuarios.',
 };

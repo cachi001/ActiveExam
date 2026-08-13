@@ -65,6 +65,10 @@ export default function Examen() {
   const streamRef = useRef<MediaStream | null>(null);
 
   const [tiempoLimiteMin, setTiempoLimiteMin] = useState<number | null | undefined>(undefined);
+  // Ancla server-autoritativa del countdown: cuándo el alumno EMPEZÓ a rendir
+  // (server la setea idempotente en el primer fetch). Preferida sobre creada_en de
+  // la sesión, que puede caer en el consentimiento anticipado (fix del "60 → 58").
+  const [examenIniciadoEn, setExamenIniciadoEn] = useState<string | null>(null);
   const [segRestantes, setSegRestantes] = useState<number | null>(null);
   const [alerta, setAlerta] = useState<EventoSesion | null>(null);
   const [pausaActiva, setPausaActiva] = useState(false);
@@ -131,30 +135,35 @@ export default function Examen() {
         setPreguntasRaw(data.preguntas);
         setMezclar(!!data.mezclar_preguntas);
         setTiempoLimiteMin(data.tiempo_limite_min ?? null);
-        // segRestantes se calcula en el efecto de abajo, anclado a sessionCreadaEn
-        // (server-autoritativa) — no acá, para no regalarle tiempo extra a un F5.
+        setExamenIniciadoEn(data.examen_iniciado_en ?? null);
+        // segRestantes se calcula en el efecto de abajo, anclado al inicio REAL del
+        // examen (examen_iniciado_en, server-autoritativo) — no acá, para no
+        // regalarle tiempo extra a un F5.
       })
       .catch(() => {})
       .finally(() => setCargandoPreguntas(false));
   }, [examen?.examen_contenido_id]);
 
-  // Vuln reload: ancla el countdown a la `creada_en` de la sesión de proctoring
-  // (server-autoritativa), NO a la hora de montaje de este componente. Sin esto,
-  // recargar la página a mitad de examen le regalaba `tiempo_limite_min` COMPLETOS
-  // de nuevo al alumno (timer reseteado) cada vez. `sessionCreadaEn` puede resolver
-  // después de `tiempoLimiteMin` (dos fetches async independientes); si todavía no
-  // llegó, se usa "ahora" como fallback transitorio — este efecto se auto-corrige
-  // apenas `sessionCreadaEn` cambia.
+  // Vuln reload: ancla el countdown a un timestamp SERVER-AUTORITATIVO, NO a la hora
+  // de montaje de este componente. Sin esto, recargar la página a mitad de examen le
+  // regalaba `tiempo_limite_min` COMPLETOS de nuevo al alumno (timer reseteado).
+  //
+  // Ancla PREFERIDA: `examenIniciadoEn` (cuándo el alumno EMPEZÓ a rendir, seteado
+  // por el server en el primer fetch). Fallback a `sessionCreadaEn` (creación de la
+  // sesión) para backends viejos o sin sesión activa. Se prefiere `examenIniciadoEn`
+  // porque la sesión puede crearse ANTES de rendir (consentimiento/biometría
+  // anticipados) y anclar ahí le descontaría esos minutos al examen (bug "60 → 58").
   useEffect(() => {
     if (tiempoLimiteMin === null || tiempoLimiteMin === undefined || tiempoLimiteMin <= 0) {
       setSegRestantes(null);
       return;
     }
-    const anclaMs = sessionCreadaEn ? new Date(sessionCreadaEn).getTime() : Date.now();
+    const ancla = examenIniciadoEn ?? sessionCreadaEn;
+    const anclaMs = ancla ? new Date(ancla).getTime() : Date.now();
     const transcurridoSeg = Math.floor((Date.now() - anclaMs) / 1000);
     const totalSeg = tiempoLimiteMin * 60;
     setSegRestantes(Math.max(0, totalSeg - transcurridoSeg));
-  }, [tiempoLimiteMin, sessionCreadaEn]);
+  }, [tiempoLimiteMin, examenIniciadoEn, sessionCreadaEn]);
 
   const lastAlertaTsByTipo = useRef<Record<string, number>>({});
   const ALERTA_COOLDOWN_MS = 120_000;

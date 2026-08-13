@@ -97,6 +97,12 @@ class UsuarioModel(Base):
     debe_cambiar_password: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="false"
     )
+    # 0066: override admin de un solo uso para rehacer la referencia biométrica.
+    # El alumno no puede rehacerla mientras siga vigente; un admin puede habilitar
+    # UNA rehecha (TRUE). Se consume (vuelve a FALSE) al guardar la nueva referencia.
+    biometria_rehacer_habilitada: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
     # C-61: datos personales (nullable — compatibilidad con usuarios pre-existentes).
     nombre: Mapped[str | None] = mapped_column(String(255), nullable=True)
     apellido: Mapped[str | None] = mapped_column(String(255), nullable=True)

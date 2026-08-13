@@ -2,6 +2,7 @@ import { BackButton } from '../../../ui/components';
 import { HelpButton } from '../../../ui/HelpButton';
 import { ENABLE_DNI_SCAN } from '../../../lib/api';
 import { PerfilHeaderCard } from './PerfilHeaderCard';
+import { MisComisionesCard } from './MisComisionesCard';
 import { PerfilBannerEstado } from './PerfilBannerEstado';
 import { RequisitoConsentimiento } from './RequisitoConsentimiento';
 import { RequisitoBiometria } from './RequisitoBiometria';
@@ -79,6 +80,8 @@ export function PerfilVistaGeneral({
         principal={principal}
         onRehacerFoto={consentimientoOk ? onRehacerFoto : undefined}
       />
+
+      <MisComisionesCard />
 
       <PerfilBannerEstado
         perfilCompleto={perfilCompleto}

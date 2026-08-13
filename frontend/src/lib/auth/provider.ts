@@ -42,6 +42,14 @@ export interface AuthProvider {
    */
   refresh?(): Promise<string | undefined>;
 
+  /**
+   * Adopta una sesión ya emitida por el backend (tokens por parámetro), sin pasar
+   * por el formulario de login. Lo usa la landing LTI (C-75 §7.1): el launch valida
+   * al alumno server-side y redirige al frontend con los tokens.
+   * Opcional: sólo JwtAdapter lo implementa (Keycloak gestiona su propia sesión).
+   */
+  seedSession?(accessToken: string, refreshToken?: string): void;
+
   /** Retorna el principal autenticado, o null si no hay sesión. */
   getPrincipal(): Principal | null;
 

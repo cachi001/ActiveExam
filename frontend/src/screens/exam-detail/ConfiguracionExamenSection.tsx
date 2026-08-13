@@ -72,6 +72,9 @@ function validarConfig(form: ConfigForm): string | null {
   if (Number.isNaN(max) || max <= 0) {
     return 'La nota máxima debe ser un número mayor a 0.';
   }
+  if (max > 100) {
+    return 'La nota máxima no puede superar 100.';
+  }
   if (Number.isNaN(aprob) || aprob < 0) {
     return 'La nota de aprobación debe ser un número válido.';
   }
@@ -342,7 +345,8 @@ export function ConfiguracionExamenSection({ examenId }: { examenId: string }) {
               <input
                 id="cfg-nota-max"
                 type="number"
-                min={0}
+                min={1}
+                max={100}
                 step="any"
                 inputMode="decimal"
                 className={INPUT_CLS}

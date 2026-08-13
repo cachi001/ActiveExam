@@ -13,8 +13,9 @@ import {
   borrarCategoria,
   listarPreguntasBanco,
   moverPreguntaCategoria,
+  moverCategoria,
 } from '../lib/apiAdmin/bancoPreguntasApi';
-import { CategoriasTree } from './banco-preguntas/CategoriasTree';
+import { CategoriasTree, serializarDnd } from './banco-preguntas/CategoriasTree';
 import { limpiarEnunciadoCloze } from '../lib/cloze';
 import { HelpButton } from '../ui/HelpButton';
 import { Pagination, PageSizeSelect } from '../ui/Pagination';
@@ -153,7 +154,12 @@ function ListaPreguntas({
           return (
           <div
             key={p.id}
-            className="flex items-center gap-3 px-4 py-3 rounded-xl border border-surface-200 bg-white hover:bg-surface-50 hover:border-surface-300 transition-all duration-200 shadow-xs"
+            draggable
+            onDragStart={(e) => {
+              e.dataTransfer.setData('application/x-banco', serializarDnd({ kind: 'question', id: p.id }));
+              e.dataTransfer.effectAllowed = 'move';
+            }}
+            className="flex items-center gap-3 px-4 py-3 rounded-xl border border-surface-200 bg-white hover:bg-surface-50 hover:border-surface-300 transition-all duration-200 shadow-xs cursor-grab active:cursor-grabbing"
           >
             <div className="w-7 h-7 rounded-lg bg-secondary/10 text-secondary flex items-center justify-center shrink-0">
               <Icon
@@ -375,6 +381,17 @@ export default function BancoPreguntasPage() {
     }
   }
 
+  async function handleMoverCategoria(categoriaId: string, nuevoPadreId: string | null) {
+    try {
+      await moverCategoria(categoriaId, nuevoPadreId);
+      toast.success(nuevoPadreId ? 'Categoría anidada.' : 'Categoría movida a raíz.');
+      await cargarCategorias(materiaId);
+    } catch (e) {
+      // El backend explica el motivo (ciclo / materia distinta) en el mensaje.
+      toast.error(e instanceof Error ? e.message : 'Error al mover la categoría.');
+    }
+  }
+
   const tituloCategoria = catSeleccionada === null
     ? 'Sin clasificar'
     : (categorias.find((c) => c.id === catSeleccionada)?.nombre ?? '');
@@ -446,6 +463,8 @@ export default function BancoPreguntasPage() {
                   onCrear={(padreId) => setDialogoCrear({ padreId })}
                   onRenombrar={setDialogoRenombrar}
                   onBorrar={setDialogoBorrar}
+                  onMoverCategoria={handleMoverCategoria}
+                  onMoverPregunta={handleMoverPregunta}
                 />
               )}
             </div>

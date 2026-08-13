@@ -2,12 +2,13 @@ import { StaffShell } from '../ui/shells';
 import { Card, Icon } from '../ui/components';
 import { STAFF_NAV } from '../ui/nav';
 import { useAuth } from '../lib/authStore';
+import { legajoVisible } from '../lib/legajo';
 import MiCuentaCampus, { MiCuentaCampusAyuda } from './configuracion/MiCuentaCampus';
 import SeccionSeguridad from './configuracion/SeccionSeguridad';
 import type { Rol } from '../lib/types';
 
 const ROL_LABEL: Record<Rol, string> = {
-  admin_sistema:   'Admin sistema',
+  admin_sistema:   'Admin',
   admin_examenes:  'Admin exámenes',
   tutor:           'Tutor',
   coordinador:     'Coordinador',
@@ -56,7 +57,7 @@ export default function Perfil() {
 
   return (
     <StaffShell nav={STAFF_NAV} title="Mi perfil" subtitle="Configuración de tu cuenta">
-      <div className="max-w-4xl space-y-6 animate-in fade-in duration-500">
+      <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in duration-500">
 
         {/* Encabezado: avatar al lado del nombre + roles (no como un campo más) */}
         <Card>
@@ -89,9 +90,11 @@ export default function Perfil() {
 
           <div className="grid grid-cols-1 gap-x-10 gap-y-6 sm:grid-cols-2">
             <InfoField label="Nombre completo">{nombreCompleto}</InfoField>
-            <InfoField label="Legajo / Usuario">
-              {principal?.id_institucional ?? '—'}
-            </InfoField>
+            {legajoVisible(principal?.id_institucional) && (
+              <InfoField label="Legajo / Usuario">
+                {legajoVisible(principal?.id_institucional)}
+              </InfoField>
+            )}
 
             <InfoField label="Email">
               {principal?.email ?? '—'}

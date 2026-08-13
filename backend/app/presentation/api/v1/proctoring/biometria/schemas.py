@@ -94,3 +94,11 @@ class EstadoReferenciaOut(BaseModel):
     tiene_referencia_vigente: bool = Field(
         ..., description="True si el usuario tiene embedding de referencia vigente"
     )
+    rehacer_habilitado: bool = Field(
+        default=False,
+        description=(
+            "True si un admin habilitó al alumno a rehacer su referencia vigente "
+            "(override de un solo uso). El frontend muestra el botón 'Rehacer' solo "
+            "si esto es True (o si la referencia venció)."
+        ),
+    )

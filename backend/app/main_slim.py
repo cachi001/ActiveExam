@@ -60,6 +60,7 @@ from app.presentation.api.v1.exam_content.router import (
     create_exam_taking_router,
     create_periodos_router,
 )
+from app.presentation.api.v1.lti import create_lti_router
 from app.presentation.api.v1.proctoring.router import create_proctoring_router
 from app.presentation.api.v1.scoring.router import router as scoring_router
 from app.presentation.api.v1.users.router import router as users_router
@@ -295,6 +296,38 @@ def create_slim_app() -> FastAPI:
         create_audit_router(session_factory=session_factory),
         prefix="/api/v1/admin",
         tags=["audit"],
+    )
+
+    # LTI 1.3 Tool Provider (C-75): JWKS + registro dinámico + login OIDC + launch
+    # + JIT provisioning + emisión de sesión (sección 5).
+    # Endpoints PÚBLICOS (el flujo LTI ocurre antes de tener sesión). La confianza
+    # viene de la allowlist `lti_deployment_confiable` y de la firma del id_token.
+    # jwt_secret / jwt_issuer / jwt_audience: MISMO emisor que POST /auth/login
+    # (design D4 — un launch LTI válido es prueba de identidad suficiente para
+    # emitir el JWT de sesión sin pedir contraseña).
+    app.include_router(
+        create_lti_router(
+            session_factory=session_factory,
+            cipher=SecretCipher(key=settings.embedding_encryption_key),
+            jwt_secret=settings.jwt_own_secret,
+            jwt_issuer=settings.jwt_own_issuer,
+            jwt_audience=settings.jwt_audience,
+            jwt_ttl_seconds=settings.access_token_ttl_seconds,
+            refresh_ttl_seconds=settings.refresh_token_ttl_seconds,
+            frontend_url=settings.frontend_origin,
+        ),
+        prefix="/api/v1/lti",
+        tags=["lti"],
+    )
+
+    # Admin del allowlist LTI (C-75 sección 6): CRUD admin_sistema-only de
+    # `lti_deployment_confiable` — la raíz de confianza del flujo LTI.
+    from app.presentation.api.v1.admin import create_lti_admin_router
+
+    app.include_router(
+        create_lti_admin_router(session_factory=session_factory),
+        prefix="/api/v1/admin",
+        tags=["admin", "lti"],
     )
 
     return app

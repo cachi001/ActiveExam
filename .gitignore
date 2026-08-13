@@ -12,6 +12,7 @@ __pycache__/
 *.py[cod]
 .venv/
 venv/
+.venv312/
 .pytest_cache/
 .ruff_cache/
 *.egg-info/
@@ -55,3 +56,7 @@ backend/.venv-test/
 # Decisión del owner: NADA de docs/ se versiona — son material de consulta local,
 # pesado y a menudo con datos del campus.
 docs/
+
+# Throwaways locales de la sesión de demo (no versionar)
+tmp/
+import_cloze.py

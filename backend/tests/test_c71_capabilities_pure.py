@@ -39,6 +39,25 @@ def test_resolver_caso_ya_no_existe_como_capacidad_del_mapa() -> None:
     assert "resolver_caso" not in CAPABILITY_ROLES
 
 
+def test_tutor_no_puede_gestionar_estructura_academica() -> None:
+    """El tutor NO crea materias/comisiones (estructura académica) — solo admin.
+    Corrige el over-permiso: `gestionar_academico` incluía al tutor y protegía
+    también el alta de materias/comisiones."""
+    assert tiene_capacidad(Rol.TUTOR, "gestionar_estructura") is False
+
+
+def test_admins_pueden_gestionar_estructura_academica() -> None:
+    """Alta/edición de materias y comisiones: roles de alcance institucional."""
+    assert tiene_capacidad(Rol.ADMIN_SISTEMA, "gestionar_estructura") is True
+    assert tiene_capacidad(Rol.ADMIN_EXAMENES, "gestionar_estructura") is True
+    assert tiene_capacidad(Rol.COORDINADOR, "gestionar_estructura") is True
+
+
+def test_tutor_conserva_gestionar_academico() -> None:
+    """El tutor SIGUE pudiendo inscribir y crear exámenes (no se le saca eso)."""
+    assert tiene_capacidad(Rol.TUTOR, "gestionar_academico") is True
+
+
 def test_reasignar_capacidad_en_el_mapa_cambia_el_gating_sin_tocar_endpoint(
     monkeypatch,
 ) -> None:

@@ -6,6 +6,7 @@ import type { Comision } from '../../../lib/types';
 import { AlumnosComisionPanel } from './AlumnosComisionPanel';
 import { AsignarDocenteDialog } from './AsignarDocenteDialog';
 import { useAuth } from '../../../lib/authStore';
+import { tieneCapacidad } from '../../../lib/capabilities';
 import { INPUT_CLASS, LABEL_CLASS, type FormComision } from './materiasComisionesTypes';
 
 interface ComisionesAccordionBodyProps {
@@ -51,6 +52,10 @@ export function ComisionesAccordionBody({
 }: ComisionesAccordionBodyProps) {
   // C-73 §9.5: docente a cargo de la comisión.
   const esAdmin = useAuth((st) => st.hasRole)(['admin_sistema']);
+  // Crear/editar/borrar comisiones = estructura académica (admin). El tutor
+  // puede ver alumnos e inscribir, pero no editar la estructura de la comisión.
+  const rolesActuales = useAuth((s) => s.principal?.roles) ?? [];
+  const puedeEditarEstructura = tieneCapacidad(rolesActuales, 'gestionar_estructura');
   const [asignando, setAsignando] = useState<Comision | null>(null);
   const [docenteLocal, setDocenteLocal] = useState<Record<string, string | null>>({});
   // Acciones del menú kebab por comisión. "Eliminar" solo aparece si la comisión
@@ -60,7 +65,9 @@ export function ComisionesAccordionBody({
     const vacia = (c.total_inscriptos ?? 0) === 0 && (c.total_examenes ?? 0) === 0;
     return [
       { label: comExpandida ? 'Ocultar alumnos' : 'Ver alumnos', icon: 'groups', onClick: () => toggleComision(c.id) },
-      { label: 'Editar comisión', icon: 'edit', onClick: () => abrirEditarComision(materiaId, c) },
+      ...(puedeEditarEstructura
+        ? [{ label: 'Editar comisión', icon: 'edit', onClick: () => abrirEditarComision(materiaId, c) } as ActionItem]
+        : []),
       // Solo admin_sistema: la lista de usuarios (de donde sale el selector) es
       // admin-only, así que ofrecérselo a otro rol daría un diálogo vacío.
       ...(esAdmin
@@ -70,7 +77,7 @@ export function ComisionesAccordionBody({
             onClick: () => setAsignando(c),
           } as ActionItem]
         : []),
-      ...(vacia
+      ...(vacia && puedeEditarEstructura
         ? [{ label: 'Eliminar comisión', icon: 'delete', danger: true, onClick: () => abrirEliminarComision(c) } as ActionItem]
         : []),
     ];
@@ -255,13 +262,15 @@ export function ComisionesAccordionBody({
         <div className="py-6 px-8 text-on-surface-variant text-[13px] flex items-center gap-2">
           <Icon name="info" className="text-[16px] shrink-0" />
           No hay comisiones todavía.
-          <button
-            type="button"
-            onClick={() => abrirCrearComision(materiaId)}
-            className="text-primary hover:underline font-medium ml-1"
-          >
-            Agregar la primera
-          </button>
+          {puedeEditarEstructura && (
+            <button
+              type="button"
+              onClick={() => abrirCrearComision(materiaId)}
+              className="text-primary hover:underline font-medium ml-1"
+            >
+              Agregar la primera
+            </button>
+          )}
         </div>
       ) : comisiones && comisiones.length > 0 ? (
         <>

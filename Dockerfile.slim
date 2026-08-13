@@ -73,4 +73,4 @@ CMD echo ">>> [1/3] migrando DB (alembic slim@head)..." && \
     echo ">>> [2/3] migracion OK -> seed idempotente (usuarios + Programacion 1 / Comision 1 / examen)..." && \
     (python scripts/seed_users.py --slim || echo ">>> WARN: seed incompleto (revisar SEED_*_PASSWORD) — el server arranca igual") && \
     echo ">>> [3/3] -> levantando uvicorn en ${PORT:-8000}" && \
-    uvicorn app.main_slim:app --host 0.0.0.0 --port ${PORT:-8000}
+    uvicorn app.main_slim:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers --forwarded-allow-ips="*"

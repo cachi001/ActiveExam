@@ -81,10 +81,18 @@ class FotoReferenciaRepository:
         await self._session.flush()
         return row
 
-    async def obtener_vigente(self, usuario_id: str) -> FotoReferenciaModel | None:
-        """Devuelve el registro vigente del usuario, o None si no existe."""
+    async def obtener_vigente(self, usuario_id: str) -> str | None:
+        """Devuelve el ``id`` de la foto vigente del usuario, o None si no existe.
+
+        Selecciona SOLO la columna ``id`` (existe tanto en el schema full como en
+        el slim), no la fila entera: el modelo full trae ``uri_storage``/``bucket``
+        y el slim ``foto_bytes`` — un ``select(FotoReferenciaModel)`` pediría
+        ``uri_storage`` y revienta contra la tabla slim (UndefinedColumnError). El
+        único consumidor (gate de perfil en la matriculación) solo comprueba
+        existencia (``is not None``), así que el id alcanza.
+        """
         result = await self._session.execute(
-            select(FotoReferenciaModel).where(
+            select(FotoReferenciaModel.id).where(
                 FotoReferenciaModel.usuario_id == usuario_id,
                 FotoReferenciaModel.vigente == True,  # noqa: E712
             )

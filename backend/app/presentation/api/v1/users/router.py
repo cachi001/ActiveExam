@@ -449,6 +449,63 @@ async def editar_usuario(
 
 
 # ---------------------------------------------------------------------------
+# POST /{usuario_id}/habilitar-rehacer-biometria — override de un solo uso
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/{usuario_id}/habilitar-rehacer-biometria",
+    response_model=None,
+    summary="Habilita al alumno a rehacer su referencia biométrica (una vez).",
+)
+async def habilitar_rehacer_biometria(
+    usuario_id: str,
+    request: Request,
+    principal: AuthenticatedPrincipal = Depends(_require_admin),
+) -> dict:
+    """Pone ``biometria_rehacer_habilitada = TRUE`` para el usuario.
+
+    El alumno no puede rehacer su captura biométrica mientras siga vigente; con
+    esto un admin le habilita UNA nueva captura. El flag se CONSUME (vuelve a
+    FALSE) automáticamente cuando el alumno guarda la nueva referencia.
+    404 si el usuario no existe.
+    """
+    session_factory = _get_session_factory(request)
+    async with session_factory() as session:
+        result = await session.execute(
+            select(UsuarioModel).where(
+                UsuarioModel.id == usuario_id,
+                UsuarioModel.eliminado_en.is_(None),
+            )
+        )
+        usuario = result.scalar_one_or_none()
+        if usuario is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Usuario no encontrado.",
+            )
+        usuario.biometria_rehacer_habilitada = True
+        await session.commit()
+
+    from app.application.audit.service import registrar_seguro
+
+    await registrar_seguro(
+        session_factory,
+        actor=principal.email,
+        accion=AccionAuditoria.USUARIO_EDICION,
+        modulo=ModuloAuditoria.USUARIOS,
+        entidad=EntidadAuditoria.USUARIO,
+        tipo_accion=TipoAccionAuditoria.EDITAR,
+        entidad_id=str(usuario_id),
+        ip=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+        proposito="Habilitó al alumno a rehacer su referencia biométrica (una vez)",
+    )
+
+    return {"biometria_rehacer_habilitada": True}
+
+
+# ---------------------------------------------------------------------------
 # DELETE /{usuario_id} — baja logica soft-delete (C-61, D3)
 # ---------------------------------------------------------------------------
 

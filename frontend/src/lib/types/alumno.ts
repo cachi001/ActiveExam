@@ -83,6 +83,12 @@ export interface ReferenciasBiometrica {
    */
   renovacion_anticipada_requerida: boolean;
   /**
+   * true si un admin habilitó al alumno a rehacer su referencia vigente (override
+   * de un solo uso). Mientras la referencia esté vigente, el botón "Rehacer" solo
+   * aparece si esto es true; si venció, aparece igual (renovación normal).
+   */
+  rehacer_habilitado?: boolean;
+  /**
    * C-56: UUID opaco del registro en `embedding_referencia` (backend).
    * Presente solo en modo real (USE_REAL_BACKEND=1) tras un enrollment exitoso.
    * El cliente persiste este ID en el store (no el embedding crudo).

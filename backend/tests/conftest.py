@@ -78,6 +78,7 @@ def _importar_todos_los_modelos() -> None:
         event,
         exam_content,
         inscripcion,
+        lti,
         moodle_writeback,
         observacion,
         proctoring,

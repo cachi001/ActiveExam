@@ -214,3 +214,31 @@ describe('JwtAdapter.onAuthChange()', () => {
     expect(calls).not.toContain('authenticated');
   });
 });
+
+describe('JwtAdapter.seedSession() (LTI landing, C-75 §7.1)', () => {
+  it('persiste tokens externos y deja la sesión autenticada', async () => {
+    const token = _token({ preferred_username: 'lti:7:mdl-100' });
+    const adapter = new JwtAdapter();
+    const calls: string[] = [];
+    adapter.onAuthChange((s) => calls.push(s));
+
+    adapter.seedSession(token, 'refresh-jti-abc');
+
+    expect(_storage.get('jwt_access_token')).toBe(token);
+    expect(_storage.get('jwt_refresh_token')).toBe('refresh-jti-abc');
+    expect(_storage.get('jwt_access_token_expires_at')).toBe(String(NOW_EPOCH + 3600));
+    expect(adapter.getPrincipal()?.id_institucional).toBe('lti:7:mdl-100');
+    expect(calls).toContain('authenticated');
+  });
+
+  it('token malformado → no autentica (falla cerrado)', () => {
+    const adapter = new JwtAdapter();
+    const calls: string[] = [];
+    adapter.onAuthChange((s) => calls.push(s));
+
+    adapter.seedSession('no-es-un-jwt', 'refresh');
+
+    expect(adapter.getPrincipal()).toBeNull();
+    expect(calls).toContain('unauthenticated');
+  });
+});

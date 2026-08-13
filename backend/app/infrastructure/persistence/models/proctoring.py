@@ -76,6 +76,17 @@ class ProctoringSessionModel(Base):
         nullable=True,
     )
 
+    # Ancla del timer de examen (migración 0067). Momento en que el alumno abre las
+    # preguntas por primera vez, seteado idempotente server-side en el primer fetch
+    # de rendición. NO es `creada_en`: la sesión puede crearse anticipadamente en el
+    # consentimiento/biometría, y anclar el reloj ahí le descontaría esos minutos al
+    # examen. NULL hasta el primer fetch (el timer cae a `creada_en` como fallback).
+    # INMUTABLE una vez seteado (a prueba de F5: relecturas devuelven el original).
+    examen_iniciado_en: Mapped[str | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
     # C-69 (migration 0033): identidad del alumno persistida al CREAR la sesion.
     # Antes la identidad se extraia del JWT recien en finalize (write-back). El
     # enforcement server-side de intentos por examen necesita contar las sesiones
