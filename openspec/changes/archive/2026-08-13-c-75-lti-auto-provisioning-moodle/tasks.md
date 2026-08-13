@@ -63,5 +63,5 @@
 
 ## 9. Gobernanza y cierre
 
-- [ ] 9.1 Revisión de seguridad del endpoint público antes de considerar el change listo para algo más que `ZZ Test` (dominio CRÍTICO — Auth)
-- [ ] 9.2 `openspec archive` una vez todas las tasks estén en verde y la prueba en vivo (sección 8) esté documentada
+- [x] 9.1 Revisión de seguridad del endpoint público antes de considerar el change listo para algo más que `ZZ Test` (dominio CRÍTICO — Auth). Revisión de código enfocada (JWT/JWKS, nonce anti-replay, aud/iss contra allowlist, JIT, admin CRUD, fuga de tokens): sin hallazgos ≥8/10 de confianza. Observaciones menores (sin bloquear): `email` sin constraint único en `UsuarioModel` (colisión LTI/local → 500 en login, no bypass de auth); `jwks_uri` del admin sin allowlist de host/esquema (SSRF teórico, requiere actor ya privilegiado `admin_sistema`). Túnel cloudflared sigue siendo temporal — deploy real queda fuera de este change.
+- [x] 9.2 `openspec archive` una vez todas las tasks estén en verde y la prueba en vivo (sección 8) esté documentada
