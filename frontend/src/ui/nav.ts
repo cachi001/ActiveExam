@@ -44,6 +44,10 @@ export const STAFF_NAV: StaffNavItem[] = [
   { to: '/admin/estadisticas',          icon: 'insights',        label: 'Estadísticas',            group: 'main',   roles: ACADEMICO },
   { to: '/admin/examenes',              icon: 'fact_check',      label: 'Exámenes',                group: 'main',   roles: ACADEMICO },
   { to: '/admin/banco-preguntas',       icon: 'library_books',   label: 'Banco de preguntas',       group: 'main',   roles: ACADEMICO },
+  // Académico, NO administración del sistema: va en 'main' junto a Exámenes y Banco.
+  // Antes estaba en 'config' y para el tutor (cuyo único item de config es este)
+  // quedaba un divider separando un item solitario, sin sentido.
+  { to: '/admin/materias',              icon: 'school',          label: 'Materias y comisiones',   group: 'main',   roles: ACADEMICO },
   // Bloque "proctoring": las 3 vistas de sesiones van juntas y al FINAL del grupo
   // main (justo arriba del divider), en orden de flujo: vivo → cola → grabadas.
   // Visibles para proctor + admin (SUPERVISION).
@@ -52,7 +56,6 @@ export const STAFF_NAV: StaffNavItem[] = [
   { to: '/admin/proctoring-sessions',   icon: 'history',         label: 'Registro de sesiones',    group: 'main',   roles: SUPERVISION },
   // Administración: separadas con divider. Solo admin.
   { to: '/admin/usuarios',              icon: 'manage_accounts', label: 'Usuarios',                group: 'config', roles: ADMIN },
-  { to: '/admin/materias',              icon: 'school',          label: 'Materias y comisiones',   group: 'config', roles: ACADEMICO },
   { to: '/admin/detection-test',        icon: 'bug_report',      label: 'Test de detección',       group: 'config', roles: ADMIN },
   { to: '/admin/auditoria',             icon: 'verified_user',   label: 'Auditoría',               group: 'config', roles: AUDITORIA },
   { to: '/admin/configuracion',         icon: 'settings',        label: 'Configuración',           group: 'config', roles: ADMIN },

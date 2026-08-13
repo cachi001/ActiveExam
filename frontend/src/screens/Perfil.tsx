@@ -57,7 +57,7 @@ export default function Perfil() {
 
   return (
     <StaffShell nav={STAFF_NAV} title="Mi perfil" subtitle="Configuración de tu cuenta">
-      <div className="max-w-4xl space-y-6 animate-in fade-in duration-500">
+      <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in duration-500">
 
         {/* Encabezado: avatar al lado del nombre + roles (no como un campo más) */}
         <Card>
