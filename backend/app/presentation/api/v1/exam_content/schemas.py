@@ -10,7 +10,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from app.domain.exam_content.entities import PoliticaIntentos
 
 
@@ -358,6 +358,21 @@ class CrearDesdebancoRequest(BaseModel):
     # puede elegir otra escala acá mismo, al crear, sin un PATCH /config aparte.
     nota_maxima: float = Field(default=100.0, gt=0, le=100)
     nota_aprobacion: float = Field(default=60.0, ge=0)
+
+    @model_validator(mode="after")
+    def validar_nota_aprobacion_le_maxima(self) -> "CrearDesdebancoRequest":
+        """Defensa en profundidad: nota_aprobacion <= nota_maxima.
+
+        La invariante también se aplica imperativamente en el router (422) y
+        en validar_config_examen (dominio). Este validator la declara a nivel
+        schema para que cualquier endpoint nuevo la herede automáticamente.
+        """
+        if self.nota_aprobacion > self.nota_maxima:
+            raise ValueError(
+                f"nota_aprobacion ({self.nota_aprobacion}) no puede superar "
+                f"nota_maxima ({self.nota_maxima})."
+            )
+        return self
 
 
 class CrearDesdebancoResponse(BaseModel):
@@ -714,6 +729,22 @@ class ExamenConfigPatchRequest(BaseModel):
     revision_habilitada: bool | None = None
     politica_intentos: PoliticaIntentos | None = None
 
+    @model_validator(mode="after")
+    def validar_nota_aprobacion_le_maxima(self) -> "ExamenConfigPatchRequest":
+        """Defensa en profundidad: nota_aprobacion <= nota_maxima en PATCH.
+
+        Solo se valida cuando AMBOS campos llegan en el mismo body. Si viene
+        solo uno, el chequeo del resultado mergeado lo hace validar_config_examen
+        (dominio), que sí tiene el valor persistido disponible.
+        """
+        if self.nota_aprobacion is not None and self.nota_maxima is not None:
+            if self.nota_aprobacion > self.nota_maxima:
+                raise ValueError(
+                    f"nota_aprobacion ({self.nota_aprobacion}) no puede superar "
+                    f"nota_maxima ({self.nota_maxima})."
+                )
+        return self
+
 
 # ---------------------------------------------------------------------------
 # Resultados del examen + sincronización a Moodle (C-69 admin-sync, tareas 2-3)
@@ -750,6 +781,21 @@ class ResultadosExamenPaginadosResponse(BaseModel):
     total: int
     page: int
     page_size: int
+
+
+class SincronizarMoodleRequest(BaseModel):
+    """Body OPCIONAL del endpoint de sincronización.
+
+    - Sin body (o body ausente): sincroniza TODAS las notas pendientes/fallidas
+      (comportamiento original, retrocompatible).
+    - Con ``session_ids``: sincroniza SOLO esas sesiones específicas.
+      Las notas retenidas por riesgo/configuración siguen sin enviarse aunque estén
+      en la lista (el gate D15 se aplica siempre, por diseño L2.5).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    session_ids: list[str] | None = None
 
 
 class SincronizarMoodleResponse(BaseModel):

@@ -34,7 +34,7 @@ def _claims_base(iss: str) -> dict:
         "preferred_username": "alu123",
         "email": "alu123@uni.edu",
         "exp": 9999999999,
-        "realm_access": {"roles": ["proctor"]},
+        "realm_access": {"roles": ["coordinador"]},
     }
 
 
@@ -42,14 +42,14 @@ def test_issuer_propio_aceptado() -> None:
     policy = _policy_multi()
     principal = policy.principal_desde_claims(_claims_base(_ISSUER_PROPIO))
     assert principal.id_institucional == "alu123"
-    assert Rol.PROCTOR in principal.roles
+    assert Rol.COORDINADOR in principal.roles
 
 
 def test_issuer_keycloak_aceptado() -> None:
     policy = _policy_multi()
     principal = policy.principal_desde_claims(_claims_base(_ISSUER_KEYCLOAK))
     assert principal.id_institucional == "alu123"
-    assert Rol.PROCTOR in principal.roles
+    assert Rol.COORDINADOR in principal.roles
 
 
 def test_issuer_desconocido_rechazado() -> None:

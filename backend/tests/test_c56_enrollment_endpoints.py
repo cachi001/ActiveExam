@@ -321,9 +321,9 @@ async def test_foto_perfil_403_rol_incorrecto(monkeypatch: pytest.MonkeyPatch) -
 
         def validar(self, token: str) -> AuthenticatedPrincipal:
             return AuthenticatedPrincipal(
-                id_institucional="proctor-001",
-                email="proctor@demo.test",
-                roles=["proctor"],
+                id_institucional="coordinador-001",  # c-76: rol proctor eliminado -> coordinador
+                email="coordinador@demo.test",
+                roles=["coordinador"],
                 mfa_satisfecho=True,
                 jurisdiccion="AR",
             )

@@ -218,11 +218,14 @@ class TestFiltroRol:
             assert "estudiante" in item["roles"]
 
     async def test_filtro_rol_vacio_si_no_hay(self, ctx):
-        """Filtro rol=proctor cuando no hay proctors → lista vacía (o sin nuestros seeds)."""
+        """Filtro por rol sin coincidencias → lista vacía (o sin nuestros seeds).
+
+        c-76: se usa 'coordinador' (rol vivo) en vez del eliminado 'proctor';
+        ninguno de los seeds (estudiante/admin) lo tiene, así que sigue vacío."""
         c = ctx["client"]
         resp = await c.get(
             "/api/v1/users/",
-            params={"rol": "proctor", "estado": "todos"},
+            params={"rol": "coordinador", "estado": "todos"},
             headers={"Authorization": f"Bearer {ctx['admin_token']}"},
         )
         assert resp.status_code == 200

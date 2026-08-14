@@ -3,12 +3,16 @@ import { Icon } from './components';
 
 export interface AdminColumn<T> {
   key: string;
-  header: string;
+  /** Texto o nodo React para el encabezado de la columna. */
+  header: ReactNode;
   width?: string;
   align?: 'left' | 'center' | 'right';
   headerAlign?: 'left' | 'center' | 'right';
   cell: (row: T) => ReactNode;
+  /** Clases extra para cada <td> de la columna (útil para sticky, fondo, etc.). */
   tdClassName?: string;
+  /** Clases extra para el <th> de la columna (útil para sticky en el encabezado). */
+  thClassName?: string;
 }
 
 interface AdminTableProps<T> {
@@ -51,7 +55,7 @@ export function AdminTable<T>({
             {columns.map((col) => (
               <th
                 key={col.key}
-                className={`px-6 py-4 text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap ${alignClass(col.headerAlign ?? col.align)}`}
+                className={`px-6 py-4 text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-50 ${alignClass(col.headerAlign ?? col.align)} ${col.thClassName ?? ''}`}
               >
                 {col.header}
               </th>

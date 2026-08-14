@@ -18,7 +18,11 @@ class Rol(str, enum.Enum):
     directo en claims/JSON sin perder el control de los valores validos."""
 
     ESTUDIANTE = "estudiante"
-    PROCTOR = "proctor"
+    # (Rol "proctor" ELIMINADO en c-76: el COORDINADOR absorbe la supervision
+    # global en vivo + el veredicto. Los usuarios con rol "proctor" fueron
+    # remapeados a "coordinador" por la migracion 0068. Un claim de token con
+    # "proctor" ya no mapea a ningun Rol de dominio: se descarta en silencio,
+    # igual que cualquier rol desconocido — ver parse_rol y Q1 del design c-76.)
     REVISOR = "revisor"
     COORDINADOR = "coordinador"
     ADMIN_EXAMENES = "admin_examenes"
@@ -37,7 +41,6 @@ class Rol(str, enum.Enum):
 # `08` §Seguridad). El estudiante es el unico exento (solo su propia sesion/datos).
 ROLES_CON_MFA: frozenset[Rol] = frozenset(
     {
-        Rol.PROCTOR,
         Rol.REVISOR,
         Rol.COORDINADOR,
         Rol.ADMIN_EXAMENES,

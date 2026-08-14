@@ -30,6 +30,7 @@ const AdminDetectionHarness = lazy(() => import('./screens/AdminDetectionHarness
 const ProctoringRevisor     = lazy(() => import('./screens/ProctoringRevisor'));
 const ProctoringSessionDetail = lazy(() => import('./screens/ProctoringSessionDetail'));
 const GestionUsuarios       = lazy(() => import('./screens/GestionUsuarios'));
+const UsuarioCreate         = lazy(() => import('./screens/admin/UsuarioCreate'));
 const MateriasComisiones    = lazy(() => import('./screens/MateriasComisiones'));
 const DetalleUsuario        = lazy(() => import('./screens/DetalleUsuario'));
 const ExamDetail            = lazy(() => import('./screens/ExamDetail'));
@@ -104,6 +105,7 @@ export default function App() {
     '/admin/proctoring-sessions': g(<ProctoringRevisor />, SUPERVISION),
     '/admin/proctoring-session-detail/:id': g(<ProctoringSessionDetail />, SUPERVISION),
     '/admin/usuarios': g(<GestionUsuarios />, ADMIN),
+    '/admin/usuarios/nuevo': g(<UsuarioCreate />, ADMIN),
     '/admin/materias': g(<MateriasComisiones />, ACADEMICO),
     '/admin/usuarios/:id': g(<DetalleUsuario />, ADMIN),
     // C-73 §10.8: deja de ser admin-only. El docente entra pero SOLO ve la pestaña

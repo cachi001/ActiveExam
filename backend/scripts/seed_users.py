@@ -36,7 +36,7 @@ CREDENCIALES SEED (para probar el login — identificadores estilo produccion):
     Estudiante 2: id_institucional=EST-002   | email=estudiante2@activeexam.local (Estudiante Prueba2)
     Estudiante 3: id_institucional=EST-003   | email=estudiante3@activeexam.local (Estudiante Prueba3)
     Estudiante 4: id_institucional=EST-004   | email=estudiante4@activeexam.local (Estudiante Prueba4)
-    Proctor:      id_institucional=PROC-001  | email=proctor@activeexam.local
+    Coordinador:  id_institucional=PROC-001  | email=proctor@activeexam.local (rol coordinador; ex-proctor, c-76)
     Admin:        id_institucional=ADMIN-001 | email=admin@activeexam.local
     Tutor:        id_institucional=TUT-001   | email=tutor@activeexam.local (docente de PROG1/C1)
 
@@ -173,11 +173,16 @@ async def _ejecutar_seed(
             "apellido": "Prueba4",
         },
         {
+            # c-76: el rol "proctor" fue eliminado; el COORDINADOR absorbe la
+            # supervision global + veredicto. El usuario de seed pasa a coordinador.
+            # Se conserva id/email PROC-001 para idempotencia (no re-crea si ya existe;
+            # la migracion 0068 ya remapeo su rol en DB), pero el rol sembrado es
+            # "coordinador". No hay otro coordinador de seed, asi que no se duplica.
             "id_institucional": "PROC-001",
             "email": "proctor@activeexam.local",
             "password": pw_proctor,
-            "roles": ["proctor"],
-            "nombre": "Proctor",
+            "roles": ["coordinador"],
+            "nombre": "Coordinador",
             "apellido": "Prueba",
         },
         {

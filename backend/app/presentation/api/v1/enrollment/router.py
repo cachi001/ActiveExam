@@ -294,7 +294,7 @@ async def _leer_foto_slim(
 )
 async def obtener_foto_perfil_propia(
     request: Request,
-    principal: AuthenticatedPrincipal = Depends(require_roles(Rol.ESTUDIANTE, Rol.PROCTOR, Rol.ADMIN_SISTEMA)),
+    principal: AuthenticatedPrincipal = Depends(require_roles(Rol.ESTUDIANTE, Rol.COORDINADOR, Rol.ADMIN_SISTEMA)),
 ) -> FotoPerfilReadResponse:
     """Devuelve la foto vigente del usuario autenticado como base64 dataURL.
 
@@ -326,7 +326,7 @@ async def obtener_foto_perfil_propia(
 # GET /enrollment/foto-perfil/{usuario_id} — foto ajena (admin/proctor)
 # ---------------------------------------------------------------------------
 
-_require_staff = require_roles(Rol.ADMIN_SISTEMA, Rol.PROCTOR)
+_require_staff = require_roles(Rol.ADMIN_SISTEMA, Rol.COORDINADOR)
 
 
 @router.get(

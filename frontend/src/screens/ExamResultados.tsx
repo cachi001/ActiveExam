@@ -29,6 +29,7 @@ import type { ExamenContenidoResumen } from '../lib/types';
 import { EstadoBadge } from './exam-detail/EstadoBadge';
 import { SyncResultBanner, type SyncResult } from './exam-detail/SyncResultBanner';
 import { AdminTable, type AdminColumn } from '../ui/AdminTable';
+import { useToast } from '../ui/toast';
 
 function traducirErrorApi(err: unknown, contexto: 'carga' | 'sinc'): string {
   const status = (err as { status?: number })?.status;
@@ -70,6 +71,7 @@ const PAGE_SIZE_DEFAULT = 5;
 
 export default function ExamResultados() {
   const examenId = useRouteParam('id');
+  const toast = useToast();
 
   const [examen, setExamen] = useState<ExamenContenidoResumen | null>(null);
   const [query, setQuery] = useState<TableQuery>({
@@ -90,6 +92,11 @@ export default function ExamResultados() {
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
   const [sincronizando, setSincronizando] = useState(false);
   const [errorSync, setErrorSync] = useState<string | null>(null);
+
+  // Selección de filas para subida individual o por lote.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  // session_id de la fila cuya subida individual está en curso.
+  const [sincronizandoId, setSincronizandoId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!examenId) return;
@@ -131,6 +138,7 @@ export default function ExamResultados() {
   // Auto-refresh cada 5 min (las notas/estado de sincronización cambian solos).
   useAutoRefresh(() => fetchResultados(query), undefined, !cargandoTabla);
 
+  // Lote completo: publica TODAS las notas pendientes (comportamiento original).
   async function handleSincronizar() {
     if (!examenId) return;
     setSincronizando(true);
@@ -139,6 +147,7 @@ export default function ExamResultados() {
     try {
       const result = await sincronizarMoodleFn(API_BASE, authProvider.getToken(), examenId);
       setSyncResult(result);
+      setSelectedIds(new Set());
       setQuery((q) => ({ ...q }));
     } catch (err: unknown) {
       setErrorSync(traducirErrorApi(err, 'sinc'));
@@ -146,6 +155,73 @@ export default function ExamResultados() {
       setSincronizando(false);
     }
   }
+
+  // Individual: publica SOLO la nota de una fila.
+  async function handleSincronizarIndividual(sessionId: string) {
+    if (!examenId) return;
+    setSincronizandoId(sessionId);
+    setErrorSync(null);
+    setSyncResult(null);
+    try {
+      const result = await sincronizarMoodleFn(API_BASE, authProvider.getToken(), examenId, [sessionId]);
+      setSyncResult(result);
+      setQuery((q) => ({ ...q }));
+    } catch (err: unknown) {
+      setErrorSync(traducirErrorApi(err, 'sinc'));
+    } finally {
+      setSincronizandoId(null);
+    }
+  }
+
+  // Lote seleccionado: publica SOLO las filas seleccionadas.
+  async function handleSincronizarSeleccionadas() {
+    if (!examenId) return;
+    if (selectedIds.size === 0) {
+      toast.warning('Seleccioná al menos una fila antes de publicar.');
+      return;
+    }
+    setSincronizando(true);
+    setErrorSync(null);
+    setSyncResult(null);
+    try {
+      const result = await sincronizarMoodleFn(
+        API_BASE,
+        authProvider.getToken(),
+        examenId,
+        Array.from(selectedIds),
+      );
+      setSyncResult(result);
+      setSelectedIds(new Set());
+      setQuery((q) => ({ ...q }));
+    } catch (err: unknown) {
+      setErrorSync(traducirErrorApi(err, 'sinc'));
+    } finally {
+      setSincronizando(false);
+    }
+  }
+
+  function toggleSelectAll() {
+    if (selectedIds.size === resultados.length && resultados.length > 0) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(resultados.map((r) => r.session_id)));
+    }
+  }
+
+  function toggleSelect(sessionId: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(sessionId)) {
+        next.delete(sessionId);
+      } else {
+        next.add(sessionId);
+      }
+      return next;
+    });
+  }
+
+  const todosSeleccionados = resultados.length > 0 && selectedIds.size === resultados.length;
+  const algunosSeleccionados = selectedIds.size > 0 && selectedIds.size < resultados.length;
 
   // Las RETENIDAS no cuentan como pendientes: el botón prometía "Sincronizar
   // (2 pendientes)", el backend mandaba 1 (la otra la frena el gate de riesgo) y
@@ -196,25 +272,42 @@ export default function ExamResultados() {
             con Moodle y si la nota está retenida por revisión.
           </p>
           <p>
-            <strong>Sincronizar con Moodle</strong> envía las notas pendientes al campus.
+            <strong>Publicar notas en Moodle</strong> envía las notas pendientes al campus.
+            Podés publicar todas las pendientes con el botón principal, seleccionar filas
+            individualmente para publicar una selección, o usar el botón por fila para
+            publicar una nota de forma individual.
             Las notas retenidas por riesgo no se envían hasta que una persona lo apruebe
             desde la Cola de revisión.
           </p>
         </HelpButton>
       }
       actions={
-        <Button
-          variant="primary"
-          icon={sincronizando ? undefined : 'sync'}
-          onClick={handleSincronizar}
-          disabled={sincronizando}
-        >
-          {sincronizando
-            ? 'Sincronizando…'
-            : pendientes > 0
-              ? `Sincronizar con Moodle (${pendientes} pendiente${pendientes !== 1 ? 's' : ''})`
-              : 'Sincronizar con Moodle'}
-        </Button>
+        <div className="flex items-center gap-sm">
+          {selectedIds.size > 0 && (
+            <Button
+              variant="secondary"
+              icon={sincronizando ? undefined : 'upload'}
+              onClick={handleSincronizarSeleccionadas}
+              disabled={sincronizando || sincronizandoId !== null}
+            >
+              {sincronizando
+                ? 'Publicando…'
+                : `Publicar seleccionadas (${selectedIds.size})`}
+            </Button>
+          )}
+          <Button
+            variant="primary"
+            icon={sincronizando ? undefined : 'cloud_upload'}
+            onClick={handleSincronizar}
+            disabled={sincronizando || sincronizandoId !== null}
+          >
+            {sincronizando
+              ? 'Publicando…'
+              : pendientes > 0
+                ? `Publicar notas en Moodle (${pendientes} pendiente${pendientes !== 1 ? 's' : ''})`
+                : 'Publicar notas en Moodle'}
+          </Button>
+        </div>
       }
     >
       <div className="space-y-lg animate-in fade-in duration-500">
@@ -346,9 +439,37 @@ export default function ExamResultados() {
           {resultados.length > 0 && (() => {
             const cols: AdminColumn<ResultadoExamen>[] = [
               {
+                key: 'sel',
+                header: (
+                  <input
+                    type="checkbox"
+                    aria-label="Seleccionar todas las filas"
+                    checked={todosSeleccionados}
+                    ref={(el) => {
+                      if (el) el.indeterminate = algunosSeleccionados;
+                    }}
+                    onChange={toggleSelectAll}
+                    className="w-4 h-4 accent-primary cursor-pointer"
+                  />
+                ),
+                width: '3rem',
+                align: 'center',
+                headerAlign: 'center',
+                cell: (r) => (
+                  <input
+                    type="checkbox"
+                    aria-label={`Seleccionar fila de ${alumnoDisplay(r)}`}
+                    checked={selectedIds.has(r.session_id)}
+                    onChange={() => toggleSelect(r.session_id)}
+                    className="w-4 h-4 accent-primary cursor-pointer"
+                  />
+                ),
+                tdClassName: 'px-3',
+              },
+              {
                 key: 'alumno',
                 header: 'Alumno',
-                width: '35%',
+                width: '33%',
                 cell: (r) => (
                   <div>
                     <p className="font-semibold text-gray-900">{alumnoDisplay(r)}</p>
@@ -368,14 +489,47 @@ export default function ExamResultados() {
               {
                 key: 'estado',
                 header: 'Estado Moodle',
-                width: '30%',
+                width: '27%',
                 cell: (r) => <EstadoBadge estado={r.estado_moodle} retenidoPor={r.retenido_por} />,
               },
               {
                 key: 'actualizado',
                 header: 'Actualizado',
-                width: '25%',
+                width: '20%',
                 cell: (r) => <span className="text-gray-500">{formatFecha(r.actualizado_en)}</span>,
+              },
+              {
+                key: 'acciones',
+                header: 'Acción',
+                width: '7rem',
+                align: 'center',
+                tdClassName: 'sticky right-0 bg-white shadow-[-4px_0_4px_rgba(0,0,0,0.05)]',
+                thClassName: 'sticky right-0 shadow-[-4px_0_4px_rgba(0,0,0,0.05)]',
+                cell: (r) => {
+                  const enCurso = sincronizandoId === r.session_id;
+                  const bloqueado = sincronizando || sincronizandoId !== null;
+                  return (
+                    <button
+                      type="button"
+                      title={r.retenido_por ? 'Nota retenida — no se puede publicar' : 'Publicar esta nota en Moodle'}
+                      disabled={bloqueado || Boolean(r.retenido_por)}
+                      onClick={() => handleSincronizarIndividual(r.session_id)}
+                      className={[
+                        'inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors',
+                        r.retenido_por
+                          ? 'cursor-not-allowed text-gray-300'
+                          : bloqueado
+                            ? 'cursor-not-allowed text-gray-400'
+                            : 'text-primary hover:bg-primary/10 cursor-pointer',
+                      ].join(' ')}
+                    >
+                      {enCurso
+                        ? <Icon name="progress_activity" className="ae-spin text-[16px]" />
+                        : <Icon name="cloud_upload" className="text-[16px]" />}
+                      {enCurso ? 'Publicando…' : 'Publicar'}
+                    </button>
+                  );
+                },
               },
             ];
             return (
@@ -385,6 +539,7 @@ export default function ExamResultados() {
                   data={resultados}
                   keyExtractor={(r) => r.session_id}
                   isLoading={cargandoTabla}
+                  tableMinWidth="700px"
                 />
               </div>
             );

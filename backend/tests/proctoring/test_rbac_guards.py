@@ -31,7 +31,7 @@ _BASE = "/api/v1/proctoring"
 _FAKE_ID = "00000000-0000-0000-0000-000000000000"
 
 _ESTUDIANTE = auth_headers(["estudiante"])
-_PROCTOR = auth_headers(["proctor"])
+_PROCTOR = auth_headers(["coordinador"])  # c-76: rol proctor eliminado -> coordinador supervisa
 _ADMIN = auth_headers(["admin_sistema"])
 
 

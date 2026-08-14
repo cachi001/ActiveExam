@@ -103,6 +103,7 @@ from app.presentation.api.v1.exam_content.schemas import (
     ResultadoAlumnoResponse,
     SorteoRequest,
     ResultadosExamenPaginadosResponse,
+    SincronizarMoodleRequest,
     SincronizarMoodleResponse,
     CrearDesdebancoRequest,
     CrearDesdebancoResponse,
@@ -2365,12 +2366,18 @@ def create_exam_content_router(
         examen_id: str,
         request: Request,
         principal: AuthenticatedPrincipal = Depends(get_current_principal),
+        body: SincronizarMoodleRequest | None = None,
     ) -> SincronizarMoodleResponse:
         """Envía a Moodle las notas en estado 'pendiente'/'fallido' del examen.
 
         Idempotente: las 'enviado' NO se re-mandan (las excluye la query). Si Moodle
         no está configurado (writeback_svc None), NO crashea: devuelve todo como
         'sin_token' y deja las notas en 'pendiente'.
+
+        Body opcional (``SincronizarMoodleRequest``):
+        - Ausente o ``session_ids`` vacío/None → todas las pendientes (comportamiento original).
+        - ``session_ids`` con valores → sincroniza SOLO esas sesiones.
+          Las retenciones D15 (en_riesgo/anulada) se aplican igual aunque la sesión esté en la lista.
         """
 
         await _exigir_pertenencia(principal, examen_id)
@@ -2383,9 +2390,14 @@ def create_exam_content_router(
         # El titulo, para que la auditoria la lea una persona y no un UUID.
         titulo_examen = await _titulo_examen(session_factory, examen_id)
 
+        # Extraer session_ids del body opcional (None = todas las pendientes).
+        session_ids_filtro: list[str] | None = None
+        if body is not None and body.session_ids:
+            session_ids_filtro = body.session_ids
+
         async with session_factory() as session:
             pendientes = await listar_estados_sincronizables(
-                db=session, examen_id=examen_id
+                db=session, examen_id=examen_id, session_ids=session_ids_filtro
             )
             total = len(pendientes)
 
@@ -2449,6 +2461,12 @@ def create_exam_content_router(
 
         # Se ESCRIBIERON notas académicas reales en Moodle → cadena de custodia
         # (regla dura #6, L2.5): queda quién sincronizó, qué examen y el resultado.
+        # El modo (lote completo / selección) también queda registrado.
+        modo_sinc = (
+            f"selección de {len(session_ids_filtro)} sesión(es)"
+            if session_ids_filtro
+            else "lote completo"
+        )
         await registrar_seguro(
             session_factory,
             actor=principal.email,
@@ -2458,8 +2476,8 @@ def create_exam_content_router(
             ip=request.client.host if request.client else None,
             user_agent=request.headers.get("user-agent"),
             proposito=(
-                f"Sincronizó las notas del examen «{titulo_examen}» a Moodle: "
-                f"{enviadas} enviada(s), {fallidas} fallida(s) de {total}"
+                f"Sincronizó las notas del examen «{titulo_examen}» a Moodle "
+                f"({modo_sinc}): {enviadas} enviada(s), {fallidas} fallida(s) de {total}"
             ),
         )
 

@@ -20,10 +20,12 @@ from app.domain.auth.roles import Rol
 
 
 def _proctor(mfa: bool = True) -> AuthenticatedPrincipal:
+    # c-76: el rol PROCTOR fue eliminado; el COORDINADOR absorbe la supervision
+    # global. El helper conserva el nombre por continuidad del contrato C-50.
     return AuthenticatedPrincipal(
-        id_institucional="proctor-1",
+        id_institucional="coordinador-1",
         email="p@uni.edu",
-        roles=(Rol.PROCTOR,),
+        roles=(Rol.COORDINADOR,),
         mfa_satisfecho=mfa,
     )
 

@@ -161,9 +161,9 @@ export default function GestionUsuarios() {
       if (modoForm === 'crear') {
         if (form.password && form.password.length < 8) { setFormError('La contraseña debe tener al menos 8 caracteres.'); return; }
         const resp = await api.crearUsuario({ id_institucional: form.id_institucional, email: form.email, password: form.password || undefined, roles, nombre: form.nombre || undefined, apellido: form.apellido || undefined });
-        if (resp.password_generada) {
-          toast.success(`Usuario creado. Contraseña temporal: ${resp.password_generada}`);
-        } else {
+        // La clave temporal NO se muestra aquí; el flujo de alta fue movido a /admin/usuarios/nuevo.
+        // Este bloque sólo queda como fallback para la edición de flujos legacy inline (modo crear inline).
+        if (!resp.password_generada) {
           toast.success('Usuario creado correctamente.');
         }
       } else if (modoForm === 'editar' && editando) {
@@ -248,7 +248,7 @@ export default function GestionUsuarios() {
           <p>No podés cambiar tu propio estado ni quitarte el rol de administrador.</p>
         </HelpButton>
       }
-      actions={<Button icon="person_add" onClick={abrirCrear} size="sm">Nuevo usuario</Button>}
+      actions={<Button icon="person_add" onClick={() => navigate('/admin/usuarios/nuevo')} size="sm">Nuevo usuario</Button>}
     >
       <div className="space-y-lg animate-in fade-in duration-500">
         <RefreshBar

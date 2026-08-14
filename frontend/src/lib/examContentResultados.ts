@@ -115,17 +115,30 @@ export async function listarResultadosFn(
 
 /**
  * Dispara la sincronización de notas con Moodle para un examen.
- * POST /exam-content/{id}/sincronizar-moodle (sin body).
+ * POST /exam-content/{id}/sincronizar-moodle
+ *
+ * Body opcional:
+ * - Sin sessionIds (o array vacío): sincroniza TODAS las notas pendientes/fallidas.
+ * - Con sessionIds: sincroniza SOLO esas sesiones específicas (individual = array de 1).
+ *   Las retenciones por riesgo/config siguen aplicándose aunque la sesión esté en la lista.
+ *
+ * Retrocompatible: los callers anteriores sin sessionIds siguen funcionando igual.
  * Lanza en error HTTP.
  */
 export async function sincronizarMoodleFn(
   apiBase: string,
   token: string | undefined,
   examenId: string,
+  sessionIds?: string[],
 ): Promise<SincronizarMoodleResponse> {
+  const hasIds = sessionIds && sessionIds.length > 0;
   const res = await fetch(
     `${apiBase}/exam-content/${encodeURIComponent(examenId)}/sincronizar-moodle`,
-    { method: 'POST', headers: authHeaders(token) },
+    {
+      method: 'POST',
+      headers: authHeaders(token),
+      ...(hasIds ? { body: JSON.stringify({ session_ids: sessionIds }) } : {}),
+    },
   );
   if (!res.ok) {
     const err = new Error(`HTTP ${res.status}`) as Error & { status?: number };

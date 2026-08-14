@@ -127,12 +127,12 @@ def test_refresh_rota_y_rechaza_reuso(client: TestClient) -> None:
 
 
 def test_me_devuelve_principal(client: TestClient) -> None:
-    token = _token(["proctor"])
+    token = _token(["coordinador"])  # c-76: rol proctor eliminado -> coordinador
     resp = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
     assert resp.status_code == 200
     body = resp.json()
     assert body["id_institucional"] == "u1"
-    assert "proctor" in body["roles"]
+    assert "coordinador" in body["roles"]
     assert body["mfa_satisfecho"] is True
 
 

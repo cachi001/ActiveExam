@@ -370,7 +370,7 @@ async def obtener_target_examen(
 
 
 async def listar_estados_sincronizables(
-    *, db: AsyncSession, examen_id: str
+    *, db: AsyncSession, examen_id: str, session_ids: list[str] | None = None
 ) -> list[MoodleWritebackEstadoModel]:
     """Filas de write-back en estado 'pendiente'/'fallido' del examen (para sincronizar).
 
@@ -388,7 +388,19 @@ async def listar_estados_sincronizables(
     sincronice al curso correcto. NULL en el examen → la fila queda NULL y el cliente
     cae al global. El refresco es en memoria sobre la misma sesión (mismo identity map);
     el commit del caller lo persiste.
+
+    ``session_ids``: cuando se pasa, filtra a esas sesiones específicas (subida
+    individual o lote sobre selección). Las retenciones D15 siguen aplicándose aunque
+    la sesión esté en la lista (el gate nunca se bypasea). Sin este parámetro,
+    comportamiento original: todas las pendientes/fallidas del examen.
     """
+    conds = [
+        ProctoringSessionModel.examen_contenido_id == examen_id,
+        MoodleWritebackEstadoModel.estado.in_((ESTADO_PENDIENTE, "fallido")),
+    ]
+    if session_ids:
+        conds.append(MoodleWritebackEstadoModel.session_id.in_(session_ids))
+
     stmt = (
         select(
             MoodleWritebackEstadoModel,
@@ -399,12 +411,7 @@ async def listar_estados_sincronizables(
             ProctoringSessionModel,
             ProctoringSessionModel.id == MoodleWritebackEstadoModel.session_id,
         )
-        .where(
-            ProctoringSessionModel.examen_contenido_id == examen_id,
-            MoodleWritebackEstadoModel.estado.in_(
-                (ESTADO_PENDIENTE, "fallido")
-            ),
-        )
+        .where(*conds)
     )
     rows = (await db.execute(stmt)).all()
     if not rows:

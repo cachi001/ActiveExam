@@ -27,7 +27,7 @@ _PESO_GAZE = 50  # peso vivo sembrado para GAZE_DEVIATION
 
 # GET /sessions/{id} (detalle) y PATCH /pausas/{id} (aprobar) son del proctor; el
 # ``client`` por defecto va como estudiante. Se mandan con Bearer de rol proctor.
-_PROCTOR = auth_headers(["proctor"])
+_PROCTOR = auth_headers(["coordinador"])  # c-76: rol proctor eliminado -> coordinador supervisa
 
 
 @pytest_asyncio.fixture

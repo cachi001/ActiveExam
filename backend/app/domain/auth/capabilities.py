@@ -58,9 +58,13 @@ CAPABILITY_ROLES: dict[str, frozenset[Rol]] = {
     # Registro inmutable: lo lee quien audita, no quien opera.
     "ver_auditoria": frozenset({Rol.AUDITOR, Rol.ADMIN_SISTEMA}),
     # --- Supervision en vivo -------------------------------------------------
-    # Mirar sesiones en curso. Sin docente: es evidencia biometrica en vivo.
+    # Mirar sesiones en curso. c-76: el rol PROCTOR fue eliminado y el TUTOR entra
+    # aca (supervisa a sus alumnos en vivo, acotado por comision en la capa de
+    # aplicacion — Tarea 8). El TUTOR mira, pero NO decide: el VEREDICTO
+    # (`revisar_sesion`) sigue SIN TUTOR (revisor/coordinador/admin), preservando
+    # la separacion "quien dicta la materia no juzga el fraude".
     "supervisar_vivo": frozenset(
-        {Rol.PROCTOR, Rol.REVISOR, Rol.COORDINADOR, Rol.ADMIN_SISTEMA}
+        {Rol.TUTOR, Rol.REVISOR, Rol.COORDINADOR, Rol.ADMIN_SISTEMA}
     ),
 }
 

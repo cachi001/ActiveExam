@@ -388,12 +388,12 @@ class TestVerificarReferenciaServerSide:
 
     def test_rol_incorrecto_retorna_403(self, slim_client) -> None:
         """Token con rol distinto a estudiante -> 403."""
-        # Crear usuario con rol proctor (no estudiante).
+        # Crear usuario con rol NO estudiante (c-76: proctor eliminado -> coordinador).
         usuario_id = _crear_usuario_slim_sync(
-            "c59-rol-proctor", "password123", ["proctor"]
+            "c59-rol-coordinador", "password123", ["coordinador"]
         )
         try:
-            token = _login_y_token(slim_client, "c59-rol-proctor", "password123")
+            token = _login_y_token(slim_client, "c59-rol-coordinador", "password123")
 
             resp = slim_client.post(
                 "/api/v1/proctoring/biometria/verificar-referencia",

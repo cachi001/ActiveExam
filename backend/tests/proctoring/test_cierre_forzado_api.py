@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.infrastructure.persistence.models.proctoring import ProctoringSessionModel
 from tests.proctoring.conftest import auth_headers
 
-_PROCTOR = auth_headers(["proctor"])
+_PROCTOR = auth_headers(["coordinador"])  # c-76: rol proctor eliminado -> coordinador supervisa
 
 pytestmark = pytest.mark.asyncio
 

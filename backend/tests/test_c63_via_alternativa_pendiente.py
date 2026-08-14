@@ -823,7 +823,7 @@ class TestEndpointHabilitar:
 
     def setup_method(self):
         _crear_usuario_sync(self._ALUMNO_ID, ["estudiante"])
-        _crear_usuario_sync(self._PROCTOR_ID, ["proctor"])
+        _crear_usuario_sync(self._PROCTOR_ID, ["coordinador"])  # c-76: rol proctor eliminado -> coordinador
         _crear_usuario_sync(self._ADMIN_ID, ["admin_sistema"])
         _limpiar_solicitudes_sync(self._ALUMNO_ID)
 
@@ -902,7 +902,7 @@ class TestEndpointPendientes:
 
     def setup_method(self):
         _crear_usuario_sync(self._ALUMNO_ID, ["estudiante"])
-        _crear_usuario_sync(self._PROCTOR_ID, ["proctor"])
+        _crear_usuario_sync(self._PROCTOR_ID, ["coordinador"])  # c-76: rol proctor eliminado -> coordinador
         _limpiar_solicitudes_sync(self._ALUMNO_ID)
 
     def teardown_method(self):
@@ -954,7 +954,7 @@ class TestGatePuedeRendir:
 
     def setup_method(self):
         _crear_usuario_sync(self._ALUMNO_ID, ["estudiante"])
-        _crear_usuario_sync(self._PROCTOR_ID, ["proctor"])
+        _crear_usuario_sync(self._PROCTOR_ID, ["coordinador"])  # c-76: rol proctor eliminado -> coordinador
         _limpiar_solicitudes_sync(self._ALUMNO_ID)
 
     def teardown_method(self):

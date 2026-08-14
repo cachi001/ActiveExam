@@ -148,7 +148,7 @@ describe('3.1 sincronizarMoodleFn — POST correcto', () => {
   beforeEach(() => { fetchSpy = vi.spyOn(globalThis, 'fetch'); });
   afterEach(() => { fetchSpy.mockRestore(); });
 
-  it('llama con método POST a la URL correcta', async () => {
+  it('llama con método POST a la URL correcta (sin sessionIds → sin body)', async () => {
     fetchSpy.mockResolvedValueOnce({
       ok: true,
       json: async () => ({ enviadas: 3, fallidas: 0, sin_token: 0, total: 3 }),
@@ -161,6 +161,9 @@ describe('3.1 sincronizarMoodleFn — POST correcto', () => {
       '/api/v1/exam-content/exam-xyz/sincronizar-moodle',
       expect.objectContaining({ method: 'POST' }),
     );
+    // Sin sessionIds, no debe enviar body con session_ids.
+    const init = fetchSpy.mock.calls[0][1] as RequestInit;
+    expect(init.body).toBeUndefined();
   });
 
   it('retorna el shape de respuesta correctamente', async () => {
@@ -196,6 +199,35 @@ describe('3.1 sincronizarMoodleFn — POST correcto', () => {
 
     const { sincronizarMoodleFn } = await import('./examContentResultados');
     await expect(sincronizarMoodleFn('/api/v1', 'tok', 'ex-1')).rejects.toThrow('HTTP 500');
+  });
+
+  it('con sessionIds envía el body JSON con session_ids', async () => {
+    fetchSpy.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ enviadas: 1, fallidas: 0, sin_token: 0, total: 1 }),
+    } as Response);
+
+    const { sincronizarMoodleFn } = await import('./examContentResultados');
+    await sincronizarMoodleFn('/api/v1', 'tok', 'exam-x', ['sess-abc']);
+
+    const init = fetchSpy.mock.calls[0][1] as RequestInit;
+    expect(init.body).toBe(JSON.stringify({ session_ids: ['sess-abc'] }));
+  });
+
+  it('con sessionIds múltiples envía todos los ids en la lista', async () => {
+    fetchSpy.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ enviadas: 2, fallidas: 0, sin_token: 0, total: 2 }),
+    } as Response);
+
+    const { sincronizarMoodleFn } = await import('./examContentResultados');
+    await sincronizarMoodleFn('/api/v1', 'tok', 'exam-x', ['sess-1', 'sess-2']);
+
+    const init = fetchSpy.mock.calls[0][1] as RequestInit;
+    const bodyParsed = JSON.parse(init.body as string) as { session_ids: string[] };
+    expect(bodyParsed.session_ids).toHaveLength(2);
+    expect(bodyParsed.session_ids).toContain('sess-1');
+    expect(bodyParsed.session_ids).toContain('sess-2');
   });
 });
 

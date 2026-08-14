@@ -76,18 +76,23 @@ def exigir_capacidad(principal: AuthenticatedPrincipal, capacidad: str) -> None:
 def autorizar_proctor(
     principal: AuthenticatedPrincipal,
 ) -> None:
-    """RBAC del PROCTOR con alcance GLOBAL (C-50, D1).
+    """RBAC de supervision GLOBAL en vivo (C-50, D1).
 
-    El proctor puede observar TODOS los exámenes activos sin restriccion de
-    asignacion. Basta con el rol PROCTOR y MFA satisfecho. Un rol superior
+    c-76: el rol PROCTOR fue eliminado; el COORDINADOR absorbe la supervision
+    global. Basta con el rol COORDINADOR y MFA satisfecho. Un rol superior
     (ADMIN_EXAMENES / ADMIN_SISTEMA) tambien pasa sin requerir MFA adicional.
+
+    NOTA (c-76): esta funcion NO esta cableada a ningun endpoint vivo — la
+    supervision se gatea por capacidad (`supervisar_vivo`) en el router de
+    proctoring. Se conserva por el contrato C-50 (dominio + servicio + tests).
+    El rol se remapeo PROCTOR -> COORDINADOR por el default aprobado de c-76.
 
     La relajacion del minimo privilegio queda justificada en el DPIA (C-01).
     El sistema NUNCA sanciona (L2.5): esta funcion solo controla acceso."""
     if principal.tiene_algun_rol({Rol.ADMIN_EXAMENES, Rol.ADMIN_SISTEMA}):
         return
-    if not principal.tiene_rol(Rol.PROCTOR):
-        raise ForbiddenError("Se requiere rol proctor (o admin) para observar el examen.")
+    if not principal.tiene_rol(Rol.COORDINADOR):
+        raise ForbiddenError("Se requiere rol coordinador (o admin) para observar el examen.")
     verificar_mfa(principal)
 
 
@@ -117,8 +122,9 @@ def puede_acceder_a_evidencia(principal: AuthenticatedPrincipal) -> None:
     El registro del proposito declarado en el audit log lo hace la capa de
     aplicacion (C-05 ``AuditLogRepository``); aqui solo se decide el acceso. El
     sistema no sanciona (L2.5): esto controla acceso, no decide el caso."""
+    # c-76: PROCTOR eliminado; el COORDINADOR (ya presente) cubre el acceso a
+    # evidencia que tenia el proctor. Sin duplicado — el set no cambia de tamano.
     roles_evidencia = {
-        Rol.PROCTOR,
         Rol.REVISOR,
         Rol.COORDINADOR,
         Rol.ADMIN_SISTEMA,

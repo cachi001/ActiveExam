@@ -56,7 +56,7 @@ class InMemoryUserRepo(UserRepository):
         return None
 
 
-def _principal(roles=(Rol.PROCTOR,), email="p@uni.edu") -> AuthenticatedPrincipal:
+def _principal(roles=(Rol.COORDINADOR,), email="p@uni.edu") -> AuthenticatedPrincipal:
     return AuthenticatedPrincipal(
         id_institucional="inst-42", email=email, roles=roles, mfa_satisfecho=True
     )

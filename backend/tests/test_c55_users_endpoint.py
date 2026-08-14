@@ -129,7 +129,7 @@ def test_sin_bearer_devuelve_401(client: TestClient) -> None:
 
 
 def test_rol_incorrecto_devuelve_403(client: TestClient) -> None:
-    token = _token(["proctor"])
+    token = _token(["coordinador"])  # c-76: rol proctor eliminado; coordinador tampoco gestiona usuarios -> 403
     resp = client.post(
         "/api/v1/users/",
         json={"id_institucional": "u1", "email": "u1@uni.edu", "password": "ValidPassword123", "roles": ["estudiante"]},

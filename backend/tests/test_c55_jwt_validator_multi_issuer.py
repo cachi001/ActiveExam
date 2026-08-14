@@ -56,7 +56,7 @@ def _claims(iss: str, exp: int = 9999999999) -> dict:
         "preferred_username": "alu1",
         "email": "alu1@uni.edu",
         "exp": exp,
-        "realm_access": {"roles": ["proctor"]},
+        "realm_access": {"roles": ["coordinador"]},
     }
 
 
@@ -93,7 +93,7 @@ def test_token_propio_hs256_aceptado() -> None:
     token = _encode_hs256_test(_claims(_ISSUER_PROPIO), _SECRET_PROPIO)
     principal = _multi_validator().validar(token)
     assert principal.id_institucional == "alu1"
-    assert Rol.PROCTOR in principal.roles
+    assert Rol.COORDINADOR in principal.roles
 
 
 def test_token_keycloak_hs256_mock_aceptado() -> None:

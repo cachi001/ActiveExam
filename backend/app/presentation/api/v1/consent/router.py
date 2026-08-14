@@ -270,7 +270,7 @@ async def habilitar_alternativa(
     403 si el principal no tiene rol proctor ni admin.
     """
     roles = set(getattr(principal, "roles", []))
-    if not roles.intersection({"proctor", "admin", "admin_sistema"}):
+    if not roles.intersection({"coordinador", "admin", "admin_sistema"}):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Se requiere rol proctor o admin para habilitar la via alternativa.",
@@ -306,7 +306,7 @@ async def listar_pendientes(
     C-63 D-06: solo accesible por roles proctor o admin. Sin paginacion (D-08 Open Q).
     """
     roles = set(getattr(principal, "roles", []))
-    if not roles.intersection({"proctor", "admin", "admin_sistema"}):
+    if not roles.intersection({"coordinador", "admin", "admin_sistema"}):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Se requiere rol proctor o admin para ver las solicitudes pendientes.",

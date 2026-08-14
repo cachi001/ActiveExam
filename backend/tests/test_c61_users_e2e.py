@@ -265,11 +265,11 @@ class TestUserCRUD:
 
         resp = slim_client.put(
             f"/api/v1/users/{usuario_otro['id']}",
-            json={"roles": ["proctor"]},
+            json={"roles": ["coordinador"]},  # c-76: rol proctor eliminado -> coordinador
             headers={"Authorization": f"Bearer {token}"},
         )
         assert resp.status_code == 200
-        assert "proctor" in resp.json()["roles"]
+        assert "coordinador" in resp.json()["roles"]
 
     def test_editar_usuario_422_campo_extra(self, slim_client):
         """Campo extra (password_hash) en body → 422 por extra='forbid'."""

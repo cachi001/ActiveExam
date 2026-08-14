@@ -15,7 +15,7 @@ from tests.proctoring.conftest import auth_headers
 # Observaciones = accion del proctor (proctor-only). El ``client`` por defecto va
 # autenticado como estudiante (flujo del alumno); para escribir/leer observaciones
 # mandamos un Bearer de rol proctor.
-_PROCTOR = auth_headers(["proctor"])
+_PROCTOR = auth_headers(["coordinador"])  # c-76: rol proctor eliminado -> coordinador supervisa
 
 pytestmark = pytest.mark.asyncio
 

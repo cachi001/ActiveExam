@@ -14,7 +14,7 @@ _BASE = "/api/v1/proctoring"
 # El ``client`` por defecto va autenticado como estudiante (solicitar pausa, poll
 # de su sesion, reanudar). Resolver (aprobar/rechazar) y el poll de pendientes
 # son del proctor: se mandan con un Bearer de rol proctor.
-_PROCTOR = auth_headers(["proctor"])
+_PROCTOR = auth_headers(["coordinador"])  # c-76: rol proctor eliminado -> coordinador supervisa
 
 
 async def _crear_sesion(client: AsyncClient, etiqueta: str | None = None) -> str:

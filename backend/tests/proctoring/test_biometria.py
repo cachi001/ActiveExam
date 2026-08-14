@@ -11,7 +11,7 @@ from httpx import AsyncClient
 from tests.proctoring.conftest import auth_headers
 
 # GET /sessions/{id} (detalle con biometria) es vista del proctor (proctor-only).
-_PROCTOR = auth_headers(["proctor"])
+_PROCTOR = auth_headers(["coordinador"])  # c-76: rol proctor eliminado -> coordinador supervisa
 
 
 pytestmark = pytest.mark.asyncio
