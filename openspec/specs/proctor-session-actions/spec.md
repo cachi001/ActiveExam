@@ -4,7 +4,7 @@
 TBD - created by archiving change c-15-panel-proctor-sse. Update Purpose after archive.
 ## Requirements
 ### Requirement: Chat bidireccional proctor↔estudiante
-El proctor y el estudiante de una sesión supervisada SHALL poder intercambiar mensajes de texto en ambos sentidos durante el examen. En la implementación slim el canal es REST con polling (no SSE/WS): cada parte publica sus mensajes y consulta los del otro. Los mensajes se persisten vinculados a la sesión.
+El proctor y el estudiante de una sesión supervisada SHALL poder intercambiar mensajes de texto en ambos sentidos durante el examen. En la implementación activeexam el canal es REST con polling (no SSE/WS): cada parte publica sus mensajes y consulta los del otro. Los mensajes se persisten vinculados a la sesión.
 
 #### Scenario: Mensaje del proctor entregado al estudiante
 - **WHEN** el proctor envía un mensaje a un estudiante de una sesión asignada

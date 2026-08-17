@@ -14,7 +14,7 @@
 #   3. Espera a que una instancia FastAPI quede healthy via nginx-poc:8080.
 #   4. Aplica migraciones por revision NOMBRADA: 0004 (cadena prod: tablas + hypertable
 #      + CAGG) y 0006 (cola PoC). Nombrar la revision SORTEA el multi-head de alembic
-#      (0005 'slim' y 0006 tienen down_revision=None). 0005 se saltea A PROPOSITO:
+#      (0005 'activeexam' y 0006 tienen down_revision=None). 0005 se saltea A PROPOSITO:
 #      no esta aplicado en la DB de prod que funciona. El multi-head es deuda de las
 #      migraciones de prod, a resolver en su propio change -- NO se toca aca.
 #   5. Siembra N sesiones -> poc/k6/sessions.json + poc/k6/.exam_id.

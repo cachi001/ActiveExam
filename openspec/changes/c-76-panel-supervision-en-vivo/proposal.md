@@ -1,8 +1,8 @@
 ## Why
 
-El panel de supervisión funcional (REST/polling slim entregado por C-15) hoy está atado a un rol `proctor` que en la práctica no existe como puesto institucional: quien supervisa en vivo es el **tutor** (docente de la comisión) y quien decide el veredicto es el **coordinador**. Mantener `proctor` como rol separado duplica autoridad, confunde la UX y contradice el modelo de C-73 (pertenencia por comisión). Este change **elimina el rol PROCTOR**, reasigna la supervisión en vivo al TUTOR acotada a sus comisiones, consolida el veredicto en COORDINADOR/REVISOR, y rediseña la UX del panel de detalle de sesión y de dos flujos administrativos (alta de usuario con clave temporal y subida de nota) que hoy tienen usabilidad pobre.
+El panel de supervisión funcional (REST/polling activeexam entregado por C-15) hoy está atado a un rol `proctor` que en la práctica no existe como puesto institucional: quien supervisa en vivo es el **tutor** (docente de la comisión) y quien decide el veredicto es el **coordinador**. Mantener `proctor` como rol separado duplica autoridad, confunde la UX y contradice el modelo de C-73 (pertenencia por comisión). Este change **elimina el rol PROCTOR**, reasigna la supervisión en vivo al TUTOR acotada a sus comisiones, consolida el veredicto en COORDINADOR/REVISOR, y rediseña la UX del panel de detalle de sesión y de dos flujos administrativos (alta de usuario con clave temporal y subida de nota) que hoy tienen usabilidad pobre.
 
-No es tiempo real de producción: eso lo aporta **c-15b** (transporte SSE, bloqueado por C-03) más adelante. c-76 trabaja sobre el panel funcional slim ya existente y **no depende de C-03**.
+No es tiempo real de producción: eso lo aporta **c-15b** (transporte SSE, bloqueado por C-03) más adelante. c-76 trabaja sobre el panel funcional activeexam ya existente y **no depende de C-03**.
 
 ## What Changes
 

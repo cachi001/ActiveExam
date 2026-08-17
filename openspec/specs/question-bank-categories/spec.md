@@ -4,7 +4,7 @@
 TBD - created by archiving change c-74-banco-preguntas-categorias-cloze. Update Purpose after archive.
 ## Requirements
 ### Requirement: Jerarquía de categorías del banco de preguntas por materia
-El sistema SHALL persistir una jerarquía de **categorías del banco de preguntas** asociada a una materia, donde cada categoría tiene un `nombre`, pertenece a **exactamente una** materia y PUEDE tener una categoría padre (self-FK nullable), soportando anidamiento arbitrario por construcción. La migración SHALL ser **aditiva** (rama slim, no remodela tablas existentes): tabla nueva `categoria_pregunta` (id, `materia_id` FK ON DELETE CASCADE, nombre, `categoria_padre_id` nullable self-FK ON DELETE CASCADE, creada_en). Borrar una materia SHALL eliminar sus categorías; borrar una categoría con subcategorías SHALL eliminar en cascada su subárbol.
+El sistema SHALL persistir una jerarquía de **categorías del banco de preguntas** asociada a una materia, donde cada categoría tiene un `nombre`, pertenece a **exactamente una** materia y PUEDE tener una categoría padre (self-FK nullable), soportando anidamiento arbitrario por construcción. La migración SHALL ser **aditiva** (rama activeexam, no remodela tablas existentes): tabla nueva `categoria_pregunta` (id, `materia_id` FK ON DELETE CASCADE, nombre, `categoria_padre_id` nullable self-FK ON DELETE CASCADE, creada_en). Borrar una materia SHALL eliminar sus categorías; borrar una categoría con subcategorías SHALL eliminar en cascada su subárbol.
 
 #### Scenario: Crear una categoría con padre y listar el árbol por materia
 - **WHEN** se crea una categoría raíz para una materia y luego una subcategoría que la referencia como padre

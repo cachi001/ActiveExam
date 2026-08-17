@@ -1,6 +1,6 @@
 # Spec — proctor-contextual-access
 
-> MFA obligatorio para el rol proctor (RN-AU-05). DIFERIDO de C-15: el slim no emite
+> MFA obligatorio para el rol proctor (RN-AU-05). DIFERIDO de C-15: el activeexam no emite
 > segundo factor (ver fix C-68); entra cuando el provider JWT propio emita MFA.
 >
 > NOTA: el acceso contextual "solo exámenes asignados" (RN-AU-07) fue **superseded**

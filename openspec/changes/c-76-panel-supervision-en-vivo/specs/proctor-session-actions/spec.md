@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: Chat bidireccional tutor↔estudiante iniciado por el tutor
-El tutor (docente de la comisión de la sesión) y el estudiante SHALL poder intercambiar mensajes de texto durante el examen. El **estudiante NO puede iniciar** un hilo de chat: solo SHALL poder enviar mensajes en una sesión donde ya existe al menos un mensaje del tutor. La regla de "quién puede iniciar" SHALL validarse server-side (cliente = sensor no confiable). En la implementación slim el canal es REST con polling. Los mensajes se persisten vinculados a la sesión con autor `tutor` o `alumno`.
+El tutor (docente de la comisión de la sesión) y el estudiante SHALL poder intercambiar mensajes de texto durante el examen. El **estudiante NO puede iniciar** un hilo de chat: solo SHALL poder enviar mensajes en una sesión donde ya existe al menos un mensaje del tutor. La regla de "quién puede iniciar" SHALL validarse server-side (cliente = sensor no confiable). En la implementación activeexam el canal es REST con polling. Los mensajes se persisten vinculados a la sesión con autor `tutor` o `alumno`.
 
 #### Scenario: Mensaje del tutor entregado al estudiante
 - **WHEN** el tutor envía un mensaje a un estudiante de una sesión de su comisión

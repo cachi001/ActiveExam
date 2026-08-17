@@ -1,7 +1,7 @@
 # proctoring-session-api Specification
 
 ## Purpose
-TBD - created by archiving change c-45-backend-proctoring-slim. Update Purpose after archive.
+TBD - created by archiving change c-45-backend-proctoring-activeexam. Update Purpose after archive.
 ## Requirements
 ### Requirement: Crear sesión de proctoring
 El sistema SHALL aceptar `POST /api/v1/proctoring/sessions` sin autenticación y persistir una nueva sesión en `proctoring_session`. El body SHALL incluir `modo` ('test' o 'examen') y opcionalmente `exam_id` y `etiqueta`. La respuesta SHALL incluir `id` (UUID) y `creada_en` (datetime ISO 8601). El schema de entrada SHALL usar `model_config = ConfigDict(extra='forbid')`.
@@ -56,7 +56,7 @@ El sistema SHALL aceptar `GET /api/v1/proctoring/sessions/{id}` y devolver la se
 - **WHEN** el cliente hace `GET /api/v1/proctoring/sessions/{id}` con un UUID inexistente
 - **THEN** el sistema responde `404 Not Found`
 
-### Requirement: Healthcheck del módulo slim
+### Requirement: Healthcheck del módulo activeexam
 El sistema SHALL exponer `GET /api/v1/proctoring/health` que verifique la conectividad con la base de datos y devuelva `{ "status": "ok", "db": "ok" | "error" }`. Este endpoint NO requiere autenticación y SHALL responder en menos de 2 segundos.
 
 #### Scenario: DB disponible

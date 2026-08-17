@@ -1,9 +1,9 @@
 # =============================================================================
-# Stack de DESARROLLO que ESPEJA produccion (Railway = backend slim + Postgres).
+# Stack de DESARROLLO que ESPEJA produccion (Railway = backend activeexam + Postgres).
 #
 # Objetivo: que cualquiera al CLONAR el repo pueda testear "como en prod" con un
 # solo comando — sin modo demo, con login JWT real y los usuarios de prueba
-# (ADMIN-001 / EST-001 / PROC-001) creados SIEMPRE via seed idempotente.
+# (admin / estudiante1 / coordinador1) creados SIEMPRE via seed idempotente.
 #
 # Uso:
 #   docker compose -f infra/docker-compose/docker-compose.dev.yml up --build
@@ -19,7 +19,7 @@
 name: activeexam-dev
 
 services:
-  # --- Base de datos: Postgres estandar (la rama de migraciones slim NO usa
+  # --- Base de datos: Postgres estandar (la rama de migraciones activeexam NO usa
   #     TimescaleDB, a diferencia del stack full). -----------------------------
   postgres:
     image: postgres:16-alpine
@@ -45,12 +45,12 @@ services:
       # de healthcheck durante ese arranque para no marcar el contenedor unhealthy.
       start_period: 60s
 
-  # --- Backend slim (mismo Dockerfile.slim que Railway). Al arrancar:
-  #     1) migra (alembic slim@head)  2) seed de usuarios  3) uvicorn ----------
+  # --- Backend activeexam (mismo Dockerfile.activeexam que Railway). Al arrancar:
+  #     1) migra (alembic activeexam@head)  2) seed de usuarios  3) uvicorn ----------
   backend:
     build:
-      context: ../.. # raiz del repo: el Dockerfile.slim copia backend/ y frontend/public/mediapipe/
-      dockerfile: Dockerfile.slim
+      context: ../.. # raiz del repo: el Dockerfile.activeexam copia backend/ y frontend/public/mediapipe/
+      dockerfile: Dockerfile.activeexam
     environment:
       DATABASE_URL: postgresql+asyncpg://proctoring:dev-only-change-me@postgres:5432/proctoring
       FRONTEND_ORIGIN: http://localhost:5173
@@ -79,14 +79,14 @@ services:
         condition: service_healthy
     ports:
       - "8000:8000"
-    # Pisa el CMD del Dockerfile.slim para INTERCALAR el seed entre migrar y servir.
+    # Pisa el CMD del Dockerfile.activeexam para INTERCALAR el seed entre migrar y servir.
     command:
       - sh
       - -c
       - |
-        echo ">>> [1/3] migrando DB (alembic slim@head)..." && \
-        alembic -c alembic.ini upgrade slim@head && \
+        echo ">>> [1/3] migrando DB (alembic activeexam@head)..." && \
+        alembic -c alembic.ini upgrade activeexam@head && \
         echo ">>> [2/3] seed de usuarios (idempotente)..." && \
-        python scripts/seed_users.py --slim && \
+        python scripts/seed_users.py --activeexam && \
         echo ">>> [3/3] levantando uvicorn en :8000" && \
-        uvicorn app.main_slim:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips="*"
+        uvicorn app.main_activeexam:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips="*"

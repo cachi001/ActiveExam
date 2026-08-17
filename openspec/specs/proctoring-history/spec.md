@@ -1,7 +1,7 @@
 # proctoring-history Specification
 
 ## Purpose
-TBD - created by archiving change c-45-backend-proctoring-slim. Update Purpose after archive.
+TBD - created by archiving change c-45-backend-proctoring-activeexam. Update Purpose after archive.
 ## Requirements
 ### Requirement: Guardar resultado de verificación biométrica
 El sistema SHALL aceptar `POST /api/v1/proctoring/sessions/{id}/biometria` sin autenticación y persistir el resultado de la verificación biométrica del cliente en `proctoring_biometria`. El body SHALL incluir `liveness_ok` (bool), `retos_resueltos` (list[str]), `resultado` (str, ej. 'verificado'|'rechazado'|'pendiente') y opcionalmente `embedding` (string). El schema SHALL usar `model_config = ConfigDict(extra='forbid')`. La respuesta SHALL ser `{ "ok": true }`.

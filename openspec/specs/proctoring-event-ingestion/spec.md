@@ -1,7 +1,7 @@
 # proctoring-event-ingestion Specification
 
 ## Purpose
-TBD - created by archiving change c-45-backend-proctoring-slim. Update Purpose after archive.
+TBD - created by archiving change c-45-backend-proctoring-activeexam. Update Purpose after archive.
 ## Requirements
 ### Requirement: Ingestar evento de detección con screenshot opcional
 El sistema SHALL aceptar `POST /api/v1/proctoring/sessions/{id}/events` sin autenticación y persistir un evento de detección en `proctoring_event`. El body SHALL incluir `tipo` (string libre, ej. 'FACE_ABSENT'), `severidad` ('bajo'|'medio'|'alto'|'critico'), `ts_cliente` (datetime ISO 8601), y opcionalmente `payload` (dict), `screenshot_base64` (string base64) y `face_count_cliente` (int). El schema SHALL usar `model_config = ConfigDict(extra='forbid')`. La respuesta SHALL incluir `evento_id` (UUID), `veredicto_reinferencia`, `face_count_servidor` y `screenshot_sha256`. El cliente es un sensor no confiable (RN-GLB-01): el sistema NO confía a ciegas en lo reportado y corrobora server-side mediante re-inferencia (ver requirement de re-inferencia).

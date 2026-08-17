@@ -54,7 +54,7 @@ El sistema SHALL obtener el conteo de eventos, score y estado de biometría desd
 - **THEN** la pantalla de cierre se muestra igualmente sin error visible al alumno
 
 ### Requirement: Backend expone endpoint PATCH /sessions/{id}/finalizar
-El sistema SHALL implementar `PATCH /proctoring/sessions/{session_id}/finalizar` en el router slim. El endpoint SHALL setear `finalizada_en = datetime.utcnow()` si y solo si `finalizada_en IS NULL`. Responde 200 con `{ id, finalizada_en }` si existe la sesión, 404 si no.
+El sistema SHALL implementar `PATCH /proctoring/sessions/{session_id}/finalizar` en el router activeexam. El endpoint SHALL setear `finalizada_en = datetime.utcnow()` si y solo si `finalizada_en IS NULL`. Responde 200 con `{ id, finalizada_en }` si existe la sesión, 404 si no.
 
 #### Scenario: Endpoint finaliza sesión correctamente
 - **WHEN** se llama `PATCH /proctoring/sessions/{id}/finalizar` sobre una sesión existente con `finalizada_en = null`

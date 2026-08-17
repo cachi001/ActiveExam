@@ -1,10 +1,10 @@
-# dev-up.ps1 — Levanta el stack de desarrollo (DB + backend slim) que espeja prod.
+# dev-up.ps1 — Levanta el stack de desarrollo (DB + backend activeexam) que espeja prod.
 #
 # Requisitos: Docker Desktop corriendo.
 # Uso (desde la raiz del repo):
 #   ./scripts/dev-up.ps1
 #
-# Esto construye y levanta Postgres + el backend slim (migra + seed de usuarios +
+# Esto construye y levanta Postgres + el backend activeexam (migra + seed de usuarios +
 # uvicorn) en http://localhost:8000. Los usuarios de prueba se crean SIEMPRE:
 #   Admin:      ADMIN-001  / Admin123        (admin@activeexam.local)
 #   Estudiante: EST-001    / Estudiante123   (estudiante@activeexam.local)
@@ -26,7 +26,7 @@ if ($LASTEXITCODE -ne 0) {
   exit 1
 }
 
-Write-Host ">>> Levantando DB + backend slim (build + migrar + seed + uvicorn)..." -ForegroundColor Cyan
+Write-Host ">>> Levantando DB + backend activeexam (build + migrar + seed + uvicorn)..." -ForegroundColor Cyan
 Write-Host "    Backend:  http://localhost:8000/api/v1" -ForegroundColor DarkGray
 Write-Host "    Frontend: cd frontend; npm run dev  (otra terminal)" -ForegroundColor DarkGray
 

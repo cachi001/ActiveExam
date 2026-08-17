@@ -27,31 +27,31 @@
 
 ## 4. Límite configurable de pausas (Bloque A — backend, no toca RBAC)
 
-- [ ] 4.1 Agregar umbral `pausas_max_por_sesion` (default 2) al schema de Configuración del Sistema (`extra='forbid'`), editable por `configurar_sistema`
-- [ ] 4.2 Consumir el umbral desde la configuración efectiva en `chat_pausa_service.py` al **aprobar** una pausa; rechazar la aprobación si la sesión ya tiene `aprobada`+`finalizada` >= límite
-- [ ] 4.3 Exponer/editar el umbral en la UI de Configuración del Sistema
-- [ ] 4.4 Tests: default 2; aprobación rechazada por límite; el alumno siempre puede solicitar; solo admin lo configura
+- [x] 4.1 Agregar umbral `pausas_max_por_sesion` (default 2) al schema de Configuración del Sistema (`extra='forbid'`), editable por `configurar_sistema`
+- [x] 4.2 Consumir el umbral desde la configuración efectiva en `chat_pausa_service.py` al **aprobar** una pausa; rechazar la aprobación si la sesión ya tiene `aprobada`+`finalizada` >= límite
+- [x] 4.3 Exponer/editar el umbral en la UI de Configuración del Sistema
+- [x] 4.4 Tests: default 2; aprobación rechazada por límite; el alumno siempre puede solicitar; solo admin lo configura
 
 ## 5. Screenshots durante la pausa (Bloque A — backend + cliente)
 
-- [ ] 5.1 Cliente: capturar y subir screenshots del alumno durante ventana de pausa `aprobada` (reusar cadencia de captura existente salvo decisión contraria — ver Open Question Q3)
-- [ ] 5.2 Backend: persistir screenshots vinculados a sesión + ventana de pausa, re-hasheados/firmados server-side (regla #6)
-- [ ] 5.3 Asegurar que las capturas NO suman automáticamente al score (L2.5); ausencia queda como señal
-- [ ] 5.4 Tests: captura persistida y firmada; ausencia registrada como señal sin veredicto; score no afectado automáticamente
+- [x] 5.1 Cliente: capturar y subir screenshots del alumno durante ventana de pausa `aprobada` (reusar cadencia de captura existente salvo decisión contraria — ver Open Question Q3). Implementado y VERIFICADO: `crearControladorCapturaPausa` (`useExamProctoring.ts`) postea `tipo=captura_pausa` cada `PAUSA_CAPTURA_INTERVAL_MS` (30s, reusa `HEARTBEAT_MAX_FREQ_SEC`) mientras `setPausaAprobada(true)`; captura inmediata al activar, cleanup en `detener()`. Cableado desde `Examen.tsx` vía el mismo callback `onActivaChange` de `PausaAlumno`. Tests: `useExamProctoring.pausaCaptura.test.ts` (6✓).
+- [x] 5.2 Backend: persistir screenshots vinculados a sesión + ventana de pausa, re-hasheados/firmados server-side (regla #6) — reusa el pipeline general de eventos (ya re-hashea/firma), tipo nuevo `captura_pausa` (BASELINE)
+- [x] 5.3 Asegurar que las capturas NO suman automáticamente al score (L2.5); ausencia queda como señal — `TipoEvento.CAPTURA_PAUSA`/`PAUSA_SIN_CAPTURA` en BASELINE + exclusión por ventana de pausa (doble red); `finalizar_pausa` emite `pausa_sin_captura` server-side si no hubo captura en la ventana
+- [x] 5.4 Tests: captura persistida y firmada; ausencia registrada como señal sin veredicto; score no afectado automáticamente (`tests/proctoring/test_c76_pausa_screenshots.py`)
 
 ## 6. Chat y pausas tutor↔alumno (Bloque A — backend)
 
-- [ ] 6.1 Cambiar el actor de chat/pausa de `proctor` a `tutor` en `chat_pausa_service.py` y routers de chat/pausa
-- [ ] 6.2 Regla server-side: el alumno NO puede iniciar el hilo; solo responde si ya existe un mensaje del tutor en la sesión
-- [ ] 6.3 Aprobación/rechazo de pausa por el tutor, acotado a su comisión; audit trail en la fila `pausa_autorizada` con actor tutor
-- [ ] 6.4 Tests: tutor inicia y alumno responde; alumno no puede iniciar; tutor de comisión ajena rechazado (403)
+- [x] 6.1 Cambiar el actor de chat/pausa de `proctor` a `tutor` en `chat_pausa_service.py` y routers de chat/pausa (literal `MensajeChatIn.autor`; el campo `proctor_actor` de `PausaResolverIn`/`PausaDetalle` se CONSERVA por compatibilidad — ver decisiones no obvias del resumen de cierre)
+- [x] 6.2 Regla server-side: el alumno NO puede iniciar el hilo; solo responde si ya existe un mensaje del tutor en la sesión (`AlumnoNoPuedeIniciarError` → 403)
+- [x] 6.3 Aprobación/rechazo de pausa por el tutor, acotado a su comisión; audit trail en la fila `pausa_autorizada` con actor tutor (`autorizar_supervision_vivo_sobre_sesion`, D2)
+- [x] 6.4 Tests: tutor inicia y alumno responde; alumno no puede iniciar; tutor de comisión ajena rechazado (403) (`tests/proctoring/test_c76_tutor_comision.py`, `tests/proctoring/test_chat_api.py`)
 
 ## 7. Eliminación del rol PROCTOR (Bloque A — RBAC, CRÍTICO)
 
 > ⚠️ CRÍTICO (Auth/RBAC). Requiere **aprobación humana explícita** antes de escribir código (design §Migration Plan). No mergear sin migración de datos definida.
 
 - [x] 7.1 Relevar sujetos con rol `proctor` en la DB/IdP y definir el mapa de remapeo (proctor→coordinador / proctor→tutor) — **aprobación humana**. Relevamiento: único sujeto sembrado con rol `proctor` es el usuario de seed `PROC-001` (`backend/scripts/seed_users.py`). Mapa aprobado por el dueño: **proctor → coordinador** (COORDINADOR absorbe supervisión global + veredicto).
-- [x] 7.2 Migración de datos (destructiva en dos pasos) que remapea los roles `proctor` existentes → `backend/migrations/versions/0068_c76_remap_proctor_coordinador.py` (down_revision 0067, hereda branch `slim`). UP: `usuario.roles` JSONB "proctor"→"coordinador" sin duplicar (jsonb_agg DISTINCT), idempotente. DOWN: no-op documentado (remapeo irreversible de forma segura). No es DROP de esquema, por eso no requiere el patrón físico de dos pasos — documentado en el docstring.
+- [x] 7.2 Migración de datos (destructiva en dos pasos) que remapea los roles `proctor` existentes → `backend/migrations/versions/0068_c76_remap_proctor_coordinador.py` (down_revision 0067, hereda branch `activeexam`). UP: `usuario.roles` JSONB "proctor"→"coordinador" sin duplicar (jsonb_agg DISTINCT), idempotente. DOWN: no-op documentado (remapeo irreversible de forma segura). No es DROP de esquema, por eso no requiere el patrón físico de dos pasos — documentado en el docstring.
 - [x] 7.3 Eliminar `Rol.PROCTOR` del enum `Rol` y de `ROLES_CON_MFA` (`backend/app/domain/auth/roles.py`)
 - [x] 7.4 Actualizar `CAPABILITY_ROLES["supervisar_vivo"]` a `{TUTOR, REVISOR, COORDINADOR, ADMIN_SISTEMA}` (`capabilities.py`); confirmado que `revisar_sesion` = `{REVISOR, COORDINADOR, ADMIN_SISTEMA}` (NO incluye `TUTOR`)
 - [x] 7.5 Buscar y limpiar toda referencia colgante a `PROCTOR`/`"proctor"` en backend y tests (remap → coordinador). App: `authorization.py` (autorizar_proctor + set de evidencia), `enrollment/router.py`, `consent/router.py`, `exam_content/_shared.py`, `scripts/seed_users.py`. Tests: 8× `proctoring/*`, `test_auth_*`, `test_c55_*`, `test_c56/c59/c61/c63`, `test_users_filtros_reactivar`. Se DEJARON los strings `'proctor'` de chat/pausa (dominio de mensajería, Tarea 6).
@@ -59,16 +59,16 @@
 
 ## 8. Supervisión del tutor acotada por comisión (Bloque A)
 
-- [ ] 8.1 Filtrar el acceso del tutor a sesiones/detalle/pausas por pertenencia `asignar_docente` (C-73 §9); coordinador queda global
-- [ ] 8.2 Acotar el listado de supervisión en vivo (`Proctor.tsx`) del tutor a sus comisiones
-- [ ] 8.3 Tests contextuales: tutor autorizado en su comisión; 403 fuera de ella; coordinador ve todo
+- [x] 8.1 Filtrar el acceso del tutor a sesiones/detalle/pausas por pertenencia `asignar_docente` (C-73 §9); coordinador queda global (`GET /sessions`, `GET /sessions/{id}`, `PATCH /pausas/{id}`)
+- [x] 8.2 Acotar el listado de supervisión en vivo (`Proctor.tsx`) del tutor a sus comisiones — sin cambios de UI necesarios: `Proctor.tsx` consume `GET /sessions`, ya scoped server-side (regla dura #6, cliente no confiable — el scoping vive en el backend, no en el front)
+- [x] 8.3 Tests contextuales: tutor autorizado en su comisión; 403 fuera de ella; coordinador ve todo (`tests/proctoring/test_c76_tutor_comision.py`)
 
 ## 9. Rediseño visual del detalle de sesión (Bloque A — frontend)
 
-- [ ] 9.1 Rediseñar `ProctoringSessionDetail.tsx` / `SessionDetail.tsx` para ambos estados (con riesgo / sin riesgo)
-- [ ] 9.2 Renderizar el botón de veredicto SOLO si el usuario tiene `revisar_sesion` (coordinador/revisor/admin); el tutor ve el dossier en modo lectura de decisión
-- [ ] 9.3 Mostrar chat tutor↔alumno, pausas (con límite/estado) y screenshots de pausa en el detalle
-- [ ] 9.4 Tests de render diferenciado tutor (sin veredicto) vs coordinador (con veredicto)
+- [x] 9.1 Rediseñar `ProctoringSessionDetail.tsx` / `SessionDetail.tsx` para ambos estados (con riesgo / sin riesgo). Implementado: nuevo `RiesgoBanner.tsx` (siempre visible, no solo en cola de revisión) con tres variantes por `nivelRiesgo(score)` — bajo (confirmación discreta, verde), medio (aviso ámbar) y alto (alerta roja, `role="alert"`) — reusando la misma paleta que ya usan las listas (`scoreSoftBg`/`scoreSoftBorder` de `helpers.ts`, sin inventar tokens nuevos). La card de "Eventos de la sesión" también hereda el tinte de borde por riesgo, coherente con `SesionCard`/`SesionVivoCard`.
+- [x] 9.2 Renderizar el botón de veredicto SOLO si el usuario tiene `revisar_sesion` (coordinador/revisor/admin); el tutor ve el dossier en modo lectura de decisión — `DecisionRevisorForm.tsx`: antes el botón "Aprobar con nota" quedaba visible/habilitado igual sin `puedeResolver` (el backend lo rechazaba con 403); ahora el componente entero cae a un dossier de solo lectura sin ningún control de veredicto
+- [x] 9.3 Mostrar chat tutor↔alumno, pausas (con límite/estado) y screenshots de pausa en el detalle — `ChatBox` renombrado a actor `tutor` (ya mostraba pausas vía `PausaSesionPanel`/`PausasHistorial`; el histórico ya expone `en_pausa_autorizada` por evento)
+- [x] 9.4 Tests de render diferenciado tutor (sin veredicto) vs coordinador (con veredicto) (`DecisionRevisorForm.test.tsx`)
 
 ## 11. Validación backend `nota_aprobacion ≤ nota_maxima` (Bloque C — governance BAJO)
 
@@ -91,6 +91,6 @@
 
 ## 13. Actualización de specs y cierre
 
-- [ ] 13.1 Verificar `openspec validate --specs --strict` para los deltas de este change
-- [ ] 13.2 Actualizar `CHANGES.md` con la entrada de c-76 (no lo hace el archive automáticamente)
-- [ ] 13.3 Resolver o dejar registradas las Open Questions del design (Q1–Q7) antes de archivar
+- [x] 13.1 Verificar `openspec validate --specs --strict` para los deltas de este change — `openspec validate c-76-panel-supervision-en-vivo --strict` → "Change is valid". Los 3 specs que fallan en `openspec validate --specs --strict` a nivel repo (post-exam-reports, report-exports-and-summary, statistical-distribution-analytics) son preexistentes y ajenos a este change.
+- [x] 13.2 Actualizar `CHANGES.md` con la entrada de c-76 (no lo hace el archive automáticamente)
+- [x] 13.3 Resolver o dejar registradas las Open Questions del design (Q1–Q7) antes de archivar — ver actualización en `design.md` §Open Questions

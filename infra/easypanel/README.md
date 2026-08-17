@@ -1,6 +1,6 @@
 # Deploy de STAGING — Backend en EasyPanel (VPS) + Frontend en Vercel
 
-Guía de despliegue del stack **slim** de ActiveExam. Adaptada al proyecto a partir
+Guía de despliegue del stack **activeexam** de ActiveExam. Adaptada al proyecto a partir
 de la convención EasyPanel de referencia.
 
 **Arquitectura del deploy:**
@@ -11,7 +11,7 @@ de la convención EasyPanel de referencia.
 ```
 
 El frontend (Vite) va en Vercel; el backend + Postgres van en la VPS con EasyPanel.
-NO hay Keycloak, MinIO, TimescaleDB ni Redis (eso es la arquitectura enterprise, no la slim).
+NO hay Keycloak, MinIO, TimescaleDB ni Redis (eso es la arquitectura enterprise, no la activeexam).
 
 ---
 
@@ -40,7 +40,7 @@ python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().d
 - **NUNCA** commitear estos valores. EasyPanel los inyecta por override en runtime.
 
 ### 5. Deploy y validación
-- Click **Deploy**. Buildea con `Dockerfile.slim`, migra (`alembic slim@head`),
+- Click **Deploy**. Buildea con `Dockerfile.activeexam`, migra (`alembic activeexam@head`),
   seedea (idempotente) y sirve uvicorn en `0.0.0.0:8000`.
 - **Logs** — esperar: `Uvicorn running on http://0.0.0.0:8000`.
   ⚠️ Si dice `127.0.0.1` → falta `--host 0.0.0.0` / `exec` (ya están en el compose).
@@ -79,5 +79,5 @@ y **Deploy** de nuevo. Sin esto, el browser bloquea los requests por CORS.
 - [ ] Secretos reales rotables (Vault / secret manager), no en el panel a mano.
 - [ ] Backups de Postgres (volumen `pgdata`) — la evidencia y las notas viven ahí.
 - [ ] Vigilar el DISCO: los screenshots (cifrados) se guardan en Postgres; crecen rápido.
-- [ ] Capacidad: la slim NO está dimensionada para el pico del NFR (1.000-2.100 concurrentes) — eso lo decide la PoC C-03.
+- [ ] Capacidad: la activeexam NO está dimensionada para el pico del NFR (1.000-2.100 concurrentes) — eso lo decide la PoC C-03.
 - [ ] Revisar retención de evidencia (Ley 25.326): eliminación al egreso, DPIA firmado.

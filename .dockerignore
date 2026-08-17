@@ -1,4 +1,4 @@
-# Excluye del build context de Docker (Dockerfile.slim se buildea desde la raiz).
+# Excluye del build context de Docker (Dockerfile.activeexam se buildea desde la raiz).
 # Mantiene el context chico -> builds rapidos para quien clona el repo.
 
 # Dependencias y artefactos del frontend (NO se necesitan en la imagen backend)
