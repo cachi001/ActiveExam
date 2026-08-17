@@ -5,7 +5,7 @@ import type { Rol } from "../types";
 export const ROL_LABELS: Record<string, string> = {
   estudiante: 'Estudiante',
   tutor: 'Tutor',
-  proctor: 'Proctor',
+  coordinador: 'Coordinador',
   admin_sistema: 'Admin',
   // Legacy: cuentas viejas que todavía tuvieran el valor "docente" (pre-migración 0060).
   docente: 'Tutor',
@@ -15,12 +15,18 @@ export const ROL_LABELS: Record<string, string> = {
 export const ROL_DESCRIPCIONES: Record<string, string> = {
   estudiante: 'Rinde exámenes. Solo ve lo suyo.',
   tutor: 'Carga y configura exámenes, inscribe alumnos y cierra notas. No crea materias ni comisiones.',
-  proctor: 'Supervisa exámenes en vivo y registra observaciones. No decide sanciones.',
-  admin_sistema: 'Acceso total, incluida la configuración del sistema y los usuarios.',
+  coordinador: 'Supervisión en vivo global y veredicto de casos. Absorbe lo que antes hacían proctor y revisor.',
+  admin_sistema: 'Acceso total, incluida la configuración del sistema, los usuarios y la auditoría.',
 };
 
 // Roles que puede asignar el formulario de creación/edición de usuarios.
-export const ROLES_FORMULARIO: Rol[] = ['estudiante', 'tutor', 'proctor', 'admin_sistema'];
+// c-76: 'proctor' y 'revisor' eliminados del dominio — el coordinador absorbe la supervisión global.
+// c-76-2: 'admin_examenes' y 'auditor' eliminados del dominio — solo existe un rol "Admin".
+export const ROLES_FORMULARIO: Rol[] = ['estudiante', 'tutor', 'coordinador', 'admin_sistema'];
+
+// Todos los roles funcionales reconocidos por el dominio (backend/app/domain/auth/roles.py),
+// para poblar selects de FILTRO (a diferencia de ROLES_FORMULARIO, que es solo lo asignable).
+export const ROLES_TODOS: Rol[] = ['estudiante', 'tutor', 'coordinador', 'admin_sistema'];
 
 // Valores válidos para type guard en los adapters de auth.
 export const ROLES_VALIDOS = Object.keys(ROL_LABELS) as Rol[];

@@ -44,7 +44,7 @@ authProvider.init()
     useAuth.getState().hydrateFromProvider(authProvider)
   })
   .catch((err) => {
-    // Provider no disponible (Keycloak caído, red sin token, etc.):
+    // Provider no disponible (backend caído, red sin token, etc.):
     // la app carga igual y muestra el login.
     console.warn(`[auth] Provider "${AUTH_PROVIDER_TYPE}" no disponible:`, err)
     useAuth.setState({ status: 'unauthenticated' })

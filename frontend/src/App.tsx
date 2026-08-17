@@ -31,13 +31,13 @@ const ProctoringRevisor     = lazy(() => import('./screens/ProctoringRevisor'));
 const ProctoringSessionDetail = lazy(() => import('./screens/ProctoringSessionDetail'));
 const GestionUsuarios       = lazy(() => import('./screens/GestionUsuarios'));
 const UsuarioCreate         = lazy(() => import('./screens/admin/UsuarioCreate'));
+const UsuarioEdit           = lazy(() => import('./screens/admin/UsuarioEdit'));
 const MateriasComisiones    = lazy(() => import('./screens/MateriasComisiones'));
 const DetalleUsuario        = lazy(() => import('./screens/DetalleUsuario'));
 const ExamDetail            = lazy(() => import('./screens/ExamDetail'));
 const ExamResultados        = lazy(() => import('./screens/ExamResultados'));
 const MoodleImportPage      = lazy(() => import('./admin/ExamImport/MoodleImportPage'));
 const Configuracion         = lazy(() => import('./screens/Configuracion'));
-const Registro              = lazy(() => import('./screens/Registro'));
 const LtiLanding            = lazy(() => import('./screens/LtiLanding'));
 const BancoPreguntasPage    = lazy(() => import('./screens/BancoPreguntasPage'));
 const Perfil                = lazy(() => import('./screens/Perfil'));
@@ -47,15 +47,28 @@ const Perfil                = lazy(() => import('./screens/Perfil'));
 // y CAPABILITY_ROLES del backend (si la ruta deja pasar y el endpoint responde
 // 403, la accion falla en silencio).
 const ESTUDIANTE: Rol[] = ['estudiante'];
-// Incluye 'revisor': es quien tiene la capacidad `revisar_sesion` del backend
-// (decide en un solo paso, incluida la anulación) y hasta ahora la ruta
-// /revisor lo dejaba afuera.
-const SUPERVISION: Rol[] = ['proctor', 'revisor', 'coordinador', 'admin_sistema'];
+// c-76: los roles 'proctor' y 'revisor' fueron ELIMINADOS del dominio.
+//
+// SUPERVISION_VIVO = capacidad `supervisar_vivo` ({TUTOR, COORDINADOR,
+// ADMIN_SISTEMA} en el backend, D2): supervisión en vivo + registro histórico.
+// El TUTOR queda ACOTADO a su comisión (scoping por comisión aplicado por el
+// backend); el detalle de sesión ya oculta el botón de veredicto para quien
+// no tiene `revisar_sesion` (ver DecisionRevisorForm.tsx, D3), así que abrir
+// esta ruta al tutor es seguro — entra en modo lectura de decisión.
+//
+// COLA_REVISION = capacidad `revisar_sesion` ({COORDINADOR, ADMIN_SISTEMA}):
+// el veredicto (aprobar/anular). El TUTOR NUNCA lo emite (D3, regla dura #5) —
+// por eso esta cola queda con un array de roles MÁS CHICO que SUPERVISION_VIVO,
+// a propósito (antes ambas compartían el mismo array `SUPERVISION`, lo que
+// hubiera exigido elegir entre bloquear al tutor de supervisión en vivo o
+// dejarlo entrar a la cola de decisión).
+const SUPERVISION_VIVO: Rol[] = ['tutor', 'coordinador', 'admin_sistema'];
+const COLA_REVISION: Rol[] = ['coordinador', 'admin_sistema'];
 // Area del tutor: examenes, materias, comisiones y notas. Sin supervision,
 // sin auditoria, sin configuracion.
-const ACADEMICO: Rol[] = ['tutor', 'admin_examenes', 'coordinador', 'admin_sistema'];
+// c-76-2: 'admin_examenes' fue ELIMINADO del dominio (solo existe un rol "Admin").
+const ACADEMICO: Rol[] = ['tutor', 'coordinador', 'admin_sistema'];
 const ADMIN: Rol[] = ['admin_sistema'];
-const AUDITORIA: Rol[] = ['auditor', 'admin_sistema'];
 
 /** Envuelve una pantalla en el guard de auth/rol. */
 function g(node: ReactNode, roles: Rol[]): ReactNode {
@@ -73,7 +86,6 @@ export default function App() {
     // Públicas
     '/': <Login />,
     '/login': <Login />,
-    '/registro': <Registro />,
     // Aterrizaje del launch LTI: adopta los tokens del redirect y va al dashboard.
     '/lti-login': <LtiLanding />,
 
@@ -87,33 +99,34 @@ export default function App() {
     '/alumno/revision/:examenId': g(<ExamenRevision />, ESTUDIANTE),
     '/alumno/informe/:sessionId': g(<InformeDevolucionAlumno />, ESTUDIANTE),
 
-    // Supervisión en vivo (proctor + admin)
-    '/proctor': g(<Proctor />, SUPERVISION),
-    '/proctor/examen': g(<ExamenPersonasGrid />, SUPERVISION),
+    // Supervisión en vivo: tutor (acotado a su comisión) + coordinador + admin.
+    '/proctor': g(<Proctor />, SUPERVISION_VIVO),
+    '/proctor/examen': g(<ExamenPersonasGrid />, SUPERVISION_VIVO),
 
-    // Revisión académica + administración
-    '/admin/cola-revision': g(<Revisor />, SUPERVISION),
-    '/admin/cola-revision/detalle': g(<SessionDetail />, SUPERVISION),
-    '/admin': g(<AdminDashboard />, [...ACADEMICO, 'proctor', 'revisor', 'auditor']),
+    // Cola de revisión (veredicto): SOLO coordinador + admin — el tutor nunca decide.
+    '/admin/cola-revision': g(<Revisor />, COLA_REVISION),
+    '/admin/cola-revision/detalle': g(<SessionDetail />, COLA_REVISION),
+    '/admin': g(<AdminDashboard />, ACADEMICO),
     '/admin/estadisticas': g(<EstadisticasInstitucionales />, ACADEMICO),
-    '/admin/auditoria': g(<Auditoria />, AUDITORIA),
+    '/admin/auditoria': g(<Auditoria />, ADMIN),
     '/admin/examenes': g(<ExamList />, ACADEMICO),
     '/admin/examenes/importar': g(<MoodleImportPage />, ACADEMICO),
     '/admin/examenes/:id/resultados': g(<ExamResultados />, ACADEMICO),
     '/admin/examenes/:id': g(<ExamDetail />, ACADEMICO),
     '/admin/detection-test': g(<AdminDetectionHarness />, ADMIN),
-    '/admin/proctoring-sessions': g(<ProctoringRevisor />, SUPERVISION),
-    '/admin/proctoring-session-detail/:id': g(<ProctoringSessionDetail />, SUPERVISION),
+    '/admin/proctoring-sessions': g(<ProctoringRevisor />, SUPERVISION_VIVO),
+    '/admin/proctoring-session-detail/:id': g(<ProctoringSessionDetail />, SUPERVISION_VIVO),
     '/admin/usuarios': g(<GestionUsuarios />, ADMIN),
     '/admin/usuarios/nuevo': g(<UsuarioCreate />, ADMIN),
     '/admin/materias': g(<MateriasComisiones />, ACADEMICO),
+    '/admin/usuarios/:id/editar': g(<UsuarioEdit />, ADMIN),
     '/admin/usuarios/:id': g(<DetalleUsuario />, ADMIN),
     // C-73 §10.8: deja de ser admin-only. El docente entra pero SOLO ve la pestaña
     // del campus (su cuenta personal); las secciones que definen cómo se detecta el
     // fraude siguen siendo de admin_sistema — el gating fino vive en la pantalla.
     '/admin/banco-preguntas': g(<BancoPreguntasPage />, ACADEMICO),
     '/admin/configuracion': g(<Configuracion />, ADMIN),
-    '/admin/perfil': g(<Perfil />, [...ACADEMICO, 'proctor', 'revisor', 'auditor']),
+    '/admin/perfil': g(<Perfil />, ACADEMICO),
 
     // Portal del alumno — C-21
     '/alumno': g(<AlumnoDashboard />, ESTUDIANTE),

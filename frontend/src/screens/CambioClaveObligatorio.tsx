@@ -30,8 +30,11 @@ export default function CambioClaveObligatorio() {
   const [actual, setActual] = useState('');
   const [nueva, setNueva] = useState('');
   const [confirmar, setConfirmar] = useState('');
+  const [username, setUsername] = useState('');
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const USERNAME_RE = /^[a-zA-Z0-9_.-]+$/;
 
   async function guardar() {
     setError(null);
@@ -39,6 +42,17 @@ export default function CambioClaveObligatorio() {
     if (debilidad) { setError(debilidad); return; }
     if (nueva !== confirmar) { setError('Las contraseñas no coinciden.'); return; }
     if (!esLti && nueva === actual) { setError('La nueva contraseña debe ser distinta de la temporal.'); return; }
+    const usernameLimpio = username.trim();
+    if (usernameLimpio) {
+      if (usernameLimpio.length < 3 || usernameLimpio.length > 50) {
+        setError('El usuario debe tener entre 3 y 50 caracteres.');
+        return;
+      }
+      if (!USERNAME_RE.test(usernameLimpio)) {
+        setError('El usuario solo puede tener letras, números, puntos, guiones y guiones bajos.');
+        return;
+      }
+    }
 
     setGuardando(true);
     try {
@@ -46,6 +60,7 @@ export default function CambioClaveObligatorio() {
         // LTI: sin contraseña actual (nunca la tuvo).
         ...(esLti ? {} : { contrasena_actual: actual }),
         contrasena_nueva: nueva,
+        ...(usernameLimpio ? { nuevo_username: usernameLimpio } : {}),
       });
       // Éxito: el gate deja de aplicar y el usuario pasa a su pantalla normal.
       markPasswordChanged();
@@ -105,6 +120,24 @@ export default function CambioClaveObligatorio() {
             />
             <p className="mt-1.5 text-[12px] text-on-surface-variant/70 leading-relaxed">
               {REQUISITOS_PASSWORD}
+            </p>
+          </div>
+
+          <div>
+            <label className={LABEL} htmlFor="cco-username">Elegí tu usuario (opcional)</label>
+            <input
+              id="cco-username"
+              type="text"
+              className="input w-full"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              disabled={guardando}
+              autoComplete="username"
+              placeholder="ej: juan.perez"
+              maxLength={50}
+            />
+            <p className="mt-1.5 text-[12px] text-on-surface-variant/70 leading-relaxed">
+              Solo letras, números, puntos, guiones y guiones bajos. Si lo dejás vacío, seguís con el usuario actual.
             </p>
           </div>
 

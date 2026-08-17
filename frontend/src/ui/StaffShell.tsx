@@ -50,7 +50,7 @@ function UserMenu() {
   }, [open]);
 
   const inicial = principal?.nombre?.charAt(0) ?? '?';
-  const secundario = principal?.email ?? principal?.id_institucional ?? '';
+  const secundario = principal?.email ?? principal?.username ?? '';
 
   return (
     <div ref={wrapperRef} className="relative">

@@ -67,6 +67,26 @@ export function DecisionRevisorForm({
   const eventosConCaptura = (eventos ?? []).filter((ev) => ev.screenshot_base64);
   const eventosSinCaptura = (eventos ?? []).filter((ev) => !ev.screenshot_base64);
 
+  // C-76 bloque 9 (D3 del design): "el tutor NUNCA emite veredicto". Sin
+  // `revisar_sesion` el dossier se ve en MODO LECTURA — nada clickeable que
+  // dispare una decisión. Antes "Aprobar con nota" quedaba visible y habilitado
+  // igual (el backend lo rechazaba con 403): confuso, y un botón que solo el
+  // servidor invalida no es "modo lectura" de verdad.
+  if (!puedeResolver) {
+    return (
+      <div className="space-y-sm">
+        <SectionTitle sub="Esta vista es de solo lectura: la decisión la toma quien tiene la atribución de revisor.">
+          Dossier de la sesión (modo lectura)
+        </SectionTitle>
+        <p className="text-label-sm text-on-surface-variant inline-flex items-center gap-base">
+          <Icon name="visibility" className="text-[16px]" />
+          Estás viendo el expediente en modo lectura. No tenés la atribución para registrar
+          un veredicto sobre esta sesión.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-md">
       <SectionTitle sub="El sistema solo ordena por prioridad. La decisión es siempre tuya.">
@@ -89,8 +109,9 @@ export function DecisionRevisorForm({
         />
       </FormField>
 
-      {/* Selector de evidencia — solo visible para quienes pueden anular */}
-      {puedeResolver && (eventos ?? []).length > 0 && (
+      {/* Selector de evidencia. `puedeResolver` es siempre true acá: el early
+          return de arriba ya cubrió el caso sin atribución. */}
+      {(eventos ?? []).length > 0 && (
         <div className="space-y-sm">
           <div className="flex items-center justify-between">
             <p className="text-label-sm font-semibold text-on-surface-variant uppercase tracking-wide">
@@ -185,25 +206,16 @@ export function DecisionRevisorForm({
         >
           Aprobar con nota
         </Button>
-        {puedeResolver && (
-          <Button
-            variant="danger"
-            icon="gavel"
-            disabled={!motivoOk || enviando || !hayEvidencia}
-            onClick={anular}
-            className="justify-center font-bold"
-          >
-            Anular examen
-          </Button>
-        )}
+        <Button
+          variant="danger"
+          icon="gavel"
+          disabled={!motivoOk || enviando || !hayEvidencia}
+          onClick={anular}
+          className="justify-center font-bold"
+        >
+          Anular examen
+        </Button>
       </div>
-
-      {!puedeResolver && (
-        <p className="text-label-sm text-on-surface-variant inline-flex items-center gap-base">
-          <Icon name="lock" className="text-[16px]" />
-          No tenés la atribución para anular. Podés aprobar la nota.
-        </p>
-      )}
     </div>
   );
 }

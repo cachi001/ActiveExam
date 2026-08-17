@@ -2,7 +2,7 @@
  * ProctoringSessionDetail — Detalle completo de una sesión de proctoring (C-46).
  *
  * Ruta: /admin/proctoring-session-detail (el ID viene del store.proctoringSessionId)
- * Roles: admin_examenes | coordinador | revisor
+ * Roles: tutor (acotado a su comisión, solo lectura de decisión) | coordinador | admin_sistema
  *
  * L2.5 OBLIGATORIO: muestra disclaimer inamovible en banner superior.
  * Ley 25.326: screenshot_base64 NO se loguea en consola ni se persiste en localStorage.
@@ -33,8 +33,10 @@ import { DetalleHeader } from './proctoring/DetalleHeader';
 import { DecisionRevisorForm } from './proctoring/DecisionRevisorForm';
 import { EventoCard } from './proctoring/EventoCard';
 import { BiometriaCard } from './proctoring/BiometriaCard';
+import { RiesgoBanner } from './proctoring/RiesgoBanner';
+import { scoreSoftBorder } from './proctoring/helpers';
 import { ChatBox } from '../ui/ChatBox';
-import { ObservacionesProctor } from './proctoring/ObservacionesProctor';
+import { ObservacionesTutor } from './proctoring/ObservacionesTutor';
 import { PausaSesionPanel } from './proctoring/PausaSesionPanel';
 import { PausasHistorial } from './proctoring/PausasHistorial';
 
@@ -71,11 +73,11 @@ export default function ProctoringSessionDetail() {
   const setProctoringSessionId = useApp((s) => s.setProctoringSessionId);
   const rol = useAuth((s) => s.principal?.roles[0] ?? null);
   const rolesPrincipal = useAuth((s) => s.principal?.roles);
-  // Identidad del proctor → se registra como proctor_actor al resolver una pausa.
-  const proctorActor = useAuth((s) => s.principal?.email ?? null);
-  // C-15: el proctor puede abrir el detalle para chatear/supervisar, pero NO
+  // Identidad del tutor → se registra como tutor_actor al resolver una pausa.
+  const tutorActor = useAuth((s) => s.principal?.email ?? null);
+  // C-15: el tutor puede abrir el detalle para chatear/supervisar, pero NO
   // borrar evidencia (regla dura #6: cadena de custodia). El borrado y la lista
-  // admin quedan reservados a admin_sistema; el proctor vuelve a su panel.
+  // admin quedan reservados a admin_sistema; el tutor vuelve a su panel.
   const esAdmin = rol === 'admin_sistema';
   // "Volver" regresa al ORIGEN real (supervisión en vivo, grid de personas, cola
   // o grabadas), guardado en el store al abrir el detalle. Fallback por rol si no
@@ -113,7 +115,7 @@ export default function ProctoringSessionDetail() {
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [confirmando, setConfirmando] = useState(false);
-  // C-15 (3.3): cierre forzado por el proctor (operativo, NO disciplinario).
+  // C-15 (3.3): cierre forzado por el tutor/coordinador (operativo, NO disciplinario).
   const [cerrando, setCerrando] = useState(false);
   const [motivoCierre, setMotivoCierre] = useState('');
   const [cerrada, setCerrada] = useState(false);
@@ -339,6 +341,11 @@ export default function ProctoringSessionDetail() {
           <>
             <DetalleHeader detalle={detalle} />
 
+            {/* C-76 bloque 9.1: estado visual con/sin riesgo, siempre visible — no
+                solo en la cola de revisión — para que cualquiera que abra el detalle
+                (tutor incluido) entienda de un vistazo si esta sesión pide atención. */}
+            <RiesgoBanner score={detalle.score} />
+
             {/* Decisión del revisor, JUNTO al expediente. Solo cuando se entró
                 desde la cola (`backRoute`) y la sesión está cerrada: no se decide
                 sobre un examen en curso, ni desde el registro histórico. */}
@@ -353,23 +360,24 @@ export default function ProctoringSessionDetail() {
               </Card>
             )}
 
-            {/* Pausa: EN VIVO el proctor la resuelve acá; GRABADA muestra el
+            {/* Pausa: EN VIVO el tutor/coordinador la resuelve acá; GRABADA muestra el
                 historial de todas las pausas como evidencia (solo lectura).
                 C-69 admin-sync: si el admin desactivó las pausas, se oculta la gestión. */}
             {sessionId && pausasHabilitadas && (
               esVivo
-                ? <PausaSesionPanel sessionId={sessionId} proctorActor={proctorActor} />
+                ? <PausaSesionPanel sessionId={sessionId} tutorActor={tutorActor} />
                 : <PausasHistorial sessionId={sessionId} />
             )}
 
             {/* Biometría — arriba del contenido para verla junto al header */}
             <BiometriaCard biometria={detalle.biometria} />
 
-            {/* Eventos (izquierda) + chat del proctor (derecha) en dos columnas.
+            {/* Eventos (izquierda) + chat del tutor (derecha) en dos columnas.
                 En mobile colapsan a una sola columna (eventos arriba, chat abajo). */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-lg items-start">
-              {/* Eventos registrados — columna izquierda */}
-              <Card className="space-y-md">
+              {/* Eventos registrados — columna izquierda. Borde tintado por riesgo
+                  (C-76 bloque 9.1): mismo lenguaje visual que las listas (SesionCard). */}
+              <Card className={`space-y-md ${scoreSoftBorder(detalle.score)}`}>
                 <SectionTitle
                   sub={`${detalle.eventos.length} evento${detalle.eventos.length !== 1 ? 's' : ''} registrado${
                     detalle.eventos.length !== 1 ? 's' : ''
@@ -392,22 +400,22 @@ export default function ProctoringSessionDetail() {
                 )}
               </Card>
 
-              {/* C-15: canal de chat con el alumno + observaciones del proctor.
+              {/* C-15: canal de chat con el alumno + observaciones del tutor.
                   Sticky en desktop para que acompañe el scroll de la lista de eventos. */}
               <div className="lg:sticky lg:top-lg space-y-lg">
                 {/* C-69 admin-sync: el chat se oculta si el admin lo desactivó. */}
                 {chatHabilitado && (
                   <ChatBox
                     sessionId={sessionId}
-                    yo="proctor"
+                    yo="tutor"
                     titulo={esVivo ? 'Canal con el estudiante' : 'Historial del canal con el estudiante'}
                     altura="h-[420px]"
                     readOnly={!esVivo}
                   />
                 )}
-                {/* C-15 (3.2): observaciones del proctor — insumo de la revisión C-16.
+                {/* C-15 (3.2): observaciones del tutor — insumo de la revisión C-16.
                     En grabada se muestran como evidencia (solo lectura). */}
-                <ObservacionesProctor sessionId={sessionId} proctorActor={proctorActor} readOnly={!esVivo} />
+                <ObservacionesTutor sessionId={sessionId} tutorActor={tutorActor} readOnly={!esVivo} />
               </div>
             </div>
           </>

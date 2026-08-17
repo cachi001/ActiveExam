@@ -35,6 +35,8 @@ interface Estado {
   pausasHabilitadas: boolean;
   // C-69: límite de duración de la pausa autorizada (minutos).
   pausaMaxMin: number;
+  // C-76 bloque 4: cantidad máxima de pausas (aprobada+finalizada) por sesión.
+  pausasMaxPorSesion: number;
 }
 
 function estadosIguales(a: Estado, b: Estado): boolean {
@@ -42,6 +44,7 @@ function estadosIguales(a: Estado, b: Estado): boolean {
     a.chatHabilitado === b.chatHabilitado &&
     a.pausasHabilitadas === b.pausasHabilitadas &&
     a.pausaMaxMin === b.pausaMaxMin &&
+    a.pausasMaxPorSesion === b.pausasMaxPorSesion &&
     a.detectores.length === b.detectores.length &&
     a.detectores.every((d) => b.detectores.includes(d));
 }
@@ -52,6 +55,7 @@ const ESTADO_DEFAULT: Estado = {
   chatHabilitado: false,
   pausasHabilitadas: false,
   pausaMaxMin: 10,
+  pausasMaxPorSesion: 2,
 };
 
 export default function SeccionProctoring() {
@@ -72,6 +76,7 @@ export default function SeccionProctoring() {
           chatHabilitado: cfg.chat_habilitado ?? false,
           pausasHabilitadas: cfg.pausas_habilitadas ?? false,
           pausaMaxMin: cfg.pausa_max_min ?? 10,
+          pausasMaxPorSesion: cfg.pausas_max_por_sesion ?? 2,
         };
         setEstado(cargado);
         setInicial(cargado);
@@ -94,6 +99,7 @@ export default function SeccionProctoring() {
         chat_habilitado: estado.chatHabilitado,
         pausas_habilitadas: estado.pausasHabilitadas,
         pausa_max_min: estado.pausaMaxMin,
+        pausas_max_por_sesion: estado.pausasMaxPorSesion,
       });
       // Invalida el cache de config efectiva para que el examen y el harness
       // carguen la nueva config en la próxima sesión (task 4.5).
@@ -186,14 +192,14 @@ export default function SeccionProctoring() {
           </SectionTitle>
           <div className="grid grid-cols-1 gap-2">
             <ToggleRow
-              label="Chat entre proctor y alumno"
-              description="Habilita el canal de mensajes en vivo entre el alumno que rinde y el proctor que supervisa. Si lo desactivás, no aparece el chat ni del lado del alumno ni del proctor."
+              label="Chat entre tutor y alumno"
+              description="Habilita el canal de mensajes en vivo entre el alumno que rinde y el tutor que supervisa. Si lo desactivás, no aparece el chat ni del lado del alumno ni del tutor."
               on={estado.chatHabilitado}
               onToggle={() => setEstado((p) => ({ ...p, chatHabilitado: !p.chatHabilitado }))}
             />
             <ToggleRow
               label="Pausas solicitadas por el alumno"
-              description="Permite que el alumno pida una pausa durante el examen para que el proctor la autorice. Si lo desactivás, el alumno no ve el botón de pausa y el proctor no recibe solicitudes."
+              description="Permite que el alumno pida una pausa durante el examen para que el tutor la autorice. Si lo desactivás, el alumno no ve el botón de pausa y el tutor no recibe solicitudes."
               on={estado.pausasHabilitadas}
               onToggle={() => setEstado((p) => ({ ...p, pausasHabilitadas: !p.pausasHabilitadas }))}
             />
@@ -218,6 +224,34 @@ export default function SeccionProctoring() {
                     className="w-20 text-[14px] px-3 py-2 rounded-lg border border-outline-variant bg-white focus:outline-none focus:border-surface-500"
                   />
                   <span className="text-label-sm text-on-surface-variant">min</span>
+                </div>
+              </div>
+            )}
+            {estado.pausasHabilitadas && (
+              <div className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl border border-outline-variant/60 bg-surface-container-low/50">
+                <div className="min-w-0">
+                  <p className="text-label-md font-semibold text-on-surface">Pausas máximas por sesión</p>
+                  <p className="text-[11px] text-on-surface-variant leading-snug mt-0.5">
+                    Cantidad de pausas que el tutor puede aprobar en la misma sesión. El alumno
+                    siempre puede solicitar; el límite se aplica al aprobar.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <input
+                    type="number"
+                    min={1}
+                    max={50}
+                    inputMode="numeric"
+                    aria-label="Cantidad máxima de pausas por sesión"
+                    disabled={guardando}
+                    value={estado.pausasMaxPorSesion}
+                    onChange={(e) => setEstado((p) => ({
+                      ...p,
+                      pausasMaxPorSesion: Math.max(1, Math.min(50, Number(e.target.value) || 1)),
+                    }))}
+                    className="w-20 text-[14px] px-3 py-2 rounded-lg border border-outline-variant bg-white focus:outline-none focus:border-surface-500"
+                  />
+                  <span className="text-label-sm text-on-surface-variant">pausas</span>
                 </div>
               </div>
             )}

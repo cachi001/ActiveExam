@@ -5,7 +5,6 @@ import { estadisticasApi } from './apiAdmin/estadisticas';
 import { usuariosApi } from './apiAdmin/usuarios';
 import { scoringApi } from './apiAdmin/scoring';
 import { detalleUsuarioApi } from './apiAdmin/detalle-usuario';
-import { registroApi } from './apiAdmin/registro';
 import { consentimientoApi } from './apiAdmin/consentimiento';
 import { configSistemaApi } from './apiAdmin/config-sistema';
 import { moodleApi } from './apiAdmin/moodle';
@@ -16,7 +15,6 @@ export const adminApi = {
   ...usuariosApi,
   ...scoringApi,
   ...detalleUsuarioApi,
-  ...registroApi,
   ...consentimientoApi,
   ...configSistemaApi,
   ...moodleApi,

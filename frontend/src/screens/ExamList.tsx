@@ -196,8 +196,8 @@ export default function ExamList() {
         </FiltrosPanel>
 
         <Card>
-          <div className="flex items-center gap-2 mb-4 pb-4 border-b border-surface-100">
-            <Icon name="fact_check" className="text-[20px] text-primary" fill />
+          <div className="flex items-center gap-2 pb-3 mb-3 border-b border-surface-100">
+            <Icon name="fact_check" className="text-[16px] text-gray-400 shrink-0" />
             <h2 className="text-base font-semibold text-surface-800">
               Exámenes <span className="text-surface-400 font-normal text-sm">({totalImportados})</span>
             </h2>

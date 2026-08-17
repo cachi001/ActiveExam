@@ -56,7 +56,7 @@ vi.mock('../proctoring/useExamProctoring', () => ({
 vi.mock('../lib/store', () => {
   const state = {
     examenActivo: { id: 'ex1', nombre: 'Final', duracion_min: 60, examen_contenido_id: 'c1', umbral_score: 70 },
-    principal: { id_institucional: 'LU-123', email: 'alumno@uni.edu', nombre: 'Ana', roles: [] },
+    principal: { username: 'LU-123', email: 'alumno@uni.edu', nombre: 'Ana', roles: [] },
   };
   return { useApp: (selector: (s: typeof state) => unknown) => selector(state) };
 });
@@ -64,7 +64,7 @@ vi.mock('../lib/store', () => {
 // Auth: el principal (identidad del alumno para el write-back) es fuente única en useAuth (C-73).
 vi.mock('../lib/authStore', () => {
   const authState = {
-    principal: { id_institucional: 'LU-123', email: 'alumno@uni.edu', nombre: 'Ana', roles: [] },
+    principal: { username: 'LU-123', email: 'alumno@uni.edu', nombre: 'Ana', roles: [] },
   };
   return { useAuth: (selector: (s: typeof authState) => unknown) => selector(authState) };
 });

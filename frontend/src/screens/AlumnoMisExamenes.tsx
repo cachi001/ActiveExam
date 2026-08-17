@@ -18,7 +18,7 @@ import { NotaCard } from './alumno/components/NotaCard';
 interface GatePorExamen { puede: boolean; codigo?: string; razon?: string; }
 
 /** Detectores por defecto para exámenes importados (sin config de examen-config). */
-const DETECTORES_SLIM = [
+const DETECTORES_ACTIVEEXAM = [
   'rostro_ausente', 'multiples_rostros', 'mirada_desviada_sostenida',
   'perdida_de_foco', 'cambio_pestana', 'salida_pantalla_completa',
 ] as const;
@@ -86,7 +86,7 @@ export default function AlumnoMisExamenes() {
 
   /**
    * Inicia la rendición de un examen importado de Moodle (C-69).
-   * Verifica el gate de perfil (sin examen_id para no requerir acuse por-examen en slim).
+   * Verifica el gate de perfil (sin examen_id para no requerir acuse por-examen en activeexam).
    * Setea examenActivo con examen_contenido_id para que Examen.tsx cargue las preguntas.
    */
   const handleRendirImportado = async (contenido: ExamenContenidoResumen) => {
@@ -112,7 +112,7 @@ export default function AlumnoMisExamenes() {
       // con lo que Examen.tsx va a leer server-side vía fetchExamenParaRendir.
       duracion_min: contenido.tiempo_limite_min ?? 0,
       umbral_score: 70,
-      detectores: [...DETECTORES_SLIM],
+      detectores: [...DETECTORES_ACTIVEEXAM],
       retencion_dias: 365,
       inscriptos: 0,
       rindiendo: 0,

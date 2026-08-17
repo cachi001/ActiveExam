@@ -1,7 +1,7 @@
 /**
- * ProctoringRevisor — Lista de sesiones grabadas del backend slim (C-46).
+ * ProctoringRevisor — Lista de sesiones grabadas del backend activeexam (C-46).
  *
- * Ruta: /admin/proctoring-sessions (roles: admin_examenes | coordinador | revisor)
+ * Ruta: /admin/proctoring-sessions (roles: tutor | coordinador | admin_sistema)
  * Accede a GET /proctoring/sessions via api.listarSesionesProctoring() (dual real/mock).
  *
  * L2.5: este módulo NO sanciona automáticamente. El score es un indicador de

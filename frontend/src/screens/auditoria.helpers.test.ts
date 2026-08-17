@@ -21,7 +21,7 @@ describe('configDiff', () => {
     expect(diff).toHaveLength(1);
     expect(diff![0]).toMatchObject({
       key: 'chat_habilitado',
-      label: 'Chat proctor–alumno',
+      label: 'Chat tutor–alumno',
       antes: 'Sí',
       despues: 'No',
     });

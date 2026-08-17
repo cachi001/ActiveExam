@@ -12,19 +12,23 @@
 //
 // Antes esto declaraba un "modelo MVP de 3 roles" mientras el backend ya tenía 7.
 // La consecuencia no era cosmética: el backend reserva `revisar_sesion` (decidir
-// en un solo paso, incluida la anulación) al rol `revisor`, pero el frontend ni
+// en un solo paso, incluida la anulación) al coordinador, pero el frontend ni
 // siquiera conocía ese rol, así que la ruta /revisor lo rechazaba con "Sin
 // permisos" — nadie podía anular un examen por fraude. Si el backend agrega un
 // rol, va acá también.
+//
+// c-76: 'proctor' y 'revisor' ELIMINADOS — el COORDINADOR absorbe la
+// supervisión global en vivo y el veredicto (`revisar_sesion`); el TUTOR ya
+// cubre `supervisar_vivo` (acotado a su comisión). Ver migración 0068
+// (remapea usuario.roles "proctor" -> "coordinador") y 0071 (ídem "revisor").
+// c-76-2: 'admin_examenes' y 'auditor' ELIMINADOS — solo debe existir un rol
+// "Admin" (ADMIN_SISTEMA). Ver migración 0074 (admin_examenes -> admin_sistema)
+// y 0075 (auditor -> admin_sistema).
 export type Rol =
   | 'estudiante'
-  | 'proctor'
-  | 'revisor'
   | 'coordinador'
   | 'tutor'
-  | 'admin_examenes'
-  | 'admin_sistema'
-  | 'auditor';
+  | 'admin_sistema';
 
 export type Severidad = 'baseline' | 'baja' | 'media' | 'alta' | 'critica';
 
@@ -42,10 +46,13 @@ export type TipoEvento =
   | 'corte_conectividad_prolongado'
   // C-72: reapertura de la rendición (emitidos server-side al reanudar).
   | 'recarga_pagina'
-  | 'reanudacion_tardia';
+  | 'reanudacion_tardia'
+  // C-76 bloque 5: screenshot posteado por el cliente durante una ventana de
+  // pausa APROBADA (BASELINE, nunca suma al score — L2.5). Ver useExamProctoring.ts.
+  | 'captura_pausa';
 
 export interface Principal {
-  id_institucional: string;
+  username: string;
   nombre: string;
   apellido?: string;
   email: string;
@@ -266,7 +273,7 @@ export interface VerifyIdentityResponse {
   distancia: number;
   reintentos_restantes: number;
   clave_sesion_emitida: boolean;
-  escalado_a_proctor: boolean;
+  escalado_a_coordinador: boolean;
 }
 
 export interface EventoSesion {

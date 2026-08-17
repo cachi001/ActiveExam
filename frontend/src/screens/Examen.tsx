@@ -97,7 +97,7 @@ export default function Examen() {
     });
   }, []);
 
-  const { sessionId, sessionCreadaEn, score, eventCount, activo, eventos, extraMonitorActive, sessionError, detener } = useExamProctoring(videoRef, examen);
+  const { sessionId, sessionCreadaEn, score, eventCount, activo, eventos, extraMonitorActive, sessionError, detener, setPausaAprobada } = useExamProctoring(videoRef, examen);
 
   // Entrega: confirmación previa (nunca finalizar por un click accidental) + estado
   // de envío + error de entrega (si el POST de respuestas falla NO se navega a /cierre,
@@ -376,11 +376,11 @@ export default function Examen() {
               onSiguiente={() => setIndiceActual((i) => avanzarPregunta(i, total))}
             />
 
-            {/* Canal del proctor + supervisión en vivo. Si el chat está apagado, la
+            {/* Canal del tutor + supervisión en vivo. Si el chat está apagado, la
                 supervisión ocupa todo el ancho (sin hueco). */}
             <div className={`grid gap-md items-start ${chatHabilitado ? 'md:grid-cols-2' : 'grid-cols-1'}`}>
               {chatHabilitado && (
-                <ChatBox sessionId={sessionId} yo="alumno" titulo="Canal con el proctor" altura="h-[160px]" />
+                <ChatBox sessionId={sessionId} yo="alumno" titulo="Canal con el tutor" altura="h-[160px]" />
               )}
               <IntegridadPanel
                 activo={activo}
@@ -420,7 +420,15 @@ export default function Examen() {
 
             {/* Pausa autorizada */}
             {pausasHabilitadas && (
-              <PausaAlumno sessionId={sessionId} onActivaChange={setPausaActiva} />
+              <PausaAlumno
+                sessionId={sessionId}
+                onActivaChange={(activa) => {
+                  setPausaActiva(activa);
+                  // C-76 bloque 5: mientras la pausa está aprobada, arranca la
+                  // cadencia de captura_pausa (detiene al resolver/finalizar).
+                  setPausaAprobada(activa);
+                }}
+              />
             )}
           </aside>
         </div>

@@ -49,14 +49,14 @@ export function AsignarDocenteDialog({
               id: string;
               nombre?: string;
               apellido?: string;
-              id_institucional?: string;
+              username?: string;
             };
             const completo = [x.nombre, x.apellido].filter(Boolean).join(' ').trim();
             return {
               id: x.id,
-              legajo: x.id_institucional ?? '',
+              legajo: x.username ?? '',
               // Sin nombre cargado se muestra el legajo: un UUID no le sirve a nadie.
-              nombre: completo || (x.id_institucional ?? x.id),
+              nombre: completo || (x.username ?? x.id),
             };
           }),
         );

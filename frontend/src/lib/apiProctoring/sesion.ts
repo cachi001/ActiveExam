@@ -9,7 +9,7 @@ import type {
 
 export const sesionApi = {
   /**
-   * Crea una sesión de proctoring en el backend slim (C-46).
+   * Crea una sesión de proctoring en el backend activeexam (C-46).
    * Real: POST /proctoring/sessions
    */
   async crearSesionProctoring(
@@ -37,7 +37,7 @@ export const sesionApi = {
   },
 
   /**
-   * Envía un evento con screenshot al backend slim (C-46).
+   * Envía un evento con screenshot al backend activeexam (C-46).
    * Real: POST /proctoring/sessions/{sessionId}/events
    * Mock o fallo: retorna null sin propagar (fire-and-forget seguro)
    *
@@ -84,7 +84,7 @@ export const sesionApi = {
   },
 
   /**
-   * Envía el resultado de la verificación biométrica al backend slim (C-46).
+   * Envía el resultado de la verificación biométrica al backend activeexam (C-46).
    * Real: POST /proctoring/sessions/{sessionId}/biometria
    * Mock o fallo: retorna { ok: true } con delay 150ms (fire-and-forget)
    */

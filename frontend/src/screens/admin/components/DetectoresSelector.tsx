@@ -20,7 +20,12 @@ const CAPTURA_SCREENSHOT: Set<string> = new Set([
 
 // Orden por grupos lógicos: primero lo que ve la cámara, después el
 // comportamiento en el navegador, y al final hardware/conectividad.
-const DETECTORES: TipoEvento[] = [
+// `as const`: sin esto, (typeof DETECTORES)[number] se ensancha al union
+// COMPLETO TipoEvento (incluidos recarga_pagina/reanudacion_tardia/captura_pausa,
+// que son eventos emitidos por el servidor, no detectores toggleables) y
+// DETECTOR_DESC de abajo terminaría exigiendo descripciones para eventos que
+// nunca se muestran acá.
+const DETECTORES = [
   // Cámara / visión
   'rostro_ausente',
   'multiples_rostros',
@@ -33,10 +38,14 @@ const DETECTORES: TipoEvento[] = [
   // Hardware / conectividad
   'monitor_adicional',
   'corte_conectividad_prolongado',
-];
+] as const satisfies readonly TipoEvento[];
 
 // Descripciones cortas y claras (para NO técnicos) de qué vigila cada detector.
-const DETECTOR_DESC: Record<string, string> = {
+// Record<(typeof DETECTORES)[number], string>: si se agrega un detector a
+// DETECTORES y se olvida su descripción acá, TypeScript lo marca como error
+// (a diferencia de Record<string, string>, que dejaba pasar claves faltantes
+// en silencio — el fallback `?? ''` de abajo las ocultaba sin avisar).
+const DETECTOR_DESC: Record<(typeof DETECTORES)[number], string> = {
   rostro_ausente: 'No se ve ningún rostro frente a la cámara.',
   multiples_rostros: 'Aparece más de una persona en cámara.',
   mirada_desviada_sostenida: 'La mirada se va de la pantalla por un rato.',

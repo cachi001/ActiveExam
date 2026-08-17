@@ -8,7 +8,7 @@
  *   - logout() delega al provider y limpia el store.
  *   - hasRole() retorna true/false según los roles del principal.
  *
- * El provider se mockea — no hay red ni Keycloak.
+ * El provider se mockea — no hay red.
  * Zustand crea un nuevo store por describe block para evitar state leakage.
  */
 
@@ -52,7 +52,7 @@ function _makeMockProvider(principal: Principal | null = null, token: string | n
 
 function _fakeEstudiante(): Principal {
   return {
-    id_institucional: 'FRM-23-4912',
+    username: 'FRM-23-4912',
     nombre: 'Emiliano Cáceres',
     email: 'ecaceres@uni.edu',
     roles: ['estudiante'],
@@ -61,20 +61,22 @@ function _fakeEstudiante(): Principal {
   };
 }
 
-function _fakeProctor(): Principal {
+// c-76: 'proctor' fue eliminado del dominio (remapeado a 'coordinador' —
+// migración 0068). El fixture pasa a un rol de staff válido para hasRole().
+function _fakeCoordinador(): Principal {
   return {
-    id_institucional: 'FRM-DOC-1182',
-    nombre: 'Dr. Proctor',
-    email: 'proctor@uni.edu',
-    roles: ['proctor'],
+    username: 'FRM-DOC-1182',
+    nombre: 'Dra. Coordinadora',
+    email: 'coordinadora@uni.edu',
+    roles: ['coordinador'],
     mfa_satisfecho: true,
     jurisdiccion: 'AR',
   };
 }
 
 // ---------------------------------------------------------------------------
-// Importar authStore — se importa DESPUÉS de crear los mocks para evitar
-// que el módulo se inicialice con keycloak.ts real.
+// Importar authStore — se importa DESPUÉS de crear los mocks para no depender
+// del provider real (JwtAdapter).
 // ---------------------------------------------------------------------------
 
 // NOTA: authStore usa módulo-level state (_activeProvider). Para evitar
@@ -102,7 +104,7 @@ describe('authStore.hydrateFromProvider()', () => {
     useAuth.getState().hydrateFromProvider(provider);
 
     expect(useAuth.getState().status).toBe('authenticated');
-    expect(useAuth.getState().principal?.id_institucional).toBe('FRM-23-4912');
+    expect(useAuth.getState().principal?.username).toBe('FRM-23-4912');
     expect(useAuth.getState().token).toBe('token-xyz');
   });
 });
@@ -116,7 +118,7 @@ describe('authStore.login()', () => {
 
     expect(provider.login).toHaveBeenCalledWith({ username: 'x@uni.edu', password: 'Pass1234' });
     expect(useAuth.getState().status).toBe('authenticated');
-    expect(useAuth.getState().principal?.id_institucional).toBe('FRM-23-4912');
+    expect(useAuth.getState().principal?.username).toBe('FRM-23-4912');
   });
 });
 
@@ -141,12 +143,12 @@ describe('authStore.logout()', () => {
 
 describe('authStore.hasRole()', () => {
   it('retorna true si el principal tiene el rol', () => {
-    const provider = _makeMockProvider(_fakeProctor(), 'tok');
+    const provider = _makeMockProvider(_fakeCoordinador(), 'tok');
     useAuth.getState().hydrateFromProvider(provider);
 
-    expect(useAuth.getState().hasRole(['proctor'])).toBe(true);
+    expect(useAuth.getState().hasRole(['coordinador'])).toBe(true);
     expect(useAuth.getState().hasRole(['admin_sistema'])).toBe(false);
-    expect(useAuth.getState().hasRole(['proctor', 'admin_sistema'])).toBe(true);
+    expect(useAuth.getState().hasRole(['coordinador', 'admin_sistema'])).toBe(true);
   });
 
   it('retorna false sin principal', () => {

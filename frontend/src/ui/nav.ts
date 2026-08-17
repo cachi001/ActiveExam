@@ -1,4 +1,4 @@
-// Navegación unificada de staff (admin / proctor / revisor). Una sola fuente
+// Navegación unificada de staff (admin / coordinador / tutor). Una sola fuente
 // para que la sidebar sea consistente en todas las pantallas de staff.
 //
 // `group` separa las secciones de la sidebar:
@@ -15,20 +15,28 @@ import type { Rol } from '../lib/types';
 
 // Política de roles por área (espeja App.tsx y CAPABILITY_ROLES del backend).
 //
-// SUPERVISION incluye a 'revisor' — parece obvio, pero faltaba: la ruta /revisor
-// admitía solo proctor+admin, mientras el backend reserva `revisar_sesion`
-// (decidir en un solo paso, incluida la anulación) al revisor. Resultado: el
-// admin entraba pero recibía 403 al decidir, y el revisor tenía el permiso
-// pero no podía entrar. Nadie podía anular por fraude.
+// c-76: los roles 'proctor' y 'revisor' fueron ELIMINADOS del dominio.
+//
+// SUPERVISION_VIVO = capacidad `supervisar_vivo` ({TUTOR, COORDINADOR,
+// ADMIN_SISTEMA} en el backend, D2): el tutor supervisa en vivo y ve el
+// registro histórico, ACOTADO a su comisión (el scoping por comisión lo
+// aplica el backend — acá solo se decide si el item se muestra).
+//
+// COLA_REVISION = capacidad `revisar_sesion` ({COORDINADOR, ADMIN_SISTEMA}):
+// el veredicto (aprobar/anular) — el TUTOR NUNCA lo emite (D3, regla dura #5).
+// Antes ambas áreas compartían el mismo array `SUPERVISION`, lo que hubiera
+// exigido elegir entre bloquear al tutor de supervisión en vivo o dejarlo
+// entrar a la cola de decisión — son capacidades distintas, así que se separan.
+const SUPERVISION_VIVO: Rol[] = ['tutor', 'coordinador', 'admin_sistema'];
+const COLA_REVISION: Rol[] = ['coordinador', 'admin_sistema'];
 //
 // ACADEMICO es el área del DOCENTE: exámenes, materias y comisiones — lo suyo.
 // Queda deliberadamente FUERA de supervisión, auditoría y configuración: quien
 // dicta la materia no supervisa la integridad de su propia rendición ni afloja
 // los umbrales con que se la detecta.
-const SUPERVISION: Rol[] = ['proctor', 'revisor', 'coordinador', 'admin_sistema'];
-const ACADEMICO: Rol[] = ['tutor', 'admin_examenes', 'coordinador', 'admin_sistema'];
+// c-76-2: 'admin_examenes' fue ELIMINADO del dominio (solo existe un rol "Admin").
+const ACADEMICO: Rol[] = ['tutor', 'coordinador', 'admin_sistema'];
 const ADMIN: Rol[] = ['admin_sistema'];
-const AUDITORIA: Rol[] = ['auditor', 'admin_sistema'];
 
 export interface StaffNavItem {
   to: string;
@@ -40,7 +48,7 @@ export interface StaffNavItem {
 }
 
 export const STAFF_NAV: StaffNavItem[] = [
-  { to: '/admin',                       icon: 'space_dashboard', label: 'Dashboard',               group: 'main',   roles: [...ACADEMICO, 'proctor', 'revisor', 'auditor'] },
+  { to: '/admin',                       icon: 'space_dashboard', label: 'Dashboard',               group: 'main',   roles: ACADEMICO },
   { to: '/admin/estadisticas',          icon: 'insights',        label: 'Estadísticas',            group: 'main',   roles: ACADEMICO },
   { to: '/admin/examenes',              icon: 'fact_check',      label: 'Exámenes',                group: 'main',   roles: ACADEMICO },
   { to: '/admin/banco-preguntas',       icon: 'library_books',   label: 'Banco de preguntas',       group: 'main',   roles: ACADEMICO },
@@ -50,14 +58,15 @@ export const STAFF_NAV: StaffNavItem[] = [
   { to: '/admin/materias',              icon: 'school',          label: 'Materias y comisiones',   group: 'main',   roles: ACADEMICO },
   // Bloque "proctoring": las 3 vistas de sesiones van juntas y al FINAL del grupo
   // main (justo arriba del divider), en orden de flujo: vivo → cola → grabadas.
-  // Visibles para proctor + admin (SUPERVISION).
-  { to: '/proctor',                     icon: 'visibility',      label: 'Supervisión en vivo',     group: 'main',   roles: SUPERVISION },
-  { to: '/admin/cola-revision',          icon: 'gavel',           label: 'Cola de revisión',        group: 'main',   roles: SUPERVISION },
-  { to: '/admin/proctoring-sessions',   icon: 'history',         label: 'Registro de sesiones',    group: 'main',   roles: SUPERVISION },
+  // Supervisión en vivo + registro: tutor (acotado a su comisión) + coordinador + admin.
+  { to: '/proctor',                     icon: 'visibility',      label: 'Supervisión en vivo',     group: 'main',   roles: SUPERVISION_VIVO },
+  { to: '/admin/proctoring-sessions',   icon: 'history',         label: 'Registro de sesiones',    group: 'main',   roles: SUPERVISION_VIVO },
+  // Cola de revisión (veredicto): SOLO coordinador + admin — el tutor NUNCA decide (D3).
+  { to: '/admin/cola-revision',          icon: 'gavel',           label: 'Cola de revisión',        group: 'main',   roles: COLA_REVISION },
   // Administración: separadas con divider. Solo admin.
   { to: '/admin/usuarios',              icon: 'manage_accounts', label: 'Usuarios',                group: 'config', roles: ADMIN },
   { to: '/admin/detection-test',        icon: 'bug_report',      label: 'Test de detección',       group: 'config', roles: ADMIN },
-  { to: '/admin/auditoria',             icon: 'verified_user',   label: 'Auditoría',               group: 'config', roles: AUDITORIA },
+  { to: '/admin/auditoria',             icon: 'verified_user',   label: 'Auditoría',               group: 'config', roles: ADMIN },
   { to: '/admin/configuracion',         icon: 'settings',        label: 'Configuración',           group: 'config', roles: ADMIN },
 ];
 

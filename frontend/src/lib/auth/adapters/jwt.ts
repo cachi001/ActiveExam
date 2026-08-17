@@ -61,15 +61,15 @@ function _principalFromClaims(claims: Record<string, unknown>): Principal | null
     );
   }
 
-  const idInstitucional =
+  const username =
     (claims['preferred_username'] as string | undefined) ||
     (claims['sub'] as string | undefined) ||
     '';
-  if (!idInstitucional) return null;
+  if (!username) return null;
 
   return {
-    id_institucional: idInstitucional,
-    nombre: (claims['name'] as string | undefined) || idInstitucional,
+    username,
+    nombre: (claims['name'] as string | undefined) || username,
     email: (claims['email'] as string | undefined) || '',
     roles: roles.length > 0 ? roles : ['estudiante'],
     // mfa_satisfecho: el token propio no incluye amr → false (deuda técnica MFA).

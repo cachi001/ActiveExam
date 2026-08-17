@@ -75,11 +75,11 @@ afterEach(() => {
 // Helper: rellena el formulario con datos mínimos válidos y lo envía
 // ---------------------------------------------------------------------------
 async function llenarYEnviar() {
-  fireEvent.change(screen.getByLabelText(/legajo/i), {
-    target: { value: 'FRM-23-0001' },
-  });
   fireEvent.change(screen.getByLabelText(/email/i), {
     target: { value: 'nuevo@uni.edu.ar' },
+  });
+  fireEvent.change(screen.getByLabelText(/^usuario$/i), {
+    target: { value: 'nuevo.uni' },
   });
   // Seleccionar al menos un rol (el primero disponible)
   const checkboxes = screen.getAllByRole('checkbox');
@@ -119,7 +119,7 @@ describe('UsuarioCreate — modal de clave temporal (tarea 1.5.b y 1.5.c)', () =
   it('el modal aparece cuando la respuesta incluye password_generada', async () => {
     mockCrearUsuario.mockResolvedValueOnce({
       id: 'u-1',
-      id_institucional: 'FRM-23-0001',
+      username: 'FRM-23-0001',
       email: 'nuevo@uni.edu.ar',
       nombre: null,
       apellido: null,
@@ -142,7 +142,7 @@ describe('UsuarioCreate — modal de clave temporal (tarea 1.5.b y 1.5.c)', () =
   it('el modal NO aparece cuando la respuesta NO tiene password_generada', async () => {
     mockCrearUsuario.mockResolvedValueOnce({
       id: 'u-2',
-      id_institucional: 'FRM-23-0002',
+      username: 'FRM-23-0002',
       email: 'otro@uni.edu.ar',
       nombre: null,
       apellido: null,
@@ -163,7 +163,7 @@ describe('UsuarioCreate — modal de clave temporal (tarea 1.5.b y 1.5.c)', () =
   it('el botón copiar ejecuta navigator.clipboard.writeText con la clave', async () => {
     mockCrearUsuario.mockResolvedValueOnce({
       id: 'u-3',
-      id_institucional: 'FRM-23-0003',
+      username: 'FRM-23-0003',
       email: 'copiar@uni.edu.ar',
       nombre: null,
       apellido: null,
@@ -194,7 +194,7 @@ describe('UsuarioCreate — modal de clave temporal (tarea 1.5.b y 1.5.c)', () =
   it('el botón "Entendido" navega a /admin/usuarios', async () => {
     mockCrearUsuario.mockResolvedValueOnce({
       id: 'u-4',
-      id_institucional: 'FRM-23-0004',
+      username: 'FRM-23-0004',
       email: 'ent@uni.edu.ar',
       nombre: null,
       apellido: null,

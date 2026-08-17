@@ -23,10 +23,10 @@ const POLL_MS = 4000;
 
 export function PausaSesionPanel({
   sessionId,
-  proctorActor,
+  tutorActor,
 }: {
   sessionId: string;
-  proctorActor?: string | null;
+  tutorActor?: string | null;
 }) {
   const toast = useToast();
   const [pausa, setPausa] = useState<Pausa | null>(null);
@@ -65,7 +65,7 @@ export function PausaSesionPanel({
     if (!pausa) return;
     setResolviendo(true);
     try {
-      await api.resolverPausa(pausa.id, accion, proctorActor ?? null, motivo ?? null);
+      await api.resolverPausa(pausa.id, accion, tutorActor ?? null, motivo ?? null);
       toastRef.current.success(accion === 'aprobar' ? 'Pausa aprobada' : 'Pausa rechazada');
       void refrescar();
     } catch (e) {

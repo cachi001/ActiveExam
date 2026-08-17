@@ -80,6 +80,16 @@ export const estadisticasApi = {
   },
 
   /**
+   * Catálogo COMPLETO de módulos de auditoría válidos (con o sin actividad),
+   * fuente única para el filtro de Auditoría — evita mantener la lista a mano
+   * en el frontend desincronizada del enum ModuloAuditoria del backend.
+   * Real: GET /api/v1/admin/audit-catalogo
+   */
+  async obtenerAuditCatalogo(): Promise<{ value: string; label: string }[]> {
+    return await realFetch<{ value: string; label: string }[]>('/admin/audit-catalogo', { method: 'GET' });
+  },
+
+  /**
    * Descarga el registro de auditoría con LOS MISMOS filtros que la pantalla.
    * Lo que se ve es lo que sale en el archivo — un export que ignora los filtros
    * aplicados no sirve para responder "qué pasó entre estas dos fechas".

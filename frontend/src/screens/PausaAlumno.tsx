@@ -1,13 +1,13 @@
 /**
  * PausaAlumno — Flujo de pausa autorizada del lado del ESTUDIANTE (C-15).
  *
- * El alumno solicita una pausa (con motivo); el proctor la aprueba/rechaza desde
+ * El alumno solicita una pausa (con motivo); el tutor la aprueba/rechaza desde
  * su panel. Esta UI pollea `listarPausas(sessionId)` y refleja el estado de la
  * pausa más reciente:
- *   - solicitada → "Esperando aprobación del proctor…"
+ *   - solicitada → "Esperando aprobación del tutor…"
  *   - aprobada   → banner de PAUSA ACTIVA bien visible + timer + "Reanudar examen"
  *   - rechazada  → aviso EN PANTALLA, persistente (Card visible con el motivo del
- *                  proctor), hasta que el alumno lo cierre o pida otra pausa
+ *                  tutor), hasta que el alumno lo cierre o pida otra pausa
  *   - finalizada → estado normal
  *
  * IMPORTANTE (decisión de producto, Opción 1): la detección NO se apaga durante
@@ -124,7 +124,7 @@ export function PausaAlumno({
       const p = await api.solicitarPausa(sessionId, m);
       setPausa(p);
       setModalMotivo(false);
-      toast.info('Solicitud de pausa enviada al proctor');
+      toast.info('Solicitud de pausa enviada al tutor');
     } catch {
       toast.error('No se pudo solicitar la pausa');
     } finally {
@@ -176,7 +176,7 @@ export function PausaAlumno({
         {esperando ? (
           <div className="flex items-center gap-sm text-on-surface-variant py-base">
             <Icon name="progress_activity" className="text-[20px] text-warning ae-spin" />
-            <p className="text-label-sm">Esperando aprobación del proctor…</p>
+            <p className="text-label-sm">Esperando aprobación del tutor…</p>
           </div>
         ) : activa ? (
           <p className="text-label-sm text-on-surface-variant">
@@ -193,7 +193,7 @@ export function PausaAlumno({
                   <Icon name="cancel" className="text-[20px] text-error shrink-0 mt-px" fill />
                   <div className="min-w-0 flex-1 space-y-base">
                     <p className="text-label-md font-bold text-on-error-container">
-                      El proctor rechazó tu pedido de pausa
+                      El tutor rechazó tu pedido de pausa
                     </p>
                     {pausa.motivo_rechazo?.trim() ? (
                       <p className="text-label-sm text-on-error-container">
@@ -202,7 +202,7 @@ export function PausaAlumno({
                       </p>
                     ) : (
                       <p className="text-label-sm text-on-error-container">
-                        El proctor no indicó un motivo.
+                        El tutor no indicó un motivo.
                       </p>
                     )}
                   </div>
@@ -219,7 +219,7 @@ export function PausaAlumno({
             )}
             <p className="text-label-sm text-on-surface-variant">
               Si necesitás interrumpir el examen (ir al baño, una urgencia), pedí una pausa.
-              El proctor la aprueba; durante la pausa la supervisión sigue activa.
+              El tutor la aprueba; durante la pausa la supervisión sigue activa.
             </p>
             <Button variant="secondary" size="sm" onClick={abrirSolicitud} disabled={!sessionId}>
               Solicitar pausa
@@ -285,7 +285,7 @@ export function PausaAlumno({
             <div className="space-y-base">
               <h3 className="font-headline text-headline-md text-on-surface">Solicitar pausa</h3>
               <p className="text-label-sm text-on-surface-variant">
-                Indicá brevemente el motivo. El proctor lo verá para decidir.
+                Indicá brevemente el motivo. El tutor lo verá para decidir.
               </p>
             </div>
             <textarea

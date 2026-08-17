@@ -1,8 +1,8 @@
 // Auditoría — registro de actividad del sistema (C-20).
-// Filtros: Módulo (lista completa estática) + Tipo de acción (4 valores fijos).
+// Filtros: Módulo (catálogo de GET /admin/audit-catalogo) + Tipo de acción (4 valores fijos).
 // Click en una actividad navega al detalle de la entidad (si entidad_id existe)
 // o al listado del módulo. Registro inalterable (cadena de hash append-only).
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { StaffShell } from '../ui/shells';
 import { HelpButton } from '../ui/HelpButton';
@@ -20,8 +20,11 @@ import type { AuditFiltros, AuditEvento, AuditLogResponse } from '../lib/types';
 const SIN_FILTRO: AuditFiltros = {};
 const PAGE_SIZE_DEFAULT = 5;
 
-// Lista completa de módulos del sistema — siempre visible aunque no haya actividad.
-const TODOS_MODULOS = [
+// Fallback ANTES de que responda el backend (evita un select vacío en el primer
+// render) — se reemplaza en cuanto llega GET /admin/audit-catalogo. Es la MISMA
+// lista que ModuloAuditoria en el backend; si se desincroniza, el catálogo real
+// la pisa igual, así que el fallback nunca queda "mintiendo" por mucho tiempo.
+const TODOS_MODULOS_FALLBACK = [
   { value: 'USUARIOS',      label: 'Usuarios' },
   { value: 'MATERIAS',      label: 'Materias' },
   { value: 'EXAMENES',      label: 'Exámenes' },
@@ -32,21 +35,7 @@ const TODOS_MODULOS = [
   { value: 'REVISION',      label: 'Revisión' },
   { value: 'MOODLE',        label: 'Moodle' },
   { value: 'CONFIGURACION', label: 'Configuración' },
-] as const;
-
-/** Nombre amigable del módulo para mostrar en los badges de la card. */
-const MODULE_LABEL: Record<string, string> = {
-  USUARIOS: 'Usuarios',
-  MATERIAS: 'Materias',
-  EXAMENES: 'Exámenes',
-  SESIONES: 'Sesiones',
-  CONSENTIMIENTO: 'Consentimiento',
-  BIOMETRIA: 'Biometría',
-  EVIDENCIA: 'Evidencia',
-  REVISION: 'Revisión',
-  MOODLE: 'Moodle',
-  CONFIGURACION: 'Configuración',
-};
+];
 
 /**
  * Acciones reales por módulo. Cada opción mapea a uno o varios patrones de la
@@ -57,6 +46,12 @@ const MODULE_LABEL: Record<string, string> = {
  * Cambio de estado) como base y SOLO se agrega una acción específica donde un
  * genérico no la puede expresar (ej.: sincronizar a Moodle no es CRUD). No se
  * inventan acciones que el sistema no registra.
+ *
+ * MANTENIMIENTO: a diferencia de los MÓDULOS (que se traen de GET /admin/audit-catalogo,
+ * ver TODOS_MODULOS_FALLBACK arriba), esto NO se deriva automáticamente del backend —
+ * es una curación manual (agrupa y traduce AccionAuditoria de backend/app/application/audit/acciones.py).
+ * Si se agrega una AccionAuditoria nueva y se quiere que aparezca como opción de
+ * filtro, hay que agregarla acá a mano.
  */
 interface OpcionAccion { label: string; accion: string }
 
@@ -239,6 +234,18 @@ export default function Auditoria() {
   const [pageSize, setPageSize] = useState(PAGE_SIZE_DEFAULT);
   const [exportando, setExportando] = useState<'xlsx' | 'pdf' | null>(null);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<number | undefined>();
+  const [modulos, setModulos] = useState(TODOS_MODULOS_FALLBACK);
+
+  useEffect(() => {
+    api.obtenerAuditCatalogo()
+      .then((catalogo) => { if (catalogo.length > 0) setModulos(catalogo); })
+      .catch(() => {}); // fallback ya está seteado; no hay nada más que mostrar
+  }, []);
+
+  const moduleLabel = useMemo(
+    () => Object.fromEntries(modulos.map((m) => [m.value, m.label])) as Record<string, string>,
+    [modulos],
+  );
 
   /** Descarga el registro con los filtros APLICADOS y dispara el guardado. */
   const exportar = async (formato: 'xlsx' | 'pdf') => {
@@ -392,7 +399,7 @@ export default function Auditoria() {
               className="min-w-[180px] rounded-md border border-surface-300 bg-white px-3 py-2 text-[13px] text-on-surface focus:border-surface-500 focus:outline-none"
             >
               <option value="">Todos los módulos</option>
-              {TODOS_MODULOS.map((m) => (
+              {modulos.map((m) => (
                 <option key={m.value} value={m.value}>{m.label}</option>
               ))}
             </select>
@@ -516,7 +523,7 @@ export default function Auditoria() {
                           </span>
                           {e.modulo && (
                             <span className="inline-flex items-center rounded-full bg-surface-100 px-2.5 py-0.5 text-xs font-medium text-surface-600">
-                              {MODULE_LABEL[e.modulo] ?? (e.modulo.charAt(0) + e.modulo.slice(1).toLowerCase())}
+                              {moduleLabel[e.modulo] ?? (e.modulo.charAt(0) + e.modulo.slice(1).toLowerCase())}
                             </span>
                           )}
                         </div>

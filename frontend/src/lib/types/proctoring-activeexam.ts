@@ -1,5 +1,5 @@
 /**
- * Contrato del backend slim de proctoring (C-46). Calcado del OpenAPI de C-45.
+ * Contrato del backend activeexam de proctoring (C-46). Calcado del OpenAPI de C-45.
  *
  * Se re-exporta desde `lib/types.ts`: importa siempre desde ahi.
  */
@@ -7,7 +7,7 @@
 import type { EstadoInscripcion } from './alumno';
 
 // ---------------------------------------------------------------------------
-// Proctoring backend slim — C-46
+// Proctoring backend activeexam — C-46
 // Tipos calcados del contrato del backend C-45 (OpenAPI).
 // ---------------------------------------------------------------------------
 
@@ -18,7 +18,7 @@ import type { EstadoInscripcion } from './alumno';
 export type VeredictoReinferencia = 'coincide' | 'discrepancia' | 'sin_referencia' | 'error';
 
 /**
- * Detalle completo de un evento de proctoring enviado al backend slim.
+ * Detalle completo de un evento de proctoring enviado al backend activeexam.
  * Incluye el veredicto de re-inferencia server-side y face_count del servidor.
  *
  * DATO SENSIBLE (Ley 25.326): screenshot_base64 es dato biométrico/personal;
@@ -134,6 +134,12 @@ export interface CapturaFirmada {
   severidad?: string | null;
   /** Momento del evento, para ubicar la captura en la línea de tiempo. */
   ocurrio_en?: string | null;
+  /** Cadena de custodia (c-18 verify-chain), recalculada en cada carga del informe. */
+  integridad_estado: 'intact' | 'broken' | 'material_missing' | 'no_verificado';
+  integridad_algoritmo?: string | null;
+  integridad_hash_esperado?: string | null;
+  integridad_hash_actual?: string | null;
+  integridad_verificado_en?: string | null;
 }
 
 export interface InformeDevolucion {
@@ -160,7 +166,8 @@ export interface SesionProctoringDetalle extends SesionProctoringResumen {
 // ── Chat bidireccional proctor↔alumno (C-15) ──────────────────────────────
 
 /** Autor de un mensaje de chat de la sesión. */
-export type AutorChat = 'alumno' | 'proctor';
+// C-76 bloque 6 (D4): el actor pasa de 'proctor' a 'tutor'.
+export type AutorChat = 'alumno' | 'tutor';
 
 /** Un mensaje del canal de chat de una sesión de proctoring. */
 export interface MensajeChat {
@@ -189,7 +196,7 @@ export interface Pausa {
   estado: EstadoPausa;
   solicitada_en: string; // ISO 8601
   resuelta_en?: string | null;
-  proctor_actor?: string | null;
+  tutor_actor?: string | null;
   /** Motivo que el proctor da al RECHAZAR la pausa; se muestra al alumno. */
   motivo_rechazo?: string | null;
   inicio_en?: string | null;
@@ -206,18 +213,18 @@ export interface PausaPendiente {
 }
 
 /**
- * Observación libre del proctor sobre una sesión (C-15 3.2). Múltiples por sesión,
+ * Observación libre del tutor sobre una sesión (C-15 3.2). Múltiples por sesión,
  * append-only. Insumo de la revisión humana (C-16). NO sanciona ni exime (L2.5).
  */
-export interface ObservacionProctor {
+export interface ObservacionTutor {
   id: string;
   texto: string;
-  proctor_actor?: string | null;
+  tutor_actor?: string | null;
   creada_en: string; // ISO 8601
 }
 
 /**
- * Resultado del cierre FORZADO de una sesión por el proctor (C-15 3.3).
+ * Resultado del cierre FORZADO de una sesión por el tutor/coordinador (C-15 3.3).
  * Operativo, NO disciplinario (L2.5). El audit trail vive en la propia fila.
  */
 export interface CierreForzado {
@@ -298,7 +305,7 @@ export interface ComisionConMateria {
  *  biometría vigentes; `razon` explica el motivo cuando no puede rendir. */
 export interface AlumnoInscripto {
   usuario_id: string;
-  id_institucional: string;
+  username: string;
   nombre: string | null;
   apellido: string | null;
   email: string;

@@ -155,8 +155,8 @@ export const api = {
   ...enrollmentApi,
 
   // -------------------------------------------------------------------------
-  // Backend slim de proctoring — C-46
-  // Todos los métodos llaman al backend slim C-45.
+  // Backend activeexam de proctoring — C-46
+  // Todos los métodos llaman al backend activeexam C-45.
   // -------------------------------------------------------------------------
 
   // Proctoring / chat / pausa / revisión → ./apiProctoring (refactor c-76)

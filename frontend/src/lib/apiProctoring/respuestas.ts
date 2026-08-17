@@ -110,7 +110,7 @@ export const respuestasApi = {
   },
 
   /**
-   * Lista todas las sesiones de proctoring del backend slim (C-46).
+   * Lista todas las sesiones de proctoring del backend activeexam (C-46).
    * Real: GET /proctoring/sessions
    */
   async listarSesionesProctoring(strict = false): Promise<SesionProctoringResumen[]> {

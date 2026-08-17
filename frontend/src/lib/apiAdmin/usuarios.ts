@@ -20,12 +20,14 @@ export const usuariosApi = {
   async listarUsuarios(
     limit = 20,
     offset = 0,
-    filtros?: { rol?: string; estado?: string; q?: string },
+    filtros?: { rol?: string; estado?: string; q?: string; materia_id?: string; comision_id?: string },
   ): Promise<ListarUsuariosResponse> {
     const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
     if (filtros?.rol) params.set('rol', filtros.rol);
     if (filtros?.estado) params.set('estado', filtros.estado);
     if (filtros?.q) params.set('q', filtros.q);
+    if (filtros?.materia_id) params.set('materia_id', filtros.materia_id);
+    if (filtros?.comision_id) params.set('comision_id', filtros.comision_id);
     return await realFetch<ListarUsuariosResponse>(
       `/users/?${params.toString()}`,
       { method: 'GET' },
@@ -51,7 +53,7 @@ export const usuariosApi = {
    * Real: POST /users/
    */
   async crearUsuario(body: {
-    id_institucional: string;
+    username: string;
     email: string;
     password?: string;
     roles: string[];

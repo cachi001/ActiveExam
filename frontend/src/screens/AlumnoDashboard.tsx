@@ -8,7 +8,7 @@
 // FUENTES DE DATOS (modo real, USE_REAL_BACKEND=1):
 //   • Materias disponibles: GET /api/v1/exam-content/materias (api.materiasDisponibles)
 //   • Exámenes disponibles: GET /api/v1/exam-content          (api.listarExamenesContenido)
-//   • Inscripciones: SIN endpoint real en slim → vacío honesto (no se inventan datos)
+//   • Inscripciones: SIN endpoint real en activeexam → vacío honesto (no se inventan datos)
 //
 // FUENTES DE DATOS (modo demo, USE_REAL_BACKEND=0):
 //   • Todo viene de api.misInscripciones() (datos en memoria)
@@ -48,7 +48,7 @@ export default function AlumnoDashboard() {
   useEffect(() => {
     let cancelado = false;
     (async () => {
-      // Fuentes reales; sin inscripciones (no hay endpoint en slim)
+      // Fuentes reales; sin inscripciones (no hay endpoint en activeexam)
       const [materias, examenes, gate, enr] = await Promise.all([
         api.materiasDisponibles(),
         api.listarExamenesContenido(),

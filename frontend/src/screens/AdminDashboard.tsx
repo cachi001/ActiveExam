@@ -5,7 +5,7 @@
 //
 // FUENTES DE DATOS:
 //   • Exámenes: GET /api/v1/exam-content → ExamenContenidoResumen[] (catálogo real).
-//   • Sesiones supervisadas / Tasa de flag: SIN endpoint real en slim → "—" (vacío honesto).
+//   • Sesiones supervisadas / Tasa de flag: SIN endpoint real en activeexam → "—" (vacío honesto).
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { StaffShell } from '../ui/shells';
 import { RefreshBar } from '../ui/RefreshBar';

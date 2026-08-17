@@ -18,7 +18,7 @@ import { formatFechaRelativa } from './helpers';
 /** Intervalo de polling de la cola de pausas (ms). */
 const POLL_MS = 4000;
 
-export function PausasPendientes({ proctorActor }: { proctorActor?: string | null }) {
+export function PausasPendientes({ tutorActor }: { tutorActor?: string | null }) {
   const toast = useToast();
   const [pendientes, setPendientes] = useState<PausaPendiente[]>([]);
   // Pausas que están resolviéndose (para deshabilitar sus botones).
@@ -54,14 +54,14 @@ export function PausasPendientes({ proctorActor }: { proctorActor?: string | nul
   const resolver = async (pausaId: string, accion: AccionPausa, motivo?: string) => {
     setResolviendo((s) => new Set(s).add(pausaId));
     try {
-      await api.resolverPausa(pausaId, accion, proctorActor ?? null, motivo ?? null);
+      await api.resolverPausa(pausaId, accion, tutorActor ?? null, motivo ?? null);
       toastRef.current.success(accion === 'aprobar' ? 'Pausa aprobada' : 'Pausa rechazada');
       // Sacamos la pausa de la cola de inmediato (ya no está 'solicitada').
       setPendientes((prev) => prev.filter((p) => p.id !== pausaId));
     } catch (e) {
       const status = (e as { status?: number })?.status;
       if (status === 409) {
-        toastRef.current.info('Esa pausa ya fue resuelta por otro proctor');
+        toastRef.current.info('Esa pausa ya fue resuelta por otro tutor');
       } else {
         toastRef.current.error('No se pudo resolver la pausa');
       }

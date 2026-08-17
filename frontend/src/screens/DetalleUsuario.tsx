@@ -17,9 +17,8 @@ import { StaffShell } from '../ui/shells';
 import { Card, SectionTitle, Badge, Button, Icon } from '../ui/components';
 import { STAFF_NAV } from '../ui/nav';
 import { useNavigate, useRouteParam } from '../lib/router';
-import { legajoVisible } from '../lib/legajo';
 import { api } from '../lib/api';
-import type { UsuarioAdmin } from '../lib/types';
+import type { UsuarioAdmin, InscripcionResumen } from '../lib/types';
 import { getRolLabel } from '../lib/constants/roles';
 
 // ---------------------------------------------------------------------------
@@ -87,6 +86,27 @@ function SectionError({ message }: { message: string }) {
     <div className="flex items-center gap-2 text-error text-[13px] bg-error-container/40 rounded-lg px-3 py-2.5">
       <Icon name="error" className="text-[18px] shrink-0" fill />
       <span>{message}</span>
+    </div>
+  );
+}
+
+/** Fila de materia/comisión — patrón código en negrita + nombre en gris debajo,
+ * consistente con ExamList.tsx y con el sistema de referencia (Active-IA). */
+function MateriaComisionRow({ item, rolLabel }: { item: InscripcionResumen; rolLabel: string }) {
+  return (
+    <div className="flex items-center gap-sm py-2.5 border-b border-outline-variant/30 last:border-0">
+      <div className="w-9 h-9 rounded-lg bg-primary-fixed text-primary flex items-center justify-center shrink-0">
+        <Icon name="folder_open" className="text-[18px]" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-[13px] font-semibold text-on-surface truncate">{item.materia_codigo}</p>
+        <p className="text-[12px] text-on-surface-variant truncate">{item.materia_nombre}</p>
+      </div>
+      <div className="min-w-0 text-right shrink-0">
+        <p className="text-[13px] font-semibold text-on-surface truncate">{item.comision_codigo}</p>
+        <p className="text-[12px] text-on-surface-variant truncate">{item.comision_nombre}</p>
+      </div>
+      <Badge tone="neutral" className="shrink-0">{rolLabel}</Badge>
     </div>
   );
 }
@@ -211,11 +231,9 @@ export default function DetalleUsuario() {
                 <div className="flex-1 min-w-0 divide-y divide-outline-variant/30">
                   <DataRow label="Nombre completo" value={nombreDisplay} />
                   <DataRow label="Email" value={u.email} />
-                  {legajoVisible(u.id_institucional) && (
-                    <DataRow label="Legajo" value={
-                      <span className="font-mono text-[13px]">{legajoVisible(u.id_institucional)}</span>
-                    } />
-                  )}
+                  <DataRow label="Usuario" value={
+                    <span className="font-mono text-[13px]">{u.username}</span>
+                  } />
                   <DataRow label="Rol" value={
                     u.roles.length > 0
                       ? <div className="flex flex-wrap gap-1">{u.roles.map((r) => <RolBadge key={r} rol={r} />)}</div>
@@ -237,6 +255,36 @@ export default function DetalleUsuario() {
             );
           })()}
         </Card>
+
+        {/* ── Sección: Materia y comisión (estudiante inscripto / tutor a cargo) ── */}
+        {usuario.status === 'ok' && (usuario.data.roles.includes('estudiante') || usuario.data.roles.includes('tutor')) && (() => {
+          const u = usuario.data;
+          const items: { item: InscripcionResumen; rolLabel: string }[] = [
+            ...(u.inscripciones ?? []).map((item) => ({ item, rolLabel: 'Inscripto' })),
+            ...(u.comisiones_a_cargo ?? []).map((item) => ({ item, rolLabel: 'A cargo' })),
+          ];
+          return (
+            <Card>
+              <SectionTitle sub="Materias y comisiones asociadas a este usuario.">
+                Materia y comisión
+              </SectionTitle>
+              {items.length === 0 ? (
+                <div className="flex items-center gap-2 text-on-surface-variant bg-surface-50 rounded-lg px-3 py-3">
+                  <Icon name="info" className="text-[18px] shrink-0" />
+                  <span className="text-[13px]">
+                    {u.roles.includes('tutor') ? 'Sin comisión a cargo.' : 'Sin inscripciones.'}
+                  </span>
+                </div>
+              ) : (
+                <div className="divide-y divide-outline-variant/30">
+                  {items.map(({ item, rolLabel }) => (
+                    <MateriaComisionRow key={`${rolLabel}-${item.comision_id}`} item={item} rolLabel={rolLabel} />
+                  ))}
+                </div>
+              )}
+            </Card>
+          );
+        })()}
 
         {/* ── Secciones 2 y 3: solo para estudiantes ── */}
         {(usuario.status !== 'ok' || usuario.data.roles.includes('estudiante')) && (<>

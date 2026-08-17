@@ -1,15 +1,16 @@
 /**
- * ObservacionesProctor — Panel de observaciones del proctor sobre una sesión (C-15 3.2).
+ * ObservacionesTutor — Panel de observaciones del tutor sobre una sesión (C-15 3.2).
  *
- * El proctor registra observaciones libres (múltiples, append-only) que son INSUMO
- * de la revisión humana de C-16. L2.5: una observación NO sanciona ni exime — es
- * contexto para la decisión HUMANA. Hace polling de `listarObservacionesProctor`.
+ * El tutor (o coordinador) registra observaciones libres (múltiples, append-only)
+ * que son INSUMO de la revisión humana de C-16. L2.5: una observación NO sanciona
+ * ni exime — es contexto para la decisión HUMANA. Hace polling de
+ * `listarObservacionesTutor`.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Card, Button, Icon } from '../../ui/components';
 import { api } from '../../lib/api';
 import { useToast } from '../../ui/toast';
-import type { ObservacionProctor } from '../../lib/types';
+import type { ObservacionTutor as ObservacionTutorData } from '../../lib/types';
 
 const POLL_MS = 6000;
 
@@ -19,18 +20,18 @@ function fechaCorta(iso: string): string {
   return d.toLocaleString([], { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
 
-export function ObservacionesProctor({
+export function ObservacionesTutor({
   sessionId,
-  proctorActor,
+  tutorActor,
   readOnly = false,
 }: {
   sessionId: string | null | undefined;
-  proctorActor?: string | null;
+  tutorActor?: string | null;
   /** Solo lectura (sesión grabada): muestra las observaciones sin caja para escribir. */
   readOnly?: boolean;
 }) {
   const toast = useToast();
-  const [observaciones, setObservaciones] = useState<ObservacionProctor[]>([]);
+  const [observaciones, setObservaciones] = useState<ObservacionTutorData[]>([]);
   const [borrador, setBorrador] = useState('');
   const [guardando, setGuardando] = useState(false);
   const enVuelo = useRef(false);
@@ -39,7 +40,7 @@ export function ObservacionesProctor({
     if (!sessionId || enVuelo.current) return;
     enVuelo.current = true;
     try {
-      setObservaciones(await api.listarObservacionesProctor(sessionId));
+      setObservaciones(await api.listarObservacionesTutor(sessionId));
     } catch {
       // Degradación silenciosa: el próximo tick reintenta.
     } finally {
@@ -60,7 +61,7 @@ export function ObservacionesProctor({
     if (!texto || !sessionId || guardando) return;
     setGuardando(true);
     try {
-      const obs = await api.crearObservacionProctor(sessionId, texto, proctorActor);
+      const obs = await api.crearObservacionTutor(sessionId, texto, tutorActor);
       setObservaciones((prev) => [...prev, obs]);
       setBorrador('');
     } catch {
@@ -73,7 +74,7 @@ export function ObservacionesProctor({
   return (
     <Card className="space-y-sm">
       <h3 className="text-label-md font-bold text-on-surface border-b border-outline-variant/40 pb-base">
-        Observaciones del proctor
+        Observaciones del tutor
         <span className="block text-[11px] font-normal text-on-surface-variant mt-px">
           Insumo para la revisión humana. No es un veredicto.
         </span>
@@ -98,7 +99,7 @@ export function ObservacionesProctor({
               <div className="min-w-0 flex-1">
                 <p className="text-label-sm text-on-surface whitespace-pre-wrap break-words">{o.texto}</p>
                 <span className="block text-[10px] text-on-surface-variant mt-base">
-                  {o.proctor_actor ? `${o.proctor_actor} · ` : ''}
+                  {o.tutor_actor ? `${o.tutor_actor} · ` : ''}
                   {fechaCorta(o.creada_en)}
                 </span>
               </div>
@@ -133,4 +134,4 @@ export function ObservacionesProctor({
   );
 }
 
-export default ObservacionesProctor;
+export default ObservacionesTutor;

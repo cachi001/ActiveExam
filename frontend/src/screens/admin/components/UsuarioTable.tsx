@@ -17,6 +17,66 @@ interface UsuarioTableProps {
   headerRight?: ReactNode;
 }
 
+/** Items materia+comisión de un usuario (inscripciones si es estudiante,
+ * comisiones a cargo si es tutor). Vacío para el resto de los roles. */
+function itemsMateriaComision(usuario: UsuarioAdmin) {
+  return [
+    ...(usuario.inscripciones ?? []),
+    ...(usuario.comisiones_a_cargo ?? []),
+  ];
+}
+
+/** Guion chico y sutil — no el placeholder gigante que quedaba con el tamaño
+ * de fuente por defecto de la tabla. */
+function SinDato() {
+  return <span className="text-surface-300 text-xs">—</span>;
+}
+
+/** Columna "Materia": código en negrita + nombre en gris debajo, con ícono —
+ * mismo patrón que ExamList.tsx y el sistema de referencia (Active-IA). */
+function MateriaCell({ usuario }: { usuario: UsuarioAdmin }) {
+  const esEstudiante = usuario.roles.includes('estudiante');
+  const esTutor = usuario.roles.includes('tutor');
+  if (!esEstudiante && !esTutor) return <SinDato />;
+  const items = itemsMateriaComision(usuario);
+  if (items.length === 0) return <SinDato />;
+  return (
+    <div className="flex flex-col gap-1.5">
+      {items.map((i) => (
+        <div key={i.comision_id} className="flex items-center gap-2 min-w-0">
+          <div className="w-7 h-7 rounded-md bg-primary-50 flex items-center justify-center shrink-0">
+            <Icon name="folder_open" className="text-[14px] text-primary" />
+          </div>
+          <div className="min-w-0">
+            <div className="text-sm font-medium text-surface-900 truncate">{i.materia_codigo}</div>
+            <div className="text-xs text-surface-400 truncate">{i.materia_nombre}</div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Columna "Comisión": mismo patrón código/nombre, sin ícono (ya lo trae la
+ * columna Materia de la misma fila). */
+function ComisionCell({ usuario }: { usuario: UsuarioAdmin }) {
+  const esEstudiante = usuario.roles.includes('estudiante');
+  const esTutor = usuario.roles.includes('tutor');
+  if (!esEstudiante && !esTutor) return <SinDato />;
+  const items = itemsMateriaComision(usuario);
+  if (items.length === 0) return <SinDato />;
+  return (
+    <div className="flex flex-col gap-1.5">
+      {items.map((i) => (
+        <div key={i.comision_id} className="min-w-0">
+          <div className="text-sm font-medium text-surface-900 truncate">{i.comision_codigo}</div>
+          <div className="text-xs text-surface-400 truncate">{i.comision_nombre}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function formatFecha(iso: string | null | undefined): string {
   if (!iso) return '—';
   try {
@@ -37,7 +97,7 @@ export function UsuarioTable({
     {
       key: 'usuario',
       header: 'Usuario',
-      width: '25%',
+      width: '20%',
       cell: (u) => (
         <div className="flex items-center gap-3">
           {fotos[u.id] ? (
@@ -57,7 +117,7 @@ export function UsuarioTable({
                 ? `${u.nombre} ${u.apellido}`
                 : u.nombre ?? u.apellido ?? u.email}
             </button>
-            <p className="text-xs font-mono text-surface-400 mt-0.5">{u.id_institucional}</p>
+            <p className="text-xs font-mono text-surface-400 mt-0.5">{u.username}</p>
           </div>
         </div>
       ),
@@ -65,7 +125,7 @@ export function UsuarioTable({
     {
       key: 'email',
       header: 'Email',
-      width: '25%',
+      width: '15%',
       cell: (u) => (
         <div className="flex items-center gap-2 text-surface-600">
           <Icon name="mail" className="text-[16px] text-surface-400 shrink-0" />
@@ -76,7 +136,7 @@ export function UsuarioTable({
     {
       key: 'roles',
       header: 'Roles',
-      width: '14%',
+      width: '11%',
       cell: (u) => (
         <div className="flex flex-wrap gap-1">
           {u.roles.map((r) => <RolBadge key={r} rol={r} />)}
@@ -84,9 +144,21 @@ export function UsuarioTable({
       ),
     },
     {
+      key: 'materia',
+      header: 'Materia',
+      width: '13%',
+      cell: (u) => <MateriaCell usuario={u} />,
+    },
+    {
+      key: 'comision',
+      header: 'Comisión',
+      width: '11%',
+      cell: (u) => <ComisionCell usuario={u} />,
+    },
+    {
       key: 'creado_en',
       header: 'Creación',
-      width: '13%',
+      width: '11%',
       cell: (u) => (
         <div className="flex items-center gap-1.5 text-surface-500 text-sm">
           <Icon name="calendar_today" className="text-[14px] text-surface-400 shrink-0" />
@@ -97,7 +169,7 @@ export function UsuarioTable({
     {
       key: 'ultimo_acceso',
       header: 'Último acceso',
-      width: '13%',
+      width: '10%',
       cell: (u) => (
         <div className="flex items-center gap-1.5 text-surface-500 text-sm">
           <Icon name="schedule" className="text-[14px] text-surface-400 shrink-0" />
@@ -110,7 +182,7 @@ export function UsuarioTable({
     {
       key: 'estado',
       header: 'Estado',
-      width: '12%',
+      width: '10%',
       cell: (u) => (
         <EstadoSwitch usuario={u} esPropioUsuario={esPropioUsuario(u)} onToggle={onToggleEstado} />
       ),
@@ -152,7 +224,7 @@ export function UsuarioTable({
           keyExtractor={(u) => u.id}
           isLoading={cargando}
           emptyMessage="No se encontraron usuarios con esos filtros."
-          tableMinWidth="900px"
+          tableMinWidth="1020px"
         />
       </div>
 
@@ -188,10 +260,16 @@ export function UsuarioTable({
                     : u.nombre ?? u.apellido ?? u.email}
                 </button>
                 <p className="text-xs text-gray-500 truncate mt-0.5">{u.email}</p>
-                <p className="text-xs font-mono text-gray-400 mt-0.5">{u.id_institucional}</p>
+                <p className="text-xs font-mono text-gray-400 mt-0.5">{u.username}</p>
                 <div className="flex flex-wrap gap-1 mt-1.5">
                   {u.roles.map((r) => <RolBadge key={r} rol={r} />)}
                 </div>
+                {(u.roles.includes('estudiante') || u.roles.includes('tutor')) && (
+                  <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1.5">
+                    <MateriaCell usuario={u} />
+                    <ComisionCell usuario={u} />
+                  </div>
+                )}
                 <div className="mt-2">
                   <EstadoSwitch usuario={u} esPropioUsuario={esPropioUsuario(u)} onToggle={onToggleEstado} />
                 </div>

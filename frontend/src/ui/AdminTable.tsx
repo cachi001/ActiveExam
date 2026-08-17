@@ -51,11 +51,11 @@ export function AdminTable<T>({
           ))}
         </colgroup>
         <thead>
-          <tr className="bg-gray-50">
+          <tr className="bg-gray-100">
             {columns.map((col) => (
               <th
                 key={col.key}
-                className={`px-6 py-4 text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-50 ${alignClass(col.headerAlign ?? col.align)} ${col.thClassName ?? ''}`}
+                className={`px-6 py-4 text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100 ${alignClass(col.headerAlign ?? col.align)} ${col.thClassName ?? ''}`}
               >
                 {col.header}
               </th>

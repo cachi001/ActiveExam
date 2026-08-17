@@ -1,7 +1,7 @@
 /**
  * AdminDetectionHarness — Herramienta DIAGNÓSTICA para administradores (C-23).
  *
- * Ruta: /admin/detection-test  (roles: admin_examenes | coordinador)
+ * Ruta: /admin/detection-test  (roles: admin_sistema)
  * Acceso: protegido por el guard de roles del router; sin examen activo, sin sesión
  * de alumno, sin emisión al backend de producción.
  *

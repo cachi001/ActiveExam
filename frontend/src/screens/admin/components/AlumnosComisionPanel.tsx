@@ -12,7 +12,7 @@ import { AlumnoPickerModal } from './AlumnoPickerModal';
 
 function nombreAlumno(a: AlumnoInscripto): string {
   const completo = [a.nombre, a.apellido].filter(Boolean).join(' ').trim();
-  return completo || a.id_institucional;
+  return completo || a.username;
 }
 
 function CondicionBadge({ ok, label }: { ok: boolean; label: string }) {
@@ -147,7 +147,7 @@ export function AlumnosComisionPanel({
                 <p className="text-[13px] font-medium text-on-surface truncate">{nombreAlumno(a)}</p>
                 <p className="text-[11px] text-on-surface-variant truncate">
                   {a.email}
-                  <span className="font-mono"> · {a.id_institucional}</span>
+                  <span className="font-mono"> · {a.username}</span>
                 </p>
               </div>
 

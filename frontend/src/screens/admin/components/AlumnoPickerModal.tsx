@@ -13,7 +13,7 @@ const INPUT_CLASS =
 
 function nombreUsuario(u: UsuarioAdmin): string {
   const completo = [u.nombre, u.apellido].filter(Boolean).join(' ').trim();
-  return completo || u.id_institucional || u.email;
+  return completo || u.username || u.email;
 }
 
 export interface AlumnoPickerModalProps {
@@ -210,7 +210,7 @@ export function AlumnoPickerModal({
                         <p className="text-[13px] font-medium text-on-surface truncate">{nombreUsuario(u)}</p>
                         <p className="text-[11px] text-on-surface-variant truncate">
                           {u.email}
-                          <span className="font-mono"> · {u.id_institucional}</span>
+                          <span className="font-mono"> · {u.username}</span>
                         </p>
                       </div>
                       {inscripto && (

@@ -5,7 +5,7 @@
  * Protegida por capacidad `gestionar_usuarios` (solo admin_sistema).
  *
  * Flujo:
- *  1. Formulario de alta (legajo, email, nombre, apellido, password opcional, roles).
+ *  1. Formulario de alta (email, username, nombre, apellido, roles).
  *  2. Invoca POST /users sin cambiar contrato; captura `password_generada`.
  *  3. Si hay `password_generada` → modal con clave temporal + botón copiar.
  *  4. "Entendido" navega a /admin/usuarios.
@@ -15,7 +15,7 @@
 
 import { useState } from 'react';
 import { StaffShell } from '../../ui/shells';
-import { Button, Card, SectionTitle, Icon } from '../../ui/components';
+import { Button, Card, Icon } from '../../ui/components';
 import { HelpButton } from '../../ui/HelpButton';
 import { STAFF_NAV } from '../../ui/nav';
 import { useToast } from '../../ui/toast';
@@ -120,28 +120,6 @@ function ModalClaveTemporal({ clave, email, onCerrar }: ModalClaveProps) {
 }
 
 // ---------------------------------------------------------------------------
-// Panel informativo lateral
-// ---------------------------------------------------------------------------
-
-function PanelInfoContrasena() {
-  return (
-    <Card>
-      <div className="flex items-center gap-sm pb-md border-b border-surface-100 mb-md">
-        <div className="w-8 h-8 rounded-full bg-warning-50 flex items-center justify-center shrink-0">
-          <Icon name="key" className="text-[18px] text-warning-600" />
-        </div>
-        <h3 className="font-headline text-title-sm text-on-surface">Contraseña automática</h3>
-      </div>
-      <p className="text-body-sm text-on-surface-variant leading-relaxed">
-        Si no ingresás una contraseña, el sistema genera una temporal segura al crear el
-        usuario. Se mostrará una sola vez — copiala y compartila con el usuario.
-        Deberá cambiarla en su primer ingreso a la plataforma.
-      </p>
-    </Card>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Componente principal
 // ---------------------------------------------------------------------------
 
@@ -212,17 +190,16 @@ export default function UsuarioCreate() {
       setFormError('Seleccioná al menos un rol.');
       return;
     }
-    if (form.password && form.password.length < 8) {
-      setFormError('La contraseña debe tener al menos 8 caracteres.');
+    if (!form.username.trim()) {
+      setFormError('Elegí un nombre de usuario.');
       return;
     }
 
     setEnviando(true);
     try {
       const resp = await api.crearUsuario({
-        id_institucional: form.id_institucional,
         email: form.email,
-        password: form.password || undefined,
+        username: form.username.trim(),
         roles,
         nombre: form.nombre || undefined,
         apellido: form.apellido || undefined,
@@ -238,7 +215,7 @@ export default function UsuarioCreate() {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes('409')) {
-        setFormError('Ya existe un usuario con ese email o legajo.');
+        setFormError('Ya existe un usuario con ese email o username.');
       } else {
         setFormError(`Error al crear: ${msg}`);
       }
@@ -265,7 +242,7 @@ export default function UsuarioCreate() {
       }
       actions={
         <Link to="/admin/usuarios">
-          <Button variant="outline" icon="arrow_back" size="sm">
+          <Button variant="ghost" icon="arrow_back" size="sm">
             Volver a usuarios
           </Button>
         </Link>
@@ -280,26 +257,18 @@ export default function UsuarioCreate() {
         />
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-lg animate-in fade-in duration-500">
-        {/* Formulario ocupa 2/3 */}
-        <div className="lg:col-span-2">
-          <UsuarioFormPanel
-            modoForm="crear"
-            editando={null}
-            form={form}
-            formError={formError}
-            enviando={enviando}
-            cambiarTexto={cambiarTexto}
-            toggleRol={toggleRol}
-            onSubmit={handleSubmit}
-            onCancelar={() => navigate('/admin/usuarios')}
-          />
-        </div>
-
-        {/* Panel informativo ocupa 1/3 */}
-        <div>
-          <PanelInfoContrasena />
-        </div>
+      <div className="max-w-3xl animate-in fade-in duration-500">
+        <UsuarioFormPanel
+          modoForm="crear"
+          editando={null}
+          form={form}
+          formError={formError}
+          enviando={enviando}
+          cambiarTexto={cambiarTexto}
+          toggleRol={toggleRol}
+          onSubmit={handleSubmit}
+          onCancelar={() => navigate('/admin/usuarios')}
+        />
       </div>
     </StaffShell>
   );

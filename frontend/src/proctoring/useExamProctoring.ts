@@ -4,7 +4,7 @@
  * Cablea las mismas primitivas que el harness admin pero en una versión LEAN
  * pensada para correr en silencio mientras el alumno rinde:
  *
- *  1. Abre una sesión `modo:'examen'` en el backend slim al iniciar.
+ *  1. Abre una sesión `modo:'examen'` en el backend activeexam al iniciar.
  *  2. Carga el motor MediaPipe real (fallback honesto al stub si init() falla)
  *     y crea un VisionPipeline (motor → reglas → sink).
  *  3. Corre un loop de frames (setInterval) sobre el <video> del preview,
@@ -59,16 +59,17 @@ import { IndexedDbEventBufferStore } from '../transport/indexedDbBufferStore';
 import { drainAndReplay } from '../transport/replayCoordinator';
 import type { ReplaySender } from '../transport/replayCoordinator';
 import { hashClip } from '../features/biometria/clipCustody';
+import { HEARTBEAT_MAX_FREQ_SEC } from '../transport/evidenceCadence';
 
 // DEUDA TÉCNICA: los siguientes módulos están implementados y testeados pero no se
-// cablea porque el backend slim no los soporta aún:
+// cablea porque el backend activeexam no los soporta aún:
 //
-// - `../transport/eventSignature.ts` (firma HMAC de eventos): el backend slim NO valida
+// - `../transport/eventSignature.ts` (firma HMAC de eventos): el backend activeexam NO valida
 //   la firma del payload del evento. Firmar sin validación es teatro de seguridad.
 //   Cablear cuando el backend implemente la validación.
 //
 // - `../features/custodia/evidenceCapture.ts` (cadena de custodia completa): requiere
-//   el endpoint `/evidence/presign` (inexistente en el slim), storage externo
+//   el endpoint `/evidence/presign` (inexistente en el activeexam), storage externo
 //   (MinIO/S3 con Object Lock) y `sessionKey` rotativa post-verificación biométrica.
 //   Cablear cuando se implemente el backend completo de evidencia (C-12/C-24).
 
@@ -194,6 +195,69 @@ export function __resetSesionEnCreacionParaTest(): void {
 /** ~5 fps: suficiente para detección en vivo sin saturar el cliente. */
 const FRAME_INTERVAL_MS = 200;
 
+// ---------------------------------------------------------------------------
+// Cadencia de captura durante pausa autorizada (C-76 bloque 5, D6/Q3 follow-up)
+// ---------------------------------------------------------------------------
+//
+// El backend (chat_pausa_service.finalizarPausa) verifica, al CERRAR una
+// ventana de pausa aprobada, si existe al menos un evento `captura_pausa` con
+// `ts_backend` dentro de la ventana; si no hay ninguno, emite `pausa_sin_captura`
+// (BASELINE, señal para revisión humana — L2.5, NUNCA sanción automática).
+// Esta cadencia es la contraparte del CLIENTE: mientras la pausa está
+// `aprobada`, postea periódicamente un evento `captura_pausa` reusando el
+// MISMO pipeline de eventos que el resto del examen (api.enviarEventoProctoring,
+// re-hasheado/firmado server-side — regla dura #6, cliente = sensor no confiable).
+//
+// Intervalo: reusa el tope de proporcionalidad de `evidenceCadence.ts`
+// (HEARTBEAT_MAX_FREQ_SEC = 30s) en vez de inventar un número nuevo — misma
+// cadencia/patrón que la evidencia general (Ley 25.326, minimización de datos).
+export const PAUSA_CAPTURA_INTERVAL_MS = HEARTBEAT_MAX_FREQ_SEC * 1000;
+
+export interface PausaCapturaDeps {
+  /** Captura y postea UN screenshot con tipo `captura_pausa`. Fire-and-forget. */
+  capturar: () => void | Promise<void>;
+}
+
+/**
+ * Controlador de cadencia de `captura_pausa`, extraído como función PURA
+ * (sin React) — mismo criterio de testeo que `obtenerOCrearSesion()` en este
+ * archivo: se puede probar con fake timers sin montar el hook completo
+ * (MediaPipe/video/IndexedDB). Análogo en espíritu a `EvidenceCadenceController`
+ * de `evidenceCadence.ts`, pero sin la cadena de custodia por presigned URL:
+ * acá se reusa el pipeline general de eventos ya cableado en `handleEvent`.
+ *
+ * `setActiva(true)` dispara una captura INMEDIATA (no perder pausas cortas
+ * que resuelven antes del primer tick) y arranca el intervalo. `setActiva(false)`
+ * detiene el intervalo. Idempotente: llamar `setActiva(true)` mientras ya está
+ * activo no duplica el timer.
+ */
+export function crearControladorCapturaPausa(deps: PausaCapturaDeps) {
+  let timer: ReturnType<typeof setInterval> | null = null;
+  return {
+    setActiva(activa: boolean, intervalMs: number = PAUSA_CAPTURA_INTERVAL_MS): void {
+      if (activa) {
+        if (timer !== null) return; // ya corriendo — idempotente
+        void deps.capturar();
+        if (intervalMs > 0) {
+          timer = setInterval(() => {
+            void deps.capturar();
+          }, intervalMs);
+        }
+      } else if (timer !== null) {
+        clearInterval(timer);
+        timer = null;
+      }
+    },
+    /** Detiene el intervalo incondicionalmente (cleanup de desmontaje). */
+    detener(): void {
+      if (timer !== null) {
+        clearInterval(timer);
+        timer = null;
+      }
+    },
+  };
+}
+
 /** Identificación mínima del examen que necesita el proctoring. */
 interface ExamenInfo {
   id?: string;
@@ -239,6 +303,14 @@ export interface ExamProctoringState {
 export interface UseExamProctoringResult extends ExamProctoringState {
   /** Corta el loop, dispone el motor y limpia detectores. Idempotente. */
   detener: () => void;
+  /**
+   * C-76 bloque 5: notifica si hay una pausa APROBADA en curso. `true` arranca
+   * la cadencia de `captura_pausa`; `false` (resuelta/finalizada/sin pausa) la
+   * detiene. Lo llama el contenedor (Examen.tsx) desde el mismo callback
+   * `onActivaChange` que ya recibe de `PausaAlumno` — no requiere que
+   * `PausaAlumno` conozca este hook.
+   */
+  setPausaAprobada: (activa: boolean) => void;
 }
 
 /**
@@ -304,6 +376,56 @@ export function useExamProctoring(
   const fullscreenExitedRef = useRef(false);
   const clipboardRef = useRef<'copy' | 'paste' | null>(null);
   const extraMonitorRef = useRef<boolean | null>(null);
+
+  // ------ C-76 bloque 5: cadencia de captura_pausa (ver comentario junto a
+  // crearControladorCapturaPausa más arriba en este archivo) ------
+  const enviarCapturaPausaRef = useRef<() => Promise<void>>(async () => {});
+  enviarCapturaPausaRef.current = async () => {
+    const sid = sessionIdRef.current;
+    const video = videoRef.current;
+    if (!sid || !video) return;
+    const screenshot = captureVideoFrame(video, 0.7);
+    if (!screenshot) return; // video sin frame listo: no hay nada que subir
+
+    // Mismo cálculo de hash que handleEvent (D5, cadena de custodia cliente).
+    let screenshotHash: string | undefined;
+    try {
+      const b64 = screenshot.replace(/^data:[^;]+;base64,/, '');
+      const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+      screenshotHash = await hashClip(bytes.buffer);
+    } catch {
+      // error de WebCrypto: continuar sin el hash
+    }
+
+    const eventoPayload = {
+      tipo: 'captura_pausa',
+      // BASELINE (espeja Severidad.BASELINE del backend, TipoEvento.CAPTURA_PAUSA):
+      // nunca suma al score — es insumo de revisión humana, no un veredicto (L2.5).
+      severidad: 'baseline',
+      ts_cliente: new Date().toISOString(),
+      screenshot_base64: screenshot,
+      face_count_cliente: faceCountRef.current,
+      ...(screenshotHash !== undefined && { screenshot_sha256_cliente: screenshotHash }),
+    };
+
+    // Fire-and-forget, degradación silenciosa: una captura de pausa fallida NO
+    // debe romper el examen. No pasa por el buffer IndexedDB de replay (D1):
+    // ese buffer está pensado para eventos discretos del motor de reglas con
+    // reenvío ordenado por `last_event_id`; acá es un heartbeat periódico donde
+    // perder UNA captura no es crítico (el backend solo necesita UNA en la
+    // ventana) y el próximo tick reintenta solo.
+    try {
+      await api.enviarEventoProctoring(sid, eventoPayload);
+    } catch (err) {
+      console.error('[proctoring] POST captura_pausa falló:', err);
+    }
+  };
+  const pausaCapturaCtrlRef = useRef(
+    crearControladorCapturaPausa({ capturar: () => enviarCapturaPausaRef.current() }),
+  );
+  const setPausaAprobada = useCallback((activa: boolean) => {
+    pausaCapturaCtrlRef.current.setActiva(activa);
+  }, []);
 
   // ------ Callback de cada evento discreto (ref estable, lee estado fresco) ------
   const handleEvent = useRef<EventSink['sendEvent']>(async () => {});
@@ -401,7 +523,7 @@ export function useExamProctoring(
     // 4. Si el POST rechaza (red caída) → NO confirmar (queda pendiente para drainAndReplay).
     //
     // Sin confirm on-success, el buffer retiene todos los eventos del examen y el drain
-    // los reinyecta masivamente en la primera reconexión (el backend slim NO deduplica).
+    // los reinyecta masivamente en la primera reconexión (el backend activeexam NO deduplica).
     await bufferRef.current?.append(rawEvent.id, eventoPayload).catch(() => {});
 
     try {
@@ -435,6 +557,10 @@ export function useExamProctoring(
       clearInterval(frameLoopRef.current);
       frameLoopRef.current = null;
     }
+    // Cierre explícito o transitorio: en ambos casos cortar la cadencia de
+    // captura_pausa — no tiene sentido seguir posteando capturas de una sesión
+    // que ya no está activa (evita timers huérfanos tras desmontar/StrictMode).
+    pausaCapturaCtrlRef.current.detener();
     pipelineRef.current = null;
     engineRef.current = null;
     // Finalizar la sesión SOLO en el cierre explícito. Marca `finalizada_en` (sale de
@@ -481,7 +607,7 @@ export function useExamProctoring(
       const sid = sessionIdRef.current;
       if (!sid) return { status: 'persisted', id: record.id };
       await api.enviarEventoProctoring(sid, record.message as Parameters<typeof api.enviarEventoProctoring>[1]);
-      // El backend slim no distingue persisted/duplicate — siempre tratamos el 200 como persisted.
+      // El backend activeexam no distingue persisted/duplicate — siempre tratamos el 200 como persisted.
       return { status: 'persisted', id: record.id };
     };
 
@@ -674,7 +800,7 @@ export function useExamProctoring(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [examen?.id]);
 
-  return { sessionId, sessionCreadaEn, score, eventCount, activo, eventos, extraMonitorActive, sessionError, detener };
+  return { sessionId, sessionCreadaEn, score, eventCount, activo, eventos, extraMonitorActive, sessionError, detener, setPausaAprobada };
 }
 
 // ---------------------------------------------------------------------------
