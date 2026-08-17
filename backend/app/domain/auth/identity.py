@@ -6,7 +6,7 @@ hay criptografia: solo el resultado validado, en forma de dato de dominio sobre 
 que se decide la autorizacion contextual.
 
 Campos relevantes para el RBAC contextual (`03` §RBAC):
-- ``id_institucional``: clave del JIT provisioning (`04` §Usuario).
+- ``username``: clave del JIT provisioning (`04` §Usuario).
 - ``roles``: roles funcionales del principal (ya filtrados a ``Rol`` validos).
 - ``mfa_satisfecho``: el token refleja el segundo factor (D4 MFA enforcement).
 - ``jurisdiccion``: scope del revisor (atributo federado, `03`).
@@ -28,7 +28,7 @@ from app.domain.auth.roles import Rol, rol_exige_mfa
 class AuthenticatedPrincipal:
     """Identidad ya autenticada (claims validados). Inmutable."""
 
-    id_institucional: str
+    username: str
     email: str
     roles: tuple[Rol, ...] = ()
     mfa_satisfecho: bool = False

@@ -1,10 +1,10 @@
 """0047 - credencial de Moodle en DB, con el token CIFRADO.
 
 Revision ID: 0047
-Revises: 0046 (branch slim)
+Revises: 0046 (branch activeexam)
 Create Date: 2026-07-28
 
-RAMA: slim
+RAMA: activeexam
 
 PROPOSITO:
   Mueve la credencial de servicio de Moodle (base_url + token de Web Services +

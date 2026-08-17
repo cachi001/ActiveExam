@@ -20,7 +20,7 @@ class DsrAccessResponse:
     """Datos personales devueltos en ACCESS / RECTIFICATION."""
 
     usuario_id: str
-    id_institucional: str
+    username: str
     email: str
     nombre: str | None
     apellido: str | None
@@ -33,7 +33,7 @@ class DsrPortabilityResponse:
     """Estructura exportable JSON con datos del titular + IDs de sesiones."""
 
     usuario_id: str
-    id_institucional: str
+    username: str
     email: str
     nombre: str | None
     apellido: str | None

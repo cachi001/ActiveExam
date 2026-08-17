@@ -8,7 +8,7 @@ negocio PURA y se testea sin red.
 
 Mapeo de claims (Keycloak / OIDC):
 - ``sub``                  -> subject opaco del IdP.
-- ``preferred_username`` / ``preferred_username``-like -> ``id_institucional``.
+- ``preferred_username`` / ``preferred_username``-like -> ``username``.
 - ``email``                -> email.
 - ``realm_access.roles``   -> roles funcionales (se filtran a ``Rol`` validos).
 - ``aud``                  -> debe contener ``JWT_AUDIENCE`` (verificado aqui).
@@ -103,13 +103,13 @@ class TokenPolicy:
         self._verificar_issuer(claims)
         self._verificar_audiencia(claims)
 
-        id_institucional = (
+        username = (
             claims.get("preferred_username")
             or claims.get("upn")
             or claims.get("sub")
         )
-        if not id_institucional:
-            raise UnauthenticatedError("El token no porta identificador institucional.")
+        if not username:
+            raise UnauthenticatedError("El token no porta un username.")
 
         roles_raw = []
         realm_access = claims.get("realm_access") or {}
@@ -125,7 +125,7 @@ class TokenPolicy:
         }
 
         return AuthenticatedPrincipal(
-            id_institucional=str(id_institucional),
+            username=str(username),
             email=str(claims.get("email") or ""),
             roles=roles,
             mfa_satisfecho=self._mfa_satisfecho(claims),

@@ -12,6 +12,8 @@ TestClient, pydantic_settings para ``Settings``); por eso comparte el patron de
 
 from __future__ import annotations
 
+import os
+
 import pytest
 from fastapi import APIRouter, Depends
 from fastapi.testclient import TestClient
@@ -31,13 +33,11 @@ _ISSUER = "http://keycloak:8080/realms/proctoring"
 _AUD = "proctoring-api"
 
 _ENV: dict[str, str] = {
-    "DATABASE_URL": "postgresql+asyncpg://app@db:5432/proctoring",
+    "DATABASE_URL": os.environ.get("DATABASE_URL", "postgresql+asyncpg://app@postgres:5432/proctoring"),
     "STORAGE_ENDPOINT": "http://minio:9000",
     "STORAGE_ACCESS_KEY": "k",
     "STORAGE_SECRET_KEY": "s",
     "STORAGE_BUCKET_EVIDENCE": "evidence",
-    "KEYCLOAK_ISSUER": _ISSUER,
-    "KEYCLOAK_JWKS_URL": _ISSUER + "/protocol/openid-connect/certs",
     "JWT_AUDIENCE": _AUD,
     "OTEL_EXPORTER_OTLP_ENDPOINT": "http://tempo:4317",
 }
@@ -62,9 +62,9 @@ def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
 
     @protected.get("/solo-admin")
     async def solo_admin(
-        principal: AuthenticatedPrincipal = Depends(require_roles(Rol.ADMIN_EXAMENES)),
+        principal: AuthenticatedPrincipal = Depends(require_roles(Rol.ADMIN_SISTEMA)),
     ) -> dict:
-        return {"ok": True, "user": principal.id_institucional}
+        return {"ok": True, "user": principal.username}
 
     app.include_router(protected, prefix="/api/v1/test")
     return TestClient(app)
@@ -99,7 +99,7 @@ def test_rol_incorrecto_devuelve_403(client: TestClient) -> None:
 
 
 def test_rol_correcto_devuelve_200(client: TestClient) -> None:
-    token = _token(["admin_examenes"])
+    token = _token(["admin_sistema"])
     resp = client.get(
         "/api/v1/test/solo-admin", headers={"Authorization": f"Bearer {token}"}
     )
@@ -131,7 +131,7 @@ def test_me_devuelve_principal(client: TestClient) -> None:
     resp = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
     assert resp.status_code == 200
     body = resp.json()
-    assert body["id_institucional"] == "u1"
+    assert body["username"] == "u1"
     assert "coordinador" in body["roles"]
     assert body["mfa_satisfecho"] is True
 

@@ -44,7 +44,7 @@ class InMemoryAuditRepo(AuditLogRepository):
 def _proctor() -> AuthenticatedPrincipal:
     # c-76: PROCTOR eliminado -> COORDINADOR asume la supervision global (C-50).
     return AuthenticatedPrincipal(
-        id_institucional="coordinador-1",
+        username="coordinador-1",
         email="p@uni.edu",
         roles=(Rol.COORDINADOR,),
         mfa_satisfecho=True,
@@ -91,7 +91,7 @@ def test_acceso_evidencia_registra_proposito_en_audit() -> None:
 def test_acceso_evidencia_sin_mfa_no_audita() -> None:
     async def run() -> None:
         sin_mfa = AuthenticatedPrincipal(
-            id_institucional="p", email="p@uni.edu", roles=(Rol.COORDINADOR,)
+            username="p", email="p@uni.edu", roles=(Rol.COORDINADOR,)
         )
         audit = InMemoryAuditRepo()
         svc = ContextualAuthorizationService(audit)

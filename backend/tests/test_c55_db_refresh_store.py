@@ -19,13 +19,11 @@ from app.infrastructure.auth.refresh_store import RefreshTokenError
 async def test_issue_is_valid_rotate_reuso(monkeypatch: pytest.MonkeyPatch) -> None:
     """Flujo completo: issue → valid → rotate → viejo invalido → reuso rechazado."""
     import os  # noqa: PLC0415
-    monkeypatch.setenv("DATABASE_URL", os.environ.get("DATABASE_URL", "postgresql+asyncpg://app@db:5432/proctoring"))
+    monkeypatch.setenv("DATABASE_URL", os.environ.get("DATABASE_URL", "postgresql+asyncpg://app@postgres:5432/proctoring"))
     monkeypatch.setenv("STORAGE_ENDPOINT", "http://minio:9000")
     monkeypatch.setenv("STORAGE_ACCESS_KEY", "k")
     monkeypatch.setenv("STORAGE_SECRET_KEY", "s")
     monkeypatch.setenv("STORAGE_BUCKET_EVIDENCE", "evidence")
-    monkeypatch.setenv("KEYCLOAK_ISSUER", "http://keycloak:8080/realms/proctoring")
-    monkeypatch.setenv("KEYCLOAK_JWKS_URL", "http://keycloak:8080/realms/proctoring/protocol/openid-connect/certs")
     monkeypatch.setenv("JWT_AUDIENCE", "proctoring-api")
     monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://tempo:4317")
 
@@ -39,7 +37,7 @@ async def test_issue_is_valid_rotate_reuso(monkeypatch: pytest.MonkeyPatch) -> N
     # Crear un usuario de prueba para FK.
     async with factory() as session:
         usuario = UsuarioModel(
-            id_institucional="test-refresh-store-user",
+            username="test-refresh-store-user",
             email="test-refresh-store@demo.test",
             roles=["estudiante"],
             password_hash="x",

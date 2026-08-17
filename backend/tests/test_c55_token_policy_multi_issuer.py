@@ -41,14 +41,14 @@ def _claims_base(iss: str) -> dict:
 def test_issuer_propio_aceptado() -> None:
     policy = _policy_multi()
     principal = policy.principal_desde_claims(_claims_base(_ISSUER_PROPIO))
-    assert principal.id_institucional == "alu123"
+    assert principal.username == "alu123"
     assert Rol.COORDINADOR in principal.roles
 
 
 def test_issuer_keycloak_aceptado() -> None:
     policy = _policy_multi()
     principal = policy.principal_desde_claims(_claims_base(_ISSUER_KEYCLOAK))
-    assert principal.id_institucional == "alu123"
+    assert principal.username == "alu123"
     assert Rol.COORDINADOR in principal.roles
 
 
@@ -77,7 +77,7 @@ def test_from_single_issuer_retrocompatibilidad() -> None:
     policy = TokenPolicy.from_single_issuer(_ISSUER_KEYCLOAK, _AUD)
     assert policy.issuers_aceptados == frozenset({_ISSUER_KEYCLOAK})
     principal = policy.principal_desde_claims(_claims_base(_ISSUER_KEYCLOAK))
-    assert principal.id_institucional == "alu123"
+    assert principal.username == "alu123"
 
 
 def test_mfa_insatisfecho_para_token_propio_sin_amr() -> None:

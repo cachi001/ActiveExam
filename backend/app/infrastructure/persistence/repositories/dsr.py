@@ -1,13 +1,13 @@
-"""Adaptadores SQL slim para DSR (c-17).
+"""Adaptadores SQL activeexam para DSR (c-17).
 
 - SqlUserDsrRepository: lee/actualiza/anonimiza usuario, lista sesiones, borra biometria.
 - SqlDsrAuditor: escribe al audit_log con triggers de cadena hash.
 
-Slim: la asociacion usuario↔proctoring_session NO existe a nivel de FK en
-slim (proctoring_session.exam_id es texto libre). Para encontrar sesiones
-del usuario en slim usamos una heuristica conservadora: por ahora
+ActiveExam: la asociacion usuario↔proctoring_session NO existe a nivel de FK en
+activeexam (proctoring_session.exam_id es texto libre). Para encontrar sesiones
+del usuario en activeexam usamos una heuristica conservadora: por ahora
 ``list_sessions_for_user`` devuelve [] (no hay forma confiable de
-asociarlas). Esto es honesto al estado slim — el frontend del proctor sigue
+asociarlas). Esto es honesto al estado activeexam — el frontend del proctor sigue
 la sesion por su id directamente, no via usuario.
 
 Cuando llegue c-69 con tabla `caso_disciplinario` y FKs reales, el
@@ -47,7 +47,7 @@ class SqlUserDsrRepository(UserDsrRepository):
             return None
         return {
             "id": str(row.id),
-            "id_institucional": row.id_institucional,
+            "username": row.username,
             "email": row.email,
             "nombre": row.nombre,
             "apellido": row.apellido,
@@ -79,7 +79,7 @@ class SqlUserDsrRepository(UserDsrRepository):
         )
 
     async def list_sessions_for_user(self, usuario_id: str) -> list[str]:
-        """Slim: sin FK usuario↔proctoring_session. Devuelve [].
+        """ActiveExam: sin FK usuario↔proctoring_session. Devuelve [].
 
         c-69 sucesor agrega la asociacion via tabla `asignacion` o columna
         nueva en proctoring_session, y aqui se reemplaza por una query real.
@@ -122,7 +122,7 @@ class SqlUserDsrRepository(UserDsrRepository):
     async def anonymize_user(self, usuario_id: str) -> None:
         """Anonimiza: setea eliminado_en, blanquea PII directa.
 
-        Conserva ``id_institucional`` como seudonimo opaco (no es PII directa
+        Conserva ``username`` como seudonimo opaco (no es PII directa
         bajo la regla del proyecto — es un identificador interno).
         """
         await self._session.execute(

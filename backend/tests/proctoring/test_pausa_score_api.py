@@ -31,9 +31,9 @@ _PROCTOR = auth_headers(["coordinador"])  # c-76: rol proctor eliminado -> coord
 
 
 @pytest_asyncio.fixture
-async def score_config(slim_engine):
+async def score_config(activeexam_engine):
     """Crea evento_score_config y siembra GAZE_DEVIATION=50 (peso vivo por tipo)."""
-    async with slim_engine.begin() as conn:
+    async with activeexam_engine.begin() as conn:
         await conn.execute(
             text(
                 "CREATE TABLE IF NOT EXISTS evento_score_config ("
@@ -51,7 +51,7 @@ async def score_config(slim_engine):
             {"peso": _PESO_GAZE},
         )
     yield
-    async with slim_engine.begin() as conn:
+    async with activeexam_engine.begin() as conn:
         await conn.execute(text("DROP TABLE IF EXISTS evento_score_config CASCADE"))
 
 
@@ -95,7 +95,7 @@ async def test_detalle_evento_en_pausa_excluido_del_score(
     ).json()["id"]
     await client.patch(
         f"{_BASE}/pausas/{pid}",
-        json={"accion": "aprobar", "proctor_actor": "doc"},
+        json={"accion": "aprobar", "tutor_actor": "doc"},
         headers=_PROCTOR,
     )
 
@@ -127,7 +127,7 @@ async def test_detalle_mezcla_dentro_y_fuera_de_pausa(
     ).json()["id"]
     await client.patch(
         f"{_BASE}/pausas/{pid}",
-        json={"accion": "aprobar", "proctor_actor": "doc"},
+        json={"accion": "aprobar", "tutor_actor": "doc"},
         headers=_PROCTOR,
     )
     # Evento DURANTE la ventana abierta -> excluido

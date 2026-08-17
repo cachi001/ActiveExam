@@ -1,4 +1,4 @@
-"""Dominio del DSR (Data Subject Rights) — c-17 slim.
+"""Dominio del DSR (Data Subject Rights) — c-17 activeexam.
 
 Implementa los 4 derechos del titular bajo Ley 25.326:
 - ACCESS (acceso a sus datos)
@@ -6,7 +6,7 @@ Implementa los 4 derechos del titular bajo Ley 25.326:
 - ERASURE (eliminacion / derecho al olvido)
 - PORTABILITY (portabilidad en JSON)
 
-Slim reutiliza el ``HoldVerifier`` de c-19 (NullHoldVerifier default). Cuando
+ActiveExam reutiliza el ``HoldVerifier`` de c-19 (NullHoldVerifier default). Cuando
 llegue c-69 con tabla ``caso_disciplinario``, se inyecta ``SqlHoldVerifier``
 sin tocar este servicio.
 """

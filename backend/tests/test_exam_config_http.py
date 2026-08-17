@@ -12,6 +12,8 @@ servicio con repositorios en memoria (sin DB). Comparte el patron de
 
 from __future__ import annotations
 
+import os
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -30,13 +32,11 @@ _ISSUER = "http://keycloak:8080/realms/proctoring"
 _AUD = "proctoring-api"
 
 _ENV = {
-    "DATABASE_URL": "postgresql+asyncpg://app@db:5432/proctoring",
+    "DATABASE_URL": os.environ.get("DATABASE_URL", "postgresql+asyncpg://app@postgres:5432/proctoring"),
     "STORAGE_ENDPOINT": "http://minio:9000",
     "STORAGE_ACCESS_KEY": "k",
     "STORAGE_SECRET_KEY": "s",
     "STORAGE_BUCKET_EVIDENCE": "evidence",
-    "KEYCLOAK_ISSUER": _ISSUER,
-    "KEYCLOAK_JWKS_URL": _ISSUER + "/protocol/openid-connect/certs",
     "JWT_AUDIENCE": _AUD,
     "OTEL_EXPORTER_OTLP_ENDPOINT": "http://tempo:4317",
 }
@@ -106,14 +106,14 @@ def test_no_admin_recibe_403(client: TestClient) -> None:
 
 def test_admin_sin_mfa_recibe_403(client: TestClient) -> None:
     resp = client.post(
-        "/api/v1/exams", json=_VALID_EXAM, headers=_h(_token(["admin_examenes"], mfa=False))
+        "/api/v1/exams", json=_VALID_EXAM, headers=_h(_token(["admin_sistema"], mfa=False))
     )
     assert resp.status_code == 403
 
 
 def test_admin_con_mfa_crea_201(client: TestClient) -> None:
     resp = client.post(
-        "/api/v1/exams", json=_VALID_EXAM, headers=_h(_token(["admin_examenes"]))
+        "/api/v1/exams", json=_VALID_EXAM, headers=_h(_token(["admin_sistema"]))
     )
     assert resp.status_code == 201
     assert resp.json()["id"] is not None
@@ -129,20 +129,20 @@ def test_sin_token_401(client: TestClient) -> None:
 
 def test_ventana_incoherente_422(client: TestClient) -> None:
     bad = {**_VALID_EXAM, "fin": "2026-06-01T08:00:00Z"}
-    resp = client.post("/api/v1/exams", json=bad, headers=_h(_token(["admin_examenes"])))
+    resp = client.post("/api/v1/exams", json=bad, headers=_h(_token(["admin_sistema"])))
     assert resp.status_code == 422
     assert "ventana" in resp.json()["detail"]["errores"]
 
 
 def test_detector_desconocido_422(client: TestClient) -> None:
     bad = {**_VALID_EXAM, "detectores": ["telepatia"]}
-    resp = client.post("/api/v1/exams", json=bad, headers=_h(_token(["admin_examenes"])))
+    resp = client.post("/api/v1/exams", json=bad, headers=_h(_token(["admin_sistema"])))
     assert resp.status_code == 422
 
 
 def test_campo_extra_422(client: TestClient) -> None:
     bad = {**_VALID_EXAM, "campo_raro": 1}
-    resp = client.post("/api/v1/exams", json=bad, headers=_h(_token(["admin_examenes"])))
+    resp = client.post("/api/v1/exams", json=bad, headers=_h(_token(["admin_sistema"])))
     assert resp.status_code == 422  # extra='forbid'
 
 
@@ -150,7 +150,7 @@ def test_campo_extra_422(client: TestClient) -> None:
 
 
 def test_set_y_list_habilitados(client: TestClient) -> None:
-    h = _h(_token(["admin_examenes"]))
+    h = _h(_token(["admin_sistema"]))
     created = client.post("/api/v1/exams", json=_VALID_EXAM, headers=h).json()
     eid = created["id"]
     put = client.put(
@@ -163,7 +163,7 @@ def test_set_y_list_habilitados(client: TestClient) -> None:
 
 
 def test_asignar_proctores(client: TestClient) -> None:
-    h = _h(_token(["admin_examenes"]))
+    h = _h(_token(["admin_sistema"]))
     eid = client.post("/api/v1/exams", json=_VALID_EXAM, headers=h).json()["id"]
     resp = client.put(
         f"/api/v1/exams/{eid}/proctors", json={"proctores": ["p1", "p2"]}, headers=h
@@ -173,7 +173,7 @@ def test_asignar_proctores(client: TestClient) -> None:
 
 
 def test_referencia_presign(client: TestClient) -> None:
-    h = _h(_token(["admin_examenes"]))
+    h = _h(_token(["admin_sistema"]))
     eid = client.post("/api/v1/exams", json=_VALID_EXAM, headers=h).json()["id"]
     resp = client.post(
         f"/api/v1/exams/{eid}/reference-photo",
@@ -187,7 +187,7 @@ def test_referencia_presign(client: TestClient) -> None:
 
 
 def test_referencia_precomputada(client: TestClient) -> None:
-    h = _h(_token(["admin_examenes"]))
+    h = _h(_token(["admin_sistema"]))
     eid = client.post("/api/v1/exams", json=_VALID_EXAM, headers=h).json()["id"]
     resp = client.post(
         f"/api/v1/exams/{eid}/reference-photo",

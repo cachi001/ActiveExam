@@ -1,4 +1,4 @@
-"""Servicio de aplicacion para biometria de proctoring slim.
+"""Servicio de aplicacion para biometria de proctoring activeexam.
 
 Verifica que la sesion exista y persiste el resultado biometrico.
 Ley 25.326: el embedding facial es dato sensible — comentado en el modelo ORM.

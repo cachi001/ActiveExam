@@ -1,10 +1,10 @@
 """0051 - base_url per-docente en moodle_credencial_docente.
 
 Revision ID: 0051
-Revises: 0050 (branch slim)
+Revises: 0050 (branch activeexam)
 Create Date: 2026-07-30
 
-RAMA: slim
+RAMA: activeexam
 
 PROPOSITO:
   Agrega `base_url` a `moodle_credencial_docente` para que cada docente pueda

@@ -10,13 +10,13 @@ RAMA: full (principal, con TimescaleDB)
   depends_on    = None
 
 PROPOSITO (change configuracion-sistema-funcional, Grupo 0):
-  Espeja en la rama FULL las dos tablas ADITIVAS creadas en slim por 0014:
+  Espeja en la rama FULL las dos tablas ADITIVAS creadas en activeexam por 0014:
   ``configuracion_sistema`` (singleton global versionado) y ``consentimiento_perfil``
-  (append-only, Ley 25.326). Mismo schema que slim (no usan TimescaleDB).
+  (append-only, Ley 25.326). Mismo schema que activeexam (no usan TimescaleDB).
 
-  El numero de revision 0015 NO colisiona con 0008-0014 (rama slim): alembic
+  El numero de revision 0015 NO colisiona con 0008-0014 (rama activeexam): alembic
   identifica por revision id, y esta migracion cuelga de 0007 (rama full), no de la
-  cadena slim. Aditivas: sin DROP/ALTER destructivo.
+  cadena activeexam. Aditivas: sin DROP/ALTER destructivo.
 
 ROLLBACK:
   alembic downgrade 0007  -> dropea las dos tablas (destructivo, paso 2 separado).

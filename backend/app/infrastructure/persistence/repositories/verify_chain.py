@@ -1,4 +1,4 @@
-"""Adaptadores SQL slim para c-18 verify-chain.
+"""Adaptadores SQL activeexam para c-18 verify-chain.
 
 - SqlEventMaterialRepository: lee proctoring_event.screenshot_b64 + screenshot_sha256
 - SqlChainVerificationAuditor: escribe al audit_log via AuditLogSqlRepository

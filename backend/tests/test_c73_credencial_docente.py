@@ -100,7 +100,7 @@ async def docente_id(factory):
     legajo = f"D-{uuid.uuid4().hex[:8]}"
     async with factory() as s:
         u = UsuarioModel(
-            id_institucional=legajo,
+            username=legajo,
             email=f"{legajo.lower()}@uni.edu",
             roles=["tutor"],
         )

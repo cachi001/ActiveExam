@@ -30,7 +30,7 @@ class InMemoryUserRepo(UserRepository):
         self._seq += 1
         persisted = Usuario(
             id=str(self._seq),
-            id_institucional=entity.id_institucional,
+            username=entity.username,
             email=entity.email,
             roles=entity.roles,
             attrs_federados=entity.attrs_federados,
@@ -49,16 +49,16 @@ class InMemoryUserRepo(UserRepository):
         self._by_id[entity.id] = entity
         return entity
 
-    async def get_by_id_institucional(self, id_institucional: str) -> Usuario | None:
+    async def get_by_username(self, username: str) -> Usuario | None:
         for u in self._by_id.values():
-            if u.id_institucional == id_institucional:
+            if u.username == username:
                 return u
         return None
 
 
 def _principal(roles=(Rol.COORDINADOR,), email="p@uni.edu") -> AuthenticatedPrincipal:
     return AuthenticatedPrincipal(
-        id_institucional="inst-42", email=email, roles=roles, mfa_satisfecho=True
+        username="inst-42", email=email, roles=roles, mfa_satisfecho=True
     )
 
 
@@ -68,7 +68,7 @@ def test_primer_login_crea_usuario() -> None:
         svc = JitProvisioningService(repo)
         usuario = await svc.provision(_principal())
         assert usuario.id is not None
-        assert usuario.id_institucional == "inst-42"
+        assert usuario.username == "inst-42"
         assert len(await repo.list()) == 1
 
     asyncio.run(run())

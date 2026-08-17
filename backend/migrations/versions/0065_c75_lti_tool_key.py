@@ -21,7 +21,7 @@ PROPOSITO:
   Es ADITIVA.
 
 ROLLBACK:
-  alembic downgrade slim@0064 → dropea la tabla nueva. No toca nada existente.
+  alembic downgrade activeexam@0064 → dropea la tabla nueva. No toca nada existente.
 """
 
 from __future__ import annotations

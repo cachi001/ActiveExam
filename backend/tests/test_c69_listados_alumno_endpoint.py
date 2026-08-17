@@ -129,7 +129,7 @@ async def client_staff(app_student):
     async with AsyncClient(
         transport=ASGITransport(app=app),
         base_url="http://test",
-        headers=auth_headers(["admin_examenes"]),
+        headers=auth_headers(["admin_sistema"]),
     ) as c:
         yield c
 
@@ -199,14 +199,14 @@ async def _seed(factory):
         examen = await examen_repo.guardar(_examen(f"Parcial 1 [{tag}]", comision.id, n=3))
         await examen_repo.guardar(_examen(f"Examen Suelto [{tag}]", None, n=1))
         # Gate de inscripción (C-71): el alumno ve SOLO lo de sus comisiones
-        # inscriptas. El token de test lleva id_institucional='estudiante', así que
+        # inscriptas. El token de test lleva username='estudiante', así que
         # hay que materializar ese usuario e inscribirlo — si no, estos listados
         # vuelven vacíos (comportamiento correcto del gate, no un bug).
         alumno_id = await session.scalar(
             text(
-                "INSERT INTO usuario (id_institucional, email, roles) "
+                "INSERT INTO usuario (username, email, roles) "
                 "VALUES ('estudiante', 'estudiante@uni.edu', '[\"estudiante\"]'::jsonb) "
-                "ON CONFLICT (id_institucional) DO UPDATE SET email = EXCLUDED.email "
+                "ON CONFLICT (username) DO UPDATE SET email = EXCLUDED.email "
                 "RETURNING id"
             )
         )

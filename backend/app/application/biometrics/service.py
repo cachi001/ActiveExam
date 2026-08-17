@@ -50,7 +50,7 @@ from app.infrastructure.messaging.port import MessageQueuePort
 TIPO_EVENTO_FALLO_BIO = "posible_cambio_identidad"
 SEVERIDAD_CRITICA = "critica"
 # Topic de la cola para escalar la verificacion fallida a un proctor humano.
-TOPIC_ESCALACION_PROCTOR_BIO = "biometria.verificacion.proctor"
+TOPIC_ESCALACION_COORDINADOR_BIO = "biometria.verificacion.coordinador"
 # Version del esquema del embedding cifrado persistido.
 VERSION_EMBEDDING = "v1"
 
@@ -71,7 +71,7 @@ class VerificationOutcome:
     distancia: float | None
     reintentos_restantes: int
     clave_sesion_emitida: bool
-    escalado_a_proctor: bool
+    escalado_a_coordinador: bool
     intentos_fallidos: int
 
 
@@ -222,7 +222,7 @@ class VerifyIdentityService:
             distancia=distancia,
             reintentos_restantes=nuevo_estado.reintentos_restantes,
             clave_sesion_emitida=True,
-            escalado_a_proctor=False,
+            escalado_a_coordinador=False,
             intentos_fallidos=nuevo_estado.intentos_fallidos,
         )
 
@@ -238,10 +238,10 @@ class VerifyIdentityService:
         motivo: str,
     ) -> tuple[EstadoVerificacion, VerificationOutcome]:
         nuevo_estado, veredicto = estado.registrar_intento(exito=False)
-        escalado = veredicto == VeredictoIntento.ESCALAR_A_PROCTOR
+        escalado = veredicto == VeredictoIntento.ESCALAR_A_COORDINADOR
 
         if escalado:
-            # 3.º fallo: EVENTO CRITICO + ESCALACION a proctor. NUNCA abort/sancion.
+            # 3.º fallo: EVENTO CRITICO + ESCALACION a coordinador. NUNCA abort/sancion.
             session_id = sesion.id or f"{sesion.user_id}:{sesion.exam_id}"
             await self._eventos.append(
                 Evento(
@@ -255,7 +255,7 @@ class VerifyIdentityService:
                 )
             )
             await self._queue.enqueue(
-                TOPIC_ESCALACION_PROCTOR_BIO,
+                TOPIC_ESCALACION_COORDINADOR_BIO,
                 {
                     "session_id": session_id,
                     "user_id": sesion.user_id,
@@ -289,7 +289,7 @@ class VerifyIdentityService:
             distancia=distancia,
             reintentos_restantes=nuevo_estado.reintentos_restantes,
             clave_sesion_emitida=False,
-            escalado_a_proctor=escalado,
+            escalado_a_coordinador=escalado,
             intentos_fallidos=nuevo_estado.intentos_fallidos,
         )
 

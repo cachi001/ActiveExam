@@ -14,13 +14,11 @@ from app.config import Settings
 from app.main import create_app
 
 _ENV: dict[str, str] = {
-    "DATABASE_URL": "postgresql+asyncpg://app@db:5432/proctoring",
+    "DATABASE_URL": "postgresql+asyncpg://app@postgres:5432/proctoring",
     "STORAGE_ENDPOINT": "http://minio:9000",
     "STORAGE_ACCESS_KEY": "test-access",
     "STORAGE_SECRET_KEY": "test-secret",
     "STORAGE_BUCKET_EVIDENCE": "evidence",
-    "KEYCLOAK_ISSUER": "http://keycloak:8080/realms/proctoring",
-    "KEYCLOAK_JWKS_URL": "http://keycloak:8080/realms/proctoring/protocol/openid-connect/certs",
     "JWT_AUDIENCE": "proctoring-api",
     "OTEL_EXPORTER_OTLP_ENDPOINT": "http://tempo:4317",
 }

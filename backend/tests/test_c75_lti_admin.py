@@ -74,7 +74,7 @@ async def _limpiar(session_factory) -> None:
     async with session_factory() as s:
         await s.execute(text("DELETE FROM lti_nonce"))
         await s.execute(text("DELETE FROM lti_deployment_confiable"))
-        await s.execute(text("DELETE FROM usuario WHERE id_institucional LIKE 'admin-lti-%'"))
+        await s.execute(text("DELETE FROM usuario WHERE username LIKE 'admin-lti-%'"))
         await s.commit()
 
 
@@ -84,14 +84,14 @@ async def _seed_usuarios(session_factory) -> dict[str, str]:
     est_iid = f"admin-lti-est-{suffix}"
     async with session_factory() as s:
         admin = UsuarioModel(
-            id_institucional=admin_iid,
+            username=admin_iid,
             email=f"{admin_iid}@test.local",
             roles=["admin_sistema"],
             auth_provider="local",
             attrs_federados={},
         )
         est = UsuarioModel(
-            id_institucional=est_iid,
+            username=est_iid,
             email=f"{est_iid}@test.local",
             roles=["estudiante"],
             auth_provider="local",

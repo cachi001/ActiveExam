@@ -89,7 +89,7 @@ def test_handshake_sin_token_rechazado() -> None:
 def test_handshake_con_token_valido_acepta() -> None:
     now = _clock()
     principal = authenticate_handshake(_validator(now), token=_token(exp=5000))
-    assert principal.id_institucional == "alu"
+    assert principal.username == "alu"
 
 
 def test_revalidacion_corta_conexion_si_token_expira() -> None:

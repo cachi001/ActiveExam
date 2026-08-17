@@ -1,7 +1,7 @@
-"""Adaptadores SQL slim para los puertos del dominio retention (c-19).
+"""Adaptadores SQL activeexam para los puertos del dominio retention (c-19).
 
 Implementa los Protocols definidos en ``app.domain.retention.ports`` contra
-las tablas que existen en la rama slim (migraciones 0005-0012, postgres puro):
+las tablas que existen en la rama activeexam (migraciones 0005-0012, postgres puro):
 
   - SqlSessionAgingRepository -> proctoring_session.creada_en
   - SqlSessionDeleter         -> DELETE proctoring_session (cascade a eventos)
@@ -105,9 +105,9 @@ class SqlEmbeddingDeleter(EmbeddingDeleter):
 class SqlFotoDeleter(FotoDeleter):
     """DELETE foto_referencia por usuario_id, devuelve filas borradas.
 
-    Slim: borra solo la fila en DB. La purga del binario en MinIO/S3 es
+    ActiveExam: borra solo la fila en DB. La purga del binario en MinIO/S3 es
     responsabilidad de un job de object storage aparte (no implementado en
-    slim porque no hay MinIO/S3 en Railway).
+    activeexam porque no hay MinIO/S3 en Railway).
     """
 
     def __init__(self, session: AsyncSession) -> None:
@@ -143,7 +143,7 @@ class SqlRetentionAuditor(RetentionAuditor):
                 user_agent="",
                 accion="retention.session.deleted",
                 evidencia_id=session_id,
-                proposito=f"slim retention: {reason}",
+                proposito=f"activeexam retention: {reason}",
                 hash_prev="",  # trigger lo completa
             )
         )
@@ -157,7 +157,7 @@ class SqlRetentionAuditor(RetentionAuditor):
                 user_agent="",
                 accion="retention.session.hold_deferred",
                 evidencia_id=session_id,
-                proposito="slim retention: hold detected, deletion deferred",
+                proposito="activeexam retention: hold detected, deletion deferred",
                 hash_prev="",
             )
         )
@@ -179,7 +179,7 @@ class SqlRetentionAuditor(RetentionAuditor):
                 accion="retention.biometric.egress",
                 evidencia_id=usuario_id,
                 proposito=(
-                    f"slim retention: usuario egresado, "
+                    f"activeexam retention: usuario egresado, "
                     f"embeddings={embeddings_deleted}, fotos={fotos_deleted}"
                 ),
                 hash_prev="",

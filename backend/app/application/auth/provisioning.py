@@ -23,16 +23,16 @@ class JitProvisioningService:
         self._users = users
 
     async def provision(self, principal: AuthenticatedPrincipal) -> Usuario:
-        """Devuelve el Usuario provisionado JIT (idempotente por id institucional).
+        """Devuelve el Usuario provisionado JIT (idempotente por username).
 
         - Primer login: crea el Usuario con sus atributos federados.
         - Logins posteriores: actualiza roles/email/atributos del Usuario existente,
-          sin crear duplicados (clave: ``id_institucional``)."""
+          sin crear duplicados (clave: ``username``)."""
         roles = tuple(r.value for r in principal.roles)
-        existente = await self._users.get_by_id_institucional(principal.id_institucional)
+        existente = await self._users.get_by_username(principal.username)
         if existente is None:
             nuevo = Usuario(
-                id_institucional=principal.id_institucional,
+                username=principal.username,
                 email=principal.email,
                 roles=roles,
                 attrs_federados=dict(principal.attrs_federados),
@@ -42,7 +42,7 @@ class JitProvisioningService:
         # Login posterior: reutiliza el Usuario, refrescando los datos federados.
         actualizado = Usuario(
             id=existente.id,
-            id_institucional=existente.id_institucional,
+            username=existente.username,
             email=principal.email or existente.email,
             roles=roles or existente.roles,
             attrs_federados=dict(principal.attrs_federados) or existente.attrs_federados,

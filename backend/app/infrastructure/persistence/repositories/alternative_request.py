@@ -44,7 +44,7 @@ class AlternativeRequestSqlRepository(AlternativeRequestRepository):
         self._session = session
 
     async def add(self, solicitud: SolicitudViaAlternativa) -> SolicitudViaAlternativa:
-        """Persiste una nueva solicitud con estado pendiente_proctor."""
+        """Persiste una nueva solicitud con estado pendiente_coordinador."""
         row = SolicitudViaAlternativaModel(
             user_id=solicitud.user_id,
             exam_id=solicitud.exam_id,
@@ -68,11 +68,11 @@ class AlternativeRequestSqlRepository(AlternativeRequestRepository):
         return _to_domain(row) if row is not None else None
 
     async def list_pending(self) -> list[SolicitudViaAlternativa]:
-        """Lista todas las solicitudes con estado pendiente_proctor."""
+        """Lista todas las solicitudes con estado pendiente_coordinador."""
         result = await self._session.execute(
             select(SolicitudViaAlternativaModel).where(
                 SolicitudViaAlternativaModel.estado
-                == EstadoViaAlternativaDB.PENDIENTE_PROCTOR
+                == EstadoViaAlternativaDB.PENDIENTE_COORDINADOR
             )
         )
         return [_to_domain(r) for r in result.scalars().all()]

@@ -117,7 +117,7 @@ async def client(app_and_factory):
         base_url="http://test",
         # Rol de gestión: se verifica el contenido del catálogo/resumen, no el gate
         # de inscripción (C-71), que con 'estudiante' devolvería vacío por diseño.
-        headers=auth_headers(["admin_examenes"]),
+        headers=auth_headers(["admin_sistema"]),
     ) as c:
         yield c
 

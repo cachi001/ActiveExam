@@ -19,13 +19,11 @@ import pytest
 def test_seed_falla_en_produccion(monkeypatch: pytest.MonkeyPatch) -> None:
     """El seed NO debe correr en ENVIRONMENT=production."""
     monkeypatch.setenv("ENVIRONMENT", "production")
-    monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://app@db:5432/proctoring")
+    monkeypatch.setenv("DATABASE_URL", os.environ.get("DATABASE_URL", "postgresql+asyncpg://app@postgres:5432/proctoring"))
     monkeypatch.setenv("STORAGE_ENDPOINT", "http://minio:9000")
     monkeypatch.setenv("STORAGE_ACCESS_KEY", "k")
     monkeypatch.setenv("STORAGE_SECRET_KEY", "s")
     monkeypatch.setenv("STORAGE_BUCKET_EVIDENCE", "evidence")
-    monkeypatch.setenv("KEYCLOAK_ISSUER", "http://keycloak:8080/realms/proctoring")
-    monkeypatch.setenv("KEYCLOAK_JWKS_URL", "http://keycloak:8080/realms/proctoring/protocol/openid-connect/certs")
     monkeypatch.setenv("JWT_AUDIENCE", "proctoring-api")
     monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://tempo:4317")
     monkeypatch.setenv("SEED_ESTUDIANTE_PASSWORD", "TestPass123")
@@ -61,13 +59,11 @@ def test_seed_falla_en_produccion(monkeypatch: pytest.MonkeyPatch) -> None:
 async def test_seed_idempotente(monkeypatch: pytest.MonkeyPatch) -> None:
     """Correr el seed dos veces no duplica usuarios (idempotente)."""
     monkeypatch.setenv("ENVIRONMENT", "local")
-    monkeypatch.setenv("DATABASE_URL", os.environ.get("DATABASE_URL", "postgresql+asyncpg://app@db:5432/proctoring"))
+    monkeypatch.setenv("DATABASE_URL", os.environ.get("DATABASE_URL", "postgresql+asyncpg://app@postgres:5432/proctoring"))
     monkeypatch.setenv("STORAGE_ENDPOINT", "http://minio:9000")
     monkeypatch.setenv("STORAGE_ACCESS_KEY", "k")
     monkeypatch.setenv("STORAGE_SECRET_KEY", "s")
     monkeypatch.setenv("STORAGE_BUCKET_EVIDENCE", "evidence")
-    monkeypatch.setenv("KEYCLOAK_ISSUER", "http://keycloak:8080/realms/proctoring")
-    monkeypatch.setenv("KEYCLOAK_JWKS_URL", "http://keycloak:8080/realms/proctoring/protocol/openid-connect/certs")
     monkeypatch.setenv("JWT_AUDIENCE", "proctoring-api")
     monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://tempo:4317")
     monkeypatch.setenv("SEED_ESTUDIANTE_PASSWORD", "SeedStudentPass1")
@@ -92,7 +88,7 @@ async def test_seed_idempotente(monkeypatch: pytest.MonkeyPatch) -> None:
     seed_ids = ["seed-estudiante", "seed-proctor", "seed-admin"]
     async with factory() as session:
         await session.execute(
-            delete(UsuarioModel).where(UsuarioModel.id_institucional.in_(seed_ids))
+            delete(UsuarioModel).where(UsuarioModel.username.in_(seed_ids))
         )
         await session.commit()
 
@@ -113,15 +109,15 @@ async def test_seed_idempotente(monkeypatch: pytest.MonkeyPatch) -> None:
     async with factory() as session:
         for seed_id in seed_ids:
             result = await session.execute(
-                select(func.count()).where(UsuarioModel.id_institucional == seed_id)
+                select(func.count()).where(UsuarioModel.username == seed_id)
             )
             count = result.scalar()
-            assert count == 1, f"Esperado 1 usuario con id_institucional={seed_id}, encontrados {count}"
+            assert count == 1, f"Esperado 1 usuario con username={seed_id}, encontrados {count}"
 
     # Cleanup.
     async with factory() as session:
         await session.execute(
-            delete(UsuarioModel).where(UsuarioModel.id_institucional.in_(seed_ids))
+            delete(UsuarioModel).where(UsuarioModel.username.in_(seed_ids))
         )
         await session.commit()
 

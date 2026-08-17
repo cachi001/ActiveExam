@@ -147,7 +147,7 @@ async def client_admin(factory):
     async with AsyncClient(
         transport=ASGITransport(app=app),
         base_url="http://test",
-        headers=auth_headers(["admin_examenes"], mfa=False),
+        headers=auth_headers(["admin_sistema"], mfa=False),
     ) as c:
         yield c
 
@@ -160,7 +160,7 @@ async def client_admin(factory):
 async def _crear_usuario(
     factory,
     *,
-    id_institucional: str,
+    username: str,
     nombre: str | None = "Ana",
     apellido: str | None = "García",
     email: str = "alumno@uni.edu",
@@ -169,7 +169,7 @@ async def _crear_usuario(
     async with factory() as s:
         usuario = UsuarioModel(
             id=str(uuid.uuid4()),
-            id_institucional=id_institucional,
+            username=username,
             email=email,
             roles=["estudiante"],
             nombre=nombre,
@@ -212,7 +212,7 @@ async def test_inscribir_alumno_201(client_admin, factory):
     comision_id = await _crear_comision(
         factory, codigo_materia="MAT-1", codigo_comision="C-1"
     )
-    usuario_id = await _crear_usuario(factory, id_institucional="A-1")
+    usuario_id = await _crear_usuario(factory, username="A-1")
 
     resp = await client_admin.post(
         f"/api/v1/exam-content/comisiones/{comision_id}/inscripciones",
@@ -230,7 +230,7 @@ async def test_inscribir_duplicado_409(client_admin, factory):
     comision_id = await _crear_comision(
         factory, codigo_materia="MAT-2", codigo_comision="C-2"
     )
-    usuario_id = await _crear_usuario(factory, id_institucional="A-2")
+    usuario_id = await _crear_usuario(factory, username="A-2")
 
     primera = await client_admin.post(
         f"/api/v1/exam-content/comisiones/{comision_id}/inscripciones",
@@ -248,7 +248,7 @@ async def test_inscribir_duplicado_409(client_admin, factory):
 
 @pytest.mark.asyncio
 async def test_inscribir_comision_inexistente_404(client_admin, factory):
-    usuario_id = await _crear_usuario(factory, id_institucional="A-3")
+    usuario_id = await _crear_usuario(factory, username="A-3")
     resp = await client_admin.post(
         f"/api/v1/exam-content/comisiones/{_UUID_INEXISTENTE}/inscripciones",
         json={"usuario_id": usuario_id},
@@ -275,7 +275,7 @@ async def test_inscribir_extra_forbid_422(client_admin, factory):
     comision_id = await _crear_comision(
         factory, codigo_materia="MAT-5", codigo_comision="C-5"
     )
-    usuario_id = await _crear_usuario(factory, id_institucional="A-5")
+    usuario_id = await _crear_usuario(factory, username="A-5")
     resp = await client_admin.post(
         f"/api/v1/exam-content/comisiones/{comision_id}/inscripciones",
         json={"usuario_id": usuario_id, "desconocido": 1},
@@ -293,7 +293,7 @@ async def test_eliminar_inscripcion_204(client_admin, factory):
     comision_id = await _crear_comision(
         factory, codigo_materia="MAT-6", codigo_comision="C-6"
     )
-    usuario_id = await _crear_usuario(factory, id_institucional="A-6")
+    usuario_id = await _crear_usuario(factory, username="A-6")
     alta = await client_admin.post(
         f"/api/v1/exam-content/comisiones/{comision_id}/inscripciones",
         json={"usuario_id": usuario_id},
@@ -321,7 +321,7 @@ async def test_eliminar_inscripcion_bloqueada_si_ya_rindio_409(client_admin, fac
         factory, codigo_materia="MAT-88", codigo_comision="C-88"
     )
     usuario_id = await _crear_usuario(
-        factory, id_institucional="A-88", email="rindio@uni.edu"
+        factory, username="A-88", email="rindio@uni.edu"
     )
     alta = await client_admin.post(
         f"/api/v1/exam-content/comisiones/{comision_id}/inscripciones",
@@ -329,7 +329,7 @@ async def test_eliminar_inscripcion_bloqueada_si_ya_rindio_409(client_admin, fac
     )
     assert alta.status_code == 201, alta.text
 
-    # El alumno rinde: examen de la comisión + sesión con su id_institucional.
+    # El alumno rinde: examen de la comisión + sesión con su username.
     async with factory() as s:
         examen = ExamenContenidoModel(titulo="Parcial", comision_id=comision_id)
         s.add(examen)
@@ -362,7 +362,7 @@ async def test_eliminar_inscripcion_inexistente_404(client_admin, factory):
     comision_id = await _crear_comision(
         factory, codigo_materia="MAT-7", codigo_comision="C-7"
     )
-    usuario_id = await _crear_usuario(factory, id_institucional="A-7")
+    usuario_id = await _crear_usuario(factory, username="A-7")
     resp = await client_admin.delete(
         f"/api/v1/exam-content/comisiones/{comision_id}/inscripciones/{usuario_id}"
     )
@@ -393,7 +393,7 @@ async def test_alumno_sin_consentimiento_ni_biometria_no_puede_rendir(
     )
     usuario_id = await _crear_usuario(
         factory,
-        id_institucional="A-8",
+        username="A-8",
         nombre="Beto",
         apellido="López",
         email="beto@uni.edu",
@@ -412,7 +412,7 @@ async def test_alumno_sin_consentimiento_ni_biometria_no_puede_rendir(
     assert len(data) == 1
     alumno = data[0]
     assert alumno["usuario_id"] == usuario_id
-    assert alumno["id_institucional"] == "A-8"
+    assert alumno["username"] == "A-8"
     assert alumno["nombre"] == "Beto"
     assert alumno["apellido"] == "López"
     assert alumno["email"] == "beto@uni.edu"
@@ -431,7 +431,7 @@ async def test_alumno_con_consentimiento_y_biometria_puede_rendir(
     comision_id = await _crear_comision(
         factory, codigo_materia="MAT-9", codigo_comision="C-9"
     )
-    usuario_id = await _crear_usuario(factory, id_institucional="A-9")
+    usuario_id = await _crear_usuario(factory, username="A-9")
     alta = await client_admin.post(
         f"/api/v1/exam-content/comisiones/{comision_id}/inscripciones",
         json={"usuario_id": usuario_id},

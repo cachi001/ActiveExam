@@ -1,4 +1,4 @@
-"""Repositorio de persistencia del modulo slim de proctoring.
+"""Repositorio de persistencia del modulo activeexam de proctoring.
 
 Operaciones async sobre las tablas proctoring_session, proctoring_event y
 proctoring_biometria. El calculo de score y discrepancias se hace aqui (o en
@@ -56,10 +56,13 @@ class SesionResumenData:
     examen_titulo: str | None = None
     comision_nombre: str | None = None
     materia_nombre: str | None = None
+    # C-76 bloque 8: docente a cargo de la comision (comision.docente_id), para
+    # acotar la supervision en vivo del TUTOR por pertenencia (D2 design c-76).
+    docente_id: str | None = None
 
 
 class ProctoringRepository:
-    """CRUD async para las 3 tablas slim de proctoring."""
+    """CRUD async para las 3 tablas activeexam de proctoring."""
 
     def __init__(self, db: AsyncSession) -> None:
         self._db = db
@@ -77,14 +80,14 @@ class ProctoringRepository:
         alumno_idnumber: str | None = None,
         alumno_email: str | None = None,
     ) -> ProctoringSessionModel:
-        """Crea y persiste una nueva sesion de proctoring slim.
+        """Crea y persiste una nueva sesion de proctoring activeexam.
 
         ``examen_contenido_id`` (C-69) vincula la sesion con el examen de contenido
         importado de Moodle XML. NULLABLE: una sesion sin contenido sigue siendo
         valida (modo 'test' o examen sin contenido asociado).
 
         ``alumno_idnumber``/``alumno_email`` (C-69, migration 0033) persisten la
-        identidad del alumno al CREAR la sesion (id_institucional del JWT). El
+        identidad del alumno al CREAR la sesion (username del JWT). El
         enforcement de intentos cuenta sesiones finalizadas por (alumno, examen).
         """
         sesion = ProctoringSessionModel(
@@ -129,6 +132,34 @@ class ProctoringRepository:
         )
         result = await self._db.execute(stmt)
         return result.scalars().first()
+
+    async def docente_id_de_sesion(self, session_id: str) -> str | None:
+        """Docente a cargo de la comision de la sesion (C-76 bloque 8, D2).
+
+        Derivacion sesion -> examen_contenido -> comision -> docente_id. None si la
+        sesion no existe, no tiene examen vinculado (modo 'test'), el examen no
+        tiene comision, o la comision no tiene docente asignado — todos significan
+        lo mismo para el caller: sin dueño identificable (solo pasan roles
+        institucionales, ver ``autorizar_supervision_vivo_sobre_sesion``)."""
+        from app.infrastructure.persistence.models.exam_content import (
+            ComisionModel,
+            ExamenContenidoModel,
+        )
+
+        stmt = (
+            select(ComisionModel.docente_id)
+            .select_from(ProctoringSessionModel)
+            .join(
+                ExamenContenidoModel,
+                ExamenContenidoModel.id == ProctoringSessionModel.examen_contenido_id,
+            )
+            .join(
+                ComisionModel, ComisionModel.id == ExamenContenidoModel.comision_id
+            )
+            .where(ProctoringSessionModel.id == session_id)
+        )
+        result = await self._db.execute(stmt)
+        return result.scalar_one_or_none()
 
     async def obtener_sesion(self, session_id: str) -> ProctoringSessionModel | None:
         """Obtiene una sesion por ID con sus eventos y biometria (eager load)."""
@@ -342,20 +373,24 @@ class ProctoringRepository:
                 score=min(100, score_por_sesion.get(s.id, 0)),
                 ultimo_evento_en=ultimo_por_sesion.get(s.id) or s.creada_en,
                 examen_contenido_id=s.examen_contenido_id,
-                examen_titulo=ctx_por_contenido.get(s.examen_contenido_id, (None, None, None))[0],
-                comision_nombre=ctx_por_contenido.get(s.examen_contenido_id, (None, None, None))[1],
-                materia_nombre=ctx_por_contenido.get(s.examen_contenido_id, (None, None, None))[2],
+                examen_titulo=ctx_por_contenido.get(s.examen_contenido_id, (None, None, None, None))[0],
+                comision_nombre=ctx_por_contenido.get(s.examen_contenido_id, (None, None, None, None))[1],
+                materia_nombre=ctx_por_contenido.get(s.examen_contenido_id, (None, None, None, None))[2],
+                docente_id=ctx_por_contenido.get(s.examen_contenido_id, (None, None, None, None))[3],
             )
             for s in sesiones
         ]
 
     async def _contexto_academico(
         self, contenido_ids: list[str]
-    ) -> dict[str, tuple[str | None, str | None, str | None]]:
-        """Mapea examen_contenido_id -> (examen_titulo, comision_nombre, materia_nombre).
+    ) -> dict[str, tuple[str | None, str | None, str | None, str | None]]:
+        """Mapea examen_contenido_id -> (examen_titulo, comision_nombre, materia_nombre,
+        docente_id).
 
         LEFT JOIN a comision y materia: un examen sin comision asociada (comision_id
-        NULL) resuelve el titulo del examen pero deja comision/materia en None.
+        NULL) resuelve el titulo del examen pero deja comision/materia/docente en
+        None. ``docente_id`` (C-76 bloque 8) es ``comision.docente_id`` — lo consume
+        el router para acotar la supervision en vivo del TUTOR por pertenencia.
         """
         if not contenido_ids:
             return {}
@@ -372,6 +407,7 @@ class ProctoringRepository:
                 ExamenContenidoModel.titulo,
                 ComisionModel.nombre.label("comision_nombre"),
                 MateriaModel.nombre.label("materia_nombre"),
+                ComisionModel.docente_id,
             )
             .select_from(ExamenContenidoModel)
             .outerjoin(
@@ -382,7 +418,7 @@ class ProctoringRepository:
         )
         rows = await self._db.execute(stmt)
         return {
-            row.id: (row.titulo, row.comision_nombre, row.materia_nombre)
+            row.id: (row.titulo, row.comision_nombre, row.materia_nombre, row.docente_id)
             for row in rows
         }
 
@@ -405,7 +441,7 @@ class ProctoringRepository:
         self,
         session_id: str,
         motivo: str,
-        proctor_actor: str | None = None,
+        tutor_actor: str | None = None,
     ) -> ProctoringSessionModel | None:
         """Cierre FORZADO de la sesion por el proctor (C-15 3.3). Operativo, NO disciplinario.
 
@@ -423,7 +459,7 @@ class ProctoringRepository:
         if sesion.cierre_forzado_en is None:
             ahora = datetime.now(tz=timezone.utc)
             sesion.cierre_forzado_en = ahora
-            sesion.cierre_forzado_por = proctor_actor
+            sesion.cierre_forzado_por = tutor_actor
             sesion.cierre_forzado_motivo = motivo
             if sesion.finalizada_en is None:
                 sesion.finalizada_en = ahora

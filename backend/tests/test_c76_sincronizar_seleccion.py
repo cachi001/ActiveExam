@@ -35,9 +35,9 @@ from app.infrastructure.persistence.models.transactional import (
     ConfiguracionSistemaModel,
     EventoScoreConfigModel,
 )
-from app.infrastructure.persistence.session_slim import (
-    create_slim_engine,
-    create_slim_session_factory,
+from app.infrastructure.persistence.session_activeexam import (
+    create_activeexam_engine,
+    create_activeexam_session_factory,
 )
 
 UMBRAL = 40
@@ -48,7 +48,7 @@ def _factory() -> async_sessionmaker[AsyncSession]:
         "DATABASE_URL",
         "postgresql+asyncpg://proctoring:dev-only-change-me@postgres:5432/proctoring",
     )
-    return create_slim_session_factory(create_slim_engine(url))
+    return create_activeexam_session_factory(create_activeexam_engine(url))
 
 
 def _suf() -> str:

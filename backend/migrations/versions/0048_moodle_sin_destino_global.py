@@ -1,10 +1,10 @@
 """0048 - elimina el destino GLOBAL de Moodle (courseid/cmid).
 
 Revision ID: 0048
-Revises: 0047 (branch slim)
+Revises: 0047 (branch activeexam)
 Create Date: 2026-07-28
 
-RAMA: slim
+RAMA: activeexam
 
 PROPOSITO:
   Saca `courseid` y `cmid` de `moodle_credencial`. No son configuracion

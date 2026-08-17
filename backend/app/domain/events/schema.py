@@ -39,6 +39,12 @@ class TipoEvento(str, Enum):
     # por sí solos, solo señal para el revisor humano.
     RECARGA_PAGINA = "recarga_pagina"
     REANUDACION_TARDIA = "reanudacion_tardia"
+    # C-76 bloque 5: screenshots del alumno durante una ventana de pausa APROBADA.
+    # BASELINE a proposito (L2.5, regla dura #5): la captura es insumo de revision
+    # humana, NUNCA suma sola al score. La ausencia de captura tampoco es un
+    # veredicto — solo una señal (ver PAUSA_SIN_CAPTURA) para que el revisor la vea.
+    CAPTURA_PAUSA = "captura_pausa"
+    PAUSA_SIN_CAPTURA = "pausa_sin_captura"
 
 
 class Severidad(str, Enum):
@@ -79,6 +85,9 @@ _SEVERIDAD_POR_TIPO: dict[TipoEvento, Severidad] = {
     # tardía = media: una ausencia larga merece una mirada, sin ser fraude por sí sola.
     TipoEvento.RECARGA_PAGINA: Severidad.BASELINE,
     TipoEvento.REANUDACION_TARDIA: Severidad.MEDIA,
+    # C-76 bloque 5: ninguno de los dos suma solo (L2.5) — ambos BASELINE.
+    TipoEvento.CAPTURA_PAUSA: Severidad.BASELINE,
+    TipoEvento.PAUSA_SIN_CAPTURA: Severidad.BASELINE,
 }
 
 

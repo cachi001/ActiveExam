@@ -25,6 +25,25 @@ class ModuloAuditoria(StrEnum):
     CONFIGURACION = "CONFIGURACION"
 
 
+# Etiqueta legible por módulo — fuente ÚNICA que consume tanto el export a
+# Excel/PDF como el endpoint de catálogo (GET /admin/audit-catalogo) que puebla
+# el filtro de Auditoría en el frontend. Si se agrega un ModuloAuditoria nuevo
+# y no se le agrega label acá, el filtro lo muestra con su valor crudo (fallback
+# seguro) en vez de romper — pero conviene completarlo.
+MODULO_LABELS: dict[ModuloAuditoria, str] = {
+    ModuloAuditoria.USUARIOS: "Usuarios",
+    ModuloAuditoria.MATERIAS: "Materias",
+    ModuloAuditoria.EXAMENES: "Exámenes",
+    ModuloAuditoria.SESIONES: "Sesiones",
+    ModuloAuditoria.CONSENTIMIENTO: "Consentimiento",
+    ModuloAuditoria.BIOMETRIA: "Biometría",
+    ModuloAuditoria.EVIDENCIA: "Evidencia",
+    ModuloAuditoria.REVISION: "Revisión",
+    ModuloAuditoria.MOODLE: "Moodle",
+    ModuloAuditoria.CONFIGURACION: "Configuración",
+}
+
+
 class EntidadAuditoria(StrEnum):
     """Tipo de entidad de dominio afectada por la acción auditada.
 

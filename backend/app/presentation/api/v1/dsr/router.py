@@ -1,4 +1,4 @@
-"""Router DSR slim (c-17).
+"""Router DSR activeexam (c-17).
 
 POST /api/v1/dsr/access            -> devuelve datos del usuario autenticado
 POST /api/v1/dsr/rectification     -> corrige email/nombre/apellido
@@ -58,7 +58,7 @@ class RectificationRequest(BaseModel):
 class AccessResponseDto(BaseModel):
     model_config = ConfigDict(extra="forbid")
     usuario_id: str
-    id_institucional: str
+    username: str
     email: str
     nombre: str | None
     apellido: str | None
@@ -69,7 +69,7 @@ class AccessResponseDto(BaseModel):
 class PortabilityResponseDto(BaseModel):
     model_config = ConfigDict(extra="forbid")
     usuario_id: str
-    id_institucional: str
+    username: str
     email: str
     nombre: str | None
     apellido: str | None
@@ -85,13 +85,13 @@ class ErasureReportDto(BaseModel):
     sessions_deleted: list[str]
     sessions_deferred: list[str]
     anonimizado: bool
-    nota_legal: str  # plazo legal + alcance slim
+    nota_legal: str  # plazo legal + alcance activeexam
 
 
 _NOTA_LEGAL = (
     "DSR atendida bajo Ley 25.326 art. 27 (plazo legal: 10 dias habiles). "
-    "Slim: la asociacion usuario↔sesiones es heuristica (la FK formal vive "
-    "en c-69 sucesor). Erasure conserva id_institucional como seudonimo "
+    "ActiveExam: la asociacion usuario↔sesiones es heuristica (la FK formal vive "
+    "en c-69 sucesor). Erasure conserva username como seudonimo "
     "irreversible. Sesiones con caso disciplinario abierto se difieren."
 )
 
@@ -146,7 +146,7 @@ def _build_service(session: AsyncSession) -> DsrService:
 def _access_to_dto(r: DsrAccessResponse) -> AccessResponseDto:
     return AccessResponseDto(
         usuario_id=r.usuario_id,
-        id_institucional=r.id_institucional,
+        username=r.username,
         email=r.email,
         nombre=r.nombre,
         apellido=r.apellido,
@@ -158,7 +158,7 @@ def _access_to_dto(r: DsrAccessResponse) -> AccessResponseDto:
 def _portability_to_dto(r: DsrPortabilityResponse) -> PortabilityResponseDto:
     return PortabilityResponseDto(
         usuario_id=r.usuario_id,
-        id_institucional=r.id_institucional,
+        username=r.username,
         email=r.email,
         nombre=r.nombre,
         apellido=r.apellido,

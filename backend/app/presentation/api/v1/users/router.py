@@ -22,7 +22,7 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, field_validator  # noqa: F401
-from sqlalchemy import select, text, update
+from sqlalchemy import or_, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -30,6 +30,8 @@ from app.domain.auth.identity import AuthenticatedPrincipal
 from app.application.audit.acciones import AccionAuditoria, EntidadAuditoria, ModuloAuditoria, TipoAccionAuditoria
 from app.domain.auth.roles import Rol
 from app.infrastructure.auth.hashing import hashear_password
+from app.infrastructure.persistence.models.exam_content import ComisionModel, MateriaModel
+from app.infrastructure.persistence.models.inscripcion import InscripcionModel
 from app.infrastructure.persistence.models.transactional import (
     RefreshTokenModel,
     UsuarioModel,
@@ -46,6 +48,27 @@ router = APIRouter()
 
 _require_admin = require_roles(Rol.ADMIN_SISTEMA)
 
+# Prefijo de username autogenerado por rol (alta manual por admin_sistema).
+# Orden = prioridad para elegir el prefijo cuando el usuario tiene varios roles.
+_PREFIJO_POR_ROL: list[tuple[str, str]] = [
+    (Rol.ADMIN_SISTEMA.value, "ADMIN"),
+    (Rol.COORDINADOR.value, "COORD"),
+    (Rol.TUTOR.value, "TUT"),
+    (Rol.ESTUDIANTE.value, "EST"),
+]
+
+
+def _generar_username(roles: list[str]) -> str:
+    """Genera un username único cuando el caller de la API no envía uno.
+
+    Formato: <PREFIJO_ROL>-<sufijo alfanumérico aleatorio>. El prefijo refleja el
+    rol de mayor jerarquía del usuario; el sufijo evita colisiones sin depender
+    de un contador secuencial (no hay lectura previa a la escritura, sin race).
+    """
+    prefijo = next((p for rol, p in _PREFIJO_POR_ROL if rol in roles), "USR")
+    sufijo = "".join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(6))
+    return f"{prefijo}-{sufijo}"
+
 
 # ---------------------------------------------------------------------------
 # Schemas (extra='forbid' — regla dura)
@@ -55,7 +78,7 @@ _require_admin = require_roles(Rol.ADMIN_SISTEMA)
 class CrearUsuarioRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    id_institucional: str
+    username: str | None = None  # None → se genera automáticamente
     email: str
     password: str | None = None  # None → se genera automáticamente
     roles: list[str]
@@ -105,11 +128,24 @@ class EditarUsuarioRequest(BaseModel):
         return v
 
 
+class InscripcionResumen(BaseModel):
+    """Materia + comisión en la que está inscripto un usuario (rol estudiante)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    comision_id: str
+    comision_codigo: str
+    comision_nombre: str
+    materia_id: str
+    materia_codigo: str
+    materia_nombre: str
+
+
 class UsuarioResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: str
-    id_institucional: str
+    username: str
     email: str
     nombre: str | None
     apellido: str | None
@@ -119,6 +155,9 @@ class UsuarioResponse(BaseModel):
     password_generada: str | None = None  # solo en POST cuando el admin no proveyó password
     creado_en: str | None = None
     ultimo_acceso_en: str | None = None
+    inscripciones: list[InscripcionResumen] = []
+    # Materia/comisión donde este usuario es el docente a cargo (rol tutor).
+    comisiones_a_cargo: list[InscripcionResumen] = []
 
 
 class ListarUsuariosResponse(BaseModel):
@@ -140,7 +179,7 @@ class UsuarioDetalleResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: str
-    id_institucional: str
+    username: str
     email: str
     nombre: str | None
     apellido: str | None
@@ -149,6 +188,10 @@ class UsuarioDetalleResponse(BaseModel):
     eliminado_en: str | None
     creado_en: str | None = None
     ultimo_acceso_en: str | None = None
+    inscripciones: list[InscripcionResumen] = []
+    # Materia/comisión donde este usuario es el docente a cargo (rol tutor).
+    # Vacío para roles sin comisión asignada (estudiante usa `inscripciones`).
+    comisiones_a_cargo: list[InscripcionResumen] = []
 
 
 class ConsentProfileAdminResponse(BaseModel):
@@ -198,10 +241,14 @@ def _get_session_factory(request: Request) -> async_sessionmaker[AsyncSession]:
     return factory
 
 
-def _usuario_to_response(u: UsuarioModel) -> UsuarioResponse:
+def _usuario_to_response(
+    u: UsuarioModel,
+    inscripciones: list[InscripcionResumen] | None = None,
+    comisiones_a_cargo: list[InscripcionResumen] | None = None,
+) -> UsuarioResponse:
     return UsuarioResponse(
         id=str(u.id),
-        id_institucional=u.id_institucional,
+        username=u.username,
         email=u.email,
         nombre=u.nombre,
         apellido=u.apellido,
@@ -210,7 +257,64 @@ def _usuario_to_response(u: UsuarioModel) -> UsuarioResponse:
         eliminado_en=str(u.eliminado_en) if u.eliminado_en is not None else None,
         creado_en=u.creado_en.isoformat() if getattr(u, "creado_en", None) is not None else None,
         ultimo_acceso_en=u.ultimo_acceso_en.isoformat() if getattr(u, "ultimo_acceso_en", None) is not None else None,
+        inscripciones=inscripciones or [],
+        comisiones_a_cargo=comisiones_a_cargo or [],
     )
+
+
+async def _inscripciones_por_usuario(
+    session: AsyncSession, usuario_ids: list[str]
+) -> dict[str, list[InscripcionResumen]]:
+    """Batch: trae materia+comisión para varios usuarios de una sola query (evita N+1)."""
+    if not usuario_ids:
+        return {}
+    result = await session.execute(
+        select(InscripcionModel.usuario_id, ComisionModel, MateriaModel)
+        .join(ComisionModel, InscripcionModel.comision_id == ComisionModel.id)
+        .join(MateriaModel, MateriaModel.id == ComisionModel.materia_id)
+        .where(InscripcionModel.usuario_id.in_(usuario_ids))
+        .order_by(MateriaModel.nombre, ComisionModel.codigo)
+    )
+    por_usuario: dict[str, list[InscripcionResumen]] = {}
+    for usuario_id, comision, materia in result.all():
+        por_usuario.setdefault(str(usuario_id), []).append(
+            InscripcionResumen(
+                comision_id=str(comision.id),
+                comision_codigo=comision.codigo,
+                comision_nombre=comision.nombre,
+                materia_id=str(materia.id),
+                materia_codigo=materia.codigo,
+                materia_nombre=materia.nombre,
+            )
+        )
+    return por_usuario
+
+
+async def _comisiones_a_cargo_por_usuario(
+    session: AsyncSession, usuario_ids: list[str]
+) -> dict[str, list[InscripcionResumen]]:
+    """Batch: comisión(es) donde cada usuario es el docente a cargo (rol tutor)."""
+    if not usuario_ids:
+        return {}
+    result = await session.execute(
+        select(ComisionModel.docente_id, ComisionModel, MateriaModel)
+        .join(MateriaModel, MateriaModel.id == ComisionModel.materia_id)
+        .where(ComisionModel.docente_id.in_(usuario_ids))
+        .order_by(MateriaModel.nombre, ComisionModel.codigo)
+    )
+    por_usuario: dict[str, list[InscripcionResumen]] = {}
+    for docente_id, comision, materia in result.all():
+        por_usuario.setdefault(str(docente_id), []).append(
+            InscripcionResumen(
+                comision_id=str(comision.id),
+                comision_codigo=comision.codigo,
+                comision_nombre=comision.nombre,
+                materia_id=str(materia.id),
+                materia_codigo=materia.codigo,
+                materia_nombre=materia.nombre,
+            )
+        )
+    return por_usuario
 
 
 # ---------------------------------------------------------------------------
@@ -227,7 +331,9 @@ async def crear_usuario(
     """Crea un usuario con credencial local (solo admin_sistema).
 
     Hashea el password con bcrypt 12r antes de persistir.
-    409 si email o id_institucional ya existen.
+    El panel de administración siempre envía `username` (campo requerido en el
+    formulario de alta). Si algún otro caller de la API lo omite, se genera uno.
+    409 si email o username ya existen.
     """
     session_factory = _get_session_factory(request)
 
@@ -237,8 +343,10 @@ async def crear_usuario(
     password_hash = hashear_password(password_plain)
     password_devolver = None if body.password else password_plain
 
+    username = body.username or _generar_username(body.roles)
+
     usuario = UsuarioModel(
-        id_institucional=body.id_institucional,
+        username=username,
         email=body.email,
         roles=body.roles,
         nombre=body.nombre,
@@ -252,6 +360,25 @@ async def crear_usuario(
     )
 
     async with session_factory() as session:
+        # Validación CRUZADA (c-76-4): username/email son UNIQUE cada uno por
+        # separado, pero eso no impide que el username nuevo coincida con el
+        # EMAIL de otra cuenta (o viceversa) — el login matchea por
+        # "email OR username", así que esa colisión cruzada rompería el login
+        # de la otra cuenta. Se rechaza acá, antes del INSERT.
+        cruce = await session.execute(
+            select(UsuarioModel.id).where(
+                or_(
+                    UsuarioModel.email == username,
+                    UsuarioModel.username == body.email,
+                )
+            )
+        )
+        if cruce.scalar_one_or_none() is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="El username o el email coinciden con la identidad de otro usuario.",
+            )
+
         session.add(usuario)
         try:
             await session.commit()
@@ -260,7 +387,7 @@ async def crear_usuario(
             await session.rollback()
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="Ya existe un usuario con ese email o id_institucional.",
+                detail="Ya existe un usuario con ese email o username.",
             ) from exc
 
     from app.application.audit.service import registrar_seguro
@@ -295,6 +422,8 @@ async def listar_usuarios(
     rol: str | None = None,
     estado: str | None = "activo",
     q: str | None = None,
+    materia_id: str | None = None,
+    comision_id: str | None = None,
     _principal: AuthenticatedPrincipal = Depends(_require_admin),
 ) -> ListarUsuariosResponse:
     """Lista usuarios paginados con filtros opcionales.
@@ -303,7 +432,10 @@ async def listar_usuarios(
     - ``rol``: filtra por rol exacto (JSONB contains).
     - ``estado``: ``"activo"`` (default) = solo activos; ``"inactivo"`` = solo dados de baja;
       ``"todos"`` = ambos.
-    - ``q``: búsqueda ILIKE en nombre, apellido, email e id_institucional.
+    - ``q``: búsqueda ILIKE en nombre, apellido, email e username.
+    - ``comision_id`` / ``materia_id``: solo usuarios inscriptos en esa comisión (o en
+      cualquier comisión de esa materia si se pasa ``materia_id`` sin ``comision_id``).
+      Pensado para usarse junto a ``rol=estudiante`` (los demás roles nunca tienen inscripción).
 
     Solo ``admin_sistema``. No incluye password_hash.
     """
@@ -340,9 +472,23 @@ async def listar_usuarios(
                     UsuarioModel.nombre.ilike(pattern),
                     UsuarioModel.apellido.ilike(pattern),
                     UsuarioModel.email.ilike(pattern),
-                    UsuarioModel.id_institucional.ilike(pattern),
+                    UsuarioModel.username.ilike(pattern),
                 )
             )
+
+        # Filtro por comisión/materia (via EXISTS — no multiplica filas del usuario).
+        if comision_id is not None or materia_id is not None:
+            inscripcion_where = [InscripcionModel.usuario_id == UsuarioModel.id]
+            if comision_id is not None:
+                inscripcion_where.append(InscripcionModel.comision_id == comision_id)
+            if materia_id is not None:
+                inscripcion_where.append(ComisionModel.materia_id == materia_id)
+            exists_stmt = (
+                select(InscripcionModel.id)
+                .join(ComisionModel, InscripcionModel.comision_id == ComisionModel.id)
+                .where(*inscripcion_where)
+            )
+            base_where.append(exists_stmt.exists())
 
         stmt = (
             select(UsuarioModel)
@@ -358,8 +504,19 @@ async def listar_usuarios(
         count_result = await session.execute(count_stmt, extra_params if extra_params else None)
         total = count_result.scalar_one()
 
+        usuario_ids = [str(u.id) for u in usuarios]
+        inscripciones_por_usuario = await _inscripciones_por_usuario(session, usuario_ids)
+        comisiones_a_cargo_por_usuario = await _comisiones_a_cargo_por_usuario(session, usuario_ids)
+
     return ListarUsuariosResponse(
-        items=[_usuario_to_response(u) for u in usuarios],
+        items=[
+            _usuario_to_response(
+                u,
+                inscripciones_por_usuario.get(str(u.id)),
+                comisiones_a_cargo_por_usuario.get(str(u.id)),
+            )
+            for u in usuarios
+        ],
         total=total,
         limit=limit,
         offset=offset,
@@ -414,6 +571,20 @@ async def editar_usuario(
             usuario.roles = body.roles
 
         if body.email is not None:
+            # Validación CRUZADA (c-76-4): el nuevo email no puede coincidir
+            # con el username de OTRO usuario (mismo riesgo que en el alta:
+            # el login matchea por "email OR username").
+            cruce = await session.execute(
+                select(UsuarioModel.id).where(
+                    UsuarioModel.username == body.email,
+                    UsuarioModel.id != usuario.id,
+                )
+            )
+            if cruce.scalar_one_or_none() is not None:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Ese email coincide con el username de otro usuario.",
+                )
             usuario.email = body.email
         if body.nombre is not None:
             usuario.nombre = body.nombre
@@ -664,7 +835,7 @@ async def reactivar_usuario(
 
     return UsuarioDetalleResponse(
         id=str(usuario.id),
-        id_institucional=usuario.id_institucional,
+        username=usuario.username,
         email=usuario.email,
         nombre=usuario.nombre,
         apellido=usuario.apellido,
@@ -706,7 +877,7 @@ async def obtener_usuario(
 ) -> UsuarioDetalleResponse:
     """Detalle completo de un usuario (solo admin_sistema).
 
-    Devuelve id, id_institucional, email, nombre, apellido, roles,
+    Devuelve id, username, email, nombre, apellido, roles,
     auth_provider y eliminado_en (ISO 8601 o null).
     NUNCA incluye password_hash ni datos biometricos (gobernanza critica).
     404 si el usuario no existe.
@@ -715,9 +886,50 @@ async def obtener_usuario(
     async with session_factory() as session:
         usuario = await _get_usuario_or_404(session, usuario_id)
 
+        inscripciones: list[InscripcionResumen] = []
+        if Rol.ESTUDIANTE.value in usuario.roles:
+            result = await session.execute(
+                select(ComisionModel, MateriaModel)
+                .join(InscripcionModel, InscripcionModel.comision_id == ComisionModel.id)
+                .join(MateriaModel, MateriaModel.id == ComisionModel.materia_id)
+                .where(InscripcionModel.usuario_id == usuario_id)
+                .order_by(MateriaModel.nombre, ComisionModel.codigo)
+            )
+            inscripciones = [
+                InscripcionResumen(
+                    comision_id=str(comision.id),
+                    comision_codigo=comision.codigo,
+                    comision_nombre=comision.nombre,
+                    materia_id=str(materia.id),
+                    materia_codigo=materia.codigo,
+                    materia_nombre=materia.nombre,
+                )
+                for comision, materia in result.all()
+            ]
+
+        comisiones_a_cargo: list[InscripcionResumen] = []
+        if Rol.TUTOR.value in usuario.roles:
+            result = await session.execute(
+                select(ComisionModel, MateriaModel)
+                .join(MateriaModel, MateriaModel.id == ComisionModel.materia_id)
+                .where(ComisionModel.docente_id == usuario_id)
+                .order_by(MateriaModel.nombre, ComisionModel.codigo)
+            )
+            comisiones_a_cargo = [
+                InscripcionResumen(
+                    comision_id=str(comision.id),
+                    comision_codigo=comision.codigo,
+                    comision_nombre=comision.nombre,
+                    materia_id=str(materia.id),
+                    materia_codigo=materia.codigo,
+                    materia_nombre=materia.nombre,
+                )
+                for comision, materia in result.all()
+            ]
+
     return UsuarioDetalleResponse(
         id=str(usuario.id),
-        id_institucional=usuario.id_institucional,
+        username=usuario.username,
         email=usuario.email,
         nombre=usuario.nombre,
         apellido=usuario.apellido,
@@ -726,6 +938,8 @@ async def obtener_usuario(
         eliminado_en=str(usuario.eliminado_en) if usuario.eliminado_en is not None else None,
         creado_en=str(usuario.creado_en) if getattr(usuario, "creado_en", None) is not None else None,
         ultimo_acceso_en=str(usuario.ultimo_acceso_en) if getattr(usuario, "ultimo_acceso_en", None) is not None else None,
+        inscripciones=inscripciones,
+        comisiones_a_cargo=comisiones_a_cargo,
     )
 
 
@@ -800,7 +1014,7 @@ async def obtener_biometria_referencia_estado(
 
         # Foto de referencia — consulta por SQL crudo para no depender de
         # que el ORM model refleje exactamente el schema de la DB (que puede
-        # variar entre slim y full). Solo leemos los metadatos necesarios.
+        # variar entre activeexam y full). Solo leemos los metadatos necesarios.
         foto_result = await session.execute(
             text(
                 "SELECT hash_sha256, created_at "

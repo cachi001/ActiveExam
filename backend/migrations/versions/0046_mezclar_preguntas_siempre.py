@@ -1,10 +1,10 @@
 """0046 - mezclar_preguntas siempre activo + limite de preguntas por examen.
 
 Revision ID: 0046
-Revises: 0045 (branch slim)
+Revises: 0045 (branch activeexam)
 Create Date: 2026-07-28
 
-RAMA: slim
+RAMA: activeexam
   down_revision = "0045"
 
 PROPOSITO:

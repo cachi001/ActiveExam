@@ -52,7 +52,7 @@ pytestmark = pytest.mark.asyncio
 
 _BASE = "/api/v1/proctoring"
 
-# Dos alumnos DISTINTOS (id_institucional = preferred_username del JWT).
+# Dos alumnos DISTINTOS (username = preferred_username del JWT).
 _OWNER = auth_headers(["estudiante"], username="alumno-owner", email="owner@uni.edu")
 _ATACANTE = auth_headers(["estudiante"], username="alumno-atacante", email="atk@uni.edu")
 
@@ -115,10 +115,10 @@ def reinferencia():
 def app(engine, reinferencia):
     from fastapi import FastAPI
 
-    from app.infrastructure.persistence.session_slim import create_slim_session_factory
+    from app.infrastructure.persistence.session_activeexam import create_activeexam_session_factory
     from app.presentation.api.v1.proctoring.router import create_proctoring_router
 
-    factory = create_slim_session_factory(engine)
+    factory = create_activeexam_session_factory(engine)
     router = create_proctoring_router(
         session_factory=factory,
         reinferencia=reinferencia,

@@ -1,11 +1,11 @@
-"""Router de sesiones de proctoring slim.
+"""Router de sesiones de proctoring activeexam.
 
 POST /sessions → 201
 GET  /sessions → 200
 GET  /sessions/{id} → 200/404
 
 Sin auth (D7 — alcance demo). La session_factory y el db_dependency se
-inyectan desde el router padre para evitar acoplar este router a SlimSettings.
+inyectan desde el router padre para evitar acoplar este router a ActiveExamSettings.
 """
 
 from typing import Annotated
@@ -35,7 +35,10 @@ from app.application.proctoring.scoring import (
 )
 from app.application.moodle.grade_calculator import RespuestaAlumno, calcular_nota_academica
 from app.application.moodle.writeback_service import MoodleWritebackService
+from app.domain.auth.authorization import autorizar_supervision_vivo_sobre_sesion
+from app.domain.auth.errors import ForbiddenError
 from app.domain.auth.identity import AuthenticatedPrincipal
+from app.domain.auth.roles import Rol
 from app.infrastructure.persistence.models.moodle_writeback import RespuestaAlumnoModel
 from app.infrastructure.persistence.models.proctoring import ProctoringSessionModel
 from app.infrastructure.persistence.repositories.moodle_writeback import (
@@ -70,7 +73,7 @@ def _principal_es_dueno(
     CREAR la sesion (``alumno_idnumber``/``alumno_email`` desde el JWT), por lo
     que aca se compara contra el principal del request.
 
-    - Coincide por ``id_institucional`` O por ``email`` → es el dueno.
+    - Coincide por ``username`` O por ``email`` → es el dueno.
     - Sesion SIN identidad almacenada (legacy/modo 'test' previo a la persistencia
       de identidad) → se permite: no hay a quien atribuirla y no expone notas de
       nadie. Toda sesion nueva guarda identidad, asi que este caso no aplica al
@@ -80,7 +83,7 @@ def _principal_es_dueno(
     email = sesion.alumno_email
     if not idn and not email:
         return True
-    if idn and principal.id_institucional and idn == principal.id_institucional:
+    if idn and principal.username and idn == principal.username:
         return True
     if email and principal.email and email == principal.email:
         return True
@@ -161,7 +164,7 @@ def create_sessions_router(
     get_db,
     *,
     require_autenticado,
-    require_proctor_o_admin,
+    require_supervision_vivo,
     require_admin,
     writeback_svc: MoodleWritebackService | None = None,
     cipher=None,
@@ -170,8 +173,8 @@ def create_sessions_router(
 
     Guards de auth/RBAC (endurecimiento por rol — los inyecta el router padre):
       - ``require_autenticado``: cualquier token valido (flujo del alumno).
-      - ``require_proctor_o_admin``: vista del proctor (lista/detalle de sesiones).
-      - ``require_admin``: operaciones de cadena de custodia (DELETE — JAMAS proctor).
+      - ``require_supervision_vivo``: vista de supervision (lista/detalle de sesiones).
+      - ``require_admin``: operaciones de cadena de custodia (DELETE — JAMAS tutor/coordinador).
     """
     router = APIRouter()
 
@@ -186,7 +189,7 @@ def create_sessions_router(
         db: Annotated[AsyncSession, Depends(get_db)],
         principal: Annotated[AuthenticatedPrincipal, Depends(require_autenticado)],
     ) -> CrearSesionOut:
-        """Crea una nueva sesion de proctoring slim.
+        """Crea una nueva sesion de proctoring activeexam.
 
         C-69 (backstop server-side): si la sesion se vincula a un examen
         (``examen_contenido_id``), se ENFORCEA la ventana de rendicion
@@ -195,7 +198,7 @@ def create_sessions_router(
         no confiable (regla dura #6); esto es el backstop duro. Sin
         ``examen_contenido_id`` (modo 'test') NO se aplica enforcement.
 
-        La identidad del alumno (id_institucional/email del JWT) se persiste SIEMPRE
+        La identidad del alumno (username/email del JWT) se persiste SIEMPRE
         en la fila — el enforcement de intentos la usa para contar las rendiciones.
         """
         from datetime import datetime, timezone
@@ -205,7 +208,7 @@ def create_sessions_router(
                 await verificar_enforcement(
                     db,
                     examen_contenido_id=body.examen_contenido_id,
-                    alumno_idnumber=principal.id_institucional,
+                    alumno_idnumber=principal.username,
                     ahora=datetime.now(timezone.utc),
                 )
             except FueraDeVentanaError as exc:
@@ -235,7 +238,7 @@ def create_sessions_router(
                 await verificar_inscripcion(
                     db,
                     examen_contenido_id=body.examen_contenido_id,
-                    alumno_idnumber=principal.id_institucional,
+                    alumno_idnumber=principal.username,
                 )
             except NoInscriptoError as exc:
                 raise HTTPException(
@@ -249,7 +252,7 @@ def create_sessions_router(
             exam_id=body.exam_id,
             etiqueta=body.etiqueta,
             examen_contenido_id=body.examen_contenido_id,
-            alumno_idnumber=principal.id_institucional or None,
+            alumno_idnumber=principal.username or None,
             alumno_email=principal.email or None,
         )
         # Auto-finalización lazy (C-72 §4, H-3): si el alumno "vuelve" a una sesión
@@ -266,13 +269,21 @@ def create_sessions_router(
         "/sessions",
         response_model=list[SesionResumen],
         summary="Listar sesiones con score y discrepancias",
-        dependencies=[Depends(require_proctor_o_admin)],
     )
     async def listar_sesiones(
         db: Annotated[AsyncSession, Depends(get_db)],
+        principal: Annotated[AuthenticatedPrincipal, Depends(require_supervision_vivo)],
     ) -> list[SesionResumen]:
-        """Lista todas las sesiones con total_eventos, total_discrepancias y score."""
+        """Lista las sesiones con total_eventos, total_discrepancias y score.
+
+        C-76 bloque 8 (D2): el TUTOR ve SOLO las sesiones de examenes cuya comision
+        tiene a su usuario como docente a cargo (asignar_docente, C-73 §9).
+        COORDINADOR/ADMIN_SISTEMA son de alcance institucional (global) — REVISOR
+        fue eliminado del dominio (c-76) y el COORDINADOR absorbio su alcance.
+        """
         sesiones = await session_service.listar_sesiones(db)
+        if not principal.tiene_algun_rol({Rol.COORDINADOR, Rol.ADMIN_SISTEMA}):
+            sesiones = [s for s in sesiones if s.docente_id == principal.subject]
         return [
             SesionResumen(
                 id=s.id,
@@ -296,20 +307,32 @@ def create_sessions_router(
     @router.get(
         "/sessions/{session_id}",
         response_model=SesionDetalle,
-        summary="Detalle de sesion para revision del proctor",
-        dependencies=[Depends(require_proctor_o_admin)],
+        summary="Detalle de sesion para revision del tutor/coordinador",
     )
     async def obtener_sesion(
         session_id: str,
         db: Annotated[AsyncSession, Depends(get_db)],
+        principal: Annotated[AuthenticatedPrincipal, Depends(require_supervision_vivo)],
     ) -> SesionDetalle:
-        """Detalle completo de una sesion con eventos y biometria (vista del proctor)."""
+        """Detalle completo de una sesion con eventos y biometria (vista del tutor/coordinador).
+
+        C-76 bloque 8 (D2): el TUTOR solo accede al detalle de sesiones de SU
+        comision (403 fuera de ella); COORDINADOR/ADMIN_SISTEMA son globales
+        (REVISOR fue eliminado del dominio en c-76)."""
         sesion = await session_service.detalle_sesion(db, session_id)
         if sesion is None:
             raise HTTPException(
                 status_code=http_status.HTTP_404_NOT_FOUND,
                 detail=f"Sesion {session_id!r} no encontrada",
             )
+        docente_id = await session_service.docente_id_de_sesion(db, session_id)
+        try:
+            autorizar_supervision_vivo_sobre_sesion(principal, docente_id)
+        except ForbiddenError as exc:
+            raise HTTPException(
+                status_code=http_status.HTTP_403_FORBIDDEN,
+                detail={"error": "sesion_ajena", "mensaje": str(exc)},
+            ) from exc
 
         # Pesos VIVOS por tipo de evento desde la config persistida
         # (evento_score_config). Si la config no esta disponible, calcular_score
@@ -321,7 +344,7 @@ def create_sessions_router(
         # C-15 (6.4): contextualizacion del score. Los eventos que caen dentro de
         # una ventana de pausa AUTORIZADA (aprobada/finalizada) se EXCLUYEN del
         # puntaje (L2.5: no se borran ni se ocultan, solo se marcan). El detalle
-        # del proctor reporta el score SIN esos eventos.
+        # del tutor/coordinador reporta el score SIN esos eventos.
         ventanas = await _ventanas_pausa_aprobada(db, session_id)
         ids_en_pausa = eventos_en_pausa_autorizada(sesion.eventos, ventanas)
         eventos_para_score = [
@@ -595,7 +618,7 @@ def create_sessions_router(
         # Identidad para el write-back: la del DUEÑO de la sesión (persistida al
         # crearla), con fallback al principal. Antes se usaba la identidad del que
         # finaliza → atribución incorrecta de la nota (H1).
-        alumno_idnumber = sesion_model.alumno_idnumber or principal.id_institucional or ""
+        alumno_idnumber = sesion_model.alumno_idnumber or principal.username or ""
         alumno_email = sesion_model.alumno_email or principal.email or ""
 
         sesion = await finalizar_sesion_con_writeback(
@@ -613,22 +636,22 @@ def create_sessions_router(
             )
         return FinalizarSesionOut(id=sesion.id, finalizada_en=sesion.finalizada_en)
 
-    # C-15 (3.2): observaciones del proctor (insumo de la revision humana C-16).
+    # C-15 (3.2): observaciones del tutor (insumo de la revision humana C-16).
     @router.post(
         "/sessions/{session_id}/observaciones",
         status_code=http_status.HTTP_201_CREATED,
         response_model=ObservacionOut,
-        summary="Registrar observacion del proctor (insumo C-16)",
-        dependencies=[Depends(require_proctor_o_admin)],
+        summary="Registrar observacion del tutor (insumo C-16)",
+        dependencies=[Depends(require_supervision_vivo)],
     )
     async def crear_observacion(
         session_id: str,
         body: ObservacionIn,
         db: Annotated[AsyncSession, Depends(get_db)],
     ) -> ObservacionOut:
-        """Persiste una observacion del proctor sobre la sesion. 404 si no existe."""
+        """Persiste una observacion del tutor sobre la sesion. 404 si no existe."""
         obs = await observacion_service.crear_observacion(
-            db, session_id=session_id, texto=body.texto, proctor_actor=body.proctor_actor
+            db, session_id=session_id, texto=body.texto, tutor_actor=body.tutor_actor
         )
         if obs is None:
             raise HTTPException(
@@ -638,15 +661,15 @@ def create_sessions_router(
         return ObservacionOut(
             id=obs.id,
             texto=obs.texto,
-            proctor_actor=obs.proctor_actor,
+            tutor_actor=obs.tutor_actor,
             creada_en=obs.creada_en,
         )
 
     @router.get(
         "/sessions/{session_id}/observaciones",
         response_model=list[ObservacionOut],
-        summary="Listar observaciones del proctor de la sesion",
-        dependencies=[Depends(require_proctor_o_admin)],
+        summary="Listar observaciones del tutor de la sesion",
+        dependencies=[Depends(require_supervision_vivo)],
     )
     async def listar_observaciones(
         session_id: str,
@@ -663,20 +686,20 @@ def create_sessions_router(
             ObservacionOut(
                 id=o.id,
                 texto=o.texto,
-                proctor_actor=o.proctor_actor,
+                tutor_actor=o.tutor_actor,
                 creada_en=o.creada_en,
             )
             for o in obs
         ]
 
-    # C-15 (3.3): cierre FORZADO de la sesion por el proctor. Operativo, NO
+    # C-15 (3.3): cierre FORZADO de la sesion por el tutor/coordinador. Operativo, NO
     # disciplinario (regla dura #5: el sistema nunca sanciona; el veredicto es
     # HUMANO en C-16). El audit trail vive en la propia fila (cierre_forzado_*).
     @router.patch(
         "/sessions/{session_id}/cerrar-forzado",
         response_model=CerrarForzadoOut,
-        summary="Cierre forzado de sesion por el proctor (operativo, auditado)",
-        dependencies=[Depends(require_proctor_o_admin)],
+        summary="Cierre forzado de sesion por el tutor/coordinador (operativo, auditado)",
+        dependencies=[Depends(require_supervision_vivo)],
     )
     async def cerrar_forzado(
         session_id: str,
@@ -688,7 +711,7 @@ def create_sessions_router(
         Idempotente. 404 si la sesion no existe.
         """
         sesion = await session_service.cerrar_forzado(
-            db, session_id, motivo=body.motivo, proctor_actor=body.proctor_actor
+            db, session_id, motivo=body.motivo, tutor_actor=body.tutor_actor
         )
         if sesion is None:
             raise HTTPException(

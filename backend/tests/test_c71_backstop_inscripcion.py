@@ -49,11 +49,11 @@ async def factory() -> AsyncIterator[async_sessionmaker[AsyncSession]]:
 
 
 async def _armar(factory, *, con_comision: bool = True) -> tuple[str, str, str]:
-    """Crea alumno + (materia/comisión) + examen. Devuelve (id_institucional, examen_id, comision_id|'')."""
+    """Crea alumno + (materia/comisión) + examen. Devuelve (username, examen_id, comision_id|'')."""
     suf = uuid.uuid4().hex[:8]
     async with factory() as s:
         u = UsuarioModel(
-            id_institucional=f"bk-{suf}", email=f"bk-{suf}@test.local",
+            username=f"bk-{suf}", email=f"bk-{suf}@test.local",
             roles=["estudiante"], auth_provider="jwt",
         )
         s.add(u)
@@ -72,7 +72,7 @@ async def _armar(factory, *, con_comision: bool = True) -> tuple[str, str, str]:
         ex = ExamenContenidoModel(titulo=f"Examen {suf}", comision_id=comision_id)
         s.add(ex)
         await s.commit()
-        return u.id_institucional, ex.id, comision_id or ""
+        return u.username, ex.id, comision_id or ""
 
 
 async def test_no_inscripto_levanta(factory) -> None:

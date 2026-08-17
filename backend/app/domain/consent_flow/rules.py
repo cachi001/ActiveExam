@@ -29,8 +29,8 @@ class ResolucionConsentimiento(str, enum.Enum):
 
     CONSENTIDO = "consentido"                             # acuse valido registrado
     VIA_ALTERNATIVA = "via_alternativa"                   # DEPRECATED -> tratar como HABILITADA (retrocompat)
-    VIA_ALTERNATIVA_PENDIENTE = "via_alternativa_pendiente"   # C-63: solicitud pendiente de proctor
-    VIA_ALTERNATIVA_HABILITADA = "via_alternativa_habilitada" # C-63: proctor habilito; puede rendir
+    VIA_ALTERNATIVA_PENDIENTE = "via_alternativa_pendiente"   # C-63: solicitud pendiente de coordinador
+    VIA_ALTERNATIVA_HABILITADA = "via_alternativa_habilitada" # C-63: coordinador habilito; puede rendir
     NO_RESUELTO = "no_resuelto"                           # ni una ni otra -> gate cerrado
 
 
@@ -81,13 +81,13 @@ def evaluar_gate(resolucion: ResolucionConsentimiento) -> bool:
 
     - CONSENTIDO           -> biometria habilitada; puede avanzar.
     - VIA_ALTERNATIVA      -> DEPRECATED, retrocompat: tratar como HABILITADA; puede avanzar.
-    - VIA_ALTERNATIVA_HABILITADA -> proctor habilito; puede avanzar sin biometria.
+    - VIA_ALTERNATIVA_HABILITADA -> coordinador habilito; puede avanzar sin biometria.
     - VIA_ALTERNATIVA_PENDIENTE  -> solicitud pendiente; gate CERRADO (C-63 D-03).
     - NO_RESUELTO          -> ``ConsentNotResolvedError`` (-> 403): no se habilita biometria.
     """
     if resolucion == ResolucionConsentimiento.VIA_ALTERNATIVA_PENDIENTE:
         raise ConsentNotResolvedError(
-            "Verificacion alternativa pendiente de aprobacion por proctor (C-63 D-03)."
+            "Verificacion alternativa pendiente de aprobacion por coordinador (C-63 D-03)."
         )
     if resolucion == ResolucionConsentimiento.NO_RESUELTO:
         raise ConsentNotResolvedError(

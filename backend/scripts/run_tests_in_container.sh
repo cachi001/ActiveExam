@@ -20,7 +20,7 @@ docker cp "$HERE/migrations" "$C:/app/" >/dev/null
 # vía migraciones). Idempotente — si ya existe, el CREATE falla en silencio y el
 # upgrade es no-op.
 docker exec "$C" sh -c "PGPASSWORD=dev-only-change-me psql -h postgres -U proctoring -d proctoring -tc \"SELECT 1 FROM pg_database WHERE datname='${TEST_DB}'\" | grep -q 1 || PGPASSWORD=dev-only-change-me psql -h postgres -U proctoring -d proctoring -c \"CREATE DATABASE ${TEST_DB}\"" 2>/dev/null || true
-docker exec -e DATABASE_URL="$TEST_URL" "$C" sh -c "cd /app && alembic -c alembic.ini upgrade slim@head" >/dev/null 2>&1 || true
+docker exec -e DATABASE_URL="$TEST_URL" "$C" sh -c "cd /app && alembic -c alembic.ini upgrade activeexam@head" >/dev/null 2>&1 || true
 
 docker exec \
   -e ENVIRONMENT=local \

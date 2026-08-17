@@ -144,7 +144,7 @@ async def client_admin(app_admin):
     async with AsyncClient(
         transport=ASGITransport(app=app_admin),
         base_url="http://test",
-        headers=auth_headers(["admin_examenes"], mfa=False),
+        headers=auth_headers(["admin_sistema"], mfa=False),
     ) as c:
         yield c
 

@@ -7,7 +7,7 @@ Verifica que:
 - La DB queda en 0006 tras el downgrade.
 
 RAMA: 0007 pertenece a la rama PRINCIPAL (full, con TimescaleDB), NO a la
-rama slim. slim@head = solo 0005 (Railway/Postgres estandar). Ver fix del
+rama activeexam. activeexam@head = solo 0005 (Railway/Postgres estandar). Ver fix del
 bug documentado en engram (topic: migrations/branch-isolation).
 
 Requiere el stack de DB con TimescaleDB (RUN_STACK_TESTS=1). Se salta en la
@@ -27,8 +27,8 @@ def test_migracion_0007_upgrade_y_downgrade(
 ) -> None:
     """upgrade 0007 (rama principal) -> tablas existen; downgrade -1 -> tablas eliminadas.
 
-    Usa alembic upgrade 0007 (NO slim@head) porque 0006/0007 pertenecen a la
-    rama principal (full, con TimescaleDB). slim@head solo aplica 0005 en
+    Usa alembic upgrade 0007 (NO activeexam@head) porque 0006/0007 pertenecen a la
+    rama principal (full, con TimescaleDB). activeexam@head solo aplica 0005 en
     Railway (Postgres estandar sin TimescaleDB).
     """
     import subprocess
@@ -36,7 +36,7 @@ def test_migracion_0007_upgrade_y_downgrade(
 
     db_url_sync = os.environ.get(
         "DATABASE_URL_SYNC",
-        "postgresql://app@db:5432/proctoring",
+        "postgresql://app@postgres:5432/proctoring",
     )
     alembic_ini = os.path.join(
         os.path.dirname(__file__), "..", "alembic.ini"
@@ -55,7 +55,7 @@ def test_migracion_0007_upgrade_y_downgrade(
         return result.returncode
 
     # Upgrade a 0007 (rama PRINCIPAL — incluye 0001 TimescaleDB -> ... -> 0007).
-    # NO usar slim@head: 0006/0007 NO estan en la rama slim desde el fix del
+    # NO usar activeexam@head: 0006/0007 NO estan en la rama activeexam desde el fix del
     # bug de dependencias cruzadas.
     run(["upgrade", "0007"])
 

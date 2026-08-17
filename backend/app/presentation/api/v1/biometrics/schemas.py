@@ -45,7 +45,7 @@ class VerifyIdentityResponse(BaseModel):
     distancia: float | None
     reintentos_restantes: int
     clave_sesion_emitida: bool
-    escalado_a_proctor: bool
+    escalado_a_coordinador: bool
     intentos_fallidos: int
 
 

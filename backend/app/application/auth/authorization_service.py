@@ -2,7 +2,14 @@
 
 El proctor tiene alcance GLOBAL sobre todos los exámenes activos (C-50): el metodo
 ``autorizar_proctor`` ya no resuelve asignaciones y delega directamente al dominio
-puro. El revisor sigue scoped a su jurisdiccion.
+puro.
+
+c-76: el rol REVISOR fue eliminado (scoped a jurisdiccion) sin un rol vivo que
+absorba ese mismo concepto — el COORDINADOR que lo reemplaza es de alcance
+institucional, no jurisdiccional. El metodo ``autorizar_revisor`` (y el gate de
+dominio ``autorizar_revisor_sobre_jurisdiccion`` del que dependia) se eliminaron
+junto con el rol: no tenian ningun caller vivo (igual que ``autorizar_proctor``
+antes de C-50, pero sin un reemplazo de rol que preserve el mismo contrato).
 
 Para el acceso a evidencia, ademas de decidir el acceso (dominio), registra el
 PROPOSITO declarado en el audit log (C-05 ``AuditLogRepository``) — sin sancionar
@@ -39,15 +46,6 @@ class ContextualAuthorizationService:
         el DPIA (C-01). No levanta excepcion si el acceso es valido."""
         authorization.autorizar_proctor(principal)
 
-    def autorizar_revisor(
-        self,
-        principal: AuthenticatedPrincipal,
-        *,
-        jurisdiccion_recurso: str,
-    ) -> None:
-        """Autoriza al revisor solo dentro de su jurisdiccion (D3)."""
-        authorization.autorizar_revisor_sobre_jurisdiccion(principal, jurisdiccion_recurso)
-
     async def acceder_a_evidencia(
         self,
         principal: AuthenticatedPrincipal,
@@ -64,7 +62,7 @@ class ContextualAuthorizationService:
         2. Registra en el audit log (C-05) actor/recurso/proposito (sin sancionar)."""
         authorization.puede_acceder_a_evidencia(principal)
         entrada = AuditEntry(
-            actor=principal.id_institucional,
+            actor=principal.username,
             timestamp=timestamp,
             ip=ip,
             user_agent=user_agent,

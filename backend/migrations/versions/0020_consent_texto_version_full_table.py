@@ -1,4 +1,4 @@
-"""020 - tabla consent_texto_version (rama FULL, espeja 0018 de slim).
+"""020 - tabla consent_texto_version (rama FULL, espeja 0018 de activeexam).
 
 Revision ID: 0020
 Revises: 0017 (rama full)
@@ -10,12 +10,12 @@ RAMA: full (principal, con TimescaleDB)
   depends_on    = None
 
 PROPOSITO:
-  Espeja en la rama FULL la tabla ``consent_texto_version`` creada en slim por
+  Espeja en la rama FULL la tabla ``consent_texto_version`` creada en activeexam por
   0018. Mismo schema: version VARCHAR PK, bloques JSONB, hash_texto VARCHAR,
   created_at TIMESTAMPTZ, created_by VARCHAR nullable.
 
   El seed v1 viene en la siguiente migracion convergente (0021) que une 0018
-  (slim, con tabla) + 0020 (full, con tabla) antes de sembrar datos.
+  (activeexam, con tabla) + 0020 (full, con tabla) antes de sembrar datos.
 
 ROLLBACK:
   alembic downgrade full@0017 -> dropea la tabla (destructivo, paso 2 separado).

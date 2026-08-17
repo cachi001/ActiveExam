@@ -8,7 +8,7 @@ from app.domain.review.decision import DecisionSesion, ReviewDecisionRecord
 
 
 class SessionReviewRepository(Protocol):
-    """Lee y persiste la decision en proctoring_session (columnas slim)."""
+    """Lee y persiste la decision en proctoring_session (columnas activeexam)."""
 
     async def get_decision(
         self, session_id: str

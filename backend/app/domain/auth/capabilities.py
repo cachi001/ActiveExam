@@ -20,12 +20,14 @@ from app.domain.auth.roles import Rol
 # capacidad -> conjunto de roles que la poseen. Dato de config, no logica.
 CAPABILITY_ROLES: dict[str, frozenset[Rol]] = {
     # --- Circuito de revision humana (L2.5) ---------------------------------
-    "revisar_sesion": frozenset({Rol.REVISOR, Rol.COORDINADOR, Rol.ADMIN_SISTEMA}),
+    # c-76: el rol REVISOR fue eliminado; el COORDINADOR (ya presente) absorbe el
+    # veredicto que tenia el revisor. Sin duplicado — el set no cambia de tamano.
+    "revisar_sesion": frozenset({Rol.COORDINADOR, Rol.ADMIN_SISTEMA}),
     # --- Gestion academica ---------------------------------------------------
     # Alta/edicion de examenes, materias y comisiones. El DOCENTE vive aca: es su
-    # trabajo. El revisor NO la tiene — quien juzga el fraude no edita el examen.
+    # trabajo. Quien juzga el fraude no edita el examen.
     "gestionar_academico": frozenset(
-        {Rol.TUTOR, Rol.ADMIN_EXAMENES, Rol.COORDINADOR, Rol.ADMIN_SISTEMA}
+        {Rol.TUTOR, Rol.COORDINADOR, Rol.ADMIN_SISTEMA}
     ),
     # Alta/edicion/baja de la ESTRUCTURA academica: materias y comisiones.
     # Deliberadamente SIN TUTOR: crear materias/comisiones es armar la grilla
@@ -34,19 +36,19 @@ CAPABILITY_ROLES: dict[str, frozenset[Rol]] = {
     # `gestionar_academico` (que el tutor tiene) tambien habilitaba crear
     # materias/comisiones — over-permiso real detectado por el owner.
     "gestionar_estructura": frozenset(
-        {Rol.ADMIN_EXAMENES, Rol.COORDINADOR, Rol.ADMIN_SISTEMA}
+        {Rol.COORDINADOR, Rol.ADMIN_SISTEMA}
     ),
     # Ver las notas y sincronizarlas a Moodle: el docente necesita cerrar la nota
     # de su materia.
     "gestionar_notas": frozenset(
-        {Rol.TUTOR, Rol.ADMIN_EXAMENES, Rol.COORDINADOR, Rol.ADMIN_SISTEMA}
+        {Rol.TUTOR, Rol.COORDINADOR, Rol.ADMIN_SISTEMA}
     ),
     # Asignar el docente a cargo de una comision (C-73 §9). Deliberadamente SIN
     # DOCENTE: quien queda a cargo decide quien devuelve la nota a Moodle y que
     # examenes puede tocar. Si el docente pudiera asignarse solo, la pertenencia
     # dejaria de ser un control (se auto-otorgaria el acceso que el control niega).
     "asignar_docente": frozenset(
-        {Rol.ADMIN_EXAMENES, Rol.COORDINADOR, Rol.ADMIN_SISTEMA}
+        {Rol.COORDINADOR, Rol.ADMIN_SISTEMA}
     ),
     # --- Administracion del sistema -----------------------------------------
     # Umbrales, detectores, retencion. Deliberadamente SIN docente: la
@@ -55,16 +57,20 @@ CAPABILITY_ROLES: dict[str, frozenset[Rol]] = {
     "configurar_sistema": frozenset({Rol.ADMIN_SISTEMA}),
     # Alta/baja de usuarios y asignacion de roles: solo admin del sistema.
     "gestionar_usuarios": frozenset({Rol.ADMIN_SISTEMA}),
-    # Registro inmutable: lo lee quien audita, no quien opera.
-    "ver_auditoria": frozenset({Rol.AUDITOR, Rol.ADMIN_SISTEMA}),
+    # Registro inmutable: lo lee quien audita, no quien opera. c-76-2: el rol
+    # AUDITOR fue eliminado (nunca tuvo un endpoint real conectado a esta
+    # capacidad — audit_router.py ya usaba require_roles(ADMIN_SISTEMA)
+    # hardcodeado); queda exclusiva de ADMIN_SISTEMA.
+    "ver_auditoria": frozenset({Rol.ADMIN_SISTEMA}),
     # --- Supervision en vivo -------------------------------------------------
     # Mirar sesiones en curso. c-76: el rol PROCTOR fue eliminado y el TUTOR entra
     # aca (supervisa a sus alumnos en vivo, acotado por comision en la capa de
     # aplicacion — Tarea 8). El TUTOR mira, pero NO decide: el VEREDICTO
-    # (`revisar_sesion`) sigue SIN TUTOR (revisor/coordinador/admin), preservando
-    # la separacion "quien dicta la materia no juzga el fraude".
+    # (`revisar_sesion`) sigue SIN TUTOR (coordinador/admin, tras eliminarse
+    # tambien REVISOR — c-76), preservando la separacion "quien dicta la materia
+    # no juzga el fraude".
     "supervisar_vivo": frozenset(
-        {Rol.TUTOR, Rol.REVISOR, Rol.COORDINADOR, Rol.ADMIN_SISTEMA}
+        {Rol.TUTOR, Rol.COORDINADOR, Rol.ADMIN_SISTEMA}
     ),
 }
 

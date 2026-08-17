@@ -630,7 +630,7 @@ class AlumnoElegibilidadResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     usuario_id: str
-    id_institucional: str
+    username: str
     nombre: str | None = None
     apellido: str | None = None
     email: str
@@ -891,6 +891,13 @@ class CapturaFirmadaResponse(BaseModel):
     tipo_evento: str | None = None
     severidad: str | None = None
     ocurrio_en: object | None = None
+    # Cadena de custodia (c-18 verify-chain), recalculada en cada carga del
+    # informe. 'intact'/'broken'/'material_missing'; ver informe_service.py.
+    integridad_estado: str = "no_verificado"
+    integridad_algoritmo: str | None = None
+    integridad_hash_esperado: str | None = None
+    integridad_hash_actual: str | None = None
+    integridad_verificado_en: str | None = None
 
 
 class InformeDevolucionResponse(BaseModel):

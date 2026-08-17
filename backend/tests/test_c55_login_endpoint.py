@@ -15,6 +15,8 @@ Para correrlos: export RUN_STACK_TESTS=1 con Postgres levantado y migración 000
 
 from __future__ import annotations
 
+import os
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -23,22 +25,18 @@ from app.domain.auth.token import TokenPolicy
 from app.infrastructure.auth.hashing import hashear_password
 from app.infrastructure.auth.jwks_cache import JwksCache
 from app.infrastructure.auth.jwt_validator import JwtValidator
-from app.infrastructure.auth.verifiers import build_hs256_verify
 from app.main import create_app
 
 _ISSUER = "activeexam-auth"
 _AUD = "proctoring-api"
 _SECRET_STR = "test-jwt-own-secret-256bits-at-least"
-_SECRET_BYTES = _SECRET_STR.encode()
 
 _ENV: dict[str, str] = {
-    "DATABASE_URL": "postgresql+asyncpg://app@db:5432/proctoring",
+    "DATABASE_URL": os.environ.get("DATABASE_URL", "postgresql+asyncpg://app@postgres:5432/proctoring"),
     "STORAGE_ENDPOINT": "http://minio:9000",
     "STORAGE_ACCESS_KEY": "k",
     "STORAGE_SECRET_KEY": "s",
     "STORAGE_BUCKET_EVIDENCE": "evidence",
-    "KEYCLOAK_ISSUER": "http://keycloak:8080/realms/proctoring",
-    "KEYCLOAK_JWKS_URL": "http://keycloak:8080/realms/proctoring/protocol/openid-connect/certs",
     "JWT_AUDIENCE": _AUD,
     "JWT_OWN_SECRET": _SECRET_STR,
     "JWT_OWN_ISSUER": _ISSUER,
@@ -54,22 +52,18 @@ def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     settings = Settings()
     app = create_app(settings)
 
-    # Inyectar validador de test (sin PyJWT/Keycloak).
+    # Inyectar validador de test (JWT propio HS256-only, sin Keycloak).
     cache = JwksCache(lambda: {"keys": []}, ttl_seconds=3600)
-    policy = TokenPolicy(
-        issuers_aceptados=frozenset({_ISSUER, settings.keycloak_issuer}),
-        audience=_AUD,
-    )
+    policy = TokenPolicy(issuers_aceptados=frozenset({_ISSUER}), audience=_AUD)
     from app.infrastructure.auth.verifiers import build_hs256_verify_production  # noqa: PLC0415
     verify_hs256 = build_hs256_verify_production(_SECRET_STR)
-    verify_rs256 = build_hs256_verify(_SECRET_BYTES)
     app.state.jwt_validator = JwtValidator(
         jwks_cache=cache,
         policy=policy,
-        verify_fn=verify_rs256,
-        verify_fn_hs256=verify_hs256,
+        verify_fn=verify_hs256,
+        verify_fn_hs256=None,
         own_issuer=_ISSUER,
-        keycloak_issuer=settings.keycloak_issuer,
+        rs256_issuer=None,
     )
     return TestClient(app)
 
@@ -84,7 +78,7 @@ async def usuario_con_password(client: TestClient) -> dict:
 
     async with session_factory() as session:
         usuario = UsuarioModel(
-            id_institucional="test-login-user",
+            username="test-login-user",
             email="test-login@demo.test",
             roles=["estudiante"],
             password_hash=hashear_password("TestPassword123"),
@@ -94,7 +88,7 @@ async def usuario_con_password(client: TestClient) -> dict:
         session.add(usuario)
         await session.commit()
         await session.refresh(usuario)
-    yield {"id": usuario.id, "email": "test-login@demo.test", "id_institucional": "test-login-user"}
+    yield {"id": usuario.id, "email": "test-login@demo.test", "username": "test-login-user"}
 
     # Cleanup
     async with session_factory() as session:
@@ -151,7 +145,7 @@ async def test_login_usuario_sin_password_hash_401(client: TestClient) -> None:
 
     async with session_factory() as session:
         usuario = UsuarioModel(
-            id_institucional="test-kc-user",
+            username="test-kc-user",
             email="test-kc@demo.test",
             roles=["estudiante"],
             password_hash=None,  # sin credencial local

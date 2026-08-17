@@ -42,7 +42,7 @@ def test_descriptor_realista_pasa():
 
 
 def test_constante_01_pasa_no_rompe_c57():
-    # test_c57_slim_enrollment_e2e postea [0.1]*128 y espera éxito.
+    # test_c57_activeexam_enrollment_e2e postea [0.1]*128 y espera éxito.
     validar_integridad_embedding([0.1] * 128)
 
 

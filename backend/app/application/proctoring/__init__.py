@@ -1,1 +1,1 @@
-"""Capa de aplicacion del modulo slim de proctoring."""
+"""Capa de aplicacion del modulo activeexam de proctoring."""

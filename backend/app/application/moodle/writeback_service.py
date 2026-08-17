@@ -208,7 +208,7 @@ class MoodleWritebackService:
             await db.execute(
                 select(
                     ComisionModel.docente_id,
-                    UsuarioModel.id_institucional,
+                    UsuarioModel.username,
                     UsuarioModel.nombre,
                     UsuarioModel.apellido,
                 )

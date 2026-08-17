@@ -2,11 +2,15 @@
 
 Tras un launch LTI válido (ver ``launch_validation.validar_launch``), este módulo:
 
-1. Construye la clave ``id_institucional`` = ``lti:{deployment_id}:{sub}`` (design D1).
+1. Construye la clave ``username`` = ``lti:{deployment_id}:{sub}`` (design D1).
    El namespacing por deployment evita colisiones entre Moodles que reutilicen el
    mismo ``sub`` numérico.
 
-2. Si el ``id_institucional`` ya existe → devuelve el usuario existente (idempotente).
+2. Si el ``username`` ya existe → devuelve el usuario existente (idempotente).
+
+2.1. Si el ``username`` es nuevo pero el ``email`` YA pertenece a otra cuenta
+   (mismo alumno real provisionado antes desde otro deployment — ``email`` es
+   UNIQUE, c-76-4) → reusa esa cuenta en vez de fallar con 500.
 
 3. Si no existe → crea el usuario con:
    - ``roles=["estudiante"]``  (rol canónico del sistema — ver ``Rol.ESTUDIANTE``;
@@ -35,6 +39,7 @@ from __future__ import annotations
 import secrets
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from sqlalchemy import text as sa_text
@@ -49,11 +54,11 @@ from app.infrastructure.persistence.models.inscripcion import InscripcionModel
 from app.infrastructure.persistence.models.lti import LtiDeploymentConfiableModel
 from app.infrastructure.persistence.models.transactional import UsuarioModel
 
-# Prefijo de ``id_institucional`` para usuarios provisionados vía LTI (design D1).
+# Prefijo de ``username`` para usuarios provisionados vía LTI (design D1).
 _LTI_PREFIX = "lti"
 
 
-def _id_institucional_lti(deployment_id: str, sub: str) -> str:
+def _username_lti(deployment_id: str, sub: str) -> str:
     """Construye la clave única del usuario en el espacio LTI.
 
     Formato: ``lti:{deployment_id}:{sub}``.
@@ -113,11 +118,11 @@ async def provisionar_o_recuperar_usuario(
         raise LaunchInvalidoError("claims_incompletos")
 
     deployment_id = claims.get(CLAIM_DEPLOYMENT_ID) or deployment.deployment_id
-    id_inst = _id_institucional_lti(deployment_id, sub)
+    username_lti = _username_lti(deployment_id, sub)
 
     # ---- Buscar usuario existente -------------------------------------------
     resultado = await session.execute(
-        select(UsuarioModel).where(UsuarioModel.id_institucional == id_inst)
+        select(UsuarioModel).where(UsuarioModel.username == username_lti)
     )
     usuario = resultado.scalar_one_or_none()
 
@@ -140,7 +145,7 @@ async def provisionar_o_recuperar_usuario(
     password_hash = hashear_password(password_aleatorio)
 
     usuario = UsuarioModel(
-        id_institucional=id_inst,
+        username=username_lti,
         email=email,
         # Rol canónico del sistema (``Rol.ESTUDIANTE = "estudiante"``). La spec usa
         # "alumno" como término informal — en el enum y en los tokens siempre es
@@ -158,9 +163,27 @@ async def provisionar_o_recuperar_usuario(
             "lti_deployment_id": deployment_id,
         },
     )
-    session.add(usuario)
-    # flush para obtener el id antes del commit (necesario para la matriculación).
-    await session.flush()
+    # SAVEPOINT: usuario.email es UNIQUE (fix de la vulnerabilidad de login por
+    # email/username duplicados). Si otro deployment YA provisionó una cuenta
+    # con este mismo email (mismo alumno real, dos Moodles/instituciones —
+    # escenario multi-tenant), el INSERT viola el constraint. En vez de romper
+    # el launch con un 500, reusamos la cuenta existente (mismo criterio que el
+    # branch "ya existe" de arriba, D1: idempotente por identidad real, no solo
+    # por username_lti).
+    try:
+        async with session.begin_nested():
+            session.add(usuario)
+            # flush para obtener el id antes del commit (matriculación lo necesita).
+            await session.flush()
+    except IntegrityError:
+        resultado = await session.execute(
+            select(UsuarioModel).where(UsuarioModel.email == email)
+        )
+        usuario = resultado.scalar_one_or_none()
+        if usuario is None:
+            raise  # No era colisión de email: otra causa, no la enmascaramos.
+        await _asegurar_matricula(session, usuario=usuario, deployment=deployment)
+        return usuario, False
 
     await _asegurar_matricula(session, usuario=usuario, deployment=deployment)
     return usuario, True

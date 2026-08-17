@@ -1,6 +1,6 @@
-"""Tests de auth/RBAC sobre los endpoints de proctoring slim (endurecimiento por rol).
+"""Tests de auth/RBAC sobre los endpoints de proctoring activeexam (endurecimiento por rol).
 
-Los endpoints de proctoring slim son COMPARTIDOS alumno/proctor. Este modulo
+Los endpoints de proctoring activeexam son COMPARTIDOS alumno/proctor. Este modulo
 verifica el contrato de autorizacion tras el endurecimiento:
 
   - Solo autenticado (cualquier token valido): crear sesion, eventos, chat,
@@ -64,7 +64,7 @@ async def test_sin_token_401(client_noauth: AsyncClient, method: str, path: str)
         resp = await client_noauth.get(path)
     elif method == "PATCH":
         resp = await client_noauth.patch(
-            path, json={"accion": "aprobar", "proctor_actor": "x"}
+            path, json={"accion": "aprobar", "tutor_actor": "x"}
         )
     else:
         resp = await client_noauth.request(method, path)
@@ -98,7 +98,7 @@ async def test_estudiante_resolver_pausa_403(client_noauth: AsyncClient) -> None
     """PATCH /pausas/{id} con rol estudiante -> 403 (aprobar/rechazar es del proctor)."""
     resp = await client_noauth.patch(
         f"{_BASE}/pausas/{_FAKE_ID}",
-        json={"accion": "aprobar", "proctor_actor": "x"},
+        json={"accion": "aprobar", "tutor_actor": "x"},
         headers=_ESTUDIANTE,
     )
     assert resp.status_code == 403, resp.text
@@ -147,7 +147,7 @@ async def test_proctor_resolver_pausa_200(client_noauth: AsyncClient) -> None:
     pid = resp_p.json()["id"]
     resp = await client_noauth.patch(
         f"{_BASE}/pausas/{pid}",
-        json={"accion": "aprobar", "proctor_actor": "doc-1"},
+        json={"accion": "aprobar", "tutor_actor": "doc-1"},
         headers=_PROCTOR,
     )
     assert resp.status_code == 200, resp.text
@@ -251,7 +251,7 @@ async def test_estudiante_pausa_solicitar_poll_y_reanudar(
     # El proctor aprueba (necesario para que el alumno pueda finalizar)
     resp_apr = await client_noauth.patch(
         f"{_BASE}/pausas/{pid}",
-        json={"accion": "aprobar", "proctor_actor": "doc-1"},
+        json={"accion": "aprobar", "tutor_actor": "doc-1"},
         headers=_PROCTOR,
     )
     assert resp_apr.status_code == 200, resp_apr.text

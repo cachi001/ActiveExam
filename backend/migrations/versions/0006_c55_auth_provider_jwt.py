@@ -34,8 +34,8 @@ revision: str = "0006"
 down_revision: str = "0004"
 branch_labels = None
 # c-55 (auth JWT propio) pertenece al backend FULL (main.py, con TimescaleDB), NO al
-# slim de Railway (main_slim es "REST sin auth"). Por eso cuelga de la rama PRINCIPAL
-# (0004), que ya trae la tabla usuario via 0002. Asi `alembic upgrade slim@head`
+# activeexam de Railway (main_activeexam es "REST sin auth"). Por eso cuelga de la rama PRINCIPAL
+# (0004), que ya trae la tabla usuario via 0002. Asi `alembic upgrade activeexam@head`
 # (Railway, Postgres pelado) NO corre esta migracion y no arrastra 0001
 # (CREATE EXTENSION timescaledb), que el Postgres de Railway rechaza.
 depends_on = None

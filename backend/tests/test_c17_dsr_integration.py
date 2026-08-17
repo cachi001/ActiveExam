@@ -1,4 +1,4 @@
-"""Tests de integración del DSR contra slim DB real (c-17)."""
+"""Tests de integración del DSR contra activeexam DB real (c-17)."""
 
 from __future__ import annotations
 
@@ -22,9 +22,9 @@ from app.infrastructure.persistence.repositories.dsr import (
     SqlDsrAuditor,
     SqlUserDsrRepository,
 )
-from app.infrastructure.persistence.session_slim import (
-    create_slim_engine,
-    create_slim_session_factory,
+from app.infrastructure.persistence.session_activeexam import (
+    create_activeexam_engine,
+    create_activeexam_session_factory,
 )
 from app.infrastructure.retention.null_hold_verifier import NullHoldVerifier
 
@@ -34,7 +34,7 @@ def _factory() -> async_sessionmaker[AsyncSession]:
         "DATABASE_URL",
         "postgresql+asyncpg://proctoring:dev-only-change-me@postgres:5432/proctoring",
     )
-    return create_slim_session_factory(create_slim_engine(url))
+    return create_activeexam_session_factory(create_activeexam_engine(url))
 
 
 def _suf() -> str:
@@ -47,7 +47,7 @@ async def _crear_user_con_biometria(
     suf = _suf()
     async with factory() as s:
         u = UsuarioModel(
-            id_institucional=f"c17-{suf}",
+            username=f"c17-{suf}",
             email=f"c17-{suf}@test.local",
             roles=["estudiante"],
             password_hash=None,

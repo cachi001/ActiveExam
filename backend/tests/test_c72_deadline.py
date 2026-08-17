@@ -90,12 +90,12 @@ _ENV_MINIMO = dict(
 
 
 def test_gracia_default_60():
-    from app.config_slim import SlimSettings
+    from app.config_activeexam import ActiveExamSettings
 
-    assert SlimSettings(**_ENV_MINIMO).deadline_gracia_seg == 60
+    assert ActiveExamSettings(**_ENV_MINIMO).deadline_gracia_seg == 60
 
 
 def test_gracia_configurable():
-    from app.config_slim import SlimSettings
+    from app.config_activeexam import ActiveExamSettings
 
-    assert SlimSettings(**_ENV_MINIMO, deadline_gracia_seg=90).deadline_gracia_seg == 90
+    assert ActiveExamSettings(**_ENV_MINIMO, deadline_gracia_seg=90).deadline_gracia_seg == 90

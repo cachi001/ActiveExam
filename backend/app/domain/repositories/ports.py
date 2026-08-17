@@ -38,8 +38,8 @@ class UserRepository(MutableRepository[Usuario]):
     """Puerto del repositorio de Usuario (JIT desde IdP)."""
 
     @abstractmethod
-    async def get_by_id_institucional(self, id_institucional: str) -> Usuario | None:
-        """Busca por identificador institucional (clave del JIT provisioning)."""
+    async def get_by_username(self, username: str) -> Usuario | None:
+        """Busca por username (clave del JIT provisioning)."""
 
 
 class ExamRepository(MutableRepository[Examen]):
@@ -116,7 +116,7 @@ class AlternativeRequestRepository:
 
     @abstractmethod
     async def list_pending(self) -> list[SolicitudViaAlternativa]:
-        """Lista todas las solicitudes con estado pendiente_proctor."""
+        """Lista todas las solicitudes con estado pendiente_coordinador."""
 
     @abstractmethod
     async def update_estado(

@@ -32,12 +32,12 @@ def test_dos_reintentos_disponibles_antes_de_escalar() -> None:
     assert estado.cerrado is False
 
 
-def test_tercer_fallo_escala_a_proctor_sin_abortar() -> None:
+def test_tercer_fallo_escala_a_coordinador_sin_abortar() -> None:
     estado = EstadoVerificacion.inicial()
     estado, _ = estado.registrar_intento(exito=False)  # 1
     estado, _ = estado.registrar_intento(exito=False)  # 2
     estado, veredicto = estado.registrar_intento(exito=False)  # 3 -> escala
-    assert veredicto == VeredictoIntento.ESCALAR_A_PROCTOR
+    assert veredicto == VeredictoIntento.ESCALAR_A_COORDINADOR
     assert estado.cerrado is True
     assert estado.intentos_fallidos == 3
     # Sin abort ni sancion: la maquina NO tiene un estado "abortado"/"sancionado".

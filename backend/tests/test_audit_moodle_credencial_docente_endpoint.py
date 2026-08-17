@@ -99,7 +99,7 @@ async def service_shortname(factory):
 async def docente_id(factory):
     legajo = f"D-{uuid.uuid4().hex[:8]}"
     async with factory() as s:
-        u = UsuarioModel(id_institucional=legajo, email=f"{legajo.lower()}@uni.edu")
+        u = UsuarioModel(username=legajo, email=f"{legajo.lower()}@uni.edu")
         s.add(u)
         await s.flush()
         uid = u.id

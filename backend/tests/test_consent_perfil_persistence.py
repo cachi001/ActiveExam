@@ -54,7 +54,7 @@ async def _crear_usuario(factory: async_sessionmaker[AsyncSession], suf: str) ->
     suf = f"{suf}-{uuid.uuid4().hex[:8]}"
     async with factory() as s:
         u = UsuarioModel(
-            id_institucional=f"cperf-{suf}",
+            username=f"cperf-{suf}",
             email=f"cperf-{suf}@test.local",
             roles=["estudiante"],
             auth_provider="local",

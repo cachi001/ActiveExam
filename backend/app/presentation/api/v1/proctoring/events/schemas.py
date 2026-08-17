@@ -1,4 +1,4 @@
-"""Schemas Pydantic para endpoints de eventos de proctoring slim.
+"""Schemas Pydantic para endpoints de eventos de proctoring activeexam.
 
 Todos con extra='forbid' (regla dura de codigo).
 Ley 25.326: screenshot_base64 es dato sensible.

@@ -5,7 +5,7 @@ Tablas:
 - moodle_writeback_estado: estado del envío de nota (idempotencia + reintentos)
 - moodle_writeback_audit: audit log de cada intento (sin token)
 
-Migración aditiva slim: 0029_c69_moodle_writeback_slim.py
+Migración aditiva activeexam: 0029_c69_moodle_writeback_activeexam.py
 """
 
 from __future__ import annotations

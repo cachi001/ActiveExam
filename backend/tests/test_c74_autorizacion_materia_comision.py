@@ -33,7 +33,7 @@ from app.domain.auth.roles import Rol
 
 def _principal(roles: tuple[Rol, ...], subject: str | None = "u1") -> AuthenticatedPrincipal:
     return AuthenticatedPrincipal(
-        id_institucional="DOC-1", email="doc@uni.edu", roles=roles, subject=subject
+        username="DOC-1", email="doc@uni.edu", roles=roles, subject=subject
     )
 
 

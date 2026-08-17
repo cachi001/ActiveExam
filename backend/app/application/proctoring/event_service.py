@@ -1,4 +1,4 @@
-"""Servicio de ingestion de eventos de proctoring slim.
+"""Servicio de ingestion de eventos de proctoring activeexam.
 
 Orquesta:
   1. Verificar que la sesion existe (404 si no)
@@ -7,7 +7,7 @@ Orquesta:
   4. Persistir el evento con todos los campos
 
 Depende del puerto ReinferenciaPort — el adapter concreto (MediaPipeReinferencia)
-se inyecta desde main_slim.py via FastAPI Depends. Esto sigue DD-17 y mantiene
+se inyecta desde main_activeexam.py via FastAPI Depends. Esto sigue DD-17 y mantiene
 la capa de aplicacion desacoplada del motor de vision.
 
 L2.5: el veredicto 'discrepancia' NO sanciona — solo enriquece la evidencia.

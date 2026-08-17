@@ -141,7 +141,7 @@ async def test_actor_nombre_y_email_se_resuelven_cuando_actor_es_legajo(session)
 
     legajo = f"DOC-TEST-{uuid.uuid4().hex[:6]}"
     u = UsuarioModel(
-        id_institucional=legajo,
+        username=legajo,
         email=f"{legajo.lower()}@uni.edu",
         nombre="Laura",
         apellido="Fernández",
@@ -165,7 +165,7 @@ async def test_actor_nombre_y_email_se_resuelven_cuando_actor_es_legajo(session)
         assert item.actor_email == f"{legajo.lower()}@uni.edu"
     finally:
         await session.execute(
-            text("DELETE FROM usuario WHERE id_institucional = :l"), {"l": legajo}
+            text("DELETE FROM usuario WHERE username = :l"), {"l": legajo}
         )
         await session.commit()
 

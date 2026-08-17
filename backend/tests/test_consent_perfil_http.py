@@ -5,7 +5,7 @@
 - GET  /api/v1/consent/profile: estado vigente del usuario autenticado.
 - POST /api/v1/consent/profile/revoke: inserta revocado, preserva historico.
 
-DB real (resuelve usuario_id desde usuario por id_institucional). Sin mocks de DB.
+DB real (resuelve usuario_id desde usuario por username). Sin mocks de DB.
 """
 
 from __future__ import annotations
@@ -58,11 +58,11 @@ async def ctx() -> AsyncIterator[tuple]:
         await conn.run_sync(tbl.create, checkfirst=True)
     factory = async_sessionmaker(engine, expire_on_commit=False)
 
-    # Usuario de prueba (id_institucional unico).
+    # Usuario de prueba (username unico).
     id_inst = f"cperf-http-{uuid.uuid4().hex[:8]}"
     async with factory() as s:
         u = UsuarioModel(
-            id_institucional=id_inst,
+            username=id_inst,
             email=f"{id_inst}@test.local",
             roles=["estudiante"],
             auth_provider="local",
@@ -87,7 +87,7 @@ async def ctx() -> AsyncIterator[tuple]:
     async with factory() as s:
         from sqlalchemy import delete
 
-        await s.execute(delete(UsuarioModel).where(UsuarioModel.id_institucional == id_inst))
+        await s.execute(delete(UsuarioModel).where(UsuarioModel.username == id_inst))
         await s.commit()
     await engine.dispose()
 

@@ -66,29 +66,32 @@ def test_parse_rol_sigue_mapeando_roles_vivos() -> None:
     """Triangulacion: los roles vivos siguen mapeando (no rompimos parse_rol)."""
     assert parse_rol("coordinador") is Rol.COORDINADOR
     assert parse_rol("tutor") is Rol.TUTOR
-    assert parse_rol("revisor") is Rol.REVISOR
 
 
 # ---------------------------------------------------------------------------
 # 2. supervisar_vivo remapeado (sin proctor, con tutor)
+#
+# NOTA (c-76, post-Tarea 7): el rol REVISOR tambien fue eliminado del dominio
+# (decision separada, ver ``test_c76_eliminacion_rol_revisor.py``). Los sets
+# esperados aca ya reflejan esa eliminacion para no romper este archivo.
 # ---------------------------------------------------------------------------
 
-def test_supervisar_vivo_es_tutor_revisor_coordinador_admin() -> None:
-    """``supervisar_vivo`` = {TUTOR, REVISOR, COORDINADOR, ADMIN_SISTEMA}."""
+def test_supervisar_vivo_es_tutor_coordinador_admin() -> None:
+    """``supervisar_vivo`` = {TUTOR, COORDINADOR, ADMIN_SISTEMA}."""
     assert CAPABILITY_ROLES["supervisar_vivo"] == frozenset(
-        {Rol.TUTOR, Rol.REVISOR, Rol.COORDINADOR, Rol.ADMIN_SISTEMA}
+        {Rol.TUTOR, Rol.COORDINADOR, Rol.ADMIN_SISTEMA}
     )
 
 
 @pytest.mark.parametrize(
     "rol",
-    [Rol.TUTOR, Rol.REVISOR, Rol.COORDINADOR, Rol.ADMIN_SISTEMA],
+    [Rol.TUTOR, Rol.COORDINADOR, Rol.ADMIN_SISTEMA],
 )
 def test_roles_supervisores_tienen_supervisar_vivo(rol: Rol) -> None:
     assert tiene_capacidad(rol, "supervisar_vivo") is True
 
 
-@pytest.mark.parametrize("rol", [Rol.ESTUDIANTE, Rol.ADMIN_EXAMENES, Rol.AUDITOR])
+@pytest.mark.parametrize("rol", [Rol.ESTUDIANTE])
 def test_roles_no_supervisores_no_tienen_supervisar_vivo(rol: Rol) -> None:
     """Triangulacion: quien NO supervisa en vivo sigue sin la capacidad."""
     assert tiene_capacidad(rol, "supervisar_vivo") is False
@@ -105,10 +108,11 @@ def test_tutor_supervisa_pero_no_dicta_veredicto() -> None:
 
 
 def test_revisar_sesion_no_incluye_tutor() -> None:
-    """El veredicto sigue en {REVISOR, COORDINADOR, ADMIN_SISTEMA} — sin TUTOR."""
+    """El veredicto sigue en {COORDINADOR, ADMIN_SISTEMA} — sin TUTOR (ni REVISOR,
+    eliminado por separado — ver ``test_c76_eliminacion_rol_revisor.py``)."""
     assert Rol.TUTOR not in CAPABILITY_ROLES["revisar_sesion"]
     assert CAPABILITY_ROLES["revisar_sesion"] == frozenset(
-        {Rol.REVISOR, Rol.COORDINADOR, Rol.ADMIN_SISTEMA}
+        {Rol.COORDINADOR, Rol.ADMIN_SISTEMA}
     )
 
 

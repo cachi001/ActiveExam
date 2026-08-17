@@ -1,8 +1,8 @@
 """C-71 slice 1 — consultas base del gate de inscripción (DB real, sin mocks).
 
-Verifica la resolución identidad→inscripción por `id_institucional`:
-- `esta_inscripto_institucional(id_institucional, comision_id)` → bool.
-- `comision_ids_inscriptas(id_institucional)` → ids de comisiones inscriptas.
+Verifica la resolución identidad→inscripción por `username`:
+- `esta_inscripto_institucional(username, comision_id)` → bool.
+- `comision_ids_inscriptas(username)` → ids de comisiones inscriptas.
 
 Correr:
     DATABASE_URL=postgresql+asyncpg://... RUN_STACK_TESTS=1 \
@@ -40,11 +40,11 @@ async def factory() -> AsyncIterator[async_sessionmaker[AsyncSession]]:
 
 
 async def _crear_alumno_y_comision(factory) -> tuple[str, str]:
-    """Crea un alumno y una comisión; devuelve (id_institucional, comision_id)."""
+    """Crea un alumno y una comisión; devuelve (username, comision_id)."""
     suf = uuid.uuid4().hex[:8]
     async with factory() as s:
         u = UsuarioModel(
-            id_institucional=f"gate-{suf}",
+            username=f"gate-{suf}",
             email=f"gate-{suf}@test.local",
             roles=["estudiante"],
             auth_provider="jwt",
@@ -62,7 +62,7 @@ async def _crear_alumno_y_comision(factory) -> tuple[str, str]:
         )
         s.add(c)
         await s.commit()
-        return u.id_institucional, c.id
+        return u.username, c.id
 
 
 async def test_esta_inscripto_true_solo_si_hay_inscripcion(factory) -> None:
@@ -80,7 +80,7 @@ async def test_esta_inscripto_true_solo_si_hay_inscripcion(factory) -> None:
         assert await repo.esta_inscripto_institucional(idn, comision_id) is True
 
 
-async def test_esta_inscripto_false_si_id_institucional_no_existe(factory) -> None:
+async def test_esta_inscripto_false_si_username_no_existe(factory) -> None:
     _, comision_id = await _crear_alumno_y_comision(factory)
     async with factory() as s:
         repo = InscripcionSqlRepository(s)

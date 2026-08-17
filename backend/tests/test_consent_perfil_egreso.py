@@ -3,7 +3,7 @@
 El erasure DSR (derecho al olvido) DEBE purgar el consentimiento de perfil del
 usuario cuando no hay holds que difieran (Ley 25.326, RN-BIO-08/RN-DSR-03).
 
-DB real slim. Reusa el patron del test de integracion DSR (c-17).
+DB real activeexam. Reusa el patron del test de integracion DSR (c-17).
 """
 
 from __future__ import annotations
@@ -27,9 +27,9 @@ from app.infrastructure.persistence.repositories.dsr import (
     SqlDsrAuditor,
     SqlUserDsrRepository,
 )
-from app.infrastructure.persistence.session_slim import (
-    create_slim_engine,
-    create_slim_session_factory,
+from app.infrastructure.persistence.session_activeexam import (
+    create_activeexam_engine,
+    create_activeexam_session_factory,
 )
 from app.infrastructure.retention.null_hold_verifier import NullHoldVerifier
 
@@ -41,14 +41,14 @@ def _factory() -> async_sessionmaker[AsyncSession]:
         "DATABASE_URL",
         "postgresql+asyncpg://proctoring:dev-only-change-me@postgres:5432/proctoring",
     )
-    return create_slim_session_factory(create_slim_engine(url))
+    return create_activeexam_session_factory(create_activeexam_engine(url))
 
 
 async def _crear_user_con_consentimiento(factory) -> str:
     suf = uuid.uuid4().hex[:8]
     async with factory() as s:
         u = UsuarioModel(
-            id_institucional=f"cegr-{suf}",
+            username=f"cegr-{suf}",
             email=f"cegr-{suf}@test.local",
             roles=["estudiante"],
             auth_provider="local",

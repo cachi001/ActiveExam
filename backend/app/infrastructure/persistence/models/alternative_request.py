@@ -3,9 +3,9 @@
 Tabla ``solicitudes_via_alternativa`` — estado mutable del ciclo de vida de
 la solicitud de via alternativa del alumno. Esta tabla NO es el audit log
 (que es append-only); su proposito es llevar el estado mutable
-(pendiente_proctor -> habilitado_por_proctor).
+(pendiente_coordinador -> habilitado_por_coordinador).
 
-Usada TANTO en el modulo slim (Railway) como en el full (si se implementa).
+Usada TANTO en el modulo activeexam (Railway) como en el full (si se implementa).
 El ENUM ``estado_via_alternativa`` lo crea la migracion 0010 (create_type=False
 aqui para que el DDL lo controle la migracion).
 """
@@ -31,8 +31,8 @@ class EstadoViaAlternativaDB(str, enum.Enum):
     dominio.
     """
 
-    PENDIENTE_PROCTOR = "pendiente_proctor"
-    HABILITADO_POR_PROCTOR = "habilitado_por_proctor"
+    PENDIENTE_COORDINADOR = "pendiente_coordinador"
+    HABILITADO_POR_COORDINADOR = "habilitado_por_coordinador"
 
 
 # ``create_type=False``: el CREATE TYPE lo hace la migracion 0010.
@@ -56,14 +56,14 @@ class SolicitudViaAlternativaModel(Base):
     )
     user_id: Mapped[str] = mapped_column(
         Text,
-        ForeignKey("usuario.id_institucional", ondelete="CASCADE"),
+        ForeignKey("usuario.username", ondelete="CASCADE"),
         nullable=False,
     )
     exam_id: Mapped[str] = mapped_column(Text, nullable=False)
     estado: Mapped[EstadoViaAlternativaDB] = mapped_column(
         estado_via_alternativa_enum,
         nullable=False,
-        server_default="pendiente_proctor",
+        server_default="pendiente_coordinador",
     )
     timestamp_solicitud: Mapped[str] = mapped_column(
         TIMESTAMP(timezone=True),

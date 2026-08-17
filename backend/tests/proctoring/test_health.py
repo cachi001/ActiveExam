@@ -1,4 +1,4 @@
-"""Test del healthcheck del modulo slim de proctoring.
+"""Test del healthcheck del modulo activeexam de proctoring.
 
 Requiere Postgres real (DATABASE_URL). Sin mocks de DB.
 """

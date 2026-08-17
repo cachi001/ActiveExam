@@ -13,13 +13,11 @@ from app.config import Settings
 
 # Conjunto minimo de env vars requeridas para que la app arranque.
 _REQUIRED_ENV: dict[str, str] = {
-    "DATABASE_URL": "postgresql+asyncpg://app@db:5432/proctoring",
+    "DATABASE_URL": "postgresql+asyncpg://app@postgres:5432/proctoring",
     "STORAGE_ENDPOINT": "http://minio:9000",
     "STORAGE_ACCESS_KEY": "test-access",
     "STORAGE_SECRET_KEY": "test-secret",
     "STORAGE_BUCKET_EVIDENCE": "evidence",
-    "KEYCLOAK_ISSUER": "http://keycloak:8080/realms/proctoring",
-    "KEYCLOAK_JWKS_URL": "http://keycloak:8080/realms/proctoring/protocol/openid-connect/certs",
     "JWT_AUDIENCE": "proctoring-api",
     "OTEL_EXPORTER_OTLP_ENDPOINT": "http://tempo:4317",
 }
@@ -39,7 +37,7 @@ def test_settings_loads_from_environment(monkeypatch: pytest.MonkeyPatch) -> Non
 
     assert str(settings.database_url).startswith("postgresql")
     assert settings.storage_endpoint == "http://minio:9000"
-    assert settings.keycloak_issuer.endswith("/realms/proctoring")
+    assert settings.jwt_audience == "proctoring-api"
     assert settings.otel_exporter_otlp_endpoint == "http://tempo:4317"
 
 

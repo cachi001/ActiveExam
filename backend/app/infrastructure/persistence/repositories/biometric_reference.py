@@ -85,9 +85,9 @@ class FotoReferenciaRepository:
         """Devuelve el ``id`` de la foto vigente del usuario, o None si no existe.
 
         Selecciona SOLO la columna ``id`` (existe tanto en el schema full como en
-        el slim), no la fila entera: el modelo full trae ``uri_storage``/``bucket``
-        y el slim ``foto_bytes`` — un ``select(FotoReferenciaModel)`` pediría
-        ``uri_storage`` y revienta contra la tabla slim (UndefinedColumnError). El
+        el activeexam), no la fila entera: el modelo full trae ``uri_storage``/``bucket``
+        y el activeexam ``foto_bytes`` — un ``select(FotoReferenciaModel)`` pediría
+        ``uri_storage`` y revienta contra la tabla activeexam (UndefinedColumnError). El
         único consumidor (gate de perfil en la matriculación) solo comprueba
         existencia (``is not None``), así que el id alcanza.
         """

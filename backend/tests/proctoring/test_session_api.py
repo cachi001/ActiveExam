@@ -1,4 +1,4 @@
-"""Tests de integración — endpoints de sesiones de proctoring slim.
+"""Tests de integración — endpoints de sesiones de proctoring activeexam.
 
 Requiere Postgres real (DATABASE_URL). Sin mocks de DB (regla dura de codigo).
 Correr con:

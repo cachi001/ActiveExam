@@ -1,9 +1,9 @@
-"""Router slim del verify-chain (c-18).
+"""Router activeexam del verify-chain (c-18).
 
 POST /api/v1/evidence/{event_id}/verify-chain
 
 Solo rol ``admin_sistema`` puede invocarlo (en el futuro se extiende a
-revisor / coordinador / auditor cuando llegue c-16/c-69; por ahora slim
+revisor / coordinador / auditor cuando llegue c-16/c-69; por ahora activeexam
 queda admin-only para el endpoint legal). Cada llamada queda en el audit
 log con propósito declarado.
 """
@@ -54,7 +54,7 @@ class ChainCertificateResponse(BaseModel):
     algorithm: str
     stages: list[StageResultResponse]
     verified_at: str
-    note: str  # texto descriptivo para perito (slim/full)
+    note: str  # texto descriptivo para perito (activeexam/full)
 
 
 # ---------------------------------------------------------------------------
@@ -72,8 +72,8 @@ def _get_session_factory(request: Request) -> async_sessionmaker[AsyncSession]:
     return factory
 
 
-_SLIM_NOTE = (
-    "Certificado emitido por rama slim (c-18): 1 etapa verificable "
+_ACTIVEEXAM_NOTE = (
+    "Certificado emitido por rama activeexam (c-18): 1 etapa verificable "
     "(screenshot_recorded). La cadena completa de 4 etapas (cliente HMAC, "
     "backend, firma maestra, re-inferencia) sera disponible cuando se "
     "implemente c-68 sobre tabla evidencia."
@@ -95,7 +95,7 @@ def _cert_to_response(cert: CustodyChainCertificate) -> ChainCertificateResponse
             for s in cert.stages
         ],
         verified_at=cert.verified_at,
-        note=_SLIM_NOTE,
+        note=_ACTIVEEXAM_NOTE,
     )
 
 
@@ -108,7 +108,7 @@ def _cert_to_response(cert: CustodyChainCertificate) -> ChainCertificateResponse
     "/evidence/{event_id}/verify-chain",
     response_model=ChainCertificateResponse,
     summary=(
-        "Verifica cadena de custodia de un evento (slim: SHA-256 del screenshot)"
+        "Verifica cadena de custodia de un evento (activeexam: SHA-256 del screenshot)"
     ),
 )
 async def verify_chain(

@@ -4,7 +4,7 @@ Revision ID: 0053
 Revises: 0052
 Create Date: 2026-08-03
 
-RAMA: slim
+RAMA: activeexam
   down_revision = "0052"
 
 PROPOSITO:

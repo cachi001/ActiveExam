@@ -23,9 +23,9 @@ DOWNGRADE: revierte exactamente lo creado (DROP TABLE en orden inverso).
 Es seguro porque las tablas son aditivas.
 
 DEPENDENCIAS:
-  - Revises 0006: ultima de la rama slim (C-55, auth JWT propio).
+  - Revises 0006: ultima de la rama activeexam (C-55, auth JWT propio).
   - depends_on 0002: crea la tabla `usuario` (rama principal). Sin esto, el deploy
-    slim falla porque foto_referencia y embedding_referencia hacen FK a usuario.
+    activeexam falla porque foto_referencia y embedding_referencia hacen FK a usuario.
     Mismo patron que 0006. Ver bug documentado en engram.
 """
 
@@ -40,9 +40,9 @@ revision: str = "0007"
 down_revision: str = "0006"
 branch_labels = None
 # 0007 (c-56 biometria) sigue a 0006 en la rama PRINCIPAL (full, con TimescaleDB).
-# La tabla usuario ya existe via 0002 en esa cadena. NO cuelga de la rama slim: el
-# slim de Railway (main_slim, "REST sin auth") no usa enrollment ni la tabla usuario,
-# por eso `alembic upgrade slim@head` no debe correr esta migracion.
+# La tabla usuario ya existe via 0002 en esa cadena. NO cuelga de la rama activeexam: el
+# activeexam de Railway (main_activeexam, "REST sin auth") no usa enrollment ni la tabla usuario,
+# por eso `alembic upgrade activeexam@head` no debe correr esta migracion.
 depends_on = None
 
 

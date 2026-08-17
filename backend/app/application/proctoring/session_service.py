@@ -1,4 +1,4 @@
-"""Servicio de aplicacion para sesiones de proctoring slim.
+"""Servicio de aplicacion para sesiones de proctoring activeexam.
 
 Orquesta la creacion, listado y detalle de sesiones. No depende de Keycloak,
 Vault ni MinIO. La logica de scoring se delega a scoring.py para evitar
@@ -61,7 +61,7 @@ async def crear_sesion(
     alumno_idnumber: str | None = None,
     alumno_email: str | None = None,
 ) -> ProctoringSessionModel:
-    """Crea una nueva sesion de proctoring slim.
+    """Crea una nueva sesion de proctoring activeexam.
 
     ``examen_contenido_id`` (C-69) vincula la sesion con el examen de contenido
     importado de Moodle XML (NULLABLE). ``alumno_idnumber``/``alumno_email``
@@ -133,6 +133,13 @@ async def detalle_sesion(
     return await repo.obtener_sesion(session_id)
 
 
+async def docente_id_de_sesion(db: AsyncSession, session_id: str) -> str | None:
+    """Docente a cargo de la comision de la sesion (C-76 bloque 8). Ver
+    ``ProctoringRepository.docente_id_de_sesion`` para el detalle de la derivacion."""
+    repo = ProctoringRepository(db)
+    return await repo.docente_id_de_sesion(session_id)
+
+
 async def finalizar_sesion(
     db: AsyncSession, session_id: str
 ) -> ProctoringSessionModel | None:
@@ -145,14 +152,14 @@ async def cerrar_forzado(
     db: AsyncSession,
     session_id: str,
     motivo: str,
-    proctor_actor: str | None = None,
+    tutor_actor: str | None = None,
 ) -> ProctoringSessionModel | None:
     """Cierre forzado de la sesion por el proctor (operativo, NO disciplinario).
 
     Idempotente: si ya estaba cerrada de forma forzada, no muta el audit. None si
     la sesion no existe. Ver ProctoringRepository.cerrar_forzado."""
     repo = ProctoringRepository(db)
-    return await repo.cerrar_forzado(session_id, motivo=motivo, proctor_actor=proctor_actor)
+    return await repo.cerrar_forzado(session_id, motivo=motivo, tutor_actor=tutor_actor)
 
 
 async def eliminar_sesion(db: AsyncSession, session_id: str) -> bool:

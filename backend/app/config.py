@@ -10,22 +10,12 @@ inseguro), cumpliendo el principio twelve-factor.
 La pieza de mensajeria (``messaging_backend``) por OMISION es ``postgres`` (A4),
 pero es swappable segun el veredicto de C-03. No se asume Redis/RabbitMQ.
 
-# Modelo multi-provider de auth (C-55)
-# ------------------------------------
-# ``auth_provider`` selecciona el mecanismo de autenticacion activo:
-#
-#   "jwt" (default MVP self-hosted):
-#     Requiere: ``jwt_own_secret`` (sensible, via Vault), ``jwt_own_issuer``,
-#               ``refresh_token_ttl_seconds``.
-#     El backend emite y verifica sus propios JWT HS256. Keycloak no es necesario.
-#
-#   "keycloak":
-#     Requiere: ``keycloak_issuer``, ``keycloak_jwks_url``, ``jwt_audience``,
-#               ``keycloak_token_url`` (para refresh).
-#     El validador multi-issuer acepta AMBOS (jwt propio + Keycloak) siempre
-#     que esten configurados; el provider elegido solo determina el flujo de login.
-#
-# Para exponer un endpoint JWKS propio (RS256 a escala) -> change futuro (DD-17).
+# Auth: JWT propio unicamente (C-55)
+# -----------------------------------
+# El backend emite y verifica sus propios JWT HS256. Requiere: ``jwt_own_secret``
+# (sensible, via Vault), ``jwt_own_issuer``, ``jwt_audience``,
+# ``refresh_token_ttl_seconds``. Keycloak fue ELIMINADO del dominio: no hay
+# segundo proveedor de auth ni wiring RS256/JWKS.
 """
 
 from __future__ import annotations
@@ -60,34 +50,23 @@ class Settings(BaseSettings):
     storage_secret_key: str = Field(..., description="Secret key (sensible).")
     storage_bucket_evidence: str = Field(..., description="Bucket WORM de evidencia.")
 
-    # --- Identidad (Keycloak) ---
-    keycloak_issuer: str = Field(..., description="Issuer/realm de Keycloak.")
-    keycloak_jwks_url: str = Field(..., description="Endpoint de claves publicas.")
+    # --- Identidad (JWT propio, C-55) ---
     jwt_audience: str = Field(..., description="Audience esperado del JWT.")
 
     # --- Auth/JWT (C-06) ---
-    # Access tokens cortos (15-60 min, `08` §Seguridad). El valor concreto lo fija
-    # Keycloak; aqui se declara para validacion/documentacion. TTL del cache JWKS
-    # para validar localmente sin round-trip por request (D2).
+    # Access tokens cortos (15-60 min, `08` §Seguridad).
     access_token_ttl_seconds: int = Field(
         default=900, ge=900, le=3600, description="Vida del access token (15-60 min)."
-    )
-    jwks_cache_ttl_seconds: int = Field(
-        default=3600, ge=60, description="TTL del cache JWKS (refresco perezoso)."
     )
     # Periodo de revalidacion del token en canales de larga vida (WS/SSE, D5).
     realtime_revalidation_seconds: int = Field(
         default=60, ge=10, description="Cada cuanto se revalida el JWT en WS/SSE."
     )
-    # Endpoint del token de Keycloak (grant refresh_token); sensible-ish, va por env.
-    keycloak_token_url: str | None = Field(
-        default=None, description="Token endpoint de Keycloak (refresh grant)."
-    )
 
     # --- Auth provider propio (C-55) ---
     # El issuer se recomienda como string fijo (no URI) para evitar dependencia del
     # dominio de hosting (aun no estable en staging). Valor sugerido: "activeexam-auth".
-    auth_provider: Literal["jwt", "keycloak"] = "jwt"
+    auth_provider: Literal["jwt"] = "jwt"
     jwt_own_secret: str | None = Field(
         default=None,
         description=(

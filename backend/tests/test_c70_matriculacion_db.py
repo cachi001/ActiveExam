@@ -177,7 +177,7 @@ async def _crear_alumno(session, *, con_perfil: bool = True) -> str:
     session.add(
         UsuarioModel(
             id=uid,
-            id_institucional=f"alu-{uid[:8]}",
+            username=f"alu-{uid[:8]}",
             email=f"{uid[:8]}@uni.edu",
             roles=["estudiante"],
             attrs_federados={},

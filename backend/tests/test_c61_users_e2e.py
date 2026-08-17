@@ -2,7 +2,7 @@
 
 Requiere:
   RUN_STACK_TESTS=1
-  DATABASE_URL_SLIM=postgresql://user:pass@host:5432/db  (postgres:16-alpine)
+  DATABASE_URL_ACTIVEEXAM=postgresql://user:pass@host:5432/db  (postgres:16-alpine)
   JWT_OWN_SECRET=<string aleatorio seguro>
   EMBEDDING_ENCRYPTION_KEY=<clave Fernet>
 
@@ -17,18 +17,18 @@ import os
 
 import pytest
 
-_DB_URL_SLIM = os.environ.get(
-    "DATABASE_URL_SLIM",
+_DB_URL_ACTIVEEXAM = os.environ.get(
+    "DATABASE_URL_ACTIVEEXAM",
     "postgresql://app:pass@localhost:55432/proctoring",
 )
-_JWT_SECRET = os.environ.get("JWT_OWN_SECRET", "test-jwt-own-secret-min-32bytes-slim")
+_JWT_SECRET = os.environ.get("JWT_OWN_SECRET", "test-jwt-own-secret-min-32bytes-activeexam")
 _EMBEDDING_KEY = os.environ.get(
     "EMBEDDING_ENCRYPTION_KEY",
     "dGVzdC1mZXJuZXQta2V5LWZvci10ZXN0cy1vbmx5LTMyYnl0ZXM=",
 )
 
-_SLIM_ENV = {
-    "DATABASE_URL": _DB_URL_SLIM,
+_ACTIVEEXAM_ENV = {
+    "DATABASE_URL": _DB_URL_ACTIVEEXAM,
     "FRONTEND_ORIGIN": "http://localhost:5173",
     "JWT_OWN_SECRET": _JWT_SECRET,
     "EMBEDDING_ENCRYPTION_KEY": _EMBEDDING_KEY,
@@ -36,32 +36,32 @@ _SLIM_ENV = {
 
 
 # ---------------------------------------------------------------------------
-# Fixture: slim_client apuntando a postgres:16-alpine
+# Fixture: activeexam_client apuntando a postgres:16-alpine
 # ---------------------------------------------------------------------------
 
 
 @pytest.fixture
-def slim_client(monkeypatch: pytest.MonkeyPatch):
-    """TestClient del slim apuntando a postgres:16-alpine."""
+def activeexam_client(monkeypatch: pytest.MonkeyPatch):
+    """TestClient del activeexam apuntando a postgres:16-alpine."""
     import importlib
 
-    import app.config_slim as config_slim_module
+    import app.config_activeexam as config_activeexam_module
     from fastapi.testclient import TestClient
 
-    config_slim_module.get_slim_settings.cache_clear()
+    config_activeexam_module.get_activeexam_settings.cache_clear()
 
-    for k, v in _SLIM_ENV.items():
+    for k, v in _ACTIVEEXAM_ENV.items():
         monkeypatch.setenv(k, v)
 
-    import app.main_slim as main_slim_module
+    import app.main_activeexam as main_activeexam_module
 
-    importlib.reload(main_slim_module)
-    app_instance = main_slim_module.create_slim_app()
+    importlib.reload(main_activeexam_module)
+    app_instance = main_activeexam_module.create_activeexam_app()
 
     with TestClient(app_instance) as c:
         yield c
 
-    config_slim_module.get_slim_settings.cache_clear()
+    config_activeexam_module.get_activeexam_settings.cache_clear()
 
 
 # ---------------------------------------------------------------------------
@@ -69,13 +69,13 @@ def slim_client(monkeypatch: pytest.MonkeyPatch):
 # ---------------------------------------------------------------------------
 
 
-def _crear_usuario_db(db_url: str, id_institucional: str, email: str, roles: list, password: str):
+def _crear_usuario_db(db_url: str, username: str, email: str, roles: list, password: str):
     """Crea un usuario en la DB de test (idempotente)."""
     from app.infrastructure.auth.hashing import hashear_password
     from app.infrastructure.persistence.models.transactional import UsuarioModel
-    from app.infrastructure.persistence.session_slim import (
-        create_slim_engine,
-        create_slim_session_factory,
+    from app.infrastructure.persistence.session_activeexam import (
+        create_activeexam_engine,
+        create_activeexam_session_factory,
     )
     from sqlalchemy import delete, select
 
@@ -88,16 +88,16 @@ def _crear_usuario_db(db_url: str, id_institucional: str, email: str, roles: lis
         else:
             url2 = url
 
-        engine = create_slim_engine(url2)
-        factory = create_slim_session_factory(engine)
+        engine = create_activeexam_engine(url2)
+        factory = create_activeexam_session_factory(engine)
         async with factory() as session:
             # Limpiar si ya existe
             await session.execute(
-                delete(UsuarioModel).where(UsuarioModel.id_institucional == id_institucional)
+                delete(UsuarioModel).where(UsuarioModel.username == username)
             )
             await session.commit()
             usuario = UsuarioModel(
-                id_institucional=id_institucional,
+                username=username,
                 email=email,
                 roles=roles,
                 password_hash=hashear_password(password),
@@ -114,12 +114,12 @@ def _crear_usuario_db(db_url: str, id_institucional: str, email: str, roles: lis
     return asyncio.get_event_loop().run_until_complete(_run())
 
 
-def _eliminar_usuario_db(db_url: str, id_institucional: str):
+def _eliminar_usuario_db(db_url: str, username: str):
     """Elimina un usuario de la DB de test."""
     from app.infrastructure.persistence.models.transactional import UsuarioModel
-    from app.infrastructure.persistence.session_slim import (
-        create_slim_engine,
-        create_slim_session_factory,
+    from app.infrastructure.persistence.session_activeexam import (
+        create_activeexam_engine,
+        create_activeexam_session_factory,
     )
     from sqlalchemy import delete
 
@@ -128,11 +128,11 @@ def _eliminar_usuario_db(db_url: str, id_institucional: str):
         if url.startswith("postgresql://"):
             url = "postgresql+asyncpg://" + url[len("postgresql://"):]
 
-        engine = create_slim_engine(url)
-        factory = create_slim_session_factory(engine)
+        engine = create_activeexam_engine(url)
+        factory = create_activeexam_session_factory(engine)
         async with factory() as session:
             await session.execute(
-                delete(UsuarioModel).where(UsuarioModel.id_institucional == id_institucional)
+                delete(UsuarioModel).where(UsuarioModel.username == username)
             )
             await session.commit()
         await engine.dispose()
@@ -171,24 +171,24 @@ class TestUserCRUD:
     def setup_method(self):
         """Crear usuarios de test antes de cada test."""
         _crear_usuario_db(
-            _DB_URL_SLIM, self._ADMIN_ID, self._ADMIN_EMAIL, ["admin_sistema"], self._ADMIN_PASS
+            _DB_URL_ACTIVEEXAM, self._ADMIN_ID, self._ADMIN_EMAIL, ["admin_sistema"], self._ADMIN_PASS
         )
         _crear_usuario_db(
-            _DB_URL_SLIM, self._OTRO_ID, self._OTRO_EMAIL, ["estudiante"], self._OTRO_PASS
+            _DB_URL_ACTIVEEXAM, self._OTRO_ID, self._OTRO_EMAIL, ["estudiante"], self._OTRO_PASS
         )
 
     def teardown_method(self):
         """Limpiar usuarios de test."""
-        _eliminar_usuario_db(_DB_URL_SLIM, self._ADMIN_ID)
-        _eliminar_usuario_db(_DB_URL_SLIM, self._OTRO_ID)
-        _eliminar_usuario_db(_DB_URL_SLIM, "c61-nuevo-user")
+        _eliminar_usuario_db(_DB_URL_ACTIVEEXAM, self._ADMIN_ID)
+        _eliminar_usuario_db(_DB_URL_ACTIVEEXAM, self._OTRO_ID)
+        _eliminar_usuario_db(_DB_URL_ACTIVEEXAM, "c61-nuevo-user")
 
-    def test_listar_usuarios_200(self, slim_client):
+    def test_listar_usuarios_200(self, activeexam_client):
         """Admin lista usuarios → 200 con array y sin password_hash."""
-        token = _login(slim_client, self._ADMIN_ID, self._ADMIN_PASS)
+        token = _login(activeexam_client, self._ADMIN_ID, self._ADMIN_PASS)
         assert token, "Login de admin falló"
 
-        resp = slim_client.get(
+        resp = activeexam_client.get(
             "/api/v1/users/?limit=50&offset=0",
             headers={"Authorization": f"Bearer {token}"},
         )
@@ -200,70 +200,70 @@ class TestUserCRUD:
         for u in data["items"]:
             assert "password_hash" not in u
 
-    def test_listar_usuarios_403_rol_insuficiente(self, slim_client):
+    def test_listar_usuarios_403_rol_insuficiente(self, activeexam_client):
         """Estudiante lista usuarios → 403."""
-        token = _login(slim_client, self._OTRO_ID, self._OTRO_PASS)
+        token = _login(activeexam_client, self._OTRO_ID, self._OTRO_PASS)
         assert token
 
-        resp = slim_client.get(
+        resp = activeexam_client.get(
             "/api/v1/users/",
             headers={"Authorization": f"Bearer {token}"},
         )
         assert resp.status_code == 403
 
-    def test_listar_usuarios_401_sin_token(self, slim_client):
+    def test_listar_usuarios_401_sin_token(self, activeexam_client):
         """Sin token → 401."""
-        resp = slim_client.get("/api/v1/users/")
+        resp = activeexam_client.get("/api/v1/users/")
         assert resp.status_code == 401
 
-    def test_listar_excluye_baja(self, slim_client):
+    def test_listar_excluye_baja(self, activeexam_client):
         """Usuario dado de baja no aparece en el listado."""
-        token = _login(slim_client, self._ADMIN_ID, self._ADMIN_PASS)
+        token = _login(activeexam_client, self._ADMIN_ID, self._ADMIN_PASS)
         assert token
 
         # Buscar el id del otro usuario.
-        listado = slim_client.get(
+        listado = activeexam_client.get(
             "/api/v1/users/?limit=100",
             headers={"Authorization": f"Bearer {token}"},
         )
         usuario_otro = next(
-            (u for u in listado.json()["items"] if u["id_institucional"] == self._OTRO_ID),
+            (u for u in listado.json()["items"] if u["username"] == self._OTRO_ID),
             None,
         )
         assert usuario_otro is not None, "El usuario 'otro' debería estar en el listado"
 
         # Dar de baja al otro.
-        resp_delete = slim_client.delete(
+        resp_delete = activeexam_client.delete(
             f"/api/v1/users/{usuario_otro['id']}",
             headers={"Authorization": f"Bearer {token}"},
         )
         assert resp_delete.status_code == 204
 
         # Verificar que ya no aparece en el listado.
-        listado2 = slim_client.get(
+        listado2 = activeexam_client.get(
             "/api/v1/users/?limit=100",
             headers={"Authorization": f"Bearer {token}"},
         )
-        ids = [u["id_institucional"] for u in listado2.json()["items"]]
+        ids = [u["username"] for u in listado2.json()["items"]]
         assert self._OTRO_ID not in ids
 
-    def test_editar_usuario_200(self, slim_client):
+    def test_editar_usuario_200(self, activeexam_client):
         """Admin edita roles del otro usuario → 200."""
-        token = _login(slim_client, self._ADMIN_ID, self._ADMIN_PASS)
+        token = _login(activeexam_client, self._ADMIN_ID, self._ADMIN_PASS)
         assert token
 
         # Obtener id del otro usuario.
-        listado = slim_client.get(
+        listado = activeexam_client.get(
             "/api/v1/users/?limit=100",
             headers={"Authorization": f"Bearer {token}"},
         )
         usuario_otro = next(
-            (u for u in listado.json()["items"] if u["id_institucional"] == self._OTRO_ID),
+            (u for u in listado.json()["items"] if u["username"] == self._OTRO_ID),
             None,
         )
         assert usuario_otro is not None
 
-        resp = slim_client.put(
+        resp = activeexam_client.put(
             f"/api/v1/users/{usuario_otro['id']}",
             json={"roles": ["coordinador"]},  # c-76: rol proctor eliminado -> coordinador
             headers={"Authorization": f"Bearer {token}"},
@@ -271,248 +271,122 @@ class TestUserCRUD:
         assert resp.status_code == 200
         assert "coordinador" in resp.json()["roles"]
 
-    def test_editar_usuario_422_campo_extra(self, slim_client):
+    def test_editar_usuario_422_campo_extra(self, activeexam_client):
         """Campo extra (password_hash) en body → 422 por extra='forbid'."""
-        token = _login(slim_client, self._ADMIN_ID, self._ADMIN_PASS)
+        token = _login(activeexam_client, self._ADMIN_ID, self._ADMIN_PASS)
         assert token
 
-        listado = slim_client.get(
+        listado = activeexam_client.get(
             "/api/v1/users/?limit=100",
             headers={"Authorization": f"Bearer {token}"},
         )
         usuario_otro = next(
-            (u for u in listado.json()["items"] if u["id_institucional"] == self._OTRO_ID),
+            (u for u in listado.json()["items"] if u["username"] == self._OTRO_ID),
             None,
         )
         assert usuario_otro is not None
 
-        resp = slim_client.put(
+        resp = activeexam_client.put(
             f"/api/v1/users/{usuario_otro['id']}",
             json={"password_hash": "hacked"},
             headers={"Authorization": f"Bearer {token}"},
         )
         assert resp.status_code == 422
 
-    def test_editar_usuario_404_no_existe(self, slim_client):
+    def test_editar_usuario_404_no_existe(self, activeexam_client):
         """PUT sobre usuario inexistente → 404."""
-        token = _login(slim_client, self._ADMIN_ID, self._ADMIN_PASS)
+        token = _login(activeexam_client, self._ADMIN_ID, self._ADMIN_PASS)
         assert token
 
-        resp = slim_client.put(
+        resp = activeexam_client.put(
             "/api/v1/users/00000000-0000-0000-0000-000000000000",
             json={"roles": ["estudiante"]},
             headers={"Authorization": f"Bearer {token}"},
         )
         assert resp.status_code == 404
 
-    def test_anti_lockout_admin_no_puede_quitarse_rol(self, slim_client):
+    def test_anti_lockout_admin_no_puede_quitarse_rol(self, activeexam_client):
         """Admin no puede quitarse el rol admin_sistema → 409."""
-        token = _login(slim_client, self._ADMIN_ID, self._ADMIN_PASS)
+        token = _login(activeexam_client, self._ADMIN_ID, self._ADMIN_PASS)
         assert token
 
         # Obtener el id del admin.
-        listado = slim_client.get(
+        listado = activeexam_client.get(
             "/api/v1/users/?limit=100",
             headers={"Authorization": f"Bearer {token}"},
         )
         admin_user = next(
-            (u for u in listado.json()["items"] if u["id_institucional"] == self._ADMIN_ID),
+            (u for u in listado.json()["items"] if u["username"] == self._ADMIN_ID),
             None,
         )
         assert admin_user is not None
 
-        resp = slim_client.put(
+        resp = activeexam_client.put(
             f"/api/v1/users/{admin_user['id']}",
             json={"roles": ["estudiante"]},  # quitar admin_sistema de si mismo
             headers={"Authorization": f"Bearer {token}"},
         )
         assert resp.status_code == 409
 
-    def test_baja_204(self, slim_client):
+    def test_baja_204(self, activeexam_client):
         """Admin da de baja a otro usuario → 204."""
-        token = _login(slim_client, self._ADMIN_ID, self._ADMIN_PASS)
+        token = _login(activeexam_client, self._ADMIN_ID, self._ADMIN_PASS)
         assert token
 
-        listado = slim_client.get(
+        listado = activeexam_client.get(
             "/api/v1/users/?limit=100",
             headers={"Authorization": f"Bearer {token}"},
         )
         usuario_otro = next(
-            (u for u in listado.json()["items"] if u["id_institucional"] == self._OTRO_ID),
+            (u for u in listado.json()["items"] if u["username"] == self._OTRO_ID),
             None,
         )
         assert usuario_otro is not None
 
-        resp = slim_client.delete(
+        resp = activeexam_client.delete(
             f"/api/v1/users/{usuario_otro['id']}",
             headers={"Authorization": f"Bearer {token}"},
         )
         assert resp.status_code == 204
 
-    def test_baja_usuario_no_puede_loguear(self, slim_client):
+    def test_baja_usuario_no_puede_loguear(self, activeexam_client):
         """Usuario dado de baja no puede loguear → 401 con mensaje genérico."""
-        token = _login(slim_client, self._ADMIN_ID, self._ADMIN_PASS)
+        token = _login(activeexam_client, self._ADMIN_ID, self._ADMIN_PASS)
         assert token
 
-        listado = slim_client.get(
+        listado = activeexam_client.get(
             "/api/v1/users/?limit=100",
             headers={"Authorization": f"Bearer {token}"},
         )
         usuario_otro = next(
-            (u for u in listado.json()["items"] if u["id_institucional"] == self._OTRO_ID),
+            (u for u in listado.json()["items"] if u["username"] == self._OTRO_ID),
             None,
         )
         assert usuario_otro is not None
 
         # Dar de baja.
-        slim_client.delete(
+        activeexam_client.delete(
             f"/api/v1/users/{usuario_otro['id']}",
             headers={"Authorization": f"Bearer {token}"},
         )
 
         # Intentar loguear.
-        resp = slim_client.post(
+        resp = activeexam_client.post(
             "/api/v1/auth/login",
             json={"username": self._OTRO_ID, "password": self._OTRO_PASS},
         )
         assert resp.status_code == 401
 
-    def test_baja_403_rol_insuficiente(self, slim_client):
+    def test_baja_403_rol_insuficiente(self, activeexam_client):
         """Estudiante intenta dar de baja a otro → 403."""
-        token = _login(slim_client, self._OTRO_ID, self._OTRO_PASS)
+        token = _login(activeexam_client, self._OTRO_ID, self._OTRO_PASS)
         assert token
 
-        resp = slim_client.delete(
+        resp = activeexam_client.delete(
             "/api/v1/users/00000000-0000-0000-0000-000000000000",
             headers={"Authorization": f"Bearer {token}"},
         )
         assert resp.status_code == 403
-
-
-# ---------------------------------------------------------------------------
-# 3.5: Tests de registro público
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.requires_stack
-class TestRegistro:
-    """Tests E2E de POST /api/v1/auth/register (C-61, tarea 3.1-3.4)."""
-
-    _REG_ID = "c61-reg-test-user"
-    _REG_EMAIL = "c61-reg@demo.test"
-
-    def teardown_method(self):
-        _eliminar_usuario_db(_DB_URL_SLIM, self._REG_ID)
-
-    def test_registro_exitoso_201(self, slim_client):
-        """Registro con datos válidos → 201 con rol estudiante forzado."""
-        resp = slim_client.post(
-            "/api/v1/auth/register",
-            json={
-                "nombre": "Juan",
-                "apellido": "Perez",
-                "id_institucional": self._REG_ID,
-                "email": self._REG_EMAIL,
-                "password": "Password123",
-                "password_confirmacion": "Password123",
-            },
-        )
-        assert resp.status_code == 201
-        data = resp.json()
-        assert data["roles"] == ["estudiante"]
-        assert data["id_institucional"] == self._REG_ID
-
-    def test_registro_rechaza_campo_roles(self, slim_client):
-        """Enviar 'roles' en el body → 422 por extra='forbid'."""
-        resp = slim_client.post(
-            "/api/v1/auth/register",
-            json={
-                "nombre": "Hack",
-                "apellido": "Attempt",
-                "id_institucional": "hacker-001",
-                "email": "hacker@demo.test",
-                "password": "Password123",
-                "password_confirmacion": "Password123",
-                "roles": ["admin_sistema"],
-            },
-        )
-        assert resp.status_code == 422
-
-    def test_registro_password_no_coincide(self, slim_client):
-        """Passwords diferentes → 422."""
-        resp = slim_client.post(
-            "/api/v1/auth/register",
-            json={
-                "nombre": "Test",
-                "apellido": "User",
-                "id_institucional": "reg-mismatch",
-                "email": "mismatch@demo.test",
-                "password": "Password123",
-                "password_confirmacion": "OtroPassword",
-            },
-        )
-        assert resp.status_code == 422
-
-    def test_registro_password_debil(self, slim_client):
-        """Password menor a 8 caracteres → 422."""
-        resp = slim_client.post(
-            "/api/v1/auth/register",
-            json={
-                "nombre": "Test",
-                "apellido": "User",
-                "id_institucional": "reg-weak",
-                "email": "weak@demo.test",
-                "password": "abc",
-                "password_confirmacion": "abc",
-            },
-        )
-        assert resp.status_code == 422
-
-    def test_registro_duplicado_409(self, slim_client):
-        """Email o id_institucional duplicado → 409."""
-        payload = {
-            "nombre": "Dup",
-            "apellido": "User",
-            "id_institucional": self._REG_ID,
-            "email": self._REG_EMAIL,
-            "password": "Password123",
-            "password_confirmacion": "Password123",
-        }
-        # Primer registro
-        r1 = slim_client.post("/api/v1/auth/register", json=payload)
-        assert r1.status_code == 201
-
-        # Segundo registro con mismo email/id_institucional
-        r2 = slim_client.post("/api/v1/auth/register", json=payload)
-        assert r2.status_code == 409
-
-    def test_registro_password_hasheado(self, slim_client):
-        """El password nunca se persiste en claro en la DB."""
-        resp = slim_client.post(
-            "/api/v1/auth/register",
-            json={
-                "nombre": "Hash",
-                "apellido": "Test",
-                "id_institucional": self._REG_ID,
-                "email": self._REG_EMAIL,
-                "password": "Password123",
-                "password_confirmacion": "Password123",
-            },
-        )
-        assert resp.status_code == 201
-
-        # Verificar que el password en claro no se devuelve en la respuesta.
-        data = resp.json()
-        assert "password" not in data
-        assert "password_hash" not in data
-        assert "password_confirmacion" not in data
-
-        # Verificar que se puede loguear (el hash es válido).
-        login_resp = slim_client.post(
-            "/api/v1/auth/login",
-            json={"username": self._REG_ID, "password": "Password123"},
-        )
-        assert login_resp.status_code == 200
 
 
 # ---------------------------------------------------------------------------
@@ -540,19 +414,19 @@ class TestFotoPerfil:
 
     def setup_method(self):
         self._alumno_uid = _crear_usuario_db(
-            _DB_URL_SLIM, self._ALUMNO_ID, self._ALUMNO_EMAIL, ["estudiante"], self._ALUMNO_PASS
+            _DB_URL_ACTIVEEXAM, self._ALUMNO_ID, self._ALUMNO_EMAIL, ["estudiante"], self._ALUMNO_PASS
         )
         _crear_usuario_db(
-            _DB_URL_SLIM, self._ADMIN_ID, self._ADMIN_EMAIL, ["admin_sistema"], self._ADMIN_PASS
+            _DB_URL_ACTIVEEXAM, self._ADMIN_ID, self._ADMIN_EMAIL, ["admin_sistema"], self._ADMIN_PASS
         )
         _crear_usuario_db(
-            _DB_URL_SLIM, self._SIN_FOTO_ID, self._SIN_FOTO_EMAIL, ["estudiante"], self._SIN_FOTO_PASS
+            _DB_URL_ACTIVEEXAM, self._SIN_FOTO_ID, self._SIN_FOTO_EMAIL, ["estudiante"], self._SIN_FOTO_PASS
         )
 
     def teardown_method(self):
-        _eliminar_usuario_db(_DB_URL_SLIM, self._ALUMNO_ID)
-        _eliminar_usuario_db(_DB_URL_SLIM, self._ADMIN_ID)
-        _eliminar_usuario_db(_DB_URL_SLIM, self._SIN_FOTO_ID)
+        _eliminar_usuario_db(_DB_URL_ACTIVEEXAM, self._ALUMNO_ID)
+        _eliminar_usuario_db(_DB_URL_ACTIVEEXAM, self._ADMIN_ID)
+        _eliminar_usuario_db(_DB_URL_ACTIVEEXAM, self._SIN_FOTO_ID)
 
     def _subir_foto(self, client, token: str) -> None:
         """Sube una foto mínima de 1x1 pixel JPEG para el alumno."""
@@ -597,15 +471,15 @@ class TestFotoPerfil:
         )
         assert resp.status_code == 201, f"Subida de foto falló: {resp.json()}"
 
-    def test_foto_propia_200(self, slim_client):
+    def test_foto_propia_200(self, activeexam_client):
         """Alumno obtiene su propia foto → 200 con base64."""
-        token = _login(slim_client, self._ALUMNO_ID, self._ALUMNO_PASS)
+        token = _login(activeexam_client, self._ALUMNO_ID, self._ALUMNO_PASS)
         assert token
 
         # Subir foto primero.
-        self._subir_foto(slim_client, token)
+        self._subir_foto(activeexam_client, token)
 
-        resp = slim_client.get(
+        resp = activeexam_client.get(
             "/api/v1/enrollment/foto-perfil",
             headers={"Authorization": f"Bearer {token}"},
         )
@@ -614,34 +488,34 @@ class TestFotoPerfil:
         assert "imagen_base64" in data
         assert data["imagen_base64"].startswith("data:image/")
 
-    def test_foto_propia_404_sin_foto(self, slim_client):
+    def test_foto_propia_404_sin_foto(self, activeexam_client):
         """Alumno sin foto → 404."""
-        token = _login(slim_client, self._SIN_FOTO_ID, self._SIN_FOTO_PASS)
+        token = _login(activeexam_client, self._SIN_FOTO_ID, self._SIN_FOTO_PASS)
         assert token
 
-        resp = slim_client.get(
+        resp = activeexam_client.get(
             "/api/v1/enrollment/foto-perfil",
             headers={"Authorization": f"Bearer {token}"},
         )
         assert resp.status_code == 404
 
-    def test_foto_propia_401_sin_token(self, slim_client):
+    def test_foto_propia_401_sin_token(self, activeexam_client):
         """Sin token → 401."""
-        resp = slim_client.get("/api/v1/enrollment/foto-perfil")
+        resp = activeexam_client.get("/api/v1/enrollment/foto-perfil")
         assert resp.status_code == 401
 
-    def test_foto_ajena_200_admin(self, slim_client):
+    def test_foto_ajena_200_admin(self, activeexam_client):
         """Admin obtiene la foto de otro usuario → 200."""
         # Subir foto como alumno.
-        alumno_token = _login(slim_client, self._ALUMNO_ID, self._ALUMNO_PASS)
+        alumno_token = _login(activeexam_client, self._ALUMNO_ID, self._ALUMNO_PASS)
         assert alumno_token
-        self._subir_foto(slim_client, alumno_token)
+        self._subir_foto(activeexam_client, alumno_token)
 
         # Admin obtiene la foto por usuario_id.
-        admin_token = _login(slim_client, self._ADMIN_ID, self._ADMIN_PASS)
+        admin_token = _login(activeexam_client, self._ADMIN_ID, self._ADMIN_PASS)
         assert admin_token
 
-        resp = slim_client.get(
+        resp = activeexam_client.get(
             f"/api/v1/enrollment/foto-perfil/{self._alumno_uid}",
             headers={"Authorization": f"Bearer {admin_token}"},
         )
@@ -649,40 +523,40 @@ class TestFotoPerfil:
         data = resp.json()
         assert "imagen_base64" in data
 
-    def test_foto_ajena_403_estudiante(self, slim_client):
+    def test_foto_ajena_403_estudiante(self, activeexam_client):
         """Estudiante intenta ver la foto de otro → 403."""
-        token = _login(slim_client, self._ALUMNO_ID, self._ALUMNO_PASS)
+        token = _login(activeexam_client, self._ALUMNO_ID, self._ALUMNO_PASS)
         assert token
 
-        resp = slim_client.get(
+        resp = activeexam_client.get(
             f"/api/v1/enrollment/foto-perfil/{self._alumno_uid}",
             headers={"Authorization": f"Bearer {token}"},
         )
         assert resp.status_code == 403
 
-    def test_foto_ajena_404_sin_foto(self, slim_client):
+    def test_foto_ajena_404_sin_foto(self, activeexam_client):
         """Admin pide foto de usuario sin foto → 404."""
-        admin_token = _login(slim_client, self._ADMIN_ID, self._ADMIN_PASS)
+        admin_token = _login(activeexam_client, self._ADMIN_ID, self._ADMIN_PASS)
         assert admin_token
 
         # Obtener el id del usuario sin foto.
         from app.infrastructure.persistence.models.transactional import UsuarioModel
-        from app.infrastructure.persistence.session_slim import (
-            create_slim_engine,
-            create_slim_session_factory,
+        from app.infrastructure.persistence.session_activeexam import (
+            create_activeexam_engine,
+            create_activeexam_session_factory,
         )
         from sqlalchemy import select
 
         async def _get_uid():
-            url = _DB_URL_SLIM
+            url = _DB_URL_ACTIVEEXAM
             if url.startswith("postgresql://"):
                 url = "postgresql+asyncpg://" + url[len("postgresql://"):]
-            engine = create_slim_engine(url)
-            factory = create_slim_session_factory(engine)
+            engine = create_activeexam_engine(url)
+            factory = create_activeexam_session_factory(engine)
             async with factory() as session:
                 res = await session.execute(
                     select(UsuarioModel).where(
-                        UsuarioModel.id_institucional == self._SIN_FOTO_ID
+                        UsuarioModel.username == self._SIN_FOTO_ID
                     )
                 )
                 u = res.scalar_one_or_none()
@@ -693,7 +567,7 @@ class TestFotoPerfil:
         sin_foto_uid = asyncio.get_event_loop().run_until_complete(_get_uid())
         assert sin_foto_uid
 
-        resp = slim_client.get(
+        resp = activeexam_client.get(
             f"/api/v1/enrollment/foto-perfil/{sin_foto_uid}",
             headers={"Authorization": f"Bearer {admin_token}"},
         )

@@ -1,4 +1,4 @@
-"""Tests de integración — endpoint de biometria de proctoring slim.
+"""Tests de integración — endpoint de biometria de proctoring activeexam.
 
 Requiere Postgres real (DATABASE_URL). Sin mocks de DB (regla dura de codigo).
 """

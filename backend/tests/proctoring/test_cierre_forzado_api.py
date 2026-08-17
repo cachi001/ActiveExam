@@ -35,7 +35,7 @@ async def test_cerrar_forzado_200(client: AsyncClient) -> None:
     session_id = await _crear_sesion(client)
     resp = await client.patch(
         f"/api/v1/proctoring/sessions/{session_id}/cerrar-forzado",
-        json={"motivo": "Conducta sospechosa sostenida.", "proctor_actor": "proc-9"},
+        json={"motivo": "Conducta sospechosa sostenida.", "tutor_actor": "proc-9"},
         headers=_PROCTOR,
     )
     assert resp.status_code == 200
@@ -53,7 +53,7 @@ async def test_cerrar_forzado_idempotente(client: AsyncClient) -> None:
     session_id = await _crear_sesion(client)
     r1 = await client.patch(
         f"/api/v1/proctoring/sessions/{session_id}/cerrar-forzado",
-        json={"motivo": "primero", "proctor_actor": "proc-A"},
+        json={"motivo": "primero", "tutor_actor": "proc-A"},
         headers=_PROCTOR,
     )
     assert r1.status_code == 200
@@ -61,7 +61,7 @@ async def test_cerrar_forzado_idempotente(client: AsyncClient) -> None:
 
     r2 = await client.patch(
         f"/api/v1/proctoring/sessions/{session_id}/cerrar-forzado",
-        json={"motivo": "segundo intento", "proctor_actor": "proc-B"},
+        json={"motivo": "segundo intento", "tutor_actor": "proc-B"},
         headers=_PROCTOR,
     )
     assert r2.status_code == 200
@@ -147,7 +147,7 @@ async def test_detalle_surfacea_cierre_forzado(client: AsyncClient) -> None:
 
     await client.patch(
         f"/api/v1/proctoring/sessions/{session_id}/cerrar-forzado",
-        json={"motivo": "operativo detalle", "proctor_actor": "proc-7"},
+        json={"motivo": "operativo detalle", "tutor_actor": "proc-7"},
         headers=_PROCTOR,
     )
 

@@ -1,6 +1,6 @@
-"""Router slim de chat bidireccional + pausa autorizada (C-15 tareas 6.x).
+"""Router activeexam de chat bidireccional + pausa autorizada (C-15 tareas 6.x).
 
-Transporte REST + polling (el slim NO monta el WS de eventos). Factory que recibe
+Transporte REST + polling (el activeexam NO monta el WS de eventos). Factory que recibe
 ``get_db`` inyectado desde el router padre (mismo patron que sessions/events).
 
 Rutas (prefijo final /api/v1/proctoring):
@@ -10,7 +10,7 @@ Rutas (prefijo final /api/v1/proctoring):
   PAUSA
     POST  /sessions/{session_id}/pausas
     GET   /sessions/{session_id}/pausas
-    GET   /pausas/pendientes          (poll del proctor — NO colisiona con /sessions/{id})
+    GET   /pausas/pendientes          (poll del tutor/coordinador — NO colisiona con /sessions/{id})
     PATCH /pausas/{pausa_id}          (aprobar | rechazar)
     PATCH /pausas/{pausa_id}/finalizar
 """
@@ -22,8 +22,16 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi import status as http_status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.application.proctoring import chat_pausa_service
-from app.application.proctoring.chat_pausa_service import EstadoInvalido
+from app.application.config.service import ConfigService
+from app.application.proctoring import chat_pausa_service, session_service
+from app.application.proctoring.chat_pausa_service import (
+    AlumnoNoPuedeIniciarError,
+    EstadoInvalido,
+    LimitePausasExcedido,
+)
+from app.domain.auth.authorization import autorizar_supervision_vivo_sobre_sesion
+from app.domain.auth.errors import ForbiddenError
+from app.domain.auth.identity import AuthenticatedPrincipal
 from app.presentation.api.v1.proctoring.chat_pausa.schemas import (
     MensajeChatIn,
     MensajeChatOut,
@@ -39,14 +47,15 @@ def create_chat_pausa_router(
     get_db,
     *,
     require_autenticado,
-    require_proctor_o_admin,
+    require_supervision_vivo,
+    config_service: ConfigService | None = None,
 ) -> APIRouter:
     """Factory del router de chat + pausa. Recibe la dependencia de DB inyectada.
 
     Guards de auth/RBAC (los inyecta el router padre):
-      - ``require_autenticado``: chat (alumno y proctor postean), solicitar pausa,
+      - ``require_autenticado``: chat (alumno y tutor postean), solicitar pausa,
         poll de pausas de la sesion, reanudar (finalizar) pausa — flujo del alumno.
-      - ``require_proctor_o_admin``: poll de pausas pendientes y aprobar/rechazar.
+      - ``require_supervision_vivo``: poll de pausas pendientes y aprobar/rechazar.
     """
     router = APIRouter()
 
@@ -56,7 +65,7 @@ def create_chat_pausa_router(
         "/sessions/{session_id}/chat",
         status_code=http_status.HTTP_201_CREATED,
         response_model=MensajeChatOut,
-        summary="Enviar mensaje de chat (alumno o proctor)",
+        summary="Enviar mensaje de chat (alumno o tutor)",
         dependencies=[Depends(require_autenticado)],
     )
     async def enviar_mensaje(
@@ -64,10 +73,17 @@ def create_chat_pausa_router(
         body: MensajeChatIn,
         db: Annotated[AsyncSession, Depends(get_db)],
     ) -> MensajeChatOut:
-        """Persiste un mensaje. 404 si la sesion no existe. autor validado por schema."""
-        mensaje = await chat_pausa_service.crear_mensaje(
-            db, session_id=session_id, autor=body.autor, texto=body.texto
-        )
+        """Persiste un mensaje. 404 si la sesion no existe. 403 si el alumno intenta
+        iniciar el hilo (D4: solo responde si el tutor ya escribio). autor validado
+        por schema (alumno | tutor)."""
+        try:
+            mensaje = await chat_pausa_service.crear_mensaje(
+                db, session_id=session_id, autor=body.autor, texto=body.texto
+            )
+        except AlumnoNoPuedeIniciarError as exc:
+            raise HTTPException(
+                status_code=http_status.HTTP_403_FORBIDDEN, detail=str(exc)
+            ) from exc
         if mensaje is None:
             raise HTTPException(
                 status_code=http_status.HTTP_404_NOT_FOUND,
@@ -162,7 +178,7 @@ def create_chat_pausa_router(
                 estado=p.estado,
                 solicitada_en=p.solicitada_en,
                 resuelta_en=p.resuelta_en,
-                proctor_actor=p.proctor_actor,
+                tutor_actor=p.tutor_actor,
                 motivo_rechazo=p.motivo_rechazo,
                 inicio_en=p.inicio_en,
                 fin_en=p.fin_en,
@@ -173,8 +189,8 @@ def create_chat_pausa_router(
     @router.get(
         "/pausas/pendientes",
         response_model=list[PausaPendiente],
-        summary="Listar pausas pendientes de TODAS las sesiones (poll del proctor)",
-        dependencies=[Depends(require_proctor_o_admin)],
+        summary="Listar pausas pendientes de TODAS las sesiones (poll del tutor/coordinador)",
+        dependencies=[Depends(require_supervision_vivo)],
     )
     async def listar_pausas_pendientes(
         db: Annotated[AsyncSession, Depends(get_db)],
@@ -195,23 +211,52 @@ def create_chat_pausa_router(
     @router.patch(
         "/pausas/{pausa_id}",
         response_model=PausaDetalle,
-        summary="Resolver pausa (aprobar | rechazar) — proctor",
-        dependencies=[Depends(require_proctor_o_admin)],
+        summary="Resolver pausa (aprobar | rechazar) — tutor/coordinador/revisor/admin",
     )
     async def resolver_pausa(
         pausa_id: str,
         body: PausaResolverIn,
         db: Annotated[AsyncSession, Depends(get_db)],
+        principal: Annotated[AuthenticatedPrincipal, Depends(require_supervision_vivo)],
     ) -> PausaDetalle:
-        """aprobar abre ventana (inicio_en); rechazar no. 404 si no existe; 409 si no esta 'solicitada'."""
+        """aprobar abre ventana (inicio_en); rechazar no. 404 si no existe; 403 si el
+        tutor no es el docente a cargo de la comision de esa sesion (C-76 bloque 6.3/8,
+        D2); 409 si no esta 'solicitada' o si la sesion ya alcanzo el limite de
+        pausas (C-76 bloque 4, umbral configurable ``pausas_max_por_sesion``,
+        default 2)."""
+        pausa_existente = await chat_pausa_service.obtener_pausa(db, pausa_id)
+        if pausa_existente is None:
+            raise HTTPException(
+                status_code=http_status.HTTP_404_NOT_FOUND,
+                detail=f"Pausa {pausa_id!r} no encontrada",
+            )
+        docente_id = await session_service.docente_id_de_sesion(
+            db, pausa_existente.session_id
+        )
+        try:
+            autorizar_supervision_vivo_sobre_sesion(principal, docente_id)
+        except ForbiddenError as exc:
+            raise HTTPException(
+                status_code=http_status.HTTP_403_FORBIDDEN,
+                detail={"error": "sesion_ajena", "mensaje": str(exc)},
+            ) from exc
+        limite_pausas: int | None = None
+        if body.accion == "aprobar" and config_service is not None:
+            efectiva = await config_service.get_efectiva()
+            limite_pausas = efectiva.pausas_max_por_sesion
         try:
             pausa = await chat_pausa_service.resolver_pausa(
                 db,
                 pausa_id,
                 accion=body.accion,
-                proctor_actor=body.proctor_actor,
+                tutor_actor=body.tutor_actor,
                 motivo_rechazo=body.motivo_rechazo,
+                limite_pausas=limite_pausas,
             )
+        except LimitePausasExcedido as exc:
+            raise HTTPException(
+                status_code=http_status.HTTP_409_CONFLICT, detail=str(exc)
+            ) from exc
         except EstadoInvalido as exc:
             raise HTTPException(
                 status_code=http_status.HTTP_409_CONFLICT, detail=str(exc)
@@ -227,7 +272,7 @@ def create_chat_pausa_router(
             estado=pausa.estado,
             solicitada_en=pausa.solicitada_en,
             resuelta_en=pausa.resuelta_en,
-            proctor_actor=pausa.proctor_actor,
+            tutor_actor=pausa.tutor_actor,
             motivo_rechazo=pausa.motivo_rechazo,
             inicio_en=pausa.inicio_en,
             fin_en=pausa.fin_en,
@@ -261,7 +306,7 @@ def create_chat_pausa_router(
             estado=pausa.estado,
             solicitada_en=pausa.solicitada_en,
             resuelta_en=pausa.resuelta_en,
-            proctor_actor=pausa.proctor_actor,
+            tutor_actor=pausa.tutor_actor,
             motivo_rechazo=pausa.motivo_rechazo,
             inicio_en=pausa.inicio_en,
             fin_en=pausa.fin_en,

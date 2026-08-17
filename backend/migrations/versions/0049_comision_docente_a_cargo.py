@@ -1,10 +1,10 @@
 """0049 - docente a cargo de la comision.
 
 Revision ID: 0049
-Revises: 0048 (branch slim)
+Revises: 0048 (branch activeexam)
 Create Date: 2026-07-29
 
-RAMA: slim
+RAMA: activeexam
 
 PROPOSITO:
   Agrega `comision.docente_id` (FK -> usuario): el docente a cargo de esa comision.

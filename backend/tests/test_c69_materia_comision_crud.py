@@ -147,7 +147,7 @@ async def client_admin(app_admin):
     async with AsyncClient(
         transport=ASGITransport(app=app_admin),
         base_url="http://test",
-        headers=auth_headers(["admin_examenes"], mfa=False),
+        headers=auth_headers(["admin_sistema"], mfa=False),
     ) as c:
         yield c
 
@@ -638,7 +638,7 @@ async def _insertar_inscripto(factory, comision_id: str) -> None:
     async with factory() as s:
         r = await s.execute(
             text(
-                "INSERT INTO usuario (id_institucional, email) VALUES (:i, :e) "
+                "INSERT INTO usuario (username, email) VALUES (:i, :e) "
                 "RETURNING id"
             ),
             {"i": f"leg-{comision_id[:8]}", "e": "a@u.edu"},

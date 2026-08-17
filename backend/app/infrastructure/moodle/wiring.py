@@ -1,6 +1,6 @@
 """Cableado del write-back de Moodle desde la config (C-69/C-73 §7.2).
 
-Extrae la decisión de arranque que vivía inline en ``create_app`` (main_slim):
+Extrae la decisión de arranque que vivía inline en ``create_app`` (main_activeexam):
 si ``MOODLE_BASE_URL`` está vacío el write-back queda DESHABILITADO (factory →
 ``None``) y la finalización degrada de forma segura a ``persistir_nota_pendiente``.
 Aislarlo en un factory puro permite clavar ese contrato con un test sin levantar
@@ -16,7 +16,7 @@ from app.infrastructure.moodle.client import MoodleClientConfig, MoodleRestClien
 
 
 class _MoodleSettings(Protocol):
-    """Campos de settings que lee el cableado (duck-typed sobre SlimSettings)."""
+    """Campos de settings que lee el cableado (duck-typed sobre ActiveExamSettings)."""
 
     moodle_base_url: str
     moodle_ws_token: str

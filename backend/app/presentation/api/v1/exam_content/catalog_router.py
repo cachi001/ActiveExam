@@ -1368,7 +1368,7 @@ def create_exam_content_router(
         return [
             AlumnoElegibilidadResponse(
                 usuario_id=a.usuario_id,
-                id_institucional=a.id_institucional,
+                username=a.username,
                 nombre=a.nombre,
                 apellido=a.apellido,
                 email=a.email,
@@ -1383,7 +1383,7 @@ def create_exam_content_router(
     # -----------------------------------------------------------------------
     # Destino de write-back a Moodle POR EXAMEN (C-69, D12 parte B) — admin-only.
     # Permite fijar/leer moodle_courseid/cmid de un examen ya importado. Valores
-    # AUTORITATIVOS: el write-back los usa; NULL → fallback al global de config_slim.
+    # AUTORITATIVOS: el write-back los usa; NULL → fallback al global de config_activeexam.
     # -----------------------------------------------------------------------
 
     async def _set_target(examen_id: str, courseid: int | None, cmid: int | None):

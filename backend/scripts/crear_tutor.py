@@ -3,7 +3,7 @@
 flujo de primer login + la sincronización del banco desde Moodle.
 
 Qué hace:
-  1. Crea el usuario ``TUT-001`` (tutor@activeexam.local) con rol ``tutor``,
+  1. Crea el usuario ``tutor1`` (tutor@activeexam.local) con rol ``tutor``,
      ``auth_provider='local'`` y ``debe_cambiar_password=True`` → en el primer
      login la web lo obliga a definir su propia contraseña (política Media).
   2. Lo asigna como TUTOR A CARGO de la comisión demo ``PROG1/C1`` (setea
@@ -13,10 +13,10 @@ Qué hace:
 Es IDEMPOTENTE: re-ejecutar no duplica ni pisa una contraseña ya cambiada por el
 usuario (si ``debe_cambiar_password`` ya es False, NO resetea la clave).
 
-USO (modo slim — Postgres estándar / Railway):
+USO (modo activeexam — Postgres estándar / Railway):
     DATABASE_URL=postgresql+asyncpg://... \\
     TUTOR_PASSWORD_TEMPORAL=Temporal123 \\
-    python scripts/crear_tutor.py --slim
+    python scripts/crear_tutor.py --activeexam
 
 Si no se pasa TUTOR_PASSWORD_TEMPORAL, se genera una temporal y se imprime.
 La contraseña temporal solo sirve para el primer login; NO tiene que cumplir la
@@ -35,9 +35,9 @@ from sqlalchemy import select
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-_SLIM_FLAG = "--slim" in sys.argv
+_ACTIVEEXAM_FLAG = "--activeexam" in sys.argv
 
-TUTOR_ID_INSTITUCIONAL = "TUT-001"
+TUTOR_ID_INSTITUCIONAL = "tutor1"
 TUTOR_EMAIL = "tutor@activeexam.local"
 TUTOR_NOMBRE = "Tutor"
 TUTOR_APELLIDO = "Prueba"
@@ -69,18 +69,18 @@ async def _run(factory, auth_provider: str) -> None:
         generada = True
 
     async with factory() as session:
-        # 1. Usuario tutor (idempotente por id_institucional).
+        # 1. Usuario tutor (idempotente por username).
         usuario = (
             await session.execute(
                 select(UsuarioModel).where(
-                    UsuarioModel.id_institucional == TUTOR_ID_INSTITUCIONAL
+                    UsuarioModel.username == TUTOR_ID_INSTITUCIONAL
                 )
             )
         ).scalar_one_or_none()
 
         if usuario is None:
             usuario = UsuarioModel(
-                id_institucional=TUTOR_ID_INSTITUCIONAL,
+                username=TUTOR_ID_INSTITUCIONAL,
                 email=TUTOR_EMAIL,
                 roles=["tutor"],
                 nombre=TUTOR_NOMBRE,
@@ -129,18 +129,18 @@ async def _run(factory, auth_provider: str) -> None:
     print("En el primer login la web te va a pedir definir tu propia contraseña.")
 
 
-async def _slim() -> None:
-    from app.infrastructure.persistence.session_slim import (
-        create_slim_engine,
-        create_slim_session_factory,
+async def _activeexam() -> None:
+    from app.infrastructure.persistence.session_activeexam import (
+        create_activeexam_engine,
+        create_activeexam_session_factory,
     )
 
     database_url = os.environ.get("DATABASE_URL")
     if not database_url:
         print("ERROR: falta DATABASE_URL.", file=sys.stderr)
         sys.exit(1)
-    engine = create_slim_engine(_normalizar_url(database_url))
-    factory = create_slim_session_factory(engine)
+    engine = create_activeexam_engine(_normalizar_url(database_url))
+    factory = create_activeexam_session_factory(engine)
     await _run(factory, auth_provider="jwt")
     await engine.dispose()
 
@@ -160,9 +160,9 @@ async def _full() -> None:
 
 
 if __name__ == "__main__":
-    if _SLIM_FLAG:
-        print("[crear_tutor] Modo: slim (DATABASE_URL directo)")
-        asyncio.run(_slim())
+    if _ACTIVEEXAM_FLAG:
+        print("[crear_tutor] Modo: activeexam (DATABASE_URL directo)")
+        asyncio.run(_activeexam())
     else:
         print("[crear_tutor] Modo: full (app.config.Settings)")
         asyncio.run(_full())

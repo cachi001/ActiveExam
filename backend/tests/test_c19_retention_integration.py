@@ -1,4 +1,4 @@
-"""Tests de integracion del motor de retencion contra slim DB real (c-19).
+"""Tests de integracion del motor de retencion contra activeexam DB real (c-19).
 
 Requiere stack levantado con RUN_STACK_TESTS=1. Cubre:
   - SqlSessionAgingRepository encuentra sesiones por edad
@@ -9,8 +9,8 @@ Requiere stack levantado con RUN_STACK_TESTS=1. Cubre:
   - RetentionEngine.apply_session_retention orquesta todo
   - RetentionEngine.apply_embedding_egress orquesta egreso
 
-Estos tests son aditivos: crean filas con id_institucional unicos y las
-limpian al final. No tocan los usuarios seed (ADMIN-001/EST-001/PROC-001).
+Estos tests son aditivos: crean filas con username unicos y las
+limpian al final. No tocan los usuarios seed (admin/estudiante1/coordinador1).
 """
 
 from __future__ import annotations
@@ -43,9 +43,9 @@ from app.infrastructure.persistence.repositories.retention import (
     SqlSessionDeleter,
     SqlUserEgressRepository,
 )
-from app.infrastructure.persistence.session_slim import (
-    create_slim_engine,
-    create_slim_session_factory,
+from app.infrastructure.persistence.session_activeexam import (
+    create_activeexam_engine,
+    create_activeexam_session_factory,
 )
 from app.infrastructure.retention.null_hold_verifier import NullHoldVerifier
 
@@ -55,13 +55,13 @@ from app.infrastructure.retention.null_hold_verifier import NullHoldVerifier
 # ---------------------------------------------------------------------------
 
 
-def _slim_factory() -> async_sessionmaker[AsyncSession]:
+def _activeexam_factory() -> async_sessionmaker[AsyncSession]:
     db_url = os.environ.get(
         "DATABASE_URL",
         "postgresql+asyncpg://proctoring:dev-only-change-me@postgres:5432/proctoring",
     )
-    engine = create_slim_engine(db_url)
-    return create_slim_session_factory(engine)
+    engine = create_activeexam_engine(db_url)
+    return create_activeexam_session_factory(engine)
 
 
 def _suffix() -> str:
@@ -113,7 +113,7 @@ async def _crear_usuario_egresado_con_biometria(
     suf = _suffix()
     async with factory() as s:
         u = UsuarioModel(
-            id_institucional=f"c19-egress-{suf}",
+            username=f"c19-egress-{suf}",
             email=f"c19-egress-{suf}@test.local",
             roles=["estudiante"],
             password_hash=None,
@@ -123,7 +123,7 @@ async def _crear_usuario_egresado_con_biometria(
         s.add(u)
         await s.flush()
         # foto_referencia: usar SQL raw porque el ORM model es para FULL
-        # (con uri_storage/bucket) pero slim usa foto_bytes (BYTEA).
+        # (con uri_storage/bucket) pero activeexam usa foto_bytes (BYTEA).
         # Misma estrategia que DbPhotoStorageService.
         await s.execute(
             text(
@@ -208,7 +208,7 @@ def _build_engine(session: AsyncSession) -> RetentionEngine:
 @pytest.mark.asyncio
 async def test_aging_repo_encuentra_sesion_vieja() -> None:
     """La sesion creada hace 200 dias debe aparecer con cutoff a 180."""
-    factory = _slim_factory()
+    factory = _activeexam_factory()
     sesion_id, _ = await _crear_sesion_aged(factory, creada_hace_dias=200)
     try:
         async with factory() as s:
@@ -224,7 +224,7 @@ async def test_aging_repo_encuentra_sesion_vieja() -> None:
 @pytest.mark.asyncio
 async def test_session_deleter_cascade_a_eventos() -> None:
     """Borrar la sesion borra los 2 eventos hijos (FK CASCADE)."""
-    factory = _slim_factory()
+    factory = _activeexam_factory()
     sesion_id, count = await _crear_sesion_aged(factory, creada_hace_dias=5)
     try:
         async with factory() as s:
@@ -261,7 +261,7 @@ async def test_session_deleter_cascade_a_eventos() -> None:
 @pytest.mark.asyncio
 async def test_engine_session_retention_borra_aged_y_audita() -> None:
     """Sesion vieja + null verifier -> se borra. Audit log tiene la entrada."""
-    factory = _slim_factory()
+    factory = _activeexam_factory()
     sesion_id, _ = await _crear_sesion_aged(factory, creada_hace_dias=200)
     audit_before = await _contar_audit(factory, "retention.session.deleted")
     try:
@@ -297,7 +297,7 @@ async def test_engine_session_retention_borra_aged_y_audita() -> None:
 @pytest.mark.asyncio
 async def test_engine_no_borra_sesion_reciente() -> None:
     """Sesion de hace 5 dias NO se borra con politica 180d."""
-    factory = _slim_factory()
+    factory = _activeexam_factory()
     sesion_id, _ = await _crear_sesion_aged(factory, creada_hace_dias=5)
     try:
         async with factory() as s:
@@ -322,7 +322,7 @@ async def test_engine_no_borra_sesion_reciente() -> None:
 @pytest.mark.requires_stack
 @pytest.mark.asyncio
 async def test_egress_repo_encuentra_usuario_egresado_con_biometria() -> None:
-    factory = _slim_factory()
+    factory = _activeexam_factory()
     usuario_id = await _crear_usuario_egresado_con_biometria(factory)
     try:
         async with factory() as s:
@@ -335,7 +335,7 @@ async def test_egress_repo_encuentra_usuario_egresado_con_biometria() -> None:
 @pytest.mark.requires_stack
 @pytest.mark.asyncio
 async def test_engine_biometric_egress_borra_embedding_y_foto() -> None:
-    factory = _slim_factory()
+    factory = _activeexam_factory()
     usuario_id = await _crear_usuario_egresado_con_biometria(factory)
     audit_before = await _contar_audit(factory, "retention.biometric.egress")
     try:

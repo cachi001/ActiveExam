@@ -1,4 +1,4 @@
-"""Calculo de score de riesgo para sesiones de proctoring slim.
+"""Calculo de score de riesgo para sesiones de proctoring activeexam.
 
 Motor SIMPLE: suma directa de pesos por tipo de evento. Lo usa el endpoint del
 detalle de sesion (vista del proctor) — devuelve el score on-the-fly sin

@@ -3,7 +3,7 @@
 POR QUE EXISTE ESTE ARCHIVO
 ---------------------------
 ``audit_log`` es dominio CRITICO (append-only, tamper-evident). Su definicion real
-vive en la migracion slim 0012 (+ columnas modulo/entidad/entidad_id/tipo_accion
+vive en la migracion activeexam 0012 (+ columnas modulo/entidad/entidad_id/tipo_accion
 agregadas en 0044, C-73) e incluye DOS objetos que el modelo ORM NO describe:
 
   1. ``audit_log_encadenar()`` + trigger BEFORE INSERT: encadena ``hash_prev`` con

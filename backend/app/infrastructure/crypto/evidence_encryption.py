@@ -7,7 +7,7 @@ HMAC-SHA256) antes de persistir, y lo descifra solo en el camino de lectura del
 expediente (server-side, en memoria).
 
 Reusa la MISMA clave maestra que el embedding (``EMBEDDING_ENCRYPTION_KEY``): es la
-clave de "dato sensible at-rest" del despliegue slim. Inyectada desde env var / Vault;
+clave de "dato sensible at-rest" del despliegue activeexam. Inyectada desde env var / Vault;
 NUNCA hardcodeada. Ver [[embedding_encryption]] para el patrón espejo.
 
 FALLBACK LEGACY: los eventos escritos ANTES de este cambio están en claro. ``decrypt``
@@ -29,7 +29,7 @@ class EvidenceCipher:
     """Cifra/descifra strings de evidencia (screenshot base64) con Fernet.
 
     Args:
-        key: clave Fernet (32 bytes base64-urlsafe). En el slim se pasa la misma
+        key: clave Fernet (32 bytes base64-urlsafe). En el activeexam se pasa la misma
             ``settings.embedding_encryption_key``.
     """
 

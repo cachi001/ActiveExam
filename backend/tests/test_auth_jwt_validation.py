@@ -47,7 +47,7 @@ def _claims(**over) -> dict:
 def test_token_valido_aceptado() -> None:
     token = encode_hs256(_claims(), _SECRET)
     principal = _validator().validar(token)
-    assert principal.id_institucional == "alu123"
+    assert principal.username == "alu123"
     assert Rol.COORDINADOR in principal.roles
     assert principal.mfa_satisfecho is True
 

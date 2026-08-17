@@ -66,9 +66,9 @@ class UsuarioModel(Base):
     """Usuario provisionado JIT desde el IdP (`04` Usuario).
 
     Campos de auth local (C-55):
-    - ``password_hash``: hash bcrypt 12r (passlib). NULL = usuario federado Keycloak;
+    - ``password_hash``: hash bcrypt 12r (passlib). NULL = usuario federado (LTI);
       NOT NULL = usuario con credencial local. Ver migracion 0006 (paso 1).
-    - ``auth_provider``: 'keycloak' (default) o 'local'. Determina el flujo de login.
+    - ``auth_provider``: 'jwt' (default) o 'local'. Determina el flujo de login.
 
     Campos de datos personales (C-61):
     - ``nombre``, ``apellido``: nullable para compatibilidad con usuarios pre-existentes
@@ -83,14 +83,14 @@ class UsuarioModel(Base):
     id: Mapped[str] = mapped_column(
         UUID(as_uuid=False), primary_key=True, server_default=func.gen_random_uuid()
     )
-    id_institucional: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
-    email: Mapped[str] = mapped_column(String(320), nullable=False)
+    username: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    email: Mapped[str] = mapped_column(String(320), nullable=False, unique=True)
     roles: Mapped[list[str]] = mapped_column(JSONB, nullable=False, server_default="[]")
     attrs_federados: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
-    # C-55: credencial local (nullable — usuarios Keycloak no tienen password local).
+    # C-55: credencial local (nullable — usuarios federados no tienen password local).
     password_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
     auth_provider: Mapped[str] = mapped_column(
-        String(32), nullable=False, server_default="keycloak"
+        String(32), nullable=False, server_default="jwt"
     )
     # 0059: clave temporal. TRUE = el usuario debe cambiar su contraseña en el
     # próximo login (creado por admin con clave temporal). Se limpia al cambiarla.
@@ -380,7 +380,7 @@ class ConfiguracionSistemaModel(Base):
     Es la fuente de verdad autoritativa server-side (RN-GLB-01, cliente = sensor no
     confiable). ``version`` es un entero monotonico que actua como ETag: cada edicion
     exitosa lo incrementa para que los clientes detecten config rancia. La tabla
-    existe IGUAL en full y en slim (mismo schema), por eso vive aqui (Base compartida).
+    existe IGUAL en full y en activeexam (mismo schema), por eso vive aqui (Base compartida).
 
     L2.5: estos valores alimentan la PRIORIZACION de la cola de revision; nunca una
     sancion automatica.
@@ -408,7 +408,7 @@ class ConfiguracionSistemaModel(Base):
     umbral_cola_revision: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default="70"
     )
-    # Detectores activos (lista de TipoEvento) — JSONB para portabilidad slim/full.
+    # Detectores activos (lista de TipoEvento) — JSONB para portabilidad activeexam/full.
     # Default: TODOS los detectores activos (el admin desactiva los que no quiera).
     detectores_activos: Mapped[list[str]] = mapped_column(
         JSONB,
@@ -440,6 +440,11 @@ class ConfiguracionSistemaModel(Base):
     pausa_max_min: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default="10"
     )
+    # Cantidad máxima de pausas (aprobada+finalizada) por sesión (C-76 bloque 4).
+    # Se consume al APROBAR, no al solicitar: el alumno siempre puede pedir.
+    pausas_max_por_sesion: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="2"
+    )
     # Version monotonica (ETag). Cada edicion exitosa la incrementa.
     version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
     updated_at: Mapped[str] = mapped_column(
@@ -459,7 +464,7 @@ class ConsentimientoPerfilModel(Base):
     - ``hash_registro``: SHA-256 de ``usuario_id|version_texto|timestamp|estado`` para
       integridad del registro.
 
-    La tabla existe IGUAL en full y slim. Eliminacion al egreso atada al motor de
+    La tabla existe IGUAL en full y activeexam. Eliminacion al egreso atada al motor de
     retencion/DSR (difiere ante holds).
     """
 

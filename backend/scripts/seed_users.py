@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Seed de usuarios de prueba con credencial local (C-55 / c-57).
 
-Crea 6 usuarios demo: 4 estudiantes (EST-001..004) + 1 proctor + 1 admin_sistema,
+Crea 6 usuarios demo: 4 estudiantes (estudiante1..4) + 1 coordinador + 1 admin_sistema,
 con passwords hasheados (bcrypt 12r). Es IDEMPOTENTE: verifica la existencia
 antes de insertar (no duplica si ya existen). Los 4 estudiantes pueblan la cola
 de revisión con sesiones distinguibles.
@@ -9,8 +9,8 @@ de revisión con sesiones distinguibles.
 MODOS:
   - Modo full (default): usa ``app.config.Settings`` (requiere todas las vars
     del stack completo: Keycloak, MinIO, OTEL, etc.).
-  - Modo slim (``--slim``): usa ``DATABASE_URL`` del entorno directamente con
-    ``SlimSettings`` (solo requiere DATABASE_URL). Compatible con Railway.
+  - Modo activeexam (``--activeexam``): usa ``DATABASE_URL`` del entorno directamente con
+    ``ActiveExamSettings`` (solo requiere DATABASE_URL). Compatible con Railway.
 
 SEGURIDAD:
 - Falla con error EXPLICITO si ``ENVIRONMENT=production`` (no seed en prod).
@@ -18,12 +18,12 @@ SEGURIDAD:
   hardcodeados en el codigo.
 - El script NO crea usuarios en produccion — es exclusivamente para local/staging.
 
-USO (modo slim — Railway / Postgres estandar):
+USO (modo activeexam — Railway / Postgres estandar):
     DATABASE_URL=postgresql+asyncpg://... \\
     SEED_ESTUDIANTE_PASSWORD=... \\
     SEED_PROCTOR_PASSWORD=... \\
     SEED_ADMIN_PASSWORD=... \\
-    python scripts/seed_users.py --slim
+    python scripts/seed_users.py --activeexam
 
 USO (modo full — stack completo):
     DATABASE_URL=postgresql+asyncpg://... \\
@@ -31,14 +31,14 @@ USO (modo full — stack completo):
     ... (todas las vars del stack completo) \\
     python scripts/seed_users.py
 
-CREDENCIALES SEED (para probar el login — identificadores estilo produccion):
-    Estudiante:   id_institucional=EST-001   | email=estudiante@activeexam.local (Estudiante Prueba1)
-    Estudiante 2: id_institucional=EST-002   | email=estudiante2@activeexam.local (Estudiante Prueba2)
-    Estudiante 3: id_institucional=EST-003   | email=estudiante3@activeexam.local (Estudiante Prueba3)
-    Estudiante 4: id_institucional=EST-004   | email=estudiante4@activeexam.local (Estudiante Prueba4)
-    Coordinador:  id_institucional=PROC-001  | email=proctor@activeexam.local (rol coordinador; ex-proctor, c-76)
-    Admin:        id_institucional=ADMIN-001 | email=admin@activeexam.local
-    Tutor:        id_institucional=TUT-001   | email=tutor@activeexam.local (docente de PROG1/C1)
+CREDENCIALES SEED (para probar el login — usernames simples, no codigos tipo legajo):
+    Estudiante:   username=estudiante1   | email=estudiante@activeexam.local (Estudiante Prueba1)
+    Estudiante 2: username=estudiante2   | email=estudiante2@activeexam.local (Estudiante Prueba2)
+    Estudiante 3: username=estudiante3   | email=estudiante3@activeexam.local (Estudiante Prueba3)
+    Estudiante 4: username=estudiante4   | email=estudiante4@activeexam.local (Estudiante Prueba4)
+    Coordinador:  username=coordinador1  | email=proctor@activeexam.local (rol coordinador; ex-proctor, c-76)
+    Admin:        username=admin         | email=admin@activeexam.local
+    Tutor:        username=tutor1        | email=tutor@activeexam.local (docente de PROG1/C1)
 
     Los 4 estudiantes comparten SEED_ESTUDIANTE_PASSWORD. El tutor usa
     SEED_TUTOR_PASSWORD y queda asignado como docente de la Comisión C1 de PROG1.
@@ -55,17 +55,17 @@ from sqlalchemy import func, select
 # Asegurarse de que el script puede importar app (corre desde backend/).
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-_SLIM_FLAG = "--slim" in sys.argv
+_ACTIVEEXAM_FLAG = "--activeexam" in sys.argv
 
 
-async def _seed_slim() -> None:
-    """Seed en modo slim: usa DATABASE_URL directamente sin cargar Settings del full."""
-    from app.config_slim import SlimSettings
+async def _seed_activeexam() -> None:
+    """Seed en modo activeexam: usa DATABASE_URL directamente sin cargar Settings del full."""
+    from app.config_activeexam import ActiveExamSettings
     from app.infrastructure.auth.hashing import hashear_password
     from app.infrastructure.persistence.models.transactional import UsuarioModel
-    from app.infrastructure.persistence.session_slim import (
-        create_slim_engine,
-        create_slim_session_factory,
+    from app.infrastructure.persistence.session_activeexam import (
+        create_activeexam_engine,
+        create_activeexam_session_factory,
     )
 
     database_url = os.environ.get("DATABASE_URL")
@@ -76,19 +76,19 @@ async def _seed_slim() -> None:
         )
         sys.exit(1)
 
-    # SlimSettings requiere jwt_own_secret y embedding_encryption_key; en seed
+    # ActiveExamSettings requiere jwt_own_secret y embedding_encryption_key; en seed
     # solo usamos DATABASE_URL, por lo que pasamos placeholders para las otras.
-    # Usamos directamente la URL del entorno para construir el engine slim.
+    # Usamos directamente la URL del entorno para construir el engine activeexam.
     # Normalizar el esquema para asyncpg.
     if database_url.startswith("postgres://"):
         database_url = "postgresql://" + database_url[len("postgres://"):]
     if database_url.startswith("postgresql://"):
         database_url = "postgresql+asyncpg://" + database_url[len("postgresql://"):]
 
-    print(f"[slim] Conectando a: {database_url[:30]}...", file=sys.stderr)
+    print(f"[activeexam] Conectando a: {database_url[:30]}...", file=sys.stderr)
 
-    engine = create_slim_engine(database_url)
-    factory = create_slim_session_factory(engine)
+    engine = create_activeexam_engine(database_url)
+    factory = create_activeexam_session_factory(engine)
 
     await _ejecutar_seed(factory, auth_provider="jwt")
 
@@ -141,7 +141,7 @@ async def _ejecutar_seed(
 
     usuarios_seed = [
         {
-            "id_institucional": "EST-001",
+            "username": "estudiante1",
             "email": "estudiante@activeexam.local",
             "password": pw_estudiante,
             "roles": ["estudiante"],
@@ -149,7 +149,7 @@ async def _ejecutar_seed(
             "apellido": "Prueba1",
         },
         {
-            "id_institucional": "EST-002",
+            "username": "estudiante2",
             "email": "estudiante2@activeexam.local",
             "password": pw_estudiante,
             "roles": ["estudiante"],
@@ -157,7 +157,7 @@ async def _ejecutar_seed(
             "apellido": "Prueba2",
         },
         {
-            "id_institucional": "EST-003",
+            "username": "estudiante3",
             "email": "estudiante3@activeexam.local",
             "password": pw_estudiante,
             "roles": ["estudiante"],
@@ -165,7 +165,7 @@ async def _ejecutar_seed(
             "apellido": "Prueba3",
         },
         {
-            "id_institucional": "EST-004",
+            "username": "estudiante4",
             "email": "estudiante4@activeexam.local",
             "password": pw_estudiante,
             "roles": ["estudiante"],
@@ -175,10 +175,11 @@ async def _ejecutar_seed(
         {
             # c-76: el rol "proctor" fue eliminado; el COORDINADOR absorbe la
             # supervision global + veredicto. El usuario de seed pasa a coordinador.
-            # Se conserva id/email PROC-001 para idempotencia (no re-crea si ya existe;
-            # la migracion 0068 ya remapeo su rol en DB), pero el rol sembrado es
-            # "coordinador". No hay otro coordinador de seed, asi que no se duplica.
-            "id_institucional": "PROC-001",
+            # Se conserva el email proctor@activeexam.local para idempotencia (no
+            # re-crea si ya existe; la migracion 0068 ya remapeo su rol en DB),
+            # pero el rol sembrado es "coordinador". No hay otro coordinador de
+            # seed, asi que no se duplica.
+            "username": "coordinador1",
             "email": "proctor@activeexam.local",
             "password": pw_proctor,
             "roles": ["coordinador"],
@@ -186,7 +187,7 @@ async def _ejecutar_seed(
             "apellido": "Prueba",
         },
         {
-            "id_institucional": "ADMIN-001",
+            "username": "admin",
             "email": "admin@activeexam.local",
             "password": pw_admin,
             "roles": ["admin_sistema"],
@@ -196,7 +197,7 @@ async def _ejecutar_seed(
         {
             # Tutor (gestión académica) a cargo de la Comisión C1 de PROG1.
             # Queda asignado como docente_id de la comisión en _seed_docente_comision().
-            "id_institucional": "TUT-001",
+            "username": "tutor1",
             "email": "tutor@activeexam.local",
             "password": pw_tutor,
             "roles": ["tutor"],
@@ -214,7 +215,7 @@ async def _ejecutar_seed(
             # Idempotencia: no insertar si ya existe.
             result = await session.execute(
                 select(UsuarioModel).where(
-                    UsuarioModel.id_institucional == datos["id_institucional"]
+                    UsuarioModel.username == datos["username"]
                 )
             )
             existente = result.scalar_one_or_none()
@@ -232,17 +233,17 @@ async def _ejecutar_seed(
                     cambios.append("apellido")
                 if cambios:
                     print(
-                        f"  [update] {datos['id_institucional']} -> "
+                        f"  [update] {datos['username']} -> "
                         f"{datos.get('nombre')} {datos.get('apellido')} ({', '.join(cambios)})"
                     )
                     actualizados += 1
                 else:
-                    print(f"  [skip] Usuario ya existe: {datos['id_institucional']}")
+                    print(f"  [skip] Usuario ya existe: {datos['username']}")
                     existentes += 1
                 continue
 
             usuario = UsuarioModel(
-                id_institucional=datos["id_institucional"],
+                username=datos["username"],
                 email=datos["email"],
                 roles=datos["roles"],
                 password_hash=hashear_password(datos["password"]),  # type: ignore[arg-type]
@@ -252,7 +253,7 @@ async def _ejecutar_seed(
                 apellido=datos.get("apellido"),
             )
             session.add(usuario)
-            print(f"  [create] {datos['id_institucional']} ({', '.join(datos['roles'])})")
+            print(f"  [create] {datos['username']} ({', '.join(datos['roles'])})")
             creados += 1
 
         await session.commit()
@@ -265,7 +266,7 @@ async def _ejecutar_seed(
     # Contenido académico demo: materia + comisión + examen (idempotente).
     await _seed_contenido(factory)
 
-    # Asignar el tutor seed (TUT-001) como docente a cargo de la Comisión C1
+    # Asignar el tutor seed (tutor1) como docente a cargo de la Comisión C1
     # de PROG1 (idempotente). Sin esto, la comisión queda con docente_id NULL.
     await _seed_docente_comision(factory)
 
@@ -275,7 +276,7 @@ async def _ejecutar_seed(
 
 
 async def _seed_docente_comision(factory) -> None:
-    """Asigna TUT-001 como docente a cargo de la Comisión C1 de PROG1 (idempotente).
+    """Asigna tutor1 como docente a cargo de la Comisión C1 de PROG1 (idempotente).
 
     El tutor es el eslabón que vuelve derivable quién devuelve la nota
     (examen.comision_id → comision.docente_id) y contra qué se valida "lo suyo"
@@ -289,12 +290,12 @@ async def _seed_docente_comision(factory) -> None:
 
     MATERIA_CODIGO = "PROG1"
     COMISION_CODIGO = "C1"
-    TUTOR_ID = "TUT-001"
+    TUTOR_ID = "tutor1"
 
     async with factory() as session:
         tutor = (
             await session.execute(
-                select(UsuarioModel).where(UsuarioModel.id_institucional == TUTOR_ID)
+                select(UsuarioModel).where(UsuarioModel.username == TUTOR_ID)
             )
         ).scalar_one_or_none()
         if tutor is None:
@@ -325,12 +326,13 @@ async def _seed_docente_comision(factory) -> None:
 
 
 async def _seed_matriculaciones(factory) -> None:
-    """Matricula SOLO a EST-001 en la Comisión C1 (idempotente).
+    """Matricula SOLO a estudiante1 en la Comisión C1 (idempotente).
 
     Con el gate de inscripción (C-71) el alumno solo ve/rinde exámenes de las
-    comisiones donde está inscripto. EST-001 queda inscripto para poder rendir el
-    "Examen de Programación 1" (demo del gate). EST-002..004 quedan LIBRES a
-    propósito, para demostrar el flujo de inscripción desde el panel del docente.
+    comisiones donde está inscripto. estudiante1 queda inscripto para poder
+    rendir el "Examen de Programación 1" (demo del gate). estudiante2..4 quedan
+    LIBRES a propósito, para demostrar el flujo de inscripción desde el panel
+    del docente.
     """
     from app.infrastructure.persistence.models.exam_content import (
         ComisionModel,
@@ -341,12 +343,12 @@ async def _seed_matriculaciones(factory) -> None:
 
     MATERIA_CODIGO = "PROG1"
     COMISION_CODIGO = "C1"
-    # Solo EST-001 queda inscripto: así hay UN alumno que puede rendir (demo del gate
-    # de inscripción, C-71). EST-002..004 quedan LIBRES a propósito, para poder
-    # demostrar el flujo de inscripción desde el panel del docente (si estuvieran los
-    # 4 inscriptos, el picker los mostraría todos como "Ya inscripto" y no habría a
-    # quién inscribir).
-    ESTUDIANTES = ["EST-001"]
+    # Solo estudiante1 queda inscripto: así hay UN alumno que puede rendir (demo del
+    # gate de inscripción, C-71). estudiante2..4 quedan LIBRES a propósito, para
+    # poder demostrar el flujo de inscripción desde el panel del docente (si
+    # estuvieran los 4 inscriptos, el picker los mostraría todos como "Ya
+    # inscripto" y no habría a quién inscribir).
+    ESTUDIANTES = ["estudiante1"]
 
     async with factory() as session:
         # Comisión C1 de PROG1 (creada por _seed_contenido).
@@ -368,7 +370,7 @@ async def _seed_matriculaciones(factory) -> None:
         for idn in ESTUDIANTES:
             usuario = (
                 await session.execute(
-                    select(UsuarioModel).where(UsuarioModel.id_institucional == idn)
+                    select(UsuarioModel).where(UsuarioModel.username == idn)
                 )
             ).scalar_one_or_none()
             if usuario is None:
@@ -563,9 +565,9 @@ async def _seed_contenido(factory) -> None:
 
 
 if __name__ == "__main__":
-    if _SLIM_FLAG:
-        print("[seed] Modo: slim (DATABASE_URL directo, sin Settings del full)")
-        asyncio.run(_seed_slim())
+    if _ACTIVEEXAM_FLAG:
+        print("[seed] Modo: activeexam (DATABASE_URL directo, sin Settings del full)")
+        asyncio.run(_seed_activeexam())
     else:
         print("[seed] Modo: full (app.config.Settings)")
         asyncio.run(_seed_full())

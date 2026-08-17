@@ -96,7 +96,7 @@ def _base_stmt(examen_id: str):
         # nombre sería peor que mostrar el legajo.
         .outerjoin(
             UsuarioModel,
-            UsuarioModel.id_institucional == MoodleWritebackEstadoModel.alumno_idnumber,
+            UsuarioModel.username == MoodleWritebackEstadoModel.alumno_idnumber,
         )
         .where(
             ProctoringSessionModel.examen_contenido_id == examen_id,

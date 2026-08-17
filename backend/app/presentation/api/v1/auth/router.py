@@ -14,20 +14,18 @@ Pydantic con ``extra='forbid'`` (regla dura de codigo).
 
 from __future__ import annotations
 
-import os
 import re
 
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import or_, select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, MultipleResultsFound
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.domain.auth.identity import AuthenticatedPrincipal
 from app.domain.auth.password_policy import PasswordDebilError, validar_password_fuerte
-from app.domain.auth.roles import Rol
 from app.infrastructure.auth.db_refresh_store import DbRefreshTokenStore
 from app.infrastructure.auth.hashing import hashear_password, verificar_password
 from app.infrastructure.auth.own_issuer import emitir_jwt_propio
@@ -49,7 +47,7 @@ _MSG_LOGIN_INVALIDO = "Credenciales inválidas."
 class LoginRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    username: str  # email o id_institucional
+    username: str
     password: str
 
 
@@ -78,7 +76,7 @@ class RefreshResponse(BaseModel):
 class PrincipalResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    id_institucional: str
+    username: str
     email: str
     roles: list[str]
     mfa_satisfecho: bool
@@ -126,7 +124,7 @@ async def login(
 ) -> LoginResponse:
     """Login con credenciales propias (usuario + password) — C-55.
 
-    Busca el usuario por email O id_institucional. Verifica bcrypt.
+    Busca el usuario por email O username. Verifica bcrypt.
     Emite JWT propio (HS256) + refresh persistente.
 
     Responde 401 con mensaje GENERICO en todos los casos de fallo:
@@ -151,18 +149,25 @@ async def login(
         )
 
     async with session_factory() as session:
-        # Buscar por email O id_institucional (ambos son formas validas de login).
+        # Buscar por email O username (ambos son formas validas de login).
         # C-61 D3: filtrar eliminado_en IS NULL — usuarios dados de baja no pueden loguear.
         result = await session.execute(
             select(UsuarioModel).where(
                 or_(
                     UsuarioModel.email == body.username,
-                    UsuarioModel.id_institucional == body.username,
+                    UsuarioModel.username == body.username,
                 ),
                 UsuarioModel.eliminado_en.is_(None),
             )
         )
-        usuario = result.scalar_one_or_none()
+        try:
+            usuario = result.scalar_one_or_none()
+        except MultipleResultsFound:
+            # Defensivo: con `email` y `username` UNIQUE (c-76-4) esto no
+            # debería ser alcanzable, pero si algún dato viejo/importado lo
+            # viola, fallar con el MISMO 401 genérico en vez de un 500 que
+            # confirmaría la colisión al atacante.
+            usuario = None
 
         # Verificar: usuario debe existir, tener password_hash y credencial local.
         # Mensaje GENERICO: no revela si el usuario existe, si fue dado de baja,
@@ -329,7 +334,7 @@ async def me(
             pass
 
     return PrincipalResponse(
-        id_institucional=principal.id_institucional,
+        username=principal.username,
         email=principal.email,
         roles=[r.value for r in principal.roles],
         mfa_satisfecho=principal.mfa_satisfecho,
@@ -347,139 +352,18 @@ async def me(
 # POST /auth/register (PUBLICA — C-61, D4)
 # ---------------------------------------------------------------------------
 
-# Patron basico de email valido (el validador de Pydantic EmailStr hace la
-# validacion profunda; este patron es una guarda extra para tests).
-_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
-
-# Dominio institucional aceptado (vacio = acepta cualquier dominio valido).
-# Configurable via env INSTITUTION_EMAIL_DOMAIN (ej: "frm.utn.edu.ar").
-# El dueno confirmo que el registro es ABIERTO a cualquier email valido (S1).
-_INSTITUTION_DOMAIN = os.environ.get("INSTITUTION_EMAIL_DOMAIN", "").strip().lower()
-
-
-class RegistroRequest(BaseModel):
-    """Schema de auto-registro publico (C-61, D4).
-
-    SEGURIDAD: ``extra='forbid'`` impide que el body incluya ``roles``.
-    El rol se fuerza a ``["estudiante"]`` server-side; ningun estudiante puede
-    auto-elevarse a admin o proctor enviando un campo extra.
-    """
-
-    model_config = ConfigDict(extra="forbid")
-
-    nombre: str
-    apellido: str
-    id_institucional: str
-    email: str
-    password: str
-    password_confirmacion: str
-
-    @field_validator("email")
-    @classmethod
-    def email_valido(cls, v: str) -> str:
-        v = v.strip().lower()
-        if not _EMAIL_RE.match(v):
-            raise ValueError("El email no tiene un formato valido.")
-        # Validacion de dominio institucional (solo si INSTITUTION_EMAIL_DOMAIN esta configurado).
-        if _INSTITUTION_DOMAIN:
-            dominio = v.split("@", 1)[1]
-            if dominio != _INSTITUTION_DOMAIN:
-                raise ValueError(
-                    f"El email debe pertenecer al dominio institucional {_INSTITUTION_DOMAIN}."
-                )
-        return v
-
-    @field_validator("password")
-    @classmethod
-    def password_fuerte(cls, v: str) -> str:
-        # Política Media: 8+ con mayúscula, minúscula y dígito (RN-AU).
-        try:
-            validar_password_fuerte(v)
-        except PasswordDebilError as exc:
-            raise ValueError(str(exc)) from exc
-        return v
-
-    @model_validator(mode="after")
-    def passwords_coinciden(self) -> "RegistroRequest":
-        if self.password != self.password_confirmacion:
-            raise ValueError("El password y la confirmacion no coinciden.")
-        return self
-
-
-class RegistroResponse(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    id: str
-    id_institucional: str
-    email: str
-    nombre: str
-    apellido: str
-    roles: list[str]
-
-
-@router.post("/register", response_model=RegistroResponse, status_code=status.HTTP_201_CREATED)
-async def registrar(
-    body: RegistroRequest,
-    request: Request,
-) -> RegistroResponse:
-    """Auto-registro PUBLICO de estudiantes (C-61, D4).
-
-    - Rol forzado a ``["estudiante"]`` server-side (el body no acepta roles).
-    - auth_provider = "local".
-    - bcrypt 12r para el password.
-    - 409 si email o id_institucional ya existen.
-    - 201 sin token: el frontend redirige al login (S3 confirmado).
-
-    El password NUNCA se loguea ni se persiste en claro.
-    """
-    session_factory = getattr(request.app.state, "session_factory", None)
-    if session_factory is None:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Base de datos no disponible.",
-        )
-
-    # El password_hash se calcula; el password en claro se descarta inmediatamente.
-    password_hash = hashear_password(body.password)
-
-    usuario = UsuarioModel(
-        id_institucional=body.id_institucional,
-        email=body.email,
-        nombre=body.nombre,
-        apellido=body.apellido,
-        # Rol FORZADO server-side — defensa en profundidad contra auto-elevacion.
-        roles=[Rol.ESTUDIANTE.value],
-        auth_provider="local",
-        password_hash=password_hash,
-        attrs_federados={},
-    )
-
-    async with session_factory() as session:
-        session.add(usuario)
-        try:
-            await session.commit()
-            await session.refresh(usuario)
-        except IntegrityError as exc:
-            await session.rollback()
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Ya existe un usuario con ese email o id_institucional.",
-            ) from exc
-
-    # 201 sin token — el frontend redirige al login (D4, S3).
-    return RegistroResponse(
-        id=str(usuario.id),
-        id_institucional=usuario.id_institucional,
-        email=usuario.email,
-        nombre=usuario.nombre or "",
-        apellido=usuario.apellido or "",
-        roles=usuario.roles,
-    )
+# Auto-registro público de estudiantes (RegistroRequest/RegistroResponse,
+# POST /auth/register) fue ELIMINADO (c-76-4): toda alta de usuario pasa a
+# ser interna (admin panel via POST /users/, o LTI JIT provisioning). Ver
+# tasks.md — decisión del dueño de sacar la superficie pública de auto-alta.
 
 
 # ---------------------------------------------------------------------------
 # PUT /auth/change-password — cambio de contraseña propio (cualquier usuario local)
 # ---------------------------------------------------------------------------
+
+
+_USERNAME_RE = re.compile(r"^[a-zA-Z0-9_.-]+$")
 
 
 class CambiarContrasenaRequest(BaseModel):
@@ -490,6 +374,12 @@ class CambiarContrasenaRequest(BaseModel):
     # obligatoria y se verifica.
     contrasena_actual: str | None = None
     contrasena_nueva: str = Field(min_length=8, max_length=512)
+    # Opcional, SOLO válido en el primer set (debe_cambiar_password=True): el
+    # usuario (LTI o alta manual) elige su propio username legible en vez de
+    # quedarse con el autogenerado (lti:{deployment}:{sub} o el prefijo+random
+    # del alta manual). Reglas de formato inspiradas en el patrón validado del
+    # sistema de referencia (Active-IA): alfanumérico + . _ -, 3-50 caracteres.
+    nuevo_username: str | None = Field(default=None, min_length=3, max_length=50)
 
     @field_validator("contrasena_nueva")
     @classmethod
@@ -499,6 +389,18 @@ class CambiarContrasenaRequest(BaseModel):
             validar_password_fuerte(v)
         except PasswordDebilError as exc:
             raise ValueError(str(exc)) from exc
+        return v
+
+    @field_validator("nuevo_username")
+    @classmethod
+    def username_formato_valido(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        v = v.strip().lower()
+        if not _USERNAME_RE.match(v):
+            raise ValueError(
+                "El username solo puede tener letras, números, puntos, guiones y guiones bajos."
+            )
         return v
 
 
@@ -523,6 +425,12 @@ async def cambiar_contrasena(
       definida): exige y verifica ``contrasena_actual`` (no se puede resetear con
       un token robado sin saber la clave). Mensaje genérico para no filtrar info.
 
+    ``nuevo_username`` (opcional): SOLO en el primer set (``debe_cambiar_password``
+    True, LTI o alta manual) el usuario puede elegir su propio username legible,
+    reemplazando el autogenerado (``lti:{deployment}:{sub}`` o el prefijo+random
+    del alta manual). 400 si se intenta fuera del primer set; 409 si ya está en
+    uso (como username o como email de otro usuario — c-76-4).
+
     Cuentas ``keycloak`` u otras no gestionan su contraseña acá (403).
     """
     session_factory = getattr(request.app.state, "session_factory", None)
@@ -544,10 +452,34 @@ async def cambiar_contrasena(
                 detail="No podés cambiar la contraseña de esta cuenta.",
             )
 
+        # Primer set (LTI o alta manual): todavía no definió su propia contraseña.
+        primer_set = bool(usuario.debe_cambiar_password)
         # ¿Es el primer set de un usuario LTI? En ese caso no hay contraseña actual.
-        lti_primer_set = (
-            usuario.auth_provider == "lti" and bool(usuario.debe_cambiar_password)
-        )
+        lti_primer_set = usuario.auth_provider == "lti" and primer_set
+
+        if body.nuevo_username is not None:
+            if not primer_set:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Solo podés elegir tu username la primera vez que fijás la contraseña.",
+                )
+            # Validación CRUZADA (c-76-4): no puede coincidir con el username NI
+            # el email de otro usuario — el login matchea por "email OR username".
+            cruce = await session.execute(
+                select(UsuarioModel.id).where(
+                    or_(
+                        UsuarioModel.username == body.nuevo_username,
+                        UsuarioModel.email == body.nuevo_username,
+                    ),
+                    UsuarioModel.id != usuario.id,
+                )
+            )
+            if cruce.scalar_one_or_none() is not None:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Ese username ya está en uso.",
+                )
+            usuario.username = body.nuevo_username
 
         if not lti_primer_set:
             # Camino normal: exige y verifica la contraseña actual.
@@ -573,6 +505,13 @@ async def cambiar_contrasena(
         usuario.password_hash = hashear_password(body.contrasena_nueva)
         # Primer login resuelto: ya definió su propia contraseña.
         usuario.debe_cambiar_password = False
-        await session.commit()
+        try:
+            await session.commit()
+        except IntegrityError as exc:
+            await session.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Ese username ya está en uso.",
+            ) from exc
 
     return CambiarContrasenaResponse(ok=True)

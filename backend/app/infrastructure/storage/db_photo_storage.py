@@ -1,11 +1,11 @@
-"""Adaptador de storage de foto de perfil en DB BYTEA (slim, c-57, D1).
+"""Adaptador de storage de foto de perfil en DB BYTEA (activeexam, c-57, D1).
 
-En el modulo slim (Railway / Postgres estandar), la foto de perfil se persiste
+En el modulo activeexam (Railway / Postgres estandar), la foto de perfil se persiste
 directamente como BYTEA en la columna ``foto_referencia.foto_bytes``, sin MinIO.
 
 IMPLEMENTACION: usa SQLAlchemy Core (INSERT/UPDATE via text()) en lugar de ORM
 para evitar el conflicto de MetaData entre ``FotoReferenciaModel`` (full, con
-uri_storage/bucket) y la variante slim (con foto_bytes). El Core permite trabajar
+uri_storage/bucket) y la variante activeexam (con foto_bytes). El Core permite trabajar
 directamente con la tabla sin declarar un modelo ORM nuevo.
 
 LIMITE DE TAMANO: <= 500 KB (decodificado). Fotos mas grandes se rechazan con
@@ -29,7 +29,7 @@ _MAX_FOTO_BYTES = 500 * 1024  # 500 KB
 
 
 class DbPhotoStorageService:
-    """Servicio de storage de foto de perfil en DB BYTEA (slim).
+    """Servicio de storage de foto de perfil en DB BYTEA (activeexam).
 
     A diferencia de ``ProfilePhotoStorageService`` (MinIO), esta implementacion
     persiste el binario directamente en Postgres. Compatible con Railway

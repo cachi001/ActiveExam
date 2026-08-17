@@ -48,13 +48,3 @@ def test_minio_storage_reachable() -> None:
     # MinIO expone /minio/health/live para liveness.
     resp = requests.get(f"{endpoint}/minio/health/live", timeout=5)
     assert resp.status_code == 200, "MinIO/S3 no responde el healthcheck"
-
-
-def test_keycloak_idp_reachable() -> None:
-    """Verifica que Keycloak responde su endpoint de configuracion OIDC."""
-    requests = pytest.importorskip("requests")
-    issuer = _require("KEYCLOAK_ISSUER")
-    resp = requests.get(
-        f"{issuer}/.well-known/openid-configuration", timeout=5
-    )
-    assert resp.status_code == 200, "Keycloak (IdP) no responde la config OIDC"

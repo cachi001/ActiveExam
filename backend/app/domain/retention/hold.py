@@ -2,7 +2,7 @@
 
 Un "hold" extiende automaticamente la retencion de los datos de una sesion
 mientras haya un caso disciplinario abierto o una revision pendiente. En
-slim esto se simplifica: NO existe tabla ``caso_disciplinario``, asi que el
+activeexam esto se simplifica: NO existe tabla ``caso_disciplinario``, asi que el
 verificador por defecto (``NullHoldVerifier`` en infrastructure) siempre
 reporta NO_HOLD. La implementacion SQL real es c-69 (sucesor planificado).
 """
@@ -32,7 +32,7 @@ class HoldVerifier(Protocol):
     borra y queda registrada como "diferida" en el reporte de la corrida.
 
     Implementaciones:
-        - ``NullHoldVerifier`` (slim default): siempre NO_HOLD.
+        - ``NullHoldVerifier`` (activeexam default): siempre NO_HOLD.
         - ``SqlHoldVerifier`` (c-69 sucesor, no implementado todavia): consulta
           ``caso_disciplinario.hold`` cuando exista la tabla en full.
     """

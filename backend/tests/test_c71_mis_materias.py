@@ -38,7 +38,7 @@ async def test_mis_materias_solo_inscriptas(factory) -> None:
     suf = uuid.uuid4().hex[:8]
     async with factory() as s:
         u = UsuarioModel(
-            id_institucional=f"mm-{suf}", email=f"mm-{suf}@test.local",
+            username=f"mm-{suf}", email=f"mm-{suf}@test.local",
             roles=["estudiante"], auth_provider="jwt",
         )
         m_mia = MateriaModel(codigo=f"MIA{suf}", nombre=f"Materia Mía {suf}")

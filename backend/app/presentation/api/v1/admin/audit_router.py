@@ -1,7 +1,10 @@
 """Router de auditoría: lectura del registro de actividad (`04` Audit log).
 
-GET /api/v1/admin/audit-log     → entradas paginadas + filtradas + estado de cadena
-GET /api/v1/admin/audit-modulos → módulos distintos con actividad (para el dropdown)
+GET /api/v1/admin/audit-log      → entradas paginadas + filtradas + estado de cadena
+GET /api/v1/admin/audit-modulos  → módulos distintos CON actividad (para el dropdown)
+GET /api/v1/admin/audit-catalogo → TODOS los módulos válidos + label (haya o no
+                                    actividad todavía) — fuente única para que el
+                                    filtro del frontend no quede hardcodeado.
 
 RBAC: admin_sistema. SOLO LECTURA — el registro es append-only e inmutable (trigger).
 """
@@ -11,6 +14,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from pydantic import BaseModel, ConfigDict
 
+from app.application.audit.acciones import MODULO_LABELS, ModuloAuditoria
 from app.application.audit.export import auditoria_a_pdf, auditoria_a_xlsx
 from app.application.audit.service import (
     AuditFiltros,
@@ -41,6 +45,13 @@ class AuditEventoOut(BaseModel):
     ip: str | None
     user_agent: str | None
     proposito: str | None
+
+
+class ModuloCatalogoOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    value: str
+    label: str
 
 
 class AuditLogResponse(BaseModel):
@@ -127,6 +138,21 @@ def create_audit_router(session_factory=None) -> APIRouter:
             )
         async with factory() as db:
             return await listar_modulos(db)
+
+    @router.get("/audit-catalogo", response_model=list[ModuloCatalogoOut])
+    async def audit_catalogo() -> list[ModuloCatalogoOut]:
+        """TODOS los módulos válidos del dominio (``ModuloAuditoria``), con label.
+
+        A diferencia de ``/audit-modulos`` (solo los que ya tienen actividad),
+        esto es el catálogo COMPLETO — para que el filtro de Auditoría en el
+        frontend siempre muestre todas las opciones válidas, incluso módulos sin
+        ninguna entrada todavía. Si se agrega un ``ModuloAuditoria`` nuevo, aparece
+        acá automáticamente sin tocar el frontend.
+        """
+        return [
+            ModuloCatalogoOut(value=m.value, label=MODULO_LABELS.get(m, m.value))
+            for m in ModuloAuditoria
+        ]
 
     async def _entradas_para_export(
         request: Request,

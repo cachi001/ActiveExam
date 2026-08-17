@@ -1,4 +1,10 @@
-"""Los 7 roles funcionales del sistema y su politica de MFA (PURO).
+"""Los 4 roles funcionales del sistema y su politica de MFA (PURO).
+
+c-76: "proctor" y "revisor" fueron ELIMINADOS del dominio (absorbidos por
+COORDINADOR/TUTOR — ver comentarios inline debajo). c-76-2: "admin_examenes"
+y "auditor" fueron ELIMINADOS del dominio (absorbidos por ADMIN_SISTEMA — el
+dueño del producto decidio que solo debe existir un rol "Admin"). El conteo
+de roles vivos bajo de 8 a 6 (c-76) y de 6 a 4 (c-76-2).
 
 Fuente: `03` §RBAC. Codifica como dato de dominio (no como string suelto):
 - el conjunto canonico de roles validos,
@@ -23,11 +29,28 @@ class Rol(str, enum.Enum):
     # remapeados a "coordinador" por la migracion 0068. Un claim de token con
     # "proctor" ya no mapea a ningun Rol de dominio: se descarta en silencio,
     # igual que cualquier rol desconocido — ver parse_rol y Q1 del design c-76.)
-    REVISOR = "revisor"
+    # (Rol "revisor" ELIMINADO en c-76: el TUTOR ya supervisa/observa en vivo
+    # dentro de su comision y el COORDINADOR absorbe el veredicto terminal
+    # (`revisar_sesion`). Los usuarios con rol "revisor" fueron remapeados a
+    # "coordinador" por la migracion 0071. Un claim de token con "revisor" ya
+    # no mapea a ningun Rol de dominio: se descarta en silencio, igual que
+    # cualquier rol desconocido — mismo precedente que "proctor".)
     COORDINADOR = "coordinador"
-    ADMIN_EXAMENES = "admin_examenes"
+    # (Rol "admin_examenes" ELIMINADO en c-76-2: la gestion academica que
+    # tenia — examenes/materias/comisiones sin poder de supervision — pasa a
+    # ser exclusiva de ADMIN_SISTEMA. Los usuarios con rol "admin_examenes"
+    # fueron remapeados a "admin_sistema" por la migracion 0074. Un claim de
+    # token con "admin_examenes" ya no mapea a ningun Rol de dominio: se
+    # descarta en silencio, mismo precedente que "proctor"/"revisor".)
     ADMIN_SISTEMA = "admin_sistema"
-    AUDITOR = "auditor"
+    # (Rol "auditor" ELIMINADO en c-76-2: la capacidad ver_auditoria (solo
+    # lectura del registro de auditoria) queda exclusiva de ADMIN_SISTEMA —
+    # nunca hubo un endpoint real conectado a la capacidad para "auditor"
+    # (require_roles(ADMIN_SISTEMA) hardcodeado en audit_router.py), asi que
+    # esta eliminacion no le saca acceso real a nadie. Los usuarios con rol
+    # "auditor" fueron remapeados a "admin_sistema" por la migracion 0075.
+    # Un claim de token con "auditor" ya no mapea a ningun Rol de dominio: se
+    # descarta en silencio, mismo precedente que "proctor"/"revisor".)
     # Gestion academica SIN poder de supervision: carga y administra examenes,
     # materias y comisiones de lo suyo. NO revisa sesiones, NO resuelve casos, NO
     # toca la configuracion del sistema ni la auditoria. Es el rol de quien dicta
@@ -41,11 +64,8 @@ class Rol(str, enum.Enum):
 # `08` §Seguridad). El estudiante es el unico exento (solo su propia sesion/datos).
 ROLES_CON_MFA: frozenset[Rol] = frozenset(
     {
-        Rol.REVISOR,
         Rol.COORDINADOR,
-        Rol.ADMIN_EXAMENES,
         Rol.ADMIN_SISTEMA,
-        Rol.AUDITOR,
         # El tutor administra contenido academico (examenes con sus preguntas y
         # respuestas correctas): es acceso de administracion, exige MFA.
         Rol.TUTOR,
@@ -57,7 +77,7 @@ ROLES_CON_MFA: frozenset[Rol] = frozenset(
 # trabajo. Lo que NO gana por estar aca es supervision ni configuracion del
 # sistema — eso vive en CAPABILITY_ROLES, no en esta lista.
 ROLES_ADMIN_EXAMEN: frozenset[Rol] = frozenset(
-    {Rol.ADMIN_EXAMENES, Rol.ADMIN_SISTEMA, Rol.TUTOR}
+    {Rol.ADMIN_SISTEMA, Rol.TUTOR}
 )
 
 

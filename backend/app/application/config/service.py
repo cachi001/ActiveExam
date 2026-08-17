@@ -46,6 +46,8 @@ class ConfigEfectiva:
     pausas_habilitadas: bool = True
     # Límite de duración de una pausa autorizada (minutos). Al vencer se reanuda sola.
     pausa_max_min: int = 10
+    # Cantidad máxima de pausas (aprobada+finalizada) por sesión (C-76 bloque 4).
+    pausas_max_por_sesion: int = 2
     # Pesos de scoring por tipo de evento (solo tipos activos).
     scoring_weights: dict[str, int] = field(default_factory=dict)
     # Severidad configurada por tipo de evento (solo tipos activos). El cliente la usa
@@ -99,6 +101,7 @@ class ConfigService:
             chat_habilitado=bool(cfg.chat_habilitado),
             pausas_habilitadas=bool(cfg.pausas_habilitadas),
             pausa_max_min=int(cfg.pausa_max_min),
+            pausas_max_por_sesion=int(cfg.pausas_max_por_sesion),
             scoring_weights=pesos,
             scoring_severidades=severidades,
             scoring_desactivados=desactivados,

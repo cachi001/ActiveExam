@@ -135,7 +135,7 @@ async def _limpiar_db(session_factory) -> None:
         await s.execute(text("DELETE FROM inscripcion"))
         await s.execute(text("DELETE FROM lti_nonce"))
         await s.execute(text(
-            "DELETE FROM usuario WHERE id_institucional LIKE 'lti:%'"
+            "DELETE FROM usuario WHERE username LIKE 'lti:%'"
         ))
         await s.execute(text("DELETE FROM lti_deployment_confiable"))
         await s.execute(text("DELETE FROM lti_tool_key"))
@@ -171,12 +171,12 @@ async def _insertar_nonce(session_factory, *, nonce: str, state: str) -> None:
         await s.commit()
 
 
-async def _usuario_por_id_institucional(session_factory, id_inst: str) -> UsuarioModel | None:
+async def _usuario_por_username(session_factory, id_inst: str) -> UsuarioModel | None:
     async with session_factory() as s:
         return (
             await s.execute(
                 select(UsuarioModel).where(
-                    UsuarioModel.id_institucional == id_inst
+                    UsuarioModel.username == id_inst
                 )
             )
         ).scalar_one_or_none()
@@ -204,7 +204,7 @@ async def test_jit_primer_launch_crea_usuario_alumno(session_factory):
     async with session_factory() as s:
         await s.execute(text("DELETE FROM inscripcion"))
         await s.execute(text("DELETE FROM lti_nonce"))
-        await s.execute(text("DELETE FROM usuario WHERE id_institucional LIKE 'lti:%'"))
+        await s.execute(text("DELETE FROM usuario WHERE username LIKE 'lti:%'"))
         await s.execute(text("DELETE FROM lti_deployment_confiable"))
         await s.commit()
 
@@ -226,7 +226,7 @@ async def test_jit_primer_launch_crea_usuario_alumno(session_factory):
     assert usuario.roles == ["estudiante"]
     assert usuario.auth_provider == "lti"
     assert usuario.debe_cambiar_password is True
-    assert usuario.id_institucional == f"lti:{_DEPLOYMENT_ID}:mdl-100"
+    assert usuario.username == f"lti:{_DEPLOYMENT_ID}:mdl-100"
     assert usuario.nombre == "Alumno Nuevo"
     assert usuario.email == "nuevo@demo.test"
     # password_hash es random — NO es None (no puede loguearse con password vacío)
@@ -239,7 +239,7 @@ async def test_jit_segundo_launch_no_duplica_cuenta(session_factory):
     async with session_factory() as s:
         await s.execute(text("DELETE FROM inscripcion"))
         await s.execute(text("DELETE FROM lti_nonce"))
-        await s.execute(text("DELETE FROM usuario WHERE id_institucional LIKE 'lti:%'"))
+        await s.execute(text("DELETE FROM usuario WHERE username LIKE 'lti:%'"))
         await s.execute(text("DELETE FROM lti_deployment_confiable"))
         await s.commit()
 
@@ -262,9 +262,9 @@ async def test_jit_segundo_launch_no_duplica_cuenta(session_factory):
 
     assert creado1 is True
     assert creado2 is False
-    assert u1.id_institucional == u2.id_institucional
+    assert u1.username == u2.username
     # Verificar que no hay dos filas en DB
-    usuario_db = await _usuario_por_id_institucional(
+    usuario_db = await _usuario_por_username(
         session_factory, f"lti:{_DEPLOYMENT_ID}:mdl-200"
     )
     assert usuario_db is not None
@@ -281,7 +281,7 @@ async def test_jit_ignora_datos_fuera_del_id_token(session_factory):
     async with session_factory() as s:
         await s.execute(text("DELETE FROM inscripcion"))
         await s.execute(text("DELETE FROM lti_nonce"))
-        await s.execute(text("DELETE FROM usuario WHERE id_institucional LIKE 'lti:%'"))
+        await s.execute(text("DELETE FROM usuario WHERE username LIKE 'lti:%'"))
         await s.execute(text("DELETE FROM lti_deployment_confiable"))
         await s.commit()
 
@@ -306,7 +306,7 @@ async def test_jit_ignora_datos_fuera_del_id_token(session_factory):
     # La función no acepta parámetros adicionales de identidad (diseño anti-inyección).
     assert usuario.nombre == "Alumno Real"
     assert usuario.email == "real@demo.test"
-    assert usuario.id_institucional == f"lti:{_DEPLOYMENT_ID}:mdl-300"
+    assert usuario.username == f"lti:{_DEPLOYMENT_ID}:mdl-300"
 
 
 # ---------------------------------------------------------------------------
@@ -324,7 +324,7 @@ def test_jit_emite_jwt_sesion_mismo_emisor():
     """
     usuario = UsuarioModel()
     usuario.id = "00000000-0000-0000-0000-000000000001"
-    usuario.id_institucional = "lti:7:mdl-500"
+    usuario.username = "lti:7:mdl-500"
     usuario.email = "jwt@demo.test"
     usuario.roles = ["estudiante"]
     usuario.auth_provider = "lti"
@@ -373,7 +373,7 @@ def test_launch_endpoint_redirige_con_tokens(session_factory):
         async with session_factory() as s:
             await s.execute(text("DELETE FROM inscripcion"))
             await s.execute(text("DELETE FROM lti_nonce"))
-            await s.execute(text("DELETE FROM usuario WHERE id_institucional LIKE 'lti:%'"))
+            await s.execute(text("DELETE FROM usuario WHERE username LIKE 'lti:%'"))
             await s.execute(text("DELETE FROM lti_deployment_confiable"))
             await s.execute(text("DELETE FROM lti_tool_key"))
             await s.commit()
@@ -453,7 +453,7 @@ async def test_jit_context_id_mapeado_matricula_en_comision(session_factory):
     async with session_factory() as s:
         await s.execute(text("DELETE FROM inscripcion"))
         await s.execute(text("DELETE FROM lti_nonce"))
-        await s.execute(text("DELETE FROM usuario WHERE id_institucional LIKE 'lti:%'"))
+        await s.execute(text("DELETE FROM usuario WHERE username LIKE 'lti:%'"))
         await s.execute(text("DELETE FROM lti_deployment_confiable"))
         await s.commit()
 
@@ -499,7 +499,7 @@ async def test_jit_context_id_sin_mapeo_no_matricula(session_factory):
     async with session_factory() as s:
         await s.execute(text("DELETE FROM inscripcion"))
         await s.execute(text("DELETE FROM lti_nonce"))
-        await s.execute(text("DELETE FROM usuario WHERE id_institucional LIKE 'lti:%'"))
+        await s.execute(text("DELETE FROM usuario WHERE username LIKE 'lti:%'"))
         await s.execute(text("DELETE FROM lti_deployment_confiable"))
         await s.commit()
 

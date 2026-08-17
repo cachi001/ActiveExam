@@ -36,8 +36,6 @@ _ENV_REQUERIDO_FULL = {
     "STORAGE_ACCESS_KEY": "test-access-key",
     "STORAGE_SECRET_KEY": "test-secret-key",
     "STORAGE_BUCKET_EVIDENCE": "evidencia-test",
-    "KEYCLOAK_ISSUER": "http://localhost:8080/realms/test",
-    "KEYCLOAK_JWKS_URL": "http://localhost:8080/realms/test/protocol/openid-connect/certs",
     "JWT_AUDIENCE": "proctoring-api",
     "OTEL_EXPORTER_OTLP_ENDPOINT": "http://localhost:4317",
 }

@@ -1,4 +1,4 @@
-"""Router de ingestión de eventos de proctoring slim.
+"""Router de ingestión de eventos de proctoring activeexam.
 
 POST /sessions/{id}/events → 201/404
 

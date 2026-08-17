@@ -38,9 +38,9 @@ from app.infrastructure.persistence.repositories.review import (
     SqlReviewAuditor,
     SqlSessionReviewRepository,
 )
-from app.infrastructure.persistence.session_slim import (
-    create_slim_engine,
-    create_slim_session_factory,
+from app.infrastructure.persistence.session_activeexam import (
+    create_activeexam_engine,
+    create_activeexam_session_factory,
 )
 from app.infrastructure.storage.presign import StoragePresignService
 from app.presentation.api.v1.exam_content.router import create_exam_taking_router
@@ -57,7 +57,7 @@ def _factory() -> async_sessionmaker[AsyncSession]:
         "DATABASE_URL",
         "postgresql+asyncpg://proctoring:dev-only-change-me@postgres:5432/proctoring",
     )
-    return create_slim_session_factory(create_slim_engine(url))
+    return create_activeexam_session_factory(create_activeexam_engine(url))
 
 
 def _idn() -> str:
@@ -182,6 +182,11 @@ async def test_titular_ve_informe_con_capturas_firmadas_y_senales(app) -> None:
         assert body["capturas"][0]["tipo_evento"] == "multiples_rostros"
         # URL firmada que expira en 15 min (900 s).
         assert body["capturas"][0]["expires_in"] == 900
+        # Cadena de custodia (c-18 verify-chain, recalculada al construir el
+        # informe): el fixture tiene screenshot_sha256 pero NO screenshot_b64
+        # (no hay binario) -> material_missing, no un 500 ni un campo ausente.
+        assert body["capturas"][0]["integridad_estado"] == "material_missing"
+        assert body["capturas"][0]["integridad_algoritmo"] == "sha256"
         # Cada acceso del titular queda auditado como derecho de acceso.
         async with factory() as s:
             acciones = {
@@ -195,6 +200,22 @@ async def test_titular_ve_informe_con_capturas_firmadas_y_senales(app) -> None:
                 ).all()
             }
             assert "derecho_acceso.informe_devolucion" in acciones
+
+        # El verify-chain corrido sobre ev1 también queda auditado (evidencia_id
+        # = event_id, no session_id): confirma que se disparó de verdad y no es
+        # un campo hardcodeado en el schema.
+        async with factory() as s:
+            acciones_evento = {
+                r[0]
+                for r in (
+                    await s.execute(
+                        select(AuditLogModel.accion).where(
+                            AuditLogModel.evidencia_id == ev1
+                        )
+                    )
+                ).all()
+            }
+            assert "verify_chain.material_missing" in acciones_evento
     finally:
         await _cleanup(factory, sid)
 

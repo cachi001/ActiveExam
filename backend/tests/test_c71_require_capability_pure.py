@@ -18,13 +18,14 @@ from app.presentation.api.v1.auth.dependencies import require_capability
 
 
 def _principal(*roles: Rol) -> AuthenticatedPrincipal:
-    return AuthenticatedPrincipal(id_institucional="u1", email="u1@uni.edu", roles=roles)
+    return AuthenticatedPrincipal(username="u1", email="u1@uni.edu", roles=roles)
 
 
 @pytest.mark.asyncio
-async def test_revisor_pasa_el_guard_de_revisar_sesion() -> None:
+async def test_coordinador_pasa_el_guard_de_revisar_sesion() -> None:
+    # c-76: el rol REVISOR fue eliminado; el COORDINADOR absorbe el veredicto.
     guard = require_capability("revisar_sesion")
-    principal = _principal(Rol.REVISOR)
+    principal = _principal(Rol.COORDINADOR)
     result = await guard(principal=principal)
     assert result is principal
 
