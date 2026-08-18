@@ -78,6 +78,38 @@ const SIZE: Record<StatSize, {
   },
 };
 
+/**
+ * NeutralStatCard — variante SIN color fuerte (fondo blanco, borde sutil,
+ * chip de ícono gris neutro). C-76 tarea 20.2: las stat cards de "Registro de
+ * sesiones" (Auditoría/ResultadosExamenPanel usan el mismo criterio: sin
+ * fondos de color — el color queda reservado a los badges chicos de riesgo
+ * bajo/medio/alto, nunca a la card entera).
+ */
+export function NeutralStatCard({
+  icon,
+  label,
+  value,
+  sub,
+}: {
+  icon: string;
+  label: string;
+  value: ReactNode;
+  sub?: ReactNode;
+}) {
+  return (
+    <div className="relative overflow-hidden p-4 rounded-2xl shadow-lg h-full flex items-center gap-md bg-white border border-surface-200">
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-surface-100 text-on-surface-variant">
+        <Icon name={icon} className="text-[20px]" />
+      </span>
+      <div className="min-w-0">
+        <p className="text-xs font-medium text-on-surface-variant">{label}</p>
+        <p className="text-2xl font-bold tracking-tight text-on-surface leading-tight truncate">{value}</p>
+        {sub && <p className="text-xs text-on-surface-variant mt-0.5 truncate">{sub}</p>}
+      </div>
+    </div>
+  );
+}
+
 export function StatCard({
   icon,
   label,

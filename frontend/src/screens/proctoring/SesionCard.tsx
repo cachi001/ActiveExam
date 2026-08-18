@@ -3,8 +3,10 @@
  *
  * Estilo minimalista premium: superficie limpia, borde-izquierdo de color según
  * el riesgo (verde/ámbar/rojo según score), hover con elevación sutil. Toda la
- * tarjeta es clickable (teclado incluido) y abre el detalle. El botón eliminar
- * usa stopPropagation para no disparar la navegación.
+ * tarjeta es clickable (teclado incluido) y abre el detalle.
+ *
+ * NO tiene acción de eliminar (c-76 tarea 16): la evidencia de proctoring no se
+ * borra, se preserva con cadena de custodia (regla dura #6/#7).
  */
 import { Icon, Badge } from '../../ui/components';
 import type { SesionProctoringResumen } from '../../lib/types';
@@ -21,12 +23,10 @@ import {
 export function SesionCard({
   sesion,
   onAbrir,
-  onEliminar,
   examInfo,
 }: {
   sesion: SesionProctoringResumen;
   onAbrir: (sesion: SesionProctoringResumen) => void;
-  onEliminar: (sesion: SesionProctoringResumen) => void;
   examInfo?: ExamInfo | null;
 }) {
   return (
@@ -41,7 +41,7 @@ export function SesionCard({
         }
       }}
       className={`group relative cursor-pointer rounded-xl border ${scoreCardAcento(sesion.score)}
-        p-md pr-12 shadow-card transition-all duration-200
+        p-md shadow-card transition-all duration-200
         hover:shadow-card-lg hover:-translate-y-px
         focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40`}
     >
@@ -99,21 +99,6 @@ export function SesionCard({
         className="absolute bottom-md right-sm text-[20px] text-on-surface-variant
           opacity-0 group-hover:opacity-100 transition-opacity"
       />
-
-      {/* Eliminar (no dispara la navegación) */}
-      <button
-        type="button"
-        aria-label="Eliminar sesión"
-        title="Eliminar sesión"
-        onClick={(e) => {
-          e.stopPropagation();
-          onEliminar(sesion);
-        }}
-        className="absolute top-sm right-sm rounded-lg p-base text-on-surface-variant
-          hover:text-error hover:bg-error-container/40 transition-colors"
-      >
-        <Icon name="delete" className="text-[18px]" />
-      </button>
     </div>
   );
 }

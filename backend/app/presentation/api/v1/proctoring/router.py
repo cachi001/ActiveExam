@@ -40,6 +40,7 @@ def create_proctoring_router(
     writeback_svc: MoodleWritebackService | None = None,
     evidence_encryption=None,
     config_service: ConfigService | None = None,
+    worm_storage=None,
 ) -> APIRouter:
     """Factory del router principal de proctoring.
 
@@ -49,6 +50,11 @@ def create_proctoring_router(
         embedding_encryption: Servicio de cifrado de embeddings (C-59). Si se
             provee, se montan los endpoints stateful de verificacion biometrica
             server-side. Inyectado desde main_activeexam.py (app.state.embedding_encryption).
+        worm_storage: puerto WORM (c-77, WormStoragePort). None (default) cuando
+            MinIO no esta configurado — el screenshot se persiste UNICAMENTE en
+            Postgres, sin cambios de comportamiento. Inyectado desde
+            main_activeexam.py (app.state.worm_storage) solo si estan las 4
+            variables MINIO_* (minio_configurado(settings)).
 
     Returns:
         APIRouter con todos los endpoints montados.
@@ -90,7 +96,6 @@ def create_proctoring_router(
     #    crear, eventos, chat, pausas, finalizar). 401 si falta/invalido.
     #  - require_supervision_vivo: vista de supervision (lista/detalle de sesiones,
     #    poll de pausas pendientes, aprobar/rechazar). 403 si es estudiante.
-    #  - require_admin: cadena de custodia (DELETE de sesion — JAMAS tutor/coordinador).
     _require_autenticado = get_current_principal
     # Gate por CAPACIDAD: `supervisar_vivo` incluye a quien resuelve el caso
     # (COORDINADOR/ADMIN_SISTEMA, tras eliminarse tambien REVISOR — c-76). No es
@@ -98,6 +103,7 @@ def create_proctoring_router(
     # que el rol autorizado a resolver un caso recibia 403 al pedir la lista de
     # casos que tiene que resolver.
     _require_supervision_vivo = require_capability("supervisar_vivo")
+    # C-76 tarea 20.1: DELETE /sessions/{id} (acotado a modo='test') es admin-only.
     _require_admin = require_roles(Rol.ADMIN_SISTEMA)
 
     # --- Health ---
@@ -132,6 +138,7 @@ def create_proctoring_router(
         get_reinferencia,
         require_autenticado=_require_autenticado,
         cipher=evidence_encryption,
+        worm_storage=worm_storage,
     )
     router.include_router(events_router)
 

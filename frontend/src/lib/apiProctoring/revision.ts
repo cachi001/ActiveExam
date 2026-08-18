@@ -2,8 +2,7 @@
 // Parte de `proctoringApi`, partido por dominio (mismo criterio que el refactor
 // c-76 que saco estos metodos de `api.ts`). Se compone en `../apiProctoring.ts`
 // por spread; ningun metodo usa `this`.
-import { realFetch, API_BASE } from '../apiCore';
-import { authProvider } from '../authProvider';
+import { realFetch } from '../apiCore';
 import type {
   DecisionSesion, SesionProctoringDetalle,
 } from '../types';
@@ -69,20 +68,9 @@ export const revisionApi = {
     };
   },
 
-  /**
-   * Elimina una sesión de proctoring (C-46). Real: DELETE /proctoring/sessions/{id} (204).
-   * Fallo de red: retorna { ok:false } sin romper.
-   */
-  async eliminarSesionProctoring(id: string): Promise<{ ok: boolean }> {
-    try {
-      const token = authProvider.getToken();
-      const res = await fetch(`${API_BASE}/proctoring/sessions/${id}`, {
-        method: 'DELETE',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      return { ok: res.ok };
-    } catch {
-      return { ok: false };
-    }
-  },
+  // NO hay `eliminarSesionProctoring` genérico acá (c-76 tarea 16): la evidencia
+  // académica real (`modo='examen'`) no se borra, se preserva con cadena de
+  // custodia (regla dura #6/#7). La tarea 20 reintrodujo un DELETE ACOTADO
+  // solo a sesiones `modo='test'` (diagnóstico) — ver `eliminarSesionTestFn`
+  // en `lib/proctoringRegistro.ts`, no acá.
 };

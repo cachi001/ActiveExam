@@ -150,6 +150,14 @@ class AccionAuditoria(StrEnum):
     # ── Derechos del titular (DSR) ───────────────────────────────────────
     DSR_ACCESO_INFORME = "derecho_acceso.informe_devolucion"
 
+    # ── Sesiones (C-76 tarea 20 — cierra el modulo SESIONES, antes muerto) ──
+    # Eliminacion de sesion modo='test' (diagnostico, SIN evidencia academica
+    # real) y archivado/desarchivado de una fila de resultados (gap detectado
+    # en la tarea 14, nunca auditado). El prefijo "sesion." las mapea a
+    # ModuloAuditoria.SESIONES en `modulo_de_accion` (ver abajo).
+    SESION_TEST_ELIMINADA = "sesion.test.delete"
+    RESULTADO_ARCHIVAR = "sesion.resultado.archivar"
+
 
 
 # Prefijos de acciones DINÁMICAS (llevan un sufijo variable). Se componen así:
@@ -188,6 +196,11 @@ def modulo_de_accion(accion: str | None) -> str | None:
         return ModuloAuditoria.BIOMETRIA
     if a.startswith(PREFIJO_REVISION_DECISION):
         return ModuloAuditoria.REVISION
+    # C-76 tarea 20: eliminacion de sesion de test + archivado de resultado.
+    # Antes ModuloAuditoria.SESIONES no tenia NINGUN prefijo mapeado acá (filtro
+    # muerto, siempre 0 resultados en Auditoría) — este es el primero.
+    if a.startswith("sesion."):
+        return ModuloAuditoria.SESIONES
     # Evidencia y cadena de custodia: acceso/depósito de evidencia, manipulación,
     # firma maestra, verificación de cadena, retención/borrado y derechos del titular
     # (DSR) — el frontend los agrupa todos bajo "Evidencia de sesiones".

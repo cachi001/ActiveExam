@@ -112,6 +112,54 @@ class SesionResumen(BaseModel):
     examen_titulo: str | None = None
     comision_nombre: str | None = None
     materia_nombre: str | None = None
+    # Identidad del alumno (C-76 tarea 17: columna "Alumno" del Registro de
+    # sesiones). Ausente/None en listados que no la resuelven (compat).
+    alumno_idnumber: str | None = None
+    alumno_email: str | None = None
+    alumno_nombre: str | None = None
+
+
+class RegistroSesionesOut(BaseModel):
+    """Respuesta paginada de GET /sessions/registro (C-76 tarea 17).
+
+    Envelope de paginacion real (mismo shape que ``ResultadosExamenPaginadosResponse``
+    de exam-content/resultados): items de la pagina actual + total GLOBAL filtrado.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[SesionResumen]
+    total: int
+    page: int
+    page_size: int
+    # Agregados sobre el TOTAL filtrado (C-76 tarea 19.3/20.4) — calculados ANTES
+    # de paginar, sobre las sesiones que matchean q/exam_id/fecha/nivel_riesgo/
+    # materia_id/comision_id. NUNCA se derivan de `items` (que solo trae la
+    # pagina actual): el frontend los usa tal cual para las stat cards.
+    #
+    # `total_eventos`/`total_discrepancias` (tarea 19) se retiraron en la tarea 20
+    # (feedback del dueño: no son decisivos como stat general) — reemplazados por
+    # `en_cola_revision`.
+    riesgo_bajo: int
+    riesgo_medio: int
+    riesgo_alto: int
+    # Sesiones con score >= umbral de la Cola de revision (`obtener_umbral_alto`,
+    # el MISMO umbral que usa la Cola de revision — no uno reinventado). C-76
+    # tarea 20.4/20.6, stat card "Sobre el umbral de riesgo".
+    en_cola_revision: int
+
+
+class ExamenConSesionesOut(BaseModel):
+    """Una entrada del catalogo de filtro "Examen" (C-76 tarea 17.2).
+
+    El frontend arma el <select> de "Examen" 100% desde este catalogo — nunca
+    hardcodea una lista de examenes/estados.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    titulo: str
 
 
 class SesionDetalle(BaseModel):
@@ -125,6 +173,18 @@ class SesionDetalle(BaseModel):
     # C-69: contra qué examen_contenido (Moodle XML) rindió el alumno. NULL si la
     # sesion no tiene contenido vinculado.
     examen_contenido_id: str | None = None
+    # Contexto académico resuelto server-side (examen_contenido → comisión →
+    # materia), igual que en SesionResumen (listar_sesiones) — el detalle también
+    # lo necesita para el header ("qué examen rindió, de qué materia/comisión").
+    examen_titulo: str | None = None
+    comision_nombre: str | None = None
+    materia_nombre: str | None = None
+    # Identidad del alumno dueño de la sesión (C-76 fix UX): el header del detalle
+    # necesita destacar QUIÉN rindió, no solo el modo de la sesión. nombre_completo
+    # resuelto contra `usuario`; idnumber/email crudos como fallback si no matchea.
+    alumno_nombre: str | None = None
+    alumno_idnumber: str | None = None
+    alumno_email: str | None = None
     creada_en: Any
     finalizada_en: Any = None
     score: int

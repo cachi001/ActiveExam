@@ -150,6 +150,19 @@ class ProctoringSessionModel(Base):
         ),
     )
 
+    # c-76 tarea 14 (migration 0081): soft-hide ADMINISTRATIVO del panel de
+    # resultados — oculta la fila del listado por default sin borrar nada.
+    # Ortogonal a `decision` (veredicto humano de fraude, RN-RV) y a
+    # `estado_entrega` (que se DERIVA, no se persiste). NUNCA sanciona ni
+    # deja de sancionar nada por si solo: es solo visibilidad en la UI.
+    archivado: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+        comment="Soft-hide administrativo de la fila en el panel de resultados",
+    )
+
     eventos: Mapped[list[ProctoringEventModel]] = relationship(
         back_populates="sesion",
         cascade="all, delete-orphan",
@@ -246,6 +259,25 @@ class ProctoringEventModel(Base):
         nullable=False,
         server_default="no_evaluado",
         comment="'coincide' | 'discrepancia' | 'no_evaluado'. L2.5: nunca sanciona.",
+    )
+    # --- Deposito WORM (c-77, migracion 0082) ------------------------------
+    # NULL siempre que MinIO no este configurado (Render sin VPS, caso actual).
+    # screenshot_b64 en Postgres sigue siendo la fuente de verdad — el deposito
+    # WORM es ADICIONAL, no un reemplazo (decision del dueño, ver tasks.md).
+    worm_object_key: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+        comment="Key del objeto en el bucket WORM. NULL si MinIO no esta configurado.",
+    )
+    worm_uri: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment="URI completa del deposito WORM (endpoint/bucket/object_key).",
+    )
+    worm_retain_until: Mapped[str | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        comment="retain_until del Object Lock Compliance aplicado al depositar.",
     )
 
     sesion: Mapped[ProctoringSessionModel] = relationship(back_populates="eventos")
