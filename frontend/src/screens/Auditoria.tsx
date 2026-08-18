@@ -104,7 +104,10 @@ const ACCIONES_POR_MODULO: Record<string, OpcionAccion[]> = {
   CONFIGURACION: [
     { label: 'Editar', accion: 'config_update,config.' },
   ],
-  // SESIONES: sin acciones específicas propias — el filtro por módulo alcanza.
+  SESIONES: [
+    { label: 'Eliminar sesión de diagnóstico', accion: 'sesion.test.delete' },
+    { label: 'Archivar/desarchivar resultado', accion: 'sesion.resultado.archivar' },
+  ],
 };
 
 /** Etiqueta + color + ícono por acción dot-notation (detalle). */
@@ -145,6 +148,8 @@ const ACCION_META: Array<{ match: (a: string) => boolean; label: string; color: 
   { match: (a) => a.startsWith('firma_maestra') || a.startsWith('verify_chain'), label: 'Verificó integridad', color: '#7c3aed', icon: 'verified_user' },
   { match: (a) => a.startsWith('retention'), label: 'Retención / borrado', color: '#64748b', icon: 'auto_delete' },
   { match: (a) => a.startsWith('dsr') || a.startsWith('derecho_acceso'), label: 'Derecho del titular', color: '#0d9488', icon: 'policy' },
+  { match: (a) => a === 'sesion.test.delete', label: 'Eliminó sesión de diagnóstico', color: '#ef4444', icon: 'delete' },
+  { match: (a) => a === 'sesion.resultado.archivar', label: 'Archivó/desarchivó resultado', color: '#f59e0b', icon: 'archive' },
 ];
 
 function accionMeta(accion: string): { label: string; color: string; icon: string } {

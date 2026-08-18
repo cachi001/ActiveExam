@@ -266,19 +266,31 @@ function ChartVacio({ icono, texto }: { icono: string; texto: string }) {
   );
 }
 
-/** Etiquetas legibles de los tipos de evento (detectores). Fallback: prettify. */
+/** Etiquetas legibles de los tipos de evento (detectores). Fallback: prettify.
+ *
+ * Claves alineadas 1:1 con `TipoEvento` (`backend/app/domain/events/schema.py`)
+ * + `copiar_pegar` (evento real emitido por el cliente, C-25/C-76 tarea 15,
+ * fuera del enum cerrado — `IngestEventoIn.tipo` acepta cualquier string).
+ * Las claves anteriores (`mirada_desviada_sostenida`, `perdida_de_foco`,
+ * `salida_pantalla_completa`, `corte_conectividad_prolongado`) nunca matcheaban
+ * un evento real — caían siempre al fallback crudo. Corregido 2026-08-18. */
 const ETIQUETA_EVENTO: Record<string, string> = {
   rostro_ausente: 'Rostro ausente',
   multiples_rostros: 'Múltiples rostros',
-  mirada_desviada_sostenida: 'Mirada desviada',
-  perdida_de_foco: 'Pérdida de foco',
+  mirada_desviada: 'Mirada desviada',
+  postura: 'Postura irregular',
   cambio_pestana: 'Cambio de pestaña',
-  salida_pantalla_completa: 'Salió de pantalla completa',
-  copiar_pegar: 'Copiar / pegar',
   monitor_adicional: 'Monitor adicional',
-  corte_conectividad_prolongado: 'Corte de conexión',
-  reanudacion_tardia: 'Reanudación tardía',
+  posible_cambio_identidad: 'Posible cambio de identidad',
+  evidencia_corrupta: 'Evidencia corrupta',
+  tampering_camara_virtual: 'Cámara virtual detectada',
+  corte_conectividad: 'Corte de conexión',
+  heartbeat: 'Señal de actividad',
   recarga_pagina: 'Recarga de página',
+  reanudacion_tardia: 'Reanudación tardía',
+  captura_pausa: 'Captura en pausa',
+  pausa_sin_captura: 'Pausa sin captura',
+  copiar_pegar: 'Copiar / pegar',
 };
 function etiquetaEvento(tipo: string): string {
   return ETIQUETA_EVENTO[tipo] ?? tipo.replace(/_/g, ' ');

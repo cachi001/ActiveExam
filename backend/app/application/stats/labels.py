@@ -29,6 +29,12 @@ ETIQUETA_EVENTO: dict[str, str] = {
     TipoEvento.HEARTBEAT: "Señal de actividad",
     TipoEvento.RECARGA_PAGINA: "Recarga de página",
     TipoEvento.REANUDACION_TARDIA: "Reanudación tardía",
+    TipoEvento.CAPTURA_PAUSA: "Captura en pausa",
+    TipoEvento.PAUSA_SIN_CAPTURA: "Pausa sin captura",
+    # "copiar_pegar" (C-25/C-76 tarea 15) es un evento real emitido por el
+    # cliente pero fuera del enum TipoEvento (IngestEventoIn.tipo acepta
+    # cualquier string) — clave string literal, no un miembro del enum.
+    "copiar_pegar": "Copiar / pegar",
 }
 
 # Estados de revisión (decisiones humanas, modelo de un solo paso) — usados en
