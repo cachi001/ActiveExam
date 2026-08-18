@@ -96,7 +96,7 @@ export function ConfirmModal({
           </div>
         </div>
 
-        <div className="flex items-center justify-end gap-sm pt-base">
+        <div className="flex items-center justify-end gap-sm pt-md border-t border-outline-variant/40">
           <Button variant="ghost" size="sm" onClick={onCancelar}>
             {textoCancelar}
           </Button>

@@ -39,11 +39,11 @@ export function RiesgoBanner({ score }: { score: number }) {
   const c = CONTENIDO[nivel];
   return (
     <div
-      className={`flex items-start gap-sm rounded-xl border px-md py-base ${scoreSoftBg(score)} ${scoreSoftBorder(score)}`}
+      className={`flex items-start gap-md rounded-xl border px-md py-md ${scoreSoftBg(score)} ${scoreSoftBorder(score)}`}
       role={nivel === 'alto' ? 'alert' : undefined}
     >
       <Icon name={c.icon} className={`text-[22px] shrink-0 mt-px ${c.iconTone}`} fill />
-      <div className="min-w-0">
+      <div className="min-w-0 space-y-xs">
         <p className="text-label-md font-bold text-on-surface">{c.titulo}</p>
         <p className="text-label-sm text-on-surface-variant">{c.detalle}</p>
       </div>

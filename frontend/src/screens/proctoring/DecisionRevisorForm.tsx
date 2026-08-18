@@ -75,7 +75,7 @@ export function DecisionRevisorForm({
   if (!puedeResolver) {
     return (
       <div className="space-y-sm">
-        <SectionTitle sub="Esta vista es de solo lectura: la decisión la toma quien tiene la atribución de revisor.">
+        <SectionTitle sub="Esta vista es de solo lectura: la decisión la toma quien tiene la atribución de coordinador.">
           Dossier de la sesión (modo lectura)
         </SectionTitle>
         <p className="text-label-sm text-on-surface-variant inline-flex items-center gap-base">
@@ -90,7 +90,7 @@ export function DecisionRevisorForm({
   return (
     <div className="space-y-md">
       <SectionTitle sub="El sistema solo ordena por prioridad. La decisión es siempre tuya.">
-        Decisión del revisor
+        Decisión del coordinador
       </SectionTitle>
 
       <FormField
