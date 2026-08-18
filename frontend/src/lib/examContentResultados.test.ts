@@ -138,6 +138,107 @@ describe('2.1 listarResultadosFn — llamada básica', () => {
   });
 });
 
+describe('2.2 listarResultadosFn — filtros de entrega C-76 tarea 14', () => {
+  let fetchSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => { fetchSpy = vi.spyOn(globalThis, 'fetch'); });
+  afterEach(() => { fetchSpy.mockRestore(); });
+
+  it('incluye estado_entrega y archivado en la querystring cuando se proveen', async () => {
+    fetchSpy.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ items: [], total: 0, page: 1, page_size: 25 }),
+    } as Response);
+
+    const { listarResultadosFn } = await import('./examContentResultados');
+    await listarResultadosFn('/api/v1', 'tok', 'ex-1', { estado_entrega: 'en_revision', archivado: true });
+
+    const url = fetchSpy.mock.calls[0][0] as string;
+    expect(url).toContain('estado_entrega=en_revision');
+    expect(url).toContain('archivado=true');
+  });
+
+  it('incluye fecha_desde y fecha_hasta en la querystring combinados con el resto de filtros', async () => {
+    fetchSpy.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ items: [], total: 0, page: 1, page_size: 25 }),
+    } as Response);
+
+    const { listarResultadosFn } = await import('./examContentResultados');
+    await listarResultadosFn('/api/v1', 'tok', 'ex-1', {
+      fecha_desde: '2026-01-01T00:00:00',
+      fecha_hasta: '2026-01-31T23:59:59',
+      q: 'garcia',
+    });
+
+    const url = fetchSpy.mock.calls[0][0] as string;
+    expect(url).toContain('fecha_desde=2026-01-01T00%3A00%3A00');
+    expect(url).toContain('fecha_hasta=2026-01-31T23%3A59%3A59');
+    expect(url).toContain('q=garcia');
+  });
+
+  it('archivado=false explicito SI se manda (distinto de omitido)', async () => {
+    fetchSpy.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ items: [], total: 0, page: 1, page_size: 25 }),
+    } as Response);
+
+    const { listarResultadosFn } = await import('./examContentResultados');
+    await listarResultadosFn('/api/v1', 'tok', 'ex-1', { archivado: false });
+
+    const url = fetchSpy.mock.calls[0][0] as string;
+    expect(url).toContain('archivado=false');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 2.3 RED → GREEN → TRIANGULATE: archivarResultadoFn
+// ---------------------------------------------------------------------------
+
+describe('2.3 archivarResultadoFn — PATCH archivar/desarchivar', () => {
+  let fetchSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => { fetchSpy = vi.spyOn(globalThis, 'fetch'); });
+  afterEach(() => { fetchSpy.mockRestore(); });
+
+  it('llama con método PATCH a la URL correcta con body archivado=true', async () => {
+    fetchSpy.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ session_id: 'sess-1', archivado: true }),
+    } as Response);
+
+    const { archivarResultadoFn } = await import('./examContentResultados');
+    const result = await archivarResultadoFn('/api/v1', 'tok', 'exam-1', 'sess-1', true);
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      '/api/v1/exam-content/exam-1/resultados/sess-1/archivar',
+      expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ archivado: true }) }),
+    );
+    expect(result.archivado).toBe(true);
+  });
+
+  it('triangulación: desarchivar manda archivado=false', async () => {
+    fetchSpy.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ session_id: 'sess-2', archivado: false }),
+    } as Response);
+
+    const { archivarResultadoFn } = await import('./examContentResultados');
+    const result = await archivarResultadoFn('/api/v1', 'tok', 'exam-1', 'sess-2', false);
+
+    const init = fetchSpy.mock.calls[0][1] as RequestInit;
+    expect(init.body).toBe(JSON.stringify({ archivado: false }));
+    expect(result.archivado).toBe(false);
+  });
+
+  it('lanza en HTTP 403 (tutor fuera de su comisión)', async () => {
+    fetchSpy.mockResolvedValueOnce({ ok: false, status: 403, json: async () => ({}) } as Response);
+
+    const { archivarResultadoFn } = await import('./examContentResultados');
+    await expect(archivarResultadoFn('/api/v1', 'tok', 'exam-1', 'sess-1', true)).rejects.toThrow('HTTP 403');
+  });
+});
+
 // ---------------------------------------------------------------------------
 // 3. RED → GREEN: sincronizarMoodleFn
 // ---------------------------------------------------------------------------

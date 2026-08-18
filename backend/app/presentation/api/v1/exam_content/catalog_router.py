@@ -7,6 +7,8 @@ destino Moodle y sincronización manual de resultados. Requiere roles de gestió
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from fastapi import (
     APIRouter,
     Depends,
@@ -44,6 +46,7 @@ from app.application.exam_content.materia_comision_service import (
     MateriaComisionService,
 )
 from app.application.moodle.resultados_query import (
+    ESTADOS_ENTREGA_VALIDOS,
     listar_estados_sincronizables,
     listar_resultados_examen,
 )
@@ -100,6 +103,8 @@ from app.presentation.api.v1.exam_content.schemas import (
     PreguntaPoolItemResponse,
     PreguntasPoolResponse,
     PreguntasSeleccionRequest,
+    ArchivarResultadoRequest,
+    ArchivarResultadoResponse,
     ResultadoAlumnoResponse,
     SorteoRequest,
     ResultadosExamenPaginadosResponse,
@@ -2256,15 +2261,26 @@ def create_exam_content_router(
         examen_id: str,
         q: str | None = None,
         estado: str | None = None,
+        estado_entrega: str | None = None,
+        archivado: bool = False,
+        fecha_desde: datetime | None = None,
+        fecha_hasta: datetime | None = None,
         page: int = 1,
         page_size: int = 20,
     ) -> ResultadosExamenPaginadosResponse:
         """Lista paginada de los alumnos que rindieron el examen.
 
-        Deriva de las sesiones FINALIZADAS vinculadas + la nota persistida + el
-        estado de write-back. Filtrado/orden SIEMPRE serverside.
-        - q:      búsqueda por alumno (idnumber/email).
-        - estado: filtro por estado (pendiente/enviado/fallido/sin_token).
+        Deriva de las sesiones vinculadas + la nota persistida + el estado de
+        write-back. Filtrado/orden SIEMPRE serverside.
+        - q:              búsqueda por alumno (idnumber/email).
+        - estado:         filtro por estado de SYNC a Moodle
+                          (pendiente/enviado/fallido/sin_token).
+        - estado_entrega: filtro por estado de la ENTREGA (C-76 tarea 14),
+                          DERIVADO — no_finalizada/en_revision/revisada/finalizada.
+                          Ortogonal a `estado` (sync a Moodle).
+        - archivado:      default False = solo filas NO archivadas (soft-hide
+                          administrativo, no disciplinario).
+        - fecha_desde/fecha_hasta: rango sobre `finalizada_en`.
         estado_moodle = 'sin_token' cuando Moodle no está configurado.
         D3: es_correcta NUNCA expuesta.
         """
@@ -2272,6 +2288,14 @@ def create_exam_content_router(
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Persistencia no inicializada.",
+            )
+        if estado_entrega is not None and estado_entrega not in ESTADOS_ENTREGA_VALIDOS:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "error": "estado_entrega_invalido",
+                    "mensaje": f"estado_entrega debe ser uno de {sorted(ESTADOS_ENTREGA_VALIDOS)}",
+                },
             )
 
         moodle_configurado = writeback_svc is not None
@@ -2281,6 +2305,10 @@ def create_exam_content_router(
                 examen_id=examen_id,
                 q=q,
                 estado=estado,
+                estado_entrega_filtro=estado_entrega,
+                archivado=archivado,
+                fecha_desde=fecha_desde,
+                fecha_hasta=fecha_hasta,
                 page=page,
                 page_size=page_size,
                 moodle_configurado=moodle_configurado,
@@ -2298,6 +2326,8 @@ def create_exam_content_router(
                     estado_moodle=r.estado_moodle,
                     actualizado_en=r.actualizado_en,
                     retenido_por=r.retenido_por,
+                    estado_entrega=r.estado_entrega,
+                    archivado=r.archivado,
                 )
                 for r in items
             ],
@@ -2305,6 +2335,78 @@ def create_exam_content_router(
             page=max(1, page),
             page_size=max(1, page_size),
         )
+
+    # -----------------------------------------------------------------------
+    # Archivar/desarchivar una fila de resultados (C-76 tarea 14) — soft-hide
+    # administrativo, NO disciplinario. Mismo scoping por comisión que el
+    # resto del panel (tarea 8: tutor de su comisión / coordinador global).
+    # -----------------------------------------------------------------------
+
+    @router.patch(
+        "/{examen_id}/resultados/{session_id}/archivar",
+        response_model=ArchivarResultadoResponse,
+        summary="Archiva o desarchiva una fila de resultados (soft-hide administrativo)",
+    )
+    async def archivar_resultado(
+        examen_id: str,
+        session_id: str,
+        body: ArchivarResultadoRequest,
+        request: Request,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    ) -> ArchivarResultadoResponse:
+        await _exigir_pertenencia(principal, examen_id)
+        if session_factory is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Persistencia no inicializada.",
+            )
+
+        from sqlalchemy import select as _select
+        from app.infrastructure.persistence.models.proctoring import (
+            ProctoringSessionModel,
+        )
+
+        async with session_factory() as session:
+            row = (
+                await session.execute(
+                    _select(ProctoringSessionModel).where(
+                        ProctoringSessionModel.id == session_id,
+                        ProctoringSessionModel.examen_contenido_id == examen_id,
+                    )
+                )
+            ).scalar_one_or_none()
+            if row is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail={
+                        "error": "sesion_no_encontrada",
+                        "mensaje": "La sesión no existe o no pertenece a este examen.",
+                    },
+                )
+            row.archivado = body.archivado
+            await session.commit()
+
+        # C-76 tarea 20.2: gap de auditoría detectado en la tarea 14 y nunca
+        # corregido — archivar/desarchivar una fila de resultados no quedaba
+        # trazado. Reusa ModuloAuditoria.SESIONES (mismo prefijo "sesion." que
+        # el delete de sesión de test, tarea 20.1). Best-effort: no bloquea la
+        # respuesta si el registro de auditoría falla.
+        await registrar_seguro(
+            session_factory,
+            actor=principal.email,
+            accion=AccionAuditoria.RESULTADO_ARCHIVAR,
+            modulo=ModuloAuditoria.SESIONES,
+            entidad_id=session_id,
+            ip=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            proposito=(
+                f"Archivó el resultado {session_id}"
+                if body.archivado
+                else f"Desarchivó el resultado {session_id}"
+            ),
+        )
+
+        return ArchivarResultadoResponse(session_id=session_id, archivado=body.archivado)
 
     # -----------------------------------------------------------------------
     # Sincronización manual a Moodle (C-69 admin-sync, tarea 3) — admin-only.

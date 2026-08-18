@@ -37,6 +37,47 @@ ESTADO_PENDIENTE = "pendiente"
 # default que ConfiguracionSistemaModel.umbral_cola_revision y el mock del frontend).
 UMBRAL_COLA_REVISION_DEFAULT = 70
 
+# Estados de "entrega" (C-76 tarea 14). DERIVADO, NUNCA persistido — se calcula
+# en la query a partir de finalizada_en/en_cola_revision/decision, para no
+# duplicar la fuente de verdad. Distinto y ortogonal a `estado_moodle`
+# (sync a Moodle), que no se toca.
+ESTADO_ENTREGA_NO_FINALIZADA = "no_finalizada"
+ESTADO_ENTREGA_EN_REVISION = "en_revision"
+ESTADO_ENTREGA_REVISADA = "revisada"
+ESTADO_ENTREGA_FINALIZADA = "finalizada"
+
+ESTADOS_ENTREGA_VALIDOS = frozenset(
+    {
+        ESTADO_ENTREGA_NO_FINALIZADA,
+        ESTADO_ENTREGA_EN_REVISION,
+        ESTADO_ENTREGA_REVISADA,
+        ESTADO_ENTREGA_FINALIZADA,
+    }
+)
+
+
+def estado_entrega(
+    *, finalizada_en: object | None, en_cola_revision: bool, decision: str | None
+) -> str:
+    """Deriva el estado de la ENTREGA (L2.5, C-76 tarea 14) — funcion PURA.
+
+    - `no_finalizada`: el alumno no entrego/no termino (`finalizada_en` None).
+    - `revisada`: ya hay veredicto humano registrado (`decision` no None) —
+      SIEMPRE gana sobre `en_cola_revision`, sea cual sea el veredicto
+      (aprobado/anulado): una vez que una persona decidio, la entrega dejo de
+      estar "en revision" (regla dura #5: la decision es siempre humana).
+    - `en_revision`: finalizada, el score supera el umbral (`en_cola_revision`)
+      y todavia nadie decidio.
+    - `finalizada`: caso base — finalizada, sin flag de revision, sin decision.
+    """
+    if finalizada_en is None:
+        return ESTADO_ENTREGA_NO_FINALIZADA
+    if decision is not None:
+        return ESTADO_ENTREGA_REVISADA
+    if en_cola_revision:
+        return ESTADO_ENTREGA_EN_REVISION
+    return ESTADO_ENTREGA_FINALIZADA
+
 
 @dataclass(frozen=True, slots=True)
 class ResultadoAlumno:
@@ -53,6 +94,9 @@ class ResultadoAlumno:
     # None = nada la retiene. Es ortogonal a `estado_moodle`: una fila retenida
     # sigue estando 'pendiente' en la tabla, pero apretar "Sincronizar" no la manda.
     retenido_por: str | None = None
+    # C-76 tarea 14: estado de la ENTREGA (derivado) + soft-hide administrativo.
+    estado_entrega: str = ESTADO_ENTREGA_FINALIZADA
+    archivado: bool = False
 
 
 def estado_moodle_display(db_estado: str | None, *, moodle_configurado: bool) -> str:
@@ -68,15 +112,33 @@ def estado_moodle_display(db_estado: str | None, *, moodle_configurado: bool) ->
 
 
 def _base_stmt(examen_id: str):
-    """Sesiones FINALIZADAS del examen + su estado de write-back (LEFT JOIN)."""
+    """Sesiones del examen + su estado de write-back (LEFT JOIN).
+
+    C-76 tarea 14: YA NO exige `finalizada_en IS NOT NULL` — el estado
+    `no_finalizada` (alumno que no entrego/no termino) tiene que poder listarse
+    y filtrarse. El default sin filtros sigue mostrando lo mismo que antes en la
+    practica (todas las sesiones del examen), pero ahora `estado_entrega`
+    permite acotar. La identidad del alumno usa COALESCE: para una sesion sin
+    write-back todavia (no finalizada) no hay fila en `moodle_writeback_estado`,
+    asi que cae a la identidad persistida en la propia sesion (C-69 migration 0033).
+    """
     from app.infrastructure.persistence.models.transactional import UsuarioModel
+
+    idnumber_expr = func.coalesce(
+        MoodleWritebackEstadoModel.alumno_idnumber, ProctoringSessionModel.alumno_idnumber
+    )
+    email_expr = func.coalesce(
+        MoodleWritebackEstadoModel.alumno_email, ProctoringSessionModel.alumno_email
+    )
 
     return (
         select(
             ProctoringSessionModel.id.label("session_id"),
             ProctoringSessionModel.finalizada_en.label("finalizada_en"),
-            MoodleWritebackEstadoModel.alumno_idnumber,
-            MoodleWritebackEstadoModel.alumno_email,
+            ProctoringSessionModel.decision.label("decision"),
+            ProctoringSessionModel.archivado.label("archivado"),
+            idnumber_expr.label("alumno_idnumber"),
+            email_expr.label("alumno_email"),
             MoodleWritebackEstadoModel.nota,
             MoodleWritebackEstadoModel.estado,
             MoodleWritebackEstadoModel.updated_at,
@@ -94,19 +156,21 @@ def _base_stmt(examen_id: str):
         # OUTER: sin usuario en la tabla (o con la identidad solo en la sesión) la
         # fila igual tiene que salir — perder un resultado por no poder mostrar un
         # nombre sería peor que mostrar el legajo.
-        .outerjoin(
-            UsuarioModel,
-            UsuarioModel.username == MoodleWritebackEstadoModel.alumno_idnumber,
-        )
-        .where(
-            ProctoringSessionModel.examen_contenido_id == examen_id,
-            ProctoringSessionModel.finalizada_en.isnot(None),
-        )
+        .outerjoin(UsuarioModel, UsuarioModel.username == idnumber_expr)
+        .where(ProctoringSessionModel.examen_contenido_id == examen_id)
     )
 
 
-def _aplicar_filtros(stmt, *, q: str | None, estado: str | None):
-    """Búsqueda por alumno (nombre/legajo/email) y filtro por estado — SIEMPRE en SQL."""
+def _aplicar_filtros(
+    stmt,
+    *,
+    q: str | None,
+    estado: str | None,
+    archivado: bool | None = False,
+    fecha_desde: object | None = None,
+    fecha_hasta: object | None = None,
+):
+    """Búsqueda por alumno, estado Moodle, archivado y rango de fecha — SIEMPRE en SQL."""
     from app.infrastructure.persistence.models.transactional import UsuarioModel
 
     if q:
@@ -128,7 +192,51 @@ def _aplicar_filtros(stmt, *, q: str | None, estado: str | None):
         stmt = stmt.where(
             func.coalesce(MoodleWritebackEstadoModel.estado, ESTADO_PENDIENTE) == db_estado
         )
+    if archivado is not None:
+        stmt = stmt.where(ProctoringSessionModel.archivado.is_(archivado))
+    if fecha_desde is not None:
+        stmt = stmt.where(ProctoringSessionModel.finalizada_en >= fecha_desde)
+    if fecha_hasta is not None:
+        stmt = stmt.where(ProctoringSessionModel.finalizada_en <= fecha_hasta)
     return stmt
+
+
+async def _flaggeadas_por_sesion(db: AsyncSession, session_ids: list[str]) -> dict[str, bool]:
+    """``{session_id: True}`` para las sesiones cuyo score >= umbral de cola de revision.
+
+    Reusa la MISMA fuente de pesos/umbral que `_motivos_retencion` y el detalle
+    de sesion del proctor (`_pesos_vivos_por_tipo`/`_tipos_desactivados`/
+    `_umbral_cola_revision`) — no duplica la formula de score, solo el glue de
+    "recorrer session_ids"."""
+    if not session_ids:
+        return {}
+
+    ev_rows = (
+        await db.execute(
+            select(
+                ProctoringEventModel.session_id,
+                ProctoringEventModel.tipo,
+                ProctoringEventModel.severidad,
+            ).where(ProctoringEventModel.session_id.in_(session_ids))
+        )
+    ).all()
+    eventos_por_sesion: dict[str, list] = {}
+    for ev in ev_rows:
+        eventos_por_sesion.setdefault(ev.session_id, []).append(ev)
+
+    pesos = await _pesos_vivos_por_tipo(db)
+    desactivados = await _tipos_desactivados(db)
+    umbral = await _umbral_cola_revision(db)
+
+    return {
+        sid: calcular_score(
+            eventos_por_sesion.get(sid, []),
+            pesos_por_tipo=pesos,
+            tipos_desactivados=desactivados,
+        )
+        >= umbral
+        for sid in session_ids
+    }
 
 
 async def _auto_finalizar_vencidas_del_examen(
@@ -161,6 +269,10 @@ async def listar_resultados_examen(
     examen_id: str,
     q: str | None = None,
     estado: str | None = None,
+    estado_entrega_filtro: str | None = None,
+    archivado: bool | None = False,
+    fecha_desde: object | None = None,
+    fecha_hasta: object | None = None,
     page: int = 1,
     page_size: int = 20,
     moodle_configurado: bool = True,
@@ -169,28 +281,58 @@ async def listar_resultados_examen(
     """Lista paginada de alumnos que rindieron el examen + total global filtrado.
 
     Orden estable: por finalizada_en descendente (más reciente primero), luego
-    session_id para desempatar. Filtrado/orden SIEMPRE serverside (SQL).
+    session_id para desempatar. Filtrado/orden SIEMPRE serverside (SQL) — salvo
+    `estado_entrega_filtro`, que es DERIVADO (score vs umbral + decision, igual
+    que `_motivos_retencion`) y no puede resolverse en un solo WHERE de SQL: en
+    ese caso se traen todas las filas que matchean los demas filtros, se deriva
+    el estado por fila, se filtra y se pagina en memoria (acotado al tamaño de
+    un examen, no de la plataforma entera).
     """
     page = max(1, page)
     page_size = max(1, page_size)
 
     await _auto_finalizar_vencidas_del_examen(db, examen_id, writeback_svc=writeback_svc)
 
-    base = _aplicar_filtros(_base_stmt(examen_id), q=q, estado=estado)
-
-    total = (
-        await db.execute(select(func.count()).select_from(base.subquery()))
-    ).scalar_one()
-
-    page_stmt = (
-        base.order_by(
-            ProctoringSessionModel.finalizada_en.desc(),
-            ProctoringSessionModel.id,
-        )
-        .offset((page - 1) * page_size)
-        .limit(page_size)
+    base = _aplicar_filtros(
+        _base_stmt(examen_id),
+        q=q,
+        estado=estado,
+        archivado=archivado,
+        fecha_desde=fecha_desde,
+        fecha_hasta=fecha_hasta,
+    ).order_by(
+        ProctoringSessionModel.finalizada_en.desc(),
+        ProctoringSessionModel.id,
     )
-    rows = (await db.execute(page_stmt)).all()
+
+    if estado_entrega_filtro:
+        todas = (await db.execute(base)).all()
+        flaggeadas = await _flaggeadas_por_sesion(db, [r.session_id for r in todas])
+        todas = [
+            r
+            for r in todas
+            if estado_entrega(
+                finalizada_en=r.finalizada_en,
+                en_cola_revision=flaggeadas.get(r.session_id, False),
+                decision=r.decision,
+            )
+            == estado_entrega_filtro
+        ]
+        total = len(todas)
+        inicio = (page - 1) * page_size
+        rows = todas[inicio : inicio + page_size]
+        # Las filas de la pagina ya tienen su flag de "en cola" resuelto arriba —
+        # subset del dict, no hace falta recalcular.
+        flaggeadas_pagina = {row.session_id: flaggeadas.get(row.session_id, False) for row in rows}
+    else:
+        total = (
+            await db.execute(select(func.count()).select_from(base.subquery()))
+        ).scalar_one()
+        page_stmt = base.offset((page - 1) * page_size).limit(page_size)
+        rows = (await db.execute(page_stmt)).all()
+        # Sin filtro por estado_entrega, solo hace falta el flag para la PAGINA
+        # visible (no para todo el examen) — igual que `_motivos_retencion`.
+        flaggeadas_pagina = await _flaggeadas_por_sesion(db, [row.session_id for row in rows])
 
     # Motivo de RETENCION por fila. La nota de una sesion en riesgo NO se sincroniza
     # (gate D15, mismo `writeback_en_hold` que usa el envio), pero su estado seguia
@@ -214,6 +356,12 @@ async def listar_resultados_examen(
             ),
             actualizado_en=row.updated_at or row.finalizada_en,
             retenido_por=retenciones.get(row.session_id),
+            estado_entrega=estado_entrega(
+                finalizada_en=row.finalizada_en,
+                en_cola_revision=flaggeadas_pagina.get(row.session_id, False),
+                decision=row.decision,
+            ),
+            archivado=bool(row.archivado),
         )
         for row in rows
     ]

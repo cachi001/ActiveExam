@@ -1,9 +1,16 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Badge, Button, Card, Icon, SectionTitle } from '../../ui/components';
+import { Pagination, PageSizeSelect } from '../../ui/Pagination';
 import { getPreguntasExamen, setPreguntasSeleccion, sortearPreguntas, type PreguntaSeleccion } from '../../lib/examContentAdmin';
 import { listarCategorias } from '../../lib/apiAdmin/bancoPreguntasApi';
 import type { CategoriaPregunta } from '../../lib/apiAdmin/bancoPreguntasApi';
 import { limpiarEnunciadoCloze } from '../../lib/cloze';
+
+/** Tamaño de página por defecto para la lista manual — el pool completo sigue
+ * en memoria (la selección/guardado opera sobre TODAS las preguntas, no solo
+ * la página visible); esto solo pagina el render de la lista larga. */
+const PREGUNTAS_POR_PAGINA_DEFAULT = 10;
+const PREGUNTAS_PAGE_SIZE_OPTIONS = [10, 20, 50];
 
 const TIPO_PREGUNTA_LABEL: Record<string, string> = {
   multichoice: 'Opción múltiple',
@@ -67,6 +74,10 @@ export function PreguntasSeleccionSection({ examenId, materiaId, onSeleccionGuar
   // Modo de selección
   const [modo, setModo] = useState<ModoSeleccion>('manual');
 
+  // Paginación de la lista manual (client-side: el pool completo ya está en memoria).
+  const [pagina, setPagina] = useState(1);
+  const [tamPagina, setTamPagina] = useState(PREGUNTAS_POR_PAGINA_DEFAULT);
+
   // Sorteo
   const [categorias, setCategorias] = useState<CategoriaPregunta[]>([]);
   const [cargandoCats, setCargandoCats] = useState(false);
@@ -85,6 +96,7 @@ export function PreguntasSeleccionSection({ examenId, materiaId, onSeleccionGuar
       setSeleccionOriginal(Object.fromEntries(resp.items.map((p) => [p.id, p.seleccionada])));
       setTotal(resp.total);
       setBloqueada(resp.bloqueada ?? false);
+      setPagina(1);
     } catch (err: unknown) {
       setErrorCarga(err instanceof Error ? err.message : 'No se pudieron cargar las preguntas.');
       setPreguntas([]);
@@ -112,6 +124,17 @@ export function PreguntasSeleccionSection({ examenId, materiaId, onSeleccionGuar
   const seleccionadas = preguntas.filter((p) => p.seleccionada).length;
   const ningunaMarcada = seleccionadas === 0;
   const hayCambiosSeleccion = preguntas.some((p) => p.seleccionada !== (seleccionOriginal[p.id] ?? false));
+
+  const totalPaginasPreguntas = Math.max(1, Math.ceil(preguntas.length / tamPagina));
+  const preguntasPagina = useMemo(
+    () => preguntas.slice((pagina - 1) * tamPagina, pagina * tamPagina),
+    [preguntas, pagina, tamPagina],
+  );
+
+  function cambiarTamPagina(size: number) {
+    setTamPagina(size);
+    setPagina(1);
+  }
 
   function toggle(id: string) {
     setOkGuardado(false);
@@ -184,14 +207,23 @@ export function PreguntasSeleccionSection({ examenId, materiaId, onSeleccionGuar
               : `${seleccionadas} de ${total} pregunta${total !== 1 ? 's' : ''} seleccionada${seleccionadas !== 1 ? 's' : ''}`
         }
         action={
-          !cargando && !errorCarga && preguntas.length > 0 && !bloqueada && modo === 'manual' ? (
-            <div className="flex items-center gap-xs">
-              <Button variant="ghost" size="sm" onClick={() => setTodas(true)} disabled={guardando}>
-                Seleccionar todas
-              </Button>
-              <Button variant="ghost" size="sm" onClick={() => setTodas(false)} disabled={guardando}>
-                Quitar todas
-              </Button>
+          !cargando && !errorCarga && preguntas.length > 0 && modo === 'manual' ? (
+            <div className="flex items-center gap-md">
+              {!bloqueada && (
+                <div className="flex items-center gap-xs">
+                  <Button variant="ghost" size="sm" onClick={() => setTodas(true)} disabled={guardando}>
+                    Seleccionar todas
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => setTodas(false)} disabled={guardando}>
+                    Quitar todas
+                  </Button>
+                </div>
+              )}
+              <PageSizeSelect
+                value={tamPagina}
+                onChange={cambiarTamPagina}
+                options={PREGUNTAS_PAGE_SIZE_OPTIONS}
+              />
             </div>
           ) : undefined
         }
@@ -393,7 +425,7 @@ export function PreguntasSeleccionSection({ examenId, materiaId, onSeleccionGuar
           )}
 
           <ul className="space-y-xs">
-            {preguntas.map((p) => (
+            {preguntasPagina.map((p) => (
               <li key={p.id}>
                 <label
                   className={`flex items-start gap-sm p-md rounded-xl border select-none transition-colors
@@ -424,6 +456,14 @@ export function PreguntasSeleccionSection({ examenId, materiaId, onSeleccionGuar
               </li>
             ))}
           </ul>
+
+          <Pagination
+            currentPage={pagina}
+            totalPages={totalPaginasPreguntas}
+            totalElements={preguntas.length}
+            pageSize={tamPagina}
+            onPageChange={setPagina}
+          />
 
           {ningunaMarcada && !bloqueada && (
             <div className="flex items-center gap-sm text-warning bg-warning-container rounded-xl px-md py-sm text-label-sm">

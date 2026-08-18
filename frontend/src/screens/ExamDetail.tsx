@@ -148,28 +148,6 @@ export default function ExamDetail() {
         <DestinoMoodleSection examenId={examenId} />
 
         <ConfiguracionExamenSection examenId={examenId} />
-
-        {/* Acceso a la página dedicada de resultados (antes era una tabla al final). */}
-        <Card className="flex items-center justify-between gap-md flex-wrap">
-          <div className="flex items-center gap-sm min-w-0">
-            <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
-              <Icon name="groups" className="text-[20px]" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-title-sm font-semibold text-on-surface">Alumnos que rindieron</p>
-              <p className="text-label-sm text-on-surface-variant">
-                Resultados, notas y sincronización con Moodle.
-              </p>
-            </div>
-          </div>
-          <Button
-            variant="secondary"
-            iconRight="arrow_forward"
-            onClick={() => navigate(`/admin/examenes/${examenId}/resultados`)}
-          >
-            Ver alumnos que rindieron
-          </Button>
-        </Card>
       </div>
     </StaffShell>
   );

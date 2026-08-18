@@ -770,6 +770,11 @@ class ResultadoAlumnoResponse(BaseModel):
     # en_riesgo | anulada. None = nada la retiene.
     retenido_por: str | None = None
     actualizado_en: datetime | None = None
+    # C-76 tarea 14: estado de la ENTREGA, DERIVADO (nunca persistido).
+    # no_finalizada | en_revision | revisada | finalizada.
+    estado_entrega: str
+    # Soft-hide administrativo del panel de resultados (no disciplinario).
+    archivado: bool = False
 
 
 class ResultadosExamenPaginadosResponse(BaseModel):
@@ -781,6 +786,27 @@ class ResultadosExamenPaginadosResponse(BaseModel):
     total: int
     page: int
     page_size: int
+
+
+class ArchivarResultadoRequest(BaseModel):
+    """Body de ``PATCH .../resultados/{session_id}/archivar`` (C-76 tarea 14).
+
+    Soft-hide administrativo — NO es un veredicto disciplinario (eso es
+    ``decision``, ver ``review/service.py``). Solo oculta/muestra la fila.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    archivado: bool
+
+
+class ArchivarResultadoResponse(BaseModel):
+    """Estado resultante tras archivar/desarchivar una fila de resultados."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    session_id: str
+    archivado: bool
 
 
 class SincronizarMoodleRequest(BaseModel):

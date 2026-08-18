@@ -35,6 +35,7 @@ const UsuarioEdit           = lazy(() => import('./screens/admin/UsuarioEdit'));
 const MateriasComisiones    = lazy(() => import('./screens/MateriasComisiones'));
 const DetalleUsuario        = lazy(() => import('./screens/DetalleUsuario'));
 const ExamDetail            = lazy(() => import('./screens/ExamDetail'));
+const Notas                 = lazy(() => import('./screens/Notas'));
 const ExamResultados        = lazy(() => import('./screens/ExamResultados'));
 const MoodleImportPage      = lazy(() => import('./admin/ExamImport/MoodleImportPage'));
 const Configuracion         = lazy(() => import('./screens/Configuracion'));
@@ -110,8 +111,9 @@ export default function App() {
     '/admin/estadisticas': g(<EstadisticasInstitucionales />, ACADEMICO),
     '/admin/auditoria': g(<Auditoria />, ADMIN),
     '/admin/examenes': g(<ExamList />, ACADEMICO),
-    '/admin/examenes/importar': g(<MoodleImportPage />, ACADEMICO),
+    '/admin/notas': g(<Notas />, ACADEMICO),
     '/admin/examenes/:id/resultados': g(<ExamResultados />, ACADEMICO),
+    '/admin/examenes/importar': g(<MoodleImportPage />, ACADEMICO),
     '/admin/examenes/:id': g(<ExamDetail />, ACADEMICO),
     '/admin/detection-test': g(<AdminDetectionHarness />, ADMIN),
     '/admin/proctoring-sessions': g(<ProctoringRevisor />, SUPERVISION_VIVO),

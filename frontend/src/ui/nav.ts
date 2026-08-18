@@ -51,6 +51,10 @@ export const STAFF_NAV: StaffNavItem[] = [
   { to: '/admin',                       icon: 'space_dashboard', label: 'Dashboard',               group: 'main',   roles: ACADEMICO },
   { to: '/admin/estadisticas',          icon: 'insights',        label: 'Estadísticas',            group: 'main',   roles: ACADEMICO },
   { to: '/admin/examenes',              icon: 'fact_check',      label: 'Exámenes',                group: 'main',   roles: ACADEMICO },
+  // Alumnos que rindieron + sync a Moodle, sin pasar por el detalle de cada
+  // examen (antes: Exámenes → click en la fila → scroll → "Ver alumnos que
+  // rindieron"). Reusa la misma pantalla de resultados, solo cambia la entrada.
+  { to: '/admin/notas',                 icon: 'grading',         label: 'Notas',                   group: 'main',   roles: ACADEMICO },
   { to: '/admin/banco-preguntas',       icon: 'library_books',   label: 'Banco de preguntas',       group: 'main',   roles: ACADEMICO },
   // Académico, NO administración del sistema: va en 'main' junto a Exámenes y Banco.
   // Antes estaba en 'config' y para el tutor (cuyo único item de config es este)
