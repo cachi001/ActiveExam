@@ -7,19 +7,32 @@
 
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 
-import { detectExtraMonitor, FocusDetector, requestAndDetectExtraMonitor } from "./contextDetectors";
+import { ClipboardDetector, detectExtraMonitor, FocusDetector, requestAndDetectExtraMonitor } from "./contextDetectors";
 
 class FakeTarget {
-  handlers: Record<string, () => void> = {};
-  addEventListener(type: string, fn: () => void): void {
+  handlers: Record<string, (arg?: unknown) => void> = {};
+  addEventListener(type: string, fn: (arg?: unknown) => void): void {
     this.handlers[type] = fn;
   }
   removeEventListener(type: string): void {
     delete this.handlers[type];
   }
-  fire(type: string): void {
-    this.handlers[type]?.();
+  fire(type: string, arg?: unknown): void {
+    this.handlers[type]?.(arg);
   }
+}
+
+/** SubtleCrypto fake determinista: hashea sumando los code points del texto (NO
+ * es SHA-256 real — no importa para el test, solo que sea funcion pura del input). */
+function fakeSubtle(): SubtleCrypto {
+  return {
+    digest: async (_alg: unknown, data: BufferSource) => {
+      const bytes = data instanceof Uint8Array ? data : new Uint8Array(data as ArrayBuffer);
+      const out = new Uint8Array(32);
+      bytes.forEach((b, i) => { out[i % 32] ^= b; });
+      return out.buffer;
+    },
+  } as unknown as SubtleCrypto;
 }
 
 describe("FocusDetector", () => {
@@ -138,5 +151,89 @@ describe("requestAndDetectExtraMonitor", () => {
     });
     const result = await requestAndDetectExtraMonitor();
     expect(result).toEqual({ status: "granted", extra_monitor: true });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// C-76 (15.2/15.6): ClipboardDetector — hash del contenido pegado, sin persistir
+// el contenido en si.
+// ---------------------------------------------------------------------------
+
+describe("ClipboardDetector", () => {
+  it("emite copy sin clipboard_sha256", () => {
+    const doc = new FakeTarget();
+    const signals: Array<ReturnType<typeof Object>> = [];
+    const det = new ClipboardDetector((s) => signals.push(s), {
+      doc: doc as unknown as Document,
+      subtle: fakeSubtle(),
+    });
+    det.start();
+    doc.fire("copy");
+    expect(signals).toEqual([{ clipboard_action: "copy" }]);
+  });
+
+  it("emite paste con clipboard_sha256 cuando el evento expone texto plano", async () => {
+    const doc = new FakeTarget();
+    const signals: Array<{ clipboard_action?: string; clipboard_sha256?: string }> = [];
+    const det = new ClipboardDetector((s) => signals.push(s), {
+      doc: doc as unknown as Document,
+      subtle: fakeSubtle(),
+    });
+    det.start();
+    const fakeEvent = { clipboardData: { getData: (t: string) => (t === "text/plain" ? "hola mundo" : "") } };
+    doc.fire("paste", fakeEvent);
+    // El hash se calcula async (promesa de SubtleCrypto.digest) — esperar el microtask.
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(signals).toHaveLength(1);
+    expect(signals[0].clipboard_action).toBe("paste");
+    expect(signals[0].clipboard_sha256).toBeTruthy();
+    expect(typeof signals[0].clipboard_sha256).toBe("string");
+  });
+
+  it("hashes distintos para textos distintos (no es un valor fijo)", async () => {
+    const doc = new FakeTarget();
+    const hashes: string[] = [];
+    const det = new ClipboardDetector((s) => {
+      if (s.clipboard_sha256) hashes.push(s.clipboard_sha256);
+    }, { doc: doc as unknown as Document, subtle: fakeSubtle() });
+    det.start();
+    doc.fire("paste", { clipboardData: { getData: () => "texto A" } });
+    await Promise.resolve(); await Promise.resolve();
+    doc.fire("paste", { clipboardData: { getData: () => "texto B, mucho mas largo y distinto" } });
+    await Promise.resolve(); await Promise.resolve();
+    expect(hashes).toHaveLength(2);
+    expect(hashes[0]).not.toBe(hashes[1]);
+  });
+
+  it("degrada en silencio (sin hash) cuando no hay texto plano en el evento", async () => {
+    const doc = new FakeTarget();
+    const signals: Array<{ clipboard_action?: string; clipboard_sha256?: string }> = [];
+    const det = new ClipboardDetector((s) => signals.push(s), {
+      doc: doc as unknown as Document,
+      subtle: fakeSubtle(),
+    });
+    det.start();
+    // Paste de una imagen: sin text/plain.
+    doc.fire("paste", { clipboardData: { getData: () => "" } });
+    expect(signals).toEqual([{ clipboard_action: "paste" }]);
+  });
+
+  it("degrada en silencio cuando no hay SubtleCrypto disponible", () => {
+    // deps.subtle: undefined cae al `crypto.subtle` global por defecto (igual que
+    // `doc`); para probar la degradacion hay que quitar tambien el global.
+    vi.stubGlobal("crypto", {} as Crypto);
+    try {
+      const doc = new FakeTarget();
+      const signals: Array<{ clipboard_action?: string; clipboard_sha256?: string }> = [];
+      const det = new ClipboardDetector((s) => signals.push(s), {
+        doc: doc as unknown as Document,
+      });
+      det.start();
+      doc.fire("paste", { clipboardData: { getData: () => "contenido" } });
+      expect(signals).toEqual([{ clipboard_action: "paste" }]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

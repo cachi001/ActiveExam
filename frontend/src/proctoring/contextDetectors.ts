@@ -24,6 +24,13 @@ export interface ContextSignal {
   fullscreen_exited?: boolean;
   /** C-25: accion de portapapeles ('copy' | 'paste'). SIN contenido. */
   clipboard_action?: 'copy' | 'paste';
+  /**
+   * C-76 (15.2): hash SHA-256 (hex) del texto pegado. Presente solo en 'paste' y
+   * solo si el navegador expuso `text/plain` en el evento. El texto en si se lee
+   * UNA vez para hashear y se descarta de inmediato — nunca se asigna a una
+   * variable de estado ni se loguea (Ley 25.326, dato potencialmente sensible).
+   */
+  clipboard_sha256?: string;
 }
 
 export interface FocusDetectorDeps {
@@ -119,6 +126,12 @@ export class FullscreenDetector {
 
 export interface ClipboardDetectorDeps {
   doc?: Pick<Document, "addEventListener" | "removeEventListener">;
+  /**
+   * C-76 (15.2): SubtleCrypto inyectable para tests deterministicos (default:
+   * `crypto.subtle` del entorno real). Si no hay SubtleCrypto disponible, se
+   * degrada en silencio: se emite la accion 'paste' sin `clipboard_sha256`.
+   */
+  subtle?: SubtleCrypto;
 }
 
 /**
@@ -126,6 +139,11 @@ export interface ClipboardDetectorDeps {
  * NO lee ni almacena el contenido del portapapeles (privacidad; cliente no confiable).
  * Emite solo la accion ('copy' | 'paste'). Dep inyectable para tests sin navegador.
  * Solo senales, sin sancion (L2.5).
+ *
+ * C-76 (15.2): en 'paste', si el navegador expone texto plano en el evento, se
+ * calcula su SHA-256 (Web Crypto) y se emite como `clipboard_sha256` — el texto en
+ * si NUNCA se asigna a una variable de estado ni se transmite: se lee UNA vez para
+ * hashear (dentro de `hashPlainText`) y se descarta al retornar (Ley 25.326).
  */
 export class ClipboardDetector {
   private readonly listeners: Array<() => void> = [];
@@ -138,17 +156,43 @@ export class ClipboardDetector {
   start(): void {
     const doc = this.deps.doc ?? (typeof document !== "undefined" ? document : undefined);
     if (!doc) return;
+    const subtle = this.deps.subtle ?? (typeof crypto !== "undefined" ? crypto.subtle : undefined);
     const onCopy = () => this.onSignal({ clipboard_action: "copy" });
-    const onPaste = () => this.onSignal({ clipboard_action: "paste" });
+    const onPaste = (evt: Event) => {
+      const texto = (evt as ClipboardEvent).clipboardData?.getData?.("text/plain");
+      if (subtle && texto) {
+        // El hash es evidencia REAL (a diferencia del screenshot de este evento,
+        // que es solo contexto visual). `texto` sale de scope al resolver la
+        // promesa — no queda retenido en ningun ref/estado.
+        void hashPlainText(texto, subtle)
+          .then((clipboard_sha256) => this.onSignal({ clipboard_action: "paste", clipboard_sha256 }))
+          .catch(() => this.onSignal({ clipboard_action: "paste" }));
+      } else {
+        // Sin SubtleCrypto o sin texto plano expuesto (p. ej. paste de imagen):
+        // se emite igual la accion, sin hash (degradacion silenciosa).
+        this.onSignal({ clipboard_action: "paste" });
+      }
+    };
     doc.addEventListener("copy", onCopy);
-    doc.addEventListener("paste", onPaste);
+    doc.addEventListener("paste", onPaste as EventListener);
     this.listeners.push(() => doc.removeEventListener("copy", onCopy));
-    this.listeners.push(() => doc.removeEventListener("paste", onPaste));
+    this.listeners.push(() => doc.removeEventListener("paste", onPaste as EventListener));
   }
 
   stop(): void {
     for (const off of this.listeners.splice(0)) off();
   }
+}
+
+/**
+ * Hashea texto en claro a SHA-256 hex via Web Crypto. El texto se consume en esta
+ * unica linea; el resultado es el hash, nunca el contenido (Ley 25.326, regla dura #7).
+ */
+async function hashPlainText(texto: string, subtle: SubtleCrypto): Promise<string> {
+  const digest = await subtle.digest("SHA-256", new TextEncoder().encode(texto));
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 /** Proveedor de detalles de pantallas (abstrae getScreenDetails, opcional). */

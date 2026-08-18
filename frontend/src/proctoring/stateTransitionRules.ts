@@ -41,6 +41,15 @@ export interface FrameSignals {
   /** C-25: accion de portapapeles detectada ('copy' | 'paste'). SIN contenido. */
   clipboard_action?: 'copy' | 'paste';
   /**
+   * C-76 (15.2): hash SHA-256 (hex) del contenido pegado, calculado en el cliente
+   * via Web Crypto. SOLO presente cuando ``clipboard_action === 'paste'`` y el
+   * navegador expuso contenido de texto en el evento. El contenido en si NUNCA
+   * llega hasta aca — se lee, se hashea y se descarta en el detector (Ley 25.326).
+   * Es EVIDENCIA REAL (a diferencia del screenshot de estos dos eventos, que es
+   * solo contexto visual, ver trigger_evidence mas abajo).
+   */
+  clipboard_sha256?: string;
+  /**
    * C-35: Yaw de cabeza en grados (0 = frontal, + = derecha, - = izquierda).
    * Opcional; si undefined, se ignora en evalGaze().
    * Extraido de PoseSignal en el harness (aproximado via landmarks de hombros).
@@ -296,7 +305,11 @@ export class StateTransitionRules {
           severidad: "media",
           ts_ms: s.ts_ms,
           payload: {},
-          trigger_evidence: false,
+          // C-76 (15.1): activado con el dueño. El screenshot que dispara NO prueba
+          // que el evento ocurrio (a diferencia de multiples_rostros/rostro_ausente,
+          // donde se re-infiere la misma imagen server-side) — es CONTEXTO VISUAL
+          // para que el revisor humano juzgue (L2.5, regla dura #5).
+          trigger_evidence: true,
         });
       }
     } else {
@@ -327,8 +340,15 @@ export class StateTransitionRules {
         tipo: "copiar_pegar",
         severidad: "media",
         ts_ms: s.ts_ms,
-        payload: { accion: s.clipboard_action },
-        trigger_evidence: false,
+        // C-76 (15.2): clipboard_sha256 es evidencia REAL (hash, nunca contenido —
+        // Ley 25.326) presente solo si el navegador expuso texto en el paste.
+        payload: {
+          accion: s.clipboard_action,
+          ...(s.clipboard_sha256 !== undefined ? { clipboard_sha256: s.clipboard_sha256 } : {}),
+        },
+        // C-76 (15.1): activado con el dueño. Mismo criterio que cambio_pestana:
+        // el screenshot es CONTEXTO VISUAL, no prueba del evento (L2.5, regla dura #5).
+        trigger_evidence: true,
       });
     }
   }

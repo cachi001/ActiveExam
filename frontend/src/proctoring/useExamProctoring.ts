@@ -77,16 +77,32 @@ import { HEARTBEAT_MAX_FREQ_SEC } from '../transport/evidenceCadence';
 const MAX_EVENTOS = 30;
 
 /**
- * Tipos de evento que adjuntan imagen de evidencia (el frame de la cámara ES la
- * prueba). El resto (eventos de sistema/comportamiento) NO captura screenshot:
- * el registro del evento ya es la evidencia (privacidad L2.5, regla dura #7).
+ * Tipos de evento que adjuntan imagen de evidencia. Dos motivos distintos, mismo Set:
+ *
+ *  - `rostro_ausente`, `multiples_rostros`, `mirada_desviada_sostenida`,
+ *    `monitor_adicional`, `reanudacion_tardia`: el frame de la cámara ES la prueba
+ *    (se re-infiere la MISMA imagen server-side).
+ *  - `cambio_pestana`, `copiar_pegar` (C-76 15.1, decidido con el dueño): el
+ *    screenshot NO prueba que el evento ocurrió — es CONTEXTO VISUAL para que el
+ *    revisor humano juzgue (L2.5, regla dura #5). `copiar_pegar` además adjunta
+ *    `clipboard_sha256` en el payload cuando está disponible: ESA sí es evidencia
+ *    real (hash, nunca el contenido — Ley 25.326).
+ *
+ * El resto de los eventos de sistema/comportamiento (`perdida_de_foco`,
+ * `salida_pantalla_completa`, `corte_conectividad`) sigue SIN adjuntar screenshot:
+ * el registro del evento + timestamp ya es la evidencia. Menos capturas = mejor
+ * privacidad (menos imágenes del alumno) y menos storage/ancho de banda.
  */
-const EVENTOS_CON_EVIDENCIA_VISUAL = new Set<string>([
+// Exportado (además de usado internamente) para que el test 15.6 verifique la
+// membresía sobre el Set REAL que usa el gate, no una copia duplicada en el test.
+export const EVENTOS_CON_EVIDENCIA_VISUAL = new Set<string>([
   'rostro_ausente',
   'multiples_rostros',
   'mirada_desviada_sostenida',
   'monitor_adicional',
   'reanudacion_tardia',
+  'cambio_pestana',
+  'copiar_pegar',
 ]);
 
 /**
@@ -374,7 +390,9 @@ export function useExamProctoring(
   const focusLostRef = useRef(false);
   const tabChangedRef = useRef(false);
   const fullscreenExitedRef = useRef(false);
-  const clipboardRef = useRef<'copy' | 'paste' | null>(null);
+  // C-76 (15.2): además de la acción, guarda el hash SHA-256 del contenido pegado
+  // (si el navegador lo expuso) — NUNCA el contenido en sí.
+  const clipboardRef = useRef<{ accion: 'copy' | 'paste'; sha256?: string } | null>(null);
   const extraMonitorRef = useRef<boolean | null>(null);
 
   // ------ C-76 bloque 5: cadencia de captura_pausa (ver comentario junto a
@@ -468,12 +486,8 @@ export function useExamProctoring(
       sessionIdRef.current ??
       (sessionPromiseRef.current ? await sessionPromiseRef.current : null);
     if (!sid) return;
-    // Gate de evidencia (privacidad L2.5, regla dura #7): solo se captura una imagen
-    // para eventos de VISIÓN, donde el frame de la cámara ES la prueba. Los eventos de
-    // sistema/comportamiento (copiar_pegar, cambio_pestana, perdida_de_foco,
-    // salida_pantalla_completa, monitor_adicional, corte_conectividad) NO adjuntan
-    // screenshot: el registro del evento + timestamp ya es la evidencia. Menos capturas
-    // = mejor privacidad (menos imágenes del alumno) y menos storage/ancho de banda.
+    // Gate de evidencia (privacidad L2.5, regla dura #7) — ver EVENTOS_CON_EVIDENCIA_VISUAL
+    // arriba para el detalle de qué captura y por qué (prueba directa vs. contexto visual).
     const screenshot =
       EVENTOS_CON_EVIDENCIA_VISUAL.has(rawEvent.tipo) && videoRef.current
         ? captureVideoFrame(videoRef.current, 0.7)
@@ -638,7 +652,9 @@ export function useExamProctoring(
       if (sig.fullscreen_exited) fullscreenExitedRef.current = true;
     });
     const clipboard = new ClipboardDetector((sig) => {
-      if (sig.clipboard_action) clipboardRef.current = sig.clipboard_action;
+      if (sig.clipboard_action) {
+        clipboardRef.current = { accion: sig.clipboard_action, sha256: sig.clipboard_sha256 };
+      }
     });
     focus.start();
     fullscreen.start();
@@ -815,7 +831,7 @@ interface FrameTickRefs {
   focusLostRef: { current: boolean };
   tabChangedRef: { current: boolean };
   fullscreenExitedRef: { current: boolean };
-  clipboardRef: { current: 'copy' | 'paste' | null };
+  clipboardRef: { current: { accion: 'copy' | 'paste'; sha256?: string } | null };
   extraMonitorRef: { current: boolean | null };
 }
 
@@ -870,7 +886,8 @@ async function runFrameTick(refs: FrameTickRefs): Promise<void> {
       extra_monitor: refs.extraMonitorRef.current === true,
       tab_changed: snapTab,
       fullscreen_exited: snapFullscreen,
-      clipboard_action: snapClipboard ?? undefined,
+      clipboard_action: snapClipboard?.accion,
+      clipboard_sha256: snapClipboard?.sha256,
     });
   } catch {
     /* error de frame: no romper el loop */
