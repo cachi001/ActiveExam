@@ -107,7 +107,7 @@ function FormularioJwt() {
             {/* Formulario JWT */}
             <form onSubmit={handleSubmit} className="flex flex-col gap-md">
               <TextField
-                label="Usuario"
+                label="Usuario o correo"
                 name="username"
                 type="text"
                 autoComplete="username"
