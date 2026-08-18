@@ -196,8 +196,13 @@ _EMAIL = "c75-lti-passwd@demo.test"
 _NUEVA = "MiClaveNueva123"
 
 
-def test_lti_primer_set_sin_password_actual(activeexam_client):
-    """El usuario LTI define su contraseña sin informar la actual → 200 y gate resuelto."""
+def test_lti_primer_set_sin_username_400(activeexam_client):
+    """El usuario LTI que NO manda nuevo_username en su primer set → 400.
+
+    La cuenta arranca con la clave sintética del campus (lti:{deployment}:{sub}),
+    que no sirve para loguearse directo — elegir un username propio es
+    OBLIGATORIO en ese primer set (regla dura #6: el backend no confía en que
+    el frontend lo haya exigido, lo revalida acá)."""
     uid = _crear_usuario_lti(_ID, _EMAIL)
     try:
         token = _token_propio(uid)
@@ -206,36 +211,55 @@ def test_lti_primer_set_sin_password_actual(activeexam_client):
             json={"contrasena_nueva": _NUEVA},
             headers={"Authorization": f"Bearer {token}"},
         )
+        assert r.status_code == 400, r.text
+    finally:
+        _limpiar(_ID)
+
+
+def test_lti_primer_set_con_username(activeexam_client):
+    """El usuario LTI define contraseña + username propio → 200 y gate resuelto."""
+    uid = _crear_usuario_lti(_ID, _EMAIL)
+    try:
+        token = _token_propio(uid)
+        r = activeexam_client.put(
+            "/api/v1/auth/change-password",
+            json={"contrasena_nueva": _NUEVA, "nuevo_username": "juan.perez.c75"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
         assert r.status_code == 200, r.text
         assert r.json()["ok"] is True
 
-        # /auth/me refleja debe_cambiar_password=false y auth_provider=lti.
+        # /auth/me refleja debe_cambiar_password=false y auth_provider=lti (el
+        # username NO se revalida acá: el token viejo sigue con el claim viejo
+        # hasta que se refresque — eso lo prueba el test de abajo, logueándose
+        # de cero con el username nuevo).
         me = activeexam_client.get(
             "/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"}
         ).json()
         assert me["debe_cambiar_password"] is False
         assert me["auth_provider"] == "lti"
     finally:
-        _limpiar(_ID)
+        _limpiar("juan.perez.c75")
 
 
 def test_lti_puede_loguear_directo_tras_definir(activeexam_client):
-    """Tras definir la contraseña, el alumno LTI puede loguearse directo (link/portal)."""
+    """Tras definir contraseña + username, el alumno LTI se loguea directo (link/portal)."""
     uid = _crear_usuario_lti(_ID, _EMAIL)
     try:
         token = _token_propio(uid)
         activeexam_client.put(
             "/api/v1/auth/change-password",
-            json={"contrasena_nueva": _NUEVA},
+            json={"contrasena_nueva": _NUEVA, "nuevo_username": "juan.perez.c75b"},
             headers={"Authorization": f"Bearer {token}"},
         )
         r = activeexam_client.post(
-            "/api/v1/auth/login", json={"username": _ID, "password": _NUEVA}
+            "/api/v1/auth/login",
+            json={"username": "juan.perez.c75b", "password": _NUEVA},
         )
         assert r.status_code == 200, r.text
         assert "access_token" in r.json()
     finally:
-        _limpiar(_ID)
+        _limpiar("juan.perez.c75b")
 
 
 def test_lti_segundo_cambio_exige_actual(activeexam_client):

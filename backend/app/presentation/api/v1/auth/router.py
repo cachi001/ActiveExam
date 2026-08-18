@@ -446,7 +446,7 @@ async def cambiar_contrasena(
         )
         usuario = result.scalar_one_or_none()
 
-        if not usuario or usuario.auth_provider not in ("local", "lti"):
+        if not usuario or usuario.auth_provider not in ("local", "lti", "jwt"):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="No podés cambiar la contraseña de esta cuenta.",
@@ -456,6 +456,16 @@ async def cambiar_contrasena(
         primer_set = bool(usuario.debe_cambiar_password)
         # ¿Es el primer set de un usuario LTI? En ese caso no hay contraseña actual.
         lti_primer_set = usuario.auth_provider == "lti" and primer_set
+
+        # Regla dura #6 (cliente no confiable): el frontend ya exige elegir
+        # username en el primer set LTI (la cuenta arranca con la clave sintética
+        # del campus, lti:{deployment}:{sub}, que no sirve para loguearse directo)
+        # — el backend lo re-valida en vez de confiar en que el cliente lo mandó.
+        if lti_primer_set and not body.nuevo_username:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Elegí un nombre de usuario para poder ingresar directo la próxima vez.",
+            )
 
         if body.nuevo_username is not None:
             if not primer_set:
