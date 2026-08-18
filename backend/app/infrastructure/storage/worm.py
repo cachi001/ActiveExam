@@ -17,6 +17,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
 
 # Modo de Object Lock exigido por el dominio: Compliance, NUNCA Governance (D4).
 OBJECT_LOCK_MODE = "COMPLIANCE"
@@ -82,3 +83,57 @@ class ComplianceWormStorage(WormStoragePort):
 
     def fetch(self, *, object_key: str) -> bytes:
         return self._get(object_key)
+
+
+def build_boto3_worm_storage(
+    *,
+    endpoint: str,
+    access_key: str,
+    secret_key: str,
+    bucket: str,
+    use_ssl: bool = True,
+) -> ComplianceWormStorage:
+    """Construye un ``ComplianceWormStorage`` real contra un backend S3-compatible.
+
+    MinIO es API-compatible con S3: el mismo cliente ``boto3`` sirve para hablar
+    con la VPS local (c-77) apuntando ``endpoint_url`` al servicio MinIO en vez de
+    AWS. El import de ``boto3`` es LOCAL a esta funcion (no a nivel de modulo): asi
+    ``worm.py`` se puede importar siempre (define el puerto, usado en tests puros
+    sin boto3 instalado) y esta funcion solo se invoca cuando MinIO esta
+    configurado (``main_activeexam.py`` la llama detras de ``minio_configurado``).
+
+    Object Lock queda SIEMPRE en modo Compliance (D4/RN-CC-06) — lo fija
+    ``ComplianceWormStorage``, este adaptador no lo puede overridear.
+    """
+    import boto3
+    from botocore.client import Config as BotoConfig
+
+    endpoint_url = endpoint if "://" in endpoint else f"{'https' if use_ssl else 'http'}://{endpoint}"
+
+    client = boto3.client(
+        "s3",
+        endpoint_url=endpoint_url,
+        aws_access_key_id=access_key,
+        aws_secret_access_key=secret_key,
+        config=BotoConfig(signature_version="s3v4"),
+    )
+
+    def _put(object_key: str, data: bytes, retain_until: str) -> None:
+        client.put_object(
+            Bucket=bucket,
+            Key=object_key,
+            Body=data,
+            ObjectLockMode=OBJECT_LOCK_MODE,
+            ObjectLockRetainUntilDate=datetime.fromisoformat(retain_until),
+        )
+
+    def _get(object_key: str) -> bytes:
+        respuesta = client.get_object(Bucket=bucket, Key=object_key)
+        return respuesta["Body"].read()
+
+    return ComplianceWormStorage(
+        endpoint=endpoint_url,
+        bucket=bucket,
+        put_fn=_put,
+        get_fn=_get,
+    )

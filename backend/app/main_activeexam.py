@@ -21,6 +21,7 @@ Routers montados:
 
 from __future__ import annotations
 
+import logging
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
@@ -28,7 +29,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
-from app.config_activeexam import get_activeexam_settings
+from app.config_activeexam import get_activeexam_settings, minio_configurado
 from app.infrastructure.auth.activeexam_wiring import build_activeexam_jwt_validator
 from app.infrastructure.crypto.embedding_encryption import EmbeddingEncryptionService
 from app.infrastructure.crypto.evidence_encryption import EvidenceCipher
@@ -66,6 +67,15 @@ from app.presentation.api.v1.proctoring.router import create_proctoring_router
 from app.presentation.api.v1.scoring.router import router as scoring_router
 from app.presentation.api.v1.users.router import router as users_router
 from app.infrastructure.reinferencia.mediapipe_adapter import MediaPipeReinferencia
+
+logger = logging.getLogger(__name__)
+
+# Logging INFO minimo (twelve-factor: stdout). Sin esto, el logger de este modulo
+# queda en el default WARNING de Python y el aviso de wiring de MinIO (c-77) nunca
+# se ve. El stack completo (app/main.py) usa configure_logging con JSON+OTel; este
+# modulo activeexam es deliberadamente liviano (sin OTel), asi que alcanza con
+# basicConfig — no se justifica traer la dependencia de app.observability aca.
+logging.basicConfig(level=logging.INFO)
 
 
 def create_activeexam_app() -> FastAPI:
@@ -147,6 +157,42 @@ def create_activeexam_app() -> FastAPI:
     # limite desde /api/v1/config no se veria reflejado hasta reiniciar el proceso.
     _config_service = ConfigService(session_factory)
 
+    # Bucket WORM de evidencia (c-77): ADICIONAL y opcional. MinIO no esta
+    # disponible en Render hoy (sin VPS todavia) — el arranque de la app JAMAS
+    # depende de esto (mismo patron tolerante try/except que app/main.py usa para
+    # presign_service). Si las 4 variables MINIO_* no estan TODAS presentes,
+    # _worm_storage queda en None y event_service sigue escribiendo SOLO en
+    # Postgres, exactamente como antes de este change.
+    _worm_storage = None
+    if minio_configurado(settings):
+        try:
+            from app.infrastructure.storage.worm import build_boto3_worm_storage
+
+            _worm_storage = build_boto3_worm_storage(
+                endpoint=settings.minio_endpoint,
+                access_key=settings.minio_access_key,
+                secret_key=settings.minio_secret_key,
+                bucket=settings.minio_bucket_evidencia,
+                use_ssl=settings.minio_use_ssl,
+            )
+            logger.info(
+                "worm_storage: MinIO configurado — evidencia se deposita ADEMAS "
+                "en el bucket WORM (endpoint=%s, bucket=%s).",
+                settings.minio_endpoint,
+                settings.minio_bucket_evidencia,
+            )
+        except Exception:  # noqa: BLE001 - MinIO no debe tumbar el arranque nunca
+            logger.exception(
+                "worm_storage: MinIO configurado pero fallo la construccion del "
+                "cliente; evidencia queda solo en Postgres (temporal hasta VPS)."
+            )
+            _worm_storage = None
+    else:
+        logger.info(
+            "worm_storage: MinIO no configurado — evidencia solo en DB, "
+            "temporal hasta VPS."
+        )
+
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # Cablear el state antes de empezar a servir requests.
@@ -169,6 +215,10 @@ def create_activeexam_app() -> FastAPI:
         app.state.moodle_intentos_fallidos = _intentos_fallidos_docentes
         # C-76 bloque 4: instancia compartida — ver comentario arriba.
         app.state.config_service = _config_service
+        # C-77: bucket WORM opcional — None si MinIO no esta configurado (ver
+        # comentario arriba). Se expone tambien en el state por si otro modulo
+        # (worker de re-verificacion, admin) lo necesita mas adelante.
+        app.state.worm_storage = _worm_storage
         yield
         await engine.dispose()
 
@@ -207,6 +257,7 @@ def create_activeexam_app() -> FastAPI:
         writeback_svc=_writeback_svc,
         evidence_encryption=evidence_encryption,
         config_service=_config_service,
+        worm_storage=_worm_storage,
     )
     app.include_router(proctoring_router, prefix="/api/v1/proctoring")
 

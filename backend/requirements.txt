@@ -43,3 +43,9 @@ openpyxl==3.1.5
 # Render de graficos (PNG) que se embeben en el PDF. Ya viene transitivo de
 # mediapipe, pero lo declaramos porque el export PDF lo usa DIRECTO (backend Agg).
 matplotlib>=3.7
+
+# Cliente S3 para el deposito WORM de evidencia (c-77): habla con MinIO
+# (S3-compatible) via Boto3WormStorage. Opcional en runtime — si MINIO_* no esta
+# seteado (Render sin VPS todavia), el import ocurre igual (deploy no rompe) pero
+# el cliente nunca se construye (ver app/main_activeexam.py::create_activeexam_app).
+boto3==1.43.73

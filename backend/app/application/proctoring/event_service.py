@@ -16,22 +16,29 @@ Ley 25.326: el screenshot se trata como dato sensible en todos los logs y coment
 
 from __future__ import annotations
 
-from datetime import datetime
+import base64
+import logging
+import uuid
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
 from fastapi import HTTPException
 
 if TYPE_CHECKING:
     from app.infrastructure.crypto.evidence_encryption import EvidenceCipher
+    from app.infrastructure.storage.worm import WormStoragePort
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.application.proctoring.integridad import sha256_hex
 from app.application.proctoring.reinferencia import ReinferenciaPort
+from app.domain.retention.policy import RetentionPolicy
 from app.infrastructure.persistence.models.proctoring import (
     ProctoringEventModel,
     ProctoringSessionModel,
 )
 from app.infrastructure.persistence.repositories.proctoring import ProctoringRepository
+
+logger = logging.getLogger(__name__)
 
 
 async def ingestar_evento(
@@ -45,6 +52,7 @@ async def ingestar_evento(
     screenshot_base64: str | None = None,
     face_count_cliente: int | None = None,
     cipher: "EvidenceCipher | None" = None,
+    worm_storage: "WormStoragePort | None" = None,
     # C-64 D2: screenshot_sha256_cliente se acepta en el schema IngestEventoIn pero
     # NO se persiste aquí porque ProctoringEventModel no tiene esa columna.
     # El campo no genera 422 (el schema lo acepta); la comparación cliente vs servidor
@@ -60,9 +68,18 @@ async def ingestar_evento(
         severidad: 'bajo' | 'medio' | 'alto' | 'critico'.
         ts_cliente: Timestamp reportado por el cliente (no confiable).
         reinferencia: Adapter del puerto ReinferenciaPort (inyectado por FastAPI Depends).
-        payload: Datos adicionales del evento (libre).
+        payload: Datos adicionales del evento (libre). C-76 (15.3): `copiar_pegar`
+            puede traer `payload['clipboard_sha256']` — el hash SHA-256 del
+            contenido pegado, calculado en el cliente (Web Crypto). Como `payload`
+            es JSONB libre (sin schema por tipo de evento), no requiere cambios
+            aca ni migracion: se persiste tal cual llega. El backend NUNCA recibe
+            ni persiste el contenido en claro (Ley 25.326) — solo el hash.
         screenshot_base64: Screenshot en base64 (dato sensible, Ley 25.326).
         face_count_cliente: Conteo de rostros reportado por el cliente.
+        worm_storage: Puerto WORM (c-77), inyectado desde main_activeexam.py SOLO
+            si MinIO esta configurado (minio_configurado(settings) True). Si es
+            None (Render hoy, sin VPS) el comportamiento es IDENTICO al actual:
+            el screenshot se persiste UNICAMENTE en Postgres, como siempre.
 
     Returns:
         ProctoringEventModel persistido con veredicto y sha256.
@@ -91,8 +108,43 @@ async def ingestar_evento(
         cipher.encrypt(screenshot_base64) if cipher is not None else screenshot_base64
     )
 
-    # 5. Persistir evento con todos los campos
+    # 5. Deposito WORM ADICIONAL (c-77): NUNCA reemplaza Postgres, que sigue siendo
+    # la fuente de verdad/red de seguridad. Con worm_storage=None (Render hoy, sin
+    # VPS) NO se genera id explicito: el id lo sigue asignando el server_default
+    # (gen_random_uuid()), exactamente como antes de este change — cero cambio de
+    # comportamiento. Solo cuando hay worm_storage se genera el id ANTES del
+    # insert, porque el object_key lo necesita derivado del id del evento.
+    evento_id: str | None = None
+    worm_object_key: str | None = None
+    worm_uri: str | None = None
+    worm_retain_until: datetime | None = None
+    if worm_storage is not None and screenshot_base64 is not None:
+        evento_id = str(uuid.uuid4())
+        try:
+            # Misma politica de retencion que ya existe en el repo para evidencia
+            # (app.domain.retention.policy.RetentionPolicy.default(), 180 dias).
+            retain_until_dt = datetime.now(timezone.utc) + timedelta(
+                days=RetentionPolicy.default().session_max_age_days
+            )
+            objeto = worm_storage.deposit(
+                object_key=f"{session_id}/{evento_id}.bin",
+                data=base64.b64decode(screenshot_base64),
+                retain_until=retain_until_dt.isoformat(),
+            )
+            worm_object_key = objeto.object_key
+            worm_uri = objeto.uri
+            worm_retain_until = retain_until_dt
+        except Exception:  # noqa: BLE001 - MinIO no confiable aun: nunca tumba la ingesta
+            logger.exception(
+                "worm_storage: fallo el deposito de evidencia (session_id=%s, "
+                "evento_id=%s); evidencia queda solo en Postgres",
+                session_id,
+                evento_id,
+            )
+
+    # 6. Persistir evento con todos los campos
     return await repo.crear_evento(
+        id=evento_id,
         session_id=session_id,
         tipo=tipo,
         severidad=severidad,
@@ -103,4 +155,7 @@ async def ingestar_evento(
         face_count_cliente=face_count_cliente,
         face_count_servidor=resultado.face_count_servidor,
         veredicto_reinferencia=resultado.veredicto,
+        worm_object_key=worm_object_key,
+        worm_uri=worm_uri,
+        worm_retain_until=worm_retain_until,
     )

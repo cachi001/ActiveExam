@@ -78,6 +78,17 @@ class ActiveExamSettings(BaseSettings):
     moodle_cmid: int = 0              # ID del ítem de calificación (cm) en Moodle
     moodle_component: str = "mod_assign"  # C-73: módulo destino global ('mod_assign'|'mod_quiz')
 
+    # --- MinIO / bucket WORM de evidencia (c-77) ---
+    # TODAS opcionales, default None: Render arranca HOY sin VPS/MinIO, y el
+    # arranque de la app NUNCA depende de esto (create_activeexam_app() las lee
+    # detrás de minio_configurado() y cae a app.state.worm_storage = None si
+    # faltan). Cuando el dueño levante la VPS con MinIO, alcanza con setear las 4.
+    minio_endpoint: str | None = None
+    minio_access_key: str | None = None
+    minio_secret_key: str | None = None
+    minio_bucket_evidencia: str | None = None
+    minio_use_ssl: bool = True
+
     @field_validator("database_url")
     @classmethod
     def _normalizar_a_asyncpg(cls, valor: str) -> str:
@@ -101,3 +112,18 @@ class ActiveExamSettings(BaseSettings):
 def get_activeexam_settings() -> ActiveExamSettings:
     """Singleton de ActiveExamSettings (cargado una vez del entorno)."""
     return ActiveExamSettings()
+
+
+def minio_configurado(settings: ActiveExamSettings) -> bool:
+    """True solo si las 4 variables MinIO obligatorias estan TODAS presentes.
+
+    Pura y testeable: evita que la app arranque con el bucket WORM "a medias"
+    (ej. endpoint sin credenciales) — o estan las 4, o el sistema se comporta
+    exactamente como hoy (evidencia solo en Postgres, sin MinIO).
+    """
+    return bool(
+        settings.minio_endpoint
+        and settings.minio_access_key
+        and settings.minio_secret_key
+        and settings.minio_bucket_evidencia
+    )

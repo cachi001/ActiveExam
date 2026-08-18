@@ -45,6 +45,47 @@ services:
       # de healthcheck durante ese arranque para no marcar el contenedor unhealthy.
       start_period: 60s
 
+  # --- MinIO: bucket WORM de evidencia (c-77), Object Lock Compliance desde el
+  #     arranque. En Render (prod hoy) esto NO existe todavia (sin VPS) — el
+  #     backend arranca igual sin MINIO_* seteado. En DEV, en cambio, SIEMPRE
+  #     esta disponible para poder probar el flujo completo de punta a punta. ---
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: dev-only-minio-secret-change-me
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000" # API S3
+      - "9001:9001" # consola web
+    # DEV EFIMERO (igual que postgres arriba): el bucket se recrea con Object
+    # Lock en cada `up` via el init container `minio-init` de abajo.
+    tmpfs:
+      - /data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  # --- Init idempotente: crea el bucket de evidencia CON Object Lock habilitado.
+  #     Object Lock solo se puede activar en la CREACION del bucket (S3/MinIO) —
+  #     por eso es un paso aparte, corre una vez y termina (no es un servicio
+  #     long-running). Mismo estilo que el seed idempotente del backend. -------
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      sh -c "
+        mc alias set local http://minio:9000 minioadmin dev-only-minio-secret-change-me &&
+        (mc mb --with-lock local/activeexam-evidencia || true) &&
+        echo '>>> bucket activeexam-evidencia listo (Object Lock habilitado)'
+      "
+
   # --- Backend activeexam (mismo Dockerfile.activeexam que Railway). Al arrancar:
   #     1) migra (alembic activeexam@head)  2) seed de usuarios  3) uvicorn ----------
   backend:
@@ -73,10 +114,21 @@ services:
       MOODLE_COURSEID: ${MOODLE_COURSEID:-0}
       MOODLE_CMID: ${MOODLE_CMID:-0}
       MOODLE_COMPONENT: ${MOODLE_COMPONENT:-mod_assign}
+      # MinIO / bucket WORM (c-77): en DEV SIEMPRE configurado (a diferencia de
+      # Render hoy, sin VPS) para poder probar el flujo completo localmente.
+      # Las 4 variables son opcionales en produccion — minio_configurado() exige
+      # las 4 juntas o ninguna (nunca arranca "a medias").
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: dev-only-minio-secret-change-me
+      MINIO_BUCKET_EVIDENCIA: activeexam-evidencia
+      MINIO_USE_SSL: "false"
     restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
     ports:
       - "8000:8000"
     # Pisa el CMD del Dockerfile.activeexam para INTERCALAR el seed entre migrar y servir.
