@@ -4,14 +4,14 @@
 TBD - created by archiving change c-68-configuracion-sistema-funcional. Update Purpose after archive.
 ## Requirements
 ### Requirement: Consentimiento de perfil persistido server-side por usuario
-El sistema SHALL persistir el consentimiento de perfil del usuario en una tabla `consentimiento_perfil` atada a `usuario_id`, con `version_texto`, `hash_texto`, `timestamp`, `estado` (`otorgado` | `revocado` | `via_alternativa`) y un hash de integridad del registro. El consentimiento SHALL NO depender de `localStorage` ni de ningún almacenamiento del cliente (RN-CO-01, cliente = sensor no confiable). La tabla SHALL existir tanto en el esquema **full** como en el **slim** (Railway prod).
+El sistema SHALL persistir el consentimiento de perfil del usuario en una tabla `consentimiento_perfil` atada a `usuario_id`, con `version_texto`, `hash_texto`, `timestamp`, `estado` (`otorgado` | `revocado` | `via_alternativa`) y un hash de integridad del registro. El consentimiento SHALL NO depender de `localStorage` ni de ningún almacenamiento del cliente (RN-CO-01, cliente = sensor no confiable). La tabla SHALL existir tanto en el esquema **full** como en el **activeexam** (Railway prod).
 
 #### Scenario: El consentimiento persiste atado al usuario
 - **WHEN** un estudiante otorga el consentimiento de perfil
 - **THEN** el sistema SHALL persistir una fila en `consentimiento_perfil` con su `usuario_id`, versión, hash y timestamp, recuperable en sesiones futuras desde el servidor
 
-#### Scenario: Tabla presente en slim y full
-- **WHEN** se inspecciona el esquema de producción (slim) y el full
+#### Scenario: Tabla presente en activeexam y full
+- **WHEN** se inspecciona el esquema de producción (activeexam) y el full
 - **THEN** la tabla `consentimiento_perfil` SHALL existir en ambos
 
 ### Requirement: Consentimiento versionado y demostrable

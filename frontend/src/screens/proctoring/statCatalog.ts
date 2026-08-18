@@ -18,7 +18,8 @@ export type StatMetricKey =
   | 'discrepancias'
   | 'riesgoAlto'
   | 'sesiones'
-  | 'sesionesActivas';
+  | 'sesionesActivas'
+  | 'enColaRevision';
 
 export interface StatMeta {
   icon: string;
@@ -41,6 +42,10 @@ export const STAT_META: Record<StatMetricKey, StatMeta> = {
   sesiones: { icon: 'groups', label: 'Sesiones', tono: 'success', defaultSub: 'registradas' },
   // Sesiones rindiendo en este momento (vista en vivo).
   sesionesActivas: { icon: 'sensors', label: 'Sesiones activas', tono: 'primary', defaultSub: 'rindiendo ahora' },
+  // Sesiones con score >= umbral de la Cola de revision (C-76 tarea 20). Distinto
+  // de `riesgoAlto` en el LABEL (comunica el "por que importa": entran a cola de
+  // revision humana) aunque comparten el mismo umbral vivo server-side.
+  enColaRevision: { icon: 'gavel', label: 'Sobre el umbral de riesgo', tono: 'error', defaultSub: 'entran a Cola de revisión' },
 };
 
 /** Props canónicas de una StatCard para una métrica. `subOverride` solo cambia la

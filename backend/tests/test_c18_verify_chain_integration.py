@@ -1,4 +1,4 @@
-"""Tests de integración del verify-chain contra slim DB real (c-18).
+"""Tests de integración del verify-chain contra activeexam DB real (c-18).
 
 Cubre:
   - SqlEventMaterialRepository lee proctoring_event.screenshot_b64 + sha256
@@ -32,9 +32,9 @@ from app.infrastructure.persistence.repositories.verify_chain import (
     SqlChainVerificationAuditor,
     SqlEventMaterialRepository,
 )
-from app.infrastructure.persistence.session_slim import (
-    create_slim_engine,
-    create_slim_session_factory,
+from app.infrastructure.persistence.session_activeexam import (
+    create_activeexam_engine,
+    create_activeexam_session_factory,
 )
 
 
@@ -43,7 +43,7 @@ def _factory() -> async_sessionmaker[AsyncSession]:
         "DATABASE_URL",
         "postgresql+asyncpg://proctoring:dev-only-change-me@postgres:5432/proctoring",
     )
-    return create_slim_session_factory(create_slim_engine(url))
+    return create_activeexam_session_factory(create_activeexam_engine(url))
 
 
 def _sha256_str(s: str) -> str:

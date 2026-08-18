@@ -30,8 +30,11 @@ export default function CambioClaveObligatorio() {
   const [actual, setActual] = useState('');
   const [nueva, setNueva] = useState('');
   const [confirmar, setConfirmar] = useState('');
+  const [username, setUsername] = useState('');
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const USERNAME_RE = /^[a-zA-Z0-9_.-]+$/;
 
   async function guardar() {
     setError(null);
@@ -39,6 +42,24 @@ export default function CambioClaveObligatorio() {
     if (debilidad) { setError(debilidad); return; }
     if (nueva !== confirmar) { setError('Las contraseñas no coinciden.'); return; }
     if (!esLti && nueva === actual) { setError('La nueva contraseña debe ser distinta de la temporal.'); return; }
+    const usernameLimpio = username.trim();
+    // LTI: el username actual es la clave sintética del campus (lti:...), no
+    // sirve para loguearse directo — elegir uno propio es obligatorio acá, es
+    // la ÚNICA oportunidad antes de que el alumno empiece a usar la cuenta.
+    if (esLti && !usernameLimpio) {
+      setError('Elegí un nombre de usuario para poder ingresar directo la próxima vez.');
+      return;
+    }
+    if (usernameLimpio) {
+      if (usernameLimpio.length < 3 || usernameLimpio.length > 50) {
+        setError('El usuario debe tener entre 3 y 50 caracteres.');
+        return;
+      }
+      if (!USERNAME_RE.test(usernameLimpio)) {
+        setError('El usuario solo puede tener letras, números, puntos, guiones y guiones bajos.');
+        return;
+      }
+    }
 
     setGuardando(true);
     try {
@@ -46,6 +67,7 @@ export default function CambioClaveObligatorio() {
         // LTI: sin contraseña actual (nunca la tuvo).
         ...(esLti ? {} : { contrasena_actual: actual }),
         contrasena_nueva: nueva,
+        ...(usernameLimpio ? { nuevo_username: usernameLimpio } : {}),
       });
       // Éxito: el gate deja de aplicar y el usuario pasa a su pantalla normal.
       markPasswordChanged();
@@ -64,10 +86,12 @@ export default function CambioClaveObligatorio() {
           <div className="w-14 h-14 rounded-2xl bg-primary/10 text-primary flex items-center justify-center">
             <Icon name="lock_reset" className="text-[28px]" />
           </div>
-          <h1 className="text-headline-sm font-bold">Definí tu contraseña</h1>
+          <h1 className="text-headline-sm font-bold">
+            {esLti ? 'Creá tu usuario y contraseña' : 'Definí tu contraseña'}
+          </h1>
           <p className="text-body-md text-on-surface-variant">
             {esLti
-              ? 'Entraste desde el campus. Creá una contraseña para poder ingresar también de forma directa la próxima vez.'
+              ? 'Entraste desde el campus. Elegí un usuario y una contraseña para poder ingresar también de forma directa la próxima vez.'
               : 'Ingresaste con una contraseña temporal. Por seguridad, creá tu propia contraseña para continuar.'}
           </p>
         </div>
@@ -76,6 +100,33 @@ export default function CambioClaveObligatorio() {
           className="flex flex-col gap-4"
           onSubmit={(e) => { e.preventDefault(); if (!guardando) guardar(); }}
         >
+          {/* Username PRIMERO: en LTI es obligatorio (la cuenta arranca con la
+              clave sintética del campus, no sirve para loguearse directo) y
+              elegirlo es lo primero que hay que decidir, antes de la contraseña. */}
+          <div>
+            <label className={LABEL} htmlFor="cco-username">
+              Creá tu usuario{!esLti && ' (opcional)'}
+            </label>
+            <input
+              id="cco-username"
+              type="text"
+              className="input w-full"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              disabled={guardando}
+              autoComplete="username"
+              placeholder="ej: juan.perez"
+              maxLength={50}
+              required={esLti}
+              autoFocus
+            />
+            <p className="mt-1.5 text-[12px] text-on-surface-variant/70 leading-relaxed">
+              {esLti
+                ? 'Para entrar directo la próxima vez, sin pasar por el campus.'
+                : 'Dejalo vacío para mantener el usuario actual.'}
+            </p>
+          </div>
+
           {!esLti && (
             <div>
               <label className={LABEL} htmlFor="cco-actual">Contraseña temporal</label>
@@ -87,7 +138,6 @@ export default function CambioClaveObligatorio() {
                 onChange={(e) => setActual(e.target.value)}
                 disabled={guardando}
                 autoComplete="current-password"
-                autoFocus
               />
             </div>
           )}
@@ -132,7 +182,7 @@ export default function CambioClaveObligatorio() {
             type="submit"
             variant="primary"
             icon={guardando ? undefined : 'check'}
-            disabled={guardando || (!esLti && !actual) || !nueva || !confirmar}
+            disabled={guardando || (!esLti && !actual) || (esLti && !username.trim()) || !nueva || !confirmar}
             className="w-full justify-center"
           >
             {guardando ? 'Guardando…' : 'Guardar y continuar'}

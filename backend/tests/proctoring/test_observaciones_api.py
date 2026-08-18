@@ -1,6 +1,6 @@
-"""Tests de integración — observaciones del proctor (C-15 tarea 3.2).
+"""Tests de integración — observaciones del tutor (C-15 tarea 3.2).
 
-Insumo de la revision humana C-16: el proctor registra observaciones libres sobre
+Insumo de la revision humana C-16: el tutor registra observaciones libres sobre
 una sesion (multiples, append-only). Requiere Postgres real (sin mocks de DB).
     DATABASE_URL=postgresql+asyncpg://... pytest tests/proctoring/test_observaciones_api.py -v
 """
@@ -12,10 +12,10 @@ from httpx import AsyncClient
 
 from tests.proctoring.conftest import auth_headers
 
-# Observaciones = accion del proctor (proctor-only). El ``client`` por defecto va
+# Observaciones = accion del tutor (tutor/coordinador-only). El ``client`` por defecto va
 # autenticado como estudiante (flujo del alumno); para escribir/leer observaciones
-# mandamos un Bearer de rol proctor.
-_PROCTOR = auth_headers(["proctor"])
+# mandamos un Bearer de rol coordinador (proctor eliminado, c-76).
+_SUPERVISOR = auth_headers(["coordinador"])  # c-76: rol proctor eliminado -> coordinador supervisa
 
 pytestmark = pytest.mark.asyncio
 
@@ -30,17 +30,17 @@ async def _crear_sesion(client: AsyncClient) -> str:
 
 @pytest.mark.asyncio
 async def test_crear_observacion_201(client: AsyncClient) -> None:
-    """POST /sessions/{id}/observaciones (proctor) → 201 y persiste."""
+    """POST /sessions/{id}/observaciones (tutor) → 201 y persiste."""
     session_id = await _crear_sesion(client)
     resp = await client.post(
         f"/api/v1/proctoring/sessions/{session_id}/observaciones",
-        json={"texto": "El alumno miro fuera de pantalla 3 veces.", "proctor_actor": "proc-1"},
-        headers=_PROCTOR,
+        json={"texto": "El alumno miro fuera de pantalla 3 veces.", "tutor_actor": "proc-1"},
+        headers=_SUPERVISOR,
     )
     assert resp.status_code == 201
     data = resp.json()
     assert data["texto"] == "El alumno miro fuera de pantalla 3 veces."
-    assert data["proctor_actor"] == "proc-1"
+    assert data["tutor_actor"] == "proc-1"
     assert "id" in data and "creada_en" in data
 
 
@@ -52,12 +52,12 @@ async def test_listar_observaciones_orden_y_multiples(client: AsyncClient) -> No
         r = await client.post(
             f"/api/v1/proctoring/sessions/{session_id}/observaciones",
             json={"texto": txt},
-            headers=_PROCTOR,
+            headers=_SUPERVISOR,
         )
         assert r.status_code == 201
 
     resp = await client.get(
-        f"/api/v1/proctoring/sessions/{session_id}/observaciones", headers=_PROCTOR
+        f"/api/v1/proctoring/sessions/{session_id}/observaciones", headers=_SUPERVISOR
     )
     assert resp.status_code == 200
     textos = [o["texto"] for o in resp.json()]
@@ -69,7 +69,7 @@ async def test_listar_observaciones_vacio(client: AsyncClient) -> None:
     """GET de una sesion sin observaciones → 200 lista vacia."""
     session_id = await _crear_sesion(client)
     resp = await client.get(
-        f"/api/v1/proctoring/sessions/{session_id}/observaciones", headers=_PROCTOR
+        f"/api/v1/proctoring/sessions/{session_id}/observaciones", headers=_SUPERVISOR
     )
     assert resp.status_code == 200
     assert resp.json() == []
@@ -81,7 +81,7 @@ async def test_crear_observacion_sesion_inexistente_404(client: AsyncClient) -> 
     resp = await client.post(
         "/api/v1/proctoring/sessions/00000000-0000-0000-0000-000000000000/observaciones",
         json={"texto": "x"},
-        headers=_PROCTOR,
+        headers=_SUPERVISOR,
     )
     assert resp.status_code == 404
 
@@ -93,7 +93,7 @@ async def test_crear_observacion_texto_vacio_422(client: AsyncClient) -> None:
     resp = await client.post(
         f"/api/v1/proctoring/sessions/{session_id}/observaciones",
         json={"texto": ""},
-        headers=_PROCTOR,
+        headers=_SUPERVISOR,
     )
     assert resp.status_code == 422
 
@@ -105,16 +105,16 @@ async def test_crear_observacion_campo_extra_422(client: AsyncClient) -> None:
     resp = await client.post(
         f"/api/v1/proctoring/sessions/{session_id}/observaciones",
         json={"texto": "ok", "campo_extra": "no"},
-        headers=_PROCTOR,
+        headers=_SUPERVISOR,
     )
     assert resp.status_code == 422
 
 
 @pytest.mark.asyncio
 async def test_observaciones_estudiante_403(client: AsyncClient) -> None:
-    """RBAC: el estudiante NO puede escribir NI leer observaciones del proctor → 403.
+    """RBAC: el estudiante NO puede escribir NI leer observaciones del tutor → 403.
 
-    El ``client`` por defecto va autenticado como estudiante (sin header proctor)."""
+    El ``client`` por defecto va autenticado como estudiante (sin header de supervision)."""
     session_id = await _crear_sesion(client)
     post = await client.post(
         f"/api/v1/proctoring/sessions/{session_id}/observaciones",
@@ -127,7 +127,7 @@ async def test_observaciones_estudiante_403(client: AsyncClient) -> None:
 
 @pytest.mark.asyncio
 async def test_observaciones_admin_puede(client: AsyncClient) -> None:
-    """El admin (proctor_o_admin) tambien puede registrar observaciones → 201."""
+    """El admin (supervision_vivo) tambien puede registrar observaciones → 201."""
     session_id = await _crear_sesion(client)
     resp = await client.post(
         f"/api/v1/proctoring/sessions/{session_id}/observaciones",

@@ -1,14 +1,8 @@
 /**
  * authStore — Estado de autenticación (Zustand), desacoplado del provider concreto (C-55).
  *
- * En vez de importar keycloak.ts directamente, delega al provider activo
- * (JwtAdapter | KeycloakAdapter) vía la interfaz AuthProvider.
- *
- * La interfaz del store NO cambia: los componentes que usan useAuth funcionan
- * sin modificación. Solo la implementación interna cambia.
- *
- * hydrateFromProvider() reemplaza hydrateFromKeycloak() — mismo resultado,
- * agnóstico del provider.
+ * Delega al provider activo (JwtAdapter) vía la interfaz AuthProvider — los
+ * componentes que usan useAuth no dependen del adapter concreto.
  */
 import { create } from 'zustand';
 import type { Principal, Rol } from './types';
@@ -22,7 +16,7 @@ export type { AuthStatus };
  * Trae nombre/apellido del usuario logueado desde GET /auth/me y los devuelve
  * para que el caller los fusione en el principal del store. El JWT propio
  * (C-55, own_issuer.py) NO incluye el claim `name`, así que sin esta llamada
- * el frontend cae al fallback `id_institucional` y la UI muestra "Hola, 123".
+ * el frontend cae al fallback `username` y la UI muestra "Hola, 123".
  *
  * Fire-and-forget seguro: cualquier error (sin red, 401, etc.) se silencia y
  * el principal queda como vino del token.
@@ -70,13 +64,10 @@ interface AuthState {
   principal: Principal | null;
   token: string | null;
 
-  /** Hidrata el store desde el provider activo (reemplaza hydrateFromKeycloak). */
+  /** Hidrata el store desde el provider activo. */
   hydrateFromProvider: (provider: AuthProvider) => void;
 
-  /** @deprecated Alias para hydrateFromProvider — mantiene compatibilidad con main.tsx antiguo. */
-  hydrateFromKeycloak: () => void;
-
-  /** Inicia sesión con credenciales (JwtAdapter) o redirige al IdP (Keycloak). */
+  /** Inicia sesión con credenciales. */
   login: (creds?: { username: string; password: string }) => Promise<void>;
 
   /**
@@ -116,7 +107,7 @@ export const useAuth = create<AuthState>((set, get) => ({
     if (principal) {
       set({ status: 'authenticated', principal, token });
       // El JWT propio no incluye `name` → el principal recién hidratado tiene
-      // `nombre = id_institucional` como fallback. Enriquecemos en background
+      // `nombre = username` como fallback. Enriquecemos en background
       // con GET /auth/me para mostrar "Hola, Nombre Apellido" en lugar del
       // legajo. Si la llamada falla, el principal queda como estaba.
       void fetchMyName(provider).then((extra) => {
@@ -124,10 +115,10 @@ export const useAuth = create<AuthState>((set, get) => ({
         const current = get().principal;
         if (!current) return;
         // Siempre fusionamos fechas. El nombre solo se actualiza si el principal
-        // todavía tiene el fallback (id_institucional): si el provider ya entregó
-        // un nombre humano (Keycloak con claim `name`), lo respetamos.
+        // todavía tiene el fallback (username): si el provider ya entregó
+        // un nombre humano, lo respetamos.
         const nombreActualizado =
-          extra.nombre && current.nombre === current.id_institucional
+          extra.nombre && current.nombre === current.username
             ? extra.nombre
             : current.nombre;
         set({
@@ -144,14 +135,6 @@ export const useAuth = create<AuthState>((set, get) => ({
       });
     } else {
       set({ status: 'unauthenticated', principal: null, token: null });
-    }
-  },
-
-  // Alias de retrocompatibilidad (main.tsx antiguo lo llama tras Keycloak).
-  // En el nuevo main.tsx esto no se llama — se usa hydrateFromProvider.
-  hydrateFromKeycloak: () => {
-    if (_activeProvider) {
-      get().hydrateFromProvider(_activeProvider);
     }
   },
 

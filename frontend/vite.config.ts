@@ -18,7 +18,6 @@ export default defineConfig({
           'vendor-react':    ['react', 'react-dom', 'react-router-dom'],
           'vendor-motion':   ['motion'],
           'vendor-lucide':   ['lucide-react'],
-          'vendor-keycloak': ['keycloak-js'],
           'vendor-zustand':  ['zustand'],
           'vendor-mediapipe':['@mediapipe/tasks-vision'],
         },

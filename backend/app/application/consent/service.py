@@ -3,7 +3,7 @@
 - ``record_consent`` (D1+D2): valida accion afirmativa server-side, sella el hash
   del texto exacto y persiste el acuse INMUTABLE (``Consentimiento`` de C-05).
 - ``choose_alternative`` (D3): registra la eleccion de via alternativa en el audit
-  log (append-only, inmutable) y escala a un proctor por la cola; NUNCA aborta.
+  log (append-only, inmutable) y escala a un coordinador por la cola; NUNCA aborta.
 - ``evaluate_gate`` (D4): consumible por C-09 — habilita biometria solo con acuse
   valido o via alternativa elegida.
 
@@ -35,8 +35,8 @@ from app.infrastructure.messaging.port import MessageQueuePort
 
 # Accion del audit log que marca la eleccion de la via alternativa (gate D4).
 ACCION_VIA_ALTERNATIVA = "consent_alternative_chosen"
-# Topic de la cola para escalar la verificacion alternativa a un proctor.
-TOPIC_ESCALACION_PROCTOR = "consent.alternative.proctor"
+# Topic de la cola para escalar la verificacion alternativa a un coordinador.
+TOPIC_ESCALACION_COORDINADOR = "consent.alternative.coordinador"
 
 
 @dataclass(frozen=True, slots=True)
@@ -118,7 +118,7 @@ class ConsentService:
         ip: str = "",
         user_agent: str = "",
     ) -> str:
-        """Registra la eleccion de via alternativa y ESCALA a proctor (RN-CO-05).
+        """Registra la eleccion de via alternativa y ESCALA a coordinador (RN-CO-05).
 
         No aborta el examen (RN-GLB-02): deja traza inmutable en el audit log y
         encola la escalacion. Devuelve el id del mensaje de escalacion.
@@ -145,7 +145,7 @@ class ConsentService:
                 timestamp=timestamp,
             )
         return await self._queue.enqueue(
-            TOPIC_ESCALACION_PROCTOR,
+            TOPIC_ESCALACION_COORDINADOR,
             {"user_id": user_id, "exam_id": exam_id, "timestamp": timestamp},
         )
 
@@ -158,7 +158,7 @@ class ConsentService:
         exam_id: str,
         timestamp: str,
     ) -> SolicitudViaAlternativa:
-        """Registra la solicitud de via alternativa con estado pendiente_proctor.
+        """Registra la solicitud de via alternativa con estado pendiente_coordinador.
 
         Idempotente: si ya existe una solicitud para el par (user_id, exam_id),
         la retorna sin crear un duplicado.
@@ -175,7 +175,7 @@ class ConsentService:
             id="",  # asignado por la BD al hacer add
             user_id=user_id,
             exam_id=exam_id,
-            estado=EstadoViaAlternativa.PENDIENTE_PROCTOR,
+            estado=EstadoViaAlternativa.PENDIENTE_COORDINADOR,
             timestamp_solicitud=timestamp,
             timestamp_habilitacion=None,
             habilitado_por=None,
@@ -190,7 +190,7 @@ class ConsentService:
         habilitado_por: str,
         timestamp: str,
     ) -> SolicitudViaAlternativa:
-        """Transiciona la solicitud de pendiente_proctor a habilitado_por_proctor.
+        """Transiciona la solicitud de pendiente_coordinador a habilitado_por_coordinador.
 
         Levanta ``ValueError`` si la solicitud no existe o no esta pendiente.
         """
@@ -203,20 +203,20 @@ class ConsentService:
             raise ValueError(
                 f"No existe solicitud de via alternativa para user={user_id!r} exam={exam_id!r}."
             )
-        if solicitud.estado != EstadoViaAlternativa.PENDIENTE_PROCTOR:
+        if solicitud.estado != EstadoViaAlternativa.PENDIENTE_COORDINADOR:
             raise ValueError(
                 f"La solicitud esta en estado {solicitud.estado!r}; "
-                "solo se puede habilitar desde pendiente_proctor."
+                "solo se puede habilitar desde pendiente_coordinador."
             )
         return await self._alt_requests.update_estado(
             solicitud_id=solicitud.id,
-            estado=EstadoViaAlternativa.HABILITADO_POR_PROCTOR,
+            estado=EstadoViaAlternativa.HABILITADO_POR_COORDINADOR,
             habilitado_por=habilitado_por,
             timestamp=timestamp,
         )
 
     async def listar_pendientes(self) -> list[SolicitudViaAlternativa]:
-        """Lista todas las solicitudes con estado pendiente_proctor."""
+        """Lista todas las solicitudes con estado pendiente_coordinador."""
         if self._alt_requests is None:
             raise RuntimeError(
                 "AlternativeRequestRepository no configurado en ConsentService."
@@ -231,8 +231,8 @@ class ConsentService:
         C-63 D-03:
         1. Si hay acuse de consentimiento -> CONSENTIDO.
         2. Si hay registro en la tabla nueva:
-           - pendiente_proctor        -> VIA_ALTERNATIVA_PENDIENTE (gate cerrado).
-           - habilitado_por_proctor   -> VIA_ALTERNATIVA_HABILITADA (gate abierto).
+           - pendiente_coordinador        -> VIA_ALTERNATIVA_PENDIENTE (gate cerrado).
+           - habilitado_por_coordinador   -> VIA_ALTERNATIVA_HABILITADA (gate abierto).
         3. Fallback: si hay entrada en el audit log sin registro en tabla nueva
            (retrocompatibilidad) -> VIA_ALTERNATIVA (deprecado, se trata como HABILITADA).
         4. Sin ninguno -> NO_RESUELTO.
@@ -245,9 +245,9 @@ class ConsentService:
         if self._alt_requests is not None:
             solicitud = await self._alt_requests.get_by_user_exam(user_id, exam_id)
             if solicitud is not None:
-                if solicitud.estado == EstadoViaAlternativa.PENDIENTE_PROCTOR:
+                if solicitud.estado == EstadoViaAlternativa.PENDIENTE_COORDINADOR:
                     return ResolucionConsentimiento.VIA_ALTERNATIVA_PENDIENTE
-                if solicitud.estado == EstadoViaAlternativa.HABILITADO_POR_PROCTOR:
+                if solicitud.estado == EstadoViaAlternativa.HABILITADO_POR_COORDINADOR:
                     return ResolucionConsentimiento.VIA_ALTERNATIVA_HABILITADA
 
         # Fallback retrocompatibilidad: audit log sin registro en tabla nueva

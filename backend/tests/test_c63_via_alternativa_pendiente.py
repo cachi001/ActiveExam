@@ -1,4 +1,4 @@
-"""Tests de via alternativa pendiente de proctor (C-63).
+"""Tests de via alternativa pendiente de coordinador (C-63).
 
 Cubre:
   10.1 Rules puras: evaluar_gate con VIA_ALTERNATIVA_PENDIENTE levanta
@@ -11,14 +11,14 @@ Cubre:
        error si solicitud inexistente.
   10.5 ConsentService.resolve: pendiente -> VIA_ALTERNATIVA_PENDIENTE;
        habilitado -> VIA_ALTERNATIVA_HABILITADA; fallback audit log.
-  10.6 Endpoint POST /alternative/{user_id}/habilitar: 200 proctor auth,
+  10.6 Endpoint POST /alternative/{user_id}/habilitar: 200 coordinador auth,
        403 sin rol, 404 si no existe.
   10.7 Endpoint GET /alternative/pendientes: lista correcta, 403 sin rol.
   10.8 Gate via puedeRendir/gate: bloquea con pendiente, permite con habilitado.
 
 Requiere:
   RUN_STACK_TESTS=1
-  DATABASE_URL_SLIM=postgresql://... (postgres:16-alpine, slim@head aplicado)
+  DATABASE_URL_ACTIVEEXAM=postgresql://... (postgres:16-alpine, activeexam@head aplicado)
   JWT_OWN_SECRET=...
   EMBEDDING_ENCRYPTION_KEY=...
 
@@ -34,21 +34,21 @@ import pytest
 from cryptography.fernet import Fernet
 
 # ---------------------------------------------------------------------------
-# Config del entorno de test slim
+# Config del entorno de test activeexam
 # ---------------------------------------------------------------------------
 
-_DB_URL_SLIM = os.environ.get(
-    "DATABASE_URL_SLIM",
+_DB_URL_ACTIVEEXAM = os.environ.get(
+    "DATABASE_URL_ACTIVEEXAM",
     "postgresql://app:pass@localhost:55432/proctoring",
 )
-_JWT_SECRET = os.environ.get("JWT_OWN_SECRET", "test-jwt-own-secret-min-32bytes-slim")
+_JWT_SECRET = os.environ.get("JWT_OWN_SECRET", "test-jwt-own-secret-min-32bytes-activeexam")
 _EMBEDDING_KEY = os.environ.get(
     "EMBEDDING_ENCRYPTION_KEY",
     Fernet.generate_key().decode("ascii"),
 )
 
-_SLIM_ENV = {
-    "DATABASE_URL": _DB_URL_SLIM,
+_ACTIVEEXAM_ENV = {
+    "DATABASE_URL": _DB_URL_ACTIVEEXAM,
     "FRONTEND_ORIGIN": "http://localhost:5173",
     "JWT_OWN_SECRET": _JWT_SECRET,
     "EMBEDDING_ENCRYPTION_KEY": _EMBEDDING_KEY,
@@ -68,34 +68,34 @@ def _normalizar_db_url(url: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _crear_usuario_sync(id_institucional: str, roles: list[str]) -> str:
-    """Crea usuario en la DB slim y retorna su UUID."""
+def _crear_usuario_sync(username: str, roles: list[str]) -> str:
+    """Crea usuario en la DB activeexam y retorna su UUID."""
 
     async def _run() -> str:
         from sqlalchemy import select
 
         from app.infrastructure.auth.hashing import hashear_password
         from app.infrastructure.persistence.models.transactional import UsuarioModel
-        from app.infrastructure.persistence.session_slim import (
-            create_slim_engine,
-            create_slim_session_factory,
+        from app.infrastructure.persistence.session_activeexam import (
+            create_activeexam_engine,
+            create_activeexam_session_factory,
         )
 
-        engine = create_slim_engine(_normalizar_db_url(_DB_URL_SLIM))
-        factory = create_slim_session_factory(engine)
+        engine = create_activeexam_engine(_normalizar_db_url(_DB_URL_ACTIVEEXAM))
+        factory = create_activeexam_session_factory(engine)
         try:
             async with factory() as session:
                 result = await session.execute(
                     select(UsuarioModel).where(
-                        UsuarioModel.id_institucional == id_institucional
+                        UsuarioModel.username == username
                     )
                 )
                 existente = result.scalar_one_or_none()
                 if existente is not None:
                     return existente.id
                 usuario = UsuarioModel(
-                    id_institucional=id_institucional,
-                    email=f"{id_institucional}@demo.test",
+                    username=username,
+                    email=f"{username}@demo.test",
                     roles=roles,
                     password_hash=hashear_password("Test1234"),
                     auth_provider="jwt",
@@ -119,13 +119,13 @@ def _limpiar_solicitudes_sync(user_id_inst: str) -> None:
         from app.infrastructure.persistence.models.alternative_request import (
             SolicitudViaAlternativaModel,
         )
-        from app.infrastructure.persistence.session_slim import (
-            create_slim_engine,
-            create_slim_session_factory,
+        from app.infrastructure.persistence.session_activeexam import (
+            create_activeexam_engine,
+            create_activeexam_session_factory,
         )
 
-        engine = create_slim_engine(_normalizar_db_url(_DB_URL_SLIM))
-        factory = create_slim_session_factory(engine)
+        engine = create_activeexam_engine(_normalizar_db_url(_DB_URL_ACTIVEEXAM))
+        factory = create_activeexam_session_factory(engine)
         try:
             async with factory() as session:
                 await session.execute(
@@ -140,10 +140,10 @@ def _limpiar_solicitudes_sync(user_id_inst: str) -> None:
     asyncio.get_event_loop().run_until_complete(_run())
 
 
-def _login(client, id_institucional: str, password: str = "Test1234") -> str:
+def _login(client, username: str, password: str = "Test1234") -> str:
     resp = client.post(
         "/api/v1/auth/login",
-        json={"username": id_institucional, "password": password},
+        json={"username": username, "password": password},
     )
     if resp.status_code != 200:
         pytest.skip(f"Login fallo ({resp.status_code}): {resp.text}")
@@ -205,25 +205,25 @@ def test_gate_pendiente_no_permite_biometria() -> None:
 
 
 @pytest.fixture
-def slim_client(monkeypatch: pytest.MonkeyPatch):
-    """TestClient del slim contra postgres:16-alpine."""
+def activeexam_client(monkeypatch: pytest.MonkeyPatch):
+    """TestClient del activeexam contra postgres:16-alpine."""
     import importlib
 
-    import app.config_slim as config_slim_module
+    import app.config_activeexam as config_activeexam_module
     from fastapi.testclient import TestClient
 
-    config_slim_module.get_slim_settings.cache_clear()
-    for k, v in _SLIM_ENV.items():
+    config_activeexam_module.get_activeexam_settings.cache_clear()
+    for k, v in _ACTIVEEXAM_ENV.items():
         monkeypatch.setenv(k, v)
 
-    import app.main_slim as main_slim_module
+    import app.main_activeexam as main_activeexam_module
 
-    importlib.reload(main_slim_module)
-    app_instance = main_slim_module.create_slim_app()
+    importlib.reload(main_activeexam_module)
+    app_instance = main_activeexam_module.create_activeexam_app()
     with TestClient(app_instance) as c:
         yield c
 
-    config_slim_module.get_slim_settings.cache_clear()
+    config_activeexam_module.get_activeexam_settings.cache_clear()
 
 
 # ---------------------------------------------------------------------------
@@ -256,13 +256,13 @@ class TestAlternativeRequestRepository:
             from app.infrastructure.persistence.repositories.alternative_request import (
                 AlternativeRequestSqlRepository,
             )
-            from app.infrastructure.persistence.session_slim import (
-                create_slim_engine,
-                create_slim_session_factory,
+            from app.infrastructure.persistence.session_activeexam import (
+                create_activeexam_engine,
+                create_activeexam_session_factory,
             )
 
-            engine = create_slim_engine(_normalizar_db_url(_DB_URL_SLIM))
-            factory = create_slim_session_factory(engine)
+            engine = create_activeexam_engine(_normalizar_db_url(_DB_URL_ACTIVEEXAM))
+            factory = create_activeexam_session_factory(engine)
             try:
                 async with factory() as session:
                     repo = AlternativeRequestSqlRepository(session)
@@ -270,7 +270,7 @@ class TestAlternativeRequestRepository:
                         id="",
                         user_id=self._ALUMNO_ID,
                         exam_id=self._EXAM_ID,
-                        estado=EstadoViaAlternativa.PENDIENTE_PROCTOR,
+                        estado=EstadoViaAlternativa.PENDIENTE_COORDINADOR,
                         timestamp_solicitud="2026-06-08T10:00:00Z",
                         timestamp_habilitacion=None,
                         habilitado_por=None,
@@ -278,11 +278,11 @@ class TestAlternativeRequestRepository:
                     creada = await repo.add(nueva)
                     await session.commit()
                     assert creada.id != ""
-                    assert creada.estado == EstadoViaAlternativa.PENDIENTE_PROCTOR
+                    assert creada.estado == EstadoViaAlternativa.PENDIENTE_COORDINADOR
 
                     recuperada = await repo.get_by_user_exam(self._ALUMNO_ID, self._EXAM_ID)
                     assert recuperada is not None
-                    assert recuperada.estado == EstadoViaAlternativa.PENDIENTE_PROCTOR
+                    assert recuperada.estado == EstadoViaAlternativa.PENDIENTE_COORDINADOR
                     assert recuperada.habilitado_por is None
             finally:
                 await engine.dispose()
@@ -300,13 +300,13 @@ class TestAlternativeRequestRepository:
             from app.infrastructure.persistence.repositories.alternative_request import (
                 AlternativeRequestSqlRepository,
             )
-            from app.infrastructure.persistence.session_slim import (
-                create_slim_engine,
-                create_slim_session_factory,
+            from app.infrastructure.persistence.session_activeexam import (
+                create_activeexam_engine,
+                create_activeexam_session_factory,
             )
 
-            engine = create_slim_engine(_normalizar_db_url(_DB_URL_SLIM))
-            factory = create_slim_session_factory(engine)
+            engine = create_activeexam_engine(_normalizar_db_url(_DB_URL_ACTIVEEXAM))
+            factory = create_activeexam_session_factory(engine)
             try:
                 async with factory() as session:
                     repo = AlternativeRequestSqlRepository(session)
@@ -314,7 +314,7 @@ class TestAlternativeRequestRepository:
                         id="",
                         user_id=self._ALUMNO_ID,
                         exam_id=self._EXAM_ID,
-                        estado=EstadoViaAlternativa.PENDIENTE_PROCTOR,
+                        estado=EstadoViaAlternativa.PENDIENTE_COORDINADOR,
                         timestamp_solicitud="2026-06-08T10:00:00Z",
                         timestamp_habilitacion=None,
                         habilitado_por=None,
@@ -331,7 +331,7 @@ class TestAlternativeRequestRepository:
         asyncio.get_event_loop().run_until_complete(_run())
 
     def test_update_estado_a_habilitado(self):
-        """update_estado transiciona pendiente -> habilitado_por_proctor."""
+        """update_estado transiciona pendiente -> habilitado_por_coordinador."""
 
         async def _run():
             from app.domain.entities.alternative_request import (
@@ -341,13 +341,13 @@ class TestAlternativeRequestRepository:
             from app.infrastructure.persistence.repositories.alternative_request import (
                 AlternativeRequestSqlRepository,
             )
-            from app.infrastructure.persistence.session_slim import (
-                create_slim_engine,
-                create_slim_session_factory,
+            from app.infrastructure.persistence.session_activeexam import (
+                create_activeexam_engine,
+                create_activeexam_session_factory,
             )
 
-            engine = create_slim_engine(_normalizar_db_url(_DB_URL_SLIM))
-            factory = create_slim_session_factory(engine)
+            engine = create_activeexam_engine(_normalizar_db_url(_DB_URL_ACTIVEEXAM))
+            factory = create_activeexam_session_factory(engine)
             try:
                 async with factory() as session:
                     repo = AlternativeRequestSqlRepository(session)
@@ -355,7 +355,7 @@ class TestAlternativeRequestRepository:
                         id="",
                         user_id=self._ALUMNO_ID,
                         exam_id=self._EXAM_ID,
-                        estado=EstadoViaAlternativa.PENDIENTE_PROCTOR,
+                        estado=EstadoViaAlternativa.PENDIENTE_COORDINADOR,
                         timestamp_solicitud="2026-06-08T10:00:00Z",
                         timestamp_habilitacion=None,
                         habilitado_por=None,
@@ -365,14 +365,14 @@ class TestAlternativeRequestRepository:
 
                     actualizada = await repo.update_estado(
                         solicitud_id=creada.id,
-                        estado=EstadoViaAlternativa.HABILITADO_POR_PROCTOR,
-                        habilitado_por="proctor-01",
+                        estado=EstadoViaAlternativa.HABILITADO_POR_COORDINADOR,
+                        habilitado_por="coordinador-01",
                         timestamp="2026-06-08T11:00:00Z",
                     )
                     await session.commit()
 
-                    assert actualizada.estado == EstadoViaAlternativa.HABILITADO_POR_PROCTOR
-                    assert actualizada.habilitado_por == "proctor-01"
+                    assert actualizada.estado == EstadoViaAlternativa.HABILITADO_POR_COORDINADOR
+                    assert actualizada.habilitado_por == "coordinador-01"
                     assert actualizada.timestamp_habilitacion is not None
             finally:
                 await engine.dispose()
@@ -409,15 +409,15 @@ class TestConsentServiceRegistrar:
             from app.infrastructure.persistence.repositories.alternative_request import (
                 AlternativeRequestSqlRepository,
             )
-            from app.infrastructure.persistence.repositories.audit_log_slim import (
+            from app.infrastructure.persistence.repositories.audit_log_activeexam import (
                 InMemoryAuditLogRepository as AuditLogSqlRepository,
             )
-            from app.infrastructure.persistence.repositories.consent_slim import (
+            from app.infrastructure.persistence.repositories.consent_activeexam import (
                 NoOpConsentRepository as ConsentSqlRepository,
             )
-            from app.infrastructure.persistence.session_slim import (
-                create_slim_engine,
-                create_slim_session_factory,
+            from app.infrastructure.persistence.session_activeexam import (
+                create_activeexam_engine,
+                create_activeexam_session_factory,
             )
 
             class _NoopQueue(MessageQueuePort):
@@ -433,8 +433,8 @@ class TestConsentServiceRegistrar:
                 async def health_check(self):
                     return True
 
-            engine = create_slim_engine(_normalizar_db_url(_DB_URL_SLIM))
-            factory = create_slim_session_factory(engine)
+            engine = create_activeexam_engine(_normalizar_db_url(_DB_URL_ACTIVEEXAM))
+            factory = create_activeexam_session_factory(engine)
             try:
                 async with factory() as session:
                     service = ConsentService(
@@ -449,7 +449,7 @@ class TestConsentServiceRegistrar:
                         timestamp="2026-06-08T10:00:00Z",
                     )
                     await session.commit()
-                    assert solicitud.estado == EstadoViaAlternativa.PENDIENTE_PROCTOR
+                    assert solicitud.estado == EstadoViaAlternativa.PENDIENTE_COORDINADOR
                     assert solicitud.user_id == self._ALUMNO_ID
                     assert solicitud.id != ""
             finally:
@@ -466,15 +466,15 @@ class TestConsentServiceRegistrar:
             from app.infrastructure.persistence.repositories.alternative_request import (
                 AlternativeRequestSqlRepository,
             )
-            from app.infrastructure.persistence.repositories.audit_log_slim import (
+            from app.infrastructure.persistence.repositories.audit_log_activeexam import (
                 InMemoryAuditLogRepository as AuditLogSqlRepository,
             )
-            from app.infrastructure.persistence.repositories.consent_slim import (
+            from app.infrastructure.persistence.repositories.consent_activeexam import (
                 NoOpConsentRepository as ConsentSqlRepository,
             )
-            from app.infrastructure.persistence.session_slim import (
-                create_slim_engine,
-                create_slim_session_factory,
+            from app.infrastructure.persistence.session_activeexam import (
+                create_activeexam_engine,
+                create_activeexam_session_factory,
             )
 
             class _NoopQueue(MessageQueuePort):
@@ -490,8 +490,8 @@ class TestConsentServiceRegistrar:
                 async def health_check(self):
                     return True
 
-            engine = create_slim_engine(_normalizar_db_url(_DB_URL_SLIM))
-            factory = create_slim_session_factory(engine)
+            engine = create_activeexam_engine(_normalizar_db_url(_DB_URL_ACTIVEEXAM))
+            factory = create_activeexam_session_factory(engine)
             try:
                 async with factory() as session:
                     service = ConsentService(
@@ -540,7 +540,7 @@ class TestConsentServiceHabilitar:
         _limpiar_solicitudes_sync(self._ALUMNO_ID)
 
     def test_habilitar_transiciona_estado(self):
-        """habilitar_alternativa transiciona a habilitado_por_proctor."""
+        """habilitar_alternativa transiciona a habilitado_por_coordinador."""
 
         async def _run():
             from app.application.consent.service import ConsentService
@@ -549,15 +549,15 @@ class TestConsentServiceHabilitar:
             from app.infrastructure.persistence.repositories.alternative_request import (
                 AlternativeRequestSqlRepository,
             )
-            from app.infrastructure.persistence.repositories.audit_log_slim import (
+            from app.infrastructure.persistence.repositories.audit_log_activeexam import (
                 InMemoryAuditLogRepository as AuditLogSqlRepository,
             )
-            from app.infrastructure.persistence.repositories.consent_slim import (
+            from app.infrastructure.persistence.repositories.consent_activeexam import (
                 NoOpConsentRepository as ConsentSqlRepository,
             )
-            from app.infrastructure.persistence.session_slim import (
-                create_slim_engine,
-                create_slim_session_factory,
+            from app.infrastructure.persistence.session_activeexam import (
+                create_activeexam_engine,
+                create_activeexam_session_factory,
             )
 
             class _NoopQueue(MessageQueuePort):
@@ -573,8 +573,8 @@ class TestConsentServiceHabilitar:
                 async def health_check(self):
                     return True
 
-            engine = create_slim_engine(_normalizar_db_url(_DB_URL_SLIM))
-            factory = create_slim_session_factory(engine)
+            engine = create_activeexam_engine(_normalizar_db_url(_DB_URL_ACTIVEEXAM))
+            factory = create_activeexam_session_factory(engine)
             try:
                 async with factory() as session:
                     service = ConsentService(
@@ -593,13 +593,13 @@ class TestConsentServiceHabilitar:
                     habilitada = await service.habilitar_alternativa(
                         user_id=self._ALUMNO_ID,
                         exam_id=self._EXAM_ID,
-                        habilitado_por="proctor-test-01",
+                        habilitado_por="coordinador-test-01",
                         timestamp="2026-06-08T11:00:00Z",
                     )
                     await session.commit()
 
-                    assert habilitada.estado == EstadoViaAlternativa.HABILITADO_POR_PROCTOR
-                    assert habilitada.habilitado_por == "proctor-test-01"
+                    assert habilitada.estado == EstadoViaAlternativa.HABILITADO_POR_COORDINADOR
+                    assert habilitada.habilitado_por == "coordinador-test-01"
             finally:
                 await engine.dispose()
 
@@ -614,15 +614,15 @@ class TestConsentServiceHabilitar:
             from app.infrastructure.persistence.repositories.alternative_request import (
                 AlternativeRequestSqlRepository,
             )
-            from app.infrastructure.persistence.repositories.audit_log_slim import (
+            from app.infrastructure.persistence.repositories.audit_log_activeexam import (
                 InMemoryAuditLogRepository as AuditLogSqlRepository,
             )
-            from app.infrastructure.persistence.repositories.consent_slim import (
+            from app.infrastructure.persistence.repositories.consent_activeexam import (
                 NoOpConsentRepository as ConsentSqlRepository,
             )
-            from app.infrastructure.persistence.session_slim import (
-                create_slim_engine,
-                create_slim_session_factory,
+            from app.infrastructure.persistence.session_activeexam import (
+                create_activeexam_engine,
+                create_activeexam_session_factory,
             )
 
             class _NoopQueue(MessageQueuePort):
@@ -638,8 +638,8 @@ class TestConsentServiceHabilitar:
                 async def health_check(self):
                     return True
 
-            engine = create_slim_engine(_normalizar_db_url(_DB_URL_SLIM))
-            factory = create_slim_session_factory(engine)
+            engine = create_activeexam_engine(_normalizar_db_url(_DB_URL_ACTIVEEXAM))
+            factory = create_activeexam_session_factory(engine)
             try:
                 async with factory() as session:
                     service = ConsentService(
@@ -652,7 +652,7 @@ class TestConsentServiceHabilitar:
                         await service.habilitar_alternativa(
                             user_id=self._ALUMNO_ID,
                             exam_id="exam-inexistente",
-                            habilitado_por="proctor-01",
+                            habilitado_por="coordinador-01",
                             timestamp="2026-06-08T11:00:00Z",
                         )
             finally:
@@ -686,10 +686,10 @@ class TestConsentServiceResolve:
         from app.infrastructure.persistence.repositories.alternative_request import (
             AlternativeRequestSqlRepository,
         )
-        from app.infrastructure.persistence.repositories.audit_log_slim import (
+        from app.infrastructure.persistence.repositories.audit_log_activeexam import (
             InMemoryAuditLogRepository,
         )
-        from app.infrastructure.persistence.repositories.consent_slim import (
+        from app.infrastructure.persistence.repositories.consent_activeexam import (
             NoOpConsentRepository,
         )
 
@@ -718,13 +718,13 @@ class TestConsentServiceResolve:
 
         async def _run():
             from app.domain.consent_flow.rules import ResolucionConsentimiento
-            from app.infrastructure.persistence.session_slim import (
-                create_slim_engine,
-                create_slim_session_factory,
+            from app.infrastructure.persistence.session_activeexam import (
+                create_activeexam_engine,
+                create_activeexam_session_factory,
             )
 
-            engine = create_slim_engine(_normalizar_db_url(_DB_URL_SLIM))
-            factory = create_slim_session_factory(engine)
+            engine = create_activeexam_engine(_normalizar_db_url(_DB_URL_ACTIVEEXAM))
+            factory = create_activeexam_session_factory(engine)
             try:
                 async with factory() as session:
                     service = self._make_service(session)
@@ -749,13 +749,13 @@ class TestConsentServiceResolve:
 
         async def _run():
             from app.domain.consent_flow.rules import ResolucionConsentimiento
-            from app.infrastructure.persistence.session_slim import (
-                create_slim_engine,
-                create_slim_session_factory,
+            from app.infrastructure.persistence.session_activeexam import (
+                create_activeexam_engine,
+                create_activeexam_session_factory,
             )
 
-            engine = create_slim_engine(_normalizar_db_url(_DB_URL_SLIM))
-            factory = create_slim_session_factory(engine)
+            engine = create_activeexam_engine(_normalizar_db_url(_DB_URL_ACTIVEEXAM))
+            factory = create_activeexam_session_factory(engine)
             try:
                 async with factory() as session:
                     service = self._make_service(session)
@@ -768,7 +768,7 @@ class TestConsentServiceResolve:
                     await service.habilitar_alternativa(
                         user_id=self._ALUMNO_ID,
                         exam_id=self._EXAM_ID,
-                        habilitado_por="proctor-01",
+                        habilitado_por="coordinador-01",
                         timestamp="2026-06-08T11:00:00Z",
                     )
                     await session.commit()
@@ -787,13 +787,13 @@ class TestConsentServiceResolve:
 
         async def _run():
             from app.domain.consent_flow.rules import ResolucionConsentimiento
-            from app.infrastructure.persistence.session_slim import (
-                create_slim_engine,
-                create_slim_session_factory,
+            from app.infrastructure.persistence.session_activeexam import (
+                create_activeexam_engine,
+                create_activeexam_session_factory,
             )
 
-            engine = create_slim_engine(_normalizar_db_url(_DB_URL_SLIM))
-            factory = create_slim_session_factory(engine)
+            engine = create_activeexam_engine(_normalizar_db_url(_DB_URL_ACTIVEEXAM))
+            factory = create_activeexam_session_factory(engine)
             try:
                 async with factory() as session:
                     service = self._make_service(session)
@@ -814,72 +814,72 @@ class TestConsentServiceResolve:
 
 @pytest.mark.requires_stack
 class TestEndpointHabilitar:
-    """Tests del endpoint de habilitacion por proctor (10.6)."""
+    """Tests del endpoint de habilitacion por coordinador (10.6)."""
 
     _ALUMNO_ID = "c63-ep-alumno"
-    _PROCTOR_ID = "c63-ep-proctor"
+    _COORDINADOR_ID = "c63-ep-coordinador"
     _ADMIN_ID = "c63-ep-admin"
     _EXAM_ID = "exam-c63-ep"
 
     def setup_method(self):
         _crear_usuario_sync(self._ALUMNO_ID, ["estudiante"])
-        _crear_usuario_sync(self._PROCTOR_ID, ["proctor"])
+        _crear_usuario_sync(self._COORDINADOR_ID, ["coordinador"])  # c-76: rol proctor eliminado -> coordinador
         _crear_usuario_sync(self._ADMIN_ID, ["admin_sistema"])
         _limpiar_solicitudes_sync(self._ALUMNO_ID)
 
     def teardown_method(self):
         _limpiar_solicitudes_sync(self._ALUMNO_ID)
 
-    def _registrar_solicitud(self, slim_client) -> None:
+    def _registrar_solicitud(self, activeexam_client) -> None:
         """Registra la solicitud via el endpoint del alumno."""
-        token = _login(slim_client, self._ALUMNO_ID)
-        resp = slim_client.post(
+        token = _login(activeexam_client, self._ALUMNO_ID)
+        resp = activeexam_client.post(
             "/api/v1/consent/alternative",
             json={"exam_id": self._EXAM_ID},
             headers={"Authorization": f"Bearer {token}"},
         )
         assert resp.status_code == 200, f"No se pudo registrar solicitud: {resp.text}"
 
-    def test_habilitar_200_con_proctor(self, slim_client):
-        """POST /habilitar con rol proctor -> 200."""
-        self._registrar_solicitud(slim_client)
-        token = _login(slim_client, self._PROCTOR_ID)
-        resp = slim_client.post(
+    def test_habilitar_200_con_coordinador(self, activeexam_client):
+        """POST /habilitar con rol coordinador -> 200."""
+        self._registrar_solicitud(activeexam_client)
+        token = _login(activeexam_client, self._COORDINADOR_ID)
+        resp = activeexam_client.post(
             f"/api/v1/consent/alternative/{self._ALUMNO_ID}/habilitar",
             json={"exam_id": self._EXAM_ID},
             headers={"Authorization": f"Bearer {token}"},
         )
         assert resp.status_code == 200, resp.text
         data = resp.json()
-        assert data["estado"] == "habilitado_por_proctor"
-        assert data["habilitado_por"] == self._PROCTOR_ID
+        assert data["estado"] == "habilitado_por_coordinador"
+        assert data["habilitado_por"] == self._COORDINADOR_ID
 
-    def test_habilitar_200_con_admin(self, slim_client):
+    def test_habilitar_200_con_admin(self, activeexam_client):
         """POST /habilitar con rol admin_sistema -> 200."""
-        self._registrar_solicitud(slim_client)
-        token = _login(slim_client, self._ADMIN_ID)
-        resp = slim_client.post(
+        self._registrar_solicitud(activeexam_client)
+        token = _login(activeexam_client, self._ADMIN_ID)
+        resp = activeexam_client.post(
             f"/api/v1/consent/alternative/{self._ALUMNO_ID}/habilitar",
             json={"exam_id": self._EXAM_ID},
             headers={"Authorization": f"Bearer {token}"},
         )
         assert resp.status_code == 200, resp.text
 
-    def test_habilitar_403_sin_rol_proctor(self, slim_client):
+    def test_habilitar_403_sin_rol_coordinador(self, activeexam_client):
         """POST /habilitar con rol estudiante -> 403."""
-        self._registrar_solicitud(slim_client)
-        token = _login(slim_client, self._ALUMNO_ID)
-        resp = slim_client.post(
+        self._registrar_solicitud(activeexam_client)
+        token = _login(activeexam_client, self._ALUMNO_ID)
+        resp = activeexam_client.post(
             f"/api/v1/consent/alternative/{self._ALUMNO_ID}/habilitar",
             json={"exam_id": self._EXAM_ID},
             headers={"Authorization": f"Bearer {token}"},
         )
         assert resp.status_code == 403, resp.text
 
-    def test_habilitar_404_si_no_existe(self, slim_client):
+    def test_habilitar_404_si_no_existe(self, activeexam_client):
         """POST /habilitar con solicitud inexistente -> 404."""
-        token = _login(slim_client, self._PROCTOR_ID)
-        resp = slim_client.post(
+        token = _login(activeexam_client, self._COORDINADOR_ID)
+        resp = activeexam_client.post(
             f"/api/v1/consent/alternative/{self._ALUMNO_ID}/habilitar",
             json={"exam_id": "exam-que-no-existe-zzz"},
             headers={"Authorization": f"Bearer {token}"},
@@ -897,31 +897,31 @@ class TestEndpointPendientes:
     """Tests del endpoint de listado de pendientes (10.7)."""
 
     _ALUMNO_ID = "c63-pend-alumno"
-    _PROCTOR_ID = "c63-pend-proctor"
+    _COORDINADOR_ID = "c63-pend-coordinador"
     _EXAM_ID = "exam-c63-pend"
 
     def setup_method(self):
         _crear_usuario_sync(self._ALUMNO_ID, ["estudiante"])
-        _crear_usuario_sync(self._PROCTOR_ID, ["proctor"])
+        _crear_usuario_sync(self._COORDINADOR_ID, ["coordinador"])  # c-76: rol proctor eliminado -> coordinador
         _limpiar_solicitudes_sync(self._ALUMNO_ID)
 
     def teardown_method(self):
         _limpiar_solicitudes_sync(self._ALUMNO_ID)
 
-    def test_lista_pendientes_200_con_proctor(self, slim_client):
-        """GET /pendientes con rol proctor -> 200 con lista correcta."""
+    def test_lista_pendientes_200_con_coordinador(self, activeexam_client):
+        """GET /pendientes con rol coordinador -> 200 con lista correcta."""
         # Registrar solicitud
-        alumno_token = _login(slim_client, self._ALUMNO_ID)
-        slim_client.post(
+        alumno_token = _login(activeexam_client, self._ALUMNO_ID)
+        activeexam_client.post(
             "/api/v1/consent/alternative",
             json={"exam_id": self._EXAM_ID},
             headers={"Authorization": f"Bearer {alumno_token}"},
         )
 
-        proctor_token = _login(slim_client, self._PROCTOR_ID)
-        resp = slim_client.get(
+        coordinador_token = _login(activeexam_client, self._COORDINADOR_ID)
+        resp = activeexam_client.get(
             "/api/v1/consent/alternative/pendientes",
-            headers={"Authorization": f"Bearer {proctor_token}"},
+            headers={"Authorization": f"Bearer {coordinador_token}"},
         )
         assert resp.status_code == 200, resp.text
         data = resp.json()
@@ -929,10 +929,10 @@ class TestEndpointPendientes:
         user_ids = [item["user_id"] for item in data["items"]]
         assert self._ALUMNO_ID in user_ids
 
-    def test_lista_pendientes_403_sin_rol(self, slim_client):
+    def test_lista_pendientes_403_sin_rol(self, activeexam_client):
         """GET /pendientes con rol estudiante -> 403."""
-        token = _login(slim_client, self._ALUMNO_ID)
-        resp = slim_client.get(
+        token = _login(activeexam_client, self._ALUMNO_ID)
+        resp = activeexam_client.get(
             "/api/v1/consent/alternative/pendientes",
             headers={"Authorization": f"Bearer {token}"},
         )
@@ -949,28 +949,28 @@ class TestGatePuedeRendir:
     """Tests del gate de rendir via api/service (10.8)."""
 
     _ALUMNO_ID = "c63-gate-alumno"
-    _PROCTOR_ID = "c63-gate-proctor"
+    _COORDINADOR_ID = "c63-gate-coordinador"
     _EXAM_ID = "exam-c63-gate"
 
     def setup_method(self):
         _crear_usuario_sync(self._ALUMNO_ID, ["estudiante"])
-        _crear_usuario_sync(self._PROCTOR_ID, ["proctor"])
+        _crear_usuario_sync(self._COORDINADOR_ID, ["coordinador"])  # c-76: rol proctor eliminado -> coordinador
         _limpiar_solicitudes_sync(self._ALUMNO_ID)
 
     def teardown_method(self):
         _limpiar_solicitudes_sync(self._ALUMNO_ID)
 
-    def test_gate_bloquea_con_pendiente(self, slim_client):
+    def test_gate_bloquea_con_pendiente(self, activeexam_client):
         """Gate /consent/gate retorna resolucion=via_alternativa_pendiente y no puede avanzar."""
-        alumno_token = _login(slim_client, self._ALUMNO_ID)
+        alumno_token = _login(activeexam_client, self._ALUMNO_ID)
         # Registrar solicitud
-        slim_client.post(
+        activeexam_client.post(
             "/api/v1/consent/alternative",
             json={"exam_id": self._EXAM_ID},
             headers={"Authorization": f"Bearer {alumno_token}"},
         )
 
-        resp = slim_client.get(
+        resp = activeexam_client.get(
             f"/api/v1/consent/gate?exam_id={self._EXAM_ID}",
             headers={"Authorization": f"Bearer {alumno_token}"},
         )
@@ -980,25 +980,25 @@ class TestGatePuedeRendir:
         assert data["puede_avanzar"] is False
         assert data["biometria_habilitada"] is False
 
-    def test_gate_permite_con_habilitado(self, slim_client):
+    def test_gate_permite_con_habilitado(self, activeexam_client):
         """Gate /consent/gate retorna resolucion=via_alternativa_habilitada y puede avanzar."""
-        alumno_token = _login(slim_client, self._ALUMNO_ID)
-        proctor_token = _login(slim_client, self._PROCTOR_ID)
+        alumno_token = _login(activeexam_client, self._ALUMNO_ID)
+        coordinador_token = _login(activeexam_client, self._COORDINADOR_ID)
 
         # Registrar
-        slim_client.post(
+        activeexam_client.post(
             "/api/v1/consent/alternative",
             json={"exam_id": self._EXAM_ID},
             headers={"Authorization": f"Bearer {alumno_token}"},
         )
         # Habilitar
-        slim_client.post(
+        activeexam_client.post(
             f"/api/v1/consent/alternative/{self._ALUMNO_ID}/habilitar",
             json={"exam_id": self._EXAM_ID},
-            headers={"Authorization": f"Bearer {proctor_token}"},
+            headers={"Authorization": f"Bearer {coordinador_token}"},
         )
 
-        resp = slim_client.get(
+        resp = activeexam_client.get(
             f"/api/v1/consent/gate?exam_id={self._EXAM_ID}",
             headers={"Authorization": f"Bearer {alumno_token}"},
         )

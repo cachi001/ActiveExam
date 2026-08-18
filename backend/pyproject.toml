@@ -38,6 +38,9 @@ dependencies = [
     # Export PDF de estadísticas institucionales (C-20). Python puro (sin libs de
     # sistema): entra limpio en la imagen slim runtime (pip install .).
     "fpdf2==2.8.1",
+    # Cliente S3 para el deposito WORM de evidencia (c-77): MinIO es S3-compatible.
+    # Opcional en runtime: sin MINIO_* seteado el cliente nunca se construye.
+    "boto3==1.43.73",
 ]
 
 [project.optional-dependencies]
@@ -60,7 +63,7 @@ testpaths = ["tests"]
 pythonpath = ["."]
 addopts = "-ra"
 # pytest-asyncio: usar el mismo event loop para tests y fixtures session-scoped.
-# Sin esto, fixtures session-scoped que abren conexiones async (ej. slim_engine
+# Sin esto, fixtures session-scoped que abren conexiones async (ej. activeexam_engine
 # de tests/proctoring/conftest.py) se cierran cuando termina el primer loop y
 # disparan "RuntimeError: Event loop is closed" en los siguientes tests.
 asyncio_default_fixture_loop_scope = "session"

@@ -52,7 +52,7 @@ def emitir_jwt_propio(
 
     claims: dict = {
         "sub": str(usuario.id),
-        "preferred_username": usuario.id_institucional,
+        "preferred_username": usuario.username,
         "email": usuario.email,
         "realm_access": {"roles": roles_validos},
         "iss": issuer,

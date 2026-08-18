@@ -17,7 +17,7 @@ import bcrypt from 'bcryptjs';
 
 const SEEDS = [
   {
-    id_institucional: 'ADMIN-001',
+    username: 'ADMIN-001',
     email: 'admin@activeexam.local',
     password: 'Admin123',
     roles: ['admin_sistema'],
@@ -25,7 +25,7 @@ const SEEDS = [
     apellido: 'Sistema',
   },
   {
-    id_institucional: 'EST-001',
+    username: 'EST-001',
     email: 'estudiante@activeexam.local',
     password: 'Estudiante123',
     roles: ['estudiante'],
@@ -33,7 +33,7 @@ const SEEDS = [
     apellido: 'Prueba',
   },
   {
-    id_institucional: 'PROC-001',
+    username: 'PROC-001',
     email: 'proctor@activeexam.local',
     password: 'Proctor123',
     roles: ['proctor'],
@@ -65,9 +65,9 @@ try {
     const hash = await bcrypt.hash(u.password, 12);
     const res = await client.query(
       `INSERT INTO usuario
-         (id_institucional, email, roles, password_hash, auth_provider, nombre, apellido, attrs_federados)
+         (username, email, roles, password_hash, auth_provider, nombre, apellido, attrs_federados)
        VALUES ($1, $2, $3::jsonb, $4, 'local', $5, $6, '{}'::jsonb)
-       ON CONFLICT (id_institucional) DO UPDATE SET
+       ON CONFLICT (username) DO UPDATE SET
          password_hash = EXCLUDED.password_hash,
          roles = EXCLUDED.roles,
          nombre = EXCLUDED.nombre,
@@ -75,7 +75,7 @@ try {
          eliminado_en = NULL
        RETURNING (xmax = 0) AS inserted`,
       [
-        u.id_institucional,
+        u.username,
         u.email,
         JSON.stringify(u.roles),
         hash,

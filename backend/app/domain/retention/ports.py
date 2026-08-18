@@ -1,8 +1,8 @@
 """Puertos (Protocols) que el motor de retencion necesita.
 
 Hexagonal: el dominio define los contratos, infraestructura los implementa.
-En slim las implementaciones son SQL contra tablas existentes en la
-migracion slim head (0012); cuando llegue c-67/c-69, se agregan
+En activeexam las implementaciones son SQL contra tablas existentes en la
+migracion activeexam head (0012); cuando llegue c-67/c-69, se agregan
 implementaciones nuevas SIN tocar dominio ni application.
 """
 
@@ -45,7 +45,7 @@ class EmbeddingDeleter(Protocol):
 class FotoDeleter(Protocol):
     """Borra todas las fotos de referencia de un usuario.
 
-    Slim: borra solo la fila en DB. La purga del binario en MinIO/S3 es
+    ActiveExam: borra solo la fila en DB. La purga del binario en MinIO/S3 es
     responsabilidad de un job aparte (Object Lock difiere la eliminacion
     fisica — c-67 se ocupa cuando llegue WORM real).
     """

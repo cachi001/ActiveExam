@@ -17,7 +17,7 @@ respuestas del dueño). DB real (DATABASE_URL). Sin mocks de DB (regla dura de
 codigo). El finalizar-sesion dispara el calculo de nota (calcular_nota_academica),
 que consulta `respuesta_alumno` — por eso el engine de este archivo crea el set
 completo de tablas del circuito de rendicion (mismo patron que
-`test_c69_sesion_propiedad.py`), no solo las 3 tablas slim del conftest base.
+`test_c69_sesion_propiedad.py`), no solo las 3 tablas activeexam del conftest base.
 
 Correr:
     DATABASE_URL=postgresql+asyncpg://... pytest tests/proctoring/test_vuln_reload_examen.py -v
@@ -115,10 +115,10 @@ def reinferencia():
 def app(engine, reinferencia):
     from fastapi import FastAPI
 
-    from app.infrastructure.persistence.session_slim import create_slim_session_factory
+    from app.infrastructure.persistence.session_activeexam import create_activeexam_session_factory
     from app.presentation.api.v1.proctoring.router import create_proctoring_router
 
-    factory = create_slim_session_factory(engine)
+    factory = create_activeexam_session_factory(engine)
     router = create_proctoring_router(
         session_factory=factory,
         reinferencia=reinferencia,

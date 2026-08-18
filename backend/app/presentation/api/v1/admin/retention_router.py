@@ -13,7 +13,7 @@ Endpoints:
 Cada llamada:
   * exige rol ``admin_sistema`` (Bearer JWT) via ``require_roles``
   * abre una session SQL por request (patron session-per-request)
-  * llama al RetentionEngine con los adaptadores SQL slim cableados
+  * llama al RetentionEngine con los adaptadores SQL activeexam cableados
   * commit explicito al final para que el cascade DELETE viaje a la DB
 """
 

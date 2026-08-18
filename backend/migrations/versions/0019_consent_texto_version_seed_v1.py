@@ -1,10 +1,10 @@
-"""019 - seed v1 en consent_texto_version (slim + full convergente).
+"""019 - seed v1 en consent_texto_version (activeexam + full convergente).
 
 Revision ID: 0019
-Revises: 0018 (rama slim) y 0017 (rama full) — MERGE POINT
+Revises: 0018 (rama activeexam) y 0017 (rama full) — MERGE POINT
 Create Date: 2026-06-16
 
-RAMA: converge slim (0018) + full (0017)
+RAMA: converge activeexam (0018) + full (0017)
   down_revision = ("0018", "0017")
   branch_labels = None
   depends_on    = None
@@ -20,7 +20,7 @@ PROPOSITO:
 
   INSERT idempotente (ON CONFLICT DO NOTHING): seguro en re-runs.
 
-  En la rama FULL, la tabla fue creada por 0018 (que converge desde 0016, slim).
+  En la rama FULL, la tabla fue creada por 0018 (que converge desde 0016, activeexam).
   Para la rama full hay que asegurarse de que la tabla exista antes — la migracion
   0020_consent_texto_version_full_table.py crea la tabla en full si no existe aun.
   Sin embargo, como este seed converge desde 0018 (que ya creó la tabla), el merge

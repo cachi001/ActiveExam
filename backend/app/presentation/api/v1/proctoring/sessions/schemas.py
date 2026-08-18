@@ -1,4 +1,4 @@
-"""Schemas Pydantic para endpoints de sesiones de proctoring slim.
+"""Schemas Pydantic para endpoints de sesiones de proctoring activeexam.
 
 Todos con extra='forbid' (regla dura de codigo).
 Ley 25.326: screenshot_base64 y biometria son datos sensibles.
@@ -51,7 +51,7 @@ class EventoDetalle(BaseModel):
     """Detalle de un evento de deteccion para GET /sessions/{id}.
 
     Incluye screenshot base64, sha256, veredicto de re-inferencia y conteos
-    de rostros (cliente vs servidor) para la revision humana del proctor.
+    de rostros (cliente vs servidor) para la revision humana (tutor/coordinador).
 
     PRODUCCION: screenshot_base64 es dato sensible (Ley 25.326).
     """
@@ -112,10 +112,58 @@ class SesionResumen(BaseModel):
     examen_titulo: str | None = None
     comision_nombre: str | None = None
     materia_nombre: str | None = None
+    # Identidad del alumno (C-76 tarea 17: columna "Alumno" del Registro de
+    # sesiones). Ausente/None en listados que no la resuelven (compat).
+    alumno_idnumber: str | None = None
+    alumno_email: str | None = None
+    alumno_nombre: str | None = None
+
+
+class RegistroSesionesOut(BaseModel):
+    """Respuesta paginada de GET /sessions/registro (C-76 tarea 17).
+
+    Envelope de paginacion real (mismo shape que ``ResultadosExamenPaginadosResponse``
+    de exam-content/resultados): items de la pagina actual + total GLOBAL filtrado.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[SesionResumen]
+    total: int
+    page: int
+    page_size: int
+    # Agregados sobre el TOTAL filtrado (C-76 tarea 19.3/20.4) — calculados ANTES
+    # de paginar, sobre las sesiones que matchean q/exam_id/fecha/nivel_riesgo/
+    # materia_id/comision_id. NUNCA se derivan de `items` (que solo trae la
+    # pagina actual): el frontend los usa tal cual para las stat cards.
+    #
+    # `total_eventos`/`total_discrepancias` (tarea 19) se retiraron en la tarea 20
+    # (feedback del dueño: no son decisivos como stat general) — reemplazados por
+    # `en_cola_revision`.
+    riesgo_bajo: int
+    riesgo_medio: int
+    riesgo_alto: int
+    # Sesiones con score >= umbral de la Cola de revision (`obtener_umbral_alto`,
+    # el MISMO umbral que usa la Cola de revision — no uno reinventado). C-76
+    # tarea 20.4/20.6, stat card "Sobre el umbral de riesgo".
+    en_cola_revision: int
+
+
+class ExamenConSesionesOut(BaseModel):
+    """Una entrada del catalogo de filtro "Examen" (C-76 tarea 17.2).
+
+    El frontend arma el <select> de "Examen" 100% desde este catalogo — nunca
+    hardcodea una lista de examenes/estados.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    titulo: str
 
 
 class SesionDetalle(BaseModel):
-    """Detalle completo de sesion para GET /sessions/{id} — vista del proctor."""
+    """Detalle completo de sesion para GET /sessions/{id} — vista del tutor."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -125,40 +173,52 @@ class SesionDetalle(BaseModel):
     # C-69: contra qué examen_contenido (Moodle XML) rindió el alumno. NULL si la
     # sesion no tiene contenido vinculado.
     examen_contenido_id: str | None = None
+    # Contexto académico resuelto server-side (examen_contenido → comisión →
+    # materia), igual que en SesionResumen (listar_sesiones) — el detalle también
+    # lo necesita para el header ("qué examen rindió, de qué materia/comisión").
+    examen_titulo: str | None = None
+    comision_nombre: str | None = None
+    materia_nombre: str | None = None
+    # Identidad del alumno dueño de la sesión (C-76 fix UX): el header del detalle
+    # necesita destacar QUIÉN rindió, no solo el modo de la sesión. nombre_completo
+    # resuelto contra `usuario`; idnumber/email crudos como fallback si no matchea.
+    alumno_nombre: str | None = None
+    alumno_idnumber: str | None = None
+    alumno_email: str | None = None
     creada_en: Any
     finalizada_en: Any = None
     score: int
     eventos: list[EventoDetalle]
     biometria: BiometriaDetalle | None = None
     # C-15 (3.3): cierre forzado (operativo, NO disciplinario). Se exponen para que
-    # la UI del proctor refleje el estado al RECARGAR el detalle (no solo en la
+    # la UI del tutor refleje el estado al RECARGAR el detalle (no solo en la
     # accion). NULL si la sesion no fue cerrada de forma forzada.
     cierre_forzado_en: Any = None
     cierre_forzado_motivo: str | None = None
 
 
-# --- C-15 (3.2): observaciones del proctor (insumo de C-16) ---
+# --- C-15 (3.2): observaciones del tutor (insumo de C-16) ---
 
 
 class ObservacionIn(BaseModel):
-    """Body de POST /sessions/{id}/observaciones (proctor)."""
+    """Body de POST /sessions/{id}/observaciones (tutor)."""
 
     model_config = ConfigDict(extra="forbid")
 
     texto: str = Field(..., min_length=1, max_length=2000)
-    proctor_actor: str | None = Field(
-        None, description="Subject del JWT del proctor que escribe (audit trail)."
+    tutor_actor: str | None = Field(
+        None, description="Subject del JWT del tutor que escribe (audit trail)."
     )
 
 
 class ObservacionOut(BaseModel):
-    """Observacion del proctor (respuesta de POST y elemento del GET)."""
+    """Observacion del tutor (respuesta de POST y elemento del GET)."""
 
     model_config = ConfigDict(extra="forbid")
 
     id: str
     texto: str
-    proctor_actor: str | None = None
+    tutor_actor: str | None = None
     creada_en: Any
 
 
@@ -166,17 +226,17 @@ class ObservacionOut(BaseModel):
 
 
 class CerrarForzadoIn(BaseModel):
-    """Body de PATCH /sessions/{id}/cerrar-forzado (proctor).
+    """Body de PATCH /sessions/{id}/cerrar-forzado (tutor).
 
-    ``motivo`` es OBLIGATORIO (operativo): por que el proctor cierra la sesion.
+    ``motivo`` es OBLIGATORIO (operativo): por que el tutor cierra la sesion.
     NO es un veredicto disciplinario (regla dura #5).
     """
 
     model_config = ConfigDict(extra="forbid")
 
     motivo: str = Field(..., min_length=1, max_length=500)
-    proctor_actor: str | None = Field(
-        None, description="Subject del JWT del proctor que fuerza el cierre (audit trail)."
+    tutor_actor: str | None = Field(
+        None, description="Subject del JWT del tutor que fuerza el cierre (audit trail)."
     )
 
 

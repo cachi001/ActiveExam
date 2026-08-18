@@ -47,7 +47,7 @@ function StudentUserMenu({ onLogoutClick }: { onLogoutClick: () => void }) {
 
   if (!principal) return null;
   const inicial = principal.nombre.charAt(0).toUpperCase();
-  const secundario = principal.email ?? principal.id_institucional ?? 'Estudiante';
+  const secundario = principal.email ?? principal.username ?? 'Estudiante';
 
   return (
     <div ref={wrapperRef} className="relative">

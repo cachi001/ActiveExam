@@ -82,6 +82,7 @@ class ConfigEfectivaResponse(_Strict):
     chat_habilitado: bool
     pausas_habilitadas: bool
     pausa_max_min: int
+    pausas_max_por_sesion: int
     scoring_weights: dict[str, int]
     scoring_severidades: dict[str, str] = {}
 
@@ -108,6 +109,9 @@ class EditarConfigRequest(_Strict):
     chat_habilitado: bool | None = None
     pausas_habilitadas: bool | None = None
     pausa_max_min: int | None = Field(default=None, ge=1, le=120)
+    # Límite de cantidad de pausas por sesión (C-76 bloque 4). Se consume al
+    # APROBAR, no al solicitar (D5 del design c-76): el alumno siempre puede pedir.
+    pausas_max_por_sesion: int | None = Field(default=None, ge=1, le=50)
 
 
 # ---------------------------------------------------------------------------
@@ -149,6 +153,7 @@ def _to_response(e: ConfigEfectiva) -> ConfigEfectivaResponse:
         chat_habilitado=e.chat_habilitado,
         pausas_habilitadas=e.pausas_habilitadas,
         pausa_max_min=e.pausa_max_min,
+        pausas_max_por_sesion=e.pausas_max_por_sesion,
         scoring_weights=dict(e.scoring_weights),
         scoring_severidades=dict(e.scoring_severidades),
     )
@@ -172,6 +177,7 @@ def _snapshot(cfg) -> dict:
         "chat_habilitado": cfg.chat_habilitado,
         "pausas_habilitadas": cfg.pausas_habilitadas,
         "pausa_max_min": cfg.pausa_max_min,
+        "pausas_max_por_sesion": cfg.pausas_max_por_sesion,
     }
 
 
@@ -212,9 +218,9 @@ async def editar_config(
     """Edita los defaults globales. SOLO ``admin_sistema`` (403 si no).
 
     C-68 (decisión del dueño): edición restringida a ``admin_sistema`` por ROL,
-    sin exigir MFA. El backend slim usa JWT propio que NO emite MFA (deuda técnica
+    sin exigir MFA. El backend activeexam usa JWT propio que NO emite MFA (deuda técnica
     documentada en own_issuer.py: 'MFA propio = change futuro'); exigir MFA acá
-    haría la config INEDITABLE en slim/Railway. Cuando exista MFA propio se puede
+    haría la config INEDITABLE en activeexam/Railway. Cuando exista MFA propio se puede
     re-agregar require_mfa.
 
     400 si el body no trae ningun campo. Bump monotonico de version + fila
@@ -256,7 +262,7 @@ async def editar_config(
         # Auditoria inmutable: fila config_update con before/after (cadena de custodia).
         await AuditLogSqlRepository(session).append(
             AuditEntry(
-                actor=principal.id_institucional,
+                actor=principal.username,
                 timestamp=_now_iso(),
                 ip="",
                 user_agent="",
@@ -379,7 +385,7 @@ async def _auditar_credencial(
     async with session_factory() as session:
         await AuditLogSqlRepository(session).append(
             AuditEntry(
-                actor=principal.id_institucional,
+                actor=principal.username,
                 timestamp=_now_iso(),
                 ip="",
                 user_agent="",
@@ -426,7 +432,7 @@ async def guardar_credencial_moodle(
         token=body.token,
         component=body.component,
         service_shortname=body.service_shortname,
-        actor=principal.id_institucional,
+        actor=principal.username,
     )
 
     # Qué se tocó, nunca con qué valor de token.
@@ -453,7 +459,7 @@ async def borrar_token_moodle(
 ) -> MoodleCredencialResponse:
     """Borra el token guardado. El write-back deja de escribir hasta cargar otro."""
     resolver = _resolver_credenciales(request)
-    estado = await resolver.borrar_token(actor=principal.id_institucional)
+    estado = await resolver.borrar_token(actor=principal.username)
     await _auditar_credencial(
         request, principal, "Eliminó el token de Moodle guardado"
     )

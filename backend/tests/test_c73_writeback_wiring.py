@@ -1,7 +1,7 @@
 """Contrato de cableado del write-back de Moodle (C-73 §7.2).
 
 Clava la DECISIÓN de arranque que hasta ahora vivía inline en ``create_app``
-(main_slim) sin ningún test: si ``MOODLE_BASE_URL`` está vacío, el write-back
+(main_activeexam) sin ningún test: si ``MOODLE_BASE_URL`` está vacío, el write-back
 queda DESHABILITADO (``build_writeback_svc`` devuelve ``None``) y la finalización
 degrada de forma segura a ``persistir_nota_pendiente`` — la nota queda en estado
 sincronizable y NINGÚN flujo se rompe. Con ``MOODLE_BASE_URL`` seteado, se
@@ -19,7 +19,7 @@ from app.infrastructure.moodle.wiring import build_moodle_config, build_writebac
 
 
 def _settings(**overrides):
-    """Stand-in liviano de SlimSettings con los campos que lee el factory."""
+    """Stand-in liviano de ActiveExamSettings con los campos que lee el factory."""
     base = {
         "moodle_base_url": "",
         "moodle_ws_token": "",

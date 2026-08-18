@@ -41,7 +41,7 @@ from app.application.enrollment.guardar_embedding_referencia import (
 )
 from app.domain.biometrics.embedding_integrity import EmbeddingIntegridadError
 from app.application.enrollment.guardar_foto_perfil import GuardarFotoPerfilService
-from app.application.enrollment.guardar_foto_perfil_slim import GuardarFotoPerfilSlimService
+from app.application.enrollment.guardar_foto_perfil_activeexam import GuardarFotoPerfilActiveExamService
 from app.domain.auth.identity import AuthenticatedPrincipal
 from app.domain.auth.roles import Rol
 from app.infrastructure.crypto.embedding_encryption import (
@@ -81,7 +81,7 @@ def _get_profile_storage(request: Request) -> ProfilePhotoStorageService | DbPho
     """Toma el servicio de storage de perfiles del app state o 500.
 
     Devuelve ``ProfilePhotoStorageService`` (full/MinIO) o ``DbPhotoStorageService``
-    (slim/BYTEA). El endpoint ``guardar_foto_perfil`` detecta el tipo y despacha
+    (activeexam/BYTEA). El endpoint ``guardar_foto_perfil`` detecta el tipo y despacha
     al servicio correcto.
     """
     storage = getattr(request.app.state, "profile_photo_storage", None)
@@ -94,10 +94,10 @@ def _get_profile_storage(request: Request) -> ProfilePhotoStorageService | DbPho
 
 
 def _get_embedding_encryption(request: Request) -> EmbeddingEncryptionService:
-    """Toma el servicio de cifrado de embeddings del app state (slim) o lo instancia (full).
+    """Toma el servicio de cifrado de embeddings del app state (activeexam) o lo instancia (full).
 
-    En el slim (main_slim.py), el servicio se cablea en ``app.state.embedding_encryption``
-    con la clave de ``SlimSettings.embedding_encryption_key`` (sin cargar Settings del full).
+    En el activeexam (main_activeexam.py), el servicio se cablea en ``app.state.embedding_encryption``
+    con la clave de ``ActiveExamSettings.embedding_encryption_key`` (sin cargar Settings del full).
     En el full (main.py), se instancia desde la config completa.
     """
     service = getattr(request.app.state, "embedding_encryption", None)
@@ -148,11 +148,11 @@ async def guardar_foto_perfil(
 
     try:
         async with factory() as session:
-            # Slim (Railway): storage es DbPhotoStorageService -> BYTEA en DB.
+            # ActiveExam (Railway): storage es DbPhotoStorageService -> BYTEA en DB.
             # Full (produccion): storage es ProfilePhotoStorageService -> MinIO.
             if isinstance(storage, DbPhotoStorageService):
-                service_slim = GuardarFotoPerfilSlimService(session=session)
-                foto_id = await service_slim.ejecutar(
+                service_activeexam = GuardarFotoPerfilActiveExamService(session=session)
+                foto_id = await service_activeexam.ejecutar(
                     usuario_id=principal.subject,
                     imagen_base64=body.imagen_base64,
                 )
@@ -197,7 +197,7 @@ async def guardar_embedding_referencia(
     de integridad de entrada (C-70): no-finitos, norma cero, magnitud absurda o
     el vector FAKE de desarrollo.
     """
-    # Idem foto-perfil: usar el UUID del sub, no el id_institucional.
+    # Idem foto-perfil: usar el UUID del sub, no el username.
     if not principal.subject:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -255,11 +255,11 @@ class FotoPerfilReadResponse(BaseModel):
     imagen_base64: str
 
 
-async def _leer_foto_slim(
+async def _leer_foto_activeexam(
     session_factory: async_sessionmaker[AsyncSession],
     usuario_id: str,
 ) -> str | None:
-    """Lee la foto vigente de un usuario desde la DB slim (BYTEA).
+    """Lee la foto vigente de un usuario desde la DB activeexam (BYTEA).
 
     Retorna el dataURL base64 o None si no existe foto vigente.
     El binario NO se loguea (Ley 25.326 — dato sensible).
@@ -294,7 +294,7 @@ async def _leer_foto_slim(
 )
 async def obtener_foto_perfil_propia(
     request: Request,
-    principal: AuthenticatedPrincipal = Depends(require_roles(Rol.ESTUDIANTE, Rol.PROCTOR, Rol.ADMIN_SISTEMA)),
+    principal: AuthenticatedPrincipal = Depends(require_roles(Rol.ESTUDIANTE, Rol.COORDINADOR, Rol.ADMIN_SISTEMA)),
 ) -> FotoPerfilReadResponse:
     """Devuelve la foto vigente del usuario autenticado como base64 dataURL.
 
@@ -311,7 +311,7 @@ async def obtener_foto_perfil_propia(
         )
 
     factory = _get_session_factory(request)
-    imagen_base64 = await _leer_foto_slim(factory, principal.subject)
+    imagen_base64 = await _leer_foto_activeexam(factory, principal.subject)
 
     if imagen_base64 is None:
         raise HTTPException(
@@ -326,7 +326,7 @@ async def obtener_foto_perfil_propia(
 # GET /enrollment/foto-perfil/{usuario_id} — foto ajena (admin/proctor)
 # ---------------------------------------------------------------------------
 
-_require_staff = require_roles(Rol.ADMIN_SISTEMA, Rol.PROCTOR)
+_require_staff = require_roles(Rol.ADMIN_SISTEMA, Rol.COORDINADOR)
 
 
 @router.get(
@@ -350,7 +350,7 @@ async def obtener_foto_perfil_ajena(
     a supervision/gestion. El guard de rol es defensa en profundidad.
     """
     factory = _get_session_factory(request)
-    imagen_base64 = await _leer_foto_slim(factory, usuario_id)
+    imagen_base64 = await _leer_foto_activeexam(factory, usuario_id)
 
     if imagen_base64 is None:
         raise HTTPException(

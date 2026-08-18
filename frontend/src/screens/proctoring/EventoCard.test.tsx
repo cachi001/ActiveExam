@@ -3,9 +3,13 @@ import { cleanup, render, screen } from '@testing-library/react';
 import { EventoCard } from './EventoCard';
 import type { EventoProctoringDetalle } from '../../lib/types';
 
-// C-72 sección 9: el bloque de conteo de rostros cliente/servidor se muestra SOLO
-// con discrepancia (cliente ≠ servidor) Y captura (screenshot). Coinciden o sin
-// imagen → no aporta señal revisable, se oculta. Ningún evento se oculta.
+// Fix UX (ronda 5): el bloque de conteo de rostros cliente/servidor es el "por
+// qué" del veredicto "no coincide" — se muestra SIEMPRE que haya discrepancia
+// (cliente ≠ servidor), CON o SIN captura (antes se ocultaba sin captura, y el
+// revisor veía "no coincide" sin ninguna pista de qué había diferido). El texto
+// "No coinciden" (ronda 6) se sacó del bloque de conteo por estar duplicado con
+// el badge "No coincide con el navegador" — el conteo se detecta ahora por el
+// chip "Navegador" / "Servidor".
 afterEach(cleanup);
 
 function ev(over: Partial<EventoProctoringDetalle> = {}): EventoProctoringDetalle {
@@ -18,40 +22,81 @@ function ev(over: Partial<EventoProctoringDetalle> = {}): EventoProctoringDetall
   };
 }
 
-describe('EventoCard — bloque de conteo de rostros (C-72 sección 9)', () => {
-  it('9.3 muestra el conteo con discrepancia Y captura', () => {
+describe('EventoCard — bloque de conteo de rostros', () => {
+  it('muestra el conteo con discrepancia Y captura', () => {
     render(
       <EventoCard
         evento={ev({ face_count_cliente: 2, face_count_servidor: 1, screenshot_base64: 'imgdata' })}
       />,
     );
-    expect(screen.queryByText(/Rostros detectados/i)).toBeTruthy();
+    expect(screen.queryByText(/Navegador/i)).toBeTruthy();
   });
 
-  it('9.1 NO muestra el conteo cuando cliente y servidor coinciden', () => {
+  it('NO muestra el conteo cuando cliente y servidor coinciden', () => {
     render(
       <EventoCard
         evento={ev({ face_count_cliente: 1, face_count_servidor: 1, screenshot_base64: 'imgdata' })}
       />,
     );
-    expect(screen.queryByText(/Rostros detectados/i)).toBeNull();
+    expect(screen.queryByText(/Navegador/i)).toBeNull();
   });
 
-  it('9.2 NO muestra el conteo con discrepancia pero SIN captura', () => {
+  it('muestra el conteo con discrepancia aunque NO haya captura (es el "por qué")', () => {
     render(
       <EventoCard
         evento={ev({ face_count_cliente: 2, face_count_servidor: 1, screenshot_base64: null })}
       />,
     );
-    expect(screen.queryByText(/Rostros detectados/i)).toBeNull();
+    expect(screen.queryByText(/Navegador/i)).toBeTruthy();
   });
 
-  it('9.4 el evento se renderiza igual aunque no se muestre el conteo', () => {
+  it('el evento se renderiza igual aunque no se muestre el conteo', () => {
     const { container } = render(
       <EventoCard evento={ev({ face_count_cliente: 1, face_count_servidor: 1 })} />,
     );
     // la tarjeta renderiza contenido (el evento nunca se oculta), sin el bloque de conteo
     expect(container.textContent && container.textContent.length > 0).toBe(true);
-    expect(screen.queryByText(/Rostros detectados/i)).toBeNull();
+    expect(screen.queryByText(/Navegador/i)).toBeNull();
+  });
+});
+
+// C-76 (15.5): leyenda "contexto, no prueba automática" en cambio_pestana/copiar_pegar
+// cuando hay captura — para que un revisor no lo lea como confirmación del evento.
+describe('EventoCard — leyenda de captura contextual (C-76 15.5)', () => {
+  it('muestra la leyenda en copiar_pegar CON captura', () => {
+    render(<EventoCard evento={ev({ tipo: 'copiar_pegar', screenshot_base64: 'imgdata' })} />);
+    expect(screen.queryByText(/contexto para revisión/i)).toBeTruthy();
+  });
+
+  it('muestra la leyenda en cambio_pestana CON captura', () => {
+    render(<EventoCard evento={ev({ tipo: 'cambio_pestana', screenshot_base64: 'imgdata' })} />);
+    expect(screen.queryByText(/contexto para revisión/i)).toBeTruthy();
+  });
+
+  it('NO muestra la leyenda en copiar_pegar SIN captura', () => {
+    render(<EventoCard evento={ev({ tipo: 'copiar_pegar', screenshot_base64: null })} />);
+    expect(screen.queryByText(/contexto para revisión/i)).toBeNull();
+  });
+
+  it('NO muestra la leyenda en eventos de visión (multiples_rostros) aunque haya captura', () => {
+    // multiples_rostros SÍ se re-infiere server-side sobre la MISMA imagen — no es
+    // "solo contexto", es prueba directa. La leyenda no debe aparecer acá.
+    render(<EventoCard evento={ev({ tipo: 'multiples_rostros', screenshot_base64: 'imgdata' })} />);
+    expect(screen.queryByText(/contexto para revisión/i)).toBeNull();
+  });
+
+  it('muestra el hash de clipboard truncado cuando está presente en el payload', () => {
+    const hash = 'a'.repeat(64);
+    render(
+      <EventoCard
+        evento={ev({
+          tipo: 'copiar_pegar',
+          screenshot_base64: 'imgdata',
+          payload: { accion: 'paste', clipboard_sha256: hash },
+        })}
+      />,
+    );
+    expect(screen.queryByText(/Hash de lo pegado/i)).toBeTruthy();
+    expect(screen.queryByText(hash)).toBeNull(); // truncado, no el hash completo
   });
 });

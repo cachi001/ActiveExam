@@ -3,12 +3,12 @@
 > **Naturaleza**: feature de producción, governance **ALTO**. Es el **scoped-out de C-15**:
 > agrupa lo que C-15 NO pudo entregar porque depende del veredicto de la PoC de carga
 > **C-03** (transporte/backplane en tiempo real) y de **C-13** (score vía continuous
-> aggregates). C-15 ya se archivó con su scope slim entregado (chat/pausa/observaciones/
+> aggregates). C-15 ya se archivó con su scope activeexam entregado (chat/pausa/observaciones/
 > cierre/RBAC vía REST+polling). Este change toma la posta del **tiempo real**.
 
 ## Why
 
-C-15 entregó el panel del proctor en su versión **slim** (REST + polling): chat
+C-15 entregó el panel del proctor en su versión **activeexam** (REST + polling): chat
 bidireccional, pausa autorizada, observaciones, cierre forzado y RBAC por rol. Eso
 cubre el valor operativo inmediato y **no dependía de C-03**.
 
@@ -24,7 +24,7 @@ de C-13 (CQRS-lite), y el **SLO duro de alerta p99 < 500 ms** (`14`) solo se pue
 cerrar contra el transporte ganador. Por eso se difiere acá, atado a C-03 + C-13.
 
 El **MFA del panel** (RN-AU-05) se difiere por decisión del dueño: el provider JWT
-propio del slim aún no emite segundo factor (ver C-68).
+propio del activeexam aún no emite segundo factor (ver C-68).
 
 ## What Changes
 
@@ -45,7 +45,7 @@ Implementa el **tiempo real** del panel del proctor, consumiendo el ganador de C
 **Decisiones consumidas (no se re-deciden)**: transporte = ganador concern (b) de C-03;
 backplane = ganador concern (c) de C-03; score y orden = continuous aggregate de C-13.
 
-**BREAKING**: ninguno. El slim entregado por C-15 sigue funcionando; este change agrega
+**BREAKING**: ninguno. El activeexam entregado por C-15 sigue funcionando; este change agrega
 el camino de tiempo real por encima.
 
 ## Capabilities
@@ -66,7 +66,7 @@ el camino de tiempo real por encima.
   BLOQUEANTE), **C-13** (score y orden vía continuous aggregate), **C-10** (fan-out por
   backplane, ya implementado), **C-06** (MFA).
 - **Habilita**: el panel del proctor en vivo de producción (US-011) contra el SLO duro de
-  `14`. El slim de C-15 ya cubre el flujo funcional mientras tanto.
+  `14`. El activeexam de C-15 ya cubre el flujo funcional mientras tanto.
 - **SLO comprometido**: alerta al panel **p99 < 500 ms** (`14`) — el criterio que C-03 mide.
 - **Riesgo principal**: que el backplane ganador no sostenga p99 < 500 ms al pico con 20–40
   paneles. Mitigación: puerto abstracto permite swap a Redis; C-03 deja la cota de migración.

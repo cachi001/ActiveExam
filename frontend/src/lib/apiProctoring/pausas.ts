@@ -67,13 +67,13 @@ export const pausasApi = {
   async resolverPausa(
     pausaId: string,
     accion: AccionPausa,
-    proctorActor?: string | null,
+    tutorActor?: string | null,
     motivoRechazo?: string | null,
   ): Promise<Pausa> {
     // El motivo solo viaja al rechazar (al aprobar el backend lo ignora/None).
     const body: Record<string, unknown> = {
       accion,
-      proctor_actor: proctorActor ?? null,
+      tutor_actor: tutorActor ?? null,
     };
     if (accion === 'rechazar') body.motivo_rechazo = motivoRechazo ?? null;
     return await realFetch<Pausa>(

@@ -18,7 +18,7 @@ class ActividadAuditoria:
     """Actividad registrada en el audit log (`04` Audit log)."""
 
     id: str
-    actor: str                  # email o id_institucional del actor
+    actor: str                  # email o username del actor
     actor_nombre: str | None    # "Nombre Apellido" resuelto (best-effort)
     actor_email: str | None     # email resuelto (best-effort) — el legajo solo no alcanza para dar seguimiento
     timestamp: str              # ISO 8601

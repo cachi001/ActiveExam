@@ -11,5 +11,5 @@
 export * from './types/proctoring-eventos';
 export * from './types/usuarios';
 export * from './types/alumno';
-export * from './types/proctoring-slim';
+export * from './types/proctoring-activeexam';
 export * from './types/estadisticas';

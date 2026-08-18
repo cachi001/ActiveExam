@@ -1,13 +1,18 @@
-"""Tests de auth/RBAC sobre los endpoints de proctoring slim (endurecimiento por rol).
+"""Tests de auth/RBAC sobre los endpoints de proctoring activeexam (endurecimiento por rol).
 
-Los endpoints de proctoring slim son COMPARTIDOS alumno/proctor. Este modulo
+Los endpoints de proctoring activeexam son COMPARTIDOS alumno/proctor. Este modulo
 verifica el contrato de autorizacion tras el endurecimiento:
 
   - Solo autenticado (cualquier token valido): crear sesion, eventos, chat,
     pausas (solicitar / poll / reanudar), finalizar sesion.
   - Proctor + admin_sistema: GET /sessions, GET /sessions/{id},
     GET /pausas/pendientes, PATCH /pausas/{id}.
-  - Solo admin_sistema: DELETE /sessions/{id} (cadena de custodia — JAMAS proctor).
+
+DELETE /sessions/{id} (C-76 tarea 20) es admin-only y SOLO acepta sesiones
+modo='test' (diagnostico, SIN examen real). Las sesiones modo='examen' quedan
+PERMANENTEMENTE protegidas — la evidencia academica no se borra, se preserva
+con cadena de custodia (regla dura #6/#7, tarea 16) — sin excepciones, ni
+siquiera para admin_sistema.
 
 Sin Bearer -> 401. Rol insuficiente -> 403. Postgres real (sin mocks de DB).
 
@@ -31,7 +36,7 @@ _BASE = "/api/v1/proctoring"
 _FAKE_ID = "00000000-0000-0000-0000-000000000000"
 
 _ESTUDIANTE = auth_headers(["estudiante"])
-_PROCTOR = auth_headers(["proctor"])
+_PROCTOR = auth_headers(["coordinador"])  # c-76: rol proctor eliminado -> coordinador supervisa
 _ADMIN = auth_headers(["admin_sistema"])
 
 
@@ -55,7 +60,6 @@ async def _crear_sesion(client: AsyncClient, headers: dict) -> str:
         ("GET", f"{_BASE}/sessions/{_FAKE_ID}"),
         ("GET", f"{_BASE}/pausas/pendientes"),
         ("PATCH", f"{_BASE}/pausas/{_FAKE_ID}"),
-        ("DELETE", f"{_BASE}/sessions/{_FAKE_ID}"),
     ],
 )
 async def test_sin_token_401(client_noauth: AsyncClient, method: str, path: str) -> None:
@@ -64,7 +68,7 @@ async def test_sin_token_401(client_noauth: AsyncClient, method: str, path: str)
         resp = await client_noauth.get(path)
     elif method == "PATCH":
         resp = await client_noauth.patch(
-            path, json={"accion": "aprobar", "proctor_actor": "x"}
+            path, json={"accion": "aprobar", "tutor_actor": "x"}
         )
     else:
         resp = await client_noauth.request(method, path)
@@ -98,15 +102,9 @@ async def test_estudiante_resolver_pausa_403(client_noauth: AsyncClient) -> None
     """PATCH /pausas/{id} con rol estudiante -> 403 (aprobar/rechazar es del proctor)."""
     resp = await client_noauth.patch(
         f"{_BASE}/pausas/{_FAKE_ID}",
-        json={"accion": "aprobar", "proctor_actor": "x"},
+        json={"accion": "aprobar", "tutor_actor": "x"},
         headers=_ESTUDIANTE,
     )
-    assert resp.status_code == 403, resp.text
-
-
-async def test_estudiante_delete_sesion_403(client_noauth: AsyncClient) -> None:
-    """DELETE /sessions/{id} con rol estudiante -> 403 (borra evidencia, admin-only)."""
-    resp = await client_noauth.delete(f"{_BASE}/sessions/{_FAKE_ID}", headers=_ESTUDIANTE)
     assert resp.status_code == 403, resp.text
 
 
@@ -147,7 +145,7 @@ async def test_proctor_resolver_pausa_200(client_noauth: AsyncClient) -> None:
     pid = resp_p.json()["id"]
     resp = await client_noauth.patch(
         f"{_BASE}/pausas/{pid}",
-        json={"accion": "aprobar", "proctor_actor": "doc-1"},
+        json={"accion": "aprobar", "tutor_actor": "doc-1"},
         headers=_PROCTOR,
     )
     assert resp.status_code == 200, resp.text
@@ -155,27 +153,54 @@ async def test_proctor_resolver_pausa_200(client_noauth: AsyncClient) -> None:
 
 
 # ===========================================================================
-# (d) Proctor NO puede DELETE (cadena de custodia — admin-only)
+# (d) DELETE /sessions/{id}: admin-only, SOLO modo='test' (C-76 tarea 20)
 # ===========================================================================
 
 
-async def test_proctor_delete_sesion_403(client_noauth: AsyncClient) -> None:
-    """DELETE /sessions/{id} con rol proctor -> 403 (JAMAS proctor borra evidencia)."""
+async def test_delete_sesion_sin_token_401(client_noauth: AsyncClient) -> None:
+    sid = await _crear_sesion(client_noauth, _ESTUDIANTE)
+    resp = await client_noauth.delete(f"{_BASE}/sessions/{sid}")
+    assert resp.status_code == 401, resp.text
+
+
+async def test_delete_sesion_proctor_403_no_es_admin(client_noauth: AsyncClient) -> None:
+    """Solo admin_sistema puede borrar — coordinador (ex-proctor) NO, aunque
+    tenga `supervisar_vivo`: borrar es un privilegio MAS restrictivo que supervisar."""
     sid = await _crear_sesion(client_noauth, _ESTUDIANTE)
     resp = await client_noauth.delete(f"{_BASE}/sessions/{sid}", headers=_PROCTOR)
     assert resp.status_code == 403, resp.text
 
 
-# ===========================================================================
-# (e) Admin SI puede DELETE
-# ===========================================================================
+async def test_delete_sesion_modo_examen_nunca_se_borra_ni_para_admin(
+    client_noauth: AsyncClient,
+) -> None:
+    """Regla dura #6/#7: la evidencia academica real (modo='examen') queda
+    PERMANENTEMENTE protegida — admin_sistema recibe 409, nunca 204."""
+    resp_crear = await client_noauth.post(
+        f"{_BASE}/sessions", json={"modo": "examen"}, headers=_ESTUDIANTE
+    )
+    assert resp_crear.status_code == 201, resp_crear.text
+    sid = resp_crear.json()["id"]
+
+    resp = await client_noauth.delete(f"{_BASE}/sessions/{sid}", headers=_ADMIN)
+    assert resp.status_code == 409, resp.text
+    assert resp.status_code != 204
 
 
-async def test_admin_delete_sesion_204(client_noauth: AsyncClient) -> None:
-    """DELETE /sessions/{id} con rol admin_sistema -> 204."""
+async def test_delete_sesion_modo_test_admin_204(client_noauth: AsyncClient) -> None:
+    """Sesion de diagnostico (modo='test', SIN examen real vinculado): admin
+    SI puede eliminarla."""
     sid = await _crear_sesion(client_noauth, _ESTUDIANTE)
     resp = await client_noauth.delete(f"{_BASE}/sessions/{sid}", headers=_ADMIN)
     assert resp.status_code == 204, resp.text
+
+    resp_get = await client_noauth.get(f"{_BASE}/sessions/{sid}", headers=_ADMIN)
+    assert resp_get.status_code == 404
+
+
+# ===========================================================================
+# (e) Admin SI puede ver la vista del proctor
+# ===========================================================================
 
 
 async def test_admin_listar_sesiones_200(client_noauth: AsyncClient) -> None:
@@ -251,7 +276,7 @@ async def test_estudiante_pausa_solicitar_poll_y_reanudar(
     # El proctor aprueba (necesario para que el alumno pueda finalizar)
     resp_apr = await client_noauth.patch(
         f"{_BASE}/pausas/{pid}",
-        json={"accion": "aprobar", "proctor_actor": "doc-1"},
+        json={"accion": "aprobar", "tutor_actor": "doc-1"},
         headers=_PROCTOR,
     )
     assert resp_apr.status_code == 200, resp_apr.text

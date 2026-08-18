@@ -97,7 +97,7 @@ async def _crear_usuario(
     legajo = f"U-{uuid.uuid4().hex[:8]}"
     async with factory() as s:
         u = UsuarioModel(
-            id_institucional=legajo,
+            username=legajo,
             email=f"{legajo.lower()}@uni.edu",
             roles=roles,
             nombre=nombre,

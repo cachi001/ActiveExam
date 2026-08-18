@@ -2,8 +2,8 @@
 #
 # Hace, contra los contenedores que YA estan corriendo (dev-up):
 #   1) DROP SCHEMA public CASCADE; CREATE SCHEMA public;   (borra TODO, incl. alembic_version)
-#   2) alembic -c alembic.ini upgrade slim@head            (re-crea el schema desde cero)
-#   3) python scripts/seed_users.py --slim                 (re-crea ADMIN-001 / EST-001 / PROC-001)
+#   2) alembic -c alembic.ini upgrade activeexam@head            (re-crea el schema desde cero)
+#   3) python scripts/seed_users.py --activeexam                 (re-crea ADMIN-001 / EST-001 / PROC-001)
 #
 # Resultado: la DB queda identica a un arranque limpio, en segundos y sin rebuild.
 #
@@ -48,11 +48,11 @@ docker compose -f $compose exec -T postgres `
   psql -U proctoring -d proctoring -v ON_ERROR_STOP=1 `
   -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
 
-Write-Host ">>> [2/3] migrando DB (alembic slim@head)..." -ForegroundColor Cyan
-docker compose -f $compose exec -T backend alembic -c alembic.ini upgrade slim@head
+Write-Host ">>> [2/3] migrando DB (alembic activeexam@head)..." -ForegroundColor Cyan
+docker compose -f $compose exec -T backend alembic -c alembic.ini upgrade activeexam@head
 
 Write-Host ">>> [3/3] seed de usuarios (idempotente)..." -ForegroundColor Cyan
-docker compose -f $compose exec -T backend python scripts/seed_users.py --slim
+docker compose -f $compose exec -T backend python scripts/seed_users.py --activeexam
 
 Write-Host ""
 Write-Host ">>> DB reseteada a la seed base. Usuarios listos:" -ForegroundColor Green

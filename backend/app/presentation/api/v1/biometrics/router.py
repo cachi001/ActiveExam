@@ -79,7 +79,7 @@ async def verify_identity(
             status_code=status.HTTP_404_NOT_FOUND, detail="Sesion no encontrada."
         )
     # La sesion del estudiante autenticado: no se confia en un user_id del body.
-    if sesion.user_id != principal.id_institucional:
+    if sesion.user_id != principal.username:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Sesion ajena."
         )
@@ -111,7 +111,7 @@ async def verify_identity(
 
     await registrar_seguro(
         getattr(request.app.state, "session_factory", None),
-        actor=principal.id_institucional or principal.email,
+        actor=principal.username or principal.email,
         accion="biometria.verificacion",
         modulo=ModuloAuditoria.BIOMETRIA,
         entidad_id=str(body.session_id),
@@ -125,6 +125,6 @@ async def verify_identity(
         distancia=outcome.distancia,
         reintentos_restantes=outcome.reintentos_restantes,
         clave_sesion_emitida=outcome.clave_sesion_emitida,
-        escalado_a_proctor=outcome.escalado_a_proctor,
+        escalado_a_coordinador=outcome.escalado_a_coordinador,
         intentos_fallidos=outcome.intentos_fallidos,
     )

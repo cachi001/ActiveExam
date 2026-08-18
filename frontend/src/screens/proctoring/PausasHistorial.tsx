@@ -74,15 +74,15 @@ export function PausasHistorial({ sessionId }: { sessionId: string }) {
 
               {p.estado === 'rechazada' && p.motivo_rechazo && (
                 <p className="text-label-sm text-on-surface-variant break-words">
-                  <span className="font-medium text-on-surface">Respuesta del proctor: </span>
+                  <span className="font-medium text-on-surface">Respuesta del tutor: </span>
                   {p.motivo_rechazo}
                 </p>
               )}
 
-              {(p.resuelta_en || p.proctor_actor) && (
+              {(p.resuelta_en || p.tutor_actor) && (
                 <p className="text-[11px] text-on-surface-variant">
                   Resuelta {p.resuelta_en ? `el ${formatFecha(p.resuelta_en, false)}` : ''}
-                  {p.proctor_actor ? ` · por ${p.proctor_actor}` : ''}
+                  {p.tutor_actor ? ` · por ${p.tutor_actor}` : ''}
                 </p>
               )}
             </div>

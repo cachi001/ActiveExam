@@ -1,10 +1,10 @@
-"""Servicio de verificación de cadena de custodia (c-18 slim).
+"""Servicio de verificación de cadena de custodia (c-18 activeexam).
 
 Re-calcula SHA-256 del screenshot guardado y lo compara con el hash
 registrado al ingerir el evento. Cada llamada queda en el audit log con
 propósito declarado.
 
-Slim: 1 sola etapa (`screenshot_recorded`) — full agrega 3 etapas más en c-68.
+ActiveExam: 1 sola etapa (`screenshot_recorded`) — full agrega 3 etapas más en c-68.
 """
 
 from __future__ import annotations

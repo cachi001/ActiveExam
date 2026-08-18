@@ -93,7 +93,7 @@ describe('JwtAdapter.init()', () => {
 
     const principal = adapter.getPrincipal();
     expect(principal).not.toBeNull();
-    expect(principal?.id_institucional).toBe('alumno1');
+    expect(principal?.username).toBe('alumno1');
     expect(principal?.roles).toContain('estudiante');
     expect(events).toContain('authenticated');
   });
@@ -120,7 +120,7 @@ describe('JwtAdapter.login()', () => {
     expect(_storage.get('jwt_access_token')).toBe(accessToken);
     expect(_storage.get('jwt_refresh_token')).toBe(refreshToken);
     const principal = adapter.getPrincipal();
-    expect(principal?.id_institucional).toBe('alumno1');
+    expect(principal?.username).toBe('alumno1');
     expect(events).toContain('authenticated');
   });
 
@@ -227,7 +227,7 @@ describe('JwtAdapter.seedSession() (LTI landing, C-75 §7.1)', () => {
     expect(_storage.get('jwt_access_token')).toBe(token);
     expect(_storage.get('jwt_refresh_token')).toBe('refresh-jti-abc');
     expect(_storage.get('jwt_access_token_expires_at')).toBe(String(NOW_EPOCH + 3600));
-    expect(adapter.getPrincipal()?.id_institucional).toBe('lti:7:mdl-100');
+    expect(adapter.getPrincipal()?.username).toBe('lti:7:mdl-100');
     expect(calls).toContain('authenticated');
   });
 

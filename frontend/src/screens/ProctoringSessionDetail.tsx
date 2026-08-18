@@ -2,7 +2,7 @@
  * ProctoringSessionDetail — Detalle completo de una sesión de proctoring (C-46).
  *
  * Ruta: /admin/proctoring-session-detail (el ID viene del store.proctoringSessionId)
- * Roles: admin_examenes | coordinador | revisor
+ * Roles: tutor (acotado a su comisión, solo lectura de decisión) | coordinador | admin_sistema
  *
  * L2.5 OBLIGATORIO: muestra disclaimer inamovible en banner superior.
  * Ley 25.326: screenshot_base64 NO se loguea en consola ni se persiste en localStorage.
@@ -19,7 +19,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { StaffShell } from '../ui/shells';
 import { Icon, Card, SectionTitle, Button } from '../ui/components';
 import { HelpButton } from '../ui/HelpButton';
-import { ConfirmModal } from '../ui/ConfirmModal';
 import { STAFF_NAV } from '../ui/nav';
 import { useToast } from '../ui/toast';
 import { useNavigate, useRouteParam } from '../lib/router';
@@ -33,8 +32,10 @@ import { DetalleHeader } from './proctoring/DetalleHeader';
 import { DecisionRevisorForm } from './proctoring/DecisionRevisorForm';
 import { EventoCard } from './proctoring/EventoCard';
 import { BiometriaCard } from './proctoring/BiometriaCard';
+import { RiesgoBanner } from './proctoring/RiesgoBanner';
+import { scoreSoftBorder } from './proctoring/helpers';
 import { ChatBox } from '../ui/ChatBox';
-import { ObservacionesProctor } from './proctoring/ObservacionesProctor';
+import { ObservacionesTutor } from './proctoring/ObservacionesTutor';
 import { PausaSesionPanel } from './proctoring/PausaSesionPanel';
 import { PausasHistorial } from './proctoring/PausasHistorial';
 
@@ -71,11 +72,11 @@ export default function ProctoringSessionDetail() {
   const setProctoringSessionId = useApp((s) => s.setProctoringSessionId);
   const rol = useAuth((s) => s.principal?.roles[0] ?? null);
   const rolesPrincipal = useAuth((s) => s.principal?.roles);
-  // Identidad del proctor → se registra como proctor_actor al resolver una pausa.
-  const proctorActor = useAuth((s) => s.principal?.email ?? null);
-  // C-15: el proctor puede abrir el detalle para chatear/supervisar, pero NO
+  // Identidad del tutor → se registra como tutor_actor al resolver una pausa.
+  const tutorActor = useAuth((s) => s.principal?.email ?? null);
+  // C-15: el tutor puede abrir el detalle para chatear/supervisar, pero NO
   // borrar evidencia (regla dura #6: cadena de custodia). El borrado y la lista
-  // admin quedan reservados a admin_sistema; el proctor vuelve a su panel.
+  // admin quedan reservados a admin_sistema; el tutor vuelve a su panel.
   const esAdmin = rol === 'admin_sistema';
   // "Volver" regresa al ORIGEN real (supervisión en vivo, grid de personas, cola
   // o grabadas), guardado en el store al abrir el detalle. Fallback por rol si no
@@ -112,11 +113,6 @@ export default function ProctoringSessionDetail() {
   const [detalle, setDetalle] = useState<SesionProctoringDetalle | null>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [confirmando, setConfirmando] = useState(false);
-  // C-15 (3.3): cierre forzado por el proctor (operativo, NO disciplinario).
-  const [cerrando, setCerrando] = useState(false);
-  const [motivoCierre, setMotivoCierre] = useState('');
-  const [cerrada, setCerrada] = useState(false);
 
   // C-69 admin-sync: el admin puede desactivar el chat y/o las pausas desde la
   // Configuración del sistema. Default `true` (degradación segura): si la config
@@ -143,49 +139,20 @@ export default function ProctoringSessionDetail() {
     setError(null);
     api
       .getSesionProctoring(sessionId)
-      .then((data) => {
-        setDetalle(data);
-        // C-15 (3.3): si la sesión ya fue cerrada de forma forzada, reflejarlo al
-        // recargar (el botón queda deshabilitado, no se reabre).
-        setCerrada(Boolean(data.cierre_forzado_en));
-      })
+      .then((data) => setDetalle(data))
       .catch((e) => setError(e instanceof Error ? e.message : 'Error al cargar.'))
       .finally(() => setCargando(false));
   }, [sessionId]);
 
-  const handleConfirmarBorrado = async () => {
-    if (!sessionId) return;
-    setConfirmando(false);
-    const { ok } = await api.eliminarSesionProctoring(sessionId);
-    if (ok) {
-      toast.success('Sesión eliminada');
-      navigate(backRoute);
-    } else {
-      toast.error('No se pudo eliminar la sesión');
-    }
-  };
-
-  const handleConfirmarCierre = async () => {
-    if (!sessionId) return;
-    const motivo = motivoCierre.trim();
-    if (!motivo) {
-      toast.error('El motivo del cierre es obligatorio');
-      return;
-    }
-    setCerrando(false);
-    try {
-      await api.cerrarSesionForzado(sessionId, motivo);
-      setCerrada(true);
-      setMotivoCierre('');
-      toast.success('Sesión cerrada de forma forzada');
-    } catch {
-      toast.error('No se pudo cerrar la sesión');
-    }
-  };
-
   // Sesión EN VIVO (supervisión activa) vs GRABADA (finalizada → evidencia de solo
   // lectura). En vivo: chat/observaciones/pausa accionables. Grabada: historial.
-  const esVivo = Boolean(detalle && !detalle.finalizada_en) && !cerrada;
+  // La sesión sale de "en vivo" SOLA (automático, sin acción manual del
+  // tutor/coordinador): el alumno entrega el examen, se vence el tiempo, o
+  // queda inactiva >15min (auto-abandono) — ver `auto_finalizar_si_vencida` y
+  // el umbral IDLE_TIMEOUT_MIN del repositorio. Un cierre MANUAL no tenía
+  // sentido (marcaba la sesión como cerrada acá pero no interrumpía al alumno,
+  // que seguía viendo su examen y podía seguir respondiendo) — se sacó el botón.
+  const esVivo = Boolean(detalle && !detalle.finalizada_en);
 
   // Solo se decide viniendo de la cola de revisión. Desde "Registro de sesiones"
   // o supervisión en vivo esta pantalla es consulta: meter ahí los botones de
@@ -253,30 +220,6 @@ export default function ProctoringSessionDetail() {
           </p>
         </HelpButton>
       }
-      actions={
-        sessionId && !error ? (
-          <div className="flex items-center gap-base">
-            {/* C-15 (3.3): cierre forzado — solo si la sesión sigue EN VIVO. En una
-                sesión ya finalizada (grabada) no tiene sentido cerrarla. */}
-            {esVivo && (
-              <Button
-                variant="outline"
-                size="sm"
-                icon="lock"
-                onClick={() => setCerrando(true)}
-              >
-                Cerrar (forzado)
-              </Button>
-            )}
-            {/* Eliminar evidencia — solo admin (cadena de custodia, regla dura #6). */}
-            {esAdmin && (
-              <Button variant="danger" size="sm" icon="delete" onClick={() => setConfirmando(true)}>
-                Eliminar sesión
-              </Button>
-            )}
-          </div>
-        ) : undefined
-      }
     >
       <div className="space-y-lg animate-in fade-in duration-500">
         {/* Volver a la lista + recorrido de la cola */}
@@ -339,6 +282,11 @@ export default function ProctoringSessionDetail() {
           <>
             <DetalleHeader detalle={detalle} />
 
+            {/* C-76 bloque 9.1: estado visual con/sin riesgo, siempre visible — no
+                solo en la cola de revisión — para que cualquiera que abra el detalle
+                (tutor incluido) entienda de un vistazo si esta sesión pide atención. */}
+            <RiesgoBanner score={detalle.score} />
+
             {/* Decisión del revisor, JUNTO al expediente. Solo cuando se entró
                 desde la cola (`backRoute`) y la sesión está cerrada: no se decide
                 sobre un examen en curso, ni desde el registro histórico. */}
@@ -353,119 +301,65 @@ export default function ProctoringSessionDetail() {
               </Card>
             )}
 
-            {/* Pausa: EN VIVO el proctor la resuelve acá; GRABADA muestra el
+            {/* Pausa: EN VIVO el tutor/coordinador la resuelve acá; GRABADA muestra el
                 historial de todas las pausas como evidencia (solo lectura).
                 C-69 admin-sync: si el admin desactivó las pausas, se oculta la gestión. */}
             {sessionId && pausasHabilitadas && (
               esVivo
-                ? <PausaSesionPanel sessionId={sessionId} proctorActor={proctorActor} />
+                ? <PausaSesionPanel sessionId={sessionId} tutorActor={tutorActor} />
                 : <PausasHistorial sessionId={sessionId} />
             )}
 
             {/* Biometría — arriba del contenido para verla junto al header */}
             <BiometriaCard biometria={detalle.biometria} />
 
-            {/* Eventos (izquierda) + chat del proctor (derecha) en dos columnas.
-                En mobile colapsan a una sola columna (eventos arriba, chat abajo). */}
+            {/* Eventos — es la evidencia principal del sistema, ocupa todo el
+                ancho de la fila (no comparte columna con el chat) para que el
+                grid interno tenga lugar de sobra. Borde tintado por riesgo
+                (C-76 bloque 9.1): mismo lenguaje visual que las listas (SesionCard). */}
+            <Card className={`space-y-md ${scoreSoftBorder(detalle.score)}`}>
+              <SectionTitle
+                sub={`${detalle.eventos.length} evento${detalle.eventos.length !== 1 ? 's' : ''} registrado${
+                  detalle.eventos.length !== 1 ? 's' : ''
+                }`}
+              >
+                Eventos de la sesión
+              </SectionTitle>
+
+              {detalle.eventos.length === 0 ? (
+                <div className="flex flex-col items-center text-center py-xl gap-sm text-on-surface-variant">
+                  <Icon name="check_circle" className="text-success text-[36px]" fill />
+                  <p className="text-body-md">Sin eventos registrados en esta sesión.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-sm">
+                  {detalle.eventos.map((ev) => (
+                    <EventoCard key={ev.evento_id} evento={ev} />
+                  ))}
+                </div>
+              )}
+            </Card>
+
+            {/* Canal de chat con el alumno + observaciones del tutor — debajo de
+                los eventos, en su propia fila de dos columnas. */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-lg items-start">
-              {/* Eventos registrados — columna izquierda */}
-              <Card className="space-y-md">
-                <SectionTitle
-                  sub={`${detalle.eventos.length} evento${detalle.eventos.length !== 1 ? 's' : ''} registrado${
-                    detalle.eventos.length !== 1 ? 's' : ''
-                  }`}
-                >
-                  Eventos de la sesión
-                </SectionTitle>
-
-                {detalle.eventos.length === 0 ? (
-                  <div className="flex flex-col items-center text-center py-xl gap-sm text-on-surface-variant">
-                    <Icon name="check_circle" className="text-success text-[36px]" fill />
-                    <p className="text-body-md">Sin eventos registrados en esta sesión.</p>
-                  </div>
-                ) : (
-                  <div className="space-y-sm">
-                    {detalle.eventos.map((ev) => (
-                      <EventoCard key={ev.evento_id} evento={ev} />
-                    ))}
-                  </div>
-                )}
-              </Card>
-
-              {/* C-15: canal de chat con el alumno + observaciones del proctor.
-                  Sticky en desktop para que acompañe el scroll de la lista de eventos. */}
-              <div className="lg:sticky lg:top-lg space-y-lg">
-                {/* C-69 admin-sync: el chat se oculta si el admin lo desactivó. */}
-                {chatHabilitado && (
-                  <ChatBox
-                    sessionId={sessionId}
-                    yo="proctor"
-                    titulo={esVivo ? 'Canal con el estudiante' : 'Historial del canal con el estudiante'}
-                    altura="h-[420px]"
-                    readOnly={!esVivo}
-                  />
-                )}
-                {/* C-15 (3.2): observaciones del proctor — insumo de la revisión C-16.
-                    En grabada se muestran como evidencia (solo lectura). */}
-                <ObservacionesProctor sessionId={sessionId} proctorActor={proctorActor} readOnly={!esVivo} />
-              </div>
+              {/* C-69 admin-sync: el chat se oculta si el admin lo desactivó. */}
+              {chatHabilitado && (
+                <ChatBox
+                  sessionId={sessionId}
+                  yo="tutor"
+                  titulo={esVivo ? 'Canal con el estudiante' : 'Historial del canal con el estudiante'}
+                  altura="h-[220px]"
+                  readOnly={!esVivo}
+                />
+              )}
+              {/* C-15 (3.2): observaciones del tutor — insumo de la revisión C-16.
+                  En grabada se muestran como evidencia (solo lectura). */}
+              <ObservacionesTutor sessionId={sessionId} tutorActor={tutorActor} readOnly={!esVivo} />
             </div>
           </>
         )}
       </div>
-
-      <ConfirmModal
-        abierto={confirmando}
-        variante="danger"
-        titulo="Eliminar sesión grabada"
-        mensaje={
-          <>
-            Vas a eliminar{' '}
-            <strong className="text-on-surface">
-              {detalle?.etiqueta?.trim() || 'esta sesión'}
-            </strong>
-            . Esta acción no se puede deshacer.
-          </>
-        }
-        textoConfirmar="Eliminar"
-        textoCancelar="Cancelar"
-        onConfirmar={() => void handleConfirmarBorrado()}
-        onCancelar={() => setConfirmando(false)}
-      />
-
-      {/* C-15 (3.3): cierre forzado — pide motivo OBLIGATORIO. Operativo, NO
-          disciplinario (L2.5: el veredicto es humano en C-16). */}
-      <ConfirmModal
-        abierto={cerrando}
-        variante="default"
-        titulo="Cerrar sesión (forzado)"
-        mensaje={
-          <div className="space-y-sm text-left">
-            <p>
-              Vas a cerrar de forma forzada{' '}
-              <strong className="text-on-surface">
-                {detalle?.etiqueta?.trim() || 'esta sesión'}
-              </strong>
-              . Es una acción <strong>operativa</strong>, no un veredicto disciplinario.
-              Quedará registrada con tu autoría y el motivo.
-            </p>
-            <textarea
-              value={motivoCierre}
-              onChange={(e) => setMotivoCierre(e.target.value)}
-              rows={3}
-              placeholder="Motivo del cierre (obligatorio)…"
-              className="w-full px-sm py-base text-label-md rounded-xl border border-outline-variant bg-surface-container-lowest focus:border-primary-container outline-none resize-none"
-            />
-          </div>
-        }
-        textoConfirmar="Cerrar sesión"
-        textoCancelar="Cancelar"
-        onConfirmar={() => void handleConfirmarCierre()}
-        onCancelar={() => {
-          setCerrando(false);
-          setMotivoCierre('');
-        }}
-      />
     </StaffShell>
   );
 }

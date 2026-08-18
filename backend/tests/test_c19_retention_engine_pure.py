@@ -272,7 +272,7 @@ async def test_embedding_egress_holds_no_aplican_al_egreso() -> None:
     """Importante: el hold por caso disciplinario solo difiere la eliminacion
     de SESIONES. El egreso del usuario es un evento legal independiente que
     elimina embeddings/fotos sin importar holds (Ley 25.326: principio de
-    minimizacion). En slim no hay holds de todas formas (NullHoldVerifier)."""
+    minimizacion). En activeexam no hay holds de todas formas (NullHoldVerifier)."""
     engine, _, emb, _, _, _ = _make_engine(egressed=["u-1"], holds={"u-1"})
     report = await engine.apply_embedding_egress(actor="job")
     # u-1 tiene hold por sesion pero igual se le borra el embedding al egreso

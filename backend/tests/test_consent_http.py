@@ -7,6 +7,8 @@ ConsentService con puertos en memoria (sin DB). Comparte el patron de
 
 from __future__ import annotations
 
+import os
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -29,13 +31,11 @@ _ISSUER = "http://keycloak:8080/realms/proctoring"
 _AUD = "proctoring-api"
 
 _ENV = {
-    "DATABASE_URL": "postgresql+asyncpg://app@db:5432/proctoring",
+    "DATABASE_URL": os.environ.get("DATABASE_URL", "postgresql+asyncpg://app@postgres:5432/proctoring"),
     "STORAGE_ENDPOINT": "http://minio:9000",
     "STORAGE_ACCESS_KEY": "k",
     "STORAGE_SECRET_KEY": "s",
     "STORAGE_BUCKET_EVIDENCE": "evidence",
-    "KEYCLOAK_ISSUER": _ISSUER,
-    "KEYCLOAK_JWKS_URL": _ISSUER + "/protocol/openid-connect/certs",
     "JWT_AUDIENCE": _AUD,
     "OTEL_EXPORTER_OTLP_ENDPOINT": "http://tempo:4317",
 }
@@ -147,7 +147,7 @@ def test_alternativa_escala_sin_abortar(client: TestClient) -> None:
     )
     assert resp.status_code == 200
     body = resp.json()
-    assert body["escalado_a_proctor"] is True
+    assert body["escalado_a_coordinador"] is True
     # El gate ahora avanza por la via alternativa, sin exigir biometria.
     g = client.get("/api/v1/consent/gate", params={"exam_id": "e1"}, headers=h)
     gb = g.json()

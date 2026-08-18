@@ -55,7 +55,7 @@ async def app_y_factory() -> AsyncIterator[tuple]:
     async with engine.begin() as conn:
         await conn.run_sync(cfg_tbl.drop, checkfirst=True)
         await conn.run_sync(cfg_tbl.create, checkfirst=True)
-        # audit_log ya existe en la DB slim (migracion 0012). Es APPEND-ONLY (el
+        # audit_log ya existe en la DB activeexam (migracion 0012). Es APPEND-ONLY (el
         # trigger rechaza DELETE), asi que NO se limpia: el test cuenta el delta.
     factory = async_sessionmaker(engine, expire_on_commit=False)
 
@@ -121,15 +121,15 @@ async def test_editar_no_admin_403(app_y_factory) -> None:
     resp = await client.patch(
         "/api/v1/config",
         json={"umbral_cola_revision": 80},
-        headers=_h(_token(["admin_examenes"])),
+        headers=_h(_token(["tutor"])),
     )
     assert resp.status_code == 403
 
 
 async def test_editar_admin_sin_mfa_ok(app_y_factory) -> None:
     # C-68 (decisión del dueño): edición restringida a admin_sistema por ROL, sin
-    # exigir MFA (el JWT propio del slim no emite MFA → exigirlo haría la config
-    # ineditable en slim/Railway). Admin sin MFA DEBE poder editar.
+    # exigir MFA (el JWT propio del activeexam no emite MFA → exigirlo haría la config
+    # ineditable en activeexam/Railway). Admin sin MFA DEBE poder editar.
     client, _ = app_y_factory
     resp = await client.patch(
         "/api/v1/config",

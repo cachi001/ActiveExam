@@ -1,4 +1,4 @@
-"""Value objects del certificado de verificación de cadena (c-18 slim).
+"""Value objects del certificado de verificación de cadena (c-18 activeexam).
 
 El certificado emitido es **autoportante**: incluye hashes + algoritmo + sello
 temporal sin exponer el binario crudo ni PII. Un perito independiente puede
@@ -25,7 +25,7 @@ class ChainVerificationStatus(str, enum.Enum):
 class ChainStageResult:
     """Resultado de una etapa de verificación.
 
-    En slim el unico stage es 'screenshot_recorded' (SHA-256 del binario
+    En activeexam el unico stage es 'screenshot_recorded' (SHA-256 del binario
     actual vs hash registrado al ingerir). c-68 agrega 4 etapas full:
     'client_hmac', 'backend_rehash', 'master_signature', 'reinference'.
     """

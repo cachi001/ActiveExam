@@ -11,8 +11,13 @@ from app.presentation.api.v1.exam_content.schemas import ExamenContenidoResumenR
 
 # Gate de inscripción (C-71): los roles de gestión ven TODO el catálogo/materias;
 # el alumno ve solo lo de sus comisiones inscriptas.
+# c-76: "proctor" y "revisor" eliminados del set; "coordinador" ya estaba presente
+# (los usuarios proctor/revisor fueron remapeados a coordinador), asi que el staff
+# no cambia.
+# c-76-2: "admin_examenes" y "auditor" eliminados del dominio (absorbidos por
+# "admin_sistema", ya presente en el set).
 _ROLES_STAFF = frozenset(
-    {"admin_sistema", "admin_examenes", "proctor", "revisor", "coordinador", "auditor"}
+    {"admin_sistema", "coordinador"}
 )
 
 

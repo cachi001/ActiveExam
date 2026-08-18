@@ -1,12 +1,12 @@
 """021 - CHECK constraint para rangos de peso por severidad en evento_score_config.
 
 Revision ID: 0021
-Revises: 0019 (rama slim)
+Revises: 0019 (rama activeexam)
 Create Date: 2026-06-19
 
-RAMA: slim (alineado con el stack de Railway y dev). Si se quiere el equivalente en
+RAMA: activeexam (alineado con el stack de Railway y dev). Si se quiere el equivalente en
 la rama full, agregar una migracion analoga aguas abajo de 0020 (no convergir aca
-para evitar arrastrar la cadena full sobre el stack slim de dev/Railway).
+para evitar arrastrar la cadena full sobre el stack activeexam de dev/Railway).
   down_revision = "0019"
   branch_labels = None
   depends_on    = None

@@ -23,7 +23,7 @@ El sistema SHALL calcular el `SHA-256` del screenshot antes de enviar el evento 
 - **THEN** el flujo de examen continúa sin interrupción (L2.5: degradación silenciosa)
 
 ### Requirement: Deuda técnica documentada — firma HMAC y cadena de custodia completa fuera de alcance
-El sistema SHALL documentar explícitamente en el código que la firma HMAC de eventos y la cadena de custodia completa (presigned PUT + EvidenceNotification) no se cablea porque el backend slim no valida la firma ni tiene endpoint `/evidence/presign`. Un comentario SHALL indicar el path de `eventSignature.ts` y `evidenceCapture.ts` como deuda técnica para cuando el backend implemente la validación.
+El sistema SHALL documentar explícitamente en el código que la firma HMAC de eventos y la cadena de custodia completa (presigned PUT + EvidenceNotification) no se cablea porque el backend activeexam no valida la firma ni tiene endpoint `/evidence/presign`. Un comentario SHALL indicar el path de `eventSignature.ts` y `evidenceCapture.ts` como deuda técnica para cuando el backend implemente la validación.
 
 #### Scenario: Comentario de deuda técnica visible en el código
 - **WHEN** un desarrollador lee `useExamProctoring.ts`

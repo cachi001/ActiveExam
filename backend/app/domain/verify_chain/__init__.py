@@ -1,6 +1,6 @@
-"""Dominio del verificador de cadena de custodia (c-18 slim).
+"""Dominio del verificador de cadena de custodia (c-18 activeexam).
 
-Slim: re-verifica la integridad del screenshot guardado en `proctoring_event`
+ActiveExam: re-verifica la integridad del screenshot guardado en `proctoring_event`
 recalculando SHA-256 y comparando con `screenshot_sha256` registrado al
 ingerir el evento. La cadena de 4 etapas full (cliente HMAC, backend,
 worker firma maestra, re-inferencia) se difiere a c-68 cuando llegue la

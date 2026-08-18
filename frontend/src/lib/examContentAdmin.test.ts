@@ -484,7 +484,7 @@ describe('examContentAdmin — listarAlumnosDeComision', () => {
     const mock = [
       {
         usuario_id: 'u-1',
-        id_institucional: 'FRM-23-4912',
+        username: 'FRM-23-4912',
         nombre: 'Emiliano',
         apellido: 'Cáceres',
         email: 'ecaceres@frm.utn.edu.ar',

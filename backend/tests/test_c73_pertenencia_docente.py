@@ -97,7 +97,7 @@ async def _crear_docente(factory, legajo: str) -> str:
     """Crea un usuario con rol docente y devuelve su id (= claim ``sub``)."""
     async with factory() as s:
         u = UsuarioModel(
-            id_institucional=legajo,
+            username=legajo,
             email=f"{legajo.lower()}@uni.edu",
             nombre="Docente",
             apellido=legajo,

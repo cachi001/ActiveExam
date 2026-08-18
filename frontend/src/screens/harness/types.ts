@@ -72,7 +72,7 @@ export interface HarnessLogEntry {
   loggedAt: number;
   /** true si el store estaba lleno (50) al llegar este evento. */
   storeOverflow: boolean;
-  /** C-46: estado del envío al backend slim ('ok' | 'net-error' | undefined=sin envío) */
+  /** C-46: estado del envío al backend activeexam ('ok' | 'net-error' | undefined=sin envío) */
   networkBadge?: 'ok' | 'net-error';
   /** C-46: veredicto de re-inferencia del servidor (si networkBadge === 'ok') */
   verdictServer?: string | null;

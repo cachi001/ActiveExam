@@ -1,4 +1,4 @@
-"""Tests de integración — endpoint de biometria de proctoring slim.
+"""Tests de integración — endpoint de biometria de proctoring activeexam.
 
 Requiere Postgres real (DATABASE_URL). Sin mocks de DB (regla dura de codigo).
 """
@@ -11,7 +11,7 @@ from httpx import AsyncClient
 from tests.proctoring.conftest import auth_headers
 
 # GET /sessions/{id} (detalle con biometria) es vista del proctor (proctor-only).
-_PROCTOR = auth_headers(["proctor"])
+_PROCTOR = auth_headers(["coordinador"])  # c-76: rol proctor eliminado -> coordinador supervisa
 
 
 pytestmark = pytest.mark.asyncio

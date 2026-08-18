@@ -1,26 +1,29 @@
 import { useEffect, useState } from 'react';
 import { Icon, Button, TextField } from '../ui/components';
-import { useNavigate, Link } from '../lib/router';
+import { useNavigate } from '../lib/router';
 import { useAuth } from '../lib/authStore';
 import type { Rol } from '../lib/types';
-import { AUTH_PROVIDER_TYPE } from '../lib/authProvider';
 
 /** Home de cada rol tras el login.
  *
  * Todo rol de staff debe tener su destino explícito. Antes solo contemplaba
- * admin y proctor, así que revisor/docente/auditor caían al `/alumno` final y
+ * admin y proctor, así que docente/auditor caían al `/alumno` final y
  * aterrizaban en el panel de estudiante — con la sensación de que su cuenta
  * "no servía". El orden va del rol más específico al más general.
+ *
+ * c-76: los roles 'proctor' y 'revisor' fueron ELIMINADOS del dominio — el
+ * COORDINADOR absorbe la supervisión global en vivo y el veredicto
+ * (`revisar_sesion`); las ramas dedicadas a esos roles desaparecieron,
+ * cubiertas por la rama de 'coordinador' que sigue debajo.
+ *
+ * c-76-2: los roles 'admin_examenes' y 'auditor' fueron ELIMINADOS del
+ * dominio — solo existe un rol "Admin" (admin_sistema, ya cubierto arriba).
  */
 function homePorRol(roles: Rol[]): string {
   if (roles.includes('admin_sistema')) return '/admin';
-  if (roles.includes('proctor')) return '/proctor';
-  // El revisor entra directo a la cola: es su única tarea.
-  if (roles.includes('revisor')) return '/admin/cola-revision';
   if (roles.includes('coordinador')) return '/admin';
-  // Docente y admin de exámenes arrancan en su listado de exámenes.
-  if (roles.includes('tutor') || roles.includes('admin_examenes')) return '/admin/examenes';
-  if (roles.includes('auditor')) return '/admin/auditoria';
+  // El tutor arranca en su listado de exámenes.
+  if (roles.includes('tutor')) return '/admin/examenes';
   return '/alumno';
 }
 
@@ -104,7 +107,7 @@ function FormularioJwt() {
             {/* Formulario JWT */}
             <form onSubmit={handleSubmit} className="flex flex-col gap-md">
               <TextField
-                label="Correo"
+                label="Usuario"
                 name="username"
                 type="text"
                 autoComplete="username"
@@ -113,7 +116,7 @@ function FormularioJwt() {
                 disabled={loading}
                 required
                 icon="person"
-                placeholder="Ingresá tu correo"
+                placeholder="Ingresá tu usuario o correo"
               />
 
               <TextField
@@ -150,15 +153,6 @@ function FormularioJwt() {
               </Button>
             </form>
           </section>
-
-
-          {/* C-61: enlace al registro público */}
-          <p className="text-center text-label-sm text-on-surface-variant">
-            ¿No tenés cuenta?{' '}
-            <Link to="/registro" className="text-primary font-semibold hover:underline">
-              Registrarse
-            </Link>
-          </p>
         </div>
       </main>
     </div>
@@ -166,83 +160,9 @@ function FormularioJwt() {
 }
 
 // ---------------------------------------------------------------------------
-// Login con Keycloak (comportamiento existente C-06)
-// ---------------------------------------------------------------------------
-
-function LoginKeycloak() {
-  const navigate = useNavigate();
-  const status = useAuth((s) => s.status);
-  const principal = useAuth((s) => s.principal);
-  const login = useAuth((s) => s.login);
-
-  useEffect(() => {
-    if (status === 'authenticated' && principal) {
-      navigate(homePorRol(principal.roles));
-    }
-  }, [status, principal, navigate]);
-
-  const cargando = status === 'loading';
-
-  return (
-    <div className="min-h-screen grid lg:grid-cols-2 bg-white">
-      <aside className="hidden lg:flex flex-col justify-between p-xxl bg-gradient-to-br from-primary to-primary-700 text-on-primary relative overflow-hidden">
-        <span className="pointer-events-none absolute -top-16 -right-16 w-72 h-72 rounded-full bg-white/10" aria-hidden />
-        <span className="pointer-events-none absolute bottom-10 -left-20 w-80 h-80 rounded-full bg-white/10" aria-hidden />
-        <div className="flex items-center gap-sm relative">
-          <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
-            <Icon name="verified_user" className="text-[24px]" fill />
-          </div>
-          <span className="font-headline text-title-lg">Active Exam</span>
-        </div>
-        <div className="relative max-w-md">
-          <h2 className="font-headline text-display-lg leading-tight">Integridad académica.</h2>
-          <p className="text-body-lg text-white/80 mt-md">
-            Supervisión de exámenes remotos con evidencia de cadena de custodia y decisión disciplinaria siempre humana.
-          </p>
-        </div>
-        <div className="relative flex items-center gap-xs text-label-sm text-white/70">
-          <Icon name="lock" className="text-[18px]" fill />
-          Tu privacidad está protegida
-        </div>
-      </aside>
-
-      <main className="flex flex-col items-center px-lg py-xl lg:overflow-y-auto lg:h-screen">
-        <div className="w-full max-w-sm flex flex-col gap-lg animate-in fade-in slide-in-from-bottom-4 duration-700 my-auto">
-          <header className="flex flex-col items-center gap-md text-center">
-            <div className="w-14 h-14 rounded-2xl bg-primary text-on-primary flex items-center justify-center shadow-sm lg:hidden">
-              <Icon name="verified_user" className="text-[28px]" fill />
-            </div>
-            <div>
-              <h1 className="font-headline text-headline-md text-on-surface tracking-tight">Iniciar sesión</h1>
-              <p className="text-label-md text-on-surface/60 mt-xs">
-                Accedé a la plataforma de exámenes supervisados.
-              </p>
-            </div>
-          </header>
-
-          <section className="flex flex-col gap-lg">
-            <Button onClick={() => void login()} disabled={cargando} className="w-full">
-              {cargando ? (
-                <span className="inline-flex items-center gap-xs"><Icon name="progress_activity" className="ae-spin text-[18px]" /> Conectando…</span>
-              ) : 'Iniciar sesión con mi cuenta institucional'}
-            </Button>
-            <p className="text-label-sm text-on-surface-variant text-center">
-              Mismas credenciales del campus · OIDC con MFA
-            </p>
-          </section>
-
-        </div>
-      </main>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Componente principal: elige la variante según el provider activo
+// Componente principal — único provider soportado: JWT propio (C-55)
 // ---------------------------------------------------------------------------
 
 export default function Login() {
-  if (AUTH_PROVIDER_TYPE === 'keycloak') return <LoginKeycloak />;
-  // Default: jwt — formulario de login propio (C-55)
   return <FormularioJwt />;
 }

@@ -21,7 +21,7 @@ PROPOSITO:
   FK a proctoring_session, pregunta_examen y pregunta_cloze_blank, ON DELETE CASCADE.
 
 ROLLBACK:
-  alembic downgrade slim@0061 → dropea la tabla nueva. No toca nada existente.
+  alembic downgrade activeexam@0061 → dropea la tabla nueva. No toca nada existente.
 """
 
 from __future__ import annotations

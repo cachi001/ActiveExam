@@ -21,7 +21,46 @@ import {
   tipoEventoLabel,
   veredictoReinferenciaLabel,
 } from '../lib/apiLabels';
-import type { InformeDevolucion, Severidad } from '../lib/types';
+import type { CapturaFirmada, InformeDevolucion, Severidad } from '../lib/types';
+
+/** Badge de integridad por captura (c-18 verify-chain, recalculado en cada carga). */
+const INTEGRIDAD_UI: Record<
+  CapturaFirmada['integridad_estado'],
+  { icon: string; tone: 'success' | 'error' | 'neutral'; label: string }
+> = {
+  intact: { icon: 'verified', tone: 'success', label: 'Evidencia verificada' },
+  broken: { icon: 'gpp_bad', tone: 'error', label: 'No coincide con el original' },
+  material_missing: { icon: 'help', tone: 'neutral', label: 'Sin material para verificar' },
+  no_verificado: { icon: 'help', tone: 'neutral', label: 'No verificado' },
+};
+
+/** Arma y dispara la descarga del certificado (JSON) para un tercero (abogado,
+ * comisión de apelaciones) — no es para que el alumno lea los hashes, es lo que
+ * entrega si quiere impugnar la decisión. */
+function descargarCertificado(informe: InformeDevolucion) {
+  const payload = {
+    session_id: informe.session_id,
+    decision: informe.decision,
+    motivo: informe.motivo,
+    generado_en: new Date().toISOString(),
+    capturas: informe.capturas.map((c) => ({
+      tipo_evento: c.tipo_evento,
+      ocurrio_en: c.ocurrio_en,
+      integridad_estado: c.integridad_estado,
+      algoritmo: c.integridad_algoritmo,
+      hash_esperado: c.integridad_hash_esperado,
+      hash_actual: c.integridad_hash_actual,
+      verificado_en: c.integridad_verificado_en,
+    })),
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `certificado-evidencia-${informe.session_id}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 export default function InformeDevolucionAlumno() {
   const sessionId = useRouteParam('sessionId');
@@ -138,9 +177,28 @@ export default function InformeDevolucionAlumno() {
                   Lo que caduca es el enlace de acceso, por seguridad; la
                   evidencia queda guardada. Decirlo mal, en la pantalla donde el
                   alumno se defiende, es hacerle creer que tiene que apurarse. */}
-              <SectionTitle sub="Las imágenes quedan guardadas. Por seguridad, el enlace de acceso caduca a los 15 minutos: si vence, volvé a abrir esta página y se genera uno nuevo.">
-                Capturas de evidencia
-              </SectionTitle>
+              <div className="flex items-start justify-between gap-md flex-wrap">
+                <SectionTitle sub="Las imágenes quedan guardadas. Por seguridad, el enlace de acceso caduca a los 15 minutos: si vence, volvé a abrir esta página y se genera uno nuevo.">
+                  Capturas de evidencia
+                </SectionTitle>
+                {informe.capturas.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => descargarCertificado(informe)}
+                    className="inline-flex items-center gap-base text-label-sm font-semibold text-primary
+                      hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded shrink-0"
+                    title="Descarga un archivo con el detalle técnico de la verificación — es lo que le das a un abogado o a la comisión de apelaciones si querés impugnar la decisión."
+                  >
+                    <Icon name="download" className="text-[18px]" />
+                    Descargar certificado de integridad
+                  </button>
+                )}
+              </div>
+              <p className="text-label-sm text-on-surface-variant/80 -mt-sm">
+                Cada captura se compara, en el momento en que abrís esta página, contra la huella
+                digital que quedó registrada cuando se tomó. Si coinciden, es exactamente la misma
+                imagen — no fue modificada ni reemplazada.
+              </p>
               {informe.capturas.length === 0 ? (
                 <p className="text-label-md text-on-surface-variant">Sin capturas asociadas.</p>
               ) : (
@@ -167,12 +225,21 @@ export default function InformeDevolucionAlumno() {
                           </p>
                         )}
                       </div>
-                      <div className="flex items-center gap-sm shrink-0">
+                      <div className="flex items-center gap-sm shrink-0 flex-wrap justify-end">
                         {c.severidad && (
                           <Badge tone={SEVERIDAD_TONE[c.severidad as Severidad] ?? 'neutral'} dot>
                             {severidadLabel(c.severidad)}
                           </Badge>
                         )}
+                        <span
+                          title="Recalculamos la huella digital (SHA-256) de esta imagen y la comparamos con la que quedó registrada al capturarla. Si coinciden, es la misma imagen exacta."
+                          className="cursor-help"
+                        >
+                          <Badge tone={INTEGRIDAD_UI[c.integridad_estado].tone}>
+                            <Icon name={INTEGRIDAD_UI[c.integridad_estado].icon} className="text-[14px]" fill />
+                            {INTEGRIDAD_UI[c.integridad_estado].label}
+                          </Badge>
+                        </span>
                         <a
                           href={c.url}
                           target="_blank"

@@ -1,8 +1,8 @@
-"""Tests puros del HoldDecision y del NullHoldVerifier (slim default).
+"""Tests puros del HoldDecision y del NullHoldVerifier (activeexam default).
 
-Slim no tiene tabla ``caso_disciplinario`` (esa vive en la rama full,
+ActiveExam no tiene tabla ``caso_disciplinario`` (esa vive en la rama full,
 migracion 0002, que NO se aplica en produccion Railway). Por eso el
-HoldVerifier por defecto en slim es Null: nunca reporta hold. La
+HoldVerifier por defecto en activeexam es Null: nunca reporta hold. La
 implementacion SQL real sobre ``caso_disciplinario`` se difiere a c-69.
 
 Este tipo de "implementacion null" es legitimo en hexagonal: el puerto
@@ -27,7 +27,7 @@ def test_hold_decision_es_enum_con_dos_valores() -> None:
 
 @pytest.mark.asyncio
 async def test_null_verifier_siempre_devuelve_no_hold() -> None:
-    """En slim no hay forma de saber si una sesion esta en revision (no
+    """En activeexam no hay forma de saber si una sesion esta en revision (no
     existe tabla de casos). El verificador null no tiene info -> NO_HOLD."""
     verifier = NullHoldVerifier()
     assert await verifier.verify("session-id-cualquiera") == HoldDecision.NO_HOLD

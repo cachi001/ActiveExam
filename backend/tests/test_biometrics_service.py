@@ -17,7 +17,7 @@ import pytest
 from app.application.biometrics.service import (
     SEVERIDAD_CRITICA,
     TIPO_EVENTO_FALLO_BIO,
-    TOPIC_ESCALACION_PROCTOR_BIO,
+    TOPIC_ESCALACION_COORDINADOR_BIO,
     VerifyIdentityService,
 )
 from app.application.consent.service import ConsentService
@@ -352,20 +352,20 @@ def test_tercer_fallo_emite_evento_critico_y_escala_sin_sancion() -> None:
                 sesion=ses, estado=estado,
                 clip_uri="s3://clip", clip_hash="h", timestamp="t",
             )
-            assert outcome.escalado_a_proctor is False
+            assert outcome.escalado_a_coordinador is False
         # 3.º fallo -> escala.
         estado, outcome = await svc.verify(
             sesion=ses, estado=estado,
             clip_uri="s3://clip", clip_hash="h", timestamp="t",
         )
-        assert outcome.veredicto == VeredictoIntento.ESCALAR_A_PROCTOR
-        assert outcome.escalado_a_proctor is True
+        assert outcome.veredicto == VeredictoIntento.ESCALAR_A_COORDINADOR
+        assert outcome.escalado_a_coordinador is True
         # Evento CRITICO emitido (consumible por panel C-15).
         assert len(evt_repo.items) == 1
         assert evt_repo.items[0].tipo == TIPO_EVENTO_FALLO_BIO
         assert evt_repo.items[0].severidad == SEVERIDAD_CRITICA
-        # Escalacion por la cola al proctor.
-        assert queue.enqueued[-1][0] == TOPIC_ESCALACION_PROCTOR_BIO
+        # Escalacion por la cola al coordinador.
+        assert queue.enqueued[-1][0] == TOPIC_ESCALACION_COORDINADOR_BIO
         # NUNCA aborta ni sanciona: la sesion no quedo cerrada/sancionada.
         assert ses_repo.sesion.estado != EstadoSesion.CERRADA
 

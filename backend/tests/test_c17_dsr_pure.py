@@ -1,4 +1,4 @@
-"""Tests puros del DSR (c-17 slim).
+"""Tests puros del DSR (c-17 activeexam).
 
 Cubre los 4 tipos de derecho del titular (Ley 25.326):
 - ACCESS: devuelve los datos personales del usuario.
@@ -6,7 +6,7 @@ Cubre los 4 tipos de derecho del titular (Ley 25.326):
 - ERASURE: borra biometria + screenshots + sesiones, anonimiza usuario.
 - PORTABILITY: exporta JSON estructurado del titular.
 
-Slim: el HoldVerifier es Null por default (reutilizamos el de c-19) — no hay
+ActiveExam: el HoldVerifier es Null por default (reutilizamos el de c-19) — no hay
 holds por caso disciplinario porque no existe la tabla. Cuando llegue c-69 se
 inyecta un SqlHoldVerifier sin tocar este servicio.
 """
@@ -127,7 +127,7 @@ async def test_access_devuelve_datos_y_audita() -> None:
         users={
             "u1": {
                 "id": "u1",
-                "id_institucional": "EST-100",
+                "username": "EST-100",
                 "email": "test@frm.utn.edu.ar",
                 "nombre": "Maria",
                 "apellido": "Gonzalez",
@@ -161,7 +161,7 @@ async def test_rectification_actualiza_campos_audita() -> None:
         users={
             "u1": {
                 "id": "u1",
-                "id_institucional": "EST-100",
+                "username": "EST-100",
                 "email": "viejo@frm.utn.edu.ar",
                 "nombre": "Maria",
                 "apellido": "Gonzalez",
@@ -187,7 +187,7 @@ async def test_erasure_sin_hold_borra_todo() -> None:
         users={
             "u1": {
                 "id": "u1",
-                "id_institucional": "EST-100",
+                "username": "EST-100",
                 "email": "borrame@frm.utn.edu.ar",
                 "nombre": "Maria",
                 "apellido": "Gonzalez",
@@ -218,7 +218,7 @@ async def test_erasure_con_holds_difiere_sesiones() -> None:
         users={
             "u1": {
                 "id": "u1",
-                "id_institucional": "EST-100",
+                "username": "EST-100",
                 "email": "x@frm.utn.edu.ar",
                 "nombre": "X",
                 "apellido": "Y",
@@ -250,7 +250,7 @@ async def test_portability_devuelve_estructura_completa() -> None:
         users={
             "u1": {
                 "id": "u1",
-                "id_institucional": "EST-100",
+                "username": "EST-100",
                 "email": "test@frm.utn.edu.ar",
                 "nombre": "Maria",
                 "apellido": "Gonzalez",

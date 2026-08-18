@@ -30,6 +30,8 @@ from app.domain.auth.token import TokenPolicy
 from app.infrastructure.auth.jwks_cache import JwksCache
 from app.infrastructure.auth.jwt_validator import JwtValidator
 from app.infrastructure.auth.verifiers import build_hs256_verify, encode_hs256
+from app.infrastructure.persistence.models.exam_content import ComisionModel, MateriaModel
+from app.infrastructure.persistence.models.inscripcion import InscripcionModel
 from app.infrastructure.persistence.models.transactional import UsuarioModel
 from app.presentation.api.v1.users.router import router as users_router
 
@@ -114,7 +116,7 @@ async def ctx() -> AsyncGenerator[dict, None]:
 
     async with factory() as session:
         admin = UsuarioModel(
-            id_institucional=admin_iid,
+            username=admin_iid,
             email=f"{admin_iid}@test.local",
             roles=["admin_sistema"],
             auth_provider="local",
@@ -123,7 +125,7 @@ async def ctx() -> AsyncGenerator[dict, None]:
             apellido="AdminApellido",
         )
         est = UsuarioModel(
-            id_institucional=est_iid,
+            username=est_iid,
             email=f"{est_iid}@test.local",
             roles=["estudiante"],
             auth_provider="local",
@@ -169,7 +171,7 @@ async def ctx() -> AsyncGenerator[dict, None]:
     async with factory() as session:
         await session.execute(
             delete(UsuarioModel).where(
-                UsuarioModel.id_institucional.in_([admin_iid, est_iid])
+                UsuarioModel.username.in_([admin_iid, est_iid])
             )
         )
         await session.commit()
@@ -217,12 +219,88 @@ class TestFiltroRol:
         for item in data["items"]:
             assert "estudiante" in item["roles"]
 
+
+# ===========================================================================
+# 1b. TestFiltroMateriaComision
+# ===========================================================================
+
+
+class TestFiltroMateriaComision:
+    """GET /api/v1/users/?comision_id=... / ?materia_id=... filtra por inscripción."""
+
+    async def test_filtro_comision_id_devuelve_solo_inscriptos(self, ctx):
+        """Dos estudiantes, solo uno inscripto en la comisión → filtro devuelve solo ese."""
+        c = ctx["client"]
+        factory = ctx["factory"]
+        suffix = ctx["suffix"]
+
+        async with factory() as session:
+            otro_est = UsuarioModel(
+                username=f"est2-flt-{suffix}",
+                email=f"est2-flt-{suffix}@test.local",
+                roles=["estudiante"],
+                auth_provider="local",
+                attrs_federados={},
+            )
+            session.add(otro_est)
+            materia = MateriaModel(codigo=f"MAT-{suffix}", nombre="Materia Test")
+            session.add(materia)
+            await session.flush()
+            comision = ComisionModel(
+                materia_id=materia.id,
+                codigo="C1",
+                nombre="Comisión Test",
+                codigo_matriculacion=f"MAT-{suffix}-C1",
+            )
+            session.add(comision)
+            await session.flush()
+            session.add(InscripcionModel(usuario_id=ctx["est_uid"], comision_id=comision.id))
+            await session.commit()
+            comision_id = comision.id
+            materia_id = materia.id
+            otro_est_uid = str(otro_est.id)
+
+        try:
+            resp = await c.get(
+                "/api/v1/users/",
+                params={"rol": "estudiante", "estado": "todos", "comision_id": comision_id},
+                headers={"Authorization": f"Bearer {ctx['admin_token']}"},
+            )
+            assert resp.status_code == 200
+            ids = [item["id"] for item in resp.json()["items"]]
+            assert ctx["est_uid"] in ids
+            assert otro_est_uid not in ids
+
+            resp_materia = await c.get(
+                "/api/v1/users/",
+                params={"rol": "estudiante", "estado": "todos", "materia_id": materia_id},
+                headers={"Authorization": f"Bearer {ctx['admin_token']}"},
+            )
+            assert resp_materia.status_code == 200
+            ids_materia = [item["id"] for item in resp_materia.json()["items"]]
+            assert ctx["est_uid"] in ids_materia
+
+            # El item incluye la inscripción (materia + comisión) para pintar la columna.
+            item = next(i for i in resp.json()["items"] if i["id"] == ctx["est_uid"])
+            assert len(item["inscripciones"]) == 1
+            assert item["inscripciones"][0]["comision_id"] == comision_id
+        finally:
+            async with factory() as session:
+                await session.execute(delete(MateriaModel).where(MateriaModel.id == materia_id))
+                await session.execute(
+                    delete(UsuarioModel).where(UsuarioModel.id == otro_est_uid)
+                )
+                await session.commit()
+
     async def test_filtro_rol_vacio_si_no_hay(self, ctx):
-        """Filtro rol=proctor cuando no hay proctors → lista vacía (o sin nuestros seeds)."""
+        """Filtro por rol sin coincidencias → lista vacía (o sin nuestros seeds).
+
+        c-76: se usa 'coordinador' (rol vivo) en vez del eliminado 'proctor';
+        ninguno de los seeds (estudiante/admin) lo tiene, así que sigue vacío."""
         c = ctx["client"]
         resp = await c.get(
             "/api/v1/users/",
-            params={"rol": "proctor", "estado": "todos"},
+            params={"rol": "coordinador", "estado": "todos"},
             headers={"Authorization": f"Bearer {ctx['admin_token']}"},
         )
         assert resp.status_code == 200
@@ -301,7 +379,7 @@ class TestFiltroEstado:
 
 
 class TestFiltroQ:
-    """GET /api/v1/users/?q=... búsqueda ILIKE por nombre/apellido/email/id_institucional."""
+    """GET /api/v1/users/?q=... búsqueda ILIKE por nombre/apellido/email/username."""
 
     async def test_q_matchea_por_nombre(self, ctx):
         """ILIKE search en nombre → devuelve el usuario correcto."""

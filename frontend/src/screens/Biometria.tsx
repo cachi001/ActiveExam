@@ -133,7 +133,7 @@ export default function Biometria() {
       setReintentos((n) => n + 1);
     }
 
-    // Envío biométrico al backend slim (fire-and-forget, C-46 D6). Solo si hay sesión.
+    // Envío biométrico al backend activeexam (fire-and-forget, C-46 D6). Solo si hay sesión.
     // C-49/C-67 Task 5.4: liveness_ok, retos_resueltos y señal de cámara virtual son
     // REALES (no hardcodeados). buildBiometriaProctoringPayload es la función pura
     // testeable que construye el payload desde las señales reales de BiometricCapture.

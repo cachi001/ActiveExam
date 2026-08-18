@@ -34,22 +34,22 @@ def _claims_base(iss: str) -> dict:
         "preferred_username": "alu123",
         "email": "alu123@uni.edu",
         "exp": 9999999999,
-        "realm_access": {"roles": ["proctor"]},
+        "realm_access": {"roles": ["coordinador"]},
     }
 
 
 def test_issuer_propio_aceptado() -> None:
     policy = _policy_multi()
     principal = policy.principal_desde_claims(_claims_base(_ISSUER_PROPIO))
-    assert principal.id_institucional == "alu123"
-    assert Rol.PROCTOR in principal.roles
+    assert principal.username == "alu123"
+    assert Rol.COORDINADOR in principal.roles
 
 
 def test_issuer_keycloak_aceptado() -> None:
     policy = _policy_multi()
     principal = policy.principal_desde_claims(_claims_base(_ISSUER_KEYCLOAK))
-    assert principal.id_institucional == "alu123"
-    assert Rol.PROCTOR in principal.roles
+    assert principal.username == "alu123"
+    assert Rol.COORDINADOR in principal.roles
 
 
 def test_issuer_desconocido_rechazado() -> None:
@@ -77,7 +77,7 @@ def test_from_single_issuer_retrocompatibilidad() -> None:
     policy = TokenPolicy.from_single_issuer(_ISSUER_KEYCLOAK, _AUD)
     assert policy.issuers_aceptados == frozenset({_ISSUER_KEYCLOAK})
     principal = policy.principal_desde_claims(_claims_base(_ISSUER_KEYCLOAK))
-    assert principal.id_institucional == "alu123"
+    assert principal.username == "alu123"
 
 
 def test_mfa_insatisfecho_para_token_propio_sin_amr() -> None:

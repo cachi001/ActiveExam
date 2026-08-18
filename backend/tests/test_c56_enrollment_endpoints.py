@@ -61,17 +61,12 @@ def _monkeyenv(monkeypatch: pytest.MonkeyPatch) -> None:
     """Setea las env vars minimas para que Settings arranque en tests de stack."""
     monkeypatch.setenv(
         "DATABASE_URL",
-        os.environ.get("DATABASE_URL", "postgresql+asyncpg://app@db:5432/proctoring"),
+        os.environ.get("DATABASE_URL", "postgresql+asyncpg://app@postgres:5432/proctoring"),
     )
     monkeypatch.setenv("STORAGE_ENDPOINT", "http://minio:9000")
     monkeypatch.setenv("STORAGE_ACCESS_KEY", "k")
     monkeypatch.setenv("STORAGE_SECRET_KEY", "s")
     monkeypatch.setenv("STORAGE_BUCKET_EVIDENCE", "evidence")
-    monkeypatch.setenv("KEYCLOAK_ISSUER", "http://keycloak:8080/realms/proctoring")
-    monkeypatch.setenv(
-        "KEYCLOAK_JWKS_URL",
-        "http://keycloak:8080/realms/proctoring/protocol/openid-connect/certs",
-    )
     monkeypatch.setenv("JWT_AUDIENCE", "proctoring-api")
     monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://tempo:4317")
     monkeypatch.setenv("EMBEDDING_ENCRYPTION_KEY", _fernet_key_b64())
@@ -82,12 +77,12 @@ def _monkeyenv(monkeypatch: pytest.MonkeyPatch) -> None:
 # ---------------------------------------------------------------------------
 
 async def _crear_usuario_test(factory, suffix: str = "c56") -> tuple[str, str]:
-    """Crea un usuario de prueba y devuelve (id, id_institucional)."""
+    """Crea un usuario de prueba y devuelve (id, username)."""
     from app.infrastructure.persistence.models.transactional import UsuarioModel
 
     async with factory() as session:
         u = UsuarioModel(
-            id_institucional=f"test-enroll-{suffix}",
+            username=f"test-enroll-{suffix}",
             email=f"test-enroll-{suffix}@demo.test",
             roles=["estudiante"],
             password_hash="x",
@@ -96,7 +91,7 @@ async def _crear_usuario_test(factory, suffix: str = "c56") -> tuple[str, str]:
         )
         session.add(u)
         await session.commit()
-        return u.id, u.id_institucional
+        return u.id, u.username
 
 
 async def _borrar_usuario_test(factory, usuario_id: str) -> None:
@@ -145,7 +140,7 @@ async def test_foto_perfil_persistida_en_db(
     engine = create_engine()
     factory = create_session_factory(engine)
 
-    usuario_id, id_institucional = await _crear_usuario_test(factory, "foto-01")
+    usuario_id, username = await _crear_usuario_test(factory, "foto-01")
 
     try:
         app = create_app()
@@ -159,7 +154,7 @@ async def test_foto_perfil_persistida_en_db(
 
             def validar(self, token: str) -> AuthenticatedPrincipal:
                 return AuthenticatedPrincipal(
-                    id_institucional=id_institucional,
+                    username=username,
                     email="test@demo.test",
                     roles=["estudiante"],
                     mfa_satisfecho=False,
@@ -218,7 +213,7 @@ async def test_foto_anterior_marcada_no_vigente_en_re_enrollment(
 
     engine = create_engine()
     factory = create_session_factory(engine)
-    usuario_id, id_institucional = await _crear_usuario_test(factory, "foto-02")
+    usuario_id, username = await _crear_usuario_test(factory, "foto-02")
 
     try:
         from app.main import create_app
@@ -231,7 +226,7 @@ async def test_foto_anterior_marcada_no_vigente_en_re_enrollment(
 
             def validar(self, token: str) -> AuthenticatedPrincipal:
                 return AuthenticatedPrincipal(
-                    id_institucional=id_institucional,
+                    username=username,
                     email="test@demo.test",
                     roles=["estudiante"],
                     mfa_satisfecho=False,
@@ -321,9 +316,9 @@ async def test_foto_perfil_403_rol_incorrecto(monkeypatch: pytest.MonkeyPatch) -
 
         def validar(self, token: str) -> AuthenticatedPrincipal:
             return AuthenticatedPrincipal(
-                id_institucional="proctor-001",
-                email="proctor@demo.test",
-                roles=["proctor"],
+                username="coordinador-001",  # c-76: rol proctor eliminado -> coordinador
+                email="coordinador@demo.test",
+                roles=["coordinador"],
                 mfa_satisfecho=True,
                 jurisdiccion="AR",
             )
@@ -360,7 +355,7 @@ async def test_embedding_cifrado_en_db_no_en_claro(
 
     engine = create_engine()
     factory = create_session_factory(engine)
-    usuario_id, id_institucional = await _crear_usuario_test(factory, "emb-01")
+    usuario_id, username = await _crear_usuario_test(factory, "emb-01")
 
     try:
         from app.main import create_app
@@ -373,7 +368,7 @@ async def test_embedding_cifrado_en_db_no_en_claro(
 
             def validar(self, token: str) -> AuthenticatedPrincipal:
                 return AuthenticatedPrincipal(
-                    id_institucional=id_institucional,
+                    username=username,
                     email="test@demo.test",
                     roles=["estudiante"],
                     mfa_satisfecho=False,
@@ -435,7 +430,7 @@ async def test_embedding_dimension_invalida_422(
 
         def validar(self, token: str) -> AuthenticatedPrincipal:
             return AuthenticatedPrincipal(
-                id_institucional="est-422",
+                username="est-422",
                 email="test@demo.test",
                 roles=["estudiante"],
                 mfa_satisfecho=False,
@@ -475,7 +470,7 @@ async def test_round_trip_cifrado_descifrado_integracion(
 
     engine = create_engine()
     factory = create_session_factory(engine)
-    usuario_id, id_institucional = await _crear_usuario_test(factory, "emb-rt")
+    usuario_id, username = await _crear_usuario_test(factory, "emb-rt")
 
     try:
         from app.main import create_app
@@ -488,7 +483,7 @@ async def test_round_trip_cifrado_descifrado_integracion(
 
             def validar(self, token: str) -> AuthenticatedPrincipal:
                 return AuthenticatedPrincipal(
-                    id_institucional=id_institucional,
+                    username=username,
                     email="test@demo.test",
                     roles=["estudiante"],
                     mfa_satisfecho=False,

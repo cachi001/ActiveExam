@@ -1,4 +1,4 @@
-"""Calculo de score de riesgo para sesiones de proctoring slim.
+"""Calculo de score de riesgo para sesiones de proctoring activeexam.
 
 Motor SIMPLE: suma directa de pesos por tipo de evento. Lo usa el endpoint del
 detalle de sesion (vista del proctor) — devuelve el score on-the-fly sin
@@ -48,6 +48,28 @@ PESOS_SEVERIDAD: dict[str, int] = {
 # Tope del score (igual que el cliente y la finalizacion de produccion). El score
 # es 0..100; nunca se persiste ni se muestra por encima de 100.
 SCORE_CAP = 100
+
+# Umbral de riesgo "medio" (C-76 tarea 17). Espeja SCORE_UMBRAL_MEDIO del cliente
+# (frontend/src/screens/proctoring/helpers.ts) — NO configurable ahi tampoco, asi
+# que no hay una fuente persistida que leer (a diferencia del umbral "alto", que
+# SI es configurable via configuracion_sistema.umbral_cola_revision).
+SCORE_UMBRAL_MEDIO = 30
+
+
+def nivel_riesgo(score: int, umbral_alto: int) -> str:
+    """Nivel de riesgo derivado del score: 'bajo' | 'medio' | 'alto'.
+
+    Espeja EXACTAMENTE `nivelRiesgo()` del frontend (proctoring/helpers.ts):
+    ``score >= umbral_alto`` -> alto; ``score >= SCORE_UMBRAL_MEDIO`` -> medio;
+    si no, bajo. ``umbral_alto`` es el umbral de cola de revision VIVO
+    (``ConfiguracionSistemaModel.umbral_cola_revision`` via ConfigService), NO
+    una constante hardcodeada — el mismo umbral que ya usa la Cola de revision.
+    """
+    if score >= umbral_alto:
+        return "alto"
+    if score >= SCORE_UMBRAL_MEDIO:
+        return "medio"
+    return "bajo"
 
 
 def calcular_score(

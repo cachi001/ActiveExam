@@ -1,7 +1,7 @@
-"""Modelos ORM del modulo slim de proctoring (SQLAlchemy).
+"""Modelos ORM del modulo activeexam de proctoring (SQLAlchemy).
 
 Tablas: proctoring_session, proctoring_event, proctoring_biometria.
-Migración: 0005_proctoring_slim.py (branch 'slim', depends_on=None).
+Migración: 0005_proctoring_activeexam.py (branch 'activeexam', depends_on=None).
 
 PRODUCCION:
 - screenshot_b64: dato sensible (Ley 25.326). Mover a MinIO/S3 WORM con cifrado
@@ -28,7 +28,7 @@ from app.infrastructure.persistence.base import Base
 
 
 class ProctoringSessionModel(Base):
-    """Sesion de proctoring slim. Aditiva — no reemplaza SesionModel de produccion."""
+    """Sesion de proctoring activeexam. Aditiva — no reemplaza SesionModel de produccion."""
 
     __tablename__ = "proctoring_session"
 
@@ -53,12 +53,12 @@ class ProctoringSessionModel(Base):
         nullable=True,
         comment="Etiqueta libre para identificar la sesion",
     )
-    # C-69 (slim, migration 0027): vinculo REAL con el examen de contenido importado
+    # C-69 (activeexam, migration 0027): vinculo REAL con el examen de contenido importado
     # de Moodle XML. NULLABLE — una sesion de prueba (modo 'test') o un examen sin
     # contenido asociado sigue siendo valida. FK ON DELETE SET NULL: borrar el
     # contenido del catalogo NO borra la sesion ni su evidencia (cadena de custodia,
     # L2.5) — solo se pierde la referencia. La tabla `examen` (config) no existe en
-    # slim; `examen_contenido` y `proctoring_session` SI coexisten, por eso el
+    # activeexam; `examen_contenido` y `proctoring_session` SI coexisten, por eso el
     # vinculo vive aca.
     examen_contenido_id: Mapped[str | None] = mapped_column(
         UUID(as_uuid=False),
@@ -92,10 +92,10 @@ class ProctoringSessionModel(Base):
     # enforcement server-side de intentos por examen necesita contar las sesiones
     # finalizadas de un alumno, por eso se persiste aca. NULLABLE: las sesiones de
     # prueba (modo 'test') o las creadas antes de esta migracion quedan con NULL.
-    # alumno_idnumber = principal.id_institucional (mismo criterio que el write-back).
+    # alumno_idnumber = principal.username (mismo criterio que el write-back).
     alumno_idnumber: Mapped[str | None] = mapped_column(
         String(255), nullable=True,
-        comment="id_institucional del alumno (legajo/padron). NULL = sin identidad.",
+        comment="username del alumno (legajo/padron). NULL = sin identidad.",
     )
     alumno_email: Mapped[str | None] = mapped_column(
         String(255), nullable=True,
@@ -105,7 +105,7 @@ class ProctoringSessionModel(Base):
     # C-15 (tarea 3.3): cierre FORZADO por el proctor. Operativo, NO disciplinario
     # (regla dura #5: el sistema nunca sanciona — esto solo CIERRA la sesion). El
     # cierre forzado tambien setea finalizada_en; estas 3 columnas son el audit trail
-    # persistente (quien, cuando, por que) — patron "la fila ES el audit log" del slim,
+    # persistente (quien, cuando, por que) — patron "la fila ES el audit log" del activeexam,
     # que no tiene tabla audit_log persistente. INMUTABLE una vez seteado.
     cierre_forzado_en: Mapped[str | None] = mapped_column(
         DateTime(timezone=True), nullable=True,
@@ -120,7 +120,7 @@ class ProctoringSessionModel(Base):
         comment="Motivo operativo del cierre forzado (NO veredicto disciplinario).",
     )
 
-    # c-16: decision terminal del revisor, UN SOLO PASO (slim, migration 0013;
+    # c-16: decision terminal del revisor, UN SOLO PASO (activeexam, migration 0013;
     # modelo colapsado a 3 estados — el owner del proyecto rechazo explicitamente
     # el modelo de dos fases con `caso_abierto`: "no existe el caso abierto,
     # nunca dije que era un estado y no lo va a ser"). NULLABLE — None = sin
@@ -148,6 +148,19 @@ class ProctoringSessionModel(Base):
             "vacia cuando decision='anulado'; filtra las capturas que ve el "
             "alumno en su informe de devolucion (D12)."
         ),
+    )
+
+    # c-76 tarea 14 (migration 0081): soft-hide ADMINISTRATIVO del panel de
+    # resultados — oculta la fila del listado por default sin borrar nada.
+    # Ortogonal a `decision` (veredicto humano de fraude, RN-RV) y a
+    # `estado_entrega` (que se DERIVA, no se persiste). NUNCA sanciona ni
+    # deja de sancionar nada por si solo: es solo visibilidad en la UI.
+    archivado: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+        comment="Soft-hide administrativo de la fila en el panel de resultados",
     )
 
     eventos: Mapped[list[ProctoringEventModel]] = relationship(
@@ -247,12 +260,31 @@ class ProctoringEventModel(Base):
         server_default="no_evaluado",
         comment="'coincide' | 'discrepancia' | 'no_evaluado'. L2.5: nunca sanciona.",
     )
+    # --- Deposito WORM (c-77, migracion 0082) ------------------------------
+    # NULL siempre que MinIO no este configurado (Render sin VPS, caso actual).
+    # screenshot_b64 en Postgres sigue siendo la fuente de verdad — el deposito
+    # WORM es ADICIONAL, no un reemplazo (decision del dueño, ver tasks.md).
+    worm_object_key: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+        comment="Key del objeto en el bucket WORM. NULL si MinIO no esta configurado.",
+    )
+    worm_uri: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment="URI completa del deposito WORM (endpoint/bucket/object_key).",
+    )
+    worm_retain_until: Mapped[str | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        comment="retain_until del Object Lock Compliance aplicado al depositar.",
+    )
 
     sesion: Mapped[ProctoringSessionModel] = relationship(back_populates="eventos")
 
 
 class ProctoringBiometriaModel(Base):
-    """Resultado biometrico de la sesion de proctoring slim.
+    """Resultado biometrico de la sesion de proctoring activeexam.
 
     PRODUCCION:
     - embedding: dato sensible (Ley 25.326, ISO 30107-3). En demo se persiste en

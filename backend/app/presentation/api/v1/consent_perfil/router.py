@@ -10,7 +10,7 @@ Reglas duras:
 - Append-only + hash de texto + hash de registro (demostrabilidad/integridad).
 - ``extra='forbid'`` en los schemas; accion afirmativa sin default True (RN-CO-02).
 
-El consentimiento se ata al ``usuario.id`` resuelto desde ``id_institucional`` del
+El consentimiento se ata al ``usuario.id`` resuelto desde ``username`` del
 principal (no se confia en un user_id del body).
 """
 
@@ -86,11 +86,11 @@ def _hash_texto(version_texto: str) -> str:
     return hashlib.sha256(f"consent-perfil:{version_texto}".encode("utf-8")).hexdigest()
 
 
-async def _resolver_usuario_id(session: AsyncSession, id_institucional: str) -> str:
-    """Resuelve usuario.id (FK) desde el id_institucional del principal. 404 si no existe."""
+async def _resolver_usuario_id(session: AsyncSession, username: str) -> str:
+    """Resuelve usuario.id (FK) desde el username del principal. 404 si no existe."""
     result = await session.execute(
         select(UsuarioModel.id).where(
-            UsuarioModel.id_institucional == id_institucional
+            UsuarioModel.username == username
         )
     )
     uid = result.scalar_one_or_none()
@@ -121,7 +121,7 @@ async def otorgar(
         )
     factory = _get_session_factory(request)
     async with factory() as session:
-        uid = await _resolver_usuario_id(session, principal.id_institucional)
+        uid = await _resolver_usuario_id(session, principal.username)
         fila = await ConsentimientoPerfilSqlRepository(session).registrar(
             usuario_id=uid,
             version_texto=body.version_texto,
@@ -134,7 +134,7 @@ async def otorgar(
 
     await registrar_seguro(
         factory,
-        actor=principal.id_institucional or principal.email,
+        actor=principal.username or principal.email,
         accion="consent.otorgado",
         modulo=ModuloAuditoria.CONSENTIMIENTO,
         entidad_id=str(uid),
@@ -164,7 +164,7 @@ async def estado_vigente(
     """Estado vigente del consentimiento de perfil del usuario autenticado."""
     factory = _get_session_factory(request)
     async with factory() as session:
-        uid = await _resolver_usuario_id(session, principal.id_institucional)
+        uid = await _resolver_usuario_id(session, principal.username)
         vigente = await ConsentimientoPerfilSqlRepository(session).vigente(uid)
     if vigente is None:
         return ConsentPerfilResponse(estado=ESTADO_INEXISTENTE)
@@ -193,7 +193,7 @@ async def revocar(
     sistema (``v1`` por defecto)."""
     factory = _get_session_factory(request)
     async with factory() as session:
-        uid = await _resolver_usuario_id(session, principal.id_institucional)
+        uid = await _resolver_usuario_id(session, principal.username)
         repo = ConsentimientoPerfilSqlRepository(session)
         prev = await repo.vigente(uid)
         version = prev.version_texto if prev is not None else "v1"

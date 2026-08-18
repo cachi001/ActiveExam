@@ -45,11 +45,11 @@ async def _seed(n: int, exam_name: str) -> list[dict[str, str]]:
 
     conn = await asyncpg.connect(_dsn_asyncpg(dsn))
     try:
-        # 1 usuario (id_institucional unico) y 1 examen (umbral_score NOT NULL).
+        # 1 usuario (username unico) y 1 examen (umbral_score NOT NULL).
         sufijo = secrets.token_hex(4)
         user_id = await conn.fetchval(
             """
-            INSERT INTO usuario (id_institucional, email, roles)
+            INSERT INTO usuario (username, email, roles)
             VALUES ($1, $2, '["estudiante"]'::jsonb)
             RETURNING id
             """,

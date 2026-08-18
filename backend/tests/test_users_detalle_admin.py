@@ -33,6 +33,8 @@ from app.infrastructure.auth.verifiers import build_hs256_verify, encode_hs256
 from app.infrastructure.auth.jwks_cache import JwksCache
 from app.infrastructure.auth.jwt_validator import JwtValidator
 from app.domain.auth.token import TokenPolicy
+from app.infrastructure.persistence.models.exam_content import ComisionModel, MateriaModel
+from app.infrastructure.persistence.models.inscripcion import InscripcionModel
 from app.infrastructure.persistence.models.transactional import (
     ConsentimientoPerfilModel,
     EmbeddingReferenciaModel,
@@ -125,6 +127,9 @@ async def ctx() -> AsyncGenerator[dict, None]:
     async with engine.begin() as conn:
         await conn.run_sync(UsuarioModel.__table__.create, checkfirst=True)
         await conn.run_sync(ConsentimientoPerfilModel.__table__.create, checkfirst=True)
+        await conn.run_sync(MateriaModel.__table__.create, checkfirst=True)
+        await conn.run_sync(ComisionModel.__table__.create, checkfirst=True)
+        await conn.run_sync(InscripcionModel.__table__.create, checkfirst=True)
 
     # --- seed: admin + estudiante con IDs únicos por ejecución ---
     suffix = uuid.uuid4().hex[:8]
@@ -133,14 +138,14 @@ async def ctx() -> AsyncGenerator[dict, None]:
 
     async with factory() as session:
         admin = UsuarioModel(
-            id_institucional=admin_iid,
+            username=admin_iid,
             email=f"{admin_iid}@test.local",
             roles=["admin_sistema"],
             auth_provider="local",
             attrs_federados={},
         )
         est = UsuarioModel(
-            id_institucional=est_iid,
+            username=est_iid,
             email=f"{est_iid}@test.local",
             roles=["estudiante"],
             auth_provider="local",
@@ -187,7 +192,7 @@ async def ctx() -> AsyncGenerator[dict, None]:
     async with factory() as session:
         await session.execute(
             delete(UsuarioModel).where(
-                UsuarioModel.id_institucional.in_([admin_iid, est_iid])
+                UsuarioModel.username.in_([admin_iid, est_iid])
             )
         )
         await session.commit()
@@ -220,6 +225,65 @@ class TestDetalleUsuario:
         # Gobernanza: NUNCA devolver password_hash ni embedding
         assert "password_hash" not in data
         assert "embedding_cifrado" not in data
+
+    async def test_estudiante_sin_inscripciones_devuelve_lista_vacia(self, ctx):
+        """Estudiante sin inscripciones → inscripciones=[] (no falla, no es null)."""
+        c = ctx["client"]
+        resp = await c.get(
+            f"/api/v1/users/{ctx['est_uid']}",
+            headers={"Authorization": f"Bearer {ctx['admin_token']}"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["inscripciones"] == []
+
+    async def test_estudiante_con_inscripcion_devuelve_materia_y_comision(self, ctx):
+        """Estudiante inscripto en una comisión → detalle incluye materia+comisión."""
+        codigo_materia = f"PROG-{uuid.uuid4().hex[:8]}"
+        async with ctx["factory"]() as session:
+            materia = MateriaModel(codigo=codigo_materia, nombre="Programación I")
+            session.add(materia)
+            await session.flush()
+            comision = ComisionModel(
+                materia_id=materia.id,
+                codigo="C1",
+                nombre="Comisión 1",
+                codigo_matriculacion=f"{codigo_materia}-C1",
+            )
+            session.add(comision)
+            await session.flush()
+            session.add(InscripcionModel(usuario_id=ctx["est_uid"], comision_id=comision.id))
+            await session.commit()
+            materia_id = materia.id
+
+        try:
+            c = ctx["client"]
+            resp = await c.get(
+                f"/api/v1/users/{ctx['est_uid']}",
+                headers={"Authorization": f"Bearer {ctx['admin_token']}"},
+            )
+            assert resp.status_code == 200
+            inscripciones = resp.json()["inscripciones"]
+            assert len(inscripciones) == 1
+            assert inscripciones[0]["materia_codigo"] == codigo_materia
+            assert inscripciones[0]["materia_nombre"] == "Programación I"
+            assert inscripciones[0]["comision_codigo"] == "C1"
+            assert inscripciones[0]["comision_nombre"] == "Comisión 1"
+        finally:
+            from sqlalchemy import delete as _delete
+
+            async with ctx["factory"]() as session:
+                await session.execute(_delete(MateriaModel).where(MateriaModel.id == materia_id))
+                await session.commit()
+
+    async def test_admin_no_estudiante_no_trae_inscripciones(self, ctx):
+        """Usuario sin rol estudiante → inscripciones=[] aunque tenga filas de inscripcion (no aplica)."""
+        c = ctx["client"]
+        resp = await c.get(
+            f"/api/v1/users/{ctx['admin_uid']}",
+            headers={"Authorization": f"Bearer {ctx['admin_token']}"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["inscripciones"] == []
 
     async def test_403_sin_rol_admin(self, ctx):
         """Estudiante no puede ver el detalle de otro usuario → 403."""
@@ -410,7 +474,7 @@ class TestBiometriaReferenciaEstado:
 
     async def test_con_foto_vigente_200(self, ctx):
         """Usuario con foto de perfil vigente → tiene_foto=true con hash."""
-        # La tabla foto_referencia en el schema slim usa foto_bytes (no uri_storage/bucket).
+        # La tabla foto_referencia en el schema activeexam usa foto_bytes (no uri_storage/bucket).
         # Sembramos via SQL crudo para no depender de qué columnas tiene el ORM vs la DB.
         from sqlalchemy import text
 

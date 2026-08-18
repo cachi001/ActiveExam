@@ -29,7 +29,7 @@ def _get_test_db_url() -> str | None:
 
 
 def _setup_db_tables(url: str) -> None:
-    """Crea las tablas slim en la DB de test (drop CASCADE + create)."""
+    """Crea las tablas activeexam en la DB de test (drop CASCADE + create)."""
     from sqlalchemy import text
     from sqlalchemy.ext.asyncio import create_async_engine
     from sqlalchemy.pool import NullPool
@@ -108,7 +108,7 @@ def client(db_url_c64: str):
     from sqlalchemy.ext.asyncio import create_async_engine
     from sqlalchemy.pool import NullPool
 
-    from app.infrastructure.persistence.session_slim import create_slim_session_factory
+    from app.infrastructure.persistence.session_activeexam import create_activeexam_session_factory
     from app.infrastructure.reinferencia.mediapipe_adapter import MediaPipeReinferencia
     from app.presentation.api.v1.proctoring.router import create_proctoring_router
     from fastapi import FastAPI
@@ -118,14 +118,14 @@ def client(db_url_c64: str):
     from tests.proctoring.conftest import _build_test_jwt_validator, auth_headers
 
     engine = create_async_engine(db_url_c64, pool_pre_ping=True, future=True, poolclass=NullPool)
-    factory = create_slim_session_factory(engine)
+    factory = create_activeexam_session_factory(engine)
     reinferencia = MediaPipeReinferencia()
     proctoring_router = create_proctoring_router(
         session_factory=factory,
         reinferencia=reinferencia,
     )
     app = FastAPI()
-    # Los endpoints de proctoring slim quedan endurecidos por rol; cableamos el
+    # Los endpoints de proctoring activeexam quedan endurecidos por rol; cableamos el
     # jwt_validator de test y autenticamos como estudiante (flujo del alumno:
     # crear sesion, eventos, finalizar).
     app.state.jwt_validator = _build_test_jwt_validator()

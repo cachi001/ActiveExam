@@ -4,9 +4,9 @@ El alumno rinde un examen importado de Moodle XML (examen_contenido). La sesión
 proctoring debe REGISTRAR contra qué contenido rindió, server-side, para que la
 revisión humana y el flujo del alumno sepan qué examen se respondió.
 
-VÍNCULO (decisión de la rama slim): vive en ``proctoring_session.examen_contenido_id``
-(NULLABLE, FK ON DELETE SET NULL a examen_contenido.id, migración slim 0027). La
-tabla ``examen`` (config de proctoring) NO existe en slim; ``examen_contenido`` y
+VÍNCULO (decisión de la rama activeexam): vive en ``proctoring_session.examen_contenido_id``
+(NULLABLE, FK ON DELETE SET NULL a examen_contenido.id, migración activeexam 0027). La
+tabla ``examen`` (config de proctoring) NO existe en activeexam; ``examen_contenido`` y
 ``proctoring_session`` SÍ coexisten — por eso el vínculo va acá.
 
 Requiere Postgres real (DATABASE_URL). Sin mocks de DB (regla dura de código).
@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.infrastructure.persistence.models.exam_content import ExamenContenidoModel
 from tests.proctoring.conftest import auth_headers
 
-_PROCTOR = auth_headers(["proctor"])
+_PROCTOR = auth_headers(["coordinador"])  # c-76: rol proctor eliminado -> coordinador supervisa
 
 pytestmark = pytest.mark.asyncio
 

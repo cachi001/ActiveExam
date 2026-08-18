@@ -1,4 +1,4 @@
-"""Repositorio de persistencia del modulo slim de proctoring.
+"""Repositorio de persistencia del modulo activeexam de proctoring.
 
 Operaciones async sobre las tablas proctoring_session, proctoring_event y
 proctoring_biometria. El calculo de score y discrepancias se hace aqui (o en
@@ -11,7 +11,7 @@ El score solo prioriza la cola de revision humana (D5).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import func, select
@@ -24,14 +24,6 @@ from app.infrastructure.persistence.models.proctoring import (
     ProctoringEventModel,
     ProctoringSessionModel,
 )
-
-# Una sesion "en vivo" sin actividad por mas de este lapso se considera
-# abandonada y se auto-finaliza al primer listado (ver listar_sesiones). Asi la
-# supervision en vivo deja de mostrarla y queda solo en "Sesiones grabadas".
-# Para evitar cerrar sesiones legitimas que solo estan calmas (sin eventos), el
-# umbral se mide contra el ultimo evento o, en ausencia de eventos, contra la
-# creacion. 15 min cubre lapsos de calma normales en un examen.
-IDLE_TIMEOUT_MIN = 15
 
 
 @dataclass
@@ -56,10 +48,19 @@ class SesionResumenData:
     examen_titulo: str | None = None
     comision_nombre: str | None = None
     materia_nombre: str | None = None
+    # C-76 bloque 8: docente a cargo de la comision (comision.docente_id), para
+    # acotar la supervision en vivo del TUTOR por pertenencia (D2 design c-76).
+    docente_id: str | None = None
+    # Identidad del alumno duenio de la sesion (C-76 tarea 17: columna "Alumno"
+    # del Registro de sesiones). alumno_nombre resuelto contra `usuario`; None si
+    # no matchea (la UI cae a idnumber/email crudo).
+    alumno_idnumber: str | None = None
+    alumno_email: str | None = None
+    alumno_nombre: str | None = None
 
 
 class ProctoringRepository:
-    """CRUD async para las 3 tablas slim de proctoring."""
+    """CRUD async para las 3 tablas activeexam de proctoring."""
 
     def __init__(self, db: AsyncSession) -> None:
         self._db = db
@@ -77,14 +78,14 @@ class ProctoringRepository:
         alumno_idnumber: str | None = None,
         alumno_email: str | None = None,
     ) -> ProctoringSessionModel:
-        """Crea y persiste una nueva sesion de proctoring slim.
+        """Crea y persiste una nueva sesion de proctoring activeexam.
 
         ``examen_contenido_id`` (C-69) vincula la sesion con el examen de contenido
         importado de Moodle XML. NULLABLE: una sesion sin contenido sigue siendo
         valida (modo 'test' o examen sin contenido asociado).
 
         ``alumno_idnumber``/``alumno_email`` (C-69, migration 0033) persisten la
-        identidad del alumno al CREAR la sesion (id_institucional del JWT). El
+        identidad del alumno al CREAR la sesion (username del JWT). El
         enforcement de intentos cuenta sesiones finalizadas por (alumno, examen).
         """
         sesion = ProctoringSessionModel(
@@ -130,6 +131,34 @@ class ProctoringRepository:
         result = await self._db.execute(stmt)
         return result.scalars().first()
 
+    async def docente_id_de_sesion(self, session_id: str) -> str | None:
+        """Docente a cargo de la comision de la sesion (C-76 bloque 8, D2).
+
+        Derivacion sesion -> examen_contenido -> comision -> docente_id. None si la
+        sesion no existe, no tiene examen vinculado (modo 'test'), el examen no
+        tiene comision, o la comision no tiene docente asignado — todos significan
+        lo mismo para el caller: sin dueño identificable (solo pasan roles
+        institucionales, ver ``autorizar_supervision_vivo_sobre_sesion``)."""
+        from app.infrastructure.persistence.models.exam_content import (
+            ComisionModel,
+            ExamenContenidoModel,
+        )
+
+        stmt = (
+            select(ComisionModel.docente_id)
+            .select_from(ProctoringSessionModel)
+            .join(
+                ExamenContenidoModel,
+                ExamenContenidoModel.id == ProctoringSessionModel.examen_contenido_id,
+            )
+            .join(
+                ComisionModel, ComisionModel.id == ExamenContenidoModel.comision_id
+            )
+            .where(ProctoringSessionModel.id == session_id)
+        )
+        result = await self._db.execute(stmt)
+        return result.scalar_one_or_none()
+
     async def obtener_sesion(self, session_id: str) -> ProctoringSessionModel | None:
         """Obtiene una sesion por ID con sus eventos y biometria (eager load)."""
         stmt = (
@@ -142,6 +171,55 @@ class ProctoringRepository:
         )
         result = await self._db.execute(stmt)
         return result.scalar_one_or_none()
+
+    async def contexto_academico_de_examen(
+        self, examen_contenido_id: str | None
+    ) -> tuple[str | None, str | None, str | None]:
+        """Resuelve (examen_titulo, comision_nombre, materia_nombre) de UN examen.
+
+        Wrapper público de ``_contexto_academico`` para el detalle de sesión
+        (GET /sessions/{id}), que necesita el mismo join que ya usa el listado
+        pero para un solo ``examen_contenido_id``. None si no hay contenido
+        vinculado a la sesión.
+        """
+        if examen_contenido_id is None:
+            return (None, None, None)
+        mapa = await self._contexto_academico([examen_contenido_id])
+        titulo, comision, materia, _docente_id = mapa.get(
+            examen_contenido_id, (None, None, None, None)
+        )
+        return (titulo, comision, materia)
+
+    async def nombre_alumno(
+        self, alumno_idnumber: str | None, alumno_email: str | None
+    ) -> str | None:
+        """Nombre completo del alumno dueño de la sesión, resuelto contra ``usuario``.
+
+        Matchea por ``username == alumno_idnumber`` (JIT LTI/manual usa el username
+        como idnumber) con fallback a ``email``. None si no hay identidad persistida
+        en la sesión o el usuario no tiene nombre/apellido cargado — el detalle cae
+        entonces a mostrar el idnumber/email crudo (ver router).
+        """
+        from app.infrastructure.persistence.models.transactional import UsuarioModel
+
+        if not alumno_idnumber and not alumno_email:
+            return None
+        stmt = select(UsuarioModel.nombre, UsuarioModel.apellido)
+        if alumno_idnumber and alumno_email:
+            stmt = stmt.where(
+                (UsuarioModel.username == alumno_idnumber)
+                | (UsuarioModel.email == alumno_email)
+            )
+        elif alumno_idnumber:
+            stmt = stmt.where(UsuarioModel.username == alumno_idnumber)
+        else:
+            stmt = stmt.where(UsuarioModel.email == alumno_email)
+        fila = (await self._db.execute(stmt.limit(1))).first()
+        if fila is None:
+            return None
+        nombre, apellido = fila
+        completo = " ".join(p for p in (nombre, apellido) if p)
+        return completo or None
 
     async def _pesos_vivos_por_tipo(self) -> dict[str, int]:
         """Peso vivo por tipo de evento desde ``evento_score_config`` (solo activos).
@@ -204,15 +282,124 @@ class ProctoringRepository:
         El detalle, que si usaba la fuente comun, mostraba el score correcto: la
         misma sesion daba 75 en el detalle y 0 en la lista.
         """
-        pesos_por_tipo = await self._pesos_vivos_por_tipo()
-        desactivados = await self._tipos_desactivados()
-
-        # Subquery: eventos agrupados por session_id
         stmt = select(ProctoringSessionModel).order_by(
             ProctoringSessionModel.creada_en.desc()
         )
         result = await self._db.execute(stmt)
         sesiones = result.scalars().all()
+        return await self._armar_resumenes(sesiones)
+
+    async def listar_sesiones_finalizadas(
+        self,
+        *,
+        q: str | None = None,
+        exam_id: str | None = None,
+        fecha_desde: datetime | None = None,
+        fecha_hasta: datetime | None = None,
+        materia_id: str | None = None,
+        comision_id: str | None = None,
+    ) -> list[SesionResumenData]:
+        """Sesiones FINALIZADAS (Registro de sesiones, C-76 tarea 17) con filtros SQL.
+
+        - ``q``: busqueda por alumno (idnumber/email/nombre/apellido), SIEMPRE en SQL
+          (mismo patron que ``resultados_query._aplicar_filtros``).
+        - ``exam_id``: filtra por ``examen_contenido_id`` exacto (el catalogo de
+          filtro sale de un endpoint dedicado — nunca hardcodeado en el frontend).
+        - ``fecha_desde``/``fecha_hasta``: rango sobre ``finalizada_en``.
+        - ``materia_id``/``comision_id`` (C-76 tarea 20.3): filtro en cascada
+          Materia -> Comision, mismo join que ya resuelve ``materia_nombre``/
+          ``comision_nombre`` (sesion -> examen_contenido -> comision -> materia).
+
+        El nivel de riesgo NO se filtra aca (requiere el score ya calculado, que se
+        resuelve en Python sobre TODOS los eventos de la sesion) — lo aplica el
+        caller (router/servicio) sobre el resultado de esta funcion, igual que hace
+        ``resultados_query`` con ``estado_entrega_filtro``.
+        """
+        from app.infrastructure.persistence.models.transactional import UsuarioModel
+
+        stmt = (
+            select(ProctoringSessionModel)
+            .outerjoin(
+                UsuarioModel,
+                (UsuarioModel.username == ProctoringSessionModel.alumno_idnumber)
+                | (UsuarioModel.email == ProctoringSessionModel.alumno_email),
+            )
+            .where(ProctoringSessionModel.finalizada_en.isnot(None))
+        )
+        if q:
+            from sqlalchemy import or_
+
+            patron = f"%{q.strip()}%"
+            stmt = stmt.where(
+                or_(
+                    ProctoringSessionModel.alumno_idnumber.ilike(patron),
+                    ProctoringSessionModel.alumno_email.ilike(patron),
+                    UsuarioModel.nombre.ilike(patron),
+                    UsuarioModel.apellido.ilike(patron),
+                )
+            )
+        if exam_id:
+            stmt = stmt.where(ProctoringSessionModel.examen_contenido_id == exam_id)
+        if fecha_desde is not None:
+            stmt = stmt.where(ProctoringSessionModel.finalizada_en >= fecha_desde)
+        if fecha_hasta is not None:
+            stmt = stmt.where(ProctoringSessionModel.finalizada_en <= fecha_hasta)
+        if materia_id or comision_id:
+            from app.infrastructure.persistence.models.exam_content import (
+                ComisionModel,
+                ExamenContenidoModel,
+            )
+
+            stmt = stmt.join(
+                ExamenContenidoModel,
+                ExamenContenidoModel.id == ProctoringSessionModel.examen_contenido_id,
+            ).join(
+                ComisionModel, ComisionModel.id == ExamenContenidoModel.comision_id
+            )
+            if comision_id:
+                stmt = stmt.where(ComisionModel.id == comision_id)
+            if materia_id:
+                stmt = stmt.where(ComisionModel.materia_id == materia_id)
+        stmt = stmt.order_by(ProctoringSessionModel.finalizada_en.desc())
+
+        result = await self._db.execute(stmt)
+        sesiones = result.scalars().unique().all()
+        return await self._armar_resumenes(sesiones)
+
+    async def catalogo_examenes_con_sesiones(self) -> list[tuple[str, str]]:
+        """``[(examen_contenido_id, titulo)]`` de los examenes con AL MENOS una
+        sesion FINALIZADA — catalogo del filtro "Examen" del Registro de sesiones
+        (C-76 tarea 17.2). El frontend NUNCA hardcodea esta lista; sale de aca.
+
+        Orden alfabetico por titulo (fallback al id si el examen no tiene titulo
+        resuelto — no deberia pasar, pero no hay que reventar el select por eso).
+        """
+        from app.infrastructure.persistence.models.exam_content import (
+            ExamenContenidoModel,
+        )
+
+        stmt = (
+            select(ExamenContenidoModel.id, ExamenContenidoModel.titulo)
+            .join(
+                ProctoringSessionModel,
+                ProctoringSessionModel.examen_contenido_id == ExamenContenidoModel.id,
+            )
+            .where(ProctoringSessionModel.finalizada_en.isnot(None))
+            .distinct()
+            .order_by(ExamenContenidoModel.titulo)
+        )
+        result = await self._db.execute(stmt)
+        return [(row.id, row.titulo or row.id) for row in result.all()]
+
+    async def _armar_resumenes(
+        self, sesiones: list[ProctoringSessionModel]
+    ) -> list[SesionResumenData]:
+        """Agrega eventos/discrepancias/score/contexto sobre un set de sesiones YA
+        resuelto (filtrado o no). Extraido de ``listar_sesiones`` para que
+        ``listar_sesiones_finalizadas`` (C-76 tarea 17) reuse EXACTAMENTE la misma
+        formula de score — nunca una copia hardcodeada."""
+        pesos_por_tipo = await self._pesos_vivos_por_tipo()
+        desactivados = await self._tipos_desactivados()
 
         if not sesiones:
             return []
@@ -283,9 +470,14 @@ class ProctoringRepository:
             sid: min(SCORE_CAP, total) for sid, total in score_por_sesion.items()
         }
 
-        # Ultimo evento por sesion (max ts_backend). Permite (a) diferenciar
-        # actividad reciente de calma en la UI y (b) auto-finalizar sesiones
-        # abandonadas. Sin eventos, cae a creada_en al armar el DTO.
+        # Ultimo evento por sesion (max ts_backend): diferencia actividad reciente
+        # de calma en la UI (ultimo_evento_en del DTO). NO se usa para finalizar
+        # nada — una sesion sin eventos de proctoring por un rato (alumno leyendo
+        # una consigna larga, nada sospechoso que reportar) es NORMAL en un examen
+        # largo; finalizarla de oficio le bloqueaba el envio de respuestas (409)
+        # a mitad de un examen legitimo. La sesion sale de "en vivo" SOLO por las
+        # vias explicitas: entrega del alumno, vencimiento del plazo del examen,
+        # o cierre administrativo.
         last_stmt = (
             select(
                 ProctoringEventModel.session_id,
@@ -299,34 +491,15 @@ class ProctoringRepository:
             row.session_id: row.ultimo for row in last_result
         }
 
-        # Auto-finalizar las que llevan IDLE_TIMEOUT_MIN sin actividad: la UI en
-        # vivo solo debe mostrar sesiones realmente activas (decision UX). La
-        # idempotencia la garantiza el guard `finalizada_en is None`.
-        now_utc = datetime.now(tz=timezone.utc)
-        cutoff = now_utc - timedelta(minutes=IDLE_TIMEOUT_MIN)
-        cambios = False
-        for s in sesiones:
-            if s.finalizada_en is not None:
-                continue
-            actividad = ultimo_por_sesion.get(s.id) or s.creada_en
-            if actividad is None:
-                continue
-            # Aseguramos timezone-aware antes de comparar (SQLite/PG pueden
-            # devolver naive en algunos drivers).
-            if actividad.tzinfo is None:
-                actividad = actividad.replace(tzinfo=timezone.utc)
-            if actividad < cutoff:
-                s.finalizada_en = actividad
-                cambios = True
-        if cambios:
-            await self._db.commit()
-
         # Contexto academico por examen_contenido_id (examen_contenido -> comision ->
         # materia). Resuelto server-side para que la Cola de revision NO dependa de
         # catalogos mock del frontend (bug "Sin examen asociado" en todos lados).
         ctx_por_contenido = await self._contexto_academico(
             [s.examen_contenido_id for s in sesiones if s.examen_contenido_id]
         )
+        # Identidad del alumno (C-76 tarea 17: columna "Alumno" del Registro de
+        # sesiones). Resuelta en LOTE (no una query por sesion) contra `usuario`.
+        nombres_por_sesion = await self._nombres_alumnos(sesiones)
 
         return [
             SesionResumenData(
@@ -342,20 +515,27 @@ class ProctoringRepository:
                 score=min(100, score_por_sesion.get(s.id, 0)),
                 ultimo_evento_en=ultimo_por_sesion.get(s.id) or s.creada_en,
                 examen_contenido_id=s.examen_contenido_id,
-                examen_titulo=ctx_por_contenido.get(s.examen_contenido_id, (None, None, None))[0],
-                comision_nombre=ctx_por_contenido.get(s.examen_contenido_id, (None, None, None))[1],
-                materia_nombre=ctx_por_contenido.get(s.examen_contenido_id, (None, None, None))[2],
+                examen_titulo=ctx_por_contenido.get(s.examen_contenido_id, (None, None, None, None))[0],
+                comision_nombre=ctx_por_contenido.get(s.examen_contenido_id, (None, None, None, None))[1],
+                materia_nombre=ctx_por_contenido.get(s.examen_contenido_id, (None, None, None, None))[2],
+                docente_id=ctx_por_contenido.get(s.examen_contenido_id, (None, None, None, None))[3],
+                alumno_idnumber=s.alumno_idnumber,
+                alumno_email=s.alumno_email,
+                alumno_nombre=nombres_por_sesion.get(s.id),
             )
             for s in sesiones
         ]
 
     async def _contexto_academico(
         self, contenido_ids: list[str]
-    ) -> dict[str, tuple[str | None, str | None, str | None]]:
-        """Mapea examen_contenido_id -> (examen_titulo, comision_nombre, materia_nombre).
+    ) -> dict[str, tuple[str | None, str | None, str | None, str | None]]:
+        """Mapea examen_contenido_id -> (examen_titulo, comision_nombre, materia_nombre,
+        docente_id).
 
         LEFT JOIN a comision y materia: un examen sin comision asociada (comision_id
-        NULL) resuelve el titulo del examen pero deja comision/materia en None.
+        NULL) resuelve el titulo del examen pero deja comision/materia/docente en
+        None. ``docente_id`` (C-76 bloque 8) es ``comision.docente_id`` — lo consume
+        el router para acotar la supervision en vivo del TUTOR por pertenencia.
         """
         if not contenido_ids:
             return {}
@@ -372,6 +552,7 @@ class ProctoringRepository:
                 ExamenContenidoModel.titulo,
                 ComisionModel.nombre.label("comision_nombre"),
                 MateriaModel.nombre.label("materia_nombre"),
+                ComisionModel.docente_id,
             )
             .select_from(ExamenContenidoModel)
             .outerjoin(
@@ -382,9 +563,62 @@ class ProctoringRepository:
         )
         rows = await self._db.execute(stmt)
         return {
-            row.id: (row.titulo, row.comision_nombre, row.materia_nombre)
+            row.id: (row.titulo, row.comision_nombre, row.materia_nombre, row.docente_id)
             for row in rows
         }
+
+    async def _nombres_alumnos(
+        self, sesiones: list[ProctoringSessionModel]
+    ) -> dict[str, str | None]:
+        """Mapea ``session.id -> nombre completo del alumno`` (C-76 tarea 17).
+
+        Resuelto en UNA consulta por lote (no una query por sesion, que no
+        escalaria con la paginacion): junta los ``alumno_idnumber``/``alumno_email``
+        distintos del set y los matchea contra ``usuario.username``/``usuario.email``,
+        mismo criterio que ``nombre_alumno()`` (single) y ``resultados_query``.
+        None si la sesion no tiene identidad persistida o no matchea ningun usuario
+        (la UI cae al idnumber/email crudo).
+        """
+        from app.infrastructure.persistence.models.transactional import UsuarioModel
+
+        idnumbers = {s.alumno_idnumber for s in sesiones if s.alumno_idnumber}
+        emails = {s.alumno_email for s in sesiones if s.alumno_email}
+        if not idnumbers and not emails:
+            return {}
+
+        from sqlalchemy import or_
+
+        condiciones = []
+        if idnumbers:
+            condiciones.append(UsuarioModel.username.in_(idnumbers))
+        if emails:
+            condiciones.append(UsuarioModel.email.in_(emails))
+
+        stmt = select(
+            UsuarioModel.username, UsuarioModel.email, UsuarioModel.nombre, UsuarioModel.apellido
+        ).where(or_(*condiciones))
+        rows = (await self._db.execute(stmt)).all()
+
+        por_username: dict[str, str] = {}
+        por_email: dict[str, str] = {}
+        for row in rows:
+            completo = " ".join(p for p in (row.nombre, row.apellido) if p)
+            if not completo:
+                continue
+            if row.username:
+                por_username[row.username] = completo
+            if row.email:
+                por_email[row.email] = completo
+
+        resultado: dict[str, str | None] = {}
+        for s in sesiones:
+            nombre = None
+            if s.alumno_idnumber and s.alumno_idnumber in por_username:
+                nombre = por_username[s.alumno_idnumber]
+            elif s.alumno_email and s.alumno_email in por_email:
+                nombre = por_email[s.alumno_email]
+            resultado[s.id] = nombre
+        return resultado
 
     async def finalizar_sesion(self, session_id: str) -> ProctoringSessionModel | None:
         """Setea finalizada_en = now() si y solo si es NULL.
@@ -401,11 +635,33 @@ class ProctoringRepository:
             await self._db.refresh(sesion)
         return sesion
 
+    async def eliminar_sesion_test(self, session_id: str) -> str:
+        """Elimina una sesion SOLO si ``modo == 'test'`` (C-76 tarea 20.1).
+
+        Las sesiones ``modo='test'`` son diagnostico de camara/mic SIN examen
+        real vinculado — no son evidencia academica. Las ``modo='examen'``
+        quedan PERMANENTEMENTE protegidas (regla dura #6/#7, cadena de
+        custodia — tarea 16): esta funcion las rechaza categoricamente, sin
+        excepciones (ni siquiera admin).
+
+        Devuelve ``'eliminada'`` | ``'no_encontrada'`` | ``'modo_examen'``. El
+        cascade de eventos/biometria lo resuelve el ``ON DELETE CASCADE`` de
+        las FKs (y el ``cascade="all, delete-orphan"`` del ORM).
+        """
+        sesion = await self._db.get(ProctoringSessionModel, session_id)
+        if sesion is None:
+            return "no_encontrada"
+        if sesion.modo != "test":
+            return "modo_examen"
+        await self._db.delete(sesion)
+        await self._db.commit()
+        return "eliminada"
+
     async def cerrar_forzado(
         self,
         session_id: str,
         motivo: str,
-        proctor_actor: str | None = None,
+        tutor_actor: str | None = None,
     ) -> ProctoringSessionModel | None:
         """Cierre FORZADO de la sesion por el proctor (C-15 3.3). Operativo, NO disciplinario.
 
@@ -423,25 +679,13 @@ class ProctoringRepository:
         if sesion.cierre_forzado_en is None:
             ahora = datetime.now(tz=timezone.utc)
             sesion.cierre_forzado_en = ahora
-            sesion.cierre_forzado_por = proctor_actor
+            sesion.cierre_forzado_por = tutor_actor
             sesion.cierre_forzado_motivo = motivo
             if sesion.finalizada_en is None:
                 sesion.finalizada_en = ahora
             await self._db.commit()
             await self._db.refresh(sesion)
         return sesion
-
-    async def eliminar_sesion(self, session_id: str) -> bool:
-        """Elimina una sesion por ID. Los eventos y biometria se borran por FK CASCADE.
-
-        Devuelve True si existia y se elimino, False si no existia.
-        """
-        sesion = await self._db.get(ProctoringSessionModel, session_id)
-        if sesion is None:
-            return False
-        await self._db.delete(sesion)
-        await self._db.commit()
-        return True
 
     # -------------------------------------------------------------------------
     # Events
@@ -471,9 +715,23 @@ class ProctoringRepository:
         face_count_cliente: int | None = None,
         face_count_servidor: int | None = None,
         veredicto_reinferencia: str = "no_evaluado",
+        worm_object_key: str | None = None,
+        worm_uri: str | None = None,
+        worm_retain_until: datetime | None = None,
+        id: str | None = None,
     ) -> ProctoringEventModel:
-        """Persiste un evento con todos los campos de re-inferencia e integridad."""
-        evento = ProctoringEventModel(
+        """Persiste un evento con todos los campos de re-inferencia e integridad.
+
+        ``worm_*`` (c-77): referencia al deposito WORM adicional en MinIO. NULL
+        cuando MinIO no esta configurado (Render hoy) — el screenshot en Postgres
+        sigue siendo la fuente de verdad, sin cambios.
+
+        ``id``: opcional. Si el caller ya deposito en el bucket WORM (c-77) usando
+        un ``object_key`` derivado del id del evento, lo pasa explicito para que
+        coincida con el id que se persiste aca. Si es None, la columna usa su
+        ``server_default`` (``gen_random_uuid()``), igual que siempre.
+        """
+        campos: dict = dict(
             session_id=session_id,
             tipo=tipo,
             severidad=severidad,
@@ -484,7 +742,16 @@ class ProctoringRepository:
             face_count_cliente=face_count_cliente,
             face_count_servidor=face_count_servidor,
             veredicto_reinferencia=veredicto_reinferencia,
+            worm_object_key=worm_object_key,
+            worm_uri=worm_uri,
+            worm_retain_until=worm_retain_until,
         )
+        if id is not None:
+            # Explicito SOLO si el caller ya derivo el object_key WORM del id
+            # (c-77): si es None, se deja que server_default (gen_random_uuid())
+            # genere el id como siempre.
+            campos["id"] = id
+        evento = ProctoringEventModel(**campos)
         self._db.add(evento)
         await self._db.commit()
         await self._db.refresh(evento)

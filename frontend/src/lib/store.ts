@@ -129,7 +129,7 @@ interface AppState {
   // Sesión activa de proctoring — C-46
   // ---------------------------------------------------------------------------
   /**
-   * ID de la sesión de proctoring activa en el backend slim (C-45).
+   * ID de la sesión de proctoring activa en el backend activeexam (C-45).
    * Null cuando no hay sesión activa (modo mock / sin grabar / sin examen).
    * Se usa para acoplamiento entre Biometria.tsx (envío biométrico) y el harness.
    * D6 del design.md: Zustand evita prop drilling entre componentes no relacionados.
@@ -165,7 +165,7 @@ interface AppState {
    * Mapa sessionId → decisión humana del revisor. El sistema nunca sanciona:
    * el score solo prioriza; la decisión disciplinaria es siempre humana.
    *
-   * Registro local de la demo (el backend slim no tiene tabla de decisiones).
+   * Registro local de la demo (el backend activeexam no tiene tabla de decisiones).
    * Valor inicial: {} (sin decisiones registradas).
    */
   decisionesRevisor: Record<string, DecisionRevisor>;

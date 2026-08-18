@@ -1,12 +1,12 @@
-"""010 - solicitudes de via alternativa (C-63, rama slim).
+"""010 - solicitudes de via alternativa (C-63, rama activeexam).
 
 Revision ID: 0010
-Revises: 0009 (branch slim)
+Revises: 0009 (branch activeexam)
 Create Date: 2026-06-08
 
-RAMA: slim
-  down_revision = "0009"   <- rama slim; no depende de rama principal
-  branch_labels = None     <- hereda label "slim" de la cadena 0005 -> 0008 -> 0009
+RAMA: activeexam
+  down_revision = "0009"   <- rama activeexam; no depende de rama principal
+  branch_labels = None     <- hereda label "activeexam" de la cadena 0005 -> 0008 -> 0009
   depends_on    = None     <- SIN dependencia de migraciones de la rama principal
 
 PROPOSITO:
@@ -26,11 +26,11 @@ PROPOSITO:
     - No hay columna ``rechazado`` (Non-Goal de C-63; se agrega en c-47).
 
 ROLLBACK:
-  alembic downgrade slim@0009  -> elimina tabla + tipo ENUM.
+  alembic downgrade activeexam@0009  -> elimina tabla + tipo ENUM.
 
 VERIFICACION:
-  alembic upgrade slim@head   -> aplica 0005->0008->0009->0010 contra postgres:16-alpine
-  alembic history             -> debe mostrar 0010 al tope de la rama slim
+  alembic upgrade activeexam@head   -> aplica 0005->0008->0009->0010 contra postgres:16-alpine
+  alembic history             -> debe mostrar 0010 al tope de la rama activeexam
 """
 
 import sqlalchemy as sa
@@ -43,8 +43,8 @@ from alembic import op
 # ---------------------------------------------------------------------------
 
 revision = "0010"
-down_revision = "0009"   # rama slim — NO la rama principal
-branch_labels = None     # hereda el label "slim" de la cadena
+down_revision = "0009"   # rama activeexam — NO la rama principal
+branch_labels = None     # hereda el label "activeexam" de la cadena
 depends_on = None        # SIN dependencia de migraciones de la rama principal
 
 TIMESTAMPTZ = sa.TIMESTAMP(timezone=True)

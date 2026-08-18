@@ -1,7 +1,8 @@
 /**
- * ChatBox — Canal de chat bidireccional proctor↔alumno (C-15).
+ * ChatBox — Canal de chat bidireccional tutor↔alumno (C-15; actor renombrado
+ * de 'proctor' a 'tutor' en c-76 bloque 6, D4).
  *
- * Reutilizable por ambos lados: el `yo` indica quién soy ('alumno' | 'proctor'),
+ * Reutilizable por ambos lados: el `yo` indica quién soy ('alumno' | 'tutor'),
  * para alinear y colorear mis mensajes a la derecha y los del otro a la izquierda.
  *
  * Hace polling incremental de `listarMensajesChat(sessionId, ultimoTs)` cada
@@ -20,14 +21,14 @@ const POLL_MS = 3500;
 
 /**
  * Cooldown anti-flood entre mensajes del ALUMNO (segundos). No bloquea la
- * comunicación (puede mandar varios sin esperar respuesta del proctor), solo
- * evita el envío en ráfaga. El proctor responde sin cooldown.
+ * comunicación (puede mandar varios sin esperar respuesta del tutor), solo
+ * evita el envío en ráfaga. El tutor responde sin cooldown.
  */
 const COOLDOWN_ALUMNO_S = 5;
 
 const AUTOR_LABEL: Record<AutorChat, string> = {
   alumno: 'Estudiante',
-  proctor: 'Proctor',
+  tutor: 'Tutor',
 };
 
 function horaCorta(iso: string): string {
@@ -39,7 +40,7 @@ function horaCorta(iso: string): string {
 export function ChatBox({
   sessionId,
   yo,
-  titulo = 'Canal con el proctor',
+  titulo = 'Canal con el tutor',
   altura = 'h-[160px]',
   readOnly = false,
 }: {
@@ -200,7 +201,7 @@ export function ChatBox({
           {aplicaCooldown && cooldown > 0 && (
             <p className="text-[11px] text-on-surface-variant flex items-center gap-1">
               <Icon name="check_circle" className="text-[13px] text-success" fill />
-              Mensaje enviado — el proctor lo verá. Podés escribir de nuevo en {cooldown}s.
+              Mensaje enviado — el tutor lo verá. Podés escribir de nuevo en {cooldown}s.
             </p>
           )}
         </>

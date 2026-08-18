@@ -2,23 +2,22 @@ import { StaffShell } from '../ui/shells';
 import { Card, Icon } from '../ui/components';
 import { STAFF_NAV } from '../ui/nav';
 import { useAuth } from '../lib/authStore';
-import { legajoVisible } from '../lib/legajo';
 import MiCuentaCampus, { MiCuentaCampusAyuda } from './configuracion/MiCuentaCampus';
 import SeccionSeguridad from './configuracion/SeccionSeguridad';
 import type { Rol } from '../lib/types';
 
+// c-76: 'proctor' y 'revisor' eliminados del enum Rol — el coordinador absorbe
+// la supervisión global en vivo y el veredicto.
+// c-76-2: 'admin_examenes' y 'auditor' eliminados del enum Rol — solo existe
+// un rol "Admin" (admin_sistema).
 const ROL_LABEL: Record<Rol, string> = {
   admin_sistema:   'Admin',
-  admin_examenes:  'Admin exámenes',
   tutor:           'Tutor',
   coordinador:     'Coordinador',
-  proctor:         'Proctor',
-  revisor:         'Revisor',
-  auditor:         'Auditor',
   estudiante:      'Estudiante',
 };
 
-const ACADEMICO: Rol[] = ['tutor', 'admin_examenes', 'coordinador', 'admin_sistema'];
+const ACADEMICO: Rol[] = ['tutor', 'coordinador', 'admin_sistema'];
 
 function formatFecha(iso: string | undefined): string {
   if (!iso) return '—';
@@ -90,11 +89,9 @@ export default function Perfil() {
 
           <div className="grid grid-cols-1 gap-x-10 gap-y-6 sm:grid-cols-2">
             <InfoField label="Nombre completo">{nombreCompleto}</InfoField>
-            {legajoVisible(principal?.id_institucional) && (
-              <InfoField label="Legajo / Usuario">
-                {legajoVisible(principal?.id_institucional)}
-              </InfoField>
-            )}
+            <InfoField label="Usuario">
+              <span className="font-mono">{principal?.username ?? '—'}</span>
+            </InfoField>
 
             <InfoField label="Email">
               {principal?.email ?? '—'}

@@ -4,14 +4,14 @@
 TBD - created by archiving change c-68-configuracion-sistema-funcional. Update Purpose after archive.
 ## Requirements
 ### Requirement: Configuración del Sistema persistida como fuente de verdad
-El sistema SHALL persistir la configuración global del proctoring en una tabla tipada `configuracion_sistema` (registro singleton global) que abarque: umbrales de detección (`face_absent_ms`, `multiple_faces_frames`, `gaze_deviation_threshold`, `gaze_sustained_ms`, `gaze_fixation_tolerance`), `umbral_cola_revision`, `detectores_activos`, `retencion_dias_default` y `consent_version_vigente`. Esta tabla SHALL existir tanto en el esquema **full** como en el **slim** (Railway prod). Los valores SHALL ser la fuente de verdad autoritativa server-side (RN-GLB-01, cliente = sensor no confiable).
+El sistema SHALL persistir la configuración global del proctoring en una tabla tipada `configuracion_sistema` (registro singleton global) que abarque: umbrales de detección (`face_absent_ms`, `multiple_faces_frames`, `gaze_deviation_threshold`, `gaze_sustained_ms`, `gaze_fixation_tolerance`), `umbral_cola_revision`, `detectores_activos`, `retencion_dias_default` y `consent_version_vigente`. Esta tabla SHALL existir tanto en el esquema **full** como en el **activeexam** (Railway prod). Los valores SHALL ser la fuente de verdad autoritativa server-side (RN-GLB-01, cliente = sensor no confiable).
 
 #### Scenario: La configuración persiste entre reinicios
 - **WHEN** un `admin_sistema` edita un umbral y reinicia el backend
 - **THEN** el valor editado SHALL leerse desde `configuracion_sistema` (no desde una constante hardcodeada ni desde memoria volátil)
 
-#### Scenario: Tabla presente en slim y full
-- **WHEN** se inspecciona el esquema de la base de datos de producción (slim/Railway) y el esquema full
+#### Scenario: Tabla presente en activeexam y full
+- **WHEN** se inspecciona el esquema de la base de datos de producción (activeexam/Railway) y el esquema full
 - **THEN** la tabla `configuracion_sistema` SHALL existir en ambos
 
 ### Requirement: Edición de configuración restringida a admin_sistema con MFA

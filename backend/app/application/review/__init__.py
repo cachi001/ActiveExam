@@ -1,4 +1,4 @@
-"""Application del review (c-16 slim)."""
+"""Application del review (c-16 activeexam)."""
 
 from app.application.review.service import ReviewDecisionService
 

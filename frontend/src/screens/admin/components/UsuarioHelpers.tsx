@@ -5,6 +5,7 @@ import {
   ROL_LABELS,
   ROLES_VALIDOS,
   ROLES_FORMULARIO,
+  ROLES_TODOS,
 } from '../../../lib/constants/roles';
 import type { UsuarioAdmin } from '../../../lib/types';
 
@@ -13,28 +14,26 @@ export { ROL_DESCRIPCIONES, ROL_LABELS, ROLES_VALIDOS, ROLES_FORMULARIO };
 export type ModoFormulario = 'crear' | 'editar';
 
 export interface FormState {
-  id_institucional: string;
   email: string;
+  // Solo editable en modoForm='crear' (requerido). En 'editar' se muestra
+  // de solo lectura — no es parte de EditarUsuarioRequest.
+  username: string;
   nombre: string;
   apellido: string;
-  password: string;
   roles: string[];
 }
 
 export const FORM_VACIO: FormState = {
-  id_institucional: '',
   email: '',
+  username: '',
   nombre: '',
   apellido: '',
-  password: '',
   roles: [],
 };
 
 export const OPCIONES_ROL = [
   { value: '', label: 'Todos los roles' },
-  { value: 'admin_sistema', label: 'Administrador' },
-  { value: 'proctor', label: 'Proctor' },
-  { value: 'estudiante', label: 'Estudiante' },
+  ...ROLES_TODOS.map((rol) => ({ value: rol, label: ROL_LABELS[rol] ?? rol })),
 ];
 
 export const OPCIONES_ESTADO = [

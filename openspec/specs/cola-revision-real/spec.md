@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Define la pantalla de cola de revisión (`Revisor.tsx`) conectada al backend slim real (con fallback mock por `USE_REAL_BACKEND`), filtrando exclusivamente las sesiones de alto riesgo (`score >= UMBRAL_COLA_REVISION = 60`), ordenadas por prioridad y enriquecidas con contexto académico. Incluye el panel `ColaPanelDecision` con tres acciones humanas y disclaimer L2.5 inamovible — el sistema nunca sanciona, el score solo prioriza y la decisión es del revisor. Aporta también los tipos (`DecisionRevisor`) y campos (`exam_id`) que el store y el catálogo requieren.
+Define la pantalla de cola de revisión (`Revisor.tsx`) conectada al backend activeexam real (con fallback mock por `USE_REAL_BACKEND`), filtrando exclusivamente las sesiones de alto riesgo (`score >= UMBRAL_COLA_REVISION = 60`), ordenadas por prioridad y enriquecidas con contexto académico. Incluye el panel `ColaPanelDecision` con tres acciones humanas y disclaimer L2.5 inamovible — el sistema nunca sanciona, el score solo prioriza y la decisión es del revisor. Aporta también los tipos (`DecisionRevisor`) y campos (`exam_id`) que el store y el catálogo requieren.
 
 ## Requirements
 

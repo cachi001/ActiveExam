@@ -15,6 +15,7 @@ export const DESC_EVENTO: Record<TipoEvento, string> = {
   corte_conectividad_prolongado: 'Corte de conectividad prolongado (> 5 min) con el canal de eventos.',
   recarga_pagina: 'El estudiante recargó la página y volvió enseguida (reapertura benigna).',
   reanudacion_tardia: 'El estudiante reanudó la rendición tras una ausencia prolongada.',
+  captura_pausa: 'Screenshot periódico tomado durante una pausa autorizada en curso.',
 };
 
 export function descripcionEvento(t: TipoEvento): string {
@@ -39,6 +40,7 @@ export const TIPO_EVENTO_LABEL: Record<TipoEvento, string> = {
   corte_conectividad_prolongado: 'Corte de conectividad',
   recarga_pagina: 'Recarga de página',
   reanudacion_tardia: 'Reanudación tardía',
+  captura_pausa: 'Captura en pausa',
 };
 
 /** Tono del Badge por severidad — el color DEBE acompañar a la palabra.

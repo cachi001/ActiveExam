@@ -20,7 +20,7 @@ import pytest
 
 from app.application.consent.service import (
     ACCION_VIA_ALTERNATIVA,
-    TOPIC_ESCALACION_PROCTOR,
+    TOPIC_ESCALACION_COORDINADOR,
     ConsentService,
 )
 from app.domain.audit_chain import AuditEntry, construir_cadena, verificar_cadena
@@ -152,7 +152,7 @@ def test_choose_alternative_audita_y_escala_sin_abortar() -> None:
         )
         assert msg_id == "msg-1"
         # Escalo a proctor por la cola.
-        assert queue.enqueued[0][0] == TOPIC_ESCALACION_PROCTOR
+        assert queue.enqueued[0][0] == TOPIC_ESCALACION_COORDINADOR
         # Dejo traza inmutable y encadenada en el audit log.
         entradas = await audit.list()
         assert entradas[0].accion == ACCION_VIA_ALTERNATIVA

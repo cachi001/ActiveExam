@@ -17,7 +17,7 @@ PROPOSITO:
   Es ADITIVA. No referencia usuario (el nonce vive ANTES de saber quién es).
 
 ROLLBACK:
-  alembic downgrade slim@0063 → dropea la tabla nueva. No toca nada existente.
+  alembic downgrade activeexam@0063 → dropea la tabla nueva. No toca nada existente.
 """
 
 from __future__ import annotations

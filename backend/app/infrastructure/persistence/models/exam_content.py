@@ -1,7 +1,7 @@
 ﻿"""Modelos ORM para el contenido de examen (C-69, secciones 1-2; C-74).
 
 Tablas: examen_contenido, pregunta_examen, opcion_respuesta, categoria_pregunta.
-Aditivas — migración slim 0026 (base), 0053-0054 (C-74 categorías).
+Aditivas — migración activeexam 0026 (base), 0053-0054 (C-74 categorías).
 
 D3 (regla dura #6): es_correcta vive server-side, NUNCA viaja al cliente.
 D11: comision_id es NULLABLE en examen_contenido (FK a comision se agrega en sección 6).
@@ -321,7 +321,7 @@ class ExamenContenidoModel(Base):
         comment="FK a comision se agrega en sección 6 (D11: nullable).",
     )
     # D12 (parte B): destino del write-back de nota POR EXAMEN. NULLABLE — si es
-    # NULL, el write-back cae al valor global de config_slim (compat con exámenes
+    # NULL, el write-back cae al valor global de config_activeexam (compat con exámenes
     # importados antes de la migración 0030). cmid = course-module de calificación.
     moodle_courseid: Mapped[int | None] = mapped_column(
         Integer,

@@ -76,39 +76,24 @@ def exigir_capacidad(principal: AuthenticatedPrincipal, capacidad: str) -> None:
 def autorizar_proctor(
     principal: AuthenticatedPrincipal,
 ) -> None:
-    """RBAC del PROCTOR con alcance GLOBAL (C-50, D1).
+    """RBAC de supervision GLOBAL en vivo (C-50, D1).
 
-    El proctor puede observar TODOS los exámenes activos sin restriccion de
-    asignacion. Basta con el rol PROCTOR y MFA satisfecho. Un rol superior
-    (ADMIN_EXAMENES / ADMIN_SISTEMA) tambien pasa sin requerir MFA adicional.
+    c-76: el rol PROCTOR fue eliminado; el COORDINADOR absorbe la supervision
+    global. Basta con el rol COORDINADOR y MFA satisfecho. Un rol superior
+    (ADMIN_SISTEMA) tambien pasa sin requerir MFA adicional.
+
+    NOTA (c-76): esta funcion NO esta cableada a ningun endpoint vivo — la
+    supervision se gatea por capacidad (`supervisar_vivo`) en el router de
+    proctoring. Se conserva por el contrato C-50 (dominio + servicio + tests).
+    El rol se remapeo PROCTOR -> COORDINADOR por el default aprobado de c-76.
 
     La relajacion del minimo privilegio queda justificada en el DPIA (C-01).
     El sistema NUNCA sanciona (L2.5): esta funcion solo controla acceso."""
-    if principal.tiene_algun_rol({Rol.ADMIN_EXAMENES, Rol.ADMIN_SISTEMA}):
+    if principal.tiene_rol(Rol.ADMIN_SISTEMA):
         return
-    if not principal.tiene_rol(Rol.PROCTOR):
-        raise ForbiddenError("Se requiere rol proctor (o admin) para observar el examen.")
+    if not principal.tiene_rol(Rol.COORDINADOR):
+        raise ForbiddenError("Se requiere rol coordinador (o admin) para observar el examen.")
     verificar_mfa(principal)
-
-
-def autorizar_revisor_sobre_jurisdiccion(
-    principal: AuthenticatedPrincipal,
-    jurisdiccion_recurso: str,
-) -> None:
-    """RBAC contextual del REVISOR (D3): solo su jurisdiccion.
-
-    Un revisor cuya ``jurisdiccion`` no coincide con la del recurso -> 403. Un
-    coordinador/admin no esta limitado por jurisdiccion (escala/operacion global)."""
-    if principal.tiene_algun_rol({Rol.COORDINADOR, Rol.ADMIN_SISTEMA}):
-        verificar_mfa(principal)
-        return
-    if not principal.tiene_rol(Rol.REVISOR):
-        raise ForbiddenError("Se requiere rol revisor para la cola de revision.")
-    verificar_mfa(principal)
-    if principal.jurisdiccion is None or principal.jurisdiccion != jurisdiccion_recurso:
-        raise ForbiddenError(
-            "El revisor no puede cruzar su jurisdiccion (aislamiento contextual, `03`)."
-        )
 
 
 def puede_acceder_a_evidencia(principal: AuthenticatedPrincipal) -> None:
@@ -117,12 +102,12 @@ def puede_acceder_a_evidencia(principal: AuthenticatedPrincipal) -> None:
     El registro del proposito declarado en el audit log lo hace la capa de
     aplicacion (C-05 ``AuditLogRepository``); aqui solo se decide el acceso. El
     sistema no sanciona (L2.5): esto controla acceso, no decide el caso."""
+    # c-76: PROCTOR y REVISOR eliminados; el COORDINADOR (ya presente) cubre el
+    # acceso a evidencia que tenian ambos. c-76-2: AUDITOR eliminado, absorbido
+    # por ADMIN_SISTEMA. Sin duplicado — el set solo se achica.
     roles_evidencia = {
-        Rol.PROCTOR,
-        Rol.REVISOR,
         Rol.COORDINADOR,
         Rol.ADMIN_SISTEMA,
-        Rol.AUDITOR,
     }
     if not principal.tiene_algun_rol(roles_evidencia):
         raise ForbiddenError("El rol no tiene acceso a evidencia (`03`).")
@@ -134,7 +119,7 @@ def puede_acceder_a_evidencia(principal: AuthenticatedPrincipal) -> None:
 # comision. Un coordinador o un admin operan sobre cualquier examen por diseno
 # (escala/operacion global); el docente, no.
 _ROLES_SIN_LIMITE_DE_PERTENENCIA: frozenset[Rol] = frozenset(
-    {Rol.ADMIN_SISTEMA, Rol.ADMIN_EXAMENES, Rol.COORDINADOR}
+    {Rol.ADMIN_SISTEMA, Rol.COORDINADOR}
 )
 
 
@@ -191,6 +176,40 @@ def autorizar_docente_sobre_materia(
         raise ForbiddenError("Se requiere rol tutor (o alcance institucional).")
     if not es_docente_de_alguna_comision_de_la_materia:
         raise ForbiddenError("La materia no tiene ninguna comisión a cargo de este docente.")
+
+
+def autorizar_supervision_vivo_sobre_sesion(
+    principal: AuthenticatedPrincipal,
+    docente_id_de_la_sesion: str | None,
+) -> None:
+    """Pertenencia del TUTOR sobre la supervision en vivo de una sesion (C-76 D2).
+
+    ``supervisar_vivo`` habilita el ROL (COORDINADOR/ADMIN_SISTEMA/TUTOR, tras
+    eliminarse tambien REVISOR — c-76), pero el TUTOR queda ademas ACOTADO por
+    pertenencia: solo ve/opera sesiones de examenes cuya comision tiene a SU
+    usuario como ``docente_id`` (asignar_docente, C-73 §9).
+    COORDINADOR/ADMIN_SISTEMA son de alcance institucional (Q5 del design c-76:
+    el coordinador es global) y no se acotan.
+
+    ``docente_id_de_la_sesion`` es la derivacion sesion -> examen_contenido ->
+    comision -> docente_id. ``None`` (sesion 'test' sin examen vinculado, examen
+    sin comision, o comision sin docente) NO habilita al tutor: sin dueño
+    identificable, solo pasan los roles institucionales.
+
+    No decide nada sobre integridad academica (L2.5): esto es control de acceso."""
+    if principal.tiene_algun_rol({Rol.COORDINADOR, Rol.ADMIN_SISTEMA}):
+        return
+    if not principal.tiene_rol(Rol.TUTOR):
+        # Capability gate ya exige supervisar_vivo antes de llegar acá; este caso
+        # es defensivo (rol desconocido con la capacidad de otra forma).
+        raise ForbiddenError("Se requiere rol tutor (o alcance institucional).")
+    if docente_id_de_la_sesion is None:
+        raise ForbiddenError(
+            "La sesion no tiene un docente a cargo identificable: "
+            "solo un rol institucional puede operarla."
+        )
+    if principal.subject != docente_id_de_la_sesion:
+        raise ForbiddenError("La sesion pertenece a la comision de otro docente.")
 
 
 def autorizar_docente_sobre_comision(

@@ -251,12 +251,23 @@ const PAYLOAD_KEY_LABELS: Record<string, string> = {
   faces: 'Rostros',
   rostros: 'Rostros',
   trigger_evidence: 'Disparó evidencia',
+  // C-76 (15.5): hash del contenido pegado — evidencia REAL (nunca el contenido).
+  clipboard_sha256: 'Hash de lo pegado',
   gaze: 'Dirección de mirada',
   gaze_x: 'Mirada X',
   gaze_y: 'Mirada Y',
   yaw: 'Yaw',
   pitch: 'Pitch',
   roll: 'Roll',
+  accion: 'Acción',
+};
+
+/** Valores de `accion` del evento `copiar_pegar` (stateTransitionRules.ts envía
+ * el nombre crudo del evento del navegador: 'copy' | 'paste' | 'cut'). */
+const ACCION_LABELS: Record<string, string> = {
+  copy: 'Copiar',
+  paste: 'Pegar',
+  cut: 'Cortar',
 };
 
 /**
@@ -330,6 +341,12 @@ export function formatDuracionMs(ms: number): string {
  */
 export function formatPayloadValue(key: string, value: unknown): string {
   if (value === null || value === undefined) return '—';
+  if (key === 'accion' && typeof value === 'string') return ACCION_LABELS[value] ?? value;
+  // Hash largo: truncar igual que el sha256 del screenshot (16 chars + …), no
+  // volcar los 64 caracteres en un chip.
+  if (key === 'clipboard_sha256' && typeof value === 'string') {
+    return value.length > 16 ? `${value.slice(0, 16)}…` : value;
+  }
   const esMs = key === 'ms' || /_ms$/.test(key);
   if (esMs && typeof value === 'number') return formatDuracionMs(value);
   // Claves en SEGUNDOS (p. ej. `ausencia_seg`): reusar el mismo formateo legible

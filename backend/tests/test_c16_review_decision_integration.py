@@ -1,4 +1,4 @@
-"""Tests de integración del review.decide contra slim DB real — UN SOLO PASO
+"""Tests de integración del review.decide contra activeexam DB real — UN SOLO PASO
 (colapsa c-16 + c-71 slice 2).
 
 Cubre migración 0052 (columnas decision_motivo/decision_evidencia_ids en
@@ -34,9 +34,9 @@ from app.infrastructure.persistence.repositories.review import (
     SqlReviewAuditor,
     SqlSessionReviewRepository,
 )
-from app.infrastructure.persistence.session_slim import (
-    create_slim_engine,
-    create_slim_session_factory,
+from app.infrastructure.persistence.session_activeexam import (
+    create_activeexam_engine,
+    create_activeexam_session_factory,
 )
 
 
@@ -45,7 +45,7 @@ def _factory() -> async_sessionmaker[AsyncSession]:
         "DATABASE_URL",
         "postgresql+asyncpg://proctoring:dev-only-change-me@postgres:5432/proctoring",
     )
-    return create_slim_session_factory(create_slim_engine(url))
+    return create_activeexam_session_factory(create_activeexam_engine(url))
 
 
 def _suf() -> str:

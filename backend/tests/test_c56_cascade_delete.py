@@ -26,17 +26,12 @@ def _monkeyenv(monkeypatch: pytest.MonkeyPatch) -> None:
     """Vars minimas para que Settings arranque."""
     monkeypatch.setenv(
         "DATABASE_URL",
-        os.environ.get("DATABASE_URL", "postgresql+asyncpg://app@db:5432/proctoring"),
+        os.environ.get("DATABASE_URL", "postgresql+asyncpg://app@postgres:5432/proctoring"),
     )
     monkeypatch.setenv("STORAGE_ENDPOINT", "http://minio:9000")
     monkeypatch.setenv("STORAGE_ACCESS_KEY", "k")
     monkeypatch.setenv("STORAGE_SECRET_KEY", "s")
     monkeypatch.setenv("STORAGE_BUCKET_EVIDENCE", "evidence")
-    monkeypatch.setenv("KEYCLOAK_ISSUER", "http://keycloak:8080/realms/proctoring")
-    monkeypatch.setenv(
-        "KEYCLOAK_JWKS_URL",
-        "http://keycloak:8080/realms/proctoring/protocol/openid-connect/certs",
-    )
     monkeypatch.setenv("JWT_AUDIENCE", "proctoring-api")
     monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://tempo:4317")
     monkeypatch.setenv("EMBEDDING_ENCRYPTION_KEY", Fernet.generate_key().decode("ascii"))
@@ -72,7 +67,7 @@ async def test_cascade_delete_usuario_elimina_foto_y_embedding(
     # --- Setup: crear usuario + foto + embedding cifrado --------------------
     async with factory() as session:
         usuario = UsuarioModel(
-            id_institucional="cascade-test-01",
+            username="cascade-test-01",
             email="cascade-test-01@demo.test",
             roles=["estudiante"],
             password_hash="x",

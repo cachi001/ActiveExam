@@ -32,6 +32,8 @@ export const configSistemaApi = {
     chat_habilitado?: boolean;
     pausas_habilitadas?: boolean;
     pausa_max_min?: number;
+    // C-76 bloque 4: cantidad máxima de pausas (aprobada+finalizada) por sesión.
+    pausas_max_por_sesion?: number;
   }> {
     return await realFetch('/config/effective', { method: 'GET' });
   },
@@ -57,6 +59,8 @@ export const configSistemaApi = {
     chat_habilitado?: boolean;
     pausas_habilitadas?: boolean;
     pausa_max_min?: number;
+    // C-76 bloque 4: cantidad máxima de pausas (aprobada+finalizada) por sesión.
+    pausas_max_por_sesion?: number;
   }): Promise<{
     version: number;
     face_absent_ms: number;

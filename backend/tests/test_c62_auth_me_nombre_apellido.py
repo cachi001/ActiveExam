@@ -10,6 +10,8 @@ Sin mocks de DB (regla dura #4).
 
 from __future__ import annotations
 
+import os
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -19,22 +21,18 @@ from app.infrastructure.auth.hashing import hashear_password
 from app.infrastructure.auth.jwks_cache import JwksCache
 from app.infrastructure.auth.jwt_validator import JwtValidator
 from app.infrastructure.auth.verifiers import build_hs256_verify_production
-from app.infrastructure.auth.verifiers import build_hs256_verify
 from app.main import create_app
 
 _ISSUER = "activeexam-auth"
 _AUD = "proctoring-api"
 _SECRET_STR = "test-jwt-own-secret-256bits-at-least"
-_SECRET_BYTES = _SECRET_STR.encode()
 
 _ENV: dict[str, str] = {
-    "DATABASE_URL": "postgresql+asyncpg://app@db:5432/proctoring",
+    "DATABASE_URL": os.environ.get("DATABASE_URL", "postgresql+asyncpg://app@postgres:5432/proctoring"),
     "STORAGE_ENDPOINT": "http://minio:9000",
     "STORAGE_ACCESS_KEY": "k",
     "STORAGE_SECRET_KEY": "s",
     "STORAGE_BUCKET_EVIDENCE": "evidence",
-    "KEYCLOAK_ISSUER": "http://keycloak:8080/realms/proctoring",
-    "KEYCLOAK_JWKS_URL": "http://keycloak:8080/realms/proctoring/protocol/openid-connect/certs",
     "JWT_AUDIENCE": _AUD,
     "JWT_OWN_SECRET": _SECRET_STR,
     "JWT_OWN_ISSUER": _ISSUER,
@@ -50,20 +48,17 @@ def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     settings = Settings()
     app = create_app(settings)
 
+    # Validador de test (JWT propio HS256-only, sin Keycloak).
     cache = JwksCache(lambda: {"keys": []}, ttl_seconds=3600)
-    policy = TokenPolicy(
-        issuers_aceptados=frozenset({_ISSUER, settings.keycloak_issuer}),
-        audience=_AUD,
-    )
+    policy = TokenPolicy(issuers_aceptados=frozenset({_ISSUER}), audience=_AUD)
     verify_hs256 = build_hs256_verify_production(_SECRET_STR)
-    verify_rs256 = build_hs256_verify(_SECRET_BYTES)
     app.state.jwt_validator = JwtValidator(
         jwks_cache=cache,
         policy=policy,
-        verify_fn=verify_rs256,
-        verify_fn_hs256=verify_hs256,
+        verify_fn=verify_hs256,
+        verify_fn_hs256=None,
         own_issuer=_ISSUER,
-        keycloak_issuer=settings.keycloak_issuer,
+        rs256_issuer=None,
     )
     return TestClient(app)
 
@@ -80,7 +75,7 @@ async def test_me_devuelve_nombre_y_apellido(client: TestClient) -> None:
 
     async with session_factory() as session:
         usuario = UsuarioModel(
-            id_institucional="test-me-user-con-nombre",
+            username="test-me-user-con-nombre",
             email="test-me-nombre@demo.test",
             nombre="Ana",
             apellido="García",
@@ -113,7 +108,7 @@ async def test_me_devuelve_nombre_y_apellido(client: TestClient) -> None:
 
         assert body["nombre"] == "Ana", f"nombre esperado 'Ana', recibido: {body.get('nombre')}"
         assert body["apellido"] == "García", f"apellido esperado 'García', recibido: {body.get('apellido')}"
-        assert body["id_institucional"] == "test-me-user-con-nombre"
+        assert body["username"] == "test-me-user-con-nombre"
         assert "estudiante" in body["roles"]
 
     finally:
@@ -137,7 +132,7 @@ async def test_me_devuelve_null_cuando_nombre_y_apellido_son_null(client: TestCl
 
     async with session_factory() as session:
         usuario = UsuarioModel(
-            id_institucional="test-me-user-sin-nombre",
+            username="test-me-user-sin-nombre",
             email="test-me-sin-nombre@demo.test",
             nombre=None,
             apellido=None,

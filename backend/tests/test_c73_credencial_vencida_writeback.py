@@ -109,7 +109,7 @@ def writeback_svc(cred_service):
 
 async def _crear_docente(factory, legajo: str, creados: list[str]) -> str:
     async with factory() as s:
-        u = UsuarioModel(id_institucional=legajo, email=f"{legajo.lower()}@uni.edu")
+        u = UsuarioModel(username=legajo, email=f"{legajo.lower()}@uni.edu")
         s.add(u)
         await s.flush()
         uid = u.id

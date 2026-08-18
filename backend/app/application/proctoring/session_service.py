@@ -1,4 +1,4 @@
-"""Servicio de aplicacion para sesiones de proctoring slim.
+"""Servicio de aplicacion para sesiones de proctoring activeexam.
 
 Orquesta la creacion, listado y detalle de sesiones. No depende de Keycloak,
 Vault ni MinIO. La logica de scoring se delega a scoring.py para evitar
@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.application.proctoring.scoring import calcular_score
@@ -61,7 +62,7 @@ async def crear_sesion(
     alumno_idnumber: str | None = None,
     alumno_email: str | None = None,
 ) -> ProctoringSessionModel:
-    """Crea una nueva sesion de proctoring slim.
+    """Crea una nueva sesion de proctoring activeexam.
 
     ``examen_contenido_id`` (C-69) vincula la sesion con el examen de contenido
     importado de Moodle XML (NULLABLE). ``alumno_idnumber``/``alumno_email``
@@ -125,12 +126,94 @@ async def listar_sesiones(db: AsyncSession) -> list[SesionResumenData]:
     return await repo.listar_sesiones()
 
 
+async def listar_sesiones_finalizadas(
+    db: AsyncSession,
+    *,
+    q: str | None = None,
+    exam_id: str | None = None,
+    fecha_desde: datetime | None = None,
+    fecha_hasta: datetime | None = None,
+    materia_id: str | None = None,
+    comision_id: str | None = None,
+) -> list[SesionResumenData]:
+    """Sesiones finalizadas con filtros SQL (Registro de sesiones, C-76 tarea 17).
+
+    ``materia_id``/``comision_id`` (C-76 tarea 20.3): filtro en cascada.
+
+    NO pagina ni filtra por nivel de riesgo — eso lo hace el router (mismo motivo
+    que ``resultados_query``: el nivel de riesgo depende del score, que recien se
+    conoce despues de esta consulta)."""
+    repo = ProctoringRepository(db)
+    return await repo.listar_sesiones_finalizadas(
+        q=q,
+        exam_id=exam_id,
+        fecha_desde=fecha_desde,
+        fecha_hasta=fecha_hasta,
+        materia_id=materia_id,
+        comision_id=comision_id,
+    )
+
+
+async def catalogo_examenes_con_sesiones(db: AsyncSession) -> list[tuple[str, str]]:
+    """``[(examen_contenido_id, titulo)]`` con sesiones finalizadas (C-76 tarea 17.2)."""
+    repo = ProctoringRepository(db)
+    return await repo.catalogo_examenes_con_sesiones()
+
+
+async def obtener_umbral_alto(db: AsyncSession) -> int:
+    """Umbral de riesgo "alto" VIVO (``configuracion_sistema.umbral_cola_revision``).
+
+    Misma fuente que la Cola de revision humana y ``resultados_query._umbral_cola_revision``
+    (degradacion graceful: default institucional 70 si la tabla/singleton no esta
+    disponible). Se define aca (no se importa el helper privado de
+    ``resultados_query``, modulo de otro dominio) para no crear un acoplamiento
+    cruzado moodle -> proctoring."""
+    from app.infrastructure.persistence.models.transactional import (
+        ConfiguracionSistemaModel,
+    )
+
+    UMBRAL_DEFAULT = 70
+    try:
+        row = await db.execute(select(ConfiguracionSistemaModel.umbral_cola_revision))
+        val = row.scalars().first()
+    except Exception:  # noqa: BLE001 — degradacion: sin config, usa el default
+        return UMBRAL_DEFAULT
+    return int(val) if val is not None else UMBRAL_DEFAULT
+
+
 async def detalle_sesion(
     db: AsyncSession, session_id: str
 ) -> ProctoringSessionModel | None:
     """Obtiene el detalle completo de una sesion (con eventos y biometria)."""
     repo = ProctoringRepository(db)
     return await repo.obtener_sesion(session_id)
+
+
+async def contexto_academico_de_examen(
+    db: AsyncSession, examen_contenido_id: str | None
+) -> tuple[str | None, str | None, str | None]:
+    """(examen_titulo, comision_nombre, materia_nombre) de un examen_contenido_id.
+
+    Usado por el detalle de sesión (GET /sessions/{id}) para mostrar en el header
+    qué examen rindió el alumno y de qué materia/comisión — mismo join que ya usa
+    el listado de sesiones, para UN solo examen."""
+    repo = ProctoringRepository(db)
+    return await repo.contexto_academico_de_examen(examen_contenido_id)
+
+
+async def nombre_alumno_de_sesion(
+    db: AsyncSession, alumno_idnumber: str | None, alumno_email: str | None
+) -> str | None:
+    """Nombre completo del alumno dueño de la sesión (o None si no se resuelve)."""
+    repo = ProctoringRepository(db)
+    return await repo.nombre_alumno(alumno_idnumber, alumno_email)
+
+
+async def docente_id_de_sesion(db: AsyncSession, session_id: str) -> str | None:
+    """Docente a cargo de la comision de la sesion (C-76 bloque 8). Ver
+    ``ProctoringRepository.docente_id_de_sesion`` para el detalle de la derivacion."""
+    repo = ProctoringRepository(db)
+    return await repo.docente_id_de_sesion(session_id)
 
 
 async def finalizar_sesion(
@@ -141,21 +224,25 @@ async def finalizar_sesion(
     return await repo.finalizar_sesion(session_id)
 
 
+async def eliminar_sesion_test(db: AsyncSession, session_id: str) -> str:
+    """Elimina una sesion SOLO si es ``modo='test'`` (C-76 tarea 20.1).
+
+    Devuelve ``'eliminada'`` | ``'no_encontrada'`` | ``'modo_examen'``. Ver
+    ``ProctoringRepository.eliminar_sesion_test`` para el detalle de la
+    proteccion de ``modo='examen'`` (regla dura #6/#7, permanente)."""
+    repo = ProctoringRepository(db)
+    return await repo.eliminar_sesion_test(session_id)
+
+
 async def cerrar_forzado(
     db: AsyncSession,
     session_id: str,
     motivo: str,
-    proctor_actor: str | None = None,
+    tutor_actor: str | None = None,
 ) -> ProctoringSessionModel | None:
     """Cierre forzado de la sesion por el proctor (operativo, NO disciplinario).
 
     Idempotente: si ya estaba cerrada de forma forzada, no muta el audit. None si
     la sesion no existe. Ver ProctoringRepository.cerrar_forzado."""
     repo = ProctoringRepository(db)
-    return await repo.cerrar_forzado(session_id, motivo=motivo, proctor_actor=proctor_actor)
-
-
-async def eliminar_sesion(db: AsyncSession, session_id: str) -> bool:
-    """Elimina una sesion por ID. Devuelve True si existia, False si no."""
-    repo = ProctoringRepository(db)
-    return await repo.eliminar_sesion(session_id)
+    return await repo.cerrar_forzado(session_id, motivo=motivo, tutor_actor=tutor_actor)

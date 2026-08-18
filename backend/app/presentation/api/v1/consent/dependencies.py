@@ -24,9 +24,9 @@ async def get_consent_service(request: Request) -> AsyncIterator[ConsentService]
     """Provee el ``ConsentService`` ligado a una sesion async por request.
 
     C-63: inyecta el ``AlternativeRequestRepository`` si la tabla esta disponible
-    (modulo slim con migracion 0010 aplicada). Si el app.state no tiene la tabla,
+    (modulo activeexam con migracion 0010 aplicada). Si el app.state no tiene la tabla,
     el repositorio es None y el servicio opera en modo legacy (sin estado mutable).
-    En la practica, en el slim la tabla SIEMPRE existe tras la migracion 0010.
+    En la practica, en el activeexam la tabla SIEMPRE existe tras la migracion 0010.
     """
     factory = getattr(request.app.state, "session_factory", None)
     queue = getattr(request.app.state, "message_queue", None)

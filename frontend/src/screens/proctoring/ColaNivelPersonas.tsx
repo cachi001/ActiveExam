@@ -1,65 +1,16 @@
 /**
  * ColaNivelPersonas — Nivel hoja del drill-down: las personas (sesiones de proctoring)
- * en riesgo de un examen puntual. Cada card = una persona, con score / señales /
- * diferencias. Un click ABRE EL CASO en el detalle completo: la lista es para
- * elegir a quién revisar, el expediente para decidir (la decisión es inmutable y
- * exige mirar la evidencia, cosa que un panel lateral angosto no permite).
- *
- * Layout: stack vertical con gaps (space-y-sm); las métricas usan flex-wrap. Sin
- * elementos absolutos: nada se monta sobre el texto a 1440/1280/1024px.
+ * en riesgo de un examen puntual. Tabla (no cards): con volumen (10+ personas) una
+ * grilla de cards se vuelve abrumadora para escanear y comparar score/señales entre
+ * filas; la tabla alinea las columnas y se lee de un vistazo. Un click ABRE EL CASO
+ * en el detalle completo: la lista es para elegir a quién revisar, el expediente
+ * para decidir (la decisión es inmutable y exige mirar la evidencia, cosa que un
+ * panel lateral angosto no permite).
  */
 import { Card, Badge, Icon, SectionTitle } from '../../ui/components';
+import { AdminTable, type AdminColumn } from '../../ui/AdminTable';
 import { formatFechaRelativa } from './helpers';
 import type { SesionEnriquecida } from './colaAgregacion';
-
-function PersonaCard({
-  item,
-  seleccionada,
-  onSeleccionar,
-}: {
-  item: SesionEnriquecida;
-  seleccionada: boolean;
-  onSeleccionar: () => void;
-}) {
-  const { sesion } = item;
-  return (
-    <button
-      type="button"
-      onClick={onSeleccionar}
-      className={`w-full text-left p-md rounded-xl border bg-white transition-all focus:outline-none
-        focus-visible:ring-2 focus-visible:ring-primary/40 ${
-          seleccionada
-            ? 'border-primary ring-2 ring-primary/30 shadow-card-lg'
-            : 'border-outline-variant/60 shadow-card hover:shadow-card-lg hover:border-outline'
-        }`}
-    >
-      <div className="flex items-center justify-between gap-md flex-wrap">
-        <span className="text-label-md font-semibold text-on-surface truncate">
-          {sesion.etiqueta?.trim() || 'Persona sin etiqueta'}
-        </span>
-        <Badge tone="error">Riesgo {sesion.score}</Badge>
-      </div>
-      <div className="flex items-center flex-wrap gap-md mt-base text-label-sm text-on-surface-variant">
-        <span className="inline-flex items-center gap-base">
-          <Icon name="sensors" className="text-[15px]" />
-          {sesion.total_eventos ?? 0} señales
-        </span>
-        <span
-          className={`inline-flex items-center gap-base ${
-            (sesion.total_discrepancias ?? 0) > 0 ? 'text-error' : ''
-          }`}
-        >
-          <Icon name="difference" className="text-[15px]" />
-          {sesion.total_discrepancias ?? 0} diferencias
-        </span>
-        <span className="inline-flex items-center gap-base">
-          <Icon name="schedule" className="text-[15px]" />
-          {formatFechaRelativa(sesion.creada_en)}
-        </span>
-      </div>
-    </button>
-  );
-}
 
 export function ColaNivelPersonas({
   personas,
@@ -72,11 +23,69 @@ export function ColaNivelPersonas({
   /** Abre el caso en el expediente, donde se decide. */
   onSeleccionar: (id: string) => void;
 }) {
+  const columns: AdminColumn<SesionEnriquecida>[] = [
+    {
+      key: 'persona',
+      header: 'Persona',
+      width: '32%',
+      cell: (item) => (
+        <span className={`inline-flex items-center gap-1.5 font-medium ${
+          selId === item.sesion.id ? 'text-primary' : 'text-surface-900'
+        }`}>
+          {selId === item.sesion.id && <Icon name="chevron_right" className="text-[16px] shrink-0" />}
+          {item.sesion.etiqueta?.trim() || 'Persona sin etiqueta'}
+        </span>
+      ),
+    },
+    {
+      key: 'score',
+      header: 'Riesgo',
+      width: '14%',
+      cell: (item) => <Badge tone="error">{item.sesion.score} pts</Badge>,
+    },
+    {
+      key: 'senales',
+      header: 'Señales',
+      width: '16%',
+      cell: (item) => (
+        <span className="inline-flex items-center gap-1 text-surface-600">
+          <Icon name="sensors" className="text-[15px] text-surface-400" />
+          {item.sesion.total_eventos ?? 0}
+        </span>
+      ),
+    },
+    {
+      key: 'diferencias',
+      header: 'Diferencias',
+      width: '16%',
+      cell: (item) => (
+        <span
+          className={`inline-flex items-center gap-1 ${
+            (item.sesion.total_discrepancias ?? 0) > 0 ? 'text-error font-medium' : 'text-surface-600'
+          }`}
+        >
+          <Icon name="difference" className="text-[15px]" />
+          {item.sesion.total_discrepancias ?? 0}
+        </span>
+      ),
+    },
+    {
+      key: 'fecha',
+      header: 'Cuándo',
+      width: '22%',
+      cell: (item) => (
+        <span className="inline-flex items-center gap-1 text-surface-500">
+          <Icon name="schedule" className="text-[15px] text-surface-400" />
+          {formatFechaRelativa(item.sesion.creada_en)}
+        </span>
+      ),
+    },
+  ];
 
   return (
     <section className="space-y-md">
       <SectionTitle
-        sub="Cada persona en riesgo de este examen. Elegí una para revisar y decidir."
+        sub="Cada persona en riesgo de este examen. Elegí una fila para revisar y decidir."
         action={
           <Badge tone="error" dot>
             {personas.length} en riesgo
@@ -94,16 +103,14 @@ export function ColaNivelPersonas({
           </p>
         </Card>
       ) : (
-        <div className="space-y-sm">
-          {personas.map((item) => (
-            <PersonaCard
-              key={item.sesion.id}
-              item={item}
-              seleccionada={selId === item.sesion.id}
-              onSeleccionar={() => onSeleccionar(item.sesion.id)}
-            />
-          ))}
-
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+          <AdminTable
+            columns={columns}
+            data={personas}
+            keyExtractor={(item) => item.sesion.id}
+            onRowClick={(item) => onSeleccionar(item.sesion.id)}
+            tableMinWidth="640px"
+          />
         </div>
       )}
     </section>

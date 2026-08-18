@@ -1,4 +1,4 @@
-# requirements.txt — modulo slim (Railway deploy)
+# requirements.txt — modulo activeexam (Railway deploy)
 # Generado desde pyproject.toml + mediapipe para re-inferencia server-side.
 # PRODUCCION: usar pip-compile o poetry export para pins reproducibles.
 
@@ -7,7 +7,7 @@ fastapi==0.115.6
 # p. ej. el import de Moodle XML (C-69). Sin esto FastAPI tira RuntimeError al arrancar.
 python-multipart==0.0.20
 # Cliente HTTP async para el write-back de nota a Moodle (REST WS core_grades_update_grades, C-69).
-# Server-side; sin esto el backend NO arranca (ModuleNotFoundError en main_slim).
+# Server-side; sin esto el backend NO arranca (ModuleNotFoundError en main_activeexam).
 httpx==0.28.1
 uvicorn[standard]==0.34.0
 pydantic==2.10.4
@@ -17,7 +17,7 @@ pydantic-settings==2.7.1
 sqlalchemy[asyncio]==2.0.36
 asyncpg==0.30.0
 # Driver SYNC para Alembic: migrations/env.py corre sincrono y deriva el driver
-# sync de DATABASE_URL (queda postgresql://). Sin esto, "alembic upgrade slim@head"
+# sync de DATABASE_URL (queda postgresql://). Sin esto, "alembic upgrade activeexam@head"
 # falla con ModuleNotFoundError: psycopg2. La app usa asyncpg; Alembic usa psycopg2.
 psycopg2-binary==2.9.10
 alembic==1.14.0
@@ -43,3 +43,9 @@ openpyxl==3.1.5
 # Render de graficos (PNG) que se embeben en el PDF. Ya viene transitivo de
 # mediapipe, pero lo declaramos porque el export PDF lo usa DIRECTO (backend Agg).
 matplotlib>=3.7
+
+# Cliente S3 para el deposito WORM de evidencia (c-77): habla con MinIO
+# (S3-compatible) via Boto3WormStorage. Opcional en runtime — si MINIO_* no esta
+# seteado (Render sin VPS todavia), el import ocurre igual (deploy no rompe) pero
+# el cliente nunca se construye (ver app/main_activeexam.py::create_activeexam_app).
+boto3==1.43.73

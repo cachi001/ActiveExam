@@ -145,3 +145,53 @@ describe("garantia L2.5: ninguna transicion deriva sancion", () => {
     }
   });
 });
+
+// C-76 (15.1/15.2/15.6): cambio_pestana y copiar_pegar ahora disparan captura.
+// El screenshot es CONTEXTO VISUAL (no se re-infiere server-side, a diferencia de
+// multiples_rostros/rostro_ausente) — la severidad no cambia (sigue "media"), y
+// copiar_pegar puede traer el hash del contenido pegado (evidencia real, nunca el
+// contenido en claro).
+describe("C-76 15: evidencia de cambio_pestana / copiar_pegar", () => {
+  it("cambio_pestana dispara trigger_evidence al ocultarse la pestana", () => {
+    const rules = new StateTransitionRules();
+    const events = rules.process({ ts_ms: 0, face_count: 1, tab_changed: true });
+    expect(events).toHaveLength(1);
+    expect(events[0].tipo).toBe("cambio_pestana");
+    expect(events[0].severidad).toBe("media");
+    expect(events[0].trigger_evidence).toBe(true);
+  });
+
+  it("copiar_pegar dispara trigger_evidence en cada accion discreta", () => {
+    const rules = new StateTransitionRules();
+    const events = rules.process({ ts_ms: 0, face_count: 1, clipboard_action: "paste" });
+    expect(events).toHaveLength(1);
+    expect(events[0].tipo).toBe("copiar_pegar");
+    expect(events[0].trigger_evidence).toBe(true);
+    expect(events[0].payload).toEqual({ accion: "paste" });
+  });
+
+  it("copiar_pegar incluye clipboard_sha256 en el payload cuando esta disponible", () => {
+    const rules = new StateTransitionRules();
+    const hash = "a".repeat(64);
+    const events = rules.process({
+      ts_ms: 0,
+      face_count: 1,
+      clipboard_action: "paste",
+      clipboard_sha256: hash,
+    });
+    expect(events[0].payload).toEqual({ accion: "paste", clipboard_sha256: hash });
+  });
+
+  it("copy (sin paste) no incluye clipboard_sha256 aunque el campo este seteado en la senal", () => {
+    // clipboard_sha256 solo tiene sentido para 'paste' (contenido pegado); si la
+    // senal trae 'copy', el payload no debe cargar un hash espurio.
+    const rules = new StateTransitionRules();
+    const events = rules.process({
+      ts_ms: 0,
+      face_count: 1,
+      clipboard_action: "copy",
+      clipboard_sha256: undefined,
+    });
+    expect(events[0].payload).toEqual({ accion: "copy" });
+  });
+});

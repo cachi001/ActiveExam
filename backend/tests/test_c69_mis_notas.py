@@ -1,7 +1,7 @@
 """Notas del ALUMNO: GET /api/v1/exam-content/mis-notas (C-69, student-facing).
 
 El alumno autenticado ve SOLO sus notas finalizadas (identificado por el JWT:
-id_institucional -> alumno_idnumber, email -> alumno_email), cada una con:
+username -> alumno_idnumber, email -> alumno_email), cada una con:
 - nota academica + estado del envio a Moodle (pendiente|enviado|fallido|sin_token),
 - estado L2.5 'en cola de revision': score de proctoring de la sesion vs el
   umbral_cola_revision del singleton de config (score >= umbral -> en cola).
@@ -178,7 +178,7 @@ def _token(idnumber: str, email: str, roles=("estudiante",)) -> str:
         "iss": _TEST_JWT_ISSUER,
         "aud": _TEST_JWT_AUDIENCE,
         "sub": f"sub-{idnumber}",
-        "preferred_username": idnumber,  # -> id_institucional -> alumno_idnumber
+        "preferred_username": idnumber,  # -> username -> alumno_idnumber
         "email": email,
         "exp": 9999999999,
         "amr": ["otp"],

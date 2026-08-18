@@ -28,7 +28,7 @@ const ARCHIVOS_EXPEDIENTE = [
   'screens/proctoring/DetalleHeader.tsx',
   'screens/proctoring/EventoCard.tsx',
   'screens/proctoring/BiometriaCard.tsx',
-  'screens/proctoring/ObservacionesProctor.tsx',
+  'screens/proctoring/ObservacionesTutor.tsx',
   'screens/proctoring/PausaSesionPanel.tsx',
   'screens/proctoring/PausasHistorial.tsx',
   'ui/ChatBox.tsx',
@@ -62,8 +62,8 @@ describe('Expediente de EXAMEN — cobertura (C-72 sección 10.2)', () => {
   it('incluye el chat con el estudiante (ChatBox)', () => {
     expect(src).toContain('ChatBox');
   });
-  it('incluye las anotaciones del proctor (ObservacionesProctor)', () => {
-    expect(src).toContain('ObservacionesProctor');
+  it('incluye las anotaciones del tutor (ObservacionesTutor)', () => {
+    expect(src).toContain('ObservacionesTutor');
   });
   it('incluye la biometría', () => {
     expect(src).toContain('BiometriaCard');

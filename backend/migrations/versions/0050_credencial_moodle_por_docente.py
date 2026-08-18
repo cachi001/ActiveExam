@@ -1,10 +1,10 @@
 """0050 - credencial de Moodle POR DOCENTE (token derivado) + service shortname.
 
 Revision ID: 0050
-Revises: 0049 (branch slim)
+Revises: 0049 (branch activeexam)
 Create Date: 2026-07-29
 
-RAMA: slim
+RAMA: activeexam
 
 PROPOSITO:
   1) Crea `moodle_credencial_docente`: la credencial personal con la que CADA docente

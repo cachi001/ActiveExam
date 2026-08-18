@@ -27,16 +27,23 @@ export type Capacidad =
 
 /** capacidad → conjunto de roles que la poseen (dato de config, no lógica). */
 const CAPABILITY_ROLES: Record<Capacidad, readonly Rol[]> = {
-  revisar_sesion: ["revisor", "coordinador", "admin_sistema"],
-  gestionar_academico: ["tutor", "admin_examenes", "coordinador", "admin_sistema"],
+  // c-76: "revisor" eliminado; el coordinador absorbe el veredicto.
+  revisar_sesion: ["coordinador", "admin_sistema"],
+  gestionar_academico: ["tutor", "coordinador", "admin_sistema"],
   // Alta/edición de materias y comisiones: SIN tutor (solo admin). Espeja el
   // split del backend — el tutor inscribe y arma exámenes, pero no crea estructura.
-  gestionar_estructura: ["admin_examenes", "coordinador", "admin_sistema"],
-  gestionar_notas: ["tutor", "admin_examenes", "coordinador", "admin_sistema"],
+  gestionar_estructura: ["coordinador", "admin_sistema"],
+  gestionar_notas: ["tutor", "coordinador", "admin_sistema"],
   configurar_sistema: ["admin_sistema"],
   gestionar_usuarios: ["admin_sistema"],
-  ver_auditoria: ["auditor", "admin_sistema"],
-  supervisar_vivo: ["proctor", "revisor", "coordinador", "admin_sistema"],
+  // c-76-2: "auditor" eliminado; queda exclusiva de admin_sistema (nunca hubo
+  // un endpoint real conectado a esta capacidad para "auditor" en el backend).
+  ver_auditoria: ["admin_sistema"],
+  // c-76: "proctor" eliminado; el coordinador absorbe la supervisión global y
+  // el tutor supervisa acotado a su comisión (D2, bloque 8) — el scoping por
+  // comisión lo aplica el backend (autorizar_supervision_vivo_sobre_sesion),
+  // acá solo se decide si el botón/ruta se muestra.
+  supervisar_vivo: ["tutor", "coordinador", "admin_sistema"],
 };
 
 /**
@@ -47,4 +54,56 @@ export function tieneCapacidad(roles: readonly Rol[], capacidad: Capacidad): boo
   const permitidos = CAPABILITY_ROLES[capacidad];
   if (!permitidos) return false;
   return roles.some((r) => permitidos.includes(r));
+}
+
+/** Descripción en castellano llano de cada capacidad — se usa para mostrar
+ * los permisos REALES de un rol en el formulario de alta/edición de usuarios
+ * (en vez de una frase vaga de una línea por rol). */
+export const CAPACIDAD_LABELS: Record<Capacidad, string> = {
+  revisar_sesion: 'Revisar sesiones y decidir el veredicto (aprobar o anular)',
+  gestionar_academico: 'Cargar y configurar exámenes, inscribir alumnos, cerrar notas',
+  gestionar_estructura: 'Crear y editar materias y comisiones',
+  gestionar_notas: 'Sincronizar notas con Moodle',
+  configurar_sistema: 'Configurar el sistema (umbrales, detectores, retención)',
+  gestionar_usuarios: 'Gestionar usuarios y roles',
+  ver_auditoria: 'Ver el registro de auditoría',
+  supervisar_vivo: 'Supervisar exámenes en vivo',
+};
+
+/** Módulo/dominio de cada capacidad — agrupa por la ENTIDAD sobre la que se
+ * actúa (no por rol), igual al patrón de Sistema-de-Gestion-Convenios
+ * (`Permiso.modulo`): agrupar por dominio hace más fácil entender de un
+ * vistazo QUÉ PARTE del sistema puede tocar cada rol. */
+export const CAPACIDAD_MODULO: Record<Capacidad, string> = {
+  gestionar_academico: 'Académico',
+  gestionar_estructura: 'Académico',
+  gestionar_notas: 'Académico',
+  supervisar_vivo: 'Supervisión',
+  revisar_sesion: 'Supervisión',
+  gestionar_usuarios: 'Sistema',
+  configurar_sistema: 'Sistema',
+  ver_auditoria: 'Sistema',
+};
+
+/** Orden fijo de módulos (no alfabético — de lo más frecuente/operativo a lo
+ * más restringido/administrativo). */
+const ORDEN_MODULOS = ['Académico', 'Supervisión', 'Sistema'] as const;
+
+/** Lista de capacidades que tiene un rol (para mostrar sus permisos reales). */
+export function capacidadesDeRol(rol: Rol): Capacidad[] {
+  return (Object.keys(CAPABILITY_ROLES) as Capacidad[]).filter((c) =>
+    CAPABILITY_ROLES[c].includes(rol)
+  );
+}
+
+/** Capacidades de un rol, agrupadas por módulo/dominio y en el orden fijo de
+ * `ORDEN_MODULOS` (para renderizar un bloque por módulo, patrón Convenios). */
+export function permisosPorModuloDeRol(rol: Rol): { modulo: string; capacidades: Capacidad[] }[] {
+  const propias = capacidadesDeRol(rol);
+  return ORDEN_MODULOS
+    .map((modulo) => ({
+      modulo,
+      capacidades: propias.filter((c) => CAPACIDAD_MODULO[c] === modulo),
+    }))
+    .filter((grupo) => grupo.capacidades.length > 0);
 }

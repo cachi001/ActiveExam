@@ -127,7 +127,7 @@ def create_exam_taking_router(
 
         # Gate de inscripción (C-71): el alumno ve SOLO los exámenes de las comisiones
         # donde está inscripto; los roles de gestión (admin/proctor/...) ven todo el
-        # catálogo. El filtro es server-side por el id_institucional del principal.
+        # catálogo. El filtro es server-side por el username del principal.
         # C-73 §9: el docente ve lo que DICTA (comision.docente_id), ni todo (staff)
         # ni "sus inscripciones" (alumno, siempre vacío para un docente).
         async with session_factory() as session:
@@ -141,7 +141,7 @@ def create_exam_taking_router(
             else:
                 comision_ids = await InscripcionSqlRepository(
                     session
-                ).comision_ids_inscriptas(principal.id_institucional)
+                ).comision_ids_inscriptas(principal.username)
             resumenes, total = await repo.listar_paginado(
                 q=q,
                 page=page,
@@ -261,7 +261,7 @@ def create_exam_taking_router(
     # -----------------------------------------------------------------------
     # "Mis notas" del alumno (C-69, student-facing). Cualquier principal
     # autenticado ve SOLO sus notas finalizadas (identificado por el JWT:
-    # id_institucional -> alumno_idnumber, email -> alumno_email). Ruta estática
+    # username -> alumno_idnumber, email -> alumno_email). Ruta estática
     # declarada ANTES de "/{examen_id}" para que el path param no la capture.
     # -----------------------------------------------------------------------
 
@@ -275,7 +275,7 @@ def create_exam_taking_router(
     ) -> MisNotasResponse:
         """Notas finalizadas del alumno autenticado + estado L2.5 'en cola de revisión'.
 
-        Identidad del alumno desde el JWT (id_institucional/email), igual que lo que
+        Identidad del alumno desde el JWT (username/email), igual que lo que
         el write-back persiste (alumno_idnumber/alumno_email). Para cada examen:
         nota académica, estado del envío a Moodle y si la sesión está en cola de
         revisión (score de proctoring >= umbral_cola_revision). D3: es_correcta NUNCA
@@ -291,7 +291,7 @@ def create_exam_taking_router(
         async with session_factory() as session:
             items, total = await listar_mis_notas(
                 db=session,
-                alumno_idnumber=principal.id_institucional or "",
+                alumno_idnumber=principal.username or "",
                 alumno_email=principal.email or "",
                 moodle_configurado=moodle_configurado,
             )
@@ -355,14 +355,14 @@ def create_exam_taking_router(
         )
         if presign is None:
             # Fallback determinista: el contrato de la URL firmada (expira 15 min)
-            # no depende del SDK real de storage en el MVP slim.
+            # no depende del SDK real de storage en el MVP activeexam.
             presign = StoragePresignService(endpoint="", bucket="evidence")
 
         async with factory() as session:
             informe = await build_informe_devolucion(
                 db=session,
                 session_id=session_id,
-                titular_idnumber=principal.id_institucional or "",
+                titular_idnumber=principal.username or "",
                 presign=presign,
             )
             if informe is None:
@@ -379,7 +379,7 @@ def create_exam_taking_router(
 
             await AuditLogSqlRepository(session).append(
                 AuditEntry(
-                    actor=principal.id_institucional or "titular",
+                    actor=principal.username or "titular",
                     timestamp="",
                     ip=request.client.host if request.client else "",
                     user_agent=request.headers.get("user-agent", ""),
@@ -415,6 +415,11 @@ def create_exam_taking_router(
                     tipo_evento=c.tipo_evento,
                     severidad=c.severidad,
                     ocurrio_en=c.ocurrio_en,
+                    integridad_estado=c.integridad_estado,
+                    integridad_algoritmo=c.integridad_algoritmo,
+                    integridad_hash_esperado=c.integridad_hash_esperado,
+                    integridad_hash_actual=c.integridad_hash_actual,
+                    integridad_verificado_en=c.integridad_verificado_en,
                 )
                 for c in informe.capturas
             ],
@@ -462,7 +467,7 @@ def create_exam_taking_router(
                 )
             else:
                 materias = await InscripcionSqlRepository(session).materias_inscriptas(
-                    principal.id_institucional
+                    principal.username
                 )
 
         return [
@@ -515,7 +520,7 @@ def create_exam_taking_router(
             else:
                 comisiones = await InscripcionSqlRepository(
                     session
-                ).comisiones_inscriptas_de_materia(principal.id_institucional, materia_id)
+                ).comisiones_inscriptas_de_materia(principal.username, materia_id)
             # C-73 §9: el nombre del docente a cargo viaja resuelto, en UNA query para
             # todo el listado. Sin esto la UI tendría que pedir el usuario por comisión.
             nombres_docentes = await repo.nombres_de_docentes(
@@ -675,7 +680,7 @@ def create_exam_taking_router(
             rev = await obtener_revision(
                 db=session,
                 examen_contenido_id=examen_id,
-                alumno_idnumber=principal.id_institucional or "",
+                alumno_idnumber=principal.username or "",
                 alumno_email=principal.email or "",
             )
 
@@ -803,14 +808,14 @@ def create_exam_taking_router(
                     detail={"error": "comision_inactiva", "mensaje": str(exc)},
                 ) from exc
 
-            if rendicion is not None and principal.id_institucional:
+            if rendicion is not None and principal.username:
                 sesion = (
                     await session.execute(
                         select(ProctoringSessionModel)
                         .where(
                             ProctoringSessionModel.examen_contenido_id == examen_id,
                             ProctoringSessionModel.alumno_idnumber
-                            == principal.id_institucional,
+                            == principal.username,
                             ProctoringSessionModel.finalizada_en.is_(None),
                         )
                         .order_by(ProctoringSessionModel.creada_en.desc())

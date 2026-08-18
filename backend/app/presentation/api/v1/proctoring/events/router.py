@@ -1,4 +1,4 @@
-"""Router de ingestión de eventos de proctoring slim.
+"""Router de ingestión de eventos de proctoring activeexam.
 
 POST /sessions/{id}/events → 201/404
 
@@ -24,7 +24,7 @@ from app.presentation.api.v1.proctoring.events.schemas import (
 
 
 def create_events_router(
-    get_db, get_reinferencia, *, require_autenticado, cipher=None
+    get_db, get_reinferencia, *, require_autenticado, cipher=None, worm_storage=None
 ) -> APIRouter:
     """Factory del router de eventos. Recibe dependencias de DB y re-inferencia.
 
@@ -32,6 +32,8 @@ def create_events_router(
     ingesta sus eventos de deteccion. Lo inyecta el router padre.
     ``cipher``: EvidenceCipher para cifrar el screenshot at-rest (Ley 25.326). None
     → se persiste en claro (tests/legacy).
+    ``worm_storage``: puerto WORM (c-77). None (default) cuando MinIO no esta
+    configurado — el screenshot se persiste UNICAMENTE en Postgres, sin cambios.
     """
     router = APIRouter()
 
@@ -69,6 +71,7 @@ def create_events_router(
             screenshot_base64=body.screenshot_base64,
             face_count_cliente=body.face_count_cliente,
             cipher=cipher,
+            worm_storage=worm_storage,
         )
         return IngestEventoOut(
             evento_id=evento.id,

@@ -1,10 +1,10 @@
-"""Tests puros del verificador de cadena de custodia (c-18 slim).
+"""Tests puros del verificador de cadena de custodia (c-18 activeexam).
 
-Slim: la "cadena" se reduce a la etapa que existe en `proctoring_event`:
+ActiveExam: la "cadena" se reduce a la etapa que existe en `proctoring_event`:
 - `screenshot_b64` — el binario crudo subido por el cliente
 - `screenshot_sha256` — hash SHA-256 registrado al recibir
 
-El verify-chain slim re-calcula SHA-256 del binario actual y lo compara con
+El verify-chain activeexam re-calcula SHA-256 del binario actual y lo compara con
 el hash registrado al momento de la ingesta. Si coincide → cadena INTEGRA.
 Si difiere → cadena ROTA (la evidencia fue modificada o el hash original era
 incorrecto). Si falta material (screenshot null) → cadena INCOMPLETA.

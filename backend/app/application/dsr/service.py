@@ -1,7 +1,7 @@
-"""Servicio DSR — orquesta los 4 derechos del titular (c-17 slim).
+"""Servicio DSR — orquesta los 4 derechos del titular (c-17 activeexam).
 
 Reutiliza el ``HoldVerifier`` del dominio retention (c-19) para diferir
-borrados de sesiones con caso disciplinario abierto. En slim el verifier
+borrados de sesiones con caso disciplinario abierto. En activeexam el verifier
 default es Null (no hay tabla `caso_disciplinario`) — c-69 lo reemplaza.
 """
 
@@ -30,7 +30,7 @@ _PURPOSE_BY_TYPE = {
 def _to_access_response(u: dict) -> DsrAccessResponse:
     return DsrAccessResponse(
         usuario_id=str(u["id"]),
-        id_institucional=u["id_institucional"],
+        username=u["username"],
         email=u["email"],
         nombre=u.get("nombre"),
         apellido=u.get("apellido"),
@@ -45,7 +45,7 @@ def _to_access_response(u: dict) -> DsrAccessResponse:
 
 @dataclass
 class DsrService:
-    """Implementa los 4 derechos del titular sobre slim."""
+    """Implementa los 4 derechos del titular sobre activeexam."""
 
     repo: UserDsrRepository
     hold_verifier: HoldVerifier
@@ -107,7 +107,7 @@ class DsrService:
         )
         return DsrPortabilityResponse(
             usuario_id=str(u["id"]),
-            id_institucional=u["id_institucional"],
+            username=u["username"],
             email=u["email"],
             nombre=u.get("nombre"),
             apellido=u.get("apellido"),

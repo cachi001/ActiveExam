@@ -16,7 +16,7 @@ PROPOSITO:
   crea/loguea al alumno igual, pero no lo matricula.
 
 ROLLBACK:
-  alembic downgrade slim@0062 → dropea la tabla nueva. No toca nada existente.
+  alembic downgrade activeexam@0062 → dropea la tabla nueva. No toca nada existente.
 """
 
 from __future__ import annotations

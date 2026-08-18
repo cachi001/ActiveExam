@@ -16,6 +16,11 @@ import type { ExamenContenidoResumen } from './types';
 // en tests/test_stats_labels.py que falla si el backend agrega/quita un estado).
 export type EstadoMoodle = 'pendiente' | 'enviado' | 'fallido' | 'sin_token';
 
+// Estado de la ENTREGA (C-76 tarea 14), DERIVADO server-side (nunca persistido) —
+// ORTOGONAL a `estado_moodle` (estado de sync con el campus). Espeja el enum
+// backend `ESTADOS_ENTREGA_VALIDOS` (resultados_query.py).
+export type EstadoEntrega = 'no_finalizada' | 'en_revision' | 'revisada' | 'finalizada';
+
 export interface ResultadoExamen {
   session_id: string;
   alumno_idnumber: string;
@@ -30,6 +35,10 @@ export interface ResultadoExamen {
    * Es ortogonal a `estado_moodle`: una fila retenida sigue en 'pendiente'.
    */
   retenido_por?: string | null;
+  /** Estado de la entrega (derivado). Ausente en fixtures viejos → tratar como 'finalizada'. */
+  estado_entrega?: EstadoEntrega;
+  /** Soft-hide administrativo del panel de resultados (no disciplinario). */
+  archivado?: boolean;
 }
 
 // Motivos de retención que SÍ corresponden a una revisión humana pendiente o
@@ -95,11 +104,24 @@ export async function listarResultadosFn(
   apiBase: string,
   token: string | undefined,
   examenId: string,
-  params: { q?: string; estado?: string; page?: number; page_size?: number } = {},
+  params: {
+    q?: string;
+    estado?: string;
+    estado_entrega?: string;
+    archivado?: boolean;
+    fecha_desde?: string;
+    fecha_hasta?: string;
+    page?: number;
+    page_size?: number;
+  } = {},
 ): Promise<ResultadosPaginados> {
   const qs = new URLSearchParams();
   if (params.q) qs.set('q', params.q);
   if (params.estado) qs.set('estado', params.estado);
+  if (params.estado_entrega) qs.set('estado_entrega', params.estado_entrega);
+  if (params.archivado !== undefined) qs.set('archivado', String(params.archivado));
+  if (params.fecha_desde) qs.set('fecha_desde', params.fecha_desde);
+  if (params.fecha_hasta) qs.set('fecha_hasta', params.fecha_hasta);
   if (params.page !== undefined) qs.set('page', String(params.page));
   if (params.page_size !== undefined) qs.set('page_size', String(params.page_size));
   const qStr = qs.toString();
@@ -115,17 +137,30 @@ export async function listarResultadosFn(
 
 /**
  * Dispara la sincronización de notas con Moodle para un examen.
- * POST /exam-content/{id}/sincronizar-moodle (sin body).
+ * POST /exam-content/{id}/sincronizar-moodle
+ *
+ * Body opcional:
+ * - Sin sessionIds (o array vacío): sincroniza TODAS las notas pendientes/fallidas.
+ * - Con sessionIds: sincroniza SOLO esas sesiones específicas (individual = array de 1).
+ *   Las retenciones por riesgo/config siguen aplicándose aunque la sesión esté en la lista.
+ *
+ * Retrocompatible: los callers anteriores sin sessionIds siguen funcionando igual.
  * Lanza en error HTTP.
  */
 export async function sincronizarMoodleFn(
   apiBase: string,
   token: string | undefined,
   examenId: string,
+  sessionIds?: string[],
 ): Promise<SincronizarMoodleResponse> {
+  const hasIds = sessionIds && sessionIds.length > 0;
   const res = await fetch(
     `${apiBase}/exam-content/${encodeURIComponent(examenId)}/sincronizar-moodle`,
-    { method: 'POST', headers: authHeaders(token) },
+    {
+      method: 'POST',
+      headers: authHeaders(token),
+      ...(hasIds ? { body: JSON.stringify({ session_ids: sessionIds }) } : {}),
+    },
   );
   if (!res.ok) {
     const err = new Error(`HTTP ${res.status}`) as Error & { status?: number };
@@ -133,6 +168,35 @@ export async function sincronizarMoodleFn(
     throw err;
   }
   return res.json() as Promise<SincronizarMoodleResponse>;
+}
+
+/**
+ * Archiva o desarchiva una fila de resultados (C-76 tarea 14) — soft-hide
+ * administrativo, NO disciplinario (no es un veredicto sobre la sesión).
+ * PATCH /exam-content/{examenId}/resultados/{sessionId}/archivar
+ * Lanza en error HTTP.
+ */
+export async function archivarResultadoFn(
+  apiBase: string,
+  token: string | undefined,
+  examenId: string,
+  sessionId: string,
+  archivado: boolean,
+): Promise<{ session_id: string; archivado: boolean }> {
+  const res = await fetch(
+    `${apiBase}/exam-content/${encodeURIComponent(examenId)}/resultados/${encodeURIComponent(sessionId)}/archivar`,
+    {
+      method: 'PATCH',
+      headers: authHeaders(token),
+      body: JSON.stringify({ archivado }),
+    },
+  );
+  if (!res.ok) {
+    const err = new Error(`HTTP ${res.status}`) as Error & { status?: number };
+    err.status = res.status;
+    throw err;
+  }
+  return res.json() as Promise<{ session_id: string; archivado: boolean }>;
 }
 
 /**

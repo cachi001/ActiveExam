@@ -25,10 +25,15 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.application.moodle.resultados_query import _sesiones_con_restitucion
+from app.application.verify_chain.service import VerifyChainService
 from app.domain.review.decision import DecisionSesion, nota_esta_anulada
 from app.infrastructure.persistence.models.proctoring import (
     ProctoringEventModel,
     ProctoringSessionModel,
+)
+from app.infrastructure.persistence.repositories.verify_chain import (
+    SqlChainVerificationAuditor,
+    SqlEventMaterialRepository,
 )
 from app.infrastructure.storage.presign import DOWNLOAD_EXPIRES_SECONDS, PresignService
 
@@ -59,6 +64,17 @@ class CapturaFirmada:
     tipo_evento: str | None = None
     severidad: str | None = None
     ocurrio_en: object | None = None  # datetime tz-aware; lo serializa Pydantic
+    # Cadena de custodia (c-18 verify-chain, reutilizado tal cual — sin duplicar
+    # lógica): recalculado server-side en CADA carga del informe, no cacheado, para
+    # que la garantía sea "verificado ahora", no "verificado alguna vez". El alumno
+    # no puede leer un hash por sí solo — por eso el badge en UI es la etiqueta
+    # ('intact'/...), y estos 4 campos son el material para el certificado
+    # descargable (defendible ante un tercero: abogado, comisión de apelaciones).
+    integridad_estado: str = "no_verificado"
+    integridad_algoritmo: str | None = None
+    integridad_hash_esperado: str | None = None
+    integridad_hash_actual: str | None = None
+    integridad_verificado_en: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,7 +97,11 @@ async def build_informe_devolucion(
 ) -> InformeDevolucion | None:
     """Construye el informe si — y solo si — la sesión es del titular y su nota
     fue anulada por fraude (efecto derivado del último acto). En cualquier otro
-    caso devuelve None (minimización / scope)."""
+    caso devuelve None (minimización / scope).
+
+    `titular_idnumber` también identifica al actor que dispara el verify-chain
+    (queda auditado como acceso del propio titular, igual patrón que el resto
+    del informe)."""
     row = (
         await db.execute(
             select(
@@ -131,6 +151,15 @@ async def build_informe_devolucion(
         )
     ).all()
 
+    # Reusa el servicio de c-18 tal cual (sin duplicar la lógica de re-hasheo):
+    # el admin lo usa para peritar un evento puntual, acá se corre automático
+    # sobre CADA captura que ya se le muestra al alumno.
+    verify_service = VerifyChainService(
+        event_repo=SqlEventMaterialRepository(db),
+        auditor=SqlChainVerificationAuditor(db),
+    )
+    actor = f"{titular_idnumber}:informe-devolucion"
+
     agregado: dict[str, dict] = {}
     capturas: list[CapturaFirmada] = []
     for evento_id, tipo, severidad, face_count, veredicto, sha, ts in ev_rows:
@@ -152,6 +181,8 @@ async def build_informe_devolucion(
             firmada = presign.presign_download(
                 object_key=sha, expires_in=DOWNLOAD_EXPIRES_SECONDS
             )
+            cert = await verify_service.verify(evento_id, actor=actor)
+            stage = cert.stages[0] if cert.stages else None
             capturas.append(
                 CapturaFirmada(
                     object_key=firmada.object_key,
@@ -160,6 +191,11 @@ async def build_informe_devolucion(
                     tipo_evento=tipo,
                     severidad=severidad,
                     ocurrio_en=ts,
+                    integridad_estado=cert.status.value,
+                    integridad_algoritmo=cert.algorithm,
+                    integridad_hash_esperado=stage.expected if stage else None,
+                    integridad_hash_actual=stage.actual if stage else None,
+                    integridad_verificado_en=cert.verified_at,
                 )
             )
 

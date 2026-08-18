@@ -1,4 +1,4 @@
-"""Application layer del DSR (c-17 slim)."""
+"""Application layer del DSR (c-17 activeexam)."""
 
 from app.application.dsr.service import DsrService
 

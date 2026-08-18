@@ -132,7 +132,7 @@ async def verificar_inscripcion(
     en la comision del examen para poder rendirlo.
 
     Resuelve la comision del ``examen_contenido`` y verifica que exista inscripcion
-    para el ``alumno_idnumber`` (id_institucional del principal). Si el examen no
+    para el ``alumno_idnumber`` (username del principal). Si el examen no
     tiene comision (comision_id NULL) NO se exige inscripcion (edge case: examen
     suelto sin comision). ``NoInscriptoError`` -> 403 en el caller. El cliente es
     sensor no confiable: este control es independiente del filtrado del catalogo.

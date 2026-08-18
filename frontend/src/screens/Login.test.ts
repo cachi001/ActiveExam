@@ -1,14 +1,13 @@
 /**
- * Tests de lógica de Login (C-55, FormularioJwt / LoginKeycloak).
+ * Tests de lógica de Login (C-55, FormularioJwt — único provider: JWT propio).
  *
- * Verifica la lógica de selección de proveedor y el routing post-login sin
- * renderizar el componente (no requiere @testing-library/react ni jsdom).
+ * Verifica el routing post-login sin renderizar el componente (no requiere
+ * @testing-library/react ni jsdom).
  *
  * Qué se testea:
  *   - homePorRol(): calcula la ruta correcta para cada rol.
  *   - FormularioJwt integra correctamente con authStore: login exitoso → estado authenticated.
  *   - Manejo de error de login: el store permanece unauthenticated.
- *   - Cada proveedor (jwt / keycloak) selecciona la variante correcta.
  *
  * NOTA: el render de JSX requeriría @testing-library/react (no instalado en MVP).
  * Estos tests cubren la lógica pura; los render tests se agregan cuando se
@@ -29,7 +28,7 @@ import type { Rol } from '../lib/types';
  */
 function homePorRol(roles: Rol[]): string {
   if (roles.includes('admin_sistema')) return '/admin';
-  if (roles.includes('proctor')) return '/proctor';
+  if (roles.includes('coordinador')) return '/admin';
   return '/alumno/dashboard';
 }
 
@@ -38,43 +37,20 @@ describe('homePorRol()', () => {
     expect(homePorRol(['admin_sistema'])).toBe('/admin');
   });
 
-  it('proctor → /proctor', () => {
-    expect(homePorRol(['proctor'])).toBe('/proctor');
+  it('coordinador → /admin', () => {
+    expect(homePorRol(['coordinador'])).toBe('/admin');
   });
 
   it('estudiante → /alumno/dashboard', () => {
     expect(homePorRol(['estudiante'])).toBe('/alumno/dashboard');
   });
 
-  it('admin_sistema + proctor → /admin (admin_sistema tiene precedencia)', () => {
-    expect(homePorRol(['admin_sistema', 'proctor'])).toBe('/admin');
+  it('admin_sistema + coordinador → /admin (admin_sistema tiene precedencia)', () => {
+    expect(homePorRol(['admin_sistema', 'coordinador'])).toBe('/admin');
   });
 
   it('roles vacíos → /alumno/dashboard (default)', () => {
     expect(homePorRol([])).toBe('/alumno/dashboard');
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Tests de selección de proveedor (AUTH_PROVIDER_TYPE)
-// ---------------------------------------------------------------------------
-
-describe('AUTH_PROVIDER_TYPE selección de variante', () => {
-  it('provider "jwt" → debería renderizar FormularioJwt (lógica de selector)', () => {
-    // La lógica de Login() es:
-    //   if (AUTH_PROVIDER_TYPE === 'keycloak') return <LoginKeycloak>
-    //   return <FormularioJwt>  ← default JWT
-
-    // Verificamos la tabla de decisión de la función pura.
-    function selectProvider(type: string): string {
-      if (type === 'keycloak') return 'LoginKeycloak';
-      return 'FormularioJwt';
-    }
-
-    expect(selectProvider('jwt')).toBe('FormularioJwt');
-    expect(selectProvider('keycloak')).toBe('LoginKeycloak');
-    // default / cualquier otro → FormularioJwt
-    expect(selectProvider('unknown')).toBe('FormularioJwt');
   });
 });
 
@@ -113,7 +89,7 @@ describe('FormularioJwt — integración con authStore', () => {
     // Importar el store y mockear el provider.
     const { useAuth } = await import('../lib/authStore');
     const principal = {
-      id_institucional: 'alumno1',
+      username: 'alumno1',
       nombre: 'Alumno 1',
       email: 'alumno1@uni.edu',
       roles: ['estudiante'] as Rol[],
@@ -140,7 +116,7 @@ describe('FormularioJwt — integración con authStore', () => {
     await useAuth.getState().login({ username: 'alumno1@uni.edu', password: 'Pass1234' });
 
     expect(useAuth.getState().status).toBe('authenticated');
-    expect(useAuth.getState().principal?.id_institucional).toBe('alumno1');
+    expect(useAuth.getState().principal?.username).toBe('alumno1');
   });
 
   it('login fallido → authStore permanece unauthenticated', async () => {

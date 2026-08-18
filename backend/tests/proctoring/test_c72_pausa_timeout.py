@@ -6,7 +6,7 @@ limita la duración de una pausa YA aprobada). La expiración es acto del sistem
 no aprueba ni rechaza (L2.5).
 
 DB real (DATABASE_URL). Sin mocks (regla dura #4). Usa el conftest de proctoring
-(`db_session`, `slim_engine`).
+(`db_session`, `activeexam_engine`).
 """
 
 from __future__ import annotations

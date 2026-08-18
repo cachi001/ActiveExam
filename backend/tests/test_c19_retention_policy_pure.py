@@ -1,6 +1,6 @@
 """Tests puros (sin stack) del modelo de politicas de retencion de c-19.
 
-c-19 en rama slim (Postgres puro): la politica es un value object inmutable
+c-19 en rama activeexam (Postgres puro): la politica es un value object inmutable
 con dos thresholds principales (sesiones y audit log). El archivado a Parquet
 y la compresion TimescaleDB quedan diferidos a c-67 (sucesor planificado).
 

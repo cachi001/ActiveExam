@@ -1,7 +1,7 @@
 /**
  * RequireAuth — Guard de ruta por autenticación y rol.
  *
- * - status 'loading'        → loader (Keycloak todavía inicializando)
+ * - status 'loading'        → loader (provider todavía inicializando)
  * - status 'unauthenticated'→ redirige a /login (la pantalla con el botón de ingreso)
  * - autenticado sin el rol  → pantalla "sin permiso" (403), NUNCA sanciona ni filtra datos
  * - autenticado con rol     → renderiza el contenido protegido

@@ -44,7 +44,7 @@ export default function SalaEspera() {
         <Card className="text-left space-y-sm">
           <Row label="Examen" value={examen?.nombre ?? '—'} highlight />
           <Row label="Materia" value={materia} />
-          <Row label="Estudiante" value={`${nombreCompleto(principal) || '—'} (${principal?.id_institucional ?? ''})`} />
+          <Row label="Estudiante" value={`${nombreCompleto(principal) || '—'} (${principal?.username ?? ''})`} />
           <Row label="Duración" value={examen?.duracion_min ? `${examen.duracion_min} minutos` : 'Sin límite'} />
           <div className="flex justify-between items-center pt-base border-t border-outline-variant/40">
             <span className="text-label-sm uppercase tracking-wide text-on-surface-variant">Supervisión</span>

@@ -79,7 +79,7 @@ async def finalizar_sesion_con_writeback(
         session_id: ID de la sesión a finalizar.
         writeback_svc: servicio de writeback (None = Moodle no configurado; la nota
             igual se persiste 'pendiente' vía persistir_nota_pendiente).
-        alumno_idnumber: id_institucional del alumno (para Moodle identity).
+        alumno_idnumber: username del alumno (para Moodle identity).
         alumno_email: email del alumno.
         nota: nota ya calculada (None = no se persiste nota).
 

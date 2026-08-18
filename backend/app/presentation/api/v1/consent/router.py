@@ -1,7 +1,7 @@
 """Router del consentimiento informado (FastAPI, C-08).
 
 Endpoints del estudiante autenticado (C-06 ``get_current_principal``). El acuse se
-asocia al ``id_institucional`` del principal (no se confia en un user_id del body).
+asocia al ``username`` del principal (no se confia en un user_id del body).
 Errores de dominio -> 422 (falta accion afirmativa / version desconocida) y 403
 (gate no resuelto).
 
@@ -196,7 +196,7 @@ async def record_consent(
     """Registra el acuse inmutable; 422 si falta accion afirmativa (D2)."""
     try:
         acuse = await service.record_consent(
-            user_id=principal.id_institucional,
+            user_id=principal.username,
             exam_id=body.exam_id,
             version_texto=body.version_texto,
             affirmative_action=body.affirmative_action,
@@ -207,10 +207,10 @@ async def record_consent(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
         ) from exc
     except RuntimeError as exc:
-        # Modulo slim: NoOpConsentRepository.add() no persiste el acuse
+        # Modulo activeexam: NoOpConsentRepository.add() no persiste el acuse
         # por-rendicion (tabla `consentimiento` no existe fuera del modulo
         # full). El consentimiento de perfil (RN-CO) ya quedo registrado via
-        # /consent/profile; este endpoint es un extra no soportado en slim.
+        # /consent/profile; este endpoint es un extra no soportado en activeexam.
         # 501 controlado en vez de dejar que el RuntimeError explote como 500.
         raise HTTPException(
             status_code=status.HTTP_501_NOT_IMPLEMENTED, detail=str(exc)
@@ -231,23 +231,23 @@ async def choose_alternative(
     service: ConsentService = Depends(get_consent_service),
     principal: AuthenticatedPrincipal = Depends(get_current_principal),
 ) -> AlternativeResponse:
-    """Elige la via alternativa sin biometria; escala a proctor, NO aborta (D3).
+    """Elige la via alternativa sin biometria; escala a coordinador, NO aborta (D3).
 
-    C-63: registra la solicitud con estado pendiente_proctor y retorna
-    puede_rendir=False hasta que el proctor habilite.
+    C-63: registra la solicitud con estado pendiente_coordinador y retorna
+    puede_rendir=False hasta que el coordinador habilite.
     """
     now = _now_iso()
     mensaje_id = await service.choose_alternative(
-        user_id=principal.id_institucional,
+        user_id=principal.username,
         exam_id=body.exam_id,
         timestamp=now,
     )
     return AlternativeResponse(
         exam_id=body.exam_id,
         via_alternativa=True,
-        escalado_a_proctor=True,
+        escalado_a_coordinador=True,
         mensaje_id=mensaje_id,
-        estado="pendiente_proctor",
+        estado="pendiente_coordinador",
         puede_rendir=False,
     )
 
@@ -262,24 +262,24 @@ async def habilitar_alternativa(
     service: ConsentService = Depends(get_consent_service),
     principal: AuthenticatedPrincipal = Depends(get_current_principal),
 ) -> HabilitarAlternativaResponse:
-    """Habilita la solicitud de via alternativa de un alumno (proctor/admin).
+    """Habilita la solicitud de via alternativa de un alumno (coordinador/admin).
 
-    C-63 D-06: solo accesible por roles proctor o admin.
-    Transiciona pendiente_proctor -> habilitado_por_proctor.
+    C-63 D-06: solo accesible por roles coordinador o admin.
+    Transiciona pendiente_coordinador -> habilitado_por_coordinador.
     404 si no existe solicitud para el par (user_id, exam_id).
-    403 si el principal no tiene rol proctor ni admin.
+    403 si el principal no tiene rol coordinador ni admin.
     """
     roles = set(getattr(principal, "roles", []))
-    if not roles.intersection({"proctor", "admin", "admin_sistema"}):
+    if not roles.intersection({"coordinador", "admin", "admin_sistema"}):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Se requiere rol proctor o admin para habilitar la via alternativa.",
+            detail="Se requiere rol coordinador o admin para habilitar la via alternativa.",
         )
     try:
         solicitud = await service.habilitar_alternativa(
             user_id=user_id,
             exam_id=body.exam_id,
-            habilitado_por=principal.id_institucional,
+            habilitado_por=principal.username,
             timestamp=_now_iso(),
         )
     except ValueError as exc:
@@ -301,15 +301,15 @@ async def listar_pendientes(
     service: ConsentService = Depends(get_consent_service),
     principal: AuthenticatedPrincipal = Depends(get_current_principal),
 ) -> PendientesResponse:
-    """Lista solicitudes de via alternativa pendientes de habilitacion (proctor/admin).
+    """Lista solicitudes de via alternativa pendientes de habilitacion (coordinador/admin).
 
-    C-63 D-06: solo accesible por roles proctor o admin. Sin paginacion (D-08 Open Q).
+    C-63 D-06: solo accesible por roles coordinador o admin. Sin paginacion (D-08 Open Q).
     """
     roles = set(getattr(principal, "roles", []))
-    if not roles.intersection({"proctor", "admin", "admin_sistema"}):
+    if not roles.intersection({"coordinador", "admin", "admin_sistema"}):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Se requiere rol proctor o admin para ver las solicitudes pendientes.",
+            detail="Se requiere rol coordinador o admin para ver las solicitudes pendientes.",
         )
     solicitudes = await service.listar_pendientes()
     return PendientesResponse(
@@ -333,10 +333,10 @@ async def gate(
     """Estado del gate de consentimiento (consumible por C-09, D4).
 
     C-63: VIA_ALTERNATIVA_PENDIENTE -> puede_avanzar=False (gate cerrado hasta habilitacion).
-    VIA_ALTERNATIVA_HABILITADA -> puede_avanzar=True (proctor habilito; biometria no requerida).
+    VIA_ALTERNATIVA_HABILITADA -> puede_avanzar=True (coordinador habilito; biometria no requerida).
     """
     resolucion = await service.resolve(
-        user_id=principal.id_institucional, exam_id=exam_id
+        user_id=principal.username, exam_id=exam_id
     )
     # Gate: puede avanzar solo si no es NO_RESUELTO ni PENDIENTE
     puede_avanzar = resolucion not in (

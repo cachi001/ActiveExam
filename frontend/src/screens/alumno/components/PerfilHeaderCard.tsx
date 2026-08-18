@@ -94,11 +94,8 @@ export function PerfilHeaderCard({ principal, onRehacerFoto }: PerfilHeaderCardP
         )}
       </motion.div>
 
-      {/* Datos personales. NO mostramos "Legajo": el alumno entra por LTI y no
-          tiene legajo real (el `id_institucional` es la clave interna `lti:…`,
-          no un número institucional). El campo se eliminó del perfil del alumno. */}
       <motion.div
-        className="grid grid-cols-1 gap-x-8 gap-y-6"
+        className="grid grid-cols-1 gap-x-8 gap-y-6 sm:grid-cols-2"
         variants={containerVariants}
         initial="hidden"
         animate="visible"
@@ -106,6 +103,10 @@ export function PerfilHeaderCard({ principal, onRehacerFoto }: PerfilHeaderCardP
         <motion.div variants={itemVariants}>
           <p className="text-[13px] text-on-surface-variant">Email</p>
           <p className="text-[15px] text-on-surface mt-1">{principal?.email ?? '—'}</p>
+        </motion.div>
+        <motion.div variants={itemVariants}>
+          <p className="text-[13px] text-on-surface-variant">Usuario</p>
+          <p className="text-[15px] font-mono text-on-surface mt-1">{principal?.username ?? '—'}</p>
         </motion.div>
       </motion.div>
     </Card>

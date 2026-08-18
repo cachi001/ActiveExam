@@ -37,6 +37,8 @@ CAMPOS_EDITABLES: frozenset[str] = frozenset(
         "consent_version_vigente",
         "chat_habilitado",
         "pausas_habilitadas",
+        "pausa_max_min",
+        "pausas_max_por_sesion",
     }
 )
 

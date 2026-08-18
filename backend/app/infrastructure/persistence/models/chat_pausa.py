@@ -1,14 +1,14 @@
-"""Modelos ORM slim de chat bidireccional y pausa autorizada (C-15, tareas 6.x).
+"""Modelos ORM activeexam de chat bidireccional y pausa autorizada (C-15, tareas 6.x).
 
-Tablas: mensaje_chat, pausa_autorizada. Aditivas — migracion slim 0023.
+Tablas: mensaje_chat, pausa_autorizada. Aditivas — migracion activeexam 0023.
 
 CADENA DE CUSTODIA / L2.5 (regla dura #6 y #5):
 - ``pausa_autorizada`` es el rastro de auditoria PERSISTENTE de la pausa: registra
-  quien la aprobo/rechazo (``proctor_actor``) y los timestamps (``solicitada_en``,
+  quien la aprobo/rechazo (``tutor_actor``) y los timestamps (``solicitada_en``,
   ``resuelta_en``, ``inicio_en``, ``fin_en``). Nunca se borra ni se muta una pausa
   resuelta. La pausa solo CONTEXTUALIZA el score (excluye eventos dentro de la
   ventana del puntaje), NUNCA sanciona ni exime automaticamente.
-- En el slim NO hay middleware de audit_log por-request cableado: la tabla
+- En el activeexam NO hay middleware de audit_log por-request cableado: la tabla
   ``audit_log`` (migracion 0012) existe pero solo la escriben servicios puntuales
   (review, enrollment). Por eso la propia tabla ``pausa_autorizada`` ES el audit
   trail persistente de la resolucion de pausas. Decision documentada aqui.
@@ -69,7 +69,7 @@ class PausaAutorizadaModel(Base):
 
     L2.5: la pausa solo CONTEXTUALIZA el score (los eventos dentro de la ventana
     [inicio_en, fin_en or now] se EXCLUYEN del puntaje, no se borran). Esta tabla,
-    con ``proctor_actor`` + timestamps, ES el rastro de auditoria persistente.
+    con ``tutor_actor`` + timestamps, ES el rastro de auditoria persistente.
     """
 
     __tablename__ = "pausa_autorizada"
@@ -101,17 +101,17 @@ class PausaAutorizadaModel(Base):
     resuelta_en: Mapped[str | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
-        comment="Timestamp en que el proctor aprobo/rechazo la pausa.",
+        comment="Timestamp en que el tutor aprobo/rechazo la pausa.",
     )
-    proctor_actor: Mapped[str | None] = mapped_column(
+    tutor_actor: Mapped[str | None] = mapped_column(
         String(255),
         nullable=True,
-        comment="Subject del JWT del proctor que resolvio la pausa (audit trail).",
+        comment="Subject del JWT del tutor que resolvio la pausa (audit trail).",
     )
     motivo_rechazo: Mapped[str | None] = mapped_column(
         String(500),
         nullable=True,
-        comment="Motivo que el proctor da al RECHAZAR (se muestra al alumno). NULL si se aprobo.",
+        comment="Motivo que el tutor da al RECHAZAR (se muestra al alumno). NULL si se aprobo.",
     )
     inicio_en: Mapped[str | None] = mapped_column(
         DateTime(timezone=True),

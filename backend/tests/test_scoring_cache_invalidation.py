@@ -202,7 +202,7 @@ async def test_patch_peso_refleja_en_effective_tipo2(app_client) -> None:
 # ---------------------------------------------------------------------------
 # Auditoria: editar un peso de scoring debe dejar rastro inmutable en audit_log
 # (cadena de custodia — cambia que sesiones entran a la cola de revision).
-# audit_log ya existe en la DB slim (migracion 0012); el test cuenta el delta.
+# audit_log ya existe en la DB activeexam (migracion 0012); el test cuenta el delta.
 # ---------------------------------------------------------------------------
 
 

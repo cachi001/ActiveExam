@@ -35,22 +35,22 @@ export const enrollmentApi = {
     // C-63: verificar vía alternativa pendiente / habilitada antes del gate de perfil
     if (examenId) {
       const estadoAlt = _estadosViaAlternativa.get(examenId);
-      if (estadoAlt === 'pendiente_proctor') {
+      if (estadoAlt === 'pendiente_coordinador') {
         return {
           puede: false,
           codigo: 'via_alternativa_pendiente',
-          razon: 'Tu verificación alternativa está pendiente de aprobación de un proctor.',
+          razon: 'Tu verificación alternativa está pendiente de aprobación de un coordinador.',
         };
       }
-      if (estadoAlt === 'via_alternativa_habilitada' || estadoAlt === 'habilitado_por_proctor') {
-        // Proctor habilitó — puede rendir sin biometría.
+      if (estadoAlt === 'via_alternativa_habilitada' || estadoAlt === 'habilitado_por_coordinador') {
+        // Coordinador habilitó — puede rendir sin biometría.
         return { puede: true };
       }
     }
     // También verificar estado del perfil para vía alternativa habilitada (enrollment)
     const estadoAltPerfil = _estadosViaAlternativa.get('perfil');
-    if (estadoAltPerfil === 'via_alternativa_habilitada' || estadoAltPerfil === 'habilitado_por_proctor') {
-      // El proctor habilitó el perfil — puede rendir sin biometría (C-63 D-04)
+    if (estadoAltPerfil === 'via_alternativa_habilitada' || estadoAltPerfil === 'habilitado_por_coordinador') {
+      // El coordinador habilitó el perfil — puede rendir sin biometría (C-63 D-04)
       return { puede: true };
     }
 
@@ -79,11 +79,11 @@ export const enrollmentApi = {
       }
 
       // C-63: si hay vía alternativa pendiente en el perfil, mostrar ese código
-      if (estadoAltPerfil === 'pendiente_proctor') {
+      if (estadoAltPerfil === 'pendiente_coordinador') {
         return {
           puede: false,
           codigo: 'via_alternativa_pendiente',
-          razon: 'Tu verificación alternativa está pendiente de aprobación de un proctor.',
+          razon: 'Tu verificación alternativa está pendiente de aprobación de un coordinador.',
         };
       }
 
@@ -117,7 +117,7 @@ export const enrollmentApi = {
 
   /**
    * Registra una solicitud de vía alternativa sin biometría (C-63).
-   * El alumno queda en estado pendiente_proctor hasta que un proctor habilite.
+   * El alumno queda en estado pendiente_coordinador hasta que un coordinador habilite.
    * Retorna { estado, puede_rendir } — puede_rendir=false mientras sea pendiente.
    */
   async solicitarViaAlternativa(examId: string): Promise<{ estado: string; puede_rendir: boolean }> {

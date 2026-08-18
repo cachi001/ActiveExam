@@ -1,4 +1,4 @@
-"""Application layer del verify-chain (c-18 slim)."""
+"""Application layer del verify-chain (c-18 activeexam)."""
 
 from app.application.verify_chain.service import VerifyChainService
 

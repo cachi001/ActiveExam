@@ -5,7 +5,7 @@ regla dura #6). Solo aplica cuando la sesion se vincula a un ``examen_contenido_
 
 DB real (DATABASE_URL). Sin mocks de DB (regla dura de codigo). Reusa las fixtures
 del conftest de proctoring (``client`` autenticado como estudiante, ``db_session``,
-``slim_engine``). El alumno por defecto: id_institucional="estudiante",
+``activeexam_engine``). El alumno por defecto: username="estudiante",
 email="test@uni.edu".
 
 Correr:
@@ -26,7 +26,7 @@ from app.infrastructure.persistence.models.proctoring import ProctoringSessionMo
 
 pytestmark = pytest.mark.asyncio
 
-_ALUMNO = "estudiante"  # id_institucional del token por defecto del fixture client
+_ALUMNO = "estudiante"  # username del token por defecto del fixture client
 
 
 def _now() -> datetime:

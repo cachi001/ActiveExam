@@ -1,4 +1,4 @@
-"""Adaptador SQL para el modelo de decision de UN SOLO PASO (c-16 slim,
+"""Adaptador SQL para el modelo de decision de UN SOLO PASO (c-16 activeexam,
 colapsado desde c-71 slice 2)."""
 
 from __future__ import annotations

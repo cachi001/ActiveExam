@@ -8,7 +8,7 @@ Plataforma self-hosted de proctoring **L2.5**. Este repo contiene la **fundacion
 
 ## Quickstart — clonar y testear como en producción
 
-Espeja el deploy real (Railway = backend slim + Postgres; Vercel = frontend), con
+Espeja el deploy real (Railway = backend activeexam + Postgres; Vercel = frontend), con
 **login JWT real (sin modo demo)** y los usuarios de prueba creados **siempre**.
 
 **Requisitos:** Docker Desktop corriendo + Node 18+.
@@ -30,9 +30,9 @@ test apagados. Para frenar: `./scripts/dev-down.ps1` (agregá `-v` para resetear
 
 | Rol | Usuario o email | Password |
 |---|---|---|
-| Administrador | `ADMIN-001` · `admin@activeexam.local` | `Admin123` |
-| Estudiante | `EST-001` · `estudiante@activeexam.local` | `Estudiante123` |
-| Proctor | `PROC-001` · `proctor@activeexam.local` | `Proctor123` |
+| Administrador | `admin` · `admin@activeexam.local` | `Admin123` |
+| Estudiante | `estudiante1` · `estudiante@activeexam.local` | `Estudiante123` |
+| Coordinador | `coordinador1` · `proctor@activeexam.local` | `Proctor123` |
 
 > Las credenciales y secretos de `docker-compose.dev.yml` son **dev-only** (DB
 > local, JWT y Fernet de juguete). En producción se inyectan por el dashboard de
@@ -133,15 +133,15 @@ python scripts/seed_users.py
 
 | Rol | username / email | password (env) |
 |---|---|---|
-| `estudiante` | `EST-001` o `estudiante@activeexam.local` | `$SEED_ESTUDIANTE_PASSWORD` |
-| `proctor` | `PROC-001` o `proctor@activeexam.local` | `$SEED_PROCTOR_PASSWORD` |
-| `admin_sistema` | `ADMIN-001` o `admin@activeexam.local` | `$SEED_ADMIN_PASSWORD` |
+| `estudiante` | `estudiante1` o `estudiante@activeexam.local` | `$SEED_ESTUDIANTE_PASSWORD` |
+| `coordinador` | `coordinador1` o `proctor@activeexam.local` | `$SEED_PROCTOR_PASSWORD` |
+| `admin_sistema` | `admin` o `admin@activeexam.local` | `$SEED_ADMIN_PASSWORD` |
 
 **Endpoint de login:**
 ```bash
 curl -X POST http://localhost:8000/api/v1/auth/login \
   -H 'Content-Type: application/json' \
-  -d '{"username":"ADMIN-001","password":"Admin123"}'
+  -d '{"username":"admin","password":"Admin123"}'
 ```
 
 ### Nota de deuda técnica — MFA (proctor/admin_sistema)

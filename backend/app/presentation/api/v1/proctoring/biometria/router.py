@@ -1,4 +1,4 @@
-"""Router de biometria de proctoring slim.
+"""Router de biometria de proctoring activeexam.
 
 Endpoints:
 - POST /sessions/{id}/biometria         → 200/404 (sin auth, demo)
@@ -48,10 +48,10 @@ def create_biometria_router(
     Args:
         get_db: dependencia FastAPI que devuelve AsyncSession.
         get_embedding_encryption: dependencia FastAPI que devuelve
-            EmbeddingEncryptionService (inyectado desde el state, patron slim).
+            EmbeddingEncryptionService (inyectado desde el state, patron activeexam).
             Si es None, los endpoints stateful C-59 no estaran disponibles.
         require_estudiante: dependencia FastAPI que exige rol ESTUDIANTE
-            (inyectada desde create_proctoring_router, sin importar SlimSettings).
+            (inyectada desde create_proctoring_router, sin importar ActiveExamSettings).
             Si es None, los endpoints stateful C-59 no estaran disponibles.
     """
     router = APIRouter()

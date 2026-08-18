@@ -87,7 +87,7 @@ class _SqlRepository(Generic[D, M]):
 def _user_to_domain(m: UsuarioModel) -> Usuario:
     return Usuario(
         id=m.id,
-        id_institucional=m.id_institucional,
+        username=m.username,
         email=m.email,
         roles=tuple(m.roles or ()),
         attrs_federados=dict(m.attrs_federados or {}),
@@ -96,7 +96,7 @@ def _user_to_domain(m: UsuarioModel) -> Usuario:
 
 def _user_to_model(u: Usuario) -> UsuarioModel:
     kwargs = dict(
-        id_institucional=u.id_institucional,
+        username=u.username,
         email=u.email,
         roles=list(u.roles),
         attrs_federados=u.attrs_federados,
@@ -249,10 +249,10 @@ class UserSqlRepository(_SqlRepository[Usuario, UsuarioModel], UserRepository):
     def __init__(self, session: AsyncSession) -> None:
         super().__init__(session, UsuarioModel, _user_to_domain, _user_to_model)
 
-    async def get_by_id_institucional(self, id_institucional: str) -> Usuario | None:
+    async def get_by_username(self, username: str) -> Usuario | None:
         result = await self._session.execute(
             select(UsuarioModel).where(
-                UsuarioModel.id_institucional == id_institucional
+                UsuarioModel.username == username
             )
         )
         row = result.scalar_one_or_none()

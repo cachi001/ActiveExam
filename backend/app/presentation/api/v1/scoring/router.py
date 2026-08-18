@@ -272,7 +272,7 @@ async def editar_config(
         # scoring cambia que sesiones entran a la cola de revision — debe dejar rastro.
         await AuditLogSqlRepository(session).append(
             AuditEntry(
-                actor=principal.id_institucional,
+                actor=principal.username,
                 timestamp=_now_iso(),
                 ip="",
                 user_agent="",

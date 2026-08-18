@@ -60,9 +60,9 @@ class ResultadoVerificacionReferencia:
 class VerificarReferenciaVigenteService:
     """Verificacion biometrica 1:1 autenticada: backend busca referencia por JWT.
 
-    Dependencias inyectadas (no se importa SlimSettings aqui):
+    Dependencias inyectadas (no se importa ActiveExamSettings aqui):
     - session: AsyncSession (transaccion activa del request)
-    - encryption: EmbeddingEncryptionService (instanciado en main_slim.py)
+    - encryption: EmbeddingEncryptionService (instanciado en main_activeexam.py)
 
     Flujo (D2 del design):
     1. Buscar el embedding vigente del usuario via EmbeddingReferenciaRepository.

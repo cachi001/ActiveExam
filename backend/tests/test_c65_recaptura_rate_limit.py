@@ -44,29 +44,24 @@ def _monkeyenv(monkeypatch: pytest.MonkeyPatch) -> None:
     """Variables de entorno minimas para que Settings arranque en tests de stack."""
     monkeypatch.setenv(
         "DATABASE_URL",
-        os.environ.get("DATABASE_URL", "postgresql+asyncpg://app@db:5432/proctoring"),
+        os.environ.get("DATABASE_URL", "postgresql+asyncpg://app@postgres:5432/proctoring"),
     )
     monkeypatch.setenv("STORAGE_ENDPOINT", "http://minio:9000")
     monkeypatch.setenv("STORAGE_ACCESS_KEY", "k")
     monkeypatch.setenv("STORAGE_SECRET_KEY", "s")
     monkeypatch.setenv("STORAGE_BUCKET_EVIDENCE", "evidence")
-    monkeypatch.setenv("KEYCLOAK_ISSUER", "http://keycloak:8080/realms/proctoring")
-    monkeypatch.setenv(
-        "KEYCLOAK_JWKS_URL",
-        "http://keycloak:8080/realms/proctoring/protocol/openid-connect/certs",
-    )
     monkeypatch.setenv("JWT_AUDIENCE", "proctoring-api")
     monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://tempo:4317")
     monkeypatch.setenv("EMBEDDING_ENCRYPTION_KEY", _fernet_key_b64())
 
 
 async def _crear_usuario_test(factory, suffix: str = "c65") -> tuple[str, str]:
-    """Crea usuario de prueba, devuelve (id, id_institucional)."""
+    """Crea usuario de prueba, devuelve (id, username)."""
     from app.infrastructure.persistence.models.transactional import UsuarioModel
 
     async with factory() as session:
         u = UsuarioModel(
-            id_institucional=f"test-c65-{suffix}",
+            username=f"test-c65-{suffix}",
             email=f"test-c65-{suffix}@demo.test",
             roles=["estudiante"],
             password_hash="x",
@@ -75,7 +70,7 @@ async def _crear_usuario_test(factory, suffix: str = "c65") -> tuple[str, str]:
         )
         session.add(u)
         await session.commit()
-        return u.id, u.id_institucional
+        return u.id, u.username
 
 
 async def _borrar_usuario_test(factory, usuario_id: str) -> None:
@@ -105,7 +100,7 @@ async def _borrar_usuario_test(factory, usuario_id: str) -> None:
         await session.commit()
 
 
-def _make_fake_validator(usuario_id: str, id_institucional: str):
+def _make_fake_validator(usuario_id: str, username: str):
     """Devuelve un JwtValidator falso que siempre autentica como 'estudiante'."""
     from app.domain.auth.identity import AuthenticatedPrincipal
     from app.infrastructure.auth.jwt_validator import JwtValidator
@@ -116,7 +111,7 @@ def _make_fake_validator(usuario_id: str, id_institucional: str):
 
         def validar(self, token: str) -> AuthenticatedPrincipal:
             return AuthenticatedPrincipal(
-                id_institucional=id_institucional,
+                username=username,
                 email="test@demo.test",
                 roles=["estudiante"],
                 mfa_satisfecho=False,
@@ -155,11 +150,11 @@ async def test_audit_log_escrito_en_reenrollment_con_ip_y_ua(
 
     engine = create_engine()
     factory = create_session_factory(engine)
-    usuario_id, id_institucional = await _crear_usuario_test(factory, "audit-01")
+    usuario_id, username = await _crear_usuario_test(factory, "audit-01")
 
     try:
         app = create_app()
-        app.state.jwt_validator = _make_fake_validator(usuario_id, id_institucional)
+        app.state.jwt_validator = _make_fake_validator(usuario_id, username)
 
         test_ua = "TestAgent/1.0 (c65-audit-test)"
         test_ip_header = "10.0.0.42"
@@ -254,11 +249,11 @@ async def test_audit_log_captura_ip_y_ua_del_request(
 
     engine = create_engine()
     factory = create_session_factory(engine)
-    usuario_id, id_institucional = await _crear_usuario_test(factory, "audit-02")
+    usuario_id, username = await _crear_usuario_test(factory, "audit-02")
 
     try:
         app = create_app()
-        app.state.jwt_validator = _make_fake_validator(usuario_id, id_institucional)
+        app.state.jwt_validator = _make_fake_validator(usuario_id, username)
 
         ua_primera = "AgentePrimero/1.0"
         ua_segunda = "AgenteSegundo/2.0 (renovacion-test)"
@@ -336,11 +331,11 @@ async def test_referencia_anterior_conservada_no_sobreescrita(
 
     engine = create_engine()
     factory = create_session_factory(engine)
-    usuario_id, id_institucional = await _crear_usuario_test(factory, "version-01")
+    usuario_id, username = await _crear_usuario_test(factory, "version-01")
 
     try:
         app = create_app()
-        app.state.jwt_validator = _make_fake_validator(usuario_id, id_institucional)
+        app.state.jwt_validator = _make_fake_validator(usuario_id, username)
 
         async with AsyncClient(
             transport=httpx.ASGITransport(app=app), base_url="http://test"
@@ -432,11 +427,11 @@ async def test_reenrollment_no_invalida_rendicion_en_curso(
 
     engine = create_engine()
     factory = create_session_factory(engine)
-    usuario_id, id_institucional = await _crear_usuario_test(factory, "l25-01")
+    usuario_id, username = await _crear_usuario_test(factory, "l25-01")
 
     try:
         app = create_app()
-        app.state.jwt_validator = _make_fake_validator(usuario_id, id_institucional)
+        app.state.jwt_validator = _make_fake_validator(usuario_id, username)
 
         async with AsyncClient(
             transport=httpx.ASGITransport(app=app), base_url="http://test"

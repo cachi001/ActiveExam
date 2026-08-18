@@ -4,17 +4,27 @@
  * Se re-exporta desde `lib/types.ts`: importa siempre desde ahi.
  */
 
-import type { DecisionRevisor } from './proctoring-slim';
+import type { DecisionRevisor } from './proctoring-activeexam';
 import type { EventoSesion, Severidad } from './proctoring-eventos';
 
 // ---------------------------------------------------------------------------
 // Gestión de usuarios — C-61
 // ---------------------------------------------------------------------------
 
+/** Materia + comisión en la que está inscripto un usuario (rol estudiante). Espeja InscripcionResumen del backend. */
+export interface InscripcionResumen {
+  comision_id: string;
+  comision_codigo: string;
+  comision_nombre: string;
+  materia_id: string;
+  materia_codigo: string;
+  materia_nombre: string;
+}
+
 /** Usuario devuelto por GET/POST/PUT /api/v1/users/. Espeja UsuarioResponse del backend. */
 export interface UsuarioAdmin {
   id: string;
-  id_institucional: string;
+  username: string;
   email: string;
   nombre: string | null;
   apellido: string | null;
@@ -26,6 +36,10 @@ export interface UsuarioAdmin {
   password_generada?: string | null;
   creado_en?: string | null;
   ultimo_acceso_en?: string | null;
+  /** Solo presente en el detalle (GET /users/{id}) para usuarios con rol estudiante. */
+  inscripciones?: InscripcionResumen[];
+  /** Solo presente en el detalle (GET /users/{id}) para usuarios con rol tutor: comisiones a cargo. */
+  comisiones_a_cargo?: InscripcionResumen[];
 }
 
 /** Respuesta paginada de GET /api/v1/users/. */

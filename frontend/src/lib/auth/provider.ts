@@ -1,12 +1,9 @@
 /**
  * Interfaz AuthProvider — puerto de autenticación (C-55, D6).
  *
- * Dos adapters implementan esta interfaz:
- *   - JwtAdapter    (VITE_AUTH_PROVIDER=jwt)      → formulario + POST /auth/login
- *   - KeycloakAdapter (VITE_AUTH_PROVIDER=keycloak) → flujo OIDC PKCE existente
- *
+ * Único adapter: JwtAdapter → formulario + POST /auth/login (JWT propio).
  * El singleton del provider activo se resuelve en lib/authProvider.ts.
- * authStore y api.ts dependen de esta interfaz, no de Keycloak directamente.
+ * authStore y api.ts dependen de esta interfaz.
  */
 import type { Principal } from '../types';
 
@@ -19,10 +16,7 @@ export interface AuthProvider {
    */
   init(): Promise<void>;
 
-  /**
-   * Inicia sesión. Para JwtAdapter: requiere credenciales. Para Keycloak: redirige.
-   * Para Demo: sin red.
-   */
+  /** Inicia sesión con credenciales. */
   login(creds?: { username: string; password: string }): Promise<void>;
 
   /** Cierra sesión y limpia el estado. */
@@ -35,9 +29,8 @@ export interface AuthProvider {
   getToken(): string | undefined;
 
   /**
-   * Refresca el access token usando el refresh_token, si el adapter lo soporta.
+   * Refresca el access token usando el refresh_token.
    * Devuelve el nuevo token vigente, o undefined si no se pudo refrescar.
-   * Opcional: sólo JwtAdapter lo implementa (Keycloak refresca solo; Demo no aplica).
    * Lo usa `realFetch` para auto-curarse ante un 401 por token expirado.
    */
   refresh?(): Promise<string | undefined>;
@@ -46,7 +39,6 @@ export interface AuthProvider {
    * Adopta una sesión ya emitida por el backend (tokens por parámetro), sin pasar
    * por el formulario de login. Lo usa la landing LTI (C-75 §7.1): el launch valida
    * al alumno server-side y redirige al frontend con los tokens.
-   * Opcional: sólo JwtAdapter lo implementa (Keycloak gestiona su propia sesión).
    */
   seedSession?(accessToken: string, refreshToken?: string): void;
 

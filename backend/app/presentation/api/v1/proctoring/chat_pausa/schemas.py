@@ -1,7 +1,7 @@
-"""Schemas Pydantic del chat bidireccional + pausa autorizada (slim, C-15 tareas 6.x).
+"""Schemas Pydantic del chat bidireccional + pausa autorizada (activeexam, C-15 tareas 6.x).
 
 Todos con extra='forbid' (regla dura de codigo). Transporte REST + polling (el
-slim NO monta el WS de eventos).
+activeexam NO monta el WS de eventos).
 """
 
 from __future__ import annotations
@@ -18,8 +18,12 @@ class MensajeChatIn(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    autor: Literal["alumno", "proctor"] = Field(
-        ..., description="Quien envia el mensaje: 'alumno' o 'proctor'."
+    # C-76 bloque 6 (D4): el actor pasa de 'proctor' a 'tutor'. El alumno NO puede
+    # iniciar el hilo — la regla se valida server-side en chat_pausa_service
+    # (regla dura #6: el cliente es sensor no confiable, no se confia en que el
+    # front oculte el boton).
+    autor: Literal["alumno", "tutor"] = Field(
+        ..., description="Quien envia el mensaje: 'alumno' o 'tutor'."
     )
     texto: str = Field(..., min_length=1, max_length=2000)
 
@@ -67,7 +71,7 @@ class PausaDetalle(BaseModel):
     estado: str
     solicitada_en: Any
     resuelta_en: Any = None
-    proctor_actor: str | None = None
+    tutor_actor: str | None = None
     motivo_rechazo: str | None = None
     inicio_en: Any = None
     fin_en: Any = None
@@ -93,8 +97,8 @@ class PausaResolverIn(BaseModel):
     accion: Literal["aprobar", "rechazar"] = Field(
         ..., description="'aprobar' abre ventana (inicio_en); 'rechazar' no."
     )
-    proctor_actor: str | None = Field(
-        None, description="Subject del JWT del proctor que resuelve (audit trail)."
+    tutor_actor: str | None = Field(
+        None, description="Subject del JWT del tutor que resuelve (audit trail)."
     )
     motivo_rechazo: str | None = Field(
         None,

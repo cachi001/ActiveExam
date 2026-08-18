@@ -10,7 +10,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from app.domain.exam_content.entities import PoliticaIntentos
 
 
@@ -359,6 +359,21 @@ class CrearDesdebancoRequest(BaseModel):
     nota_maxima: float = Field(default=100.0, gt=0, le=100)
     nota_aprobacion: float = Field(default=60.0, ge=0)
 
+    @model_validator(mode="after")
+    def validar_nota_aprobacion_le_maxima(self) -> "CrearDesdebancoRequest":
+        """Defensa en profundidad: nota_aprobacion <= nota_maxima.
+
+        La invariante también se aplica imperativamente en el router (422) y
+        en validar_config_examen (dominio). Este validator la declara a nivel
+        schema para que cualquier endpoint nuevo la herede automáticamente.
+        """
+        if self.nota_aprobacion > self.nota_maxima:
+            raise ValueError(
+                f"nota_aprobacion ({self.nota_aprobacion}) no puede superar "
+                f"nota_maxima ({self.nota_maxima})."
+            )
+        return self
+
 
 class CrearDesdebancoResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -615,7 +630,7 @@ class AlumnoElegibilidadResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     usuario_id: str
-    id_institucional: str
+    username: str
     nombre: str | None = None
     apellido: str | None = None
     email: str
@@ -714,6 +729,22 @@ class ExamenConfigPatchRequest(BaseModel):
     revision_habilitada: bool | None = None
     politica_intentos: PoliticaIntentos | None = None
 
+    @model_validator(mode="after")
+    def validar_nota_aprobacion_le_maxima(self) -> "ExamenConfigPatchRequest":
+        """Defensa en profundidad: nota_aprobacion <= nota_maxima en PATCH.
+
+        Solo se valida cuando AMBOS campos llegan en el mismo body. Si viene
+        solo uno, el chequeo del resultado mergeado lo hace validar_config_examen
+        (dominio), que sí tiene el valor persistido disponible.
+        """
+        if self.nota_aprobacion is not None and self.nota_maxima is not None:
+            if self.nota_aprobacion > self.nota_maxima:
+                raise ValueError(
+                    f"nota_aprobacion ({self.nota_aprobacion}) no puede superar "
+                    f"nota_maxima ({self.nota_maxima})."
+                )
+        return self
+
 
 # ---------------------------------------------------------------------------
 # Resultados del examen + sincronización a Moodle (C-69 admin-sync, tareas 2-3)
@@ -739,6 +770,11 @@ class ResultadoAlumnoResponse(BaseModel):
     # en_riesgo | anulada. None = nada la retiene.
     retenido_por: str | None = None
     actualizado_en: datetime | None = None
+    # C-76 tarea 14: estado de la ENTREGA, DERIVADO (nunca persistido).
+    # no_finalizada | en_revision | revisada | finalizada.
+    estado_entrega: str
+    # Soft-hide administrativo del panel de resultados (no disciplinario).
+    archivado: bool = False
 
 
 class ResultadosExamenPaginadosResponse(BaseModel):
@@ -750,6 +786,42 @@ class ResultadosExamenPaginadosResponse(BaseModel):
     total: int
     page: int
     page_size: int
+
+
+class ArchivarResultadoRequest(BaseModel):
+    """Body de ``PATCH .../resultados/{session_id}/archivar`` (C-76 tarea 14).
+
+    Soft-hide administrativo — NO es un veredicto disciplinario (eso es
+    ``decision``, ver ``review/service.py``). Solo oculta/muestra la fila.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    archivado: bool
+
+
+class ArchivarResultadoResponse(BaseModel):
+    """Estado resultante tras archivar/desarchivar una fila de resultados."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    session_id: str
+    archivado: bool
+
+
+class SincronizarMoodleRequest(BaseModel):
+    """Body OPCIONAL del endpoint de sincronización.
+
+    - Sin body (o body ausente): sincroniza TODAS las notas pendientes/fallidas
+      (comportamiento original, retrocompatible).
+    - Con ``session_ids``: sincroniza SOLO esas sesiones específicas.
+      Las notas retenidas por riesgo/configuración siguen sin enviarse aunque estén
+      en la lista (el gate D15 se aplica siempre, por diseño L2.5).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    session_ids: list[str] | None = None
 
 
 class SincronizarMoodleResponse(BaseModel):
@@ -845,6 +917,13 @@ class CapturaFirmadaResponse(BaseModel):
     tipo_evento: str | None = None
     severidad: str | None = None
     ocurrio_en: object | None = None
+    # Cadena de custodia (c-18 verify-chain), recalculada en cada carga del
+    # informe. 'intact'/'broken'/'material_missing'; ver informe_service.py.
+    integridad_estado: str = "no_verificado"
+    integridad_algoritmo: str | None = None
+    integridad_hash_esperado: str | None = None
+    integridad_hash_actual: str | None = None
+    integridad_verificado_en: str | None = None
 
 
 class InformeDevolucionResponse(BaseModel):

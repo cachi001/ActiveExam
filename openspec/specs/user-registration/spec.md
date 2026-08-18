@@ -40,7 +40,7 @@ El sistema SHALL exponer `POST /api/v1/auth/register` como endpoint PÚBLICO (si
 
 ### Requirement: Datos personales del usuario
 
-El modelo `usuario` SHALL incluir las columnas `nombre` y `apellido` (nullable, para compatibilidad con usuarios preexistentes). Estas columnas SHALL persistirse en el auto-registro y poder mostrarse en la UI. La migración que las agrega MUST vivir en la rama Alembic del slim (`down_revision = "0008"`, `depends_on = None`) sin introducir dependencias de TimescaleDB.
+El modelo `usuario` SHALL incluir las columnas `nombre` y `apellido` (nullable, para compatibilidad con usuarios preexistentes). Estas columnas SHALL persistirse en el auto-registro y poder mostrarse en la UI. La migración que las agrega MUST vivir en la rama Alembic del activeexam (`down_revision = "0008"`, `depends_on = None`) sin introducir dependencias de TimescaleDB.
 
 #### Scenario: Persistencia de nombre y apellido
 

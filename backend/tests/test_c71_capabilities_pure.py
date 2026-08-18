@@ -13,8 +13,9 @@ from app.domain.auth.capabilities import CAPABILITY_ROLES, tiene_capacidad
 from app.domain.auth.roles import Rol
 
 
-def test_revisor_tiene_capacidad_revisar_sesion() -> None:
-    assert tiene_capacidad(Rol.REVISOR, "revisar_sesion") is True
+def test_coordinador_tiene_capacidad_revisar_sesion() -> None:
+    # c-76: el rol REVISOR fue eliminado; el COORDINADOR absorbe el veredicto.
+    assert tiene_capacidad(Rol.COORDINADOR, "revisar_sesion") is True
 
 
 def test_estudiante_no_tiene_capacidad_revisar_sesion() -> None:
@@ -24,7 +25,6 @@ def test_estudiante_no_tiene_capacidad_revisar_sesion() -> None:
 def test_revisar_sesion_cubre_todo_el_acto_incluida_la_anulacion() -> None:
     """No hay una capacidad separada para anular: quien revisa decide, en el
     mismo acto (aprobar o anular), sin segunda instancia (D8 colapsado)."""
-    assert tiene_capacidad(Rol.REVISOR, "revisar_sesion") is True
     assert tiene_capacidad(Rol.COORDINADOR, "revisar_sesion") is True
     assert tiene_capacidad(Rol.ADMIN_SISTEMA, "revisar_sesion") is True
 
@@ -49,7 +49,6 @@ def test_tutor_no_puede_gestionar_estructura_academica() -> None:
 def test_admins_pueden_gestionar_estructura_academica() -> None:
     """Alta/edición de materias y comisiones: roles de alcance institucional."""
     assert tiene_capacidad(Rol.ADMIN_SISTEMA, "gestionar_estructura") is True
-    assert tiene_capacidad(Rol.ADMIN_EXAMENES, "gestionar_estructura") is True
     assert tiene_capacidad(Rol.COORDINADOR, "gestionar_estructura") is True
 
 
@@ -70,4 +69,4 @@ def test_reasignar_capacidad_en_el_mapa_cambia_el_gating_sin_tocar_endpoint(
     )
 
     assert tiene_capacidad(Rol.COORDINADOR, "revisar_sesion") is True
-    assert tiene_capacidad(Rol.REVISOR, "revisar_sesion") is False
+    assert tiene_capacidad(Rol.ADMIN_SISTEMA, "revisar_sesion") is False

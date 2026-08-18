@@ -1,6 +1,6 @@
 """2.5 RED → 2.6 GREEN: tests del endpoint admin-only de importación Moodle XML.
 
-- Sin rol admin_examenes → 403
+- Sin rol admin_sistema → 403
 - Admin + MFA → 201 con reporte
 - XML inválido → 422
 - XML vacío (sin preguntas soportadas) → 400
@@ -113,7 +113,7 @@ async def client_admin(app_admin):
     async with AsyncClient(
         transport=ASGITransport(app=app_admin),
         base_url="http://test",
-        headers=auth_headers(["admin_examenes"], mfa=True),
+        headers=auth_headers(["admin_sistema"], mfa=True),
     ) as c:
         yield c
 
@@ -136,7 +136,7 @@ async def test_import_sin_token_401(client_noauth):
 
 @pytest.mark.asyncio
 async def test_import_estudiante_403(client_noauth):
-    """Rol 'estudiante' → 403 (sin admin_examenes)."""
+    """Rol 'estudiante' → 403 (sin admin_sistema)."""
     xml = (FIXTURES / "sample_export_multichoice_truefalse.xml").read_bytes()
     resp = await client_noauth.post(
         "/api/v1/exam-content/moodle-import",

@@ -13,6 +13,8 @@ Los tests de validación de schema (422) son unitarios (sin DB).
 
 from __future__ import annotations
 
+import os
+
 import pytest
 from fastapi import APIRouter, Depends
 from fastapi.testclient import TestClient
@@ -32,13 +34,11 @@ _ISSUER = "activeexam-auth"
 _AUD = "proctoring-api"
 
 _ENV: dict[str, str] = {
-    "DATABASE_URL": "postgresql+asyncpg://app@db:5432/proctoring",
+    "DATABASE_URL": os.environ.get("DATABASE_URL", "postgresql+asyncpg://app@postgres:5432/proctoring"),
     "STORAGE_ENDPOINT": "http://minio:9000",
     "STORAGE_ACCESS_KEY": "k",
     "STORAGE_SECRET_KEY": "s",
     "STORAGE_BUCKET_EVIDENCE": "evidence",
-    "KEYCLOAK_ISSUER": "http://keycloak:8080/realms/proctoring",
-    "KEYCLOAK_JWKS_URL": "http://keycloak:8080/realms/proctoring/protocol/openid-connect/certs",
     "JWT_AUDIENCE": _AUD,
     "JWT_OWN_SECRET": _SECRET.decode(),
     "JWT_OWN_ISSUER": _ISSUER,
@@ -67,20 +67,17 @@ def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     settings = Settings()
     app = create_app(settings)
 
-    # Inyectar validador de test.
+    # Inyectar validador de test (JWT propio HS256-only, sin Keycloak).
     cache = JwksCache(lambda: {"keys": []}, ttl_seconds=3600)
-    policy = TokenPolicy(
-        issuers_aceptados=frozenset({_ISSUER, settings.keycloak_issuer}),
-        audience=_AUD,
-    )
+    policy = TokenPolicy(issuers_aceptados=frozenset({_ISSUER}), audience=_AUD)
     verify = build_hs256_verify(_SECRET)
     app.state.jwt_validator = JwtValidator(
         jwks_cache=cache,
         policy=policy,
         verify_fn=verify,
-        verify_fn_hs256=verify,
+        verify_fn_hs256=None,
         own_issuer=_ISSUER,
-        keycloak_issuer=settings.keycloak_issuer,
+        rs256_issuer=None,
     )
     return TestClient(app)
 
@@ -93,7 +90,7 @@ def test_password_corto_rechazado_422(client: TestClient) -> None:
     resp = client.post(
         "/api/v1/users/",
         json={
-            "id_institucional": "u1",
+            "username": "u1",
             "email": "u1@uni.edu",
             "password": "corto",
             "roles": ["estudiante"],
@@ -109,7 +106,7 @@ def test_campo_extra_rechazado_422(client: TestClient) -> None:
     resp = client.post(
         "/api/v1/users/",
         json={
-            "id_institucional": "u1",
+            "username": "u1",
             "email": "u1@uni.edu",
             "password": "ValidPassword123",
             "roles": ["estudiante"],
@@ -123,16 +120,16 @@ def test_campo_extra_rechazado_422(client: TestClient) -> None:
 def test_sin_bearer_devuelve_401(client: TestClient) -> None:
     resp = client.post(
         "/api/v1/users/",
-        json={"id_institucional": "u1", "email": "u1@uni.edu", "password": "ValidPassword123", "roles": ["estudiante"]},
+        json={"username": "u1", "email": "u1@uni.edu", "password": "ValidPassword123", "roles": ["estudiante"]},
     )
     assert resp.status_code == 401
 
 
 def test_rol_incorrecto_devuelve_403(client: TestClient) -> None:
-    token = _token(["proctor"])
+    token = _token(["coordinador"])  # c-76: rol proctor eliminado; coordinador tampoco gestiona usuarios -> 403
     resp = client.post(
         "/api/v1/users/",
-        json={"id_institucional": "u1", "email": "u1@uni.edu", "password": "ValidPassword123", "roles": ["estudiante"]},
+        json={"username": "u1", "email": "u1@uni.edu", "password": "ValidPassword123", "roles": ["estudiante"]},
         headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 403
@@ -150,7 +147,7 @@ async def test_creacion_exitosa_por_admin(client: TestClient) -> None:
     resp = client.post(
         "/api/v1/users/",
         json={
-            "id_institucional": "test-nuevo-user-001",
+            "username": "test-nuevo-user-001",
             "email": "nuevo-user-001@demo.test",
             "password": "ValidPassword123",
             "roles": ["estudiante"],
@@ -159,7 +156,7 @@ async def test_creacion_exitosa_por_admin(client: TestClient) -> None:
     )
     assert resp.status_code == 201
     body = resp.json()
-    assert body["id_institucional"] == "test-nuevo-user-001"
+    assert body["username"] == "test-nuevo-user-001"
     assert body["auth_provider"] == "local"
 
     # Cleanup.
@@ -178,7 +175,7 @@ async def test_email_duplicado_409(client: TestClient) -> None:
         pytest.skip("Sin DB disponible")
     token = _token(["admin_sistema"])
     body = {
-        "id_institucional": "test-dup-user-002",
+        "username": "test-dup-user-002",
         "email": "dup-user-002@demo.test",
         "password": "ValidPassword123",
         "roles": ["estudiante"],
@@ -187,7 +184,7 @@ async def test_email_duplicado_409(client: TestClient) -> None:
     assert r1.status_code == 201
     r2 = client.post(
         "/api/v1/users/",
-        json={**body, "id_institucional": "test-dup-user-002b"},
+        json={**body, "username": "test-dup-user-002b"},
         headers={"Authorization": f"Bearer {token}"},
     )
     assert r2.status_code == 409

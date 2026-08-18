@@ -1,10 +1,10 @@
-"""011 - tabla de configuracion de score por tipo de evento (rama slim).
+"""011 - tabla de configuracion de score por tipo de evento (rama activeexam).
 
 Revision ID: 0011
-Revises: 0010 (branch slim)
+Revises: 0010 (branch activeexam)
 Create Date: 2026-06-08
 
-RAMA: slim
+RAMA: activeexam
   down_revision = "0010"
   branch_labels = None
   depends_on    = None
@@ -31,11 +31,11 @@ PROPOSITO:
   riskWeights.ts para que el comportamiento NO cambie hasta que admin lo ajuste.
 
 ROLLBACK:
-  alembic downgrade slim@0010  -> dropea la tabla. Es destructivo si admin ya edito
+  alembic downgrade activeexam@0010  -> dropea la tabla. Es destructivo si admin ya edito
   pesos, pero recuperable corriendo upgrade de nuevo (re-seed con defaults).
 
 VERIFICACION:
-  alembic upgrade slim@head   -> aplica 0010 -> 0011 contra postgres:16-alpine.
+  alembic upgrade activeexam@head   -> aplica 0010 -> 0011 contra postgres:16-alpine.
   Espera 8 filas en evento_score_config tras el upgrade.
 """
 

@@ -37,7 +37,7 @@ def _connect():
 def _crear_usuario_y_examen(cur) -> tuple[str, str]:
     inst = f"inst-{uuid.uuid4()}"
     cur.execute(
-        "INSERT INTO usuario (id_institucional, email) VALUES (%s, %s) RETURNING id",
+        "INSERT INTO usuario (username, email) VALUES (%s, %s) RETURNING id",
         (inst, f"{inst}@uni.test"),
     )
     user_id = cur.fetchone()[0]

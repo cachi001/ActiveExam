@@ -1,7 +1,7 @@
-"""Dominio de la cola de revision humana (c-16 slim).
+"""Dominio de la cola de revision humana (c-16 activeexam).
 
 Implementa la decision terminal inmutable del revisor sobre una sesion de
-proctoring flaggeada. Slim persiste 4 columnas en proctoring_session
+proctoring flaggeada. ActiveExam persiste 4 columnas en proctoring_session
 (decision, decision_actor, decision_at, decision_observaciones).
 """
 

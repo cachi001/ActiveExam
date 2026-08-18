@@ -5,7 +5,7 @@ Tabla ``inscripcion``: M:N entre ``usuario`` (alumno) y ``comision``. Una fila p
 
 ON DELETE CASCADE en ambas FKs: borrar el usuario o la comisión elimina la
 inscripción (la inscripción no tiene sentido sin sus dos extremos). Tabla aditiva
-slim (migración 0035): no toca usuario ni comision, solo agrega la tabla puente.
+activeexam (migración 0035): no toca usuario ni comision, solo agrega la tabla puente.
 """
 
 from __future__ import annotations

@@ -1,7 +1,7 @@
 /**
  * Proctor — Supervisión EN VIVO de sesiones de proctoring (conectada al backend).
  *
- * Ruta: /proctor (nav: "Supervisión en vivo"). Sondea el backend slim cada
+ * Ruta: /proctor (nav: "Supervisión en vivo"). Sondea el backend activeexam cada
  * POLL_MS vía api.listarSesionesProctoring() (dual real/mock) y muestra las
  * sesiones ordenadas por score descendente: las de mayor riesgo, arriba.
  *
@@ -53,9 +53,9 @@ export default function Proctor() {
   const setProctoringSessionId = useApp((s) => s.setProctoringSessionId);
   const setProctoringExamId = useApp((s) => s.setProctoringExamId);
   const setProctoringDetailBackRoute = useApp((s) => s.setProctoringDetailBackRoute);
-  // Identidad del proctor logueado → se registra como proctor_actor al resolver
+  // Identidad del proctor logueado → se registra como tutor_actor al resolver
   // una pausa (C-15). Email como subject estable; null si no hay sesión.
-  const proctorActor = useAuth((s) => s.principal?.email ?? null);
+  const tutorActor = useAuth((s) => s.principal?.email ?? null);
 
   const [sesiones, setSesiones] = useState<SesionProctoringResumen[]>([]);
   const [cargaInicial, setCargaInicial] = useState(true);
@@ -196,7 +196,7 @@ export default function Proctor() {
 
         {/* C-15: cola de solicitudes de pausa (poll propio; se oculta si no hay).
             C-69 admin-sync: se oculta del todo si el admin desactivó las pausas. */}
-        {pausasHabilitadas && <PausasPendientes proctorActor={proctorActor} />}
+        {pausasHabilitadas && <PausasPendientes tutorActor={tutorActor} />}
 
         {/* Barra de estado del polling (sin card) */}
         <div className="flex items-center justify-between gap-md text-label-sm text-on-surface-variant">

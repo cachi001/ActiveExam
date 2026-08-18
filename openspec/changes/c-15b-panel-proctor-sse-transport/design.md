@@ -11,11 +11,11 @@
 > - **D4** — Alertas críticas vs lecturas agregadas: dos caminos para el SLO < 500 ms.
 > - **D6** — Acceso contextual + MFA, sin emitir veredictos.
 >
-> (D5 — acciones de escritura por canal de comandos — ya se entregó en el slim de C-15.)
+> (D5 — acciones de escritura por canal de comandos — ya se entregó en el activeexam de C-15.)
 
 ## Context
 
-C-15 entregó el panel slim (REST + polling) y se archivó. Lo que falta es el **tiempo
+C-15 entregó el panel activeexam (REST + polling) y se archivó. Lo que falta es el **tiempo
 real de producción**, que estaba bloqueado por el veredicto de **C-03** (transporte b +
 backplane c) y por **C-13** (score vía continuous aggregates). Este change toma esa
 porción tal cual la dejó C-15, sin re-diseñar: implementa los puertos `PanelTransportPort`

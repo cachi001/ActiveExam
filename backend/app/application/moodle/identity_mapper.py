@@ -17,7 +17,7 @@ class MoodleIdentityMapper:
     """Resuelve la identidad de un alumno en el usuario Moodle correspondiente.
 
     Estrategia D9:
-    1. Buscar por idnumber (campo id_institucional del alumno).
+    1. Buscar por idnumber (campo username del alumno).
     2. Si no hay match, buscar por email.
     3. Si no hay match único → IdentityResolutionError.
     """
@@ -48,7 +48,7 @@ class MoodleIdentityMapper:
            institucion a proposito.
 
         Args:
-            idnumber: el id_institucional del alumno (legajo/padrón).
+            idnumber: el username del alumno (legajo/padrón).
             email: el email institucional del alumno.
             courseid: curso destino en Moodle. Habilita el camino 1.
             ws_token: token del docente. Habilita el camino 1.

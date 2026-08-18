@@ -1,4 +1,4 @@
-"""Tests de integración — endpoints de sesiones de proctoring slim.
+"""Tests de integración — endpoints de sesiones de proctoring activeexam.
 
 Requiere Postgres real (DATABASE_URL). Sin mocks de DB (regla dura de codigo).
 Correr con:
@@ -17,7 +17,7 @@ from tests.proctoring.conftest import auth_headers
 # endurecimiento por rol). El ``client`` por defecto va autenticado como
 # estudiante (flujo del alumno: POST /sessions, /events). Para las lecturas del
 # proctor mandamos un Bearer de rol proctor.
-_PROCTOR = auth_headers(["proctor"])
+_PROCTOR = auth_headers(["coordinador"])  # c-76: rol proctor eliminado -> coordinador supervisa
 
 
 pytestmark = pytest.mark.asyncio

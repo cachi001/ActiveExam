@@ -1089,7 +1089,7 @@ class ComisionSqlRepository:
                 UsuarioModel.id,
                 UsuarioModel.nombre,
                 UsuarioModel.apellido,
-                UsuarioModel.id_institucional,
+                UsuarioModel.username,
             ).where(UsuarioModel.id.in_(limpios))
         )
         nombres: dict[str, str] = {}
@@ -1222,7 +1222,7 @@ class InscripcionSqlRepository:
 
         Guarda de baja de inscripción: si hay actividad, la baja se bloquea para no
         huerfanar la sesión/evidencia/nota (cadena de custodia). Cruza
-        ``usuario.id_institucional`` con ``proctoring_session.alumno_idnumber`` sobre
+        ``usuario.username`` con ``proctoring_session.alumno_idnumber`` sobre
         los exámenes cuya ``comision_id`` es la de la inscripción.
         """
         from app.infrastructure.persistence.models.proctoring import (
@@ -1230,7 +1230,7 @@ class InscripcionSqlRepository:
         )
 
         idnumber = (
-            select(UsuarioModel.id_institucional)
+            select(UsuarioModel.username)
             .where(UsuarioModel.id == usuario_id)
             .scalar_subquery()
         )
@@ -1260,27 +1260,27 @@ class InscripcionSqlRepository:
         return result.scalar_one_or_none() is not None
 
     async def esta_inscripto_institucional(
-        self, id_institucional: str, comision_id: str
+        self, username: str, comision_id: str
     ) -> bool:
-        """True si el alumno (por id_institucional del JWT) está inscripto a la comisión.
+        """True si el alumno (por username del JWT) está inscripto a la comisión.
 
-        Gate de inscripción (C-71): resuelve id_institucional → usuario.id (JOIN
+        Gate de inscripción (C-71): resuelve username → usuario.id (JOIN
         usuario) y verifica la fila en inscripcion. La identidad del alumno es el
-        id_institucional del principal, nunca un dato del cliente (regla dura #6).
+        username del principal, nunca un dato del cliente (regla dura #6).
         """
         result = await self._db.execute(
             select(InscripcionModel.id)
             .join(UsuarioModel, UsuarioModel.id == InscripcionModel.usuario_id)
             .where(
-                UsuarioModel.id_institucional == id_institucional,
+                UsuarioModel.username == username,
                 UsuarioModel.eliminado_en.is_(None),
                 InscripcionModel.comision_id == comision_id,
             )
         )
         return result.scalar_one_or_none() is not None
 
-    async def comision_ids_inscriptas(self, id_institucional: str) -> list[str]:
-        """Lista los comision_id donde el alumno (por id_institucional) está inscripto.
+    async def comision_ids_inscriptas(self, username: str) -> list[str]:
+        """Lista los comision_id donde el alumno (por username) está inscripto.
 
         Se usa para filtrar el catálogo de exámenes/materias del alumno (C-71).
         """
@@ -1288,13 +1288,13 @@ class InscripcionSqlRepository:
             select(InscripcionModel.comision_id)
             .join(UsuarioModel, UsuarioModel.id == InscripcionModel.usuario_id)
             .where(
-                UsuarioModel.id_institucional == id_institucional,
+                UsuarioModel.username == username,
                 UsuarioModel.eliminado_en.is_(None),
             )
         )
         return list(result.scalars().all())
 
-    async def materias_inscriptas(self, id_institucional: str) -> list[MateriaModel]:
+    async def materias_inscriptas(self, username: str) -> list[MateriaModel]:
         """Materias (distintas) donde el alumno tiene alguna comisión inscripta (C-71).
 
         La clave de orden va TAMBIÉN en el SELECT: con ``DISTINCT``, Postgres exige
@@ -1310,7 +1310,7 @@ class InscripcionSqlRepository:
             .join(InscripcionModel, InscripcionModel.comision_id == ComisionModel.id)
             .join(UsuarioModel, UsuarioModel.id == InscripcionModel.usuario_id)
             .where(
-                UsuarioModel.id_institucional == id_institucional,
+                UsuarioModel.username == username,
                 UsuarioModel.eliminado_en.is_(None),
             )
             .distinct()
@@ -1321,7 +1321,7 @@ class InscripcionSqlRepository:
         return list(result.scalars().all())
 
     async def comisiones_inscriptas_de_materia(
-        self, id_institucional: str, materia_id: str
+        self, username: str, materia_id: str
     ) -> list[ComisionModel]:
         """Comisiones de una materia donde el alumno está inscripto (C-71)."""
         result = await self._db.execute(
@@ -1329,7 +1329,7 @@ class InscripcionSqlRepository:
             .join(InscripcionModel, InscripcionModel.comision_id == ComisionModel.id)
             .join(UsuarioModel, UsuarioModel.id == InscripcionModel.usuario_id)
             .where(
-                UsuarioModel.id_institucional == id_institucional,
+                UsuarioModel.username == username,
                 UsuarioModel.eliminado_en.is_(None),
                 ComisionModel.materia_id == materia_id,
             )
@@ -1337,18 +1337,18 @@ class InscripcionSqlRepository:
         )
         return list(result.scalars().all())
 
-    async def obtener_usuario_id_por_institucional(
-        self, id_institucional: str
+    async def obtener_usuario_id_por_username(
+        self, username: str
     ) -> str | None:
-        """Resuelve usuario.id (FK) desde el id_institucional del principal (C-70).
+        """Resuelve usuario.id (FK) desde el username del principal (C-70).
 
         Devuelve None si no hay un usuario ACTIVO (no dado de baja) con ese
-        id_institucional. Se usa en la auto-matriculación: el usuario_id sale del
+        username. Se usa en la auto-matriculación: el usuario_id sale del
         principal autenticado, NUNCA del body (cliente = sensor no confiable).
         """
         result = await self._db.execute(
             select(UsuarioModel.id).where(
-                UsuarioModel.id_institucional == id_institucional,
+                UsuarioModel.username == username,
                 UsuarioModel.eliminado_en.is_(None),
             )
         )

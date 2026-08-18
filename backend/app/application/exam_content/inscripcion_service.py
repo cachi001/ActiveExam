@@ -38,7 +38,7 @@ class AlumnoElegibilidad:
     """
 
     usuario_id: str
-    id_institucional: str
+    username: str
     nombre: str | None
     apellido: str | None
     email: str
@@ -280,7 +280,7 @@ class InscripcionService:
             elegibles.append(
                 AlumnoElegibilidad(
                     usuario_id=usuario.id,
-                    id_institucional=usuario.id_institucional,
+                    username=usuario.username,
                     nombre=usuario.nombre,
                     apellido=usuario.apellido,
                     email=usuario.email,

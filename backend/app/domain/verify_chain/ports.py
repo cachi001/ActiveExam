@@ -1,7 +1,7 @@
 """Puertos del verify-chain (Protocols).
 
 Hexagonal: el dominio define los contratos, infraestructura los implementa
-contra slim DB.
+contra activeexam DB.
 """
 
 from __future__ import annotations

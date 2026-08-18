@@ -1,9 +1,10 @@
 /**
- * GestionUsuarios — CRUD administrativo de usuarios (C-61).
+ * GestionUsuarios — listado administrativo de usuarios (C-61).
  *
  * Ruta: /admin/usuarios (roles: admin_sistema)
- * Accede a api.listarUsuarios / api.crearUsuario / api.editarUsuario /
- *         api.eliminarUsuario / api.reactivarUsuario (dual real/mock).
+ * Accede a api.listarUsuarios / api.eliminarUsuario / api.reactivarUsuario.
+ * Alta y edición viven en páginas propias (/admin/usuarios/nuevo y
+ * /admin/usuarios/:id/editar), no inline en este listado.
  *
  * Filtros server-side: rol, estado (activo/inactivo/todos), texto libre.
  * Estado como switch: verde=activo / rojo=inactivo, deshabilitado para el
@@ -22,9 +23,8 @@ import { useToast } from '../ui/toast';
 import { useNavigate } from '../lib/router';
 import { useAuth } from '../lib/authStore';
 import { api } from '../lib/api';
-import type { UsuarioAdmin } from '../lib/types';
-import { FORM_VACIO, OPCIONES_ROL, OPCIONES_ESTADO, type ModoFormulario, type FormState } from './admin/components/UsuarioHelpers';
-import { UsuarioFormPanel } from './admin/components/UsuarioFormPanel';
+import type { UsuarioAdmin, Materia, Comision } from '../lib/types';
+import { OPCIONES_ROL, OPCIONES_ESTADO } from './admin/components/UsuarioHelpers';
 import { UsuarioTable } from './admin/components/UsuarioTable';
 import { FiltrosPanel } from '../ui/FiltrosPanel';
 import { Pagination, PageSizeSelect } from '../ui/Pagination';
@@ -53,23 +53,45 @@ export default function GestionUsuarios() {
   const [borrEstado, setBorrEstado] = useState('todos');
   const [borrQ, setBorrQ] = useState('');
 
-  const [fotos, setFotos] = useState<Record<string, string>>({});
+  // Filtro de materia/comisión: solo aplica (y solo se muestra) cuando el rol
+  // filtrado es "estudiante" — los demás roles nunca tienen inscripción.
+  const [materias, setMaterias] = useState<Materia[]>([]);
+  const [comisiones, setComisiones] = useState<Comision[]>([]);
+  const [borrMateria, setBorrMateria] = useState('');
+  const [borrComision, setBorrComision] = useState('');
+  const [filtroMateria, setFiltroMateria] = useState('');
+  const [filtroComision, setFiltroComision] = useState('');
 
-  const [modoForm, setModoForm] = useState<ModoFormulario | null>(null);
-  const [editando, setEditando] = useState<UsuarioAdmin | null>(null);
-  const [form, setForm] = useState<FormState>(FORM_VACIO);
-  const [formError, setFormError] = useState<string | null>(null);
-  const [enviando, setEnviando] = useState(false);
+  useEffect(() => {
+    if (borrRol !== 'estudiante') {
+      setBorrMateria('');
+      setBorrComision('');
+      return;
+    }
+    api.materiasDisponibles().then(setMaterias).catch(() => {});
+  }, [borrRol]);
+
+  useEffect(() => {
+    if (!borrMateria) { setComisiones([]); setBorrComision(''); return; }
+    api.comisionesDeMateria(borrMateria).then(setComisiones).catch(() => setComisiones([]));
+    setBorrComision('');
+  }, [borrMateria]);
+
+  const [fotos, setFotos] = useState<Record<string, string>>({});
 
   const [aBajar, setABajar] = useState<UsuarioAdmin | null>(null);
 
-  const cargarUsuarios = useCallback(async (o: number, rol: string, estado: string, q: string) => {
+  const cargarUsuarios = useCallback(async (
+    o: number, rol: string, estado: string, q: string, materiaId: string, comisionId: string,
+  ) => {
     setCargando(true);
     try {
       const data = await api.listarUsuarios(pageSizeRef.current, o, {
         rol: rol || undefined,
         estado: estado !== 'todos' ? estado : undefined,
         q: q || undefined,
+        materia_id: rol === 'estudiante' ? (materiaId || undefined) : undefined,
+        comision_id: rol === 'estudiante' ? (comisionId || undefined) : undefined,
       });
       setUsuarios(data.items);
       setTotal(data.total);
@@ -96,92 +118,41 @@ export default function GestionUsuarios() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => { cargarUsuarios(0, filtroRol, filtroEstado, filtroQ); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { cargarUsuarios(0, filtroRol, filtroEstado, filtroQ, filtroMateria, filtroComision); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-refresh cada 5 min conservando página y filtros actuales.
-  useAutoRefresh(() => cargarUsuarios(offset, filtroRol, filtroEstado, filtroQ), undefined, !cargando);
+  useAutoRefresh(() => cargarUsuarios(offset, filtroRol, filtroEstado, filtroQ, filtroMateria, filtroComision), undefined, !cargando);
 
   const hayCambiosFiltros =
-    borrRol !== filtroRol || borrEstado !== filtroEstado || borrQ.trim() !== filtroQ;
-  const hayFiltrosActivos = Boolean(borrRol) || borrEstado !== 'activo' || Boolean(borrQ);
+    borrRol !== filtroRol || borrEstado !== filtroEstado || borrQ.trim() !== filtroQ
+    || borrMateria !== filtroMateria || borrComision !== filtroComision;
+  const hayFiltrosActivos = Boolean(borrRol) || borrEstado !== 'activo' || Boolean(borrQ)
+    || Boolean(borrMateria) || Boolean(borrComision);
 
   function aplicarFiltros() {
     const q = borrQ.trim();
     setFiltroRol(borrRol);
     setFiltroEstado(borrEstado);
     setFiltroQ(q);
+    setFiltroMateria(borrMateria);
+    setFiltroComision(borrComision);
     setOffset(0);
-    cargarUsuarios(0, borrRol, borrEstado, q);
+    cargarUsuarios(0, borrRol, borrEstado, q, borrMateria, borrComision);
   }
 
   function limpiarFiltros() {
     setBorrRol('');
     setBorrEstado('activo');
     setBorrQ('');
+    setBorrMateria('');
+    setBorrComision('');
     setFiltroRol('');
     setFiltroEstado('activo');
     setFiltroQ('');
+    setFiltroMateria('');
+    setFiltroComision('');
     setOffset(0);
-    cargarUsuarios(0, '', 'activo', '');
-  }
-
-  function abrirCrear() {
-    setModoForm('crear'); setEditando(null); setForm(FORM_VACIO); setFormError(null);
-  }
-
-  function abrirEditar(u: UsuarioAdmin) {
-    setModoForm('editar');
-    setEditando(u);
-    setForm({ id_institucional: u.id_institucional, email: u.email, nombre: u.nombre ?? '', apellido: u.apellido ?? '', password: '', roles: [...u.roles] });
-    setFormError(null);
-  }
-
-  function cerrarFormulario() {
-    setModoForm(null); setEditando(null); setForm(FORM_VACIO); setFormError(null);
-  }
-
-  function cambiarTexto(campo: keyof Omit<FormState, 'roles'>) {
-    return (e: React.ChangeEvent<HTMLInputElement>) => setForm((prev) => ({ ...prev, [campo]: e.target.value }));
-  }
-
-  function toggleRol(rol: string) {
-    setForm((prev) => {
-      const existe = prev.roles.includes(rol);
-      return { ...prev, roles: existe ? prev.roles.filter((r) => r !== rol) : [...prev.roles, rol] };
-    });
-  }
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setFormError(null);
-    const roles = form.roles;
-    if (roles.length === 0) { setFormError('Seleccioná al menos un rol.'); return; }
-    setEnviando(true);
-    try {
-      if (modoForm === 'crear') {
-        if (form.password && form.password.length < 8) { setFormError('La contraseña debe tener al menos 8 caracteres.'); return; }
-        const resp = await api.crearUsuario({ id_institucional: form.id_institucional, email: form.email, password: form.password || undefined, roles, nombre: form.nombre || undefined, apellido: form.apellido || undefined });
-        if (resp.password_generada) {
-          toast.success(`Usuario creado. Contraseña temporal: ${resp.password_generada}`);
-        } else {
-          toast.success('Usuario creado correctamente.');
-        }
-      } else if (modoForm === 'editar' && editando) {
-        await api.editarUsuario(editando.id, { email: form.email || undefined, nombre: form.nombre || undefined, apellido: form.apellido || undefined, roles });
-        toast.success('Usuario actualizado correctamente.');
-      }
-      cerrarFormulario();
-      await cargarUsuarios(offset, filtroRol, filtroEstado, filtroQ);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes('409')) {
-        setFormError('Ya existe un usuario con ese email o legajo, o no podés quitarte el rol de administrador.');
-      } else {
-        setFormError(`Error: ${msg}`);
-      }
-    } finally {
-      setEnviando(false);
-    }
+    cargarUsuarios(0, '', 'activo', '', '', '');
   }
 
   async function handleBaja() {
@@ -191,7 +162,7 @@ export default function GestionUsuarios() {
     try {
       await api.eliminarUsuario(u.id);
       toast.success(`${u.email} dado de baja.`);
-      await cargarUsuarios(offset, filtroRol, filtroEstado, filtroQ);
+      await cargarUsuarios(offset, filtroRol, filtroEstado, filtroQ, filtroMateria, filtroComision);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes('409')) { toast.error('No podés darte de baja a vos mismo.'); }
@@ -207,7 +178,7 @@ export default function GestionUsuarios() {
       try {
         await api.reactivarUsuario(u.id);
         toast.success(`${u.email} reactivado.`);
-        await cargarUsuarios(offset, filtroRol, filtroEstado, filtroQ);
+        await cargarUsuarios(offset, filtroRol, filtroEstado, filtroQ, filtroMateria, filtroComision);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         toast.error(`No se pudo reactivar: ${msg}`);
@@ -221,19 +192,19 @@ export default function GestionUsuarios() {
   function irPagina(p: number) {
     const nuevoOffset = (p - 1) * pageSize;
     setOffset(nuevoOffset);
-    cargarUsuarios(nuevoOffset, filtroRol, filtroEstado, filtroQ);
+    cargarUsuarios(nuevoOffset, filtroRol, filtroEstado, filtroQ, filtroMateria, filtroComision);
   }
 
   function cambiarPageSize(size: number) {
     pageSizeRef.current = size;
     setPageSize(size);
     setOffset(0);
-    cargarUsuarios(0, filtroRol, filtroEstado, filtroQ);
+    cargarUsuarios(0, filtroRol, filtroEstado, filtroQ, filtroMateria, filtroComision);
   }
 
   function esPropioUsuario(u: UsuarioAdmin): boolean {
     if (!principal) return false;
-    return u.email === principal.email || u.id_institucional === principal.id_institucional;
+    return u.email === principal.email || u.username === principal.username;
   }
 
   return (
@@ -244,33 +215,19 @@ export default function GestionUsuarios() {
       help={
         <HelpButton title="Gestión de usuarios">
           <p>Acá das de alta, editás y cambiás el estado de los usuarios. Solo visible para administradores del sistema.</p>
-          <p>Los roles disponibles son <em>Estudiante</em>, <em>Proctor</em> y <em>Administrador</em>. La baja es lógica: el usuario no se borra, solo pierde acceso. La evidencia asociada queda intacta.</p>
+          <p>Los roles disponibles son <em>Estudiante</em>, <em>Tutor</em>, <em>Coordinador</em> y <em>Administrador</em>. La baja es lógica: el usuario no se borra, solo pierde acceso. La evidencia asociada queda intacta.</p>
           <p>No podés cambiar tu propio estado ni quitarte el rol de administrador.</p>
         </HelpButton>
       }
-      actions={<Button icon="person_add" onClick={abrirCrear} size="sm">Nuevo usuario</Button>}
+      actions={<Button icon="person_add" onClick={() => navigate('/admin/usuarios/nuevo')} size="sm">Nuevo usuario</Button>}
     >
       <div className="space-y-lg animate-in fade-in duration-500">
         <RefreshBar
           texto="Gestión de usuarios"
           lastUpdatedAt={lastUpdatedAt}
           cargando={cargando}
-          onActualizar={() => cargarUsuarios(offset, filtroRol, filtroEstado, filtroQ)}
+          onActualizar={() => cargarUsuarios(offset, filtroRol, filtroEstado, filtroQ, filtroMateria, filtroComision)}
         />
-        {modoForm && (
-          <UsuarioFormPanel
-            modoForm={modoForm}
-            editando={editando}
-            form={form}
-            formError={formError}
-            enviando={enviando}
-            cambiarTexto={cambiarTexto}
-            toggleRol={toggleRol}
-            onSubmit={handleSubmit}
-            onCancelar={cerrarFormulario}
-          />
-        )}
-
         <FiltrosPanel
           onAplicar={aplicarFiltros}
           onLimpiar={limpiarFiltros}
@@ -302,12 +259,41 @@ export default function GestionUsuarios() {
               ))}
             </select>
           </label>
+          {borrRol === 'estudiante' && (<>
+            <label className="flex flex-col gap-1 text-[12px] font-medium text-on-surface-variant">
+              Materia
+              <select
+                value={borrMateria}
+                onChange={(e) => setBorrMateria(e.target.value)}
+                className="min-w-[160px] rounded-md border border-surface-300 bg-white px-3 py-2 text-[13px] text-on-surface focus:border-primary focus:outline-none"
+              >
+                <option value="">Todas las materias</option>
+                {materias.map((m) => (
+                  <option key={m.id} value={m.id}>{m.nombre}</option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1 text-[12px] font-medium text-on-surface-variant">
+              Comisión
+              <select
+                value={borrComision}
+                onChange={(e) => setBorrComision(e.target.value)}
+                disabled={!borrMateria}
+                className="min-w-[160px] rounded-md border border-surface-300 bg-white px-3 py-2 text-[13px] text-on-surface focus:border-primary focus:outline-none disabled:opacity-50"
+              >
+                <option value="">Todas las comisiones</option>
+                {comisiones.map((c) => (
+                  <option key={c.id} value={c.id}>{c.nombre}</option>
+                ))}
+              </select>
+            </label>
+          </>)}
           <label className="flex flex-col gap-1 text-[12px] font-medium text-on-surface-variant">
             Buscar
             <input
               type="text"
               value={borrQ}
-              placeholder="Nombre, email o legajo…"
+              placeholder="Nombre, email o usuario…"
               onChange={(e) => setBorrQ(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') aplicarFiltros();
@@ -324,7 +310,7 @@ export default function GestionUsuarios() {
           total={total}
           esPropioUsuario={esPropioUsuario}
           onVerDetalle={(u) => navigate(`/admin/usuarios/${u.id}`)}
-          onEditar={abrirEditar}
+          onEditar={(u) => navigate(`/admin/usuarios/${u.id}/editar`)}
           onToggleEstado={handleToggleEstado}
           headerRight={<PageSizeSelect value={pageSize} onChange={cambiarPageSize} />}
         />

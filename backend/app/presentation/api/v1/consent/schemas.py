@@ -71,13 +71,13 @@ class AlternativeRequest(_Strict):
 class AlternativeResponse(_Strict):
     exam_id: str
     via_alternativa: bool
-    escalado_a_proctor: bool
+    escalado_a_coordinador: bool
     mensaje_id: str
-    estado: str = "pendiente_proctor"
+    estado: str = "pendiente_coordinador"
     puede_rendir: bool = False
 
 
-# --- C-63: schemas del flujo de habilitacion por proctor ----------------------
+# --- C-63: schemas del flujo de habilitacion por coordinador -------------------
 
 
 class HabilitarAlternativaRequest(_Strict):

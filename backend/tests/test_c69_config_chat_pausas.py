@@ -206,3 +206,54 @@ async def test_sigue_siendo_singleton(app_y_factory) -> None:
             await s.execute(text("SELECT count(*) FROM configuracion_sistema"))
         ).scalar_one()
     assert filas == 1
+
+
+# --- C-76 bloque 4: límite de pausas por sesión (pausas_max_por_sesion) -----
+
+
+async def test_default_pausas_max_por_sesion_es_2(app_y_factory) -> None:
+    client, _ = app_y_factory
+    body = (
+        await client.get(
+            "/api/v1/config/effective", headers=_h(_token(["estudiante"], mfa=False))
+        )
+    ).json()
+    assert body["pausas_max_por_sesion"] == 2
+
+
+async def test_patch_pausas_max_por_sesion_por_admin_persiste(app_y_factory) -> None:
+    client, _ = app_y_factory
+    resp = await client.patch(
+        "/api/v1/config",
+        json={"pausas_max_por_sesion": 5},
+        headers=_h(_token(["admin_sistema"])),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["pausas_max_por_sesion"] == 5
+
+    despues = (
+        await client.get(
+            "/api/v1/config/effective", headers=_h(_token(["estudiante"], mfa=False))
+        )
+    ).json()
+    assert despues["pausas_max_por_sesion"] == 5
+
+
+async def test_pausas_max_por_sesion_solo_admin_lo_configura(app_y_factory) -> None:
+    client, _ = app_y_factory
+    resp = await client.patch(
+        "/api/v1/config",
+        json={"pausas_max_por_sesion": 3},
+        headers=_h(_token(["estudiante"], mfa=False)),
+    )
+    assert resp.status_code == 403
+
+
+async def test_pausas_max_por_sesion_fuera_de_rango_422(app_y_factory) -> None:
+    client, _ = app_y_factory
+    resp = await client.patch(
+        "/api/v1/config",
+        json={"pausas_max_por_sesion": 0},
+        headers=_h(_token(["admin_sistema"])),
+    )
+    assert resp.status_code == 422

@@ -11,7 +11,7 @@ RAMA: full (principal, con TimescaleDB)
 
 PROPOSITO:
   Espeja en la rama FULL el seed de ``corte_conectividad_prolongado`` creado en
-  slim por 0016: INSERT idempotente en ``evento_score_config`` con severidad
+  activeexam por 0016: INSERT idempotente en ``evento_score_config`` con severidad
   ``critica`` y peso 100.
 
 ROLLBACK:

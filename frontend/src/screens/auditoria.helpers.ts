@@ -13,7 +13,7 @@ export interface ConfigChange {
 
 /** Etiquetas legibles de los parámetros de configuración conocidos. */
 const LABEL_CONFIG: Record<string, string> = {
-  chat_habilitado: 'Chat proctor–alumno',
+  chat_habilitado: 'Chat tutor–alumno',
   pausas_habilitadas: 'Pausas del alumno',
   pausa_max_min: 'Duración máx. de pausa (min)',
   umbral_cola_revision: 'Umbral de revisión',

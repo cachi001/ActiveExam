@@ -50,12 +50,12 @@ class EmbeddingEncryptionService:
 
         Args:
             _key: clave Fernet en string. Si se provee, se usa directamente
-                  (modo slim, c-57: la clave viene de SlimSettings sin cargar
+                  (modo activeexam, c-57: la clave viene de ActiveExamSettings sin cargar
                   la config del full). Si es None, se lee de ``get_settings()``
                   del full (modo produccion completo, retrocompatible).
         """
         if _key is not None:
-            # Modo slim: clave inyectada directamente (sin cargar Settings del full).
+            # Modo activeexam: clave inyectada directamente (sin cargar Settings del full).
             clave = _key
         else:
             # Modo full: leer de la config completa.

@@ -195,7 +195,7 @@ async def listar_auditoria(
         )
     ).scalars().all()
 
-    # Resolver actor → ("Nombre Apellido", email) (el actor es email o id_institucional).
+    # Resolver actor → ("Nombre Apellido", email) (el actor es email o username).
     info_actores = await _resolver_nombres(session, {r.actor for r in rows})
 
     items = [
@@ -236,7 +236,7 @@ async def _resolver_nombres(
     session: AsyncSession, actores: set[str]
 ) -> dict[str, tuple[str, str]]:
     """Mapa actor → ("Nombre Apellido", email). El actor puede ser email,
-    id_institucional (legajo) o UUID; se busca por los tres. Usuarios sin
+    username o UUID; se busca por los tres. Usuarios sin
     nombre (seed/federados) quedan fuera del mapa.
 
     BUG REAL que esto corrige: `UsuarioModel.id` es UUID en la base. Filtrar
@@ -268,7 +268,7 @@ async def _resolver_nombres(
 
     condiciones = [
         UsuarioModel.email.in_(actores),
-        UsuarioModel.id_institucional.in_(actores),
+        UsuarioModel.username.in_(actores),
     ]
     if uuids_validos:
         condiciones.append(UsuarioModel.id.in_(uuids_validos))
@@ -280,7 +280,7 @@ async def _resolver_nombres(
                     select(
                         UsuarioModel.id,
                         UsuarioModel.email,
-                        UsuarioModel.id_institucional,
+                        UsuarioModel.username,
                         UsuarioModel.nombre,
                         UsuarioModel.apellido,
                     ).where(or_(*condiciones))

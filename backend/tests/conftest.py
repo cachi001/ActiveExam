@@ -63,8 +63,8 @@ def pytest_collection_modifyitems(
 #   - audit_log: dos triggers (audit_log_encadenar / append-only). hash_self lo
 #     materializa el trigger; sin el, la cadena de hash tamper-evident no existe.
 #   - foto_referencia: tiene DOS variantes fisicas incompatibles (full = uri_storage
-#     + bucket contra MinIO; slim = foto_bytes BYTEA). El modelo del full y el del
-#     slim NO se pueden importar juntos (misma tabla, columnas distintas). Cual
+#     + bucket contra MinIO; activeexam = foto_bytes BYTEA). El modelo del full y el del
+#     activeexam NO se pueden importar juntos (misma tabla, columnas distintas). Cual
 #     corresponde lo decide la migracion del entorno, no este hook.
 _TABLAS_QUE_NO_SE_RECREAN = frozenset({"audit_log", "foto_referencia"})
 

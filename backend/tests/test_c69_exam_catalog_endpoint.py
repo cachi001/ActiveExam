@@ -143,7 +143,7 @@ async def client_catalogo(app_student):
     async with AsyncClient(
         transport=ASGITransport(app=app),
         base_url="http://test",
-        headers=auth_headers(["admin_examenes"]),
+        headers=auth_headers(["admin_sistema"]),
     ) as c:
         yield c
 

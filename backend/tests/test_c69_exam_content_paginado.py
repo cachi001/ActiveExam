@@ -118,7 +118,7 @@ async def client(app_and_factory):
         # filtro server-side del catálogo, no el gate de inscripción (C-71). Con
         # rol 'estudiante' el gate filtra a las comisiones inscriptas y el total
         # daría 0, que es el comportamiento correcto pero no lo que se prueba acá.
-        headers=auth_headers(["admin_examenes"]),
+        headers=auth_headers(["admin_sistema"]),
     ) as c:
         yield c
 

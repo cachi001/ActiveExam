@@ -10,7 +10,7 @@ Comportamiento esperado (pedido del dueño):
   - Luego puede loguearse directo con usuario+contraseña (`POST /auth/login`).
   - 2do launch → entra directo (debe_cambiar_password ya es false).
 
-DB real (regla dura #4). Usa el slim app completo (mismo emisor/validador que prod).
+DB real (regla dura #4). Usa el activeexam app completo (mismo emisor/validador que prod).
 """
 
 from __future__ import annotations
@@ -21,17 +21,17 @@ import os
 import pytest
 from fastapi.testclient import TestClient
 
-_DB_URL_SLIM = os.environ.get(
+_DB_URL_ACTIVEEXAM = os.environ.get(
     "DATABASE_URL",
     "postgresql+asyncpg://proctoring:dev-only-change-me@localhost:5432/proctoring",
 )
-_JWT_SECRET = os.environ.get("JWT_OWN_SECRET", "test-jwt-own-secret-min-32bytes-slim")
+_JWT_SECRET = os.environ.get("JWT_OWN_SECRET", "test-jwt-own-secret-min-32bytes-activeexam")
 _EMBEDDING_KEY = os.environ.get(
     "EMBEDDING_ENCRYPTION_KEY", "VXqRzW9ksjWE2eCa752juwQdOtAPCrYVnratlmHj7b0="
 )
 
-_SLIM_ENV = {
-    "DATABASE_URL": _DB_URL_SLIM,
+_ACTIVEEXAM_ENV = {
+    "DATABASE_URL": _DB_URL_ACTIVEEXAM,
     "FRONTEND_ORIGIN": "http://localhost:5173",
     "JWT_OWN_SECRET": _JWT_SECRET,
     "EMBEDDING_ENCRYPTION_KEY": _EMBEDDING_KEY,
@@ -39,8 +39,8 @@ _SLIM_ENV = {
 
 
 @pytest.fixture
-def slim_client(monkeypatch: pytest.MonkeyPatch):
-    """App mínima con SOLO el auth router (evita stats/matplotlib del slim completo).
+def activeexam_client(monkeypatch: pytest.MonkeyPatch):
+    """App mínima con SOLO el auth router (evita stats/matplotlib del activeexam completo).
 
     Cablea settings + session_factory + jwt_validator (HS256 del emisor propio) en
     app.state, que es lo único que los endpoints /auth/* consumen.
@@ -49,25 +49,25 @@ def slim_client(monkeypatch: pytest.MonkeyPatch):
         pytest.skip("DATABASE_URL no seteada — test de integración omitido")
     from fastapi import FastAPI
 
-    import app.config_slim as config_slim_module
+    import app.config_activeexam as config_activeexam_module
 
-    config_slim_module.get_slim_settings.cache_clear()
-    for k, v in _SLIM_ENV.items():
+    config_activeexam_module.get_activeexam_settings.cache_clear()
+    for k, v in _ACTIVEEXAM_ENV.items():
         monkeypatch.setenv(k, v)
-    settings = config_slim_module.get_slim_settings()
+    settings = config_activeexam_module.get_activeexam_settings()
 
     from app.domain.auth.token import TokenPolicy
     from app.infrastructure.auth.jwks_cache import JwksCache
     from app.infrastructure.auth.jwt_validator import JwtValidator
     from app.infrastructure.auth.verifiers import build_hs256_verify
-    from app.infrastructure.persistence.session_slim import (
-        create_slim_engine,
-        create_slim_session_factory,
+    from app.infrastructure.persistence.session_activeexam import (
+        create_activeexam_engine,
+        create_activeexam_session_factory,
     )
     from app.presentation.api.v1.auth.router import router as auth_router
 
-    engine = create_slim_engine(_url_async(_DB_URL_SLIM))
-    factory = create_slim_session_factory(engine)
+    engine = create_activeexam_engine(_url_async(_DB_URL_ACTIVEEXAM))
+    factory = create_activeexam_session_factory(engine)
 
     app_instance = FastAPI()
     app_instance.state.settings = settings
@@ -86,7 +86,7 @@ def slim_client(monkeypatch: pytest.MonkeyPatch):
 
     with TestClient(app_instance) as c:
         yield c
-    config_slim_module.get_slim_settings.cache_clear()
+    config_activeexam_module.get_activeexam_settings.cache_clear()
 
 
 def _url_async(url: str) -> str:
@@ -106,21 +106,21 @@ def _crear_usuario_lti(id_inst: str, email: str) -> str:
     from sqlalchemy import delete
     from app.infrastructure.auth.hashing import hashear_password
     from app.infrastructure.persistence.models.transactional import UsuarioModel
-    from app.infrastructure.persistence.session_slim import (
-        create_slim_engine,
-        create_slim_session_factory,
+    from app.infrastructure.persistence.session_activeexam import (
+        create_activeexam_engine,
+        create_activeexam_session_factory,
     )
 
     async def _run():
-        engine = create_slim_engine(_url_async(_DB_URL_SLIM))
-        factory = create_slim_session_factory(engine)
+        engine = create_activeexam_engine(_url_async(_DB_URL_ACTIVEEXAM))
+        factory = create_activeexam_session_factory(engine)
         async with factory() as session:
             await session.execute(
-                delete(UsuarioModel).where(UsuarioModel.id_institucional == id_inst)
+                delete(UsuarioModel).where(UsuarioModel.username == id_inst)
             )
             await session.commit()
             u = UsuarioModel(
-                id_institucional=id_inst,
+                username=id_inst,
                 email=email,
                 roles=["estudiante"],
                 password_hash=hashear_password(secrets.token_urlsafe(32)),
@@ -141,18 +141,18 @@ def _crear_usuario_lti(id_inst: str, email: str) -> str:
 def _token_propio(uid: str) -> str:
     """Emite un JWT de sesión propio para el usuario (mismo emisor que /auth/login)."""
     from sqlalchemy import select
-    from app.config_slim import get_slim_settings
+    from app.config_activeexam import get_activeexam_settings
     from app.infrastructure.auth.own_issuer import emitir_jwt_propio
     from app.infrastructure.persistence.models.transactional import UsuarioModel
-    from app.infrastructure.persistence.session_slim import (
-        create_slim_engine,
-        create_slim_session_factory,
+    from app.infrastructure.persistence.session_activeexam import (
+        create_activeexam_engine,
+        create_activeexam_session_factory,
     )
 
     async def _run():
-        s = get_slim_settings()
-        engine = create_slim_engine(_url_async(_DB_URL_SLIM))
-        factory = create_slim_session_factory(engine)
+        s = get_activeexam_settings()
+        engine = create_activeexam_engine(_url_async(_DB_URL_ACTIVEEXAM))
+        factory = create_activeexam_session_factory(engine)
         async with factory() as session:
             u = (
                 await session.execute(select(UsuarioModel).where(UsuarioModel.id == uid))
@@ -173,17 +173,17 @@ def _token_propio(uid: str) -> str:
 def _limpiar(id_inst: str) -> None:
     from sqlalchemy import delete
     from app.infrastructure.persistence.models.transactional import UsuarioModel
-    from app.infrastructure.persistence.session_slim import (
-        create_slim_engine,
-        create_slim_session_factory,
+    from app.infrastructure.persistence.session_activeexam import (
+        create_activeexam_engine,
+        create_activeexam_session_factory,
     )
 
     async def _run():
-        engine = create_slim_engine(_url_async(_DB_URL_SLIM))
-        factory = create_slim_session_factory(engine)
+        engine = create_activeexam_engine(_url_async(_DB_URL_ACTIVEEXAM))
+        factory = create_activeexam_session_factory(engine)
         async with factory() as session:
             await session.execute(
-                delete(UsuarioModel).where(UsuarioModel.id_institucional == id_inst)
+                delete(UsuarioModel).where(UsuarioModel.username == id_inst)
             )
             await session.commit()
         await engine.dispose()
@@ -196,61 +196,85 @@ _EMAIL = "c75-lti-passwd@demo.test"
 _NUEVA = "MiClaveNueva123"
 
 
-def test_lti_primer_set_sin_password_actual(slim_client):
-    """El usuario LTI define su contraseña sin informar la actual → 200 y gate resuelto."""
+def test_lti_primer_set_sin_username_400(activeexam_client):
+    """El usuario LTI que NO manda nuevo_username en su primer set → 400.
+
+    La cuenta arranca con la clave sintética del campus (lti:{deployment}:{sub}),
+    que no sirve para loguearse directo — elegir un username propio es
+    OBLIGATORIO en ese primer set (regla dura #6: el backend no confía en que
+    el frontend lo haya exigido, lo revalida acá)."""
     uid = _crear_usuario_lti(_ID, _EMAIL)
     try:
         token = _token_propio(uid)
-        r = slim_client.put(
+        r = activeexam_client.put(
             "/api/v1/auth/change-password",
             json={"contrasena_nueva": _NUEVA},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert r.status_code == 400, r.text
+    finally:
+        _limpiar(_ID)
+
+
+def test_lti_primer_set_con_username(activeexam_client):
+    """El usuario LTI define contraseña + username propio → 200 y gate resuelto."""
+    uid = _crear_usuario_lti(_ID, _EMAIL)
+    try:
+        token = _token_propio(uid)
+        r = activeexam_client.put(
+            "/api/v1/auth/change-password",
+            json={"contrasena_nueva": _NUEVA, "nuevo_username": "juan.perez.c75"},
             headers={"Authorization": f"Bearer {token}"},
         )
         assert r.status_code == 200, r.text
         assert r.json()["ok"] is True
 
-        # /auth/me refleja debe_cambiar_password=false y auth_provider=lti.
-        me = slim_client.get(
+        # /auth/me refleja debe_cambiar_password=false y auth_provider=lti (el
+        # username NO se revalida acá: el token viejo sigue con el claim viejo
+        # hasta que se refresque — eso lo prueba el test de abajo, logueándose
+        # de cero con el username nuevo).
+        me = activeexam_client.get(
             "/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"}
         ).json()
         assert me["debe_cambiar_password"] is False
         assert me["auth_provider"] == "lti"
     finally:
-        _limpiar(_ID)
+        _limpiar("juan.perez.c75")
 
 
-def test_lti_puede_loguear_directo_tras_definir(slim_client):
-    """Tras definir la contraseña, el alumno LTI puede loguearse directo (link/portal)."""
+def test_lti_puede_loguear_directo_tras_definir(activeexam_client):
+    """Tras definir contraseña + username, el alumno LTI se loguea directo (link/portal)."""
     uid = _crear_usuario_lti(_ID, _EMAIL)
     try:
         token = _token_propio(uid)
-        slim_client.put(
+        activeexam_client.put(
             "/api/v1/auth/change-password",
-            json={"contrasena_nueva": _NUEVA},
+            json={"contrasena_nueva": _NUEVA, "nuevo_username": "juan.perez.c75b"},
             headers={"Authorization": f"Bearer {token}"},
         )
-        r = slim_client.post(
-            "/api/v1/auth/login", json={"username": _ID, "password": _NUEVA}
+        r = activeexam_client.post(
+            "/api/v1/auth/login",
+            json={"username": "juan.perez.c75b", "password": _NUEVA},
         )
         assert r.status_code == 200, r.text
         assert "access_token" in r.json()
     finally:
-        _limpiar(_ID)
+        _limpiar("juan.perez.c75b")
 
 
-def test_lti_segundo_cambio_exige_actual(slim_client):
+def test_lti_segundo_cambio_exige_actual(activeexam_client):
     """Ya con contraseña definida (debe_cambiar=false), un cambio posterior SÍ exige la actual."""
     uid = _crear_usuario_lti(_ID, _EMAIL)
     try:
         token = _token_propio(uid)
         # Primer set.
-        slim_client.put(
+        activeexam_client.put(
             "/api/v1/auth/change-password",
             json={"contrasena_nueva": _NUEVA},
             headers={"Authorization": f"Bearer {token}"},
         )
         # Segundo cambio sin la actual → 400.
-        r = slim_client.put(
+        r = activeexam_client.put(
             "/api/v1/auth/change-password",
             json={"contrasena_nueva": "OtraClave456"},
             headers={"Authorization": f"Bearer {token}"},

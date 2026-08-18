@@ -1,10 +1,10 @@
-"""052 - colapsa el modelo de decision a UN SOLO PASO (3 estados, slim).
+"""052 - colapsa el modelo de decision a UN SOLO PASO (3 estados, activeexam).
 
 Revision ID: 0052
 Revises: 0051
 Create Date: 2026-08-03
 
-RAMA: slim
+RAMA: activeexam
   down_revision = "0051"
   branch_labels = None
   depends_on    = None
@@ -35,7 +35,7 @@ PROPOSITO:
     - `resolucion`, `resolucion_actor`, `resolucion_at`, `resolucion_motivo`
       (agregadas en 0039) -> DROPEADAS. No hay fase 2 que persistir.
 
-  Produccion (slim) tiene 0 filas en `proctoring_session` con `decision`
+  Produccion (activeexam) tiene 0 filas en `proctoring_session` con `decision`
   seteada a esta fecha (verificado antes de este cambio): no hace falta
   mapeo de datos ni compatibilidad con los valores viejos
   ('sin_hallazgos'/'caso_abierto'/'derivada'/'escalada'/'anulado_por_fraude'/
@@ -43,14 +43,14 @@ PROPOSITO:
   algun ambiente de desarrollo quedo con datos de prueba.
 
 ROLLBACK:
-  alembic downgrade slim@0051 -> recrea las 4 columnas `resolucion*` (vacias),
+  alembic downgrade activeexam@0051 -> recrea las 4 columnas `resolucion*` (vacias),
   renombra `decision_motivo` de vuelta a `decision_observaciones`, dropea
   `decision_evidencia_ids`, y mapea 'anulado' -> 'caso_abierto' en `decision`
   (best-effort: el veredicto en si se pierde, documentado y aceptado porque
   no hay datos reales).
 
 VERIFICACION:
-  alembic upgrade slim@head -> aplica 0051 -> 0052. Espera en
+  alembic upgrade activeexam@head -> aplica 0051 -> 0052. Espera en
   `proctoring_session`: sin columnas `resolucion*`; `decision_motivo` (en vez
   de `decision_observaciones`); `decision_evidencia_ids` jsonb NULL; `decision`
   sin valores 'sin_hallazgos'/'caso_abierto'/'derivada'/'escalada' remanentes.
