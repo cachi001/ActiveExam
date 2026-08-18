@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
-### Requirement: Chat bidireccional tutor↔estudiante iniciado por el tutor
-El tutor (docente de la comisión de la sesión) y el estudiante SHALL poder intercambiar mensajes de texto durante el examen. El **estudiante NO puede iniciar** un hilo de chat: solo SHALL poder enviar mensajes en una sesión donde ya existe al menos un mensaje del tutor. La regla de "quién puede iniciar" SHALL validarse server-side (cliente = sensor no confiable). En la implementación activeexam el canal es REST con polling. Los mensajes se persisten vinculados a la sesión con autor `tutor` o `alumno`.
+### Requirement: Chat bidireccional proctor↔estudiante
+El tutor (docente de la comisión de la sesión, reemplaza al rol `proctor` eliminado) y el estudiante SHALL poder intercambiar mensajes de texto durante el examen. El **estudiante NO puede iniciar** un hilo de chat: solo SHALL poder enviar mensajes en una sesión donde ya existe al menos un mensaje del tutor. La regla de "quién puede iniciar" SHALL validarse server-side (cliente = sensor no confiable). En la implementación activeexam el canal es REST con polling. Los mensajes se persisten vinculados a la sesión con autor `tutor` o `alumno`.
 
 #### Scenario: Mensaje del tutor entregado al estudiante
 - **WHEN** el tutor envía un mensaje a un estudiante de una sesión de su comisión
@@ -15,14 +15,20 @@ El tutor (docente de la comisión de la sesión) y el estudiante SHALL poder int
 - **WHEN** el estudiante intenta enviar un mensaje en una sesión donde el tutor aún no escribió ningún mensaje
 - **THEN** el sistema rechaza el envío (no hay hilo iniciado por el tutor)
 
-### Requirement: Registro de observaciones por el tutor
+#### Scenario: Mensaje del proctor entregado al estudiante
+- **SUPERSEDED**: el rol `proctor` fue eliminado. Reemplazado por "Mensaje del tutor entregado al estudiante" (arriba).
+
+#### Scenario: Mensaje del estudiante entregado al proctor
+- **SUPERSEDED**: el rol `proctor` fue eliminado. Reemplazado por "El estudiante responde tras un mensaje del tutor" (arriba).
+
+### Requirement: Registro de observaciones
 El tutor (o coordinador) SHALL poder registrar **observaciones** sobre una sesión que supervisa; las observaciones se persisten como insumo del contexto de revisión (consumido por C-16).
 
 #### Scenario: Observación persistida para revisión
 - **WHEN** el tutor registra una observación sobre una sesión de su comisión
 - **THEN** la observación se persiste vinculada a la sesión y queda disponible para la revisión humana posterior
 
-### Requirement: Cierre forzado de sesión, operativo y auditado (sin veredicto)
+### Requirement: Cierre forzado de sesión, operativo y auditado
 El tutor SHALL poder **forzar el cierre** de una sesión que supervisa; el cierre forzado cambia el estado de la sesión y se **registra en el audit log**. Es una acción **operativa, NO una sanción disciplinaria** y NO es un veredicto (el veredicto es exclusivo de coordinador/revisor).
 
 #### Scenario: Cierre forzado audita y no sanciona

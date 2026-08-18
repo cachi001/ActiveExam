@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
-### Requirement: Aprobación o rechazo de la pausa por el tutor
-El **tutor** (docente de la comisión de la sesión) SHALL poder aprobar o rechazar una pausa solicitada de una sesión que supervisa. Cada resolución se **registra en el audit log** (acción operativa, no veredicto disciplinario). El actor registrado es el tutor.
+### Requirement: Aprobación o rechazo de la pausa por el proctor
+El **tutor** (docente de la comisión de la sesión) SHALL poder aprobar o rechazar una pausa solicitada de una sesión que supervisa. Cada resolución se **registra en el audit log** (acción operativa, no veredicto disciplinario). El actor registrado es el tutor. El rol `proctor` **ya no existe** — esta capacidad la absorbió el rol `tutor`.
 
 #### Scenario: Tutor aprueba la pausa
 - **WHEN** el tutor aprueba una pausa en estado `solicitada` de su comisión y la sesión no alcanzó el límite de pausas
@@ -10,6 +10,12 @@ El **tutor** (docente de la comisión de la sesión) SHALL poder aprobar o recha
 #### Scenario: Tutor rechaza la pausa
 - **WHEN** el tutor rechaza una pausa en estado `solicitada` de su comisión
 - **THEN** la pausa pasa a `rechazada`, se registra el actor y el timestamp, y se escribe una entrada de audit log; la ventana NO se abre
+
+#### Scenario: Proctor aprueba la pausa
+- **SUPERSEDED**: el rol `proctor` fue eliminado. Reemplazado por "Tutor aprueba la pausa" (arriba).
+
+#### Scenario: Proctor rechaza la pausa
+- **SUPERSEDED**: el rol `proctor` fue eliminado. Reemplazado por "Tutor rechaza la pausa" (arriba).
 
 ## ADDED Requirements
 

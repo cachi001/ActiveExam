@@ -3,9 +3,7 @@
 ## Purpose
 
 Define la partición visual del panel de supervisión en vivo (`Proctor.tsx`) por modo de sesión: las sesiones de examen real aparecen primero y diferenciadas de las de diagnóstico/harness, cada una en su sección con título. Agrega además el enriquecimiento con contexto académico (`joinExamInfo`) para las sesiones de examen, y un subtítulo que diferencia claramente el propósito del panel en vivo frente al historial y la cola de revisión.
-
 ## Requirements
-
 ### Requirement: Partición visual por modo en `Proctor.tsx`
 
 `Proctor.tsx` SHALL particionar las sesiones en tres grupos con `useMemo`: `examen` (modo === 'examen'), `diagnostico` (modo === 'diagnostico'), `otras` (resto). SHALL renderizar secciones distintas con `SectionTitle` para cada grupo no vacío. La sección "examen" SHALL mostrarse primero, con un badge visual diferenciador. Si un grupo está vacío, su sección no se renderiza. El estado vacío global (`ListaVaciaVivo`) se muestra solo si `sesiones.length === 0`.
@@ -45,3 +43,19 @@ Define la partición visual del panel de supervisión en vivo (`Proctor.tsx`) po
 #### Scenario: Sesión de diagnóstico sin join
 - **WHEN** una sesión activa tiene `modo === 'diagnostico'`
 - **THEN** `SesionVivoCard` se renderiza sin `examInfo` (comportamiento existente intacto)
+
+### Requirement: Acotado por comisión de la supervisión del tutor
+La capacidad `supervisar_vivo` SHALL incluir a los roles `tutor`, `revisor`, `coordinador` y `admin_sistema`, y SHALL **excluir** al rol `proctor` (eliminado). Para el rol `tutor`, el acceso a una sesión concreta SHALL estar **acotado** a las comisiones donde el tutor está asignado como docente (pertenencia `asignar_docente`, C-73 §9). El coordinador conserva supervisión **global**. El tutor NUNCA obtiene la capacidad `revisar_sesion` (veredicto).
+
+#### Scenario: Tutor lista solo las sesiones en vivo de sus comisiones
+- **WHEN** un tutor abre el panel de supervisión en vivo
+- **THEN** ve únicamente las sesiones activas de las comisiones donde está asignado como docente
+
+#### Scenario: Coordinador ve todas las sesiones en vivo
+- **WHEN** un coordinador abre el panel de supervisión en vivo
+- **THEN** ve todas las sesiones activas, sin acotar por comisión
+
+#### Scenario: Proctor ya no existe como rol de supervisión
+- **WHEN** se evalúa la capacidad `supervisar_vivo`
+- **THEN** el conjunto de roles habilitados NO incluye `proctor` (rol eliminado del sistema)
+

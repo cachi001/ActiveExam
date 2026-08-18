@@ -1,6 +1,6 @@
 ## MODIFIED Requirements
 
-### Requirement: Permisos contextuales sobre los roles funcionales
+### Requirement: Permisos contextuales sobre los 7 roles funcionales
 La autorización SHALL evaluar el **contexto** además del rol sobre los roles funcionales (estudiante, revisor académico, coordinador, admin de exámenes, admin del sistema, auditor, tutor — `03`), de modo que tener el rol no concede acceso global al recurso. El rol `proctor` **ya no existe** en el sistema: la supervisión en vivo la ejerce el **tutor** (acotado a las comisiones donde es docente) y el **coordinador** (global); ninguno de ellos obtiene acceso global por el solo hecho de tener el rol.
 
 #### Scenario: Tutor supervisa solo las sesiones de sus comisiones
@@ -14,6 +14,12 @@ La autorización SHALL evaluar el **contexto** además del rol sobre los roles f
 #### Scenario: Revisor no cruza su jurisdicción
 - **WHEN** un revisor académico intenta abrir una sesión flaggeada **fuera** de su jurisdicción
 - **THEN** el sistema rechaza el acceso (403)
+
+#### Scenario: Proctor accede solo a exámenes asignados
+- **SUPERSEDED**: el rol `proctor` fue eliminado del sistema (ver `## REMOVED Requirements` abajo). Este escenario queda documentado solo como referencia histórica; su comportamiento lo reemplazan los escenarios de Tutor de arriba.
+
+#### Scenario: Proctor accede a su examen asignado
+- **SUPERSEDED**: el rol `proctor` fue eliminado del sistema (ver `## REMOVED Requirements` abajo). Este escenario queda documentado solo como referencia histórica; su comportamiento lo reemplazan los escenarios de Tutor de arriba.
 
 ### Requirement: Acceso a evidencia auditado con propósito declarado
 El acceso a evidencia por tutor/revisor/coordinador SHALL registrar en el audit log (C-05) el propósito declarado del acceso, conforme a `03` §RBAC; el sistema **nunca sanciona automáticamente** (L2.5) — solo controla el acceso.
