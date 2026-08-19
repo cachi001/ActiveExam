@@ -35,7 +35,7 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
-from app.application.lti.launch_validation import CLAIM_DEPLOYMENT_ID
+from app.application.lti.launch_validation import CLAIM_DEPLOYMENT_ID, LaunchInvalidoError
 from app.application.lti.jit_provisioning import provisionar_o_recuperar_usuario
 from app.infrastructure.auth.own_issuer import emitir_jwt_propio
 from app.infrastructure.crypto.secret_encryption import SecretCipher
@@ -53,6 +53,7 @@ from app.presentation.api.v1.lti import create_lti_router
 
 _ISS = "https://campustest.frm.utn.edu.ar"
 _DEPLOYMENT_ID = "7:zztest"
+_DEPLOYMENT_ID_2 = "8:zztest"  # segundo "Moodle" para los tests de colision de email
 _CLIENT_ID = "CLIENT_JIT"
 _KID = "k-jit-1"
 
@@ -143,12 +144,13 @@ async def _limpiar_db(session_factory) -> None:
 
 
 async def _insertar_deployment(
-    session_factory, *, comision_id: str | None = None, context_id: str | None = None
+    session_factory, *, comision_id: str | None = None, context_id: str | None = None,
+    deployment_id: str = _DEPLOYMENT_ID,
 ) -> LtiDeploymentConfiableModel:
     async with session_factory() as s:
         dep = LtiDeploymentConfiableModel(
             iss=_ISS,
-            deployment_id=_DEPLOYMENT_ID,
+            deployment_id=deployment_id,
             client_id=_CLIENT_ID,
             jwks_uri=f"{_ISS}/mod/lti/certs.php",
             comision_id=comision_id,
@@ -307,6 +309,142 @@ async def test_jit_ignora_datos_fuera_del_id_token(session_factory):
     assert usuario.nombre == "Alumno Real"
     assert usuario.email == "real@demo.test"
     assert usuario.username == f"lti:{_DEPLOYMENT_ID}:mdl-300"
+
+
+# ---------------------------------------------------------------------------
+# 2.1/2.2 — colision de email (fix 2026-08-19)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_jit_email_colisiona_con_cuenta_lti_de_otro_deployment_fusiona(session_factory):
+    """2.1 (caso legitimo): el MISMO alumno real entra desde DOS Moodles
+    distintos (deployments distintos) pero comparte el email real. La segunda
+    identidad LTI se fusiona con la primera cuenta LTI en vez de duplicarla."""
+    await _limpiar_db(session_factory)
+
+    dep1 = await _insertar_deployment(session_factory, deployment_id=_DEPLOYMENT_ID)
+    dep2 = await _insertar_deployment(session_factory, deployment_id=_DEPLOYMENT_ID_2)
+
+    claims1 = {
+        "sub": "mdl-400",
+        "iss": _ISS,
+        "name": "Alumno Multi Moodle",
+        "email": "multi@demo.test",
+        CLAIM_DEPLOYMENT_ID: _DEPLOYMENT_ID,
+    }
+    claims2 = {
+        "sub": "mdl-401",  # sub distinto: otro Moodle, mismo alumno real
+        "iss": _ISS,
+        "name": "Alumno Multi Moodle",
+        "email": "multi@demo.test",
+        CLAIM_DEPLOYMENT_ID: _DEPLOYMENT_ID_2,
+    }
+
+    async with session_factory() as s:
+        u1, creado1 = await provisionar_o_recuperar_usuario(s, claims=claims1, deployment=dep1)
+        await s.commit()
+    async with session_factory() as s:
+        u2, creado2 = await provisionar_o_recuperar_usuario(s, claims=claims2, deployment=dep2)
+        await s.commit()
+
+    assert creado1 is True
+    assert creado2 is False  # fusionado, no duplicado
+    assert u1.id == u2.id
+    assert u2.username == f"lti:{_DEPLOYMENT_ID}:mdl-400"  # sigue siendo la 1ra identidad
+
+
+@pytest.mark.asyncio
+async def test_jit_email_colisiona_con_cuenta_no_lti_rechaza_launch(session_factory):
+    """2.1 (fix): si el email del launch ya pertenece a una cuenta que NO es
+    LTI (login propio: tutor/docente/admin/alumno manual), el launch se
+    rechaza en vez de devolverle a un tercero la cuenta/roles de otra persona.
+    Bug real: un tutor cuyo email de Moodle coincidia con su email de
+    plataforma terminaba "siendo" su propia cuenta de tutor al entrar por LTI."""
+    await _limpiar_db(session_factory)
+    dep = await _insertar_deployment(session_factory)
+
+    async with session_factory() as s:
+        await s.execute(text("DELETE FROM usuario WHERE username = 'tutor_colision_test'"))
+        await s.commit()
+
+    async with session_factory() as s:
+        tutor = UsuarioModel(
+            username="tutor_colision_test",
+            email="tutor.colision@demo.test",
+            roles=["tutor"],
+            auth_provider="jwt",
+            password_hash="hash-no-relevante",
+        )
+        s.add(tutor)
+        await s.commit()
+
+    claims = {
+        "sub": "mdl-500",
+        "iss": _ISS,
+        "name": "Impostor Desde Moodle",
+        "email": "tutor.colision@demo.test",  # mismo email que la cuenta tutor
+        CLAIM_DEPLOYMENT_ID: _DEPLOYMENT_ID,
+    }
+
+    async with session_factory() as s:
+        with pytest.raises(LaunchInvalidoError) as exc_info:
+            await provisionar_o_recuperar_usuario(s, claims=claims, deployment=dep)
+        await s.rollback()
+
+    assert exc_info.value.codigo == "email_en_uso_no_lti"
+
+    # La cuenta tutor no debe haber sido tocada (ni matriculada, ni alterada).
+    async with session_factory() as s:
+        tutor_db = (
+            await s.execute(select(UsuarioModel).where(UsuarioModel.username == "tutor_colision_test"))
+        ).scalar_one()
+        assert tutor_db.roles == ["tutor"]
+        assert tutor_db.auth_provider == "jwt"
+    inscripciones = await _inscripciones_de(session_factory, tutor_db.id)
+    assert inscripciones == []
+
+    # Tampoco debe haber quedado creada una fila "lti:..." huerfana para mdl-500.
+    huerfano = await _usuario_por_username(session_factory, f"lti:{_DEPLOYMENT_ID}:mdl-500")
+    assert huerfano is None
+
+
+@pytest.mark.asyncio
+async def test_jit_email_vacio_no_colisiona_entre_alumnos_distintos(session_factory):
+    """2.2 (fix): si Moodle no comparte el claim `email`, dos alumnos reales
+    DISTINTOS sin email no deben terminar fusionados en la misma cuenta por
+    compartir el email vacio `""`."""
+    await _limpiar_db(session_factory)
+    dep = await _insertar_deployment(session_factory)
+
+    claims_a = {
+        "sub": "mdl-600",
+        "iss": _ISS,
+        "name": "Alumno Sin Email A",
+        CLAIM_DEPLOYMENT_ID: _DEPLOYMENT_ID,
+        # sin "email"
+    }
+    claims_b = {
+        "sub": "mdl-601",
+        "iss": _ISS,
+        "name": "Alumno Sin Email B",
+        CLAIM_DEPLOYMENT_ID: _DEPLOYMENT_ID,
+        # sin "email"
+    }
+
+    async with session_factory() as s:
+        ua, creado_a = await provisionar_o_recuperar_usuario(s, claims=claims_a, deployment=dep)
+        await s.commit()
+    async with session_factory() as s:
+        ub, creado_b = await provisionar_o_recuperar_usuario(s, claims=claims_b, deployment=dep)
+        await s.commit()
+
+    assert creado_a is True
+    assert creado_b is True
+    assert ua.id != ub.id  # NO fusionados
+    assert ua.email != ub.email
+    assert ua.email != ""
+    assert ub.email != ""
 
 
 # ---------------------------------------------------------------------------

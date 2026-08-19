@@ -32,6 +32,17 @@ function SinDato() {
   return <span className="text-surface-300 text-xs">—</span>;
 }
 
+/** Nombre legible de la fila: nombre+apellido, o el que haya, o el email.
+ * Si TODO viene vacío (cuenta LTI provisionada antes del fix de 2026-08-19,
+ * cuando Moodle no compartió nombre/email) la línea quedaba en blanco y solo
+ * se veía el username técnico (`lti:7:1`) debajo — se explicita en vez de
+ * dejarlo vacío. */
+function nombreMostrar(u: { nombre?: string | null; apellido?: string | null; email?: string | null }): string {
+  if (u.nombre && u.apellido) return `${u.nombre} ${u.apellido}`;
+  if (u.nombre || u.apellido || u.email) return u.nombre ?? u.apellido ?? u.email ?? '';
+  return 'Alumno sin datos de Moodle (vía LTI)';
+}
+
 /** Columna "Materia": código en negrita + nombre en gris debajo, con ícono —
  * mismo patrón que ExamList.tsx y el sistema de referencia (Active-IA). */
 function MateriaCell({ usuario }: { usuario: UsuarioAdmin }) {
@@ -113,9 +124,7 @@ export function UsuarioTable({
               onClick={() => onVerDetalle(u)}
               className="font-medium text-surface-900 hover:text-primary transition-colors text-left block"
             >
-              {u.nombre && u.apellido
-                ? `${u.nombre} ${u.apellido}`
-                : u.nombre ?? u.apellido ?? u.email}
+              {nombreMostrar(u)}
             </button>
             <p className="text-xs font-mono text-surface-400 mt-0.5">{u.username}</p>
           </div>
@@ -255,9 +264,7 @@ export function UsuarioTable({
                   onClick={() => onVerDetalle(u)}
                   className="font-medium text-surface-900 hover:text-primary transition-colors truncate text-left w-full"
                 >
-                  {u.nombre && u.apellido
-                    ? `${u.nombre} ${u.apellido}`
-                    : u.nombre ?? u.apellido ?? u.email}
+                  {nombreMostrar(u)}
                 </button>
                 <p className="text-xs text-gray-500 truncate mt-0.5">{u.email}</p>
                 <p className="text-xs font-mono text-gray-400 mt-0.5">{u.username}</p>

@@ -320,11 +320,18 @@ def create_lti_router(
                     "iss": validado.claims.get("iss"),
                 }
 
-            usuario, _creado = await provisionar_o_recuperar_usuario(
-                session,
-                claims=validado.claims,
-                deployment=validado.deployment,
-            )
+            try:
+                usuario, _creado = await provisionar_o_recuperar_usuario(
+                    session,
+                    claims=validado.claims,
+                    deployment=validado.deployment,
+                )
+            except LaunchInvalidoError as exc:
+                codigo = exc.codigo
+                logger.warning("lti_launch_rechazado codigo=%s", codigo)
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN, detail=codigo
+                ) from exc
 
             # Emitir JWT de sesión propio (mismo emisor que /auth/login — design D4).
             access_token = emitir_jwt_propio(

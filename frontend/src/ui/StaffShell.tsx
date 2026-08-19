@@ -238,7 +238,7 @@ export function StaffShell({
           <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <h1 className="text-2xl font-bold text-on-surface truncate">{title}</h1>
+                <h1 className="text-xl sm:text-2xl font-bold text-on-surface truncate">{title}</h1>
                 {help}
               </div>
               {subtitle && <p className="text-base text-on-surface-variant mt-1">{subtitle}</p>}

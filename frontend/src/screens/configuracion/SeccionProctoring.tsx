@@ -11,21 +11,17 @@
  * C-68 UX: dirty-aware footer (Guardar/Cancelar solo cuando hay cambios).
  */
 import { useState, useEffect, useCallback } from 'react';
-import { Card, SectionTitle, Button, Icon } from '../../ui/components';
+import { SectionTitle, Button, Icon } from '../../ui/components';
 import { useToast } from '../../ui/toast';
 import DetectoresSelector from '../admin/components/DetectoresSelector';
 import { api } from '../../lib/api';
 import { resetEffectiveConfigCache } from '../../config/effectiveConfigCache';
+import { UMBRAL_REVISION_MIN as UMBRAL_MIN, UMBRAL_REVISION_MAX as UMBRAL_MAX } from '../../config/umbralRevision';
 import type { TipoEvento } from '../../lib/types';
 
 const DETECTORES_DEFAULT: TipoEvento[] = [
   'rostro_ausente', 'multiples_rostros', 'mirada_desviada_sostenida', 'perdida_de_foco', 'monitor_adicional',
 ];
-
-// Piso de producto (decisión del owner): el umbral de revisión NO baja de 70.
-// El backend lo valida server-side (Field ge=70); acá el slider ni deja elegir menos.
-const UMBRAL_MIN = 70;
-const UMBRAL_MAX = 90;
 
 interface Estado {
   umbral: number;
@@ -124,9 +120,11 @@ export default function SeccionProctoring() {
   const umbralPct = ((estado.umbral - UMBRAL_MIN) / (UMBRAL_MAX - UMBRAL_MIN)) * 100;
 
   return (
-    <div className="space-y-lg">
-      {/* Encabezado editorial: título con peso + descripción + divisor. */}
-      <div className="pb-4 border-b border-outline-variant/40">
+    <div className="divide-y divide-outline-variant/40">
+      {/* Encabezado editorial: título con peso + descripción. El separador con
+          el contenido de abajo lo da divide-y del contenedor, no un border-b
+          a mano. */}
+      <div className="pb-lg">
         <h2 className="font-headline text-[24px] font-bold text-on-surface tracking-tight leading-tight">Parámetros generales</h2>
         <p className="text-[13.5px] text-on-surface-variant leading-relaxed max-w-2xl mt-2">
           Definí el comportamiento por defecto del examen: a partir de qué puntaje una sesión
@@ -134,13 +132,23 @@ export default function SeccionProctoring() {
           tiene el alumno mientras rinde.
         </p>
       </div>
-      {/* items-stretch: las dos columnas quedan igualadas en alto aunque a los
-          detectores les sobre espacio (se equiparan con la columna derecha). */}
-      <div className="grid lg:grid-cols-3 gap-lg items-stretch">
-        {/* Columna DERECHA (order-2): umbral + canales del alumno apilados. En
-            desktop van a la derecha; los detectores ocupan los 2/3 de la izquierda. */}
-        <div className="lg:col-span-1 lg:order-2 space-y-lg min-w-0">
-        <Card className="space-y-md min-w-0 flex flex-col">
+      {/* Detectores primero, a todo el ancho: es la sección con más contenido
+          (grilla de 9+ tarjetas) y forzarla a compartir fila con una columna
+          angosta era lo que generaba el espacio vacío. */}
+      <div className="py-lg space-y-md min-w-0">
+        <SectionTitle sub="Qué situaciones vigila el sistema por defecto durante el examen">
+          Detectores activos
+        </SectionTitle>
+        <DetectoresSelector
+          value={estado.detectores}
+          onChange={(detectores) => setEstado((p) => ({ ...p, detectores }))}
+        />
+      </div>
+
+      {/* Umbral y Canales del alumno lado a lado (mitad y mitad); divide-x hace
+          de divisor vertical entre columnas en desktop en vez de ser cards propias. */}
+      <div className="py-lg grid lg:grid-cols-2 gap-lg lg:gap-0 lg:divide-x lg:divide-outline-variant/40 items-start">
+        <div className="space-y-md min-w-0 lg:pr-lg">
           <SectionTitle sub="A partir de qué puntaje de riesgo una sesión entra a revisión humana">
             Umbral de revisión
           </SectionTitle>
@@ -183,14 +191,13 @@ export default function SeccionProctoring() {
             envía más sesiones a revisión; subirlo deja solo las más sospechosas. El sistema nunca
             sanciona solo.
           </p>
-        </Card>
+        </div>
 
-        {/* Canales del alumno — debajo del umbral, en la columna izquierda. */}
-        <Card className="space-y-md min-w-0">
+        <div className="space-y-md min-w-0 lg:pl-lg">
           <SectionTitle sub="Qué herramientas de comunicación y ayuda tiene el alumno mientras rinde">
             Canales del alumno
           </SectionTitle>
-          <div className="grid grid-cols-1 gap-2">
+          <div className="grid sm:grid-cols-2 gap-2">
             <ToggleRow
               label="Chat entre tutor y alumno"
               description="Habilita el canal de mensajes en vivo entre el alumno que rinde y el tutor que supervisa. Si lo desactivás, no aparece el chat ni del lado del alumno ni del tutor."
@@ -256,24 +263,12 @@ export default function SeccionProctoring() {
               </div>
             )}
           </div>
-        </Card>
         </div>
-
-        {/* Detectores — 2/3 del ancho a la IZQUIERDA (order-1), en 2 columnas. */}
-        <Card className="lg:col-span-2 lg:order-1 h-full space-y-md min-w-0 flex flex-col">
-          <SectionTitle sub="Qué situaciones vigila el sistema por defecto durante el examen">
-            Detectores activos
-          </SectionTitle>
-          <DetectoresSelector
-            value={estado.detectores}
-            onChange={(detectores) => setEstado((p) => ({ ...p, detectores }))}
-          />
-        </Card>
       </div>
 
       {/* C: Footer dirty-aware */}
       {dirty && (
-        <div className="flex items-center justify-between gap-sm pt-sm border-t border-outline-variant/40">
+        <div className="flex items-center justify-between gap-sm pt-lg">
           <div className="flex items-center gap-xs text-[12px] text-on-surface-variant">
             <Icon name="edit" className="text-[14px]" />
             Hay cambios sin guardar
@@ -288,7 +283,6 @@ export default function SeccionProctoring() {
           </div>
         </div>
       )}
-
     </div>
   );
 }

@@ -16,6 +16,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { loadScoringWeights } from '../../proctoring/scoringWeights';
 import { loadEffectiveConfig, getEffectiveConfig, resetEffectiveConfigCache } from '../../config/effectiveConfigCache';
+import { UMBRAL_REVISION_MIN } from '../../config/umbralRevision';
 import { useToast } from '../../ui/toast';
 import { useApp } from '../../lib/store';
 import { api } from '../../lib/api';
@@ -69,11 +70,12 @@ export function useDetectionHarness() {
 
   // ------ C-33: Medidor de riesgo ------
   // c-68 task 5.3: el umbral default viene del SISTEMA (Configuración → Scoring),
-  // no de un literal local. Si el cache aún no cargó, cae a 70 (default del seed).
+  // no de un literal local. Si el cache aún no cargó, cae al piso de producto
+  // (config/umbralRevision.ts, misma fuente que Configuración y RiskMeter).
   // El admin puede sobreescribirlo localmente para hacer "what-if".
   const [harnessScore, setHarnessScore] = useState(0);
   const [riskThreshold, setRiskThreshold] = useState(
-    () => getEffectiveConfig()?.umbral_cola_revision ?? 70,
+    () => getEffectiveConfig()?.umbral_cola_revision ?? UMBRAL_REVISION_MIN,
   );
 
   // ------ c-68 task 5.3: leyenda basada en config viva de scoring ------

@@ -24,7 +24,7 @@ const TONO_BG: Record<'error' | 'warning' | 'success', string> = {
 };
 
 export function DetalleHeader({ detalle }: { detalle: SesionProctoringDetalle }) {
-  const nivel = nivelRiesgo(detalle.score);
+  const nivel = nivelRiesgo(detalle.score, detalle.umbral_cola_revision_efectivo);
   const totalEventos = detalle.eventos?.length ?? detalle.total_eventos ?? 0;
   const totalDiscrepancias =
     detalle.eventos?.filter((e) => e.veredicto_reinferencia === 'discrepancia').length ??
@@ -127,7 +127,7 @@ export function DetalleHeader({ detalle }: { detalle: SesionProctoringDetalle })
           <div className="space-y-xs">
             <div className="flex items-center justify-between text-label-sm">
               <span className="text-on-surface-variant">Score de riesgo</span>
-              <span className={`font-semibold ${scoreTextColor(detalle.score)}`}>{detalle.score} / 100 pts</span>
+              <span className={`font-semibold ${scoreTextColor(detalle.score, detalle.umbral_cola_revision_efectivo)}`}>{detalle.score} / 100 pts</span>
             </div>
             <div className="bg-surface-container-high rounded-full h-2 overflow-hidden">
               <div

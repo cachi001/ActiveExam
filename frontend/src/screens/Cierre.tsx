@@ -5,6 +5,7 @@ import { useNavigate } from '../lib/router';
 import { useApp } from '../lib/store';
 import { api } from '../lib/api';
 import { loadEffectiveConfig, getEffectiveConfig, resetEffectiveConfigCache } from '../config/effectiveConfigCache';
+import { UMBRAL_REVISION_MIN } from '../config/umbralRevision';
 import type { NotaExamen, RevisionExamen } from '../lib/types';
 
 export default function Cierre() {
@@ -57,7 +58,7 @@ export default function Cierre() {
     return () => { cancelado = true; };
   }, [examen, proctoringSessionId]);
 
-  const umbralEfectivo = nota?.umbral_revision ?? umbralRevision ?? examen?.umbral_score ?? 70;
+  const umbralEfectivo = nota?.umbral_revision ?? umbralRevision ?? examen?.umbral_score ?? UMBRAL_REVISION_MIN;
   const irARevision = nota ? nota.en_cola_revision : score >= umbralEfectivo;
   // C-69: la nota puede estar OCULTA hasta el cierre (nota_visible=false → nota=null).
   const notaPendiente = nota != null && nota.nota_visible === false;

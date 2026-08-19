@@ -123,6 +123,60 @@ def calcular_score(
     return min(SCORE_CAP, total)
 
 
+# ---------------------------------------------------------------------------
+# Snapshot de config al crear la sesion (migration 0083).
+#
+# Un cambio de config del sistema (umbral, pesos de scoring) NO debe afectar
+# retroactivamente a una sesion que ya arranco (regla de producto, ver
+# migrations/versions/0083_config_snapshot_proctoring_session.py). Estas
+# funciones construyen la foto al CREAR la sesion y la leen de vuelta al
+# puntuar: si la sesion tiene snapshot, manda; si no (sesion pre-migracion o
+# config no disponible al crear), se cae a la config VIVA (comportamiento
+# previo a este change).
+# ---------------------------------------------------------------------------
+
+
+def construir_config_snapshot(
+    *,
+    umbral_cola_revision: int,
+    pesos_por_tipo: dict[str, int] | None,
+    tipos_desactivados: frozenset[str] | set[str] | None,
+) -> dict:
+    """Arma el dict JSON-safe que se persiste en ``proctoring_session.config_snapshot``."""
+    return {
+        "umbral_cola_revision": umbral_cola_revision,
+        "scoring_weights": dict(pesos_por_tipo or {}),
+        "scoring_desactivados": sorted(tipos_desactivados or ()),
+    }
+
+
+def pesos_de_snapshot(
+    config_snapshot: dict | None, *, pesos_vivos: dict[str, int] | None
+) -> dict[str, int] | None:
+    """Pesos por tipo: los de la foto si la sesion tiene una; si no, los vivos."""
+    if config_snapshot:
+        return dict(config_snapshot.get("scoring_weights") or {})
+    return pesos_vivos
+
+
+def desactivados_de_snapshot(
+    config_snapshot: dict | None, *, desactivados_vivos: frozenset[str] | set[str] | None
+) -> frozenset[str]:
+    """Tipos desactivados: los de la foto si la sesion tiene una; si no, los vivos."""
+    if config_snapshot:
+        return frozenset(config_snapshot.get("scoring_desactivados") or ())
+    return frozenset(desactivados_vivos or ())
+
+
+def umbral_de_snapshot(config_snapshot: dict | None, *, umbral_vivo: int) -> int:
+    """Umbral de cola de revision: el de la foto si la sesion tiene una; si no, el vivo."""
+    if config_snapshot:
+        val = config_snapshot.get("umbral_cola_revision")
+        if val is not None:
+            return int(val)
+    return umbral_vivo
+
+
 def _en_ventana(
     ts: datetime | None, inicio: datetime | None, fin: datetime | None, ahora: datetime
 ) -> bool:

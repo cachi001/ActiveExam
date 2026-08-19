@@ -13,7 +13,7 @@
  *  5. 409 (versión ya existe): mensaje claro al admin.
  */
 import { useState, useEffect, useCallback } from 'react';
-import { Card, Button, Icon } from '../../ui/components';
+import { Button, Icon } from '../../ui/components';
 import { useToast } from '../../ui/toast';
 import { api } from '../../lib/api';
 import { resetEffectiveConfigCache } from '../../config/effectiveConfigCache';
@@ -137,9 +137,10 @@ export default function SeccionConsentimiento() {
   }
 
   return (
-    <div className="space-y-lg">
-      {/* Encabezado editorial: título con peso + descripción + divisor. */}
-      <div className="pb-4 border-b border-outline-variant/40">
+    <div className="divide-y divide-outline-variant/40">
+      {/* Encabezado editorial: título con peso + descripción. El separador con
+          el contenido de abajo lo da divide-y del contenedor. */}
+      <div className="pb-lg">
         <h2 className="font-headline text-[24px] font-bold text-on-surface tracking-tight leading-tight">Consentimiento</h2>
         <p className="text-[13.5px] text-on-surface-variant leading-relaxed max-w-2xl mt-2">
           Texto que los alumnos leen y confirman antes de rendir. Publicar una versión nueva
@@ -147,103 +148,105 @@ export default function SeccionConsentimiento() {
         </p>
       </div>
 
-      {/* Versión vigente actual — banner soft (sin gris fuerte). */}
-      <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-blue-50 border border-blue-200">
-        <Icon name="article" className="text-[20px] text-blue-600 shrink-0 mt-0.5" />
-        <div className="space-y-0.5">
-          <p className="text-[13px] font-semibold text-on-surface">
-            Versión activa: <span className="font-mono">{version}</span>
-          </p>
-          <p className="text-[12px] text-on-surface-variant">
-            Editá el texto y publicalo con una versión nueva para que los alumnos lo confirmen.
-          </p>
-        </div>
-      </div>
-
-      {/* Campo de nueva versión */}
-      <Card className="flex items-end gap-md">
-        <div className="flex-1 space-y-2.5">
-          <label className="text-label-md font-semibold text-on-surface block">
-            Versión a publicar
-          </label>
-          <p className="text-[12px] text-on-surface-variant leading-relaxed">
-            Cada versión es permanente e inmutable. Si cambiás el texto, debés publicarlo bajo
-            una versión nueva (ej. v2, v1.1, 2026-06).
-          </p>
-          <input
-            type="text"
-            value={nuevaVersion}
-            onChange={(e) => setNuevaVersion(e.target.value)}
-            placeholder="ej. v2, v1.1, 2026-06"
-            className="w-full mt-1 px-4 py-2.5 rounded-xl border border-outline-variant bg-white font-mono text-label-md focus:outline-none focus:border-surface-500 transition-colors"
-          />
-        </div>
-        {versionCambio && (
-          <div className="flex items-center gap-base text-warning text-[12px] shrink-0 pb-sm">
-            <Icon name="warning" className="text-[16px]" />
-            Los alumnos deberán re-confirmar
+      <div className="py-lg space-y-lg">
+        {/* Versión vigente actual — banner soft (sin gris fuerte). */}
+        <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-blue-50 border border-blue-200">
+          <Icon name="article" className="text-[20px] text-blue-600 shrink-0 mt-0.5" />
+          <div className="space-y-0.5">
+            <p className="text-[13px] font-semibold text-on-surface">
+              Versión activa: <span className="font-mono">{version}</span>
+            </p>
+            <p className="text-[12px] text-on-surface-variant">
+              Editá el texto y publicalo con una versión nueva para que los alumnos lo confirmen.
+            </p>
           </div>
-        )}
-      </Card>
-
-      {/* Alerta: texto editado sin versión nueva */}
-      {textoCambioSinVersion && (
-        <div className="flex items-start gap-sm px-md py-sm rounded-xl bg-error-container border border-error/30">
-          <Icon name="error" className="text-error text-[18px] shrink-0 mt-px" />
-          <p className="text-[12px] text-on-surface">
-            <strong>Cambios de texto requieren una versión nueva.</strong>{' '}
-            Ingresá un nombre de versión diferente a <span className="font-mono">"{version}"</span> para poder guardar.
-          </p>
         </div>
-      )}
 
-      <div className="grid lg:grid-cols-2 gap-lg items-stretch">
-      {bloques.map((b, i) => (
-        <Card key={i} className="h-full space-y-sm flex flex-col">
-          <div className="flex items-start gap-sm">
+        {/* Campo de nueva versión */}
+        <div className="flex items-end gap-md">
+          <div className="flex-1 space-y-2.5">
+            <label className="text-label-md font-semibold text-on-surface block">
+              Versión a publicar
+            </label>
+            <p className="text-[12px] text-on-surface-variant leading-relaxed">
+              Cada versión es permanente e inmutable. Si cambiás el texto, debés publicarlo bajo
+              una versión nueva (ej. v2, v1.1, 2026-06).
+            </p>
             <input
               type="text"
-              value={b.titulo}
-              onChange={(e) => setBloque(i, 'titulo', e.target.value)}
-              placeholder={`Título de la cláusula ${i + 1}`}
-              className="flex-1 min-w-0 text-title-md font-headline text-on-surface bg-white rounded-lg border border-outline-variant px-3 py-1.5 hover:border-outline focus:border-surface-500 focus:outline-none transition-colors"
-              aria-label={`Título de la cláusula ${i + 1}`}
+              value={nuevaVersion}
+              onChange={(e) => setNuevaVersion(e.target.value)}
+              placeholder="ej. v2, v1.1, 2026-06"
+              className="w-full mt-1 px-4 py-2.5 rounded-xl border border-outline-variant bg-white font-mono text-label-md focus:outline-none focus:border-surface-500 transition-colors"
             />
-            <button
-              type="button"
-              onClick={() => eliminarBloque(i)}
-              disabled={bloques.length <= 1}
-              title={bloques.length <= 1 ? 'Debe quedar al menos una cláusula' : 'Eliminar cláusula'}
-              aria-label={`Eliminar cláusula ${i + 1}`}
-              className="shrink-0 w-8 h-8 rounded-lg flex items-center justify-center text-on-surface-variant hover:bg-error-container hover:text-error disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-on-surface-variant transition-colors"
-            >
-              <Icon name="delete" className="text-[18px]" />
-            </button>
           </div>
-          <textarea
-            ref={autoGrow}
-            value={b.cuerpo}
-            onChange={(e) => { setBloque(i, 'cuerpo', e.target.value); autoGrow(e.target); }}
-            className="w-full text-[13px] text-on-surface-variant bg-white rounded-xl border border-outline-variant p-sm min-h-[7rem] overflow-hidden resize-none focus:outline-none focus:border-surface-500 transition-colors"
-            aria-label={`Cuerpo de la cláusula ${i + 1}`}
-          />
-        </Card>
-      ))}
-      </div>
+          {versionCambio && (
+            <div className="flex items-center gap-base text-warning text-[12px] shrink-0 pb-sm">
+              <Icon name="warning" className="text-[16px]" />
+              Los alumnos deberán re-confirmar
+            </div>
+          )}
+        </div>
 
-      {/* Agregar una nueva cláusula al consentimiento */}
-      <button
-        type="button"
-        onClick={agregarBloque}
-        className="w-full flex items-center justify-center gap-sm py-3 rounded-xl border border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100 hover:border-blue-400 transition-colors text-label-md font-semibold"
-      >
-        <Icon name="add" className="text-[18px]" />
-        Agregar cláusula
-      </button>
+        {/* Alerta: texto editado sin versión nueva */}
+        {textoCambioSinVersion && (
+          <div className="flex items-start gap-sm px-md py-sm rounded-xl bg-error-container border border-error/30">
+            <Icon name="error" className="text-error text-[18px] shrink-0 mt-px" />
+            <p className="text-[12px] text-on-surface">
+              <strong>Cambios de texto requieren una versión nueva.</strong>{' '}
+              Ingresá un nombre de versión diferente a <span className="font-mono">"{version}"</span> para poder guardar.
+            </p>
+          </div>
+        )}
+
+        <div className="grid lg:grid-cols-2 gap-lg items-stretch">
+        {bloques.map((b, i) => (
+          <div key={i} className="h-full space-y-sm flex flex-col rounded-lg border border-outline-variant/50 bg-white p-lg">
+            <div className="flex items-start gap-sm">
+              <input
+                type="text"
+                  value={b.titulo}
+                  onChange={(e) => setBloque(i, 'titulo', e.target.value)}
+                  placeholder={`Título de la cláusula ${i + 1}`}
+                  className="flex-1 min-w-0 text-title-md font-headline text-on-surface bg-white rounded-lg border border-outline-variant px-3 py-1.5 hover:border-outline focus:border-surface-500 focus:outline-none transition-colors"
+                  aria-label={`Título de la cláusula ${i + 1}`}
+                />
+                <button
+                  type="button"
+                  onClick={() => eliminarBloque(i)}
+                  disabled={bloques.length <= 1}
+                  title={bloques.length <= 1 ? 'Debe quedar al menos una cláusula' : 'Eliminar cláusula'}
+                  aria-label={`Eliminar cláusula ${i + 1}`}
+                  className="shrink-0 w-8 h-8 rounded-lg flex items-center justify-center text-on-surface-variant hover:bg-error-container hover:text-error disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-on-surface-variant transition-colors"
+                >
+                  <Icon name="delete" className="text-[18px]" />
+                </button>
+              </div>
+              <textarea
+                ref={autoGrow}
+                value={b.cuerpo}
+                onChange={(e) => { setBloque(i, 'cuerpo', e.target.value); autoGrow(e.target); }}
+                className="w-full text-[13px] text-on-surface-variant bg-white rounded-xl border border-outline-variant p-sm min-h-[7rem] overflow-hidden resize-none focus:outline-none focus:border-surface-500 transition-colors"
+                aria-label={`Cuerpo de la cláusula ${i + 1}`}
+              />
+            </div>
+          ))}
+        </div>
+
+        {/* Agregar una nueva cláusula al consentimiento */}
+        <button
+          type="button"
+          onClick={agregarBloque}
+          className="w-full flex items-center justify-center gap-sm py-3 rounded-xl border border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100 hover:border-blue-400 transition-colors text-label-md font-semibold"
+        >
+          <Icon name="add" className="text-[18px]" />
+          Agregar cláusula
+        </button>
+      </div>
 
       {/* Footer dirty-aware */}
       {dirty && (
-        <div className="flex items-center justify-between gap-sm pt-sm border-t border-outline-variant/40">
+        <div className="flex items-center justify-between gap-sm pt-lg">
           <div className="flex items-center gap-xs text-[12px] text-on-surface-variant">
             <Icon name="edit" className="text-[14px]" />
             Hay cambios sin guardar

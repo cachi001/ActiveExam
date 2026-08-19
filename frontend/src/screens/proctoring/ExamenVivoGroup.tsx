@@ -39,7 +39,7 @@ export function ExamenVivoGroup({
   const [colapsado, setColapsado] = useState(false);
   const personas = sesiones.length;
   const eventos = sesiones.reduce((acc, s) => acc + s.total_eventos, 0);
-  const riesgoAlto = sesiones.filter((s) => nivelRiesgo(s.score) === 'alto').length;
+  const riesgoAlto = sesiones.filter((s) => nivelRiesgo(s.score, s.umbral_cola_revision_efectivo) === 'alto').length;
   const examId = sesiones[0]?.exam_id;
   const navegable = Boolean(examId && onAbrirExamen);
 
@@ -167,7 +167,7 @@ function PersonaVivoRow({
           }
         }}
         className={`group flex items-center gap-md px-md py-sm cursor-pointer
-          ${scoreSoftBg(sesion.score)}
+          ${scoreSoftBg(sesion.score, sesion.umbral_cola_revision_efectivo)}
           transition-[filter] hover:brightness-[0.97]
           focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/40`}
       >
@@ -202,7 +202,7 @@ function PersonaVivoRow({
             amarillas/rojas). */}
         <span
           className={`inline-flex items-center justify-center min-w-[44px] px-sm py-base rounded-full
-            text-label-sm font-bold tabular-nums shrink-0 ${INNER_CHIP_BG} ${scoreTextColor(sesion.score ?? 0)}`}
+            text-label-sm font-bold tabular-nums shrink-0 ${INNER_CHIP_BG} ${scoreTextColor(sesion.score ?? 0, sesion.umbral_cola_revision_efectivo)}`}
         >
           {sesion.score ?? 0}
         </span>

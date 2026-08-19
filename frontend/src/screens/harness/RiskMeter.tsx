@@ -7,9 +7,7 @@
 
 import { Icon, Card, Button, SectionTitle } from '../../ui/components';
 import { gaugeColor, gaugeTextColor } from './helpers';
-
-const UMBRAL_MIN = 1;
-const UMBRAL_MAX = 100;
+import { UMBRAL_REVISION_MIN as UMBRAL_MIN, UMBRAL_REVISION_MAX as UMBRAL_MAX } from '../../config/umbralRevision';
 
 interface RiskMeterProps {
   harnessScore: number;

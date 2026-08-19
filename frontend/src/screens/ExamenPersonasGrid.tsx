@@ -89,7 +89,7 @@ export default function ExamenPersonasGrid() {
   };
 
   const eventos = personas.reduce((acc, s) => acc + s.total_eventos, 0);
-  const riesgoAlto = personas.filter((s) => nivelRiesgo(s.score) === 'alto').length;
+  const riesgoAlto = personas.filter((s) => nivelRiesgo(s.score, s.umbral_cola_revision_efectivo) === 'alto').length;
 
   return (
     <StaffShell nav={STAFF_NAV} title="Supervisión en vivo">
@@ -167,7 +167,7 @@ function PersonaCard({
   sesion: SesionProctoringResumen;
   onAbrir: (s: SesionProctoringResumen) => void;
 }) {
-  const alto = nivelRiesgo(sesion.score) === 'alto';
+  const alto = nivelRiesgo(sesion.score, sesion.umbral_cola_revision_efectivo) === 'alto';
   const etiqueta = sesion.etiqueta?.trim() || 'Persona sin etiqueta';
 
   return (
@@ -181,7 +181,7 @@ function PersonaCard({
           onAbrir(sesion);
         }
       }}
-      className={`group cursor-pointer rounded-2xl border ${scoreCardAcento(sesion.score)}
+      className={`group cursor-pointer rounded-2xl border ${scoreCardAcento(sesion.score, sesion.umbral_cola_revision_efectivo)}
         p-md shadow-card transition-all duration-200
         hover:shadow-card-lg hover:-translate-y-px focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40
         ${alto ? 'ring-1 ring-error/30' : ''}`}
@@ -198,7 +198,7 @@ function PersonaCard({
         </div>
         <span
           className={`inline-flex items-center justify-center min-w-[44px] px-sm py-base rounded-full
-            text-label-sm font-bold tabular-nums shrink-0 ${INNER_CHIP_BG} ${scoreTextColor(sesion.score)}`}
+            text-label-sm font-bold tabular-nums shrink-0 ${INNER_CHIP_BG} ${scoreTextColor(sesion.score, sesion.umbral_cola_revision_efectivo)}`}
         >
           {sesion.score}
         </span>

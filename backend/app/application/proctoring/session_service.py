@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.application.proctoring.scoring import calcular_score
+from app.application.proctoring.scoring import calcular_score, construir_config_snapshot
 from app.domain.events.reanudacion import clasificar_reanudacion
 from app.domain.events.schema import TipoEvento
 from app.infrastructure.persistence.models.proctoring import ProctoringSessionModel
@@ -53,6 +53,75 @@ async def _emitir_evento_reanudacion(
     )
 
 
+class ConfigSnapshotNoDisponibleError(Exception):
+    """La config del sistema no se pudo leer al crear la sesion.
+
+    Decision de producto: NUNCA se crea una sesion de examen sin foto de
+    config (migration 0083) — si el score/umbral no queda fijado en el
+    instante en que el alumno arranca, un cambio de config posterior podria
+    evaluar retroactivamente eventos que el alumno vio con otro valor. Antes
+    esto degradaba en silencio a la config viva (GAP real: un revisor podia
+    anular con un numero distinto al que el alumno vio en pantalla). Ahora
+    bloquea la creacion de la sesion con un error explicito en vez de eso.
+    """
+
+
+async def _construir_snapshot_al_crear(db: AsyncSession) -> dict:
+    """Foto de umbral/pesos de scoring vigente AHORA, para guardar en la sesion
+    que se está creando (migration 0083).
+
+    Se resuelve con las mismas fuentes que ``ConfigService``/los helpers vivos
+    del router (``evento_score_config``, ``configuracion_sistema``), sin pasar
+    por su cache (la sesion necesita el valor exacto de este instante, no uno
+    potencialmente stale).
+
+    Nunca degrada en silencio: si la config no esta disponible, eleva
+    ``ConfigSnapshotNoDisponibleError`` — la sesion NO se crea sin foto (ver
+    docstring de la excepcion). El caller HTTP la traduce a 503.
+    """
+    from app.infrastructure.persistence.models.transactional import (
+        ConfiguracionSistemaModel,
+        EventoScoreConfigModel,
+    )
+
+    try:
+        umbral_row = await db.execute(
+            select(ConfiguracionSistemaModel.umbral_cola_revision)
+        )
+        umbral = umbral_row.scalars().first()
+        if umbral is None:
+            raise ConfigSnapshotNoDisponibleError(
+                "configuracion_sistema.umbral_cola_revision no esta disponible"
+            )
+
+        pesos_rows = await db.execute(
+            select(
+                EventoScoreConfigModel.tipo_evento,
+                EventoScoreConfigModel.peso,
+                EventoScoreConfigModel.activo,
+            )
+        )
+        pesos: dict[str, int] = {}
+        desactivados: set[str] = set()
+        for tipo, peso, activo in pesos_rows.all():
+            if activo:
+                pesos[tipo] = int(peso)
+            else:
+                desactivados.add(tipo)
+    except ConfigSnapshotNoDisponibleError:
+        raise
+    except Exception as exc:  # noqa: BLE001 — nunca crear sesion sin foto de config
+        raise ConfigSnapshotNoDisponibleError(
+            "no se pudo leer la configuracion del sistema al crear la sesion"
+        ) from exc
+
+    return construir_config_snapshot(
+        umbral_cola_revision=int(umbral),
+        pesos_por_tipo=pesos,
+        tipos_desactivados=frozenset(desactivados),
+    )
+
+
 async def crear_sesion(
     db: AsyncSession,
     modo: str,
@@ -67,8 +136,13 @@ async def crear_sesion(
     ``examen_contenido_id`` (C-69) vincula la sesion con el examen de contenido
     importado de Moodle XML (NULLABLE). ``alumno_idnumber``/``alumno_email``
     persisten la identidad del alumno (C-69, enforcement de intentos).
+
+    C-config-snapshot (migration 0083): guarda una foto de umbral/pesos de
+    scoring vigente AHORA en la sesion, para que un cambio de config posterior
+    no la afecte retroactivamente.
     """
     repo = ProctoringRepository(db)
+    snapshot = await _construir_snapshot_al_crear(db)
     return await repo.crear_sesion(
         modo=modo,
         exam_id=exam_id,
@@ -76,6 +150,7 @@ async def crear_sesion(
         examen_contenido_id=examen_contenido_id,
         alumno_idnumber=alumno_idnumber,
         alumno_email=alumno_email,
+        config_snapshot=snapshot,
     )
 
 
@@ -107,9 +182,12 @@ async def crear_o_reanudar_sesion(
         if activa is not None:
             # C-72 sección 5 (H-4): reabrir una sesión activa emite el evento de
             # reanudación server-side. Solo en el resume — crear una sesión nueva
-            # (rama de abajo) NO emite (no hubo reapertura).
+            # (rama de abajo) NO emite (no hubo reapertura). Tampoco se re-toma el
+            # snapshot de config: la sesión reanudada sigue con la foto tomada al
+            # crearla la primera vez (misma sesión, mismo examen que arrancó).
             await _emitir_evento_reanudacion(repo, activa)
             return activa
+    snapshot = await _construir_snapshot_al_crear(db)
     return await repo.crear_sesion(
         modo=modo,
         exam_id=exam_id,
@@ -117,6 +195,7 @@ async def crear_o_reanudar_sesion(
         examen_contenido_id=examen_contenido_id,
         alumno_idnumber=alumno_idnumber,
         alumno_email=alumno_email,
+        config_snapshot=snapshot,
     )
 
 

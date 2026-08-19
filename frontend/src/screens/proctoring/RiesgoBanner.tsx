@@ -34,12 +34,12 @@ const CONTENIDO = {
   },
 } as const;
 
-export function RiesgoBanner({ score }: { score: number }) {
-  const nivel = nivelRiesgo(score);
+export function RiesgoBanner({ score, umbralAlto }: { score: number; umbralAlto?: number }) {
+  const nivel = nivelRiesgo(score, umbralAlto);
   const c = CONTENIDO[nivel];
   return (
     <div
-      className={`flex items-start gap-md rounded-xl border px-md py-md ${scoreSoftBg(score)} ${scoreSoftBorder(score)}`}
+      className={`flex items-start gap-md rounded-xl border px-md py-md ${scoreSoftBg(score, umbralAlto)} ${scoreSoftBorder(score, umbralAlto)}`}
       role={nivel === 'alto' ? 'alert' : undefined}
     >
       <Icon name={c.icon} className={`text-[22px] shrink-0 mt-px ${c.iconTone}`} fill />
