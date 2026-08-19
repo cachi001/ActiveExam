@@ -17,6 +17,7 @@ Cubre:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import secrets
@@ -582,57 +583,13 @@ def test_jit_emite_jwt_sesion_mismo_emisor():
 
 
 # ---------------------------------------------------------------------------
-# 5.6 — Endpoint /lti/launch redirige al frontend con tokens tras launch válido
+# 5.6 — Endpoint /lti/launch: primer ingreso pide confirmación, reingreso loguea directo
 # ---------------------------------------------------------------------------
 
 
-def test_launch_endpoint_redirige_con_tokens(session_factory):
-    """5.6: POST /lti/launch → 302 al frontend con access_token y refresh_token.
-
-    Usa asyncio.run() en fixture sync (session_factory es module-scope sync en
-    este módulo) para el setup de DB, luego TestClient para el request HTTP.
-    """
-    import asyncio as _asyncio
-
-    async def _setup():
-        async with session_factory() as s:
-            await s.execute(text("DELETE FROM inscripcion"))
-            await s.execute(text("DELETE FROM lti_nonce"))
-            await s.execute(text("DELETE FROM usuario WHERE username LIKE 'lti:%'"))
-            await s.execute(text("DELETE FROM lti_deployment_confiable"))
-            await s.execute(text("DELETE FROM lti_tool_key"))
-            await s.commit()
-
-        dep = LtiDeploymentConfiableModel(
-            iss=_ISS,
-            deployment_id=_DEPLOYMENT_ID,
-            client_id=_CLIENT_ID,
-            jwks_uri=f"{_ISS}/mod/lti/certs.php",
-        )
-        async with session_factory() as s:
-            s.add(dep)
-            await s.commit()
-
-        nonce = secrets.token_urlsafe(16)
-        state = secrets.token_urlsafe(16)
-        async with session_factory() as s:
-            s.add(LtiNonceModel(
-                nonce=nonce,
-                state=state,
-                iss=_ISS,
-                expira_en=datetime.now(timezone.utc) + timedelta(minutes=5),
-            ))
-            await s.commit()
-        return nonce, state
-
-    nonce, state = _asyncio.run(_setup())
-
-    pem, jwk = _par_rsa()
-    token = _firmar(pem, _claims(nonce=nonce))
-
+def _armar_app_lti(session_factory, *, jwk, jwt_secret="test-jwt-secret-suficientemente-largo"):
+    """Arma la app FastAPI + TestClient del router LTI, reusado por los tests HTTP."""
     cipher = SecretCipher(key=Fernet.generate_key().decode())
-    jwt_secret = "test-jwt-secret-suficientemente-largo"
-
     app = FastAPI()
     app.include_router(
         create_lti_router(
@@ -646,25 +603,164 @@ def test_launch_endpoint_redirige_con_tokens(session_factory):
         ),
         prefix="/api/v1/lti",
     )
+    return TestClient(app, follow_redirects=False)
 
-    client = TestClient(app, follow_redirects=False)
-    r = client.post(
-        "/api/v1/lti/launch",
-        data={"id_token": token, "state": state},
-    )
+
+def _setup_deployment_y_nonce(session_factory, *, deployment_id=_DEPLOYMENT_ID):
+    """Limpia tablas LTI, inserta un deployment activo + un nonce fresco. Sync
+    (usa asyncio.run) porque `session_factory` es una fixture module-scope sync."""
+
+    async def _setup():
+        async with session_factory() as s:
+            await s.execute(text("DELETE FROM lti_provisioning_pendiente"))
+            await s.execute(text("DELETE FROM inscripcion"))
+            await s.execute(text("DELETE FROM lti_nonce"))
+            await s.execute(text("DELETE FROM usuario WHERE username LIKE 'lti:%'"))
+            await s.execute(text("DELETE FROM lti_deployment_confiable"))
+            await s.execute(text("DELETE FROM lti_tool_key"))
+            await s.commit()
+
+        dep = LtiDeploymentConfiableModel(
+            iss=_ISS, deployment_id=deployment_id, client_id=_CLIENT_ID,
+            jwks_uri=f"{_ISS}/mod/lti/certs.php",
+        )
+        async with session_factory() as s:
+            s.add(dep)
+            await s.commit()
+
+        nonce = secrets.token_urlsafe(16)
+        state = secrets.token_urlsafe(16)
+        async with session_factory() as s:
+            s.add(LtiNonceModel(
+                nonce=nonce, state=state, iss=_ISS,
+                expira_en=datetime.now(timezone.utc) + timedelta(minutes=5),
+            ))
+            await s.commit()
+        return nonce, state
+
+    return asyncio.run(_setup())
+
+
+def test_launch_primer_ingreso_redirige_a_confirmar_sin_tokens(session_factory):
+    """5.6 (fix 2026-08-19): el PRIMER ingreso (cuenta nueva) ya NO loguea
+    directo — redirige a /lti-confirmar con un pendiente_id, SIN tokens. La
+    cuenta todavía no existe hasta que se confirme."""
+    nonce, state = _setup_deployment_y_nonce(session_factory)
+    pem, jwk = _par_rsa()
+    token = _firmar(pem, _claims(nonce=nonce, sub="mdl-900", email="nuevo900@demo.test"))
+
+    client = _armar_app_lti(session_factory, jwk=jwk)
+    r = client.post("/api/v1/lti/launch", data={"id_token": token, "state": state})
 
     assert r.status_code == 302
     location = r.headers["location"]
-    # Los tokens van en el FRAGMENT (#), no en la query string: el fragment no
-    # llega al servidor y no queda en logs/Referer (fuga de credenciales).
-    assert "#" in location
+    assert location.startswith("https://frontend.test/lti-confirmar#")
     fragment = location.split("#", 1)[1]
-    assert "access_token=" in fragment
-    assert "refresh_token=" in fragment
-    # No deben aparecer en la query string (antes del #).
-    query = location.split("#", 1)[0]
-    assert "access_token=" not in query
-    assert "refresh_token=" not in query
+    assert "pendiente_id=" in fragment
+    assert "access_token=" not in fragment  # todavia no se emitio nada
+
+    huerfano = asyncio.run(
+        _usuario_por_username(session_factory, f"lti:{_DEPLOYMENT_ID}:mdl-900")
+    )
+    assert huerfano is None  # la cuenta NO se creo todavia
+
+
+def test_confirmar_provisioning_crea_cuenta_y_devuelve_tokens(session_factory):
+    """El segundo paso (confirmación explícita) recién ahí crea la cuenta y
+    emite la sesión, con los mismos claims que ya se validaron en /launch."""
+    nonce, state = _setup_deployment_y_nonce(session_factory)
+    pem, jwk = _par_rsa()
+    token = _firmar(pem, _claims(nonce=nonce, sub="mdl-901", email="nuevo901@demo.test"))
+
+    client = _armar_app_lti(session_factory, jwk=jwk)
+    r = client.post("/api/v1/lti/launch", data={"id_token": token, "state": state})
+    fragment = r.headers["location"].split("#", 1)[1]
+    pendiente_id = dict(p.split("=") for p in fragment.split("&"))["pendiente_id"]
+
+    r2 = client.post("/api/v1/lti/confirmar-provisioning", json={"pendiente_id": pendiente_id})
+    assert r2.status_code == 200
+    body = r2.json()
+    assert body["access_token"]
+    assert body["refresh_token"]
+
+    creado = asyncio.run(
+        _usuario_por_username(session_factory, f"lti:{_DEPLOYMENT_ID}:mdl-901")
+    )
+    assert creado is not None
+    assert creado.email == "nuevo901@demo.test"
+
+
+def test_confirmar_provisioning_uso_unico(session_factory):
+    """El pendiente es de UN SOLO USO: confirmar dos veces la segunda falla
+    (410), no crea una segunda cuenta ni reemite tokens."""
+    nonce, state = _setup_deployment_y_nonce(session_factory)
+    pem, jwk = _par_rsa()
+    token = _firmar(pem, _claims(nonce=nonce, sub="mdl-902", email="nuevo902@demo.test"))
+
+    client = _armar_app_lti(session_factory, jwk=jwk)
+    r = client.post("/api/v1/lti/launch", data={"id_token": token, "state": state})
+    fragment = r.headers["location"].split("#", 1)[1]
+    pendiente_id = dict(p.split("=") for p in fragment.split("&"))["pendiente_id"]
+
+    r2 = client.post("/api/v1/lti/confirmar-provisioning", json={"pendiente_id": pendiente_id})
+    assert r2.status_code == 200
+
+    r3 = client.post("/api/v1/lti/confirmar-provisioning", json={"pendiente_id": pendiente_id})
+    assert r3.status_code == 410
+
+
+def test_confirmar_provisioning_id_inexistente_da_410(session_factory):
+    """Un pendiente_id que nunca existió (inventado) se rechaza igual, 410."""
+    _setup_deployment_y_nonce(session_factory)
+    pem, jwk = _par_rsa()
+    client = _armar_app_lti(session_factory, jwk=jwk)
+
+    r = client.post(
+        "/api/v1/lti/confirmar-provisioning",
+        json={"pendiente_id": "00000000-0000-0000-0000-000000000000"},
+    )
+    assert r.status_code == 410
+
+
+def test_launch_reingreso_redirige_directo_con_tokens(session_factory):
+    """Reingreso (cuenta LTI ya existente): sigue logueando directo, SIN pasar
+    por confirmación — la fricción es solo para el primer ingreso."""
+    nonce1, state1 = _setup_deployment_y_nonce(session_factory)
+    pem, jwk = _par_rsa()
+    claims_kwargs = dict(sub="mdl-903", email="reingreso903@demo.test")
+
+    client = _armar_app_lti(session_factory, jwk=jwk)
+
+    # Primer launch: pide confirmación, la confirma.
+    token1 = _firmar(pem, _claims(nonce=nonce1, **claims_kwargs))
+    r1 = client.post("/api/v1/lti/launch", data={"id_token": token1, "state": state1})
+    fragment1 = r1.headers["location"].split("#", 1)[1]
+    pendiente_id = dict(p.split("=") for p in fragment1.split("&"))["pendiente_id"]
+    client.post("/api/v1/lti/confirmar-provisioning", json={"pendiente_id": pendiente_id})
+
+    # Segundo launch (mismo sub → misma identidad LTI, ya existe): un nonce
+    # nuevo (el anterior ya se consumió), pero SIN pasar por /lti-confirmar.
+    async def _nuevo_nonce():
+        nonce = secrets.token_urlsafe(16)
+        state = secrets.token_urlsafe(16)
+        async with session_factory() as s:
+            s.add(LtiNonceModel(
+                nonce=nonce, state=state, iss=_ISS,
+                expira_en=datetime.now(timezone.utc) + timedelta(minutes=5),
+            ))
+            await s.commit()
+        return nonce, state
+
+    nonce2, state2 = asyncio.run(_nuevo_nonce())
+    token2 = _firmar(pem, _claims(nonce=nonce2, **claims_kwargs))
+    r2 = client.post("/api/v1/lti/launch", data={"id_token": token2, "state": state2})
+
+    assert r2.status_code == 302
+    location2 = r2.headers["location"]
+    assert location2.startswith("https://frontend.test/lti-login#")
+    fragment2 = location2.split("#", 1)[1]
+    assert "access_token=" in fragment2
+    assert "refresh_token=" in fragment2
 
 
 # ---------------------------------------------------------------------------

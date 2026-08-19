@@ -23,9 +23,16 @@ logger = logging.getLogger("lti")
 
 from fastapi import APIRouter, Form, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy import delete, select
 
-from app.application.lti.jit_provisioning import provisionar_o_recuperar_usuario
+from app.application.lti.jit_provisioning import (
+    PendienteInvalidoError,
+    confirmar_provisioning_pendiente,
+    crear_pendiente_confirmacion,
+    identidad_es_nueva,
+    provisionar_o_recuperar_usuario,
+)
 from app.application.lti.launch_validation import (
     JwksFetcher,
     LaunchInvalidoError,
@@ -45,6 +52,14 @@ from app.infrastructure.persistence.models.lti import (
 # TTL del nonce/state del flujo OIDC (design D5): corto, sólo tiene que sobrevivir
 # el ida-y-vuelta login → launch.
 _NONCE_TTL = timedelta(minutes=5)
+
+
+class ConfirmarProvisioningIn(BaseModel):
+    """Body de POST /lti/confirmar-provisioning."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    pendiente_id: str
 
 
 def _base_url(request: Request) -> str:
@@ -321,6 +336,42 @@ def create_lti_router(
                 }
 
             try:
+                requiere_confirmacion = await identidad_es_nueva(
+                    session, claims=validado.claims, deployment=validado.deployment
+                )
+            except LaunchInvalidoError as exc:
+                codigo = exc.codigo
+                logger.warning("lti_launch_rechazado codigo=%s", codigo)
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN, detail=codigo
+                ) from exc
+
+            if requiere_confirmacion:
+                # PRIMER ingreso (cuenta nueva): NO se auto-loguea. Se guarda la
+                # confirmación pendiente y se manda al frontend a que el propio
+                # usuario confirme "vas a entrar como X" antes del alta real
+                # (bug real 2026-08-19: un admin de Moodle quedaba logueado como
+                # alumno solo por clickear el link, sin confirmar nada).
+                pendiente = await crear_pendiente_confirmacion(
+                    session, claims=validado.claims, deployment=validado.deployment
+                )
+                await session.commit()
+                nombre_mostrar = (
+                    validado.claims.get("name")
+                    or validado.claims.get("given_name")
+                    or "tu cuenta"
+                )
+                params = urlencode({
+                    "pendiente_id": pendiente.id,
+                    "nombre": nombre_mostrar,
+                    "email": validado.claims.get("email") or "",
+                })
+                redirect_url = f"{frontend_url.rstrip('/')}/lti-confirmar#{params}"
+                return RedirectResponse(redirect_url, status_code=status.HTTP_302_FOUND)
+
+            # Reingreso (cuenta ya existente) o fusión legítima con otra
+            # identidad LTI: sigue logueando directo, sin fricción.
+            try:
                 usuario, _creado = await provisionar_o_recuperar_usuario(
                     session,
                     claims=validado.claims,
@@ -360,5 +411,55 @@ def create_lti_router(
         })
         redirect_url = f"{frontend_url.rstrip('/')}/lti-login#{params}"
         return RedirectResponse(redirect_url, status_code=status.HTTP_302_FOUND)
+
+    @router.post(
+        "/confirmar-provisioning",
+        summary="Confirma el alta de una cuenta LTI pendiente (primer ingreso)",
+    )
+    async def confirmar_provisioning(request: Request, body: ConfirmarProvisioningIn):
+        """Segundo paso del primer ingreso LTI: el usuario ya vio "vas a entrar
+        como X, con el email Y" en el frontend y confirmó. Acá recién se crea
+        la cuenta y se emite la sesión — con los claims que YA se validaron en
+        ``/lti/launch`` (el id_token original es de un solo uso, no se puede
+        re-validar).
+
+        Sin Bearer (pre-sesión, igual que ``/lti/launch``): la única prueba de
+        legitimidad es el ``pendiente_id`` de un solo uso, de corta vida."""
+        if jwt_secret is None:
+            raise HTTPException(
+                status_code=status.HTTP_501_NOT_IMPLEMENTED,
+                detail="sesion_no_configurada",
+            )
+
+        factory = _factory(request)
+        async with factory() as session:
+            try:
+                usuario, _creado = await confirmar_provisioning_pendiente(
+                    session, pendiente_id=body.pendiente_id
+                )
+            except PendienteInvalidoError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_410_GONE,
+                    detail="pendiente_invalido",
+                ) from exc
+            except LaunchInvalidoError as exc:
+                codigo = exc.codigo
+                logger.warning("lti_confirmacion_rechazada codigo=%s", codigo)
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN, detail=codigo
+                ) from exc
+
+            access_token = emitir_jwt_propio(
+                usuario,
+                secret=jwt_secret,
+                issuer=jwt_issuer,
+                audience=jwt_audience,
+                ttl_seconds=jwt_ttl_seconds,
+            )
+            db_store = DbRefreshTokenStore(session, ttl_seconds=refresh_ttl_seconds)
+            refresh_jti = await db_store.issue_para_usuario(str(usuario.id))
+            await session.commit()
+
+        return {"access_token": access_token, "refresh_token": refresh_jti}
 
     return router
