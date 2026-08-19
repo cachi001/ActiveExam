@@ -1347,6 +1347,7 @@ def create_exam_content_router(
     )
     async def listar_alumnos_de_comision(
         comision_id: str,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
     ) -> list[AlumnoElegibilidadResponse]:
         """Lista los alumnos inscriptos a la comisión con su elegibilidad.
 
@@ -1354,6 +1355,7 @@ def create_exam_content_router(
         (resuelto server-side); razon describe qué falta cuando no puede. 404
         'comision_no_encontrada' si la comisión no existe.
         """
+        await _exigir_pertenencia_comision(principal, comision_id)
         if session_factory is None:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1599,8 +1601,12 @@ def create_exam_content_router(
         response_model=ExamenConfigResponse,
         summary="Leer la configuración POR EXAMEN (timer/ventana/intentos/nota/shuffle)",
     )
-    async def leer_config_examen(examen_id: str) -> ExamenConfigResponse:
+    async def leer_config_examen(
+        examen_id: str,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    ) -> ExamenConfigResponse:
         """Devuelve los 7 campos de configuración del examen. 404 si no existe."""
+        await _exigir_pertenencia(principal, examen_id)
         if session_factory is None:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -2038,12 +2044,16 @@ def create_exam_content_router(
         response_model=PreguntasPoolResponse,
         summary="Listar el pool de preguntas de un examen (seleccionadas y no)",
     )
-    async def listar_preguntas_pool(examen_id: str) -> PreguntasPoolResponse:
+    async def listar_preguntas_pool(
+        examen_id: str,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    ) -> PreguntasPoolResponse:
         """Devuelve TODO el pool del examen para la pantalla de selección del docente.
 
         D3: sin es_correcta ni opciones — el docente identifica por enunciado.
         404 si el examen no existe.
         """
+        await _exigir_pertenencia(principal, examen_id)
         if session_factory is None:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -2267,6 +2277,7 @@ def create_exam_content_router(
         fecha_hasta: datetime | None = None,
         page: int = 1,
         page_size: int = 20,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
     ) -> ResultadosExamenPaginadosResponse:
         """Lista paginada de los alumnos que rindieron el examen.
 
@@ -2284,6 +2295,7 @@ def create_exam_content_router(
         estado_moodle = 'sin_token' cuando Moodle no está configurado.
         D3: es_correcta NUNCA expuesta.
         """
+        await _exigir_pertenencia(principal, examen_id)
         if session_factory is None:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
