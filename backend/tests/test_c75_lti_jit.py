@@ -35,7 +35,11 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
-from app.application.lti.launch_validation import CLAIM_DEPLOYMENT_ID, LaunchInvalidoError
+from app.application.lti.launch_validation import (
+    CLAIM_DEPLOYMENT_ID,
+    CLAIM_ROLES,
+    LaunchInvalidoError,
+)
 from app.application.lti.jit_provisioning import provisionar_o_recuperar_usuario
 from app.infrastructure.auth.own_issuer import emitir_jwt_propio
 from app.infrastructure.crypto.secret_encryption import SecretCipher
@@ -445,6 +449,89 @@ async def test_jit_email_vacio_no_colisiona_entre_alumnos_distintos(session_fact
     assert ua.email != ub.email
     assert ua.email != ""
     assert ub.email != ""
+
+
+# ---------------------------------------------------------------------------
+# Rol de staff en el claim `roles` (fix 2026-08-19)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_jit_rol_instructor_sin_alumno_rechaza_launch(session_factory):
+    """Fix real: un admin/docente de Moodle que clickea el link LTI de
+    "Rendir examen" no debe terminar con una cuenta ActiveExam de alumno.
+    Bug real: el dueño del proyecto entro con su cuenta ADMIN y se
+    auto-provisiono como estudiante porque el claim `roles` se ignoraba."""
+    await _limpiar_db(session_factory)
+    dep = await _insertar_deployment(session_factory)
+
+    claims = {
+        "sub": "mdl-700",
+        "iss": _ISS,
+        "name": "Admin Que Preview",
+        "email": "admin.preview@demo.test",
+        CLAIM_DEPLOYMENT_ID: _DEPLOYMENT_ID,
+        CLAIM_ROLES: [
+            "http://purl.imsglobal.org/vocab/lis/v2/system/person#Administrator",
+        ],
+    }
+
+    async with session_factory() as s:
+        with pytest.raises(LaunchInvalidoError) as exc_info:
+            await provisionar_o_recuperar_usuario(s, claims=claims, deployment=dep)
+        await s.rollback()
+
+    assert exc_info.value.codigo == "rol_no_estudiante"
+    huerfano = await _usuario_por_username(session_factory, f"lti:{_DEPLOYMENT_ID}:mdl-700")
+    assert huerfano is None
+
+
+@pytest.mark.asyncio
+async def test_jit_rol_learner_crea_cuenta_normalmente(session_factory):
+    """Regresion: un launch con rol Learner explicito sigue creando la cuenta
+    de alumno sin problema (el chequeo de staff no bloquea al caso normal)."""
+    await _limpiar_db(session_factory)
+    dep = await _insertar_deployment(session_factory)
+
+    claims = {
+        "sub": "mdl-701",
+        "iss": _ISS,
+        "name": "Alumno Con Rol Explicito",
+        "email": "alumno.rol@demo.test",
+        CLAIM_DEPLOYMENT_ID: _DEPLOYMENT_ID,
+        CLAIM_ROLES: [
+            "http://purl.imsglobal.org/vocab/lis/v2/membership#Learner",
+        ],
+    }
+
+    async with session_factory() as s:
+        usuario, creado = await provisionar_o_recuperar_usuario(s, claims=claims, deployment=dep)
+        await s.commit()
+
+    assert creado is True
+    assert usuario.roles == ["estudiante"]
+
+
+@pytest.mark.asyncio
+async def test_jit_rol_ausente_no_bloquea(session_factory):
+    """Sin claim `roles` (algunas configuraciones de Moodle no lo mandan), el
+    launch sigue funcionando -- no hay señal para bloquear."""
+    await _limpiar_db(session_factory)
+    dep = await _insertar_deployment(session_factory)
+
+    claims = {
+        "sub": "mdl-702",
+        "iss": _ISS,
+        "name": "Alumno Sin Claim Roles",
+        "email": "alumno.sinrol@demo.test",
+        CLAIM_DEPLOYMENT_ID: _DEPLOYMENT_ID,
+    }
+
+    async with session_factory() as s:
+        usuario, creado = await provisionar_o_recuperar_usuario(s, claims=claims, deployment=dep)
+        await s.commit()
+
+    assert creado is True
 
 
 # ---------------------------------------------------------------------------

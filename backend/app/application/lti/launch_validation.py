@@ -32,6 +32,7 @@ from app.infrastructure.persistence.models.lti import (
 
 CLAIM_DEPLOYMENT_ID = "https://purl.imsglobal.org/spec/lti/claim/deployment_id"
 CLAIM_CONTEXT = "https://purl.imsglobal.org/spec/lti/claim/context"
+CLAIM_ROLES = "https://purl.imsglobal.org/spec/lti/claim/roles"
 
 # Tolerancia de desincronización de reloj entre el Platform (Moodle) y el Tool al
 # validar exp/iat/nbf. OIDC (y por herencia LTI 1.3) recomienda explícitamente

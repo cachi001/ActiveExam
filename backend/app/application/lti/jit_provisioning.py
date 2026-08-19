@@ -58,6 +58,7 @@ from sqlalchemy import text as sa_text
 
 from app.application.lti.launch_validation import (
     CLAIM_DEPLOYMENT_ID,
+    CLAIM_ROLES,
     LaunchInvalidoError,
     LaunchValidado,
 )
@@ -78,6 +79,43 @@ def _username_lti(deployment_id: str, sub: str) -> str:
     usen el mismo ``sub`` numérico no colisionen.
     """
     return f"{_LTI_PREFIX}:{deployment_id}:{sub}"
+
+
+# Sufijos de rol (URN tras '#') que identifican a alguien NO-alumno en el
+# claim `roles` de LTI Advantage (Context/Institution/System role vocabularies
+# — ver https://www.imsglobal.org/spec/lti/v1p3#role-vocabularies).
+_ROLES_STAFF = (
+    "administrator",
+    "instructor",
+    "contentdeveloper",
+    "teachingassistant",
+    "mentor",
+    "manager",
+)
+_ROLES_ALUMNO = ("learner", "student")
+
+
+def _es_launch_de_staff(claims: dict) -> bool:
+    """True si el claim ``roles`` del id_token identifica a quien lanza como
+    staff (admin/docente/etc.), sin ningun rol de alumno.
+
+    Bug real (2026-08-19): el dueño del proyecto entro con su cuenta ADMIN de
+    Moodle al link LTI de "Rendir examen" (pensado para alumnos) y el sistema
+    le creo una cuenta ActiveExam con roles=["estudiante"] sin mirar el rol
+    real que Moodle mando — jit_provisioning ignoraba el claim `roles` por
+    completo. Un admin/docente que clickea o previsualiza el link no deberia
+    terminar con una cuenta de alumno.
+
+    Solo bloquea si el claim ESTA PRESENTE y describe staff SIN rol de
+    alumno — su ausencia (algunas configuraciones de Moodle no lo mandan) no
+    bloquea, para no romper launches legitimos sin señal de rol."""
+    roles = claims.get(CLAIM_ROLES)
+    if not roles:
+        return False
+    marcadores = {str(r).rsplit("#", 1)[-1].lower() for r in roles}
+    tiene_alumno = any(m in _ROLES_ALUMNO for m in marcadores)
+    tiene_staff = any(m in _ROLES_STAFF for m in marcadores)
+    return tiene_staff and not tiene_alumno
 
 
 def _extraer_nombre(claims: dict) -> tuple[str | None, str | None]:
@@ -146,6 +184,12 @@ async def provisionar_o_recuperar_usuario(
         return usuario, False
 
     # ---- Crear usuario nuevo ------------------------------------------------
+    # Rechazar ANTES de crear nada si quien lanza es staff (admin/docente) sin
+    # rol de alumno — ver _es_launch_de_staff. Solo aplica a cuentas NUEVAS: si
+    # ya existe una identidad LTI para este sub, el branch de arriba ya devolvió.
+    if _es_launch_de_staff(claims):
+        raise LaunchInvalidoError("rol_no_estudiante")
+
     # 2.2: nunca persistir "" — un email vacío colisiona con CUALQUIER otro
     # alumno sin email (UNIQUE), fusionando identidades reales distintas. El
     # sintético es unico por identidad LTI (username_lti ya lo es).
