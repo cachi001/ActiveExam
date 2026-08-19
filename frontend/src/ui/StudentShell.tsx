@@ -159,12 +159,16 @@ export function StudentShell({
     }
   }, [enrollmentStatus, setEnrollmentStatus]);
 
-  // Solo bloqueamos cuando YA sabemos que el perfil está incompleto (evita
-  // parpadear la ausencia de sidebar a un alumno con perfil completo mientras
-  // carga). Durante el lockdown del examen (`locked`) la sidebar ya está oculta.
-  // Mientras el perfil no esté completo NO se muestra la sidebar ni el bottom-nav:
-  // el alumno se funnelea a completarlo (CTA del dashboard / menú de usuario).
-  const perfilBloqueado = !locked && enrollmentStatus !== null && !isProfileComplete;
+  // Default SEGURO: bloqueado hasta confirmar que el perfil está completo.
+  // Antes se mostraba la sidebar mientras `enrollmentStatus` todavía no
+  // cargaba (para "evitar el parpadeo" a un alumno con perfil completo), pero
+  // eso dejaba una sidebar totalmente funcional y clickeable en pantalla
+  // durante ese instante para un alumno con perfil INCOMPLETO — justo lo que
+  // el gate existe para evitar. Bug real: se veía al cargar y al recargar la
+  // pantalla. Ahora arranca oculta y solo se muestra cuando se confirma
+  // `isProfileComplete`; el "parpadeo" que se evitaba era el precio correcto
+  // a pagar (loading state), no un bug.
+  const perfilBloqueado = !locked && !isProfileComplete;
 
   // La sidebar/nav se muestran solo si no hay lockdown y el perfil está completo.
   const mostrarSidebarDesktop = isDesktop && !locked && !perfilBloqueado;
