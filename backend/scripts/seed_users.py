@@ -50,7 +50,7 @@ import asyncio
 import os
 import sys
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 
 # Asegurarse de que el script puede importar app (corre desde backend/).
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -329,8 +329,8 @@ async def _seed_matriculaciones(factory) -> None:
     """Matricula SOLO a estudiante1 en la Comisión C1 (idempotente).
 
     Con el gate de inscripción (C-71) el alumno solo ve/rinde exámenes de las
-    comisiones donde está inscripto. estudiante1 queda inscripto para poder
-    rendir el "Examen de Programación 1" (demo del gate). estudiante2..4 quedan
+    comisiones donde está inscripto. estudiante1 queda inscripto en Comisión C1
+    (demo del gate, sin examen sembrado — ver c-78). estudiante2..4 quedan
     LIBRES a propósito, para demostrar el flujo de inscripción desde el panel
     del docente.
     """
@@ -397,22 +397,16 @@ async def _seed_matriculaciones(factory) -> None:
 
 
 async def _seed_contenido(factory) -> None:
-    """Siembra contenido académico demo (idempotente).
+    """Siembra estructura académica demo (idempotente): Programación 1 → Comisión 1.
 
-    Programación 1 → Comisión 1 → "Examen de Programación 1", cuyas preguntas se
-    importan del Moodle XML ``scripts/fixtures/programacion-1.xml`` (mismo parser
-    que el endpoint /moodle-import). El examen se rinde on-demand pero tiene HORA
-    DE INICIO visible (apertura); ventana abierta (sin cierre). 2 intentos, 40 min.
+    NO siembra ningún examen — un examen de demo sin banco de preguntas propio
+    no tiene sentido operativo y, al no tener baja lógica (ver c-78 Bloque A),
+    volvía a recrearse en cada deploy aunque se borrara a mano. Si se necesita
+    un examen de prueba, se crea manualmente desde el panel de administración.
     """
-    from datetime import datetime, timezone
-
-    from app.application.exam_content.moodle_parser import parse_moodle_xml
     from app.infrastructure.persistence.models.exam_content import (
         ComisionModel,
-        ExamenContenidoModel,
         MateriaModel,
-        OpcionRespuestaModel,
-        PreguntaExamenModel,
     )
 
     MATERIA_CODIGO = "PROG1"
@@ -421,8 +415,6 @@ async def _seed_contenido(factory) -> None:
     COMISION_NOMBRE = "Comisión 1"
     # C-70: código de matriculación de demo (enrolment key) para la Comisión C1.
     COMISION_MATRICULACION = "PROG1-C1"
-    EXAMEN_TITULO = "Examen de Programación 1"
-    XML_PATH = os.path.join(os.path.dirname(__file__), "fixtures", "programacion-1.xml")
 
     async with factory() as session:
         # 1. Materia (idempotente por codigo único).
@@ -477,89 +469,6 @@ async def _seed_contenido(factory) -> None:
                 if conflicto is None:
                     comision.codigo_matriculacion = COMISION_MATRICULACION
                     print(f"  [update] codigo_matriculacion -> {COMISION_MATRICULACION}")
-
-        # 3. Examen (idempotente por (titulo, comision_id)).
-        examen = (
-            await session.execute(
-                select(ExamenContenidoModel).where(
-                    ExamenContenidoModel.titulo == EXAMEN_TITULO,
-                    ExamenContenidoModel.comision_id == comision.id,
-                )
-            )
-        ).scalar_one_or_none()
-        if examen is not None:
-            # Backfill idempotente: si el examen existe pero quedó SIN preguntas
-            # (creado por una versión previa del seed, o import incompleto), importarlas
-            # ahora del XML y asociarlas al examen existente. Sin esto, el "[skip]" dejaba
-            # el examen en 0 preguntas para siempre (bug: "0 preguntas" al rendir).
-            n_preguntas = (
-                await session.execute(
-                    select(func.count(PreguntaExamenModel.id)).where(
-                        PreguntaExamenModel.examen_id == examen.id
-                    )
-                )
-            ).scalar_one()
-            if n_preguntas > 0:
-                print(f"  [skip] examen ya existe con {n_preguntas} preguntas: {EXAMEN_TITULO}")
-            elif not os.path.exists(XML_PATH):
-                print(f"  [skip] examen sin preguntas y falta el fixture: {XML_PATH}")
-            else:
-                with open(XML_PATH, "rb") as f:
-                    parseo = parse_moodle_xml(f.read())
-                for i, pd in enumerate(parseo.preguntas):
-                    pregunta = PreguntaExamenModel(
-                        examen_id=examen.id,
-                        enunciado=pd.enunciado,
-                        tipo=pd.tipo,
-                        orden=i,
-                        seleccionada=True,
-                    )
-                    for j, op in enumerate(pd.opciones):
-                        pregunta.opciones.append(
-                            OpcionRespuestaModel(
-                                texto=op.texto, es_correcta=op.es_correcta, orden=j
-                            )
-                        )
-                    session.add(pregunta)
-                print(
-                    f"  [backfill] {len(parseo.preguntas)} preguntas importadas al "
-                    f"examen existente {EXAMEN_TITULO}"
-                )
-        elif not os.path.exists(XML_PATH):
-            print(f"  [skip] fixture no encontrado: {XML_PATH} (examen no importado)")
-        else:
-            with open(XML_PATH, "rb") as f:
-                parseo = parse_moodle_xml(f.read())
-            examen = ExamenContenidoModel(
-                titulo=EXAMEN_TITULO,
-                comision_id=comision.id,
-                tiempo_limite_min=40,
-                intentos_permitidos=2,
-                # Ventana de rendición (obligatoria): abierta y rendible ya. Editable
-                # luego desde el panel del docente. Cierre lejano para el demo.
-                apertura=datetime(2026, 7, 7, 9, 0, tzinfo=timezone.utc),
-                cierre=datetime(2026, 12, 31, 23, 0, tzinfo=timezone.utc),
-                # Demo: nota INMEDIATA (se ve al entregar, sin esperar el cierre) +
-                # revisión habilitada.
-                mostrar_nota="inmediata",
-                revision_habilitada=True,
-            )
-            for i, pd in enumerate(parseo.preguntas):
-                pregunta = PreguntaExamenModel(
-                    enunciado=pd.enunciado,
-                    tipo=pd.tipo,
-                    orden=i,
-                    seleccionada=True,
-                )
-                for j, op in enumerate(pd.opciones):
-                    pregunta.opciones.append(
-                        OpcionRespuestaModel(
-                            texto=op.texto, es_correcta=op.es_correcta, orden=j
-                        )
-                    )
-                examen.preguntas.append(pregunta)
-            session.add(examen)
-            print(f"  [create] examen {EXAMEN_TITULO} ({len(parseo.preguntas)} preguntas del XML)")
 
         await session.commit()
 
