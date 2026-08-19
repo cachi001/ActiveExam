@@ -119,7 +119,7 @@ export STORAGE_BUCKET_EVIDENCE=evidence
 
 # Passwords para los usuarios seed (min 8 chars)
 export SEED_ESTUDIANTE_PASSWORD=Estudiante123
-export SEED_PROCTOR_PASSWORD=Proctor123
+export SEED_COORDINADOR_PASSWORD=Coordinador123
 export SEED_ADMIN_PASSWORD=Admin1234
 
 # Aplicar migración C-55 primero
@@ -134,7 +134,7 @@ python scripts/seed_users.py
 | Rol | username / email | password (env) |
 |---|---|---|
 | `estudiante` | `estudiante1` o `estudiante@activeexam.local` | `$SEED_ESTUDIANTE_PASSWORD` |
-| `coordinador` | `coordinador1` o `proctor@activeexam.local` | `$SEED_PROCTOR_PASSWORD` |
+| `coordinador` | `coordinador1` o `proctor@activeexam.local` (email legacy, ver nota) | `$SEED_COORDINADOR_PASSWORD` |
 | `admin_sistema` | `admin` o `admin@activeexam.local` | `$SEED_ADMIN_PASSWORD` |
 
 **Endpoint de login:**

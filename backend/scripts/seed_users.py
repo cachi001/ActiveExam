@@ -21,7 +21,7 @@ SEGURIDAD:
 USO (modo activeexam — Railway / Postgres estandar):
     DATABASE_URL=postgresql+asyncpg://... \\
     SEED_ESTUDIANTE_PASSWORD=... \\
-    SEED_PROCTOR_PASSWORD=... \\
+    SEED_COORDINADOR_PASSWORD=... \\
     SEED_ADMIN_PASSWORD=... \\
     python scripts/seed_users.py --activeexam
 
@@ -36,7 +36,9 @@ CREDENCIALES SEED (para probar el login — usernames simples, no codigos tipo l
     Estudiante 2: username=estudiante2   | email=estudiante2@activeexam.local (Estudiante Prueba2)
     Estudiante 3: username=estudiante3   | email=estudiante3@activeexam.local (Estudiante Prueba3)
     Estudiante 4: username=estudiante4   | email=estudiante4@activeexam.local (Estudiante Prueba4)
-    Coordinador:  username=coordinador1  | email=proctor@activeexam.local (rol coordinador; ex-proctor, c-76)
+    Coordinador:  username=coordinador1  | email=proctor@activeexam.local (rol coordinador; ex-proctor, c-76.
+                  El email se conserva por idempotencia de una migracion vieja
+                  -- ya NO hay rol "proctor" en el sistema.)
     Admin:        username=admin         | email=admin@activeexam.local
     Tutor:        username=tutor1        | email=tutor@activeexam.local (docente de PROG1/C1)
 
@@ -127,14 +129,14 @@ async def _ejecutar_seed(
 
     # Leer passwords del entorno (nunca hardcodeados).
     pw_estudiante = os.environ.get("SEED_ESTUDIANTE_PASSWORD")
-    pw_proctor = os.environ.get("SEED_PROCTOR_PASSWORD")
+    pw_coordinador = os.environ.get("SEED_COORDINADOR_PASSWORD")
     pw_admin = os.environ.get("SEED_ADMIN_PASSWORD")
     pw_tutor = os.environ.get("SEED_TUTOR_PASSWORD")
 
-    if not all([pw_estudiante, pw_proctor, pw_admin, pw_tutor]):
+    if not all([pw_estudiante, pw_coordinador, pw_admin, pw_tutor]):
         print(
             "ERROR: Faltan variables de entorno SEED_ESTUDIANTE_PASSWORD, "
-            "SEED_PROCTOR_PASSWORD, SEED_ADMIN_PASSWORD y/o SEED_TUTOR_PASSWORD.",
+            "SEED_COORDINADOR_PASSWORD, SEED_ADMIN_PASSWORD y/o SEED_TUTOR_PASSWORD.",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -181,7 +183,7 @@ async def _ejecutar_seed(
             # seed, asi que no se duplica.
             "username": "coordinador1",
             "email": "proctor@activeexam.local",
-            "password": pw_proctor,
+            "password": pw_coordinador,
             "roles": ["coordinador"],
             "nombre": "Coordinador",
             "apellido": "Prueba",
