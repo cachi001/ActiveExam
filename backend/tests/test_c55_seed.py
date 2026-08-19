@@ -27,7 +27,7 @@ def test_seed_falla_en_produccion(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("JWT_AUDIENCE", "proctoring-api")
     monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://tempo:4317")
     monkeypatch.setenv("SEED_ESTUDIANTE_PASSWORD", "TestPass123")
-    monkeypatch.setenv("SEED_PROCTOR_PASSWORD", "TestPass456")
+    monkeypatch.setenv("SEED_COORDINADOR_PASSWORD", "TestPass456")
     monkeypatch.setenv("SEED_ADMIN_PASSWORD", "TestPass789")
 
     # El script llama sys.exit(1) si ENVIRONMENT=production.
@@ -67,7 +67,7 @@ async def test_seed_idempotente(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("JWT_AUDIENCE", "proctoring-api")
     monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://tempo:4317")
     monkeypatch.setenv("SEED_ESTUDIANTE_PASSWORD", "SeedStudentPass1")
-    monkeypatch.setenv("SEED_PROCTOR_PASSWORD", "SeedProctorPass1")
+    monkeypatch.setenv("SEED_COORDINADOR_PASSWORD", "SeedProctorPass1")
     monkeypatch.setenv("SEED_ADMIN_PASSWORD", "SeedAdminPass123")
 
     # Insertar el path del script en sys.path para importar.

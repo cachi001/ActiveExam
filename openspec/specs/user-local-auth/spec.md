@@ -64,7 +64,7 @@ El sistema SHALL exponer `POST /api/v1/users/` (requiere rol `admin_sistema`) pa
 - **THEN** responde 409 Conflict sin crear el usuario
 
 ### Requirement: Seed de usuarios de prueba para entornos no-producción
-El sistema SHALL proveer un script `backend/scripts/seed_users.py` que crea 3 usuarios demo (roles: `estudiante`, `proctor`, `admin_sistema`) con passwords desde variables de entorno (`SEED_ESTUDIANTE_PASSWORD`, `SEED_PROCTOR_PASSWORD`, `SEED_ADMIN_PASSWORD`). El script SHALL fallar explícitamente si se ejecuta con `environment=production`. El script SHALL ser idempotente (no duplica si el usuario ya existe).
+El sistema SHALL proveer un script `backend/scripts/seed_users.py` que crea usuarios demo (roles: `estudiante`, `coordinador`, `tutor`, `admin_sistema`) con passwords desde variables de entorno (`SEED_ESTUDIANTE_PASSWORD`, `SEED_COORDINADOR_PASSWORD`, `SEED_TUTOR_PASSWORD`, `SEED_ADMIN_PASSWORD`). El script SHALL fallar explícitamente si se ejecuta con `environment=production`. El script SHALL ser idempotente (no duplica si el usuario ya existe).
 
 #### Scenario: Seed crea usuarios idempotentemente
 - **WHEN** el script seed se ejecuta dos veces en entorno local con las mismas variables
