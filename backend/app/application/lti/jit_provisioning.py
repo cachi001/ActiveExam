@@ -9,8 +9,20 @@ Tras un launch LTI válido (ver ``launch_validation.validar_launch``), este mód
 2. Si el ``username`` ya existe → devuelve el usuario existente (idempotente).
 
 2.1. Si el ``username`` es nuevo pero el ``email`` YA pertenece a otra cuenta
-   (mismo alumno real provisionado antes desde otro deployment — ``email`` es
-   UNIQUE, c-76-4) → reusa esa cuenta en vez de fallar con 500.
+   LTI (mismo alumno real provisionado antes desde otro deployment — ``email``
+   es UNIQUE, c-76-4) → reusa esa cuenta en vez de fallar con 500. Si la cuenta
+   con ese email NO es LTI (login propio: docente/tutor/admin/alumno manual)
+   → el launch se RECHAZA (``LaunchInvalidoError("email_en_uso_no_lti")``) en
+   vez de fusionarse silenciosamente con una cuenta ajena de otro rol/identidad
+   (bug encontrado 2026-08-19: un tutor cuyo email de Moodle coincide con su
+   email de plataforma terminaba "siendo" su propia cuenta de tutor al entrar
+   por LTI, matriculado como alumno, con los roles de tutor).
+
+2.2. Si el claim ``email`` viene vacío (Moodle no lo comparte), NUNCA se usa
+   ``""`` literal: se genera un email sintético único por identidad LTI
+   (``{username}@sin-email.lti.local``). Antes, dos alumnos reales distintos
+   sin email compartían la misma fila `email=""`, y el segundo terminaba
+   fusionado con la cuenta del primero (mismo bug de fondo que 2.1).
 
 3. Si no existe → crea el usuario con:
    - ``roles=["estudiante"]``  (rol canónico del sistema — ver ``Rol.ESTUDIANTE``;
@@ -134,7 +146,10 @@ async def provisionar_o_recuperar_usuario(
         return usuario, False
 
     # ---- Crear usuario nuevo ------------------------------------------------
-    email = claims.get("email") or ""
+    # 2.2: nunca persistir "" — un email vacío colisiona con CUALQUIER otro
+    # alumno sin email (UNIQUE), fusionando identidades reales distintas. El
+    # sintético es unico por identidad LTI (username_lti ya lo es).
+    email = claims.get("email") or f"{username_lti}@sin-email.lti.local"
     nombre, apellido = _extraer_nombre(claims)
 
     # Password aleatorio, no comunicado (patrón "clave temporal" de C-61).
@@ -182,6 +197,13 @@ async def provisionar_o_recuperar_usuario(
         usuario = resultado.scalar_one_or_none()
         if usuario is None:
             raise  # No era colisión de email: otra causa, no la enmascaramos.
+        # 2.1: fusionar SOLO si la cuenta encontrada es, ella misma, una
+        # identidad LTI (el caso legítimo: mismo alumno real, otro deployment).
+        # Cualquier otra procedencia (login propio: docente/tutor/admin/alumno
+        # manual) es una cuenta ajena — el launch se rechaza en vez de
+        # devolverle a un tercero las credenciales/rol de otra persona.
+        if usuario.auth_provider != "lti":
+            raise LaunchInvalidoError("email_en_uso_no_lti")
         await _asegurar_matricula(session, usuario=usuario, deployment=deployment)
         return usuario, False
 
