@@ -32,7 +32,7 @@ export function SesionVivoCard({
   onAbrir: (sesion: SesionProctoringResumen) => void;
   examInfo?: ExamInfo | null;
 }) {
-  const riesgoAlto = nivelRiesgo(sesion.score) === 'alto';
+  const riesgoAlto = nivelRiesgo(sesion.score, sesion.umbral_cola_revision_efectivo) === 'alto';
 
   return (
     <div
@@ -45,7 +45,7 @@ export function SesionVivoCard({
           onAbrir(sesion);
         }
       }}
-      className={`group relative cursor-pointer rounded-xl border ${scoreCardAcento(sesion.score)}
+      className={`group relative cursor-pointer rounded-xl border ${scoreCardAcento(sesion.score, sesion.umbral_cola_revision_efectivo)}
         p-md pr-10 shadow-card transition-all duration-200
         hover:shadow-card-lg hover:-translate-y-px
         focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40
@@ -98,7 +98,7 @@ export function SesionVivoCard({
           {sesion.total_discrepancias ?? 0} discrepancias
         </span>
         <span className="text-outline-variant" aria-hidden>·</span>
-        <span className={`inline-flex items-center gap-base font-bold ${scoreTextColor(sesion.score ?? 0)}`}>
+        <span className={`inline-flex items-center gap-base font-bold ${scoreTextColor(sesion.score ?? 0, sesion.umbral_cola_revision_efectivo)}`}>
           <Icon name="speed" className="text-[16px]" fill />
           Score {sesion.score ?? 0}
         </span>

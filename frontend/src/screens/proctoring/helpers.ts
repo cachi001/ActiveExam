@@ -6,6 +6,7 @@
  * de líneas. NADA de hardcodear umbrales en cada tarjeta: la fuente es este archivo.
  */
 import type { VeredictoReinferencia } from '../../lib/types';
+import { UMBRAL_REVISION_MIN } from '../../config/umbralRevision';
 
 /**
  * Umbral "alto" sembrable desde la config efectiva.
@@ -19,7 +20,7 @@ import type { VeredictoReinferencia } from '../../lib/types';
  * @deprecated SCORE_UMBRAL_ALTO — se mantiene solo para compatibilidad con
  * importaciones existentes. Usar `getUmbralAlto()` en código nuevo.
  */
-let _umbralAlto = 70;
+let _umbralAlto = UMBRAL_REVISION_MIN;
 
 /** Siembra el umbral de riesgo alto desde la config efectiva (sin red). Idempotente. */
 export function seedUmbralAlto(v: number): void {
@@ -31,17 +32,18 @@ export function getUmbralAlto(): number {
   return _umbralAlto;
 }
 
-/** Resetea el umbral al default (70). Solo para tests. */
+/** Resetea el umbral al default (piso de producto). Solo para tests. */
 export function resetUmbralAlto(): void {
-  _umbralAlto = 70;
+  _umbralAlto = UMBRAL_REVISION_MIN;
 }
 
 /**
- * Constante de compatibilidad. ATENCIÓN: su valor es el default inicial (70) y NO
- * se actualiza cuando se siembra la config. Usar `getUmbralAlto()` para el valor vivo.
+ * Constante de compatibilidad. ATENCIÓN: su valor es el default inicial (piso de
+ * producto) y NO se actualiza cuando se siembra la config. Usar `getUmbralAlto()`
+ * para el valor vivo.
  * @deprecated Usar `getUmbralAlto()`.
  */
-export const SCORE_UMBRAL_ALTO = 70;
+export const SCORE_UMBRAL_ALTO = UMBRAL_REVISION_MIN;
 /** Umbral de score a partir del cual una sesión se considera de riesgo medio. */
 export const SCORE_UMBRAL_MEDIO = 30;
 
@@ -84,23 +86,31 @@ export function formatFechaRelativa(iso: string): string {
 /** Nivel de riesgo derivado del score. */
 export type NivelRiesgo = 'bajo' | 'medio' | 'alto';
 
-export function nivelRiesgo(score: number): NivelRiesgo {
-  if (score >= getUmbralAlto()) return 'alto';
+/**
+ * ``umbralAlto`` es OPCIONAL para no romper cada call site existente, pero no es
+ * un "tomá cualquier valor": si se pasa (``sesion.umbral_cola_revision_efectivo``,
+ * migration 0083), es el umbral CON EL QUE ESA SESIÓN se puntuó realmente — el de
+ * su foto de config al crearla, no el vigente ahora. Sin ese dato (vista que no
+ * trae una sesión puntual, ej. un formulario de configuración) cae al umbral vivo
+ * de ``getUmbralAlto()``. Preferí SIEMPRE pasar el de la sesión cuando lo tengas.
+ */
+export function nivelRiesgo(score: number, umbralAlto: number = getUmbralAlto()): NivelRiesgo {
+  if (score >= umbralAlto) return 'alto';
   if (score >= SCORE_UMBRAL_MEDIO) return 'medio';
   return 'bajo';
 }
 
 /** Clase de color de texto para el score, según su nivel de riesgo. */
-export function scoreTextColor(score: number): string {
-  const nivel = nivelRiesgo(score);
+export function scoreTextColor(score: number, umbralAlto?: number): string {
+  const nivel = nivelRiesgo(score, umbralAlto);
   if (nivel === 'alto') return 'text-error';
   if (nivel === 'medio') return 'text-warning';
   return 'text-success';
 }
 
 /** Clase de borde-izquierdo (acento) para la tarjeta de sesión, según riesgo. */
-export function scoreAccentBorder(score: number): string {
-  const nivel = nivelRiesgo(score);
+export function scoreAccentBorder(score: number, umbralAlto?: number): string {
+  const nivel = nivelRiesgo(score, umbralAlto);
   if (nivel === 'alto') return 'border-l-error';
   if (nivel === 'medio') return 'border-l-warning';
   return 'border-l-success';
@@ -114,16 +124,16 @@ export function scoreAccentBorder(score: number): string {
  * riesgo medio se ve con toda la card en amarillo clarito, no con una franja
  * amarilla fuerte sobre blanco. Pensado para usarse como `border ${scoreCardSurface(score)}`.
  */
-export function scoreCardSurface(score: number): string {
-  return `${scoreSoftBg(score)} ${scoreSoftBorder(score)}`;
+export function scoreCardSurface(score: number, umbralAlto?: number): string {
+  return `${scoreSoftBg(score, umbralAlto)} ${scoreSoftBorder(score, umbralAlto)}`;
 }
 
 /** C-72: acento de riesgo para las cards del Registro de sesiones. En vez de teñir
  * TODO el fondo (que se veía poco profesional), deja el fondo limpio y pone un borde
  * IZQUIERDO grueso de color por riesgo (rojo alto / ámbar medio / verde bajo). La
  * sombra y el hover los pone la card. */
-export function scoreCardAcento(score: number): string {
-  const nivel = nivelRiesgo(score);
+export function scoreCardAcento(score: number, umbralAlto?: number): string {
+  const nivel = nivelRiesgo(score, umbralAlto);
   const borde =
     nivel === 'alto' ? 'border-l-error'
     : nivel === 'medio' ? 'border-l-warning'
@@ -132,16 +142,16 @@ export function scoreCardAcento(score: number): string {
 }
 
 /** Solo el fondo claro tintado por riesgo (para filas/elementos sin borde propio). */
-export function scoreSoftBg(score: number): string {
-  const nivel = nivelRiesgo(score);
+export function scoreSoftBg(score: number, umbralAlto?: number): string {
+  const nivel = nivelRiesgo(score, umbralAlto);
   if (nivel === 'alto') return 'bg-error-container/40';
   if (nivel === 'medio') return 'bg-warning-container/50';
   return 'bg-success-container/25';
 }
 
 /** Solo el color del borde acorde al riesgo (combina con `border`). */
-export function scoreSoftBorder(score: number): string {
-  const nivel = nivelRiesgo(score);
+export function scoreSoftBorder(score: number, umbralAlto?: number): string {
+  const nivel = nivelRiesgo(score, umbralAlto);
   if (nivel === 'alto') return 'border-error/30';
   if (nivel === 'medio') return 'border-warning/30';
   return 'border-success/20';

@@ -22,6 +22,7 @@ import { STAFF_NAV, navItemsParaRoles } from '../ui/nav';
 import type { ExamenContenidoResumen, SesionProctoringResumen } from '../lib/types';
 import { examenContenidoSubtitulo, formatVentanaExamen, formatDuracionExamen, statExamenesValue } from './dashboards.helpers';
 import { loadEffectiveConfig, getEffectiveConfig } from '../config/effectiveConfigCache';
+import { UMBRAL_REVISION_MIN } from '../config/umbralRevision';
 
 // alias para mantener compatibilidad con las pantallas que ya lo importan
 export const ADMIN_NAV = STAFF_NAV;
@@ -61,14 +62,14 @@ export default function AdminDashboard() {
   // Falló la carga de sesiones. Distinto de `[]` (sin sesiones): un cero real y un
   // cero por caída se veían igual, y el admin no tenía cómo notar la diferencia.
   const [sesionesError, setSesionesError] = useState(false);
-  const [umbral, setUmbral] = useState(70);
+  const [umbral, setUmbral] = useState(UMBRAL_REVISION_MIN);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<number | undefined>();
   const [refrescando, setRefrescando] = useState(false);
 
   const cargarSesiones = useCallback(async () => {
     try {
       await loadEffectiveConfig();
-      setUmbral(getEffectiveConfig()?.umbral_cola_revision ?? 70);
+      setUmbral(getEffectiveConfig()?.umbral_cola_revision ?? UMBRAL_REVISION_MIN);
     } catch { /* sin red: umbral por defecto */ }
     try {
       setSesiones(await api.listarSesionesProctoring(true));

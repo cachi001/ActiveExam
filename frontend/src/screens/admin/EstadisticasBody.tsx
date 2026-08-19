@@ -9,6 +9,7 @@
 // humana, nunca un veredicto ni una sanción automática.
 import { Card, Icon, LoadingSpinner } from '../../ui/components';
 import { StatCard } from '../proctoring/StatCard';
+import { UMBRAL_REVISION_MIN } from '../../config/umbralRevision';
 import type { ResumenStats, ComisionStat } from '../../lib/types';
 import {
   alturasRelativas,
@@ -589,7 +590,7 @@ function RoscaComposicion({ data }: { data: ResumenStats }) {
         <span className="w-2.5 h-2.5 rounded-full shrink-0 bg-[#ef4444]" aria-hidden />
         <span className="text-on-surface-variant">
           <span className="font-semibold text-on-surface tabular-nums">{pctRiesgo}%</span>{' '}
-          priorizan revisión humana (score ≥ {data.umbral_riesgo ?? 70})
+          priorizan revisión humana (score ≥ {data.umbral_riesgo ?? UMBRAL_REVISION_MIN})
         </span>
       </div>
     </Card>

@@ -34,8 +34,11 @@ from app.application.proctoring.finalizar_con_writeback import (
 )
 from app.application.proctoring.scoring import (
     calcular_score,
+    desactivados_de_snapshot,
     eventos_en_pausa_autorizada,
     nivel_riesgo as _nivel_riesgo_de_score,
+    pesos_de_snapshot,
+    umbral_de_snapshot,
 )
 from app.application.moodle.grade_calculator import RespuestaAlumno, calcular_nota_academica
 from app.application.moodle.writeback_service import MoodleWritebackService
@@ -120,6 +123,27 @@ async def _pesos_vivos_por_tipo(db: AsyncSession) -> dict[str, int] | None:
         return {row.tipo_evento: row.peso for row in result.all()}
     except Exception:  # noqa: BLE001 — degradacion: sin config, fallback por severidad
         return None
+
+
+async def _umbral_vivo(db: AsyncSession) -> int:
+    """Umbral de cola de revision VIVO (``configuracion_sistema.umbral_cola_revision``).
+
+    Fallback cuando una sesion no tiene ``config_snapshot`` (pre-migracion 0083 o
+    config no disponible al crearla) — ver ``umbral_de_snapshot``. Mismo criterio
+    que ``ProctoringRepository._umbral_vivo`` (listados); el detalle lo necesita
+    aparte porque no pasa por ``_armar_resumenes``."""
+    from sqlalchemy import select
+
+    from app.infrastructure.persistence.models.transactional import (
+        ConfiguracionSistemaModel,
+    )
+
+    try:
+        result = await db.execute(select(ConfiguracionSistemaModel.umbral_cola_revision))
+        val = result.scalars().first()
+    except Exception:  # noqa: BLE001 — degradacion: sin config, piso de producto
+        return 70
+    return int(val) if val is not None else 70
 
 
 async def _tipos_desactivados(db: AsyncSession) -> frozenset[str]:
@@ -260,15 +284,28 @@ def create_sessions_router(
                     detail={"error": "no_inscripto", "mensaje": exc.mensaje},
                 ) from exc
 
-        sesion = await session_service.crear_o_reanudar_sesion(
-            db=db,
-            modo=body.modo,
-            exam_id=body.exam_id,
-            etiqueta=body.etiqueta,
-            examen_contenido_id=body.examen_contenido_id,
-            alumno_idnumber=principal.username or None,
-            alumno_email=principal.email or None,
-        )
+        try:
+            sesion = await session_service.crear_o_reanudar_sesion(
+                db=db,
+                modo=body.modo,
+                exam_id=body.exam_id,
+                etiqueta=body.etiqueta,
+                examen_contenido_id=body.examen_contenido_id,
+                alumno_idnumber=principal.username or None,
+                alumno_email=principal.email or None,
+            )
+        except session_service.ConfigSnapshotNoDisponibleError as exc:
+            # migration 0083: nunca se crea una sesion sin foto de config — sin
+            # ella, un cambio posterior podria evaluar retroactivamente eventos
+            # que el alumno vio con otro valor en pantalla. 503: reintentable,
+            # no es un error del alumno ni de su pedido.
+            raise HTTPException(
+                status_code=http_status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail={
+                    "error": "config_no_disponible",
+                    "mensaje": "No se pudo iniciar el examen: la configuración del sistema no está disponible en este momento. Reintentá en unos segundos.",
+                },
+            ) from exc
         # Auto-finalización lazy (C-72 §4, H-3): si el alumno "vuelve" a una sesión
         # cuyo deadline ya venció (aunque la ventana siga abierta), se cierra sola y
         # se puntúa con lo respondido. No puede seguir rindiendo una sesión vencida.
@@ -310,6 +347,7 @@ def create_sessions_router(
                 total_eventos=s.total_eventos,
                 total_discrepancias=s.total_discrepancias,
                 score=s.score,
+                umbral_cola_revision_efectivo=s.umbral_cola_revision_efectivo,
                 examen_contenido_id=s.examen_contenido_id,
                 examen_titulo=s.examen_titulo,
                 comision_nombre=s.comision_nombre,
@@ -376,15 +414,16 @@ def create_sessions_router(
         )
         if not principal.tiene_algun_rol({Rol.COORDINADOR, Rol.ADMIN_SISTEMA}):
             sesiones = [s for s in sesiones if s.docente_id == principal.subject]
-        # Umbral "alto" vivo: lo necesitan tanto el filtro nivel_riesgo como los
-        # agregados de distribucion de riesgo (19.3) y "en cola de revision" (20.4),
-        # asi que se resuelve siempre.
-        umbral_alto = await session_service.obtener_umbral_alto(db)
+        # migration 0083: el umbral es POR SESION (`umbral_cola_revision_efectivo`,
+        # de su config_snapshot o el vivo como fallback) — ya NO uno global aplicado
+        # a todas por igual, para que un cambio de config no reclasifique
+        # retroactivamente sesiones que arrancaron con otro umbral.
         if nivel_riesgo:
             sesiones = [
                 s
                 for s in sesiones
-                if _nivel_riesgo_de_score(s.score, umbral_alto) == nivel_riesgo
+                if _nivel_riesgo_de_score(s.score, s.umbral_cola_revision_efectivo)
+                == nivel_riesgo
             ]
 
         total = len(sesiones)
@@ -396,18 +435,19 @@ def create_sessions_router(
         # Agregados sobre el TOTAL filtrado (19.3/20.4) — sobre `sesiones` (ya
         # filtrado por q/exam_id/fecha/nivel_riesgo/materia/comision/scoping),
         # ANTES de recortar por pagina. Reusa `_nivel_riesgo_de_score`
-        # (scoring.py), el mismo umbral que el filtro y que la Cola de revision.
+        # (scoring.py), el umbral EFECTIVO de cada sesion (mismo criterio que el
+        # filtro y que la Cola de revision).
         riesgo_bajo = riesgo_medio = riesgo_alto = 0
         en_cola_revision = 0
         for s in sesiones:
-            nivel = _nivel_riesgo_de_score(s.score, umbral_alto)
+            nivel = _nivel_riesgo_de_score(s.score, s.umbral_cola_revision_efectivo)
             if nivel == "alto":
                 riesgo_alto += 1
             elif nivel == "medio":
                 riesgo_medio += 1
             else:
                 riesgo_bajo += 1
-            if s.score >= umbral_alto:
+            if s.score >= s.umbral_cola_revision_efectivo:
                 en_cola_revision += 1
 
         return RegistroSesionesOut(
@@ -427,6 +467,7 @@ def create_sessions_router(
                     total_eventos=s.total_eventos,
                     total_discrepancias=s.total_discrepancias,
                     score=s.score,
+                    umbral_cola_revision_efectivo=s.umbral_cola_revision_efectivo,
                     examen_contenido_id=s.examen_contenido_id,
                     examen_titulo=s.examen_titulo,
                     comision_nombre=s.comision_nombre,
@@ -502,12 +543,21 @@ def create_sessions_router(
                 detail={"error": "sesion_ajena", "mensaje": str(exc)},
             ) from exc
 
-        # Pesos VIVOS por tipo de evento desde la config persistida
-        # (evento_score_config). Si la config no esta disponible, calcular_score
-        # cae al fallback por severidad (degradacion graceful, RN-GLB-03). L2.5:
-        # el score solo prioriza la revision humana.
-        pesos_por_tipo = await _pesos_vivos_por_tipo(db)
-        desactivados = await _tipos_desactivados(db)
+        # migration 0083: pesos/desactivados de la FOTO tomada al crear esta
+        # sesion (``sesion.config_snapshot``), no de la config viva — un cambio
+        # de pesos posterior no debe alterar el score de una sesion que ya
+        # arranco. Sin foto (pre-migracion o degradacion al crear), cae a los
+        # pesos vivos; si tampoco hay config disponible, calcular_score cae al
+        # fallback por severidad (degradacion graceful, RN-GLB-03). L2.5: el
+        # score solo prioriza la revision humana.
+        pesos_vivos = await _pesos_vivos_por_tipo(db)
+        desactivados_vivos = await _tipos_desactivados(db)
+        pesos_por_tipo = pesos_de_snapshot(sesion.config_snapshot, pesos_vivos=pesos_vivos)
+        desactivados = desactivados_de_snapshot(
+            sesion.config_snapshot, desactivados_vivos=desactivados_vivos
+        )
+        umbral_vivo = await _umbral_vivo(db)
+        umbral_efectivo = umbral_de_snapshot(sesion.config_snapshot, umbral_vivo=umbral_vivo)
 
         # C-15 (6.4): contextualizacion del score. Los eventos que caen dentro de
         # una ventana de pausa AUTORIZADA (aprobada/finalizada) se EXCLUYEN del
@@ -579,10 +629,12 @@ def create_sessions_router(
             creada_en=sesion.creada_en,
             finalizada_en=sesion.finalizada_en,
             score=score,
+            umbral_cola_revision_efectivo=umbral_efectivo,
             eventos=eventos,
             biometria=biometria,
             cierre_forzado_en=sesion.cierre_forzado_en,
             cierre_forzado_motivo=sesion.cierre_forzado_motivo,
+            config_snapshot=sesion.config_snapshot,
         )
 
     @router.post(

@@ -17,7 +17,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.application.moodle.writeback_service import MoodleWritebackService
 from app.application.proctoring.auto_finalizacion import auto_finalizar_si_vencida
-from app.application.proctoring.scoring import calcular_score
+from app.application.proctoring.scoring import (
+    calcular_score,
+    desactivados_de_snapshot,
+    pesos_de_snapshot,
+    umbral_de_snapshot,
+)
 from app.domain.exam_content.visibilidad import nota_visible, revision_visible
 from app.domain.review.decision import nota_esta_anulada
 from app.infrastructure.persistence.models.exam_content import ExamenContenidoModel
@@ -224,19 +229,19 @@ async def _flaggeadas_por_sesion(db: AsyncSession, session_ids: list[str]) -> di
     for ev in ev_rows:
         eventos_por_sesion.setdefault(ev.session_id, []).append(ev)
 
-    pesos = await _pesos_vivos_por_tipo(db)
-    desactivados = await _tipos_desactivados(db)
-    umbral = await _umbral_cola_revision(db)
+    pesos_vivos = await _pesos_vivos_por_tipo(db)
+    desactivados_vivos = await _tipos_desactivados(db)
+    umbral_vivo = await _umbral_cola_revision(db)
+    cfg = await _config_por_sesion(
+        db, session_ids,
+        pesos_vivos=pesos_vivos, desactivados_vivos=desactivados_vivos, umbral_vivo=umbral_vivo,
+    )
 
-    return {
-        sid: calcular_score(
-            eventos_por_sesion.get(sid, []),
-            pesos_por_tipo=pesos,
-            tipos_desactivados=desactivados,
-        )
-        >= umbral
-        for sid in session_ids
-    }
+    resultado: dict[str, bool] = {}
+    for sid in session_ids:
+        score, umbral_sid = cfg.score_de(sid, eventos_por_sesion.get(sid, []), umbral_vivo=umbral_vivo)
+        resultado[sid] = score >= umbral_sid
+    return resultado
 
 
 async def _auto_finalizar_vencidas_del_examen(
@@ -469,16 +474,18 @@ async def _motivos_retencion(
     for ev in ev_rows:
         eventos_por_sesion.setdefault(ev.session_id, []).append(ev)
 
-    pesos = await _pesos_vivos_por_tipo(db)
-    desactivados = await _tipos_desactivados(db)
-    umbral = await _umbral_cola_revision(db)
+    pesos_vivos = await _pesos_vivos_por_tipo(db)
+    desactivados_vivos = await _tipos_desactivados(db)
+    umbral_vivo = await _umbral_cola_revision(db)
+    cfg = await _config_por_sesion(
+        db, session_ids,
+        pesos_vivos=pesos_vivos, desactivados_vivos=desactivados_vivos, umbral_vivo=umbral_vivo,
+    )
 
     motivos: dict[str, str] = {}
     for row in rows:
-        score = calcular_score(
-            eventos_por_sesion.get(row.id, []),
-            pesos_por_tipo=pesos,
-            tipos_desactivados=desactivados,
+        score, umbral = cfg.score_de(
+            row.id, eventos_por_sesion.get(row.id, []), umbral_vivo=umbral_vivo
         )
         flaggeada = score >= umbral
         decision = _parse_decision_val(row.decision)
@@ -579,19 +586,21 @@ async def listar_estados_sincronizables(
     eventos_por_sesion: dict[str, list] = {}
     for ev in ev_rows:
         eventos_por_sesion.setdefault(ev.session_id, []).append(ev)
-    pesos = await _pesos_vivos_por_tipo(db)
-    desactivados = await _tipos_desactivados(db)
-    umbral = await _umbral_cola_revision(db)
+    pesos_vivos = await _pesos_vivos_por_tipo(db)
+    desactivados_vivos = await _tipos_desactivados(db)
+    umbral_vivo = await _umbral_cola_revision(db)
+    cfg = await _config_por_sesion(
+        db, session_ids,
+        pesos_vivos=pesos_vivos, desactivados_vivos=desactivados_vivos, umbral_vivo=umbral_vivo,
+    )
 
     from app.domain.review.decision import writeback_en_hold
 
     filas: list[MoodleWritebackEstadoModel] = []
     for r in rows:
         estado = r[0]
-        score = calcular_score(
-            eventos_por_sesion.get(r.sid, []),
-            pesos_por_tipo=pesos,
-            tipos_desactivados=desactivados,
+        score, umbral = cfg.score_de(
+            r.sid, eventos_por_sesion.get(r.sid, []), umbral_vivo=umbral_vivo
         )
         flaggeada = score >= umbral
         decision = _parse_decision_val(r.decision)
@@ -731,6 +740,52 @@ async def _tipos_desactivados(db: AsyncSession) -> frozenset[str]:
         return frozenset()
 
 
+@dataclass(frozen=True, slots=True)
+class _ConfigPorSesion:
+    """Pesos/desactivados/umbral EFECTIVOS por sesion (migration 0083).
+
+    Cada sesion puntua con la foto de config tomada al CREARLA
+    (``config_snapshot``), no con la config viva — un cambio de umbral/pesos
+    posterior no debe alterar retroactivamente el score/gate de una sesion que
+    ya arranco. Sesiones sin foto (pre-migracion o degradacion al crear) caen
+    a los valores vivos, pasados aca como fallback."""
+
+    pesos: dict[str, dict[str, int] | None]
+    desactivados: dict[str, frozenset[str]]
+    umbral: dict[str, int]
+
+    def score_de(self, session_id: str, eventos: list, *, umbral_vivo: int) -> tuple[int, int]:
+        """``(score, umbral)`` efectivos de una sesion sobre su lista de eventos."""
+        score = calcular_score(
+            eventos,
+            pesos_por_tipo=self.pesos.get(session_id),
+            tipos_desactivados=self.desactivados.get(session_id, frozenset()),
+        )
+        return score, self.umbral.get(session_id, umbral_vivo)
+
+
+async def _config_por_sesion(
+    db: AsyncSession, session_ids: list[str], *, pesos_vivos, desactivados_vivos, umbral_vivo: int
+) -> _ConfigPorSesion:
+    """Resuelve pesos/desactivados/umbral por sesion desde su ``config_snapshot``,
+    con los valores VIVOS (ya resueltos por el caller) como fallback."""
+    if not session_ids:
+        return _ConfigPorSesion(pesos={}, desactivados={}, umbral={})
+    rows = await db.execute(
+        select(ProctoringSessionModel.id, ProctoringSessionModel.config_snapshot).where(
+            ProctoringSessionModel.id.in_(session_ids)
+        )
+    )
+    pesos: dict[str, dict[str, int] | None] = {}
+    desactivados: dict[str, frozenset[str]] = {}
+    umbral: dict[str, int] = {}
+    for sid, snapshot in rows.all():
+        pesos[sid] = pesos_de_snapshot(snapshot, pesos_vivos=pesos_vivos)
+        desactivados[sid] = desactivados_de_snapshot(snapshot, desactivados_vivos=desactivados_vivos)
+        umbral[sid] = umbral_de_snapshot(snapshot, umbral_vivo=umbral_vivo)
+    return _ConfigPorSesion(pesos=pesos, desactivados=desactivados, umbral=umbral)
+
+
 async def listar_mis_notas(
     *,
     db: AsyncSession,
@@ -812,18 +867,20 @@ async def listar_mis_notas(
     for ev in ev_rows:
         eventos_por_sesion.setdefault(ev.session_id, []).append(ev)
 
-    pesos = await _pesos_vivos_por_tipo(db)
-    desactivados = await _tipos_desactivados(db)
-    umbral = await _umbral_cola_revision(db)
+    pesos_vivos = await _pesos_vivos_por_tipo(db)
+    desactivados_vivos = await _tipos_desactivados(db)
+    umbral_vivo = await _umbral_cola_revision(db)
+    cfg = await _config_por_sesion(
+        db, session_ids,
+        pesos_vivos=pesos_vivos, desactivados_vivos=desactivados_vivos, umbral_vivo=umbral_vivo,
+    )
     restituidas = await _sesiones_con_restitucion(db, session_ids)
 
     ahora = datetime.now(tz=timezone.utc)
     items: list[MiNota] = []
     for r in rows:
         evs = eventos_por_sesion.get(r.session_id, [])
-        score = calcular_score(
-            evs, pesos_por_tipo=pesos, tipos_desactivados=desactivados
-        )
+        score, umbral = cfg.score_de(r.session_id, evs, umbral_vivo=umbral_vivo)
         nota_real = float(r.nota) if r.nota is not None else None
         nota_aprobacion = (
             float(r.nota_aprobacion) if r.nota_aprobacion is not None else None

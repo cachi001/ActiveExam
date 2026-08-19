@@ -14,7 +14,7 @@ export function ResumenVivo({ sesiones }: { sesiones: SesionProctoringResumen[] 
   const activas = sesiones.length;
   const totalEventos = sesiones.reduce((acc, s) => acc + (s.total_eventos ?? 0), 0);
   const totalDiscrepancias = sesiones.reduce((acc, s) => acc + (s.total_discrepancias ?? 0), 0);
-  const riesgoAlto = sesiones.filter((s) => nivelRiesgo(s.score ?? 0) === 'alto').length;
+  const riesgoAlto = sesiones.filter((s) => nivelRiesgo(s.score ?? 0, s.umbral_cola_revision_efectivo) === 'alto').length;
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-md">

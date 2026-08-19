@@ -72,6 +72,14 @@ export interface SesionProctoringResumen {
   total_discrepancias: number;
   score: number;
   /**
+   * migration 0083: umbral EFECTIVO de esta sesión (el de su config_snapshot, o
+   * el vivo si no tiene una). Usar ESTE valor para clasificar el nivel de riesgo
+   * de la sesión — no el umbral vivo de la config actual, que puede haber
+   * cambiado después de que esta sesión se rindió. Opcional por compatibilidad
+   * con respuestas viejas cacheadas; los call sites caen al umbral vivo si falta.
+   */
+  umbral_cola_revision_efectivo?: number;
+  /**
    * ID del examen del catálogo académico al que pertenece la sesión (opcional).
    * Permite joinear materia/comisión/docente desde el catálogo local.
    * Aditivo: las sesiones de harness sin examen real lo dejan null/undefined.
@@ -173,6 +181,17 @@ export interface SesionProctoringDetalle extends SesionProctoringResumen {
   // fue cerrada de forma forzada. Permite reflejar el estado al recargar el detalle.
   cierre_forzado_en?: string | null;
   cierre_forzado_motivo?: string | null;
+  // migration 0083: foto de umbral/pesos de scoring vigente al CREAR esta sesión
+  // (con la que se calculó `score`). NULL = sesión anterior a este change o config
+  // no disponible al crearla → se puntuó con la config viva de ese momento.
+  config_snapshot?: ConfigSnapshotSesion | null;
+}
+
+/** Foto de config de scoring persistida en una sesión al crearla (migration 0083). */
+export interface ConfigSnapshotSesion {
+  umbral_cola_revision: number;
+  scoring_weights: Record<string, number>;
+  scoring_desactivados: string[];
 }
 
 // ── Chat bidireccional proctor↔alumno (C-15) ──────────────────────────────

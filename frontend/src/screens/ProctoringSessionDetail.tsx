@@ -29,6 +29,7 @@ import type { DecisionRevisor, SesionProctoringDetalle } from '../lib/types';
 import { tieneCapacidad } from '../lib/capabilities';
 import { loadEffectiveConfig, getEffectiveConfig } from '../config/effectiveConfigCache';
 import { DetalleHeader } from './proctoring/DetalleHeader';
+import { ConfigSnapshotCard } from './proctoring/ConfigSnapshotCard';
 import { DecisionRevisorForm } from './proctoring/DecisionRevisorForm';
 import { EventoCard } from './proctoring/EventoCard';
 import { BiometriaCard } from './proctoring/BiometriaCard';
@@ -285,7 +286,11 @@ export default function ProctoringSessionDetail() {
             {/* C-76 bloque 9.1: estado visual con/sin riesgo, siempre visible — no
                 solo en la cola de revisión — para que cualquiera que abra el detalle
                 (tutor incluido) entienda de un vistazo si esta sesión pide atención. */}
-            <RiesgoBanner score={detalle.score} />
+            <RiesgoBanner score={detalle.score} umbralAlto={detalle.umbral_cola_revision_efectivo} />
+
+            {/* migration 0083: foto de la config de scoring vigente al crear la
+                sesión. Solo se renderiza si la sesión tiene snapshot. */}
+            <ConfigSnapshotCard detalle={detalle} />
 
             {/* Decisión del revisor, JUNTO al expediente. Solo cuando se entró
                 desde la cola (`backRoute`) y la sesión está cerrada: no se decide
@@ -317,7 +322,7 @@ export default function ProctoringSessionDetail() {
                 ancho de la fila (no comparte columna con el chat) para que el
                 grid interno tenga lugar de sobra. Borde tintado por riesgo
                 (C-76 bloque 9.1): mismo lenguaje visual que las listas (SesionCard). */}
-            <Card className={`space-y-md ${scoreSoftBorder(detalle.score)}`}>
+            <Card className={`space-y-md ${scoreSoftBorder(detalle.score, detalle.umbral_cola_revision_efectivo)}`}>
               <SectionTitle
                 sub={`${detalle.eventos.length} evento${detalle.eventos.length !== 1 ? 's' : ''} registrado${
                   detalle.eventos.length !== 1 ? 's' : ''

@@ -13,7 +13,7 @@
  *  - "Restaurar defaults" como botón outline (no texto pelado).
  */
 import { useState, useEffect, useCallback } from 'react';
-import { Card, SectionTitle, Button, Icon } from '../../ui/components';
+import { SectionTitle, Button, Icon } from '../../ui/components';
 import { useToast } from '../../ui/toast';
 import { api } from '../../lib/api';
 import { resetEffectiveConfigCache } from '../../config/effectiveConfigCache';
@@ -101,9 +101,10 @@ export default function SeccionDeteccion() {
   }
 
   return (
-    <div className="space-y-lg">
-      {/* Encabezado editorial: título con peso + descripción + divisor. */}
-      <div className="pb-4 border-b border-outline-variant/40">
+    <div className="divide-y divide-outline-variant/40">
+      {/* Encabezado editorial: título con peso + descripción. El separador con
+          el contenido de abajo lo da divide-y del contenedor. */}
+      <div className="pb-lg">
         <h2 className="font-headline text-[24px] font-bold text-on-surface tracking-tight leading-tight">Detección</h2>
         <p className="text-[13.5px] text-on-surface-variant leading-relaxed max-w-2xl mt-2">
           Cuándo y con qué tolerancia el motor marca cada situación. Más tiempo equivale a menos
@@ -111,10 +112,11 @@ export default function SeccionDeteccion() {
           conservadores para evitar molestias innecesarias.
         </p>
       </div>
-      {/* Sub-secciones lado a lado en desktop, igualadas en alto (items-stretch). */}
-      <div className="grid lg:grid-cols-2 gap-lg items-stretch">
+      {/* Sub-secciones lado a lado en desktop; divide-x hace de divisor vertical
+          entre columnas en vez de ser cards propias. Igualadas en alto (items-stretch). */}
+      <div className="py-lg grid lg:grid-cols-2 gap-lg lg:gap-0 lg:divide-x lg:divide-outline-variant/40 items-stretch">
       {/* Sub-sección "Rostro en cámara" */}
-      <Card className="h-full space-y-md">
+      <div className="h-full space-y-md lg:pr-lg">
         <SectionTitle sub="Cuándo el sistema alerta por ausencia o exceso de personas en cámara">
           Rostro en cámara
         </SectionTitle>
@@ -169,10 +171,10 @@ export default function SeccionDeteccion() {
             />
           </div>
         </div>
-      </Card>
+      </div>
 
       {/* F: Sub-sección "Mirada" */}
-      <Card className="h-full space-y-md">
+      <div className="h-full space-y-md lg:pl-lg">
         <SectionTitle sub="Tolerancia y tiempo antes de alertar por mirada fuera de pantalla">
           Mirada
         </SectionTitle>
@@ -265,12 +267,12 @@ export default function SeccionDeteccion() {
             </p>
           </div>
         </div>
-      </Card>
+      </div>
 
       </div>
 
       {/* C: Footer dirty-aware con Restaurar defaults como botón outline (C+F) */}
-      <div className="flex items-center justify-end gap-sm pt-sm border-t border-outline-variant/40">
+      <div className="flex items-center justify-end gap-sm pt-lg">
         {dirty && (
           <>
             <div className="flex items-center gap-xs text-[12px] text-on-surface-variant mr-1">

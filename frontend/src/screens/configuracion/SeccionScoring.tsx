@@ -154,9 +154,10 @@ export default function SeccionScoring() {
   }
 
   return (
-    <div className="space-y-lg">
-      {/* Encabezado editorial + leyenda de rangos. */}
-      <div className="space-y-4">
+    <div className="divide-y divide-outline-variant/40">
+      {/* Encabezado editorial + leyenda de rangos. El separador con el
+          contenido de abajo lo da divide-y del contenedor. */}
+      <div className="space-y-4 pb-lg">
         <div>
           <h2 className="font-headline text-[24px] font-bold text-on-surface tracking-tight leading-tight">Scoring</h2>
           <p className="text-[13.5px] text-on-surface-variant leading-relaxed max-w-2xl mt-2">
@@ -181,25 +182,26 @@ export default function SeccionScoring() {
         </div>
       </div>
 
-      {/* Aviso inline al inicio: los pesos solo afectan cálculos futuros. */}
-      <div className="flex items-center gap-2.5 rounded-xl bg-blue-50 border border-blue-200 px-4 py-3 text-[13px] text-blue-900">
-        <Icon name="info" className="text-[20px] text-blue-600 shrink-0" fill />
-        <span>Cambiar los pesos no modifica eventos pasados; solo afecta el cálculo del score en futuros exámenes.</span>
-      </div>
+      <div className="py-lg space-y-lg">
+        {/* Aviso inline al inicio: los pesos solo afectan cálculos futuros. */}
+        <div className="flex items-center gap-2.5 rounded-xl bg-blue-50 border border-blue-200 px-4 py-3 text-[13px] text-blue-900">
+          <Icon name="info" className="text-[20px] text-blue-600 shrink-0" fill />
+          <span>Cambiar los pesos no modifica eventos pasados; solo afecta el cálculo del score en futuros exámenes.</span>
+        </div>
 
-      <div className="grid sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-lg min-w-0">
-        {[...configs]
-          .sort((a, b) => (SEV_ORDER[severidadEditable(a.severidad as Severidad)] ?? 4) - (SEV_ORDER[severidadEditable(b.severidad as Severidad)] ?? 4))
-          .map((cfg) => {
-          const editado = tieneEdicion(cfg.tipo_evento);
-          const sev = severidadEditable(valorActual(cfg, 'severidad') as Severidad);
-          const peso = valorActual(cfg, 'peso') as number;
-          const isGuardando = guardando === cfg.tipo_evento;
-          return (
-            <div
-              key={cfg.tipo_evento}
-              className="relative overflow-hidden rounded-2xl border border-outline-variant/50 bg-white shadow-card hover:shadow-lg p-6 transition-shadow min-w-0 flex flex-col gap-4"
-            >
+        <div className="grid sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-lg min-w-0">
+          {[...configs]
+            .sort((a, b) => (SEV_ORDER[severidadEditable(a.severidad as Severidad)] ?? 4) - (SEV_ORDER[severidadEditable(b.severidad as Severidad)] ?? 4))
+            .map((cfg) => {
+            const editado = tieneEdicion(cfg.tipo_evento);
+            const sev = severidadEditable(valorActual(cfg, 'severidad') as Severidad);
+            const peso = valorActual(cfg, 'peso') as number;
+            const isGuardando = guardando === cfg.tipo_evento;
+            return (
+              <div
+                key={cfg.tipo_evento}
+                className="relative overflow-hidden rounded-xl border border-outline-variant/50 bg-white hover:border-outline p-6 transition-colors min-w-0 flex flex-col gap-4"
+              >
               {/* Línea fina de color arriba, recortada por las esquinas redondeadas. */}
               <div className={`absolute top-0 left-0 right-0 h-1 ${SEVERITY_DOT[sev]}`} aria-hidden />
               {/* Cabecera: badge de severidad + nombre. El on/off del evento vive en
@@ -270,8 +272,9 @@ export default function SeccionScoring() {
                 </div>
               )}
             </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
     </div>
   );

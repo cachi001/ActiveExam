@@ -20,6 +20,7 @@ import { Icon, Card, Button } from '../ui/components';
 import { HelpButton } from '../ui/HelpButton';
 import { api } from '../lib/api';
 import { loadEffectiveConfig, getEffectiveConfig, resetEffectiveConfigCache } from '../config/effectiveConfigCache';
+import { UMBRAL_REVISION_MIN } from '../config/umbralRevision';
 import { useApp } from '../lib/store';
 import { useNavigate } from '../lib/router';
 import { STAFF_NAV } from '../ui/nav';
@@ -38,7 +39,7 @@ import {
 export const REVISOR_NAV = STAFF_NAV;
 
 /** Umbral por defecto si la config efectiva del sistema no cargó. */
-const UMBRAL_FALLBACK = 70;
+const UMBRAL_FALLBACK = UMBRAL_REVISION_MIN;
 const PROCTORING_DETAIL_ROUTE = '/admin/proctoring-session-detail';
 
 /**

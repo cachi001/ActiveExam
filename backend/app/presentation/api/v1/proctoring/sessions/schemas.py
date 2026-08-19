@@ -104,6 +104,11 @@ class SesionResumen(BaseModel):
     total_eventos: int
     total_discrepancias: int
     score: int
+    # migration 0083: umbral EFECTIVO de esta sesion (el de su config_snapshot, o
+    # el vivo si no tiene). El cliente debe usar ESTE valor para clasificar el
+    # nivel de riesgo de la sesion — no el umbral vivo de la config actual, que
+    # puede haber cambiado despues de que esta sesion se rindio.
+    umbral_cola_revision_efectivo: int
     # Contexto academico resuelto server-side (examen_contenido -> comision ->
     # materia). El frontend los usa para agrupar la Cola de revision y etiquetar las
     # sesiones grabadas SIN depender de catalogos mock. NULL si la sesion no tiene
@@ -143,9 +148,10 @@ class RegistroSesionesOut(BaseModel):
     riesgo_bajo: int
     riesgo_medio: int
     riesgo_alto: int
-    # Sesiones con score >= umbral de la Cola de revision (`obtener_umbral_alto`,
-    # el MISMO umbral que usa la Cola de revision — no uno reinventado). C-76
-    # tarea 20.4/20.6, stat card "Sobre el umbral de riesgo".
+    # Sesiones con score >= umbral EFECTIVO de cada sesion (`umbral_cola_revision_efectivo`,
+    # migration 0083 — el de su config_snapshot, o el vivo si no tiene). Mismo
+    # criterio que la Cola de revision — no uno reinventado. C-76 tarea 20.4/20.6,
+    # stat card "Sobre el umbral de riesgo".
     en_cola_revision: int
 
 
@@ -188,6 +194,10 @@ class SesionDetalle(BaseModel):
     creada_en: Any
     finalizada_en: Any = None
     score: int
+    # migration 0083: umbral EFECTIVO de esta sesion (el de su config_snapshot, o
+    # el vivo si no tiene) — mismo criterio que SesionResumen. El frontend debe
+    # usar ESTE valor para clasificar el nivel de riesgo, no el umbral vivo actual.
+    umbral_cola_revision_efectivo: int
     eventos: list[EventoDetalle]
     biometria: BiometriaDetalle | None = None
     # C-15 (3.3): cierre forzado (operativo, NO disciplinario). Se exponen para que
@@ -195,6 +205,12 @@ class SesionDetalle(BaseModel):
     # accion). NULL si la sesion no fue cerrada de forma forzada.
     cierre_forzado_en: Any = None
     cierre_forzado_motivo: str | None = None
+    # migration 0083: foto de umbral/pesos de scoring vigente al CREAR esta sesion
+    # (con la que se calcula `score` arriba). NULL = sesion pre-migracion o config
+    # no disponible al crearla -> se puntuo con la config viva de ese momento. La
+    # UI la muestra para que quede claro que un cambio de config posterior NO
+    # afecta a esta sesion ya rendida.
+    config_snapshot: dict | None = None
 
 
 # --- C-15 (3.2): observaciones del tutor (insumo de C-16) ---

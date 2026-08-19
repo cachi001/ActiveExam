@@ -12,6 +12,7 @@ import { useState } from 'react';
 import { StaffShell } from '../ui/shells';
 import { STAFF_NAV } from '../ui/nav';
 import { HelpButton } from '../ui/HelpButton';
+import { Card } from '../ui/components';
 import SeccionProctoring from './configuracion/SeccionProctoring';
 import SeccionScoring from './configuracion/SeccionScoring';
 import SeccionDeteccion from './configuracion/SeccionDeteccion';
@@ -48,31 +49,41 @@ export default function Configuracion() {
       help={AYUDA}
     >
       <div className="animate-in fade-in duration-500">
-        <div className="border-b border-outline-variant/60 flex overflow-x-auto no-scrollbar">
-          {TABS.map((t) => {
-            const active = tab === t.id;
-            return (
-              <button
-                key={t.id}
-                onClick={() => setTab(t.id)}
-                className={`px-4 first:pl-0 py-2.5 text-[13px] font-medium border-b-2 -mb-px whitespace-nowrap shrink-0 transition-colors ${
-                  active
-                    ? 'border-primary text-primary'
-                    : 'border-transparent text-on-surface-variant hover:text-on-surface'
-                }`}
-              >
-                {t.label}
-              </button>
-            );
-          })}
-        </div>
+        {/* Una sola card contiene tabs + contenido: antes las pestañas quedaban
+            sueltas sobre el fondo gris y cada tab tenía su propia card separada. */}
+        <Card padded={false} className="overflow-hidden">
+          {/* relative + degradado a la derecha: en mobile las pestañas desbordan
+              (overflow-x-auto) y sin esta pista visual "Consentimiento" parecía
+              no existir — el usuario no tenía forma de saber que hay que scrollear. */}
+          <div className="relative border-b border-outline-variant/60 px-lg pt-lg">
+            <div className="flex overflow-x-auto no-scrollbar">
+              {TABS.map((t) => {
+                const active = tab === t.id;
+                return (
+                  <button
+                    key={t.id}
+                    onClick={() => setTab(t.id)}
+                    className={`px-4 first:pl-0 py-2.5 text-[13px] font-medium border-b-2 -mb-px whitespace-nowrap shrink-0 transition-colors ${
+                      active
+                        ? 'border-primary text-primary'
+                        : 'border-transparent text-on-surface-variant hover:text-on-surface'
+                    }`}
+                  >
+                    {t.label}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-surface to-transparent sm:hidden" />
+          </div>
 
-        <div className="pt-lg">
-          {tab === 'proctoring'    && <SeccionProctoring />}
-          {tab === 'scoring'       && <SeccionScoring />}
-          {tab === 'deteccion'     && <SeccionDeteccion />}
-          {tab === 'consentimiento' && <SeccionConsentimiento />}
-        </div>
+          <div className="p-lg">
+            {tab === 'proctoring'    && <SeccionProctoring />}
+            {tab === 'scoring'       && <SeccionScoring />}
+            {tab === 'deteccion'     && <SeccionDeteccion />}
+            {tab === 'consentimiento' && <SeccionConsentimiento />}
+          </div>
+        </Card>
       </div>
     </StaffShell>
   );

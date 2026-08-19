@@ -102,6 +102,20 @@ class ProctoringSessionModel(Base):
         comment="Email del alumno (fallback de identidad). NULL = sin email.",
     )
 
+    # migration 0083: foto de la config del sistema (umbral_cola_revision +
+    # scoring_weights/severidades/desactivados) vigente al CREAR la sesion (no al
+    # reanudarla). El scoring de ESTA sesion usa esta foto en vez de la config viva,
+    # asi un cambio de config posterior no afecta retroactivamente examenes ya
+    # arrancados. NULL = sesion anterior a este change o config no disponible al
+    # crear -> cae a la config viva (degradacion, comportamiento previo).
+    config_snapshot: Mapped[dict | None] = mapped_column(
+        JSONB, nullable=True,
+        comment=(
+            "Foto de umbral/pesos de scoring al crear la sesion. NULL = usar "
+            "config viva (sesion pre-migracion o config no disponible al crear)."
+        ),
+    )
+
     # C-15 (tarea 3.3): cierre FORZADO por el proctor. Operativo, NO disciplinario
     # (regla dura #5: el sistema nunca sanciona — esto solo CIERRA la sesion). El
     # cierre forzado tambien setea finalizada_en; estas 3 columnas son el audit trail

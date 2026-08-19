@@ -1,6 +1,7 @@
 import { Icon, Card, SeverityBadge } from '../../ui/components';
 import { pesoEvento } from '../../proctoring/scoringWeights';
 import { getEffectiveConfig } from '../../config/effectiveConfigCache';
+import { UMBRAL_REVISION_MIN } from '../../config/umbralRevision';
 import { TIPO_EVENTO_LABEL } from '../../lib/api';
 import type { EventoSesion, Severidad, Examen } from '../../lib/types';
 
@@ -27,7 +28,7 @@ interface Props {
 
 /** Panel de Integridad del examen: estado de supervisión + score + últimos eventos. */
 export function IntegridadPanel({ activo, eventCount, score, eventos, examen }: Props) {
-  const umbral = getEffectiveConfig()?.umbral_cola_revision ?? examen?.umbral_score ?? 70;
+  const umbral = getEffectiveConfig()?.umbral_cola_revision ?? examen?.umbral_score ?? UMBRAL_REVISION_MIN;
   const enRiesgo = score >= umbral;
   const ultimosEventos = eventos.slice(0, 4);
 

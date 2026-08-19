@@ -341,10 +341,10 @@ export default function ProctoringRevisor() {
       align: 'center',
       headerAlign: 'center',
       cell: (s) => {
-        const nivel = nivelRiesgo(s.score ?? 0);
+        const nivel = nivelRiesgo(s.score ?? 0, s.umbral_cola_revision_efectivo);
         return (
           <div className="inline-flex items-center gap-2">
-            <span className={`font-bold tabular-nums ${scoreTextColor(s.score ?? 0)}`}>{s.score ?? 0}</span>
+            <span className={`font-bold tabular-nums ${scoreTextColor(s.score ?? 0, s.umbral_cola_revision_efectivo)}`}>{s.score ?? 0}</span>
             <Badge tone={riesgoBadgeTone(nivel)}>{nivel}</Badge>
           </div>
         );

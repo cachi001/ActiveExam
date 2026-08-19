@@ -18,7 +18,13 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.application.proctoring.scoring import PESOS_SEVERIDAD, SCORE_CAP
+from app.application.proctoring.scoring import (
+    PESOS_SEVERIDAD,
+    SCORE_CAP,
+    desactivados_de_snapshot,
+    pesos_de_snapshot,
+    umbral_de_snapshot,
+)
 from app.infrastructure.persistence.models.proctoring import (
     ProctoringBiometriaModel,
     ProctoringEventModel,
@@ -39,6 +45,11 @@ class SesionResumenData:
     total_eventos: int
     total_discrepancias: int
     score: int
+    # Umbral efectivo de ESTA sesion: el de su config_snapshot (foto tomada al
+    # crearla) si tiene una, o el umbral VIVO como fallback (sesion pre-migracion
+    # 0083 o config no disponible al crear). Nunca el umbral vivo aplicado a
+    # ciegas a sesiones viejas — eso es lo que este campo evita.
+    umbral_cola_revision_efectivo: int
     ultimo_evento_en: Any
     # Contexto academico resuelto server-side desde examen_contenido_id
     # (examen_contenido -> comision -> materia). NULL si la sesion no tiene contenido
@@ -77,6 +88,7 @@ class ProctoringRepository:
         examen_contenido_id: str | None = None,
         alumno_idnumber: str | None = None,
         alumno_email: str | None = None,
+        config_snapshot: dict | None = None,
     ) -> ProctoringSessionModel:
         """Crea y persiste una nueva sesion de proctoring activeexam.
 
@@ -87,6 +99,10 @@ class ProctoringRepository:
         ``alumno_idnumber``/``alumno_email`` (C-69, migration 0033) persisten la
         identidad del alumno al CREAR la sesion (username del JWT). El
         enforcement de intentos cuenta sesiones finalizadas por (alumno, examen).
+
+        ``config_snapshot`` (migration 0083): foto de umbral/pesos de scoring
+        vigente al crear la sesion. None = no se pudo resolver la config al
+        crear (degradacion) -> el scoring de esta sesion cae a la config viva.
         """
         sesion = ProctoringSessionModel(
             modo=modo,
@@ -95,6 +111,7 @@ class ProctoringRepository:
             examen_contenido_id=examen_contenido_id,
             alumno_idnumber=alumno_idnumber,
             alumno_email=alumno_email,
+            config_snapshot=config_snapshot,
         )
         self._db.add(sesion)
         await self._db.commit()
@@ -391,15 +408,41 @@ class ProctoringRepository:
         result = await self._db.execute(stmt)
         return [(row.id, row.titulo or row.id) for row in result.all()]
 
+    async def _umbral_vivo(self) -> int:
+        """Umbral de cola de revision VIVO (``configuracion_sistema.umbral_cola_revision``).
+
+        Fallback cuando una sesion no tiene ``config_snapshot`` (pre-migracion
+        0083 o config no disponible al crearla) — ver ``umbral_de_snapshot``.
+        """
+        from app.infrastructure.persistence.models.transactional import (
+            ConfiguracionSistemaModel,
+        )
+
+        try:
+            row = await self._db.execute(
+                select(ConfiguracionSistemaModel.umbral_cola_revision)
+            )
+            val = row.scalars().first()
+        except Exception:
+            return 70
+        return int(val) if val is not None else 70
+
     async def _armar_resumenes(
         self, sesiones: list[ProctoringSessionModel]
     ) -> list[SesionResumenData]:
         """Agrega eventos/discrepancias/score/contexto sobre un set de sesiones YA
         resuelto (filtrado o no). Extraido de ``listar_sesiones`` para que
         ``listar_sesiones_finalizadas`` (C-76 tarea 17) reuse EXACTAMENTE la misma
-        formula de score — nunca una copia hardcodeada."""
-        pesos_por_tipo = await self._pesos_vivos_por_tipo()
-        desactivados = await self._tipos_desactivados()
+        formula de score — nunca una copia hardcodeada.
+
+        migration 0083: cada sesion puntua con SU PROPIA foto de config
+        (``config_snapshot``, tomada al crearla) en vez de la config viva —
+        un cambio de umbral/pesos posterior no debe alterar el score de una
+        sesion que ya arranco. Las sesiones sin foto (pre-migracion o
+        degradacion al crear) caen a la config viva, igual que antes."""
+        pesos_vivos = await self._pesos_vivos_por_tipo()
+        desactivados_vivos = await self._tipos_desactivados()
+        umbral_vivo = await self._umbral_vivo()
 
         if not sesiones:
             return []
@@ -437,9 +480,22 @@ class ProctoringRepository:
             row.session_id: row.discrepancias for row in disc_result
         }
 
+        # Pesos/desactivados/umbral EFECTIVOS por sesion: los de su config_snapshot
+        # (foto al crearla) si tiene una, o los vivos como fallback (migration 0083).
+        pesos_por_sesion: dict[str, dict[str, int]] = {}
+        desactivados_por_sesion: dict[str, frozenset[str]] = {}
+        umbral_por_sesion: dict[str, int] = {}
+        for s in sesiones:
+            snap = s.config_snapshot
+            pesos_por_sesion[s.id] = pesos_de_snapshot(snap, pesos_vivos=pesos_vivos) or {}
+            desactivados_por_sesion[s.id] = desactivados_de_snapshot(
+                snap, desactivados_vivos=desactivados_vivos
+            )
+            umbral_por_sesion[s.id] = umbral_de_snapshot(snap, umbral_vivo=umbral_vivo)
+
         # Calcular score por sesion. Se agrupa por (sesion, TIPO, severidad) porque
-        # el peso vivo se define por tipo de evento; la severidad viaja para poder
-        # caer a la red de seguridad cuando el tipo no esta en la config.
+        # el peso se define por tipo de evento; la severidad viaja para poder caer
+        # a la red de seguridad cuando el tipo no esta en la config de esa sesion.
         score_stmt = (
             select(
                 ProctoringEventModel.session_id,
@@ -458,10 +514,10 @@ class ProctoringRepository:
         score_por_sesion: dict[str, int] = {}
         for row in score_result:
             sid = row.session_id
-            if row.tipo in desactivados:
-                # Apagado por el admin: no suma (y no cae al fallback).
+            if row.tipo in desactivados_por_sesion.get(sid, frozenset()):
+                # Apagado por el admin (al momento efectivo de esta sesion): no suma.
                 continue
-            peso = pesos_por_tipo.get(row.tipo)
+            peso = pesos_por_sesion.get(sid, {}).get(row.tipo)
             if peso is None:
                 peso = PESOS_SEVERIDAD.get(row.severidad, 0)
             score_por_sesion[sid] = score_por_sesion.get(sid, 0) + peso * row.cnt
@@ -513,6 +569,7 @@ class ProctoringRepository:
                 total_discrepancias=disc_por_sesion.get(s.id, 0),
                 # Cap a 100 (igual que el detalle y el cliente): el score es 0..100.
                 score=min(100, score_por_sesion.get(s.id, 0)),
+                umbral_cola_revision_efectivo=umbral_por_sesion.get(s.id, umbral_vivo),
                 ultimo_evento_en=ultimo_por_sesion.get(s.id) or s.creada_en,
                 examen_contenido_id=s.examen_contenido_id,
                 examen_titulo=ctx_por_contenido.get(s.examen_contenido_id, (None, None, None, None))[0],
