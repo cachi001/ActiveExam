@@ -44,11 +44,21 @@ DOMINIO CRÍTICO (Auth): esta función es el núcleo de la superficie de auth p�
 Falla cerrado: cualquier claim malformado o ausente eleva excepción — NO crea
 un usuario parcial. Solo se ejecuta DESPUÉS de que ``validar_launch`` haya
 comprobado firma, nonce, aud y exp.
+
+5. CONFIRMACIÓN DE ALTA (fix 2026-08-19): un launch que resultaría en una
+   cuenta NUEVA ya NO se auto-provisiona ni loguea en el mismo request —
+   ``identidad_es_nueva`` lo detecta, el router guarda un
+   ``LtiProvisioningPendienteModel`` (``crear_pendiente_confirmacion``) y
+   manda al usuario a confirmar en el frontend. Recién si confirma,
+   ``confirmar_provisioning_pendiente`` ejecuta el alta real con los mismos
+   claims ya validados. Un REINGRESO (cuenta ya existente) sigue logueando
+   directo, sin fricción — esto sólo gatea el primer ingreso.
 """
 
 from __future__ import annotations
 
 import secrets
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -64,8 +74,15 @@ from app.application.lti.launch_validation import (
 )
 from app.infrastructure.auth.hashing import hashear_password
 from app.infrastructure.persistence.models.inscripcion import InscripcionModel
-from app.infrastructure.persistence.models.lti import LtiDeploymentConfiableModel
+from app.infrastructure.persistence.models.lti import (
+    LtiDeploymentConfiableModel,
+    LtiProvisioningPendienteModel,
+)
 from app.infrastructure.persistence.models.transactional import UsuarioModel
+
+
+class PendienteInvalidoError(Exception):
+    """El pendiente de confirmacion de alta no existe, vencio o ya se uso."""
 
 # Prefijo de ``username`` para usuarios provisionados vía LTI (design D1).
 _LTI_PREFIX = "lti"
@@ -253,6 +270,101 @@ async def provisionar_o_recuperar_usuario(
 
     await _asegurar_matricula(session, usuario=usuario, deployment=deployment)
     return usuario, True
+
+
+async def identidad_es_nueva(
+    session: AsyncSession, *, claims: dict, deployment: LtiDeploymentConfiableModel
+) -> bool:
+    """True si este launch resultaría en una cuenta NUEVA (sin login directo).
+
+    Bug real (2026-08-19): hasta ahora una cuenta nueva se auto-provisionaba
+    y logueaba en el mismo request, sin ningún paso intermedio — el dueño del
+    proyecto entró con su cuenta ADMIN de Moodle y quedó logueado como alumno
+    sin haber confirmado nada. Un reingreso (cuenta ya existente) sigue
+    logueando directo, sin fricción — esto sólo gatea el PRIMER ingreso.
+
+    Ejecuta la resolución real (``provisionar_o_recuperar_usuario``) dentro
+    de un SAVEPOINT y lo deshace si resultó en un alta nueva — así no hay una
+    segunda copia de la lógica de resolución (colisión de email, rol staff)
+    que pueda desalinearse de la real con el tiempo. Si NO fue alta nueva
+    (reingreso o fusión legítima), el SAVEPOINT se conserva (la matrícula
+    idempotente que pudo haber hecho es inofensiva y ya era el comportamiento
+    esperado).
+
+    Raises:
+        LaunchInvalidoError: mismos códigos que ``provisionar_o_recuperar_usuario``
+        (``claims_incompletos``, ``rol_no_estudiante``, ``email_en_uso_no_lti``).
+    """
+    nested = await session.begin_nested()
+    try:
+        _usuario, creado = await provisionar_o_recuperar_usuario(
+            session, claims=claims, deployment=deployment
+        )
+    except Exception:
+        await nested.rollback()
+        raise
+    if creado:
+        await nested.rollback()
+    else:
+        await nested.commit()
+    return creado
+
+
+async def crear_pendiente_confirmacion(
+    session: AsyncSession,
+    *,
+    claims: dict,
+    deployment: LtiDeploymentConfiableModel,
+    ttl_minutos: int = 5,
+) -> LtiProvisioningPendienteModel:
+    """Guarda los claims YA VALIDADOS de un launch que crearía una cuenta
+    nueva, para que el frontend muestre la confirmación de alta ANTES del
+    alta real. Uso único, TTL corto — ver migración 0084."""
+    pendiente = LtiProvisioningPendienteModel(
+        deployment_id=deployment.id,
+        claims=claims,
+        expira_en=datetime.now(timezone.utc) + timedelta(minutes=ttl_minutos),
+    )
+    session.add(pendiente)
+    await session.flush()
+    return pendiente
+
+
+async def confirmar_provisioning_pendiente(
+    session: AsyncSession, *, pendiente_id: str
+) -> tuple[UsuarioModel, bool]:
+    """Consume un pendiente de confirmación (UPDATE atómico, uso único) y
+    ejecuta el alta real con los claims que guardó. Re-verifica que el
+    deployment siga ``activo`` (pudo desactivarse mientras el usuario decidía).
+
+    Raises:
+        PendienteInvalidoError: no existe, ya se usó, venció, o el deployment
+        ya no está activo.
+    """
+    ahora = datetime.now(timezone.utc)
+    resultado = await session.execute(
+        sa_text(
+            "UPDATE lti_provisioning_pendiente SET usado_en = :ahora "
+            "WHERE id = :id AND usado_en IS NULL AND expira_en > :ahora "
+            "RETURNING deployment_id, claims"
+        ),
+        {"id": pendiente_id, "ahora": ahora},
+    )
+    fila = resultado.first()
+    if fila is None:
+        raise PendienteInvalidoError()
+
+    deployment_resultado = await session.execute(
+        select(LtiDeploymentConfiableModel).where(
+            LtiDeploymentConfiableModel.id == fila.deployment_id,
+            LtiDeploymentConfiableModel.activo.is_(True),
+        )
+    )
+    deployment = deployment_resultado.scalar_one_or_none()
+    if deployment is None:
+        raise PendienteInvalidoError()
+
+    return await provisionar_o_recuperar_usuario(session, claims=fila.claims, deployment=deployment)
 
 
 async def _asegurar_matricula(

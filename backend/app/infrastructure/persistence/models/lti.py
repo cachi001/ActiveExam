@@ -84,6 +84,39 @@ class LtiNonceModel(Base):
     )
 
 
+class LtiProvisioningPendienteModel(Base):
+    """Confirmacion de alta pendiente (migracion 0084, primer ingreso LTI).
+
+    Un launch que resultaria en una cuenta NUEVA no se auto-provisiona ni
+    loguea directo: se guardan acá los claims ya validados (firma/nonce/aud/
+    exp verificados en ``/lti/launch``) y se redirige al frontend a una
+    pantalla de confirmacion. ``POST /lti/confirmar-provisioning`` reusa estos
+    claims (el id_token original ya se consumio via nonce, no se puede
+    re-validar) para crear la cuenta recien cuando el usuario confirma.
+
+    ``usado_en`` NULL = pendiente; NOT NULL = ya consumido (uso único).
+    Reingresos (cuenta LTI ya existente) NUNCA pasan por acá — siguen
+    logueando directo, sin fricción.
+    """
+
+    __tablename__ = "lti_provisioning_pendiente"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    deployment_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("lti_deployment_confiable.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    claims: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    creado_en: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    expira_en: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    usado_en: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+
+
 class LtiToolKeyModel(Base):
     """Par de claves RS256 de ActiveExam-como-Tool (design D3).
 

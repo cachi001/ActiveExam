@@ -40,6 +40,7 @@ const ExamResultados        = lazy(() => import('./screens/ExamResultados'));
 const MoodleImportPage      = lazy(() => import('./admin/ExamImport/MoodleImportPage'));
 const Configuracion         = lazy(() => import('./screens/Configuracion'));
 const LtiLanding            = lazy(() => import('./screens/LtiLanding'));
+const LtiConfirmar          = lazy(() => import('./screens/LtiConfirmar'));
 const BancoPreguntasPage    = lazy(() => import('./screens/BancoPreguntasPage'));
 const Perfil                = lazy(() => import('./screens/Perfil'));
 
@@ -89,6 +90,8 @@ export default function App() {
     '/login': <Login />,
     // Aterrizaje del launch LTI: adopta los tokens del redirect y va al dashboard.
     '/lti-login': <LtiLanding />,
+    // Primer ingreso LTI: confirma el alta antes de crear la cuenta.
+    '/lti-confirmar': <LtiConfirmar />,
 
     // Flujo de examen del estudiante
     '/requisitos': g(<EquipmentCheck />, ESTUDIANTE),
