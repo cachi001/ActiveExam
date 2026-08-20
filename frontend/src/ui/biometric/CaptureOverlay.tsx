@@ -112,10 +112,15 @@ export const CaptureOverlay = forwardRef<HTMLDivElement, CaptureOverlayProps>(
           />
         </div>
 
-        {/* Panel inferior: instrucciones + carteles. Alto estable (los carteles
-            que aparecen/desaparecen scrollean acá adentro, no mueven el óvalo). */}
+        {/* Panel inferior: instrucciones + carteles. Alto según contenido, con tope
+            (los carteles que aparecen/desaparecen scrollean acá adentro, no mueven
+            el óvalo). Antes forzaba SIEMPRE 38dvh de alto aunque el contenido fuera
+            corto: en ventanas bajas eso le sacaba espacio a la región del óvalo,
+            que crece según su propio ancho sin achicarse, y terminaba superpuesto
+            con este panel. Con max-height (no height fijo) el panel solo ocupa lo
+            que necesita. */}
         {listoParaMostrar && (
-          <div className="shrink-0 w-full flex flex-col items-center gap-3 pb-8 h-[38vh] max-h-[340px] overflow-y-auto">
+          <div className="shrink-0 w-full flex flex-col items-center gap-3 pb-8 max-h-[38dvh] sm:max-h-[340px] overflow-y-auto">
             {fallbackManual && !enExito && (
               <div className="w-full max-w-xs bg-amber-50 border border-amber-300 rounded-xl px-3 py-2 text-center">
                 <p className="text-sm text-amber-800">

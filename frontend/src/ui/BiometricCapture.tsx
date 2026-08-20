@@ -210,6 +210,24 @@ export function BiometricCapture({ challenges, onComplete, onCancel }: Biometric
     }, 0);
   }, [onCancel, rafHandleRef, cooldownTimerRef, streamRef]);
 
+  // Si el alumno sale de pantalla completa a mitad de la captura (Esc, gesto del
+  // SO, etc.), cerramos la captura en vez de dejarla corriendo "encogida": el
+  // óvalo y el video están armados para ocupar el viewport completo de la
+  // pantalla completa, y todo lo que depende de esa geometría (el loop de
+  // detección, el layout del panel de instrucciones) queda desincronizado si
+  // seguimos con la cámara abierta en la ventana normal. Cerrar y dejar que
+  // vuelva a "Iniciar captura de referencia" es más simple y confiable que
+  // intentar reacomodar todo en caliente.
+  useEffect(() => {
+    const onFullscreenChange = () => {
+      if (!document.fullscreenElement && faseRef.current === 'capturando') {
+        handleCancel();
+      }
+    };
+    document.addEventListener('fullscreenchange', onFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', onFullscreenChange);
+  }, [handleCancel, faseRef]);
+
   const reacquireCamera = useCallback(async () => {
     try {
       streamRef.current?.getTracks().forEach((t) => t.stop());

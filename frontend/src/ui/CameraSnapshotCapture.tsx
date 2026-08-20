@@ -125,6 +125,18 @@ export function CameraSnapshotCapture({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // "Repetir" vuelve a fase 'capturando' sin pedir la cámara de nuevo (el stream
+  // sigue vivo, solo se detuvo en 'preview' porque el <video> se desmonta). El
+  // <video> que remonta es un elemento DOM nuevo sin srcObject: hay que
+  // reasignarlo acá, ya que handleRepetir corre ANTES de que React remonte el
+  // <video> y videoRef.current todavía apunte al nodo viejo (o a null).
+  useEffect(() => {
+    if (fase === 'capturando' && streamRef.current && videoRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+      videoRef.current.play().catch(() => {});
+    }
+  }, [fase]);
+
   // ---------------------------------------------------------------------------
   // Task 4.4: handleCancel
   // ---------------------------------------------------------------------------

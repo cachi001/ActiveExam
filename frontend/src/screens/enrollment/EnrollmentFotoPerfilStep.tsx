@@ -30,13 +30,11 @@ export function EnrollmentFotoPerfilStep({
             <Icon name="check_circle" className="text-success text-[24px]" fill /> ¡Foto lista!
           </p>
           <p className="text-body-md text-on-surface-variant max-w-md mx-auto">
-            Esta es la foto que se va a mostrar en tu perfil. Si te gusta, continuá; si no, cambiala.
+            Esta es la foto que se va a mostrar en tu perfil. Ya quedó guardada. Si más adelante
+            querés cambiarla, podés hacerlo desde tu perfil.
           </p>
         </div>
         <div className="flex flex-col sm:flex-row items-center gap-sm w-full sm:w-auto">
-          <Button variant="outline" icon="refresh" onClick={() => setFotoConfirmando(null)} className="w-full sm:w-auto">
-            Cambiar foto
-          </Button>
           <Button onClick={() => { setFotoConfirmando(null); onAvanzar(); }} className="w-full sm:w-auto">
             {enrollment?.biometria?.captura_completada ? 'Guardar foto' : 'Continuar'}
           </Button>
