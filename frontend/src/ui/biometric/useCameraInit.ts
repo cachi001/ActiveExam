@@ -85,9 +85,6 @@ export function useCameraInit(deps: CameraInitDeps) {
       }
     });
 
-    const onFullscreenChange = () => {};
-    document.addEventListener('fullscreenchange', onFullscreenChange);
-
     const ENGINE_LOAD_TIMEOUT_MS = 30000;
     withTimeout(
       loadEnrollmentEngine(),
@@ -120,7 +117,6 @@ export function useCameraInit(deps: CameraInitDeps) {
       }
       void disposeEnrollmentEngine();
       streamRef.current?.getTracks().forEach((t) => t.stop());
-      document.removeEventListener('fullscreenchange', onFullscreenChange);
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 }
