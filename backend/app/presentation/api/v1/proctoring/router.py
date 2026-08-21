@@ -146,6 +146,7 @@ def create_proctoring_router(
         get_db,
         get_embedding_encryption=_get_embedding_encryption,
         require_estudiante=_require_estudiante,
+        require_autenticado=_require_autenticado,
     )
     router.include_router(biometria_router)
 

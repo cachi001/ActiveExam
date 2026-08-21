@@ -42,7 +42,10 @@ from app.application.proctoring.scoring import (
 )
 from app.application.moodle.grade_calculator import RespuestaAlumno, calcular_nota_academica
 from app.application.moodle.writeback_service import MoodleWritebackService
-from app.domain.auth.authorization import autorizar_supervision_vivo_sobre_sesion
+from app.domain.auth.authorization import (
+    autorizar_supervision_vivo_sobre_sesion,
+    principal_es_dueno_de_sesion,
+)
 from app.domain.auth.errors import ForbiddenError
 from app.domain.auth.identity import AuthenticatedPrincipal
 from app.domain.auth.roles import Rol
@@ -79,26 +82,12 @@ def _principal_es_dueno(
 ) -> bool:
     """True si la sesion pertenece al principal autenticado (H1, IDOR).
 
-    Los endpoints de respuestas/finalizar son del ALUMNO: solo el dueno de la
-    sesion puede operarla. La identidad del alumno se persiste server-side al
-    CREAR la sesion (``alumno_idnumber``/``alumno_email`` desde el JWT), por lo
-    que aca se compara contra el principal del request.
-
-    - Coincide por ``username`` O por ``email`` → es el dueno.
-    - Sesion SIN identidad almacenada (legacy/modo 'test' previo a la persistencia
-      de identidad) → se permite: no hay a quien atribuirla y no expone notas de
-      nadie. Toda sesion nueva guarda identidad, asi que este caso no aplica al
-      flujo normal de examen.
-    """
-    idn = sesion.alumno_idnumber
-    email = sesion.alumno_email
-    if not idn and not email:
-        return True
-    if idn and principal.username and idn == principal.username:
-        return True
-    if email and principal.email and email == principal.email:
-        return True
-    return False
+    Traduce el modelo ORM a los campos primitivos que espera la funcion pura
+    compartida (``domain.auth.authorization``), reusada tambien por los
+    routers de eventos/chat/pausas/biometria."""
+    return principal_es_dueno_de_sesion(
+        principal, sesion.alumno_idnumber, sesion.alumno_email
+    )
 
 
 async def _pesos_vivos_por_tipo(db: AsyncSession) -> dict[str, int] | None:

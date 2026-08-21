@@ -1,9 +1,11 @@
 """Router de ingestión de eventos de proctoring activeexam.
 
-POST /sessions/{id}/events → 201/404
+POST /sessions/{id}/events → 201/403/404
 
-Sin auth (D7 — alcance demo). Inyecta el adapter ReinferenciaPort via Depends
-para mantener el desacople puerto/adapter (DD-17).
+Exige token valido Y que la sesion pertenezca al principal (H1, IDOR — antes
+cualquier alumno autenticado podia postear en la sesion de otro). Inyecta el
+adapter ReinferenciaPort via Depends para mantener el desacople puerto/adapter
+(DD-17).
 
 L2.5: la respuesta incluye el veredicto 'coincide'/'discrepancia'/'no_evaluado'
 pero NUNCA sanciona — es informacion para el revisor humano.
@@ -17,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.application.proctoring import event_service
 from app.application.proctoring.reinferencia import ReinferenciaPort
+from app.domain.auth.identity import AuthenticatedPrincipal
 from app.presentation.api.v1.proctoring.events.schemas import (
     IngestEventoIn,
     IngestEventoOut,
@@ -42,13 +45,13 @@ def create_events_router(
         status_code=http_status.HTTP_201_CREATED,
         response_model=IngestEventoOut,
         summary="Ingestar evento de deteccion con re-inferencia server-side",
-        dependencies=[Depends(require_autenticado)],
     )
     async def ingestar_evento(
         session_id: str,
         body: IngestEventoIn,
         db: Annotated[AsyncSession, Depends(get_db)],
         reinferencia: Annotated[ReinferenciaPort, Depends(get_reinferencia)],
+        principal: Annotated[AuthenticatedPrincipal, Depends(require_autenticado)],
     ) -> IngestEventoOut:
         """Ingesta un evento de deteccion.
 
@@ -59,6 +62,10 @@ def create_events_router(
         mostrar alertas en tiempo real de discrepancias.
 
         L2.5: 'discrepancia' solo enriquece la evidencia — no sanciona.
+
+        H1 (IDOR, pentest): antes cualquier token valido bastaba para postear en
+        CUALQUIER sesion. Ahora ``event_service.ingestar_evento`` exige que la
+        sesion pertenezca al principal (403 si no).
         """
         evento = await event_service.ingestar_evento(
             db=db,
@@ -67,6 +74,7 @@ def create_events_router(
             severidad=body.severidad.value,
             ts_cliente=body.ts_cliente,
             reinferencia=reinferencia,
+            principal=principal,
             payload=body.payload,
             screenshot_base64=body.screenshot_base64,
             face_count_cliente=body.face_count_cliente,

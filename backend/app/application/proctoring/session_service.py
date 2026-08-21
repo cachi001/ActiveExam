@@ -305,6 +305,17 @@ async def docente_id_de_sesion(db: AsyncSession, session_id: str) -> str | None:
     return await repo.docente_id_de_sesion(session_id)
 
 
+async def obtener_sesion_ligera(
+    db: AsyncSession, session_id: str
+) -> ProctoringSessionModel | None:
+    """Fetch simple de la sesion por id, sin JOINs.
+
+    Usado por los guards de pertenencia (H1, IDOR) de chat/pausas — necesitan
+    ``alumno_idnumber``/``alumno_email`` para decidir si el principal es el
+    dueño de la sesion antes de dejarlo leer/escribir en ella."""
+    return await db.get(ProctoringSessionModel, session_id)
+
+
 async def finalizar_sesion(
     db: AsyncSession, session_id: str
 ) -> ProctoringSessionModel | None:

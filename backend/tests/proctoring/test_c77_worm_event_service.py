@@ -30,10 +30,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.application.proctoring import event_service
 from app.application.proctoring.reinferencia import ResultadoReinferencia
+from app.domain.auth.identity import AuthenticatedPrincipal
 from app.infrastructure.persistence.models.proctoring import ProctoringSessionModel
 from app.infrastructure.storage.worm import build_boto3_worm_storage
 
 pytestmark = pytest.mark.asyncio
+
+# Sesiones creadas por _crear_sesion() no tienen alumno_idnumber/email (legacy,
+# sin identidad) -> principal_es_dueno_de_sesion siempre las deja pasar (H1). Un
+# principal cualquiera alcanza para estos tests de WORM, que no ejercitan el
+# guard de pertenencia (eso lo cubre test_h1_idor_pertenencia_sesion.py).
+_PRINCIPAL_TEST = AuthenticatedPrincipal(username="estudiante1", email="estudiante1@activeexam.local")
 
 _PNG_1X1_B64 = (
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
@@ -116,6 +123,7 @@ async def test_sin_worm_storage_persiste_solo_en_postgres(db_session: AsyncSessi
         severidad="alto",
         ts_cliente=datetime.now(timezone.utc),
         reinferencia=_ReinferenciaStub(),
+        principal=_PRINCIPAL_TEST,
         screenshot_base64=_PNG_1X1_B64,
         face_count_cliente=1,
         worm_storage=None,
@@ -140,6 +148,7 @@ async def test_sin_worm_storage_y_sin_screenshot_tambien_identico(
         severidad="bajo",
         ts_cliente=datetime.now(timezone.utc),
         reinferencia=_ReinferenciaStub(),
+        principal=_PRINCIPAL_TEST,
         worm_storage=None,
     )
 
@@ -162,6 +171,7 @@ async def test_fallo_de_deposit_no_tumba_la_ingesta(db_session: AsyncSession) ->
         severidad="critico",
         ts_cliente=datetime.now(timezone.utc),
         reinferencia=_ReinferenciaStub(),
+        principal=_PRINCIPAL_TEST,
         screenshot_base64=_PNG_1X1_B64,
         face_count_cliente=2,
         worm_storage=_WormStorageSiempreFalla(),
@@ -202,6 +212,7 @@ async def test_con_minio_configurado_persiste_en_db_y_en_el_bucket(
         severidad="alto",
         ts_cliente=datetime.now(timezone.utc),
         reinferencia=_ReinferenciaStub(),
+        principal=_PRINCIPAL_TEST,
         screenshot_base64=_PNG_1X1_B64,
         face_count_cliente=1,
         worm_storage=_worm_storage_real(),
@@ -238,6 +249,7 @@ async def test_dos_eventos_de_la_misma_sesion_usan_object_keys_distintos(
         severidad="medio",
         ts_cliente=datetime.now(timezone.utc),
         reinferencia=_ReinferenciaStub(),
+        principal=_PRINCIPAL_TEST,
         screenshot_base64=_PNG_1X1_B64,
         worm_storage=storage,
     )
@@ -248,6 +260,7 @@ async def test_dos_eventos_de_la_misma_sesion_usan_object_keys_distintos(
         severidad="medio",
         ts_cliente=datetime.now(timezone.utc),
         reinferencia=_ReinferenciaStub(),
+        principal=_PRINCIPAL_TEST,
         screenshot_base64=_PNG_1X1_B64,
         worm_storage=storage,
     )
