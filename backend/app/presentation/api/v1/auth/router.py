@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import re
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -27,7 +27,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.domain.auth.identity import AuthenticatedPrincipal
 from app.domain.auth.password_policy import PasswordDebilError, validar_password_fuerte
 from app.infrastructure.auth.db_refresh_store import DbRefreshTokenStore
-from app.infrastructure.auth.hashing import hashear_password, verificar_password
+from app.infrastructure.auth.hashing import (
+    hashear_password,
+    verificar_password,
+    verificar_password_dummy,
+)
 from app.infrastructure.auth.own_issuer import emitir_jwt_propio
 from app.infrastructure.auth.refresh_store import RefreshTokenError, RefreshTokenStore
 from app.infrastructure.persistence.models.transactional import UsuarioModel
@@ -37,6 +41,16 @@ router = APIRouter()
 
 # Mensaje generico para todos los fallos de login (no revela si usuario existe).
 _MSG_LOGIN_INVALIDO = "Credenciales inválidas."
+
+# Lockout (pentest 2026-08-21, H-bruteforce): sin esto, POST /auth/login no
+# tenia NINGUN limite de intentos fallidos. Mismos valores que el patron ya
+# usado en otro proyecto del dueño (Sistema-de-Reserva-Salon): 5 intentos,
+# 15 minutos de bloqueo. El mensaje de bloqueo SI informa el tiempo restante
+# (lo necesita el usuario legitimo) pero el 401 de credenciales invalidas
+# NUNCA revela cuantos intentos quedan ni el maximo configurado — eso le
+# regalaria al atacante el umbral exacto para no activar el bloqueo.
+_LOGIN_MAX_INTENTOS = 5
+_LOGIN_BLOQUEO_MINUTOS = 15
 
 
 # ---------------------------------------------------------------------------
@@ -129,8 +143,19 @@ async def login(
 
     Responde 401 con mensaje GENERICO en todos los casos de fallo:
     usuario no existe, password incorrecto, sin password_hash — mismo mensaje
-    para no revelar informacion al atacante (timing-safe a nivel de mensaje;
-    bcrypt ya protege el timing de la comparacion).
+    para no revelar informacion al atacante.
+
+    Timing-safe tambien a nivel de LATENCIA (pentest 2026-08-21): antes, la
+    rama "usuario no existe" cortaba camino sin llamar a bcrypt y respondia
+    ~40x mas rapido que la rama "usuario existe, password incorrecta" —
+    permitia enumerar usernames validos midiendo el tiempo de respuesta pese
+    a que el mensaje fuera identico. Ahora esa rama llama a
+    ``verificar_password_dummy`` para gastar el mismo tiempo.
+
+    Lockout: 5 intentos fallidos seguidos bloquean la cuenta 15 minutos
+    (mismo patron que Sistema-de-Reserva-Salon). El contador vive en
+    ``usuario.intentos_fallidos``/``bloqueado_hasta`` y se resetea en cada
+    login exitoso.
     """
     settings = request.app.state.settings
     session_factory = _get_session_factory(request)
@@ -173,13 +198,42 @@ async def login(
         # Mensaje GENERICO: no revela si el usuario existe, si fue dado de baja,
         # o si el password es incorrecto (timing-safe a nivel de mensaje).
         if usuario is None or not usuario.password_hash:
+            # H-timing (pentest 2026-08-21): gastar el MISMO tiempo que la rama
+            # "usuario existe" gastaria verificando password, para que medir la
+            # latencia no permita distinguir username valido de invalido pese a
+            # que el mensaje de error sea identico.
+            verificar_password_dummy(body.password)
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail=_MSG_LOGIN_INVALIDO,
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
+        # Lockout (H-bruteforce, pentest 2026-08-21): si la cuenta ya esta
+        # bloqueada, cortar ANTES de intentar verificar el password — un
+        # intento mas no debe extender el bloqueo ni gastar el costo de bcrypt.
+        ahora = datetime.now(timezone.utc)
+        if usuario.bloqueado_hasta is not None and usuario.bloqueado_hasta > ahora:
+            minutos_restantes = max(
+                1, int((usuario.bloqueado_hasta - ahora).total_seconds() // 60) + 1
+            )
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=(
+                    f"Cuenta bloqueada temporalmente por intentos fallidos. "
+                    f"Volvé a intentar en {minutos_restantes} min."
+                ),
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
         if not verificar_password(body.password, usuario.password_hash):
+            # Registrar el intento fallido y, si alcanza el maximo, bloquear.
+            # El mensaje NUNCA revela cuantos intentos quedan ni el maximo
+            # configurado (le regalaria al atacante el umbral del bloqueo).
+            usuario.intentos_fallidos += 1
+            if usuario.intentos_fallidos >= _LOGIN_MAX_INTENTOS:
+                usuario.bloqueado_hasta = ahora + timedelta(minutes=_LOGIN_BLOQUEO_MINUTOS)
+            await session.commit()
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail=_MSG_LOGIN_INVALIDO,
@@ -195,7 +249,9 @@ async def login(
             ttl_seconds=settings.access_token_ttl_seconds,
         )
 
-        # Registrar último acceso.
+        # Login exitoso: resetear el contador de lockout y registrar último acceso.
+        usuario.intentos_fallidos = 0
+        usuario.bloqueado_hasta = None
         usuario.ultimo_acceso_en = datetime.now(timezone.utc)
 
         # Emitir refresh token persistente en DB.

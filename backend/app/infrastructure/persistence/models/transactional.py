@@ -103,6 +103,16 @@ class UsuarioModel(Base):
     biometria_rehacer_habilitada: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="false"
     )
+    # 0085: lockout de login (pentest — fuerza bruta sin límite de intentos).
+    # intentos_fallidos se incrementa en cada 401 y se resetea a 0 en un login
+    # exitoso. bloqueado_hasta se fija al alcanzar el máximo configurado
+    # (LOGIN_LOCKOUT_MAX_INTENTOS) y bloquea el login mientras esté en el futuro.
+    intentos_fallidos: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="0"
+    )
+    bloqueado_hasta: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
     # C-61: datos personales (nullable — compatibilidad con usuarios pre-existentes).
     nombre: Mapped[str | None] = mapped_column(String(255), nullable=True)
     apellido: Mapped[str | None] = mapped_column(String(255), nullable=True)
