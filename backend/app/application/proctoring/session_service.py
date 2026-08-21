@@ -7,6 +7,7 @@ duplicacion con el repositorio.
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 
 from sqlalchemy import select
@@ -27,6 +28,8 @@ from app.infrastructure.persistence.repositories.proctoring import (
     ProctoringRepository,
     SesionResumenData,
 )
+
+_log = logging.getLogger(__name__)
 
 
 async def _emitir_evento_reanudacion(
@@ -111,6 +114,13 @@ async def _construir_snapshot_al_crear(db: AsyncSession) -> dict:
     except ConfigSnapshotNoDisponibleError:
         raise
     except Exception as exc:  # noqa: BLE001 — nunca crear sesion sin foto de config
+        # Medido bajo carga (150+ sesiones concurrentes, pool de DB agotado): sin
+        # este log, la causa real (timeout de pool, conexion rechazada, etc.)
+        # quedaba invisible — el 503 traducido no dice NADA de lo que pasó de
+        # verdad, y en logs no aparecia ningun traceback.
+        _log.exception(
+            "Fallo al leer configuracion del sistema al crear sesion (se traduce a 503)"
+        )
         raise ConfigSnapshotNoDisponibleError(
             "no se pudo leer la configuracion del sistema al crear la sesion"
         ) from exc
