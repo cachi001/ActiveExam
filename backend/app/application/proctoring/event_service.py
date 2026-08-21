@@ -31,6 +31,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.application.proctoring.integridad import sha256_hex
 from app.application.proctoring.reinferencia import ReinferenciaPort
+from app.domain.auth.authorization import principal_es_dueno_de_sesion
+from app.domain.auth.identity import AuthenticatedPrincipal
 from app.domain.retention.policy import RetentionPolicy
 from app.infrastructure.persistence.models.proctoring import (
     ProctoringEventModel,
@@ -48,6 +50,7 @@ async def ingestar_evento(
     severidad: str,
     ts_cliente: datetime,
     reinferencia: ReinferenciaPort,
+    principal: AuthenticatedPrincipal,
     payload: dict | None = None,
     screenshot_base64: str | None = None,
     face_count_cliente: int | None = None,
@@ -80,12 +83,17 @@ async def ingestar_evento(
             si MinIO esta configurado (minio_configurado(settings) True). Si es
             None (Render hoy, sin VPS) el comportamiento es IDENTICO al actual:
             el screenshot se persiste UNICAMENTE en Postgres, como siempre.
+        principal: titular autenticado del request (H1, IDOR). Solo el dueño de
+            la sesion puede ingestar eventos en ella. Antes cualquier alumno
+            autenticado podia postear eventos (falsos) en la sesion de OTRO
+            alumno con solo conocer su ``session_id``.
 
     Returns:
         ProctoringEventModel persistido con veredicto y sha256.
 
     Raises:
         HTTPException 404: si la sesion no existe.
+        HTTPException 403: si la sesion no pertenece al principal.
     """
     repo = ProctoringRepository(db)
 
@@ -93,6 +101,11 @@ async def ingestar_evento(
     sesion = await db.get(ProctoringSessionModel, session_id)
     if sesion is None:
         raise HTTPException(status_code=404, detail=f"Sesion {session_id!r} no encontrada")
+
+    if not principal_es_dueno_de_sesion(
+        principal, sesion.alumno_idnumber, sesion.alumno_email
+    ):
+        raise HTTPException(status_code=403, detail="La sesion pertenece a otro alumno.")
 
     # 2. Integridad liviana (D9): SHA-256 del screenshot base64 EN CLARO (el hash
     # identifica el contenido original; se calcula antes de cifrar).

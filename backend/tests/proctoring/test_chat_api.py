@@ -10,9 +10,17 @@ from __future__ import annotations
 import pytest
 from httpx import AsyncClient
 
+from tests.proctoring.conftest import auth_headers
+
 pytestmark = pytest.mark.asyncio
 
 _BASE = "/api/v1/proctoring"
+# H1 (IDOR, pentest 2026-08-21): postear autor='tutor' ahora exige supervision
+# en vivo real sobre la sesion (antes cualquier alumno autenticado podia
+# hacerse pasar por 'tutor'). Coordinador tiene alcance institucional (sin
+# restriccion de pertenencia por comision), asi que sirve para estos tests
+# sin necesitar armar una comision con docente asignado.
+_COORDINADOR = auth_headers(["coordinador"], username="coord-chat-test", email="coord@uni.edu")
 
 
 async def _crear_sesion(client: AsyncClient) -> str:
@@ -37,6 +45,7 @@ async def test_post_chat_tutor_201(client: AsyncClient) -> None:
     resp = await client.post(
         f"{_BASE}/sessions/{sid}/chat",
         json={"autor": "tutor", "texto": "te veo, segui"},
+        headers=_COORDINADOR,
     )
     assert resp.status_code == 201
     data = resp.json()
@@ -48,7 +57,9 @@ async def test_post_chat_alumno_responde_despues_del_tutor_201(client: AsyncClie
     """D4: el alumno SI puede responder una vez que el tutor ya escribio."""
     sid = await _crear_sesion(client)
     await client.post(
-        f"{_BASE}/sessions/{sid}/chat", json={"autor": "tutor", "texto": "¿todo bien?"}
+        f"{_BASE}/sessions/{sid}/chat",
+        json={"autor": "tutor", "texto": "¿todo bien?"},
+        headers=_COORDINADOR,
     )
     resp = await client.post(
         f"{_BASE}/sessions/{sid}/chat", json={"autor": "alumno", "texto": "si, gracias"}
@@ -91,9 +102,13 @@ async def test_post_chat_sesion_inexistente_404(client: AsyncClient) -> None:
 async def test_get_chat_ordenado_asc(client: AsyncClient) -> None:
     """GET /chat devuelve los mensajes ordenados asc por creado_en."""
     sid = await _crear_sesion(client)
-    await client.post(f"{_BASE}/sessions/{sid}/chat", json={"autor": "tutor", "texto": "1"})
+    await client.post(
+        f"{_BASE}/sessions/{sid}/chat", json={"autor": "tutor", "texto": "1"}, headers=_COORDINADOR
+    )
     await client.post(f"{_BASE}/sessions/{sid}/chat", json={"autor": "alumno", "texto": "2"})
-    await client.post(f"{_BASE}/sessions/{sid}/chat", json={"autor": "tutor", "texto": "3"})
+    await client.post(
+        f"{_BASE}/sessions/{sid}/chat", json={"autor": "tutor", "texto": "3"}, headers=_COORDINADOR
+    )
 
     resp = await client.get(f"{_BASE}/sessions/{sid}/chat")
     assert resp.status_code == 200
@@ -105,7 +120,9 @@ async def test_get_chat_filtro_desde(client: AsyncClient) -> None:
     """GET /chat?desde=<ts> devuelve solo mensajes posteriores (polling incremental)."""
     sid = await _crear_sesion(client)
     r1 = await client.post(
-        f"{_BASE}/sessions/{sid}/chat", json={"autor": "tutor", "texto": "viejo"}
+        f"{_BASE}/sessions/{sid}/chat",
+        json={"autor": "tutor", "texto": "viejo"},
+        headers=_COORDINADOR,
     )
     creado_1 = r1.json()["creado_en"]
     await client.post(

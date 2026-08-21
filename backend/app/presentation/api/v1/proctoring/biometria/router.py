@@ -1,7 +1,7 @@
 """Router de biometria de proctoring activeexam.
 
 Endpoints:
-- POST /sessions/{id}/biometria         → 200/404 (sin auth, demo)
+- POST /sessions/{id}/biometria         → 200/401/403/404 (autenticado, solo dueño de la sesion)
 - POST /biometria/verificar-referencia  → 200/404/422/500 (stateful, auth estudiante, C-59)
 - GET  /biometria/referencia/estado     → 200 (auth estudiante, C-59)
 
@@ -42,6 +42,7 @@ def create_biometria_router(
     get_db,
     get_embedding_encryption=None,
     require_estudiante=None,
+    require_autenticado=None,
 ) -> APIRouter:
     """Factory del router de biometria.
 
@@ -53,11 +54,14 @@ def create_biometria_router(
         require_estudiante: dependencia FastAPI que exige rol ESTUDIANTE
             (inyectada desde create_proctoring_router, sin importar ActiveExamSettings).
             Si es None, los endpoints stateful C-59 no estaran disponibles.
+        require_autenticado: dependencia FastAPI que exige cualquier token
+            valido (inyectada desde create_proctoring_router). Requerida para
+            ``guardar_biometria`` — antes ese endpoint no exigia auth (H1).
     """
     router = APIRouter()
 
     # -------------------------------------------------------------------------
-    # POST /sessions/{id}/biometria — sin auth (demo/PoC, D7)
+    # POST /sessions/{id}/biometria — autenticado, solo el dueño de la sesion
     # -------------------------------------------------------------------------
 
     @router.post(
@@ -69,11 +73,17 @@ def create_biometria_router(
         session_id: str,
         body: GuardarBiometriaIn,
         db: Annotated[AsyncSession, Depends(get_db)],
+        principal: Annotated[AuthenticatedPrincipal, Depends(require_autenticado)],
     ) -> BiometriaOut:
         """Persiste el resultado del liveness challenge y verificacion biometrica.
 
         Ley 25.326: el embedding facial es dato sensible. PRODUCCION: cifrar con
         KMS antes de persistir; purgar al egreso del estudiante (DD-13, DSR).
+
+        Antes NO exigia auth (H1, hallazgo de pentest): cualquiera que conociera
+        un ``session_id`` ajeno podia plantar un veredicto biometrico falso en la
+        sesion de otra persona. Ahora exige token valido Y que la sesion
+        pertenezca al principal (403 si no).
         """
         await biometria_service.guardar_biometria(
             db=db,
@@ -81,6 +91,7 @@ def create_biometria_router(
             liveness_ok=body.liveness_ok,
             retos_resueltos=body.retos_resueltos,
             resultado=body.resultado,
+            principal=principal,
             embedding=body.embedding,
         )
         return BiometriaOut(ok=True)

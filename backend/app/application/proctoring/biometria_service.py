@@ -9,6 +9,8 @@ from __future__ import annotations
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.domain.auth.authorization import principal_es_dueno_de_sesion
+from app.domain.auth.identity import AuthenticatedPrincipal
 from app.infrastructure.persistence.models.proctoring import (
     ProctoringBiometriaModel,
     ProctoringSessionModel,
@@ -22,6 +24,7 @@ async def guardar_biometria(
     liveness_ok: bool,
     retos_resueltos: list,
     resultado: str,
+    principal: AuthenticatedPrincipal,
     embedding: str | None = None,
 ) -> ProctoringBiometriaModel:
     """Persiste el resultado biometrico de una sesion.
@@ -32,6 +35,10 @@ async def guardar_biometria(
         liveness_ok: True si el liveness challenge paso.
         retos_resueltos: Lista de retos de liveness resueltos.
         resultado: 'verificado' | 'rechazado' | 'pendiente'.
+        principal: titular autenticado del request (H1, IDOR) — solo el dueño
+            de la sesion puede persistir SU propio veredicto biometrico. Antes
+            este endpoint no exigia auth ni pertenencia: cualquiera que
+            conociera un ``session_id`` ajeno podia plantar un veredicto falso.
         embedding: Embedding facial en base64 (dato sensible, Ley 25.326).
             PRODUCCION: cifrar con KMS antes de persistir; purgar al egreso (DSR).
 
@@ -40,11 +47,20 @@ async def guardar_biometria(
 
     Raises:
         HTTPException 404: si la sesion no existe.
+        HTTPException 403: si la sesion no pertenece al principal.
     """
     # Verificar existencia de la sesion
     sesion = await db.get(ProctoringSessionModel, session_id)
     if sesion is None:
         raise HTTPException(status_code=404, detail=f"Sesion {session_id!r} no encontrada")
+
+    if not principal_es_dueno_de_sesion(
+        principal, sesion.alumno_idnumber, sesion.alumno_email
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="La sesion pertenece a otro alumno.",
+        )
 
     repo = ProctoringRepository(db)
     return await repo.guardar_biometria(

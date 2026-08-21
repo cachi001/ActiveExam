@@ -234,3 +234,56 @@ def autorizar_docente_sobre_comision(
         )
     if principal.subject != docente_id_de_la_comision:
         raise ForbiddenError("La comisión pertenece a otro docente.")
+
+
+def principal_es_dueno_de_sesion(
+    principal: AuthenticatedPrincipal,
+    alumno_idnumber: str | None,
+    alumno_email: str | None,
+) -> bool:
+    """True si la sesion pertenece al ALUMNO autenticado (H1, IDOR).
+
+    Los endpoints propios del alumno durante su examen (biometria, eventos,
+    chat, pausas, respuestas, finalizar) son suyos: solo el dueño de la sesion
+    puede operarla. La identidad del alumno se persiste server-side al CREAR
+    la sesion (``alumno_idnumber``/``alumno_email`` desde el JWT), asi que aca
+    se compara contra el principal del request en vez de confiar en el
+    ``session_id`` del path (que cualquiera con el UUID puede adivinar/repetir).
+
+    - Coincide por ``username`` O por ``email`` -> es el dueño.
+    - Sesion SIN identidad almacenada (legacy/modo 'test' previo a la
+      persistencia de identidad) -> se permite: no hay a quien atribuirla y no
+      expone datos de nadie. Toda sesion nueva guarda identidad, asi que este
+      caso no aplica al flujo normal de examen.
+
+    Recibe los campos primitivos (no el modelo ORM) para mantener este modulo
+    puro (D1) — el caller (repositorio/servicio) hace la traduccion.
+    """
+    if not alumno_idnumber and not alumno_email:
+        return True
+    if alumno_idnumber and principal.username and alumno_idnumber == principal.username:
+        return True
+    if alumno_email and principal.email and alumno_email == principal.email:
+        return True
+    return False
+
+
+def autorizar_dueno_o_supervision_vivo_sobre_sesion(
+    principal: AuthenticatedPrincipal,
+    alumno_idnumber: str | None,
+    alumno_email: str | None,
+    docente_id_de_la_sesion: str | None,
+) -> None:
+    """Acceso a un recurso de sesion (chat, pausas) para el DUEÑO o quien supervisa.
+
+    A diferencia de ``autorizar_supervision_vivo_sobre_sesion`` (que exige rol de
+    supervision), este guard tambien deja pasar al alumno dueño de la sesion —
+    varios recursos (chat, listado de pausas) son compartidos entre el alumno que
+    rinde y el tutor/coordinador que lo supervisa. Si el principal NO es ni el
+    dueño ni tiene supervision valida sobre esa sesion puntual, se rechaza (H1,
+    IDOR): sin esto, cualquier alumno autenticado podia leer/escribir en la
+    sesion de OTRO alumno con solo conocer el ``session_id``.
+    """
+    if principal_es_dueno_de_sesion(principal, alumno_idnumber, alumno_email):
+        return
+    autorizar_supervision_vivo_sobre_sesion(principal, docente_id_de_la_sesion)

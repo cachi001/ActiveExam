@@ -29,9 +29,14 @@ from app.application.proctoring.chat_pausa_service import (
     EstadoInvalido,
     LimitePausasExcedido,
 )
-from app.domain.auth.authorization import autorizar_supervision_vivo_sobre_sesion
+from app.domain.auth.authorization import (
+    autorizar_dueno_o_supervision_vivo_sobre_sesion,
+    autorizar_supervision_vivo_sobre_sesion,
+    principal_es_dueno_de_sesion,
+)
 from app.domain.auth.errors import ForbiddenError
 from app.domain.auth.identity import AuthenticatedPrincipal
+from app.infrastructure.persistence.models.proctoring import ProctoringSessionModel
 from app.presentation.api.v1.proctoring.chat_pausa.schemas import (
     MensajeChatIn,
     MensajeChatOut,
@@ -61,21 +66,55 @@ def create_chat_pausa_router(
 
     # ---------------- CHAT ----------------
 
+    async def _sesion_o_404(
+        db: AsyncSession, session_id: str
+    ) -> ProctoringSessionModel:
+        sesion = await session_service.obtener_sesion_ligera(db, session_id)
+        if sesion is None:
+            raise HTTPException(
+                status_code=http_status.HTTP_404_NOT_FOUND,
+                detail=f"Sesion {session_id!r} no encontrada",
+            )
+        return sesion
+
     @router.post(
         "/sessions/{session_id}/chat",
         status_code=http_status.HTTP_201_CREATED,
         response_model=MensajeChatOut,
         summary="Enviar mensaje de chat (alumno o tutor)",
-        dependencies=[Depends(require_autenticado)],
     )
     async def enviar_mensaje(
         session_id: str,
         body: MensajeChatIn,
         db: Annotated[AsyncSession, Depends(get_db)],
+        principal: Annotated[AuthenticatedPrincipal, Depends(require_autenticado)],
     ) -> MensajeChatOut:
         """Persiste un mensaje. 404 si la sesion no existe. 403 si el alumno intenta
         iniciar el hilo (D4: solo responde si el tutor ya escribio). autor validado
-        por schema (alumno | tutor)."""
+        por schema (alumno | tutor).
+
+        H1 (IDOR, pentest): antes cualquier token valido bastaba para escribir en
+        CUALQUIER sesion. Ahora, si ``autor='alumno'`` exige que la sesion sea del
+        principal; si ``autor='tutor'`` exige supervision en vivo sobre ESA sesion
+        puntual (no alcanza con tener el rol tutor en general)."""
+        sesion = await _sesion_o_404(db, session_id)
+        if body.autor == "alumno":
+            if not principal_es_dueno_de_sesion(
+                principal, sesion.alumno_idnumber, sesion.alumno_email
+            ):
+                raise HTTPException(
+                    status_code=http_status.HTTP_403_FORBIDDEN,
+                    detail="La sesion pertenece a otro alumno.",
+                )
+        else:  # autor == "tutor" (unico otro valor valido por schema)
+            docente_id = await session_service.docente_id_de_sesion(db, session_id)
+            try:
+                autorizar_supervision_vivo_sobre_sesion(principal, docente_id)
+            except ForbiddenError as exc:
+                raise HTTPException(
+                    status_code=http_status.HTTP_403_FORBIDDEN,
+                    detail={"error": "sesion_ajena", "mensaje": str(exc)},
+                ) from exc
         try:
             mensaje = await chat_pausa_service.crear_mensaje(
                 db, session_id=session_id, autor=body.autor, texto=body.texto
@@ -100,17 +139,32 @@ def create_chat_pausa_router(
         "/sessions/{session_id}/chat",
         response_model=list[MensajeChatOut],
         summary="Listar mensajes de chat (polling incremental con ?desde)",
-        dependencies=[Depends(require_autenticado)],
     )
     async def listar_mensajes(
         session_id: str,
         db: Annotated[AsyncSession, Depends(get_db)],
+        principal: Annotated[AuthenticatedPrincipal, Depends(require_autenticado)],
         desde: datetime | None = Query(
             None,
             description="ISO datetime: solo mensajes con creado_en > desde (polling).",
         ),
     ) -> list[MensajeChatOut]:
-        """Lista mensajes asc por creado_en. 404 si la sesion no existe."""
+        """Lista mensajes asc por creado_en. 404 si la sesion no existe.
+
+        H1 (IDOR): exige que el principal sea el dueño de la sesion O tenga
+        supervision en vivo sobre ella — antes cualquier alumno autenticado
+        podia leer el chat privado de la sesion de otro alumno."""
+        sesion = await _sesion_o_404(db, session_id)
+        docente_id = await session_service.docente_id_de_sesion(db, session_id)
+        try:
+            autorizar_dueno_o_supervision_vivo_sobre_sesion(
+                principal, sesion.alumno_idnumber, sesion.alumno_email, docente_id
+            )
+        except ForbiddenError as exc:
+            raise HTTPException(
+                status_code=http_status.HTTP_403_FORBIDDEN,
+                detail={"error": "sesion_ajena", "mensaje": str(exc)},
+            ) from exc
         mensajes = await chat_pausa_service.listar_mensajes(db, session_id, desde=desde)
         if mensajes is None:
             raise HTTPException(
@@ -131,14 +185,26 @@ def create_chat_pausa_router(
         status_code=http_status.HTTP_201_CREATED,
         response_model=PausaSolicitudOut,
         summary="Solicitar pausa autorizada (alumno)",
-        dependencies=[Depends(require_autenticado)],
     )
     async def solicitar_pausa(
         session_id: str,
         body: PausaSolicitudIn,
         db: Annotated[AsyncSession, Depends(get_db)],
+        principal: Annotated[AuthenticatedPrincipal, Depends(require_autenticado)],
     ) -> PausaSolicitudOut:
-        """Crea una pausa en estado 'solicitada'. 404 si la sesion no existe."""
+        """Crea una pausa en estado 'solicitada'. 404 si la sesion no existe.
+
+        H1 (IDOR): solo el dueño de la sesion puede solicitar la pausa de SU
+        propio examen — antes cualquier alumno autenticado podia solicitar
+        pausas en la sesion de otro."""
+        sesion = await _sesion_o_404(db, session_id)
+        if not principal_es_dueno_de_sesion(
+            principal, sesion.alumno_idnumber, sesion.alumno_email
+        ):
+            raise HTTPException(
+                status_code=http_status.HTTP_403_FORBIDDEN,
+                detail="La sesion pertenece a otro alumno.",
+            )
         pausa = await chat_pausa_service.solicitar_pausa(
             db, session_id=session_id, motivo=body.motivo
         )
@@ -157,14 +223,28 @@ def create_chat_pausa_router(
     @router.get(
         "/sessions/{session_id}/pausas",
         response_model=list[PausaDetalle],
-        summary="Listar pausas de la sesion (poll del alumno)",
-        dependencies=[Depends(require_autenticado)],
+        summary="Listar pausas de la sesion (poll del alumno o de quien supervisa)",
     )
     async def listar_pausas_sesion(
         session_id: str,
         db: Annotated[AsyncSession, Depends(get_db)],
+        principal: Annotated[AuthenticatedPrincipal, Depends(require_autenticado)],
     ) -> list[PausaDetalle]:
-        """Lista las pausas de la sesion desc por solicitada_en. 404 si no existe."""
+        """Lista las pausas de la sesion desc por solicitada_en. 404 si no existe.
+
+        H1 (IDOR): exige que el principal sea el dueño de la sesion O tenga
+        supervision en vivo sobre ella."""
+        sesion = await _sesion_o_404(db, session_id)
+        docente_id = await session_service.docente_id_de_sesion(db, session_id)
+        try:
+            autorizar_dueno_o_supervision_vivo_sobre_sesion(
+                principal, sesion.alumno_idnumber, sesion.alumno_email, docente_id
+            )
+        except ForbiddenError as exc:
+            raise HTTPException(
+                status_code=http_status.HTTP_403_FORBIDDEN,
+                detail={"error": "sesion_ajena", "mensaje": str(exc)},
+            ) from exc
         pausas = await chat_pausa_service.listar_pausas_de_sesion(db, session_id)
         if pausas is None:
             raise HTTPException(
@@ -282,13 +362,31 @@ def create_chat_pausa_router(
         "/pausas/{pausa_id}/finalizar",
         response_model=PausaDetalle,
         summary="Finalizar (cerrar ventana de) una pausa aprobada",
-        dependencies=[Depends(require_autenticado)],
     )
     async def finalizar_pausa(
         pausa_id: str,
         db: Annotated[AsyncSession, Depends(get_db)],
+        principal: Annotated[AuthenticatedPrincipal, Depends(require_autenticado)],
     ) -> PausaDetalle:
-        """estado='finalizada', fin_en=now. 404 si no existe; 409 si no esta 'aprobada'."""
+        """estado='finalizada', fin_en=now. 404 si no existe; 409 si no esta 'aprobada'.
+
+        H1 (IDOR): solo el alumno dueño de la sesion de esa pausa puede
+        finalizarla (reanudar su propio examen) — antes cualquier token valido
+        alcanzaba para cerrar la pausa de la sesion de otro alumno."""
+        pausa_existente = await chat_pausa_service.obtener_pausa(db, pausa_id)
+        if pausa_existente is None:
+            raise HTTPException(
+                status_code=http_status.HTTP_404_NOT_FOUND,
+                detail=f"Pausa {pausa_id!r} no encontrada",
+            )
+        sesion = await _sesion_o_404(db, pausa_existente.session_id)
+        if not principal_es_dueno_de_sesion(
+            principal, sesion.alumno_idnumber, sesion.alumno_email
+        ):
+            raise HTTPException(
+                status_code=http_status.HTTP_403_FORBIDDEN,
+                detail="La pausa pertenece a la sesion de otro alumno.",
+            )
         try:
             pausa = await chat_pausa_service.finalizar_pausa(db, pausa_id)
         except EstadoInvalido as exc:
