@@ -49,3 +49,7 @@ matplotlib>=3.7
 # seteado (Render sin VPS todavia), el import ocurre igual (deploy no rompe) pero
 # el cliente nunca se construye (ver app/main_activeexam.py::create_activeexam_app).
 boto3==1.43.73
+
+# Metricas Prometheus (latencia/throughput HTTP + CPU/memoria de proceso),
+# expuestas en /metrics (ver app/observability/metrics_activeexam.py).
+prometheus-client==0.21.1

@@ -38,6 +38,7 @@ from app.application.moodle.credencial_service import MoodleCredencialResolver
 from app.application.moodle.intentos_fallidos_tracker import IntentosFallidosTracker
 from app.infrastructure.crypto.secret_encryption import SecretCipher
 from app.infrastructure.moodle.wiring import build_writeback_svc_dinamico
+from app.observability.metrics_activeexam import instrument_activeexam_metrics
 from app.infrastructure.persistence.session_activeexam import (
     create_activeexam_engine,
     create_activeexam_session_factory,
@@ -244,6 +245,10 @@ def create_activeexam_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # Metricas Prometheus (latencia + throughput HTTP + CPU/memoria de proceso).
+    # main_activeexam.py no tenia NINGUNA metrica expuesta antes de esto.
+    instrument_activeexam_metrics(app)
 
     # --- Routers ---
 
