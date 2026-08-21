@@ -125,6 +125,7 @@ export function StudentShell({
   step,
   backTo = '/alumno',
   locked = false,
+  ocultarNavegacion = false,
 }: {
   children: ReactNode;
   step?: number;
@@ -133,6 +134,16 @@ export function StudentShell({
    *  cualquier link de navegación (logo, menú de usuario). El alumno no debe
    *  poder salir de la pantalla del examen por otra vía que no sea entregarlo. */
   locked?: boolean;
+  /**
+   * Fuerza ocultar sidebar/bottom-nav (pero NO el header) aunque
+   * `isProfileComplete` ya sea `true`. Bug real (2026-08-21): dentro del
+   * wizard de enrollment, `perfil_completo` del backend se vuelve `true` en
+   * cuanto termina la biometría (el DNI es opcional y no lo bloquea) — ANTES
+   * de que el alumno termine/salte el paso de DNI. Sin este flag, la sidebar
+   * se destrababa "de la nada" en medio del wizard. Los pasos intermedios del
+   * enrollment (StudentProfile.tsx) lo pasan en `true` mientras `paso !== 'perfil'`.
+   */
+  ocultarNavegacion?: boolean;
 }) {
   const logout = useAuth((s) => s.logout);
   const navigate = useNavigate();
@@ -168,7 +179,7 @@ export function StudentShell({
   // pantalla. Ahora arranca oculta y solo se muestra cuando se confirma
   // `isProfileComplete`; el "parpadeo" que se evitaba era el precio correcto
   // a pagar (loading state), no un bug.
-  const perfilBloqueado = !locked && !isProfileComplete;
+  const perfilBloqueado = !locked && (!isProfileComplete || ocultarNavegacion);
 
   // La sidebar/nav se muestran solo si no hay lockdown y el perfil está completo.
   const mostrarSidebarDesktop = isDesktop && !locked && !perfilBloqueado;
