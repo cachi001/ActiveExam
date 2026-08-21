@@ -19,6 +19,7 @@ import {
 import { FullscreenLockdown } from '../proctoring/fullscreenLockdown';
 import { MonitorBloqueante } from './examen/MonitorBloqueante';
 import { AlertaCritica } from './examen/AlertaCritica';
+import { CalibracionMirada } from './examen/CalibracionMirada';
 import { LockdownOverlay } from './examen/LockdownOverlay';
 import { ExamenPreguntaCard } from './examen/ExamenPreguntaCard';
 import { ExamenErrorInicio } from './examen/ExamenErrorInicio';
@@ -97,7 +98,7 @@ export default function Examen() {
     });
   }, []);
 
-  const { sessionId, sessionCreadaEn, score, eventCount, activo, eventos, extraMonitorActive, sessionError, detener, setPausaAprobada } = useExamProctoring(videoRef, examen);
+  const { sessionId, sessionCreadaEn, score, eventCount, activo, eventos, extraMonitorActive, sessionError, calibrando, detener, setPausaAprobada } = useExamProctoring(videoRef, examen);
 
   // Entrega: confirmación previa (nunca finalizar por un click accidental) + estado
   // de envío + error de entrega (si el POST de respuestas falla NO se navega a /cierre,
@@ -484,6 +485,7 @@ export default function Examen() {
         </div>
       )}
 
+      {calibrando && <CalibracionMirada />}
       {alerta && <AlertaCritica ev={alerta} onClose={() => setAlerta(null)} />}
       {extraMonitorActive && <MonitorBloqueante />}
       {bloqueado && (

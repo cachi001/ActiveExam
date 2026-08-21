@@ -211,6 +211,65 @@ export function __resetSesionEnCreacionParaTest(): void {
 /** ~5 fps: suficiente para detección en vivo sin saturar el cliente. */
 const FRAME_INTERVAL_MS = 200;
 
+/**
+ * Duración de la calibración de mirada al inicio del examen (pentest 2026-08-21,
+ * miedo del usuario "camara descentrada"): antes de arrancar las reglas de
+ * detección, se le pide al alumno mirar al centro de la pantalla durante este
+ * tiempo. El promedio de gaze capturado se fija como baseline (ver
+ * `StateTransitionRules.calibrarGaze`), así la deteccion de "mirada desviada" pasa
+ * a medirse relativa a COMO ESE alumno mira normalmente con SU camara (sin
+ * importar si esta fisicamente centrada o no), en vez de un cero absoluto.
+ * No cuenta contra el tiempo limite del examen (corre ANTES de examen_iniciado_en).
+ */
+const CALIBRACION_GAZE_MS = 3000;
+
+/**
+ * Corre un mini-loop de captura de `gaze` crudo (sin evaluar reglas) durante
+ * `durationMs`, muestreando cada `intervalMs`. Devuelve el promedio de las
+ * muestras validas, o `null` si no se pudo capturar ninguna (rostro ausente,
+ * motor stub sin mesh, camara no lista) — en ese caso el llamador debe seguir
+ * con el baseline por defecto {0,0} (comportamiento actual, no bloquea el examen).
+ */
+export async function capturarBaselineGaze(
+  videoRef: RefObject<HTMLVideoElement>,
+  engine: VisionEngine,
+  durationMs: number,
+  intervalMs: number,
+  estaCancelado: () => boolean,
+): Promise<{ x: number; y: number } | null> {
+  const muestras: { x: number; y: number }[] = [];
+  const iteraciones = Math.max(1, Math.floor(durationMs / intervalMs));
+  for (let i = 0; i < iteraciones; i += 1) {
+    if (estaCancelado()) break;
+    const video = videoRef.current;
+    if (video && video.readyState >= 2) {
+      try {
+        const frame = await createImageBitmap(video);
+        try {
+          const fd = await engine.detectFaces(frame);
+          if (fd.face_count === 1) {
+            try {
+              const mesh = await engine.detectFaceMesh(frame);
+              if (mesh.gaze) muestras.push(mesh.gaze);
+            } catch {
+              /* mesh no disponible este frame: seguimos muestreando */
+            }
+          }
+        } catch {
+          /* motor sin inferencia (stub): sin muestra este frame */
+        }
+        frame.close();
+      } catch {
+        /* video sin frame listo: sin muestra este frame */
+      }
+    }
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+  if (muestras.length === 0) return null;
+  const suma = muestras.reduce((acc, g) => ({ x: acc.x + g.x, y: acc.y + g.y }), { x: 0, y: 0 });
+  return { x: suma.x / muestras.length, y: suma.y / muestras.length };
+}
+
 // ---------------------------------------------------------------------------
 // Cadencia de captura durante pausa autorizada (C-76 bloque 5, D6/Q3 follow-up)
 // ---------------------------------------------------------------------------
@@ -314,6 +373,12 @@ export interface ExamProctoringState {
    * sin sesión: las respuestas no se guardarían ni se calcularía la nota).
    */
   sessionError: SessionInitError | null;
+  /**
+   * true durante la calibración de mirada al inicio (CALIBRACION_GAZE_MS): se le
+   * pide al alumno mirar al centro de la pantalla antes de que arranquen las
+   * reglas de detección. Examen.tsx muestra un overlay mientras dure.
+   */
+  calibrando: boolean;
 }
 
 export interface UseExamProctoringResult extends ExamProctoringState {
@@ -362,6 +427,9 @@ export function useExamProctoring(
   // (cada 5s). Examen.tsx lo usa para bloquear la rendicion mientras este `true`.
   const [extraMonitorActive, setExtraMonitorActive] = useState(false);
   const [sessionError, setSessionError] = useState<SessionInitError | null>(null);
+  // Calibración de mirada al inicio (ver CALIBRACION_GAZE_MS): true mientras se le
+  // pide al alumno mirar al centro, antes de que arranquen las reglas de detección.
+  const [calibrando, setCalibrando] = useState(false);
 
   // ------ Refs del motor / pipeline / loop ------
   const engineRef = useRef<VisionEngine | null>(null);
@@ -756,6 +824,26 @@ export function useExamProctoring(
       }
       engineRef.current = engine;
 
+      // Calibración de mirada (ver CALIBRACION_GAZE_MS): corre ANTES de armar el
+      // pipeline y arrancar el loop de reglas, para que ningún frame se evalúe con
+      // un baseline todavía sin fijar. No cuenta contra el tiempo del examen (el
+      // cronómetro ancla a examen_iniciado_en, seteado recién al primer fetch de
+      // preguntas). Si no se pudo capturar (sin rostro, motor stub), sigue con el
+      // baseline por defecto {0,0} — comportamiento actual, no bloquea el examen.
+      setCalibrando(true);
+      const baselineGaze = await capturarBaselineGaze(
+        videoRef,
+        engine,
+        CALIBRACION_GAZE_MS,
+        FRAME_INTERVAL_MS,
+        () => cancelled || stoppedRef.current,
+      );
+      setCalibrando(false);
+      if (cancelled || stoppedRef.current) {
+        void disposeRealEngine().catch(() => {});
+        return;
+      }
+
       // Sink LEAN: delega cada evento al handler con estado fresco.
       const sink: EventSink = {
         sendEvent: (args) => handleEvent.current(args),
@@ -771,11 +859,9 @@ export function useExamProctoring(
             gaze_fixation_tolerance: efectiva.gaze_fixation_tolerance,
           }
         : { ...DEFAULT_CONFIG };
-      pipelineRef.current = new VisionPipeline({
-        engine,
-        sink,
-        rules: new StateTransitionRules(thresholds),
-      });
+      const rules = new StateTransitionRules(thresholds);
+      if (baselineGaze) rules.calibrarGaze(baselineGaze);
+      pipelineRef.current = new VisionPipeline({ engine, sink, rules });
       setActivo(true);
 
       // Loop de frames: captura + inferencia + reglas (onSignals para no doblar
@@ -816,7 +902,7 @@ export function useExamProctoring(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [examen?.id]);
 
-  return { sessionId, sessionCreadaEn, score, eventCount, activo, eventos, extraMonitorActive, sessionError, detener, setPausaAprobada };
+  return { sessionId, sessionCreadaEn, score, eventCount, activo, eventos, extraMonitorActive, sessionError, calibrando, detener, setPausaAprobada };
 }
 
 // ---------------------------------------------------------------------------

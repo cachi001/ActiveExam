@@ -146,6 +146,46 @@ describe("garantia L2.5: ninguna transicion deriva sancion", () => {
   });
 });
 
+describe("calibracion de baseline de mirada (camara fisicamente descentrada)", () => {
+  it("sin calibrar, una camara descentrada genera un vector de iris con magnitud alta y dispara falso positivo", () => {
+    const rules = new StateTransitionRules();
+    rules.process({ ts_ms: 0, face_count: 1, gaze: { x: 0.3, y: 0 } });
+    rules.process({ ts_ms: 2000, face_count: 1, gaze: { x: 0.3, y: 0 } });
+    const events = rules.process({ ts_ms: 4500, face_count: 1, gaze: { x: 0.3, y: 0 } });
+    expect(events).toHaveLength(1);
+    expect(events[0].tipo).toBe("mirada_desviada_sostenida");
+  });
+
+  it("calibrando ese mismo punto como baseline, mirar ahi normalmente ya NO dispara evento", () => {
+    const rules = new StateTransitionRules();
+    rules.calibrarGaze({ x: 0.3, y: 0 });
+    rules.process({ ts_ms: 0, face_count: 1, gaze: { x: 0.3, y: 0 } });
+    rules.process({ ts_ms: 2000, face_count: 1, gaze: { x: 0.3, y: 0 } });
+    const events = rules.process({ ts_ms: 4500, face_count: 1, gaze: { x: 0.3, y: 0 } });
+    expect(events).toHaveLength(0);
+  });
+
+  it("calibrado, una desviacion REAL mas alla del baseline sigue disparando evento", () => {
+    const rules = new StateTransitionRules();
+    rules.calibrarGaze({ x: 0.3, y: 0 });
+    // 0.6 absoluto = 0.3 (baseline) + 0.3 (desvio real) -> relativo 0.3 > threshold 0.20
+    rules.process({ ts_ms: 0, face_count: 1, gaze: { x: 0.6, y: 0 } });
+    rules.process({ ts_ms: 2000, face_count: 1, gaze: { x: 0.6, y: 0 } });
+    const events = rules.process({ ts_ms: 4500, face_count: 1, gaze: { x: 0.6, y: 0 } });
+    expect(events).toHaveLength(1);
+    expect(events[0].tipo).toBe("mirada_desviada_sostenida");
+  });
+
+  it("el payload del evento reporta el gaze crudo (absoluto), no el relativo al baseline", () => {
+    const rules = new StateTransitionRules();
+    rules.calibrarGaze({ x: 0.3, y: 0 });
+    rules.process({ ts_ms: 0, face_count: 1, gaze: { x: 0.6, y: 0 } });
+    rules.process({ ts_ms: 2000, face_count: 1, gaze: { x: 0.6, y: 0 } });
+    const events = rules.process({ ts_ms: 4500, face_count: 1, gaze: { x: 0.6, y: 0 } });
+    expect(events[0].payload.gaze).toEqual({ x: 0.6, y: 0 });
+  });
+});
+
 // C-76 (15.1/15.2/15.6): cambio_pestana y copiar_pegar ahora disparan captura.
 // El screenshot es CONTEXTO VISUAL (no se re-infiere server-side, a diferencia de
 // multiples_rostros/rostro_ausente) — la severidad no cambia (sigue "media"), y
