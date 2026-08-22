@@ -474,7 +474,7 @@ castellano y los hashes se muestran acortados y explicados.
 
 ---
 
-## T-19 · La confianza del LTI se pierde cada vez que se recrea la base
+## T-19 · El registro del LTI es manual y se pierde al recrear la base
 
 **Gobernanza**: CRITICA (auth)
 
@@ -498,18 +498,40 @@ Se resolvió cargando la fila de nuevo, pero va a volver a pasar.
 | `client_id` | `6w1huGZSwii82yL` |
 | `jwks_uri` | `https://campustest.frm.utn.edu.ar/mod/lti/certs.php` |
 
-**Falta**, en orden de importancia:
+### Por qué se carga a mano, y por qué eso no debería ser así
 
-1. **Que el sistema avise.** Un chequeo de salud que grite si la allowlist está vacía. Hoy
-   la única señal es que los alumnos no pueden entrar, y eso se descubre tarde.
-2. **Seed o procedimiento de arranque** que deje la fila cargada, de forma que recrear la
-   base no rompa el ingreso.
-3. **Pantalla de administración** para verla y cargarla. Hoy solo existe la API: no hay UI,
-   así que depende de que alguien sepa hacer el POST a mano.
+Hay que separar dos cosas que se confunden:
 
-**Ojo**: son la raíz de confianza. Una fila de más es un Moodle habilitado a crear cuentas
-en el sistema. El seed tiene que ser explícito y auditable, nunca "crear si no existe" con
-valores adivinados.
+- **Que la habilitación sea explícita está bien.** Cada fila es un Moodle autorizado a
+  crear cuentas en el sistema. Si se auto-creara con solo apuntar un Moodle a nuestra URL,
+  cualquiera podría dar de alta alumnos. El diseño falla cerrado a propósito (design D2).
+- **Que se cargue a mano, siempre, y con los IDs copiados de un request, está mal.** Eso
+  no es seguridad, es una tarea manual frágil que nadie recuerda hasta que se rompe.
+
+**Y hay un hueco concreto**: LTI 1.3 define el **registro dinámico** justamente para esto,
+y nosotros lo tenemos **implementado a medias**. Existe
+`GET /api/v1/lti/dynamic-registration` (`presentation/api/v1/lti/router.py:143`), que
+publica la configuración de la herramienta para que Moodle la consuma. Pero **no hay
+endpoint que RECIBA y persista el registro**: el `client_id` y el `deployment_id` que
+Moodle genera nunca vuelven a nuestra base. Por eso terminan copiándose a mano.
+
+### Falta, en orden de importancia
+
+1. **Completar el registro dinámico.** Que registrar la herramienta desde Moodle cree la
+   fila sola, con el `client_id` y el `deployment_id` reales, sin que nadie copie nada.
+   **Con una salvedad de seguridad**: la fila se crea `activo=false`, y un admin la
+   habilita desde una pantalla. Sigue habiendo aprobación humana explícita, pero es un
+   click en vez de un POST armado a mano. Así se conserva la propiedad de seguridad y
+   desaparece la tarea manual.
+2. **Que el sistema avise.** Un chequeo de salud que grite si la allowlist está vacía. Hoy
+   la única señal es que los alumnos no pueden entrar, y eso se descubre tarde y de la
+   peor forma.
+3. **Pantalla de administración** para ver, habilitar y deshabilitar deployments. Hoy solo
+   existe la API (`admin/lti_router.py`): sin UI, todo depende de que alguien sepa hacer el
+   POST.
+4. **Que sobreviva a recrear la base**: si el registro dinámico queda hecho, esto se
+   resuelve solo volviendo a registrar desde Moodle. Mientras tanto, un seed explícito y
+   auditable, nunca un "crear si no existe" con valores adivinados.
 
 **Pendiente relacionado**: la fila quedó cargada **sin `comision_id`**, así que el alumno
 que entra por el campus se crea pero no se matricula solo en ninguna comisión. Hay que
