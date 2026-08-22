@@ -51,8 +51,10 @@ bloqueada con test, y la migración define en qué estado quedan los exámenes e
 
 **Gobernanza**: ALTA (toca autorización)
 
-Hoy el tutor ve el menú completo. No debería tener acceso a Estadísticas, Creación de
-exámenes ni Banco de preguntas: solo lo suyo.
+**Definido por el dueño (22/8)**: al TUTOR se le sacan Estadísticas, Creación de
+exámenes y Banco de preguntas. El COORDINADOR **conserva todo eso**.
+
+Hoy el tutor ve el menú completo. Debería ver solo lo suyo.
 
 - Menú: `frontend/src/ui/nav.ts` y `frontend/src/screens/AdminDashboard.tsx`
 - Capacidades reales: `backend/app/domain/auth/capabilities.py`, `authorization.py`
@@ -171,15 +173,15 @@ sigue siendo del coordinador.
 
 | Capacidad | TUTOR | PROFESOR | COORDINADOR | ADMIN |
 |---|---|---|---|---|
-| Crear exámenes | no | sí | ? | sí |
-| Banco de preguntas | no | sí | ? | sí |
-| Estadísticas | no | sí | ? | sí |
+| Crear exámenes | no | sí | sí | sí |
+| Banco de preguntas | no | sí | sí | sí |
+| Estadísticas | no | sí | sí | sí |
 | Registro de sesiones | solo las suyas | sí | sí | sí |
 | Supervisión en vivo | solo las suyas | sí | sí | sí |
-| Emitir veredicto | no | **no** | **sí** | ? |
+| Emitir veredicto | no | **no** | **sí** | sí |
 
-Los `?` de COORDINADOR y ADMIN hay que confirmarlos al implementar, no los cambia esta
-definición.
+Tabla cerrada por el dueño el 22/8: el COORDINADOR conserva todo, al TUTOR se le sacan
+esas tres. La diferencia real entre PROFESOR y COORDINADOR queda siendo el veredicto.
 
 **Terminada cuando**: existe el rol, tiene sus capacidades en `capabilities.py`, hay
 migración, y hay test por endpoint de lo que puede y de lo que no, incluido un test que
@@ -310,24 +312,180 @@ test del rechazo en el backend.
 
 ---
 
+## T-13 · Configurar si el alumno ve los eventos de proctoring mientras rinde
+
+**Gobernanza**: MEDIA
+
+**Definido por el dueño (22/8)**: por defecto **no**. Hoy el alumno ve todos los eventos
+que genera el proctoring mientras rinde, y no debería.
+
+- Panel del alumno: `frontend/src/screens/examen/IntegridadPanel.tsx`
+- Config por examen: `backend/app/domain/exam_content/config.py`
+
+**Falta**: un campo de configuración por examen, con default en no mostrar, y que el
+panel lo respete.
+
+**Ojo**: esto es una decisión de producto con una contra real. Mostrar los eventos tiene
+un efecto disuasivo y también le avisa al alumno que algo se está detectando, lo que baja
+el reclamo posterior de "no sabía". Ocultarlos por defecto está bien pedido, pero conviene
+que el alumno igual sepa **que** se está supervisando, aunque no vea el detalle evento
+por evento. Eso ya lo cubre el consentimiento.
+
+**Terminada cuando**: el examen tiene la opción, arranca en no, y el panel del alumno la
+respeta.
+
+---
+
+## T-14 · Materias y comisiones: colapsar, paginar y ordenar
+
+**Gobernanza**: BAJA
+
+Problema concreto: con 40 alumnos inscriptos la pantalla queda ilegible. Todo aparece
+expandido, no hay paginación, y no hay forma de organizar la vista.
+
+- Pantalla: `frontend/src/screens/MateriasComisiones.tsx` y
+  `frontend/src/screens/admin/components/ComisionesAccordionBody.tsx`
+
+**Falta**:
+
+1. Poder desplegar y colapsar cada comisión, en vez de tener todo abierto.
+2. Paginación del listado de inscriptos.
+3. Evaluar una **página propia por comisión** en vez de meter todo en el acordeón. Es
+   probablemente lo correcto: ahí entran los inscriptos paginados, el export de T-03 y la
+   asignación de tutores de T-04, que hoy compiten por el mismo espacio.
+
+**Se cruza con T-03**: si se hace la página propia, el export vive ahí. Conviene decidir
+las dos juntas y no hacer T-03 dos veces.
+
+**Terminada cuando**: una comisión con 40 inscriptos se navega cómoda, con paginación y
+sin scroll infinito.
+
+---
+
+## T-15 · Exportar notas y marcar el estado a mano
+
+**Gobernanza**: MEDIA
+
+**Caso real**: no en todos los campus hay API de Moodle disponible. Sin API, la nota se
+devuelve exportándola y cargándola a mano en el campus. Hoy el estado de la nota depende
+de la sincronización con Moodle, así que en ese escenario queda para siempre en pendiente
+aunque la nota ya se haya cargado.
+
+**Falta**:
+
+1. Export de las notas del examen, con los alumnos que rindieron y su nota.
+2. Poder **marcar el estado a mano**: quién ya tiene la nota cargada en el campus, sin
+   pasar por el write-back automático.
+3. Que el estado manual se distinga del automático en la UI y en la auditoría. No es lo
+   mismo "el sistema confirmó que Moodle la recibió" que "una persona dice que la cargó".
+
+**Ojo**: el estado manual es una afirmación humana, no una prueba. Tiene que quedar
+registrado quién lo marcó y cuándo, y no debe poder pisar un estado confirmado por
+sincronización real.
+
+**Terminada cuando**: se exportan las notas, se puede marcar el estado a mano, y la
+pantalla distingue claramente el origen de cada estado.
+
+---
+
+## T-16 · BUG: tras el alta por LTI la sesión muestra `lti:1:...` como usuario
+
+**Gobernanza**: ALTA (auth)
+
+**Síntoma**: el alumno entra por primera vez desde el campus, elige su usuario y
+contraseña, y acto seguido la aplicación lo muestra como `lti:1:7` en vez del usuario que
+acaba de elegir.
+
+**Causa, confirmada leyendo el código**: el flujo son dos pasos
+(`frontend/src/screens/LtiConfirmar.tsx:96` y `:115`):
+
+1. `POST /lti/confirmar-provisioning` crea la cuenta con `username = lti:{deployment}:{sub}`
+   y **emite el JWT de sesión ahí mismo**, con `preferred_username = "lti:1:7"`.
+2. `PUT /auth/change-password` con `nuevo_username` renombra al usuario en la base
+   (`auth/router.py:548`), pero devuelve **solo `{ok: true}`**
+   (`CambiarContrasenaResponse`, `auth/router.py:463`). No re-emite el token.
+
+Resultado: la base queda bien, el token queda viejo. El frontend lee el `preferred_username`
+del JWT, así que muestra el nombre viejo hasta que la persona vuelve a loguearse.
+
+**Arreglo**: que `change-password` re-emita el access token cuando cambió el `username`, y
+que el frontend adopte el token nuevo. Alternativa más barata: forzar un refresh después
+del paso 2.
+
+**Terminada cuando**: al terminar el alta la aplicación muestra el usuario elegido, sin
+volver a loguearse, con test del claim del token re-emitido.
+
+---
+
+## T-17 · BUG: la pantalla de materias y comisiones se ve en blanco al entrar
+
+**Gobernanza**: MEDIA
+
+**Síntoma**: al entrar a Materias y comisiones la pantalla aparece vacía.
+
+**A investigar**: si es un error de carga que se traga la excepción y no muestra estado de
+error, o un problema de datos. Pantalla: `frontend/src/screens/MateriasComisiones.tsx`.
+
+Sospecha a descartar primero: el endpoint `GET /exam-content/materias-comisiones` devolvió
+**500** al probarlo el 22/8 desde la API con el usuario admin. Si es eso, el bug es de
+backend y la pantalla en blanco es la consecuencia.
+
+**Terminada cuando**: la pantalla carga, y si el backend falla muestra un error visible en
+vez de quedarse en blanco.
+
+---
+
+## T-18 · BUG: errores de mapeo en Auditoría (null y hashes sin normalizar)
+
+**Gobernanza**: MEDIA
+
+**Síntoma**: en Auditoría muchos campos se ven como `null` o como hashes crudos. Nada está
+normalizado para que lo lea una persona.
+
+- Pantalla: `frontend/src/screens/Auditoria.tsx`
+
+Ya hay un mapa de acciones a etiquetas legibles (`rutaDeModulo`, `rutaDeAccion`, la tabla
+de labels), pero está incompleto: lo que no matchea cae crudo a la pantalla.
+
+**Falta**: revisar el mapeo entero contra las acciones que el backend emite de verdad
+(`backend/app/application/audit/acciones.py`), completar las que faltan, y definir un
+fallback legible para lo desconocido en vez de mostrar `null`. Los hashes de la cadena de
+custodia deberían mostrarse acortados y con su significado, no como un blob.
+
+**Ojo**: la auditoría es registro inalterable con cadena de hash. Se puede cambiar cómo se
+**muestra**, nunca lo que se guarda.
+
+**Terminada cuando**: no aparece ningún `null` en pantalla, cada acción tiene etiqueta en
+castellano y los hashes se muestran acortados y explicados.
+
+---
+
 ## Orden sugerido
 
-1. **T-04** primero: ya está escrito, solo falta cerrarlo y desplegarlo.
-2. **T-07** (rol PROFESOR) antes que T-02, T-08 y T-09: los tres dependen de cómo quede
-   el mapa de roles, y hacerlos antes obliga a rehacerlos.
-3. **T-02, T-08, T-09** juntos: son el mismo trabajo de acotar por rol, en tres pantallas.
-   Conviene un solo change de autorización y no tres parches.
-4. **T-01, T-03, T-05, T-06**: independientes y chicos. T-05 quedó barata al definirse
-   como replicado por comisión.
-5. **T-10** al final, con su propio change, y **T-12** pegada atrás para no escribir la
+**Definido por el dueño (22/8)**: las preguntas aleatorias (T-10) van **al final**.
+Primero todo lo demás.
+
+1. **Bugs primero**: T-16 (usuario LTI), T-17 (pantalla en blanco) y T-18 (auditoría).
+   Son cosas rotas a la vista, y T-17 puede ser un 500 de backend que conviene descartar
+   ya.
+2. **T-04**: ya está escrito, solo falta cerrarlo y desplegarlo.
+3. **T-07** (rol PROFESOR) antes que T-02, T-08 y T-09: los tres dependen del mapa de
+   roles, y hacerlos antes obliga a rehacerlos.
+4. **T-02, T-08, T-09** juntos: son el mismo trabajo de acotar por rol, en tres pantallas.
+   Un solo change de autorización, no tres parches.
+5. **T-01, T-13**: las dos son configuración por examen con default nuevo. Entran juntas
+   y son baratas.
+6. **T-14 y T-03** juntas: si se hace la página propia por comisión, el export vive ahí.
+7. **T-05, T-06, T-15**: independientes, entran cuando haya lugar.
+8. **T-10** al final, con su propio change, y **T-12** pegada atrás para no escribir la
    validación dos veces.
 
 ## Preguntas abiertas
 
-Las cuatro que bloqueaban quedaron definidas por el dueño el 22/8/2026 y están escritas
-en cada task: T-01 (publicar cuando el docente quiera, default `nunca`), T-05 (replicado
-por comisión), T-07 (el profesor no emite veredicto), T-10 y T-11 (unificadas en el
-modelo de sorteo de Moodle).
+Ninguna bloquea. Todas quedaron definidas por el dueño el 22/8/2026 y están escritas en
+cada task: T-01 (default `nunca` más botón de publicar), T-05 (replicado por comisión),
+T-07 (el profesor no emite veredicto, el coordinador conserva todo), T-10 y T-11
+(unificadas en el modelo de sorteo de Moodle), T-13 (eventos ocultos por defecto).
 
-Queda una sola por confirmar al implementar T-07: qué capacidades conserva COORDINADOR
-sobre creación de exámenes, banco y estadísticas, marcadas con `?` en la tabla.
+Lo único a decidir al implementar es si T-14 se resuelve con acordeón o con página propia
+por comisión, porque de eso depende dónde vive el export de T-03.
