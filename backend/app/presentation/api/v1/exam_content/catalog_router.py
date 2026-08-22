@@ -334,6 +334,7 @@ def create_exam_content_router(
         materia_id: str = Form(...),
         file: UploadFile = File(...),
         categorias_excluidas: str | None = Form(default=None),
+        categoria_padre_id: str | None = Form(default=None),
         principal: AuthenticatedPrincipal = Depends(get_current_principal),
     ) -> ImportarBancoXmlResponse:
         await _exigir_pertenencia_materia(principal, materia_id)
@@ -362,11 +363,34 @@ def create_exam_content_router(
                 ) from exc
 
         from app.application.exam_content.import_service import importar_banco_desde_xml
+        from app.infrastructure.persistence.repositories.categoria_pregunta import (
+            CategoriaPreguntaSqlRepository,
+        )
 
         async with session_factory() as session:
             try:
+                # categoria_padre_id es una categoría YA EXISTENTE elegida por el
+                # docente (no un nombre tipeado): validamos que exista y sea de
+                # ESTA materia antes de anidar nada ahí — evita que un id de otra
+                # materia (typo/copy-paste) mezcle bancos de preguntas ajenos.
+                if categoria_padre_id:
+                    cat_repo = CategoriaPreguntaSqlRepository(session)
+                    destino = await cat_repo.obtener(categoria_padre_id)
+                    if destino is None or destino.materia_id != materia_id:
+                        raise HTTPException(
+                            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            detail={
+                                "error": "categoria_padre_invalida",
+                                "mensaje": "La categoría de destino no existe o pertenece a otra materia.",
+                            },
+                        )
+
                 report = await importar_banco_desde_xml(
-                    session, xml_bytes, materia_id, categorias_excluidas=excluidas_set
+                    session,
+                    xml_bytes,
+                    materia_id,
+                    categorias_excluidas=excluidas_set,
+                    categoria_padre_id=categoria_padre_id,
                 )
                 await session.commit()
             except MoodleXmlInvalidoError as exc:

@@ -213,12 +213,20 @@ export async function importarBancoXml(
   materiaId: string,
   file: File,
   categoriasExcluidas?: string[][],
+  categoriaPadreId?: string | null,
 ): Promise<ImportarBancoXmlResult> {
   const formData = new FormData();
   formData.append('materia_id', materiaId);
   formData.append('file', file);
   if (categoriasExcluidas && categoriasExcluidas.length > 0) {
     formData.append('categorias_excluidas', JSON.stringify(categoriasExcluidas));
+  }
+  // Bug real (2026-08-21, campus FRM): Moodle nunca exporta una categoría
+  // propia para el nodo "top" — las subcategorías quedaban sueltas sin padre
+  // común. categoria_padre_id (una categoría YA EXISTENTE elegida en un
+  // selector, no tipeada) anida todo el XML ahí.
+  if (categoriaPadreId) {
+    formData.append('categoria_padre_id', categoriaPadreId);
   }
 
   const res = await fetch(`${API_BASE}/exam-content/banco/importar-xml`, {
