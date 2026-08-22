@@ -3,10 +3,14 @@
  *
  * Cada hueco (blank) puede ser:
  *  - MULTICHOICE / multichoice_nocase → <select> con las opciones disponibles
+ *  - MATCHING (C-78, emparejamiento)  → <select> igual que multichoice — el
+ *    pool de respuestas de toda la pregunta, se elige por id
  *  - SHORTANSWER / shortanswer        → <input type="text"> libre
  *
  * El texto se arma concatenando texto_antes + control + texto_despues de cada blank
- * en orden, produciendo un flujo inline con los controles embebidos.
+ * en orden, produciendo un flujo inline con los controles embebidos. matching y
+ * shortanswer standalone (C-78) llegan normalizados a este mismo modelo desde el
+ * backend (moodle_parser.py) — nada de esto necesita distinguir su origen.
  */
 
 import type { BlankRendicion } from '../../lib/examTakingApi';
@@ -27,7 +31,8 @@ export function PreguntaCloze({ blanks, respuestas, onRespuesta }: Props) {
       {ordenados.map((blank, idx) => {
         const tipoNorm = blank.tipo.toLowerCase();
         const valor = respuestas[blank.id] ?? '';
-        const esMultichoice = tipoNorm === 'multichoice' || tipoNorm === 'multichoice_nocase';
+        const esMultichoice =
+          tipoNorm === 'multichoice' || tipoNorm === 'multichoice_nocase' || tipoNorm === 'matching';
         const seleccionado = valor !== '';
         const esUltimo = idx === ordenados.length - 1;
 

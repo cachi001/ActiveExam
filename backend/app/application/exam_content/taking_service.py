@@ -53,8 +53,10 @@ class PreguntaRendicion:
 
 # Tipos de blank donde el alumno ELIGE de una lista. En el resto (shortanswer,
 # numerical) escribe libremente y las opciones son las respuestas aceptadas: D3
-# prohíbe mandarlas.
-_BLANK_CON_OPCIONES = ("multichoice", "multichoice_nocase", "multiresponse")
+# prohíbe mandarlas. "matching" (C-78, emparejamiento) TAMBIÉN elige de una
+# lista (el pool de respuestas de la pregunta) — sin esto, el <select> del
+# alumno llegaría vacío y la pregunta sería imposible de responder.
+_BLANK_CON_OPCIONES = ("multichoice", "multichoice_nocase", "multiresponse", "matching")
 
 
 def _proyectar_blank(blank) -> BlankRendicion:

@@ -181,7 +181,9 @@ async def _calcular_fraccion_cloze(
 # En un blank MULTICHOICE el alumno elige de una lista y manda el id de la opción.
 # En SHORTANSWER/NUMERICAL escribe libre y manda TEXTO: ahí las opciones de la DB
 # son las respuestas ACEPTADAS y hay que comparar contra su texto, no contra su id.
-_BLANK_ELIGE_OPCION = ("multichoice", "multichoice_nocase", "multiresponse")
+# "matching" (C-78, emparejamiento) también elige de una lista (el pool de
+# respuestas de la pregunta) — mismo criterio que multichoice, por id.
+_BLANK_ELIGE_OPCION = ("multichoice", "multichoice_nocase", "multiresponse", "matching")
 
 
 async def _blank_acertado(

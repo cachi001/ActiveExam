@@ -293,8 +293,11 @@ async def obtener_revision(
                     alguno_respondido = True
                 respuesta_alumno_texto: str | None = None
                 blank_correcto = False
-                if blank.tipo == "multichoice":
-                    # valor = UUID de la OpcionClozeBlancoModel elegida
+                if blank.tipo in ("multichoice", "matching"):
+                    # valor = UUID de la OpcionClozeBlancoModel elegida. "matching"
+                    # (C-78) resuelve por id igual que multichoice — ver
+                    # grade_calculator._BLANK_ELIGE_OPCION (misma decisión, dos
+                    # lugares: esta query re-implementa el cálculo para mostrarlo).
                     opciones_blank = opciones_cloze_por_blank.get(blank.id, [])
                     elegida_opcion = next((oc for oc in opciones_blank if oc.id == valor), None)
                     if elegida_opcion is not None:

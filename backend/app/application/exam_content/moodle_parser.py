@@ -1,8 +1,9 @@
-"""Parser de Moodle XML → estructuras de dominio de exam_content (C-69, C-74).
+"""Parser de Moodle XML → estructuras de dominio de exam_content (C-69, C-74, C-78).
 
 Soporta: multichoice, truefalse, cloze/multianswer, ddwtos (arrastrar y soltar
-en texto — se parsea al mismo modelo de blanks que cloze, ver más abajo).
-Omite: essay, matching y cualquier otro tipo desconocido.
+en texto), matching (emparejamiento) y shortanswer (respuesta corta) — estos
+tres últimos se parsean al mismo modelo de blanks que cloze, ver más abajo.
+Omite: essay, numerical, description y cualquier otro tipo desconocido.
 Trackea: category → categoria_ruta por pregunta (C-74 §2.2).
 
 Cloze (C-74 §5):
@@ -25,6 +26,27 @@ ddwtos (drag and drop into text):
   mismo modelo de datos, misma UI de rendición, misma corrección server-side que
   un cloze común; ddwtos es solo un formato de origen distinto.
 
+matching (emparejamiento, C-78):
+  Cada <subquestion> es un par estímulo/respuesta (<subquestion><text>...</text>
+  <answer><text>...</text></answer></subquestion>), SIN placeholders embebidos
+  en el questiontext (a diferencia de cloze/ddwtos) — la instrucción general y
+  los pares viven completamente separados. Se normaliza a `tipo="cloze"` con UN
+  blank tipo="matching" POR PAR: cada blank ofrece como opciones el POOL
+  COMPLETO de respuestas de la pregunta (igual que Moodle, que baraja las
+  respuestas entre todos los pares), con una única opción marcada correcta —
+  la de SU PAR. Se resuelve por id, igual que un blank multichoice
+  (`grade_calculator._BLANK_ELIGE_OPCION` incluye "matching"). texto_antes de
+  cada blank lleva el estímulo (columna izquierda); menos de 2 pares válidos
+  no es un emparejamiento real → se omite.
+
+shortanswer (respuesta corta, C-78):
+  Preguntas de texto libre con una lista plana de <answer fraction="N"> (igual
+  forma que multichoice/truefalse, sin <subquestion>). Se normaliza a un cloze
+  de UN SOLO blank tipo="shortanswer" — reusa completo el modelo de blank de
+  texto libre que ya existe para cloze real (grading case-insensitive contra
+  las opciones marcadas es_correcta, sin ningún cambio en esa rama). Sin
+  ninguna respuesta con fraction>0 no hay nada aceptable → se omite.
+
 _strip_html elimina <tags> pero NO toca {N:TYPE:...} ni [[N]] (usan {} y [[ ]],
 no <>) — los placeholders de cloze y ddwtos sobreviven intactos al strip.
 """
@@ -38,7 +60,9 @@ from dataclasses import dataclass, field
 
 from app.application.exam_content.errors import MoodleXmlInvalidoError, MoodleXmlVacioError
 
-_TIPOS_SOPORTADOS = frozenset({"multichoice", "truefalse", "cloze", "multianswer", "ddwtos"})
+_TIPOS_SOPORTADOS = frozenset(
+    {"multichoice", "truefalse", "cloze", "multianswer", "ddwtos", "matching", "shortanswer"}
+)
 
 _RE_BLANK = re.compile(r"\{(\d+):(MULTICHOICE_S|MULTICHOICE|SHORTANSWER):([^}]*)\}", re.IGNORECASE)
 _RE_OPT_PESO = re.compile(r"^%(\d+)%(.*)$", re.DOTALL)
@@ -238,6 +262,22 @@ def parse_moodle_xml(xml_bytes: bytes) -> ParseResult:
                 )
             else:
                 preguntas.append(parsed)
+        elif tipo == "matching":
+            parsed = _parse_matching(question, categoria_activa, len(preguntas))
+            if parsed is None:
+                omitidas.append(
+                    PreguntaOmitida(tipo=tipo, nombre=f"{nombre} (menos de 2 pares válidos)")
+                )
+            else:
+                preguntas.append(parsed)
+        elif tipo == "shortanswer":
+            parsed = _parse_shortanswer(question, categoria_activa, len(preguntas))
+            if parsed is None:
+                omitidas.append(
+                    PreguntaOmitida(tipo=tipo, nombre=f"{nombre} (sin respuesta correcta)")
+                )
+            else:
+                preguntas.append(parsed)
         else:
             enunciado = _parse_enunciado(question)
             opciones = _parse_opciones(question, tipo)
@@ -341,6 +381,114 @@ def _parse_ddwtos(
         orden=orden,
         categoria_ruta=list(categoria_activa) if categoria_activa else None,
         blanks=blanks,
+    )
+
+
+def _parse_matching(
+    question: ET.Element,
+    categoria_activa: list[str] | None,
+    orden: int,
+) -> PreguntaData | None:
+    """Parsea una pregunta matching a blanks tipo "matching" (ver docstring
+    del módulo). None si hay menos de 2 pares estímulo/respuesta válidos —
+    con uno solo no hay nada que emparejar.
+    """
+    instruccion_el = question.find("questiontext/text")
+    instruccion_raw = instruccion_el.text if instruccion_el is not None and instruccion_el.text else ""
+    instruccion = _strip_html(instruccion_raw)
+
+    pares: list[tuple[str, str]] = []
+    for sub in question.findall("subquestion"):
+        estimulo_el = sub.find("text")
+        estimulo_raw = estimulo_el.text if estimulo_el is not None and estimulo_el.text else ""
+        estimulo = _strip_html(estimulo_raw)
+        respuesta_el = sub.find("answer/text")
+        respuesta_raw = respuesta_el.text if respuesta_el is not None and respuesta_el.text else ""
+        respuesta = html.unescape(respuesta_raw.strip())
+        if estimulo and respuesta:
+            pares.append((estimulo, respuesta))
+
+    if len(pares) < 2:
+        return None
+
+    pool_respuestas = [r for _, r in pares]
+    blanks: list[BlankData] = []
+    for i, (estimulo, respuesta_correcta) in enumerate(pares):
+        opciones = [
+            OpcionClozeDato(
+                texto=texto,
+                es_correcta=(texto == respuesta_correcta),
+                peso=100 if texto == respuesta_correcta else 0,
+                orden=j,
+            )
+            for j, texto in enumerate(pool_respuestas)
+        ]
+        prefijo = f"{instruccion}\n\n" if i == 0 else "\n"
+        blanks.append(
+            BlankData(
+                orden=i,
+                tipo="matching",
+                texto_antes=f"{prefijo}{estimulo}:  ",
+                texto_despues="",
+                opciones=opciones,
+            )
+        )
+
+    return PreguntaData(
+        enunciado=instruccion,
+        tipo="cloze",
+        opciones=[],
+        orden=orden,
+        categoria_ruta=list(categoria_activa) if categoria_activa else None,
+        blanks=blanks,
+    )
+
+
+def _parse_shortanswer(
+    question: ET.Element,
+    categoria_activa: list[str] | None,
+    orden: int,
+) -> PreguntaData | None:
+    """Parsea una pregunta shortanswer a un cloze de UN blank tipo
+    "shortanswer" (ver docstring del módulo). None si ninguna respuesta tiene
+    fraction > 0 — sin eso no hay nada aceptable que comparar.
+    """
+    text_el = question.find("questiontext/text")
+    raw_text = text_el.text if text_el is not None and text_el.text else ""
+    enunciado = _strip_html(raw_text)
+
+    opciones: list[OpcionClozeDato] = []
+    for j, answer in enumerate(question.findall("answer")):
+        fraction_str = answer.get("fraction", "0")
+        try:
+            fraction = float(fraction_str)
+        except ValueError:
+            fraction = 0.0
+        texto_el = answer.find("text")
+        raw = texto_el.text if texto_el is not None and texto_el.text else ""
+        texto = html.unescape(raw.strip())
+        if texto:
+            opciones.append(
+                OpcionClozeDato(texto=texto, es_correcta=fraction > 0, peso=int(fraction), orden=j)
+            )
+
+    if not any(o.es_correcta for o in opciones):
+        return None
+
+    blank = BlankData(
+        orden=0,
+        tipo="shortanswer",
+        texto_antes=f"{enunciado}\n\n" if enunciado else "",
+        texto_despues="",
+        opciones=opciones,
+    )
+    return PreguntaData(
+        enunciado=enunciado,
+        tipo="cloze",
+        opciones=[],
+        orden=orden,
+        categoria_ruta=list(categoria_activa) if categoria_activa else None,
+        blanks=[blank],
     )
 
 
