@@ -26,6 +26,7 @@ import {
 } from '../../lib/examContentAdmin';
 import type { Materia, Comision } from '../../lib/types';
 
+import { fetchAutenticado } from '../../lib/fetchAutenticado';
 export interface ImportExamModalProps {
   abierto: boolean;
   onCerrar: () => void;
@@ -208,7 +209,7 @@ export function ImportExamModal({ abierto, onCerrar, onImportado }: ImportExamMo
       if (cmid.trim()) formData.append('moodle_cmid', cmid.trim());
 
       const token = authProvider.getToken();
-      const resp = await fetch(`${API_BASE}/exam-content/moodle-import`, {
+      const resp = await fetchAutenticado(`${API_BASE}/exam-content/moodle-import`, {
         method: 'POST',
         // No seteamos Content-Type: el browser fija el boundary del multipart.
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,

@@ -10,6 +10,7 @@ import type { AuthProvider, AuthStatus } from './auth/provider';
 import { API_BASE, resetEnrollmentCache } from './api';
 import { useApp } from './store';
 
+import { fetchAutenticado } from './fetchAutenticado';
 export type { AuthStatus };
 
 /**
@@ -34,7 +35,7 @@ async function fetchMyName(
   const token = provider.getToken();
   if (!token) return null;
   try {
-    const res = await fetch(`${API_BASE}/auth/me`, {
+    const res = await fetchAutenticado(`${API_BASE}/auth/me`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!res.ok) return null;

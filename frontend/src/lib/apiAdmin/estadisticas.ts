@@ -3,6 +3,7 @@
 // ningun metodo usa `this`.
 import { API_BASE, realFetch } from '../apiCore';
 import { authProvider } from '../authProvider';
+import { fetchAutenticado } from '../fetchAutenticado';
 import type {
   ResumenStats, FiltrosStats, AuditLogResponse, AuditFiltros,
 } from '../types';
@@ -24,7 +25,7 @@ function statsQuery(filtros?: FiltrosStats): string {
  * PROPAGA (no descarga un archivo vacío). */
 async function descargarStats(path: string, filtros?: FiltrosStats): Promise<Blob> {
   const token = authProvider.getToken();
-  const res = await fetch(`${API_BASE}${path}${statsQuery(filtros)}`, {
+  const res = await fetchAutenticado(`${API_BASE}${path}${statsQuery(filtros)}`, {
     method: 'GET',
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
@@ -109,7 +110,7 @@ export const estadisticasApi = {
     if (filtros?.hasta) p.set('hasta', filtros.hasta);
     const qs = p.toString();
     const token = authProvider.getToken();
-    const res = await fetch(
+    const res = await fetchAutenticado(
       `${API_BASE}/admin/audit-log/export.${formato}${qs ? `?${qs}` : ''}`,
       { method: 'GET', headers: token ? { Authorization: `Bearer ${token}` } : {} },
     );

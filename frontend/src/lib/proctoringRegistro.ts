@@ -11,6 +11,7 @@
  */
 import type { SesionProctoringResumen } from './types';
 
+import { fetchAutenticado } from './fetchAutenticado';
 export interface RegistroSesionesPaginado {
   items: SesionProctoringResumen[];
   total: number;
@@ -85,7 +86,7 @@ export async function listarRegistroSesionesFn(
   if (params.page_size !== undefined) qs.set('page_size', String(params.page_size));
   const qStr = qs.toString();
   const url = `${apiBase}/proctoring/sessions/registro${qStr ? '?' + qStr : ''}`;
-  const res = await fetch(url, { method: 'GET', headers: authHeaders(token) });
+  const res = await fetchAutenticado(url, { method: 'GET', headers: authHeaders(token) });
   await lanzarSiError(res);
   return res.json() as Promise<RegistroSesionesPaginado>;
 }
@@ -98,7 +99,7 @@ export async function listarExamenesConSesionesFn(
   apiBase: string,
   token: string | undefined,
 ): Promise<ExamenConSesiones[]> {
-  const res = await fetch(`${apiBase}/proctoring/sessions/registro/examenes`, {
+  const res = await fetchAutenticado(`${apiBase}/proctoring/sessions/registro/examenes`, {
     method: 'GET',
     headers: authHeaders(token),
   });
@@ -118,7 +119,7 @@ export async function eliminarSesionTestFn(
   token: string | undefined,
   sessionId: string,
 ): Promise<void> {
-  const res = await fetch(`${apiBase}/proctoring/sessions/${encodeURIComponent(sessionId)}`, {
+  const res = await fetchAutenticado(`${apiBase}/proctoring/sessions/${encodeURIComponent(sessionId)}`, {
     method: 'DELETE',
     headers: authHeaders(token),
   });

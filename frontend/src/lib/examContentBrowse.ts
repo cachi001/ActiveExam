@@ -9,6 +9,7 @@
 
 import type { Materia, Comision, ComisionConMateria, ExamenContenidoResumen } from './types';
 
+import { fetchAutenticado } from './fetchAutenticado';
 function buildHeaders(token: string | undefined): HeadersInit {
   return {
     'Content-Type': 'application/json',
@@ -18,7 +19,7 @@ function buildHeaders(token: string | undefined): HeadersInit {
 
 async function getJson<T>(url: string, token: string | undefined): Promise<T[]> {
   try {
-    const res = await fetch(url, { method: 'GET', headers: buildHeaders(token) });
+    const res = await fetchAutenticado(url, { method: 'GET', headers: buildHeaders(token) });
     if (!res.ok) return [];
     return (await res.json()) as T[];
   } catch {
@@ -86,7 +87,7 @@ export async function inscribirmePorCodigoFn(
   token: string | undefined,
   codigoMatriculacion: string,
 ): Promise<InscripcionPorCodigoResult> {
-  const res = await fetch(`${apiBase}/exam-content/inscribirme`, {
+  const res = await fetchAutenticado(`${apiBase}/exam-content/inscribirme`, {
     method: 'POST',
     headers: buildHeaders(token),
     body: JSON.stringify({ codigo_matriculacion: codigoMatriculacion }),

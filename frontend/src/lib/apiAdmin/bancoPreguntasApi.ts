@@ -13,6 +13,7 @@
 import { authProvider } from '../authProvider';
 import { API_BASE } from '../api';
 
+import { fetchAutenticado } from '../fetchAutenticado';
 export interface CategoriaPregunta {
   id: string;
   nombre: string;
@@ -43,7 +44,7 @@ function headers() {
 }
 
 export async function listarCategorias(materiaId: string): Promise<CategoriaPregunta[]> {
-  const res = await fetch(
+  const res = await fetchAutenticado(
     `${API_BASE}/exam-content/categorias?materia_id=${encodeURIComponent(materiaId)}`,
     { headers: headers() },
   );
@@ -56,7 +57,7 @@ export async function crearCategoria(payload: {
   nombre: string;
   categoria_padre_id?: string | null;
 }): Promise<CategoriaPregunta> {
-  const res = await fetch(`${API_BASE}/exam-content/categorias`, {
+  const res = await fetchAutenticado(`${API_BASE}/exam-content/categorias`, {
     method: 'POST',
     headers: headers(),
     body: JSON.stringify(payload),
@@ -69,7 +70,7 @@ export async function renombrarCategoria(
   categoriaId: string,
   nombre: string,
 ): Promise<CategoriaPregunta> {
-  const res = await fetch(`${API_BASE}/exam-content/categorias/${encodeURIComponent(categoriaId)}`, {
+  const res = await fetchAutenticado(`${API_BASE}/exam-content/categorias/${encodeURIComponent(categoriaId)}`, {
     method: 'PATCH',
     headers: headers(),
     body: JSON.stringify({ nombre }),
@@ -87,7 +88,7 @@ export async function moverCategoria(
   categoriaId: string,
   nuevoPadreId: string | null,
 ): Promise<CategoriaPregunta> {
-  const res = await fetch(`${API_BASE}/exam-content/categorias/${encodeURIComponent(categoriaId)}`, {
+  const res = await fetchAutenticado(`${API_BASE}/exam-content/categorias/${encodeURIComponent(categoriaId)}`, {
     method: 'PATCH',
     headers: headers(),
     body: JSON.stringify({ categoria_padre_id: nuevoPadreId }),
@@ -104,7 +105,7 @@ export async function moverCategoria(
 }
 
 export async function borrarCategoria(categoriaId: string): Promise<void> {
-  const res = await fetch(
+  const res = await fetchAutenticado(
     `${API_BASE}/exam-content/categorias/${encodeURIComponent(categoriaId)}`,
     { method: 'DELETE', headers: headers() },
   );
@@ -118,7 +119,7 @@ export async function listarPreguntasBanco(
   const params = new URLSearchParams({ materia_id: materiaId });
   if (categoriaId) params.set('categoria_id', categoriaId);
   else params.set('sin_categoria', 'true');
-  const res = await fetch(`${API_BASE}/exam-content/preguntas?${params}`, {
+  const res = await fetchAutenticado(`${API_BASE}/exam-content/preguntas?${params}`, {
     headers: headers(),
   });
   if (!res.ok) throw new Error(`Error ${res.status} al listar preguntas`);
@@ -129,7 +130,7 @@ export async function moverPreguntaCategoria(
   preguntaId: string,
   categoriaId: string | null,
 ): Promise<void> {
-  const res = await fetch(
+  const res = await fetchAutenticado(
     `${API_BASE}/exam-content/preguntas/${encodeURIComponent(preguntaId)}/categoria`,
     {
       method: 'PATCH',
@@ -166,7 +167,7 @@ export interface CrearDesdebancoResponse {
 export async function crearDesdeBanco(
   payload: CrearDesdebancoRequest,
 ): Promise<CrearDesdebancoResponse> {
-  const res = await fetch(`${API_BASE}/exam-content/crear-desde-banco`, {
+  const res = await fetchAutenticado(`${API_BASE}/exam-content/crear-desde-banco`, {
     method: 'POST',
     headers: headers(),
     body: JSON.stringify(payload),
@@ -229,7 +230,7 @@ export async function importarBancoXml(
     formData.append('categoria_padre_id', categoriaPadreId);
   }
 
-  const res = await fetch(`${API_BASE}/exam-content/banco/importar-xml`, {
+  const res = await fetchAutenticado(`${API_BASE}/exam-content/banco/importar-xml`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${authProvider.getToken()}` },
     body: formData,
@@ -271,7 +272,7 @@ export async function previewImportarBancoXml(file: File): Promise<PreviewImport
   const formData = new FormData();
   formData.append('file', file);
 
-  const res = await fetch(`${API_BASE}/exam-content/banco/importar-xml/preview`, {
+  const res = await fetchAutenticado(`${API_BASE}/exam-content/banco/importar-xml/preview`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${authProvider.getToken()}` },
     body: formData,

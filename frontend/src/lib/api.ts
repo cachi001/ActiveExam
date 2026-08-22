@@ -25,6 +25,7 @@ import { adminApi } from './apiAdmin';
 import { enrollmentApi } from './apiEnrollment';
 import { alumnoApi } from './apiAlumno';
 
+import { fetchAutenticado } from './fetchAutenticado';
 // Re-export para compat: consumidores importaban estos desde './api'.
 export {
   API_BASE, DESAFIOS,
@@ -97,7 +98,7 @@ export const api = {
     //   - Error('HTTP 500') -> error interno de descifrado
     //   - Otros -> error de red
     const token = authProvider.getToken();
-    const res = await fetch(`${API_BASE}/proctoring/biometria/verificar-referencia`, {
+    const res = await fetchAutenticado(`${API_BASE}/proctoring/biometria/verificar-referencia`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

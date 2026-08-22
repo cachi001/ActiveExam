@@ -9,6 +9,7 @@
 
 import type { ExamenContenidoResumen } from './types';
 
+import { fetchAutenticado } from './fetchAutenticado';
 // Enum de dominio CERRADO — espeja WritebackEstado (backend/app/application/moodle/
 // writeback_service.py) + el alias de display ESTADO_SIN_TOKEN (resultados_query.py).
 // Las etiquetas legibles de estos 4 valores tienen fuente única en el backend:
@@ -126,7 +127,7 @@ export async function listarResultadosFn(
   if (params.page_size !== undefined) qs.set('page_size', String(params.page_size));
   const qStr = qs.toString();
   const url = `${apiBase}/exam-content/${encodeURIComponent(examenId)}/resultados${qStr ? '?' + qStr : ''}`;
-  const res = await fetch(url, { method: 'GET', headers: authHeaders(token) });
+  const res = await fetchAutenticado(url, { method: 'GET', headers: authHeaders(token) });
   if (!res.ok) {
     const err = new Error(`HTTP ${res.status}`) as Error & { status?: number };
     err.status = res.status;
@@ -154,7 +155,7 @@ export async function sincronizarMoodleFn(
   sessionIds?: string[],
 ): Promise<SincronizarMoodleResponse> {
   const hasIds = sessionIds && sessionIds.length > 0;
-  const res = await fetch(
+  const res = await fetchAutenticado(
     `${apiBase}/exam-content/${encodeURIComponent(examenId)}/sincronizar-moodle`,
     {
       method: 'POST',
@@ -183,7 +184,7 @@ export async function archivarResultadoFn(
   sessionId: string,
   archivado: boolean,
 ): Promise<{ session_id: string; archivado: boolean }> {
-  const res = await fetch(
+  const res = await fetchAutenticado(
     `${apiBase}/exam-content/${encodeURIComponent(examenId)}/resultados/${encodeURIComponent(sessionId)}/archivar`,
     {
       method: 'PATCH',
@@ -210,7 +211,7 @@ export async function getExamenHeaderFn(
   token: string | undefined,
   examenId: string,
 ): Promise<ExamenContenidoResumen> {
-  const res = await fetch(
+  const res = await fetchAutenticado(
     `${apiBase}/exam-content/${encodeURIComponent(examenId)}/resumen`,
     { method: 'GET', headers: authHeaders(token) },
   );

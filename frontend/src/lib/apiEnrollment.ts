@@ -12,6 +12,7 @@ import {
 import { authProvider } from './authProvider';
 import type { EstadoEnrollment, EscaneDNI, ReferenciasBiometrica } from './types';
 
+import { fetchAutenticado } from './fetchAutenticado';
 export const enrollmentApi = {
   // -------------------------------------------------------------------------
   // Enrollment biométrico del perfil — C-22
@@ -122,7 +123,7 @@ export const enrollmentApi = {
    */
   async solicitarViaAlternativa(examId: string): Promise<{ estado: string; puede_rendir: boolean }> {
     const token = authProvider.getToken?.() ?? '';
-    const resp = await fetch(`${API_BASE}/consent/alternative`, {
+    const resp = await fetchAutenticado(`${API_BASE}/consent/alternative`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ exam_id: examId }),
@@ -137,7 +138,7 @@ export const enrollmentApi = {
    */
   async estadoViaAlternativa(examId: string): Promise<{ estado: string } | null> {
     const token = authProvider.getToken?.() ?? '';
-    const resp = await fetch(`${API_BASE}/consent/gate?exam_id=${encodeURIComponent(examId)}`, {
+    const resp = await fetchAutenticado(`${API_BASE}/consent/gate?exam_id=${encodeURIComponent(examId)}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!resp.ok) return null;

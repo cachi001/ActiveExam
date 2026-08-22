@@ -8,6 +8,7 @@
 
 import type { ExamenContenidoResumen } from './types';
 
+import { fetchAutenticado } from './fetchAutenticado';
 /** Respuesta paginada del catálogo (C-69 admin-sync, tarea 4). */
 export interface CatalogoExamenesPaginado {
   items: ExamenContenidoResumen[];
@@ -35,7 +36,7 @@ export async function listarExamenesContenidoFn(
   strict = false,
 ): Promise<ExamenContenidoResumen[]> {
   try {
-    const res = await fetch(`${apiBase}/exam-content`, {
+    const res = await fetchAutenticado(`${apiBase}/exam-content`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -86,7 +87,7 @@ export async function listarExamenesContenidoPaginadoFn(
     page_size: params.page_size ?? 25,
   };
   try {
-    const res = await fetch(`${apiBase}/exam-content${qStr ? '?' + qStr : ''}`, {
+    const res = await fetchAutenticado(`${apiBase}/exam-content${qStr ? '?' + qStr : ''}`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
