@@ -45,7 +45,7 @@ def _principal(roles: tuple[Rol, ...], subject: str | None = "u1") -> Authentica
 def test_docente_miembro_de_la_materia_pasa():
     """GREEN: si el repo resolvió que SÍ dicta alguna comisión de la materia, pasa."""
     autorizar_docente_sobre_materia(
-        _principal((Rol.TUTOR,)), es_docente_de_alguna_comision_de_la_materia=True
+        _principal((Rol.TUTOR,)), tiene_pertenencia=True
     )
 
 
@@ -55,21 +55,21 @@ def test_docente_no_miembro_de_la_materia_es_rechazado():
     docente real por casualidad de qué comisión devolvía la query primero."""
     with pytest.raises(ForbiddenError):
         autorizar_docente_sobre_materia(
-            _principal((Rol.TUTOR,)), es_docente_de_alguna_comision_de_la_materia=False
+            _principal((Rol.TUTOR,)), tiene_pertenencia=False
         )
 
 
 def test_admin_no_esta_limitado_por_pertenencia_de_materia():
     """TRIANGULATE: alcance institucional no depende del booleano de membresía."""
     autorizar_docente_sobre_materia(
-        _principal((Rol.ADMIN_SISTEMA,)), es_docente_de_alguna_comision_de_la_materia=False
+        _principal((Rol.ADMIN_SISTEMA,)), tiene_pertenencia=False
     )
 
 
 def test_sin_rol_tutor_ni_institucional_es_rechazado():
     with pytest.raises(ForbiddenError):
         autorizar_docente_sobre_materia(
-            _principal((Rol.ESTUDIANTE,)), es_docente_de_alguna_comision_de_la_materia=True
+            _principal((Rol.ESTUDIANTE,)), tiene_pertenencia=True
         )
 
 
@@ -80,7 +80,7 @@ def test_sin_rol_tutor_ni_institucional_es_rechazado():
 
 def test_docente_dueno_de_la_comision_pasa():
     autorizar_docente_sobre_comision(
-        _principal((Rol.TUTOR,), subject="doc-2"), docente_id_de_la_comision="doc-2"
+        _principal((Rol.TUTOR,), subject="doc-2"), tiene_pertenencia=True
     )
 
 
@@ -90,7 +90,7 @@ def test_docente_de_otra_comision_es_rechazado():
     with pytest.raises(ForbiddenError):
         autorizar_docente_sobre_comision(
             _principal((Rol.TUTOR,), subject="doc-2-comision-2"),
-            docente_id_de_la_comision="doc-1-comision-1",
+            tiene_pertenencia=False,
         )
 
 
@@ -98,11 +98,11 @@ def test_comision_sin_docente_no_la_reclama_un_docente():
     with pytest.raises(ForbiddenError):
         autorizar_docente_sobre_comision(
             _principal((Rol.TUTOR,), subject="cualquiera"),
-            docente_id_de_la_comision=None,
+            tiene_pertenencia=False,
         )
 
 
 def test_admin_no_esta_limitado_por_pertenencia_de_comision():
     autorizar_docente_sobre_comision(
-        _principal((Rol.ADMIN_SISTEMA,)), docente_id_de_la_comision="cualquier-docente"
+        _principal((Rol.ADMIN_SISTEMA,)), tiene_pertenencia=False
     )

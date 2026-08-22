@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import uuid
+
 from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,12 +36,34 @@ from app.infrastructure.persistence.models.exam_content import (
     PreguntaClozeBlankModel,
     PreguntaExamenModel,
 )
+from app.infrastructure.persistence.models.comision_tutor import (
+    ComisionTutorModel,
+    MateriaCoordinadorModel,
+)
 from app.infrastructure.persistence.models.inscripcion import InscripcionModel
 from app.infrastructure.persistence.models.transactional import UsuarioModel
 
 # SQLSTATE de Postgres para "unique_violation". Otras violaciones de integridad
 # (p. ej. foreign_key_violation 23503) NO se mapean a "duplicado": se re-elevan.
 _PG_UNIQUE_VIOLATION = "23505"
+
+
+def _es_uuid(valor: str | None) -> bool:
+    """True si el valor puede compararse contra una columna UUID.
+
+    Las columnas de id son UUID en Postgres, así que comparar contra un `sub` de
+    token que NO sea un UUID (identidad federada con formato propio, token
+    malformado) revienta con un DataError de asyncpg — o sea, un 500 en la cara
+    del usuario donde correspondía un 403 limpio. Un id que no puede existir en la
+    tabla simplemente NO tiene pertenencia: se responde False sin ir a la base.
+    """
+    if not valor:
+        return False
+    try:
+        uuid.UUID(str(valor))
+    except (ValueError, AttributeError, TypeError):
+        return False
+    return True
 
 # --- Orden alfabético en castellano, independiente del contenedor ------------
 # `ORDER BY <texto>` usa la colación de la base, que depende de la libc de la
@@ -805,22 +829,125 @@ class MateriaSqlRepository:
             await self._db.flush()
         return borrado
 
-    async def materias_a_cargo(self, docente_id: str) -> list[Materia]:
-        """Materias (distintas) donde el docente dado dicta alguna comisión (C-73 §9).
+    async def materias_a_cargo(self, tutor_id: str) -> list[Materia]:
+        """Materias (distintas) donde el tutor dado dicta alguna comisión (C-73 §9).
 
-        Contraparte de ``InscripcionSqlRepository.materias_inscriptas`` pero para
-        el rol DOCENTE — filtra por ``comision.docente_id``, no por inscripción.
+        c-79: filtra por membresía en ``comision_tutor`` (N:M) en vez de la vieja
+        igualdad ``comision.docente_id`` (1:1). Contraparte de
+        ``InscripcionSqlRepository.materias_inscriptas`` pero para el rol TUTOR.
         """
+        if not _es_uuid(tutor_id):
+            return []
         orden = _orden_alfabetico(MateriaModel.nombre).label("_orden_alfabetico")
         result = await self._db.execute(
             select(MateriaModel)
             .add_columns(orden)
             .join(ComisionModel, ComisionModel.materia_id == MateriaModel.id)
-            .where(ComisionModel.docente_id == docente_id)
+            .join(ComisionTutorModel, ComisionTutorModel.comision_id == ComisionModel.id)
+            .where(ComisionTutorModel.tutor_id == tutor_id)
             .distinct()
             .order_by(orden)
         )
         return list(result.scalars().all())
+
+    async def materias_a_cargo_coordinador(self, coordinador_id: str) -> list[Materia]:
+        """Materias donde el coordinador dado figura en ``materia_coordinador`` (c-79).
+
+        Contraparte de ``materias_a_cargo`` pero para el rol COORDINADOR — desde
+        c-79 el coordinador ya NO tiene alcance global, queda acotado a SUS
+        materias asignadas, igual que el tutor a sus comisiones.
+        """
+        if not _es_uuid(coordinador_id):
+            return []
+        orden = _orden_alfabetico(MateriaModel.nombre).label("_orden_alfabetico")
+        result = await self._db.execute(
+            select(MateriaModel)
+            .add_columns(orden)
+            .join(
+                MateriaCoordinadorModel,
+                MateriaCoordinadorModel.materia_id == MateriaModel.id,
+            )
+            .where(MateriaCoordinadorModel.coordinador_id == coordinador_id)
+            .distinct()
+            .order_by(orden)
+        )
+        return list(result.scalars().all())
+
+    async def agregar_coordinador(self, materia_id: str, coordinador_id: str) -> None:
+        """Agrega un coordinador a la materia (c-79). Idempotente: si ya está
+        asignado, no duplica (ON CONFLICT DO NOTHING vía el UNIQUE de la tabla)."""
+        from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+        stmt = (
+            pg_insert(MateriaCoordinadorModel)
+            .values(materia_id=materia_id, coordinador_id=coordinador_id)
+            .on_conflict_do_nothing(
+                index_elements=["materia_id", "coordinador_id"]
+            )
+        )
+        await self._db.execute(stmt)
+        await self._db.flush()
+
+    async def quitar_coordinador(self, materia_id: str, coordinador_id: str) -> bool:
+        """Quita un coordinador de la materia. Devuelve True si había una fila."""
+        result = await self._db.execute(
+            delete(MateriaCoordinadorModel)
+            .where(
+                MateriaCoordinadorModel.materia_id == materia_id,
+                MateriaCoordinadorModel.coordinador_id == coordinador_id,
+            )
+            .returning(MateriaCoordinadorModel.id)
+        )
+        borrado = result.scalar_one_or_none() is not None
+        if borrado:
+            await self._db.flush()
+        return borrado
+
+    async def coordinadores_de_materia(self, materia_id: str) -> list[str]:
+        """ids de los coordinadores asignados a la materia (c-79)."""
+        result = await self._db.execute(
+            select(MateriaCoordinadorModel.coordinador_id).where(
+                MateriaCoordinadorModel.materia_id == materia_id
+            )
+        )
+        return list(result.scalars().all())
+
+    async def coordinadores_de_materias(
+        self, materia_ids: list[str]
+    ) -> dict[str, list[str]]:
+        """materia_id -> ids de sus coordinadores, para un listado entero (c-79).
+
+        Una sola query para toda la lista (no N+1, mismo criterio que
+        ``nombres_de_docentes``). Las materias sin coordinador NO aparecen en el
+        dict: el llamador cae a lista vacía.
+        """
+        limpios = [i for i in dict.fromkeys(materia_ids) if i]
+        if not limpios:
+            return {}
+        result = await self._db.execute(
+            select(
+                MateriaCoordinadorModel.materia_id,
+                MateriaCoordinadorModel.coordinador_id,
+            ).where(MateriaCoordinadorModel.materia_id.in_(limpios))
+        )
+        por_materia: dict[str, list[str]] = {}
+        for materia_id, coordinador_id in result.all():
+            por_materia.setdefault(materia_id, []).append(coordinador_id)
+        return por_materia
+
+    async def es_coordinador_de_materia(self, coordinador_id: str, materia_id: str) -> bool:
+        """True si el coordinador dado está asignado a la materia (c-79)."""
+        if not (_es_uuid(coordinador_id) and _es_uuid(materia_id)):
+            return False
+        result = await self._db.execute(
+            select(MateriaCoordinadorModel.id)
+            .where(
+                MateriaCoordinadorModel.materia_id == materia_id,
+                MateriaCoordinadorModel.coordinador_id == coordinador_id,
+            )
+            .limit(1)
+        )
+        return result.scalar_one_or_none() is not None
 
 
 class ComisionSqlRepository:
@@ -922,13 +1049,13 @@ class ComisionSqlRepository:
         return [self._to_entity(m) for m in result.scalars().all()]
 
     async def listar_todas_con_materia(
-        self, docente_id: str | None = None
+        self, tutor_id: str | None = None
     ) -> list[tuple[Comision, str, str]]:
         """Todas las comisiones (join con materia), para un selector combinado
         "CÓDIGO - Materia" que no requiere elegir materia primero.
 
-        ``docente_id`` None = todas (staff); provisto = solo las comisiones que
-        dicta ese docente, across todas sus materias (C-73 §9).
+        ``tutor_id`` None = todas (staff); provisto = solo las comisiones que
+        dicta ese tutor, across todas sus materias (C-73 §9, N:M desde c-79).
         Devuelve tuplas ``(comision, materia_nombre, materia_codigo)``.
         """
         stmt = (
@@ -939,9 +1066,36 @@ class ComisionSqlRepository:
                 _orden_alfabetico(ComisionModel.nombre),
             )
         )
-        if docente_id is not None:
-            stmt = stmt.where(ComisionModel.docente_id == docente_id)
+        if tutor_id is not None:
+            stmt = stmt.join(
+                ComisionTutorModel, ComisionTutorModel.comision_id == ComisionModel.id
+            ).where(ComisionTutorModel.tutor_id == tutor_id)
         result = await self._db.execute(stmt)
+        return [
+            (self._to_entity(comision), materia_nombre, materia_codigo)
+            for comision, materia_nombre, materia_codigo in result.all()
+        ]
+
+    async def listar_todas_con_materia_coordinador(
+        self, coordinador_id: str
+    ) -> list[tuple[Comision, str, str]]:
+        """Todas las comisiones de las materias que el coordinador dado coordina
+        (c-79, N:M). Contraparte de ``listar_todas_con_materia`` para el rol
+        COORDINADOR — ya no tiene alcance global, ve las comisiones de SUS
+        materias asignadas (materia_coordinador)."""
+        result = await self._db.execute(
+            select(ComisionModel, MateriaModel.nombre, MateriaModel.codigo)
+            .join(MateriaModel, MateriaModel.id == ComisionModel.materia_id)
+            .join(
+                MateriaCoordinadorModel,
+                MateriaCoordinadorModel.materia_id == MateriaModel.id,
+            )
+            .where(MateriaCoordinadorModel.coordinador_id == coordinador_id)
+            .order_by(
+                _orden_alfabetico(MateriaModel.nombre),
+                _orden_alfabetico(ComisionModel.nombre),
+            )
+        )
         return [
             (self._to_entity(comision), materia_nombre, materia_codigo)
             for comision, materia_nombre, materia_codigo in result.all()
@@ -1056,24 +1210,74 @@ class ComisionSqlRepository:
             await self._db.flush()
         return borrado
 
-    async def asignar_docente(
-        self, comision_id: str, docente_id: str | None
-    ) -> Comision | None:
-        """Asigna (o desasigna con ``None``) el docente a cargo. C-73 §9.
+    async def agregar_tutor(self, comision_id: str, tutor_id: str) -> None:
+        """Agrega un tutor a cargo de la comisión (c-79, N:M). Idempotente: si ya
+        está asignado, no duplica (ON CONFLICT DO NOTHING vía el UNIQUE)."""
+        from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-        Devuelve ``None`` si la comisión no existe. No valida que el usuario tenga
-        rol DOCENTE: eso es regla de aplicación, no de persistencia."""
-        result = await self._db.execute(
-            update(ComisionModel)
-            .where(ComisionModel.id == comision_id)
-            .values(docente_id=docente_id)
-            .returning(ComisionModel)
+        stmt = (
+            pg_insert(ComisionTutorModel)
+            .values(comision_id=comision_id, tutor_id=tutor_id)
+            .on_conflict_do_nothing(index_elements=["comision_id", "tutor_id"])
         )
-        model = result.scalar_one_or_none()
-        if model is None:
-            return None
+        await self._db.execute(stmt)
         await self._db.flush()
-        return self._to_entity(model)
+
+    async def quitar_tutor(self, comision_id: str, tutor_id: str) -> bool:
+        """Quita un tutor de la comisión. Devuelve True si había una fila."""
+        result = await self._db.execute(
+            delete(ComisionTutorModel)
+            .where(
+                ComisionTutorModel.comision_id == comision_id,
+                ComisionTutorModel.tutor_id == tutor_id,
+            )
+            .returning(ComisionTutorModel.id)
+        )
+        borrado = result.scalar_one_or_none() is not None
+        if borrado:
+            await self._db.flush()
+        return borrado
+
+    async def tutores_de_comision(self, comision_id: str) -> list[str]:
+        """ids de los tutores a cargo de la comisión (c-79, N:M)."""
+        result = await self._db.execute(
+            select(ComisionTutorModel.tutor_id).where(
+                ComisionTutorModel.comision_id == comision_id
+            )
+        )
+        return list(result.scalars().all())
+
+    async def tiene_pertenencia_sobre_comision(
+        self, usuario_id: str, comision_id: str, *, es_coordinador: bool = False
+    ) -> bool:
+        """Pertenencia sobre una COMISIÓN puntual: tutor de esa comisión, o (si
+        ``es_coordinador``) coordinador de su materia (C-74 post-cierre, c-79)."""
+        if not (_es_uuid(usuario_id) and _es_uuid(comision_id)):
+            return False
+        if es_coordinador:
+            result = await self._db.execute(
+                select(MateriaCoordinadorModel.id)
+                .select_from(ComisionModel)
+                .join(
+                    MateriaCoordinadorModel,
+                    MateriaCoordinadorModel.materia_id == ComisionModel.materia_id,
+                )
+                .where(
+                    ComisionModel.id == comision_id,
+                    MateriaCoordinadorModel.coordinador_id == usuario_id,
+                )
+                .limit(1)
+            )
+            return result.scalar_one_or_none() is not None
+        result = await self._db.execute(
+            select(ComisionTutorModel.id)
+            .where(
+                ComisionTutorModel.comision_id == comision_id,
+                ComisionTutorModel.tutor_id == usuario_id,
+            )
+            .limit(1)
+        )
+        return result.scalar_one_or_none() is not None
 
     async def nombres_de_docentes(self, ids: list[str]) -> dict[str, str]:
         """id de usuario -> nombre visible, para las comisiones de un listado. C-73 §9.
@@ -1098,65 +1302,118 @@ class ComisionSqlRepository:
             nombres[uid] = completo or legajo
         return nombres
 
-    async def docente_de_examen(self, examen_id: str) -> str | None:
-        """Docente a cargo de la comisión a la que pertenece el examen. C-73 §9.
+    async def tiene_pertenencia_sobre_examen(
+        self, usuario_id: str, examen_id: str, *, es_coordinador: bool = False
+    ) -> bool:
+        """Pertenencia sobre el examen: tutor de su comisión, o (si
+        ``es_coordinador``) coordinador de su materia (C-73 §9, N:M desde c-79).
 
-        Es la derivación `examen.comision_id → comision.docente_id`, y es la ÚNICA
-        fuente de "de quién es este examen". Devuelve ``None`` cuando el examen no
-        existe, no tiene comisión, o la comisión no tiene docente asignado — los tres
-        casos significan lo mismo para quien llama: no hay dueño identificable."""
-        result = await self._db.execute(
-            select(ComisionModel.docente_id)
-            .join(
-                ExamenContenidoModel,
-                ExamenContenidoModel.comision_id == ComisionModel.id,
+        Reemplaza a ``docente_de_examen`` + comparación por igualdad: ahora es una
+        pregunta de MEMBRESÍA (comision_tutor / materia_coordinador), no de "quién
+        es el dueño único". Devuelve ``False`` si el examen no existe, no tiene
+        comisión, o nadie con ese id está a cargo."""
+        if not (_es_uuid(usuario_id) and _es_uuid(examen_id)):
+            return False
+        if es_coordinador:
+            result = await self._db.execute(
+                select(MateriaCoordinadorModel.id)
+                .select_from(ExamenContenidoModel)
+                .join(ComisionModel, ExamenContenidoModel.comision_id == ComisionModel.id)
+                .join(
+                    MateriaCoordinadorModel,
+                    MateriaCoordinadorModel.materia_id == ComisionModel.materia_id,
+                )
+                .where(
+                    ExamenContenidoModel.id == examen_id,
+                    MateriaCoordinadorModel.coordinador_id == usuario_id,
+                )
+                .limit(1)
             )
-            .where(ExamenContenidoModel.id == examen_id)
+            return result.scalar_one_or_none() is not None
+        result = await self._db.execute(
+            select(ComisionTutorModel.id)
+            .select_from(ExamenContenidoModel)
+            .join(
+                ComisionTutorModel,
+                ComisionTutorModel.comision_id == ExamenContenidoModel.comision_id,
+            )
+            .where(
+                ExamenContenidoModel.id == examen_id,
+                ComisionTutorModel.tutor_id == usuario_id,
+            )
+            .limit(1)
         )
-        return result.scalar_one_or_none()
+        return result.scalar_one_or_none() is not None
 
     async def es_docente_de_materia(self, docente_id: str, materia_id: str) -> bool:
         """True si el docente dado dicta AL MENOS UNA comisión de la materia.
 
-        Reemplaza al viejo ``docente_de_materia`` (bug real, C-74 post-cierre):
-        ese método devolvía un docente ARBITRARIO de la materia (``.limit(1)``,
-        sin filtrar por quién pregunta) y el caller comparaba identidad contra
-        ESE — un docente real que dicta una comisión distinta de la que la query
-        devolvía primero era rechazado con falso negativo. Acá se filtra
-        directamente por ``docente_id`` — es una pregunta de membresía, no de
-        "quién es el dueño arbitrario"."""
+        c-79: filtra por membresía en ``comision_tutor`` (N:M). Reemplaza al viejo
+        ``docente_de_materia`` (bug real, C-74 post-cierre): ese método devolvía un
+        docente ARBITRARIO de la materia (``.limit(1)``, sin filtrar por quién
+        pregunta) y el caller comparaba identidad contra ESE — un docente real que
+        dicta una comisión distinta de la que la query devolvía primero era
+        rechazado con falso negativo. Acá se filtra directamente por
+        ``docente_id`` — es una pregunta de membresía, no de "quién es el dueño
+        arbitrario"."""
+        if not (_es_uuid(docente_id) and _es_uuid(materia_id)):
+            return False
         result = await self._db.execute(
             select(ComisionModel.id)
+            .join(ComisionTutorModel, ComisionTutorModel.comision_id == ComisionModel.id)
             .where(
                 ComisionModel.materia_id == materia_id,
-                ComisionModel.docente_id == docente_id,
+                ComisionTutorModel.tutor_id == docente_id,
             )
             .limit(1)
         )
         return result.scalar_one_or_none() is not None
 
     async def comision_ids_a_cargo(self, docente_id: str) -> list[str]:
-        """Comisiones donde el docente dado es el titular (comision.docente_id).
+        """Comisiones donde el docente dado es tutor (c-79, N:M).
 
         Contraparte de ``InscripcionSqlRepository.comision_ids_inscriptas`` pero
         para el rol DOCENTE (C-73 §9): un docente no se "inscribe" a su propia
         comisión como alumno, así que el gate de catálogo necesita esta fuente
         distinta — "lo que dicta", no "lo que cursa".
         """
+        if not _es_uuid(docente_id):
+            return []
         result = await self._db.execute(
-            select(ComisionModel.id).where(ComisionModel.docente_id == docente_id)
+            select(ComisionTutorModel.comision_id).where(
+                ComisionTutorModel.tutor_id == docente_id
+            )
+        )
+        return list(result.scalars().all())
+
+    async def comision_ids_a_cargo_coordinador(self, coordinador_id: str) -> list[str]:
+        """Comisiones de las materias que el coordinador dado coordina (c-79).
+
+        Contraparte de ``comision_ids_a_cargo`` (tutor) para el rol COORDINADOR:
+        ve TODAS las comisiones de sus materias asignadas, no solo las que dicta.
+        """
+        if not _es_uuid(coordinador_id):
+            return []
+        result = await self._db.execute(
+            select(ComisionModel.id)
+            .join(
+                MateriaCoordinadorModel,
+                MateriaCoordinadorModel.materia_id == ComisionModel.materia_id,
+            )
+            .where(MateriaCoordinadorModel.coordinador_id == coordinador_id)
         )
         return list(result.scalars().all())
 
     async def listar_a_cargo_de_materia(
         self, docente_id: str, materia_id: str
     ) -> list[Comision]:
-        """Comisiones de una materia donde el docente dado es el titular (C-73 §9)."""
+        """Comisiones de una materia donde el docente dado es tutor (C-73 §9, N:M)."""
         result = await self._db.execute(
             select(ComisionModel)
+            .join(ComisionTutorModel, ComisionTutorModel.comision_id == ComisionModel.id)
             .where(
                 ComisionModel.materia_id == materia_id,
-                ComisionModel.docente_id == docente_id,
+                ComisionTutorModel.tutor_id == docente_id,
             )
             .order_by(_orden_alfabetico(ComisionModel.nombre))
         )

@@ -25,6 +25,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import NullPool
 
 from app.infrastructure.persistence.base import Base
+from app.infrastructure.persistence.models.comision_tutor import (  # noqa: F401
+    ComisionTutorModel,
+)
 from app.infrastructure.persistence.models.exam_content import (  # noqa: F401
     ComisionModel,
     ExamenContenidoModel,
@@ -40,12 +43,14 @@ _TABLES_TO_DROP = [
     "opcion_respuesta",
     "pregunta_examen",
     "examen_contenido",
+    "comision_tutor",
     "comision",
     "materia",
 ]
 _TABLES_TO_CREATE = [
     MateriaModel.__table__,
     ComisionModel.__table__,
+    ComisionTutorModel.__table__,
     ExamenContenidoModel.__table__,
     PreguntaExamenModel.__table__,
     OpcionRespuestaModel.__table__,
@@ -125,6 +130,8 @@ async def _crear_examen_de_comision(factory, docente_id: str | None) -> str:
         )
         s.add(comision)
         await s.flush()
+        if docente_id:
+            s.add(ComisionTutorModel(comision_id=comision.id, tutor_id=docente_id))
         examen = ExamenContenidoModel(
             titulo=f"Parcial {sufijo}", comision_id=comision.id
         )
@@ -206,3 +213,49 @@ async def test_examen_sin_docente_no_lo_reclama_un_docente(app, factory):
         )
 
     assert resp.status_code == 403, resp.text
+
+
+# ── GET /{examen_id}/moodle-target (c-79) ───────────────────────────────────
+# Mismo gap que el POST tenía antes de C-73: la LECTURA no validaba pertenencia
+# — un docente ajeno podía leer a qué curso/actividad de Moodle apunta el
+# examen de una comisión que no es suya, solo conociendo el id.
+
+
+@pytest.mark.asyncio
+async def test_docente_ajeno_no_puede_leer_destino_moodle(app, factory):
+    """RED: antes del fix devolvía 200 sin chequear pertenencia."""
+    dueno = await _crear_docente(factory, f"DOC-F-{uuid.uuid4().hex[:4]}")
+    ajeno = await _crear_docente(factory, f"DOC-G-{uuid.uuid4().hex[:4]}")
+    examen_id = await _crear_examen_de_comision(factory, docente_id=dueno)
+
+    async with _client(app, ["tutor"], subject=ajeno) as c:
+        resp = await c.get(f"/api/v1/exam-content/{examen_id}/moodle-target")
+
+    assert resp.status_code == 403, (
+        "Un docente de OTRA comisión pudo leer el destino Moodle del examen ajeno. "
+        f"Respuesta: {resp.status_code} {resp.text}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_docente_dueno_si_puede_leer_destino_moodle(app, factory):
+    """Triangulación: el docente de la comisión del examen SÍ puede leerlo."""
+    dueno = await _crear_docente(factory, f"DOC-H-{uuid.uuid4().hex[:4]}")
+    examen_id = await _crear_examen_de_comision(factory, docente_id=dueno)
+
+    async with _client(app, ["tutor"], subject=dueno) as c:
+        resp = await c.get(f"/api/v1/exam-content/{examen_id}/moodle-target")
+
+    assert resp.status_code == 200, resp.text
+
+
+@pytest.mark.asyncio
+async def test_admin_no_esta_limitado_por_pertenencia_al_leer(app, factory):
+    """Triangulación: los roles de alcance institucional leen cualquier examen."""
+    dueno = await _crear_docente(factory, f"DOC-I-{uuid.uuid4().hex[:4]}")
+    examen_id = await _crear_examen_de_comision(factory, docente_id=dueno)
+
+    async with _client(app, ["admin_sistema"], subject="otro-sujeto") as c:
+        resp = await c.get(f"/api/v1/exam-content/{examen_id}/moodle-target")
+
+    assert resp.status_code == 200, resp.text

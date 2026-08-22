@@ -205,6 +205,24 @@ def create_sessions_router(
     """
     router = APIRouter()
 
+    async def _comision_ids_permitidas(
+        db: AsyncSession, principal: AuthenticatedPrincipal
+    ) -> set[str] | None:
+        """Comisiones que el principal puede ver (N:M, c-79). ``None`` = sin
+        restricción (solo admin_sistema, alcance global). TUTOR: sus comisiones
+        (comision_tutor). COORDINADOR: las comisiones de SUS materias asignadas
+        (materia_coordinador) — c-79, ya no es de alcance global."""
+        from app.infrastructure.persistence.repositories.exam_content import (
+            ComisionSqlRepository,
+        )
+
+        if principal.tiene_rol(Rol.ADMIN_SISTEMA):
+            return None
+        repo = ComisionSqlRepository(db)
+        if principal.tiene_rol(Rol.COORDINADOR):
+            return set(await repo.comision_ids_a_cargo_coordinador(principal.subject or ""))
+        return set(await repo.comision_ids_a_cargo(principal.subject or ""))
+
     @router.post(
         "/sessions",
         status_code=http_status.HTTP_201_CREATED,
@@ -316,14 +334,15 @@ def create_sessions_router(
     ) -> list[SesionResumen]:
         """Lista las sesiones con total_eventos, total_discrepancias y score.
 
-        C-76 bloque 8 (D2): el TUTOR ve SOLO las sesiones de examenes cuya comision
-        tiene a su usuario como docente a cargo (asignar_docente, C-73 §9).
-        COORDINADOR/ADMIN_SISTEMA son de alcance institucional (global) — REVISOR
-        fue eliminado del dominio (c-76) y el COORDINADOR absorbio su alcance.
+        C-76 bloque 8 (N:M desde c-79): el TUTOR ve SOLO las sesiones de examenes
+        cuya comision lo tiene como tutor (comision_tutor); el COORDINADOR ve las
+        de SUS materias asignadas (materia_coordinador) — ya no alcance global.
+        Solo ADMIN_SISTEMA sigue siendo institucional.
         """
         sesiones = await session_service.listar_sesiones(db)
-        if not principal.tiene_algun_rol({Rol.COORDINADOR, Rol.ADMIN_SISTEMA}):
-            sesiones = [s for s in sesiones if s.docente_id == principal.subject]
+        comision_ids = await _comision_ids_permitidas(db, principal)
+        if comision_ids is not None:
+            sesiones = [s for s in sesiones if s.comision_id in comision_ids]
         return [
             SesionResumen(
                 id=s.id,
@@ -379,9 +398,10 @@ def create_sessions_router(
         - ``materia_id``/``comision_id`` (C-76 tarea 20.3): filtro en cascada
           Materia -> Comision (mismo patron que Notas).
 
-        Mismo scoping por comision que el resto del panel (C-76 bloque 8, D2): el
-        TUTOR ve solo las sesiones de examenes cuya comision lo tiene como docente
-        a cargo; COORDINADOR/ADMIN_SISTEMA son de alcance institucional.
+        Mismo scoping por comision que el resto del panel (C-76 bloque 8, N:M
+        desde c-79): el TUTOR ve solo las sesiones de examenes cuya comision lo
+        tiene como tutor; el COORDINADOR ve las de SUS materias asignadas; solo
+        ADMIN_SISTEMA es de alcance institucional.
         """
         if nivel_riesgo is not None and nivel_riesgo not in _NIVELES_RIESGO_VALIDOS:
             raise HTTPException(
@@ -401,8 +421,9 @@ def create_sessions_router(
             materia_id=materia_id,
             comision_id=comision_id,
         )
-        if not principal.tiene_algun_rol({Rol.COORDINADOR, Rol.ADMIN_SISTEMA}):
-            sesiones = [s for s in sesiones if s.docente_id == principal.subject]
+        comision_ids = await _comision_ids_permitidas(db, principal)
+        if comision_ids is not None:
+            sesiones = [s for s in sesiones if s.comision_id in comision_ids]
         # migration 0083: el umbral es POR SESION (`umbral_cola_revision_efectivo`,
         # de su config_snapshot o el vivo como fallback) — ya NO uno global aplicado
         # a todas por igual, para que un cambio de config no reclasifique
@@ -484,19 +505,21 @@ def create_sessions_router(
         """Examenes con AL MENOS una sesion finalizada — opciones del <select> de
         "Examen" del Registro de sesiones. El frontend NUNCA hardcodea esta lista.
 
-        Mismo scoping por comision que ``listar_registro_sesiones``: el TUTOR ve
-        solo los examenes de SU comision.
+        Mismo scoping por comision que ``listar_registro_sesiones`` (N:M desde
+        c-79): el TUTOR ve solo los examenes de SUS comisiones; el COORDINADOR,
+        los de SUS materias asignadas.
         """
-        if principal.tiene_algun_rol({Rol.COORDINADOR, Rol.ADMIN_SISTEMA}):
+        comision_ids = await _comision_ids_permitidas(db, principal)
+        if comision_ids is None:
             catalogo = await session_service.catalogo_examenes_con_sesiones(db)
         else:
-            # Sin rol institucional: acotar al alcance del TUTOR reusando el mismo
-            # filtro por docente que ya aplica el registro paginado (una sola fuente
-            # de verdad para "que examenes ve este tutor").
+            # Acotar al alcance del TUTOR/COORDINADOR reusando el mismo filtro por
+            # comisión que ya aplica el registro paginado (una sola fuente de
+            # verdad para "que examenes ve este principal").
             sesiones = await session_service.listar_sesiones_finalizadas(db)
             vistos: dict[str, str] = {}
             for s in sesiones:
-                if s.docente_id != principal.subject or not s.examen_contenido_id:
+                if s.comision_id not in comision_ids or not s.examen_contenido_id:
                     continue
                 vistos.setdefault(s.examen_contenido_id, s.examen_titulo or s.examen_contenido_id)
             catalogo = sorted(vistos.items(), key=lambda kv: kv[1])
@@ -514,18 +537,23 @@ def create_sessions_router(
     ) -> SesionDetalle:
         """Detalle completo de una sesion con eventos y biometria (vista del tutor/coordinador).
 
-        C-76 bloque 8 (D2): el TUTOR solo accede al detalle de sesiones de SU
-        comision (403 fuera de ella); COORDINADOR/ADMIN_SISTEMA son globales
-        (REVISOR fue eliminado del dominio en c-76)."""
+        C-76 bloque 8 (N:M desde c-79): el TUTOR solo accede al detalle de
+        sesiones de SU comision (403 fuera de ella); el COORDINADOR, a las de SUS
+        materias asignadas; solo ADMIN_SISTEMA es global."""
         sesion = await session_service.detalle_sesion(db, session_id)
         if sesion is None:
             raise HTTPException(
                 status_code=http_status.HTTP_404_NOT_FOUND,
                 detail=f"Sesion {session_id!r} no encontrada",
             )
-        docente_id = await session_service.docente_id_de_sesion(db, session_id)
+        tiene_pertenencia = await session_service.tiene_pertenencia_de_sesion(
+            db,
+            principal.subject or "",
+            session_id,
+            es_coordinador=principal.tiene_rol(Rol.COORDINADOR),
+        )
         try:
-            autorizar_supervision_vivo_sobre_sesion(principal, docente_id)
+            autorizar_supervision_vivo_sobre_sesion(principal, tiene_pertenencia)
         except ForbiddenError as exc:
             raise HTTPException(
                 status_code=http_status.HTTP_403_FORBIDDEN,

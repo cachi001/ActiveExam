@@ -21,7 +21,7 @@ from fastapi import (
 )
 
 from app.application.audit.service import registrar_seguro
-from app.application.audit.acciones import AccionAuditoria, ModuloAuditoria
+from app.application.audit.acciones import AccionAuditoria, EntidadAuditoria, ModuloAuditoria
 from app.domain.auth.identity import AuthenticatedPrincipal
 
 from app.application.exam_content.asociacion_service import AsociacionComisionService
@@ -82,7 +82,7 @@ from app.presentation.api.v1.exam_content.schemas import (
     ComisionActivaRequest,
     ComisionActualizarRequest,
     ComisionCrearRequest,
-    ComisionDocenteRequest,
+    ComisionTutorRequest,
     ComisionResponse,
     ExamenConfigPatchRequest,
     ExamenConfigResponse,
@@ -95,10 +95,12 @@ from app.presentation.api.v1.exam_content.schemas import (
     InscripcionResponse,
     MateriaActivaRequest,
     MateriaActualizarRequest,
+    MateriaCoordinadorRequest,
     MateriaCrearRequest,
     MateriaResponse,
     MoodleTargetRequest,
     MoodleTargetResponse,
+    TutorInfo,
     OmitidaItemResponse,
     PreguntaPoolItemResponse,
     PreguntasPoolResponse,
@@ -252,6 +254,7 @@ def create_exam_content_router(
             actor=principal.email,
             accion=AccionAuditoria.EXAMEN_IMPORTACION,
             modulo=ModuloAuditoria.EXAMENES,
+            entidad=EntidadAuditoria.EXAMEN,
             entidad_id=str(report.examen_id),
             ip=request.client.host if request.client else None,
             user_agent=request.headers.get("user-agent"),
@@ -618,6 +621,7 @@ def create_exam_content_router(
             actor=principal.email,
             accion=AccionAuditoria.MATERIA_ALTA,
             modulo=ModuloAuditoria.MATERIAS,
+            entidad=EntidadAuditoria.MATERIA,
             entidad_id=str(materia.id),
             ip=request.client.host if request.client else None,
             user_agent=request.headers.get("user-agent"),
@@ -642,12 +646,14 @@ def create_exam_content_router(
     ) -> MateriaResponse:
         """Actualiza el nombre y (opcionalmente) el codigo de una materia. 404
         'materia_no_encontrada' si no existe; 409 'duplicado' si el codigo nuevo ya
-        está en uso; 422 'validacion_dominio' si nombre/codigo son vacíos."""
+        está en uso; 422 'validacion_dominio' si nombre/codigo son vacíos.
+        Pertenencia (c-79): un coordinador solo puede editar SU materia."""
         if session_factory is None:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Persistencia no inicializada.",
             )
+        await _exigir_pertenencia_materia(principal, materia_id)
 
         async with session_factory() as session:
             service = _build_materia_comision_service(session)
@@ -683,6 +689,7 @@ def create_exam_content_router(
             actor=principal.email,
             accion=AccionAuditoria.MATERIA_EDICION,
             modulo=ModuloAuditoria.MATERIAS,
+            entidad=EntidadAuditoria.MATERIA,
             entidad_id=str(materia_id),
             ip=request.client.host if request.client else None,
             user_agent=request.headers.get("user-agent"),
@@ -706,12 +713,14 @@ def create_exam_content_router(
         principal: AuthenticatedPrincipal = Depends(get_current_principal),
     ) -> None:
         """Elimina una materia SOLO si no tiene inscriptos ni exámenes. 404 si no
-        existe; 409 'materia_no_vacia' si tiene contenido (se sugiere desactivar)."""
+        existe; 409 'materia_no_vacia' si tiene contenido (se sugiere desactivar).
+        Pertenencia (c-79): un coordinador solo puede eliminar SU materia."""
         if session_factory is None:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Persistencia no inicializada.",
             )
+        await _exigir_pertenencia_materia(principal, materia_id)
         async with session_factory() as session:
             service = _build_materia_comision_service(session)
             try:
@@ -735,6 +744,7 @@ def create_exam_content_router(
             actor=principal.email,
             accion=AccionAuditoria.MATERIA_BAJA,
             modulo=ModuloAuditoria.MATERIAS,
+            entidad=EntidadAuditoria.MATERIA,
             entidad_id=str(materia_id),
             ip=request.client.host if request.client else None,
             user_agent=request.headers.get("user-agent"),
@@ -754,12 +764,14 @@ def create_exam_content_router(
         principal: AuthenticatedPrincipal = Depends(get_current_principal),
     ) -> MateriaResponse:
         """Activa (true) o desactiva (false) una materia. Desactivar = congelar:
-        corta inscripciones nuevas y bloquea iniciar rendición. 404 si no existe."""
+        corta inscripciones nuevas y bloquea iniciar rendición. 404 si no existe.
+        Pertenencia (c-79): un coordinador solo puede activar/desactivar SU materia."""
         if session_factory is None:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Persistencia no inicializada.",
             )
+        await _exigir_pertenencia_materia(principal, materia_id)
         async with session_factory() as session:
             service = _build_materia_comision_service(session)
             try:
@@ -777,6 +789,7 @@ def create_exam_content_router(
             actor=principal.email,
             accion=AccionAuditoria.MATERIA_ACTIVACION,
             modulo=ModuloAuditoria.MATERIAS,
+            entidad=EntidadAuditoria.MATERIA,
             entidad_id=str(materia_id),
             ip=request.client.host if request.client else None,
             user_agent=request.headers.get("user-agent"),
@@ -793,6 +806,172 @@ def create_exam_content_router(
             activa=materia.activa,
         )
 
+    async def _materia_response_con_coordinadores(session, materia) -> MateriaResponse:
+        from app.infrastructure.persistence.repositories.exam_content import (
+            ComisionSqlRepository,
+            MateriaSqlRepository,
+        )
+
+        coord_ids = await MateriaSqlRepository(session).coordinadores_de_materia(materia.id)
+        nombres = await ComisionSqlRepository(session).nombres_de_docentes(coord_ids)
+        return MateriaResponse(
+            id=materia.id,
+            codigo=materia.codigo,
+            nombre=materia.nombre,
+            activa=materia.activa,
+            coordinadores=[
+                TutorInfo(id=cid, nombre=nombres.get(cid, cid)) for cid in coord_ids
+            ],
+        )
+
+    @router.post(
+        "/materias/{materia_id}/coordinadores",
+        dependencies=[Depends(require_capability("asignar_docente"))],
+        response_model=MateriaResponse,
+        status_code=status.HTTP_201_CREATED,
+        summary="Agregar un coordinador a cargo de una materia (c-79, N:M)",
+    )
+    async def agregar_coordinador_materia(
+        materia_id: str,
+        body: MateriaCoordinadorRequest,
+        request: Request,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    ) -> MateriaResponse:
+        """Agrega un coordinador a cargo de la materia. c-79: el coordinador dejó
+        de tener alcance global — queda acotado a SUS materias asignadas, igual
+        que el tutor a sus comisiones. Una materia puede tener varios
+        coordinadores. 404 si la materia no existe. 422 si el usuario no existe,
+        está de baja, o no tiene rol coordinador. Pertenencia: un coordinador
+        solo puede agregar coordinadores a SU PROPIA materia (no a una ajena);
+        una materia sin coordinador asignado todavía solo puede recibir el
+        primero de la mano de admin_sistema (mismo patrón que `asignar_docente`
+        sobre una comisión sin dueño)."""
+        if session_factory is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Persistencia no inicializada.",
+            )
+        await _exigir_pertenencia_materia(principal, materia_id)
+
+        from sqlalchemy import select
+
+        from app.infrastructure.persistence.models.transactional import UsuarioModel
+        from app.infrastructure.persistence.repositories.exam_content import (
+            MateriaSqlRepository,
+        )
+
+        async with session_factory() as session:
+            usuario = (
+                await session.execute(
+                    select(UsuarioModel).where(UsuarioModel.id == body.coordinador_id)
+                )
+            ).scalar_one_or_none()
+            if usuario is None or usuario.eliminado_en is not None:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail={
+                        "error": "coordinador_invalido",
+                        "mensaje": "El usuario no existe o está dado de baja.",
+                    },
+                )
+            if Rol.COORDINADOR.value not in (usuario.roles or []):
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail={
+                        "error": "no_es_coordinador",
+                        "mensaje": "El usuario no tiene rol coordinador.",
+                    },
+                )
+
+            repo = MateriaSqlRepository(session)
+            materia = await repo.obtener(materia_id)
+            if materia is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail={"error": "materia_no_encontrada", "materia_id": materia_id},
+                )
+            await repo.agregar_coordinador(materia_id, body.coordinador_id)
+            respuesta = await _materia_response_con_coordinadores(session, materia)
+            await session.commit()
+
+        nombre_coordinador = next(
+            (c.nombre for c in respuesta.coordinadores if c.id == body.coordinador_id),
+            body.coordinador_id,
+        )
+        await registrar_seguro(
+            session_factory,
+            actor=principal.email,
+            accion=AccionAuditoria.MATERIA_COORDINADOR,
+            modulo=ModuloAuditoria.MATERIAS,
+            entidad=EntidadAuditoria.MATERIA,
+            entidad_id=str(materia_id),
+            ip=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            proposito=(
+                f"Agregó a {nombre_coordinador} como coordinador de la materia "
+                f"{materia.nombre} ({materia.codigo})"
+            ),
+        )
+        return respuesta
+
+    @router.delete(
+        "/materias/{materia_id}/coordinadores/{coordinador_id}",
+        dependencies=[Depends(require_capability("asignar_docente"))],
+        response_model=MateriaResponse,
+        summary="Quitar un coordinador a cargo de una materia (c-79, N:M)",
+    )
+    async def quitar_coordinador_materia(
+        materia_id: str,
+        coordinador_id: str,
+        request: Request,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    ) -> MateriaResponse:
+        """Quita un coordinador de la materia. 404 si la materia no existe.
+        Pertenencia: acotado a SU materia (ver `agregar_coordinador_materia`)."""
+        if session_factory is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Persistencia no inicializada.",
+            )
+        await _exigir_pertenencia_materia(principal, materia_id)
+
+        from app.infrastructure.persistence.repositories.exam_content import (
+            ComisionSqlRepository,
+            MateriaSqlRepository,
+        )
+
+        async with session_factory() as session:
+            repo = MateriaSqlRepository(session)
+            materia = await repo.obtener(materia_id)
+            if materia is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail={"error": "materia_no_encontrada", "materia_id": materia_id},
+                )
+            nombres_antes = await ComisionSqlRepository(session).nombres_de_docentes(
+                [coordinador_id]
+            )
+            await repo.quitar_coordinador(materia_id, coordinador_id)
+            respuesta = await _materia_response_con_coordinadores(session, materia)
+            await session.commit()
+
+        nombre_coordinador = nombres_antes.get(coordinador_id, coordinador_id)
+        await registrar_seguro(
+            session_factory,
+            actor=principal.email,
+            accion=AccionAuditoria.MATERIA_COORDINADOR,
+            modulo=ModuloAuditoria.MATERIAS,
+            entidad=EntidadAuditoria.MATERIA,
+            entidad_id=str(materia_id),
+            ip=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            proposito=(
+                f"Quitó a {nombre_coordinador} como coordinador de la materia "
+                f"{materia.nombre} ({materia.codigo})"
+            ),
+        )
+        return respuesta
+
     @router.post(
         "/materias/{materia_id}/comisiones",
         dependencies=[Depends(require_capability("gestionar_estructura"))],
@@ -808,12 +987,14 @@ def create_exam_content_router(
     ) -> ComisionResponse:
         """Crea una comisión en la materia. 404 'materia_no_encontrada' si la materia
         no existe; 409 'duplicado' si (materia_id, codigo) ya existe; 422
-        'validacion_dominio' si codigo/nombre son vacíos."""
+        'validacion_dominio' si codigo/nombre son vacíos. Pertenencia (c-79): un
+        coordinador solo puede crear comisiones en SU materia."""
         if session_factory is None:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Persistencia no inicializada.",
             )
+        await _exigir_pertenencia_materia(principal, materia_id)
 
         async with session_factory() as session:
             service = _build_materia_comision_service(session)
@@ -826,6 +1007,12 @@ def create_exam_content_router(
                     anio=body.anio,
                     codigo_matriculacion=body.codigo_matriculacion,
                 )
+                # Para el propósito del audit log (qué materia recibió la comisión).
+                from app.infrastructure.persistence.repositories.exam_content import (
+                    MateriaSqlRepository,
+                )
+
+                materia_de_comision = await MateriaSqlRepository(session).obtener(materia_id)
                 await session.commit()
             except MateriaNoEncontradaError as exc:
                 await session.rollback()
@@ -854,10 +1041,14 @@ def create_exam_content_router(
             actor=principal.email,
             accion=AccionAuditoria.COMISION_ALTA,
             modulo=ModuloAuditoria.MATERIAS,
+            entidad=EntidadAuditoria.COMISION,
             entidad_id=str(comision.id),
             ip=request.client.host if request.client else None,
             user_agent=request.headers.get("user-agent"),
-            proposito=f"Creó la comisión {comision.nombre} ({comision.codigo})",
+            proposito=(
+                f"Creó la comisión {comision.nombre} ({comision.codigo}) "
+                f"en {materia_de_comision.nombre if materia_de_comision else materia_id}"
+            ),
         )
 
         return ComisionResponse(
@@ -884,12 +1075,16 @@ def create_exam_content_router(
     ) -> ComisionResponse:
         """Actualiza nombre/periodo/anio de una comisión. 404 'comision_no_encontrada'
         si no existe; 422 'validacion_dominio' si el nombre es vacío. El codigo y la
-        materia NO se tocan."""
+        materia NO se tocan. Pertenencia (c-79): tutor de esa comisión, o
+        coordinador de su materia (GAP real: antes de c-79 este endpoint no
+        tenía NINGÚN chequeo de pertenencia — cualquier tutor editaba la
+        comisión de otro)."""
         if session_factory is None:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Persistencia no inicializada.",
             )
+        await _exigir_pertenencia_comision(principal, comision_id)
 
         async with session_factory() as session:
             service = _build_materia_comision_service(session)
@@ -929,6 +1124,7 @@ def create_exam_content_router(
             actor=principal.email,
             accion=AccionAuditoria.COMISION_EDICION,
             modulo=ModuloAuditoria.MATERIAS,
+            entidad=EntidadAuditoria.COMISION,
             entidad_id=str(comision_id),
             ip=request.client.host if request.client else None,
             user_agent=request.headers.get("user-agent"),
@@ -961,12 +1157,14 @@ def create_exam_content_router(
         esa comisión: corta inscripciones nuevas por su código y bloquea iniciar sus
         exámenes; la materia y las demás comisiones siguen igual. No desmatricula a
         nadie. Es la alternativa al DELETE cuando la comisión no está vacía. 404 si no
-        existe."""
+        existe. Pertenencia (c-79): tutor de esa comisión, o coordinador de su
+        materia (mismo GAP real que `actualizar_comision`)."""
         if session_factory is None:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Persistencia no inicializada.",
             )
+        await _exigir_pertenencia_comision(principal, comision_id)
         async with session_factory() as session:
             service = _build_materia_comision_service(session)
             try:
@@ -986,6 +1184,9 @@ def create_exam_content_router(
             session_factory,
             actor=principal.email,
             accion=AccionAuditoria.COMISION_ACTIVACION,
+            modulo=ModuloAuditoria.MATERIAS,
+            entidad=EntidadAuditoria.COMISION,
+            entidad_id=str(comision_id),
             ip=request.client.host if request.client else None,
             user_agent=request.headers.get("user-agent"),
             proposito=(
@@ -1005,101 +1206,37 @@ def create_exam_content_router(
             activa=comision.activa,
         )
 
-    @router.put(
-        "/comisiones/{comision_id}/docente",
-        response_model=ComisionResponse,
-        summary="Asignar (o desasignar) el docente a cargo de una comisión",
-    )
-    async def asignar_docente_comision(
-        comision_id: str,
-        body: ComisionDocenteRequest,
-        request: Request,
-        principal: AuthenticatedPrincipal = Depends(
-            require_capability("asignar_docente")
-        ),
-    ) -> ComisionResponse:
-        """Fija el docente a cargo. ``docente_id=null`` desasigna (C-73 §9).
-
-        Requiere la capacidad `asignar_docente`, que NO tiene el rol DOCENTE: si un
-        docente pudiera asignarse a sí mismo, la validación de pertenencia dejaría de
-        ser un control.
-
-        404 si la comisión no existe. 422 si el usuario no existe, está dado de baja, o
-        no tiene rol docente — poner a cargo a alguien que no dicta la materia haría
-        que la nota se devuelva con una identidad equivocada."""
-        if session_factory is None:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Persistencia no inicializada.",
-            )
-
+    async def _validar_usuario_tutor(session, tutor_id: str) -> None:
+        """422 si el usuario no existe, está de baja, o no tiene rol tutor —
+        poner a cargo a alguien que no dicta la materia haría que la nota se
+        devuelva con una identidad equivocada."""
         from sqlalchemy import select
 
         from app.infrastructure.persistence.models.transactional import UsuarioModel
-        from app.infrastructure.persistence.repositories.exam_content import (
-            ComisionSqlRepository,
-        )
 
-        async with session_factory() as session:
-            if body.docente_id is not None:
-                usuario = (
-                    await session.execute(
-                        select(UsuarioModel).where(UsuarioModel.id == body.docente_id)
-                    )
-                ).scalar_one_or_none()
-                if usuario is None or usuario.eliminado_en is not None:
-                    raise HTTPException(
-                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                        detail={
-                            "error": "docente_invalido",
-                            "mensaje": "El usuario no existe o está dado de baja.",
-                        },
-                    )
-                if Rol.TUTOR.value not in (usuario.roles or []):
-                    raise HTTPException(
-                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                        detail={
-                            "error": "no_es_tutor",
-                            "mensaje": "El usuario no tiene rol tutor.",
-                        },
-                    )
-
-            repo = ComisionSqlRepository(session)
-            comision = await repo.asignar_docente(comision_id, body.docente_id)
-            if comision is None:
-                await session.rollback()
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail={
-                        "error": "comision_no_encontrada",
-                        "comision_id": comision_id,
-                    },
-                )
-            nombres = await repo.nombres_de_docentes(
-                [comision.docente_id] if comision.docente_id else []
+        usuario = (
+            await session.execute(select(UsuarioModel).where(UsuarioModel.id == tutor_id))
+        ).scalar_one_or_none()
+        if usuario is None or usuario.eliminado_en is not None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "error": "docente_invalido",
+                    "mensaje": "El usuario no existe o está dado de baja.",
+                },
             )
-            await session.commit()
+        if Rol.TUTOR.value not in (usuario.roles or []):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "error": "no_es_tutor",
+                    "mensaje": "El usuario no tiene rol tutor.",
+                },
+            )
 
-        nombre_docente = nombres.get(comision.docente_id or "")
-        await registrar_seguro(
-            session_factory,
-            actor=principal.email,
-            accion=AccionAuditoria.COMISION_DOCENTE,
-            modulo=ModuloAuditoria.MATERIAS,
-            entidad_id=str(comision_id),
-            ip=request.client.host if request.client else None,
-            user_agent=request.headers.get("user-agent"),
-            proposito=(
-                f"Asignó a {nombre_docente} como docente a cargo de la comisión "
-                f"{comision.nombre} ({comision.codigo})"
-                if comision.docente_id
-                else (
-                    f"Dejó sin docente a cargo la comisión {comision.nombre} "
-                    f"({comision.codigo})"
-                )
-            ),
-        )
-
+    async def _comision_response_con_tutores(repo, comision) -> ComisionResponse:
+        tutor_ids = await repo.tutores_de_comision(comision.id)
+        nombres = await repo.nombres_de_docentes(tutor_ids)
         return ComisionResponse(
             id=comision.id,
             materia_id=comision.materia_id,
@@ -1109,9 +1246,142 @@ def create_exam_content_router(
             anio=comision.anio,
             codigo_matriculacion=comision.codigo_matriculacion,
             activa=comision.activa,
-            docente_id=comision.docente_id,
-            docente_nombre=nombre_docente,
+            tutores=[
+                TutorInfo(id=tid, nombre=nombres.get(tid, tid)) for tid in tutor_ids
+            ],
         )
+
+    @router.post(
+        "/comisiones/{comision_id}/tutores",
+        response_model=ComisionResponse,
+        status_code=status.HTTP_201_CREATED,
+        summary="Agregar un tutor a cargo de una comisión (c-79, N:M)",
+    )
+    async def agregar_tutor_comision(
+        comision_id: str,
+        body: ComisionTutorRequest,
+        request: Request,
+        principal: AuthenticatedPrincipal = Depends(
+            require_capability("asignar_docente")
+        ),
+    ) -> ComisionResponse:
+        """Agrega un tutor a cargo de la comisión. Una comisión puede tener
+        VARIOS tutores (co-dictado, cobertura de licencias) — reemplaza al viejo
+        PUT .../docente que solo permitía uno (c-79).
+
+        Requiere la capacidad `asignar_docente`, que NO tiene el rol TUTOR: si un
+        tutor pudiera asignarse a sí mismo, la validación de pertenencia dejaría
+        de ser un control.
+
+        404 si la comisión no existe. 422 si el usuario no existe, está dado de
+        baja, o no tiene rol tutor. Idempotente: agregar dos veces al mismo tutor
+        no duplica ni falla. Pertenencia: un coordinador solo puede agregar
+        tutores a comisiones de SU materia (no a una ajena)."""
+        if session_factory is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Persistencia no inicializada.",
+            )
+        await _exigir_pertenencia_comision(principal, comision_id)
+
+        from app.infrastructure.persistence.repositories.exam_content import (
+            ComisionSqlRepository,
+        )
+
+        async with session_factory() as session:
+            await _validar_usuario_tutor(session, body.tutor_id)
+            repo = ComisionSqlRepository(session)
+            comision = await repo.obtener(comision_id)
+            if comision is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail={
+                        "error": "comision_no_encontrada",
+                        "comision_id": comision_id,
+                    },
+                )
+            await repo.agregar_tutor(comision_id, body.tutor_id)
+            respuesta = await _comision_response_con_tutores(repo, comision)
+            await session.commit()
+
+        nombre_tutor = next(
+            (t.nombre for t in respuesta.tutores if t.id == body.tutor_id), body.tutor_id
+        )
+        await registrar_seguro(
+            session_factory,
+            actor=principal.email,
+            accion=AccionAuditoria.COMISION_DOCENTE,
+            modulo=ModuloAuditoria.MATERIAS,
+            entidad=EntidadAuditoria.COMISION,
+            entidad_id=str(comision_id),
+            ip=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            proposito=(
+                f"Agregó a {nombre_tutor} como tutor a cargo de la comisión "
+                f"{comision.nombre} ({comision.codigo})"
+            ),
+        )
+        return respuesta
+
+    @router.delete(
+        "/comisiones/{comision_id}/tutores/{tutor_id}",
+        response_model=ComisionResponse,
+        summary="Quitar un tutor a cargo de una comisión (c-79, N:M)",
+    )
+    async def quitar_tutor_comision(
+        comision_id: str,
+        tutor_id: str,
+        request: Request,
+        principal: AuthenticatedPrincipal = Depends(
+            require_capability("asignar_docente")
+        ),
+    ) -> ComisionResponse:
+        """Quita un tutor de la comisión. 404 si la comisión no existe. Idempotente:
+        quitar a alguien que no estaba a cargo no falla, solo no cambia nada.
+        Pertenencia: acotado a SU materia (ver `agregar_tutor_comision`)."""
+        if session_factory is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Persistencia no inicializada.",
+            )
+        await _exigir_pertenencia_comision(principal, comision_id)
+
+        from app.infrastructure.persistence.repositories.exam_content import (
+            ComisionSqlRepository,
+        )
+
+        async with session_factory() as session:
+            repo = ComisionSqlRepository(session)
+            comision = await repo.obtener(comision_id)
+            if comision is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail={
+                        "error": "comision_no_encontrada",
+                        "comision_id": comision_id,
+                    },
+                )
+            nombres_antes = await repo.nombres_de_docentes([tutor_id])
+            await repo.quitar_tutor(comision_id, tutor_id)
+            respuesta = await _comision_response_con_tutores(repo, comision)
+            await session.commit()
+
+        nombre_tutor = nombres_antes.get(tutor_id, tutor_id)
+        await registrar_seguro(
+            session_factory,
+            actor=principal.email,
+            accion=AccionAuditoria.COMISION_DOCENTE,
+            modulo=ModuloAuditoria.MATERIAS,
+            entidad=EntidadAuditoria.COMISION,
+            entidad_id=str(comision_id),
+            ip=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            proposito=(
+                f"Quitó a {nombre_tutor} como tutor a cargo de la comisión "
+                f"{comision.nombre} ({comision.codigo})"
+            ),
+        )
+        return respuesta
 
     @router.delete(
         "/comisiones/{comision_id}",
@@ -1125,12 +1395,15 @@ def create_exam_content_router(
         principal: AuthenticatedPrincipal = Depends(get_current_principal),
     ) -> None:
         """Elimina una comisión SOLO si no tiene inscriptos ni exámenes. 404 si no
-        existe; 409 'comision_no_vacia' si tiene contenido."""
+        existe; 409 'comision_no_vacia' si tiene contenido. Pertenencia (c-79):
+        tutor de esa comisión, o coordinador de su materia (mismo GAP real que
+        `actualizar_comision`)."""
         if session_factory is None:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Persistencia no inicializada.",
             )
+        await _exigir_pertenencia_comision(principal, comision_id)
         async with session_factory() as session:
             service = _build_materia_comision_service(session)
             try:
@@ -1157,6 +1430,7 @@ def create_exam_content_router(
             actor=principal.email,
             accion=AccionAuditoria.COMISION_BAJA,
             modulo=ModuloAuditoria.MATERIAS,
+            entidad=EntidadAuditoria.COMISION,
             entidad_id=str(comision_id),
             ip=request.client.host if request.client else None,
             user_agent=request.headers.get("user-agent"),
@@ -1254,12 +1528,14 @@ def create_exam_content_router(
         404 'comision_no_encontrada' si la comisión no existe; 404
         'usuario_no_encontrado' si el alumno no existe (o está dado de baja);
         409 'duplicado' si el alumno ya está inscripto a esa comisión.
+        Pertenencia (c-79): tutor de esa comisión, o coordinador de su materia.
         """
         if session_factory is None:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Persistencia no inicializada.",
             )
+        await _exigir_pertenencia_comision(principal, comision_id)
 
         async with session_factory() as session:
             service = _build_inscripcion_service(session)
@@ -1289,7 +1565,12 @@ def create_exam_content_router(
             session_factory,
             actor=principal.email,
             accion=AccionAuditoria.INSCRIPCION_ALTA,
-            modulo=ModuloAuditoria.EXAMENES,
+            # MATERIAS, no EXAMENES: coincide con modulo_de_accion() (prefijo
+            # "inscripcion.") y con la categorización del filtro de Auditoría en el
+            # frontend (ACCIONES_POR_MODULO.MATERIAS incluye inscripcion.create) —
+            # antes quedaba en EXAMENES y el filtro por módulo Materias no la traía.
+            modulo=ModuloAuditoria.MATERIAS,
+            entidad=EntidadAuditoria.INSCRIPCION,
             entidad_id=str(inscripcion.id),
             ip=request.client.host if request.client else None,
             user_agent=request.headers.get("user-agent"),
@@ -1317,12 +1598,14 @@ def create_exam_content_router(
         """Da de baja la inscripción del alumno a la comisión.
 
         204 si se eliminó; 404 'inscripcion_no_encontrada' si no existía.
+        Pertenencia (c-79): tutor de esa comisión, o coordinador de su materia.
         """
         if session_factory is None:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Persistencia no inicializada.",
             )
+        await _exigir_pertenencia_comision(principal, comision_id)
 
         async with session_factory() as session:
             service = _build_inscripcion_service(session)
@@ -1358,7 +1641,7 @@ def create_exam_content_router(
             session_factory,
             actor=principal.email,
             accion=AccionAuditoria.INSCRIPCION_BAJA,
-            modulo=ModuloAuditoria.EXAMENES,
+            modulo=ModuloAuditoria.MATERIAS,
             ip=request.client.host if request.client else None,
             user_agent=request.headers.get("user-agent"),
             proposito=f"Quitó al alumno {usuario_id} de la comisión {comision_id}",
@@ -1430,24 +1713,35 @@ def create_exam_content_router(
         return examen
 
     async def _exigir_pertenencia(principal, examen_id: str) -> None:
-        """C-73 §9: el DOCENTE solo opera los exámenes de SUS comisiones.
+        """C-73 §9: el TUTOR solo opera los exámenes de SUS comisiones; el
+        COORDINADOR, los de SUS materias (c-79, N:M).
 
         La capacidad (`gestionar_academico`) dice QUÉ puede hacer el rol; esto dice
-        SOBRE QUÉ. Sin esta segunda pregunta, un docente redirige la nota de un examen
-        ajeno a la libreta que quiera. Los roles de alcance institucional no pasan por
-        acá (ver `autorizar_docente_sobre_examen`)."""
-        from app.domain.auth.authorization import autorizar_docente_sobre_examen
+        SOBRE QUÉ. Sin esta segunda pregunta, un tutor/coordinador redirige la nota
+        de un examen ajeno a la libreta que quiera. Solo admin_sistema es de
+        alcance institucional (ver `autorizar_docente_sobre_examen`)."""
+        from app.domain.auth.authorization import (
+            _ROLES_SIN_LIMITE_DE_PERTENENCIA,
+            autorizar_docente_sobre_examen,
+        )
         from app.domain.auth.errors import ForbiddenError
+        from app.domain.auth.roles import Rol
         from app.infrastructure.persistence.repositories.exam_content import (
             ComisionSqlRepository,
         )
 
+        if principal.tiene_algun_rol(_ROLES_SIN_LIMITE_DE_PERTENENCIA):
+            autorizar_docente_sobre_examen(principal, True)
+            return
+        es_coordinador = principal.tiene_rol(Rol.COORDINADOR)
         async with session_factory() as session:
-            docente_id = await ComisionSqlRepository(session).docente_de_examen(
-                examen_id
+            tiene_pertenencia = await ComisionSqlRepository(
+                session
+            ).tiene_pertenencia_sobre_examen(
+                principal.subject or "", examen_id, es_coordinador=es_coordinador
             )
         try:
-            autorizar_docente_sobre_examen(principal, docente_id)
+            autorizar_docente_sobre_examen(principal, tiene_pertenencia)
         except ForbiddenError as exc:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -1455,28 +1749,35 @@ def create_exam_content_router(
             ) from exc
 
     async def _exigir_pertenencia_materia(principal, materia_id: str) -> None:
-        """C-74: docente solo opera el banco de su propia materia (compartido por
+        """C-74: tutor solo opera el banco de su propia materia (compartido por
         todas SUS comisiones de esa materia — el banco no se re-sube por comisión).
-        """
+        Coordinador: su propia materia asignada (c-79)."""
         from app.domain.auth.authorization import (
             _ROLES_SIN_LIMITE_DE_PERTENENCIA,
             autorizar_docente_sobre_materia,
         )
         from app.domain.auth.errors import ForbiddenError
+        from app.domain.auth.roles import Rol
         from app.infrastructure.persistence.repositories.exam_content import (
             ComisionSqlRepository,
+            MateriaSqlRepository,
         )
         # Corta ANTES de tocar la DB para los roles de alcance institucional: la
         # query mete `principal.subject` en un WHERE tipado UUID, y ese subject
         # no es un UUID real para roles que no son docente (staff, tests, etc.) —
         # evaluarla igual rompe con un error de tipo en vez de simplemente pasar.
         if principal.tiene_algun_rol(_ROLES_SIN_LIMITE_DE_PERTENENCIA):
-            autorizar_docente_sobre_materia(principal, es_docente_de_alguna_comision_de_la_materia=True)
+            autorizar_docente_sobre_materia(principal, True)
             return
         async with session_factory() as session:
-            es_miembro = await ComisionSqlRepository(session).es_docente_de_materia(
-                principal.subject or "", materia_id
-            )
+            if principal.tiene_rol(Rol.COORDINADOR):
+                es_miembro = await MateriaSqlRepository(session).es_coordinador_de_materia(
+                    principal.subject or "", materia_id
+                )
+            else:
+                es_miembro = await ComisionSqlRepository(session).es_docente_de_materia(
+                    principal.subject or "", materia_id
+                )
         try:
             autorizar_docente_sobre_materia(principal, es_miembro)
         except ForbiddenError as exc:
@@ -1486,19 +1787,31 @@ def create_exam_content_router(
             ) from exc
 
     async def _exigir_pertenencia_comision(principal, comision_id: str) -> None:
-        """C-74 post-cierre: un examen apunta a UNA comisión — el docente debe
-        dictar ESA comisión puntual, no alcanza con compartir materia/banco con
-        otro docente que dicta una comisión distinta de la misma materia."""
-        from app.domain.auth.authorization import autorizar_docente_sobre_comision
+        """C-74 post-cierre: un examen apunta a UNA comisión — el tutor debe
+        dictar ESA comisión puntual (o el coordinador, tener su materia), no
+        alcanza con compartir materia/banco con otro tutor de una comisión
+        distinta de la misma materia (c-79)."""
+        from app.domain.auth.authorization import (
+            _ROLES_SIN_LIMITE_DE_PERTENENCIA,
+            autorizar_docente_sobre_comision,
+        )
         from app.domain.auth.errors import ForbiddenError
+        from app.domain.auth.roles import Rol
         from app.infrastructure.persistence.repositories.exam_content import (
             ComisionSqlRepository,
         )
+        if principal.tiene_algun_rol(_ROLES_SIN_LIMITE_DE_PERTENENCIA):
+            autorizar_docente_sobre_comision(principal, True)
+            return
+        es_coordinador = principal.tiene_rol(Rol.COORDINADOR)
         async with session_factory() as session:
-            comision = await ComisionSqlRepository(session).obtener(comision_id)
-        docente_id = comision.docente_id if comision else None
+            tiene_pertenencia = await ComisionSqlRepository(
+                session
+            ).tiene_pertenencia_sobre_comision(
+                principal.subject or "", comision_id, es_coordinador=es_coordinador
+            )
         try:
-            autorizar_docente_sobre_comision(principal, docente_id)
+            autorizar_docente_sobre_comision(principal, tiene_pertenencia)
         except ForbiddenError as exc:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -1541,6 +1854,7 @@ def create_exam_content_router(
             actor=principal.email,
             accion=AccionAuditoria.EXAMEN_MOODLE_TARGET,
             modulo=ModuloAuditoria.EXAMENES,
+            entidad=EntidadAuditoria.EXAMEN,
             entidad_id=str(examen_id),
             ip=request.client.host if request.client else None,
             user_agent=request.headers.get("user-agent"),
@@ -1563,8 +1877,17 @@ def create_exam_content_router(
         response_model=MoodleTargetResponse,
         summary="Leer el destino de write-back a Moodle (courseid/cmid) de un examen",
     )
-    async def leer_moodle_target(examen_id: str) -> MoodleTargetResponse:
-        """Devuelve moodle_courseid/cmid del examen (null = fallback global). 404 si no existe."""
+    async def leer_moodle_target(
+        examen_id: str,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    ) -> MoodleTargetResponse:
+        """Devuelve moodle_courseid/cmid del examen (null = fallback global). 404 si no existe.
+
+        c-79: le faltaba `_exigir_pertenencia` (a diferencia de su POST y de
+        GET .../config, que sí la tienen) — un tutor podía leer el destino
+        Moodle de un examen de una comisión ajena conociendo el id.
+        """
+        await _exigir_pertenencia(principal, examen_id)
         if session_factory is None:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1757,6 +2080,7 @@ def create_exam_content_router(
             actor=principal.email,
             accion=AccionAuditoria.EXAMEN_CONFIG_ACTUALIZACION,
             modulo=ModuloAuditoria.EXAMENES,
+            entidad=EntidadAuditoria.EXAMEN,
             entidad_id=str(examen_id),
             ip=request.client.host if request.client else None,
             user_agent=request.headers.get("user-agent"),
@@ -2189,6 +2513,7 @@ def create_exam_content_router(
             actor=principal.email,
             accion=AccionAuditoria.EXAMEN_SELECCION_PREGUNTAS,
             modulo=ModuloAuditoria.EXAMENES,
+            entidad=EntidadAuditoria.EXAMEN,
             entidad_id=str(examen_id),
             ip=request.client.host if request.client else None,
             user_agent=request.headers.get("user-agent"),
@@ -2432,6 +2757,7 @@ def create_exam_content_router(
             actor=principal.email,
             accion=AccionAuditoria.RESULTADO_ARCHIVAR,
             modulo=ModuloAuditoria.SESIONES,
+            entidad=EntidadAuditoria.SESION,
             entidad_id=session_id,
             ip=request.client.host if request.client else None,
             user_agent=request.headers.get("user-agent"),
@@ -2610,6 +2936,7 @@ def create_exam_content_router(
             actor=principal.email,
             accion=AccionAuditoria.MOODLE_SYNC,
             modulo=ModuloAuditoria.MOODLE,
+            entidad=EntidadAuditoria.EXAMEN,
             entidad_id=str(examen_id),
             ip=request.client.host if request.client else None,
             user_agent=request.headers.get("user-agent"),

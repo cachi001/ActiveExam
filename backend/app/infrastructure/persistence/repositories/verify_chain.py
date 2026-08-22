@@ -9,6 +9,7 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.application.audit.acciones import EntidadAuditoria, ModuloAuditoria
 from app.domain.audit_chain import AuditEntry
 from app.domain.verify_chain.ports import (
     ChainVerificationAuditor,
@@ -42,11 +43,21 @@ class SqlChainVerificationAuditor(ChainVerificationAuditor):
     """Escribe cada verify-chain al audit_log con propósito declarado."""
 
     def __init__(self, session: AsyncSession) -> None:
+        self._session = session
         self._audit = AuditLogSqlRepository(session)
 
     async def log_chain_verification(
         self, event_id: str, *, actor: str, status: str, proposito: str
     ) -> None:
+        # Resolver la sesión dueña del evento para poder linkear "Ver detalle"
+        # a su página de proctoring en vez de caer al listado genérico.
+        session_id = (
+            await self._session.execute(
+                select(ProctoringEventModel.session_id).where(
+                    ProctoringEventModel.id == event_id
+                )
+            )
+        ).scalar_one_or_none()
         await self._audit.append(
             AuditEntry(
                 actor=actor,
@@ -57,5 +68,8 @@ class SqlChainVerificationAuditor(ChainVerificationAuditor):
                 evidencia_id=event_id,
                 proposito=proposito,
                 hash_prev="",  # trigger lo completa
+                modulo=ModuloAuditoria.EVIDENCIA,
+                entidad=EntidadAuditoria.SESION if session_id else None,
+                entidad_id=session_id,
             )
         )

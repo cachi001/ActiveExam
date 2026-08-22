@@ -426,6 +426,10 @@ class MateriaResponse(BaseModel):
     # (mismo criterio que el guard de borrado: se elimina solo con ambos en 0).
     total_inscriptos: int = 0
     total_examenes: int = 0
+    # c-79: coordinadores asignados a la materia (N:M, tabla materia_coordinador).
+    # Lista vacía = sin coordinador asignado. El coordinador dejó de tener alcance
+    # global — queda acotado a SUS materias, igual que el tutor a sus comisiones.
+    coordinadores: list["TutorInfo"] = []
 
 
 class ComisionResponse(BaseModel):
@@ -445,12 +449,12 @@ class ComisionResponse(BaseModel):
     # (mismo criterio que el guard de borrado: se elimina solo con ambos en 0).
     total_inscriptos: int = 0
     total_examenes: int = 0
-    # C-73 §9: docente a cargo. Es quien devuelve la nota de los exámenes de esta
-    # comisión y contra quién se valida "lo suyo" del rol DOCENTE. None = sin asignar
-    # (el write-back cae a la credencial institucional). El nombre viaja resuelto para
-    # que la UI no tenga que pedir el usuario aparte.
-    docente_id: str | None = None
-    docente_nombre: str | None = None
+    # C-73 §9 (N:M desde c-79): tutores a cargo. Son quienes devuelven la nota de
+    # los exámenes de esta comisión y contra quiénes se valida "lo suyo" del rol
+    # TUTOR. Lista vacía = sin asignar (el write-back cae a la credencial
+    # institucional). Reemplaza al viejo `docente_id`/`docente_nombre` (1:1):
+    # una comisión puede tener varios tutores (co-dictado, cobertura de licencias).
+    tutores: list["TutorInfo"] = []
 
 
 class AltaInlineResponse(BaseModel):
@@ -522,16 +526,33 @@ class ComisionCrearRequest(BaseModel):
     codigo_matriculacion: str | None = None
 
 
-class ComisionDocenteRequest(BaseModel):
-    """Body del PUT /comisiones/{id}/docente: asigna el docente a cargo (C-73 §9).
-
-    ``docente_id = None`` DESASIGNA. No es un caso de error: una comisión puede quedar
-    sin docente (el write-back de sus exámenes cae a la credencial institucional).
-    """
+class TutorInfo(BaseModel):
+    """Un tutor a cargo de una comisión (c-79, N:M)."""
 
     model_config = ConfigDict(extra="forbid")
 
-    docente_id: str | None = None
+    id: str
+    nombre: str
+
+
+class ComisionTutorRequest(BaseModel):
+    """Body de POST/DELETE /comisiones/{id}/tutores: agrega o quita un tutor a
+    cargo de la comisión (C-73 §9, N:M desde c-79 — reemplaza al viejo
+    PUT .../docente, que solo permitía UN tutor por comisión)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    tutor_id: str
+
+
+class MateriaCoordinadorRequest(BaseModel):
+    """Body de POST/DELETE /materias/{id}/coordinadores: agrega o quita un
+    coordinador de la materia (c-79, N:M — el coordinador ya no tiene alcance
+    global, queda acotado a sus materias asignadas)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    coordinador_id: str
 
 
 class ComisionActivaRequest(BaseModel):

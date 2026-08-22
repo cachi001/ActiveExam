@@ -181,6 +181,7 @@ class GuardarEmbeddingReferenciaService:
         # sea posterior a la operacion auditada (orden cronologico en la cadena).
         # NO altera la logica de embedding/custodia; es solo una escritura aditiva.
         if audit_repo is not None:
+            from app.application.audit.acciones import EntidadAuditoria, ModuloAuditoria
             from app.domain.audit_chain import AuditEntry
 
             if tenia_referencia_previa:
@@ -199,6 +200,12 @@ class GuardarEmbeddingReferenciaService:
                     accion=accion_audit,
                     evidencia_id=None,
                     proposito=proposito_audit,
+                    # Entidad afectada = el propio alumno (dueño de la foto de
+                    # referencia). Sin esto, Auditoría no podía linkear "Ver detalle"
+                    # al perfil del usuario y caía al listado genérico de sesiones.
+                    modulo=ModuloAuditoria.BIOMETRIA,
+                    entidad=EntidadAuditoria.USUARIO,
+                    entidad_id=usuario_id,
                 )
             )
 

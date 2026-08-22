@@ -57,7 +57,7 @@ export function ComisionesAccordionBody({
   const rolesActuales = useAuth((s) => s.principal?.roles) ?? [];
   const puedeEditarEstructura = tieneCapacidad(rolesActuales, 'gestionar_estructura');
   const [asignando, setAsignando] = useState<Comision | null>(null);
-  const [docenteLocal, setDocenteLocal] = useState<Record<string, string | null>>({});
+  const [tutoresLocal, setTutoresLocal] = useState<Record<string, { id: string; nombre: string }[]>>({});
   // Acciones del menú kebab por comisión. "Eliminar" solo aparece si la comisión
   // está VACÍA (0 inscriptos y 0 exámenes), mismo criterio que el guard del backend:
   // ofrecer un borrado que el servidor va a rechazar con 409 es un dead-end para el usuario.
@@ -72,7 +72,7 @@ export function ComisionesAccordionBody({
       // admin-only, así que ofrecérselo a otro rol daría un diálogo vacío.
       ...(esAdmin
         ? [{
-            label: c.docente_id ? 'Cambiar tutor' : 'Asignar tutor',
+            label: (tutoresLocal[c.id] ?? c.tutores)?.length ? 'Gestionar tutores' : 'Asignar tutor',
             icon: 'person',
             onClick: () => setAsignando(c),
           } as ActionItem]
@@ -330,9 +330,9 @@ export function ComisionesAccordionBody({
                             sincronizan al campus. Se avisa acá, donde se gestiona la
                             comisión, y no cuando el alumno ya rindió. */}
                         <td className="px-4 py-3 whitespace-nowrap text-[13px]">
-                          {docenteLocal[c.id] ?? c.docente_nombre ? (
+                          {(tutoresLocal[c.id] ?? c.tutores)?.length ? (
                             <span className="text-on-surface">
-                              {docenteLocal[c.id] ?? c.docente_nombre}
+                              {(tutoresLocal[c.id] ?? c.tutores ?? []).map((t) => t.nombre).join(', ')}
                             </span>
                           ) : (
                             <span className="inline-flex items-center gap-1 text-error">
@@ -402,9 +402,9 @@ export function ComisionesAccordionBody({
                           comisión— y no cuando el alumno ya rindió. */}
                       <p className="text-[11px] mt-0.5">
                         <span className="text-on-surface-variant">Tutor: </span>
-                        {docenteLocal[c.id] ?? c.docente_nombre ? (
+                        {(tutoresLocal[c.id] ?? c.tutores)?.length ? (
                           <span className="text-on-surface">
-                            {docenteLocal[c.id] ?? c.docente_nombre}
+                            {(tutoresLocal[c.id] ?? c.tutores ?? []).map((t) => t.nombre).join(', ')}
                           </span>
                         ) : (
                           <span className="text-error">Sin asignar</span>
@@ -431,10 +431,10 @@ export function ComisionesAccordionBody({
         <AsignarDocenteDialog
           comisionId={asignando.id}
           comisionNombre={asignando.nombre}
-          docenteActualId={asignando.docente_id}
+          tutoresActuales={tutoresLocal[asignando.id] ?? asignando.tutores ?? []}
           onCerrar={() => setAsignando(null)}
-          onAsignado={(_id, nombre) =>
-            setDocenteLocal((prev) => ({ ...prev, [asignando.id]: nombre }))
+          onCambiado={(tutores) =>
+            setTutoresLocal((prev) => ({ ...prev, [asignando.id]: tutores }))
           }
         />
       )}

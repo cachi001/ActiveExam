@@ -77,6 +77,20 @@ def create_chat_pausa_router(
             )
         return sesion
 
+    async def _tiene_pertenencia(
+        db: AsyncSession, principal: AuthenticatedPrincipal, session_id: str
+    ) -> bool:
+        """Pertenencia del principal sobre la sesión (tutor de su comisión, o
+        coordinador de su materia) — c-79, N:M."""
+        from app.domain.auth.roles import Rol
+
+        return await session_service.tiene_pertenencia_de_sesion(
+            db,
+            principal.subject or "",
+            session_id,
+            es_coordinador=principal.tiene_rol(Rol.COORDINADOR),
+        )
+
     @router.post(
         "/sessions/{session_id}/chat",
         status_code=http_status.HTTP_201_CREATED,
@@ -107,9 +121,9 @@ def create_chat_pausa_router(
                     detail="La sesion pertenece a otro alumno.",
                 )
         else:  # autor == "tutor" (unico otro valor valido por schema)
-            docente_id = await session_service.docente_id_de_sesion(db, session_id)
+            tiene_pertenencia = await _tiene_pertenencia(db, principal, session_id)
             try:
-                autorizar_supervision_vivo_sobre_sesion(principal, docente_id)
+                autorizar_supervision_vivo_sobre_sesion(principal, tiene_pertenencia)
             except ForbiddenError as exc:
                 raise HTTPException(
                     status_code=http_status.HTTP_403_FORBIDDEN,
@@ -155,10 +169,10 @@ def create_chat_pausa_router(
         supervision en vivo sobre ella — antes cualquier alumno autenticado
         podia leer el chat privado de la sesion de otro alumno."""
         sesion = await _sesion_o_404(db, session_id)
-        docente_id = await session_service.docente_id_de_sesion(db, session_id)
+        tiene_pertenencia = await _tiene_pertenencia(db, principal, session_id)
         try:
             autorizar_dueno_o_supervision_vivo_sobre_sesion(
-                principal, sesion.alumno_idnumber, sesion.alumno_email, docente_id
+                principal, sesion.alumno_idnumber, sesion.alumno_email, tiene_pertenencia
             )
         except ForbiddenError as exc:
             raise HTTPException(
@@ -235,10 +249,10 @@ def create_chat_pausa_router(
         H1 (IDOR): exige que el principal sea el dueño de la sesion O tenga
         supervision en vivo sobre ella."""
         sesion = await _sesion_o_404(db, session_id)
-        docente_id = await session_service.docente_id_de_sesion(db, session_id)
+        tiene_pertenencia = await _tiene_pertenencia(db, principal, session_id)
         try:
             autorizar_dueno_o_supervision_vivo_sobre_sesion(
-                principal, sesion.alumno_idnumber, sesion.alumno_email, docente_id
+                principal, sesion.alumno_idnumber, sesion.alumno_email, tiene_pertenencia
             )
         except ForbiddenError as exc:
             raise HTTPException(
@@ -310,11 +324,9 @@ def create_chat_pausa_router(
                 status_code=http_status.HTTP_404_NOT_FOUND,
                 detail=f"Pausa {pausa_id!r} no encontrada",
             )
-        docente_id = await session_service.docente_id_de_sesion(
-            db, pausa_existente.session_id
-        )
+        tiene_pertenencia = await _tiene_pertenencia(db, principal, pausa_existente.session_id)
         try:
-            autorizar_supervision_vivo_sobre_sesion(principal, docente_id)
+            autorizar_supervision_vivo_sobre_sesion(principal, tiene_pertenencia)
         except ForbiddenError as exc:
             raise HTTPException(
                 status_code=http_status.HTTP_403_FORBIDDEN,

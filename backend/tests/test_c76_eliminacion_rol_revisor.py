@@ -138,36 +138,45 @@ def test_claim_revisor_junto_a_coordinador_solo_conserva_coordinador() -> None:
 
 # ---------------------------------------------------------------------------
 # 5. autorizar_supervision_vivo_sobre_sesion pierde la exencion de REVISOR
+#    (c-79: y TAMBIEN la de COORDINADOR, que dejo de ser institucional)
 # ---------------------------------------------------------------------------
 #
 # No existe forma de construir hoy un principal con Rol.REVISOR (el rol no
 # existe mas en el dominio), asi que no hay ningun path de codigo vivo que
-# pueda ejercer la vieja exencion. Lo que este bloque prueba es que el
-# exemption set efectivamente se achico a {COORDINADOR, ADMIN_SISTEMA} y que
-# el TUTOR sigue acotado por pertenencia exactamente como antes.
+# pueda ejercer la vieja exencion. c-79: el COORDINADOR tambien dejo de estar
+# exento — antes Q5 del design c-76 lo declaraba institucional; ahora queda
+# acotado por pertenencia (materia_coordinador) igual que el TUTOR (comision_
+# tutor), y el caller (router) resuelve cual de los dos chequear segun el rol.
+# El exemption set en el dominio quedo reducido a {ADMIN_SISTEMA} solamente.
 
-def test_coordinador_exento_de_pertenencia_en_supervision_vivo() -> None:
+def test_coordinador_no_esta_exento_de_pertenencia_en_supervision_vivo() -> None:
+    """c-79: el coordinador YA NO es institucional — sin pertenencia, se rechaza."""
     coordinador = _principal(Rol.COORDINADOR)
-    # No levanta -> coordinador es institucional, no se acota por docente_id.
-    autorizar_supervision_vivo_sobre_sesion(coordinador, docente_id_de_la_sesion=None)
+    with pytest.raises(ForbiddenError):
+        autorizar_supervision_vivo_sobre_sesion(coordinador, tiene_pertenencia=False)
+
+
+def test_coordinador_con_pertenencia_autorizado_en_supervision_vivo() -> None:
+    """Triangulación: con pertenencia (coordina la materia), el coordinador pasa."""
+    coordinador = _principal(Rol.COORDINADOR)
+    autorizar_supervision_vivo_sobre_sesion(coordinador, tiene_pertenencia=True)
 
 
 def test_admin_sistema_exento_de_pertenencia_en_supervision_vivo() -> None:
     admin = _principal(Rol.ADMIN_SISTEMA)
-    autorizar_supervision_vivo_sobre_sesion(admin, docente_id_de_la_sesion=None)
+    autorizar_supervision_vivo_sobre_sesion(admin, tiene_pertenencia=False)
 
 
 def test_tutor_sin_dueno_identificable_sigue_rechazado() -> None:
-    """Triangulacion: el TUTOR (unico rol no institucional en supervisar_vivo tras
-    la eliminacion de REVISOR) sigue exactamente igual de acotado que antes."""
+    """Triangulacion: el TUTOR sigue exactamente igual de acotado que antes."""
     tutor = _principal(Rol.TUTOR)
     with pytest.raises(ForbiddenError):
-        autorizar_supervision_vivo_sobre_sesion(tutor, docente_id_de_la_sesion=None)
+        autorizar_supervision_vivo_sobre_sesion(tutor, tiene_pertenencia=False)
 
 
 def test_tutor_dueno_de_la_sesion_autorizado() -> None:
     tutor = AuthenticatedPrincipal(
         username="tutor-1", email="t@uni.edu", roles=(Rol.TUTOR,), subject="tutor-1"
     )
-    # No levanta -> el tutor es dueño de la sesion (mismo subject).
-    autorizar_supervision_vivo_sobre_sesion(tutor, docente_id_de_la_sesion="tutor-1")
+    # No levanta -> el tutor es dueño de la sesion (comision_tutor lo confirmó).
+    autorizar_supervision_vivo_sobre_sesion(tutor, tiene_pertenencia=True)

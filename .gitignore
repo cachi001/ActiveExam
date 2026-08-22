@@ -60,3 +60,8 @@ docs/
 # Throwaways locales de la sesión de demo (no versionar)
 tmp/
 import_cloze.py
+
+# Credenciales de prueba y exports locales: el repo es PUBLICO.
+credenciales.md
+export-page.md
+Informe_Estado_Proctoring_*.pdf

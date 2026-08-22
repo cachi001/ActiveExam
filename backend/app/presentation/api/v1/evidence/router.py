@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Body, HTTPException, Request, status
 
+from app.application.audit.acciones import EntidadAuditoria, ModuloAuditoria
 from app.application.evidence.service import (
     FirmaClienteInvalidaError,
     NotificacionEvidencia,
@@ -140,6 +141,9 @@ async def download_evidence(
                 accion="acceso_evidencia",
                 evidencia_id=evidencia_id,
                 proposito=proposito,
+                modulo=ModuloAuditoria.EVIDENCIA,
+                entidad=EntidadAuditoria.SESION,
+                entidad_id=ev.session_id,
             )
         )
         await session.commit()

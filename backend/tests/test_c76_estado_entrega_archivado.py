@@ -33,6 +33,9 @@ from app.application.moodle.resultados_query import (
     estado_entrega,
 )
 from app.infrastructure.persistence.base import Base
+from app.infrastructure.persistence.models.comision_tutor import (  # noqa: F401
+    ComisionTutorModel,
+)
 from app.infrastructure.persistence.models.exam_content import (  # noqa: F401
     ComisionModel,
     ExamenContenidoModel,
@@ -117,6 +120,7 @@ _TABLES_TO_DROP = [
     "opcion_respuesta",
     "pregunta_examen",
     "examen_contenido",
+    "comision_tutor",
     "comision",
     "materia",
     "proctoring_event",
@@ -128,6 +132,7 @@ _TABLES_TO_CREATE = [
     UsuarioModel.__table__,
     MateriaModel.__table__,
     ComisionModel.__table__,
+    ComisionTutorModel.__table__,
     ExamenContenidoModel.__table__,
     PreguntaExamenModel.__table__,
     OpcionRespuestaModel.__table__,
@@ -210,6 +215,13 @@ async def _crear_examen(factory, *, docente_id: str | None = None) -> str:
         )
         s.add(comision)
         await s.flush()
+        # c-79: la pertenencia vive en comision_tutor (N:M), no en la
+        # columna docente_id — el fixture puebla ambas.
+        if docente_id is not None:
+            s.add(
+                ComisionTutorModel(comision_id=comision.id, tutor_id=docente_id)
+            )
+            await s.flush()
         examen = ExamenContenidoModel(titulo=f"Parcial {sufijo}", comision_id=comision.id)
         s.add(examen)
         await s.flush()

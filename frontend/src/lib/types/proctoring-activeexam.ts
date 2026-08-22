@@ -266,6 +266,12 @@ export interface CierreForzado {
   cierre_forzado_motivo?: string | null;
 }
 
+/** Un tutor/coordinador a cargo de una comisión/materia (c-79, N:M). */
+export interface TutorInfo {
+  id: string;
+  nombre: string;
+}
+
 /** Materia/asignatura de la currícula.
  *
  * `descripcion` es opcional: el backend real (C-69) sólo expone id/codigo/nombre;
@@ -282,10 +288,9 @@ export interface Materia {
   // por compat; ausentes = 0 (no bloquea).
   total_inscriptos?: number;
   total_examenes?: number;
-  // C-73 §9: docente a cargo. Es quien devuelve las notas de esta comisión al campus
-  // con SU cuenta. Sin docente asignado las notas quedan retenidas.
-  docente_id?: string | null;
-  docente_nombre?: string | null;
+  // c-79 (N:M): coordinadores asignados a la materia. El coordinador dejó de
+  // tener alcance global — queda acotado a SUS materias.
+  coordinadores?: TutorInfo[];
 }
 
 /** Comisión: instancia de cursado de una Materia.
@@ -310,10 +315,10 @@ export interface Comision {
   // por compat; ausentes = 0 (no bloquea).
   total_inscriptos?: number;
   total_examenes?: number;
-  // C-73 §9: docente a cargo. Es quien devuelve las notas de esta comisión al campus
-  // con SU cuenta. Sin docente asignado las notas quedan retenidas.
-  docente_id?: string | null;
-  docente_nombre?: string | null;
+  // C-73 §9 (N:M desde c-79): tutores a cargo. Son quienes devuelven las notas
+  // de esta comisión al campus con SU cuenta. Reemplaza al viejo docente_id/
+  // docente_nombre (1:1) — una comisión puede tener varios tutores.
+  tutores?: TutorInfo[];
 }
 
 /** Comisión + su materia embebida (GET /exam-content/comisiones, todas). Para un

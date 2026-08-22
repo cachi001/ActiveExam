@@ -37,6 +37,11 @@ const COLA_REVISION: Rol[] = ['coordinador', 'admin_sistema'];
 // c-76-2: 'admin_examenes' fue ELIMINADO del dominio (solo existe un rol "Admin").
 const ACADEMICO: Rol[] = ['tutor', 'coordinador', 'admin_sistema'];
 const ADMIN: Rol[] = ['admin_sistema'];
+// c-79: capacidad `ver_estadisticas` del backend — deliberadamente SIN tutor.
+// Los filtros de /stats son query params libres sin scoping por comisión; el
+// tutor ve SU rendimiento vía las pantallas de ACADEMICO (Notas, Exámenes),
+// no el agregado institucional de comisiones ajenas.
+const VER_ESTADISTICAS: Rol[] = ['coordinador', 'admin_sistema'];
 
 export interface StaffNavItem {
   to: string;
@@ -49,7 +54,7 @@ export interface StaffNavItem {
 
 export const STAFF_NAV: StaffNavItem[] = [
   { to: '/admin',                       icon: 'space_dashboard', label: 'Dashboard',               group: 'main',   roles: ACADEMICO },
-  { to: '/admin/estadisticas',          icon: 'insights',        label: 'Estadísticas',            group: 'main',   roles: ACADEMICO },
+  { to: '/admin/estadisticas',          icon: 'insights',        label: 'Estadísticas',            group: 'main',   roles: VER_ESTADISTICAS },
   { to: '/admin/examenes',              icon: 'fact_check',      label: 'Exámenes',                group: 'main',   roles: ACADEMICO },
   // Alumnos que rindieron + sync a Moodle, sin pasar por el detalle de cada
   // examen (antes: Exámenes → click en la fila → scroll → "Ver alumnos que

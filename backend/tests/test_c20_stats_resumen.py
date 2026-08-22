@@ -414,6 +414,31 @@ async def test_endpoint_resumen_estudiante_403(app_stats):
 
 
 @pytest.mark.asyncio
+async def test_endpoint_resumen_tutor_403(app_stats):
+    """c-79: el tutor NO ve estadísticas institucionales — los filtros de este
+    endpoint son query params libres, sin scoping por pertenencia, así que
+    darle acceso permitiría pedir el resumen de una comisión ajena."""
+    async with AsyncClient(
+        transport=ASGITransport(app=app_stats),
+        base_url="http://test",
+        headers={"Authorization": f"Bearer {_token(['tutor'])}"},
+    ) as c:
+        resp = await c.get("/api/v1/stats/resumen")
+    assert resp.status_code == 403, resp.text
+
+
+@pytest.mark.asyncio
+async def test_endpoint_resumen_coordinador_200(app_stats):
+    async with AsyncClient(
+        transport=ASGITransport(app=app_stats),
+        base_url="http://test",
+        headers={"Authorization": f"Bearer {_token(['coordinador'])}"},
+    ) as c:
+        resp = await c.get("/api/v1/stats/resumen")
+    assert resp.status_code == 200, resp.text
+
+
+@pytest.mark.asyncio
 async def test_endpoint_resumen_incluye_agregaciones_nuevas(app_stats):
     async with AsyncClient(
         transport=ASGITransport(app=app_stats),

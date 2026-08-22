@@ -23,7 +23,7 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.application.audit.acciones import ModuloAuditoria
+from app.application.audit.acciones import EntidadAuditoria, ModuloAuditoria
 from app.domain.auth.identity import AuthenticatedPrincipal
 from app.infrastructure.persistence.models.transactional import UsuarioModel
 from app.infrastructure.persistence.repositories.consent_perfil import (
@@ -137,6 +137,7 @@ async def otorgar(
         actor=principal.username or principal.email,
         accion="consent.otorgado",
         modulo=ModuloAuditoria.CONSENTIMIENTO,
+        entidad=EntidadAuditoria.USUARIO,
         entidad_id=str(uid),
         ip=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),

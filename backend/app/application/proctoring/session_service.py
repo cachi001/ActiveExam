@@ -298,11 +298,15 @@ async def nombre_alumno_de_sesion(
     return await repo.nombre_alumno(alumno_idnumber, alumno_email)
 
 
-async def docente_id_de_sesion(db: AsyncSession, session_id: str) -> str | None:
-    """Docente a cargo de la comision de la sesion (C-76 bloque 8). Ver
-    ``ProctoringRepository.docente_id_de_sesion`` para el detalle de la derivacion."""
+async def tiene_pertenencia_de_sesion(
+    db: AsyncSession, usuario_id: str, session_id: str, *, es_coordinador: bool = False
+) -> bool:
+    """Pertenencia sobre la sesion (C-76 bloque 8, N:M c-79). Ver
+    ``ProctoringRepository.tiene_pertenencia_de_sesion`` para el detalle."""
     repo = ProctoringRepository(db)
-    return await repo.docente_id_de_sesion(session_id)
+    return await repo.tiene_pertenencia_de_sesion(
+        usuario_id, session_id, es_coordinador=es_coordinador
+    )
 
 
 async def obtener_sesion_ligera(

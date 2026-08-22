@@ -22,6 +22,7 @@ from datetime import datetime, timezone
 from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.application.audit.acciones import EntidadAuditoria, ModuloAuditoria
 from app.domain.audit_chain import AuditEntry
 from app.domain.dsr.ports import DsrAuditor, UserDsrRepository
 from app.infrastructure.persistence.models.proctoring import ProctoringSessionModel
@@ -154,5 +155,11 @@ class SqlDsrAuditor(DsrAuditor):
                 evidencia_id=usuario_id,
                 proposito=proposito,
                 hash_prev="",
+                # El titular del DSR es el usuario afectado — con esto, "Ver detalle"
+                # en Auditoría lleva a SU perfil en vez de caer al registro genérico
+                # de sesiones (donde el DSR no tiene nada que mostrar).
+                modulo=ModuloAuditoria.EVIDENCIA,
+                entidad=EntidadAuditoria.USUARIO,
+                entidad_id=usuario_id,
             )
         )

@@ -70,15 +70,50 @@ export const moodleApi = {
     return await realFetch('/config/moodle/mi-credencial', { method: 'DELETE' });
   },
 
-  /** Asigna (o quita, con null) el tutor a cargo de una comisión. C-73 §9.5 */
-  async asignarDocenteComision(
+  /** Agrega un tutor a cargo de una comisión (c-79, N:M — una comisión puede
+   * tener varios). Devuelve la comisión con la lista de tutores actualizada. */
+  async agregarTutorComision(
     comisionId: string,
-    docenteId: string | null,
-  ): Promise<{ docente_id: string | null; docente_nombre: string | null }> {
-    return await realFetch(`/exam-content/comisiones/${comisionId}/docente`, {
-      method: 'PUT',
-      body: JSON.stringify({ docente_id: docenteId }),
+    tutorId: string,
+  ): Promise<{ tutores: { id: string; nombre: string }[] }> {
+    return await realFetch(`/exam-content/comisiones/${comisionId}/tutores`, {
+      method: 'POST',
+      body: JSON.stringify({ tutor_id: tutorId }),
     });
+  },
+
+  /** Quita un tutor de una comisión (c-79, N:M). */
+  async quitarTutorComision(
+    comisionId: string,
+    tutorId: string,
+  ): Promise<{ tutores: { id: string; nombre: string }[] }> {
+    return await realFetch(
+      `/exam-content/comisiones/${comisionId}/tutores/${tutorId}`,
+      { method: 'DELETE' },
+    );
+  },
+
+  /** Agrega un coordinador a cargo de una materia (c-79, N:M). Desde c-79 el
+   * coordinador ya NO ve todo el sistema: sin materias asignadas no ve nada. */
+  async agregarCoordinadorMateria(
+    materiaId: string,
+    coordinadorId: string,
+  ): Promise<{ coordinadores: { id: string; nombre: string }[] }> {
+    return await realFetch(`/exam-content/materias/${materiaId}/coordinadores`, {
+      method: 'POST',
+      body: JSON.stringify({ coordinador_id: coordinadorId }),
+    });
+  },
+
+  /** Quita un coordinador de una materia (c-79, N:M). */
+  async quitarCoordinadorMateria(
+    materiaId: string,
+    coordinadorId: string,
+  ): Promise<{ coordinadores: { id: string; nombre: string }[] }> {
+    return await realFetch(
+      `/exam-content/materias/${materiaId}/coordinadores/${coordinadorId}`,
+      { method: 'DELETE' },
+    );
   },
 };
 

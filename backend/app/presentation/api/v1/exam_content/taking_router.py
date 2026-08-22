@@ -39,6 +39,7 @@ from app.presentation.api.v1.auth.dependencies import (
     get_current_principal,
 )
 from app.presentation.api.v1.exam_content._shared import (
+    _es_coordinador,
     _es_docente,
     _es_staff,
     _resumen_to_response,
@@ -64,6 +65,7 @@ from app.presentation.api.v1.exam_content.schemas import (
     PreguntaRevisionResponse,
     RevisionExamenResponse,
     SenalAnalisisResponse,
+    TutorInfo,
 )
 
 
@@ -126,10 +128,10 @@ def create_exam_taking_router(
         )
 
         # Gate de inscripción (C-71): el alumno ve SOLO los exámenes de las comisiones
-        # donde está inscripto; los roles de gestión (admin/proctor/...) ven todo el
+        # donde está inscripto; admin_sistema (único staff desde c-79) ve todo el
         # catálogo. El filtro es server-side por el username del principal.
-        # C-73 §9: el docente ve lo que DICTA (comision.docente_id), ni todo (staff)
-        # ni "sus inscripciones" (alumno, siempre vacío para un docente).
+        # C-73 §9: el tutor ve lo que DICTA (comision_tutor, N:M). c-79: el
+        # coordinador ve las comisiones de SUS materias asignadas.
         async with session_factory() as session:
             repo = ExamenContenidoSqlRepository(session)
             if _es_staff(principal):
@@ -138,6 +140,10 @@ def create_exam_taking_router(
                 comision_ids = await ComisionSqlRepository(session).comision_ids_a_cargo(
                     principal.subject or ""
                 )
+            elif _es_coordinador(principal):
+                comision_ids = await ComisionSqlRepository(
+                    session
+                ).comision_ids_a_cargo_coordinador(principal.subject or "")
             else:
                 comision_ids = await InscripcionSqlRepository(
                     session
@@ -372,6 +378,7 @@ def create_exam_taking_router(
                     detail="Informe no disponible.",
                 )
             # Audit del acceso del TITULAR como derecho de acceso (Ley 25.326).
+            from app.application.audit.acciones import EntidadAuditoria, ModuloAuditoria
             from app.domain.audit_chain import AuditEntry
             from app.infrastructure.persistence.repositories.audit_log import (
                 AuditLogSqlRepository,
@@ -389,6 +396,11 @@ def create_exam_taking_router(
                         "Ejercicio del derecho de acceso del titular al informe de "
                         "devolución de su sesión anulada (Ley 25.326, RN-DSR-01)."
                     ),
+                    # Entidad = la sesión sobre la que se pide el informe (tiene
+                    # página propia de detalle en el panel del tutor/coordinador).
+                    modulo=ModuloAuditoria.EVIDENCIA,
+                    entidad=EntidadAuditoria.SESION,
+                    entidad_id=session_id,
                 )
             )
             await session.commit()
@@ -447,13 +459,16 @@ def create_exam_taking_router(
             )
 
         from app.infrastructure.persistence.repositories.exam_content import (
+            ComisionSqlRepository,
             InscripcionSqlRepository,
             MateriaSqlRepository,
         )
 
         # Gate de inscripción (C-71): el alumno ve SOLO las materias donde tiene
-        # comisión inscripta; staff ve todas. C-73 §9: el docente ve las materias
-        # donde dicta alguna comisión (comision.docente_id), no todas ni "inscriptas".
+        # comisión inscripta; staff (solo admin_sistema desde c-79) ve todas.
+        # C-73 §9: el tutor ve las materias donde dicta alguna comisión
+        # (comision_tutor, N:M). c-79: el coordinador ya NO es staff — ve solo
+        # las materias donde figura en materia_coordinador.
         conteos: dict[str, tuple[int, int]] = {}
         async with session_factory() as session:
             if _es_staff(principal):
@@ -465,10 +480,32 @@ def create_exam_taking_router(
                 materias = await MateriaSqlRepository(session).materias_a_cargo(
                     principal.subject or ""
                 )
+            elif _es_coordinador(principal):
+                materias = await MateriaSqlRepository(session).materias_a_cargo_coordinador(
+                    principal.subject or ""
+                )
             else:
                 materias = await InscripcionSqlRepository(session).materias_inscriptas(
                     principal.username
                 )
+
+            # c-79: quién coordina cada materia. Solo para staff/coordinador — es
+            # el dato que alimenta el diálogo de asignación, y al alumno no le
+            # aporta nada (dos queries de más en su camino más caliente).
+            coordinadores_por_materia: dict[str, list[TutorInfo]] = {}
+            if _es_staff(principal) or _es_coordinador(principal):
+                ids_por_materia = await MateriaSqlRepository(
+                    session
+                ).coordinadores_de_materias([m.id for m in materias])
+                nombres = await ComisionSqlRepository(session).nombres_de_docentes(
+                    [cid for ids in ids_por_materia.values() for cid in ids]
+                )
+                coordinadores_por_materia = {
+                    materia_id: [
+                        TutorInfo(id=cid, nombre=nombres.get(cid, cid)) for cid in ids
+                    ]
+                    for materia_id, ids in ids_por_materia.items()
+                }
 
         return [
             MateriaResponse(
@@ -478,6 +515,7 @@ def create_exam_taking_router(
                 activa=m.activa,
                 total_inscriptos=conteos.get(m.id, (0, 0))[0],
                 total_examenes=conteos.get(m.id, (0, 0))[1],
+                coordinadores=coordinadores_por_materia.get(m.id, []),
             )
             for m in materias
         ]
@@ -503,10 +541,12 @@ def create_exam_taking_router(
         )
 
         # Gate de inscripción (C-71): el alumno ve SOLO sus comisiones inscriptas de
-        # esa materia; staff ve todas las comisiones de la materia. C-73 §9: el
-        # docente ve SOLO las comisiones de esa materia donde él es el titular.
+        # esa materia; staff (solo admin_sistema desde c-79) ve todas las comisiones
+        # de la materia. C-73 §9: el tutor ve SOLO las comisiones de esa materia
+        # donde es tutor (comision_tutor, N:M). c-79: el coordinador ve TODAS las
+        # comisiones de las materias que coordina (ya validó pertenencia a nivel
+        # materia, no hace falta acotar por comisión puntual).
         conteos: dict[str, tuple[int, int]] = {}
-        nombres_docentes: dict[str, str] = {}
         async with session_factory() as session:
             repo = ComisionSqlRepository(session)
             if _es_staff(principal):
@@ -517,15 +557,28 @@ def create_exam_taking_router(
                 comisiones = await repo.listar_a_cargo_de_materia(
                     principal.subject or "", materia_id
                 )
+            elif _es_coordinador(principal):
+                from app.infrastructure.persistence.repositories.exam_content import (
+                    MateriaSqlRepository,
+                )
+
+                es_miembro = await MateriaSqlRepository(session).es_coordinador_de_materia(
+                    principal.subject or "", materia_id
+                )
+                comisiones = await repo.listar_por_materia(materia_id) if es_miembro else []
             else:
                 comisiones = await InscripcionSqlRepository(
                     session
                 ).comisiones_inscriptas_de_materia(principal.username, materia_id)
-            # C-73 §9: el nombre del docente a cargo viaja resuelto, en UNA query para
-            # todo el listado. Sin esto la UI tendría que pedir el usuario por comisión.
-            nombres_docentes = await repo.nombres_de_docentes(
-                [c.docente_id for c in comisiones if c.docente_id]
-            )
+            # c-79: tutores por comisión, resueltos en N queries chicas (listas de
+            # comisión son acotadas — no amerita la complejidad de una query bulk).
+            tutores_por_comision: dict[str, list[TutorInfo]] = {}
+            for c in comisiones:
+                tutor_ids = await repo.tutores_de_comision(c.id)
+                nombres = await repo.nombres_de_docentes(tutor_ids)
+                tutores_por_comision[c.id] = [
+                    TutorInfo(id=tid, nombre=nombres.get(tid, tid)) for tid in tutor_ids
+                ]
 
         return [
             ComisionResponse(
@@ -539,8 +592,7 @@ def create_exam_taking_router(
                 activa=c.activa,
                 total_inscriptos=conteos.get(c.id, (0, 0))[0],
                 total_examenes=conteos.get(c.id, (0, 0))[1],
-                docente_id=c.docente_id,
-                docente_nombre=nombres_docentes.get(c.docente_id or ""),
+                tutores=tutores_por_comision.get(c.id, []),
             )
             for c in comisiones
         ]
@@ -555,18 +607,19 @@ def create_exam_taking_router(
     ) -> list[ComisionConMateriaResponse]:
         """Selector combinado único ("CÓDIGO - Materia") sin elegir materia primero.
 
-        Staff ve todas las comisiones; docente ve solo las que dicta (across
-        todas sus materias, C-73 §9). No pensado para alumnos.
+        Staff (admin_sistema) ve todas las comisiones; tutor ve solo las que
+        dicta (across todas sus materias, C-73 §9); coordinador ve las de SUS
+        materias asignadas (c-79). No pensado para alumnos.
         """
         if session_factory is None:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Persistencia no inicializada.",
             )
-        if not (_es_staff(principal) or _es_docente(principal)):
+        if not (_es_staff(principal) or _es_docente(principal) or _es_coordinador(principal)):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Requiere rol docente o de alcance institucional.",
+                detail="Requiere rol tutor/coordinador o de alcance institucional.",
             )
 
         from app.infrastructure.persistence.repositories.exam_content import (
@@ -575,8 +628,14 @@ def create_exam_taking_router(
 
         async with session_factory() as session:
             repo = ComisionSqlRepository(session)
-            docente_id = None if _es_staff(principal) else (principal.subject or "")
-            filas = await repo.listar_todas_con_materia(docente_id)
+            if _es_staff(principal):
+                filas = await repo.listar_todas_con_materia(None)
+            elif _es_docente(principal):
+                filas = await repo.listar_todas_con_materia(principal.subject or "")
+            else:
+                filas = await repo.listar_todas_con_materia_coordinador(
+                    principal.subject or ""
+                )
 
         return [
             ComisionConMateriaResponse(

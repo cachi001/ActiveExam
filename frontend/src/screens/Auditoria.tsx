@@ -157,41 +157,58 @@ function accionMeta(accion: string): { label: string; color: string; icon: strin
 }
 
 
-/** Ruta de navegación según módulo + entidad_id.
- * Cuando modulo es null (entradas antiguas) cae en la heurística por accion. */
-function navegarA(evento: AuditEvento): string | null {
-  if (!evento.entidad_id) {
-    // Primero: módulo explícito.
-    switch (evento.modulo) {
-      case 'USUARIOS': return '/admin/usuarios';
-      case 'MATERIAS': return '/admin/materias';
-      case 'EXAMENES': return '/admin/examenes';
-      case 'SESIONES':
-      case 'BIOMETRIA':
-      case 'CONSENTIMIENTO':
-      case 'EVIDENCIA': return '/admin/proctoring-sessions';
-      case 'REVISION': return '/admin/cola-revision';
-      case 'MOODLE': return '/admin/examenes';
-      case 'CONFIGURACION': return '/admin/configuracion';
-    }
-    // Fallback: derivar la ruta del patrón de acción (para entradas sin modulo).
-    const a = evento.accion ?? '';
-    if (a.startsWith('config')) return '/admin/configuracion';
-    if (a.startsWith('user.')) return '/admin/usuarios';
-    if (a.startsWith('materia.') || a.startsWith('comision.') || a.startsWith('inscripcion.')) return '/admin/materias';
-    if (a.startsWith('examen.') || a === 'moodle.sync') return '/admin/examenes';
-    if (a.startsWith('review.') || a.startsWith('enrollment') || a.startsWith('biometria') || a.startsWith('consent')) return '/admin/proctoring-sessions';
-    return null;
-  }
-  switch (evento.entidad) {
-    case 'USUARIO': return `/admin/usuarios/${evento.entidad_id}`;
-    case 'EXAMEN': return `/admin/examenes/${evento.entidad_id}/resultados`;
-    case 'SESION': return '/admin/proctoring-session-detail';  // handleClickActividad sets store
-    case 'MATERIA':
-    case 'COMISION':
-    case 'INSCRIPCION': return '/admin/materias';
+/** Ruta al MÓDULO general (listado) según `modulo` — usada cuando la entidad
+ * afectada no tiene página propia, o cuando no hay entidad_id para linkear. */
+function rutaDeModulo(modulo: string | null | undefined): string | null {
+  switch (modulo) {
+    case 'USUARIOS': return '/admin/usuarios';
+    case 'MATERIAS': return '/admin/materias';
+    case 'EXAMENES': return '/admin/examenes';
+    case 'SESIONES':
+    case 'BIOMETRIA':
+    case 'CONSENTIMIENTO':
+    case 'EVIDENCIA': return '/admin/proctoring-sessions';
+    case 'REVISION': return '/admin/cola-revision';
+    case 'MOODLE': return '/admin/examenes';
+    case 'CONFIGURACION': return '/admin/configuracion';
     default: return null;
   }
+}
+
+/** Fallback: deriva el módulo del patrón de `accion` (entradas sin `modulo`). */
+function rutaDeAccion(accion: string): string | null {
+  const a = accion ?? '';
+  if (a.startsWith('config')) return '/admin/configuracion';
+  if (a.startsWith('user.')) return '/admin/usuarios';
+  if (a.startsWith('materia.') || a.startsWith('comision.') || a.startsWith('inscripcion.')) return '/admin/materias';
+  if (a.startsWith('examen.') || a === 'moodle.sync') return '/admin/examenes';
+  if (a.startsWith('review.') || a.startsWith('enrollment') || a.startsWith('biometria') || a.startsWith('consent')) return '/admin/proctoring-sessions';
+  return null;
+}
+
+/** Entidades que tienen PÁGINA PROPIA de detalle (con su propio id en la URL).
+ * El resto (MATERIA/COMISION/INSCRIPCION/CONSENTIMIENTO/...) no tiene pantalla
+ * propia — su "detalle" es simplemente el listado del módulo. */
+const ENTIDADES_CON_PAGINA_PROPIA = new Set(['USUARIO', 'EXAMEN', 'SESION']);
+
+/** true si esta actividad tiene una página de DETALLE propia a la que ir
+ * (no solo la página general del módulo). Determina la etiqueta del botón. */
+function tieneDetallePropio(evento: AuditEvento): boolean {
+  return Boolean(evento.entidad_id) && ENTIDADES_CON_PAGINA_PROPIA.has(evento.entidad ?? '');
+}
+
+/** Ruta de navegación de una actividad: al detalle propio de la entidad si lo
+ * tiene, o si no a la página general del módulo (o la heurística por acción
+ * para entradas viejas sin `modulo`). */
+function navegarA(evento: AuditEvento): string | null {
+  if (tieneDetallePropio(evento)) {
+    switch (evento.entidad) {
+      case 'USUARIO': return `/admin/usuarios/${evento.entidad_id}`;
+      case 'EXAMEN': return `/admin/examenes/${evento.entidad_id}/resultados`;
+      case 'SESION': return '/admin/proctoring-session-detail';  // handleClickActividad sets store
+    }
+  }
+  return rutaDeModulo(evento.modulo) ?? rutaDeAccion(evento.accion ?? '');
 }
 
 function fmtFecha(iso: string): string {
@@ -319,7 +336,7 @@ export default function Auditoria() {
   const setProctoringDetailBackRoute = useApp((s) => s.setProctoringDetailBackRoute);
 
   const handleClickActividad = (e: AuditEvento) => {
-    if (e.entidad === 'SESION' && e.entidad_id) {
+    if (e.entidad === 'SESION' && e.entidad_id && tieneDetallePropio(e)) {
       setProctoringSessionId(e.entidad_id);
       setProctoringDetailBackRoute('/admin/auditoria');
       navigate('/admin/proctoring-session-detail/' + e.entidad_id);
@@ -535,7 +552,7 @@ export default function Auditoria() {
                         <div className="flex items-center gap-2 shrink-0">
                           {ruta && (
                             <span className="inline-flex items-center gap-1 text-xs font-medium text-primary">
-                              <span>{e.entidad_id ? 'Ver detalle' : 'Ver módulo'}</span>
+                              <span>{tieneDetallePropio(e) ? 'Ver detalle' : 'Ver módulo'}</span>
                               <Icon name="open_in_new" className="text-[13px]" />
                             </span>
                           )}

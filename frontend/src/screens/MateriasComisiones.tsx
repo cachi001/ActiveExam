@@ -39,6 +39,7 @@ import {
 import type { Materia, Comision } from '../lib/types';
 import { ConfirmModal } from '../ui/ConfirmModal';
 import { MateriaFormPanel } from './admin/components/MateriaFormPanel';
+import { AsignarCoordinadorDialog } from './admin/components/AsignarCoordinadorDialog';
 import { ComisionesAccordionBody } from './admin/components/ComisionesAccordionBody';
 import {
   FORM_MATERIA_VACIO,
@@ -89,6 +90,11 @@ export default function MateriasComisiones() {
     { value: '1C', label: '1er cuatrimestre' },
     { value: '2C', label: '2do cuatrimestre' },
   ]);
+
+  // ── Coordinadores de la materia (c-79) ────────────────────────────────────
+  // Sin esta pantalla el rol coordinador queda inutilizable: desde c-79 dejó de
+  // tener alcance institucional y solo ve las materias que tiene asignadas.
+  const [coordinandoMateria, setCoordinandoMateria] = useState<Materia | null>(null);
 
   // ── Borrado (solo si 100% vacío; el backend es la autoridad) ───────────────
   const [confirmarBorrado, setConfirmarBorrado] = useState<
@@ -469,6 +475,7 @@ export default function MateriasComisiones() {
                         items={[
                           { label: 'Editar materia', icon: 'edit', onClick: () => abrirEditarMateria(m) },
                           { label: 'Nueva comisión', icon: 'add_circle', onClick: () => abrirCrearComision(m.id) },
+                          { label: 'Coordinadores', icon: 'supervisor_account', onClick: () => setCoordinandoMateria(m) },
                           m.activa === false
                             ? { label: 'Activar materia', icon: 'play_circle', onClick: () => void toggleActivaMateria(m) }
                             : { label: 'Desactivar materia', icon: 'pause_circle', onClick: () => void toggleActivaMateria(m) },
@@ -513,6 +520,9 @@ export default function MateriasComisiones() {
                         </h2>
                         <p className="text-[11px] text-on-surface-variant">
                           {(comisionesPorMateria[m.id]?.length ?? 0)} comisión(es)
+                          {m.coordinadores && m.coordinadores.length > 0
+                            ? ` · Coordina: ${m.coordinadores.map((c) => c.nombre).join(', ')}`
+                            : ''}
                         </p>
                       </div>
                       {puedeEditarEstructura && (
@@ -555,6 +565,25 @@ export default function MateriasComisiones() {
           </div>
         )}
       </div>
+
+      {coordinandoMateria && (
+        <AsignarCoordinadorDialog
+          materiaId={coordinandoMateria.id}
+          materiaNombre={coordinandoMateria.nombre}
+          coordinadoresActuales={coordinandoMateria.coordinadores ?? []}
+          onCerrar={() => setCoordinandoMateria(null)}
+          onCambiado={(coordinadores) => {
+            // Se refleja en la lista sin recargar todo: el diálogo queda abierto
+            // y el usuario puede seguir agregando o quitando.
+            setMaterias((prev) =>
+              prev.map((m) =>
+                m.id === coordinandoMateria.id ? { ...m, coordinadores } : m,
+              ),
+            );
+            setCoordinandoMateria((prev) => (prev ? { ...prev, coordinadores } : prev));
+          }}
+        />
+      )}
 
       <ConfirmModal
         abierto={confirmarBorrado !== null}

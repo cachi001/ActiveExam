@@ -33,6 +33,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import NullPool
 
 from app.infrastructure.persistence.base import Base
+from app.infrastructure.persistence.models.comision_tutor import (  # noqa: F401
+    ComisionTutorModel,
+)
 from app.infrastructure.persistence.models.exam_content import (  # noqa: F401
     CategoriaPreguntaModel,
     ComisionModel,
@@ -54,12 +57,14 @@ _TABLES_TO_DROP = [
     "opcion_respuesta",
     "pregunta_examen",
     "examen_contenido",
+    "comision_tutor",
     "comision",
     "materia",
 ]
 _TABLES_TO_CREATE = [
     MateriaModel.__table__,
     ComisionModel.__table__,
+    ComisionTutorModel.__table__,
     ExamenContenidoModel.__table__,
     PreguntaExamenModel.__table__,
     OpcionRespuestaModel.__table__,
@@ -139,12 +144,16 @@ async def _crear_materia_con_dos_comisiones(factory, docente_c1: str, docente_c2
         )
         s.add(c1)
         await s.flush()
+        if docente_c1:
+            s.add(ComisionTutorModel(comision_id=c1.id, tutor_id=docente_c1))
         c2 = ComisionModel(
             materia_id=materia.id, codigo=f"C2-{sufijo}", nombre="Comisión 2",
             codigo_matriculacion=f"K2-{sufijo}", docente_id=docente_c2,
         )
         s.add(c2)
         await s.flush()
+        if docente_c2:
+            s.add(ComisionTutorModel(comision_id=c2.id, tutor_id=docente_c2))
         materia_id, c1_id, c2_id = materia.id, c1.id, c2.id
         await s.commit()
     return materia_id, c1_id, c2_id

@@ -71,6 +71,10 @@ const COLA_REVISION: Rol[] = ['coordinador', 'admin_sistema'];
 // c-76-2: 'admin_examenes' fue ELIMINADO del dominio (solo existe un rol "Admin").
 const ACADEMICO: Rol[] = ['tutor', 'coordinador', 'admin_sistema'];
 const ADMIN: Rol[] = ['admin_sistema'];
+// c-79: capacidad `ver_estadisticas` del backend — deliberadamente SIN tutor
+// (ver mismo array en ui/nav.ts). Los filtros de /stats son query params
+// libres sin scoping por comisión.
+const VER_ESTADISTICAS: Rol[] = ['coordinador', 'admin_sistema'];
 
 /** Envuelve una pantalla en el guard de auth/rol. */
 function g(node: ReactNode, roles: Rol[]): ReactNode {
@@ -111,7 +115,7 @@ export default function App() {
     '/admin/cola-revision': g(<Revisor />, COLA_REVISION),
     '/admin/cola-revision/detalle': g(<SessionDetail />, COLA_REVISION),
     '/admin': g(<AdminDashboard />, ACADEMICO),
-    '/admin/estadisticas': g(<EstadisticasInstitucionales />, ACADEMICO),
+    '/admin/estadisticas': g(<EstadisticasInstitucionales />, VER_ESTADISTICAS),
     '/admin/auditoria': g(<Auditoria />, ADMIN),
     '/admin/examenes': g(<ExamList />, ACADEMICO),
     '/admin/notas': g(<Notas />, ACADEMICO),

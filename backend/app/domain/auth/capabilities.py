@@ -43,6 +43,14 @@ CAPABILITY_ROLES: dict[str, frozenset[Rol]] = {
     "gestionar_notas": frozenset(
         {Rol.TUTOR, Rol.COORDINADOR, Rol.ADMIN_SISTEMA}
     ),
+    # Ver estadisticas institucionales agregadas (dashboard/exportables).
+    # Deliberadamente SIN TUTOR: aunque son agregados sin PII, exponen el
+    # rendimiento de CUALQUIER materia/comision/examen via query params sin
+    # scoping por pertenencia (el docente podria pedir el resumen de una
+    # comision ajena). Decision del owner: el tutor gestiona SU catalogo
+    # (`gestionar_academico`/`gestionar_notas`) pero no mira estadisticas
+    # institucionales — eso es coordinacion/administracion.
+    "ver_estadisticas": frozenset({Rol.COORDINADOR, Rol.ADMIN_SISTEMA}),
     # Asignar el docente a cargo de una comision (C-73 §9). Deliberadamente SIN
     # DOCENTE: quien queda a cargo decide quien devuelve la nota a Moodle y que
     # examenes puede tocar. Si el docente pudiera asignarse solo, la pertenencia

@@ -75,6 +75,7 @@ def _importar_todos_los_modelos() -> None:
         alternative_request,
         audit_log,
         chat_pausa,
+        comision_tutor,
         event,
         exam_content,
         inscripcion,

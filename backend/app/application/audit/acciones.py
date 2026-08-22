@@ -98,6 +98,9 @@ class AccionAuditoria(StrEnum):
     # C-73 §9: quién queda a cargo de la comisión decide quién devuelve la nota a
     # Moodle y qué exámenes puede tocar ese docente. Se audita como cambio sensible.
     COMISION_DOCENTE = "comision.set_docente"
+    # c-79: quién coordina la materia decide qué comisiones/tutores/exámenes puede
+    # tocar (acotado por materia_coordinador, N:M). Cambio sensible, se audita.
+    MATERIA_COORDINADOR = "materia.set_coordinador"
     EXAMEN_IMPORTACION = "examen.import"
     EXAMEN_MOODLE_TARGET = "examen.moodle_target"
     EXAMEN_CONFIG_ACTUALIZACION = "examen.config_update"
@@ -217,4 +220,51 @@ def modulo_de_accion(accion: str | None) -> str | None:
         )
     ):
         return ModuloAuditoria.EVIDENCIA
+    return None
+
+
+def entidad_de_accion(accion: str | None) -> str | None:
+    """Deriva el TIPO de entidad afectada a partir del prefijo de la ``accion``.
+
+    Mismo mecanismo que ``modulo_de_accion`` (mismo FALLBACK en ``append()`` del
+    repositorio) pero para ``entidad``. Sin esto, un caller que pasa ``entidad_id``
+    pero se olvida de ``entidad`` (pasó en comisión/materia — C-79) deja la fila
+    sin clasificar: Auditoría no sabe a qué tipo de página llevar "Ver detalle" y
+    no muestra ningún botón, aunque el id sí esté guardado.
+
+    Deriva el TIPO (MATERIA, USUARIO, SESION...), nunca el id — el id solo lo
+    tiene quien registra la acción, no se puede inventar acá. Devuelve None si la
+    acción no matchea ninguna familia conocida (se registra igual, sin entidad).
+    """
+    a = accion or ""
+    if a.startswith("user."):
+        return EntidadAuditoria.USUARIO
+    if a.startswith("materia."):
+        return EntidadAuditoria.MATERIA
+    if a.startswith("comision."):
+        return EntidadAuditoria.COMISION
+    if a.startswith("inscripcion."):
+        return EntidadAuditoria.INSCRIPCION
+    if a.startswith("examen.") or a == "moodle.sync":
+        return EntidadAuditoria.EXAMEN
+    if a.startswith("config"):
+        return EntidadAuditoria.CONFIGURACION
+    if a.startswith("consent") or a.startswith(("biometria", "enrollment")):
+        # El titular de un consentimiento/verificación/foto de referencia es
+        # siempre el usuario dueño de la acción — es la única entidad con
+        # página propia que tiene sentido acá (no hay pantalla de "sesión de
+        # biometría" separada del perfil del alumno).
+        return EntidadAuditoria.USUARIO
+    # "sesion.test.delete" queda AFUERA a propósito: la sesión ya no existe
+    # cuando se registra ese evento (se borró) — "Ver detalle" daría 404, igual
+    # que "retention.session.deleted".
+    if a.startswith(PREFIJO_REVISION_DECISION) or a == AccionAuditoria.RESULTADO_ARCHIVAR:
+        return EntidadAuditoria.SESION
+    if a.startswith((PREFIJO_DSR, "derecho_acceso")):
+        # DSR opera siempre sobre un usuario titular concreto.
+        return EntidadAuditoria.USUARIO
+    if a.startswith(
+        ("acceso_evidencia", "deposito_evidencia", "manipulacion_detectada", "firma_maestra", PREFIJO_VERIFY_CHAIN)
+    ):
+        return EntidadAuditoria.SESION
     return None

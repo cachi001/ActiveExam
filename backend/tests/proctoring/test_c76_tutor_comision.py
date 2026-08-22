@@ -33,6 +33,7 @@ _TABLAS = (
     "proctoring_event",
     "proctoring_biometria",
     "proctoring_session",
+    "comision_tutor",
     "comision",
     "materia",
     "examen_contenido",
@@ -94,6 +95,9 @@ async def ctx():
         ProctoringEventModel,
         ProctoringSessionModel,
     )
+    from app.infrastructure.persistence.models.comision_tutor import (
+        ComisionTutorModel,
+    )
     from app.infrastructure.persistence.models.transactional import UsuarioModel
     from app.presentation.api.v1.proctoring.router import create_proctoring_router
     from app.infrastructure.reinferencia.mediapipe_adapter import MediaPipeReinferencia
@@ -105,6 +109,7 @@ async def ctx():
         await conn.run_sync(UsuarioModel.__table__.create, checkfirst=True)
         await conn.run_sync(MateriaModel.__table__.create, checkfirst=True)
         await conn.run_sync(ComisionModel.__table__.create, checkfirst=True)
+        await conn.run_sync(ComisionTutorModel.__table__.create, checkfirst=True)
         await conn.run_sync(ExamenContenidoModel.__table__.create, checkfirst=True)
         await conn.run_sync(ProctoringSessionModel.__table__.create, checkfirst=True)
         await conn.run_sync(ProctoringEventModel.__table__.create, checkfirst=True)
@@ -138,6 +143,9 @@ async def ctx():
 async def _crear_comision_con_docente(factory, *, docente_id: str | None) -> tuple[str, str]:
     """Crea materia + comision (+ usuario docente si corresponde). Devuelve
     (comision_id, examen_contenido_id)."""
+    from app.infrastructure.persistence.models.comision_tutor import (
+        ComisionTutorModel,
+    )
     from app.infrastructure.persistence.models.exam_content import (
         ComisionModel,
         ExamenContenidoModel,
@@ -167,6 +175,13 @@ async def _crear_comision_con_docente(factory, *, docente_id: str | None) -> tup
         )
         session.add(comision)
         await session.flush()
+        # c-79: la pertenencia vive en comision_tutor (N:M), no en la
+        # columna docente_id — el fixture puebla ambas.
+        if docente_id is not None:
+            session.add(
+                ComisionTutorModel(comision_id=comision.id, tutor_id=docente_id)
+            )
+            await session.flush()
         examen = ExamenContenidoModel(titulo="Examen Test", comision_id=comision.id)
         session.add(examen)
         await session.commit()
