@@ -1,0 +1,14 @@
+# Grafana del stack de DESARROLLO (docker-compose.dev.yml).
+#
+# Solo Prometheus: ese stack levanta postgres, minio y backend, no Loki ni Tempo.
+# Provisionar datasources que no existen deja paneles rotos y confunde al leer
+# una prueba de carga. El `provisioning/` de al lado (stack full) sí los trae.
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true

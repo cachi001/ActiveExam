@@ -142,3 +142,42 @@ services:
         python scripts/seed_users.py --activeexam && \
         echo ">>> [3/3] levantando uvicorn en :8000" && \
         uvicorn app.main_activeexam:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips="*" --workers 4
+
+  # --- Observabilidad de la prueba de carga (tools/carga/) ---------------------
+  #     El backend expone /metrics desde 0bb7c37, pero hasta ahora nada lo
+  #     scrapeaba en este stack: Prometheus y Grafana se levantaban a mano, por
+  #     fuera de todo compose, y los paneles se perdian al recrear el contenedor.
+  prometheus:
+    image: prom/prometheus:v3.0.1
+    volumes:
+      - ../observability/prometheus/prometheus.dev.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    restart: unless-stopped
+    depends_on:
+      - backend
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    environment:
+      # Dev-only: sin login, para no frenar una corrida de carga pidiendo clave.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: "Admin"
+      GF_USERS_DEFAULT_THEME: "light"
+    volumes:
+      # provisioning-dev: solo el datasource de Prometheus (este stack no levanta
+      # Loki ni Tempo) + el provider que carga los dashboards del repo.
+      - ../observability/grafana/provisioning-dev:/etc/grafana/provisioning:ro
+      - ../observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      # El volumen es lo que faltaba: sin el, todo panel armado en la interfaz
+      # muere con el contenedor.
+      - grafana_data:/var/lib/grafana
+    ports:
+      # 3001 en el host: 3000 lo usa el Grafana del stack full.
+      - "3001:3000"
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+
+volumes:
+  grafana_data:

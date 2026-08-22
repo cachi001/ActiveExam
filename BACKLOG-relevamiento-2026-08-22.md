@@ -542,14 +542,100 @@ vacía el sistema avisa antes de que lo descubra un alumno.
 
 ---
 
+## T-20 · Producción corre en un solo core
+
+**Gobernanza**: ALTA (toca el arranque de producción)
+
+El commit `0bb7c37` del 21/8 arregló cuatro cosas encontradas probando con carga real
+de 150 a 1200 alumnos concurrentes. Tres llegaron a producción: pool de DB dimensionado
+(`pool_size=12, max_overflow=12`), métricas Prometheus en `/metrics` (verificado, responde
+200 en producción) y el logging de errores de DB que antes se tragaban.
+
+**La cuarta no llegó.** El propio commit lo aclara: "No se tocó Dockerfile.activeexam".
+
+| dónde | comando |
+|---|---|
+| `Dockerfile.activeexam:76` (producción) | `uvicorn ... --proxy-headers` **sin `--workers`** |
+| `docker-compose.dev.yml` (desarrollo) | `uvicorn ... --workers 4` |
+
+Producción levanta un solo proceso, así que usa un solo core por más cores que tenga el
+host. Y el pool de 24 conexiones se dimensionó pensando en varios workers. Para 500
+personas en vivo, este es hoy el cuello más probable.
+
+**Bloqueada por dos datos que hay que confirmar antes de tocar nada**:
+
+1. Cuántos cores tiene el plan de Render en uso. Poner `--workers` de más en una
+   instancia chica empeora: cada worker es un proceso Python completo, con su memoria y
+   su propio pool de conexiones.
+2. Si el dashboard de Render tiene un start command que pisa el CMD del Dockerfile.
+
+**Cuenta a hacer**: `workers × (pool_size + max_overflow)` no puede superar el
+`max_connections` de Postgres. Con 24 por worker, 4 workers son 96 conexiones.
+
+**Terminada cuando**: producción usa los cores del plan, con el pool recalculado, y hay
+una medición antes y después que lo respalde.
+
+---
+
+## T-21 · Nadie mira las métricas en producción
+
+**Gobernanza**: MEDIA
+
+`/metrics` responde 200 en producción, pero **no hay nada que lo scrapee**. Prometheus
+solo existe en el compose local. En Render no corre.
+
+O sea que hoy las métricas existen y se pierden: no hay serie histórica. Si algo se cae
+durante el examen real, no vas a poder reconstruir qué pasó.
+
+**Falta**: un Prometheus (o un servicio gestionado) que scrapee el `/metrics` de
+producción y guarde la serie, con retención que cubra el examen y los días posteriores.
+
+**Ojo**: `/metrics` hoy es **público**. Antes de exponerlo a internet para que algo
+externo lo scrapee, conviene protegerlo: no filtra datos personales, pero sí la forma de
+la API y el volumen de uso.
+
+**Terminada cuando**: hay serie histórica consultable de la ventana del examen real.
+
+---
+
+## T-22 · Repetir la medición de carga y dejarla escrita
+
+**Gobernanza**: BAJA
+
+De la corrida de 150 a 1200 del 21/8 **no quedó ningún documento**: ni cuánto aguantó, ni
+dónde estuvo el quiebre, ni con qué hardware. Y no se podía repetir, porque el único k6
+del repo (`poc/k6/students.js`) le pega al backend del PoC C-03, que es otra arquitectura.
+
+**Hecho el 22/8** (ya no falta):
+
+- `tools/carga/carga-activeexam.js`: k6 contra el backend real, simulando el camino
+  caliente (crear sesión, stream de eventos, finalizar) con umbrales p95 < 500 ms,
+  p99 < 1 s y menos de 1 % de error.
+- `tools/carga/README.md` con cómo correrlo.
+- Prometheus y Grafana **dentro** del compose de desarrollo, con volumen y con el
+  dashboard versionado en `infra/observability/grafana/dashboards/activeexam-carga.json`.
+  Antes se levantaban a mano por fuera de todo compose y los paneles morían con el
+  contenedor.
+
+**Falta**: correr la medición y escribir los resultados. Idealmente dos corridas, antes y
+después de T-20, para tener el número con y sin workers.
+
+**Terminada cuando**: hay un documento con el punto de quiebre medido, el hardware y la
+configuración, igual que `results-4core-baseline.md` pero del sistema real.
+
+---
+
 ## Orden sugerido
 
 **Definido por el dueño (22/8)**: las preguntas aleatorias (T-10) van **al final**.
 Primero todo lo demás.
 
-1. **T-19 primero de todo**: es lo único de la lista que deja el sistema inutilizable para
-   TODOS los alumnos, sin aviso. Con el examen real cerca, que esto vuelva a pasar el día
-   de la rendición es el peor escenario posible.
+0. **T-20 y T-22 antes que nada, si el examen real se acerca.** Que el sistema no aguante
+   la concurrencia el día de la rendición es peor que cualquier bug de esta lista: no hay
+   workaround en el momento. T-22 ya tiene el harness listo, solo falta correrlo, y su
+   resultado es el que dice si T-20 es urgente o no.
+1. **T-19**: es lo único de la lista que deja el sistema inutilizable para TODOS los
+   alumnos, sin aviso. Que vuelva a pasar el día del examen es el otro escenario malo.
 2. **Resto de bugs**: T-17 (causa ya confirmada, arreglo conocido), T-16 (usuario LTI) y
    T-18 (auditoría).
 3. **T-04**: ya está escrito, solo falta cerrarlo y desplegarlo.
