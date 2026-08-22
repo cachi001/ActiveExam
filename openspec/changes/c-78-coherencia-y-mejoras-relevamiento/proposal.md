@@ -42,9 +42,48 @@ La auditoría también sirve para dejar por escrito qué **no** es un bug, para 
 
 - **F-08 — Los endpoints de LECTURA del panel académico no están acotados por comisión.** `GET /{examen_id}/resultados`, `GET /{examen_id}/config`, `GET /{examen_id}/preguntas` y `GET /comisiones/{id}/alumnos` **no** llaman a `_exigir_pertenencia`, mientras que *todas* las escrituras equivalentes sí. Un tutor puede **leer** los resultados y la configuración de exámenes de comisiones que no dicta; solo no puede escribirlos. El docstring de `archivar_resultado` incluso afirma "mismo scoping por comisión que el resto del panel", lo cual hoy no es cierto para las lecturas. Esto es **RBAC/acceso a datos de alumnos → gobierno CRÍTICO**, y decidir si es un bug o el diseño querido (¿el tutor debe ver el rendimiento de toda la materia?) es una **decisión del dueño**, no de una auditoría de coherencia. Se documenta y se recomienda `c-79-scoping-lectura-panel-academico`.
 
+### Bloque E — Relevamiento del 22/8/2026 (absorbido)
+
+El dueño recorrió el sistema y salieron 22 hallazgos. Se absorben acá porque comparten
+naturaleza con los bloques A a D: son incoherencias y huecos sobre lo ya construido, no
+producto nuevo. Los que sí son producto nuevo (rol PROFESOR, sorteo aleatorio) se
+declaran como capacidades nuevas más abajo.
+
+- **E-01 — La nota se muestra sola al terminar.** El flujo real del docente es revisar y
+  después publicar. Hoy no existe la acción de publicar: solo un enum que nadie sabe
+  cuándo tocar.
+- **E-02 — El alumno ve todos los eventos de proctoring mientras rinde.** Sin forma de
+  desactivarlo.
+- **E-03 — El TUTOR ve Estadísticas, Creación de exámenes y Banco de preguntas.** No le
+  corresponden.
+- **E-04 — Falta el rol PROFESOR.** Hoy hay que elegir entre tutor (muy poco) y
+  coordinador (demasiado, incluye el veredicto).
+- **E-05 — Supervisión en vivo y Registro de sesiones no filtran por materia/comisión.**
+- **E-06 — Un examen sirve a una sola comisión** y no se puede duplicar.
+- **E-07 — El sorteo de preguntas es de armado, no de rendición.** Todos los alumnos
+  reciben exactamente las mismas preguntas; Moodle sortea por intento.
+- **E-08 — No hay vista previa de la pregunta** ni desglose de lo que se está eligiendo.
+- **E-09 — El tope de preguntas no se valida** contra las realmente disponibles.
+- **E-10 — No se pueden exportar** los inscriptos por comisión ni las notas, y sin API de
+  Moodle la nota queda "pendiente" para siempre aunque se haya cargado a mano.
+- **E-11 — Materias y comisiones es ilegible** con 40 inscriptos: sin colapsar, sin paginar.
+- **E-12 — El registro LTI es manual** y se pierde al recrear la base, dejando el ingreso
+  desde el campus caído para todos, sin aviso.
+- **E-13 — Tres bugs a la vista**: la pantalla de materias muestra "no hay nada" cuando en
+  realidad falló la carga; tras el alta LTI la sesión muestra `lti:1:7` en vez del usuario
+  elegido; Auditoría sigue mostrando campos crudos.
+- **E-14 — Capacidad sin medir.** El backend corre un proceso en 0,1 de CPU, nadie scrapea
+  `/metrics`, y los screenshots se guardan como base64 cifrado en Postgres: un examen de
+  100 alumnos escribe unos 360 MB en la base.
+
 ## Capabilities
 
 ### New Capabilities
+- `visibilidad-resultados-alumno`: la nota y los eventos de proctoring son invisibles para el alumno por defecto; la nota se publica por una acción humana explícita y auditada.
+- `rol-profesor-y-alcance`: rol PROFESOR con gestión académica y supervisión, SIN veredicto de integridad; y alcance por pertenencia en supervisión en vivo y registro de sesiones.
+- `armado-examen-aleatorio`: el examen guarda la DEFINICIÓN del sorteo, no su resultado, y cada alumno recibe su propio set al iniciar el intento.
+- `exportables-academicos`: exportar inscriptos por comisión y notas del examen, y marcar el estado de la nota a mano cuando no hay API del campus.
+- `lti-registro-dinamico`: registrar la herramienta desde Moodle crea la fila de confianza en estado inactivo; un admin la habilita.
 - `exam-catalog-soft-delete`: Baja lógica y reactivación de `examen_contenido` con `eliminado_en`, filtro de estado en el catálogo y exclusión por defecto en todos sus consumidores, sin tocar la evidencia ni las sesiones históricas.
 - `stat-denominator-coherence`: Una métrica con el mismo nombre SHALL contar lo mismo en toda la superficie de administración; el vocabulario (label/ícono/tono) sale siempre de la fuente única `statCatalog`.
 - `filtro-etiqueta-fiel`: Un control de filtro SHALL hacer lo que su etiqueta dice — "mostrar X" incluye X además de lo ya visible, y el estado "hay filtros aplicados" SHALL considerar todos los filtros que la pantalla ofrece.
@@ -52,7 +91,9 @@ La auditoría también sirve para dejar por escrito qué **no** es un bug, para 
 ### Modified Capabilities
 - `exam-content-model`: `examen_contenido` gana la columna `eliminado_en` (nullable, `NULL` = activo) como estado de baja lógica del catálogo.
 - `statistical-distribution-analytics`: los conteos de catálogo excluyen los exámenes dados de baja; los denominadores de sesiones se declaran explícitamente (diagnóstico excluido) y se alinean con los del resto de las pantallas.
-- `subida-nota-individual-lote`: las políticas de intentos `ULTIMO` y `PRIMERO` ordenan por `creada_en` (tiempo real), no por `session_id`.
+- `subida-nota-individual-lote`: las políticas de intentos `ULTIMO` y `PRIMERO` ordenan por `creada_en` (tiempo real), no por `session_id`; y el estado de la nota admite marcado manual, distinguible del confirmado por sincronización.
+- `permisos-nm-pertenencia` (de c-79): se le suma el rol PROFESOR y se le saca al TUTOR la gestión de exámenes y banco.
+- `exam-content-model`: un examen se puede crear replicado para varias comisiones y se puede duplicar.
 
 ## Impact
 

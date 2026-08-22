@@ -86,6 +86,79 @@ El desbalance está confirmado y documentado: todas las **escrituras** del route
 
 El barrido de F-07 se acota a: (a) claves de `*_META` del frontend que no correspondan a ningún valor que el backend emita, y (b) docstrings/comentarios que nombren roles eliminados en c-76 (`proctor`, `revisor`, `admin_examenes`, `docente` como rol). **No** es un rebautizo general de etiquetas: cambiar un texto que hoy es correcto rompe la memoria muscular de quien lo usa todos los días, sin ganancia.
 
+### D9 — Publicar la nota es camino de ida
+
+`mostrar_nota` gana el valor `nunca`, que pasa a ser el default. El orden permitido es
+`nunca` → `al_cerrar` → `inmediata`, siempre hacia adelante. Esconder una nota que el
+alumno ya vio no tiene efecto útil (ya la vio) y sí genera reclamos, así que la
+transición inversa se bloquea en vez de dejarla disponible "por las dudas".
+
+El enum solo no alcanza: el docente no razona en términos de enum, razona en "reviso y
+publico". Por eso la acción visible es un botón **Publicar notas ahora**, y el enum queda
+como el estado que ese botón mueve. Queda auditado quién publicó y cuándo.
+
+### D10 — Los eventos de proctoring se ocultan al alumno por defecto
+
+Decisión del dueño. Tiene una contra real que se acepta: mostrar los eventos disuade y
+además le avisa al alumno que algo se detectó, lo que baja el reclamo posterior de "no
+sabía". Se compensa con el consentimiento, que ya informa **que** se supervisa aunque no
+se muestre el detalle evento por evento.
+
+### D11 — PROFESOR supervisa pero no juzga
+
+El rol nuevo se define por lo que **no** puede: emitir veredicto de integridad. Eso queda
+exclusivo del COORDINADOR. Es la misma separación que ya justifica el rol TUTOR en
+`domain/auth/roles.py`: quien pone la nota no decide si hubo fraude. Sin esa línea,
+PROFESOR y COORDINADOR serían el mismo rol con dos nombres.
+
+El COORDINADOR conserva exámenes, banco y estadísticas; al TUTOR se le sacan las tres.
+
+### D12 — Un examen para varias comisiones se resuelve replicando
+
+Se descartó la relación N:M entre examen y comisión. Replicar (N exámenes independientes,
+uno por comisión) no toca el modelo de datos, deja el destino de la nota apuntando al
+curso correcto de cada comisión, y no mezcla resultados.
+
+El costo que se acepta: son exámenes separados, así que corregir una pregunta después de
+crearlos obliga a corregirla N veces. La UI debe decirlo **antes** de crear, no después.
+
+### D13 — El examen guarda la definición del sorteo, no su resultado
+
+Hoy `sortear_por_categorias` elige un set una vez y lo congela: todos los alumnos rinden
+lo mismo. El modelo de Moodle (verificado contra la documentación de la rama 5.x, que es
+la que corre el campus) guarda la **condición** —categoría, subcategorías sí o no,
+cantidad, etiqueta— y resuelve el set **al iniciar cada intento**.
+
+Se adopta ese modelo. Implica que el set concreto se persiste en el intento, no en el
+examen, para que la corrección y la revisión reconstruyan exactamente lo que rindió cada
+alumno. Es el cambio más invasivo del change: toca corrección, revisión y cálculo de nota,
+que hoy asumen un set único.
+
+### D14 — El estado manual de la nota no puede pisar al confirmado
+
+Sin API del campus, la nota se carga a mano y hoy queda "pendiente" para siempre. Se
+habilita marcarla a mano, con dos reglas: queda registrado quién la marcó, y **no puede
+sobrescribir** un estado confirmado por sincronización real. Una afirmación humana y una
+confirmación del sistema no valen lo mismo y la UI debe distinguirlas.
+
+### D15 — El registro LTI se automatiza sin perder la aprobación humana
+
+La allowlist LTI es la raíz de confianza: cada fila es un Moodle habilitado a crear
+cuentas. Que sea explícita está bien; que se cargue a mano copiando ids de un request no.
+
+LTI 1.3 define el registro dinámico y el proyecto lo tiene **a medias**: publica la
+configuración (`GET /lti/dynamic-registration`) pero no recibe ni persiste el registro. Se
+completa, con la fila creándose en `activo=false` y un admin habilitándola. Un click en
+vez de un POST a mano, sin perder la aprobación explícita.
+
+### D16 — Un fallo de carga nunca se renderiza como estado vacío
+
+La pantalla de materias mostraba "No hay materias registradas" ante un 401. Decirle a
+alguien que sus datos no existen cuando en realidad el request falló puede llevarlo a
+recrearlos y duplicar todo. Toda pantalla de listado distingue tres estados: cargando,
+cargó y está vacío, y no pudo cargar. `DestinoMoodleSection.tsx` ya lo hace bien y es el
+modelo a copiar.
+
 ## Risks / Trade-offs
 
 - **La baja lógica se filtra a una consulta que no la contempla** (un `SELECT` sobre `examen_contenido` que alguien agregue después sin `eliminado_en IS NULL`) → mitigación: la exclusión vive en `ExamenContenidoSqlRepository.listar_paginado` y en `_contar_catalogo`, que son los dos únicos puntos de entrada al inventario; la spec lo declara como requisito y las tareas exigen un test por consumidor.
