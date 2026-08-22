@@ -193,8 +193,11 @@ class ProctoringEventModel(Base):
     """Evento de deteccion con screenshot e informacion de re-inferencia server-side.
 
     PRODUCCION:
-    - screenshot_b64: dato sensible (Ley 25.326). Almacenado en texto plano solo
-      en demo. Para produccion: MinIO/S3 WORM + cifrado at-rest + retencion 90d.
+    - screenshot_b64: dato sensible (Ley 25.326). Se persiste CIFRADO at-rest
+      (`cipher.encrypt` en event_service) cuando hay cipher configurado.
+      El deposito WORM en MinIO ya existe (c-77) y es ADICIONAL: nunca reemplaza
+      esta columna, que sigue siendo la fuente de verdad. Pendiente real: la
+      politica de retencion automatica.
     - screenshot_sha256: integridad liviana (SHA-256 del contenido base64).
       PRODUCCION: cadena de custodia completa (HMAC clave maestra + WORM + firma encadenada).
     - face_count_servidor / veredicto_reinferencia: producidos por MediaPipe server-side
@@ -244,9 +247,9 @@ class ProctoringEventModel(Base):
         Text,
         nullable=True,
         comment=(
-            "Screenshot en base64. "
-            "PRODUCCION: dato sensible Ley 25.326 — mover a MinIO/S3 WORM con "
-            "cifrado at-rest y politica de retencion automatica."
+            "Screenshot en base64, cifrado at-rest (dato sensible Ley 25.326). "
+            "El deposito WORM en MinIO (c-77) es adicional, no reemplaza esta "
+            "columna. Pendiente: politica de retencion automatica."
         ),
     )
     # PRODUCCION: cadena de custodia completa (HMAC clave maestra + WORM + firma encadenada)

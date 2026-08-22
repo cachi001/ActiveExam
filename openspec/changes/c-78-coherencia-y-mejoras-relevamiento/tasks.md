@@ -1,4 +1,4 @@
-# Tasks — c-78-auditoria-coherencia-datos
+# Tasks — c-78-coherencia-y-mejoras-relevamiento
 
 > Reglas duras del proyecto aplicables a TODA tarea de este change:
 > tests contra base real o efímera (**nunca** mock de DB), `extra='forbid'` en todo
@@ -70,9 +70,77 @@
 - [ ] 8.3 Actualizar los docstrings de RBAC que nombran roles eliminados en c-76: `backend/app/presentation/api/v1/stats/router.py` (cabecera: "docente, admin_examenes"), `taking_router.py` (`listar_examenes_contenido`: "admin/proctor/..."), `catalog_router.py` (comentario de `create_exam_content_router`: "hoy docente, admin_examenes...").
 - [ ] 8.4 Corregir el docstring de `archivar_resultado` que afirma "mismo scoping por comisión que el resto del panel": es cierto para las escrituras, falso para las lecturas (F-08). Dejarlo describiendo el estado real y referenciando el hallazgo.
 
-## 9. Cierre
+---
 
-- [ ] 9.1 Verificar que `openspec validate` pasa para el change y que cada requisito de las specs tiene al menos un test que lo ejercita.
-- [ ] 9.2 Redactar el registro de hallazgos final: F-01…F-07 con su estado (corregido / verificado correcto), Bloque C (verificados y declarados correctos, no tocar) y F-08 con la recomendación de `c-79-scoping-lectura-panel-academico`.
-- [ ] 9.3 🔶 **Checkpoint con el dueño**: repasar el registro de hallazgos y confirmar la decisión sobre F-08 (change propio) antes de archivar.
-- [ ] 9.4 Guardar en engram el registro de hallazgos y las decisiones de diseño (`topic_key: opsx/c-78-auditoria-coherencia-datos/apply`).
+# Relevamiento del 22/8/2026 (bloques 10 a 16)
+
+> Absorbido desde el backlog del relevamiento. El detalle de cada task —causa, archivos,
+> criterio de terminada y las decisiones ya cerradas por el dueño— está en
+> [`relevamiento-2026-08-22.md`](relevamiento-2026-08-22.md), que es la fuente de esta
+> lista. Acá van solo los checkboxes para no duplicar la prosa.
+>
+> **Ya resuelto y no se repite acá**: T-18 (auditoría con `null` y hashes) se solapa con
+> el bloque 8 de este mismo change; lo que c-79 ya arregló (entidad, actor real, link al
+> detalle) está hecho, y lo que falta está cubierto por 8.1 y 8.2.
+
+## 10. Bugs a la vista
+
+- [ ] 10.1 **T-19** Completar el registro dinámico LTI: que registrar la herramienta desde Moodle cree la fila con `activo=false` y un admin la habilite. Hoy se carga a mano y se pierde al recrear la base
+- [ ] 10.2 **T-19** Chequeo de salud que avise si la allowlist LTI quedó vacía, antes de que lo descubra un alumno
+- [ ] 10.3 **T-19** Pantalla de administración del allowlist LTI (hoy solo existe la API)
+- [ ] 10.4 **T-17** Separar "cargó y está vacío" de "no pudo cargar" en `MateriasComisiones.tsx`: hoy un 401 se muestra como "No hay materias registradas"
+- [ ] 10.5 **T-16** `change-password` re-emite el access token cuando cambió el `username`, para que tras el alta LTI la app muestre el usuario elegido y no `lti:1:7`
+
+## 11. Alcance por rol
+
+- [ ] 11.1 **T-07** Crear el rol PROFESOR con sus capacidades. NO emite veredicto (eso queda en COORDINADOR); el COORDINADOR conserva exámenes, banco y estadísticas
+- [ ] 11.2 **T-02** Sacarle al TUTOR el acceso a Estadísticas, Creación de exámenes y Banco de preguntas, en el menú **y** en cada endpoint
+- [ ] 11.3 **T-08** Filtros de materia, comisión y examen en Supervisión en vivo para coordinador y profesor; el tutor ve solo las suyas
+- [ ] 11.4 **T-09** Registro de sesiones acotado al tutor, filtrando en la query del backend y no en el frontend
+
+## 12. Configuración por examen
+
+- [ ] 12.1 **T-01** Agregar `nunca` a `mostrar_nota` y hacerlo el default de un examen nuevo
+- [ ] 12.2 **T-01** Botón "Publicar notas ahora" en el detalle del examen, con registro en auditoría de quién publicó y cuándo
+- [ ] 12.3 **T-01** Bloquear la transición hacia atrás: publicar es camino de ida
+- [ ] 12.4 **T-13** Opción por examen para mostrar u ocultar los eventos de proctoring al alumno mientras rinde, con default en NO
+
+## 13. Materias, comisiones y exports
+
+- [ ] 13.1 **T-14** Colapsar y desplegar cada comisión, en vez de tener todo abierto
+- [ ] 13.2 **T-14** Paginación del listado de inscriptos (con 40 alumnos hoy es ilegible)
+- [ ] 13.3 **T-14** Decidir acordeón contra página propia por comisión; de eso depende dónde vive el export
+- [ ] 13.4 **T-03** Export de alumnos inscriptos por comisión en PDF y Excel, para cruzar contra Moodle
+- [ ] 13.5 **T-15** Export de notas del examen
+- [ ] 13.6 **T-15** Marcar el estado de la nota a mano, distinguiéndolo del confirmado por sincronización, con registro de quién lo marcó
+
+## 14. Exámenes
+
+- [ ] 14.1 **T-05** Crear un examen para varias comisiones, replicado (N exámenes independientes), en una operación todo o nada
+- [ ] 14.2 **T-06** Duplicar un examen, sin arrastrar intentos, resultados ni destino de Moodle
+- [ ] 14.3 **T-04** Dropear `comision.docente_id` una vez confirmado que ningún lector la usa (deuda que dejó c-79)
+
+## 15. Armado del examen como Moodle (va al final)
+
+- [ ] 15.1 **T-10** Guardar la definición del sorteo en el examen (categoría, subcategorías sí/no, cantidad, etiqueta) en vez de su resultado
+- [ ] 15.2 **T-10** Resolver el set de preguntas por intento, al arrancar cada alumno, y persistirlo en el intento
+- [ ] 15.3 **T-10** Vista previa de la pregunta tal como la ve el alumno, desde el banco y desde el armado
+- [ ] 15.4 **T-10** Desglose en el armado: cuántas hay disponibles por categoría y cuántas se sortean
+- [ ] 15.5 **T-10** Permitir mezclar tramos fijos y aleatorios en un mismo examen
+- [ ] 15.6 **T-12** Validar el tope de preguntas contra las realmente disponibles, en el backend
+
+## 16. Capacidad y rendimiento
+
+- [ ] 16.1 **T-22** Correr la medición de carga contra el sistema real y escribir los resultados (hardware, punto de quiebre, configuración)
+- [ ] 16.2 **T-20** Dimensionar el arranque de producción con los cores del plan una vez que deje de ser free, recalculando el pool (`workers × 24` conexiones contra `max_connections`)
+- [ ] 16.3 **T-21** Que algo scrapee y guarde `/metrics` en producción, con retención que cubra el examen. Proteger el endpoint antes de exponerlo
+- [ ] 16.4 Sacar los screenshots de base64 en Postgres: hoy un examen de 100 alumnos escribe ~360 MB en la base, y el depósito WORM de c-77 es **adicional**, no reemplaza
+- [ ] 16.5 Mandar la captura binaria en vez de base64, que ahorra un tercio del tráfico y el trabajo de decodificar
+- [ ] 16.6 Reemplazar el polling de 4 a 6 s por SSE (change c-15b), que baja a cero el costo de los paneles inactivos
+
+## 17. Cierre
+
+- [ ] 17.1 Verificar que `openspec validate` pasa para el change y que cada requisito de las specs tiene al menos un test que lo ejercita.
+- [ ] 17.2 Redactar el registro de hallazgos final: F-01…F-07 con su estado (corregido / verificado correcto), Bloque C (verificados y declarados correctos, no tocar) y F-08 con la recomendación de `c-79-scoping-lectura-panel-academico`.
+- [ ] 17.3 🔶 **Checkpoint con el dueño**: repasar el registro de hallazgos y confirmar la decisión sobre F-08 (change propio) antes de archivar.
+- [ ] 17.4 Guardar en engram el registro de hallazgos y las decisiones de diseño (`topic_key: opsx/c-78-coherencia-y-mejoras-relevamiento/apply`).
