@@ -562,18 +562,43 @@ Producción levanta un solo proceso, así que usa un solo core por más cores qu
 host. Y el pool de 24 conexiones se dimensionó pensando en varios workers. Para 500
 personas en vivo, este es hoy el cuello más probable.
 
-**Bloqueada por dos datos que hay que confirmar antes de tocar nada**:
+### Actualización 22/8: el plan es free, así que los workers están descartados
 
-1. Cuántos cores tiene el plan de Render en uso. Poner `--workers` de más en una
-   instancia chica empeora: cada worker es un proceso Python completo, con su memoria y
-   su propio pool de conexiones.
-2. Si el dashboard de Render tiene un start command que pisa el CMD del Dockerfile.
+Medido sobre la instancia de producción ese día: **186 MB de memoria en reposo**, sobre
+los 512 MB del plan free de Render. Un segundo proceso son otros ~186 MB, y bajo carga
+sube. `--workers 4` no entra en memoria: la instancia muere antes de atender a nadie.
 
-**Cuenta a hacer**: `workers × (pool_size + max_overflow)` no puede superar el
-`max_connections` de Postgres. Con 24 por worker, 4 workers son 96 conexiones.
+O sea que esta task **no es "poner workers"**. En el plan actual no hay nada que tunear:
+el techo es el plan. Poner workers solo tiene sentido después de mover a un plan con
+memoria y cores para sostenerlos.
 
-**Terminada cuando**: producción usa los cores del plan, con el pool recalculado, y hay
-una medición antes y después que lo respalde.
+**Cuidado al hacerlo**, cuando se haga: `workers × (pool_size + max_overflow)` no puede
+superar el `max_connections` de Postgres. Con 24 por worker, 4 workers son 96 conexiones.
+
+### Lo que NO se sabe, y hay que medir antes de decidir nada
+
+**Cuántos alumnos concurrentes aguanta `main_activeexam` en el plan free.** Nunca se
+midió. Los números que circulan son de otra cosa:
+
+- La corrida de 150 a 1200 del 21/8 fue **local**, en la máquina del dueño, con
+  `--workers 4` y todos sus cores (`prometheus.dev.yml` apunta a `backend:8000`, el
+  servicio del compose dev). No tocó Render.
+- El límite de 25 a 30 alumnos de `results-4core-baseline.md` es de la **PoC C-03**, que
+  es otra arquitectura (WebSocket, paneles SSE, LISTEN/NOTIFY). `main_activeexam` es REST
+  simple y bastante más barato por request. **Ese número no se traslada.**
+
+Que funcione hoy con unas pocas personas probando a mano no dice nada sobre 500.
+
+**Otros dos límites del free que pegan el día del examen**:
+
+- **Spin down** tras 15 minutos sin tráfico. Observado el 22/8: el primer login tardó
+  tanto que parecía roto. El primer alumno en llegar se come el arranque completo.
+- **La base free se vence y se recrea.** Es la explicación más probable de por qué
+  desapareció la fila de confianza LTI (ver T-19): los 7 usuarios de la base están todos
+  creados el 19/8 y no hay ni un usuario LTI. Si es eso, **va a volver a pasar solo**.
+
+**Terminada cuando**: hay una medición del sistema real (T-22) y, con ese número, un plan
+dimensionado para la concurrencia del examen. Antes de eso no hay nada que configurar.
 
 ---
 
