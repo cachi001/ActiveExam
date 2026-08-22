@@ -417,21 +417,35 @@ volver a loguearse, con test del claim del token re-emitido.
 
 ---
 
-## T-17 · BUG: la pantalla de materias y comisiones se ve en blanco al entrar
+## T-17 · BUG: materias y comisiones vacía, y encima miente
 
 **Gobernanza**: MEDIA
 
-**Síntoma**: al entrar a Materias y comisiones la pantalla aparece vacía.
+**Causa confirmada el 22/8 reproduciéndolo en producción**: es el MISMO bug del token
+vencido que se arregló en `examContentAdmin` (ver commit `df4b688`). `examContentCatalog.ts`
+es uno de los 12 módulos que todavía arman el `Bearer` a mano y no refrescan.
 
-**A investigar**: si es un error de carga que se traga la excepción y no muestra estado de
-error, o un problema de datos. Pantalla: `frontend/src/screens/MateriasComisiones.tsx`.
+Traza real con el token vencido: `GET /exam-content/materias` → **401**, sin ningún intento
+de refresh.
 
-Sospecha a descartar primero: el endpoint `GET /exam-content/materias-comisiones` devolvió
-**500** al probarlo el 22/8 desde la API con el usuario admin. Si es eso, el bug es de
-backend y la pantalla en blanco es la consecuencia.
+**Y hay un segundo defecto, más grave que el primero**: ante el 401 la pantalla no muestra
+un error. Muestra:
 
-**Terminada cuando**: la pantalla carga, y si el backend falla muestra un error visible en
-vez de quedarse en blanco.
+> "No hay materias registradas. Creá la primera usando el botón de arriba."
+
+O sea, le dice al usuario que sus datos NO EXISTEN cuando en realidad el request falló.
+Alguien puede creer que perdió las materias y ponerse a crearlas de nuevo, duplicando todo.
+Un fallo de carga nunca debe renderizarse como estado vacío.
+
+**Arreglo, en dos partes**:
+
+1. Usar `fetchAutenticado` en `examContentCatalog.ts` (reemplazo mecánico, ya existe el
+   helper en `frontend/src/lib/fetchAutenticado.ts`).
+2. Separar "cargó y no hay nada" de "no pudo cargar" en la pantalla, con estado de error y
+   botón de reintentar. Revisar el resto de las pantallas por el mismo patrón.
+
+**Terminada cuando**: con el token vencido la pantalla se recupera sola, y si el backend
+falla de verdad muestra un error con reintentar, nunca el mensaje de vacío.
 
 ---
 
