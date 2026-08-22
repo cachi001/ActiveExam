@@ -474,24 +474,72 @@ castellano y los hashes se muestran acortados y explicados.
 
 ---
 
+## T-19 · La confianza del LTI se pierde cada vez que se recrea la base
+
+**Gobernanza**: CRITICA (auth)
+
+**Pasó de verdad el 22/8/2026**: nadie podía entrar desde el campus. Todo launch moría en
+`POST /api/v1/lti/login` con `403 {"detail":"lti_iss_no_confiable"}`, **antes** de mirar
+qué usuario era. No era un problema de permisos de una persona: estaba roto para todos.
+
+**Causa**: la tabla `lti_deployment_confiable` es la raíz de confianza del flujo LTI y
+**no tiene seed ni migración que la pueble**. Se carga a mano con
+`POST /api/v1/admin/lti/deployments`. Cada vez que se recrea la base del backend, la fila
+desaparece y el ingreso desde el campus se cae en silencio, sin que nada avise.
+
+Se resolvió cargando la fila de nuevo, pero va a volver a pasar.
+
+**Valores reales del campus test** (leídos del POST que manda Moodle):
+
+| campo | valor |
+|---|---|
+| `iss` | `https://campustest.frm.utn.edu.ar` |
+| `deployment_id` | `1` |
+| `client_id` | `6w1huGZSwii82yL` |
+| `jwks_uri` | `https://campustest.frm.utn.edu.ar/mod/lti/certs.php` |
+
+**Falta**, en orden de importancia:
+
+1. **Que el sistema avise.** Un chequeo de salud que grite si la allowlist está vacía. Hoy
+   la única señal es que los alumnos no pueden entrar, y eso se descubre tarde.
+2. **Seed o procedimiento de arranque** que deje la fila cargada, de forma que recrear la
+   base no rompa el ingreso.
+3. **Pantalla de administración** para verla y cargarla. Hoy solo existe la API: no hay UI,
+   así que depende de que alguien sepa hacer el POST a mano.
+
+**Ojo**: son la raíz de confianza. Una fila de más es un Moodle habilitado a crear cuentas
+en el sistema. El seed tiene que ser explícito y auditable, nunca "crear si no existe" con
+valores adivinados.
+
+**Pendiente relacionado**: la fila quedó cargada **sin `comision_id`**, así que el alumno
+que entra por el campus se crea pero no se matricula solo en ninguna comisión. Hay que
+decidir a qué comisión mapear el curso de Moodle.
+
+**Terminada cuando**: recrear la base no rompe el ingreso por campus, y si igual quedara
+vacía el sistema avisa antes de que lo descubra un alumno.
+
+---
+
 ## Orden sugerido
 
 **Definido por el dueño (22/8)**: las preguntas aleatorias (T-10) van **al final**.
 Primero todo lo demás.
 
-1. **Bugs primero**: T-16 (usuario LTI), T-17 (pantalla en blanco) y T-18 (auditoría).
-   Son cosas rotas a la vista, y T-17 puede ser un 500 de backend que conviene descartar
-   ya.
-2. **T-04**: ya está escrito, solo falta cerrarlo y desplegarlo.
-3. **T-07** (rol PROFESOR) antes que T-02, T-08 y T-09: los tres dependen del mapa de
+1. **T-19 primero de todo**: es lo único de la lista que deja el sistema inutilizable para
+   TODOS los alumnos, sin aviso. Con el examen real cerca, que esto vuelva a pasar el día
+   de la rendición es el peor escenario posible.
+2. **Resto de bugs**: T-17 (causa ya confirmada, arreglo conocido), T-16 (usuario LTI) y
+   T-18 (auditoría).
+3. **T-04**: ya está escrito, solo falta cerrarlo y desplegarlo.
+4. **T-07** (rol PROFESOR) antes que T-02, T-08 y T-09: los tres dependen del mapa de
    roles, y hacerlos antes obliga a rehacerlos.
-4. **T-02, T-08, T-09** juntos: son el mismo trabajo de acotar por rol, en tres pantallas.
+5. **T-02, T-08, T-09** juntos: son el mismo trabajo de acotar por rol, en tres pantallas.
    Un solo change de autorización, no tres parches.
-5. **T-01, T-13**: las dos son configuración por examen con default nuevo. Entran juntas
+6. **T-01, T-13**: las dos son configuración por examen con default nuevo. Entran juntas
    y son baratas.
-6. **T-14 y T-03** juntas: si se hace la página propia por comisión, el export vive ahí.
-7. **T-05, T-06, T-15**: independientes, entran cuando haya lugar.
-8. **T-10** al final, con su propio change, y **T-12** pegada atrás para no escribir la
+7. **T-14 y T-03** juntas: si se hace la página propia por comisión, el export vive ahí.
+8. **T-05, T-06, T-15**: independientes, entran cuando haya lugar.
+9. **T-10** al final, con su propio change, y **T-12** pegada atrás para no escribir la
    validación dos veces.
 
 ## Preguntas abiertas
