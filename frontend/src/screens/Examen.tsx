@@ -95,12 +95,11 @@ export default function Examen() {
   const [bloqueado, setBloqueado] = useState(false);
   const lockdownRef = useRef<FullscreenLockdown | null>(null);
 
-  // El chat arranca APAGADO: antes arrancaba en `true` y todos los alumnos
-  // polleaban el chat hasta que llegaba la config que decía que estaba apagado —
-  // justo en el arranque del examen, que es cuando entran todos a la vez y es el
-  // peor momento para gastar el techo de req/s. Las pausas sí arrancan
-  // habilitadas (no se le niega una pausa a nadie mientras carga la config).
-  const [chatHabilitado, setChatHabilitado] = useState(false);
+  // Ambos arrancan prendidos (migración 0098): el sistema viene con la
+  // funcionalidad completa. El costo de polling del chat mientras carga la config
+  // es de unos pocos segundos y el backend igual hace valer el interruptor real
+  // (gate 403), así que mostrarlo de más no habilita nada.
+  const [chatHabilitado, setChatHabilitado] = useState(true);
   const [pausasHabilitadas, setPausasHabilitadas] = useState(true);
   useEffect(() => {
     void loadEffectiveConfig().then(() => {

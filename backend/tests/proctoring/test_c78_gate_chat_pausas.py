@@ -95,13 +95,14 @@ def test_los_dos_lectores_no_se_confunden_entre_si() -> None:
     assert pausas_habilitadas_de_snapshot(foto, vivo=False) is True
 
 
-def test_el_chat_apagado_es_el_DEFAULT_del_dominio() -> None:
-    """Decision del dueño + migracion 0095: el chat viene apagado. El dataclass de
-    ConfigService lo tenia en True y le ganaba a la base."""
+def test_el_chat_y_las_pausas_vienen_PRENDIDOS_por_defecto() -> None:
+    """Migracion 0098 (revierte la 0095): el sistema viene con la funcionalidad
+    completa y el techo de capacidad lo decide la prueba de carga, no un
+    supuesto. El dataclass tiene que coincidir con la base: cuando no coinciden,
+    el que gana es el que llega ultimo y el comportamiento depende de si el dato
+    viajo o no."""
     from app.application.config.service import ConfigEfectiva
 
     campos = ConfigEfectiva.__dataclass_fields__
-    assert campos["chat_habilitado"].default is False
-    # Las pausas NO: negarle una pausa a un alumno por un default es peor que el
-    # costo de que esten prendidas.
+    assert campos["chat_habilitado"].default is True
     assert campos["pausas_habilitadas"].default is True

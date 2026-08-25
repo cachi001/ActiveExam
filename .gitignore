@@ -65,3 +65,8 @@ import_cloze.py
 credenciales.md
 export-page.md
 Informe_Estado_Proctoring_*.pdf
+
+# Config de Prometheus que apunta a PRODUCCION: lleva el METRICS_TOKEN real.
+# El repo es publico — este archivo NUNCA se versiona. La plantilla sin secreto
+# es prometheus.render.yml.ejemplo.
+infra/observability/prometheus/local/

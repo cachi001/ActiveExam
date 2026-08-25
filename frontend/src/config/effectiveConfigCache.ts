@@ -61,17 +61,14 @@ export async function loadEffectiveConfig(): Promise<void> {
   _inflight = (async () => {
     try {
       const data = await api.obtenerConfigEfectiva();
-      // Degradación de cada interruptor, y NO son simétricos a propósito:
-      //  - chat: apagado (decisión del dueño + migración 0095, por capacidad).
-      //    Estaba en `?? true`, que le ganaba a la decisión cuando el dato no
-      //    llegaba y dejaba a todos los alumnos polleando el chat.
-      //  - pausas: encendidas. Negarle una pausa a un alumno por un dato que no
-      //    llegó es peor que el costo de tenerlas prendidas.
-      // De todos modos, desde c-78 el que manda es el backend: el gate rechaza
-      // 403 aunque el cliente muestre el recuadro (regla dura #6).
+      // Degradación de cada interruptor: ambos encendidos (migración 0098). El
+      // sistema viene con la funcionalidad completa, y si el dato no llegó es
+      // peor esconder el chat o negar una pausa que mostrarlos de más.
+      // De todos modos el que manda es el backend: el gate rechaza 403 aunque el
+      // cliente muestre el recuadro (regla dura #6).
       _cache = {
         ...data,
-        chat_habilitado: data.chat_habilitado ?? false,
+        chat_habilitado: data.chat_habilitado ?? true,
         pausas_habilitadas: data.pausas_habilitadas ?? true,
       };
       // Siembra el cache de scoring weights con los pesos de la config efectiva.

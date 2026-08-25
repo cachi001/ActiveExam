@@ -452,8 +452,12 @@ class ConfiguracionSistemaModel(Base):
     # en la pantalla de cada alumno: con 100 rindiendo son ~28,6 req/s, el 36% del
     # techo medido en el plan free de Render, gastado en una funcion que la mayoria
     # de los examenes no usa. Se prende desde Configuracion cuando hace falta.
+    # Prendido por defecto (migracion 0098, revierte la 0095): el sistema viene
+    # con la funcionalidad completa y el techo lo decide la prueba de carga, no
+    # un supuesto. Se apaga desde Configuracion si hace falta — es un toggle de
+    # runtime, y su valor queda congelado por sesion en `config_snapshot`.
     chat_habilitado: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, server_default="false"
+        Boolean, nullable=False, server_default="true"
     )
     pausas_habilitadas: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="true"

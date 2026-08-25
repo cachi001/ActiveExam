@@ -11,8 +11,19 @@ Mide el backend que corre en producción (`main_activeexam`), no el del PoC C-03
 El camino caliente de una rendición, por alumno:
 
 1. `POST /api/v1/proctoring/sessions` (modo `test`)
-2. `POST /api/v1/proctoring/sessions/{id}/events`, N por minuto
-3. `PATCH /api/v1/proctoring/sessions/{id}/finalizar`
+2. Durante la rendición, **tres cosas en paralelo**, cada una a la cadencia del
+   cliente real:
+   - `POST .../events` — N por minuto
+   - `GET .../chat` — cada **3,5 s** (espeja `POLL_MS` de `ui/ChatBox.tsx`)
+   - `GET .../pausas` — cada **20 s** (espeja `POLL_PAUSA_INACTIVO_MS`; el alumno
+     virtual no pide pausas, así que se queda en reposo, que es el 99% del examen)
+3. `PATCH .../finalizar`
+
+> **Los pollers no son un adorno.** Medido el 25/8/2026, el tráfico dominante NO
+> son los eventos: con 100 alumnos el chat son ~29 req/s y las pausas otros
+> tantos, sobre un techo de 80 req/s. Hasta esta versión el harness solo posteaba
+> eventos, así que daba un número cómodo que no describía la realidad. Si querés
+> medir solo la ingesta, apagalos con `-e CHAT=false -e PAUSAS=false`.
 
 ## Cómo se corre
 
@@ -33,6 +44,22 @@ k6 run -e BASE=http://localhost:8000 \
 | `VUS` | `50` | Alumnos concurrentes |
 | `DURACION` | `2m` | Duración de la corrida |
 | `EVENTOS_POR_MINUTO` | `20` | Eventos por alumno por minuto |
+| `CHAT` | `true` | Pollear el chat. `false` lo apaga |
+| `PAUSAS` | `true` | Pollear las pausas. `false` lo apaga |
+| `CHAT_POLL_MS` | `3500` | Cadencia del poller de chat |
+| `PAUSA_POLL_MS` | `20000` | Cadencia del poller de pausas en reposo |
+| `CAPTURAS` | `0` | Fracción de eventos con captura (0 a 1). **Ver el aviso** |
+| `CAPTURA_BYTES` | `114000` | Tamaño de la captura sintética en base64 |
+
+### ⚠️ Sobre `CAPTURAS`
+
+Viene en `0` a propósito. Una captura real pesa **~114 KB en base64** y la base
+del plan free es **1 GB**: prenderlo contra producción la puede llenar. Medido, un
+examen de 100 alumnos escribe ~325 MB de capturas.
+
+Si lo prendés contra producción, **borrá las sesiones después**. Quedan en
+`modo: 'test'` justamente para eso: `DELETE /api/v1/proctoring/sessions/{id}` es
+admin-only y solo acepta sesiones de test.
 
 ## Umbrales
 

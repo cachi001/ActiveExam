@@ -46,10 +46,9 @@ class ConfigEfectiva:
     consent_version_vigente: str
     detectores_activos: tuple[str, ...]
     # Toggles globales de la rendicion (C-69).
-    # El chat viene APAGADO (decision del dueño + migracion 0095, por capacidad:
-    # con 100 alumnos su poller solo son ~29 req/s sobre un techo de 80). El
-    # dataclass lo tenia en True y le ganaba a la base cuando el valor no llegaba.
-    chat_habilitado: bool = False
+    # Prendido (migracion 0098, revierte la 0095): el sistema viene con la
+    # funcionalidad completa. El costo de capacidad lo mide la prueba de carga.
+    chat_habilitado: bool = True
     # Las pausas NO: negarle una pausa a un alumno por un default es peor que el
     # costo de tenerlas prendidas.
     pausas_habilitadas: bool = True

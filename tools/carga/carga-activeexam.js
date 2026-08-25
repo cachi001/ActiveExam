@@ -34,6 +34,29 @@ const DURACION = __ENV.DURACION || '2m';
 // lo que detecte; 20/min es un ritmo conservador y sostenido.
 const EVENTOS_POR_MINUTO = Number(__ENV.EVENTOS_POR_MINUTO || 20);
 
+// --- Los POLLERS del cliente real -------------------------------------------
+//
+// Sin esto la medicion no significa nada. Medido el 25/8/2026, el trafico
+// dominante NO son los eventos: son los pollers. Con 100 alumnos el chat son
+// ~29 req/s y las pausas otros tantos, sobre un techo de 80 req/s. Un harness
+// que solo postea eventos da un numero comodo que no describe la realidad.
+//
+// Las cadencias espejan al cliente EXACTAMENTE:
+//   - ChatBox      -> 3,5 s fijos (POLL_MS en ui/ChatBox.tsx)
+//   - PausaAlumno  -> 20 s en reposo (POLL_PAUSA_INACTIVO_MS). El alumno virtual
+//     no pide pausas, asi que se queda en reposo, que es el caso del 99% del examen.
+const CHAT = (__ENV.CHAT || 'true') !== 'false';
+const PAUSAS = (__ENV.PAUSAS || 'true') !== 'false';
+const CHAT_POLL_MS = Number(__ENV.CHAT_POLL_MS || 3500);
+const PAUSA_POLL_MS = Number(__ENV.PAUSA_POLL_MS || 20000);
+
+// Fraccion de eventos que llevan captura (0 a 1). APAGADO por defecto a
+// proposito: una captura real pesa ~114 KB en base64 y la base del plan free
+// son 1 GB. Prenderlo contra produccion la puede llenar — ver el README.
+const CAPTURAS = Number(__ENV.CAPTURAS || 0);
+// Captura sintetica del tamano real (960x540 JPEG ~85 KB -> ~114 KB en base64).
+const CAPTURA_B64 = CAPTURAS > 0 ? 'A'.repeat(Number(__ENV.CAPTURA_BYTES || 114000)) : null;
+
 // Severidades en FEMENINO. Escribirlas en masculino da score 0 en silencio
 // (ver el comentario de `Severidad` en backend/app/domain/events/schema.py).
 const SEVERIDADES = ['baja', 'media', 'alta'];
@@ -44,6 +67,10 @@ const latenciaEvento = new Trend('ae_evento_ms', true);
 const latenciaFinalizar = new Trend('ae_finalizar_ms', true);
 const erroresIngesta = new Rate('ae_errores_ingesta');
 const eventosEnviados = new Counter('ae_eventos_enviados');
+const latenciaChat = new Trend('ae_chat_poll_ms', true);
+const latenciaPausa = new Trend('ae_pausa_poll_ms', true);
+const pollsChat = new Counter('ae_chat_polls');
+const pollsPausa = new Counter('ae_pausa_polls');
 
 export const options = {
   vus: VUS,
@@ -99,28 +126,70 @@ export default function (data) {
   }
   const sesionId = crear.json('id');
 
-  // 2. Stream de eventos al ritmo configurado, durante la vida del VU.
-  const intervalo = 60 / EVENTOS_POR_MINUTO;
+  // 2. La rendición: eventos + los DOS pollers, cada uno a su cadencia real.
+  //
+  // Un solo loop con un tick corto y un "próximo vencimiento" por tarea. Espeja
+  // al navegador, que tiene tres `setInterval` corriendo en paralelo — no una
+  // secuencia. Medir solo los eventos (como hacía este harness antes) deja
+  // afuera el ~70% del tráfico.
+  const intervaloEventoMs = (60 / EVENTOS_POR_MINUTO) * 1000;
   const hasta = Date.now() + 60 * 1000; // un minuto de rendición por iteración
+  let proxEvento = Date.now();
+  let proxChat = Date.now();
+  let proxPausa = Date.now();
+
   while (Date.now() < hasta) {
-    const evento = {
-      tipo: TIPOS[Math.floor(Math.random() * TIPOS.length)],
-      severidad: SEVERIDADES[Math.floor(Math.random() * SEVERIDADES.length)],
-      ts_cliente: new Date().toISOString(),
-      payload: { origen: 'k6', vu: __VU },
-    };
-    const res = http.post(
-      `${BASE}/api/v1/proctoring/sessions/${sesionId}/events`,
-      JSON.stringify(evento),
-      { headers, tags: { endpoint: 'ingesta_evento' } },
-    );
-    latenciaEvento.add(res.timings.duration);
-    eventosEnviados.add(1);
-    const aceptado = check(res, {
-      'evento aceptado (201)': (r) => r.status === 201,
-    });
-    erroresIngesta.add(!aceptado);
-    sleep(intervalo);
+    const ahora = Date.now();
+
+    if (ahora >= proxEvento) {
+      const evento = {
+        tipo: TIPOS[Math.floor(Math.random() * TIPOS.length)],
+        severidad: SEVERIDADES[Math.floor(Math.random() * SEVERIDADES.length)],
+        ts_cliente: new Date().toISOString(),
+        payload: { origen: 'k6', vu: __VU },
+      };
+      // La captura va en una FRACCIÓN de los eventos, igual que en el cliente:
+      // solo los 7 tipos de `EVENTOS_CON_EVIDENCIA_VISUAL` la adjuntan.
+      if (CAPTURA_B64 && Math.random() < CAPTURAS) {
+        evento.screenshot_base64 = CAPTURA_B64;
+      }
+      const res = http.post(
+        `${BASE}/api/v1/proctoring/sessions/${sesionId}/events`,
+        JSON.stringify(evento),
+        { headers, tags: { endpoint: 'ingesta_evento' } },
+      );
+      latenciaEvento.add(res.timings.duration);
+      eventosEnviados.add(1);
+      const aceptado = check(res, {
+        'evento aceptado (201)': (r) => r.status === 201,
+      });
+      erroresIngesta.add(!aceptado);
+      proxEvento = ahora + intervaloEventoMs;
+    }
+
+    if (CHAT && ahora >= proxChat) {
+      const res = http.get(
+        `${BASE}/api/v1/proctoring/sessions/${sesionId}/chat`,
+        { headers, tags: { endpoint: 'poll_chat' } },
+      );
+      latenciaChat.add(res.timings.duration);
+      pollsChat.add(1);
+      check(res, { 'chat responde (200)': (r) => r.status === 200 });
+      proxChat = ahora + CHAT_POLL_MS;
+    }
+
+    if (PAUSAS && ahora >= proxPausa) {
+      const res = http.get(
+        `${BASE}/api/v1/proctoring/sessions/${sesionId}/pausas`,
+        { headers, tags: { endpoint: 'poll_pausas' } },
+      );
+      latenciaPausa.add(res.timings.duration);
+      pollsPausa.add(1);
+      check(res, { 'pausas responde (200)': (r) => r.status === 200 });
+      proxPausa = ahora + PAUSA_POLL_MS;
+    }
+
+    sleep(0.1); // tick del loop; las cadencias las fijan los vencimientos
   }
 
   // 3. Finalizar (idempotente).
