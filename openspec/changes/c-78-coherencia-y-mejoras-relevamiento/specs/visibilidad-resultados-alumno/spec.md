@@ -6,7 +6,7 @@ Que el alumno no vea ni su nota ni los eventos de proctoring hasta que alguien l
 explícitamente, reflejando el flujo real de trabajo docente: primero se revisa, después se
 publica.
 
-## Requirements
+## ADDED Requirements
 
 ### Requirement: La nota está oculta por defecto
 

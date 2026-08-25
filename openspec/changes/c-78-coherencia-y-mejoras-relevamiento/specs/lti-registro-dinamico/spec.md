@@ -6,7 +6,7 @@ Que dar de alta un Moodle deje de ser una tarea manual frágil que se pierde cad
 se recrea la base, sin perder la aprobación humana explícita que protege la raíz de
 confianza.
 
-## Requirements
+## ADDED Requirements
 
 ### Requirement: El registro dinámico crea la fila de confianza
 

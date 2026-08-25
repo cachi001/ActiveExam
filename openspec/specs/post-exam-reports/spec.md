@@ -1,8 +1,10 @@
-# Spec — post-exam-reports
+# post-exam-reports Specification
 
-> Reportes agregados por examen y por estudiante sobre datos consolidados (score final de C-13, decisiones humanas de C-16). Agregado por defecto; el reporte nominal por estudiante requiere RBAC contextual y queda auditado (Ley 25.326, privacidad por diseño).
+## Purpose
 
-## ADDED Requirements
+Reportes agregados por examen y por estudiante sobre datos consolidados (score final de C-13, decisiones humanas de C-16). Agregado por defecto; el reporte nominal por estudiante requiere RBAC contextual y queda auditado (Ley 25.326, privacidad por diseño).
+
+## Requirements
 
 ### Requirement: Reporte por examen agregado
 El sistema SHALL generar, para un examen cerrado, un **reporte agregado** que combine la **distribución de scores** y el **conteo de sesiones por estado terminal** (archivada / flaggeada / revisada con su decisión humana), leyendo los datos consolidados de C-13 y C-16 sin recalcular el score ni re-decidir la revisión.

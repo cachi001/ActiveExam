@@ -10,7 +10,7 @@ todos.
 > (`Moodle 5.2.2+`). Desde 4.3 el slot aleatorio guarda la condición de filtro, no las
 > preguntas.
 
-## Requirements
+## ADDED Requirements
 
 ### Requirement: El examen guarda la definición del sorteo, no su resultado
 

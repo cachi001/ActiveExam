@@ -5,7 +5,7 @@
 Cubrir el hueco entre TUTOR (demasiado poco) y COORDINADOR (demasiado, incluye el
 veredicto de integridad), y acotar por pertenencia las pantallas de supervisión.
 
-## Requirements
+## ADDED Requirements
 
 ### Requirement: Existe el rol PROFESOR
 

@@ -13,11 +13,43 @@
 3. Flujo: `/opsx:propose` (si falta) → `/opsx:apply` → `/opsx:archive`. Al archivar, el change sale de este roadmap.
 4. **Este archivo se desactualiza solo** (archivar un change no lo edita). Antes de confiar en la sección de pendientes, corré `openspec list --json` — es la única fuente que no miente.
 
+> **Foto al 2026-08-25**: `openspec list --json` devuelve **4 changes abiertos**: `c-78`
+> (83/89, el único de código activo), `c-01` (0/…, gate legal), `c-03` (24/45, PoC de carga)
+> y `c-15b` (0/10, SSE — depende de c-03). `c-76`, `c-77` y `c-79` están archivados.
+
 > **Foto al 2026-08-13 (post-C-75)**: `openspec list --json` devuelve **solo 3 changes pendientes en todo el proyecto**: `c-01`, `c-03`, `c-15b`. Todo lo demás — incluyendo **c-16 a c-20** (que este archivo tenía listados como "0% sin empezar" desde el 11-jun) y **c-67 a c-75** (nunca reflejados acá) — está **archivado**. Ver "Resumen por estado" al final para el detalle completo de lo que se sumó al archivo desde la última regeneración real (17-jul).
 
 > **c-76-panel-supervision-en-vivo — ARCHIVADO (2026-08-18)**: rediseño de roles del panel de supervisión (elimina `PROCTOR`, tutor acotado por comisión) + UX completa. 20/20 tareas cerradas: bloques 1-13 (roles, chat/pausas, límite configurable, screenshots de pausa, rediseño visual del detalle) + bloques nuevos de esta sesión — estados de entrega/archivado/filtros en Notas (14), evidencia de contexto en `copiar_pegar`/`cambio_pestana` (15), eliminación del borrado de sesiones de examen real por cadena de custodia (16), Registro de sesiones como tabla con paginación/filtros/stats reales (17/19/20), fix crítico de auth (`auth_provider='jwt'` no podía cambiar su clave, 18), y cierre del módulo "Sesiones" muerto de Auditoría. Verificado en vivo end-to-end en el navegador (no solo tests). Archivado como `2026-08-18-c-76-panel-supervision-en-vivo`.
 
 > **c-77-minio-worm-evidencia — ARCHIVADO (2026-08-18)**: conecta MinIO/WORM (Object Lock Compliance, diseño C-12 hasta ahora sin usar) a la app real (`main_activeexam.py`, la que se despliega a Render). Decisión del dueño: **NO se migra nada existente** — `proctoring_event.screenshot_b64` sigue escribiéndose en Postgres exactamente igual (cero riesgo). MinIO se agrega como depósito **adicional, opcional y tolerante**: sin las 4 variables `MINIO_*` (caso Render hoy, sin VPS) el sistema se comporta idéntico a antes del change, sin ningún error al arrancar. Verificado end-to-end: arranque sin `MINIO_*` (0 errores) y arranque con `MINIO_*` (evidencia real en el bucket, Object Lock modo Compliance confirmado con `mc retention info` — incluye verificación real de que un DELETE es rechazado antes de `retain_until`). Tests contra Postgres real + MinIO real en Docker (no mocks). Archivado como `2026-08-18-c-77-minio-worm-evidencia`.
+
+> **c-79-permisos-nm-coordinador — ARCHIVADO (2026-08-22)**: reemplaza el alcance por
+> `comision.docente_id` (un solo docente por comisión) por un modelo **N:M real** —
+> `comision_tutor` y `materia_coordinador` — y **acota al COORDINADOR a su materia** (antes
+> era de alcance institucional, equivalente a admin; revisado a pedido del dueño). El único
+> rol institucional que queda es `ADMIN_SISTEMA`. Suma la pantalla de asignación de
+> coordinadores y la auditoría con **entidad real** (`entidad_de_accion`), que resuelve el
+> "Ver detalle" a la entidad afectada en vez de caer al listado genérico. Archivado como
+> `2026-08-22-c-79-permisos-nm-coordinador`.
+>
+> ⚠️ **Su archivado quedó incompleto y se corrigió el 2026-08-25 (durante c-78)**: las dos
+> delta specs (`permisos-nm-pertenencia`, `auditoria-entidad-actor`) habían quedado **solo
+> dentro del archivo** y nunca se sincronizaron a `openspec/specs/`, así que la fuente de
+> verdad no tenía sus requisitos. Ya están sincronizadas. En la misma pasada se corrigieron
+> **3 specs de c-74** (`post-exam-reports`, `report-exports-and-summary`,
+> `statistical-distribution-analytics`) que se habían archivado en **formato delta**
+> (`## ADDED Requirements`, sin `## Purpose`) en vez de spec final, y por eso
+> `openspec validate --specs` venía fallando 3/187. Hoy: **187 passed / 0 failed**.
+> Lección: `/opsx:archive` tiene que dejar la spec en formato FINAL y copiada a
+> `openspec/specs/` — conviene verificar con `openspec validate --specs` al cerrar.
+
+> **c-78-coherencia-y-mejoras-relevamiento — EN CURSO (83/89 al 2026-08-25)**: el único
+> change de código abierto además de los gates. Scope original (baja lógica de exámenes,
+> coherencia de denominadores, filtro de etiqueta) + retención y baja biométrica DSR +
+> multi-comisión, duplicar y sorteo por intento + capacidad. Las 6 tareas que quedan **no
+> bloquean el examen**: 2 son checkpoints que requieren que el dueño mire (3.6, 17.3), 16.2
+> está diferida mientras siga el plan free, 16.3b bloqueada por una decisión pendiente
+> (dónde guardar `/metrics`), y 16.5/16.6 diferidas con razones escritas en su `tasks.md`.
 
 > **Cambios respecto del estado anterior (sesión 2 del 2026-06-11)**:
 > - **Archivados nuevos**: c-66 (UI estudiante onboarding desktop+mobile, frontend-only, todas las 24 tasks completadas — tsc limpio, build verde).
