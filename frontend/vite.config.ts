@@ -9,6 +9,9 @@ export default defineConfig({
   // (.test.tsx) necesitan DOM → jsdom solo para ellos.
   test: {
     environmentMatchGlobs: [['**/*.test.tsx', 'jsdom']],
+    // Node 22+ define su propio `localStorage` global (undefined sin
+    // --localstorage-file) y pisa al de jsdom. Ver src/test/setupStorage.ts.
+    setupFiles: ['./src/test/setupStorage.ts'],
   },
   build: {
     chunkSizeWarningLimit: 1400,

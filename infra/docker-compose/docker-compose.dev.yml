@@ -98,12 +98,18 @@ services:
       JWT_OWN_SECRET: dev-only-insecure-jwt-secret-change-me-0123456789abcdef
       EMBEDDING_ENCRYPTION_KEY: VXqRzW9ksjWE2eCa752juwQdOtAPCrYVnratlmHj7b0=
       PORT: "8000"
-      ENVIRONMENT: development
+      # `local`, no `development`: es uno de los cuatro valores que acepta
+      # `Settings.environment` (local|ci|staging|production). Con "development"
+      # cualquier código que construya `Settings` revienta con un ValidationError
+      # — hoy solo se nota en los tests porque main_activeexam no usa Settings,
+      # pero es una bomba puesta para el día que alguien la use.
+      ENVIRONMENT: local
       # Passwords del seed (dev-only). El seed es idempotente: no duplica.
       SEED_ADMIN_PASSWORD: Admin123
       SEED_ESTUDIANTE_PASSWORD: Estudiante123
       SEED_COORDINADOR_PASSWORD: Coordinador123
       SEED_TUTOR_PASSWORD: Tutor123
+      SEED_PROFESOR_PASSWORD: Profesor123
       # Moodle write-back (C-69/C-73): se INTERPOLAN desde el .env de la raíz
       # (docker compose --env-file .env ...). El token NUNCA se hornea en la imagen
       # ni se versiona: vive solo en el .env gitignoreado. Vacío = write-back off.
@@ -123,6 +129,10 @@ services:
       MINIO_SECRET_KEY: dev-only-minio-secret-change-me
       MINIO_BUCKET_EVIDENCIA: activeexam-evidencia
       MINIO_USE_SSL: "false"
+      # Credencial de scrape de /metrics (c-78 16.3). Sin esta variable el
+      # endpoint NO existe (404, fail closed). Dev-only: tiene que coincidir con
+      # el `authorization.credentials` de prometheus.dev.yml.
+      METRICS_TOKEN: dev-only-metrics-scrape-token
     restart: unless-stopped
     depends_on:
       postgres:

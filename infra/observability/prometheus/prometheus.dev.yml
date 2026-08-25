@@ -12,5 +12,12 @@ scrape_configs:
 
   - job_name: activeexam-backend
     metrics_path: /metrics
+    # `/metrics` dejo de ser publico (c-78 16.3): sin credencial responde 404.
+    # El token es DEV-ONLY y tiene que coincidir con METRICS_TOKEN del servicio
+    # `backend` en docker-compose.dev.yml. En produccion se inyecta por el
+    # dashboard del proveedor, nunca desde el repo.
+    authorization:
+      type: Bearer
+      credentials: dev-only-metrics-scrape-token
     static_configs:
       - targets: ["backend:8000"]
