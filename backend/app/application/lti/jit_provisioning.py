@@ -72,7 +72,7 @@ from app.application.lti.launch_validation import (
     LaunchInvalidoError,
     LaunchValidado,
 )
-from app.infrastructure.auth.hashing import hashear_password
+from app.infrastructure.auth.hashing import hashear_password_async
 from app.infrastructure.persistence.models.inscripcion import InscripcionModel
 from app.infrastructure.persistence.models.lti import (
     LtiDeploymentConfiableModel,
@@ -218,7 +218,9 @@ async def provisionar_o_recuperar_usuario(
     # loguearse directo (sin Moodle) deberá fijarlo desde el dashboard
     # ("Fijá tu contraseña" — debe_cambiar_password=True).
     password_aleatorio = secrets.token_urlsafe(32)
-    password_hash = hashear_password(password_aleatorio)
+    # En thread aparte: bcrypt son 248 ms y esto corre en el alta masiva por
+    # LTI. Llamarlo directo congelaba el bucle ~17 s con 70 alumnos entrando.
+    password_hash = await hashear_password_async(password_aleatorio)
 
     usuario = UsuarioModel(
         username=username_lti,

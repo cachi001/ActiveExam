@@ -28,7 +28,7 @@ from app.domain.auth.identity import AuthenticatedPrincipal
 from app.domain.auth.password_policy import PasswordDebilError, validar_password_fuerte
 from app.infrastructure.auth.db_refresh_store import DbRefreshTokenStore
 from app.infrastructure.auth.hashing import (
-    hashear_password,
+    hashear_password_async,
     verificar_password,
     verificar_password_dummy,
 )
@@ -587,7 +587,9 @@ async def cambiar_contrasena(
                     detail="La nueva contraseña debe ser distinta de la actual.",
                 )
 
-        usuario.password_hash = hashear_password(body.contrasena_nueva)
+        # En thread aparte (ver hashear_password_async): es el camino del PRIMER
+        # ingreso, donde una comision entera cambia su clave junta.
+        usuario.password_hash = await hashear_password_async(body.contrasena_nueva)
         # Primer login resuelto: ya definió su propia contraseña.
         usuario.debe_cambiar_password = False
         try:

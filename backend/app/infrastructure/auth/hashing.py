@@ -10,6 +10,8 @@ Los secretos (hashes) nunca se loguean.
 
 from __future__ import annotations
 
+import asyncio
+
 from passlib.context import CryptContext
 
 # CryptContext con bcrypt, 12 rounds (equilibrio seguridad/latencia para MVP).
@@ -33,6 +35,30 @@ def hashear_password(plain: str) -> str:
     El resultado es seguro para almacenar en ``usuario.password_hash``.
     """
     return _ctx.hash(plain)
+
+
+async def hashear_password_async(plain: str) -> str:
+    """Igual que ``hashear_password``, pero SIN bloquear el bucle de eventos.
+
+    Medido el 25/8/2026 en el contenedor: bcrypt con 12 rounds tarda **248 ms**
+    por alta. Es lento a proposito —esa lentitud es lo que lo hace seguro contra
+    fuerza bruta— y NO se toca.
+
+    El problema no era la lentitud sino donde corria. Llamado directo dentro de
+    una corrutina (que es como estaba en el alta por LTI y en la creacion de
+    usuarios), bloquea el bucle: mientras hashea, el proceso no atiende NADA.
+    Con 10 altas concurrentes se midieron 2434 ms en los que cualquier otro
+    request esperaba los 2434 ms completos. Con una comision entrando junta por
+    LTI —el primer minuto del examen— eso es ~17 s con 70 alumnos y ~25 s con
+    100, con los que YA estan rindiendo sin poder guardar respuestas.
+
+    Correrlo en un thread no lo acelera: lo saca del camino. El bucle sigue
+    atendiendo al resto mientras el hash se calcula aparte.
+
+    La version sincronica se conserva para los llamadores que no estan en un
+    contexto async (scripts, seed).
+    """
+    return await asyncio.to_thread(hashear_password, plain)
 
 
 def verificar_password(plain: str, hashed: str) -> bool:

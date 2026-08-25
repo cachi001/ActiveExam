@@ -29,7 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.domain.auth.identity import AuthenticatedPrincipal
 from app.application.audit.acciones import AccionAuditoria, EntidadAuditoria, ModuloAuditoria, TipoAccionAuditoria
 from app.domain.auth.roles import Rol
-from app.infrastructure.auth.hashing import hashear_password
+from app.infrastructure.auth.hashing import hashear_password_async
 from app.infrastructure.persistence.models.comision_tutor import ComisionTutorModel
 from app.infrastructure.persistence.models.exam_content import ComisionModel, MateriaModel
 from app.infrastructure.persistence.models.inscripcion import InscripcionModel
@@ -342,7 +342,8 @@ async def crear_usuario(
     # Si el admin no proveyó contraseña, generamos una segura aleatoria.
     alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
     password_plain = body.password or "".join(secrets.choice(alphabet) for _ in range(16))
-    password_hash = hashear_password(password_plain)
+    # En thread aparte (ver hashear_password_async): bcrypt bloqueaba el bucle.
+    password_hash = await hashear_password_async(password_plain)
     password_devolver = None if body.password else password_plain
 
     username = body.username or _generar_username(body.roles)
