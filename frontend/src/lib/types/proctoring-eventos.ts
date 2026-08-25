@@ -24,9 +24,13 @@
 // c-76-2: 'admin_examenes' y 'auditor' ELIMINADOS — solo debe existir un rol
 // "Admin" (ADMIN_SISTEMA). Ver migración 0074 (admin_examenes -> admin_sistema)
 // y 0075 (auditor -> admin_sistema).
+// c-78: 'profesor' AGREGADO — cubre el hueco entre tutor (no crea exámenes ni
+// toca el banco) y coordinador (emite el veredicto de integridad). Ver
+// backend/app/domain/auth/roles.py.
 export type Rol =
   | 'estudiante'
   | 'coordinador'
+  | 'profesor'
   | 'tutor'
   | 'admin_sistema';
 
@@ -153,6 +157,18 @@ export interface ExamenContenidoResumen {
   tiempo_limite_min?: number | null;
   /** Intentos permitidos por alumno. */
   intentos_permitidos?: number | null;
+  /**
+   * c-78: baja lógica del examen. null/ausente = activo; con timestamp ISO = dado
+   * de baja (sale del catálogo, su evidencia se conserva).
+   */
+  eliminado_en?: string | null;
+  /**
+   * c-78 E-07: el examen todavía no se habilitó. Al alumno no le llega en el
+   * listado; el staff lo ve marcado para poder probarlo y habilitarlo.
+   */
+  borrador?: boolean;
+  /** c-78 E-07: 'fijo' | 'sorteo_por_intento'. */
+  modo_preguntas?: string;
 }
 
 /**

@@ -35,8 +35,13 @@ from app.presentation.api.v1.exams.schemas import (
 from app.infrastructure.storage.presign import PresignService
 
 # Guards por capacidad + MFA (C-06) a nivel de router: aplican a TODOS los
-# endpoints. `gestionar_academico` cubre docente/admin_examenes/coordinador/
-# admin_sistema; reasignarla es un cambio de CAPABILITY_ROLES, no de este archivo.
+# endpoints. Quienes tienen `gestionar_academico` sale de CAPABILITY_ROLES, no
+# de un comentario: los roles 'docente' y 'admin_examenes' que nombraba este
+# texto fueron ELIMINADOS en c-76/c-76-2. Reasignar la capacidad es un cambio
+# de CAPABILITY_ROLES, no de este archivo.
+#
+# NOTA (c-78): este router NO esta montado en `main_activeexam.py` (el entrypoint
+# real). Cualquier endpoint que se agregue aca es codigo muerto.
 router = APIRouter(
     dependencies=[
         Depends(require_capability("gestionar_academico")),

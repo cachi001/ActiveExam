@@ -2,6 +2,7 @@ import { StaffShell } from '../ui/shells';
 import { Card, Icon } from '../ui/components';
 import { STAFF_NAV } from '../ui/nav';
 import { useAuth } from '../lib/authStore';
+import { usernameVisible } from '../lib/identidadVisible';
 import MiCuentaCampus, { MiCuentaCampusAyuda } from './configuracion/MiCuentaCampus';
 import SeccionSeguridad from './configuracion/SeccionSeguridad';
 import type { Rol } from '../lib/types';
@@ -10,14 +11,16 @@ import type { Rol } from '../lib/types';
 // la supervisión global en vivo y el veredicto.
 // c-76-2: 'admin_examenes' y 'auditor' eliminados del enum Rol — solo existe
 // un rol "Admin" (admin_sistema).
+// c-78: 'profesor' agregado — arma exámenes y banco, sin veredicto.
 const ROL_LABEL: Record<Rol, string> = {
   admin_sistema:   'Admin',
   tutor:           'Tutor',
+  profesor:        'Profesor',
   coordinador:     'Coordinador',
   estudiante:      'Estudiante',
 };
 
-const ACADEMICO: Rol[] = ['tutor', 'coordinador', 'admin_sistema'];
+const ACADEMICO: Rol[] = ['tutor', 'profesor', 'coordinador', 'admin_sistema'];
 
 function formatFecha(iso: string | undefined): string {
   if (!iso) return '—';
@@ -90,7 +93,10 @@ export default function Perfil() {
           <div className="grid grid-cols-1 gap-x-10 gap-y-6 sm:grid-cols-2">
             <InfoField label="Nombre completo">{nombreCompleto}</InfoField>
             <InfoField label="Usuario">
-              <span className="font-mono">{principal?.username ?? '—'}</span>
+              {/* c-78: nunca el sintetico `lti:1:7`. Ver lib/identidadVisible.ts. */}
+              <span className="font-mono">
+                {usernameVisible(principal?.username, principal?.email)}
+              </span>
             </InfoField>
 
             <InfoField label="Email">

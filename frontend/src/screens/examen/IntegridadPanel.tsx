@@ -24,13 +24,30 @@ interface Props {
   score: number;
   eventos: EventoSesion[];
   examen: Examen | null;
+  /**
+   * c-78 D10 (E-02): si el alumno ve el DETALLE de los eventos de proctoring
+   * mientras rinde. Default `false` — decisión del dueño.
+   *
+   * Cuando está apagado, el panel sigue mostrando que la supervisión está
+   * activa (eso el alumno ya lo consintió y ocultarlo sería peor), pero no
+   * enumera qué se detectó ni el puntaje. El control funciona igual y todo
+   * queda registrado: lo único que cambia es qué se le muestra a él.
+   */
+  mostrarEventos?: boolean;
 }
 
 /** Panel de Integridad del examen: estado de supervisión + score + últimos eventos. */
-export function IntegridadPanel({ activo, eventCount, score, eventos, examen }: Props) {
+export function IntegridadPanel({
+  activo,
+  eventCount,
+  score,
+  eventos,
+  examen,
+  mostrarEventos = false,
+}: Props) {
   const umbral = getEffectiveConfig()?.umbral_cola_revision ?? examen?.umbral_score ?? UMBRAL_REVISION_MIN;
   const enRiesgo = score >= umbral;
-  const ultimosEventos = eventos.slice(0, 4);
+  const ultimosEventos = mostrarEventos ? eventos.slice(0, 4) : [];
 
   return (
     <Card className="space-y-sm h-full">
@@ -40,20 +57,35 @@ export function IntegridadPanel({ activo, eventCount, score, eventos, examen }: 
         </h3>
         <div className="flex items-center gap-xs">
           <span className={`w-2 h-2 rounded-full ${activo ? 'bg-success animate-pulse' : 'bg-on-surface-variant'}`} />
-          <span className={`text-label-md font-bold ${enRiesgo ? 'text-error' : 'text-on-surface'}`}>
-            {score} pts
-          </span>
+          {/* El puntaje es parte del detalle: con los eventos ocultos tampoco se
+              muestra (un número subiendo sin explicación asusta más que informa). */}
+          {mostrarEventos ? (
+            <span className={`text-label-md font-bold ${enRiesgo ? 'text-error' : 'text-on-surface'}`}>
+              {score} pts
+            </span>
+          ) : (
+            <span className="text-label-md font-medium text-on-surface">
+              {activo ? 'Activa' : 'Detenida'}
+            </span>
+          )}
         </div>
       </div>
 
-      {enRiesgo && (
+      {mostrarEventos && enRiesgo && (
         <p className="text-label-xs text-error font-semibold">
           Tu sesión va a revisión de un tutor.
         </p>
       )}
 
+      {!mostrarEventos && (
+        <p className="text-label-xs text-on-surface-variant">
+          El examen está siendo supervisado, tal como aceptaste al empezar. Seguí
+          rindiendo con normalidad.
+        </p>
+      )}
+
       <div className="space-y-xs">
-        {ultimosEventos.length === 0 ? (
+        {!mostrarEventos ? null : ultimosEventos.length === 0 ? (
           <p className="text-label-xs text-success flex items-center gap-xs">
             <Icon name="check_circle" className="text-[13px]" fill /> Sin incidencias · {eventCount} eventos
           </p>
@@ -74,7 +106,7 @@ export function IntegridadPanel({ activo, eventCount, score, eventos, examen }: 
             </div>
           );
         })}
-        {eventos.length > 4 && (
+        {mostrarEventos && eventos.length > 4 && (
           <p className="text-label-xs text-on-surface-variant text-right">
             +{eventos.length - 4} más
           </p>

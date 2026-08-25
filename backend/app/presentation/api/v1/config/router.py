@@ -38,6 +38,7 @@ from app.application.moodle.token_exchange import SERVICE_SHORTNAME_MOODLE_MOBIL
 from app.domain.audit_chain import AuditEntry
 from app.domain.auth.identity import AuthenticatedPrincipal
 from app.domain.auth.roles import Rol
+from app.domain.retention.policy import validar_retencion_capturas_dias
 from app.infrastructure.persistence.repositories.audit_log import (
     AuditLogSqlRepository,
 )
@@ -77,6 +78,9 @@ class ConfigEfectivaResponse(_Strict):
     gaze_fixation_tolerance: float
     umbral_cola_revision: int
     retencion_dias_default: int
+    # Retencion de CAPTURAS (screenshot_b64) en dias — distinta de
+    # retencion_dias_default (retencion GENERAL de sesion, C-19).
+    retencion_capturas_dias: int
     consent_version_vigente: str
     detectores_activos: list[str]
     chat_habilitado: bool
@@ -104,6 +108,10 @@ class EditarConfigRequest(_Strict):
     umbral_cola_revision: int | None = Field(default=None, ge=70, le=100)
     detectores_activos: list[str] | None = None
     retencion_dias_default: int | None = Field(default=None, ge=0, le=36500)
+    # Retencion de CAPTURAS (dato mas pesado y sensible: rostro + pantalla del
+    # alumno). Piso de 90 dias validado en el field_validator de abajo, que
+    # delega en el dominio (mensaje entendible, no un error de constraint).
+    retencion_capturas_dias: int | None = Field(default=None, le=36500)
     consent_version_vigente: str | None = None
     # Toggles globales de la rendicion (C-69).
     chat_habilitado: bool | None = None
@@ -112,6 +120,21 @@ class EditarConfigRequest(_Strict):
     # Límite de cantidad de pausas por sesión (C-76 bloque 4). Se consume al
     # APROBAR, no al solicitar (D5 del design c-76): el alumno siempre puede pedir.
     pausas_max_por_sesion: int | None = Field(default=None, ge=1, le=50)
+
+    @field_validator("retencion_capturas_dias")
+    @classmethod
+    def _validar_retencion_capturas_dias(cls, v: int | None) -> int | None:
+        """Piso de 90 dias (decision del dueño), delegado al dominio.
+
+        Server-side sí o sí (regla dura #6, cliente = sensor no confiable): el
+        input del front también pisa en 90, pero la garantía vive acá. El
+        mensaje del ValueError explica el POR QUE — Pydantic lo devuelve como
+        422 (nunca un CHECK de base, que daría un error de constraint crudo).
+        """
+        if v is None:
+            return v
+        validar_retencion_capturas_dias(v)
+        return v
 
 
 # ---------------------------------------------------------------------------
@@ -148,6 +171,7 @@ def _to_response(e: ConfigEfectiva) -> ConfigEfectivaResponse:
         gaze_fixation_tolerance=e.gaze_fixation_tolerance,
         umbral_cola_revision=e.umbral_cola_revision,
         retencion_dias_default=e.retencion_dias_default,
+        retencion_capturas_dias=e.retencion_capturas_dias,
         consent_version_vigente=e.consent_version_vigente,
         detectores_activos=list(e.detectores_activos),
         chat_habilitado=e.chat_habilitado,
@@ -173,6 +197,7 @@ def _snapshot(cfg) -> dict:
         "umbral_cola_revision": cfg.umbral_cola_revision,
         "detectores_activos": list(cfg.detectores_activos or ()),
         "retencion_dias_default": cfg.retencion_dias_default,
+        "retencion_capturas_dias": cfg.retencion_capturas_dias,
         "consent_version_vigente": cfg.consent_version_vigente,
         "chat_habilitado": cfg.chat_habilitado,
         "pausas_habilitadas": cfg.pausas_habilitadas,
@@ -470,8 +495,9 @@ async def borrar_token_moodle(
 # Credencial PERSONAL de Moodle del docente (C-73 §10.3)
 #
 # Guardada por `gestionar_notas`, NO por admin: el docente es justamente quien
-# tiene que poder cargar la suya. El revisor NO tiene esa capacidad — quien juzga
-# la integridad no devuelve notas.
+# tiene que poder cargar la suya. Quien solo revisa integridad NO tiene esa
+# capacidad — quien juzga la integridad no devuelve notas. (El rol 'revisor' que
+# nombraba este texto fue eliminado en c-76; la separacion sigue siendo la misma.)
 #
 # Cada docente solo toca LA SUYA: el usuario sale del token (`principal.subject`),
 # nunca de la URL ni del body. Así no existe el endpoint "editar la credencial de

@@ -9,6 +9,7 @@ import { consentimientoApi } from './apiAdmin/consentimiento';
 import { configSistemaApi } from './apiAdmin/config-sistema';
 import { moodleApi } from './apiAdmin/moodle';
 import { cuentaApi } from './apiAdmin/cuenta';
+import { ltiApi } from './apiAdmin/lti';
 
 export const adminApi = {
   ...estadisticasApi,
@@ -19,8 +20,10 @@ export const adminApi = {
   ...configSistemaApi,
   ...moodleApi,
   ...cuentaApi,
+  ...ltiApi,
 };
 
 // Tipos del dominio Moodle: viven junto a sus metodos y se re-exportan aca
 // para que `import { MiCuentaCampus } from '../lib/apiAdmin'` siga andando.
 export type { MiCuentaCampus, CredencialMoodle } from './apiAdmin/moodle';
+export type { DeploymentLti, SaludLti } from './apiAdmin/lti';

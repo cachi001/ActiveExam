@@ -180,7 +180,14 @@ class ExamenContenido:
     # Tope de preguntas del examen. None = sin tope.
     limite_preguntas: int | None = None
     # Visibilidad de resultados (migración 0036, gate estilo Moodle "Review options").
-    mostrar_nota: str = "al_cerrar"  # 'al_cerrar' | 'inmediata'
+    # c-78 D9: 'nunca' (default) | 'al_cerrar' | 'inmediata'. La nota no se
+    # publica sola: la publica una persona cuando terminó de revisar.
+    mostrar_nota: str = "nunca"
+    # c-78 D10: el alumno ve sus eventos de proctoring mientras rinde (default no).
+    mostrar_eventos_alumno: bool = False
+    # c-78 D9: quién publicó las notas y cuándo. None = todavía ocultas.
+    notas_publicadas_en: datetime | None = None
+    notas_publicadas_por: str | None = None
     revision_habilitada: bool = False
     politica_intentos: PoliticaIntentos = PoliticaIntentos.MAS_ALTA
 
@@ -243,10 +250,9 @@ class Comision:
     # C-72 §17 (nivel comisión): true = activa; false = congelada. Congelar UNA
     # comisión no congela la materia ni las demás comisiones.
     activa: bool = True
-    # C-73 §9: docente a cargo. None = sin asignar (no rompe: el write-back de sus
-    # exámenes cae a la credencial institucional). Es el dato del que se DERIVA quién
-    # devuelve la nota y contra el que se valida la pertenencia del rol DOCENTE.
-    docente_id: str | None = None
+    # c-78: `docente_id` se dropeó (migración 0093). Quién está a cargo vive en
+    # `comision_tutor` (N:M) y se consulta por repositorio, no por un campo de la
+    # comisión — una comisión puede tener varios tutores.
 
     def __post_init__(self) -> None:
         if not (self.materia_id and self.materia_id.strip()):
@@ -285,3 +291,12 @@ class ExamenContenidoResumen:
     cierre: datetime | None = None
     tiempo_limite_min: int | None = None
     intentos_permitidos: int = 1
+    # c-78 D1: baja lógica. None = activo; con timestamp = dado de baja. Viaja en
+    # el resumen para que la pantalla de Exámenes sepa qué acción ofrecer (baja o
+    # reactivación) y pueda marcar la fila cuando el filtro incluye los de baja.
+    eliminado_en: datetime | None = None
+    # c-78 E-07: el examen todavía no se habilitó. Al alumno no le llega en el
+    # listado; el staff lo ve marcado para poder probarlo y habilitarlo.
+    borrador: bool = False
+    # c-78 E-07: 'fijo' | 'sorteo_por_intento'.
+    modo_preguntas: str = "fijo"

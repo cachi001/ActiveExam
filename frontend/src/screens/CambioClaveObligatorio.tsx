@@ -23,6 +23,7 @@ const LABEL = 'block text-[13px] font-medium text-on-surface mb-1.5';
 
 export default function CambioClaveObligatorio() {
   const markPasswordChanged = useAuth((s) => s.markPasswordChanged);
+  const refrescarAccessToken = useAuth((s) => s.refrescarAccessToken);
   const logout = useAuth((s) => s.logout);
   // Usuario LTI en su primer ingreso: no tiene contraseña temporal que pedirle.
   const esLti = useAuth((s) => s.principal?.auth_provider) === 'lti';
@@ -63,12 +64,15 @@ export default function CambioClaveObligatorio() {
 
     setGuardando(true);
     try {
-      await cuentaApi.cambiarContrasena({
+      const resp = await cuentaApi.cambiarContrasena({
         // LTI: sin contraseña actual (nunca la tuvo).
         ...(esLti ? {} : { contrasena_actual: actual }),
         contrasena_nueva: nueva,
         ...(usernameLimpio ? { nuevo_username: usernameLimpio } : {}),
       });
+      // c-78 E-13: si eligió username, el backend re-emite el token con el
+      // nombre nuevo. Sin adoptarlo acá, la app seguía mostrando `lti:1:7`.
+      if (resp.access_token) refrescarAccessToken(resp.access_token);
       // Éxito: el gate deja de aplicar y el usuario pasa a su pantalla normal.
       markPasswordChanged();
     } catch (err) {

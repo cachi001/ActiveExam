@@ -123,8 +123,11 @@ _ROLES_SIN_LIMITE_DE_PERTENENCIA: frozenset[Rol] = frozenset({Rol.ADMIN_SISTEMA}
 
 
 # Roles que quedan ACOTADOS por pertenencia (ninguno tiene alcance global): el
-# tutor a sus comisiones, el coordinador a sus materias (c-79).
-_ROLES_ACOTADOS_POR_PERTENENCIA: frozenset[Rol] = frozenset({Rol.TUTOR, Rol.COORDINADOR})
+# tutor a sus comisiones (comision_tutor), el coordinador a sus materias
+# (materia_coordinador, c-79) y el profesor a las suyas (materia_profesor, c-78).
+_ROLES_ACOTADOS_POR_PERTENENCIA: frozenset[Rol] = frozenset(
+    {Rol.TUTOR, Rol.COORDINADOR, Rol.PROFESOR}
+)
 
 
 def autorizar_docente_sobre_examen(
@@ -150,7 +153,9 @@ def autorizar_docente_sobre_examen(
     if principal.tiene_algun_rol(_ROLES_SIN_LIMITE_DE_PERTENENCIA):
         return
     if not principal.tiene_algun_rol(_ROLES_ACOTADOS_POR_PERTENENCIA):
-        raise ForbiddenError("Se requiere rol tutor/coordinador (o alcance institucional).")
+        raise ForbiddenError(
+            "Se requiere rol tutor/profesor/coordinador (o alcance institucional)."
+        )
     if not tiene_pertenencia:
         raise ForbiddenError("El examen pertenece a una comisión/materia ajena.")
 
@@ -173,7 +178,9 @@ def autorizar_docente_sobre_materia(
     if principal.tiene_algun_rol(_ROLES_SIN_LIMITE_DE_PERTENENCIA):
         return
     if not principal.tiene_algun_rol(_ROLES_ACOTADOS_POR_PERTENENCIA):
-        raise ForbiddenError("Se requiere rol tutor/coordinador (o alcance institucional).")
+        raise ForbiddenError(
+            "Se requiere rol tutor/profesor/coordinador (o alcance institucional)."
+        )
     if not tiene_pertenencia:
         raise ForbiddenError("La materia no tiene ninguna comisión a cargo (o coordinación).")
 
@@ -201,7 +208,9 @@ def autorizar_supervision_vivo_sobre_sesion(
     if not principal.tiene_algun_rol(_ROLES_ACOTADOS_POR_PERTENENCIA):
         # Capability gate ya exige supervisar_vivo antes de llegar acá; este caso
         # es defensivo (rol desconocido con la capacidad de otra forma).
-        raise ForbiddenError("Se requiere rol tutor/coordinador (o alcance institucional).")
+        raise ForbiddenError(
+            "Se requiere rol tutor/profesor/coordinador (o alcance institucional)."
+        )
     if not tiene_pertenencia:
         raise ForbiddenError("La sesión pertenece a una comisión/materia ajena.")
 
@@ -222,7 +231,9 @@ def autorizar_docente_sobre_comision(
     if principal.tiene_algun_rol(_ROLES_SIN_LIMITE_DE_PERTENENCIA):
         return
     if not principal.tiene_algun_rol(_ROLES_ACOTADOS_POR_PERTENENCIA):
-        raise ForbiddenError("Se requiere rol tutor/coordinador (o alcance institucional).")
+        raise ForbiddenError(
+            "Se requiere rol tutor/profesor/coordinador (o alcance institucional)."
+        )
     if not tiene_pertenencia:
         raise ForbiddenError("La comisión pertenece a otro tutor/materia ajena.")
 

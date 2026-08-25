@@ -184,11 +184,16 @@ class GuardarEmbeddingReferenciaService:
             from app.application.audit.acciones import EntidadAuditoria, ModuloAuditoria
             from app.domain.audit_chain import AuditEntry
 
+            # c-78 (F-07): del catalogo canonico (AccionAuditoria), no strings
+            # sueltos. Los VALORES son los mismos, asi que las filas ya escritas
+            # siguen matcheando los filtros y las etiquetas existentes.
+            from app.application.audit.acciones import AccionAuditoria
+
             if tenia_referencia_previa:
-                accion_audit = "enrollment.embedding_referencia.renovacion"
+                accion_audit = AccionAuditoria.ENROLLMENT_RENOVACION
                 proposito_audit = f"Renovacion de referencia biometrica. Origen: {origen}"
             else:
-                accion_audit = "enrollment.embedding_referencia.alta"
+                accion_audit = AccionAuditoria.ENROLLMENT_ALTA
                 proposito_audit = f"Alta inicial de referencia biometrica. Origen: {origen}"
 
             await audit_repo.append(

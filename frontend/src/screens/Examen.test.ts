@@ -66,7 +66,10 @@ describe('4.1-4.3 — Eliminación de toast por evento de proctoring', () => {
   });
 
   it('el panel de señales sigue renderizando eventos (map sobre los últimos)', () => {
-    expect(panelSource).toMatch(/eventos\.slice\(-4\)/);
+    // c-78 D10: los eventos quedan detrás de `mostrarEventos` (default NO), y el
+    // recorte pasó a `slice(0, 4)` porque la lista ya llega con el más reciente
+    // primero.
+    expect(panelSource).toMatch(/mostrarEventos \? eventos\.slice\(0, 4\)/);
     expect(panelSource).toMatch(/ultimosEventos\.map/);
   });
 
@@ -171,3 +174,43 @@ describe('4.7-4.8 — Navegación prev/next de preguntas', () => {
 // que monta el componente. Acá antes había bloques de source-inspection que
 // duplicaban esa cobertura de forma frágil; se removieron (quedan los chequeos de
 // remoción 4.1-4.6 y la lógica pura de navegación 4.7-4.8 arriba).
+
+// ---------------------------------------------------------------------------
+// Aviso de "no se están guardando tus respuestas" (c-78 E-14).
+//
+// El autoguardado incremental es fire-and-forget: si la red se cae, el POST falla
+// y las respuestas quedan SOLO en memoria del navegador. Sin aviso, el alumno
+// sigue escribiendo convencido de que se guardan, y si se apaga la máquina pierde
+// todo lo tipeado desde el último guardado exitoso.
+//
+// Es el mismo criterio que aplica Moodle: ante un autosave fallido muestra una
+// advertencia en pantalla y le pide al alumno que anote sus respuestas recientes.
+// Verificado contra docs.moodle.org/36/en/mod/quiz/attempt.
+// ---------------------------------------------------------------------------
+
+describe('Examen — aviso de guardado en riesgo', () => {
+  it('el autoguardado marca el estado de riesgo cuando el POST falla', () => {
+    expect(examenSource).toMatch(/setGuardadoEnRiesgo\(true\)/);
+  });
+
+  it('lo limpia cuando un guardado vuelve a salir bien', () => {
+    expect(examenSource).toMatch(/\.then\(\(\) => setGuardadoEnRiesgo\(false\)\)/);
+  });
+
+  it('un 409 NO se reporta como problema de conexión', () => {
+    // El 409 significa que el servidor CONTESTÓ y rechazó por plazo vencido.
+    // Mezclarlo con "se cayó tu internet" mandaría al alumno a revisar el router
+    // cuando lo que pasó es que se le terminó el tiempo.
+    const rama409 = examenSource.match(/if \(code\) \{[\s\S]*?\}/);
+    expect(rama409).not.toBeNull();
+    expect(rama409![0]).toMatch(/setGuardadoEnRiesgo\(false\)/);
+  });
+
+  it('el aviso se renderiza con role="alert" y dice qué hacer', () => {
+    expect(examenSource).toMatch(/guardadoEnRiesgo &&/);
+    expect(examenSource).toMatch(/No estamos pudiendo guardar tus respuestas/);
+    // Tiene que decirle al alumno que anote, como hace Moodle: el aviso sin
+    // instrucción no evita la pérdida.
+    expect(examenSource).toMatch(/Anotá aparte/);
+  });
+});

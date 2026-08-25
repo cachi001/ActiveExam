@@ -18,10 +18,11 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import FastAPI, Response
+from fastapi import FastAPI, Request, Response
 
 from app.config import Settings, get_settings
 from app.observability.logging import configure_logging
+from app.observability.metrics_auth import exigir_credencial_de_scrape
 from app.observability.telemetry import instrument_app, metrics_endpoint
 from app.presentation.api.v1 import api_v1_router
 
@@ -146,9 +147,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Router base /api/v1 (healthchecks C-04; auth C-06; dominio C-05+).
     app.include_router(api_v1_router, prefix=settings.api_v1_prefix)
 
-    # Endpoint de metricas Prometheus (scrapeado por Prometheus).
+    # Endpoint de metricas Prometheus (scrapeado por Prometheus). Cerrado con la
+    # misma politica que el de main_activeexam.py: sin METRICS_TOKEN el endpoint
+    # no existe, con METRICS_TOKEN exige Bearer. Ver la docstring del helper.
     @app.get("/metrics", include_in_schema=False)
-    async def metrics() -> Response:
+    async def metrics(request: Request) -> Response:
+        exigir_credencial_de_scrape(request)
         payload, content_type = metrics_endpoint()
         return Response(content=payload, media_type=content_type)
 

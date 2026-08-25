@@ -10,6 +10,8 @@ Migración aditiva activeexam: 0029_c69_moodle_writeback_activeexam.py
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from sqlalchemy import (
     DateTime,
     ForeignKey,
@@ -145,7 +147,17 @@ class MoodleWritebackEstadoModel(Base):
         String(20),
         nullable=False,
         server_default="pendiente",
-        comment="pendiente | enviado | fallido",
+        # c-78 D14: 'manual' = una persona dice que cargó la nota en el campus.
+        # NO es 'enviado' (que significa "el campus confirmó"): mezclarlos borraría
+        # la diferencia justo donde importa, ante un reclamo por una nota que no
+        # aparece. Además 'enviado' es final e idempotente — un 'manual' disfrazado
+        # bloquearía el envío real cuando el campus vuelva a estar disponible.
+        comment="pendiente | enviado | fallido | manual",
+    )
+    # c-78 D14: quién marcó a mano y cuándo. NULL = nunca se marcó a mano.
+    marcada_manual_por: Mapped[str | None] = mapped_column(Text, nullable=True)
+    marcada_manual_en: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
     intento: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     moodle_courseid: Mapped[int | None] = mapped_column(Integer, nullable=True)

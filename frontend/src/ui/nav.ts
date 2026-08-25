@@ -27,7 +27,7 @@ import type { Rol } from '../lib/types';
 // Antes ambas áreas compartían el mismo array `SUPERVISION`, lo que hubiera
 // exigido elegir entre bloquear al tutor de supervisión en vivo o dejarlo
 // entrar a la cola de decisión — son capacidades distintas, así que se separan.
-const SUPERVISION_VIVO: Rol[] = ['tutor', 'coordinador', 'admin_sistema'];
+const SUPERVISION_VIVO: Rol[] = ['tutor', 'profesor', 'coordinador', 'admin_sistema'];
 const COLA_REVISION: Rol[] = ['coordinador', 'admin_sistema'];
 //
 // ACADEMICO es el área del DOCENTE: exámenes, materias y comisiones — lo suyo.
@@ -35,13 +35,18 @@ const COLA_REVISION: Rol[] = ['coordinador', 'admin_sistema'];
 // dicta la materia no supervisa la integridad de su propia rendición ni afloja
 // los umbrales con que se la detecta.
 // c-76-2: 'admin_examenes' fue ELIMINADO del dominio (solo existe un rol "Admin").
-const ACADEMICO: Rol[] = ['tutor', 'coordinador', 'admin_sistema'];
+const ACADEMICO: Rol[] = ['tutor', 'profesor', 'coordinador', 'admin_sistema'];
+// c-78 (E-03/E-04): CREAR exámenes y el BANCO de preguntas salen del área del
+// TUTOR. No es solo ocultar el ítem: los endpoints tienen su propia capacidad
+// (`crear_examenes` / `gestionar_banco`) y responden 403 aunque se escriba la
+// URL a mano. El tutor conserva Notas, Materias y Supervisión de lo suyo.
+const CREAR_EXAMENES: Rol[] = ['profesor', 'coordinador', 'admin_sistema'];
 const ADMIN: Rol[] = ['admin_sistema'];
 // c-79: capacidad `ver_estadisticas` del backend — deliberadamente SIN tutor.
 // Los filtros de /stats son query params libres sin scoping por comisión; el
 // tutor ve SU rendimiento vía las pantallas de ACADEMICO (Notas, Exámenes),
 // no el agregado institucional de comisiones ajenas.
-const VER_ESTADISTICAS: Rol[] = ['coordinador', 'admin_sistema'];
+const VER_ESTADISTICAS: Rol[] = ['profesor', 'coordinador', 'admin_sistema'];
 
 export interface StaffNavItem {
   to: string;
@@ -55,12 +60,12 @@ export interface StaffNavItem {
 export const STAFF_NAV: StaffNavItem[] = [
   { to: '/admin',                       icon: 'space_dashboard', label: 'Dashboard',               group: 'main',   roles: ACADEMICO },
   { to: '/admin/estadisticas',          icon: 'insights',        label: 'Estadísticas',            group: 'main',   roles: VER_ESTADISTICAS },
-  { to: '/admin/examenes',              icon: 'fact_check',      label: 'Exámenes',                group: 'main',   roles: ACADEMICO },
+  { to: '/admin/examenes',              icon: 'fact_check',      label: 'Exámenes',                group: 'main',   roles: CREAR_EXAMENES },
   // Alumnos que rindieron + sync a Moodle, sin pasar por el detalle de cada
   // examen (antes: Exámenes → click en la fila → scroll → "Ver alumnos que
   // rindieron"). Reusa la misma pantalla de resultados, solo cambia la entrada.
   { to: '/admin/notas',                 icon: 'grading',         label: 'Notas',                   group: 'main',   roles: ACADEMICO },
-  { to: '/admin/banco-preguntas',       icon: 'library_books',   label: 'Banco de preguntas',       group: 'main',   roles: ACADEMICO },
+  { to: '/admin/banco-preguntas',       icon: 'library_books',   label: 'Banco de preguntas',       group: 'main',   roles: CREAR_EXAMENES },
   // Académico, NO administración del sistema: va en 'main' junto a Exámenes y Banco.
   // Antes estaba en 'config' y para el tutor (cuyo único item de config es este)
   // quedaba un divider separando un item solitario, sin sentido.
@@ -76,6 +81,7 @@ export const STAFF_NAV: StaffNavItem[] = [
   { to: '/admin/usuarios',              icon: 'manage_accounts', label: 'Usuarios',                group: 'config', roles: ADMIN },
   { to: '/admin/detection-test',        icon: 'bug_report',      label: 'Test de detección',       group: 'config', roles: ADMIN },
   { to: '/admin/auditoria',             icon: 'verified_user',   label: 'Auditoría',               group: 'config', roles: ADMIN },
+  { to: '/admin/lti',                   icon: 'lan',             label: 'Integración LTI',         group: 'config', roles: ADMIN },
   { to: '/admin/configuracion',         icon: 'settings',        label: 'Configuración',           group: 'config', roles: ADMIN },
 ];
 

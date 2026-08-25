@@ -141,13 +141,47 @@ def construir_config_snapshot(
     umbral_cola_revision: int,
     pesos_por_tipo: dict[str, int] | None,
     tipos_desactivados: frozenset[str] | set[str] | None,
+    chat_habilitado: bool | None = None,
+    pausas_habilitadas: bool | None = None,
 ) -> dict:
-    """Arma el dict JSON-safe que se persiste en ``proctoring_session.config_snapshot``."""
-    return {
+    """Arma el dict JSON-safe que se persiste en ``proctoring_session.config_snapshot``.
+
+    c-78: la foto congela TAMBIEN los interruptores de chat y pausas, no solo lo de
+    scoring. Antes el backend no los miraba en ningun lado (eran solo visuales) y el
+    gate nuevo necesita leerlos de la MISMA foto contra la que corre el examen: si
+    leyera la config viva, un cambio a mitad del examen alteraria una rendicion en
+    curso, que es exactamente lo que el snapshot existe para impedir.
+    """
+    foto = {
         "umbral_cola_revision": umbral_cola_revision,
         "scoring_weights": dict(pesos_por_tipo or {}),
         "scoring_desactivados": sorted(tipos_desactivados or ()),
     }
+    # Se omiten si el caller no los pasa, para que una foto vieja y una nueva sin
+    # dato se lean igual (ambas degradan a la config viva).
+    if chat_habilitado is not None:
+        foto["chat_habilitado"] = bool(chat_habilitado)
+    if pausas_habilitadas is not None:
+        foto["pausas_habilitadas"] = bool(pausas_habilitadas)
+    return foto
+
+
+def chat_habilitado_de_snapshot(config_snapshot: dict | None, *, vivo: bool) -> bool:
+    """Si el chat esta habilitado PARA ESTA SESION: lo que dijo su foto.
+
+    Sesiones anteriores a c-78 (o a la migracion 0083, sin foto) caen a la config
+    viva, igual que el resto de los lectores del snapshot.
+    """
+    if config_snapshot is not None and "chat_habilitado" in config_snapshot:
+        return bool(config_snapshot["chat_habilitado"])
+    return vivo
+
+
+def pausas_habilitadas_de_snapshot(config_snapshot: dict | None, *, vivo: bool) -> bool:
+    """Idem ``chat_habilitado_de_snapshot`` para las pausas autorizadas."""
+    if config_snapshot is not None and "pausas_habilitadas" in config_snapshot:
+        return bool(config_snapshot["pausas_habilitadas"])
+    return vivo
 
 
 def pesos_de_snapshot(

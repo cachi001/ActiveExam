@@ -92,10 +92,15 @@ def test_gestionar_estructura_queda_coordinador_y_admin_sin_admin_examenes() -> 
 
 
 def test_gestionar_academico_conserva_tutor_coordinador_admin() -> None:
-    """Triangulacion: `gestionar_academico` sigue con TUTOR/COORDINADOR/ADMIN_SISTEMA."""
-    assert CAPABILITY_ROLES["gestionar_academico"] == frozenset(
-        {Rol.TUTOR, Rol.COORDINADOR, Rol.ADMIN_SISTEMA}
-    )
+    """Triangulacion: `gestionar_academico` conserva TUTOR/COORDINADOR/ADMIN_SISTEMA
+    y NO tiene 'admin_examenes'.
+
+    Pertenencia, no set exacto: c-78 sumo PROFESOR a esta capacidad, que es un
+    cambio legitimo y ajeno a lo que este archivo verifica.
+    """
+    roles = CAPABILITY_ROLES["gestionar_academico"]
+    assert {Rol.TUTOR, Rol.COORDINADOR, Rol.ADMIN_SISTEMA} <= set(roles)
+    assert not any(getattr(r, "value", r) == "admin_examenes" for r in roles)
 
 
 # ---------------------------------------------------------------------------

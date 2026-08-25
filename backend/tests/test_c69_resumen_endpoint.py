@@ -202,7 +202,11 @@ async def test_resumen_devuelve_metadata_con_comision(client, factory):
         "cierre",
         "tiempo_limite_min",
         "intentos_permitidos",
+        # c-78: baja logica del examen. null = activo. Viaja en el resumen para
+        # que la pantalla sepa que accion ofrecer (baja o reactivacion).
+        "eliminado_en",
     }
+    assert body["eliminado_en"] is None, "un examen recien creado esta activo"
     assert body["id"] == examen_id
     assert body["cantidad_preguntas"] == 2
     assert body["materia_nombre"] == materia_nombre

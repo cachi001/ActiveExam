@@ -39,6 +39,7 @@ from app.infrastructure.persistence.models.exam_content import (
 from app.infrastructure.persistence.models.comision_tutor import (
     ComisionTutorModel,
     MateriaCoordinadorModel,
+    MateriaProfesorModel,
 )
 from app.infrastructure.persistence.models.inscripcion import InscripcionModel
 from app.infrastructure.persistence.models.transactional import UsuarioModel
@@ -129,6 +130,7 @@ class ExamenContenidoSqlRepository:
             limite_preguntas=examen.limite_preguntas,
             mostrar_nota=examen.mostrar_nota,
             revision_habilitada=examen.revision_habilitada,
+            mostrar_eventos_alumno=examen.mostrar_eventos_alumno,
         )
         for i, pregunta in enumerate(examen.preguntas):
             p_model = PreguntaExamenModel(
@@ -183,6 +185,11 @@ class ExamenContenidoSqlRepository:
                 ExamenContenidoModel.cierre,
                 ExamenContenidoModel.tiempo_limite_min,
                 ExamenContenidoModel.intentos_permitidos,
+                ExamenContenidoModel.eliminado_en,
+                # c-78 E-07: el catálogo del staff marca los que no se habilitaron
+                # y los que sortean por intento.
+                ExamenContenidoModel.borrador,
+                ExamenContenidoModel.modo_preguntas,
             )
             .outerjoin(
                 PreguntaExamenModel,
@@ -208,6 +215,9 @@ class ExamenContenidoSqlRepository:
                 ExamenContenidoModel.cierre,
                 ExamenContenidoModel.tiempo_limite_min,
                 ExamenContenidoModel.intentos_permitidos,
+                ExamenContenidoModel.eliminado_en,
+                ExamenContenidoModel.borrador,
+                ExamenContenidoModel.modo_preguntas,
             )
         )
 
@@ -226,6 +236,9 @@ class ExamenContenidoSqlRepository:
             cierre=row.cierre,
             tiempo_limite_min=row.tiempo_limite_min,
             intentos_permitidos=row.intentos_permitidos,
+            eliminado_en=row.eliminado_en,
+            borrador=row.borrador,
+            modo_preguntas=row.modo_preguntas,
         )
 
     async def listar(self) -> list[ExamenContenidoResumen]:
@@ -239,6 +252,21 @@ class ExamenContenidoSqlRepository:
         stmt = self._stmt_resumen().order_by(_orden_alfabetico(ExamenContenidoModel.titulo))
         result = await self._db.execute(stmt)
         return [self._row_to_resumen(row) for row in result.all()]
+
+    @staticmethod
+    def _filtro_estado(stmt, estado: str | None):
+        """Aplica el filtro de baja lógica (c-78 D1) sobre ``eliminado_en``.
+
+        ``"activo"`` (default de todos los llamadores) = solo ``IS NULL``;
+        ``"inactivo"`` = solo dados de baja; ``"todos"`` = sin filtro. Cualquier
+        otro valor se trata como ``"activo"``: la validación del conjunto la hace
+        el router (422), acá nunca se abre el catálogo por un valor raro.
+        """
+        if estado == "todos":
+            return stmt
+        if estado == "inactivo":
+            return stmt.where(ExamenContenidoModel.eliminado_en.is_not(None))
+        return stmt.where(ExamenContenidoModel.eliminado_en.is_(None))
 
     def _filtro_q(self, stmt, q: str | None):
         """Aplica búsqueda serverside por título / materia / comisión (ILIKE)."""
@@ -262,6 +290,8 @@ class ExamenContenidoSqlRepository:
         comision_ids: list[str] | None = None,
         filtro_materia_id: str | None = None,
         filtro_comision_id: str | None = None,
+        estado: str = "activo",
+        incluir_borradores: bool = True,
     ) -> tuple[list[ExamenContenidoResumen], int]:
         """Lista paginada + búsqueda serverside del catálogo (tarea 4, admin-sync).
 
@@ -272,6 +302,15 @@ class ExamenContenidoSqlRepository:
         Gate de inscripción (C-71): ``comision_ids`` restringe el catálogo a esas
         comisiones (alumno → sus comisiones inscriptas). ``None`` = sin restricción
         (admin ve todo). Lista vacía = alumno sin inscripciones → catálogo vacío.
+
+        Baja lógica (c-78 D1): ``estado`` es ``"activo"`` (default, solo
+        ``eliminado_en IS NULL``) | ``"inactivo"`` (solo dados de baja) | ``"todos"``.
+        El filtro se resuelve EN SQL sobre la misma subconsulta que produce el
+        ``total``, así que el total corresponde siempre al conjunto filtrado.
+
+        Borrador (c-78 E-07): ``incluir_borradores=False`` saca del listado los
+        exámenes que todavía no se habilitaron. Lo usa la vista del ALUMNO. El
+        staff los ve, porque los tiene que poder abrir para probarlos y habilitarlos.
         """
         page = max(1, page)
         page_size = max(1, page_size)
@@ -281,6 +320,9 @@ class ExamenContenidoSqlRepository:
             return [], 0
 
         base = self._filtro_q(self._stmt_resumen(), q)
+        base = self._filtro_estado(base, estado)
+        if not incluir_borradores:
+            base = base.where(ExamenContenidoModel.borrador.is_(False))
         if comision_ids is not None:
             base = base.where(ExamenContenidoModel.comision_id.in_(comision_ids))
         if filtro_materia_id is not None:
@@ -316,11 +358,16 @@ class ExamenContenidoSqlRepository:
         return self._row_to_resumen(row)
 
     async def listar_por_comision(
-        self, comision_id: str
+        self, comision_id: str, *, estado: str = "activo"
     ) -> list[ExamenContenidoResumen]:
-        """Lista los exámenes asociados a una comisión (orden alfabético por titulo)."""
+        """Lista los exámenes asociados a una comisión (orden alfabético por titulo).
+
+        Alimenta el picker de Notas, así que respeta la baja lógica (c-78 D1): por
+        default solo los activos. Un examen dado de baja no se ofrece para cargar
+        notas, aunque sus resultados ya cargados sigan consultables por id (D2).
+        """
         stmt = (
-            self._stmt_resumen()
+            self._filtro_estado(self._stmt_resumen(), estado)
             .where(ExamenContenidoModel.comision_id == comision_id)
             .order_by(_orden_alfabetico(ExamenContenidoModel.titulo))
         )
@@ -390,6 +437,50 @@ class ExamenContenidoSqlRepository:
             return None
         await self._db.flush()
         return await self.obtener(examen_id)
+
+    async def dar_de_baja(self, examen_id: str) -> bool:
+        """Baja lógica del examen (c-78 D1): setea ``eliminado_en = now()``.
+
+        Devuelve ``False`` si el examen no existe **o ya estaba de baja** (el
+        router lo traduce a 404, igual que ``eliminar_usuario``). No toca sesiones,
+        eventos, capturas ni notas: la baja es administrativa (D2).
+        """
+        if not _es_uuid(examen_id):
+            return False
+        result = await self._db.execute(
+            update(ExamenContenidoModel)
+            .where(
+                ExamenContenidoModel.id == examen_id,
+                ExamenContenidoModel.eliminado_en.is_(None),
+            )
+            .values(eliminado_en=func.now())
+            .returning(ExamenContenidoModel.id)
+        )
+        if result.scalar_one_or_none() is None:
+            return False
+        await self._db.flush()
+        return True
+
+    async def reactivar(self, examen_id: str) -> bool:
+        """Revierte la baja lógica: ``eliminado_en = NULL`` (c-78 D1).
+
+        Devuelve ``False`` si el examen no existe **o ya estaba activo** (→ 404).
+        """
+        if not _es_uuid(examen_id):
+            return False
+        result = await self._db.execute(
+            update(ExamenContenidoModel)
+            .where(
+                ExamenContenidoModel.id == examen_id,
+                ExamenContenidoModel.eliminado_en.is_not(None),
+            )
+            .values(eliminado_en=None)
+            .returning(ExamenContenidoModel.id)
+        )
+        if result.scalar_one_or_none() is None:
+            return False
+        await self._db.flush()
+        return True
 
     async def _examen_existe(self, examen_id: str) -> bool:
         result = await self._db.execute(
@@ -556,8 +647,10 @@ class ExamenContenidoSqlRepository:
             return None
         return self._to_entity(model)
 
-    async def obtener_para_rendir(self, examen_id: str) -> ExamenContenido | None:
-        """Recupera un examen con SOLO las preguntas seleccionadas, y sus blanks.
+    async def obtener_para_rendir(
+        self, examen_id: str, pregunta_ids: list[str] | None = None
+    ) -> ExamenContenido | None:
+        """Recupera un examen con SOLO las preguntas a rendir, y sus blanks.
 
         `obtener()` trae el pool ENTERO y el filtrado por `seleccionada` ocurría
         recién en Python: con 232 preguntas importadas para servir 20, la rendición
@@ -565,12 +658,29 @@ class ExamenContenidoSqlRepository:
         mismo GET, así que la pantalla del alumno tardaba en aparecer). Acá el
         filtro va EN SQL.
 
+        ``pregunta_ids`` (c-78 E-07): el set que le tocó a ESTE intento. Con sorteo
+        por intento el pool queda todo con `seleccionada=False` y quién entra lo
+        decide el sorteo, así que sin este parámetro la rendición saldría vacía.
+        None = modo 'fijo', se filtra por `seleccionada` como siempre.
+
         Además hace eager load de `pregunta_cloze_blank` y sus opciones: sin eso las
         preguntas cloze llegaban al alumno sin huecos que completar.
         """
+        criterio = (
+            PreguntaExamenModel.id.in_(pregunta_ids)
+            if pregunta_ids is not None
+            else PreguntaExamenModel.seleccionada.is_(True)
+        )
         result = await self._db.execute(
             select(ExamenContenidoModel)
-            .where(ExamenContenidoModel.id == examen_id)
+            .where(
+                ExamenContenidoModel.id == examen_id,
+                # c-78: un examen dado de baja NO se sirve para rendir. Segunda
+                # barrera, redundante con `verificar_enforcement` a proposito: si
+                # aparece otro camino de rendicion que no pase por el enforcement,
+                # este WHERE lo corta igual (devuelve None -> 404).
+                ExamenContenidoModel.eliminado_en.is_(None),
+            )
             .options(
                 selectinload(ExamenContenidoModel.preguntas).selectinload(
                     PreguntaExamenModel.opciones
@@ -579,10 +689,7 @@ class ExamenContenidoSqlRepository:
                 .selectinload(PreguntaExamenModel.blanks_cloze)
                 .selectinload(PreguntaClozeBlankModel.opciones_cloze),
                 # El filtro viaja al WHERE del SELECT de la relación, no a Python.
-                with_loader_criteria(
-                    PreguntaExamenModel,
-                    PreguntaExamenModel.seleccionada.is_(True),
-                ),
+                with_loader_criteria(PreguntaExamenModel, criterio),
             )
         )
         model = result.scalar_one_or_none()
@@ -638,6 +745,10 @@ class ExamenContenidoSqlRepository:
             limite_preguntas=model.limite_preguntas,
             mostrar_nota=model.mostrar_nota,
             revision_habilitada=model.revision_habilitada,
+            # c-78 D9/D10.
+            mostrar_eventos_alumno=model.mostrar_eventos_alumno,
+            notas_publicadas_en=model.notas_publicadas_en,
+            notas_publicadas_por=model.notas_publicadas_por,
             politica_intentos=model.politica_intentos,
             preguntas=preguntas,
         )
@@ -872,6 +983,98 @@ class MateriaSqlRepository:
             .order_by(orden)
         )
         return list(result.scalars().all())
+
+    async def materias_a_cargo_profesor(self, profesor_id: str) -> list[Materia]:
+        """Materias donde el profesor dado figura en ``materia_profesor`` (c-78).
+
+        Contraparte de ``materias_a_cargo_coordinador`` para el rol PROFESOR: es
+        un rol de MATERIA (arma exámenes y banco de toda la materia), acotado a
+        las que tenga asignadas. Ningún rol salvo admin_sistema tiene alcance
+        institucional.
+        """
+        if not _es_uuid(profesor_id):
+            return []
+        orden = _orden_alfabetico(MateriaModel.nombre).label("_orden_alfabetico")
+        result = await self._db.execute(
+            select(MateriaModel)
+            .add_columns(orden)
+            .join(
+                MateriaProfesorModel,
+                MateriaProfesorModel.materia_id == MateriaModel.id,
+            )
+            .where(MateriaProfesorModel.profesor_id == profesor_id)
+            .distinct()
+            .order_by(orden)
+        )
+        return list(result.scalars().all())
+
+    async def agregar_profesor(self, materia_id: str, profesor_id: str) -> None:
+        """Asigna un profesor a la materia (c-78). Idempotente."""
+        from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+        stmt = (
+            pg_insert(MateriaProfesorModel)
+            .values(materia_id=materia_id, profesor_id=profesor_id)
+            .on_conflict_do_nothing(index_elements=["materia_id", "profesor_id"])
+        )
+        await self._db.execute(stmt)
+        await self._db.flush()
+
+    async def quitar_profesor(self, materia_id: str, profesor_id: str) -> bool:
+        """Quita un profesor de la materia. Devuelve True si había una fila."""
+        result = await self._db.execute(
+            delete(MateriaProfesorModel)
+            .where(
+                MateriaProfesorModel.materia_id == materia_id,
+                MateriaProfesorModel.profesor_id == profesor_id,
+            )
+            .returning(MateriaProfesorModel.id)
+        )
+        borrado = result.scalar_one_or_none() is not None
+        if borrado:
+            await self._db.flush()
+        return borrado
+
+    async def profesores_de_materia(self, materia_id: str) -> list[str]:
+        """ids de los profesores asignados a la materia (c-78)."""
+        result = await self._db.execute(
+            select(MateriaProfesorModel.profesor_id).where(
+                MateriaProfesorModel.materia_id == materia_id
+            )
+        )
+        return list(result.scalars().all())
+
+    async def profesores_de_materias(
+        self, materia_ids: list[str]
+    ) -> dict[str, list[str]]:
+        """materia_id -> ids de sus profesores, en UNA query (no N+1, c-78)."""
+        limpios = [i for i in dict.fromkeys(materia_ids) if i]
+        if not limpios:
+            return {}
+        result = await self._db.execute(
+            select(
+                MateriaProfesorModel.materia_id,
+                MateriaProfesorModel.profesor_id,
+            ).where(MateriaProfesorModel.materia_id.in_(limpios))
+        )
+        por_materia: dict[str, list[str]] = {}
+        for materia_id, profesor_id in result.all():
+            por_materia.setdefault(materia_id, []).append(profesor_id)
+        return por_materia
+
+    async def es_profesor_de_materia(self, profesor_id: str, materia_id: str) -> bool:
+        """True si el profesor dado está asignado a la materia (c-78)."""
+        if not (_es_uuid(profesor_id) and _es_uuid(materia_id)):
+            return False
+        result = await self._db.execute(
+            select(MateriaProfesorModel.id)
+            .where(
+                MateriaProfesorModel.materia_id == materia_id,
+                MateriaProfesorModel.profesor_id == profesor_id,
+            )
+            .limit(1)
+        )
+        return result.scalar_one_or_none() is not None
 
     async def agregar_coordinador(self, materia_id: str, coordinador_id: str) -> None:
         """Agrega un coordinador a la materia (c-79). Idempotente: si ya está
@@ -1248,12 +1451,34 @@ class ComisionSqlRepository:
         return list(result.scalars().all())
 
     async def tiene_pertenencia_sobre_comision(
-        self, usuario_id: str, comision_id: str, *, es_coordinador: bool = False
+        self,
+        usuario_id: str,
+        comision_id: str,
+        *,
+        es_coordinador: bool = False,
+        es_profesor: bool = False,
     ) -> bool:
         """Pertenencia sobre una COMISIÓN puntual: tutor de esa comisión, o (si
-        ``es_coordinador``) coordinador de su materia (C-74 post-cierre, c-79)."""
+        ``es_coordinador``) coordinador de su materia (C-74 post-cierre, c-79), o
+        (si ``es_profesor``) profesor de su materia (c-78, materia_profesor)."""
         if not (_es_uuid(usuario_id) and _es_uuid(comision_id)):
             return False
+        if es_profesor:
+            result = await self._db.execute(
+                select(MateriaProfesorModel.id)
+                .select_from(ComisionModel)
+                .join(
+                    MateriaProfesorModel,
+                    MateriaProfesorModel.materia_id == ComisionModel.materia_id,
+                )
+                .where(
+                    ComisionModel.id == comision_id,
+                    MateriaProfesorModel.profesor_id == usuario_id,
+                )
+                .limit(1)
+            )
+            if result.scalar_one_or_none() is not None:
+                return True
         if es_coordinador:
             result = await self._db.execute(
                 select(MateriaCoordinadorModel.id)
@@ -1303,7 +1528,12 @@ class ComisionSqlRepository:
         return nombres
 
     async def tiene_pertenencia_sobre_examen(
-        self, usuario_id: str, examen_id: str, *, es_coordinador: bool = False
+        self,
+        usuario_id: str,
+        examen_id: str,
+        *,
+        es_coordinador: bool = False,
+        es_profesor: bool = False,
     ) -> bool:
         """Pertenencia sobre el examen: tutor de su comisión, o (si
         ``es_coordinador``) coordinador de su materia (C-73 §9, N:M desde c-79).
@@ -1314,6 +1544,25 @@ class ComisionSqlRepository:
         comisión, o nadie con ese id está a cargo."""
         if not (_es_uuid(usuario_id) and _es_uuid(examen_id)):
             return False
+        if es_profesor:
+            # c-78: el profesor es rol de MATERIA — pertenece a todo examen de
+            # cualquier comisión de las materias que tiene asignadas.
+            result = await self._db.execute(
+                select(MateriaProfesorModel.id)
+                .select_from(ExamenContenidoModel)
+                .join(ComisionModel, ExamenContenidoModel.comision_id == ComisionModel.id)
+                .join(
+                    MateriaProfesorModel,
+                    MateriaProfesorModel.materia_id == ComisionModel.materia_id,
+                )
+                .where(
+                    ExamenContenidoModel.id == examen_id,
+                    MateriaProfesorModel.profesor_id == usuario_id,
+                )
+                .limit(1)
+            )
+            if result.scalar_one_or_none() is not None:
+                return True
         if es_coordinador:
             result = await self._db.execute(
                 select(MateriaCoordinadorModel.id)
@@ -1404,6 +1653,48 @@ class ComisionSqlRepository:
         )
         return list(result.scalars().all())
 
+    async def comision_ids_a_cargo_profesor(self, profesor_id: str) -> list[str]:
+        """Comisiones de las materias que el profesor dado tiene asignadas (c-78).
+
+        Igual criterio que ``comision_ids_a_cargo_coordinador``: el PROFESOR es un
+        rol de MATERIA, así que su alcance son TODAS las comisiones de sus
+        materias, no solo las que dicta.
+        """
+        if not _es_uuid(profesor_id):
+            return []
+        result = await self._db.execute(
+            select(ComisionModel.id)
+            .join(
+                MateriaProfesorModel,
+                MateriaProfesorModel.materia_id == ComisionModel.materia_id,
+            )
+            .where(MateriaProfesorModel.profesor_id == profesor_id)
+        )
+        return list(result.scalars().all())
+
+    async def listar_todas_con_materia_profesor(
+        self, profesor_id: str
+    ) -> list[tuple[Comision, str, str]]:
+        """Comisiones de las materias que el profesor coordina académicamente
+        (c-78). Contraparte de ``listar_todas_con_materia_coordinador``."""
+        result = await self._db.execute(
+            select(ComisionModel, MateriaModel.nombre, MateriaModel.codigo)
+            .join(MateriaModel, MateriaModel.id == ComisionModel.materia_id)
+            .join(
+                MateriaProfesorModel,
+                MateriaProfesorModel.materia_id == MateriaModel.id,
+            )
+            .where(MateriaProfesorModel.profesor_id == profesor_id)
+            .order_by(
+                _orden_alfabetico(MateriaModel.nombre),
+                _orden_alfabetico(ComisionModel.nombre),
+            )
+        )
+        return [
+            (self._to_entity(comision), materia_nombre, materia_codigo)
+            for comision, materia_nombre, materia_codigo in result.all()
+        ]
+
     async def listar_a_cargo_de_materia(
         self, docente_id: str, materia_id: str
     ) -> list[Comision]:
@@ -1429,7 +1720,6 @@ class ComisionSqlRepository:
             anio=model.anio,
             codigo_matriculacion=model.codigo_matriculacion,
             activa=model.activa,
-            docente_id=model.docente_id,
         )
 
 
@@ -1629,9 +1919,14 @@ class InscripcionSqlRepository:
         Join inscripcion→usuario filtrando dados de baja (eliminado_en IS NULL).
         Orden alfabético por apellido y nombre (NULLs al final) para un listado
         determinístico.
+
+        c-78 §13.4: cada usuario sale con ``inscripto_en`` proyectado (atributo NO
+        mapeado, en memoria) — el export de inscriptos lo necesita para cruzar
+        contra el padrón del campus, y sin esto habría que hacer una query por
+        alumno solo para la fecha.
         """
         result = await self._db.execute(
-            select(UsuarioModel)
+            select(UsuarioModel, InscripcionModel.created_at.label("inscripto_en"))
             .join(InscripcionModel, InscripcionModel.usuario_id == UsuarioModel.id)
             .where(
                 InscripcionModel.comision_id == comision_id,
@@ -1643,4 +1938,8 @@ class InscripcionSqlRepository:
                 UsuarioModel.id.asc(),
             )
         )
-        return list(result.scalars().all())
+        usuarios: list[UsuarioModel] = []
+        for usuario, inscripto_en in result.all():
+            usuario.inscripto_en = inscripto_en
+            usuarios.append(usuario)
+        return usuarios

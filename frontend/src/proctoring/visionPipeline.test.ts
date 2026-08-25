@@ -81,6 +81,27 @@ describe("e2e feed -> detectores -> reglas -> transporte", () => {
     expect(ev!.payload).toBeDefined();
   });
 
+  it("el id del evento no se repite entre montajes del pipeline (c-78)", async () => {
+    // El id es la clave de deduplicacion del buffer. Con el contador arrancando
+    // de cero en cada instancia, un alumno que recargaba la pagina con eventos
+    // sin enviar producia un `evt-1` nuevo que colisionaba con el `evt-1` viejo
+    // que seguia esperando: el buffer lo tomaba por duplicado y NO guardaba el
+    // nuevo, y al confirmarlo purgaba el viejo — que nunca se habia enviado.
+    const a = fakeSink();
+    const b = fakeSink();
+    const config = { multiple_faces_frames: 1 };
+    const pipeA = new VisionPipeline({ engine: new FakeEngine(2), sink: a.sink, config });
+    const pipeB = new VisionPipeline({ engine: new FakeEngine(2), sink: b.sink, config });
+
+    await pipeA.onFrame(FRAME, {}, 0);
+    await pipeB.onFrame(FRAME, {}, 0); // "reload": pipeline nuevo, misma sesion
+
+    const idsA = new Set(a.sent.map((e) => e.id));
+    expect(a.sent.length).toBeGreaterThan(0);
+    expect(b.sent.length).toBeGreaterThan(0);
+    for (const ev of b.sent) expect(idsA.has(ev.id)).toBe(false);
+  });
+
   it("multiples rostros dispara la captura de evidencia (via C-12)", async () => {
     const onEvidence = vi.fn();
     const { sink } = fakeSink();

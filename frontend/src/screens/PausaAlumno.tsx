@@ -20,10 +20,11 @@ import { Card, Button, Icon } from '../ui/components';
 import { useToast } from '../ui/toast';
 import { api } from '../lib/api';
 import { getEffectiveConfig } from '../config/effectiveConfigCache';
+import { intervaloDePolling } from './pausaCadencia';
 import type { Pausa } from '../lib/types';
 
-/** Intervalo de polling del estado de la pausa (ms). */
-const POLL_MS = 3500;
+// La cadencia del poller es ADAPTATIVA (c-78): rápida solo cuando hay algo en
+// vuelo. Ver `pausaCadencia.ts` para el porqué y los números medidos.
 
 /** Formatea segundos transcurridos como mm:ss. */
 function mmss(totalSeg: number): string {
@@ -70,13 +71,21 @@ export function PausaAlumno({
     }
   }, [sessionId]);
 
-  // Polling con cleanup.
+  // Polling con cleanup. El intervalo depende del estado de la pausa: 3,5 s
+  // mientras hay algo esperando resolución, 20 s cuando no hay nada.
+  //
+  // El cambio a rápido es INMEDIATO al pedir la pausa: `solicitarPausa` hace
+  // `setPausa()` con la respuesta del POST, así que este effect se re-ejecuta con
+  // el estado nuevo en el mismo render. El alumno no espera ni un segundo más que
+  // antes — lo único que cambia es que deja de preguntar al vacío las dos horas
+  // que NO está pidiendo nada.
+  const intervaloMs = intervaloDePolling(pausa?.estado);
   useEffect(() => {
     if (!sessionId) return;
     void refrescar();
-    const id = setInterval(() => void refrescar(), POLL_MS);
+    const id = setInterval(() => void refrescar(), intervaloMs);
     return () => clearInterval(id);
-  }, [sessionId, refrescar]);
+  }, [sessionId, refrescar, intervaloMs]);
 
   // Timer de la pausa activa: cuenta desde inicio_en (fuente: backend).
   const activa = pausa?.estado === 'aprobada';

@@ -45,7 +45,7 @@ export function GrabadasExamenGroup({
           </div>
           {examInfo && (
             <p className="text-label-sm text-on-surface-variant mt-base truncate pl-[26px]">
-              {examInfo.comisionNombre} · {examInfo.docente}
+              {examInfo.comisionNombre}
             </p>
           )}
         </div>

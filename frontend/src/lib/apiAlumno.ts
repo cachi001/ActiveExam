@@ -10,10 +10,14 @@ export const alumnoApi = {
   // Portal del alumno — API (C-21)
   // -------------------------------------------------------------------------
 
-  /** 2.7 Materias disponibles (C-69): GET /exam-content/materias. */
-  async materiasDisponibles(): Promise<Materia[]> {
+  /** 2.7 Materias disponibles (C-69): GET /exam-content/materias.
+   *
+   * `strict` (c-78 D16) PROPAGA el fallo en vez de devolver []. Lo usan las
+   * pantallas que tienen que distinguir "no hay materias" de "no pudo cargar";
+   * los selectores y filtros siguen con el default silencioso. */
+  async materiasDisponibles(strict = false): Promise<Materia[]> {
     const { listarMateriasFn } = await import('./examContentBrowse');
-    return listarMateriasFn(API_BASE, authProvider.getToken());
+    return listarMateriasFn(API_BASE, authProvider.getToken(), strict);
   },
 
   /** Periodos académicos válidos para una comisión.
@@ -24,9 +28,9 @@ export const alumnoApi = {
 
   /** 2.8 Comisiones de una materia (C-69):
    * GET /exam-content/materias/{id}/comisiones. */
-  async comisionesDeMateria(materiaId: string): Promise<Comision[]> {
+  async comisionesDeMateria(materiaId: string, strict = false): Promise<Comision[]> {
     const { listarComisionesFn } = await import('./examContentBrowse');
-    return listarComisionesFn(API_BASE, authProvider.getToken(), materiaId);
+    return listarComisionesFn(API_BASE, authProvider.getToken(), materiaId, strict);
   },
 
   /** GET /exam-content/comisiones → TODAS las comisiones, con su materia embebida.

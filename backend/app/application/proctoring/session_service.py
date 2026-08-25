@@ -88,10 +88,20 @@ async def _construir_snapshot_al_crear(db: AsyncSession) -> dict:
     )
 
     try:
-        umbral_row = await db.execute(
-            select(ConfiguracionSistemaModel.umbral_cola_revision)
+        # c-78: se leen en la MISMA consulta los interruptores de chat y pausas.
+        # La foto tiene que incluirlos para que el gate server-side los respete sin
+        # mirar la config viva (que cambiaria una rendicion ya empezada).
+        config_row = await db.execute(
+            select(
+                ConfiguracionSistemaModel.umbral_cola_revision,
+                ConfiguracionSistemaModel.chat_habilitado,
+                ConfiguracionSistemaModel.pausas_habilitadas,
+            )
         )
-        umbral = umbral_row.scalars().first()
+        fila_config = config_row.first()
+        umbral = fila_config[0] if fila_config is not None else None
+        chat_habilitado = bool(fila_config[1]) if fila_config is not None else None
+        pausas_habilitadas = bool(fila_config[2]) if fila_config is not None else None
         if umbral is None:
             raise ConfigSnapshotNoDisponibleError(
                 "configuracion_sistema.umbral_cola_revision no esta disponible"
@@ -129,6 +139,8 @@ async def _construir_snapshot_al_crear(db: AsyncSession) -> dict:
         umbral_cola_revision=int(umbral),
         pesos_por_tipo=pesos,
         tipos_desactivados=frozenset(desactivados),
+        chat_habilitado=chat_habilitado,
+        pausas_habilitadas=pausas_habilitadas,
     )
 
 
@@ -224,10 +236,14 @@ async def listar_sesiones_finalizadas(
     fecha_hasta: datetime | None = None,
     materia_id: str | None = None,
     comision_id: str | None = None,
+    comision_ids_permitidas: set[str] | None = None,
 ) -> list[SesionResumenData]:
     """Sesiones finalizadas con filtros SQL (Registro de sesiones, C-76 tarea 17).
 
     ``materia_id``/``comision_id`` (C-76 tarea 20.3): filtro en cascada.
+
+    ``comision_ids_permitidas`` (c-78 §11.4): scoping por pertenencia, EN SQL.
+    ``None`` = sin restriccion (admin_sistema). Un set vacio devuelve vacio.
 
     NO pagina ni filtra por nivel de riesgo — eso lo hace el router (mismo motivo
     que ``resultados_query``: el nivel de riesgo depende del score, que recien se
@@ -240,6 +256,7 @@ async def listar_sesiones_finalizadas(
         fecha_hasta=fecha_hasta,
         materia_id=materia_id,
         comision_id=comision_id,
+        comision_ids_permitidas=comision_ids_permitidas,
     )
 
 

@@ -360,8 +360,11 @@ async def me(
     """Devuelve el principal autenticado (Bearer requerido).
 
     Si hay DB disponible, hace lookup por ``principal.subject`` (= UsuarioModel.id)
-    para incluir ``nombre`` y ``apellido``. Si la DB no está disponible o el usuario
-    no se encuentra, ambos campos quedan ``None`` (degradación graceful).
+    para incluir ``username``, ``nombre`` y ``apellido``. Si la DB no está
+    disponible o el usuario no se encuentra, los campos caen a los del token o a
+    ``None`` (degradación graceful).
+
+    c-78: ``username`` sale de la FILA, no del token — ver el comentario abajo.
     """
     nombre: str | None = None
     apellido: str | None = None
@@ -369,6 +372,15 @@ async def me(
     ultimo_acceso_en: datetime | None = None
     debe_cambiar_password: bool = False
     auth_provider: str | None = None
+    # c-78: el username SALE DE LA BASE, no del token.
+    #
+    # Bug real: el alumno que entra por LTI arranca con un username sintético
+    # (`lti:{deployment}:{sub}`), elige el suyo, la fila se renombra... y el
+    # token que tiene en la mano sigue diciendo `lti:1:7`. Como este endpoint
+    # devolvía `principal.username` (del token), el Perfil le mostraba ESE
+    # nombre. Leyéndolo de la fila, el Perfil dice la verdad aunque el token
+    # esté viejo. Cae al del token si no hay DB (degradación graceful).
+    username: str = principal.username
 
     session_factory = _get_session_factory(request)
     if session_factory is not None and principal.subject is not None:
@@ -380,6 +392,7 @@ async def me(
                 )
                 usuario = result.scalar_one_or_none()
                 if usuario is not None:
+                    username = usuario.username
                     nombre = usuario.nombre
                     apellido = usuario.apellido
                     creado_en = usuario.creado_en
@@ -390,7 +403,7 @@ async def me(
             pass
 
     return PrincipalResponse(
-        username=principal.username,
+        username=username,
         email=principal.email,
         roles=[r.value for r in principal.roles],
         mfa_satisfecho=principal.mfa_satisfecho,
@@ -463,6 +476,12 @@ class CambiarContrasenaRequest(BaseModel):
 class CambiarContrasenaResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
     ok: bool
+    # c-78 E-13: cuando el usuario ELIGE su username en el primer set, el access
+    # token que tiene en la mano sigue llevando el `preferred_username` viejo
+    # (`lti:1:7`), así que la app le muestra ese nombre hasta que expire o cierre
+    # sesión. Se re-emite acá para que el cambio sea inmediato. Null cuando no
+    # hubo cambio de username (nada que actualizar).
+    access_token: str | None = None
 
 
 @router.put("/change-password", response_model=CambiarContrasenaResponse)
@@ -580,4 +599,27 @@ async def cambiar_contrasena(
                 detail="Ese username ya está en uso.",
             ) from exc
 
-    return CambiarContrasenaResponse(ok=True)
+        # c-78 E-13: el username cambió → el access token en poder del cliente
+        # quedó desactualizado (sigue diciendo `lti:{deployment}:{sub}`) y la app
+        # muestra ESE nombre hasta que el token expire. Se re-emite con los claims
+        # nuevos. Mismos parámetros que `/auth/login`: un solo lugar decide cómo se
+        # arma un token de sesión.
+        #
+        # Solo se re-emite el ACCESS token: el refresh vigente sigue siendo válido
+        # (no cambió la identidad del usuario, solo su nombre visible) y rotarlo acá
+        # obligaría al cliente a manejar dos rotaciones distintas en el mismo flujo.
+        access_token_nuevo: str | None = None
+        if body.nuevo_username is not None:
+            settings = getattr(request.app.state, "settings", None)
+            secreto = getattr(settings, "jwt_own_secret", None) if settings else None
+            if secreto:
+                await session.refresh(usuario)
+                access_token_nuevo = emitir_jwt_propio(
+                    usuario,
+                    secret=secreto,
+                    issuer=settings.jwt_own_issuer,
+                    audience=settings.jwt_audience,
+                    ttl_seconds=settings.access_token_ttl_seconds,
+                )
+
+    return CambiarContrasenaResponse(ok=True, access_token=access_token_nuevo)

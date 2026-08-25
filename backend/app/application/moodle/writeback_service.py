@@ -173,7 +173,8 @@ class MoodleWritebackService:
     ) -> tuple[str | None, str | None, str | None, str | None]:
         """Credencial del DOCENTE con la que se devuelve ESTA nota (C-73 §10.4).
 
-        Deriva sesion -> examen -> comision -> docente y devuelve
+        Deriva sesion -> examen -> comision -> TUTORES (tabla puente
+        `comision_tutor`, N:M desde c-79) y devuelve
         ``(token, docente_id, nombre_visible, motivo_bloqueo)``. ``motivo_bloqueo``
         es ``None`` cuando hay token; si no, una de
         ``"sin_docente"|"sin_credencial_docente"|"caida"|"vencida"`` (C-73 §12) —
@@ -204,10 +205,23 @@ class MoodleWritebackService:
 
         from app.infrastructure.persistence.models.transactional import UsuarioModel
 
-        fila = (
+        from app.infrastructure.persistence.models.comision_tutor import (
+            ComisionTutorModel,
+        )
+
+        # c-78 (deuda c-79): los tutores salen de la tabla puente, NO de
+        # `comision.docente_id`. Esa columna quedó congelada en la migración 0086 y
+        # ningún endpoint la escribe desde entonces, así que leerla dejaba sin nota
+        # a toda comisión creada o gestionada desde la UI actual.
+        #
+        # Orden: el primero que quedó a cargo, con desempate por `tutor_id`.
+        # DETERMINÍSTICO a propósito — dos sincronizaciones seguidas de la misma
+        # nota tienen que salir firmadas por la misma persona, si no la columna
+        # *Fuente* de la libreta de Moodle cambiaría sola.
+        tutores = (
             await db.execute(
                 select(
-                    ComisionModel.docente_id,
+                    ComisionTutorModel.tutor_id,
                     UsuarioModel.username,
                     UsuarioModel.nombre,
                     UsuarioModel.apellido,
@@ -223,26 +237,57 @@ class MoodleWritebackService:
                     ComisionModel,
                     ComisionModel.id == ExamenContenidoModel.comision_id,
                 )
-                .outerjoin(UsuarioModel, UsuarioModel.id == ComisionModel.docente_id)
+                .join(
+                    ComisionTutorModel,
+                    ComisionTutorModel.comision_id == ComisionModel.id,
+                )
+                .outerjoin(UsuarioModel, UsuarioModel.id == ComisionTutorModel.tutor_id)
                 .where(ProctoringSessionModel.id == session_id)
+                .order_by(ComisionTutorModel.created_at, ComisionTutorModel.tutor_id)
             )
-        ).first()
+        ).all()
 
-        if not fila or not fila[0]:
+        if not tutores:
             return None, None, None, "sin_docente"
 
-        docente_id, legajo, nombre, apellido = fila[0], fila[1], fila[2], fila[3]
-        # "Nombre Apellido"; si el usuario no los tiene cargados, el legajo.
-        visible = " ".join(p for p in (nombre, apellido) if p).strip() or legajo
-        cred_estado = await self._cred_docente.estado(docente_id)
-        if not cred_estado.configurada:
-            return None, docente_id, visible, "sin_credencial_docente"
-        if cred_estado.estado != ESTADO_ACTIVA:
-            # `caida` o `vencida` (C-73 §12) — motivo distinto, remedio igual
-            # (reconectar), pero el mensaje tiene que decir la causa correcta.
-            return None, docente_id, visible, cred_estado.estado
-        token = await self._cred_docente.token_de(docente_id)
-        return token, docente_id, visible, None
+        def _visible(legajo, nombre, apellido) -> str:
+            # "Nombre Apellido"; si el usuario no los tiene cargados, el legajo.
+            return " ".join(p for p in (nombre, apellido) if p).strip() or legajo
+
+        # El modelo de pertenencia es SIMÉTRICO: cualquier tutor de la comisión está
+        # igual de habilitado (mismo criterio que el sistema de referencia, cuya
+        # tabla puente tampoco tiene tutor "principal"). Por eso, que el primero no
+        # haya conectado su cuenta no puede retener la nota si otro sí la tiene.
+        primer_motivo: str | None = None
+        primer_docente: str | None = None
+        primer_visible: str | None = None
+
+        for tutor_id, legajo, nombre, apellido in tutores:
+            visible = _visible(legajo, nombre, apellido)
+            cred_estado = await self._cred_docente.estado(tutor_id)
+            if not cred_estado.configurada:
+                motivo = "sin_credencial_docente"
+            elif cred_estado.estado != ESTADO_ACTIVA:
+                # `caida` o `vencida` (C-73 §12) — motivo distinto, remedio igual
+                # (reconectar), pero el mensaje tiene que decir la causa correcta.
+                motivo = cred_estado.estado
+            else:
+                token = await self._cred_docente.token_de(tutor_id)
+                if token:
+                    return token, tutor_id, visible, None
+                motivo = "sin_credencial_docente"
+
+            # Se recuerda el motivo del PRIMER tutor: es el que se le muestra al
+            # docente si ninguno termina teniendo credencial usable. El primero es
+            # el más probable responsable, así que es a quien hay que ir a buscar.
+            if primer_motivo is None:
+                primer_motivo, primer_docente, primer_visible = (
+                    motivo,
+                    tutor_id,
+                    visible,
+                )
+
+        return None, primer_docente, primer_visible, primer_motivo
 
     async def _nota_maxima_del_examen(
         self, db: AsyncSession, session_id: str
@@ -619,6 +664,9 @@ class MoodleWritebackService:
             db=db,
             examen_contenido_id=sesion.examen_contenido_id,
             respuestas=respuestas,
+            # c-78 E-07: con sorteo por intento el denominador es el set de ESTE
+            # alumno, no el pool del examen.
+            session_id=sesion.id,
         )
 
         nota_anulada = float(estado.nota)

@@ -32,6 +32,7 @@ const ProctoringSessionDetail = lazy(() => import('./screens/ProctoringSessionDe
 const GestionUsuarios       = lazy(() => import('./screens/GestionUsuarios'));
 const UsuarioCreate         = lazy(() => import('./screens/admin/UsuarioCreate'));
 const UsuarioEdit           = lazy(() => import('./screens/admin/UsuarioEdit'));
+const IntegracionLti        = lazy(() => import('./screens/admin/IntegracionLti'));
 const MateriasComisiones    = lazy(() => import('./screens/MateriasComisiones'));
 const DetalleUsuario        = lazy(() => import('./screens/DetalleUsuario'));
 const ExamDetail            = lazy(() => import('./screens/ExamDetail'));
@@ -64,17 +65,21 @@ const ESTUDIANTE: Rol[] = ['estudiante'];
 // a propósito (antes ambas compartían el mismo array `SUPERVISION`, lo que
 // hubiera exigido elegir entre bloquear al tutor de supervisión en vivo o
 // dejarlo entrar a la cola de decisión).
-const SUPERVISION_VIVO: Rol[] = ['tutor', 'coordinador', 'admin_sistema'];
+const SUPERVISION_VIVO: Rol[] = ['tutor', 'profesor', 'coordinador', 'admin_sistema'];
 const COLA_REVISION: Rol[] = ['coordinador', 'admin_sistema'];
 // Area del tutor: examenes, materias, comisiones y notas. Sin supervision,
 // sin auditoria, sin configuracion.
 // c-76-2: 'admin_examenes' fue ELIMINADO del dominio (solo existe un rol "Admin").
-const ACADEMICO: Rol[] = ['tutor', 'coordinador', 'admin_sistema'];
+const ACADEMICO: Rol[] = ['tutor', 'profesor', 'coordinador', 'admin_sistema'];
+// c-78: crear exámenes y el banco de preguntas salen del área del TUTOR. El
+// guard de ruta espeja el filtro del sidebar (ui/nav.ts) y ambos espejan la
+// capacidad del backend (`crear_examenes`/`gestionar_banco`), que es quien decide.
+const CREAR_EXAMENES: Rol[] = ['profesor', 'coordinador', 'admin_sistema'];
 const ADMIN: Rol[] = ['admin_sistema'];
 // c-79: capacidad `ver_estadisticas` del backend — deliberadamente SIN tutor
 // (ver mismo array en ui/nav.ts). Los filtros de /stats son query params
 // libres sin scoping por comisión.
-const VER_ESTADISTICAS: Rol[] = ['coordinador', 'admin_sistema'];
+const VER_ESTADISTICAS: Rol[] = ['profesor', 'coordinador', 'admin_sistema'];
 
 /** Envuelve una pantalla en el guard de auth/rol. */
 function g(node: ReactNode, roles: Rol[]): ReactNode {
@@ -117,10 +122,10 @@ export default function App() {
     '/admin': g(<AdminDashboard />, ACADEMICO),
     '/admin/estadisticas': g(<EstadisticasInstitucionales />, VER_ESTADISTICAS),
     '/admin/auditoria': g(<Auditoria />, ADMIN),
-    '/admin/examenes': g(<ExamList />, ACADEMICO),
+    '/admin/examenes': g(<ExamList />, CREAR_EXAMENES),
     '/admin/notas': g(<Notas />, ACADEMICO),
     '/admin/examenes/:id/resultados': g(<ExamResultados />, ACADEMICO),
-    '/admin/examenes/importar': g(<MoodleImportPage />, ACADEMICO),
+    '/admin/examenes/importar': g(<MoodleImportPage />, CREAR_EXAMENES),
     '/admin/examenes/:id': g(<ExamDetail />, ACADEMICO),
     '/admin/detection-test': g(<AdminDetectionHarness />, ADMIN),
     '/admin/proctoring-sessions': g(<ProctoringRevisor />, SUPERVISION_VIVO),
@@ -133,8 +138,9 @@ export default function App() {
     // C-73 §10.8: deja de ser admin-only. El docente entra pero SOLO ve la pestaña
     // del campus (su cuenta personal); las secciones que definen cómo se detecta el
     // fraude siguen siendo de admin_sistema — el gating fino vive en la pantalla.
-    '/admin/banco-preguntas': g(<BancoPreguntasPage />, ACADEMICO),
+    '/admin/banco-preguntas': g(<BancoPreguntasPage />, CREAR_EXAMENES),
     '/admin/configuracion': g(<Configuracion />, ADMIN),
+    '/admin/lti': g(<IntegracionLti />, ADMIN),
     '/admin/perfil': g(<Perfil />, ACADEMICO),
 
     // Portal del alumno — C-21

@@ -18,8 +18,11 @@ import type { Rol } from "./types";
 export type Capacidad =
   | "revisar_sesion"
   | "gestionar_academico"
+  | "crear_examenes"
+  | "gestionar_banco"
   | "gestionar_estructura"
   | "gestionar_notas"
+  | "ver_estadisticas"
   | "configurar_sistema"
   | "gestionar_usuarios"
   | "ver_auditoria"
@@ -28,12 +31,23 @@ export type Capacidad =
 /** capacidad → conjunto de roles que la poseen (dato de config, no lógica). */
 const CAPABILITY_ROLES: Record<Capacidad, readonly Rol[]> = {
   // c-76: "revisor" eliminado; el coordinador absorbe el veredicto.
+  // c-78 D11: 'profesor' queda AFUERA de revisar_sesion a propósito — es lo que
+  // lo distingue del coordinador: mira la evidencia, no emite el veredicto.
   revisar_sesion: ["coordinador", "admin_sistema"],
-  gestionar_academico: ["tutor", "coordinador", "admin_sistema"],
-  // Alta/edición de materias y comisiones: SIN tutor (solo admin). Espeja el
-  // split del backend — el tutor inscribe y arma exámenes, pero no crea estructura.
-  gestionar_estructura: ["coordinador", "admin_sistema"],
-  gestionar_notas: ["tutor", "coordinador", "admin_sistema"],
+  gestionar_academico: ["tutor", "profesor", "coordinador", "admin_sistema"],
+  // c-78: CREAR exámenes y el BANCO se separaron de `gestionar_academico`. El
+  // tutor conserva leer su catálogo, inscribir y cerrar notas, pero pierde la
+  // creación: armar el examen es trabajo del profesor.
+  crear_examenes: ["profesor", "coordinador", "admin_sistema"],
+  gestionar_banco: ["profesor", "coordinador", "admin_sistema"],
+  // Materias, comisiones y PADRÓN (inscribir/desinscribir). SIN tutor: el tutor
+  // no toca nada de Materias y comisiones — ni crea, ni edita, ni inscribe.
+  // Acompaña su comisión, cierra notas y supervisa. El profesor sí administra.
+  gestionar_estructura: ["profesor", "coordinador", "admin_sistema"],
+  gestionar_notas: ["tutor", "profesor", "coordinador", "admin_sistema"],
+  // Deliberadamente SIN tutor: los filtros de /stats son query params libres sin
+  // scoping por comisión.
+  ver_estadisticas: ["profesor", "coordinador", "admin_sistema"],
   configurar_sistema: ["admin_sistema"],
   gestionar_usuarios: ["admin_sistema"],
   // c-76-2: "auditor" eliminado; queda exclusiva de admin_sistema (nunca hubo
@@ -43,7 +57,7 @@ const CAPABILITY_ROLES: Record<Capacidad, readonly Rol[]> = {
   // el tutor supervisa acotado a su comisión (D2, bloque 8) — el scoping por
   // comisión lo aplica el backend (autorizar_supervision_vivo_sobre_sesion),
   // acá solo se decide si el botón/ruta se muestra.
-  supervisar_vivo: ["tutor", "coordinador", "admin_sistema"],
+  supervisar_vivo: ["tutor", "profesor", "coordinador", "admin_sistema"],
 };
 
 /**
@@ -61,8 +75,11 @@ export function tieneCapacidad(roles: readonly Rol[], capacidad: Capacidad): boo
  * (en vez de una frase vaga de una línea por rol). */
 export const CAPACIDAD_LABELS: Record<Capacidad, string> = {
   revisar_sesion: 'Revisar sesiones y decidir el veredicto (aprobar o anular)',
-  gestionar_academico: 'Cargar y configurar exámenes, inscribir alumnos, cerrar notas',
-  gestionar_estructura: 'Crear y editar materias y comisiones',
+  gestionar_academico: 'Ver el catálogo académico (materias, comisiones y exámenes)',
+  crear_examenes: 'Crear y configurar exámenes',
+  gestionar_banco: 'Gestionar el banco de preguntas de la materia',
+  ver_estadisticas: 'Ver las estadísticas institucionales',
+  gestionar_estructura: 'Crear y editar materias y comisiones, e inscribir alumnos',
   gestionar_notas: 'Sincronizar notas con Moodle',
   configurar_sistema: 'Configurar el sistema (umbrales, detectores, retención)',
   gestionar_usuarios: 'Gestionar usuarios y roles',
@@ -76,8 +93,11 @@ export const CAPACIDAD_LABELS: Record<Capacidad, string> = {
  * vistazo QUÉ PARTE del sistema puede tocar cada rol. */
 export const CAPACIDAD_MODULO: Record<Capacidad, string> = {
   gestionar_academico: 'Académico',
+  crear_examenes: 'Académico',
+  gestionar_banco: 'Académico',
   gestionar_estructura: 'Académico',
   gestionar_notas: 'Académico',
+  ver_estadisticas: 'Supervisión',
   supervisar_vivo: 'Supervisión',
   revisar_sesion: 'Supervisión',
   gestionar_usuarios: 'Sistema',

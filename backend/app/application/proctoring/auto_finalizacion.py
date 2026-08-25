@@ -95,6 +95,8 @@ async def auto_finalizar_si_vencida(
         db=db,
         examen_contenido_id=sesion.examen_contenido_id,
         respuestas=respuestas,
+        # c-78 E-07: el denominador es el set que le tocó a este intento.
+        session_id=sesion.id,
     )
     await finalizar_sesion_con_writeback(
         db=db,

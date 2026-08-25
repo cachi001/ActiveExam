@@ -21,7 +21,9 @@ import {
   archivarResultadoFn,
   contarRetencionesPorRevision,
   listarResultadosFn,
+  marcarNotaCargadaFn,
   sincronizarMoodleFn,
+  type ArchivadoFiltro,
   type ResultadoExamen,
   type SincronizarMoodleResponse,
 } from '../../lib/examContentResultados';
@@ -101,6 +103,9 @@ export function ResultadosExamenPanel({ examenId }: { examenId: string }) {
   const [borrFechaHasta, setBorrFechaHasta] = useState('');
   // session_id de la fila cuyo archivar/desarchivar está en curso.
   const [archivandoId, setArchivandoId] = useState<string | null>(null);
+  // c-78 §13.6: session_id de la fila que se está marcando como cargada a mano.
+  const [marcandoId, setMarcandoId] = useState<string | null>(null);
+  const [descargandoExport, setDescargandoExport] = useState(false);
 
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
   const [sincronizando, setSincronizando] = useState(false);
@@ -137,7 +142,9 @@ export function ResultadosExamenPanel({ examenId }: { examenId: string }) {
         q: q.q || undefined,
         estado: q.filters['estado'] || undefined,
         estado_entrega: q.filters['estado_entrega'] || undefined,
-        archivado: q.filters['archivado'] === 'true',
+        // c-78 D6: el checkbox "Mostrar archivadas" manda 'todas' (ambas), que es
+        // lo que su etiqueta promete. 'true' habría traído SOLO las archivadas.
+        archivado: (q.filters['archivado'] as ArchivadoFiltro) || 'false',
         fecha_desde: q.filters['fecha_desde'] || undefined,
         fecha_hasta: q.filters['fecha_hasta'] || undefined,
         page: q.page,
@@ -289,7 +296,7 @@ export function ResultadosExamenPanel({ examenId }: { examenId: string }) {
       filters: {
         estado: borrEstado,
         estado_entrega: borrEstadoEntrega,
-        archivado: String(borrMostrarArchivadas),
+        archivado: borrMostrarArchivadas ? 'todas' : 'false',
         fecha_desde: borrFechaDesde ? `${borrFechaDesde}T00:00:00` : '',
         fecha_hasta: borrFechaHasta ? `${borrFechaHasta}T23:59:59` : '',
       },
@@ -308,11 +315,23 @@ export function ResultadosExamenPanel({ examenId }: { examenId: string }) {
     borrQ.trim() !== query.q ||
     borrEstado !== (query.filters['estado'] ?? '') ||
     borrEstadoEntrega !== (query.filters['estado_entrega'] ?? '') ||
-    String(borrMostrarArchivadas) !== (query.filters['archivado'] ?? 'false') ||
+    (borrMostrarArchivadas ? 'todas' : 'false') !== (query.filters['archivado'] ?? 'false') ||
     (borrFechaDesde ? `${borrFechaDesde}T00:00:00` : '') !== (query.filters['fecha_desde'] ?? '') ||
     (borrFechaHasta ? `${borrFechaHasta}T23:59:59` : '') !== (query.filters['fecha_hasta'] ?? '');
   const hayFiltrosActivos = Boolean(
     borrQ || borrEstado || borrEstadoEntrega || borrMostrarArchivadas || borrFechaDesde || borrFechaHasta,
+  );
+  // F-06 (c-78 §7.3): filtros YA APLICADOS. La condición del mensaje de vacío miraba
+  // solo `q` y `estado`, así que filtrar por estado de entrega, por archivado o por
+  // rango de fechas sin resultados decía "este examen no tiene resultados todavía" —
+  // que es una afirmación distinta y falsa.
+  const hayFiltrosAplicados = Boolean(
+    query.q ||
+      query.filters['estado'] ||
+      query.filters['estado_entrega'] ||
+      (query.filters['archivado'] && query.filters['archivado'] !== 'false') ||
+      query.filters['fecha_desde'] ||
+      query.filters['fecha_hasta'],
   );
   const totalPaginas = Math.max(1, Math.ceil(total / query.page_size));
 
@@ -320,6 +339,39 @@ export function ResultadosExamenPanel({ examenId }: { examenId: string }) {
   // panel está mostrando "no archivadas" (default) y se archiva una fila, esa
   // fila deja de pertenecer al filtro actual — se refresca la página completa
   // (mismo patrón que sincronizar) en vez de mutar solo esa fila en memoria.
+  // c-78 §13.6 (D14): sin API del campus, la nota se carga a mano y quedaba
+  // 'pendiente' para siempre. Esto la mueve, dejando registrado quién lo afirmó.
+  async function handleMarcarCargada(sessionId: string) {
+    setMarcandoId(sessionId);
+    try {
+      await marcarNotaCargadaFn(API_BASE, authProvider.getToken(), examenId, sessionId);
+      await fetchResultados(query);
+      toast.success('Nota marcada como cargada en el campus.');
+    } catch (err: unknown) {
+      const status = (err as { status?: number })?.status;
+      toast.warning(
+        status === 409
+          ? 'El campus ya confirmó esta nota: no hace falta marcarla a mano.'
+          : (err as Error)?.message || 'No se pudo marcar la nota.',
+      );
+    } finally {
+      setMarcandoId(null);
+    }
+  }
+
+  // c-78 §13.5 (E-10): el listado en un archivo, para cargarlo a mano en el campus.
+  async function handleExportar(formato: 'xlsx' | 'pdf') {
+    setDescargandoExport(true);
+    try {
+      const { descargarExport, urlExportNotas } = await import('../../lib/examContentAdmin');
+      await descargarExport(urlExportNotas(examenId, formato), `notas.${formato}`);
+    } catch {
+      toast.warning('No se pudo generar el archivo. Probá de nuevo.');
+    } finally {
+      setDescargandoExport(false);
+    }
+  }
+
   async function handleArchivar(sessionId: string, archivarA: boolean) {
     setArchivandoId(sessionId);
     try {
@@ -339,6 +391,24 @@ export function ResultadosExamenPanel({ examenId }: { examenId: string }) {
           de ExamResultados.tsx; acá adentro para que el panel sea autocontenido
           y se pueda embeber en Notas.tsx sin duplicar los botones. */}
       <div className="flex items-center justify-end gap-sm flex-wrap">
+        {/* c-78 §13.5 (E-10): hay campus SIN API — la nota se carga a mano y para
+            eso hace falta el listado en un archivo, no en la pantalla. */}
+        <Button
+          variant="outline"
+          icon="table_view"
+          disabled={descargandoExport || total === 0}
+          onClick={() => void handleExportar('xlsx')}
+        >
+          Excel
+        </Button>
+        <Button
+          variant="outline"
+          icon="picture_as_pdf"
+          disabled={descargandoExport || total === 0}
+          onClick={() => void handleExportar('pdf')}
+        >
+          PDF
+        </Button>
         {selectedIds.size > 0 && (
           <Button
             variant="secondary"
@@ -536,7 +606,7 @@ export function ResultadosExamenPanel({ examenId }: { examenId: string }) {
           <div className="text-center py-xl text-on-surface-variant space-y-base">
             <Icon name="search_off" className="text-[40px] text-outline" />
             <p className="text-label-md">
-              {query.q || query.filters['estado']
+              {hayFiltrosAplicados
                 ? 'Ningún resultado coincide con los filtros.'
                 : 'Este examen no tiene resultados todavía.'}
             </p>
@@ -597,7 +667,12 @@ export function ResultadosExamenPanel({ examenId }: { examenId: string }) {
               key: 'estado',
               header: 'Estado Moodle',
               width: '20%',
-              cell: (r) => <EstadoBadge estado={r.estado_moodle} retenidoPor={r.retenido_por} />,
+              cell: (r) => <EstadoBadge
+                  estado={r.estado_moodle}
+                  retenidoPor={r.retenido_por}
+                  marcadaManualPor={r.marcada_manual_por}
+                  marcadaManualEn={r.marcada_manual_en}
+                />,
             },
             {
               key: 'entrega',
@@ -643,6 +718,27 @@ export function ResultadosExamenPanel({ examenId }: { examenId: string }) {
                         : <Icon name="cloud_upload" className="text-[16px]" />}
                       {enCurso ? 'Publicando…' : 'Publicar'}
                     </button>
+                    {/* c-78 §13.6: solo tiene sentido en lo que todavía NO
+                        confirmó el campus. Sobre 'enviado' el backend responde
+                        409, así que ni se ofrece. */}
+                    {r.estado_moodle !== 'enviado' && r.estado_moodle !== 'manual' && (
+                      <button
+                        type="button"
+                        title="Marcar que ya cargaste esta nota en el campus, a mano"
+                        disabled={bloqueado || marcandoId !== null}
+                        onClick={() => handleMarcarCargada(r.session_id)}
+                        className={[
+                          'inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors',
+                          bloqueado || marcandoId !== null
+                            ? 'cursor-not-allowed text-gray-400'
+                            : 'text-on-surface-variant hover:bg-surface-100 cursor-pointer',
+                        ].join(' ')}
+                      >
+                        {marcandoId === r.session_id
+                          ? <Icon name="progress_activity" className="ae-spin text-[16px]" />
+                          : <Icon name="how_to_reg" className="text-[16px]" />}
+                      </button>
+                    )}
                     <button
                       type="button"
                       title={r.archivado ? 'Desarchivar esta fila' : 'Archivar esta fila (no se borra nada)'}

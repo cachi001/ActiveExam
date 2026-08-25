@@ -11,6 +11,7 @@ import { motion } from 'motion/react';
 import { Button, Card, Icon } from '../../../ui/components';
 import type { Principal } from '../../../lib/types';
 import { getRolLabel } from '../../../lib/constants/roles';
+import { usernameVisible } from '../../../lib/identidadVisible';
 
 interface PerfilHeaderCardProps {
   principal: Principal | null;
@@ -106,7 +107,11 @@ export function PerfilHeaderCard({ principal, onRehacerFoto }: PerfilHeaderCardP
         </motion.div>
         <motion.div variants={itemVariants}>
           <p className="text-[13px] text-on-surface-variant">Usuario</p>
-          <p className="text-[15px] font-mono text-on-surface mt-1">{principal?.username ?? '—'}</p>
+          {/* c-78: el alumno NUNCA ve la clave interna del provisioning LTI
+              (`lti:1:7`). Ver lib/identidadVisible.ts. */}
+          <p className="text-[15px] font-mono text-on-surface mt-1">
+            {usernameVisible(principal?.username, principal?.email)}
+          </p>
         </motion.div>
       </motion.div>
     </Card>

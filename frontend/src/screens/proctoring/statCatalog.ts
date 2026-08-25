@@ -19,7 +19,8 @@ export type StatMetricKey =
   | 'riesgoAlto'
   | 'sesiones'
   | 'sesionesActivas'
-  | 'enColaRevision';
+  | 'enColaRevision'
+  | 'examenes';
 
 export interface StatMeta {
   icon: string;
@@ -46,6 +47,10 @@ export const STAT_META: Record<StatMetricKey, StatMeta> = {
   // de `riesgoAlto` en el LABEL (comunica el "por que importa": entran a cola de
   // revision humana) aunque comparten el mismo umbral vivo server-side.
   enColaRevision: { icon: 'gavel', label: 'Sobre el umbral de riesgo', tono: 'error', defaultSub: 'entran a Cola de revisión' },
+  // c-78 D4: inventario VIGENTE del catálogo. La tarjeta del Panel de administración
+  // la tenía hardcodeada (icono/label/tono propios) y esquivaba el catálogo. Los
+  // exámenes dados de baja no cuentan acá — ver la baja lógica de c-78 D2.
+  examenes: { icon: 'assignment', label: 'Exámenes', tono: 'primary', defaultSub: 'en el catálogo' },
 };
 
 /** Props canónicas de una StatCard para una métrica. `subOverride` solo cambia la

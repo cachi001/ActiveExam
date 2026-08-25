@@ -27,6 +27,7 @@ from sqlalchemy.pool import NullPool
 from app.infrastructure.persistence.base import Base
 from app.infrastructure.persistence.models.comision_tutor import (  # noqa: F401
     ComisionTutorModel,
+    MateriaProfesorModel,
 )
 from app.infrastructure.persistence.models.exam_content import (  # noqa: F401
     ComisionModel,
@@ -40,6 +41,7 @@ from app.presentation.api.v1.exam_content.router import create_exam_content_rout
 from tests.proctoring.conftest import _build_test_jwt_validator, auth_headers
 
 _TABLES_TO_DROP = [
+    "materia_profesor",
     "opcion_respuesta",
     "pregunta_examen",
     "examen_contenido",
@@ -48,6 +50,10 @@ _TABLES_TO_DROP = [
     "materia",
 ]
 _TABLES_TO_CREATE = [
+    # c-78: fijar el destino Moodle pasó a exigir `crear_examenes`, que el TUTOR
+    # ya no tiene (E-03). El actor suma el rol PROFESOR y su membresía de
+    # materia para que lo que se siga verificando sea la PERTENENCIA.
+    MateriaProfesorModel.__table__,
     MateriaModel.__table__,
     ComisionModel.__table__,
     ComisionTutorModel.__table__,
@@ -72,7 +78,7 @@ async def engine(db_url):
         for t in _TABLES_TO_DROP:
             await conn.execute(text(f'DROP TABLE IF EXISTS "{t}" CASCADE'))
         # `usuario` la crea el esquema de la app (migraciones): acá solo se asegura
-        # que exista, porque comision.docente_id la referencia por FK.
+        # que exista, porque comision_tutor/materia_profesor la referencian por FK.
         await conn.run_sync(Base.metadata.create_all, tables=[UsuarioModel.__table__])
         await conn.run_sync(Base.metadata.create_all, tables=_TABLES_TO_CREATE)
     yield eng
@@ -126,12 +132,16 @@ async def _crear_examen_de_comision(factory, docente_id: str | None) -> str:
             codigo=f"C-{sufijo}",
             nombre=f"Comisión {sufijo}",
             codigo_matriculacion=f"K-{sufijo}",
-            docente_id=docente_id,
         )
         s.add(comision)
         await s.flush()
+        # c-78 (migración 0093): `comision.docente_id` se dropeó. La pertenencia
+        # vive SOLO en comision_tutor (N:M).
         if docente_id:
             s.add(ComisionTutorModel(comision_id=comision.id, tutor_id=docente_id))
+            s.add(
+                MateriaProfesorModel(materia_id=materia.id, profesor_id=docente_id)
+            )
         examen = ExamenContenidoModel(
             titulo=f"Parcial {sufijo}", comision_id=comision.id
         )
@@ -157,7 +167,10 @@ async def test_docente_ajeno_no_puede_fijar_destino_moodle(app, factory):
     ajeno = await _crear_docente(factory, f"DOC-B-{uuid.uuid4().hex[:4]}")
     examen_id = await _crear_examen_de_comision(factory, docente_id=dueno)
 
-    async with _client(app, ["tutor"], subject=ajeno) as c:
+    # c-78: el rol PROFESOR es el que tiene `crear_examenes`. Se lo damos a AMBOS
+    # actores para que el 403 de abajo siga siendo por PERTENENCIA (materia ajena)
+    # y no por capacidad — que probaría otra cosa.
+    async with _client(app, ["tutor", "profesor"], subject=ajeno) as c:
         resp = await c.post(
             f"/api/v1/exam-content/{examen_id}/moodle-target",
             json={"moodle_courseid": 999, "moodle_cmid": 888},
@@ -175,7 +188,7 @@ async def test_docente_dueno_si_puede_fijar_destino_moodle(app, factory):
     dueno = await _crear_docente(factory, f"DOC-C-{uuid.uuid4().hex[:4]}")
     examen_id = await _crear_examen_de_comision(factory, docente_id=dueno)
 
-    async with _client(app, ["tutor"], subject=dueno) as c:
+    async with _client(app, ["tutor", "profesor"], subject=dueno) as c:
         resp = await c.post(
             f"/api/v1/exam-content/{examen_id}/moodle-target",
             json={"moodle_courseid": 12, "moodle_cmid": 34},

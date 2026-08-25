@@ -13,6 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
+from uuid import UUID
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -30,6 +31,19 @@ from app.infrastructure.persistence.models.proctoring import (
     ProctoringEventModel,
     ProctoringSessionModel,
 )
+
+
+def _es_uuid(valor: str) -> bool:
+    """True si `valor` es un UUID valido. Las columnas de id son UUID: un valor
+    malformado rompe el cast en la DB y devuelve 500 donde correspondia un 403,
+    asi que se valida antes de consultar. Gemelo del helper de
+    `app.application.stats.resumen_service` (no se importa de alla: infraestructura
+    no puede depender de la capa de aplicacion)."""
+    try:
+        UUID(valor)
+        return True
+    except (ValueError, AttributeError, TypeError):
+        return False
 
 
 @dataclass
@@ -171,6 +185,14 @@ class ProctoringRepository:
             ComisionModel,
             ExamenContenidoModel,
         )
+
+        # Las dos consultas de abajo comparan contra columnas UUID. Un `usuario_id`
+        # o `session_id` malformado hace que asyncpg reviente el cast y el request
+        # termine en 500, cuando la respuesta correcta es "no tiene pertenencia"
+        # (403). Ya paso una vez por otro camino (guarda `_es_uuid` de
+        # `stats/resumen_service`); este habia quedado sin cubrir.
+        if not (_es_uuid(usuario_id) and _es_uuid(session_id)):
+            return False
 
         if es_coordinador:
             stmt = (
@@ -355,6 +377,7 @@ class ProctoringRepository:
         fecha_hasta: datetime | None = None,
         materia_id: str | None = None,
         comision_id: str | None = None,
+        comision_ids_permitidas: set[str] | None = None,
     ) -> list[SesionResumenData]:
         """Sesiones FINALIZADAS (Registro de sesiones, C-76 tarea 17) con filtros SQL.
 
@@ -366,6 +389,12 @@ class ProctoringRepository:
         - ``materia_id``/``comision_id`` (C-76 tarea 20.3): filtro en cascada
           Materia -> Comision, mismo join que ya resuelve ``materia_nombre``/
           ``comision_nombre`` (sesion -> examen_contenido -> comision -> materia).
+        - ``comision_ids_permitidas`` (c-78 §11.4): SCOPING por pertenencia.
+          ``None`` = sin restriccion (solo admin_sistema). Un set VACIO significa
+          "no ve ninguna" y devuelve vacio — nunca "ve todo". Antes esto se
+          resolvia en Python DESPUES de traer todas las sesiones finalizadas de la
+          base: con el NFR de capacidad del proyecto eso es traer decenas de miles
+          de filas para descartar casi todas. Aca va al WHERE.
 
         El nivel de riesgo NO se filtra aca (requiere el score ya calculado, que se
         resuelve en Python sobre TODOS los eventos de la sesion) — lo aplica el
@@ -401,12 +430,18 @@ class ProctoringRepository:
             stmt = stmt.where(ProctoringSessionModel.finalizada_en >= fecha_desde)
         if fecha_hasta is not None:
             stmt = stmt.where(ProctoringSessionModel.finalizada_en <= fecha_hasta)
-        if materia_id or comision_id:
+        if comision_ids_permitidas is not None and not comision_ids_permitidas:
+            # Sin ninguna comision a cargo: no ve nada. Se corta antes de la query.
+            return []
+        if materia_id or comision_id or comision_ids_permitidas is not None:
             from app.infrastructure.persistence.models.exam_content import (
                 ComisionModel,
                 ExamenContenidoModel,
             )
 
+            # INNER JOIN a proposito: una sesion sin examen vinculado (diagnostico)
+            # no pertenece a ninguna comision, asi que no puede entrar en el
+            # alcance de nadie que este acotado por pertenencia.
             stmt = stmt.join(
                 ExamenContenidoModel,
                 ExamenContenidoModel.id == ProctoringSessionModel.examen_contenido_id,
@@ -417,6 +452,12 @@ class ProctoringRepository:
                 stmt = stmt.where(ComisionModel.id == comision_id)
             if materia_id:
                 stmt = stmt.where(ComisionModel.materia_id == materia_id)
+            if comision_ids_permitidas is not None:
+                # Se aplica DESPUES de los filtros pedidos por el usuario: si un
+                # tutor fuerza `comision_id` de una comision ajena, la interseccion
+                # con lo suyo da vacio. El filtro del usuario no puede ampliar su
+                # alcance, solo achicarlo.
+                stmt = stmt.where(ComisionModel.id.in_(comision_ids_permitidas))
         stmt = stmt.order_by(ProctoringSessionModel.finalizada_en.desc())
 
         result = await self._db.execute(stmt)
@@ -816,7 +857,11 @@ class ProctoringRepository:
         ts_cliente: datetime,
         payload: dict | None = None,
         screenshot_b64: str | None = None,
+        screenshot_bin: bytes | None = None,
+        screenshot_prefijo: str | None = None,
         screenshot_sha256: str | None = None,
+        screenshot_sha256_cliente: str | None = None,
+        custodia_cliente: str = "no_verificable",
         face_count_cliente: int | None = None,
         face_count_servidor: int | None = None,
         veredicto_reinferencia: str = "no_evaluado",
@@ -842,8 +887,17 @@ class ProctoringRepository:
             severidad=severidad,
             ts_cliente=ts_cliente,
             payload=payload,
-            screenshot_b64=screenshot_b64,
+            screenshot_b64=screenshot_b64,  # LEGACY: las filas nuevas usan screenshot_bin
+            # c-78 (16.4): la captura va en binario, 44% menos espacio que el
+            # base64 cifrado. El prefijo se guarda tal cual para reconstruir el
+            # data URL byte a byte y que screenshot_sha256 siga verificando.
+            screenshot_bin=screenshot_bin,
+            screenshot_prefijo=screenshot_prefijo,
             screenshot_sha256=screenshot_sha256,  # integridad liviana (D9)
+            # Primera capa de la cadena de custodia (c-78): lo que afirma el
+            # cliente y el veredicto de contrastarlo server-side.
+            screenshot_sha256_cliente=screenshot_sha256_cliente,
+            custodia_cliente=custodia_cliente,
             face_count_cliente=face_count_cliente,
             face_count_servidor=face_count_servidor,
             veredicto_reinferencia=veredicto_reinferencia,

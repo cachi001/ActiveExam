@@ -126,6 +126,40 @@ export async function listarPreguntasBanco(
   return res.json();
 }
 
+export interface OpcionPreview {
+  texto: string;
+  orden: number;
+  es_correcta: boolean;
+}
+
+export interface BlankPreview {
+  orden: number;
+  tipo: string;
+  texto_antes: string | null;
+  texto_despues: string | null;
+  opciones: OpcionPreview[];
+}
+
+/** Una pregunta del banco tal como la va a ver el alumno (c-78 E-08, 15.3). */
+export interface PreguntaPreview {
+  id: string;
+  enunciado: string;
+  tipo: string;
+  opciones: OpcionPreview[];
+  blanks: BlankPreview[];
+}
+
+export async function previewPreguntaBanco(
+  preguntaId: string,
+): Promise<PreguntaPreview> {
+  const res = await fetchAutenticado(
+    `${API_BASE}/exam-content/preguntas/${encodeURIComponent(preguntaId)}/preview`,
+    { headers: headers() },
+  );
+  if (!res.ok) throw new Error(`No se pudo cargar la vista previa (HTTP ${res.status}).`);
+  return res.json();
+}
+
 export async function moverPreguntaCategoria(
   preguntaId: string,
   categoriaId: string | null,
@@ -151,6 +185,20 @@ export interface CrearDesdebancoRequest {
   titulo: string;
   materia_id: string;
   comision_id?: string | null;
+  /**
+   * c-78 E-06: crea el mismo examen para varias comisiones de la materia. Se
+   * sortea una sola vez y ese set se copia a N exámenes independientes, en una
+   * operación todo o nada. Excluyente con `comision_id`.
+   */
+  comision_ids?: string[] | null;
+  /**
+   * c-78 E-07: cada alumno recibe preguntas distintas, sorteadas al arrancar su
+   * intento. El examen se lleva el POOL entero de cada tramo (no solo las que se
+   * sortean) y guarda la regla, así el sorteo posterior no depende del banco.
+   */
+  sorteo_por_intento?: boolean;
+  /** c-78 E-07: nace invisible para el alumno, para poder probarlo antes. */
+  borrador?: boolean;
   sorteo: SorteoCategoriaItem[];
   limite_preguntas?: number | null;
   /** Escala de calificación del examen. Default 100/60 si se omite (nunca "sobre 10"). */
@@ -158,10 +206,21 @@ export interface CrearDesdebancoRequest {
   nota_aprobacion?: number;
 }
 
+export interface ExamenReplicaItem {
+  examen_id: string;
+  comision_id: string | null;
+  titulo: string;
+}
+
 export interface CrearDesdebancoResponse {
+  /** El primer examen creado. Con una sola comisión, el único. */
   examen_id: string;
   titulo: string;
   total_preguntas: number;
+  /** Todos los exámenes creados, en el orden en que se pidieron las comisiones. */
+  examenes: ExamenReplicaItem[];
+  /** Marca compartida por las réplicas. null cuando se creó un examen solo. */
+  lote_replica_id: string | null;
 }
 
 export async function crearDesdeBanco(

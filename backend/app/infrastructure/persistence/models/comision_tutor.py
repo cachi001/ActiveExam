@@ -90,3 +90,47 @@ class MateriaCoordinadorModel(Base):
         Index("ix_materia_coordinador_materia_id", "materia_id"),
         Index("ix_materia_coordinador_coordinador_id", "coordinador_id"),
     )
+
+
+class MateriaProfesorModel(Base):
+    """Profesor a cargo de una materia (c-78 E-04). Una materia puede tener varios.
+
+    Espeja exactamente a ``MateriaCoordinadorModel``: el PROFESOR es un rol de
+    MATERIA (arma los exámenes y el banco de toda la materia), no de comisión.
+
+    Es una tabla propia y NO se reusa `materia_coordinador` a propósito: las dos
+    membresías otorgan cosas distintas — el coordinador emite el VEREDICTO de
+    integridad y el profesor no (D11). Colapsarlas en una sola tabla haría que
+    asignar a alguien como profesor le diera, de hecho, el poder de anular notas.
+    """
+
+    __tablename__ = "materia_profesor"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        primary_key=True,
+        server_default=func.gen_random_uuid(),
+    )
+    materia_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("materia.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    profesor_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("usuario.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "materia_id", "profesor_id", name="uq_materia_profesor_materia_profesor"
+        ),
+        Index("ix_materia_profesor_materia_id", "materia_id"),
+        Index("ix_materia_profesor_profesor_id", "profesor_id"),
+    )

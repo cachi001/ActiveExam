@@ -39,7 +39,17 @@ export const sesionApi = {
   /**
    * Envía un evento con screenshot al backend activeexam (C-46).
    * Real: POST /proctoring/sessions/{sessionId}/events
-   * Mock o fallo: retorna null sin propagar (fire-and-forget seguro)
+   *
+   * PROPAGA el error si el envío falla. No es un detalle de estilo:
+   *
+   * Hasta c-78 esta función hacía `catch { return null }`, descrito como
+   * "fire-and-forget seguro". Pero el llamador NO es fire-and-forget: es el
+   * patrón buffer-first del examen (`append → POST → confirm(purgar)`). Como el
+   * POST nunca rechazaba, el `confirm` corría SIEMPRE, incluso con la red caída:
+   * **el buffer de IndexedDB se vaciaba solo en cada evento y el replay no
+   * encontraba nunca nada que reenviar.** La resiliencia ante cortes era
+   * decorativa. Quien decide qué hacer con un fallo es el llamador, que tiene el
+   * buffer; esta capa solo informa la verdad.
    *
    * DATO SENSIBLE (Ley 25.326): screenshot_base64 — se transmite solo al backend;
    * nunca se loguea ni se persiste en almacenamiento local.
@@ -53,13 +63,15 @@ export const sesionApi = {
       payload?: Record<string, unknown>;
       screenshot_base64?: string | null;
       face_count_cliente?: number | null;
+      /** SHA-256 de la imagen calculado en el cliente (cadena de custodia, c-78). */
+      screenshot_sha256_cliente?: string;
     },
   ): Promise<{
     evento_id: string;
     veredicto_reinferencia: VeredictoReinferencia;
     face_count_servidor: number;
     screenshot_sha256: string;
-  } | null> {
+  }> {
     // El backend usa severidad en masculino (bajo|medio|alto|critico); el frontend
     // la maneja en femenino (baja|media|alta|critica) + baseline. Sin este mapeo el
     // POST da 422 y el evento se pierde en silencio (parece "sin red"/mock).
@@ -67,26 +79,26 @@ export const sesionApi = {
       baseline: 'bajo', baja: 'bajo', media: 'medio', alta: 'alto', critica: 'critico',
     };
     const body = { ...payload, severidad: SEVERIDAD_BACKEND[payload.severidad] ?? payload.severidad };
-    try {
-      return await realFetch<{
-        evento_id: string;
-        veredicto_reinferencia: VeredictoReinferencia;
-        face_count_servidor: number;
-        screenshot_sha256: string;
-      }>(
-        `/proctoring/sessions/${sessionId}/events`,
-        { method: 'POST', body: JSON.stringify(body) },
-        'demo',
-      );
-    } catch {
-      return null;
-    }
+    return await realFetch<{
+      evento_id: string;
+      veredicto_reinferencia: VeredictoReinferencia;
+      face_count_servidor: number;
+      screenshot_sha256: string;
+    }>(
+      `/proctoring/sessions/${sessionId}/events`,
+      { method: 'POST', body: JSON.stringify(body) },
+      'demo',
+    );
   },
 
   /**
    * Envía el resultado de la verificación biométrica al backend activeexam (C-46).
    * Real: POST /proctoring/sessions/{sessionId}/biometria
-   * Mock o fallo: retorna { ok: true } con delay 150ms (fire-and-forget)
+   *
+   * PROPAGA el error. Era el peor de los tres casos de c-78: con la red caída
+   * devolvía `{ ok: true }` — afirmaba éxito — y el llamador borraba el payload
+   * de la verificación de identidad del alumno dándolo por entregado. Esa
+   * verificación no volvía nunca más.
    */
   async enviarBiometriaProctoring(
     sessionId: string,
@@ -97,43 +109,42 @@ export const sesionApi = {
       resultado: string;
     },
   ): Promise<{ ok: boolean }> {
-    try {
-      // El backend espera `embedding` como STRING (columna Text, dato sensible).
-      // El cliente lo arma como number[] → serializamos a JSON string. Sin esto el
-      // backend devolvía 422 y la verificación biométrica NO se guardaba en la sesión.
-      const payload = {
-        liveness_ok: bio.liveness_ok,
-        retos_resueltos: bio.retos_resueltos,
-        resultado: bio.resultado,
-        ...(bio.embedding !== undefined ? { embedding: JSON.stringify(bio.embedding) } : {}),
-      };
-      return await realFetch<{ ok: boolean }>(
-        `/proctoring/sessions/${sessionId}/biometria`,
-        { method: 'POST', body: JSON.stringify(payload) },
-        'demo',
-      );
-    } catch {
-      return { ok: true };
-    }
+    // El backend espera `embedding` como STRING (columna Text, dato sensible).
+    // El cliente lo arma como number[] → serializamos a JSON string. Sin esto el
+    // backend devolvía 422 y la verificación biométrica NO se guardaba en la sesión.
+    const payload = {
+      liveness_ok: bio.liveness_ok,
+      retos_resueltos: bio.retos_resueltos,
+      resultado: bio.resultado,
+      ...(bio.embedding !== undefined ? { embedding: JSON.stringify(bio.embedding) } : {}),
+    };
+    return await realFetch<{ ok: boolean }>(
+      `/proctoring/sessions/${sessionId}/biometria`,
+      { method: 'POST', body: JSON.stringify(payload) },
+      'demo',
+    );
   },
 
   /**
    * Finaliza una sesión de proctoring (C-64).
    * Real: PATCH /proctoring/sessions/{sessionId}/finalizar
-   * Mock o fallo: retorna null sin propagar (fire-and-forget seguro).
+   *
+   * PROPAGA el error. Una finalización que falla en silencio deja la sesión
+   * "en vivo" para siempre en el panel del proctor (el panel filtra por
+   * `finalizada_en IS NULL`). El backstop es `auto_finalizacion` server-side,
+   * pero el llamador tiene que poder enterarse y reintentar.
+   *
+   * Devuelve null SOLO cuando no hay `sessionId`: ahí no hay nada que finalizar
+   * y no es un fallo.
    */
   async finalizarSesionProctoring(
     sessionId: string,
   ): Promise<{ id: string; finalizada_en: string } | null> {
     if (!sessionId) return null;
-    try {
-      return await realFetch<{ id: string; finalizada_en: string }>(
-        `/proctoring/sessions/${sessionId}/finalizar`,
-        { method: 'PATCH' },
-        'demo',
-      );
-    } catch {
-      return null;
-    }
+    return await realFetch<{ id: string; finalizada_en: string }>(
+      `/proctoring/sessions/${sessionId}/finalizar`,
+      { method: 'PATCH' },
+      'demo',
+    );
   },
 };

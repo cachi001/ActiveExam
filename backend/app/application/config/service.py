@@ -39,10 +39,19 @@ class ConfigEfectiva:
     gaze_fixation_tolerance: float
     umbral_cola_revision: int
     retencion_dias_default: int
+    # Retencion de CAPTURAS (screenshot_b64), distinta de retencion_dias_default
+    # (retencion GENERAL de sesion, C-19). Default 180, minimo 90 (validado en
+    # dominio, app.domain.retention.policy).
+    retencion_capturas_dias: int
     consent_version_vigente: str
     detectores_activos: tuple[str, ...]
     # Toggles globales de la rendicion (C-69).
-    chat_habilitado: bool = True
+    # El chat viene APAGADO (decision del dueño + migracion 0095, por capacidad:
+    # con 100 alumnos su poller solo son ~29 req/s sobre un techo de 80). El
+    # dataclass lo tenia en True y le ganaba a la base cuando el valor no llegaba.
+    chat_habilitado: bool = False
+    # Las pausas NO: negarle una pausa a un alumno por un default es peor que el
+    # costo de tenerlas prendidas.
     pausas_habilitadas: bool = True
     # Límite de duración de una pausa autorizada (minutos). Al vencer se reanuda sola.
     pausa_max_min: int = 10
@@ -96,6 +105,7 @@ class ConfigService:
             gaze_fixation_tolerance=float(cfg.gaze_fixation_tolerance),
             umbral_cola_revision=cfg.umbral_cola_revision,
             retencion_dias_default=cfg.retencion_dias_default,
+            retencion_capturas_dias=cfg.retencion_capturas_dias,
             consent_version_vigente=cfg.consent_version_vigente,
             detectores_activos=tuple(cfg.detectores_activos or ()),
             chat_habilitado=bool(cfg.chat_habilitado),

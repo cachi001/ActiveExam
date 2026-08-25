@@ -24,6 +24,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.application.config.service import ConfigService
 from app.application.proctoring import chat_pausa_service, session_service
+from app.application.proctoring.scoring import (
+    chat_habilitado_de_snapshot,
+    pausas_habilitadas_de_snapshot,
+)
 from app.application.proctoring.chat_pausa_service import (
     AlumnoNoPuedeIniciarError,
     EstadoInvalido,
@@ -77,6 +81,47 @@ def create_chat_pausa_router(
             )
         return sesion
 
+    async def _config_viva() -> tuple[bool, bool]:
+        """(chat_habilitado, pausas_habilitadas) de la config VIVA.
+
+        Solo para sesiones cuya foto no trae los interruptores (creadas antes de
+        c-78). Sin `config_service` no se puede decidir: se deja pasar, que es el
+        comportamiento previo — nunca cerrar una funcionalidad por no poder leer.
+        """
+        if config_service is None:
+            return (True, True)
+        efectiva = await config_service.get_efectiva()
+        return (bool(efectiva.chat_habilitado), bool(efectiva.pausas_habilitadas))
+
+    async def _exigir_habilitado(
+        sesion: ProctoringSessionModel, *, funcionalidad: str
+    ) -> None:
+        """403 si la funcionalidad esta apagada PARA ESTA SESION.
+
+        c-78: hasta ahora `chat_habilitado`/`pausas_habilitadas` eran SOLO visuales
+        — `Examen.tsx` escondia el recuadro y ningun endpoint los consultaba, asi
+        que apagarlos no apagaba nada. Rompia la regla dura #6 (el cliente no es
+        confiable: la regla la hace valer el backend).
+
+        El valor sale del `config_snapshot` de la sesion, NO de la config viva: el
+        examen corre contra la foto que se tomo al crearlo, y un cambio de config a
+        mitad de una rendicion no puede alterarla (es lo que el snapshot existe para
+        impedir). Las sesiones sin ese dato en su foto caen a la config viva.
+        """
+        chat_vivo, pausas_vivo = await _config_viva()
+        if funcionalidad == "chat":
+            habilitado = chat_habilitado_de_snapshot(sesion.config_snapshot, vivo=chat_vivo)
+            detalle = "El chat con el tutor no está habilitado para este examen."
+        else:
+            habilitado = pausas_habilitadas_de_snapshot(
+                sesion.config_snapshot, vivo=pausas_vivo
+            )
+            detalle = "Las pausas autorizadas no están habilitadas para este examen."
+        if not habilitado:
+            raise HTTPException(
+                status_code=http_status.HTTP_403_FORBIDDEN, detail=detalle
+            )
+
     async def _tiene_pertenencia(
         db: AsyncSession, principal: AuthenticatedPrincipal, session_id: str
     ) -> bool:
@@ -112,6 +157,8 @@ def create_chat_pausa_router(
         principal; si ``autor='tutor'`` exige supervision en vivo sobre ESA sesion
         puntual (no alcanza con tener el rol tutor en general)."""
         sesion = await _sesion_o_404(db, session_id)
+        # c-78: el interruptor vale server-side. Antes era solo visual.
+        await _exigir_habilitado(sesion, funcionalidad="chat")
         if body.autor == "alumno":
             if not principal_es_dueno_de_sesion(
                 principal, sesion.alumno_idnumber, sesion.alumno_email
@@ -212,6 +259,10 @@ def create_chat_pausa_router(
         propio examen — antes cualquier alumno autenticado podia solicitar
         pausas en la sesion de otro."""
         sesion = await _sesion_o_404(db, session_id)
+        # c-78: el interruptor vale server-side. Antes era solo visual.
+        # NO se cierra la FINALIZACION de una pausa ya activa: apagar el
+        # interruptor no puede dejar a un alumno pausado para siempre.
+        await _exigir_habilitado(sesion, funcionalidad="pausas")
         if not principal_es_dueno_de_sesion(
             principal, sesion.alumno_idnumber, sesion.alumno_email
         ):
@@ -305,7 +356,7 @@ def create_chat_pausa_router(
     @router.patch(
         "/pausas/{pausa_id}",
         response_model=PausaDetalle,
-        summary="Resolver pausa (aprobar | rechazar) — tutor/coordinador/revisor/admin",
+        summary="Resolver pausa (aprobar | rechazar) — capacidad `supervisar_sesion`",
     )
     async def resolver_pausa(
         pausa_id: str,

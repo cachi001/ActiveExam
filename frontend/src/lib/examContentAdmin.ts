@@ -176,27 +176,19 @@ export async function actualizarMateria(
   return res.json() as Promise<MateriaResponse>;
 }
 
-/** Activa o desactiva una materia (freeze). Admin-only.
- *  PATCH /exam-content/materias/{materiaId}/activa.  404 → no existe. */
-export async function setMateriaActiva(
-  materiaId: string,
-  activa: boolean,
-): Promise<MateriaResponse> {
-  const res = await fetchAutenticado(
-    `${API_BASE}/exam-content/materias/${encodeURIComponent(materiaId)}/activa`,
-    {
-      method: 'PATCH',
-      headers: authHeaders(),
-      body: JSON.stringify({ activa }),
-    },
-  );
-  if (!res.ok) return throwAdminError(res);
-  return res.json() as Promise<MateriaResponse>;
-}
-
-/** Elimina una materia. Admin-only. DELETE /exam-content/materias/{materiaId}.
- *  204 → borrada  |  404 → no existe  |  409 → tiene inscriptos/exámenes (no se borra). */
-export async function eliminarMateria(materiaId: string): Promise<void> {
+/**
+ * Baja lógica de una materia (c-78). UN SOLO patrón en todo el sistema:
+ * `DELETE /{id}` da de baja, `POST /{id}/reactivar` la revierte. Igual que
+ * usuario y examen.
+ *
+ * NADA se borra: comisiones, inscripciones, exámenes y evidencia quedan. El
+ * borrado físico (que antes hacía este mismo DELETE si la materia estaba vacía)
+ * se eliminó: un DELETE que a veces borra y a veces devuelve 409 según el
+ * contenido de la fila es un contrato impredecible.
+ *
+ * 204 → dada de baja  |  404 → no existe o ya estaba de baja.
+ */
+export async function darDeBajaMateria(materiaId: string): Promise<void> {
   const res = await fetchAutenticado(
     `${API_BASE}/exam-content/materias/${encodeURIComponent(materiaId)}`,
     { method: 'DELETE', headers: authHeaders() },
@@ -204,32 +196,36 @@ export async function eliminarMateria(materiaId: string): Promise<void> {
   if (!res.ok) await throwAdminError(res);
 }
 
-/** Activa o desactiva una comisión (baja lógica). Admin-only.
- *  PATCH /exam-content/comisiones/{comisionId}/activa.  404 → no existe. */
-export async function setComisionActiva(
-  comisionId: string,
-  activa: boolean,
-): Promise<ComisionResponse> {
+/** Revierte la baja de una materia. POST /exam-content/materias/{id}/reactivar.
+ *  404 → no existe o ya estaba activa. */
+export async function reactivarMateria(materiaId: string): Promise<MateriaResponse> {
   const res = await fetchAutenticado(
-    `${API_BASE}/exam-content/comisiones/${encodeURIComponent(comisionId)}/activa`,
-    {
-      method: 'PATCH',
-      headers: authHeaders(),
-      body: JSON.stringify({ activa }),
-    },
+    `${API_BASE}/exam-content/materias/${encodeURIComponent(materiaId)}/reactivar`,
+    { method: 'POST', headers: authHeaders() },
   );
   if (!res.ok) return throwAdminError(res);
-  return res.json() as Promise<ComisionResponse>;
+  return res.json() as Promise<MateriaResponse>;
 }
 
-/** Elimina una comisión. Admin-only. DELETE /exam-content/comisiones/{comisionId}.
- *  204 → borrada  |  404 → no existe  |  409 → tiene inscriptos/exámenes (no se borra). */
-export async function eliminarComision(comisionId: string): Promise<void> {
+/** Baja lógica de una comisión (c-78, mismo patrón que materia/usuario/examen).
+ *  No desmatricula a nadie ni borra nada.
+ *  204 → dada de baja  |  404 → no existe o ya estaba de baja. */
+export async function darDeBajaComision(comisionId: string): Promise<void> {
   const res = await fetchAutenticado(
     `${API_BASE}/exam-content/comisiones/${encodeURIComponent(comisionId)}`,
     { method: 'DELETE', headers: authHeaders() },
   );
   if (!res.ok) await throwAdminError(res);
+}
+
+/** Revierte la baja de una comisión. POST /exam-content/comisiones/{id}/reactivar. */
+export async function reactivarComision(comisionId: string): Promise<ComisionResponse> {
+  const res = await fetchAutenticado(
+    `${API_BASE}/exam-content/comisiones/${encodeURIComponent(comisionId)}/reactivar`,
+    { method: 'POST', headers: authHeaders() },
+  );
+  if (!res.ok) return throwAdminError(res);
+  return res.json() as Promise<ComisionResponse>;
 }
 
 /** Crea una comisión bajo una materia. Admin-only.
@@ -381,9 +377,22 @@ export interface ExamConfig {
   mezclar_preguntas: boolean;
   /** Tope de preguntas del examen. null = sin tope. Al escribirlo, 0 = sacar el tope. */
   limite_preguntas: number | null;
-  /** C-69: cuándo se muestra la nota al alumno. 'al_cerrar' (después del cierre) |
-   *  'inmediata' (al entregar). */
-  mostrar_nota: 'al_cerrar' | 'inmediata';
+  /**
+   * Cuándo se muestra la nota al alumno.
+   * - 'nunca' (default de todo examen nuevo, c-78 D9): oculta hasta que alguien
+   *   la publique explícitamente.
+   * - 'al_cerrar': visible después de la fecha de cierre.
+   * - 'inmediata': visible al entregar.
+   *
+   * Solo avanza: nunca → al_cerrar → inmediata. Volver atrás lo rechaza el backend.
+   */
+  mostrar_nota: MostrarNota;
+  /** c-78 D9: cuándo se publicaron las notas (ISO). null = todavía ocultas. */
+  notas_publicadas_en?: string | null;
+  /** c-78 D9: quién las publicó. null = todavía ocultas. */
+  notas_publicadas_por?: string | null;
+  /** c-78 D10: si el alumno ve sus eventos de proctoring mientras rinde. Default no. */
+  mostrar_eventos_alumno?: boolean;
   /** C-69: si el alumno puede revisar la corrección (respuestas correctas). Solo se
    *  muestra después del cierre. */
   revision_habilitada: boolean;
@@ -393,6 +402,36 @@ export interface ExamConfig {
    *  mecánica/nota queda CONGELADA (el editor deshabilita esos campos). Solo se
    *  puede cambiar la publicación de resultados. */
   bloqueada?: boolean;
+}
+
+/**
+ * Valores de visibilidad de la nota, en orden CRECIENTE de exposición (c-78 D9).
+ * El índice en este array ES el "cuánto se ve": publicar solo avanza.
+ */
+export const ORDEN_MOSTRAR_NOTA = ['nunca', 'al_cerrar', 'inmediata'] as const;
+export type MostrarNota = (typeof ORDEN_MOSTRAR_NOTA)[number];
+
+/** true si `actual` puede pasar a `nuevo` (espeja la regla del backend). */
+export function puedeAvanzarVisibilidad(actual: MostrarNota, nuevo: MostrarNota): boolean {
+  return ORDEN_MOSTRAR_NOTA.indexOf(nuevo) >= ORDEN_MOSTRAR_NOTA.indexOf(actual);
+}
+
+/**
+ * Publica las notas del examen (c-78 D9). Es CAMINO DE IDA: un examen ya
+ * publicado responde 409, y no hay forma de volver a ocultarlas.
+ * POST /exam-content/{id}/publicar-notas
+ */
+export async function publicarNotasExamen(examenId: string): Promise<ExamConfig> {
+  const res = await fetchAutenticado(
+    `${API_BASE}/exam-content/${examenId}/publicar-notas`,
+    { method: 'POST', headers: authHeaders() },
+  );
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    const detalle = (body as { detail?: { mensaje?: string } })?.detail?.mensaje;
+    throw new Error(detalle ?? `No se pudieron publicar las notas (HTTP ${res.status}).`);
+  }
+  return (await res.json()) as ExamConfig;
 }
 
 /** Lee la configuración del examen. Admin-only. GET /exam-content/{id}/config */
@@ -542,18 +581,78 @@ export interface InscripcionAlumnoResponse {
 /** Lista los alumnos inscriptos a una comisión con su elegibilidad para rendir.
  *  Admin-only. GET /exam-content/comisiones/{comisionId}/alumnos.
  *  404 → la comisión no existe. */
+export interface AlumnosComisionPaginados {
+  items: AlumnoInscripto[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
 export async function listarAlumnosDeComision(
   comisionId: string,
-): Promise<AlumnoInscripto[]> {
+  params: { page?: number; page_size?: number } = {},
+): Promise<AlumnosComisionPaginados> {
+  // c-78 §13.2: el endpoint pasó a devolver { items, total, page, page_size }.
+  // Con 40 alumnos por comisión el listado completo era ilegible.
+  const qs = new URLSearchParams();
+  if (params.page !== undefined) qs.set('page', String(params.page));
+  if (params.page_size !== undefined) qs.set('page_size', String(params.page_size));
+  const cola = qs.toString();
   const res = await fetchAutenticado(
-    `${API_BASE}/exam-content/comisiones/${encodeURIComponent(comisionId)}/alumnos`,
+    `${API_BASE}/exam-content/comisiones/${encodeURIComponent(comisionId)}/alumnos${
+      cola ? '?' + cola : ''
+    }`,
     {
       method: 'GET',
       headers: authHeaders(),
     },
   );
   if (!res.ok) return throwAdminError(res);
-  return res.json() as Promise<AlumnoInscripto[]>;
+  return res.json() as Promise<AlumnosComisionPaginados>;
+}
+
+/**
+ * URL de descarga de un export académico (c-78 §13.4/§13.5).
+ *
+ * Se devuelve la URL en vez de los bytes a propósito: la descarga la dispara el
+ * navegador con el token en el header, vía `descargarExport` — así el archivo
+ * no pasa por memoria de JS ni hay que armar un blob para algo que el navegador
+ * ya sabe hacer.
+ */
+export type FormatoExport = 'xlsx' | 'pdf';
+
+export function urlExportInscriptos(comisionId: string, formato: FormatoExport): string {
+  return `${API_BASE}/exam-content/comisiones/${encodeURIComponent(
+    comisionId,
+  )}/alumnos/export.${formato}`;
+}
+
+export function urlExportNotas(examenId: string, formato: FormatoExport): string {
+  return `${API_BASE}/exam-content/${encodeURIComponent(examenId)}/notas/export.${formato}`;
+}
+
+/**
+ * Descarga un export autenticado y se lo entrega al navegador.
+ *
+ * Un `<a href>` pelado no sirve: estos endpoints exigen Bearer, y el navegador
+ * no lo manda en una navegación. Se baja con fetch y se dispara la descarga
+ * desde un blob temporal, que se revoca enseguida.
+ */
+export async function descargarExport(url: string, nombreSugerido: string): Promise<void> {
+  const res = await fetchAutenticado(url, { method: 'GET', headers: authHeaders() });
+  if (!res.ok) return throwAdminError(res);
+  const blob = await res.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  try {
+    const a = document.createElement('a');
+    a.href = objectUrl;
+    a.download = nombreSugerido;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
 }
 
 /** Inscribe un alumno (usuario rol estudiante) a una comisión. Admin-only.

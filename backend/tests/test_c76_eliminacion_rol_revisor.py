@@ -108,10 +108,14 @@ def test_roles_sin_revisar_sesion_siguen_sin_ella(rol: Rol) -> None:
 # ---------------------------------------------------------------------------
 
 def test_supervisar_vivo_es_tutor_coordinador_admin_sin_revisor() -> None:
-    """``supervisar_vivo`` = {TUTOR, COORDINADOR, ADMIN_SISTEMA}."""
-    assert CAPABILITY_ROLES["supervisar_vivo"] == frozenset(
-        {Rol.TUTOR, Rol.COORDINADOR, Rol.ADMIN_SISTEMA}
-    )
+    """``supervisar_vivo`` incluye TUTOR/COORDINADOR/ADMIN_SISTEMA y NO 'revisor'.
+
+    Pertenencia, no set exacto — ver el mismo comentario en
+    test_c76_eliminacion_rol_proctor.py.
+    """
+    roles = CAPABILITY_ROLES["supervisar_vivo"]
+    assert {Rol.TUTOR, Rol.COORDINADOR, Rol.ADMIN_SISTEMA} <= set(roles)
+    assert not any(getattr(r, "value", r) == "revisor" for r in roles)
 
 
 @pytest.mark.parametrize("rol", [Rol.TUTOR, Rol.COORDINADOR, Rol.ADMIN_SISTEMA])

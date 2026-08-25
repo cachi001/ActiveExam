@@ -17,6 +17,10 @@ from app.presentation.api.v1.exam_content.schemas import ExamenContenidoResumenR
 # `_es_coordinador` abajo. Solo admin_sistema conserva alcance global.
 _ROLES_STAFF = frozenset({"admin_sistema"})
 
+# Baja lógica del catálogo (c-78 D1). Misma forma tri-estado que `GET /users?estado=`:
+# 'activo' (default, eliminado_en IS NULL) | 'inactivo' (solo dados de baja) | 'todos'.
+ESTADOS_CATALOGO_VALIDOS = frozenset({"activo", "inactivo", "todos"})
+
 
 def _es_staff(principal: AuthenticatedPrincipal) -> bool:
     return bool(set(principal.roles or []) & _ROLES_STAFF)
@@ -40,6 +44,15 @@ def _es_coordinador(principal: AuthenticatedPrincipal) -> bool:
     return "coordinador" in set(principal.roles or [])
 
 
+def _es_profesor(principal: AuthenticatedPrincipal) -> bool:
+    """True si el principal tiene el rol PROFESOR (c-78: acotado por materia).
+
+    Ve lo de SUS materias (``materia_profesor``, N:M), igual que el coordinador
+    con las que coordina. Lo que NO tiene, y es lo que lo distingue, es el
+    veredicto de integridad (`revisar_sesion`) — ver D11."""
+    return "profesor" in set(principal.roles or [])
+
+
 def _resumen_to_response(r) -> ExamenContenidoResumenResponse:
     """Mapea un ExamenContenidoResumen de dominio al schema de respuesta (D3)."""
     return ExamenContenidoResumenResponse(
@@ -55,4 +68,7 @@ def _resumen_to_response(r) -> ExamenContenidoResumenResponse:
         cierre=r.cierre,
         tiempo_limite_min=r.tiempo_limite_min,
         intentos_permitidos=r.intentos_permitidos,
+        eliminado_en=getattr(r, "eliminado_en", None),
+        borrador=getattr(r, "borrador", False),
+        modo_preguntas=getattr(r, "modo_preguntas", "fijo"),
     )

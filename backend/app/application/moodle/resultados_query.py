@@ -37,6 +37,9 @@ from app.infrastructure.persistence.models.proctoring import (
 # Estados de display posibles para el admin.
 ESTADO_SIN_TOKEN = "sin_token"
 ESTADO_PENDIENTE = "pendiente"
+# c-78 D14: la nota se cargó A MANO en el campus (no hay API, o falló y alguien
+# la cargó igual). Distinto de 'enviado', que significa "el campus confirmó".
+ESTADO_MANUAL = "manual"
 
 # Umbral de cola de revision por defecto si el singleton de config no existe (mismo
 # default que ConfiguracionSistemaModel.umbral_cola_revision y el mock del frontend).
@@ -59,6 +62,32 @@ ESTADOS_ENTREGA_VALIDOS = frozenset(
         ESTADO_ENTREGA_FINALIZADA,
     }
 )
+
+# Filtro de archivado (c-78 D6). Era un `bool` en la query string, así que "incluir
+# archivadas" era INEXPRESABLE: `false` = solo no archivadas, `true` = solo
+# archivadas, y no había forma de pedir el conjunto completo — que es justo lo que
+# necesita quien busca un intento que alguien archivó. El servicio ya soportaba
+# `archivado=None` (sin filtro); el único bloqueo era el tipado del router.
+ARCHIVADO_NO = "false"
+ARCHIVADO_SI = "true"
+ARCHIVADO_TODAS = "todas"
+
+ARCHIVADO_VALIDOS = frozenset({ARCHIVADO_NO, ARCHIVADO_SI, ARCHIVADO_TODAS})
+
+
+def archivado_filtro(valor: str) -> bool | None:
+    """Traduce el parámetro tri-estado al filtro del servicio (función PURA).
+
+    ``"false"`` → ``False`` (solo no archivadas, el default observable de antes),
+    ``"true"`` → ``True`` (solo archivadas), ``"todas"`` → ``None`` (sin filtro).
+    El caller valida contra ``ARCHIVADO_VALIDOS`` ANTES: acá un valor fuera del
+    conjunto cae al default seguro y nunca abre el listado de más.
+    """
+    if valor == ARCHIVADO_TODAS:
+        return None
+    if valor == ARCHIVADO_SI:
+        return True
+    return False
 
 
 def estado_entrega(
@@ -102,6 +131,10 @@ class ResultadoAlumno:
     # C-76 tarea 14: estado de la ENTREGA (derivado) + soft-hide administrativo.
     estado_entrega: str = ESTADO_ENTREGA_FINALIZADA
     archivado: bool = False
+    # c-78 D14: quién afirmó que cargó la nota a mano en el campus, y cuándo.
+    # None = nunca se marcó a mano (el estado viene del sistema, no de una persona).
+    marcada_manual_por: str | None = None
+    marcada_manual_en: object | None = None
 
 
 def estado_moodle_display(db_estado: str | None, *, moodle_configurado: bool) -> str:
@@ -113,6 +146,9 @@ def estado_moodle_display(db_estado: str | None, *, moodle_configurado: bool) ->
     estado = db_estado or ESTADO_PENDIENTE
     if not moodle_configurado and estado == ESTADO_PENDIENTE:
         return ESTADO_SIN_TOKEN
+    # 'manual' NO se degrada a 'sin_token' aunque Moodle no esté configurado: es
+    # justamente el caso en que alguien cargó la nota sin API. Decirle "sin
+    # conexión al campus" a una nota que ya está cargada sería mentirle.
     return estado
 
 
@@ -147,6 +183,10 @@ def _base_stmt(examen_id: str):
             MoodleWritebackEstadoModel.nota,
             MoodleWritebackEstadoModel.estado,
             MoodleWritebackEstadoModel.updated_at,
+            # c-78 D14: origen del estado. Sin esto la UI no puede distinguir
+            # "confirmado por el campus" de "marcado por {persona} el {fecha}".
+            MoodleWritebackEstadoModel.marcada_manual_por,
+            MoodleWritebackEstadoModel.marcada_manual_en,
             # Nombre real de la persona. La tabla mostraba el legajo ("EST-001")
             # porque este campo se dejó en None como "enhancement futuro": quien
             # revisa notas trabaja con personas, no con identificadores internos.
@@ -367,6 +407,8 @@ async def listar_resultados_examen(
                 decision=row.decision,
             ),
             archivado=bool(row.archivado),
+            marcada_manual_por=getattr(row, "marcada_manual_por", None),
+            marcada_manual_en=getattr(row, "marcada_manual_en", None),
         )
         for row in rows
     ]
@@ -410,37 +452,53 @@ async def _motivos_retencion(
     # C-73 §10.4: sesiones cuyo docente a cargo no tiene credencial usable. La nota
     # SIEMPRE debe salir con la identidad del docente que la devuelve; sin ella se
     # retiene en vez de firmarla con la cuenta de servicio.
+    from app.infrastructure.persistence.models.comision_tutor import ComisionTutorModel
     from app.infrastructure.persistence.models.exam_content import ComisionModel
     from app.infrastructure.persistence.models.transactional import (
         MoodleCredencialDocenteModel,
     )
 
-    sin_credencial = {
+    # c-78 (deuda c-79): los tutores salen de la tabla puente, NO de
+    # `comision.docente_id` — esa columna quedó congelada en la migración 0086 y
+    # ningún endpoint la escribe, así que joinear por ella marcaba TODAS las
+    # sesiones como "sin credencial".
+    #
+    # La pertenencia es SIMÉTRICA: alcanza con que UN tutor de la comisión tenga
+    # credencial activa para que la nota pueda salir. Por eso se calcula primero el
+    # conjunto de las que SÍ pueden, y `sin_credencial` es el complemento — una
+    # sesión con tres tutores, dos sin conectar y uno conectado, puede sincronizar.
+    con_credencial = {
         sid
-        for sid, token_cifrado, estado_cred in (
+        for (sid,) in (
             await db.execute(
-                select(
-                    ProctoringSessionModel.id,
-                    MoodleCredencialDocenteModel.token_cifrado,
-                    MoodleCredencialDocenteModel.estado,
-                )
-                .outerjoin(
+                select(ProctoringSessionModel.id)
+                .join(
                     ExamenContenidoModel,
                     ExamenContenidoModel.id
                     == ProctoringSessionModel.examen_contenido_id,
                 )
-                .outerjoin(
+                .join(
                     ComisionModel, ComisionModel.id == ExamenContenidoModel.comision_id
                 )
-                .outerjoin(
-                    MoodleCredencialDocenteModel,
-                    MoodleCredencialDocenteModel.usuario_id == ComisionModel.docente_id,
+                .join(
+                    ComisionTutorModel,
+                    ComisionTutorModel.comision_id == ComisionModel.id,
                 )
-                .where(ProctoringSessionModel.id.in_(session_ids))
+                .join(
+                    MoodleCredencialDocenteModel,
+                    MoodleCredencialDocenteModel.usuario_id
+                    == ComisionTutorModel.tutor_id,
+                )
+                .where(
+                    ProctoringSessionModel.id.in_(session_ids),
+                    MoodleCredencialDocenteModel.token_cifrado.is_not(None),
+                    MoodleCredencialDocenteModel.estado == "activa",
+                )
+                .distinct()
             )
         ).all()
-        if not token_cifrado or estado_cred != "activa"
     }
+    sin_credencial = set(session_ids) - con_credencial
 
     sin_destino = {
         sid
@@ -561,6 +619,11 @@ async def listar_estados_sincronizables(
             MoodleWritebackEstadoModel,
             ProctoringSessionModel.id.label("sid"),
             ProctoringSessionModel.decision,
+            # c-78 D7: eje TEMPORAL real del intento. Sin esto, la política
+            # ULTIMO/PRIMERO ordenaba por `session_id`, que es un UUID v4
+            # (`gen_random_uuid()`) — o sea, orden ALEATORIO. Afectaba QUÉ NOTA se
+            # escribe en Moodle, que es el daño más concreto de toda la auditoría.
+            ProctoringSessionModel.creada_en.label("sesion_creada_en"),
         )
         .join(
             ProctoringSessionModel,
@@ -606,6 +669,10 @@ async def listar_estados_sincronizables(
         decision = _parse_decision_val(r.decision)
         if writeback_en_hold(flaggeada=flaggeada, decision=decision):
             continue  # hold: no se envía (D15)
+        # Proyección del eje temporal sobre la fila (atributo NO mapeado, vive solo
+        # en memoria): es lo que consume `_aplicar_politica` para resolver
+        # ULTIMO/PRIMERO por tiempo real en vez de por el UUID de la sesión.
+        estado.sesion_creada_en = r.sesion_creada_en
         filas.append(estado)
 
     courseid, cmid, component = await obtener_target_examen(db=db, examen_id=examen_id)

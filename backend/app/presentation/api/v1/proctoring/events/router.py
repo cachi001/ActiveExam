@@ -80,6 +80,9 @@ def create_events_router(
             face_count_cliente=body.face_count_cliente,
             cipher=cipher,
             worm_storage=worm_storage,
+            # c-78: el schema aceptaba este campo desde C-64 y el servicio lo
+            # descartaba (no habia columna). Ahora se persiste y se contrasta.
+            screenshot_sha256_cliente=body.screenshot_sha256_cliente,
         )
         return IngestEventoOut(
             evento_id=evento.id,

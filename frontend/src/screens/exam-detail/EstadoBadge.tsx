@@ -1,11 +1,15 @@
 import { Badge } from '../../ui/components';
 import type { EstadoMoodle } from '../../lib/examContentResultados';
 
-const ESTADO_MOODLE_CONFIG: Record<EstadoMoodle, { label: string; tone: 'warning' | 'success' | 'error' | 'neutral' }> = {
+const ESTADO_MOODLE_CONFIG: Record<EstadoMoodle, { label: string; tone: 'warning' | 'success' | 'error' | 'neutral' | 'primary' }> = {
   pendiente: { label: 'Pendiente de sincronizar', tone: 'warning' },
   enviado:   { label: 'Sincronizado en Moodle',  tone: 'success' },
   fallido:   { label: 'Falló',                   tone: 'error' },
   sin_token: { label: 'Sin token / no enviado',  tone: 'neutral' },
+  // c-78 D14: tono distinto de 'enviado' A PROPÓSITO. Verde = el campus lo
+  // confirmó; este otro tono = alguien lo afirmó. Quien mira la pantalla
+  // tiene que poder distinguirlos de un vistazo.
+  manual:    { label: 'Cargada a mano',          tone: 'primary' },
 };
 
 // Por qué la nota NO se va a mandar. Va en ROJO y PISA al estado de sincronización:
@@ -42,9 +46,14 @@ const RETENCION_CONFIG: Record<string, { label: string; detalle: string }> = {
 export function EstadoBadge({
   estado,
   retenidoPor,
+  marcadaManualPor,
+  marcadaManualEn,
 }: {
   estado: EstadoMoodle;
   retenidoPor?: string | null;
+  /** c-78 D14: quién afirmó que cargó la nota a mano, y cuándo. */
+  marcadaManualPor?: string | null;
+  marcadaManualEn?: string | null;
 }) {
   if (retenidoPor) {
     const ret = RETENCION_CONFIG[retenidoPor] ?? {
@@ -58,5 +67,20 @@ export function EstadoBadge({
     );
   }
   const cfg = ESTADO_MOODLE_CONFIG[estado] ?? { label: estado, tone: 'neutral' as const };
+  if (estado === 'manual') {
+    // El ORIGEN del estado tiene que estar a la vista: "marcado por X el Y" no
+    // es lo mismo que "confirmado por el campus".
+    const cuando = marcadaManualEn
+      ? new Date(marcadaManualEn).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })
+      : null;
+    const detalle = marcadaManualPor
+      ? `Marcada a mano por ${marcadaManualPor}${cuando ? ` el ${cuando}` : ''}. El campus no confirmó el envío.`
+      : 'Marcada a mano. El campus no confirmó el envío.';
+    return (
+      <span title={detalle}>
+        <Badge tone={cfg.tone} dot>{cfg.label}</Badge>
+      </span>
+    );
+  }
   return <Badge tone={cfg.tone} dot>{cfg.label}</Badge>;
 }

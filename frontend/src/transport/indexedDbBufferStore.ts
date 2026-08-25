@@ -7,6 +7,13 @@
  *
  * No se testea con harness unitario (requiere IndexedDB del navegador); su
  * contrato esta cubierto por el adaptador en memoria. Verificable en e2e/browser.
+ *
+ * c-78: los registros ahora pueden pesar ~114 KB cada uno (la captura del
+ * incidente viaja dentro del payload), asi que las consultas que el buffer hace
+ * en el camino caliente NO pueden traer el store entero. `oldest()` resuelve con
+ * un cursor sobre el indice `seq` (lee UN registro) y `resumen()` recorre una vez
+ * sola, al arrancar. `getAllOrdered()` sigue trayendo todo, pero solo lo usa el
+ * replay, que necesita justamente eso.
  */
 
 import type { BufferedEvent, EventBufferStore } from "./eventBuffer";
@@ -47,8 +54,36 @@ export class IndexedDbEventBufferStore implements EventBufferStore {
     });
   }
 
+  /** Recorre el indice `seq` en orden y acumula, sin materializar el store. */
+  private async recorrerPorSeq(
+    direccion: IDBCursorDirection,
+    visitar: (registro: BufferedEvent) => boolean | void,
+  ): Promise<void> {
+    const db = await this.open();
+    return new Promise<void>((resolve, reject) => {
+      const transaction = db.transaction(STORE_NAME, "readonly");
+      const request = transaction.objectStore(STORE_NAME).index("seq").openCursor(null, direccion);
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (!cursor) return resolve();
+        // `visitar` devuelve true para cortar (ej: solo queremos el primero).
+        if (visitar(cursor.value as BufferedEvent) === true) return resolve();
+        cursor.continue();
+      };
+      request.onerror = () => reject(request.error);
+    });
+  }
+
   async put(record: BufferedEvent): Promise<void> {
     await this.tx("readwrite", (store) => store.put(record));
+  }
+
+  async get(id: string): Promise<BufferedEvent | null> {
+    const record = await this.tx<BufferedEvent | undefined>(
+      "readonly",
+      (store) => store.get(id) as IDBRequest<BufferedEvent | undefined>,
+    );
+    return record ?? null;
   }
 
   async getAllOrdered(): Promise<BufferedEvent[]> {
@@ -64,8 +99,22 @@ export class IndexedDbEventBufferStore implements EventBufferStore {
     return this.tx<number>("readonly", (store) => store.count());
   }
 
-  async oldestId(): Promise<string | null> {
-    const ordered = await this.getAllOrdered();
-    return ordered.length > 0 ? ordered[0].id : null;
+  async oldest(): Promise<BufferedEvent | null> {
+    let primero: BufferedEvent | null = null;
+    await this.recorrerPorSeq("next", (registro) => {
+      primero = registro;
+      return true; // con el menor `seq` alcanza
+    });
+    return primero;
+  }
+
+  async resumen(): Promise<{ bytes: number; maxSeq: number }> {
+    let bytes = 0;
+    let maxSeq = -1;
+    await this.recorrerPorSeq("next", (registro) => {
+      bytes += registro.bytes ?? 0; // registros de versiones previas no lo traen
+      if (registro.seq > maxSeq) maxSeq = registro.seq;
+    });
+    return { bytes, maxSeq };
   }
 }

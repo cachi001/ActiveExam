@@ -18,6 +18,8 @@ cifrados. Una migración de re-cifrado del histórico es opcional y aparte.
 
 from __future__ import annotations
 
+import base64
+
 from cryptography.fernet import Fernet, InvalidToken
 
 
@@ -49,6 +51,37 @@ class EvidenceCipher:
             raise EvidenceCipherError(
                 f"Clave de cifrado inválida (Fernet 32 bytes base64-urlsafe): {exc}"
             ) from exc
+
+    def encrypt_bytes(self, plaintext: bytes | None) -> bytes | None:
+        """Cifra BYTES y devuelve el token Fernet sin su base64 externo (c-78).
+
+        Fernet siempre devuelve su token en base64 urlsafe. Guardarlo tal cual en
+        una columna `bytea` seria pagar de nuevo el 33% de expansion que la
+        columna binaria vino justamente a sacar: medido, 113.420 bytes contra
+        85.065 para la misma captura. Se le saca ese base64 externo y se guarda el
+        token crudo; `decrypt_bytes` se lo vuelve a poner antes de descifrar, asi
+        que es exactamente el mismo token, solo que sin envoltorio.
+        """
+        if plaintext is None:
+            return None
+        try:
+            return base64.urlsafe_b64decode(self._fernet.encrypt(plaintext))
+        except Exception as exc:  # noqa: BLE001
+            raise EvidenceCipherError(f"Error al cifrar la evidencia: {exc}") from exc
+
+    def decrypt_bytes(self, stored: bytes | None) -> bytes | None:
+        """Inverso de ``encrypt_bytes``. None → None.
+
+        A diferencia de ``decrypt``, NO tiene fallback legacy: la columna binaria
+        nacio con este change, asi que todo lo que hay ahi esta cifrado. Si el
+        token no es valido es un problema real y tiene que doler.
+        """
+        if stored is None:
+            return None
+        try:
+            return self._fernet.decrypt(base64.urlsafe_b64encode(stored))
+        except Exception as exc:  # noqa: BLE001
+            raise EvidenceCipherError(f"Error al descifrar la evidencia: {exc}") from exc
 
     def encrypt(self, plaintext: str | None) -> str | None:
         """Cifra un string (screenshot base64). None → None (evento sin captura)."""

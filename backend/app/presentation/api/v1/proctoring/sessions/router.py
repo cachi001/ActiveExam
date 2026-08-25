@@ -20,7 +20,10 @@ from app.application.audit.acciones import AccionAuditoria, ModuloAuditoria
 from app.application.audit.service import registrar
 from app.application.proctoring import observacion_service, session_service
 from app.application.proctoring.auto_finalizacion import auto_finalizar_si_vencida
+from app.application.proctoring.captura_almacenada import leer_captura
 from app.application.proctoring.enforcement import (
+    ExamenDadoDeBajaError,
+    ExamenEnBorradorError,
     FueraDeVentanaError,
     IntentosAgotadosError,
     NoInscriptoError,
@@ -46,6 +49,7 @@ from app.domain.auth.authorization import (
     autorizar_supervision_vivo_sobre_sesion,
     principal_es_dueno_de_sesion,
 )
+from app.domain.auth.capabilities import tiene_capacidad
 from app.domain.auth.errors import ForbiddenError
 from app.domain.auth.identity import AuthenticatedPrincipal
 from app.domain.auth.roles import Rol
@@ -208,10 +212,18 @@ def create_sessions_router(
     async def _comision_ids_permitidas(
         db: AsyncSession, principal: AuthenticatedPrincipal
     ) -> set[str] | None:
-        """Comisiones que el principal puede ver (N:M, c-79). ``None`` = sin
-        restricción (solo admin_sistema, alcance global). TUTOR: sus comisiones
-        (comision_tutor). COORDINADOR: las comisiones de SUS materias asignadas
-        (materia_coordinador) — c-79, ya no es de alcance global."""
+        """Comisiones que el principal puede ver (N:M, c-79/c-78). ``None`` = sin
+        restricción (solo admin_sistema, alcance global).
+
+        - TUTOR: sus comisiones (``comision_tutor``).
+        - COORDINADOR: las comisiones de SUS materias (``materia_coordinador``) —
+          c-79, ya no es de alcance global.
+        - PROFESOR: las comisiones de SUS materias (``materia_profesor``) — c-78.
+
+        El resultado es la UNIÓN de las membresías que el principal tenga: alguien
+        con dos roles ve lo de ambos, no lo del primero que matchee. Devolver el
+        conjunto vacío es correcto y significativo: ve NADA, no "ve todo".
+        """
         from app.infrastructure.persistence.repositories.exam_content import (
             ComisionSqlRepository,
         )
@@ -219,9 +231,18 @@ def create_sessions_router(
         if principal.tiene_rol(Rol.ADMIN_SISTEMA):
             return None
         repo = ComisionSqlRepository(db)
+        subject = principal.subject or ""
+        permitidas: set[str] = set()
         if principal.tiene_rol(Rol.COORDINADOR):
-            return set(await repo.comision_ids_a_cargo_coordinador(principal.subject or ""))
-        return set(await repo.comision_ids_a_cargo(principal.subject or ""))
+            permitidas |= set(await repo.comision_ids_a_cargo_coordinador(subject))
+        if principal.tiene_rol(Rol.PROFESOR):
+            permitidas |= set(await repo.comision_ids_a_cargo_profesor(subject))
+        if principal.tiene_rol(Rol.TUTOR) or not permitidas:
+            # El tutor suma SIEMPRE sus comisiones. El `or not permitidas` cubre a
+            # un principal sin ninguno de los tres roles (no debería llegar acá,
+            # pero si llega tiene que quedar acotado, nunca abierto).
+            permitidas |= set(await repo.comision_ids_a_cargo(subject))
+        return permitidas
 
     @router.post(
         "/sessions",
@@ -249,13 +270,41 @@ def create_sessions_router(
         from datetime import datetime, timezone
 
         if body.examen_contenido_id is not None:
+            # c-78 E-07: el docente probando su propio examen. Le saltea el borrador
+            # y la ventana, no la baja logica ni el tope de intentos. Se deriva del
+            # rol, NO de un flag del body: el cliente es un sensor no confiable
+            # (regla dura #6) y un alumno no puede auto-declararse staff.
+            es_prueba_de_staff = any(
+                tiene_capacidad(rol, "crear_examenes") for rol in principal.roles
+            )
             try:
                 await verificar_enforcement(
                     db,
                     examen_contenido_id=body.examen_contenido_id,
                     alumno_idnumber=principal.username,
                     ahora=datetime.now(timezone.utc),
+                    es_prueba_de_staff=es_prueba_de_staff,
                 )
+            except ExamenEnBorradorError as exc:
+                # 403, no 410: el examen no fue retirado, todavia no se habilito.
+                raise HTTPException(
+                    status_code=http_status.HTTP_403_FORBIDDEN,
+                    detail={
+                        "error": "examen_en_borrador",
+                        "mensaje": exc.mensaje,
+                    },
+                ) from exc
+            except ExamenDadoDeBajaError as exc:
+                # c-78: 410 Gone, no 403. El recurso EXISTIA y fue retirado; no es
+                # un problema de permisos ni de horario, asi que el alumno no gana
+                # nada reintentando ni esperando a que abra la ventana.
+                raise HTTPException(
+                    status_code=http_status.HTTP_410_GONE,
+                    detail={
+                        "error": "examen_dado_de_baja",
+                        "mensaje": exc.mensaje,
+                    },
+                ) from exc
             except FueraDeVentanaError as exc:
                 raise HTTPException(
                     status_code=http_status.HTTP_403_FORBIDDEN,
@@ -412,6 +461,10 @@ def create_sessions_router(
                 },
             )
 
+        # c-78 §11.4: el scoping va EN LA QUERY, no en un filtro de Python sobre
+        # todas las sesiones finalizadas de la base. Ademas de ser correcto, evita
+        # traer decenas de miles de filas para descartar casi todas.
+        comision_ids = await _comision_ids_permitidas(db, principal)
         sesiones = await session_service.listar_sesiones_finalizadas(
             db,
             q=q,
@@ -420,10 +473,8 @@ def create_sessions_router(
             fecha_hasta=fecha_hasta,
             materia_id=materia_id,
             comision_id=comision_id,
+            comision_ids_permitidas=comision_ids,
         )
-        comision_ids = await _comision_ids_permitidas(db, principal)
-        if comision_ids is not None:
-            sesiones = [s for s in sesiones if s.comision_id in comision_ids]
         # migration 0083: el umbral es POR SESION (`umbral_cola_revision_efectivo`,
         # de su config_snapshot o el vivo como fallback) — ya NO uno global aplicado
         # a todas por igual, para que un cambio de config no reclasifique
@@ -457,7 +508,17 @@ def create_sessions_router(
                 riesgo_medio += 1
             else:
                 riesgo_bajo += 1
-            if s.score >= s.umbral_cola_revision_efectivo:
+            # F-01 (c-78 D3): "entra a la Cola de revision" exige un examen REAL
+            # vinculado, no solo pasar el umbral. Esta tarjeta contaba tambien las
+            # sesiones de diagnostico (sin examen) que superaban el umbral, asi que
+            # daba un numero mas alto que la propia Cola de revision para el mismo
+            # dato. El LISTADO de esta pantalla NO se toca: muestra las de
+            # diagnostico a proposito (desde aca se borran) — lo que se corrige es
+            # el AGREGADO, para que cuente lo que realmente entra a la cola.
+            if (
+                s.score >= s.umbral_cola_revision_efectivo
+                and s.examen_contenido_id is not None
+            ):
                 en_cola_revision += 1
 
         return RegistroSesionesOut(
@@ -599,10 +660,15 @@ def create_sessions_router(
                 ts_cliente=e.ts_cliente,
                 ts_backend=e.ts_backend,
                 payload=e.payload,
-                # Descifrado at-rest de la evidencia (Ley 25.326). Sin cipher o si el
-                # registro es legacy en claro, decrypt lo devuelve tal cual.
-                screenshot_base64=(
-                    cipher.decrypt(e.screenshot_b64) if cipher is not None else e.screenshot_b64
+                # Descifrado at-rest de la evidencia (Ley 25.326). `leer_captura` es
+                # el ÚNICO camino de lectura (c-78): resuelve si la captura está en
+                # la columna binaria nueva o en la base64 legacy, y descifra según
+                # corresponda. Ninguna pantalla decide eso por su cuenta.
+                screenshot_base64=leer_captura(
+                    screenshot_bin=e.screenshot_bin,
+                    screenshot_prefijo=e.screenshot_prefijo,
+                    screenshot_b64_legacy=e.screenshot_b64,
+                    cipher=cipher,
                 ),
                 screenshot_sha256=e.screenshot_sha256,
                 face_count_cliente=e.face_count_cliente,
@@ -865,6 +931,8 @@ def create_sessions_router(
                 db=db,
                 examen_contenido_id=sesion_model.examen_contenido_id,
                 respuestas=respuestas,
+                # c-78 E-07: el denominador es el set que le tocó a este intento.
+                session_id=sesion_model.id,
             )
 
         # Identidad para el write-back: la del DUEÑO de la sesión (persistida al

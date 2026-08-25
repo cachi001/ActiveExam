@@ -35,6 +35,7 @@ from sqlalchemy.pool import NullPool
 from app.infrastructure.persistence.base import Base
 from app.infrastructure.persistence.models.comision_tutor import (  # noqa: F401
     ComisionTutorModel,
+    MateriaProfesorModel,
 )
 from app.infrastructure.persistence.models.exam_content import (  # noqa: F401
     CategoriaPreguntaModel,
@@ -51,6 +52,7 @@ from app.presentation.api.v1.exam_content.router import create_exam_content_rout
 from tests.proctoring.conftest import _build_test_jwt_validator, auth_headers
 
 _TABLES_TO_DROP = [
+    "materia_profesor",
     "opcion_banco",
     "pregunta_banco",
     "categoria_pregunta",
@@ -62,6 +64,9 @@ _TABLES_TO_DROP = [
     "materia",
 ]
 _TABLES_TO_CREATE = [
+    # c-78: pertenencia del rol PROFESOR. Los tests de este archivo la usan
+    # porque crear examenes y operar el banco dejaron de ser del TUTOR (E-03).
+    MateriaProfesorModel.__table__,
     MateriaModel.__table__,
     ComisionModel.__table__,
     ComisionTutorModel.__table__,
@@ -154,6 +159,15 @@ async def _crear_materia_con_dos_comisiones(factory, docente_c1: str, docente_c2
         await s.flush()
         if docente_c2:
             s.add(ComisionTutorModel(comision_id=c2.id, tutor_id=docente_c2))
+        # c-78: ademas de tutor de SU comision, cada docente queda como PROFESOR
+        # de la materia. Es lo que le da la capacidad `crear_examenes`/
+        # `gestionar_banco` sin cambiar en nada lo que estos tests verifican: la
+        # pertenencia sigue siendo "SU materia / SU comision" contra "ajena".
+        for docente in (docente_c1, docente_c2):
+            if docente:
+                s.add(
+                    MateriaProfesorModel(materia_id=materia.id, profesor_id=docente)
+                )
         materia_id, c1_id, c2_id = materia.id, c1.id, c2.id
         await s.commit()
     return materia_id, c1_id, c2_id
@@ -193,7 +207,9 @@ async def test_docente_de_la_segunda_comision_puede_crear_categoria_en_su_materi
         factory, docente_c1, docente_c2
     )
 
-    async with _client(app, ["tutor"], subject=docente_c2) as c:
+    # c-78: el banco es del PROFESOR (E-03). El actor conserva su rol tutor —
+    # lo que se verifica sigue siendo la pertenencia sobre SU materia.
+    async with _client(app, ["tutor", "profesor"], subject=docente_c2) as c:
         resp = await c.post(
             "/api/v1/exam-content/categorias",
             json={"materia_id": materia_id, "nombre": "Unidad 1"},
@@ -298,7 +314,7 @@ async def test_docente_dueno_si_puede_asociar_examen_a_su_comision(app, factory)
     )
     examen_id = await _crear_examen_importado(factory)
 
-    async with _client(app, ["tutor"], subject=docente_c1) as c:
+    async with _client(app, ["tutor", "profesor"], subject=docente_c1) as c:
         resp = await c.post(
             f"/api/v1/exam-content/{examen_id}/comision",
             json={"comision_id": c1_id},

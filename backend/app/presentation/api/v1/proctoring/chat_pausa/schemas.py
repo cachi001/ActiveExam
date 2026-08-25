@@ -78,7 +78,7 @@ class PausaDetalle(BaseModel):
 
 
 class PausaPendiente(BaseModel):
-    """Pausa pendiente para el poll del proctor (GET /pausas/pendientes)."""
+    """Pausa pendiente para el poll de quien supervisa (GET /pausas/pendientes)."""
 
     model_config = ConfigDict(extra="forbid")
 

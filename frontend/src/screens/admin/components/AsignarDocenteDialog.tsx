@@ -14,6 +14,7 @@
 import { useEffect, useState } from 'react';
 import { adminApi } from '../../../lib/apiAdmin';
 import { Button, Icon } from '../../../ui/components';
+import { ChipMultiSelect } from '../../../ui/ChipMultiSelect';
 
 type Docente = { id: string; nombre: string; legajo: string };
 type TutorInfo = { id: string; nombre: string };
@@ -33,7 +34,6 @@ export function AsignarDocenteDialog({
 }) {
   const [docentes, setDocentes] = useState<Docente[]>([]);
   const [tutores, setTutores] = useState<TutorInfo[]>(tutoresActuales);
-  const [paraAgregar, setParaAgregar] = useState<string>('');
   const [cargando, setCargando] = useState(true);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -74,15 +74,13 @@ export function AsignarDocenteDialog({
 
   const disponibles = docentes.filter((d) => !tutores.some((t) => t.id === d.id));
 
-  async function agregar() {
-    if (!paraAgregar) return;
+  async function agregar(docenteId: string) {
     setGuardando(true);
     setError(null);
     try {
-      const r = await adminApi.agregarTutorComision(comisionId, paraAgregar);
+      const r = await adminApi.agregarTutorComision(comisionId, docenteId);
       setTutores(r.tutores);
       onCambiado(r.tutores);
-      setParaAgregar('');
     } catch (err) {
       const e = err as { mensaje?: string };
       setError(e.mensaje ?? 'No se pudo agregar el tutor.');
@@ -123,27 +121,7 @@ export function AsignarDocenteDialog({
           <div className="h-[80px] animate-pulse bg-surface-container-low rounded-md" />
         ) : (
           <>
-            {tutores.length > 0 ? (
-              <ul className="flex flex-col gap-1.5 mb-md">
-                {tutores.map((t) => (
-                  <li
-                    key={t.id}
-                    className="flex items-center justify-between rounded-md bg-surface-container-low px-3 py-1.5"
-                  >
-                    <span className="text-label-md text-on-surface">{t.nombre}</span>
-                    <button
-                      type="button"
-                      className="text-on-surface-variant hover:text-error disabled:opacity-50"
-                      disabled={guardando}
-                      onClick={() => quitar(t.id)}
-                      aria-label={`Quitar a ${t.nombre}`}
-                    >
-                      <Icon name="close" className="text-[16px]" />
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            ) : (
+            {tutores.length === 0 && (
               <p className="text-label-sm text-on-surface-variant mb-md">
                 Sin tutores asignados todavía.
               </p>
@@ -152,32 +130,23 @@ export function AsignarDocenteDialog({
             <label className="text-label-sm text-on-surface-variant" htmlFor="docente-sel">
               Agregar tutor
             </label>
-            <div className="flex gap-2 mt-1">
-              <select
+            <div className="mt-1">
+              <ChipMultiSelect
                 id="docente-sel"
                 className="input w-full"
-                value={paraAgregar}
                 disabled={guardando || disponibles.length === 0}
-                onChange={(e) => setParaAgregar(e.target.value)}
-              >
-                <option value="">
-                  {disponibles.length === 0 ? 'No hay más tutores disponibles' : 'Elegir…'}
-                </option>
-                {disponibles.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.nombre}
-                    {d.legajo ? ` · ${d.legajo}` : ''}
-                  </option>
-                ))}
-              </select>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={agregar}
-                disabled={guardando || !paraAgregar}
-              >
-                Agregar
-              </Button>
+                seleccionados={tutores.map((t) => ({ id: t.id, textoOpcion: t.nombre }))}
+                disponibles={disponibles.map((d) => ({
+                  id: d.id,
+                  textoOpcion: d.legajo ? `${d.nombre} · ${d.legajo}` : d.nombre,
+                  textoChip: d.nombre,
+                }))}
+                onAgregar={agregar}
+                onQuitar={quitar}
+                textoOpcionVacia={
+                  disponibles.length === 0 ? 'No hay más tutores disponibles' : 'Elegir…'
+                }
+              />
             </div>
             <p className="text-label-sm text-on-surface-variant mt-1.5">
               Las notas de esta comisión se devuelven al campus con la cuenta de cada

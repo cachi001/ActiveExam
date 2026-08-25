@@ -433,14 +433,27 @@ class ConfiguracionSistemaModel(Base):
     retencion_dias_default: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default="365"
     )
+    # Retencion de CAPTURAS de proctoring (screenshot_b64), en dias. Distinta de
+    # retencion_dias_default (retencion GENERAL de sesion, C-19): esta es
+    # especifica del dato mas pesado y sensible (rostro + pantalla del alumno en
+    # base64 dentro de Postgres). Default 180 (un cuatrimestre). Minimo 90 dias,
+    # validado en dominio (app.domain.retention.policy) y en el endpoint que
+    # edita esta config — nunca con un CHECK de base (mensaje entendible).
+    retencion_capturas_dias: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="180"
+    )
     # Puntero a la version de texto de consentimiento vigente (perfil).
     consent_version_vigente: Mapped[str] = mapped_column(
         String(64), nullable=False, server_default="v1"
     )
     # Toggles globales de la rendicion (C-69). Default true = funcion habilitada
     # (compat con el comportamiento previo al toggle).
+    # c-78 E-14 (migracion 0095): APAGADO por defecto. `ChatBox` pollea cada 3.5 s
+    # en la pantalla de cada alumno: con 100 rindiendo son ~28,6 req/s, el 36% del
+    # techo medido en el plan free de Render, gastado en una funcion que la mayoria
+    # de los examenes no usa. Se prende desde Configuracion cuando hace falta.
     chat_habilitado: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, server_default="true"
+        Boolean, nullable=False, server_default="false"
     )
     pausas_habilitadas: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="true"

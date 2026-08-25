@@ -308,11 +308,16 @@ async def test_crear_materia_201(client_admin):
     assert set(data.keys()) == {
         "id", "codigo", "nombre", "activa", "total_inscriptos", "total_examenes",
         "coordinadores",
+        # c-78: profesores a cargo de la materia (materia_profesor, N:M). Es el
+        # rol que arma examenes y banco; distinto del coordinador, que ademas
+        # emite el veredicto de integridad.
+        "profesores",
     }
     assert data["activa"] is True
     assert data["total_inscriptos"] == 0
     assert data["total_examenes"] == 0
     assert data["coordinadores"] == []
+    assert data["profesores"] == []
 
 
 @pytest.mark.asyncio

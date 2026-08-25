@@ -115,6 +115,31 @@ export const moodleApi = {
       { method: 'DELETE' },
     );
   },
+
+  /** Agrega un profesor a cargo de una materia (c-78, N:M).
+   *
+   * Es una asignación DISTINTA de la de coordinador: el profesor arma exámenes
+   * y banco de la materia, pero NO emite el veredicto de integridad. */
+  async agregarProfesorMateria(
+    materiaId: string,
+    profesorId: string,
+  ): Promise<{ profesores: { id: string; nombre: string }[] }> {
+    return await realFetch(`/exam-content/materias/${materiaId}/profesores`, {
+      method: 'POST',
+      body: JSON.stringify({ profesor_id: profesorId }),
+    });
+  },
+
+  /** Quita un profesor de una materia (c-78, N:M). */
+  async quitarProfesorMateria(
+    materiaId: string,
+    profesorId: string,
+  ): Promise<{ profesores: { id: string; nombre: string }[] }> {
+    return await realFetch(
+      `/exam-content/materias/${materiaId}/profesores/${profesorId}`,
+      { method: 'DELETE' },
+    );
+  },
 };
 
 /** Estado de MI cuenta del campus (el token NUNCA viaja). */

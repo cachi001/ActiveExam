@@ -211,12 +211,12 @@ async def _crear_examen(factory, *, docente_id: str | None = None) -> str:
         await s.flush()
         comision = ComisionModel(
             materia_id=materia.id, codigo=f"C-{sufijo}", nombre=f"Comisión {sufijo}",
-            codigo_matriculacion=f"K-{sufijo}", docente_id=docente_id,
+            codigo_matriculacion=f"K-{sufijo}",
         )
         s.add(comision)
         await s.flush()
-        # c-79: la pertenencia vive en comision_tutor (N:M), no en la
-        # columna docente_id — el fixture puebla ambas.
+        # c-78 (migración 0093): `comision.docente_id` se dropeó. La pertenencia
+        # vive SOLO en comision_tutor (N:M).
         if docente_id is not None:
             s.add(
                 ComisionTutorModel(comision_id=comision.id, tutor_id=docente_id)
@@ -314,6 +314,66 @@ async def test_archivado_true_muestra_solo_archivadas(app, factory):
     body = r.json()
     ids = [it["session_id"] for it in body["items"]]
     assert ids == [sid_archivada]
+
+
+# ---------------------------------------------------------------------------
+# c-78 D6 — `archivado` pasa a TRI-ESTADO. El valor que faltaba es 'todas': con
+# un bool en la query string, "ver el conjunto completo" era inexpresable, que es
+# justo lo que necesita quien busca un intento que alguien archivó.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_archivado_todas_devuelve_ambas_con_total_correcto(app, factory):
+    examen_id = await _crear_examen(factory)
+    sid_visible = await _crear_sesion(factory, examen_id, idnumber="TR-1", archivado=False)
+    sid_archivada = await _crear_sesion(factory, examen_id, idnumber="TR-2", archivado=True)
+
+    async with _admin_client(app) as c:
+        r = await c.get(f"/api/v1/exam-content/{examen_id}/resultados?archivado=todas")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    ids = {it["session_id"] for it in body["items"]}
+    assert ids == {sid_visible, sid_archivada}
+    assert body["total"] == 2, (
+        "el total debe corresponder al conjunto filtrado, no solo a la página"
+    )
+
+
+@pytest.mark.asyncio
+async def test_archivado_false_explicito_sigue_dando_solo_no_archivadas(app, factory):
+    """El default observable no cambia: un cliente viejo ve exactamente lo mismo."""
+    examen_id = await _crear_examen(factory)
+    sid_visible = await _crear_sesion(factory, examen_id, idnumber="TR-3", archivado=False)
+    await _crear_sesion(factory, examen_id, idnumber="TR-4", archivado=True)
+
+    async with _admin_client(app) as c:
+        r = await c.get(f"/api/v1/exam-content/{examen_id}/resultados?archivado=false")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert [it["session_id"] for it in body["items"]] == [sid_visible]
+    assert body["total"] == 1
+
+
+@pytest.mark.asyncio
+async def test_archivado_invalido_da_422_identificable(app, factory):
+    examen_id = await _crear_examen(factory)
+
+    async with _admin_client(app) as c:
+        r = await c.get(f"/api/v1/exam-content/{examen_id}/resultados?archivado=quizas")
+    assert r.status_code == 422, r.text
+    assert r.json()["detail"]["error"] == "archivado_invalido"
+
+
+def test_archivado_filtro_traduce_el_tri_estado_a_none():
+    """Función PURA: el mapeo del parámetro al filtro del servicio."""
+    from app.application.moodle.resultados_query import archivado_filtro
+
+    assert archivado_filtro("false") is False
+    assert archivado_filtro("true") is True
+    assert archivado_filtro("todas") is None
+    # Valor fuera del conjunto: cae al default seguro, nunca abre el listado.
+    assert archivado_filtro("cualquiera") is False
 
 
 @pytest.mark.asyncio

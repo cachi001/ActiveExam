@@ -50,6 +50,36 @@ class IntentosAgotadosError(EnforcementError):
 
 
 @dataclass
+class ExamenDadoDeBajaError(EnforcementError):
+    """El examen fue dado de baja del catalogo: ya no se puede rendir (c-78).
+
+    Es el BACKSTOP server-side de la baja logica. Sin esto, la baja solo sacaba
+    el examen de los LISTADOS: un alumno que ya tuviera la URL (link guardado,
+    pestana abierta, historial) podia seguir iniciando la rendicion de un examen
+    retirado, y esa sesion despues generaba nota y entraba a la cola de revision.
+    """
+
+    examen_contenido_id: str
+    mensaje: str
+
+
+@dataclass
+class ExamenEnBorradorError(EnforcementError):
+    """El examen todavia no se habilito (c-78 E-07).
+
+    El docente lo esta probando antes de soltarlo. Igual que la baja logica, es el
+    BACKSTOP server-side: sacarlo de los listados no alcanza, porque un alumno con
+    la URL guardada podria iniciar la rendicion igual.
+
+    NO aplica al staff: el punto del borrador es justamente que el docente pueda
+    rendirlo entero para ver que funciona.
+    """
+
+    examen_contenido_id: str
+    mensaje: str
+
+
+@dataclass
 class NoInscriptoError(EnforcementError):
     """El alumno no esta inscripto en la comision del examen (gate C-71)."""
 
@@ -170,14 +200,23 @@ async def verificar_enforcement(
     examen_contenido_id: str,
     alumno_idnumber: str,
     ahora: datetime,
+    es_prueba_de_staff: bool = False,
 ) -> None:
     """Valida ventana e intentos para el alumno contra el examen vinculado.
 
     Carga la config del examen (apertura/cierre/intentos_permitidos) y:
+      - Si el examen esta DADO DE BAJA (``eliminado_en``) -> ExamenDadoDeBajaError
+        (c-78: se chequea primero; un examen retirado no se rinde).
+      - Si el examen esta EN BORRADOR -> ExamenEnBorradorError (c-78 E-07).
       - Si ``apertura`` esta seteada y ``ahora < apertura`` -> FueraDeVentanaError.
       - Si ``cierre`` esta seteada y ``ahora > cierre``     -> FueraDeVentanaError.
       - Cuenta las sesiones FINALIZADAS del alumno para ese examen; si
         ``count >= intentos_permitidos`` -> IntentosAgotadosError.
+
+    ``es_prueba_de_staff`` (c-78 E-07): el docente probando su propio examen. Saltea
+    el borrador Y la ventana — el sentido del borrador es poder rendirlo ANTES de la
+    apertura, que es justo cuando la ventana lo bloquearia. NO saltea la baja logica
+    (un examen retirado no se rinde ni de prueba) ni el tope de intentos.
 
     Si el examen no existe (config None) NO aplica enforcement: la FK de la sesion
     resolvera el caso (o quedara sin vinculo). ``ahora`` debe ser timezone-aware en
@@ -189,26 +228,54 @@ async def verificar_enforcement(
                 ExamenContenidoModel.apertura,
                 ExamenContenidoModel.cierre,
                 ExamenContenidoModel.intentos_permitidos,
+                ExamenContenidoModel.eliminado_en,
+                ExamenContenidoModel.borrador,
             ).where(ExamenContenidoModel.id == examen_contenido_id)
         )
     ).one_or_none()
     if config is None:
         return
 
-    apertura, cierre, intentos_permitidos = config
+    apertura, cierre, intentos_permitidos, eliminado_en, borrador = config
 
-    if apertura is not None and ahora < apertura:
-        raise FueraDeVentanaError(
-            apertura=apertura,
-            cierre=cierre,
-            mensaje="El examen todavia no abrio. Aun no podes rendir.",
+    # c-78: PRIMERO que nada. Un examen dado de baja no se rinde, punto — antes
+    # que la ventana y antes que los intentos, porque no importa si esta abierto
+    # ni cuantos intentos le quedan: ese examen ya no esta en el catalogo.
+    if eliminado_en is not None:
+        raise ExamenDadoDeBajaError(
+            examen_contenido_id=examen_contenido_id,
+            mensaje=(
+                "Este examen ya no esta disponible. Si creias que tenias que "
+                "rendirlo, avisale a tu docente."
+            ),
         )
-    if cierre is not None and ahora > cierre:
-        raise FueraDeVentanaError(
-            apertura=apertura,
-            cierre=cierre,
-            mensaje="El examen ya cerro. La ventana de rendicion termino.",
+
+    # c-78 E-07: el examen todavia no se habilito. Backstop server-side, igual que
+    # la baja logica: sacarlo de los listados no alcanza contra una URL guardada.
+    if borrador and not es_prueba_de_staff:
+        raise ExamenEnBorradorError(
+            examen_contenido_id=examen_contenido_id,
+            mensaje=(
+                "Este examen todavia no esta disponible. Si creias que tenias que "
+                "rendirlo, avisale a tu docente."
+            ),
         )
+
+    # La prueba del staff corre ANTES de la apertura a proposito: es justo cuando
+    # tiene sentido probar el examen, y es cuando la ventana lo bloquearia.
+    if not es_prueba_de_staff:
+        if apertura is not None and ahora < apertura:
+            raise FueraDeVentanaError(
+                apertura=apertura,
+                cierre=cierre,
+                mensaje="El examen todavia no abrio. Aun no podes rendir.",
+            )
+        if cierre is not None and ahora > cierre:
+            raise FueraDeVentanaError(
+                apertura=apertura,
+                cierre=cierre,
+                mensaje="El examen ya cerro. La ventana de rendicion termino.",
+            )
 
     if intentos_permitidos is not None:
         rendidos = (

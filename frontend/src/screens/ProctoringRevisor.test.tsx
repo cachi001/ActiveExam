@@ -188,8 +188,10 @@ describe('ProctoringRevisor — stat cards de resumen (C-76 tarea 20.6)', () => 
     // STAT_META). Tampoco debe quedar ningún chip agregado de riesgo bajo/medio/
     // alto (el dueño pidió sacarlos — el desglose por fila en la tabla alcanza).
     const fuente = readFileSync(join(here, 'ProctoringRevisor.tsx'), 'utf-8');
-    expect(fuente).not.toMatch(/STAT_META\.discrepancias|statProps\('discrepancias'/);
-    expect(fuente).toMatch(/statProps\('enColaRevision'/);
+    expect(fuente).not.toMatch(/STAT_META\.discrepancias|statProps\(\s*'discrepancias'/);
+    // \s* tolera el salto de línea: la llamada quedó partida en varias líneas al
+    // sumarle argumentos, y eso no cambia qué métrica se usa.
+    expect(fuente).toMatch(/statProps\(\s*'enColaRevision'/);
     expect(fuente).not.toMatch(/Bajo \{agregados\.riesgo_bajo\}|Medio \{agregados\.riesgo_medio\}|Alto \{agregados\.riesgo_alto\}/);
   });
 });

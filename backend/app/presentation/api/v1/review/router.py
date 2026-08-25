@@ -2,7 +2,8 @@
 
 POST /api/v1/review/session/{session_id}/decide
   Body: { decision: 'aprobado' | 'anulado', motivo?: str, evidencia_ids?: [str] }
-  Roles: revisor | coordinador | admin_sistema | proctor (capacidad `revisar_sesion`)
+  Gate: capacidad `revisar_sesion` (quienes la tienen sale de CAPABILITY_ROLES —
+  c-76 elimino los roles 'revisor' y 'proctor', absorbidos por COORDINADOR)
 
 Persiste la decision TERMINAL, en un unico acto, en proctoring_session
 (columnas decision/decision_actor/decision_at/decision_motivo/decision_evidencia_ids).

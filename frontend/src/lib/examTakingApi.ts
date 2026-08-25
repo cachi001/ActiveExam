@@ -61,6 +61,12 @@ export interface ExamenRendicion {
    * null/ausente (backend viejo o sin sesión activa) → se cae a `creada_en`.
    */
   examen_iniciado_en?: string | null;
+  /**
+   * c-78 D10 (E-02): si el alumno ve el DETALLE de los eventos de proctoring
+   * mientras rinde. Lo decide el docente POR EXAMEN; default false.
+   * Ausente (backend viejo) → se trata como false, que es el default seguro.
+   */
+  mostrar_eventos_alumno?: boolean;
 }
 
 /**

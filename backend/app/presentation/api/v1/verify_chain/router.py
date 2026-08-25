@@ -127,7 +127,11 @@ async def verify_chain(
     session_factory = _get_session_factory(request)
     async with session_factory() as session:
         service = VerifyChainService(
-            event_repo=SqlEventMaterialRepository(session),
+            # c-78: descifra antes de re-hashear. Sin el cipher comparaba el hash
+            # del token Fernet contra el del claro y daba "cadena rota" siempre.
+            event_repo=SqlEventMaterialRepository(
+                session, cipher=getattr(request.app.state, "evidence_encryption", None)
+            ),
             auditor=SqlChainVerificationAuditor(session),
         )
         try:

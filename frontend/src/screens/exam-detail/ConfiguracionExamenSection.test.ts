@@ -45,6 +45,10 @@ describe('formToPatch', () => {
     const patch = formToPatch(form, true, form);
     expect(Object.keys(patch).sort()).toEqual([
       'limite_preguntas',
+      // c-78 D10: si el alumno ve sus eventos de proctoring mientras rinde es
+      // configuración de publicación, no de mecánica — se edita aunque el examen
+      // esté bloqueado por tener intentos rendidos.
+      'mostrar_eventos_alumno',
       'mostrar_nota',
       'politica_intentos',
       'revision_habilitada',

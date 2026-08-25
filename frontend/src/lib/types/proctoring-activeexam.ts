@@ -291,6 +291,9 @@ export interface Materia {
   // c-79 (N:M): coordinadores asignados a la materia. El coordinador dejó de
   // tener alcance global — queda acotado a SUS materias.
   coordinadores?: TutorInfo[];
+  // c-78 (N:M): profesores asignados a la materia. Arman los exámenes y el banco
+  // de la materia; NO emiten el veredicto de integridad (eso queda del coordinador).
+  profesores?: TutorInfo[];
 }
 
 /** Comisión: instancia de cursado de una Materia.

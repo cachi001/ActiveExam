@@ -23,6 +23,10 @@ export const configSistemaApi = {
     gaze_fixation_tolerance: number;
     umbral_cola_revision: number;
     retencion_dias_default: number;
+    // Retención de CAPTURAS (screenshot_b64) en días — distinta de
+    // retencion_dias_default (retención GENERAL de sesión, C-19). Opcional: el
+    // backend puede no enviarla aún en un despliegue viejo sin migrar.
+    retencion_capturas_dias?: number;
     consent_version_vigente: string;
     detectores_activos: string[];
     scoring_weights: Record<string, number>;
@@ -53,6 +57,9 @@ export const configSistemaApi = {
     umbral_cola_revision?: number;
     detectores_activos?: string[];
     retencion_dias_default?: number;
+    // Retención de CAPTURAS (dato más pesado y sensible: rostro + pantalla del
+    // alumno). El backend rechaza con 422 un valor menor a 90 días.
+    retencion_capturas_dias?: number;
     consent_version_vigente?: string;
     // C-69 admin-sync: habilitar/deshabilitar el chat proctor↔alumno y las pausas
     // solicitadas por el alumno desde la Configuración del sistema.
@@ -70,6 +77,7 @@ export const configSistemaApi = {
     gaze_fixation_tolerance: number;
     umbral_cola_revision: number;
     retencion_dias_default: number;
+    retencion_capturas_dias?: number;
     consent_version_vigente: string;
     detectores_activos: string[];
     scoring_weights: Record<string, number>;

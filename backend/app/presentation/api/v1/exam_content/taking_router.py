@@ -25,6 +25,11 @@ from app.application.exam_content.errors import (
 from app.application.exam_content.inscripcion_service import (
     AutoMatriculacionService,
 )
+from app.application.exam_content.sorteo_por_intento import (
+    MODO_SORTEO_POR_INTENTO,
+    PoolInsuficienteError,
+    resolver_preguntas_del_intento,
+)
 from app.application.exam_content.taking_service import LecturaExamenService
 from app.application.moodle.resultados_query import (
     listar_mis_notas,
@@ -39,8 +44,10 @@ from app.presentation.api.v1.auth.dependencies import (
     get_current_principal,
 )
 from app.presentation.api.v1.exam_content._shared import (
+    ESTADOS_CATALOGO_VALIDOS,
     _es_coordinador,
     _es_docente,
+    _es_profesor,
     _es_staff,
     _resumen_to_response,
 )
@@ -105,6 +112,7 @@ def create_exam_taking_router(
         page_size: int = 1000,
         materia_id: str | None = None,
         comision_id: str | None = None,
+        estado: str = "activo",
     ) -> ExamenesContenidoPaginadosResponse:
         """Lista paginada de exámenes de contenido (catálogo del alumno/admin).
 
@@ -113,12 +121,23 @@ def create_exam_taking_router(
         - q:        búsqueda serverside por título/materia/comisión (ILIKE, opcional).
         - page:     1-indexado (default 1).
         - page_size: default 1000 → sin params devuelve TODO (compat frontend).
+        - estado:   baja lógica (c-78 D1) — 'activo' (default) | 'inactivo' | 'todos'.
+                    Solo staff/docente pueden pedir algo distinto de 'activo': un
+                    alumno nunca ve un examen dado de baja.
         Filtrado y orden SIEMPRE en SQL. D3: es_correcta NUNCA incluida.
         """
         if session_factory is None:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Persistencia no inicializada.",
+            )
+        if estado not in ESTADOS_CATALOGO_VALIDOS:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "error": "estado_invalido",
+                    "mensaje": f"estado debe ser uno de {sorted(ESTADOS_CATALOGO_VALIDOS)}",
+                },
             )
 
         from app.infrastructure.persistence.repositories.exam_content import (
@@ -132,6 +151,16 @@ def create_exam_taking_router(
         # catálogo. El filtro es server-side por el username del principal.
         # C-73 §9: el tutor ve lo que DICTA (comision_tutor, N:M). c-79: el
         # coordinador ve las comisiones de SUS materias asignadas.
+        # Solo quien administra el catálogo puede pedir los dados de baja. Un
+        # alumno que mande estado=todos a mano sigue viendo solo los activos.
+        puede_ver_de_baja = (
+            _es_staff(principal)
+            or _es_docente(principal)
+            or _es_profesor(principal)
+            or _es_coordinador(principal)
+        )
+        estado_efectivo = estado if puede_ver_de_baja else "activo"
+
         async with session_factory() as session:
             repo = ExamenContenidoSqlRepository(session)
             if _es_staff(principal):
@@ -140,6 +169,12 @@ def create_exam_taking_router(
                 comision_ids = await ComisionSqlRepository(session).comision_ids_a_cargo(
                     principal.subject or ""
                 )
+            elif _es_profesor(principal):
+                # c-78: el profesor es rol de MATERIA — ve las comisiones de las
+                # materias que tiene asignadas (materia_profesor, N:M).
+                comision_ids = await ComisionSqlRepository(
+                    session
+                ).comision_ids_a_cargo_profesor(principal.subject or "")
             elif _es_coordinador(principal):
                 comision_ids = await ComisionSqlRepository(
                     session
@@ -155,6 +190,12 @@ def create_exam_taking_router(
                 comision_ids=comision_ids,
                 filtro_materia_id=materia_id if _es_staff(principal) else None,
                 filtro_comision_id=comision_id if _es_staff(principal) else None,
+                estado=estado_efectivo,
+                # c-78 E-07: el alumno no ve los exámenes sin habilitar. Se reusa
+                # `puede_ver_de_baja`, que ya distingue staff/docencia de alumno —
+                # quien puede ver un examen retirado también puede ver uno que
+                # todavía se está preparando.
+                incluir_borradores=puede_ver_de_baja,
             )
 
         return ExamenesContenidoPaginadosResponse(
@@ -370,6 +411,9 @@ def create_exam_taking_router(
                 session_id=session_id,
                 titular_idnumber=principal.username or "",
                 presign=presign,
+                # c-78: sin el cipher, el verify-chain del informe re-hashea el
+                # token cifrado y le informa al alumno que su evidencia está rota.
+                cipher=getattr(request.app.state, "evidence_encryption", None),
             )
             if informe is None:
                 # Minimización: no se revela si la sesión existe o no.
@@ -480,6 +524,10 @@ def create_exam_taking_router(
                 materias = await MateriaSqlRepository(session).materias_a_cargo(
                     principal.subject or ""
                 )
+            elif _es_profesor(principal):
+                materias = await MateriaSqlRepository(session).materias_a_cargo_profesor(
+                    principal.subject or ""
+                )
             elif _es_coordinador(principal):
                 materias = await MateriaSqlRepository(session).materias_a_cargo_coordinador(
                     principal.subject or ""
@@ -557,13 +605,24 @@ def create_exam_taking_router(
                 comisiones = await repo.listar_a_cargo_de_materia(
                     principal.subject or "", materia_id
                 )
-            elif _es_coordinador(principal):
+            elif _es_profesor(principal) or _es_coordinador(principal):
                 from app.infrastructure.persistence.repositories.exam_content import (
                     MateriaSqlRepository,
                 )
 
-                es_miembro = await MateriaSqlRepository(session).es_coordinador_de_materia(
-                    principal.subject or "", materia_id
+                materia_repo = MateriaSqlRepository(session)
+                es_miembro = (
+                    await materia_repo.es_profesor_de_materia(
+                        principal.subject or "", materia_id
+                    )
+                    if _es_profesor(principal)
+                    else False
+                ) or (
+                    await materia_repo.es_coordinador_de_materia(
+                        principal.subject or "", materia_id
+                    )
+                    if _es_coordinador(principal)
+                    else False
                 )
                 comisiones = await repo.listar_por_materia(materia_id) if es_miembro else []
             else:
@@ -616,10 +675,15 @@ def create_exam_taking_router(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Persistencia no inicializada.",
             )
-        if not (_es_staff(principal) or _es_docente(principal) or _es_coordinador(principal)):
+        if not (
+            _es_staff(principal)
+            or _es_docente(principal)
+            or _es_profesor(principal)
+            or _es_coordinador(principal)
+        ):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Requiere rol tutor/coordinador o de alcance institucional.",
+                detail="Requiere rol tutor/profesor/coordinador o de alcance institucional.",
             )
 
         from app.infrastructure.persistence.repositories.exam_content import (
@@ -632,6 +696,10 @@ def create_exam_taking_router(
                 filas = await repo.listar_todas_con_materia(None)
             elif _es_docente(principal):
                 filas = await repo.listar_todas_con_materia(principal.subject or "")
+            elif _es_profesor(principal):
+                filas = await repo.listar_todas_con_materia_profesor(
+                    principal.subject or ""
+                )
             else:
                 filas = await repo.listar_todas_con_materia_coordinador(
                     principal.subject or ""
@@ -808,6 +876,23 @@ def create_exam_taking_router(
             ],
         )
 
+    async def _sortea_por_intento(session, examen_id: str) -> bool:
+        """c-78 E-07: si este examen resuelve sus preguntas por intento."""
+        from sqlalchemy import select as _select
+
+        from app.infrastructure.persistence.models.exam_content import (
+            ExamenContenidoModel,
+        )
+
+        modo = (
+            await session.execute(
+                _select(ExamenContenidoModel.modo_preguntas).where(
+                    ExamenContenidoModel.id == examen_id
+                )
+            )
+        ).scalar_one_or_none()
+        return modo == MODO_SORTEO_POR_INTENTO
+
     @router.get(
         "/{examen_id}",
         response_model=ExamenRendicionResponse,
@@ -847,27 +932,11 @@ def create_exam_taking_router(
         # ya estaba seteado devuelve el original.
         examen_iniciado_en = None
         async with session_factory() as session:
-            repo = ExamenContenidoSqlRepository(session)
-            # Repos de contexto para el freeze de materia desactivada (C-72 §17).
-            service = LecturaExamenService(
-                repo,
-                comision_repo=ComisionSqlRepository(session),
-                materia_repo=MateriaSqlRepository(session),
-            )
-            try:
-                rendicion = await service.obtener_para_rendir(examen_id)
-            except MateriaInactivaError as exc:
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail={"error": "materia_inactiva", "mensaje": str(exc)},
-                ) from exc
-            except ComisionInactivaError as exc:
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail={"error": "comision_inactiva", "mensaje": str(exc)},
-                ) from exc
-
-            if rendicion is not None and principal.username:
+            # c-78 E-07: la sesión se busca ANTES de leer el examen, porque con
+            # sorteo por intento el set de preguntas depende de ella. El sorteo se
+            # resuelve una sola vez y queda persistido: recargar devuelve lo mismo.
+            sesion = None
+            if principal.username:
                 sesion = (
                     await session.execute(
                         select(ProctoringSessionModel)
@@ -881,11 +950,65 @@ def create_exam_taking_router(
                         .limit(1)
                     )
                 ).scalar_one_or_none()
-                if sesion is not None:
-                    if sesion.examen_iniciado_en is None:
-                        sesion.examen_iniciado_en = datetime.now(timezone.utc)
-                        await session.commit()
-                    examen_iniciado_en = sesion.examen_iniciado_en
+
+            pregunta_ids: list[str] | None = None
+            if sesion is not None:
+                try:
+                    resueltas = await resolver_preguntas_del_intento(
+                        db=session,
+                        session_id=sesion.id,
+                        examen_contenido_id=examen_id,
+                    )
+                except PoolInsuficienteError as exc:
+                    # No debería pasar: el pool se valida al armar el examen. Antes
+                    # que servir un examen incompleto y calificarlo como si estuviera
+                    # entero, se corta acá.
+                    await session.rollback()
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail={
+                            "error": "pool_insuficiente",
+                            "mensaje": (
+                                "Este examen no tiene suficientes preguntas para "
+                                "armarse. Avisale a tu docente."
+                            ),
+                        },
+                    ) from exc
+                # Solo se pasa el set cuando el examen sortea por intento; en modo
+                # 'fijo' el helper devuelve las `seleccionada` y el repositorio
+                # tiene que seguir filtrando por la marca (compat).
+                if await _sortea_por_intento(session, examen_id):
+                    pregunta_ids = resueltas
+
+            repo = ExamenContenidoSqlRepository(session)
+            # Repos de contexto para el freeze de materia desactivada (C-72 §17).
+            service = LecturaExamenService(
+                repo,
+                comision_repo=ComisionSqlRepository(session),
+                materia_repo=MateriaSqlRepository(session),
+            )
+            try:
+                rendicion = await service.obtener_para_rendir(examen_id, pregunta_ids)
+            except MateriaInactivaError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={"error": "materia_inactiva", "mensaje": str(exc)},
+                ) from exc
+            except ComisionInactivaError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={"error": "comision_inactiva", "mensaje": str(exc)},
+                ) from exc
+
+            if rendicion is not None and sesion is not None:
+                # Ancla del timer: se estampa recién acá, cuando ya sabemos que el
+                # examen existe y se pudo armar.
+                if sesion.examen_iniciado_en is None:
+                    sesion.examen_iniciado_en = datetime.now(timezone.utc)
+                examen_iniciado_en = sesion.examen_iniciado_en
+                await session.commit()
+            elif sesion is not None:
+                await session.rollback()
 
         if rendicion is None:
             raise HTTPException(
@@ -913,6 +1036,9 @@ def create_exam_taking_router(
             nota_maxima=rendicion.nota_maxima,
             nota_aprobacion=rendicion.nota_aprobacion,
             examen_iniciado_en=examen_iniciado_en,
+            # c-78 D10: default false — el alumno rinde sin ver el detalle de los
+            # eventos, salvo que el docente lo active en ESE examen.
+            mostrar_eventos_alumno=getattr(rendicion, "mostrar_eventos_alumno", False),
             preguntas=[
                 PreguntaRendicionResponse(
                     id=p.id,

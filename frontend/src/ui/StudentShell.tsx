@@ -8,6 +8,7 @@ import { useApp } from '../lib/store';
 import { api } from '../lib/api';
 import { ConfirmModal } from './ConfirmModal';
 import { WizardStepper, type WizardPaso } from '../screens/enrollment/EnrollmentStepLayout';
+import { usernameVisible } from '../lib/identidadVisible';
 import {
   TOPBAR_H, SIDEBAR_EXPANDED, SIDEBAR_COLLAPSED,
   useIsDesktop, useSidebarCollapsed, LogoMark, SidebarSection,
@@ -47,7 +48,9 @@ function StudentUserMenu({ onLogoutClick }: { onLogoutClick: () => void }) {
 
   if (!principal) return null;
   const inicial = principal.nombre.charAt(0).toUpperCase();
-  const secundario = principal.email ?? principal.username ?? 'Estudiante';
+  // c-78: si no hay email, `usernameVisible` evita caer en el sintético
+  // `lti:1:7` — que en la barra superior parece un error del sistema.
+  const secundario = principal.email ?? usernameVisible(principal.username) ?? 'Estudiante';
 
   return (
     <div ref={wrapperRef} className="relative">

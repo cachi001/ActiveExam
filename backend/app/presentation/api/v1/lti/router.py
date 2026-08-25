@@ -33,6 +33,13 @@ from app.application.lti.jit_provisioning import (
     identidad_es_nueva,
     provisionar_o_recuperar_usuario,
 )
+from app.application.lti.dynamic_registration import (
+    ClienteHttp,
+    ClienteHttpx,
+    RegistroDinamicoError,
+    construir_registro_tool,
+    registrar_deployment_dinamico,
+)
 from app.application.lti.launch_validation import (
     JwksFetcher,
     LaunchInvalidoError,
@@ -95,6 +102,9 @@ def create_lti_router(
     frontend_url: str = "",
     # Permite inyectar un fetcher de JWKS en tests sin HTTP a Moodle.
     jwks_fetcher_override: JwksFetcher | None = None,
+    # Idem para el registro dinámico (c-78): sin esto habría que hablar con un
+    # Moodle real para poder testear el handshake.
+    registro_http_cliente: ClienteHttp | None = None,
 ) -> APIRouter:
     """Factory del router LTI.
 
@@ -111,6 +121,8 @@ def create_lti_router(
         frontend_url: URL base del frontend al que redirigir tras el launch
             exitoso. El token va como query param ``access_token``.
         jwks_fetcher_override: fetcher alternativo de JWKS (para tests sin HTTP).
+        registro_http_cliente: cliente HTTP del registro dinámico (para tests sin
+            un Moodle real). None = ``ClienteHttpx`` (httpx de verdad).
     """
     router = APIRouter()
 
@@ -140,30 +152,96 @@ def create_lti_router(
             await session.commit()
         return {"keys": [k.clave_publica_jwk for k in activas]}
 
+    def _registro_tool(request: Request) -> dict:
+        """Configuración del Tool. Una sola construcción para las dos vistas: la
+        que se publica y la que se POSTea al Platform (no pueden divergir)."""
+        return construir_registro_tool(
+            client_name="ActiveExam",
+            initiate_login_uri=_login_uri(request),
+            launch_uri=_launch_uri(request),
+            jwks_uri=_jwks_uri(request),
+            domain=request.url.hostname or "",
+        )
+
     @router.get(
         "/dynamic-registration",
-        summary="Configuración del Tool para el registro dinámico (IMS)",
+        summary="Configuración del Tool / registro dinámico LTI 1.3 (IMS)",
     )
-    async def lti_dynamic_registration(request: Request):
-        """Config que Moodle consume al registrar ActiveExam como herramienta LTI 1.3."""
-        base = _base_url(request)
-        host = request.url.hostname or ""
+    async def lti_dynamic_registration(
+        request: Request,
+        openid_configuration: str | None = None,
+        registration_token: str | None = None,
+    ):
+        """Registro dinámico LTI 1.3 (c-78 E-12, D15).
+
+        Dos modos, según cómo lo llamen:
+
+        - **Sin `openid_configuration`** (lo de siempre): devuelve la configuración
+          del Tool como JSON, para cargarla a mano en un Moodle que no soporte
+          registro dinámico o para inspeccionarla.
+        - **Con `openid_configuration`** (lo que manda Moodle al registrar): ejecuta
+          el handshake completo — lee la config del Platform, le POSTea la del Tool
+          con el `registration_token`, y persiste la fila de `lti_deployment_confiable`
+          con el `client_id` y el `deployment_id` REALES.
+
+        La fila nace con `activo=false` (D15): esto automatiza el tipeo, no la
+        aprobación. Un admin la habilita desde la pantalla de deployments; hasta
+        entonces los launches de ese Moodle se siguen rechazando.
+        """
+        if not openid_configuration:
+            return _registro_tool(request)
+
+        factory = _factory(request)
+        try:
+            async with factory() as session:
+                resultado = await registrar_deployment_dinamico(
+                    session,
+                    openid_configuration_url=openid_configuration,
+                    registration_token=registration_token,
+                    registro_tool=_registro_tool(request),
+                    cliente=registro_http_cliente or ClienteHttpx(),
+                )
+                await session.commit()
+        except RegistroDinamicoError as exc:
+            # Código estable, sin PII ni datos del Platform: el detalle real ya
+            # quedó en la excepción encadenada del log.
+            logger.warning("lti_registro_dinamico_fallido: %s", exc)
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"error": "lti_registro_dinamico_fallido", "motivo": str(exc)},
+            ) from exc
+
+        logger.info(
+            "lti_registro_dinamico_ok iss=%s client_id=%s ya_existia=%s activo=%s",
+            resultado.iss,
+            resultado.client_id,
+            resultado.ya_existia,
+            resultado.activo,
+        )
         return {
-            "application_type": "web",
-            "response_types": ["id_token"],
-            "grant_types": ["implicit", "client_credentials"],
-            "initiate_login_uri": _login_uri(request),
-            "redirect_uris": [_launch_uri(request)],
-            "client_name": "ActiveExam",
-            "jwks_uri": _jwks_uri(request),
-            "token_endpoint_auth_method": "private_key_jwt",
-            "scope": "openid",
-            "https://purl.imsglobal.org/spec/lti-tool-configuration": {
-                "domain": host,
-                "target_link_uri": _launch_uri(request),
-                "claims": ["sub", "iss", "name", "email"],
-            },
+            "id": resultado.deployment_id_fila,
+            "iss": resultado.iss,
+            "client_id": resultado.client_id,
+            "deployment_id": resultado.deployment_id,
+            "ya_existia": resultado.ya_existia,
+            "activo": resultado.activo,
+            "mensaje": (
+                "El registro quedó guardado pero INACTIVO. Un administrador de "
+                "ActiveExam tiene que habilitarlo antes de que los alumnos puedan "
+                "entrar desde este Moodle."
+            ),
         }
+
+    # Moodle abre la URL de registro con GET (iframe) y algunos Platforms la
+    # invocan con POST. Se registran los dos verbos sobre el mismo handler para no
+    # depender de cuál elija la versión del campus.
+    router.add_api_route(
+        "/dynamic-registration",
+        lti_dynamic_registration,
+        methods=["POST"],
+        summary="Completa el registro dinámico y persiste el deployment (inactivo)",
+        include_in_schema=False,
+    )
 
     # -- Sección 3: login OIDC (third-party initiated login) --------------------
 

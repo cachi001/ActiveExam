@@ -20,6 +20,10 @@ import { useNavigate, useRouteParam } from '../lib/router';
 import { api } from '../lib/api';
 import type { UsuarioAdmin, InscripcionResumen } from '../lib/types';
 import { getRolLabel } from '../lib/constants/roles';
+import {
+  USUARIO_SIN_COMPLETAR_DETALLE,
+  usernameAdmin,
+} from '../lib/identidadVisible';
 
 // ---------------------------------------------------------------------------
 // Tipos locales de sección
@@ -231,9 +235,27 @@ export default function DetalleUsuario() {
                 <div className="flex-1 min-w-0 divide-y divide-outline-variant/30">
                   <DataRow label="Nombre completo" value={nombreDisplay} />
                   <DataRow label="Email" value={u.email} />
-                  <DataRow label="Usuario" value={
-                    <span className="font-mono text-[13px]">{u.username}</span>
-                  } />
+                  <DataRow label="Usuario" value={(() => {
+                    // c-78: nunca la clave interna `lti:1:7` — se dice el estado real.
+                    const ident = usernameAdmin(u.username);
+                    return (
+                      <span
+                        className={
+                          ident.pendiente
+                            ? 'italic text-[13px] text-warning'
+                            : 'font-mono text-[13px]'
+                        }
+                        title={ident.pendiente ? USUARIO_SIN_COMPLETAR_DETALLE : undefined}
+                      >
+                        {ident.texto}
+                        {ident.pendiente && (
+                          <span className="block not-italic text-[12px] text-on-surface-variant mt-0.5">
+                            {USUARIO_SIN_COMPLETAR_DETALLE}
+                          </span>
+                        )}
+                      </span>
+                    );
+                  })()} />
                   <DataRow label="Rol" value={
                     u.roles.length > 0
                       ? <div className="flex flex-wrap gap-1">{u.roles.map((r) => <RolBadge key={r} rol={r} />)}</div>

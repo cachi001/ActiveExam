@@ -104,6 +104,14 @@ class ExamenContenidoResumenResponse(BaseModel):
     cierre: datetime | None = None
     tiempo_limite_min: int | None = None
     intentos_permitidos: int = 1
+    # c-78 D1: null = activo; con timestamp = dado de baja.
+    eliminado_en: datetime | None = None
+    # c-78 E-07: el examen todavía no se habilitó. Al alumno no le llega (queda
+    # fuera de su listado); el staff lo ve marcado para poder probarlo y habilitarlo.
+    borrador: bool = False
+    # c-78 E-07: 'fijo' | 'sorteo_por_intento'. La pantalla lo usa para decir que
+    # cada alumno rinde preguntas distintas.
+    modo_preguntas: str = "fijo"
 
 
 class ExamenesContenidoPaginadosResponse(BaseModel):
@@ -191,6 +199,12 @@ class ExamenRendicionResponse(BaseModel):
     # creación de la sesión (que puede caer en el consentimiento anticipado). NULL si
     # el alumno no tiene sesión activa para este examen → el front cae a `creada_en`.
     examen_iniciado_en: datetime | None = None
+    # c-78 D10 (E-02): si el alumno ve el DETALLE de los eventos de proctoring
+    # mientras rinde. Default false. El backend lo decide por examen; el cliente
+    # solo lo obedece (es un sensor no confiable, pero acá no hay nada que
+    # proteger: ocultarlo o no es una decisión de producto, no de seguridad —
+    # los eventos se registran igual).
+    mostrar_eventos_alumno: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -351,6 +365,18 @@ class CrearDesdebancoRequest(BaseModel):
     titulo: str = Field(min_length=1, max_length=200)
     materia_id: str
     comision_id: str | None = None
+    # c-78 E-06: crear el mismo examen para varias comisiones de la materia. Se
+    # sortea UNA vez y ese set se copia a N exámenes independientes (D12), en una
+    # sola transacción. Excluyente con `comision_id`, que es la forma de una sola.
+    comision_ids: list[str] | None = None
+    # c-78 E-07: cada alumno recibe preguntas distintas, sorteadas al arrancar su
+    # intento. En vez de copiar solo las N sorteadas, el examen se lleva el POOL
+    # entero de cada tramo y guarda la regla del sorteo. False = comportamiento de
+    # siempre (se sortea una vez al armar y todos rinden lo mismo).
+    sorteo_por_intento: bool = False
+    # c-78 E-07: nace en borrador, invisible para el alumno, para poder probarlo
+    # entero antes de habilitarlo.
+    borrador: bool = False
     sorteo: list[SorteoCategoriaItem] = Field(min_length=1)
     limite_preguntas: int | None = Field(default=None, ge=1)
     # Escala de calificación: configurable por examen (migración 0061). Default
@@ -374,13 +400,183 @@ class CrearDesdebancoRequest(BaseModel):
             )
         return self
 
+    @model_validator(mode="after")
+    def validar_destino_de_comision(self) -> "CrearDesdebancoRequest":
+        """`comision_id` y `comision_ids` son dos formas de decir lo mismo.
 
-class CrearDesdebancoResponse(BaseModel):
+        Aceptar las dos juntas dejaría sin definir a qué comisión va el examen, y
+        cualquier criterio de desempate sería una sorpresa para quien lo mande.
+        """
+        if self.comision_id is not None and self.comision_ids is not None:
+            raise ValueError(
+                "Mandá `comision_id` (una comisión) o `comision_ids` (varias), no las dos."
+            )
+        if self.comision_ids is not None:
+            if not self.comision_ids:
+                raise ValueError("`comision_ids` no puede venir vacía.")
+            if len(set(self.comision_ids)) != len(self.comision_ids):
+                raise ValueError(
+                    "`comision_ids` trae comisiones repetidas: cada comisión "
+                    "recibe una sola réplica."
+                )
+        return self
+
+
+class DuplicarExamenRequest(BaseModel):
+    """c-78 E-06 (14.2): copia un examen con sus preguntas.
+
+    Los dos campos son opcionales: sin título la copia se llama «… (copia)», y sin
+    comisión queda en la misma que el original.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    titulo: str | None = Field(default=None, min_length=1, max_length=200)
+    comision_id: str | None = None
+
+
+class DuplicarExamenResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     examen_id: str
     titulo: str
+    comision_id: str | None = None
     total_preguntas: int
+
+
+class OpcionPreviewResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    texto: str
+    orden: int
+    # D3 dice que `es_correcta` NUNCA viaja al ALUMNO. Acá el destinatario es el
+    # docente mirando SU banco (gate `gestionar_banco`), y el sentido de la vista
+    # previa es justamente chequear que la correcta esté bien marcada.
+    es_correcta: bool
+
+
+class BlankPreviewResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    orden: int
+    tipo: str
+    texto_antes: str | None = None
+    texto_despues: str | None = None
+    opciones: list[OpcionPreviewResponse] = []
+
+
+class PreguntaPreviewResponse(BaseModel):
+    """Una pregunta del banco tal como la va a ver el alumno (c-78 E-08, 15.3)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    enunciado: str
+    tipo: str
+    opciones: list[OpcionPreviewResponse] = []
+    blanks: list[BlankPreviewResponse] = []
+
+
+class TramoSorteoResponse(BaseModel):
+    """Un tramo del sorteo, con el estado de su pool (c-78 E-07/E-08)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    categoria_id: str | None = None
+    categoria_nombre: str | None = None
+    incluir_subcategorias: bool = True
+    tipos: list[str] | None = None
+    cantidad: int
+    # Cuántas hay copiadas en el examen para este tramo (15.4: el desglose).
+    en_el_pool: int = 0
+    # Cuántas hay HOY en el banco que calificarían para este tramo. Si es mayor que
+    # `en_el_pool`, alguien cargó preguntas después de armar el examen.
+    en_el_banco: int = 0
+
+
+class SorteoDelExamenResponse(BaseModel):
+    """Cómo resuelve sus preguntas un examen (c-78 E-07)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    modo_preguntas: str = "fijo"
+    tramos: list[TramoSorteoResponse] = []
+    # Suma de `cantidad`: lo que rinde cada alumno.
+    largo_del_examen: int = 0
+    # Total de preguntas copiadas en el examen.
+    pool_total: int = 0
+    # Preguntas del banco que calificarían y todavía no están en el pool. > 0 = el
+    # examen está desactualizado respecto del banco.
+    nuevas_en_el_banco: int = 0
+    # False una vez que alguien rindió: cambiar el pool ahí haría que dos alumnos
+    # sorteen de conjuntos distintos, y dejaría de ser el mismo examen.
+    pool_editable: bool = True
+    total_intentos: int = 0
+
+
+class AgregarComisionExamenRequest(BaseModel):
+    """c-78 E-06 (14.4): sumar una comisión a las que rinden este examen."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    comision_id: str
+
+
+class ComisionDelExamenItem(BaseModel):
+    """Una comisión que rinde el examen, con la réplica que le corresponde.
+
+    Bajo el modelo replicado (D12) cada comisión tiene su propio examen; este item
+    es el par (comisión, examen de esa comisión).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    examen_id: str
+    comision_id: str
+    comision_codigo: str
+    comision_nombre: str
+    titulo: str
+    # True si esa réplica está dada de baja. Solo puede pasar por una baja directa
+    # del examen: quitar la comisión desde acá además la saca del lote.
+    dado_de_baja: bool = False
+    # Intentos ya rendidos en esa comisión. Con al menos uno, la comisión no se
+    # puede quitar: la UI usa esto para explicar por qué antes de intentarlo.
+    total_intentos: int = 0
+    # El examen desde el que se pidió el listado, para que la UI lo marque.
+    es_el_actual: bool = False
+
+
+class ComisionesDelExamenResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[ComisionDelExamenItem] = []
+
+
+class ExamenReplicaItem(BaseModel):
+    """Un examen creado por la operación, con la comisión a la que quedó atado."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    examen_id: str
+    comision_id: str | None = None
+    titulo: str
+
+
+class CrearDesdebancoResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # `examen_id` y `titulo` describen el PRIMER examen creado. Se conservan
+    # porque el front los usa para navegar al examen recién creado; con una sola
+    # comisión (el caso de siempre) son el examen y nada más.
+    examen_id: str
+    titulo: str
+    total_preguntas: int
+    # c-78 E-06: todos los exámenes creados, en el orden en que se pidieron las
+    # comisiones. Con una sola comisión trae un solo item.
+    examenes: list[ExamenReplicaItem] = []
+    # Marca compartida por las réplicas de esta operación. NULL cuando se creó un
+    # solo examen: un examen suelto no pertenece a ningún lote.
+    lote_replica_id: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -430,6 +626,9 @@ class MateriaResponse(BaseModel):
     # Lista vacía = sin coordinador asignado. El coordinador dejó de tener alcance
     # global — queda acotado a SUS materias, igual que el tutor a sus comisiones.
     coordinadores: list["TutorInfo"] = []
+    # c-78: profesores asignados a la materia (N:M, tabla materia_profesor). Es
+    # quien arma los exámenes y el banco de la materia, sin emitir veredicto.
+    profesores: list["TutorInfo"] = []
 
 
 class ComisionResponse(BaseModel):
@@ -543,6 +742,18 @@ class ComisionTutorRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     tutor_id: str
+
+
+class MateriaProfesorRequest(BaseModel):
+    """Body de POST/DELETE /materias/{id}/profesores (c-78, N:M).
+
+    Es una membresía DISTINTA de la de coordinador a propósito: el coordinador
+    emite el veredicto de integridad y el profesor no (D11). Asignar un profesor
+    no puede darle, de rebote, el poder de anular notas."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    profesor_id: str
 
 
 class MateriaCoordinadorRequest(BaseModel):
@@ -659,6 +870,36 @@ class AlumnoElegibilidadResponse(BaseModel):
     biometria_vigente: bool
     puede_rendir: bool
     razon: str | None = None
+    # c-78 §13.4: cuándo se inscribió (ISO). Columna del export de inscriptos.
+    inscripto_en: datetime | None = None
+
+
+class MarcarNotaCargadaResponse(BaseModel):
+    """Resultado de marcar a mano que la nota se cargó en el campus (c-78 D14)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    session_id: str
+    #: Siempre 'manual' — distinguible de 'enviado' (confirmado por el campus).
+    estado_moodle: str
+    marcada_manual_por: str | None = None
+    marcada_manual_en: datetime | None = None
+
+
+class AlumnosComisionPaginadosResponse(BaseModel):
+    """Inscriptos de una comisión, paginados (c-78 §13.2).
+
+    Con 40 alumnos por comisión el listado completo era ilegible. Forma estándar
+    de paginación serverside del proyecto: { items, total, page, page_size },
+    donde `total` es el conjunto entero, no el de la página.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[AlumnoElegibilidadResponse]
+    total: int
+    page: int
+    page_size: int
 
 
 # ---------------------------------------------------------------------------
@@ -709,9 +950,15 @@ class ExamenConfigResponse(BaseModel):
     # informarlo, pero ya no es editable.
     mezclar_preguntas: bool
     limite_preguntas: int | None = None
-    # Visibilidad de resultados (C-69, migración 0036).
-    mostrar_nota: str = "al_cerrar"
+    # Visibilidad de resultados (C-69, migración 0036; c-78 D9 suma 'nunca').
+    mostrar_nota: str = "nunca"
     revision_habilitada: bool = False
+    # c-78 D9: quién publicó las notas y cuándo. NULL = todavía ocultas. Permite
+    # que el detalle diga "publicadas el {fecha} por {persona}" sin ambigüedad.
+    notas_publicadas_en: datetime | None = None
+    notas_publicadas_por: str | None = None
+    # c-78 D10: el alumno ve sus eventos de proctoring mientras rinde. Default no.
+    mostrar_eventos_alumno: bool = False
     politica_intentos: PoliticaIntentos = PoliticaIntentos.MAS_ALTA
     # True si el examen ya tiene >= 1 intento finalizado: la config de
     # mecánica/nota queda CONGELADA (el front deshabilita esos campos).
@@ -745,9 +992,14 @@ class ExamenConfigPatchRequest(BaseModel):
     # Tope de preguntas del examen. None en el body = no se toca; para sacar el
     # tope se manda 0 (se normaliza a NULL en la capa de aplicacion).
     limite_preguntas: int | None = Field(default=None, ge=0)
-    # Visibilidad de resultados (C-69). mostrar_nota: 'al_cerrar' | 'inmediata'.
-    mostrar_nota: Literal["al_cerrar", "inmediata"] | None = None
+    # Visibilidad de resultados (C-69 + c-78 D9): 'nunca' | 'al_cerrar' | 'inmediata'.
+    # La transición solo va HACIA ADELANTE; el rechazo del retroceso lo hace la
+    # capa de aplicación (`transicion_visibilidad_permitida`), porque necesita el
+    # valor ANTERIOR — algo que un Literal de schema no puede saber.
+    mostrar_nota: Literal["nunca", "al_cerrar", "inmediata"] | None = None
     revision_habilitada: bool | None = None
+    # c-78 D10 (E-02): mostrar u ocultar los eventos de proctoring al alumno.
+    mostrar_eventos_alumno: bool | None = None
     politica_intentos: PoliticaIntentos | None = None
 
     @model_validator(mode="after")
@@ -786,7 +1038,8 @@ class ResultadoAlumnoResponse(BaseModel):
     alumno_email: str | None = None
     alumno_nombre: str | None = None
     nota: float | None = None
-    estado_moodle: str  # pendiente | enviado | fallido | sin_token
+    # pendiente | enviado | fallido | sin_token | manual (c-78 D14)
+    estado_moodle: str
     # Motivo por el que la nota queda RETENIDA y no se sincroniza (gate D15):
     # en_riesgo | anulada. None = nada la retiene.
     retenido_por: str | None = None
@@ -796,6 +1049,10 @@ class ResultadoAlumnoResponse(BaseModel):
     estado_entrega: str
     # Soft-hide administrativo del panel de resultados (no disciplinario).
     archivado: bool = False
+    # c-78 D14: ORIGEN del estado cuando es 'manual'. La UI lo usa para decir
+    # "marcada por {persona} el {fecha}" en vez de "confirmada por el campus".
+    marcada_manual_por: str | None = None
+    marcada_manual_en: datetime | None = None
 
 
 class ResultadosExamenPaginadosResponse(BaseModel):

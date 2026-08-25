@@ -3,7 +3,16 @@
  *
  * Funciones puras que pegan al backend real para que el alumno navegue
  * materia → comisión → examen importado. Inyectan apiBase + token para tests.
- * Degradación silenciosa: ante error de red/servidor devuelven [] (no rompen el flujo).
+ * Degradación silenciosa por default: ante error de red/servidor devuelven []
+ * (no rompen el flujo del alumno navegando el catálogo).
+ *
+ * c-78 E-13 / D16: ese default es EXACTAMENTE lo que hacía que la pantalla de
+ * Materias dijera "No hay materias registradas" ante un 401 — una afirmación
+ * falsa sobre los datos de alguien, que invita a recrear lo que ya existe. Por
+ * eso cada función acepta `strict`: con `true` PROPAGA el fallo (con su `status`)
+ * para que la pantalla pueda distinguir "cargó y está vacío" de "no pudo cargar".
+ * Mismo precedente que `listarExamenesContenidoFn`.
+ *
  * D3: la respuesta de exámenes NUNCA incluye es_correcta ni opciones.
  */
 
@@ -17,12 +26,30 @@ function buildHeaders(token: string | undefined): HeadersInit {
   };
 }
 
-async function getJson<T>(url: string, token: string | undefined): Promise<T[]> {
+/** Error de carga del catálogo, con el status HTTP para poder traducirlo. */
+export class CatalogoCargaError extends Error {
+  readonly status?: number;
+  constructor(mensaje: string, status?: number) {
+    super(mensaje);
+    this.name = 'CatalogoCargaError';
+    this.status = status;
+  }
+}
+
+async function getJson<T>(
+  url: string,
+  token: string | undefined,
+  strict = false,
+): Promise<T[]> {
   try {
     const res = await fetchAutenticado(url, { method: 'GET', headers: buildHeaders(token) });
-    if (!res.ok) return [];
+    if (!res.ok) {
+      if (strict) throw new CatalogoCargaError(`HTTP ${res.status}`, res.status);
+      return [];
+    }
     return (await res.json()) as T[];
-  } catch {
+  } catch (e) {
+    if (strict) throw e;
     return [];
   }
 }
@@ -31,8 +58,9 @@ async function getJson<T>(url: string, token: string | undefined): Promise<T[]> 
 export function listarMateriasFn(
   apiBase: string,
   token: string | undefined,
+  strict = false,
 ): Promise<Materia[]> {
-  return getJson<Materia>(`${apiBase}/exam-content/materias`, token);
+  return getJson<Materia>(`${apiBase}/exam-content/materias`, token, strict);
 }
 
 /** GET /exam-content/materias/{materiaId}/comisiones → comisiones de la materia. */
@@ -40,10 +68,12 @@ export function listarComisionesFn(
   apiBase: string,
   token: string | undefined,
   materiaId: string,
+  strict = false,
 ): Promise<Comision[]> {
   return getJson<Comision>(
     `${apiBase}/exam-content/materias/${encodeURIComponent(materiaId)}/comisiones`,
     token,
+    strict,
   );
 }
 

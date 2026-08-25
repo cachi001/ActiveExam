@@ -144,12 +144,11 @@ async def _crear_materia_comision_examen(factory, docente_id: str | None):
             codigo=f"C-{sufijo}",
             nombre=f"Comisión {sufijo}",
             codigo_matriculacion=f"K-{sufijo}",
-            docente_id=docente_id,
         )
         s.add(comision)
         await s.flush()
-        # c-79: la pertenencia vive en comision_tutor (N:M), no en la
-        # columna docente_id — el fixture puebla ambas.
+        # c-78 (migración 0093): `comision.docente_id` se dropeó. La pertenencia
+        # vive SOLO en comision_tutor (N:M).
         if docente_id is not None:
             s.add(
                 ComisionTutorModel(comision_id=comision.id, tutor_id=docente_id)

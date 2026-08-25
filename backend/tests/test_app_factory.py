@@ -61,8 +61,26 @@ def test_readiness_healthcheck_responds(client: TestClient) -> None:
     assert "checks" in body
 
 
-def test_metrics_endpoint_exposes_prometheus(client: TestClient) -> None:
-    resp = client.get("/metrics")
+def test_metrics_endpoint_exposes_prometheus(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # `/metrics` dejo de ser publico (c-78 16.3): exige la credencial de scrape.
+    monkeypatch.setenv("METRICS_TOKEN", "token-de-scrape-de-prueba")
+    resp = client.get(
+        "/metrics", headers={"Authorization": "Bearer token-de-scrape-de-prueba"}
+    )
     assert resp.status_code == 200
     # Formato de exposicion Prometheus (texto plano con HELP/TYPE).
     assert "# HELP" in resp.text or "# TYPE" in resp.text
+
+
+def test_metrics_endpoint_no_expone_sin_credencial(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """El stack full comparte la politica de `metrics_auth`: sin `METRICS_TOKEN`
+    el endpoint no existe, y con token exige Bearer."""
+    monkeypatch.delenv("METRICS_TOKEN", raising=False)
+    assert client.get("/metrics").status_code == 404
+
+    monkeypatch.setenv("METRICS_TOKEN", "token-de-scrape-de-prueba")
+    assert client.get("/metrics").status_code == 401

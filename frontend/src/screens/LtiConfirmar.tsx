@@ -43,6 +43,7 @@ type Estado = 'confirmando' | 'enviando' | 'error';
 export default function LtiConfirmar() {
   const loginWithTokens = useAuth((s) => s.loginWithTokens);
   const markPasswordChanged = useAuth((s) => s.markPasswordChanged);
+  const refrescarAccessToken = useAuth((s) => s.refrescarAccessToken);
   const navigate = useNavigate();
   const [estado, setEstado] = useState<Estado>('confirmando');
   const [error, setError] = useState<string | null>(null);
@@ -111,10 +112,13 @@ export default function LtiConfirmar() {
       // 2) Con la sesión recién emitida, fija usuario+contraseña elegidos —
       // mismo endpoint que ya usa el primer login LTI (valida formato y
       // colisión con otra cuenta).
-      await cuentaApi.cambiarContrasena({
+      const resp = await cuentaApi.cambiarContrasena({
         contrasena_nueva: password,
         nuevo_username: usernameLimpio,
       });
+      // c-78 E-13: el token que se acaba de emitir lleva el username sintético
+      // del campus. Se reemplaza por el que el backend re-emitió con el elegido.
+      if (resp.access_token) refrescarAccessToken(resp.access_token);
       markPasswordChanged();
 
       window.history.replaceState({}, '', '/alumno');

@@ -34,6 +34,7 @@ CAMPOS_EDITABLES: frozenset[str] = frozenset(
         "umbral_cola_revision",
         "detectores_activos",
         "retencion_dias_default",
+        "retencion_capturas_dias",
         "consent_version_vigente",
         "chat_habilitado",
         "pausas_habilitadas",

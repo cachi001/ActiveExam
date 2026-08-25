@@ -15,7 +15,10 @@ import { fetchAutenticado } from './fetchAutenticado';
 // Las etiquetas legibles de estos 4 valores tienen fuente única en el backend:
 // app/application/stats/labels.py::ETIQUETA_ESTADO_MOODLE (con test de cobertura
 // en tests/test_stats_labels.py que falla si el backend agrega/quita un estado).
-export type EstadoMoodle = 'pendiente' | 'enviado' | 'fallido' | 'sin_token';
+// c-78 D14: 'manual' = una persona dice que cargó la nota en el campus. NO es
+// 'enviado' (que significa "el campus confirmó"): la diferencia importa justo
+// cuando hay un reclamo por una nota que no aparece en la libreta.
+export type EstadoMoodle = 'pendiente' | 'enviado' | 'fallido' | 'sin_token' | 'manual';
 
 // Estado de la ENTREGA (C-76 tarea 14), DERIVADO server-side (nunca persistido) —
 // ORTOGONAL a `estado_moodle` (estado de sync con el campus). Espeja el enum
@@ -40,6 +43,13 @@ export interface ResultadoExamen {
   estado_entrega?: EstadoEntrega;
   /** Soft-hide administrativo del panel de resultados (no disciplinario). */
   archivado?: boolean;
+  /**
+   * c-78 D14: quién marcó a mano que la nota se cargó en el campus, y cuándo.
+   * null = nunca se marcó a mano. Sirve para distinguir en pantalla
+   * "confirmado por el campus" de "marcado por {persona} el {fecha}".
+   */
+  marcada_manual_por?: string | null;
+  marcada_manual_en?: string | null;
 }
 
 // Motivos de retención que SÍ corresponden a una revisión humana pendiente o
@@ -97,6 +107,9 @@ function authHeaders(token: string | undefined): Record<string, string> {
   };
 }
 
+/** Valores del filtro tri-estado de archivado (c-78 D6). */
+export type ArchivadoFiltro = 'false' | 'true' | 'todas';
+
 /**
  * Lista los resultados de un examen con paginación y filtros serverside.
  * Lanza en error HTTP para que el caller muestre el error en pantalla.
@@ -109,7 +122,12 @@ export async function listarResultadosFn(
     q?: string;
     estado?: string;
     estado_entrega?: string;
-    archivado?: boolean;
+    /**
+     * c-78 D6: tri-estado — 'false' (default del backend, solo NO archivadas) |
+     * 'true' (solo archivadas) | 'todas' (ambas). Era un booleano, con lo cual
+     * "incluir archivadas" era inexpresable: `true` traía SOLO las archivadas.
+     */
+    archivado?: ArchivadoFiltro;
     fecha_desde?: string;
     fecha_hasta?: string;
     page?: number;
@@ -120,7 +138,7 @@ export async function listarResultadosFn(
   if (params.q) qs.set('q', params.q);
   if (params.estado) qs.set('estado', params.estado);
   if (params.estado_entrega) qs.set('estado_entrega', params.estado_entrega);
-  if (params.archivado !== undefined) qs.set('archivado', String(params.archivado));
+  if (params.archivado !== undefined) qs.set('archivado', params.archivado);
   if (params.fecha_desde) qs.set('fecha_desde', params.fecha_desde);
   if (params.fecha_hasta) qs.set('fecha_hasta', params.fecha_hasta);
   if (params.page !== undefined) qs.set('page', String(params.page));
@@ -230,4 +248,35 @@ export async function getExamenHeaderFn(
     materia_id: (data['materia_id'] as string | null) ?? null,
     materia_nombre: (data['materia_nombre'] as string | null) ?? null,
   };
+}
+
+
+/**
+ * Marca a mano que la nota ya se cargó en el campus (c-78 §13.6, D14).
+ *
+ * Existe porque hay campus SIN API: la nota se carga a mano y en ActiveExam
+ * quedaba 'pendiente' para siempre. El estado resultante es `manual`, NO
+ * `enviado`: una afirmación humana y una confirmación del sistema no valen lo
+ * mismo, y el backend rechaza (409) marcar a mano una nota ya confirmada.
+ */
+export async function marcarNotaCargadaFn(
+  apiBase: string,
+  token: string | undefined,
+  examenId: string,
+  sessionId: string,
+): Promise<{ session_id: string; estado_moodle: string; marcada_manual_por: string | null }> {
+  const res = await fetchAutenticado(
+    `${apiBase}/exam-content/${encodeURIComponent(examenId)}/resultados/${encodeURIComponent(
+      sessionId,
+    )}/marcar-cargada`,
+    { method: 'PATCH', headers: authHeaders(token) },
+  );
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    const detalle = (body as { detail?: { mensaje?: string } })?.detail?.mensaje;
+    const err = new Error(detalle ?? `No se pudo marcar la nota (HTTP ${res.status}).`);
+    (err as Error & { status?: number }).status = res.status;
+    throw err;
+  }
+  return res.json();
 }

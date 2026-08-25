@@ -155,22 +155,34 @@ export function buildSinkEventHandler(deps: SinkEventDeps): SinkEventCallback {
         payload: rawEvent.payload,
         screenshot_base64: screenshot,
         face_count_cliente: faceCountCliente,
-      }).then((resp) => {
-        // Incrementar contador de eventos enviados y actualizar badge en el log
-        setEventosEnviados((c) => c + 1);
-        setLogEntries((prev) =>
-          prev.map((e) =>
-            e.id === seqId
-              ? {
-                  ...e,
-                  networkBadge: resp !== null ? 'ok' : 'net-error',
-                  verdictServer: resp?.veredicto_reinferencia ?? null,
-                  faceCountServer: resp?.face_count_servidor ?? null,
-                }
-              : e,
-          ),
-        );
-      });
+      })
+        // c-78: `enviarEventoProctoring` ya no devuelve null ante un fallo, lo
+        // PROPAGA (antes se lo tragaba y el buffer del examen se vaciaba solo).
+        // Acá eso se traduce a la misma badge de siempre, pero desde el rechazo.
+        .then(
+          (resp) => ({
+            badge: 'ok' as const,
+            verdict: resp.veredicto_reinferencia ?? null,
+            faceCount: resp.face_count_servidor ?? null,
+          }),
+          () => ({ badge: 'net-error' as const, verdict: null, faceCount: null }),
+        )
+        .then(({ badge, verdict, faceCount }) => {
+          // Incrementar contador de eventos enviados y actualizar badge en el log
+          setEventosEnviados((c) => c + 1);
+          setLogEntries((prev) =>
+            prev.map((e) =>
+              e.id === seqId
+                ? {
+                    ...e,
+                    networkBadge: badge,
+                    verdictServer: verdict,
+                    faceCountServer: faceCount,
+                  }
+                : e,
+            ),
+          );
+        });
     })();
   };
 }

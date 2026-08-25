@@ -101,19 +101,22 @@ describe('ResultadosExamenPanel — combinación de filtros (C-76 §14.8)', () =
     const params = listarResultadosFn.mock.calls.at(-1)![3];
     expect(params).toMatchObject({
       estado_entrega: 'en_revision',
-      archivado: true,
+      // c-78 F-03 (§5.3): el toggle manda 'todas' (archivadas Y no archivadas),
+      // no 'true' — pedir SOLO las archivadas no es lo que dice el checkbox.
+      archivado: 'todas',
       fecha_desde: '2026-01-01T00:00:00',
       fecha_hasta: '2026-01-31T23:59:59',
     });
   });
 
-  it('por defecto (sin tocar el toggle) pide archivado=false', async () => {
+  it("por defecto (sin tocar el toggle) pide archivado='false'", async () => {
     listarResultadosFn.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 5 });
     renderPanel();
     await waitFor(() => expect(listarResultadosFn.mock.calls.length).toBeGreaterThan(0));
 
     const params = listarResultadosFn.mock.calls.at(-1)![3];
-    expect(params.archivado).toBe(false);
+    // c-78 F-03: el filtro es tri-estado ('false' | 'true' | 'todas'), no booleano.
+    expect(params.archivado).toBe('false');
   });
 });
 

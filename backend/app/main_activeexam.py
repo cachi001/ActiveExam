@@ -203,6 +203,10 @@ def create_activeexam_app() -> FastAPI:
         app.state.refresh_store = None   # No-op: auth/router.py crea DbStore por request.
         app.state.profile_photo_storage = profile_photo_storage
         app.state.embedding_encryption = embedding_encryption
+        # c-78: verify-chain y el informe de devolución tienen que DESCIFRAR la
+        # captura antes de re-hashearla. Sin esto comparaban el hash del cifrado
+        # contra el hash del claro y daban "cadena rota" en todos los eventos.
+        app.state.evidence_encryption = evidence_encryption
         # El router de review es global (no se construye por factory), asi que toma
         # el write-back del state: lo necesita para el hook c-18 — anular por fraude
         # debe escribir el 0 en la libreta de Moodle. None = Moodle sin configurar.
@@ -220,6 +224,28 @@ def create_activeexam_app() -> FastAPI:
         # comentario arriba). Se expone tambien en el state por si otro modulo
         # (worker de re-verificacion, admin) lo necesita mas adelante.
         app.state.worm_storage = _worm_storage
+
+        # c-78 §10.2: la allowlist LTI es la raiz de confianza del flujo. Si queda
+        # SIN ninguna fila activa (tipico despues de recrear la base), ningun launch
+        # entra y hoy la unica senal es un alumno que no puede rendir. Se avisa al
+        # arranque, fuerte y temprano. Best-effort: nunca impide levantar la app.
+        try:
+            from app.application.lti.dynamic_registration import hay_deployment_activo
+
+            async with session_factory() as _sesion_salud:
+                if not await hay_deployment_activo(_sesion_salud):
+                    logging.getLogger("lti").warning(
+                        "ALLOWLIST LTI VACIA: no hay ningun deployment ACTIVO en "
+                        "lti_deployment_confiable. Todo launch desde Moodle va a "
+                        "responder 403 'lti_iss_no_confiable'. Registra la herramienta "
+                        "desde Moodle (registro dinamico) y habilitala en "
+                        "Administracion > Integracion LTI."
+                    )
+        except Exception:  # noqa: BLE001 — un chequeo de salud no tumba el arranque
+            logging.getLogger("lti").debug(
+                "No se pudo verificar la allowlist LTI al arranque.", exc_info=True
+            )
+
         yield
         await engine.dispose()
 

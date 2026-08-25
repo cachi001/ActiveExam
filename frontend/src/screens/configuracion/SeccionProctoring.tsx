@@ -17,6 +17,10 @@ import DetectoresSelector from '../admin/components/DetectoresSelector';
 import { api } from '../../lib/api';
 import { resetEffectiveConfigCache } from '../../config/effectiveConfigCache';
 import { UMBRAL_REVISION_MIN as UMBRAL_MIN, UMBRAL_REVISION_MAX as UMBRAL_MAX } from '../../config/umbralRevision';
+import {
+  RETENCION_CAPTURAS_DIAS_MINIMO,
+  RETENCION_CAPTURAS_DIAS_DEFAULT,
+} from '../../config/retencionCapturas';
 import type { TipoEvento } from '../../lib/types';
 
 const DETECTORES_DEFAULT: TipoEvento[] = [
@@ -33,6 +37,10 @@ interface Estado {
   pausaMaxMin: number;
   // C-76 bloque 4: cantidad máxima de pausas (aprobada+finalizada) por sesión.
   pausasMaxPorSesion: number;
+  // Retención de CAPTURAS de proctoring (screenshot_b64), en días. Distinta de
+  // la retención GENERAL de sesión (C-19, quitada de esta UI en c-68): esta es
+  // específica del dato más pesado y sensible (rostro + pantalla del alumno).
+  retencionCapturasDias: number;
 }
 
 function estadosIguales(a: Estado, b: Estado): boolean {
@@ -41,6 +49,7 @@ function estadosIguales(a: Estado, b: Estado): boolean {
     a.pausasHabilitadas === b.pausasHabilitadas &&
     a.pausaMaxMin === b.pausaMaxMin &&
     a.pausasMaxPorSesion === b.pausasMaxPorSesion &&
+    a.retencionCapturasDias === b.retencionCapturasDias &&
     a.detectores.length === b.detectores.length &&
     a.detectores.every((d) => b.detectores.includes(d));
 }
@@ -52,6 +61,7 @@ const ESTADO_DEFAULT: Estado = {
   pausasHabilitadas: false,
   pausaMaxMin: 10,
   pausasMaxPorSesion: 2,
+  retencionCapturasDias: RETENCION_CAPTURAS_DIAS_DEFAULT,
 };
 
 export default function SeccionProctoring() {
@@ -73,6 +83,7 @@ export default function SeccionProctoring() {
           pausasHabilitadas: cfg.pausas_habilitadas ?? false,
           pausaMaxMin: cfg.pausa_max_min ?? 10,
           pausasMaxPorSesion: cfg.pausas_max_por_sesion ?? 2,
+          retencionCapturasDias: cfg.retencion_capturas_dias ?? RETENCION_CAPTURAS_DIAS_DEFAULT,
         };
         setEstado(cargado);
         setInicial(cargado);
@@ -83,10 +94,15 @@ export default function SeccionProctoring() {
   }, []);
 
   const dirty = !estadosIguales(estado, inicial);
+  // Piso de 90 días (decisión del dueño): las capturas son evidencia de
+  // proctoring, bajarlo arriesga borrar evidencia necesaria. El backend es
+  // quien manda (422 si se lo salteara), esto es solo feedback inmediato.
+  const retencionCapturasInvalida = estado.retencionCapturasDias < RETENCION_CAPTURAS_DIAS_MINIMO;
 
   const cancelar = useCallback(() => setEstado(inicial), [inicial]);
 
   async function guardar() {
+    if (retencionCapturasInvalida) return;
     setGuardando(true);
     try {
       await api.editarConfigSistema({
@@ -96,6 +112,7 @@ export default function SeccionProctoring() {
         pausas_habilitadas: estado.pausasHabilitadas,
         pausa_max_min: estado.pausaMaxMin,
         pausas_max_por_sesion: estado.pausasMaxPorSesion,
+        retencion_capturas_dias: estado.retencionCapturasDias,
       });
       // Invalida el cache de config efectiva para que el examen y el harness
       // carguen la nueva config en la próxima sesión (task 4.5).
@@ -266,6 +283,57 @@ export default function SeccionProctoring() {
         </div>
       </div>
 
+      {/* Retención de capturas: dato más pesado (screenshot en base64 en
+          Postgres) y más sensible (rostro + pantalla del alumno, Ley 25.326).
+          Fila propia, no un toggle: purgar la imagen es irreversible y merece
+          su propia explicación en lenguaje llano. */}
+      <div className="py-lg space-y-md min-w-0">
+        <SectionTitle sub="Cuántos días se conserva la IMAGEN de cada captura antes de poder purgarla">
+          Retención de capturas
+        </SectionTitle>
+        <div className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl border border-outline-variant/60 bg-surface-container-low/50">
+          <div className="min-w-0">
+            <p className="text-label-md font-semibold text-on-surface">Días de retención</p>
+            <p className="text-[11px] text-on-surface-variant leading-snug mt-0.5">
+              Al purgar, se borra la <strong>imagen</strong> de las capturas más viejas que este
+              plazo. El evento y su huella (hash) se conservan siempre — solo desaparece la foto.
+              Mínimo {RETENCION_CAPTURAS_DIAS_MINIMO} días: las capturas son evidencia de
+              proctoring y bajar el piso arriesga borrar evidencia antes de que un reclamo pueda
+              resolverse.
+            </p>
+          </div>
+          <div className="flex flex-col items-end gap-1 shrink-0">
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min={RETENCION_CAPTURAS_DIAS_MINIMO}
+                inputMode="numeric"
+                aria-label="Días de retención de capturas"
+                aria-invalid={retencionCapturasInvalida}
+                disabled={guardando}
+                value={estado.retencionCapturasDias}
+                onChange={(e) => setEstado((p) => ({
+                  ...p,
+                  retencionCapturasDias: Number(e.target.value),
+                }))}
+                className={`w-24 text-[14px] px-3 py-2 rounded-lg border bg-white focus:outline-none ${
+                  retencionCapturasInvalida
+                    ? 'border-error focus:border-error'
+                    : 'border-outline-variant focus:border-surface-500'
+                }`}
+              />
+              <span className="text-label-sm text-on-surface-variant">días</span>
+            </div>
+            {retencionCapturasInvalida && (
+              <p className="text-[11px] text-error text-right max-w-[220px]">
+                No puede ser menor a {RETENCION_CAPTURAS_DIAS_MINIMO} días: es el piso legal para
+                conservar evidencia de proctoring.
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+
       {/* C: Footer dirty-aware */}
       {dirty && (
         <div className="flex items-center justify-between gap-sm pt-lg">
@@ -277,7 +345,12 @@ export default function SeccionProctoring() {
             <Button variant="outline" icon="undo" onClick={cancelar} disabled={guardando}>
               Cancelar
             </Button>
-            <Button variant="primary" icon="save" onClick={guardar} disabled={guardando}>
+            <Button
+              variant="primary"
+              icon="save"
+              onClick={guardar}
+              disabled={guardando || retencionCapturasInvalida}
+            >
               {guardando ? 'Guardando…' : 'Guardar parámetros'}
             </Button>
           </div>

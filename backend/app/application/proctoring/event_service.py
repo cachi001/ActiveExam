@@ -29,7 +29,12 @@ if TYPE_CHECKING:
     from app.infrastructure.storage.worm import WormStoragePort
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.application.proctoring.integridad import sha256_hex
+from app.application.proctoring.captura_almacenada import separar_data_url
+from app.application.proctoring.integridad import (
+    CUSTODIA_DISCREPANCIA,
+    sha256_hex,
+    verificar_custodia_cliente,
+)
 from app.application.proctoring.reinferencia import ReinferenciaPort
 from app.domain.auth.authorization import principal_es_dueno_de_sesion
 from app.domain.auth.identity import AuthenticatedPrincipal
@@ -56,11 +61,7 @@ async def ingestar_evento(
     face_count_cliente: int | None = None,
     cipher: "EvidenceCipher | None" = None,
     worm_storage: "WormStoragePort | None" = None,
-    # C-64 D2: screenshot_sha256_cliente se acepta en el schema IngestEventoIn pero
-    # NO se persiste aquí porque ProctoringEventModel no tiene esa columna.
-    # El campo no genera 422 (el schema lo acepta); la comparación cliente vs servidor
-    # queda pendiente de cuando se agregue la columna con migración.
-    # screenshot_sha256_cliente: str | None = None  # descomentado cuando se agregue columna
+    screenshot_sha256_cliente: str | None = None,
 ) -> ProctoringEventModel:
     """Ingesta un evento de deteccion con re-inferencia e integridad SHA-256.
 
@@ -111,15 +112,41 @@ async def ingestar_evento(
     # identifica el contenido original; se calcula antes de cifrar).
     screenshot_sha256 = sha256_hex(screenshot_base64)
 
+    # 2b. Primera capa de la cadena de custodia (regla dura #6): re-hashear lo que
+    # mandó el cliente y contrastarlo con lo que el cliente AFIRMA. Hasta c-78 el
+    # campo se aceptaba en el schema y se descartaba, así que esta comparación no
+    # existía. L2.5: una discrepancia NO rechaza el evento — se asienta como señal
+    # para el revisor humano (regla dura #5).
+    custodia_cliente = verificar_custodia_cliente(
+        screenshot_base64, screenshot_sha256_cliente
+    )
+    if custodia_cliente == CUSTODIA_DISCREPANCIA:
+        # Dato sensible (Ley 25.326): se loguean los HASHES, nunca la imagen.
+        logger.warning(
+            "custodia: el hash del cliente no corresponde a la imagen recibida "
+            "(session_id=%s, tipo=%s, cliente=%s). El evento se persiste igual; "
+            "queda como señal para el revisor humano.",
+            session_id,
+            tipo,
+            screenshot_sha256_cliente,
+        )
+
     # 3. Re-inferencia server-side (D8): NO importamos mediapipe aqui — usamos el puerto.
     # Corre sobre el plaintext en memoria (nunca se persiste en claro si hay cipher).
     resultado = reinferencia.evaluar(screenshot_base64, face_count_cliente)
 
-    # 4. Cifrado at-rest de la evidencia sensible (Ley 25.326, regla #7). Si hay
-    # cipher, se persiste el ciphertext; sin cipher (tests/legacy) va en claro.
-    screenshot_a_guardar = (
-        cipher.encrypt(screenshot_base64) if cipher is not None else screenshot_base64
-    )
+    # 4. Cifrado at-rest de la evidencia sensible (Ley 25.326, regla #7).
+    #
+    # c-78 (16.4): se guarda en BINARIO, no como base64. Medido con pg_column_size,
+    # la misma captura pasa de 151.224 a 85.065 bytes (44% menos) — era doble
+    # expansion base64 (el data URL, y encima el token Fernet que tambien es base64).
+    # `screenshot_b64` queda SOLO para leer el historico; las filas nuevas no la usan.
+    #
+    # Ningun hash cambia: el prefijo se guarda tal cual, asi que el string se
+    # reconstruye byte a byte y `screenshot_sha256` sigue verificando.
+    screenshot_prefijo, screenshot_binario = separar_data_url(screenshot_base64)
+    if cipher is not None and screenshot_binario is not None:
+        screenshot_binario = cipher.encrypt_bytes(screenshot_binario)
 
     # 5. Deposito WORM ADICIONAL (c-77): NUNCA reemplaza Postgres, que sigue siendo
     # la fuente de verdad/red de seguridad. Con worm_storage=None (Render hoy, sin
@@ -163,8 +190,11 @@ async def ingestar_evento(
         severidad=severidad,
         ts_cliente=ts_cliente,
         payload=payload,
-        screenshot_b64=screenshot_a_guardar,
+        screenshot_bin=screenshot_binario,
+        screenshot_prefijo=screenshot_prefijo,
         screenshot_sha256=screenshot_sha256,
+        screenshot_sha256_cliente=screenshot_sha256_cliente,
+        custodia_cliente=custodia_cliente,
         face_count_cliente=face_count_cliente,
         face_count_servidor=resultado.face_count_servidor,
         veredicto_reinferencia=resultado.veredicto,
