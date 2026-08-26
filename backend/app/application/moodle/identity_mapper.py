@@ -36,6 +36,10 @@ class MoodleIdentityMapper:
         # token: usar la URL institucional con el token del docente dejaba la URL
         # vacia y el envio moria sin decir por que.
         base_url: str | None = None,
+        # c-78: en este campus no hay legajo. El userid de Moodle llega en el
+        # launch LTI y es el identificador fuerte; el username es el del campus.
+        moodle_userid: int | str | None = None,
+        username: str | None = None,
     ) -> int:
         """Devuelve el userid de Moodle. Lanza IdentityResolutionError si no puede.
 
@@ -71,6 +75,8 @@ class MoodleIdentityMapper:
                     email=email,
                     ws_token=ws_token,
                     base_url=base_url,
+                    moodle_userid=moodle_userid,
+                    username=username,
                 )
             except MoodleGradeWriteError as exc:
                 raise IdentityResolutionError(

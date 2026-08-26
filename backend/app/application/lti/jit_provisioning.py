@@ -245,6 +245,11 @@ async def provisionar_o_recuperar_usuario(
             # No se persiste el roster completo — solo el contexto del launch.
             "lti_iss": claims.get("iss"),
             "lti_deployment_id": deployment_id,
+            # c-78: el `sub` del launch ES el userid de Moodle, y es el dato mas
+            # fuerte para devolverle la nota (clave primaria del otro lado).
+            # Antes se tiraba, y el write-back terminaba buscando por un legajo
+            # que en este campus nadie tiene cargado.
+            "moodle_userid": claims.get("sub"),
         },
     )
     # SAVEPOINT: usuario.email es UNIQUE (fix de la vulnerabilidad de login por

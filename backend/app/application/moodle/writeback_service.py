@@ -291,6 +291,39 @@ class MoodleWritebackService:
 
         return None, primer_docente, primer_visible, primer_motivo, None
 
+    async def _moodle_userid_de(self, db: AsyncSession, session_id: str) -> str | None:
+        """El userid de Moodle del alumno de esta sesion, si entro por LTI.
+
+        Moodle lo manda en cada launch (claim `sub`) y el provisioning lo guarda
+        en `attrs_federados` (c-78). Es el identificador mas fuerte para
+        devolverle la nota: clave primaria del otro lado, exacta y estable.
+
+        None si el alumno no entro por LTI (alta manual) o si es una cuenta
+        anterior a que se empezara a guardar: ahi se resuelve por username/email.
+        """
+        from sqlalchemy import select as _select
+
+        from app.infrastructure.persistence.models.proctoring import (
+            ProctoringSessionModel,
+        )
+        from app.infrastructure.persistence.models.transactional import UsuarioModel
+
+        fila = (
+            await db.execute(
+                _select(UsuarioModel.attrs_federados)
+                .join(
+                    ProctoringSessionModel,
+                    ProctoringSessionModel.alumno_idnumber == UsuarioModel.username,
+                )
+                .where(ProctoringSessionModel.id == session_id)
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if not fila:
+            return None
+        valor = fila.get("moodle_userid")
+        return str(valor) if valor is not None else None
+
     async def _nota_maxima_del_examen(
         self, db: AsyncSession, session_id: str
     ) -> float | None:
@@ -441,6 +474,8 @@ class MoodleWritebackService:
                 courseid=estado.moodle_courseid,
                 ws_token=token_docente,
                 base_url=base_url_docente,
+                moodle_userid=await self._moodle_userid_de(db, session_id),
+                username=alumno_idnumber or None,
             )
         except (IdentityResolutionError, Exception) as exc:
             await self._registrar_fallo(

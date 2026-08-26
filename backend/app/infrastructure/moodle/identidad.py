@@ -115,6 +115,8 @@ class IdentidadMixin:
         email: str,
         ws_token: str | None = None,
         base_url: str | None = None,
+        moodle_userid: int | str | None = None,
+        username: str | None = None,
     ) -> int | None:
         """Resuelve el userid del alumno entre los MATRICULADOS del curso.
 
@@ -152,6 +154,26 @@ class IdentidadMixin:
         )
 
         usuarios = body if isinstance(body, list) else []
+
+        # c-78: en este campus los alumnos NO tienen legajo cargado (verificado
+        # contra el campus real: `idnumber: None`). El identificador fuerte es el
+        # userid de Moodle, que llega en cada launch LTI. `idnumber` se sigue
+        # aceptando por si algun campus si lo usa, pero ya no es el unico camino.
+        if moodle_userid:
+            coincidencias = [
+                u for u in usuarios if str(u.get("id") or "") == str(moodle_userid)
+            ]
+            if coincidencias:
+                return int(coincidencias[0]["id"])
+
+        if username:
+            objetivo_u = username.strip().lower()
+            coincidencias = [
+                u for u in usuarios
+                if (u.get("username") or "").strip().lower() == objetivo_u
+            ]
+            if len(coincidencias) == 1:
+                return int(coincidencias[0]["id"])
 
         if idnumber:
             coincidencias = [
