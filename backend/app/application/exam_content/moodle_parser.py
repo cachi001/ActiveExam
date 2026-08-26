@@ -76,6 +76,10 @@ class OpcionClozeDato:
     es_correcta: bool
     peso: int
     orden: int
+    # Devolucion de Moodle para esta opcion (lo que va despues de `#`). Se guarda
+    # aparte y NUNCA se concatena al texto: es material de repaso para despues de
+    # corregir, y mezclado con la opcion le regala la respuesta al alumno (c-78).
+    feedback: str = ""
 
 
 @dataclass
@@ -88,14 +92,38 @@ class BlankData:
     opciones: list[OpcionClozeDato] = field(default_factory=list)
 
 
-def _parse_opcion_cloze(raw: str) -> tuple[str, int]:
+def _separar_feedback(texto: str) -> tuple[str, str]:
+    """Parte una opcion cloze en (respuesta, feedback).
+
+    En el formato de Moodle, `#` separa la respuesta de su devolucion:
+    `=int(texto)#Convierte a entero y lanza ValueError si no puede.`
+
+    Sin esta separacion el feedback viajaba DENTRO del texto de la opcion y el
+    alumno lo veia en pantalla — y como el feedback explica por que cada opcion
+    esta bien o mal, el examen se resolvia leyendo (c-78, encontrado rindiendo
+    un parcial real de punta a punta).
+
+    Se corta en el PRIMER `#`: el feedback puede tener `#` adentro y eso es
+    parte del feedback, no otra separacion.
+    """
+    if "#" not in texto:
+        return texto, ""
+    respuesta, _, feedback = texto.partition("#")
+    return respuesta.strip(), feedback.strip()
+
+
+def _parse_opcion_cloze(raw: str) -> tuple[str, int, str]:
+    """Devuelve (texto, peso, feedback) de una opcion cruda del cloze."""
     texto = raw.strip()
     if texto.startswith("="):
-        return html.unescape(texto[1:].strip()), 100
+        limpio, feedback = _separar_feedback(texto[1:].strip())
+        return html.unescape(limpio), 100, html.unescape(feedback)
     m = _RE_OPT_PESO.match(texto)
     if m:
-        return html.unescape(m.group(2).strip()), int(m.group(1))
-    return html.unescape(texto), 0
+        limpio, feedback = _separar_feedback(m.group(2).strip())
+        return html.unescape(limpio), int(m.group(1)), html.unescape(feedback)
+    limpio, feedback = _separar_feedback(texto)
+    return html.unescape(limpio), 0, html.unescape(feedback)
 
 
 def parse_cloze_blanks(texto_cloze: str) -> list[BlankData]:
@@ -113,13 +141,14 @@ def parse_cloze_blanks(texto_cloze: str) -> list[BlankData]:
 
         opciones: list[OpcionClozeDato] = []
         for j, opt_raw in enumerate(m.group(3).split("~")):
-            texto_opt, peso = _parse_opcion_cloze(opt_raw)
+            texto_opt, peso, feedback = _parse_opcion_cloze(opt_raw)
             if texto_opt:
                 opciones.append(OpcionClozeDato(
                     texto=texto_opt,
                     es_correcta=peso >= 100,
                     peso=peso,
                     orden=j,
+                    feedback=feedback,
                 ))
 
         inicio_anterior = matches[i - 1].end() if i > 0 else 0
