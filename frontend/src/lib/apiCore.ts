@@ -26,9 +26,17 @@ const delay = (ms = 350) => new Promise((r) => setTimeout(r, ms));
 export const BIOMETRIC_VALIDITY_MONTHS: number =
   Number(import.meta.env.VITE_BIOMETRIC_VALIDITY_MONTHS) || 24;
 
-/** Feature flag para el escaneo de DNI (opcional). Default ACTIVO; se desactiva con VITE_ENABLE_DNI_SCAN=0. */
+/**
+ * Feature flag del escaneo de DNI. **APAGADO por defecto** (decisión del dueño,
+ * 26/8/2026): el paso es opcional, no bloquea el perfil completo y no aporta
+ * nada hoy, así que mostrarlo solo agrega un paso más al alumno.
+ *
+ * Venía al revés (prendido salvo `VITE_ENABLE_DNI_SCAN=0`). Se invierte el
+ * default en vez de borrar el código: la funcionalidad queda entera y se
+ * reactiva con `VITE_ENABLE_DNI_SCAN=1` cuando haga falta, sin revertir nada.
+ */
 export const ENABLE_DNI_SCAN: boolean =
-  import.meta.env.VITE_ENABLE_DNI_SCAN !== '0';
+  import.meta.env.VITE_ENABLE_DNI_SCAN === '1';
 
 /** Versión del motor de visión (para metadatos de la referencia). */
 const VISION_ENGINE_VERSION = 'mediapipe-face-mesh-v1';

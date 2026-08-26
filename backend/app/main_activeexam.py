@@ -25,8 +25,12 @@ import logging
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, status
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.exc import DBAPIError
+
+from app.infrastructure.persistence.uuid_errors import es_error_de_uuid_invalido
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from app.config_activeexam import get_activeexam_settings, minio_configurado
@@ -271,6 +275,27 @@ def create_activeexam_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # Un id de path que no es UUID responde 404, no 500 (c-78).
+    #
+    # Encontrado recorriendo produccion el 26/8/2026: `/exam-content/banco/preguntas`
+    # (una ruta que no existe) matcheaba `/{examen_id}/preguntas` con
+    # examen_id="banco", Postgres rechazaba el literal al compararlo contra una
+    # columna uuid, y salia como 500. Pasaba en TODOS los endpoints con id en el
+    # path: examen, sesion, usuario, y tambien en los nuevos.
+    #
+    # Va aca y no endpoint por endpoint a proposito: son decenas, y el que se
+    # agregue manana volveria a fallar igual. Un id malformado significa lo mismo
+    # que "no existe" — y devolver 500 hace pensar que se rompio el servidor
+    # cuando el pedido era invalido, ademas de ensuciar las metricas de error.
+    @app.exception_handler(DBAPIError)
+    async def _id_malformado_es_404(_request: Request, exc: DBAPIError):
+        if es_error_de_uuid_invalido(exc):
+            return JSONResponse(
+                status_code=status.HTTP_404_NOT_FOUND,
+                content={"detail": {"error": "no_encontrado", "mensaje": "No existe."}},
+            )
+        raise exc
 
     # Metricas Prometheus (latencia + throughput HTTP + CPU/memoria de proceso).
     # main_activeexam.py no tenia NINGUNA metrica expuesta antes de esto.
