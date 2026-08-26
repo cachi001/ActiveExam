@@ -12,7 +12,6 @@ Lo que sí existe siempre:
 - el **userid de Moodle**: el propio Moodle nos lo manda en cada launch LTI (el
   claim ``sub``). Es la clave primaria del usuario del otro lado: exacto, estable
   y no se repite.
-- el **username** del campus.
 - el **email**.
 
 EL ORDEN (decisión del dueño, 26/8/2026): **el email va primero**, porque es el
@@ -22,7 +21,14 @@ del campus DESPUÉS de que se empezara a guardar; una cuenta creada a mano, o un
 anterior, no lo tiene. Poner primero un dato que a veces falta obliga a que el
 respaldo funcione siempre, y entonces el respaldo era el camino real.
 
-El userid queda segundo como desempate exacto, y el username tercero.
+El userid queda segundo, como desempate exacto.
+
+**El username NO se usa** (decisión del dueño, 26/8/2026): el `username` que
+guarda ActiveExam es el que la persona ELIGIÓ en esta plataforma, no el del
+campus. No tienen por qué coincidir — de hecho en el caso real no coinciden
+(`alumno.prueba2` acá contra `alumno_prueba2` allá). Buscar por ahí no solo no
+encuentra: podría llegar a matchear a OTRA persona que en el campus se llame
+igual, y escribirle la nota a quien no es.
 
 Igual se busca SIEMPRE entre los matriculados del curso destino, así que un email
 repetido fuera de ese curso no puede desviar una nota.
@@ -73,8 +79,6 @@ def candidatos_de_busqueda(ident: IdentidadAlumno) -> list[tuple[str, str]]:
     if userid:
         candidatos.append(("moodle_userid", userid))
 
-    username = (ident.username or "").strip()
-    if username and not username.lower().startswith(_PREFIJO_LTI):
-        candidatos.append(("username", username))
-
+    # El username NO entra: el de ActiveExam lo eligió la persona acá y no tiene
+    # relación con el del campus. Ver el docstring del módulo.
     return candidatos

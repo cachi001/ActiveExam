@@ -14,9 +14,13 @@ Lo que sí existe siempre:
   - el **username** del campus.
   - el **email**.
 
-Orden de resolución: userid de Moodle → username → email. El userid gana porque
-es exacto; el email va último porque es el más fácil de que alguien edite o
-comparta (cuentas de cátedra).
+Orden de resolución (decisión del dueño): **email → userid de Moodle**. El email
+va primero porque es el único dato que SIEMPRE coincide entre los dos lados.
+
+**El username quedó afuera**: el que guarda ActiveExam lo eligió la persona acá y
+no tiene relación con el del campus (`alumno.prueba2` acá contra `alumno_prueba2`
+allá). Buscar por ahí podría matchear a OTRA persona y escribirle la nota a quien
+no es.
 
 Y el ``sub`` del launch se guarda al provisionar: hoy se tiraba, y era el dato
 más útil que Moodle nos daba.
@@ -51,20 +55,26 @@ def test_el_userid_queda_como_desempate_exacto():
     assert candidatos_de_busqueda(ident)[1] == ("moodle_userid", "968")
 
 
-def test_sin_email_busca_por_userid_y_username():
+def test_sin_email_busca_solo_por_userid():
     ident = IdentidadAlumno(moodle_userid=968, username="alumno_prueba2", email=None)
 
     campos = [c for c, _ in candidatos_de_busqueda(ident)]
 
-    assert campos == ["moodle_userid", "username"]
+    assert campos == ["moodle_userid"]
 
 
-def test_el_username_queda_ultimo():
+def test_el_username_no_se_usa_nunca():
+    """El username de ActiveExam lo eligió la persona ACÁ: no es el del campus.
+
+    En el caso real no coinciden (`alumno.prueba2` contra `alumno_prueba2`), y
+    buscar por ahí podría matchear a otra persona del campus que se llame igual.
+    """
     ident = IdentidadAlumno(moodle_userid=968, username="alumno_prueba2", email="a@b.edu")
 
     campos = [c for c, _ in candidatos_de_busqueda(ident)]
 
-    assert campos[-1] == "username"
+    assert "username" not in campos
+    assert campos == ["email", "moodle_userid"]
 
 
 def test_no_propone_buscar_por_legajo():
@@ -91,10 +101,11 @@ def test_sin_ningun_dato_no_hay_nada_que_buscar():
     assert candidatos_de_busqueda(ident) == []
 
 
-def test_el_username_se_limpia_de_espacios():
-    ident = IdentidadAlumno(moodle_userid=None, username="  alumno_prueba2  ", email=None)
+def test_solo_con_username_no_hay_nada_que_buscar():
+    """Sin email ni userid, el username no rescata nada: no es un dato del campus."""
+    ident = IdentidadAlumno(moodle_userid=None, username="alumno.prueba2", email=None)
 
-    assert candidatos_de_busqueda(ident) == [("username", "alumno_prueba2")]
+    assert candidatos_de_busqueda(ident) == []
 
 
 def test_no_confunde_el_username_sintetico_de_lti_con_uno_del_campus():
@@ -107,7 +118,6 @@ def test_no_confunde_el_username_sintetico_de_lti_con_uno_del_campus():
 
     campos = [c for c, _ in candidatos_de_busqueda(ident)]
 
-    assert "username" not in campos
     assert campos == ["email", "moodle_userid"]
 
 

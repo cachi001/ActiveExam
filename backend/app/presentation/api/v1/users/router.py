@@ -156,6 +156,12 @@ class UsuarioResponse(BaseModel):
     password_generada: str | None = None  # solo en POST cuando el admin no proveyó password
     creado_en: str | None = None
     ultimo_acceso_en: str | None = None
+    # c-78: el userid del alumno en el campus, que Moodle manda en cada ingreso
+    # por el link (claim `sub`). Se expone para poder VERIFICAR que llega bien:
+    # es uno de los datos con los que se le devuelve la nota, y sin verlo no hay
+    # forma de saber si esta cargado. None = la cuenta no entro por el campus
+    # (alta manual) o es anterior a que se empezara a guardar.
+    moodle_userid: str | None = None
     inscripciones: list[InscripcionResumen] = []
     # Materia/comisión donde este usuario es el docente a cargo (rol tutor).
     comisiones_a_cargo: list[InscripcionResumen] = []
@@ -944,6 +950,11 @@ async def obtener_usuario(
         eliminado_en=str(usuario.eliminado_en) if usuario.eliminado_en is not None else None,
         creado_en=str(usuario.creado_en) if getattr(usuario, "creado_en", None) is not None else None,
         ultimo_acceso_en=str(usuario.ultimo_acceso_en) if getattr(usuario, "ultimo_acceso_en", None) is not None else None,
+        moodle_userid=(
+            str((usuario.attrs_federados or {}).get("moodle_userid"))
+            if (usuario.attrs_federados or {}).get("moodle_userid") is not None
+            else None
+        ),
         inscripciones=inscripciones,
         comisiones_a_cargo=comisiones_a_cargo,
     )
