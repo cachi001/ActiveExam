@@ -31,7 +31,7 @@
 - [x] 3.3 Agregar al `ActionMenu` de cada fila la acción "Dar de baja" (examen activo) o "Reactivar" (dado de baja), con diálogo de confirmación que explique que el examen se oculta del catálogo pero su evidencia se conserva. Recargar la lista tras la operación.
 - [x] 3.4 Marcar visualmente las filas dadas de baja cuando el filtro las incluye, para que no se confundan con exámenes vigentes.
 - [x] 3.5 Agregar la opción de filtro de auditoría "Baja/reactivación de examen" al catálogo curado de `frontend/src/screens/Auditoria.tsx` (módulo Exámenes), con el patrón `examen.baja,examen.reactivar`.
-- [ ] 3.6 🔶 **Checkpoint con el dueño**: demostrar el ciclo completo baja → invisible en Exámenes / Dashboard / picker de Notas / conteo de Estadísticas → reactivación, y confirmar que la semántica de la baja es la esperada antes de seguir con el bloque de coherencia.
+- [x] 3.6 🔶 **Checkpoint con el dueño**: demostrar el ciclo completo baja → invisible en Exámenes / Dashboard / picker de Notas / conteo de Estadísticas → reactivación, y confirmar que la semántica de la baja es la esperada antes de seguir con el bloque de coherencia.
 
 ## 4. Coherencia de denominadores (F-01, F-02)
 
@@ -707,7 +707,22 @@
     forzar `--environment jsdom` tampoco lo arregla. Se resuelve actualizando jsdom o
     bajando Node, y no toca nada de este change.
 
-- [ ] 17.3 🔶 **Checkpoint con el dueño**: repasar el registro de hallazgos y confirmar la decisión sobre F-08 (change propio) antes de archivar.
+- [x] 17.3 🔶 **Checkpoint con el dueño**: repasar el registro de hallazgos y confirmar la decisión sobre F-08 (change propio) antes de archivar.
 - [x] 17.4 Guardar en engram el registro de hallazgos y las decisiones de diseño.
+- [x] 17.5 **Devolución de notas al campus REAL, verificada de punta a punta** (26/8/2026)
+  - `alumno.prueba3` entró por el link del campus, confirmó su cuenta, completó el perfil, se
+    matriculó con el código, rindió (10 preguntas sorteadas de 30), entregó, y su nota llegó a
+    Moodle: **userid 969, nota 30, firmada por `profesor_prueba`**, el docente del curso.
+  - **El `dml_write_exception` era TRANSITORIO**, no un problema permanente del campus: la
+    misma nota pasó de 5 (puesta a mano) a 30 (por el sistema). Antes fallaba todo intento de
+    actualizar. Refuerza que el reintento tenga que existir.
+  - **H-13 (corregido)**: una respuesta cloze con el TEXTO de la opción en vez de su id
+    devolvía **201** al guardar y explotaba al **ENTREGAR** — el alumno terminaba el examen y
+    no podía entregarlo, con la sesión sin finalizar y sin nota. Ahora se valida al entrar.
+  - Verificado además: el reintento vuelve a tomar las fallidas; el gate de riesgo retiene sin
+    revisar, **libera si el coordinador aprueba** y retiene si anula; el tutor puede marcar la
+    nota como cargada a mano; las escalas 100/60 y 10/6 dan el mismo veredicto; y la revisión
+    del alumno ya no le muestra la fórmula.
+
   - Guardado en cuatro entradas: `e06-replicacion`, `e07-sorteo-por-intento`,
     `writeback-credencial-nm` y el resumen de sesión.
