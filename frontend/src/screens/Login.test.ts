@@ -18,41 +18,14 @@ import { describe, expect, it, vi } from 'vitest';
 import type { Rol } from '../lib/types';
 
 // ---------------------------------------------------------------------------
-// Tests de homePorRol (lógica pura — exportada para tests)
+// homePorRol vive en `lib/auth/homePorRol.ts` con sus propios tests.
+//
+// Estaba duplicada acá a mano, con un comentario que reconocía la copia, y las
+// dos versiones ya habían divergido: la real mandaba al tutor a
+// `/admin/examenes` y esta ni contemplaba al tutor. Un test que valida una copia
+// no prueba nada sobre la función que corre en producción — y el bug que se
+// escapó por ese hueco dejaba al tutor sin poder entrar al sistema.
 // ---------------------------------------------------------------------------
-
-/**
- * Replica la función privada homePorRol del componente.
- * Si Login.tsx la exporta (incluso como export para tests), se importaría.
- * Para tests unitarios, la duplicamos aquí — es la función canónica.
- */
-function homePorRol(roles: Rol[]): string {
-  if (roles.includes('admin_sistema')) return '/admin';
-  if (roles.includes('coordinador')) return '/admin';
-  return '/alumno/dashboard';
-}
-
-describe('homePorRol()', () => {
-  it('admin_sistema → /admin', () => {
-    expect(homePorRol(['admin_sistema'])).toBe('/admin');
-  });
-
-  it('coordinador → /admin', () => {
-    expect(homePorRol(['coordinador'])).toBe('/admin');
-  });
-
-  it('estudiante → /alumno/dashboard', () => {
-    expect(homePorRol(['estudiante'])).toBe('/alumno/dashboard');
-  });
-
-  it('admin_sistema + coordinador → /admin (admin_sistema tiene precedencia)', () => {
-    expect(homePorRol(['admin_sistema', 'coordinador'])).toBe('/admin');
-  });
-
-  it('roles vacíos → /alumno/dashboard (default)', () => {
-    expect(homePorRol([])).toBe('/alumno/dashboard');
-  });
-});
 
 // ---------------------------------------------------------------------------
 // Tests de manejo de errores de login (lógica de FormularioJwt)

@@ -15,6 +15,7 @@ import type { Rol } from '../types';
 import { useAuth } from '../authStore';
 import { useNavigate } from '../router';
 import { Icon, Button } from '../../ui/components';
+import { homePorRol } from './homePorRol';
 
 // Pantalla bloqueante de primer login (clave temporal). Lazy para no cargarla
 // en el bundle inicial de todas las rutas protegidas.
@@ -63,6 +64,7 @@ function PantallaCarga() {
 function SinPermiso() {
   const navigate = useNavigate();
   const logout = useAuth((s) => s.logout);
+  const roles = useAuth((s) => s.principal?.roles) ?? [];
   return (
     <div className="min-h-screen flex flex-col items-center justify-center gap-md bg-surface px-lg text-center">
       <div className="w-14 h-14 rounded-2xl bg-error-container text-error flex items-center justify-center">
@@ -75,7 +77,10 @@ function SinPermiso() {
         </p>
       </div>
       <div className="flex items-center gap-sm">
-        <Button variant="outline" icon="arrow_back" onClick={() => navigate('/login')}>
+        {/* A la home DEL ROL, no a /login: el usuario ya está autenticado, así
+            que el login lo rebota a su home y, si esa home era la ruta sin
+            permiso, quedaba en un bucle sin salida salvo cerrar sesión. */}
+        <Button variant="outline" icon="arrow_back" onClick={() => navigate(homePorRol(roles))}>
           Volver al inicio
         </Button>
         <Button variant="ghost" icon="logout" onClick={() => logout()}>
