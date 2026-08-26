@@ -282,6 +282,15 @@ async def _ejecutar_seed(
         f"{existentes} ya existentes."
     )
 
+    # Recuperacion de acceso (ver `reestablecer_passwords`). Va DESPUES del alta,
+    # asi una corrida sola sirve tanto para una base vacia como para converger las
+    # claves de una base que ya tenia los usuarios.
+    await reestablecer_passwords(
+        factory,
+        {d["username"]: d["password"] for d in usuarios_seed},  # type: ignore[misc]
+        habilitado=_reset_pedido(),
+    )
+
     # Contenido académico demo: materia + comisión + examen (idempotente).
     await _seed_contenido(factory)
 
@@ -296,6 +305,80 @@ async def _ejecutar_seed(
     # Matriculación demo: los estudiantes seed quedan inscriptos a la Comisión C1
     # (idempotente). Con el gate de inscripción (C-71), sin esto no verían el examen.
     await _seed_matriculaciones(factory)
+
+
+def _reset_pedido() -> bool:
+    """`SEED_RESET_PASSWORDS` en 1/true/yes/on pide converger las claves."""
+    return os.environ.get("SEED_RESET_PASSWORDS", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+async def reestablecer_passwords(
+    factory, passwords: dict[str, str], *, habilitado: bool
+) -> int:
+    """Hace converger la clave de los usuarios del seed a la del entorno.
+
+    ## Por que existe
+
+    El seed es idempotente y, si el usuario ya existe, lo saltea entero: **nunca
+    toca el password**. Como default esta bien — pisar la clave que una persona
+    eligio seria peor. Pero deja un caso sin salida, encontrado el 26/8/2026
+    limpiando produccion:
+
+      1. Se pierde u olvida la clave de `admin`.
+      2. Cambiar `SEED_ADMIN_PASSWORD` **no hace nada**, porque el usuario existe.
+      3. No queda forma de entrar, salvo escribir el hash a mano en la base.
+
+    A dias de un examen real eso no es aceptable. Con `SEED_RESET_PASSWORDS=1` las
+    cuentas del seed vuelven a la clave declarada en las variables.
+
+    ## Lo que NO hace
+
+    - No corre sin que se lo pidan: sin la variable, cero cambios.
+    - No crea usuarios (eso es del seed normal): un nombre que no existe se informa.
+    - No toca a nadie fuera de `passwords`: la clave de un alumno que entro por el
+      campus es suya.
+
+    Destraba tambien el lockout, porque el bloqueo por intentos fallidos es
+    exactamente lo que se dispara cuando alguien pelea con una clave que no
+    recuerda: restablecerla y dejar la cuenta bloqueada no resolveria nada.
+
+    Devuelve cuantas claves cambio.
+    """
+    if not habilitado:
+        return 0
+
+    from sqlalchemy import select
+
+    from app.infrastructure.auth.hashing import hashear_password
+    from app.infrastructure.persistence.models.transactional import UsuarioModel
+
+    cambiados = 0
+    async with factory() as session:
+        for username, password in passwords.items():
+            fila = (
+                await session.execute(
+                    select(UsuarioModel).where(UsuarioModel.username == username)
+                )
+            ).scalar_one_or_none()
+            if fila is None:
+                print(f"  [reset] {username}: no existe, se omite")
+                continue
+
+            fila.password_hash = hashear_password(password)
+            fila.intentos_fallidos = 0
+            fila.bloqueado_hasta = None
+            cambiados += 1
+            print(f"  [reset] {username}: clave restablecida")
+        await session.commit()
+
+    if cambiados:
+        print(f"\nSEED_RESET_PASSWORDS: {cambiados} clave(s) restablecida(s).")
+    return cambiados
 
 
 async def _seed_docente_comision(factory) -> None:
