@@ -20,8 +20,10 @@ import {
   reactivarExamenFn,
   type EstadoCatalogoExamen,
 } from '../lib/examContentCatalog';
+import { impactoBajaExamen, type ImpactoBaja } from '../lib/examContentAdmin';
 import { CrearExamenModal } from '../admin/ExamImport/CrearExamenModal';
 import { ConfirmModal } from '../ui/ConfirmModal';
+import { AvisoImpactoBaja } from '../ui/AvisoImpactoBaja';
 import { useToast } from '../ui/toast';
 import type { ExamenContenidoResumen, Materia, Comision } from '../lib/types';
 
@@ -54,6 +56,10 @@ export default function ExamList() {
 
   // Baja/reactivación pendiente de confirmación (c-78). null = sin diálogo abierto.
   const [pendienteBaja, setPendienteBaja] = useState<ExamenContenidoResumen | null>(null);
+  // c-78 (Opción C): qué se lleva puesto la baja, para decirlo en el diálogo
+  // ANTES de confirmar. Se consulta al abrirlo; no bloquea nada por sí solo.
+  const [impactoBaja, setImpactoBaja] = useState<ImpactoBaja | null>(null);
+  const [cargandoImpacto, setCargandoImpacto] = useState(false);
   const [pendienteReactivar, setPendienteReactivar] = useState<ExamenContenidoResumen | null>(null);
   // Duplicación pendiente (c-78 §14.2) + el título que va a llevar la copia.
   const [pendienteDuplicar, setPendienteDuplicar] = useState<ExamenContenidoResumen | null>(null);
@@ -62,6 +68,20 @@ export default function ExamList() {
   useEffect(() => {
     api.materiasDisponibles().then(setMaterias).catch(() => {});
   }, []);
+
+  // El impacto se pide al abrir el diálogo de baja. Si la consulta falla, el
+  // diálogo sigue funcionando sin el aviso: el servidor es igual la autoridad
+  // (rechaza con 409 si hay gente rindiendo).
+  useEffect(() => {
+    if (!pendienteBaja) { setImpactoBaja(null); setCargandoImpacto(false); return; }
+    let vigente = true;
+    setCargandoImpacto(true);
+    impactoBajaExamen(pendienteBaja.id)
+      .then((i) => { if (vigente) setImpactoBaja(i); })
+      .catch(() => { if (vigente) setImpactoBaja(null); })
+      .finally(() => { if (vigente) setCargandoImpacto(false); });
+    return () => { vigente = false; };
+  }, [pendienteBaja]);
 
   useEffect(() => {
     if (!borradorMateria) { setComisiones([]); setBorradorComision(''); return; }
@@ -130,8 +150,11 @@ export default function ExamList() {
       await darDeBajaExamenFn(API_BASE, authProvider.getToken(), examen.id);
       toast.success(`Se dio de baja «${examen.titulo}».`);
       await recargar();
-    } catch {
-      toast.error('No se pudo dar de baja el examen. Probá de nuevo.');
+    } catch (err) {
+      // El 409 («hay N alumnos rindiendo») trae el motivo exacto. Taparlo con
+      // "probá de nuevo" mandaba a reintentar algo que reintentar no arregla.
+      const detalle = err instanceof Error ? err.message : '';
+      toast.error(detalle || 'No se pudo dar de baja el examen. Probá de nuevo.');
     }
   };
 
@@ -525,6 +548,7 @@ export default function ExamList() {
               eventos y su evidencia se conservan igual y siguen consultables. Podés
               reactivarlo cuando quieras desde el filtro "Dados de baja".
             </p>
+            <AvisoImpactoBaja impacto={impactoBaja} cargando={cargandoImpacto} />
           </>
         }
         onConfirmar={confirmarBaja}

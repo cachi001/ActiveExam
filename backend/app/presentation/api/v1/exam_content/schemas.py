@@ -656,6 +656,27 @@ class ComisionResponse(BaseModel):
     tutores: list["TutorInfo"] = []
 
 
+class ImpactoBajaResponse(BaseModel):
+    """c-78 — Qué se lleva puesto una baja, para avisarlo ANTES de confirmar.
+
+    Es una consulta: pedirla no da de baja nada. `sesiones_en_curso > 0` es lo
+    único que bloquea (el DELETE responde 409); `rendiciones` solo informa, y es
+    el aviso que pidió el dueño (Opción C): dar de baja algo ya rendido se puede,
+    pero quien lo hace tiene que saber cuánta historia hay atrás.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    # Gente rindiendo en este momento: sesiones abiertas a las que todavía no se
+    # les agotó el tiempo. Lo único que impide la baja.
+    sesiones_en_curso: int
+    # Rendiciones ya terminadas. Nunca bloquea: su evidencia se conserva igual.
+    rendiciones: int
+    # Inventario VIGENTE alcanzado (lo ya dado de baja no se re-anuncia).
+    examenes: int
+    comisiones: int
+
+
 class AltaInlineResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

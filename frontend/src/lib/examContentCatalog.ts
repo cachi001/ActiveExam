@@ -144,7 +144,16 @@ export async function darDeBajaExamenFn(
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
   });
-  if (!res.ok) throw new Error(`No se pudo dar de baja el examen (HTTP ${res.status}).`);
+  if (!res.ok) {
+    // c-78: el 409 trae el motivo exacto («hay N alumnos rindiendo»). Perderlo
+    // dejaba a la pantalla diciendo "probá de nuevo" ante algo que reintentar
+    // no arregla.
+    const cuerpo = await res.json().catch(() => ({}));
+    const mensaje =
+      (cuerpo as { detail?: { mensaje?: string } })?.detail?.mensaje ??
+      `No se pudo dar de baja el examen (HTTP ${res.status}).`;
+    throw Object.assign(new Error(mensaje), { status: res.status });
+  }
 }
 
 /**

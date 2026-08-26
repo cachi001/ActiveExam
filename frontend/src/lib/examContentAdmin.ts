@@ -177,6 +177,41 @@ export async function actualizarMateria(
 }
 
 /**
+ * Qué se lleva puesto una baja (c-78, Opción C). Es una CONSULTA: pedirla no da
+ * de baja nada. La pantalla la usa para avisar, antes de confirmar, cuántas
+ * rendiciones tiene lo que se está por dar de baja.
+ *
+ * `sesiones_en_curso > 0` es lo único que bloquea: ahí el DELETE responde 409.
+ * `rendiciones` nunca bloquea — su evidencia se conserva igual.
+ */
+export interface ImpactoBaja {
+  sesiones_en_curso: number;
+  rendiciones: number;
+  examenes: number;
+  comisiones: number;
+}
+
+async function pedirImpacto(ruta: string): Promise<ImpactoBaja> {
+  const res = await fetchAutenticado(`${API_BASE}/exam-content/${ruta}/impacto-baja`, {
+    headers: authHeaders(),
+  });
+  if (!res.ok) return throwAdminError(res);
+  return res.json() as Promise<ImpactoBaja>;
+}
+
+export function impactoBajaMateria(materiaId: string): Promise<ImpactoBaja> {
+  return pedirImpacto(`materias/${encodeURIComponent(materiaId)}`);
+}
+
+export function impactoBajaComision(comisionId: string): Promise<ImpactoBaja> {
+  return pedirImpacto(`comisiones/${encodeURIComponent(comisionId)}`);
+}
+
+export function impactoBajaExamen(examenId: string): Promise<ImpactoBaja> {
+  return pedirImpacto(encodeURIComponent(examenId));
+}
+
+/**
  * Baja lógica de una materia (c-78). UN SOLO patrón en todo el sistema:
  * `DELETE /{id}` da de baja, `POST /{id}/reactivar` la revierte. Igual que
  * usuario y examen.

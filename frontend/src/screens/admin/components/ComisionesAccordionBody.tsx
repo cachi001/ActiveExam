@@ -24,8 +24,7 @@ interface ComisionesAccordionBodyProps {
   onCancelarComision: () => void;
   abrirCrearComision: (materiaId: string) => void;
   abrirEditarComision: (materiaId: string, c: Comision) => void;
-  abrirEliminarComision: (c: Comision) => void;
-  /** Baja lógica: activa/desactiva la comisión (C-72 §17). */
+  /** Baja lógica: da de baja o reactiva la comisión (C-72 §17, c-78). */
   onToggleActivaComision: (c: Comision) => void;
   comisionExpandida: string | null;
   toggleComision: (id: string) => void;
@@ -46,7 +45,7 @@ export function ComisionesAccordionBody({
   onCancelarComision,
   abrirCrearComision,
   abrirEditarComision,
-  abrirEliminarComision,
+  onToggleActivaComision,
   comisionExpandida,
   toggleComision,
 }: ComisionesAccordionBodyProps) {
@@ -58,11 +57,13 @@ export function ComisionesAccordionBody({
   const puedeEditarEstructura = tieneCapacidad(rolesActuales, 'gestionar_estructura');
   const [asignando, setAsignando] = useState<Comision | null>(null);
   const [tutoresLocal, setTutoresLocal] = useState<Record<string, { id: string; nombre: string }[]>>({});
-  // Acciones del menú kebab por comisión. "Eliminar" solo aparece si la comisión
-  // está VACÍA (0 inscriptos y 0 exámenes), mismo criterio que el guard del backend:
-  // ofrecer un borrado que el servidor va a rechazar con 409 es un dead-end para el usuario.
+  // Acciones del menú kebab por comisión. UN SOLO patrón de baja (c-78): dar de
+  // baja / reactivar. Antes convivían dos entradas que hacían lo mismo — "Eliminar
+  // comisión" ya no borraba nada desde que la baja pasó a ser lógica, y encima
+  // solo aparecía con la comisión VACÍA, así que una comisión con inscriptos no
+  // se podía dar de baja desde ninguna parte (el toggle estaba declarado pero
+  // nunca cableado al menú).
   const accionesComision = (c: Comision, comExpandida: boolean): ActionItem[] => {
-    const vacia = (c.total_inscriptos ?? 0) === 0 && (c.total_examenes ?? 0) === 0;
     return [
       { label: comExpandida ? 'Ocultar alumnos' : 'Ver alumnos', icon: 'groups', onClick: () => toggleComision(c.id) },
       ...(puedeEditarEstructura
@@ -77,8 +78,12 @@ export function ComisionesAccordionBody({
             onClick: () => setAsignando(c),
           } as ActionItem]
         : []),
-      ...(vacia && puedeEditarEstructura
-        ? [{ label: 'Eliminar comisión', icon: 'delete', danger: true, onClick: () => abrirEliminarComision(c) } as ActionItem]
+      ...(puedeEditarEstructura
+        ? [
+            c.activa === false
+              ? { label: 'Reactivar comisión', icon: 'play_circle', onClick: () => onToggleActivaComision(c) } as ActionItem
+              : { label: 'Dar de baja la comisión', icon: 'delete', danger: true, onClick: () => onToggleActivaComision(c) } as ActionItem,
+          ]
         : []),
     ];
   };

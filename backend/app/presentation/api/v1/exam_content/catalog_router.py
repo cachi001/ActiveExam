@@ -7,6 +7,7 @@ destino Moodle y sincronización manual de resultados. Requiere roles de gestió
 
 from __future__ import annotations
 
+from dataclasses import asdict
 from datetime import UTC, datetime
 
 from sqlalchemy import func
@@ -52,6 +53,11 @@ from app.application.exam_content.errors import (
     MoodleXmlInvalidoError,
     MoodleXmlVacioError,
     UsuarioNoEncontradoError,
+)
+from app.application.exam_content.impacto_baja import (
+    impacto_baja_comision,
+    impacto_baja_examen,
+    impacto_baja_materia,
 )
 from app.application.exam_content.import_service import ImportacionMoodleService
 from app.application.exam_content.inscripcion_service import (
@@ -113,6 +119,7 @@ from app.presentation.api.v1.exam_content.schemas import (
     PreguntaImportadaItemResponse,
     PreviewCategoriaResponse,
     PreviewImportBancoResponse,
+    ImpactoBajaResponse,
     InscribirAlumnoRequest,
     InscripcionResponse,
     MateriaActualizarRequest,
@@ -150,6 +157,37 @@ from app.presentation.api.v1.exam_content.schemas import (
     DuplicarExamenResponse,
     ExamenReplicaItem,
 )
+
+
+def _rechazar_si_hay_gente_rindiendo(
+    sesiones_en_curso: int, *, error: str, que: str
+) -> None:
+    """409 si hay alguien rindiendo AHORA lo que se está por dar de baja.
+
+    La baja bloquea la rendición server-side (el enforcement responde 410), así
+    que hacerla con gente adentro le corta el examen a medio camino a alguien que
+    no hizo nada mal. Se devuelve el número de sesiones para que quien lo intenta
+    sepa a cuántos iba a afectar.
+
+    OJO: la restricción es "en curso", NO "rendido alguna vez". Lo ya rendido sí
+    se puede dar de baja — es el caso que motivó la baja lógica — y su evidencia
+    queda intacta.
+    """
+    if sesiones_en_curso <= 0:
+        return
+    plural = "s" if sesiones_en_curso != 1 else ""
+    raise HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail={
+            "error": error,
+            "mensaje": (
+                f"Hay {sesiones_en_curso} alumno{plural} rindiendo {que} en este "
+                f"momento. Esperá a que termine{plural}, o cerrá el examen antes "
+                "de darlo de baja."
+            ),
+            "sesiones_en_curso": sesiones_en_curso,
+        },
+    )
 
 
 async def _titulo_examen(session_factory, examen_id: str) -> str:
@@ -972,6 +1010,31 @@ def create_exam_content_router(
     # puede volver atrás.
     # -----------------------------------------------------------------------
 
+    @router.get(
+        "/materias/{materia_id}/impacto-baja",
+        dependencies=[Depends(require_capability("gestionar_estructura"))],
+        response_model=ImpactoBajaResponse,
+        summary="Qué alcanza dar de baja esta materia (aviso previo, no da de baja)",
+    )
+    async def impacto_baja_de_materia(
+        materia_id: str,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    ) -> ImpactoBajaResponse:
+        """Consulta para que el diálogo de confirmación diga qué se lleva puesto.
+
+        No cambia nada: pedirla no da de baja la materia.
+        """
+        if session_factory is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Persistencia no inicializada.",
+            )
+        await _exigir_pertenencia_materia(principal, materia_id)
+
+        async with session_factory() as session:
+            impacto = await impacto_baja_materia(session, materia_id)
+        return ImpactoBajaResponse(**asdict(impacto))
+
     @router.delete(
         "/materias/{materia_id}",
         dependencies=[Depends(require_capability("gestionar_estructura"))],
@@ -1014,6 +1077,14 @@ def create_exam_content_router(
                         "materia_id": materia_id,
                     },
                 )
+            # Misma restricción dura que el examen, un nivel más arriba: la baja
+            # de la materia bloquea la rendición de TODOS sus exámenes
+            # server-side, así que hacerla con gente adentro le corta el examen
+            # a medio camino a alguien que no hizo nada mal.
+            impacto = await impacto_baja_materia(session, materia_id)
+            _rechazar_si_hay_gente_rindiendo(
+                impacto.sesiones_en_curso, error="materia_en_curso", que="esta materia"
+            )
             await repo.set_activa(materia_id, False)
             await session.commit()
 
@@ -1682,6 +1753,27 @@ def create_exam_content_router(
         )
         return respuesta
 
+    @router.get(
+        "/comisiones/{comision_id}/impacto-baja",
+        dependencies=[Depends(require_capability("gestionar_estructura"))],
+        response_model=ImpactoBajaResponse,
+        summary="Qué alcanza dar de baja esta comisión (aviso previo, no da de baja)",
+    )
+    async def impacto_baja_de_comision(
+        comision_id: str,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    ) -> ImpactoBajaResponse:
+        if session_factory is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Persistencia no inicializada.",
+            )
+        await _exigir_pertenencia_comision(principal, comision_id)
+
+        async with session_factory() as session:
+            impacto = await impacto_baja_comision(session, comision_id)
+        return ImpactoBajaResponse(**asdict(impacto))
+
     @router.delete(
         "/comisiones/{comision_id}",
         status_code=status.HTTP_204_NO_CONTENT,
@@ -1725,6 +1817,12 @@ def create_exam_content_router(
                         "comision_id": comision_id,
                     },
                 )
+            impacto = await impacto_baja_comision(session, comision_id)
+            _rechazar_si_hay_gente_rindiendo(
+                impacto.sesiones_en_curso,
+                error="comision_en_curso",
+                que="esta comisión",
+            )
             await repo.set_activa(comision_id, False)
             await session.commit()
 
@@ -2354,6 +2452,27 @@ def create_exam_content_router(
             )
         return getattr(resumen, "titulo", None) or examen_id
 
+    @router.get(
+        "/{examen_id}/impacto-baja",
+        dependencies=[Depends(require_capability("crear_examenes"))],
+        response_model=ImpactoBajaResponse,
+        summary="Qué alcanza dar de baja este examen (aviso previo, no da de baja)",
+    )
+    async def impacto_baja_de_examen(
+        examen_id: str,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    ) -> ImpactoBajaResponse:
+        if session_factory is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Persistencia no inicializada.",
+            )
+        await _exigir_pertenencia(principal, examen_id)
+
+        async with session_factory() as session:
+            impacto = await impacto_baja_examen(session, examen_id)
+        return ImpactoBajaResponse(**asdict(impacto))
+
     @router.delete(
         "/{examen_id}",
         status_code=status.HTTP_204_NO_CONTENT,
@@ -2379,11 +2498,6 @@ def create_exam_content_router(
 
         await _exigir_pertenencia(principal, examen_id)
 
-        from sqlalchemy import select as _select
-
-        from app.infrastructure.persistence.models.proctoring import (
-            ProctoringSessionModel,
-        )
         from app.infrastructure.persistence.repositories.exam_content import (
             ExamenContenidoSqlRepository,
         )
@@ -2405,29 +2519,10 @@ def create_exam_content_router(
         # justamente el caso que motivó la baja lógica (el hard-delete exigía
         # estar vacío y por eso era inservible). La evidencia queda intacta.
         async with session_factory() as session:
-            en_curso = (
-                await session.execute(
-                    _select(func.count())
-                    .select_from(ProctoringSessionModel)
-                    .where(
-                        ProctoringSessionModel.examen_contenido_id == examen_id,
-                        ProctoringSessionModel.finalizada_en.is_(None),
-                    )
-                )
-            ).scalar_one()
-            if int(en_curso or 0) > 0:
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail={
-                        "error": "examen_en_curso",
-                        "mensaje": (
-                            f"Hay {en_curso} alumno(s) rindiendo este examen en "
-                            "este momento. Esperá a que terminen, o cerrá el "
-                            "examen antes de darlo de baja."
-                        ),
-                        "sesiones_en_curso": int(en_curso),
-                    },
-                )
+            impacto = await impacto_baja_examen(session, examen_id)
+            _rechazar_si_hay_gente_rindiendo(
+                impacto.sesiones_en_curso, error="examen_en_curso", que="este examen"
+            )
 
         async with session_factory() as session:
             dado_de_baja = await ExamenContenidoSqlRepository(session).dar_de_baja(
