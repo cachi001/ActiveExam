@@ -57,6 +57,34 @@ const CAPTURAS = Number(__ENV.CAPTURAS || 0);
 // Captura sintetica del tamano real (960x540 JPEG ~85 KB -> ~114 KB en base64).
 const CAPTURA_B64 = CAPTURAS > 0 ? 'A'.repeat(Number(__ENV.CAPTURA_BYTES || 114000)) : null;
 
+// --- CAIDA DE CONEXION -------------------------------------------------------
+//
+// Lo que se mide no es "aguanta menos trafico" (es al reves: mientras esta
+// caido no manda nada). Lo que se mide es el REGRESO: el cliente bufferea en
+// IndexedDB y al volver la conexion drena TODO junto. Dos preguntas:
+//
+//   1. żse pierde evidencia? -> se cuenta lo enviado y se compara contra lo que
+//      el servidor devuelve en GET /sessions/{id}. Es la unica verificacion que
+//      importa: un examen sin su evidencia no sirve de nada.
+//   2. żque le hace al resto la rafaga de vuelta? -> si se cae el wifi del aula,
+//      no vuelve UN alumno: vuelven todos a la vez. Por eso la caida arranca a
+//      la MISMA altura de la iteracion en todos los VUs afectados.
+//
+// CAIDA_SEG=0 lo apaga (default). CAIDA_PCT es que fraccion de alumnos se cae.
+const CAIDA_SEG = Number(__ENV.CAIDA_SEG || 0);
+const CAIDA_PCT = Number(__ENV.CAIDA_PCT || 1);
+const CAIDA_EN_SEG = Number(__ENV.CAIDA_EN_SEG || 20);
+// La verificación de "no se perdió evidencia" lee el DETALLE de la sesión, y ese
+// endpoint es de SUPERVISIÓN: con el token del alumno da 403. Sin estas
+// credenciales la caída se corre igual pero sin verificar nada — que es
+// justamente lo que no queremos, así que el harness lo avisa por consola.
+//
+// Tiene que ser ADMIN, no coordinador: desde c-79 el coordinador está acotado a
+// SUS materias, y estas sesiones son `modo: 'test'` (sin examen vinculado), así
+// que la pertenencia no resuelve y devuelve 403 igual que el alumno.
+const STAFF_USUARIO = __ENV.STAFF_USUARIO || 'admin';
+const STAFF_PASSWORD = __ENV.STAFF_PASSWORD || 'Admin123';
+
 // Severidades en FEMENINO. Escribirlas en masculino da score 0 en silencio
 // (ver el comentario de `Severidad` en backend/app/domain/events/schema.py).
 const SEVERIDADES = ['baja', 'media', 'alta'];
@@ -71,6 +99,11 @@ const latenciaChat = new Trend('ae_chat_poll_ms', true);
 const latenciaPausa = new Trend('ae_pausa_poll_ms', true);
 const pollsChat = new Counter('ae_chat_polls');
 const pollsPausa = new Counter('ae_pausa_polls');
+// Caida de conexion: cuanto tarda el drenaje del buffer al volver, cuantos
+// eventos trae, y —lo unico que de verdad importa— si se perdio evidencia.
+const latenciaReplay = new Trend('ae_replay_ms', true);
+const eventosReplay = new Counter('ae_replay_eventos');
+const evidenciaPerdida = new Rate('ae_evidencia_perdida');
 
 export const options = {
   vus: VUS,
@@ -81,6 +114,9 @@ export const options = {
     ae_evento_ms: ['p(95)<500', 'p(99)<1000'],
     ae_errores_ingesta: ['rate<0.01'],
     http_req_failed: ['rate<0.01'],
+    // Cero. Perder evidencia no tiene umbral aceptable: un examen sin su
+    // evidencia no sirve para nada.
+    ae_evidencia_perdida: ['rate==0'],
   },
 };
 
@@ -101,7 +137,27 @@ export function setup() {
   if (res.status !== 200) {
     throw new Error(`login fallo: ${res.status} ${res.body}`);
   }
-  return { token: res.json('access_token') };
+
+  // Token de supervisión, SOLO para verificar que no se perdió evidencia tras
+  // una caída. No se usa para nada del camino del alumno.
+  let tokenStaff = null;
+  if (CAIDA_SEG > 0) {
+    const staff = http.post(
+      `${BASE}/api/v1/auth/login`,
+      JSON.stringify({ username: STAFF_USUARIO, password: STAFF_PASSWORD }),
+      { headers: { 'Content-Type': 'application/json' } },
+    );
+    if (staff.status === 200) {
+      tokenStaff = staff.json('access_token');
+    } else {
+      console.warn(
+        `login de staff (${STAFF_USUARIO}) fallo: ${staff.status}. La caida se ` +
+        'corre igual, pero NO se va a poder verificar si se perdio evidencia.',
+      );
+    }
+  }
+
+  return { token: res.json('access_token'), tokenStaff };
 }
 
 export default function (data) {
@@ -133,13 +189,49 @@ export default function (data) {
   // secuencia. Medir solo los eventos (como hacía este harness antes) deja
   // afuera el ~70% del tráfico.
   const intervaloEventoMs = (60 / EVENTOS_POR_MINUTO) * 1000;
-  const hasta = Date.now() + 60 * 1000; // un minuto de rendición por iteración
+  const inicio = Date.now();
+  const hasta = inicio + 60 * 1000; // un minuto de rendición por iteración
   let proxEvento = Date.now();
   let proxChat = Date.now();
   let proxPausa = Date.now();
 
+  // Caída de conexión: a este VU le toca o no, y si le toca es SIEMPRE a la
+  // misma altura de la iteración — cuando se cae el wifi del aula no vuelve un
+  // alumno, vuelven todos juntos, y esa ráfaga simultánea es el caso a medir.
+  const seCae = CAIDA_SEG > 0 && (__VU % 100) < CAIDA_PCT * 100;
+  const caeEn = inicio + CAIDA_EN_SEG * 1000;
+  const vuelveEn = caeEn + CAIDA_SEG * 1000;
+  // El buffer de IndexedDB del cliente, del lado del harness.
+  const buffer = [];
+  let drenado = false;
+  // Todo lo que este alumno dio por generado. Es el número contra el que se
+  // compara lo que quedó guardado en el servidor.
+  let generados = 0;
+
   while (Date.now() < hasta) {
     const ahora = Date.now();
+    const caido = seCae && ahora >= caeEn && ahora < vuelveEn;
+
+    // Volvió la conexión: drenar TODO el buffer de una, en orden, como hace el
+    // cliente real. Es acá donde el servidor recibe la ráfaga.
+    if (seCae && !caido && !drenado && buffer.length > 0) {
+      const arranque = Date.now();
+      for (const pendiente of buffer) {
+        const res = http.post(
+          `${BASE}/api/v1/proctoring/sessions/${sesionId}/events`,
+          JSON.stringify(pendiente),
+          { headers, tags: { endpoint: 'replay_evento' } },
+        );
+        eventosReplay.add(1);
+        const aceptado = check(res, {
+          'evento del buffer aceptado (201)': (r) => r.status === 201,
+        });
+        erroresIngesta.add(!aceptado);
+      }
+      latenciaReplay.add(Date.now() - arranque);
+      buffer.length = 0;
+      drenado = true;
+    }
 
     if (ahora >= proxEvento) {
       const evento = {
@@ -153,6 +245,16 @@ export default function (data) {
       if (CAPTURA_B64 && Math.random() < CAPTURAS) {
         evento.screenshot_base64 = CAPTURA_B64;
       }
+      generados++;
+      proxEvento = ahora + intervaloEventoMs;
+
+      if (caido) {
+        // Sin red no se manda: se guarda, igual que el cliente. El `ts_cliente`
+        // queda con la hora en que PASÓ, no con la del reenvío.
+        buffer.push(evento);
+        continue;
+      }
+
       const res = http.post(
         `${BASE}/api/v1/proctoring/sessions/${sesionId}/events`,
         JSON.stringify(evento),
@@ -164,7 +266,14 @@ export default function (data) {
         'evento aceptado (201)': (r) => r.status === 201,
       });
       erroresIngesta.add(!aceptado);
-      proxEvento = ahora + intervaloEventoMs;
+    }
+
+    // Mientras está caído tampoco pollea: no hay red. Saltear los pollers acá
+    // es lo que hace que la caída se note como un hueco de tráfico y no como
+    // un alumno que sigue conversando con el servidor sin conexión.
+    if (caido) {
+      sleep(0.1);
+      continue;
     }
 
     if (CHAT && ahora >= proxChat) {
@@ -192,6 +301,25 @@ export default function (data) {
     sleep(0.1); // tick del loop; las cadencias las fijan los vencimientos
   }
 
+  // Si la conexión no volvió antes de que terminara el examen, el cliente drena
+  // igual al reconectar. No drenarlo acá haría que el harness "pierda" eventos
+  // por su cuenta y ensuciaría justamente la métrica que queremos medir.
+  if (buffer.length > 0) {
+    const arranque = Date.now();
+    for (const pendiente of buffer) {
+      const res = http.post(
+        `${BASE}/api/v1/proctoring/sessions/${sesionId}/events`,
+        JSON.stringify(pendiente),
+        { headers, tags: { endpoint: 'replay_evento' } },
+      );
+      eventosReplay.add(1);
+      erroresIngesta.add(!check(res, {
+        'evento del buffer aceptado (201)': (r) => r.status === 201,
+      }));
+    }
+    latenciaReplay.add(Date.now() - arranque);
+  }
+
   // 3. Finalizar (idempotente).
   const fin = http.patch(
     `${BASE}/api/v1/proctoring/sessions/${sesionId}/finalizar`,
@@ -200,4 +328,30 @@ export default function (data) {
   );
   latenciaFinalizar.add(fin.timings.duration);
   check(fin, { 'sesion finalizada (200)': (r) => r.status === 200 });
+
+  // 4. La verificación que importa: ¿quedó guardado TODO lo que pasó?
+  //
+  // Sin esto la prueba de caída no prueba nada: mediría que el servidor
+  // respondió rápido mientras perdía evidencia en silencio. Se hace solo en el
+  // escenario de caída — con 100 VUs, un GET del detalle completo por iteración
+  // sería carga sintética que el cliente real no genera.
+  if (seCae && data.tokenStaff) {
+    const detalle = http.get(`${BASE}/api/v1/proctoring/sessions/${sesionId}`, {
+      headers: { Authorization: `Bearer ${data.tokenStaff}` },
+      tags: { endpoint: 'verificar_evidencia' },
+    });
+    if (detalle.status === 200) {
+      const guardados = (detalle.json('eventos') || []).length;
+      const completo = guardados >= generados;
+      evidenciaPerdida.add(!completo);
+      check(detalle, {
+        'no se perdió evidencia tras la caída': () => completo,
+      });
+    } else {
+      // No poder verificar NO es lo mismo que haber perdido evidencia, pero
+      // tampoco se puede dar por buena una corrida sin verificar.
+      console.warn(`no se pudo verificar la sesion ${sesionId}: HTTP ${detalle.status}`);
+      evidenciaPerdida.add(true);
+    }
+  }
 }

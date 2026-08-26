@@ -118,6 +118,47 @@
 - [x] 13.4 **E-10** Export de alumnos inscriptos por comisión en PDF y Excel, para cruzar contra Moodle
 - [x] 13.5 **E-10** Export de notas del examen
 - [x] 13.6 **E-10** Marcar el estado de la nota a mano, distinguiéndolo del confirmado por sincronización, con registro de quién lo marcó
+- [x] 13.7 **Guarda de "hay gente rindiendo ahora" para materia y comisión** (pedido del dueño)
+  - La guarda la tenía **solo el examen**. Dar de baja una materia bloquea la rendición de
+    TODOS sus exámenes server-side, así que hacerlo con gente adentro le cortaba el examen a
+    medio camino a alguien que no hizo nada mal. Ahora `DELETE /materias/{id}` y
+    `DELETE /comisiones/{id}` responden **409** (`materia_en_curso` / `comision_en_curso`)
+    con el número de sesiones a las que iban a afectar.
+  - **Cambió también el criterio del examen.** "En curso" pasó a ser *sin finalizar Y sin
+    vencer*, no *sin finalizar* a secas. Motivo: la auto-finalización es **lazy** (se dispara
+    al TOCAR la sesión), así que el alumno que cierra el navegador y no vuelve deja la fila
+    abierta para siempre y esa sesión fantasma bloqueaba la baja de forma permanente. El
+    vencimiento es el del dominio (`deadline_efectivo`: mínimo entre tiempo límite individual
+    y cierre de la ventana). Decisión del dueño: *"la sesión dura por el examen"*.
+  - **Hueco conocido**: un examen sin cierre **ni** tiempo límite no tiene vencimiento, y ahí
+    la sesión sigue contando como en curso. Sin deadline no hay forma de distinguir una
+    sesión viva de una abandonada.
+  - `app/application/exam_content/impacto_baja.py` (un solo lugar para las tres entidades) +
+    `_rechazar_si_hay_gente_rindiendo` en el router.
+- [x] 13.8 **Opción C: avisar cuántas rendiciones tiene antes de confirmar la baja** (pedido del dueño)
+  - No cambia ninguna regla: lo ya rendido **se puede** dar de baja y su evidencia se conserva.
+    Solo agrega el aviso. `GET .../impacto-baja` para materia, comisión y examen devuelve
+    `sesiones_en_curso`, `rendiciones`, `examenes` y `comisiones`; el diálogo de confirmación
+    lo pide al abrirse y lo muestra con `AvisoImpactoBaja`. Es una consulta: pedirla no da de
+    baja nada, y si falla el diálogo sigue sirviendo (el servidor es igual la autoridad).
+  - **"Desactivar materia/comisión" dejó de ser un click directo**: pasa por el mismo diálogo,
+    que es donde vive el aviso. Reactivar sigue siendo directo.
+  - Dos bugs de coherencia arrastrados que aparecieron al hacerlo: el diálogo de "Eliminar
+    materia" seguía diciendo *"esta acción no se puede deshacer"* (es baja lógica reversible
+    desde c-78), y la pantalla de Exámenes tapaba el 409 con *"probá de nuevo"*, mandando a
+    reintentar algo que reintentar no arregla.
+- [x] 13.9 **Un solo patrón de baja: se retiró la "eliminación definitiva"** (pedido del dueño)
+  - "Eliminar materia" / "Eliminar comisión" ya **no borraba nada** desde que la baja pasó a
+    ser lógica: llamaba al mismo `DELETE` que "Desactivar". Dos entradas de menú con nombres
+    distintos para el mismo efecto, y la de "Eliminar" encima solo aparecía si la materia
+    estaba VACÍA, que es justo el caso en el que no hay nada que sacar.
+  - **Y tapaba un bug**: `onToggleActivaComision` estaba declarado en las props de
+    `ComisionesAccordionBody` pero **nunca cableado al menú**. O sea que una comisión con
+    inscriptos **no se podía dar de baja desde ninguna parte** — la única entrada que quedaba
+    era "Eliminar comisión", que exigía estar vacía.
+  - Ahora hay una sola acción por entidad: "Dar de baja la materia/comisión" ↔ "Reactivar".
+    Se borró el diálogo de eliminación y su estado (`confirmarBorrado`, `confirmarEliminar`,
+    `borrando`).
 
 ## 14. Exámenes
 
@@ -262,6 +303,58 @@
     de capturas en una base de 1024 MB. Cuatro decisiones aplicadas (cámara a 960×540,
     heartbeat a 180 s, chat apagado por defecto, retención configurable de 180 días con
     mínimo 90) lo bajaron a **443 MB**. Detalle en engram: `activeexam/capacidad-render-free-medida`.
+- [x] 16.1b **E-14** Simular la **caída de conexión** de un alumno durante el examen
+  - `CAIDA_SEG` / `CAIDA_PCT` / `CAIDA_EN_SEG` en el harness. Lo que se mide NO es que
+    aguante menos tráfico (mientras está caído no manda nada) sino el **regreso**: el cliente
+    bufferea en IndexedDB y drena todo junto, y si se cae el wifi del aula vuelven todos a la
+    vez. Por eso la caída arranca a la misma altura de la iteración en todos los VUs.
+  - **Medido (26/8/2026, stack local, 70 alumnos caídos 30 s a la vez): CERO evidencia
+    perdida, cero errores.** Drenaje de 1,08 s de media para la ráfaga de vuelta.
+  - La verificación necesita token de **admin**, no de coordinador: el detalle de la sesión es
+    de supervisión y desde c-79 el coordinador está acotado a SUS materias, así que con
+    sesiones `modo: 'test'` (sin examen vinculado) la pertenencia no resuelve y da 403 igual
+    que el alumno. La primera corrida marcó 100% de evidencia perdida por ese 403 y no por
+    una pérdida real.
+- [x] 16.1c **E-14** Simular la **avalancha LTI** de 70 a 100 altas — encontró un bug grave
+  - `tools/carga/avalancha-lti.py`. Registra una plataforma falsa en
+    `lti_deployment_confiable` apuntando al JWKS que sirve el propio script (el `jwks_uri` se
+    guarda por deployment, así que no se toca ninguna plataforma real) y la borra al terminar.
+  - **H-07 (CRÍTICO, corregido) — el mismo bug que bcrypt, en otro lado.**
+    `_default_jwks_fetcher` usa `httpx.get`, que es SINCRÓNICO, y se llamaba derecho dentro
+    de la corrutina del launch. Sin cache: **una bajada por launch**. Medido con 70 alumnos
+    entrando a la vez: 10,9 s la avalancha, **8 s de mediana por alumno**, 70 pedidos al
+    JWKS, y el canario (que mide cómo responde el servidor para TODO lo demás, incluidos los
+    que ya están rindiendo) saltó de 8 ms a **4075 ms**.
+  - Arreglo en dos mitades, porque el cache solo no alcanza: `JwksPlatformCache` cachea por
+    `jwks_uri` con TTL **y** manda la bajada a un hilo (el primer alumno del día siempre
+    encuentra el cache frío). Single-flight para que 70 llegadas simultáneas con el cache
+    frío no sean 70 bajadas contra un campus que también está saturado. Y un `kid` ausente
+    fuerza UN refresco, que es el riesgo que introduce cachear: si el campus rota sus claves,
+    el JWKS viejo dejaría fallar todos los launches hasta que venza el TTL.
+  - **Después del arreglo: 4,1 s la avalancha (era 10,9), 2809 ms por alumno (era 8039),
+    4 pedidos al JWKS (era 70 — son 4 porque uvicorn corre con 4 workers y el cache es por
+    proceso), canario 1582 ms (era 4075).**
+- [x] 16.1d **E-14** **H-08 (corregido)** El alta por LTI hasheaba una contraseña que nadie iba a usar
+  - El alta JIT generaba una contraseña **aleatoria de 32 bytes** y la hasheaba con bcrypt
+    (248 ms) solo para llenar la columna. Esa contraseña **nunca se le comunica a nadie**: el
+    alumno entra por LTI, y si quiere entrar directo fija la suya desde el dashboard
+    (`debe_cambiar_password=True`; el primer set de un usuario LTI ni siquiera pide la
+    anterior, ver `auth/router.py::lti_primer_set`). 248 ms por alumno para hashear un
+    secreto que nadie iba a verificar nunca.
+  - En su lugar, un **centinela** `HASH_SIN_PASSWORD = "!sin-password"`. Arranca con `!`
+    porque bcrypt siempre produce hashes que empiezan con `$2`: ningún texto plano puede
+    hashear a eso. Mismo patrón de "unusable password" de Django.
+  - `verificar_password` falla **cerrado** ante el centinela, la columna vacía o basura, y
+    **gasta igual el tiempo** de una verificación real (`verificar_password_dummy`): devolver
+    `False` al instante delataría por tiempo qué cuentas todavía no fijaron contraseña, que
+    es el mismo agujero de enumeración que ya se había tapado en el login.
+  - **Medido, misma avalancha de 70 alumnos: 1,5 s (era 4,1 tras el arreglo del JWKS y 10,9
+    al principio) · 1261 ms por alumno (era 2809 y 8039) · canario 311 ms (era 1582 y 4075).**
+    O sea: **la avalancha pasó de 10,9 s a 1,5 s y la degradación del resto del sistema de
+    4075 ms a 311 ms.**
+  - Red de seguridad de auth verde: `test_c55_hashing` 4, `test_c75_lti_password_setup` 4,
+    `test_c76_18_change_password_jwt_provider` 5, `test_password_policy` 9, `test_c75_lti_jit`
+    16, `test_c55_login_endpoint` 1. Más `test_c78_lti_sin_password.py` (7, nuevo).
 - [ ] 16.2 **E-14** Dimensionar el arranque de producción con los cores del plan una vez que deje de ser free, recalculando el pool (`workers × 24` conexiones contra `max_connections`)
   - Diferido por decisión del dueño: el plan sigue siendo el free y la VPS se evalúa después.
 - [x] 16.3a **E-14** Proteger `/metrics`, que estaba **público sin autenticación** en producción
