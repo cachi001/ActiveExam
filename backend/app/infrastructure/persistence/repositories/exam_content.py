@@ -1750,6 +1750,38 @@ class InscripcionSqlRepository:
             raise
         return model
 
+    async def comision_previa_en_la_materia(
+        self, usuario_id: str, comision_id: str
+    ) -> ComisionModel | None:
+        """La OTRA comisión de la misma materia en la que el alumno ya está, si hay.
+
+        Devuelve None si no hay conflicto: ni inscripto en esa materia, o
+        inscripto justamente en ``comision_id`` (que es el caso idempotente, no
+        un conflicto).
+
+        Sostiene la regla "una sola comisión por materia" (c-78): la materia sale
+        de ``comision.materia_id``, así que no alcanza con el UNIQUE de
+        ``inscripcion`` y hay que preguntarlo con un join.
+        """
+        destino = await self._db.execute(
+            select(ComisionModel.materia_id).where(ComisionModel.id == comision_id)
+        )
+        materia_id = destino.scalar_one_or_none()
+        if materia_id is None:
+            return None  # la comisión no existe: el llamador ya lo maneja
+
+        fila = await self._db.execute(
+            select(ComisionModel)
+            .join(InscripcionModel, InscripcionModel.comision_id == ComisionModel.id)
+            .where(
+                InscripcionModel.usuario_id == usuario_id,
+                ComisionModel.materia_id == materia_id,
+                ComisionModel.id != comision_id,
+            )
+            .limit(1)
+        )
+        return fila.scalar_one_or_none()
+
     async def eliminar(self, usuario_id: str, comision_id: str) -> bool:
         """Elimina la inscripción del alumno a la comisión.
 

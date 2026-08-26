@@ -117,3 +117,25 @@ class PerfilIncompletoError(Exception):
     def __init__(self, razon: str) -> None:
         super().__init__(razon)
         self.razon = razon
+
+
+class YaInscriptoEnLaMateriaError(Exception):
+    """El alumno ya está en OTRA comisión de la misma materia (c-78).
+
+    Regla del dueño (26/8/2026): **una sola comisión por materia**. El código de
+    matriculación lo comparte el docente y no es secreto, así que un alumno podía
+    conseguir el de otra comisión y quedar en las dos.
+
+    No es una molestia formal. Bajo el modelo replicado (§14.1) cada comisión
+    tiene su propia copia del mismo parcial: el alumno veía DOS exámenes que son
+    el mismo y podía rendir los dos. Y como las réplicas comparten
+    ``moodle_cmid``, las dos notas se escribían en el MISMO destino para el mismo
+    alumno, así que la segunda pisaba a la primera.
+
+    Cambiar de comisión lo hace un admin, dando de baja la anterior primero (esa
+    baja tiene su propia guarda de "ya rindió"). El endpoint lo traduce a 409.
+    """
+
+    def __init__(self, mensaje: str, *, comision_actual_nombre: str = "") -> None:
+        super().__init__(mensaje)
+        self.comision_actual_nombre = comision_actual_nombre

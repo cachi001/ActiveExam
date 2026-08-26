@@ -21,6 +21,7 @@ from app.application.exam_content.errors import (
     ComisionInactivaError,
     MateriaInactivaError,
     PerfilIncompletoError,
+    YaInscriptoEnLaMateriaError,
 )
 from app.application.exam_content.inscripcion_service import (
     AutoMatriculacionService,
@@ -296,6 +297,19 @@ def create_exam_taking_router(
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
                     detail={"error": "comision_inactiva", "mensaje": str(exc)},
+                ) from exc
+            except YaInscriptoEnLaMateriaError as exc:
+                # c-78: una sola comisión por materia. El código de matriculación
+                # no es secreto, y sin esto el alumno quedaba con dos copias del
+                # mismo parcial cuya nota se pisa en Moodle.
+                await session.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={
+                        "error": "ya_inscripto_en_la_materia",
+                        "mensaje": str(exc),
+                        "comision_actual": exc.comision_actual_nombre,
+                    },
                 ) from exc
 
         return InscribirPorCodigoResponse(

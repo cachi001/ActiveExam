@@ -24,8 +24,31 @@ from app.application.exam_content.errors import (
     MateriaInactivaError,
     PerfilIncompletoError,
     UsuarioNoEncontradoError,
+    YaInscriptoEnLaMateriaError,
 )
 from app.domain.exam_content.errors import InscripcionDuplicadaError
+
+
+async def _rechazar_si_ya_esta_en_la_materia(
+    inscripcion_repo, usuario_id: str, comision_id: str
+) -> None:
+    """UNA SOLA COMISIÓN POR MATERIA (c-78, decisión del dueño).
+
+    Función de módulo, no método: la comparten los DOS servicios de inscripción
+    (el del alumno con el código y el del admin). Si viviera en uno solo, el otro
+    camino dejaría pasar la doble matrícula y la regla no existiría.
+
+    Ver ``YaInscriptoEnLaMateriaError`` para el porqué.
+    """
+    previa = await inscripcion_repo.comision_previa_en_la_materia(usuario_id, comision_id)
+    if previa is None:
+        return
+    raise YaInscriptoEnLaMateriaError(
+        f"Ya estás inscripto a la comisión {previa.nombre!r} de esta materia. "
+        "No se puede cursar la misma materia en dos comisiones: pedile al "
+        "docente que te cambie.",
+        comision_actual_nombre=previa.nombre,
+    )
 
 
 @dataclass(frozen=True)
@@ -156,6 +179,15 @@ class AutoMatriculacionService:
                 "inscripciones nuevas."
             )
 
+        # UNA SOLA COMISIÓN POR MATERIA (c-78, decisión del dueño). El código de
+        # matriculación lo comparte el docente y no es secreto: sin esto, un
+        # alumno conseguía el de otra comisión y quedaba en las dos, veía DOS
+        # copias del mismo parcial y podía rendir las dos — y como las réplicas
+        # comparten `moodle_cmid`, la segunda nota pisaba a la primera.
+        await _rechazar_si_ya_esta_en_la_materia(
+            self._inscripcion_repo, usuario_id, comision.id
+        )
+
         # Idempotente: si ya está inscripto, el repo eleva InscripcionDuplicadaError
         # (rollback interno). No es error para el alumno: respuesta amistosa.
         try:
@@ -230,7 +262,15 @@ class InscripcionService:
             raise ComisionNoEncontradaError(f"Comisión {comision_id!r} no existe.")
         if not await self._inscripcion_repo.usuario_existe(usuario_id):
             raise UsuarioNoEncontradoError(f"Usuario {usuario_id!r} no existe.")
+        # La misma regla que para el alumno: si el admin la puede violar, la
+        # regla no existe. Para cambiar de comisión hay que dar de baja la
+        # anterior primero, que además es la operación que tiene la guarda de
+        # "ya rindió" (no se huerfaniza evidencia).
+        await _rechazar_si_ya_esta_en_la_materia(
+            self._inscripcion_repo, usuario_id, comision_id
+        )
         return await self._inscripcion_repo.inscribir(usuario_id, comision_id)
+
 
     async def eliminar(self, comision_id: str, usuario_id: str) -> None:
         """Da de baja la inscripción del alumno a la comisión.

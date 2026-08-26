@@ -53,6 +53,7 @@ from app.application.exam_content.errors import (
     MoodleXmlInvalidoError,
     MoodleXmlVacioError,
     UsuarioNoEncontradoError,
+    YaInscriptoEnLaMateriaError,
 )
 from app.application.exam_content.impacto_baja import (
     impacto_baja_comision,
@@ -2026,6 +2027,20 @@ def create_exam_content_router(
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
                     detail={"error": "duplicado", "mensaje": str(exc)},
+                ) from exc
+            except YaInscriptoEnLaMateriaError as exc:
+                # c-78: una sola comisión por materia, también para el admin. Para
+                # cambiar de comisión hay que dar de baja la anterior primero —
+                # esa baja tiene la guarda de "ya rindió", que evita huerfanar
+                # evidencia.
+                await session.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={
+                        "error": "ya_inscripto_en_la_materia",
+                        "mensaje": str(exc),
+                        "comision_actual": exc.comision_actual_nombre,
+                    },
                 ) from exc
 
         await registrar_seguro(

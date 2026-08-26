@@ -160,6 +160,32 @@
     Se borró el diálogo de eliminación y su estado (`confirmarBorrado`, `confirmarEliminar`,
     `borrando`).
 
+- [x] 13.10 **Una sola comisión por materia** (decisión del dueño, 26/8/2026)
+  - El código de matriculación lo comparte el docente y **no es secreto**: un alumno de C1
+    conseguía el de C2 de la misma materia y quedaba en las dos. Verificado que nada lo
+    impedía.
+  - **Lo que arrastraba**: bajo el modelo replicado (§14.1) cada comisión tiene su propia
+    copia del mismo parcial, así que el alumno veía **dos exámenes que son el mismo** y podía
+    rendir los dos. Y como las réplicas comparten `moodle_cmid`, las dos notas se escribían en
+    el MISMO destino para el mismo alumno: **la segunda pisaba a la primera**.
+  - La regla vale en los **tres** caminos, porque si uno solo la puede violar la regla no
+    existe: el código del alumno (409 `ya_inscripto_en_la_materia`), el alta manual del admin
+    (mismo 409) y la matriculación automática de LTI.
+  - **LTI no rechaza el launch**: cortarle el ingreso al alumno por esto sería peor que el
+    problema. Simplemente no lo matricula de nuevo y conserva la comisión que ya tenía.
+  - Re-usar el código de SU propia comisión sigue siendo idempotente, y otra **materia** no se
+    bloquea (un alumno cursa muchas a la vez).
+  - `comision_previa_en_la_materia` en el repo (la materia sale de `comision.materia_id`, así
+    que el UNIQUE de `inscripcion` no alcanza y hay que preguntarlo con un join).
+  - 8 tests contra DB real.
+- [x] 13.11 **"Mi perfil" dejaba de mostrar la barra lateral mientras cargaba** (reporte del dueño)
+  - Al tocarlo, la barra desaparecía, el "Cargando…" quedaba centrado en toda la pantalla y un
+    segundo después volvía todo a su lugar. Ninguna otra pantalla del alumno salta así.
+  - La causa: el estado de carga usaba `<StudentShell ocultarNavegacion>` y la vista final
+    usa `<StudentShell>` normal, así que la propia pantalla cambiaba de layout entre
+    "cargando" y "listo". `ocultarNavegacion` sigue en los pasos del enrollment, que es para
+    lo que existe.
+
 ## 14. Exámenes
 
 - [x] 14.1 **E-06** Crear un examen para varias comisiones, replicado (N exámenes independientes), en una operación todo o nada

@@ -57,6 +57,7 @@ comprobado firma, nonce, aud y exp.
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
@@ -78,6 +79,8 @@ from app.infrastructure.persistence.models.lti import (
     LtiProvisioningPendienteModel,
 )
 from app.infrastructure.persistence.models.transactional import UsuarioModel
+
+logger = logging.getLogger("lti")
 
 
 class PendienteInvalidoError(Exception):
@@ -388,6 +391,33 @@ async def _asegurar_matricula(
     sin mapeo → no matricular).
     """
     if deployment.comision_id is None:
+        return
+
+    # UNA SOLA COMISIÓN POR MATERIA (c-78). Si el alumno ya está en OTRA comisión
+    # de esta misma materia, NO se lo matricula de nuevo: quedaría con dos copias
+    # del mismo parcial y las dos notas se escribirían en el mismo destino de
+    # Moodle, pisándose.
+    #
+    # Acá NO se rechaza el launch, a diferencia del código de matriculación:
+    # cortarle el ingreso al alumno por esto sería peor que el problema. Conserva
+    # la comisión que ya tenía y entra igual; si está en la equivocada, lo
+    # resuelve un admin cambiándolo.
+    ya_en_la_materia = await session.execute(
+        sa_text(
+            "SELECT c.nombre FROM inscripcion i "
+            "JOIN comision c ON c.id = i.comision_id "
+            "WHERE i.usuario_id = :uid "
+            "  AND c.materia_id = (SELECT materia_id FROM comision WHERE id = :cid) "
+            "  AND c.id <> :cid "
+            "LIMIT 1"
+        ),
+        {"uid": usuario.id, "cid": deployment.comision_id},
+    )
+    otra = ya_en_la_materia.scalar_one_or_none()
+    if otra is not None:
+        logger.warning(
+            "lti_matricula_omitida usuario=%s ya_en_comision=%s", usuario.id, otra
+        )
         return
 
     # INSERT ... ON CONFLICT DO NOTHING: idempotente sin IntegrityError.
