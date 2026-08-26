@@ -169,6 +169,15 @@ export interface ExamenContenidoResumen {
   borrador?: boolean;
   /** c-78 E-07: 'fijo' | 'sorteo_por_intento'. */
   modo_preguntas?: string;
+  /**
+   * c-78 §18.4: la comisión de este examen quedó SIN tutor, así que sus notas no
+   * se van a poder devolver al campus (el write-back sale con la credencial del
+   * tutor y sin él responde `sin_docente`).
+   *
+   * TRES estados: true = falta tutor · false = tiene · null/ausente = no se sabe
+   * (los listados no consultan ese dato). La pantalla avisa SOLO con true.
+   */
+  comision_sin_tutor?: boolean | null;
 }
 
 /**

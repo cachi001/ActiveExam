@@ -654,6 +654,64 @@
     mis cambios. Actualizado a `admin_sistema` (el único institucional que queda).
   - 22 tests verdes: 7 puros + 6 HTTP nuevos + los 9 de `test_chat_api` recuperados.
 
+## 18. Antes del examen real (operación, no código)
+
+> Encontrado probando contra producción el 26/8/2026. Nada de esto es un bug del
+> sistema: es configuración y operación. Pero si falta, el examen se rompe.
+
+- [x] 18.1 **Asignar los responsables de cada materia y comisión.** Verificado en producción:
+  las tres materias estaban **sin profesor y sin coordinador**, y las cinco comisiones **sin
+  tutor**. Con eso, todos los roles reciben 403 en todo, y —lo más grave— **las notas no se
+  pueden devolver al campus**: el write-back sale con la credencial del TUTOR de la comisión,
+  y sin tutor responde `sin_docente`. Se descubre recién al final, con el examen ya rendido.
+  Ver 18.4: el sistema debería avisarlo antes.
+  - **Hecho el 26/8/2026 contra producción.** Las 3 materias quedaron con coordinador
+    (`coordinador1`) y profesor (`profesor1`); las 5 comisiones, con tutor. Se creó
+    `tutor.pye` (Tutor Probabilidad) para las dos comisiones de Probabilidad y Estadística,
+    que eran las que estaban descubiertas; las de Programación quedaron con `tutor1`.
+  - Son cuentas de PRUEBA, no personas reales. Antes del examen real hay que crear las
+    cuentas de quienes van a firmar de verdad: el nombre del tutor es lo que Moodle muestra
+    en la columna *Fuente* de la libreta, y ahí lo lee una persona.
+  - Trampa encontrada al hacerlo: la pantalla de materias muestra las comisiones de la
+    materia **seleccionada**, así que revisar "a ojo" deja afuera las del resto. La comisión
+    C6 de Programación 2 estaba sin tutor y no aparecía en pantalla. El barrido hay que
+    hacerlo materia por materia, o con 18.4 puesto, que lo marca en la lista.
+- [ ] 18.2 **Despertar Render antes del examen.** El plan free duerme el servicio. El primer
+  ingreso por el link de Moodle con el servicio dormido **se pierde**: el alumno ve la pantalla
+  de arranque del hosting y, como el ingreso viaja como envío de datos, al recargar da 422.
+  Basta con pegarle a cualquier endpoint unos minutos antes.
+  - Queda ABIERTA a propósito: es una acción del día del examen, no algo que se pueda dejar
+    hecho. Procedimiento verificado el 26/8/2026: el servicio dormido devuelve **503
+    "Application loading"**; un `GET /api/v1/exam-content/periodos` lo despierta y el
+    siguiente request ya responde 200 en menos de 1 s.
+- [x] 18.3 **Tener presente el techo del plan free: 19 a 20 req/s.** Medido con 70 y con 100
+  alumnos: el número no se mueve, solo sube la latencia (p95 de evento 7,8 s con 70; 12,67 s
+  con 100, y ahí aparece el primer error). No falla nada, pero con 100 alumnos hay esperas de
+  varios segundos por acción.
+- [x] 18.4 **Avisar cuando una materia o comisión no tiene responsable asignado.** Hoy se puede
+  crear una materia, sus comisiones, sus exámenes, y que los alumnos rindan, sin que nada
+  advierta que no hay quién firme las notas. El aviso tiene que estar donde se arma la
+  estructura y en el detalle del examen, no al final.
+  - **Backend**: `GET /{examen_id}/resumen` agrega `comision_sin_tutor`. Tres estados a
+    propósito — `true` falta tutor, `false` tiene, `null` no se consultó (los listados no
+    pagan esa query) o el examen no tiene comisión. Afirmar que falta alguien sin haberlo
+    mirado manda a asignar un tutor que quizá ya está puesto, y ahí el aviso pierde el
+    crédito que necesita para que alguien lo lea.
+  - **Backend**: `GET /materias` ahora devuelve `profesores`, no solo `coordinadores`. Sin
+    ese dato la pantalla no puede distinguir "no tiene a nadie" de "no tiene coordinador".
+  - **Frontend**: `AvisoSinResponsable` (componente puro, 7 tests). Se usa en el detalle del
+    examen —arriba de todo, junto al estado— y en la pantalla de estructura, más un chip
+    "Sin responsable" en la lista de materias para verlo sin abrir una por una.
+  - Verificado en el navegador contra el backend real, ida y vuelta: sin tutor aparece el
+    aviso; asignando el tutor desaparece. La materia del seed, que sí tiene responsables, no
+    muestra nada — un cartel permanente se vuelve decorado y deja de avisar.
+- [x] 18.5 **La flecha de los `<select>` estaba pegada al borde.** Con las esquinas
+  redondeadas quedaba montada sobre la curva. Se reemplaza la flecha nativa de Chrome por un
+  chevron propio a 12px del borde, con padding derecho suficiente para que ningún texto largo
+  le pase por encima. Va en `index.css` en un solo lugar —son 55 `<select>` repartidos por la
+  app— y con `!important`, que es lo que le gana al `px-3`/`px-[14px]` de Tailwind. Excluye
+  los `multiple`/`size`, que se dibujan como lista y no tienen flecha que ubicar.
+
 ## 17. Cierre
 
 - [x] 17.1 Verificar que `openspec validate` pasa para el change y que cada requisito de las specs tiene al menos un test que lo ejercita.

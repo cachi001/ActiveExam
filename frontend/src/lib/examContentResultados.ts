@@ -247,6 +247,9 @@ export async function getExamenHeaderFn(
     comision_nombre: (data['comision_nombre'] as string | null) ?? null,
     materia_id: (data['materia_id'] as string | null) ?? null,
     materia_nombre: (data['materia_nombre'] as string | null) ?? null,
+    // c-78 §18.4. `?? null` a propósito: un backend viejo que no manda el campo
+    // queda en "no se sabe", no en "falta el tutor".
+    comision_sin_tutor: (data['comision_sin_tutor'] as boolean | null) ?? null,
   };
 }
 

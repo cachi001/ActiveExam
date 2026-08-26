@@ -13,9 +13,10 @@
 3. Flujo: `/opsx:propose` (si falta) → `/opsx:apply` → `/opsx:archive`. Al archivar, el change sale de este roadmap.
 4. **Este archivo se desactualiza solo** (archivar un change no lo edita). Antes de confiar en la sección de pendientes, corré `openspec list --json` — es la única fuente que no miente.
 
-> **Foto al 2026-08-25**: `openspec list --json` devuelve **4 changes abiertos**: `c-78`
-> (83/89, el único de código activo), `c-01` (0/…, gate legal), `c-03` (24/45, PoC de carga)
-> y `c-15b` (0/10, SSE — depende de c-03). `c-76`, `c-77` y `c-79` están archivados.
+> **Foto al 2026-08-26**: con `c-78` archivado, `openspec list --json` devuelve **3 changes
+> abiertos**, y los tres son gates o dependen de uno: `c-01` (0/23, gate legal), `c-03`
+> (24/45, PoC de carga) y `c-15b` (0/10, SSE — depende de c-03). No queda ningún change de
+> código activo. `c-76`, `c-77`, `c-78` y `c-79` están archivados.
 
 > **Foto al 2026-08-13 (post-C-75)**: `openspec list --json` devuelve **solo 3 changes pendientes en todo el proyecto**: `c-01`, `c-03`, `c-15b`. Todo lo demás — incluyendo **c-16 a c-20** (que este archivo tenía listados como "0% sin empezar" desde el 11-jun) y **c-67 a c-75** (nunca reflejados acá) — está **archivado**. Ver "Resumen por estado" al final para el detalle completo de lo que se sumó al archivo desde la última regeneración real (17-jul).
 
@@ -43,13 +44,26 @@
 > Lección: `/opsx:archive` tiene que dejar la spec en formato FINAL y copiada a
 > `openspec/specs/` — conviene verificar con `openspec validate --specs` al cerrar.
 
-> **c-78-coherencia-y-mejoras-relevamiento — EN CURSO (83/89 al 2026-08-25)**: el único
-> change de código abierto además de los gates. Scope original (baja lógica de exámenes,
-> coherencia de denominadores, filtro de etiqueta) + retención y baja biométrica DSR +
-> multi-comisión, duplicar y sorteo por intento + capacidad. Las 6 tareas que quedan **no
-> bloquean el examen**: 2 son checkpoints que requieren que el dueño mire (3.6, 17.3), 16.2
-> está diferida mientras siga el plan free, 16.3b bloqueada por una decisión pendiente
-> (dónde guardar `/metrics`), y 16.5/16.6 diferidas con razones escritas en su `tasks.md`.
+> **c-78-coherencia-y-mejoras-relevamiento — ARCHIVADO (2026-08-26, 101/106)**: el change de
+> código más grande del proyecto. Scope original (baja lógica de exámenes, coherencia de
+> denominadores, filtro de etiqueta) + retención y baja biométrica DSR + multi-comisión,
+> duplicar y sorteo por intento + capacidad medida contra Render + write-back de notas
+> verificado de punta a punta contra el campus real.
+>
+> El último bloque (§18) salió de recorrer producción a mano el 26/8: las tres materias
+> estaban **sin profesor y sin coordinador** y las cinco comisiones **sin tutor**, y nada lo
+> advertía — con el write-back saliendo con la credencial del tutor, eso significaba notas
+> retenidas descubiertas con el examen ya rendido. Se cerró por los dos lados: los
+> responsables quedaron asignados en producción (18.1) y el sistema ahora **avisa** cuando
+> faltan, en la pantalla de estructura y en el detalle del examen (18.4, delta spec
+> `aviso-responsable-faltante`). De paso, la flecha de los `<select>` dejó de estar pegada al
+> borde en toda la app (18.5).
+>
+> **5 tareas quedan abiertas a propósito, ninguna bloquea el examen**: 16.2 (dimensionar el
+> arranque cuando deje de ser plan free), 16.3b (dónde guardar `/metrics`, decisión
+> pendiente), 16.5 (captura binaria en vez de base64), 16.6 (SSE, que es el change c-15b) y
+> **18.2 (despertar Render antes del examen)**, que no es código sino una acción del día:
+> el servicio dormido devuelve 503 y el primer ingreso por el link de Moodle se pierde.
 
 > **Cambios respecto del estado anterior (sesión 2 del 2026-06-11)**:
 > - **Archivados nuevos**: c-66 (UI estudiante onboarding desktop+mobile, frontend-only, todas las 24 tasks completadas — tsc limpio, build verde).

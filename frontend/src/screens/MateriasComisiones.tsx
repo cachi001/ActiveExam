@@ -42,6 +42,7 @@ import {
 import type { Materia, Comision } from '../lib/types';
 import { ConfirmModal } from '../ui/ConfirmModal';
 import { AvisoImpactoBaja } from '../ui/AvisoImpactoBaja';
+import { AvisoSinResponsable } from '../ui/AvisoSinResponsable';
 import { MateriaFormPanel } from './admin/components/MateriaFormPanel';
 import {
   AsignarCoordinadorDialog,
@@ -55,6 +56,14 @@ import {
   type FormMateria,
   type FormComision,
 } from './admin/components/materiasComisionesTypes';
+
+// c-78 §18.4: la materia no tiene a NADIE a cargo. En producción las tres
+// materias estaban así y nada lo advertía. El listado solo llena estas dos listas
+// para staff y coordinador; en cualquier otro rol vienen vacías y el aviso no
+// aplica — pero esta pantalla es admin-only, así que acá el dato siempre está.
+function sinResponsable(m: Materia): boolean {
+  return (m.coordinadores?.length ?? 0) === 0 && (m.profesores?.length ?? 0) === 0;
+}
 
 export default function MateriasComisiones() {
   const toast = useToast();
@@ -535,7 +544,22 @@ export default function MateriasComisiones() {
                             </span>
                           )}
                         </p>
-                        <p className="text-[11px] font-mono text-on-surface-variant mt-0.5">{m.codigo}</p>
+                        {/* c-78 §18.4: sin nadie a cargo se ve de un vistazo en la
+                            lista, sin abrir materia por materia. Va en la segunda
+                            línea junto al código: arriba le comía el ancho al
+                            nombre, que es lo que la persona viene a leer. */}
+                        <p className="text-[11px] font-mono text-on-surface-variant mt-0.5 flex items-center gap-2">
+                          <span className="truncate">{m.codigo}</span>
+                          {sinResponsable(m) && (
+                            <span
+                              title="Esta materia no tiene profesor ni coordinador asignado."
+                              className="shrink-0 inline-flex items-center gap-1 rounded-full bg-warning-container text-on-surface px-2 py-0.5 text-[10px] font-sans font-medium uppercase tracking-wide"
+                            >
+                              <Icon name="person_off" className="text-[12px]" />
+                              Sin responsable
+                            </span>
+                          )}
+                        </p>
                       </button>
                       {puedeEditarEstructura && (
                       <ActionMenu
@@ -597,6 +621,15 @@ export default function MateriasComisiones() {
                         </Button>
                       )}
                     </div>
+                    {/* c-78 §18.4: el aviso completo, con qué falta y por qué
+                        importa, va donde se está trabajando la materia. Las
+                        comisiones sin tutor ya se marcan una por una en la
+                        columna "Tutor" de la tabla de abajo. */}
+                    {sinResponsable(m) && (
+                      <div className="px-4 pt-3">
+                        <AvisoSinResponsable sinResponsableDeMateria nombre={m.nombre} />
+                      </div>
+                    )}
                     {errorComisiones[m.id] ? (
                       /* D16: la carga de comisiones FALLÓ. No se dibuja como
                          "esta materia no tiene comisiones". */

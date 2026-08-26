@@ -112,6 +112,13 @@ class ExamenContenidoResumenResponse(BaseModel):
     # c-78 E-07: 'fijo' | 'sorteo_por_intento'. La pantalla lo usa para decir que
     # cada alumno rinde preguntas distintas.
     modo_preguntas: str = "fijo"
+    # c-78 §18.4: la comisión de este examen quedó SIN tutor asignado, así que sus
+    # notas no van a poder devolverse al campus (el write-back sale con la
+    # credencial del tutor y sin él responde `sin_docente`). Tres estados a
+    # propósito: True = falta tutor, False = tiene, None = no se consultó (los
+    # listados no pagan la query) o el examen no tiene comisión. La UI avisa solo
+    # con True — afirmar que falta alguien sin haberlo mirado sería peor que callar.
+    comision_sin_tutor: bool | None = None
 
 
 class ExamenesContenidoPaginadosResponse(BaseModel):
