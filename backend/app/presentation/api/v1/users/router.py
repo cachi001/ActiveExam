@@ -156,12 +156,6 @@ class UsuarioResponse(BaseModel):
     password_generada: str | None = None  # solo en POST cuando el admin no proveyó password
     creado_en: str | None = None
     ultimo_acceso_en: str | None = None
-    # c-78: el userid del alumno en el campus, que Moodle manda en cada ingreso
-    # por el link (claim `sub`). Se expone para poder VERIFICAR que llega bien:
-    # es uno de los datos con los que se le devuelve la nota, y sin verlo no hay
-    # forma de saber si esta cargado. None = la cuenta no entro por el campus
-    # (alta manual) o es anterior a que se empezara a guardar.
-    moodle_userid: str | None = None
     inscripciones: list[InscripcionResumen] = []
     # Materia/comisión donde este usuario es el docente a cargo (rol tutor).
     comisiones_a_cargo: list[InscripcionResumen] = []
@@ -195,6 +189,13 @@ class UsuarioDetalleResponse(BaseModel):
     eliminado_en: str | None
     creado_en: str | None = None
     ultimo_acceso_en: str | None = None
+    ultimo_acceso_en: str | None = None
+    # c-78: el userid del alumno en el campus, que Moodle manda en cada ingreso
+    # por el link (claim `sub`). Se expone para poder VERIFICAR que llega bien:
+    # es uno de los datos con los que se le devuelve la nota, y sin verlo no hay
+    # forma de saber si esta cargado. None = la cuenta no entro por el campus
+    # (alta manual) o es anterior a que se empezara a guardar.
+    moodle_userid: str | None = None
     inscripciones: list[InscripcionResumen] = []
     # Materia/comisión donde este usuario es el docente a cargo (rol tutor).
     # Vacío para roles sin comisión asignada (estudiante usa `inscripciones`).
