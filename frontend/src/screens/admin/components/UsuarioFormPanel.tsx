@@ -20,6 +20,9 @@ interface UsuarioFormPanelProps {
   toggleRol: (rol: string) => void;
   onSubmit: (e: React.FormEvent) => void;
   onCancelar: () => void;
+  /** Solo en modo editar: si el formulario tiene algo distinto de lo cargado.
+   *  Sin cambios, "Guardar cambios" queda deshabilitado. */
+  hayCambios?: boolean;
 }
 
 /** Permisos reales de un rol, agrupados por módulo/dominio (patrón copiado de
@@ -64,7 +67,7 @@ function PermisosDeRol({ rol }: { rol: Rol }) {
 
 export function UsuarioFormPanel({
   modoForm, editando, form, formError, enviando,
-  cambiarTexto, toggleRol, onSubmit, onCancelar,
+  cambiarTexto, toggleRol, onSubmit, onCancelar, hayCambios = true,
 }: UsuarioFormPanelProps) {
   return (
     <Card>
@@ -165,7 +168,11 @@ export function UsuarioFormPanel({
           <Button type="button" variant="ghost" onClick={onCancelar} disabled={enviando}>
             Cancelar
           </Button>
-          <Button type="submit" disabled={enviando}>
+          {/* Al editar, se habilita SOLO si hay algo distinto de lo que se cargó.
+              Ofrecer guardar lo que no cambió invita a un PATCH inútil que igual
+              audita, y borra la señal de si uno modificó algo — que es lo que uno
+              quiere saber antes de confirmar cambios de roles sobre otra cuenta. */}
+          <Button type="submit" disabled={enviando || (modoForm === 'editar' && !hayCambios)}>
             {enviando ? (
               <span className="inline-flex items-center gap-xs">
                 <Icon name="progress_activity" className="ae-spin text-[20px]" />

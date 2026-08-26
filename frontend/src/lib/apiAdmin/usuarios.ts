@@ -82,6 +82,30 @@ export const usuariosApi = {
   },
 
   /**
+   * Le genera al usuario una contraseña temporal y la devuelve UNA sola vez.
+   *
+   * El endpoint existe desde c-78 pero ninguna pantalla lo llamaba: la única
+   * forma de destrabar a alguien que olvidó su clave era pegarle a la API a mano.
+   *
+   * La temporal NO se guarda en claro en ningún lado — si se pierde antes de
+   * dársela a la persona, hay que resetear de nuevo. El usuario queda obligado a
+   * cambiarla al entrar, así que el admin destraba el acceso sin quedarse
+   * sabiendo la clave de nadie.
+   *
+   * Real: POST /users/{usuarioId}/resetear-password
+   */
+  async resetearPasswordUsuario(usuarioId: string): Promise<{
+    usuario_id: string;
+    password_temporal: string;
+    debe_cambiar_password: boolean;
+  }> {
+    return await realFetch(
+      `/users/${encodeURIComponent(usuarioId)}/resetear-password`,
+      { method: 'POST' },
+    );
+  },
+
+  /**
    * Da de baja lógica (soft-delete) a un usuario (admin_sistema) — C-61.
    * Real: DELETE /users/{usuarioId} → 204 sin cuerpo.
    */
