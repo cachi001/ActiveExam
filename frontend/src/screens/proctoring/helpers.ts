@@ -391,6 +391,5 @@ export interface ExamInfo {
   examNombre: string;
   materiaNombre: string;
   comisionNombre: string;
-  docente: string;
 }
 

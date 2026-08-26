@@ -28,7 +28,6 @@ export function examInfoDeSesion(s: SesionProctoringResumen): ExamInfo | null {
       examNombre: s.examen_titulo ?? SIN_EXAMEN,
       materiaNombre: s.materia_nombre ?? SIN_MATERIA,
       comisionNombre: s.comision_nombre ?? SIN_COMISION,
-      docente: '',
     };
   }
   return null;
@@ -46,7 +45,7 @@ export function examInfoDeSesion(s: SesionProctoringResumen): ExamInfo | null {
 export function subtituloExamen(info: ExamInfo | null): string {
   if (!info) return '';
   const sentinelas = new Set([SIN_EXAMEN, SIN_MATERIA, SIN_COMISION]);
-  return [info.materiaNombre, info.comisionNombre, info.docente]
+  return [info.materiaNombre, info.comisionNombre]
     .map((p) => p?.trim() ?? '')
     .filter((p) => p !== '' && !sentinelas.has(p))
     .join(' · ');
@@ -84,6 +83,22 @@ function examenDe(item: SesionEnriquecida): string {
 }
 
 /**
+ * c-78 D3 — DEFINICIÓN CANÓNICA de "entra a la Cola de revisión".
+ *
+ * Una sesión entra si tiene un examen REAL vinculado y su score alcanza el umbral
+ * vivo. Las sesiones de diagnóstico (ej. "Grabar sesión" del Test de detección) no
+ * entran por más que superen el umbral: no hay a quién revisarle nada.
+ *
+ * Vive acá y en UN solo lugar a propósito: el Panel de administración contaba
+ * `flagged` sin el filtro de examen vinculado, así que mostraba un número más alto
+ * que la Cola de revisión para el mismo dato. Todo consumidor que cuente "en cola"
+ * SHALL usar esta función; duplicar la condición es lo que produjo el desvío.
+ */
+export function entraACola(s: SesionProctoringResumen, umbral: number): boolean {
+  return s.score >= umbral && (s.exam_id != null || s.examen_contenido_id != null);
+}
+
+/**
  * Filtra a alto riesgo (score ≥ umbral), enriquece con joinExamInfo y ordena por
  * score descendente (mayor riesgo primero; desempate por más discrepancias).
  */
@@ -92,9 +107,7 @@ export function enriquecerYFiltrar(
   umbral: number,
 ): SesionEnriquecida[] {
   return sesiones
-    // Solo sesiones vinculadas a un examen real: las de diagnóstico / sin examen
-    // (ej. "Grabar sesión" del Test de detección) NO entran a la cola de revisión.
-    .filter((s) => s.score >= umbral && (s.exam_id != null || s.examen_contenido_id != null))
+    .filter((s) => entraACola(s, umbral))
     .sort((a, b) => b.score - a.score || b.total_discrepancias - a.total_discrepancias)
     .map((sesion) => ({ sesion, info: examInfoDeSesion(sesion) }));
 }

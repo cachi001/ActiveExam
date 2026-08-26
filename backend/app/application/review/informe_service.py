@@ -20,8 +20,12 @@ existencia de evidencia).
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from sqlalchemy import select
+
+if TYPE_CHECKING:
+    from app.infrastructure.crypto.evidence_encryption import EvidenceCipher
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.application.moodle.resultados_query import _sesiones_con_restitucion
@@ -94,6 +98,7 @@ async def build_informe_devolucion(
     session_id: str,
     titular_idnumber: str,
     presign: PresignService,
+    cipher: "EvidenceCipher | None" = None,
 ) -> InformeDevolucion | None:
     """Construye el informe si — y solo si — la sesión es del titular y su nota
     fue anulada por fraude (efecto derivado del último acto). En cualquier otro
@@ -154,8 +159,11 @@ async def build_informe_devolucion(
     # Reusa el servicio de c-18 tal cual (sin duplicar la lógica de re-hasheo):
     # el admin lo usa para peritar un evento puntual, acá se corre automático
     # sobre CADA captura que ya se le muestra al alumno.
+    # c-78: el repo DESCIFRA antes de re-hashear. Sin el cipher comparaba el hash
+    # del token Fernet contra el hash del claro y le decía a CADA alumno que su
+    # propia evidencia estaba adulterada.
     verify_service = VerifyChainService(
-        event_repo=SqlEventMaterialRepository(db),
+        event_repo=SqlEventMaterialRepository(db, cipher=cipher),
         auditor=SqlChainVerificationAuditor(db),
     )
     actor = f"{titular_idnumber}:informe-devolucion"

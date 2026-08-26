@@ -1,8 +1,10 @@
-# Spec — report-exports-and-summary
+# report-exports-and-summary Specification
 
-> Exports (CSV/JSON) y sumario institucional del período, ambos con minimización de PII (agregado por defecto; nominal solo con permiso + audit, Ley 25.326) y sin emitir veredictos agregados (RN-SC-01, DD-01).
+## Purpose
 
-## ADDED Requirements
+Exports (CSV/JSON) y sumario institucional del período, ambos con minimización de PII (agregado por defecto; nominal solo con permiso + audit, Ley 25.326) y sin emitir veredictos agregados (RN-SC-01, DD-01).
+
+## Requirements
 
 ### Requirement: Exports de reportes con minimización de PII
 El sistema SHALL permitir **exportar** los reportes/agregados en formatos institucionales (CSV/JSON); los exports SHALL ser **agregados/estadísticos por defecto** (sin PII), y el export **nominal** SHALL requerir permiso (RBAC contextual) y SHALL quedar **auditado** (Ley 25.326, privacidad por diseño).

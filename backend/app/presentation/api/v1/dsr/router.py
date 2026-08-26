@@ -191,7 +191,10 @@ async def access(
     principal: AuthenticatedPrincipal = Depends(get_current_principal),
 ) -> AccessResponseDto:
     target = _resolve_target((body.usuario_id if body else None), principal)
-    actor = f"{principal.subject or 'unknown'}:dsr"
+    # Actor = email/username real del que EJECUTA el pedido DSR (quien lo ejerce),
+    # no el UUID crudo del subject — antes quedaba "uuid:dsr" y Auditoría no podía
+    # resolverlo a un nombre visible.
+    actor = principal.email or principal.username or principal.subject or "desconocido"
     factory = _get_session_factory(request)
     async with factory() as s:
         svc = _build_service(s)
@@ -213,7 +216,10 @@ async def rectification(
     principal: AuthenticatedPrincipal = Depends(get_current_principal),
 ) -> AccessResponseDto:
     target = _resolve_target(body.usuario_id, principal)
-    actor = f"{principal.subject or 'unknown'}:dsr"
+    # Actor = email/username real del que EJECUTA el pedido DSR (quien lo ejerce),
+    # no el UUID crudo del subject — antes quedaba "uuid:dsr" y Auditoría no podía
+    # resolverlo a un nombre visible.
+    actor = principal.email or principal.username or principal.subject or "desconocido"
     factory = _get_session_factory(request)
     async with factory() as s:
         svc = _build_service(s)
@@ -241,7 +247,10 @@ async def portability(
     principal: AuthenticatedPrincipal = Depends(get_current_principal),
 ) -> PortabilityResponseDto:
     target = _resolve_target((body.usuario_id if body else None), principal)
-    actor = f"{principal.subject or 'unknown'}:dsr"
+    # Actor = email/username real del que EJECUTA el pedido DSR (quien lo ejerce),
+    # no el UUID crudo del subject — antes quedaba "uuid:dsr" y Auditoría no podía
+    # resolverlo a un nombre visible.
+    actor = principal.email or principal.username or principal.subject or "desconocido"
     factory = _get_session_factory(request)
     async with factory() as s:
         svc = _build_service(s)
@@ -263,7 +272,10 @@ async def erasure(
     principal: AuthenticatedPrincipal = Depends(get_current_principal),
 ) -> ErasureReportDto:
     target = _resolve_target((body.usuario_id if body else None), principal)
-    actor = f"{principal.subject or 'unknown'}:dsr"
+    # Actor = email/username real del que EJECUTA el pedido DSR (quien lo ejerce),
+    # no el UUID crudo del subject — antes quedaba "uuid:dsr" y Auditoría no podía
+    # resolverlo a un nombre visible.
+    actor = principal.email or principal.username or principal.subject or "desconocido"
     factory = _get_session_factory(request)
     async with factory() as s:
         svc = _build_service(s)

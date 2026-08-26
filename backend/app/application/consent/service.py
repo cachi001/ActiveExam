@@ -17,6 +17,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
+from app.application.audit.acciones import EntidadAuditoria, ModuloAuditoria
 from app.domain.audit_chain import AuditEntry
 from app.domain.consent_flow import rules
 from app.domain.consent_flow.rules import ResolucionConsentimiento
@@ -136,6 +137,9 @@ class ConsentService:
                 accion=ACCION_VIA_ALTERNATIVA,
                 evidencia_id=None,
                 proposito=f"via_alternativa:{exam_id}",
+                modulo=ModuloAuditoria.CONSENTIMIENTO,
+                entidad=EntidadAuditoria.USUARIO,
+                entidad_id=user_id,
             )
         )
         if self._alt_requests is not None:

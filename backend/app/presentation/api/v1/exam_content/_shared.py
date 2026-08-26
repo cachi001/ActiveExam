@@ -11,14 +11,15 @@ from app.presentation.api.v1.exam_content.schemas import ExamenContenidoResumenR
 
 # Gate de inscripción (C-71): los roles de gestión ven TODO el catálogo/materias;
 # el alumno ve solo lo de sus comisiones inscriptas.
-# c-76: "proctor" y "revisor" eliminados del set; "coordinador" ya estaba presente
-# (los usuarios proctor/revisor fueron remapeados a coordinador), asi que el staff
-# no cambia.
-# c-76-2: "admin_examenes" y "auditor" eliminados del dominio (absorbidos por
-# "admin_sistema", ya presente en el set).
-_ROLES_STAFF = frozenset(
-    {"admin_sistema", "coordinador"}
-)
+# c-79: "coordinador" SALE de este set — dejó de tener alcance global (antes veía
+# TODO como staff, lo mismo que admin). Queda acotado a SUS materias asignadas
+# (materia_coordinador, N:M), igual que el tutor a sus comisiones — ver
+# `_es_coordinador` abajo. Solo admin_sistema conserva alcance global.
+_ROLES_STAFF = frozenset({"admin_sistema"})
+
+# Baja lógica del catálogo (c-78 D1). Misma forma tri-estado que `GET /users?estado=`:
+# 'activo' (default, eliminado_en IS NULL) | 'inactivo' (solo dados de baja) | 'todos'.
+ESTADOS_CATALOGO_VALIDOS = frozenset({"activo", "inactivo", "todos"})
 
 
 def _es_staff(principal: AuthenticatedPrincipal) -> bool:
@@ -26,14 +27,30 @@ def _es_staff(principal: AuthenticatedPrincipal) -> bool:
 
 
 def _es_docente(principal: AuthenticatedPrincipal) -> bool:
-    """True si el principal tiene el rol DOCENTE (gestión académica "de lo suyo").
+    """True si el principal tiene el rol TUTOR (gestión académica "de lo suyo").
 
-    Bug real (verificación E2E de C-73): el docente NO es staff (ve TODO) ni
-    alumno (ve solo sus inscripciones) — ve lo que DICTA (comision.docente_id).
-    Sin esta rama, los 3 endpoints de listado (catálogo/materias/comisiones)
-    caían al gate de inscripción del alumno y el docente veía siempre vacío.
+    Bug real (verificación E2E de C-73): el tutor NO es staff (ve TODO) ni
+    alumno (ve solo sus inscripciones) — ve lo que DICTA (comision_tutor, N:M
+    desde c-79). Sin esta rama, los 3 endpoints de listado (catálogo/materias/
+    comisiones) caían al gate de inscripción del alumno y el tutor veía siempre
+    vacío.
     """
     return "tutor" in set(principal.roles or [])
+
+
+def _es_coordinador(principal: AuthenticatedPrincipal) -> bool:
+    """True si el principal tiene el rol COORDINADOR (c-79: acotado por materia,
+    ya NO es staff). Ve lo que coordina (materia_coordinador, N:M)."""
+    return "coordinador" in set(principal.roles or [])
+
+
+def _es_profesor(principal: AuthenticatedPrincipal) -> bool:
+    """True si el principal tiene el rol PROFESOR (c-78: acotado por materia).
+
+    Ve lo de SUS materias (``materia_profesor``, N:M), igual que el coordinador
+    con las que coordina. Lo que NO tiene, y es lo que lo distingue, es el
+    veredicto de integridad (`revisar_sesion`) — ver D11."""
+    return "profesor" in set(principal.roles or [])
 
 
 def _resumen_to_response(r) -> ExamenContenidoResumenResponse:
@@ -51,4 +68,7 @@ def _resumen_to_response(r) -> ExamenContenidoResumenResponse:
         cierre=r.cierre,
         tiempo_limite_min=r.tiempo_limite_min,
         intentos_permitidos=r.intentos_permitidos,
+        eliminado_en=getattr(r, "eliminado_en", None),
+        borrador=getattr(r, "borrador", False),
+        modo_preguntas=getattr(r, "modo_preguntas", "fijo"),
     )

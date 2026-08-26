@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Button, Card, Icon, SectionTitle } from '../../ui/components';
-import { getExamConfig, setExamConfig, type ExamConfig } from '../../lib/examContentAdmin';
+import {
+  getExamConfig,
+  publicarNotasExamen,
+  puedeAvanzarVisibilidad,
+  setExamConfig,
+  type ExamConfig,
+  type MostrarNota,
+} from '../../lib/examContentAdmin';
 
 function isoToLocalInput(iso: string | null): string {
   if (!iso) return '';
@@ -27,8 +34,10 @@ export interface ConfigForm {
   notaAprobacion: string;
   /** Tope de preguntas del examen. Cadena vacía = sin tope. */
   limitePreguntas: string;
-  mostrarNota: 'al_cerrar' | 'inmediata';
+  mostrarNota: MostrarNota;
   revisionHabilitada: boolean;
+  /** c-78 D10 (E-02): el alumno ve sus eventos de proctoring mientras rinde. */
+  mostrarEventosAlumno: boolean;
   politicaIntentos: 'mas_alta' | 'ultimo' | 'primero' | 'manual';
 }
 
@@ -50,8 +59,11 @@ function configToForm(cfg: ExamConfig): ConfigForm {
     notaMaxima: String(cfg.nota_maxima ?? 10),
     notaAprobacion: String(cfg.nota_aprobacion ?? 6),
     limitePreguntas: cfg.limite_preguntas != null ? String(cfg.limite_preguntas) : '',
-    mostrarNota: cfg.mostrar_nota ?? 'al_cerrar',
+    // c-78 D9: el default de un examen nuevo es 'nunca' — la nota no se publica
+    // sola, la publica una persona cuando terminó de revisar.
+    mostrarNota: cfg.mostrar_nota ?? 'nunca',
     revisionHabilitada: !!cfg.revision_habilitada,
+    mostrarEventosAlumno: !!cfg.mostrar_eventos_alumno,
     politicaIntentos: cfg.politica_intentos ?? 'mas_alta',
   };
 }
@@ -109,6 +121,7 @@ export function formToPatch(
   const publicacion: Partial<ExamConfig> = {
     mostrar_nota: form.mostrarNota,
     revision_habilitada: form.revisionHabilitada,
+    mostrar_eventos_alumno: form.mostrarEventosAlumno,
     politica_intentos: form.politicaIntentos,
     // Vacío = sacar el tope. El backend interpreta 0 como "sin tope" (en un PATCH
     // parcial `null` significaría "no lo toques").
@@ -153,6 +166,15 @@ export function ConfiguracionExamenSection({ examenId }: { examenId: string }) {
   const [okGuardado, setOkGuardado] = useState(false);
   const [errorGuardar, setErrorGuardar] = useState<string | null>(null);
 
+  // c-78 D9: publicación de notas. `publicacion` guarda quién y cuándo, para
+  // que el estado se pueda mostrar sin ambigüedad ("ocultas" vs "publicadas
+  // el {fecha} por {persona}").
+  const [publicacion, setPublicacion] = useState<{ en: string | null; por: string | null }>(
+    { en: null, por: null },
+  );
+  const [confirmarPublicar, setConfirmarPublicar] = useState(false);
+  const [publicando, setPublicando] = useState(false);
+
   const cargar = useCallback(async () => {
     setCargando(true);
     setErrorCarga(null);
@@ -162,6 +184,10 @@ export function ConfiguracionExamenSection({ examenId }: { examenId: string }) {
       setForm(f);
       setOriginal(f);
       setBloqueada(!!cfg.bloqueada);
+      setPublicacion({
+        en: cfg.notas_publicadas_en ?? null,
+        por: cfg.notas_publicadas_por ?? null,
+      });
     } catch (err: unknown) {
       setErrorCarga(err instanceof Error ? err.message : 'No se pudo cargar la configuración.');
       setForm(null);
@@ -205,11 +231,89 @@ export function ConfiguracionExamenSection({ examenId }: { examenId: string }) {
     }
   }
 
+  async function publicarNotas() {
+    setConfirmarPublicar(false);
+    setPublicando(true);
+    setErrorGuardar(null);
+    try {
+      const cfg = await publicarNotasExamen(examenId);
+      const f = configToForm(cfg);
+      setForm(f);
+      setOriginal(f);
+      setPublicacion({
+        en: cfg.notas_publicadas_en ?? null,
+        por: cfg.notas_publicadas_por ?? null,
+      });
+      setOkGuardado(true);
+    } catch (err: unknown) {
+      setErrorGuardar(
+        err instanceof Error ? err.message : 'No se pudieron publicar las notas.',
+      );
+    } finally {
+      setPublicando(false);
+    }
+  }
+
+  const notasOcultas = form?.mostrarNota === 'nunca';
+
   return (
     <Card>
       <SectionTitle icon="settings" sub="La define el tutor; la plataforma la aplica al rendir.">
         Configuración del examen
       </SectionTitle>
+
+      {/* c-78 D9: el estado de publicación arriba de todo, con su acción. El
+          docente no razona en enums, razona en "reviso y publico". */}
+      {!cargando && !errorCarga && form && (
+        <div className="mb-lg flex flex-wrap items-center justify-between gap-md rounded-lg border border-outline-variant px-4 py-3">
+          <div className="min-w-0">
+            <p className="text-label-md font-semibold text-on-surface">
+              {notasOcultas ? 'Las notas están ocultas' : 'Las notas están publicadas'}
+            </p>
+            <p className="text-label-sm text-on-surface-variant mt-0.5">
+              {notasOcultas
+                ? 'Los alumnos no ven su nota. Revisá primero y publicalas cuando estés listo.'
+                : publicacion.en
+                  ? `Publicadas el ${new Date(publicacion.en).toLocaleString('es-AR', {
+                      dateStyle: 'short',
+                      timeStyle: 'short',
+                    })}${publicacion.por ? ` por ${publicacion.por}` : ''}.`
+                  : 'Los alumnos ya pueden ver su nota.'}
+            </p>
+          </div>
+          {notasOcultas && (
+            <Button
+              size="sm"
+              icon="campaign"
+              disabled={publicando || guardando}
+              onClick={() => setConfirmarPublicar(true)}
+            >
+              {publicando ? 'Publicando…' : 'Publicar notas ahora'}
+            </Button>
+          )}
+        </div>
+      )}
+
+      {/* Aviso ANTES de confirmar: la acción no se puede deshacer. */}
+      {confirmarPublicar && (
+        <div className="mb-lg rounded-lg border border-warning bg-warning-container/40 px-4 py-3">
+          <p className="text-label-md font-semibold text-on-surface">
+            Esto no se puede deshacer
+          </p>
+          <p className="text-label-sm text-on-surface-variant mt-0.5">
+            Una vez publicadas, los alumnos van a poder ver su nota y no vas a poder
+            volver a ocultarla. Si todavía estás revisando, cancelá.
+          </p>
+          <div className="mt-3 flex gap-2">
+            <Button size="sm" onClick={publicarNotas}>
+              Sí, publicar
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setConfirmarPublicar(false)}>
+              Cancelar
+            </Button>
+          </div>
+        </div>
+      )}
 
       {cargando && (
         <div className="space-y-3 animate-pulse">
@@ -380,9 +484,58 @@ export function ConfiguracionExamenSection({ examenId }: { examenId: string }) {
               disabled={guardando}
               onChange={(e) => update('mostrarNota', e.target.value as ConfigForm['mostrarNota'])}
             >
-              <option value="al_cerrar">Al cerrar el examen (recomendado)</option>
+              {/* c-78 D9: publicar es camino de ida, así que las opciones que
+                  significan MENOS visibilidad que la actual se deshabilitan. El
+                  backend las rechaza igual (409); acá se evita ofrecer algo que
+                  va a fallar. */}
+              <option value="nunca" disabled={!puedeAvanzarVisibilidad(form.mostrarNota, 'nunca')}>
+                No mostrarla todavía (recomendado)
+              </option>
+              <option
+                value="al_cerrar"
+                disabled={!puedeAvanzarVisibilidad(form.mostrarNota, 'al_cerrar')}
+              >
+                Al cerrar el examen
+              </option>
               <option value="inmediata">Inmediatamente al entregar</option>
             </select>
+            <p className="text-label-sm text-on-surface-variant mt-1.5">
+              {form.mostrarNota === 'nunca'
+                ? 'Las notas están ocultas. Revisá y después publicalas con el botón de arriba.'
+                : 'Ya se publicaron: no se pueden volver a ocultar. El alumno pudo haberlas visto.'}
+            </p>
+          </div>
+
+          {/* c-78 D10 (E-02): mostrar u ocultar al alumno los eventos que genera
+              el proctoring mientras rinde. Default NO. */}
+          <div className="flex items-center justify-between gap-md border border-outline-variant rounded-lg px-4 py-3">
+            <div className="min-w-0">
+              <p className="text-label-md font-semibold text-on-surface">
+                Mostrarle al alumno los avisos del control
+              </p>
+              <p className="text-label-sm text-on-surface-variant mt-0.5">
+                Si lo activás, mientras rinde ve los avisos que genera el control
+                (por ejemplo "no se detecta tu cara"). Apagado, rinde sin verlos:
+                el control sigue funcionando igual y queda todo registrado.
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={form.mostrarEventosAlumno}
+              aria-label="Mostrarle al alumno los avisos del control"
+              disabled={guardando}
+              onClick={() => update('mostrarEventosAlumno', !form.mostrarEventosAlumno)}
+              className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
+                form.mostrarEventosAlumno ? 'bg-primary' : 'bg-surface-300'
+              } disabled:opacity-50`}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  form.mostrarEventosAlumno ? 'translate-x-6' : 'translate-x-1'
+                }`}
+              />
+            </button>
           </div>
 
           <div>

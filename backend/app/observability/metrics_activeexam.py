@@ -26,6 +26,8 @@ from fastapi import FastAPI, Request
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 from starlette.responses import Response
 
+from app.observability.metrics_auth import exigir_credencial_de_scrape
+
 http_requests_total = Counter(
     "http_requests_total",
     "Total de requests HTTP procesados",
@@ -65,6 +67,9 @@ def instrument_activeexam_metrics(app: FastAPI) -> None:
         ).observe(duration)
         return response
 
+    # El scrape va cerrado con METRICS_TOKEN: sin la variable el endpoint no
+    # existe (404), con la variable exige Bearer. Ver `metrics_auth.py`.
     @app.get("/metrics", include_in_schema=False)
-    async def _metrics() -> Response:
+    async def _metrics(request: Request) -> Response:
+        exigir_credencial_de_scrape(request)
         return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)

@@ -104,11 +104,20 @@ async def engine(db_url: str):
 
 
 @pytest.fixture(scope="module")
-def reinferencia():
-    # Una sola instancia por módulo (evita el deadlock de GC del adapter MediaPipe).
-    from app.infrastructure.reinferencia.mediapipe_adapter import MediaPipeReinferencia
+def reinferencia(activeexam_reinferencia):
+    """Delega en la instancia de SESION del conftest — no crea una propia.
 
-    return MediaPipeReinferencia()
+    Una instancia por MODULO se queda sin referencias cuando el modulo termina;
+    ahi el GC dispara el `__del__` del FaceDetector de MediaPipe, que hace
+    `executor.submit(...).result()` contra un dispatcher ya finalizado y **se
+    cuelga para siempre**. No falla: cuelga la suite entera, y el stack apunta a
+    cualquier linea que estuviera ejecutandose cuando corrio el GC (en la corrida
+    del 25/8/2026 apunto a un `include_router`, que no tiene nada que ver).
+
+    La del conftest es `scope="session"`: vive toda la corrida y nunca se
+    recolecta en el medio. Es el mismo motivo que ya documenta su docstring.
+    """
+    return activeexam_reinferencia
 
 
 @pytest.fixture(scope="module")

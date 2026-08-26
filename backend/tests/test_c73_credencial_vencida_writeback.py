@@ -32,6 +32,9 @@ from app.application.moodle.writeback_service import (
 from app.infrastructure.crypto.secret_encryption import SecretCipher
 from app.infrastructure.moodle.client import MoodleClientConfig, MoodleRestClient
 from app.infrastructure.persistence.base import Base
+from app.infrastructure.persistence.models.comision_tutor import (  # noqa: F401
+    ComisionTutorModel,
+)
 from app.infrastructure.persistence.models.exam_content import (  # noqa: F401
     ComisionModel,
     ExamenContenidoModel,
@@ -49,6 +52,7 @@ _KEY = "VXqRzW9ksjWE2eCa752juwQdOtAPCrYVnratlmHj7b0="
 _TOKEN = "t0ken-de-moodle-abcd"  # noqa: S105
 
 _TABLES_TO_DROP = [
+    "comision_tutor",
     "proctoring_session",
     "examen_contenido",
     "comision",
@@ -57,6 +61,7 @@ _TABLES_TO_DROP = [
 _TABLES_TO_CREATE = [
     MateriaModel.__table__,
     ComisionModel.__table__,
+    ComisionTutorModel.__table__,
     ExamenContenidoModel.__table__,
     ProctoringSessionModel.__table__,
 ]
@@ -119,7 +124,13 @@ async def _crear_docente(factory, legajo: str, creados: list[str]) -> str:
 
 
 async def _crear_sesion(factory, docente_id: str | None) -> str:
-    """Materia + comisión (con el docente dado) + examen + sesión. Devuelve session_id."""
+    """Materia + comisión (con el docente dado) + examen + sesión. Devuelve session_id.
+
+    c-78: el docente se registra en `comision_tutor` (la tabla puente N:M de c-79),
+    que es de donde `_credencial_para` resuelve hoy con quién se firma la nota.
+    `comision.docente_id` se sigue poblando solo mientras la columna exista; ningún
+    endpoint la escribe desde la migración 0086.
+    """
     sufijo = uuid.uuid4().hex[:6]
     async with factory() as s:
         materia = MateriaModel(codigo=f"MAT-{sufijo}", nombre=f"Materia {sufijo}")
@@ -130,10 +141,12 @@ async def _crear_sesion(factory, docente_id: str | None) -> str:
             codigo=f"C-{sufijo}",
             nombre=f"Comisión {sufijo}",
             codigo_matriculacion=f"K-{sufijo}",
-            docente_id=docente_id,
         )
         s.add(comision)
         await s.flush()
+        if docente_id is not None:
+            s.add(ComisionTutorModel(comision_id=comision.id, tutor_id=docente_id))
+            await s.flush()
         examen = ExamenContenidoModel(titulo=f"Parcial {sufijo}", comision_id=comision.id)
         s.add(examen)
         await s.flush()

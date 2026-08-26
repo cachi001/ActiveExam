@@ -43,6 +43,15 @@ export interface VisionPipelineOptions {
   idGen?: () => string;
 }
 
+/**
+ * Prefijo unico de esta instancia del pipeline. Timestamp + azar: el timestamp
+ * separa montajes distintos y el azar cubre dos montajes en el mismo milisegundo
+ * (React StrictMode monta, desmonta y vuelve a montar).
+ */
+function prefijoDeInstancia(): string {
+  return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+}
+
 export class VisionPipeline {
   private readonly engine: VisionEngine;
   private readonly sink: EventSink;
@@ -56,7 +65,15 @@ export class VisionPipeline {
     this.sink = opts.sink;
     this.rules = opts.rules ?? new StateTransitionRules(opts.config);
     this.onEvidence = opts.onEvidence;
-    this.idGen = opts.idGen ?? (() => `evt-${(this.seq += 1)}`);
+    // El id es la clave de deduplicacion del buffer de reenvio (c-78), asi que
+    // NO puede repetirse entre montajes: el contador arrancaba de cero en cada
+    // instancia y un alumno que recargaba con eventos sin enviar generaba un
+    // `evt-1` que colisionaba con el `evt-1` viejo todavia en cola — el buffer
+    // lo descartaba por duplicado y al confirmarlo purgaba el que nunca salio.
+    // El prefijo por instancia corta eso sin depender de `crypto` (que no existe
+    // en contextos no seguros).
+    const prefijo = prefijoDeInstancia();
+    this.idGen = opts.idGen ?? (() => `evt-${prefijo}-${(this.seq += 1)}`);
   }
 
   /**

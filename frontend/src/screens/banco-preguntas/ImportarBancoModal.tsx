@@ -14,10 +14,12 @@ import { Icon, Button } from '../../ui/components';
 import {
   previewImportarBancoXml,
   importarBancoXml,
+  listarCategorias,
   type PreviewImportBancoResult,
   type ImportarBancoXmlResult,
   type PreguntaImportadaItem,
 } from '../../lib/apiAdmin/bancoPreguntasApi';
+import { aplanarArbolCategorias } from './categoriaArbolPlano';
 
 export interface ImportarBancoModalProps {
   abierto: boolean;
@@ -31,16 +33,26 @@ const TIPO_PREGUNTA_LABEL: Record<string, string> = {
   truefalse: 'Verdadero/Falso',
   cloze: 'Cloze',
   ddwtos: 'Arrastrar y soltar en el texto',
-  // Tipos NO soportados — solo aparecen en "omitidas", nunca se importan.
+  // C-78: matching y shortanswer se normalizan a "cloze" (ver moodle_parser.py)
+  // y SÍ se importan — estos labels solo se usan si el caso puntual se omite
+  // (matching con <2 pares, shortanswer sin ninguna respuesta correcta).
   matching: 'Emparejamiento',
+  shortanswer: 'Respuesta corta',
+  // Tipos NO soportados — solo aparecen en "omitidas", nunca se importan.
   essay: 'Ensayo',
   numerical: 'Numérica',
-  shortanswer: 'Respuesta corta',
   description: 'Descripción (sin respuesta)',
 };
 
 /** Tipos de Moodle que hoy SÍ se importan al banco. */
-const TIPOS_SOPORTADOS = ['Opción múltiple', 'Verdadero/Falso', 'Cloze', 'Arrastrar y soltar en el texto'];
+const TIPOS_SOPORTADOS = [
+  'Opción múltiple',
+  'Verdadero/Falso',
+  'Cloze',
+  'Arrastrar y soltar en el texto',
+  'Emparejamiento',
+  'Respuesta corta',
+];
 
 /** Debe coincidir con SIN_CATEGORIA_SENTINEL del backend (import_service.py). */
 const SIN_CATEGORIA_KEY = '__sin_categoria__';
@@ -118,6 +130,14 @@ export function ImportarBancoModal({
   const [showActualizadas, setShowActualizadas] = useState(false);
   const [excluidas, setExcluidas] = useState<Set<string>>(new Set());
   const [expandidas, setExpandidas] = useState<Set<string>>(new Set());
+  // Bug real (2026-08-21, campus FRM): Moodle nunca exporta una categoría
+  // propia para el nodo "top" — las subcategorías quedaban sueltas sin un
+  // padre común. El docente elige acá una categoría YA EXISTENTE (no
+  // tipeada, evita duplicados por typo) para anidar todo el XML ahí.
+  const [categoriasExistentes, setCategoriasExistentes] = useState<
+    ReturnType<typeof aplanarArbolCategorias>
+  >([]);
+  const [categoriaPadreId, setCategoriaPadreId] = useState<string>('');
 
   const reset = useCallback(() => {
     setFase('seleccionar');
@@ -131,6 +151,7 @@ export function ImportarBancoModal({
     setShowActualizadas(false);
     setExcluidas(new Set());
     setExpandidas(new Set());
+    setCategoriaPadreId('');
   }, []);
 
   function toggleExcluida(key: string) {
@@ -154,6 +175,24 @@ export function ImportarBancoModal({
   useEffect(() => {
     if (!abierto) reset();
   }, [abierto, reset]);
+
+  // Cargar el árbol de categorías existentes para el selector de destino.
+  // Degradación silenciosa (R3): si falla, el selector queda vacío (solo la
+  // opción "sin carpeta") — no bloquea el import.
+  useEffect(() => {
+    if (!abierto) return;
+    let cancelado = false;
+    listarCategorias(materiaId)
+      .then((cats) => {
+        if (!cancelado) setCategoriasExistentes(aplanarArbolCategorias(cats));
+      })
+      .catch(() => {
+        if (!cancelado) setCategoriasExistentes([]);
+      });
+    return () => {
+      cancelado = true;
+    };
+  }, [abierto, materiaId]);
 
   useEffect(() => {
     if (!abierto) return;
@@ -192,7 +231,12 @@ export function ImportarBancoModal({
       const rutasExcluidas = Array.from(excluidas).map((key) =>
         key === SIN_CATEGORIA_KEY ? [SIN_CATEGORIA_KEY] : key.split('/'),
       );
-      const resultado = await importarBancoXml(materiaId, file, rutasExcluidas);
+      const resultado = await importarBancoXml(
+        materiaId,
+        file,
+        rutasExcluidas,
+        categoriaPadreId || null,
+      );
       setResumen(resultado);
       setFase('resumen');
     } catch (err) {
@@ -308,6 +352,31 @@ export function ImportarBancoModal({
                   <> · <span className="text-error">{preview.omitidas.length} omitida{preview.omitidas.length !== 1 ? 's' : ''}</span></>
                 )}
               </div>
+
+              {categoriasExistentes.length > 0 && (
+                <label className="block space-y-1">
+                  <span className="text-label-md font-medium text-on-surface">
+                    Importar dentro de la carpeta
+                  </span>
+                  <select
+                    value={categoriaPadreId}
+                    onChange={(e) => setCategoriaPadreId(e.target.value)}
+                    className="w-full rounded-lg border border-outline-variant/60 px-3 py-2 text-label-md text-on-surface"
+                  >
+                    <option value="">— Sin carpeta (como hoy) —</option>
+                    {categoriasExistentes.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {'   '.repeat(c.profundidad)}
+                        {c.profundidad > 0 ? '› ' : ''}
+                        {c.nombre}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="block text-label-sm text-on-surface-variant">
+                    Todas las categorías de este XML quedan anidadas ahí adentro.
+                  </span>
+                </label>
+              )}
 
               {preview.categorias.length > 0 && (
                 <div className="rounded-lg border border-outline-variant/40 divide-y divide-outline-variant/20">
@@ -441,7 +510,7 @@ export function ImportarBancoModal({
                   )}
                   <p className="px-3 py-2 border-t border-error-container/60 text-label-sm text-on-surface-variant">
                     Se importan: {TIPOS_SOPORTADOS.join(', ')}. El resto de los tipos de Moodle
-                    (emparejamiento, ensayo, numérica, respuesta corta…) se omite.
+                    (ensayo, numérica, descripción…) se omite.
                   </p>
                 </div>
               )}

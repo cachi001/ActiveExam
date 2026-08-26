@@ -30,9 +30,24 @@ export const respuestasApi = {
    * opción correcta nunca viaja al cliente).
    *
    * Real: POST /proctoring/sessions/{sessionId}/respuestas
-   * Mock o fallo: retorna null sin propagar (degradación silenciosa — NUNCA rompe
-   * el cierre del examen). El caller DEBE await-earla antes de finalizar para que
-   * la nota pueda computarse, pero un error de red no debe bloquear la entrega.
+   *
+   * PROPAGA el error (c-78). Antes degradaba a `null` todo lo que no fuera un 409
+   * de plazo, y eso dejaba MUERTO el manejo de error de los dos llamadores de
+   * `Examen.tsx`:
+   *
+   *   - `entregar()` tiene una rama explícita para el error de red en la entrega
+   *     manual — "revertir para permitir reintento, no finalizamos", con el
+   *     comentario "terminarle el examen sin haber guardado nada sería el peor
+   *     resultado posible". Como esto nunca lanzaba por red, esa rama no corría
+   *     jamás: el examen se finalizaba igual, con las respuestas sin llegar.
+   *   - El autoguardado enciende `guardadoEnRiesgo` para avisarle al alumno. Como
+   *     el POST resolvía con `null` en vez de rechazar, corría el `.then` y el
+   *     aviso se APAGABA justo cuando había que encenderlo.
+   *
+   * Quien decide qué hacer con el fallo es la pantalla, que sabe si es una entrega
+   * manual (reintentable) o por tiempo agotado (best-effort). Esta capa informa.
+   *
+   * Devuelve null SOLO sin `sessionId`: ahí no hay nada que mandar.
    *
    * `identidad` (alumno_idnumber/email) es opcional: alimenta el write-back a Moodle
    * (D9). Si se omite, el backend usa la identidad del JWT.
@@ -42,24 +57,15 @@ export const respuestasApi = {
     respuestas: RespuestaEnvio[],
   ): Promise<{ session_id: string; respuestas_guardadas: number } | null> {
     if (!sessionId) return null;
-    try {
-      // H4 (seguridad): NO se envía identidad del cliente. El backend usa la
-      // identidad del alumno persistida server-side al crear la sesión (JWT);
-      // SubmitRespuestasIn rechaza (extra='forbid') cualquier campo extra.
-      const body = { respuestas };
-      return await realFetch<{ session_id: string; respuestas_guardadas: number }>(
-        `/proctoring/sessions/${sessionId}/respuestas`,
-        { method: 'POST', body: JSON.stringify(body) },
-        'demo',
-      );
-    } catch (e) {
-      // C-72 sección 7: los rechazos de PLAZO se PROPAGAN para que el alumno vea el
-      // mensaje (nunca pérdida silenciosa). Otros errores (red, mock) degradan a null
-      // para no romper el cierre del examen.
-      const code = (e as { code?: string })?.code;
-      if (code === 'tiempo_agotado' || code === 'sesion_finalizada') throw e;
-      return null;
-    }
+    // H4 (seguridad): NO se envía identidad del cliente. El backend usa la
+    // identidad del alumno persistida server-side al crear la sesión (JWT);
+    // SubmitRespuestasIn rechaza (extra='forbid') cualquier campo extra.
+    const body = { respuestas };
+    return await realFetch<{ session_id: string; respuestas_guardadas: number }>(
+      `/proctoring/sessions/${sessionId}/respuestas`,
+      { method: 'POST', body: JSON.stringify(body) },
+      'demo',
+    );
   },
 
   /**
@@ -70,22 +76,24 @@ export const respuestasApi = {
    * estado `respuestas` de Examen.tsx en vez de volver a arrancar en blanco.
    *
    * Real: GET /proctoring/sessions/{sessionId}/respuestas
-   * Mock o fallo: retorna [] (degradación silenciosa — no bloquea el examen;
-   * en el peor caso el alumno re-contesta lo que ya había contestado).
+   *
+   * PROPAGA el error (c-78). Devolver `[]` ante un fallo de red decía "no
+   * contestaste nada": el alumno que recargaba la página a mitad del examen veía
+   * un examen EN BLANCO aunque el servidor tuviera sus respuestas, y lo empujaba
+   * a contestar todo de nuevo. Es la misma clase de mentira que el resto de las
+   * pantallas que muestran "no hay nada" ante un error.
+   *
+   * Devuelve [] SOLO sin `sessionId`: ahí no hay nada que restaurar.
    */
   async obtenerRespuestasProctoring(
     sessionId: string,
   ): Promise<RespuestaGuardada[]> {
     if (!sessionId) return [];
-    try {
-      const data = await realFetch<{
-        session_id: string;
-        respuestas: RespuestaGuardada[];
-      }>(`/proctoring/sessions/${sessionId}/respuestas`, { method: 'GET' }, 'demo');
-      return data.respuestas;
-    } catch {
-      return [];
-    }
+    const data = await realFetch<{
+      session_id: string;
+      respuestas: RespuestaGuardada[];
+    }>(`/proctoring/sessions/${sessionId}/respuestas`, { method: 'GET' }, 'demo');
+    return data.respuestas;
   },
 
   /**

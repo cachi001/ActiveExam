@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import re
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -27,7 +27,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.domain.auth.identity import AuthenticatedPrincipal
 from app.domain.auth.password_policy import PasswordDebilError, validar_password_fuerte
 from app.infrastructure.auth.db_refresh_store import DbRefreshTokenStore
-from app.infrastructure.auth.hashing import hashear_password, verificar_password
+from app.infrastructure.auth.hashing import (
+    hashear_password_async,
+    verificar_password,
+    verificar_password_dummy,
+)
 from app.infrastructure.auth.own_issuer import emitir_jwt_propio
 from app.infrastructure.auth.refresh_store import RefreshTokenError, RefreshTokenStore
 from app.infrastructure.persistence.models.transactional import UsuarioModel
@@ -37,6 +41,16 @@ router = APIRouter()
 
 # Mensaje generico para todos los fallos de login (no revela si usuario existe).
 _MSG_LOGIN_INVALIDO = "Credenciales inválidas."
+
+# Lockout (pentest 2026-08-21, H-bruteforce): sin esto, POST /auth/login no
+# tenia NINGUN limite de intentos fallidos. Mismos valores que el patron ya
+# usado en otro proyecto del dueño (Sistema-de-Reserva-Salon): 5 intentos,
+# 15 minutos de bloqueo. El mensaje de bloqueo SI informa el tiempo restante
+# (lo necesita el usuario legitimo) pero el 401 de credenciales invalidas
+# NUNCA revela cuantos intentos quedan ni el maximo configurado — eso le
+# regalaria al atacante el umbral exacto para no activar el bloqueo.
+_LOGIN_MAX_INTENTOS = 5
+_LOGIN_BLOQUEO_MINUTOS = 15
 
 
 # ---------------------------------------------------------------------------
@@ -129,8 +143,19 @@ async def login(
 
     Responde 401 con mensaje GENERICO en todos los casos de fallo:
     usuario no existe, password incorrecto, sin password_hash — mismo mensaje
-    para no revelar informacion al atacante (timing-safe a nivel de mensaje;
-    bcrypt ya protege el timing de la comparacion).
+    para no revelar informacion al atacante.
+
+    Timing-safe tambien a nivel de LATENCIA (pentest 2026-08-21): antes, la
+    rama "usuario no existe" cortaba camino sin llamar a bcrypt y respondia
+    ~40x mas rapido que la rama "usuario existe, password incorrecta" —
+    permitia enumerar usernames validos midiendo el tiempo de respuesta pese
+    a que el mensaje fuera identico. Ahora esa rama llama a
+    ``verificar_password_dummy`` para gastar el mismo tiempo.
+
+    Lockout: 5 intentos fallidos seguidos bloquean la cuenta 15 minutos
+    (mismo patron que Sistema-de-Reserva-Salon). El contador vive en
+    ``usuario.intentos_fallidos``/``bloqueado_hasta`` y se resetea en cada
+    login exitoso.
     """
     settings = request.app.state.settings
     session_factory = _get_session_factory(request)
@@ -173,13 +198,42 @@ async def login(
         # Mensaje GENERICO: no revela si el usuario existe, si fue dado de baja,
         # o si el password es incorrecto (timing-safe a nivel de mensaje).
         if usuario is None or not usuario.password_hash:
+            # H-timing (pentest 2026-08-21): gastar el MISMO tiempo que la rama
+            # "usuario existe" gastaria verificando password, para que medir la
+            # latencia no permita distinguir username valido de invalido pese a
+            # que el mensaje de error sea identico.
+            verificar_password_dummy(body.password)
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail=_MSG_LOGIN_INVALIDO,
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
+        # Lockout (H-bruteforce, pentest 2026-08-21): si la cuenta ya esta
+        # bloqueada, cortar ANTES de intentar verificar el password — un
+        # intento mas no debe extender el bloqueo ni gastar el costo de bcrypt.
+        ahora = datetime.now(timezone.utc)
+        if usuario.bloqueado_hasta is not None and usuario.bloqueado_hasta > ahora:
+            minutos_restantes = max(
+                1, int((usuario.bloqueado_hasta - ahora).total_seconds() // 60) + 1
+            )
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=(
+                    f"Cuenta bloqueada temporalmente por intentos fallidos. "
+                    f"Volvé a intentar en {minutos_restantes} min."
+                ),
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
         if not verificar_password(body.password, usuario.password_hash):
+            # Registrar el intento fallido y, si alcanza el maximo, bloquear.
+            # El mensaje NUNCA revela cuantos intentos quedan ni el maximo
+            # configurado (le regalaria al atacante el umbral del bloqueo).
+            usuario.intentos_fallidos += 1
+            if usuario.intentos_fallidos >= _LOGIN_MAX_INTENTOS:
+                usuario.bloqueado_hasta = ahora + timedelta(minutes=_LOGIN_BLOQUEO_MINUTOS)
+            await session.commit()
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail=_MSG_LOGIN_INVALIDO,
@@ -195,7 +249,9 @@ async def login(
             ttl_seconds=settings.access_token_ttl_seconds,
         )
 
-        # Registrar último acceso.
+        # Login exitoso: resetear el contador de lockout y registrar último acceso.
+        usuario.intentos_fallidos = 0
+        usuario.bloqueado_hasta = None
         usuario.ultimo_acceso_en = datetime.now(timezone.utc)
 
         # Emitir refresh token persistente en DB.
@@ -304,8 +360,11 @@ async def me(
     """Devuelve el principal autenticado (Bearer requerido).
 
     Si hay DB disponible, hace lookup por ``principal.subject`` (= UsuarioModel.id)
-    para incluir ``nombre`` y ``apellido``. Si la DB no está disponible o el usuario
-    no se encuentra, ambos campos quedan ``None`` (degradación graceful).
+    para incluir ``username``, ``nombre`` y ``apellido``. Si la DB no está
+    disponible o el usuario no se encuentra, los campos caen a los del token o a
+    ``None`` (degradación graceful).
+
+    c-78: ``username`` sale de la FILA, no del token — ver el comentario abajo.
     """
     nombre: str | None = None
     apellido: str | None = None
@@ -313,6 +372,15 @@ async def me(
     ultimo_acceso_en: datetime | None = None
     debe_cambiar_password: bool = False
     auth_provider: str | None = None
+    # c-78: el username SALE DE LA BASE, no del token.
+    #
+    # Bug real: el alumno que entra por LTI arranca con un username sintético
+    # (`lti:{deployment}:{sub}`), elige el suyo, la fila se renombra... y el
+    # token que tiene en la mano sigue diciendo `lti:1:7`. Como este endpoint
+    # devolvía `principal.username` (del token), el Perfil le mostraba ESE
+    # nombre. Leyéndolo de la fila, el Perfil dice la verdad aunque el token
+    # esté viejo. Cae al del token si no hay DB (degradación graceful).
+    username: str = principal.username
 
     session_factory = _get_session_factory(request)
     if session_factory is not None and principal.subject is not None:
@@ -324,6 +392,7 @@ async def me(
                 )
                 usuario = result.scalar_one_or_none()
                 if usuario is not None:
+                    username = usuario.username
                     nombre = usuario.nombre
                     apellido = usuario.apellido
                     creado_en = usuario.creado_en
@@ -334,7 +403,7 @@ async def me(
             pass
 
     return PrincipalResponse(
-        username=principal.username,
+        username=username,
         email=principal.email,
         roles=[r.value for r in principal.roles],
         mfa_satisfecho=principal.mfa_satisfecho,
@@ -407,6 +476,12 @@ class CambiarContrasenaRequest(BaseModel):
 class CambiarContrasenaResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
     ok: bool
+    # c-78 E-13: cuando el usuario ELIGE su username en el primer set, el access
+    # token que tiene en la mano sigue llevando el `preferred_username` viejo
+    # (`lti:1:7`), así que la app le muestra ese nombre hasta que expire o cierre
+    # sesión. Se re-emite acá para que el cambio sea inmediato. Null cuando no
+    # hubo cambio de username (nada que actualizar).
+    access_token: str | None = None
 
 
 @router.put("/change-password", response_model=CambiarContrasenaResponse)
@@ -512,7 +587,9 @@ async def cambiar_contrasena(
                     detail="La nueva contraseña debe ser distinta de la actual.",
                 )
 
-        usuario.password_hash = hashear_password(body.contrasena_nueva)
+        # En thread aparte (ver hashear_password_async): es el camino del PRIMER
+        # ingreso, donde una comision entera cambia su clave junta.
+        usuario.password_hash = await hashear_password_async(body.contrasena_nueva)
         # Primer login resuelto: ya definió su propia contraseña.
         usuario.debe_cambiar_password = False
         try:
@@ -524,4 +601,27 @@ async def cambiar_contrasena(
                 detail="Ese username ya está en uso.",
             ) from exc
 
-    return CambiarContrasenaResponse(ok=True)
+        # c-78 E-13: el username cambió → el access token en poder del cliente
+        # quedó desactualizado (sigue diciendo `lti:{deployment}:{sub}`) y la app
+        # muestra ESE nombre hasta que el token expire. Se re-emite con los claims
+        # nuevos. Mismos parámetros que `/auth/login`: un solo lugar decide cómo se
+        # arma un token de sesión.
+        #
+        # Solo se re-emite el ACCESS token: el refresh vigente sigue siendo válido
+        # (no cambió la identidad del usuario, solo su nombre visible) y rotarlo acá
+        # obligaría al cliente a manejar dos rotaciones distintas en el mismo flujo.
+        access_token_nuevo: str | None = None
+        if body.nuevo_username is not None:
+            settings = getattr(request.app.state, "settings", None)
+            secreto = getattr(settings, "jwt_own_secret", None) if settings else None
+            if secreto:
+                await session.refresh(usuario)
+                access_token_nuevo = emitir_jwt_propio(
+                    usuario,
+                    secret=secreto,
+                    issuer=settings.jwt_own_issuer,
+                    audience=settings.jwt_audience,
+                    ttl_seconds=settings.access_token_ttl_seconds,
+                )
+
+    return CambiarContrasenaResponse(ok=True, access_token=access_token_nuevo)

@@ -116,124 +116,126 @@ def puede_acceder_a_evidencia(principal: AuthenticatedPrincipal) -> None:
 
 
 # Roles con alcance institucional: NO estan limitados por la pertenencia a una
-# comision. Un coordinador o un admin operan sobre cualquier examen por diseno
-# (escala/operacion global); el docente, no.
-_ROLES_SIN_LIMITE_DE_PERTENENCIA: frozenset[Rol] = frozenset(
-    {Rol.ADMIN_SISTEMA, Rol.COORDINADOR}
+# comision/materia. c-79: COORDINADOR DEJA de ser institucional — queda acotado a
+# SUS materias (tabla materia_coordinador), igual que el tutor queda acotado a SUS
+# comisiones. Solo admin_sistema conserva alcance global sin restriccion.
+_ROLES_SIN_LIMITE_DE_PERTENENCIA: frozenset[Rol] = frozenset({Rol.ADMIN_SISTEMA})
+
+
+# Roles que quedan ACOTADOS por pertenencia (ninguno tiene alcance global): el
+# tutor a sus comisiones (comision_tutor), el coordinador a sus materias
+# (materia_coordinador, c-79) y el profesor a las suyas (materia_profesor, c-78).
+_ROLES_ACOTADOS_POR_PERTENENCIA: frozenset[Rol] = frozenset(
+    {Rol.TUTOR, Rol.COORDINADOR, Rol.PROFESOR}
 )
 
 
 def autorizar_docente_sobre_examen(
     principal: AuthenticatedPrincipal,
-    docente_id_del_examen: str | None,
+    tiene_pertenencia: bool,
 ) -> None:
-    """Pertenencia del DOCENTE sobre un examen (C-73 §9).
+    """Pertenencia sobre un examen: tutor de su comisión O coordinador de su
+    materia (C-73 §9, N:M desde c-79).
 
-    El rol DOCENTE administra "lo suyo": los examenes de las comisiones que tiene a
-    cargo. Hasta C-73 esa regla estaba ESCRITA (ver el comentario de ``Rol.DOCENTE``
-    en ``roles.py``) pero no se aplicaba, porque los guards eran por CAPACIDAD
-    (``gestionar_academico``) y no habia contra que validar la propiedad: la comision
-    no tenia docente. Con ``comision.docente_id`` ya se puede.
+    c-79: ``comision.docente_id`` (1:1) se reemplaza por la tabla puente
+    ``comision_tutor`` (N:M) — un tutor puede estar a cargo de varias comisiones,
+    una comisión puede tener varios tutores. El COORDINADOR deja de tener alcance
+    global: queda acotado a las materias donde figura en ``materia_coordinador``.
+    ``tiene_pertenencia`` ya resuelve la membresía correspondiente al rol del
+    principal contra la DB (examen -> comisión -> comision_tutor, o examen ->
+    comisión -> materia -> materia_coordinador); esta función solo decide el acceso.
 
-    Por que importa: sin esta validacion, un docente puede fijar el destino Moodle del
-    examen de OTRA comision y mandar esa nota a la libreta que quiera. No es un
-    permiso de mas; es escribir en la libreta de una materia ajena.
+    Por qué importa: sin esta validación, un tutor/coordinador puede fijar el
+    destino Moodle del examen de OTRA comisión/materia y mandar esa nota a la
+    libreta que quiera. No es un permiso de más; es escribir en la libreta ajena.
 
-    ``docente_id_del_examen`` es la derivacion examen -> comision -> docente. ``None``
-    (examen sin comision, o comision sin docente) NO habilita al docente: si no hay
-    dueno, no puede reclamarlo — solo pasan los roles de alcance institucional.
-
-    No decide nada sobre integridad academica (L2.5): esto es control de acceso."""
+    No decide nada sobre integridad académica (L2.5): esto es control de acceso."""
     if principal.tiene_algun_rol(_ROLES_SIN_LIMITE_DE_PERTENENCIA):
         return
-    if not principal.tiene_rol(Rol.TUTOR):
-        raise ForbiddenError("Se requiere rol tutor (o alcance institucional).")
-    if docente_id_del_examen is None:
+    if not principal.tiene_algun_rol(_ROLES_ACOTADOS_POR_PERTENENCIA):
         raise ForbiddenError(
-            "El examen no tiene docente a cargo: solo un rol institucional puede operarlo."
+            "Se requiere rol tutor/profesor/coordinador (o alcance institucional)."
         )
-    if principal.subject != docente_id_del_examen:
-        raise ForbiddenError("El examen pertenece a la comision de otro docente.")
+    if not tiene_pertenencia:
+        raise ForbiddenError("El examen pertenece a una comisión/materia ajena.")
 
 
 def autorizar_docente_sobre_materia(
     principal: AuthenticatedPrincipal,
-    es_docente_de_alguna_comision_de_la_materia: bool,
+    tiene_pertenencia: bool,
 ) -> None:
-    """Pertenencia del DOCENTE sobre el banco de preguntas de una MATERIA (C-74).
+    """Pertenencia sobre el banco de preguntas de una MATERIA: tutor de alguna
+    comisión de la materia, O coordinador de la materia (C-74, N:M desde c-79).
 
     El banco es compartido por TODAS las comisiones de la materia (no se re-sube
-    por comisión) — por diseño, cualquier docente que dicte AL MENOS una comisión
-    de la materia puede operar su banco. La membresía se resuelve consultando
-    "¿el principal dicta alguna comisión de esta materia?" (booleano, ya evaluado
-    por el caller contra la DB) — NUNCA comparando contra un docente arbitrario de
-    la materia como hacía ``docente_de_materia`` + comparación por igualdad: eso
-    rechazaba con falso negativo a un docente real que solo dicta una comisión
-    distinta de la que la query devolvía primero (bug real, C-74 post-cierre)."""
+    por comisión) — por diseño, cualquier tutor que dicte AL MENOS una comisión
+    de la materia, o el coordinador asignado a la materia, puede operar su banco.
+    La membresía se resuelve consultando la DB (caller) — NUNCA comparando contra
+    un docente arbitrario de la materia como hacía ``docente_de_materia`` +
+    comparación por igualdad: eso rechazaba con falso negativo a un docente real
+    que solo dicta una comisión distinta de la que la query devolvía primero
+    (bug real, C-74 post-cierre)."""
     if principal.tiene_algun_rol(_ROLES_SIN_LIMITE_DE_PERTENENCIA):
         return
-    if not principal.tiene_rol(Rol.TUTOR):
-        raise ForbiddenError("Se requiere rol tutor (o alcance institucional).")
-    if not es_docente_de_alguna_comision_de_la_materia:
-        raise ForbiddenError("La materia no tiene ninguna comisión a cargo de este docente.")
+    if not principal.tiene_algun_rol(_ROLES_ACOTADOS_POR_PERTENENCIA):
+        raise ForbiddenError(
+            "Se requiere rol tutor/profesor/coordinador (o alcance institucional)."
+        )
+    if not tiene_pertenencia:
+        raise ForbiddenError("La materia no tiene ninguna comisión a cargo (o coordinación).")
 
 
 def autorizar_supervision_vivo_sobre_sesion(
     principal: AuthenticatedPrincipal,
-    docente_id_de_la_sesion: str | None,
+    tiene_pertenencia: bool,
 ) -> None:
-    """Pertenencia del TUTOR sobre la supervision en vivo de una sesion (C-76 D2).
+    """Pertenencia sobre la supervision en vivo de una sesion: tutor de la
+    comisión, o coordinador de la materia (C-76 D2, N:M desde c-79).
 
-    ``supervisar_vivo`` habilita el ROL (COORDINADOR/ADMIN_SISTEMA/TUTOR, tras
-    eliminarse tambien REVISOR — c-76), pero el TUTOR queda ademas ACOTADO por
-    pertenencia: solo ve/opera sesiones de examenes cuya comision tiene a SU
-    usuario como ``docente_id`` (asignar_docente, C-73 §9).
-    COORDINADOR/ADMIN_SISTEMA son de alcance institucional (Q5 del design c-76:
-    el coordinador es global) y no se acotan.
+    ``supervisar_vivo`` habilita el ROL (COORDINADOR/ADMIN_SISTEMA/TUTOR), pero
+    TUTOR y COORDINADOR quedan ACOTADOS por pertenencia (c-79: el coordinador
+    dejó de tener alcance global — antes Q5 del design c-76 lo declaraba
+    institucional, revisado a pedido del dueño para no equivaler a admin).
+    Solo ADMIN_SISTEMA es de alcance institucional sin restricción.
 
-    ``docente_id_de_la_sesion`` es la derivacion sesion -> examen_contenido ->
-    comision -> docente_id. ``None`` (sesion 'test' sin examen vinculado, examen
-    sin comision, o comision sin docente) NO habilita al tutor: sin dueño
-    identificable, solo pasan los roles institucionales.
+    ``tiene_pertenencia`` ya resuelve la membresía (sesión -> examen_contenido ->
+    comisión -> comision_tutor, o -> materia -> materia_coordinador) contra la DB;
+    esta función solo decide el acceso.
 
     No decide nada sobre integridad academica (L2.5): esto es control de acceso."""
-    if principal.tiene_algun_rol({Rol.COORDINADOR, Rol.ADMIN_SISTEMA}):
+    if principal.tiene_algun_rol(_ROLES_SIN_LIMITE_DE_PERTENENCIA):
         return
-    if not principal.tiene_rol(Rol.TUTOR):
+    if not principal.tiene_algun_rol(_ROLES_ACOTADOS_POR_PERTENENCIA):
         # Capability gate ya exige supervisar_vivo antes de llegar acá; este caso
         # es defensivo (rol desconocido con la capacidad de otra forma).
-        raise ForbiddenError("Se requiere rol tutor (o alcance institucional).")
-    if docente_id_de_la_sesion is None:
         raise ForbiddenError(
-            "La sesion no tiene un docente a cargo identificable: "
-            "solo un rol institucional puede operarla."
+            "Se requiere rol tutor/profesor/coordinador (o alcance institucional)."
         )
-    if principal.subject != docente_id_de_la_sesion:
-        raise ForbiddenError("La sesion pertenece a la comision de otro docente.")
+    if not tiene_pertenencia:
+        raise ForbiddenError("La sesión pertenece a una comisión/materia ajena.")
 
 
 def autorizar_docente_sobre_comision(
     principal: AuthenticatedPrincipal,
-    docente_id_de_la_comision: str | None,
+    tiene_pertenencia: bool,
 ) -> None:
-    """Pertenencia del DOCENTE sobre una COMISIÓN puntual (C-74 post-cierre).
+    """Pertenencia sobre una COMISIÓN puntual: tutor de esa comisión, o
+    coordinador de su materia (C-74 post-cierre, N:M desde c-79).
 
     Distinto de ``autorizar_docente_sobre_materia``: el banco es materia-wide,
-    pero crear un examen APUNTA a una comisión concreta — un docente que dicta la
+    pero crear un examen APUNTA a una comisión concreta — un tutor que dicta la
     Comisión 2 de una materia no puede crear un examen para la Comisión 1 de esa
-    misma materia (comisión de otro docente) solo porque comparten materia y banco.
-    Sin este chequeo, ``crear-desde-banco`` solo validaba pertenencia a la MATERIA
-    y dejaba pasar cualquier ``comision_id`` de esa materia (bug real)."""
+    misma materia (comisión ajena) solo porque comparten materia y banco.
+    ``tiene_pertenencia`` ya resuelve la membresía contra la DB (comision_tutor,
+    o comisión -> materia -> materia_coordinador)."""
     if principal.tiene_algun_rol(_ROLES_SIN_LIMITE_DE_PERTENENCIA):
         return
-    if not principal.tiene_rol(Rol.TUTOR):
-        raise ForbiddenError("Se requiere rol tutor (o alcance institucional).")
-    if docente_id_de_la_comision is None:
+    if not principal.tiene_algun_rol(_ROLES_ACOTADOS_POR_PERTENENCIA):
         raise ForbiddenError(
-            "La comisión no tiene docente a cargo: solo un rol institucional puede operarla."
+            "Se requiere rol tutor/profesor/coordinador (o alcance institucional)."
         )
-    if principal.subject != docente_id_de_la_comision:
-        raise ForbiddenError("La comisión pertenece a otro docente.")
+    if not tiene_pertenencia:
+        raise ForbiddenError("La comisión pertenece a otro tutor/materia ajena.")
 
 
 def principal_es_dueno_de_sesion(
@@ -272,7 +274,7 @@ def autorizar_dueno_o_supervision_vivo_sobre_sesion(
     principal: AuthenticatedPrincipal,
     alumno_idnumber: str | None,
     alumno_email: str | None,
-    docente_id_de_la_sesion: str | None,
+    tiene_pertenencia: bool,
 ) -> None:
     """Acceso a un recurso de sesion (chat, pausas) para el DUEÑO o quien supervisa.
 
@@ -286,4 +288,4 @@ def autorizar_dueno_o_supervision_vivo_sobre_sesion(
     """
     if principal_es_dueno_de_sesion(principal, alumno_idnumber, alumno_email):
         return
-    autorizar_supervision_vivo_sobre_sesion(principal, docente_id_de_la_sesion)
+    autorizar_supervision_vivo_sobre_sesion(principal, tiene_pertenencia)

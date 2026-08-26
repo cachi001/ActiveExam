@@ -332,9 +332,20 @@ function TopEventos({ data }: { data: ResumenStats }) {
 }
 
 /** Etiqueta + color de cada decisión de revisión (modelo de un solo paso). */
+/**
+ * Claves que el backend REALMENTE emite en `decisiones` (F-07, c-78 D8).
+ *
+ * `resumen_service` agrupa por `proctoring_session.decision or 'sin_revisar'`, y
+ * la columna solo puede valer 'aprobado' o 'anulado': el endpoint de revisión
+ * rechaza explícitamente 'pendiente' por no ser una decisión terminal
+ * (`_parse_decision`, review/router.py). O sea que la clave `pendiente` que vivía
+ * acá nunca podía matchear — una leyenda que jamás se iba a dibujar.
+ *
+ * El fallback de abajo se CONSERVA: si algún día aparece un valor nuevo, se
+ * muestra legible en vez de romper la rosca.
+ */
 const DECISION_META: Record<string, { label: string; color: string }> = {
   sin_revisar: { label: 'Sin revisar', color: '#94a3b8' },
-  pendiente: { label: 'Pendiente', color: '#3b82f6' },
   aprobado: { label: 'Aprobado', color: '#10b981' },
   anulado: { label: 'Anulado por fraude', color: '#ef4444' },
 };

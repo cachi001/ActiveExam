@@ -55,23 +55,44 @@ import { descripcionEvento } from '../lib/api';
 import { nombreCompleto } from '../lib/types';
 import type { EventoSesion, Severidad, TipoEvento } from '../lib/types';
 import { CircularEventBuffer } from '../transport/eventBuffer';
+import {
+  crearEnvioReintentable,
+  crearReintentoDeDrenaje,
+  enviarConRespaldo,
+} from '../transport/envioConRespaldo';
+import type { BiometriaProctoringPayload } from '../vision/liveness';
 import { IndexedDbEventBufferStore } from '../transport/indexedDbBufferStore';
 import { drainAndReplay } from '../transport/replayCoordinator';
 import type { ReplaySender } from '../transport/replayCoordinator';
 import { hashClip } from '../features/biometria/clipCustody';
 import { HEARTBEAT_MAX_FREQ_SEC } from '../transport/evidenceCadence';
 
-// DEUDA TÉCNICA: los siguientes módulos están implementados y testeados pero no se
-// cablea porque el backend activeexam no los soporta aún:
+// ---------------------------------------------------------------------------
+// DEUDA TÉCNICA — módulos de `transport/` implementados y testeados pero NO
+// cableados. Verificado el 25/8/2026: estos SIETE no tienen ningún consumidor
+// fuera de `transport/` (solo se importan entre ellos y desde sus tests).
 //
-// - `../transport/eventSignature.ts` (firma HMAC de eventos): el backend activeexam NO valida
-//   la firma del payload del evento. Firmar sin validación es teatro de seguridad.
-//   Cablear cuando el backend implemente la validación.
+// Están escritos para el transporte en tiempo real que decide la PoC C-03 y que
+// c-15b va a cablear. NO son basura: borrarlos sería tirar trabajo hecho y
+// testeado que ese change necesita. Se listan acá para que nadie pierda tiempo
+// preguntándose si están vivos.
 //
-// - `../features/custodia/evidenceCapture.ts` (cadena de custodia completa): requiere
-//   el endpoint `/evidence/presign` (inexistente en el activeexam), storage externo
-//   (MinIO/S3 con Object Lock) y `sessionKey` rotativa post-verificación biométrica.
-//   Cablear cuando se implemente el backend completo de evidencia (C-12/C-24).
+//   - `StudentEventChannel.ts` / `ResilientStudentEventChannel.ts` — canal
+//     WebSocket del alumno. Producción NO monta WebSocket (`main_activeexam.py`
+//     no lo expone) y hoy todo va por REST + polling.
+//   - `reconnectBackoff.ts`, `outagePolicy.ts`, `resilienceMetrics.ts` — política
+//     de reconexión y métricas de ese canal.
+//   - `eventSignature.ts` — firma HMAC del evento. El backend activeexam NO la
+//     valida, y firmar sin validación es teatro de seguridad. Cablear cuando el
+//     backend valide.
+//   - `evidenceCapture.ts` — cadena de custodia por presigned URL. Requiere el
+//     endpoint `/evidence/presign`, que no existe. (c-77 sí trajo MinIO/WORM,
+//     pero como depósito server-side: no es esta vía.)
+//
+// Lo que SÍ está cableado de `transport/`: `eventBuffer` + `indexedDbBufferStore`
+// (buffer de reenvío), `replayCoordinator` (drenaje), `envioConRespaldo` (envío
+// con respaldo y reintento) y `evidenceCadence` (solo la constante del heartbeat).
+// ---------------------------------------------------------------------------
 
 /** Máximo de eventos recientes que el panel del examen muestra. */
 const MAX_EVENTOS = 30;
@@ -95,6 +116,17 @@ const MAX_EVENTOS = 30;
  */
 // Exportado (además de usado internamente) para que el test 15.6 verifique la
 // membresía sobre el Set REAL que usa el gate, no una copia duplicada en el test.
+/**
+ * Estado de la evidencia frente a un corte de conexión (c-78).
+ *
+ *  - `ninguno`   — todo lo que se produjo llegó al backend.
+ *  - `pendiente` — hay evidencia guardada en el buffer esperando reenvío. Es
+ *    recuperable: el reintento la manda sola cuando vuelve la conexión.
+ *  - `perdida`   — el navegador se negó a guardar (cuota) o hubo que expulsar
+ *    algo del buffer. NO es recuperable, y por eso no se limpia nunca.
+ */
+export type EstadoEvidencia = 'ninguno' | 'pendiente' | 'perdida';
+
 export const EVENTOS_CON_EVIDENCIA_VISUAL = new Set<string>([
   'rostro_ausente',
   'multiples_rostros',
@@ -211,6 +243,65 @@ export function __resetSesionEnCreacionParaTest(): void {
 /** ~5 fps: suficiente para detección en vivo sin saturar el cliente. */
 const FRAME_INTERVAL_MS = 200;
 
+/**
+ * Duración de la calibración de mirada al inicio del examen (pentest 2026-08-21,
+ * miedo del usuario "camara descentrada"): antes de arrancar las reglas de
+ * detección, se le pide al alumno mirar al centro de la pantalla durante este
+ * tiempo. El promedio de gaze capturado se fija como baseline (ver
+ * `StateTransitionRules.calibrarGaze`), así la deteccion de "mirada desviada" pasa
+ * a medirse relativa a COMO ESE alumno mira normalmente con SU camara (sin
+ * importar si esta fisicamente centrada o no), en vez de un cero absoluto.
+ * No cuenta contra el tiempo limite del examen (corre ANTES de examen_iniciado_en).
+ */
+const CALIBRACION_GAZE_MS = 3000;
+
+/**
+ * Corre un mini-loop de captura de `gaze` crudo (sin evaluar reglas) durante
+ * `durationMs`, muestreando cada `intervalMs`. Devuelve el promedio de las
+ * muestras validas, o `null` si no se pudo capturar ninguna (rostro ausente,
+ * motor stub sin mesh, camara no lista) — en ese caso el llamador debe seguir
+ * con el baseline por defecto {0,0} (comportamiento actual, no bloquea el examen).
+ */
+export async function capturarBaselineGaze(
+  videoRef: RefObject<HTMLVideoElement>,
+  engine: VisionEngine,
+  durationMs: number,
+  intervalMs: number,
+  estaCancelado: () => boolean,
+): Promise<{ x: number; y: number } | null> {
+  const muestras: { x: number; y: number }[] = [];
+  const iteraciones = Math.max(1, Math.floor(durationMs / intervalMs));
+  for (let i = 0; i < iteraciones; i += 1) {
+    if (estaCancelado()) break;
+    const video = videoRef.current;
+    if (video && video.readyState >= 2) {
+      try {
+        const frame = await createImageBitmap(video);
+        try {
+          const fd = await engine.detectFaces(frame);
+          if (fd.face_count === 1) {
+            try {
+              const mesh = await engine.detectFaceMesh(frame);
+              if (mesh.gaze) muestras.push(mesh.gaze);
+            } catch {
+              /* mesh no disponible este frame: seguimos muestreando */
+            }
+          }
+        } catch {
+          /* motor sin inferencia (stub): sin muestra este frame */
+        }
+        frame.close();
+      } catch {
+        /* video sin frame listo: sin muestra este frame */
+      }
+    }
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+  if (muestras.length === 0) return null;
+  const suma = muestras.reduce((acc, g) => ({ x: acc.x + g.x, y: acc.y + g.y }), { x: 0, y: 0 });
+  return { x: suma.x / muestras.length, y: suma.y / muestras.length };
+}
+
 // ---------------------------------------------------------------------------
 // Cadencia de captura durante pausa autorizada (C-76 bloque 5, D6/Q3 follow-up)
 // ---------------------------------------------------------------------------
@@ -228,6 +319,16 @@ const FRAME_INTERVAL_MS = 200;
 // (HEARTBEAT_MAX_FREQ_SEC = 30s) en vez de inventar un número nuevo — misma
 // cadencia/patrón que la evidencia general (Ley 25.326, minimización de datos).
 export const PAUSA_CAPTURA_INTERVAL_MS = HEARTBEAT_MAX_FREQ_SEC * 1000;
+
+/**
+ * Id de una captura de pausa, para que el buffer pueda deduplicarla y purgarla.
+ * A diferencia de los eventos del motor de reglas, la captura de pausa no viene
+ * con id propio. No usa `crypto.randomUUID` a propósito: no existe en contextos
+ * no seguros y una captura de pausa no puede tumbar el examen por eso.
+ */
+function idDeCapturaPausa(): string {
+  return `pausa-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
 
 export interface PausaCapturaDeps {
   /** Captura y postea UN screenshot con tipo `captura_pausa`. Fire-and-forget. */
@@ -314,6 +415,12 @@ export interface ExamProctoringState {
    * sin sesión: las respuestas no se guardarían ni se calcularía la nota).
    */
   sessionError: SessionInitError | null;
+  /**
+   * true durante la calibración de mirada al inicio (CALIBRACION_GAZE_MS): se le
+   * pide al alumno mirar al centro de la pantalla antes de que arranquen las
+   * reglas de detección. Examen.tsx muestra un overlay mientras dure.
+   */
+  calibrando: boolean;
 }
 
 export interface UseExamProctoringResult extends ExamProctoringState {
@@ -327,6 +434,12 @@ export interface UseExamProctoringResult extends ExamProctoringState {
    * `PausaAlumno` conozca este hook.
    */
   setPausaAprobada: (activa: boolean) => void;
+  /**
+   * c-78: si hay evidencia que no llegó al backend. `pendiente` se recupera solo
+   * cuando vuelve la conexión; `perdida` no vuelve. Lo consume `Examen.tsx` para
+   * avisarle al alumno, igual que el aviso de respuestas sin guardar.
+   */
+  evidenciaEnRiesgo: EstadoEvidencia;
 }
 
 /**
@@ -362,6 +475,9 @@ export function useExamProctoring(
   // (cada 5s). Examen.tsx lo usa para bloquear la rendicion mientras este `true`.
   const [extraMonitorActive, setExtraMonitorActive] = useState(false);
   const [sessionError, setSessionError] = useState<SessionInitError | null>(null);
+  // Calibración de mirada al inicio (ver CALIBRACION_GAZE_MS): true mientras se le
+  // pide al alumno mirar al centro, antes de que arranquen las reglas de detección.
+  const [calibrando, setCalibrando] = useState(false);
 
   // ------ Refs del motor / pipeline / loop ------
   const engineRef = useRef<VisionEngine | null>(null);
@@ -385,6 +501,24 @@ export function useExamProctoring(
   // Instancia única que persiste toda la duración del hook. Null si IndexedDB
   // no está disponible (modo privado / iOS Safari → degradación silenciosa, R3).
   const bufferRef = useRef<CircularEventBuffer | null>(null);
+
+  // ------ Estado de la evidencia frente a un corte (c-78) ------
+  // El dueño lo puso como condición: "no se pueden perder capturas y eventos".
+  // El buffer los retiene y el reintento los reenvía, pero mientras tanto el
+  // alumno tiene que poder VER que hay algo sin llegar al servidor — mismo
+  // criterio que el aviso de "no se están guardando tus respuestas".
+  // Envío reintentable del payload biométrico. Se crea en el effect de arranque
+  // (necesita el id de sesión) y lo reintenta el mismo controlador que drena el
+  // buffer de eventos: todo lo que quedó sin llegar se reintenta junto.
+  const envioBiometriaRef = useRef<ReturnType<
+    typeof crearEnvioReintentable<BiometriaProctoringPayload>
+  > | null>(null);
+
+  const [evidenciaEnRiesgo, setEvidenciaEnRiesgo] = useState<EstadoEvidencia>('ninguno');
+  const marcarEvidenciaPendiente = useCallback(() => {
+    // `perdida` es más grave y no se pisa: lo que no se pudo guardar no vuelve.
+    setEvidenciaEnRiesgo((prev) => (prev === 'perdida' ? prev : 'pendiente'));
+  }, []);
 
   // ------ Señales de contexto del navegador (acumuladas, consumidas por tick) ------
   const focusLostRef = useRef(false);
@@ -426,17 +560,23 @@ export function useExamProctoring(
       ...(screenshotHash !== undefined && { screenshot_sha256_cliente: screenshotHash }),
     };
 
-    // Fire-and-forget, degradación silenciosa: una captura de pausa fallida NO
-    // debe romper el examen. No pasa por el buffer IndexedDB de replay (D1):
-    // ese buffer está pensado para eventos discretos del motor de reglas con
-    // reenvío ordenado por `last_event_id`; acá es un heartbeat periódico donde
-    // perder UNA captura no es crítico (el backend solo necesita UNA en la
-    // ventana) y el próximo tick reintenta solo.
-    try {
-      await api.enviarEventoProctoring(sid, eventoPayload);
-    } catch (err) {
-      console.error('[proctoring] POST captura_pausa falló:', err);
-    }
+    // c-78: antes salía fire-and-forget, sin pasar por el buffer, y un corte de
+    // conexión durante la pausa se llevaba la captura puesta. Ahora va con
+    // respaldo, como todo lo demás.
+    //
+    // OJO con lo que el replay NO hace: la regla de pausa exige un `captura_pausa`
+    // con `ts_backend` DENTRO de la ventana aprobada, así que una captura que
+    // llega tarde no la satisface retroactivamente — si el corte duró toda la
+    // pausa, el backend emite `pausa_sin_captura` igual, que es la señal correcta
+    // (hubo una pausa sin supervisar). Lo que gana el replay es la EVIDENCIA: el
+    // revisor humano llega a ver qué estaba pasando, con su `ts_cliente` real.
+    const resultado = await enviarConRespaldo(
+      bufferRef.current,
+      idDeCapturaPausa(),
+      eventoPayload,
+      (payload) => api.enviarEventoProctoring(sid, payload),
+    );
+    if (!resultado.enviado) marcarEvidenciaPendiente();
   };
   const pausaCapturaCtrlRef = useRef(
     crearControladorCapturaPausa({ capturar: () => enviarCapturaPausaRef.current() }),
@@ -530,26 +670,14 @@ export function useExamProctoring(
       ...(screenshotHash !== undefined && { screenshot_sha256_cliente: screenshotHash }),
     };
 
-    // Patrón buffer-first con purga-en-éxito (D1, CRÍTICO):
-    // 1. Persistir ANTES del POST (idempotente por id — si falla el POST, queda para el drain).
-    // 2. Ejecutar el POST.
-    // 3. Si el POST resuelve OK → confirm(id) para PURGAR del buffer.
-    // 4. Si el POST rechaza (red caída) → NO confirmar (queda pendiente para drainAndReplay).
-    //
-    // Sin confirm on-success, el buffer retiene todos los eventos del examen y el drain
-    // los reinyecta masivamente en la primera reconexión (el backend activeexam NO deduplica).
-    await bufferRef.current?.append(rawEvent.id, eventoPayload).catch(() => {});
-
-    try {
-      await api.enviarEventoProctoring(sid, eventoPayload);
-      // POST resolvió OK → purgar del buffer (evento a salvo server-side).
-      await bufferRef.current?.confirm(rawEvent.id).catch(() => {});
-    } catch (err) {
-      // POST rechazado (red caída) → no confirmar; el evento queda en el buffer
-      // para que drainAndReplay lo reenvíe al recuperar la conexión.
-      // C-64 D5: loguear el error para diagnóstico en prod (antes era catch silencioso).
-      console.error('[proctoring] POST evento falló:', err);
-    }
+    // Patrón buffer-first con purga-en-éxito (D1, CRÍTICO) — ver `enviarConRespaldo`.
+    const resultado = await enviarConRespaldo(
+      bufferRef.current,
+      rawEvent.id,
+      eventoPayload,
+      (payload) => api.enviarEventoProctoring(sid, payload),
+    );
+    if (!resultado.enviado) marcarEvidenciaPendiente();
   };
 
   // ------ detener(): corta loop, dispone motor, limpia ------
@@ -609,30 +737,75 @@ export function useExamProctoring(
 
     // --- Inicializar buffer IndexedDB (R3: degradación silenciosa si no está disponible) ---
     try {
-      bufferRef.current = new CircularEventBuffer(new IndexedDbEventBufferStore());
+      bufferRef.current = new CircularEventBuffer(new IndexedDbEventBufferStore(), undefined, {
+        // Nada se descarta en silencio (c-78): si el navegador negó el guardado
+        // o hubo que expulsar algo por presupuesto, la evidencia se perdió y el
+        // alumno tiene que verlo en pantalla, no enterarse nadie nunca.
+        alAvisar: () => setEvidenciaEnRiesgo('perdida'),
+      });
     } catch {
       bufferRef.current = null; // IndexedDB no disponible → operar sin buffer
     }
+
+    // --- Envío reintentable de la verificación biométrica ---
+    // Resuelve el sessionId al MANDAR (no al construirse): en el momento en que
+    // se crea, la sesión todavía no existe.
+    envioBiometriaRef.current = crearEnvioReintentable<BiometriaProctoringPayload>({
+      enviar: async (payload) => {
+        const sid = sessionIdRef.current;
+        if (!sid) throw new Error('sesión de proctoring todavía no disponible');
+        await api.enviarBiometriaProctoring(sid, payload);
+      },
+    });
 
     // --- Adaptador ReplaySender: envuelve api.enviarEventoProctoring como ReplaySender ---
     // El buffer almacena el payload del evento (message) serializado; el sender
     // lo reenvía al backend usando el sessionId actual de sessionIdRef.
     const replaySender: ReplaySender = async (record) => {
       const sid = sessionIdRef.current;
-      if (!sid) return { status: 'persisted', id: record.id };
+      // Sin sesión NO se puede reenviar. Antes devolvía `persisted` igual, y como
+      // drainAndReplay purga con cualquier ack, un drenaje disparado antes de que
+      // la sesión existiera BORRABA el buffer sin haber mandado nada. Fallar es lo
+      // correcto: el reintento lo vuelve a intentar cuando la sesión esté.
+      if (!sid) throw new Error('sesión de proctoring todavía no disponible');
       await api.enviarEventoProctoring(sid, record.message as Parameters<typeof api.enviarEventoProctoring>[1]);
       // El backend activeexam no distingue persisted/duplicate — siempre tratamos el 200 como persisted.
       return { status: 'persisted', id: record.id };
     };
 
-    // --- handleDrain: drena el buffer al recuperar la conexión ---
-    // Gracias al confirm on-success en handleEvent, solo contiene eventos que fallaron
-    // mientras la red estaba caída — el drain reenvía únicamente esos (no el examen completo).
-    const handleDrain = () => {
-      if (bufferRef.current) {
-        drainAndReplay(bufferRef.current, replaySender).catch(() => {});
+    // --- handleDrain: reenvía lo que quedó esperando ---
+    // Gracias al confirm on-success de `enviarConRespaldo`, solo contiene eventos que
+    // fallaron mientras la red estaba caída — el drain reenvía únicamente esos (no el
+    // examen completo). Incluye lo que quedó de una sesión anterior: si al alumno se le
+    // cortó y recargó la página, esto es lo único que lo recupera.
+    const handleDrain = async () => {
+      // La verificación biométrica también se reintenta acá: todo lo que quedó
+      // sin llegar al backend se reintenta junto, en el mismo tick.
+      const envioBiometria = envioBiometriaRef.current;
+      if (envioBiometria?.hayPendiente()) {
+        await envioBiometria.reintentar();
+        if (!envioBiometria.hayPendiente()) setBiometriaPendientePayload(null);
+      }
+
+      const buffer = bufferRef.current;
+      if (!buffer) return;
+      if ((await buffer.size()) === 0) return; // nada pendiente: ni tocamos la red
+      await drainAndReplay(buffer, replaySender);
+      if ((await buffer.size()) === 0) {
+        // Todo lo pendiente llegó al backend. `perdida` NO se limpia: eso ya no
+        // vuelve, y el aviso tiene que quedar.
+        setEvidenciaEnRiesgo((prev) => (prev === 'perdida' ? prev : 'ninguno'));
       }
     };
+
+    // El reintento no depende del evento `online` del navegador (que no dispara si
+    // lo que se cayó fue el enlace o el server, ni después de recargar la página).
+    const reintentoDrenaje = crearReintentoDeDrenaje({ drenar: handleDrain });
+    reintentoDrenaje.arrancar();
+
+    // `online` no es la red de contención sino un atajo: cuando el navegador SÍ
+    // avisa, no esperamos al próximo tick.
+    const handleDrainAhora = () => reintentoDrenaje.ahora();
 
     // --- handleOffline: solo para diagnóstico / future use ---
     const handleOffline = () => {
@@ -640,7 +813,7 @@ export function useExamProctoring(
       // cada evento antes del POST; al volver online handleDrain los reenvía.
     };
 
-    window.addEventListener('online', handleDrain);
+    window.addEventListener('online', handleDrainAhora);
     window.addEventListener('offline', handleOffline);
 
     // --- Detectores de contexto del navegador ---
@@ -723,9 +896,17 @@ export function useExamProctoring(
             setProctoringSessionId(id);
             // Enviar payload biométrico que quedó pendiente de la pantalla /biometria
             // (la sesión no existía todavía cuando el alumno verificó su identidad).
+            //
+            // c-78: antes se limpiaba el store en la misma línea del POST, SIN esperar
+            // el resultado. Un hipo de red acá —el arranque del examen, con todos los
+            // alumnos entrando a la vez— borraba la verificación de identidad para
+            // siempre. Ahora se suelta solo cuando el backend contestó, y si no, el
+            // reintento periódico la vuelve a mandar.
             if (biometriaPendientePayload) {
-              void api.enviarBiometriaProctoring(id, biometriaPendientePayload).catch(() => {});
-              setBiometriaPendientePayload(null);
+              const payload = biometriaPendientePayload;
+              void envioBiometriaRef.current
+                ?.enviar(payload)
+                .then((llego) => { if (llego) setBiometriaPendientePayload(null); });
             }
             return id;
           },
@@ -756,6 +937,26 @@ export function useExamProctoring(
       }
       engineRef.current = engine;
 
+      // Calibración de mirada (ver CALIBRACION_GAZE_MS): corre ANTES de armar el
+      // pipeline y arrancar el loop de reglas, para que ningún frame se evalúe con
+      // un baseline todavía sin fijar. No cuenta contra el tiempo del examen (el
+      // cronómetro ancla a examen_iniciado_en, seteado recién al primer fetch de
+      // preguntas). Si no se pudo capturar (sin rostro, motor stub), sigue con el
+      // baseline por defecto {0,0} — comportamiento actual, no bloquea el examen.
+      setCalibrando(true);
+      const baselineGaze = await capturarBaselineGaze(
+        videoRef,
+        engine,
+        CALIBRACION_GAZE_MS,
+        FRAME_INTERVAL_MS,
+        () => cancelled || stoppedRef.current,
+      );
+      setCalibrando(false);
+      if (cancelled || stoppedRef.current) {
+        void disposeRealEngine().catch(() => {});
+        return;
+      }
+
       // Sink LEAN: delega cada evento al handler con estado fresco.
       const sink: EventSink = {
         sendEvent: (args) => handleEvent.current(args),
@@ -771,11 +972,9 @@ export function useExamProctoring(
             gaze_fixation_tolerance: efectiva.gaze_fixation_tolerance,
           }
         : { ...DEFAULT_CONFIG };
-      pipelineRef.current = new VisionPipeline({
-        engine,
-        sink,
-        rules: new StateTransitionRules(thresholds),
-      });
+      const rules = new StateTransitionRules(thresholds);
+      if (baselineGaze) rules.calibrarGaze(baselineGaze);
+      pipelineRef.current = new VisionPipeline({ engine, sink, rules });
       setActivo(true);
 
       // Loop de frames: captura + inferencia + reglas (onSignals para no doblar
@@ -801,12 +1000,11 @@ export function useExamProctoring(
       focus.stop();
       fullscreen.stop();
       clipboard.stop();
-      window.removeEventListener('online', handleDrain);
+      window.removeEventListener('online', handleDrainAhora);
       window.removeEventListener('offline', handleOffline);
+      reintentoDrenaje.detener();
       // Drain final: enviar cualquier evento pendiente al finalizar el examen.
-      if (bufferRef.current) {
-        drainAndReplay(bufferRef.current, replaySender).catch(() => {});
-      }
+      void handleDrain().catch(() => {});
       // Cleanup TRANSITORIO: corta el loop y dispone el motor pero NO finaliza la
       // sesión (la deja viva). Un remontaje (StrictMode/navegación) la reusa y sigue
       // apareciendo en "Supervisión en vivo". La finalización real la hace el cierre
@@ -816,7 +1014,7 @@ export function useExamProctoring(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [examen?.id]);
 
-  return { sessionId, sessionCreadaEn, score, eventCount, activo, eventos, extraMonitorActive, sessionError, detener, setPausaAprobada };
+  return { sessionId, sessionCreadaEn, score, eventCount, activo, eventos, extraMonitorActive, sessionError, calibrando, detener, setPausaAprobada, evidenciaEnRiesgo };
 }
 
 // ---------------------------------------------------------------------------

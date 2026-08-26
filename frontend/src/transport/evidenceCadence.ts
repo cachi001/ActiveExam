@@ -40,8 +40,19 @@ import {
 // Constantes de cadencia (DD-24-02, tarea 2.3 y 2.4)
 // ---------------------------------------------------------------------------
 
-/** Intervalo de heartbeat por defecto (segundos). Conservador = 1 captura / 2 min. */
-export const HEARTBEAT_DEFAULT_SEC = 120;
+/**
+ * Intervalo de heartbeat por defecto (segundos) = 1 captura de rutina cada 3 min.
+ *
+ * Sube de 120 a 180 por CAPACIDAD, medido el 25/8/2026: en un examen de 2 h casi
+ * todas las capturas son de rutina, así que este número domina lo que ocupa la
+ * evidencia. Con 100 alumnos, 120 s son 6.000 capturas y 180 s son 4.000 — sobre
+ * el plan free de Render (base de 1 GB) es la diferencia entre entrar y no.
+ *
+ * NO afecta la captura EVENT-DRIVEN: si un detector emite algo grave, la foto
+ * sale en ese instante igual. Lo que se espacia es la línea de base, no la prueba
+ * del incidente.
+ */
+export const HEARTBEAT_DEFAULT_SEC = 180;
 
 /**
  * Tope MÍNIMO de intervalo permitido (segundos). Un intervalo más corto

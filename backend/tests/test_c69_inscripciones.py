@@ -163,9 +163,16 @@ async def _crear_usuario(
     username: str,
     nombre: str | None = "Ana",
     apellido: str | None = "García",
-    email: str = "alumno@uni.edu",
+    email: str | None = None,
 ) -> str:
-    """Inserta un usuario estudiante y devuelve su id."""
+    """Inserta un usuario estudiante y devuelve su id.
+
+    El email se DERIVA del username cuando no se pasa. Antes tenia por defecto
+    "alumno@uni.edu" fijo, asi que dos tests que creaban un alumno sin
+    especificarlo chocaban contra `uq_usuario_email` — y el error se leia como una
+    falla del test, no como lo que era: dos tests peleandose por la misma fila.
+    """
+    email = email or f"{username.lower()}@uni.edu"
     async with factory() as s:
         usuario = UsuarioModel(
             id=str(uuid.uuid4()),
@@ -310,7 +317,8 @@ async def test_eliminar_inscripcion_204(client_admin, factory):
         f"/api/v1/exam-content/comisiones/{comision_id}/alumnos"
     )
     assert alumnos.status_code == 200
-    assert all(a["usuario_id"] != usuario_id for a in alumnos.json())
+    # c-78 §13.2: la respuesta es paginada -> { items, total, page, page_size }.
+    assert all(a["usuario_id"] != usuario_id for a in alumnos.json()["items"])
 
 
 @pytest.mark.asyncio
@@ -354,7 +362,8 @@ async def test_eliminar_inscripcion_bloqueada_si_ya_rindio_409(client_admin, fac
     alumnos = await client_admin.get(
         f"/api/v1/exam-content/comisiones/{comision_id}/alumnos"
     )
-    assert any(a["usuario_id"] == usuario_id for a in alumnos.json())
+    # c-78 §13.2: respuesta paginada -> { items, total, page, page_size }.
+    assert any(a["usuario_id"] == usuario_id for a in alumnos.json()["items"])
 
 
 @pytest.mark.asyncio
@@ -408,7 +417,7 @@ async def test_alumno_sin_consentimiento_ni_biometria_no_puede_rendir(
         f"/api/v1/exam-content/comisiones/{comision_id}/alumnos"
     )
     assert resp.status_code == 200, resp.text
-    data = resp.json()
+    data = resp.json()["items"]  # c-78 §13.2: respuesta paginada
     assert len(data) == 1
     alumno = data[0]
     assert alumno["usuario_id"] == usuario_id
@@ -457,7 +466,7 @@ async def test_alumno_con_consentimiento_y_biometria_puede_rendir(
         f"/api/v1/exam-content/comisiones/{comision_id}/alumnos"
     )
     assert resp.status_code == 200, resp.text
-    data = resp.json()
+    data = resp.json()["items"]  # c-78 §13.2: respuesta paginada
     assert len(data) == 1
     alumno = data[0]
     assert alumno["consentimiento_vigente"] is True

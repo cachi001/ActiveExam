@@ -13,6 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
+from uuid import UUID
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -30,6 +31,19 @@ from app.infrastructure.persistence.models.proctoring import (
     ProctoringEventModel,
     ProctoringSessionModel,
 )
+
+
+def _es_uuid(valor: str) -> bool:
+    """True si `valor` es un UUID valido. Las columnas de id son UUID: un valor
+    malformado rompe el cast en la DB y devuelve 500 donde correspondia un 403,
+    asi que se valida antes de consultar. Gemelo del helper de
+    `app.application.stats.resumen_service` (no se importa de alla: infraestructura
+    no puede depender de la capa de aplicacion)."""
+    try:
+        UUID(valor)
+        return True
+    except (ValueError, AttributeError, TypeError):
+        return False
 
 
 @dataclass
@@ -59,9 +73,12 @@ class SesionResumenData:
     examen_titulo: str | None = None
     comision_nombre: str | None = None
     materia_nombre: str | None = None
-    # C-76 bloque 8: docente a cargo de la comision (comision.docente_id), para
-    # acotar la supervision en vivo del TUTOR por pertenencia (D2 design c-76).
-    docente_id: str | None = None
+    # C-76 bloque 8 (N:M desde c-79): ids crudos de comision/materia, para que el
+    # router acote la supervision en vivo del TUTOR/COORDINADOR por pertenencia
+    # (membresia en comision_tutor / materia_coordinador, ya no comparación por
+    # igualdad contra un docente_id único).
+    comision_id: str | None = None
+    materia_id: str | None = None
     # Identidad del alumno duenio de la sesion (C-76 tarea 17: columna "Alumno"
     # del Registro de sesiones). alumno_nombre resuelto contra `usuario`; None si
     # no matchea (la UI cae a idnumber/email crudo).
@@ -148,33 +165,78 @@ class ProctoringRepository:
         result = await self._db.execute(stmt)
         return result.scalars().first()
 
-    async def docente_id_de_sesion(self, session_id: str) -> str | None:
-        """Docente a cargo de la comision de la sesion (C-76 bloque 8, D2).
+    async def tiene_pertenencia_de_sesion(
+        self, usuario_id: str, session_id: str, *, es_coordinador: bool = False
+    ) -> bool:
+        """Pertenencia sobre la sesión: tutor de su comisión, o (si
+        ``es_coordinador``) coordinador de su materia (C-76 bloque 8, N:M c-79).
 
-        Derivacion sesion -> examen_contenido -> comision -> docente_id. None si la
-        sesion no existe, no tiene examen vinculado (modo 'test'), el examen no
-        tiene comision, o la comision no tiene docente asignado — todos significan
-        lo mismo para el caller: sin dueño identificable (solo pasan roles
-        institucionales, ver ``autorizar_supervision_vivo_sobre_sesion``)."""
+        Derivación sesión -> examen_contenido -> comisión -> comision_tutor (o
+        -> materia -> materia_coordinador). ``False`` si la sesión no existe, no
+        tiene examen vinculado (modo 'test'), el examen no tiene comisión, o
+        nadie con ese id está a cargo — todos significan lo mismo para el
+        caller: sin dueño identificable (solo pasan roles institucionales, ver
+        ``autorizar_supervision_vivo_sobre_sesion``)."""
+        from app.infrastructure.persistence.models.comision_tutor import (
+            ComisionTutorModel,
+            MateriaCoordinadorModel,
+        )
         from app.infrastructure.persistence.models.exam_content import (
             ComisionModel,
             ExamenContenidoModel,
         )
 
+        # Las dos consultas de abajo comparan contra columnas UUID. Un `usuario_id`
+        # o `session_id` malformado hace que asyncpg reviente el cast y el request
+        # termine en 500, cuando la respuesta correcta es "no tiene pertenencia"
+        # (403). Ya paso una vez por otro camino (guarda `_es_uuid` de
+        # `stats/resumen_service`); este habia quedado sin cubrir.
+        if not (_es_uuid(usuario_id) and _es_uuid(session_id)):
+            return False
+
+        if es_coordinador:
+            stmt = (
+                select(MateriaCoordinadorModel.id)
+                .select_from(ProctoringSessionModel)
+                .join(
+                    ExamenContenidoModel,
+                    ExamenContenidoModel.id == ProctoringSessionModel.examen_contenido_id,
+                )
+                .join(
+                    ComisionModel, ComisionModel.id == ExamenContenidoModel.comision_id
+                )
+                .join(
+                    MateriaCoordinadorModel,
+                    MateriaCoordinadorModel.materia_id == ComisionModel.materia_id,
+                )
+                .where(
+                    ProctoringSessionModel.id == session_id,
+                    MateriaCoordinadorModel.coordinador_id == usuario_id,
+                )
+                .limit(1)
+            )
+            result = await self._db.execute(stmt)
+            return result.scalar_one_or_none() is not None
+
         stmt = (
-            select(ComisionModel.docente_id)
+            select(ComisionTutorModel.id)
             .select_from(ProctoringSessionModel)
             .join(
                 ExamenContenidoModel,
                 ExamenContenidoModel.id == ProctoringSessionModel.examen_contenido_id,
             )
             .join(
-                ComisionModel, ComisionModel.id == ExamenContenidoModel.comision_id
+                ComisionTutorModel,
+                ComisionTutorModel.comision_id == ExamenContenidoModel.comision_id,
             )
-            .where(ProctoringSessionModel.id == session_id)
+            .where(
+                ProctoringSessionModel.id == session_id,
+                ComisionTutorModel.tutor_id == usuario_id,
+            )
+            .limit(1)
         )
         result = await self._db.execute(stmt)
-        return result.scalar_one_or_none()
+        return result.scalar_one_or_none() is not None
 
     async def obtener_sesion(self, session_id: str) -> ProctoringSessionModel | None:
         """Obtiene una sesion por ID con sus eventos y biometria (eager load)."""
@@ -202,8 +264,8 @@ class ProctoringRepository:
         if examen_contenido_id is None:
             return (None, None, None)
         mapa = await self._contexto_academico([examen_contenido_id])
-        titulo, comision, materia, _docente_id = mapa.get(
-            examen_contenido_id, (None, None, None, None)
+        titulo, comision, materia, _comision_id, _materia_id = mapa.get(
+            examen_contenido_id, (None, None, None, None, None)
         )
         return (titulo, comision, materia)
 
@@ -315,6 +377,7 @@ class ProctoringRepository:
         fecha_hasta: datetime | None = None,
         materia_id: str | None = None,
         comision_id: str | None = None,
+        comision_ids_permitidas: set[str] | None = None,
     ) -> list[SesionResumenData]:
         """Sesiones FINALIZADAS (Registro de sesiones, C-76 tarea 17) con filtros SQL.
 
@@ -326,6 +389,12 @@ class ProctoringRepository:
         - ``materia_id``/``comision_id`` (C-76 tarea 20.3): filtro en cascada
           Materia -> Comision, mismo join que ya resuelve ``materia_nombre``/
           ``comision_nombre`` (sesion -> examen_contenido -> comision -> materia).
+        - ``comision_ids_permitidas`` (c-78 §11.4): SCOPING por pertenencia.
+          ``None`` = sin restriccion (solo admin_sistema). Un set VACIO significa
+          "no ve ninguna" y devuelve vacio — nunca "ve todo". Antes esto se
+          resolvia en Python DESPUES de traer todas las sesiones finalizadas de la
+          base: con el NFR de capacidad del proyecto eso es traer decenas de miles
+          de filas para descartar casi todas. Aca va al WHERE.
 
         El nivel de riesgo NO se filtra aca (requiere el score ya calculado, que se
         resuelve en Python sobre TODOS los eventos de la sesion) — lo aplica el
@@ -361,12 +430,18 @@ class ProctoringRepository:
             stmt = stmt.where(ProctoringSessionModel.finalizada_en >= fecha_desde)
         if fecha_hasta is not None:
             stmt = stmt.where(ProctoringSessionModel.finalizada_en <= fecha_hasta)
-        if materia_id or comision_id:
+        if comision_ids_permitidas is not None and not comision_ids_permitidas:
+            # Sin ninguna comision a cargo: no ve nada. Se corta antes de la query.
+            return []
+        if materia_id or comision_id or comision_ids_permitidas is not None:
             from app.infrastructure.persistence.models.exam_content import (
                 ComisionModel,
                 ExamenContenidoModel,
             )
 
+            # INNER JOIN a proposito: una sesion sin examen vinculado (diagnostico)
+            # no pertenece a ninguna comision, asi que no puede entrar en el
+            # alcance de nadie que este acotado por pertenencia.
             stmt = stmt.join(
                 ExamenContenidoModel,
                 ExamenContenidoModel.id == ProctoringSessionModel.examen_contenido_id,
@@ -377,6 +452,12 @@ class ProctoringRepository:
                 stmt = stmt.where(ComisionModel.id == comision_id)
             if materia_id:
                 stmt = stmt.where(ComisionModel.materia_id == materia_id)
+            if comision_ids_permitidas is not None:
+                # Se aplica DESPUES de los filtros pedidos por el usuario: si un
+                # tutor fuerza `comision_id` de una comision ajena, la interseccion
+                # con lo suyo da vacio. El filtro del usuario no puede ampliar su
+                # alcance, solo achicarlo.
+                stmt = stmt.where(ComisionModel.id.in_(comision_ids_permitidas))
         stmt = stmt.order_by(ProctoringSessionModel.finalizada_en.desc())
 
         result = await self._db.execute(stmt)
@@ -572,10 +653,11 @@ class ProctoringRepository:
                 umbral_cola_revision_efectivo=umbral_por_sesion.get(s.id, umbral_vivo),
                 ultimo_evento_en=ultimo_por_sesion.get(s.id) or s.creada_en,
                 examen_contenido_id=s.examen_contenido_id,
-                examen_titulo=ctx_por_contenido.get(s.examen_contenido_id, (None, None, None, None))[0],
-                comision_nombre=ctx_por_contenido.get(s.examen_contenido_id, (None, None, None, None))[1],
-                materia_nombre=ctx_por_contenido.get(s.examen_contenido_id, (None, None, None, None))[2],
-                docente_id=ctx_por_contenido.get(s.examen_contenido_id, (None, None, None, None))[3],
+                examen_titulo=ctx_por_contenido.get(s.examen_contenido_id, (None,) * 5)[0],
+                comision_nombre=ctx_por_contenido.get(s.examen_contenido_id, (None,) * 5)[1],
+                materia_nombre=ctx_por_contenido.get(s.examen_contenido_id, (None,) * 5)[2],
+                comision_id=ctx_por_contenido.get(s.examen_contenido_id, (None,) * 5)[3],
+                materia_id=ctx_por_contenido.get(s.examen_contenido_id, (None,) * 5)[4],
                 alumno_idnumber=s.alumno_idnumber,
                 alumno_email=s.alumno_email,
                 alumno_nombre=nombres_por_sesion.get(s.id),
@@ -585,15 +667,15 @@ class ProctoringRepository:
 
     async def _contexto_academico(
         self, contenido_ids: list[str]
-    ) -> dict[str, tuple[str | None, str | None, str | None, str | None]]:
+    ) -> dict[str, tuple[str | None, str | None, str | None, str | None, str | None]]:
         """Mapea examen_contenido_id -> (examen_titulo, comision_nombre, materia_nombre,
-        docente_id).
+        comision_id, materia_id).
 
         LEFT JOIN a comision y materia: un examen sin comision asociada (comision_id
-        NULL) resuelve el titulo del examen pero deja comision/materia/docente en
-        None. ``docente_id`` (C-76 bloque 8) es ``comision.docente_id`` — lo consume
-        el router para acotar la supervision en vivo del TUTOR por pertenencia.
-        """
+        NULL) resuelve el titulo del examen pero deja el resto en None. Los ids
+        crudos (C-76 bloque 8, N:M desde c-79) los consume el router para acotar
+        la supervision en vivo de TUTOR/COORDINADOR por membresía (comision_tutor /
+        materia_coordinador) — ya no comparación contra un docente_id único."""
         if not contenido_ids:
             return {}
 
@@ -609,7 +691,8 @@ class ProctoringRepository:
                 ExamenContenidoModel.titulo,
                 ComisionModel.nombre.label("comision_nombre"),
                 MateriaModel.nombre.label("materia_nombre"),
-                ComisionModel.docente_id,
+                ComisionModel.id.label("comision_id"),
+                ComisionModel.materia_id,
             )
             .select_from(ExamenContenidoModel)
             .outerjoin(
@@ -620,7 +703,13 @@ class ProctoringRepository:
         )
         rows = await self._db.execute(stmt)
         return {
-            row.id: (row.titulo, row.comision_nombre, row.materia_nombre, row.docente_id)
+            row.id: (
+                row.titulo,
+                row.comision_nombre,
+                row.materia_nombre,
+                row.comision_id,
+                row.materia_id,
+            )
             for row in rows
         }
 
@@ -768,7 +857,11 @@ class ProctoringRepository:
         ts_cliente: datetime,
         payload: dict | None = None,
         screenshot_b64: str | None = None,
+        screenshot_bin: bytes | None = None,
+        screenshot_prefijo: str | None = None,
         screenshot_sha256: str | None = None,
+        screenshot_sha256_cliente: str | None = None,
+        custodia_cliente: str = "no_verificable",
         face_count_cliente: int | None = None,
         face_count_servidor: int | None = None,
         veredicto_reinferencia: str = "no_evaluado",
@@ -794,8 +887,17 @@ class ProctoringRepository:
             severidad=severidad,
             ts_cliente=ts_cliente,
             payload=payload,
-            screenshot_b64=screenshot_b64,
+            screenshot_b64=screenshot_b64,  # LEGACY: las filas nuevas usan screenshot_bin
+            # c-78 (16.4): la captura va en binario, 44% menos espacio que el
+            # base64 cifrado. El prefijo se guarda tal cual para reconstruir el
+            # data URL byte a byte y que screenshot_sha256 siga verificando.
+            screenshot_bin=screenshot_bin,
+            screenshot_prefijo=screenshot_prefijo,
             screenshot_sha256=screenshot_sha256,  # integridad liviana (D9)
+            # Primera capa de la cadena de custodia (c-78): lo que afirma el
+            # cliente y el veredicto de contrastarlo server-side.
+            screenshot_sha256_cliente=screenshot_sha256_cliente,
+            custodia_cliente=custodia_cliente,
             face_count_cliente=face_count_cliente,
             face_count_servidor=face_count_servidor,
             veredicto_reinferencia=veredicto_reinferencia,

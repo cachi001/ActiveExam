@@ -29,7 +29,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.domain.auth.identity import AuthenticatedPrincipal
 from app.application.audit.acciones import AccionAuditoria, EntidadAuditoria, ModuloAuditoria, TipoAccionAuditoria
 from app.domain.auth.roles import Rol
-from app.infrastructure.auth.hashing import hashear_password
+from app.infrastructure.auth.hashing import hashear_password_async
+from app.infrastructure.persistence.models.comision_tutor import ComisionTutorModel
 from app.infrastructure.persistence.models.exam_content import ComisionModel, MateriaModel
 from app.infrastructure.persistence.models.inscripcion import InscripcionModel
 from app.infrastructure.persistence.models.transactional import (
@@ -293,13 +294,14 @@ async def _inscripciones_por_usuario(
 async def _comisiones_a_cargo_por_usuario(
     session: AsyncSession, usuario_ids: list[str]
 ) -> dict[str, list[InscripcionResumen]]:
-    """Batch: comisión(es) donde cada usuario es el docente a cargo (rol tutor)."""
+    """Batch: comisión(es) donde cada usuario es tutor a cargo (c-79, N:M)."""
     if not usuario_ids:
         return {}
     result = await session.execute(
-        select(ComisionModel.docente_id, ComisionModel, MateriaModel)
+        select(ComisionTutorModel.tutor_id, ComisionModel, MateriaModel)
+        .join(ComisionModel, ComisionModel.id == ComisionTutorModel.comision_id)
         .join(MateriaModel, MateriaModel.id == ComisionModel.materia_id)
-        .where(ComisionModel.docente_id.in_(usuario_ids))
+        .where(ComisionTutorModel.tutor_id.in_(usuario_ids))
         .order_by(MateriaModel.nombre, ComisionModel.codigo)
     )
     por_usuario: dict[str, list[InscripcionResumen]] = {}
@@ -340,7 +342,8 @@ async def crear_usuario(
     # Si el admin no proveyó contraseña, generamos una segura aleatoria.
     alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
     password_plain = body.password or "".join(secrets.choice(alphabet) for _ in range(16))
-    password_hash = hashear_password(password_plain)
+    # En thread aparte (ver hashear_password_async): bcrypt bloqueaba el bucle.
+    password_hash = await hashear_password_async(password_plain)
     password_devolver = None if body.password else password_plain
 
     username = body.username or _generar_username(body.roles)
@@ -912,7 +915,8 @@ async def obtener_usuario(
             result = await session.execute(
                 select(ComisionModel, MateriaModel)
                 .join(MateriaModel, MateriaModel.id == ComisionModel.materia_id)
-                .where(ComisionModel.docente_id == usuario_id)
+                .join(ComisionTutorModel, ComisionTutorModel.comision_id == ComisionModel.id)
+                .where(ComisionTutorModel.tutor_id == usuario_id)
                 .order_by(MateriaModel.nombre, ComisionModel.codigo)
             )
             comisiones_a_cargo = [

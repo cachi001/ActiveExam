@@ -5,9 +5,11 @@ GET /api/v1/stats/export.pdf  → el mismo sumario como PDF descargable.
 GET /api/v1/stats/export.xlsx → el mismo sumario como Excel descargable.
 
 Todos aceptan filtros por query param (materia_id / comision_id / examen_id /
-desde / hasta). RBAC: capacidad `gestionar_academico` (docente, admin_examenes, coordinador,
-admin_sistema) — vista institucional. Agregado
-SIN PII. L2.5: el "riesgo" prioriza la revisión humana, NUNCA emite veredicto.
+desde / hasta), SIN scoping por pertenencia. RBAC: capacidad `ver_estadisticas`
+(coordinador, admin_sistema) — vista institucional, deliberadamente SIN tutor
+(c-79: los filtros son libres, no hay forma de acotar el docente a su propio
+catálogo acá). Agregado SIN PII. L2.5: el "riesgo" prioriza la revisión
+humana, NUNCA emite veredicto.
 """
 
 from __future__ import annotations
@@ -140,10 +142,13 @@ def _to_response(r: ResumenStats) -> ResumenStatsResponse:
 
 def create_stats_router(session_factory=None) -> APIRouter:
     """Factory del router de stats (permite inyectar session_factory en tests)."""
-    # Estadisticas institucionales: agregados SIN PII. Las ve quien gestiona lo
-    # academico (incluido el docente, que necesita el rendimiento de su materia).
+    # Estadisticas institucionales: agregados SIN PII, pero SIN scoping por
+    # pertenencia (los filtros materia_id/comision_id/examen_id son query
+    # params libres). Deliberadamente SIN TUTOR (c-79): antes usaba
+    # `gestionar_academico`, que el tutor tiene para SU catalogo, pero acá
+    # le permitía pedir el resumen de cualquier comision ajena.
     router = APIRouter(
-        dependencies=[Depends(require_capability("gestionar_academico"))]
+        dependencies=[Depends(require_capability("ver_estadisticas"))]
     )
 
     def _factory(request: Request):

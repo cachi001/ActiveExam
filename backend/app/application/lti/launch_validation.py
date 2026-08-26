@@ -61,10 +61,37 @@ class LaunchValidado:
 
 
 def _default_jwks_fetcher(jwks_uri: str) -> dict:
-    """Trae el JWKS de Moodle por HTTP. Aislado para poder inyectarlo en tests."""
+    """Trae el JWKS de Moodle por HTTP. Aislado para poder inyectarlo en tests.
+
+    SINCRÓNICO a propósito: nunca se llama derecho desde una corrutina, siempre
+    a través de ``JwksPlatformCache``, que lo manda a un hilo. Llamarlo directo
+    congela el servidor entero mientras dura la ida y vuelta al campus (c-78,
+    medido: 70 alumnos entrando a la vez degradaron todo de 8 ms a 4075 ms).
+    """
     import httpx
 
     return httpx.get(jwks_uri, timeout=10).json()
+
+
+# Cache compartido por proceso. Se arma perezosamente y por fetcher, para que un
+# fetcher inyectado en tests no herede el cache del de producción ni al revés.
+#
+# Se guarda el fetcher junto al cache a propósito: la clave es su `id()`, y un
+# `id()` se reusa cuando el objeto se recolecta. Manteniendo la referencia viva,
+# la clave no puede pasar a apuntar a otro fetcher. Son un puñado de fetchers
+# distintos por proceso (uno en producción), así que no crece.
+_caches_por_fetcher: dict[int, tuple[JwksFetcher, "JwksPlatformCache"]] = {}
+
+
+def _cache_de(fetcher: JwksFetcher) -> "JwksPlatformCache":
+    from app.infrastructure.lti.jwks_platform_cache import JwksPlatformCache
+
+    clave = id(fetcher)
+    entrada = _caches_por_fetcher.get(clave)
+    if entrada is None:
+        entrada = (fetcher, JwksPlatformCache(fetcher))
+        _caches_por_fetcher[clave] = entrada
+    return entrada[1]
 
 
 def _signing_key(jwks: dict, id_token: str):
@@ -121,7 +148,22 @@ async def validar_launch(
         raise LaunchInvalidoError("deployment_no_confiable")
 
     # 3-4. Firma contra el JWKS de Moodle + aud/exp vía PyJWT.
-    clave = _signing_key(jwks_fetcher(deployment.jwks_uri), id_token)
+    #
+    # Vía el cache, SIEMPRE: cachea por `jwks_uri` y manda la bajada a un hilo.
+    # Llamar al fetcher acá derecho es lo que congelaba el servidor entero con
+    # 70 alumnos entrando a la vez (c-78).
+    # El `kid` del token se le pasa al cache para que un campus que rotó sus
+    # claves fuerce UN refresco en vez de dejar fallar todos los launches hasta
+    # que venza el TTL.
+    try:
+        kid = jwt.get_unverified_header(id_token).get("kid")
+    except Exception as exc:  # noqa: BLE001
+        raise LaunchInvalidoError("token_ilegible") from exc
+
+    jwks = await _cache_de(jwks_fetcher).obtener(
+        deployment.jwks_uri, requiere_kid=kid
+    )
+    clave = _signing_key(jwks, id_token)
     try:
         claims = jwt.decode(
             id_token,

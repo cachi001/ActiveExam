@@ -8,6 +8,7 @@ configurable, p.ej. una vez al dia.
 Endpoints:
   POST /api/v1/admin/retention/session    -> aplica retencion de sesiones
   POST /api/v1/admin/retention/biometric  -> aplica eliminacion al egreso
+  POST /api/v1/admin/retention/capturas   -> borra la IMAGEN de capturas vencidas
   GET  /api/v1/admin/retention/policy     -> devuelve la politica default
 
 Cada llamada:
@@ -23,11 +24,21 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.application.audit.acciones import (
+    AccionAuditoria,
+    EntidadAuditoria,
+    ModuloAuditoria,
+)
+from app.application.audit.service import registrar_seguro
+from app.application.compliance.retencion_capturas import purgar_capturas_vencidas
 from app.application.retention.engine import RetentionEngine
 from app.domain.auth.identity import AuthenticatedPrincipal
 from app.domain.auth.roles import Rol
 from app.domain.retention.policy import RetentionPolicy
 from app.domain.retention.report import RetentionRunReport
+from app.infrastructure.persistence.repositories.config_sistema import (
+    ConfiguracionSistemaSqlRepository,
+)
 from app.infrastructure.persistence.repositories.retention import (
     SqlEmbeddingDeleter,
     SqlFotoDeleter,
@@ -94,6 +105,15 @@ class RetentionPolicyResponse(BaseModel):
 
     session_max_age_days: int
     audit_log_retention_years: int
+
+
+class PurgarCapturasResponse(BaseModel):
+    """Resultado del purgado de capturas. IRREVERSIBLE (ver el endpoint)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    capturas_purgadas: int
+    retencion_capturas_dias: int
 
 
 # ---------------------------------------------------------------------------
@@ -242,3 +262,57 @@ async def run_biometric_egress(
         await session.commit()
 
     return _report_to_response(report)
+
+
+@router.post(
+    "/retention/capturas",
+    response_model=PurgarCapturasResponse,
+    summary="Borra la IMAGEN de capturas vencidas (IRREVERSIBLE)",
+)
+async def purgar_capturas(
+    request: Request,
+    principal: AuthenticatedPrincipal = Depends(_require_admin),
+) -> PurgarCapturasResponse:
+    """Pone en NULL ``screenshot_b64`` de los eventos cuya sesion es mas vieja
+    que ``retencion_capturas_dias`` (config del sistema, minimo 90 dias).
+
+    CONSERVA el evento, su ``screenshot_sha256`` y el puntero WORM si existe:
+    se borra la IMAGEN, no el registro de que existio ni su huella (cadena de
+    custodia). Idempotente — correrlo dos veces seguidas la segunda vez purga 0.
+
+    IRREVERSIBLE HOY: en produccion (Render) el deposito WORM esta apagado
+    (``worm_storage=None``) — Postgres es la UNICA copia de la imagen. Una vez
+    purgada, no se puede recuperar. Por eso este endpoint NUNCA se dispara
+    solo: no hay cron ni scheduler colgado de esto, lo llama explicitamente
+    quien administra el sistema.
+
+    Es un borrado de evidencia: se audita SIEMPRE (incluso con 0 purgadas), con
+    ``registrar_seguro`` en una sesion propia — la auditoria no debe perderse
+    aunque el purgado ya haya commiteado.
+    """
+    session_factory = _get_session_factory(request)
+    async with session_factory() as session:
+        cfg = await ConfiguracionSistemaSqlRepository(session).ensure_singleton()
+        dias = cfg.retencion_capturas_dias
+        try:
+            purgadas = await purgar_capturas_vencidas(session, dias)
+        except Exception:
+            await session.rollback()
+            raise
+        await session.commit()
+
+    await registrar_seguro(
+        session_factory,
+        actor=f"admin:{principal.subject}",
+        accion=AccionAuditoria.RETENCION_CAPTURAS_PURGADAS,
+        modulo=ModuloAuditoria.EVIDENCIA,
+        entidad=EntidadAuditoria.SISTEMA,
+        proposito=(
+            f"Purgó {purgadas} captura(s) más vieja(s) que {dias} días "
+            "(imagen borrada, evento y hash conservados)"
+        ),
+    )
+
+    return PurgarCapturasResponse(
+        capturas_purgadas=purgadas, retencion_capturas_dias=dias
+    )

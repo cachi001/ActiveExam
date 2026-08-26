@@ -16,8 +16,11 @@ hermanos de escritura ya usan):
   - GET /{examen_id}/resultados   -> _exigir_pertenencia
   - GET /comisiones/{id}/alumnos  -> _exigir_pertenencia_comision
 
-admin_sistema y coordinador SIEMPRE pasan (_ROLES_SIN_LIMITE_DE_PERTENENCIA,
-alcance institucional) — eso no cambia, se triangula acá también.
+admin_sistema SIEMPRE pasa (_ROLES_SIN_LIMITE_DE_PERTENENCIA, alcance
+institucional) — se triangula acá también. El coordinador ya NO: c-79 lo sacó de
+ese conjunto y lo acotó a las materias que tiene asignadas en
+``materia_coordinador``, así que se triangula en las dos direcciones (ajeno → 403,
+asignado → 200).
 
 DB real (DATABASE_URL). Sin mocks de DB. Mismo patrón que
 test_c74_pertenencia_comision_banco.py.
@@ -37,6 +40,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import NullPool
 
 from app.infrastructure.persistence.base import Base
+from app.infrastructure.persistence.models.comision_tutor import (  # noqa: F401
+    ComisionTutorModel,
+    MateriaCoordinadorModel,
+)
 from app.infrastructure.persistence.models.exam_content import (  # noqa: F401
     ComisionModel,
     ExamenContenidoModel,
@@ -52,12 +59,16 @@ _TABLES_TO_DROP = [
     "opcion_respuesta",
     "pregunta_examen",
     "examen_contenido",
+    "comision_tutor",
+    "materia_coordinador",
     "comision",
     "materia",
 ]
 _TABLES_TO_CREATE = [
     MateriaModel.__table__,
+    MateriaCoordinadorModel.__table__,
     ComisionModel.__table__,
+    ComisionTutorModel.__table__,
     ExamenContenidoModel.__table__,
     PreguntaExamenModel.__table__,
     OpcionRespuestaModel.__table__,
@@ -119,7 +130,10 @@ async def _crear_docente(factory, legajo: str) -> str:
 
 
 async def _crear_materia_comision_examen(factory, docente_id: str | None):
-    """Materia + comisión (con el docente dado) + examen. Devuelve (comision_id, examen_id)."""
+    """Materia + comisión (con el docente dado) + examen.
+
+    Devuelve (comision_id, examen_id). ``materia_id`` sale por
+    ``_materia_de_comision`` cuando el test necesita asignar un coordinador."""
     sufijo = uuid.uuid4().hex[:6]
     async with factory() as s:
         materia = MateriaModel(codigo=f"MAT-{sufijo}", nombre=f"Materia {sufijo}")
@@ -130,10 +144,16 @@ async def _crear_materia_comision_examen(factory, docente_id: str | None):
             codigo=f"C-{sufijo}",
             nombre=f"Comisión {sufijo}",
             codigo_matriculacion=f"K-{sufijo}",
-            docente_id=docente_id,
         )
         s.add(comision)
         await s.flush()
+        # c-78 (migración 0093): `comision.docente_id` se dropeó. La pertenencia
+        # vive SOLO en comision_tutor (N:M).
+        if docente_id is not None:
+            s.add(
+                ComisionTutorModel(comision_id=comision.id, tutor_id=docente_id)
+            )
+            await s.flush()
         examen = ExamenContenidoModel(titulo=f"Parcial {sufijo}", comision_id=comision.id)
         s.add(examen)
         await s.flush()
@@ -289,12 +309,63 @@ async def test_docente_dueno_si_puede_leer_alumnos_de_su_comision(app, factory):
     assert resp.status_code == 200, resp.text
 
 
+async def _materia_de_comision(factory, comision_id: str) -> str:
+    async with factory() as s:
+        return (
+            await s.execute(
+                text("SELECT materia_id FROM comision WHERE id = :i"),
+                {"i": comision_id},
+            )
+        ).scalar_one()
+
+
+async def _asignar_coordinador(factory, materia_id: str, coordinador_id: str) -> None:
+    async with factory() as s:
+        s.add(
+            MateriaCoordinadorModel(materia_id=materia_id, coordinador_id=coordinador_id)
+        )
+        await s.commit()
+
+
 @pytest.mark.asyncio
-async def test_coordinador_puede_leer_alumnos_de_cualquier_comision(app, factory):
+async def test_coordinador_ajeno_no_puede_leer_alumnos_de_una_comision(app, factory):
+    """c-79: antes pasaba SIEMPRE (alcance institucional, igual que un admin).
+    Ahora un coordinador sin esa materia asignada es tan ajeno como un tutor."""
+    dueno = await _crear_docente(factory, f"DOC-N-{uuid.uuid4().hex[:4]}")
+    ajeno = await _crear_docente(factory, f"COORD-X-{uuid.uuid4().hex[:4]}")
+    comision_id, _examen_id = await _crear_materia_comision_examen(factory, docente_id=dueno)
+
+    async with _client(app, ["coordinador"], subject=ajeno) as c:
+        resp = await c.get(f"/api/v1/exam-content/comisiones/{comision_id}/alumnos")
+
+    assert resp.status_code == 403, resp.text
+
+
+@pytest.mark.asyncio
+async def test_coordinador_de_la_materia_si_puede_leer_alumnos(app, factory):
+    """Triangulación: la asignación en materia_coordinador es lo que lo habilita."""
+    dueno = await _crear_docente(factory, f"DOC-N-{uuid.uuid4().hex[:4]}")
+    coord = await _crear_docente(factory, f"COORD-Y-{uuid.uuid4().hex[:4]}")
+    comision_id, _examen_id = await _crear_materia_comision_examen(factory, docente_id=dueno)
+    await _asignar_coordinador(
+        factory, await _materia_de_comision(factory, comision_id), coord
+    )
+
+    async with _client(app, ["coordinador"], subject=coord) as c:
+        resp = await c.get(f"/api/v1/exam-content/comisiones/{comision_id}/alumnos")
+
+    assert resp.status_code == 200, resp.text
+
+
+@pytest.mark.asyncio
+async def test_subject_no_uuid_da_403_y_no_revienta(app, factory):
+    """Un `sub` que no es UUID (identidad federada con formato propio, token
+    malformado) chocaba contra la columna UUID y salía por un 500 de asyncpg —
+    donde correspondía un 403 limpio. Denegar nunca es reventar."""
     dueno = await _crear_docente(factory, f"DOC-N-{uuid.uuid4().hex[:4]}")
     comision_id, _examen_id = await _crear_materia_comision_examen(factory, docente_id=dueno)
 
     async with _client(app, ["coordinador"], subject="staff-2") as c:
         resp = await c.get(f"/api/v1/exam-content/comisiones/{comision_id}/alumnos")
 
-    assert resp.status_code == 200, resp.text
+    assert resp.status_code == 403, resp.text

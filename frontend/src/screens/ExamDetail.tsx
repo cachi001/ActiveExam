@@ -11,6 +11,9 @@ import type { ExamenContenidoResumen } from '../lib/types';
 import { PreguntasSeleccionSection } from './exam-detail/PreguntasSeleccionSection';
 import { ConfiguracionExamenSection } from './exam-detail/ConfiguracionExamenSection';
 import { ComisionSection } from './exam-detail/ComisionSection';
+import { ComisionesDelExamenSection } from './exam-detail/ComisionesDelExamenSection';
+import { BorradorSection } from './exam-detail/BorradorSection';
+import { SorteoSection } from './exam-detail/SorteoSection';
 import { DestinoMoodleSection } from './exam-detail/DestinoMoodleSection';
 
 // ---------------------------------------------------------------------------
@@ -130,6 +133,20 @@ export default function ExamDetail() {
           </div>
         )}
 
+        {/* c-78 E-07: va PRIMERO. Que el examen no esté habilitado es lo más
+            importante que hay que saber al abrirlo. */}
+        {examen?.borrador && (
+          <BorradorSection
+            examenId={examenId}
+            titulo={examen?.titulo}
+            onHabilitado={cargarHeader}
+          />
+        )}
+
+        {/* c-78 E-07: si el examen sortea por intento, esta sección explica qué
+            recibe cada alumno. Se pinta sola cuando no aplica. */}
+        <SorteoSection examenId={examenId} />
+
         <PreguntasSeleccionSection
           examenId={examenId}
           materiaId={examen?.materia_id}
@@ -143,6 +160,12 @@ export default function ExamDetail() {
           materiaActual={examen?.materia_nombre}
           comisionActual={examen?.comision_nombre}
           onAsociada={cargarHeader}
+        />
+
+        <ComisionesDelExamenSection
+          examenId={examenId}
+          materiaId={examen?.materia_id}
+          onCambio={cargarHeader}
         />
 
         <DestinoMoodleSection examenId={examenId} />

@@ -132,11 +132,15 @@ async def _ejecutar_seed(
     pw_coordinador = os.environ.get("SEED_COORDINADOR_PASSWORD")
     pw_admin = os.environ.get("SEED_ADMIN_PASSWORD")
     pw_tutor = os.environ.get("SEED_TUTOR_PASSWORD")
+    # c-78: el rol PROFESOR se agrego con el change y el seed no lo cubria, asi
+    # que no habia forma de probarlo sin crear el usuario a mano.
+    pw_profesor = os.environ.get("SEED_PROFESOR_PASSWORD")
 
-    if not all([pw_estudiante, pw_coordinador, pw_admin, pw_tutor]):
+    if not all([pw_estudiante, pw_coordinador, pw_admin, pw_tutor, pw_profesor]):
         print(
             "ERROR: Faltan variables de entorno SEED_ESTUDIANTE_PASSWORD, "
-            "SEED_COORDINADOR_PASSWORD, SEED_ADMIN_PASSWORD y/o SEED_TUTOR_PASSWORD.",
+            "SEED_COORDINADOR_PASSWORD, SEED_ADMIN_PASSWORD, SEED_TUTOR_PASSWORD "
+            "y/o SEED_PROFESOR_PASSWORD.",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -206,6 +210,19 @@ async def _ejecutar_seed(
             "nombre": "Tutor",
             "apellido": "Prueba",
         },
+        {
+            # Profesor (c-78, E-04/D11): crea examenes y gestiona el banco de SUS
+            # materias, pero NO emite el veredicto de integridad — esa decision es
+            # exclusiva del COORDINADOR (regla dura #5: quien pone la nota no
+            # decide si hubo fraude). Queda asignado a PROG1 en
+            # _seed_profesor_materia(), que es lo que le da alcance a algo.
+            "username": "profesor1",
+            "email": "profesor@activeexam.local",
+            "password": pw_profesor,
+            "roles": ["profesor"],
+            "nombre": "Profesor",
+            "apellido": "Prueba",
+        },
     ]
 
     creados = 0
@@ -268,9 +285,13 @@ async def _ejecutar_seed(
     # Contenido académico demo: materia + comisión + examen (idempotente).
     await _seed_contenido(factory)
 
-    # Asignar el tutor seed (tutor1) como docente a cargo de la Comisión C1
-    # de PROG1 (idempotente). Sin esto, la comisión queda con docente_id NULL.
+    # Asignar el tutor seed (tutor1) como tutor a cargo de la Comisión C1
+    # de PROG1 (idempotente). Sin esto, la comisión queda sin tutor.
     await _seed_docente_comision(factory)
+
+    # Asignar el profesor seed (profesor1) a PROG1 (idempotente). Sin materia
+    # asignada el rol no alcanza nada: su permiso es sobre LO SUYO.
+    await _seed_profesor_materia(factory)
 
     # Matriculación demo: los estudiantes seed quedan inscriptos a la Comisión C1
     # (idempotente). Con el gate de inscripción (C-71), sin esto no verían el examen.
@@ -278,12 +299,17 @@ async def _ejecutar_seed(
 
 
 async def _seed_docente_comision(factory) -> None:
-    """Asigna tutor1 como docente a cargo de la Comisión C1 de PROG1 (idempotente).
+    """Asigna tutor1 como tutor a cargo de la Comisión C1 de PROG1 (idempotente).
 
     El tutor es el eslabón que vuelve derivable quién devuelve la nota
-    (examen.comision_id → comision.docente_id) y contra qué se valida "lo suyo"
-    del rol tutor. Sin esta asignación la comisión queda con docente_id NULL.
+    (examen.comision_id → comision_tutor.tutor_id) y contra qué se valida "lo
+    suyo" del rol tutor. Sin esta asignación la comisión queda sin tutor.
+
+    c-79 reemplazó `comision.docente_id` por la tabla puente N:M `comision_tutor`
+    (una comisión puede tener varios tutores) y la migración 0093 dropeó la
+    columna vieja.
     """
+    from app.infrastructure.persistence.models.comision_tutor import ComisionTutorModel
     from app.infrastructure.persistence.models.exam_content import (
         ComisionModel,
         MateriaModel,
@@ -318,13 +344,86 @@ async def _seed_docente_comision(factory) -> None:
             print("  [skip] docente-comisión: no existe la comisión PROG1/C1 todavía")
             return
 
-        if comision.docente_id == tutor.id:
-            print(f"  [skip] {TUTOR_ID} ya es docente de {MATERIA_CODIGO}/{COMISION_CODIGO}")
+        # c-78: el seed seguia escribiendo `comision.docente_id`, columna que la
+        # migracion 0093 DROPEO (c-79 la reemplazo por la tabla puente N:M
+        # `comision_tutor`). El seed reventaba con AttributeError a mitad de
+        # camino, asi que un `docker compose up` limpio dejaba la base a medio
+        # sembrar: sin tutor asignado y sin las matriculaciones que van despues.
+        ya_asignado = (
+            await session.execute(
+                select(ComisionTutorModel).where(
+                    ComisionTutorModel.comision_id == comision.id,
+                    ComisionTutorModel.tutor_id == tutor.id,
+                )
+            )
+        ).scalar_one_or_none()
+        if ya_asignado is not None:
+            print(f"  [skip] {TUTOR_ID} ya es tutor de {MATERIA_CODIGO}/{COMISION_CODIGO}")
             return
 
-        comision.docente_id = tutor.id
+        session.add(ComisionTutorModel(comision_id=comision.id, tutor_id=tutor.id))
         await session.commit()
-        print(f"  [update] {TUTOR_ID} asignado como docente de {MATERIA_CODIGO}/{COMISION_CODIGO}")
+        print(f"  [update] {TUTOR_ID} asignado como tutor de {MATERIA_CODIGO}/{COMISION_CODIGO}")
+
+
+async def _seed_profesor_materia(factory) -> None:
+    """Asigna profesor1 a la materia PROG1 (idempotente, c-78).
+
+    El PROFESOR se define por su alcance: crea exámenes y gestiona el banco de
+    SUS materias. Sin una materia asignada el rol no alcanza nada y no se puede
+    probar — que es como quedaba antes, porque el seed ni siquiera creaba el
+    usuario.
+
+    La asignación es a la MATERIA (tabla `materia_profesor`), no a la comisión:
+    el profesor arma el examen de la materia, el tutor supervisa la comisión.
+    """
+    from sqlalchemy import select
+
+    from app.infrastructure.persistence.models.comision_tutor import (
+        MateriaProfesorModel,
+    )
+    from app.infrastructure.persistence.models.exam_content import MateriaModel
+    from app.infrastructure.persistence.models.transactional import UsuarioModel
+
+    MATERIA_CODIGO = "PROG1"
+    PROFESOR_ID = "profesor1"
+
+    async with factory() as session:
+        profesor = (
+            await session.execute(
+                select(UsuarioModel).where(UsuarioModel.username == PROFESOR_ID)
+            )
+        ).scalar_one_or_none()
+        if profesor is None:
+            print(f"  [skip] profesor-materia: no existe el profesor {PROFESOR_ID}")
+            return
+
+        materia = (
+            await session.execute(
+                select(MateriaModel).where(MateriaModel.codigo == MATERIA_CODIGO)
+            )
+        ).scalar_one_or_none()
+        if materia is None:
+            print(f"  [skip] profesor-materia: no existe la materia {MATERIA_CODIGO}")
+            return
+
+        ya_asignado = (
+            await session.execute(
+                select(MateriaProfesorModel).where(
+                    MateriaProfesorModel.materia_id == materia.id,
+                    MateriaProfesorModel.profesor_id == profesor.id,
+                )
+            )
+        ).scalar_one_or_none()
+        if ya_asignado is not None:
+            print(f"  [skip] {PROFESOR_ID} ya es profesor de {MATERIA_CODIGO}")
+            return
+
+        session.add(
+            MateriaProfesorModel(materia_id=materia.id, profesor_id=profesor.id)
+        )
+        await session.commit()
+        print(f"  [update] {PROFESOR_ID} asignado como profesor de {MATERIA_CODIGO}")
 
 
 async def _seed_matriculaciones(factory) -> None:

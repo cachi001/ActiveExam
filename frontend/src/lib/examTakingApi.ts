@@ -12,6 +12,7 @@
 import { authProvider } from './authProvider';
 import { API_BASE } from './api';
 
+import { fetchAutenticado } from './fetchAutenticado';
 /** Opción de respuesta para la rendición (D3: campo de respuesta correcta ausente). */
 export interface OpcionRendicion {
   id: string;
@@ -60,6 +61,12 @@ export interface ExamenRendicion {
    * null/ausente (backend viejo o sin sesión activa) → se cae a `creada_en`.
    */
   examen_iniciado_en?: string | null;
+  /**
+   * c-78 D10 (E-02): si el alumno ve el DETALLE de los eventos de proctoring
+   * mientras rinde. Lo decide el docente POR EXAMEN; default false.
+   * Ausente (backend viejo) → se trata como false, que es el default seguro.
+   */
+  mostrar_eventos_alumno?: boolean;
 }
 
 /**
@@ -73,7 +80,7 @@ export async function fetchExamenParaRendir(
   examenContenidoId: string,
 ): Promise<ExamenRendicion | null> {
   const token = authProvider.getToken();
-  const res = await fetch(`${API_BASE}/exam-content/${examenContenidoId}`, {
+  const res = await fetchAutenticado(`${API_BASE}/exam-content/${examenContenidoId}`, {
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),

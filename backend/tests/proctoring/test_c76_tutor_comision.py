@@ -33,6 +33,8 @@ _TABLAS = (
     "proctoring_event",
     "proctoring_biometria",
     "proctoring_session",
+    "comision_tutor",
+    "materia_coordinador",
     "comision",
     "materia",
     "examen_contenido",
@@ -42,6 +44,12 @@ _TABLAS = (
 _TEST_JWT_SECRET = b"c76-tutor-comision-test-secret"
 _TEST_JWT_ISSUER = "activeexam-auth"
 _TEST_JWT_AUDIENCE = "proctoring-api"
+
+# c-79: el COORDINADOR ya no tiene alcance global — necesita una fila en
+# `materia_coordinador` por cada materia que deba ver. Usamos un UUID fijo
+# (subject del JWT == usuario.id == materia_coordinador.coordinador_id) y
+# `_crear_comision_con_docente` lo vincula automaticamente a cada materia que crea.
+_COORD_ID = str(uuid.uuid4())
 
 
 def _db_url() -> str | None:
@@ -94,7 +102,14 @@ async def ctx():
         ProctoringEventModel,
         ProctoringSessionModel,
     )
-    from app.infrastructure.persistence.models.transactional import UsuarioModel
+    from app.infrastructure.persistence.models.comision_tutor import (
+        ComisionTutorModel,
+        MateriaCoordinadorModel,
+    )
+    from app.infrastructure.persistence.models.transactional import (
+        ConfiguracionSistemaModel,
+        UsuarioModel,
+    )
     from app.presentation.api.v1.proctoring.router import create_proctoring_router
     from app.infrastructure.reinferencia.mediapipe_adapter import MediaPipeReinferencia
 
@@ -105,14 +120,37 @@ async def ctx():
         await conn.run_sync(UsuarioModel.__table__.create, checkfirst=True)
         await conn.run_sync(MateriaModel.__table__.create, checkfirst=True)
         await conn.run_sync(ComisionModel.__table__.create, checkfirst=True)
+        await conn.run_sync(ComisionTutorModel.__table__.create, checkfirst=True)
+        await conn.run_sync(MateriaCoordinadorModel.__table__.create, checkfirst=True)
         await conn.run_sync(ExamenContenidoModel.__table__.create, checkfirst=True)
         await conn.run_sync(ProctoringSessionModel.__table__.create, checkfirst=True)
         await conn.run_sync(ProctoringEventModel.__table__.create, checkfirst=True)
         await conn.run_sync(ProctoringBiometriaModel.__table__.create, checkfirst=True)
         await conn.run_sync(MensajeChatModel.__table__.create, checkfirst=True)
         await conn.run_sync(PausaAutorizadaModel.__table__.create, checkfirst=True)
+        # `configuracion_sistema` NO esta en _TABLAS (no se dropea entre tests,
+        # mismo patron que test_h1_idor_biometria_eventos_chat_pausas.py):
+        # `crear_o_reanudar_sesion` la lee SIEMPRE al crear una sesion (foto de
+        # config, migracion 0083) y sin ella el POST /sessions responde 503
+        # config_no_disponible.
+        await conn.run_sync(ConfiguracionSistemaModel.__table__.create, checkfirst=True)
 
     factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+
+    async with factory() as session:
+        existing = await session.get(ConfiguracionSistemaModel, "global")
+        if existing is None:
+            session.add(ConfiguracionSistemaModel(id="global", umbral_cola_revision=70))
+            await session.commit()
+        session.add(
+            UsuarioModel(
+                id=_COORD_ID,
+                username="coord-1",
+                email="coord-1@uni.edu",
+                roles=["coordinador"],
+            )
+        )
+        await session.commit()
 
     app = FastAPI()
     cache = JwksCache(lambda: {"keys": [{"kid": "test-key"}]}, ttl_seconds=3600)
@@ -137,7 +175,15 @@ async def ctx():
 
 async def _crear_comision_con_docente(factory, *, docente_id: str | None) -> tuple[str, str]:
     """Crea materia + comision (+ usuario docente si corresponde). Devuelve
-    (comision_id, examen_contenido_id)."""
+    (comision_id, examen_contenido_id).
+
+    Vincula siempre `_COORD_ID` como coordinador de la materia creada (c-79):
+    el coordinador usado en los headers de este modulo necesita esa fila para
+    poder ver lo que crea cada test."""
+    from app.infrastructure.persistence.models.comision_tutor import (
+        ComisionTutorModel,
+        MateriaCoordinadorModel,
+    )
     from app.infrastructure.persistence.models.exam_content import (
         ComisionModel,
         ExamenContenidoModel,
@@ -151,22 +197,34 @@ async def _crear_comision_con_docente(factory, *, docente_id: str | None) -> tup
                 UsuarioModel(
                     id=docente_id,
                     username=f"tutor-{docente_id[:8]}",
-                    email="tutor@uni.edu",
+                    # Email unico por docente: el helper puede llamarse varias
+                    # veces con docentes distintos dentro de un mismo test
+                    # (uq_usuario_email).
+                    email=f"tutor-{docente_id[:8]}@uni.edu",
                     roles=["tutor"],
                 )
             )
         materia = MateriaModel(codigo=f"MAT-{uuid.uuid4().hex[:8]}", nombre="Materia Test")
         session.add(materia)
         await session.flush()
+        session.add(
+            MateriaCoordinadorModel(materia_id=materia.id, coordinador_id=_COORD_ID)
+        )
         comision = ComisionModel(
             materia_id=materia.id,
             codigo="C1",
             nombre="Comision 1",
             codigo_matriculacion=f"MAT-C1-{uuid.uuid4().hex[:8]}",
-            docente_id=docente_id,
         )
         session.add(comision)
         await session.flush()
+        # c-78 (migración 0093): `comision.docente_id` se dropeó. La pertenencia
+        # vive SOLO en comision_tutor (N:M).
+        if docente_id is not None:
+            session.add(
+                ComisionTutorModel(comision_id=comision.id, tutor_id=docente_id)
+            )
+            await session.flush()
         examen = ExamenContenidoModel(titulo="Examen Test", comision_id=comision.id)
         session.add(examen)
         await session.commit()
@@ -184,7 +242,13 @@ async def _crear_sesion_con_examen(factory, examen_contenido_id: str) -> str:
         s = ProctoringSessionModel(
             modo="examen",
             examen_contenido_id=examen_contenido_id,
-            alumno_idnumber="alumno-1",
+            # `_h(["estudiante"], "alumno-1")` pone `preferred_username =
+            # "+".join(roles)` = "estudiante" (NO el subject "alumno-1") — el
+            # guard de dueño de sesion (`principal_es_dueno_de_sesion`) compara
+            # contra `principal.username`, asi que la identidad guardada aca
+            # tiene que ser "estudiante" para que los tests de pausas (que
+            # postean como el alumno dueño) no den 403.
+            alumno_idnumber="estudiante",
         )
         session.add(s)
         await session.commit()
@@ -210,15 +274,22 @@ async def test_alumno_no_puede_iniciar_el_chat(ctx) -> None:
 
 
 async def test_tutor_inicia_y_alumno_responde(ctx) -> None:
-    client, _ = ctx
-    resp = await client.post(
-        "/api/v1/proctoring/sessions", json={"modo": "test"}, headers=_h(["estudiante"], "a1")
-    )
-    sid = resp.json()["id"]
+    # Sesion con comision real y tutor con pertenencia (c-79: TUTOR ya no es
+    # institucional, `autorizar_supervision_vivo_sobre_sesion` exige
+    # `tiene_pertenencia` — una sesion modo 'test' sin examen vinculado nunca
+    # matchea comision_tutor). Se crea por DB directo, no via POST /sessions,
+    # por la misma razon documentada en `_crear_sesion_con_examen`: evitar el
+    # gate de inscripcion (C-71), que es un mecanismo distinto al que este
+    # test cubre (D4: el tutor inicia el chat, el alumno responde).
+    client, factory = ctx
+    tutor_id = str(uuid.uuid4())
+    _, examen_id = await _crear_comision_con_docente(factory, docente_id=tutor_id)
+    sid = await _crear_sesion_con_examen(factory, examen_id)
+
     r1 = await client.post(
         f"/api/v1/proctoring/sessions/{sid}/chat",
         json={"autor": "tutor", "texto": "¿todo bien?"},
-        headers=_h(["tutor"], "tutor-x"),
+        headers=_h(["tutor"], tutor_id),
     )
     assert r1.status_code == 201
     r2 = await client.post(
@@ -264,7 +335,7 @@ async def test_coordinador_ve_todo(ctx) -> None:
     sid = await _crear_sesion_con_examen(factory, examen_id)
 
     resp = await client.get(
-        f"/api/v1/proctoring/sessions/{sid}", headers=_h(["coordinador"], "coord-1")
+        f"/api/v1/proctoring/sessions/{sid}", headers=_h(["coordinador"], _COORD_ID)
     )
     assert resp.status_code == 200
 
@@ -297,7 +368,7 @@ async def test_listado_coordinador_ve_todas(ctx) -> None:
     await _crear_sesion_con_examen(factory, examen_b)
 
     resp = await client.get(
-        "/api/v1/proctoring/sessions", headers=_h(["coordinador"], "coord-1")
+        "/api/v1/proctoring/sessions", headers=_h(["coordinador"], _COORD_ID)
     )
     assert resp.status_code == 200
     assert len(resp.json()) == 2

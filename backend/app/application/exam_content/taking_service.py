@@ -53,8 +53,10 @@ class PreguntaRendicion:
 
 # Tipos de blank donde el alumno ELIGE de una lista. En el resto (shortanswer,
 # numerical) escribe libremente y las opciones son las respuestas aceptadas: D3
-# prohíbe mandarlas.
-_BLANK_CON_OPCIONES = ("multichoice", "multichoice_nocase", "multiresponse")
+# prohíbe mandarlas. "matching" (C-78, emparejamiento) TAMBIÉN elige de una
+# lista (el pool de respuestas de la pregunta) — sin esto, el <select> del
+# alumno llegaría vacío y la pregunta sería imposible de responder.
+_BLANK_CON_OPCIONES = ("multichoice", "multichoice_nocase", "multiresponse", "matching")
 
 
 def _proyectar_blank(blank) -> BlankRendicion:
@@ -92,7 +94,9 @@ class ExamenRendicion:
     nota_aprobacion: float = 6.0
 
 
-def proyectar_examen(examen: ExamenContenido) -> ExamenRendicion:
+def proyectar_examen(
+    examen: ExamenContenido, *, ya_filtrado: bool = False
+) -> ExamenRendicion:
     """Proyecta un ExamenContenido a ExamenRendicion, excluyendo es_correcta (D3).
 
     El orden de preguntas y opciones es estable (por ``orden`` ascendente).
@@ -100,6 +104,10 @@ def proyectar_examen(examen: ExamenContenido) -> ExamenRendicion:
     Opción B (pool de preguntas): solo se proyectan las preguntas seleccionadas
     por el docente (``seleccionada=True``). Las del pool no seleccionadas NO viajan
     a la rendición del alumno.
+
+    ``ya_filtrado`` (c-78 E-07): con sorteo por intento el recorte ya lo hizo el
+    repositorio contra el set del intento, y el pool entero está con
+    `seleccionada=False` — volver a filtrar acá dejaría al alumno sin preguntas.
     """
     preguntas = tuple(
         PreguntaRendicion(
@@ -120,7 +128,7 @@ def proyectar_examen(examen: ExamenContenido) -> ExamenRendicion:
             ),
         )
         for p in sorted(examen.preguntas, key=lambda x: x.orden)
-        if p.seleccionada
+        if ya_filtrado or p.seleccionada
     )
     return ExamenRendicion(
         id=examen.id or "",
@@ -148,21 +156,31 @@ class LecturaExamenService:
         self._comision_repo = comision_repo
         self._materia_repo = materia_repo
 
-    async def obtener_para_rendir(self, examen_id: str) -> ExamenRendicion | None:
+    async def obtener_para_rendir(
+        self, examen_id: str, pregunta_ids: list[str] | None = None
+    ) -> ExamenRendicion | None:
         """Devuelve la proyección sin es_correcta, o None si el examen no existe.
 
         Freeze (C-72 §17): si el examen pertenece a una COMISIÓN desactivada eleva
         ``ComisionInactivaError``; si su MATERIA está desactivada eleva
         ``MateriaInactivaError``. En ambos casos no se puede iniciar la rendición.
+
+        ``pregunta_ids`` (c-78 E-07): el set sorteado para ESTE intento. None =
+        modo 'fijo', se resuelve por `seleccionada` como siempre.
         """
-        # Lectura acotada: filtra las seleccionadas en SQL y trae los blanks cloze.
+        # Lectura acotada: filtra las preguntas en SQL y trae los blanks cloze.
         # Fallback a obtener() para dobles de test que solo implementan el mínimo.
-        leer = getattr(self._repo, "obtener_para_rendir", None) or self._repo.obtener
-        examen = await leer(examen_id)
+        leer = getattr(self._repo, "obtener_para_rendir", None)
+        if leer is None:
+            examen = await self._repo.obtener(examen_id)
+        elif pregunta_ids is not None:
+            examen = await leer(examen_id, pregunta_ids)
+        else:
+            examen = await leer(examen_id)
         if examen is None:
             return None
         await self._verificar_materia_activa(examen)
-        return proyectar_examen(examen)
+        return proyectar_examen(examen, ya_filtrado=pregunta_ids is not None)
 
     async def _verificar_materia_activa(self, examen: ExamenContenido) -> None:
         # Sin repos de contexto no hay chequeo; un examen sin comisión (D11) tampoco

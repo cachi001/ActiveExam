@@ -8,6 +8,14 @@
 
 import type { ExamenContenidoResumen } from './types';
 
+import { fetchAutenticado } from './fetchAutenticado';
+/**
+ * Estado de baja lógica del catálogo (c-78 D1). Mismo tri-estado que el filtro de
+ * Usuarios: 'activo' es el default del backend, así que omitirlo devuelve solo los
+ * exámenes vigentes.
+ */
+export type EstadoCatalogoExamen = 'activo' | 'inactivo' | 'todos';
+
 /** Respuesta paginada del catálogo (C-69 admin-sync, tarea 4). */
 export interface CatalogoExamenesPaginado {
   items: ExamenContenidoResumen[];
@@ -35,7 +43,7 @@ export async function listarExamenesContenidoFn(
   strict = false,
 ): Promise<ExamenContenidoResumen[]> {
   try {
-    const res = await fetch(`${apiBase}/exam-content`, {
+    const res = await fetchAutenticado(`${apiBase}/exam-content`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -70,7 +78,15 @@ export async function listarExamenesContenidoFn(
 export async function listarExamenesContenidoPaginadoFn(
   apiBase: string,
   token: string | undefined,
-  params: { q?: string; page?: number; page_size?: number; materia_id?: string; comision_id?: string } = {},
+  params: {
+    q?: string;
+    page?: number;
+    page_size?: number;
+    materia_id?: string;
+    comision_id?: string;
+    /** Baja lógica (c-78): 'activo' (default del backend) | 'inactivo' | 'todos'. */
+    estado?: EstadoCatalogoExamen;
+  } = {},
 ): Promise<CatalogoExamenesPaginado> {
   const qs = new URLSearchParams();
   if (params.q) qs.set('q', params.q);
@@ -78,6 +94,7 @@ export async function listarExamenesContenidoPaginadoFn(
   if (params.page_size !== undefined) qs.set('page_size', String(params.page_size));
   if (params.materia_id) qs.set('materia_id', params.materia_id);
   if (params.comision_id) qs.set('comision_id', params.comision_id);
+  if (params.estado) qs.set('estado', params.estado);
   const qStr = qs.toString();
   const fallback: CatalogoExamenesPaginado = {
     items: [],
@@ -86,7 +103,7 @@ export async function listarExamenesContenidoPaginadoFn(
     page_size: params.page_size ?? 25,
   };
   try {
-    const res = await fetch(`${apiBase}/exam-content${qStr ? '?' + qStr : ''}`, {
+    const res = await fetchAutenticado(`${apiBase}/exam-content${qStr ? '?' + qStr : ''}`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -107,4 +124,269 @@ export async function listarExamenesContenidoPaginadoFn(
   } catch {
     return fallback;
   }
+}
+
+/**
+ * Baja lógica de un examen del catálogo (c-78 D1).
+ *
+ * A diferencia de los listados, esto PROPAGA el error: una escritura que falla en
+ * silencio le hace creer al usuario que el examen quedó de baja cuando sigue
+ * publicado. 404 = no existe o ya estaba de baja.
+ */
+export async function darDeBajaExamenFn(
+  apiBase: string,
+  token: string | undefined,
+  examenId: string,
+): Promise<void> {
+  const res = await fetchAutenticado(`${apiBase}/exam-content/${examenId}`, {
+    method: 'DELETE',
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+  if (!res.ok) {
+    // c-78: el 409 trae el motivo exacto («hay N alumnos rindiendo»). Perderlo
+    // dejaba a la pantalla diciendo "probá de nuevo" ante algo que reintentar
+    // no arregla.
+    const cuerpo = await res.json().catch(() => ({}));
+    const mensaje =
+      (cuerpo as { detail?: { mensaje?: string } })?.detail?.mensaje ??
+      `No se pudo dar de baja el examen (HTTP ${res.status}).`;
+    throw Object.assign(new Error(mensaje), { status: res.status });
+  }
+}
+
+/**
+ * Una comisión que rinde el examen (c-78 E-06, task 14.4). Bajo el modelo
+ * replicado cada comisión tiene su propio examen: este item es el par
+ * (comisión, examen de esa comisión).
+ */
+export interface ComisionDelExamen {
+  examen_id: string;
+  comision_id: string;
+  comision_codigo: string;
+  comision_nombre: string;
+  titulo: string;
+  dado_de_baja: boolean;
+  total_intentos: number;
+  es_el_actual: boolean;
+}
+
+export async function listarComisionesDelExamenFn(
+  apiBase: string,
+  token: string | undefined,
+  examenId: string,
+): Promise<ComisionDelExamen[]> {
+  const res = await fetchAutenticado(`${apiBase}/exam-content/${examenId}/comisiones`, {
+    method: 'GET',
+    headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+  });
+  if (!res.ok) {
+    throw new Error(`No se pudieron cargar las comisiones del examen (HTTP ${res.status}).`);
+  }
+  const body = await res.json();
+  return body.items ?? [];
+}
+
+/** Suma una comisión: crea una réplica del examen con las mismas preguntas. */
+export async function agregarComisionAlExamenFn(
+  apiBase: string,
+  token: string | undefined,
+  examenId: string,
+  comisionId: string,
+): Promise<{ examen_id: string; comision_id: string | null; titulo: string }> {
+  const res = await fetchAutenticado(`${apiBase}/exam-content/${examenId}/comisiones`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ comision_id: comisionId }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const detail = (body as any)?.detail;
+    throw new Error(
+      typeof detail === 'string'
+        ? detail
+        : (detail?.mensaje ?? `No se pudo agregar la comisión (HTTP ${res.status}).`),
+    );
+  }
+  return res.json();
+}
+
+/** Quita una comisión. El backend la rechaza si esa comisión ya rindió. */
+export async function quitarComisionDelExamenFn(
+  apiBase: string,
+  token: string | undefined,
+  examenId: string,
+  comisionId: string,
+): Promise<void> {
+  const res = await fetchAutenticado(
+    `${apiBase}/exam-content/${examenId}/comisiones/${comisionId}`,
+    {
+      method: 'DELETE',
+      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    },
+  );
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const detail = (body as any)?.detail;
+    throw new Error(
+      typeof detail === 'string'
+        ? detail
+        : (detail?.mensaje ?? `No se pudo quitar la comisión (HTTP ${res.status}).`),
+    );
+  }
+}
+
+/**
+ * Habilita un examen en borrador (c-78 E-07). Es de IDA: para sacarlo de
+ * circulación está la baja lógica. 404 si no existe o ya estaba habilitado.
+ */
+export async function habilitarExamenFn(
+  apiBase: string,
+  token: string | undefined,
+  examenId: string,
+): Promise<void> {
+  const res = await fetchAutenticado(`${apiBase}/exam-content/${examenId}/habilitar`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const detail = (body as any)?.detail;
+    throw new Error(
+      typeof detail === 'string'
+        ? detail
+        : (detail?.mensaje ?? `No se pudo habilitar el examen (HTTP ${res.status}).`),
+    );
+  }
+}
+
+/** Un tramo del sorteo con el estado de su pool (c-78 E-07/E-08). */
+export interface TramoSorteo {
+  categoria_id: string | null;
+  categoria_nombre: string | null;
+  incluir_subcategorias: boolean;
+  tipos: string[] | null;
+  cantidad: number;
+  en_el_pool: number;
+  en_el_banco: number;
+}
+
+export interface SorteoDelExamen {
+  modo_preguntas: string;
+  tramos: TramoSorteo[];
+  largo_del_examen: number;
+  pool_total: number;
+  nuevas_en_el_banco: number;
+  pool_editable: boolean;
+  total_intentos: number;
+}
+
+export async function leerSorteoDelExamenFn(
+  apiBase: string,
+  token: string | undefined,
+  examenId: string,
+): Promise<SorteoDelExamen> {
+  const res = await fetchAutenticado(`${apiBase}/exam-content/${examenId}/sorteo`, {
+    headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+  });
+  if (!res.ok) {
+    throw new Error(`No se pudo cargar el sorteo del examen (HTTP ${res.status}).`);
+  }
+  return res.json();
+}
+
+/** Incorpora al pool las preguntas nuevas del banco. 409 si el examen ya se rindió. */
+export async function actualizarPoolDelExamenFn(
+  apiBase: string,
+  token: string | undefined,
+  examenId: string,
+): Promise<SorteoDelExamen> {
+  const res = await fetchAutenticado(
+    `${apiBase}/exam-content/${examenId}/sorteo/actualizar-pool`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    },
+  );
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const detail = (body as any)?.detail;
+    throw new Error(
+      typeof detail === 'string'
+        ? detail
+        : (detail?.mensaje ?? `No se pudo actualizar el pool (HTTP ${res.status}).`),
+    );
+  }
+  return res.json();
+}
+
+export interface ExamenDuplicado {
+  examen_id: string;
+  titulo: string;
+  comision_id: string | null;
+  total_preguntas: number;
+}
+
+/**
+ * Duplica un examen (c-78 E-06, task 14.2). La copia trae las preguntas y la
+ * configuración de mecánica y nota; NO trae los intentos rendidos, las notas ya
+ * publicadas ni el destino de write-back en Moodle.
+ *
+ * Sin `titulo` la copia se llama «… (copia)» y queda en la misma comisión.
+ */
+export async function duplicarExamenFn(
+  apiBase: string,
+  token: string | undefined,
+  examenId: string,
+  titulo?: string,
+): Promise<ExamenDuplicado> {
+  const res = await fetchAutenticado(`${apiBase}/exam-content/${examenId}/duplicar`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(titulo ? { titulo } : {}),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const detail = (body as any)?.detail;
+    throw new Error(
+      typeof detail === 'string'
+        ? detail
+        : (detail?.mensaje ?? `No se pudo duplicar el examen (HTTP ${res.status}).`),
+    );
+  }
+  return res.json();
+}
+
+/** Reactiva un examen dado de baja (c-78 D1). 404 = no existe o ya estaba activo. */
+export async function reactivarExamenFn(
+  apiBase: string,
+  token: string | undefined,
+  examenId: string,
+): Promise<void> {
+  const res = await fetchAutenticado(`${apiBase}/exam-content/${examenId}/reactivar`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+  if (!res.ok) throw new Error(`No se pudo reactivar el examen (HTTP ${res.status}).`);
 }

@@ -3,6 +3,7 @@
 // ningun metodo usa `this`.
 import { API_BASE, realFetch } from '../apiCore';
 import { authProvider } from '../authProvider';
+import { fetchAutenticado } from '../fetchAutenticado';
 import type {
   UsuarioAdmin, ListarUsuariosResponse,
 } from '../types';
@@ -41,7 +42,7 @@ export const usuariosApi = {
    */
   async reactivarUsuario(usuarioId: string): Promise<void> {
     const token = authProvider.getToken();
-    const res = await fetch(`${API_BASE}/users/${usuarioId}/reactivar`, {
+    const res = await fetchAutenticado(`${API_BASE}/users/${usuarioId}/reactivar`, {
       method: 'POST',
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
@@ -86,7 +87,7 @@ export const usuariosApi = {
    */
   async eliminarUsuario(usuarioId: string): Promise<void> {
     const token = authProvider.getToken();
-    const res = await fetch(`${API_BASE}/users/${usuarioId}`, {
+    const res = await fetchAutenticado(`${API_BASE}/users/${usuarioId}`, {
       method: 'DELETE',
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });

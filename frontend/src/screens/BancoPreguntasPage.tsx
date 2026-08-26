@@ -16,6 +16,7 @@ import {
   moverCategoria,
 } from '../lib/apiAdmin/bancoPreguntasApi';
 import { CategoriasTree, serializarDnd } from './banco-preguntas/CategoriasTree';
+import { PreviewPreguntaModal } from './banco-preguntas/PreviewPreguntaModal';
 import { limpiarEnunciadoCloze } from '../lib/cloze';
 import { HelpButton } from '../ui/HelpButton';
 import { Pagination, PageSizeSelect } from '../ui/Pagination';
@@ -119,6 +120,8 @@ function ListaPreguntas({
   onMover: (preguntaId: string, nuevaCatId: string | null) => void;
 }) {
   const [moviendoId, setMoviendoId] = useState<string | null>(null);
+  // c-78 E-08 (15.3): pregunta abierta en la vista previa. null = modal cerrado.
+  const [previewId, setPreviewId] = useState<string | null>(null);
   const [pagina, setPagina] = useState(1);
 
   // Volver a la página 1 al cambiar cuántas preguntas se ven por página.
@@ -211,13 +214,25 @@ function ListaPreguntas({
                 </button>
               </div>
             ) : (
-              <button
-                className="p-1.5 rounded-lg hover:bg-surface-200 text-on-surface-variant"
-                title="Mover a categoría"
-                onClick={() => setMoviendoId(p.id)}
-              >
-                <Icon name="drive_file_move" className="text-[16px]" />
-              </button>
+              <>
+                {/* c-78 E-08 (15.3): ver la pregunta como la ve el alumno. Antes,
+                    la única forma de saber si quedó bien importada era tomar el
+                    examen. */}
+                <button
+                  className="p-1.5 rounded-lg hover:bg-surface-200 text-on-surface-variant"
+                  title="Ver como la ve el alumno"
+                  onClick={() => setPreviewId(p.id)}
+                >
+                  <Icon name="visibility" className="text-[16px]" />
+                </button>
+                <button
+                  className="p-1.5 rounded-lg hover:bg-surface-200 text-on-surface-variant"
+                  title="Mover a categoría"
+                  onClick={() => setMoviendoId(p.id)}
+                >
+                  <Icon name="drive_file_move" className="text-[16px]" />
+                </button>
+              </>
             )}
           </div>
           );
@@ -235,6 +250,11 @@ function ListaPreguntas({
           className="!px-3 !py-2 text-label-sm"
         />
       )}
+
+      <PreviewPreguntaModal
+        preguntaId={previewId}
+        onCerrar={() => setPreviewId(null)}
+      />
     </div>
   );
 }

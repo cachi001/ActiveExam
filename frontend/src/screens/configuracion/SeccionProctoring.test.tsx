@@ -81,3 +81,49 @@ describe('SeccionProctoring — pausas_max_por_sesion (c-76 bloque 4)', () => {
     });
   });
 });
+
+describe('SeccionProctoring — retencion_capturas_dias (retención de capturas)', () => {
+  it('usa el default 180 cuando el backend no manda retencion_capturas_dias', async () => {
+    mockObtenerConfigEfectiva.mockResolvedValue({ ...CONFIG_BASE });
+    render(<SeccionProctoring />);
+    const input = await screen.findByLabelText('Días de retención de capturas');
+    expect((input as HTMLInputElement).value).toBe('180');
+  });
+
+  it('refleja el valor cargado desde la config efectiva', async () => {
+    mockObtenerConfigEfectiva.mockResolvedValue({ ...CONFIG_BASE, retencion_capturas_dias: 200 });
+    render(<SeccionProctoring />);
+    const input = await screen.findByLabelText('Días de retención de capturas');
+    expect((input as HTMLInputElement).value).toBe('200');
+  });
+
+  it('guardar envía retencion_capturas_dias en el PATCH', async () => {
+    mockObtenerConfigEfectiva.mockResolvedValue({ ...CONFIG_BASE, retencion_capturas_dias: 180 });
+    mockEditarConfigSistema.mockResolvedValue({});
+    render(<SeccionProctoring />);
+    const input = await screen.findByLabelText('Días de retención de capturas');
+    fireEvent.change(input, { target: { value: '365' } });
+
+    const guardar = await screen.findByRole('button', { name: /guardar parámetros/i });
+    fireEvent.click(guardar);
+
+    await waitFor(() => {
+      expect(mockEditarConfigSistema).toHaveBeenCalledWith(
+        expect.objectContaining({ retencion_capturas_dias: 365 }),
+      );
+    });
+  });
+
+  it('muestra un mensaje claro y bloquea guardar cuando el valor baja de 90', async () => {
+    mockObtenerConfigEfectiva.mockResolvedValue({ ...CONFIG_BASE, retencion_capturas_dias: 180 });
+    render(<SeccionProctoring />);
+    const input = await screen.findByLabelText('Días de retención de capturas');
+    fireEvent.change(input, { target: { value: '30' } });
+
+    // findByText resuelve o lanza — su sola resolución prueba que el mensaje existe.
+    await screen.findByText(/no puede ser menor a 90/i);
+
+    const guardar = await screen.findByRole('button', { name: /guardar parámetros/i });
+    expect((guardar as HTMLButtonElement).disabled).toBe(true);
+  });
+});

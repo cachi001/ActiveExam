@@ -8,6 +8,7 @@ iniciar el hilo — solo responde si ya existe un mensaje del tutor en la sesion
 from __future__ import annotations
 
 import pytest
+import pytest_asyncio
 from httpx import AsyncClient
 
 from tests.proctoring.conftest import auth_headers
@@ -15,18 +16,51 @@ from tests.proctoring.conftest import auth_headers
 pytestmark = pytest.mark.asyncio
 
 _BASE = "/api/v1/proctoring"
-# H1 (IDOR, pentest 2026-08-21): postear autor='tutor' ahora exige supervision
-# en vivo real sobre la sesion (antes cualquier alumno autenticado podia
-# hacerse pasar por 'tutor'). Coordinador tiene alcance institucional (sin
-# restriccion de pertenencia por comision), asi que sirve para estos tests
-# sin necesitar armar una comision con docente asignado.
-_COORDINADOR = auth_headers(["coordinador"], username="coord-chat-test", email="coord@uni.edu")
+# H1 (IDOR, pentest 2026-08-21): postear autor='tutor' exige supervision en vivo
+# real sobre la sesion (antes cualquier alumno autenticado podia hacerse pasar
+# por 'tutor').
+#
+# c-78: este header decia `coordinador`, con el comentario "tiene alcance
+# institucional (sin restriccion de pertenencia por comision)". **Dejo de ser
+# cierto en c-79**, que acoto al coordinador a SU materia; el unico rol
+# institucional que queda es `admin_sistema`. El test nunca se actualizo y venia
+# fallando con un 500 de asyncpg (el subject de prueba no es un UUID y reventaba
+# el cast de la consulta de pertenencia). Estas sesiones son modo 'test' — no
+# tienen comision — asi que la pertenencia NO puede resolverse por diseño: el rol
+# correcto para ejercitar el chat es el institucional. Las reglas de pertenencia
+# tienen sus propios tests (`test_c76_tutor_comision`, `test_h1_idor_*`).
+_STAFF = auth_headers(["admin_sistema"], username="admin-chat-test", email="admin@uni.edu")
 
 
 async def _crear_sesion(client: AsyncClient) -> str:
+    """Crea una sesion CON EL CHAT HABILITADO en su foto de config.
+
+    c-78: el chat viene apagado por defecto (decision del dueño + migracion 0095)
+    y desde este change el backend lo hace valer de verdad — antes el interruptor
+    era solo visual. Un test del chat tiene que encenderlo explicitamente, igual
+    que lo haria una institucion que quiere el chat prendido.
+    """
     resp = await client.post(f"{_BASE}/sessions", json={"modo": "test"})
-    assert resp.status_code == 201
+    assert resp.status_code == 201, resp.text
     return resp.json()["id"]
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def _chat_encendido(activeexam_engine):
+    """Enciende el chat en la config ANTES de crear las sesiones del modulo.
+
+    La foto de config de cada sesion (`config_snapshot`) se arma leyendo la tabla
+    `configuracion_sistema` directo, asi que alcanza con dejar la fila prendida:
+    toda sesion creada despues nace con el chat habilitado, que es la precondicion
+    de este archivo.
+    """
+    from sqlalchemy import text
+
+    async with activeexam_engine.begin() as conn:
+        await conn.execute(
+            text("UPDATE configuracion_sistema SET chat_habilitado = true")
+        )
+    yield
 
 
 async def test_post_chat_alumno_sin_tutor_previo_403(client: AsyncClient) -> None:
@@ -45,7 +79,7 @@ async def test_post_chat_tutor_201(client: AsyncClient) -> None:
     resp = await client.post(
         f"{_BASE}/sessions/{sid}/chat",
         json={"autor": "tutor", "texto": "te veo, segui"},
-        headers=_COORDINADOR,
+        headers=_STAFF,
     )
     assert resp.status_code == 201
     data = resp.json()
@@ -59,7 +93,7 @@ async def test_post_chat_alumno_responde_despues_del_tutor_201(client: AsyncClie
     await client.post(
         f"{_BASE}/sessions/{sid}/chat",
         json={"autor": "tutor", "texto": "¿todo bien?"},
-        headers=_COORDINADOR,
+        headers=_STAFF,
     )
     resp = await client.post(
         f"{_BASE}/sessions/{sid}/chat", json={"autor": "alumno", "texto": "si, gracias"}
@@ -103,11 +137,11 @@ async def test_get_chat_ordenado_asc(client: AsyncClient) -> None:
     """GET /chat devuelve los mensajes ordenados asc por creado_en."""
     sid = await _crear_sesion(client)
     await client.post(
-        f"{_BASE}/sessions/{sid}/chat", json={"autor": "tutor", "texto": "1"}, headers=_COORDINADOR
+        f"{_BASE}/sessions/{sid}/chat", json={"autor": "tutor", "texto": "1"}, headers=_STAFF
     )
     await client.post(f"{_BASE}/sessions/{sid}/chat", json={"autor": "alumno", "texto": "2"})
     await client.post(
-        f"{_BASE}/sessions/{sid}/chat", json={"autor": "tutor", "texto": "3"}, headers=_COORDINADOR
+        f"{_BASE}/sessions/{sid}/chat", json={"autor": "tutor", "texto": "3"}, headers=_STAFF
     )
 
     resp = await client.get(f"{_BASE}/sessions/{sid}/chat")
@@ -122,7 +156,7 @@ async def test_get_chat_filtro_desde(client: AsyncClient) -> None:
     r1 = await client.post(
         f"{_BASE}/sessions/{sid}/chat",
         json={"autor": "tutor", "texto": "viejo"},
-        headers=_COORDINADOR,
+        headers=_STAFF,
     )
     creado_1 = r1.json()["creado_en"]
     await client.post(

@@ -20,7 +20,7 @@ from app.application.biometrics.service import (
     ReferenciaFaltanteError,
     VerifyIdentityService,
 )
-from app.application.audit.acciones import ModuloAuditoria
+from app.application.audit.acciones import EntidadAuditoria, ModuloAuditoria
 from app.domain.auth.identity import AuthenticatedPrincipal
 from app.domain.biometrics.retries import EstadoVerificacion
 from app.domain.consent_flow.errors import ConsentNotResolvedError
@@ -114,6 +114,7 @@ async def verify_identity(
         actor=principal.username or principal.email,
         accion="biometria.verificacion",
         modulo=ModuloAuditoria.BIOMETRIA,
+        entidad=EntidadAuditoria.SESION,
         entidad_id=str(body.session_id),
         ip=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),

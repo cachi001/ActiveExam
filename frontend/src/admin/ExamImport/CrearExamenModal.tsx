@@ -2,18 +2,22 @@
  * Modal para crear un examen desde el banco de preguntas.
  *
  * Flujo:
- *  1. Usuario elige comisión (deriva la materia) y título.
+ *  1. Usuario elige una o varias comisiones (derivan la materia) y el título.
  *  2. El modal carga las categorías del banco de esa materia.
  *  3. Para cada categoría (y "Sin clasificar") el usuario ve un renglón POR
  *     TIPO de pregunta disponible (multichoice, truefalse, cloze…) y puede
  *     poner cuántas quiere sortear de cada uno. Chips arriba filtran por tipo.
- *  4. Submit → POST /exam-content/crear-desde-banco (con comision_id: el
- *     examen queda scopeado a esa comisión, no visible para las demás).
+ *  4. Submit → POST /exam-content/crear-desde-banco (con comision_ids: el
+ *     examen queda scopeado a esas comisiones, no visible para las demás).
+ *
+ * c-78 E-06: con varias comisiones se crea UN EXAMEN POR COMISIÓN, replicado
+ * (D12) — se sortea una sola vez y ese set exacto se copia a los N. Quedan
+ * independientes entre sí, y el modal lo avisa ANTES de crear, no después.
  */
 
 import { useEffect, useState } from 'react';
 import { Icon, Button, LoadingSpinner } from '../../ui/components';
-import { ComisionSelect } from '../../ui/ComisionSelect';
+import { ComisionMultiSelect } from '../../ui/ComisionMultiSelect';
 import { useToast } from '../../ui/toast';
 import {
   listarCategorias,
@@ -46,13 +50,17 @@ interface TramoSorteo {
 interface Props {
   abierto: boolean;
   onCerrar: () => void;
-  onCreado: (examenId: string, totalPreguntas: number) => void;
+  /** `examenesCreados` es 1 salvo que se haya replicado a varias comisiones. */
+  onCreado: (examenId: string, totalPreguntas: number, examenesCreados: number) => void;
 }
 
 export function CrearExamenModal({ abierto, onCerrar, onCreado }: Props) {
   const toast = useToast();
   const [materiaId, setMateriaId] = useState('');
-  const [comisionId, setComisionId] = useState('');
+  const [comisionIds, setComisionIds] = useState<string[]>([]);
+  // Los códigos van aparte para poder mostrar cómo va a quedar el título de cada
+  // réplica sin volver a pedir las comisiones.
+  const [comisionCodigos, setComisionCodigos] = useState<string[]>([]);
   const [titulo, setTitulo] = useState('');
   // Solo se escribe: el árbol de categorías lo renderiza el selector de tramos.
   const [, setCategorias] = useState<CategoriaPregunta[]>([]);
@@ -64,6 +72,10 @@ export function CrearExamenModal({ abierto, onCerrar, onCreado }: Props) {
   // pero editable — cada docente/materia puede pedir otra escala.
   const [notaMaxima, setNotaMaxima] = useState(100);
   const [notaAprobacion, setNotaAprobacion] = useState(60);
+  // c-78 E-07. Ambos en false por default: crear un examen sigue haciendo lo
+  // mismo que siempre salvo que se pidan explícitamente.
+  const [sorteoPorIntento, setSorteoPorIntento] = useState(false);
+  const [borrador, setBorrador] = useState(false);
 
   // Al cambiar materia, cargar categorías + contar disponibles
   useEffect(() => {
@@ -139,9 +151,34 @@ export function CrearExamenModal({ abierto, onCerrar, onCreado }: Props) {
   const tramosActivos = tramos.filter((t) => t.cantidad > 0);
   const totalPreguntas = tramosActivos.reduce((s, t) => s + t.cantidad, 0);
 
+  // Cómo va a quedar el título de la primera réplica. El backend arma el mismo
+  // sufijo (código de comisión entre paréntesis) y solo cuando hay más de una.
+  const tituloEjemplo = `${titulo.trim() || 'Título del examen'} (${comisionCodigos[0] ?? '…'})`;
+
+  // c-78 E-07 (15.4): con sorteo por intento el examen se lleva el pool ENTERO de
+  // cada tramo que tenga cantidad > 0, no solo las que se sortean.
+  const poolDelExamen = tramosActivos.reduce((s, t) => s + t.disponibles, 0);
+
+  // Cuántas preguntas comparten dos alumnos, en promedio: largo² / pool. Es la
+  // cuenta que decide si el sorteo sirve de algo — con un pool apenas más grande
+  // que el examen, dos alumnos rinden casi lo mismo igual.
+  const repeticionEstimada =
+    totalPreguntas > 0 && poolDelExamen > 0
+      ? Math.round((totalPreguntas * totalPreguntas) / poolDelExamen)
+      : null;
+  const proporcion = repeticionEstimada !== null && totalPreguntas > 0
+    ? repeticionEstimada / totalPreguntas
+    : 0;
+  const consejoDeRepeticion =
+    proporcion >= 0.6
+      ? 'Es mucho: para que se note, cargá más preguntas al banco o hacé el examen más corto.'
+      : proporcion >= 0.3
+        ? 'Se puede mejorar cargando más preguntas al banco o acortando el examen.'
+        : 'Buena variedad.';
+
   const puedeCrear =
     materiaId.trim() !== '' &&
-    comisionId.trim() !== '' &&
+    comisionIds.length > 0 &&
     titulo.trim() !== '' &&
     tramosActivos.length > 0 &&
     notaMaxima > 0 &&
@@ -157,7 +194,7 @@ export function CrearExamenModal({ abierto, onCerrar, onCreado }: Props) {
       const result = await crearDesdeBanco({
         titulo: titulo.trim(),
         materia_id: materiaId,
-        comision_id: comisionId,
+        comision_ids: comisionIds,
         sorteo: tramosActivos.map((t) => ({
           categoria_id: t.categoria_id,
           cantidad: t.cantidad,
@@ -165,8 +202,10 @@ export function CrearExamenModal({ abierto, onCerrar, onCreado }: Props) {
         })),
         nota_maxima: notaMaxima,
         nota_aprobacion: notaAprobacion,
+        sorteo_por_intento: sorteoPorIntento,
+        borrador,
       });
-      onCreado(result.examen_id, result.total_preguntas);
+      onCreado(result.examen_id, result.total_preguntas, result.examenes.length);
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Error al crear examen');
     } finally {
@@ -177,11 +216,14 @@ export function CrearExamenModal({ abierto, onCerrar, onCreado }: Props) {
   const handleClose = () => {
     if (enviando) return;
     setMateriaId('');
-    setComisionId('');
+    setComisionIds([]);
+    setComisionCodigos([]);
     setTitulo('');
     setTramos([]);
     setNotaMaxima(100);
     setNotaAprobacion(60);
+    setSorteoPorIntento(false);
+    setBorrador(false);
     onCerrar();
   };
 
@@ -221,21 +263,40 @@ export function CrearExamenModal({ abierto, onCerrar, onCreado }: Props) {
             />
           </label>
 
-          {/* Comisión (la materia queda embebida en cada opción) */}
-          <label className="flex flex-col gap-1">
-            <span className="text-label-sm font-medium text-on-surface-variant">Comisión</span>
-            <ComisionSelect
-              value={comisionId}
-              onChange={(id, comision) => {
-                setComisionId(id);
-                setMateriaId(comision?.materia_id ?? '');
+          {/* Comisiones (la materia queda embebida en cada opción) */}
+          <div className="flex flex-col gap-1">
+            <span className="text-label-sm font-medium text-on-surface-variant">
+              Comisiones
+            </span>
+            <ComisionMultiSelect
+              value={comisionIds}
+              onChange={(ids, comisiones) => {
+                setComisionIds(ids);
+                setComisionCodigos(comisiones.map((c) => c.codigo));
+                setMateriaId(comisiones[0]?.materia_id ?? '');
               }}
+              disabled={enviando}
               className={INPUT_CLASS}
             />
-          </label>
-          <p className="text-label-sm text-on-surface-variant -mt-2">
-            El examen queda visible solo para la comisión elegida.
-          </p>
+          </div>
+          {comisionIds.length <= 1 ? (
+            <p className="text-label-sm text-on-surface-variant -mt-1">
+              El examen queda visible solo para la comisión elegida. Podés agregar más
+              de una y se crea un examen para cada una.
+            </p>
+          ) : (
+            <div className="-mt-1 rounded-xl border border-outline-variant/40 bg-surface-100 px-3 py-2">
+              <p className="text-label-sm text-on-surface">
+                Se van a crear <strong>{comisionIds.length} exámenes</strong>, uno por
+                comisión, con las mismas preguntas. Cada título lleva el código de su
+                comisión: «{tituloEjemplo}».
+              </p>
+              <p className="text-label-sm text-on-surface-variant mt-1">
+                Quedan independientes: si más adelante corregís algo, lo corregís en cada
+                uno por separado. Si algo falla no se crea ninguno.
+              </p>
+            </div>
+          )}
 
           {/* Escala de calificación */}
           <div className="flex gap-3">
@@ -376,6 +437,66 @@ export function CrearExamenModal({ abierto, onCerrar, onCreado }: Props) {
               )}
             </div>
           )}
+
+          {/* c-78 E-07: sorteo por intento + borrador */}
+          {materiaId && (
+            <div className="space-y-3 rounded-xl border border-outline-variant/40 p-3">
+              <label className="flex items-start gap-2.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={sorteoPorIntento}
+                  onChange={(e) => setSorteoPorIntento(e.target.checked)}
+                  className="mt-0.5 shrink-0"
+                />
+                <span>
+                  <span className="text-label-md text-on-surface">
+                    Que cada alumno reciba preguntas distintas
+                  </span>
+                  <span className="block text-label-sm text-on-surface-variant">
+                    El sorteo se hace cuando cada alumno entra, no ahora. El examen se
+                    lleva una copia de todas las preguntas elegibles, así que después
+                    podés tocar el banco sin afectarlo.
+                  </span>
+                </span>
+              </label>
+
+              {sorteoPorIntento && totalPreguntas > 0 && (
+                <div className="rounded-lg bg-surface-100 px-3 py-2">
+                  <p className="text-label-sm text-on-surface">
+                    Cada alumno rinde{' '}
+                    <strong>
+                      {totalPreguntas} {totalPreguntas === 1 ? 'pregunta' : 'preguntas'}
+                    </strong>
+                    , sorteadas de un pool de <strong>{poolDelExamen}</strong>.
+                  </p>
+                  <p className="text-label-sm text-on-surface-variant mt-1">
+                    {repeticionEstimada === null
+                      ? 'Elegí las cantidades para ver cuánto se van a repetir las preguntas entre alumnos.'
+                      : `Dos alumnos van a compartir alrededor de ${repeticionEstimada} de ${totalPreguntas}. ${consejoDeRepeticion}`}
+                  </p>
+                </div>
+              )}
+
+              <label className="flex items-start gap-2.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={borrador}
+                  onChange={(e) => setBorrador(e.target.checked)}
+                  className="mt-0.5 shrink-0"
+                />
+                <span>
+                  <span className="text-label-md text-on-surface">
+                    Crearlo sin habilitar, para probarlo primero
+                  </span>
+                  <span className="block text-label-sm text-on-surface-variant">
+                    No les aparece a los alumnos y no lo pueden rendir. Vos sí lo podés
+                    rendir entero para ver cómo queda, incluso antes de la fecha de
+                    apertura. Después lo habilitás desde el detalle del examen.
+                  </span>
+                </span>
+              </label>
+            </div>
+          )}
         </div>
 
         {/* Footer */}
@@ -384,7 +505,11 @@ export function CrearExamenModal({ abierto, onCerrar, onCreado }: Props) {
             Cancelar
           </Button>
           <Button onClick={handleCrear} disabled={!puedeCrear}>
-            {enviando ? 'Creando…' : `Crear examen${totalPreguntas > 0 ? ` (${totalPreguntas})` : ''}`}
+            {enviando
+              ? 'Creando…'
+              : comisionIds.length > 1
+                ? `Crear ${comisionIds.length} exámenes${totalPreguntas > 0 ? ` (${totalPreguntas} c/u)` : ''}`
+                : `Crear examen${totalPreguntas > 0 ? ` (${totalPreguntas})` : ''}`}
           </Button>
         </div>
       </div>

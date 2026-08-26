@@ -39,9 +39,12 @@ ETIQUETA_EVENTO: dict[str, str] = {
 
 # Estados de revisión (decisiones humanas, modelo de un solo paso) — usados en
 # gráficos y reportes.
+# `pendiente` NO está: el endpoint de revisión lo rechaza explícitamente por no ser
+# una decisión terminal (`_parse_decision`, review/router.py), así que la columna
+# `proctoring_session.decision` nunca puede valer eso. Era una etiqueta muerta
+# (F-07, c-78 D8). `humanizar` cubre cualquier valor inesperado.
 ETIQUETA_DECISION: dict[str, str] = {
     "sin_revisar": "Sin revisar",
-    "pendiente": "Pendiente",
     "aprobado": "Aprobado",
     "anulado": "Anulado por fraude",
 }
@@ -103,11 +106,22 @@ ETIQUETA_ACCION: dict[str, str] = {
     "comision.delete": "Eliminó comisión",
     "comision.set_activa": "Cambió el estado de la comisión",
     "comision.set_docente": "Asignó docente a la comisión",
+    # c-79 / c-76 / c-78 (F-07): acciones que el sistema YA emitía pero que no
+    # tenían etiqueta acá, así que en el export y en el registro salían con su
+    # código crudo humanizado ("Materia set coordinador").
+    "materia.set_coordinador": "Asignó coordinador a la materia",
+    "materia.set_profesor": "Asignó profesor a la materia",
+    "sesion.test.delete": "Eliminó una sesión de diagnóstico",
+    "sesion.resultado.archivar": "Archivó o desarchivó un resultado",
     "examen.import": "Cargó un examen",
     "examen.moodle_target": "Fijó destino de la nota en Moodle",
     "examen.config_update": "Cambió la configuración del examen",
     "examen.seleccion_preguntas": "Cambió las preguntas del examen",
+    "examen.baja": "Dio de baja un examen",
+    "examen.reactivar": "Reactivó un examen",
+    "examen.publicar_notas": "Publicó las notas del examen",
     "moodle.sync": "Sincronizó notas a Moodle",
+    "moodle.nota_marcada_manual": "Marcó a mano que la nota se cargó en el campus",
     "moodle_credencial.conectar": "Conectó su cuenta del campus",
     "moodle_credencial.renovar": "Renovó su cuenta del campus",
     "moodle_credencial.desconectar": "Desconectó su cuenta del campus",

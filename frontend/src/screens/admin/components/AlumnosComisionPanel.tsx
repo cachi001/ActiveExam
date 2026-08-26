@@ -6,7 +6,10 @@ import {
   listarAlumnosDeComision,
   inscribirAlumno,
   eliminarInscripcion,
+  descargarExport,
+  urlExportInscriptos,
 } from '../../../lib/examContentAdmin';
+import { Pagination, PageSizeSelect } from '../../../ui/Pagination';
 import type { AlumnoInscripto } from '../../../lib/types';
 import { AlumnoPickerModal } from './AlumnoPickerModal';
 
@@ -33,6 +36,12 @@ export function AlumnosComisionPanel({
 }) {
   const toast = useToast();
   const [alumnos, setAlumnos] = useState<AlumnoInscripto[] | null>(null);
+  // c-78 §13.2: paginación. Con 40 inscriptos el listado completo era ilegible.
+  // `total` es el conjunto entero; `alumnos` solo la página visible.
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [descargando, setDescargando] = useState(false);
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pickerAbierto, setPickerAbierto] = useState(false);
@@ -43,8 +52,9 @@ export function AlumnosComisionPanel({
     setCargando(true);
     setError(null);
     try {
-      const data = await listarAlumnosDeComision(comisionId);
-      setAlumnos(data);
+      const data = await listarAlumnosDeComision(comisionId, { page, page_size: pageSize });
+      setAlumnos(data.items);
+      setTotal(data.total);
     } catch (err) {
       const e = err as Error & { status?: number };
       setError(
@@ -56,9 +66,27 @@ export function AlumnosComisionPanel({
     } finally {
       setCargando(false);
     }
-  }, [comisionId]);
+  }, [comisionId, page, pageSize]);
 
   useEffect(() => { void cargar(); }, [cargar]);
+
+  // Cambiar de comisión vuelve a la primera página: quedarse en la 3 de una
+  // comisión que tiene una sola página muestra un listado vacío sin explicación.
+  useEffect(() => { setPage(1); }, [comisionId]);
+
+  async function exportar(formato: 'xlsx' | 'pdf') {
+    setDescargando(true);
+    try {
+      await descargarExport(
+        urlExportInscriptos(comisionId, formato),
+        `inscriptos-${comisionNombre}.${formato}`,
+      );
+    } catch {
+      toast.error('No se pudo generar el archivo. Probá de nuevo.');
+    } finally {
+      setDescargando(false);
+    }
+  }
 
   async function handleInscribir(usuarioIds: string[]) {
     if (usuarioIds.length === 0) return;
@@ -109,17 +137,39 @@ export function AlumnosComisionPanel({
           <Icon name="groups" className="text-[16px] text-on-surface-variant" />
           Alumnos inscriptos
           {alumnos && (
-            <span className="font-normal normal-case text-on-surface-variant">({alumnos.length})</span>
+            <span className="font-normal normal-case text-on-surface-variant">({total})</span>
           )}
         </h4>
-        <Button
-          variant="primary"
-          size="sm"
-          icon="person_add"
-          onClick={() => setPickerAbierto(true)}
-        >
-          Inscribir alumno
-        </Button>
+        <div className="flex items-center gap-2">
+          {/* c-78 §13.4 (E-10): para cruzar el padrón contra el campus hace falta
+              el archivo, no la pantalla. */}
+          <Button
+            variant="outline"
+            size="sm"
+            icon="table_view"
+            disabled={descargando || total === 0}
+            onClick={() => void exportar('xlsx')}
+          >
+            Excel
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            icon="picture_as_pdf"
+            disabled={descargando || total === 0}
+            onClick={() => void exportar('pdf')}
+          >
+            PDF
+          </Button>
+          <Button
+            variant="primary"
+            size="sm"
+            icon="person_add"
+            onClick={() => setPickerAbierto(true)}
+          >
+            Inscribir alumno
+          </Button>
+        </div>
       </div>
 
       {cargando ? (
@@ -140,7 +190,7 @@ export function AlumnosComisionPanel({
           No hay alumnos inscriptos todavía.
         </div>
       ) : alumnos && alumnos.length > 0 ? (
-        <ul className="divide-y divide-outline-variant/20 rounded-lg border border-outline-variant/40 overflow-hidden bg-surface max-h-80 overflow-y-auto">
+        <ul className="divide-y divide-outline-variant/20 rounded-lg border border-outline-variant/40 overflow-hidden bg-surface">
           {alumnos.map((a) => (
             <li key={a.usuario_id} className="px-3 py-3 flex flex-col sm:flex-row sm:items-center gap-3">
               <div className="flex-1 min-w-0">
@@ -181,6 +231,23 @@ export function AlumnosComisionPanel({
           ))}
         </ul>
       ) : null}
+
+      {alumnos && total > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <PageSizeSelect
+            value={pageSize}
+            onChange={(ps) => { setPageSize(ps); setPage(1); }}
+            options={[10, 25, 50, 100]}
+          />
+          <Pagination
+            currentPage={page}
+            totalPages={Math.max(1, Math.ceil(total / pageSize))}
+            totalElements={total}
+            pageSize={pageSize}
+            onPageChange={setPage}
+          />
+        </div>
+      )}
 
       {alumnos && alumnos.some((a) => !a.puede_rendir && a.razon) && (
         <ul className="space-y-1">

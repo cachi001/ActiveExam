@@ -104,27 +104,53 @@ def _inicializar_detector() -> object | None:
         return None
 
 
+# Detector UNICO por proceso. Es de modulo a proposito, no por instancia.
+#
+# Motivo 1 — DEADLOCK. El `__del__` del FaceDetector de MediaPipe hace
+# `executor.submit(...).result()` contra un dispatcher ya finalizado y **se
+# cuelga para siempre**. Con un detector por instancia, cualquier
+# `MediaPipeReinferencia()` que quede sin referencias congela el proceso cuando
+# el recolector de basura lo destruye — en CUALQUIER linea, porque el GC corre
+# donde quiere. Es lo que hacia que la suite de tests quedara muda para siempre
+# (el stack apuntaba a un `include_router` que no tenia nada que ver). Un
+# singleton de modulo no se recolecta mientras el proceso vive.
+#
+# Motivo 2 — MEMORIA. Cada detector carga su copia del modelo. Produccion
+# siempre tuvo uno solo (`main_activeexam` construye el adapter una vez); esto
+# hace que el resto se comporte igual en vez de depender de que nadie construya
+# dos.
+_detector_compartido: object | None = None
+_detector_inicializado = False
+
+
+def _obtener_detector_compartido() -> object | None:
+    """Inicializa el detector del proceso una sola vez (lazy singleton)."""
+    global _detector_compartido, _detector_inicializado
+    if not _detector_inicializado:
+        _detector_inicializado = True
+        _detector_compartido = _inicializar_detector()
+    return _detector_compartido
+
+
 class MediaPipeReinferencia:
     """Adapter de re-inferencia con MediaPipe Tasks FaceDetector.
 
     Implementa ReinferenciaPort (Protocol — sin herencia explicita para no
     acoplar la infraestructura al puerto; duck typing es suficiente).
+
+    Construir varias instancias es barato y seguro: todas comparten el mismo
+    detector de proceso (ver `_detector_compartido`).
     """
 
-    def __init__(self) -> None:
-        # LAZY: el detector se inicializa en el PRIMER evaluar(), NO al construir la
-        # app. Asi uvicorn liga el puerto y pasa el healthcheck de inmediato; la carga
-        # de MediaPipe (pesada en RAM, riesgo de OOM al arranque) ocurre recien cuando
-        # llega el primer evento con screenshot. None = degradacion elegante.
-        self._detector: object | None = None
-        self._inicializado = False
-
     def _obtener_detector(self) -> object | None:
-        """Inicializa el detector una sola vez (lazy singleton)."""
-        if not self._inicializado:
-            self._inicializado = True
-            self._detector = _inicializar_detector()
-        return self._detector
+        """El detector del proceso.
+
+        LAZY: se inicializa en el PRIMER evaluar(), NO al construir la app. Asi
+        uvicorn liga el puerto y pasa el healthcheck de inmediato; la carga de
+        MediaPipe (pesada en RAM, riesgo de OOM al arranque) ocurre recien cuando
+        llega el primer evento con screenshot. None = degradacion elegante.
+        """
+        return _obtener_detector_compartido()
 
     def evaluar(
         self,
@@ -180,7 +206,7 @@ class MediaPipeReinferencia:
         )
 
         # Re-detectar rostros
-        result = self._detector.detect(mp_image)
+        result = self._obtener_detector().detect(mp_image)
         face_count_servidor = len(result.detections)
 
         # Determinar veredicto

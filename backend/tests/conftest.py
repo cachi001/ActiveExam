@@ -68,6 +68,22 @@ def pytest_collection_modifyitems(
 #     corresponde lo decide la migracion del entorno, no este hook.
 _TABLAS_QUE_NO_SE_RECREAN = frozenset({"audit_log", "foto_referencia"})
 
+#: Copia EXACTA del seed de la migracion 0014 (mismos valores que DEFAULT_CONFIG).
+#: Idempotente por el ON CONFLICT: correrlo por modulo no pisa nada.
+_SEED_CONFIG_SISTEMA = """
+    INSERT INTO configuracion_sistema
+        (id, face_absent_ms, multiple_faces_frames, gaze_deviation_threshold,
+         gaze_sustained_ms, gaze_fixation_tolerance, umbral_cola_revision,
+         detectores_activos, retencion_dias_default, consent_version_vigente, version)
+    VALUES
+        ('global', 3000, 5, 0.20, 2500, 0.25, 70,
+         '["rostro_ausente","multiples_rostros","mirada_desviada_sostenida",
+           "perdida_de_foco","cambio_pestana","monitor_adicional",
+           "salida_pantalla_completa","copiar_pegar"]'::jsonb,
+         365, 'v1', 1)
+    ON CONFLICT (id) DO NOTHING
+"""
+
 
 def _importar_todos_los_modelos() -> None:
     """Puebla Base.metadata con TODAS las tablas (import con efecto de registro)."""
@@ -75,6 +91,7 @@ def _importar_todos_los_modelos() -> None:
         alternative_request,
         audit_log,
         chat_pausa,
+        comision_tutor,
         event,
         exam_content,
         inscripcion,
@@ -105,27 +122,54 @@ def _esquema_completo_por_modulo() -> None:
     async def _crear_faltantes() -> None:
         engine = create_async_engine(url, poolclass=NullPool, future=True)
         try:
-            # Tabla por tabla, cada una en su propia transaccion: un create_all
+            # UNA consulta para saber que hay, en vez de ~45 CREATE ... checkfirst
+            # (cada uno con su round-trip y su transaccion) por cada uno de los
+            # ~264 modulos de test. Ese barrido costaba ~3 s de setup POR MODULO
+            # —hasta en modulos que no tocan la base, como test_architecture— y era
+            # el grueso de lo que hacia impracticable correr la suite entera.
+            # La semantica no cambia: se sigue creando solo lo que falta.
+            async with engine.begin() as conn:
+                filas = await conn.exec_driver_sql(
+                    "SELECT tablename FROM pg_tables WHERE schemaname = 'public'"
+                )
+                existentes = {fila[0] for fila in filas}
+
+            # audit_log primero y por DDL propia: el modelo no describe sus
+            # triggers (ver tests/_audit_schema.py).
+            if "audit_log" not in existentes:
+                try:
+                    async with engine.begin() as conn:
+                        for sentencia in DDL_AUDIT_LOG:
+                            await conn.exec_driver_sql(sentencia)
+                except Exception:
+                    pass
+
+            # Tabla por tabla y cada una en su propia transaccion: un create_all
             # global aborta TODO ante el primer choque (p. ej. `evento`, que es
             # hypertable de TimescaleDB y a la que checkfirst no le acierta), y
             # entonces no se crearia ninguna de las que si faltan.
-            # audit_log primero y por DDL propia: el modelo no describe sus
-            # triggers (ver tests/_audit_schema.py).
-            try:
-                async with engine.begin() as conn:
-                    for sentencia in DDL_AUDIT_LOG:
-                        await conn.exec_driver_sql(sentencia)
-            except Exception:
-                pass
-
             for tabla in Base.metadata.sorted_tables:
                 if tabla.name in _TABLAS_QUE_NO_SE_RECREAN:
+                    continue
+                if tabla.name in existentes:
                     continue
                 try:
                     async with engine.begin() as conn:
                         await conn.run_sync(tabla.create, checkfirst=True)
                 except Exception:
                     continue  # ya existe o no aplica en esta DB de test
+
+            # El singleton de configuracion_sistema. En produccion lo siembra la
+            # migracion 0014; una base de test armada desde el modelo ORM (que es
+            # como se arman todas) nunca lo tiene, y sin esa fila el arranque de
+            # una sesion de proctoring responde 503 `config_no_disponible`. Eso
+            # tumbaba en bloque a todos los modulos que crean una sesion, por una
+            # carencia del harness y no por un defecto del codigo.
+            try:
+                async with engine.begin() as conn:
+                    await conn.exec_driver_sql(_SEED_CONFIG_SISTEMA)
+            except Exception:
+                pass
         finally:
             await engine.dispose()
 

@@ -1,35 +1,39 @@
 /**
- * AsignarDocenteDialog — pone (o quita) el tutor a cargo de una comisión.
+ * AsignarDocenteDialog — agrega o quita tutores a cargo de una comisión (c-79, N:M).
  *
- * Por qué importa más de lo que parece: ese docente es quien devuelve las notas de
- * la comisión al campus con SU cuenta, y es contra quien se valida que un tutor
- * solo toque los exámenes de lo suyo. Una comisión sin docente no puede sincronizar
- * notas (quedan retenidas con el motivo «Falta conectar la cuenta del campus»).
+ * Por qué importa más de lo que parece: cada tutor a cargo es quien puede devolver
+ * las notas de la comisión al campus con SU cuenta, y es contra quien se valida que
+ * un tutor solo toque los exámenes de lo suyo. Una comisión sin tutores no puede
+ * sincronizar notas (quedan retenidas con el motivo «Falta conectar la cuenta del
+ * campus»). Desde c-79 una comisión puede tener VARIOS tutores (co-dictado,
+ * cobertura de licencias) — ya no uno solo.
  *
- * El propio docente NO puede autoasignarse: la capacidad `asignar_docente` no lo
- * incluye. Si pudiera, la validación de pertenencia dejaría de ser un control.
+ * Los propios tutores NO pueden autoasignarse: la capacidad `asignar_docente` no
+ * los incluye. Si pudieran, la validación de pertenencia dejaría de ser un control.
  */
 import { useEffect, useState } from 'react';
 import { adminApi } from '../../../lib/apiAdmin';
 import { Button, Icon } from '../../../ui/components';
+import { ChipMultiSelect } from '../../../ui/ChipMultiSelect';
 
 type Docente = { id: string; nombre: string; legajo: string };
+type TutorInfo = { id: string; nombre: string };
 
 export function AsignarDocenteDialog({
   comisionId,
   comisionNombre,
-  docenteActualId,
+  tutoresActuales,
   onCerrar,
-  onAsignado,
+  onCambiado,
 }: {
   comisionId: string;
   comisionNombre: string;
-  docenteActualId?: string | null;
+  tutoresActuales: TutorInfo[];
   onCerrar: () => void;
-  onAsignado: (docenteId: string | null, docenteNombre: string | null) => void;
+  onCambiado: (tutores: TutorInfo[]) => void;
 }) {
   const [docentes, setDocentes] = useState<Docente[]>([]);
-  const [seleccionado, setSeleccionado] = useState<string>(docenteActualId ?? '');
+  const [tutores, setTutores] = useState<TutorInfo[]>(tutoresActuales);
   const [cargando, setCargando] = useState(true);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -68,16 +72,33 @@ export function AsignarDocenteDialog({
     };
   }, []);
 
-  async function guardar() {
+  const disponibles = docentes.filter((d) => !tutores.some((t) => t.id === d.id));
+
+  async function agregar(docenteId: string) {
     setGuardando(true);
     setError(null);
     try {
-      const r = await adminApi.asignarDocenteComision(comisionId, seleccionado || null);
-      onAsignado(r.docente_id, r.docente_nombre);
-      onCerrar();
+      const r = await adminApi.agregarTutorComision(comisionId, docenteId);
+      setTutores(r.tutores);
+      onCambiado(r.tutores);
     } catch (err) {
       const e = err as { mensaje?: string };
-      setError(e.mensaje ?? 'No se pudo asignar el tutor.');
+      setError(e.mensaje ?? 'No se pudo agregar el tutor.');
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  async function quitar(tutorId: string) {
+    setGuardando(true);
+    setError(null);
+    try {
+      const r = await adminApi.quitarTutorComision(comisionId, tutorId);
+      setTutores(r.tutores);
+      onCambiado(r.tutores);
+    } catch (err) {
+      const e = err as { mensaje?: string };
+      setError(e.mensaje ?? 'No se pudo quitar el tutor.');
     } finally {
       setGuardando(false);
     }
@@ -88,10 +109,10 @@ export function AsignarDocenteDialog({
       className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4"
       role="dialog"
       aria-modal="true"
-      aria-label={`Asignar tutor de ${comisionNombre}`}
+      aria-label={`Tutores de ${comisionNombre}`}
     >
       <div className="card w-full max-w-md p-lg">
-        <h2 className="text-title-sm font-semibold text-on-surface">Asignar tutor</h2>
+        <h2 className="text-title-sm font-semibold text-on-surface">Tutores a cargo</h2>
         <p className="text-label-sm text-on-surface-variant mt-0.5 mb-md">
           {comisionNombre}
         </p>
@@ -100,27 +121,36 @@ export function AsignarDocenteDialog({
           <div className="h-[80px] animate-pulse bg-surface-container-low rounded-md" />
         ) : (
           <>
+            {tutores.length === 0 && (
+              <p className="text-label-sm text-on-surface-variant mb-md">
+                Sin tutores asignados todavía.
+              </p>
+            )}
+
             <label className="text-label-sm text-on-surface-variant" htmlFor="docente-sel">
-              Tutor
+              Agregar tutor
             </label>
-            <select
-              id="docente-sel"
-              className="input w-full mt-1"
-              value={seleccionado}
-              disabled={guardando}
-              onChange={(e) => setSeleccionado(e.target.value)}
-            >
-              <option value="">Sin tutor asignado</option>
-              {docentes.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.nombre}
-                  {d.legajo ? ` · ${d.legajo}` : ''}
-                </option>
-              ))}
-            </select>
+            <div className="mt-1">
+              <ChipMultiSelect
+                id="docente-sel"
+                className="input w-full"
+                disabled={guardando || disponibles.length === 0}
+                seleccionados={tutores.map((t) => ({ id: t.id, textoOpcion: t.nombre }))}
+                disponibles={disponibles.map((d) => ({
+                  id: d.id,
+                  textoOpcion: d.legajo ? `${d.nombre} · ${d.legajo}` : d.nombre,
+                  textoChip: d.nombre,
+                }))}
+                onAgregar={agregar}
+                onQuitar={quitar}
+                textoOpcionVacia={
+                  disponibles.length === 0 ? 'No hay más tutores disponibles' : 'Elegir…'
+                }
+              />
+            </div>
             <p className="text-label-sm text-on-surface-variant mt-1.5">
-              Las notas de esta comisión se devuelven al campus con la cuenta de esta
-              persona. Sin tutor asignado, las notas no se sincronizan.
+              Las notas de esta comisión se devuelven al campus con la cuenta de cada
+              tutor a cargo. Sin tutores asignados, las notas no se sincronizan.
             </p>
           </>
         )}
@@ -133,11 +163,8 @@ export function AsignarDocenteDialog({
         )}
 
         <div className="flex justify-end gap-sm mt-lg">
-          <Button variant="ghost" size="sm" onClick={onCerrar} disabled={guardando}>
-            Cancelar
-          </Button>
-          <Button variant="primary" onClick={guardar} disabled={guardando || cargando}>
-            {guardando ? 'Guardando…' : 'Guardar'}
+          <Button variant="primary" onClick={onCerrar} disabled={guardando}>
+            Listo
           </Button>
         </div>
       </div>

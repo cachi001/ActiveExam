@@ -161,6 +161,51 @@ def test_proyeccion_blanks_ordenados_por_orden():
     assert [b.id for b in proyectar_examen(examen).preguntas[0].blanks] == ["b1", "b2"]
 
 
+def test_proyeccion_blank_matching_trae_opciones_sin_es_correcta():
+    """C-78: un blank "matching" (emparejamiento) TAMBIÉN elige de una lista
+    (el pool de respuestas de la pregunta) — igual que multichoice. Bug real
+    encontrado en esta misma tarea: _BLANK_CON_OPCIONES no incluía "matching",
+    así que el <select> del alumno llegaba vacío y la pregunta era
+    irresponible. D3: las opciones viajan, pero sin es_correcta."""
+    examen = ExamenContenido(
+        id="exam-matching",
+        titulo="Parcial con matching",
+        preguntas=(
+            Pregunta(
+                id="p1",
+                enunciado="Une cada lenguaje con su paradigma",
+                tipo="cloze",
+                orden=0,
+                opciones=(),
+                blanks=(
+                    BlankCloze(
+                        id="b1",
+                        orden=0,
+                        tipo="matching",
+                        texto_antes="Python:  ",
+                        texto_despues="",
+                        opciones=(
+                            OpcionBlankCloze(
+                                id="ob1", texto="Multiparadigma", es_correcta=True, orden=0
+                            ),
+                            OpcionBlankCloze(
+                                id="ob2", texto="Funcional", es_correcta=False, orden=1
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        ),
+        comision_id=None,
+    )
+
+    blank = proyectar_examen(examen).preguntas[0].blanks[0]
+    assert blank.tipo == "matching"
+    assert [o.id for o in blank.opciones] == ["ob1", "ob2"]
+    for opcion in blank.opciones:
+        assert not hasattr(opcion, "es_correcta")
+
+
 def test_proyeccion_cloze_no_seleccionada_no_viaja():
     """Opción B: una cloze del pool no seleccionada no llega a la rendición."""
     base = _examen_cloze()

@@ -61,9 +61,11 @@ export async function loadEffectiveConfig(): Promise<void> {
   _inflight = (async () => {
     try {
       const data = await api.obtenerConfigEfectiva();
-      // Normalización de degradación segura: si el backend (en construcción) no
-      // envía los interruptores, se asumen habilitados (true) para no ocultar el
-      // chat ni la pausa por error.
+      // Degradación de cada interruptor: ambos encendidos (migración 0098). El
+      // sistema viene con la funcionalidad completa, y si el dato no llegó es
+      // peor esconder el chat o negar una pausa que mostrarlos de más.
+      // De todos modos el que manda es el backend: el gate rechaza 403 aunque el
+      // cliente muestre el recuadro (regla dura #6).
       _cache = {
         ...data,
         chat_habilitado: data.chat_habilitado ?? true,

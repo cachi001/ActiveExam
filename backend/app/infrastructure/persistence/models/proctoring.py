@@ -17,6 +17,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Integer,
+    LargeBinary,
     String,
     Text,
 )
@@ -193,8 +194,11 @@ class ProctoringEventModel(Base):
     """Evento de deteccion con screenshot e informacion de re-inferencia server-side.
 
     PRODUCCION:
-    - screenshot_b64: dato sensible (Ley 25.326). Almacenado en texto plano solo
-      en demo. Para produccion: MinIO/S3 WORM + cifrado at-rest + retencion 90d.
+    - screenshot_b64: dato sensible (Ley 25.326). Se persiste CIFRADO at-rest
+      (`cipher.encrypt` en event_service) cuando hay cipher configurado.
+      El deposito WORM en MinIO ya existe (c-77) y es ADICIONAL: nunca reemplaza
+      esta columna, que sigue siendo la fuente de verdad. Pendiente real: la
+      politica de retencion automatica.
     - screenshot_sha256: integridad liviana (SHA-256 del contenido base64).
       PRODUCCION: cadena de custodia completa (HMAC clave maestra + WORM + firma encadenada).
     - face_count_servidor / veredicto_reinferencia: producidos por MediaPipe server-side
@@ -240,13 +244,37 @@ class ProctoringEventModel(Base):
         nullable=True,
         comment="Datos adicionales del evento (libre)",
     )
+    # LEGACY (c-78): las filas escritas antes de la migracion 0097 tienen la
+    # captura aca, como base64 cifrado. Las nuevas van a `screenshot_bin`. El
+    # camino de lectura mira primero el binario y cae aca si esta vacio.
     screenshot_b64: Mapped[str | None] = mapped_column(
         Text,
         nullable=True,
         comment=(
-            "Screenshot en base64. "
-            "PRODUCCION: dato sensible Ley 25.326 — mover a MinIO/S3 WORM con "
-            "cifrado at-rest y politica de retencion automatica."
+            "LEGACY: screenshot en base64 cifrado at-rest. Las filas nuevas usan "
+            "screenshot_bin (44% menos espacio). Se conserva para leer el historico."
+        ),
+    )
+    # --- Captura binaria (c-78, migracion 0097) ----------------------------
+    # Medido con pg_column_size: la misma captura de 85 KB ocupaba 151.224 bytes
+    # como base64 cifrado y ocupa 85.065 aca. Era doble expansion base64 (el
+    # data URL, y despues el token Fernet que tambien es base64), y TOAST no la
+    # comprime porque lo cifrado es incompresible.
+    screenshot_bin: Mapped[bytes | None] = mapped_column(
+        LargeBinary,
+        nullable=True,
+        comment=(
+            "Screenshot CIFRADO at-rest en binario (dato sensible Ley 25.326). "
+            "Token Fernet sin su base64 externo. El deposito WORM (c-77) es adicional."
+        ),
+    )
+    screenshot_prefijo: Mapped[str | None] = mapped_column(
+        String(128),
+        nullable=True,
+        comment=(
+            "Prefijo del data URL original ('data:image/jpeg;base64'), guardado TAL "
+            "CUAL para que la reconstruccion sea byte a byte y screenshot_sha256 "
+            "siga verificando. NULL si el cliente mando base64 pelado."
         ),
     )
     # PRODUCCION: cadena de custodia completa (HMAC clave maestra + WORM + firma encadenada)
@@ -254,6 +282,26 @@ class ProctoringEventModel(Base):
         String(64),
         nullable=True,
         comment="SHA-256 hex del screenshot (integridad liviana, D9). NULL si no hay screenshot.",
+    )
+    # --- Primera capa de la cadena de custodia (c-78, migracion 0096) -------
+    # Hasta c-78 el cliente mandaba su hash y el servicio lo TIRABA: la regla
+    # dura #6 ("el backend re-hashea lo que manda el cliente") no se cumplia.
+    screenshot_sha256_cliente: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+        comment=(
+            "SHA-256 hex de la imagen segun el CLIENTE (sensor no confiable). "
+            "Se guarda tal cual llego, sea verdad o no: es parte de la evidencia."
+        ),
+    )
+    custodia_cliente: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        server_default="no_verificable",
+        comment=(
+            "'coincide' | 'discrepancia' | 'no_verificable'. L2.5: una discrepancia "
+            "es senal para el revisor humano, NUNCA una sancion automatica."
+        ),
     )
     face_count_cliente: Mapped[int | None] = mapped_column(
         Integer,

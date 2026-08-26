@@ -13,6 +13,7 @@
 import { authProvider } from '../authProvider';
 import { API_BASE } from '../api';
 
+import { fetchAutenticado } from '../fetchAutenticado';
 export interface CategoriaPregunta {
   id: string;
   nombre: string;
@@ -43,7 +44,7 @@ function headers() {
 }
 
 export async function listarCategorias(materiaId: string): Promise<CategoriaPregunta[]> {
-  const res = await fetch(
+  const res = await fetchAutenticado(
     `${API_BASE}/exam-content/categorias?materia_id=${encodeURIComponent(materiaId)}`,
     { headers: headers() },
   );
@@ -56,7 +57,7 @@ export async function crearCategoria(payload: {
   nombre: string;
   categoria_padre_id?: string | null;
 }): Promise<CategoriaPregunta> {
-  const res = await fetch(`${API_BASE}/exam-content/categorias`, {
+  const res = await fetchAutenticado(`${API_BASE}/exam-content/categorias`, {
     method: 'POST',
     headers: headers(),
     body: JSON.stringify(payload),
@@ -69,7 +70,7 @@ export async function renombrarCategoria(
   categoriaId: string,
   nombre: string,
 ): Promise<CategoriaPregunta> {
-  const res = await fetch(`${API_BASE}/exam-content/categorias/${encodeURIComponent(categoriaId)}`, {
+  const res = await fetchAutenticado(`${API_BASE}/exam-content/categorias/${encodeURIComponent(categoriaId)}`, {
     method: 'PATCH',
     headers: headers(),
     body: JSON.stringify({ nombre }),
@@ -87,7 +88,7 @@ export async function moverCategoria(
   categoriaId: string,
   nuevoPadreId: string | null,
 ): Promise<CategoriaPregunta> {
-  const res = await fetch(`${API_BASE}/exam-content/categorias/${encodeURIComponent(categoriaId)}`, {
+  const res = await fetchAutenticado(`${API_BASE}/exam-content/categorias/${encodeURIComponent(categoriaId)}`, {
     method: 'PATCH',
     headers: headers(),
     body: JSON.stringify({ categoria_padre_id: nuevoPadreId }),
@@ -104,7 +105,7 @@ export async function moverCategoria(
 }
 
 export async function borrarCategoria(categoriaId: string): Promise<void> {
-  const res = await fetch(
+  const res = await fetchAutenticado(
     `${API_BASE}/exam-content/categorias/${encodeURIComponent(categoriaId)}`,
     { method: 'DELETE', headers: headers() },
   );
@@ -118,10 +119,44 @@ export async function listarPreguntasBanco(
   const params = new URLSearchParams({ materia_id: materiaId });
   if (categoriaId) params.set('categoria_id', categoriaId);
   else params.set('sin_categoria', 'true');
-  const res = await fetch(`${API_BASE}/exam-content/preguntas?${params}`, {
+  const res = await fetchAutenticado(`${API_BASE}/exam-content/preguntas?${params}`, {
     headers: headers(),
   });
   if (!res.ok) throw new Error(`Error ${res.status} al listar preguntas`);
+  return res.json();
+}
+
+export interface OpcionPreview {
+  texto: string;
+  orden: number;
+  es_correcta: boolean;
+}
+
+export interface BlankPreview {
+  orden: number;
+  tipo: string;
+  texto_antes: string | null;
+  texto_despues: string | null;
+  opciones: OpcionPreview[];
+}
+
+/** Una pregunta del banco tal como la va a ver el alumno (c-78 E-08, 15.3). */
+export interface PreguntaPreview {
+  id: string;
+  enunciado: string;
+  tipo: string;
+  opciones: OpcionPreview[];
+  blanks: BlankPreview[];
+}
+
+export async function previewPreguntaBanco(
+  preguntaId: string,
+): Promise<PreguntaPreview> {
+  const res = await fetchAutenticado(
+    `${API_BASE}/exam-content/preguntas/${encodeURIComponent(preguntaId)}/preview`,
+    { headers: headers() },
+  );
+  if (!res.ok) throw new Error(`No se pudo cargar la vista previa (HTTP ${res.status}).`);
   return res.json();
 }
 
@@ -129,7 +164,7 @@ export async function moverPreguntaCategoria(
   preguntaId: string,
   categoriaId: string | null,
 ): Promise<void> {
-  const res = await fetch(
+  const res = await fetchAutenticado(
     `${API_BASE}/exam-content/preguntas/${encodeURIComponent(preguntaId)}/categoria`,
     {
       method: 'PATCH',
@@ -150,6 +185,20 @@ export interface CrearDesdebancoRequest {
   titulo: string;
   materia_id: string;
   comision_id?: string | null;
+  /**
+   * c-78 E-06: crea el mismo examen para varias comisiones de la materia. Se
+   * sortea una sola vez y ese set se copia a N exámenes independientes, en una
+   * operación todo o nada. Excluyente con `comision_id`.
+   */
+  comision_ids?: string[] | null;
+  /**
+   * c-78 E-07: cada alumno recibe preguntas distintas, sorteadas al arrancar su
+   * intento. El examen se lleva el POOL entero de cada tramo (no solo las que se
+   * sortean) y guarda la regla, así el sorteo posterior no depende del banco.
+   */
+  sorteo_por_intento?: boolean;
+  /** c-78 E-07: nace invisible para el alumno, para poder probarlo antes. */
+  borrador?: boolean;
   sorteo: SorteoCategoriaItem[];
   limite_preguntas?: number | null;
   /** Escala de calificación del examen. Default 100/60 si se omite (nunca "sobre 10"). */
@@ -157,16 +206,27 @@ export interface CrearDesdebancoRequest {
   nota_aprobacion?: number;
 }
 
+export interface ExamenReplicaItem {
+  examen_id: string;
+  comision_id: string | null;
+  titulo: string;
+}
+
 export interface CrearDesdebancoResponse {
+  /** El primer examen creado. Con una sola comisión, el único. */
   examen_id: string;
   titulo: string;
   total_preguntas: number;
+  /** Todos los exámenes creados, en el orden en que se pidieron las comisiones. */
+  examenes: ExamenReplicaItem[];
+  /** Marca compartida por las réplicas. null cuando se creó un examen solo. */
+  lote_replica_id: string | null;
 }
 
 export async function crearDesdeBanco(
   payload: CrearDesdebancoRequest,
 ): Promise<CrearDesdebancoResponse> {
-  const res = await fetch(`${API_BASE}/exam-content/crear-desde-banco`, {
+  const res = await fetchAutenticado(`${API_BASE}/exam-content/crear-desde-banco`, {
     method: 'POST',
     headers: headers(),
     body: JSON.stringify(payload),
@@ -213,6 +273,7 @@ export async function importarBancoXml(
   materiaId: string,
   file: File,
   categoriasExcluidas?: string[][],
+  categoriaPadreId?: string | null,
 ): Promise<ImportarBancoXmlResult> {
   const formData = new FormData();
   formData.append('materia_id', materiaId);
@@ -220,8 +281,15 @@ export async function importarBancoXml(
   if (categoriasExcluidas && categoriasExcluidas.length > 0) {
     formData.append('categorias_excluidas', JSON.stringify(categoriasExcluidas));
   }
+  // Bug real (2026-08-21, campus FRM): Moodle nunca exporta una categoría
+  // propia para el nodo "top" — las subcategorías quedaban sueltas sin padre
+  // común. categoria_padre_id (una categoría YA EXISTENTE elegida en un
+  // selector, no tipeada) anida todo el XML ahí.
+  if (categoriaPadreId) {
+    formData.append('categoria_padre_id', categoriaPadreId);
+  }
 
-  const res = await fetch(`${API_BASE}/exam-content/banco/importar-xml`, {
+  const res = await fetchAutenticado(`${API_BASE}/exam-content/banco/importar-xml`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${authProvider.getToken()}` },
     body: formData,
@@ -263,7 +331,7 @@ export async function previewImportarBancoXml(file: File): Promise<PreviewImport
   const formData = new FormData();
   formData.append('file', file);
 
-  const res = await fetch(`${API_BASE}/exam-content/banco/importar-xml/preview`, {
+  const res = await fetchAutenticado(`${API_BASE}/exam-content/banco/importar-xml/preview`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${authProvider.getToken()}` },
     body: formData,

@@ -58,6 +58,17 @@ class Rol(str, enum.Enum):
     # esa separacion es lo que evita que quien pone la nota decida el fraude.
     # (Rol "tutor" — antes llamado "docente"; renombrado en migracion 0060.)
     TUTOR = "tutor"
+    # c-78 (E-04, D11): el hueco entre TUTOR (demasiado poco: no crea examenes ni
+    # toca el banco) y COORDINADOR (demasiado: emite el VEREDICTO de integridad).
+    #
+    # El PROFESOR se define por lo que NO puede: emitir veredicto. Esa decision
+    # queda EXCLUSIVA del COORDINADOR. Es la misma separacion que ya justifica al
+    # TUTOR — quien pone la nota no decide si hubo fraude (regla dura #5) — y sin
+    # esa linea PROFESOR y COORDINADOR serian el mismo rol con dos nombres.
+    #
+    # Puede: crear examenes, gestionar el banco de preguntas, ver estadisticas,
+    # ver el registro de sesiones y supervisar en vivo (ver CAPABILITY_ROLES).
+    PROFESOR = "profesor"
 
 
 # Roles que EXIGEN MFA: todo el que accede a evidencia o administracion (`03`,
@@ -69,6 +80,9 @@ ROLES_CON_MFA: frozenset[Rol] = frozenset(
         # El tutor administra contenido academico (examenes con sus preguntas y
         # respuestas correctas): es acceso de administracion, exige MFA.
         Rol.TUTOR,
+        # c-78: el profesor CREA ese contenido (banco de preguntas incluido) y
+        # supervisa en vivo. Con mas acceso que el tutor, MFA no es opcional.
+        Rol.PROFESOR,
     }
 )
 
@@ -77,7 +91,7 @@ ROLES_CON_MFA: frozenset[Rol] = frozenset(
 # trabajo. Lo que NO gana por estar aca es supervision ni configuracion del
 # sistema — eso vive en CAPABILITY_ROLES, no en esta lista.
 ROLES_ADMIN_EXAMEN: frozenset[Rol] = frozenset(
-    {Rol.ADMIN_SISTEMA, Rol.TUTOR}
+    {Rol.ADMIN_SISTEMA, Rol.TUTOR, Rol.PROFESOR}
 )
 
 

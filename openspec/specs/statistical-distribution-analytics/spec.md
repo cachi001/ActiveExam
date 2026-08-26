@@ -1,8 +1,10 @@
-# Spec — statistical-distribution-analytics
+# statistical-distribution-analytics Specification
 
-> Distribución estadística de scores por examen y detección de outliers como señal de priorización (NUNCA veredicto, RN-SC-01, DD-01), más métricas de calidad del detector como insumo de calibración en Fase 2 (RN-SC-05).
+## Purpose
 
-## ADDED Requirements
+Distribución estadística de scores por examen y detección de outliers como señal de priorización (NUNCA veredicto, RN-SC-01, DD-01), más métricas de calidad del detector como insumo de calibración en Fase 2 (RN-SC-05).
+
+## Requirements
 
 ### Requirement: Distribución estadística de scores por examen
 El sistema SHALL exponer la **distribución estadística** de los scores finales de un examen (histograma y/o percentiles), calculada sobre los datos consolidados de C-13.

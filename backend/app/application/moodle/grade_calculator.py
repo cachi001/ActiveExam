@@ -48,11 +48,48 @@ class RespuestaAlumno:
     respuesta_cloze: dict[str, str] | None = field(default=None)
 
 
+async def _preguntas_que_cuentan(
+    db: AsyncSession,
+    *,
+    examen_contenido_id: str,
+    session_id: str | None,
+) -> list[str]:
+    """Las preguntas sobre las que se califica este intento.
+
+    c-78 E-07: con sorteo por intento, el set vive en ``pregunta_sesion``. Si el
+    intento tiene uno, ESE manda. Si no, se cae a ``seleccionada`` — que cubre los
+    exámenes en modo 'fijo', los importados de XML y los intentos anteriores al
+    cambio.
+    """
+    if session_id is not None:
+        from app.infrastructure.persistence.models.exam_content import (
+            PreguntaSesionModel,
+        )
+
+        del_intento = await db.execute(
+            select(PreguntaSesionModel.pregunta_id)
+            .where(PreguntaSesionModel.session_id == session_id)
+            .order_by(PreguntaSesionModel.orden)
+        )
+        ids = [str(r[0]) for r in del_intento.all()]
+        if ids:
+            return ids
+
+    seleccionadas = await db.execute(
+        select(PreguntaExamenModel.id).where(
+            PreguntaExamenModel.examen_id == examen_contenido_id,
+            PreguntaExamenModel.seleccionada.is_(True),
+        )
+    )
+    return [str(r) for r in seleccionadas.scalars().all()]
+
+
 async def calcular_nota_academica(
     *,
     db: AsyncSession,
     examen_contenido_id: str,
     respuestas: list[RespuestaAlumno],
+    session_id: str | None = None,
 ) -> float:
     """Calcula la nota académica (0..nota_maxima) de un alumno dado su examen.
 
@@ -75,17 +112,19 @@ async def calcular_nota_academica(
     respuesta a una pregunta deseleccionada no suma ni al numerador ni al
     denominador.
 
+    c-78 E-07: con ``session_id``, el conjunto que cuenta es el que le tocó a ESE
+    intento (``pregunta_sesion``), no el pool del examen. Con sorteo por intento
+    cada alumno rinde preguntas distintas, así que usar el pool como denominador
+    le daría 10/30 a quien contestó bien sus 10. Si el intento no tiene set
+    registrado (examen en modo 'fijo', o un intento anterior al cambio) cae a
+    ``seleccionada``, que es el comportamiento de siempre.
+
     No recibe ni usa score/flags de proctoring — L2.5: el proctoring no altera
     la nota académica de forma automática.
     """
-    # Contar total de preguntas SELECCIONADAS del examen (opción B)
-    total_result = await db.execute(
-        select(PreguntaExamenModel.id).where(
-            PreguntaExamenModel.examen_id == examen_contenido_id,
-            PreguntaExamenModel.seleccionada.is_(True),
-        )
+    pregunta_ids = await _preguntas_que_cuentan(
+        db, examen_contenido_id=examen_contenido_id, session_id=session_id
     )
-    pregunta_ids = [r for r in total_result.scalars().all()]
     total_preguntas = len(pregunta_ids)
 
     if total_preguntas == 0 or not respuestas:
@@ -94,9 +133,14 @@ async def calcular_nota_academica(
     # Para cada respuesta del alumno, verificar server-side si es_correcta
     # C-74 §6: preguntas cloze contribuyen (blanks_correctos/blanks_totales) × 1 slot.
     correctas: float = 0.0
+    # Set y no lista: con sorteo por intento esto se recorre por cada respuesta y
+    # el pool puede ser de cientos.
+    ids_que_cuentan = set(pregunta_ids)
     for resp in respuestas:
-        # Solo verificar respuestas que correspondan a preguntas de ESTE examen
-        if resp.pregunta_id not in pregunta_ids:
+        # Solo verificar respuestas que correspondan a preguntas de ESTE intento.
+        # El cliente es un sensor no confiable (regla dura #6): mandar respuestas
+        # de preguntas que no le tocaron no puede inflar la nota.
+        if str(resp.pregunta_id) not in ids_que_cuentan:
             continue
 
         if resp.respuesta_cloze is not None:
@@ -181,7 +225,9 @@ async def _calcular_fraccion_cloze(
 # En un blank MULTICHOICE el alumno elige de una lista y manda el id de la opción.
 # En SHORTANSWER/NUMERICAL escribe libre y manda TEXTO: ahí las opciones de la DB
 # son las respuestas ACEPTADAS y hay que comparar contra su texto, no contra su id.
-_BLANK_ELIGE_OPCION = ("multichoice", "multichoice_nocase", "multiresponse")
+# "matching" (C-78, emparejamiento) también elige de una lista (el pool de
+# respuestas de la pregunta) — mismo criterio que multichoice, por id.
+_BLANK_ELIGE_OPCION = ("multichoice", "multichoice_nocase", "multiresponse", "matching")
 
 
 async def _blank_acertado(

@@ -4,6 +4,7 @@ import { AdminTable, type AdminColumn } from '../../../ui/AdminTable';
 import { ActionMenu } from '../../../ui/ActionMenu';
 import { RolBadge, EstadoSwitch } from './UsuarioHelpers';
 import type { UsuarioAdmin } from '../../../lib/types';
+import { usernameAdmin } from '../../../lib/identidadVisible';
 
 interface UsuarioTableProps {
   usuarios: UsuarioAdmin[];
@@ -31,6 +32,12 @@ function itemsMateriaComision(usuario: UsuarioAdmin) {
 function SinDato() {
   return <span className="text-surface-300 text-xs">—</span>;
 }
+
+/* c-78: acá el username técnico (`lti:1:7`) SÍ se muestra, a propósito. Es la
+ * pantalla de administración de usuarios: el admin necesita ver la clave real
+ * para identificar la cuenta, resolver un duplicado o cruzarla contra Moodle.
+ * Lo que se corrigió es que el ALUMNO no la vea (su Perfil y el encabezado del
+ * portal) — ver lib/identidadVisible.ts. */
 
 /** Nombre legible de la fila: nombre+apellido, o el que haya, o el email.
  * Si TODO viene vacío (cuenta LTI provisionada antes del fix de 2026-08-19,
@@ -126,7 +133,19 @@ export function UsuarioTable({
             >
               {nombreMostrar(u)}
             </button>
-            <p className="text-xs font-mono text-surface-400 mt-0.5">{u.username}</p>
+            {/* c-78: nunca la clave interna `lti:1:7`. Se dice el ESTADO real. */}
+            {(() => {
+              const ident = usernameAdmin(u.username);
+              return (
+                <p
+                  className={`text-xs mt-0.5 ${
+                    ident.pendiente ? 'italic text-warning' : 'font-mono text-surface-400'
+                  }`}
+                >
+                  {ident.texto}
+                </p>
+              );
+            })()}
           </div>
         </div>
       ),
@@ -267,7 +286,18 @@ export function UsuarioTable({
                   {nombreMostrar(u)}
                 </button>
                 <p className="text-xs text-gray-500 truncate mt-0.5">{u.email}</p>
-                <p className="text-xs font-mono text-gray-400 mt-0.5">{u.username}</p>
+                {(() => {
+                  const ident = usernameAdmin(u.username);
+                  return (
+                    <p
+                      className={`text-xs mt-0.5 ${
+                        ident.pendiente ? 'italic text-warning' : 'font-mono text-gray-400'
+                      }`}
+                    >
+                      {ident.texto}
+                    </p>
+                  );
+                })()}
                 <div className="flex flex-wrap gap-1 mt-1.5">
                   {u.roles.map((r) => <RolBadge key={r} rol={r} />)}
                 </div>

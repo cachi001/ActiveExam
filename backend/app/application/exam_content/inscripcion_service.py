@@ -46,6 +46,10 @@ class AlumnoElegibilidad:
     biometria_vigente: bool
     puede_rendir: bool
     razon: str | None
+    # c-78 §13.4: cuándo se inscribió. Es la columna que permite cruzar el listado
+    # contra el padrón del campus ("este se anotó después del cierre de
+    # inscripción"). None solo si el dato no vino proyectado.
+    inscripto_en: object | None = None
 
 
 @dataclass(frozen=True)
@@ -286,6 +290,7 @@ class InscripcionService:
                     email=usuario.email,
                     consentimiento_vigente=consentimiento_vigente,
                     biometria_vigente=biometria_vigente,
+                    inscripto_en=getattr(usuario, "inscripto_en", None),
                     puede_rendir=puede_rendir,
                     razon=_razon(consentimiento_vigente, biometria_vigente),
                 )

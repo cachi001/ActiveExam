@@ -236,7 +236,7 @@ export default function StudentProfile() {
 
   if (paso === 'cargando') {
     return (
-      <StudentShell>
+      <StudentShell ocultarNavegacion>
         <div className="min-h-[calc(100dvh-13rem)] flex items-center justify-center">
           <LoadingSpinner label="Cargando perfil…" />
         </div>
@@ -251,7 +251,7 @@ export default function StudentProfile() {
     // ya están hechos y confunde — ver feedback del dueño).
     const esReconsentimiento = !!enrollment?.consentimiento && !!enrollment?.biometria;
     return (
-      <StudentShell>
+      <StudentShell ocultarNavegacion>
         <EnrollmentStepLayout
           maxWidth="3xl"
           title="Consentimiento informado"
@@ -271,7 +271,7 @@ export default function StudentProfile() {
   // C-66: lectura del consentimiento ya aceptado (solo lectura, sin formulario)
   if (paso === 'leer_consentimiento') {
     return (
-      <StudentShell>
+      <StudentShell ocultarNavegacion>
         <EnrollmentStepLayout
           maxWidth="3xl"
           title="Consentimiento informado"
@@ -291,7 +291,7 @@ export default function StudentProfile() {
   // C-56: Paso foto de perfil — entre consentimiento y biometría
   if (paso === 'foto_perfil') {
     return (
-      <StudentShell>
+      <StudentShell ocultarNavegacion>
         <EnrollmentStepLayout
           title="Foto de perfil"
           subtitle="Tu foto se usará como tu imagen en la plataforma."
@@ -314,7 +314,7 @@ export default function StudentProfile() {
 
   if (paso === 'biometria') {
     return (
-      <StudentShell>
+      <StudentShell ocultarNavegacion>
         <EnrollmentStepLayout
           title="Captura biométrica de referencia"
           subtitle="Configurás tu referencia una sola vez. En cada examen comparamos tu rostro con ella para confirmar que sos vos."
@@ -333,7 +333,7 @@ export default function StudentProfile() {
 
   if (paso === 'renovar_biometria') {
     return (
-      <StudentShell>
+      <StudentShell ocultarNavegacion>
         <EnrollmentStepLayout
           title="Renovar referencia biométrica"
           subtitle={<>La nueva captura reemplazará tu referencia actual y tendrá vigencia de {enrollment?.biometria?.vigencia_meses ?? 24} meses.</>}
@@ -351,7 +351,7 @@ export default function StudentProfile() {
 
   if (paso === 'dni') {
     return (
-      <StudentShell>
+      <StudentShell ocultarNavegacion>
         <EnrollmentStepLayout
           title="Verificación documental"
           subtitle="Opcional. Escanear tu DNI (frente y dorso) refuerza la verificación, pero no es obligatorio para completar el perfil."

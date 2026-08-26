@@ -60,3 +60,13 @@ docs/
 # Throwaways locales de la sesión de demo (no versionar)
 tmp/
 import_cloze.py
+
+# Credenciales de prueba y exports locales: el repo es PUBLICO.
+credenciales.md
+export-page.md
+Informe_Estado_Proctoring_*.pdf
+
+# Config de Prometheus que apunta a PRODUCCION: lleva el METRICS_TOKEN real.
+# El repo es publico — este archivo NUNCA se versiona. La plantilla sin secreto
+# es prometheus.render.yml.ejemplo.
+infra/observability/prometheus/local/

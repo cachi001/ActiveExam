@@ -19,6 +19,7 @@ import {
 import { FullscreenLockdown } from '../proctoring/fullscreenLockdown';
 import { MonitorBloqueante } from './examen/MonitorBloqueante';
 import { AlertaCritica } from './examen/AlertaCritica';
+import { CalibracionMirada } from './examen/CalibracionMirada';
 import { LockdownOverlay } from './examen/LockdownOverlay';
 import { ExamenPreguntaCard } from './examen/ExamenPreguntaCard';
 import { ExamenErrorInicio } from './examen/ExamenErrorInicio';
@@ -31,6 +32,13 @@ import { Card, Button, Icon } from '../ui/components';
 
 // C-72 sección 7: mensajes al alumno cuando el backend rechaza guardar respuestas
 // (409). Distintos entre sí; alineados con Moodle (auto-entrega + aviso claro).
+/**
+ * Cuántas veces se reintenta recuperar lo ya contestado al reanudar antes de
+ * dejar el aviso fijo. 3 intentos cada 3 s cubren el corte de unos segundos que
+ * es el caso típico; más que eso ya no es un hipo y el alumno tiene que saberlo.
+ */
+const MAX_INTENTOS_RESTAURACION = 3;
+
 const MENSAJE_409: Record<string, string> = {
   tiempo_agotado:
     'Se agotó el tiempo del examen. Ya no se pueden guardar respuestas. Se conservaron las que enviaste dentro del plazo.',
@@ -69,6 +77,8 @@ export default function Examen() {
   // (server la setea idempotente en el primer fetch). Preferida sobre creada_en de
   // la sesión, que puede caer en el consentimiento anticipado (fix del "60 → 58").
   const [examenIniciadoEn, setExamenIniciadoEn] = useState<string | null>(null);
+  // c-78 D10: lo decide el examen, no el cliente. Default false (no mostrar).
+  const [mostrarEventosAlumno, setMostrarEventosAlumno] = useState(false);
   const [segRestantes, setSegRestantes] = useState<number | null>(null);
   const [alerta, setAlerta] = useState<EventoSesion | null>(null);
   const [pausaActiva, setPausaActiva] = useState(false);
@@ -85,6 +95,10 @@ export default function Examen() {
   const [bloqueado, setBloqueado] = useState(false);
   const lockdownRef = useRef<FullscreenLockdown | null>(null);
 
+  // Ambos arrancan prendidos (migración 0098): el sistema viene con la
+  // funcionalidad completa. El costo de polling del chat mientras carga la config
+  // es de unos pocos segundos y el backend igual hace valer el interruptor real
+  // (gate 403), así que mostrarlo de más no habilita nada.
   const [chatHabilitado, setChatHabilitado] = useState(true);
   const [pausasHabilitadas, setPausasHabilitadas] = useState(true);
   useEffect(() => {
@@ -97,7 +111,7 @@ export default function Examen() {
     });
   }, []);
 
-  const { sessionId, sessionCreadaEn, score, eventCount, activo, eventos, extraMonitorActive, sessionError, detener, setPausaAprobada } = useExamProctoring(videoRef, examen);
+  const { sessionId, sessionCreadaEn, score, eventCount, activo, eventos, extraMonitorActive, sessionError, calibrando, detener, setPausaAprobada, evidenciaEnRiesgo } = useExamProctoring(videoRef, examen);
 
   // Entrega: confirmación previa (nunca finalizar por un click accidental) + estado
   // de envío + error de entrega (si el POST de respuestas falla NO se navega a /cierre,
@@ -108,9 +122,36 @@ export default function Examen() {
   // C-72 sección 7: mensaje de "se acabó el tiempo" / "ya finalizado" cuando el
   // backend rechaza guardar respuestas (409). NUNCA pérdida silenciosa.
   const [mensajeTiempo, setMensajeTiempo] = useState<string | null>(null);
+  // Guardado en riesgo: el último autoguardado NO llegó al servidor (red caída,
+  // servidor sin responder). Mismo criterio que Moodle, que ante un autosave
+  // fallido muestra un aviso en pantalla en vez de dejar al alumno creyendo que
+  // sus respuestas están guardadas. Es la diferencia entre perder trabajo sin
+  // enterarse y poder esperar a reconectar antes de seguir.
+  const [guardadoEnRiesgo, setGuardadoEnRiesgo] = useState(false);
+  // c-78: no se pudo recuperar lo ya contestado al reanudar (reload / corte).
+  const [restauracionFallida, setRestauracionFallida] = useState(false);
+  const [intentoRestauracion, setIntentoRestauracion] = useState(0);
 
   useEffect(() => {
-    navigator.mediaDevices?.getUserMedia({ video: true }).then((s) => {
+    // 960x540 explícito. Sin restricción el navegador entrega la resolución nativa
+    // de la webcam (1080p en las actuales) y `captureVideoFrame` codifica ESE frame
+    // entero, que después se cifra y termina en Postgres.
+    //
+    // Medido el 25/8/2026 con una imagen de contenido realista, para un examen de
+    // 2 h con 100 alumnos:
+    //   1920x1080 cada 120 s -> 2565 MB   (no entra: la base del plan free es 1 GB)
+    //    960x540  cada 180 s ->  443 MB
+    //
+    // 960x540 es la resolución elegida por el dueño: se ve con claridad si hay otra
+    // persona o si el alumno mira a otro lado, que es para lo que un revisor humano
+    // mira la captura. La verificación de identidad usa 640x480 y le alcanza; acá se
+    // va por encima a propósito, porque estas imágenes las mira una persona.
+    //
+    // `ideal` y no `exact`: si una cámara no soporta esa resolución entrega la más
+    // cercana, en vez de fallar y dejar al alumno sin cámara.
+    navigator.mediaDevices?.getUserMedia({
+      video: { width: { ideal: 960 }, height: { ideal: 540 } },
+    }).then((s) => {
       streamRef.current = s;
       if (videoRef.current) { videoRef.current.srcObject = s; videoRef.current.play().catch(() => {}); }
     }).catch(() => {});
@@ -136,6 +177,7 @@ export default function Examen() {
         setMezclar(!!data.mezclar_preguntas);
         setTiempoLimiteMin(data.tiempo_limite_min ?? null);
         setExamenIniciadoEn(data.examen_iniciado_en ?? null);
+        setMostrarEventosAlumno(!!data.mostrar_eventos_alumno);
         // segRestantes se calcula en el efecto de abajo, anclado al inicio REAL del
         // examen (examen_iniciado_en, server-autoritativo) — no acá, para no
         // regalarle tiempo extra a un F5.
@@ -218,14 +260,28 @@ export default function Examen() {
             setRespuestasCloze((prev) => ({ ...prev, ...cloze }));
           }
         }
+        setRestauracionFallida(false);
       } catch {
-        // Degradación silenciosa (R3): si falla, el alumno sigue con lo que tenga
-        // en memoria — no bloquea el examen.
+        // c-78: antes esto era mudo, y como la capa de API devolvía [] ante un
+        // fallo de red, el alumno que recargaba veía un examen EN BLANCO sin
+        // ninguna señal de que sus respuestas estaban a salvo en el servidor.
+        // Ahora se avisa. NO se bloquea el examen: el autoguardado escribe por
+        // pregunta, así que seguir contestando no pisa lo que ya está guardado.
+        setRestauracionFallida(true);
       } finally {
         respuestasHidratadasRef.current = true;
       }
     })();
-  }, [sessionId]);
+  }, [sessionId, intentoRestauracion]);
+
+  // Reintento de la restauración: un corte de un segundo justo al recargar no
+  // puede dejar al alumno mirando un examen vacío el resto del examen.
+  useEffect(() => {
+    if (!restauracionFallida) return;
+    if (intentoRestauracion >= MAX_INTENTOS_RESTAURACION) return;
+    const t = setTimeout(() => setIntentoRestauracion((n) => n + 1), 3000);
+    return () => clearTimeout(t);
+  }, [restauracionFallida, intentoRestauracion]);
 
   // Vuln reload — submit incremental: guarda las respuestas server-side en CADA
   // cambio (debounced 800ms), no solo al entregar. Antes, `respuestas` vivía SOLO
@@ -244,10 +300,19 @@ export default function Examen() {
       if (items.length === 0) return;
       // C-72 sección 7: si el backend rechaza por plazo (409), mostrar el aviso —
       // el alumno se entera de que se acabó el tiempo, sin pérdida silenciosa.
-      api.enviarRespuestasProctoring(sessionId, items).catch((e) => {
-        const code = codigo409(e);
-        if (code) setMensajeTiempo(MENSAJE_409[code]);
-      });
+      api.enviarRespuestasProctoring(sessionId, items)
+        .then(() => setGuardadoEnRiesgo(false))
+        .catch((e) => {
+          const code = codigo409(e);
+          if (code) {
+            // 409 = el servidor CONTESTÓ y rechazó por plazo. No es un problema de
+            // conexión: se avisa por su propio mensaje, no por el de red.
+            setMensajeTiempo(MENSAJE_409[code]);
+            setGuardadoEnRiesgo(false);
+          } else {
+            setGuardadoEnRiesgo(true);
+          }
+        });
     }, 800);
     return () => {
       if (submitTimeoutRef.current) clearTimeout(submitTimeoutRef.current);
@@ -340,6 +405,74 @@ export default function Examen() {
 
         {/* C-72 sección 7: aviso de tiempo agotado / examen ya entregado. El backend
             rechazó guardar respuestas (409); el alumno se entera sin perder su trabajo. */}
+        {guardadoEnRiesgo && (
+          <div
+            role="alert"
+            className="mb-lg rounded-xl border border-error/50 bg-error-container/60 px-md py-base
+              text-label-md text-on-error-container flex items-start gap-sm"
+          >
+            <Icon name="cloud_off" className="text-[20px] shrink-0" fill />
+            <span>
+              <strong>No estamos pudiendo guardar tus respuestas.</strong> Puede ser tu
+              conexión a internet. Anotá aparte lo que respondiste desde hace un rato y
+              esperá a estar conectado antes de seguir. Se reintenta solo: este aviso
+              desaparece cuando vuelva a guardar.
+            </span>
+          </div>
+        )}
+
+        {/* c-78: no se pudo recuperar lo ya contestado al reanudar. Lo importante
+            del mensaje es que NO vuelva a contestar todo creyendo que se perdió. */}
+        {restauracionFallida && intentoRestauracion >= MAX_INTENTOS_RESTAURACION && (
+          <div
+            role="alert"
+            className="mb-lg rounded-xl border border-warning/50 bg-warning-container/70 px-md py-base
+              text-label-md text-on-warning-container flex items-start gap-sm"
+          >
+            <Icon name="history" className="text-[20px] shrink-0" fill />
+            <span>
+              <strong>No pudimos mostrarte lo que ya habías contestado.</strong> Tus
+              respuestas anteriores están guardadas en el servidor y se van a tener
+              en cuenta para la nota: no hace falta que las vuelvas a cargar. Seguí
+              desde donde ibas.
+            </span>
+          </div>
+        )}
+
+        {/* c-78: la evidencia de supervisión tampoco se pierde en silencio. La
+            variante `pendiente` se calla si ya está el aviso de respuestas: es la
+            misma conexión caída y no hace falta alarmar dos veces. `perdida` se
+            muestra siempre — eso no vuelve. */}
+        {evidenciaEnRiesgo === 'pendiente' && !guardadoEnRiesgo && (
+          <div
+            role="status"
+            className="mb-lg rounded-xl border border-warning/50 bg-warning-container/70 px-md py-base
+              text-label-md text-on-warning-container flex items-start gap-sm"
+          >
+            <Icon name="sync_problem" className="text-[20px] shrink-0" fill />
+            <span>
+              <strong>Hay registros de supervisión sin enviar.</strong> Quedaron
+              guardados en tu equipo y se reintenta solo. Seguí rindiendo con
+              normalidad, y no cierres esta pestaña hasta que el aviso desaparezca.
+            </span>
+          </div>
+        )}
+
+        {evidenciaEnRiesgo === 'perdida' && (
+          <div
+            role="alert"
+            className="mb-lg rounded-xl border border-error/50 bg-error-container/60 px-md py-base
+              text-label-md text-on-error-container flex items-start gap-sm"
+          >
+            <Icon name="cloud_off" className="text-[20px] shrink-0" fill />
+            <span>
+              <strong>Tu equipo no pudo guardar parte del registro de supervisión.</strong>{' '}
+              Suele ser falta de espacio en el disco. Avisale a quien te está tomando
+              el examen: queda constancia de que pasó.
+            </span>
+          </div>
+        )}
+
         {mensajeTiempo && (
           <div
             role="alert"
@@ -388,6 +521,7 @@ export default function Examen() {
                 score={score}
                 eventos={eventos}
                 examen={examen}
+                mostrarEventos={mostrarEventosAlumno}
               />
             </div>
           </main>
@@ -484,6 +618,7 @@ export default function Examen() {
         </div>
       )}
 
+      {calibrando && <CalibracionMirada />}
       {alerta && <AlertaCritica ev={alerta} onClose={() => setAlerta(null)} />}
       {extraMonitorActive && <MonitorBloqueante />}
       {bloqueado && (

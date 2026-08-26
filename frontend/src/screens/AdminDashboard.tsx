@@ -14,6 +14,7 @@ import { Icon, Card, LoadingSpinner } from '../ui/components';
 import { HelpButton } from '../ui/HelpButton';
 import { StatCard } from './proctoring/StatCard';
 import { statProps } from './proctoring/statCatalog';
+import { entraACola } from './proctoring/colaAgregacion';
 import { Link } from '../lib/router';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/authStore';
@@ -94,7 +95,11 @@ export default function AdminDashboard() {
   useAutoRefresh(recargar, undefined, !refrescando);
 
   const totalSesiones = sesiones?.length ?? null;
-  const flagged = sesiones ? sesiones.filter((s) => (s.score ?? 0) >= umbral).length : 0;
+  // F-01 (c-78 D3): se cuenta con el MISMO predicado que usa la Cola de revisión
+  // (`entraACola`), no con una condición propia. Antes acá solo se miraba el score,
+  // así que las sesiones de diagnóstico sobre el umbral inflaban el número y el
+  // Panel mostraba más "en cola" que la propia Cola de revisión para el mismo dato.
+  const flagged = sesiones ? sesiones.filter((s) => entraACola(s, umbral)).length : 0;
 
   return (
     <StaffShell
@@ -124,24 +129,29 @@ export default function AdminDashboard() {
         {/* Stat cards con datos reales (catálogo + sesiones de proctoring). Cuando
             no hay sesiones se muestra 0 / 0% (no "—"). */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-md">
+          {/* D4: las tres salen del catálogo de métricas (statProps). Un label,
+              icono o tono hardcodeado acá es lo que hacía que "Sesiones" y "Cola de
+              revisión" significaran cosas distintas según la pantalla. */}
           <StatCard
-            icon="assignment"
-            label="Exámenes"
-            value={statExamenesValue(examenesState.status, examenes.length)}
-            sub="importados"
-            tono="primary"
+            {...statProps('examenes', statExamenesValue(examenesState.status, examenes.length))}
           />
           {/* '—' cuando la carga falló: un cero por caída no puede verse igual que
-              un cero real. */}
+              un cero real. El `sub` DECLARA el alcance (F-02): este panel cuenta
+              actividad de CUALQUIER estado, a diferencia de Registro de sesiones,
+              que cuenta solo las finalizadas. */}
           <StatCard
-            {...statProps('sesiones', sesionesError ? '—' : (totalSesiones ?? '…'))}
+            {...statProps(
+              'sesiones',
+              sesionesError ? '—' : (totalSesiones ?? '…'),
+              'registradas, en cualquier estado',
+            )}
           />
           <StatCard
-            icon="flag"
-            label="Cola de revisión"
-            value={sesionesError ? '—' : sesiones === null ? '…' : flagged}
-            sub="sesiones en revisión"
-            tono="warning"
+            {...statProps(
+              'enColaRevision',
+              sesionesError ? '—' : sesiones === null ? '…' : flagged,
+              'con examen vinculado, sobre el umbral',
+            )}
           />
         </div>
 

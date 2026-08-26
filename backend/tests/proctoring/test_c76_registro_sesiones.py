@@ -28,6 +28,8 @@ _TABLAS = (
     "proctoring_event",
     "proctoring_biometria",
     "proctoring_session",
+    "comision_tutor",
+    "materia_coordinador",
     "comision",
     "materia",
     "examen_contenido",
@@ -37,6 +39,12 @@ _TABLAS = (
 _TEST_JWT_SECRET = b"c76-registro-sesiones-test-secret"
 _TEST_JWT_ISSUER = "activeexam-auth"
 _TEST_JWT_AUDIENCE = "proctoring-api"
+
+# c-79: el COORDINADOR ya no tiene alcance global — necesita una fila en
+# `materia_coordinador` por cada materia que deba ver. Usamos un UUID fijo
+# (subject del JWT == usuario.id == materia_coordinador.coordinador_id) y
+# `_crear_examen` lo vincula automaticamente a cada materia que crea.
+_COORD_ID = str(uuid.uuid4())
 
 
 def _db_url() -> str | None:
@@ -85,6 +93,10 @@ async def ctx():
         ProctoringEventModel,
         ProctoringSessionModel,
     )
+    from app.infrastructure.persistence.models.comision_tutor import (
+        ComisionTutorModel,
+        MateriaCoordinadorModel,
+    )
     from app.infrastructure.persistence.models.transactional import UsuarioModel
     from app.presentation.api.v1.proctoring.router import create_proctoring_router
     from app.infrastructure.reinferencia.mediapipe_adapter import MediaPipeReinferencia
@@ -96,12 +108,25 @@ async def ctx():
         await conn.run_sync(UsuarioModel.__table__.create, checkfirst=True)
         await conn.run_sync(MateriaModel.__table__.create, checkfirst=True)
         await conn.run_sync(ComisionModel.__table__.create, checkfirst=True)
+        await conn.run_sync(ComisionTutorModel.__table__.create, checkfirst=True)
+        await conn.run_sync(MateriaCoordinadorModel.__table__.create, checkfirst=True)
         await conn.run_sync(ExamenContenidoModel.__table__.create, checkfirst=True)
         await conn.run_sync(ProctoringSessionModel.__table__.create, checkfirst=True)
         await conn.run_sync(ProctoringEventModel.__table__.create, checkfirst=True)
         await conn.run_sync(ProctoringBiometriaModel.__table__.create, checkfirst=True)
 
     factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+
+    async with factory() as session:
+        session.add(
+            UsuarioModel(
+                id=_COORD_ID,
+                username="coord-1",
+                email="coord-1@uni.edu",
+                roles=["coordinador"],
+            )
+        )
+        await session.commit()
 
     app = FastAPI()
     cache = JwksCache(lambda: {"keys": [{"kid": "test-key"}]}, ttl_seconds=3600)
@@ -125,7 +150,15 @@ async def ctx():
 
 
 async def _crear_examen(factory, *, titulo: str, docente_id: str | None = None) -> str:
-    """Crea materia + comision (+ examen). Devuelve examen_contenido_id."""
+    """Crea materia + comision (+ examen). Devuelve examen_contenido_id.
+
+    Vincula siempre `_COORD_ID` como coordinador de la materia creada (c-79):
+    el coordinador usado en los headers de este modulo necesita esa fila para
+    poder ver lo que crea cada test."""
+    from app.infrastructure.persistence.models.comision_tutor import (
+        ComisionTutorModel,
+        MateriaCoordinadorModel,
+    )
     from app.infrastructure.persistence.models.exam_content import (
         ComisionModel,
         ExamenContenidoModel,
@@ -146,15 +179,24 @@ async def _crear_examen(factory, *, titulo: str, docente_id: str | None = None) 
         materia = MateriaModel(codigo=f"MAT-{uuid.uuid4().hex[:8]}", nombre="Materia Test")
         session.add(materia)
         await session.flush()
+        session.add(
+            MateriaCoordinadorModel(materia_id=materia.id, coordinador_id=_COORD_ID)
+        )
         comision = ComisionModel(
             materia_id=materia.id,
             codigo="C1",
             nombre="Comision 1",
             codigo_matriculacion=f"MAT-C1-{uuid.uuid4().hex[:8]}",
-            docente_id=docente_id,
         )
         session.add(comision)
         await session.flush()
+        # c-78 (migración 0093): `comision.docente_id` se dropeó. La pertenencia
+        # vive SOLO en comision_tutor (N:M).
+        if docente_id is not None:
+            session.add(
+                ComisionTutorModel(comision_id=comision.id, tutor_id=docente_id)
+            )
+            await session.flush()
         examen = ExamenContenidoModel(titulo=titulo, comision_id=comision.id)
         session.add(examen)
         await session.commit()
@@ -213,7 +255,7 @@ async def test_paginacion_real_pagina_1_de_2(ctx) -> None:
     resp = await client.get(
         "/api/v1/proctoring/sessions/registro",
         params={"page": 1, "page_size": 2},
-        headers=_h(["coordinador"], "coord-1"),
+        headers=_h(["coordinador"], _COORD_ID),
     )
     assert resp.status_code == 200
     body = resp.json()
@@ -232,7 +274,7 @@ async def test_paginacion_real_pagina_2_trae_el_resto(ctx) -> None:
     resp = await client.get(
         "/api/v1/proctoring/sessions/registro",
         params={"page": 2, "page_size": 2},
-        headers=_h(["coordinador"], "coord-1"),
+        headers=_h(["coordinador"], _COORD_ID),
     )
     assert resp.status_code == 200
     body = resp.json()
@@ -252,7 +294,7 @@ async def test_filtro_alumno_por_idnumber(ctx) -> None:
     resp = await client.get(
         "/api/v1/proctoring/sessions/registro",
         params={"q": "999"},
-        headers=_h(["coordinador"], "coord-1"),
+        headers=_h(["coordinador"], _COORD_ID),
     )
     assert resp.status_code == 200
     body = resp.json()
@@ -286,7 +328,7 @@ async def test_filtro_alumno_por_nombre_y_respuesta_incluye_alumno_nombre(ctx) -
     resp = await client.get(
         "/api/v1/proctoring/sessions/registro",
         params={"q": "Gomez"},
-        headers=_h(["coordinador"], "coord-1"),
+        headers=_h(["coordinador"], _COORD_ID),
     )
     assert resp.status_code == 200
     body = resp.json()
@@ -308,7 +350,7 @@ async def test_filtro_por_examen(ctx) -> None:
     resp = await client.get(
         "/api/v1/proctoring/sessions/registro",
         params={"exam_id": examen_a},
-        headers=_h(["coordinador"], "coord-1"),
+        headers=_h(["coordinador"], _COORD_ID),
     )
     assert resp.status_code == 200
     body = resp.json()
@@ -331,7 +373,7 @@ async def test_filtro_por_rango_de_fecha(ctx) -> None:
     resp = await client.get(
         "/api/v1/proctoring/sessions/registro",
         params={"fecha_desde": desde},
-        headers=_h(["coordinador"], "coord-1"),
+        headers=_h(["coordinador"], _COORD_ID),
     )
     assert resp.status_code == 200
     body = resp.json()
@@ -355,7 +397,7 @@ async def test_filtro_por_nivel_de_riesgo_alto(ctx) -> None:
     resp = await client.get(
         "/api/v1/proctoring/sessions/registro",
         params={"nivel_riesgo": "alto"},
-        headers=_h(["coordinador"], "coord-1"),
+        headers=_h(["coordinador"], _COORD_ID),
     )
     assert resp.status_code == 200
     body = resp.json()
@@ -376,7 +418,7 @@ async def test_filtro_por_nivel_de_riesgo_bajo(ctx) -> None:
     resp = await client.get(
         "/api/v1/proctoring/sessions/registro",
         params={"nivel_riesgo": "bajo"},
-        headers=_h(["coordinador"], "coord-1"),
+        headers=_h(["coordinador"], _COORD_ID),
     )
     assert resp.status_code == 200
     body = resp.json()
@@ -389,7 +431,7 @@ async def test_nivel_riesgo_invalido_422(ctx) -> None:
     resp = await client.get(
         "/api/v1/proctoring/sessions/registro",
         params={"nivel_riesgo": "extremo"},
-        headers=_h(["coordinador"], "coord-1"),
+        headers=_h(["coordinador"], _COORD_ID),
     )
     assert resp.status_code == 422
 
@@ -412,7 +454,7 @@ async def test_solo_lista_sesiones_finalizadas(ctx) -> None:
 
     resp = await client.get(
         "/api/v1/proctoring/sessions/registro",
-        headers=_h(["coordinador"], "coord-1"),
+        headers=_h(["coordinador"], _COORD_ID),
     )
     assert resp.status_code == 200
     assert resp.json()["total"] == 1
@@ -451,7 +493,7 @@ async def test_catalogo_examenes_solo_los_que_tienen_sesiones(ctx) -> None:
 
     resp = await client.get(
         "/api/v1/proctoring/sessions/registro/examenes",
-        headers=_h(["coordinador"], "coord-1"),
+        headers=_h(["coordinador"], _COORD_ID),
     )
     assert resp.status_code == 200
     body = resp.json()
@@ -484,7 +526,7 @@ async def test_agregados_reflejan_el_total_filtrado_no_la_pagina(ctx) -> None:
     resp = await client.get(
         "/api/v1/proctoring/sessions/registro",
         params={"page": 1, "page_size": 5},
-        headers=_h(["coordinador"], "coord-1"),
+        headers=_h(["coordinador"], _COORD_ID),
     )
     assert resp.status_code == 200
     body = resp.json()
@@ -514,7 +556,7 @@ async def test_agregados_respetan_el_filtro_de_nivel_de_riesgo(ctx) -> None:
     resp = await client.get(
         "/api/v1/proctoring/sessions/registro",
         params={"nivel_riesgo": "alto"},
-        headers=_h(["coordinador"], "coord-1"),
+        headers=_h(["coordinador"], _COORD_ID),
     )
     assert resp.status_code == 200
     body = resp.json()

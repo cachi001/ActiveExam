@@ -1,0 +1,35 @@
+# Prometheus apuntando a PRODUCCIÓN (Render) — PLANTILLA, sin secreto.
+#
+# Para usarla:
+#   1. Copiala a `local/prometheus.render.yml` (esa carpeta está gitignoreada).
+#   2. Reemplazá EL_TOKEN por el valor real de METRICS_TOKEN (el mismo que está
+#      cargado en las variables de entorno del servicio en Render).
+#   3. Levantá Prometheus contra ese archivo:
+#
+#        docker run --rm -p 9091:9090 \
+#          -v "$PWD/infra/observability/prometheus/local/prometheus.render.yml:/etc/prometheus/prometheus.yml:ro" \
+#          prom/prometheus:v3.0.1
+#
+# ⚠️ El archivo con el token NO se versiona: este repo es PÚBLICO. Por eso la
+# plantilla vive acá y el archivo real en `local/`.
+#
+# Nota sobre el intervalo: 15 s en vez de los 5 s del stack local. El plan free
+# de Render tiene poca CPU y no tiene sentido gastarla respondiendo scrapes
+# mientras se corre la prueba de carga — es justo lo que se está midiendo.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: activeexam-render
+    metrics_path: /metrics
+    scheme: https
+    # `/metrics` está cerrado (c-78): sin credencial responde 404, y con
+    # METRICS_TOKEN seteado exige este header. Es el esquema que Prometheus
+    # habla nativo, así que no hace falta un proxy en el medio.
+    authorization:
+      type: Bearer
+      credentials: EL_TOKEN
+    static_configs:
+      - targets: ["actibeexam.onrender.com"]

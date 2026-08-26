@@ -20,6 +20,7 @@ from datetime import datetime
 from sqlalchemy import delete, exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.application.audit.acciones import EntidadAuditoria, ModuloAuditoria
 from app.domain.audit_chain import AuditEntry
 from app.domain.retention.ports import (
     EmbeddingDeleter,
@@ -145,6 +146,9 @@ class SqlRetentionAuditor(RetentionAuditor):
                 evidencia_id=session_id,
                 proposito=f"activeexam retention: {reason}",
                 hash_prev="",  # trigger lo completa
+                # Sin entidad/entidad_id: la sesión YA NO EXISTE (se borró), un link
+                # a su detalle daría 404. Cae al módulo Evidencia (listado general).
+                modulo=ModuloAuditoria.EVIDENCIA,
             )
         )
 
@@ -159,6 +163,9 @@ class SqlRetentionAuditor(RetentionAuditor):
                 evidencia_id=session_id,
                 proposito="activeexam retention: hold detected, deletion deferred",
                 hash_prev="",
+                modulo=ModuloAuditoria.EVIDENCIA,
+                entidad=EntidadAuditoria.SESION,
+                entidad_id=session_id,
             )
         )
 
@@ -183,5 +190,8 @@ class SqlRetentionAuditor(RetentionAuditor):
                     f"embeddings={embeddings_deleted}, fotos={fotos_deleted}"
                 ),
                 hash_prev="",
+                modulo=ModuloAuditoria.EVIDENCIA,
+                entidad=EntidadAuditoria.USUARIO,
+                entidad_id=usuario_id,
             )
         )

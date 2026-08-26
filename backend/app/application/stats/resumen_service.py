@@ -156,8 +156,19 @@ async def _contar_catalogo(
     Sin filtros de catálogo (solo fechas, o ninguno) devuelve los totales globales:
     las fechas acotan la ACTIVIDAD, no el inventario — un examen existe se haya
     rendido o no en ese rango.
+
+    Baja lógica (c-78 D2): los exámenes dados de baja NO cuentan acá — esto es
+    inventario VIGENTE. La exclusión es exclusiva de este conteo: ``_session_conditions``
+    y toda la actividad (sesiones, scores, distribución) siguen contando las
+    sesiones de un examen dado de baja, porque esa actividad ocurrió y es un
+    hecho histórico. O sea: al dar de baja un examen cae ``total_examenes`` y
+    NO cae ``total_sesiones``.
     """
-    examenes_stmt = select(func.count()).select_from(ExamenContenidoModel)
+    examenes_stmt = (
+        select(func.count())
+        .select_from(ExamenContenidoModel)
+        .where(ExamenContenidoModel.eliminado_en.is_(None))
+    )
     materias_stmt = select(func.count()).select_from(MateriaModel)
     comisiones_stmt = select(func.count()).select_from(ComisionModel)
 

@@ -1,0 +1,19 @@
+# Carga los dashboards versionados en el repo al arrancar Grafana.
+#
+# Sin esto, los paneles se arman a mano en la interfaz y viven solo dentro del
+# contenedor: al recrearlo se pierden. Ya pasó con los de la prueba de carga del
+# 21/8/2026, que no dejaron rastro en el repositorio.
+apiVersion: 1
+
+providers:
+  - name: activeexam
+    orgId: 1
+    type: file
+    disableDeletion: false
+    # Permite editar en la interfaz; para conservar un cambio hay que exportar
+    # el JSON y commitearlo en infra/observability/grafana/dashboards/.
+    allowUiUpdates: true
+    updateIntervalSeconds: 10
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

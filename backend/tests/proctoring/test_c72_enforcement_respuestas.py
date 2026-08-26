@@ -104,10 +104,20 @@ async def engine(db_url: str):
 
 
 @pytest.fixture(scope="module")
-def reinferencia():
-    from app.infrastructure.reinferencia.mediapipe_adapter import MediaPipeReinferencia
+def reinferencia(activeexam_reinferencia):
+    """Delega en la instancia de SESION del conftest — no crea una propia.
 
-    return MediaPipeReinferencia()
+    Una instancia por MODULO se queda sin referencias cuando el modulo termina;
+    ahi el GC dispara el `__del__` del FaceDetector de MediaPipe, que hace
+    `executor.submit(...).result()` contra un dispatcher ya finalizado y **se
+    cuelga para siempre**. No falla: cuelga la suite entera, y el stack apunta a
+    cualquier linea que estuviera ejecutandose cuando corrio el GC (en la corrida
+    del 25/8/2026 apunto a un `include_router`, que no tiene nada que ver).
+
+    La del conftest es `scope="session"`: vive toda la corrida y nunca se
+    recolecta en el medio. Es el mismo motivo que ya documenta su docstring.
+    """
+    return activeexam_reinferencia
 
 
 @pytest.fixture(scope="module")
@@ -299,9 +309,14 @@ async def test_respuestas_dentro_de_plazo_201(
     )
     assert resp.status_code == 201, resp.text
     got = await client.get(f"{_BASE}/sessions/{sid}/respuestas")
-    assert got.json()["respuestas"] == [
-        {"pregunta_id": pregunta_id, "opcion_elegida_id": opcion_id}
-    ]
+    # `respuesta_cloze` la sumó c-74 (preguntas cloze) y es None en una multiple
+    # choice. Se compara por campo en vez de por dict exacto: un assert de igualdad
+    # estricta obliga a tocar todos los tests cada vez que la respuesta crece un
+    # campo opcional, que es justo lo que dejó estos dos en rojo desde agosto.
+    guardadas = got.json()["respuestas"]
+    assert len(guardadas) == 1
+    assert guardadas[0]["pregunta_id"] == pregunta_id
+    assert guardadas[0]["opcion_elegida_id"] == opcion_id
 
 
 # ---------------------------------------------------------------------------
@@ -456,7 +471,11 @@ async def test_finalizar_no_cuenta_respuestas_tardias(
     fin = await client.patch(f"{_BASE}/sessions/{sid}/finalizar")
     assert fin.status_code == 200, fin.text
     got = await client.get(f"{_BASE}/sessions/{sid}/respuestas")
-    assert got.json()["respuestas"] == [{"pregunta_id": p1, "opcion_elegida_id": o1}]
+    # Idem: por campo, no por dict exacto (ver el comentario de más arriba).
+    guardadas = got.json()["respuestas"]
+    assert len(guardadas) == 1, "la respuesta tardía no debe haberse persistido"
+    assert guardadas[0]["pregunta_id"] == p1
+    assert guardadas[0]["opcion_elegida_id"] == o1
 
 
 # 3.4 — finalizar dos veces es idempotente (no re-cierra ni recalcula)

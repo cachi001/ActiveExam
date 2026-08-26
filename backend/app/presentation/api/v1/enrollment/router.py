@@ -8,7 +8,7 @@ Endpoints del alumno autenticado:
 - ``GET  /enrollment/foto-perfil``: devuelve la foto vigente del usuario
   autenticado como base64 en JSON (C-61, D7).
 - ``GET  /enrollment/foto-perfil/{usuario_id}``: devuelve la foto de otro
-  usuario (solo admin_sistema/proctor) (C-61, D7).
+  usuario (solo admin_sistema/coordinador) (C-61, D7).
 
 Autenticacion: Bearer JWT. HTTP 401 sin token. HTTP 403 con rol incorrecto.
 
@@ -20,7 +20,9 @@ D3 del design: el backend acepta el embedding client-side (NO re-infiere en
 enrollment). La re-inferencia aplica durante el examen (C-09 D2).
 
 DATO SENSIBLE (Ley 25.326, C-61 D7): el binario de la foto NO se loguea.
-El endpoint de foto ajena exige rol explicito (admin_sistema o proctor).
+El endpoint de foto ajena exige rol explicito (admin_sistema o coordinador —
+el rol 'proctor' que nombraba este texto fue eliminado en c-76 y absorbido por
+COORDINADOR; ver `_require_staff` abajo, que es la fuente real).
 """
 
 from __future__ import annotations
@@ -323,7 +325,7 @@ async def obtener_foto_perfil_propia(
 
 
 # ---------------------------------------------------------------------------
-# GET /enrollment/foto-perfil/{usuario_id} — foto ajena (admin/proctor)
+# GET /enrollment/foto-perfil/{usuario_id} — foto ajena (admin/coordinador)
 # ---------------------------------------------------------------------------
 
 _require_staff = require_roles(Rol.ADMIN_SISTEMA, Rol.COORDINADOR)
@@ -332,14 +334,14 @@ _require_staff = require_roles(Rol.ADMIN_SISTEMA, Rol.COORDINADOR)
 @router.get(
     "/foto-perfil/{usuario_id}",
     response_model=FotoPerfilReadResponse,
-    summary="Devuelve la foto de perfil de otro usuario (solo admin/proctor).",
+    summary="Devuelve la foto de perfil de otro usuario (solo admin/coordinador).",
 )
 async def obtener_foto_perfil_ajena(
     usuario_id: str,
     request: Request,
     _principal: AuthenticatedPrincipal = Depends(_require_staff),
 ) -> FotoPerfilReadResponse:
-    """Devuelve la foto vigente de otro usuario (solo admin_sistema/proctor).
+    """Devuelve la foto vigente de otro usuario (solo admin_sistema/coordinador).
 
     - 200: foto en base64.
     - 401: sin token.

@@ -147,7 +147,12 @@ export default function Biometria() {
       );
       if (proctoringSessionId) {
         // Sesión ya activa (re-verificación durante el examen): envío inmediato.
-        void api.enviarBiometriaProctoring(proctoringSessionId, payload).catch(() => {});
+        // c-78: si el POST falla, NO se descarta — se deja pendiente para que el
+        // reintento de `useExamProctoring` lo vuelva a mandar. Antes el catch se
+        // lo tragaba y la verificación de identidad desaparecía sin dejar rastro.
+        void api
+          .enviarBiometriaProctoring(proctoringSessionId, payload)
+          .catch(() => setBiometriaPendientePayload(payload));
       } else {
         // Sin sesión aún (flujo normal: biometría precede a la creación de sesión).
         // Guardamos el payload para que useExamProctoring lo envíe al crear la sesión.

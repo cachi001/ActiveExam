@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.application.audit.acciones import EntidadAuditoria, ModuloAuditoria
 from app.domain.audit_chain import AuditEntry
 from app.domain.review.decision import DecisionSesion, ReviewDecisionRecord
 from app.domain.review.ports import ReviewAuditor, SessionReviewRepository
@@ -135,5 +136,8 @@ class SqlReviewAuditor(ReviewAuditor):
                 evidencia_id=session_id,
                 proposito=proposito,
                 hash_prev="",
+                modulo=ModuloAuditoria.REVISION,
+                entidad=EntidadAuditoria.SESION,
+                entidad_id=session_id,
             )
         )

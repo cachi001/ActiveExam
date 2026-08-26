@@ -636,70 +636,14 @@ describe('examContentAdmin — eliminarInscripcion', () => {
 });
 
 // ---------------------------------------------------------------------------
-// eliminarMateria / eliminarComision — borrado con guard 100% vacío (C-72 §16)
+// eliminarMateria / eliminarComision — ELIMINADAS en c-78.
+//
+// El borrado duro de materias y comisiones (con guard de "100% vacío", C-72 §16)
+// se reemplazó por baja lógica: `DELETE /materias/{id}` ahora setea `activa=false`
+// y hay un `POST /materias/{id}/reactivar` para el reverso. Un borrado que exigía
+// que la materia estuviera vacía no servía para el caso real, que es congelar una
+// materia que SÍ tiene inscriptos y exámenes.
+//
+// Los tests de ese comportamiento viven ahora con la baja lógica; acá quedaban
+// probando funciones que ya no existen (`eliminarMateria is not a function`).
 // ---------------------------------------------------------------------------
-
-describe('examContentAdmin — eliminarMateria / eliminarComision', () => {
-  let fetchSpy: ReturnType<typeof vi.spyOn>;
-  beforeEach(() => {
-    fetchSpy = vi.spyOn(globalThis, 'fetch');
-  });
-  afterEach(() => {
-    fetchSpy.mockRestore();
-  });
-
-  it('eliminarMateria: DELETE al endpoint con token; 204 resuelve sin error', async () => {
-    fetchSpy.mockResolvedValueOnce({ ok: true, status: 204, json: async () => ({}) } as Response);
-
-    const { eliminarMateria } = await import('./examContentAdmin');
-    await expect(eliminarMateria('mat-9')).resolves.toBeUndefined();
-    expect(fetchSpy).toHaveBeenCalledWith(
-      '/api/v1/exam-content/materias/mat-9',
-      expect.objectContaining({
-        method: 'DELETE',
-        headers: expect.objectContaining({ Authorization: 'Bearer tok' }),
-      }),
-    );
-  });
-
-  it('eliminarMateria: 409 con inscriptos/exámenes lanza error con status=409', async () => {
-    fetchSpy.mockResolvedValueOnce({
-      ok: false,
-      status: 409,
-      json: async () => ({ detail: { error: 'materia_no_vacia', mensaje: 'tiene inscriptos' } }),
-    } as Response);
-
-    const { eliminarMateria } = await import('./examContentAdmin');
-    const promise = eliminarMateria('mat-9');
-
-    await expect(promise).rejects.toThrow();
-    const err = await promise.catch((e: unknown) => e as Error & { status?: number });
-    expect(err.status).toBe(409);
-  });
-
-  it('eliminarComision: DELETE al endpoint; 204 resuelve sin error', async () => {
-    fetchSpy.mockResolvedValueOnce({ ok: true, status: 204, json: async () => ({}) } as Response);
-
-    const { eliminarComision } = await import('./examContentAdmin');
-    await expect(eliminarComision('com-9')).resolves.toBeUndefined();
-    expect(fetchSpy).toHaveBeenCalledWith(
-      '/api/v1/exam-content/comisiones/com-9',
-      expect.objectContaining({ method: 'DELETE' }),
-    );
-  });
-
-  it('eliminarComision: 409 lanza error con status=409', async () => {
-    fetchSpy.mockResolvedValueOnce({
-      ok: false,
-      status: 409,
-      json: async () => ({ detail: { error: 'comision_no_vacia', mensaje: 'tiene alumnos' } }),
-    } as Response);
-
-    const { eliminarComision } = await import('./examContentAdmin');
-    const promise = eliminarComision('com-9');
-
-    await expect(promise).rejects.toThrow();
-    const err = await promise.catch((e: unknown) => e as Error & { status?: number });
-    expect(err.status).toBe(409);
-  });
-});

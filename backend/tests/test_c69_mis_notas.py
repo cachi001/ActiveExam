@@ -263,7 +263,11 @@ async def test_alumno_ve_sus_notas_con_nota_y_estado(app_con_moodle, factory):
     examen_id = await _crear_examen(factory, "Álgebra I")
     await _crear_sesion_con_nota_y_eventos(
         factory, examen_id, idnumber="leg-A", email="a@u.edu", nota=8.5,
-        evento_tipo="rostro_ausente", n_eventos=1,
+        # SIN eventos: con eventos la sesion supera el umbral y, desde c-78, la
+        # nota se le oculta al alumno hasta que un revisor decida. Ese caso tiene
+        # su propio test (test_c78_nota_retenida_no_se_muestra); acá se mira que
+        # la fila llegue con su examen y su estado.
+        n_eventos=0,
     )
 
     async with _client(app_con_moodle, "leg-A", "a@u.edu") as c:
@@ -277,7 +281,7 @@ async def test_alumno_ve_sus_notas_con_nota_y_estado(app_con_moodle, factory):
     assert item["examen_titulo"] == "Álgebra I"
     assert float(item["nota"]) == pytest.approx(8.5)
     assert item["estado_moodle"] == "pendiente"
-    assert item["eventos"] == 1
+    assert item["eventos"] == 0
     assert item["finalizada_en"] is not None
 
 
@@ -304,6 +308,9 @@ async def test_en_cola_revision_segun_umbral(app_con_moodle, factory):
 
     alto = items[ex_alto]
     assert alto["en_cola_revision"] is True
+    # c-78: al estar en cola, la nota NO se le muestra al alumno — el score y el
+    # umbral si, que es lo que este test mira.
+    assert alto["nota"] is None
     assert float(alto["score"]) == pytest.approx(50.0)
     assert float(alto["umbral_revision"]) == pytest.approx(float(UMBRAL))
 
@@ -319,11 +326,11 @@ async def test_alumno_solo_ve_sus_propias_notas(app_con_moodle, factory):
     ex_b = await _crear_examen(factory, "Examen de B")
     await _crear_sesion_con_nota_y_eventos(
         factory, ex_a, idnumber="leg-A", email="a@u.edu", nota=7.0,
-        evento_tipo="rostro_ausente", n_eventos=1,
+        n_eventos=0,  # sin eventos: con eventos la nota se oculta (c-78, retención)
     )
     await _crear_sesion_con_nota_y_eventos(
         factory, ex_b, idnumber="leg-B", email="b@u.edu", nota=3.0,
-        evento_tipo="rostro_ausente", n_eventos=1,
+        n_eventos=0,  # sin eventos: con eventos la nota se oculta (c-78, retención)
     )
 
     async with _client(app_con_moodle, "leg-A", "a@u.edu") as c:
@@ -341,7 +348,7 @@ async def test_no_filtra_es_correcta(app_con_moodle, factory):
     examen_id = await _crear_examen(factory, "Examen D3")
     await _crear_sesion_con_nota_y_eventos(
         factory, examen_id, idnumber="leg-A", email="a@u.edu", nota=5.0,
-        evento_tipo="rostro_ausente", n_eventos=1,
+        n_eventos=0,  # sin eventos: con eventos la nota se oculta (c-78, retención)
     )
     async with _client(app_con_moodle, "leg-A", "a@u.edu") as c:
         resp = await c.get("/api/v1/exam-content/mis-notas")
@@ -356,7 +363,7 @@ async def test_sin_moodle_estado_sin_token(app_sin_moodle, factory):
     examen_id = await _crear_examen(factory, "Examen sin token")
     await _crear_sesion_con_nota_y_eventos(
         factory, examen_id, idnumber="leg-A", email="a@u.edu", nota=4.0,
-        evento_tipo="rostro_ausente", n_eventos=1,
+        n_eventos=0,  # sin eventos: con eventos la nota se oculta (c-78, retención)
     )
     async with _client(app_sin_moodle, "leg-A", "a@u.edu") as c:
         resp = await c.get("/api/v1/exam-content/mis-notas")
@@ -395,11 +402,11 @@ async def test_mis_notas_incluye_nota_maxima_y_aprobado(app_con_moodle, factory)
     # nota 15 >= 12 -> aprobado; nota 8 < 12 -> reprobado. nota_maxima=20 en ambos.
     await _crear_sesion_con_nota_y_eventos(
         factory, ex_aprob, idnumber="leg-A", email="a@u.edu", nota=15.0,
-        evento_tipo="rostro_ausente", n_eventos=1,
+        n_eventos=0,  # sin eventos: con eventos la nota se oculta (c-78, retención)
     )
     await _crear_sesion_con_nota_y_eventos(
         factory, ex_reprob, idnumber="leg-A", email="a@u.edu", nota=8.0,
-        evento_tipo="rostro_ausente", n_eventos=1,
+        n_eventos=0,  # sin eventos: con eventos la nota se oculta (c-78, retención)
     )
 
     async with _client(app_con_moodle, "leg-A", "a@u.edu") as c:

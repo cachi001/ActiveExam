@@ -33,6 +33,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import NullPool
 
 from app.infrastructure.persistence.base import Base
+from app.infrastructure.persistence.models.comision_tutor import (  # noqa: F401
+    ComisionTutorModel,
+)
 from app.infrastructure.persistence.models.exam_content import (  # noqa: F401
     ComisionModel,
     ExamenContenidoModel,
@@ -52,6 +55,7 @@ _TABLES = [
     "opcion_respuesta",
     "pregunta_examen",
     "examen_contenido",
+    "comision_tutor",
     "comision",
     "materia",
 ]
@@ -77,6 +81,7 @@ async def engine(db_url):
             tables=[
                 MateriaModel.__table__,
                 ComisionModel.__table__,
+                ComisionTutorModel.__table__,
                 ExamenContenidoModel.__table__,
                 PreguntaExamenModel.__table__,
                 OpcionRespuestaModel.__table__,
@@ -133,10 +138,16 @@ async def _crear_materia_comision_examen(factory, docente_id: str | None):
             codigo=f"C-{sufijo}",
             nombre=f"Comisión {sufijo}",
             codigo_matriculacion=f"K-{sufijo}",
-            docente_id=docente_id,
         )
         s.add(comision)
         await s.flush()
+        # c-78 (migración 0093): `comision.docente_id` se dropeó. La pertenencia
+        # vive SOLO en comision_tutor (N:M).
+        if docente_id is not None:
+            s.add(
+                ComisionTutorModel(comision_id=comision.id, tutor_id=docente_id)
+            )
+            await s.flush()
         examen = ExamenContenidoModel(titulo=f"Parcial {sufijo}", comision_id=comision.id)
         s.add(examen)
         await s.flush()

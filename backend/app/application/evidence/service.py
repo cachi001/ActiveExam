@@ -32,6 +32,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from app.application.audit.acciones import EntidadAuditoria, ModuloAuditoria
 from app.domain.audit_chain import AuditEntry
 from app.domain.entities.evidence import Evidencia
 from app.domain.evidence import custody_chain as cc
@@ -167,6 +168,9 @@ class EvidenceCustodyService:
                 accion="deposito_evidencia",
                 evidencia_id=ev.id,
                 proposito="custodia de evidencia (etapa 2)",
+                modulo=ModuloAuditoria.EVIDENCIA,
+                entidad=EntidadAuditoria.SESION,
+                entidad_id=ev.session_id,
             )
         )
 
@@ -214,6 +218,9 @@ class EvidenceCustodyService:
                 accion="manipulacion_detectada",
                 evidencia_id=None,
                 proposito=f"hash divergente en etapa '{manip.etapa}' (RN-CC-03)",
+                modulo=ModuloAuditoria.EVIDENCIA,
+                entidad=EntidadAuditoria.SESION,
+                entidad_id=notif.session_id,
             )
         )
         canal = self._backplane.canal_de(exam_id=notif.exam_id)
@@ -299,6 +306,9 @@ class EvidenceSigningWorker:
                 accion="firma_maestra_y_reinferencia",
                 evidencia_id=ev.id,
                 proposito="firma maestra + re-inferencia (etapas 3/4)",
+                modulo=ModuloAuditoria.EVIDENCIA,
+                entidad=EntidadAuditoria.SESION,
+                entidad_id=ev.session_id,
             )
         )
         return ev
@@ -316,6 +326,9 @@ class EvidenceSigningWorker:
                 accion="manipulacion_detectada",
                 evidencia_id=ev.id,
                 proposito=f"hash divergente en etapa '{manip.etapa}' (RN-CC-03)",
+                modulo=ModuloAuditoria.EVIDENCIA,
+                entidad=EntidadAuditoria.SESION,
+                entidad_id=ev.session_id,
             )
         )
         canal = self._backplane.canal_de(exam_id=exam_id)

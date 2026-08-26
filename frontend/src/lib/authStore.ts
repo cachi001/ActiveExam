@@ -10,6 +10,7 @@ import type { AuthProvider, AuthStatus } from './auth/provider';
 import { API_BASE, resetEnrollmentCache } from './api';
 import { useApp } from './store';
 
+import { fetchAutenticado } from './fetchAutenticado';
 export type { AuthStatus };
 
 /**
@@ -24,6 +25,10 @@ export type { AuthStatus };
 async function fetchMyName(
   provider: AuthProvider,
 ): Promise<{
+  // c-78: el username sale de la FILA, no del token. El token del alumno LTI
+  // queda con el sintético (`lti:1:7`) después de que elige el suyo, y el
+  // Perfil mostraba ESE. Ver backend/app/presentation/api/v1/auth/router.py.
+  username?: string;
   nombre?: string;
   apellido?: string;
   creado_en?: string;
@@ -34,11 +39,12 @@ async function fetchMyName(
   const token = provider.getToken();
   if (!token) return null;
   try {
-    const res = await fetch(`${API_BASE}/auth/me`, {
+    const res = await fetchAutenticado(`${API_BASE}/auth/me`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!res.ok) return null;
     const data = (await res.json()) as {
+      username?: string | null;
       nombre?: string | null;
       apellido?: string | null;
       creado_en?: string | null;
@@ -47,6 +53,7 @@ async function fetchMyName(
       auth_provider?: string | null;
     };
     return {
+      username: data.username ?? undefined,
       nombre: data.nombre ?? undefined,
       apellido: data.apellido ?? undefined,
       creado_en: data.creado_en ?? undefined,
@@ -89,6 +96,19 @@ interface AuthState {
 
   /** Marca que el usuario ya definió su contraseña (limpia el gate de clave temporal). */
   markPasswordChanged: () => void;
+
+  /**
+   * Reemplaza el ACCESS token de la sesión en curso y re-lee el principal.
+   *
+   * c-78 E-13: al elegir username en el primer ingreso, el backend re-emite el
+   * token con el nombre nuevo. Sin esto la app seguía mostrando `lti:1:7` hasta
+   * que el token expiraba. NO es un login: conserva el refresh token vigente y
+   * no toca el cache de enrolamiento (a diferencia de `loginWithTokens`, que
+   * asume que cambió la persona).
+   *
+   * Devuelve false si el token no se pudo adoptar (no se pierde la sesión).
+   */
+  refrescarAccessToken: (accessToken: string) => boolean;
 }
 
 // Guardamos referencia al provider activo para que login/logout puedan delegar.
@@ -124,6 +144,10 @@ export const useAuth = create<AuthState>((set, get) => ({
         set({
           principal: {
             ...current,
+            // c-78: el username de la BASE gana siempre sobre el del token. El
+            // token del alumno LTI se queda con el sintético hasta que vence;
+            // esto hace que el Perfil muestre el nombre que la persona eligió.
+            username: extra.username ?? current.username,
             nombre: nombreActualizado,
             apellido: extra.apellido ?? current.apellido,
             creado_en: extra.creado_en ?? current.creado_en,
@@ -149,6 +173,16 @@ export const useAuth = create<AuthState>((set, get) => ({
     useApp.getState().clearEnrollment();
     // Actualizar el store tras login exitoso.
     get().hydrateFromProvider(_activeProvider);
+  },
+
+  refrescarAccessToken: (accessToken: string) => {
+    if (!_activeProvider || typeof _activeProvider.seedSession !== 'function') {
+      return false;
+    }
+    // Sin refreshToken: `_storeToken` conserva el que ya está guardado.
+    _activeProvider.seedSession(accessToken);
+    get().hydrateFromProvider(_activeProvider);
+    return get().status === 'authenticated';
   },
 
   loginWithTokens: (accessToken: string, refreshToken?: string) => {

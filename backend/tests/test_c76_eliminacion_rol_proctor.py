@@ -77,10 +77,15 @@ def test_parse_rol_sigue_mapeando_roles_vivos() -> None:
 # ---------------------------------------------------------------------------
 
 def test_supervisar_vivo_es_tutor_coordinador_admin() -> None:
-    """``supervisar_vivo`` = {TUTOR, COORDINADOR, ADMIN_SISTEMA}."""
-    assert CAPABILITY_ROLES["supervisar_vivo"] == frozenset(
-        {Rol.TUTOR, Rol.COORDINADOR, Rol.ADMIN_SISTEMA}
-    )
+    """``supervisar_vivo`` incluye TUTOR/COORDINADOR/ADMIN_SISTEMA y NO 'proctor'.
+
+    Se afirma la PERTENENCIA, no el set exacto: lo que este archivo verifica es
+    que el rol eliminado ya no esta. Congelar el set hacia que sumar un rol
+    nuevo (c-78: PROFESOR) rompiera un test que no habla de eso.
+    """
+    roles = CAPABILITY_ROLES["supervisar_vivo"]
+    assert {Rol.TUTOR, Rol.COORDINADOR, Rol.ADMIN_SISTEMA} <= set(roles)
+    assert not any(getattr(r, "value", r) == "proctor" for r in roles)
 
 
 @pytest.mark.parametrize(

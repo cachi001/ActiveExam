@@ -72,10 +72,12 @@ class IngestEventoIn(BaseModel):
     screenshot_sha256_cliente: str | None = Field(
         None,
         description=(
-            "Hash SHA-256 del screenshot calculado por el cliente (cadena de custodia C-49, D5). "
+            "Hash SHA-256 de la IMAGEN calculado por el cliente (cadena de custodia C-49, D5). "
             "Opcional — no bloquea la ingestión si está ausente. "
-            "El backend recibe el campo pero NO lo persiste (columna no existe en DB); "
-            "la comparación con screenshot_sha256 servidor queda para cuando se agregue la columna."
+            "Desde c-78 (migración 0096) se PERSISTE y se contrasta contra el hash que "
+            "recalcula el servidor: el veredicto queda en `custodia_cliente` "
+            "('coincide' | 'discrepancia' | 'no_verificable'). L2.5: una discrepancia "
+            "nunca rechaza el evento ni sanciona — es señal para el revisor humano."
         ),
     )
 

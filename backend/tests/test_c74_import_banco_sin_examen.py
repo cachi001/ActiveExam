@@ -291,3 +291,127 @@ async def test_sin_exclusion_entra_todo(session: AsyncSession, materia_id: str):
     await session.commit()
 
     assert report.preguntas_nuevas == 3
+
+
+# ---------------------------------------------------------------------------
+# categoria_padre_id: bug real (2026-08-21, campus FRM) — Moodle exporta cada
+# subcategoría con el path completo ($course$/top/Clase 1...) pero NUNCA emite
+# una categoría propia para el nodo "top" en sí (ese nombre, ej. "Superior para
+# Programación 3-2026 Agosto", es solo la etiqueta que Moodle le pone al
+# dropdown de export, no una categoría real). El parser descarta el prefijo
+# "$course$/top/" entero, así que las subcategorías quedaban sueltas en
+# ActiveExam sin ningún padre común.
+#
+# categoria_padre_id (no un nombre libre) permite anidar TODO el XML bajo una
+# categoría YA EXISTENTE del árbol del docente (elegida en un selector, no
+# tipeada) — evita que un typo/tilde distinta en un re-import posterior cree
+# una carpeta duplicada en vez de reusar la existente (resolver_o_crear matchea
+# por string EXACTO). También cubre el caso "reimporto una sola subcategoría
+# más adelante": el docente elige como destino la carpeta que ya tiene.
+# ---------------------------------------------------------------------------
+
+
+@pytest_asyncio.fixture
+async def categoria_existente(session: AsyncSession, materia_id: str) -> str:
+    """Una categoría ya creada a mano por el docente (no viene de Moodle)."""
+    cat_id = str(uuid.uuid4())
+    await session.execute(
+        text(
+            "INSERT INTO categoria_pregunta (id, materia_id, nombre) "
+            "VALUES (:id, :mid, 'Programación 3-2026 Agosto')"
+        ),
+        {"id": cat_id, "mid": materia_id},
+    )
+    await session.commit()
+    return cat_id
+
+
+@pytest.mark.asyncio
+async def test_categoria_padre_id_agrupa_las_subcategorias(
+    session: AsyncSession, materia_id: str, categoria_existente: str
+):
+    """RED→GREEN: con categoria_padre_id, todo el XML queda anidado bajo esa
+    categoría ya existente — no se crea ninguna carpeta nueva a nivel raíz."""
+    report = await importar_banco_desde_xml(
+        session,
+        XML_DOS_CATEGORIAS,
+        materia_id,
+        categoria_padre_id=categoria_existente,
+    )
+    await session.commit()
+
+    assert report.preguntas_nuevas == 3
+
+    cats = await session.execute(
+        text("SELECT id, nombre, categoria_padre_id FROM categoria_pregunta WHERE materia_id = :mid"),
+        {"mid": materia_id},
+    )
+    filas = {r.nombre: r for r in cats.fetchall()}
+    # La raíz sigue siendo la MISMA fila preexistente (mismo id), no una nueva.
+    assert str(filas["Programación 3-2026 Agosto"].id) == categoria_existente
+    assert str(filas["Unidad 1"].categoria_padre_id) == categoria_existente
+    assert str(filas["Unidad 2"].categoria_padre_id) == categoria_existente
+
+
+@pytest.mark.asyncio
+async def test_categoria_padre_id_tambien_agrupa_preguntas_sin_categoria(
+    session: AsyncSession, materia_id: str, categoria_existente: str
+):
+    """TRIANGULATE: la pregunta "suelta" (sin categoría en el XML) también
+    cae bajo la categoría elegida directamente, en vez de quedar sin clasificar."""
+    await importar_banco_desde_xml(
+        session,
+        XML_DOS_CATEGORIAS,
+        materia_id,
+        categoria_padre_id=categoria_existente,
+    )
+    await session.commit()
+
+    suelta = await session.execute(
+        text(
+            "SELECT categoria_id FROM pregunta_banco "
+            "WHERE materia_id = :mid AND enunciado = 'Sin categoria'"
+        ),
+        {"mid": materia_id},
+    )
+    assert str(suelta.scalar_one()) == categoria_existente
+
+
+@pytest.mark.asyncio
+async def test_reimport_bajo_mismo_padre_no_duplica_la_raiz(
+    session: AsyncSession, materia_id: str, categoria_existente: str
+):
+    """TRIANGULATE: reimportar (ej. una sola subcategoría re-exportada después)
+    con el mismo categoria_padre_id NO crea una segunda fila para la raíz."""
+    await importar_banco_desde_xml(
+        session, XML_DOS_CATEGORIAS, materia_id, categoria_padre_id=categoria_existente
+    )
+    await session.commit()
+    await importar_banco_desde_xml(
+        session, XML_DOS_CATEGORIAS, materia_id, categoria_padre_id=categoria_existente
+    )
+    await session.commit()
+
+    cats = await session.execute(
+        text(
+            "SELECT COUNT(*) FROM categoria_pregunta "
+            "WHERE materia_id = :mid AND nombre = 'Programación 3-2026 Agosto'"
+        ),
+        {"mid": materia_id},
+    )
+    assert cats.scalar_one() == 1
+
+
+@pytest.mark.asyncio
+async def test_sin_categoria_padre_id_sigue_como_antes(session: AsyncSession, materia_id: str):
+    """Control de retrocompatibilidad: categoria_padre_id=None (default) no
+    cambia el comportamiento existente — las subcategorías siguen sueltas."""
+    report = await importar_banco_desde_xml(session, XML_DOS_CATEGORIAS, materia_id)
+    await session.commit()
+
+    assert report.preguntas_nuevas == 3
+    cats = await session.execute(
+        text("SELECT nombre FROM categoria_pregunta WHERE materia_id = :mid"),
+        {"mid": materia_id},
+    )
+    assert {r[0] for r in cats.fetchall()} == {"Unidad 1", "Unidad 2"}

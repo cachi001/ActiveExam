@@ -68,7 +68,7 @@ export function SesionVivoCard({
           {examInfo && (
             <p className="flex items-center gap-base text-label-sm text-on-surface-variant mt-base truncate">
               <Icon name="menu_book" className="text-[15px]" />
-              {examInfo.materiaNombre} · {examInfo.docente}
+              {examInfo.materiaNombre}
             </p>
           )}
           <p

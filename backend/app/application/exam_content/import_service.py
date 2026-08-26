@@ -147,6 +147,7 @@ async def importar_banco_desde_xml(
     xml_bytes: bytes,
     materia_id: str,
     categorias_excluidas: set[tuple[str, ...]] | None = None,
+    categoria_padre_id: str | None = None,
 ) -> ImportBancoReport:
     """Importa un XML de Moodle directo a ``pregunta_banco``/``categoria_pregunta``.
 
@@ -160,6 +161,18 @@ async def importar_banco_desde_xml(
     confirmar — esas preguntas NO se persisten. ``SIN_CATEGORIA_SENTINEL``
     excluye las preguntas sin categoría. Filtrar ANTES de resolver categorías:
     si una categoría queda 100% excluida, no se crea vacía en el banco.
+
+    ``categoria_padre_id``: id de una categoría YA EXISTENTE (elegida por el
+    docente en un selector, no tipeada) bajo la cual anidar TODO lo que traiga
+    el XML. Bug real (2026-08-21, campus FRM): Moodle exporta cada subcategoría
+    con el path completo (``$course$/top/Clase 1...``) pero nunca emite una
+    categoría propia para el nodo "top" en sí — ese nombre (ej. "Superior para
+    Programación 3-2026 Agosto") es solo la etiqueta que Moodle le pone al
+    dropdown de export, no una categoría real — así que las subcategorías
+    quedaban sueltas en ActiveExam sin ningún padre común. Se usa un ID (no un
+    nombre libre) para no depender de un match de string exacto entre imports
+    (``resolver_o_crear`` matchea por string exacto: un typo/tilde distinta
+    crearía una carpeta duplicada en vez de reusar la existente).
 
     Escritura en LOTES, no pregunta por pregunta (perf): con un banco real de
     232 preguntas, la versión secuencial (1-2 SELECT + varios INSERT por
@@ -192,10 +205,10 @@ async def importar_banco_desde_xml(
     #    de preguntas, porque el número de categorías ÚNICAS es chico.
     validas: list[tuple[PreguntaData, str | None]] = []
     for p_data in preguntas_a_procesar:
-        categoria_id: str | None = None
+        categoria_id: str | None = categoria_padre_id
         if p_data.categoria_ruta:
             categoria_id = await _resolver_ruta(
-                cat_repo, materia_id, p_data.categoria_ruta, ruta_memo
+                cat_repo, materia_id, p_data.categoria_ruta, ruta_memo, categoria_padre_id
             )
         try:
             _pregunta_data_to_entity(p_data, categoria_id=categoria_id)
@@ -515,14 +528,19 @@ async def _resolver_ruta(
     materia_id: str,
     ruta: list[str],
     memo: dict[tuple[str, ...], str],
+    padre_raiz: str | None = None,
 ) -> str:
     """Resuelve (o crea) la jerarquía de categorías para una ruta dada.
 
     Recorre los segmentos de la ruta de izquierda a derecha, creando cada nivel
     si no existe. El memo evita consultas repetidas para la misma sub-ruta.
     Devuelve el id de la categoría hoja.
+
+    ``padre_raiz``: si se provee, todo el árbol de esta ruta cuelga de esa
+    categoría existente en vez de crearse a nivel raíz (ver
+    ``importar_banco_desde_xml``, param ``categoria_padre_id``).
     """
-    padre_id: str | None = None
+    padre_id: str | None = padre_raiz
     for i, segmento in enumerate(ruta):
         parcial = tuple(ruta[: i + 1])
         if parcial in memo:

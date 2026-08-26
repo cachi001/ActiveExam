@@ -103,6 +103,16 @@ class UsuarioModel(Base):
     biometria_rehacer_habilitada: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="false"
     )
+    # 0085: lockout de login (pentest — fuerza bruta sin límite de intentos).
+    # intentos_fallidos se incrementa en cada 401 y se resetea a 0 en un login
+    # exitoso. bloqueado_hasta se fija al alcanzar el máximo configurado
+    # (LOGIN_LOCKOUT_MAX_INTENTOS) y bloquea el login mientras esté en el futuro.
+    intentos_fallidos: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="0"
+    )
+    bloqueado_hasta: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
     # C-61: datos personales (nullable — compatibilidad con usuarios pre-existentes).
     nombre: Mapped[str | None] = mapped_column(String(255), nullable=True)
     apellido: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -423,12 +433,29 @@ class ConfiguracionSistemaModel(Base):
     retencion_dias_default: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default="365"
     )
+    # Retencion de CAPTURAS de proctoring (screenshot_b64), en dias. Distinta de
+    # retencion_dias_default (retencion GENERAL de sesion, C-19): esta es
+    # especifica del dato mas pesado y sensible (rostro + pantalla del alumno en
+    # base64 dentro de Postgres). Default 180 (un cuatrimestre). Minimo 90 dias,
+    # validado en dominio (app.domain.retention.policy) y en el endpoint que
+    # edita esta config — nunca con un CHECK de base (mensaje entendible).
+    retencion_capturas_dias: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="180"
+    )
     # Puntero a la version de texto de consentimiento vigente (perfil).
     consent_version_vigente: Mapped[str] = mapped_column(
         String(64), nullable=False, server_default="v1"
     )
     # Toggles globales de la rendicion (C-69). Default true = funcion habilitada
     # (compat con el comportamiento previo al toggle).
+    # c-78 E-14 (migracion 0095): APAGADO por defecto. `ChatBox` pollea cada 3.5 s
+    # en la pantalla de cada alumno: con 100 rindiendo son ~28,6 req/s, el 36% del
+    # techo medido en el plan free de Render, gastado en una funcion que la mayoria
+    # de los examenes no usa. Se prende desde Configuracion cuando hace falta.
+    # Prendido por defecto (migracion 0098, revierte la 0095): el sistema viene
+    # con la funcionalidad completa y el techo lo decide la prueba de carga, no
+    # un supuesto. Se apaga desde Configuracion si hace falta — es un toggle de
+    # runtime, y su valor queda congelado por sesion en `config_snapshot`.
     chat_habilitado: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="true"
     )

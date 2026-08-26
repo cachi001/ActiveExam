@@ -73,18 +73,25 @@ class AuditLogSqlRepository(AuditLogRepository):
         # FALLBACK de clasificación: si el caller no seteó `modulo` (muchos
         # construían el AuditEntry directo, dejando modulo=NULL → la entrada no
         # aparecía al filtrar por su módulo en Auditoría), se deriva del prefijo de
-        # la acción. `modulo` NO entra en el hash (es metadata de clasificación),
-        # así que completarlo acá no afecta la cadena de custodia.
-        from app.application.audit.acciones import modulo_de_accion
+        # la acción. `modulo`/`entidad` NO entran en el hash (son metadata de
+        # clasificación), así que completarlos acá no afecta la cadena de custodia.
+        #
+        # Mismo fallback para `entidad` (C-79): un caller puede pasar `entidad_id`
+        # sin `entidad` (ej. comisión: pasaba el id pero no el tipo) — sin esto la
+        # fila queda con id pero sin tipo, y Auditoría no puede armar "Ver detalle"
+        # aunque el id esté. Nunca inventa `entidad_id`: eso solo lo tiene quien
+        # registra la acción.
+        from app.application.audit.acciones import entidad_de_accion, modulo_de_accion
 
         modulo = entity.modulo or modulo_de_accion(entity.accion)
+        entidad = entity.entidad or entidad_de_accion(entity.accion)
         row = AuditLogModel(
             actor=entity.actor,
             ip=_normalizar_ip(entity.ip),
             user_agent=entity.user_agent or None,
             accion=entity.accion,
             modulo=modulo,
-            entidad=entity.entidad,
+            entidad=entidad,
             entidad_id=entity.entidad_id,
             tipo_accion=entity.tipo_accion,
             evidencia_id=entity.evidencia_id,

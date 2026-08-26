@@ -18,7 +18,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { StaffShell } from '../ui/shells';
 import { Icon, Button } from '../ui/components';
 import { HelpButton } from '../ui/HelpButton';
-import { ActionMenu, type ActionItem } from '../ui/ActionMenu';
+import { ActionMenu } from '../ui/ActionMenu';
 import { RefreshBar } from '../ui/RefreshBar';
 import { STAFF_NAV } from '../ui/nav';
 import { useAutoRefresh } from '../lib/useAutoRefresh';
@@ -31,14 +31,22 @@ import {
   actualizarMateria,
   crearComision,
   actualizarComision,
-  eliminarMateria,
-  eliminarComision,
-  setMateriaActiva,
-  setComisionActiva,
+  darDeBajaMateria,
+  reactivarMateria,
+  darDeBajaComision,
+  reactivarComision,
+  impactoBajaMateria,
+  impactoBajaComision,
+  type ImpactoBaja,
 } from '../lib/examContentAdmin';
 import type { Materia, Comision } from '../lib/types';
 import { ConfirmModal } from '../ui/ConfirmModal';
+import { AvisoImpactoBaja } from '../ui/AvisoImpactoBaja';
 import { MateriaFormPanel } from './admin/components/MateriaFormPanel';
+import {
+  AsignarCoordinadorDialog,
+  AsignarProfesorDialog,
+} from './admin/components/AsignarCoordinadorDialog';
 import { ComisionesAccordionBody } from './admin/components/ComisionesAccordionBody';
 import {
   FORM_MATERIA_VACIO,
@@ -60,12 +68,19 @@ export default function MateriasComisiones() {
   // ── Materias ──────────────────────────────────────────────────────────────
   const [materias, setMaterias] = useState<Materia[]>([]);
   const [cargandoMaterias, setCargandoMaterias] = useState(true);
+  // c-78 E-13 / D16: "no pudo cargar" NO es lo mismo que "cargó y está vacío".
+  // Un 401 se dibujaba como "No hay materias registradas", y alguien podía
+  // recrear a mano materias que ya existían. Son tres estados, no dos.
+  const [errorMaterias, setErrorMaterias] = useState<string | null>(null);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<number | undefined>();
 
   // ── Acordeón ──────────────────────────────────────────────────────────────
   const [expandida, setExpandida] = useState<string | null>(null);
   const [comisionesPorMateria, setComisionesPorMateria] = useState<Record<string, Comision[]>>({});
   const [cargandoComisiones, setCargandoComisiones] = useState<Record<string, boolean>>({});
+  // D16: por materia, el motivo por el que sus comisiones no cargaron. null/ausente
+  // = no hubo error. Distinto de una lista vacia (materia sin comisiones).
+  const [errorComisiones, setErrorComisiones] = useState<Record<string, string | null>>({});
 
   // ── Comisión expandida (para ver/gestionar alumnos inscriptos) ─────────────
   const [comisionExpandida, setComisionExpandida] = useState<string | null>(null);
@@ -90,83 +105,115 @@ export default function MateriasComisiones() {
     { value: '2C', label: '2do cuatrimestre' },
   ]);
 
-  // ── Borrado (solo si 100% vacío; el backend es la autoridad) ───────────────
-  const [confirmarBorrado, setConfirmarBorrado] = useState<
+  // ── Coordinadores de la materia (c-79) ────────────────────────────────────
+  // Sin esta pantalla el rol coordinador queda inutilizable: desde c-79 dejó de
+  // tener alcance institucional y solo ve las materias que tiene asignadas.
+  const [coordinandoMateria, setCoordinandoMateria] = useState<Materia | null>(null);
+  // c-78: el PROFESOR es el otro rol de materia. Se asigna igual que el
+  // coordinador pero es una membresía distinta: no habilita el veredicto.
+  const [asignandoProfesor, setAsignandoProfesor] = useState<Materia | null>(null);
+
+  // Baja pendiente de confirmación (c-78, Opción C). Desactivar dejó de ser un
+  // click directo: primero se consulta qué se lleva puesto (cuántas rendiciones
+  // ya tiene, si hay gente rindiendo AHORA) y recién ahí se confirma. Reactivar
+  // sigue siendo directo — no rompe nada.
+  const [pendienteBaja, setPendienteBaja] = useState<
     { tipo: 'materia' | 'comision'; id: string; nombre: string; materiaId?: string } | null
   >(null);
-  const [borrando, setBorrando] = useState(false);
+  const [impactoBaja, setImpactoBaja] = useState<ImpactoBaja | null>(null);
+  const [cargandoImpacto, setCargandoImpacto] = useState(false);
+  const [dandoDeBaja, setDandoDeBaja] = useState(false);
 
-  // Activar / desactivar (freeze) una materia. La materia inactiva no se oculta
-  // al alumno inscripto; solo corta inscripciones nuevas y bloquea rendir (server-side).
+  // El impacto se pide al abrir el diálogo. Si la consulta falla, el diálogo
+  // sigue sirviendo sin el aviso: el servidor es igual la autoridad (rechaza con
+  // 409 si hay gente rindiendo).
+  useEffect(() => {
+    if (!pendienteBaja) { setImpactoBaja(null); setCargandoImpacto(false); return; }
+    const { tipo, id } = pendienteBaja;
+    let vigente = true;
+    setCargandoImpacto(true);
+    (tipo === 'materia' ? impactoBajaMateria(id) : impactoBajaComision(id))
+      .then((i) => { if (vigente) setImpactoBaja(i); })
+      .catch(() => { if (vigente) setImpactoBaja(null); })
+      .finally(() => { if (vigente) setCargandoImpacto(false); });
+    return () => { vigente = false; };
+  }, [pendienteBaja]);
+
+  // Baja / reactivación de una materia (c-78). UN SOLO patrón en todo el sistema:
+  // `DELETE /{id}` da de baja, `POST /{id}/reactivar` la revierte — igual que
+  // usuario y examen. La materia de baja no se le oculta al alumno ya inscripto;
+  // corta inscripciones nuevas y bloquea rendir (server-side). Nada se borra.
   async function toggleActivaMateria(m: Materia) {
-    const nuevoEstado = !(m.activa ?? true);
+    if (m.activa ?? true) {
+      setPendienteBaja({ tipo: 'materia', id: m.id, nombre: m.nombre });
+      return;
+    }
     try {
-      const actualizada = await setMateriaActiva(m.id, nuevoEstado);
-      setMaterias((prev) =>
-        prev.map((x) => (x.id === m.id ? { ...x, activa: actualizada.activa ?? nuevoEstado } : x)),
-      );
-      toast.success(nuevoEstado ? 'Materia activada.' : 'Materia desactivada (congelada).');
+      await reactivarMateria(m.id);
+      setMaterias((prev) => prev.map((x) => (x.id === m.id ? { ...x, activa: true } : x)));
+      toast.success('Materia reactivada.');
     } catch {
-      toast.error('No se pudo cambiar el estado de la materia.');
+      toast.error('No se pudo reactivar la materia.');
     }
   }
 
-  // Activar / desactivar (baja lógica) una comisión. Congela SOLO esa comisión:
-  // corta inscripciones nuevas por su código y bloquea iniciar sus exámenes. No
-  // desmatricula a nadie. Es la salida cuando el borrado está bloqueado.
+  // Ídem para una comisión: afecta SOLO a esa comisión (corta inscripciones por
+  // su código y bloquea iniciar sus exámenes). No desmatricula a nadie.
   async function toggleActivaComision(materiaId: string, c: Comision) {
-    const nuevoEstado = !(c.activa ?? true);
+    if (c.activa ?? true) {
+      setPendienteBaja({ tipo: 'comision', id: c.id, nombre: c.nombre, materiaId });
+      return;
+    }
     try {
-      const actualizada = await setComisionActiva(c.id, nuevoEstado);
+      await reactivarComision(c.id);
       setComisionesPorMateria((prev) => ({
         ...prev,
         [materiaId]: (prev[materiaId] ?? []).map((x) =>
-          x.id === c.id ? { ...x, activa: actualizada.activa ?? nuevoEstado } : x,
+          x.id === c.id ? { ...x, activa: true } : x,
         ),
       }));
-      toast.success(nuevoEstado ? 'Comisión activada.' : 'Comisión desactivada (congelada).');
+      toast.success('Comisión reactivada.');
     } catch {
-      toast.error('No se pudo cambiar el estado de la comisión.');
+      toast.error('No se pudo reactivar la comisión.');
     }
   }
 
-  async function confirmarEliminar() {
-    if (!confirmarBorrado) return;
-    const target = confirmarBorrado;
-    setBorrando(true);
+  async function confirmarBaja() {
+    const target = pendienteBaja;
+    if (!target) return;
+    setDandoDeBaja(true);
     try {
       if (target.tipo === 'materia') {
-        await eliminarMateria(target.id);
-        setMaterias((prev) => prev.filter((m) => m.id !== target.id));
-        setComisionesPorMateria((prev) => {
-          const next = { ...prev };
-          delete next[target.id];
-          return next;
-        });
-        if (expandida === target.id) setExpandida(null);
-        toast.success('Materia eliminada.');
+        await darDeBajaMateria(target.id);
+        setMaterias((prev) =>
+          prev.map((x) => (x.id === target.id ? { ...x, activa: false } : x)),
+        );
+        toast.success(
+          'Materia dada de baja. No se borró nada: podés reactivarla cuando quieras.',
+        );
       } else if (target.materiaId) {
-        await eliminarComision(target.id);
         const mid = target.materiaId;
+        await darDeBajaComision(target.id);
         setComisionesPorMateria((prev) => ({
           ...prev,
-          [mid]: (prev[mid] ?? []).filter((c) => c.id !== target.id),
+          [mid]: (prev[mid] ?? []).map((x) =>
+            x.id === target.id ? { ...x, activa: false } : x,
+          ),
         }));
-        toast.success('Comisión eliminada.');
+        toast.success('Comisión dada de baja. No se desmatriculó a nadie.');
       }
-      setConfirmarBorrado(null);
     } catch (err) {
-      const status = (err as { status?: number })?.status;
-      // 409: tiene inscriptos/exámenes → el mensaje del backend sugiere desactivar.
+      // 409 = hay gente rindiendo en este momento. El backend dice a cuántos
+      // iba a afectar; taparlo con un mensaje genérico manda a reintentar algo
+      // que reintentar no arregla.
+      const detalle = err instanceof Error ? err.message : '';
       toast.error(
-        status === 409
-          ? (err as Error).message ||
-              'No se puede eliminar: tiene inscriptos o exámenes. Desactivala en su lugar.'
-          : 'No se pudo eliminar. Reintentá en un momento.',
+        detalle ||
+          `No se pudo dar de baja la ${target.tipo === 'materia' ? 'materia' : 'comisión'}.`,
       );
-      setConfirmarBorrado(null);
     } finally {
-      setBorrando(false);
+      setDandoDeBaja(false);
+      setPendienteBaja(null);
     }
   }
 
@@ -178,11 +225,23 @@ export default function MateriasComisiones() {
 
   const cargarMaterias = useCallback(async () => {
     setCargandoMaterias(true);
+    setErrorMaterias(null);
     try {
-      const data = await api.materiasDisponibles();
+      // strict: sin esto el cliente devuelve [] ante un 401 y el `catch` de
+      // abajo nunca corre — que es exactamente el bug E-13.
+      const data = await api.materiasDisponibles(true);
       setMaterias(data);
       setLastUpdatedAt(Date.now());
-    } catch {
+    } catch (err: unknown) {
+      const status = (err as { status?: number })?.status;
+      setErrorMaterias(
+        status === 401
+          ? 'Tu sesión expiró. Cerrá sesión, volvé a entrar y reintentá.'
+          : status === 403
+            ? 'No tenés permiso para ver las materias.'
+            : 'No se pudo cargar la lista de materias. Puede ser la conexión o el servidor.',
+      );
+      // NO se degrada a []: eso afirmaría que no hay materias, y no lo sabemos.
       toast.error('No se pudo cargar la lista de materias.');
     } finally {
       setCargandoMaterias(false);
@@ -216,11 +275,17 @@ export default function MateriasComisiones() {
     if (!comisionesPorMateria[materiaId]) {
       setCargandoComisiones((prev) => ({ ...prev, [materiaId]: true }));
       try {
-        const data = await api.comisionesDeMateria(materiaId);
+        const data = await api.comisionesDeMateria(materiaId, true);
         setComisionesPorMateria((prev) => ({ ...prev, [materiaId]: data }));
+        setErrorComisiones((prev) => ({ ...prev, [materiaId]: null }));
       } catch {
+        // D16: NO se cachea [] como si la materia no tuviera comisiones — se
+        // marca el error y la proxima apertura vuelve a intentar.
         toast.error('No se pudieron cargar las comisiones.');
-        setComisionesPorMateria((prev) => ({ ...prev, [materiaId]: [] }));
+        setErrorComisiones((prev) => ({
+          ...prev,
+          [materiaId]: 'No se pudieron cargar las comisiones de esta materia.',
+        }));
       } finally {
         setCargandoComisiones((prev) => ({ ...prev, [materiaId]: false }));
       }
@@ -421,6 +486,15 @@ export default function MateriasComisiones() {
           <div className="py-16 text-center text-on-surface-variant">
             <Icon name="progress_activity" className="ae-spin text-[28px] text-outline" />
           </div>
+        ) : errorMaterias ? (
+          // D16: la carga FALLÓ. No se afirma nada sobre el contenido.
+          <div className="py-16 text-center text-on-surface-variant space-y-base rounded-xl border border-outline-variant/60 bg-surface-container-lowest">
+            <Icon name="cloud_off" className="text-[36px] text-error" />
+            <p className="text-[13px]">{errorMaterias}</p>
+            <Button variant="ghost" size="sm" onClick={() => void cargarMaterias()}>
+              Reintentar
+            </Button>
+          </div>
         ) : materias.length === 0 ? (
           <div className="py-16 text-center text-on-surface-variant space-y-base rounded-xl border border-outline-variant/60 bg-surface-container-lowest">
             <Icon name="school" className="text-[36px] text-outline" />
@@ -469,20 +543,16 @@ export default function MateriasComisiones() {
                         items={[
                           { label: 'Editar materia', icon: 'edit', onClick: () => abrirEditarMateria(m) },
                           { label: 'Nueva comisión', icon: 'add_circle', onClick: () => abrirCrearComision(m.id) },
+                          { label: 'Coordinadores', icon: 'supervisor_account', onClick: () => setCoordinandoMateria(m) },
+                          { label: 'Profesores', icon: 'co_present', onClick: () => setAsignandoProfesor(m) },
+                          // UN SOLO patrón de baja (c-78). Antes convivían dos entradas
+                          // que hacían exactamente lo mismo: "Eliminar materia" ya no
+                          // borraba nada desde que la baja pasó a ser lógica, y encima
+                          // solo aparecía con la materia vacía, que es justo el caso en
+                          // el que no hay nada que sacar.
                           m.activa === false
-                            ? { label: 'Activar materia', icon: 'play_circle', onClick: () => void toggleActivaMateria(m) }
-                            : { label: 'Desactivar materia', icon: 'pause_circle', onClick: () => void toggleActivaMateria(m) },
-                          // "Eliminar" solo si la materia está VACÍA (0 inscriptos y 0 exámenes),
-                          // mismo criterio que el guard del backend (evita ofrecer un 409 seguro).
-                          ...(((m.total_inscriptos ?? 0) === 0 && (m.total_examenes ?? 0) === 0)
-                            ? [{
-                                label: 'Eliminar materia',
-                                icon: 'delete',
-                                danger: true,
-                                onClick: () =>
-                                  setConfirmarBorrado({ tipo: 'materia', id: m.id, nombre: m.nombre }),
-                              } as ActionItem]
-                            : []),
+                            ? { label: 'Reactivar materia', icon: 'play_circle', onClick: () => void toggleActivaMateria(m) }
+                            : { label: 'Dar de baja la materia', icon: 'delete', danger: true, onClick: () => void toggleActivaMateria(m) },
                         ]}
                       />
                       )}
@@ -513,6 +583,12 @@ export default function MateriasComisiones() {
                         </h2>
                         <p className="text-[11px] text-on-surface-variant">
                           {(comisionesPorMateria[m.id]?.length ?? 0)} comisión(es)
+                          {m.coordinadores && m.coordinadores.length > 0
+                            ? ` · Coordina: ${m.coordinadores.map((c) => c.nombre).join(', ')}`
+                            : ''}
+                          {m.profesores && m.profesores.length > 0
+                            ? ` · Profesor: ${m.profesores.map((c) => c.nombre).join(', ')}`
+                            : ''}
                         </p>
                       </div>
                       {puedeEditarEstructura && (
@@ -521,6 +597,21 @@ export default function MateriasComisiones() {
                         </Button>
                       )}
                     </div>
+                    {errorComisiones[m.id] ? (
+                      /* D16: la carga de comisiones FALLÓ. No se dibuja como
+                         "esta materia no tiene comisiones". */
+                      <div className="py-16 text-center text-on-surface-variant space-y-base">
+                        <Icon name="cloud_off" className="text-[36px] text-error" />
+                        <p className="text-[13px]">{errorComisiones[m.id]}</p>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => void seleccionarMateria(m.id)}
+                        >
+                          Reintentar
+                        </Button>
+                      </div>
+                    ) : (
                     <ComisionesAccordionBody
                       materiaId={m.id}
                       cargando={cargandoComisiones[m.id]}
@@ -536,18 +627,11 @@ export default function MateriasComisiones() {
                       onCancelarComision={cerrarFormComision}
                       abrirCrearComision={abrirCrearComision}
                       abrirEditarComision={abrirEditarComision}
-                      abrirEliminarComision={(c) =>
-                        setConfirmarBorrado({
-                          tipo: 'comision',
-                          id: c.id,
-                          nombre: c.nombre,
-                          materiaId: m.id,
-                        })
-                      }
                       onToggleActivaComision={(c) => void toggleActivaComision(m.id, c)}
                       comisionExpandida={comisionExpandida}
                       toggleComision={toggleComision}
                     />
+                    )}
                   </>
                 );
               })()}
@@ -556,20 +640,62 @@ export default function MateriasComisiones() {
         )}
       </div>
 
+      {coordinandoMateria && (
+        <AsignarCoordinadorDialog
+          materiaId={coordinandoMateria.id}
+          materiaNombre={coordinandoMateria.nombre}
+          coordinadoresActuales={coordinandoMateria.coordinadores ?? []}
+          onCerrar={() => setCoordinandoMateria(null)}
+          onCambiado={(coordinadores) => {
+            // Se refleja en la lista sin recargar todo: el diálogo queda abierto
+            // y el usuario puede seguir agregando o quitando.
+            setMaterias((prev) =>
+              prev.map((m) =>
+                m.id === coordinandoMateria.id ? { ...m, coordinadores } : m,
+              ),
+            );
+            setCoordinandoMateria((prev) => (prev ? { ...prev, coordinadores } : prev));
+          }}
+        />
+      )}
+
+      {asignandoProfesor && (
+        <AsignarProfesorDialog
+          materiaId={asignandoProfesor.id}
+          materiaNombre={asignandoProfesor.nombre}
+          profesoresActuales={asignandoProfesor.profesores ?? []}
+          onCerrar={() => setAsignandoProfesor(null)}
+          onCambiado={(profesores) => {
+            setMaterias((prev) =>
+              prev.map((m) =>
+                m.id === asignandoProfesor.id ? { ...m, profesores } : m,
+              ),
+            );
+            setAsignandoProfesor((prev) => (prev ? { ...prev, profesores } : prev));
+          }}
+        />
+      )}
+
       <ConfirmModal
-        abierto={confirmarBorrado !== null}
+        abierto={pendienteBaja !== null}
         variante="danger"
-        titulo={confirmarBorrado?.tipo === 'materia' ? 'Eliminar materia' : 'Eliminar comisión'}
+        titulo={pendienteBaja?.tipo === 'materia' ? 'Dar de baja la materia' : 'Dar de baja la comisión'}
         mensaje={
           <>
-            ¿Seguro que querés eliminar {confirmarBorrado?.tipo === 'materia' ? 'la materia' : 'la comisión'}{' '}
-            <strong>«{confirmarBorrado?.nombre}»</strong>? Esta acción no se puede deshacer. Solo se
-            permite si no tiene inscriptos ni exámenes.
+            <p>
+              <strong>«{pendienteBaja?.nombre}»</strong> sale de los listados y deja de
+              admitir inscripciones nuevas. Sus exámenes dejan de poder rendirse.
+            </p>
+            <p className="mt-2">
+              <strong>No se borra nada</strong> y no se desmatricula a nadie: podés
+              reactivarla cuando quieras.
+            </p>
+            <AvisoImpactoBaja impacto={impactoBaja} cargando={cargandoImpacto} />
           </>
         }
-        textoConfirmar={borrando ? 'Eliminando…' : 'Eliminar'}
-        onConfirmar={() => void confirmarEliminar()}
-        onCancelar={() => { if (!borrando) setConfirmarBorrado(null); }}
+        textoConfirmar={dandoDeBaja ? 'Dando de baja…' : 'Dar de baja'}
+        onConfirmar={() => void confirmarBaja()}
+        onCancelar={() => { if (!dandoDeBaja) setPendienteBaja(null); }}
       />
     </StaffShell>
   );

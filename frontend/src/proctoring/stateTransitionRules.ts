@@ -147,6 +147,14 @@ export class StateTransitionRules {
   private gaze: GazeState = { since_ms: null, anchor: null, emitted: false };
   private multiFaceFrames = 0;
   private multiFaceEmitted = false;
+  // Pentest 2026-08-21 (miedo del usuario, camara descentrada): sin esto, un alumno
+  // con la webcam fisicamente a un costado (no alineada con la pantalla) mira
+  // derecho al examen pero su vector de iris tiene magnitud alta respecto al centro
+  // (0,0) del frame de CAMARA, no del centro de la PANTALLA -> falso positivo de
+  // "mirada desviada sostenida" por simplemente leer normalmente. calibrarGaze()
+  // fija el punto que ESE alumno produce cuando mira bien (capturado antes de
+  // empezar el examen); toda evaluacion de gaze pasa a medirse relativa a el.
+  private gazeBaseline: { x: number; y: number } = { x: 0, y: 0 };
 
   // C-25: estado de de-duplicacion para senales de navegador instantaneas.
   // Previene re-emision mientras la senal persiste; se resetea cuando la senal se limpia.
@@ -159,6 +167,15 @@ export class StateTransitionRules {
 
   constructor(config: Partial<TransitionConfig> = {}) {
     this.cfg = { ...DEFAULT_CONFIG, ...config };
+  }
+
+  /**
+   * Fija el baseline de mirada calibrado para este alumno/sesion (capturado en un
+   * paso previo al examen, mirando al centro de la pantalla unos segundos). Sin
+   * calibrar, el baseline es {0,0} (comportamiento retrocompatible).
+   */
+  calibrarGaze(baseline: { x: number; y: number }): void {
+    this.gazeBaseline = baseline;
   }
 
   /**
@@ -215,7 +232,12 @@ export class StateTransitionRules {
   }
 
   private evalGaze(s: FrameSignals, out: DiscreteEvent[]): void {
-    const g = s.gaze;
+    // g: vector de iris relativo al baseline calibrado (o {0,0} si no se calibro).
+    // s.gaze (crudo/absoluto) se preserva para el payload — es lo que se re-infiere
+    // server-side, no debe contaminarse con el ajuste de calibracion local.
+    const g = s.gaze
+      ? { x: s.gaze.x - this.gazeBaseline.x, y: s.gaze.y - this.gazeBaseline.y }
+      : undefined;
     const magnitude = g ? Math.hypot(g.x, g.y) : 0;
     // C-35: la condicion "desviado" combina dos fuentes de senal:
     //   1. Vector iris: magnitud >= gaze_deviation_threshold (senal principal).
@@ -256,7 +278,11 @@ export class StateTransitionRules {
           tipo: "mirada_desviada_sostenida",
           severidad: "media",
           ts_ms: s.ts_ms,
-          payload: { sostenido_ms: elapsed, gaze: g ?? effectiveGaze },
+          // gaze en el payload es el vector CRUDO (absoluto, s.gaze) — no el relativo
+          // al baseline de calibracion. Es lo que se re-infiere server-side (regla
+          // dura #6, cliente = sensor no confiable); el ajuste de calibracion es solo
+          // un criterio local de evaluacion, no debe alterar la evidencia reportada.
+          payload: { sostenido_ms: elapsed, gaze: s.gaze ?? effectiveGaze },
           trigger_evidence: false,
         });
       }

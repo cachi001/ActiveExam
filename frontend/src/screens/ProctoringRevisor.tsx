@@ -422,9 +422,19 @@ export default function ProctoringRevisor() {
             sobre `sesiones`, que solo tiene la página actual). Mismo componente
             StatCard con color (statCatalog) que ya usan Dashboard/Supervisión en
             vivo — nada de estilo neutro inventado ni chips de riesgo aparte. */}
+        {/* F-02 (c-78): el `sub` DECLARA el alcance. Esta pantalla es historial
+            cerrado (solo finalizadas); el Panel de administración cuenta actividad
+            de cualquier estado. Son números distintos a propósito, y ahora cada
+            tarjeta lo dice en vez de dejarlo para inferir. */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-md">
           <StatCard {...statProps('sesiones', total, 'finalizadas')} />
-          <StatCard {...statProps('enColaRevision', agregados.en_cola_revision)} />
+          <StatCard
+            {...statProps(
+              'enColaRevision',
+              agregados.en_cola_revision,
+              'con examen vinculado, sobre el umbral',
+            )}
+          />
         </div>
 
         <FiltrosPanel
