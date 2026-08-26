@@ -14,7 +14,11 @@ _BASE = "/api/v1/proctoring"
 # El ``client`` por defecto va autenticado como estudiante (solicitar pausa, poll
 # de su sesion, reanudar). Resolver (aprobar/rechazar) y el poll de pendientes
 # son del proctor: se mandan con un Bearer de rol proctor.
-_PROCTOR = auth_headers(["coordinador"])  # c-76: rol proctor eliminado -> coordinador supervisa
+# c-79 acoto al COORDINADOR a SU materia; estas sesiones son modo "test" (sin
+# comision), asi que la pertenencia no se puede resolver y comia 403. El unico
+# rol institucional que queda es admin_sistema. Las reglas de pertenencia
+# tienen sus propios tests (test_c76_tutor_comision, test_h1_idor_*).
+_PROCTOR = auth_headers(["admin_sistema"])
 
 
 async def _crear_sesion(client: AsyncClient, etiqueta: str | None = None) -> str:

@@ -23,7 +23,11 @@ from app.application.proctoring.scoring import (
     pesos_de_snapshot,
     umbral_de_snapshot,
 )
-from app.domain.exam_content.visibilidad import nota_visible, revision_visible
+from app.domain.exam_content.visibilidad import (
+    nota_visible,
+    nota_visible_para_alumno,
+    revision_visible,
+)
 from app.domain.review.decision import nota_esta_anulada
 from app.infrastructure.persistence.models.exam_content import ExamenContenidoModel
 from app.infrastructure.persistence.models.moodle_writeback import (
@@ -942,6 +946,11 @@ async def listar_mis_notas(
         pesos_vivos=pesos_vivos, desactivados_vivos=desactivados_vivos, umbral_vivo=umbral_vivo,
     )
     restituidas = await _sesiones_con_restitucion(db, session_ids)
+    # c-78: la retención de CADA sesión, para que publicar las notas del examen no
+    # descubra la de un alumno cuya integridad todavía está en revisión. Una sola
+    # consulta para todas (no N+1), reusando el mismo cálculo que usa el panel de
+    # notas y el sincronizado — no un criterio propio.
+    retenciones_alumno = await _motivos_retencion(db, session_ids)
 
     ahora = datetime.now(tz=timezone.utc)
     items: list[MiNota] = []
@@ -954,8 +963,17 @@ async def listar_mis_notas(
         )
         # Gate de visibilidad (C-69): si la nota aún no es visible NO se filtra el
         # número al cliente (nota=None); la UI muestra "disponible al cerrar".
-        visible = nota_visible(
-            mostrar_nota=r.mostrar_nota, cierre=r.cierre, ahora=ahora
+        #
+        # c-78: además de la publicación del examen, pesa la RETENCIÓN de ESTA
+        # sesión. Publicar no alcanza si la nota está retenida por integridad
+        # (superó el umbral y nadie revisó, o fue anulada): mostrar un número que
+        # puede anularse después es peor que no mostrar nada — el alumno lo lee
+        # como su nota y el sistema termina sacándole algo que ya le dio.
+        visible = nota_visible_para_alumno(
+            mostrar_nota=r.mostrar_nota,
+            cierre=r.cierre,
+            ahora=ahora,
+            retenido_por=retenciones_alumno.get(r.session_id),
         )
         rev_disp = revision_visible(
             revision_habilitada=r.revision_habilitada,

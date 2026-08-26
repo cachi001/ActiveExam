@@ -4886,6 +4886,43 @@ def create_exam_content_router(
                     detail={"error": "resultado_no_encontrado", "session_id": session_id},
                 )
 
+            # Una nota RETENIDA por integridad no se puede dar por entregada a
+            # mano. El sincronizado automatico ya se niega a mandarla; sin esta
+            # guarda se podia marcar a mano exactamente lo que el sistema retiene,
+            # y encima quedaba registrado que una persona afirmo haberla cargado
+            # en el campus. Es saltear la decision humana (regla dura #5) por la
+            # puerta de atras.
+            #
+            # Se reusa el motivo que ya calcula `_motivos_retencion` en vez de
+            # recalcular un criterio propio, que es como se desincronizan las
+            # reglas. `sin_destino` y `sin_credencial_docente` NO bloquean: son
+            # justamente los casos en que cargar a mano es lo correcto.
+            from app.application.moodle.marcado_manual import puede_marcarse_cargada
+            from app.application.moodle.resultados_query import _motivos_retencion
+
+            retenido_por = (await _motivos_retencion(session, [session_id])).get(
+                session_id
+            )
+            if not puede_marcarse_cargada(retenido_por):
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={
+                        "error": "nota_retenida",
+                        "mensaje": (
+                            "La nota está retenida"
+                            + (
+                                " porque la sesión superó el umbral y todavía "
+                                "nadie la revisó."
+                                if retenido_por == "en_riesgo"
+                                else " porque la sesión fue anulada por fraude."
+                            )
+                            + " No se puede marcar como cargada hasta que haya "
+                            "una decisión humana."
+                        ),
+                        "retenido_por": retenido_por,
+                    },
+                )
+
             fila = (
                 await session.execute(
                     _select(MoodleWritebackEstadoModel).where(

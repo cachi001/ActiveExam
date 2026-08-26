@@ -96,3 +96,42 @@ def revision_visible(
     if not revision_habilitada:
         return False
     return nota_visible(mostrar_nota=mostrar_nota, cierre=cierre, ahora=ahora)
+
+
+#: Motivos de retencion que ademas OCULTAN la nota al alumno. Son los de
+#: INTEGRIDAD: la nota puede cambiar cuando un humano decida.
+#:
+#: `sin_destino` y `sin_credencial_docente` NO estan: esos retienen el ENVIO al
+#: campus, no la nota. El alumno rindio, la nota existe y esta bien; taparla
+#: porque el campus no tiene destino configurado seria castigarlo por un problema
+#: administrativo ajeno.
+MOTIVOS_QUE_OCULTAN_LA_NOTA = frozenset({"en_riesgo", "anulada"})
+
+
+def nota_visible_para_alumno(
+    *,
+    mostrar_nota: str,
+    cierre: datetime | None,
+    ahora: datetime,
+    retenido_por: str | None,
+) -> bool:
+    """True si ESTE alumno puede ver su nota en ``ahora``.
+
+    Suma al gate de publicacion del examen (`nota_visible`) la retencion de SU
+    sesion. Publicar las notas no alcanza si la suya esta retenida por integridad:
+    supero el umbral y todavia nadie la reviso, o fue anulada por fraude.
+
+    El motivo: mostrar un numero que puede anularse despues es peor que no
+    mostrar nada. El alumno lo lee como su nota, y si el revisor la anula, el
+    sistema le saco algo que ya le habia dado. La regla dura #5 dice que la
+    decision es humana; hasta que ocurra, no hay nota que mostrar.
+
+    Con la nota ya revisada la retencion desaparece sola y manda la decision.
+
+    ``retenido_por`` es el motivo que ya calcula
+    ``resultados_query._motivos_retencion`` — se reusa en vez de recalcular un
+    criterio propio, que es como se desincronizan las reglas.
+    """
+    if retenido_por in MOTIVOS_QUE_OCULTAN_LA_NOTA:
+        return False
+    return nota_visible(mostrar_nota=mostrar_nota, cierre=cierre, ahora=ahora)
