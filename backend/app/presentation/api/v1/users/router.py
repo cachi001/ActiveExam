@@ -21,7 +21,7 @@ import string
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel, ConfigDict, field_validator  # noqa: F401
+from pydantic import BaseModel, ConfigDict, Field, field_validator  # noqa: F401
 from sqlalchemy import or_, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -606,6 +606,8 @@ async def editar_usuario(
 
     from app.application.audit.service import registrar_seguro
 
+    from app.application.audit.service import registrar_seguro
+
     await registrar_seguro(
         session_factory,
         actor=principal.email,
@@ -1043,4 +1045,111 @@ async def obtener_biometria_referencia_estado(
         tiene_foto=foto_row is not None,
         foto_hash=foto_row[0] if foto_row is not None else None,
         foto_created_at=str(foto_row[1]) if foto_row is not None else None,
+    )
+
+
+class ResetearPasswordResponse(BaseModel):
+    """Respuesta de POST /users/{id}/resetear-password (c-78)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    usuario_id: str
+    username: str
+    password_temporal: str = Field(
+        ...,
+        description=(
+            "Se muestra UNA sola vez: no se guarda en claro en ningún lado. El "
+            "usuario está obligado a cambiarla al entrar."
+        ),
+    )
+    debe_cambiar_password: bool = True
+
+
+@router.post(
+    "/{usuario_id}/resetear-password",
+    response_model=ResetearPasswordResponse,
+    summary="Generar una contraseña temporal para un usuario (solo admin_sistema)",
+)
+async def resetear_password(
+    usuario_id: str,
+    request: Request,
+    principal: AuthenticatedPrincipal = Depends(_require_admin),
+) -> ResetearPasswordResponse:
+    """Le genera al usuario una contraseña temporal y la devuelve UNA vez.
+
+    Existe porque no había forma de resetear la contraseña de nadie (c-78): el
+    alta genera una temporal, ``change-password`` exige la actual, el seed no
+    pisa las existentes y no hay "olvidé mi contraseña". Si un docente la olvida
+    el día del examen, sin esto nadie puede ayudarlo salvo entrando a la base.
+
+    DOMINIO CRÍTICO (auth). Las guardas, todas necesarias:
+
+    - **solo ``admin_sistema``** (``_require_admin``): resetear contraseñas es,
+      literalmente, poder tomar la cuenta de cualquiera.
+    - queda ``debe_cambiar_password=True``, igual que el alta: el admin destraba
+      el acceso pero no se queda sabiendo la clave de nadie.
+    - **409 en cuentas LTI**: esas no entran con contraseña (nacen con el
+      centinela y su dueño fija la suya desde el dashboard). Darle una temporal
+      le abriría un camino de entrada que hoy no tiene.
+    - **404 en cuentas dadas de baja**: no se le destraba el acceso a alguien que
+      fue dado de baja.
+
+    Queda registrado en auditoría quién reseteó a quién. La contraseña NUNCA se
+    escribe en el log ni en el propósito de la auditoría.
+    """
+    session_factory = _get_session_factory(request)
+
+    alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
+    password_plain = "".join(secrets.choice(alphabet) for _ in range(16))
+    # En thread aparte (ver hashear_password_async): bcrypt bloquea el bucle.
+    password_hash = await hashear_password_async(password_plain)
+
+    async with session_factory() as session:
+        usuario = (
+            await session.execute(
+                select(UsuarioModel).where(UsuarioModel.id == usuario_id)
+            )
+        ).scalar_one_or_none()
+
+        if usuario is None or usuario.eliminado_en is not None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Usuario no encontrado.",
+            )
+        if usuario.auth_provider == "lti":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "Esa cuenta entra desde el campus, no con contraseña. Si "
+                    "quiere entrar directo, tiene que fijar la suya desde su perfil."
+                ),
+            )
+
+        usuario.password_hash = password_hash
+        usuario.debe_cambiar_password = True
+        username = usuario.username
+        await session.commit()
+
+    from app.application.audit.service import registrar_seguro
+
+    await registrar_seguro(
+        session_factory,
+        actor=principal.email,
+        accion=AccionAuditoria.USUARIO_EDICION,
+        modulo=ModuloAuditoria.USUARIOS,
+        entidad=EntidadAuditoria.USUARIO,
+        entidad_id=str(usuario_id),
+        ip=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+        # La contraseña NO se registra: el propósito dice qué pasó, no el secreto.
+        proposito=(
+            f"Resete\u00f3 la contrase\u00f1a de {username}. Queda obligado a "
+            "cambiarla al entrar."
+        ),
+    )
+
+    return ResetearPasswordResponse(
+        usuario_id=str(usuario_id),
+        username=username,
+        password_temporal=password_plain,
     )
