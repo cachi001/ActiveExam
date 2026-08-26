@@ -61,3 +61,58 @@ export async function drainAndReplay(
 
   return result;
 }
+
+/** Envia una TANDA completa y resuelve con un ack por evento, en la misma posicion. */
+export type LoteSender = (records: BufferedEvent[]) => Promise<ReplayAck[]>;
+
+/** Cuantos eventos van por request. El backend tiene un tope duro de 200. */
+const TAMANO_TANDA_DEFAULT = 50;
+
+export interface OpcionesLote {
+  tamanoTanda?: number;
+}
+
+/**
+ * Drena el buffer EN TANDAS: un request por tanda en vez de uno por evento.
+ *
+ * Por que (c-78 §16.1f): de a uno, el drenaje espera el ack de cada evento.
+ * Medido contra Render el 26/8/2026, una caida de 30 s tardaba **35,6 s de media
+ * y hasta 1m01s** en drenarse — el plan free responde a 3 a 5 s por request y el
+ * drenaje los paga en serie. No se perdia evidencia, pero durante esos 35 s el
+ * alumno podia cerrar la pestana y llevarse lo que faltaba mandar.
+ *
+ * Mantiene las MISMAS garantias que `drainAndReplay`:
+ *   - orden de produccion (las tandas van en orden y cada una respeta su orden)
+ *   - purga SOLO lo confirmado, y por id, nunca por posicion a ciegas: si el
+ *     backend devuelve menos acks que eventos, lo que no vino sigue en el buffer
+ *   - una tanda que falla no se da por enviada, y no se lleva puesta la anterior
+ */
+export async function drainAndReplayEnLote(
+  buffer: CircularEventBuffer,
+  send: LoteSender,
+  opciones: OpcionesLote = {},
+): Promise<ReplayResult> {
+  const tamano = Math.max(1, opciones.tamanoTanda ?? TAMANO_TANDA_DEFAULT);
+  const pending = await buffer.pending(); // ordenado por seq
+  const result: ReplayResult = { sentInOrder: [], persisted: [], deduplicated: [] };
+
+  for (let i = 0; i < pending.length; i += tamano) {
+    const tanda = pending.slice(i, i + tamano);
+    // Si esto tira, la excepcion sube SIN purgar la tanda: lo que no se confirmo
+    // queda en el buffer para el proximo intento. Las tandas anteriores ya
+    // confirmadas quedan purgadas, que es correcto: ya estan a salvo.
+    const acks = await send(tanda);
+
+    const porId = new Map(acks.map((a) => [a.id, a]));
+    for (const record of tanda) {
+      const ack = porId.get(record.id);
+      if (!ack) continue; // el backend no lo confirmo: se queda en el buffer
+      result.sentInOrder.push(record.id);
+      if (ack.status === "persisted") result.persisted.push(record.id);
+      else result.deduplicated.push(record.id);
+      await buffer.confirm(record.id);
+    }
+  }
+
+  return result;
+}

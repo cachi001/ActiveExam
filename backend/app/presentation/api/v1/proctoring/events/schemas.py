@@ -104,3 +104,43 @@ class IngestEventoOut(BaseModel):
         None,
         description="SHA-256 hex del screenshot (integridad liviana, D9). None si no habia screenshot.",
     )
+
+
+# Tope duro del lote (c-78 §16.1f). El buffer del cliente drena de a tandas; el
+# servidor no tiene por que aceptar un lote sin limite, que con capturas adentro
+# es un request de decenas de MB contra un plan de 0.1 CPU.
+MAX_EVENTOS_POR_LOTE = 200
+
+
+class IngestLoteIn(BaseModel):
+    """Body de POST /sessions/{id}/events/lote.
+
+    Existe para el DRENAJE del buffer al reconectar. Mandar un evento por request
+    tardaba 35 s de media contra Render para una caida de 30 s (medido el
+    26/8/2026); durante esos 35 s el alumno podia cerrar la pestana y llevarse lo
+    que faltaba mandar.
+
+    El ORDEN del array es el orden de produccion del buffer y se respeta: el ack
+    vuelve en la misma posicion, que es como el cliente casa cada evento con su
+    confirmacion para purgarlo.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    eventos: list[IngestEventoIn] = Field(
+        ...,
+        min_length=1,
+        max_length=MAX_EVENTOS_POR_LOTE,
+        description="Eventos en orden de produccion (seq ascendente del buffer).",
+    )
+
+
+class IngestLoteOut(BaseModel):
+    """Respuesta de POST /sessions/{id}/events/lote → 201.
+
+    Un ack por evento, en la MISMA posicion que en el request.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    resultados: list[IngestEventoOut]

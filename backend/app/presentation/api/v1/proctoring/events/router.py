@@ -23,6 +23,8 @@ from app.domain.auth.identity import AuthenticatedPrincipal
 from app.presentation.api.v1.proctoring.events.schemas import (
     IngestEventoIn,
     IngestEventoOut,
+    IngestLoteIn,
+    IngestLoteOut,
 )
 
 
@@ -90,5 +92,61 @@ def create_events_router(
             face_count_servidor=evento.face_count_servidor,
             screenshot_sha256=evento.screenshot_sha256,
         )
+
+    @router.post(
+        "/sessions/{session_id}/events/lote",
+        status_code=http_status.HTTP_201_CREATED,
+        response_model=IngestLoteOut,
+        summary="Ingestar un LOTE de eventos (drenaje del buffer al reconectar)",
+    )
+    async def ingestar_lote(
+        session_id: str,
+        body: IngestLoteIn,
+        db: Annotated[AsyncSession, Depends(get_db)],
+        reinferencia: Annotated[ReinferenciaPort, Depends(get_reinferencia)],
+        principal: Annotated[AuthenticatedPrincipal, Depends(require_autenticado)],
+    ) -> IngestLoteOut:
+        """Ingesta varios eventos en un solo request, EN ORDEN.
+
+        Es el camino del drenaje: cuando al alumno se le corta la conexion, lo
+        que pasa mientras tanto queda en el buffer de IndexedDB y se reenvia al
+        volver. De a uno, eso tardaba 35 s de media contra Render para una caida
+        de 30 s (medido el 26/8/2026) — el plan free responde a 3 a 5 s por
+        request y el drenaje los paga en serie.
+
+        Mismas reglas que la ingesta de a uno, sin excepciones: misma
+        re-inferencia, misma guarda de pertenencia (H1, IDOR) y mismo contrato de
+        ack. Es el MISMO ``event_service.ingestar_evento``, no una copia — un
+        segundo camino con reglas propias se desalinea con el tiempo.
+
+        Los eventos se procesan en secuencia porque el orden de produccion es
+        parte del contrato del replay, y el ack vuelve en la misma posicion.
+        """
+        resultados: list[IngestEventoOut] = []
+        for item in body.eventos:
+            evento = await event_service.ingestar_evento(
+                db=db,
+                session_id=session_id,
+                tipo=item.tipo,
+                severidad=item.severidad.value,
+                ts_cliente=item.ts_cliente,
+                reinferencia=reinferencia,
+                principal=principal,
+                payload=item.payload,
+                screenshot_base64=item.screenshot_base64,
+                face_count_cliente=item.face_count_cliente,
+                cipher=cipher,
+                worm_storage=worm_storage,
+                screenshot_sha256_cliente=item.screenshot_sha256_cliente,
+            )
+            resultados.append(
+                IngestEventoOut(
+                    evento_id=evento.id,
+                    veredicto_reinferencia=evento.veredicto_reinferencia,
+                    face_count_servidor=evento.face_count_servidor,
+                    screenshot_sha256=evento.screenshot_sha256,
+                )
+            )
+        return IngestLoteOut(resultados=resultados)
 
     return router

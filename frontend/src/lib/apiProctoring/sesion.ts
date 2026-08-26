@@ -7,6 +7,18 @@ import type {
   VeredictoReinferencia,
 } from '../types';
 
+/** Un evento de detección tal como lo manda el cliente (de a uno o en lote). */
+export interface EventoProctoringPayload {
+  tipo: string;
+  severidad: string;
+  ts_cliente: string;
+  payload?: Record<string, unknown>;
+  screenshot_base64?: string | null;
+  face_count_cliente?: number | null;
+  /** SHA-256 de la imagen calculado en el cliente (cadena de custodia, c-78). */
+  screenshot_sha256_cliente?: string;
+}
+
 export const sesionApi = {
   /**
    * Crea una sesión de proctoring en el backend activeexam (C-46).
@@ -86,6 +98,55 @@ export const sesionApi = {
       screenshot_sha256: string;
     }>(
       `/proctoring/sessions/${sessionId}/events`,
+      { method: 'POST', body: JSON.stringify(body) },
+      'demo',
+    );
+  },
+
+  /**
+   * Envía un LOTE de eventos en un solo request (c-78 §16.1f).
+   * Real: POST /proctoring/sessions/{sessionId}/events/lote
+   *
+   * Es el camino del DRENAJE al reconectar. De a uno, drenar una caída de 30 s
+   * tardaba 35,6 s de media contra Render (medido el 26/8/2026): el plan free
+   * responde a 3 a 5 s por request y el drenaje los paga en serie.
+   *
+   * El orden del array es el orden de producción y se respeta; el ack vuelve en
+   * la misma posición. PROPAGA el error, igual que el envío de a uno: dar por
+   * enviado un lote que no llegó vaciaría el buffer sin haber mandado nada.
+   */
+  async enviarEventosProctoringEnLote(
+    sessionId: string,
+    eventos: EventoProctoringPayload[],
+  ): Promise<{
+    resultados: {
+      evento_id: string;
+      veredicto_reinferencia: VeredictoReinferencia;
+      face_count_servidor: number | null;
+      screenshot_sha256: string | null;
+    }[];
+  }> {
+    // Mismo mapeo de severidad que el envío de a uno: en femenino del lado del
+    // frontend, en masculino del lado del backend. Sin esto el lote entero da
+    // 422 y el drenaje no avanza nunca.
+    const SEVERIDAD_BACKEND: Record<string, string> = {
+      baseline: 'bajo', baja: 'bajo', media: 'medio', alta: 'alto', critica: 'critico',
+    };
+    const body = {
+      eventos: eventos.map((e) => ({
+        ...e,
+        severidad: SEVERIDAD_BACKEND[e.severidad] ?? e.severidad,
+      })),
+    };
+    return await realFetch<{
+      resultados: {
+        evento_id: string;
+        veredicto_reinferencia: VeredictoReinferencia;
+        face_count_servidor: number | null;
+        screenshot_sha256: string | null;
+      }[];
+    }>(
+      `/proctoring/sessions/${sessionId}/events/lote`,
       { method: 'POST', body: JSON.stringify(body) },
       'demo',
     );

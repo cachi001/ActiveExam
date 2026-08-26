@@ -62,7 +62,12 @@ import {
 } from '../transport/envioConRespaldo';
 import type { BiometriaProctoringPayload } from '../vision/liveness';
 import { IndexedDbEventBufferStore } from '../transport/indexedDbBufferStore';
-import { drainAndReplay } from '../transport/replayCoordinator';
+import {
+  drainAndReplay,
+  drainAndReplayEnLote,
+  type LoteSender,
+} from '../transport/replayCoordinator';
+import type { EventoProctoringPayload } from '../lib/apiProctoring/sesion';
 import type { ReplaySender } from '../transport/replayCoordinator';
 import { hashClip } from '../features/biometria/clipCustody';
 import { HEARTBEAT_MAX_FREQ_SEC } from '../transport/evidenceCadence';
@@ -773,6 +778,24 @@ export function useExamProctoring(
       return { status: 'persisted', id: record.id };
     };
 
+    // --- Adaptador LoteSender: el drenaje manda TANDAS, no un evento por request ---
+    // c-78 §16.1f: de a uno, drenar una caída de 30 s tardaba 35,6 s de media
+    // contra Render. Durante esos segundos el alumno puede cerrar la pestaña y
+    // llevarse lo que faltaba mandar.
+    const loteSender: LoteSender = async (records) => {
+      const sid = sessionIdRef.current;
+      if (!sid) throw new Error('sesión de proctoring todavía no disponible');
+      const { resultados } = await api.enviarEventosProctoringEnLote(
+        sid,
+        records.map((r) => r.message as EventoProctoringPayload),
+      );
+      // El ack vuelve en la MISMA posición que el evento mandado; se casa por
+      // posición y se devuelve con el id local, que es por lo que purga el
+      // coordinador. Si el backend devolviera menos acks, los que faltan quedan
+      // sin confirmar y siguen en el buffer.
+      return resultados.map((_, i) => ({ status: 'persisted' as const, id: records[i].id }));
+    };
+
     // --- handleDrain: reenvía lo que quedó esperando ---
     // Gracias al confirm on-success de `enviarConRespaldo`, solo contiene eventos que
     // fallaron mientras la red estaba caída — el drain reenvía únicamente esos (no el
@@ -790,7 +813,15 @@ export function useExamProctoring(
       const buffer = bufferRef.current;
       if (!buffer) return;
       if ((await buffer.size()) === 0) return; // nada pendiente: ni tocamos la red
-      await drainAndReplay(buffer, replaySender);
+      try {
+        await drainAndReplayEnLote(buffer, loteSender);
+      } catch {
+        // Si el lote no está disponible (backend viejo) o falló, se cae al
+        // camino de a uno, que es más lento pero funciona igual. El buffer no se
+        // purga con un lote fallido, así que reintentar acá no duplica nada: el
+        // backend deduplica por event_id.
+        await drainAndReplay(buffer, replaySender);
+      }
       if ((await buffer.size()) === 0) {
         // Todo lo pendiente llegó al backend. `perdida` NO se limpia: eso ya no
         // vuelve, y el aviso tiene que quedar.
