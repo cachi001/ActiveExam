@@ -2,30 +2,8 @@ import { useEffect, useState } from 'react';
 import { Icon, Button, TextField } from '../ui/components';
 import { useNavigate } from '../lib/router';
 import { useAuth } from '../lib/authStore';
-import type { Rol } from '../lib/types';
+import { homePorRol } from '../lib/auth/homePorRol';
 
-/** Home de cada rol tras el login.
- *
- * Todo rol de staff debe tener su destino explícito. Antes solo contemplaba
- * admin y proctor, así que docente/auditor caían al `/alumno` final y
- * aterrizaban en el panel de estudiante — con la sensación de que su cuenta
- * "no servía". El orden va del rol más específico al más general.
- *
- * c-76: los roles 'proctor' y 'revisor' fueron ELIMINADOS del dominio — el
- * COORDINADOR absorbe la supervisión global en vivo y el veredicto
- * (`revisar_sesion`); las ramas dedicadas a esos roles desaparecieron,
- * cubiertas por la rama de 'coordinador' que sigue debajo.
- *
- * c-76-2: los roles 'admin_examenes' y 'auditor' fueron ELIMINADOS del
- * dominio — solo existe un rol "Admin" (admin_sistema, ya cubierto arriba).
- */
-function homePorRol(roles: Rol[]): string {
-  if (roles.includes('admin_sistema')) return '/admin';
-  if (roles.includes('coordinador')) return '/admin';
-  // El tutor arranca en su listado de exámenes.
-  if (roles.includes('tutor')) return '/admin/examenes';
-  return '/alumno';
-}
 
 // ---------------------------------------------------------------------------
 // Formulario de login JWT (provider propio — C-55)
