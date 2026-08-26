@@ -21,6 +21,8 @@ import { useAuth } from '../../lib/authStore';
 import { api } from '../../lib/api';
 import { tieneCapacidad } from '../../lib/capabilities';
 import { FORM_VACIO, type FormState } from './components/UsuarioHelpers';
+import { hayCambios as calcularCambios } from './components/usuarioCambios';
+import { ResetearPasswordCard } from './components/ResetearPasswordCard';
 import { UsuarioFormPanel } from './components/UsuarioFormPanel';
 import type { UsuarioAdmin } from '../../lib/types';
 
@@ -39,6 +41,13 @@ export default function UsuarioEdit() {
 
   const puedeGestionar =
     principal != null && tieneCapacidad(principal.roles as Parameters<typeof tieneCapacidad>[0], 'gestionar_usuarios');
+
+  // Se vuelve al LISTADO, que es de donde se entra en la práctica (el menú de cada
+  // fila) y un destino que siempre existe. Antes decía "Volver al detalle" y llevaba
+  // ahí siempre: si entraste por el listado, terminabas en una pantalla por la que
+  // nunca pasaste, y el cartel además te decía que venías de un lugar donde no
+  // habías estado.
+  const volverA = '/admin/usuarios';
 
   useEffect(() => {
     if (!usuarioId) return;
@@ -109,7 +118,7 @@ export default function UsuarioEdit() {
         roles: form.roles,
       });
       toast.success('Usuario actualizado correctamente.');
-      navigate(`/admin/usuarios/${usuarioId}`);
+      navigate(volverA);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes('409')) {
@@ -137,9 +146,12 @@ export default function UsuarioEdit() {
         </HelpButton>
       }
       actions={
-        <Link to={usuarioId ? `/admin/usuarios/${usuarioId}` : '/admin/usuarios'}>
+        /* A DONDE se vuelve depende de por donde entraste. Antes decia siempre
+           "Volver al detalle" y llevaba ahi, aunque hubieras llegado desde el
+           listado: te dejaba en una pantalla por la que nunca pasaste. */
+        <Link to={volverA}>
           <Button variant="ghost" icon="arrow_back" size="sm">
-            Volver al detalle
+            Volver a usuarios
           </Button>
         </Link>
       }
@@ -171,8 +183,18 @@ export default function UsuarioEdit() {
             cambiarTexto={cambiarTexto}
             toggleRol={toggleRol}
             onSubmit={handleSubmit}
-            onCancelar={() => navigate(`/admin/usuarios/${usuarioId}`)}
+            onCancelar={() => navigate(volverA)}
+            hayCambios={calcularCambios(usuario, form)}
           />
+        )}
+
+        {/* Reseteo de contrasena: el endpoint existia desde c-78 pero NINGUNA
+            pantalla lo llamaba, asi que la unica forma de destrabar a alguien que
+            olvido su clave era pegarle a la API a mano. */}
+        {!cargando && !errorCarga && usuario && (
+          <div className="mt-lg">
+            <ResetearPasswordCard usuario={usuario} />
+          </div>
         )}
       </div>
     </StaffShell>

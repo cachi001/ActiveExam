@@ -84,7 +84,12 @@ export const CAPACIDAD_LABELS: Record<Capacidad, string> = {
   configurar_sistema: 'Configurar el sistema (umbrales, detectores, retención)',
   gestionar_usuarios: 'Gestionar usuarios y roles',
   ver_auditoria: 'Ver el registro de auditoría',
-  supervisar_vivo: 'Supervisar exámenes en vivo',
+  // Nombra las DOS cosas que habilita. Decía solo "Supervisar exámenes en vivo" y
+  // el registro de sesiones quedaba invisible: al mirar los permisos del TUTOR no
+  // aparecía por ningún lado, y parecía que no podía consultar lo que pasó en los
+  // exámenes de sus comisiones. Sí puede, y siempre pudo — el backend lo acota a
+  // las comisiones donde figura como tutor (`comision_tutor`).
+  supervisar_vivo: 'Supervisar exámenes en vivo y ver el registro de sesiones (solo de sus comisiones)',
 };
 
 /** Módulo/dominio de cada capacidad — agrupa por la ENTIDAD sobre la que se
