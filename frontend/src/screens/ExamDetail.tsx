@@ -15,6 +15,7 @@ import { ComisionesDelExamenSection } from './exam-detail/ComisionesDelExamenSec
 import { BorradorSection } from './exam-detail/BorradorSection';
 import { SorteoSection } from './exam-detail/SorteoSection';
 import { DestinoMoodleSection } from './exam-detail/DestinoMoodleSection';
+import { AvisoSinResponsable } from '../ui/AvisoSinResponsable';
 
 // ---------------------------------------------------------------------------
 // Stat card del encabezado — mismo tratamiento visual para todas (C-72 §19):
@@ -132,6 +133,14 @@ export default function ExamDetail() {
             No se pudo cargar el encabezado del examen: {headerError}
           </div>
         )}
+
+        {/* c-78 §18.4: si la comisión no tiene tutor, las notas de este examen no
+            van a poder devolverse al campus. Va arriba de todo, junto al estado
+            del examen: enterarse de esto con el examen ya rendido no sirve. */}
+        <AvisoSinResponsable
+          sinTutor={examen?.comision_sin_tutor}
+          nombre={examen?.comision_nombre ?? undefined}
+        />
 
         {/* c-78 E-07: va PRIMERO. Que el examen no esté habilitado es lo más
             importante que hay que saber al abrirlo. */}
