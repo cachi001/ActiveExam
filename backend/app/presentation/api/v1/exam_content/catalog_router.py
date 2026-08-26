@@ -5384,6 +5384,12 @@ def create_exam_content_router(
 
     @router.post(
         "/crear-desde-banco",
+        # c-78: era el UNICO endpoint de creacion sin capacidad propia, asi que le
+        # alcanzaba con el guard del router (`gestionar_academico`) — que el TUTOR
+        # tiene. Resultado: el tutor creaba examenes, contra la decision explicita
+        # del dueno (`crear_examenes` = PROFESOR/COORDINADOR/ADMIN), y encima
+        # sacando preguntas de un banco que no tiene permiso de mirar.
+        dependencies=[Depends(require_capability("crear_examenes"))],
         response_model=CrearDesdebancoResponse,
         status_code=status.HTTP_201_CREATED,
         summary="Crea un examen extrayendo preguntas aleatoriamente del banco (C-74 §5)",
