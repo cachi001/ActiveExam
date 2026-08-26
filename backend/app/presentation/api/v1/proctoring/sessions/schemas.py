@@ -6,6 +6,8 @@ Ley 25.326: screenshot_base64 y biometria son datos sensibles.
 
 from __future__ import annotations
 
+import uuid as _uuid
+
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -271,6 +273,23 @@ class CerrarForzadoOut(BaseModel):
 # --- C-69 sección 7: respuestas del alumno + write-back de nota ---
 
 
+def valor_de_blank_es_id(valor: str | None) -> bool:
+    """True si el valor de un blank puede ser el id de una opcion (o esta vacio).
+
+    Un blank sin contestar es legitimo (el alumno puede dejarlo en blanco), asi
+    que vacio cuenta como valido. Lo que NO puede pasar es que llegue el TEXTO de
+    la opcion donde va su id: ese valor viaja hasta una comparacion contra una
+    columna `uuid` de Postgres y revienta (c-78, encontrado en produccion).
+    """
+    if not valor:
+        return True
+    try:
+        _uuid.UUID(str(valor))
+        return True
+    except (ValueError, AttributeError, TypeError):
+        return False
+
+
 class RespuestaItem(BaseModel):
     """Respuesta del alumno para una pregunta (C-69 D8, sección 7; C-74 §6 cloze).
 
@@ -286,6 +305,10 @@ class RespuestaItem(BaseModel):
     pregunta_id: str
     opcion_elegida_id: str | None = None
     respuesta_cloze: dict[str, str] | None = None
+    # Ids de los blanks que son de RESPUESTA ESCRITA: esos guardan texto libre,
+    # no un id de opcion, y no se validan como uuid. Los manda el cliente junto
+    # con la respuesta porque el tipo del blank lo conoce al dibujar la pregunta.
+    blanks_de_texto: list[str] = []
 
     @model_validator(mode="after")
     def _exactamente_uno(self) -> "RespuestaItem":
@@ -296,6 +319,22 @@ class RespuestaItem(BaseModel):
                 "Cada respuesta necesita exactamente uno de "
                 "'opcion_elegida_id' o 'respuesta_cloze'."
             )
+
+        # c-78: se valida al ENTRAR. Antes esto devolvia 201 —como si hubiera
+        # guardado bien— y explotaba recien al ENTREGAR, dejando la sesion del
+        # alumno sin finalizar y sin nota, que es el peor momento posible.
+        for blank_id, valor in (self.respuesta_cloze or {}).items():
+            if not valor_de_blank_es_id(blank_id):
+                raise ValueError(
+                    f"El identificador de hueco {blank_id!r} no es valido."
+                )
+            if blank_id in self.blanks_de_texto:
+                continue  # respuesta escrita: guarda texto, no un id
+            if not valor_de_blank_es_id(valor):
+                raise ValueError(
+                    f"La respuesta del hueco {blank_id!r} tiene que ser el id de "
+                    "la opcion elegida, no su texto."
+                )
         return self
 
 
