@@ -355,6 +355,39 @@
   - Red de seguridad de auth verde: `test_c55_hashing` 4, `test_c75_lti_password_setup` 4,
     `test_c76_18_change_password_jwt_provider` 5, `test_password_policy` 9, `test_c75_lti_jit`
     16, `test_c55_login_endpoint` 1. Más `test_c78_lti_sin_password.py` (7, nuevo).
+- [x] 16.1e **E-14** Correr todo contra **Render**, no solo local (26/8/2026, ya mergeado a main)
+  - **Carga 70 alumnos / 3 min**: cero errores, 4024/4024 checks, pero **19 req/s** contra 47
+    local. Evento med 3,1 s · **p95 7,8 s**. Crear sesión med 3,89 s · p95 9,55 s. **No es la
+    red**: TLS 70 ms medido, y en reposo un endpoint trivial responde en 320 ms. Es la CPU del
+    plan free.
+  - **Caída de conexión, 70 alumnos caídos 30 s**: **cero evidencia perdida**, igual que
+    local. PERO el drenaje del buffer tarda **med 35,6 s · max 1m01s** (local: 1,08 s).
+    ⚠️ **Riesgo abierto**: si el alumno cierra la pestaña durante esos 35 s, esa evidencia se
+    va con él. Se arregla mandando el buffer en lote en vez de un evento por request.
+  - **Avalancha LTI, 70 alumnos**: 70/70 entran. 10,8 s la avalancha, 9387 ms por alumno,
+    **1 solo pedido al JWKS** (el cache funciona). El canario va de 212 ms a 3701 ms mientras
+    entran: degradación real pero acotada a esos ~11 s, y nada falla.
+  - **H-09 (CRÍTICO, corregido) — el sello del cache de JWKS.** La guarda anti-amplificación
+    que introdujo H-07 era un **flag permanente**: tras el PRIMER refresco por un `kid`
+    faltante, el cache quedaba sellado y no volvía a refrescar por ningún kid nuevo hasta
+    vencer el TTL. O sea: un campus que rota sus claves **dos veces** deja TODOS sus launches
+    fallando con `kid_desconocido` **durante una hora**. Pasa a ser un cooldown de 10 s.
+    Solo se veía contra producción y con corridas repetidas — local, cada reinicio del
+    backend limpiaba el cache.
+  - **Nota sobre qué mide la avalancha**: un launch de cuenta NUEVA no persiste el usuario,
+    crea una confirmación pendiente y redirige a `/lti-confirmar` (gate del bug de
+    2026-08-19). Igual ejercita el costo del alta completa, porque `identidad_es_nueva` corre
+    `provisionar_o_recuperar_usuario` dentro de un SAVEPOINT y lo deshace. Verificado que
+    producción quedó limpia: 9 usuarios, ninguno de la avalancha, y ninguna plataforma falsa
+    en la allowlist.
+  - Para correrlo contra Render el script suma `--via-api` (registra la plataforma falsa por
+    la API admin, sin acceso a la base) y `--jwks-publico` (Render tiene que poder alcanzar
+    el JWKS; se expuso con un túnel temporal, ya cerrado).
+- [ ] 16.1f **E-14** Mandar el buffer de eventos **en lote** al reconectar
+  - Hoy el drenaje manda un evento por request: contra Render son **35 s** para una caída de
+    30 s. Un endpoint que acepte el lote entero lo bajaría a unos segundos. No se pierde
+    evidencia hoy (medido en cero), el riesgo es la ventana en la que el alumno puede cerrar
+    la pestaña.
 - [ ] 16.2 **E-14** Dimensionar el arranque de producción con los cores del plan una vez que deje de ser free, recalculando el pool (`workers × 24` conexiones contra `max_connections`)
   - Diferido por decisión del dueño: el plan sigue siendo el free y la VPS se evalúa después.
 - [x] 16.3a **E-14** Proteger `/metrics`, que estaba **público sin autenticación** en producción
