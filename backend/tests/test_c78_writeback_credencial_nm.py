@@ -200,7 +200,7 @@ async def test_resuelve_la_credencial_desde_la_tabla_puente(
     session_id = await _sesion_con_tutores(factory, [tutor])
 
     async with factory() as db:
-        token, docente_id, nombre, motivo = await writeback_svc._credencial_para(
+        token, docente_id, nombre, motivo, _base_url = await writeback_svc._credencial_para(
             db, session_id
         )
 
@@ -225,10 +225,10 @@ async def test_con_varios_tutores_elige_el_primero_que_quedo_a_cargo(
     session_id = await _sesion_con_tutores(factory, [primero, segundo])
 
     async with factory() as db:
-        _, docente_id, nombre, motivo = await writeback_svc._credencial_para(
+        _, docente_id, nombre, motivo, _base_url = await writeback_svc._credencial_para(
             db, session_id
         )
-        _, docente_id_2, _, _ = await writeback_svc._credencial_para(db, session_id)
+        _, docente_id_2, _, _, _base_url = await writeback_svc._credencial_para(db, session_id)
 
     assert motivo is None
     assert docente_id == primero
@@ -251,7 +251,7 @@ async def test_saltea_al_tutor_sin_credencial_y_usa_al_que_si_tiene(
     session_id = await _sesion_con_tutores(factory, [sin_cred, con_cred])
 
     async with factory() as db:
-        token, docente_id, nombre, motivo = await writeback_svc._credencial_para(
+        token, docente_id, nombre, motivo, _base_url = await writeback_svc._credencial_para(
             db, session_id
         )
 
@@ -273,7 +273,7 @@ async def test_comision_sin_ningun_tutor_sigue_bloqueando(
     session_id = await _sesion_con_tutores(factory, [])
 
     async with factory() as db:
-        token, _, _, motivo = await writeback_svc._credencial_para(db, session_id)
+        token, _, _, motivo, _base_url = await writeback_svc._credencial_para(db, session_id)
 
     assert token is None
     assert motivo == "sin_docente"
@@ -293,7 +293,7 @@ async def test_tutores_sin_credencial_reportan_el_motivo_correcto(
     session_id = await _sesion_con_tutores(factory, [tutor])
 
     async with factory() as db:
-        token, docente_id, _, motivo = await writeback_svc._credencial_para(
+        token, docente_id, _, motivo, _base_url = await writeback_svc._credencial_para(
             db, session_id
         )
 

@@ -35,6 +35,7 @@ class NotasMixin:
         component: str | None = None,
         nota_maxima: float | None = None,
         ws_token: str | None = None,
+        base_url: str | None = None,
         source: str | None = None,
     ) -> None:
         """Escribe la nota del alumno en Moodle vía core_grades_update_grades.
@@ -89,6 +90,7 @@ class NotasMixin:
                 # institucional y se escribe con el del docente, se puede estar
                 # leyendo un item que ese docente ni siquiera ve.
                 ws_token=ws_token,
+                base_url=base_url,
             )
             nota_a_enviar = nota / nota_maxima * grademax
 
@@ -145,6 +147,7 @@ class NotasMixin:
         component: str | None = None,
         nota_maxima: float | None = None,
         ws_token: str | None = None,
+        base_url: str | None = None,
         source: str | None = None,
         feedback_html: str | None = None,
     ) -> None:
@@ -175,6 +178,7 @@ class NotasMixin:
                 cmid=cmid,
                 nota_maxima=nota_maxima,
                 ws_token=ws_token,
+                base_url=base_url,
                 feedback_html=feedback_html,
             )
             return
@@ -187,6 +191,7 @@ class NotasMixin:
             component=target_component,
             nota_maxima=nota_maxima,
             ws_token=ws_token,
+            base_url=base_url,
             source=source,
         )
 
@@ -199,6 +204,7 @@ class NotasMixin:
         cmid: int | None,
         nota_maxima: float | None = None,
         ws_token: str | None = None,
+        base_url: str | None = None,
         feedback_html: str | None = None,
     ) -> None:
         """Escribe la nota en una TAREA via ``mod_assign_save_grade``.
@@ -228,7 +234,7 @@ class NotasMixin:
         # token institucional y escribir con el del docente puede estar leyendo un
         # item que ese docente ni siquiera ve.
         config = await self.resolver_assignment_config(
-            courseid=courseid, cmid=cmid, ws_token=ws_token
+            courseid=courseid, cmid=cmid, ws_token=ws_token, base_url=base_url
         )
 
         if config is None:
@@ -270,5 +276,6 @@ class NotasMixin:
             wsfunction="mod_assign_save_grade",
             data=data,
             ws_token=ws_token,
+            base_url=base_url,
             que_falla="enviar la nota",
         )

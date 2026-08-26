@@ -179,7 +179,7 @@ async def docentes(engine):
 async def test_sin_comision_docente_motivo_sin_docente(writeback_svc, factory, docentes):
     session_id = await _crear_sesion(factory, docente_id=None)
     async with factory() as db:
-        token, docente_id, nombre, motivo = await writeback_svc._credencial_para(
+        token, docente_id, nombre, motivo, _base_url = await writeback_svc._credencial_para(
             db, session_id
         )
     assert token is None
@@ -193,7 +193,7 @@ async def test_docente_nunca_conecto_motivo_sin_credencial_docente(
     docente_id = await _crear_docente(factory, f"D-{uuid.uuid4().hex[:8]}", docentes)
     session_id = await _crear_sesion(factory, docente_id=docente_id)
     async with factory() as db:
-        token, did, nombre, motivo = await writeback_svc._credencial_para(db, session_id)
+        token, did, nombre, motivo, _base_url = await writeback_svc._credencial_para(db, session_id)
     assert token is None
     assert motivo == "sin_credencial_docente"
 
@@ -208,7 +208,7 @@ async def test_docente_con_credencial_activa_motivo_none(
     )
     session_id = await _crear_sesion(factory, docente_id=docente_id)
     async with factory() as db:
-        token, did, nombre, motivo = await writeback_svc._credencial_para(db, session_id)
+        token, did, nombre, motivo, _base_url = await writeback_svc._credencial_para(db, session_id)
     assert token == _TOKEN
     assert motivo is None
 
@@ -224,7 +224,7 @@ async def test_docente_con_credencial_caida_motivo_caida(
     await cred_service.marcar_caida(docente_id)
     session_id = await _crear_sesion(factory, docente_id=docente_id)
     async with factory() as db:
-        token, did, nombre, motivo = await writeback_svc._credencial_para(db, session_id)
+        token, did, nombre, motivo, _base_url = await writeback_svc._credencial_para(db, session_id)
     assert token is None
     assert motivo == "caida"
 
@@ -252,7 +252,7 @@ async def test_docente_con_credencial_vencida_motivo_vencida(
         await s.commit()
     session_id = await _crear_sesion(factory, docente_id=docente_id)
     async with factory() as db:
-        token, did, nombre, motivo = await writeback_svc._credencial_para(db, session_id)
+        token, did, nombre, motivo, _base_url = await writeback_svc._credencial_para(db, session_id)
     assert token is None
     assert motivo == "vencida"
 

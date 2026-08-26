@@ -170,7 +170,7 @@ class MoodleWritebackService:
 
     async def _credencial_para(
         self, db: AsyncSession, session_id: str
-    ) -> tuple[str | None, str | None, str | None, str | None]:
+    ) -> tuple[str | None, str | None, str | None, str | None, str | None]:
         """Credencial del DOCENTE con la que se devuelve ESTA nota (C-73 §10.4).
 
         Deriva sesion -> examen -> comision -> TUTORES (tabla puente
@@ -193,7 +193,7 @@ class MoodleWritebackService:
         que es un bloqueo visible en vez de una firma equivocada.
         """
         if self._cred_docente is None:
-            return None, None, None, "sin_docente"
+            return None, None, None, "sin_docente", None
 
         from app.infrastructure.persistence.models.exam_content import (
             ComisionModel,
@@ -248,7 +248,7 @@ class MoodleWritebackService:
         ).all()
 
         if not tutores:
-            return None, None, None, "sin_docente"
+            return None, None, None, "sin_docente", None
 
         def _visible(legajo, nombre, apellido) -> str:
             # "Nombre Apellido"; si el usuario no los tiene cargados, el legajo.
@@ -274,7 +274,9 @@ class MoodleWritebackService:
             else:
                 token = await self._cred_docente.token_de(tutor_id)
                 if token:
-                    return token, tutor_id, visible, None
+                    # La base_url viaja CON el token (c-78): el envio usa el
+                    # campus contra el que este docente conecto su cuenta.
+                    return token, tutor_id, visible, None, cred_estado.base_url
                 motivo = "sin_credencial_docente"
 
             # Se recuerda el motivo del PRIMER tutor: es el que se le muestra al
@@ -287,7 +289,7 @@ class MoodleWritebackService:
                     visible,
                 )
 
-        return None, primer_docente, primer_visible, primer_motivo
+        return None, primer_docente, primer_visible, primer_motivo, None
 
     async def _nota_maxima_del_examen(
         self, db: AsyncSession, session_id: str
@@ -405,7 +407,7 @@ class MoodleWritebackService:
         # VA ANTES DEL MAPEO DE IDENTIDAD (C-73 Fase 2) por dos razones: el mapeo
         # ahora se hace CON este token, y si no hay credencial no tiene sentido
         # molestar a Moodle para despues retener la nota igual.
-        token_docente, docente_id, docente_nombre, motivo_bloqueo = (
+        token_docente, docente_id, docente_nombre, motivo_bloqueo, base_url_docente = (
             await self._credencial_para(db, session_id)
         )
 
@@ -438,6 +440,7 @@ class MoodleWritebackService:
                 email=alumno_email,
                 courseid=estado.moodle_courseid,
                 ws_token=token_docente,
+                base_url=base_url_docente,
             )
         except (IdentityResolutionError, Exception) as exc:
             await self._registrar_fallo(
@@ -469,6 +472,7 @@ class MoodleWritebackService:
                 # de Moodle (que suele ser 100). Sin esto un 8/10 iba como 8/100.
                 nota_maxima=nota_maxima,
                 ws_token=token_docente,
+                base_url=base_url_docente,
                 source=source,
             )
         except MoodleGradeWriteError as exc:

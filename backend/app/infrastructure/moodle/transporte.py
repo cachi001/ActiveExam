@@ -139,6 +139,32 @@ class MoodleTransporte:
             return self._config_estatico
         return MoodleClientConfig(base_url="", ws_token="")
 
+def resolver_base_url(
+    *, base_url_credencial: str | None, base_url_institucional: str | None
+) -> str:
+    """La URL del campus que corresponde a la credencial que se esta usando.
+
+    EL BUG QUE CIERRA (c-78): el write-back con la credencial del DOCENTE mandaba
+    el token del docente pero armaba la URL con la de la credencial
+    INSTITUCIONAL, que en campustest no esta configurada. La URL quedaba vacia y
+    el envio moria con "Request URL is missing an 'http://' or 'https://'
+    protocol" — o sea que el camino principal del write-back no funcionaba nunca
+    sin una credencial institucional completa, que es justo la dependencia que
+    ese camino vino a eliminar.
+
+    El token y la URL viajan juntos: si se usa el token del docente, se usa el
+    campus contra el que ESE docente conecto su cuenta. La institucional queda
+    de respaldo.
+    """
+    for candidata in (base_url_credencial, base_url_institucional):
+        limpia = (candidata or "").strip().rstrip("/")
+        if limpia:
+            return limpia
+    raise ValueError(
+        "Falta la URL del campus. Cargala en Configuracion > Moodle, o al "
+        "conectar la cuenta del campus desde tu perfil."
+    )
+
     async def _post_ws(
         self,
         *,
@@ -146,6 +172,7 @@ class MoodleTransporte:
         data: dict[str, str],
         ws_token: str | None,
         que_falla: str,
+        base_url: str | None = None,
     ) -> dict | list | None:
         """POST a la REST API de Moodle con el manejo de errores comun.
 
@@ -155,7 +182,15 @@ class MoodleTransporte:
         El token va solo en el form-data y NUNCA se loguea.
         """
         cfg = await self._resolver_config()
-        url = f"{cfg.base_url.rstrip('/')}/webservice/rest/server.php"
+        # La URL sale de la credencial que se esta usando, no siempre de la
+        # institucional (ver `resolver_base_url`).
+        try:
+            base = resolver_base_url(
+                base_url_credencial=base_url, base_url_institucional=cfg.base_url
+            )
+        except ValueError as exc:
+            raise MoodleGradeWriteError(str(exc)) from exc
+        url = f"{base}/webservice/rest/server.php"
         payload = {
             "wstoken": ws_token or cfg.ws_token,
             "wsfunction": wsfunction,

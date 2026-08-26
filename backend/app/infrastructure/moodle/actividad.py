@@ -27,6 +27,7 @@ class ActividadMixin:
         courseid: int | None = None,
         cmid: int | None = None,
         ws_token: str | None = None,
+        base_url: str | None = None,
     ) -> float:
         """Nota MAXIMA del item destino en Moodle (``grademax``).
 
@@ -111,6 +112,7 @@ class ActividadMixin:
         courseid: int,
         cmid: int,
         ws_token: str | None = None,
+        base_url: str | None = None,
     ) -> AssignmentGradeConfig | None:
         """Traduce ``cmid`` -> ``assign.id`` y lee como califica la actividad.
 
@@ -127,6 +129,7 @@ class ActividadMixin:
             wsfunction="mod_assign_get_assignments",
             data={"courseids[0]": str(courseid)},
             ws_token=ws_token,
+            base_url=base_url,
             que_falla="resolver la actividad destino",
         )
 
@@ -163,6 +166,7 @@ class ActividadMixin:
         instance_id: int,
         moodle_userid: int,
         ws_token: str | None = None,
+        base_url: str | None = None,
     ) -> bool:
         """``True`` si ese alumno YA tiene nota en esa tarea.
 
@@ -178,6 +182,7 @@ class ActividadMixin:
             wsfunction="mod_assign_get_grades",
             data={"assignmentids[0]": str(instance_id)},
             ws_token=ws_token,
+            base_url=base_url,
             que_falla="leer las notas ya cargadas",
         )
 

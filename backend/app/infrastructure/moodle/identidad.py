@@ -114,6 +114,7 @@ class IdentidadMixin:
         idnumber: str,
         email: str,
         ws_token: str | None = None,
+        base_url: str | None = None,
     ) -> int | None:
         """Resuelve el userid del alumno entre los MATRICULADOS del curso.
 
@@ -146,6 +147,7 @@ class IdentidadMixin:
             wsfunction="core_enrol_get_enrolled_users",
             data={"courseid": str(courseid)},
             ws_token=ws_token,
+            base_url=base_url,
             que_falla="listar los matriculados del curso",
         )
 

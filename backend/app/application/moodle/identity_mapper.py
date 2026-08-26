@@ -32,6 +32,10 @@ class MoodleIdentityMapper:
         email: str,
         courseid: int | None = None,
         ws_token: str | None = None,
+        # c-78: el campus contra el que el docente conecto su cuenta. Va junto al
+        # token: usar la URL institucional con el token del docente dejaba la URL
+        # vacia y el envio moria sin decir por que.
+        base_url: str | None = None,
     ) -> int:
         """Devuelve el userid de Moodle. Lanza IdentityResolutionError si no puede.
 
@@ -66,6 +70,7 @@ class MoodleIdentityMapper:
                     idnumber=idnumber,
                     email=email,
                     ws_token=ws_token,
+                    base_url=base_url,
                 )
             except MoodleGradeWriteError as exc:
                 raise IdentityResolutionError(
