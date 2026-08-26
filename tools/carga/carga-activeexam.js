@@ -105,6 +105,56 @@ const latenciaReplay = new Trend('ae_replay_ms', true);
 const eventosReplay = new Counter('ae_replay_eventos');
 const evidenciaPerdida = new Rate('ae_evidencia_perdida');
 
+// El cliente real drena EN TANDAS desde c-78 §16.1f (un request por tanda, no
+// uno por evento). El harness lo espeja: medirlo de a uno daria un numero que ya
+// no describe lo que hace el navegador. LOTE=false vuelve al camino viejo, que
+// es lo que permite comparar los dos.
+const LOTE = (__ENV.LOTE || 'true') !== 'false';
+const LOTE_TAMANO = Number(__ENV.LOTE_TAMANO || 50);
+
+/**
+ * Drena el buffer al reconectar y devuelve cuánto tardó, en ms.
+ *
+ * Espeja al cliente real: desde c-78 §16.1f manda TANDAS (un request por tanda)
+ * en vez de un evento por request. De a uno, drenar una caída de 30 s tardaba
+ * 35,6 s de media contra Render — el plan free responde a 3 a 5 s por request y
+ * el drenaje los pagaba en serie.
+ *
+ * Con `LOTE=false` vuelve al camino de a uno, que es lo que permite comparar.
+ */
+function drenarBuffer(sesionId, pendientes, headers) {
+  const arranque = Date.now();
+
+  if (LOTE) {
+    for (let i = 0; i < pendientes.length; i += LOTE_TAMANO) {
+      const tanda = pendientes.slice(i, i + LOTE_TAMANO);
+      const res = http.post(
+        `${BASE}/api/v1/proctoring/sessions/${sesionId}/events/lote`,
+        JSON.stringify({ eventos: tanda }),
+        { headers, tags: { endpoint: 'replay_lote' } },
+      );
+      eventosReplay.add(tanda.length);
+      erroresIngesta.add(!check(res, {
+        'lote del buffer aceptado (201)': (r) => r.status === 201,
+      }));
+    }
+    return Date.now() - arranque;
+  }
+
+  for (const pendiente of pendientes) {
+    const res = http.post(
+      `${BASE}/api/v1/proctoring/sessions/${sesionId}/events`,
+      JSON.stringify(pendiente),
+      { headers, tags: { endpoint: 'replay_evento' } },
+    );
+    eventosReplay.add(1);
+    erroresIngesta.add(!check(res, {
+      'evento del buffer aceptado (201)': (r) => r.status === 201,
+    }));
+  }
+  return Date.now() - arranque;
+}
+
 export const options = {
   vus: VUS,
   duration: DURACION,
@@ -215,20 +265,7 @@ export default function (data) {
     // Volvió la conexión: drenar TODO el buffer de una, en orden, como hace el
     // cliente real. Es acá donde el servidor recibe la ráfaga.
     if (seCae && !caido && !drenado && buffer.length > 0) {
-      const arranque = Date.now();
-      for (const pendiente of buffer) {
-        const res = http.post(
-          `${BASE}/api/v1/proctoring/sessions/${sesionId}/events`,
-          JSON.stringify(pendiente),
-          { headers, tags: { endpoint: 'replay_evento' } },
-        );
-        eventosReplay.add(1);
-        const aceptado = check(res, {
-          'evento del buffer aceptado (201)': (r) => r.status === 201,
-        });
-        erroresIngesta.add(!aceptado);
-      }
-      latenciaReplay.add(Date.now() - arranque);
+      latenciaReplay.add(drenarBuffer(sesionId, buffer, headers));
       buffer.length = 0;
       drenado = true;
     }
@@ -305,19 +342,8 @@ export default function (data) {
   // igual al reconectar. No drenarlo acá haría que el harness "pierda" eventos
   // por su cuenta y ensuciaría justamente la métrica que queremos medir.
   if (buffer.length > 0) {
-    const arranque = Date.now();
-    for (const pendiente of buffer) {
-      const res = http.post(
-        `${BASE}/api/v1/proctoring/sessions/${sesionId}/events`,
-        JSON.stringify(pendiente),
-        { headers, tags: { endpoint: 'replay_evento' } },
-      );
-      eventosReplay.add(1);
-      erroresIngesta.add(!check(res, {
-        'evento del buffer aceptado (201)': (r) => r.status === 201,
-      }));
-    }
-    latenciaReplay.add(Date.now() - arranque);
+    latenciaReplay.add(drenarBuffer(sesionId, buffer, headers));
+    buffer.length = 0;
   }
 
   // 3. Finalizar (idempotente).

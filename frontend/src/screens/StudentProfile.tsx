@@ -235,8 +235,18 @@ export default function StudentProfile() {
   // ─────────────────────────────────────────────────────────────────────────────
 
   if (paso === 'cargando') {
+    // SIN `ocultarNavegacion` a propósito. Lo tenía, y eso hacía que al tocar
+    // "Mi perfil" la barra lateral desapareciera, el "Cargando…" quedara centrado
+    // en toda la pantalla, y un segundo después volviera todo a su lugar. Ninguna
+    // otra pantalla del alumno salta así (comparar con AlumnoMisExamenes).
+    //
+    // `ocultarNavegacion` es para los pasos del enrollment, donde el alumno no
+    // tiene que poder irse a otro lado hasta terminar — y esos lo siguen usando.
+    // Mientras se averigua en qué paso está todavía no se sabe si hay algo que
+    // bloquear, y el shell ya bloquea solo cuando el perfil está incompleto
+    // (`perfilBloqueado`).
     return (
-      <StudentShell ocultarNavegacion>
+      <StudentShell>
         <div className="min-h-[calc(100dvh-13rem)] flex items-center justify-center">
           <LoadingSpinner label="Cargando perfil…" />
         </div>
