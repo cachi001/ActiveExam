@@ -39,13 +39,21 @@ from dataclasses import dataclass
 JwksDoc = dict
 
 
+# Cuánto espera el cache antes de volver a bajar el JWKS por un `kid` que no
+# tiene. Es un COOLDOWN, no un sello: sin él, un token con un kid inventado
+# dispararía una bajada por intento (un amplificador de tráfico contra el campus,
+# gratis para quien lo mande); con un sello permanente, en cambio, la SEGUNDA
+# rotación de claves del campus quedaba sin atender durante todo el TTL — una
+# hora de launches fallando con `kid_desconocido`. Lo encontró la avalancha LTI
+# contra Render (26/8/2026).
+_COOLDOWN_REFRESCO_POR_KID_SEG = 10
+
+
 @dataclass
 class _Entrada:
     doc: JwksDoc
     bajado_en: float
-    # Cuándo se refrescó por última vez por un `kid` que faltaba. Sin esto, un
-    # token con un kid inventado dispararía una bajada por intento: un
-    # amplificador de tráfico contra el campus, gratis para quien lo mande.
+    # Cuándo se bajó por última vez a causa de un `kid` faltante.
     refresco_por_kid_en: float = 0.0
 
 
@@ -93,12 +101,16 @@ class JwksPlatformCache:
             doc = await self._bajar(jwks_uri)
             # Si la bajada falla, la excepción sube y NO se guarda nada: un campus
             # caído no puede dejar el cache envenenado para cuando vuelva.
+            # Solo cuenta como "refresco por kid" si de verdad lo motivó un kid
+            # faltante sobre una entrada que ya existía: una bajada por cache
+            # vacío o por TTL vencido no debe arrancar el cooldown.
+            fue_por_kid = requiere_kid is not None and anterior is not None
             self._entradas[jwks_uri] = _Entrada(
                 doc=doc,
                 bajado_en=ahora,
                 refresco_por_kid_en=(
                     ahora
-                    if requiere_kid is not None and anterior is not None
+                    if fue_por_kid
                     else (anterior.refresco_por_kid_en if anterior else 0.0)
                 ),
             )
@@ -113,10 +125,12 @@ class JwksPlatformCache:
         if (self._time() - entrada.bajado_en) >= self._ttl:
             return None
         if requiere_kid is not None and not _tiene_kid(entrada.doc, requiere_kid):
-            # Falta el kid: vale UN refresco. Si ya se refrescó hace poco por
-            # esta misma razón, el kid sencillamente no existe — se devuelve lo
-            # cacheado y que la validación de la firma lo rechace.
-            if entrada.refresco_por_kid_en >= entrada.bajado_en:
+            # Falta el kid: se vuelve a bajar, salvo que ya se haya bajado por
+            # esta misma razón hace menos que el cooldown. En esa ventana corta
+            # se asume que el kid sencillamente no existe y se devuelve lo
+            # cacheado, para que la validación de la firma lo rechace.
+            desde_el_ultimo = self._time() - entrada.refresco_por_kid_en
+            if desde_el_ultimo < _COOLDOWN_REFRESCO_POR_KID_SEG:
                 return entrada.doc
             return None
         return entrada.doc

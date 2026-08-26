@@ -205,6 +205,44 @@ async def test_un_kid_que_sigue_sin_estar_no_refresca_para_siempre():
 
 
 @pytest.mark.asyncio
+async def test_dos_rotaciones_seguidas_se_siguen_atendiendo():
+    """El bug que encontró la avalancha contra Render (26/8/2026).
+
+    La guarda anti-amplificación era un flag permanente: después del PRIMER
+    refresco por kid faltante, el cache quedaba sellado y ya no volvía a
+    refrescar por ningún kid nuevo hasta que venciera el TTL de una hora. En
+    produccion eso significa que un campus que rota sus claves dos veces deja
+    TODOS sus launches fallando con `kid_desconocido` durante una hora entera.
+
+    La guarda tiene que ser un cooldown corto, no un sello.
+    """
+    docs = [
+        {"keys": [{"kid": f"kid-{n}", "kty": "RSA", "n": "x", "e": "AQAB"}]}
+        for n in ("a", "b", "c")
+    ]
+    llamadas: list[str] = []
+
+    def fetcher(jwks_uri: str) -> dict:
+        llamadas.append(jwks_uri)
+        return docs[min(len(llamadas) - 1, len(docs) - 1)]
+
+    reloj = {"t": 1000.0}
+    cache = JwksPlatformCache(fetcher, time_fn=lambda: reloj["t"])
+
+    assert await cache.obtener("https://campus.edu/jwks", requiere_kid="kid-a") == docs[0]
+
+    # Primera rotación.
+    reloj["t"] += 60
+    assert await cache.obtener("https://campus.edu/jwks", requiere_kid="kid-b") == docs[1]
+
+    # SEGUNDA rotación: acá fallaba. El TTL (1 h) sigue vigente a propósito.
+    reloj["t"] += 60
+    assert await cache.obtener("https://campus.edu/jwks", requiere_kid="kid-c") == docs[2], (
+        "la segunda rotación devolvió el JWKS viejo: el cache quedó sellado"
+    )
+
+
+@pytest.mark.asyncio
 async def test_si_la_bajada_falla_no_deja_el_cache_envenenado():
     """Un campus caído no puede dejar rota la validación cuando vuelve."""
     fallas = {"quedan": 1}

@@ -58,7 +58,13 @@ CLAIM_CONTEXT = "https://purl.imsglobal.org/spec/lti/claim/context"
 CLAIM_ROLES = "https://purl.imsglobal.org/spec/lti/claim/roles"
 ROL_ESTUDIANTE = "http://purl.imsglobal.org/vocab/lis/v2/membership#Learner"
 
-KID = "avalancha-lti-kid"
+# Identificador de la clave. UNICO POR CORRIDA a proposito: el `jwks_uri` de la
+# plataforma falsa es siempre el mismo, y el backend cachea el JWKS por esa URI.
+# Con un kid fijo, la segunda corrida mandaba tokens firmados con una clave nueva
+# bajo un kid que el backend ya tenia cacheado apuntando a la clave VIEJA, y todos
+# los launches daban 401 por firma invalida. Un campus real que rota sus claves
+# cambia el kid, que es justo lo que dispara el refresco del cache.
+KID = f"avalancha-lti-{uuid.uuid4().hex[:8]}"
 
 
 # ---------------------------------------------------------------------------
@@ -140,6 +146,53 @@ class _ServidorJwks(threading.Thread):
 # ---------------------------------------------------------------------------
 # Registro de la plataforma falsa en la allowlist
 # ---------------------------------------------------------------------------
+
+
+def _login_admin(base: str, usuario: str, password: str) -> str:
+    res = httpx.post(
+        f"{base}/api/v1/auth/login",
+        json={"username": usuario, "password": password},
+        timeout=60,
+    )
+    if res.status_code != 200:
+        raise SystemExit(
+            f"login de admin fallo: {res.status_code} {res.text[:200]}"
+        )
+    return res.json()["access_token"]
+
+
+def _registrar_deployment_api(base: str, token: str, *, iss: str, deployment_id: str,
+                              client_id: str, jwks_uri: str) -> str:
+    """Registra la plataforma falsa por la API admin, sin tocar la base.
+
+    Es lo que permite correr esto contra Render: la base de produccion no es
+    alcanzable desde aca, pero la API si.
+    """
+    res = httpx.post(
+        f"{base}/api/v1/admin/lti/deployments",
+        json={
+            "iss": iss,
+            "deployment_id": deployment_id,
+            "client_id": client_id,
+            "jwks_uri": jwks_uri,
+            "activo": True,
+        },
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=60,
+    )
+    if res.status_code != 201:
+        raise SystemExit(
+            f"no se pudo registrar el deployment: {res.status_code} {res.text[:300]}"
+        )
+    return res.json()["id"]
+
+
+def _borrar_deployment_api(base: str, token: str, fila_id: str) -> None:
+    httpx.delete(
+        f"{base}/api/v1/admin/lti/deployments/{fila_id}",
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=60,
+    )
 
 
 async def _registrar_deployment(db_url: str, *, iss: str, deployment_id: str,
@@ -262,7 +315,16 @@ async def _un_alumno(cli: httpx.AsyncClient, *, base, clave, iss, client_id,
         data={"id_token": token, "state": state},
         follow_redirects=False,
     )
-    return (time.perf_counter() - t0) * 1000, launch.status_code, "launch"
+    etapa = "launch"
+    if launch.status_code not in (302, 200):
+        # El backend devuelve un slug estable en `detail` (nonce_invalido,
+        # firma_invalida, deployment_no_confiable...). Sin esto, un fallo se ve
+        # como "HTTP 401" a secas y no hay forma de saber por qué.
+        try:
+            etapa = f"launch[{launch.json().get('detail')}]"
+        except Exception:  # noqa: BLE001
+            etapa = f"launch[{launch.text[:60]}]"
+    return (time.perf_counter() - t0) * 1000, launch.status_code, etapa
 
 
 # ---------------------------------------------------------------------------
@@ -279,12 +341,37 @@ async def main() -> int:
     )
     p.add_argument("--conservar", action="store_true",
                    help="No borrar la plataforma falsa al terminar")
+    p.add_argument(
+        "--jwks-publico",
+        help=(
+            "URL publica del JWKS, alcanzable DESDE el backend. Obligatoria "
+            "contra Render: el backend remoto no puede resolver localhost. "
+            "Apuntala a un tunel hacia --puerto-jwks."
+        ),
+    )
+    p.add_argument(
+        "--via-api", action="store_true",
+        help=(
+            "Registrar la plataforma falsa por la API admin en vez de la base. "
+            "Necesario contra Render, cuya base no es alcanzable desde aca. "
+            "Usa ADMIN_USUARIO / ADMIN_PASSWORD del entorno."
+        ),
+    )
     args = p.parse_args()
 
     db_url = os.environ.get("DATABASE_URL")
-    if not db_url:
-        print("Falta DATABASE_URL")
+    if not args.via_api and not db_url:
+        print("Falta DATABASE_URL (o usa --via-api con ADMIN_USUARIO/ADMIN_PASSWORD)")
         return 2
+
+    token_admin = None
+    if args.via_api:
+        admin_usuario = os.environ.get("ADMIN_USUARIO", "admin")
+        admin_password = os.environ.get("ADMIN_PASSWORD")
+        if not admin_password:
+            print("Falta ADMIN_PASSWORD para --via-api")
+            return 2
+        token_admin = _login_admin(args.base, admin_usuario, admin_password)
 
     iss = f"http://plataforma-carga-{uuid.uuid4().hex[:8]}.local"
     deployment_id = f"dep-{uuid.uuid4().hex[:8]}"
@@ -296,11 +383,17 @@ async def main() -> int:
     servidor.start()
     time.sleep(0.3)
 
-    jwks_uri = f"http://localhost:{args.puerto_jwks}/jwks"
-    fila_id = await _registrar_deployment(
-        db_url, iss=iss, deployment_id=deployment_id,
-        client_id=client_id, jwks_uri=jwks_uri,
-    )
+    jwks_uri = args.jwks_publico or f"http://localhost:{args.puerto_jwks}/jwks"
+    if token_admin is not None:
+        fila_id = _registrar_deployment_api(
+            args.base, token_admin, iss=iss, deployment_id=deployment_id,
+            client_id=client_id, jwks_uri=jwks_uri,
+        )
+    else:
+        fila_id = await _registrar_deployment(
+            db_url, iss=iss, deployment_id=deployment_id,
+            client_id=client_id, jwks_uri=jwks_uri,
+        )
     print(f"Plataforma falsa registrada: {iss} (fila {fila_id})")
     print(f"JWKS en {jwks_uri} con {args.jwks_demora_ms} ms de demora simulada\n")
 
@@ -376,7 +469,10 @@ async def main() -> int:
 
     servidor.parar()
     if not args.conservar:
-        await _borrar_deployment(db_url, fila_id)
+        if token_admin is not None:
+            _borrar_deployment_api(args.base, token_admin, fila_id)
+        else:
+            await _borrar_deployment(db_url, fila_id)
         print("Plataforma falsa borrada.")
     else:
         print(f"Plataforma falsa CONSERVADA (fila {fila_id}) — borrala a mano.")
