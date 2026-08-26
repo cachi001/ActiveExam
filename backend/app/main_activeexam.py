@@ -291,6 +291,15 @@ def create_activeexam_app() -> FastAPI:
     @app.exception_handler(DBAPIError)
     async def _id_malformado_es_404(_request: Request, exc: DBAPIError):
         if es_error_de_uuid_invalido(exc):
+            # Se LOGUEA antes de convertirlo. Sin esto el handler tapa bugs
+            # reales: un id mal armado por el propio backend sale como un 404
+            # prolijo y nadie se entera de que algo lo genero mal.
+            logger.warning(
+                "id invalido en %s %s: %s",
+                _request.method,
+                _request.url.path,
+                str(getattr(exc, "orig", exc))[:300],
+            )
             return JSONResponse(
                 status_code=status.HTTP_404_NOT_FOUND,
                 content={"detail": {"error": "no_encontrado", "mensaje": "No existe."}},
