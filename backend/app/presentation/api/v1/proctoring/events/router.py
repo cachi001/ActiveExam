@@ -11,13 +11,16 @@ L2.5: la respuesta incluye el veredicto 'coincide'/'discrepancia'/'no_evaluado'
 pero NUNCA sanciona — es informacion para el revisor humano.
 """
 
+import base64
+from datetime import datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, File, Form, UploadFile
 from fastapi import status as http_status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.application.proctoring import event_service
+from app.application.proctoring.captura_almacenada import reconstruir_data_url
 from app.application.proctoring.reinferencia import ReinferenciaPort
 from app.domain.auth.identity import AuthenticatedPrincipal
 from app.presentation.api.v1.proctoring.events.schemas import (
@@ -25,6 +28,7 @@ from app.presentation.api.v1.proctoring.events.schemas import (
     IngestEventoOut,
     IngestLoteIn,
     IngestLoteOut,
+    normalizar_severidad,
 )
 
 
@@ -85,6 +89,87 @@ def create_events_router(
             # c-78: el schema aceptaba este campo desde C-64 y el servicio lo
             # descartaba (no habia columna). Ahora se persiste y se contrasta.
             screenshot_sha256_cliente=body.screenshot_sha256_cliente,
+        )
+        return IngestEventoOut(
+            evento_id=evento.id,
+            veredicto_reinferencia=evento.veredicto_reinferencia,
+            face_count_servidor=evento.face_count_servidor,
+            screenshot_sha256=evento.screenshot_sha256,
+        )
+
+    @router.post(
+        "/sessions/{session_id}/events/binario",
+        status_code=http_status.HTTP_201_CREATED,
+        response_model=IngestEventoOut,
+        summary="Ingestar evento con la captura BINARIA (sin inflarla en base64)",
+    )
+    async def ingestar_evento_binario(  # noqa: PLR0913 — es un form, no una firma de dominio
+        session_id: str,
+        db: Annotated[AsyncSession, Depends(get_db)],
+        reinferencia: Annotated[ReinferenciaPort, Depends(get_reinferencia)],
+        principal: Annotated[AuthenticatedPrincipal, Depends(require_autenticado)],
+        tipo: Annotated[str, Form()],
+        severidad: Annotated[str, Form()],
+        ts_cliente: Annotated[datetime, Form()],
+        captura: Annotated[UploadFile | None, File()] = None,
+        screenshot_prefijo: Annotated[str | None, Form()] = None,
+        face_count_cliente: Annotated[int | None, Form()] = None,
+        screenshot_sha256_cliente: Annotated[str | None, Form()] = None,
+    ) -> IngestEventoOut:
+        """Misma ingesta que el endpoint JSON, con la imagen viajando CRUDA.
+
+        c-78 §16.5: mandar la captura como data URL dentro del JSON la infla un
+        tercio (base64 son 4 bytes de texto por cada 3 de imagen, y encima el JSON
+        escapa el string). Con 100 alumnos subiendo capturas durante dos horas por el
+        enlace de su casa, ese tercio se paga en tiempo de subida.
+
+        El endpoint JSON NO se toca: sigue siendo el camino soportado. Este es
+        aditivo, para que un cliente a medio migrar nunca quede sin poder mandar
+        evidencia.
+
+        **El data URL se reconstruye exacto** y se delega en la MISMA función de
+        ingesta. Por eso `screenshot_sha256` da idéntico por los dos caminos, que es
+        la condición que no se puede romper: ese hash sostiene la cadena de custodia
+        y verify-chain compara contra él toda la evidencia histórica.
+        """
+        binario = await captura.read() if captura is not None else None
+
+        # El prefijo canónico va SIN la coma final: `separar_data_url` la deja fuera
+        # y `reconstruir_data_url` la vuelve a poner. Pero un cliente que parta su
+        # data URL de la forma obvia (`url.split("base64,")` o quedarse con todo
+        # hasta la coma inclusive) la manda incluida, y ahí saldría
+        # `...base64,,AAAA`: un hash distinto, o sea evidencia que no verifica, sin
+        # ningún error visible. Se acepta con coma o sin ella.
+        if screenshot_prefijo and screenshot_prefijo.endswith(","):
+            screenshot_prefijo = screenshot_prefijo[:-1]
+
+        # `reconstruir_data_url` es el inverso exacto de lo que hace el guardado, y
+        # respeta el mime TAL CUAL vino (no lo normaliza): un 'image/jpeg' que
+        # volviera como 'image/png' cambiaría el hash de ese evento.
+        screenshot_base64 = reconstruir_data_url(screenshot_prefijo, binario)
+        if binario is not None and screenshot_base64 is None:
+            # Llegó la imagen pero sin prefijo declarado. Se asume PNG en vez de
+            # descartar la evidencia: perder la captura de un evento es peor que
+            # guardarla con un mime supuesto, y el hash sigue siendo consistente con
+            # lo que se guarda.
+            screenshot_base64 = "data:image/png;base64," + base64.b64encode(
+                binario
+            ).decode("ascii")
+
+        evento = await event_service.ingestar_evento(
+            db=db,
+            session_id=session_id,
+            tipo=tipo,
+            severidad=str(normalizar_severidad(severidad)),
+            ts_cliente=ts_cliente,
+            reinferencia=reinferencia,
+            principal=principal,
+            payload=None,
+            screenshot_base64=screenshot_base64,
+            face_count_cliente=face_count_cliente,
+            cipher=cipher,
+            worm_storage=worm_storage,
+            screenshot_sha256_cliente=screenshot_sha256_cliente,
         )
         return IngestEventoOut(
             evento_id=evento.id,

@@ -33,6 +33,20 @@ _ALIAS_SEVERIDAD: dict[str, str] = {
 }
 
 
+def normalizar_severidad(valor: Any) -> Any:
+    """Traduce los alias masculinos historicos al vocabulario canonico.
+
+    Publica porque la usan DOS entradas: el body JSON (via validador de Pydantic) y
+    el form multipart de la ingesta binaria (c-78 §16.5), que recibe strings sueltos
+    y no pasa por este modelo. Si cada una tuviera su copia, el dia que se agregue un
+    alias una de las dos quedaria atras — que es exactamente el bug que este enum
+    compartido vino a cerrar.
+    """
+    if isinstance(valor, str):
+        return _ALIAS_SEVERIDAD.get(valor, valor)
+    return valor
+
+
 class IngestEventoIn(BaseModel):
     """Body de POST /sessions/{id}/events.
 
@@ -49,10 +63,8 @@ class IngestEventoIn(BaseModel):
     @field_validator("severidad", mode="before")
     @classmethod
     def _normalizar_severidad(cls, v: Any) -> Any:
-        """Traduce los alias masculinos historicos al vocabulario canonico."""
-        if isinstance(v, str):
-            return _ALIAS_SEVERIDAD.get(v, v)
-        return v
+        return normalizar_severidad(v)
+
     ts_cliente: datetime = Field(..., description="Timestamp del cliente (no confiable)")
     payload: dict | None = Field(None, description="Datos adicionales del evento")
     screenshot_base64: str | None = Field(

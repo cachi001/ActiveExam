@@ -8,6 +8,28 @@
 > agente asume arquitectura de mensajería/transporte antes de C-03). El adaptador concreto
 > de cada puerto ES el ganador de C-03. La priorización (§2) depende además de C-13.
 
+## 0. Contexto heredado de c-78 (§16.6) — leer antes de arrancar
+
+> Esta tarea vivía en c-78 como recordatorio y lo mantenía abierto por algo que no le
+> pertenecía. El análisis hecho con el dueño el 26/8/2026 se conserva acá, que es donde
+> corresponde. **No son tareas nuevas: es contexto para no volver a discutirlo desde cero.**
+
+- **Qué mejora SSE y qué no.** NO hace que el alumno rinda mejor: contestar, autoguardar, la
+  cámara y la detección no pasan por el polling. Lo que mejora es la latencia de la pausa
+  (~4 s → instantáneo), la supervisión del tutor y el techo de req/s.
+- **Por qué se difirió.** Con la cadencia adaptativa del poller (c-78 §16.12) ya se sale de
+  la saturación, así que el aporte marginal para 100 alumnos era chico frente al riesgo de
+  cambiar el transporte del examen en vivo a días de la fecha.
+- **SSE y no WebSocket.** El tráfico es de UNA dirección (el servidor avisa; lo que manda el
+  alumno son POST normales que ya andan) y `EventSource` **se reconecta solo** por
+  especificación del navegador. Un WebSocket caído en silencio deja al alumno sin
+  aprobaciones de pausa y nadie se entera.
+- **El bloqueo de la regla dura #4 casi no aplica hoy.** Lo que C-03 tenía que decidir era el
+  *backplane* de fan-out entre instancias, y producción corre **un solo proceso** de uvicorn:
+  no hay nada que compartir, un pub/sub en memoria alcanza. Verificar contra
+  `Dockerfile.activeexam` antes de asumirlo — si algún día se levanta con `--workers`, el
+  backplane vuelve a hacer falta y §1.2 recupera su sentido original.
+
 ## 1. Transporte SSE sin sticky (capability `proctor-sse-transport`) — ⛔ depende de C-03
 
 - [ ] 1.1 Definir `PanelTransportPort` e implementar el adaptador **SSE** (ganador concern b de C-03); Done: test de stream SSE unidireccional

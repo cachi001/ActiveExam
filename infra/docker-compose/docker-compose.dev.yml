@@ -104,6 +104,14 @@ services:
       # — hoy solo se nota en los tests porque main_activeexam no usa Settings,
       # pero es una bomba puesta para el día que alguien la use.
       ENVIRONMENT: local
+      # c-78 §16.2: dev levanta uvicorn con `--workers 4`, así que hay 5 procesos
+      # (los 4 workers y un hijo del supervisor) y cada uno abre su PROPIO pool. Con
+      # el default de 12+12 el techo era 5 x 24 = 120 contra un `max_connections=100`
+      # — Postgres empieza a rechazar bajo carga y el 503 no dice por qué. 9+9 deja
+      # el techo en 90, que es lo que queda tras reservar 10 para administración.
+      # La guarda del arranque (log "pool") verifica esta cuenta contra la base real.
+      DB_POOL_SIZE: "9"
+      DB_MAX_OVERFLOW: "9"
       # Passwords del seed (dev-only). El seed es idempotente: no duplica.
       SEED_ADMIN_PASSWORD: Admin123
       SEED_ESTUDIANTE_PASSWORD: Estudiante123
