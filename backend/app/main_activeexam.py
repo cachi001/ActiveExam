@@ -22,6 +22,7 @@ Routers montados:
 from __future__ import annotations
 
 import logging
+import os
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
@@ -248,6 +249,63 @@ def create_activeexam_app() -> FastAPI:
         except Exception:  # noqa: BLE001 — un chequeo de salud no tumba el arranque
             logging.getLogger("lti").debug(
                 "No se pudo verificar la allowlist LTI al arranque.", exc_info=True
+            )
+
+        # c-78 §16.2: el pool se dimensionó para 4 workers con una cuenta escrita a
+        # mano. Cambiar el plan, subir WEB_CONCURRENCY o mover la base deja esa cuenta
+        # vieja, y el modo en que eso se manifiesta es Postgres rechazando conexiones
+        # bajo carga con la app respondiendo 503 sin decir por qué. Se compara contra
+        # el `max_connections` REAL de la base y se avisa acá, al arrancar, con los
+        # números que hay que poner. Best-effort: nunca impide levantar la app.
+        try:
+            from sqlalchemy import text
+
+            from app.infrastructure.persistence.dimensionado_pool import (
+                contar_workers,
+                dimensionar_pool,
+                verificar_pool_configurado,
+            )
+
+            log_pool = logging.getLogger("pool")
+            async with engine.connect() as _conn:
+                _max_conn = int(
+                    (await _conn.execute(text("SHOW max_connections"))).scalar_one()
+                )
+            # `uvicorn --workers N` no setea ninguna variable: hay que contar los
+            # procesos de verdad o la cuenta sale mal por un factor de N.
+            _workers = contar_workers()
+            _pool = engine.pool
+            _configurado = (_pool.size(), _pool._max_overflow)  # noqa: SLF001
+
+            _problema = verificar_pool_configurado(
+                workers=_workers,
+                pool_size=_configurado[0],
+                max_overflow=_configurado[1],
+                max_connections=_max_conn,
+            )
+            if _problema:
+                _sugerido = dimensionar_pool(_workers, _max_conn)
+                log_pool.warning(
+                    "POOL DE CONEXIONES MAL DIMENSIONADO. %s Para %d worker(s) contra "
+                    "esta base: DB_POOL_SIZE=%d, DB_MAX_OVERFLOW=%d.",
+                    _problema,
+                    _workers,
+                    _sugerido.pool_size,
+                    _sugerido.max_overflow,
+                )
+            else:
+                log_pool.info(
+                    "Pool OK: %d worker(s) x %d conexiones = %d como máximo, sobre "
+                    "max_connections=%d.",
+                    _workers,
+                    _configurado[0] + _configurado[1],
+                    (_configurado[0] + _configurado[1]) * max(_workers, 1),
+                    _max_conn,
+                )
+        except Exception:  # noqa: BLE001 — un chequeo de salud no tumba el arranque
+            logging.getLogger("pool").debug(
+                "No se pudo verificar el dimensionado del pool al arranque.",
+                exc_info=True,
             )
 
         yield
