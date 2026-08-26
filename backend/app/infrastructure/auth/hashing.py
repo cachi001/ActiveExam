@@ -27,6 +27,30 @@ _ctx = CryptContext(schemes=["bcrypt"], deprecated="auto", bcrypt__rounds=12)
 # mensaje de error fuera idéntico en ambos casos.
 _DUMMY_HASH = _ctx.hash("dummy-password-para-timing-constante")
 
+# Centinela de "esta cuenta no tiene contraseña fijada" (c-78).
+#
+# El alta por LTI generaba una contraseña aleatoria de 32 bytes y la hasheaba con
+# bcrypt (248 ms) solo para llenar la columna. Esa contraseña NUNCA se le
+# comunica a nadie: el alumno entra por LTI, y si quiere entrar directo fija la
+# suya desde el dashboard (el primer set de un usuario LTI ni siquiera pide la
+# anterior). Eran 248 ms por alumno para hashear un secreto que nadie iba a
+# verificar, y con una comisión entrando junta eso es el grueso del
+# congelamiento que se midió en la avalancha LTI.
+#
+# Arranca con "!" a propósito: bcrypt siempre produce hashes que empiezan con
+# "$2", así que ningún texto plano puede hashear a esto. Es el mismo patrón de
+# "unusable password" de Django.
+HASH_SIN_PASSWORD = "!sin-password"
+
+
+def es_sin_password(hashed: str | None) -> bool:
+    """True si la cuenta no tiene una contraseña con la que se pueda entrar.
+
+    Cubre tanto el centinela como la columna vacía: las dos significan lo mismo
+    para quien pregunta "¿puede entrar con contraseña?".
+    """
+    return not hashed or hashed == HASH_SIN_PASSWORD
+
 
 def hashear_password(plain: str) -> str:
     """Retorna el hash bcrypt del password en texto plano.
@@ -61,13 +85,26 @@ async def hashear_password_async(plain: str) -> str:
     return await asyncio.to_thread(hashear_password, plain)
 
 
-def verificar_password(plain: str, hashed: str) -> bool:
+def verificar_password(plain: str, hashed: str | None) -> bool:
     """Verifica un password en texto plano contra su hash bcrypt.
 
     Retorna ``True`` si coinciden, ``False`` si no. Timing constante
     (bcrypt ya es timing-safe por diseño — usa compare_digest internamente).
+
+    Falla CERRADO ante cualquier hash que no sea bcrypt válido: el centinela de
+    "sin contraseña", la columna vacía o basura. En esos casos gasta igual el
+    tiempo de una verificación real — devolver ``False`` al instante delataría
+    por tiempo qué cuentas todavía no fijaron su contraseña, que es el mismo
+    agujero de enumeración que tapó ``verificar_password_dummy``.
     """
-    return _ctx.verify(plain, hashed)
+    if es_sin_password(hashed):
+        verificar_password_dummy(plain)
+        return False
+    try:
+        return _ctx.verify(plain, hashed)
+    except Exception:  # noqa: BLE001 — hash ilegible: no deja entrar, y no revienta
+        verificar_password_dummy(plain)
+        return False
 
 
 def verificar_password_dummy(plain: str) -> None:

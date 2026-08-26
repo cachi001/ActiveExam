@@ -57,7 +57,6 @@ comprobado firma, nonce, aud y exp.
 
 from __future__ import annotations
 
-import secrets
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
@@ -72,7 +71,7 @@ from app.application.lti.launch_validation import (
     LaunchInvalidoError,
     LaunchValidado,
 )
-from app.infrastructure.auth.hashing import hashear_password_async
+from app.infrastructure.auth.hashing import HASH_SIN_PASSWORD
 from app.infrastructure.persistence.models.inscripcion import InscripcionModel
 from app.infrastructure.persistence.models.lti import (
     LtiDeploymentConfiableModel,
@@ -213,14 +212,18 @@ async def provisionar_o_recuperar_usuario(
     email = claims.get("email") or f"{username_lti}@sin-email.lti.local"
     nombre, apellido = _extraer_nombre(claims)
 
-    # Password aleatorio, no comunicado (patrón "clave temporal" de C-61).
-    # El alumno se autentica vía LTI — no necesita este password. Si quiere
-    # loguearse directo (sin Moodle) deberá fijarlo desde el dashboard
-    # ("Fijá tu contraseña" — debe_cambiar_password=True).
-    password_aleatorio = secrets.token_urlsafe(32)
-    # En thread aparte: bcrypt son 248 ms y esto corre en el alta masiva por
-    # LTI. Llamarlo directo congelaba el bucle ~17 s con 70 alumnos entrando.
-    password_hash = await hashear_password_async(password_aleatorio)
+    # La cuenta nace SIN contraseña (c-78). Antes se generaba una aleatoria de 32
+    # bytes y se la hasheaba con bcrypt para llenar la columna, pero esa
+    # contraseña no se le comunicaba a nadie: el alumno entra por LTI, y si
+    # quiere entrar directo fija la suya desde el dashboard
+    # ("Fijá tu contraseña" — `debe_cambiar_password=True`; el primer set de un
+    # usuario LTI ni siquiera pide la anterior). Eran 248 ms por alumno para
+    # hashear un secreto que nadie iba a verificar nunca, y con una comisión
+    # entrando junta ese era el grueso de lo que quedaba del congelamiento
+    # medido en la avalancha LTI.
+    #
+    # El centinela falla cerrado: ninguna contraseña verifica contra él.
+    password_hash = HASH_SIN_PASSWORD
 
     usuario = UsuarioModel(
         username=username_lti,
