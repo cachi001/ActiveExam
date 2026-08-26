@@ -654,6 +654,30 @@
     mis cambios. Actualizado a `admin_sistema` (el único institucional que queda).
   - 22 tests verdes: 7 puros + 6 HTTP nuevos + los 9 de `test_chat_api` recuperados.
 
+## 18. Antes del examen real (operación, no código)
+
+> Encontrado probando contra producción el 26/8/2026. Nada de esto es un bug del
+> sistema: es configuración y operación. Pero si falta, el examen se rompe.
+
+- [ ] 18.1 **Asignar los responsables de cada materia y comisión.** Verificado en producción:
+  las tres materias estaban **sin profesor y sin coordinador**, y las cinco comisiones **sin
+  tutor**. Con eso, todos los roles reciben 403 en todo, y —lo más grave— **las notas no se
+  pueden devolver al campus**: el write-back sale con la credencial del TUTOR de la comisión,
+  y sin tutor responde `sin_docente`. Se descubre recién al final, con el examen ya rendido.
+  Ver 18.4: el sistema debería avisarlo antes.
+- [ ] 18.2 **Despertar Render antes del examen.** El plan free duerme el servicio. El primer
+  ingreso por el link de Moodle con el servicio dormido **se pierde**: el alumno ve la pantalla
+  de arranque del hosting y, como el ingreso viaja como envío de datos, al recargar da 422.
+  Basta con pegarle a cualquier endpoint unos minutos antes.
+- [ ] 18.3 **Tener presente el techo del plan free: 19 a 20 req/s.** Medido con 70 y con 100
+  alumnos: el número no se mueve, solo sube la latencia (p95 de evento 7,8 s con 70; 12,67 s
+  con 100, y ahí aparece el primer error). No falla nada, pero con 100 alumnos hay esperas de
+  varios segundos por acción.
+- [ ] 18.4 **Avisar cuando una materia o comisión no tiene responsable asignado.** Hoy se puede
+  crear una materia, sus comisiones, sus exámenes, y que los alumnos rindan, sin que nada
+  advierta que no hay quién firme las notas. El aviso tiene que estar donde se arma la
+  estructura y en el detalle del examen, no al final.
+
 ## 17. Cierre
 
 - [x] 17.1 Verificar que `openspec validate` pasa para el change y que cada requisito de las specs tiene al menos un test que lo ejercita.
