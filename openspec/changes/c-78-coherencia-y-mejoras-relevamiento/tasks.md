@@ -383,11 +383,25 @@
   - Para correrlo contra Render el script suma `--via-api` (registra la plataforma falsa por
     la API admin, sin acceso a la base) y `--jwks-publico` (Render tiene que poder alcanzar
     el JWKS; se expuso con un túnel temporal, ya cerrado).
-- [ ] 16.1f **E-14** Mandar el buffer de eventos **en lote** al reconectar
-  - Hoy el drenaje manda un evento por request: contra Render son **35 s** para una caída de
-    30 s. Un endpoint que acepte el lote entero lo bajaría a unos segundos. No se pierde
-    evidencia hoy (medido en cero), el riesgo es la ventana en la que el alumno puede cerrar
-    la pestaña.
+- [x] 16.1f **E-14** Mandar el buffer de eventos **en lote** al reconectar
+  - `POST /sessions/{id}/events/lote` acepta la tanda entera en un request, **en orden**, y
+    devuelve un ack por evento en la misma posición. Es el **mismo**
+    `event_service.ingestar_evento` que la ingesta de a uno, no una copia: misma
+    re-inferencia, misma guarda de pertenencia (H1, IDOR) y mismo contrato de ack. Tope duro
+    de 200 por lote.
+  - `drainAndReplayEnLote` mantiene las garantías del replay: orden de producción, purga
+    **solo lo confirmado y por id** (nunca por posición a ciegas — si el backend devolviera
+    menos acks, lo que no vino sigue en el buffer), y una tanda que falla no se da por
+    enviada ni se lleva puesta la anterior. Si el lote falla cae al camino de a uno; el
+    backend deduplica por `event_id`, así que reintentar no duplica.
+  - 7 tests de backend (DB real) + 8 de frontend.
+- [x] 16.1g **E-14** Correr la carga de **100 alumnos** contra Render
+  - **Aparece el primer fallo**: 1 request de 4192 (0,02%, un poll de chat). Con 70 eran cero.
+  - Evento med 3,7 s · **p95 12,67 s** · max 29,4 s. Crear sesión med 4,85 s · p95 16,34 s.
+  - **El techo está en ~19 a 20 req/s y no se mueve**: con 70 alumnos daba 19,0 req/s y con
+    100 da 19,7. Sumar alumnos ya no agrega trabajo hecho, solo agrega espera. Eso es
+    saturación, no una curva que todavía sube.
+  - Cero evidencia perdida, cero errores de ingesta.
 - [ ] 16.2 **E-14** Dimensionar el arranque de producción con los cores del plan una vez que deje de ser free, recalculando el pool (`workers × 24` conexiones contra `max_connections`)
   - Diferido por decisión del dueño: el plan sigue siendo el free y la VPS se evalúa después.
 - [x] 16.3a **E-14** Proteger `/metrics`, que estaba **público sin autenticación** en producción
