@@ -15,9 +15,17 @@ Lo que sí existe siempre:
 - el **username** del campus.
 - el **email**.
 
-El orden importa. El userid va primero porque es exacto. El email va último
-porque es el más fácil de que alguien edite, o de que se comparta entre cuentas
-de cátedra: si dos personas tienen el mismo, la nota podría ir a la que no es.
+EL ORDEN (decisión del dueño, 26/8/2026): **el email va primero**, porque es el
+dato que siempre coincide entre el campus y ActiveExam. El userid de Moodle es
+más exacto en teoría, pero solo lo tienen las cuentas que entraron por el link
+del campus DESPUÉS de que se empezara a guardar; una cuenta creada a mano, o una
+anterior, no lo tiene. Poner primero un dato que a veces falta obliga a que el
+respaldo funcione siempre, y entonces el respaldo era el camino real.
+
+El userid queda segundo como desempate exacto, y el username tercero.
+
+Igual se busca SIEMPRE entre los matriculados del curso destino, así que un email
+repetido fuera de ese curso no puede desviar una nota.
 """
 
 from __future__ import annotations
@@ -57,6 +65,10 @@ def candidatos_de_busqueda(ident: IdentidadAlumno) -> list[tuple[str, str]]:
     """
     candidatos: list[tuple[str, str]] = []
 
+    email = (ident.email or "").strip()
+    if email:
+        candidatos.append(("email", email))
+
     userid = _userid_valido(ident.moodle_userid)
     if userid:
         candidatos.append(("moodle_userid", userid))
@@ -64,9 +76,5 @@ def candidatos_de_busqueda(ident: IdentidadAlumno) -> list[tuple[str, str]]:
     username = (ident.username or "").strip()
     if username and not username.lower().startswith(_PREFIJO_LTI):
         candidatos.append(("username", username))
-
-    email = (ident.email or "").strip()
-    if email:
-        candidatos.append(("email", email))
 
     return candidatos

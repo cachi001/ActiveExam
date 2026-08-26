@@ -84,6 +84,33 @@ async def _preguntas_que_cuentan(
     return [str(r) for r in seleccionadas.scalars().all()]
 
 
+def nota_desde_correctas(
+    correctas: float, total_preguntas: int, nota_maxima: float
+) -> float:
+    """La nota en la escala del examen: (correctas / total) * nota_maxima.
+
+    Funcion PURA, extraida para poder verificarla sin base de datos (c-78, pedido
+    del dueno: comprobar que 100/60 y 10/6 dan el mismo veredicto — son la misma
+    exigencia en dos escalas).
+
+    DOS decimales, alineado con Moodle: su libreta formatea con 2 decimales, asi
+    que redondear a entero de este lado desalineaba las escalas — 15/20 sobre 10
+    es 7,5 y se convertia en 8, medio punto regalado que Moodle nunca pidio.
+
+    ROUND_HALF_UP y Decimal a proposito: el round() de Python usa banker's
+    rounding (round(0.5) = 0), que en notas se lee como un error.
+
+    Sin preguntas devuelve 0: pasa de verdad (examen en borrador o mal armado) y
+    no puede reventar en medio de la entrega del alumno.
+    """
+    if not total_preguntas:
+        return 0.0
+    nota = (
+        Decimal(str(correctas)) / Decimal(total_preguntas) * Decimal(str(nota_maxima))
+    ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    return float(nota)
+
+
 async def calcular_nota_academica(
     *,
     db: AsyncSession,
@@ -179,10 +206,7 @@ async def calcular_nota_academica(
     #
     # ROUND_HALF_UP y Decimal a proposito: el round() de Python usa banker's
     # rounding (round(0.5) = 0), que en notas se lee como un error.
-    nota = (Decimal(str(correctas)) / Decimal(total_preguntas) * escala).quantize(
-        Decimal("0.01"), rounding=ROUND_HALF_UP
-    )
-    return float(nota)
+    return nota_desde_correctas(correctas, total_preguntas, float(escala))
 
 
 async def _calcular_fraccion_cloze(

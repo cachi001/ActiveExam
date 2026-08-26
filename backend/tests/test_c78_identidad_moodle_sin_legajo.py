@@ -32,29 +32,39 @@ from app.application.moodle.identidad_alumno import (
 )
 
 
-def test_el_userid_de_moodle_va_primero():
+def test_el_email_va_primero():
+    """Decisión del dueño: es el dato que SIEMPRE coincide entre los dos lados.
+
+    El userid solo lo tienen las cuentas que entraron por el link del campus
+    después de que se empezara a guardar; una creada a mano no lo tiene.
+    """
     ident = IdentidadAlumno(
         moodle_userid=968, username="alumno_prueba2", email="a@b.edu"
     )
 
-    assert candidatos_de_busqueda(ident)[0] == ("moodle_userid", "968")
+    assert candidatos_de_busqueda(ident)[0] == ("email", "a@b.edu")
 
 
-def test_sin_userid_busca_por_username():
-    ident = IdentidadAlumno(moodle_userid=None, username="alumno_prueba2", email="a@b.edu")
+def test_el_userid_queda_como_desempate_exacto():
+    ident = IdentidadAlumno(moodle_userid=968, username="u", email="a@b.edu")
+
+    assert candidatos_de_busqueda(ident)[1] == ("moodle_userid", "968")
+
+
+def test_sin_email_busca_por_userid_y_username():
+    ident = IdentidadAlumno(moodle_userid=968, username="alumno_prueba2", email=None)
 
     campos = [c for c, _ in candidatos_de_busqueda(ident)]
 
-    assert campos[0] == "username"
+    assert campos == ["moodle_userid", "username"]
 
 
-def test_el_email_queda_ultimo():
-    """Es el más fácil de que alguien edite o comparta (cuentas de cátedra)."""
+def test_el_username_queda_ultimo():
     ident = IdentidadAlumno(moodle_userid=968, username="alumno_prueba2", email="a@b.edu")
 
     campos = [c for c, _ in candidatos_de_busqueda(ident)]
 
-    assert campos[-1] == "email"
+    assert campos[-1] == "username"
 
 
 def test_no_propone_buscar_por_legajo():
@@ -98,7 +108,7 @@ def test_no_confunde_el_username_sintetico_de_lti_con_uno_del_campus():
     campos = [c for c, _ in candidatos_de_busqueda(ident)]
 
     assert "username" not in campos
-    assert campos == ["moodle_userid", "email"]
+    assert campos == ["email", "moodle_userid"]
 
 
 @pytest.mark.parametrize("crudo, esperado", [(7, "7"), ("7", "7"), ("  7 ", "7")])

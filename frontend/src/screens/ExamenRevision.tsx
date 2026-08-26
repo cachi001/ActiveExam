@@ -8,7 +8,7 @@
  * Los datos (incl. es_correcta) vienen de GET /exam-content/{id}/revision, que solo
  * los expone al dueño y con el intento finalizado (excepción a D3, estilo Moodle).
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { StudentShell } from '../ui/shells';
 import { Icon, Button, Card } from '../ui/components';
 import { useNavigate, useRouteParam } from '../lib/router';
@@ -16,6 +16,7 @@ import { useApp } from '../lib/store';
 import { api } from '../lib/api';
 import type { RevisionExamen, OpcionRevision, PreguntaRevision } from '../lib/types';
 import { renderTextoConCodigo } from './examen/renderTextoConCodigo';
+import { textoResultadoRevision } from './ExamenRevision.texto';
 
 /** Estado de una pregunta para color del navegador. */
 type EstadoPregunta = 'correcta' | 'incorrecta' | 'sin_responder';
@@ -92,13 +93,6 @@ export default function ExamenRevision() {
   const preguntaActual = preguntas[indice] ?? null;
   const fmtFecha = (iso?: string | null) =>
     iso ? new Date(iso).toLocaleString('es-AR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
-  const pct = useMemo(
-    () =>
-      revision && revision.total_preguntas > 0
-        ? Math.round((revision.correctas / revision.total_preguntas) * 100)
-        : 0,
-    [revision],
-  );
 
   const volver = () => navigate('/alumno/mis-examenes');
 
@@ -164,10 +158,14 @@ export default function ExamenRevision() {
                 ) : (
                   <span className="inline-flex items-center text-headline-md font-bold text-on-surface-variant rounded-full bg-surface-container-high px-md py-base">—</span>
                 )}
+                {/* c-78: SIN la fórmula. Antes decía "la nota = correctas ÷ total
+                    × 10", y el alumno no tiene por qué ver el mecanismo: invita a
+                    discutir el redondeo en vez del contenido. Ve su resultado. */}
                 <p className="text-label-md text-on-surface-variant max-w-md">
-                  Acertaste <strong>{revision.correctas}</strong> de{' '}
-                  <strong>{revision.total_preguntas}</strong> ({pct}%). Cada pregunta vale lo mismo;
-                  la nota = correctas ÷ total × {revision.nota_maxima ?? 10}.
+                  {textoResultadoRevision({
+                    correctas: revision.correctas,
+                    total: revision.total_preguntas,
+                  })}
                 </p>
               </div>
 
