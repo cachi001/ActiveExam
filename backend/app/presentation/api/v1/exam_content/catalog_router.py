@@ -61,6 +61,7 @@ from app.application.exam_content.impacto_baja import (
     impacto_baja_materia,
 )
 from app.application.exam_content.import_service import ImportacionMoodleService
+from app.application.moodle.sync_reporte import resumen_de_motivos
 from app.application.exam_content.inscripcion_service import (
     InscripcionService,
 )
@@ -4829,6 +4830,7 @@ def create_exam_content_router(
                     estado_moodle=r.estado_moodle,
                     actualizado_en=r.actualizado_en,
                     retenido_por=r.retenido_por,
+                    error_detalle=r.error_detalle,
                     estado_entrega=r.estado_entrega,
                     archivado=r.archivado,
                     marcada_manual_por=r.marcada_manual_por,
@@ -5334,6 +5336,10 @@ def create_exam_content_router(
 
             enviadas = 0
             fallidas = 0
+            # c-78: los motivos se juntan para que la auditoria diga POR QUE
+            # fallo y no solo cuantas. Antes el registro era "0 enviada(s), 1
+            # fallida(s)" y el motivo -que Moodle habia explicado- se tiraba.
+            motivos: list[str] = []
             for fila in pendientes:
                 await writeback_svc.ejecutar_writeback(
                     db=session,
@@ -5346,6 +5352,9 @@ def create_exam_content_router(
                     enviadas += 1
                 else:
                     fallidas += 1
+                    detalle = getattr(fila, "error_detalle", None)
+                    if detalle:
+                        motivos.append(str(detalle))
             await session.commit()
 
         # Se ESCRIBIERON notas académicas reales en Moodle → cadena de custodia
@@ -5368,6 +5377,7 @@ def create_exam_content_router(
             proposito=(
                 f"Sincronizó las notas del examen «{titulo_examen}» a Moodle "
                 f"({modo_sinc}): {enviadas} enviada(s), {fallidas} fallida(s) de {total}"
+                + (f". Motivos: {resumen_de_motivos(motivos)}" if motivos else "")
             ),
         )
 

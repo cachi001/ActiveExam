@@ -132,6 +132,10 @@ class ResultadoAlumno:
     # None = nada la retiene. Es ortogonal a `estado_moodle`: una fila retenida
     # sigue estando 'pendiente' en la tabla, pero apretar "Sincronizar" no la manda.
     retenido_por: str | None = None
+    # c-78: POR QUE fallo el envio a Moodle. Ya se guardaba en la tabla y no se
+    # exponia: la pantalla decia "fallido" y el motivo habia que ir a buscarlo
+    # reproduciendo el write-back a mano contra el campus.
+    error_detalle: str | None = None
     # C-76 tarea 14: estado de la ENTREGA (derivado) + soft-hide administrativo.
     estado_entrega: str = ESTADO_ENTREGA_FINALIZADA
     archivado: bool = False
@@ -186,6 +190,7 @@ def _base_stmt(examen_id: str):
             email_expr.label("alumno_email"),
             MoodleWritebackEstadoModel.nota,
             MoodleWritebackEstadoModel.estado,
+            MoodleWritebackEstadoModel.error_detalle,
             MoodleWritebackEstadoModel.updated_at,
             # c-78 D14: origen del estado. Sin esto la UI no puede distinguir
             # "confirmado por el campus" de "marcado por {persona} el {fecha}".
@@ -405,6 +410,7 @@ async def listar_resultados_examen(
             ),
             actualizado_en=row.updated_at or row.finalizada_en,
             retenido_por=retenciones.get(row.session_id),
+            error_detalle=getattr(row, "error_detalle", None),
             estado_entrega=estado_entrega(
                 finalizada_en=row.finalizada_en,
                 en_cola_revision=flaggeadas_pagina.get(row.session_id, False),
@@ -899,6 +905,7 @@ async def listar_mis_notas(
             ExamenContenidoModel.revision_habilitada,
             MoodleWritebackEstadoModel.nota,
             MoodleWritebackEstadoModel.estado,
+            MoodleWritebackEstadoModel.error_detalle,
         )
         .select_from(ProctoringSessionModel)
         .join(
@@ -974,6 +981,7 @@ async def listar_mis_notas(
             cierre=r.cierre,
             ahora=ahora,
             retenido_por=retenciones_alumno.get(r.session_id),
+            error_detalle=getattr(r, "error_detalle", None),
         )
         rev_disp = revision_visible(
             revision_habilitada=r.revision_habilitada,

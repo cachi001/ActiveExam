@@ -1064,6 +1064,13 @@ class ResultadoAlumnoResponse(BaseModel):
     # Motivo por el que la nota queda RETENIDA y no se sincroniza (gate D15):
     # en_riesgo | anulada. None = nada la retiene.
     retenido_por: str | None = None
+    # c-78: POR QUÉ falló el envío a Moodle. El backend ya lo guardaba en
+    # `error_detalle` y no lo exponía en ningún lado: la pantalla decía "fallido"
+    # y punto, y el motivo había que ir a buscarlo reproduciendo el write-back a
+    # mano contra el campus. El día del examen eso no sirve.
+    # None cuando el estado no es 'fallido'. El token del campus ya viene
+    # redactado desde el write-back.
+    error_detalle: str | None = None
     actualizado_en: datetime | None = None
     # C-76 tarea 14: estado de la ENTREGA, DERIVADO (nunca persistido).
     # no_finalizada | en_revision | revisada | finalizada.
