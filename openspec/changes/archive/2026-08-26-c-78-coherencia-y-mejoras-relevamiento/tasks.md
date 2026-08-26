@@ -428,8 +428,25 @@
     100 da 19,7. Sumar alumnos ya no agrega trabajo hecho, solo agrega espera. Eso es
     saturación, no una curva que todavía sube.
   - Cero evidencia perdida, cero errores de ingesta.
-- [ ] 16.2 **E-14** Dimensionar el arranque de producción con los cores del plan una vez que deje de ser free, recalculando el pool (`workers × 24` conexiones contra `max_connections`)
-  - Diferido por decisión del dueño: el plan sigue siendo el free y la VPS se evalúa después.
+- [x] 16.2 **E-14** Dimensionar el arranque de producción con los cores del plan una vez que deje de ser free, recalculando el pool (`workers × 24` conexiones contra `max_connections`)
+  - **No se difiere más: el número dejó de estar escrito a mano.** `pool_size=12,
+    max_overflow=12` vivía fijo en el código con la cuenta para 4 workers en un comentario.
+    Correcta para ese escenario y para ninguno otro: cambiar el plan, subir `--workers` o
+    mover la base deja la cuenta vieja **sin que nada lo diga**, y eso se manifiesta como
+    Postgres rechazando conexiones bajo carga con la app respondiendo 503 sin causa visible.
+  - `dimensionado_pool.py`: reparte `max_connections` real entre los procesos, reservando 10
+    para administración (quedarse sin ellas deja el problema sin diagnóstico posible justo
+    cuando hace falta). El pool ahora sale de `DB_POOL_SIZE` / `DB_MAX_OVERFLOW`, así que se
+    arregla sin editar código ni reconstruir la imagen.
+  - **La guarda del arranque encontró un problema real que ya estaba**: dev corre
+    `uvicorn --workers 4`, que son **5 procesos** (los 4 workers y un hijo del supervisor),
+    cada uno con su propio pool. 5 × 24 = **120 contra un `max_connections=100`**. Corregido
+    a 9+9 en `docker-compose.dev.yml` (techo 90, que es lo que queda tras la reserva).
+  - **Trampa que casi se me escapa**: `uvicorn --workers N` **no setea ninguna variable**, así
+    que leer `WEB_CONCURRENCY` reportaba 1 worker y la guarda daba "todo bien" con el pool
+    excedido. Hay que contar los procesos de verdad (hermanos del mismo ppid en `/proc`).
+  - 22 tests. El aviso trae los números concretos a poner, no un "configuración inválida"
+    que obligue a ir a leer el código en medio de un examen.
 - [x] 16.3a **E-14** Proteger `/metrics`, que estaba **público sin autenticación** en producción
   - `app/observability/metrics_auth.py`, política única para los dos main. Sin
     `METRICS_TOKEN` el endpoint **no existe** (404, fail closed: olvidarse la variable en un
@@ -439,10 +456,23 @@
     no reconstruir la app). El middleware sigue contando aunque el scrape esté cerrado.
     6 tests en `test_c78_metrics_protegido.py` + 2 en `test_app_factory.py`.
     Cableado en `docker-compose.dev.yml` + `prometheus.dev.yml`.
-- [ ] 16.3b **E-14** Que algo scrapee y guarde `/metrics` en producción, con retención que cubra el examen
-  - Bloqueado por una decisión del dueño: hoy no hay dónde guardarlo (Render free no corre
-    un Prometheus al lado). Opciones a resolver: Grafana Cloud free, un scraper propio, o
-    aceptar mirar `/metrics` a mano durante el examen.
+- [x] 16.3b **E-14** Que algo scrapee y guarde `/metrics` en producción, con retención que cubra el examen
+  - **Resuelto con la opción que no necesita infraestructura nueva.** Render free no corre un
+    Prometheus al lado, y montar Grafana Cloud a días del examen agrega una dependencia
+    externa para el día que más importa. `grabador_metricas.py` (solo stdlib) scrapea cada N
+    segundos desde cualquier máquina y deja un `.jsonl` por examen, más un resumen al cerrar:
+    pico de req/s, pico de memoria, errores 5xx y reinicios detectados.
+  - Se corre con `bash tools/grabar-metricas.sh` antes de que entren los alumnos y se corta
+    con Ctrl+C al terminar. El token sale de `METRICS_TOKEN`, nunca del repo (que es público)
+    ni del archivo de salida (que se comparte para analizarlo).
+  - **Detalles que importan y no son obvios**: Prometheus expone contadores ACUMULADOS, así
+    que las tasas salen de la diferencia entre muestras; si Render reinicia el proceso los
+    contadores vuelven a cero y la resta daría negativa, así que eso se detecta y se reporta
+    como reinicio en vez de ensuciar el resumen. Un scrape que falla NO corta la grabación.
+  - **Advertencia anotada en el módulo**: `prometheus_client` cuenta por PROCESO. Producción
+    corre uno solo y el número es el total; en dev, con `--workers 4`, cada scrape cae en un
+    worker al azar y las cifras son parciales. Leerlas como el total sería un error.
+  - 12 tests puros + verificado grabando métricas reales del backend en vivo.
 - [x] 16.4 Sacar los screenshots de base64 en Postgres
   - **La cifra de la task estaba corta.** Medido con `pg_column_size` contra Postgres real,
     una captura de 85 KB ocupaba **151.224 bytes**, no ~113 KB: es una expansión base64
@@ -462,30 +492,39 @@
   - La purga de retención borra **las dos** columnas. Borrar solo la vieja habría dejado de
     purgar de verdad justo cuando la captura pesa más (Ley 25.326).
   - 16 tests nuevos (8 puros de round-trip + 8 e2e con Postgres real).
-- [ ] 16.5 Mandar la captura binaria en vez de base64, que ahorra un tercio del tráfico
-  - **No se hizo, a propósito.** El terreno quedó preparado: con `separar_data_url` /
-    `reconstruir_data_url` el cliente puede mandar `(prefijo, bytes)` y el servidor
-    reconstruye el string exacto para hashear, así que **tampoco cambiaría ningún hash**.
-  - Lo que falta es contrato de red nuevo (multipart) + que el buffer del cliente guarde
-    Blobs en vez de base64. Es tocar la ruta crítica del examen una vez más, y el beneficio
-    (~25% menos de subida) es el más chico de la lista: la medición del 25/8 mostró que el
-    tráfico dominante es el **chat**, no las capturas. Con el examen real encima, va después
-    de que el dueño pruebe lo que ya está.
-- [ ] 16.6 Reemplazar el polling de 4 a 6 s por SSE (change c-15b), que baja a cero el costo de los paneles inactivos
-  - **Diferido a propósito, no olvidado.** Analizado con el dueño: SSE **no hace que el alumno
-    rinda mejor** — contestar, autoguardar, la cámara y la detección no pasan por el polling.
-    Lo que mejora es la latencia de la pausa (~4 s → instantáneo), la supervisión del tutor, y
-    el techo de req/s. Con 16.12 abajo ya se sale de la saturación, así que el aporte marginal
-    para 100 alumnos es chico frente al riesgo de cambiar el transporte del examen en vivo a
-    una semana de la fecha. Va después del examen.
-  - **SSE y no WebSocket**: el tráfico es de UNA dirección (el servidor avisa; lo que manda el
-    alumno son POST normales que ya andan) y `EventSource` **se reconecta solo** por
-    especificación del navegador. Un WebSocket caído en silencio deja al alumno sin
-    aprobaciones de pausa y nadie se entera.
-  - **El bloqueo de la regla dura #4 ya casi no aplica**: lo que C-03 tenía que decidir era el
-    *backplane* de fan-out entre instancias. Producción corre **un solo proceso** de uvicorn
-    (sin `--workers`, verificado en `Dockerfile.activeexam`), así que no hay nada que
-    compartir: un pub/sub en memoria alcanza.
+- [x] 16.5 Mandar la captura binaria en vez de base64, que ahorra un tercio del tráfico
+  - **Hecho.** El endpoint JSON **no se toca**: se agrega
+    `POST /sessions/{id}/events/binario`, multipart, con la imagen cruda y el prefijo del
+    data URL aparte. A días del examen, un cliente a medio migrar tiene que poder seguir
+    mandando evidencia por el camino viejo sin que nadie despliegue de urgencia.
+  - **Medido contra el backend real**, no estimado: una captura de 60 KB pasa de 80.131 a
+    60.437 bytes de subida — **24,6% menos**.
+  - **Lo que no se podía romper, verificado**: el hash es IDÉNTICO por los dos caminos. El
+    servidor reconstruye el data URL exacto y delega en la MISMA función de ingesta, así que
+    `screenshot_sha256` sigue siendo el de siempre y verify-chain no ve ninguna diferencia.
+    Si el string reconstruido no fuera byte a byte igual, toda la evidencia histórica dejaría
+    de verificar.
+  - **Trampa encontrada al escribir el test**: el prefijo canónico va SIN la coma final
+    (`separar_data_url` la deja fuera y `reconstruir_data_url` la vuelve a poner). Un cliente
+    que parta su data URL de la forma obvia la manda incluida y sale `...base64,,AAAA`: hash
+    distinto, evidencia que no verifica, **y ningún error visible**. El endpoint acepta las
+    dos formas y hay un test que fija que dan el mismo hash.
+  - Cliente: `eventoBinario.ts` con `separarDataUrl`. Sin `Content-Type` a mano — lo pone el
+    navegador con el boundary; fijarlo deja el body sin separar y el backend responde 422.
+    PROPAGA el error igual que el camino JSON: dar por enviado lo que no llegó vaciaría el
+    buffer sin haber mandado nada.
+  - 9 tests HTTP contra Postgres real + 9 del cliente + verificación e2e en vivo.
+
+> **16.6 (SSE) SALIÓ DE ESTE CHANGE.** Vive en `c-15b-panel-proctor-sse-transport`, que
+> es donde corresponde: es un cambio de transporte, no una mejora de coherencia. Estaba
+> acá como recordatorio y mantenía a c-78 abierto por algo que no le pertenece.
+>
+> El análisis hecho con el dueño se conserva en c-15b. En resumen: SSE **no hace que el
+> alumno rinda mejor** (contestar, autoguardar, la cámara y la detección no pasan por el
+> polling); mejora la latencia de la pausa, la supervisión del tutor y el techo de req/s.
+> Con 16.12 ya se sale de la saturación, así que cambiar el transporte del examen en vivo
+> a días de la fecha es más riesgo que beneficio.
+
 - [x] 16.12 Cadencia adaptativa del poller de pausas — el cuello de botella real
   - **Medido en el código**: el techo es 80 req/s y lo consume el **polling por alumno**, no
     las capturas. `PausaAlumno` preguntaba cada 3,5 s durante las 2 h del examen por algo que
@@ -676,14 +715,18 @@
     materia **seleccionada**, así que revisar "a ojo" deja afuera las del resto. La comisión
     C6 de Programación 2 estaba sin tutor y no aparecía en pantalla. El barrido hay que
     hacerlo materia por materia, o con 18.4 puesto, que lo marca en la lista.
-- [ ] 18.2 **Despertar Render antes del examen.** El plan free duerme el servicio. El primer
+- [x] 18.2 **Despertar Render antes del examen.** El plan free duerme el servicio. El primer
   ingreso por el link de Moodle con el servicio dormido **se pierde**: el alumno ve la pantalla
   de arranque del hosting y, como el ingreso viaja como envío de datos, al recargar da 422.
   Basta con pegarle a cualquier endpoint unos minutos antes.
-  - Queda ABIERTA a propósito: es una acción del día del examen, no algo que se pueda dejar
-    hecho. Procedimiento verificado el 26/8/2026: el servicio dormido devuelve **503
-    "Application loading"**; un `GET /api/v1/exam-content/periodos` lo despierta y el
-    siguiente request ya responde 200 en menos de 1 s.
+  - **Dejado como herramienta, no como recordatorio**: `bash tools/despertar-render.sh`.
+    Reintenta hasta que el servicio conteste y dice cuánto tardó, más la latencia del
+    siguiente request (que es lo que va a sentir el primer alumno).
+  - **Medido el 26/8/2026 contra producción**: dormido devuelve **503 "Application loading"**
+    y tardó **63 segundos** en despertar. Después, 0,37 s por request. Ese minuto es
+    exactamente el que se le comía al primer alumno que entraba por el link de Moodle.
+  - Usa `/exam-content/periodos`: público, no toca la base más que para devolver una lista
+    fija y no ensucia ninguna métrica del examen.
 - [x] 18.3 **Tener presente el techo del plan free: 19 a 20 req/s.** Medido con 70 y con 100
   alumnos: el número no se mueve, solo sube la latencia (p95 de evento 7,8 s con 70; 12,67 s
   con 100, y ahí aparece el primer error). No falla nada, pero con 100 alumnos hay esperas de

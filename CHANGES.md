@@ -44,26 +44,36 @@
 > Lección: `/opsx:archive` tiene que dejar la spec en formato FINAL y copiada a
 > `openspec/specs/` — conviene verificar con `openspec validate --specs` al cerrar.
 
-> **c-78-coherencia-y-mejoras-relevamiento — ARCHIVADO (2026-08-26, 101/106)**: el change de
-> código más grande del proyecto. Scope original (baja lógica de exámenes, coherencia de
-> denominadores, filtro de etiqueta) + retención y baja biométrica DSR + multi-comisión,
-> duplicar y sorteo por intento + capacidad medida contra Render + write-back de notas
-> verificado de punta a punta contra el campus real.
+> **c-78-coherencia-y-mejoras-relevamiento — ARCHIVADO (2026-08-26, 105/105 COMPLETO)**: el
+> change de código más grande del proyecto. Scope original (baja lógica de exámenes,
+> coherencia de denominadores, filtro de etiqueta) + retención y baja biométrica DSR +
+> multi-comisión, duplicar y sorteo por intento + capacidad medida contra Render +
+> write-back de notas verificado de punta a punta contra el campus real.
 >
-> El último bloque (§18) salió de recorrer producción a mano el 26/8: las tres materias
-> estaban **sin profesor y sin coordinador** y las cinco comisiones **sin tutor**, y nada lo
-> advertía — con el write-back saliendo con la credencial del tutor, eso significaba notas
-> retenidas descubiertas con el examen ya rendido. Se cerró por los dos lados: los
-> responsables quedaron asignados en producción (18.1) y el sistema ahora **avisa** cuando
-> faltan, en la pantalla de estructura y en el detalle del examen (18.4, delta spec
-> `aviso-responsable-faltante`). De paso, la flecha de los `<select>` dejó de estar pegada al
-> borde en toda la app (18.5).
+> **§18 salió de recorrer producción a mano el 26/8**: las tres materias estaban **sin
+> profesor y sin coordinador** y las cinco comisiones **sin tutor**, y nada lo advertía — con
+> el write-back saliendo con la credencial del tutor, eso significaba notas retenidas
+> descubiertas con el examen ya rendido. Se cerró por los dos lados: los responsables
+> quedaron asignados en producción (18.1) y el sistema ahora **avisa** cuando faltan (18.4).
+> De paso, la flecha de los `<select>` dejó de estar pegada al borde en toda la app (18.5).
 >
-> **5 tareas quedan abiertas a propósito, ninguna bloquea el examen**: 16.2 (dimensionar el
-> arranque cuando deje de ser plan free), 16.3b (dónde guardar `/metrics`, decisión
-> pendiente), 16.5 (captura binaria en vez de base64), 16.6 (SSE, que es el change c-15b) y
-> **18.2 (despertar Render antes del examen)**, que no es código sino una acción del día:
-> el servicio dormido devuelve 503 y el primer ingreso por el link de Moodle se pierde.
+> **§16 se terminó en vez de diferirse**, y cada tarea encontró algo que ya estaba mal:
+> - **16.2** El pool de conexiones estaba fijo en el código con la cuenta para 4 workers. Al
+>   derivarlo del entorno real apareció que **dev corría 5 procesos con techo 120 contra un
+>   `max_connections=100`**. Trampa: `uvicorn --workers N` NO setea ninguna variable, así que
+>   hay que contar los procesos de verdad o la cuenta sale mal por un factor de N.
+> - **16.3b** `grabador_metricas.py` (solo stdlib, sin infraestructura nueva) + wrapper
+>   `tools/grabar-metricas.sh`. Deja un `.jsonl` por examen con resumen al cerrar.
+> - **16.5** Ingesta binaria de la captura: **24,6% menos de subida medido contra el backend
+>   real**, con el hash IDÉNTICO por los dos caminos (si no, toda la evidencia histórica
+>   dejaría de verificar). El guard de arquitectura del repo agarró un bug propio: usar
+>   `fetch` crudo habría hecho fallar todos los eventos a los 15 minutos de examen.
+> - **18.2** `tools/despertar-render.sh`. Medido: dormido tarda **63 segundos** en despertar,
+>   y ese minuto se lo comía el primer alumno que entraba por el link de Moodle.
+>
+> **16.6 (SSE) se movió a `c-15b`**, que es donde corresponde: es un cambio de transporte, no
+> una mejora de coherencia. Estaba en c-78 como recordatorio y lo mantenía abierto por algo
+> que no le pertenecía. El análisis hecho con el dueño se conserva en la §0 de c-15b.
 
 > **Cambios respecto del estado anterior (sesión 2 del 2026-06-11)**:
 > - **Archivados nuevos**: c-66 (UI estudiante onboarding desktop+mobile, frontend-only, todas las 24 tasks completadas — tsc limpio, build verde).
