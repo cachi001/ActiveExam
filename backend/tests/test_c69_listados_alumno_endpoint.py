@@ -257,6 +257,11 @@ async def test_materias_lista(client_student, factory):
     # total_inscriptos/total_examenes: conteos para ocultar "Eliminar" si no está vacía.
     assert set(item.keys()) == {
         "id", "codigo", "nombre", "activa", "total_inscriptos", "total_examenes",
+        # Responsables de la materia: coordinadores (c-79) y profesores (c-78).
+        # Viajan vacios para el alumno —solo los llena staff/coordinador— pero la
+        # clave existe siempre: es el dato con el que la pantalla de estructura
+        # avisa que la materia no tiene a nadie a cargo (c-78 §18.4).
+        "coordinadores", "profesores",
     }
 
 

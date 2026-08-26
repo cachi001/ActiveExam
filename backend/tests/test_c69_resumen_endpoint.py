@@ -205,6 +205,13 @@ async def test_resumen_devuelve_metadata_con_comision(client, factory):
         # c-78: baja logica del examen. null = activo. Viaja en el resumen para
         # que la pantalla sepa que accion ofrecer (baja o reactivacion).
         "eliminado_en",
+        # c-78 E-07: el examen todavia no se habilito, y como se sortean las
+        # preguntas. La pantalla de detalle los muestra en el encabezado.
+        "borrador",
+        "modo_preguntas",
+        # c-78 §18.4: la comision quedo sin tutor, asi que las notas de este
+        # examen no se van a poder devolver al campus.
+        "comision_sin_tutor",
     }
     assert body["eliminado_en"] is None, "un examen recien creado esta activo"
     assert body["id"] == examen_id

@@ -554,19 +554,40 @@ def create_exam_taking_router(
             # c-79: quién coordina cada materia. Solo para staff/coordinador — es
             # el dato que alimenta el diálogo de asignación, y al alumno no le
             # aporta nada (dos queries de más en su camino más caliente).
+            #
+            # c-78 §18.4: los PROFESORES viajan por el mismo camino. Sin ellos la
+            # pantalla no puede distinguir "esta materia no tiene a nadie" de
+            # "no tiene coordinador", que es justo lo que el aviso necesita decir.
             coordinadores_por_materia: dict[str, list[TutorInfo]] = {}
+            profesores_por_materia: dict[str, list[TutorInfo]] = {}
             if _es_staff(principal) or _es_coordinador(principal):
-                ids_por_materia = await MateriaSqlRepository(
-                    session
-                ).coordinadores_de_materias([m.id for m in materias])
-                nombres = await ComisionSqlRepository(session).nombres_de_docentes(
-                    [cid for ids in ids_por_materia.values() for cid in ids]
+                materia_repo = MateriaSqlRepository(session)
+                ids_materias = [m.id for m in materias]
+                coord_por_materia = await materia_repo.coordinadores_de_materias(
+                    ids_materias
                 )
-                coordinadores_por_materia = {
-                    materia_id: [
-                        TutorInfo(id=cid, nombre=nombres.get(cid, cid)) for cid in ids
+                prof_por_materia = await materia_repo.profesores_de_materias(
+                    ids_materias
+                )
+                nombres = await ComisionSqlRepository(session).nombres_de_docentes(
+                    [
+                        uid
+                        for mapa in (coord_por_materia, prof_por_materia)
+                        for ids in mapa.values()
+                        for uid in ids
                     ]
-                    for materia_id, ids in ids_por_materia.items()
+                )
+
+                def _infos(ids: list[str]) -> list[TutorInfo]:
+                    return [TutorInfo(id=i, nombre=nombres.get(i, i)) for i in ids]
+
+                coordinadores_por_materia = {
+                    materia_id: _infos(ids)
+                    for materia_id, ids in coord_por_materia.items()
+                }
+                profesores_por_materia = {
+                    materia_id: _infos(ids)
+                    for materia_id, ids in prof_por_materia.items()
                 }
 
         return [
@@ -578,6 +599,7 @@ def create_exam_taking_router(
                 total_inscriptos=conteos.get(m.id, (0, 0))[0],
                 total_examenes=conteos.get(m.id, (0, 0))[1],
                 coordinadores=coordinadores_por_materia.get(m.id, []),
+                profesores=profesores_por_materia.get(m.id, []),
             )
             for m in materias
         ]
@@ -783,18 +805,36 @@ def create_exam_taking_router(
             ExamenContenidoSqlRepository,
         )
 
+        from app.infrastructure.persistence.repositories.exam_content import (
+            ComisionSqlRepository,
+        )
+
         async with session_factory() as session:
             resumen = await ExamenContenidoSqlRepository(session).obtener_resumen(
                 examen_id
             )
 
-        if resumen is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail={"error": "examen_no_encontrado", "examen_id": examen_id},
-            )
+            if resumen is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail={"error": "examen_no_encontrado", "examen_id": examen_id},
+                )
 
-        return _resumen_to_response(resumen)
+            # c-78 §18.4: sin tutor a cargo, las notas de este examen se retienen
+            # con motivo `sin_docente` y eso se descubre recién cuando el alumno
+            # ya rindió. Se calcula acá —una query, solo en el detalle— para que
+            # el encabezado pueda avisarlo antes. Sin comisión no hay tutor que
+            # buscar: queda en None ("no aplica"), que no es lo mismo que "falta".
+            sin_tutor: bool | None = None
+            if resumen.comision_id:
+                tutores = await ComisionSqlRepository(session).tutores_de_comision(
+                    resumen.comision_id
+                )
+                sin_tutor = not tutores
+
+        respuesta = _resumen_to_response(resumen)
+        respuesta.comision_sin_tutor = sin_tutor
+        return respuesta
 
     @router.get(
         "/{examen_id}/revision",
