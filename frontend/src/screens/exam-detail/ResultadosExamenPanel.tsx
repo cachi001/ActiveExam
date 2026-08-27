@@ -28,6 +28,7 @@ import {
   type SincronizarMoodleResponse,
 } from '../../lib/examContentResultados';
 import { EstadoBadge } from './EstadoBadge';
+import { useEstadosMoodle } from './useEstadosMoodle';
 import { EstadoEntregaBadge, ESTADO_ENTREGA_OPCIONES } from './EstadoEntregaBadge';
 import { SyncResultBanner, type SyncResult } from './SyncResultBanner';
 import { AdminTable, type AdminColumn } from '../../ui/AdminTable';
@@ -71,15 +72,12 @@ function TableSkeleton() {
 
 const PAGE_SIZE_DEFAULT = 5;
 
-const ESTADO_OPCIONES = [
-  { value: 'pendiente', label: 'Pendiente de sincronizar' },
-  { value: 'enviado',   label: 'Sincronizado en Moodle' },
-  { value: 'fallido',   label: 'Falló' },
-  { value: 'sin_token', label: 'Sin token' },
-];
-
 export function ResultadosExamenPanel({ examenId }: { examenId: string }) {
   const toast = useToast();
+  // Los estados los define el backend. Estaban escritos a mano acá y faltaba
+  // 'manual' ("cargada a mano"), así que ese estado se veía en la tabla pero no
+  // se podía filtrar: quien marcaba notas a mano no tenía después cómo listarlas.
+  const estadosMoodle = useEstadosMoodle();
 
   const FILTROS_INICIALES = { estado: '', estado_entrega: '', archivado: 'false', fecha_desde: '', fecha_hasta: '' };
   const [query, setQuery] = useState<TableQuery>({
@@ -545,8 +543,8 @@ export function ResultadosExamenPanel({ examenId }: { examenId: string }) {
                 className="min-w-[180px] rounded-md border border-surface-300 bg-white px-3 py-2 text-[13px] text-on-surface focus:border-primary focus:outline-none"
               >
                 <option value="">Todos los estados</option>
-                {ESTADO_OPCIONES.map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
+                {estadosMoodle.map((o) => (
+                  <option key={o.valor} value={o.valor}>{o.etiqueta}</option>
                 ))}
               </select>
             </label>
