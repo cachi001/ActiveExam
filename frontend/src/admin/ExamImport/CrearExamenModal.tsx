@@ -18,6 +18,7 @@
 import { useEffect, useState } from 'react';
 import { Icon, Button, LoadingSpinner } from '../../ui/components';
 import { ComisionMultiSelect } from '../../ui/ComisionMultiSelect';
+import { ModalOverlay } from '../../ui/ModalOverlay';
 import { useToast } from '../../ui/toast';
 import {
   listarCategorias,
@@ -25,6 +26,13 @@ import {
   crearDesdeBanco,
   type CategoriaPregunta,
 } from '../../lib/apiAdmin/bancoPreguntasApi';
+import {
+  construirTramos,
+  disponiblesDelTramo,
+  estimarRepeticion,
+  tramosQueSeSolapan,
+  type TramoSorteo,
+} from './tramosDelBanco';
 
 const TIPO_PREGUNTA_LABEL: Record<string, string> = {
   multichoice: 'Opción múltiple',
@@ -39,13 +47,9 @@ function tipoLabel(tipo: string): string {
 const INPUT_CLASS =
   'rounded-lg border border-surface-300 px-3 py-2 text-label-md text-on-surface focus:border-primary focus:outline-none disabled:bg-surface-100 disabled:text-on-surface-variant disabled:cursor-not-allowed';
 
-interface TramoSorteo {
-  categoria_id: string | null;
-  categoria_nombre: string;
-  tipo: string;
-  disponibles: number;
-  cantidad: number;
-}
+// El armado de tramos, los conteos por rama y la cuenta de repetición viven en
+// `tramosDelBanco.ts`: es la parte que decide si el examen sortea de verdad y
+// tiene sus propios tests.
 
 interface Props {
   abierto: boolean;
@@ -69,8 +73,8 @@ export function CrearExamenModal({ abierto, onCerrar, onCreado }: Props) {
   // réplica sin volver a pedir las comisiones.
   const [comisionCodigos, setComisionCodigos] = useState<string[]>([]);
   const [titulo, setTitulo] = useState('');
-  // Solo se escribe: el árbol de categorías lo renderiza el selector de tramos.
-  const [, setCategorias] = useState<CategoriaPregunta[]>([]);
+  // Se usan para detectar el solapamiento entre un padre y su descendencia.
+  const [categorias, setCategorias] = useState<CategoriaPregunta[]>([]);
   const [tramos, setTramos] = useState<TramoSorteo[]>([]);
   const [tipoFiltro, setTipoFiltro] = useState<string | null>(null);
   const [cargandoCats, setCargandoCats] = useState(false);
@@ -91,50 +95,15 @@ export function CrearExamenModal({ abierto, onCerrar, onCreado }: Props) {
       setTramos([]);
       return;
     }
+    // Todas las preguntas de la materia en UNA llamada, no una por categoría: el
+    // endpoint sin `categoria_id` las devuelve todas con su categoría, y contar
+    // por rama necesita verlas juntas igual. Antes hacía una request por
+    // categoría (N+1) y aun así contaba mal, porque miraba solo las directas.
     setCargandoCats(true);
-    Promise.all([
-      listarCategorias(materiaId),
-      listarPreguntasBanco(materiaId, null), // sin clasificar
-    ])
-      .then(async ([cats, sinClasificar]) => {
+    Promise.all([listarCategorias(materiaId), listarPreguntasBanco(materiaId)])
+      .then(([cats, preguntas]) => {
         setCategorias(cats);
-
-        // Agrupa las preguntas de una categoría por tipo: un renglón por
-        // (categoría, tipo) — así se puede pedir "3 opción múltiple + 2 cloze
-        // de Unidad 1" en vez de un total mezclado sin control del tipo.
-        const porTipo = (
-          categoriaId: string | null,
-          nombre: string,
-          preguntas: { tipo: string }[],
-        ): TramoSorteo[] => {
-          const conteos = new Map<string, number>();
-          for (const p of preguntas) {
-            conteos.set(p.tipo, (conteos.get(p.tipo) ?? 0) + 1);
-          }
-          return [...conteos.entries()].map(([tipo, disponibles]) => ({
-            categoria_id: categoriaId,
-            categoria_nombre: nombre,
-            tipo,
-            disponibles,
-            cantidad: 0,
-          }));
-        };
-
-        const tramosBase: TramoSorteo[] = [];
-
-        // "Sin clasificar" primero
-        tramosBase.push(...porTipo(null, 'Sin clasificar', sinClasificar));
-
-        // Una por una para obtener conteos (no hay endpoint de count, usamos listar)
-        const conConteos = await Promise.all(
-          cats.map(async (c) => {
-            const preguntas = await listarPreguntasBanco(materiaId, c.id);
-            return porTipo(c.id, c.nombre, preguntas);
-          }),
-        );
-
-        tramosBase.push(...conConteos.flat());
-        setTramos(tramosBase);
+        setTramos(construirTramos(cats, preguntas));
       })
       .catch(() => toast.error('Error al cargar categorías'))
       .finally(() => setCargandoCats(false));
@@ -145,8 +114,25 @@ export function CrearExamenModal({ abierto, onCerrar, onCreado }: Props) {
   const setCantidad = (idx: number, val: number) => {
     setTramos((prev) =>
       prev.map((t, i) =>
-        i === idx ? { ...t, cantidad: Math.max(0, Math.min(val, t.disponibles)) } : t,
+        i === idx
+          ? { ...t, cantidad: Math.max(0, Math.min(val, disponiblesDelTramo(t))) }
+          : t,
       ),
+    );
+  };
+
+  // Cambiar el alcance mueve el techo: si estaba pidiendo 8 de una rama de 10 y
+  // se pasa a solo la categoría, que tiene 2, la cantidad tiene que bajar sola.
+  const setIncluirSubcategorias = (idx: number, incluir: boolean) => {
+    setTramos((prev) =>
+      prev.map((t, i) => {
+        if (i !== idx) return t;
+        const actualizado = { ...t, incluir_subcategorias: incluir };
+        return {
+          ...actualizado,
+          cantidad: Math.min(actualizado.cantidad, disponiblesDelTramo(actualizado)),
+        };
+      }),
     );
   };
 
@@ -157,36 +143,43 @@ export function CrearExamenModal({ abierto, onCerrar, onCreado }: Props) {
   const tramosActivos = tramos.filter((t) => t.cantidad > 0);
   const totalPreguntas = tramosActivos.reduce((s, t) => s + t.cantidad, 0);
 
+  // Categorías cuyo pool ya se lleva un ancestro con subcategorías: el backend
+  // descuenta lo ya sorteado y devolvería 422 al crear.
+  const solapadas = tramosQueSeSolapan(tramosActivos, categorias);
+
   // Cómo va a quedar el título de la primera réplica. El backend arma el mismo
   // sufijo (código de comisión entre paréntesis) y solo cuando hay más de una.
   const tituloEjemplo = `${titulo.trim() || 'Título del examen'} (${comisionCodigos[0] ?? '…'})`;
 
   // c-78 E-07 (15.4): con sorteo por intento el examen se lleva el pool ENTERO de
   // cada tramo que tenga cantidad > 0, no solo las que se sortean.
-  const poolDelExamen = tramosActivos.reduce((s, t) => s + t.disponibles, 0);
+  const poolDelExamen = tramosActivos.reduce((s, t) => s + disponiblesDelTramo(t), 0);
 
-  // Cuántas preguntas comparten dos alumnos, en promedio: largo² / pool. Es la
-  // cuenta que decide si el sorteo sirve de algo — con un pool apenas más grande
-  // que el examen, dos alumnos rinden casi lo mismo igual.
-  const repeticionEstimada =
-    totalPreguntas > 0 && poolDelExamen > 0
-      ? Math.round((totalPreguntas * totalPreguntas) / poolDelExamen)
-      : null;
-  const proporcion = repeticionEstimada !== null && totalPreguntas > 0
-    ? repeticionEstimada / totalPreguntas
-    : 0;
+  // Repetición POR TRAMO y sumada, no un promedio global. El promedio diluía los
+  // tramos flacos contra los grandes: con 4 de 30 más 1 de 1 más 1 de 1 decía
+  // "Buena variedad" cuando 2 de las 6 preguntas son iguales para todo el curso.
+  const repeticion = estimarRepeticion(
+    tramosActivos.map((t) => ({ cantidad: t.cantidad, disponibles: disponiblesDelTramo(t) })),
+  );
+  const repeticionEstimada = totalPreguntas > 0 ? Math.round(repeticion.compartidas) : null;
+  const proporcion = totalPreguntas > 0 ? repeticion.compartidas / totalPreguntas : 0;
   const consejoDeRepeticion =
-    proporcion >= 0.6
-      ? 'Es mucho: para que se note, cargá más preguntas al banco o hacé el examen más corto.'
-      : proporcion >= 0.3
-        ? 'Se puede mejorar cargando más preguntas al banco o acortando el examen.'
-        : 'Buena variedad.';
+    repeticion.fijas > 0
+      ? `${repeticion.fijas} de las ${repeticion.total} las recibe todo el curso: esas categorías se agotan. Cargá más preguntas ahí, o incluí subcategorías para ampliar el pool.`
+      : proporcion >= 0.6
+        ? 'Es mucho: para que se note, cargá más preguntas al banco o hacé el examen más corto.'
+        : proporcion >= 0.3
+          ? 'Se puede mejorar cargando más preguntas al banco o acortando el examen.'
+          : 'Buena variedad.';
 
   const puedeCrear =
     materiaId.trim() !== '' &&
     comisionIds.length > 0 &&
     titulo.trim() !== '' &&
     tramosActivos.length > 0 &&
+    // Con solapamiento el backend responde 422 y no crea nada: mejor no dejar
+    // llegar hasta ahí.
+    solapadas.length === 0 &&
     notaMaxima > 0 &&
     notaMaxima <= 100 &&
     notaAprobacion >= 0 &&
@@ -205,6 +198,10 @@ export function CrearExamenModal({ abierto, onCerrar, onCreado }: Props) {
           categoria_id: t.categoria_id,
           cantidad: t.cantidad,
           tipos: [t.tipo],
+          // Antes no se mandaba y el backend caía a su default (true), así que el
+          // alcance del sorteo no era una decisión de nadie: la UI mostraba el
+          // conteo de una categoría y el sorteo usaba el de su rama entera.
+          incluir_subcategorias: t.incluir_subcategorias,
         })),
         nota_maxima: notaMaxima,
         nota_aprobacion: notaAprobacion,
@@ -236,9 +233,8 @@ export function CrearExamenModal({ abierto, onCerrar, onCreado }: Props) {
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={handleClose} />
-      <div className="relative z-10 w-full max-w-lg bg-white rounded-2xl shadow-xl flex flex-col max-h-[90vh]">
+    <ModalOverlay etiqueta="Crear examen" onCerrar={handleClose}>
+      <div className="relative w-full max-w-lg bg-white rounded-2xl shadow-xl flex flex-col max-h-[90vh]">
         {/* Header */}
         <div className="flex items-center gap-3 px-6 pt-6 pb-4 border-b border-outline-variant/30">
           <div className="flex-1">
@@ -393,12 +389,22 @@ export function CrearExamenModal({ abierto, onCerrar, onCreado }: Props) {
                 <div className="rounded-xl border border-outline-variant/40 overflow-hidden">
                   {tramosVisibles.map((t) => {
                     const idx = tramos.indexOf(t);
+                    const disponibles = disponiblesDelTramo(t);
+                    // Pedir todas las que hay no es sortear: esas preguntas las
+                    // recibe todo el curso.
+                    const esFija = t.cantidad > 0 && t.cantidad >= disponibles;
+                    const tapada = t.categoria_id !== null && solapadas.includes(t.categoria_id);
+                    // El tilde solo tiene sentido donde la rama aporta algo.
+                    const tieneRama = t.disponibles_rama > t.disponibles_directas;
                     return (
                     <div
                       key={`${t.categoria_id ?? '__sin_clasificar__'}::${t.tipo}`}
                       className={`flex items-center gap-3 px-4 py-2 ${
                         idx < tramos.length - 1 ? 'border-b border-outline-variant/20' : ''
                       } ${t.cantidad > 0 ? 'bg-primary/5' : ''}`}
+                      // Indentado según la profundidad: es lo que deja ver de qué
+                      // categoría cuelga cada subcategoría.
+                      style={{ paddingLeft: `${16 + t.profundidad * 20}px` }}
                     >
                       <Icon
                         name={t.categoria_id ? 'folder' : 'folder_off'}
@@ -413,17 +419,40 @@ export function CrearExamenModal({ abierto, onCerrar, onCreado }: Props) {
                         >
                           {t.categoria_nombre}
                         </div>
-                        <div className="text-label-sm text-on-surface-variant">
-                          {tipoLabel(t.tipo)}
+                        <div className="text-label-sm text-on-surface-variant flex items-center gap-2 flex-wrap">
+                          <span>{tipoLabel(t.tipo)}</span>
+                          {tieneRama && (
+                            <label className="inline-flex items-center gap-1 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={t.incluir_subcategorias}
+                                onChange={(e) =>
+                                  setIncluirSubcategorias(idx, e.target.checked)
+                                }
+                                className="accent-primary"
+                              />
+                              con subcategorías ({t.disponibles_rama} vs {t.disponibles_directas} propias)
+                            </label>
+                          )}
+                          {esFija && (
+                            <span className="text-warning">
+                              · fija: la reciben todos
+                            </span>
+                          )}
+                          {tapada && (
+                            <span className="text-error">
+                              · ya la sortea una categoría de arriba
+                            </span>
+                          )}
                         </div>
                       </div>
                       <span className="text-label-sm text-on-surface-variant shrink-0">
-                        {t.disponibles} disp.
+                        {disponibles} disp.
                       </span>
                       <input
                         type="number"
                         min={0}
-                        max={t.disponibles}
+                        max={disponibles}
                         value={t.cantidad || ''}
                         placeholder="0"
                         onChange={(e) =>
@@ -441,6 +470,27 @@ export function CrearExamenModal({ abierto, onCerrar, onCreado }: Props) {
                 <p className="text-label-sm text-on-surface-variant mt-2 text-right">
                   Total:{' '}
                   <span className="text-on-surface font-semibold">{totalPreguntas} preguntas</span>
+                  {/* Separar fijas de sorteadas es el punto: un total a secas
+                      esconde que parte del examen es igual para todo el curso. */}
+                  {repeticion.fijas > 0 && (
+                    <>
+                      {' · '}
+                      <span className="text-on-surface">{repeticion.sorteadas} sorteadas</span>
+                      {' y '}
+                      <span className="text-warning font-medium">{repeticion.fijas} fijas</span>
+                    </>
+                  )}
+                </p>
+              )}
+
+              {solapadas.length > 0 && (
+                <p className="text-label-sm text-error mt-2 flex items-start gap-1.5">
+                  <Icon name="error" className="text-[16px] shrink-0 mt-0.5" />
+                  <span>
+                    Hay categorías cuyas preguntas ya se las lleva una categoría de
+                    arriba que incluye subcategorías. Sacá una de las dos, o destildá
+                    las subcategorías en la de arriba.
+                  </span>
                 </p>
               )}
             </div>
@@ -518,6 +568,6 @@ export function CrearExamenModal({ abierto, onCerrar, onCreado }: Props) {
           </Button>
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   );
 }
