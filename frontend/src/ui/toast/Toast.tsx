@@ -176,8 +176,10 @@ function ToastCard({ item, onDismiss }: { item: ToastItem; onDismiss: (id: numbe
 
 /**
  * Contenedor fijo que renderiza la pila de toasts. Posicionado arriba-derecha
- * (convención estándar de notificaciones), z alto para verse por encima de
- * overlays (BiometricCapture usa z-[60]).
+ * (convención estándar de notificaciones), en CAPAS.toast (300): arriba de TODO,
+ * incluidos los diálogos. Estaba en z-120 y los diálogos de asignar responsable
+ * (z-200) y la ayuda (z-1000) lo tapaban, así que un "no se pudo guardar"
+ * disparado desde esos diálogos no se veía. Ver ui/capas.ts.
  */
 export function Toaster() {
   const items = useContext(ToastListContext);
@@ -192,7 +194,7 @@ export function Toaster() {
         paddingTop: 'max(1rem, env(safe-area-inset-top))',
         paddingRight: 'max(1rem, env(safe-area-inset-right))',
       }}
-      className="fixed top-0 right-0 z-[120]
+      className="fixed top-0 right-0 z-[300]
         flex flex-col items-end gap-sm w-full max-w-sm pointer-events-none"
     >
       {items.map((item) => (

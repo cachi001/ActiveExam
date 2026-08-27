@@ -54,10 +54,11 @@ export function HelpButton({ title, children, ariaLabel, className = '' }: HelpB
 
   const overlay = abierto ? (
     <div
-      // z-[1000] para superar cualquier z-index sticky del shell (header z-30,
-      // drawer mobile z-50, banners). bg-black/60 + backdrop-blur-md le da
-      // contraste suficiente para apagar header/sidebar de fondo.
-      className="fixed inset-0 z-[1000] flex items-center justify-center p-md
+      // CAPAS.ayuda (200): por encima del shell y de los modales —la ayuda se
+      // consulta con un diálogo abierto— pero POR DEBAJO del toast, que va arriba
+      // de todo. Estaba en z-1000, elegido para "superar cualquier cosa", y con
+      // eso tapaba los avisos: un "no se pudo guardar" no se veía. Ver ui/capas.ts.
+      className="fixed inset-0 z-[200] flex items-center justify-center p-md
         bg-black/60 backdrop-blur-md animate-in fade-in duration-150"
       onClick={() => setAbierto(false)}
     >

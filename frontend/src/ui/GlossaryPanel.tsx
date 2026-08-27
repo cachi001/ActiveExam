@@ -27,7 +27,7 @@ export function GlossaryPanel({ isOpen, onClose }: GlossaryPanelProps) {
   return (
     /* Overlay */
     <div
-      className="fixed inset-0 z-[200] flex items-center justify-center p-md bg-black/40 backdrop-blur-sm"
+      className="fixed inset-0 z-[200] flex items-center justify-center p-md bg-black/60 backdrop-blur-sm"
       onClick={onClose}
       aria-hidden="false"
     >
