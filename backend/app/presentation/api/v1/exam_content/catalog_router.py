@@ -28,6 +28,8 @@ from app.application.audit.service import registrar_seguro
 from app.application.exam_content.export import (
     COLUMNAS_INSCRIPTOS,
     COLUMNAS_NOTAS,
+    INSCRIPTOS_APAISADO,
+    NOTAS_APAISADO,
     filas_inscriptos,
     filas_notas,
     tabla_a_pdf,
@@ -80,6 +82,7 @@ from app.application.moodle.writeback_service import (
     MoodleWritebackService,
     WritebackEstado,
 )
+from app.application.stats.labels import ESTADOS_MOODLE
 from app.domain.auth.roles import Rol
 from app.domain.exam_content.config import (
     cambios_bloqueados,
@@ -377,6 +380,25 @@ def create_exam_content_router(
                 detail="Persistencia no inicializada (session_factory).",
             )
         return factory  # devolvemos la factory, el endpoint la usa vía context manager
+
+    # -----------------------------------------------------------------------
+    # Estados de la nota en el campus — FUENTE ÚNICA para la UI
+    # -----------------------------------------------------------------------
+
+    @router.get(
+        "/estados-moodle",
+        summary="Estados posibles de la nota en el campus, con etiqueta y tono",
+    )
+    async def listar_estados_moodle() -> list[dict[str, str]]:
+        """Los valores que puede tomar `estado_moodle`, en castellano.
+
+        El frontend arma con esto el filtro y el badge de "Alumnos que rindieron".
+        Antes los tenía escritos a mano en dos lugares y ya se habían desfasado del
+        backend: cuando apareció 'manual' el badge lo mostraba pero el filtro no lo
+        ofrecía, así que una nota cargada a mano se veía en la tabla y no se podía
+        buscar. Sin consulta a la base: es una constante de dominio.
+        """
+        return ESTADOS_MOODLE
 
     # -----------------------------------------------------------------------
     # Respuestas de materia/comisión CON sus responsables resueltos.
@@ -2233,6 +2255,10 @@ def create_exam_content_router(
         return AlumnosComisionPaginadosResponse(
             items=[_alumno_a_response(a) for a in alumnos[inicio : inicio + tamano]],
             total=len(alumnos),
+            # Se cuenta sobre TODOS, antes del recorte de página: es el dato que
+            # el docente necesita antes del examen y no se puede deducir mirando
+            # una página de 10 sobre 89.
+            no_pueden_rendir=sum(1 for a in alumnos if not getattr(a, "puede_rendir", False)),
             page=pagina_actual,
             page_size=tamano,
         )
@@ -2293,6 +2319,9 @@ def create_exam_content_router(
             subtitulo=_subtitulo_comision(comision, materia),
             columnas=COLUMNAS_INSCRIPTOS,
             filas=filas_inscriptos(alumnos),
+            # Ocho columnas: en vertical se cortaban las tres de elegibilidad,
+            # que son el motivo por el que se descarga este listado.
+            apaisado=INSCRIPTOS_APAISADO,
         )
         return Response(
             content=contenido,
@@ -2919,7 +2948,13 @@ def create_exam_content_router(
                             PreguntaBancoModel.id,
                             PreguntaBancoModel.categoria_id,
                             PreguntaBancoModel.tipo,
-                        ).where(PreguntaBancoModel.materia_id == materia_id)
+                        ).where(
+                            PreguntaBancoModel.materia_id == materia_id,
+                            # Una pregunta dada de baja no se cuenta como
+                            # disponible: si no, el desglose promete preguntas
+                            # que el sorteo después no va a poder usar.
+                            PreguntaBancoModel.eliminada_en.is_(None),
+                        )
                     )
                 ).all()
             ya_en_el_pool = {
@@ -3151,7 +3186,12 @@ def create_exam_content_router(
                 (
                     await session.execute(
                         _select(PreguntaBancoModel)
-                        .where(PreguntaBancoModel.materia_id == materia_id)
+                        .where(
+                            PreguntaBancoModel.materia_id == materia_id,
+                            # Ampliar el pool NO puede meter preguntas que el
+                            # docente sacó del banco a propósito.
+                            PreguntaBancoModel.eliminada_en.is_(None),
+                        )
                         .options(
                             _selectinload(PreguntaBancoModel.opciones_banco),
                             _selectinload(
@@ -4338,6 +4378,7 @@ def create_exam_content_router(
         materia_id: str,
         categoria_id: str | None = None,
         sin_categoria: bool = False,
+        estado: str = "activa",
         principal: AuthenticatedPrincipal = Depends(get_current_principal),
     ):
         """Devuelve preguntas de la tabla pregunta_banco para la materia dada.
@@ -4345,16 +4386,32 @@ def create_exam_content_router(
         Las preguntas del banco son independientes de los exámenes (0057).
         Si ``sin_categoria=true``, devuelve las preguntas con categoria_id=NULL.
         Si se provee ``categoria_id``, filtra por esa categoría.
+
+        ``estado``: 'activa' (default, las vigentes) | 'eliminada' (la papelera) |
+        'todas'. La baja es lógica, así que sin este filtro una pregunta dada de
+        baja sería indistinguible de una borrada y no habría cómo recuperarla.
         """
         await _exigir_pertenencia_materia(principal, materia_id)
         if session_factory is None:
             raise HTTPException(status_code=500, detail="Persistencia no inicializada.")
+        if estado not in ("activa", "eliminada", "todas"):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "error": "estado_invalido",
+                    "mensaje": "estado debe ser 'activa', 'eliminada' o 'todas'.",
+                },
+            )
         from sqlalchemy import select as _select
         from app.infrastructure.persistence.models.exam_content import PreguntaBancoModel
         async with session_factory() as session:
             stmt = _select(PreguntaBancoModel).where(
                 PreguntaBancoModel.materia_id == materia_id
             )
+            if estado == "activa":
+                stmt = stmt.where(PreguntaBancoModel.eliminada_en.is_(None))
+            elif estado == "eliminada":
+                stmt = stmt.where(PreguntaBancoModel.eliminada_en.is_not(None))
             if sin_categoria:
                 stmt = stmt.where(PreguntaBancoModel.categoria_id.is_(None))
             elif categoria_id:
@@ -4371,9 +4428,164 @@ def create_exam_content_router(
                 "categoria_id": r.categoria_id,
                 # 0058: la UI marca con esto qué preguntas ya no las toca Moodle.
                 "categoria_manual": r.categoria_manual,
+                # NULL = vigente. Con timestamp = dada de baja (baja lógica).
+                "eliminada_en": (
+                    r.eliminada_en.isoformat() if r.eliminada_en else None
+                ),
             }
             for r in rows
         ]
+
+    @router.delete(
+        "/preguntas/{pregunta_id}",
+        dependencies=[Depends(require_capability("gestionar_banco"))],
+        status_code=status.HTTP_204_NO_CONTENT,
+        response_model=None,
+        summary="Dar de baja una pregunta del banco (baja lógica; nada se borra)",
+    )
+    async def dar_de_baja_pregunta_banco(
+        pregunta_id: str,
+        request: Request,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    ) -> None:
+        """Saca la pregunta del banco sin borrarla.
+
+        Deja de listarse, no entra a exámenes nuevos y no se incorpora al ampliar
+        el pool de uno existente. Se revierte con `POST /{id}/reactivar`.
+
+        404 si no existe o ya estaba de baja (mismo contrato que materia, examen y
+        usuario). 409 'pregunta_en_uso' si está en el pool de un examen ACTIVO: el
+        pool es una copia, así que el examen no se rompería, pero la pregunta se
+        seguiría sorteando ahí y quien la da de baja espera lo contrario. La
+        respuesta dice en qué exámenes está para que se pueda decidir con eso a la
+        vista.
+
+        Nada se borra nunca: un examen ya rendido tiene que poder reconstruirse
+        (regla dura #6, cadena de custodia).
+        """
+        if session_factory is None:
+            raise HTTPException(status_code=500, detail="Persistencia no inicializada.")
+
+        from sqlalchemy import select as _select
+        from app.infrastructure.persistence.models.exam_content import (
+            ExamenContenidoModel,
+            PreguntaBancoModel,
+            PreguntaExamenModel,
+        )
+
+        async with session_factory() as session:
+            pregunta = await session.get(PreguntaBancoModel, pregunta_id)
+            if pregunta is None or pregunta.eliminada_en is not None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail={
+                        "error": "pregunta_no_encontrada",
+                        "mensaje": "La pregunta no existe o ya está dada de baja.",
+                        "pregunta_id": pregunta_id,
+                    },
+                )
+            await _exigir_pertenencia_materia(principal, str(pregunta.materia_id))
+
+            # ¿Algún examen VIGENTE la tiene copiada en su pool?
+            en_uso = await session.execute(
+                _select(ExamenContenidoModel.titulo)
+                .join(
+                    PreguntaExamenModel,
+                    PreguntaExamenModel.examen_id == ExamenContenidoModel.id,
+                )
+                .where(
+                    PreguntaExamenModel.pregunta_banco_id == pregunta_id,
+                    ExamenContenidoModel.eliminado_en.is_(None),
+                )
+                .distinct()
+            )
+            titulos = [t for (t,) in en_uso]
+            if titulos:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={
+                        "error": "pregunta_en_uso",
+                        "mensaje": (
+                            "Esta pregunta forma parte de "
+                            f"{len(titulos)} examen(es) todavía vigentes, donde se "
+                            "sigue sorteando. Dá de baja esos exámenes primero, o "
+                            "sacá la pregunta de su sorteo."
+                        ),
+                        "examenes": titulos,
+                    },
+                )
+
+            pregunta.eliminada_en = datetime.now(UTC)
+            enunciado = pregunta.enunciado
+            await session.commit()
+
+        await registrar_seguro(
+            session_factory,
+            actor=principal.email,
+            accion=AccionAuditoria.PREGUNTA_BANCO_BAJA,
+            modulo=ModuloAuditoria.EXAMENES,
+            entidad=EntidadAuditoria.EXAMEN,
+            entidad_id=str(pregunta_id),
+            ip=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            proposito=(
+                f"Dio de baja una pregunta del banco: {enunciado[:120]}. "
+                "Nada se borró: se puede reactivar."
+            ),
+        )
+
+    @router.post(
+        "/preguntas/{pregunta_id}/reactivar",
+        dependencies=[Depends(require_capability("gestionar_banco"))],
+        summary="Reactivar una pregunta del banco dada de baja",
+    )
+    async def reactivar_pregunta_banco(
+        pregunta_id: str,
+        request: Request,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    ):
+        """Devuelve al banco una pregunta dada de baja. 404 si no existe o si ya
+        estaba vigente."""
+        if session_factory is None:
+            raise HTTPException(status_code=500, detail="Persistencia no inicializada.")
+
+        from app.infrastructure.persistence.models.exam_content import PreguntaBancoModel
+
+        async with session_factory() as session:
+            pregunta = await session.get(PreguntaBancoModel, pregunta_id)
+            if pregunta is None or pregunta.eliminada_en is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail={
+                        "error": "pregunta_no_encontrada",
+                        "mensaje": "La pregunta no existe o no estaba dada de baja.",
+                        "pregunta_id": pregunta_id,
+                    },
+                )
+            await _exigir_pertenencia_materia(principal, str(pregunta.materia_id))
+            pregunta.eliminada_en = None
+            enunciado = pregunta.enunciado
+            resultado = {
+                "id": str(pregunta.id),
+                "enunciado": pregunta.enunciado,
+                "tipo": pregunta.tipo,
+                "categoria_id": pregunta.categoria_id,
+                "eliminada_en": None,
+            }
+            await session.commit()
+
+        await registrar_seguro(
+            session_factory,
+            actor=principal.email,
+            accion=AccionAuditoria.PREGUNTA_BANCO_REACTIVAR,
+            modulo=ModuloAuditoria.EXAMENES,
+            entidad=EntidadAuditoria.EXAMEN,
+            entidad_id=str(pregunta_id),
+            ip=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            proposito=f"Reactivó una pregunta del banco: {enunciado[:120]}.",
+        )
+        return resultado
 
     @router.get(
         "/preguntas/{pregunta_id}/preview",
@@ -4930,7 +5142,7 @@ def create_exam_content_router(
             columnas=COLUMNAS_NOTAS,
             filas=filas_notas(items),
             # Seis columnas con emails y etiquetas largas: en vertical se cortan.
-            apaisado=True,
+            apaisado=NOTAS_APAISADO,
         )
         return Response(
             content=contenido,
@@ -5571,7 +5783,13 @@ def create_exam_content_router(
                 # examen más abajo, así que se cargan acá de una (sin N+1).
                 stmt = (
                     _select(PreguntaBancoModel)
-                    .where(PreguntaBancoModel.materia_id == body.materia_id)
+                    .where(
+                        PreguntaBancoModel.materia_id == body.materia_id,
+                        # Las dadas de baja quedan fuera del sorteo: sacarlas del
+                        # banco tiene que sacarlas también de los exámenes que se
+                        # armen a partir de ahora.
+                        PreguntaBancoModel.eliminada_en.is_(None),
+                    )
                     .options(
                         _selectinload(PreguntaBancoModel.opciones_banco),
                         _selectinload(PreguntaBancoModel.blanks_banco).selectinload(

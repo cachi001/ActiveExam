@@ -619,6 +619,13 @@ export interface InscripcionAlumnoResponse {
 export interface AlumnosComisionPaginados {
   items: AlumnoInscripto[];
   total: number;
+  /**
+   * Cuántos del TOTAL no pueden rendir todavía (les falta consentimiento o
+   * biometría). Se cuenta server-side sobre todos los inscriptos: contarlo en el
+   * cliente daría solo los de la página visible y el número cambiaría de hoja en
+   * hoja. Ausente en respuestas viejas → 0.
+   */
+  no_pueden_rendir?: number;
   page: number;
   page_size: number;
 }

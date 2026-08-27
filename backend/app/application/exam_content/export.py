@@ -124,6 +124,22 @@ def tabla_a_xlsx(
     return buf.getvalue()
 
 
+#: Margen lateral que aplica FPDF por defecto (10 mm de cada lado).
+_MARGEN_LATERAL_MM = 10
+#: Ancho de página A4 en mm, en cada orientación.
+_A4_ANCHO_MM = {False: 210, True: 297}
+
+
+def ancho_util_mm(apaisado: bool) -> int:
+    """Milímetros disponibles para la tabla, descontando los márgenes.
+
+    Las celdas se dibujan una al lado de la otra con ancho fijo: lo que se pasa
+    de este número queda FUERA del papel, sin error y sin aviso. Por eso el ancho
+    de las columnas se valida contra este valor (`test_export_pdf_columnas_entran`).
+    """
+    return _A4_ANCHO_MM[bool(apaisado)] - 2 * _MARGEN_LATERAL_MM
+
+
 def tabla_a_pdf(
     *,
     titulo: str,
@@ -189,15 +205,49 @@ def tabla_a_pdf(
 # Inscriptos de una comisión (E-10)
 # ---------------------------------------------------------------------------
 
-# Las columnas acordadas para poder cruzar contra Moodle. NO se agrega nada más:
-# un export de datos personales lleva lo mínimo para su propósito declarado.
+# Las columnas para cruzar contra el padrón de Moodle, MÁS la elegibilidad de cada
+# alumno. Sin consentimiento o sin biometría el alumno no puede rendir, y ese es el
+# motivo por el que se descarga este listado antes del examen: saber a quién hay que
+# avisarle. La pantalla ya lo mostraba por alumno; el archivo lo omitía, así que
+# había que revisar uno por uno en la web lo que el export debía resolver de una.
+#: El PDF de inscriptos va APAISADO. Con las 8 columnas, en A4 vertical entran
+#: 186 mm y la tabla necesita más: las tres de elegibilidad quedaban fuera del
+#: papel, así que en el teléfono el archivo se cortaba en "Inscripción" y no se
+#: veía justamente el dato por el que se abre el listado.
+INSCRIPTOS_APAISADO = True
+
 COLUMNAS_INSCRIPTOS = [
-    Columna("Apellido", 26, 38),
-    Columna("Nombre", 26, 38),
-    Columna("Usuario", 26, 40),
-    Columna("Email", 38, 55),
+    Columna("Apellido", 26, 26),
+    Columna("Nombre", 26, 26),
+    Columna("Usuario", 26, 24),
+    # 50 mm entra un mail institucional completo (juan.perez@frm.utn.edu.ar).
+    # Uno más largo se recorta: el archivo sin recortes es el Excel.
+    Columna("Email", 38, 50),
+    # 30 mm y no menos: con 26 la fecha salía como "27/08/2026 1...".
     Columna("Inscripción", 20, 30),
+    Columna("Consentimiento", 16, 24),
+    Columna("Biometría", 14, 20),
+    # Va última y con el motivo adentro: es la columna que se lee primero cuando
+    # se abre el archivo para ver quién se queda afuera. Se le deja todo el ancho
+    # que sobra porque su texto es el más largo ("NO — Falta consentimiento y
+    # biometría") y recortarlo deja el motivo a medias, que es peor que no tenerlo.
+    Columna("¿Puede rendir?", 34, 72),
 ]
+
+
+def _si_no(valor: object) -> str:
+    """Sí/No legible. Un campo ausente se informa como No, nunca como Sí: decir
+    que sí sin dato haría creer que el alumno está listo cuando no se sabe."""
+    return "Sí" if valor is True else "No"
+
+
+def _puede_rendir_legible(inscripto) -> str:
+    """"Sí" o "NO — {motivo}". Sin motivo, "NO" a secas: la ausencia de razón no
+    puede volverse un "sí" por descarte."""
+    if getattr(inscripto, "puede_rendir", False) is True:
+        return "Sí"
+    razon = (getattr(inscripto, "razon", None) or "").strip()
+    return f"NO — {razon}" if razon else "NO"
 
 
 def filas_inscriptos(inscriptos: list) -> list[list[str]]:
@@ -209,6 +259,9 @@ def filas_inscriptos(inscriptos: list) -> list[list[str]]:
             getattr(i, "username", "") or "",
             getattr(i, "email", "") or "",
             fecha_legible(getattr(i, "inscripto_en", None)),
+            _si_no(getattr(i, "consentimiento_vigente", None)),
+            _si_no(getattr(i, "biometria_vigente", None)),
+            _puede_rendir_legible(i),
         ]
         for i in inscriptos
     ]
@@ -217,6 +270,11 @@ def filas_inscriptos(inscriptos: list) -> list[list[str]]:
 # ---------------------------------------------------------------------------
 # Notas de un examen (E-10)
 # ---------------------------------------------------------------------------
+
+#: También apaisado: seis columnas con emails y etiquetas largas no entran en
+#: vertical. La orientación vive acá, al lado de los anchos que la determinan,
+#: para que agregar una columna y validar que entre sea una sola decisión.
+NOTAS_APAISADO = True
 
 COLUMNAS_NOTAS = [
     Columna("Alumno", 30, 45),
