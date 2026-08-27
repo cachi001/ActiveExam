@@ -14,6 +14,7 @@ import { useToast } from '../../ui/toast';
 import { api } from '../../lib/api';
 import type { AccionPausa, PausaPendiente } from '../../lib/types';
 import { formatFechaRelativa } from './helpers';
+import { ModalOverlay } from '../../ui/ModalOverlay';
 
 /** Intervalo de polling de la cola de pausas (ms). */
 const POLL_MS = 4000;
@@ -146,7 +147,7 @@ export function PausasPendientes({ tutorActor }: { tutorActor?: string | null })
       {/* Modal para capturar el MOTIVO del rechazo (obligatorio). El alumno lo
           verá en pantalla, así que pedimos un texto claro y no vacío. */}
       {rechazando && (
-        <div className="fixed inset-0 z-[95] bg-inverse-surface/60 backdrop-blur-sm flex items-center justify-center p-lg animate-in fade-in">
+        <ModalOverlay etiqueta="Rechazar pausa" onCerrar={() => setRechazando(null)}>
           <Card className="max-w-md w-full space-y-md">
             <div className="space-y-base">
               <h3 className="font-headline text-headline-md text-on-surface">Rechazar pausa</h3>
@@ -183,7 +184,7 @@ export function PausasPendientes({ tutorActor }: { tutorActor?: string | null })
               </Button>
             </div>
           </Card>
-        </div>
+        </ModalOverlay>
       )}
     </section>
   );

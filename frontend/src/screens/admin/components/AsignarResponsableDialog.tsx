@@ -18,6 +18,7 @@ import { useEffect, useState } from 'react';
 import { adminApi } from '../../../lib/apiAdmin';
 import { Button, Icon } from '../../../ui/components';
 import { ChipMultiSelect } from '../../../ui/ChipMultiSelect';
+import { ModalOverlay } from '../../../ui/ModalOverlay';
 
 type Candidato = { id: string; nombre: string; legajo: string };
 export type ResponsableInfo = { id: string; nombre: string };
@@ -171,11 +172,9 @@ export function AsignarResponsableDialog({
   const selectId = `responsable-sel-${rol}`;
 
   return (
-    <div
-      className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-label={`${cfg.tituloDialogo} de ${materiaNombre}`}
+    <ModalOverlay
+      etiqueta={`${cfg.tituloDialogo} de ${materiaNombre}`}
+      onCerrar={guardando ? undefined : onCerrar}
     >
       <div className="card w-full max-w-md p-lg">
         <h2 className="text-title-sm font-semibold text-on-surface">
@@ -231,6 +230,6 @@ export function AsignarResponsableDialog({
           </Button>
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   );
 }

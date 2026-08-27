@@ -15,6 +15,7 @@ import { useEffect, useState } from 'react';
 import { adminApi } from '../../../lib/apiAdmin';
 import { Button, Icon } from '../../../ui/components';
 import { ChipMultiSelect } from '../../../ui/ChipMultiSelect';
+import { ModalOverlay } from '../../../ui/ModalOverlay';
 
 type Docente = { id: string; nombre: string; legajo: string };
 type TutorInfo = { id: string; nombre: string };
@@ -105,12 +106,7 @@ export function AsignarDocenteDialog({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-label={`Tutores de ${comisionNombre}`}
-    >
+    <ModalOverlay etiqueta={`Tutores de ${comisionNombre}`} onCerrar={guardando ? undefined : onCerrar}>
       <div className="card w-full max-w-md p-lg">
         <h2 className="text-title-sm font-semibold text-on-surface">Tutores a cargo</h2>
         <p className="text-label-sm text-on-surface-variant mt-0.5 mb-md">
@@ -168,6 +164,6 @@ export function AsignarDocenteDialog({
           </Button>
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   );
 }

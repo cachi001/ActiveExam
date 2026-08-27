@@ -25,6 +25,7 @@ import {
 import { CategoriasTree, serializarDnd } from './banco-preguntas/CategoriasTree';
 import { PreviewPreguntaModal } from './banco-preguntas/PreviewPreguntaModal';
 import { limpiarEnunciadoCloze } from '../lib/cloze';
+import { ModalOverlay } from '../ui/ModalOverlay';
 import { HelpButton } from '../ui/HelpButton';
 import { Pagination, PageSizeSelect } from '../ui/Pagination';
 import { ImportarBancoModal } from './banco-preguntas/ImportarBancoModal';
@@ -49,7 +50,7 @@ function DialogoCategoria({
 }) {
   const [nombre, setNombre] = useState(valorInicial);
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+    <ModalOverlay etiqueta={titulo} onCerrar={onCancelar}>
       <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm flex flex-col gap-4">
         <h3 className="text-title-md font-semibold">{titulo}</h3>
         <input
@@ -71,7 +72,7 @@ function DialogoCategoria({
           </Button>
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   );
 }
 
@@ -89,7 +90,7 @@ function DialogoBorrar({
   onCancelar: () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+    <ModalOverlay etiqueta={`Dar de baja ${categoria.nombre}`} onCerrar={onCancelar}>
       <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm flex flex-col gap-4">
         {/* El texto viejo describía el borrado FÍSICO que hacía antes: "las
             preguntas quedarán sin clasificar, las subcategorías se borrarán en
@@ -111,7 +112,7 @@ function DialogoBorrar({
           </Button>
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   );
 }
 

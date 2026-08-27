@@ -16,6 +16,7 @@ import {
   type PreguntaPreview,
 } from '../../lib/apiAdmin/bancoPreguntasApi';
 import { limpiarEnunciadoCloze } from '../../lib/cloze';
+import { ModalOverlay } from '../../ui/ModalOverlay';
 
 const TIPO_LABEL: Record<string, string> = {
   multichoice: 'Opción múltiple',
@@ -67,9 +68,8 @@ export function PreviewPreguntaModal({ preguntaId, onCerrar }: Props) {
   if (!preguntaId) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onCerrar} />
-      <div className="relative z-10 w-full max-w-2xl bg-white rounded-2xl shadow-xl flex flex-col max-h-[90vh]">
+    <ModalOverlay etiqueta="Vista previa de la pregunta" onCerrar={onCerrar}>
+      <div className="relative w-full max-w-2xl bg-white rounded-2xl shadow-xl flex flex-col max-h-[90vh]">
         <div className="flex items-center gap-3 px-6 pt-6 pb-4 border-b border-outline-variant/30">
           <div className="flex-1 min-w-0">
             <h2 className="text-title-md font-semibold text-on-surface">
@@ -219,6 +219,6 @@ export function PreviewPreguntaModal({ preguntaId, onCerrar }: Props) {
           </Button>
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   );
 }

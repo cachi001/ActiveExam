@@ -4,6 +4,7 @@
  * Sin dependencias externas de modal; solo Tailwind + estado React local.
  */
 import { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { GLOSSARY } from '../config/glossary';
 
 interface GlossaryPanelProps {
@@ -24,7 +25,11 @@ export function GlossaryPanel({ isOpen, onClose }: GlossaryPanelProps) {
 
   if (!isOpen) return null;
 
-  return (
+  // Va con portal a document.body y no anidado en la página: las pantallas se
+  // envuelven en `animate-in`, que crea un contexto de apilamiento y dejaría este
+  // panel por debajo del header y la sidebar por más z-index que tenga. Conserva
+  // z-200 (la capa de ayuda) porque el glosario se consulta CON un modal abierto.
+  return createPortal(
     /* Overlay */
     <div
       className="fixed inset-0 z-[200] flex items-center justify-center p-md bg-black/60 backdrop-blur-sm"
@@ -74,6 +79,7 @@ export function GlossaryPanel({ isOpen, onClose }: GlossaryPanelProps) {
           {Object.keys(GLOSSARY).length} términos · Activo bajo Ley 25.326
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

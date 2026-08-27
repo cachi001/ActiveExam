@@ -18,6 +18,7 @@ import { useToast } from '../../ui/toast';
 import { api } from '../../lib/api';
 import type { AccionPausa, Pausa } from '../../lib/types';
 import { formatFechaRelativa } from './helpers';
+import { ModalOverlay } from '../../ui/ModalOverlay';
 
 const POLL_MS = 4000;
 
@@ -140,7 +141,7 @@ export function PausaSesionPanel({
 
       {/* Modal de motivo del rechazo (obligatorio; el alumno lo verá). */}
       {rechazando && (
-        <div className="fixed inset-0 z-[95] bg-inverse-surface/60 backdrop-blur-sm flex items-center justify-center p-lg animate-in fade-in">
+        <ModalOverlay etiqueta="Rechazar pausa" onCerrar={() => setRechazando(false)}>
           <Card className="max-w-md w-full space-y-md">
             <div className="space-y-base">
               <h3 className="font-headline text-headline-md text-on-surface">Rechazar pausa</h3>
@@ -177,7 +178,7 @@ export function PausaSesionPanel({
               </Button>
             </div>
           </Card>
-        </div>
+        </ModalOverlay>
       )}
     </div>
   );

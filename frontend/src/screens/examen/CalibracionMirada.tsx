@@ -1,4 +1,5 @@
 import { Icon, Card } from '../../ui/components';
+import { createPortal } from 'react-dom';
 
 /**
  * Overlay de calibración de mirada al inicio del examen (pentest 2026-08-21):
@@ -9,7 +10,12 @@ import { Icon, Card } from '../../ui/components';
  * límite del examen (corre antes de que arranque el cronómetro).
  */
 export function CalibracionMirada() {
-  return (
+  // Portal a document.body: la pantalla del examen se envuelve en `animate-in`, que
+  // crea un contexto de apilamiento y atrapa adentro a cualquier `position: fixed`.
+  // Atrapado, este overlay deja de compararse con lo que hay fuera de ese contexto
+  // (por ejemplo el banner de pausa, que sí va por portal) y su z-index no alcanza.
+  // Conserva su z propio: los overlays del examen se apilan entre ellos.
+  return createPortal(
     <div className="fixed inset-0 z-[95] bg-inverse-surface/80 backdrop-blur-md flex items-center justify-center p-lg animate-in fade-in">
       <Card className="max-w-sm w-full text-center space-y-md">
         <div className="w-16 h-16 rounded-full bg-primary-container text-primary flex items-center justify-center mx-auto">
@@ -23,6 +29,7 @@ export function CalibracionMirada() {
         </div>
         <Icon name="progress_activity" className="ae-spin text-primary text-[28px] mx-auto" />
       </Card>
-    </div>
+    </div>,
+    document.body,
   );
 }
