@@ -72,7 +72,7 @@ export function ConfirmModal({
   return createPortal(
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center p-md
-        bg-black/40 animate-in fade-in"
+        bg-black/60 backdrop-blur-sm animate-in fade-in"
       onClick={onCancelar}
     >
       <div

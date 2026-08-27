@@ -42,7 +42,7 @@ function DialogoCategoria({
 }) {
   const [nombre, setNombre] = useState(valorInicial);
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm">
       <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm flex flex-col gap-4">
         <h3 className="text-title-md font-semibold">{titulo}</h3>
         <input
@@ -82,7 +82,7 @@ function DialogoBorrar({
   onCancelar: () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm">
       <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm flex flex-col gap-4">
         <h3 className="text-title-md font-semibold">Borrar categoría</h3>
         <p className="text-body-md text-on-surface-variant">

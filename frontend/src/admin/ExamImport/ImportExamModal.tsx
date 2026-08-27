@@ -250,7 +250,7 @@ export function ImportExamModal({ abierto, onCerrar, onImportado }: ImportExamMo
   return createPortal(
     <div
       className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto p-md
-        bg-black/40 animate-in fade-in sm:items-center"
+        bg-black/60 backdrop-blur-sm animate-in fade-in sm:items-center"
       onClick={onCerrar}
     >
       <div

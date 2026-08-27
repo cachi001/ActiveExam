@@ -57,7 +57,7 @@ function ModalClaveTemporal({ clave, email, onCerrar }: ModalClaveProps) {
       role="dialog"
       aria-modal="true"
       aria-labelledby="modal-clave-titulo"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-md"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-md"
     >
       <div className="bg-white rounded-lg shadow-2xl w-full max-w-md p-lg space-y-md">
         {/* Encabezado */}

@@ -254,7 +254,7 @@ export function ImportarBancoModal({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto p-4 bg-black/40"
+      className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto p-4 bg-black/60 backdrop-blur-sm"
       onClick={bloqueado ? undefined : handleClose}
     >
       <div
