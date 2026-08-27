@@ -114,6 +114,11 @@ class AccionAuditoria(StrEnum):
     # "examen." ya las mapea a ModuloAuditoria.EXAMENES y EntidadAuditoria.EXAMEN.
     EXAMEN_BAJA = "examen.baja"
     EXAMEN_REACTIVAR = "examen.reactivar"
+    # Baja lógica de una pregunta del banco y su reverso. Mismo par que el examen:
+    # marca `eliminada_en`, no borra la fila. Se audita porque saca contenido de
+    # circulación y hay que poder responder quién lo hizo y cuándo.
+    PREGUNTA_BANCO_BAJA = "pregunta_banco.baja"
+    PREGUNTA_BANCO_REACTIVAR = "pregunta_banco.reactivar"
     # c-78 D9: publicar las notas es una accion explicita y de IDA. Queda
     # auditada por si despues hay reclamo sobre cuando se vieron las notas.
     EXAMEN_PUBLICAR_NOTAS = "examen.publicar_notas"

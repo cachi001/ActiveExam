@@ -34,6 +34,11 @@ export interface PreguntaBanco {
    * sync desde Moodle vuelven a recategorizarla (0058).
    */
   categoria_manual: boolean;
+  /**
+   * Baja lógica. null = vigente; con fecha ISO = dada de baja (sale del banco y
+   * de los exámenes que se armen desde ahora, pero no se borra y se reactiva).
+   */
+  eliminada_en?: string | null;
 }
 
 function headers() {
@@ -112,11 +117,15 @@ export async function borrarCategoria(categoriaId: string): Promise<void> {
   if (!res.ok) throw new Error(`Error ${res.status} al borrar categoría`);
 }
 
+/** Filtro de baja lógica del banco: vigentes, la papelera, o ambas. */
+export type EstadoPregunta = 'activa' | 'eliminada' | 'todas';
+
 export async function listarPreguntasBanco(
   materiaId: string,
   categoriaId: string | null,
+  estado: EstadoPregunta = 'activa',
 ): Promise<PreguntaBanco[]> {
-  const params = new URLSearchParams({ materia_id: materiaId });
+  const params = new URLSearchParams({ materia_id: materiaId, estado });
   if (categoriaId) params.set('categoria_id', categoriaId);
   else params.set('sin_categoria', 'true');
   const res = await fetchAutenticado(`${API_BASE}/exam-content/preguntas?${params}`, {
@@ -124,6 +133,37 @@ export async function listarPreguntasBanco(
   });
   if (!res.ok) throw new Error(`Error ${res.status} al listar preguntas`);
   return res.json();
+}
+
+/**
+ * Da de baja una pregunta del banco. Baja LÓGICA: no se borra y se puede
+ * reactivar. Lanza con el mensaje del backend si la pregunta está en el pool de
+ * un examen vigente (409), donde se seguiría sorteando.
+ */
+export async function darDeBajaPregunta(preguntaId: string): Promise<void> {
+  const res = await fetchAutenticado(
+    `${API_BASE}/exam-content/preguntas/${encodeURIComponent(preguntaId)}`,
+    { method: 'DELETE', headers: headers() },
+  );
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const detail = (body as any)?.detail;
+    const msg =
+      typeof detail === 'string'
+        ? detail
+        : detail?.mensaje ?? `Error ${res.status} al dar de baja la pregunta`;
+    throw new Error(msg);
+  }
+}
+
+/** Devuelve al banco una pregunta dada de baja. */
+export async function reactivarPregunta(preguntaId: string): Promise<void> {
+  const res = await fetchAutenticado(
+    `${API_BASE}/exam-content/preguntas/${encodeURIComponent(preguntaId)}/reactivar`,
+    { method: 'POST', headers: headers() },
+  );
+  if (!res.ok) throw new Error(`Error ${res.status} al reactivar la pregunta`);
 }
 
 export interface OpcionPreview {

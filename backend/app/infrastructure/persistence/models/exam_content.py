@@ -56,10 +56,33 @@ class PreguntaBancoModel(Base):
         nullable=True,
     )
     moodle_question_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Nombre de la pregunta en Moodle (`<name><text>` del export XML). Es la única
+    # clave estable que trae un XML: `moodle_question_id` solo se llena por el sync
+    # vía API. Sin esto, el import resolvía "nueva vs actualizada" comparando el
+    # ENUNCIADO, así que corregir el texto de una pregunta y volver a subir el banco
+    # la daba de alta OTRA VEZ y dejaba viva la versión vieja — las dos elegibles
+    # para el sorteo, y sin forma de borrar ninguna desde la aplicación.
+    # NULL en las preguntas cargadas antes de la migración: ahí se sigue cayendo al
+    # enunciado, que es como venía funcionando.
+    nombre_moodle: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment="Nombre de la pregunta en Moodle; clave de reimport por XML.",
+    )
     # 0058: true cuando el docente movió la pregunta de categoría a mano. Import
     # y sync respetan esa decisión y no vuelven a tocar categoria_id.
     categoria_manual: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="false", default=False
+    )
+    # Baja LÓGICA de la pregunta (nunca borrado físico, mismo patrón que materia,
+    # comisión, examen y usuario). NULL = vigente. Una pregunta dada de baja sale
+    # del banco, no entra a exámenes nuevos ni al ampliar el pool de uno existente,
+    # y se puede reactivar. No se borra porque los exámenes ya rendidos con esa
+    # pregunta tienen que poder reconstruirse (regla dura #6, cadena de custodia).
+    eliminada_en: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        comment="Baja lógica: NULL = vigente, con timestamp = dada de baja.",
     )
     creada_en: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()

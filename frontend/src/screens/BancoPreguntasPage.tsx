@@ -5,7 +5,11 @@ import { STAFF_NAV } from '../ui/nav';
 import { api } from '../lib/api';
 import { useToast } from '../ui/toast';
 import type { Materia } from '../lib/types';
-import type { CategoriaPregunta, PreguntaBanco } from '../lib/apiAdmin/bancoPreguntasApi';
+import type {
+  CategoriaPregunta,
+  EstadoPregunta,
+  PreguntaBanco,
+} from '../lib/apiAdmin/bancoPreguntasApi';
 import {
   listarCategorias,
   crearCategoria,
@@ -14,6 +18,8 @@ import {
   listarPreguntasBanco,
   moverPreguntaCategoria,
   moverCategoria,
+  darDeBajaPregunta,
+  reactivarPregunta,
 } from '../lib/apiAdmin/bancoPreguntasApi';
 import { CategoriasTree, serializarDnd } from './banco-preguntas/CategoriasTree';
 import { PreviewPreguntaModal } from './banco-preguntas/PreviewPreguntaModal';
@@ -111,6 +117,8 @@ function ListaPreguntas({
   cargando,
   pageSize,
   onMover,
+  onDarDeBaja,
+  onReactivar,
 }: {
   preguntas: PreguntaBanco[];
   categorias: CategoriaPregunta[];
@@ -118,6 +126,8 @@ function ListaPreguntas({
   cargando: boolean;
   pageSize: number;
   onMover: (preguntaId: string, nuevaCatId: string | null) => void;
+  onDarDeBaja: (pregunta: PreguntaBanco) => void;
+  onReactivar: (preguntaId: string) => void;
 }) {
   const [moviendoId, setMoviendoId] = useState<string | null>(null);
   // c-78 E-08 (15.3): pregunta abierta en la vista previa. null = modal cerrado.
@@ -232,6 +242,27 @@ function ListaPreguntas({
                 >
                   <Icon name="drive_file_move" className="text-[16px]" />
                 </button>
+                {/* Baja LÓGICA: la pregunta sale del banco y de los exámenes que
+                    se armen de ahora en más, pero no se borra y se puede
+                    reactivar. El backend rechaza la baja si la pregunta está en
+                    un examen vigente, donde se seguiría sorteando. */}
+                {p.eliminada_en ? (
+                  <button
+                    className="p-1.5 rounded-lg hover:bg-success-container text-success"
+                    title="Devolver esta pregunta al banco"
+                    onClick={() => onReactivar(p.id)}
+                  >
+                    <Icon name="restore_from_trash" className="text-[16px]" />
+                  </button>
+                ) : (
+                  <button
+                    className="p-1.5 rounded-lg hover:bg-error-container/40 text-on-surface-variant hover:text-error"
+                    title="Dar de baja esta pregunta"
+                    onClick={() => onDarDeBaja(p)}
+                  >
+                    <Icon name="delete_outline" className="text-[16px]" />
+                  </button>
+                )}
               </>
             )}
           </div>
@@ -277,6 +308,10 @@ export default function BancoPreguntasPage() {
   const [cargandoPregs, setCargandoPregs] = useState(false);
   const [sinClasificarCount, setSinClasificarCount] = useState(0);
   const [pageSize, setPageSize] = useState(20);
+  // Filtro de baja lógica. Default 'activa': el banco es lo que se puede usar.
+  // Sin este filtro, dar de baja sería indistinguible de borrar y no habría
+  // forma de recuperar una pregunta.
+  const [estadoPreguntas, setEstadoPreguntas] = useState<EstadoPregunta>('activa');
 
   // Diálogos
   const [dialogoCrear, setDialogoCrear] = useState<{ padreId: string | null } | null>(null);
@@ -317,22 +352,60 @@ export default function BancoPreguntasPage() {
     cargarCategorias(materiaId);
   }, [materiaId, cargarCategorias]);
 
-  const cargarPreguntas = useCallback(async (mid: string, catId: string | null) => {
-    setCargandoPregs(true);
-    try {
-      const preg = await listarPreguntasBanco(mid, catId);
-      setPreguntas(preg);
-    } catch {
-      toast.error('No se pudieron cargar las preguntas.');
-    } finally {
-      setCargandoPregs(false);
-    }
-  }, [toast]);
+  const cargarPreguntas = useCallback(
+    async (mid: string, catId: string | null, est: EstadoPregunta) => {
+      setCargandoPregs(true);
+      try {
+        const preg = await listarPreguntasBanco(mid, catId, est);
+        setPreguntas(preg);
+      } catch {
+        toast.error('No se pudieron cargar las preguntas.');
+      } finally {
+        setCargandoPregs(false);
+      }
+    },
+    [toast],
+  );
 
   useEffect(() => {
     if (!materiaId) return;
-    cargarPreguntas(materiaId, catSeleccionada);
-  }, [materiaId, catSeleccionada, cargarPreguntas]);
+    cargarPreguntas(materiaId, catSeleccionada, estadoPreguntas);
+  }, [materiaId, catSeleccionada, estadoPreguntas, cargarPreguntas]);
+
+  // Baja LÓGICA de una pregunta. El backend responde 409 si está en el pool de un
+  // examen vigente: ahí se seguiría sorteando, así que el mensaje que trae dice en
+  // cuáles está y se muestra tal cual en vez de un "no se pudo" genérico.
+  async function handleDarDeBaja(pregunta: PreguntaBanco) {
+    const texto = limpiarEnunciadoCloze(pregunta.enunciado).slice(0, 60);
+    if (
+      !window.confirm(
+        `¿Dar de baja esta pregunta?\n\n"${texto}…"\n\nSale del banco y de los ` +
+          'exámenes que armes de ahora en más. No se borra: la podés reactivar ' +
+          'desde el filtro "Dadas de baja".',
+      )
+    ) {
+      return;
+    }
+    try {
+      await darDeBajaPregunta(pregunta.id);
+      toast.success('Pregunta dada de baja. La podés reactivar cuando quieras.');
+      await cargarPreguntas(materiaId, catSeleccionada, estadoPreguntas);
+      await cargarCategorias(materiaId);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'No se pudo dar de baja.');
+    }
+  }
+
+  async function handleReactivarPregunta(preguntaId: string) {
+    try {
+      await reactivarPregunta(preguntaId);
+      toast.success('Pregunta devuelta al banco.');
+      await cargarPreguntas(materiaId, catSeleccionada, estadoPreguntas);
+      await cargarCategorias(materiaId);
+    } catch {
+      toast.error('No se pudo reactivar la pregunta.');
+    }
+  }
 
   async function handleCrear(nombre: string) {
     if (!materiaId) return;
@@ -387,7 +460,7 @@ export default function BancoPreguntasPage() {
     }
     if (materiaId) {
       cargarCategorias(materiaId);
-      cargarPreguntas(materiaId, catSeleccionada);
+      cargarPreguntas(materiaId, catSeleccionada, estadoPreguntas);
     }
   }
 
@@ -395,7 +468,7 @@ export default function BancoPreguntasPage() {
     try {
       await moverPreguntaCategoria(preguntaId, nuevaCatId);
       toast.success('Pregunta movida.');
-      await cargarPreguntas(materiaId, catSeleccionada);
+      await cargarPreguntas(materiaId, catSeleccionada, estadoPreguntas);
     } catch {
       toast.error('Error al mover la pregunta.');
     }
@@ -502,10 +575,31 @@ export default function BancoPreguntasPage() {
                     ({preguntas.length} pregunta{preguntas.length !== 1 ? 's' : ''})
                   </span>
                 </p>
-                {preguntas.length > 0 && (
-                  <PageSizeSelect value={pageSize} onChange={setPageSize} />
-                )}
+                <div className="flex items-center gap-3">
+                  {/* La papelera del banco. Sin esto, dar de baja una pregunta
+                      sería indistinguible de borrarla. */}
+                  <select
+                    aria-label="Filtrar preguntas por estado"
+                    value={estadoPreguntas}
+                    onChange={(e) => setEstadoPreguntas(e.target.value as EstadoPregunta)}
+                    className="text-label-md border border-outline-variant rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary"
+                  >
+                    <option value="activa">En el banco</option>
+                    <option value="eliminada">Dadas de baja</option>
+                    <option value="todas">Todas</option>
+                  </select>
+                  {preguntas.length > 0 && (
+                    <PageSizeSelect value={pageSize} onChange={setPageSize} />
+                  )}
+                </div>
               </div>
+              {estadoPreguntas === 'eliminada' && (
+                <p className="mb-3 text-label-sm text-on-surface-variant flex items-start gap-1.5">
+                  <Icon name="info" className="text-[15px] shrink-0 mt-0.5" />
+                  Estas preguntas no se usan para armar exámenes. Nada se borró: se
+                  pueden devolver al banco cuando quieras.
+                </p>
+              )}
               <ListaPreguntas
                 key={catSeleccionada ?? '__sin_clasificar__'}
                 preguntas={preguntas}
@@ -514,6 +608,8 @@ export default function BancoPreguntasPage() {
                 cargando={cargandoPregs}
                 pageSize={pageSize}
                 onMover={handleMoverPregunta}
+                onDarDeBaja={handleDarDeBaja}
+                onReactivar={handleReactivarPregunta}
               />
             </Card>
           </div>
