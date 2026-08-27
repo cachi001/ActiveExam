@@ -81,7 +81,14 @@ export function DestinoMoodleSection({ examenId }: { examenId: string }) {
 
   return (
     <Card>
-      <SectionTitle icon="send" sub="A qué curso y actividad de Moodle se le devolverá la nota. Vacío = usa el destino global.">
+      {/* El texto decía "Vacío = usa el destino global". No existe tal destino: el
+          backend lanza MoodleDestinoNoConfiguradoError si falta, justamente para no
+          escribir la nota en la libreta de otra materia. El cartel viejo inducía el
+          error que esa guarda quiere prevenir. */}
+      <SectionTitle
+        icon="send"
+        sub="A qué curso y actividad de Moodle se le devolverá la nota. Sin estos dos datos la nota no se envía al campus: queda pendiente hasta que los cargues."
+      >
         Destino de la nota en Moodle
       </SectionTitle>
 
@@ -105,6 +112,23 @@ export function DestinoMoodleSection({ examenId }: { examenId: string }) {
           <Button variant="outline" size="sm" icon="refresh" onClick={cargar}>
             Reintentar
           </Button>
+        </div>
+      )}
+
+      {/* Un examen creado por sorteo nace SIN destino y nada lo pide al crearlo:
+          te enterabas recién al sincronizar, con las notas ya puestas. El aviso
+          va acá, que es donde se arregla. */}
+      {!cargando && !errorCarga && vacio && (
+        <div
+          role="alert"
+          className="flex items-start gap-2 rounded-lg bg-warning-container/40 px-3 py-2.5 text-label-sm text-on-surface mb-4"
+        >
+          <Icon name="warning" className="text-[18px] shrink-0 text-warning mt-0.5" fill />
+          <span>
+            Este examen todavía no tiene destino. Las notas se van a calcular y
+            guardar igual, pero no van a salir al campus hasta que cargues el
+            curso y la actividad.
+          </span>
         </div>
       )}
 

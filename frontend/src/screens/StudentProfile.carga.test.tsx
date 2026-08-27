@@ -20,10 +20,14 @@
 import { describe, expect, it, vi, afterEach, beforeEach } from 'vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 
+// El nombre del método TIENE que ser el real (`getEnrollment`). Estaba escrito
+// `obtenerEstadoEnrollment`, que no existe en `lib/api`: en vez de quedarse
+// cargando, la pantalla reventaba con "api.getEnrollment is not a function" y el
+// test pasaba igual, midiendo el estado post-error y no el de carga que dice
+// medir. Se veía como dos "unhandled errors" al final de la suite.
 vi.mock('../lib/api', () => ({
   api: {
-    obtenerEstadoEnrollment: vi.fn(() => new Promise(() => {})), // nunca resuelve: se queda cargando
-    obtenerConfiguracionSistema: vi.fn(() => new Promise(() => {})),
+    getEnrollment: vi.fn(() => new Promise(() => {})), // nunca resuelve: se queda cargando
     obtenerFotoPerfil: vi.fn(() => new Promise(() => {})),
   },
   API_BASE: 'http://test',

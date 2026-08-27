@@ -526,7 +526,11 @@ export default function MateriasComisiones() {
           </div>
         ) : (
           // Master-detail: materias a la izquierda, comisiones de la seleccionada a la derecha.
-          <div className="grid lg:grid-cols-3 gap-lg items-start">
+          // De 1280 para arriba el reparto pasa a 1 a 3: es donde la derecha muestra la
+          // tabla de comisiones, de siete columnas, y con el reparto 1 a 2 no entraba y
+          // scrolleaba en horizontal. Abajo de 1280 la derecha son cards angostas, así
+          // que ahí conviene el 1 a 2 y que el nombre de la materia se lea entero.
+          <div className="grid lg:grid-cols-3 xl:grid-cols-4 gap-lg items-start">
             {/* Columna izquierda: lista de materias (seleccionables). */}
             <div className="lg:col-span-1 rounded-xl border border-outline-variant/60 bg-surface-container-lowest shadow-card overflow-hidden">
               <div className="px-4 py-3 border-b border-outline-variant/40 flex items-center gap-2 flex-wrap">
@@ -647,7 +651,7 @@ export default function MateriasComisiones() {
             </div>
 
             {/* Columna derecha: comisiones de la materia seleccionada. */}
-            <div className="lg:col-span-2 rounded-xl border border-outline-variant/60 bg-surface-container-lowest shadow-card overflow-hidden min-w-0">
+            <div className="lg:col-span-2 xl:col-span-3 rounded-xl border border-outline-variant/60 bg-surface-container-lowest shadow-card overflow-hidden min-w-0">
               {(() => {
                 const m = materias.find((x) => x.id === expandida);
                 if (!m) {
@@ -668,7 +672,10 @@ export default function MateriasComisiones() {
                   <>
                     <div className="px-4 py-3 border-b border-outline-variant/40 flex items-center justify-between gap-2">
                       <div className="min-w-0">
-                        <h2 className="text-[13px] font-semibold text-on-surface truncate">
+                        {/* Pliega en vez de truncar: es el título que dice de qué
+                            materia son las comisiones que se están viendo, y cortado
+                            a "Comisiones de Progr…" deja de responder esa pregunta. */}
+                        <h2 className="text-[13px] font-semibold text-on-surface">
                           Comisiones de {m.nombre}
                         </h2>
                         <p className="text-[11px] text-on-surface-variant">

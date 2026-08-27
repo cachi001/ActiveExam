@@ -153,7 +153,15 @@ export function formToPatch(
   };
 }
 
-export function ConfiguracionExamenSection({ examenId }: { examenId: string }) {
+export function ConfiguracionExamenSection({
+  examenId,
+  sorteado = false,
+}: {
+  examenId: string;
+  /** Si el examen sortea por intento, el tope de preguntas no se muestra: ya lo
+   *  decidiste al elegir cuántas sortear de cada categoría. */
+  sorteado?: boolean;
+}) {
   const [form, setForm] = useState<ConfigForm | null>(null);
   // Config tal como vino del backend: baseline para saber si el tutor amplió
   // `cierre`/`intentos_permitidos` (candado direccional) al guardar bloqueado.
@@ -581,25 +589,32 @@ export function ConfiguracionExamenSection({ examenId }: { examenId: string }) {
             </button>
           </div>
 
-          <div>
-            <label className={LABEL_CLS} htmlFor="cfg-limite-preguntas">
-              Máximo de preguntas del examen
-            </label>
-            <input
-              id="cfg-limite-preguntas"
-              type="number"
-              min={1}
-              inputMode="numeric"
-              className={INPUT_CLS}
-              placeholder="Sin tope"
-              value={form.limitePreguntas}
-              disabled={guardando}
-              onChange={(e) => update('limitePreguntas', e.target.value)}
-            />
-            <p className="mt-1.5 text-label-sm text-on-surface-variant">
-              Dejalo vacío para no poner tope.
-            </p>
-          </div>
+          {/* En un examen sorteado el tope no aporta nada: el backend lo compara
+              contra la suma de los tramos que ya elegiste al crearlo, así que
+              solo puede rechazar una decisión ya tomada. Sigue estando para los
+              exámenes fijos importados de XML, donde sí acota qué se puede
+              seleccionar. */}
+          {!sorteado && (
+            <div>
+              <label className={LABEL_CLS} htmlFor="cfg-limite-preguntas">
+                Máximo de preguntas del examen
+              </label>
+              <input
+                id="cfg-limite-preguntas"
+                type="number"
+                min={1}
+                inputMode="numeric"
+                className={INPUT_CLS}
+                placeholder="Sin tope"
+                value={form.limitePreguntas}
+                disabled={guardando}
+                onChange={(e) => update('limitePreguntas', e.target.value)}
+              />
+              <p className="mt-1.5 text-label-sm text-on-surface-variant">
+                Dejalo vacío para no poner tope.
+              </p>
+            </div>
+          )}
 
           {/* Mezclar preguntas ya no es opcional: el orden aleatorio protege la
               integridad de la rendición y no cambia la nota (solo el orden). Se

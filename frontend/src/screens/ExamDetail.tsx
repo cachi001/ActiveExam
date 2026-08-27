@@ -196,7 +196,10 @@ export default function ExamDetail() {
 
         <DestinoMoodleSection examenId={examenId} />
 
-        <ConfiguracionExamenSection examenId={examenId} />
+        <ConfiguracionExamenSection
+          examenId={examenId}
+          sorteado={examen?.modo_preguntas === 'sorteo_por_intento'}
+        />
       </div>
     </StaffShell>
   );
