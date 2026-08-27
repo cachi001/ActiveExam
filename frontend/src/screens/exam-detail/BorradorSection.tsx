@@ -60,10 +60,17 @@ export function BorradorSection({ examenId, titulo, onHabilitado }: Props) {
             A los alumnos no les aparece en su lista y no lo pueden rendir, aunque tengan
             el link.
           </p>
+          {/* Antes acá decía "Vos sí lo podés rendir para ver cómo queda de punta a
+              punta". No era cierto: el enforcement le saltea el borrador y la ventana
+              al docente, pero después la guarda de inscripción lo frena con 403
+              ("No estás inscripto en la comisión"), y un docente nunca está inscripto
+              como alumno de su propia comisión. Prometer algo que la aplicación
+              rechaza es peor que no ofrecerlo. Lo que SÍ puede hacer es revisar el
+              contenido, que es para lo que se usa el borrador. */}
           <p className="text-label-md text-on-surface-variant mt-2">
-            <strong>Vos sí lo podés rendir</strong> para ver cómo queda de punta a punta,
-            incluso antes de la fecha de apertura. Ese intento es de prueba y no cuenta
-            como una rendición real.
+            Mientras tanto podés revisarlo: más abajo están{' '}
+            <strong>todas las preguntas del examen</strong>, con los huecos como los ve
+            el alumno, y la configuración de fechas, intentos y escala de nota.
           </p>
         </div>
 

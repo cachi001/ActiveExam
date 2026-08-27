@@ -144,6 +144,8 @@ ETIQUETA_ACCION: dict[str, str] = {
     "examen.reactivar": "Reactivó un examen",
     "pregunta_banco.baja": "Dio de baja una pregunta del banco",
     "pregunta_banco.reactivar": "Reactivó una pregunta del banco",
+    "categoria_banco.baja": "Dio de baja una categoría del banco",
+    "categoria_banco.reactivar": "Reactivó una categoría del banco",
     "examen.publicar_notas": "Publicó las notas del examen",
     "moodle.sync": "Sincronizó notas a Moodle",
     "moodle.nota_marcada_manual": "Marcó a mano que la nota se cargó en el campus",

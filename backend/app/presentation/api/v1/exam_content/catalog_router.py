@@ -4211,17 +4211,33 @@ def create_exam_content_router(
     )
     async def listar_categorias_banco(
         materia_id: str,
+        estado: str = "activa",
         principal: AuthenticatedPrincipal = Depends(get_current_principal),
     ):
-        """Devuelve todas las categorías de la materia, flat (el cliente construye el árbol)."""
+        """Devuelve las categorías de la materia, flat (el cliente arma el árbol).
+
+        ``estado``: 'activa' (default, las vigentes) | 'eliminada' (la papelera) |
+        'todas'. La baja es lógica, así que sin este filtro una categoría dada de
+        baja sería indistinguible de una borrada y no habría cómo recuperarla.
+        """
         await _exigir_pertenencia_materia(principal, materia_id)
         if session_factory is None:
             raise HTTPException(status_code=500, detail="Persistencia no inicializada.")
+        if estado not in ("activa", "eliminada", "todas"):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "error": "estado_invalido",
+                    "mensaje": "estado debe ser 'activa', 'eliminada' o 'todas'.",
+                },
+            )
         from app.infrastructure.persistence.repositories.categoria_pregunta import (
             CategoriaPreguntaSqlRepository,
         )
         async with session_factory() as session:
-            cats = await CategoriaPreguntaSqlRepository(session).listar_por_materia(materia_id)
+            cats = await CategoriaPreguntaSqlRepository(session).listar_por_materia(
+                materia_id, estado=estado
+            )
         return [
             {
                 "id": c.id,
@@ -4229,6 +4245,12 @@ def create_exam_content_router(
                 "materia_id": c.materia_id,
                 "categoria_padre_id": c.categoria_padre_id,
                 "creada_en": c.creada_en.isoformat() if c.creada_en else None,
+                # NULL = vigente. Con timestamp = dada de baja (baja lógica).
+                "eliminada_en": (
+                    c.eliminada_en.isoformat()
+                    if getattr(c, "eliminada_en", None)
+                    else None
+                ),
             }
             for c in cats
         ]
@@ -4346,24 +4368,119 @@ def create_exam_content_router(
         "/categorias/{categoria_id}",
         dependencies=[Depends(require_capability("gestionar_banco"))],
         status_code=204,
-        summary="Borrar categoría del banco de preguntas (C-74 §4)",
+        summary="Dar de baja una categoría del banco (baja lógica; nada se borra)",
     )
-    async def borrar_categoria_banco(
+    async def dar_de_baja_categoria_banco(
         categoria_id: str,
+        request: Request,
         principal: AuthenticatedPrincipal = Depends(get_current_principal),
     ):
+        """Saca del árbol la categoría y su rama, sin borrarlas.
+
+        Antes esto era un DELETE FÍSICO: el ON DELETE CASCADE se llevaba puestas
+        todas las subcategorías y el SET NULL mandaba las preguntas a "Sin
+        clasificar". Un click destruía la organización del banco y no había forma
+        de deshacerlo. Ahora las preguntas conservan su categoría y todo se
+        recupera con `POST /{id}/reactivar`.
+
+        404 si no existe o ya estaba de baja (mismo contrato que el resto).
+        """
         if session_factory is None:
             raise HTTPException(status_code=500, detail="Persistencia no inicializada.")
+        from app.infrastructure.persistence.models.exam_content import (
+            CategoriaPreguntaModel,
+        )
         from app.infrastructure.persistence.repositories.categoria_pregunta import (
             CategoriaPreguntaSqlRepository,
         )
+
         async with session_factory() as session:
-            cat = await CategoriaPreguntaSqlRepository(session).obtener(categoria_id)
-            if cat is None:
-                raise HTTPException(status_code=404, detail="categoria_no_encontrada")
-            await _exigir_pertenencia_materia(principal, cat.materia_id)
-            await CategoriaPreguntaSqlRepository(session).borrar(categoria_id)
+            fila = await session.get(CategoriaPreguntaModel, categoria_id)
+            if fila is None or fila.eliminada_en is not None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail={
+                        "error": "categoria_no_encontrada",
+                        "mensaje": "La categoría no existe o ya está dada de baja.",
+                    },
+                )
+            await _exigir_pertenencia_materia(principal, str(fila.materia_id))
+            nombre = fila.nombre
+            afectadas = await CategoriaPreguntaSqlRepository(session).dar_de_baja(
+                categoria_id, datetime.now(UTC)
+            )
             await session.commit()
+
+        await registrar_seguro(
+            session_factory,
+            actor=principal.email,
+            accion=AccionAuditoria.CATEGORIA_BANCO_BAJA,
+            modulo=ModuloAuditoria.EXAMENES,
+            entidad=EntidadAuditoria.EXAMEN,
+            entidad_id=str(categoria_id),
+            ip=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            proposito=(
+                f"Dio de baja la categoría «{nombre}» y su rama "
+                f"({len(afectadas)} en total). Nada se borró: se puede reactivar."
+            ),
+        )
+
+    @router.post(
+        "/categorias/{categoria_id}/reactivar",
+        dependencies=[Depends(require_capability("gestionar_banco"))],
+        summary="Reactivar una categoría del banco dada de baja",
+    )
+    async def reactivar_categoria_banco(
+        categoria_id: str,
+        request: Request,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    ):
+        """Devuelve al árbol la categoría y su rama. 404 si no existe o si ya
+        estaba vigente."""
+        if session_factory is None:
+            raise HTTPException(status_code=500, detail="Persistencia no inicializada.")
+        from app.infrastructure.persistence.models.exam_content import (
+            CategoriaPreguntaModel,
+        )
+        from app.infrastructure.persistence.repositories.categoria_pregunta import (
+            CategoriaPreguntaSqlRepository,
+        )
+
+        async with session_factory() as session:
+            fila = await session.get(CategoriaPreguntaModel, categoria_id)
+            if fila is None or fila.eliminada_en is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail={
+                        "error": "categoria_no_encontrada",
+                        "mensaje": "La categoría no existe o no estaba dada de baja.",
+                    },
+                )
+            await _exigir_pertenencia_materia(principal, str(fila.materia_id))
+            nombre = fila.nombre
+            afectadas = await CategoriaPreguntaSqlRepository(session).reactivar(
+                categoria_id
+            )
+            resultado = {
+                "id": str(categoria_id),
+                "nombre": nombre,
+                "reactivadas": len(afectadas),
+            }
+            await session.commit()
+
+        await registrar_seguro(
+            session_factory,
+            actor=principal.email,
+            accion=AccionAuditoria.CATEGORIA_BANCO_REACTIVAR,
+            modulo=ModuloAuditoria.EXAMENES,
+            entidad=EntidadAuditoria.EXAMEN,
+            entidad_id=str(categoria_id),
+            ip=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            proposito=f"Reactivó la categoría «{nombre}» y su rama.",
+        )
+        return resultado
 
     # -----------------------------------------------------------------------
     # Banco de preguntas — listar/mover preguntas del banco (C-74 §4)

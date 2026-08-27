@@ -230,6 +230,16 @@ class CategoriaPreguntaModel(Base):
     # 0058: identidad estable de la categoría en Moodle. Permite reconocerla en
     # el sync aunque el docente la haya renombrado localmente.
     moodle_category_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Baja LÓGICA de la categoría (migración 0101). NULL = vigente. Antes borrar
+    # una categoría era FÍSICO y en cascada: se llevaba puestas sus subcategorías
+    # y dejaba las preguntas en "Sin clasificar", sin forma de deshacerlo. Ahora
+    # la categoría (y su rama) salen del árbol pero se pueden recuperar, y las
+    # preguntas conservan a qué categoría pertenecían.
+    eliminada_en: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        comment="Baja lógica: NULL = vigente, con timestamp = dada de baja.",
+    )
     # 0058: nombre con el que Moodle nombró la categoría. El XML no trae id, así
     # que el import se ancla acá para no duplicar cuando el docente renombró.
     moodle_nombre_origen: Mapped[str | None] = mapped_column(Text, nullable=True)

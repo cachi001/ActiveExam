@@ -15,6 +15,7 @@ import {
   crearCategoria,
   renombrarCategoria,
   borrarCategoria,
+  reactivarCategoria,
   listarPreguntasBanco,
   moverPreguntaCategoria,
   moverCategoria,
@@ -90,15 +91,23 @@ function DialogoBorrar({
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm">
       <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm flex flex-col gap-4">
-        <h3 className="text-title-md font-semibold">Borrar categoría</h3>
+        {/* El texto viejo describía el borrado FÍSICO que hacía antes: "las
+            preguntas quedarán sin clasificar, las subcategorías se borrarán en
+            cascada". Eso ya no pasa: la baja es lógica, las preguntas conservan
+            su categoría y todo se recupera. */}
+        <h3 className="text-title-md font-semibold">Dar de baja la categoría</h3>
         <p className="text-body-md text-on-surface-variant">
-          ¿Borrar <strong>{categoria.nombre}</strong>? Las preguntas asociadas quedarán sin
-          clasificar. Las subcategorías se borrarán en cascada.
+          <strong>{categoria.nombre}</strong> y sus subcategorías salen del árbol del
+          banco y dejan de ofrecerse para armar exámenes.
+        </p>
+        <p className="text-body-md text-on-surface-variant">
+          No se borra nada: las preguntas siguen guardadas con su categoría, y podés
+          devolverla cuando quieras desde «Categorías dadas de baja».
         </p>
         <div className="flex justify-end gap-2">
           <Button variant="ghost" onClick={onCancelar}>Cancelar</Button>
           <Button variant="danger" onClick={onConfirmar}>
-            Borrar
+            Dar de baja
           </Button>
         </div>
       </div>
@@ -317,6 +326,9 @@ export default function BancoPreguntasPage() {
   const [dialogoCrear, setDialogoCrear] = useState<{ padreId: string | null } | null>(null);
   const [dialogoRenombrar, setDialogoRenombrar] = useState<CategoriaPregunta | null>(null);
   const [dialogoBorrar, setDialogoBorrar] = useState<CategoriaPregunta | null>(null);
+  // Categorías dadas de baja de esta materia. Se listan aparte del árbol: sirven
+  // para recuperarlas, no para clasificar preguntas nuevas.
+  const [categoriasDeBaja, setCategoriasDeBaja] = useState<CategoriaPregunta[]>([]);
   const [dialogoImportar, setDialogoImportar] = useState(false);
 
   useEffect(() => {
@@ -326,11 +338,16 @@ export default function BancoPreguntasPage() {
   const cargarCategorias = useCallback(async (mid: string) => {
     setCargandoCats(true);
     try {
-      const [cats, sinClasificar] = await Promise.all([
+      // El árbol muestra las categorías vigentes; el contador de la papelera se
+      // pide aparte para poder avisar que hay categorías dadas de baja sin
+      // ensuciar el árbol con ellas.
+      const [cats, sinClasificar, deBaja] = await Promise.all([
         listarCategorias(mid),
         listarPreguntasBanco(mid, null),
+        listarCategorias(mid, 'eliminada').catch(() => []),
       ]);
       setCategorias(cats);
+      setCategoriasDeBaja(deBaja);
       setSinClasificarCount(sinClasificar.length);
       // Sin nada sin clasificar, el bucket queda oculto (CategoriasTree) — no
       // tiene sentido dejar la selección apuntando a un bucket invisible.
@@ -437,13 +454,23 @@ export default function BancoPreguntasPage() {
     if (!dialogoBorrar) return;
     try {
       await borrarCategoria(dialogoBorrar.id);
-      toast.success('Categoría borrada. Las preguntas quedan sin clasificar.');
+      toast.success('Categoría dada de baja. La podés devolver cuando quieras.');
       if (catSeleccionada === dialogoBorrar.id) setCatSeleccionada(null);
       await cargarCategorias(materiaId);
     } catch {
-      toast.error('Error al borrar la categoría.');
+      toast.error('No se pudo dar de baja la categoría.');
     } finally {
       setDialogoBorrar(null);
+    }
+  }
+
+  async function handleReactivarCategoria(categoriaId: string) {
+    try {
+      await reactivarCategoria(categoriaId);
+      toast.success('Categoría devuelta al banco, con sus subcategorías.');
+      await cargarCategorias(materiaId);
+    } catch {
+      toast.error('No se pudo reactivar la categoría.');
     }
   }
 
@@ -559,6 +586,40 @@ export default function BancoPreguntasPage() {
                   onMoverCategoria={handleMoverCategoria}
                   onMoverPregunta={handleMoverPregunta}
                 />
+              )}
+
+              {/* La papelera de categorías. Va fuera del árbol a propósito: son
+                  categorías que ya no clasifican nada nuevo, y mezclarlas arriba
+                  volvería a ensuciar justamente lo que la baja vino a ordenar.
+                  Sin esta lista, dar de baja sería indistinguible de borrar. */}
+              {categoriasDeBaja.length > 0 && (
+                <details className="mt-3 rounded-lg border border-outline-variant/40">
+                  <summary className="cursor-pointer px-3 py-2 text-label-sm text-on-surface-variant">
+                    <Icon name="delete_outline" className="text-[15px] align-middle mr-1" />
+                    {categoriasDeBaja.length}{' '}
+                    {categoriasDeBaja.length === 1
+                      ? 'categoría dada de baja'
+                      : 'categorías dadas de baja'}
+                  </summary>
+                  <ul className="px-3 pb-2 space-y-1">
+                    {categoriasDeBaja.map((c) => (
+                      <li
+                        key={c.id}
+                        className="flex items-center justify-between gap-2 text-label-sm"
+                      >
+                        <span className="truncate text-on-surface-variant">{c.nombre}</span>
+                        <button
+                          type="button"
+                          className="shrink-0 p-1 rounded hover:bg-success-container text-success"
+                          title="Devolver esta categoría al banco"
+                          onClick={() => void handleReactivarCategoria(c.id)}
+                        >
+                          <Icon name="restore_from_trash" className="text-[16px]" />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
               )}
             </div>
           )}

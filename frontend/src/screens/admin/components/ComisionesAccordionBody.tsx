@@ -290,7 +290,11 @@ export function ComisionesAccordionBody({
                   <th className="text-left text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider px-4 py-2">Año</th>
                   <th className="text-left text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider px-4 py-2">Cód. matriculación</th>
                   <th className="text-left text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider px-4 py-2">Tutor</th>
-                  <th className="text-right text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider px-4 py-2">Acciones</th>
+                  {/* Sticky a la derecha: la tabla scrollea en horizontal y esta
+                      columna, que es la que tiene el menú de la comisión (asignar
+                      tutor, dar de baja), quedaba fuera de la vista con el ancho
+                      típico de pantalla. Anclada, siempre está a mano. */}
+                  <th className="sticky right-0 z-10 bg-surface-container text-right text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider px-4 py-2">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-outline-variant/20">
@@ -346,7 +350,7 @@ export function ComisionesAccordionBody({
                             </span>
                           )}
                         </td>
-                        <td className="px-4 py-3 text-right">
+                        <td className="sticky right-0 z-10 bg-surface px-4 py-3 text-right">
                           <ActionMenu
                             ariaLabel={`Acciones de ${c.nombre}`}
                             items={accionesComision(c, comExpandida)}

@@ -14,12 +14,20 @@ import { authProvider } from '../authProvider';
 import { API_BASE } from '../api';
 
 import { fetchAutenticado } from '../fetchAutenticado';
+/** Filtro de baja lógica: vigentes, la papelera, o ambas. */
+export type EstadoPregunta = 'activa' | 'eliminada' | 'todas';
+
 export interface CategoriaPregunta {
   id: string;
   nombre: string;
   materia_id: string;
   categoria_padre_id: string | null;
   creada_en: string;
+  /**
+   * Baja lógica. null = vigente; con fecha ISO = dada de baja junto con toda su
+   * rama. Las preguntas conservan su categoría y todo se puede reactivar.
+   */
+  eliminada_en?: string | null;
 }
 
 export interface PreguntaBanco {
@@ -48,13 +56,25 @@ function headers() {
   };
 }
 
-export async function listarCategorias(materiaId: string): Promise<CategoriaPregunta[]> {
-  const res = await fetchAutenticado(
-    `${API_BASE}/exam-content/categorias?materia_id=${encodeURIComponent(materiaId)}`,
-    { headers: headers() },
-  );
+export async function listarCategorias(
+  materiaId: string,
+  estado: EstadoPregunta = 'activa',
+): Promise<CategoriaPregunta[]> {
+  const params = new URLSearchParams({ materia_id: materiaId, estado });
+  const res = await fetchAutenticado(`${API_BASE}/exam-content/categorias?${params}`, {
+    headers: headers(),
+  });
   if (!res.ok) throw new Error(`Error ${res.status} al listar categorías`);
   return res.json();
+}
+
+/** Devuelve al árbol una categoría dada de baja, con toda su rama. */
+export async function reactivarCategoria(categoriaId: string): Promise<void> {
+  const res = await fetchAutenticado(
+    `${API_BASE}/exam-content/categorias/${encodeURIComponent(categoriaId)}/reactivar`,
+    { method: 'POST', headers: headers() },
+  );
+  if (!res.ok) throw new Error(`Error ${res.status} al reactivar la categoría`);
 }
 
 export async function crearCategoria(payload: {
@@ -116,9 +136,6 @@ export async function borrarCategoria(categoriaId: string): Promise<void> {
   );
   if (!res.ok) throw new Error(`Error ${res.status} al borrar categoría`);
 }
-
-/** Filtro de baja lógica del banco: vigentes, la papelera, o ambas. */
-export type EstadoPregunta = 'activa' | 'eliminada' | 'todas';
 
 export async function listarPreguntasBanco(
   materiaId: string,
