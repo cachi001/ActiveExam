@@ -25,6 +25,12 @@ import { useAutoRefresh } from '../lib/useAutoRefresh';
 import { useToast } from '../ui/toast';
 import { useAuth } from '../lib/authStore';
 import { tieneCapacidad } from '../lib/capabilities';
+import {
+  contarDeBaja,
+  filtrarPorEstado,
+  OPCIONES_ESTADO_BAJA,
+  type EstadoBajaFiltro,
+} from './materias/filtroEstado';
 import { api } from '../lib/api';
 import {
   crearMateria,
@@ -82,6 +88,15 @@ export default function MateriasComisiones() {
   // recrear a mano materias que ya existían. Son tres estados, no dos.
   const [errorMaterias, setErrorMaterias] = useState<string | null>(null);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<number | undefined>();
+
+  // Filtro de baja lógica. Arranca en 'activa': quien entra a gestionar materias
+  // viene a ver las vigentes. Antes no existía, así que las dadas de baja
+  // quedaban mezcladas con un cartel y no había forma de aislarlas para
+  // reactivarlas ni de sacarlas de la vista.
+  const [estadoMaterias, setEstadoMaterias] = useState<EstadoBajaFiltro>('activa');
+  const [estadoComisiones, setEstadoComisiones] = useState<EstadoBajaFiltro>('activa');
+  const materiasVisibles = filtrarPorEstado(materias, estadoMaterias);
+  const materiasDeBaja = contarDeBaja(materias);
 
   // ── Acordeón ──────────────────────────────────────────────────────────────
   const [expandida, setExpandida] = useState<string | null>(null);
@@ -514,14 +529,59 @@ export default function MateriasComisiones() {
           <div className="grid lg:grid-cols-3 gap-lg items-start">
             {/* Columna izquierda: lista de materias (seleccionables). */}
             <div className="lg:col-span-1 rounded-xl border border-outline-variant/60 bg-surface-container-lowest shadow-card overflow-hidden">
-              <div className="px-4 py-3 border-b border-outline-variant/40 flex items-center gap-2">
+              <div className="px-4 py-3 border-b border-outline-variant/40 flex items-center gap-2 flex-wrap">
                 <Icon name="school" className="text-[16px] text-on-surface-variant shrink-0" />
                 <h2 className="text-[13px] font-semibold text-on-surface">
-                  Materias <span className="text-on-surface-variant font-normal">({materias.length})</span>
+                  Materias{' '}
+                  <span className="text-on-surface-variant font-normal">
+                    ({materiasVisibles.length})
+                  </span>
                 </h2>
+                <label className="ml-auto flex items-center gap-1.5 text-[11px] text-on-surface-variant">
+                  <span className="sr-only">Filtrar materias por estado</span>
+                  <select
+                    aria-label="Filtrar materias por estado"
+                    value={estadoMaterias}
+                    onChange={(e) => setEstadoMaterias(e.target.value as EstadoBajaFiltro)}
+                    className="rounded-md border border-outline-variant/60 bg-white px-2 py-1 text-[11px] text-on-surface focus:border-primary focus:outline-none"
+                  >
+                    {OPCIONES_ESTADO_BAJA.map((o) => (
+                      <option key={o.valor} value={o.valor}>{o.label}</option>
+                    ))}
+                  </select>
+                </label>
               </div>
+              {/* Que haya materias dadas de baja escondidas tiene que decirse: si
+                  no, quien busca una que dio de baja concluye que se borró. */}
+              {estadoMaterias === 'activa' && materiasDeBaja > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setEstadoMaterias('inactiva')}
+                  className="w-full px-4 py-2 text-left text-[11px] text-on-surface-variant bg-surface-container-low hover:bg-surface-container border-b border-outline-variant/40"
+                >
+                  <Icon name="delete_outline" className="text-[13px] align-middle mr-1" />
+                  Hay {materiasDeBaja}{' '}
+                  {materiasDeBaja === 1 ? 'materia dada de baja' : 'materias dadas de baja'}.
+                  Verlas
+                </button>
+              )}
+              {/* La lista vacía POR EL FILTRO no es "no hay materias": decirlo así
+                  llevaría a crear de nuevo una materia que ya existe. */}
+              {materiasVisibles.length === 0 && (
+                <div className="px-4 py-10 text-center text-[12px] text-on-surface-variant space-y-2">
+                  <Icon name="filter_alt_off" className="text-[28px] text-outline" />
+                  <p>
+                    {estadoMaterias === 'inactiva'
+                      ? 'No hay materias dadas de baja.'
+                      : 'Ninguna materia coincide con este filtro.'}
+                  </p>
+                  <Button variant="ghost" size="sm" onClick={() => setEstadoMaterias('todas')}>
+                    Ver todas
+                  </Button>
+                </div>
+              )}
               <div className="divide-y divide-outline-variant/30">
-                {materias.map((m) => {
+                {materiasVisibles.map((m) => {
                   const sel = expandida === m.id;
                   return (
                     <div
@@ -598,6 +658,12 @@ export default function MateriasComisiones() {
                   );
                 }
                 const mostrarFormComision = formComision?.materiaId === m.id;
+                const comisionesDeLaMateria = comisionesPorMateria[m.id] ?? [];
+                const comisionesVisibles = filtrarPorEstado(
+                  comisionesDeLaMateria,
+                  estadoComisiones,
+                );
+                const comisionesDeBaja = contarDeBaja(comisionesDeLaMateria);
                 return (
                   <>
                     <div className="px-4 py-3 border-b border-outline-variant/40 flex items-center justify-between gap-2">
@@ -606,7 +672,7 @@ export default function MateriasComisiones() {
                           Comisiones de {m.nombre}
                         </h2>
                         <p className="text-[11px] text-on-surface-variant">
-                          {(comisionesPorMateria[m.id]?.length ?? 0)} comisión(es)
+                          {comisionesVisibles.length} comisión(es)
                           {m.coordinadores && m.coordinadores.length > 0
                             ? ` · Coordina: ${m.coordinadores.map((c) => c.nombre).join(', ')}`
                             : ''}
@@ -615,12 +681,38 @@ export default function MateriasComisiones() {
                             : ''}
                         </p>
                       </div>
-                      {puedeEditarEstructura && (
-                        <Button variant="outline" size="sm" icon="add" onClick={() => abrirCrearComision(m.id)}>
-                          Nueva comisión
-                        </Button>
-                      )}
+                      <div className="flex items-center gap-2 shrink-0">
+                        <select
+                          aria-label="Filtrar comisiones por estado"
+                          value={estadoComisiones}
+                          onChange={(e) => setEstadoComisiones(e.target.value as EstadoBajaFiltro)}
+                          className="rounded-md border border-outline-variant/60 bg-white px-2 py-1 text-[11px] text-on-surface focus:border-primary focus:outline-none"
+                        >
+                          {OPCIONES_ESTADO_BAJA.map((o) => (
+                            <option key={o.valor} value={o.valor}>{o.label}</option>
+                          ))}
+                        </select>
+                        {puedeEditarEstructura && (
+                          <Button variant="outline" size="sm" icon="add" onClick={() => abrirCrearComision(m.id)}>
+                            Nueva comisión
+                          </Button>
+                        )}
+                      </div>
                     </div>
+                    {estadoComisiones === 'activa' && comisionesDeBaja > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setEstadoComisiones('inactiva')}
+                        className="w-full px-4 py-2 text-left text-[11px] text-on-surface-variant bg-surface-container-low hover:bg-surface-container border-b border-outline-variant/40"
+                      >
+                        <Icon name="delete_outline" className="text-[13px] align-middle mr-1" />
+                        Hay {comisionesDeBaja}{' '}
+                        {comisionesDeBaja === 1
+                          ? 'comisión dada de baja'
+                          : 'comisiones dadas de baja'}
+                        . Verlas
+                      </button>
+                    )}
                     {/* c-78 §18.4: el aviso completo, con qué falta y por qué
                         importa, va donde se está trabajando la materia. Las
                         comisiones sin tutor ya se marcan una por una en la
@@ -648,7 +740,7 @@ export default function MateriasComisiones() {
                     <ComisionesAccordionBody
                       materiaId={m.id}
                       cargando={cargandoComisiones[m.id]}
-                      comisiones={comisionesPorMateria[m.id]}
+                      comisiones={comisionesVisibles}
                       mostrarFormComision={mostrarFormComision}
                       formComision={mostrarFormComision ? formComision : null}
                       setFormComision={setFormComision}
