@@ -51,7 +51,14 @@ interface Props {
   abierto: boolean;
   onCerrar: () => void;
   /** `examenesCreados` es 1 salvo que se haya replicado a varias comisiones. */
-  onCreado: (examenId: string, totalPreguntas: number, examenesCreados: number) => void;
+  onCreado: (
+    examenId: string,
+    /** Largo del examen: cuántas preguntas rinde cada alumno. */
+    largoDelExamen: number,
+    examenesCreados: number,
+    /** Pool del que se sortea ese largo. */
+    poolDelExamen: number,
+  ) => void;
 }
 
 export function CrearExamenModal({ abierto, onCerrar, onCreado }: Props) {
@@ -72,9 +79,8 @@ export function CrearExamenModal({ abierto, onCerrar, onCreado }: Props) {
   // pero editable — cada docente/materia puede pedir otra escala.
   const [notaMaxima, setNotaMaxima] = useState(100);
   const [notaAprobacion, setNotaAprobacion] = useState(60);
-  // c-78 E-07. Ambos en false por default: crear un examen sigue haciendo lo
-  // mismo que siempre salvo que se pidan explícitamente.
-  const [sorteoPorIntento, setSorteoPorIntento] = useState(false);
+  // c-78 E-07: el sorteo por intento es el ÚNICO modo de armado. No se elige.
+  const SORTEO_POR_INTENTO = true;
   const [borrador, setBorrador] = useState(false);
 
   // Al cambiar materia, cargar categorías + contar disponibles
@@ -202,10 +208,13 @@ export function CrearExamenModal({ abierto, onCerrar, onCreado }: Props) {
         })),
         nota_maxima: notaMaxima,
         nota_aprobacion: notaAprobacion,
-        sorteo_por_intento: sorteoPorIntento,
+        sorteo_por_intento: SORTEO_POR_INTENTO,
         borrador,
       });
-      onCreado(result.examen_id, result.total_preguntas, result.examenes.length);
+      // El largo del examen (lo que rinde cada alumno) y el pool del que se sortea
+      // son números distintos: `result.total_preguntas` es el POOL. Antes se avisaba
+      // con el pool, así que quien pedía 10 de 30 leía "creado con 30 preguntas".
+      onCreado(result.examen_id, totalPreguntas, result.examenes.length, poolDelExamen);
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Error al crear examen');
     } finally {
@@ -222,7 +231,6 @@ export function CrearExamenModal({ abierto, onCerrar, onCreado }: Props) {
     setTramos([]);
     setNotaMaxima(100);
     setNotaAprobacion(60);
-    setSorteoPorIntento(false);
     setBorrador(false);
     onCerrar();
   };
@@ -438,19 +446,16 @@ export function CrearExamenModal({ abierto, onCerrar, onCreado }: Props) {
             </div>
           )}
 
-          {/* c-78 E-07: sorteo por intento + borrador */}
+          {/* c-78 E-07: el sorteo por intento NO es opcional — todo examen reparte
+              preguntas distintas a cada alumno. Antes era un checkbox que arrancaba
+              apagado, así que el modo por defecto era el contrario al que se usa. */}
           {materiaId && (
             <div className="space-y-3 rounded-xl border border-outline-variant/40 p-3">
-              <label className="flex items-start gap-2.5 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={sorteoPorIntento}
-                  onChange={(e) => setSorteoPorIntento(e.target.checked)}
-                  className="mt-0.5 shrink-0"
-                />
+              <div className="flex items-start gap-2.5">
+                <Icon name="shuffle" className="text-[18px] text-primary shrink-0 mt-0.5" />
                 <span>
                   <span className="text-label-md text-on-surface">
-                    Que cada alumno reciba preguntas distintas
+                    Cada alumno recibe preguntas distintas
                   </span>
                   <span className="block text-label-sm text-on-surface-variant">
                     El sorteo se hace cuando cada alumno entra, no ahora. El examen se
@@ -458,9 +463,9 @@ export function CrearExamenModal({ abierto, onCerrar, onCreado }: Props) {
                     podés tocar el banco sin afectarlo.
                   </span>
                 </span>
-              </label>
+              </div>
 
-              {sorteoPorIntento && totalPreguntas > 0 && (
+              {totalPreguntas > 0 && (
                 <div className="rounded-lg bg-surface-100 px-3 py-2">
                   <p className="text-label-sm text-on-surface">
                     Cada alumno rinde{' '}

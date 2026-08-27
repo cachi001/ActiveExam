@@ -229,6 +229,10 @@ class PreguntaData:
     orden: int = 0
     categoria_ruta: list[str] | None = None
     blanks: list[BlankData] = field(default_factory=list)
+    #: `<name><text>` del XML. Es la única clave estable que trae un export de
+    #: Moodle (el id numérico solo llega por la API), así que es lo que permite
+    #: reconocer una pregunta al reimportar aunque le hayan editado el enunciado.
+    nombre_moodle: str | None = None
 
 
 @dataclass
@@ -281,6 +285,10 @@ def parse_moodle_xml(xml_bytes: bytes) -> ParseResult:
             omitidas.append(PreguntaOmitida(tipo=tipo, nombre=nombre))
             continue
 
+        # Cuántas había antes de parsear ésta: cada rama de abajo puede agregar una
+        # o ninguna (las inválidas se omiten), y el nombre se le pega a la que entró.
+        cuantas_antes = len(preguntas)
+
         if tipo in ("cloze", "multianswer"):
             preguntas.append(_parse_cloze(question, categoria_activa, len(preguntas)))
         elif tipo == "ddwtos":
@@ -319,6 +327,11 @@ def parse_moodle_xml(xml_bytes: bytes) -> ParseResult:
                     categoria_ruta=list(categoria_activa) if categoria_activa else None,
                 )
             )
+
+        # El nombre no lo arma cada sub-parser (son seis y no lo necesitan para
+        # nada más): se lo asigna acá a la que se acaba de agregar.
+        if len(preguntas) > cuantas_antes:
+            preguntas[-1].nombre_moodle = nombre
 
     if not preguntas:
         raise MoodleXmlVacioError("El XML no contiene preguntas de tipo soportado.")

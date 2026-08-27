@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from sqlalchemy import select, delete
+from datetime import datetime
+
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.exam_content.entities import CategoriaPregunta
@@ -41,19 +43,85 @@ class CategoriaPreguntaSqlRepository:
         await self._session.flush()
         return self._row_to_entity(row)
 
-    async def listar_por_materia(self, materia_id: str) -> list[CategoriaPregunta]:
-        result = await self._session.execute(
-            select(CategoriaPreguntaModel).where(
-                CategoriaPreguntaModel.materia_id == materia_id
-            )
+    async def listar_por_materia(
+        self, materia_id: str, *, estado: str = "activa"
+    ) -> list[CategoriaPregunta]:
+        """Categorías de la materia. ``estado``: 'activa' (default) | 'eliminada'
+        (la papelera) | 'todas'."""
+        stmt = select(CategoriaPreguntaModel).where(
+            CategoriaPreguntaModel.materia_id == materia_id
         )
+        if estado == "activa":
+            stmt = stmt.where(CategoriaPreguntaModel.eliminada_en.is_(None))
+        elif estado == "eliminada":
+            stmt = stmt.where(CategoriaPreguntaModel.eliminada_en.is_not(None))
+        result = await self._session.execute(stmt)
         return [self._row_to_entity(r) for r in result.scalars()]
 
     async def obtener(self, categoria_id: str) -> CategoriaPregunta | None:
         row = await self._session.get(CategoriaPreguntaModel, categoria_id)
         return self._row_to_entity(row) if row else None
 
+    async def _ids_de_la_rama(self, categoria_id: str) -> list[str]:
+        """La categoría y TODOS sus descendientes.
+
+        La baja tiene que alcanzar a la rama entera: si solo se marcara el padre,
+        sus subcategorías quedarían colgando de una categoría invisible y el árbol
+        las mostraría como si fueran raíces. Se recorre en memoria (un banco tiene
+        decenas de categorías, no miles) sobre las de la misma materia.
+        """
+        raiz = await self._session.get(CategoriaPreguntaModel, categoria_id)
+        if raiz is None:
+            return []
+        result = await self._session.execute(
+            select(
+                CategoriaPreguntaModel.id, CategoriaPreguntaModel.categoria_padre_id
+            ).where(CategoriaPreguntaModel.materia_id == raiz.materia_id)
+        )
+        hijos_de: dict[str | None, list[str]] = {}
+        for cid, padre in result:
+            hijos_de.setdefault(padre, []).append(cid)
+        rama: list[str] = []
+        pendientes = [categoria_id]
+        while pendientes:
+            actual = pendientes.pop()
+            rama.append(actual)
+            pendientes.extend(hijos_de.get(actual, []))
+        return rama
+
+    async def dar_de_baja(self, categoria_id: str, cuando: datetime) -> list[str]:
+        """Baja LÓGICA de la categoría y su rama. Devuelve los ids afectados.
+
+        Antes esto era un DELETE físico: el ON DELETE CASCADE borraba las
+        subcategorías y el SET NULL mandaba las preguntas a "Sin clasificar",
+        perdiendo la organización del banco sin posibilidad de deshacerlo.
+        """
+        ids = await self._ids_de_la_rama(categoria_id)
+        if not ids:
+            return []
+        await self._session.execute(
+            update(CategoriaPreguntaModel)
+            .where(CategoriaPreguntaModel.id.in_(ids))
+            .values(eliminada_en=cuando)
+        )
+        return ids
+
+    async def reactivar(self, categoria_id: str) -> list[str]:
+        """Devuelve al árbol la categoría y su rama. Devuelve los ids afectados."""
+        ids = await self._ids_de_la_rama(categoria_id)
+        if not ids:
+            return []
+        await self._session.execute(
+            update(CategoriaPreguntaModel)
+            .where(CategoriaPreguntaModel.id.in_(ids))
+            .values(eliminada_en=None)
+        )
+        return ids
+
     async def borrar(self, categoria_id: str) -> None:
+        """Borrado FÍSICO. Ya no lo usa la API (ver `dar_de_baja`): se conserva
+        porque el import de Moodle reconcilia categorías y puede necesitar
+        eliminar una que nunca llegó a tener contenido."""
         await self._session.execute(
             delete(CategoriaPreguntaModel).where(
                 CategoriaPreguntaModel.id == categoria_id
@@ -169,4 +237,5 @@ class CategoriaPreguntaSqlRepository:
             materia_id=row.materia_id,
             categoria_padre_id=row.categoria_padre_id,
             creada_en=row.creada_en,
+            eliminada_en=row.eliminada_en,
         )

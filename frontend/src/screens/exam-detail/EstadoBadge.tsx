@@ -1,16 +1,6 @@
 import { Badge } from '../../ui/components';
 import type { EstadoMoodle } from '../../lib/examContentResultados';
-
-const ESTADO_MOODLE_CONFIG: Record<EstadoMoodle, { label: string; tone: 'warning' | 'success' | 'error' | 'neutral' | 'primary' }> = {
-  pendiente: { label: 'Pendiente de sincronizar', tone: 'warning' },
-  enviado:   { label: 'Sincronizado en Moodle',  tone: 'success' },
-  fallido:   { label: 'Falló',                   tone: 'error' },
-  sin_token: { label: 'Sin token / no enviado',  tone: 'neutral' },
-  // c-78 D14: tono distinto de 'enviado' A PROPÓSITO. Verde = el campus lo
-  // confirmó; este otro tono = alguien lo afirmó. Quien mira la pantalla
-  // tiene que poder distinguirlos de un vistazo.
-  manual:    { label: 'Cargada a mano',          tone: 'primary' },
-};
+import { useEstadosMoodle } from './useEstadosMoodle';
 
 // Por qué la nota NO se va a mandar. Va en ROJO y PISA al estado de sincronización:
 // una nota retenida figuraba como "Pendiente de sincronizar", igual que una que
@@ -55,6 +45,8 @@ export function EstadoBadge({
   marcadaManualPor?: string | null;
   marcadaManualEn?: string | null;
 }) {
+  // La etiqueta y el color de cada estado los define el backend (fuente única).
+  const estados = useEstadosMoodle();
   if (retenidoPor) {
     const ret = RETENCION_CONFIG[retenidoPor] ?? {
       label: 'Retenida por revisión',
@@ -66,7 +58,8 @@ export function EstadoBadge({
       </span>
     );
   }
-  const cfg = ESTADO_MOODLE_CONFIG[estado] ?? { label: estado, tone: 'neutral' as const };
+  const info = estados.find((e) => e.valor === estado);
+  const cfg = { label: info?.etiqueta ?? estado, tone: info?.tono ?? ('neutral' as const) };
   if (estado === 'manual') {
     // El ORIGEN del estado tiene que estar a la vista: "marcado por X el Y" no
     // es lo mismo que "confirmado por el campus".

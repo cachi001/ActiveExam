@@ -14,12 +14,20 @@ import { authProvider } from '../authProvider';
 import { API_BASE } from '../api';
 
 import { fetchAutenticado } from '../fetchAutenticado';
+/** Filtro de baja lógica: vigentes, la papelera, o ambas. */
+export type EstadoPregunta = 'activa' | 'eliminada' | 'todas';
+
 export interface CategoriaPregunta {
   id: string;
   nombre: string;
   materia_id: string;
   categoria_padre_id: string | null;
   creada_en: string;
+  /**
+   * Baja lógica. null = vigente; con fecha ISO = dada de baja junto con toda su
+   * rama. Las preguntas conservan su categoría y todo se puede reactivar.
+   */
+  eliminada_en?: string | null;
 }
 
 export interface PreguntaBanco {
@@ -34,6 +42,11 @@ export interface PreguntaBanco {
    * sync desde Moodle vuelven a recategorizarla (0058).
    */
   categoria_manual: boolean;
+  /**
+   * Baja lógica. null = vigente; con fecha ISO = dada de baja (sale del banco y
+   * de los exámenes que se armen desde ahora, pero no se borra y se reactiva).
+   */
+  eliminada_en?: string | null;
 }
 
 function headers() {
@@ -43,13 +56,25 @@ function headers() {
   };
 }
 
-export async function listarCategorias(materiaId: string): Promise<CategoriaPregunta[]> {
-  const res = await fetchAutenticado(
-    `${API_BASE}/exam-content/categorias?materia_id=${encodeURIComponent(materiaId)}`,
-    { headers: headers() },
-  );
+export async function listarCategorias(
+  materiaId: string,
+  estado: EstadoPregunta = 'activa',
+): Promise<CategoriaPregunta[]> {
+  const params = new URLSearchParams({ materia_id: materiaId, estado });
+  const res = await fetchAutenticado(`${API_BASE}/exam-content/categorias?${params}`, {
+    headers: headers(),
+  });
   if (!res.ok) throw new Error(`Error ${res.status} al listar categorías`);
   return res.json();
+}
+
+/** Devuelve al árbol una categoría dada de baja, con toda su rama. */
+export async function reactivarCategoria(categoriaId: string): Promise<void> {
+  const res = await fetchAutenticado(
+    `${API_BASE}/exam-content/categorias/${encodeURIComponent(categoriaId)}/reactivar`,
+    { method: 'POST', headers: headers() },
+  );
+  if (!res.ok) throw new Error(`Error ${res.status} al reactivar la categoría`);
 }
 
 export async function crearCategoria(payload: {
@@ -115,8 +140,9 @@ export async function borrarCategoria(categoriaId: string): Promise<void> {
 export async function listarPreguntasBanco(
   materiaId: string,
   categoriaId: string | null,
+  estado: EstadoPregunta = 'activa',
 ): Promise<PreguntaBanco[]> {
-  const params = new URLSearchParams({ materia_id: materiaId });
+  const params = new URLSearchParams({ materia_id: materiaId, estado });
   if (categoriaId) params.set('categoria_id', categoriaId);
   else params.set('sin_categoria', 'true');
   const res = await fetchAutenticado(`${API_BASE}/exam-content/preguntas?${params}`, {
@@ -124,6 +150,37 @@ export async function listarPreguntasBanco(
   });
   if (!res.ok) throw new Error(`Error ${res.status} al listar preguntas`);
   return res.json();
+}
+
+/**
+ * Da de baja una pregunta del banco. Baja LÓGICA: no se borra y se puede
+ * reactivar. Lanza con el mensaje del backend si la pregunta está en el pool de
+ * un examen vigente (409), donde se seguiría sorteando.
+ */
+export async function darDeBajaPregunta(preguntaId: string): Promise<void> {
+  const res = await fetchAutenticado(
+    `${API_BASE}/exam-content/preguntas/${encodeURIComponent(preguntaId)}`,
+    { method: 'DELETE', headers: headers() },
+  );
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const detail = (body as any)?.detail;
+    const msg =
+      typeof detail === 'string'
+        ? detail
+        : detail?.mensaje ?? `Error ${res.status} al dar de baja la pregunta`;
+    throw new Error(msg);
+  }
+}
+
+/** Devuelve al banco una pregunta dada de baja. */
+export async function reactivarPregunta(preguntaId: string): Promise<void> {
+  const res = await fetchAutenticado(
+    `${API_BASE}/exam-content/preguntas/${encodeURIComponent(preguntaId)}/reactivar`,
+    { method: 'POST', headers: headers() },
+  );
+  if (!res.ok) throw new Error(`Error ${res.status} al reactivar la pregunta`);
 }
 
 export interface OpcionPreview {

@@ -926,6 +926,10 @@ class AlumnosComisionPaginadosResponse(BaseModel):
 
     items: list[AlumnoElegibilidadResponse]
     total: int
+    #: Cuántos de TODOS los inscriptos (no de la página) no pueden rendir todavía.
+    #: La pantalla lo usa para avisar "faltan N" sin tener que recorrer las páginas:
+    #: con 89 inscriptos y 10 por página, el docente no puede deducirlo mirando.
+    no_pueden_rendir: int = 0
     page: int
     page_size: int
 

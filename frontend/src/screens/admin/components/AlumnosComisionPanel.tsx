@@ -39,6 +39,10 @@ export function AlumnosComisionPanel({
   // c-78 §13.2: paginación. Con 40 inscriptos el listado completo era ilegible.
   // `total` es el conjunto entero; `alumnos` solo la página visible.
   const [total, setTotal] = useState(0);
+  // Cuántos del TOTAL no pueden rendir. Viene del backend porque se calcula sobre
+  // todos los inscriptos, no sobre la página: con 89 y 10 por página, contarlos
+  // en el cliente daría un número que cambia al pasar de hoja.
+  const [noPuedenRendir, setNoPuedenRendir] = useState(0);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [descargando, setDescargando] = useState(false);
@@ -55,6 +59,7 @@ export function AlumnosComisionPanel({
       const data = await listarAlumnosDeComision(comisionId, { page, page_size: pageSize });
       setAlumnos(data.items);
       setTotal(data.total);
+      setNoPuedenRendir(data.no_pueden_rendir ?? 0);
     } catch (err) {
       const e = err as Error & { status?: number };
       setError(
@@ -249,17 +254,26 @@ export function AlumnosComisionPanel({
         </div>
       )}
 
-      {alumnos && alumnos.some((a) => !a.puede_rendir && a.razon) && (
-        <ul className="space-y-1">
-          {alumnos
-            .filter((a) => !a.puede_rendir && a.razon)
-            .map((a) => (
-              <li key={a.usuario_id} className="text-[11px] text-error flex items-start gap-1.5">
-                <Icon name="info" className="text-[13px] shrink-0 mt-0.5" />
-                <span><strong>{nombreAlumno(a)}</strong>: {a.razon}</span>
-              </li>
-            ))}
-        </ul>
+      {/* Antes acá se repetía UNA LÍNEA POR ALUMNO con el mismo texto que ya
+          muestra el badge rojo de su fila ("Falta consentimiento y biometría"),
+          y solo de la página visible. Con 89 inscriptos eso duplicaba la altura
+          del panel con información redundante y, aun así, no respondía la
+          pregunta real: cuántos del total se van a quedar afuera. */}
+      {noPuedenRendir > 0 && (
+        <div
+          role="alert"
+          className="flex items-start gap-2 rounded-lg bg-error-container/40 px-3 py-2 text-[12px] text-error"
+        >
+          <Icon name="warning" className="text-[16px] shrink-0 mt-0.5" fill />
+          <span>
+            <strong>
+              {noPuedenRendir} de {total} {total === 1 ? 'inscripto' : 'inscriptos'}
+            </strong>{' '}
+            {noPuedenRendir === 1 ? 'no va' : 'no van'} a poder rendir: falta que
+            completen el consentimiento o la captura biométrica. Cada fila muestra
+            qué le falta, y el export lo trae en una columna.
+          </span>
+        </div>
       )}
 
       <AlumnoPickerModal

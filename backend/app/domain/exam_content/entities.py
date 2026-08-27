@@ -44,6 +44,9 @@ class CategoriaPregunta:
     id: str | None = None
     categoria_padre_id: str | None = None
     creada_en: datetime | None = None
+    #: Baja lógica: None = vigente. Con fecha, la categoría (y su rama) salieron
+    #: del árbol pero no se borraron y se pueden reactivar.
+    eliminada_en: datetime | None = None
     subcategorias: tuple[CategoriaPregunta, ...] = field(default_factory=tuple)
 
 

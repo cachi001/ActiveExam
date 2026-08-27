@@ -195,14 +195,24 @@ export default function ExamList() {
     }
   };
 
-  const onCreado = (_examenId: string, totalPreguntas: number, examenesCreados = 1) => {
+  // El aviso tiene que decir lo que el docente acaba de pedir. Antes informaba el
+  // POOL (30) cuando había pedido sortear 10, y el examen recién creado figuraba con
+  // 0 preguntas en la tabla: tres números distintos para la misma cosa.
+  const onCreado = (
+    _examenId: string,
+    largoDelExamen: number,
+    examenesCreados = 1,
+    poolDelExamen = 0,
+  ) => {
     setImportOpen(false);
     setQuery((q) => ({ ...q, page: 1 }));
-    const preguntas = `${totalPreguntas} ${totalPreguntas === 1 ? 'pregunta' : 'preguntas'}`;
+    const preguntas = `${largoDelExamen} ${largoDelExamen === 1 ? 'pregunta' : 'preguntas'}`;
+    const sorteadasDe =
+      poolDelExamen > largoDelExamen ? `, sorteadas de ${poolDelExamen}` : '';
     toast.success(
       examenesCreados > 1
-        ? `${examenesCreados} exámenes creados, uno por comisión, con las mismas ${preguntas}.`
-        : `Examen creado con ${preguntas}.`,
+        ? `${examenesCreados} exámenes creados, uno por comisión. Cada alumno rinde ${preguntas}${sorteadasDe}.`
+        : `Examen creado. Cada alumno rinde ${preguntas}${sorteadasDe}.`,
     );
   };
 

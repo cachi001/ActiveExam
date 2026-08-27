@@ -15,6 +15,7 @@ import {
   previewPreguntaBanco,
   type PreguntaPreview,
 } from '../../lib/apiAdmin/bancoPreguntasApi';
+import { limpiarEnunciadoCloze } from '../../lib/cloze';
 
 const TIPO_LABEL: Record<string, string> = {
   multichoice: 'Opción múltiple',
@@ -111,7 +112,19 @@ export function PreviewPreguntaModal({ preguntaId, onCerrar }: Props) {
                 // El enunciado viene de Moodle en HTML (negritas, listas, código,
                 // imágenes embebidas). Renderizarlo como texto plano mostraría las
                 // etiquetas crudas y la vista previa no serviría para lo que es.
-                dangerouslySetInnerHTML={{ __html: pregunta.enunciado }}
+                //
+                // En las CLOZE el enunciado trae además la sintaxis de los huecos
+                // ({1:MULTICHOICE_S:=correcta#feedback~otra#feedback}), que embebe la
+                // respuesta correcta Y el feedback de cada opción. Volcarla tal cual
+                // hacía que la pantalla que promete "así se ve cuando la rinde un
+                // alumno" mostrara justo lo contrario: un bloque ilegible con las
+                // soluciones a la vista. Los huecos ya se listan abajo, uno por uno.
+                dangerouslySetInnerHTML={{
+                  __html:
+                    pregunta.tipo === 'cloze'
+                      ? limpiarEnunciadoCloze(pregunta.enunciado)
+                      : pregunta.enunciado,
+                }}
               />
 
               {pregunta.opciones.length > 0 && (

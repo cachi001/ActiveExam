@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import delete, func, or_, select, update
+from sqlalchemy import case, delete, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload, with_loader_criteria
@@ -35,6 +35,7 @@ from app.infrastructure.persistence.models.exam_content import (
     OpcionRespuestaModel,
     PreguntaClozeBlankModel,
     PreguntaExamenModel,
+    TramoSorteoExamenModel,
 )
 from app.infrastructure.persistence.models.comision_tutor import (
     ComisionTutorModel,
@@ -168,14 +169,33 @@ class ExamenContenidoSqlRepository:
         Opción B (pool de preguntas): cantidad_preguntas cuenta SOLO las preguntas
         seleccionadas (FILTER por seleccionada=true), para que el catálogo y el
         encabezado muestren el tamaño REAL del examen, no el del pool importado.
+
+        Con `modo_preguntas='sorteo_por_intento'` ese conteo NO sirve: el sorteo se
+        resuelve al arrancar cada intento, así que ninguna fila del pool queda
+        `seleccionada` y el contador daba 0 para un examen bien configurado (el
+        profesor armaba "10 de 30" y el detalle y el listado le mostraban 0, como si
+        el examen hubiera quedado vacío). Ahí el tamaño real es el largo del sorteo:
+        la suma de las cantidades de los tramos, que es lo que rinde cada alumno.
         """
+        largo_del_sorteo = (
+            select(func.coalesce(func.sum(TramoSorteoExamenModel.cantidad), 0))
+            .where(TramoSorteoExamenModel.examen_id == ExamenContenidoModel.id)
+            .correlate(ExamenContenidoModel)
+            .scalar_subquery()
+        )
         return (
             select(
                 ExamenContenidoModel.id,
                 ExamenContenidoModel.titulo,
-                func.count(PreguntaExamenModel.id)
-                .filter(PreguntaExamenModel.seleccionada.is_(True))
-                .label("cantidad_preguntas"),
+                case(
+                    (
+                        ExamenContenidoModel.modo_preguntas == "sorteo_por_intento",
+                        largo_del_sorteo,
+                    ),
+                    else_=func.count(PreguntaExamenModel.id).filter(
+                        PreguntaExamenModel.seleccionada.is_(True)
+                    ),
+                ).label("cantidad_preguntas"),
                 ExamenContenidoModel.comision_id,
                 ComisionModel.nombre.label("comision_nombre"),
                 ComisionModel.codigo.label("comision_codigo"),

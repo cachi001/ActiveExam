@@ -250,6 +250,19 @@ export async function getExamenHeaderFn(
     // c-78 §18.4. `?? null` a propósito: un backend viejo que no manda el campo
     // queda en "no se sabe", no en "falta el tutor".
     comision_sin_tutor: (data['comision_sin_tutor'] as boolean | null) ?? null,
+    // Este mapeo copia campo por campo, así que lo que no se nombra acá se
+    // PIERDE aunque el backend lo mande y el tipo lo declare. Faltaban dos, y
+    // los dos apagaban una sección entera del detalle sin ningún error visible:
+    //   - `modo_preguntas`: sin esto el detalle no sabía que el examen era
+    //     sorteado, así que igual mostraba la selección manual de preguntas con
+    //     "0 de 30 seleccionadas".
+    //   - `borrador`: el aviso de "examen sin habilitar" no aparecía NUNCA, que
+    //     es justo lo primero que hay que saber al abrir un examen (c-78 E-07).
+    modo_preguntas: (data['modo_preguntas'] as string | undefined) ?? undefined,
+    borrador: (data['borrador'] as boolean | undefined) ?? undefined,
+    apertura: (data['apertura'] as string | null) ?? null,
+    cierre: (data['cierre'] as string | null) ?? null,
+    eliminado_en: (data['eliminado_en'] as string | null) ?? null,
   };
 }
 

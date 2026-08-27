@@ -105,13 +105,21 @@ class _Inscripto:
 
 
 def test_las_filas_de_inscriptos_tienen_las_columnas_acordadas():
-    """Las 5 columnas que hacen falta para cruzar contra Moodle, en ese orden."""
+    """Las 5 de identificación para cruzar contra Moodle, MÁS la elegibilidad.
+
+    Las tres últimas se agregaron porque el archivo se descarga justamente para
+    saber quién no va a poder rendir (sin consentimiento o sin biometría no se
+    puede), y ese dato quedaba solo en la pantalla, alumno por alumno.
+    """
     assert [c.titulo for c in COLUMNAS_INSCRIPTOS] == [
         "Apellido",
         "Nombre",
         "Usuario",
         "Email",
         "Inscripción",
+        "Consentimiento",
+        "Biometría",
+        "¿Puede rendir?",
     ]
     filas = filas_inscriptos(
         [
@@ -121,18 +129,37 @@ def test_las_filas_de_inscriptos_tienen_las_columnas_acordadas():
                 username="EST-001",
                 email="juana@uni.edu",
                 inscripto_en=datetime(2026, 3, 15, 9, 30, tzinfo=UTC),
+                consentimiento_vigente=True,
+                biometria_vigente=True,
+                puede_rendir=True,
             )
         ]
     )
-    assert filas == [["Pérez", "Juana", "EST-001", "juana@uni.edu", "15/03/2026 09:30"]]
+    assert filas == [
+        [
+            "Pérez",
+            "Juana",
+            "EST-001",
+            "juana@uni.edu",
+            "15/03/2026 09:30",
+            "Sí",
+            "Sí",
+            "Sí",
+        ]
+    ]
 
 
 def test_un_inscripto_sin_nombre_no_saca_none_en_el_archivo():
-    """Un 'None' impreso en un listado que se cruza a mano es basura, no un dato."""
+    """Un 'None' impreso en un listado que se cruza a mano es basura, no un dato.
+
+    Sin datos de elegibilidad se informa "No"/"NO", que es la lectura conservadora:
+    decir que sí puede rendir sin saberlo mandaría al alumno a un examen que el
+    sistema le va a bloquear.
+    """
     filas = filas_inscriptos(
         [_Inscripto(apellido=None, nombre=None, username="EST-002", email="x@uni.edu")]
     )
-    assert filas == [["", "", "EST-002", "x@uni.edu", ""]]
+    assert filas == [["", "", "EST-002", "x@uni.edu", "", "No", "No", "NO"]]
 
 
 def test_las_notas_salen_con_el_estado_en_castellano():

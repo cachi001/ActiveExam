@@ -55,6 +55,13 @@ def test_etiqueta_estado_moodle_desconocido_se_humaniza():
 
 
 def test_todos_los_estados_moodle_cubiertos():
-    # Mismo conjunto que WritebackEstado + el alias de display 'sin_token'
-    # (resultados_query.ESTADO_SIN_TOKEN) — evita drift silencioso con el frontend.
-    assert set(ETIQUETA_ESTADO_MOODLE) == {"pendiente", "enviado", "fallido", "sin_token"}
+    # Se DERIVA del enum real (WritebackEstado + los alias de display 'sin_token' y
+    # 'manual'). Antes esta lista estaba escrita a mano acá, así que el test pasaba
+    # justamente por no haberse enterado de que c-78 D14 agregó 'manual': congelaba
+    # el conjunto viejo en vez de comparar contra la fuente.
+    # La cobertura completa vive en tests/test_estados_moodle_fuente_unica.py.
+    from app.application.moodle.resultados_query import ESTADO_MANUAL, ESTADO_SIN_TOKEN
+    from app.application.moodle.writeback_service import WritebackEstado
+
+    esperados = {e.value for e in WritebackEstado} | {ESTADO_SIN_TOKEN, ESTADO_MANUAL}
+    assert set(ETIQUETA_ESTADO_MOODLE) == esperados

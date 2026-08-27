@@ -290,7 +290,11 @@ export function ComisionesAccordionBody({
                   <th className="text-left text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider px-4 py-2">Año</th>
                   <th className="text-left text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider px-4 py-2">Cód. matriculación</th>
                   <th className="text-left text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider px-4 py-2">Tutor</th>
-                  <th className="text-right text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider px-4 py-2">Acciones</th>
+                  {/* Sticky a la derecha: la tabla scrollea en horizontal y esta
+                      columna, que es la que tiene el menú de la comisión (asignar
+                      tutor, dar de baja), quedaba fuera de la vista con el ancho
+                      típico de pantalla. Anclada, siempre está a mano. */}
+                  <th className="sticky right-0 z-10 bg-surface-container text-right text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider px-4 py-2">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-outline-variant/20">
@@ -346,26 +350,43 @@ export function ComisionesAccordionBody({
                             </span>
                           )}
                         </td>
-                        <td className="px-4 py-3 text-right">
+                        <td className="sticky right-0 z-10 bg-surface px-4 py-3 text-right">
                           <ActionMenu
                             ariaLabel={`Acciones de ${c.nombre}`}
                             items={accionesComision(c, comExpandida)}
                           />
                         </td>
                       </tr>
-                      {comExpandida && (
-                        <tr>
-                          <td colSpan={7} className="p-0">
-                            <AlumnosComisionPanel comisionId={c.id} comisionNombre={c.nombre} />
-                          </td>
-                        </tr>
-                      )}
+                      {/* El panel de alumnos NO va acá dentro. Estaba en un
+                          <td colSpan={7}> de esta tabla, que vive en un
+                          contenedor con `overflow-x-auto`: heredaba el ancho de
+                          las 7 columnas y quedaba arrastrado por el scroll
+                          horizontal, así que con muchos inscriptos los botones
+                          ("Inscribir alumno") y la última columna de cada fila
+                          se salían de la vista. Ahora se renderiza DEBAJO de la
+                          tabla, fuera del scroll, donde tiene el ancho completo. */}
                     </Fragment>
                   );
                 })}
               </tbody>
             </table>
           </div>
+
+          {/* Alumnos de la comisión expandida, FUERA del scroll horizontal de la
+              tabla. Solo hay una expandida a la vez, así que no hay ambigüedad
+              sobre a quién pertenece: el encabezado del panel la nombra. */}
+          {(() => {
+            const expandida = comisiones.find((c) => c.id === comisionExpandida);
+            if (!expandida) return null;
+            return (
+              <div className="hidden sm:block border-t border-outline-variant/30">
+                <AlumnosComisionPanel
+                  comisionId={expandida.id}
+                  comisionNombre={expandida.nombre}
+                />
+              </div>
+            );
+          })()}
 
           {/* Cards mobile */}
           <div className="sm:hidden divide-y divide-outline-variant/20">

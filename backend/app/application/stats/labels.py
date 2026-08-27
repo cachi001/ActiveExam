@@ -70,16 +70,39 @@ def etiqueta_decision(decision: str) -> str:
 
 
 # Estados de sincronización con Moodle (WritebackEstado + el alias de display
-# 'sin_token' de resultados_query.ESTADO_SIN_TOKEN). FUENTE ÚNICA de las etiquetas
-# que ve el admin en "Alumnos que rindieron" (filtro + badge de estado) — antes el
-# frontend las repetía a mano en dos lugares (ExamResultados.tsx y EstadoBadge.tsx),
-# lo que podía desincronizarse silenciosamente si el backend agregaba un estado.
+# 'sin_token' de resultados_query.ESTADO_SIN_TOKEN + 'manual' de c-78 D14).
+# FUENTE ÚNICA de las etiquetas que ve el admin en "Alumnos que rindieron" (filtro
+# + badge de estado): el frontend las consume por API (`GET /estados-moodle`) en vez
+# de repetirlas. Antes las tenía escritas a mano y ya se habían desfasado — cuando
+# apareció 'manual', el badge lo mostraba pero el filtro no lo ofrecía, así que el
+# estado se veía y no se podía buscar.
 ETIQUETA_ESTADO_MOODLE: dict[str, str] = {
     "pendiente": "Pendiente de sincronizar",
     "enviado": "Sincronizado en Moodle",
     "fallido": "Falló",
     "sin_token": "Sin token",
+    # c-78 D14: alguien AFIRMA que cargó la nota en el campus. No es 'enviado':
+    # ahí el campus confirmó. La diferencia importa ante un reclamo por una nota
+    # que no aparece en la libreta.
+    "manual": "Cargada a mano",
 }
+
+#: Color de cada estado. Vive acá y no en el frontend porque la distinción entre
+#: "el campus lo confirmó" (verde) y "alguien dice que lo cargó" es semántica, no
+#: estética: si se elige en la pantalla, cada pantalla la puede elegir distinto.
+TONO_ESTADO_MOODLE: dict[str, str] = {
+    "pendiente": "warning",
+    "enviado": "success",
+    "fallido": "error",
+    "sin_token": "neutral",
+    "manual": "primary",
+}
+
+#: Lista ordenada que consume el frontend para armar el filtro y el badge.
+ESTADOS_MOODLE: list[dict[str, str]] = [
+    {"valor": valor, "etiqueta": etiqueta, "tono": TONO_ESTADO_MOODLE.get(valor, "neutral")}
+    for valor, etiqueta in ETIQUETA_ESTADO_MOODLE.items()
+]
 
 
 def etiqueta_estado_moodle(estado: str) -> str:
@@ -119,6 +142,10 @@ ETIQUETA_ACCION: dict[str, str] = {
     "examen.seleccion_preguntas": "Cambió las preguntas del examen",
     "examen.baja": "Dio de baja un examen",
     "examen.reactivar": "Reactivó un examen",
+    "pregunta_banco.baja": "Dio de baja una pregunta del banco",
+    "pregunta_banco.reactivar": "Reactivó una pregunta del banco",
+    "categoria_banco.baja": "Dio de baja una categoría del banco",
+    "categoria_banco.reactivar": "Reactivó una categoría del banco",
     "examen.publicar_notas": "Publicó las notas del examen",
     "moodle.sync": "Sincronizó notas a Moodle",
     "moodle.nota_marcada_manual": "Marcó a mano que la nota se cargó en el campus",

@@ -222,8 +222,8 @@ async def importar_banco_desde_xml(
     if not validas:
         return ImportBancoReport(preguntas_nuevas=0, preguntas_actualizadas=0, omitidas=omitidas)
 
-    # Deduplicar DENTRO del mismo archivo (mismo criterio de identidad que
-    # _buscar_pregunta_banco: moodle_question_id, si no hay (enunciado, tipo)).
+    # Deduplicar DENTRO del mismo archivo, con el MISMO criterio de identidad que
+    # se usa después contra la base: moodle_question_id → nombre → (enunciado, tipo).
     # Sin esto, dos preguntas "iguales" en el mismo XML sin id crearían dos
     # filas nuevas en vez de que la última pise a la primera (como hacía la
     # versión secuencial, que las veía como "ya existe" en la 2da vuelta).
@@ -231,7 +231,13 @@ async def importar_banco_desde_xml(
     orden_dedup: list[tuple] = []
     for p_data, categoria_id in validas:
         moodle_qid = getattr(p_data, "moodle_question_id", None)
-        key = ("qid", moodle_qid) if moodle_qid else ("et", p_data.enunciado, p_data.tipo)
+        nombre = getattr(p_data, "nombre_moodle", None)
+        if moodle_qid:
+            key: tuple = ("qid", moodle_qid)
+        elif nombre:
+            key = ("nom", nombre, p_data.tipo)
+        else:
+            key = ("et", p_data.enunciado, p_data.tipo)
         if key not in dedup:
             orden_dedup.append(key)
         dedup[key] = (p_data, categoria_id)
@@ -241,16 +247,19 @@ async def importar_banco_desde_xml(
     #    resolver nueva/actualizada en memoria (antes: 1-2 SELECT por pregunta).
     existentes_result = await session.execute(
         sa.text(
-            "SELECT id, moodle_question_id, enunciado, tipo, categoria_manual, categoria_id "
-            "FROM pregunta_banco WHERE materia_id = :mid"
+            "SELECT id, moodle_question_id, nombre_moodle, enunciado, tipo, "
+            "categoria_manual, categoria_id FROM pregunta_banco WHERE materia_id = :mid"
         ),
         {"mid": materia_id},
     )
     por_qid: dict[int, dict] = {}
+    por_nombre_tipo: dict[tuple[str, str], dict] = {}
     por_enunciado_tipo: dict[tuple[str, str], dict] = {}
     for row in existentes_result.mappings():
         if row["moodle_question_id"] is not None:
             por_qid.setdefault(row["moodle_question_id"], row)
+        if row["nombre_moodle"]:
+            por_nombre_tipo.setdefault((row["nombre_moodle"], row["tipo"]), row)
         por_enunciado_tipo.setdefault((row["enunciado"], row["tipo"]), row)
 
     nuevas_rows: list[dict] = []
@@ -264,7 +273,16 @@ async def importar_banco_desde_xml(
 
     for p_data, categoria_id in validas:
         moodle_qid = getattr(p_data, "moodle_question_id", None)
+        nombre = getattr(p_data, "nombre_moodle", None)
+        # Orden de reconocimiento, del más confiable al de respaldo:
+        #   1. moodle_question_id — solo lo trae el sync vía API.
+        #   2. nombre_moodle      — lo trae el XML y sobrevive a que editen el texto.
+        #   3. enunciado          — para lo cargado antes de que se guardara el nombre.
+        # Sin el paso 2, corregir una errata y volver a subir el banco daba de alta
+        # la pregunta OTRA VEZ y dejaba viva la versión vieja.
         existente = por_qid.get(moodle_qid) if moodle_qid else None
+        if existente is None and nombre:
+            existente = por_nombre_tipo.get((nombre, p_data.tipo))
         if existente is None:
             existente = por_enunciado_tipo.get((p_data.enunciado, p_data.tipo))
 
@@ -276,7 +294,16 @@ async def importar_banco_desde_xml(
                 existente["categoria_id"] if existente["categoria_manual"] else categoria_id
             )
             actualizadas_rows.append(
-                {"id": banco_id, "enunciado": p_data.enunciado, "qid": moodle_qid, "cat_id": cat_final}
+                {
+                    "id": banco_id,
+                    "enunciado": p_data.enunciado,
+                    "qid": moodle_qid,
+                    "cat_id": cat_final,
+                    # Se refresca también en las que ya estaban: así una pregunta
+                    # cargada antes de la migración gana su clave estable en el
+                    # primer reimport, y el siguiente ya la reconoce por nombre.
+                    "nombre": nombre,
+                }
             )
             banco_ids_actualizadas.append(banco_id)
             actualizadas_items.append(
@@ -292,6 +319,7 @@ async def importar_banco_desde_xml(
                     "tipo": p_data.tipo,
                     "categoria_id": categoria_id,
                     "moodle_question_id": moodle_qid,
+                    "nombre_moodle": nombre,
                 }
             )
             nuevas_items.append(
@@ -339,6 +367,7 @@ async def importar_banco_desde_xml(
             sa.text(
                 "UPDATE pregunta_banco SET enunciado = :enunciado, "
                 "moodle_question_id = COALESCE(:qid, moodle_question_id), "
+                "nombre_moodle = COALESCE(:nombre, nombre_moodle), "
                 "categoria_id = :cat_id WHERE id = :id"
             ),
             actualizadas_rows,
@@ -359,8 +388,10 @@ async def importar_banco_desde_xml(
         await session.execute(
             sa.text(
                 "INSERT INTO pregunta_banco "
-                "(id, materia_id, enunciado, tipo, categoria_id, moodle_question_id) "
-                "VALUES (:id, :materia_id, :enunciado, :tipo, :categoria_id, :moodle_question_id)"
+                "(id, materia_id, enunciado, tipo, categoria_id, moodle_question_id, "
+                "nombre_moodle) "
+                "VALUES (:id, :materia_id, :enunciado, :tipo, :categoria_id, "
+                ":moodle_question_id, :nombre_moodle)"
             ),
             nuevas_rows,
         )

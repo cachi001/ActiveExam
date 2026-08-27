@@ -5,15 +5,22 @@ import { STAFF_NAV } from '../ui/nav';
 import { api } from '../lib/api';
 import { useToast } from '../ui/toast';
 import type { Materia } from '../lib/types';
-import type { CategoriaPregunta, PreguntaBanco } from '../lib/apiAdmin/bancoPreguntasApi';
+import type {
+  CategoriaPregunta,
+  EstadoPregunta,
+  PreguntaBanco,
+} from '../lib/apiAdmin/bancoPreguntasApi';
 import {
   listarCategorias,
   crearCategoria,
   renombrarCategoria,
   borrarCategoria,
+  reactivarCategoria,
   listarPreguntasBanco,
   moverPreguntaCategoria,
   moverCategoria,
+  darDeBajaPregunta,
+  reactivarPregunta,
 } from '../lib/apiAdmin/bancoPreguntasApi';
 import { CategoriasTree, serializarDnd } from './banco-preguntas/CategoriasTree';
 import { PreviewPreguntaModal } from './banco-preguntas/PreviewPreguntaModal';
@@ -84,15 +91,23 @@ function DialogoBorrar({
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm">
       <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm flex flex-col gap-4">
-        <h3 className="text-title-md font-semibold">Borrar categoría</h3>
+        {/* El texto viejo describía el borrado FÍSICO que hacía antes: "las
+            preguntas quedarán sin clasificar, las subcategorías se borrarán en
+            cascada". Eso ya no pasa: la baja es lógica, las preguntas conservan
+            su categoría y todo se recupera. */}
+        <h3 className="text-title-md font-semibold">Dar de baja la categoría</h3>
         <p className="text-body-md text-on-surface-variant">
-          ¿Borrar <strong>{categoria.nombre}</strong>? Las preguntas asociadas quedarán sin
-          clasificar. Las subcategorías se borrarán en cascada.
+          <strong>{categoria.nombre}</strong> y sus subcategorías salen del árbol del
+          banco y dejan de ofrecerse para armar exámenes.
+        </p>
+        <p className="text-body-md text-on-surface-variant">
+          No se borra nada: las preguntas siguen guardadas con su categoría, y podés
+          devolverla cuando quieras desde «Categorías dadas de baja».
         </p>
         <div className="flex justify-end gap-2">
           <Button variant="ghost" onClick={onCancelar}>Cancelar</Button>
           <Button variant="danger" onClick={onConfirmar}>
-            Borrar
+            Dar de baja
           </Button>
         </div>
       </div>
@@ -111,6 +126,8 @@ function ListaPreguntas({
   cargando,
   pageSize,
   onMover,
+  onDarDeBaja,
+  onReactivar,
 }: {
   preguntas: PreguntaBanco[];
   categorias: CategoriaPregunta[];
@@ -118,6 +135,8 @@ function ListaPreguntas({
   cargando: boolean;
   pageSize: number;
   onMover: (preguntaId: string, nuevaCatId: string | null) => void;
+  onDarDeBaja: (pregunta: PreguntaBanco) => void;
+  onReactivar: (preguntaId: string) => void;
 }) {
   const [moviendoId, setMoviendoId] = useState<string | null>(null);
   // c-78 E-08 (15.3): pregunta abierta en la vista previa. null = modal cerrado.
@@ -232,6 +251,27 @@ function ListaPreguntas({
                 >
                   <Icon name="drive_file_move" className="text-[16px]" />
                 </button>
+                {/* Baja LÓGICA: la pregunta sale del banco y de los exámenes que
+                    se armen de ahora en más, pero no se borra y se puede
+                    reactivar. El backend rechaza la baja si la pregunta está en
+                    un examen vigente, donde se seguiría sorteando. */}
+                {p.eliminada_en ? (
+                  <button
+                    className="p-1.5 rounded-lg hover:bg-success-container text-success"
+                    title="Devolver esta pregunta al banco"
+                    onClick={() => onReactivar(p.id)}
+                  >
+                    <Icon name="restore_from_trash" className="text-[16px]" />
+                  </button>
+                ) : (
+                  <button
+                    className="p-1.5 rounded-lg hover:bg-error-container/40 text-on-surface-variant hover:text-error"
+                    title="Dar de baja esta pregunta"
+                    onClick={() => onDarDeBaja(p)}
+                  >
+                    <Icon name="delete_outline" className="text-[16px]" />
+                  </button>
+                )}
               </>
             )}
           </div>
@@ -277,11 +317,18 @@ export default function BancoPreguntasPage() {
   const [cargandoPregs, setCargandoPregs] = useState(false);
   const [sinClasificarCount, setSinClasificarCount] = useState(0);
   const [pageSize, setPageSize] = useState(20);
+  // Filtro de baja lógica. Default 'activa': el banco es lo que se puede usar.
+  // Sin este filtro, dar de baja sería indistinguible de borrar y no habría
+  // forma de recuperar una pregunta.
+  const [estadoPreguntas, setEstadoPreguntas] = useState<EstadoPregunta>('activa');
 
   // Diálogos
   const [dialogoCrear, setDialogoCrear] = useState<{ padreId: string | null } | null>(null);
   const [dialogoRenombrar, setDialogoRenombrar] = useState<CategoriaPregunta | null>(null);
   const [dialogoBorrar, setDialogoBorrar] = useState<CategoriaPregunta | null>(null);
+  // Categorías dadas de baja de esta materia. Se listan aparte del árbol: sirven
+  // para recuperarlas, no para clasificar preguntas nuevas.
+  const [categoriasDeBaja, setCategoriasDeBaja] = useState<CategoriaPregunta[]>([]);
   const [dialogoImportar, setDialogoImportar] = useState(false);
 
   useEffect(() => {
@@ -291,11 +338,16 @@ export default function BancoPreguntasPage() {
   const cargarCategorias = useCallback(async (mid: string) => {
     setCargandoCats(true);
     try {
-      const [cats, sinClasificar] = await Promise.all([
+      // El árbol muestra las categorías vigentes; el contador de la papelera se
+      // pide aparte para poder avisar que hay categorías dadas de baja sin
+      // ensuciar el árbol con ellas.
+      const [cats, sinClasificar, deBaja] = await Promise.all([
         listarCategorias(mid),
         listarPreguntasBanco(mid, null),
+        listarCategorias(mid, 'eliminada').catch(() => []),
       ]);
       setCategorias(cats);
+      setCategoriasDeBaja(deBaja);
       setSinClasificarCount(sinClasificar.length);
       // Sin nada sin clasificar, el bucket queda oculto (CategoriasTree) — no
       // tiene sentido dejar la selección apuntando a un bucket invisible.
@@ -317,22 +369,60 @@ export default function BancoPreguntasPage() {
     cargarCategorias(materiaId);
   }, [materiaId, cargarCategorias]);
 
-  const cargarPreguntas = useCallback(async (mid: string, catId: string | null) => {
-    setCargandoPregs(true);
-    try {
-      const preg = await listarPreguntasBanco(mid, catId);
-      setPreguntas(preg);
-    } catch {
-      toast.error('No se pudieron cargar las preguntas.');
-    } finally {
-      setCargandoPregs(false);
-    }
-  }, [toast]);
+  const cargarPreguntas = useCallback(
+    async (mid: string, catId: string | null, est: EstadoPregunta) => {
+      setCargandoPregs(true);
+      try {
+        const preg = await listarPreguntasBanco(mid, catId, est);
+        setPreguntas(preg);
+      } catch {
+        toast.error('No se pudieron cargar las preguntas.');
+      } finally {
+        setCargandoPregs(false);
+      }
+    },
+    [toast],
+  );
 
   useEffect(() => {
     if (!materiaId) return;
-    cargarPreguntas(materiaId, catSeleccionada);
-  }, [materiaId, catSeleccionada, cargarPreguntas]);
+    cargarPreguntas(materiaId, catSeleccionada, estadoPreguntas);
+  }, [materiaId, catSeleccionada, estadoPreguntas, cargarPreguntas]);
+
+  // Baja LÓGICA de una pregunta. El backend responde 409 si está en el pool de un
+  // examen vigente: ahí se seguiría sorteando, así que el mensaje que trae dice en
+  // cuáles está y se muestra tal cual en vez de un "no se pudo" genérico.
+  async function handleDarDeBaja(pregunta: PreguntaBanco) {
+    const texto = limpiarEnunciadoCloze(pregunta.enunciado).slice(0, 60);
+    if (
+      !window.confirm(
+        `¿Dar de baja esta pregunta?\n\n"${texto}…"\n\nSale del banco y de los ` +
+          'exámenes que armes de ahora en más. No se borra: la podés reactivar ' +
+          'desde el filtro "Dadas de baja".',
+      )
+    ) {
+      return;
+    }
+    try {
+      await darDeBajaPregunta(pregunta.id);
+      toast.success('Pregunta dada de baja. La podés reactivar cuando quieras.');
+      await cargarPreguntas(materiaId, catSeleccionada, estadoPreguntas);
+      await cargarCategorias(materiaId);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'No se pudo dar de baja.');
+    }
+  }
+
+  async function handleReactivarPregunta(preguntaId: string) {
+    try {
+      await reactivarPregunta(preguntaId);
+      toast.success('Pregunta devuelta al banco.');
+      await cargarPreguntas(materiaId, catSeleccionada, estadoPreguntas);
+      await cargarCategorias(materiaId);
+    } catch {
+      toast.error('No se pudo reactivar la pregunta.');
+    }
+  }
 
   async function handleCrear(nombre: string) {
     if (!materiaId) return;
@@ -364,13 +454,23 @@ export default function BancoPreguntasPage() {
     if (!dialogoBorrar) return;
     try {
       await borrarCategoria(dialogoBorrar.id);
-      toast.success('Categoría borrada. Las preguntas quedan sin clasificar.');
+      toast.success('Categoría dada de baja. La podés devolver cuando quieras.');
       if (catSeleccionada === dialogoBorrar.id) setCatSeleccionada(null);
       await cargarCategorias(materiaId);
     } catch {
-      toast.error('Error al borrar la categoría.');
+      toast.error('No se pudo dar de baja la categoría.');
     } finally {
       setDialogoBorrar(null);
+    }
+  }
+
+  async function handleReactivarCategoria(categoriaId: string) {
+    try {
+      await reactivarCategoria(categoriaId);
+      toast.success('Categoría devuelta al banco, con sus subcategorías.');
+      await cargarCategorias(materiaId);
+    } catch {
+      toast.error('No se pudo reactivar la categoría.');
     }
   }
 
@@ -387,7 +487,7 @@ export default function BancoPreguntasPage() {
     }
     if (materiaId) {
       cargarCategorias(materiaId);
-      cargarPreguntas(materiaId, catSeleccionada);
+      cargarPreguntas(materiaId, catSeleccionada, estadoPreguntas);
     }
   }
 
@@ -395,7 +495,7 @@ export default function BancoPreguntasPage() {
     try {
       await moverPreguntaCategoria(preguntaId, nuevaCatId);
       toast.success('Pregunta movida.');
-      await cargarPreguntas(materiaId, catSeleccionada);
+      await cargarPreguntas(materiaId, catSeleccionada, estadoPreguntas);
     } catch {
       toast.error('Error al mover la pregunta.');
     }
@@ -487,6 +587,40 @@ export default function BancoPreguntasPage() {
                   onMoverPregunta={handleMoverPregunta}
                 />
               )}
+
+              {/* La papelera de categorías. Va fuera del árbol a propósito: son
+                  categorías que ya no clasifican nada nuevo, y mezclarlas arriba
+                  volvería a ensuciar justamente lo que la baja vino a ordenar.
+                  Sin esta lista, dar de baja sería indistinguible de borrar. */}
+              {categoriasDeBaja.length > 0 && (
+                <details className="mt-3 rounded-lg border border-outline-variant/40">
+                  <summary className="cursor-pointer px-3 py-2 text-label-sm text-on-surface-variant">
+                    <Icon name="delete_outline" className="text-[15px] align-middle mr-1" />
+                    {categoriasDeBaja.length}{' '}
+                    {categoriasDeBaja.length === 1
+                      ? 'categoría dada de baja'
+                      : 'categorías dadas de baja'}
+                  </summary>
+                  <ul className="px-3 pb-2 space-y-1">
+                    {categoriasDeBaja.map((c) => (
+                      <li
+                        key={c.id}
+                        className="flex items-center justify-between gap-2 text-label-sm"
+                      >
+                        <span className="truncate text-on-surface-variant">{c.nombre}</span>
+                        <button
+                          type="button"
+                          className="shrink-0 p-1 rounded hover:bg-success-container text-success"
+                          title="Devolver esta categoría al banco"
+                          onClick={() => void handleReactivarCategoria(c.id)}
+                        >
+                          <Icon name="restore_from_trash" className="text-[16px]" />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              )}
             </div>
           )}
         </Card>
@@ -502,10 +636,31 @@ export default function BancoPreguntasPage() {
                     ({preguntas.length} pregunta{preguntas.length !== 1 ? 's' : ''})
                   </span>
                 </p>
-                {preguntas.length > 0 && (
-                  <PageSizeSelect value={pageSize} onChange={setPageSize} />
-                )}
+                <div className="flex items-center gap-3">
+                  {/* La papelera del banco. Sin esto, dar de baja una pregunta
+                      sería indistinguible de borrarla. */}
+                  <select
+                    aria-label="Filtrar preguntas por estado"
+                    value={estadoPreguntas}
+                    onChange={(e) => setEstadoPreguntas(e.target.value as EstadoPregunta)}
+                    className="text-label-md border border-outline-variant rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary"
+                  >
+                    <option value="activa">En el banco</option>
+                    <option value="eliminada">Dadas de baja</option>
+                    <option value="todas">Todas</option>
+                  </select>
+                  {preguntas.length > 0 && (
+                    <PageSizeSelect value={pageSize} onChange={setPageSize} />
+                  )}
+                </div>
               </div>
+              {estadoPreguntas === 'eliminada' && (
+                <p className="mb-3 text-label-sm text-on-surface-variant flex items-start gap-1.5">
+                  <Icon name="info" className="text-[15px] shrink-0 mt-0.5" />
+                  Estas preguntas no se usan para armar exámenes. Nada se borró: se
+                  pueden devolver al banco cuando quieras.
+                </p>
+              )}
               <ListaPreguntas
                 key={catSeleccionada ?? '__sin_clasificar__'}
                 preguntas={preguntas}
@@ -514,6 +669,8 @@ export default function BancoPreguntasPage() {
                 cargando={cargandoPregs}
                 pageSize={pageSize}
                 onMover={handleMoverPregunta}
+                onDarDeBaja={handleDarDeBaja}
+                onReactivar={handleReactivarPregunta}
               />
             </Card>
           </div>
