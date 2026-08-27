@@ -9,6 +9,7 @@ import { getExamenHeaderFn } from '../lib/examContentResultados';
 import type { ExamenContenidoResumen } from '../lib/types';
 
 import { PreguntasSeleccionSection } from './exam-detail/PreguntasSeleccionSection';
+import { PoolExamenSection } from './exam-detail/PoolExamenSection';
 import { ConfiguracionExamenSection } from './exam-detail/ConfiguracionExamenSection';
 import { ComisionSection } from './exam-detail/ComisionSection';
 import { ComisionesDelExamenSection } from './exam-detail/ComisionesDelExamenSection';
@@ -156,13 +157,29 @@ export default function ExamDetail() {
             recibe cada alumno. Se pinta sola cuando no aplica. */}
         <SorteoSection examenId={examenId} />
 
-        <PreguntasSeleccionSection
-          examenId={examenId}
-          materiaId={examen?.materia_id}
-          onSeleccionGuardada={(cantidad) =>
-            setExamen((prev) => (prev ? { ...prev, cantidad_preguntas: cantidad } : prev))
-          }
-        />
+        {/* Elegir preguntas a mano es SOLO de los exámenes viejos de modo 'fijo'.
+            Los que se crean hoy sortean por intento: qué preguntas le tocan a cada
+            alumno se resuelve cuando entra, así que no hay nada que tildar acá. Antes
+            esta sección se mostraba siempre y abría en "Manual", con lo cual un examen
+            sorteado y bien configurado exhibía "0 de 30 preguntas seleccionadas" y
+            hacía creer que había quedado vacío. */}
+        {examen && examen.modo_preguntas !== 'sorteo_por_intento' && (
+          <PreguntasSeleccionSection
+            examenId={examenId}
+            materiaId={examen?.materia_id}
+            onSeleccionGuardada={(cantidad) =>
+              setExamen((prev) => (prev ? { ...prev, cantidad_preguntas: cantidad } : prev))
+            }
+          />
+        )}
+
+        {/* En un examen sorteado no hay nada que tildar, pero el docente igual
+            necesita VER el conjunto completo del que se sortea para revisar que
+            quedó bien armado. Sin esta sección, sacar la selección manual lo
+            dejaba sin ninguna forma de ver sus propias preguntas. */}
+        {examen && examen.modo_preguntas === 'sorteo_por_intento' && (
+          <PoolExamenSection examenId={examenId} />
+        )}
 
         <ComisionSection
           examenId={examenId}
