@@ -3947,7 +3947,13 @@ def create_exam_content_router(
         )
 
         async with session_factory() as session:
-            examen = await ExamenContenidoSqlRepository(session).obtener(examen_id)
+            # Cabecera: la respuesta son dos enteros. Cargar el pool entero para
+            # esto hacía que un examen con una pregunta inválida no pudiera ni
+            # mostrar su destino de nota, que es lo que hay que cargar para que
+            # las notas lleguen al campus.
+            examen = await ExamenContenidoSqlRepository(session).obtener_cabecera(
+                examen_id
+            )
 
         if examen is None:
             raise HTTPException(
@@ -4016,7 +4022,13 @@ def create_exam_content_router(
         )
 
         async with session_factory() as session:
-            examen = await ExamenContenidoSqlRepository(session).obtener(examen_id)
+            # Cabecera y no el agregado entero: la respuesta son catorce campos
+            # escalares y ninguna pregunta. Cargarlas obligaba a validarlas, así
+            # que una fila rota devolvía 500 y dejaba el examen sin configuración,
+            # sin destino de nota y sin poder publicar.
+            examen = await ExamenContenidoSqlRepository(session).obtener_cabecera(
+                examen_id
+            )
             if examen is None:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
@@ -4932,7 +4944,10 @@ def create_exam_content_router(
             # Tope de preguntas del examen: la selección no puede excederlo. Se
             # valida acá (y no solo en la UI) porque es el único punto por el que
             # pasa cualquier cambio de selección.
-            examen_cfg = await repo.obtener(examen_id)
+            # Cabecera: solo se lee el tope. Ver `obtener_cabecera` — construir el
+            # agregado valida cada pregunta, y acá eso convertía un mensaje claro
+            # sobre el tope en un 500 sin relación con lo que el docente hizo.
+            examen_cfg = await repo.obtener_cabecera(examen_id)
             tope = getattr(examen_cfg, "limite_preguntas", None) if examen_cfg else None
             if tope is not None and len(body.seleccionadas) > tope:
                 await session.rollback()
@@ -5654,7 +5669,13 @@ def create_exam_content_router(
             from app.infrastructure.persistence.repositories.exam_content import (
                 ExamenContenidoSqlRepository,
             )
-            examen_cfg = await ExamenContenidoSqlRepository(session).obtener(examen_id)
+            # Cabecera: acá solo se lee `politica_intentos`. Cargar el pool entero
+            # metía la validación de cada pregunta en el camino que MANDA LAS NOTAS
+            # al campus: una sola pregunta mal guardada dejaba a todo el curso sin
+            # sincronizar, y el motivo no se parecía en nada a la causa.
+            examen_cfg = await ExamenContenidoSqlRepository(session).obtener_cabecera(
+                examen_id
+            )
             politica = (
                 examen_cfg.politica_intentos
                 if examen_cfg is not None

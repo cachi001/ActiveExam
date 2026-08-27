@@ -651,6 +651,24 @@ class ExamenContenidoSqlRepository:
         await self._db.flush()
         return await self.listar_preguntas(examen_id)
 
+    async def obtener_cabecera(self, examen_id: str) -> ExamenContenidoModel | None:
+        """El examen SIN sus preguntas: la fila cruda, para leer sus escalares.
+
+        `obtener()` trae el pool entero y lo convierte a entidades de dominio, lo
+        que valida cada pregunta. Quien solo necesita la config o el destino de la
+        nota pagaba esa carga completa, y con ella su validación: una sola
+        pregunta mal guardada (una multichoice sin opciones, por ejemplo) hacía
+        estallar la lectura y dejaba el examen inabrible, justo cuando lo que hace
+        falta para arreglarlo se edita desde ahí.
+
+        Devuelve el modelo y no una entidad a propósito: construir la entidad es
+        exactamente lo que hay que evitar.
+        """
+        result = await self._db.execute(
+            select(ExamenContenidoModel).where(ExamenContenidoModel.id == examen_id)
+        )
+        return result.scalar_one_or_none()
+
     async def obtener(self, examen_id: str) -> ExamenContenido | None:
         """Recupera un examen por id con preguntas y opciones (eager load)."""
         result = await self._db.execute(
