@@ -37,14 +37,15 @@ describe('formToPatch', () => {
     // `mezclar_preguntas` ya NO se manda: es siempre true server-side y el PATCH
     // lo rechaza (extra='forbid'). Dejó de ser una opción del tutor.
     expect(patch).not.toHaveProperty('mezclar_preguntas');
-    // Tope vacío = sacar el tope; el backend interpreta 0 como NULL.
-    expect(patch).toHaveProperty('limite_preguntas', 0);
+    // `limite_preguntas` tampoco: cuántas preguntas tiene el examen ya se decide
+    // al armarlo (los tramos del sorteo, o el XML importado). Un tope aparte solo
+    // podía rechazar una decisión ya tomada, así que el campo se eliminó.
+    expect(patch).not.toHaveProperty('limite_preguntas');
   });
 
   it('bloqueado sin tocar cierre/intentos envía SOLO publicación', () => {
     const patch = formToPatch(form, true, form);
     expect(Object.keys(patch).sort()).toEqual([
-      'limite_preguntas',
       // c-78 D10: si el alumno ve sus eventos de proctoring mientras rinde es
       // configuración de publicación, no de mecánica — se edita aunque el examen
       // esté bloqueado por tener intentos rendidos.

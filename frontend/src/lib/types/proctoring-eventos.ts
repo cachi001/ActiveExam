@@ -206,6 +206,13 @@ export interface NotaExamen {
   nota_maxima?: number | null;
   /** true si la nota alcanza la nota de aprobación (decidido server-side). */
   aprobado?: boolean | null;
+  /**
+   * El resultado RESUELTO por el backend (`ResultadoNota`): 'aprobado',
+   * 'desaprobado', 'anulada', 'en_revision'… La etiqueta y el color salen del
+   * catálogo, para que el alumno vea lo mismo que el docente sobre su nota.
+   * Vacío mientras la nota no sea visible.
+   */
+  resultado?: string;
   /** C-69: si la nota ya se puede mostrar. Si false, `nota` viene null y se muestra
    *  "disponible al cerrar el examen (cierre)". */
   nota_visible?: boolean;
@@ -268,6 +275,8 @@ export interface PreguntaRevision {
 }
 
 export interface RevisionExamen {
+  /** El resultado RESUELTO por el backend (`ResultadoNota`). */
+  resultado?: string;
   examen_id: string;
   titulo: string;
   nota: number | null;

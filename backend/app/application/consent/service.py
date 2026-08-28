@@ -40,6 +40,30 @@ ACCION_VIA_ALTERNATIVA = "consent_alternative_chosen"
 TOPIC_ESCALACION_COORDINADOR = "consent.alternative.coordinador"
 
 
+def marcador_via_alternativa(exam_id: str) -> str:
+    """Marcador de máquina que identifica la solicitud en el audit log.
+
+    NO se puede sacar: `resolver()` lo busca como respaldo de
+    retrocompatibilidad para datos viejos que no tienen fila en
+    `solicitudes_via_alternativa`.
+    """
+    return f"via_alternativa:{exam_id}"
+
+
+def proposito_via_alternativa(exam_id: str) -> str:
+    """Lo que se guarda en el registro: una frase legible con el marcador dentro.
+
+    El campo `proposito` es el que la pantalla de Auditoría muestra como texto, y
+    escribir ahí solo `via_alternativa:{uuid}` dejaba una línea que no dice ni qué
+    pasó ni sobre qué examen. Es un registro de consentimiento (Ley 25.326): es la
+    prueba de que alguien pidió no dar su consentimiento biométrico.
+    """
+    return (
+        "Solicitó la vía alternativa al consentimiento biométrico "
+        f"({marcador_via_alternativa(exam_id)})"
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class ConsentTextView:
     """Vista del texto vigente para la pantalla (cinco bloques + version)."""
@@ -136,7 +160,7 @@ class ConsentService:
                 user_agent=user_agent,
                 accion=ACCION_VIA_ALTERNATIVA,
                 evidencia_id=None,
-                proposito=f"via_alternativa:{exam_id}",
+                proposito=proposito_via_alternativa(exam_id),
                 modulo=ModuloAuditoria.CONSENTIMIENTO,
                 entidad=EntidadAuditoria.USUARIO,
                 entidad_id=user_id,
@@ -255,12 +279,15 @@ class ConsentService:
                     return ResolucionConsentimiento.VIA_ALTERNATIVA_HABILITADA
 
         # Fallback retrocompatibilidad: audit log sin registro en tabla nueva
-        marcador = f"via_alternativa:{exam_id}"
+        # Por CONTENIDO y no por igualdad: las entradas viejas son el marcador
+        # solo, las nuevas lo llevan dentro de una frase legible. Las dos tienen
+        # que seguir resolviendo.
+        marcador = marcador_via_alternativa(exam_id)
         for entrada in await self._audit.list():
             if (
                 entrada.actor == user_id
                 and entrada.accion == ACCION_VIA_ALTERNATIVA
-                and entrada.proposito == marcador
+                and marcador in (entrada.proposito or "")
             ):
                 return ResolucionConsentimiento.VIA_ALTERNATIVA
 

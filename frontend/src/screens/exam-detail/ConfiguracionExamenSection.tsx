@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Button, Card, Icon, SectionTitle } from '../../ui/components';
+import { fechaEnArgentino } from '../../lib/fechaArgentina';
 import {
   getExamConfig,
   publicarNotasExamen,
@@ -93,12 +94,6 @@ function validarConfig(form: ConfigForm): string | null {
   if (aprob > max) {
     return 'La nota de aprobación no puede ser mayor que la nota máxima.';
   }
-  if (form.limitePreguntas.trim() !== '') {
-    const tope = Number(form.limitePreguntas);
-    if (!Number.isInteger(tope) || tope < 1) {
-      return 'El máximo de preguntas debe ser un número entero mayor a 0 (o dejalo vacío para no poner tope).';
-    }
-  }
   // C-69: apertura y cierre son OBLIGATORIOS (el gate de "mostrar nota al cerrar"
   // depende de la fecha de cierre; el examen va de una fecha/hora a otra).
   if (!form.apertura || !form.cierre) {
@@ -123,9 +118,6 @@ export function formToPatch(
     revision_habilitada: form.revisionHabilitada,
     mostrar_eventos_alumno: form.mostrarEventosAlumno,
     politica_intentos: form.politicaIntentos,
-    // Vacío = sacar el tope. El backend interpreta 0 como "sin tope" (en un PATCH
-    // parcial `null` significaría "no lo toques").
-    limite_preguntas: form.limitePreguntas.trim() === '' ? 0 : Number(form.limitePreguntas),
   };
   if (bloqueada) {
     const patch: Partial<ExamConfig> = { ...publicacion };
@@ -155,7 +147,8 @@ export function formToPatch(
 
 export function ConfiguracionExamenSection({
   examenId,
-  sorteado = false,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- lo pasa el padre
+  sorteado: _sorteado = false,
 }: {
   examenId: string;
   /** Si el examen sortea por intento, el tope de preguntas no se muestra: ya lo
@@ -429,6 +422,14 @@ export function ConfiguracionExamenSection({
                 disabled={guardando || bloqueada}
                 onChange={(e) => update('apertura', e.target.value)}
               />
+              {/* El control lo dibuja el NAVEGADOR con su idioma: en inglés esto
+                  mismo se ve 08/27/2026 10:49 PM y el sitio no lo puede cambiar.
+                  El mes con letras saca la ambigüedad. */}
+              {form.apertura && (
+                <p className="mt-1.5 text-label-sm text-on-surface-variant">
+                  {fechaEnArgentino(form.apertura)}
+                </p>
+              )}
             </div>
             <div>
               <label className={LABEL_CLS} htmlFor="cfg-cierre">Cierre del examen *</label>
@@ -443,6 +444,11 @@ export function ConfiguracionExamenSection({
                 disabled={guardando}
                 onChange={(e) => update('cierre', e.target.value)}
               />
+              {form.cierre && (
+                <p className="mt-1.5 text-label-sm text-on-surface-variant">
+                  {fechaEnArgentino(form.cierre)}
+                </p>
+              )}
               {bloqueada && (
                 <p className="mt-1.5 text-label-sm text-on-surface-variant">
                   Con el examen ya rendido, el cierre solo se puede <strong>extender</strong>.
@@ -588,33 +594,6 @@ export function ConfiguracionExamenSection({
               />
             </button>
           </div>
-
-          {/* En un examen sorteado el tope no aporta nada: el backend lo compara
-              contra la suma de los tramos que ya elegiste al crearlo, así que
-              solo puede rechazar una decisión ya tomada. Sigue estando para los
-              exámenes fijos importados de XML, donde sí acota qué se puede
-              seleccionar. */}
-          {!sorteado && (
-            <div>
-              <label className={LABEL_CLS} htmlFor="cfg-limite-preguntas">
-                Máximo de preguntas del examen
-              </label>
-              <input
-                id="cfg-limite-preguntas"
-                type="number"
-                min={1}
-                inputMode="numeric"
-                className={INPUT_CLS}
-                placeholder="Sin tope"
-                value={form.limitePreguntas}
-                disabled={guardando}
-                onChange={(e) => update('limitePreguntas', e.target.value)}
-              />
-              <p className="mt-1.5 text-label-sm text-on-surface-variant">
-                Dejalo vacío para no poner tope.
-              </p>
-            </div>
-          )}
 
           {/* Mezclar preguntas ya no es opcional: el orden aleatorio protege la
               integridad de la rendición y no cambia la nota (solo el orden). Se
