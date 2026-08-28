@@ -821,8 +821,12 @@ def create_exam_taking_router(
             ExamenContenidoSqlRepository,
         )
 
+        from app.domain.auth.authorization import _ROLES_SIN_LIMITE_DE_PERTENENCIA
+        from app.domain.auth.roles import Rol
+        from app.domain.exam_content.acceso_al_resumen import puede_ver_el_resumen
         from app.infrastructure.persistence.repositories.exam_content import (
             ComisionSqlRepository,
+            InscripcionSqlRepository,
         )
 
         async with session_factory() as session:
@@ -836,6 +840,40 @@ def create_exam_taking_router(
                     detail={"error": "examen_no_encontrado", "examen_id": examen_id},
                 )
 
+            # El resumen es de quien tiene algo que ver con el examen: el staff
+            # que lo tiene a cargo, o el alumno inscripto en su comisión.
+            # Respondía 200 a cualquier autenticado, así que con el id a mano un
+            # alumno de otra materia leía título, materia, comisión y fechas de
+            # una cátedra ajena. El resto del sistema ya acotaba por pertenencia
+            # (el listado no muestra ajenos, `/resultados` da 403).
+            comision_repo = ComisionSqlRepository(session)
+            tiene_pertenencia = principal.tiene_algun_rol(
+                _ROLES_SIN_LIMITE_DE_PERTENENCIA
+            ) or await comision_repo.tiene_pertenencia_sobre_examen(
+                principal.subject or "",
+                examen_id,
+                es_coordinador=principal.tiene_rol(Rol.COORDINADOR),
+                es_profesor=principal.tiene_rol(Rol.PROFESOR),
+            )
+            esta_inscripto = False
+            if resumen.comision_id and not tiene_pertenencia:
+                esta_inscripto = await InscripcionSqlRepository(
+                    session
+                ).esta_inscripto_institucional(
+                    principal.username or "", resumen.comision_id
+                )
+            if not puede_ver_el_resumen(
+                tiene_pertenencia=tiene_pertenencia,
+                esta_inscripto=esta_inscripto,
+                sin_comision=resumen.comision_id is None,
+            ):
+                # 404 y no 403: al que no tiene nada que ver con este examen no
+                # se le confirma siquiera que exista.
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail={"error": "examen_no_encontrado", "examen_id": examen_id},
+                )
+
             # c-78 §18.4: sin tutor a cargo, las notas de este examen se retienen
             # con motivo `sin_docente` y eso se descubre recién cuando el alumno
             # ya rindió. Se calcula acá —una query, solo en el detalle— para que
@@ -843,9 +881,7 @@ def create_exam_taking_router(
             # buscar: queda en None ("no aplica"), que no es lo mismo que "falta".
             sin_tutor: bool | None = None
             if resumen.comision_id:
-                tutores = await ComisionSqlRepository(session).tutores_de_comision(
-                    resumen.comision_id
-                )
+                tutores = await comision_repo.tutores_de_comision(resumen.comision_id)
                 sin_tutor = not tutores
 
         respuesta = _resumen_to_response(resumen)

@@ -39,6 +39,9 @@ export default function AdminDashboard() {
   // pantalla nueva que se sumaba al sistema quedaba afuera del panel y encima
   // podía ofrecer un destino sin permiso. Se excluye el propio dashboard.
   const roles = useAuth((s) => s.principal?.roles);
+  // El admin ve TODO el catálogo; el resto solo lo suyo. Cambia qué significa
+  // que la lista venga vacía.
+  const esInstitucional = (roles ?? []).includes('admin_sistema');
   // Atajos CURADOS: lo que el admin toca todos los días, no el mapa entero del
   // sistema (para eso está la barra lateral, que ya los lista todos). El orden es
   // el de uso real: cargar/configurar exámenes → armar materias y comisiones →
@@ -189,7 +192,15 @@ export default function AdminDashboard() {
                 ) : examenes.length === 0 ? (
                   <div className="px-lg py-xl flex flex-col items-center text-center gap-md text-on-surface-variant">
                     <Icon name="assignment" className="text-[36px]" />
-                    <p className="text-[14px]">Todavía no hay exámenes importados.</p>
+                    {/* "No hay exámenes" y "no ves ninguno" son cosas distintas.
+                        Al docente sin materias/comisiones a cargo el catálogo le
+                        vuelve vacío por scoping, y el mensaje genérico lo mandaba
+                        a pensar que el sistema estaba sin cargar. */}
+                    <p className="text-[14px]">
+                      {esInstitucional
+                        ? 'Todavía no hay exámenes importados.'
+                        : 'No tenés exámenes a cargo. Se ven los de las materias y comisiones que tengas asignadas: si esperabas ver alguno, pedí que te asignen.'}
+                    </p>
                   </div>
                 ) : (
                   examenes.map((e) => (
