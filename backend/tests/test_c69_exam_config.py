@@ -310,7 +310,13 @@ async def test_get_config_devuelve_defaults(admin_app, factory):
         "mezclar_preguntas": True,
         "limite_preguntas": None,
         "politica_intentos": "mas_alta",
-        "mostrar_nota": "al_cerrar",
+        # c-78 D9 (migración 0089): el default es 'nunca'. La nota no se publica
+        # sola al vencer el cierre — la publica una persona cuando terminó de
+        # revisar. `notas_publicadas_*` en None es justamente "todavía ocultas".
+        "mostrar_nota": "nunca",
+        "notas_publicadas_en": None,
+        "notas_publicadas_por": None,
+        "mostrar_eventos_alumno": False,
         "revision_habilitada": False,
         "bloqueada": False,
         # Freeze de config (C-72): qué campos quedan bloqueados o solo ampliables

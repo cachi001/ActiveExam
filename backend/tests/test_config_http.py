@@ -202,12 +202,18 @@ async def test_edicion_escribe_audit_log(app_y_factory) -> None:
             ).scalar_one()
 
     antes = await _contar()
-    # Valor unico para verificar el snapshot before/after.
-    await client.patch(
+    # Valor unico para verificar el snapshot before/after. Tiene que estar DENTRO
+    # del rango valido [70, 100]: con 63 el PATCH devolvia 422, no se escribia
+    # ninguna fila y el test fallaba por una razon que no tenia nada que ver con
+    # lo que dice medir (que la edicion queda auditada).
+    respuesta = await client.patch(
         "/api/v1/config",
-        json={"umbral_cola_revision": 63},
+        json={"umbral_cola_revision": 73},
         headers=_h(_token(["admin_sistema"])),
     )
+    # Se afirma el status: sin esto, cualquier rechazo futuro vuelve a aparecer
+    # como "no se escribio la auditoria" en vez de como lo que es.
+    assert respuesta.status_code == 200, respuesta.text
     despues = await _contar()
     assert despues == antes + 1
 
@@ -223,4 +229,4 @@ async def test_edicion_escribe_audit_log(app_y_factory) -> None:
     assert accion == "config_update"
     # El proposito guarda un snapshot before/after demostrable.
     assert "before" in proposito and "after" in proposito
-    assert "63" in proposito
+    assert "73" in proposito

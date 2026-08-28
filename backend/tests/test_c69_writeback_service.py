@@ -121,7 +121,17 @@ class _ServicioConDocenteResuelto(MoodleWritebackService):
     """
 
     async def _credencial_para(self, db, session_id):
-        return "token_del_docente", "docente-test-1", "Laura Fernández", None  # noqa: S106
+        # CINCO valores, no cuatro: la firma real devuelve tambien la base_url de
+        # la credencial del docente (C-73). El doble se quedo en la firma vieja y
+        # el desempaquetado explotaba con "expected 5, got 4" en cada test que lo
+        # usa — un error que no dice nada del comportamiento que se prueba.
+        return (
+            "token_del_docente",  # noqa: S106
+            "docente-test-1",
+            "Laura Fernández",
+            None,
+            None,
+        )
 
 
 @pytest.fixture

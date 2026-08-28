@@ -118,7 +118,16 @@ class _ServicioConDocenteResuelto(MoodleWritebackService):
     """
 
     async def _credencial_para(self, db, session_id):
-        return "token_del_docente", "docente-test-1", "Laura Fernández", None  # noqa: S106
+        # El quinto valor es la base_url de la credencial del docente (se sumó
+        # después de escribir este doble). None = se usa la del campus institucional,
+        # que es lo que estos tests mockean.
+        return (
+            "token_del_docente",  # noqa: S106
+            "docente-test-1",
+            "Laura Fernández",
+            None,
+            None,
+        )
 
 
 # El camino por defecto (`mod_assign`, C-73 Fase 1) resuelve cmid -> assign.id antes

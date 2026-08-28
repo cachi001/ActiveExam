@@ -312,7 +312,10 @@ async def test_usuario_dado_de_baja_no_puede_quedar_a_cargo(app, factory):
         )
 
     assert resp.status_code == 422, resp.text
-    assert resp.json()["detail"]["error"] == "docente_invalido"
+    # `usuario_dado_de_baja` y no un `docente_invalido` generico: la causa es lo
+    # unico que le dice al admin que tiene que dar de alta a alguien mas, no
+    # corregir el rol de este.
+    assert resp.json()["detail"]["error"] == "usuario_dado_de_baja"
 
 
 @pytest.mark.asyncio

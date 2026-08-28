@@ -72,7 +72,7 @@ async def test_esta_inscripto_true_solo_si_hay_inscripcion(factory) -> None:
         # Sin inscripción → False
         assert await repo.esta_inscripto_institucional(idn, comision_id) is False
         # Inscribir y verificar True
-        usuario_id = await repo.obtener_usuario_id_por_institucional(idn)
+        usuario_id = await repo.obtener_usuario_id_por_username(idn)
         await repo.inscribir(usuario_id, comision_id)
         await s.commit()
     async with factory() as s:
@@ -93,7 +93,7 @@ async def test_comision_ids_inscriptas(factory) -> None:
         repo = InscripcionSqlRepository(s)
         # Sin inscripciones → vacío
         assert await repo.comision_ids_inscriptas(idn) == []
-        usuario_id = await repo.obtener_usuario_id_por_institucional(idn)
+        usuario_id = await repo.obtener_usuario_id_por_username(idn)
         await repo.inscribir(usuario_id, comision_id)
         await s.commit()
     async with factory() as s:
