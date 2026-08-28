@@ -246,6 +246,165 @@ export async function quitarComisionDelExamenFn(
  * Habilita un examen en borrador (c-78 E-07). Es de IDA: para sacarlo de
  * circulación está la baja lógica. 404 si no existe o ya estaba habilitado.
  */
+/**
+ * Devuelve el examen a borrador. El backend lo rechaza con 409 si ya lo rindió
+ * alguien: esconderlo ahí sería sacarle el examen de abajo a quien está en el
+ * medio, y el mensaje que llega dice cuántos son.
+ */
+export async function volverExamenABorradorFn(
+  apiBase: string,
+  token: string | undefined,
+  examenId: string,
+): Promise<void> {
+  const res = await fetchAutenticado(
+    `${apiBase}/exam-content/${examenId}/volver-a-borrador`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    },
+  );
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const detail = (body as any)?.detail;
+    throw new Error(
+      typeof detail === 'string'
+        ? detail
+        : (detail?.mensaje ??
+            `No se pudo devolver el examen a borrador (HTTP ${res.status}).`),
+    );
+  }
+}
+
+/**
+ * Reemplaza la composición del sorteo: qué categorías entran, cuántas de cada
+ * una y de qué preguntas puede salir.
+ *
+ * El backend rearma tramos y pool con el MISMO armado que usa la creación, en
+ * una transacción: si el sorteo nuevo no se puede armar, el examen queda como
+ * estaba. Responde 409 si ya lo rindió alguien.
+ */
+export async function rearmarSorteoDelExamenFn(
+  apiBase: string,
+  token: string | undefined,
+  examenId: string,
+  cuerpo: {
+    sorteo: {
+      categoria_id: string | null;
+      cantidad: number;
+      tipos: string[] | null;
+      incluir_subcategorias: boolean;
+    }[];
+    pool_preguntas?: string[];
+  },
+): Promise<{ largo_del_examen: number; pool_total: number }> {
+  const res = await fetchAutenticado(`${apiBase}/exam-content/${examenId}/sorteo`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(cuerpo),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const detail = (body as any)?.detail;
+    throw new Error(
+      typeof detail === 'string'
+        ? detail
+        : (detail?.mensaje ?? `No se pudo guardar el sorteo (HTTP ${res.status}).`),
+    );
+  }
+  return res.json();
+}
+
+/**
+ * Cambia cuántas preguntas sortea cada tramo del examen.
+ *
+ * El backend lo rechaza con 409 si ya lo rindió alguien: cambiar el largo ahí
+ * haría que unos alumnos contesten más preguntas que otros sobre la misma nota.
+ * Mismo criterio que Moodle, que bloquea la edición apenas hay intentos.
+ */
+export async function editarCantidadesDelSorteoFn(
+  apiBase: string,
+  token: string | undefined,
+  examenId: string,
+  tramos: { orden: number; cantidad: number }[],
+): Promise<number> {
+  const res = await fetchAutenticado(`${apiBase}/exam-content/${examenId}/sorteo`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ tramos }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const detail = (body as any)?.detail;
+    throw new Error(
+      typeof detail === 'string'
+        ? detail
+        : (detail?.mensaje ?? `No se pudo cambiar el largo (HTTP ${res.status}).`),
+    );
+  }
+  const body = await res.json();
+  return body.largo_del_examen ?? 0;
+}
+
+/** Una rendición de prueba del staff (migration 0102). */
+export interface PruebaDelExamen {
+  session_id: string;
+  quien: string | null;
+  creada_en: string | null;
+  finalizada_en: string | null;
+}
+
+export async function listarPruebasDelExamenFn(
+  apiBase: string,
+  token: string | undefined,
+  examenId: string,
+): Promise<PruebaDelExamen[]> {
+  const res = await fetchAutenticado(`${apiBase}/exam-content/${examenId}/pruebas`, {
+    headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+  });
+  if (!res.ok) {
+    throw new Error(`No se pudieron leer las pruebas (HTTP ${res.status}).`);
+  }
+  const body = await res.json();
+  return body.pruebas ?? [];
+}
+
+export async function borrarPruebaDelExamenFn(
+  apiBase: string,
+  token: string | undefined,
+  examenId: string,
+  sessionId: string,
+): Promise<void> {
+  const res = await fetchAutenticado(
+    `${apiBase}/exam-content/${examenId}/pruebas/${sessionId}`,
+    {
+      method: 'DELETE',
+      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    },
+  );
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const detail = (body as any)?.detail;
+    throw new Error(
+      typeof detail === 'string'
+        ? detail
+        : (detail?.mensaje ?? `No se pudo borrar la prueba (HTTP ${res.status}).`),
+    );
+  }
+}
+
 export async function habilitarExamenFn(
   apiBase: string,
   token: string | undefined,
@@ -286,6 +445,9 @@ export interface SorteoDelExamen {
   tramos: TramoSorteo[];
   largo_del_examen: number;
   pool_total: number;
+  /** Ids del BANCO que están en el pool: con eso la edición arranca con lo que
+   *  el docente había dejado, en vez de devolverle lo que había destildado. */
+  pool_banco_ids?: string[];
   nuevas_en_el_banco: number;
   pool_editable: boolean;
   total_intentos: number;

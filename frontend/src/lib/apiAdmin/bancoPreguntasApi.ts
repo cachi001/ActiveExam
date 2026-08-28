@@ -266,6 +266,12 @@ export interface CrearDesdebancoRequest {
   /** c-78 E-07: nace invisible para el alumno, para poder probarlo antes. */
   borrador?: boolean;
   sorteo: SorteoCategoriaItem[];
+  /**
+   * De qué preguntas del banco puede salir el sorteo. Se manda solo cuando el
+   * docente destildó alguna: sin esto, el pool es todo lo que califique por
+   * categoría y tipo.
+   */
+  pool_preguntas?: string[];
   limite_preguntas?: number | null;
   /** Escala de calificación del examen. Default 100/60 si se omite (nunca "sobre 10"). */
   nota_maxima?: number;

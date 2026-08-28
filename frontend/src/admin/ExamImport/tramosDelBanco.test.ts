@@ -25,8 +25,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   construirTramos,
+  disponiblesDelTramo,
+  estadoDeInclusion,
   estimarRepeticion,
-  tramosQueSeSolapan,
+  poolDelExamen,
+  preguntasVisibles,
 } from './tramosDelBanco';
 import type { CategoriaPregunta, PreguntaBanco } from '../../lib/apiAdmin/bancoPreguntasApi';
 
@@ -70,7 +73,7 @@ const PREGUNTAS = [
 describe('construirTramos', () => {
   it('lista la categoría padre aunque no tenga preguntas propias', () => {
     const tramos = construirTramos(CATEGORIAS, PREGUNTAS);
-    const u1 = tramos.find((t) => t.categoria_id === 'u1' && t.tipo === 'cloze');
+    const u1 = tramos.find((t) => t.categoria_id === 'u1');
     expect(u1, 'Unidad 1 tiene que aparecer: es la manera de sortear sobre toda su rama').toBeDefined();
   });
 
@@ -88,11 +91,22 @@ describe('construirTramos', () => {
     expect(u2.disponibles_directas).toBe(1);
   });
 
-  it('arranca incluyendo subcategorías, igual que el backend', () => {
-    // El backend tiene `incluir_subcategorias: bool = True`. Si la UI arrancara
-    // en false, el docente vería un número y el sorteo usaría otro.
+  it('un tramo aporta solo sus preguntas propias, no las de sus hijas', () => {
+    // Antes se podía pedirle a la madre su rama entera, y como las hijas se
+    // eligen aparte en la misma lista, la misma pregunta entraba dos veces.
     const tramos = construirTramos(CATEGORIAS, PREGUNTAS);
-    expect(tramos.every((t) => t.incluir_subcategorias)).toBe(true);
+    const u1 = tramos.find((t) => t.categoria_id === 'u1')!;
+    const bloqueA = tramos.find((t) => t.categoria_id === 'bloque-a')!;
+    expect(disponiblesDelTramo(u1)).toBe(0);
+    expect(disponiblesDelTramo(bloqueA)).toBe(2);
+  });
+
+  it('sumar las directas de todos los tramos cuenta cada pregunta una sola vez', () => {
+    // Es el total que se le muestra al docente cuando pide N contra el banco:
+    // si sumara ramas, "de las N que hay" mentiría contando repetido.
+    const tramos = construirTramos(CATEGORIAS, PREGUNTAS);
+    const total = tramos.reduce((s, t) => s + t.disponibles_directas, 0);
+    expect(total).toBe(PREGUNTAS.length);
   });
 
   it('incluye las preguntas sin clasificar como su propio tramo', () => {
@@ -101,10 +115,23 @@ describe('construirTramos', () => {
     expect(sinCat.disponibles_rama).toBe(1);
   });
 
-  it('separa por tipo: se puede pedir 3 de opción múltiple y 2 cloze', () => {
+  it('una categoría con tipos mezclados es UNA fila, no una por tipo', () => {
+    // Partir por tipo mostraba "Unidad 2 / Cloze" y "Unidad 2 / Opción múltiple"
+    // como si fueran dos categorías, y el árbol dejaba de parecerse al banco.
     const mixtas = [preg('p1', 'u2', 'cloze'), preg('p2', 'u2', 'multichoice')];
     const tramos = construirTramos([cat('u2', 'Unidad 2')], mixtas);
-    expect(tramos.map((t) => t.tipo).sort()).toEqual(['cloze', 'multichoice']);
+    expect(tramos).toHaveLength(1);
+    expect(tramos[0].disponibles_directas).toBe(2);
+  });
+
+  it('lleva el desglose por tipo, para decir de qué está hecha la categoría', () => {
+    const mixtas = [
+      preg('p1', 'u2', 'cloze'),
+      preg('p2', 'u2', 'multichoice'),
+      preg('p3', 'u2', 'multichoice'),
+    ];
+    const tramos = construirTramos([cat('u2', 'Unidad 2')], mixtas);
+    expect(tramos[0].por_tipo).toEqual({ cloze: 1, multichoice: 2 });
   });
 
   it('deja fuera las categorías dadas de baja', () => {
@@ -163,39 +190,52 @@ describe('estimarRepeticion', () => {
   });
 });
 
-describe('tramosQueSeSolapan', () => {
-  it('avisa cuando se sortea del padre con subcategorías y también de la hija', () => {
-    // El backend descuenta lo ya sorteado, así que el segundo tramo se queda sin
-    // pool y el examen falla con 422. Mejor avisarlo antes de crear.
-    const solapados = tramosQueSeSolapan(
-      [
-        { categoria_id: 'u1', cantidad: 2, incluir_subcategorias: true },
-        { categoria_id: 'bloque-a', cantidad: 1, incluir_subcategorias: true },
-      ],
-      CATEGORIAS,
-    );
-    expect(solapados).toContain('bloque-a');
+describe('poolDelExamen', () => {
+  it('sin nada destildado, el pool es el banco entero', () => {
+    const pool = poolDelExamen(PREGUNTAS, new Set());
+    expect(pool).toHaveLength(4);
   });
 
-  it('no avisa si el padre no incluye subcategorías', () => {
-    const solapados = tramosQueSeSolapan(
-      [
-        { categoria_id: 'u1', cantidad: 2, incluir_subcategorias: false },
-        { categoria_id: 'bloque-a', cantidad: 1, incluir_subcategorias: true },
-      ],
-      CATEGORIAS,
-    );
-    expect(solapados).toEqual([]);
+  it('una pregunta destildada no puede tocarle a nadie', () => {
+    const pool = poolDelExamen(PREGUNTAS, new Set(['p1']));
+    expect(pool.map((p) => p.id)).not.toContain('p1');
+    expect(pool).toHaveLength(3);
+  });
+});
+
+describe('estadoDeInclusion', () => {
+  // El tilde de una categoría tiene tres estados y el del medio es el que
+  // importa: si se dibuja como "incluida" a secas, el docente no ve que sacó
+  // preguntas de ahí y arma el examen creyendo que entran todas.
+  it('marca "todas" cuando no hay ninguna destildada', () => {
+    expect(estadoDeInclusion(['p1', 'p2'], new Set())).toBe('todas');
   });
 
-  it('no avisa entre categorías hermanas: sus pools no se tocan', () => {
-    const solapados = tramosQueSeSolapan(
-      [
-        { categoria_id: 'u2', cantidad: 1, incluir_subcategorias: true },
-        { categoria_id: 'bloque-a', cantidad: 1, incluir_subcategorias: true },
-      ],
-      CATEGORIAS,
-    );
-    expect(solapados).toEqual([]);
+  it('marca "ninguna" cuando están todas destildadas', () => {
+    expect(estadoDeInclusion(['p1', 'p2'], new Set(['p1', 'p2']))).toBe('ninguna');
+  });
+
+  it('marca "algunas" cuando quedó una sí y otra no', () => {
+    expect(estadoDeInclusion(['p1', 'p2'], new Set(['p1']))).toBe('algunas');
+  });
+
+  it('una categoría sin preguntas propias no dice "todas incluidas"', () => {
+    // Es la categoría que solo agrupa: dibujarle un tilde lleno haría creer
+    // que aporta algo al examen.
+    expect(estadoDeInclusion([], new Set())).toBe('ninguna');
+  });
+});
+
+describe('preguntasVisibles', () => {
+  // El chip de tipo no es solo cosmético: si el docente filtra "Cloze" y crea,
+  // el examen no puede sortear una multichoice que no llegó a ver.
+  it('sin filtro devuelve el banco entero', () => {
+    expect(preguntasVisibles(PREGUNTAS, null)).toHaveLength(4);
+  });
+
+  it('con filtro deja solo las de ese tipo', () => {
+    const mixtas = [preg('p1', 'u2', 'cloze'), preg('p2', 'u2', 'multichoice')];
+    const soloCloze = preguntasVisibles(mixtas, 'cloze');
+    expect(soloCloze.map((p) => p.id)).toEqual(['p1']);
   });
 });

@@ -152,6 +152,63 @@ async def _set_del_intento(db: AsyncSession, session_id: str) -> list[str]:
     return [str(r[0]) for r in filas.all()]
 
 
+def categorias_admitidas(
+    *, categoria_id: str | None, incluir_subcategorias: bool, hijos: dict
+) -> set | None:
+    """Qué categorías entran en un tramo. ``None`` = todas, sin filtrar.
+
+    Las tres formas, y por qué la primera existe:
+
+    - sin categoría + con descendencia = TODO EL BANCO. Es el caso más común
+      ("quiero 10 preguntas de las 38 que tengo") y antes obligaba a repartir a
+      mano por categoría, que además reduce la variedad sin que se note.
+    - sin categoría + sin descendencia = las que no tienen categoría, como antes.
+    - una categoría = ella sola, o ella y toda su descendencia.
+    """
+    if categoria_id is None:
+        return None if incluir_subcategorias else {None}
+    if incluir_subcategorias:
+        return _con_descendencia(str(categoria_id), hijos)
+    return {str(categoria_id)}
+
+
+def preguntas_del_tramo(
+    pool: list,
+    *,
+    categoria_id: str | None,
+    incluir_subcategorias: bool,
+    tipos: list[str] | None,
+    hijos: dict,
+    ya_usadas: frozenset[str] | set[str] = frozenset(),
+) -> list[str]:
+    """Los ids del pool que entran en este tramo, en orden.
+
+    ``pool`` son tuplas ``(id, categoria_id, tipo)`` de `pregunta_examen`.
+
+    Vive acá y no en el router porque es LA regla del sorteo: qué preguntas
+    califican para un tramo. Tenerla repetida hacía que validar el largo del
+    examen y sortearlo pudieran contestar distinto sobre el mismo examen.
+    """
+    admitidas = categorias_admitidas(
+        categoria_id=categoria_id,
+        incluir_subcategorias=incluir_subcategorias,
+        hijos=hijos,
+    )
+    tipos_admitidos = set(tipos) if tipos else None
+    return [
+        str(pid)
+        for pid, cat, tipo in pool
+        if str(pid) not in ya_usadas
+        and (admitidas is None or (str(cat) if cat else None) in admitidas)
+        and (tipos_admitidos is None or tipo in tipos_admitidos)
+    ]
+
+
+async def hijos_por_padre(db: AsyncSession, categorias: list) -> dict[str, list[str]]:
+    """Mapa padre -> hijos del arbol de categorias que toca este examen."""
+    return await _hijos_por_padre(db, categorias)
+
+
 async def _sortear(db: AsyncSession, examen_contenido_id: str) -> list[str]:
     """Sortea un set nuevo recorriendo los tramos, contra el pool del examen.
 
@@ -194,21 +251,14 @@ async def _sortear(db: AsyncSession, examen_contenido_id: str) -> list[str]:
     ya_usadas: set[str] = set()
 
     for tramo in tramos:
-        if tramo.categoria_id is None:
-            admitidas = {None}
-        elif tramo.incluir_subcategorias:
-            admitidas = _con_descendencia(str(tramo.categoria_id), hijos)
-        else:
-            admitidas = {str(tramo.categoria_id)}
-
-        tipos = set(tramo.tipos) if tramo.tipos else None
-        disponibles = [
-            str(pid)
-            for pid, cat, tipo in pool
-            if str(pid) not in ya_usadas
-            and (str(cat) if cat else None) in admitidas
-            and (tipos is None or tipo in tipos)
-        ]
+        disponibles = preguntas_del_tramo(
+            pool,
+            categoria_id=tramo.categoria_id,
+            incluir_subcategorias=tramo.incluir_subcategorias,
+            tipos=tramo.tipos,
+            hijos=hijos,
+            ya_usadas=ya_usadas,
+        )
 
         if len(disponibles) < tramo.cantidad:
             raise PoolInsuficienteError(

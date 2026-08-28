@@ -17,14 +17,8 @@ import {
 } from '../../lib/apiAdmin/bancoPreguntasApi';
 import { limpiarEnunciadoCloze } from '../../lib/cloze';
 import { ModalOverlay } from '../../ui/ModalOverlay';
+import { etiquetaDeTipo } from '../../lib/tiposPregunta';
 
-const TIPO_LABEL: Record<string, string> = {
-  multichoice: 'Opción múltiple',
-  truefalse: 'Verdadero / Falso',
-  cloze: 'Cloze (completar)',
-  shortanswer: 'Respuesta corta',
-  matching: 'Relacionar',
-};
 
 interface Props {
   preguntaId: string | null;
@@ -104,7 +98,7 @@ export function PreviewPreguntaModal({ preguntaId, onCerrar }: Props) {
           {pregunta && !cargando && !error && (
             <>
               <span className="inline-block rounded-full bg-surface-200 px-2.5 py-0.5 text-label-sm text-on-surface-variant">
-                {TIPO_LABEL[pregunta.tipo] ?? pregunta.tipo}
+                {etiquetaDeTipo(pregunta.tipo)}
               </span>
 
               <div

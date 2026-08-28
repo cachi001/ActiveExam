@@ -97,6 +97,7 @@ class ExamenContenidoResumenResponse(BaseModel):
     comision_id: str | None = None
     comision_nombre: str | None = None
     comision_codigo: str | None = None
+    materia_id: str | None = None
     materia_nombre: str | None = None
     materia_codigo: str | None = None
     # Config por examen para gatear "Rendir" por ventana/intentos (migración 0032).
@@ -271,6 +272,8 @@ class RevisionExamenResponse(BaseModel):
     nota: float | None = None
     nota_maxima: float | None = None
     aprobado: bool = False
+    # El resultado RESUELTO por el backend (`ResultadoNota`).
+    resultado: str = ""
     total_preguntas: int
     correctas: int
     incorrectas: int
@@ -385,6 +388,14 @@ class CrearDesdebancoRequest(BaseModel):
     # entero antes de habilitarlo.
     borrador: bool = False
     sorteo: list[SorteoCategoriaItem] = Field(min_length=1)
+    # De qué preguntas del banco puede salir el sorteo. None = todas las que
+    # califiquen por categoría y tipo, como siempre.
+    #
+    # Existe porque repartir cuotas por categoría tiene un efecto que no se ve:
+    # una subcategoría con 1 pregunta y cuota 1 no sortea nada, esa pregunta la
+    # reciben todos. Acotando el pool y pidiendo un total contra el conjunto, esa
+    # pregunta es una más y puede no salir.
+    pool_preguntas: list[str] | None = None
     limite_preguntas: int | None = Field(default=None, ge=1)
     # Escala de calificación: configurable por examen (migración 0061). Default
     # 100/60 si no se manda — nunca cae silenciosamente en "sobre 10". El docente
@@ -501,6 +512,44 @@ class TramoSorteoResponse(BaseModel):
     en_el_banco: int = 0
 
 
+class CantidadDeTramoItem(BaseModel):
+    """Cuántas preguntas pasa a sortear UN tramo del examen."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    # El `orden` del tramo, tal como lo devuelve GET /{examen_id}/sorteo. Se
+    # identifica por ahí y no por categoría: dos tramos pueden compartir
+    # categoría con distinto filtro de tipo.
+    orden: int = Field(ge=0)
+    cantidad: int = Field(ge=1)
+
+
+class EditarSorteoRequest(BaseModel):
+    """Cambiar el largo del examen después de crearlo.
+
+    Poner 10 y darse cuenta de que querías 12 no debería obligar a borrar el
+    examen. Mismo criterio que Moodle: se puede mientras nadie lo haya rendido.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    tramos: list[CantidadDeTramoItem] = Field(min_length=1)
+
+
+class RearmarSorteoRequest(BaseModel):
+    """Reemplaza la composición del examen: qué categorías y cuántas de cada una.
+
+    Mismo shape que el `sorteo` de la creación, a propósito: la pantalla de
+    editar es la misma con la que se arma el examen, y el backend hace el mismo
+    recorrido. `pool_preguntas` acota de qué preguntas puede salir.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    sorteo: list[SorteoCategoriaItem] = Field(min_length=1)
+    pool_preguntas: list[str] | None = None
+
+
 class SorteoDelExamenResponse(BaseModel):
     """Cómo resuelve sus preguntas un examen (c-78 E-07)."""
 
@@ -512,6 +561,11 @@ class SorteoDelExamenResponse(BaseModel):
     largo_del_examen: int = 0
     # Total de preguntas copiadas en el examen.
     pool_total: int = 0
+    # Los ids DEL BANCO de las preguntas que están en el pool. La pantalla de
+    # edición los necesita para arrancar con lo que el docente había dejado: sin
+    # esto, editar una cantidad le devolvía al examen las preguntas que había
+    # destildado, en silencio.
+    pool_banco_ids: list[str] = []
     # Preguntas del banco que calificarían y todavía no están en el pool. > 0 = el
     # examen está desactualizado respecto del banco.
     nuevas_en_el_banco: int = 0
@@ -1075,6 +1129,13 @@ class ResultadoAlumnoResponse(BaseModel):
     # Motivo por el que la nota queda RETENIDA y no se sincroniza (gate D15):
     # en_riesgo | anulada. None = nada la retiene.
     retenido_por: str | None = None
+    # TODOS los motivos que la retienen. `retenido_por` es sólo el principal (lo
+    # usan los filtros); la fila los muestra todos, porque al examen le falta el
+    # destino para TODOS los alumnos y decírselo a la mitad se leía como un error.
+    retenciones: list[str] = []
+    # Sólo en las filas de ausentes, que no tienen sesión: identifica al alumno
+    # cuando `session_id` viene vacío.
+    usuario_id: str | None = None
     # c-78: POR QUÉ falló el envío a Moodle. El backend ya lo guardaba en
     # `error_detalle` y no lo exponía en ningún lado: la pantalla decía "fallido"
     # y punto, y el motivo había que ir a buscarlo reproduciendo el write-back a
@@ -1092,6 +1153,20 @@ class ResultadoAlumnoResponse(BaseModel):
     # "marcada por {persona} el {fecha}" en vez de "confirmada por el campus".
     marcada_manual_por: str | None = None
     marcada_manual_en: datetime | None = None
+    # El resultado académico YA RESUELTO por el backend: aprobado | desaprobado |
+    # anulada | sin_nota | sin_criterio (enum `ResultadoNota`). La pantalla y el
+    # export sólo lo muestran; cuando cada uno lo decidía por su cuenta, el
+    # archivo decía "Aprobado" sobre una nota anulada por fraude.
+    resultado: str = ""
+    # La nota que VALE: una anulación la deja en 0. `nota` conserva la calculada,
+    # para poder mostrar "la nota calculada era 78" sin perder el dato.
+    nota_efectiva: float | None = None
+    # Compatibilidad. El que manda es `resultado`: un booleano no puede expresar
+    # una anulación.
+    aprobado: bool | None = None
+    #: Contra qué se comparó. Se expone para que la pantalla pueda decir "12 de
+    #: 20 (aprueba con 12)" y el docente no tenga que ir a buscarlo.
+    nota_aprobacion: float | None = None
 
 
 class ResultadosExamenPaginadosResponse(BaseModel):
@@ -1176,6 +1251,12 @@ class MiNotaResponse(BaseModel):
     # (nota >= nota_aprobacion del examen). aprobado = False si no hay nota.
     nota_maxima: float | None = None
     aprobado: bool = False
+    # El resultado RESUELTO por el backend (`ResultadoNota`): la etiqueta y el
+    # color salen del catálogo `/catalogos/resultados-nota`. El alumno tiene que
+    # ver lo mismo que el docente sobre su propia nota — con el texto escrito a
+    # mano acá, la tabla decía "En revisión" y su tarjeta "Aprobado".
+    # Vacío mientras la nota no sea visible.
+    resultado: str = ""
     estado_moodle: str  # pendiente | enviado | fallido | sin_token
     en_cola_revision: bool
     score: float | None = None

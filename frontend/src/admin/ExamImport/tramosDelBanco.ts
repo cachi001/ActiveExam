@@ -16,21 +16,26 @@ export interface TramoSorteo {
   /** null = las preguntas sin clasificar. */
   categoria_id: string | null;
   categoria_nombre: string;
-  tipo: string;
-  /** Preguntas de este tipo en la categoría Y toda su descendencia. */
+  /** Cuántas de cada tipo tiene la categoría, para decir de qué está hecha. */
+  por_tipo: Record<string, number>;
+  /** Preguntas en la categoría Y toda su descendencia. */
   disponibles_rama: number;
-  /** Preguntas de este tipo SOLO en esta categoría. */
+  /** Preguntas SOLO en esta categoría. */
   disponibles_directas: number;
-  /** Arranca en true, igual que el default del backend. */
-  incluir_subcategorias: boolean;
   cantidad: number;
   /** Cuántos niveles cuelga del raíz, para indentar el árbol. */
   profundidad: number;
 }
 
-/** Las que realmente entran al sorteo según el tilde de subcategorías. */
+/**
+ * Las que puede aportar el tramo: SOLO las propias de la categoría.
+ *
+ * Antes había un tilde para sortear también de las subcategorías, y era una
+ * trampa: las hijas se eligen aparte en la misma lista, así que pedirle a la
+ * madre su rama entera hacía que la misma pregunta pudiera entrar dos veces.
+ */
 export function disponiblesDelTramo(t: TramoSorteo): number {
-  return t.incluir_subcategorias ? t.disponibles_rama : t.disponibles_directas;
+  return t.disponibles_directas;
 }
 
 /** ids de una categoría y toda su descendencia. */
@@ -46,7 +51,7 @@ function rama(categoriaId: string, hijasDe: Map<string | null, CategoriaPregunta
 }
 
 /**
- * Un tramo por cada par (categoría, tipo) que exista en la RAMA de la categoría.
+ * Un tramo por cada categoría que tenga preguntas en su RAMA.
  *
  * Se recorren las ramas y no las preguntas directas a propósito: una categoría
  * padre cuyas preguntas viven en sus hijas tiene que aparecer igual, porque
@@ -87,17 +92,20 @@ export function construirTramos(
     return conteos;
   };
 
+  const total = (conteos: Map<string, number>): number =>
+    [...conteos.values()].reduce((s, n) => s + n, 0);
+
   const tramos: TramoSorteo[] = [];
 
   // Sin clasificar primero: no cuelga de ninguna rama y es fácil de olvidar.
-  for (const [tipo, cantidad] of contarPorTipo([null])) {
+  const sinClasificar = contarPorTipo([null]);
+  if (sinClasificar.size > 0) {
     tramos.push({
       categoria_id: null,
       categoria_nombre: 'Sin clasificar',
-      tipo,
-      disponibles_rama: cantidad,
-      disponibles_directas: cantidad,
-      incluir_subcategorias: true,
+      por_tipo: Object.fromEntries(sinClasificar),
+      disponibles_rama: total(sinClasificar),
+      disponibles_directas: total(sinClasificar),
       cantidad: 0,
       profundidad: 0,
     });
@@ -107,17 +115,15 @@ export function construirTramos(
   // que indentar alcance para entender de quién cuelga cada una.
   const enOrden = (padre: string | null, profundidad: number): void => {
     for (const c of hijasDe.get(padre) ?? []) {
-      const idsDeLaRama = rama(c.id, hijasDe);
-      const enRama = contarPorTipo(idsDeLaRama);
+      const enRama = contarPorTipo(rama(c.id, hijasDe));
       const directas = contarPorTipo([c.id]);
-      for (const [tipo, cantidadEnRama] of enRama) {
+      if (enRama.size > 0) {
         tramos.push({
           categoria_id: c.id,
           categoria_nombre: c.nombre,
-          tipo,
-          disponibles_rama: cantidadEnRama,
-          disponibles_directas: directas.get(tipo) ?? 0,
-          incluir_subcategorias: true,
+          por_tipo: Object.fromEntries(directas),
+          disponibles_rama: total(enRama),
+          disponibles_directas: total(directas),
           cantidad: 0,
           profundidad,
         });
@@ -128,6 +134,20 @@ export function construirTramos(
   enOrden(null, 0);
 
   return tramos;
+}
+
+/**
+ * Las preguntas que el docente está mirando: el banco, o solo un tipo.
+ *
+ * El chip de tipo no es cosmético. Si filtra "Cloze" y crea el examen, el pool
+ * tiene que ser el que vio: sortear una multichoice que nunca estuvo en pantalla
+ * es una sorpresa el día del examen.
+ */
+export function preguntasVisibles(
+  preguntas: PreguntaBanco[],
+  tipo: string | null,
+): PreguntaBanco[] {
+  return tipo === null ? preguntas : preguntas.filter((p) => p.tipo === tipo);
 }
 
 export interface ResumenRepeticion {
@@ -167,46 +187,31 @@ export function estimarRepeticion(
   return { total, sorteadas: total - fijas, fijas, compartidas };
 }
 
+
+/** Las preguntas que se copian al examen: el banco menos las destildadas. */
+export function poolDelExamen(
+  preguntas: PreguntaBanco[],
+  excluidas: Set<string>,
+): PreguntaBanco[] {
+  return preguntas.filter((p) => !excluidas.has(p.id));
+}
+
+/** Si un grupo de preguntas entra entero, a medias o nada. */
+export type EstadoInclusion = 'todas' | 'algunas' | 'ninguna';
+
 /**
- * Categorías cuyo pool ya se lo lleva otro tramo de la misma selección.
+ * En qué estado va el tilde de una categoría.
  *
- * Si se sortea de un padre con subcategorías y además de una de sus hijas, el
- * backend descuenta lo ya sorteado y el segundo tramo puede quedarse sin pool:
- * responde 422 y no se crea nada. Avisarlo antes evita el viaje.
- *
- * Devuelve los `categoria_id` de los tramos que quedan tapados.
+ * El grupo vacío cuenta como 'ninguna': una categoría que solo agrupa a sus
+ * hijas no aporta preguntas, y dibujarle el tilde lleno haría creer que sí.
  */
-export function tramosQueSeSolapan(
-  seleccionados: {
-    categoria_id: string | null;
-    cantidad: number;
-    incluir_subcategorias: boolean;
-  }[],
-  categorias: CategoriaPregunta[],
-): string[] {
-  const padreDe = new Map<string, string | null>();
-  for (const c of categorias) padreDe.set(c.id, c.categoria_padre_id);
-
-  const ancestros = (id: string): string[] => {
-    const salida: string[] = [];
-    let actual = padreDe.get(id) ?? null;
-    while (actual) {
-      salida.push(actual);
-      actual = padreDe.get(actual) ?? null;
-    }
-    return salida;
-  };
-
-  const activos = seleccionados.filter((t) => t.cantidad > 0 && t.categoria_id);
-  // Padres que se llevan su rama entera.
-  const conRama = new Set(
-    activos.filter((t) => t.incluir_subcategorias).map((t) => t.categoria_id as string),
-  );
-
-  const tapados = new Set<string>();
-  for (const t of activos) {
-    const id = t.categoria_id as string;
-    if (ancestros(id).some((a) => conRama.has(a))) tapados.add(id);
-  }
-  return [...tapados];
+export function estadoDeInclusion(
+  idsDelGrupo: string[],
+  excluidas: Set<string>,
+): EstadoInclusion {
+  if (idsDelGrupo.length === 0) return 'ninguna';
+  const fuera = idsDelGrupo.filter((id) => excluidas.has(id)).length;
+  if (fuera === 0) return 'todas';
+  if (fuera === idsDelGrupo.length) return 'ninguna';
+  return 'algunas';
 }
