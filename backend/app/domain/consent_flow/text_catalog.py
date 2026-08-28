@@ -62,25 +62,33 @@ class ConsentText:
 _V1 = ConsentText(
     version="v1",
     que_se_recolecta=(
-        "Se recolectan datos biometricos faciales (un embedding derivado de tu "
-        "rostro), senales de tu camara y pantalla durante el examen, y metadatos "
-        "de la sesion. El embedding se trata como dato sensible (Ley 25.326)."
+        "Una referencia biométrica de tu rostro (un vector numérico derivado de "
+        "tu foto, no la foto en sí), imágenes de tu cámara y de tu pantalla "
+        "durante el examen, y datos de la sesión: cuándo empezaste, qué "
+        "detecciones hubo y desde dónde te conectaste. La referencia biométrica "
+        "es un dato sensible y se trata como tal (Ley 25.326)."
     ),
     como_se_recolecta=(
-        "Mediante tu camara y la captura de pantalla, con analisis en tu navegador; "
-        "el servidor re-procesa y firma la evidencia (cadena de custodia)."
+        "Con tu cámara y con capturas de tu pantalla mientras rendís. El primer "
+        "análisis ocurre en tu navegador; el servidor lo vuelve a verificar y "
+        "sella cada evidencia, así nadie puede alterarla después sin que se note."
     ),
     donde_se_almacena=(
-        "En infraestructura self-hosted de la institucion (soberania de datos), "
-        "con la evidencia cifrada at-rest en almacenamiento WORM."
+        "En los sistemas de la plataforma, con acceso restringido al personal "
+        "autorizado de tu institución: docentes de tu materia y quienes revisan "
+        "integridad académica. Tus compañeros no ven nada de esto."
     ),
     cuanto_tiempo=(
-        "Segun la politica de retencion del examen; el embedding se elimina al "
-        "egreso salvo que un caso disciplinario en curso difiera la eliminacion."
+        "Las imágenes se conservan al menos 90 días, porque son la prueba con la "
+        "que podés defenderte si se cuestiona tu examen, y se eliminan cuando "
+        "vence ese plazo. Si hay un caso disciplinario abierto, se conservan "
+        "hasta que se resuelva."
     ),
     derechos_titular=(
-        "Tenes derecho de acceso, rectificacion, supresion y a impugnar decisiones; "
-        "la decision disciplinaria es siempre humana, el sistema no sanciona solo."
+        "Podés pedir acceso a tus datos, su rectificación o su supresión, y "
+        "podés impugnar cualquier decisión que te afecte. La decisión "
+        "disciplinaria la toma siempre una persona: el sistema marca situaciones "
+        "para que alguien las revise, nunca sanciona por su cuenta."
     ),
 )
 

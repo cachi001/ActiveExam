@@ -18,6 +18,7 @@ import { RefreshBar } from '../ui/RefreshBar';
 import { useAutoRefresh } from '../lib/useAutoRefresh';
 import { Icon, Card, Button } from '../ui/components';
 import { HelpButton } from '../ui/HelpButton';
+import { useAuth } from '../lib/authStore';
 import { api } from '../lib/api';
 import { loadEffectiveConfig, getEffectiveConfig, resetEffectiveConfigCache } from '../config/effectiveConfigCache';
 import { UMBRAL_REVISION_MIN } from '../config/umbralRevision';
@@ -71,6 +72,11 @@ export default function Revisor() {
 
   const [items, setItems] = useState<SesionEnriquecida[]>([]);
   const [umbral, setUmbral] = useState(UMBRAL_FALLBACK);
+  // El admin ve la cola institucional; el coordinador solo la de SUS materias.
+  // Cambia qué significa que vuelva vacía.
+  const esInstitucional = (useAuth((s) => s.principal?.roles) ?? []).includes(
+    'admin_sistema',
+  );
   const [cargando, setCargando] = useState(true);
   const [refrescando, setRefrescando] = useState(false);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<number | undefined>();
@@ -230,12 +236,24 @@ export default function Revisor() {
           </Card>
         )}
 
+        {/* "No hay nada que revisar" y "no ves nada" son cosas distintas, y acá
+            la diferencia importa: la cola le vuelve vacía al coordinador que no
+            tiene materias asignadas, y el tilde verde le afirmaba que estaba
+            todo en orden mientras podía haber sesiones en riesgo que no ve. */}
         {!cargando && !hayRiesgo && (
           <Card className="text-center py-xl space-y-base">
-            <Icon name="check_circle" className="text-success text-[44px]" fill />
-            <h3 className="font-headline text-title-lg text-on-surface">Sin sesiones pendientes</h3>
+            <Icon
+              name={esInstitucional ? 'check_circle' : 'info'}
+              className={esInstitucional ? 'text-success text-[44px]' : 'text-warning text-[44px]'}
+              fill
+            />
+            <h3 className="font-headline text-title-lg text-on-surface">
+              {esInstitucional ? 'Sin sesiones pendientes' : 'No hay nada en tu cola'}
+            </h3>
             <p className="text-body-md text-on-surface-variant">
-              Nada que revisar por ahora.
+              {esInstitucional
+                ? 'Nada que revisar por ahora.'
+                : 'Se revisan las sesiones de las materias que coordinás. Si no tenés ninguna asignada, no vas a ver nada acá aunque haya exámenes en riesgo.'}
             </p>
           </Card>
         )}

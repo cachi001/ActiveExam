@@ -341,9 +341,11 @@ export function EnrollmentBiometricStep({ referenciaActual, onCapturada, esRenov
             Tu privacidad
           </p>
           <p>
-            Tu foto y los datos de tu rostro se guardan <strong>cifrados y protegidos</strong>, y se usan
-            <strong> solo</strong> para confirmar que sos vos en tus exámenes. Ninguna decisión la toma una máquina:
-            siempre la revisa una persona del equipo académico.
+            {/* Ver RequisitoBiometria: el cifrado en reposo esta pendiente, asi
+                que no se promete. */}
+            Tu foto y los datos de tu rostro se usan <strong>solo</strong> para confirmar que sos vos en tus
+            exámenes, y solo acceden a ellos los docentes de tu materia y quienes revisan integridad académica.
+            Ninguna decisión la toma una máquina: siempre la revisa una persona del equipo académico.
           </p>
         </div>
       )}

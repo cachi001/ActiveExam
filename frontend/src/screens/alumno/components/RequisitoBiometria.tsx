@@ -61,8 +61,13 @@ export function RequisitoBiometria({
           </p>
 
           <div className="text-[14px] text-on-surface-variant bg-white rounded-xl p-sm border border-outline-variant/40">
-            <span className="font-medium text-on-surface">Privacidad:</span> Tu foto y los datos de tu rostro se guardan
-            <strong className="font-medium"> cifrados y protegidos</strong>, y se usan solo para confirmar tu identidad en los exámenes.
+            {/* Decía "cifrados y protegidos". El cifrado en reposo todavía no
+                está implementado (el modelo lo marca como pendiente), así que
+                prometerlo era faltar a la verdad justo donde el alumno decide
+                si entrega su biometría. Se afirma lo que sí se cumple. */}
+            <span className="font-medium text-on-surface">Privacidad:</span> Tu foto y los datos de tu rostro se usan
+            <strong className="font-medium"> solo para confirmar tu identidad</strong> en los exámenes, y solo acceden
+            a ellos los docentes de tu materia y quienes revisan integridad académica.
           </div>
 
           {/* Sin consentimiento NO mostramos el botón (no un botón disabled):
