@@ -34,6 +34,7 @@ import ThresholdsConfig from './harness/ThresholdsConfig';
 import DetectoresSelector from './admin/components/DetectoresSelector';
 import type { TipoEvento } from '../lib/types';
 import RiskMeter from './harness/RiskMeter';
+import CalibracionPanel from './harness/CalibracionPanel';
 import EventLog from './harness/EventLog';
 import CoverageChecklist from './harness/CoverageChecklist';
 
@@ -181,6 +182,15 @@ export default function AdminDetectionHarness() {
             />
           </div>
           <div className="space-y-lg">
+            {/* Arriba de todo en la columna derecha: se calibra ANTES de mirar
+                señales o score, porque una cámara descentrada los ensucia a los
+                dos. Es el mismo paso que corre el alumno antes del examen. */}
+            <CalibracionPanel
+              videoRef={h.videoRef}
+              engine={h.engineRef.current}
+              camaraActiva={h.harnessState === 'running'}
+              onCalibrado={h.aplicarCalibracionGaze}
+            />
             <RiskMeter
               harnessScore={h.harnessScore}
               riskThreshold={h.riskThreshold}

@@ -144,6 +144,10 @@ export function useDetectionHarness() {
 
   // ------ Config de umbrales ------
   const [config, setConfig] = useState<TransitionConfig>({ ...DEFAULT_CONFIG });
+  // Espejo en ref: al recrear el pipeline desde un callback estable (la
+  // calibración) hace falta la config vigente sin volver a crear el callback.
+  const configRef = useRef<TransitionConfig>(config);
+  configRef.current = config;
   const [configDraft, setConfigDraft] = useState<TransitionConfig>({ ...DEFAULT_CONFIG });
   const [configErrors, setConfigErrors] = useState<ConfigErrors>({});
 
@@ -260,11 +264,31 @@ export function useDetectionHarness() {
     [],
   );
 
+  // Baseline de mirada medido en el panel de calibración. Se guarda en una ref y
+  // no en estado porque hay que reaplicarlo cada vez que se recrea el pipeline
+  // (al tocar un umbral, por ejemplo): sin esto, cambiar cualquier config
+  // descalibraba la cámara en silencio y la medición dejaba de valer.
+  const gazeBaselineRef = useRef<{ x: number; y: number } | null>(null);
+
   // ------ Crear pipeline con config actual ------
   const createPipeline = useCallback(
-    (engine: VisionEngine, sink: EventSink, cfg: TransitionConfig) =>
-      new VisionPipeline({ engine, sink, rules: new StateTransitionRules(cfg) }),
+    (engine: VisionEngine, sink: EventSink, cfg: TransitionConfig) => {
+      const rules = new StateTransitionRules(cfg);
+      if (gazeBaselineRef.current) rules.calibrarGaze(gazeBaselineRef.current);
+      return new VisionPipeline({ engine, sink, rules });
+    },
     [],
+  );
+
+  /** Fija (o limpia con `null`) el baseline y lo aplica al pipeline vigente. */
+  const aplicarCalibracionGaze = useCallback(
+    (baseline: { x: number; y: number } | null) => {
+      gazeBaselineRef.current = baseline;
+      if (engineRef.current && sinkRef.current) {
+        pipelineRef.current = createPipeline(engineRef.current, sinkRef.current, configRef.current);
+      }
+    },
+    [createPipeline],
   );
 
   // ------ Callback que el sink llama por cada evento ------
@@ -488,6 +512,7 @@ export function useDetectionHarness() {
     setPropositoPanelOpen,
     // handlers
     createPipeline,
+    aplicarCalibracionGaze,
     startHarness,
     stopHarness,
     applyConfigChange,

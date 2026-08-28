@@ -26,6 +26,16 @@ export function CalibracionMirada() {
           <p className="text-body-md text-on-surface-variant">
             Estamos calibrando la cámara con tu posición. Quedate mirando el centro unos segundos.
           </p>
+          {/* La postura durante ESTOS segundos define el punto contra el que se
+              mide toda la rendición. Calibrar de perfil, o con la cámara apuntando
+              desde un costado, fija un baseline torcido: después el alumno mira
+              bien el examen y el sistema lo lee como mirada desviada. Decirlo acá
+              es lo que evita ese falso positivo. */}
+          <p className="text-label-md text-on-surface-variant">
+            Poné la cámara <strong className="text-on-surface">enfrente tuyo</strong>, no a un
+            costado, y sentate de frente a la pantalla. Si no, el sistema puede marcarte
+            mirada desviada mientras rendís normalmente.
+          </p>
         </div>
         <Icon name="progress_activity" className="ae-spin text-primary text-[28px] mx-auto" />
       </Card>
