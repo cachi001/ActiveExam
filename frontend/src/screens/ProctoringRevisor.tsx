@@ -283,7 +283,19 @@ export default function ProctoringRevisor() {
       width: '18%',
       cell: (s) => (
         <div>
-          <p className="font-semibold text-gray-900">{alumnoDisplay(s)}</p>
+          <p className="font-semibold text-gray-900">
+            {alumnoDisplay(s)}
+            {/* migration 0102: sin esta marca, el ensayo del docente se lee como
+                un alumno más que rindió y no tiene nota. */}
+            {s.es_prueba && (
+              <span
+                className="ml-2 align-middle rounded-full bg-surface-200 px-2 py-0.5 text-[11px] font-medium text-on-surface-variant"
+                title="El docente probando el examen. No cuenta como rendición ni genera nota."
+              >
+                prueba
+              </span>
+            )}
+          </p>
           {s.alumno_nombre && (s.alumno_idnumber || s.alumno_email) && (
             <p className="text-xs text-gray-500 mt-0.5">{s.alumno_idnumber || s.alumno_email}</p>
           )}

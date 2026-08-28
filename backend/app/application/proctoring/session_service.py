@@ -152,6 +152,7 @@ async def crear_sesion(
     examen_contenido_id: str | None = None,
     alumno_idnumber: str | None = None,
     alumno_email: str | None = None,
+    es_prueba: bool = False,
 ) -> ProctoringSessionModel:
     """Crea una nueva sesion de proctoring activeexam.
 
@@ -173,6 +174,7 @@ async def crear_sesion(
         alumno_idnumber=alumno_idnumber,
         alumno_email=alumno_email,
         config_snapshot=snapshot,
+        es_prueba=es_prueba,
     )
 
 
@@ -184,6 +186,7 @@ async def crear_o_reanudar_sesion(
     examen_contenido_id: str | None = None,
     alumno_idnumber: str | None = None,
     alumno_email: str | None = None,
+    es_prueba: bool = False,
 ) -> ProctoringSessionModel:
     """Crea una sesion, o REANUDA la activa existente (anti-zombie, reload durante examen).
 
@@ -218,6 +221,7 @@ async def crear_o_reanudar_sesion(
         alumno_idnumber=alumno_idnumber,
         alumno_email=alumno_email,
         config_snapshot=snapshot,
+        es_prueba=es_prueba,
     )
 
 

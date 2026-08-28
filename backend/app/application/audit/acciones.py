@@ -139,6 +139,9 @@ class AccionAuditoria(StrEnum):
     # c-78 E-07: el examen deja el borrador y pasa a estar disponible para los
     # alumnos. Se audita porque a partir de ese momento se puede rendir.
     EXAMEN_HABILITAR = "examen.habilitar"
+    # Vuelta atras de lo anterior, permitida solo mientras nadie lo haya rendido.
+    # Se audita por lo mismo: cambia si el examen se puede rendir o no.
+    EXAMEN_VOLVER_A_BORRADOR = "examen.volver_a_borrador"
     # c-78 E-07: el docente incorpora al examen preguntas nuevas del banco. El
     # pool esta congelado a proposito, asi que ampliarlo es una decision suya y
     # cambia que puede tocarle a los proximos alumnos.

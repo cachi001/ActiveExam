@@ -85,6 +85,10 @@ class SesionResumenData:
     alumno_idnumber: str | None = None
     alumno_email: str | None = None
     alumno_nombre: str | None = None
+    # migration 0102: el docente probando su examen. Se muestra en el Registro de
+    # sesiones para que no se lea como una rendicion mas: no cuenta como intento,
+    # no tiene nota y se puede borrar.
+    es_prueba: bool = False
 
 
 class ProctoringRepository:
@@ -106,6 +110,7 @@ class ProctoringRepository:
         alumno_idnumber: str | None = None,
         alumno_email: str | None = None,
         config_snapshot: dict | None = None,
+        es_prueba: bool = False,
     ) -> ProctoringSessionModel:
         """Crea y persiste una nueva sesion de proctoring activeexam.
 
@@ -120,6 +125,9 @@ class ProctoringRepository:
         ``config_snapshot`` (migration 0083): foto de umbral/pesos de scoring
         vigente al crear la sesion. None = no se pudo resolver la config al
         crear (degradacion) -> el scoring de esta sesion cae a la config viva.
+
+        ``es_prueba`` (migration 0102): el docente probando su propio examen. La
+        decide el router a partir del ROL, nunca el cliente.
         """
         sesion = ProctoringSessionModel(
             modo=modo,
@@ -128,6 +136,7 @@ class ProctoringRepository:
             examen_contenido_id=examen_contenido_id,
             alumno_idnumber=alumno_idnumber,
             alumno_email=alumno_email,
+            es_prueba=es_prueba,
             config_snapshot=config_snapshot,
         )
         self._db.add(sesion)
@@ -661,6 +670,7 @@ class ProctoringRepository:
                 alumno_idnumber=s.alumno_idnumber,
                 alumno_email=s.alumno_email,
                 alumno_nombre=nombres_por_sesion.get(s.id),
+                es_prueba=bool(getattr(s, "es_prueba", False)),
             )
             for s in sesiones
         ]
