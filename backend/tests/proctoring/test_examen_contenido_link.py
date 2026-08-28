@@ -20,7 +20,7 @@ from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.infrastructure.persistence.models.exam_content import ExamenContenidoModel
-from tests.proctoring.conftest import auth_headers
+from tests.proctoring.conftest import auth_headers, dar_perfil_completo
 
 _PROCTOR = auth_headers(["coordinador"])  # c-76: rol proctor eliminado -> coordinador supervisa
 
@@ -41,6 +41,9 @@ async def test_crear_sesion_con_examen_contenido_id(
     client: AsyncClient, db_session: AsyncSession
 ) -> None:
     """POST /sessions con examen_contenido_id → 201 y la respuesta lo refleja."""
+    # Rendir exige perfil completo (consentimiento + biometria + foto): el
+    # alumno del test pasa por lo mismo que uno de verdad.
+    await dar_perfil_completo(db_session)
     examen_contenido_id = await _crear_examen_contenido(db_session)
 
     resp = await client.post(

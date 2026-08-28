@@ -22,6 +22,11 @@ from app.application.proctoring import observacion_service, session_service
 from app.application.proctoring.auto_finalizacion import auto_finalizar_si_vencida
 from app.application.proctoring.captura_almacenada import leer_captura
 from app.application.proctoring.prueba_de_staff import es_rendicion_de_prueba
+from app.domain.exam_content.perfil_para_rendir import (
+    PerfilParaRendir,
+    falta_para_rendir,
+    puede_rendir,
+)
 from app.application.proctoring.enforcement import (
     ExamenDadoDeBajaError,
     ExamenEnBorradorError,
@@ -184,6 +189,41 @@ async def _ventanas_pausa_aprobada(db: AsyncSession, session_id: str) -> list:
         return list(result.scalars().all())
     except Exception:  # noqa: BLE001 — sin tabla de pausas, no se excluye nada
         return []
+
+
+async def _perfil_para_rendir(db: AsyncSession, usuario_id: str) -> PerfilParaRendir:
+    """Resuelve las tres condiciones contra la base.
+
+    Mismos repositorios que usa el gate de matriculacion: si la matricula y la
+    rendicion preguntaran distinto, una de las dos estaria mal.
+    """
+    from app.infrastructure.persistence.repositories.exam_content import _es_uuid
+    from app.infrastructure.persistence.repositories.biometric_reference import (
+        EmbeddingReferenciaRepository,
+        FotoReferenciaRepository,
+    )
+    from app.infrastructure.persistence.repositories.consent_perfil import (
+        ConsentimientoPerfilSqlRepository,
+    )
+
+    if not _es_uuid(usuario_id):
+        # Un `sub` que no es UUID no puede tener perfil, y consultarlo revienta
+        # con un 500 de asyncpg donde corresponde un 403 (mismo caso que la
+        # guarda de pertenencia).
+        return PerfilParaRendir(
+            consintio=False, tiene_biometria=False, tiene_foto=False
+        )
+
+    consentimiento = await ConsentimientoPerfilSqlRepository(db).vigente(usuario_id)
+    return PerfilParaRendir(
+        consintio=consentimiento is not None and consentimiento.estado == "otorgado",
+        tiene_biometria=(
+            await EmbeddingReferenciaRepository(db).obtener_vigente(usuario_id)
+        )
+        is not None,
+        tiene_foto=(await FotoReferenciaRepository(db).obtener_vigente(usuario_id))
+        is not None,
+    )
 
 
 async def _pertenece_al_principal(
@@ -365,6 +405,29 @@ def create_sessions_router(
                         "rendidos": exc.rendidos,
                     },
                 ) from exc
+
+            # Gate de PERFIL: sin consentimiento y sin biometría no se rinde.
+            #
+            # Vivía solo en la matriculación por código, así que al alumno
+            # inscripto desde el panel del docente no lo frenaba nadie: creaba la
+            # sesión, veía las preguntas, respondía y finalizaba. Sin
+            # consentimiento no se puede hacer proctoring (Ley 25.326, regla dura
+            # #7) y sin referencia biométrica la rendición no prueba quién la hizo.
+            #
+            # Va acá y no en el onboarding a propósito: el consentimiento y la
+            # biometría crean sus propias sesiones (sin examen vinculado) y no
+            # pueden quedar bloqueados por sí mismos. Al staff que prueba su
+            # examen tampoco se le pide: no es una rendición.
+            if not es_prueba_de_staff:
+                perfil = await _perfil_para_rendir(db, principal.subject or "")
+                if not puede_rendir(perfil):
+                    raise HTTPException(
+                        status_code=http_status.HTTP_403_FORBIDDEN,
+                        detail={
+                            "error": "perfil_incompleto",
+                            "mensaje": falta_para_rendir(perfil),
+                        },
+                    )
 
             # Gate de inscripción (C-71): backstop server-side — el alumno debe estar
             # inscripto en la comisión del examen para poder crear la sesión.

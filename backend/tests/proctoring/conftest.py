@@ -147,6 +147,11 @@ _TEST_JWT_SECRET = b"proctoring-activeexam-test-secret"
 _TEST_JWT_ISSUER = "activeexam-auth"
 _TEST_JWT_AUDIENCE = "proctoring-api"
 
+#: `sub` por defecto de los tokens de test. Es un UUID real porque el dominio lo
+#: usa como usuario_id contra la base: con un literal suelto, las consultas de
+#: perfil y de pertenencia fallan con 500 en vez de responder lo que corresponde.
+ALUMNO_DE_TEST = "11111111-1111-4111-8111-111111111111"
+
 
 def token_for(
     roles: list[str],
@@ -154,7 +159,7 @@ def token_for(
     mfa: bool = True,
     username: str | None = None,
     email: str = "test@uni.edu",
-    subject: str = "test-subject",
+    subject: str = ALUMNO_DE_TEST,
 ) -> str:
     """Emite un JWT HS256 de test con los roles dados (claims shape Keycloak).
 
@@ -189,7 +194,7 @@ def auth_headers(
     mfa: bool = True,
     username: str | None = None,
     email: str = "test@uni.edu",
-    subject: str = "test-subject",
+    subject: str = ALUMNO_DE_TEST,
 ) -> dict[str, str]:
     """Header Authorization Bearer con un token de test para los roles dados.
 
@@ -297,3 +302,81 @@ async def client_noauth(activeexam_app, activeexam_engine) -> AsyncIterator[Asyn
         transport=ASGITransport(app=activeexam_app), base_url="http://test"
     ) as c:
         yield c
+
+
+async def dar_perfil_completo(db, usuario_id: str = ALUMNO_DE_TEST) -> None:
+    """Deja al alumno en condiciones de rendir: consentimiento + biometria + foto.
+
+    El gate de perfil (`domain/exam_content/perfil_para_rendir`) es server-side y
+    corre al crear la sesion de un examen. Los tests que ejercitan el flujo del
+    alumno tienen que pasar por ahi como pasa un alumno de verdad: sembrando el
+    perfil, no salteando la regla.
+
+    El `usuario_id` por defecto es el `sub` que inyecta `auth_headers`.
+    """
+    from sqlalchemy import text as _text
+
+    from app.infrastructure.persistence.base import Base
+    from app.infrastructure.persistence.models.transactional import (
+        ConsentimientoPerfilModel,
+        EmbeddingReferenciaModel,
+        FotoReferenciaModel,
+        UsuarioModel,
+    )
+
+    # Cada modulo de tests crea solo las tablas que usa, y estas son nuevas para
+    # los del flujo del alumno: se crean si faltan en vez de exigirle a cada
+    # fixture que se acuerde de listarlas.
+    await db.run_sync(
+        lambda sync: Base.metadata.create_all(
+            sync.get_bind(),
+            tables=[
+                UsuarioModel.__table__,
+                ConsentimientoPerfilModel.__table__,
+                EmbeddingReferenciaModel.__table__,
+                FotoReferenciaModel.__table__,
+            ],
+            checkfirst=True,
+        )
+    )
+
+    await db.execute(
+        _text(
+            "INSERT INTO usuario (id, username, email, nombre, apellido,"
+            " password_hash, roles)"
+            " VALUES (:id, :u, :e, 'Test', 'Alumno', 'x', '[\"estudiante\"]'::jsonb)"
+            " ON CONFLICT (id) DO NOTHING"
+        ),
+        {"id": usuario_id, "u": f"alumno-{usuario_id[:8]}", "e": f"{usuario_id[:8]}@test.local"},
+    )
+    # Idempotente: varios tests del mismo modulo llaman a esto y las tablas de
+    # perfil no se limpian entre ellos. Sin el borrado previo quedan dos filas
+    # vigentes y el repositorio, que espera una sola, revienta.
+    for tabla in ("consentimiento_perfil", "embedding_referencia", "foto_referencia"):
+        await db.execute(
+            _text(f"DELETE FROM {tabla} WHERE usuario_id = :u"), {"u": usuario_id}
+        )
+
+    await db.execute(
+        _text(
+            "INSERT INTO consentimiento_perfil"
+            " (usuario_id, version_texto, hash_texto, estado, hash_registro)"
+            " VALUES (:u, 'v1', 'h', 'otorgado', 'hr')"
+        ),
+        {"u": usuario_id},
+    )
+    await db.execute(
+        _text(
+            "INSERT INTO embedding_referencia (usuario_id, embedding_cifrado)"
+            " VALUES (:u, 'cifrado')"
+        ),
+        {"u": usuario_id},
+    )
+    await db.execute(
+        _text(
+            "INSERT INTO foto_referencia (usuario_id, uri_storage, hash_sha256, bucket)"
+            " VALUES (:u, 'memoria://foto', 'h', 'test')"
+        ),
+        {"u": usuario_id},
+    )
+    await db.commit()

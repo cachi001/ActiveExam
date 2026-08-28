@@ -52,7 +52,7 @@ from app.infrastructure.persistence.models.proctoring import (  # noqa: F401
     ProctoringEventModel,
     ProctoringSessionModel,
 )
-from tests.proctoring.conftest import _build_test_jwt_validator, auth_headers
+from tests.proctoring.conftest import _build_test_jwt_validator, auth_headers, dar_perfil_completo
 
 pytestmark = pytest.mark.asyncio
 
@@ -216,6 +216,7 @@ async def test_segundo_post_mismo_alumno_examen_devuelve_misma_sesion(
 
     Devuelve la MISMA id y la MISMA `creada_en` (el timer se ancla al original).
     """
+    await dar_perfil_completo(db)
     examen_id = await _crear_examen(db)
 
     r1 = await client.post(
@@ -240,6 +241,7 @@ async def test_segundo_post_mismo_alumno_examen_devuelve_misma_sesion(
 async def test_reload_no_consume_intento(client: AsyncClient, db: AsyncSession) -> None:
     """Con intentos_permitidos=1, tres 'reloads' seguidos NO agotan el intento
     y NO acumulan sesiones zombie de por medio."""
+    await dar_perfil_completo(db)
     examen_id = await _crear_examen(db, intentos_permitidos=1)
 
     ids = []
@@ -268,6 +270,7 @@ async def test_reload_no_consume_intento(client: AsyncClient, db: AsyncSession) 
 async def test_reanudacion_no_aplica_a_otro_alumno(client: AsyncClient, db: AsyncSession) -> None:
     """La reanudacion es por (alumno, examen): otro alumno con el mismo examen
     NO reusa la sesion activa ajena — obtiene la suya propia (edge case IDOR)."""
+    await dar_perfil_completo(db)
     examen_id = await _crear_examen(db)
 
     r1 = await client.post(
@@ -299,6 +302,7 @@ async def test_obtener_respuestas_restaura_lo_ya_guardado(
 ) -> None:
     """Tras un 'reload' (reanudar la misma sesion), GET .../respuestas devuelve
     lo que el alumno ya habia contestado antes del F5 — no vuelve en blanco."""
+    await dar_perfil_completo(db)
     examen_id, pregunta_id, opcion_id = await _crear_examen_1pregunta(db)
 
     r1 = await client.post(
@@ -323,6 +327,7 @@ async def test_obtener_respuestas_restaura_lo_ya_guardado(
 
 async def test_obtener_respuestas_de_otro_alumno_404(client: AsyncClient, db: AsyncSession) -> None:
     """IDOR: un alumno no puede leer las respuestas de la sesion de otro."""
+    await dar_perfil_completo(db)
     examen_id, pregunta_id, opcion_id = await _crear_examen_1pregunta(db)
 
     r1 = await client.post(
