@@ -127,6 +127,16 @@ export interface ResultadosPaginados {
   total: number;
   page: number;
   page_size: number;
+  /**
+   * Avisos de arriba de la tabla, contados sobre TODO el examen.
+   *
+   * Se calculaban acá con los items de la página, así que al pasar a la página
+   * 2 el número cambiaba o desaparecía — y es con ese número que el docente
+   * decide a quién ir a destrabar. Un agregado del total no se puede calcular
+   * con una página en la mano.
+   */
+  retenidas_por_revision: number;
+  sin_sincronizar_config: number;
 }
 
 export interface SincronizarMoodleResponse {

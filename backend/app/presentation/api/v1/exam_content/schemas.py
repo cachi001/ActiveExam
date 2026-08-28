@@ -1178,6 +1178,12 @@ class ResultadosExamenPaginadosResponse(BaseModel):
     total: int
     page: int
     page_size: int
+    # Agregados sobre TODO el examen, no sobre la pagina. Los avisos de arriba de
+    # la tabla se calculaban en el cliente sobre los items visibles, asi que al
+    # pasar de pagina el numero cambiaba o desaparecia — y es con ese numero que
+    # el docente decide a quien ir a destrabar.
+    retenidas_por_revision: int = 0
+    sin_sincronizar_config: int = 0
 
 
 class ArchivarResultadoRequest(BaseModel):

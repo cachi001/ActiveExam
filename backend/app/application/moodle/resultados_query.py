@@ -49,6 +49,12 @@ from app.infrastructure.persistence.models.proctoring import (
 ESTADO_PENDIENTE = EstadoEntregaNota.PENDIENTE.value
 ESTADO_MANUAL = EstadoEntregaNota.MANUAL.value
 
+#: Retenciones que traba una PERSONA (el veredicto de integridad), y no una
+#: configuracion faltante. Separa los dos avisos de arriba de la tabla, que
+#: mandan al docente a lugares distintos: uno a la cola de revision, el otro a
+#: configurar el destino de la nota.
+_MOTIVOS_DE_REVISION = frozenset({"en_riesgo", "anulada"})
+
 # Umbral de cola de revision por defecto si el singleton de config no existe (mismo
 # default que ConfiguracionSistemaModel.umbral_cola_revision y el mock del frontend).
 UMBRAL_COLA_REVISION_DEFAULT = 70
@@ -411,7 +417,8 @@ async def listar_resultados_examen(
     page_size: int = 20,
     moodle_configurado: bool = True,
     writeback_svc: MoodleWritebackService | None = None,
-) -> tuple[list[ResultadoAlumno], int]:
+    con_avisos: bool = False,
+) -> tuple[list[ResultadoAlumno], int, dict[str, int] | None]:
     """Lista paginada de alumnos que rindieron el examen + total global filtrado.
 
     Orden estable: por finalizada_en descendente (más reciente primero), luego
@@ -543,7 +550,13 @@ async def listar_resultados_examen(
         filas = [f for f in filas if f.resultado == resultado_filtro]
         total = len(filas)
     items = filas
-    return items, int(total)
+
+    # Los avisos de arriba de la tabla ("N notas retenidas por revisión") son
+    # agregados del EXAMEN. Se calculaban en el cliente sobre los items de la
+    # página, así que al pasar a la página 2 el número cambiaba o desaparecía —
+    # y es el número con el que el docente decide a quién ir a destrabar.
+    avisos = await _avisos_del_examen(db, examen_id) if con_avisos else None
+    return items, int(total), avisos
 
 
 def motivos_de_una_fila(
@@ -710,6 +723,53 @@ async def _motivos_retencion(
         if de_la_fila:
             motivos[row.id] = de_la_fila
     return motivos
+
+
+async def _avisos_del_examen(db: AsyncSession, examen_id: str) -> dict[str, int]:
+    """Cuántas notas del examen están trabadas, y por qué.
+
+    Recorre TODAS las rendiciones reales del examen (no la página) y usa las
+    mismas retenciones que la tabla, así el aviso y las filas no pueden decir
+    cosas distintas.
+    """
+    filas = (
+        await db.execute(
+            select(
+                ProctoringSessionModel.id,
+                ProctoringSessionModel.decision,
+                MoodleWritebackEstadoModel.estado,
+            )
+            .join(
+                MoodleWritebackEstadoModel,
+                MoodleWritebackEstadoModel.session_id == ProctoringSessionModel.id,
+            )
+            .where(
+                ProctoringSessionModel.examen_contenido_id == examen_id,
+                ProctoringSessionModel.es_prueba.is_(False),
+            )
+        )
+    ).all()
+
+    session_ids = [str(f[0]) for f in filas]
+    retenciones = await _motivos_retencion(db, session_ids)
+
+    por_revision = 0
+    por_configuracion = 0
+    for sid, _decision, estado in filas:
+        motivos = retenciones.get(str(sid)) or []
+        if not motivos:
+            continue
+        if any(m in _MOTIVOS_DE_REVISION for m in motivos):
+            por_revision += 1
+        elif estado != ESTADO_MANUAL:
+            # Una nota ya cargada a mano no espera que se configure nada: el
+            # número ya está en la libreta.
+            por_configuracion += 1
+
+    return {
+        "retenidas_por_revision": por_revision,
+        "sin_sincronizar_config": por_configuracion,
+    }
 
 
 async def _ausentes_del_examen(

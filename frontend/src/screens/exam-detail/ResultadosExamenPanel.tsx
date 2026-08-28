@@ -19,7 +19,6 @@ import { RefreshBar } from '../../ui/RefreshBar';
 import { useAutoRefresh } from '../../lib/useAutoRefresh';
 import {
   archivarResultadoFn,
-  contarRetencionesPorRevision,
   listarResultadosFn,
   desmarcarNotaCargadaFn,
   marcarNotaCargadaFn,
@@ -101,6 +100,9 @@ export function ResultadosExamenPanel({ examenId }: { examenId: string }) {
   });
   const [resultados, setResultados] = useState<ResultadoExamen[]>([]);
   const [total, setTotal] = useState(0);
+  // Avisos del EXAMEN entero, calculados server-side. Contarlos sobre la página
+  // hacía que cambiaran al paginar.
+  const [avisos, setAvisos] = useState({ revision: 0, configuracion: 0 });
   const [cargandoTabla, setCargandoTabla] = useState(false);
   const [errorTabla, setErrorTabla] = useState<string | null>(null);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<number | undefined>();
@@ -167,6 +169,10 @@ export function ResultadosExamenPanel({ examenId }: { examenId: string }) {
       });
       setResultados(resp.items);
       setTotal(resp.total);
+      setAvisos({
+        revision: resp.retenidas_por_revision ?? 0,
+        configuracion: resp.sin_sincronizar_config ?? 0,
+      });
       setLastUpdatedAt(Date.now());
     } catch (err: unknown) {
       setErrorTabla(traducirErrorApi(err, 'carga'));
@@ -298,11 +304,15 @@ export function ResultadosExamenPanel({ examenId }: { examenId: string }) {
   const pendientes = resultados.filter(
     (r) => r.estado_moodle === 'pendiente' && !r.retenido_por,
   ).length;
-  // 'sin_destino'/'sin_credencial_docente' son retenciones de CONFIGURACIÓN del
-  // campus, no de revisión: separadas para no decirle al admin que una nota está
-  // "pendiente de revisión por riesgo" cuando el alumno nunca superó el umbral.
-  const { revision: retenidasPorRevision, configuracion: retenidasPorConfig } =
-    contarRetencionesPorRevision(resultados);
+  // Los avisos vienen del BACKEND y describen todo el examen. Contarlos acá
+  // sobre `resultados` (la página visible) hacía que el número cambiara al
+  // paginar: en la página 2 "2 notas retenidas por revisión" desaparecía.
+  //
+  // Siguen separados en dos: la retención por revisión la destraba una persona
+  // en la cola; la de configuración se arregla completando el destino de la
+  // nota. Mandan al docente a lugares distintos.
+  const retenidasPorRevision = avisos.revision;
+  const retenidasPorConfig = avisos.configuracion;
 
   const aplicarFiltros = () =>
     setQuery((q) => ({

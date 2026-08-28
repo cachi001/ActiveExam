@@ -174,7 +174,7 @@ async def _examen_con_dos_rendiciones(db: AsyncSession) -> tuple[str, str, str]:
 async def test_la_prueba_no_aparece_en_la_tabla_de_resultados(db: AsyncSession):
     examen_id, sesion_alumno, _ = await _examen_con_dos_rendiciones(db)
 
-    filas, total = await listar_resultados_examen(db=db, examen_id=examen_id)
+    filas, total, _ = await listar_resultados_examen(db=db, examen_id=examen_id)
 
     assert total == 1, "el docente no es un alumno del examen"
     assert [f.session_id for f in filas] == [sesion_alumno]
@@ -211,7 +211,7 @@ async def test_quien_probo_el_examen_no_figura_como_ausente(db: AsyncSession):
     )
     quienes = {f[0] for f in rindieron.all()}
 
-    filas, _ = await listar_resultados_examen(db=db, examen_id=examen_id)
+    filas, _, _ = await listar_resultados_examen(db=db, examen_id=examen_id)
     ausentes = [f for f in filas if f.session_id is None]
 
     assert any(q.startswith("profe-1") for q in quienes)

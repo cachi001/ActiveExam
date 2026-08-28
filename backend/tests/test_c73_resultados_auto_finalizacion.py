@@ -122,7 +122,7 @@ async def test_sesion_vencida_sin_finalizar_aparece_finalizada_en_resultados() -
     sid = await _crear_sesion_vencida_sin_finalizar(factory, eid, creada_hace_min=60)
     try:
         async with factory() as s:
-            items, total = await listar_resultados_examen(db=s, examen_id=eid)
+            items, total, _ = await listar_resultados_examen(db=s, examen_id=eid)
 
         assert total == 1
         assert len(items) == 1
@@ -152,7 +152,7 @@ async def test_sesion_no_vencida_sin_finalizar_no_aparece() -> None:
     sid = await _crear_sesion_vencida_sin_finalizar(factory, eid, creada_hace_min=5)
     try:
         async with factory() as s:
-            items, total = await listar_resultados_examen(db=s, examen_id=eid)
+            items, total, _ = await listar_resultados_examen(db=s, examen_id=eid)
 
         assert total == 0
         assert items == []

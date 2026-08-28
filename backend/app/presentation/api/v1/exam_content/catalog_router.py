@@ -5913,7 +5913,8 @@ def create_exam_content_router(
             writeback_svc is not None and await writeback_svc.hay_credencial()
         )
         async with session_factory() as session:
-            items, total = await listar_resultados_examen(
+            items, total, avisos = await listar_resultados_examen(
+                con_avisos=True,
                 db=session,
                 examen_id=examen_id,
                 q=q,
@@ -5959,6 +5960,8 @@ def create_exam_content_router(
             total=total,
             page=max(1, page),
             page_size=max(1, page_size),
+            retenidas_por_revision=(avisos or {}).get("retenidas_por_revision", 0),
+            sin_sincronizar_config=(avisos or {}).get("sin_sincronizar_config", 0),
         )
 
     # -----------------------------------------------------------------------
@@ -5983,7 +5986,7 @@ def create_exam_content_router(
             # `archivado=None` (todas) a propósito: quien exporta para cargar
             # notas a mano necesita el listado COMPLETO, no el recorte de la
             # pantalla. page_size alto para no paginar el archivo.
-            items, _total = await listar_resultados_examen(
+            items, _total, _avisos = await listar_resultados_examen(
                 db=session,
                 examen_id=examen_id,
                 archivado=None,

@@ -301,7 +301,17 @@ async def test_resultados_lista_alumnos_con_nota_y_estado(app_con_moodle, factor
         resp = await c.get(f"/api/v1/exam-content/{examen_id}/resultados")
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    assert set(body.keys()) == {"items", "total", "page", "page_size"}
+    assert set(body.keys()) == {
+        "items",
+        "total",
+        "page",
+        "page_size",
+        # Avisos de arriba de la tabla, agregados sobre TODO el examen. Se
+        # calculaban en el cliente sobre la pagina visible, asi que el numero
+        # cambiaba al paginar.
+        "retenidas_por_revision",
+        "sin_sincronizar_config",
+    }
     assert body["total"] == 2
     by_id = {it["alumno_idnumber"]: it for it in body["items"]}
     assert float(by_id["leg-A"]["nota"]) == pytest.approx(7.5)

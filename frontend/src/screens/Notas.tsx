@@ -14,6 +14,7 @@
  * Ruta: /admin/notas (roles: tutor | coordinador | admin_sistema).
  */
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { StaffShell } from '../ui/shells';
 import { Card, Icon, SectionTitle } from '../ui/components';
 import { HelpButton } from '../ui/HelpButton';
@@ -163,7 +164,21 @@ export default function Notas() {
         </Card>
 
         {examenElegido && (
-          <ResultadosExamenPanel key={examenElegido.id} examenId={examenElegido.id} />
+          <>
+            {/* Esta es LA MISMA tabla que se abre desde el examen (mismo
+                componente). Lo que no habia era el camino de vuelta: desde acá
+                no se podia llegar al examen sin volver a buscarlo en la lista. */}
+            <p className="text-label-sm text-on-surface-variant">
+              <Link
+                to={`/admin/examenes/${examenElegido.id}`}
+                className="text-primary hover:underline inline-flex items-center gap-1"
+              >
+                <Icon name="open_in_new" className="text-[16px]" />
+                Ver la configuración de «{examenElegido.titulo}»
+              </Link>
+            </p>
+            <ResultadosExamenPanel key={examenElegido.id} examenId={examenElegido.id} />
+          </>
         )}
       </div>
     </StaffShell>
