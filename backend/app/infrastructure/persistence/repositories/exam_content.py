@@ -199,6 +199,7 @@ class ExamenContenidoSqlRepository:
                 ExamenContenidoModel.comision_id,
                 ComisionModel.nombre.label("comision_nombre"),
                 ComisionModel.codigo.label("comision_codigo"),
+                MateriaModel.id.label("materia_id"),
                 MateriaModel.nombre.label("materia_nombre"),
                 MateriaModel.codigo.label("materia_codigo"),
                 ExamenContenidoModel.apertura,
@@ -229,6 +230,7 @@ class ExamenContenidoSqlRepository:
                 ExamenContenidoModel.comision_id,
                 ComisionModel.nombre,
                 ComisionModel.codigo,
+                MateriaModel.id,
                 MateriaModel.nombre,
                 MateriaModel.codigo,
                 ExamenContenidoModel.apertura,
@@ -250,6 +252,7 @@ class ExamenContenidoSqlRepository:
             comision_id=row.comision_id,
             comision_nombre=row.comision_nombre,
             comision_codigo=row.comision_codigo,
+            materia_id=row.materia_id,
             materia_nombre=row.materia_nombre,
             materia_codigo=row.materia_codigo,
             apertura=row.apertura,
@@ -1980,6 +1983,17 @@ class InscripcionSqlRepository:
             )
         )
         return result.scalar_one_or_none() is not None
+
+    async def roles_de(self, usuario_id: str) -> list[str]:
+        """Roles del usuario activo. Lista vacia si no existe o esta dado de baja."""
+        result = await self._db.execute(
+            select(UsuarioModel.roles).where(
+                UsuarioModel.id == usuario_id,
+                UsuarioModel.eliminado_en.is_(None),
+            )
+        )
+        roles = result.scalar_one_or_none()
+        return list(roles or [])
 
     async def listar_usuarios_de_comision(
         self, comision_id: str

@@ -2,7 +2,7 @@
 
 NUEVO endpoint GET /api/v1/exam-content/{examen_id}/resumen:
   Devuelve { id, titulo, cantidad_preguntas, comision_id, comision_nombre,
-  materia_nombre } — los metadatos del encabezado del detalle del admin.
+  materia_id, materia_nombre } — los metadatos del encabezado del detalle.
   Reusa el read-model de resumen (LEFT JOIN materia/comisión + count preguntas).
   Cualquier principal autenticado (sin admin/MFA). 404 si no existe.
   D3: es_correcta NUNCA expuesta; tampoco viajan preguntas/opciones.
@@ -195,6 +195,9 @@ async def test_resumen_devuelve_metadata_con_comision(client, factory):
         "comision_id",
         "comision_nombre",
         "comision_codigo",
+        # El ID de la materia, no solo su nombre: la pantalla que edita el
+        # sorteo arma contra el BANCO de esa materia y sin el id no se montaba.
+        "materia_id",
         "materia_nombre",
         "materia_codigo",
         # Config por examen (migración 0032): el front gatea "Rendir" con esto.

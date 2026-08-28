@@ -286,6 +286,9 @@ class ExamenContenidoResumen:
     comision_id: str | None = None
     comision_nombre: str | None = None
     comision_codigo: str | None = None
+    # El ID, no solo el nombre: la pantalla que edita el sorteo arma contra el
+    # BANCO de esta materia, y para eso necesita el id.
+    materia_id: str | None = None
     materia_nombre: str | None = None
     materia_codigo: str | None = None
     # Config por examen que el front usa para gatear "Rendir" por ventana/intentos
