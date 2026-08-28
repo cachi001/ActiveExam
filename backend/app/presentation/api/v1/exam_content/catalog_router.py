@@ -3700,7 +3700,7 @@ def create_exam_content_router(
         await registrar_seguro(
             session_factory,
             actor=principal.email,
-            accion=AccionAuditoria.EXAMEN_POOL_ACTUALIZADO,
+            accion=AccionAuditoria.EXAMEN_SORTEO_REARMADO,
             modulo=ModuloAuditoria.EXAMENES,
             entidad=EntidadAuditoria.EXAMEN,
             entidad_id=str(examen_id),

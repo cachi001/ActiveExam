@@ -88,7 +88,7 @@ const ACCIONES_POR_MODULO: Record<string, OpcionAccion[]> = {
     },
     {
       label: 'Habilitación y pool del examen',
-      accion: 'examen.habilitar,examen.pool_actualizado',
+      accion: 'examen.habilitar,examen.pool_actualizado,examen.sorteo_rearmado',
     },
   ],
   MOODLE: [
@@ -153,6 +153,8 @@ const ACCION_META: Array<{ match: (a: string) => boolean; label: string; color: 
   { match: (a) => a === 'examen.comision_quitada', label: 'Quitó una comisión del examen', color: '#ef4444', icon: 'group_remove' },
   { match: (a) => a === 'examen.habilitar', label: 'Habilitó el examen', color: '#10b981', icon: 'visibility' },
   { match: (a) => a === 'examen.pool_actualizado', label: 'Amplió las preguntas del sorteo', color: '#0891b2', icon: 'library_add' },
+  // Rearmar no es ampliar: acá se pudo SACAR una categoría del examen.
+  { match: (a) => a === 'examen.sorteo_rearmado', label: 'Cambió las preguntas del sorteo', color: '#0891b2', icon: 'shuffle' },
   { match: (a) => a === 'moodle.sync', label: 'Sincronizó a Moodle', color: '#7c3aed', icon: 'sync' },
   { match: (a) => a === 'moodle_credencial.conectar', label: 'Conectó su cuenta del campus', color: '#2563eb', icon: 'link' },
   { match: (a) => a === 'moodle_credencial.renovar', label: 'Renovó su cuenta del campus', color: '#2563eb', icon: 'autorenew' },

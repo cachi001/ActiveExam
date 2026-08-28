@@ -146,6 +146,11 @@ class AccionAuditoria(StrEnum):
     # pool esta congelado a proposito, asi que ampliarlo es una decision suya y
     # cambia que puede tocarle a los proximos alumnos.
     EXAMEN_POOL_ACTUALIZADO = "examen.pool_actualizado"
+    # Rearmar el sorteo es distinto de ampliarlo: acá se puede SACAR una
+    # categoria, no solo sumar preguntas nuevas. Etiquetarlo como "amplio"
+    # describiria mal lo que paso, y la auditoria es justamente lo que se lee
+    # cuando hay que reconstruir por que un examen cambio.
+    EXAMEN_SORTEO_REARMADO = "examen.sorteo_rearmado"
 
     # ── Write-back de nota a Moodle (cadena de custodia — regla dura #6, L2.5) ──
     # La sincronización manual del admin ESCRIBE una nota académica real en el
