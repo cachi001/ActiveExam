@@ -20,6 +20,7 @@ from app.application.exam_content.errors import (
     CodigoMatriculacionInvalidoError,
     ComisionInactivaError,
     MateriaInactivaError,
+    NoEsAlumnoError,
     PerfilIncompletoError,
     YaInscriptoEnLaMateriaError,
 )
@@ -280,6 +281,15 @@ def create_exam_taking_router(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail={"error": "perfil_incompleto", "mensaje": exc.razon},
                 ) from exc
+            except NoEsAlumnoError as exc:
+                # El padrón es de alumnos. Si un docente usa el código de su
+                # propia comisión, no se matricula: para probar el examen tiene
+                # el modo de prueba, que no genera nota.
+                await session.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail={"error": "no_es_alumno", "mensaje": str(exc)},
+                ) from exc
             except CodigoMatriculacionInvalidoError as exc:
                 await session.rollback()
                 raise HTTPException(
@@ -348,7 +358,12 @@ def create_exam_taking_router(
                 detail="Persistencia no inicializada.",
             )
 
-        moodle_configurado = writeback_svc is not None
+        # Por la CREDENCIAL vigente, no por la existencia del servicio (ver el
+        # mismo cálculo en `catalog_router`): construido siempre, preguntar por el
+        # objeto daba true para siempre.
+        moodle_configurado = (
+            writeback_svc is not None and await writeback_svc.hay_credencial()
+        )
         async with session_factory() as session:
             items, total = await listar_mis_notas(
                 db=session,
@@ -365,6 +380,7 @@ def create_exam_taking_router(
                     nota=r.nota,
                     nota_maxima=r.nota_maxima,
                     aprobado=r.aprobado,
+                    resultado=r.resultado,
                     estado_moodle=r.estado_moodle,
                     en_cola_revision=r.en_cola_revision,
                     score=r.score,
@@ -877,6 +893,7 @@ def create_exam_taking_router(
             nota=rev.nota,
             nota_maxima=rev.nota_maxima,
             aprobado=rev.aprobado,
+            resultado=rev.resultado,
             total_preguntas=rev.total_preguntas,
             correctas=rev.correctas,
             incorrectas=rev.incorrectas,
