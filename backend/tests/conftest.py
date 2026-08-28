@@ -31,7 +31,36 @@ import os
 import pytest
 
 
+#: Sufijo obligatorio de la base contra la que corre la suite. Los modulos hacen
+#: DROP TABLE de tablas compartidas, asi que apuntar a la base de desarrollo la
+#: destruye: paso tres veces, y el sintoma no es obvio (la app empieza a tirar
+#: 500 "current transaction is aborted" porque falta una tabla suelta).
+_SUFIJO_BASE_DE_TEST = "_test"
+
+
+def _abortar_si_apunta_a_la_base_equivocada() -> None:
+    """Corta la corrida si DATABASE_URL no es una base de test.
+
+    Sin esto, olvidarse la variable hace que la suite corra contra la base de
+    desarrollo y le borre tablas. Es preferible no correr ningun test a dejar el
+    entorno roto de una forma que despues se investiga como si fuera un bug de
+    la aplicacion.
+    """
+    url = os.environ.get("DATABASE_URL")
+    if not url:
+        return  # sin URL los tests de integracion se saltan solos
+
+    nombre = url.rsplit("/", 1)[-1].split("?")[0]
+    if not nombre.endswith(_SUFIJO_BASE_DE_TEST):
+        raise pytest.UsageError(
+            f"DATABASE_URL apunta a {nombre!r} y la suite DROPEA tablas: eso "
+            "destruye esa base. Usa una que termine en '_test' "
+            "(por ejemplo proctoring_test)."
+        )
+
+
 def pytest_configure(config: pytest.Config) -> None:
+    _abortar_si_apunta_a_la_base_equivocada()
     config.addinivalue_line(
         "markers",
         "requires_stack: el test necesita el stack de Docker Compose levantado "

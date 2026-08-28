@@ -79,10 +79,10 @@ _V1 = ConsentText(
         "integridad académica. Tus compañeros no ven nada de esto."
     ),
     cuanto_tiempo=(
-        "Las imágenes se conservan al menos 90 días, porque son la prueba con la "
-        "que podés defenderte si se cuestiona tu examen, y se eliminan cuando "
-        "vence ese plazo. Si hay un caso disciplinario abierto, se conservan "
-        "hasta que se resuelva."
+        "Mientras la institución los necesite para sostener la evaluación y "
+        "resolver cualquier reclamo sobre ella: son la prueba con la que podés "
+        "defenderte si se cuestiona tu examen. Si querés que se borren antes, "
+        "podés pedirlo (ver tus derechos)."
     ),
     derechos_titular=(
         "Podés pedir acceso a tus datos, su rectificación o su supresión, y "

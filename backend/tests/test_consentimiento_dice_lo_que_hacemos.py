@@ -48,8 +48,17 @@ def test_no_promete_infraestructura():
 
 
 def test_no_promete_una_purga_que_no_existe():
-    """La purga del embedding al egreso no está implementada."""
-    assert "egreso" not in _texto_completo()
+    """Ni la del embedding al egreso, ni un plazo de borrado automático.
+
+    `purgar_capturas_vencidas` existe pero NO se dispara sola: el propio
+    endpoint aclara que "no hay cron ni scheduler colgado de esto, lo llama
+    explícitamente quien administra el sistema". Prometer que algo se elimina al
+    vencer un plazo describe un automatismo que no existe.
+    """
+    cuerpo = _texto_completo()
+    assert "egreso" not in cuerpo
+    for promesa in ("se eliminan", "se elimina", "90 días", "vence ese plazo"):
+        assert promesa not in cuerpo, f"promete un borrado que nadie ejecuta: {promesa!r}"
 
 
 def test_sigue_diciendo_que_se_recolecta_biometria():
