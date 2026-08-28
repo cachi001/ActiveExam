@@ -27,11 +27,37 @@ from __future__ import annotations
 MOTIVOS_QUE_BLOQUEAN_MARCADO = frozenset({"en_riesgo", "anulada"})
 
 
-def puede_marcarse_cargada(retenido_por: str | None) -> bool:
+def puede_marcarse_cargada(retenido_por: str | list[str] | None) -> bool:
     """Si la nota de esa sesion se puede marcar como cargada a mano.
 
     ``retenido_por`` es el motivo que ya calcula
     ``resultados_query._motivos_retencion`` — se reusa en vez de recalcular un
     criterio propio, que es como se desincronizan las reglas.
     """
-    return retenido_por not in MOTIVOS_QUE_BLOQUEAN_MARCADO
+    # Acepta la lista completa de motivos (`_motivos_retencion` devuelve todos
+    # los que aplican) o uno solo, por los llamadores viejos. Basta con que UNO
+    # bloquee para que no se pueda marcar.
+    motivos = (
+        retenido_por
+        if isinstance(retenido_por, list)
+        else [retenido_por]
+        if retenido_por
+        else []
+    )
+    return not any(m in MOTIVOS_QUE_BLOQUEAN_MARCADO for m in motivos)
+
+
+#: Los únicos estados que una persona puede DESHACER. Sólo `manual`, porque es
+#: el único que puso una persona: marcar a mano es una afirmación ("ya la cargué
+#: en el campus") y las personas se equivocan de fila.
+#:
+#: `enviado` NO está y es el punto de todo esto: lo puso el campus al confirmar.
+#: Si se pudiera escribir o borrar a mano, dejaría de haber forma de saber qué
+#: notas llegaron de verdad. `pendiente` y `fallido` los pone el envío según lo
+#: que pasó — no hay nada que deshacer ahí, y tampoco se fijan a dedo.
+ESTADOS_QUE_SE_PUEDEN_DESMARCAR = frozenset({"manual"})
+
+
+def puede_desmarcarse(estado: str | None) -> bool:
+    """¿Se puede volver atrás este estado? Corregir sí, inventar no."""
+    return estado in ESTADOS_QUE_SE_PUEDEN_DESMARCAR

@@ -1,4 +1,5 @@
 import { Card, Button, Icon } from '../../../ui/components';
+import { ResultadoNotaChip } from '../../../ui/ResultadoNotaChip';
 import { useNavigate } from '../../../lib/router';
 import type { NotaExamen } from '../../../lib/types';
 
@@ -8,7 +9,6 @@ export function NotaCard({ nota }: { nota: NotaExamen }) {
   // C-69: nota oculta hasta el cierre (nota_visible=false → nota=null).
   const notaPendiente = nota.nota_visible === false;
   const tieneNota = !notaPendiente && nota.nota !== null && nota.nota !== undefined;
-  const aprobado = tieneNota && nota.aprobado === true;
   const fmtFecha = (iso?: string | null) =>
     iso ? new Date(iso).toLocaleString('es-AR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
 
@@ -27,16 +27,15 @@ export function NotaCard({ nota }: { nota: NotaExamen }) {
             Disponible al cerrar{nota.cierre ? ` · ${fmtFecha(nota.cierre)}` : ''}
           </span>
         ) : tieneNota ? (
-          <span
-            className={`shrink-0 inline-flex items-center text-[12px] font-semibold rounded-full px-sm py-0.5 ${
-              aprobado ? 'bg-success-container text-success' : 'bg-error-container text-on-error-container'
-            }`}
-          >
-            {/* "(preliminar)" solo mientras la revisión está PENDIENTE. Con el
-                caso resuelto la nota es definitiva — seguir diciendo preliminar
-                le hace creer al alumno que todavía puede cambiar. */}
-            {aprobado ? 'Aprobado' : 'Desaprobado'}
-            {enRevision && !nota.nota_anulada ? ' (preliminar)' : ''} · {notaTxt}
+          <span className="shrink-0 inline-flex items-center gap-1.5 text-[12px] font-semibold">
+            {/* El resultado y su color los define el BACKEND. Escrito acá a
+                mano, la tabla del docente decía "En revisión" o "Anulada" y
+                esta tarjeta seguía diciendo "Aprobado" sobre la misma nota. */}
+            <ResultadoNotaChip resultado={nota.resultado} />
+            <span className="text-on-surface-variant">
+              {enRevision && !nota.nota_anulada ? '(preliminar) · ' : ''}
+              {notaTxt}
+            </span>
           </span>
         ) : (
           <span className="shrink-0 inline-flex items-center text-[12px] font-medium rounded-full px-sm py-0.5 bg-surface-container-high text-on-surface-variant">

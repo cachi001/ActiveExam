@@ -9,7 +9,7 @@ nota académica, estado del envío a Moodle y la marca de actualización.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 from sqlalchemy import func, or_, select
@@ -28,6 +28,12 @@ from app.domain.exam_content.visibilidad import (
     nota_visible_para_alumno,
     revision_visible,
 )
+from app.domain.exam_content.estado_entrega import ESTADO_SIN_TOKEN, EstadoEntregaNota
+from app.domain.exam_content.resultado_nota import (
+    ResultadoNota,
+    nota_efectiva,
+    resultado_de,
+)
 from app.domain.review.decision import nota_esta_anulada
 from app.infrastructure.persistence.models.exam_content import ExamenContenidoModel
 from app.infrastructure.persistence.models.moodle_writeback import (
@@ -38,12 +44,10 @@ from app.infrastructure.persistence.models.proctoring import (
     ProctoringSessionModel,
 )
 
-# Estados de display posibles para el admin.
-ESTADO_SIN_TOKEN = "sin_token"
-ESTADO_PENDIENTE = "pendiente"
-# c-78 D14: la nota se cargó A MANO en el campus (no hay API, o falló y alguien
-# la cargó igual). Distinto de 'enviado', que significa "el campus confirmó".
-ESTADO_MANUAL = "manual"
+# Re-exportados desde el dominio (`EstadoEntregaNota`), que es la fuente única. Se dejan
+# con estos nombres porque los usan la query, los routers y varios tests.
+ESTADO_PENDIENTE = EstadoEntregaNota.PENDIENTE.value
+ESTADO_MANUAL = EstadoEntregaNota.MANUAL.value
 
 # Umbral de cola de revision por defecto si el singleton de config no existe (mismo
 # default que ConfiguracionSistemaModel.umbral_cola_revision y el mock del frontend).
@@ -132,6 +136,10 @@ class ResultadoAlumno:
     # None = nada la retiene. Es ortogonal a `estado_moodle`: una fila retenida
     # sigue estando 'pendiente' en la tabla, pero apretar "Sincronizar" no la manda.
     retenido_por: str | None = None
+    #: TODOS los motivos que la retienen, del más importante al menos. La fila
+    #: los muestra todos: al examen le falta el destino para TODOS los alumnos,
+    #: y decírselo a la mitad se lee como un error de la pantalla.
+    retenciones: list[str] = field(default_factory=list)
     # c-78: POR QUE fallo el envio a Moodle. Ya se guardaba en la tabla y no se
     # exponia: la pantalla decia "fallido" y el motivo habia que ir a buscarlo
     # reproduciendo el write-back a mano contra el campus.
@@ -143,6 +151,70 @@ class ResultadoAlumno:
     # None = nunca se marcó a mano (el estado viene del sistema, no de una persona).
     marcada_manual_por: str | None = None
     marcada_manual_en: object | None = None
+    # El resultado ACADÉMICO, ya resuelto acá: aprobado | desaprobado | anulada |
+    # sin_nota | sin_criterio (`ResultadoNota`). Se manda resuelto para que ni la
+    # pantalla ni el export tengan que decidirlo — cuando cada uno lo decidía por
+    # su cuenta, el archivo decía "Aprobado" sobre una nota anulada.
+    resultado: str = ""
+    # `aprobado` sigue saliendo por compatibilidad, pero el que manda es
+    # `resultado`: contempla la anulación, que un booleano no puede expresar.
+    aprobado: bool | None = None
+    nota_aprobacion: float | None = None
+    #: Sólo en las filas de ausentes (no tienen sesión): sirve para identificar
+    #: al alumno cuando `session_id` viene vacío.
+    usuario_id: str | None = None
+    # La nota que VALE. Una anulación la deja en 0; `nota` conserva la calculada
+    # para poder mostrar "la nota calculada era 78" sin perder el dato.
+    nota_efectiva: float | None = None
+
+
+#: Marca del que NO SE PRESENTÓ. No es un motivo de retención de la entrega: es
+#: la explicación de un 0 que nadie sacó rindiendo. Va en la misma lista para
+#: que la pantalla lo muestre igual que los otros, debajo del estado.
+MOTIVO_NO_RINDIO = "no_rindio"
+
+
+def fila_de_ausente(
+    *, usuario_id: str, idnumber: str | None, email: str | None, nombre: str | None
+) -> "ResultadoAlumno":
+    """Fila del inscripto que NO rindió: 0 y desaprobado, diciendo por qué.
+
+    Antes no aparecía: sin sesión de proctoring no había fila, así que de un
+    curso de 40 el docente veía 30 y no tenía cómo saber quiénes faltaron.
+
+    Va SIN `session_id` a propósito: no hay sesión, así que no hay nada que
+    publicar, marcar ni archivar. La pantalla usa eso para no ofrecer acciones
+    que no se pueden hacer.
+    """
+    return ResultadoAlumno(
+        session_id="",
+        alumno_idnumber=idnumber,
+        alumno_email=email,
+        alumno_nombre=nombre,
+        nota=0.0,
+        nota_efectiva=0.0,
+        # Desaprobado, pero con el motivo: un 0 sin explicación se lee igual que
+        # el de alguien que rindió y no supo nada, y se reclama distinto.
+        resultado=ResultadoNota.DESAPROBADO.value,
+        aprobado=False,
+        estado_moodle=ESTADO_PENDIENTE,
+        retenciones=[MOTIVO_NO_RINDIO],
+        retenido_por=MOTIVO_NO_RINDIO,
+        estado_entrega=ESTADO_ENTREGA_NO_FINALIZADA,
+        actualizado_en=None,
+        usuario_id=usuario_id,
+    )
+
+
+def _aprobado_de(nota, nota_aprobacion: float | None) -> bool | None:
+    """True/False si se puede comparar; None si falta la nota o el criterio.
+
+    None NO es False: "todavía no se sabe" y "no llegó" son cosas distintas, y
+    el segundo se informa.
+    """
+    if nota is None or nota_aprobacion is None:
+        return None
+    return float(nota) >= nota_aprobacion
 
 
 def estado_moodle_display(db_estado: str | None, *, moodle_configurado: bool) -> str:
@@ -211,7 +283,13 @@ def _base_stmt(examen_id: str):
         # fila igual tiene que salir — perder un resultado por no poder mostrar un
         # nombre sería peor que mostrar el legajo.
         .outerjoin(UsuarioModel, UsuarioModel.username == idnumber_expr)
-        .where(ProctoringSessionModel.examen_contenido_id == examen_id)
+        .where(
+            ProctoringSessionModel.examen_contenido_id == examen_id,
+            # migration 0102: la prueba del docente no es una rendición. Sin este
+            # filtro figuraría en la tabla con nota propia y sería candidata a
+            # publicarse en Moodle.
+            ProctoringSessionModel.es_prueba.is_(False),
+        )
     )
 
 
@@ -311,6 +389,7 @@ async def _auto_finalizar_vencidas_del_examen(
         select(ProctoringSessionModel).where(
             ProctoringSessionModel.examen_contenido_id == examen_id,
             ProctoringSessionModel.finalizada_en.is_(None),
+            ProctoringSessionModel.es_prueba.is_(False),
         )
     )
     for sesion in rows.scalars().all():
@@ -324,6 +403,7 @@ async def listar_resultados_examen(
     q: str | None = None,
     estado: str | None = None,
     estado_entrega_filtro: str | None = None,
+    resultado_filtro: str | None = None,
     archivado: bool | None = False,
     fecha_desde: object | None = None,
     fecha_hasta: object | None = None,
@@ -395,7 +475,19 @@ async def listar_resultados_examen(
     # por que. Se calcula aca para que la UI pueda marcarla.
     retenciones = await _motivos_retencion(db, [row.session_id for row in rows])
 
-    items = [
+    # UNA consulta para todo el listado: las filas son de un solo examen, así que
+    # la nota de aprobación es la misma para todas. Sin esto la pantalla no podía
+    # decir si el alumno aprobó — el dato por el que se abre esta tabla.
+    nota_aprobacion = (
+        await db.execute(
+            select(ExamenContenidoModel.nota_aprobacion).where(
+                ExamenContenidoModel.id == examen_id
+            )
+        )
+    ).scalar_one_or_none()
+    nota_aprobacion = float(nota_aprobacion) if nota_aprobacion is not None else None
+
+    filas = [
         ResultadoAlumno(
             session_id=row.session_id,
             alumno_idnumber=row.alumno_idnumber,
@@ -409,7 +501,8 @@ async def listar_resultados_examen(
                 row.estado, moodle_configurado=moodle_configurado
             ),
             actualizado_en=row.updated_at or row.finalizada_en,
-            retenido_por=retenciones.get(row.session_id),
+            retenido_por=(retenciones.get(row.session_id) or [None])[0],
+            retenciones=retenciones.get(row.session_id, []),
             error_detalle=getattr(row, "error_detalle", None),
             estado_entrega=estado_entrega(
                 finalizada_en=row.finalizada_en,
@@ -419,15 +512,66 @@ async def listar_resultados_examen(
             archivado=bool(row.archivado),
             marcada_manual_por=getattr(row, "marcada_manual_por", None),
             marcada_manual_en=getattr(row, "marcada_manual_en", None),
+            # None (y no False) cuando falta la nota o el examen no tiene nota de
+            # aprobación: "todavía no se sabe" no es "desaprobó".
+            aprobado=_aprobado_de(row.nota, nota_aprobacion),
+            nota_aprobacion=nota_aprobacion,
+            resultado=resultado_de(
+                aprobado=_aprobado_de(row.nota, nota_aprobacion),
+                nota=float(row.nota) if row.nota is not None else None,
+                retenido_por=(retenciones.get(row.session_id) or [None])[0],
+            ).value,
+            nota_efectiva=nota_efectiva(
+                nota=float(row.nota) if row.nota is not None else None,
+                retenido_por=(retenciones.get(row.session_id) or [None])[0],
+            ),
         )
         for row in rows
     ]
+    # Los INSCRIPTOS que no rindieron. Son parte del listado: de un curso de 40
+    # el docente veía 30 filas y no tenía cómo saber quiénes faltaron. Se traen
+    # sólo en la PRIMERA página y sin filtros activos, porque son filas
+    # sintéticas (sin sesión) que no participan de la búsqueda ni del orden.
+    if page == 1 and not q and not estado and not estado_entrega_filtro:
+        ausentes = await _ausentes_del_examen(db, examen_id)
+        filas = filas + ausentes
+        total += len(ausentes)
+
+    if resultado_filtro:
+        # Se filtra acá y no en SQL porque el resultado no está en ninguna
+        # columna: sale de comparar la nota contra la de aprobación del examen.
+        filas = [f for f in filas if f.resultado == resultado_filtro]
+        total = len(filas)
+    items = filas
     return items, int(total)
+
+
+def motivos_de_una_fila(
+    *, en_hold: bool, anulada: bool, sin_destino: bool, sin_credencial: bool
+) -> list[str]:
+    """TODOS los motivos que retienen una nota, del más importante al menos.
+
+    Antes se devolvía UNO solo, y el de la sesión (anulada/en riesgo) hacía que
+    ni se mirara el destino: sobre el mismo examen, tres filas decían "Falta el
+    destino" y las otras tres no. Al examen le falta para todas por igual, así
+    que la pantalla tiene que decirlo en todas.
+
+    Primero lo de ESTA persona y después lo del examen: uno lo resuelve un
+    revisor y el otro el administrador, y son trámites distintos.
+    """
+    motivos: list[str] = []
+    if en_hold:
+        motivos.append("anulada" if anulada else "en_riesgo")
+    if sin_destino:
+        motivos.append("sin_destino")
+    if sin_credencial:
+        motivos.append("sin_credencial_docente")
+    return motivos
 
 
 async def _motivos_retencion(
     db: AsyncSession, session_ids: list[str]
-) -> dict[str, str]:
+) -> dict[str, list[str]]:
     """``{session_id: motivo}`` para las sesiones cuya nota esta retenida.
 
     Motivos, en castellano llano porque salen tal cual a la pantalla:
@@ -550,25 +694,88 @@ async def _motivos_retencion(
         pesos_vivos=pesos_vivos, desactivados_vivos=desactivados_vivos, umbral_vivo=umbral_vivo,
     )
 
-    motivos: dict[str, str] = {}
+    motivos: dict[str, list[str]] = {}
     for row in rows:
         score, umbral = cfg.score_de(
             row.id, eventos_por_sesion.get(row.id, []), umbral_vivo=umbral_vivo
         )
         flaggeada = score >= umbral
         decision = _parse_decision_val(row.decision)
-        if not writeback_en_hold(flaggeada=flaggeada, decision=decision):
-            # Sin hold de revision, pero puede faltar el destino: igual no sale.
-            if row.id in sin_destino:
-                motivos[row.id] = "sin_destino"
-            elif row.id in sin_credencial:
-                motivos[row.id] = "sin_credencial_docente"
-            continue
-        if decision is DecisionSesion.ANULADO:
-            motivos[row.id] = "anulada"
-        else:
-            motivos[row.id] = "en_riesgo"
+        de_la_fila = motivos_de_una_fila(
+            en_hold=writeback_en_hold(flaggeada=flaggeada, decision=decision),
+            anulada=decision is DecisionSesion.ANULADO,
+            sin_destino=row.id in sin_destino,
+            sin_credencial=row.id in sin_credencial,
+        )
+        if de_la_fila:
+            motivos[row.id] = de_la_fila
     return motivos
+
+
+async def _ausentes_del_examen(
+    db: AsyncSession, examen_id: str
+) -> list[ResultadoAlumno]:
+    """Inscriptos de la comisión del examen que no tienen sesión.
+
+    "No rindió" es una respuesta que el listado tiene que poder dar: si no
+    aparece, el docente no distingue entre un alumno que no está inscripto y uno
+    que se ausentó.
+    """
+    from app.infrastructure.persistence.models.inscripcion import InscripcionModel
+    from app.infrastructure.persistence.models.transactional import UsuarioModel
+
+    # Quién rindió se pregunta sobre TODAS las sesiones del examen, no sobre la
+    # página que se está mostrando: mirando sólo la página, un alumno que rindió
+    # y quedó en la página 2 aparecía ADEMÁS como ausente en la 1.
+    rindieron = {
+        fila[0]
+        for fila in (
+            await db.execute(
+                # A PROPOSITO sin filtrar por es_prueba: acá se pregunta quién
+                # NO tiene sesión, y el docente que probó su examen tiene una.
+                # Filtrando, quedaba fuera de la lista de "rindieron" y aparecía
+                # como ausente con 0 y desaprobado. Que la prueba no valga como
+                # nota no la vuelve inexistente.
+                select(ProctoringSessionModel.alumno_idnumber).where(
+                    ProctoringSessionModel.examen_contenido_id == examen_id,
+                )
+            )
+        ).all()
+    }
+
+    rows = (
+        await db.execute(
+            select(
+                UsuarioModel.id,
+                UsuarioModel.username,
+                UsuarioModel.email,
+                UsuarioModel.nombre,
+                UsuarioModel.apellido,
+            )
+            .select_from(ExamenContenidoModel)
+            .join(
+                InscripcionModel,
+                InscripcionModel.comision_id == ExamenContenidoModel.comision_id,
+            )
+            .join(UsuarioModel, UsuarioModel.id == InscripcionModel.usuario_id)
+            .where(
+                ExamenContenidoModel.id == examen_id,
+                # Un alumno dado de baja no se cuenta como ausente: ya no cursa.
+                UsuarioModel.eliminado_en.is_(None),
+            )
+        )
+    ).all()
+
+    return [
+        fila_de_ausente(
+            usuario_id=r.id,
+            idnumber=r.username,
+            email=r.email,
+            nombre=_nombre_completo(r.nombre, r.apellido),
+        )
+        for r in rows
+        if r.username not in rindieron
+    ]
 
 
 async def obtener_target_examen(
@@ -620,6 +827,7 @@ async def listar_estados_sincronizables(
     conds = [
         ProctoringSessionModel.examen_contenido_id == examen_id,
         MoodleWritebackEstadoModel.estado.in_((ESTADO_PENDIENTE, "fallido")),
+        ProctoringSessionModel.es_prueba.is_(False),
     ]
     if session_ids:
         conds.append(MoodleWritebackEstadoModel.session_id.in_(session_ids))
@@ -751,6 +959,9 @@ class MiNota:
     # Informe de devolución disponible SOLO cuando la nota fue anulada por fraude
     # (D12, minimización Ley 25.326). El resto de los casos: no se expone evidencia.
     informe_disponible: bool
+    #: El resultado resuelto por el backend (`ResultadoNota`). Vacío mientras la
+    #: nota no sea visible: ahí no hay nada que afirmar todavía.
+    resultado: str = ""
 
 
 async def _umbral_cola_revision(db: AsyncSession) -> int:
@@ -905,7 +1116,6 @@ async def listar_mis_notas(
             ExamenContenidoModel.revision_habilitada,
             MoodleWritebackEstadoModel.nota,
             MoodleWritebackEstadoModel.estado,
-            MoodleWritebackEstadoModel.error_detalle,
         )
         .select_from(ProctoringSessionModel)
         .join(
@@ -976,12 +1186,15 @@ async def listar_mis_notas(
         # (superó el umbral y nadie revisó, o fue anulada): mostrar un número que
         # puede anularse después es peor que no mostrar nada — el alumno lo lee
         # como su nota y el sistema termina sacándole algo que ya le dio.
+        # Sin `error_detalle`: el motivo por el que la nota no llegó al campus es
+        # para el DOCENTE (dice cosas como "User is not enrolled..."), no decide
+        # si el alumno ve su nota — y la función nunca lo aceptó, así que pasarlo
+        # tiraba TypeError y dejaba la pantalla entera en 500.
         visible = nota_visible_para_alumno(
             mostrar_nota=r.mostrar_nota,
             cierre=r.cierre,
             ahora=ahora,
             retenido_por=retenciones_alumno.get(r.session_id),
-            error_detalle=getattr(r, "error_detalle", None),
         )
         rev_disp = revision_visible(
             revision_habilitada=r.revision_habilitada,
@@ -1008,6 +1221,18 @@ async def listar_mis_notas(
                 nota=nota_out,
                 nota_maxima=float(r.nota_maxima) if r.nota_maxima is not None else None,
                 aprobado=aprobado,
+                # El resultado RESUELTO, igual que en el listado del docente: el
+                # alumno tiene que ver lo mismo que el docente sobre su nota. Con
+                # la nota todavía no visible no se afirma nada.
+                resultado=(
+                    resultado_de(
+                        aprobado=aprobado,
+                        nota=nota_real,
+                        retenido_por=(retenciones_alumno.get(r.session_id) or [None])[0],
+                    ).value
+                    if visible
+                    else ""
+                ),
                 estado_moodle=estado_moodle_display(
                     r.estado, moodle_configurado=moodle_configurado
                 ),

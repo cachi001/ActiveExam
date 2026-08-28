@@ -13,12 +13,12 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
-from enum import StrEnum
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.application.moodle.credencial_docente_service import ESTADO_ACTIVA
+from app.domain.exam_content.estado_entrega import EstadoEntregaNota
 from app.application.moodle.identity_mapper import IdentityResolutionError, MoodleIdentityMapper
 from app.infrastructure.moodle.client import MoodleGradeWriteError, MoodleRestClient
 from app.infrastructure.persistence.models.moodle_writeback import (
@@ -57,10 +57,9 @@ MENSAJE_POR_MOTIVO_BLOQUEO: dict[str, str] = {
 }
 
 
-class WritebackEstado(StrEnum):
-    PENDIENTE = "pendiente"
-    ENVIADO = "enviado"
-    FALLIDO = "fallido"
+#: Alias histórico. El enum real es `EstadoEntregaNota` (dominio): tenía TRES valores
+#: mientras la base persistía cuatro — `manual` se escribía sin estar declarado.
+WritebackEstado = EstadoEntregaNota
 
 
 async def _get_estado_for_session(
@@ -167,6 +166,27 @@ class MoodleWritebackService:
         # decide un revisor, no el docente, y firmarla con la credencial del profesor
         # atribuiría a otra persona una sanción que no tomó.
         self._cred_docente = credencial_docente
+
+    async def hay_credencial(self) -> bool:
+        """¿Hay hoy una credencial del campus usable para mandar notas?
+
+        NO alcanza con que el servicio exista: `build_writeback_svc_dinamico` lo
+        construye siempre, justamente para que se pueda cargar el token desde la
+        UI sin reiniciar. Preguntar por el objeto daba true para siempre y dejaba
+        inalcanzable el estado `sin_token`: sin credencial la nota terminaba en
+        `fallido` y el docente leía "Falló el envío" de un envío que nunca se
+        intentó.
+
+        Se responde por la credencial VIGENTE, así se apaga sola en cuanto
+        alguien conecta el campus. Si no se puede resolver, se asume que no hay:
+        esto decide cómo MOSTRAR un estado, y romper la pantalla de resultados
+        sería peor que mostrar "falta conectar el campus".
+        """
+        try:
+            cfg = await self._client._resolver_config()
+        except Exception:  # noqa: BLE001 — mostrar un estado nunca puede romper la pantalla
+            return False
+        return bool(cfg.base_url and cfg.ws_token)
 
     async def _credencial_para(
         self, db: AsyncSession, session_id: str

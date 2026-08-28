@@ -66,32 +66,13 @@ function renderPanel(examenId = 'ex-1') {
   );
 }
 
-describe('ResultadosExamenPanel — select "Estado de entrega" (C-76 §14.5)', () => {
-  it('muestra las 4 opciones con labels en español claro', async () => {
-    listarResultadosFn.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 5 });
-    renderPanel();
-
-    await waitFor(() => expect(listarResultadosFn).toHaveBeenCalled());
-
-    const select = screen.getByLabelText(/estado de entrega/i) as HTMLSelectElement;
-    const opciones = within(select).getAllByRole('option').map((o) => o.textContent);
-    expect(opciones).toContain('No finalizada');
-    expect(opciones).toContain('Pendiente de revisión');
-    expect(opciones).toContain('Revisada');
-    expect(opciones).toContain('Finalizada');
-    // Nunca el valor técnico crudo a la vista.
-    expect(opciones.join(' ')).not.toMatch(/en_revision|no_finalizada/);
-  });
-});
-
 describe('ResultadosExamenPanel — combinación de filtros (C-76 §14.8)', () => {
-  it('Aplicar filtros arma el query esperado: estado_entrega + mostrar archivadas + fechas', async () => {
+  it('Aplicar filtros arma el query esperado: mostrar archivadas + fechas', async () => {
     listarResultadosFn.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 5 });
     renderPanel();
     await waitFor(() => expect(listarResultadosFn.mock.calls.length).toBeGreaterThan(0));
     const llamadasAntes = listarResultadosFn.mock.calls.length;
 
-    fireEvent.change(screen.getByLabelText(/estado de entrega/i), { target: { value: 'en_revision' } });
     fireEvent.click(screen.getByLabelText(/mostrar archivadas/i));
     fireEvent.change(screen.getByLabelText(/^desde$/i), { target: { value: '2026-01-01' } });
     fireEvent.change(screen.getByLabelText(/^hasta$/i), { target: { value: '2026-01-31' } });
@@ -100,7 +81,6 @@ describe('ResultadosExamenPanel — combinación de filtros (C-76 §14.8)', () =
     await waitFor(() => expect(listarResultadosFn.mock.calls.length).toBeGreaterThan(llamadasAntes));
     const params = listarResultadosFn.mock.calls.at(-1)![3];
     expect(params).toMatchObject({
-      estado_entrega: 'en_revision',
       // c-78 F-03 (§5.3): el toggle manda 'todas' (archivadas Y no archivadas),
       // no 'true' — pedir SOLO las archivadas no es lo que dice el checkbox.
       archivado: 'todas',
@@ -134,8 +114,11 @@ describe('ResultadosExamenPanel — botón archivar (C-76 §14.8)', () => {
     await waitFor(() => screen.getByText('Ana García'));
     const llamadasAntes = listarResultadosFn.mock.calls.length;
 
-    const botonArchivar = screen.getByTitle(/archivar esta fila/i);
-    fireEvent.click(botonArchivar);
+    // Las acciones viven dentro del menu de tres puntos: siempre las mismas
+    // tres opciones, apagadas con su motivo cuando no aplican. Antes eran
+    // botones sueltos y una fila mostraba una opcion menos que la de al lado.
+    fireEvent.click(screen.getByRole('button', { name: /acciones de/i }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /^archivar$/i }));
 
     await waitFor(() =>
       expect(archivarResultadoFn).toHaveBeenCalledWith('/api/v1', 'tok-test', 'ex-1', 'sess-1', true),
@@ -156,8 +139,8 @@ describe('ResultadosExamenPanel — botón archivar (C-76 §14.8)', () => {
     renderPanel();
     await waitFor(() => screen.getByText('Ana García'));
 
-    const botonDesarchivar = screen.getByTitle(/desarchivar esta fila/i);
-    fireEvent.click(botonDesarchivar);
+    fireEvent.click(screen.getByRole('button', { name: /acciones de/i }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /desarchivar/i }));
 
     await waitFor(() =>
       expect(archivarResultadoFn).toHaveBeenCalledWith('/api/v1', 'tok-test', 'ex-1', 'sess-1', false),

@@ -43,15 +43,24 @@ def test_etiqueta_decision_conocida_y_desconocida():
 
 
 def test_etiqueta_estado_moodle_pendiente():
-    assert etiqueta_estado_moodle("pendiente") == "Pendiente de sincronizar"
+    # El NOMBRE del estado, no una frase: el porqué va aparte, como motivo. Una
+    # columna de estado que dice "Falta conectar el campus" no dice en qué estado
+    # está la entrega, dice por qué no avanzó.
+    assert etiqueta_estado_moodle("pendiente") == "Pendiente"
 
 
 def test_etiqueta_estado_moodle_enviado():
-    assert etiqueta_estado_moodle("enviado") == "Sincronizado en Moodle"
+    assert etiqueta_estado_moodle("enviado") == "Enviado"
 
 
-def test_etiqueta_estado_moodle_desconocido_se_humaniza():
-    assert etiqueta_estado_moodle("estado_raro") == "Estado raro"
+def test_sin_token_no_habla_en_jerga():
+    # "Sin token" es el nombre de la variable. Al docente hay que decirle qué le
+    # falta hacer.
+    assert etiqueta_estado_moodle("sin_token") == "Falta conectar el campus"
+
+
+def test_etiqueta_estado_moodle_desconocido_se_devuelve_tal_cual():
+    assert etiqueta_estado_moodle("estado_raro") == "estado_raro"
 
 
 def test_todos_los_estados_moodle_cubiertos():

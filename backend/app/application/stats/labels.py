@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 
 from app.domain.events.schema import TipoEvento
+from app.domain.exam_content.estado_entrega import estados_para_ui, etiqueta_estado_entrega
 
 # Cubre TODOS los miembros de TipoEvento (si se agrega uno, agregar su etiqueta).
 ETIQUETA_EVENTO: dict[str, str] = {
@@ -50,6 +51,24 @@ ETIQUETA_DECISION: dict[str, str] = {
 }
 
 
+#: Color de cada decisión para los gráficos. Vive acá y no en la pantalla por lo
+#: mismo que las etiquetas: si lo elige cada gráfico, cada gráfico lo elige
+#: distinto y el mismo veredicto termina de dos colores en dos pantallas.
+COLOR_DECISION: dict[str, str] = {
+    "sin_revisar": "#94a3b8",
+    "aprobado": "#10b981",
+    "anulado": "#ef4444",
+}
+
+
+def decisiones_para_ui() -> list[dict[str, str]]:
+    """Lo que consume la pantalla de estadísticas: valor, etiqueta y color."""
+    return [
+        {"valor": v, "etiqueta": etiqueta, "color": COLOR_DECISION.get(v, "#8b5cf6")}
+        for v, etiqueta in ETIQUETA_DECISION.items()
+    ]
+
+
 def humanizar(clave: str) -> str:
     """Convierte un código snake_case en texto legible (nunca lo muestra crudo).
 
@@ -76,38 +95,18 @@ def etiqueta_decision(decision: str) -> str:
 # de repetirlas. Antes las tenía escritas a mano y ya se habían desfasado — cuando
 # apareció 'manual', el badge lo mostraba pero el filtro no lo ofrecía, así que el
 # estado se veía y no se podía buscar.
-ETIQUETA_ESTADO_MOODLE: dict[str, str] = {
-    "pendiente": "Pendiente de sincronizar",
-    "enviado": "Sincronizado en Moodle",
-    "fallido": "Falló",
-    "sin_token": "Sin token",
-    # c-78 D14: alguien AFIRMA que cargó la nota en el campus. No es 'enviado':
-    # ahí el campus confirmó. La diferencia importa ante un reclamo por una nota
-    # que no aparece en la libreta.
-    "manual": "Cargada a mano",
-}
-
-#: Color de cada estado. Vive acá y no en el frontend porque la distinción entre
-#: "el campus lo confirmó" (verde) y "alguien dice que lo cargó" es semántica, no
-#: estética: si se elige en la pantalla, cada pantalla la puede elegir distinto.
-TONO_ESTADO_MOODLE: dict[str, str] = {
-    "pendiente": "warning",
-    "enviado": "success",
-    "fallido": "error",
-    "sin_token": "neutral",
-    "manual": "primary",
-}
-
 #: Lista ordenada que consume el frontend para armar el filtro y el badge.
-ESTADOS_MOODLE: list[dict[str, str]] = [
-    {"valor": valor, "etiqueta": etiqueta, "tono": TONO_ESTADO_MOODLE.get(valor, "neutral")}
-    for valor, etiqueta in ETIQUETA_ESTADO_MOODLE.items()
-]
+ESTADOS_MOODLE: list[dict[str, str]] = estados_para_ui()
+
+#: Compatibilidad: quedaba código leyendo el diccionario. Se arma DESDE el enum
+#: para que no pueda volver a divergir.
+ETIQUETA_ESTADO_MOODLE: dict[str, str] = {e["valor"]: e["etiqueta"] for e in ESTADOS_MOODLE}
+TONO_ESTADO_MOODLE: dict[str, str] = {e["valor"]: e["tono"] for e in ESTADOS_MOODLE}
 
 
 def etiqueta_estado_moodle(estado: str) -> str:
-    """Etiqueta legible de un estado de sincronización con Moodle."""
-    return ETIQUETA_ESTADO_MOODLE.get(estado, humanizar(estado))
+    """Etiqueta legible de un estado de la nota (fuente única: `EstadoEntregaNota`)."""
+    return etiqueta_estado_entrega(estado)
 
 
 # --- Acciones del registro de auditoría -------------------------------------

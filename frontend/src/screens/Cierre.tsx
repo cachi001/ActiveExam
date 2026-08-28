@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { StudentShell } from '../ui/shells';
 import { Icon, Button, Card } from '../ui/components';
+import { ResultadoNotaChip } from '../ui/ResultadoNotaChip';
 import { useNavigate } from '../lib/router';
 import { useApp } from '../lib/store';
 import { api } from '../lib/api';
@@ -179,9 +180,10 @@ export default function Cierre() {
                         : 'bg-error-container text-on-error-container'
                     }`}
                   >
-                    {nota!.aprobado != null && (
-                      <span className="text-headline-sm leading-none">{nota!.aprobado ? 'Aprobado' : 'Desaprobado'}</span>
-                    )}
+                    {/* El resultado lo define el BACKEND: escrito a mano acá,
+                        esta pantalla decía "Aprobado" sobre una nota que la del
+                        docente ya mostraba como "En revisión" o "Anulada". */}
+                    <ResultadoNotaChip resultado={nota!.resultado} />
                     <span className="text-headline-sm opacity-50">·</span>
                     <span className="text-headline-sm leading-none">{nota!.nota} / {notaMax}</span>
                   </span>

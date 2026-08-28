@@ -9,7 +9,7 @@
  * pantallas muestran EXACTAMENTE lo mismo, solo cambia cómo se llega al examenId.
  */
 import { useCallback, useEffect, useState } from 'react';
-import { Button, Card, Icon, SectionTitle } from '../../ui/components';
+import { Badge, Button, Card, Icon, SectionTitle } from '../../ui/components';
 import { API_BASE } from '../../lib/api';
 import { authProvider } from '../../lib/authProvider';
 import { type TableQuery } from '../../ui/TableToolbar';
@@ -21,6 +21,7 @@ import {
   archivarResultadoFn,
   contarRetencionesPorRevision,
   listarResultadosFn,
+  desmarcarNotaCargadaFn,
   marcarNotaCargadaFn,
   sincronizarMoodleFn,
   type ArchivadoFiltro,
@@ -29,9 +30,13 @@ import {
 } from '../../lib/examContentResultados';
 import { EstadoBadge } from './EstadoBadge';
 import { useEstadosMoodle } from './useEstadosMoodle';
-import { EstadoEntregaBadge, ESTADO_ENTREGA_OPCIONES } from './EstadoEntregaBadge';
+// Retenciones que SÍ frenan el marcado a mano: mientras no haya decisión humana
+// no se sabe qué nota corresponde, así que afirmar que se cargó no tiene sentido.
+const MOTIVOS_DE_REVISION = new Set(['en_riesgo']);
+import { useResultados } from './useCatalogosNota';
 import { SyncResultBanner, type SyncResult } from './SyncResultBanner';
 import { AdminTable, type AdminColumn } from '../../ui/AdminTable';
+import { ActionMenu } from '../../ui/ActionMenu';
 import { useToast } from '../../ui/toast';
 
 function traducirErrorApi(err: unknown, contexto: 'carga' | 'sinc'): string {
@@ -49,11 +54,17 @@ function alumnoDisplay(r: ResultadoExamen): string {
   return r.alumno_idnumber || r.alumno_email;
 }
 
-function formatFecha(iso: string): string {
+function formatFecha(iso: string | null | undefined): string {
+  // El ausente no tiene fecha: nunca rindió. Sin esta guarda, `new Date(null)`
+  // da el epoch y la fila mostraba "31/12, 21:00", que parece un dato real.
+  if (!iso) return '—';
   try {
+    // Corta y en 24 horas: "27/08/2026, 11:50 p. m." ocupaba casi el doble y
+    // empujaba la última columna fuera de la tabla. El año se sobreentiende en
+    // un listado del cuatrimestre en curso; la fecha completa va en el título.
     return new Intl.DateTimeFormat('es-AR', {
-      day: '2-digit', month: '2-digit', year: 'numeric',
-      hour: '2-digit', minute: '2-digit',
+      day: '2-digit', month: '2-digit',
+      hour: '2-digit', minute: '2-digit', hour12: false,
     }).format(new Date(iso));
   } catch {
     return iso;
@@ -78,8 +89,10 @@ export function ResultadosExamenPanel({ examenId }: { examenId: string }) {
   // 'manual' ("cargada a mano"), así que ese estado se veía en la tabla pero no
   // se podía filtrar: quien marcaba notas a mano no tenía después cómo listarlas.
   const estadosMoodle = useEstadosMoodle();
+  // Los resultados también los define el backend: acá sólo se pintan.
+  const catalogoResultados = useResultados();
 
-  const FILTROS_INICIALES = { estado: '', estado_entrega: '', archivado: 'false', fecha_desde: '', fecha_hasta: '' };
+  const FILTROS_INICIALES = { estado: '', resultado: '', estado_entrega: '', archivado: 'false', fecha_desde: '', fecha_hasta: '' };
   const [query, setQuery] = useState<TableQuery>({
     q: '',
     filters: FILTROS_INICIALES,
@@ -94,6 +107,8 @@ export function ResultadosExamenPanel({ examenId }: { examenId: string }) {
   // Borrador de filtros (se aplican con "Aplicar filtros").
   const [borrQ, setBorrQ] = useState('');
   const [borrEstado, setBorrEstado] = useState('');
+  // Filtro por resultado académico (aprobado / desaprobado / anulada…).
+  const [borrResultado, setBorrResultado] = useState('');
   const [borrEstadoEntrega, setBorrEstadoEntrega] = useState('');
   // 'mostrar archivadas' — default false (el listado NO muestra archivadas).
   const [borrMostrarArchivadas, setBorrMostrarArchivadas] = useState(false);
@@ -123,6 +138,7 @@ export function ResultadosExamenPanel({ examenId }: { examenId: string }) {
     setQuery({ q: '', filters: FILTROS_INICIALES, page: 1, page_size: PAGE_SIZE_DEFAULT });
     setBorrQ('');
     setBorrEstado('');
+    setBorrResultado('');
     setBorrEstadoEntrega('');
     setBorrMostrarArchivadas(false);
     setBorrFechaDesde('');
@@ -139,6 +155,7 @@ export function ResultadosExamenPanel({ examenId }: { examenId: string }) {
       const resp = await listarResultadosFn(API_BASE, authProvider.getToken(), examenId, {
         q: q.q || undefined,
         estado: q.filters['estado'] || undefined,
+        resultado: q.filters['resultado'] || undefined,
         estado_entrega: q.filters['estado_entrega'] || undefined,
         // c-78 D6: el checkbox "Mostrar archivadas" manda 'todas' (ambas), que es
         // lo que su etiqueta promete. 'true' habría traído SOLO las archivadas.
@@ -293,6 +310,7 @@ export function ResultadosExamenPanel({ examenId }: { examenId: string }) {
       q: borrQ.trim(),
       filters: {
         estado: borrEstado,
+        resultado: borrResultado,
         estado_entrega: borrEstadoEntrega,
         archivado: borrMostrarArchivadas ? 'todas' : 'false',
         fecha_desde: borrFechaDesde ? `${borrFechaDesde}T00:00:00` : '',
@@ -303,6 +321,7 @@ export function ResultadosExamenPanel({ examenId }: { examenId: string }) {
   const limpiarFiltros = () => {
     setBorrQ('');
     setBorrEstado('');
+    setBorrResultado('');
     setBorrEstadoEntrega('');
     setBorrMostrarArchivadas(false);
     setBorrFechaDesde('');
@@ -339,6 +358,81 @@ export function ResultadosExamenPanel({ examenId }: { examenId: string }) {
   // (mismo patrón que sincronizar) en vez de mutar solo esa fila en memoria.
   // c-78 §13.6 (D14): sin API del campus, la nota se carga a mano y quedaba
   // 'pendiente' para siempre. Esto la mueve, dejando registrado quién lo afirmó.
+  /** Las que se pueden marcar a mano: ni ya en el campus, ni retenidas por una
+   *  revisión sin resolver (ahí todavía no se sabe qué nota va). */
+  function marcablesDe(ids: Set<string>): string[] {
+    return resultados
+      .filter(
+        (r) =>
+          r.session_id &&
+          ids.has(r.session_id) &&
+          r.estado_moodle !== 'enviado' &&
+          r.estado_moodle !== 'manual' &&
+          !MOTIVOS_DE_REVISION.has(r.retenido_por ?? ''),
+      )
+      .map((r) => r.session_id);
+  }
+
+  /** Todas las de la página que se pueden marcar. Es lo que cuenta el botón de
+   *  arriba cuando no hay nada seleccionado. */
+  const marcablesDeTodas = resultados
+    .filter(
+      (r) =>
+        r.session_id &&
+        r.estado_moodle !== 'enviado' &&
+        r.estado_moodle !== 'manual' &&
+        !MOTIVOS_DE_REVISION.has(r.retenido_por ?? ''),
+    )
+    .map((r) => r.session_id);
+
+  async function handleMarcarCargadasEnLote() {
+    const ids =
+      selectedIds.size > 0
+        ? marcablesDe(selectedIds)
+        : marcablesDeTodas;
+    if (ids.length === 0) {
+      toast.warning('Ninguna de las seleccionadas se puede marcar a mano.');
+      return;
+    }
+    setMarcandoId('lote');
+    let hechas = 0;
+    try {
+      // De a una: el backend no tiene endpoint de lote para esto y cada marca
+      // deja su propio registro de quién y cuándo, que es el punto de la función.
+      for (const id of ids) {
+        try {
+          await marcarNotaCargadaFn(API_BASE, authProvider.getToken(), examenId, id);
+          hechas += 1;
+        } catch {
+          // Sigue con las demás: que una falle no puede dejar el lote a medias
+          // sin avisar cuántas sí entraron.
+        }
+      }
+      await fetchResultados(query);
+      const quedaron = selectedIds.size - hechas;
+      toast.success(
+        `${hechas} nota${hechas === 1 ? '' : 's'} marcada${hechas === 1 ? '' : 's'} como cargada${hechas === 1 ? '' : 's'} a mano.` +
+          (quedaron > 0 ? ` ${quedaron} quedaron sin marcar (ya estaban en el campus o están en revisión).` : ''),
+      );
+      setSelectedIds(new Set());
+    } finally {
+      setMarcandoId(null);
+    }
+  }
+
+  async function handleDesmarcarCargada(sessionId: string) {
+    setMarcandoId(sessionId);
+    try {
+      await desmarcarNotaCargadaFn(API_BASE, authProvider.getToken(), examenId, sessionId);
+      await fetchResultados(query);
+      toast.success('Se deshizo el marcado: la nota volvió a pendiente.');
+    } catch (err: unknown) {
+      toast.warning((err as Error)?.message || 'No se pudo deshacer el marcado.');
+    } finally {
+      setMarcandoId(null);
+    }
+  }
+
   async function handleMarcarCargada(sessionId: string) {
     setMarcandoId(sessionId);
     try {
@@ -391,32 +485,57 @@ export function ResultadosExamenPanel({ examenId }: { examenId: string }) {
       <div className="flex items-center justify-end gap-sm flex-wrap">
         {/* c-78 §13.5 (E-10): hay campus SIN API — la nota se carga a mano y para
             eso hace falta el listado en un archivo, no en la pantalla. */}
-        <Button
-          variant="outline"
-          icon="table_view"
+        {/* Dicen QUÉ HACEN ("Exportar a…", no "Excel" suelto) y llevan el color
+            con el que cada formato ya se reconoce: verde el de la planilla,
+            rojo el del PDF. Con dos botones grises al lado del azul de publicar,
+            había que leer el ícono para saber cuál era cuál. */}
+        <button
+          type="button"
           disabled={descargandoExport || total === 0}
           onClick={() => void handleExportar('xlsx')}
+          className="inline-flex items-center gap-2 rounded-lg border border-[#1D6F42]/30 bg-[#1D6F42]/5 px-4 py-2 text-[14px] font-medium text-[#1D6F42] transition-colors hover:bg-[#1D6F42]/10 disabled:cursor-not-allowed disabled:opacity-40"
         >
-          Excel
-        </Button>
-        <Button
-          variant="outline"
-          icon="picture_as_pdf"
+          <Icon name="table_view" className="text-[18px]" />
+          Exportar a Excel
+        </button>
+        <button
+          type="button"
           disabled={descargandoExport || total === 0}
           onClick={() => void handleExportar('pdf')}
+          className="inline-flex items-center gap-2 rounded-lg border border-[#C4241B]/30 bg-[#C4241B]/5 px-4 py-2 text-[14px] font-medium text-[#C4241B] transition-colors hover:bg-[#C4241B]/10 disabled:cursor-not-allowed disabled:opacity-40"
         >
-          PDF
-        </Button>
+          <Icon name="picture_as_pdf" className="text-[18px]" />
+          Exportar a PDF
+        </button>
         {selectedIds.size > 0 && (
-          <Button
-            variant="secondary"
-            icon={sincronizando ? undefined : 'upload'}
-            onClick={handleSincronizarSeleccionadas}
-            disabled={sincronizando || sincronizandoId !== null}
-          >
-            {sincronizando ? 'Publicando…' : `Publicar seleccionadas (${selectedIds.size})`}
-          </Button>
+          <>
+            <Button
+              variant="secondary"
+              icon={sincronizando ? undefined : 'upload'}
+              onClick={handleSincronizarSeleccionadas}
+              disabled={sincronizando || sincronizandoId !== null}
+            >
+              {sincronizando ? 'Publicando…' : `Publicar seleccionadas (${selectedIds.size})`}
+            </Button>
+          </>
         )}
+        {/* Al lado de "Publicar": es la otra forma de cerrar el circuito cuando
+            el campus no tiene API — se cargan las notas a mano y se marcan
+            todas juntas. Marcarlas de a una es el trabajo que esto evita. */}
+        <button
+          type="button"
+          onClick={handleMarcarCargadasEnLote}
+          disabled={marcandoId !== null || sincronizando || marcablesDeTodas.length === 0}
+          className="inline-flex items-center gap-2 rounded-lg bg-gray-900 px-4 py-2 text-[14px] font-medium text-white transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <Icon
+            name={marcandoId === 'lote' ? 'progress_activity' : 'how_to_reg'}
+            className={`text-[18px] ${marcandoId === 'lote' ? 'ae-spin' : ''}`}
+          />
+          {marcandoId === 'lote'
+            ? 'Marcando…'
+            : `Marcar como cargadas a mano (${marcablesDeTodas.length})`}
+        </button>
         <Button
           variant="primary"
           icon={sincronizando ? undefined : 'cloud_upload'}
@@ -535,8 +654,24 @@ export function ResultadosExamenPanel({ examenId }: { examenId: string }) {
                 className="min-w-[220px] rounded-md border border-surface-300 bg-white px-3 py-2 text-[13px] text-on-surface focus:border-primary focus:outline-none"
               />
             </label>
+            {/* Los filtros se llaman IGUAL que las columnas que filtran: uno
+                decia "Estado" y el otro "Estado de entrega", y ninguno de los
+                dos nombres coincidia con el titulo de su columna. */}
             <label className="flex flex-col gap-1 text-[12px] font-medium text-on-surface-variant">
-              Estado
+              Resultado
+              <select
+                value={borrResultado}
+                onChange={(e) => setBorrResultado(e.target.value)}
+                className="min-w-[170px] rounded-md border border-surface-300 bg-white px-3 py-2 text-[13px] text-on-surface focus:border-primary focus:outline-none"
+              >
+                <option value="">Todos</option>
+                {[...catalogoResultados.values()].map((o) => (
+                  <option key={o.valor} value={o.valor}>{o.etiqueta}</option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1 text-[12px] font-medium text-on-surface-variant">
+              Estado de la entrega
               <select
                 value={borrEstado}
                 onChange={(e) => setBorrEstado(e.target.value)}
@@ -545,19 +680,6 @@ export function ResultadosExamenPanel({ examenId }: { examenId: string }) {
                 <option value="">Todos los estados</option>
                 {estadosMoodle.map((o) => (
                   <option key={o.valor} value={o.valor}>{o.etiqueta}</option>
-                ))}
-              </select>
-            </label>
-            <label className="flex flex-col gap-1 text-[12px] font-medium text-on-surface-variant">
-              Estado de entrega
-              <select
-                value={borrEstadoEntrega}
-                onChange={(e) => setBorrEstadoEntrega(e.target.value)}
-                className="min-w-[190px] rounded-md border border-surface-300 bg-white px-3 py-2 text-[13px] text-on-surface focus:border-primary focus:outline-none"
-              >
-                <option value="">Todas las entregas</option>
-                {ESTADO_ENTREGA_OPCIONES.map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
                 ))}
               </select>
             </label>
@@ -644,7 +766,7 @@ export function ResultadosExamenPanel({ examenId }: { examenId: string }) {
             {
               key: 'alumno',
               header: 'Alumno',
-              width: '33%',
+              width: '26%',
               cell: (r) => (
                 <div>
                   <p className="font-semibold text-gray-900">{alumnoDisplay(r)}</p>
@@ -655,39 +777,76 @@ export function ResultadosExamenPanel({ examenId }: { examenId: string }) {
             {
               key: 'nota',
               header: 'Nota',
-              width: '10%',
-              align: 'right',
-              cell: (r) => r.nota !== null
-                ? <span className="font-semibold text-gray-900 tabular-nums">{r.nota}</span>
-                : <span className="text-gray-400">—</span>,
+              // Más ancha: con la anulada muestra dos números ("0  78" tachado).
+              width: '11%',
+              // Centrada y no pegada al borde derecho: contra la columna de al
+              // lado se leía como si fueran una sola cosa.
+              align: 'center',
+              // `nota_efectiva`: una anulación deja la nota en 0. La calculada
+              // va en el tooltip — sin verla no se puede reclamar ni auditar la
+              // decisión, pero el número que vale es el otro.
+              cell: (r) => {
+                const efectiva = r.nota_efectiva ?? r.nota;
+                if (efectiva === null || efectiva === undefined) {
+                  return <span className="text-gray-400">—</span>;
+                }
+                const cambio = r.nota != null && r.nota !== efectiva;
+                return (
+                  <span className="inline-flex items-baseline gap-1.5 tabular-nums">
+                    <span className="font-semibold text-gray-900">{efectiva}</span>
+                    {cambio && (
+                      <span className="text-[12px] text-on-surface-variant line-through">
+                        {r.nota}
+                      </span>
+                    )}
+                  </span>
+                );
+              },
+            },
+            {
+              // El resultado ACADÉMICO: es por lo que se abre este listado. El
+              // valor, la etiqueta y el color los define el BACKEND
+              // (`ResultadoNota`): acá no se decide nada.
+              key: 'resultado',
+              header: 'Resultado',
+              width: '17%',
+              cell: (r) => {
+                const info = catalogoResultados.get(r.resultado ?? '');
+                const detalle =
+                  r.nota_aprobacion != null ? `Aprueba con ${r.nota_aprobacion}` : undefined;
+                return (
+                  <span title={detalle}>
+                    <Badge tone={info?.tono ?? 'neutral'}>{info?.etiqueta ?? '—'}</Badge>
+                  </span>
+                );
+              },
             },
             {
               key: 'estado',
-              header: 'Estado Moodle',
-              width: '20%',
+              // La ENTREGA de la nota al campus. Así se la nombra en la
+              // práctica: "entregar las notas" es subirlas a Moodle.
+              header: 'Estado de la entrega',
+              width: '26%',
               cell: (r) => <EstadoBadge
                   estado={r.estado_moodle}
                   retenidoPor={r.retenido_por}
+                  retenciones={r.retenciones}
                   marcadaManualPor={r.marcada_manual_por}
                   marcadaManualEn={r.marcada_manual_en}
                 />,
             },
             {
-              key: 'entrega',
-              header: 'Entrega',
-              width: '15%',
-              cell: (r) => <EstadoEntregaBadge estado={r.estado_entrega} />,
-            },
-            {
               key: 'actualizado',
               header: 'Actualizado',
-              width: '18%',
-              cell: (r) => <span className="text-gray-500">{formatFecha(r.actualizado_en)}</span>,
+              width: '12%',
+              cell: (r) => (
+                <span className="text-gray-500">{formatFecha(r.actualizado_en)}</span>
+              ),
             },
             {
               key: 'acciones',
-              header: 'Acción',
-              width: '10rem',
+              header: 'Acciones',
+              width: '5rem',
               align: 'center',
               tdClassName: 'sticky right-0 bg-white shadow-[-4px_0_4px_rgba(0,0,0,0.05)]',
               thClassName: 'sticky right-0 shadow-[-4px_0_4px_rgba(0,0,0,0.05)]',
@@ -695,65 +854,70 @@ export function ResultadosExamenPanel({ examenId }: { examenId: string }) {
                 const enCurso = sincronizandoId === r.session_id;
                 const archivandoEstaFila = archivandoId === r.session_id;
                 const bloqueado = sincronizando || sincronizandoId !== null || archivandoId !== null;
+                // SIEMPRE las mismas tres opciones. Antes "marcar cargada a
+                // mano" desaparecia en las filas que ya estaban cargadas, asi
+                // que una fila tenia dos opciones y la de al lado tres: se lee
+                // como un error de la pantalla, y encima no explicaba nada.
+                // Apagada con el motivo a la vista si dice lo que pasa.
+                const yaEnElCampus = r.estado_moodle === 'enviado' || r.estado_moodle === 'manual';
+                // El ausente no tiene sesión: no hay nada que publicar, marcar
+                // ni archivar. Se apagan las tres con el motivo a la vista.
+                const noRindio = !r.session_id;
                 return (
-                  <div className="flex items-center justify-center gap-1">
-                    <button
-                      type="button"
-                      title={r.retenido_por ? 'Nota retenida — no se puede publicar' : 'Publicar esta nota en Moodle'}
-                      disabled={bloqueado || Boolean(r.retenido_por)}
-                      onClick={() => handleSincronizarIndividual(r.session_id)}
-                      className={[
-                        'inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors',
-                        r.retenido_por
-                          ? 'cursor-not-allowed text-gray-300'
-                          : bloqueado
-                            ? 'cursor-not-allowed text-gray-400'
-                            : 'text-primary hover:bg-primary/10 cursor-pointer',
-                      ].join(' ')}
-                    >
-                      {enCurso
-                        ? <Icon name="progress_activity" className="ae-spin text-[16px]" />
-                        : <Icon name="cloud_upload" className="text-[16px]" />}
-                      {enCurso ? 'Publicando…' : 'Publicar'}
-                    </button>
-                    {/* c-78 §13.6: solo tiene sentido en lo que todavía NO
-                        confirmó el campus. Sobre 'enviado' el backend responde
-                        409, así que ni se ofrece. */}
-                    {r.estado_moodle !== 'enviado' && r.estado_moodle !== 'manual' && (
-                      <button
-                        type="button"
-                        title="Marcar que ya cargaste esta nota en el campus, a mano"
-                        disabled={bloqueado || marcandoId !== null}
-                        onClick={() => handleMarcarCargada(r.session_id)}
-                        className={[
-                          'inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors',
-                          bloqueado || marcandoId !== null
-                            ? 'cursor-not-allowed text-gray-400'
-                            : 'text-on-surface-variant hover:bg-surface-100 cursor-pointer',
-                        ].join(' ')}
-                      >
-                        {marcandoId === r.session_id
-                          ? <Icon name="progress_activity" className="ae-spin text-[16px]" />
-                          : <Icon name="how_to_reg" className="text-[16px]" />}
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      title={r.archivado ? 'Desarchivar esta fila' : 'Archivar esta fila (no se borra nada)'}
-                      disabled={bloqueado}
-                      onClick={() => handleArchivar(r.session_id, !r.archivado)}
-                      className={[
-                        'inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors',
-                        bloqueado
-                          ? 'cursor-not-allowed text-gray-400'
-                          : 'text-on-surface-variant hover:bg-surface-100 cursor-pointer',
-                      ].join(' ')}
-                    >
-                      {archivandoEstaFila
-                        ? <Icon name="progress_activity" className="ae-spin text-[16px]" />
-                        : <Icon name={r.archivado ? 'unarchive' : 'archive'} className="text-[16px]" />}
-                    </button>
-                  </div>
+                  <ActionMenu
+                    ariaLabel={`Acciones de ${alumnoDisplay(r)}`}
+                    items={[
+                      {
+                        label: enCurso ? 'Publicando…' : 'Publicar en el campus',
+                        icon: 'cloud_upload',
+                        disabled: noRindio || bloqueado || Boolean(r.retenido_por),
+                        title: noRindio
+                          ? 'El alumno no rindió: no hay nota que publicar'
+                          : r.retenido_por
+                          ? 'La nota esta retenida: no se puede publicar hasta que se resuelva'
+                          : 'Enviar esta nota a la libreta del campus',
+                        onClick: () => handleSincronizarIndividual(r.session_id),
+                      },
+                      r.estado_moodle === 'manual'
+                        ? {
+                            label:
+                              marcandoId === r.session_id
+                                ? 'Deshaciendo…'
+                                : 'Deshacer: no estaba cargada',
+                            icon: 'undo',
+                            disabled: bloqueado || marcandoId !== null,
+                            title:
+                              'La marca la puso una persona y se puede corregir. ' +
+                              'La nota vuelve a pendiente.',
+                            onClick: () => handleDesmarcarCargada(r.session_id),
+                          }
+                        : {
+                        label:
+                          marcandoId === r.session_id
+                            ? 'Marcando…'
+                            : 'Marcar como cargada a mano',
+                        icon: 'how_to_reg',
+                        disabled: noRindio || bloqueado || marcandoId !== null || yaEnElCampus,
+                        title: noRindio
+                          ? 'El alumno no rindió: no hay nota que cargar'
+                          : yaEnElCampus
+                          ? 'Esta nota ya figura en el campus'
+                          : 'Marcar que ya cargaste esta nota en el campus, a mano',
+                        onClick: () => handleMarcarCargada(r.session_id),
+                      },
+                      {
+                        label: archivandoEstaFila
+                          ? 'Archivando…'
+                          : r.archivado
+                            ? 'Desarchivar'
+                            : 'Archivar',
+                        icon: r.archivado ? 'unarchive' : 'archive',
+                        disabled: noRindio || bloqueado,
+                        title: 'Sacar la fila de la vista. No se borra nada.',
+                        onClick: () => handleArchivar(r.session_id, !r.archivado),
+                      },
+                    ]}
+                  />
                 );
               },
             },
@@ -765,7 +929,8 @@ export function ResultadosExamenPanel({ examenId }: { examenId: string }) {
                 data={resultados}
                 keyExtractor={(r) => r.session_id}
                 isLoading={cargandoTabla}
-                tableMinWidth="700px"
+                tableMinWidth="820px"
+                anchoFijo
               />
             </div>
           );

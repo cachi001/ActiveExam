@@ -154,7 +154,10 @@ export function SeverityBadge({ severidad }: { severidad: Severidad }) {
 }
 
 export function Badge({ children, tone = 'neutral', dot = false, className = '' }: {
-  children: ReactNode; tone?: 'neutral' | 'primary' | 'success' | 'warning' | 'error'; dot?: boolean; className?: string;
+  children: ReactNode;
+  tone?: 'neutral' | 'primary' | 'success' | 'warning' | 'error' | 'critico';
+  dot?: boolean;
+  className?: string;
 }) {
   const tones = {
     neutral: 'bg-surface-100 text-on-surface-variant',
@@ -162,6 +165,9 @@ export function Badge({ children, tone = 'neutral', dot = false, className = '' 
     success: 'bg-success-container text-success',
     warning: 'bg-warning-container text-warning',
     error: 'bg-error-container text-on-error-container',
+    // Relleno y no un fondo suave: una anulacion por fraude tiene que saltar
+    // sobre un desaprobado, que es un resultado academico normal.
+    critico: 'bg-error text-white',
   } as const;
   return (
     <span className={`inline-flex items-center gap-base px-sm py-base rounded-full text-label-sm font-semibold ${tones[tone]} ${className}`}>

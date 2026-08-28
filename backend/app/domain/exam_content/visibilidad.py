@@ -113,7 +113,7 @@ def nota_visible_para_alumno(
     mostrar_nota: str,
     cierre: datetime | None,
     ahora: datetime,
-    retenido_por: str | None,
+    retenido_por: str | list[str] | None,
 ) -> bool:
     """True si ESTE alumno puede ver su nota en ``ahora``.
 
@@ -132,6 +132,16 @@ def nota_visible_para_alumno(
     ``resultados_query._motivos_retencion`` — se reusa en vez de recalcular un
     criterio propio, que es como se desincronizan las reglas.
     """
-    if retenido_por in MOTIVOS_QUE_OCULTAN_LA_NOTA:
+    # Acepta la lista completa de motivos o uno solo: `_motivos_retencion`
+    # devuelve TODOS los que aplican desde que una fila puede estar retenida por
+    # varias cosas a la vez. Basta con que UNO oculte la nota.
+    motivos = (
+        retenido_por
+        if isinstance(retenido_por, list)
+        else [retenido_por]
+        if retenido_por
+        else []
+    )
+    if any(m in MOTIVOS_QUE_OCULTAN_LA_NOTA for m in motivos):
         return False
     return nota_visible(mostrar_nota=mostrar_nota, cierre=cierre, ahora=ahora)

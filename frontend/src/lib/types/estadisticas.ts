@@ -42,6 +42,15 @@ export interface ElegibilidadStats {
   sin_biometria: number;
   pueden_rendir: number;
   no_pueden_rendir: number;
+  /**
+   * Motivos EXCLUYENTES: suman exactamente `no_pueden_rendir`. Los `sin_*` de
+   * arriba se pisan entre sí (quien no tiene ninguna de las dos cuenta en los
+   * dos), y mostrarlos solos daba barras que sumaban más que el total de
+   * bloqueados y no coincidían con el export.
+   */
+  solo_falta_consentimiento?: number;
+  solo_falta_biometria?: number;
+  faltan_ambas?: number;
 }
 
 export interface DiaStat {
