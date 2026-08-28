@@ -58,3 +58,46 @@ def test_enviado_y_manual_no_comparten_tono():
     verse igual: es la distinción que importa cuando hay un reclamo."""
     tonos = {e["valor"]: e["tono"] for e in ESTADOS_MOODLE}
     assert tonos["enviado"] != tonos["manual"]
+
+
+# ---------------------------------------------------------------------------
+# El candado: que nadie vuelva a escribir estas etiquetas en otro lado.
+#
+# El export tenía su propia copia con textos DISTINTOS ("Sin conexión al campus"
+# donde la pantalla decía "Sin token"), y nadie se enteró hasta abrir el archivo
+# al lado de la pantalla. Una segunda copia no falla: divergen en silencio.
+# ---------------------------------------------------------------------------
+
+import ast
+from pathlib import Path
+
+RAIZ = Path(__file__).resolve().parents[1] / "app"
+
+#: Donde VIVEN las etiquetas. Es el único archivo autorizado a escribirlas.
+FUENTE = RAIZ / "domain" / "exam_content" / "estado_entrega.py"
+
+
+def test_las_etiquetas_solo_estan_escritas_en_la_fuente():
+    # Sólo las DISTINTIVAS (más de una palabra). "Pendiente" o "Enviado" sueltas
+    # también son etiquetas de las decisiones de revisión y de otros dominios:
+    # encontrarlas en otro archivo no prueba que alguien copió ESTAS, y el test
+    # empezaba a fallar por código que no tiene nada que ver.
+    etiquetas = {e for e in ETIQUETA_ESTADO_MOODLE.values() if " " in e}
+    culpables: list[str] = []
+    for archivo in RAIZ.rglob("*.py"):
+        if archivo == FUENTE:
+            continue
+        try:
+            arbol = ast.parse(archivo.read_text(encoding="utf-8-sig"))
+        except SyntaxError:
+            continue
+        for nodo in ast.walk(arbol):
+            if isinstance(nodo, ast.Constant) and nodo.value in etiquetas:
+                culpables.append(f"{archivo.relative_to(RAIZ)}:{nodo.lineno} → {nodo.value!r}")
+
+    assert not culpables, (
+        "Estas etiquetas están escritas fuera de `EstadoEntregaNota`: "
+        + "; ".join(culpables)
+        + ". Una segunda copia no falla, diverge en silencio: usá "
+        "`etiqueta_estado_entrega()` en vez de repetir el texto."
+    )

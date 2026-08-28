@@ -1,7 +1,13 @@
 import { Icon, Card } from '../../ui/components';
+import { createPortal } from 'react-dom';
 
 export function MonitorBloqueante() {
-  return (
+  // Portal a document.body: la pantalla del examen se envuelve en `animate-in`, que
+  // crea un contexto de apilamiento y atrapa adentro a cualquier `position: fixed`.
+  // Atrapado, este overlay deja de compararse con lo que hay fuera de ese contexto
+  // (por ejemplo el banner de pausa, que sí va por portal) y su z-index no alcanza.
+  // Conserva su z propio: los overlays del examen se apilan entre ellos.
+  return createPortal(
     <div
       role="alertdialog"
       aria-modal="true"
@@ -30,6 +36,7 @@ export function MonitorBloqueante() {
           <span>Mientras tanto, no podés interactuar con el examen.</span>
         </div>
       </Card>
-    </div>
+    </div>,
+    document.body,
   );
 }

@@ -7,6 +7,7 @@
 //
 // L2.5 (RN-SC-01, DD-01): "en riesgo" es un CONTEO que prioriza la revisión
 // humana, nunca un veredicto ni una sanción automática.
+import { useDecisiones } from '../exam-detail/useCatalogosNota';
 import { Card, Icon, LoadingSpinner } from '../../ui/components';
 import { StatCard } from '../proctoring/StatCard';
 import { UMBRAL_REVISION_MIN } from '../../config/umbralRevision';
@@ -141,6 +142,9 @@ function PadronElegibilidad({ data }: { data: ResumenStats }) {
     sin_biometria: 0,
     pueden_rendir: 0,
     no_pueden_rendir: 0,
+    solo_falta_consentimiento: 0,
+    solo_falta_biometria: 0,
+    faltan_ambas: 0,
   };
   const total = e.total_inscriptos;
 
@@ -157,10 +161,17 @@ function PadronElegibilidad({ data }: { data: ResumenStats }) {
     { key: 'no_pueden', label: 'No pueden rendir',  valor: e.no_pueden_rendir, fraccion: fracNo,     inicio: fracPueden, color: '#ef4444' },
   ];
 
+  // Motivos EXCLUYENTES: cada bloqueado aparece en uno solo, así las barras suman
+  // exactamente los bloqueados. Antes se mostraban `sin_consentimiento` y
+  // `sin_biometria`, que se pisan (quien no tiene ninguna cuenta en los dos): con
+  // 8 bloqueados las barras decían 6 y 7, y encima no coincidían con el export,
+  // que ya contaba excluyente. Dos números distintos para lo mismo, en un dato
+  // que decide si el examen se puede tomar.
   const bloqueos = [
-    { key: 'consent',  label: 'Sin consentimiento', valor: e.sin_consentimiento, icon: 'fact_check', color: '#f59e0b' },
-    { key: 'bio',      label: 'Sin biometría',      valor: e.sin_biometria,      icon: 'face',       color: '#f59e0b' },
-  ];
+    { key: 'ambas',   label: 'Les faltan las dos', valor: e.faltan_ambas ?? 0,               icon: 'block',      color: '#ef4444' },
+    { key: 'consent', label: 'Solo consentimiento', valor: e.solo_falta_consentimiento ?? 0, icon: 'fact_check', color: '#f59e0b' },
+    { key: 'bio',     label: 'Solo biometría',      valor: e.solo_falta_biometria ?? 0,      icon: 'face',       color: '#f59e0b' },
+  ].filter((b) => b.valor > 0);
 
   return (
     <Card padded={false}>
@@ -344,13 +355,23 @@ function TopEventos({ data }: { data: ResumenStats }) {
  * El fallback de abajo se CONSERVA: si algún día aparece un valor nuevo, se
  * muestra legible en vez de romper la rosca.
  */
-const DECISION_META: Record<string, { label: string; color: string }> = {
+// El respaldo, sólo por si la API no responde: la fuente es
+// `/catalogos/decisiones`. Escritos acá, el mismo veredicto podía salir de un
+// color en el gráfico y de otro en la tabla.
+const DECISION_FALLBACK: Record<string, { label: string; color: string }> = {
   sin_revisar: { label: 'Sin revisar', color: '#94a3b8' },
   aprobado: { label: 'Aprobado', color: '#10b981' },
   anulado: { label: 'Anulado por fraude', color: '#ef4444' },
 };
-function decisionMeta(clave: string): { label: string; color: string } {
-  return DECISION_META[clave] ?? { label: clave.replace(/_/g, ' '), color: '#8b5cf6' };
+function decisionMeta(
+  clave: string,
+  catalogo?: Map<string, { etiqueta: string; color?: string }>,
+): { label: string; color: string } {
+  const delBackend = catalogo?.get(clave);
+  if (delBackend) {
+    return { label: delBackend.etiqueta, color: delBackend.color ?? '#8b5cf6' };
+  }
+  return DECISION_FALLBACK[clave] ?? { label: clave.replace(/_/g, ' '), color: '#8b5cf6' };
 }
 
 /**
@@ -358,6 +379,8 @@ function decisionMeta(clave: string): { label: string; color: string } {
  * solo muestra en qué punto del circuito está cada sesión.
  */
 function DonutDecisiones({ data }: { data: ResumenStats }) {
+  // Las etiquetas y los colores los define el BACKEND (`/catalogos/decisiones`).
+  const catalogo = useDecisiones();
   const conteos = data.decisiones ?? {};
   const items = Object.entries(conteos)
     .map(([clave, valor]) => ({ clave, valor }))
@@ -388,12 +411,12 @@ function DonutDecisiones({ data }: { data: ResumenStats }) {
                     cy={size / 2}
                     r={r}
                     fill="none"
-                    stroke={decisionMeta(s.clave).color}
+                    stroke={decisionMeta(s.clave, catalogo).color}
                     strokeWidth={stroke}
                     strokeDasharray={`${s.fraccion * c} ${c}`}
                     strokeDashoffset={-s.inicio * c}
                   >
-                    <title>{`${decisionMeta(s.clave).label}: ${s.valor} · ${s.pct}%`}</title>
+                    <title>{`${decisionMeta(s.clave, catalogo).label}: ${s.valor} · ${s.pct}%`}</title>
                   </circle>
                 ) : null,
               )}
@@ -406,8 +429,8 @@ function DonutDecisiones({ data }: { data: ResumenStats }) {
           <ul className="flex-1 min-w-0 space-y-2 w-full">
             {segs.map((s) => (
               <li key={s.clave} className="flex items-center gap-2.5 text-[12.5px]">
-                <span className="w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: decisionMeta(s.clave).color }} aria-hidden />
-                <span className="text-on-surface font-medium">{decisionMeta(s.clave).label}</span>
+                <span className="w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: decisionMeta(s.clave, catalogo).color }} aria-hidden />
+                <span className="text-on-surface font-medium">{decisionMeta(s.clave, catalogo).label}</span>
                 <span className="ml-auto text-on-surface font-semibold tabular-nums">{s.valor}</span>
                 <span className="text-on-surface-variant tabular-nums w-10 text-right">{s.pct}%</span>
               </li>

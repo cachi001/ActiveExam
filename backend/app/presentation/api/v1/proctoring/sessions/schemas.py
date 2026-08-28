@@ -124,6 +124,9 @@ class SesionResumen(BaseModel):
     alumno_idnumber: str | None = None
     alumno_email: str | None = None
     alumno_nombre: str | None = None
+    # migration 0102: el docente probando su examen. No es una rendicion: no
+    # cuenta como intento, no genera nota y se puede borrar.
+    es_prueba: bool = False
 
 
 class RegistroSesionesOut(BaseModel):

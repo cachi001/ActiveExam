@@ -139,12 +139,15 @@ export async function borrarCategoria(categoriaId: string): Promise<void> {
 
 export async function listarPreguntasBanco(
   materiaId: string,
-  categoriaId: string | null,
+  /** id de categoría; `null` = solo las sin clasificar; omitido = TODAS las de la
+   *  materia, cada una con su `categoria_id`. Esta última forma es la que usa el
+   *  armado del sorteo para contar por rama sin hacer una request por categoría. */
+  categoriaId?: string | null,
   estado: EstadoPregunta = 'activa',
 ): Promise<PreguntaBanco[]> {
   const params = new URLSearchParams({ materia_id: materiaId, estado });
   if (categoriaId) params.set('categoria_id', categoriaId);
-  else params.set('sin_categoria', 'true');
+  else if (categoriaId === null) params.set('sin_categoria', 'true');
   const res = await fetchAutenticado(`${API_BASE}/exam-content/preguntas?${params}`, {
     headers: headers(),
   });
@@ -236,6 +239,12 @@ export interface SorteoCategoriaItem {
   categoria_id: string | null;
   cantidad: number;
   tipos?: string[] | null;
+  /**
+   * Si el pool del tramo es la categoría sola o toda su descendencia. El backend
+   * lo tiene en `true` por default, así que omitirlo sorteaba sobre la rama
+   * entera sin que la UI lo dijera ni lo mostrara en los conteos.
+   */
+  incluir_subcategorias?: boolean;
 }
 
 export interface CrearDesdebancoRequest {
@@ -257,6 +266,12 @@ export interface CrearDesdebancoRequest {
   /** c-78 E-07: nace invisible para el alumno, para poder probarlo antes. */
   borrador?: boolean;
   sorteo: SorteoCategoriaItem[];
+  /**
+   * De qué preguntas del banco puede salir el sorteo. Se manda solo cuando el
+   * docente destildó alguna: sin esto, el pool es todo lo que califique por
+   * categoría y tipo.
+   */
+  pool_preguntas?: string[];
   limite_preguntas?: number | null;
   /** Escala de calificación del examen. Default 100/60 si se omite (nunca "sobre 10"). */
   nota_maxima?: number;

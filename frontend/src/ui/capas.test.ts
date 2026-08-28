@@ -122,4 +122,54 @@ describe('capas de la interfaz', () => {
       `\`ui/capas.ts\`:\n  ${infractores.join('\n  ')}`,
     ).toEqual([]);
   });
+
+  /**
+   * El z-index correcto NO alcanza. Medido en el navegador el 27/8/2026: un modal
+   * con z-200 seguía quedando debajo del header, que es z-50.
+   *
+   * La causa es el contexto de apilamiento. Las pantallas se envuelven en
+   * `animate-in fade-in`, y esa animación (que anima `opacity`, con
+   * `animation-fill-mode: both`) crea un contexto de apilamiento PERMANENTE en el
+   * contenedor. Un `position: fixed` declarado adentro ya no se compara contra el
+   * header: se compara con sus hermanos dentro de ese contexto, y el contexto
+   * entero se pinta donde le toca al contenido, o sea debajo del marco. El z-index
+   * del modal deja de tener efecto sobre el header por más alto que sea.
+   *
+   * Comprobado quitando `animate-in` en vivo: el mismo modal pasa a ganar.
+   *
+   * La cura es el portal: montado en `document.body`, el overlay queda en el
+   * contexto raíz y su z-index vuelve a valer contra el header. Por eso este test
+   * exige portal y no un número.
+   */
+  it('todo modal a pantalla completa se monta con portal, no dentro de la página', () => {
+    const sinPortal: string[] = [];
+
+    for (const ruta of archivosFuente(RAIZ)) {
+      const relativa = ruta.slice(RAIZ.length + 1).replace(/\\/g, '/');
+      if (EXENTOS.includes(relativa)) continue;
+
+      const contenido = readFileSync(ruta, 'utf8');
+      // Solo los overlays que oscurecen la pantalla: son los que compiten con el
+      // marco. Un `fixed inset-0` sin backdrop suele ser una capa de layout.
+      //
+      // El backdrop no siempre está en la misma línea: varios modales lo ponen en
+      // un `<div absolute inset-0 bg-black/60>` aparte, justo debajo. Por eso se
+      // mira la vecindad y no solo la línea, o el escaneo deja pasar la mitad.
+      const lineas = contenido.split('\n');
+      const esModal = lineas.some((l, i) =>
+        l.includes('fixed inset-0') &&
+        lineas.slice(i, i + 3).some((v) => /backdrop-blur|bg-black\/|bg-inverse-surface\//.test(v)),
+      );
+      if (!esModal) continue;
+
+      if (!/createPortal|<ModalOverlay/.test(contenido)) sinPortal.push(relativa);
+    }
+
+    expect(sinPortal,
+      'Estos modales se renderizan dentro de la página, así que el contexto de ' +
+      'apilamiento de `animate-in` los deja debajo del header y la sidebar por más ' +
+      'z-index que tengan. Usá `<ModalOverlay>` (o createPortal a document.body):\n  ' +
+      sinPortal.join('\n  '),
+    ).toEqual([]);
+  });
 });

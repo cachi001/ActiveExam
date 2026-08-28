@@ -14,6 +14,7 @@ import { ConfiguracionExamenSection } from './exam-detail/ConfiguracionExamenSec
 import { ComisionSection } from './exam-detail/ComisionSection';
 import { ComisionesDelExamenSection } from './exam-detail/ComisionesDelExamenSection';
 import { BorradorSection } from './exam-detail/BorradorSection';
+import { PruebasDelExamenSection } from './exam-detail/PruebasDelExamenSection';
 import { SorteoSection } from './exam-detail/SorteoSection';
 import { DestinoMoodleSection } from './exam-detail/DestinoMoodleSection';
 import { AvisoSinResponsable } from '../ui/AvisoSinResponsable';
@@ -145,17 +146,22 @@ export default function ExamDetail() {
 
         {/* c-78 E-07: va PRIMERO. Que el examen no esté habilitado es lo más
             importante que hay que saber al abrirlo. */}
-        {examen?.borrador && (
+        {examen && (
           <BorradorSection
             examenId={examenId}
-            titulo={examen?.titulo}
+            titulo={examen.titulo}
+            borrador={Boolean(examen.borrador)}
             onHabilitado={cargarHeader}
           />
         )}
 
+        {/* migration 0102: los ensayos del docente, para revisarlos o borrarlos.
+            No se pinta si no hay ninguno. */}
+        <PruebasDelExamenSection examenId={examenId} />
+
         {/* c-78 E-07: si el examen sortea por intento, esta sección explica qué
             recibe cada alumno. Se pinta sola cuando no aplica. */}
-        <SorteoSection examenId={examenId} />
+        <SorteoSection examenId={examenId} materiaId={examen?.materia_id ?? undefined} />
 
         {/* Elegir preguntas a mano es SOLO de los exámenes viejos de modo 'fijo'.
             Los que se crean hoy sortean por intento: qué preguntas le tocan a cada
@@ -196,7 +202,10 @@ export default function ExamDetail() {
 
         <DestinoMoodleSection examenId={examenId} />
 
-        <ConfiguracionExamenSection examenId={examenId} />
+        <ConfiguracionExamenSection
+          examenId={examenId}
+          sorteado={examen?.modo_preguntas === 'sorteo_por_intento'}
+        />
       </div>
     </StaffShell>
   );

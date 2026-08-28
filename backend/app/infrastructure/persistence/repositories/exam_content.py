@@ -199,6 +199,7 @@ class ExamenContenidoSqlRepository:
                 ExamenContenidoModel.comision_id,
                 ComisionModel.nombre.label("comision_nombre"),
                 ComisionModel.codigo.label("comision_codigo"),
+                MateriaModel.id.label("materia_id"),
                 MateriaModel.nombre.label("materia_nombre"),
                 MateriaModel.codigo.label("materia_codigo"),
                 ExamenContenidoModel.apertura,
@@ -229,6 +230,7 @@ class ExamenContenidoSqlRepository:
                 ExamenContenidoModel.comision_id,
                 ComisionModel.nombre,
                 ComisionModel.codigo,
+                MateriaModel.id,
                 MateriaModel.nombre,
                 MateriaModel.codigo,
                 ExamenContenidoModel.apertura,
@@ -250,6 +252,7 @@ class ExamenContenidoSqlRepository:
             comision_id=row.comision_id,
             comision_nombre=row.comision_nombre,
             comision_codigo=row.comision_codigo,
+            materia_id=row.materia_id,
             materia_nombre=row.materia_nombre,
             materia_codigo=row.materia_codigo,
             apertura=row.apertura,
@@ -650,6 +653,24 @@ class ExamenContenidoSqlRepository:
         )
         await self._db.flush()
         return await self.listar_preguntas(examen_id)
+
+    async def obtener_cabecera(self, examen_id: str) -> ExamenContenidoModel | None:
+        """El examen SIN sus preguntas: la fila cruda, para leer sus escalares.
+
+        `obtener()` trae el pool entero y lo convierte a entidades de dominio, lo
+        que valida cada pregunta. Quien solo necesita la config o el destino de la
+        nota pagaba esa carga completa, y con ella su validación: una sola
+        pregunta mal guardada (una multichoice sin opciones, por ejemplo) hacía
+        estallar la lectura y dejaba el examen inabrible, justo cuando lo que hace
+        falta para arreglarlo se edita desde ahí.
+
+        Devuelve el modelo y no una entidad a propósito: construir la entidad es
+        exactamente lo que hay que evitar.
+        """
+        result = await self._db.execute(
+            select(ExamenContenidoModel).where(ExamenContenidoModel.id == examen_id)
+        )
+        return result.scalar_one_or_none()
 
     async def obtener(self, examen_id: str) -> ExamenContenido | None:
         """Recupera un examen por id con preguntas y opciones (eager load)."""
@@ -1962,6 +1983,17 @@ class InscripcionSqlRepository:
             )
         )
         return result.scalar_one_or_none() is not None
+
+    async def roles_de(self, usuario_id: str) -> list[str]:
+        """Roles del usuario activo. Lista vacia si no existe o esta dado de baja."""
+        result = await self._db.execute(
+            select(UsuarioModel.roles).where(
+                UsuarioModel.id == usuario_id,
+                UsuarioModel.eliminado_en.is_(None),
+            )
+        )
+        roles = result.scalar_one_or_none()
+        return list(roles or [])
 
     async def listar_usuarios_de_comision(
         self, comision_id: str

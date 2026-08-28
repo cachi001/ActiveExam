@@ -5,6 +5,8 @@ import { ActionMenu, type ActionItem } from '../../../ui/ActionMenu';
 import type { Comision } from '../../../lib/types';
 import { AlumnosComisionPanel } from './AlumnosComisionPanel';
 import { AsignarDocenteDialog } from './AsignarDocenteDialog';
+import { DetalleComisionDialog } from './DetalleComisionDialog';
+import { resumenTutores } from './resumenTutores';
 import { useAuth } from '../../../lib/authStore';
 import { tieneCapacidad } from '../../../lib/capabilities';
 import { INPUT_CLASS, LABEL_CLASS, type FormComision } from './materiasComisionesTypes';
@@ -56,7 +58,11 @@ export function ComisionesAccordionBody({
   const rolesActuales = useAuth((s) => s.principal?.roles) ?? [];
   const puedeEditarEstructura = tieneCapacidad(rolesActuales, 'gestionar_estructura');
   const [asignando, setAsignando] = useState<Comision | null>(null);
+  const [detallando, setDetallando] = useState<Comision | null>(null);
   const [tutoresLocal, setTutoresLocal] = useState<Record<string, { id: string; nombre: string }[]>>({});
+  // Los tutores vigentes de una comisión: los recién editados si se tocaron en
+  // esta pantalla, si no los que trajo el servidor.
+  const tutoresDe = (c: Comision) => tutoresLocal[c.id] ?? c.tutores ?? [];
   // Acciones del menú kebab por comisión. UN SOLO patrón de baja (c-78): dar de
   // baja / reactivar. Antes convivían dos entradas que hacían lo mismo — "Eliminar
   // comisión" ya no borraba nada desde que la baja pasó a ser lógica, y encima
@@ -65,6 +71,10 @@ export function ComisionesAccordionBody({
   // nunca cableado al menú).
   const accionesComision = (c: Comision, comExpandida: boolean): ActionItem[] => {
     return [
+      // "Ver detalle" es la contraparte de haber achicado la fila: los tutores
+      // por nombre y el resto de los datos de la comisión salieron de las
+      // columnas para no seguir ensanchando la tabla, y viven acá.
+      { label: 'Ver detalle', icon: 'info', onClick: () => setDetallando(c) },
       { label: comExpandida ? 'Ocultar alumnos' : 'Ver alumnos', icon: 'groups', onClick: () => toggleComision(c.id) },
       ...(puedeEditarEstructura
         ? [{ label: 'Editar comisión', icon: 'edit', onClick: () => abrirEditarComision(materiaId, c) } as ActionItem]
@@ -279,17 +289,26 @@ export function ComisionesAccordionBody({
         </div>
       ) : comisiones && comisiones.length > 0 ? (
         <>
-          {/* Tabla desktop */}
-          <div className="hidden sm:block overflow-x-auto">
+          {/* Tabla desktop. El corte es `xl` (1280px) y no `sm`: son siete columnas
+              dentro de una card que además comparte la fila con la lista de materias,
+              y por debajo de ese ancho la tabla scrolleaba en horizontal con la
+              columna Acciones anclada encima de la de Tutor, que quedaba ilegible.
+              Abajo de 1280 se usan las cards, que muestran los mismos datos sin
+              esconder ninguno. */}
+          <div className="hidden xl:block overflow-x-auto">
             <table className="w-full">
               <thead>
                 <tr className="bg-surface-container">
-                  <th className="text-left text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider px-8 py-2">Código</th>
-                  <th className="text-left text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider px-4 py-2">Nombre</th>
-                  <th className="text-left text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider px-4 py-2">Período</th>
-                  <th className="text-left text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider px-4 py-2">Año</th>
-                  <th className="text-left text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider px-4 py-2">Cód. matriculación</th>
-                  <th className="text-left text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider px-4 py-2">Tutor</th>
+                  {/* Paddings chicos y sin ancho reservado de más: son siete columnas
+                      en una tabla que ya vive dentro de una card. Cuanto menos ancho
+                      pida, menos veces aparece el scroll horizontal que tapa la
+                      columna Tutor detrás de la de Acciones, que es sticky. */}
+                  <th className="text-left text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider pl-4 pr-2 py-2">Código</th>
+                  <th className="text-left text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider px-3 py-2">Nombre</th>
+                  <th className="text-left text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider px-3 py-2">Período</th>
+                  <th className="text-left text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider px-3 py-2">Año</th>
+                  <th className="text-left text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider px-3 py-2">Cód. matriculación</th>
+                  <th className="text-left text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider px-3 py-2 w-full">Tutor</th>
                   {/* Sticky a la derecha: la tabla scrollea en horizontal y esta
                       columna, que es la que tiene el menú de la comisión (asignar
                       tutor, dar de baja), quedaba fuera de la vista con el ancho
@@ -303,7 +322,7 @@ export function ComisionesAccordionBody({
                   return (
                     <Fragment key={c.id}>
                       <tr className="hover:bg-surface-container/50 transition-colors">
-                        <td className="px-8 py-3 whitespace-nowrap">
+                        <td className="pl-4 pr-2 py-3 whitespace-nowrap">
                           <div className="flex items-center gap-2">
                             <button
                               type="button"
@@ -319,7 +338,7 @@ export function ComisionesAccordionBody({
                             </span>
                           </div>
                         </td>
-                        <td className="px-4 py-3 text-[13px] text-on-surface">
+                        <td className="px-3 py-3 text-[13px] text-on-surface">
                           <span className="inline-flex items-center gap-2">
                             <span>{c.nombre}</span>
                             {c.activa === false && (
@@ -330,27 +349,29 @@ export function ComisionesAccordionBody({
                             )}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-[13px] text-on-surface-variant">{c.periodo ?? '—'}</td>
-                        <td className="px-4 py-3 text-[13px] text-on-surface-variant tabular-nums">{c.anio ?? '—'}</td>
-                        <td className="px-4 py-3 whitespace-nowrap text-[13px] text-on-surface">
+                        <td className="px-3 py-3 text-[13px] text-on-surface-variant">{c.periodo ?? '—'}</td>
+                        <td className="px-3 py-3 text-[13px] text-on-surface-variant tabular-nums">{c.anio ?? '—'}</td>
+                        <td className="px-3 py-3 whitespace-nowrap text-[13px] text-on-surface">
                           {c.codigo_matriculacion || <span className="text-on-surface-variant">—</span>}
                         </td>
                         {/* Docente a cargo: sin él las notas de esta comisión NO se
                             sincronizan al campus. Se avisa acá, donde se gestiona la
                             comisión, y no cuando el alumno ya rindió. */}
-                        <td className="px-4 py-3 whitespace-nowrap text-[13px]">
-                          {(tutoresLocal[c.id] ?? c.tutores)?.length ? (
-                            <span className="text-on-surface">
-                              {(tutoresLocal[c.id] ?? c.tutores ?? []).map((t) => t.nombre).join(', ')}
-                            </span>
+                        {/* La CANTIDAD, no los nombres: concatenados estiraban la fila
+                            hasta forzar scroll horizontal, y ese scroll dejaba esta
+                            misma columna tapada por la de Acciones, que está anclada.
+                            Los nombres están en "Ver detalle". */}
+                        <td className="px-3 py-3 whitespace-nowrap text-[13px]">
+                          {tutoresDe(c).length ? (
+                            <span className="text-on-surface">{resumenTutores(tutoresDe(c))}</span>
                           ) : (
                             <span className="inline-flex items-center gap-1 text-error">
                               <Icon name="person_off" className="text-[14px]" />
-                              Sin asignar
+                              {resumenTutores(tutoresDe(c))}
                             </span>
                           )}
                         </td>
-                        <td className="sticky right-0 z-10 bg-surface px-4 py-3 text-right">
+                        <td className="sticky right-0 z-10 bg-surface px-3 py-3 text-right">
                           <ActionMenu
                             ariaLabel={`Acciones de ${c.nombre}`}
                             items={accionesComision(c, comExpandida)}
@@ -379,7 +400,7 @@ export function ComisionesAccordionBody({
             const expandida = comisiones.find((c) => c.id === comisionExpandida);
             if (!expandida) return null;
             return (
-              <div className="hidden sm:block border-t border-outline-variant/30">
+              <div className="hidden xl:block border-t border-outline-variant/30">
                 <AlumnosComisionPanel
                   comisionId={expandida.id}
                   comisionNombre={expandida.nombre}
@@ -388,8 +409,9 @@ export function ComisionesAccordionBody({
             );
           })()}
 
-          {/* Cards mobile */}
-          <div className="sm:hidden divide-y divide-outline-variant/20">
+          {/* Cards: mobile y todo lo que esté por debajo de 1280px (ver el comentario
+              de la tabla). Muestran los mismos datos que las columnas. */}
+          <div className="xl:hidden divide-y divide-outline-variant/20">
             {comisiones.map((c) => {
               const comExpandida = comisionExpandida === c.id;
               return (
@@ -426,14 +448,14 @@ export function ComisionesAccordionBody({
                       {/* Sin docente a cargo, las notas de esta comisión NO se
                           sincronizan al campus. Se avisa acá —donde se gestiona la
                           comisión— y no cuando el alumno ya rindió. */}
+                      {/* Igual que en la tabla: la cantidad, y los nombres en el
+                          detalle. Acá además la card es angosta. */}
                       <p className="text-[11px] mt-0.5">
                         <span className="text-on-surface-variant">Tutor: </span>
-                        {(tutoresLocal[c.id] ?? c.tutores)?.length ? (
-                          <span className="text-on-surface">
-                            {(tutoresLocal[c.id] ?? c.tutores ?? []).map((t) => t.nombre).join(', ')}
-                          </span>
+                        {tutoresDe(c).length ? (
+                          <span className="text-on-surface">{resumenTutores(tutoresDe(c))}</span>
                         ) : (
-                          <span className="text-error">Sin asignar</span>
+                          <span className="text-error">{resumenTutores(tutoresDe(c))}</span>
                         )}
                       </p>
                     </div>
@@ -451,6 +473,14 @@ export function ComisionesAccordionBody({
           </div>
         </>
       ) : null}
+
+      {detallando && (
+        <DetalleComisionDialog
+          comision={detallando}
+          tutores={tutoresDe(detallando)}
+          onCerrar={() => setDetallando(null)}
+        />
+      )}
 
       {/* C-73 §9.5 — quién queda a cargo decide con qué cuenta se devuelven las notas. */}
       {asignando && (

@@ -139,3 +139,12 @@ class YaInscriptoEnLaMateriaError(Exception):
     def __init__(self, mensaje: str, *, comision_actual_nombre: str = "") -> None:
         super().__init__(mensaje)
         self.comision_actual_nombre = comision_actual_nombre
+
+
+class NoEsAlumnoError(Exception):
+    """Se quiso meter en el padron de una comision a alguien que no es alumno.
+
+    Ni el panel del docente ni la autoinscripcion por codigo miraban el rol, y un
+    docente en el padron aparecia en la tabla de notas de su propio examen como
+    ausente con 0.
+    """

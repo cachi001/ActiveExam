@@ -63,6 +63,9 @@ from app.presentation.api.v1.consent_perfil.router import (
     router as consent_perfil_router,
 )
 from app.presentation.api.v1.enrollment.router import router as enrollment_router
+from app.presentation.api.v1.exam_content.catalogos_router import (
+    create_catalogos_router,
+)
 from app.presentation.api.v1.exam_content.router import (
     create_exam_content_router,
     create_exam_taking_router,
@@ -455,6 +458,14 @@ def create_activeexam_app() -> FastAPI:
         ),
         prefix="/api/v1/exam-content",
         tags=["exam-content"],
+    )
+    # Catálogos de dominio (etiquetas y colores). Sólo pide estar autenticado:
+    # son constantes, y las necesitan pantallas de TODOS los roles — el alumno
+    # incluido, que si no termina con las etiquetas escritas a mano.
+    app.include_router(
+        create_catalogos_router(),
+        prefix="/api/v1/catalogos",
+        tags=["catalogos"],
     )
     app.include_router(
         create_exam_taking_router(

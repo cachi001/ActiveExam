@@ -15,14 +15,18 @@ import { Button, Card, Icon, LoadingSpinner, SectionTitle } from '../../ui/compo
 import { useToast } from '../../ui/toast';
 import { API_BASE } from '../../lib/api';
 import { authProvider } from '../../lib/authProvider';
+import { SelectorDeSorteo, type SorteoArmado } from '../../admin/ExamImport/SelectorDeSorteo';
 import {
   actualizarPoolDelExamenFn,
+  rearmarSorteoDelExamenFn,
   leerSorteoDelExamenFn,
   type SorteoDelExamen,
 } from '../../lib/examContentCatalog';
 
 interface Props {
   examenId: string;
+  /** Del header del examen: el selector arma contra el banco de esta materia. */
+  materiaId?: string;
 }
 
 /** Preguntas que comparten dos alumnos, en promedio: largo² / pool. */
@@ -31,12 +35,18 @@ function repeticionEstimada(largo: number, pool: number): number | null {
   return Math.round((largo * largo) / pool);
 }
 
-export function SorteoSection({ examenId }: Props) {
+export function SorteoSection({ examenId, materiaId }: Props) {
   const toast = useToast();
   const [sorteo, setSorteo] = useState<SorteoDelExamen | null>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actualizando, setActualizando] = useState(false);
+  // Edición in-place: el mismo selector con el que se arma el examen. Un modal
+  // sería el único de esta pantalla, y además pediría de nuevo título, comisión
+  // y escala de nota, que no se editan acá.
+  const [editando, setEditando] = useState(false);
+  const [armado, setArmado] = useState<SorteoArmado | null>(null);
+  const [guardando, setGuardando] = useState(false);
 
   const cargar = useCallback(async () => {
     setCargando(true);
@@ -103,6 +113,25 @@ export function SorteoSection({ examenId }: Props) {
   const proporcion =
     repite !== null && sorteo.largo_del_examen > 0 ? repite / sorteo.largo_del_examen : 0;
 
+  const guardarSorteo = async () => {
+    if (!armado?.valido) return;
+    setGuardando(true);
+    try {
+      await rearmarSorteoDelExamenFn(API_BASE, authProvider.getToken(), examenId, {
+        sorteo: armado.sorteo,
+        pool_preguntas: armado.pool_preguntas,
+      });
+      toast.success('Listo, el examen quedó con las preguntas nuevas.');
+      setEditando(false);
+      await cargar();
+    } catch (err: unknown) {
+      // El 409 explica que ya lo rindieron: se muestra tal cual.
+      toast.error(err instanceof Error ? err.message : 'No se pudo guardar el sorteo.');
+    } finally {
+      setGuardando(false);
+    }
+  };
+
   return (
     <Card>
       <SectionTitle
@@ -113,7 +142,8 @@ export function SorteoSection({ examenId }: Props) {
       </SectionTitle>
 
       <div className="space-y-4">
-        <div className="rounded-xl bg-surface-100 px-4 py-3">
+        <div className="rounded-xl bg-surface-100 px-4 py-3 flex items-start gap-3">
+          <div className="flex-1 min-w-0">
           <p className="text-label-md text-on-surface">
             Cada alumno rinde{' '}
             <strong>
@@ -132,22 +162,81 @@ export function SorteoSection({ examenId }: Props) {
                   : 'Buena variedad.'}
             </p>
           )}
+          </div>
+          {/* Poner 10 y darse cuenta de que querías 12 no debería obligar a
+              borrar el examen y armarlo de nuevo. */}
+          {!editando && (
+            <Button
+              variant="secondary"
+              size="sm"
+              icon="edit"
+              onClick={() => setEditando(true)}
+            >
+              Editar preguntas
+            </Button>
+          )}
         </div>
 
+        {editando && materiaId && (
+          <div className="rounded-xl border border-primary/30 bg-primary/5 p-3 space-y-3">
+            <SelectorDeSorteo
+              materiaId={materiaId}
+              onChange={setArmado}
+              inicial={sorteo.tramos.map((t) => ({
+                categoria_id: t.categoria_id,
+                cantidad: t.cantidad,
+              }))}
+              inicialPool={sorteo.pool_banco_ids}
+            />
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setEditando(false)}
+                disabled={guardando}
+              >
+                Cancelar
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={guardarSorteo}
+                disabled={guardando || !armado?.valido}
+              >
+                {guardando ? 'Guardando…' : 'Guardar preguntas'}
+              </Button>
+            </div>
+          </div>
+        )}
+
         {/* 15.4: el desglose por tramo */}
+        {!editando && (
         <div className="rounded-xl border border-outline-variant/40 overflow-hidden">
           {sorteo.tramos.map((t, i) => (
             <div
               key={`${t.categoria_id ?? 'sin'}-${i}`}
               className="flex items-center gap-3 px-4 py-2.5 border-b border-outline-variant/20 last:border-b-0"
             >
+              {/* Sin categoría significa dos cosas distintas según baje o no a
+                  la descendencia: con ella, TODO el banco; sin ella, las que no
+                  tienen categoría. Rotular las dos igual hacía leer "sortea 10
+                  de 38 sin clasificar" en un examen que sortea del banco entero. */}
               <Icon
-                name={t.categoria_id ? 'folder' : 'folder_off'}
+                name={
+                  t.categoria_id
+                    ? 'folder'
+                    : t.incluir_subcategorias
+                      ? 'library_books'
+                      : 'folder_off'
+                }
                 className="text-[16px] shrink-0 text-on-surface-variant"
               />
               <div className="flex-1 min-w-0">
                 <div className="text-label-md text-on-surface truncate">
-                  {t.categoria_nombre ?? 'Sin clasificar'}
+                  {t.categoria_nombre ??
+                    (t.incluir_subcategorias
+                      ? 'Todo el banco de la materia'
+                      : 'Sin clasificar')}
                   {t.incluir_subcategorias && t.categoria_id && (
                     <span className="text-on-surface-variant"> y sus subcategorías</span>
                   )}
@@ -158,7 +247,7 @@ export function SorteoSection({ examenId }: Props) {
                   </div>
                 )}
               </div>
-              <span className="shrink-0 text-label-sm text-on-surface-variant">
+              <span className="shrink-0 text-label-sm text-on-surface-variant flex items-center gap-1.5">
                 sortea <strong className="text-on-surface">{t.cantidad}</strong> de{' '}
                 <strong className="text-on-surface">{t.en_el_pool}</strong>
                 {t.en_el_banco > t.en_el_pool && (
@@ -171,8 +260,9 @@ export function SorteoSection({ examenId }: Props) {
             </div>
           ))}
         </div>
+        )}
 
-        {sorteo.nuevas_en_el_banco > 0 && (
+        {!editando && sorteo.nuevas_en_el_banco > 0 && (
           <div className="rounded-xl border border-warning/40 bg-warning-container/30 px-4 py-3">
             <p className="text-label-md text-on-surface">
               El banco tiene{' '}

@@ -393,14 +393,14 @@ describe('4.1 getExamenHeaderFn — normalización de campos', () => {
 // superado nunca.
 // ---------------------------------------------------------------------------
 
-function _r(retenido_por: string | null): ResultadoExamen {
+function _r(retenido_por: string | null, estado_moodle: ResultadoExamen['estado_moodle'] = 'pendiente'): ResultadoExamen {
   return {
     session_id: 's-' + Math.random(),
     alumno_idnumber: 'FRM-1',
     alumno_email: 'a@b.com',
     alumno_nombre: null,
     nota: 7,
-    estado_moodle: 'pendiente',
+    estado_moodle,
     actualizado_en: '2026-01-01T00:00:00',
     retenido_por,
   };
@@ -443,4 +443,38 @@ describe('5.1 contarRetencionesPorRevision — separa revisión de configuració
     expect(c.revision).toBe(0);
     expect(c.configuracion).toBe(0);
   });
+
+  it('una nota ya cargada a mano no cuenta como retenida por configuración', () => {
+    // El aviso decía "3 notas sin sincronizar por configuración" con una ya
+    // cargada a mano en el campus. Esa nota no espera ninguna configuración:
+    // ya está en la libreta. Verificado en el navegador el 28/8/2026.
+    const resultados = [_r('sin_credencial_docente', 'manual'), _r('sin_credencial_docente')];
+    const c = contarRetencionesPorRevision(resultados);
+    expect(c.configuracion).toBe(1);
+    expect(c.revision).toBe(0);
+  });
+
+  it('el ausente no cuenta como nota trabada', () => {
+    // Nunca rindió: no hay nada que sincronizar ni que configurar. Contarlo
+    // inflaba el aviso de "N notas sin sincronizar por configuración".
+    const c = contarRetencionesPorRevision([_r('no_rindio'), _r('sin_destino')]);
+    expect(c.configuracion).toBe(1);
+    expect(c.revision).toBe(0);
+  });
+
+  it('una nota cargada a mano y ANULADA sigue contando como retenida por revisión', () => {
+    // La anulación es un veredicto humano sobre la integridad: no la borra que
+    // alguien haya cargado el número en el campus.
+    const c = contarRetencionesPorRevision([_r('anulada', 'manual')]);
+    expect(c.revision).toBe(1);
+    expect(c.configuracion).toBe(0);
+  });
 });
+
+// El resultado académico (aprobado / desaprobado / anulada) ya NO se decide acá:
+// lo resuelve el backend y esta capa sólo lo muestra. Su test vive en
+// `backend/tests/test_resultado_nota_fuente_unica.py`.
+//
+// Estaba escrito con `if` en este archivo Y otra vez en el export de Python. Las
+// dos copias divergieron: una nota anulada por fraude salía "Aprobado" en el
+// Excel mientras la pantalla decía "Anulada".

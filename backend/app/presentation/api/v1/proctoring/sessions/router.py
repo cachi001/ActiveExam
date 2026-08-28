@@ -21,6 +21,7 @@ from app.application.audit.service import registrar
 from app.application.proctoring import observacion_service, session_service
 from app.application.proctoring.auto_finalizacion import auto_finalizar_si_vencida
 from app.application.proctoring.captura_almacenada import leer_captura
+from app.application.proctoring.prueba_de_staff import es_rendicion_de_prueba
 from app.application.proctoring.enforcement import (
     ExamenDadoDeBajaError,
     ExamenEnBorradorError,
@@ -185,6 +186,34 @@ async def _ventanas_pausa_aprobada(db: AsyncSession, session_id: str) -> list:
         return []
 
 
+async def _pertenece_al_principal(
+    db: AsyncSession, principal: AuthenticatedPrincipal, examen_contenido_id: str
+) -> bool:
+    """Si el examen es de una comision/materia que este principal tiene a cargo.
+
+    Misma pregunta que hace `_exigir_pertenencia` en el router de examenes, y
+    contra el mismo repositorio: tutor de su comision, coordinador o profesor de
+    su materia. El admin_sistema es de alcance institucional.
+
+    Se usa para decidir si una rendicion del staff es un ENSAYO. No reemplaza a
+    ninguna guarda: la inscripcion y el enforcement siguen corriendo para todos
+    los demas casos.
+    """
+    from app.domain.auth.authorization import _ROLES_SIN_LIMITE_DE_PERTENENCIA
+    from app.infrastructure.persistence.repositories.exam_content import (
+        ComisionSqlRepository,
+    )
+
+    if principal.tiene_algun_rol(_ROLES_SIN_LIMITE_DE_PERTENENCIA):
+        return True
+    return await ComisionSqlRepository(db).tiene_pertenencia_sobre_examen(
+        principal.subject or "",
+        examen_contenido_id,
+        es_coordinador=principal.tiene_rol(Rol.COORDINADOR),
+        es_profesor=principal.tiene_rol(Rol.PROFESOR),
+    )
+
+
 def create_sessions_router(
     get_db,
     *,
@@ -274,8 +303,19 @@ def create_sessions_router(
             # y la ventana, no la baja logica ni el tope de intentos. Se deriva del
             # rol, NO de un flag del body: el cliente es un sensor no confiable
             # (regla dura #6) y un alumno no puede auto-declararse staff.
-            es_prueba_de_staff = any(
-                tiene_capacidad(rol, "crear_examenes") for rol in principal.roles
+            # El staff academico probando SU PROPIO examen (incluye al TUTOR,
+            # decision del dueno: no arma el examen pero necesita ver que se toma).
+            #
+            # Se deriva del ROL + la PERTENENCIA, nunca de un flag del body: el
+            # cliente es un sensor no confiable (regla dura #6). Y las dos
+            # condiciones hacen falta —con el rol solo, un docente abriria "de
+            # prueba" el parcial de otra catedra, y un profesor que ademas cursa
+            # otra materia veria su propio parcial marcado como ensayo, sin nota.
+            es_examen_propio = await _pertenece_al_principal(
+                db, principal, body.examen_contenido_id
+            )
+            es_prueba_de_staff = es_rendicion_de_prueba(
+                list(principal.roles), es_examen_propio=es_examen_propio
             )
             try:
                 await verificar_enforcement(
@@ -328,12 +368,17 @@ def create_sessions_router(
 
             # Gate de inscripción (C-71): backstop server-side — el alumno debe estar
             # inscripto en la comisión del examen para poder crear la sesión.
+            #
+            # No se le pide al staff que prueba: un docente NUNCA está inscripto
+            # como alumno de su propia comisión, así que exigírselo hacía imposible
+            # probar el examen — que es para lo único que sirve el borrador.
             try:
-                await verificar_inscripcion(
-                    db,
-                    examen_contenido_id=body.examen_contenido_id,
-                    alumno_idnumber=principal.username,
-                )
+                if not es_prueba_de_staff:
+                    await verificar_inscripcion(
+                        db,
+                        examen_contenido_id=body.examen_contenido_id,
+                        alumno_idnumber=principal.username,
+                    )
             except NoInscriptoError as exc:
                 raise HTTPException(
                     status_code=http_status.HTTP_403_FORBIDDEN,
@@ -349,6 +394,9 @@ def create_sessions_router(
                 examen_contenido_id=body.examen_contenido_id,
                 alumno_idnumber=principal.username or None,
                 alumno_email=principal.email or None,
+                # Solo cuando hay examen vinculado: sin él no hay nota ni
+                # resultados de los que haga falta excluirla.
+                es_prueba=bool(body.examen_contenido_id) and es_prueba_de_staff,
             )
         except session_service.ConfigSnapshotNoDisponibleError as exc:
             # migration 0083: nunca se crea una sesion sin foto de config — sin
@@ -546,6 +594,7 @@ def create_sessions_router(
                     alumno_idnumber=s.alumno_idnumber,
                     alumno_email=s.alumno_email,
                     alumno_nombre=s.alumno_nombre,
+                    es_prueba=s.es_prueba,
                 )
                 for s in items_pagina
             ],

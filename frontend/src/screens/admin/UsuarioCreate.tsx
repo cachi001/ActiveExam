@@ -17,6 +17,7 @@ import { useState } from 'react';
 import { StaffShell } from '../../ui/shells';
 import { Button, Card, Icon } from '../../ui/components';
 import { HelpButton } from '../../ui/HelpButton';
+import { ModalOverlay } from '../../ui/ModalOverlay';
 import { STAFF_NAV } from '../../ui/nav';
 import { useToast } from '../../ui/toast';
 import { useNavigate, Link } from '../../lib/router';
@@ -53,12 +54,10 @@ function ModalClaveTemporal({ clave, email, onCerrar }: ModalClaveProps) {
   }
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="modal-clave-titulo"
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-md"
-    >
+    // Sin cierre al click afuera ni con Escape a propósito: la clave temporal se
+    // muestra UNA sola vez y no se puede volver a consultar. Cerrar sin querer
+    // obligaría a resetearla.
+    <ModalOverlay etiqueta="Usuario creado">
       <div className="bg-white rounded-lg shadow-2xl w-full max-w-md p-lg space-y-md">
         {/* Encabezado */}
         <div className="flex items-start gap-sm">
@@ -115,7 +114,7 @@ function ModalClaveTemporal({ clave, email, onCerrar }: ModalClaveProps) {
           Entendido, ir a usuarios
         </Button>
       </div>
-    </div>
+    </ModalOverlay>
   );
 }
 

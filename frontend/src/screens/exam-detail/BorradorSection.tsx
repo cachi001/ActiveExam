@@ -6,8 +6,10 @@
  * lo puede rendir entero, incluso antes de la fecha de apertura, que es justo
  * cuando tiene sentido probarlo.
  *
- * Habilitar es de IDA: para sacarlo de circulación después está la baja lógica,
- * que es explícita y conserva la evidencia de lo ya rendido.
+ * Habilitar se puede deshacer MIENTRAS NADIE lo haya rendido: un click
+ * equivocado no tiene por qué ser irreversible. Desde el primer intento ya no,
+ * porque esconderlo le sacaría el examen de abajo a quien está en el medio; ahí
+ * el camino es la baja lógica, que conserva la evidencia de lo rendido.
  */
 import { useState } from 'react';
 import { Button, Card, Icon, SectionTitle } from '../../ui/components';
@@ -15,19 +17,45 @@ import { ConfirmModal } from '../../ui/ConfirmModal';
 import { useToast } from '../../ui/toast';
 import { API_BASE } from '../../lib/api';
 import { authProvider } from '../../lib/authProvider';
-import { habilitarExamenFn } from '../../lib/examContentCatalog';
+import {
+  habilitarExamenFn,
+  volverExamenABorradorFn,
+} from '../../lib/examContentCatalog';
 
 interface Props {
   examenId: string;
   titulo: string | undefined;
-  /** Se llama tras habilitar, para que la pantalla refresque el encabezado. */
+  /** Si el examen está sin habilitar. Cambia la sección entera. */
+  borrador: boolean;
+  /** Se llama tras habilitar o esconder, para refrescar el encabezado. */
   onHabilitado: () => void;
 }
 
-export function BorradorSection({ examenId, titulo, onHabilitado }: Props) {
+export function BorradorSection({ examenId, titulo, borrador, onHabilitado }: Props) {
   const toast = useToast();
   const [confirmando, setConfirmando] = useState(false);
+  const [escondiendo, setEscondiendo] = useState(false);
   const [enviando, setEnviando] = useState(false);
+
+  const volverABorrador = async () => {
+    setEscondiendo(false);
+    setEnviando(true);
+    try {
+      await volverExamenABorradorFn(API_BASE, authProvider.getToken(), examenId);
+      toast.success('El examen volvió a borrador. Los alumnos dejaron de verlo.');
+      onHabilitado();
+    } catch (err: unknown) {
+      // El 409 llega con el detalle de cuántos lo rindieron: se muestra tal cual
+      // en vez de un "no se pudo" que obligaría a adivinar el motivo.
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : 'No se pudo devolver el examen a borrador.',
+      );
+    } finally {
+      setEnviando(false);
+    }
+  };
 
   const habilitar = async () => {
     setConfirmando(false);
@@ -44,6 +72,49 @@ export function BorradorSection({ examenId, titulo, onHabilitado }: Props) {
       setEnviando(false);
     }
   };
+
+  if (!borrador) {
+    return (
+      <Card>
+        <SectionTitle
+          icon="visibility"
+          sub="Los alumnos de su comisión lo pueden rendir en la ventana configurada."
+        >
+          Habilitado
+        </SectionTitle>
+        <div className="flex items-start justify-between gap-4">
+          <p className="text-label-sm text-on-surface-variant">
+            Se puede volver a esconder mientras no lo haya rendido nadie. Después de
+            eso, para sacarlo de circulación hay que darlo de baja.
+          </p>
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={enviando ? undefined : 'visibility_off'}
+            onClick={() => setEscondiendo(true)}
+            disabled={enviando}
+          >
+            {enviando ? 'Guardando…' : 'Volver a borrador'}
+          </Button>
+        </div>
+
+        <ConfirmModal
+          abierto={escondiendo}
+          titulo="Volver a borrador"
+          textoConfirmar="Volver a borrador"
+          mensaje={
+            <p>
+              «{titulo}» deja de aparecerle a los alumnos y no lo van a poder rendir
+              hasta que lo habilites de nuevo. Si alguno ya lo rindió, no se va a
+              poder y te vamos a decir cuántos son.
+            </p>
+          }
+          onConfirmar={volverABorrador}
+          onCancelar={() => setEscondiendo(false)}
+        />
+      </Card>
+    );
+  }
 
   return (
     <Card>
@@ -77,8 +148,9 @@ export function BorradorSection({ examenId, titulo, onHabilitado }: Props) {
         <div className="flex items-start gap-2 text-label-sm text-on-surface-variant">
           <Icon name="info" className="text-[18px] shrink-0 mt-0.5" />
           <p>
-            Habilitarlo es un camino de ida. Si después necesitás sacarlo de circulación,
-            se hace dando de baja el examen, que conserva todo lo que se haya rendido.
+            Lo podés volver a esconder mientras no lo rinda nadie. Desde el primer
+            alumno que entre ya no, porque le sacaría el examen de abajo: ahí el
+            camino es dar de baja el examen, que conserva lo rendido.
           </p>
         </div>
 
@@ -106,8 +178,9 @@ export function BorradorSection({ examenId, titulo, onHabilitado }: Props) {
               de la ventana de rendición configurada.
             </p>
             <p className="mt-2">
-              Es un camino de ida: no se puede volver a poner en borrador. Revisá que las
-              preguntas, la fecha y la escala de nota estén como querés.
+              Revisá que las preguntas, la fecha y la escala de nota estén como querés.
+              Si te arrepentís, lo podés volver a borrador mientras no lo haya rendido
+              nadie.
             </p>
           </>
         }

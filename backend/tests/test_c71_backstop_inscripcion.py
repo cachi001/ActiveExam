@@ -86,7 +86,7 @@ async def test_inscripto_no_levanta(factory) -> None:
     idn, examen_id, comision_id = await _armar(factory)
     async with factory() as s:
         repo = InscripcionSqlRepository(s)
-        uid = await repo.obtener_usuario_id_por_institucional(idn)
+        uid = await repo.obtener_usuario_id_por_username(idn)
         await repo.inscribir(uid, comision_id)
         await s.commit()
     async with factory() as s:

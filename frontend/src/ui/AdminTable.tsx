@@ -24,6 +24,17 @@ interface AdminTableProps<T> {
   isLoading?: boolean;
   className?: string;
   tableMinWidth?: string;
+  /**
+   * Reparte el ancho segun los `width` de las columnas en vez de dejar que lo
+   * empuje el contenido (`table-layout: fixed`), con padding mas angosto.
+   * Todo sigue en UNA linea: partir un titulo en dos renglones rompe la lectura
+   * vertical de la tabla.
+   *
+   * Con muchas columnas la tabla auto se iba a 1300px dentro de un contenedor
+   * de 980, y la ultima columna de datos quedaba tapada por la de acciones, que
+   * es sticky: se leia como que el texto estaba cortado.
+   */
+  anchoFijo?: boolean;
 }
 
 function alignClass(align?: 'left' | 'center' | 'right') {
@@ -41,10 +52,14 @@ export function AdminTable<T>({
   isLoading = false,
   className = '',
   tableMinWidth,
+  anchoFijo = false,
 }: AdminTableProps<T>) {
   return (
     <div className={`overflow-x-auto overflow-y-hidden ${className}`}>
-      <table className="w-full" style={tableMinWidth ? { minWidth: tableMinWidth } : undefined}>
+      <table
+        className={`w-full ${anchoFijo ? 'table-fixed' : ''}`}
+        style={tableMinWidth ? { minWidth: tableMinWidth } : undefined}
+      >
         <colgroup>
           {columns.map((col) => (
             <col key={col.key} style={col.width ? { width: col.width } : undefined} />
@@ -55,7 +70,7 @@ export function AdminTable<T>({
             {columns.map((col) => (
               <th
                 key={col.key}
-                className={`px-6 py-4 text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100 ${alignClass(col.headerAlign ?? col.align)} ${col.thClassName ?? ''}`}
+                className={`${anchoFijo ? 'px-3' : 'px-6'} py-4 text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-100 ${alignClass(col.headerAlign ?? col.align)} ${col.thClassName ?? ''}`}
               >
                 {col.header}
               </th>
@@ -88,7 +103,7 @@ export function AdminTable<T>({
                 {columns.map((col) => (
                   <td
                     key={col.key}
-                    className={`px-6 py-4 whitespace-nowrap text-sm ${alignClass(col.align)} ${col.tdClassName ?? ''}`}
+                    className={`${anchoFijo ? 'px-3' : 'px-6'} py-4 whitespace-nowrap text-sm ${alignClass(col.align)} ${col.tdClassName ?? ''}`}
                   >
                     {col.cell(row)}
                   </td>

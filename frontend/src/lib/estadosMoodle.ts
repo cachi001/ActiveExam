@@ -16,7 +16,9 @@
 import { fetchAutenticado } from './fetchAutenticado';
 import { API_BASE } from './api';
 
-export type TonoEstado = 'warning' | 'success' | 'error' | 'neutral' | 'primary';
+// `critico` es un rojo lleno: una anulación por fraude no puede verse igual
+// que un desaprobado, que es un resultado académico normal.
+export type TonoEstado = 'warning' | 'success' | 'error' | 'neutral' | 'primary' | 'critico';
 
 export interface EstadoMoodleInfo {
   valor: string;
@@ -24,12 +26,12 @@ export interface EstadoMoodleInfo {
   tono: TonoEstado;
 }
 
-/** Respaldo si la API no responde. Espeja `ETIQUETA_ESTADO_MOODLE` del backend. */
+/** Respaldo si la API no responde. Espeja el enum `EstadoNota` del backend. */
 export const FALLBACK_ESTADOS: EstadoMoodleInfo[] = [
-  { valor: 'pendiente', etiqueta: 'Pendiente de sincronizar', tono: 'warning' },
-  { valor: 'enviado', etiqueta: 'Sincronizado en Moodle', tono: 'success' },
-  { valor: 'fallido', etiqueta: 'Falló', tono: 'error' },
-  { valor: 'sin_token', etiqueta: 'Sin token', tono: 'neutral' },
+  { valor: 'pendiente', etiqueta: 'Pendiente', tono: 'warning' },
+  { valor: 'enviado', etiqueta: 'Enviado', tono: 'success' },
+  { valor: 'fallido', etiqueta: 'Fallido', tono: 'error' },
+  { valor: 'sin_token', etiqueta: 'Falta conectar el campus', tono: 'error' },
   { valor: 'manual', etiqueta: 'Cargada a mano', tono: 'primary' },
 ];
 
@@ -42,7 +44,7 @@ export async function cargarEstadosMoodle(): Promise<EstadoMoodleInfo[]> {
   if (enVuelo) return enVuelo;
   enVuelo = (async () => {
     try {
-      const resp = await fetchAutenticado(`${API_BASE}/exam-content/estados-moodle`);
+      const resp = await fetchAutenticado(`${API_BASE}/catalogos/estados-entrega`);
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const data = (await resp.json()) as EstadoMoodleInfo[];
       if (!Array.isArray(data) || data.length === 0) throw new Error('respuesta vacía');

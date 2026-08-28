@@ -20,6 +20,15 @@ export interface ActionItem {
   icon?: string;
   onClick: () => void;
   danger?: boolean;
+  /**
+   * Una acción que no aplica se muestra APAGADA, no se saca del menú: si en una
+   * fila hay tres opciones y en la de al lado dos, lo primero que se piensa es
+   * que la pantalla se rompió. Apagada además deja lugar para explicar por qué,
+   * que es la información que hace falta.
+   */
+  disabled?: boolean;
+  /** Por qué está apagada. Se muestra al pasar el mouse. */
+  title?: string;
 }
 
 /** Alto estimado del menú en px (40px cabecera + 36px×n ítems + padding). */
@@ -80,9 +89,15 @@ export function ActionMenu({ items, ariaLabel = 'Acciones' }: { items: ActionIte
             key={i}
             type="button"
             role="menuitem"
-            onClick={() => { setOpen(false); it.onClick(); }}
+            disabled={it.disabled}
+            title={it.title}
+            onClick={() => { if (it.disabled) return; setOpen(false); it.onClick(); }}
             className={`w-full flex items-center gap-2.5 px-3 py-2 text-[13px] text-left transition-colors ${
-              it.danger ? 'text-error hover:bg-error-container/40' : 'text-on-surface hover:bg-surface-container'
+              it.disabled
+                ? 'text-on-surface-variant/40 cursor-not-allowed'
+                : it.danger
+                  ? 'text-error hover:bg-error-container/40'
+                  : 'text-on-surface hover:bg-surface-container'
             }`}
           >
             {it.icon && <Icon name={it.icon} className="text-[18px] shrink-0" />}

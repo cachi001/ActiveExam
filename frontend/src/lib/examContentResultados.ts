@@ -32,13 +32,26 @@ export interface ResultadoExamen {
   alumno_nombre: string | null;
   nota: number | null;
   estado_moodle: EstadoMoodle;
-  actualizado_en: string;
+  /** `null` en los ausentes: nunca rindieron, no hay nada que actualizar. */
+  actualizado_en: string | null;
   /**
    * Motivo por el que la nota queda RETENIDA y no se sincroniza (gate D15):
    * 'en_riesgo' | 'anulada'. `null`/ausente = nada la retiene.
    * Es ortogonal a `estado_moodle`: una fila retenida sigue en 'pendiente'.
    */
   retenido_por?: string | null;
+  /**
+   * TODOS los motivos que retienen la nota. `retenido_por` es sólo el
+   * principal: al examen le falta el destino para todos los alumnos, y
+   * mostrarlo en la mitad de las filas se leía como un error de la pantalla.
+   */
+  retenciones?: string[];
+  /**
+   * Sólo en las filas de AUSENTES, que no tienen sesión: identifica al alumno
+   * cuando `session_id` viene vacío. Un ausente no tiene nada que publicar,
+   * marcar ni archivar — nunca rindió.
+   */
+  usuario_id?: string | null;
   /** Estado de la entrega (derivado). Ausente en fixtures viejos → tratar como 'finalizada'. */
   estado_entrega?: EstadoEntrega;
   /** Soft-hide administrativo del panel de resultados (no disciplinario). */
@@ -50,6 +63,23 @@ export interface ResultadoExamen {
    */
   marcada_manual_por?: string | null;
   marcada_manual_en?: string | null;
+  /**
+   * El resultado académico, YA RESUELTO por el backend (`ResultadoNota`):
+   * 'aprobado' | 'desaprobado' | 'anulada' | 'sin_nota' | 'sin_criterio'.
+   * La etiqueta y el color salen del catálogo `/resultados-nota`: acá no se
+   * decide nada. Antes se decidía con `if` escritos también en el export de
+   * Python, y las dos copias divergieron.
+   */
+  resultado?: string;
+  /**
+   * La nota que VALE: una anulación la deja en 0. `nota` conserva la calculada
+   * para poder mostrarla sin perder el dato.
+   */
+  nota_efectiva?: number | null;
+  /** Compatibilidad. Un booleano no puede expresar una anulación. */
+  aprobado?: boolean | null;
+  /** Contra qué se comparó, para poder mostrarlo al lado del resultado. */
+  nota_aprobacion?: number | null;
 }
 
 // Motivos de retención que SÍ corresponden a una revisión humana pendiente o
@@ -70,15 +100,22 @@ const MOTIVOS_RETENCION_POR_REVISION = new Set(['en_riesgo', 'anulada']);
  * defecto que `EstadoBadge` para motivos no mapeados).
  */
 export function contarRetencionesPorRevision(
-  resultados: Pick<ResultadoExamen, 'retenido_por'>[],
+  resultados: Pick<ResultadoExamen, 'retenido_por' | 'estado_moodle'>[],
 ): { revision: number; configuracion: number } {
   let revision = 0;
   let configuracion = 0;
   for (const r of resultados) {
     if (!r.retenido_por) continue;
+    // El ausente no es una nota trabada: nunca rindió, no hay nada que
+    // sincronizar ni que configurar. Contarlo inflaba el aviso de arriba.
+    if (r.retenido_por === 'no_rindio') continue;
     if (MOTIVOS_RETENCION_POR_REVISION.has(r.retenido_por)) {
       revision += 1;
-    } else {
+    } else if (r.estado_moodle !== 'manual') {
+      // Una nota ya cargada a mano NO está esperando que se configure nada: el
+      // número ya está en la libreta. Contarla dejaba el aviso diciendo "3 notas
+      // sin sincronizar por configuración" cuando una de las tres ya estaba
+      // resuelta, y mandaba al docente a arreglar algo que no hacía falta.
       configuracion += 1;
     }
   }
@@ -121,6 +158,8 @@ export async function listarResultadosFn(
   params: {
     q?: string;
     estado?: string;
+    /** Filtro por resultado académico: aprobado | desaprobado | anulada… */
+    resultado?: string;
     estado_entrega?: string;
     /**
      * c-78 D6: tri-estado — 'false' (default del backend, solo NO archivadas) |
@@ -137,6 +176,7 @@ export async function listarResultadosFn(
   const qs = new URLSearchParams();
   if (params.q) qs.set('q', params.q);
   if (params.estado) qs.set('estado', params.estado);
+  if (params.resultado) qs.set('resultado', params.resultado);
   if (params.estado_entrega) qs.set('estado_entrega', params.estado_entrega);
   if (params.archivado !== undefined) qs.set('archivado', params.archivado);
   if (params.fecha_desde) qs.set('fecha_desde', params.fecha_desde);
@@ -291,6 +331,38 @@ export async function marcarNotaCargadaFn(
     const body = await res.json().catch(() => ({}));
     const detalle = (body as { detail?: { mensaje?: string } })?.detail?.mensaje;
     const err = new Error(detalle ?? `No se pudo marcar la nota (HTTP ${res.status}).`);
+    (err as Error & { status?: number }).status = res.status;
+    throw err;
+  }
+  return res.json();
+}
+
+/**
+ * Deshace un marcado a mano: la nota vuelve a `pendiente`.
+ *
+ * Marcar a mano es la afirmación de una persona ("ya la cargué en el campus") y
+ * las personas se equivocan de fila. Sin esto, el error quedaba fijo y la nota
+ * figuraba como cargada sin estarlo.
+ *
+ * El backend SÓLO deja deshacer `manual`: `enviado` lo puso el campus y no se
+ * toca. Corregir sí, inventar un estado no.
+ */
+export async function desmarcarNotaCargadaFn(
+  apiBase: string,
+  token: string | undefined,
+  examenId: string,
+  sessionId: string,
+): Promise<{ session_id: string; estado_moodle: string }> {
+  const res = await fetchAutenticado(
+    `${apiBase}/exam-content/${encodeURIComponent(examenId)}/resultados/${encodeURIComponent(
+      sessionId,
+    )}/desmarcar-cargada`,
+    { method: 'PATCH', headers: authHeaders(token) },
+  );
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    const detalle = (body as { detail?: { mensaje?: string } })?.detail?.mensaje;
+    const err = new Error(detalle ?? `No se pudo deshacer el marcado (HTTP ${res.status}).`);
     (err as Error & { status?: number }).status = res.status;
     throw err;
   }

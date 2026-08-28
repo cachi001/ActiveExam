@@ -103,6 +103,13 @@ export interface SesionProctoringResumen {
   alumno_idnumber?: string | null;
   alumno_email?: string | null;
   alumno_nombre?: string | null;
+  /**
+   * migration 0102: el docente probando su propio examen antes de habilitarlo.
+   * No es una rendición: no cuenta como intento, no genera nota y se puede
+   * borrar desde el detalle del examen. Se marca en el listado para que no se
+   * lea como un alumno más.
+   */
+  es_prueba?: boolean;
 }
 
 /**

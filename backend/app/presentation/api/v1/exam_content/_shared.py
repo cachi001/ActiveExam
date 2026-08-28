@@ -62,6 +62,7 @@ def _resumen_to_response(r) -> ExamenContenidoResumenResponse:
         comision_id=r.comision_id,
         comision_nombre=r.comision_nombre,
         comision_codigo=r.comision_codigo,
+        materia_id=getattr(r, "materia_id", None),
         materia_nombre=r.materia_nombre,
         materia_codigo=r.materia_codigo,
         apertura=r.apertura,

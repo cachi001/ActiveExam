@@ -227,7 +227,7 @@ async def test_delete_sesion_modo_test_204_desaparece_y_audita(ctx) -> None:
 
     # Desaparece del registro.
     resp_reg = await client.get(
-        "/api/v1/proctoring/sessions/registro", headers=_h(["coordinador"], "coord-1")
+        "/api/v1/proctoring/sessions/registro", headers=_h(["admin_sistema"], "admin-1")
     )
     ids = [i["id"] for i in resp_reg.json()["items"]]
     assert sid not in ids
@@ -254,7 +254,7 @@ async def test_delete_sesion_modo_examen_409_no_se_borra(ctx) -> None:
 
     # Sigue existiendo.
     resp_get = await client.get(
-        f"/api/v1/proctoring/sessions/{sid}", headers=_h(["coordinador"], "coord-1")
+        f"/api/v1/proctoring/sessions/{sid}", headers=_h(["admin_sistema"], "admin-1")
     )
     assert resp_get.status_code == 200
     assert resp_get.json()["id"] == sid
@@ -276,12 +276,24 @@ async def test_delete_sesion_no_admin_403(ctx) -> None:
         f"/api/v1/proctoring/sessions/{sid}", headers=_h(["coordinador"], "coord-1")
     )
     assert resp.status_code == 403, resp.text
-    # No se borro: sigue existiendo.
+    # No se borro: sigue existiendo. Se comprueba como admin porque el
+    # coordinador solo ve SUS materias (c-79) y este coordinador no tiene ninguna
+    # asignada: un 404 aca no diria nada sobre si la sesion se borro o no.
     resp_get = await client.get(
-        f"/api/v1/proctoring/sessions/{sid}", headers=_h(["coordinador"], "coord-1")
+        f"/api/v1/proctoring/sessions/{sid}", headers=_h(["admin_sistema"], "admin-1")
     )
     assert resp_get.status_code == 200
 
+
+# Desde c-79 el COORDINADOR ve solo las sesiones de SUS materias asignadas
+# (materia_coordinador); ya no tiene alcance institucional. Los tests de este
+# archivo son sobre las reglas de BORRADO y sobre los FILTROS, no sobre el
+# acotamiento por rol — que tiene su propia cobertura. Por eso listan y verifican
+# como admin_sistema: con un coordinador sin materias asignadas la respuesta
+# venia vacia y el test fallaba por una razon ajena a lo que dice medir.
+#
+# La unica llamada que SIGUE siendo de coordinador es la que comprueba el 403 al
+# borrar: ahi el rol es justamente lo que se prueba.
 
 # --- Filtros materia_id / comision_id (cascada) ------------------------------
 
@@ -296,7 +308,7 @@ async def test_filtro_por_materia_id(ctx) -> None:
     resp = await client.get(
         "/api/v1/proctoring/sessions/registro",
         params={"materia_id": materia_a},
-        headers=_h(["coordinador"], "coord-1"),
+        headers=_h(["admin_sistema"], "admin-1"),
     )
     assert resp.status_code == 200
     body = resp.json()
@@ -314,7 +326,7 @@ async def test_filtro_por_comision_id(ctx) -> None:
     resp = await client.get(
         "/api/v1/proctoring/sessions/registro",
         params={"comision_id": comision_b},
-        headers=_h(["coordinador"], "coord-1"),
+        headers=_h(["admin_sistema"], "admin-1"),
     )
     assert resp.status_code == 200
     body = resp.json()
@@ -340,7 +352,7 @@ async def test_en_cola_revision_refleja_total_filtrado_no_la_pagina(ctx) -> None
     resp = await client.get(
         "/api/v1/proctoring/sessions/registro",
         params={"page": 1, "page_size": 2},
-        headers=_h(["coordinador"], "coord-1"),
+        headers=_h(["admin_sistema"], "admin-1"),
     )
     assert resp.status_code == 200
     body = resp.json()

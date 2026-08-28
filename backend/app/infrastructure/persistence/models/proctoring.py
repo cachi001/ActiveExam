@@ -23,7 +23,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.sql import func
+from sqlalchemy.sql import false, func
 
 from app.infrastructure.persistence.base import Base
 
@@ -101,6 +101,18 @@ class ProctoringSessionModel(Base):
     alumno_email: Mapped[str | None] = mapped_column(
         String(255), nullable=True,
         comment="Email del alumno (fallback de identidad). NULL = sin email.",
+    )
+
+    # migration 0102: el docente probando su propio examen. La marca la pone el
+    # SERVIDOR segun el rol de quien crea la sesion, nunca el cliente (regla dura
+    # #6): si viniera del body, un alumno pediria que su rendicion no cuente.
+    # Estas sesiones quedan fuera de notas, estadisticas y write-back.
+    es_prueba: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        server_default=false(),
+        default=False,
+        comment="Rendicion de prueba del staff: no cuenta como intento real.",
     )
 
     # migration 0083: foto de la config del sistema (umbral_cola_revision +

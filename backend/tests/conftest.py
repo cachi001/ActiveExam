@@ -7,6 +7,20 @@ corra sin servicios externos.
 
 Ademas restaura el esquema completo antes de CADA modulo de test (ver
 ``_esquema_completo_por_modulo``): sin eso, la suite entera no da senal.
+
+CORRE LOS TESTS CONTRA UNA BASE APARTE. Varios modulos hacen
+``DROP TABLE ... CASCADE`` de tablas compartidas (usuario, materia,
+examen_contenido, proctoring_session): apuntar la suite a la base de desarrollo
+la deja sin tablas, sin datos y sin FK, y la app arranca en crashloop porque el
+seed no encuentra `materia`. No es hipotetico — paso tres veces el 28/8/2026.
+
+    docker exec -e DATABASE_URL="postgresql+asyncpg://proctoring:dev-only-change-me@postgres:5432/proctoring_test" \\
+        activeexam-dev-backend-1 python -m pytest tests/ -q
+
+La base se crea una sola vez con
+``CREATE DATABASE proctoring_test OWNER proctoring;`` mas
+``CREATE EXTENSION IF NOT EXISTS pgcrypto;`` (los ids son ``gen_random_uuid()``).
+El resto del esquema lo levanta el hook de abajo desde los modelos.
 """
 
 from __future__ import annotations
@@ -103,6 +117,68 @@ def _importar_todos_los_modelos() -> None:
     )
 
 
+#: Las FK que YA estan, por (tabla, columnas). Se compara por columnas y no por
+#: nombre porque el nombre lo genera Postgres cuando el modelo no lo declara.
+_FKS_EXISTENTES = """
+    SELECT c.conrelid::regclass::text AS tabla,
+           array_agg(a.attname ORDER BY a.attname) AS columnas
+    FROM pg_constraint c
+    JOIN unnest(c.conkey) AS k(attnum) ON true
+    JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = k.attnum
+    WHERE c.contype = 'f'
+    GROUP BY c.oid, c.conrelid
+"""
+
+
+async def _reponer_fks(engine) -> None:
+    """Vuelve a poner las FK que el modelo declara y la base perdio."""
+    from sqlalchemy.dialects import postgresql
+    from sqlalchemy.schema import AddConstraint
+
+    from app.infrastructure.persistence.base import Base
+
+    async with engine.begin() as conn:
+        tablas = {
+            fila[0]
+            for fila in await conn.exec_driver_sql(
+                "SELECT tablename FROM pg_tables WHERE schemaname = 'public'"
+            )
+        }
+        presentes = {
+            (fila[0], tuple(sorted(fila[1])))
+            for fila in await conn.exec_driver_sql(_FKS_EXISTENTES)
+        }
+
+    for tabla in Base.metadata.sorted_tables:
+        if tabla.name in _TABLAS_QUE_NO_SE_RECREAN or tabla.name not in tablas:
+            continue
+        for fk in tabla.foreign_key_constraints:
+            columnas = tuple(sorted(c.name for c in fk.columns))
+            if (tabla.name, columnas) in presentes:
+                continue
+            # Cada una en su propia transaccion, igual que las tablas: si una no
+            # se puede crear (la tabla apuntada no existe), no se lleva puestas a
+            # las demas.
+            try:
+                async with engine.begin() as conn:
+                    await conn.execute(AddConstraint(fk))
+                continue
+            except Exception:
+                pass
+
+            # Suele fallar por filas huerfanas: las dejo pasar la MISMA ausencia
+            # de FK que estamos reponiendo. NOT VALID crea la constraint sin
+            # revisar lo que ya esta: la cascada y el rechazo vuelven a funcionar
+            # de aca en adelante, que es lo que los tests necesitan, y no se
+            # borra un solo dato para conseguirlo.
+            try:
+                ddl = str(AddConstraint(fk).compile(dialect=postgresql.dialect()))
+                async with engine.begin() as conn:
+                    await conn.exec_driver_sql(f"{ddl.strip()} NOT VALID")
+            except Exception:
+                continue
+
+
 @pytest.fixture(scope="module", autouse=True)
 def _esquema_completo_por_modulo() -> None:
     """Re-crea las tablas que falten antes de cada modulo (no-op sin DATABASE_URL)."""
@@ -158,6 +234,18 @@ def _esquema_completo_por_modulo() -> None:
                         await conn.run_sync(tabla.create, checkfirst=True)
                 except Exception:
                     continue  # ya existe o no aplica en esta DB de test
+
+            # Las FK NO vuelven con la tabla. `DROP TABLE usuario CASCADE` no se
+            # lleva solo `usuario`: borra tambien las FK de las OTRAS tablas, las
+            # que apuntaban a ella. Esas tablas siguen existiendo, asi que el paso
+            # de arriba (que solo crea lo que FALTA) no las mira nunca mas y la
+            # constraint no vuelve sola.
+            #
+            # Una FK que falta no rompe de entrada, y por eso es peor: hace PASAR
+            # tests que deberian fallar. El que verifica que dar de baja a un
+            # docente arrastra su credencial de Moodle no prueba nada si la
+            # cascada ya no existe. Ver `test_esquema_de_test_conserva_las_fk.py`.
+            await _reponer_fks(engine)
 
             # El singleton de configuracion_sistema. En produccion lo siembra la
             # migracion 0014; una base de test armada desde el modelo ORM (que es

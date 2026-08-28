@@ -60,6 +60,12 @@ class ElegibilidadStatsOut(BaseModel):
     sin_biometria: int
     pueden_rendir: int
     no_pueden_rendir: int
+    # Motivos EXCLUYENTES: suman `no_pueden_rendir`. Los `sin_*` de arriba se
+    # pisan entre si (quien no tiene ninguna cuenta en los dos), y mostrarlos
+    # solos daba barras que sumaban mas que el total de bloqueados.
+    solo_falta_consentimiento: int = 0
+    solo_falta_biometria: int = 0
+    faltan_ambas: int = 0
 
 
 class EventoStatOut(BaseModel):
@@ -136,6 +142,9 @@ def _to_response(r: ResumenStats) -> ResumenStatsResponse:
             sin_biometria=r.elegibilidad.sin_biometria,
             pueden_rendir=r.elegibilidad.pueden_rendir,
             no_pueden_rendir=r.elegibilidad.no_pueden_rendir,
+            solo_falta_consentimiento=r.elegibilidad.solo_falta_consentimiento,
+            solo_falta_biometria=r.elegibilidad.solo_falta_biometria,
+            faltan_ambas=r.elegibilidad.faltan_ambas,
         ),
     )
 

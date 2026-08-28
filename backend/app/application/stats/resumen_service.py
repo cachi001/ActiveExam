@@ -47,9 +47,17 @@ from app.infrastructure.persistence.models.transactional import (
     ConsentimientoPerfilModel,
     EmbeddingReferenciaModel,
 )
+from app.domain.events.schema import TipoEvento
 
 # Cuántos tipos de evento devolver en el "top" (los detectores que más disparan).
-TOP_EVENTOS_N = 8
+#
+# Se deriva del enum y no se fija a mano: estaba en 8 con 17 tipos, y cuando
+# varios empatan en cantidad el desempate es alfabético, así que quedaban afuera
+# `tampering_camara_virtual` y `posible_cambio_identidad` — los dos más graves.
+# Un panel que existe para verificar que los detectores registran no puede
+# esconder justo los que más importan. Derivarlo evita que vuelva a quedar corto
+# cuando se agregue un tipo nuevo.
+TOP_EVENTOS_N = len(TipoEvento)
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,12 +101,22 @@ class ElegibilidadStats:
     por qué (falta consentimiento, falta biometría, o ambas)."""
 
     total_inscriptos: int = 0
+    #: Totales NO excluyentes: cuántos hay que perseguir para que firmen o para
+    #: que capturen. Quien no tiene ninguna de las dos cuenta en los dos.
     con_consentimiento: int = 0
     sin_consentimiento: int = 0
     con_biometria: int = 0
     sin_biometria: int = 0
     pueden_rendir: int = 0
     no_pueden_rendir: int = 0
+    #: Motivos EXCLUYENTES: suman exactamente `no_pueden_rendir`. Sin ellos, la
+    #: pantalla mostraba dos barras que sumaban más que el total de bloqueados, y
+    #: los números no coincidían con los del export (que ya cuenta excluyente).
+    #: Los dos criterios conviven a propósito: uno responde "a cuántos les falta
+    #: X", el otro "qué le falta a cada uno".
+    solo_falta_consentimiento: int = 0
+    solo_falta_biometria: int = 0
+    faltan_ambas: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -447,6 +465,12 @@ async def _elegibilidad(db: AsyncSession, filtros: FiltrosStats) -> Elegibilidad
     consent_ok = {uid for uid, estado in consent_rows if estado == "otorgado"}
 
     pueden = len(bio_set & consent_ok)
+    # Motivos EXCLUYENTES sobre el conjunto de inscriptos: cada bloqueado cuenta
+    # en uno solo, así los tres suman `no_pueden_rendir` y cruzan con el export.
+    inscriptos = set(usuario_ids)
+    faltan_ambas = len(inscriptos - bio_set - consent_ok)
+    solo_falta_consentimiento = len((inscriptos & bio_set) - consent_ok)
+    solo_falta_biometria = len((inscriptos & consent_ok) - bio_set)
     return ElegibilidadStats(
         total_inscriptos=total,
         con_consentimiento=len(consent_ok),
@@ -455,6 +479,9 @@ async def _elegibilidad(db: AsyncSession, filtros: FiltrosStats) -> Elegibilidad
         sin_biometria=total - len(bio_set),
         pueden_rendir=pueden,
         no_pueden_rendir=total - pueden,
+        solo_falta_consentimiento=solo_falta_consentimiento,
+        solo_falta_biometria=solo_falta_biometria,
+        faltan_ambas=faltan_ambas,
     )
 
 

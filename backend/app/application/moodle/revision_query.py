@@ -21,6 +21,7 @@ from datetime import datetime, timezone
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.domain.exam_content.resultado_nota import resultado_de
 from app.domain.exam_content.visibilidad import nota_visible, revision_visible
 from app.infrastructure.persistence.models.exam_content import (
     ExamenContenidoModel,
@@ -98,6 +99,10 @@ class RevisionExamen:
     disponible: bool = True
     revision_disponible: bool = True
     cierre: object | None = None  # datetime tz-aware o None
+    #: El resultado resuelto por el backend (`ResultadoNota`). La pantalla sólo
+    #: lo muestra: con el texto escrito a mano allá, decía "Aprobado" sobre una
+    #: nota que el docente ya veía como "Anulada".
+    resultado: str = ""
 
 
 async def obtener_revision(
@@ -178,6 +183,7 @@ async def obtener_revision(
             nota=None,
             nota_maxima=float(examen.nota_maxima) if examen.nota_maxima is not None else None,
             aprobado=False,
+            resultado="",
             total_preguntas=0,
             correctas=0,
             incorrectas=0,
@@ -408,6 +414,9 @@ async def obtener_revision(
         nota=nota,
         nota_maxima=float(examen.nota_maxima) if examen.nota_maxima is not None else None,
         aprobado=aprobado,
+        resultado=resultado_de(
+            aprobado=aprobado, nota=nota, retenido_por=None
+        ).value,
         total_preguntas=total,
         correctas=correctas,
         incorrectas=incorrectas,

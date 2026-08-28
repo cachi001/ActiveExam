@@ -171,6 +171,11 @@ def test_las_notas_salen_con_el_estado_en_castellano():
                 alumno_idnumber="EST-001",
                 alumno_email="juana@uni.edu",
                 nota=8.5,
+                nota_efectiva=8.5,
+                # El resultado lo RESUELVE el backend y el export solo lo
+                # muestra: antes lo decidía acá con ifs propios y una nota
+                # anulada salía "Aprobado" mientras la pantalla decía "Anulada".
+                resultado="sin_criterio",
                 estado_entrega="finalizada",
                 estado_moodle="pendiente",
             ),
@@ -179,6 +184,8 @@ def test_las_notas_salen_con_el_estado_en_castellano():
                 alumno_idnumber="EST-002",
                 alumno_email="x@uni.edu",
                 nota=None,
+                nota_efectiva=None,
+                resultado="sin_nota",
                 estado_entrega="no_finalizada",
                 estado_moodle="manual",
             ),
@@ -189,12 +196,21 @@ def test_las_notas_salen_con_el_estado_en_castellano():
         "EST-001",
         "juana@uni.edu",
         "8.50",
-        "Entregada",
-        "Pendiente de cargar",
+        # Dos columnas para dos cosas distintas: si aprobó, y si la nota se
+        # entregó al campus. La tercera ("Examen del alumno") se sacó: decía lo
+        # mismo que la de la entrega con otras palabras y confundía cuál era cuál.
+        "Sin criterio de aprobación",
+        # La etiqueta sale del enum `EstadoEntregaNota` (fuente única): el archivo dice
+        # exactamente lo mismo que la pantalla. Tenían textos distintos para el
+        # mismo estado.
+        "Pendiente",
     ]
     # Sin nota: celda vacía, no "None" ni "0".
-    assert filas[1][3] == ""
+    # Una celda vacia en la columna Nota se lee como un error del archivo; decir
+    # que todavia no hay nota es un dato, y ademas la distingue de un cero.
+    assert filas[1][3] == "Sin nota"
     assert filas[1][0] == "EST-002", "sin nombre cargado cae al legajo, no a un UUID"
+    assert filas[1][4] == "Sin nota", "sin nota no es desaprobado"
     assert filas[1][5] == "Cargada a mano"
 
 
@@ -255,6 +271,21 @@ def _admin(app):
         base_url="http://test",
         headers=auth_headers(["admin_sistema"], subject="staff-export"),
     )
+
+
+def _fila_encabezado(ws, primer_titulo: str) -> int:
+    """En que fila arranca la tabla.
+
+    No se puede fijar en 6: arriba de la tabla va un bloque de resumen (cuantos
+    pueden rendir, cuantos aprobaron) cuyo largo depende de los datos, porque las
+    lineas en cero no se imprimen. Buscar el encabezado por su primer titulo deja
+    el test midiendo el contenido y no el layout.
+    """
+    for fila in range(1, 30):
+        if ws.cell(row=fila, column=1).value == primer_titulo:
+            return fila
+    raise AssertionError(f"No se encontro el encabezado '{primer_titulo}' en el archivo")
+
 
 
 async def _comision_con_inscriptos(factory, cantidad: int) -> tuple[str, str]:
@@ -380,11 +411,12 @@ async def test_export_de_inscriptos_a_excel(app, factory):
 
     wb = load_workbook(io.BytesIO(resp.content))
     ws = wb.active
-    encabezados = [ws.cell(row=6, column=i).value for i in range(1, 6)]
+    hdr = _fila_encabezado(ws, "Apellido")
+    encabezados = [ws.cell(row=hdr, column=i).value for i in range(1, 6)]
     assert encabezados == ["Apellido", "Nombre", "Usuario", "Email", "Inscripción"]
     # 3 inscriptos → 3 filas de datos a partir de la 7.
-    assert ws.cell(row=7, column=1).value == "Apellido00"
-    assert ws.cell(row=9, column=1).value == "Apellido02"
+    assert ws.cell(row=hdr + 1, column=1).value == "Apellido00"
+    assert ws.cell(row=hdr + 3, column=1).value == "Apellido02"
 
 
 async def test_export_de_inscriptos_a_pdf(app, factory):
@@ -434,15 +466,18 @@ async def test_export_de_notas_del_examen(app, factory):
     assert pdf.content.startswith(b"%PDF")
 
     ws = load_workbook(io.BytesIO(xlsx.content)).active
-    assert [ws.cell(row=6, column=i).value for i in range(1, 7)] == [
+    hdr = _fila_encabezado(ws, "Alumno")
+    assert [ws.cell(row=hdr, column=i).value for i in range(1, 7)] == [
         "Alumno",
         "Usuario",
         "Email",
         "Nota",
-        "Entrega",
-        "Estado en el campus",
+        # "Resultado" es aprobado/desaprobado; "Estado de la entrega" es si la
+        # nota llegó al campus. Son dos cosas distintas y no se mezclan.
+        "Resultado",
+        "Estado de la entrega",
     ]
-    assert ws.cell(row=7, column=4).value == "7.50"
+    assert ws.cell(row=hdr + 1, column=4).value == "7.50"
 
 
 # --- §13.6 marcado manual (D14) -------------------------------------------

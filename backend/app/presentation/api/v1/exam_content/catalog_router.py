@@ -32,6 +32,10 @@ from app.application.exam_content.export import (
     NOTAS_APAISADO,
     filas_inscriptos,
     filas_notas,
+    CRITERIOS_INSCRIPTOS,
+    CRITERIOS_NOTAS,
+    resumen_elegibilidad,
+    resumen_notas,
     tabla_a_pdf,
     tabla_a_xlsx,
 )
@@ -44,6 +48,7 @@ from app.application.exam_content.sorteo_por_intento import (
     MODO_SORTEO_POR_INTENTO,
 )
 from app.application.exam_content.errors import (
+    NoEsAlumnoError,
     ComisionNoEncontradaError,
     ComisionNoVaciaError,
     ExamenNoEncontradoError,
@@ -89,6 +94,11 @@ from app.domain.exam_content.config import (
     validar_config_examen,
 )
 from app.domain.exam_content.entities import Materia, PoliticaIntentos
+from app.domain.exam_content.resultado_nota import (
+    ResultadoNota,
+    resultados_para_ui,
+    retenciones_para_ui,
+)
 from app.domain.exam_content.visibilidad import (
     MOSTRAR_NOTA_AL_CERRAR,
     MOSTRAR_NOTA_NUNCA,
@@ -107,7 +117,17 @@ from app.presentation.api.v1.auth.dependencies import (
     get_current_principal,
     require_capability,
 )
+from app.application.exam_content.armado_del_examen import (
+    PoolInvalidoError,
+    copiar_al_examen,
+    TramoInsuficienteError,
+    arbol_de_categorias,
+    resolver_pool,
+    seleccionar_del_banco,
+)
 from app.presentation.api.v1.exam_content.schemas import (
+    EditarSorteoRequest,
+    RearmarSorteoRequest,
     AltaInlineRequest,
     AltaInlineResponse,
     AlumnoElegibilidadResponse,
@@ -386,10 +406,38 @@ def create_exam_content_router(
     # -----------------------------------------------------------------------
 
     @router.get(
-        "/estados-moodle",
-        summary="Estados posibles de la nota en el campus, con etiqueta y tono",
+        "/retenciones-entrega",
+        summary="Motivos por los que una nota no se entrega, con etiqueta y color",
     )
-    async def listar_estados_moodle() -> list[dict[str, str]]:
+    async def listar_retenciones() -> list[dict[str, str]]:
+        """Por qué una nota quedó retenida y no viaja al campus.
+
+        Estos textos vivían escritos a mano en el frontend. Lo que ve una
+        persona es una decisión de dominio: si lo elige cada pantalla, cada
+        pantalla lo dice distinto.
+        """
+        return retenciones_para_ui()
+
+    @router.get(
+        "/resultados-nota",
+        summary="Resultados posibles de una nota, con etiqueta y color",
+    )
+    async def listar_resultados_nota() -> list[dict[str, str]]:
+        """Aprobado / Desaprobado / Anulada / Sin nota / Sin criterio.
+
+        La pantalla los pinta con esto en vez de repetir los textos y los
+        colores. Antes el resultado se decidía con `if` escritos DOS veces (uno
+        en el frontend, otro en el export) y ya habían divergido: una nota
+        anulada salía "Aprobado" en el Excel. Sin consulta a la base: es una
+        constante de dominio.
+        """
+        return resultados_para_ui()
+
+    @router.get(
+        "/estados-entrega",
+        summary="Estados posibles de la entrega de la nota al campus",
+    )
+    async def listar_estados_entrega() -> list[dict[str, str]]:
         """Los valores que puede tomar `estado_moodle`, en castellano.
 
         El frontend arma con esto el filtro y el badge de "Alumnos que rindieron".
@@ -461,15 +509,24 @@ def create_exam_content_router(
         )
 
     async def _validar_usuario_tutor(session, tutor_id: str) -> None:
-        """422 si el usuario no existe o no tiene rol tutor.
+        """422 si el usuario no existe, no tiene rol tutor o está dado de baja.
 
         Se valida ANTES de escribir en `comision_tutor`: la FK sola dejaría
         asignar a cualquier usuario (un alumno, por ejemplo) como tutor de una
         comisión, y la pertenencia dejaría de significar algo.
+
+        La baja lógica pesa tanto como el rol: una comisión a cargo de alguien
+        que ya no está figura CON responsable y no lo tiene. Las notas se
+        retienen esperando una credencial que nunca va a llegar (nadie va a
+        conectar la cuenta de un usuario dado de baja) y el bloqueo se lee como
+        un problema del campus.
         """
         from sqlalchemy import select
 
         from app.infrastructure.persistence.models.transactional import UsuarioModel
+        # La guarda de UUID evita el 500 de asyncpg cuando el id no lo es: el
+        # registro de auditoria no puede tumbar la operacion que esta auditando.
+        from app.infrastructure.persistence.repositories.exam_content import _es_uuid
 
         usuario = (
             await session.execute(
@@ -485,8 +542,19 @@ def create_exam_content_router(
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail={
-                    "error": "rol_invalido",
+                    "error": "no_es_tutor",
                     "mensaje": "El usuario no tiene rol tutor.",
+                },
+            )
+        if usuario.eliminado_en is not None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "error": "usuario_dado_de_baja",
+                    "mensaje": (
+                        "El usuario está dado de baja y no puede quedar a cargo "
+                        "de una comisión."
+                    ),
                 },
             )
 
@@ -2045,6 +2113,18 @@ def create_exam_content_router(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail={"error": "usuario_no_encontrado", "usuario_id": body.usuario_id},
                 ) from exc
+            except NoEsAlumnoError as exc:
+                # El padrón es de alumnos: un docente adentro terminaba en la
+                # tabla de notas de su propio examen como ausente con 0.
+                await session.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail={
+                        "error": "no_es_alumno",
+                        "mensaje": str(exc),
+                        "usuario_id": body.usuario_id,
+                    },
+                ) from exc
             except InscripcionDuplicadaError as exc:
                 await session.rollback()
                 raise HTTPException(
@@ -2066,6 +2146,10 @@ def create_exam_content_router(
                     },
                 ) from exc
 
+            quien, donde = await _nombres_para_auditoria(
+                session, body.usuario_id, comision_id
+            )
+
         await registrar_seguro(
             session_factory,
             actor=principal.email,
@@ -2079,7 +2163,7 @@ def create_exam_content_router(
             entidad_id=str(inscripcion.id),
             ip=request.client.host if request.client else None,
             user_agent=request.headers.get("user-agent"),
-            proposito=f"Inscribió al alumno {body.usuario_id} en la comisión {comision_id}",
+            proposito=f"Inscribió al alumno {quien} en la comisión {donde}",
         )
 
         return InscripcionResponse(
@@ -2143,6 +2227,8 @@ def create_exam_content_router(
                     },
                 ) from exc
 
+            quien, donde = await _nombres_para_auditoria(session, usuario_id, comision_id)
+
         await registrar_seguro(
             session_factory,
             actor=principal.email,
@@ -2150,8 +2236,48 @@ def create_exam_content_router(
             modulo=ModuloAuditoria.MATERIAS,
             ip=request.client.host if request.client else None,
             user_agent=request.headers.get("user-agent"),
-            proposito=f"Quitó al alumno {usuario_id} de la comisión {comision_id}",
+            proposito=f"Quitó al alumno {quien} de la comisión {donde}",
         )
+
+    async def _nombres_para_auditoria(session, usuario_id: str, comision_id: str):
+        """Alumno y comisión por su nombre, para que el registro se pueda leer.
+
+        Dos SELECT por id en una acción de baja frecuencia (inscribir o dar de
+        baja a un alumno). El costo es despreciable y sin ellos la línea del
+        registro no identifica a nadie: ver `audit/etiquetas.py`.
+        """
+        from app.application.audit.etiquetas import etiqueta_alumno, etiqueta_comision
+        from app.infrastructure.persistence.models.exam_content import ComisionModel
+        from app.infrastructure.persistence.models.transactional import UsuarioModel
+        # La guarda de UUID evita el 500 de asyncpg cuando el id no lo es: el
+        # registro de auditoría no puede tumbar la operación que está auditando.
+        from app.infrastructure.persistence.repositories.exam_content import (
+            _es_uuid as _es_uuid_valido,
+        )
+
+        # A prueba de fallos, y no por prolijidad: la inscripcion YA se commiteo
+        # cuando se llega aca. Si buscar los nombres levanta, el alumno queda
+        # inscripto y el docente ve un 500 — la operacion salio bien y el sistema
+        # dice que fallo. Paso exactamente eso durante el desarrollo (un import
+        # faltante). Un registro con el id crudo es peor que uno con nombres, pero
+        # es infinitamente mejor que romper la operacion que se esta auditando.
+        try:
+            usuario = (
+                await session.get(UsuarioModel, usuario_id)
+                if _es_uuid_valido(usuario_id)
+                else None
+            )
+            comision = (
+                await session.get(ComisionModel, comision_id)
+                if _es_uuid_valido(comision_id)
+                else None
+            )
+            return (
+                etiqueta_alumno(usuario, usuario_id),
+                etiqueta_comision(comision, comision_id),
+            )
+        except Exception:  # noqa: BLE001 - ver el comentario de arriba
+            return usuario_id, comision_id
 
     def _subtitulo_comision(comision, materia) -> str:
         """Encabezado del export: de qué comisión y materia es este listado."""
@@ -2291,6 +2417,11 @@ def create_exam_content_router(
             columnas=COLUMNAS_INSCRIPTOS,
             filas=filas_inscriptos(alumnos),
             nombre_hoja="Inscriptos",
+            # Los cuatro numeros que deciden si el examen se puede tomar, arriba
+            # de la tabla: antes habia que contarlos a mano fila por fila.
+            metricas=resumen_elegibilidad(alumnos).metricas(),
+            criterios=CRITERIOS_INSCRIPTOS,
+            colorear=True,
         )
         return Response(
             content=contenido,
@@ -2322,6 +2453,9 @@ def create_exam_content_router(
             # Ocho columnas: en vertical se cortaban las tres de elegibilidad,
             # que son el motivo por el que se descarga este listado.
             apaisado=INSCRIPTOS_APAISADO,
+            metricas=resumen_elegibilidad(alumnos).metricas(),
+            criterios=CRITERIOS_INSCRIPTOS,
+            colorear=True,
         )
         return Response(
             content=contenido,
@@ -2964,18 +3098,24 @@ def create_exam_content_router(
             items: list[TramoSorteoResponse] = []
             nuevas_totales: set[str] = set()
             for tramo in tramos:
+                # `admitidas is None` = sin filtro de categoría: entra todo el
+                # banco. Es lo que pide "quiero 10 preguntas de las que tengo".
                 if tramo.categoria_id is None:
-                    admitidas: set[str | None] = {None}
+                    admitidas: set[str | None] | None = (
+                        None if tramo.incluir_subcategorias else {None}
+                    )
                 elif tramo.incluir_subcategorias:
                     admitidas = set(_descendencia(str(tramo.categoria_id)))
                 else:
                     admitidas = {str(tramo.categoria_id)}
                 tipos = set(tramo.tipos) if tramo.tipos else None
 
-                def _califica(cat, tipo) -> bool:
-                    return (str(cat) if cat else None) in admitidas and (
-                        tipos is None or tipo in tipos
-                    )
+                def _califica(cat, tipo, _admitidas=None) -> bool:
+                    adm = admitidas if _admitidas is None else _admitidas
+                    # `adm is None` = todo el banco, sin filtrar por categoría.
+                    return (
+                        adm is None or (str(cat) if cat else None) in adm
+                    ) and (tipos is None or tipo in tipos)
 
                 en_pool = sum(1 for cat, tipo, _ in pool if _califica(cat, tipo))
                 en_banco = sum(1 for _, cat, tipo in banco if _califica(cat, tipo))
@@ -3003,11 +3143,24 @@ def create_exam_content_router(
                     )
                 )
 
+            pool_banco_ids = [
+                str(r[0])
+                for r in (
+                    await session.execute(
+                        _select(PreguntaExamenModel.pregunta_banco_id).where(
+                            PreguntaExamenModel.examen_id == examen_id,
+                            PreguntaExamenModel.pregunta_banco_id.is_not(None),
+                        )
+                    )
+                ).all()
+            ]
+
             return SorteoDelExamenResponse(
                 modo_preguntas=modo,
                 tramos=items,
                 largo_del_examen=sum(t.cantidad for t in tramos),
                 pool_total=pool_total,
+                pool_banco_ids=pool_banco_ids,
                 nuevas_en_el_banco=len(nuevas_totales),
                 # Cambiar el pool con intentos ya rendidos haría que dos alumnos
                 # sorteen de conjuntos distintos: dejaria de ser el mismo examen.
@@ -3206,8 +3359,12 @@ def create_exam_content_router(
 
             a_sumar: dict[str, PreguntaBancoModel] = {}
             for tramo in tramos:
+                # `admitidas is None` = sin filtro de categoría: entra todo el
+                # banco. Es lo que pide "quiero 10 preguntas de las que tengo".
                 if tramo.categoria_id is None:
-                    admitidas: set[str | None] = {None}
+                    admitidas: set[str | None] | None = (
+                        None if tramo.incluir_subcategorias else {None}
+                    )
                 elif tramo.incluir_subcategorias:
                     admitidas = set(_descendencia(str(tramo.categoria_id)))
                 else:
@@ -3217,7 +3374,9 @@ def create_exam_content_router(
                     if str(pb.id) in ya_en_el_pool or str(pb.id) in a_sumar:
                         continue
                     cat = str(pb.categoria_id) if pb.categoria_id else None
-                    if cat in admitidas and (tipos is None or pb.tipo in tipos):
+                    if (admitidas is None or cat in admitidas) and (
+                        tipos is None or pb.tipo in tipos
+                    ):
                         a_sumar[str(pb.id)] = pb
 
             for i, pb in enumerate(a_sumar.values()):
@@ -3360,6 +3519,597 @@ def create_exam_content_router(
             proposito=(
                 f"Habilitó el examen «{titulo}»: deja el borrador y los alumnos "
                 "ya lo pueden rendir"
+            ),
+        )
+
+    # -----------------------------------------------------------------------
+    # Rearmar el sorteo completo: sacar una categoría, sumar otra, cambiar cuánto.
+    #
+    # Editar solo la cantidad no alcanzaba: la composición del examen quedaba
+    # congelada al crearlo y la única salida era borrarlo y empezar de nuevo. En
+    # Moodle se puede sacar una pregunta aleatoria y poner otra de otra categoría.
+    #
+    # Reemplaza TRAMOS y POOL con el mismo armado que usa la creación
+    # (`armado_del_examen`), en UNA transacción: si el sorteo nuevo no se puede
+    # armar, el examen queda como estaba y no a medio camino.
+    # -----------------------------------------------------------------------
+
+    @router.put(
+        "/{examen_id}/sorteo",
+        dependencies=[Depends(require_capability("crear_examenes"))],
+        summary="Reemplazar las categorías y cantidades del sorteo",
+    )
+    async def rearmar_sorteo_del_examen(
+        examen_id: str,
+        body: RearmarSorteoRequest,
+        request: Request,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    ) -> dict:
+        if session_factory is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Persistencia no inicializada.",
+            )
+
+        await _exigir_pertenencia(principal, examen_id)
+
+        import uuid as _uuid
+
+        from sqlalchemy import delete as _delete
+        from sqlalchemy import func as _func
+        from sqlalchemy import select as _select
+
+        from app.infrastructure.persistence.models.exam_content import (
+            ComisionModel,
+            ExamenContenidoModel,
+            PreguntaExamenModel,
+            TramoSorteoExamenModel,
+        )
+        from app.infrastructure.persistence.models.proctoring import (
+            ProctoringSessionModel,
+        )
+
+        async with session_factory() as session:
+            fila = (
+                await session.execute(
+                    _select(
+                        ExamenContenidoModel.titulo,
+                        ComisionModel.materia_id,
+                    )
+                    .join(
+                        ComisionModel,
+                        ComisionModel.id == ExamenContenidoModel.comision_id,
+                    )
+                    .where(
+                        ExamenContenidoModel.id == examen_id,
+                        ExamenContenidoModel.eliminado_en.is_(None),
+                    )
+                )
+            ).one_or_none()
+            if fila is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail={
+                        "error": "examen_no_encontrado",
+                        "mensaje": "El examen no existe o no tiene materia.",
+                        "examen_id": examen_id,
+                    },
+                )
+            titulo, materia_id = fila
+
+            intentos = (
+                await session.execute(
+                    _select(_func.count(ProctoringSessionModel.id)).where(
+                        ProctoringSessionModel.examen_contenido_id == examen_id,
+                        ProctoringSessionModel.es_prueba.is_(False),
+                    )
+                )
+            ).scalar_one()
+            if intentos:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={
+                        "error": "examen_con_intentos",
+                        "mensaje": (
+                            f"Ya lo rindieron {intentos} alumno(s): cambiar las "
+                            "preguntas ahora dejaría a unos rindiendo un examen y a "
+                            "otros, otro."
+                        ),
+                        "examen_id": examen_id,
+                        "intentos": intentos,
+                    },
+                )
+
+            # Se arma PRIMERO y se borra después: si el sorteo nuevo no se puede
+            # resolver, el examen tiene que quedar como estaba.
+            hijos = await arbol_de_categorias(session, str(materia_id))
+            try:
+                pool_elegido = await resolver_pool(
+                    session,
+                    materia_id=str(materia_id),
+                    pool_preguntas=body.pool_preguntas,
+                )
+                preguntas = await seleccionar_del_banco(
+                    session,
+                    materia_id=str(materia_id),
+                    tramos=body.sorteo,
+                    pool_elegido=pool_elegido,
+                    hijos=hijos,
+                    todo_el_pool=True,
+                )
+            except PoolInvalidoError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail={
+                        "error": "pool_invalido",
+                        "mensaje": (
+                            "El examen se quedaría sin preguntas: destildaste todas."
+                            if exc.vacio
+                            else f"{len(exc.ajenas)} pregunta(s) del pool no son del "
+                            "banco de esta materia. El examen quedó como estaba."
+                        ),
+                        "ajenas": exc.ajenas,
+                    },
+                ) from exc
+            except TramoInsuficienteError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail={
+                        "error": "sorteo_insuficiente",
+                        "mensaje": f"{exc} El examen quedó como estaba.",
+                        "categoria_id": exc.categoria_id,
+                        "disponibles": exc.disponibles,
+                        "pedidas": exc.pedidas,
+                    },
+                ) from exc
+
+            # El pool viejo se va entero: dejar preguntas de una categoría que el
+            # docente sacó sería peor que rearmar.
+            await session.execute(
+                _delete(PreguntaExamenModel).where(
+                    PreguntaExamenModel.examen_id == examen_id
+                )
+            )
+            await session.execute(
+                _delete(TramoSorteoExamenModel).where(
+                    TramoSorteoExamenModel.examen_id == examen_id
+                )
+            )
+
+            copiar_al_examen(
+                session,
+                examen_id=examen_id,
+                preguntas=preguntas,
+                seleccionada=False,
+            )
+            for orden, tramo in enumerate(body.sorteo):
+                session.add(
+                    TramoSorteoExamenModel(
+                        id=str(_uuid.uuid4()),
+                        examen_id=examen_id,
+                        categoria_id=tramo.categoria_id,
+                        incluir_subcategorias=tramo.incluir_subcategorias,
+                        tipos=tramo.tipos,
+                        cantidad=tramo.cantidad,
+                        orden=orden,
+                    )
+                )
+            await session.commit()
+
+        largo = sum(t.cantidad for t in body.sorteo)
+        await registrar_seguro(
+            session_factory,
+            actor=principal.email,
+            accion=AccionAuditoria.EXAMEN_POOL_ACTUALIZADO,
+            modulo=ModuloAuditoria.EXAMENES,
+            entidad=EntidadAuditoria.EXAMEN,
+            entidad_id=str(examen_id),
+            ip=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            proposito=(
+                f"Rearmó el sorteo de «{titulo}»: {len(body.sorteo)} categoría(s), "
+                f"{largo} pregunta(s) por alumno"
+            ),
+        )
+        return {"largo_del_examen": largo, "pool_total": len(preguntas)}
+
+    # -----------------------------------------------------------------------
+    # Editar el largo del examen (cuántas preguntas rinde cada alumno).
+    #
+    # Mismo criterio que Moodle: el examen es editable mientras NADIE lo haya
+    # rendido, y deja de serlo con el primer intento. Cambiarlo con gente que ya
+    # rindió haría que dos alumnos del mismo examen contesten distinta cantidad
+    # de preguntas sobre la misma escala de nota.
+    #
+    # Las rendiciones de PRUEBA del docente (migration 0102) no bloquean: existen
+    # justamente para probar y corregir antes de habilitar.
+    # -----------------------------------------------------------------------
+
+    @router.patch(
+        "/{examen_id}/sorteo",
+        dependencies=[Depends(require_capability("crear_examenes"))],
+        summary="Cambiar cuántas preguntas sortea cada tramo del examen",
+    )
+    async def editar_cantidades_del_sorteo(
+        examen_id: str,
+        body: EditarSorteoRequest,
+        request: Request,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    ) -> dict:
+        if session_factory is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Persistencia no inicializada.",
+            )
+
+        await _exigir_pertenencia(principal, examen_id)
+
+        from sqlalchemy import func as _func
+        from sqlalchemy import select as _select
+
+        from app.infrastructure.persistence.models.exam_content import (
+            PreguntaExamenModel,
+            TramoSorteoExamenModel,
+        )
+        from app.infrastructure.persistence.models.proctoring import (
+            ProctoringSessionModel,
+        )
+
+        from app.application.exam_content.sorteo_por_intento import (
+            hijos_por_padre,
+            preguntas_del_tramo,
+        )
+
+        async with session_factory() as session:
+            intentos = (
+                await session.execute(
+                    _select(_func.count(ProctoringSessionModel.id)).where(
+                        ProctoringSessionModel.examen_contenido_id == examen_id,
+                        ProctoringSessionModel.es_prueba.is_(False),
+                    )
+                )
+            ).scalar_one()
+            if intentos:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={
+                        "error": "examen_con_intentos",
+                        "mensaje": (
+                            f"Ya lo rindieron {intentos} alumno(s): cambiar el largo "
+                            "ahora haría que unos rindan más preguntas que otros "
+                            "sobre la misma nota."
+                        ),
+                        "examen_id": examen_id,
+                        "intentos": intentos,
+                    },
+                )
+
+            tramos = {
+                t.orden: t
+                for t in (
+                    await session.execute(
+                        _select(TramoSorteoExamenModel).where(
+                            TramoSorteoExamenModel.examen_id == examen_id
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            }
+
+            # El pool copiado en el examen: es el techo real de cada tramo.
+            pool = (
+                await session.execute(
+                    _select(
+                        PreguntaExamenModel.id,
+                        PreguntaExamenModel.categoria_id,
+                        PreguntaExamenModel.tipo,
+                    ).where(PreguntaExamenModel.examen_id == examen_id)
+                )
+            ).all()
+            # Misma resolución de descendencia que usa el sorteo de cada intento.
+            hijos = await hijos_por_padre(session, [c for _, c, _ in pool if c])
+
+            for pedido in body.tramos:
+                tramo = tramos.get(pedido.orden)
+                if tramo is None:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail={
+                            "error": "tramo_no_encontrado",
+                            "mensaje": f"El examen no tiene un tramo {pedido.orden}.",
+                            "orden": pedido.orden,
+                        },
+                    )
+
+                disponibles = len(
+                    preguntas_del_tramo(
+                        pool,
+                        categoria_id=tramo.categoria_id,
+                        incluir_subcategorias=tramo.incluir_subcategorias,
+                        tipos=tramo.tipos,
+                        hijos=hijos,
+                    )
+                )
+                if pedido.cantidad > disponibles:
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail={
+                            "error": "sorteo_insuficiente",
+                            "mensaje": (
+                                f"Se pidieron {pedido.cantidad} preguntas pero el "
+                                f"examen solo tiene {disponibles} para ese tramo."
+                            ),
+                            "disponibles": disponibles,
+                            "pedidas": pedido.cantidad,
+                        },
+                    )
+                tramo.cantidad = pedido.cantidad
+
+            largo = sum(t.cantidad for t in tramos.values())
+            await session.commit()
+
+        await registrar_seguro(
+            session_factory,
+            actor=principal.email,
+            accion=AccionAuditoria.EXAMEN_POOL_ACTUALIZADO,
+            modulo=ModuloAuditoria.EXAMENES,
+            entidad=EntidadAuditoria.EXAMEN,
+            entidad_id=str(examen_id),
+            ip=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            proposito=(
+                f"Cambió el largo del examen: cada alumno pasa a rendir {largo} "
+                "pregunta(s)"
+            ),
+        )
+        return {"largo_del_examen": largo}
+
+    # -----------------------------------------------------------------------
+    # Rendiciones de PRUEBA del examen (migration 0102).
+    #
+    # El docente prueba su examen antes de soltarlo; esas sesiones quedan
+    # guardadas —para poder revisar qué se contestó y cómo se corrigió— pero
+    # fuera de notas, estadísticas y write-back. Y se pueden borrar: ensayar tres
+    # veces no tiene por qué dejar tres sesiones para siempre.
+    #
+    # Lo que NO se borra por acá es una rendición real: es evidencia académica
+    # (cadena de custodia, reglas duras #6 y #7).
+    # -----------------------------------------------------------------------
+
+    @router.get(
+        "/{examen_id}/pruebas",
+        dependencies=[Depends(require_capability("gestionar_academico"))],
+        summary="Rendiciones de prueba de este examen",
+    )
+    async def listar_pruebas_del_examen(
+        examen_id: str,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    ) -> dict:
+        if session_factory is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Persistencia no inicializada.",
+            )
+
+        await _exigir_pertenencia(principal, examen_id)
+
+        from sqlalchemy import select as _select
+
+        from app.infrastructure.persistence.models.proctoring import (
+            ProctoringSessionModel,
+        )
+
+        async with session_factory() as session:
+            filas = (
+                await session.execute(
+                    _select(
+                        ProctoringSessionModel.id,
+                        ProctoringSessionModel.alumno_idnumber,
+                        ProctoringSessionModel.creada_en,
+                        ProctoringSessionModel.finalizada_en,
+                    )
+                    .where(
+                        ProctoringSessionModel.examen_contenido_id == examen_id,
+                        ProctoringSessionModel.es_prueba.is_(True),
+                    )
+                    .order_by(ProctoringSessionModel.creada_en.desc())
+                )
+            ).all()
+
+        return {
+            "pruebas": [
+                {
+                    "session_id": str(sid),
+                    "quien": quien,
+                    "creada_en": creada.isoformat() if creada else None,
+                    "finalizada_en": fin.isoformat() if fin else None,
+                }
+                for sid, quien, creada, fin in filas
+            ]
+        }
+
+    @router.delete(
+        "/{examen_id}/pruebas/{session_id}",
+        dependencies=[Depends(require_capability("gestionar_academico"))],
+        status_code=status.HTTP_204_NO_CONTENT,
+        response_model=None,
+        summary="Borrar una rendición de prueba",
+    )
+    async def borrar_prueba_del_examen(
+        examen_id: str,
+        session_id: str,
+        request: Request,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    ) -> None:
+        """404 si no es una sesión de este examen. 409 si es una rendición real."""
+        if session_factory is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Persistencia no inicializada.",
+            )
+
+        await _exigir_pertenencia(principal, examen_id)
+
+        from sqlalchemy import select as _select
+
+        from app.infrastructure.persistence.models.proctoring import (
+            ProctoringSessionModel,
+        )
+
+        async with session_factory() as session:
+            # El examen de la URL acota de verdad: sin este AND, el id de una
+            # sesión de otro examen se borraría desde acá.
+            sesion = (
+                await session.execute(
+                    _select(ProctoringSessionModel).where(
+                        ProctoringSessionModel.id == session_id,
+                        ProctoringSessionModel.examen_contenido_id == examen_id,
+                    )
+                )
+            ).scalar_one_or_none()
+            if sesion is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail={
+                        "error": "sesion_no_encontrada",
+                        "mensaje": "Esa sesión no es de este examen.",
+                        "session_id": session_id,
+                    },
+                )
+            if not sesion.es_prueba:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={
+                        "error": "no_es_una_prueba",
+                        "mensaje": (
+                            "Es la rendición de un alumno: evidencia académica, no "
+                            "se borra. Solo se eliminan las pruebas del docente."
+                        ),
+                        "session_id": session_id,
+                    },
+                )
+            quien = sesion.alumno_idnumber
+            await session.delete(sesion)
+            await session.commit()
+
+        await registrar_seguro(
+            session_factory,
+            actor=principal.email,
+            accion=AccionAuditoria.SESION_TEST_ELIMINADA,
+            modulo=ModuloAuditoria.SESIONES,
+            entidad=EntidadAuditoria.EXAMEN,
+            entidad_id=str(examen_id),
+            ip=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            proposito=(
+                f"Borró una rendición de prueba de {quien or 'staff'} en este examen"
+            ),
+        )
+
+    # -----------------------------------------------------------------------
+    # Volver a borrador (deshabilitar).
+    #
+    # Habilitar era de ida, y eso convertía un click equivocado en algo
+    # irreversible. Volver atrás es seguro mientras NADIE haya empezado a
+    # rendirlo: a partir del primer intento, esconder el examen sería sacarle el
+    # examen de abajo a quien está en el medio, y ahí el camino es la baja
+    # lógica, que es explícita y conserva la evidencia.
+    # -----------------------------------------------------------------------
+
+    @router.post(
+        "/{examen_id}/volver-a-borrador",
+        dependencies=[Depends(require_capability("crear_examenes"))],
+        status_code=status.HTTP_204_NO_CONTENT,
+        response_model=None,
+        summary="Devolver un examen a borrador, si todavía no lo rindió nadie",
+    )
+    async def volver_examen_a_borrador(
+        examen_id: str,
+        request: Request,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    ) -> None:
+        """404 si no existe o ya estaba en borrador. 409 si alguien lo rindió."""
+        if session_factory is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Persistencia no inicializada.",
+            )
+
+        await _exigir_pertenencia(principal, examen_id)
+
+        from sqlalchemy import func as _func
+        from sqlalchemy import select as _select
+
+        from app.infrastructure.persistence.models.exam_content import (
+            ExamenContenidoModel,
+        )
+        from app.infrastructure.persistence.models.proctoring import (
+            ProctoringSessionModel,
+        )
+
+        async with session_factory() as session:
+            examen = (
+                await session.execute(
+                    _select(ExamenContenidoModel).where(
+                        ExamenContenidoModel.id == examen_id,
+                        ExamenContenidoModel.eliminado_en.is_(None),
+                        ExamenContenidoModel.borrador.is_(False),
+                    )
+                )
+            ).scalar_one_or_none()
+            if examen is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail={
+                        "error": "examen_no_encontrado",
+                        "mensaje": "El examen no existe o ya está en borrador.",
+                        "examen_id": examen_id,
+                    },
+                )
+
+            intentos = (
+                await session.execute(
+                    _select(_func.count(ProctoringSessionModel.id)).where(
+                        ProctoringSessionModel.examen_contenido_id == examen_id
+                    )
+                )
+            ).scalar_one()
+            if intentos:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={
+                        "error": "examen_con_intentos",
+                        "mensaje": (
+                            f"Ya lo rindió {intentos} alumno: esconderlo ahora le "
+                            "sacaría el examen. Si no tiene que seguir en pie, "
+                            "dalo de baja."
+                            if intentos == 1
+                            else f"Ya lo rindieron {intentos} alumnos: esconderlo "
+                            "ahora les sacaría el examen. Si no tiene que seguir "
+                            "en pie, dalo de baja."
+                        ),
+                        "examen_id": examen_id,
+                        "intentos": intentos,
+                    },
+                )
+
+            examen.borrador = True
+            titulo = examen.titulo
+            await session.commit()
+
+        await registrar_seguro(
+            session_factory,
+            actor=principal.email,
+            accion=AccionAuditoria.EXAMEN_VOLVER_A_BORRADOR,
+            modulo=ModuloAuditoria.EXAMENES,
+            entidad=EntidadAuditoria.EXAMEN,
+            entidad_id=str(examen_id),
+            ip=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            proposito=(
+                f"Devolvió a borrador el examen «{titulo}»: los alumnos dejan de "
+                "verlo y no lo pueden rendir"
             ),
         )
 
@@ -3947,7 +4697,13 @@ def create_exam_content_router(
         )
 
         async with session_factory() as session:
-            examen = await ExamenContenidoSqlRepository(session).obtener(examen_id)
+            # Cabecera: la respuesta son dos enteros. Cargar el pool entero para
+            # esto hacía que un examen con una pregunta inválida no pudiera ni
+            # mostrar su destino de nota, que es lo que hay que cargar para que
+            # las notas lleguen al campus.
+            examen = await ExamenContenidoSqlRepository(session).obtener_cabecera(
+                examen_id
+            )
 
         if examen is None:
             raise HTTPException(
@@ -4016,7 +4772,13 @@ def create_exam_content_router(
         )
 
         async with session_factory() as session:
-            examen = await ExamenContenidoSqlRepository(session).obtener(examen_id)
+            # Cabecera y no el agregado entero: la respuesta son catorce campos
+            # escalares y ninguna pregunta. Cargarlas obligaba a validarlas, así
+            # que una fila rota devolvía 500 y dejaba el examen sin configuración,
+            # sin destino de nota y sin poder publicar.
+            examen = await ExamenContenidoSqlRepository(session).obtener_cabecera(
+                examen_id
+            )
             if examen is None:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
@@ -4932,7 +5694,10 @@ def create_exam_content_router(
             # Tope de preguntas del examen: la selección no puede excederlo. Se
             # valida acá (y no solo en la UI) porque es el único punto por el que
             # pasa cualquier cambio de selección.
-            examen_cfg = await repo.obtener(examen_id)
+            # Cabecera: solo se lee el tope. Ver `obtener_cabecera` — construir el
+            # agregado valida cada pregunta, y acá eso convertía un mensaje claro
+            # sobre el tope en un 500 sin relación con lo que el docente hizo.
+            examen_cfg = await repo.obtener_cabecera(examen_id)
             tope = getattr(examen_cfg, "limite_preguntas", None) if examen_cfg else None
             if tope is not None and len(body.seleccionadas) > tope:
                 await session.rollback()
@@ -5081,6 +5846,7 @@ def create_exam_content_router(
         q: str | None = None,
         estado: str | None = None,
         estado_entrega: str | None = None,
+        resultado: str | None = None,
         archivado: str = "false",
         fecha_desde: datetime | None = None,
         fecha_hasta: datetime | None = None,
@@ -5112,6 +5878,17 @@ def create_exam_content_router(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Persistencia no inicializada.",
             )
+        if resultado is not None and resultado not in {r.value for r in ResultadoNota}:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "error": "resultado_invalido",
+                    "mensaje": (
+                        "resultado debe ser uno de "
+                        f"{sorted(r.value for r in ResultadoNota)}"
+                    ),
+                },
+            )
         if estado_entrega is not None and estado_entrega not in ESTADOS_ENTREGA_VALIDOS:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -5129,7 +5906,12 @@ def create_exam_content_router(
                 },
             )
 
-        moodle_configurado = writeback_svc is not None
+        # Por la CREDENCIAL vigente, no por la existencia del servicio: se
+        # construye siempre (así el token se carga desde la UI sin reiniciar), y
+        # preguntar por el objeto dejaba `sin_token` inalcanzable.
+        moodle_configurado = (
+            writeback_svc is not None and await writeback_svc.hay_credencial()
+        )
         async with session_factory() as session:
             items, total = await listar_resultados_examen(
                 db=session,
@@ -5137,6 +5919,7 @@ def create_exam_content_router(
                 q=q,
                 estado=estado,
                 estado_entrega_filtro=estado_entrega,
+                resultado_filtro=resultado,
                 # 'todas' → None = sin filtro (el servicio ya lo soporta:
                 # `if archivado is not None`).
                 archivado=archivado_filtro(archivado),
@@ -5159,11 +5942,17 @@ def create_exam_content_router(
                     estado_moodle=r.estado_moodle,
                     actualizado_en=r.actualizado_en,
                     retenido_por=r.retenido_por,
+                    retenciones=r.retenciones,
+                    usuario_id=r.usuario_id,
                     error_detalle=r.error_detalle,
                     estado_entrega=r.estado_entrega,
                     archivado=r.archivado,
                     marcada_manual_por=r.marcada_manual_por,
                     marcada_manual_en=r.marcada_manual_en,
+                    aprobado=r.aprobado,
+                    nota_aprobacion=r.nota_aprobacion,
+                    resultado=r.resultado,
+                    nota_efectiva=r.nota_efectiva,
                 )
                 for r in items
             ],
@@ -5176,8 +5965,10 @@ def create_exam_content_router(
     # Export de notas del examen (c-78 §13.5, E-10) + marcado manual (§13.6, D14).
     # -----------------------------------------------------------------------
 
-    async def _resultados_para_export(principal, examen_id: str) -> tuple[list, object]:
-        """Todos los resultados del examen (sin paginar) + su resumen, tras pertenencia."""
+    async def _resultados_para_export(
+        principal, examen_id: str
+    ) -> tuple[list, object, object]:
+        """Resultados del examen (sin paginar), su resumen y la nota de aprobacion."""
         await _exigir_pertenencia(principal, examen_id)
         if session_factory is None:
             raise HTTPException(
@@ -5198,13 +5989,19 @@ def create_exam_content_router(
                 archivado=None,
                 page=1,
                 page_size=10000,
-                moodle_configurado=writeback_svc is not None,
+                moodle_configurado=(
+                    writeback_svc is not None and await writeback_svc.hay_credencial()
+                ),
                 writeback_svc=writeback_svc,
             )
-            resumen = await ExamenContenidoSqlRepository(session).obtener_resumen(
-                examen_id
-            )
-        return items, resumen
+            repo = ExamenContenidoSqlRepository(session)
+            resumen = await repo.obtener_resumen(examen_id)
+            # La nota de aprobacion NO viene en el resumen y sin ella no se puede
+            # decir cuantos aprobaron, que es el numero que se informa. Se lee de
+            # la cabecera, que es una fila y no arrastra las preguntas.
+            cabecera = await repo.obtener_cabecera(examen_id)
+            nota_aprobacion = getattr(cabecera, "nota_aprobacion", None)
+        return items, resumen, nota_aprobacion
 
     def _subtitulo_examen(resumen) -> str:
         if resumen is None:
@@ -5225,13 +6022,20 @@ def create_exam_content_router(
         examen_id: str,
         principal: AuthenticatedPrincipal = Depends(get_current_principal),
     ) -> Response:
-        items, resumen = await _resultados_para_export(principal, examen_id)
+        items, resumen, nota_aprobacion = await _resultados_para_export(
+            principal, examen_id
+        )
         contenido = tabla_a_xlsx(
             titulo="Notas del examen — Active Exam",
             subtitulo=_subtitulo_examen(resumen),
             columnas=COLUMNAS_NOTAS,
             filas=filas_notas(items),
             nombre_hoja="Notas",
+            # Cuantos aprobaron y cuantas notas todavia no llegaron al campus.
+            # Lo segundo es lo que se pasa por alto: una nota sin sincronizar se
+            # ve igual que una cargada salvo por la ultima columna de la fila.
+            metricas=resumen_notas(items, nota_aprobacion=nota_aprobacion).metricas(),
+            criterios=CRITERIOS_NOTAS,
         )
         return Response(
             content=contenido,
@@ -5252,7 +6056,9 @@ def create_exam_content_router(
         examen_id: str,
         principal: AuthenticatedPrincipal = Depends(get_current_principal),
     ) -> Response:
-        items, resumen = await _resultados_para_export(principal, examen_id)
+        items, resumen, nota_aprobacion = await _resultados_para_export(
+            principal, examen_id
+        )
         contenido = tabla_a_pdf(
             titulo="Notas del examen - Active Exam",
             subtitulo=_subtitulo_examen(resumen),
@@ -5260,6 +6066,8 @@ def create_exam_content_router(
             filas=filas_notas(items),
             # Seis columnas con emails y etiquetas largas: en vertical se cortan.
             apaisado=NOTAS_APAISADO,
+            metricas=resumen_notas(items, nota_aprobacion=nota_aprobacion).metricas(),
+            criterios=CRITERIOS_NOTAS,
         )
         return Response(
             content=contenido,
@@ -5341,10 +6149,13 @@ def create_exam_content_router(
             from app.application.moodle.marcado_manual import puede_marcarse_cargada
             from app.application.moodle.resultados_query import _motivos_retencion
 
-            retenido_por = (await _motivos_retencion(session, [session_id])).get(
+            # `_motivos_retencion` devuelve TODOS los motivos que aplican: la
+            # fila puede estar retenida por varias cosas a la vez.
+            motivos = (await _motivos_retencion(session, [session_id])).get(
                 session_id
-            )
-            if not puede_marcarse_cargada(retenido_por):
+            ) or []
+            retenido_por = motivos[0] if motivos else None
+            if not puede_marcarse_cargada(motivos):
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
                     detail={
@@ -5354,7 +6165,7 @@ def create_exam_content_router(
                             + (
                                 " porque la sesión superó el umbral y todavía "
                                 "nadie la revisó."
-                                if retenido_por == "en_riesgo"
+                                if "en_riesgo" in motivos
                                 else " porque la sesión fue anulada por fraude."
                             )
                             + " No se puede marcar como cargada hasta que haya "
@@ -5420,6 +6231,103 @@ def create_exam_content_router(
             estado_moodle=ESTADO_MANUAL,
             marcada_manual_por=principal.email,
             marcada_manual_en=ahora,
+        )
+
+    @router.patch(
+        "/{examen_id}/resultados/{session_id}/desmarcar-cargada",
+        dependencies=[Depends(require_capability("gestionar_notas"))],
+        response_model=MarcarNotaCargadaResponse,
+        summary="Deshacer el marcado a mano (vuelve a pendiente)",
+    )
+    async def desmarcar_nota_cargada(
+        examen_id: str,
+        session_id: str,
+        request: Request,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    ) -> MarcarNotaCargadaResponse:
+        """Deshace un marcado a mano y devuelve la nota a `pendiente`.
+
+        Marcar a mano es una afirmación de una persona ("ya la cargué en el
+        campus") y las personas se equivocan de fila. Sin vuelta atrás, ese error
+        quedaba fijo para siempre y la nota figuraba como cargada sin estarlo.
+
+        LO QUE NO PERMITE, y es el punto: fijar un estado a dedo. Sólo se puede
+        deshacer `manual`. `enviado` lo puso el campus al confirmar — si se
+        pudiera escribir o borrar a mano, dejaría de haber forma de saber qué
+        notas llegaron de verdad. Corregir sí, engañar al sistema no.
+
+        Queda registrado quién lo deshizo y cuándo, igual que el marcado.
+        """
+        if session_factory is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Persistencia no inicializada.",
+            )
+        from sqlalchemy import select as _select
+
+        from app.application.moodle.marcado_manual import puede_desmarcarse
+        from app.application.moodle.resultados_query import (
+            ESTADO_PENDIENTE as _ESTADO_PENDIENTE,
+        )
+        from app.infrastructure.persistence.models.moodle_writeback import (
+            MoodleWritebackEstadoModel,
+        )
+
+        await _exigir_pertenencia(principal, examen_id)
+        async with session_factory() as session:
+            fila = (
+                await session.execute(
+                    _select(MoodleWritebackEstadoModel).where(
+                        MoodleWritebackEstadoModel.session_id == session_id
+                    )
+                )
+            ).scalar_one_or_none()
+            if fila is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail={
+                        "error": "nota_no_calculada",
+                        "mensaje": "No hay nota para esta sesión.",
+                    },
+                )
+            if not puede_desmarcarse(fila.estado):
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={
+                        "error": "estado_no_editable",
+                        "mensaje": (
+                            "Sólo se puede deshacer una nota marcada a mano. "
+                            "Los demás estados los pone el sistema según lo que "
+                            "pasó con el envío y no se editan."
+                        ),
+                        "estado_moodle": fila.estado,
+                    },
+                )
+            fila.estado = _ESTADO_PENDIENTE
+            fila.marcada_manual_por = None
+            fila.marcada_manual_en = None
+            await session.commit()
+
+        await registrar_seguro(
+            session_factory,
+            actor=principal.email,
+            accion=AccionAuditoria.MOODLE_NOTA_MANUAL,
+            modulo=ModuloAuditoria.MOODLE,
+            entidad=EntidadAuditoria.SESION,
+            entidad_id=str(session_id),
+            ip=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            proposito=(
+                "Deshizo el marcado a mano: la nota vuelve a pendiente "
+                f"(examen {examen_id})"
+            ),
+        )
+
+        return MarcarNotaCargadaResponse(
+            session_id=session_id,
+            estado_moodle=_ESTADO_PENDIENTE,
+            marcada_manual_por=None,
+            marcada_manual_en=None,
         )
 
     # -----------------------------------------------------------------------
@@ -5654,7 +6562,13 @@ def create_exam_content_router(
             from app.infrastructure.persistence.repositories.exam_content import (
                 ExamenContenidoSqlRepository,
             )
-            examen_cfg = await ExamenContenidoSqlRepository(session).obtener(examen_id)
+            # Cabecera: acá solo se lee `politica_intentos`. Cargar el pool entero
+            # metía la validación de cada pregunta en el camino que MANDA LAS NOTAS
+            # al campus: una sola pregunta mal guardada dejaba a todo el curso sin
+            # sincronizar, y el motivo no se parecía en nada a la causa.
+            examen_cfg = await ExamenContenidoSqlRepository(session).obtener_cabecera(
+                examen_id
+            )
             politica = (
                 examen_cfg.politica_intentos
                 if examen_cfg is not None
@@ -5861,105 +6775,54 @@ def create_exam_content_router(
 
                 codigo_por_comision = {c: encontradas[c][0] for c in ids_pedidos}
 
-            # Árbol de categorías de la materia, para expandir cada tramo a su
-            # descendencia. Una sola consulta: el árbol es chico (decenas de filas)
-            # y así evitamos una consulta recursiva por tramo.
-            hijos_por_padre: dict[str | None, list[str]] = {}
-            cats_result = await session.execute(
-                _select(
-                    CategoriaPreguntaModel.id,
-                    CategoriaPreguntaModel.categoria_padre_id,
-                ).where(CategoriaPreguntaModel.materia_id == body.materia_id)
-            )
-            for cat_id, padre_id in cats_result.all():
-                hijos_por_padre.setdefault(padre_id, []).append(cat_id)
+            hijos_por_padre = await arbol_de_categorias(session, body.materia_id)
 
-            def _con_descendencia(raiz: str) -> list[str]:
-                """La categoría más todas sus subcategorías, a cualquier profundidad."""
-                acumulado: list[str] = []
-                pendientes = [raiz]
-                vistos: set[str] = set()
-                while pendientes:
-                    actual = pendientes.pop()
-                    if actual in vistos:
-                        continue
-                    vistos.add(actual)
-                    acumulado.append(actual)
-                    pendientes.extend(hijos_por_padre.get(actual, []))
-                return acumulado
-
-            # ── Sortear preguntas del banco por cada tramo ──────────────────
-            preguntas_sorteadas: list[PreguntaBancoModel] = []
-            # Una pregunta no puede caer dos veces en el mismo examen: con tramos
-            # anidados ("Unidad 1" y además "Unidad 1 / Tema A") el mismo registro
-            # entra en los dos conjuntos.
-            ya_sorteadas: set[str] = set()
-
-            for tramo in body.sorteo:
-                # Las opciones y los blanks viajan con la pregunta: se copian al
-                # examen más abajo, así que se cargan acá de una (sin N+1).
-                stmt = (
-                    _select(PreguntaBancoModel)
-                    .where(
-                        PreguntaBancoModel.materia_id == body.materia_id,
-                        # Las dadas de baja quedan fuera del sorteo: sacarlas del
-                        # banco tiene que sacarlas también de los exámenes que se
-                        # armen a partir de ahora.
-                        PreguntaBancoModel.eliminada_en.is_(None),
-                    )
-                    .options(
-                        _selectinload(PreguntaBancoModel.opciones_banco),
-                        _selectinload(PreguntaBancoModel.blanks_banco).selectinload(
-                            BlankBancoModel.opciones_blank_banco
-                        ),
-                    )
+            # ── El pool elegido a mano y la selección del banco ─────────────
+            # Las dos reglas viven en `armado_del_examen`: la EDICIÓN del sorteo
+            # necesita exactamente lo mismo, y una segunda copia haría que crear
+            # y editar el mismo examen puedan dar resultados distintos.
+            try:
+                pool_elegido = await resolver_pool(
+                    session,
+                    materia_id=body.materia_id,
+                    pool_preguntas=body.pool_preguntas,
                 )
-                if tramo.categoria_id is None:
-                    stmt = stmt.where(PreguntaBancoModel.categoria_id.is_(None))
-                elif tramo.incluir_subcategorias:
-                    stmt = stmt.where(
-                        PreguntaBancoModel.categoria_id.in_(
-                            _con_descendencia(tramo.categoria_id)
-                        )
-                    )
-                else:
-                    stmt = stmt.where(PreguntaBancoModel.categoria_id == tramo.categoria_id)
+            except PoolInvalidoError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail={
+                        "error": "pool_invalido",
+                        "mensaje": (
+                            "El examen se quedó sin preguntas: destildaste todas."
+                            if exc.vacio
+                            else f"{len(exc.ajenas)} pregunta(s) del pool no son del "
+                            "banco de esta materia o fueron dadas de baja. No se creó "
+                            "ningún examen."
+                        ),
+                        "ajenas": exc.ajenas,
+                    },
+                ) from exc
 
-                if tramo.tipos:
-                    stmt = stmt.where(PreguntaBancoModel.tipo.in_(tramo.tipos))
-
-                result = await session.execute(stmt)
-                disponibles = [
-                    p for p in result.scalars().all() if p.id not in ya_sorteadas
-                ]
-
-                if len(disponibles) < tramo.cantidad:
-                    cat_label = tramo.categoria_id or "sin clasificar"
-                    raise HTTPException(
-                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                        detail={
-                            "error": "sorteo_insuficiente",
-                            "mensaje": (
-                                f"Categoría '{cat_label}': se pidieron {tramo.cantidad} "
-                                f"preguntas pero solo hay {len(disponibles)} disponibles."
-                            ),
-                            "categoria_id": tramo.categoria_id,
-                            "disponibles": len(disponibles),
-                            "pedidas": tramo.cantidad,
-                        },
-                    )
-
-                if body.sorteo_por_intento:
-                    # c-78 E-07: el examen se lleva el POOL ENTERO del tramo, no
-                    # las `cantidad` sorteadas. El sorteo lo hace después cada
-                    # intento, contra esta copia — por eso tocar el banco más tarde
-                    # no puede dejar a nadie sin examen.
-                    preguntas_sorteadas.extend(disponibles)
-                    ya_sorteadas.update(p.id for p in disponibles)
-                else:
-                    elegidas = random.sample(disponibles, tramo.cantidad)
-                    preguntas_sorteadas.extend(elegidas)
-                    ya_sorteadas.update(p.id for p in elegidas)
+            try:
+                preguntas_sorteadas = await seleccionar_del_banco(
+                    session,
+                    materia_id=body.materia_id,
+                    tramos=body.sorteo,
+                    pool_elegido=pool_elegido,
+                    hijos=hijos_por_padre,
+                    todo_el_pool=body.sorteo_por_intento,
+                )
+            except TramoInsuficienteError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail={
+                        "error": "sorteo_insuficiente",
+                        "mensaje": str(exc),
+                        "categoria_id": exc.categoria_id,
+                        "disponibles": exc.disponibles,
+                        "pedidas": exc.pedidas,
+                    },
+                ) from exc
 
             # El tope del examen se valida ANTES de crear nada: es preferible un 422
             # claro a un examen a medio armar. Mismo criterio que el import de XML
@@ -5989,69 +6852,15 @@ def create_exam_content_router(
                 )
 
             def _copiar_preguntas_al_examen(examen_id: str) -> None:
-                """Copia el set sorteado a un examen recién creado.
-
-                La pregunta se COPIA, no se referencia: el examen queda congelado
-                aunque después se edite el banco. Y hay que copiar TAMBIÉN opciones
-                y blanks — sin ellos la pregunta llega al alumno sin nada que
-                responder y sin nada con qué calificarla.
-
-                Con varias comisiones esto corre una vez por réplica sobre el MISMO
-                `preguntas_sorteadas`: todas rinden exactamente las mismas preguntas.
-
-                c-78 E-07: con sorteo por intento esto copia el POOL entero y todo
-                queda con `seleccionada=False` — quién entra al examen lo decide el
-                sorteo de cada intento, no una marca del examen.
-                """
-                for orden, pb in enumerate(preguntas_sorteadas):
-                    pregunta_id = str(_uuid.uuid4())
-                    session.add(
-                        PreguntaExamenModel(
-                            id=pregunta_id,
-                            examen_id=examen_id,
-                            enunciado=pb.enunciado,
-                            tipo=pb.tipo,
-                            orden=orden,
-                            seleccionada=not body.sorteo_por_intento,
-                            categoria_id=pb.categoria_id,
-                            moodle_question_id=pb.moodle_question_id,
-                            pregunta_banco_id=pb.id,
-                        )
-                    )
-
-                    for opcion in pb.opciones_banco:
-                        session.add(
-                            OpcionRespuestaModel(
-                                id=str(_uuid.uuid4()),
-                                pregunta_id=pregunta_id,
-                                texto=opcion.texto,
-                                es_correcta=opcion.es_correcta,
-                                orden=opcion.orden,
-                            )
-                        )
-
-                    for blank in pb.blanks_banco:
-                        blank_id = str(_uuid.uuid4())
-                        session.add(
-                            PreguntaClozeBlankModel(
-                                id=blank_id,
-                                pregunta_id=pregunta_id,
-                                orden=blank.orden,
-                                tipo=blank.tipo,
-                                texto_antes=blank.texto_antes,
-                                texto_despues=blank.texto_despues,
-                            )
-                        )
-                        for opcion_blank in blank.opciones_blank_banco:
-                            session.add(
-                                OpcionClozeBlancoModel(
-                                    id=str(_uuid.uuid4()),
-                                    blank_id=blank_id,
-                                    texto=opcion_blank.texto,
-                                    es_correcta=opcion_blank.es_correcta,
-                                    peso=opcion_blank.peso,
-                                )
-                            )
+                # La copia (opciones y blanks incluidos) vive en
+                # `armado_del_examen`: la edición del sorteo rearma el pool y
+                # necesita exactamente lo mismo.
+                copiar_al_examen(
+                    session,
+                    examen_id=examen_id,
+                    preguntas=preguntas_sorteadas,
+                    seleccionada=not body.sorteo_por_intento,
+                )
 
             # ── Crear un examen_contenido por comisión ───────────────────────
             # Las réplicas comparten el lote para que el sistema sepa cuáles

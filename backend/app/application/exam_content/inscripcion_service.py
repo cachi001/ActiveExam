@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from app.domain.exam_content.padron import puede_estar_en_el_padron
 from app.application.exam_content.errors import (
     CodigoMatriculacionInvalidoError,
     ComisionInactivaError,
@@ -22,11 +23,28 @@ from app.application.exam_content.errors import (
     InscripcionConActividadError,
     InscripcionNoEncontradaError,
     MateriaInactivaError,
+    NoEsAlumnoError,
     PerfilIncompletoError,
     UsuarioNoEncontradoError,
     YaInscriptoEnLaMateriaError,
 )
 from app.domain.exam_content.errors import InscripcionDuplicadaError
+
+
+async def _exigir_que_sea_alumno(inscripcion_repo, usuario_id: str) -> None:
+    """El padrón de una comisión es de alumnos (ver `domain/exam_content/padron.py`).
+
+    Está acá, como función del módulo, porque la comparten los DOS caminos de
+    alta: el panel del docente (`InscripcionService`) y la autoinscripción por
+    código (`AutoMatriculacionService`). Como método de uno solo, el otro seguía
+    dejando entrar a cualquiera.
+    """
+    roles = await inscripcion_repo.roles_de(usuario_id)
+    if not puede_estar_en_el_padron(roles):
+        raise NoEsAlumnoError(
+            "Solo se inscribe a alumnos. Si además cursa, hay que darle el rol "
+            "de estudiante primero."
+        )
 
 
 async def _rechazar_si_ya_esta_en_la_materia(
@@ -153,6 +171,7 @@ class AutoMatriculacionService:
 
         # Gate de perfil PRIMERO: sin perfil no se matricula (regla del owner).
         await self._asegurar_perfil_completo(usuario_id)
+        await _exigir_que_sea_alumno(self._inscripcion_repo, usuario_id)
 
         comision = await self._comision_repo.obtener_por_codigo_matriculacion(codigo)
         if comision is None:
@@ -262,6 +281,9 @@ class InscripcionService:
             raise ComisionNoEncontradaError(f"Comisión {comision_id!r} no existe.")
         if not await self._inscripcion_repo.usuario_existe(usuario_id):
             raise UsuarioNoEncontradoError(f"Usuario {usuario_id!r} no existe.")
+        # El padrón es de ALUMNOS. Un docente adentro aparece en la tabla de
+        # notas de su propio examen como ausente con 0 y desaprobado.
+        await _exigir_que_sea_alumno(self._inscripcion_repo, usuario_id)
         # La misma regla que para el alumno: si el admin la puede violar, la
         # regla no existe. Para cambiar de comisión hay que dar de baja la
         # anterior primero, que además es la operación que tiene la guarda de

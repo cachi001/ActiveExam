@@ -108,15 +108,20 @@ const rfs = vi.fn<[], Promise<void>>().mockResolvedValue(undefined);
 let container: HTMLDivElement;
 let root: Root;
 
+// Se busca en `document`, no en el contenedor del render: el overlay se monta con
+// portal en document.body. Tiene que ser así — anidado en la página quedaba
+// atrapado en el contexto de apilamiento que crea `animate-in` y su z-index
+// dejaba de valer contra lo que se dibuja fuera de ese contexto (ver
+// `ui/capas.test.ts`). Buscar solo dentro del contenedor no lo encontraría.
 function overlayDeBloqueo(): HTMLElement | null {
   // El overlay de lockdown es el único [role=alertdialog] que dice "Volver a pantalla completa".
-  const dialogs = Array.from(container.querySelectorAll<HTMLElement>('[role="alertdialog"]'));
+  const dialogs = Array.from(document.querySelectorAll<HTMLElement>('[role="alertdialog"]'));
   return dialogs.find((d) => d.textContent?.includes('Volver a pantalla completa')) ?? null;
 }
 
 function botonVolver(): HTMLButtonElement | null {
   return (
-    Array.from(container.querySelectorAll('button')).find((b) =>
+    Array.from(document.querySelectorAll('button')).find((b) =>
       b.textContent?.includes('Volver a pantalla completa'),
     ) as HTMLButtonElement | undefined
   ) ?? null;

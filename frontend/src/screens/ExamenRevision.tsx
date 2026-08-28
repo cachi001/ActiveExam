@@ -11,6 +11,7 @@
 import { useEffect, useState } from 'react';
 import { StudentShell } from '../ui/shells';
 import { Icon, Button, Card } from '../ui/components';
+import { ResultadoNotaChip } from '../ui/ResultadoNotaChip';
 import { useNavigate, useRouteParam } from '../lib/router';
 import { useApp } from '../lib/store';
 import { api } from '../lib/api';
@@ -149,7 +150,7 @@ export default function ExamenRevision() {
                         : 'bg-error-container text-on-error-container'
                     }`}
                   >
-                    <span className="text-headline-sm leading-none">{revision.aprobado ? 'Aprobado' : 'Desaprobado'}</span>
+                    <ResultadoNotaChip resultado={revision.resultado} />
                     <span className="text-headline-sm opacity-50">·</span>
                     <span className="text-headline-sm leading-none">
                       {revision.nota}{revision.nota_maxima != null ? ` / ${revision.nota_maxima}` : ''}

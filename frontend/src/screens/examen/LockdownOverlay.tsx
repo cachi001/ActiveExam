@@ -1,11 +1,17 @@
 import { Icon, Button, Card } from '../../ui/components';
+import { createPortal } from 'react-dom';
 
 interface LockdownOverlayProps {
   onVolverAPantallaCompleta: () => void;
 }
 
 export function LockdownOverlay({ onVolverAPantallaCompleta }: LockdownOverlayProps) {
-  return (
+  // Portal a document.body: la pantalla del examen se envuelve en `animate-in`, que
+  // crea un contexto de apilamiento y atrapa adentro a cualquier `position: fixed`.
+  // Atrapado, este overlay deja de compararse con lo que hay fuera de ese contexto
+  // (por ejemplo el banner de pausa, que sí va por portal) y su z-index no alcanza.
+  // Conserva su z propio: los overlays del examen se apilan entre ellos.
+  return createPortal(
     <div
       role="alertdialog"
       aria-modal="true"
@@ -30,6 +36,7 @@ export function LockdownOverlay({ onVolverAPantallaCompleta }: LockdownOverlayPr
           Volver a pantalla completa
         </Button>
       </Card>
-    </div>
+    </div>,
+    document.body,
   );
 }
