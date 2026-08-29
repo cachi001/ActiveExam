@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { textoDeEspera } from '../lib/auth/bloqueoCuenta';
 import { Icon, Button, TextField } from '../ui/components';
 import { useNavigate } from '../lib/router';
 import { useAuth } from '../lib/authStore';
@@ -19,6 +20,8 @@ function FormularioJwt() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Segundos que faltan para el desbloqueo, o null si la cuenta no esta bloqueada.
+  const [bloqueoSegundos, setBloqueoSegundos] = useState<number | null>(null);
 
   // Redirect cuando hay sesión.
   useEffect(() => {
@@ -35,11 +38,30 @@ function FormularioJwt() {
       await login({ username, password });
       // La navegación la hace el useEffect de arriba.
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Credenciales inválidas.');
+      const seg = (err as { segundosRestantes?: number })?.segundosRestantes;
+      if (typeof seg === 'number') {
+        setBloqueoSegundos(seg);
+        setError(null);
+      } else {
+        setError(err instanceof Error ? err.message : 'Credenciales inválidas.');
+      }
     } finally {
       setLoading(false);
     }
   }
+
+  // Cuenta regresiva del bloqueo. Corre en el cliente desde los segundos que mandó
+  // el servidor, así no depende de que los dos relojes coincidan. Al llegar a cero
+  // el cartel se limpia solo y el formulario vuelve a quedar disponible.
+  useEffect(() => {
+    if (bloqueoSegundos === null) return;
+    if (bloqueoSegundos <= 0) {
+      const t = setTimeout(() => setBloqueoSegundos(null), 2000);
+      return () => clearTimeout(t);
+    }
+    const t = setTimeout(() => setBloqueoSegundos((s) => (s === null ? null : s - 1)), 1000);
+    return () => clearTimeout(t);
+  }, [bloqueoSegundos]);
 
   return (
     <div className="lg:h-screen lg:overflow-hidden min-h-screen grid lg:grid-cols-2 bg-white">
@@ -110,12 +132,32 @@ function FormularioJwt() {
                 placeholder="Contraseña"
               />
 
-              {error && (
+              {/* Cuenta bloqueada: gana sobre el error común y trae reloj. Sin esto
+                  el usuario veía «Credenciales inválidas» cinco veces y a la sexta
+                  seguía sin entender por qué no entraba ni cuánto faltaba. */}
+              {bloqueoSegundos !== null ? (
+                <div
+                  role="alert"
+                  aria-live="polite"
+                  className="flex items-start gap-xs text-error-700 text-label-sm p-sm rounded-lg bg-error-50 border border-error-100"
+                >
+                  <Icon name="lock_clock" className="text-[16px] shrink-0 mt-0.5" fill />
+                  <span>
+                    Cuenta bloqueada por varios intentos fallidos.
+                    <br />
+                    <strong className="tabular-nums">
+                      {bloqueoSegundos > 0
+                        ? `Podés volver a intentar en ${textoDeEspera(bloqueoSegundos)}`
+                        : 'Ya podés volver a intentar.'}
+                    </strong>
+                  </span>
+                </div>
+              ) : error ? (
                 <div className="flex items-center gap-xs text-error-700 text-label-sm p-sm rounded-lg bg-error-50 border border-error-100">
                   <Icon name="error" className="text-[16px] shrink-0" fill />
                   {error}
                 </div>
-              )}
+              ) : null}
 
               <Button
                 type="submit"

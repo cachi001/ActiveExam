@@ -214,15 +214,24 @@ async def login(
         # intento mas no debe extender el bloqueo ni gastar el costo de bcrypt.
         ahora = datetime.now(timezone.utc)
         if usuario.bloqueado_hasta is not None and usuario.bloqueado_hasta > ahora:
-            minutos_restantes = max(
-                1, int((usuario.bloqueado_hasta - ahora).total_seconds() // 60) + 1
+            segundos_restantes = max(
+                1, int((usuario.bloqueado_hasta - ahora).total_seconds())
             )
+            minutos_restantes = max(1, segundos_restantes // 60 + 1)
+            # Se devuelven los SEGUNDOS (no la marca de tiempo del desbloqueo) para
+            # que el cliente pueda mostrar una cuenta regresiva exacta sin depender
+            # de que su reloj coincida con el del servidor. `mensaje` se conserva
+            # para quien solo muestre texto.
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail=(
-                    f"Cuenta bloqueada temporalmente por intentos fallidos. "
-                    f"Volvé a intentar en {minutos_restantes} min."
-                ),
+                detail={
+                    "error": "cuenta_bloqueada",
+                    "mensaje": (
+                        f"Cuenta bloqueada temporalmente por intentos fallidos. "
+                        f"Volvé a intentar en {minutos_restantes} min."
+                    ),
+                    "segundos_restantes": segundos_restantes,
+                },
                 headers={"WWW-Authenticate": "Bearer"},
             )
 

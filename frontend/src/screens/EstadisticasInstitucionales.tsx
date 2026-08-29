@@ -13,6 +13,7 @@ import { StaffShell } from '../ui/shells';
 import { HelpButton } from '../ui/HelpButton';
 import { Icon } from '../ui/components';
 import { FiltrosPanel } from '../ui/FiltrosPanel';
+import { ExportButtons } from '../ui/ExportButtons';
 import { RefreshBar } from '../ui/RefreshBar';
 import { STAFF_NAV } from '../ui/nav';
 import { useAutoRefresh } from '../lib/useAutoRefresh';
@@ -195,24 +196,8 @@ export default function EstadisticasInstitucionales() {
     >
       {/* Acciones de export */}
       <div className="mb-md flex justify-end gap-2">
-        <button
-          type="button"
-          onClick={() => exportar('excel')}
-          disabled={exportando !== null || cargando}
-          className="inline-flex items-center gap-1.5 rounded-md bg-success-600 px-4 py-2 text-[13px] font-semibold text-white hover:bg-success-700 disabled:opacity-60"
-        >
-          <Icon name={exportando === 'excel' ? 'progress_activity' : 'grid_on'} className={`text-[16px] ${exportando === 'excel' ? 'ae-spin' : ''}`} fill />
-          {exportando === 'excel' ? 'Exportando…' : 'Exportar Excel'}
-        </button>
-        <button
-          type="button"
-          onClick={() => exportar('pdf')}
-          disabled={exportando !== null || cargando}
-          className="inline-flex items-center gap-1.5 rounded-md bg-error-600 px-4 py-2 text-[13px] font-semibold text-white hover:bg-error-700 disabled:opacity-60"
-        >
-          <Icon name={exportando === 'pdf' ? 'progress_activity' : 'picture_as_pdf'} className={`text-[16px] ${exportando === 'pdf' ? 'ae-spin' : ''}`} fill />
-          {exportando === 'pdf' ? 'Exportando…' : 'Exportar PDF'}
-        </button>
+        {/* Mismo componente que Auditoría y que el padrón de cada comisión. */}
+        <ExportButtons exportando={exportando} disabled={cargando} onExportar={exportar} />
       </div>
 
       {/* Falla de export: se avisa acá, SIN tumbar el tablero ya cargado. */}

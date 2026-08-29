@@ -35,16 +35,31 @@ export default function CameraPanel({
       {/* Cámara + VisionOverlay (C-30: canvas superpuesto) */}
       <Card padded={false} className="overflow-hidden">
         <div className="relative aspect-video bg-inverse-surface" style={{ position: 'relative' }}>
-          <video ref={videoRef} muted playsInline className="w-full h-full object-cover" />
-          {/* C-30: canvas overlay — solo visible cuando el motor real está activo */}
-          {engineMode === 'real-active' && (
-            <VisionOverlay
-              rawSignals={rawSignals.faceDetection ? rawSignals : null}
-              videoRef={videoRef}
-              showFullMesh={showFullMesh}
-              showPose={showPose}
-            />
-          )}
+          {/* `scale-x-[-1]` = CONTRA-espejo. La cámara/driver entrega la imagen
+              espejada, y acá eso engaña: girás la cabeza a la derecha y en pantalla
+              se va a la izquierda, así que verificar a mano si el detector acierta
+              se vuelve un ejercicio de traducción mental. Mismo criterio que el paso
+              de calibración del alumno.
+
+              Va en un contenedor que envuelve al <video> Y al overlay: si se
+              espejara solo el video, los landmarks quedarían dibujados sobre el
+              lado equivocado de la cara. Los carteles ("Cámara inactiva") quedan
+              FUERA, o saldrían escritos al revés.
+
+              No afecta la detección: el motor lee los frames crudos del <video>,
+              que el CSS no toca. */}
+          <div className="absolute inset-0 scale-x-[-1]">
+            <video ref={videoRef} muted playsInline className="w-full h-full object-cover" />
+            {/* C-30: canvas overlay — solo visible cuando el motor real está activo */}
+            {engineMode === 'real-active' && (
+              <VisionOverlay
+                rawSignals={rawSignals.faceDetection ? rawSignals : null}
+                videoRef={videoRef}
+                showFullMesh={showFullMesh}
+                showPose={showPose}
+              />
+            )}
+          </div>
           {harnessState === 'idle' || harnessState === 'stopped' ? (
             <div className="absolute inset-0 flex flex-col items-center justify-center text-on-surface-variant gap-sm">
               <Icon name="videocam_off" className="text-[40px]" />

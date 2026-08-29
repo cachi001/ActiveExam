@@ -17,6 +17,7 @@
 import type { AuthProvider, AuthStatus } from '../provider';
 import { ROLES_VALIDOS } from '../../constants/roles';
 import type { Principal, Rol } from '../../types';
+import { bloqueoDeLaRespuesta } from '../bloqueoCuenta';
 
 const STORAGE_KEY = 'jwt_access_token';
 const STORAGE_EXPIRES_KEY = 'jwt_access_token_expires_at';
@@ -91,7 +92,19 @@ export class JwtAdapter implements AuthProvider {
 
   async init(): Promise<void> {
     // Intentar recuperar la sesión de sessionStorage al arrancar.
-    const token = this._getStoredToken();
+    let token = this._getStoredToken();
+
+    // El access token vive 15 min; el refresh, 7 DÍAS. Estando inactivo nadie
+    // llama a `getToken()`, así que el refresh proactivo (< 60 s para vencer)
+    // nunca corre y el access token muere solo. Antes `init()` daba la sesión
+    // por perdida ahí mismo — teniendo con qué recuperarla — y el alumno
+    // aparecía en /login por haberse quedado un rato pensando. Peor aún el día
+    // del examen. Si hay refresh token, se intenta ANTES de rendirse.
+    if (!token && sessionStorage.getItem(STORAGE_REFRESH_KEY)) {
+      await this._refreshToken();
+      token = this._getStoredToken();
+    }
+
     if (token) {
       const claims = _decodePayload(token);
       this._principal = claims ? _principalFromClaims(claims) : null;
@@ -114,8 +127,22 @@ export class JwtAdapter implements AuthProvider {
 
     if (!res.ok) {
       const data = await res.json().catch(() => ({})) as Record<string, unknown>;
-      const detail = data['detail'] as string | undefined;
-      if (detail) throw new Error(detail);
+      const detail = data['detail'];
+      // Cuenta bloqueada: el detail viene como objeto con los segundos que faltan.
+      // Se adjuntan al Error para que el login pueda mostrar la cuenta regresiva;
+      // `new Error(objeto)` a secas habría impreso "[object Object]" en pantalla.
+      const segundos = bloqueoDeLaRespuesta(detail);
+      if (segundos !== null) {
+        const err = new Error(
+          (detail as { mensaje?: string }).mensaje ?? 'Cuenta bloqueada temporalmente.',
+        ) as Error & { segundosRestantes?: number };
+        err.segundosRestantes = segundos;
+        throw err;
+      }
+      if (typeof detail === 'string' && detail) throw new Error(detail);
+      if (detail && typeof detail === 'object' && 'mensaje' in detail) {
+        throw new Error(String((detail as { mensaje: unknown }).mensaje));
+      }
       if (res.status === 401 || res.status === 403) throw new Error('Correo o contraseña incorrectos.');
       throw new Error('No pudimos conectar con el servidor. Intentá de nuevo más tarde.');
     }
