@@ -439,14 +439,12 @@ export default function ExamList() {
                         Sin habilitar
                       </span>
                     )}
-                    {e.modo_preguntas === 'sorteo_por_intento' && (
-                      <span
-                        className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary"
-                        title="Cada alumno recibe preguntas distintas, sorteadas al entrar."
-                      >
-                        Sorteado
-                      </span>
-                    )}
+                    {/* Acá vivía el chip "Sorteado". Se sacó el 29/8/2026: cómo se
+                        arman las preguntas no es un estado del examen sino parte de
+                        su configuración, y se ve entrando. Los chips que quedan
+                        avisan algo que hay que ATENDER (dado de baja, sin habilitar);
+                        éste solo describía, y encima confundía — un examen donde el
+                        docente elige la cantidad se etiquetaba igual que un sorteo. */}
                   </span>
                 ),
               },

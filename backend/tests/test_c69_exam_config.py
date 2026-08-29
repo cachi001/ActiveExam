@@ -451,12 +451,21 @@ async def test_patch_config_validaciones_422(admin_app, factory, payload):
 
 @pytest.mark.asyncio
 async def test_patch_config_aprobacion_contra_maxima_existente_422(admin_app, factory):
-    """nota_aprobacion sola se valida contra la nota_maxima ACTUAL (default 10)."""
+    """nota_aprobacion sola se valida contra la nota_maxima ACTUAL (default 100).
+
+    El valor era 15 y el docstring decía "default 10", pero la nota_maxima por
+    defecto es 100: 15 la respeta, así que el 422 que este test daba por bueno no
+    venía de la regla de notas sino, de rebote, del "apertura y cierre son
+    obligatorios" que rebotaba cualquier PATCH sobre un examen sin fechas. Pasaba
+    por el motivo equivocado y quedó al descubierto al dejar de exigirle fechas a
+    los exámenes que ya existían sin ellas. 150 sí excede la máxima real y ejercita
+    la regla que el test dice cubrir.
+    """
     examen_id = await _crear_examen_simple(factory)
     async with _admin_client(admin_app) as c:
         resp = await c.patch(
             f"/api/v1/exam-content/{examen_id}/config",
-            json={"nota_aprobacion": 15},
+            json={"nota_aprobacion": 150},
         )
     assert resp.status_code == 422, resp.text
 

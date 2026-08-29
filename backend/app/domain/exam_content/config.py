@@ -67,6 +67,26 @@ CAMPOS_SOLO_AMPLIABLES: frozenset[str] = frozenset({"cierre", "intentos_permitid
 CAMPOS_LIBRES: frozenset[str] = frozenset()
 
 
+def _aprieta(nuevo: Any, vigente: Any) -> bool:
+    """Si pasar de ``vigente`` a ``nuevo`` RESTRINGE lo que el alumno tenia.
+
+    ``vigente is None`` = el dato NUNCA se fijo. Completarlo no es apretar nada:
+    nadie prometio que ese examen no cerraba nunca, era un hueco de datos. Tratarlo
+    como restriccion dejaba al examen imposible de configurar — el tutor no podia
+    completar la fecha que el propio formulario le exige. La proteccion real es
+    contra MODIFICAR lo que ya estaba fijado, y esa sigue intacta.
+
+    Comparar contra None ademas lanzaba TypeError: el endpoint devolvia un 500.
+    """
+    if nuevo is None:
+        # Sacar el limite siempre afloja.
+        return False
+    if vigente is None:
+        # Completar lo que faltaba, no apretar.
+        return False
+    return bool(nuevo < vigente)
+
+
 def cambios_bloqueados(
     *,
     cambios: Mapping[str, Any],
@@ -84,14 +104,26 @@ def cambios_bloqueados(
     bloqueados: set[str] = set()
     for campo, nuevo in cambios.items():
         if campo in CONGELADO_DURO:
-            bloqueados.add(campo)
+            # Completar un campo que nunca se fijo NO es modificarlo. El congelado
+            # protege de reescribir la mecanica/nota con la que otros ya rindieron;
+            # con el campo vacio no hay nada que reescribir, y bloquearlo dejaba al
+            # examen trabado: el formulario exige apertura, `apertura` esta congelada,
+            # y sin ella ningun cambio pasaba. Modificar un valor YA fijado sigue
+            # bloqueado (que es la proteccion que importa).
+            if vigente.get(campo) is not None:
+                bloqueados.add(campo)
         elif campo == "cierre":
-            # solo se puede EXTENDER: un cierre anterior al vigente aprieta → bloqueado
-            if nuevo < vigente["cierre"]:
+            # solo se puede EXTENDER: un cierre anterior al vigente aprieta → bloqueado.
+            # Vigente en None = el examen no cerraba nunca: ponerle CUALQUIER fecha
+            # acorta la ventana, asi que aprieta. Se compara aparte porque `datetime
+            # < None` explota: un examen viejo sin cierre devolvia un 500 en la cara
+            # del tutor en vez de una respuesta.
+            if _aprieta(nuevo, vigente.get("cierre")):
                 bloqueados.add(campo)
         elif campo == "intentos_permitidos":
-            # solo se puede AUMENTAR: menos intentos que el vigente aprieta → bloqueado
-            if nuevo < vigente["intentos_permitidos"]:
+            # solo se puede AUMENTAR: menos intentos que el vigente aprieta → bloqueado.
+            # Mismo cuidado con el None (sin tope de intentos, poner uno aprieta).
+            if _aprieta(nuevo, vigente.get("intentos_permitidos")):
                 bloqueados.add(campo)
         elif campo == "revision_habilitada":
             # solo HABILITAR (false→true) es generoso; quitar la revisión que el
@@ -127,8 +159,14 @@ def validar_config_examen(
     cierre: datetime | None,
     nota_maxima: float,
     nota_aprobacion: float,
+    examen_preexistente_sin_fechas: bool = False,
 ) -> None:
-    """Valida la config final del examen; eleva ConfigExamenInvalidaError si falla."""
+    """Valida la config final del examen; eleva ConfigExamenInvalidaError si falla.
+
+    ``examen_preexistente_sin_fechas``: el examen YA EXISTE en la base con
+    apertura/cierre en NULL, de antes de que las fechas fueran obligatorias. Solo
+    entonces se tolera que sigan vacías (ver el comentario de la regla, más abajo).
+    """
     if intentos_permitidos < 1:
         raise ConfigExamenInvalidaError(
             f"intentos_permitidos debe ser >= 1; se recibió {intentos_permitidos}."
@@ -149,10 +187,22 @@ def validar_config_examen(
     # C-69 (visibilidad de resultados): apertura y cierre son OBLIGATORIOS. El gate de
     # "mostrar nota/revisión al cerrar" depende de una fecha de cierre; sin ella el
     # alumno nunca vería la nota. Un examen siempre va de una fecha/hora a otra.
-    if apertura is None or cierre is None:
+    #
+    # La regla aplica al CREAR y al completar fechas. NO puede aplicarse
+    # retroactivamente a un examen que ya existe sin ellas: `validar_config_examen`
+    # corre sobre la config MERGEADA, así que un examen viejo con NULLs rebotaba en
+    # 422 ante CUALQUIER cambio — aunque no tocara las fechas. Y completárselas
+    # tampoco era salida: `apertura` es CONGELADO_DURO, o sea que apenas alguien
+    # rendía el examen quedaba de solo lectura para siempre, sin explicar por qué.
+    # Exigirle al tutor algo que el propio sistema le prohíbe hacer no protege a
+    # nadie; solo rompe el examen.
+    if (apertura is None or cierre is None) and not examen_preexistente_sin_fechas:
         raise ConfigExamenInvalidaError(
             "apertura y cierre son obligatorios (el examen va de una fecha/hora a otra)."
         )
+    if apertura is None or cierre is None:
+        # Examen viejo sin fechas: nada más que comparar entre ellas.
+        return
     if not (apertura < cierre):
         raise ConfigExamenInvalidaError(
             "apertura debe ser anterior a cierre."

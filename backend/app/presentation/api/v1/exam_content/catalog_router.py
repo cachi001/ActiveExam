@@ -4892,6 +4892,13 @@ def create_exam_content_router(
             def _merged(campo: str):
                 return cambios[campo] if campo in cambios else getattr(actual, campo)
 
+            # Examen que YA ESTABA sin fechas (se creó antes de que fueran
+            # obligatorias): no se le exigen ahora. Si se exigieran, cualquier cambio
+            # rebotaría en 422 pidiéndole fechas que `apertura` — CONGELADO_DURO — no
+            # lo deja completar una vez que alguien rindió: el examen quedaba de solo
+            # lectura para siempre. La regla sigue firme al crear y para todo examen
+            # que ya tenga sus fechas.
+            preexistente_sin_fechas = actual.apertura is None or actual.cierre is None
             try:
                 validar_config_examen(
                     tiempo_limite_min=_merged("tiempo_limite_min"),
@@ -4900,6 +4907,7 @@ def create_exam_content_router(
                     cierre=_merged("cierre"),
                     nota_maxima=_merged("nota_maxima"),
                     nota_aprobacion=_merged("nota_aprobacion"),
+                    examen_preexistente_sin_fechas=preexistente_sin_fechas,
                 )
             except ConfigExamenInvalidaError as exc:
                 raise HTTPException(
@@ -6897,6 +6905,16 @@ def create_exam_content_router(
                         # cualquier otra escala en el body.
                         nota_maxima=body.nota_maxima,
                         nota_aprobacion=body.nota_aprobacion,
+                        # Ventana de rendicion: nunca NULL. Si el body no la trae,
+                        # el schema la completo (ahora → +7 dias). Un examen sin
+                        # fechas se publicaba y al alumno le aparecia "Sin fecha
+                        # de cierre" — un examen sin principio ni fin.
+                        apertura=body.apertura,
+                        cierre=body.cierre,
+                        # Reloj del examen: 60 min por defecto (ver el schema).
+                        # Sin el, la rendicion vencia recien en el cierre de la
+                        # ventana y la sesion quedaba abierta dias.
+                        tiempo_limite_min=body.tiempo_limite_min,
                         # c-78 E-07
                         borrador=body.borrador,
                         modo_preguntas=(
