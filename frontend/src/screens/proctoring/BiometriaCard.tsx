@@ -6,18 +6,15 @@
  */
 import { Icon, Card, SectionTitle } from '../../ui/components';
 import type { BiometriaDetalle } from '../../lib/types';
+import { nombreDelReto } from '../../vision/liveness';
 
-const RETO_LABEL: Record<string, string> = {
-  parpadeo: 'Parpadeo',
-  giro_cabeza: 'Giro de cabeza',
-  sonrisa: 'Sonrisa',
-  boca_abierta: 'Boca abierta',
-  mirada_arriba: 'Mirada arriba',
-};
-
-function retoLabel(reto: string): string {
-  return RETO_LABEL[reto] ?? reto;
-}
+// Este archivo tenía su propio mapa de etiquetas con las claves EQUIVOCADAS
+// (`parpadeo`, `giro_cabeza`, `sonrisa`), mientras que los ids que la captura
+// guarda de verdad son `parpadear`, `girar_cabeza` y `sonreír`. Como ninguna
+// coincidía, el `?? reto` de reserva se activaba siempre y en pantalla se leía el
+// identificador crudo, con guion bajo incluido. Ahora se usa la función que vive
+// junto a los retos, que es la única que conoce sus nombres.
+const retoLabel = nombreDelReto;
 
 export function BiometriaCard({ biometria }: { biometria: BiometriaDetalle | null }) {
   return (
@@ -64,8 +61,12 @@ export function BiometriaCard({ biometria }: { biometria: BiometriaDetalle | nul
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-md">
             {/* Liveness pasivo */}
             <div className="rounded-xl border border-outline-variant/40 bg-surface-container-lowest p-md space-y-xs">
+              {/* Decía «Liveness pasivo», pero el campo dejó de ser solo eso: ahora
+                  resume las DOS fuentes de evidencia (los retos activos y las
+                  señales pasivas). El nombre viejo describía la implementación y
+                  encima en jerga; éste dice qué se está afirmando. */}
               <p className="text-[11px] font-semibold text-on-surface-variant uppercase tracking-wide">
-                Liveness pasivo
+                Prueba de vida
               </p>
               <div className={`flex items-center gap-xs ${biometria.liveness_ok ? 'text-success' : 'text-error'}`}>
                 <Icon
@@ -78,7 +79,8 @@ export function BiometriaCard({ biometria }: { biometria: BiometriaDetalle | nul
                 </span>
               </div>
               <p className="text-[11px] text-on-surface-variant">
-                Análisis de señales de video en tiempo real (movimiento, varianza de píxeles, estabilidad).
+                Se confirma con los retos completados o con las señales de video en
+                vivo (parpadeo, micro-movimientos, profundidad).
               </p>
             </div>
 

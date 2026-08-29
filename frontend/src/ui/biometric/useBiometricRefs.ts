@@ -44,6 +44,7 @@ export function useBiometricRefs() {
     frameTime: number;
   }>>([]);
   const passiveOkRef         = useRef(false);
+  const passiveFramesEvaluadosRef = useRef(0);
   const passiveFalseFramesRef = useRef(0);
   const prevFrameDataRef     = useRef<ImageData | null>(null);
   const virtualCameraRef     = useRef(false);
@@ -77,7 +78,7 @@ export function useBiometricRefs() {
     cooldownActiveRef, cooldownTimerRef, desafiosBarajadosRef, turnDirectionRef,
     challengeCountsRef, challengeNeutralFramesRef, gestureAccumMsRef,
     gestureLostMsRef, lastFrameTimeRef, wasHoldingRef, lastProgressTickFractionRef,
-    livenessWindowRef, passiveOkRef, passiveFalseFramesRef,
+    livenessWindowRef, passiveOkRef, passiveFramesEvaluadosRef, passiveFalseFramesRef,
     prevFrameDataRef, virtualCameraRef, wasBlockedByFramingRef,
     framingHintRef, framingStableRef, luminanceCanvasRef, fallbackManualRef,
     fase, setFase, desafios, setDesafios, resueltos, setResueltos,

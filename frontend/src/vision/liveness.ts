@@ -235,10 +235,113 @@ export function detectVirtualCamera(signals: {
   interFramePixelVariance: number;
   frameRateJitter: number;
   faceCountStability: number;
+  /**
+   * Si la varianza de pixeles se pudo medir DE VERDAD contra un frame anterior
+   * distinto. Default `true` por retrocompatibilidad con los llamadores viejos.
+   *
+   * Sin esto, "no pude medir" y "el feed esta en loop" llegaban acá con el mismo
+   * valor (0), y como 0 es justo lo que dispara la sospecha, un fallo de medicion
+   * quedaba registrado como fraude en el legajo del alumno. Pasa por dos caminos
+   * normales: el canvas bloqueado (el `catch` dejaba 0), y leer dos veces el
+   * MISMO frame de camara, que es lo habitual cuando el loop corre a 60 Hz contra
+   * una webcam de 30 fps — comparar un frame consigo mismo da diferencia cero.
+   */
+  medicionValida?: boolean;
 }): boolean {
+  // Ante la duda no se acusa: para un alumno, quedar marcado por algo que no se
+  // pudo medir es peor que no detectar una inyeccion, que igual no es veredicto
+  // (L2.5: la decision es humana y hay re-inferencia server-side).
+  if (signals.medicionValida === false) return false;
   const feedLoopLike = signals.interFramePixelVariance < 1e-6;
   const tooStable = signals.faceCountStability >= 0.999;
   return feedLoopLike && tooStable;
+}
+
+/**
+ * Resultado pasivo de la CAPTURA ENTERA, no del instante en que termino.
+ *
+ * El pasivo busca EVIDENCIA DE VIDA: parpadeo, micro-movimientos y profundidad.
+ * Es una pregunta acumulativa ("¿en algun momento se comporto como una persona?"),
+ * no instantanea. Evaluarla frame a frame y quedarse con el ultimo la convertia en
+ * "¿se estaba moviendo justo al terminar?", que es otra pregunta y con una respuesta
+ * previsible: no, porque el alumno ya completo los retos y esta esperando quieto.
+ *
+ * Por eso el registro mostraba los tres retos completados y el pasivo no superado
+ * al mismo tiempo, dos cosas que no pueden ser ciertas juntas: una foto no parpadea
+ * a pedido ni sonrie ni gira la cabeza.
+ *
+ * No debilita la defensa contra fotos: una imagen plana no produce vida en NINGUN
+ * frame, asi que `algunaVezOk` nunca se enciende.
+ */
+export function resumirPasivoDeLaCaptura(captura: {
+  /** Si hubo al menos un frame con las tres senales pasivas positivas. */
+  algunaVezOk: boolean;
+  /** Cuantos frames se alcanzaron a evaluar (0 = no se midio nada). */
+  framesEvaluados: number;
+}): boolean {
+  if (captura.framesEvaluados <= 0) return false;
+  return captura.algunaVezOk;
+}
+
+/**
+ * Veredicto de vida de la captura, combinando las DOS fuentes de evidencia.
+ *
+ * ## Por que los retos activos alcanzan solos
+ *
+ * Completar los retos es evidencia DIRECTA y mas fuerte que cualquier heuristica
+ * de varianza: una foto no parpadea, no sonrie y no gira la cabeza cuando se le
+ * pide. Un video grabado tampoco alcanza, porque los retos se piden en ORDEN
+ * ALEATORIO (`fisherYatesShuffle`) y habria que haber adivinado la secuencia.
+ *
+ * Antes el veredicto miraba SOLO el pasivo, cuyos umbrales estan sin calibrar
+ * contra camaras reales y no se cumplen ni con una persona de carne y hueso. El
+ * resultado era absurdo y quedaba escrito en el legajo del alumno: "Liveness
+ * pasivo: No superado" al lado de los tres retos completados. Dos afirmaciones
+ * que no pueden ser ciertas a la vez.
+ *
+ * ## Que NO se debilita
+ *
+ * Sin retos completos y sin pasivo, sigue sin haber evidencia de vida. Y esto no
+ * es el veredicto final del sistema: el backend re-infiere y la decision es
+ * humana (L2.5, regla dura #5 y #6).
+ */
+export function hayEvidenciaDeVida(captura: {
+  /** Resultado de las senales pasivas sobre toda la captura. */
+  pasivoOk: boolean;
+  /** Retos que se le pidieron al alumno. */
+  pedidos: readonly string[];
+  /** Retos que efectivamente resolvio. */
+  resueltos: readonly string[];
+}): boolean {
+  if (captura.pasivoOk) return true;
+  // Sin retos pedidos no hay nada que demostrar: "resolvio los 0 que le pedi" no
+  // es evidencia de nada, asi que ahi decide el pasivo.
+  if (captura.pedidos.length === 0) return false;
+  const hechos = new Set(captura.resueltos);
+  return captura.pedidos.every((r) => hechos.has(r));
+}
+
+/** Como se llama cada reto en pantalla. El id interno nunca se le muestra a nadie. */
+const NOMBRE_DE_RETO: Record<string, string> = {
+  parpadear: 'Parpadear',
+  girar_cabeza: 'Girar la cabeza',
+  sonreír: 'Sonreír',
+  sonreir: 'Sonreír',
+};
+
+/**
+ * Nombre legible de un reto.
+ *
+ * El registro de sesion mostraba el identificador crudo — "girar_cabeza", con
+ * guion bajo — que es como se llama adentro del codigo, no como se le habla a una
+ * persona. Un id desconocido (un reto nuevo del backend) tampoco se filtra crudo:
+ * se le saca el guion bajo y se le pone mayuscula.
+ */
+export function nombreDelReto(id: string): string {
+  const conocido = NOMBRE_DE_RETO[id];
+  if (conocido) return conocido;
+  const legible = id.replace(/_/g, ' ').trim();
+  return legible.charAt(0).toUpperCase() + legible.slice(1);
 }
 
 /** Conteo de rostros agregado del clip: util para reportar multiples rostros. */
