@@ -85,9 +85,11 @@ export default function AlumnoDashboard() {
             aceptar el consentimiento informado y registrar tu foto y verificación facial. Si te
             falta algo, te lo vamos a avisar acá arriba con un cartel.
           </p>
+          {/* Decía "materias e inscripciones": no existe el modelo de
+              inscripción (`misInscripciones()` devuelve [] siempre). */}
           <p>
-            Desde el menú lateral llegás a tus materias e inscripciones, y a tus exámenes
-            programados.
+            Desde el menú lateral llegás a tus materias y a <em>Mis exámenes</em>, donde están
+            los que podés rendir y las notas de los que ya rendiste.
           </p>
         </HelpButton>
       </div>
@@ -279,7 +281,8 @@ function ExamenCatalogoCard({
   examen: ExamenContenidoResumen;
   onNavigate: () => void;
 }) {
-  const subtitulo = examenContenidoSubtitulo(examen);
+  // Al alumno nunca se le adelanta cuántas preguntas tiene el examen.
+  const subtitulo = examenContenidoSubtitulo(examen, { mostrarPreguntas: false });
   return (
     <button
       type="button"
@@ -292,9 +295,10 @@ function ExamenCatalogoCard({
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-[15px] font-semibold text-on-surface truncate leading-tight">{examen.titulo}</p>
-        <p className="text-[13px] text-on-surface-variant leading-tight mt-1">{subtitulo}</p>
+        {subtitulo && (
+          <p className="text-[13px] text-on-surface-variant leading-tight mt-1">{subtitulo}</p>
+        )}
       </div>
-      <span className="text-[12px] text-on-surface-variant shrink-0 tabular-nums">{examen.cantidad_preguntas} preg.</span>
       <Icon name="chevron_right" className="text-[22px] text-on-surface-variant shrink-0" />
     </button>
   );

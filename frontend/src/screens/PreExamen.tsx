@@ -63,7 +63,6 @@ export default function PreExamen() {
     : examen.duracion_min
     ? `${examen.duracion_min} min`
     : 'Sin límite';
-  const preguntasLabel = contenido?.cantidad_preguntas ? `${contenido.cantidad_preguntas}` : '—';
   const intentosLabel = contenido?.intentos_permitidos ? `${contenido.intentos_permitidos}` : '1';
   const ventanaLabel =
     contenido?.apertura && contenido?.cierre
@@ -72,8 +71,9 @@ export default function PreExamen() {
       ? `Desde ${formatFecha(contenido.apertura)}`
       : 'Sin restricción';
 
+  // Sin fila de "Preguntas": la cantidad no se le muestra al alumno en ninguna
+  // pantalla previa a rendir (decisión del dueño, 28/8/2026).
   const ficha = [
-    { icon: 'quiz', label: 'Preguntas', value: preguntasLabel },
     { icon: 'schedule', label: 'Tiempo límite', value: tiempoLabel },
     { icon: 'replay', label: 'Intentos permitidos', value: intentosLabel },
     { icon: 'calendar_today', label: 'Disponible', value: ventanaLabel },
@@ -143,7 +143,7 @@ export default function PreExamen() {
               <div className="space-y-xs">
                 <p className="text-title-md font-bold text-on-surface">Todo listo para rendir</p>
                 <p className="text-body-sm text-on-surface-variant">
-                  {preguntasLabel} preguntas · {tiempoLabel} · {intentosLabel} {intentosLabel === '1' ? 'intento' : 'intentos'}
+                  {tiempoLabel} · {intentosLabel} {intentosLabel === '1' ? 'intento' : 'intentos'}
                 </p>
               </div>
               <Button icon="play_arrow" onClick={() => navigate('/requisitos')} className="w-full">

@@ -280,11 +280,19 @@ async def purgar_capturas(
     se borra la IMAGEN, no el registro de que existio ni su huella (cadena de
     custodia). Idempotente — correrlo dos veces seguidas la segunda vez purga 0.
 
+    NO toca las sesiones ANULADAS ni las que siguen EN COLA DE REVISION, por
+    viejas que sean: esa imagen es la prueba del caso y sin ella el expediente
+    del alumno queda en ``material_missing``.
+
     IRREVERSIBLE HOY: en produccion (Render) el deposito WORM esta apagado
     (``worm_storage=None``) — Postgres es la UNICA copia de la imagen. Una vez
-    purgada, no se puede recuperar. Por eso este endpoint NUNCA se dispara
-    solo: no hay cron ni scheduler colgado de esto, lo llama explicitamente
-    quien administra el sistema.
+    purgada, no se puede recuperar.
+
+    Este endpoint es el disparo MANUAL (adelantar la purga, o correrla despues de
+    bajar el plazo). Desde el 28/8/2026 la misma purga corre ademas sola cada 24
+    horas (``app/application/compliance/purga_programada.py``): el consentimiento
+    le declara al alumno un plazo y ese plazo no puede depender de que alguien se
+    acuerde de apretar este boton.
 
     Es un borrado de evidencia: se audita SIEMPRE (incluso con 0 purgadas), con
     ``registrar_seguro`` en una sesion propia — la auditoria no debe perderse

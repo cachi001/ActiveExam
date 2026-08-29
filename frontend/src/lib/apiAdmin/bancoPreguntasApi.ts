@@ -265,6 +265,19 @@ export interface CrearDesdebancoRequest {
   sorteo_por_intento?: boolean;
   /** c-78 E-07: nace invisible para el alumno, para poder probarlo antes. */
   borrador?: boolean;
+  /**
+   * Ventana de rendición (ISO 8601). Si no se mandan, el backend las completa
+   * (ahora → +7 días): un examen no puede nacer sin principio ni fin. La pantalla
+   * de creación las manda siempre, prellenadas.
+   */
+  apertura?: string;
+  cierre?: string;
+  /**
+   * Minutos para resolverlo. Si no se manda, el backend usa 60: sin límite la
+   * rendición vence recién en el cierre de la ventana y la sesión de proctoring
+   * queda abierta días. `null` explícito = sin límite, a propósito.
+   */
+  tiempo_limite_min?: number | null;
   sorteo: SorteoCategoriaItem[];
   /**
    * De qué preguntas del banco puede salir el sorteo. Se manda solo cuando el

@@ -90,9 +90,6 @@ export function Term({ termKey, children, className = '' }: TermProps) {
       >
         {/* Sin título: la frase ya está marcada en el texto, repetirla sobra. */}
         <span className="block">{entry.definition}</span>
-        {entry.legalRef && (
-          <span className="block mt-[4px] text-[10px] opacity-70">{entry.legalRef}</span>
-        )}
       </span>
     </span>
   );

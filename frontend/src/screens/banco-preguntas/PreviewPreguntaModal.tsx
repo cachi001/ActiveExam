@@ -25,6 +25,18 @@ interface Props {
   onCerrar: () => void;
 }
 
+/**
+ * Clases del enunciado. `whitespace-pre-wrap` NO es cosmético: el parser deja el
+ * enunciado como TEXTO PLANO con sus saltos de línea, y esto se vuelca con
+ * `dangerouslySetInnerHTML`, donde un salto de línea vale como un espacio. Sin
+ * esta clase, una pregunta de completar código se veía toda en un renglón
+ * (`def promedio(notas): ____ ____ return ____`) y la estructura por líneas —que
+ * en esas preguntas ES el enunciado— desaparecía. También conserva la sangría del
+ * comienzo de cada línea. Exportada para poder testearla.
+ */
+export const CLASE_ENUNCIADO =
+  'text-body-md text-on-surface whitespace-pre-wrap [&_img]:max-w-full [&_img]:h-auto';
+
 export function PreviewPreguntaModal({ preguntaId, onCerrar }: Props) {
   const [pregunta, setPregunta] = useState<PreguntaPreview | null>(null);
   const [cargando, setCargando] = useState(false);
@@ -102,7 +114,7 @@ export function PreviewPreguntaModal({ preguntaId, onCerrar }: Props) {
               </span>
 
               <div
-                className="text-body-md text-on-surface [&_img]:max-w-full [&_img]:h-auto"
+                className={CLASE_ENUNCIADO}
                 // El enunciado viene de Moodle en HTML (negritas, listas, código,
                 // imágenes embebidas). Renderizarlo como texto plano mostraría las
                 // etiquetas crudas y la vista previa no serviría para lo que es.

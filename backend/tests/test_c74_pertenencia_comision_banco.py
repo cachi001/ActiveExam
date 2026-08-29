@@ -145,7 +145,10 @@ async def _crear_materia_con_dos_comisiones(factory, docente_c1: str, docente_c2
         await s.flush()
         c1 = ComisionModel(
             materia_id=materia.id, codigo=f"C1-{sufijo}", nombre="Comisión 1",
-            codigo_matriculacion=f"K1-{sufijo}", docente_id=docente_c1,
+            # `docente_id` se eliminó del modelo en c-79: quién dicta una
+            # comisión es una relación N:M (`comision_tutor`), que se agrega
+            # abajo. El kwarg viejo había quedado y rompía el constructor.
+            codigo_matriculacion=f"K1-{sufijo}",
         )
         s.add(c1)
         await s.flush()
@@ -153,7 +156,7 @@ async def _crear_materia_con_dos_comisiones(factory, docente_c1: str, docente_c2
             s.add(ComisionTutorModel(comision_id=c1.id, tutor_id=docente_c1))
         c2 = ComisionModel(
             materia_id=materia.id, codigo=f"C2-{sufijo}", nombre="Comisión 2",
-            codigo_matriculacion=f"K2-{sufijo}", docente_id=docente_c2,
+            codigo_matriculacion=f"K2-{sufijo}",
         )
         s.add(c2)
         await s.flush()
@@ -227,15 +230,31 @@ async def test_docente_de_la_segunda_comision_puede_crear_categoria_en_su_materi
 
 
 @pytest.mark.asyncio
-async def test_docente_no_puede_crear_examen_para_comision_ajena_de_su_misma_materia(app, factory):
-    """RED→GREEN: docente de C2 no puede crear un examen que apunte a C1 (de otro
-    docente), aunque comparta materia/banco con esa comisión."""
+async def test_un_tutor_no_puede_crear_examenes_para_ninguna_comision(app, factory):
+    """El TUTOR no arma exámenes, ni para su comisión ni para la de al lado.
+
+    Este test comprobaba otra cosa: que un docente de C2 no pudiera apuntar a C1
+    de la MISMA materia (403 `comision_ajena`). Esa premisa quedó obsoleta con el
+    rol PROFESOR: quien administra una materia administra TODAS sus comisiones,
+    así que apuntar a otra comisión de su propia materia es legítimo y ya no
+    devuelve `comision_ajena`.
+
+    Lo que sí sigue siendo cierto, y es lo que se fija acá, es que el rol tutor no
+    tiene la capacidad `crear_examenes` (c-78: "el tutor NO crea exámenes"). La
+    guarda `comision_ajena` sigue viva y cubierta por el test del docente que se
+    mete en una materia AJENA."""
     docente_c1 = await _crear_docente(factory, f"DOC-C1B-{uuid.uuid4().hex[:4]}")
     docente_c2 = await _crear_docente(factory, f"DOC-C2B-{uuid.uuid4().hex[:4]}")
     materia_id, c1_id, _c2_id = await _crear_materia_con_dos_comisiones(
         factory, docente_c1, docente_c2
     )
 
+    # Acá el token lleva SOLO "tutor" a propósito: el tutor no tiene
+    # `crear_examenes` (c-78: "el tutor NO crea exámenes"), así que el 403 llega
+    # por capacidad. Agregarle "profesor" cambiaría la premisa del test — un
+    # profesor administra TODA su materia, así que apuntar a otra comisión de la
+    # misma materia es algo que legítimamente puede hacer. El caso de un profesor
+    # metiéndose en una materia AJENA lo cubre `test_docente_ajeno_...`.
     async with _client(app, ["tutor"], subject=docente_c2) as c:
         resp = await c.post(
             "/api/v1/exam-content/crear-desde-banco",
@@ -248,10 +267,9 @@ async def test_docente_no_puede_crear_examen_para_comision_ajena_de_su_misma_mat
         )
 
     assert resp.status_code == 403, (
-        "Un docente de OTRA comisión pudo crear un examen apuntando a una "
-        f"comisión ajena de la misma materia. Respuesta: {resp.status_code} {resp.text}"
+        f"Un tutor pudo crear un examen. Respuesta: {resp.status_code} {resp.text}"
     )
-    assert resp.json()["detail"]["error"] == "comision_ajena"
+    assert "crear_examenes" in resp.text
 
 
 @pytest.mark.asyncio
@@ -264,7 +282,12 @@ async def test_docente_si_puede_crear_examen_para_su_propia_comision(app, factor
         factory, docente_c1=None, docente_c2=docente_c2
     )
 
-    async with _client(app, ["tutor"], subject=docente_c2) as c:
+    # `crear_examenes` es capacidad del PROFESOR, no del tutor (c-78: "el tutor
+    # NO crea exámenes"). El fixture ya deja a cada docente como profesor de la
+    # materia; faltaba que el token lo dijera. Lo que este test verifica es la
+    # PERTENENCIA, no la capacidad — sin el rol, el 403 llegaba antes y tapaba
+    # justo lo que se quiere probar.
+    async with _client(app, ["tutor", "profesor"], subject=docente_c2) as c:
         resp = await c.post(
             "/api/v1/exam-content/crear-desde-banco",
             json={

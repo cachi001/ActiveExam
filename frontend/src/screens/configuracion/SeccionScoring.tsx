@@ -200,7 +200,11 @@ export default function SeccionScoring() {
             return (
               <div
                 key={cfg.tipo_evento}
-                className="relative overflow-hidden rounded-xl border border-outline-variant/50 bg-white hover:border-outline p-6 transition-colors min-w-0 flex flex-col gap-4"
+                // `hover:border-outline` pintaba un borde casi negro al pasar el
+                // mouse: marcaba la tarjeta como si estuviera seleccionada. Se
+                // reemplaza por elevación, que sugiere "se puede tocar" sin
+                // competir con el acento de severidad de arriba.
+                className="relative overflow-hidden rounded-xl border border-outline-variant/50 bg-white p-6 min-w-0 flex flex-col gap-4 shadow-sm hover:shadow-md transition-shadow"
               >
               {/* Línea fina de color arriba, recortada por las esquinas redondeadas. */}
               <div className={`absolute top-0 left-0 right-0 h-1 ${SEVERITY_DOT[sev]}`} aria-hidden />
@@ -212,23 +216,30 @@ export default function SeccionScoring() {
                   {SEVERIDAD_LABEL[sev]}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="text-[14px] font-semibold text-on-surface">
+                  <p className="text-label-md font-semibold text-on-surface">
                     {TIPO_EVENTO_LABEL[cfg.tipo_evento as TipoEvento] ?? cfg.tipo_evento}
                   </p>
-                  {cfg.descripcion && (
-                    <p className="text-[12px] text-on-surface-variant mt-0.5">{cfg.descripcion}</p>
-                  )}
+                  {/* Alto fijo de 2 renglones: las descripciones van de una línea a
+                      tres y cada tarjeta terminaba con otra altura, así que los
+                      controles de abajo quedaban escalonados. `line-clamp-2` corta
+                      lo que sobre y `min-h` reserva el lugar cuando falta. */}
+                  <p className="text-label-sm text-on-surface-variant mt-0.5 line-clamp-2 min-h-[2.5em]">
+                    {cfg.descripcion ?? ''}
+                  </p>
                 </div>
               </div>
 
               {/* Fila de controles: Severidad + Impacto en grilla alineada (E: alineación prolija) */}
-              <div className="border-t border-outline-variant/40 pt-3 grid grid-cols-2 gap-3">
+              {/* `mt-auto`: los controles se apoyan SIEMPRE en la base de la tarjeta.
+                  Sin esto seguían al texto y no arrancaban a la misma altura entre
+                  tarjetas de la misma fila. */}
+              <div className="border-t border-outline-variant/40 pt-3 mt-auto grid grid-cols-2 gap-3">
                 <label className="flex flex-col gap-1.5">
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant">Severidad</span>
+                  <span className="text-label-sm font-semibold uppercase tracking-wider text-on-surface-variant truncate">Severidad</span>
                   <select
                     value={sev}
                     onChange={(e) => setSeveridad(cfg, e.target.value as SeveridadEditable)}
-                    className="text-[13px] px-2.5 py-1.5 rounded-xl border border-outline-variant bg-white hover:border-outline focus:outline-none focus:border-surface-500 transition-colors"
+                    className="w-full min-w-0 text-label-md font-normal px-2.5 py-1.5 rounded-xl border border-outline-variant bg-white focus:outline-none focus:border-primary transition-colors"
                     disabled={isGuardando}
                     aria-label={`Severidad de ${cfg.tipo_evento}`}
                   >
@@ -239,13 +250,21 @@ export default function SeccionScoring() {
                 </label>
 
                 <label className="flex flex-col gap-1.5">
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant" title={`Puntos que suma este evento al score (rango permitido para severidad ${SEVERIDAD_LABEL[sev]}: ${rangoDeSeveridad(sev).min}–${rangoDeSeveridad(sev).max})`}>
-                    Impacto ({rangoDeSeveridad(sev).min}–{rangoDeSeveridad(sev).max} pts)
+                  {/* Solo "Impacto": con el rango incluido, "61–100 pts" no
+                      entraba en la columna y saltaba a dos renglones, lo que
+                      empujaba el select y desalineaba la tarjeta contra las de al
+                      lado. El rango ya lo dice el desplegable de Severidad, y
+                      sigue disponible en el `title`. */}
+                  <span
+                    className="text-label-sm font-semibold uppercase tracking-wider text-on-surface-variant truncate"
+                    title={`Puntos que suma este evento al score (rango permitido para severidad ${SEVERIDAD_LABEL[sev]}: ${rangoDeSeveridad(sev).min}–${rangoDeSeveridad(sev).max})`}
+                  >
+                    Impacto
                   </span>
                   <select
                     value={String(peso)}
                     onChange={(e) => setDraft(cfg.tipo_evento, 'peso', parseInt(e.target.value, 10))}
-                    className="w-full px-2.5 py-1.5 text-[13px] rounded-xl border border-outline-variant bg-white font-mono hover:border-outline focus:outline-none focus:border-surface-500 transition-colors"
+                    className="w-full min-w-0 px-2.5 py-1.5 text-label-md font-normal rounded-xl border border-outline-variant bg-white font-mono focus:outline-none focus:border-primary transition-colors"
                     disabled={isGuardando}
                     aria-label={`Impacto en el score de ${cfg.tipo_evento} (rango ${rangoDeSeveridad(sev).min} a ${rangoDeSeveridad(sev).max} puntos)`}
                   >

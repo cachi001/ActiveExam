@@ -11,6 +11,7 @@
  * backend.
  */
 import { fetchAutenticado } from './fetchAutenticado';
+import { authProvider } from './authProvider';
 import { API_BASE } from './api';
 import type { TonoEstado } from './estadosMoodle';
 
@@ -55,7 +56,14 @@ async function traer(ruta: string, respaldo: ItemCatalogo[]): Promise<ItemCatalo
   if (pendiente) return pendiente;
   const promesa = (async () => {
     try {
-      const resp = await fetchAutenticado(`${API_BASE}/catalogos/${ruta}`);
+      // El header va en el PRIMER intento. `fetchAutenticado` NO lo arma: lo
+      // espera en el `init` y solo lo agrega al reintentar tras un 401. Sin
+      // esto, cada catálogo hacía 401 → refresh → reintento, tres viajes en vez
+      // de uno, y llenaba la consola del alumno de 401 que parecían una fuga.
+      const token = authProvider.getToken();
+      const resp = await fetchAutenticado(`${API_BASE}/catalogos/${ruta}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const data = (await resp.json()) as ItemCatalogo[];
       if (!Array.isArray(data) || data.length === 0) throw new Error('respuesta vacía');

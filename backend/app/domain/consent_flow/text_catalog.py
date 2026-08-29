@@ -62,16 +62,17 @@ class ConsentText:
 _V1 = ConsentText(
     version="v1",
     que_se_recolecta=(
-        "Una referencia biométrica de tu rostro (un vector numérico derivado de "
-        "tu foto, no la foto en sí), imágenes de tu cámara y de tu pantalla "
-        "durante el examen, y datos de la sesión: cuándo empezaste, qué "
-        "detecciones hubo y desde dónde te conectaste. La referencia biométrica "
-        "es un dato sensible y se trata como tal (Ley 25.326)."
+        "Una referencia biométrica de tu rostro: un vector numérico derivado de "
+        "tu foto, no la foto en sí. Fotos que toma tu cámara mientras rendís. Y "
+        "el registro del examen: cuándo empezaste, cuándo terminaste y las "
+        "señales que detecta el sistema, como que la ventana perdió el foco, que "
+        "cambiaste de pestaña o que hay más de un rostro frente a la cámara. Tu "
+        "pantalla no se graba ni se fotografía en ningún momento."
     ),
     como_se_recolecta=(
-        "Con tu cámara y con capturas de tu pantalla mientras rendís. El primer "
-        "análisis ocurre en tu navegador; el servidor lo vuelve a verificar y "
-        "sella cada evidencia, así nadie puede alterarla después sin que se note."
+        "Con tu cámara, mientras rendís. El primer análisis ocurre en tu "
+        "navegador; el servidor lo vuelve a verificar y le calcula a cada foto "
+        "una huella digital, así nadie puede alterarla después sin que se note."
     ),
     donde_se_almacena=(
         "En los sistemas de la plataforma, con acceso restringido al personal "
@@ -79,16 +80,21 @@ _V1 = ConsentText(
         "integridad académica. Tus compañeros no ven nada de esto."
     ),
     cuanto_tiempo=(
-        "Mientras la institución los necesite para sostener la evaluación y "
-        "resolver cualquier reclamo sobre ella: son la prueba con la que podés "
-        "defenderte si se cuestiona tu examen. Si querés que se borren antes, "
-        "podés pedirlo (ver tus derechos)."
+        "Las fotos que toma la cámara durante el examen se borran a los 180 "
+        "días. De cada una queda el registro de que se tomó y su huella digital, "
+        "sin la imagen. Hay una excepción: si tu examen quedó anulado o sigue en "
+        "revisión, las fotos se conservan, porque son la prueba en la que se "
+        "apoya esa decisión. El registro del examen se conserva junto con tu "
+        "nota. La referencia biométrica de tu rostro vale 24 meses: cuando "
+        "vence, hacés la captura de nuevo y la nueva reemplaza a la anterior."
     ),
     derechos_titular=(
-        "Podés pedir acceso a tus datos, su rectificación o su supresión, y "
-        "podés impugnar cualquier decisión que te afecte. La decisión "
-        "disciplinaria la toma siempre una persona: el sistema marca situaciones "
-        "para que alguien las revise, nunca sanciona por su cuenta."
+        "Si tu examen queda anulado, podés abrir tu expediente de pruebas desde "
+        "Mis notas: vas a ver la decisión, el motivo, cada señal que detectó el "
+        "sistema y las fotos en las que se apoya, con el sello que confirma que "
+        "no fueron alteradas. La decisión disciplinaria la toma siempre una "
+        "persona: el sistema marca situaciones para que alguien las revise, "
+        "nunca sanciona por su cuenta."
     ),
 )
 

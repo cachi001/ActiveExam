@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { StaffShell } from '../ui/shells';
+import { ExportButtons } from '../ui/ExportButtons';
 import { HelpButton } from '../ui/HelpButton';
 import { Icon, Card, LoadingSpinner } from '../ui/components';
 import { FiltrosPanel } from '../ui/FiltrosPanel';
@@ -87,12 +88,27 @@ const ACCIONES_POR_MODULO: Record<string, OpcionAccion[]> = {
       accion: 'examen.comision_agregada,examen.comision_quitada',
     },
     {
+      // `examen.volver_a_borrador` es el reverso exacto de `examen.habilitar`:
+      // va en la misma opción, no en una propia.
       label: 'Habilitación y pool del examen',
-      accion: 'examen.habilitar,examen.pool_actualizado,examen.sorteo_rearmado',
+      accion:
+        'examen.habilitar,examen.volver_a_borrador,examen.pool_actualizado,examen.sorteo_rearmado',
+    },
+    // El banco vive bajo el módulo EXAMENES (así lo registra el backend). Sin
+    // estas dos opciones, sacar una pregunta o una categoría de circulación
+    // quedaba auditado pero imposible de buscar.
+    {
+      label: 'Baja/reactivación de pregunta del banco',
+      accion: 'pregunta_banco.baja,pregunta_banco.reactivar',
+    },
+    {
+      label: 'Baja/reactivación de categoría del banco',
+      accion: 'categoria_banco.baja,categoria_banco.reactivar',
     },
   ],
   MOODLE: [
     { label: 'Sincronizar nota', accion: 'moodle.sync' },
+    { label: 'Marcar nota como cargada a mano', accion: 'moodle.nota_marcada_manual' },
     { label: 'Conectar cuenta del campus', accion: 'moodle_credencial.conectar' },
     { label: 'Renovar cuenta del campus', accion: 'moodle_credencial.renovar' },
     { label: 'Desconectar cuenta del campus', accion: 'moodle_credencial.desconectar' },
@@ -119,7 +135,9 @@ const ACCIONES_POR_MODULO: Record<string, OpcionAccion[]> = {
     { label: 'Decisión de revisión', accion: 'review.decision.' },
   ],
   CONFIGURACION: [
-    { label: 'Editar', accion: 'config_update,config.' },
+    // Sin `config.`: no existe ninguna acción con ese prefijo, así que era un
+    // patrón muerto que solo podía sumar cero resultados.
+    { label: 'Editar', accion: 'config_update' },
   ],
   SESIONES: [
     { label: 'Eliminar sesión de diagnóstico', accion: 'sesion.test.delete' },
@@ -406,24 +424,13 @@ export default function Auditoria() {
           (los aplicados), no `borrador` — si tomara el borrador, el archivo saldría
           con un recorte que la persona todavía no confirmó en pantalla. */}
       <div className="mb-md flex justify-end gap-2">
-        <button
-          type="button"
-          onClick={() => exportar('xlsx')}
-          disabled={exportando !== null || cargando}
-          className="inline-flex items-center gap-1.5 rounded-md bg-success-600 px-4 py-2 text-[13px] font-semibold text-white hover:bg-success-700 disabled:opacity-60"
-        >
-          <Icon name={exportando === 'xlsx' ? 'progress_activity' : 'grid_on'} className={`text-[16px] ${exportando === 'xlsx' ? 'ae-spin' : ''}`} fill />
-          {exportando === 'xlsx' ? 'Exportando…' : 'Exportar Excel'}
-        </button>
-        <button
-          type="button"
-          onClick={() => exportar('pdf')}
-          disabled={exportando !== null || cargando}
-          className="inline-flex items-center gap-1.5 rounded-md bg-error-600 px-4 py-2 text-[13px] font-semibold text-white hover:bg-error-700 disabled:opacity-60"
-        >
-          <Icon name={exportando === 'pdf' ? 'progress_activity' : 'picture_as_pdf'} className={`text-[16px] ${exportando === 'pdf' ? 'ae-spin' : ''}`} fill />
-          {exportando === 'pdf' ? 'Exportando…' : 'Exportar PDF'}
-        </button>
+        {/* Mismo componente que Estadísticas y que el padrón de cada comisión: el
+            markup estaba copiado y la tercera copia ya había derivado a otro estilo. */}
+        <ExportButtons
+          exportando={exportando === 'xlsx' ? 'excel' : exportando}
+          disabled={cargando}
+          onExportar={(f) => exportar(f === 'excel' ? 'xlsx' : 'pdf')}
+        />
       </div>
 
       <div className="mb-lg">

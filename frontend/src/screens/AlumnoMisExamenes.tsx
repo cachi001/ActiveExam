@@ -10,9 +10,11 @@ import { useNavigate } from '../lib/router';
 import { useApp } from '../lib/store';
 import { api } from '../lib/api';
 import type { Inscripcion, Examen, ExamenContenidoResumen, NotaExamen, EstadoEnrollment } from '../lib/types';
+import type { SesionEnCurso } from '../lib/apiProctoring/sesion';
 import { InscripcionCard } from './alumno/components/InscripcionCard';
 import { ExamenImportadoCard } from './alumno/components/ExamenImportadoCard';
 import { gateExamenImportado } from './alumno/gateExamenImportado';
+import { destinoDeRendicion } from './alumno/destinoDeRendicion';
 import { NotaCard } from './alumno/components/NotaCard';
 
 interface GatePorExamen { puede: boolean; codigo?: string; razon?: string; }
@@ -50,6 +52,11 @@ export default function AlumnoMisExamenes() {
   const [rindiendoImportadoId, setRindiendoImportadoId] = useState<string | null>(null);
   // C-69: notas académicas del alumno + estado de cola de revisión (solo modo real)
   const [notas, setNotas] = useState<NotaExamen[]>([]);
+  // Exámenes empezados y sin entregar, por examen_contenido_id. Sin esto, al
+  // alumno al que se le cortó la conexión la pantalla le mostraba su examen a
+  // medias como si nunca lo hubiera tocado, con el cartel "Tenés un solo
+  // intento" — y entendía que lo había perdido.
+  const [sesionesEnCurso, setSesionesEnCurso] = useState<Map<string, SesionEnCurso>>(new Map());
 
   const evaluarGates = async (insc: Inscripcion[]) => {
     const resultados = await Promise.all(
@@ -67,15 +74,24 @@ export default function AlumnoMisExamenes() {
         api.misInscripciones(),
         api.getEnrollment(),
       ];
-      const extraFetches = [api.listarExamenesContenido(), api.misNotas()] as const;
+      const extraFetches = [
+        api.listarExamenesContenido(),
+        api.misNotas(),
+        // Degrada a [] por su cuenta: que no se pueda averiguar si hay algo en
+        // curso no puede tumbar la pantalla entera.
+        api.misSesionesEnCurso(),
+      ] as const;
       const [insc, enrollment, ...extra] = await Promise.all([...baseFetches, ...extraFetches]);
       if (cancelado) return;
       setInscripciones(insc);
       setEnrollmentLocal(enrollment);
       setEnrollmentStatus(enrollment);
-      if (extra.length === 2) {
+      if (extra.length === 3) {
         setExamenesImportados(extra[0] as ExamenContenidoResumen[]);
         setNotas(extra[1] as NotaExamen[]);
+        setSesionesEnCurso(
+          new Map((extra[2] as SesionEnCurso[]).map((s) => [s.examen_contenido_id, s])),
+        );
       }
       await evaluarGates(insc);
       setCargando(false);
@@ -118,9 +134,15 @@ export default function AlumnoMisExamenes() {
       rindiendo: 0,
       examen_contenido_id: contenido.id,         // KEY: permite que Examen.tsx cargue preguntas
     };
-    setProctoringSessionId(null); // intento nuevo → sesión nueva (no reusar la finalizada)
+    // Si el alumno dejó este examen empezado, retomarlo: se reusa SU sesión (mismo
+    // cronómetro, respuestas ya guardadas) y se va derecho al examen. Mandarlo de
+    // nuevo por el ingreso completo, con el botón final diciendo «Comenzar examen»,
+    // contradecía lo que la tarjeta le había prometido — y descartar el id abría un
+    // intento nuevo sobre una sesión que seguía viva.
+    const destino = destinoDeRendicion(sesionesEnCurso.get(contenido.id) ?? null);
+    setProctoringSessionId(destino.sessionId);
     setExamenActivo(examen);
-    navigate('/pre-examen');
+    navigate(destino.ruta);
   };
 
   const handleRendir = async (inscripcion: Inscripcion) => {
@@ -177,19 +199,25 @@ export default function AlumnoMisExamenes() {
         <header>
           <div className="flex items-center gap-sm">
             <h1 className="text-[22px] sm:text-[24px] font-semibold text-on-surface tracking-tight">Mis exámenes</h1>
+            {/* El texto anterior describía un flujo de inscripciones que no
+                existe: `misInscripciones()` devuelve [] siempre, así que nadie
+                se inscribe ni confirma nada. Los exámenes de tu comisión
+                aparecen directamente. */}
             <HelpButton title="Mis exámenes">
               <p>
-                Acá ves tus <strong>inscripciones</strong> a exámenes con su estado actual y la
-                acción que tenés que hacer (inscribirte, confirmar tu participación, rendir, etc.).
+                Acá ves los exámenes que podés rendir y las notas de los que ya rendiste.
+                No hace falta inscribirse: si el examen es de tu comisión y está habilitado,
+                te aparece en la lista.
               </p>
               <p>
-                Antes de poder rendir, además del consentimiento general en <em>Mi perfil</em>,
-                cada examen pide una <em>confirmación específica</em> con la información puntual de ese
-                examen (modalidad, fechas, requisitos).
+                Para rendir necesitás tener el perfil completo (el consentimiento y la captura
+                de tu rostro), que se hace una sola vez desde <em>Mi perfil</em>.
               </p>
               <p>
-                Si el botón "Rendir" está deshabilitado, te vamos a mostrar la razón
-                (perfil incompleto, fuera de horario, etc.).
+                El botón <strong>Ver examen</strong> te lleva a la ficha, donde ves las
+                condiciones y desde ahí empezás cuando quieras. Si un examen no está
+                disponible, la tarjeta te dice por qué: perfil incompleto, fuera de fecha o
+                sin intentos disponibles.
               </p>
             </HelpButton>
           </div>
@@ -238,7 +266,12 @@ export default function AlumnoMisExamenes() {
               <section>
                 {examenesImportados.length > 0 && (
                   <div className="flex items-center gap-sm mb-md">
-                    <Icon name="assignment" className="text-[20px] text-primary" />
+                    {/* Neutro, igual que el de "Tus notas": el azul se reserva
+                        para los elementos con color dentro de las tarjetas
+                        (el cuadro de icono de un examen habilitado). Un
+                        encabezado azul y otro negro en la misma pantalla se
+                        leen como dos criterios distintos. */}
+                    <Icon name="assignment" className="text-[20px] text-on-surface-variant" />
                     <h2 className="text-[16px] font-semibold text-on-surface">
                       Exámenes disponibles
                     </h2>
@@ -268,6 +301,7 @@ export default function AlumnoMisExamenes() {
                         rindiendo={rindiendoImportadoId === contenido.id}
                         gate={gateExamenImportado(contenido, notas)}
                         perfilCompleto={perfilCompleto}
+                        sesionEnCurso={sesionesEnCurso.get(contenido.id) ?? null}
                         onRendir={() => handleRendirImportado(contenido)}
                         onCompletarPerfil={() => navigate('/alumno/perfil')}
                       />

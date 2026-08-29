@@ -174,6 +174,33 @@ class ProctoringRepository:
         result = await self._db.execute(stmt)
         return result.scalars().first()
 
+    async def listar_sesiones_en_curso(
+        self, alumno_idnumber: str
+    ) -> list[ProctoringSessionModel]:
+        """Todas las sesiones ABIERTAS del alumno, con su examen, mas nueva primero.
+
+        Es la contracara de ``obtener_sesion_activa``: aquella responde "¿reuso una
+        sesion para ESTE examen?" al crear; esta responde "¿que examenes dejo abiertos
+        este alumno?" para que la pantalla se lo pueda ofrecer. Sin ella la reanudacion
+        existia pero era invisible — el alumno al que se le corto la conexion veia su
+        examen como si nunca lo hubiera empezado y creia haber gastado el intento.
+
+        Excluye ``es_prueba`` (el docente probando su examen no rinde nada) y las
+        sesiones sin ``examen_contenido_id`` (modo demo: no hay examen al que volver).
+        """
+        stmt = (
+            select(ProctoringSessionModel)
+            .where(
+                ProctoringSessionModel.alumno_idnumber == alumno_idnumber,
+                ProctoringSessionModel.finalizada_en.is_(None),
+                ProctoringSessionModel.examen_contenido_id.is_not(None),
+                ProctoringSessionModel.es_prueba.is_(False),
+            )
+            .order_by(ProctoringSessionModel.creada_en.desc())
+        )
+        result = await self._db.execute(stmt)
+        return list(result.scalars().all())
+
     async def tiene_pertenencia_de_sesion(
         self, usuario_id: str, session_id: str, *, es_coordinador: bool = False
     ) -> bool:

@@ -43,10 +43,10 @@ class RetentionPolicy:
         return cls(session_max_age_days=180, audit_log_retention_years=5)
 
 
-#: Piso de retencion de CAPTURAS de proctoring (rostro + pantalla del alumno):
-#: decision del dueño. Es el dato mas pesado (~360 MB cada 100 alumnos, en base64
-#: dentro de Postgres) y el mas sensible (Ley 25.326: dato biometrico/imagen
-#: tratado como sensible por defecto) — pero bajar el piso demasiado arriesga
+#: Piso de retencion de CAPTURAS de proctoring (fotos del rostro del alumno que
+#: toma la camara; la pantalla NO se captura): decision del dueño. Es el dato mas
+#: pesado (~360 MB cada 100 alumnos, en base64 dentro de Postgres) y el mas
+#: sensible (imagen biometrica) — pero bajar el piso demasiado arriesga
 #: borrar evidencia antes de que un reclamo pueda resolverse. Default 180 dias
 #: (un cuatrimestre), nunca configurable por debajo de este minimo.
 RETENCION_CAPTURAS_DIAS_MINIMO = 90

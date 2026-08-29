@@ -315,6 +315,7 @@ class ExamenContenidoSqlRepository:
         filtro_comision_id: str | None = None,
         estado: str = "activo",
         incluir_borradores: bool = True,
+        incluir_materias_de_baja: bool = True,
     ) -> tuple[list[ExamenContenidoResumen], int]:
         """Lista paginada + búsqueda serverside del catálogo (tarea 4, admin-sync).
 
@@ -334,6 +335,12 @@ class ExamenContenidoSqlRepository:
         Borrador (c-78 E-07): ``incluir_borradores=False`` saca del listado los
         exámenes que todavía no se habilitaron. Lo usa la vista del ALUMNO. El
         staff los ve, porque los tiene que poder abrir para probarlos y habilitarlos.
+
+        Materia dada de baja: ``incluir_materias_de_baja=False`` saca los exámenes
+        cuya materia está inactiva. Lo usa la vista del ALUMNO, por el mismo
+        motivo que los borradores: no se le puede ofrecer algo que el servidor le
+        va a rechazar al abrirlo (409 ``materia_inactiva``). El staff los sigue
+        viendo — la baja saca la materia de circulación, no esconde su evidencia.
         """
         page = max(1, page)
         page_size = max(1, page_size)
@@ -346,6 +353,8 @@ class ExamenContenidoSqlRepository:
         base = self._filtro_estado(base, estado)
         if not incluir_borradores:
             base = base.where(ExamenContenidoModel.borrador.is_(False))
+        if not incluir_materias_de_baja:
+            base = base.where(MateriaModel.activa.is_(True))
         if comision_ids is not None:
             base = base.where(ExamenContenidoModel.comision_id.in_(comision_ids))
         if filtro_materia_id is not None:
@@ -381,19 +390,30 @@ class ExamenContenidoSqlRepository:
         return self._row_to_resumen(row)
 
     async def listar_por_comision(
-        self, comision_id: str, *, estado: str = "activo"
+        self,
+        comision_id: str,
+        *,
+        estado: str = "activo",
+        incluir_borradores: bool = True,
     ) -> list[ExamenContenidoResumen]:
         """Lista los exámenes asociados a una comisión (orden alfabético por titulo).
 
         Alimenta el picker de Notas, así que respeta la baja lógica (c-78 D1): por
         default solo los activos. Un examen dado de baja no se ofrece para cargar
         notas, aunque sus resultados ya cargados sigan consultables por id (D2).
+
+        ``incluir_borradores=False`` saca los que todavía no se habilitaron: lo usa
+        la vista del ALUMNO. Sin esto, «Mis materias» le anunciaba "6 exámenes
+        disponibles" contando uno en borrador que no aparece en su listado ni
+        puede rendir. Mismo criterio que el catálogo (`listar_paginado`).
         """
         stmt = (
             self._filtro_estado(self._stmt_resumen(), estado)
             .where(ExamenContenidoModel.comision_id == comision_id)
             .order_by(_orden_alfabetico(ExamenContenidoModel.titulo))
         )
+        if not incluir_borradores:
+            stmt = stmt.where(ExamenContenidoModel.borrador.is_(False))
         result = await self._db.execute(stmt)
         return [self._row_to_resumen(row) for row in result.all()]
 

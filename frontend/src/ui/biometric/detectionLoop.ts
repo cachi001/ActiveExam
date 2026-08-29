@@ -41,7 +41,14 @@ export interface DetectionLoopDeps {
     blinkL: number; blinkR: number; noseX: number; noseY: number;
     minZ: number; maxZ: number; frameTime: number;
   }>>;
+  /**
+   * Acumulador: ¿hubo ALGÚN frame con las tres señales pasivas? Se enciende y no
+   * se apaga (ver el comentario en el loop). Antes guardaba el resultado del
+   * último frame y por eso reportaba "no superado" con los retos completados.
+   */
   passiveOkRef: MutableRefObject<boolean>;
+  /** Cuántos frames se alcanzaron a evaluar. 0 = no se midió nada, no "falló". */
+  passiveFramesEvaluadosRef: MutableRefObject<number>;
   passiveFalseFramesRef: MutableRefObject<number>;
   prevFrameDataRef: MutableRefObject<ImageData | null>;
   virtualCameraRef: MutableRefObject<boolean>;
@@ -74,7 +81,7 @@ export function startDetectionLoop(engine: VisionEngine, deps: DetectionLoopDeps
   const {
     faseRef, videoRef, rafHandleRef, engineRef,
     luminanceCanvasRef, framingStableRef, framingHintRef,
-    livenessWindowRef, passiveOkRef, passiveFalseFramesRef,
+    livenessWindowRef, passiveOkRef, passiveFramesEvaluadosRef, passiveFalseFramesRef,
     prevFrameDataRef, virtualCameraRef, wasBlockedByFramingRef,
     baselineRef, baselineFrameCountRef, baselineAccumulatorRef,
     nosePositionsRef, bestReferenceFrameRef, cooldownActiveRef,
@@ -176,7 +183,14 @@ export function startDetectionLoop(engine: VisionEngine, deps: DetectionLoopDeps
 
           const signals = derivePassiveSignals({ blinkVariance, motionVariance, depthRange });
           const livenessOk = passivePassed(signals);
-          passiveOkRef.current = livenessOk;
+          // ACUMULATIVO, no instantáneo. Antes esta línea pisaba el resultado en
+          // cada frame y lo que se reportaba era el último: el alumno terminaba los
+          // retos, se quedaba quieto esperando, la ventana se llenaba de quietud y
+          // el pasivo cerraba en "no superado" — junto a los tres retos completados,
+          // dos cosas que no pueden ser ciertas a la vez. La pregunta que el pasivo
+          // hace es "¿en algún momento se comportó como una persona?".
+          passiveFramesEvaluadosRef.current += 1;
+          if (livenessOk) passiveOkRef.current = true;
 
           if (livenessOk) {
             passiveFalseFramesRef.current = 0;
@@ -190,6 +204,10 @@ export function startDetectionLoop(engine: VisionEngine, deps: DetectionLoopDeps
           const faceCountStability = face_count === 1 ? win.length / 15 : 0;
 
           let interFramePixelVariance = 0;
+          // Distinguir "no pude medir" de "medí y dio cero". Los dos daban 0, y 0
+          // es justo el valor que la heurística lee como feed en loop: un fallo de
+          // medición terminaba acusando al alumno de cámara virtual.
+          let medicionValida = false;
           try {
             const offscreen = document.createElement('canvas');
             offscreen.width  = 16;
@@ -202,19 +220,34 @@ export function startDetectionLoop(engine: VisionEngine, deps: DetectionLoopDeps
                 const prev = prevFrameDataRef.current.data;
                 const curr = currentData.data;
                 let sumSqDiff = 0;
+                let algunPixelDistinto = false;
                 for (let i = 0; i < prev.length; i += 4) {
                   const diff = (curr[i] - prev[i]) / 255;
+                  if (diff !== 0) algunPixelDistinto = true;
                   sumSqDiff += diff * diff;
                 }
                 interFramePixelVariance = sumSqDiff / (prev.length / 4);
+                // Dos frames IDÉNTICOS bit a bit no son un feed sospechoso: son el
+                // mismo frame leído dos veces, algo normal cuando este loop corre a
+                // 60 Hz contra una webcam de 30 fps. Una cámara virtual real cambia
+                // algo entre frames distintos; comparar un frame consigo mismo no
+                // dice nada de nadie.
+                medicionValida = algunPixelDistinto;
               }
               prevFrameDataRef.current = currentData;
             }
           } catch {
-            // Canvas bloqueado → usar 0
+            // Canvas bloqueado → no se pudo medir (medicionValida sigue en false).
           }
 
-          if (detectVirtualCamera({ interFramePixelVariance, frameRateJitter, faceCountStability })) {
+          if (
+            detectVirtualCamera({
+              interFramePixelVariance,
+              frameRateJitter,
+              faceCountStability,
+              medicionValida,
+            })
+          ) {
             virtualCameraRef.current = true;
           }
 

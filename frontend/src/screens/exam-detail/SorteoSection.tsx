@@ -164,8 +164,13 @@ export function SorteoSection({ examenId, materiaId }: Props) {
           )}
           </div>
           {/* Poner 10 y darse cuenta de que querías 12 no debería obligar a
-              borrar el examen y armarlo de nuevo. */}
-          {!editando && (
+              borrar el examen y armarlo de nuevo. Pero SOLO mientras nadie rindió:
+              el backend rechaza el rearmado apenas hay una sesión real, así que
+              ofrecerlo igual era mandar al tutor a armar un cambio entero para que
+              se lo rebotaran al guardar — o peor, dejarlo creyendo que el examen que
+              ve no es el que rindieron sus alumnos. `pool_editable` ya venía en la
+              respuesta y lo miraba solo el botón de incorporar preguntas nuevas. */}
+          {!editando && sorteo.pool_editable && (
             <Button
               variant="secondary"
               size="sm"
@@ -174,6 +179,13 @@ export function SorteoSection({ examenId, materiaId }: Props) {
             >
               Editar preguntas
             </Button>
+          )}
+          {!editando && !sorteo.pool_editable && (
+            // Sin explicación, la ausencia del botón se lee como pantalla rota.
+            <p className="text-label-sm text-on-surface-variant max-w-[15rem] text-right">
+              <Icon name="lock" className="text-[14px] align-middle mr-1" fill />
+              Ya se rindió: las preguntas quedan como están para que todos rindan lo mismo.
+            </p>
           )}
         </div>
 

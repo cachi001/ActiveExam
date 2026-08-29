@@ -32,11 +32,26 @@ Los valores por defecto de `TransitionConfig` SHALL reflejar el rango alcanzable
 
 #### Scenario: umbral alcanzable con desviación lateral moderada
 - **WHEN** el estudiante mira hacia un lado de forma sostenida (desviación de iris ≈ 30 % del semi-ancho del ojo)
-- **THEN** la magnitud del vector gaze SHALL superar `gaze_deviation_threshold` (0.25) y — tras sostenerse `gaze_sustained_ms` (2500 ms) sin resetear el ancla por más de `gaze_fixation_tolerance` (0.25) — el evento `mirada_desviada_sostenida` SHALL emitirse
+- **THEN** la componente horizontal del vector gaze SHALL superar `gaze_deviation_threshold` (0.20) y, tras sostenerse `gaze_sustained_ms` (2500 ms) sin resetear el ancla por más de `gaze_fixation_tolerance` (0.25), el evento `mirada_desviada_sostenida` SHALL emitirse
 
 #### Scenario: micro-movimientos oculares no disparan el evento
 - **WHEN** el estudiante tiene micro-movimientos oculares involuntarios (magnitud < 0.15)
-- **THEN** la magnitud SHALL estar por debajo de `gaze_deviation_threshold` y NO SHALL emitirse ningún evento de mirada desviada
+- **THEN** ninguna componente SHALL superar el umbral de su eje y NO SHALL emitirse ningún evento de mirada desviada
+
+### Requirement: La desviación de mirada se evalúa por eje, con tolerancia vertical ampliada
+La pantalla que el estudiante mira es un rectángulo ancho, no un punto: recorrerla con la vista desplaza el vector gaze, y leer un párrafo en su borde inferior supera `gaze_sustained_ms`. Evaluar la desviación como un radio (`hypot(x, y)` contra un umbral único) SHALL NO usarse, porque trata igual una mirada lateral fuera del monitor y una lectura dentro de él, y produce más falsos positivos cuanto más grande es la pantalla. Las reglas SHALL comparar cada componente contra el umbral de su eje: la horizontal contra `gaze_deviation_threshold` y la vertical contra ese mismo umbral multiplicado por un factor de tolerancia. El eje vertical SHALL conservar umbral propio y NO SHALL ignorarse, porque la consulta de apuntes sobre el escritorio cae en ese eje a un ángulo muy superior al del borde de la pantalla. El factor SHALL derivarse del umbral configurado y NO SHALL exponerse como parámetro independiente, para que la institución conserve un único control de sensibilidad.
+
+#### Scenario: leer el borde inferior de la pantalla no es mirada desviada
+- **WHEN** el estudiante sostiene la mirada en un desvío puramente vertical dentro del área de su pantalla (componente vertical bajo el umbral de su eje) durante más de `gaze_sustained_ms`
+- **THEN** NO SHALL emitirse ningún evento de mirada desviada, aunque la magnitud del vector supere `gaze_deviation_threshold`
+
+#### Scenario: consulta de apuntes sobre el escritorio sigue detectándose
+- **WHEN** el estudiante sostiene la mirada muy por debajo de su pantalla (componente vertical por encima del umbral de su eje) durante más de `gaze_sustained_ms`
+- **THEN** el evento `mirada_desviada_sostenida` SHALL emitirse con severidad media, sin sanción automática
+
+#### Scenario: la tolerancia vertical acompaña a la sensibilidad configurada
+- **WHEN** un `admin_sistema` endurece `gaze_deviation_threshold` en la configuración efectiva
+- **THEN** el umbral vertical SHALL endurecerse en la misma proporción, sin requerir un campo de configuración adicional
 
 #### Scenario: movimiento natural de cabeza no resetea el ancla
 - **WHEN** el estudiante mantiene la mirada en una dirección pero tiene movimiento natural de cabeza (drift del vector ≤ 0.24)

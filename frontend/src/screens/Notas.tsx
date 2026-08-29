@@ -24,6 +24,7 @@ import { authProvider } from '../lib/authProvider';
 import { listarMateriasFn, listarComisionesFn, listarExamenesDeComisionFn } from '../lib/examContentBrowse';
 import type { Materia, Comision, ExamenContenidoResumen } from '../lib/types';
 import { ResultadosExamenPanel } from './exam-detail/ResultadosExamenPanel';
+import { etiquetaConBaja } from './materias/filtroEstado';
 
 const selectClass =
   'w-full rounded-md border border-surface-300 bg-white px-3 py-2 text-[13px] text-on-surface focus:border-primary focus:outline-none disabled:bg-surface-100 disabled:text-on-surface-variant disabled:cursor-not-allowed';
@@ -103,7 +104,7 @@ export default function Notas() {
               >
                 <option value="">Seleccioná una materia…</option>
                 {materias.map((m) => (
-                  <option key={m.id} value={m.id}>{m.codigo} — {m.nombre}</option>
+                  <option key={m.id} value={m.id}>{etiquetaConBaja(m, `${m.codigo} — ${m.nombre}`)}</option>
                 ))}
               </select>
             </label>

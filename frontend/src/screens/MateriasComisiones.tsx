@@ -28,6 +28,7 @@ import { tieneCapacidad } from '../lib/capabilities';
 import {
   contarDeBaja,
   filtrarPorEstado,
+  seleccionSigueVisible,
   OPCIONES_ESTADO_BAJA,
   type EstadoBajaFiltro,
 } from './materias/filtroEstado';
@@ -100,6 +101,12 @@ export default function MateriasComisiones() {
 
   // ── Acordeón ──────────────────────────────────────────────────────────────
   const [expandida, setExpandida] = useState<string | null>(null);
+  // El filtro esconde materias, pero el panel de la derecha tiene su propia
+  // selección: sin esto quedaba abierto en una materia que la lista ya no
+  // muestra (visto con una materia dada de baja y el filtro en "Activas").
+  useEffect(() => {
+    if (!seleccionSigueVisible(expandida, materiasVisibles)) setExpandida(null);
+  }, [expandida, materiasVisibles]);
   const [comisionesPorMateria, setComisionesPorMateria] = useState<Record<string, Comision[]>>({});
   const [cargandoComisiones, setCargandoComisiones] = useState<Record<string, boolean>>({});
   // D16: por materia, el motivo por el que sus comisiones no cargaron. null/ausente
@@ -474,7 +481,8 @@ export default function MateriasComisiones() {
           </p>
           <p>
             Hacé clic en una materia para expandirla y ver o agregar comisiones.
-            La asociación examen↔comisión sigue siendo opcional (D11).
+            Asociar un examen a una comisión es opcional: un examen sin comisión igual
+            funciona.
           </p>
         </HelpButton>
       }

@@ -226,6 +226,131 @@ async def test_purgado_es_idempotente(factory):
     assert segunda == 0
 
 
+# ---------------------------------------------------------------------------
+# Evidencia PROTEGIDA: la que sostiene un caso no se purga (decision del dueño)
+# ---------------------------------------------------------------------------
+#
+# El plazo se pensó para las fotos de quien rindió normal, que son el grueso del
+# peso en la base y no le sirven a nadie. Pero borrar la foto de un examen
+# anulado deja al alumno sin la parte más fuerte de su expediente: el verify-chain
+# pasa a devolver `material_missing` y ya no hay nada que peritar. Lo mismo vale
+# para una sesión que sigue en cola de revisión: todavía no hay veredicto, así que
+# la evidencia sigue en juego.
+
+
+async def _crear_sesion(
+    factory: async_sessionmaker[AsyncSession],
+    *,
+    creada_hace_dias: int,
+    decision: str | None = None,
+    severidad: str = "medio",
+    eventos: int = 1,
+) -> tuple[str, list[str]]:
+    """Sesion + N eventos con captura. Devuelve (session_id, [event_ids]).
+
+    ``severidad`` importa: el vocabulario canónico es femenino
+    (baja/media/alta/critica). "medio" no matchea ninguna y pesa 0, que es
+    justo lo que se quiere para una sesión que NO debe quedar flaggeada.
+    """
+    async with factory() as s:
+        sesion = ProctoringSessionModel(modo="examen", etiqueta=f"ret-cap-{_suffix()}")
+        if decision is not None:
+            sesion.decision = decision
+        s.add(sesion)
+        await s.flush()
+        sesion.creada_en = datetime.now(timezone.utc) - timedelta(days=creada_hace_dias)
+        ids = []
+        for _ in range(eventos):
+            evento = ProctoringEventModel(
+                session_id=sesion.id,
+                tipo="multiples_rostros",
+                severidad=severidad,
+                ts_cliente=datetime.now(timezone.utc),
+                ts_backend=datetime.now(timezone.utc),
+                payload={},
+                screenshot_b64="ZmFrZS1iYXNlNjQtaW1hZ2U=",
+                screenshot_sha256="c" * 64,
+            )
+            s.add(evento)
+            await s.flush()
+            ids.append(evento.id)
+        await s.commit()
+        return sesion.id, ids
+
+
+@pytest.mark.asyncio
+async def test_no_purga_la_captura_de_un_examen_anulado(factory):
+    """Es la evidencia en la que se apoyó la anulación: sin ella el expediente
+    del alumno queda sin nada que mostrar."""
+    _, (evento_id,) = await _crear_sesion(
+        factory, creada_hace_dias=400, decision="anulado"
+    )
+
+    async with factory() as s:
+        purgadas = await purgar_capturas_vencidas(s, dias=180)
+        await s.commit()
+
+    assert purgadas == 0
+    async with factory() as s:
+        evento = await s.get(ProctoringEventModel, evento_id)
+        assert evento.screenshot_b64 == "ZmFrZS1iYXNlNjQtaW1hZ2U="
+
+
+@pytest.mark.asyncio
+async def test_no_purga_la_captura_de_una_sesion_en_cola_de_revision(factory):
+    """Score >= umbral (70 por default) y sin decisión: el caso sigue abierto.
+
+    Una severidad `critica` pesa 80, así que un solo evento la deja flaggeada.
+    """
+    _, (evento_id,) = await _crear_sesion(
+        factory, creada_hace_dias=400, severidad="critica"
+    )
+
+    async with factory() as s:
+        purgadas = await purgar_capturas_vencidas(s, dias=180)
+        await s.commit()
+
+    assert purgadas == 0
+    async with factory() as s:
+        evento = await s.get(ProctoringEventModel, evento_id)
+        assert evento.screenshot_b64 == "ZmFrZS1iYXNlNjQtaW1hZ2U="
+
+
+@pytest.mark.asyncio
+async def test_si_purga_la_captura_de_un_examen_aprobado(factory):
+    """Triangulación: revisado y cerrado limpio, la foto ya no sostiene nada."""
+    _, (evento_id,) = await _crear_sesion(
+        factory, creada_hace_dias=400, decision="aprobado", severidad="critica"
+    )
+
+    async with factory() as s:
+        purgadas = await purgar_capturas_vencidas(s, dias=180)
+        await s.commit()
+
+    assert purgadas == 1
+    async with factory() as s:
+        evento = await s.get(ProctoringEventModel, evento_id)
+        assert evento.screenshot_b64 is None
+
+
+@pytest.mark.asyncio
+async def test_protege_una_sesion_sin_tocar_a_las_demas(factory):
+    """La exclusión es por sesión, no un freno global del purgado."""
+    _, (protegido,) = await _crear_sesion(
+        factory, creada_hace_dias=400, decision="anulado"
+    )
+    _, (purgable,) = await _crear_sesion(factory, creada_hace_dias=400)
+
+    async with factory() as s:
+        purgadas = await purgar_capturas_vencidas(s, dias=180)
+        await s.commit()
+
+    assert purgadas == 1
+    async with factory() as s:
+        assert (await s.get(ProctoringEventModel, protegido)).screenshot_b64 is not None
+        assert (await s.get(ProctoringEventModel, purgable)).screenshot_b64 is None
+
+
 @pytest.mark.asyncio
 async def test_purgar_capturas_rechaza_dias_por_debajo_del_minimo(factory):
     await _crear_sesion_con_evento(factory, creada_hace_dias=200)

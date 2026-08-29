@@ -61,8 +61,12 @@ export default function EquipmentCheck() {
   const enCurso = checks.some((c) => c.estado === 'verificando' || c.estado === 'pendiente');
 
   return (
-    <StudentShell step={1}>
-      <div className="max-w-3xl lg:max-w-4xl space-y-lg animate-in fade-in duration-500">
+    // `ocultarNavegacion`: los pasos previos al examen son un wizard. Sin
+    // esto, el alumno se iba a otra pantalla en el medio y perdía el avance
+    // en silencio (la verificación biométrica se rehace). Mismo criterio que
+    // el wizard de enrollment. El «Volver» queda: es la única salida.
+    <StudentShell step={1} ocultarNavegacion>
+      <div className="max-w-3xl lg:max-w-4xl mx-auto space-y-lg animate-in fade-in duration-500">
         <div className="text-center space-y-base">
           <h2 className="font-headline text-headline-lg text-on-surface">Chequeo de requisitos</h2>
           <p className="text-body-md text-on-surface-variant">Verificamos tu equipo antes de comenzar. El análisis de visión corre localmente en tu navegador.</p>

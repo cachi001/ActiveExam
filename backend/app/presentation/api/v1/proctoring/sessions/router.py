@@ -74,6 +74,7 @@ from app.presentation.api.v1.proctoring.sessions.schemas import (
     ExamenConSesionesOut,
     FinalizarSesionOut,
     ListarRespuestasOut,
+    SesionEnCursoOut,
     ObservacionIn,
     ObservacionOut,
     RegistroSesionesOut,
@@ -697,6 +698,69 @@ def create_sessions_router(
                 vistos.setdefault(s.examen_contenido_id, s.examen_titulo or s.examen_contenido_id)
             catalogo = sorted(vistos.items(), key=lambda kv: kv[1])
         return [ExamenConSesionesOut(id=eid, titulo=titulo) for eid, titulo in catalogo]
+
+    # OJO: va ANTES de "/sessions/{session_id}". FastAPI resuelve por orden de
+    # declaracion, asi que declarada despues, "en-curso" entraba como session_id y
+    # el alumno se comia un 403 de supervision_vivo (la ruta de detalle es del tutor).
+    @router.get(
+        "/sessions/en-curso",
+        response_model=list[SesionEnCursoOut],
+        summary="Examenes que el alumno dejo empezados y sin entregar",
+    )
+    async def listar_sesiones_en_curso(
+        db: Annotated[AsyncSession, Depends(get_db)],
+        principal: Annotated[AuthenticatedPrincipal, Depends(require_autenticado)],
+    ) -> list[SesionEnCursoOut]:
+        """Sesiones ABIERTAS del alumno autenticado, para poder retomarlas.
+
+        El backend ya sabia reanudar (``crear_o_reanudar_sesion`` reusa la sesion
+        activa con su cronometro, y ``GET /sessions/{id}/respuestas`` devuelve lo ya
+        contestado), pero nada permitia DESCUBRIR esa sesion: al alumno que se le
+        cortaba la conexion la pantalla le mostraba el examen como no empezado, con
+        el cartel "Tenes un solo intento", y entendia que lo habia perdido. Una
+        reanudacion que el alumno no puede encontrar es, para el, una reanudacion
+        que no existe.
+
+        Acotado SIEMPRE al alumno del JWT (H1/IDOR): nunca se lista por examen, o un
+        alumno podria ver quien mas lo esta rindiendo. No devuelve score ni eventos:
+        el proctoring no se le muestra al alumno.
+        """
+        from app.infrastructure.persistence.repositories.proctoring import (
+            ProctoringRepository,
+        )
+
+        alumno = principal.username or ""
+        if not alumno:
+            return []
+        repo = ProctoringRepository(db)
+        sesiones = await repo.listar_sesiones_en_curso(alumno)
+        if not sesiones:
+            return []
+
+        # Titulo del examen en UNA consulta (no una por sesion): es lo unico que la
+        # tarjeta necesita mostrar y viene de otra tabla.
+        from app.infrastructure.persistence.models.exam_content import ExamenContenidoModel
+
+        ids = {str(s.examen_contenido_id) for s in sesiones}
+        filas = (
+            await db.execute(
+                select(ExamenContenidoModel.id, ExamenContenidoModel.titulo).where(
+                    ExamenContenidoModel.id.in_(ids)
+                )
+            )
+        ).all()
+        titulos = {str(i): t for i, t in filas}
+
+        return [
+            SesionEnCursoOut(
+                session_id=str(s.id),
+                examen_contenido_id=str(s.examen_contenido_id),
+                examen_titulo=titulos.get(str(s.examen_contenido_id)),
+                creada_en=s.creada_en,
+                examen_iniciado_en=s.examen_iniciado_en,
+            )
+            for s in sesiones
+        ]
 
     @router.get(
         "/sessions/{session_id}",

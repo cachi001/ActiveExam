@@ -41,6 +41,7 @@ import {
 import { formatFecha, nivelRiesgo, scoreTextColor, type NivelRiesgo } from './proctoring/helpers';
 import { StatCard } from './proctoring/StatCard';
 import { statProps } from './proctoring/statCatalog';
+import { etiquetaConBaja } from './materias/filtroEstado';
 
 const PROCTORING_DETAIL_ROUTE = '/admin/proctoring-session-detail';
 const PAGE_SIZE_DEFAULT = 20;
@@ -476,7 +477,7 @@ export default function ProctoringRevisor() {
             >
               <option value="">Todas las materias</option>
               {materias.map((m) => (
-                <option key={m.id} value={m.id}>{m.codigo} — {m.nombre}</option>
+                <option key={m.id} value={m.id}>{etiquetaConBaja(m, `${m.codigo} — ${m.nombre}`)}</option>
               ))}
             </select>
           </label>

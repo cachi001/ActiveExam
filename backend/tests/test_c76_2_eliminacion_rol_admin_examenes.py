@@ -85,10 +85,18 @@ def test_admin_sistema_conserva_todas_las_capacidades_academicas(capacidad: str)
 
 
 def test_gestionar_estructura_queda_coordinador_y_admin_sin_admin_examenes() -> None:
-    """`gestionar_estructura` (crear materias/comisiones): sin admin_examenes."""
-    assert CAPABILITY_ROLES["gestionar_estructura"] == frozenset(
-        {Rol.COORDINADOR, Rol.ADMIN_SISTEMA}
-    )
+    """`gestionar_estructura` (crear materias/comisiones): sin admin_examenes.
+
+    Pertenencia, no set exacto — mismo criterio que
+    `test_gestionar_academico_conserva_tutor_coordinador_admin`: c-78 sumo
+    PROFESOR a esta capacidad ("administra sus materias: crea comisiones,
+    inscribe alumnos"), que es un cambio legitimo y ajeno a lo que este archivo
+    verifica. Afirmar el set exacto hacia fallar el test por un cambio correcto.
+    """
+    roles = CAPABILITY_ROLES["gestionar_estructura"]
+    assert {Rol.COORDINADOR, Rol.ADMIN_SISTEMA} <= roles
+    # Lo que este archivo cuida: que el rol eliminado no haya vuelto.
+    assert not any(getattr(r, "value", r) == "admin_examenes" for r in roles)
 
 
 def test_gestionar_academico_conserva_tutor_coordinador_admin() -> None:

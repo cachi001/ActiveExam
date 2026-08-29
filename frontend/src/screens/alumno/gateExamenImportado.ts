@@ -19,10 +19,51 @@ export function formatFechaHora(iso: string): string {
     return new Intl.DateTimeFormat('es-AR', {
       day: '2-digit', month: '2-digit', year: 'numeric',
       hour: '2-digit', minute: '2-digit',
+      // 24 horas, igual que el resto de la tarjeta: es-AR devuelve "10:49 p. m."
+      // con espacio duro, y la misma fecha aparecía en dos formatos distintos en
+      // renglones consecutivos.
+      hour12: false,
     }).format(new Date(iso));
   } catch {
     return iso;
   }
+}
+
+/** Fecha corta para la card: "27-ago 09:00". Sin año ni "p. m." (es-AR mete un
+ *  espacio duro en el sufijo y en 12px se lee como un error de la pantalla). */
+function fechaCorta(iso: string): string | null {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return new Intl.DateTimeFormat('es-AR', {
+    day: '2-digit',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  })
+    .format(d)
+    .replace(',', '');
+}
+
+/**
+ * Ventana de rendición para mostrar EN LA CARD, antes de entrar a la ficha.
+ *
+ * El gate de abajo ya nombra la fecha, pero solo cuando BLOQUEA ("Disponible
+ * desde…", "Cerrado el…"). Mientras el examen está disponible el alumno no
+ * tenía cómo saber hasta cuándo sin abrir el examen. Devuelve `null` cuando no
+ * hay fechas (o son ilegibles): sin ventana configurada no hay nada que decir,
+ * y una card no puede romperse por un dato mal formado.
+ */
+export function textoVentana(
+  apertura?: string | null,
+  cierre?: string | null,
+): string | null {
+  const desde = apertura ? fechaCorta(apertura) : null;
+  const hasta = cierre ? fechaCorta(cierre) : null;
+  if (desde && hasta) return `Del ${desde} al ${hasta}`;
+  if (hasta) return `Hasta el ${hasta}`;
+  if (desde) return `Desde el ${desde}`;
+  return null;
 }
 
 /**
@@ -58,6 +99,21 @@ export function gateExamenImportado(
   }
   if (permitidos !== null && permitidos >= 1 && usados >= permitidos) {
     return { ...base, habilitado: false, motivo: `Ya rendiste este examen (${usados}/${permitidos})` };
+  }
+  // Un examen publicado pero sin ninguna pregunta se ofrecía con botón para
+  // entrar, y al entrar el alumno llegaba a un examen vacío. Se bloquea con
+  // motivo en vez de esconderlo: si el alumno espera ese parcial y no lo ve, no
+  // sabe si es un error suyo o del sistema. El motivo no le pide nada a él,
+  // porque no hay nada que pueda hacer.
+  //
+  // Va DESPUÉS de la ventana y los intentos a propósito: si además está cerrado,
+  // el motivo útil es el cierre, no que falten preguntas.
+  if (contenido.cantidad_preguntas === 0) {
+    return {
+      ...base,
+      habilitado: false,
+      motivo: 'Todavía no tiene preguntas cargadas. Consultá con tu docente.',
+    };
   }
   return { ...base, habilitado: true };
 }

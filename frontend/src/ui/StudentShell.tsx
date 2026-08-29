@@ -188,7 +188,7 @@ export function StudentShell({
   const mostrarSidebarDesktop = isDesktop && !locked && !perfilBloqueado;
   const mostrarBottomNav = !locked && !perfilBloqueado;
 
-  const PASOS_EXAMEN = ['Requisitos', 'Verificación', 'Sala'];
+  const PASOS_EXAMEN = ['Requisitos', 'Verificación', 'Calibración', 'Sala'];
   const pasosWizard: WizardPaso[] = PASOS_EXAMEN.map((label, i) => ({
     label,
     estado:

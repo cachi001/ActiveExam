@@ -77,8 +77,13 @@ export function HelpButton({ title, children, ariaLabel, className = '' }: HelpB
             <span className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-primary-fixed text-primary">
               <Icon name="help" className="text-[20px]" />
             </span>
+            {/* "Ayuda «Sección»", no solo el nombre de la sección: el título
+                pelado repetía el de la página que quedaba detrás del overlay y
+                no se distinguía la ayuda de otra pantalla. El prefijo va ACÁ y
+                no en cada pantalla — son 26 usos y a la primera que se olvide
+                quedan diciendo cosas distintas. */}
             <h2 id={`${dialogId}-title`} className="font-headline text-title-md text-on-surface">
-              {title}
+              Ayuda «{title}»
             </h2>
           </div>
           <button

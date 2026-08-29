@@ -68,6 +68,74 @@ describe("mirada: normal no es evento, patron sostenido si (RN-EV-06)", () => {
   });
 });
 
+/**
+ * La pantalla es un RECTANGULO, no un punto. Medir la desviacion como un radio
+ * (`hypot(x, y)` contra un unico umbral) trata igual dos cosas que no lo son:
+ * mirar a un costado (fuera del monitor, es lo que interesa) y mirar el borde de
+ * abajo del enunciado (adentro del monitor, es leer). Leer un enunciado largo abajo
+ * dura mas que los 2,5 s del umbral sostenido, asi que el falso positivo era
+ * alcanzable con solo rendir normalmente, y peor cuanto mas grande el monitor.
+ *
+ * Encima el eje vertical es la senal mas sucia que produce el motor: en
+ * `gazeFromIris` el desplazamiento vertical se normaliza por el SEMI-ANCHO del ojo
+ * (no por su altura), y arrastra el parpado que tapa el iris al mirar abajo. Aporta
+ * poco y ensucia mucho, pero sumaba igual a la magnitud.
+ */
+describe("mirar arriba y abajo dentro de la pantalla no es mirada desviada", () => {
+  it("leer sostenido el borde inferior de la pantalla no genera evento", () => {
+    const rules = new StateTransitionRules();
+    // Desvio puramente vertical, del tamano del que produce recorrer la pantalla
+    // con la vista. Con el umbral radial de 0.20 esto disparaba.
+    rules.process({ ts_ms: 0, face_count: 1, gaze: { x: 0.0, y: 0.3 } });
+    rules.process({ ts_ms: 2000, face_count: 1, gaze: { x: 0.02, y: 0.31 } });
+    const events = rules.process({ ts_ms: 4500, face_count: 1, gaze: { x: 0.01, y: 0.29 } });
+    expect(events).toHaveLength(0);
+  });
+
+  it("mirar abajo MUCHO (apuntes sobre el escritorio) sigue generando evento", () => {
+    const rules = new StateTransitionRules();
+    // El escritorio esta a un angulo muy distinto del borde de la pantalla: aflojar
+    // el eje vertical no puede volverse una via libre para leer apuntes.
+    rules.process({ ts_ms: 0, face_count: 1, gaze: { x: 0.0, y: 0.7 } });
+    rules.process({ ts_ms: 2000, face_count: 1, gaze: { x: 0.01, y: 0.71 } });
+    const events = rules.process({ ts_ms: 4500, face_count: 1, gaze: { x: 0.0, y: 0.69 } });
+    expect(events).toHaveLength(1);
+    expect(events[0].tipo).toBe("mirada_desviada_sostenida");
+  });
+
+  it("el eje horizontal conserva su sensibilidad: mirar al costado dispara igual", () => {
+    const rules = new StateTransitionRules();
+    // Apenas por encima del umbral horizontal (0.20) y sin nada de vertical: es el
+    // caso que el sistema TIENE que seguir viendo (otra pantalla, alguien al lado).
+    rules.process({ ts_ms: 0, face_count: 1, gaze: { x: 0.25, y: 0.0 } });
+    rules.process({ ts_ms: 2000, face_count: 1, gaze: { x: 0.26, y: 0.01 } });
+    const events = rules.process({ ts_ms: 4500, face_count: 1, gaze: { x: 0.24, y: 0.0 } });
+    expect(events).toHaveLength(1);
+    expect(events[0].tipo).toBe("mirada_desviada_sostenida");
+  });
+
+  it("un vertical grande ya no empuja a un horizontal chico por encima del umbral", () => {
+    const rules = new StateTransitionRules();
+    // hypot(0.15, 0.35) = 0.38, muy por encima de 0.20: con el radio unico esto
+    // disparaba, y es alguien leyendo la parte de abajo de su pantalla ancha.
+    rules.process({ ts_ms: 0, face_count: 1, gaze: { x: 0.15, y: 0.35 } });
+    rules.process({ ts_ms: 2000, face_count: 1, gaze: { x: 0.16, y: 0.34 } });
+    const events = rules.process({ ts_ms: 4500, face_count: 1, gaze: { x: 0.15, y: 0.36 } });
+    expect(events).toHaveLength(0);
+  });
+
+  it("la tolerancia vertical acompana al umbral configurado por la institucion", () => {
+    // Sensibilidad alta (umbral 0.10): el mismo desvio vertical que se tolera con
+    // el default ahora si dispara. El vertical no es un numero suelto, escala con
+    // el unico control que la institucion mueve.
+    const rules = new StateTransitionRules({ gaze_deviation_threshold: 0.10 });
+    rules.process({ ts_ms: 0, face_count: 1, gaze: { x: 0.0, y: 0.3 } });
+    rules.process({ ts_ms: 2000, face_count: 1, gaze: { x: 0.0, y: 0.31 } });
+    const events = rules.process({ ts_ms: 4500, face_count: 1, gaze: { x: 0.0, y: 0.29 } });
+    expect(events).toHaveLength(1);
+  });
+});
+
 describe("multiples rostros (>=2 durante N frames)", () => {
   it("dispara severidad alta, captura de evidencia, en N frames consecutivos", () => {
     const rules = new StateTransitionRules();

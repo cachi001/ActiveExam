@@ -130,6 +130,12 @@ export function formToPatch(
     if (original && form.intentosPermitidos !== original.intentosPermitidos) {
       patch.intentos_permitidos = Number(form.intentosPermitidos);
     }
+    // `apertura` está congelada, pero un examen viejo pudo quedar SIN ella y el
+    // formulario la exige. Completarla se manda (el backend la acepta cuando estaba
+    // vacía); si ya tenía una, no se toca.
+    if (original && !original.apertura && form.apertura) {
+      patch.apertura = localInputToIso(form.apertura);
+    }
     return patch;
   }
   return {
@@ -419,17 +425,21 @@ export function ConfiguracionExamenSection({
                 required
                 className={INPUT_CLS}
                 value={form.apertura}
-                disabled={guardando || bloqueada}
+                // Congelada SOLO si ya tenía una fecha. Un examen viejo que quedó sin
+                // apertura hay que poder completarlo: el formulario la exige, y
+                // dejarla deshabilitada y vacía volvía imposible guardar CUALQUIER
+                // cambio. El backend aplica el mismo criterio (completar lo que nunca
+                // se fijó no es modificarlo); cambiar una apertura ya puesta sigue
+                // bloqueado en los dos lados.
+                disabled={guardando || (bloqueada && !!original?.apertura)}
                 onChange={(e) => update('apertura', e.target.value)}
               />
               {/* El control lo dibuja el NAVEGADOR con su idioma: en inglés esto
                   mismo se ve 08/27/2026 10:49 PM y el sitio no lo puede cambiar.
                   El mes con letras saca la ambigüedad. */}
-              {form.apertura && (
-                <p className="mt-1.5 text-label-sm text-on-surface-variant">
-                  {fechaEnArgentino(form.apertura)}
-                </p>
-              )}
+              <p className="mt-1.5 text-label-sm text-on-surface-variant">
+                {form.apertura ? fechaEnArgentino(form.apertura) : 'Se escribe día/mes/año.'}
+              </p>
             </div>
             <div>
               <label className={LABEL_CLS} htmlFor="cfg-cierre">Cierre del examen *</label>
@@ -444,11 +454,9 @@ export function ConfiguracionExamenSection({
                 disabled={guardando}
                 onChange={(e) => update('cierre', e.target.value)}
               />
-              {form.cierre && (
-                <p className="mt-1.5 text-label-sm text-on-surface-variant">
-                  {fechaEnArgentino(form.cierre)}
-                </p>
-              )}
+              <p className="mt-1.5 text-label-sm text-on-surface-variant">
+                {form.cierre ? fechaEnArgentino(form.cierre) : 'Se escribe día/mes/año.'}
+              </p>
               {bloqueada && (
                 <p className="mt-1.5 text-label-sm text-on-surface-variant">
                   Con el examen ya rendido, el cierre solo se puede <strong>extender</strong>.
@@ -595,33 +603,41 @@ export function ConfiguracionExamenSection({
             </button>
           </div>
 
-          {/* Mezclar preguntas ya no es opcional: el orden aleatorio protege la
-              integridad de la rendición y no cambia la nota (solo el orden). Se
-              informa, no se ofrece apagar. */}
-          <div className="flex items-start gap-sm border border-outline-variant rounded-lg px-4 py-3">
-            <Icon name="shuffle" className="text-[18px] shrink-0 mt-0.5 text-on-surface-variant" />
-            <div className="min-w-0">
-              <p className="text-label-md font-semibold text-on-surface">
-                Las preguntas se mezclan siempre
-              </p>
-              <p className="text-label-sm text-on-surface-variant mt-0.5">
-                Cada alumno ve las preguntas en un orden distinto, para que no se puedan
-                copiar entre compañeros. Todos rinden las mismas preguntas y la nota no
-                depende del orden.
-              </p>
-            </div>
-          </div>
-
+          {/* Acá vivía el aviso "Las preguntas se mezclan siempre". Se sacó el
+              29/8/2026 por pedido del dueño: además de ser ruido en una pantalla
+              de configuración (no se puede apagar, así que no es una decisión que
+              el tutor tenga que tomar), su texto era FALSO en los exámenes
+              sorteados — decía "todos rinden las mismas preguntas" justo donde
+              cada alumno recibe un sorteo distinto del pool. */}
           {original && JSON.stringify(form) !== JSON.stringify(original) && (
-            <div className="flex justify-end">
-              <Button
-                variant="primary"
-                icon={guardando ? undefined : 'save'}
-                onClick={guardar}
-                disabled={guardando}
-              >
-                {guardando ? 'Guardando…' : 'Guardar configuración'}
-              </Button>
+            <div className="space-y-sm">
+              {/* El resultado va PEGADO al botón. Estaba solo arriba de todo, a una
+                  pantalla de scroll de acá: se apretaba Guardar, el guardado fallaba
+                  con su motivo, y desde donde miraba el tutor "no pasaba nada". Un
+                  error que nadie ve es un error que no existe. Arriba se conserva,
+                  para el que llega scrolleando desde el principio. */}
+              {errorGuardar && (
+                <div className="flex items-start gap-sm text-error bg-error-container/40 rounded-lg px-4 py-3 text-label-sm">
+                  <Icon name="error" className="text-[18px] shrink-0 mt-0.5" fill />
+                  <span>{errorGuardar}</span>
+                </div>
+              )}
+              {okGuardado && (
+                <div className="flex items-center gap-sm text-success bg-success-container rounded-lg px-4 py-3 text-label-sm">
+                  <Icon name="check_circle" className="text-[18px] shrink-0" fill />
+                  Configuración guardada.
+                </div>
+              )}
+              <div className="flex justify-end">
+                <Button
+                  variant="primary"
+                  icon={guardando ? undefined : 'save'}
+                  onClick={guardar}
+                  disabled={guardando}
+                >
+                  {guardando ? 'Guardando…' : 'Guardar configuración'}
+                </Button>
+              </div>
             </div>
           )}
         </div>

@@ -36,6 +36,7 @@ export function AvisoImpactoBaja({ impacto, cargando }: AvisoImpactoBajaProps) {
   if (!impacto) return null;
 
   const { sesiones_en_curso, rendiciones, examenes, comisiones } = impacto;
+  const inscriptos = impacto.inscriptos ?? 0;
 
   // El alcance solo se nombra cuando aporta: "alcanza a 1 comisión" al dar de
   // baja esa misma comisión no le dice nada a nadie.
@@ -43,7 +44,7 @@ export function AvisoImpactoBaja({ impacto, cargando }: AvisoImpactoBajaProps) {
   if (comisiones > 1) alcance.push(plural(comisiones, 'comisión', 'comisiones'));
   if (examenes > 1) alcance.push(plural(examenes, 'examen', 'exámenes'));
 
-  const hayAlgoQueDecir = sesiones_en_curso > 0 || rendiciones > 0;
+  const hayAlgoQueDecir = sesiones_en_curso > 0 || rendiciones > 0 || inscriptos > 0;
   if (!hayAlgoQueDecir) return null;
 
   return (
@@ -60,6 +61,21 @@ export function AvisoImpactoBaja({ impacto, cargando }: AvisoImpactoBajaProps) {
           </strong>{' '}
           No se puede dar de baja hasta que terminen: la baja les cortaría el examen a
           mitad de camino.
+        </p>
+      )}
+
+      {/* Los inscriptos AVISAN, no bloquean: la baja se hace igual y sus
+          inscripciones quedan intactas. Pero son gente que mañana no va a poder
+          entrar, así que quien confirma tiene que verlos antes. */}
+      {inscriptos > 0 && (
+        <p
+          role="note"
+          className="mt-2 rounded-lg bg-warning-container/50 text-on-surface
+            px-3 py-2 text-body-sm"
+        >
+          Hay <strong>{plural(inscriptos, 'alumno inscripto', 'alumnos inscriptos')}</strong>
+          {comisiones > 1 && <> en {plural(comisiones, 'comisión', 'comisiones')}</>}. Van a
+          dejar de ver sus exámenes. No se borra la inscripción: vuelve al reactivar.
         </p>
       )}
 

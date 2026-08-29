@@ -16,6 +16,13 @@
  */
 
 import { useState } from 'react';
+import {
+  MINUTOS_LIMITE_POR_DEFECTO,
+  aperturaSugerida,
+  cierreSugerido,
+  deInputLocalAIso,
+  errorDeVentana,
+} from './ventanaPorDefecto';
 import { Icon, Button } from '../../ui/components';
 import { ComisionMultiSelect } from '../../ui/ComisionMultiSelect';
 import { ModalOverlay } from '../../ui/ModalOverlay';
@@ -67,6 +74,16 @@ export function CrearExamenModal({ abierto, onCerrar, onCreado }: Props) {
   // c-78 E-07: el sorteo por intento es el ÚNICO modo de armado. No se elige.
   const SORTEO_POR_INTENTO = true;
   const [borrador, setBorrador] = useState(false);
+  // Ventana de rendición: OBLIGATORIA. Llega prellenada (ahora → +7 días) para
+  // que ponerla sea un clic, pero el formulario no deja crear sin ella. Antes el
+  // examen nacía sin fechas y al alumno le aparecía "Sin fecha de cierre".
+  const [apertura, setApertura] = useState(() => aperturaSugerida());
+  const [cierre, setCierre] = useState(() => cierreSugerido());
+  const errorVentana = errorDeVentana(apertura, cierre);
+  // Reloj del examen. Sin límite, la rendición vence recién en el cierre de la
+  // ventana (una semana por defecto): la sesión de proctoring quedaría abierta
+  // días, con la cámara prendida. Por defecto, una hora.
+  const [tiempoLimite, setTiempoLimite] = useState(MINUTOS_LIMITE_POR_DEFECTO);
 
 
   if (!abierto) return null;
@@ -85,6 +102,8 @@ export function CrearExamenModal({ abierto, onCerrar, onCreado }: Props) {
     notaMaxima <= 100 &&
     notaAprobacion >= 0 &&
     notaAprobacion <= notaMaxima &&
+    errorVentana === null &&
+    tiempoLimite > 0 &&
     !enviando;
 
   const handleCrear = async () => {
@@ -100,6 +119,9 @@ export function CrearExamenModal({ abierto, onCerrar, onCreado }: Props) {
         nota_maxima: notaMaxima,
         nota_aprobacion: notaAprobacion,
         sorteo_por_intento: SORTEO_POR_INTENTO,
+        apertura: deInputLocalAIso(apertura),
+        cierre: deInputLocalAIso(cierre),
+        tiempo_limite_min: tiempoLimite,
         borrador,
       });
       // El largo del examen (lo que rinde cada alumno) y el pool del que se sortea
@@ -190,6 +212,47 @@ export function CrearExamenModal({ abierto, onCerrar, onCreado }: Props) {
                 uno por separado. Si algo falla no se crea ninguno.
               </p>
             </div>
+          )}
+
+          {/* Ventana de rendición — obligatoria (decisión del dueño). */}
+          <div className="flex gap-3">
+            <label className="flex flex-col gap-1 flex-1">
+              <span className={LABEL_CLASS}>Inicio del examen</span>
+              <input
+                type="datetime-local"
+                value={apertura}
+                onChange={(e) => setApertura(e.target.value)}
+                className={INPUT_CLASS}
+              />
+            </label>
+            <label className="flex flex-col gap-1 flex-1">
+              <span className={LABEL_CLASS}>Cierre del examen</span>
+              <input
+                type="datetime-local"
+                value={cierre}
+                onChange={(e) => setCierre(e.target.value)}
+                className={INPUT_CLASS}
+              />
+            </label>
+          </div>
+          <label className="flex flex-col gap-1">
+            <span className={LABEL_CLASS}>Tiempo para resolverlo (minutos)</span>
+            <input
+              type="number"
+              min={1}
+              value={tiempoLimite}
+              onChange={(e) => setTiempoLimite(Math.max(0, parseInt(e.target.value, 10) || 0))}
+              className={INPUT_CLASS}
+            />
+          </label>
+          {errorVentana ? (
+            <p className="text-label-sm text-error -mt-1">{errorVentana}</p>
+          ) : (
+            <p className="text-label-sm text-on-surface-variant -mt-1">
+              Fuera de estas fechas el examen no se puede rendir, y cada alumno tiene{' '}
+              {tiempoLimite} minutos desde que arranca. Podés cambiarlo después desde la
+              configuración del examen.
+            </p>
           )}
 
           {/* Escala de calificación */}

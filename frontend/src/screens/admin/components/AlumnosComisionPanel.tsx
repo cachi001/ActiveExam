@@ -10,6 +10,7 @@ import {
   urlExportInscriptos,
 } from '../../../lib/examContentAdmin';
 import { Pagination, PageSizeSelect } from '../../../ui/Pagination';
+import { ExportButtons, type FormatoExport } from '../../../ui/ExportButtons';
 import type { AlumnoInscripto } from '../../../lib/types';
 import { AlumnoPickerModal } from './AlumnoPickerModal';
 
@@ -45,7 +46,7 @@ export function AlumnosComisionPanel({
   const [noPuedenRendir, setNoPuedenRendir] = useState(0);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  const [descargando, setDescargando] = useState(false);
+  const [descargando, setDescargando] = useState<FormatoExport | null>(null);
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pickerAbierto, setPickerAbierto] = useState(false);
@@ -79,17 +80,20 @@ export function AlumnosComisionPanel({
   // comisión que tiene una sola página muestra un listado vacío sin explicación.
   useEffect(() => { setPage(1); }, [comisionId]);
 
-  async function exportar(formato: 'xlsx' | 'pdf') {
-    setDescargando(true);
+  async function exportar(formato: FormatoExport) {
+    // El backend nombra la planilla `xlsx`; los botones hablan de «Excel», que es
+    // lo que la gente busca. La traducción vive acá, en el borde.
+    const extension = formato === 'excel' ? 'xlsx' : 'pdf';
+    setDescargando(formato);
     try {
       await descargarExport(
-        urlExportInscriptos(comisionId, formato),
-        `inscriptos-${comisionNombre}.${formato}`,
+        urlExportInscriptos(comisionId, extension),
+        `inscriptos-${comisionNombre}.${extension}`,
       );
     } catch {
       toast.error('No se pudo generar el archivo. Probá de nuevo.');
     } finally {
-      setDescargando(false);
+      setDescargando(null);
     }
   }
 
@@ -147,25 +151,17 @@ export function AlumnosComisionPanel({
         </h4>
         <div className="flex items-center gap-2">
           {/* c-78 §13.4 (E-10): para cruzar el padrón contra el campus hace falta
-              el archivo, no la pantalla. */}
-          <Button
-            variant="outline"
-            size="sm"
-            icon="table_view"
-            disabled={descargando || total === 0}
-            onClick={() => void exportar('xlsx')}
-          >
-            Excel
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            icon="picture_as_pdf"
-            disabled={descargando || total === 0}
-            onClick={() => void exportar('pdf')}
-          >
-            PDF
-          </Button>
+              el archivo, no la pantalla.
+
+              Etiquetas cortas: comparten la fila con «Inscribir alumno». El color y
+              el ícono —lo que hace reconocible al botón— son los mismos que en
+              Auditoría y Estadísticas. */}
+          <ExportButtons
+            exportando={descargando}
+            disabled={total === 0}
+            compacto
+            onExportar={(f) => void exportar(f)}
+          />
           <Button
             variant="primary"
             size="sm"

@@ -28,7 +28,7 @@ import { useBiometricRefs } from './biometric/useBiometricRefs';
 import { useCameraInit } from './biometric/useCameraInit';
 import { disposeEnrollmentEngine } from '../vision/enrollmentEngineLoader';
 import { fisherYatesShuffle } from '../vision/enrollmentChallengeDetector';
-import { SEQUENTIAL_CHALLENGES } from '../vision/liveness';
+import { SEQUENTIAL_CHALLENGES, resumirPasivoDeLaCaptura, hayEvidenciaDeVida } from '../vision/liveness';
 import type { FaceLandmark } from '../vision/VisionEngine';
 import type { SequentialChallenge, TurnDirection } from '../vision/liveness';
 
@@ -55,7 +55,7 @@ export function BiometricCapture({ challenges, onComplete, onCancel }: Biometric
     cooldownActiveRef, cooldownTimerRef, desafiosBarajadosRef, turnDirectionRef,
     challengeCountsRef, challengeNeutralFramesRef, gestureAccumMsRef,
     gestureLostMsRef, lastFrameTimeRef, wasHoldingRef, lastProgressTickFractionRef,
-    livenessWindowRef, passiveOkRef, passiveFalseFramesRef,
+    livenessWindowRef, passiveOkRef, passiveFramesEvaluadosRef, passiveFalseFramesRef,
     prevFrameDataRef, virtualCameraRef, wasBlockedByFramingRef,
     framingHintRef, framingStableRef, luminanceCanvasRef, fallbackManualRef,
     fase, setFase, desafios, setDesafios, resueltos, setResueltos,
@@ -141,7 +141,7 @@ export function BiometricCapture({ challenges, onComplete, onCancel }: Biometric
     startDetectionLoopImpl(engine, {
       faseRef, videoRef, rafHandleRef, engineRef,
       luminanceCanvasRef, framingStableRef, framingHintRef,
-      livenessWindowRef, passiveOkRef, passiveFalseFramesRef,
+      livenessWindowRef, passiveOkRef, passiveFramesEvaluadosRef, passiveFalseFramesRef,
       prevFrameDataRef, virtualCameraRef, wasBlockedByFramingRef,
       baselineRef, baselineFrameCountRef, baselineAccumulatorRef,
       nosePositionsRef, bestReferenceFrameRef, cooldownActiveRef,
@@ -152,7 +152,7 @@ export function BiometricCapture({ challenges, onComplete, onCancel }: Biometric
       setFramingHint, setTonoOvalo, setProgreso, activarCooldown,
     });
   }, [activarCooldown, faseRef, videoRef, rafHandleRef, engineRef, luminanceCanvasRef, // eslint-disable-line react-hooks/exhaustive-deps
-      framingStableRef, framingHintRef, livenessWindowRef, passiveOkRef, passiveFalseFramesRef,
+      framingStableRef, framingHintRef, livenessWindowRef, passiveOkRef, passiveFramesEvaluadosRef, passiveFalseFramesRef,
       prevFrameDataRef, virtualCameraRef, wasBlockedByFramingRef, baselineRef,
       baselineFrameCountRef, baselineAccumulatorRef, nosePositionsRef, bestReferenceFrameRef,
       cooldownActiveRef, challengeIndexRef, desafiosBarajadosRef, completadosRef,
@@ -176,12 +176,33 @@ export function BiometricCapture({ challenges, onComplete, onCancel }: Biometric
       new Set([bestReferenceFrameRef.current, snapshotToCanvas(videoRef.current)].filter((c): c is HTMLCanvasElement => c !== null)),
     );
     const isFallback = fallbackManualRef.current;
-    const passiveOkFinal = isFallback ? false : passiveOkRef.current;
+    // El pasivo resume la captura ENTERA (ver resumirPasivoDeLaCaptura): antes se
+    // reportaba el resultado del último frame, con el alumno ya quieto tras
+    // completar los retos, y salía "no superado" junto a los tres retos hechos.
+    const pasivoDeLaCaptura = isFallback
+      ? false
+      : resumirPasivoDeLaCaptura({
+          algunaVezOk: passiveOkRef.current,
+          framesEvaluados: passiveFramesEvaluadosRef.current,
+        });
+    // El veredicto suma las DOS fuentes: haber completado los retos que se le
+    // pidieron —en el orden aleatorio en que se pidieron— es evidencia de vida
+    // más fuerte que las varianzas del pasivo, cuyos umbrales hoy no se cumplen
+    // ni con una persona real. Reportar "no superado" a alguien que hizo los tres
+    // retos era contradecir la evidencia directa, y quedaba escrito en su legajo.
+    const passiveOkFinal = isFallback
+      ? false
+      : hayEvidenciaDeVida({
+          pasivoOk: pasivoDeLaCaptura,
+          pedidos: desafiosRef.current,
+          resueltos: resueltosRef.current,
+        });
     const virtualCameraFinal = isFallback ? false : virtualCameraRef.current;
     if (!passiveOkFinal || virtualCameraFinal) playError();
     onComplete(lastLandmarksRef.current, frames, passiveOkFinal, resueltosRef.current, virtualCameraFinal);
   }, [onComplete, rafHandleRef, cooldownTimerRef, bestReferenceFrameRef, videoRef,
-      fallbackManualRef, passiveOkRef, virtualCameraRef, lastLandmarksRef, resueltosRef]);
+      fallbackManualRef, passiveOkRef, passiveFramesEvaluadosRef, virtualCameraRef, lastLandmarksRef,
+      resueltosRef, desafiosRef]);
 
   useEffect(() => { procesarCompletadoRef.current = procesarCompletado; }, [procesarCompletado, procesarCompletadoRef]);
 

@@ -205,19 +205,22 @@ export default function ProctoringSessionDetail() {
       title="Detalle de sesión"
       help={
         <HelpButton title="Detalle de sesión">
+          {/* Estaba escrito en jerga ("metadata", "stat cards", "server-side"):
+              la ayuda se lee en lenguaje claro, incluso en pantallas de staff. */}
           <p>
-            Esta vista concentra toda la <strong>evidencia</strong> de una sesión de proctoring:
-            metadata, stat cards (score, eventos, discrepancias), eventos individuales con
-            screenshot y veredicto de re-inferencia server-side, y el resultado biométrico.
+            Acá está toda la <strong>evidencia</strong> de una sesión: los datos del examen y
+            del alumno, el resumen de arriba (puntaje, cantidad de eventos y discrepancias),
+            cada evento con su captura, y el resultado de la verificación de identidad.
           </p>
           <p>
-            El <em>score</em> prioriza la revisión humana — no es un veredicto. La discrepancia
-            marca eventos donde el conteo del cliente no coincide con la re-inferencia del
-            backend (el cliente es un sensor no confiable).
+            El <em>puntaje</em> ordena la revisión por prioridad, no es un veredicto. Una
+            <em> discrepancia</em> es un evento donde lo que detectó la computadora del alumno
+            no coincide con lo que verificó el servidor al recibirlo. Cuando pasa, vale lo del
+            servidor: la computadora del alumno no es una fuente confiable.
           </p>
           <p>
-            El screenshot es <strong>dato sensible</strong> (Ley 25.326): finalidad acotada a
-            revisión humana, nunca se loguea ni se persiste en el cliente.
+            La captura es <strong>dato sensible</strong>: su finalidad es acotada a la revisión
+            humana, nunca se loguea ni se persiste en el cliente.
           </p>
         </HelpButton>
       }

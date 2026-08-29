@@ -21,11 +21,24 @@ import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-# Umbral conservador por DEFECTO de la distancia coseno (RN-BIO-03). El valor
-# operativo definitivo lo fija la configuracion del examen (C-07); aqui se
-# documenta un default razonable para vectores faciales normalizados. NO es un
-# secreto: es un parametro de negocio.
-UMBRAL_COSENO_DEFECTO = 0.35
+# Umbral de la distancia coseno (RN-BIO-03). NO es un secreto: es un parametro
+# de seguridad, y lo decide el SERVIDOR (el cliente no opina — regla dura #6).
+#
+# 0.093 = el estandar de face-api.js traducido a coseno. face-api esta calibrado
+# para distancia EUCLIDIANA con umbral 0.60 para "misma persona"; este modulo
+# compara por coseno, que no es la misma escala. Para descriptores de norma ~1.4
+# (la medida en la base fue 1.393):
+#
+#     d_euclid^2 = 2 * norma^2 * d_coseno   ->   d_cos = 0.36 / (2*1.393^2) ~ 0.093
+#
+# ANTES ERA 0.35, que equivale a una euclidiana de 1.165: casi el doble del corte
+# de face-api. Con ese valor OTRA PERSONA pasaba la verificacion (caso real
+# 29/8/2026: distancia 0.11 = 0.653 euclidiana, o sea que el modelo la habia
+# detectado bien como distinta, y el umbral la dejo pasar igual).
+#
+# Subirlo deja entrar impostores; bajarlo rechaza alumnos legitimos por luz o
+# angulo. Ver `tests/test_biometria_umbral_no_confia_en_el_cliente.py`.
+UMBRAL_COSENO_DEFECTO = 0.093
 
 
 class EmbeddingInvalidoError(ValueError):

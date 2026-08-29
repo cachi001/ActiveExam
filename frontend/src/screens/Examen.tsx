@@ -7,6 +7,8 @@ import { useExamProctoring } from '../proctoring/useExamProctoring';
 import { getEffectiveConfig, loadEffectiveConfig } from '../config/effectiveConfigCache';
 import type { EventoSesion } from '../lib/types';
 import { fetchExamenParaRendir } from '../lib/examTakingApi';
+import { debeReintentarCarga, puedeCargarPreguntas } from './Examen.cargaDePreguntas';
+import { camaraCaida } from '../proctoring/camaraObligatoria';
 import type { ExamenRendicion } from '../lib/examTakingApi';
 import type { RespuestaEnvio } from '../lib/apiProctoring/respuestas';
 import {
@@ -19,11 +21,11 @@ import {
 import { FullscreenLockdown } from '../proctoring/fullscreenLockdown';
 import { MonitorBloqueante } from './examen/MonitorBloqueante';
 import { AlertaCritica } from './examen/AlertaCritica';
-import { CalibracionMirada } from './examen/CalibracionMirada';
 import { LockdownOverlay } from './examen/LockdownOverlay';
 import { ExamenPreguntaCard } from './examen/ExamenPreguntaCard';
 import { ExamenErrorInicio } from './examen/ExamenErrorInicio';
 import { ExamenCamaraPanel } from './examen/ExamenCamaraPanel';
+import { CamaraCaidaBloqueante } from './examen/CamaraCaidaBloqueante';
 import { IntegridadPanel } from './examen/IntegridadPanel';
 import { QuestionNavigator } from './alumno/components/QuestionNavigator';
 import { PausaAlumno } from './PausaAlumno';
@@ -86,6 +88,11 @@ export default function Examen() {
   const [preguntasRaw, setPreguntasRaw] = useState<ExamenRendicion['preguntas']>([]);
   const [mezclar, setMezclar] = useState(false);
   const [cargandoPreguntas, setCargandoPreguntas] = useState(false);
+  // Reintentos de la carga cuando el examen llega vacío (ver `debeReintentarCarga`).
+  const [intentosCarga, setIntentosCarga] = useState(0);
+  // Sin cámara no se rinde, tampoco a mitad de examen: se tapa la pantalla hasta
+  // que la reconecte. Arranca en `false` para no parpadear antes de pedirla.
+  const [sinCamara, setSinCamara] = useState(false);
   const entregadoRef = useRef(false);
   const [indiceActual, setIndiceActual] = useState(0);
   const [respuestas, setRespuestas] = useState<Record<string, string>>({});
@@ -111,7 +118,7 @@ export default function Examen() {
     });
   }, []);
 
-  const { sessionId, sessionCreadaEn, score, eventCount, activo, eventos, extraMonitorActive, sessionError, calibrando, detener, setPausaAprobada, evidenciaEnRiesgo } = useExamProctoring(videoRef, examen);
+  const { sessionId, sessionCreadaEn, score, eventCount, activo, eventos, extraMonitorActive, sessionError, detener, setPausaAprobada, evidenciaEnRiesgo } = useExamProctoring(videoRef, examen);
 
   // Entrega: confirmación previa (nunca finalizar por un click accidental) + estado
   // de envío + error de entrega (si el POST de respuestas falla NO se navega a /cierre,
@@ -154,8 +161,22 @@ export default function Examen() {
     }).then((s) => {
       streamRef.current = s;
       if (videoRef.current) { videoRef.current.srcObject = s; videoRef.current.play().catch(() => {}); }
-    }).catch(() => {});
-    return () => streamRef.current?.getTracks().forEach((t) => t.stop());
+      setSinCamara(camaraCaida({ stream: s }));
+      // Desenchufarla dispara `ended` en la pista: es la señal más directa.
+      s.getVideoTracks().forEach((t) => {
+        t.addEventListener('ended', () => setSinCamara(true));
+      });
+    }).catch(() => setSinCamara(true));
+    // Sondeo además del evento: revocar el permiso o que otra app se la robe no
+    // siempre emite `ended`, y el examen no puede seguir a ciegas.
+    const vigilante = setInterval(
+      () => setSinCamara(camaraCaida({ stream: streamRef.current })),
+      2000,
+    );
+    return () => {
+      clearInterval(vigilante);
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+    };
   }, []);
 
   useEffect(() => {
@@ -168,11 +189,25 @@ export default function Examen() {
 
   useEffect(() => {
     const examenContenidoId = examen?.examen_contenido_id;
-    if (!examenContenidoId) return;
+    // ESPERAR LA SESIÓN. En `sorteo_por_intento` el backend sortea en este mismo
+    // GET, y para sortear necesita una sesión de proctoring abierta del alumno.
+    // Sin ella devuelve `preguntas: []` y no sortea NADA: el alumno se quedaba
+    // con un examen vacío que encima no podía entregar. Antes este efecto
+    // dependía solo del examen, así que salía en paralelo con la creación de la
+    // sesión y perdía la carrera cuando la red venía rápida.
+    if (!examenContenidoId || !puedeCargarPreguntas(examenContenidoId, sessionId)) return;
     setCargandoPreguntas(true);
     fetchExamenParaRendir(examenContenidoId)
       .then((data) => {
         if (!data) return;
+        // Red de seguridad: si aun así llegó vacío, reintentar. El sorteo es
+        // idempotente (queda persistido en `pregunta_sesion`), así que reintentar
+        // devuelve LAS MISMAS preguntas, nunca un sorteo nuevo. Sin esto el
+        // alumno se quedaba con la pantalla en cero y sin poder ni entregar.
+        if (debeReintentarCarga(data.preguntas.length, intentosCarga, true)) {
+          setIntentosCarga((n) => n + 1);
+          return;
+        }
         setPreguntasRaw(data.preguntas);
         setMezclar(!!data.mezclar_preguntas);
         setTiempoLimiteMin(data.tiempo_limite_min ?? null);
@@ -184,7 +219,7 @@ export default function Examen() {
       })
       .catch(() => {})
       .finally(() => setCargandoPreguntas(false));
-  }, [examen?.examen_contenido_id]);
+  }, [examen?.examen_contenido_id, sessionId, intentosCarga]);
 
   // Vuln reload: ancla el countdown a un timestamp SERVER-AUTORITATIVO, NO a la hora
   // de montaje de este componente. Sin esto, recargar la página a mitad de examen le
@@ -226,7 +261,16 @@ export default function Examen() {
       (_tipo) => {},
     );
     lockdownRef.current = lockdown;
-    lockdown.iniciar().catch(() => {});
+    // Si `iniciar()` falla, el examen queda EN VENTANA y hay que decirlo. Pasa de
+    // verdad: entrar a pantalla completa exige un gesto del usuario, y al retomar
+    // un examen ya empezado se llega derecho acá, sin ningún clic previo que el
+    // navegador acepte como tal. El `.catch(() => {})` se lo tragaba y el alumno
+    // rendía en ventana sin aviso y sin forma de entrar.
+    //
+    // Marcarlo como bloqueado muestra el overlay que YA existe para cuando alguien
+    // se sale de pantalla completa, con su botón para volver — ese clic sí es un
+    // gesto válido y entra sin problema.
+    lockdown.iniciar().catch(() => setBloqueado(true));
     return () => lockdown.detener();
   }, []);
 
@@ -513,7 +557,13 @@ export default function Examen() {
                 supervisión ocupa todo el ancho (sin hueco). */}
             <div className={`grid gap-md items-start ${chatHabilitado ? 'md:grid-cols-2' : 'grid-cols-1'}`}>
               {chatHabilitado && (
-                <ChatBox sessionId={sessionId} yo="alumno" titulo="Canal con el tutor" altura="h-[160px]" />
+                <ChatBox
+                  sessionId={sessionId}
+                  yo="alumno"
+                  titulo="Canal con el tutor"
+                  altura="h-[160px]"
+                  soloResponder
+                />
               )}
               <IntegridadPanel
                 activo={activo}
@@ -618,9 +668,16 @@ export default function Examen() {
         </div>
       )}
 
-      {calibrando && <CalibracionMirada />}
+      {/* Acá se mostraba <CalibracionMirada />, un cartel a pantalla completa que
+          frenaba el examen para pedirle al alumno que mirara al centro. Se sacó el
+          29/8/2026: la calibración es el paso 3 del ingreso, y adentro del examen
+          quedó solo como respaldo SILENCIOSO para el que recarga a mitad de
+          rendición. Medir mientras el alumno lee es justo la postura que hay que
+          capturar, así que no hay nada que pedirle: el cartel interrumpía, con el
+          reloj corriendo, para reclamar algo que ya estaba haciendo. */}
       {alerta && <AlertaCritica ev={alerta} onClose={() => setAlerta(null)} />}
       {extraMonitorActive && <MonitorBloqueante />}
+      {sinCamara && <CamaraCaidaBloqueante />}
       {bloqueado && (
         <LockdownOverlay onVolverAPantallaCompleta={() => lockdownRef.current?.volverAPantallaCompleta()} />
       )}

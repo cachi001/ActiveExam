@@ -21,9 +21,10 @@ Routers montados:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from typing import AsyncIterator
 
 from fastapi import FastAPI, Request, status
@@ -38,6 +39,7 @@ from app.config_activeexam import get_activeexam_settings, minio_configurado
 from app.infrastructure.auth.activeexam_wiring import build_activeexam_jwt_validator
 from app.infrastructure.crypto.embedding_encryption import EmbeddingEncryptionService
 from app.infrastructure.crypto.evidence_encryption import EvidenceCipher
+from app.application.compliance.purga_programada import programar_purga_capturas
 from app.application.moodle.credencial_docente_service import CredencialDocenteService
 from app.application.moodle.credencial_service import MoodleCredencialResolver
 from app.application.moodle.intentos_fallidos_tracker import IntentosFallidosTracker
@@ -311,8 +313,20 @@ def create_activeexam_app() -> FastAPI:
                 exc_info=True,
             )
 
-        yield
-        await engine.dispose()
+        # El consentimiento le declara al alumno un plazo concreto de borrado de
+        # las capturas (180 dias por default). Hasta ahora ese borrado dependia de
+        # que un admin apretara el endpoint: el plazo era una intencion, no un
+        # hecho. Esta tarea lo ejecuta sola. Borra SOLO la imagen — el evento, su
+        # huella y la sesion se conservan porque son la prueba del examen.
+        _purga_capturas = programar_purga_capturas(session_factory)
+
+        try:
+            yield
+        finally:
+            _purga_capturas.cancel()
+            with suppress(asyncio.CancelledError):
+                await _purga_capturas
+            await engine.dispose()
 
     app = FastAPI(
         title="ActiveExam ActiveExam API",

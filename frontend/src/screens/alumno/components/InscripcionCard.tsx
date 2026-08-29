@@ -64,10 +64,13 @@ export function InscripcionCard({
         // C-58 D6: flex-col en mobile, flex-row en sm+ para que el <p> y el Button no compriman
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-sm pt-sm border-t border-outline-variant/40">
           {puedeRendirEsteExamen ? (
+            // Igual que en `ExamenImportadoCard`: este botón lleva a la ficha
+            // del examen (`/pre-examen`), no arranca la rendición. El que la
+            // arranca es el "Comenzar examen" de esa pantalla.
             <Button
               onClick={onRendir}
               disabled={verificando}
-              icon={verificando ? undefined : 'play_arrow'}
+              icon={verificando ? undefined : 'arrow_forward'}
               className="h-10"
             >
               {verificando ? (
@@ -75,7 +78,7 @@ export function InscripcionCard({
                   <Icon name="progress_activity" className="ae-spin text-[16px]" />
                   Verificando…
                 </span>
-              ) : 'Rendir'}
+              ) : 'Ver examen'}
             </Button>
           ) : (
             <>

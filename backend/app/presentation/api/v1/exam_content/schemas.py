@@ -6,9 +6,9 @@ D3: es_correcta NO aparece en ningún schema de respuesta al cliente.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from enum import Enum
-from typing import Literal
+from typing import ClassVar, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from app.domain.exam_content.entities import PoliticaIntentos
@@ -402,6 +402,51 @@ class CrearDesdebancoRequest(BaseModel):
     # puede elegir otra escala acá mismo, al crear, sin un PATCH /config aparte.
     nota_maxima: float = Field(default=100.0, gt=0, le=100)
     nota_aprobacion: float = Field(default=60.0, ge=0)
+    # Ventana de rendicion. El examen NO puede nacer sin ella: el editor de config
+    # ya las exige (C-69), pero esa validacion solo corre si alguien abre esa
+    # pantalla, asi que un examen recien creado se publicaba sin fechas y al
+    # alumno le aparecia "Sin fecha de cierre". Si el body no las trae se
+    # DEFAULTEAN (ver `completar_ventana_de_rendicion`) en vez de rechazar: asi
+    # ningun examen queda sin ventana sin romper a los clientes que no las mandan.
+    #
+    # Contraste deliberado con `moodle_courseid`/`moodle_cmid`, que si son
+    # opcionales: un examen puede cargarse a mano y no sincronizarse nunca.
+    apertura: datetime | None = None
+    cierre: datetime | None = None
+    # Reloj del examen. Sin el, `deadline_efectivo` hace que la rendicion venza
+    # recien en el `cierre` de la ventana — que por defecto es una semana
+    # despues. Eso deja una sesion de proctoring abierta siete dias: camara
+    # prendida, capturas acumulandose y sin auto-finalizar. Por defecto, una
+    # hora. Un `null` EXPLICITO sigue significando "sin limite": el editor de
+    # configuracion tiene esa casilla y tiene que poder ejercerla.
+    tiempo_limite_min: int | None = Field(default=60, gt=0)
+
+    #: Cuanto dura la ventana por defecto cuando quien crea no la define.
+    DIAS_VENTANA_POR_DEFECTO: ClassVar[int] = 7
+    #: Reloj por defecto, en minutos, cuando quien crea no lo define.
+    MINUTOS_LIMITE_POR_DEFECTO: ClassVar[int] = 60
+
+    @model_validator(mode="after")
+    def completar_ventana_de_rendicion(self) -> "CrearDesdebancoRequest":
+        """Completa las fechas faltantes y valida que la ventana tenga sentido.
+
+        Una sola de las dos tampoco alcanza: media ventana es justo el estado que
+        este default viene a eliminar.
+        """
+        if self.apertura is None:
+            object.__setattr__(self, "apertura", datetime.now(timezone.utc))
+        if self.cierre is None:
+            object.__setattr__(
+                self,
+                "cierre",
+                self.apertura + timedelta(days=self.DIAS_VENTANA_POR_DEFECTO),
+            )
+        if self.cierre <= self.apertura:
+            raise ValueError(
+                "La fecha de cierre tiene que ser posterior a la de apertura: "
+                f"apertura={self.apertura.isoformat()}, cierre={self.cierre.isoformat()}."
+            )
+        return self
 
     @model_validator(mode="after")
     def validar_nota_aprobacion_le_maxima(self) -> "CrearDesdebancoRequest":
@@ -736,6 +781,12 @@ class ImpactoBajaResponse(BaseModel):
     # Inventario VIGENTE alcanzado (lo ya dado de baja no se re-anuncia).
     examenes: int
     comisiones: int
+    # Alumnos inscriptos en las comisiones alcanzadas. Como `rendiciones`, AVISA
+    # y no bloquea: la baja se puede hacer con gente inscripta (sus inscripciones
+    # quedan intactas y vuelven al reactivar), pero quien confirma tiene que
+    # saber a cuántos les corta el acceso. 0 cuando la baja es de un examen: eso
+    # no toca la inscripción del alumno a la comisión.
+    inscriptos: int = 0
 
 
 class AltaInlineResponse(BaseModel):

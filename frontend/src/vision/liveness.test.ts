@@ -24,6 +24,9 @@ import {
   MAX_ACTIVE_CHALLENGES,
   passivePassed,
   pickActiveChallenges,
+  resumirPasivoDeLaCaptura,
+  hayEvidenciaDeVida,
+  nombreDelReto,
 } from "./liveness";
 
 const PASSIVE_OK = {
@@ -126,6 +129,68 @@ describe("deteccion de camara virtual", () => {
         faceCountStability: 0.8,
       }),
     ).toBe(false);
+  });
+
+  // Caso real (29/8/2026): al dueño le quedo "Camara virtual detectada" en el
+  // registro de una rendicion con camara fisica comun. La causa no era el umbral
+  // sino QUE VALOR llega cuando no se pudo medir nada: el loop compara el frame
+  // actual contra el anterior y, si no hay con que comparar, deja la varianza en
+  // 0 — que es exactamente el valor que significa "feed en loop". Un fallo de
+  // medicion terminaba registrado como sospecha de fraude en el legajo del alumno.
+  it("no acusa cuando la medicion no fue concluyente", () => {
+    expect(
+      detectVirtualCamera({
+        interFramePixelVariance: 0,
+        frameRateJitter: 0,
+        faceCountStability: 1,
+        medicionValida: false,
+      }),
+    ).toBe(false);
+  });
+
+  it("sigue detectando el feed loop cuando la medicion SI fue valida", () => {
+    // La defensa no se debilita: medido de verdad, un feed perfectamente estable
+    // se sigue marcando.
+    expect(
+      detectVirtualCamera({
+        interFramePixelVariance: 0,
+        frameRateJitter: 0,
+        faceCountStability: 1,
+        medicionValida: true,
+      }),
+    ).toBe(true);
+  });
+});
+
+/**
+ * El pasivo describe la CAPTURA ENTERA, no el instante en que termino.
+ *
+ * Bug real (29/8/2026): el registro de sesion decia "Liveness pasivo: No superado"
+ * junto a los TRES retos completados (parpadear, sonreir, girar cabeza). Una foto
+ * no hace ninguno de los tres, asi que las dos afirmaciones no podian ser ciertas
+ * a la vez. La causa: el loop pisaba el resultado en cada frame, y lo que se
+ * reportaba era el ULTIMO frame — el alumno ya habia terminado los retos y estaba
+ * quieto esperando, con lo cual la ventana se llenaba de quietud y la varianza caia.
+ */
+describe("resumen pasivo de la captura", () => {
+  it("una captura con vida en algun momento cuenta como superada", () => {
+    expect(resumirPasivoDeLaCaptura({ algunaVezOk: true, framesEvaluados: 40 })).toBe(true);
+  });
+
+  it("quedarse quieto al final no borra la vida detectada antes", () => {
+    // Es literalmente lo que hace el alumno: termina los retos y espera.
+    expect(resumirPasivoDeLaCaptura({ algunaVezOk: true, framesEvaluados: 120 })).toBe(true);
+  });
+
+  it("una captura sin un solo frame con vida no supera el pasivo", () => {
+    // La foto plana sigue sin pasar: no hay parpadeo ni profundidad en ningun frame.
+    expect(resumirPasivoDeLaCaptura({ algunaVezOk: false, framesEvaluados: 40 })).toBe(false);
+  });
+
+  it("sin frames evaluados no afirma que haya vida", () => {
+    // Camara que nunca entrego un frame util: es "no se pudo medir", y ante la
+    // duda no se afirma lo que no se observo.
+    expect(resumirPasivoDeLaCaptura({ algunaVezOk: false, framesEvaluados: 0 })).toBe(false);
   });
 });
 
@@ -330,5 +395,72 @@ describe("C-67 Grupo 5 — propagación de señales PAD al backend sin hardcodes
     expect(payload.retos_resueltos).toEqual([]);
     expect(payload.resultado).toBe("verificado"); // no es cámara virtual, pero pasivo falló
     // Nota: es_match se decide server-side; el cliente solo reporta las señales reales
+  });
+});
+
+/**
+ * Completar los retos activos ES prueba de vida.
+ *
+ * Planteado por el dueño (29/8/2026) y es correcto: "no tiene sentido que el
+ * liveness pasivo este mal si complete los pasos perfectamente". Una foto no
+ * parpadea, no sonrie y no gira la cabeza; y un video grabado tampoco alcanza,
+ * porque los retos se piden en ORDEN ALEATORIO (`fisherYatesShuffle`) y habria
+ * que adivinar la secuencia.
+ *
+ * Las senales pasivas (varianza de parpadeo, micro-movimientos, profundidad) son
+ * heuristicas de apoyo con umbrales que hoy no se cumplen ni con una camara real.
+ * Que una heuristica floja contradiga la evidencia directa —y deje "No superado"
+ * en el legajo de alguien que hizo todo bien— es tener la logica al reves.
+ */
+describe("veredicto de liveness del cliente", () => {
+  const TRES = ["parpadear", "sonreír", "girar_cabeza"];
+
+  it("con todos los retos completos hay vida, aunque el pasivo no la haya visto", () => {
+    expect(hayEvidenciaDeVida({ pasivoOk: false, pedidos: TRES, resueltos: TRES })).toBe(true);
+  });
+
+  it("con el pasivo OK hay vida aunque falte algun reto", () => {
+    // Las dos fuentes suman: alcanza con una.
+    expect(
+      hayEvidenciaDeVida({ pasivoOk: true, pedidos: TRES, resueltos: ["parpadear"] }),
+    ).toBe(true);
+  });
+
+  it("sin pasivo y con retos incompletos NO se afirma que haya vida", () => {
+    // Es el caso que la defensa tiene que seguir atrapando: nada lo demostro.
+    expect(
+      hayEvidenciaDeVida({ pasivoOk: false, pedidos: TRES, resueltos: ["parpadear"] }),
+    ).toBe(false);
+  });
+
+  it("sin retos pedidos no alcanza con la lista vacia", () => {
+    // "Completo los 0 retos que le pedi" no prueba nada; sin retos decide el pasivo.
+    expect(hayEvidenciaDeVida({ pasivoOk: false, pedidos: [], resueltos: [] })).toBe(false);
+    expect(hayEvidenciaDeVida({ pasivoOk: true, pedidos: [], resueltos: [] })).toBe(true);
+  });
+
+  it("no importa el orden en que quedaron resueltos", () => {
+    // Se piden barajados, asi que llegan en cualquier orden.
+    expect(
+      hayEvidenciaDeVida({
+        pasivoOk: false,
+        pedidos: TRES,
+        resueltos: ["girar_cabeza", "parpadear", "sonreír"],
+      }),
+    ).toBe(true);
+  });
+});
+
+describe("nombre legible de cada reto", () => {
+  it("traduce los identificadores a algo que se pueda leer", () => {
+    // En el registro de sesion se veia "girar_cabeza" tal cual, con guion bajo.
+    expect(nombreDelReto("girar_cabeza")).toBe("Girar la cabeza");
+    expect(nombreDelReto("parpadear")).toBe("Parpadear");
+    expect(nombreDelReto("sonreír")).toBe("Sonreír");
+  });
+
+  it("un identificador desconocido no se muestra crudo", () => {
+    // Un reto nuevo del backend no puede filtrar su nombre interno a la pantalla.
+    expect(nombreDelReto("mirar_arriba")).toBe("Mirar arriba");
   });
 });
