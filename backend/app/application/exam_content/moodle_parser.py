@@ -55,6 +55,7 @@ from __future__ import annotations
 
 import html
 import re
+import textwrap
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 
@@ -206,12 +207,27 @@ def _strip_html(text: str) -> str:
     # &nbsp; (\xa0) es el "línea vacía" que usa Moodle entre bloques — tratarlo
     # como espacio normal para que colapse igual que una línea en blanco real.
     text = text.replace("\xa0", " ")
-    # Colapsar espacios/tabs repetidos (sin tocar los saltos de línea que
-    # acabamos de insertar) y líneas en blanco de más.
-    text = re.sub(r"[ \t]+", " ", text)
-    text = re.sub(r"[ \t]*\n[ \t]*", "\n", text)
+    # Colapsar espacios/tabs repetidos y líneas en blanco de más, PERO conservando
+    # la sangría del comienzo de cada línea.
+    #
+    # Antes esto colapsaba todo el espacio horizontal, y el código de las preguntas
+    # de completar llegaba al alumno pegado al margen: en Python la indentación es
+    # sintaxis, define si un `return` está dentro o fuera del `if`. En preguntas que
+    # justamente evalúan la estructura del código, eso las volvía irresolubles.
+    #
+    # El espacio del MEDIO de la línea sigue colapsando (es formato del HTML de
+    # Moodle y no significa nada); el del PRINCIPIO es el único que dice algo.
+    lineas: list[str] = []
+    for linea in text.split("\n"):
+        sangria = linea[: len(linea) - len(linea.lstrip(" \t"))]
+        cuerpo = re.sub(r"[ \t]+", " ", linea.strip())
+        lineas.append(f"{sangria}{cuerpo}" if cuerpo else "")
+    text = "\n".join(lineas)
     text = re.sub(r"\n{3,}", "\n\n", text)
-    return text.strip()
+    # `dedent` saca el margen COMÚN a todas las líneas (el que mete el HTML de
+    # Moodle) y conserva la sangría RELATIVA, que es la que tiene significado.
+    # Un `strip()` a secas se comía la sangría de la primera línea de código.
+    return textwrap.dedent(text).strip("\n").rstrip()
 
 
 @dataclass
