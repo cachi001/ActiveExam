@@ -130,18 +130,21 @@ async function montar(): Promise<void> {
   await act(async () => {});
 }
 
-// Se mira `document.body` y no el contenedor del render: el overlay de calibración
-// se monta con portal. Tiene que ser así — anidado en la página quedaba atrapado en
-// el contexto de apilamiento que crea `animate-in` y su z-index dejaba de valer
-// contra lo que se dibuja fuera de ese contexto (ver `ui/capas.test.ts`).
-describe('Examen — overlay de calibración de mirada', () => {
-  it('muestra el overlay "Mirá al centro" mientras calibrando es true', async () => {
+// Se mira `document.body` y no el contenedor del render: el overlay se montaba con
+// portal, así que si quedara alguno vivo aparecería ahí y no en el contenedor.
+describe('Examen — la calibración no interrumpe la rendición', () => {
+  it('no tapa el examen con un cartel mientras calibra', async () => {
+    // La calibración es el paso 3 del ingreso. Adentro del examen queda solo como
+    // respaldo silencioso (recarga a mitad de rendición), y medir mientras el
+    // alumno lee es JUSTO la postura que hay que capturar: no hace falta pedirle
+    // que mire a ningún lado. El cartel le frenaba el examen con el reloj andando
+    // para pedirle algo que ya estaba haciendo.
     useExamProctoringMock.setCalibrando(true);
     await montar();
-    expect(document.body.textContent).toContain('Mirá al centro de la pantalla');
+    expect(document.body.textContent).not.toContain('Mirá al centro de la pantalla');
   });
 
-  it('NO muestra el overlay cuando calibrando es false', async () => {
+  it('tampoco lo tapa cuando no está calibrando', async () => {
     useExamProctoringMock.setCalibrando(false);
     await montar();
     expect(document.body.textContent).not.toContain('Mirá al centro de la pantalla');
