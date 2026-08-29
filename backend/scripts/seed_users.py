@@ -1,10 +1,18 @@
 #!/usr/bin/env python
 """Seed de usuarios de prueba con credencial local (C-55 / c-57).
 
-Crea 6 usuarios demo: 4 estudiantes (estudiante1..4) + 1 coordinador + 1 admin_sistema,
-con passwords hasheados (bcrypt 12r). Es IDEMPOTENTE: verifica la existencia
-antes de insertar (no duplica si ya existen). Los 4 estudiantes pueblan la cola
-de revisión con sesiones distinguibles.
+Crea 8 usuarios demo: 4 estudiantes (estudiante1..4) + coordinador + admin_sistema
++ tutor + profesor, con passwords hasheados (bcrypt 12r). Es IDEMPOTENTE: verifica
+la existencia antes de insertar (no duplica si ya existen). Los 4 estudiantes
+pueblan la cola de revisión con sesiones distinguibles.
+
+Siembra además la raíz de confianza LTI (``lti_deployment_confiable``) si están las
+variables ``LTI_*``: sin esa fila NINGÚN alumno entra desde el campus.
+
+NO siembra estructura académica (materias, comisiones, matriculaciones ni exámenes).
+Se sacó el 29/8/2026 por decisión del dueño: un "Programación 1 / Comisión 1"
+fantasma reaparecía en cada deploy y ensuciaba la base de producción. Esa estructura
+la carga cada institución desde el panel.
 
 MODOS:
   - Modo full (default): usa ``app.config.Settings`` (requiere todas las vars
@@ -40,10 +48,15 @@ CREDENCIALES SEED (para probar el login — usernames simples, no codigos tipo l
                   El email se conserva por idempotencia de una migracion vieja
                   -- ya NO hay rol "proctor" en el sistema.)
     Admin:        username=admin         | email=admin@activeexam.local
-    Tutor:        username=tutor1        | email=tutor@activeexam.local (docente de PROG1/C1)
+    Tutor:        username=tutor1        | email=tutor@activeexam.local
+    Profesor:     username=profesor1     | email=profesor@activeexam.local
 
     Los 4 estudiantes comparten SEED_ESTUDIANTE_PASSWORD. El tutor usa
-    SEED_TUTOR_PASSWORD y queda asignado como docente de la Comisión C1 de PROG1.
+    SEED_TUTOR_PASSWORD y el profesor SEED_PROFESOR_PASSWORD. Ninguno nace con
+    comisión ni materia a cargo: eso se asigna desde el panel.
+
+VARIABLES LTI (opcionales; sin las cuatro no se siembra el deployment):
+    LTI_ISS, LTI_CLIENT_ID, LTI_DEPLOYMENT_ID, LTI_JWKS_URI
 """
 
 from __future__ import annotations
@@ -201,8 +214,8 @@ async def _ejecutar_seed(
             "apellido": "Sistema",
         },
         {
-            # Tutor (gestión académica) a cargo de la Comisión C1 de PROG1.
-            # Queda asignado como docente_id de la comisión en _seed_docente_comision().
+            # Tutor (gestión académica). Queda sin comisión a cargo: la estructura
+            # académica ya no se siembra, la carga cada institución.
             "username": "tutor1",
             "email": "tutor@activeexam.local",
             "password": pw_tutor,
@@ -214,8 +227,8 @@ async def _ejecutar_seed(
             # Profesor (c-78, E-04/D11): crea examenes y gestiona el banco de SUS
             # materias, pero NO emite el veredicto de integridad — esa decision es
             # exclusiva del COORDINADOR (regla dura #5: quien pone la nota no
-            # decide si hubo fraude). Queda asignado a PROG1 en
-            # _seed_profesor_materia(), que es lo que le da alcance a algo.
+            # decide si hubo fraude). Nace sin materias asignadas: hay que darle
+            # alcance desde el panel para que su rol alcance algo.
             "username": "profesor1",
             "email": "profesor@activeexam.local",
             "password": pw_profesor,
@@ -291,20 +304,9 @@ async def _ejecutar_seed(
         habilitado=_reset_pedido(),
     )
 
-    # Contenido académico demo: materia + comisión + examen (idempotente).
-    await _seed_contenido(factory)
-
-    # Asignar el tutor seed (tutor1) como tutor a cargo de la Comisión C1
-    # de PROG1 (idempotente). Sin esto, la comisión queda sin tutor.
-    await _seed_docente_comision(factory)
-
-    # Asignar el profesor seed (profesor1) a PROG1 (idempotente). Sin materia
-    # asignada el rol no alcanza nada: su permiso es sobre LO SUYO.
-    await _seed_profesor_materia(factory)
-
-    # Matriculación demo: los estudiantes seed quedan inscriptos a la Comisión C1
-    # (idempotente). Con el gate de inscripción (C-71), sin esto no verían el examen.
-    await _seed_matriculaciones(factory)
+    # Raíz de confianza LTI (idempotente). Va acá y no en una migración porque
+    # los valores son del campus de cada institución, no del esquema.
+    await _seed_lti_deployment(factory)
 
 
 def _reset_pedido() -> bool:
@@ -381,280 +383,78 @@ async def reestablecer_passwords(
     return cambiados
 
 
-async def _seed_docente_comision(factory) -> None:
-    """Asigna tutor1 como tutor a cargo de la Comisión C1 de PROG1 (idempotente).
+async def _seed_lti_deployment(factory) -> None:
+    """Siembra la raiz de confianza LTI del campus (idempotente).
 
-    El tutor es el eslabón que vuelve derivable quién devuelve la nota
-    (examen.comision_id → comision_tutor.tutor_id) y contra qué se valida "lo
-    suyo" del rol tutor. Sin esta asignación la comisión queda sin tutor.
+    Sin una fila activa en ``lti_deployment_confiable`` TODO launch desde el
+    campus muere en ``POST /api/v1/lti/login`` con ``403 lti_iss_no_confiable``,
+    antes de mirar que usuario es: no entra NINGUN alumno. Esa fila no tenia
+    seed ni migracion, asi que cada vez que se recreaba la base habia que
+    restaurarla a mano desde un backup. Un dato del que depende todo el acceso
+    no puede depender de que alguien se acuerde.
 
-    c-79 reemplazó `comision.docente_id` por la tabla puente N:M `comision_tutor`
-    (una comisión puede tener varios tutores) y la migración 0093 dropeó la
-    columna vieja.
+    Los valores vienen del entorno y NUNCA del codigo: este repo es publico y el
+    emisor es el campus concreto de cada institucion. Sin las cuatro variables no
+    hace nada (un entorno que no usa LTI no necesita esto) y NO rompe el arranque:
+    el CMD del contenedor encadena seed y uvicorn.
+
+    No va en una migracion de Alembic por lo mismo: el esquema es igual para
+    todos, estos valores no.
+
+    Convergencia deliberadamente conservadora: si la fila ya existe no se toca.
+    Desactivarla es como se corta el acceso de un campus comprometido, y un
+    redeploy que la reactivara seria un bypass.
     """
-    from app.infrastructure.persistence.models.comision_tutor import ComisionTutorModel
-    from app.infrastructure.persistence.models.exam_content import (
+    # ComisionModel NO se usa acá, pero tiene que estar en el registry de SQLAlchemy:
+    # `lti_deployment_confiable.comision_id` es una FK a `comision`, y sin el modelo
+    # cargado el mapper falla con NoReferencedTableError apenas se toca la tabla.
+    # Antes lo importaba de rebote el seed de contenido académico; al sacarlo, el
+    # seed creaba los usuarios y moría justo antes de sembrar el LTI.
+    from app.infrastructure.persistence.models.exam_content import (  # noqa: F401
         ComisionModel,
-        MateriaModel,
     )
-    from app.infrastructure.persistence.models.transactional import UsuarioModel
+    from app.infrastructure.persistence.models.lti import LtiDeploymentConfiableModel
 
-    MATERIA_CODIGO = "PROG1"
-    COMISION_CODIGO = "C1"
-    TUTOR_ID = "tutor1"
+    iss = os.environ.get("LTI_ISS")
+    client_id = os.environ.get("LTI_CLIENT_ID")
+    deployment_id = os.environ.get("LTI_DEPLOYMENT_ID")
+    jwks_uri = os.environ.get("LTI_JWKS_URI")
+
+    if not all([iss, client_id, deployment_id, jwks_uri]):
+        print(
+            "  [skip] LTI sin configurar (falta LTI_ISS / LTI_CLIENT_ID / "
+            "LTI_DEPLOYMENT_ID / LTI_JWKS_URI): no se siembra el deployment."
+        )
+        return
 
     async with factory() as session:
-        tutor = (
+        existente = (
             await session.execute(
-                select(UsuarioModel).where(UsuarioModel.username == TUTOR_ID)
-            )
-        ).scalar_one_or_none()
-        if tutor is None:
-            print(f"  [skip] docente-comisión: no existe el tutor {TUTOR_ID}")
-            return
-
-        comision = (
-            await session.execute(
-                select(ComisionModel)
-                .join(MateriaModel, MateriaModel.id == ComisionModel.materia_id)
-                .where(
-                    MateriaModel.codigo == MATERIA_CODIGO,
-                    ComisionModel.codigo == COMISION_CODIGO,
+                select(LtiDeploymentConfiableModel).where(
+                    LtiDeploymentConfiableModel.iss == iss,
+                    LtiDeploymentConfiableModel.client_id == client_id,
+                    LtiDeploymentConfiableModel.deployment_id == deployment_id,
                 )
             )
         ).scalar_one_or_none()
-        if comision is None:
-            print("  [skip] docente-comisión: no existe la comisión PROG1/C1 todavía")
-            return
 
-        # c-78: el seed seguia escribiendo `comision.docente_id`, columna que la
-        # migracion 0093 DROPEO (c-79 la reemplazo por la tabla puente N:M
-        # `comision_tutor`). El seed reventaba con AttributeError a mitad de
-        # camino, asi que un `docker compose up` limpio dejaba la base a medio
-        # sembrar: sin tutor asignado y sin las matriculaciones que van despues.
-        ya_asignado = (
-            await session.execute(
-                select(ComisionTutorModel).where(
-                    ComisionTutorModel.comision_id == comision.id,
-                    ComisionTutorModel.tutor_id == tutor.id,
-                )
-            )
-        ).scalar_one_or_none()
-        if ya_asignado is not None:
-            print(f"  [skip] {TUTOR_ID} ya es tutor de {MATERIA_CODIGO}/{COMISION_CODIGO}")
-            return
-
-        session.add(ComisionTutorModel(comision_id=comision.id, tutor_id=tutor.id))
-        await session.commit()
-        print(f"  [update] {TUTOR_ID} asignado como tutor de {MATERIA_CODIGO}/{COMISION_CODIGO}")
-
-
-async def _seed_profesor_materia(factory) -> None:
-    """Asigna profesor1 a la materia PROG1 (idempotente, c-78).
-
-    El PROFESOR se define por su alcance: crea exámenes y gestiona el banco de
-    SUS materias. Sin una materia asignada el rol no alcanza nada y no se puede
-    probar — que es como quedaba antes, porque el seed ni siquiera creaba el
-    usuario.
-
-    La asignación es a la MATERIA (tabla `materia_profesor`), no a la comisión:
-    el profesor arma el examen de la materia, el tutor supervisa la comisión.
-    """
-    from sqlalchemy import select
-
-    from app.infrastructure.persistence.models.comision_tutor import (
-        MateriaProfesorModel,
-    )
-    from app.infrastructure.persistence.models.exam_content import MateriaModel
-    from app.infrastructure.persistence.models.transactional import UsuarioModel
-
-    MATERIA_CODIGO = "PROG1"
-    PROFESOR_ID = "profesor1"
-
-    async with factory() as session:
-        profesor = (
-            await session.execute(
-                select(UsuarioModel).where(UsuarioModel.username == PROFESOR_ID)
-            )
-        ).scalar_one_or_none()
-        if profesor is None:
-            print(f"  [skip] profesor-materia: no existe el profesor {PROFESOR_ID}")
-            return
-
-        materia = (
-            await session.execute(
-                select(MateriaModel).where(MateriaModel.codigo == MATERIA_CODIGO)
-            )
-        ).scalar_one_or_none()
-        if materia is None:
-            print(f"  [skip] profesor-materia: no existe la materia {MATERIA_CODIGO}")
-            return
-
-        ya_asignado = (
-            await session.execute(
-                select(MateriaProfesorModel).where(
-                    MateriaProfesorModel.materia_id == materia.id,
-                    MateriaProfesorModel.profesor_id == profesor.id,
-                )
-            )
-        ).scalar_one_or_none()
-        if ya_asignado is not None:
-            print(f"  [skip] {PROFESOR_ID} ya es profesor de {MATERIA_CODIGO}")
+        if existente is not None:
+            estado = "activo" if existente.activo else "DESACTIVADO a mano"
+            print(f"  [skip] deployment LTI ya existe ({estado}): {iss}")
             return
 
         session.add(
-            MateriaProfesorModel(materia_id=materia.id, profesor_id=profesor.id)
+            LtiDeploymentConfiableModel(
+                iss=iss,
+                client_id=client_id,
+                deployment_id=deployment_id,
+                jwks_uri=jwks_uri,
+                comision_id=None,
+                activo=True,
+            )
         )
         await session.commit()
-        print(f"  [update] {PROFESOR_ID} asignado como profesor de {MATERIA_CODIGO}")
-
-
-async def _seed_matriculaciones(factory) -> None:
-    """Matricula SOLO a estudiante1 en la Comisión C1 (idempotente).
-
-    Con el gate de inscripción (C-71) el alumno solo ve/rinde exámenes de las
-    comisiones donde está inscripto. estudiante1 queda inscripto en Comisión C1
-    (demo del gate, sin examen sembrado — ver c-78). estudiante2..4 quedan
-    LIBRES a propósito, para demostrar el flujo de inscripción desde el panel
-    del docente.
-    """
-    from app.infrastructure.persistence.models.exam_content import (
-        ComisionModel,
-        MateriaModel,
-    )
-    from app.infrastructure.persistence.models.inscripcion import InscripcionModel
-    from app.infrastructure.persistence.models.transactional import UsuarioModel
-
-    MATERIA_CODIGO = "PROG1"
-    COMISION_CODIGO = "C1"
-    # Solo estudiante1 queda inscripto: así hay UN alumno que puede rendir (demo del
-    # gate de inscripción, C-71). estudiante2..4 quedan LIBRES a propósito, para
-    # poder demostrar el flujo de inscripción desde el panel del docente (si
-    # estuvieran los 4 inscriptos, el picker los mostraría todos como "Ya
-    # inscripto" y no habría a quién inscribir).
-    ESTUDIANTES = ["estudiante1"]
-
-    async with factory() as session:
-        # Comisión C1 de PROG1 (creada por _seed_contenido).
-        comision = (
-            await session.execute(
-                select(ComisionModel)
-                .join(MateriaModel, MateriaModel.id == ComisionModel.materia_id)
-                .where(
-                    MateriaModel.codigo == MATERIA_CODIGO,
-                    ComisionModel.codigo == COMISION_CODIGO,
-                )
-            )
-        ).scalar_one_or_none()
-        if comision is None:
-            print("  [skip] matriculación: no existe la comisión PROG1/C1 todavía")
-            return
-
-        creadas = 0
-        for idn in ESTUDIANTES:
-            usuario = (
-                await session.execute(
-                    select(UsuarioModel).where(UsuarioModel.username == idn)
-                )
-            ).scalar_one_or_none()
-            if usuario is None:
-                continue
-            existe = (
-                await session.execute(
-                    select(InscripcionModel.id).where(
-                        InscripcionModel.usuario_id == usuario.id,
-                        InscripcionModel.comision_id == comision.id,
-                    )
-                )
-            ).scalar_one_or_none()
-            if existe is not None:
-                print(f"  [skip] matriculación ya existe: {idn} -> {COMISION_CODIGO}")
-                continue
-            session.add(
-                InscripcionModel(usuario_id=usuario.id, comision_id=comision.id)
-            )
-            print(f"  [create] matriculación {idn} -> {MATERIA_CODIGO}/{COMISION_CODIGO}")
-            creadas += 1
-
-        await session.commit()
-    print(f"\nMatriculaciones: {creadas} creadas.")
-
-
-async def _seed_contenido(factory) -> None:
-    """Siembra estructura académica demo (idempotente): Programación 1 → Comisión 1.
-
-    NO siembra ningún examen — un examen de demo sin banco de preguntas propio
-    no tiene sentido operativo y, al no tener baja lógica (ver c-78 Bloque A),
-    volvía a recrearse en cada deploy aunque se borrara a mano. Si se necesita
-    un examen de prueba, se crea manualmente desde el panel de administración.
-    """
-    from app.infrastructure.persistence.models.exam_content import (
-        ComisionModel,
-        MateriaModel,
-    )
-
-    MATERIA_CODIGO = "PROG1"
-    MATERIA_NOMBRE = "Programación 1"
-    COMISION_CODIGO = "C1"
-    COMISION_NOMBRE = "Comisión 1"
-    # C-70: código de matriculación de demo (enrolment key) para la Comisión C1.
-    COMISION_MATRICULACION = "PROG1-C1"
-
-    async with factory() as session:
-        # 1. Materia (idempotente por codigo único).
-        materia = (
-            await session.execute(
-                select(MateriaModel).where(MateriaModel.codigo == MATERIA_CODIGO)
-            )
-        ).scalar_one_or_none()
-        if materia is None:
-            materia = MateriaModel(codigo=MATERIA_CODIGO, nombre=MATERIA_NOMBRE)
-            session.add(materia)
-            await session.flush()  # obtener materia.id para la FK de comisión
-            print(f"  [create] materia {MATERIA_NOMBRE} ({MATERIA_CODIGO})")
-        else:
-            print(f"  [skip] materia ya existe: {MATERIA_CODIGO}")
-
-        # 2. Comisión (idempotente por (materia_id, codigo)).
-        comision = (
-            await session.execute(
-                select(ComisionModel).where(
-                    ComisionModel.materia_id == materia.id,
-                    ComisionModel.codigo == COMISION_CODIGO,
-                )
-            )
-        ).scalar_one_or_none()
-        if comision is None:
-            comision = ComisionModel(
-                materia_id=materia.id,
-                codigo=COMISION_CODIGO,
-                nombre=COMISION_NOMBRE,
-                periodo="1C",
-                anio=2026,
-                codigo_matriculacion=COMISION_MATRICULACION,
-            )
-            session.add(comision)
-            await session.flush()  # obtener comision.id para la FK del examen
-            print(f"  [create] comision {COMISION_NOMBRE} ({COMISION_CODIGO})")
-        else:
-            print(f"  [skip] comision ya existe: {COMISION_CODIGO}")
-            # C-70: converger el código de matriculación demo a PROG1-C1 (idempotente).
-            # Si la comisión preexistía, la migración 0038 le puso un código aleatorio;
-            # lo fijamos al demo salvo que otro registro ya lo tenga (unicidad global).
-            if comision.codigo_matriculacion != COMISION_MATRICULACION:
-                conflicto = (
-                    await session.execute(
-                        select(ComisionModel.id).where(
-                            ComisionModel.codigo_matriculacion == COMISION_MATRICULACION,
-                            ComisionModel.id != comision.id,
-                        )
-                    )
-                ).scalar_one_or_none()
-                if conflicto is None:
-                    comision.codigo_matriculacion = COMISION_MATRICULACION
-                    print(f"  [update] codigo_matriculacion -> {COMISION_MATRICULACION}")
-
-        await session.commit()
+        print(f"  [create] deployment LTI de confianza: {iss} (deployment {deployment_id})")
 
 
 if __name__ == "__main__":
