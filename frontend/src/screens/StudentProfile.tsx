@@ -157,8 +157,10 @@ export default function StudentProfile() {
 
   const handleBiometriaCapturada = async (_ref: ReferenciasBiometrica) => {
     await cargarEnrollment();
-    // Continúa al paso de DNI (opcional)
-    setPaso('dni');
+    // El wizard termina en la biometría: el paso de DNI solo existe con el
+    // escaneo prendido (`ENABLE_DNI_SCAN`). Sin el flag, mandarlo igual a ese
+    // paso le mostraba una pantalla de una función apagada justo al terminar.
+    setPaso(ENABLE_DNI_SCAN ? 'dni' : 'perfil');
   };
 
   const handleDniEscaneado = async (_escan: EscaneDNI) => {

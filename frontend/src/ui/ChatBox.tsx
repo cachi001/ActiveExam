@@ -14,6 +14,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Card, Button, Icon } from './components';
 import { api } from '../lib/api';
 import { useToast } from './toast';
+import { AVISO_SOLO_RESPONDER, puedeResponder } from './chat/soloResponder';
 import type { AutorChat, MensajeChat } from '../lib/types';
 
 /** Intervalo de polling del chat (ms). Suficiente para sentirse "en vivo". */
@@ -43,6 +44,7 @@ export function ChatBox({
   titulo = 'Canal con el tutor',
   altura = 'h-[160px]',
   readOnly = false,
+  soloResponder = false,
 }: {
   sessionId: string | null | undefined;
   yo: AutorChat;
@@ -50,9 +52,18 @@ export function ChatBox({
   altura?: string;
   /** Solo lectura (sesión grabada): muestra el historial sin caja de envío. */
   readOnly?: boolean;
+  /**
+   * El alumno RESPONDE, no inicia (decisión del dueño, 29/8/2026). Con esto en
+   * `true` la caja queda bloqueada hasta que el tutor escriba: el canal es para
+   * que quien supervisa pregunte algo puntual, no una vía de consulta durante la
+   * evaluación.
+   */
+  soloResponder?: boolean;
 }) {
   const toast = useToast();
   const [mensajes, setMensajes] = useState<MensajeChat[]>([]);
+  // El alumno no inicia la conversación: se habilita cuando el tutor escribe.
+  const bloqueadoHastaQueEscriba = soloResponder && !puedeResponder(mensajes);
   const [borrador, setBorrador] = useState('');
   const [enviando, setEnviando] = useState(false);
   // Cooldown anti-flood (solo alumno): segundos restantes hasta poder reenviar.
@@ -185,19 +196,31 @@ export function ChatBox({
               value={borrador}
               onChange={(e) => setBorrador(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && void enviar()}
-              disabled={!sessionId || enviando || cooldown > 0}
-              placeholder={sessionId ? 'Escribir mensaje…' : 'Canal no disponible'}
+              disabled={!sessionId || enviando || cooldown > 0 || bloqueadoHastaQueEscriba}
+              placeholder={
+                bloqueadoHastaQueEscriba
+                  ? 'Esperá a que el tutor te escriba'
+                  : sessionId
+                    ? 'Escribir mensaje…'
+                    : 'Canal no disponible'
+              }
               className="flex-1 h-10 px-sm py-base text-label-md rounded-xl border border-outline-variant bg-surface-container-lowest focus:border-primary-container outline-none disabled:opacity-50"
             />
             <Button
               onClick={() => void enviar()}
-              disabled={!sessionId || enviando || cooldown > 0}
+              disabled={!sessionId || enviando || cooldown > 0 || bloqueadoHastaQueEscriba}
               aria-label="Enviar mensaje"
               className="shrink-0 h-10 w-10 !p-0"
             >
               <Icon name="send" className="text-[18px]" />
             </Button>
           </div>
+          {bloqueadoHastaQueEscriba && (
+            <p className="text-[11px] text-on-surface-variant flex items-start gap-1">
+              <Icon name="lock" className="text-[13px] shrink-0 mt-px" fill />
+              {AVISO_SOLO_RESPONDER}
+            </p>
+          )}
           {aplicaCooldown && cooldown > 0 && (
             <p className="text-[11px] text-on-surface-variant flex items-center gap-1">
               <Icon name="check_circle" className="text-[13px] text-success" fill />

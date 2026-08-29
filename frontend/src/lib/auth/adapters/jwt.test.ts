@@ -242,3 +242,84 @@ describe('JwtAdapter.seedSession() (LTI landing, C-75 §7.1)', () => {
     expect(calls).toContain('unauthenticated');
   });
 });
+
+// ---------------------------------------------------------------------------
+// init() con el access token vencido pero el refresh vivo
+// ---------------------------------------------------------------------------
+//
+// Reportado por el dueño el 29/8/2026: "me quedé un ratito inactivo y me cerró
+// sesión". Reproducido en el navegador — access token vencido + recarga → /login,
+// con el refresh token intacto.
+//
+// El access token vive 15 min; el refresh, 7 DÍAS. Estando inactivo nadie llama a
+// `getToken()`, así que el refresh proactivo (< 60 s para vencer) nunca corre y
+// el access token muere. Al recargar, `init()` leía `_getStoredToken()` — que
+// además BORRA el token vencido — y sin más trámite notificaba
+// `unauthenticated`. La sesión se tiraba teniendo con qué recuperarla.
+//
+// Es el peor caso el día del examen: un alumno que se queda pensando, recarga y
+// pierde la sesión.
+
+describe('JwtAdapter.init() — access token vencido, refresh vivo', () => {
+  /** Deja el estado exacto tras un rato inactivo. */
+  function _sesionInactiva(): void {
+    _storage.set('jwt_access_token', _token({ exp: NOW_EPOCH - 10 }));
+    _storage.set('jwt_access_token_expires_at', String(NOW_EPOCH - 10));
+    _storage.set('jwt_refresh_token', 'refresh-vivo-7-dias');
+    vi.setSystemTime(NOW_EPOCH * 1000);
+  }
+
+  it('recupera la sesión con el refresh token en vez de cerrarla', async () => {
+    _sesionInactiva();
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(
+      JSON.stringify({ access_token: _token(), refresh_token: 'refresh-rotado' }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    )));
+
+    const adapter = new JwtAdapter();
+    const estados: string[] = [];
+    adapter.onAuthChange((s) => estados.push(s));
+    await adapter.init();
+
+    expect(estados).toContain('authenticated');
+    expect(adapter.getPrincipal()).not.toBeNull();
+  });
+
+  it('usa el refresh token guardado, no inventa uno', async () => {
+    _sesionInactiva();
+    const spy = vi.fn(async () => new Response(
+      JSON.stringify({ access_token: _token(), refresh_token: 'refresh-rotado' }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    ));
+    vi.stubGlobal('fetch', spy);
+
+    await new JwtAdapter().init();
+
+    const [, opciones] = spy.mock.calls[0];
+    expect(String((opciones as RequestInit).body)).toContain('refresh-vivo-7-dias');
+  });
+
+  it('si el refresh token también venció, ahí sí cierra la sesión', async () => {
+    _sesionInactiva();
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 401 })));
+
+    const adapter = new JwtAdapter();
+    const estados: string[] = [];
+    adapter.onAuthChange((s) => estados.push(s));
+    await adapter.init();
+
+    expect(estados).toContain('unauthenticated');
+  });
+
+  it('sin refresh token guardado no intenta nada: no hay sesión que recuperar', async () => {
+    _storage.set('jwt_access_token', _token({ exp: NOW_EPOCH - 10 }));
+    _storage.set('jwt_access_token_expires_at', String(NOW_EPOCH - 10));
+    vi.setSystemTime(NOW_EPOCH * 1000);
+    const spy = vi.fn();
+    vi.stubGlobal('fetch', spy);
+
+    await new JwtAdapter().init();
+
+    expect(spy).not.toHaveBeenCalled();
+  });
+});

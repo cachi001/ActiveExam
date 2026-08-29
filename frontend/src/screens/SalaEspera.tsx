@@ -28,7 +28,7 @@ export default function SalaEspera() {
   const materia = examen?.catedra || materiaFetched || '—';
 
   return (
-    <StudentShell step={3} backTo="/biometria">
+    <StudentShell step={4} backTo="/calibracion" ocultarNavegacion>
       <div className="max-w-xl lg:max-w-2xl mx-auto space-y-lg text-center animate-in zoom-in duration-500">
         <div className="w-20 h-20 rounded-full bg-success-container text-success flex items-center justify-center mx-auto">
           <Icon name="how_to_reg" className="text-[40px]" fill />
@@ -54,7 +54,9 @@ export default function SalaEspera() {
           </div>
         </Card>
 
-        <Button icon="play_arrow" onClick={() => navigate('/examen')} className="mx-auto">Comenzar examen</Button>
+        <Button icon="play_arrow" onClick={() => navigate('/examen')} className="mx-auto">
+          Comenzar examen
+        </Button>
 
         <p className="text-label-sm text-on-surface-variant">
           Al comenzar, todo el análisis ocurre en tu propio dispositivo. No se graba tu examen: solo se avisa al equipo si se detecta algo para revisar.

@@ -57,7 +57,7 @@ export function PerfilVistaGeneral({
           <HelpButton title="Mi perfil">
             <p>
               Desde acá completás los <strong>requisitos para rendir</strong>: consentimiento
-              informado, foto de perfil, verificación facial y (opcional) escaneo de DNI.
+              informado, foto de perfil y verificación facial.
             </p>
             <p>
               La <em>captura biométrica</em> se hace una sola vez y queda vigente por 24 meses
@@ -65,9 +65,9 @@ export function PerfilVistaGeneral({
               renovarla.
             </p>
             <p>
-              Tus datos biométricos (foto y embedding) son <strong>datos sensibles</strong> bajo
-              Ley 25.326: viajan cifrados, se usan solo para verificar tu identidad y se eliminan
-              al egresar de la institución.
+              Tu foto y los datos de tu rostro son <strong>datos sensibles</strong>: viajan
+              cifrados y se usan solo para verificar tu identidad. Acceden a ellos los docentes
+              de tu materia y quienes revisan integridad académica, nadie más.
             </p>
           </HelpButton>
         </div>
@@ -110,12 +110,17 @@ export function PerfilVistaGeneral({
         onSimularDeriva={onSimularDeriva}
       />
 
-      <RequisitoDni
-        dni={enrollment?.dni ?? null}
-        dniOk={dniOk}
-        dniScanHabilitado={ENABLE_DNI_SCAN}
-        onEscanear={onEscanearDni}
-      />
+      {/* Con el escaneo apagado la tarjeta no se pinta en absoluto: anunciar
+          "no disponible en esta versión" en medio de los requisitos para rendir
+          solo genera la pregunta de qué es eso que falta. */}
+      {ENABLE_DNI_SCAN && (
+        <RequisitoDni
+          dni={enrollment?.dni ?? null}
+          dniOk={dniOk}
+          dniScanHabilitado={ENABLE_DNI_SCAN}
+          onEscanear={onEscanearDni}
+        />
+      )}
     </div>
   );
 }

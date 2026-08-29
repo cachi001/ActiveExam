@@ -81,6 +81,23 @@ class VerificarReferenciaVigenteService:
         self._session = session
         self._encryption = encryption
 
+    @staticmethod
+    def _umbral_efectivo(umbral_pedido: float | None) -> float:
+        """El umbral lo decide el SERVIDOR. Siempre.
+
+        El endpoint acepta `umbral` en el body y ANTES lo obedecia: un vector
+        aleatorio con `umbral: 999` devolvia `es_match: true` (verificado contra
+        la API el 29/8/2026). Era un bypass completo de la identidad — ni hacia
+        falta ponerse frente a la camara.
+
+        Viola la regla dura #6: el cliente es un sensor no confiable, y el corte
+        de una verificacion de identidad no es algo que pueda elegir quien esta
+        siendo verificado. El parametro se sigue aceptando para no romper con un
+        422 a los clientes ya desplegados (mandan `umbral: null`), pero se
+        DESCARTA.
+        """
+        return UMBRAL_COSENO_DEFECTO
+
     async def ejecutar(
         self,
         usuario_id: str,
@@ -92,7 +109,7 @@ class VerificarReferenciaVigenteService:
         Args:
             usuario_id: str(UUID) del usuario, tomado del sub del JWT.
             embedding_vivo: vector 128-d capturado en vivo por el cliente.
-            umbral: umbral coseno opcional; si None usa UMBRAL_COSENO_DEFECTO (0.35).
+            umbral: IGNORADO (ver `_umbral_efectivo`). Lo decide el servidor.
 
         Returns:
             ResultadoVerificacionReferencia con distancia, es_match, umbral.
@@ -102,7 +119,7 @@ class VerificarReferenciaVigenteService:
             EmbeddingInvalidoError: si el embedding_vivo es de dimension invalida.
             EmbeddingEncryptionError: si el ciphertext esta corrupto/clave rotada.
         """
-        umbral_efectivo = umbral if umbral is not None else UMBRAL_COSENO_DEFECTO
+        umbral_efectivo = self._umbral_efectivo(umbral)
 
         # 1. Buscar el embedding vigente en la DB (sin descifrar).
         repo = EmbeddingReferenciaRepository(self._session)

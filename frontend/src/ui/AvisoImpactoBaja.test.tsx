@@ -90,3 +90,55 @@ describe('AvisoImpactoBaja', () => {
     expect(screen.getByRole('note').textContent).not.toMatch(/comisi/i);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Inscriptos: a cuánta gente le corta el acceso esta baja
+// ---------------------------------------------------------------------------
+//
+// Verificado el 28/8/2026 contra la base de desarrollo: una materia con 4
+// alumnos inscriptos se dio de baja y ni la API ni la pantalla los mencionaron.
+// Los inscriptos NO bloquean (si bloquearan, una materia con historia no se
+// podría retirar nunca), pero quien confirma tiene que saberlo.
+
+describe('AvisoImpactoBaja — inscriptos', () => {
+  it('avisa cuántos alumnos inscriptos quedan sin acceso', () => {
+    render(
+      <AvisoImpactoBaja
+        impacto={{ sesiones_en_curso: 0, rendiciones: 0, examenes: 0, comisiones: 1, inscriptos: 4 }}
+        cargando={false}
+      />,
+    );
+    expect(screen.getByText(/4 alumnos inscriptos/i)).toBeTruthy();
+  });
+
+  it('aclara que la baja se puede hacer igual', () => {
+    render(
+      <AvisoImpactoBaja
+        impacto={{ sesiones_en_curso: 0, rendiciones: 0, examenes: 0, comisiones: 1, inscriptos: 2 }}
+        cargando={false}
+      />,
+    );
+    // No puede leerse como un bloqueo: el único bloqueo es gente rindiendo.
+    expect(screen.queryByText(/no se puede dar de baja/i)).toBeNull();
+  });
+
+  it('sin inscriptos no dice nada', () => {
+    const { container } = render(
+      <AvisoImpactoBaja
+        impacto={{ sesiones_en_curso: 0, rendiciones: 0, examenes: 0, comisiones: 1, inscriptos: 0 }}
+        cargando={false}
+      />,
+    );
+    expect(container.textContent).toBe('');
+  });
+
+  it('un solo inscripto se escribe en singular', () => {
+    render(
+      <AvisoImpactoBaja
+        impacto={{ sesiones_en_curso: 0, rendiciones: 0, examenes: 0, comisiones: 1, inscriptos: 1 }}
+        cargando={false}
+      />,
+    );
+    expect(screen.getByText(/1 alumno inscripto/i)).toBeTruthy();
+  });
+});

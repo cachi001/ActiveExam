@@ -311,8 +311,10 @@ export interface Comision {
   id: string;
   materia_id: string;
   nombre: string;
-  docente?: string;
-  horario?: string;
+  // Sin `docente`/`horario`: eran del modelo 1:1 anterior a c-79 y el backend no
+  // los manda desde entonces. Quedaron declarados y la pantalla del alumno los
+  // leía, así que el tutor no aparecía nunca. Quién está a cargo vive en
+  // `tutores` (N:M), más abajo.
   codigo?: string;
   periodo?: string | null;
   anio?: number | null;

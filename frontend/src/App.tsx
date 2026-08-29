@@ -25,6 +25,7 @@ const ExamList              = lazy(() => import('./screens/ExamList'));
 const AlumnoDashboard       = lazy(() => import('./screens/AlumnoDashboard'));
 const AlumnoMaterias        = lazy(() => import('./screens/AlumnoMaterias'));
 const AlumnoMisExamenes     = lazy(() => import('./screens/AlumnoMisExamenes'));
+const Calibracion           = lazy(() => import('./screens/Calibracion'));
 const StudentProfile        = lazy(() => import('./screens/StudentProfile'));
 const AdminDetectionHarness = lazy(() => import('./screens/AdminDetectionHarness'));
 const ProctoringRevisor     = lazy(() => import('./screens/ProctoringRevisor'));
@@ -105,6 +106,7 @@ export default function App() {
     // Flujo de examen del estudiante
     '/requisitos': g(<EquipmentCheck />, ESTUDIANTE),
     '/biometria': g(<Biometria />, ESTUDIANTE),
+    '/calibracion': g(<Calibracion />, ESTUDIANTE),
     '/sala-espera': g(<SalaEspera />, ESTUDIANTE),
     '/pre-examen': g(<PreExamen />, ESTUDIANTE),
     '/examen': g(<Examen />, ESTUDIANTE),

@@ -209,10 +209,15 @@ export default function Revisor() {
             Esta pantalla concentra las sesiones que <strong>priorizan revisión humana</strong>:
             solo las que alcanzan o superan el umbral de riesgo ({umbral} puntos).
           </p>
+          {/* Eran tres opciones y una no existe: el modelo tiene DOS decisiones
+              terminales (`DecisionSesion`: aprobado / anulado) y no hay segunda
+              instancia — ver `DecisionRevisorForm`, que muestra exactamente
+              "Aprobar con nota" y "Anular examen". */}
           <p>
             La cola se organiza por <em>Materia → Comisión → Examen → Persona</em>. Entrá hasta
-            cada persona para revisar evidencia y registrar tu decisión (sin observaciones,
-            aprobada con nota o enviada a revisión formal).
+            cada persona para revisar la evidencia y registrar tu decisión, que es una de dos:
+            <strong> aprobar con nota</strong> (la nota vale y se envía al campus) o
+            <strong> anular el examen</strong> (con motivo y evidencia obligatorios).
           </p>
           <p>
             El sistema <strong>nunca sanciona automáticamente</strong>: el score solo prioriza,

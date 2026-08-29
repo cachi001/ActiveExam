@@ -116,6 +116,30 @@ describe('examenContenidoSubtitulo — fallback a cantidad_preguntas', () => {
     expect(examenContenidoSubtitulo(e)).toBe('12 preguntas');
   });
 
+  // Decisión del dueño (28/8/2026): al ALUMNO nunca se le muestra cuántas
+  // preguntas tiene el examen. Este helper lo comparten los dos dashboards, así
+  // que el fallback tiene que depender de quién mira: al staff le sirve para
+  // detectar un examen vacío, al alumno le adelanta el tamaño de la prueba.
+  it('para el alumno NO cae a la cantidad de preguntas', () => {
+    const e: ExamenContenidoResumen = {
+      id: 'e-5',
+      titulo: 'Test sin contexto',
+      cantidad_preguntas: 12,
+    };
+    expect(examenContenidoSubtitulo(e, { mostrarPreguntas: false })).toBe('');
+  });
+
+  it('para el alumno sigue mostrando materia y comisión cuando existen', () => {
+    const e: ExamenContenidoResumen = {
+      id: 'e-7',
+      titulo: 'Parcial',
+      cantidad_preguntas: 12,
+      materia_nombre: 'Álgebra',
+      comision_nombre: 'C1',
+    };
+    expect(examenContenidoSubtitulo(e, { mostrarPreguntas: false })).toBe('Álgebra · C1');
+  });
+
   it('devuelve "0 preguntas" para examen sin preguntas aún', () => {
     const e: ExamenContenidoResumen = {
       id: 'e-6',

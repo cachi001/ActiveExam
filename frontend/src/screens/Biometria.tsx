@@ -170,8 +170,8 @@ export default function Biometria() {
   };
 
   return (
-    <StudentShell step={2} backTo="/requisitos">
-      <div className="max-w-2xl lg:max-w-4xl space-y-lg animate-in fade-in duration-500">
+    <StudentShell step={2} backTo="/requisitos" ocultarNavegacion>
+      <div className="max-w-2xl lg:max-w-4xl mx-auto space-y-lg animate-in fade-in duration-500">
         <div className="text-center space-y-base">
           <div className="w-14 h-14 rounded-2xl bg-primary-fixed text-primary flex items-center justify-center mx-auto">
             <Icon name="face" className="text-[28px]" fill />
@@ -286,7 +286,7 @@ export default function Biometria() {
                 )}
 
                 {/* 6.1 / 6.2: botón explícito — el examen NO avanza automáticamente */}
-                <Button icon="arrow_forward" onClick={() => navigate('/sala-espera')}>
+                <Button icon="arrow_forward" onClick={() => navigate('/calibracion')}>
                   Continuar al examen
                 </Button>
               </div>

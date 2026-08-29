@@ -1,10 +1,11 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { Icon } from './components';
 import { Link, useRouter } from '../lib/router';
 import { useAuth } from '../lib/authStore';
 import { ConfirmModal } from './ConfirmModal';
 import type { StaffNavItem } from './nav';
+import { guardarScrollSidebar, scrollSidebarGuardado } from './shell/scrollDelSidebar';
 import {
   TOPBAR_H, SIDEBAR_EXPANDED, SIDEBAR_COLLAPSED, SIDEBAR_DRAWER_W,
   useIsDesktop, useSidebarCollapsed, LogoMark, SidebarSection,
@@ -142,6 +143,15 @@ export function StaffShell({
   }, [isDesktop, mobileOpen]);
 
   const showAsCollapsed = isDesktop && collapsed;
+
+  // Restaura la posición del menú apenas se monta (antes de pintar, para que no
+  // se vea el salto). Ver `scrollDelSidebar`: el shell se re-monta en cada
+  // navegación y sin esto el menú volvía al tope solo.
+  const navScrollRef = useRef<HTMLDivElement | null>(null);
+  useLayoutEffect(() => {
+    const cont = navScrollRef.current;
+    if (cont) cont.scrollTop = scrollSidebarGuardado();
+  }, []);
   const sidebarWidth = isDesktop
     ? (showAsCollapsed ? SIDEBAR_COLLAPSED : SIDEBAR_EXPANDED)
     : SIDEBAR_DRAWER_W;
@@ -210,7 +220,16 @@ export function StaffShell({
             </button>
           </div>
         )}
-        <div className="flex-1 py-3 space-y-4 overflow-y-auto overflow-x-hidden">
+        {/* Cada pantalla monta su propio StaffShell, así que al navegar este
+            contenedor se desmonta y nace con scrollTop=0: tocar una opción del
+            final (Configuración, Integración LTI) hacía saltar el menú hacia
+            arriba. La posición se conserva fuera de React porque tiene que
+            sobrevivir al desmontaje. */}
+        <div
+          ref={navScrollRef}
+          onScroll={(e) => guardarScrollSidebar(e.currentTarget.scrollTop)}
+          className="flex-1 py-3 space-y-4 overflow-y-auto overflow-x-hidden"
+        >
           <SidebarSection
             items={mainItems}
             collapsed={showAsCollapsed}

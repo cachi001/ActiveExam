@@ -198,6 +198,12 @@ def create_exam_taking_router(
                 # quien puede ver un examen retirado también puede ver uno que
                 # todavía se está preparando.
                 incluir_borradores=puede_ver_de_baja,
+                # Una materia dada de baja no existe para el alumno: sus exámenes
+                # salen del listado. Antes seguían apareciendo y solo fallaban al
+                # abrirlos (409 `materia_inactiva`), así que se le ofrecía algo
+                # que el propio servidor le iba a rechazar. Mismo criterio que
+                # los borradores: el staff los sigue viendo.
+                incluir_materias_de_baja=puede_ver_de_baja,
             )
 
         return ExamenesContenidoPaginadosResponse(
@@ -566,6 +572,12 @@ def create_exam_taking_router(
                 materias = await InscripcionSqlRepository(session).materias_inscriptas(
                     principal.username
                 )
+                # Una materia dada de baja salió de circulación: para el ALUMNO
+                # no existe. Seguía apareciendo en «Mis materias» y sus exámenes
+                # en el listado, y recién al abrir uno el servidor lo rechazaba
+                # con 409 `materia_inactiva`. El staff la sigue viendo (la
+                # necesita para reactivarla y para sus filtros).
+                materias = [m for m in materias if getattr(m, "activa", True)]
 
             # c-79: quién coordina cada materia. Solo para staff/coordinador — es
             # el dato que alimenta el diálogo de asignación, y al alumno no le
@@ -791,8 +803,17 @@ def create_exam_taking_router(
         )
 
         async with session_factory() as session:
+            # El alumno no cuenta los borradores: son exámenes que todavía no se
+            # habilitaron y que no le aparecen en «Mis exámenes». Anunciarlos acá
+            # le prometía uno más de los que puede rendir.
+            puede_ver_borradores = (
+                _es_staff(principal)
+                or _es_docente(principal)
+                or _es_profesor(principal)
+                or _es_coordinador(principal)
+            )
             resumenes = await ExamenContenidoSqlRepository(session).listar_por_comision(
-                comision_id
+                comision_id, incluir_borradores=puede_ver_borradores
             )
 
         return [_resumen_to_response(r) for r in resumenes]

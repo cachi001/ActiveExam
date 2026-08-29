@@ -53,12 +53,20 @@ class ImpactoBaja:
     rendiciones: int
     examenes: int
     comisiones: int
+    #: Alumnos inscriptos en las comisiones alcanzadas. AVISA, no bloquea: si
+    #: bloqueara, una materia con historia no se podria retirar nunca. Se cuenta
+    #: para que quien confirma la baja sepa a cuanta gente le corta el acceso.
+    inscriptos: int = 0
 
 
 async def impacto_baja_examen(
     db: AsyncSession, examen_id: str, *, ahora: datetime | None = None
 ) -> ImpactoBaja:
-    """Impacto de dar de baja UN examen."""
+    """Impacto de dar de baja UN examen.
+
+    Sin ``inscriptos``: dar de baja un examen no toca la inscripcion del alumno a
+    la comision, que sigue vigente para el resto de los examenes.
+    """
     return await _impacto(db, [examen_id], comisiones=0, ahora=ahora)
 
 
@@ -67,7 +75,13 @@ async def impacto_baja_comision(
 ) -> ImpactoBaja:
     """Impacto de dar de baja una comisión: sus exámenes vigentes."""
     examen_ids = await _examenes_vigentes_de_comisiones(db, [comision_id])
-    return await _impacto(db, examen_ids, comisiones=1, ahora=ahora)
+    return await _impacto(
+        db,
+        examen_ids,
+        comisiones=1,
+        ahora=ahora,
+        inscriptos=await _contar_inscriptos(db, [comision_id]),
+    )
 
 
 async def impacto_baja_materia(
@@ -87,7 +101,13 @@ async def impacto_baja_materia(
         .all()
     )
     examen_ids = await _examenes_vigentes_de_comisiones(db, comision_ids)
-    return await _impacto(db, examen_ids, comisiones=len(comision_ids), ahora=ahora)
+    return await _impacto(
+        db,
+        examen_ids,
+        comisiones=len(comision_ids),
+        ahora=ahora,
+        inscriptos=await _contar_inscriptos(db, comision_ids),
+    )
 
 
 async def _examenes_vigentes_de_comisiones(
@@ -110,10 +130,17 @@ async def _impacto(
     *,
     comisiones: int,
     ahora: datetime | None,
+    inscriptos: int = 0,
 ) -> ImpactoBaja:
     if not examen_ids:
+        # Sin examenes vigentes igual puede haber gente inscripta: la baja le
+        # saca la comision de su listado, asi que el aviso tiene que contarla.
         return ImpactoBaja(
-            sesiones_en_curso=0, rendiciones=0, examenes=0, comisiones=comisiones
+            sesiones_en_curso=0,
+            rendiciones=0,
+            examenes=0,
+            comisiones=comisiones,
+            inscriptos=inscriptos,
         )
 
     rendiciones = (
@@ -132,7 +159,29 @@ async def _impacto(
         rendiciones=int(rendiciones or 0),
         examenes=len(examen_ids),
         comisiones=comisiones,
+        inscriptos=inscriptos,
     )
+
+
+async def _contar_inscriptos(db: AsyncSession, comision_ids: list[str]) -> int:
+    """Cuantos alumnos estan inscriptos en esas comisiones.
+
+    Import diferido del modelo: este modulo lo cargan tanto el router de
+    catalogo como el de examenes, y no necesita arrastrar `inscripcion` cuando
+    la baja es de un examen (que no usa este conteo).
+    """
+    if not comision_ids:
+        return 0
+    from app.infrastructure.persistence.models.inscripcion import InscripcionModel
+
+    total = (
+        await db.execute(
+            select(func.count())
+            .select_from(InscripcionModel)
+            .where(InscripcionModel.comision_id.in_(comision_ids))
+        )
+    ).scalar_one()
+    return int(total or 0)
 
 
 async def _contar_en_curso(

@@ -64,11 +64,6 @@ export function GlossaryPanel({ isOpen, onClose }: GlossaryPanelProps) {
               <dt className="font-semibold text-label-md text-on-surface">{entry.label}</dt>
               <dd className="text-label-sm text-on-surface-variant leading-relaxed">
                 {entry.definition}
-                {entry.legalRef && (
-                  <span className="block mt-xs text-[11px] text-on-surface-variant/60">
-                    {entry.legalRef}
-                  </span>
-                )}
               </dd>
             </div>
           ))}

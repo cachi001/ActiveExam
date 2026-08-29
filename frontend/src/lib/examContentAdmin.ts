@@ -189,6 +189,12 @@ export interface ImpactoBaja {
   rendiciones: number;
   examenes: number;
   comisiones: number;
+  /**
+   * Alumnos inscriptos en las comisiones alcanzadas. Como `rendiciones`, AVISA y
+   * no bloquea: la baja se hace igual y las inscripciones vuelven al reactivar.
+   * Opcional porque la baja de un EXAMEN no lo trae (no toca inscripciones).
+   */
+  inscriptos?: number;
 }
 
 async function pedirImpacto(ruta: string): Promise<ImpactoBaja> {

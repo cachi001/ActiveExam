@@ -214,6 +214,11 @@ export default function SeccionProctoring() {
           <SectionTitle sub="Qué herramientas de comunicación y ayuda tiene el alumno mientras rinde">
             Canales del alumno
           </SectionTitle>
+          {/* Solo los TOGGLES van en dos columnas: son compactos. Los ajustes
+              numéricos de abajo ocupan la fila entera — compartían esta misma
+              grilla dentro de media pantalla, así que cada uno quedaba en ~250px
+              y títulos como "Pausas máximas por sesión" se apilaban palabra por
+              renglón, ilegibles en desktop. */}
           <div className="grid sm:grid-cols-2 gap-2">
             <ToggleRow
               label="Chat entre tutor y alumno"
@@ -227,6 +232,8 @@ export default function SeccionProctoring() {
               on={estado.pausasHabilitadas}
               onToggle={() => setEstado((p) => ({ ...p, pausasHabilitadas: !p.pausasHabilitadas }))}
             />
+          </div>
+          <div className="space-y-2">
             {estado.pausasHabilitadas && (
               <div className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl border border-outline-variant/60 bg-surface-container-low/50">
                 <div className="min-w-0">
@@ -283,8 +290,8 @@ export default function SeccionProctoring() {
         </div>
       </div>
 
-      {/* Retención de capturas: dato más pesado (screenshot en base64 en
-          Postgres) y más sensible (rostro + pantalla del alumno, Ley 25.326).
+      {/* Retención de capturas: dato más pesado (captura en base64 en Postgres)
+          y más sensible (fotos del rostro del alumno; la pantalla no se captura).
           Fila propia, no un toggle: purgar la imagen es irreversible y merece
           su propia explicación en lenguaje llano. */}
       <div className="py-lg space-y-md min-w-0">

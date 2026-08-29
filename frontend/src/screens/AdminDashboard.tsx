@@ -112,8 +112,9 @@ export default function AdminDashboard() {
       help={
         <HelpButton title="Panel de administración">
           <p>
-            Vista agregada de la actividad del cuatrimestre: exámenes importados del catálogo,
-            sesiones supervisadas, tasa de flag y tiempo medio de revisión.
+            Resumen de la actividad del cuatrimestre: exámenes importados del catálogo,
+            sesiones supervisadas, qué porcentaje quedó marcado para revisar y cuánto se
+            tarda en promedio en revisarlas.
           </p>
           <p>
             Desde acá llegás a configurar exámenes y gestión de usuarios. La supervisión

@@ -9,20 +9,56 @@ export function NotaCard({ nota }: { nota: NotaExamen }) {
   // C-69: nota oculta hasta el cierre (nota_visible=false → nota=null).
   const notaPendiente = nota.nota_visible === false;
   const tieneNota = !notaPendiente && nota.nota !== null && nota.nota !== undefined;
+  // `hour12: false` a propósito: es-AR devuelve "09:49 p. m." con espacio duro
+  // incluido, que en una línea de 12px se lee como un error de la pantalla.
   const fmtFecha = (iso?: string | null) =>
-    iso ? new Date(iso).toLocaleString('es-AR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+    iso
+      ? new Date(iso).toLocaleString('es-AR', {
+          day: '2-digit',
+          month: 'short',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false,
+        })
+      : '';
 
   const notaTxt = `Nota: ${nota.nota}${nota.nota_maxima != null ? ` / ${nota.nota_maxima}` : ''}`;
 
   return (
     <Card className="p-md space-y-sm">
       <div className="flex items-start justify-between gap-md">
-        <p className="text-[14px] font-semibold text-on-surface leading-tight min-w-0">
-          {nota.examen_titulo}
-        </p>
+        {/* Mismo cuadro de icono que `ExamenImportadoCard` e `InscripcionCard`:
+            sin él, esta era la única fila de la pantalla sin ancla visual a la
+            izquierda y se leía como un renglón suelto entre tarjetas. Va en
+            neutro a propósito — el color de esta tarjeta lo pone el chip del
+            resultado, y dos colores compitiendo la ensucian. */}
+        <div className="flex items-start gap-sm min-w-0">
+          <div className="w-9 h-9 rounded-md bg-surface-container text-on-surface-variant flex items-center justify-center shrink-0">
+            <Icon name="assignment_turned_in" className="text-[18px]" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-[14px] font-semibold text-on-surface leading-tight">
+              {nota.examen_titulo}
+            </p>
+            {nota.finalizada_en && (
+              <p className="text-[12px] text-on-surface-variant mt-0.5">
+                Rendido el {fmtFecha(nota.finalizada_en)}
+              </p>
+            )}
+          </div>
+        </div>
 
         {/* Un SOLO chip: estado primero, luego la nota (o pendiente/en revisión). */}
-        {notaPendiente ? (
+        {/* En revisión GANA sobre "disponible al cerrar". Las dos cosas son
+            ciertas a la vez, pero el chip decía cuándo se publica la nota
+            mientras el texto de abajo explicaba la revisión: dos mensajes
+            distintos sobre el mismo estado. Manda el más específico, que además
+            es el que le dice al alumno que alguien va a mirar su sesión. */}
+        {enRevision && !nota.nota_anulada ? (
+          <span className="shrink-0 inline-flex items-center gap-xs text-[12px] font-medium rounded-full px-sm py-0.5 bg-warning-container text-warning">
+            En revisión
+          </span>
+        ) : notaPendiente ? (
           <span className="shrink-0 inline-flex items-center gap-xs text-[12px] font-medium rounded-full px-sm py-0.5 bg-warning-container text-warning">
             Disponible al cerrar{nota.cierre ? ` · ${fmtFecha(nota.cierre)}` : ''}
           </span>

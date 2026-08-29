@@ -64,7 +64,12 @@ class VerificarReferenciaIn(BaseModel):
     )
     umbral: float | None = Field(
         None,
-        description="Umbral de distancia coseno. Si es None se usa UMBRAL_COSENO_DEFECTO (0.35)",
+        deprecated=True,
+        description=(
+            "IGNORADO. El umbral lo decide el servidor (regla dura #6): antes se "
+            "obedecia y un `umbral` alto salteaba la verificacion entera. Se sigue "
+            "aceptando el campo solo para no romper a los clientes desplegados."
+        ),
     )
 
 

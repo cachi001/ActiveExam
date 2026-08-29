@@ -46,3 +46,38 @@ export function filtrarPorEstado<T extends ConEstadoActiva>(
 export function contarDeBaja(items: ConEstadoActiva[]): number {
   return items.filter(estaDeBaja).length;
 }
+
+/**
+ * ¿La materia expandida sigue estando en la lista visible?
+ *
+ * El filtro de estado esconde materias, pero el panel de detalle de la derecha
+ * tiene su propia selección. Sin este chequeo quedaban desacoplados: con una
+ * materia dada de baja, la lista mostraba solo las activas y el panel seguía
+ * abierto en la de baja — el detalle de algo que, según la lista, no existe.
+ *
+ * Con la lista todavía vacía devuelve `true` a propósito: eso es una carga en
+ * curso, no un filtro que escondió algo. Descartar ahí cerraría el panel en cada
+ * recarga, antes de que llegue la respuesta.
+ */
+export function seleccionSigueVisible(
+  seleccionada: string | null,
+  visibles: { id: string }[],
+): boolean {
+  if (!seleccionada || visibles.length === 0) return true;
+  return visibles.some((x) => x.id === seleccionada);
+}
+
+/**
+ * Etiqueta de una materia o comisión en un DESPLEGABLE DE FILTRO.
+ *
+ * `GET /exam-content/materias` devuelve también las dadas de baja (no filtra por
+ * `activa`), así que los filtros de Usuarios, Notas y Registro de sesiones las
+ * ofrecían mezcladas con las vigentes, sin ninguna diferencia visible.
+ *
+ * No se las esconde a propósito: los exámenes, las sesiones y las notas de una
+ * materia dada de baja siguen existiendo y hay que poder buscarlos. Lo que hacía
+ * falta era decir cuál es cuál.
+ */
+export function etiquetaConBaja(item: ConEstadoActiva & { nombre?: string }, base: string): string {
+  return estaDeBaja(item) ? `${base} (dada de baja)` : base;
+}

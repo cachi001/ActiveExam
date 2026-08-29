@@ -22,11 +22,13 @@ import { useAutoRefresh } from '../lib/useAutoRefresh';
 import { useToast } from '../ui/toast';
 import { useNavigate } from '../lib/router';
 import { useAuth } from '../lib/authStore';
+import { etiquetaConBaja } from './materias/filtroEstado';
 import { api } from '../lib/api';
 import type { UsuarioAdmin, Materia, Comision } from '../lib/types';
 import { OPCIONES_ROL, OPCIONES_ESTADO } from './admin/components/UsuarioHelpers';
 import { UsuarioTable } from './admin/components/UsuarioTable';
 import { FiltrosPanel } from '../ui/FiltrosPanel';
+import { ESTADO_INICIAL, paramsDeEstado } from './GestionUsuarios.filtros';
 import { Pagination, PageSizeSelect } from '../ui/Pagination';
 
 export default function GestionUsuarios() {
@@ -47,10 +49,10 @@ export default function GestionUsuarios() {
 
   // Aplicado (lo que se busca) vs borrador (lo que se edita en el panel).
   const [filtroRol, setFiltroRol] = useState('');
-  const [filtroEstado, setFiltroEstado] = useState('todos');
+  const [filtroEstado, setFiltroEstado] = useState<string>(ESTADO_INICIAL);
   const [filtroQ, setFiltroQ] = useState('');
   const [borrRol, setBorrRol] = useState('');
-  const [borrEstado, setBorrEstado] = useState('todos');
+  const [borrEstado, setBorrEstado] = useState<string>(ESTADO_INICIAL);
   const [borrQ, setBorrQ] = useState('');
 
   // Filtro de materia/comisión: solo aplica (y solo se muestra) cuando el rol
@@ -78,6 +80,15 @@ export default function GestionUsuarios() {
   }, [borrMateria]);
 
   const [fotos, setFotos] = useState<Record<string, string>>({});
+  // Ids a los que YA se les pidió la foto, con o sin resultado.
+  //
+  // `cargarUsuarios` es un useCallback con deps vacías, así que leía el `fotos`
+  // del primer render (siempre `{}`) y volvía a pedir TODAS las fotos en cada
+  // carga, paginado y auto-refresh. Para un usuario sin foto el endpoint
+  // responde 404, así que cada recarga repetía un 404 por usuario y llenaba la
+  // consola de errores. Un ref no queda atrapado en la clausura y recuerda
+  // también los "no tiene", que es lo que evita repetir el 404.
+  const fotosPedidas = useRef<Set<string>>(new Set());
 
   const [aBajar, setABajar] = useState<UsuarioAdmin | null>(null);
 
@@ -88,7 +99,9 @@ export default function GestionUsuarios() {
     try {
       const data = await api.listarUsuarios(pageSizeRef.current, o, {
         rol: rol || undefined,
-        estado: estado !== 'todos' ? estado : undefined,
+        // SIEMPRE explícito: omitirlo hace que el backend aplique su propio
+        // default ('activo') y la tabla contradiga al desplegable.
+        estado: paramsDeEstado(estado),
         q: q || undefined,
         materia_id: rol === 'estudiante' ? (materiaId || undefined) : undefined,
         comision_id: rol === 'estudiante' ? (comisionId || undefined) : undefined,
@@ -97,11 +110,11 @@ export default function GestionUsuarios() {
       setTotal(data.total);
       setLastUpdatedAt(Date.now());
       for (const u of data.items) {
-        if (!fotos[u.id]) {
-          api.obtenerFotoPerfilDeUsuario(u.id).then((foto) => {
-            if (foto) setFotos((prev) => ({ ...prev, [u.id]: foto }));
-          });
-        }
+        if (fotosPedidas.current.has(u.id)) continue;
+        fotosPedidas.current.add(u.id);
+        api.obtenerFotoPerfilDeUsuario(u.id).then((foto) => {
+          if (foto) setFotos((prev) => ({ ...prev, [u.id]: foto }));
+        });
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -126,7 +139,7 @@ export default function GestionUsuarios() {
   const hayCambiosFiltros =
     borrRol !== filtroRol || borrEstado !== filtroEstado || borrQ.trim() !== filtroQ
     || borrMateria !== filtroMateria || borrComision !== filtroComision;
-  const hayFiltrosActivos = Boolean(borrRol) || borrEstado !== 'activo' || Boolean(borrQ)
+  const hayFiltrosActivos = Boolean(borrRol) || borrEstado !== ESTADO_INICIAL || Boolean(borrQ)
     || Boolean(borrMateria) || Boolean(borrComision);
 
   function aplicarFiltros() {
@@ -142,17 +155,17 @@ export default function GestionUsuarios() {
 
   function limpiarFiltros() {
     setBorrRol('');
-    setBorrEstado('activo');
+    setBorrEstado(ESTADO_INICIAL);
     setBorrQ('');
     setBorrMateria('');
     setBorrComision('');
     setFiltroRol('');
-    setFiltroEstado('activo');
+    setFiltroEstado(ESTADO_INICIAL);
     setFiltroQ('');
     setFiltroMateria('');
     setFiltroComision('');
     setOffset(0);
-    cargarUsuarios(0, '', 'activo', '', '', '');
+    cargarUsuarios(0, '', ESTADO_INICIAL, '', '', '');
   }
 
   async function handleBaja() {
@@ -215,7 +228,10 @@ export default function GestionUsuarios() {
       help={
         <HelpButton title="Gestión de usuarios">
           <p>Acá das de alta, editás y cambiás el estado de los usuarios. Solo visible para administradores del sistema.</p>
-          <p>Los roles disponibles son <em>Estudiante</em>, <em>Tutor</em>, <em>Coordinador</em> y <em>Administrador</em>. La baja es lógica: el usuario no se borra, solo pierde acceso. La evidencia asociada queda intacta.</p>
+          {/* Faltaba Profesor: son CINCO roles asignables (ver ROLES_FORMULARIO
+              en lib/constants/roles.ts y el enum Rol del backend). */}
+          <p>Los roles disponibles son <em>Estudiante</em>, <em>Tutor</em>, <em>Profesor</em>, <em>Coordinador</em> y <em>Admin</em>. Al elegir uno, el formulario te explica qué puede hacer cada uno.</p>
+          <p>La baja es lógica: el usuario no se borra, solo pierde acceso. La evidencia asociada queda intacta.</p>
           <p>No podés cambiar tu propio estado ni quitarte el rol de administrador.</p>
         </HelpButton>
       }
@@ -269,7 +285,7 @@ export default function GestionUsuarios() {
               >
                 <option value="">Todas las materias</option>
                 {materias.map((m) => (
-                  <option key={m.id} value={m.id}>{m.nombre}</option>
+                  <option key={m.id} value={m.id}>{etiquetaConBaja(m, m.nombre)}</option>
                 ))}
               </select>
             </label>

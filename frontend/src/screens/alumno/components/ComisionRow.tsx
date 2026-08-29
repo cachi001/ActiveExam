@@ -12,12 +12,19 @@ interface ComisionRowProps {
 }
 
 /** Subtítulo de la comisión: usa docente/horario (demo) o codigo/periodo/año (real, C-69). */
+/** Nombres de quienes tienen a cargo la comisión. Vacío si no hay ninguno. */
+function nombresDeTutores(comision: Comision): string[] {
+  return (comision.tutores ?? []).map((t) => t.nombre).filter(Boolean);
+}
+
 function subtituloComision(comision: Comision): string {
-  if (comision.docente || comision.horario) {
-    return [comision.docente, comision.horario].filter(Boolean).join(' · ');
-  }
+  // Leía `docente`/`horario`: campos del modelo VIEJO (docente 1:1) que el
+  // backend dejó de mandar cuando los tutores pasaron a N:M en c-79. Hoy manda
+  // `tutores`, que era justo lo que no se estaba mirando, así que el alumno
+  // nunca veía quién estaba a cargo de su comisión.
+  const tutores = nombresDeTutores(comision);
   const periodo = [comision.periodo, comision.anio].filter(Boolean).join(' ');
-  return [comision.codigo, periodo].filter(Boolean).join(' · ');
+  return [tutores.join(', '), comision.codigo, periodo].filter(Boolean).join(' · ');
 }
 
 /** Fila de dato de la comisión (ícono + etiqueta + valor). */
@@ -46,6 +53,7 @@ export function ComisionRow({
 }: ComisionRowProps) {
   const subtitulo = subtituloComision(comision);
   const periodo = [comision.periodo, comision.anio].filter(Boolean).join(' ');
+  const tutores = nombresDeTutores(comision);
 
   return (
     <div>
@@ -82,11 +90,16 @@ export function ComisionRow({
           <Card className="p-md space-y-md">
             {/* Datos de la comisión (solo lectura) */}
             <div className="space-y-1.5">
-              {comision.docente && <Dato icon="person" label="Tutor" value={comision.docente} />}
-              {comision.horario && <Dato icon="schedule" label="Horario" value={comision.horario} />}
+              {tutores.length > 0 && (
+                <Dato
+                  icon="person"
+                  label={tutores.length === 1 ? 'Tutor' : 'Tutores'}
+                  value={tutores.join(', ')}
+                />
+              )}
               {periodo && <Dato icon="event" label="Período" value={periodo} />}
               {comision.codigo && <Dato icon="tag" label="Código" value={comision.codigo} />}
-              {!comision.docente && !comision.horario && !periodo && !comision.codigo && (
+              {tutores.length === 0 && !periodo && !comision.codigo && (
                 <p className="text-[13px] text-on-surface-variant">
                   Todavía no hay información adicional de esta comisión.
                 </p>

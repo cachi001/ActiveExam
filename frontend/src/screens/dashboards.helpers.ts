@@ -19,15 +19,24 @@ export function statExamenesValue(status: AsyncStatus, cantidad: number): string
 
 /**
  * Construye la línea de subtítulo para un ExamenContenidoResumen en el listado.
- * Prioriza materia_nombre · comision_nombre; si ninguno está disponible cae a
- * "N preguntas" para que la fila siempre tenga contexto.
+ * Prioriza materia_nombre · comision_nombre.
+ *
+ * `mostrarPreguntas` decide el fallback cuando no hay ni materia ni comisión, y
+ * existe porque este helper lo comparten los DOS dashboards: al staff "N
+ * preguntas" le sirve para detectar de un vistazo un examen vacío, pero al
+ * ALUMNO no se le muestra nunca cuántas preguntas tiene el examen (decisión del
+ * dueño, 28/8/2026). Sin fallback la fila queda sin subtítulo, que es preferible
+ * a adelantarle el tamaño de la prueba.
  */
-export function examenContenidoSubtitulo(e: ExamenContenidoResumen): string {
+export function examenContenidoSubtitulo(
+  e: ExamenContenidoResumen,
+  { mostrarPreguntas = true }: { mostrarPreguntas?: boolean } = {},
+): string {
   const partes = [e.materia_nombre, e.comision_nombre].filter(
     (s): s is string => typeof s === 'string' && s.length > 0,
   );
   if (partes.length > 0) return partes.join(' · ');
-  return `${e.cantidad_preguntas} preguntas`;
+  return mostrarPreguntas ? `${e.cantidad_preguntas} preguntas` : '';
 }
 
 /** Formatea un ISO a "dd/mm HH:MM" en es-AR (corto, para chips de listado). */

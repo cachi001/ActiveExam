@@ -23,16 +23,13 @@ export interface GlossaryEntry {
   label: string;
   /** Definición en lenguaje claro, máx. 2 frases */
   definition: string;
-  /** Referencia legal opcional (ej. "Ley 25.326, Art. 2") */
-  legalRef?: string;
 }
 
 export const GLOSSARY: Record<TermKey, GlossaryEntry> = {
   embedding: {
     label: 'embedding',
     definition:
-      'Representación numérica de la geometría de tu rostro. Se trata como dato sensible y se elimina al egreso. No es una foto.',
-    legalRef: 'Ley 25.326, Art. 2',
+      'Representación numérica de la geometría de tu rostro. Se trata como dato sensible y vale 24 meses: al vencer se rehace la captura. No es una foto.',
   },
   worm: {
     label: 'WORM',
@@ -57,8 +54,7 @@ export const GLOSSARY: Record<TermKey, GlossaryEntry> = {
   datos_biometricos: {
     label: 'datos biométricos',
     definition:
-      'Datos obtenidos de características físicas (aquí: geometría facial). Clasificados como datos sensibles; requieren consentimiento informado explícito.',
-    legalRef: 'Ley 25.326',
+      'Datos obtenidos de características físicas (aquí: geometría facial). Se tratan como datos sensibles; requieren consentimiento informado explícito.',
   },
   bounding_box: {
     label: 'bounding box',

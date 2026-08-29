@@ -32,7 +32,11 @@ import { createRoot, type Root } from 'react-dom/client';
 // Proctoring real arrancaría MediaPipe / Web Workers: lo neutralizamos.
 vi.mock('../proctoring/useExamProctoring', () => {
   const result = {
-    sessionId: null,
+    // Con sesión: en `sorteo_por_intento` las preguntas solo se piden DESPUÉS de
+    // que exista la sesión (el backend sortea en ese GET y sin sesión devuelve
+    // vacío). Con `null` este test montaba un examen que nunca cargaba preguntas
+    // — que es justo el bug que la guarda evita.
+    sessionId: 'sesion-de-prueba',
     score: 0,
     eventCount: 0,
     activo: false,

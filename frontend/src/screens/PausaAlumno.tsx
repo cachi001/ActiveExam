@@ -230,7 +230,9 @@ export function PausaAlumno({
               Si necesitás interrumpir el examen (ir al baño, una urgencia), pedí una pausa.
               El tutor la aprueba; durante la pausa la supervisión sigue activa.
             </p>
-            <Button variant="secondary" size="sm" onClick={abrirSolicitud} disabled={!sessionId}>
+            {/* Con color: es la única acción del panel y en `secondary` se perdía
+                contra el texto. Mismo criterio que el «Volver al inicio» del cierre. */}
+            <Button size="sm" icon="pause_circle" onClick={abrirSolicitud} disabled={!sessionId}>
               Solicitar pausa
             </Button>
             {!sessionId && (
