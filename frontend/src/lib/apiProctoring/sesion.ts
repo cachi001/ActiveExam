@@ -7,6 +7,21 @@ import type {
   VeredictoReinferencia,
 } from '../types';
 
+/**
+ * Un examen empezado y sin entregar, para poder retomarlo.
+ *
+ * `examen_iniciado_en` en null significa que la sesión se creó pero el alumno
+ * nunca llegó a la pantalla del examen: se cayó durante el ingreso (biometría,
+ * calibración, sala de espera). El cronómetro todavía no arrancó.
+ */
+export interface SesionEnCurso {
+  session_id: string;
+  examen_contenido_id: string;
+  examen_titulo: string | null;
+  creada_en: string;
+  examen_iniciado_en: string | null;
+}
+
 /** Un evento de detección tal como lo manda el cliente (de a uno o en lote). */
 export interface EventoProctoringPayload {
   tipo: string;
@@ -207,5 +222,32 @@ export const sesionApi = {
       { method: 'PATCH' },
       'demo',
     );
+  },
+
+  /**
+   * Exámenes que el alumno dejó empezados y sin entregar.
+   * Real: GET /proctoring/sessions/en-curso
+   *
+   * El backend ya sabía reanudar (misma sesión, mismo cronómetro, respuestas
+   * restauradas), pero nada permitía DESCUBRIR esa sesión: al alumno al que se le
+   * cortaba la conexión, "Mis exámenes" le mostraba el examen como no empezado y
+   * con el cartel "Tenés un solo intento", así que entendía que lo había perdido.
+   *
+   * Degrada a `[]` ante un fallo. Es la excepción al criterio de propagar (c-78):
+   * acá el dato ENRIQUECE una pantalla que se dibuja igual sin él. Romper "Mis
+   * exámenes" entera porque no se pudo averiguar si hay algo en curso sería peor
+   * que no mostrar el aviso — y el alumno conserva el camino normal, que reanuda
+   * igual porque la reanudación la decide el backend, no esta respuesta.
+   */
+  async misSesionesEnCurso(): Promise<SesionEnCurso[]> {
+    try {
+      return await realFetch<SesionEnCurso[]>(
+        '/proctoring/sessions/en-curso',
+        { method: 'GET' },
+        'demo',
+      );
+    } catch {
+      return [];
+    }
   },
 };

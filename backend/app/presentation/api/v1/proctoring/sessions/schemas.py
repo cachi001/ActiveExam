@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import uuid as _uuid
 
+from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -392,3 +393,26 @@ class ListarRespuestasOut(BaseModel):
 
     session_id: str
     respuestas: list[RespuestaGuardadaOut]
+
+
+class SesionEnCursoOut(BaseModel):
+    """Un examen que el alumno dejo empezado y sin entregar (GET /sessions/en-curso).
+
+    Existe para que "Mis examenes" pueda distinguir un examen NO EMPEZADO de uno EN
+    CURSO. Sin esa distincion, al alumno al que se le corto la conexion se le mostraba
+    la misma tarjeta de siempre — "Tenes un solo intento" incluido — y entendia que
+    habia gastado el intento, cuando en realidad su sesion seguia abierta y el
+    enforcement solo cuenta las FINALIZADAS.
+
+    No lleva score ni eventos: es del alumno, y el proctoring no se le muestra.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    session_id: str
+    examen_contenido_id: str
+    examen_titulo: str | None = None
+    creada_en: datetime
+    #: Cuando arranco a correr el cronometro. NULL = la sesion se creo pero el alumno
+    #: nunca llego a la pantalla del examen (se cayo en el ingreso).
+    examen_iniciado_en: datetime | None = None
