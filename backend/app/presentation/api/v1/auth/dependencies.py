@@ -45,6 +45,21 @@ def _forbidden(detail: str) -> HTTPException:
     return HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail)
 
 
+#: Lo único que puede hacer quien todavía no definió sus credenciales: enterarse de
+#: que está en ese estado y salir de él. Se compara por sufijo para no atarse al
+#: prefijo con el que esté montado el router.
+_RUTAS_PERMITIDAS_SIN_CREDENCIALES = (
+    "/auth/me",              # la app necesita saber que debe mostrar la pantalla
+    "/auth/change-password", # la salida del estado
+    "/auth/refresh",         # renovar la sesión mientras la resuelve
+    "/auth/logout",          # irse siempre tiene que poder
+)
+
+
+def _puede_sin_credenciales_definidas(path: str) -> bool:
+    return any(path.endswith(sufijo) for sufijo in _RUTAS_PERMITIDAS_SIN_CREDENCIALES)
+
+
 def get_validator(request: Request) -> JwtValidator:
     """Toma el ``JwtValidator`` cableado en el app state (o 500 si falta)."""
     validator = getattr(request.app.state, "jwt_validator", None)
@@ -57,16 +72,44 @@ def get_validator(request: Request) -> JwtValidator:
 
 
 async def get_current_principal(
+    request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
     validator: JwtValidator = Depends(get_validator),
 ) -> AuthenticatedPrincipal:
-    """Valida el Bearer y devuelve el principal (401 si falta/invalido, D2)."""
+    """Valida el Bearer y devuelve el principal (401 si falta/invalido, D2).
+
+    Además corta con 403 a quien todavía no definió sus credenciales propias, salvo
+    en las rutas que le permiten resolverlo. Antes ese gate vivía SOLO en el
+    navegador (``RequireAuth``): con el token del launch LTI se podía operar la API
+    entera sin haber elegido usuario ni contraseña. Regla dura #6 — un control que
+    solo corre en el cliente no es un control.
+
+    Va acá y no endpoint por endpoint a propósito: todos los guards
+    (``require_roles``, ``require_capability``, ``require_mfa``) pasan por esta
+    función, así que el que se agregue mañana queda cubierto solo.
+    """
     if credentials is None or not credentials.credentials:
         raise _unauthorized("Falta el Bearer token.")
     try:
-        return validator.validar(credentials.credentials)
+        principal = validator.validar(credentials.credentials)
     except UnauthenticatedError as exc:
         raise _unauthorized(str(exc)) from exc
+
+    if principal.credenciales_pendientes and not _puede_sin_credenciales_definidas(
+        request.url.path
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "error": "credenciales_pendientes",
+                "mensaje": (
+                    "Tenés que elegir tu usuario y contraseña antes de usar el "
+                    "sistema."
+                ),
+            },
+        )
+
+    return principal
 
 
 def require_roles(*roles: Rol):

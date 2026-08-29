@@ -619,8 +619,13 @@ async def cambiar_contrasena(
         # Solo se re-emite el ACCESS token: el refresh vigente sigue siendo válido
         # (no cambió la identidad del usuario, solo su nombre visible) y rotarlo acá
         # obligaría al cliente a manejar dos rotaciones distintas en el mismo flujo.
+        # También se re-emite cuando se resolvió el primer set aunque el username no
+        # haya cambiado: el token viejo lleva `debe_cambiar_password: true` y el
+        # guard del backend seguiría rechazando cada request. Sin esto la persona
+        # queda encerrada — define su contraseña y no puede usar nada hasta que el
+        # token venza.
         access_token_nuevo: str | None = None
-        if body.nuevo_username is not None:
+        if body.nuevo_username is not None or primer_set:
             settings = getattr(request.app.state, "settings", None)
             secreto = getattr(settings, "jwt_own_secret", None) if settings else None
             if secreto:

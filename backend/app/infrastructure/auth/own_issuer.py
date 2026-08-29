@@ -59,6 +59,11 @@ def emitir_jwt_propio(
         "aud": audience,
         "iat": ahora,
         "exp": ahora + ttl_seconds,
+        # La cuenta todavía no definió usuario/contraseña propios. Va en el token
+        # para que el guard del backend no tenga que consultar la base en cada
+        # request. Se emite SIEMPRE (true o false) para que un token viejo sin el
+        # claim se distinga de uno nuevo que dice "ya está resuelto".
+        "debe_cambiar_password": bool(usuario.debe_cambiar_password),
         # amr ausente: sin MFA propio en este change (deuda tecnica documentada).
         # TokenPolicy lo leerá como mfa_satisfecho=False — warning en frontend.
     }

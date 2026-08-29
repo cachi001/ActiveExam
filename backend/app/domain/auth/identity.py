@@ -37,6 +37,10 @@ class AuthenticatedPrincipal:
     attrs_federados: dict[str, str] = field(default_factory=dict)
     nombre: str | None = None
     apellido: str | None = None
+    #: La cuenta todavía no definió sus credenciales propias (primer ingreso con
+    #: clave temporal, o alta automática desde el campus con un username sintético).
+    #: Viaja en el token para no pagar una consulta a la base en cada request.
+    credenciales_pendientes: bool = False
 
     def tiene_rol(self, rol: Rol) -> bool:
         """``True`` si el principal posee el rol indicado."""

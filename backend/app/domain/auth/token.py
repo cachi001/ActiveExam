@@ -134,4 +134,7 @@ class TokenPolicy:
             ),
             subject=str(claims.get("sub")) if claims.get("sub") else None,
             attrs_federados=attrs,
+            # Ausente = False: un IdP externo (Keycloak) no emite este claim, y sus
+            # usuarios no pasan por el primer set de credenciales de este sistema.
+            credenciales_pendientes=bool(claims.get("debe_cambiar_password", False)),
         )
