@@ -22,7 +22,7 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator  # noqa: F401
-from sqlalchemy import or_, select, text, update
+from sqlalchemy import delete, or_, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -48,6 +48,11 @@ from app.presentation.api.v1.auth.dependencies import require_roles
 router = APIRouter()
 
 _require_admin = require_roles(Rol.ADMIN_SISTEMA)
+
+#: Largo mínimo de un username editado a mano. No es una regla de seguridad (la
+#: contraseña es la que protege): es para que no quede una credencial de un
+#: carácter, imposible de comunicar por teléfono sin equivocarse.
+_USERNAME_MINIMO = 3
 
 # Prefijo de username autogenerado por rol (alta manual por admin_sistema).
 # Orden = prioridad para elegir el prefijo cuando el usuario tiene varios roles.
@@ -112,10 +117,28 @@ class EditarUsuarioRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    username: str | None = None
     email: str | None = None
     nombre: str | None = None
     apellido: str | None = None
     roles: list[str] | None = None
+
+    @field_validator("username")
+    @classmethod
+    def username_usable(cls, v: str | None) -> str | None:
+        """Un username es una credencial de ingreso: tiene que poder tipearse.
+
+        Vacío o en blanco dejaría a la persona sin forma de entrar, y los espacios
+        se pierden o se duplican al copiar y pegar.
+        """
+        if v is None:
+            return v
+        limpio = v.strip()
+        if limpio != v or " " in v:
+            raise ValueError("El username no puede tener espacios.")
+        if len(limpio) < _USERNAME_MINIMO:
+            raise ValueError(f"El username debe tener al menos {_USERNAME_MINIMO} caracteres.")
+        return limpio
 
     @field_validator("roles")
     @classmethod
@@ -545,11 +568,16 @@ async def editar_usuario(
     request: Request,
     principal: AuthenticatedPrincipal = Depends(_require_admin),
 ) -> UsuarioResponse:
-    """Edita email, nombre, apellido y/o roles de un usuario.
+    """Edita username, email, nombre, apellido y/o roles de un usuario.
 
     Regla anti-lockout (D2): el admin no puede quitarse su propio rol admin_sistema.
     No permite editar password_hash ni auth_provider (extra='forbid').
     404 si el usuario no existe.
+
+    Cambiar el username CIERRA las sesiones abiertas de esa cuenta: el token porta
+    el username viejo y quedaría presentando una identidad que ya no existe. 409 si
+    el username nuevo ya lo usa otra persona, sea como username o como email (el
+    login matchea por los dos).
     """
     session_factory = _get_session_factory(request)
 
@@ -580,6 +608,32 @@ async def editar_usuario(
                 )
             usuario.roles = body.roles
 
+        # Renombre. Va ANTES del email para que, si vienen los dos, un username
+        # inválido no deje el email ya pisado.
+        renombrado = body.username is not None and body.username != usuario.username
+        if renombrado:
+            # Simétrico a la validación cruzada del email: el login matchea por
+            # "email OR username", así que el username nuevo tampoco puede ser el
+            # email de otra persona — se disputarían la credencial de ingreso.
+            cruce = await session.execute(
+                select(UsuarioModel.id).where(
+                    or_(
+                        UsuarioModel.username == body.username,
+                        UsuarioModel.email == body.username,
+                    ),
+                    UsuarioModel.id != usuario.id,
+                )
+            )
+            if cruce.scalar_one_or_none() is not None:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=(
+                        "Ese username ya lo usa otra persona, como username o "
+                        "como email."
+                    ),
+                )
+            usuario.username = body.username
+
         if body.email is not None:
             # Validación CRUZADA (c-76-4): el nuevo email no puede coincidir
             # con el username de OTRO usuario (mismo riesgo que en el alta:
@@ -601,6 +655,18 @@ async def editar_usuario(
         if body.apellido is not None:
             usuario.apellido = body.apellido
 
+        if renombrado:
+            # El access token porta el username viejo (`preferred_username`), así
+            # que una sesión abierta seguiría presentando una identidad que ya no
+            # existe. Se cortan las sesiones: la persona vuelve a entrar con el
+            # nombre nuevo. Solo al renombrar — corregir un apellido no puede
+            # echar a nadie de un examen en curso.
+            await session.execute(
+                delete(RefreshTokenModel).where(
+                    RefreshTokenModel.usuario_id == str(usuario.id)
+                )
+            )
+
         try:
             await session.commit()
             await session.refresh(usuario)
@@ -608,7 +674,7 @@ async def editar_usuario(
             await session.rollback()
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="Ya existe un usuario con ese email.",
+                detail="Ya existe un usuario con ese email o username.",
             ) from exc
 
     from app.application.audit.service import registrar_seguro
@@ -625,7 +691,14 @@ async def editar_usuario(
         entidad_id=str(usuario.id),
         ip=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
-        proposito=f"Editó el usuario {usuario.email}",
+        proposito=(
+            f"Editó el usuario {usuario.email}"
+            + (
+                f" (renombró el usuario a {usuario.username}, sesiones cerradas)"
+                if renombrado
+                else ""
+            )
+        ),
     )
 
     return _usuario_to_response(usuario)
