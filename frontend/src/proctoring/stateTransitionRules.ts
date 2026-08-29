@@ -100,6 +100,34 @@ export interface TransitionConfig {
 const HEAD_YAW_THRESHOLD_DEG = 20;
 
 /**
+ * Cuánto más lejos puede irse la mirada en VERTICAL que en horizontal antes de
+ * contar como desviada.
+ *
+ * La desviación se medía como un radio (`hypot(x, y)` contra un único umbral), y
+ * eso trata igual dos cosas que no lo son: mirar a un costado (fuera del monitor,
+ * es lo que interesa) y mirar el borde de abajo del enunciado (adentro del
+ * monitor, es leer). La pantalla es un RECTÁNGULO ancho, no un punto: recorrerla
+ * con la vista mueve el vector, y leer un párrafo largo abajo dura más que los
+ * 2,5 s del umbral sostenido. El falso positivo se alcanzaba rindiendo
+ * normalmente, y era peor cuanto más grande el monitor.
+ *
+ * Encima el eje vertical es la señal más sucia que da el motor: en `gazeFromIris`
+ * el desplazamiento vertical se normaliza por el SEMI-ANCHO del ojo (no por su
+ * altura) y arrastra el párpado, que tapa el iris justo al mirar hacia abajo.
+ *
+ * No se ignora el eje vertical: mirar apuntes sobre el escritorio es un caso real
+ * y cae ahí. Se afloja, porque el escritorio está a un ángulo mucho mayor que el
+ * borde inferior de la pantalla. Es un factor y no un umbral suelto para que
+ * siga habiendo UN control de sensibilidad configurable por institución
+ * (`gaze_deviation_threshold`): el vertical acompaña sin pedir migración, campo
+ * nuevo en la config ni otra perilla que nadie sabría cómo calibrar.
+ *
+ * El 2,5 es provisional y conservador (prioriza no molestar a quien rinde bien).
+ * Para afinarlo hay que medir valores reales en el harness de detección.
+ */
+const VERTICAL_TOLERANCE_FACTOR = 2.5;
+
+/**
  * Configuracion por defecto de los umbrales de deteccion.
  *
  * C-46 (ajuste fino basado en observaciones del harness con motor MediaPipe real):
@@ -238,15 +266,22 @@ export class StateTransitionRules {
     const g = s.gaze
       ? { x: s.gaze.x - this.gazeBaseline.x, y: s.gaze.y - this.gazeBaseline.y }
       : undefined;
-    const magnitude = g ? Math.hypot(g.x, g.y) : 0;
+    // Umbral por EJE, no un radio: horizontal es el control configurado, vertical
+    // el mismo control aflojado por VERTICAL_TOLERANCE_FACTOR (ver ahi el porque).
+    // Asi un desvio vertical grande deja de empujar a un horizontal chico por
+    // encima del umbral, que era como leer la parte de abajo de la pantalla
+    // terminaba contando como mirada desviada.
+    const umbralHorizontal = this.cfg.gaze_deviation_threshold;
+    const umbralVertical = umbralHorizontal * VERTICAL_TOLERANCE_FACTOR;
     // C-35: la condicion "desviado" combina dos fuentes de senal:
-    //   1. Vector iris: magnitud >= gaze_deviation_threshold (senal principal).
+    //   1. Vector iris: supera el umbral de SU eje (senal principal).
     //   2. Head yaw (opcional): |head_yaw_deg| > HEAD_YAW_THRESHOLD_DEG (senal complementaria).
     //      Cubre el caso en que el alumno gira la cabeza sin mover los ojos.
     //      Si head_yaw_deg no esta definido (undefined), se ignora — retrocompatible.
     // El ancla y la logica de fijacion sostenida siguen operando sobre el vector iris (g),
     // no sobre head_yaw_deg — mide si la mirada permanece en "esa direccion general".
-    const irisDeviated = g !== undefined && magnitude >= this.cfg.gaze_deviation_threshold;
+    const irisDeviated =
+      g !== undefined && (Math.abs(g.x) >= umbralHorizontal || Math.abs(g.y) >= umbralVertical);
     const yawDeviated = s.head_yaw_deg !== undefined && Math.abs(s.head_yaw_deg) > HEAD_YAW_THRESHOLD_DEG;
     const deviated = irisDeviated || yawDeviated;
     if (deviated) {

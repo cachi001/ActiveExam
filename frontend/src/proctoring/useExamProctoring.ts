@@ -39,11 +39,13 @@ import { captureVideoFrame } from '../lib/videoFrameCapture';
 import { MediaPipeVisionEngine } from '../vision/MediaPipeVisionEngine';
 import type { VisionEngine } from '../vision/VisionEngine';
 import { loadRealEngine, disposeRealEngine } from '../vision/harnessEngineLoader';
+import { baselineGazeGuardado, debeCalibrarEnElExamen } from './baselineGaze';
 import { VisionPipeline, type EventSink } from './visionPipeline';
 import { StateTransitionRules, DEFAULT_CONFIG } from './stateTransitionRules';
 import { loadScoringWeights, pesoEvento, severidadEvento } from './scoringWeights';
 import { loadEffectiveConfig, getEffectiveConfig } from '../config/effectiveConfigCache';
 import { detectorActivo } from './detectorActivo';
+import { debeGuardarCaptura, debeRegistrarEvento } from './capturaPorScore';
 import {
   FocusDetector,
   FullscreenDetector,
@@ -473,6 +475,8 @@ export function useExamProctoring(
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessionCreadaEn, setSessionCreadaEn] = useState<string | null>(null);
   const [score, setScore] = useState(0);
+  // Espejo del score para leerlo dentro del handler async sin depender del closure.
+  const scoreRef = useRef(0);
   const [eventCount, setEventCount] = useState(0);
   const [activo, setActivo] = useState(false);
   const [eventos, setEventos] = useState<EventoSesion[]>([]);
@@ -601,6 +605,16 @@ export function useExamProctoring(
       return;
     }
 
+    // Score en el tope: se corta acá, antes de puntuar, registrar o enviar nada.
+    // Con el score capado la sesión ya está en lo más alto de la cola de revisión y
+    // no puede subir más, así que seguir posteando solo agranda la base sin cambiar
+    // ninguna decisión (ver capturaPorScore.ts para el costo que esto tiene).
+    // `captura_pausa` NO pasa por acá (tiene su propio envío), así que la
+    // verificación de las ventanas de pausa sigue intacta.
+    if (!debeRegistrarEvento(scoreRef.current)) {
+      return;
+    }
+
     // Severidad VIGENTE del tipo (config viva del backend). Si la config no cargó,
     // cae a la del catalogo del cliente. Misma fuente que el peso → score y severidad
     // mostrada quedan consistentes con lo que el admin configuró.
@@ -610,8 +624,13 @@ export function useExamProctoring(
     // El peso por tipo se resuelve dinamicamente desde la BD (cache poblada en mount);
     // si la API fallo, pesoEvento() vuelve al fallback por severidad.
     const peso = pesoEvento(rawEvent.tipo, sev);
+    // Score ANTES de sumar este evento: es el que decide si vale guardar su imagen.
+    // Con el de después, el evento que justamente te lleva a 100 — el más relevante
+    // de todos — se quedaría sin foto.
+    const scorePrevio = scoreRef.current;
     addScore(peso);
-    setScore((prev) => Math.min(100, prev + peso));
+    scoreRef.current = Math.min(100, scorePrevio + peso);
+    setScore(scoreRef.current);
     setEventCount((c) => c + 1);
 
     // Registrar en el panel de señales del examen.
@@ -633,8 +652,13 @@ export function useExamProctoring(
     if (!sid) return;
     // Gate de evidencia (privacidad L2.5, regla dura #7) — ver EVENTOS_CON_EVIDENCIA_VISUAL
     // arriba para el detalle de qué captura y por qué (prueba directa vs. contexto visual).
+    // Con el score en el tope la imagen ya no aporta: la sesión está en lo más alto
+    // de la cola y no puede subir más (ver capturaPorScore.ts). El EVENTO se sigue
+    // registrando igual — frenarlos sería un exploit.
     const screenshot =
-      EVENTOS_CON_EVIDENCIA_VISUAL.has(rawEvent.tipo) && videoRef.current
+      EVENTOS_CON_EVIDENCIA_VISUAL.has(rawEvent.tipo) &&
+      videoRef.current &&
+      debeGuardarCaptura(scorePrevio)
         ? captureVideoFrame(videoRef.current, 0.7)
         : null;
     const faceCountCliente =
@@ -974,15 +998,24 @@ export function useExamProctoring(
       // cronómetro ancla a examen_iniciado_en, seteado recién al primer fetch de
       // preguntas). Si no se pudo capturar (sin rostro, motor stub), sigue con el
       // baseline por defecto {0,0} — comportamiento actual, no bloquea el examen.
-      setCalibrando(true);
-      const baselineGaze = await capturarBaselineGaze(
-        videoRef,
-        engine,
-        CALIBRACION_GAZE_MS,
-        FRAME_INTERVAL_MS,
-        () => cancelled || stoppedRef.current,
-      );
-      setCalibrando(false);
+      // La calibración es un PASO del ingreso (sala de espera), no algo que pasa
+      // en medio de la rendición: ahí le comía tiempo al alumno con el reloj ya
+      // corriendo y sin decirle cómo salió. Acá solo se toma lo que dejó ese
+      // paso. Se sigue calibrando en el examen SOLO como respaldo — recarga a
+      // mitad de examen, o entrada por una ruta que se saltea la sala — para que
+      // nadie quede sin calibrar.
+      let baselineGaze = baselineGazeGuardado();
+      if (debeCalibrarEnElExamen()) {
+        setCalibrando(true);
+        baselineGaze = await capturarBaselineGaze(
+          videoRef,
+          engine,
+          CALIBRACION_GAZE_MS,
+          FRAME_INTERVAL_MS,
+          () => cancelled || stoppedRef.current,
+        );
+        setCalibrando(false);
+      }
       if (cancelled || stoppedRef.current) {
         void disposeRealEngine().catch(() => {});
         return;
