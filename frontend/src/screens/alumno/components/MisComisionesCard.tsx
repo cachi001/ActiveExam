@@ -81,13 +81,6 @@ export function MisComisionesCard() {
                       ? ` · ${[c.periodo, c.anio].filter(Boolean).join(' ')}`
                       : ''}
                   </p>
-                  {c.tutores && c.tutores.length > 0 && (
-                    <p className="text-[12px] text-on-surface-variant mt-1 flex items-center gap-1">
-                      <Icon name="person" className="text-[14px]" />
-                      {c.tutores.length === 1 ? 'Tutor: ' : 'Tutores: '}
-                      {c.tutores.map((t) => t.nombre).join(', ')}
-                    </p>
-                  )}
                 </div>
               </div>
             )),

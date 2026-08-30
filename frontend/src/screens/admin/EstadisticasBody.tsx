@@ -77,10 +77,13 @@ export function EstadisticasBody({ cargando, error, data, onReintentar }: Estadi
  * rojo (riesgo). Se aplica por POSICIÓN, no por etiqueta: las bandas no son fijas
  * — la última arranca en el umbral vivo, así que puede ser "80-100" y no "70-100".
  * La última banda es siempre la roja (la que prioriza revisión humana). */
-const PALETA_BANDAS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444'];
+const PALETA_BANDAS = ['#10b981', '#f59e0b', '#ef4444'];
 /** Etiquetas de menor a mayor; la última se reemplaza por "Prioriza revisión"
  * cuando el segmento viene con enRiesgo=true. */
-const ETIQUETAS_BANDAS = ['Bajo', 'Moderado', 'Alto', 'Alto'];
+// Los MISMOS nombres que el filtro "nivel de riesgo" del Registro de sesiones:
+// antes acá decía Bajo/Moderado/Alto sobre cuatro bandas y el filtro ofrecía
+// Bajo/Medio/Alto sobre tres, así que el mismo score tenía dos nombres.
+const ETIQUETAS_BANDAS = ['Bajo', 'Medio', 'Alto'];
 
 /** Color/etiqueta de la banda en la posición `i` de `n` bandas. Se alinean por el
  * FINAL, para que la última banda conserve siempre el rojo y el rótulo más alto. */
@@ -607,14 +610,20 @@ function RoscaComposicion({ data }: { data: ResumenStats }) {
 
         <ul className="flex-1 min-w-0 space-y-2 w-full">
           {segs.map((s, i) => (
-            <li key={s.rango} className="flex items-center gap-2.5 text-[12.5px]">
+            /* `min-w-0 truncate` en la etiqueta y `shrink-0` en todo lo demás: sin
+               eso, "Prioriza revisión" (la etiqueta más larga) empujaba al rango y
+               a los números fuera de la fila, que se apilaban en varios renglones
+               y descuadraban la leyenda entera. */
+            <li key={s.rango} className="flex items-center gap-2 text-[12.5px] whitespace-nowrap">
               <span className="w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: colorBanda(i, segs.length) }} aria-hidden />
-              <span className={`text-on-surface font-medium${s.enRiesgo ? ' font-semibold' : ''}`}>
+              <span className={`min-w-0 truncate text-on-surface font-medium${s.enRiesgo ? ' font-semibold' : ''}`}>
                 {s.enRiesgo ? 'Prioriza revisión' : etiquetaBanda(i, segs.length)}
               </span>
-              <span className="text-on-surface-variant tabular-nums">{s.rango}</span>
-              <span className="ml-auto text-on-surface font-semibold tabular-nums">{s.valor}</span>
-              <span className="text-on-surface-variant tabular-nums w-10 text-right">{s.pct}%</span>
+              {/* El rango se esconde en pantallas angostas: es el dato menos
+                  importante de la fila y es lo primero que conviene sacrificar. */}
+              <span className="hidden sm:inline shrink-0 text-on-surface-variant tabular-nums">{s.rango}</span>
+              <span className="ml-auto shrink-0 text-on-surface font-semibold tabular-nums">{s.valor}</span>
+              <span className="shrink-0 text-on-surface-variant tabular-nums w-10 text-right">{s.pct}%</span>
             </li>
           ))}
         </ul>

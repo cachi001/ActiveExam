@@ -47,15 +47,17 @@ const montar = (c: Comision) =>
   );
 
 describe('ComisionRow — información de la comisión', () => {
-  it('muestra el tutor a cargo', () => {
+  it('NO le muestra al alumno quién es el tutor', () => {
+    // Decisión del dueño (29/8/2026): quién está a cargo de una comisión es
+    // información de gestión interna. Antes se mostraba en el resumen de la fila
+    // y en el detalle. El backend además dejó de mandárselo al alumno: esto
+    // cubre la mitad de la pantalla, por si el dato llegara igual.
     montar(comision({ tutores: [{ id: 't-1', nombre: 'Tutor Prueba' }] }));
-    // Aparece dos veces a propósito: en el resumen de la fila y en el detalle.
-    expect(screen.queryAllByText(/Tutor Prueba/).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Tutor Prueba/)).toBeNull();
+    expect(screen.queryByText(/^Tutor(es)?:/)).toBeNull();
   });
 
-  it('lista los varios tutores cuando hay más de uno', () => {
-    // Desde c-79 una comisión puede tener varios: mostrar solo el primero
-    // escondería a quien efectivamente acompaña al alumno.
+  it('tampoco los lista cuando hay varios', () => {
     montar(
       comision({
         tutores: [
@@ -64,20 +66,8 @@ describe('ComisionRow — información de la comisión', () => {
         ],
       }),
     );
-    expect(screen.queryAllByText(/Ana Gómez/).length).toBeGreaterThan(0);
-    expect(screen.queryAllByText(/Luis Paz/).length).toBeGreaterThan(0);
-  });
-
-  it('con varios tutores la etiqueta va en plural', () => {
-    montar(
-      comision({
-        tutores: [
-          { id: 't-1', nombre: 'Ana Gómez' },
-          { id: 't-2', nombre: 'Luis Paz' },
-        ],
-      }),
-    );
-    expect(screen.getByText(/^Tutores:/)).toBeTruthy();
+    expect(screen.queryByText(/Ana Gómez/)).toBeNull();
+    expect(screen.queryByText(/Luis Paz/)).toBeNull();
   });
 
   it('sin tutor asignado no inventa uno', () => {
@@ -92,7 +82,7 @@ describe('ComisionRow — información de la comisión', () => {
     expect(screen.queryByText(/todavía no hay información/i)).toBeNull();
   });
 
-  it('el tutor también aparece en el resumen de la fila cerrada', () => {
+  it('tampoco aparece en el resumen de la fila cerrada', () => {
     render(
       <ComisionRow
         comision={comision({ tutores: [{ id: 't-1', nombre: 'Tutor Prueba' }] })}
@@ -103,7 +93,7 @@ describe('ComisionRow — información de la comisión', () => {
         onIrAExamenes={() => {}}
       />,
     );
-    expect(screen.getByText(/Tutor Prueba/)).toBeTruthy();
+    expect(screen.queryByText(/Tutor Prueba/)).toBeNull();
   });
 
   it('muestra el código de la comisión', () => {

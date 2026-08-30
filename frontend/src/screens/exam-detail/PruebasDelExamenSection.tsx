@@ -101,7 +101,7 @@ export function PruebasDelExamenSection({ examenId }: Props) {
               </p>
             </div>
             <Button
-              variant="ghost"
+              variant="ghost-danger"
               size="sm"
               icon="delete"
               onClick={() => borrar(p.session_id)}

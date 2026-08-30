@@ -230,13 +230,21 @@ async def verificar_enforcement(
                 ExamenContenidoModel.intentos_permitidos,
                 ExamenContenidoModel.eliminado_en,
                 ExamenContenidoModel.borrador,
+                ExamenContenidoModel.modo_prueba,
             ).where(ExamenContenidoModel.id == examen_contenido_id)
         )
     ).one_or_none()
     if config is None:
         return
 
-    apertura, cierre, intentos_permitidos, eliminado_en, borrador = config
+    apertura, cierre, intentos_permitidos, eliminado_en, borrador, modo_prueba = config
+
+    # migración 0105: un examen EN MODO PRUEBA se rinde como ensayo. Vale lo mismo
+    # que la prueba del staff (saltea borrador y ventana), porque es exactamente
+    # para lo mismo: probarlo antes de soltarlo. Quién puede verlo ya se filtró
+    # antes (solo los alumnos habilitados), así que llegar acá significa estar
+    # habilitado.
+    es_ensayo = es_prueba_de_staff or bool(modo_prueba)
 
     # c-78: PRIMERO que nada. Un examen dado de baja no se rinde, punto — antes
     # que la ventana y antes que los intentos, porque no importa si esta abierto
@@ -252,7 +260,7 @@ async def verificar_enforcement(
 
     # c-78 E-07: el examen todavia no se habilito. Backstop server-side, igual que
     # la baja logica: sacarlo de los listados no alcanza contra una URL guardada.
-    if borrador and not es_prueba_de_staff:
+    if borrador and not es_ensayo:
         raise ExamenEnBorradorError(
             examen_contenido_id=examen_contenido_id,
             mensaje=(
@@ -263,7 +271,7 @@ async def verificar_enforcement(
 
     # La prueba del staff corre ANTES de la apertura a proposito: es justo cuando
     # tiene sentido probar el examen, y es cuando la ventana lo bloquearia.
-    if not es_prueba_de_staff:
+    if not es_ensayo:
         if apertura is not None and ahora < apertura:
             raise FueraDeVentanaError(
                 apertura=apertura,

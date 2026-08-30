@@ -8,8 +8,27 @@ import type { ExamenContenidoResumen, TipoEvento } from '../lib/types';
 
 function formatFecha(iso: string | null | undefined): string {
   if (!iso) return '—';
-  return new Date(iso).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  // 24 horas y sufijo "hs": es-AR devuelve "06:19 p. m." con espacio duro, que en
+  // una fila angosta cortaba el renglón y se leía como un error de la pantalla.
+  const fecha = new Intl.DateTimeFormat('es-AR', {
+    day: '2-digit', month: 'short', year: 'numeric',
+  }).format(d);
+  const hora = new Intl.DateTimeFormat('es-AR', {
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  }).format(d);
+  return fecha + ', ' + hora + ' hs';
 }
+
+/** Un ÚNICO color para todas las señales.
+ *
+ * La versión anterior las pintaba por familia (cámara / pantalla / entorno). Tres
+ * colores sugieren tres categorías con significados distintos, y el alumno no
+ * tiene por qué descifrar qué quiere decir cada tono: son todas lo mismo, cosas
+ * que quedan registradas. El color acompaña, no clasifica.
+ */
+const TONO_SENAL = 'bg-primary-100 text-primary-700';
 
 /** Ícono representativo por tipo de señal registrada (Material Symbols). */
 const ICONO_EVENTO: Record<string, string> = {
@@ -64,29 +83,38 @@ export default function PreExamen() {
     ? `${examen.duracion_min} min`
     : 'Sin límite';
   const intentosLabel = contenido?.intentos_permitidos ? `${contenido.intentos_permitidos}` : '1';
-  const ventanaLabel =
-    contenido?.apertura && contenido?.cierre
-      ? `${formatFecha(contenido.apertura)} – ${formatFecha(contenido.cierre)}`
-      : contenido?.apertura
-      ? `Desde ${formatFecha(contenido.apertura)}`
-      : 'Sin restricción';
-
   // Sin fila de "Preguntas": la cantidad no se le muestra al alumno en ninguna
   // pantalla previa a rendir (decisión del dueño, 28/8/2026).
+  //
+  // Las dos fechas van en filas SEPARADAS. Antes era una sola fila "Disponible"
+  // con las dos pegadas por un guion: en pantallas angostas cortaba en cualquier
+  // lado y no se sabía dónde terminaba una y empezaba la otra.
   const ficha = [
-    { icon: 'schedule', label: 'Tiempo límite', value: tiempoLabel },
+    { icon: 'timer', label: 'Tiempo límite', value: tiempoLabel },
     { icon: 'replay', label: 'Intentos permitidos', value: intentosLabel },
-    { icon: 'calendar_today', label: 'Disponible', value: ventanaLabel },
+    {
+      icon: 'event_available',
+      label: 'Fecha inicio',
+      value: contenido?.apertura ? formatFecha(contenido.apertura) : 'Sin fecha de inicio',
+    },
+    {
+      icon: 'event_busy',
+      label: 'Fecha hasta',
+      value: contenido?.cierre ? formatFecha(contenido.cierre) : 'Sin fecha de cierre',
+    },
   ];
 
   return (
     <StudentShell backTo="/alumno/mis-examenes">
       <div className="w-full space-y-lg animate-in fade-in duration-300">
 
-        {/* Título */}
+        {/* Título. Escala con el ancho: en el tamaño fijo anterior, un título largo
+            se comía la pantalla en un notebook chico. */}
         <div className="space-y-xs">
-          <p className="text-label-sm uppercase tracking-widest text-primary font-semibold">{materia}</p>
-          <h1 className="font-headline text-headline-md text-on-surface">{titulo}</h1>
+          <p className="text-[11px] uppercase tracking-widest text-primary font-semibold">{materia}</p>
+          <h1 className="font-headline text-[20px] sm:text-[24px] leading-tight text-on-surface">
+            {titulo}
+          </h1>
         </div>
 
         {/* Dos columnas: ficha + supervisión (izq) · panel de acción (der). Ocupa el ancho. */}
@@ -97,34 +125,51 @@ export default function PreExamen() {
             {/* Ficha del examen — tabla simple, estilo institucional */}
             <div className="rounded-2xl border border-outline-variant/50 bg-white overflow-hidden divide-y divide-outline-variant/30">
               {ficha.map((f) => (
-                <div key={f.label} className="flex items-center gap-md px-lg py-4">
-                  <Icon name={f.icon} className="text-on-surface-variant text-[22px] shrink-0" />
-                  <span className="text-body-md text-on-surface-variant flex-1">{f.label}</span>
-                  <span className="text-body-lg font-semibold text-on-surface">{f.value}</span>
+                <div
+                  key={f.label}
+                  className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 sm:px-5"
+                >
+                  <Icon name={f.icon} className="text-on-surface-variant text-[18px] shrink-0" />
+                  <span className="text-[13px] text-on-surface-variant flex-1 min-w-[120px]">
+                    {f.label}
+                  </span>
+                  {/* ml-auto + text-right: el valor va a la derecha y, si no entra,
+                      baja de renglón en vez de empujar la etiqueta fuera de la fila. */}
+                  <span className="text-[13px] sm:text-[14px] font-semibold text-on-surface ml-auto text-right">
+                    {f.value}
+                  </span>
                 </div>
               ))}
             </div>
 
-            {/* Supervisión — las señales que se registran, como grilla de íconos (destacadas) */}
-            <div className="rounded-2xl border border-primary/20 bg-primary-fixed/40 p-lg space-y-md">
-              <div>
-                <p className="text-label-md font-semibold text-on-surface">Examen supervisado</p>
-                <p className="text-body-sm text-on-surface-variant mt-1">
-                  Necesitás cámara y pantalla completa. Se registran estas señales para la revisión de un
-                  tutor — el sistema nunca sanciona solo.
-                </p>
+            {/* Supervisión. Fondo blanco y no lila: el bloque de color competía con
+                el panel de acción y hacía ver la pantalla cargada. El color queda
+                en los íconos, agrupados por familia, que es lo que ayuda a leer. */}
+            <div className="rounded-2xl border border-outline-variant/50 bg-white p-4 sm:p-5 space-y-4">
+              <div className="flex items-start gap-3">
+                <div className="w-9 h-9 rounded-xl bg-primary-100 text-primary-700 flex items-center justify-center shrink-0">
+                  <Icon name="shield_person" className="text-[20px]" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[14px] font-semibold text-on-surface">Examen supervisado</p>
+                  <p className="text-[13px] text-on-surface-variant mt-0.5 leading-relaxed">
+                    Vas a necesitar cámara y pantalla completa. Estas son las señales que
+                    quedan registradas para que las revise una persona. El sistema nunca
+                    sanciona solo.
+                  </p>
+                </div>
               </div>
               {detectores.length > 0 && (
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-sm">
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2">
                   {detectores.map((d) => (
                     <div
                       key={d}
-                      className="flex items-center gap-sm p-sm rounded-xl bg-white border border-outline-variant/40"
+                      className="flex items-center gap-2.5 rounded-xl border border-outline-variant/40 bg-surface-50 px-3 py-2.5"
                     >
-                      <div className="w-8 h-8 rounded-lg bg-surface-container-high text-on-surface-variant flex items-center justify-center shrink-0">
-                        <Icon name={ICONO_EVENTO[d] ?? 'visibility'} className="text-[18px]" />
+                      <div className={'w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ' + TONO_SENAL}>
+                        <Icon name={ICONO_EVENTO[d] ?? 'visibility'} className="text-[17px]" />
                       </div>
-                      <span className="text-label-md font-medium text-on-surface leading-tight">
+                      <span className="text-[12.5px] font-medium text-on-surface leading-snug">
                         {TIPO_EVENTO_LABEL[d as TipoEvento] ?? d}
                       </span>
                     </div>
@@ -137,11 +182,11 @@ export default function PreExamen() {
           {/* Derecha: panel de acción */}
           <aside className="lg:sticky lg:top-6">
             <div className="rounded-2xl border border-outline-variant/50 bg-white p-lg space-y-md text-center">
-              <div className="w-14 h-14 rounded-full bg-primary-fixed text-primary flex items-center justify-center mx-auto">
-                <Icon name="assignment_turned_in" className="text-[28px]" />
+              <div className="w-12 h-12 rounded-full bg-primary-fixed text-primary flex items-center justify-center mx-auto">
+                <Icon name="assignment_turned_in" className="text-[24px]" />
               </div>
               <div className="space-y-xs">
-                <p className="text-title-md font-bold text-on-surface">Todo listo para rendir</p>
+                <p className="text-[16px] font-bold text-on-surface">Todo listo para rendir</p>
                 <p className="text-body-sm text-on-surface-variant">
                   {tiempoLabel} · {intentosLabel} {intentosLabel === '1' ? 'intento' : 'intentos'}
                 </p>

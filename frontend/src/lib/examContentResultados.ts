@@ -309,6 +309,10 @@ export async function getExamenHeaderFn(
     //   - `borrador`: el aviso de "examen sin habilitar" no aparecía NUNCA, que
     //     es justo lo primero que hay que saber al abrir un examen (c-78 E-07).
     modo_preguntas: (data['modo_preguntas'] as string | undefined) ?? undefined,
+    // migración 0105: mismo motivo que los dos de arriba. Sin esto, la sección de
+    // modo prueba dice siempre "apagado" aunque el examen esté en ensayo, y el
+    // docente lo prende una y otra vez sin entender por qué no queda.
+    modo_prueba: (data['modo_prueba'] as boolean | undefined) ?? undefined,
     borrador: (data['borrador'] as boolean | undefined) ?? undefined,
     apertura: (data['apertura'] as string | null) ?? null,
     cierre: (data['cierre'] as string | null) ?? null,

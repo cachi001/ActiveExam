@@ -95,6 +95,11 @@ function examenDe(item: SesionEnriquecida): string {
  * SHALL usar esta función; duplicar la condición es lo que produjo el desvío.
  */
 export function entraACola(s: SesionProctoringResumen, umbral: number): boolean {
+  // Los ensayos del docente quedan afuera aunque disparen eventos. La Cola existe
+  // para decidir sobre PERSONAS, y un ensayo se lee como un caso a revisar que
+  // nunca va a tener nota ni veredicto (las sesiones de prueba no cuentan en
+  // ningún lado). Mismo criterio que resultados y que el write-back a Moodle.
+  if (s.es_prueba) return false;
   return s.score >= umbral && (s.exam_id != null || s.examen_contenido_id != null);
 }
 

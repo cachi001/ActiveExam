@@ -29,20 +29,47 @@ export function formatFechaHora(iso: string): string {
   }
 }
 
-/** Fecha corta para la card: "27-ago 09:00". Sin año ni "p. m." (es-AR mete un
- *  espacio duro en el sufijo y en 12px se lee como un error de la pantalla). */
+/** Fecha y hora para la card: "29-ago-2026, 18:19 hs".
+ *
+ *  CON año: sin él, un examen del año pasado se lee igual que uno de esta semana,
+ *  y las materias se repiten todos los años.
+ *
+ *  CON "hs": "18:19" suelto al lado de una fecha se lee como cualquier cosa. El
+ *  sufijo es lo que lo vuelve una hora a simple vista.
+ *
+ *  Sin "p. m.": es-AR mete un espacio duro en el sufijo y en 12px parece un error
+ *  de la pantalla. */
 function fechaCorta(iso: string): string | null {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return null;
-  return new Intl.DateTimeFormat('es-AR', {
+  const fecha = new Intl.DateTimeFormat('es-AR', {
     day: '2-digit',
     month: 'short',
+    year: 'numeric',
+  }).format(d);
+  const hora = new Intl.DateTimeFormat('es-AR', {
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
-  })
-    .format(d)
-    .replace(',', '');
+  }).format(d);
+  return `${fecha}, ${hora} hs`;
+}
+
+/**
+ * Las dos fechas POR SEPARADO, para que la card las etiquete una por una.
+ *
+ * `textoVentana` las devolvía en una sola frase corrida ("Del X al Y") y la de
+ * cierre se perdía adentro: quien mira la card busca dos datos distintos, cuándo
+ * abre y cuándo cierra, no una oración.
+ */
+export function ventanaPartes(
+  apertura?: string | null,
+  cierre?: string | null,
+): { desde: string | null; hasta: string | null } {
+  return {
+    desde: apertura ? fechaCorta(apertura) : null,
+    hasta: cierre ? fechaCorta(cierre) : null,
+  };
 }
 
 /**
@@ -60,9 +87,12 @@ export function textoVentana(
 ): string | null {
   const desde = apertura ? fechaCorta(apertura) : null;
   const hasta = cierre ? fechaCorta(cierre) : null;
-  if (desde && hasta) return `Del ${desde} al ${hasta}`;
-  if (hasta) return `Hasta el ${hasta}`;
-  if (desde) return `Desde el ${desde}`;
+  // "Desde X · Hasta Y" y no "Del X al Y": el alumno busca las dos fechas por
+  // separado (cuándo abre y cuándo cierra), y en el formato corrido se leían como
+  // una sola frase donde la de cierre pasaba desapercibida.
+  if (desde && hasta) return `Desde ${desde} · Hasta ${hasta}`;
+  if (hasta) return `Hasta ${hasta}`;
+  if (desde) return `Desde ${desde}`;
   return null;
 }
 

@@ -1,7 +1,8 @@
 import { Card, Button, Icon } from '../../../ui/components';
 import type { ExamenContenidoResumen } from '../../../lib/types';
 import type { SesionEnCurso } from '../../../lib/apiProctoring/sesion';
-import { textoVentana, type GateImportado } from '../gateExamenImportado';
+import { ventanaPartes, type GateImportado } from '../gateExamenImportado';
+import { ChipExamenDePrueba } from './ChipExamenDePrueba';
 
 export type { GateImportado };
 
@@ -34,7 +35,7 @@ export function ExamenImportadoCard({ contenido, rindiendo, gate, perfilCompleto
   // "Sin fecha de cierre" en vez de callar: que no haya fecha es información que
   // el alumno necesita — si no la ve, la supone. Igual con el tiempo. En los
   // exámenes sin ninguna de las dos, la tarjeta se quedaba con una sola línea.
-  const ventana = textoVentana(contenido.apertura, contenido.cierre) ?? 'Sin fecha de cierre';
+  const { desde, hasta } = ventanaPartes(contenido.apertura, contenido.cierre);
   const tiempoTexto =
     typeof tiempo === 'number' && tiempo > 0 ? `${tiempo} min` : 'Sin límite de tiempo';
   const contexto = [contenido.materia_nombre, contenido.comision_nombre]
@@ -50,6 +51,8 @@ export function ExamenImportadoCard({ contenido, rindiendo, gate, perfilCompleto
           <p className="text-[14px] font-medium text-on-surface leading-tight truncate">
             {contenido.titulo}
           </p>
+          {/* migración 0105: pegado al título, para que se lea antes de empezar. */}
+          {contenido.modo_prueba && <ChipExamenDePrueba className="mt-1" />}
           {/* Materia y comisión: la API ya las mandaba y no se estaban usando.
               Un alumno con varias materias necesita saber de cuál es este examen. */}
           {contexto && (
@@ -59,11 +62,14 @@ export function ExamenImportadoCard({ contenido, rindiendo, gate, perfilCompleto
               dueño, 28/8/2026). El tiempo y la ventana sí: los necesita para
               organizarse, y el motivo del gate solo nombra la fecha cuando
               bloquea. */}
-          <p className="text-[12px] text-on-surface-variant mt-0.5 flex items-center gap-1">
-            <Icon name="schedule" className="text-[14px]" /> {tiempoTexto}
-            <span className="text-on-surface-variant/50">·</span>
-            <Icon name="event" className="text-[14px]" /> {ventana}
-          </p>
+          {/* Píldoras con ícono, no un bloque de texto etiquetado. Cada dato se lee
+              solo y de un vistazo: el ícono dice de qué se trata y la etiqueta
+              desambigua las dos fechas, que es lo que antes se confundía. */}
+          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+            <DatoPill icon="timer" valor={tiempoTexto} />
+            <DatoPill icon="event_available" etiqueta="Desde" valor={desde ?? 'Sin fecha de inicio'} />
+            <DatoPill icon="event_busy" etiqueta="Hasta" valor={hasta ?? 'Sin fecha de cierre'} />
+          </div>
           {/* El motivo del BLOQUEO gana sobre el del perfil: un examen cerrado
               decía "Completá tu perfil", el alumno hacía todo el enrollment y
               recién ahí descubría que ese examen no se podía rendir. Completar
@@ -125,5 +131,24 @@ export function ExamenImportadoCard({ contenido, rindiendo, gate, perfilCompleto
         </Button>
       )}
     </Card>
+  );
+}
+
+/** Un dato de la card: ícono + etiqueta opcional + valor, en una píldora suave. */
+function DatoPill({
+  icon,
+  etiqueta,
+  valor,
+}: {
+  icon: string;
+  etiqueta?: string;
+  valor: string;
+}) {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-md bg-surface-100 px-2 py-1 text-[12px] text-on-surface-variant">
+      <Icon name={icon} className="text-[14px] text-on-surface-variant/70" />
+      {etiqueta && <span className="text-on-surface-variant/70">{etiqueta}</span>}
+      <span className="text-on-surface">{valor}</span>
+    </span>
   );
 }

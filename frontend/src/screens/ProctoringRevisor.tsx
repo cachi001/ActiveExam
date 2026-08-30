@@ -10,7 +10,7 @@
  *
  * L2.5: este módulo NO sanciona automáticamente. El score es un indicador de
  * prioridad para revisión humana. La decisión disciplinaria es siempre del revisor.
- * Ley 25.326: no se persiste screenshot_base64 en este componente (solo se lista).
+ * no se persiste screenshot_base64 en este componente (solo se lista).
  */
 
 import { useCallback, useEffect, useState } from 'react';
@@ -38,7 +38,14 @@ import {
   type ExamenConSesiones,
   type NivelRiesgoFiltro,
 } from '../lib/proctoringRegistro';
-import { formatFecha, nivelRiesgo, scoreTextColor, type NivelRiesgo } from './proctoring/helpers';
+import {
+  formatFecha,
+  getUmbralAlto,
+  nivelRiesgo,
+  scoreTextColor,
+  SCORE_UMBRAL_MEDIO,
+  type NivelRiesgo,
+} from './proctoring/helpers';
 import { StatCard } from './proctoring/StatCard';
 import { statProps } from './proctoring/statCatalog';
 import { etiquetaConBaja } from './materias/filtroEstado';
@@ -46,11 +53,20 @@ import { etiquetaConBaja } from './materias/filtroEstado';
 const PROCTORING_DETAIL_ROUTE = '/admin/proctoring-session-detail';
 const PAGE_SIZE_DEFAULT = 20;
 
-const NIVEL_RIESGO_OPCIONES: { value: NivelRiesgoFiltro; label: string }[] = [
-  { value: 'bajo', label: 'Bajo' },
-  { value: 'medio', label: 'Medio' },
-  { value: 'alto', label: 'Alto' },
-];
+/** Opciones del filtro CON su rango de score.
+ *
+ * Antes decían solo "Bajo / Medio / Alto" y no había forma de saber qué
+ * significaba cada uno: los cortes viven en el código y nunca se mostraban. El
+ * corte alto además es configurable, así que se calcula con el umbral vigente en
+ * vez de escribir un número fijo que puede quedar mintiendo.
+ */
+function nivelRiesgoOpciones(umbralAlto: number): { value: NivelRiesgoFiltro; label: string }[] {
+  return [
+    { value: 'bajo', label: `Bajo (0 a ${SCORE_UMBRAL_MEDIO - 1})` },
+    { value: 'medio', label: `Medio (${SCORE_UMBRAL_MEDIO} a ${umbralAlto - 1})` },
+    { value: 'alto', label: `Alto (${umbralAlto} a 100)` },
+  ];
+}
 
 function riesgoBadgeTone(nivel: NivelRiesgo): 'success' | 'warning' | 'error' {
   if (nivel === 'alto') return 'error';
@@ -113,10 +129,13 @@ interface FiltrosRegistro {
   nivel_riesgo: NivelRiesgoFiltro | '';
   materia_id: string;
   comision_id: string;
+  /** Mostrar los ENSAYOS del docente, ocultos por defecto (no borrados). */
+  incluir_pruebas: boolean;
 }
 
 const FILTROS_INICIALES: FiltrosRegistro = {
   q: '', exam_id: '', fecha_desde: '', fecha_hasta: '', nivel_riesgo: '', materia_id: '', comision_id: '',
+  incluir_pruebas: false,
 };
 
 export default function ProctoringRevisor() {
@@ -168,6 +187,7 @@ export default function ProctoringRevisor() {
       nivel_riesgo: filtros.nivel_riesgo || undefined,
       materia_id: filtros.materia_id || undefined,
       comision_id: filtros.comision_id || undefined,
+      incluir_pruebas: filtros.incluir_pruebas || undefined,
       page: paginaActual,
       page_size: tamano,
     })
@@ -248,6 +268,9 @@ export default function ProctoringRevisor() {
       nivel_riesgo: borrNivelRiesgo,
       materia_id: borrMateria,
       comision_id: borrComision,
+      // Se conserva: aplicar una búsqueda no puede apagar el modo de vista sin
+      // avisar (el usuario vería desaparecer los ensayos y no sabría por qué).
+      incluir_pruebas: aplicados.incluir_pruebas,
     });
     setPage(1);
   };
@@ -274,6 +297,8 @@ export default function ProctoringRevisor() {
     borrNivelRiesgo !== aplicados.nivel_riesgo ||
     borrMateria !== aplicados.materia_id ||
     borrComision !== aplicados.comision_id;
+
+  const filtrosIncluyenPruebas = aplicados.incluir_pruebas;
 
   const totalPaginas = Math.max(1, Math.ceil(total / pageSize));
 
@@ -457,6 +482,30 @@ export default function ProctoringRevisor() {
           hayCambios={hayCambiosFiltros}
           aplicarDeshabilitado={cargando}
         >
+          {/* Los ensayos del docente se ocultan por defecto: mezclados con las
+              rendiciones reales obligaban a separarlos a ojo. Se ocultan, no se
+              esconden — este control los trae de vuelta. Se aplica al instante y
+              no espera a "Aplicar filtros": es un modo de vista, no una búsqueda. */}
+          <label className="flex flex-col gap-1 text-[12px] font-medium text-on-surface-variant">
+            Ensayos del docente
+            <button
+              type="button"
+              role="switch"
+              aria-checked={filtrosIncluyenPruebas}
+              onClick={() => {
+                setAplicados({ ...aplicados, incluir_pruebas: !filtrosIncluyenPruebas });
+                setPage(1);
+              }}
+              className={`mt-1 inline-flex h-9 items-center gap-2 rounded-md border px-3 text-[13px] transition-colors ${
+                filtrosIncluyenPruebas
+                  ? 'border-primary bg-primary-container text-on-primary-container'
+                  : 'border-surface-300 bg-white text-on-surface-variant'
+              }`}
+            >
+              <Icon name={filtrosIncluyenPruebas ? 'visibility' : 'visibility_off'} className="text-[18px]" />
+              {filtrosIncluyenPruebas ? 'Visibles' : 'Ocultos'}
+            </button>
+          </label>
           <label className="flex flex-col gap-1 text-[12px] font-medium text-on-surface-variant">
             Alumno
             <input
@@ -542,7 +591,7 @@ export default function ProctoringRevisor() {
               className="min-w-[160px] rounded-md border border-surface-300 bg-white px-3 py-2 text-[13px] text-on-surface focus:border-primary focus:outline-none"
             >
               <option value="">Todos los niveles</option>
-              {NIVEL_RIESGO_OPCIONES.map((o) => (
+              {nivelRiesgoOpciones(getUmbralAlto()).map((o) => (
                 <option key={o.value} value={o.value}>{o.label}</option>
               ))}
             </select>

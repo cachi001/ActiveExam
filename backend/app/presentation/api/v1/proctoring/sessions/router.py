@@ -358,6 +358,23 @@ def create_sessions_router(
             es_prueba_de_staff = es_rendicion_de_prueba(
                 list(principal.roles), es_examen_propio=es_examen_propio
             )
+            # migración 0105: si el EXAMEN está en modo prueba, la sesión es un
+            # ensayo sin importar quién la rinda. Es la vía por la que un alumno
+            # de verdad puede probar el examen: recorre su flujo real (consentimiento,
+            # foto, biometría) y nada de lo que haga cuenta.
+            from app.infrastructure.persistence.models.exam_content import (
+                ExamenContenidoModel as _ExamenContenidoModel,
+            )
+
+            examen_en_modo_prueba = bool(
+                (
+                    await db.execute(
+                        select(_ExamenContenidoModel.modo_prueba).where(
+                            _ExamenContenidoModel.id == body.examen_contenido_id
+                        )
+                    )
+                ).scalar_one_or_none()
+            )
             try:
                 await verificar_enforcement(
                     db,
@@ -412,7 +429,7 @@ def create_sessions_router(
             # Vivía solo en la matriculación por código, así que al alumno
             # inscripto desde el panel del docente no lo frenaba nadie: creaba la
             # sesión, veía las preguntas, respondía y finalizaba. Sin
-            # consentimiento no se puede hacer proctoring (Ley 25.326, regla dura
+            # consentimiento no se puede hacer proctoring (regla dura
             # #7) y sin referencia biométrica la rendición no prueba quién la hizo.
             #
             # Va acá y no en el onboarding a propósito: el consentimiento y la
@@ -460,7 +477,8 @@ def create_sessions_router(
                 alumno_email=principal.email or None,
                 # Solo cuando hay examen vinculado: sin él no hay nota ni
                 # resultados de los que haga falta excluirla.
-                es_prueba=bool(body.examen_contenido_id) and es_prueba_de_staff,
+                es_prueba=bool(body.examen_contenido_id)
+                and (es_prueba_de_staff or examen_en_modo_prueba),
             )
         except session_service.ConfigSnapshotNoDisponibleError as exc:
             # migration 0083: nunca se crea una sesion sin foto de config — sin
@@ -517,6 +535,7 @@ def create_sessions_router(
                 total_discrepancias=s.total_discrepancias,
                 score=s.score,
                 umbral_cola_revision_efectivo=s.umbral_cola_revision_efectivo,
+                es_prueba=bool(getattr(s, "es_prueba", False)),
                 examen_contenido_id=s.examen_contenido_id,
                 examen_titulo=s.examen_titulo,
                 comision_nombre=s.comision_nombre,
@@ -544,11 +563,15 @@ def create_sessions_router(
         nivel_riesgo: str | None = None,
         materia_id: str | None = None,
         comision_id: str | None = None,
+        incluir_pruebas: bool = False,
         page: int = 1,
         page_size: int = 20,
     ) -> RegistroSesionesOut:
         """Registro de sesiones FINALIZADAS: tabla paginada con filtros server-side.
 
+        - ``incluir_pruebas``: por defecto False — los ENSAYOS del docente no se
+          listan. Mezclados con las rendiciones reales obligaban a separarlos a
+          ojo. En True vuelven a aparecer: se ocultan, no se esconden.
         - ``q``: busqueda por alumno (idnumber/email/nombre/apellido).
         - ``exam_id``: filtra por ``examen_contenido_id`` (catalogo: GET
           /sessions/registro/examenes — nunca hardcodeado en el frontend).
@@ -586,6 +609,7 @@ def create_sessions_router(
             materia_id=materia_id,
             comision_id=comision_id,
             comision_ids_permitidas=comision_ids,
+            incluir_pruebas=incluir_pruebas,
         )
         # migration 0083: el umbral es POR SESION (`umbral_cola_revision_efectivo`,
         # de su config_snapshot o el vivo como fallback) — ya NO uno global aplicado
@@ -836,7 +860,7 @@ def create_sessions_router(
                 ts_cliente=e.ts_cliente,
                 ts_backend=e.ts_backend,
                 payload=e.payload,
-                # Descifrado at-rest de la evidencia (Ley 25.326). `leer_captura` es
+                # Descifrado at-rest de la evidencia. `leer_captura` es
                 # el ÚNICO camino de lectura (c-78): resuelve si la captura está en
                 # la columna binaria nueva o en la base64 legacy, y descifra según
                 # corresponda. Ninguna pantalla decide eso por su cuenta.

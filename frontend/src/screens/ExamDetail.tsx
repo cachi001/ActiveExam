@@ -8,13 +8,13 @@ import { authProvider } from '../lib/authProvider';
 import { getExamenHeaderFn } from '../lib/examContentResultados';
 import type { ExamenContenidoResumen } from '../lib/types';
 
-import { PreguntasSeleccionSection } from './exam-detail/PreguntasSeleccionSection';
 import { PoolExamenSection } from './exam-detail/PoolExamenSection';
 import { ConfiguracionExamenSection } from './exam-detail/ConfiguracionExamenSection';
 import { ComisionSection } from './exam-detail/ComisionSection';
 import { ComisionesDelExamenSection } from './exam-detail/ComisionesDelExamenSection';
 import { BorradorSection } from './exam-detail/BorradorSection';
 import { PruebasDelExamenSection } from './exam-detail/PruebasDelExamenSection';
+import { ModoPruebaSection } from './exam-detail/ModoPruebaSection';
 import { SorteoSection } from './exam-detail/SorteoSection';
 import { DestinoMoodleSection } from './exam-detail/DestinoMoodleSection';
 import { AvisoSinResponsable } from '../ui/AvisoSinResponsable';
@@ -155,6 +155,17 @@ export default function ExamDetail() {
           />
         )}
 
+        {/* migración 0105: ensayar el examen antes de tomarlo. Va junto al estado
+            del examen porque es la otra mitad de la misma decisión: si ya está
+            listo para soltarlo o si todavía se está probando. */}
+        {examen && (
+          <ModoPruebaSection
+            examenId={examenId}
+            modoPrueba={Boolean(examen.modo_prueba)}
+            onCambio={cargarHeader}
+          />
+        )}
+
         {/* migration 0102: los ensayos del docente, para revisarlos o borrarlos.
             No se pinta si no hay ninguno. */}
         <PruebasDelExamenSection examenId={examenId} />
@@ -169,15 +180,11 @@ export default function ExamDetail() {
             esta sección se mostraba siempre y abría en "Manual", con lo cual un examen
             sorteado y bien configurado exhibía "0 de 30 preguntas seleccionadas" y
             hacía creer que había quedado vacío. */}
-        {examen && examen.modo_preguntas !== 'sorteo_por_intento' && (
-          <PreguntasSeleccionSection
-            examenId={examenId}
-            materiaId={examen?.materia_id}
-            onSeleccionGuardada={(cantidad) =>
-              setExamen((prev) => (prev ? { ...prev, cantidad_preguntas: cantidad } : prev))
-            }
-          />
-        )}
+        {/* La pantalla vieja de selección manual se retiró: armar el examen se
+            hace en UN solo lugar (SorteoSection → SelectorDeSorteo), el mismo
+            que usa la creación. Antes había dos criterios distintos según por
+            dónde entrabas, y el de esta pantalla ("cantidad por categoría",
+            tildar cada subcategoría) era el que ya se había descartado. */}
 
         {/* En un examen sorteado no hay nada que tildar, pero el docente igual
             necesita VER el conjunto completo del que se sortea para revisar que

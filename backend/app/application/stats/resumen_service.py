@@ -32,7 +32,7 @@ from app.application.moodle.resultados_query import (
     _tipos_desactivados,
     _umbral_cola_revision,
 )
-from app.application.proctoring.scoring import calcular_score
+from app.application.proctoring.scoring import SCORE_UMBRAL_MEDIO, calcular_score
 from app.infrastructure.persistence.models.exam_content import (
     ComisionModel,
     ExamenContenidoModel,
@@ -330,8 +330,17 @@ def _session_conditions(filtros: FiltrosStats) -> list:
     contarlas infla "Sesiones iniciadas"/distribución de scores con actividad
     que no tiene nada que ver con exámenes reales. Mismo criterio que ya aplica
     la Cola de Revisión (`enriquecerYFiltrar`, frontend).
+
+    SIEMPRE excluye también los ENSAYOS del docente (``es_prueba``), por la misma
+    razón: probar el examen antes de soltarlo no es actividad académica, y cada
+    ensayo sumaba a "Sesiones iniciadas" y a la distribución de riesgo
+    institucional. Ya se excluían de resultados y del write-back a Moodle; acá
+    faltaba.
     """
-    conds: list = [ProctoringSessionModel.examen_contenido_id.is_not(None)]
+    conds: list = [
+        ProctoringSessionModel.examen_contenido_id.is_not(None),
+        ProctoringSessionModel.es_prueba.is_(False),
+    ]
     if filtros.examen_contenido_id:
         if _es_uuid(filtros.examen_contenido_id):
             conds.append(ProctoringSessionModel.examen_contenido_id == filtros.examen_contenido_id)
@@ -485,8 +494,14 @@ async def _elegibilidad(db: AsyncSession, filtros: FiltrosStats) -> Elegibilidad
     )
 
 
-# Cortes fijos de las bandas bajas. El corte ALTO no es fijo: es el umbral vivo.
-_CORTES_BAJOS = (25, 50)
+# Corte de las bandas bajas: el MISMO que usa el filtro "nivel de riesgo" del
+# Registro de sesiones (`nivel_riesgo()` → bajo/medio/alto). Antes acá había
+# cortes propios (25 y 50) y el filtro usaba 30: una sesión con score 28 salía
+# "bajo" en el filtro y caía en la banda "25-49" de la rosca. Dos criterios para
+# lo mismo, y ninguno de los dos lo eligió nadie.
+#
+# El corte ALTO no es fijo: es el umbral vivo de la cola de revisión.
+_CORTES_BAJOS = (SCORE_UMBRAL_MEDIO,)
 
 
 def bandas_de_score(umbral: int) -> list[str]:

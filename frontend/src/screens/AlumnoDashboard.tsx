@@ -24,6 +24,7 @@ import { nombreCompleto } from '../lib/types';
 import type { EstadoEnrollment, ExamenContenidoResumen } from '../lib/types';
 import { QuickAccessCard } from './alumno/components/QuickAccessCard';
 import { examenContenidoSubtitulo } from './dashboards.helpers';
+import { ChipExamenDePrueba } from './alumno/components/ChipExamenDePrueba';
 
 const VIGENCIA_LABEL: Record<string, string> = {
   vigente: 'Vigente',
@@ -295,6 +296,10 @@ function ExamenCatalogoCard({
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-[15px] font-semibold text-on-surface truncate leading-tight">{examen.titulo}</p>
+        {/* migración 0105: el chip también acá. En "Mis exámenes" se veía y en el
+            inicio no, así que el mismo examen se leía como real en una pantalla y
+            como ensayo en la otra. */}
+        {examen.modo_prueba && <ChipExamenDePrueba className="mt-1" />}
         {subtitulo && (
           <p className="text-[13px] text-on-surface-variant leading-tight mt-1">{subtitulo}</p>
         )}

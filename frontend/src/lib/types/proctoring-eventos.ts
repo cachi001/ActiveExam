@@ -167,6 +167,12 @@ export interface ExamenContenidoResumen {
    * listado; el staff lo ve marcado para poder probarlo y habilitarlo.
    */
   borrador?: boolean;
+  /**
+   * migración 0105: el examen es un ENSAYO. Solo lo ven los alumnos habilitados y
+   * nada de lo que se rinda cuenta (no genera nota ni va al campus). Se muestra
+   * bien visible para que nadie lo confunda con el examen de verdad.
+   */
+  modo_prueba?: boolean;
   /** c-78 E-07: 'fijo' | 'sorteo_por_intento'. */
   modo_preguntas?: string;
   /**

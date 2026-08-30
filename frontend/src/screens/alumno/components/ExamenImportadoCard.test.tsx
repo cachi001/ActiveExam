@@ -72,20 +72,27 @@ describe('ExamenImportadoCard', () => {
     montar(
       contenido({ apertura: '2026-08-27T12:00:00Z', cierre: '2026-08-31T02:59:00Z' }),
     );
-    // Sin anclar: la ventana comparte renglón con el tiempo límite.
-    expect(screen.getByText(/Del .+ al /)).toBeTruthy();
+    // Etiquetas explícitas y en renglones propios: el alumno tiene que poder
+    // distinguir cuál fecha es cuál sin leer una frase corrida.
+    expect(screen.getByText('Desde')).toBeTruthy();
+    expect(screen.getByText('Hasta')).toBeTruthy();
+    // Con año y con "hs": una hora suelta al lado de una fecha no se lee como hora.
+    // getAllByText: ahora hay DOS fechas, una por renglón.
+    expect(screen.getAllByText(/2026, \d{2}:\d{2} hs/)).toHaveLength(2);
   });
 
-  it('con solo cierre dice hasta cuándo', () => {
+  it('con solo cierre dice hasta cuándo, y avisa que no hay inicio', () => {
     montar(contenido({ cierre: '2026-08-31T02:59:00Z' }));
-    expect(screen.getByText(/Hasta el /)).toBeTruthy();
+    expect(screen.getByText('Hasta')).toBeTruthy();
+    expect(screen.getByText(/Sin fecha de inicio/i)).toBeTruthy();
   });
 
   it('sin fechas configuradas no inventa una ventana', () => {
     // Dice "Sin fecha de cierre", que es información; lo que no puede hacer es
     // mostrar un rango que nadie configuró.
     montar(contenido());
-    expect(screen.queryByText(/Del .+ al |Hasta el |Desde el /)).toBeNull();
+    expect(screen.getByText(/Sin fecha de inicio/i)).toBeTruthy();
+    expect(screen.getByText(/Sin fecha de cierre/i)).toBeTruthy();
   });
 
   it('sin perfil completo el botón manda a completarlo, no al examen', () => {
@@ -194,7 +201,20 @@ describe('ExamenImportadoCard — información visible', () => {
 
   it('con fecha de cierre muestra la fecha y no el "sin fecha"', () => {
     montar(contenido({ cierre: '2026-08-31T02:59:00Z' }));
-    expect(screen.getByText(/Hasta el /)).toBeTruthy();
+    expect(screen.getByText(/2026, \d{2}:\d{2} hs/)).toBeTruthy();
     expect(screen.queryByText(/sin fecha de cierre/i)).toBeNull();
+  });
+});
+
+describe('chip de examen de prueba (migración 0105)', () => {
+  it('un examen en modo prueba lo muestra', () => {
+    montar(contenido({ modo_prueba: true }));
+    expect(screen.getByText('Examen de prueba')).toBeTruthy();
+  });
+
+  it('un examen normal NO lo muestra', () => {
+    // El contrapeso: sin esto, un chip pegado siempre pasaría el test de arriba.
+    montar(contenido({ modo_prueba: false }));
+    expect(screen.queryByText(/Examen de prueba/)).toBeNull();
   });
 });

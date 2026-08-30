@@ -127,6 +127,8 @@ from app.application.exam_content.armado_del_examen import (
 )
 from app.presentation.api.v1.exam_content.schemas import (
     EditarSorteoRequest,
+    HabilitarPruebaRequest,
+    ModoPruebaRequest,
     RearmarSorteoRequest,
     AltaInlineRequest,
     AltaInlineResponse,
@@ -256,6 +258,48 @@ def _titulo_base(titulo: str, codigo_comision: str | None) -> str:
     return titulo
 
 
+async def _titulo_de_copia_libre(
+    session,
+    titulo_original: str,
+    comision_id: str | None,
+) -> str:
+    """Primer «(copia)» libre para ese título dentro de la comisión.
+
+    El ámbito es la COMISIÓN y no toda la tabla a propósito: dos comisiones
+    distintas pueden tener el mismo examen con el mismo nombre, y de hecho el
+    sistema replica exámenes así. Lo que no puede pasar es que en la misma
+    comisión convivan dos con el nombre idéntico.
+
+    Los exámenes dados de baja no ocupan nombre: si el docente borró la copia
+    anterior, la nueva vuelve a llamarse "(copia)".
+    """
+    from sqlalchemy import select as _select_titulo
+
+    from app.infrastructure.persistence.models.exam_content import (
+        ExamenContenidoModel as _ExamenTitulo,
+    )
+
+    stmt = _select_titulo(_ExamenTitulo.titulo).where(
+        _ExamenTitulo.eliminado_en.is_(None)
+    )
+    if comision_id is None:
+        stmt = stmt.where(_ExamenTitulo.comision_id.is_(None))
+    else:
+        stmt = stmt.where(_ExamenTitulo.comision_id == comision_id)
+    existentes = {t for t in (await session.execute(stmt)).scalars().all()}
+
+    candidato = f"{titulo_original} (copia)"
+    if candidato not in existentes:
+        return candidato
+    # Desde la segunda, numeradas. El tope evita un bucle infinito si alguien
+    # llenó la comisión de copias a mano.
+    for n in range(2, 1000):
+        candidato = f"{titulo_original} (copia {n})"
+        if candidato not in existentes:
+            return candidato
+    return f"{titulo_original} (copia {_uuid.uuid4().hex[:6]})"
+
+
 async def _clonar_examen(
     session,
     original,
@@ -301,6 +345,12 @@ async def _clonar_examen(
             nota_aprobacion=original.nota_aprobacion,
             mezclar_preguntas=original.mezclar_preguntas,
             limite_preguntas=original.limite_preguntas,
+            # 'fijo' | 'sorteo_por_intento'. SIN esto la copia caía al default
+            # ('fijo'): un examen que sorteaba preguntas por intento se duplicaba
+            # como examen de preguntas fijas, y como en modo fijo solo cuentan las
+            # marcadas `seleccionada` (ninguna, porque el original sorteaba), la
+            # copia aparecía con 0 preguntas y había que rearmarla entera.
+            modo_preguntas=original.modo_preguntas,
             mostrar_nota=original.mostrar_nota,
             revision_habilitada=original.revision_habilitada,
             mostrar_eventos_alumno=original.mostrar_eventos_alumno,
@@ -315,6 +365,33 @@ async def _clonar_examen(
         )
     )
     await session.flush()
+
+    # Los TRAMOS del sorteo (qué categorías y cuántas preguntas de cada una).
+    # Sin ellos, un examen en modo sorteo se copiaba sin saber qué sortear.
+    from app.infrastructure.persistence.models.exam_content import (
+        TramoSorteoExamenModel,
+    )
+    from sqlalchemy import select as _select_tramos
+
+    tramos_originales = (
+        await session.execute(
+            _select_tramos(TramoSorteoExamenModel)
+            .where(TramoSorteoExamenModel.examen_id == original.id)
+            .order_by(TramoSorteoExamenModel.orden)
+        )
+    ).scalars().all()
+    for tramo in tramos_originales:
+        session.add(
+            TramoSorteoExamenModel(
+                id=str(_uuid.uuid4()),
+                examen_id=copia_id,
+                categoria_id=tramo.categoria_id,
+                incluir_subcategorias=tramo.incluir_subcategorias,
+                tipos=tramo.tipos,
+                cantidad=tramo.cantidad,
+                orden=tramo.orden,
+            )
+        )
 
     preguntas_ordenadas = sorted(original.preguntas, key=lambda p: p.orden)
     for pregunta in preguntas_ordenadas:
@@ -2897,7 +2974,17 @@ def create_exam_content_router(
                         },
                     )
 
-            titulo_copia = body.titulo or f"{original.titulo} (copia)"
+            # El título automático NO puede repetirse. Antes se armaba siempre
+            # como "{título} (copia)" sin fijarse si ya existía, así que duplicar
+            # dos veces dejaba dos exámenes con el MISMO nombre en la misma
+            # comisión, imposibles de distinguir en el listado. Se numera desde la
+            # segunda: "(copia)", "(copia 2)", "(copia 3)".
+            #
+            # Si el usuario escribió un título a mano se respeta tal cual: eligió
+            # ese nombre, y no es tarea del sistema corregirlo.
+            titulo_copia = body.titulo or await _titulo_de_copia_libre(
+                session, original.titulo, destino_comision
+            )
             titulo_original = original.titulo
             # La copia es un examen suelto: no entra al lote del original. Duplicar
             # es "otra fecha / otra toma", no "una comisión más de este examen"
@@ -2990,7 +3077,12 @@ def create_exam_content_router(
             intentos = (
                 await session.execute(
                     _select(_func.count(ProctoringSessionModel.id)).where(
-                        ProctoringSessionModel.examen_contenido_id == examen_id
+                        ProctoringSessionModel.examen_contenido_id == examen_id,
+                        # Un ENSAYO no es una rendición: probar el examen no puede
+                        # ser lo que impida seguir corrigiéndolo. `editar_cantidades
+                        # _del_sorteo` ya lo excluía; los otros tres lugares que
+                        # preguntan "¿ya lo rindieron?" se habían olvidado.
+                        ProctoringSessionModel.es_prueba.is_(False),
                     )
                 )
             ).scalar_one()
@@ -3243,7 +3335,12 @@ def create_exam_content_router(
             intentos = (
                 await session.execute(
                     _select(_func.count(ProctoringSessionModel.id)).where(
-                        ProctoringSessionModel.examen_contenido_id == examen_id
+                        ProctoringSessionModel.examen_contenido_id == examen_id,
+                        # Un ENSAYO no es una rendición: probar el examen no puede
+                        # ser lo que impida seguir corrigiéndolo. `editar_cantidades
+                        # _del_sorteo` ya lo excluía; los otros tres lugares que
+                        # preguntan "¿ya lo rindieron?" se habían olvidado.
+                        ProctoringSessionModel.es_prueba.is_(False),
                     )
                 )
             ).scalar_one()
@@ -3694,6 +3791,18 @@ def create_exam_content_router(
                         orden=orden,
                     )
                 )
+
+            from sqlalchemy import update as _update
+
+            # Armar el examen por sorteo lo DEJA sorteando. Antes esto solo
+            # escribía los tramos y no tocaba `modo_preguntas`: un examen en modo
+            # fijo terminaba con tramos guardados que nadie usaba, y seguía
+            # mostrando la pantalla vieja de selección manual.
+            await session.execute(
+                _update(ExamenContenidoModel)
+                .where(ExamenContenidoModel.id == examen_id)
+                .values(modo_preguntas=MODO_SORTEO_POR_INTENTO)
+            )
             await session.commit()
 
         largo = sum(t.cantidad for t in body.sorteo)
@@ -4017,6 +4126,194 @@ def create_exam_content_router(
     # lógica, que es explícita y conserva la evidencia.
     # -----------------------------------------------------------------------
 
+    # -----------------------------------------------------------------------
+    # Modo prueba (migracion 0105): ensayar el examen antes de tomarlo.
+    #
+    # Mientras esta encendido, el examen es un ensayo: solo lo ven los alumnos
+    # habilitados aca, y toda sesion que se cree sobre el nace marcada `es_prueba`
+    # (no cuenta como intento, no genera nota, no va a Moodle, no entra a la Cola
+    # de revision ni a las estadisticas, y se puede borrar desde el detalle).
+    # -----------------------------------------------------------------------
+
+    @router.patch(
+        "/{examen_id}/modo-prueba",
+        dependencies=[Depends(require_capability("crear_examenes"))],
+        status_code=status.HTTP_200_OK,
+        summary="Prender o apagar el modo prueba de un examen",
+    )
+    async def cambiar_modo_prueba(
+        examen_id: str,
+        body: ModoPruebaRequest,
+        principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    ) -> dict:
+        """Enciende o apaga el ensayo. 404 si el examen no existe."""
+        if session_factory is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Persistencia no inicializada.",
+            )
+        from sqlalchemy import select as _select
+
+        from app.infrastructure.persistence.models.exam_content import (
+            ExamenContenidoModel,
+        )
+
+        async with session_factory() as session:
+            examen = (
+                await session.execute(
+                    _select(ExamenContenidoModel).where(
+                        ExamenContenidoModel.id == examen_id,
+                        ExamenContenidoModel.eliminado_en.is_(None),
+                    )
+                )
+            ).scalar_one_or_none()
+            if examen is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail={"error": "examen_no_encontrado", "examen_id": examen_id},
+                )
+            examen.modo_prueba = body.modo_prueba
+            await session.commit()
+            return {"examen_id": examen_id, "modo_prueba": body.modo_prueba}
+
+    @router.get(
+        "/{examen_id}/prueba/habilitados",
+        dependencies=[Depends(require_capability("crear_examenes"))],
+        summary="Alumnos habilitados a ver el examen en modo prueba",
+    )
+    async def listar_habilitados_prueba(examen_id: str) -> list[dict]:
+        if session_factory is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Persistencia no inicializada.",
+            )
+        from sqlalchemy import select as _select
+
+        from app.infrastructure.persistence.models.exam_content import (
+            ExamenPruebaHabilitadoModel,
+        )
+        from app.infrastructure.persistence.models.transactional import UsuarioModel
+
+        async with session_factory() as session:
+            filas = (
+                await session.execute(
+                    _select(
+                        UsuarioModel.id,
+                        UsuarioModel.username,
+                        UsuarioModel.nombre,
+                        UsuarioModel.apellido,
+                    )
+                    .join(
+                        ExamenPruebaHabilitadoModel,
+                        ExamenPruebaHabilitadoModel.usuario_id == UsuarioModel.id,
+                    )
+                    .where(ExamenPruebaHabilitadoModel.examen_contenido_id == examen_id)
+                    .order_by(UsuarioModel.username)
+                )
+            ).all()
+        return [
+            {
+                "usuario_id": str(f.id),
+                "username": f.username,
+                "nombre": (f"{f.nombre or ''} {f.apellido or ''}".strip() or f.username),
+            }
+            for f in filas
+        ]
+
+    @router.post(
+        "/{examen_id}/prueba/habilitados",
+        dependencies=[Depends(require_capability("crear_examenes"))],
+        status_code=status.HTTP_201_CREATED,
+        summary="Habilitar a un alumno a ver el examen en modo prueba",
+    )
+    async def habilitar_alumno_prueba(
+        examen_id: str,
+        body: HabilitarPruebaRequest,
+    ) -> dict:
+        """409 si ya estaba habilitado o si la cuenta no es de estudiante."""
+        if session_factory is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Persistencia no inicializada.",
+            )
+        from sqlalchemy import select as _select
+        from sqlalchemy.exc import IntegrityError
+
+        from app.infrastructure.persistence.models.exam_content import (
+            ExamenPruebaHabilitadoModel,
+        )
+        from app.infrastructure.persistence.models.transactional import UsuarioModel
+
+        async with session_factory() as session:
+            usuario = (
+                await session.execute(
+                    _select(UsuarioModel).where(
+                        UsuarioModel.id == body.usuario_id,
+                        UsuarioModel.eliminado_en.is_(None),
+                    )
+                )
+            ).scalar_one_or_none()
+            if usuario is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail={"error": "usuario_no_encontrado"},
+                )
+            # Habilitar a quien no puede rendir no sirve: las pantallas de rendir
+            # son del alumno, asi que el examen no le aparaceria igual.
+            if "estudiante" not in (usuario.roles or []):
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={
+                        "error": "no_es_estudiante",
+                        "mensaje": (
+                            "Solo se puede habilitar a una cuenta con rol estudiante: "
+                            "el flujo de rendir es el del alumno."
+                        ),
+                    },
+                )
+            session.add(
+                ExamenPruebaHabilitadoModel(
+                    examen_contenido_id=examen_id, usuario_id=body.usuario_id
+                )
+            )
+            try:
+                await session.commit()
+            except IntegrityError as exc:
+                await session.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={"error": "ya_habilitado"},
+                ) from exc
+        return {"examen_id": examen_id, "usuario_id": body.usuario_id}
+
+    @router.delete(
+        "/{examen_id}/prueba/habilitados/{usuario_id}",
+        dependencies=[Depends(require_capability("crear_examenes"))],
+        status_code=status.HTTP_204_NO_CONTENT,
+        response_model=None,
+        summary="Quitar a un alumno de la lista del examen en modo prueba",
+    )
+    async def quitar_alumno_prueba(examen_id: str, usuario_id: str) -> None:
+        if session_factory is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Persistencia no inicializada.",
+            )
+        from sqlalchemy import delete as _delete
+
+        from app.infrastructure.persistence.models.exam_content import (
+            ExamenPruebaHabilitadoModel,
+        )
+
+        async with session_factory() as session:
+            await session.execute(
+                _delete(ExamenPruebaHabilitadoModel).where(
+                    ExamenPruebaHabilitadoModel.examen_contenido_id == examen_id,
+                    ExamenPruebaHabilitadoModel.usuario_id == usuario_id,
+                )
+            )
+            await session.commit()
+
     @router.post(
         "/{examen_id}/volver-a-borrador",
         dependencies=[Depends(require_capability("crear_examenes"))],
@@ -4071,7 +4368,12 @@ def create_exam_content_router(
             intentos = (
                 await session.execute(
                     _select(_func.count(ProctoringSessionModel.id)).where(
-                        ProctoringSessionModel.examen_contenido_id == examen_id
+                        ProctoringSessionModel.examen_contenido_id == examen_id,
+                        # Un ENSAYO no es una rendición: probar el examen no puede
+                        # ser lo que impida seguir corrigiéndolo. `editar_cantidades
+                        # _del_sorteo` ya lo excluía; los otros tres lugares que
+                        # preguntan "¿ya lo rindieron?" se habían olvidado.
+                        ProctoringSessionModel.es_prueba.is_(False),
                     )
                 )
             ).scalar_one()
@@ -4207,7 +4509,11 @@ def create_exam_content_router(
                 .join(ComisionModel, ComisionModel.id == ExamenContenidoModel.comision_id)
                 .outerjoin(
                     ProctoringSessionModel,
-                    ProctoringSessionModel.examen_contenido_id == ExamenContenidoModel.id,
+                    # Los ENSAYOS no se cuentan: el número que sale acá es el que
+                    # decide si la comisión se puede quitar, y contarlos mostraba
+                    # "2 intentos rendidos" con un solo alumno que rindió.
+                    (ProctoringSessionModel.examen_contenido_id == ExamenContenidoModel.id)
+                    & (ProctoringSessionModel.es_prueba.is_(False)),
                 )
                 .where(ExamenContenidoModel.id.in_(ids_lote))
                 .group_by(
@@ -4479,7 +4785,10 @@ def create_exam_content_router(
 
             intentos = await session.execute(
                 _select(_func.count(ProctoringSessionModel.id)).where(
-                    ProctoringSessionModel.examen_contenido_id == objetivo.id
+                    ProctoringSessionModel.examen_contenido_id == objetivo.id,
+                    # Un ensayo no puede ser lo que impida sacar una comisión que
+                    # nadie rindió. Coherente con el contador que se muestra.
+                    ProctoringSessionModel.es_prueba.is_(False),
                 )
             )
             total_intentos = intentos.scalar_one()
