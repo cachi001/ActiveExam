@@ -414,6 +414,7 @@ class ProctoringRepository:
         materia_id: str | None = None,
         comision_id: str | None = None,
         comision_ids_permitidas: set[str] | None = None,
+        incluir_pruebas: bool = False,
     ) -> list[SesionResumenData]:
         """Sesiones FINALIZADAS (Registro de sesiones, C-76 tarea 17) con filtros SQL.
 
@@ -448,6 +449,13 @@ class ProctoringRepository:
             )
             .where(ProctoringSessionModel.finalizada_en.isnot(None))
         )
+        if not incluir_pruebas:
+            # Los ENSAYOS del docente se ocultan por defecto. Antes venían
+            # mezclados con las rendiciones reales (con chip, pero mezclados), y
+            # quien audita una comisión no tiene por qué separarlos a ojo. No se
+            # borran ni se esconden: `incluir_pruebas=True` los trae de vuelta,
+            # que es el criterio de toda baja lógica en este sistema.
+            stmt = stmt.where(ProctoringSessionModel.es_prueba.is_(False))
         if q:
             from sqlalchemy import or_
 

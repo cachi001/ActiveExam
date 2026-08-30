@@ -79,6 +79,22 @@ describe('entraACola — definición canónica de "entra a la Cola de revisión"
     expect(entraACola(base({ score: 90, exam_id: 'legacy-1' }), UMBRAL)).toBe(true);
   });
 
+  it('ensayo del docente con score alto: NO entra', () => {
+    // La Cola de revisión existe para decidir sobre PERSONAS: quien la mira está
+    // por juzgar si alguien se copió. Un ensayo del propio docente ahí es ruido
+    // que se lee como un caso a revisar, y encima uno que nunca va a tener nota
+    // ni veredicto porque las sesiones de prueba no cuentan.
+    expect(
+      entraACola(base({ score: 99, examen_contenido_id: 'c-1', es_prueba: true }), UMBRAL),
+    ).toBe(false);
+  });
+
+  it('sesión real (es_prueba false) con score alto: entra', () => {
+    expect(
+      entraACola(base({ score: 99, examen_contenido_id: 'c-1', es_prueba: false }), UMBRAL),
+    ).toBe(true);
+  });
+
   it('es el MISMO criterio que aplica enriquecerYFiltrar (una sola definición)', () => {
     const sesiones = [
       base({ id: 'con-examen', score: 90, examen_contenido_id: 'c-1' }),

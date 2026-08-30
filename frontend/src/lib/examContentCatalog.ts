@@ -552,3 +552,88 @@ export async function reactivarExamenFn(
   });
   if (!res.ok) throw new Error(`No se pudo reactivar el examen (HTTP ${res.status}).`);
 }
+
+// ---------------------------------------------------------------------------
+// Modo prueba (migración 0105): ensayar el examen antes de tomarlo.
+// ---------------------------------------------------------------------------
+
+export interface AlumnoHabilitadoPrueba {
+  usuario_id: string;
+  username: string;
+  nombre: string;
+}
+
+function headersJson(token: string | undefined) {
+  return {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+}
+
+/** Prende o apaga el modo prueba. Mientras está prendido, nada de lo que se rinda cuenta. */
+export async function cambiarModoPruebaFn(
+  apiBase: string,
+  token: string | undefined,
+  examenId: string,
+  modoPrueba: boolean,
+): Promise<void> {
+  const res = await fetchAutenticado(`${apiBase}/exam-content/${examenId}/modo-prueba`, {
+    method: 'PATCH',
+    headers: headersJson(token),
+    body: JSON.stringify({ modo_prueba: modoPrueba }),
+  });
+  if (!res.ok) throw new Error(`No se pudo cambiar el modo prueba (HTTP ${res.status}).`);
+}
+
+/** Alumnos habilitados a ver el examen mientras está en modo prueba. */
+export async function listarHabilitadosPruebaFn(
+  apiBase: string,
+  token: string | undefined,
+  examenId: string,
+): Promise<AlumnoHabilitadoPrueba[]> {
+  const res = await fetchAutenticado(
+    `${apiBase}/exam-content/${examenId}/prueba/habilitados`,
+    { method: 'GET', headers: headersJson(token) },
+  );
+  if (!res.ok) throw new Error(`No se pudo leer la lista (HTTP ${res.status}).`);
+  return res.json();
+}
+
+/** Habilita a un alumno. El backend rechaza cuentas que no son de estudiante. */
+export async function habilitarAlumnoPruebaFn(
+  apiBase: string,
+  token: string | undefined,
+  examenId: string,
+  usuarioId: string,
+): Promise<void> {
+  const res = await fetchAutenticado(
+    `${apiBase}/exam-content/${examenId}/prueba/habilitados`,
+    { method: 'POST', headers: headersJson(token), body: JSON.stringify({ usuario_id: usuarioId }) },
+  );
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    const detail = (body as any)?.detail;
+    throw new Error(
+      typeof detail === 'string'
+        ? detail
+        : (detail?.mensaje ??
+            (detail?.error === 'ya_habilitado'
+              ? 'Esa persona ya estaba habilitada.'
+              : `No se pudo habilitar (HTTP ${res.status}).`)),
+    );
+  }
+}
+
+/** Saca a un alumno de la lista. */
+export async function quitarAlumnoPruebaFn(
+  apiBase: string,
+  token: string | undefined,
+  examenId: string,
+  usuarioId: string,
+): Promise<void> {
+  const res = await fetchAutenticado(
+    `${apiBase}/exam-content/${examenId}/prueba/habilitados/${usuarioId}`,
+    { method: 'DELETE', headers: headersJson(token) },
+  );
+  if (!res.ok) throw new Error(`No se pudo quitar de la lista (HTTP ${res.status}).`);
+}

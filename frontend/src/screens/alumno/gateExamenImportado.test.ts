@@ -69,17 +69,17 @@ describe('textoVentana', () => {
 
   it('con apertura y cierre dice el rango completo', () => {
     const t = textoVentana(APERTURA, CIERRE);
-    expect(t).toMatch(/^Del .+ al .+$/);
+    expect(t).toMatch(/^Desde .+ · Hasta .+$/);
     expect(t).toContain('27');
     expect(t).toContain('30');
   });
 
   it('con solo cierre dice hasta cuándo', () => {
-    expect(textoVentana(null, CIERRE)).toMatch(/^Hasta el /);
+    expect(textoVentana(null, CIERRE)).toMatch(/^Hasta /);
   });
 
   it('con solo apertura dice desde cuándo', () => {
-    expect(textoVentana(APERTURA, null)).toMatch(/^Desde el /);
+    expect(textoVentana(APERTURA, null)).toMatch(/^Desde /);
   });
 
   it('sin fechas no inventa una ventana', () => {

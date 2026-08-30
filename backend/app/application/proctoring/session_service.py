@@ -241,6 +241,7 @@ async def listar_sesiones_finalizadas(
     materia_id: str | None = None,
     comision_id: str | None = None,
     comision_ids_permitidas: set[str] | None = None,
+    incluir_pruebas: bool = False,
 ) -> list[SesionResumenData]:
     """Sesiones finalizadas con filtros SQL (Registro de sesiones, C-76 tarea 17).
 
@@ -261,6 +262,7 @@ async def listar_sesiones_finalizadas(
         materia_id=materia_id,
         comision_id=comision_id,
         comision_ids_permitidas=comision_ids_permitidas,
+        incluir_pruebas=incluir_pruebas,
     )
 
 

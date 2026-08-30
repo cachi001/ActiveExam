@@ -17,7 +17,7 @@ export function Icon({ name, className = '', fill = false, style }: {
   );
 }
 
-type Variant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'outline' | 'success';
+type Variant = 'primary' | 'secondary' | 'ghost' | 'ghost-danger' | 'danger' | 'outline' | 'success' | 'warning';
 // REGLA DE HOVER: el hover ACLARA, el active oscurece. Es la convención que ya
 // seguían danger y success (error-600 → error-500); primary era el único que iba
 // al revés (oscurecía a primary-700), lo que hacía que el azul institucional
@@ -26,9 +26,19 @@ const VARIANTS: Record<Variant, string> = {
   primary: 'bg-primary text-on-primary hover:bg-primary-500 active:bg-primary-700 shadow-sm',
   secondary: 'bg-surface-container text-on-surface hover:bg-surface-container-high active:bg-surface-container-highest',
   ghost: 'bg-transparent text-on-surface-variant hover:bg-primary-50 hover:text-primary active:bg-primary-100',
+  // El `ghost` de arriba se tiñe de AZUL al pasar el mouse, que es lo correcto
+  // para una acción normal y lo incorrecto para un borrar: el color de acento
+  // invita a hacer click justo donde hay que dudar. Este es el mismo botón
+  // discreto, pero avisando en rojo apenas se lo apunta.
+  'ghost-danger': 'bg-transparent text-on-surface-variant hover:bg-error-50 hover:text-error-600 active:bg-error-100',
   outline: 'bg-surface-container-lowest text-on-surface border border-surface-300 shadow-sm hover:bg-primary-50 hover:border-primary-200 active:bg-primary-100',
   danger: 'bg-error-600 text-on-error hover:bg-error-500 active:bg-error shadow-sm',
   success: 'bg-success-600 text-on-primary hover:bg-success-500 active:bg-success shadow-sm',
+  // Ámbar sólido. Existe para las acciones que van SOBRE una superficie ámbar
+  // (el modo prueba): ahí un botón `outline` queda blanco sobre amarillo y se ve
+  // como un hueco en la card, y `danger` teñiría de rojo una acción que no
+  // destruye nada.
+  warning: 'bg-warning-600 text-white hover:bg-warning-500 active:bg-warning-700 shadow-sm',
 };
 
 type Size = 'sm' | 'md' | 'lg';
@@ -49,11 +59,17 @@ export const Button = forwardRef<HTMLButtonElement, {
   { variant = 'primary', size = 'md', icon, iconRight, children, className = '', ...rest },
   ref,
 ) {
+  // `whitespace-nowrap` en la clase base: sin eso, cualquier etiqueta de dos
+  // palabras se partía en dos renglones y el botón duplicaba su altura ("Volver
+  // a borrador" medía 56px contra los 40 del resto). Un botón que crece hacia
+  // abajo descuadra la fila entera. Va acá y no en cada uso: el problema
+  // aparecía en decenas de botones, y arreglarlos de a uno garantizaba que el
+  // próximo naciera con el mismo defecto.
   return (
     <button
       ref={ref}
       {...rest}
-      className={`inline-flex items-center justify-center font-medium rounded-md
+      className={`inline-flex items-center justify-center whitespace-nowrap font-medium rounded-md
         transition-colors duration-200 ease-out
         focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-0
         disabled:opacity-50 disabled:cursor-not-allowed

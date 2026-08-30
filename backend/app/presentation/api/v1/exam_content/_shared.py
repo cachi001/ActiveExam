@@ -71,5 +71,6 @@ def _resumen_to_response(r) -> ExamenContenidoResumenResponse:
         intentos_permitidos=r.intentos_permitidos,
         eliminado_en=getattr(r, "eliminado_en", None),
         borrador=getattr(r, "borrador", False),
+        modo_prueba=getattr(r, "modo_prueba", False),
         modo_preguntas=getattr(r, "modo_preguntas", "fijo"),
     )

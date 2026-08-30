@@ -375,6 +375,17 @@ class ExamenContenidoModel(Base):
         server_default="false",
         comment="c-78 E-07: examen en borrador (invisible para el alumno).",
     )
+    # migración 0105: el examen es un ENSAYO. Solo lo ven los alumnos habilitados
+    # (`examen_prueba_habilitado`) y toda sesión que se cree sobre él nace marcada
+    # `es_prueba`: no cuenta como intento, no genera nota, no va a Moodle, no entra
+    # a la Cola de revisión ni a las estadísticas, y se puede borrar. Es
+    # independiente de `borrador` a propósito: se prueba ANTES de habilitarlo.
+    modo_prueba: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        server_default="false",
+        comment="migración 0105: examen de ensayo, solo visible para los habilitados.",
+    )
     # c-78 E-07 (migración 0092): cómo se decide qué preguntas ve cada alumno.
     #   'fijo'               → las marcadas con seleccionada=True. Todos rinden lo mismo.
     #   'sorteo_por_intento' → se sortea al arrancar cada intento, según `tramos`,
@@ -800,4 +811,40 @@ class OpcionClozeBlancoModel(Base):
 
     __table_args__ = (
         Index("ix_opcion_cloze_blank_blank_id", "blank_id"),
+    )
+
+
+class ExamenPruebaHabilitadoModel(Base):
+    """Quién puede ver un examen en modo prueba (migración 0105).
+
+    Es una lista explícita y no la comisión entera: un ensayo no le tiene que
+    aparecer a las 70 personas que van a rendir el examen de verdad.
+    """
+
+    __tablename__ = "examen_prueba_habilitado"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        primary_key=True,
+        server_default=func.gen_random_uuid(),
+    )
+    examen_contenido_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("examen_contenido.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    usuario_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("usuario.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    creado_en: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "examen_contenido_id", "usuario_id", name="uq_examen_prueba_habilitado"
+        ),
+        Index("ix_examen_prueba_habilitado_examen", "examen_contenido_id"),
     )

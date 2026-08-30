@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import case, delete, func, or_, select, update
+from sqlalchemy import and_, case, delete, false, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload, with_loader_criteria
@@ -210,6 +210,7 @@ class ExamenContenidoSqlRepository:
                 # c-78 E-07: el catálogo del staff marca los que no se habilitaron
                 # y los que sortean por intento.
                 ExamenContenidoModel.borrador,
+                ExamenContenidoModel.modo_prueba,
                 ExamenContenidoModel.modo_preguntas,
             )
             .outerjoin(
@@ -239,6 +240,7 @@ class ExamenContenidoSqlRepository:
                 ExamenContenidoModel.intentos_permitidos,
                 ExamenContenidoModel.eliminado_en,
                 ExamenContenidoModel.borrador,
+                ExamenContenidoModel.modo_prueba,
                 ExamenContenidoModel.modo_preguntas,
             )
         )
@@ -261,6 +263,7 @@ class ExamenContenidoSqlRepository:
             intentos_permitidos=row.intentos_permitidos,
             eliminado_en=row.eliminado_en,
             borrador=row.borrador,
+            modo_prueba=getattr(row, "modo_prueba", False),
             modo_preguntas=row.modo_preguntas,
         )
 
@@ -316,6 +319,7 @@ class ExamenContenidoSqlRepository:
         estado: str = "activo",
         incluir_borradores: bool = True,
         incluir_materias_de_baja: bool = True,
+        usuario_id_para_pruebas: str | None = None,
     ) -> tuple[list[ExamenContenidoResumen], int]:
         """Lista paginada + búsqueda serverside del catálogo (tarea 4, admin-sync).
 
@@ -352,7 +356,53 @@ class ExamenContenidoSqlRepository:
         base = self._filtro_q(self._stmt_resumen(), q)
         base = self._filtro_estado(base, estado)
         if not incluir_borradores:
-            base = base.where(ExamenContenidoModel.borrador.is_(False))
+            from app.infrastructure.persistence.models.exam_content import (
+                ExamenPruebaHabilitadoModel as _Habilitado,
+            )
+
+            # Un examen EN BORRADOR no se lista... salvo que esté en modo prueba y
+            # quien mira esté habilitado. Sin esta excepción, el servidor le dejaba
+            # RENDIR un examen que su propia lista le escondía: probar un examen
+            # antes de habilitarlo es justo el caso de uso del modo prueba, y así
+            # era imposible de alcanzar.
+            puede_ver_borrador_de_prueba = (
+                and_(
+                    ExamenContenidoModel.modo_prueba.is_(True),
+                    ExamenContenidoModel.id.in_(
+                        select(_Habilitado.examen_contenido_id).where(
+                            _Habilitado.usuario_id == usuario_id_para_pruebas
+                        )
+                    ),
+                )
+                if usuario_id_para_pruebas is not None
+                else false()
+            )
+            base = base.where(
+                or_(
+                    ExamenContenidoModel.borrador.is_(False),
+                    puede_ver_borrador_de_prueba,
+                )
+            )
+        if usuario_id_para_pruebas is not None:
+            # migración 0105: un examen EN MODO PRUEBA solo lo ve quien fue
+            # habilitado. Va acá y no en un filtro de Python: si el examen sale en
+            # el listado, el alumno puede abrirlo. `usuario_id_para_pruebas=None`
+            # (staff) no aplica el filtro y ve todos.
+            from app.infrastructure.persistence.models.exam_content import (
+                ExamenPruebaHabilitadoModel,
+            )
+
+            base = base.where(
+                or_(
+                    ExamenContenidoModel.modo_prueba.is_(False),
+                    ExamenContenidoModel.id.in_(
+                        select(ExamenPruebaHabilitadoModel.examen_contenido_id).where(
+                            ExamenPruebaHabilitadoModel.usuario_id
+                            == usuario_id_para_pruebas
+                        )
+                    ),
+                )
+            )
         if not incluir_materias_de_baja:
             base = base.where(MateriaModel.activa.is_(True))
         if comision_ids is not None:

@@ -176,10 +176,12 @@ async def test_resumen_distribucion_scores(session):
 
     r = await obtener_resumen(session)
 
-    assert list(r.distribucion_scores.keys()) == ["0-24", "25-39", "40-100"]
+    # Corte medio 30 (el mismo del filtro "nivel de riesgo"), no 25: unificado
+    # el 29/8/2026 para que la rosca y el filtro clasifiquen igual.
+    assert list(r.distribucion_scores.keys()) == ["0-29", "30-39", "40-100"]
     assert r.distribucion_scores["40-100"] == 1  # ses1 (score 50) — en riesgo
-    assert r.distribucion_scores["0-24"] == 2
-    assert r.distribucion_scores["25-39"] == 0
+    assert r.distribucion_scores["0-29"] == 2
+    assert r.distribucion_scores["30-39"] == 0
     # La banda alta coincide EXACTAMENTE con el conteo de sesiones en riesgo.
     assert r.distribucion_scores["40-100"] == r.sesiones_en_riesgo
 

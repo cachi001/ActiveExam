@@ -304,5 +304,8 @@ class ExamenContenidoResumen:
     # c-78 E-07: el examen todavía no se habilitó. Al alumno no le llega en el
     # listado; el staff lo ve marcado para poder probarlo y habilitarlo.
     borrador: bool = False
+    # migración 0105: examen de ENSAYO. Solo lo ven los alumnos habilitados y
+    # nada de lo que se rinda cuenta.
+    modo_prueba: bool = False
     # c-78 E-07: 'fijo' | 'sorteo_por_intento'.
     modo_preguntas: str = "fijo"

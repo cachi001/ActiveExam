@@ -110,6 +110,10 @@ class ExamenContenidoResumenResponse(BaseModel):
     # c-78 E-07: el examen todavía no se habilitó. Al alumno no le llega (queda
     # fuera de su listado); el staff lo ve marcado para poder probarlo y habilitarlo.
     borrador: bool = False
+    # migración 0105: el examen es un ENSAYO. Solo lo ven los alumnos habilitados
+    # y nada de lo que se rinda cuenta. La pantalla lo muestra bien visible para
+    # que nadie confunda un ensayo con el examen de verdad.
+    modo_prueba: bool = False
     # c-78 E-07: 'fijo' | 'sorteo_por_intento'. La pantalla lo usa para decir que
     # cada alumno rinde preguntas distintas.
     modo_preguntas: str = "fijo"
@@ -1398,3 +1402,19 @@ class InformeDevolucionResponse(BaseModel):
     senales: list[SenalAnalisisResponse]
     capturas: list[CapturaFirmadaResponse]
 
+
+
+class ModoPruebaRequest(BaseModel):
+    """Body del PATCH /{examen_id}/modo-prueba (migracion 0105)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    modo_prueba: bool
+
+
+class HabilitarPruebaRequest(BaseModel):
+    """Body del POST /{examen_id}/prueba/habilitados (migracion 0105)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    usuario_id: str

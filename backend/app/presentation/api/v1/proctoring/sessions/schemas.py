@@ -1,7 +1,7 @@
 """Schemas Pydantic para endpoints de sesiones de proctoring activeexam.
 
 Todos con extra='forbid' (regla dura de codigo).
-Ley 25.326: screenshot_base64 y biometria son datos sensibles.
+screenshot_base64 y biometria son datos sensibles.
 """
 
 from __future__ import annotations
@@ -56,7 +56,7 @@ class EventoDetalle(BaseModel):
     Incluye screenshot base64, sha256, veredicto de re-inferencia y conteos
     de rostros (cliente vs servidor) para la revision humana (tutor/coordinador).
 
-    PRODUCCION: screenshot_base64 es dato sensible (Ley 25.326).
+    PRODUCCION: screenshot_base64 es dato sensible.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -126,7 +126,9 @@ class SesionResumen(BaseModel):
     alumno_email: str | None = None
     alumno_nombre: str | None = None
     # migration 0102: el docente probando su examen. No es una rendicion: no
-    # cuenta como intento, no genera nota y se puede borrar.
+    # cuenta como intento, no genera nota y se puede borrar. El router TIENE que
+    # poblarlo (`es_prueba=...`): el campo estaba declarado pero nadie lo pasaba,
+    # asi que la Cola de revision no podia distinguir un ensayo y los mostraba.
     es_prueba: bool = False
 
 

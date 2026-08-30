@@ -204,6 +204,12 @@ def create_exam_taking_router(
                 # que el propio servidor le iba a rechazar. Mismo criterio que
                 # los borradores: el staff los sigue viendo.
                 incluir_materias_de_baja=puede_ver_de_baja,
+                # migración 0105: un examen en modo prueba solo lo ve el alumno
+                # habilitado. El staff (`puede_ver_de_baja`) los ve todos: es quien
+                # los arma. None = sin filtro.
+                usuario_id_para_pruebas=(
+                    None if puede_ver_de_baja else str(principal.subject)
+                ),
             )
 
         return ExamenesContenidoPaginadosResponse(
@@ -695,13 +701,25 @@ def create_exam_taking_router(
                 ).comisiones_inscriptas_de_materia(principal.username, materia_id)
             # c-79: tutores por comisión, resueltos en N queries chicas (listas de
             # comisión son acotadas — no amerita la complejidad de una query bulk).
+            #
+            # AL ALUMNO NO SE LE MANDAN (decisión del dueño, 29/8/2026): quién está
+            # a cargo de una comisión es información de gestión interna. Se filtra
+            # ACÁ y no solo en la pantalla — esconderlo en el frontend lo dejaría
+            # igual de visible en la respuesta de la API.
             tutores_por_comision: dict[str, list[TutorInfo]] = {}
-            for c in comisiones:
-                tutor_ids = await repo.tutores_de_comision(c.id)
-                nombres = await repo.nombres_de_docentes(tutor_ids)
-                tutores_por_comision[c.id] = [
-                    TutorInfo(id=tid, nombre=nombres.get(tid, tid)) for tid in tutor_ids
-                ]
+            es_docencia = (
+                _es_staff(principal)
+                or _es_docente(principal)
+                or _es_profesor(principal)
+                or _es_coordinador(principal)
+            )
+            if es_docencia:
+                for c in comisiones:
+                    tutor_ids = await repo.tutores_de_comision(c.id)
+                    nombres = await repo.nombres_de_docentes(tutor_ids)
+                    tutores_por_comision[c.id] = [
+                        TutorInfo(id=tid, nombre=nombres.get(tid, tid)) for tid in tutor_ids
+                    ]
 
         return [
             ComisionResponse(

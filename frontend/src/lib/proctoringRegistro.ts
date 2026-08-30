@@ -70,6 +70,8 @@ export async function listarRegistroSesionesFn(
     nivel_riesgo?: NivelRiesgoFiltro | '';
     materia_id?: string;
     comision_id?: string;
+    /** Trae también los ENSAYOS del docente, ocultos por defecto. */
+    incluir_pruebas?: boolean;
     page?: number;
     page_size?: number;
   } = {},
@@ -82,6 +84,7 @@ export async function listarRegistroSesionesFn(
   if (params.nivel_riesgo) qs.set('nivel_riesgo', params.nivel_riesgo);
   if (params.materia_id) qs.set('materia_id', params.materia_id);
   if (params.comision_id) qs.set('comision_id', params.comision_id);
+  if (params.incluir_pruebas) qs.set('incluir_pruebas', 'true');
   if (params.page !== undefined) qs.set('page', String(params.page));
   if (params.page_size !== undefined) qs.set('page_size', String(params.page_size));
   const qStr = qs.toString();

@@ -106,8 +106,14 @@ export function SorteoSection({ examenId, materiaId }: Props) {
     );
   }
 
-  // Un examen con preguntas fijas no tiene nada que mostrar acá.
-  if (!sorteo || sorteo.modo_preguntas !== 'sorteo_por_intento') return null;
+  if (!sorteo) return null;
+
+  // Un examen que TODAVÍA no sortea (modo fijo, de los viejos) igual se arma
+  // acá: antes caía en una pantalla aparte con otro criterio ("cantidad por
+  // categoría", tildes por subcategoría) que ya se había descartado, así que
+  // armar y editar el mismo examen se hacían distinto según por dónde entrabas.
+  // Al guardar, el backend lo deja sorteando.
+  const sinSorteoTodavia = sorteo.modo_preguntas !== 'sorteo_por_intento';
 
   const repite = repeticionEstimada(sorteo.largo_del_examen, sorteo.pool_total);
   const proporcion =
@@ -142,7 +148,13 @@ export function SorteoSection({ examenId, materiaId }: Props) {
       </SectionTitle>
 
       <div className="space-y-4">
-        <div className="rounded-xl bg-surface-100 px-4 py-3 flex items-start gap-3">
+        {sinSorteoTodavia && !editando && (
+          <div className="rounded-xl border border-warning-300 bg-warning-100 px-4 py-3 text-[13px] text-warning-800">
+            Este examen todavía tiene preguntas fijas. Armalo con el botón de abajo
+            para que cada alumno reciba un sorteo distinto.
+          </div>
+        )}
+        <div className={sinSorteoTodavia ? 'hidden' : 'rounded-xl bg-surface-100 px-4 py-3 flex items-start gap-3'}>
           <div className="flex-1 min-w-0">
           <p className="text-label-md text-on-surface">
             Cada alumno rinde{' '}

@@ -47,6 +47,12 @@ logger = logging.getLogger(__name__)
 
 _NO_EVALUADO = ResultadoReinferencia(face_count_servidor=None, veredicto="no_evaluado")
 
+#: Confianza mínima para contar un rostro. TIENE que ser el mismo número que usa
+#: el cliente (`RealMediaPipeVisionEngine`, minDetectionConfidence). Si los dos
+#: lados miran la misma imagen con umbrales distintos, la comparación deja de
+#: medir lo que dice medir: las diferencias serían del umbral, no de la escena.
+UMBRAL_DETECCION = 0.5
+
 
 def _resolver_modelo() -> str | None:
     """Resuelve la ruta al modelo .task desde MEDIAPIPE_MODEL_DIR.
@@ -95,6 +101,13 @@ def _inicializar_detector() -> object | None:
     try:
         options = vision.FaceDetectorOptions(
             base_options=BaseOptions(model_asset_path=ruta_modelo),
+            # EXPLÍCITO y en 0.5: el mismo valor que fija el cliente
+            # (`RealMediaPipeVisionEngine`, minDetectionConfidence: 0.5). Antes se
+            # dejaba el default implícito de MediaPipe. Hoy coinciden, pero un
+            # cambio de default en la librería habría desalineado los dos lados
+            # sin que nadie se enterara, y toda comparación cliente/servidor
+            # habría empezado a producir discrepancias inventadas.
+            min_detection_confidence=UMBRAL_DETECCION,
         )
         detector = vision.FaceDetector.create_from_options(options)
         logger.info("MediaPipe FaceDetector inicializado desde %s", ruta_modelo)
