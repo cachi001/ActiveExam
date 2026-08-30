@@ -71,7 +71,7 @@ export function GlossaryPanel({ isOpen, onClose }: GlossaryPanelProps) {
 
         {/* Footer */}
         <div className="px-lg py-sm border-t border-outline-variant/40 shrink-0 text-label-sm text-on-surface-variant/60">
-          {Object.keys(GLOSSARY).length} términos · Activo bajo Ley 25.326
+          {Object.keys(GLOSSARY).length} términos
         </div>
       </div>
     </div>,

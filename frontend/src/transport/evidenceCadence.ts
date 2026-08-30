@@ -9,7 +9,7 @@
  *
  *   2. HEARTBEAT: captura un screenshot periódico de BAJA FRECUENCIA como línea
  *      base de la sesión. La frecuencia es configurable por examen y respeta la
- *      minimización de datos (Ley 25.326, proporcionalidad L2.5).
+ *      minimización de datos (proporcionalidad L2.5).
  *
  * PROPORCIONALIDAD (DD-24-02, tarea 2.4):
  *   - Default conservador: HEARTBEAT_DEFAULT_SEC = 120 s (2 min).
@@ -103,8 +103,8 @@ export function validarCadencia(cfg: CadenceConfig): string | null {
   if (heartbeatSeg < HEARTBEAT_MAX_FREQ_SEC) {
     return (
       `Intervalo de heartbeat demasiado corto (${heartbeatSeg} s). ` +
-      `El mínimo permitido es ${HEARTBEAT_MAX_FREQ_SEC} s para respetar ` +
-      `la minimización de datos (Ley 25.326, proporcionalidad L2.5).`
+      `El mínimo permitido es ${HEARTBEAT_MAX_FREQ_SEC} s para no capturar ` +
+      `más datos de los necesarios.`
     );
   }
   return null; // válido
