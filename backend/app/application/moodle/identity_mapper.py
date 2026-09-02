@@ -56,7 +56,9 @@ class MoodleIdentityMapper:
            institucion a proposito.
 
         Args:
-            idnumber: el username del alumno (legajo/padrón).
+            idnumber: el username del alumno. El nombre del parametro es
+                historico: NO es un idnumber de Moodle, y en este campus esa
+                comparacion no matchea nunca (ver `lookup_userid_en_curso`).
             email: el email institucional del alumno.
             courseid: curso destino en Moodle. Habilita el camino 1.
             ws_token: token del docente. Habilita el camino 1.
