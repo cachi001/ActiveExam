@@ -48,10 +48,27 @@ describe('intervaloDeChat', () => {
     expect(intervaloDeChat(futuro, AHORA)).toBe(POLL_CHAT_ACTIVO_MS);
   });
 
-  it('el intervalo en reposo ahorra de verdad: al menos 4 veces menos requests', () => {
-    // Con 100 alumnos, 3,5 s son ~29 req/s. El punto del cambio es ese ahorro,
-    // así que se vigila la relación, no un número suelto que alguien pueda tocar
-    // sin darse cuenta de lo que cuesta.
-    expect(POLL_CHAT_INACTIVO_MS / POLL_CHAT_ACTIVO_MS).toBeGreaterThanOrEqual(4);
+  // Las dos guardas de abajo son el intercambio completo, y van juntas a
+  // propósito: cada una sola invita a romper la otra sin darse cuenta.
+
+  it('el reposo ahorra de verdad: con 100 alumnos no pasa de 13 req/s', () => {
+    // Con 3,5 s fijos eran ~29 req/s, más de un tercio del presupuesto, para un
+    // canal que en casi ninguna sesión se usa. Cuando ese techo satura no se pone
+    // lento el chat: se pone lento el autoguardado del examen de todos.
+    const reqPorSegundoCon100 = 100 / (POLL_CHAT_INACTIVO_MS / 1000);
+    expect(reqPorSegundoCon100).toBeLessThanOrEqual(13);
+  });
+
+  it('pero el alumno no espera más de 10 s el mensaje del tutor', () => {
+    // La otra mitad: el ahorro no se paga con una persona esperando. El tutor
+    // escribe para avisar algo AHORA, y el reposo es exactamente el peor caso de
+    // esa espera.
+    expect(POLL_CHAT_INACTIVO_MS).toBeLessThanOrEqual(10_000);
+  });
+
+  it('una charla con pausas no se cae a lento en el medio', () => {
+    // Cinco minutos: nadie contesta al toque siempre, y que el tutor insista dos
+    // minutos después no puede costarle al alumno otra espera completa.
+    expect(VENTANA_CONVERSACION_VIVA_MS).toBeGreaterThanOrEqual(5 * 60 * 1000);
   });
 });

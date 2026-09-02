@@ -20,14 +20,19 @@
  * puede depender de que el alumno haya iniciado algo.
  *
  * La solución es mirar la conversación misma. Mientras **no hay ningún mensaje**,
- * no hay nada que refrescar seguido: se pregunta cada 15 s. En cuanto aparece uno,
- * la conversación está viva y se vuelve a 3,5 s. El costo real es que el PRIMER
- * mensaje del tutor puede tardar hasta 15 s en aparecerle al alumno; a partir de
- * ahí la conversación va a la velocidad de siempre.
+ * no hay nada que refrescar seguido: se pregunta cada 8 s. En cuanto aparece uno,
+ * la conversación está viva y se vuelve a 3,5 s. El costo real es que el mensaje
+ * que ABRE una conversación puede tardar hasta 8 s en aparecerle al alumno; a
+ * partir de ahí, y por los cinco minutos siguientes a cada mensaje, va a la
+ * velocidad de siempre.
  *
- * Ese es el intercambio: 15 s de demora una sola vez, al principio de una
- * conversación que casi nunca ocurre, a cambio de ~21 req/s de margen para que el
- * examen de todos los demás no se ponga lento.
+ * Ese es el intercambio: hasta 8 s de demora al abrir una conversación que casi
+ * nunca ocurre, a cambio de ~16 req/s de margen para que el examen de todos los
+ * demás no se ponga lento.
+ *
+ * La solución de fondo, para cuando haya tiempo: que el aviso de "hay mensajes
+ * nuevos" viaje colgado del autoguardado que el alumno hace igual. Ahí el chat
+ * pasa a costar cero requests extra y puede ser inmediato.
  */
 
 /** Conversación viva: la cadencia de siempre. */
@@ -36,18 +41,27 @@ export const POLL_CHAT_ACTIVO_MS = 3500;
 /**
  * Nadie escribió todavía (o hace rato que no): alcanza con mirar de vez en cuando.
  *
- * 15 s baja el costo del poller a menos de un cuarto (de ~29 a ~7 req/s con 100
- * alumnos) y sigue siendo una espera tolerable para el primer aviso del tutor.
+ * 8 s baja el costo del poller a menos de la mitad (de ~29 a 12,5 req/s con 100
+ * alumnos, y a 5 req/s con los 40 que son el escenario probable) sin que el aviso
+ * del tutor se haga esperar de más.
+ *
+ * Estuvo en 15 s y se bajó: 15 s ahorraba un poco más, pero el tutor escribe para
+ * avisar algo AHORA ("levantá la cámara", "se te ve otra pantalla"), y un cuarto
+ * de minuto de demora en eso es mucho. El ahorro que faltaba no se paga con una
+ * persona esperando; se paga con la decisión de dónde corre el examen, que es lo
+ * que de verdad mueve el techo (medido: 9,7 req/s con 0,1 CPU, holgado con 0,5).
  */
-export const POLL_CHAT_INACTIVO_MS = 15_000;
+export const POLL_CHAT_INACTIVO_MS = 8_000;
 
 /**
  * Cuánto sigue considerándose "viva" una conversación después del último mensaje.
  *
- * Dos minutos cubren de sobra el ida y vuelta de una consulta: nadie contesta un
- * mensaje del tutor dos minutos después y espera que el otro siga esperando.
+ * Cinco minutos. Con dos, una charla con pausas normales se caía a lento en el
+ * medio: el alumno tardaba en contestar, el tutor insistía, y esa insistencia le
+ * llegaba con la espera completa encima. Estirarlo es casi gratis porque solo
+ * mantiene el ritmo rápido en las sesiones donde alguien efectivamente habló.
  */
-export const VENTANA_CONVERSACION_VIVA_MS = 2 * 60 * 1000;
+export const VENTANA_CONVERSACION_VIVA_MS = 5 * 60 * 1000;
 
 /**
  * Cada cuánto conviene preguntar por mensajes nuevos.
