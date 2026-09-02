@@ -158,6 +158,89 @@ def _extraer_nombre(claims: dict) -> tuple[str | None, str | None]:
     return name, None
 
 
+async def _buscar_por_identidad_moodle(
+    session: AsyncSession, *, deployment_id: str, sub: str
+) -> UsuarioModel | None:
+    """La cuenta de esta identidad de Moodle, o None (migración 0106).
+
+    El par (deployment, sub) es el identificador ESTABLE: el `sub` es el userid
+    de Moodle, es de la persona y no cambia. El deployment hace falta porque ese
+    número solo es único dentro de un campus.
+    """
+    return (
+        await session.execute(
+            select(UsuarioModel).where(
+                UsuarioModel.lti_deployment_id == deployment_id,
+                UsuarioModel.moodle_userid == str(sub),
+            )
+        )
+    ).scalar_one_or_none()
+
+
+def _es_otra_persona_del_mismo_campus(
+    usuario: UsuarioModel, *, deployment_id: str, sub: str
+) -> bool:
+    """True si esa cuenta es de OTRA persona del mismo Moodle.
+
+    Mismo deployment + identidad de Moodle distinta = dos alumnos distintos que
+    comparten correo. Deployment distinto = puede ser la misma persona en otro
+    campus, que es un caso que el diseño fusiona a propósito.
+    """
+    return bool(
+        usuario.moodle_userid
+        and usuario.lti_deployment_id == deployment_id
+        and usuario.moodle_userid != str(sub)
+    )
+
+
+async def _buscar_por_email_lti(
+    session: AsyncSession, *, claims: dict, sub: str, deployment_id: str
+) -> UsuarioModel | None:
+    """Ultimo recurso: la cuenta LTI que tenga este correo.
+
+    Existe para las cuentas anteriores a la migración 0106 que ya habían cambiado
+    su username: no hay forma de reconocerlas por la identidad de Moodle porque
+    nunca se guardó. Al encontrarlas, el caller les graba esa identidad y dejan de
+    depender de esto.
+
+    GUARDA que no se puede perder: si el correo pertenece a una cuenta que NO es
+    LTI (un docente, un admin, un alumno de alta manual), NO se devuelve — se
+    rechaza el launch. Entregarla sería darle a cualquiera que conozca un correo
+    el acceso y el rol de esa persona.
+    """
+    email = claims.get("email")
+    if not email:
+        return None
+    usuario = (
+        await session.execute(select(UsuarioModel).where(UsuarioModel.email == email))
+    ).scalar_one_or_none()
+    if usuario is None:
+        return None
+    if usuario.auth_provider != "lti":
+        raise LaunchInvalidoError("email_en_uso_no_lti")
+    # Dos personas distintas DEL MISMO CAMPUS compartiendo correo: no se devuelve.
+    # Antes esto las fusionaba en una sola cuenta y la segunda rendía con el
+    # historial de la primera.
+    #
+    # El chequeo incluye el deployment a propósito. Que el `sub` sea distinto NO
+    # alcanza para decir que son dos personas: el mismo alumno real en DOS Moodles
+    # distintos tiene un número en cada uno, y ese caso el diseño lo fusiona
+    # deliberadamente (multi-tenant, ver `test_jit_email_colisiona_con_cuenta_lti_
+    # de_otro_deployment_fusiona`). Dos identidades distintas solo son dos personas
+    # cuando vienen del MISMO deployment.
+    if _es_otra_persona_del_mismo_campus(usuario, deployment_id=deployment_id, sub=sub):
+        return None
+    return usuario
+
+
+def _grabar_identidad_moodle(usuario: UsuarioModel, *, deployment_id: str, sub: str) -> None:
+    """Completa la identidad de Moodle si falta (autorrelleno, migración 0106)."""
+    if not usuario.moodle_userid:
+        usuario.moodle_userid = str(sub)
+    if not usuario.lti_deployment_id:
+        usuario.lti_deployment_id = deployment_id
+
+
 async def provisionar_o_recuperar_usuario(
     session: AsyncSession,
     *,
@@ -190,13 +273,41 @@ async def provisionar_o_recuperar_usuario(
     username_lti = _username_lti(deployment_id, sub)
 
     # ---- Buscar usuario existente -------------------------------------------
-    resultado = await session.execute(
-        select(UsuarioModel).where(UsuarioModel.username == username_lti)
+    #
+    # En orden de CONFIANZA del identificador, no de comodidad:
+    #
+    #  1. La identidad de Moodle (`deployment` + `sub`). Es de la persona y no
+    #     cambia nunca. Es el camino bueno.
+    #  2. El username sintético. Solo sirve mientras la persona no eligió el suyo
+    #     — el primer ingreso se lo EXIGE, así que este camino se agota rápido.
+    #  3. El correo. Es lo único que quedaba antes de la migración 0106, y es un
+    #     dato prestado: se cambia, y dos personas pueden compartirlo. Se conserva
+    #     para no dejar afuera a las cuentas viejas, pero es el último recurso.
+    #
+    # Antes existía SOLO el paso 2, y el 3 ocurría de casualidad: se intentaba
+    # crear la cuenta, el INSERT chocaba contra el UNIQUE de email y una rama de
+    # rescate atrapaba el error. Ahora se busca a propósito, en vez de provocar un
+    # error para recuperarse de él.
+    usuario = await _buscar_por_identidad_moodle(
+        session, deployment_id=deployment_id, sub=sub
     )
-    usuario = resultado.scalar_one_or_none()
+    if usuario is None:
+        usuario = (
+            await session.execute(
+                select(UsuarioModel).where(UsuarioModel.username == username_lti)
+            )
+        ).scalar_one_or_none()
+    if usuario is None:
+        usuario = await _buscar_por_email_lti(
+            session, claims=claims, sub=sub, deployment_id=deployment_id
+        )
 
     if usuario is not None:
         # Usuario ya existe: idempotente, nada que crear.
+        # Si lo encontramos por un camino viejo, le grabamos la identidad de
+        # Moodle: la próxima vez entra por el camino bueno. Así las cuentas
+        # anteriores a la migración 0106 se curan solas, de a una por ingreso.
+        _grabar_identidad_moodle(usuario, deployment_id=deployment_id, sub=sub)
         # Si hay mapeo de comisión, asegurar la matrícula de todas formas
         # (puede ser un segundo launch luego de que el admin configuró el mapeo).
         await _asegurar_matricula(session, usuario=usuario, deployment=deployment)
@@ -240,6 +351,8 @@ async def provisionar_o_recuperar_usuario(
         password_hash=password_hash,
         nombre=nombre,
         apellido=apellido,
+        moodle_userid=str(sub),
+        lti_deployment_id=deployment_id,
         attrs_federados={
             # Contexto LTI mínimo para auditoría (Open Question del design.md).
             # No se persiste el roster completo — solo el contexto del launch.
@@ -278,6 +391,21 @@ async def provisionar_o_recuperar_usuario(
         # devolverle a un tercero las credenciales/rol de otra persona.
         if usuario.auth_provider != "lti":
             raise LaunchInvalidoError("email_en_uso_no_lti")
+        # Y si esa cuenta ya tiene OTRA identidad de Moodle, no es la misma
+        # persona: son dos alumnos que comparten dirección de correo. Se BLOQUEA
+        # el launch en vez de fusionarlos.
+        #
+        # Es la decisión menos mala. El correo es UNIQUE, así que no se pueden
+        # tener las dos cuentas con esa dirección; y devolverle a la segunda
+        # persona la cuenta de la primera significa que rinde con el historial, el
+        # consentimiento y la biometría de otra. Un launch que falla con un motivo
+        # claro se arregla corrigiendo el dato en el campus; una identidad
+        # cambiada de persona no se descubre hasta que ya es tarde.
+        if _es_otra_persona_del_mismo_campus(
+            usuario, deployment_id=deployment_id, sub=sub
+        ):
+            raise LaunchInvalidoError("email_compartido_con_otra_identidad")
+        _grabar_identidad_moodle(usuario, deployment_id=deployment_id, sub=sub)
         await _asegurar_matricula(session, usuario=usuario, deployment=deployment)
         return usuario, False
 
