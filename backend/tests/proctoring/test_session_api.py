@@ -13,11 +13,21 @@ from httpx import AsyncClient
 
 from tests.proctoring.conftest import auth_headers
 
-# GET /sessions y GET /sessions/{id} son vista del proctor (proctor-only tras el
-# endurecimiento por rol). El ``client`` por defecto va autenticado como
-# estudiante (flujo del alumno: POST /sessions, /events). Para las lecturas del
-# proctor mandamos un Bearer de rol proctor.
-_PROCTOR = auth_headers(["coordinador"])  # c-76: rol proctor eliminado -> coordinador supervisa
+# GET /sessions y GET /sessions/{id} son vista de quien supervisa. El ``client``
+# por defecto va autenticado como estudiante (flujo del alumno: POST /sessions,
+# /events), así que para las lecturas mandamos otro Bearer.
+#
+# Va ADMIN y no coordinador, y no es por comodidad: desde el scoping N:M de c-79,
+# un coordinador ve solo las sesiones de las comisiones de SUS materias. Las
+# sesiones de este módulo no tienen examen vinculado, así que no pertenecen a
+# ninguna comisión y NINGÚN rol acotado puede verlas — es el comportamiento
+# correcto, y por eso estos tests estaban en rojo desde c-79 sin que hubiera nada
+# roto en el producto.
+#
+# Lo que este módulo verifica es que los endpoints devuelvan lo que crearon, no el
+# alcance por pertenencia: eso lo cubre `test_c76_tutor_comision.py`, con un
+# examen y una comisión de verdad.
+_PROCTOR = auth_headers(["admin_sistema"])
 
 
 pytestmark = pytest.mark.asyncio
