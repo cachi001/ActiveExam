@@ -65,12 +65,14 @@ describe('4.1-4.3 — Eliminación de toast por evento de proctoring', () => {
     expect(panelSource).toMatch(/SEV_ICON/);
   });
 
-  it('el panel de señales sigue renderizando eventos (map sobre los últimos)', () => {
-    // c-78 D10: los eventos quedan detrás de `mostrarEventos` (default NO), y el
-    // recorte pasó a `slice(0, 4)` porque la lista ya llega con el más reciente
-    // primero.
-    expect(panelSource).toMatch(/mostrarEventos \? eventos\.slice\(0, 4\)/);
-    expect(panelSource).toMatch(/ultimosEventos\.map/);
+  it('el panel de señales sigue renderizando eventos, detrás del flag', () => {
+    // c-78 D10: los eventos quedan detrás de `mostrarEventos` (default NO).
+    // Con el flag prendido se listan TODOS (30/8/2026): el recorte a los 4 más
+    // recientes se fue, junto con el "+N más" que no llevaba a ninguna parte.
+    // El comportamiento se verifica renderizando en `IntegridadPanel.test.tsx`;
+    // acá solo se vigila que la lista siga colgada del flag.
+    expect(panelSource).toMatch(/mostrarEventos \? eventos : \[\]/);
+    expect(panelSource).toMatch(/eventosVisibles\.map/);
   });
 
   it('useExamProctoring sigue importado y en uso (score/streaming intactos)', () => {

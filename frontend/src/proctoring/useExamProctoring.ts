@@ -101,8 +101,20 @@ import { HEARTBEAT_MAX_FREQ_SEC } from '../transport/evidenceCadence';
 // con respaldo y reintento) y `evidenceCadence` (solo la constante del heartbeat).
 // ---------------------------------------------------------------------------
 
-/** Máximo de eventos recientes que el panel del examen muestra. */
-const MAX_EVENTOS = 30;
+/**
+ * Tope de eventos que el panel del examen conserva en memoria.
+ *
+ * Con `mostrar_eventos_alumno` prendido el panel los lista TODOS, así que este
+ * número es el techo real de lo que el alumno puede ver. 30 se quedaba corto:
+ * el registro se corta recién cuando el score toca 100 (`debeRegistrarEvento`),
+ * y con pesos chicos eso son bastantes más de 30 señales.
+ *
+ * No se saca del todo porque la lista vive en el estado de React: sirve de
+ * amortiguador si algún detector se vuelve conversador. No hay riesgo de
+ * avalancha por frame — las señales de contexto se consumen y resetean, y las
+ * de visión tienen de-dup por transición.
+ */
+const MAX_EVENTOS = 100;
 
 /**
  * Tipos de evento que adjuntan imagen de evidencia. Dos motivos distintos, mismo Set:
