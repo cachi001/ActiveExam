@@ -183,11 +183,22 @@ async def test_foto_perfil_persistida_en_db(
         )
         async with factory() as session:
             repo = FotoReferenciaRepository(session)
-            foto = await repo.obtener_vigente(usuario_id)
-            assert foto is not None
-            assert foto.vigente is True
-            assert foto.hash_sha256  # hash SHA-256 calculado
-            assert foto.uri_storage  # key en el bucket
+            # `obtener_vigente` devuelve el id, no la fila: el consumidor real
+            # (gate de perfil) solo comprueba existencia.
+            assert await repo.obtener_vigente(usuario_id) == foto_id
+
+            from sqlalchemy import select as _select
+
+            from app.infrastructure.persistence.models.transactional import (
+                FotoReferenciaModel as _Foto,
+            )
+
+            fila = (
+                await session.execute(_select(_Foto).where(_Foto.id == foto_id))
+            ).scalar_one()
+            assert fila.vigente is True
+            assert fila.hash_sha256  # hash SHA-256 calculado
+            assert fila.foto_bytes  # el binario quedó guardado en la DB
 
     finally:
         await _borrar_usuario_test(factory, usuario_id)

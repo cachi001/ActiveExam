@@ -307,13 +307,25 @@ class RefreshTokenModel(Base):
 class FotoReferenciaModel(Base):
     """Foto de perfil del alumno — referencia de enrollment (C-56).
 
-    La foto se almacena en el bucket de perfiles (no-WORM, SSE-S3, separado del
-    bucket de evidencia WORM). Solo los metadatos viven en la DB: la URL del
-    objeto, el hash SHA-256 del contenido (integridad), el bucket y el usuario.
+    La foto se guarda como BYTEA directamente en Postgres (``foto_bytes``), que
+    es como la crea la migración 0008 y como está la tabla en producción y en dev.
 
     ``vigente``: solo un registro TRUE por usuario. Al renovar la foto, el
     registro anterior se marca FALSE (``marcar_anteriores_no_vigentes``).
     El ON DELETE CASCADE garantiza que al borrar el usuario, sus fotos desaparecen.
+
+    MinIO (pendiente, no borrado)
+    -----------------------------
+    El diseño original guardaba la foto en un bucket no-WORM y dejaba en la DB
+    solo los punteros (``uri_storage``, ``bucket``). Eso lo crea la migración
+    0007, de la rama "full", que **no está aplicada en ninguna base viva**: este
+    modelo las declaraba igual, así que describía una tabla que no existe y
+    cualquier ``select()`` entero reventaba con ``UndefinedColumnError``.
+
+    Cuando MinIO vuelva hay que migrar la tabla PRIMERO y recién ahí descomentar
+    las columnas de abajo (y el camino de subida en
+    ``application/enrollment/guardar_foto_perfil.py``). Las dos variantes no
+    pueden convivir en un mismo modelo: ``foto_bytes`` es NOT NULL.
     """
 
     __tablename__ = "foto_referencia"
@@ -324,9 +336,11 @@ class FotoReferenciaModel(Base):
     usuario_id: Mapped[str] = mapped_column(
         UUID(as_uuid=False), ForeignKey("usuario.id", ondelete="CASCADE"), nullable=False
     )
-    uri_storage: Mapped[str] = mapped_column(Text, nullable=False)
+    foto_bytes: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
     hash_sha256: Mapped[str] = mapped_column(Text, nullable=False)
-    bucket: Mapped[str] = mapped_column(Text, nullable=False)
+    # Volver a habilitar junto con la migración que las cree (ver docstring):
+    # uri_storage: Mapped[str] = mapped_column(Text, nullable=False)
+    # bucket: Mapped[str] = mapped_column(Text, nullable=False)
     vigente: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
     created_at: Mapped[str] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()

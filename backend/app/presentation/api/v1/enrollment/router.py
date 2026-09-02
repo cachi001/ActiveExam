@@ -42,7 +42,8 @@ from app.application.enrollment.guardar_embedding_referencia import (
     RehacerBiometriaBloqueadoError,
 )
 from app.domain.biometrics.embedding_integrity import EmbeddingIntegridadError
-from app.application.enrollment.guardar_foto_perfil import GuardarFotoPerfilService
+# Camino MinIO en pausa (ver el `else` de guardar_foto_perfil, más abajo):
+# from app.application.enrollment.guardar_foto_perfil import GuardarFotoPerfilService
 from app.application.enrollment.guardar_foto_perfil_activeexam import GuardarFotoPerfilActiveExamService
 from app.domain.auth.identity import AuthenticatedPrincipal
 from app.domain.auth.roles import Rol
@@ -159,10 +160,27 @@ async def guardar_foto_perfil(
                     imagen_base64=body.imagen_base64,
                 )
             else:
-                service = GuardarFotoPerfilService(session=session, storage=storage)
-                foto_id = await service.ejecutar(
-                    usuario_id=principal.subject,
-                    imagen_base64=body.imagen_base64,
+                # Camino MinIO EN PAUSA (no borrado): la tabla real no tiene las
+                # columnas de punteros (uri_storage/bucket) porque la migración
+                # que las crea es de una rama que no está aplicada en ninguna
+                # base viva. Dejarlo "funcionando" era peor que este error: subía
+                # la foto al bucket y recién después reventaba al guardarla,
+                # dejando un objeto huérfano y al alumno sin foto.
+                # Para reactivarlo: migrar la tabla, descomentar las columnas en
+                # FotoReferenciaModel, `crear_en_bucket` del repositorio y
+                # GuardarFotoPerfilService. Ver el docstring del modelo.
+                #
+                # service = GuardarFotoPerfilService(session=session, storage=storage)
+                # foto_id = await service.ejecutar(
+                #     usuario_id=principal.subject,
+                #     imagen_base64=body.imagen_base64,
+                # )
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail=(
+                        "El guardado de la foto de perfil en MinIO está en pausa. "
+                        "Configurá el storage en base (DbPhotoStorageService)."
+                    ),
                 )
             await session.commit()
     except ValueError as exc:

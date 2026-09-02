@@ -1,68 +1,27 @@
 """Modelos ORM activeexam — variantes de tablas con schema diferente al full (c-57).
 
-Este modulo define modelos ORM para el modulo activeexam de Railway que difieren
-del schema del full. SOLO se importa desde codigo activeexam (main_activeexam, activeexam_wiring,
-db_photo_storage). NUNCA importar desde __init__.py (evitar conflicto de tabla
-duplicada en la misma MetaData).
+ESTADO ACTUAL: no queda ninguna variante propia.
 
-DISENO (c-57, D1):
-  ``FotoReferenciaActiveExamModel`` mapea a la misma tabla ``foto_referencia`` que
-  ``FotoReferenciaModel``, pero con columnas distintas:
-    - Full:  uri_storage, bucket (punteros a MinIO)
-    - ActiveExam:  foto_bytes BYTEA (contenido directo en Postgres)
+``FotoReferenciaActiveExamModel`` existía porque ``FotoReferenciaModel`` declaraba
+las columnas de MinIO (``uri_storage``, ``bucket``) y acá hacía falta la variante
+con ``foto_bytes``. Nunca se llegó a importar en ningún lado (el guardado de la
+foto usa SQL Core en ``db_photo_storage``), y mientras tanto el modelo "bueno"
+seguía describiendo una tabla que no existe en ninguna base viva.
 
-  Son incompatibles — en cada entorno existe UNA de las dos variantes fisicas:
-    - Railway (activeexam): solo foto_bytes (migrado por 0008 activeexam)
-    - Full (produccion): solo uri_storage + bucket (migrado por 0007 main)
+Ahora ``FotoReferenciaModel`` describe la tabla real (la que crea la migración
+0008) y esta es un alias, para no tener dos definiciones de la misma tabla en la
+misma MetaData — que es justamente lo que hacía saltar
+``InvalidRequestError`` al importar los dos módulos en un mismo proceso.
 
-IMPORTANTE: este archivo NO debe importarse en la metadata del full (no incluir
-en __init__.py) porque causaria InvalidRequestError de SQLAlchemy (tabla
-definida dos veces en la misma MetaData instance).
-
-Para evitar el conflicto: este modelo usa una MetaData separada (la Base del
-activeexam) cuando corre en el activeexam. En la practica, el activeexam importa SOLO este
-modulo (no transactional.py) para foto_referencia.
+Si vuelve MinIO, la variante que va a hacer falta es la del bucket, y el lugar
+para declararla es este archivo. Ver el docstring de ``FotoReferenciaModel``.
 """
 
 from __future__ import annotations
 
-from sqlalchemy import Boolean, ForeignKey, LargeBinary, Text
-from sqlalchemy.dialects.postgresql import TIMESTAMP, UUID
-from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy.sql import func
+from app.infrastructure.persistence.models.transactional import FotoReferenciaModel
 
-from app.infrastructure.persistence.base import Base
+#: Alias histórico. Mismo modelo: la tabla real guarda la foto en ``foto_bytes``.
+FotoReferenciaActiveExamModel = FotoReferenciaModel
 
-
-class FotoReferenciaActiveExamModel(Base):
-    """Foto de perfil del alumno — variante activeexam (c-57, D1).
-
-    En el modulo activeexam (Railway / Postgres estandar), la foto se almacena
-    directamente como BYTEA en la columna ``foto_bytes``, sin MinIO.
-
-    NO importar en el mismo proceso que ``FotoReferenciaModel`` (mismo nombre
-    de tabla, metadata diferente). Usar solo en el activeexam.
-
-    NOTA: si este modelo y FotoReferenciaModel se importan en el mismo proceso
-    (ej. tests del full), SQLAlchemy lanza InvalidRequestError. La solucion es
-    importar SOLO uno de los dos segun el entorno.
-    """
-
-    __tablename__ = "foto_referencia"
-    __table_args__ = {"extend_existing": True}
-
-    id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False), primary_key=True, server_default=func.gen_random_uuid()
-    )
-    usuario_id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False), ForeignKey("usuario.id", ondelete="CASCADE"), nullable=False
-    )
-    foto_bytes: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
-    hash_sha256: Mapped[str] = mapped_column(Text, nullable=False)
-    vigente: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
-    created_at: Mapped[str] = mapped_column(
-        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
-    )
-    updated_at: Mapped[str] = mapped_column(
-        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
-    )
+__all__ = ["FotoReferenciaActiveExamModel"]
